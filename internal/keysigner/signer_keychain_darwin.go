@@ -7,40 +7,33 @@
 //
 // It does NOT use the Secure Enclave / hardware TEE (which would require
 // code-signing entitlements that are unfriendly to open source). Instead it
-// generates an RSA-2048 key in software, imports it into a dedicated app
-// keychain as NON-EXTRACTABLE (`security import -x`), then deletes the software
-// copy — so the private key can sign but can never be exported. Signing is
+// generates an RSA-2048 key directly inside a dedicated app keychain. The
+// private key is permanent, sensitive, sign-only, and non-extractable; it is
+// never present in Go memory or a temporary file. Signing is
 // RSASSA-PKCS1v15-SHA256 (RS256).
 //
-// Unlike the original revision, this implementation calls the Security and
-// CoreFoundation frameworks via RUNTIME FFI (github.com/ebitengine/purego)
-// instead of cgo. The security model is identical (the private key is still a
-// non-extractable keychain key and every signature is produced by the OS via
-// SecKeyCreateSignature), but the binary builds with CGO_ENABLED=0 and can be
-// cross-compiled for darwin from any host — so release binaries no longer
-// require a native macOS build runner.
+// Security and CoreFoundation are called through runtime FFI
+// (github.com/ebitengine/purego). Key generation and signing stay inside the OS
+// APIs while the binary remains CGO-free and can be cross-compiled for darwin.
 //
 // Build with:  go build   (cgo-free; compiled into every darwin build, no tag)
 package keysigner
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"unsafe"
 
@@ -59,6 +52,19 @@ const (
 
 	// OSStatus values.
 	errSecSuccess = 0
+
+	// Legacy Security.framework key-generation values from cssmtype.h. These
+	// APIs can target the dedicated file keychain while keeping the private key
+	// non-extractable and sign-only from the moment it is created.
+	cssmAlgIDRSA           = 42
+	cssmKeyUseSign         = 0x00000004
+	cssmKeyUseVerify       = 0x00000008
+	cssmKeyAttrPermanent   = 0x00000001
+	cssmKeyAttrSensitive   = 0x00000008
+	cssmKeyAttrExtractable = 0x00000020
+
+	publicKeyAttributes  = cssmKeyAttrPermanent | cssmKeyAttrExtractable
+	privateKeyAttributes = cssmKeyAttrPermanent | cssmKeyAttrSensitive
 )
 
 var (
@@ -70,11 +76,24 @@ var (
 	cfDataGetBytePtr      func(d uintptr) unsafe.Pointer
 	cfStringCreate        func(alloc uintptr, cstr *byte, encoding uint32) uintptr
 	cfArrayCreate         func(alloc uintptr, values *uintptr, numValues int, cb uintptr) uintptr
+	cfArrayGetCount       func(array uintptr) int
+	cfArrayGetValue       func(array uintptr, index int) uintptr
 	cfDictCreateMutable   func(alloc uintptr, capacity int, keyCB, valCB uintptr) uintptr
 	cfDictSetValue        func(dict, key, val uintptr)
 	cfRelease             func(ref uintptr)
 	cfErrorGetCode        func(e uintptr) int
+	dlsymDataPointer      func(handle uintptr, name string) *uintptr
+	secKeychainCreate     func(path *byte, passwordLength uint32, password unsafe.Pointer, promptUser uint8, initialAccess uintptr, out *uintptr) int32
 	secKeychainOpen       func(path *byte, out *uintptr) int32
+	secKeychainUnlock     func(keychain uintptr, passwordLength uint32, password unsafe.Pointer, usePassword uint8) int32
+	secKeychainGetUI      func(state *uint8) int32
+	secKeychainSetUI      func(state uint8) int32
+	secAccessCreate       func(descriptor, trustedList uintptr, out *uintptr) int32
+	secAccessCopyACLs     func(access, authorization uintptr) uintptr
+	secACLSetContents     func(acl, applicationList, description uintptr, promptSelector uint32) int32
+	secKeyCreatePair      func(keychain uintptr, algorithm, keySize uint32, contextHandle uint64, publicKeyUsage, publicKeyAttr, privateKeyUsage, privateKeyAttr uint32, initialAccess uintptr, publicKey, privateKey *uintptr) int32
+	secKeyCopyExternal    func(key uintptr, errOut *uintptr) uintptr
+	secKeychainItemDelete func(item uintptr) int32
 	secItemCopyMatching   func(query uintptr, result *uintptr) int32
 	secItemUpdate         func(query, attrs uintptr) int32
 	secKeyCreateSignature func(key, algo, data uintptr, errOut *uintptr) uintptr
@@ -90,6 +109,7 @@ var (
 	kSecReturnRef            uintptr
 	kSecMatchSearchList      uintptr
 	kSecAttrLabel            uintptr
+	kSecACLAuthorizationSign uintptr
 	kCFBooleanTrue           uintptr
 	algRSAPKCS1SHA256        uintptr
 
@@ -104,6 +124,11 @@ var (
 // fails cleanly rather than crashing.
 func loadFFI() error {
 	ffiOnce.Do(func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				ffiErr = fmt.Errorf("keysigner: load Security framework bindings: %v", recovered)
+			}
+		}()
 		cf, err := purego.Dlopen(cfFrameworkPath, purego.RTLD_NOW|purego.RTLD_GLOBAL)
 		if err != nil {
 			ffiErr = fmt.Errorf("keysigner: dlopen CoreFoundation: %w", err)
@@ -120,11 +145,24 @@ func loadFFI() error {
 		purego.RegisterLibFunc(&cfDataGetBytePtr, cf, "CFDataGetBytePtr")
 		purego.RegisterLibFunc(&cfStringCreate, cf, "CFStringCreateWithCString")
 		purego.RegisterLibFunc(&cfArrayCreate, cf, "CFArrayCreate")
+		purego.RegisterLibFunc(&cfArrayGetCount, cf, "CFArrayGetCount")
+		purego.RegisterLibFunc(&cfArrayGetValue, cf, "CFArrayGetValueAtIndex")
 		purego.RegisterLibFunc(&cfDictCreateMutable, cf, "CFDictionaryCreateMutable")
 		purego.RegisterLibFunc(&cfDictSetValue, cf, "CFDictionarySetValue")
 		purego.RegisterLibFunc(&cfRelease, cf, "CFRelease")
 		purego.RegisterLibFunc(&cfErrorGetCode, cf, "CFErrorGetCode")
+		purego.RegisterLibFunc(&dlsymDataPointer, purego.RTLD_DEFAULT, "dlsym")
+		purego.RegisterLibFunc(&secKeychainCreate, sec, "SecKeychainCreate")
 		purego.RegisterLibFunc(&secKeychainOpen, sec, "SecKeychainOpen")
+		purego.RegisterLibFunc(&secKeychainUnlock, sec, "SecKeychainUnlock")
+		purego.RegisterLibFunc(&secKeychainGetUI, sec, "SecKeychainGetUserInteractionAllowed")
+		purego.RegisterLibFunc(&secKeychainSetUI, sec, "SecKeychainSetUserInteractionAllowed")
+		purego.RegisterLibFunc(&secAccessCreate, sec, "SecAccessCreate")
+		purego.RegisterLibFunc(&secAccessCopyACLs, sec, "SecAccessCopyMatchingACLList")
+		purego.RegisterLibFunc(&secACLSetContents, sec, "SecACLSetContents")
+		purego.RegisterLibFunc(&secKeyCreatePair, sec, "SecKeyCreatePair")
+		purego.RegisterLibFunc(&secKeyCopyExternal, sec, "SecKeyCopyExternalRepresentation")
+		purego.RegisterLibFunc(&secKeychainItemDelete, sec, "SecKeychainItemDelete")
 		purego.RegisterLibFunc(&secItemCopyMatching, sec, "SecItemCopyMatching")
 		purego.RegisterLibFunc(&secItemUpdate, sec, "SecItemUpdate")
 		purego.RegisterLibFunc(&secKeyCreateSignature, sec, "SecKeyCreateSignature")
@@ -146,22 +184,21 @@ func loadFFI() error {
 			{&kSecReturnRef, sec, "kSecReturnRef"},
 			{&kSecMatchSearchList, sec, "kSecMatchSearchList"},
 			{&kSecAttrLabel, sec, "kSecAttrLabel"},
+			{&kSecACLAuthorizationSign, sec, "kSecACLAuthorizationSign"},
 			{&kCFBooleanTrue, cf, "kCFBooleanTrue"},
 			{&algRSAPKCS1SHA256, sec, "kSecKeyAlgorithmRSASignatureDigestPKCS1v15SHA256"},
 		}
 		for _, d := range derefs {
-			sym, e := purego.Dlsym(d.handle, d.name)
-			if e != nil {
-				ffiErr = fmt.Errorf("keysigner: dlsym %s: %w", d.name, e)
-				return
-			}
-			if sym == 0 {
+			sym := dlsymDataPointer(d.handle, d.name)
+			if sym == nil {
 				ffiErr = fmt.Errorf("keysigner: dlsym %s returned zero address", d.name)
 				return
 			}
-			// Reinterpret the Dlsym result bits as a pointer, then dereference the
-			// stable dylib data symbol. This is foreign memory, not Go-managed memory.
-			*d.dst = **(**uintptr)(unsafe.Pointer(&sym))
+			*d.dst = *sym
+			if *d.dst == 0 {
+				ffiErr = fmt.Errorf("keysigner: data symbol %s contains a zero reference", d.name)
+				return
+			}
 		}
 
 		// Callback structs are passed by address (no deref).
@@ -261,8 +298,62 @@ func findPrivateKey(appLabel []byte, keychainPath string) (uintptr, error) {
 	return keyRef, nil
 }
 
-// securityBin is invoked by absolute path so a poisoned PATH cannot hijack it.
-const securityBin = "/usr/bin/security"
+// These seams keep lifecycle and interaction tests hermetic. Production calls
+// Security.framework directly, so the generated keychain password never
+// appears in process argv.
+var (
+	createKeychainFile                  = createKeychainFileFFI
+	unlockKeychainFile                  = unlockKeychainFileFFI
+	getKeychainUserInteractionAllowed   = getKeychainUserInteractionAllowedFFI
+	setKeychainUserInteractionAllowed   = setKeychainUserInteractionAllowedFFI
+	keychainUserInteractionOperationMux sync.Mutex
+)
+
+func getKeychainUserInteractionAllowedFFI() (bool, error) {
+	var allowed uint8
+	if status := secKeychainGetUI(&allowed); status != errSecSuccess {
+		return false, keychainError("read Keychain user-interaction state", int(status))
+	}
+	return allowed != 0, nil
+}
+
+func setKeychainUserInteractionAllowedFFI(allowed bool) error {
+	var state uint8
+	if allowed {
+		state = 1
+	}
+	if status := secKeychainSetUI(state); status != errSecSuccess {
+		return keychainError("set Keychain user-interaction state", int(status))
+	}
+	return nil
+}
+
+// withKeychainUserInteractionDisabled makes the no-system-dialog requirement
+// an execution invariant. If an operation would otherwise need UI, Keychain
+// Services returns an error instead. The process-global setting is serialized
+// and restored even when the operation fails.
+func withKeychainUserInteractionDisabled(operation func() error) (err error) {
+	keychainUserInteractionOperationMux.Lock()
+	defer keychainUserInteractionOperationMux.Unlock()
+
+	previous, err := getKeychainUserInteractionAllowed()
+	if err != nil {
+		return err
+	}
+	if err := setKeychainUserInteractionAllowed(false); err != nil {
+		return err
+	}
+	defer func() {
+		if restoreErr := setKeychainUserInteractionAllowed(previous); restoreErr != nil {
+			if err == nil {
+				err = restoreErr
+			} else {
+				err = fmt.Errorf("%w; additionally failed to restore Keychain user-interaction state: %w", err, restoreErr)
+			}
+		}
+	}()
+	return operation()
+}
 
 // keychainSigner implements Signer using a macOS non-exportable Keychain key.
 type keychainSigner struct{}
@@ -271,16 +362,16 @@ func init() { Register(keychainSigner{}) }
 
 // ProbeHardware reports the macOS Keychain backend backing this signer. The
 // keychain signer is compiled into every darwin build and needs no special
-// hardware, so it reports available whenever the Security tooling is present.
+// hardware, so it reports available whenever its framework bindings load.
 // It performs no key access, so it never prompts. Implementing HardwareProber
 // is what lets `doctor` report the signer as present rather than treating the
-// (prober-less) signer as "no TEE signer in this build".
+// (prober-less) signer as "no platform signer in this build".
 func (keychainSigner) ProbeHardware(_ context.Context) (HardwareInfo, error) {
 	info := HardwareInfo{Backend: "keychain", VendorName: "macOS Keychain"}
-	// A missing security tool is a status (Available=false via Reason), not a
-	// probe error — so we deliberately return a nil error here.
-	if _, err := vfs.Stat(securityBin); err != nil {
-		info.Reason = securityBin + " not found"
+	// A missing framework or symbol is a status (Available=false via Reason),
+	// not a probe error. Loading symbols does not touch the keychain or prompt.
+	if err := loadFFI(); err != nil {
+		info.Reason = err.Error()
 		return info, nil //nolint:nilerr // absence is reported via Reason, not as an error
 	}
 	info.Available = true
@@ -304,10 +395,18 @@ func (keychainSigner) PublicKey(_ context.Context, ref KeyRef) (crypto.PublicKey
 	return decodePublicKey(md.PublicKey)
 }
 
-func (keychainSigner) Sign(_ context.Context, ref KeyRef, signingInput []byte) ([]byte, string, error) {
+func (keychainSigner) Sign(_ context.Context, ref KeyRef, signingInput []byte) (signature []byte, algorithm string, err error) {
 	if err := loadFFI(); err != nil {
 		return nil, "", err
 	}
+	err = withKeychainUserInteractionDisabled(func() error {
+		signature, algorithm, err = signWithKeychain(ref, signingInput)
+		return err
+	})
+	return signature, algorithm, err
+}
+
+func signWithKeychain(ref KeyRef, signingInput []byte) ([]byte, string, error) {
 	md, err := readKeyMetadata(ref.Label)
 	if err != nil {
 		return nil, "", err
@@ -362,62 +461,163 @@ type keyMetadata struct {
 	AppLabel  string `json:"app_label"`  // hex(sha1(PKCS1 public key))
 }
 
-func createKeychainKey(label string) (crypto.PublicKey, error) {
+func createKeychainKey(label string) (publicKey crypto.PublicKey, err error) {
+	if err := loadFFI(); err != nil {
+		return nil, err
+	}
+	err = withKeychainUserInteractionDisabled(func() error {
+		publicKey, err = createKeychainKeyWithoutUI(label)
+		return err
+	})
+	return publicKey, err
+}
+
+func createKeychainKeyWithoutUI(label string) (crypto.PublicKey, error) {
 	metadataPath, err := keyMetadataPath(label)
 	if err != nil {
 		return nil, err
-	}
-
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return nil, fmt.Errorf("keysigner: generate RSA key: %w", err)
-	}
-	appLabel := sha1.Sum(x509.MarshalPKCS1PublicKey(&privateKey.PublicKey))
-
-	pemFile, err := vfs.CreateTemp("", "lark-keysigner-*.pem")
-	if err != nil {
-		return nil, fmt.Errorf("keysigner: temp key file: %w", err)
-	}
-	pemPath := pemFile.Name()
-	defer vfs.Remove(pemPath)
-	if err := pemFile.Chmod(0600); err != nil {
-		pemFile.Close()
-		return nil, err
-	}
-	der := x509.MarshalPKCS1PrivateKey(privateKey)
-	if err := pem.Encode(pemFile, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: der}); err != nil {
-		pemFile.Close()
-		return nil, err
-	}
-	if err := pemFile.Close(); err != nil {
-		return nil, err
-	}
-
-	executable, err := vfs.Executable()
-	if err != nil {
-		return nil, fmt.Errorf("keysigner: resolve executable: %w", err)
 	}
 	keychain, err := ensureKeychain()
 	if err != nil {
 		return nil, err
 	}
-	// -x: import as NON-EXTRACTABLE; the software copy (pemPath) is then removed.
-	importCmd := exec.Command(securityBin, "import", pemPath, "-k", keychain, "-t", "priv", "-f", "openssl", "-x", "-A", "-T", executable)
-	if out, err := importCmd.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("keysigner: import non-extractable key: %w: %s", err, summarizeCmdOutput(out))
+
+	var keychainRef uintptr
+	if status := secKeychainOpen(cstr(keychain), &keychainRef); status != errSecSuccess {
+		return nil, keychainError("open keychain for key generation", int(status))
 	}
+	if keychainRef == 0 {
+		return nil, fmt.Errorf("keysigner: open keychain for key generation returned an empty reference")
+	}
+	defer cfRelease(keychainRef)
+
+	descriptor := cfStringCreate(0, cstr(label), cfStringEncodingUTF8)
+	if descriptor == 0 {
+		return nil, fmt.Errorf("keysigner: create key access descriptor failed")
+	}
+	defer cfRelease(descriptor)
+
+	var access uintptr
+	if status := secAccessCreate(descriptor, 0, &access); status != errSecSuccess {
+		return nil, keychainError("create key access policy", int(status))
+	}
+	if access == 0 {
+		return nil, fmt.Errorf("keysigner: create key access policy returned an empty reference")
+	}
+	defer cfRelease(access)
+	if err := configureNoPromptSigningAccess(access, descriptor); err != nil {
+		return nil, err
+	}
+
+	var publicKeyRef, privateKeyRef uintptr
+	status := secKeyCreatePair(
+		keychainRef,
+		cssmAlgIDRSA,
+		2048,
+		0,
+		cssmKeyUseVerify,
+		publicKeyAttributes,
+		cssmKeyUseSign,
+		privateKeyAttributes,
+		access,
+		&publicKeyRef,
+		&privateKeyRef,
+	)
+	deleteAndRelease := func(keyRef uintptr) {
+		if keyRef != 0 {
+			_ = secKeychainItemDelete(keyRef)
+			cfRelease(keyRef)
+		}
+	}
+	if status != errSecSuccess {
+		deleteAndRelease(privateKeyRef)
+		deleteAndRelease(publicKeyRef)
+		return nil, keychainError("generate non-extractable RSA key", int(status))
+	}
+	if publicKeyRef == 0 || privateKeyRef == 0 {
+		deleteAndRelease(privateKeyRef)
+		deleteAndRelease(publicKeyRef)
+		return nil, fmt.Errorf("keysigner: key generation returned an empty key reference")
+	}
+	defer cfRelease(publicKeyRef)
+	defer cfRelease(privateKeyRef)
+
+	committed := false
+	defer func() {
+		if !committed {
+			_ = secKeychainItemDelete(privateKeyRef)
+			_ = secKeychainItemDelete(publicKeyRef)
+		}
+	}()
+
+	var exportErr uintptr
+	publicDERRef := secKeyCopyExternal(publicKeyRef, &exportErr)
+	if publicDERRef == 0 {
+		code := 0
+		if exportErr != 0 {
+			code = cfErrorGetCode(exportErr)
+			cfRelease(exportErr)
+		}
+		return nil, fmt.Errorf("keysigner: export public key failed (CFError %d)", code)
+	}
+	defer cfRelease(publicDERRef)
+	publicDERLength := cfDataGetLength(publicDERRef)
+	publicDERPointer := cfDataGetBytePtr(publicDERRef)
+	if publicDERLength <= 0 || publicDERPointer == nil {
+		return nil, fmt.Errorf("keysigner: exported public key is empty")
+	}
+	publicDER := make([]byte, publicDERLength)
+	copy(publicDER, unsafe.Slice((*byte)(publicDERPointer), publicDERLength))
+	publicKey, err := x509.ParsePKCS1PublicKey(publicDER)
+	if err != nil {
+		return nil, fmt.Errorf("keysigner: parse generated RSA public key: %w", err)
+	}
+	appLabel := sha1.Sum(publicDER)
+
 	if err := setKeychainKeyLabel(appLabel[:], keychain, label); err != nil {
 		return nil, err
 	}
 
-	encodedPub, err := EncodePublicKey(&privateKey.PublicKey)
+	encodedPub, err := EncodePublicKey(publicKey)
 	if err != nil {
 		return nil, err
 	}
 	if err := writeKeyMetadata(metadataPath, keyMetadata{PublicKey: encodedPub, AppLabel: hex.EncodeToString(appLabel[:])}); err != nil {
 		return nil, err
 	}
-	return &privateKey.PublicKey, nil
+	committed = true
+	return publicKey, nil
+}
+
+// configureNoPromptSigningAccess preserves the existing `security import -A`
+// UX contract without creating a software private-key copy. SecAccessCreate
+// groups restricted operations in one ACL; making its application list nil
+// allows any application to use it without confirmation. The private key is
+// nevertheless sign-only and non-extractable, so its effective capability is
+// limited to signing.
+func configureNoPromptSigningAccess(access, descriptor uintptr) error {
+	aclList := secAccessCopyACLs(access, kSecACLAuthorizationSign)
+	if aclList == 0 {
+		return fmt.Errorf("keysigner: find signing access policy failed")
+	}
+	defer cfRelease(aclList)
+
+	count := cfArrayGetCount(aclList)
+	if count == 0 {
+		return fmt.Errorf("keysigner: signing access policy is empty")
+	}
+	for i := 0; i < count; i++ {
+		acl := cfArrayGetValue(aclList, i)
+		if acl == 0 {
+			return fmt.Errorf("keysigner: signing access policy contains an empty ACL")
+		}
+		// applicationList=nil means any application may use this ACL without a
+		// confirmation dialog. promptSelector=0 never requests a passphrase.
+		if status := secACLSetContents(acl, 0, descriptor, 0); status != errSecSuccess {
+			return keychainError("configure no-prompt signing access", int(status))
+		}
+	}
+	return nil
 }
 
 func setKeychainKeyLabel(appLabel []byte, keychain, label string) error {
@@ -506,6 +706,7 @@ func ensureKeychain() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer clear(password)
 	if _, err := vfs.Stat(keychainPath); err != nil {
 		if !os.IsNotExist(err) {
 			return "", fmt.Errorf("keysigner: stat keychain: %w", err)
@@ -513,17 +714,70 @@ func ensureKeychain() (string, error) {
 		if err := vfs.MkdirAll(filepath.Dir(keychainPath), 0700); err != nil {
 			return "", err
 		}
-		for _, args := range [][]string{
-			{"create-keychain", "-p", password, keychainPath},
-			{"set-keychain-settings", keychainPath},
-			{"unlock-keychain", "-p", password, keychainPath},
-		} {
-			if out, err := exec.Command(securityBin, args...).CombinedOutput(); err != nil {
-				return "", fmt.Errorf("keysigner: security %s: %w: %s", args[0], err, summarizeCmdOutput(out))
-			}
+		if err := createKeychainFile(keychainPath, password); err != nil {
+			return "", err
 		}
 	}
+
+	// A dedicated file keychain can be locked after logout, reboot, an idle
+	// interval, or an explicit lock. Always unlock it with the generated password
+	// before use; interaction is disabled by the caller, so failure returns an
+	// error instead of displaying a system dialog.
+	if err := unlockKeychainFile(keychainPath, password); err != nil {
+		return "", err
+	}
 	return keychainPath, nil
+}
+
+func createKeychainFileFFI(path string, password []byte) error {
+	pathBytes := append([]byte(path), 0)
+	var keychain uintptr
+	status := secKeychainCreate(
+		&pathBytes[0],
+		uint32(len(password)),
+		byteSlicePointer(password),
+		0, // promptUser=false: unattended creation must never display UI.
+		0, // Apple documents passing NULL for initialAccess.
+		&keychain,
+	)
+	runtime.KeepAlive(pathBytes)
+	runtime.KeepAlive(password)
+	if status != errSecSuccess {
+		return keychainError("create keychain", int(status))
+	}
+	if keychain == 0 {
+		return fmt.Errorf("keysigner: create keychain returned an empty reference")
+	}
+	cfRelease(keychain)
+	return nil
+}
+
+func unlockKeychainFileFFI(path string, password []byte) error {
+	pathBytes := append([]byte(path), 0)
+	var keychain uintptr
+	status := secKeychainOpen(&pathBytes[0], &keychain)
+	runtime.KeepAlive(pathBytes)
+	if status != errSecSuccess {
+		return keychainError("open keychain for unlock", int(status))
+	}
+	if keychain == 0 {
+		return fmt.Errorf("keysigner: open keychain for unlock returned an empty reference")
+	}
+	defer cfRelease(keychain)
+
+	status = secKeychainUnlock(keychain, uint32(len(password)), byteSlicePointer(password), 1)
+	runtime.KeepAlive(password)
+	if status != errSecSuccess {
+		return keychainError("unlock keychain", int(status))
+	}
+	return nil
+}
+
+func byteSlicePointer(data []byte) unsafe.Pointer {
+	if len(data) == 0 {
+		return nil
+	}
+	return unsafe.Pointer(&data[0])
 }
 
 func keysignerDir() (string, error) {
@@ -542,31 +796,39 @@ func keychainFilePath() (string, error) {
 	return filepath.Join(dir, "lark-cli.keychain"), nil
 }
 
-func keychainPassword() (string, error) {
+func keychainPassword() ([]byte, error) {
 	dir, err := keysignerDir()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	path := filepath.Join(dir, "keychain.pass")
 	if data, err := vfs.ReadFile(path); err == nil {
-		if pw := strings.TrimSpace(string(data)); pw != "" {
-			return pw, nil
+		defer clear(data)
+		if pw := bytes.TrimSpace(data); len(pw) != 0 {
+			return append([]byte(nil), pw...), nil
 		}
-		return "", fmt.Errorf("keysigner: empty keychain password")
+		return nil, fmt.Errorf("keysigner: empty keychain password")
 	} else if !os.IsNotExist(err) {
-		return "", err
+		return nil, err
 	}
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
-		return "", err
+		return nil, err
 	}
-	pw := hex.EncodeToString(buf)
+	defer clear(buf)
+	pw := make([]byte, hex.EncodedLen(len(buf)))
+	hex.Encode(pw, buf)
 	if err := vfs.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return "", err
+		clear(pw)
+		return nil, err
 	}
-	if err := vfs.WriteFile(path, []byte(pw+"\n"), 0600); err != nil {
-		return "", err
+	stored := append(append([]byte(nil), pw...), '\n')
+	if err := vfs.WriteFile(path, stored, 0600); err != nil {
+		clear(stored)
+		clear(pw)
+		return nil, err
 	}
+	clear(stored)
 	return pw, nil
 }
 
@@ -577,20 +839,6 @@ func keyMetadataPath(label string) (string, error) {
 	}
 	id := sha256.Sum256([]byte(label))
 	return filepath.Join(dir, "keys", hex.EncodeToString(id[:])+".json"), nil
-}
-
-// summarizeCmdOutput bounds external command output before it is embedded in
-// an error: first line only, capped at 200 chars.
-func summarizeCmdOutput(out []byte) string {
-	s := strings.TrimSpace(string(out))
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		s = strings.TrimSpace(s[:i])
-	}
-	const maxLen = 200
-	if len(s) > maxLen {
-		s = s[:maxLen] + "..."
-	}
-	return s
 }
 
 func keychainError(operation string, status int) error {

@@ -10,15 +10,195 @@ import (
 	"crypto"
 	"crypto/rsa"
 	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"sync"
 	"testing"
+
+	"github.com/ebitengine/purego"
 )
+
+var (
+	keychainTestFFIOnce       sync.Once
+	keychainTestFFIErr        error
+	secKeychainLock           func(keychain uintptr) int32
+	secACLCopyContents        func(acl uintptr, applicationList, description *uintptr, promptSelector *uint32) int32
+	secKeychainItemCopyAccess func(item uintptr, access *uintptr) int32
+)
+
+func loadKeychainTestFFI(t *testing.T) {
+	t.Helper()
+	keychainTestFFIOnce.Do(func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				keychainTestFFIErr = fmt.Errorf("load test-only Security framework bindings: %v", recovered)
+			}
+		}()
+		if err := loadFFI(); err != nil {
+			keychainTestFFIErr = err
+			return
+		}
+		sec, err := purego.Dlopen(secFrameworkPath, purego.RTLD_NOW|purego.RTLD_GLOBAL)
+		if err != nil {
+			keychainTestFFIErr = fmt.Errorf("dlopen Security for tests: %w", err)
+			return
+		}
+		purego.RegisterLibFunc(&secKeychainLock, sec, "SecKeychainLock")
+		purego.RegisterLibFunc(&secACLCopyContents, sec, "SecACLCopyContents")
+		purego.RegisterLibFunc(&secKeychainItemCopyAccess, sec, "SecKeychainItemCopyAccess")
+	})
+	if keychainTestFFIErr != nil {
+		t.Fatal(keychainTestFFIErr)
+	}
+}
 
 // TestKeychainSignerRegistered confirms the keychain_signer build self-registers
 // (init → Register), so keysigner.Active() is non-nil. No keychain access.
 func TestKeychainSignerRegistered(t *testing.T) {
 	if _, ok := Active().(keychainSigner); !ok {
 		t.Fatalf("Active() = %T, want keychainSigner (keychain_signer build must self-register)", Active())
+	}
+}
+
+func TestKeychainFFIBindings(t *testing.T) {
+	loadKeychainTestFFI(t)
+	if secKeychainCreate == nil || secKeychainOpen == nil || secKeychainUnlock == nil ||
+		secKeychainGetUI == nil || secKeychainSetUI == nil || secAccessCreate == nil ||
+		secAccessCopyACLs == nil || secACLSetContents == nil ||
+		secKeyCreatePair == nil || secKeyCopyExternal == nil || secKeychainItemDelete == nil ||
+		secKeychainLock == nil || secACLCopyContents == nil || secKeychainItemCopyAccess == nil {
+		t.Fatal("one or more Keychain functions were not registered")
+	}
+}
+
+func TestPrivateKeyGenerationAttributesAreNonExtractable(t *testing.T) {
+	if privateKeyAttributes&cssmKeyAttrPermanent == 0 {
+		t.Fatal("private key must be stored permanently in the dedicated keychain")
+	}
+	if privateKeyAttributes&cssmKeyAttrSensitive == 0 {
+		t.Fatal("private key must be marked sensitive")
+	}
+	if privateKeyAttributes&cssmKeyAttrExtractable != 0 {
+		t.Fatal("private key must not be extractable")
+	}
+	if publicKeyAttributes&cssmKeyAttrExtractable == 0 {
+		t.Fatal("public key must remain exportable")
+	}
+}
+
+func TestWithKeychainUserInteractionDisabledRestoresPreviousState(t *testing.T) {
+	previousGet := getKeychainUserInteractionAllowed
+	previousSet := setKeychainUserInteractionAllowed
+	var states []bool
+	getKeychainUserInteractionAllowed = func() (bool, error) { return true, nil }
+	setKeychainUserInteractionAllowed = func(allowed bool) error {
+		states = append(states, allowed)
+		return nil
+	}
+	t.Cleanup(func() {
+		getKeychainUserInteractionAllowed = previousGet
+		setKeychainUserInteractionAllowed = previousSet
+	})
+
+	called := false
+	if err := withKeychainUserInteractionDisabled(func() error {
+		called = true
+		if len(states) != 1 || states[0] {
+			t.Fatalf("interaction states while operation runs = %v, want [false]", states)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("withKeychainUserInteractionDisabled: %v", err)
+	}
+	if !called {
+		t.Fatal("operation was not called")
+	}
+	if want := []bool{false, true}; !reflect.DeepEqual(states, want) {
+		t.Fatalf("interaction states = %v, want %v", states, want)
+	}
+}
+
+func TestWithKeychainUserInteractionDisabledFailsBeforeOperation(t *testing.T) {
+	previousGet := getKeychainUserInteractionAllowed
+	previousSet := setKeychainUserInteractionAllowed
+	getKeychainUserInteractionAllowed = func() (bool, error) { return true, nil }
+	setKeychainUserInteractionAllowed = func(bool) error { return errors.New("disable failed") }
+	t.Cleanup(func() {
+		getKeychainUserInteractionAllowed = previousGet
+		setKeychainUserInteractionAllowed = previousSet
+	})
+
+	called := false
+	err := withKeychainUserInteractionDisabled(func() error {
+		called = true
+		return nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "disable failed") {
+		t.Fatalf("error = %v, want disable failure", err)
+	}
+	if called {
+		t.Fatal("operation ran while Keychain UI could not be disabled")
+	}
+}
+
+func TestEnsureKeychainUnlocksExistingKeychain(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	dir := filepath.Join(home, "Library", "Application Support", "lark-cli", "keysigner")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	keychainPath := filepath.Join(dir, "lark-cli.keychain")
+	if err := os.WriteFile(keychainPath, []byte("not-a-real-keychain"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "keychain.pass"), []byte("test-password\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	previousCreate := createKeychainFile
+	previousUnlock := unlockKeychainFile
+	createKeychainFile = func(string, []byte) error {
+		t.Fatal("createKeychainFile called for an existing keychain")
+		return nil
+	}
+	type unlockCall struct {
+		path     string
+		password []byte
+	}
+	var calls []unlockCall
+	var borrowedPassword []byte
+	unlockKeychainFile = func(path string, password []byte) error {
+		borrowedPassword = password
+		calls = append(calls, unlockCall{path: path, password: append([]byte(nil), password...)})
+		return nil
+	}
+	t.Cleanup(func() {
+		createKeychainFile = previousCreate
+		unlockKeychainFile = previousUnlock
+	})
+
+	got, err := ensureKeychain()
+	if err != nil {
+		t.Fatalf("ensureKeychain: %v", err)
+	}
+	if got != keychainPath {
+		t.Fatalf("ensureKeychain path = %q, want %q", got, keychainPath)
+	}
+	want := []unlockCall{{path: keychainPath, password: []byte("test-password")}}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("unlock calls = %#v, want %#v", calls, want)
+	}
+	for i, value := range borrowedPassword {
+		if value != 0 {
+			t.Fatalf("borrowed password byte %d was not cleared after use", i)
+		}
 	}
 }
 
@@ -32,6 +212,8 @@ func TestKeychainSignerRoundTrip(t *testing.T) {
 	if os.Getenv("LARK_KEYCHAIN_IT") == "" {
 		t.Skip("set LARK_KEYCHAIN_IT=1 to run (mutates the macOS keychain)")
 	}
+	loadKeychainTestFFI(t)
+	t.Setenv("HOME", t.TempDir())
 	s := keychainSigner{}
 	ref := KeyRef{Label: "lark-cli-keychain-it"}
 
@@ -58,5 +240,97 @@ func TestKeychainSignerRoundTrip(t *testing.T) {
 	h := sha256.Sum256(input)
 	if err := rsa.VerifyPKCS1v15(rsaPub, crypto.SHA256, h[:], sig); err != nil {
 		t.Errorf("RS256 signature did not verify: %v", err)
+	}
+
+	keychainPath, err := keychainFilePath()
+	if err != nil {
+		t.Fatalf("keychain path: %v", err)
+	}
+	var keychainRef uintptr
+	if status := secKeychainOpen(cstr(keychainPath), &keychainRef); status != errSecSuccess {
+		t.Fatalf("open keychain before lock: %v", keychainError("open keychain before lock", int(status)))
+	}
+	if keychainRef == 0 {
+		t.Fatal("open keychain before lock returned an empty reference")
+	}
+	if status := secKeychainLock(keychainRef); status != errSecSuccess {
+		cfRelease(keychainRef)
+		t.Fatalf("lock keychain: %v", keychainError("lock keychain", int(status)))
+	}
+	cfRelease(keychainRef)
+
+	lockedSig, _, err := s.Sign(context.Background(), ref, input)
+	if err != nil {
+		t.Fatalf("Sign after explicit Keychain lock: %v", err)
+	}
+	if err := rsa.VerifyPKCS1v15(rsaPub, crypto.SHA256, h[:], lockedSig); err != nil {
+		t.Errorf("signature after explicit Keychain lock did not verify: %v", err)
+	}
+
+	md, err := readKeyMetadata(ref.Label)
+	if err != nil {
+		t.Fatalf("read metadata: %v", err)
+	}
+	appLabel, err := hex.DecodeString(md.AppLabel)
+	if err != nil {
+		t.Fatalf("decode app label: %v", err)
+	}
+	if err := withKeychainUserInteractionDisabled(func() error {
+		keychain, err := ensureKeychain()
+		if err != nil {
+			return err
+		}
+		privateKeyRef, err := findPrivateKey(appLabel, keychain)
+		if err != nil {
+			return err
+		}
+		defer cfRelease(privateKeyRef)
+
+		var access uintptr
+		if status := secKeychainItemCopyAccess(privateKeyRef, &access); status != errSecSuccess {
+			return keychainError("copy private-key access policy", int(status))
+		}
+		if access == 0 {
+			return errors.New("private-key access policy was empty")
+		}
+		defer cfRelease(access)
+		aclList := secAccessCopyACLs(access, kSecACLAuthorizationSign)
+		if aclList == 0 {
+			return errors.New("private-key signing ACL was empty")
+		}
+		defer cfRelease(aclList)
+		for i := 0; i < cfArrayGetCount(aclList); i++ {
+			acl := cfArrayGetValue(aclList, i)
+			var applications, description uintptr
+			var promptSelector uint32
+			if status := secACLCopyContents(acl, &applications, &description, &promptSelector); status != errSecSuccess {
+				return keychainError("copy private-key signing ACL contents", int(status))
+			}
+			if applications != 0 {
+				cfRelease(applications)
+				if description != 0 {
+					cfRelease(description)
+				}
+				return errors.New("private-key signing ACL did not allow no-prompt access")
+			}
+			if description != 0 {
+				cfRelease(description)
+			}
+			if promptSelector != 0 {
+				return errors.New("private-key signing ACL requested user interaction")
+			}
+		}
+
+		var exportErr uintptr
+		if exported := secKeyCopyExternal(privateKeyRef, &exportErr); exported != 0 {
+			cfRelease(exported)
+			return errors.New("private key was exportable")
+		}
+		if exportErr != 0 {
+			cfRelease(exportErr)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("private-key export check: %v", err)
 	}
 }

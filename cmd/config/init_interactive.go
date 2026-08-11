@@ -274,11 +274,8 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 		if initErr != nil {
 			return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "app registration init failed: %v", initErr).WithCause(initErr)
 		}
-		// An empty SupportedAuthMethods is intentionally treated as "older server /
-		// unknown": len()==0 makes this guard false, so the requested
-		// private_key_jwt proceeds. This mirrors resolveFinalAuthMethod's
-		// back-compat fallback to the requested method. Only an explicit list that
-		// omits private_key_jwt rejects here.
+		// An empty SupportedAuthMethods is treated as unknown for compatibility.
+		// Only an explicit capability list that omits private_key_jwt rejects here.
 		if len(initResp.SupportedAuthMethods) > 0 && !slices.Contains(initResp.SupportedAuthMethods, core.AuthMethodPrivateKeyJWT) {
 			return nil, errs.NewConfigError(errs.SubtypeInvalidClient,
 				"server does not support private_key_jwt for this app type (supported: %s)", strings.Join(initResp.SupportedAuthMethods, ", ")).
@@ -340,33 +337,25 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 		return nil, classifyRegistrationError(err)
 	}
 
-	// The final auth method is decided by the user/admin at confirmation and
-	// returned by poll — NOT necessarily what we requested. Selecting an existing
-	// client_secret app, for example, yields client_secret even though we sent
-	// private_key_jwt. Trust the result so we persist the truth.
-	finalMethod := resolveFinalAuthMethod(result.AuthMethods, authMethod)
+	// Poll does not return auth_method. The normalized method sent by begin is
+	// authoritative. When private_key_jwt targets an existing client_secret app,
+	// the server migrates that app and removes its client_secret authentication.
 
 	if result.ClientID == "" {
 		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "app registration succeeded but missing app_id")
 	}
-	if finalMethod != core.AuthMethodPrivateKeyJWT && result.ClientSecret == "" {
+	if authMethod != core.AuthMethodPrivateKeyJWT && result.ClientSecret == "" {
 		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "app registration succeeded but missing client_secret")
 	}
 
-	// Surface a downgrade: requested private_key_jwt but the app resolved to a
-	// secret-based method (e.g. an existing app was selected). The key was NOT
-	// bound, so we must store the secret method, not private_key_jwt.
-	if authMethod == core.AuthMethodPrivateKeyJWT && finalMethod != core.AuthMethodPrivateKeyJWT {
-		fmt.Fprintf(f.IOStreams.ErrOut, "[lark-cli] note: requested private_key_jwt, but the app uses %q (e.g. an existing app was selected); storing %q.\n", finalMethod, finalMethod)
-	}
 	fmt.Fprintln(f.IOStreams.ErrOut)
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.AppCreated, result.ClientID))
 
 	keyToStore := ""
-	if finalMethod == core.AuthMethodPrivateKeyJWT {
+	if authMethod == core.AuthMethodPrivateKeyJWT {
 		keyToStore = keyLabel
 	}
-	if err := validatePKJWTKeyBinding(finalMethod, keyToStore); err != nil {
+	if err := validatePKJWTKeyBinding(authMethod, keyToStore); err != nil {
 		return nil, err
 	}
 	return &configInitResult{
@@ -374,7 +363,7 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 		Brand:      finalBrand,
 		AppID:      result.ClientID,
 		AppSecret:  result.ClientSecret, // empty for private_key_jwt; real secret otherwise
-		AuthMethod: finalMethod,
+		AuthMethod: authMethod,
 		KeyLabel:   keyToStore,
 	}, nil
 }
@@ -416,40 +405,14 @@ func classifyRegistrationError(err error) error {
 	}
 }
 
-// validatePKJWTKeyBinding rejects a registration that resolved to
-// private_key_jwt without a signing key bound to it. keyLabel is non-empty only
-// when the local flow chose private_key_jwt and signed a TEE attestation; a
-// resolved method of private_key_jwt with no key handle would save an unusable
-// config (rejected later at config load, surfacing as "saved OK, fails on first
-// use"), so it is caught here at registration time instead.
-func validatePKJWTKeyBinding(finalMethod, keyLabel string) error {
-	if finalMethod == core.AuthMethodPrivateKeyJWT && keyLabel == "" {
+// validatePKJWTKeyBinding rejects a private_key_jwt registration without the
+// local key that signed its attestation. Persisting such a config would defer
+// the failure until the first token request.
+func validatePKJWTKeyBinding(authMethod, keyLabel string) error {
+	if authMethod == core.AuthMethodPrivateKeyJWT && keyLabel == "" {
 		return errs.NewConfigError(errs.SubtypeInvalidClient,
 			"registration resolved to private_key_jwt but no signing key was bound to this app (an existing secret-based app may have been selected)").
 			WithHint("re-register with: lark-cli config init --new --private-key-jwt")
 	}
 	return nil
-}
-
-// resolveFinalAuthMethod picks the authoritative method from the poll result,
-// preferring private_key_jwt, then client_secret. It falls back to the requested
-// method when the server returns nothing (older servers).
-func resolveFinalAuthMethod(serverMethods []string, requested string) string {
-	if len(serverMethods) == 0 {
-		if requested == "" {
-			return core.AuthMethodClientSecret
-		}
-		return requested
-	}
-	for _, m := range serverMethods {
-		if m == core.AuthMethodPrivateKeyJWT {
-			return core.AuthMethodPrivateKeyJWT
-		}
-	}
-	for _, m := range serverMethods {
-		if m == core.AuthMethodClientSecret {
-			return core.AuthMethodClientSecret
-		}
-	}
-	return serverMethods[0]
 }

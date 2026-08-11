@@ -373,8 +373,7 @@ func TestExistingAppRequiresSecret(t *testing.T) {
 }
 
 // TestValidatePKJWTKeyBinding covers the guard that rejects a registration
-// resolving to private_key_jwt with no signing key bound (e.g. an existing
-// secret-based app was selected on the confirm page).
+// resolving to private_key_jwt with no signing key bound.
 func TestValidatePKJWTKeyBinding(t *testing.T) {
 	if err := validatePKJWTKeyBinding(core.AuthMethodPrivateKeyJWT, ""); err == nil {
 		t.Error("pkjwt with empty keyLabel: expected error")
@@ -384,30 +383,5 @@ func TestValidatePKJWTKeyBinding(t *testing.T) {
 	}
 	if err := validatePKJWTKeyBinding(core.AuthMethodClientSecret, ""); err != nil {
 		t.Errorf("client_secret: expected nil, got %v", err)
-	}
-}
-
-// TestResolveFinalAuthMethod locks the authoritative-method logic. The 2nd case
-// is the real bug: we requested private_key_jwt but the server resolved to an
-// existing client_secret app — we must persist client_secret, not pkjwt.
-func TestResolveFinalAuthMethod(t *testing.T) {
-	if m := resolveFinalAuthMethod([]string{"client_secret", "private_key_jwt"}, core.AuthMethodClientSecret); m != core.AuthMethodPrivateKeyJWT {
-		t.Errorf("prefers private_key_jwt: got %q", m)
-	}
-	if m := resolveFinalAuthMethod([]string{"client_secret"}, core.AuthMethodPrivateKeyJWT); m != core.AuthMethodClientSecret {
-		t.Errorf("server client_secret must override requested pkjwt: got %q", m)
-	}
-	if m := resolveFinalAuthMethod(nil, core.AuthMethodPrivateKeyJWT); m != core.AuthMethodPrivateKeyJWT {
-		t.Errorf("fallback to requested when server is silent: got %q", m)
-	}
-	// Explicit empty slice (not just nil) also falls back to requested — the same
-	// len()==0 back-compat allowance the init guard relies on to let private_key_jwt
-	// proceed against an older server (see internal/auth
-	// TestRequestAppRegistrationInit_EmptySupportedAuthMethods).
-	if m := resolveFinalAuthMethod([]string{}, core.AuthMethodPrivateKeyJWT); m != core.AuthMethodPrivateKeyJWT {
-		t.Errorf("empty []string should fall back to requested private_key_jwt: got %q", m)
-	}
-	if m := resolveFinalAuthMethod(nil, ""); m != core.AuthMethodClientSecret {
-		t.Errorf("default to client_secret: got %q", m)
 	}
 }
