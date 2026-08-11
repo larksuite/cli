@@ -155,9 +155,16 @@ func TestMailRuleReorderBodyRejectsEmptyRuleIDs(t *testing.T) {
 	if validationErr.Param != "rule_ids" {
 		t.Fatalf("param = %q, want rule_ids", validationErr.Param)
 	}
+	if validationErr.Category != errs.CategoryValidation {
+		t.Fatalf("category = %q, want %q", validationErr.Category, errs.CategoryValidation)
+	}
+	if validationErr.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype = %q, want %q", validationErr.Subtype, errs.SubtypeInvalidArgument)
+	}
 }
 
 func TestServiceMethod_MailRulesReorderCompletesRuleIDs(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	f, _, _, reg := cmdutil.TestFactory(t, testConfig)
 	listStub := &httpmock.Stub{
 		Method: "GET",
@@ -199,6 +206,7 @@ func TestServiceMethod_MailRulesReorderCompletesRuleIDs(t *testing.T) {
 }
 
 func TestServiceMethod_MailRulesReorderListFailurePreventsReorder(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	f, _, _, reg := cmdutil.TestFactory(t, testConfig)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
@@ -221,6 +229,7 @@ func TestServiceMethod_MailRulesReorderListFailurePreventsReorder(t *testing.T) 
 }
 
 func TestServiceMethod_MailRulesReorderFailurePropagates(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	f, _, _, reg := cmdutil.TestFactory(t, testConfig)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
