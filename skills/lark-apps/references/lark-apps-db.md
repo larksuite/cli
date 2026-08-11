@@ -37,7 +37,7 @@
 
 - **环境 `--environment dev|online`（可省略）**：看表、看结构、数据导入导出、变更追溯、审计、配额都按环境区分。省略 `--environment` 时 CLI 不带该参数、由服务端按应用形态自动选分支——多环境应用走 `dev`、未开多环境的走 `online`；要固定环境就显式传。唯一会报错的组合：对未开多环境的应用显式传 `--environment dev`（无 `dev` 分支）。写操作建议先在 `dev` 验（仅多环境应用有 `dev`）。旧名 `--env` 已**移除**：传入会报 validation 错（提示改用 `--environment`），一律用 `--environment`。`+db-env-diff`/`+db-env-migrate` 是「dev→online 发布」语义，**没有** `--environment`。
 - **本地文件 / `--output` 用工作目录内相对路径**：导入 `--file ./orders.csv`、导出 `--output ./out.csv`；绝对路径、或经 `..`/符号链接越出工作目录的 `--output` 会被拒（validation / exit 2）。路径在别处先 `cd` 过去或改成相对路径。
-- **高危操作必须带 `--yes`**：`+db-env-create`、`+db-data-import`、`+db-env-migrate`、`+db-recovery-apply`、`+db-sync-create`、`+db-sync-update`、`+db-sync-delete` 缺省会被确认关卡拦下；动手前先用对应的预览命令或 `--dry-run` 看清影响。
+- **高危操作必须带 `--yes`**：`+db-env-create`、`+db-data-import`、`+db-env-migrate`、`+db-recovery-apply`、`+db-sync-create`、`+db-sync-update`、`+db-sync-delete` 缺省会被确认关卡拦下；动手前先用对应的预览命令或 `--dry-run` 看清影响。`+db-sync-create --preview` 只解析/校验配置、不落库，免确认、不需 `--yes`；真正建任务（不带 `--preview`）才需要 `--yes`。
 - **Base 同步不是整库任务**：`+db-sync-create` 一次只处理一张 Base 表到一张目标表。用户说“整库”“客户、订单、回款三张表都同步”时，先明确告诉用户会拆成三套独立配置、三次 preview、用户确认后三次 create；不要暗示一个同步任务能覆盖整个 Base。
 - **batch 任务不能重新启用**：用户说“批量任务重新启用”“operation-not-allowed”时，先给结论：batch/import 是一次性任务，不能 enable。不要先陷入授权排障而漏掉这个结论；授权缺失时也要说明授权完成后应 `+db-sync-get` 查状态/结果，持续同步要新建 streaming。
 - **时间参数按口语自然传**（`--since`/`--until`/`--target`），格式见末尾。

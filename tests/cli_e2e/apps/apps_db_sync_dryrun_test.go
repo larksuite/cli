@@ -30,6 +30,10 @@ const (
 	// create-commit without field_maps: identifiable source (has table name), no field_maps →
 	// CLI passes it through so the server auto-matches and creates the task.
 	dbSyncNoFieldMapsCommitConfig = `{"mode":"batch","source":{"type":"base","base_url":"https://example.feishu.cn/base/mock","table":{"name":"Orders"}},"target":{"type":"postgresql","table":{"name":"orders_auto","action":"create"}}}`
+
+	// field_maps present but not an array — a structural error rejected locally in
+	// both preview and commit before the malformed shape reaches the backend.
+	dbSyncInvalidFieldMapsConfig = `{"mode":"batch","source":{"type":"base","base_url":"https://example.feishu.cn/base/mock","table":{"name":"Orders"}},"target":{"type":"postgresql","table":{"name":"orders_preview","action":"create"}},"field_maps":{}}`
 )
 
 func TestAppsDBSyncDryRunRequestContracts(t *testing.T) {
@@ -199,10 +203,33 @@ func TestAppsDBSyncValidationErrors(t *testing.T) {
 		DefaultAs: "user",
 	})
 	require.NoError(t, err)
-	assert.NotEqual(t, 0, result.ExitCode, "singular field_map must fail validation")
+	result.AssertExitCode(t, 2)
+	assert.Empty(t, strings.TrimSpace(result.Stdout), "validation failures must not emit success data on stdout")
+	assert.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), result.Stderr)
+	assert.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), result.Stderr)
+	assert.Equal(t, "--config", gjson.Get(result.Stderr, "error.param").String(), result.Stderr)
 	message := dbSyncValidateErrorMessage(result)
 	assert.Contains(t, message, "field_maps")
 	assert.Contains(t, message, "--config")
+}
+
+func TestAppsDBSyncPreviewRejectsNonArrayFieldMaps(t *testing.T) {
+	setAppsDryRunEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args:      []string{"apps", "+db-sync-create", "--app-id", dbSyncDryRunAppID, "--config", dbSyncInvalidFieldMapsConfig, "--preview", "--dry-run"},
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 2)
+	assert.Empty(t, strings.TrimSpace(result.Stdout), "preview must reject a malformed field_maps locally, not forward it")
+	assert.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), result.Stderr)
+	assert.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), result.Stderr)
+	assert.Equal(t, "--config", gjson.Get(result.Stderr, "error.param").String(), result.Stderr)
+	assert.Contains(t, dbSyncValidateErrorMessage(result), "field_maps must be an array")
 }
 
 func TestAppsDBSyncCreateRequiresSourceTable(t *testing.T) {
@@ -216,7 +243,10 @@ func TestAppsDBSyncCreateRequiresSourceTable(t *testing.T) {
 		DefaultAs: "user",
 	})
 	require.NoError(t, err)
-	assert.NotEqual(t, 0, result.ExitCode, "base_url without table and empty source.table.name must fail validation")
+	result.AssertExitCode(t, 2)
+	assert.Empty(t, strings.TrimSpace(result.Stdout), "validation failures must not emit success data on stdout")
+	assert.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), result.Stderr)
+	assert.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), result.Stderr)
 	message := dbSyncValidateErrorMessage(result)
 	assert.Contains(t, message, "source.table.name")
 	assert.Equal(t, "--config", dbSyncValidateErrorParam(result))

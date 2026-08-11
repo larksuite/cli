@@ -240,6 +240,41 @@ func TestAppsDBSyncGet_ExecutePreservesWarningsAndPretty(t *testing.T) {
 	}
 }
 
+func TestAppsDBSyncGet_BatchPrettyRendersSchemaOnlyAndStatistics(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	response := map[string]interface{}{
+		"code": 0,
+		"data": map[string]interface{}{
+			"task_id":     "batch_1",
+			"mode":        "batch",
+			"status":      "done",
+			"source":      map[string]interface{}{"table": map[string]interface{}{"name": "orders"}},
+			"target":      map[string]interface{}{"table": map[string]interface{}{"name": "orders_pg"}},
+			"created_at":  "2026-08-03T10:00:00Z",
+			"schema_only": false,
+			"statistics":  map[string]interface{}{"rows": float64(10), "columns": float64(3)},
+		},
+	}
+	reg.Register(&httpmock.Stub{Method: "GET", URL: "/open-apis/spark/v1/apps/app_x/db/sync_task", Body: response})
+
+	if err := runAppsShortcut(t, AppsDBSyncGet,
+		[]string{"+db-sync-get", "--app-id", "app_x", "--task-id", "batch_1", "--format", "pretty", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("pretty execute err=%v", err)
+	}
+	got := stdout.String()
+	// schema_only renders as a bare bool, not fmt.Sprint's default; statistics
+	// renders as deterministic key=value pairs, not Go's "map[...]" syntax.
+	for _, want := range []string{"schema_only:", "false", "statistics:", "columns=3 rows=10"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("batch pretty output missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "map[") {
+		t.Fatalf("statistics must not render as Go map syntax:\n%s", got)
+	}
+}
+
 func TestAppsDBSyncGet_TaskNotFoundGetsListHint(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{

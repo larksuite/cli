@@ -447,10 +447,14 @@ func parseDBSyncConfigFlag(raw string, requireFieldMaps, allowFieldMapsAutoMatch
 		return nil, dbSyncConfigError("config.schema_only=true requires mode=batch and target.table.action=create")
 	}
 	fieldMaps, fieldMapsPresent := cfg["field_maps"]
+	fieldMapsState := classifyFieldMaps(fieldMaps, fieldMapsPresent)
+	// A non-array field_maps is a structural error regardless of preview/commit:
+	// preview would otherwise forward the malformed shape to the backend.
+	if fieldMapsState == dbSyncFieldMapsInvalid {
+		return nil, dbSyncConfigError("config.field_maps must be an array")
+	}
 	if requireFieldMaps {
-		switch classifyFieldMaps(fieldMaps, fieldMapsPresent) {
-		case dbSyncFieldMapsInvalid:
-			return nil, dbSyncConfigError("config.field_maps must be an array")
+		switch fieldMapsState {
 		case dbSyncFieldMapsDisabled:
 			// Mappings present but every one disabled — a suspected mistake, not an
 			// intent to auto-match. Reject for both create and update.

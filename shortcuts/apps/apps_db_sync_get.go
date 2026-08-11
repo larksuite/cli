@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -87,7 +88,7 @@ func renderDBSyncGetPretty(w io.Writer, data map[string]interface{}) {
 	}
 	if common.GetString(data, "mode") == "batch" {
 		pairs = append(pairs,
-			[2]string{"schema_only", fmt.Sprint(data["schema_only"])},
+			[2]string{"schema_only", dbSyncBool(data["schema_only"])},
 			[2]string{"statistics", dbSyncSummary(data["statistics"])},
 		)
 	}
@@ -117,10 +118,30 @@ func renderDBSyncWarnings(w io.Writer, warnings []interface{}) {
 	}
 }
 
+func dbSyncBool(raw interface{}) string {
+	b, ok := raw.(bool)
+	if !ok {
+		return "—"
+	}
+	if b {
+		return "true"
+	}
+	return "false"
+}
+
 func dbSyncSummary(raw interface{}) string {
 	m, ok := raw.(map[string]interface{})
 	if !ok || len(m) == 0 {
 		return "—"
 	}
-	return fmt.Sprint(m)
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%v", k, m[k]))
+	}
+	return strings.Join(parts, " ")
 }
