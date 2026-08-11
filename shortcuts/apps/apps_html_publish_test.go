@@ -687,6 +687,53 @@ func TestRunHTMLPublishTOS_AppNotExist(t *testing.T) {
 	}
 }
 
+// TestRunHTMLPublishTOS_ReleaseAppTypeErrorTranslated pins the defense-in-depth
+// layer: the app_type precheck passes (HTML), pre_release and TOS upload
+// succeed, but release-create still returns the app_type business code
+// (400000059) — e.g. the type changed mid-flight. The opaque code must be
+// translated into the actionable +release-create hint rather than bubbling raw.
+func TestRunHTMLPublishTOS_ReleaseAppTypeErrorTranslated(t *testing.T) {
+	site := writeAppsSampleSite(t)
+	rt, reg := newTOSTestRuntime(t)
+	registerAppTypeStub(reg, "app_tos", "HTML")
+
+	tosServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer tosServer.Close()
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/app_tos/pre_release",
+		Body: map[string]interface{}{
+			"code": float64(0),
+			"data": map[string]interface{}{
+				"kvs": []interface{}{
+					map[string]interface{}{"key": "upload_url", "value": tosServer.URL},
+					map[string]interface{}{"key": "tos_path", "value": "tos://bucket/key"},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_tos/releases",
+		Body:   map[string]interface{}{"code": float64(400000059), "msg": "app_type invalid"},
+	})
+
+	_, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{AppID: "app_tos", Path: site})
+	if err == nil {
+		t.Fatalf("expected error from release-create app_type rejection")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if !strings.Contains(problem.Hint, "+release-create") {
+		t.Fatalf("release-create app_type rejection should be translated to a +release-create hint, got %q", problem.Hint)
+	}
+}
+
 func TestRunHTMLPublishTOS_Success(t *testing.T) {
 	site := writeAppsSampleSite(t)
 	rt, reg := newTOSTestRuntime(t)
