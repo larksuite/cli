@@ -571,7 +571,6 @@ func failIfCalled(t *testing.T, step string) func(*http.Request) {
 }
 
 func TestRunHTMLPublishTOS_RejectsFullStack(t *testing.T) {
-	site := writeAppsSampleSite(t)
 	rt, reg := newTOSTestRuntime(t)
 	registerAppTypeStub(reg, "app_tos", "FULL_STACK")
 	reg.Register(&httpmock.Stub{
@@ -587,7 +586,12 @@ func TestRunHTMLPublishTOS_RejectsFullStack(t *testing.T) {
 		Body:     map[string]interface{}{"code": float64(0)},
 	})
 
-	_, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{AppID: "app_tos", Path: site})
+	// A nonexistent --path proves the precheck short-circuits before any
+	// packaging: if the precheck ever moved below prepareHTMLPublishTarball,
+	// walkHTMLPublishCandidates would fail first with a different (non
+	// FailedPrecondition) error and this test would break.
+	missing := filepath.Join(t.TempDir(), "does-not-exist")
+	_, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{AppID: "app_tos", Path: missing})
 	problem := requireAppsProblem(t, err, errs.CategoryValidation)
 	if problem.Subtype != errs.SubtypeFailedPrecondition {
 		t.Fatalf("subtype=%q, want %q", problem.Subtype, errs.SubtypeFailedPrecondition)
@@ -601,7 +605,6 @@ func TestRunHTMLPublishTOS_RejectsFullStack(t *testing.T) {
 }
 
 func TestRunHTMLPublishTOS_RejectsFrontend(t *testing.T) {
-	site := writeAppsSampleSite(t)
 	rt, reg := newTOSTestRuntime(t)
 	registerAppTypeStub(reg, "app_tos", "FRONTEND")
 	reg.Register(&httpmock.Stub{
@@ -611,7 +614,9 @@ func TestRunHTMLPublishTOS_RejectsFrontend(t *testing.T) {
 		Body:     map[string]interface{}{"code": float64(0)},
 	})
 
-	_, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{AppID: "app_tos", Path: site})
+	// Nonexistent --path: see the rationale in TestRunHTMLPublishTOS_RejectsFullStack.
+	missing := filepath.Join(t.TempDir(), "does-not-exist")
+	_, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{AppID: "app_tos", Path: missing})
 	problem := requireAppsProblem(t, err, errs.CategoryValidation)
 	if problem.Subtype != errs.SubtypeFailedPrecondition {
 		t.Fatalf("subtype=%q, want %q", problem.Subtype, errs.SubtypeFailedPrecondition)
