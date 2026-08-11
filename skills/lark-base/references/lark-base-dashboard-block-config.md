@@ -107,7 +107,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 - `limit_size` 是 Top N，取值为 `1..500` 的整数，创建时省略默认 `10`。
 - 不支持顶层 `sort`、公开 `ranking` 对象或头像开关。
 
-更新 `ranking` 时，`data_config` 是顶层 patch：只传 `limit_size` 只改 Top N；只传 `group_by` 只替换唯一分组和排序；只传 `series` 或 `count_all:true` 只切换指标；只传 `filter` 只替换筛选。切换 `table_name` 时必须在同一 patch 提供新的 `group_by` 以及 `series` 或 `count_all:true`；未传 `filter` 会重置为全部记录，未传 `limit_size` 保留原 Top N。
+更新 `ranking` 时，`data_config` 是顶层 patch：只传 `limit_size` 只改 Top N；只传 `group_by` 只替换唯一分组和排序；只传 `series` 或 `count_all:true` 只切换指标；只传 `filter` 只替换筛选。切换 `table_name` 时必须在同一 patch 提供新的 `group_by` 以及 `series` 或 `count_all:true`；未传 `filter` 保留原筛选，未传 `limit_size` 保留原 Top N。
 
 示例 — 柱状图按销售额降序：
 

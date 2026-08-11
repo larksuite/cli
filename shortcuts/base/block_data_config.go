@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -242,12 +243,14 @@ func validateRankingDataConfig(cfg map[string]interface{}) []string {
 	if tableName, _ := cfg["table_name"].(string); strings.TrimSpace(tableName) == "" {
 		problems = append(problems, "ranking 缺少必填字段 table_name")
 	}
-	if _, ok := cfg["sort"]; ok {
-		problems = append(problems, "ranking 不支持顶层 sort；请使用 group_by[0].sort")
-	}
-	for _, field := range []string{"ranking", "is_need_avatar", "isNeedAvatar"} {
-		if _, ok := cfg[field]; ok {
+	for _, field := range unexpectedObjectFields(cfg, "table_name", "series", "count_all", "group_by", "filter", "limit_size") {
+		switch field {
+		case "sort":
+			problems = append(problems, "ranking 不支持顶层 sort；请使用 group_by[0].sort")
+		case "ranking", "is_need_avatar", "isNeedAvatar":
 			problems = append(problems, fmt.Sprintf("ranking 不支持公开字段 %s", field))
+		default:
+			problems = append(problems, fmt.Sprintf("ranking 不支持字段 %s", field))
 		}
 	}
 
@@ -268,6 +271,9 @@ func validateRankingDataConfig(cfg map[string]interface{}) []string {
 		} else if item, ok := items[0].(map[string]interface{}); !ok {
 			problems = append(problems, "ranking.series[0] 必须是对象")
 		} else {
+			for _, field := range unexpectedObjectFields(item, "field_name", "rollup") {
+				problems = append(problems, fmt.Sprintf("ranking.series[0] 不支持字段 %s", field))
+			}
 			if fieldName, _ := item["field_name"].(string); strings.TrimSpace(fieldName) == "" {
 				problems = append(problems, "ranking.series[0].field_name 不能为空")
 			}
@@ -285,6 +291,9 @@ func validateRankingDataConfig(cfg map[string]interface{}) []string {
 	} else if group, ok := groups[0].(map[string]interface{}); !ok {
 		problems = append(problems, "ranking.group_by[0] 必须是对象")
 	} else {
+		for _, field := range unexpectedObjectFields(group, "field_name", "mode", "sort") {
+			problems = append(problems, fmt.Sprintf("ranking.group_by[0] 不支持字段 %s", field))
+		}
 		if fieldName, _ := group["field_name"].(string); strings.TrimSpace(fieldName) == "" {
 			problems = append(problems, "ranking.group_by[0].field_name 不能为空")
 		}
@@ -298,6 +307,9 @@ func validateRankingDataConfig(cfg map[string]interface{}) []string {
 		if !ok {
 			problems = append(problems, "ranking.group_by[0].sort 必须是对象")
 		} else {
+			for _, field := range unexpectedObjectFields(sortConfig, "type", "order") {
+				problems = append(problems, fmt.Sprintf("ranking.group_by[0].sort 不支持字段 %s", field))
+			}
 			if sortType, _ := sortConfig["type"].(string); sortType != "value" {
 				problems = append(problems, "ranking.group_by[0].sort.type 只能为 value")
 			}
@@ -312,7 +324,23 @@ func validateRankingDataConfig(cfg map[string]interface{}) []string {
 	if !ok || limit != math.Trunc(limit) || limit < 1 || limit > 500 {
 		problems = append(problems, "ranking.limit_size 必须是 1..500 的整数")
 	}
+	problems = append(problems, validateBlockFilter(cfg, "filter", false)...)
 	return problems
+}
+
+func unexpectedObjectFields(object map[string]interface{}, allowedFields ...string) []string {
+	allowed := make(map[string]struct{}, len(allowedFields))
+	for _, field := range allowedFields {
+		allowed[field] = struct{}{}
+	}
+	unexpected := make([]string, 0)
+	for field := range object {
+		if _, ok := allowed[field]; !ok {
+			unexpected = append(unexpected, field)
+		}
+	}
+	sort.Strings(unexpected)
+	return unexpected
 }
 
 // ── BaseApp chart data_config (multi-datasource) ─────────────────────
@@ -627,9 +655,13 @@ func validProtocolFilterValue(value interface{}) bool {
 // allowFieldID lets list blocks reference a field by ID; chart blocks keep the
 // dashboard rule of field_name only.
 func validateBlockFilter(cfg map[string]interface{}, key string, allowFieldID bool) []string {
-	f, ok := cfg[key].(map[string]interface{})
-	if !ok {
+	raw, exists := cfg[key]
+	if !exists {
 		return nil
+	}
+	f, ok := raw.(map[string]interface{})
+	if !ok {
+		return []string{key + " 必须是对象"}
 	}
 	var problems []string
 	conj := strings.ToLower(strings.TrimSpace(fmt.Sprintf("%v", f["conjunction"])))
