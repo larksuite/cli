@@ -719,19 +719,41 @@ func TestBaseDashboardBlockCreate_RankingValidation(t *testing.T) {
 		dataConfig string
 		want       string
 	}{
+		{name: "missing data config", want: "ranking 类型组件必须提供 data-config"},
 		{name: "missing metric", dataConfig: `{"table_name":"T","group_by":[{"field_name":"负责人"}]}`, want: "二选一"},
 		{name: "multiple series", dataConfig: validPrefix + `"series":[{"field_name":"金额","rollup":"SUM"},{"field_name":"数量","rollup":"SUM"}]}`, want: "严格包含 1 个指标"},
 		{name: "multiple groups", dataConfig: `{"table_name":"T","count_all":true,"group_by":[{"field_name":"负责人"},{"field_name":"区域"}]}`, want: "严格包含 1 个分组"},
 		{name: "top level sort", dataConfig: validPrefix + `"count_all":true,"sort":{"type":"value","order":"desc"}}`, want: "不支持顶层 sort"},
 		{name: "invalid limit", dataConfig: validPrefix + `"count_all":true,"limit_size":501}`, want: "1..500"},
+		{name: "unknown top level field", dataConfig: validPrefix + `"count_all":true,"limit_siz":10}`, want: "limit_siz"},
+		{name: "filter must be object", dataConfig: validPrefix + `"count_all":true,"filter":"all"}`, want: "filter"},
 		{name: "invalid group sort", dataConfig: `{"table_name":"T","count_all":true,"group_by":[{"field_name":"负责人","sort":{"type":"group","order":"desc"}}]}`, want: "只能为 value"},
+		{name: "extra series field", dataConfig: validPrefix + `"series":[{"field_name":"金额","rollup":"SUM","formula":"x"}]}`, want: "series[0] 不支持字段 formula"},
+		{name: "extra group field", dataConfig: `{"table_name":"T","count_all":true,"group_by":[{"field_name":"负责人","table_id":"tbl_x"}]}`, want: "group_by[0] 不支持字段 table_id"},
+		{name: "extra sort field", dataConfig: `{"table_name":"T","count_all":true,"group_by":[{"field_name":"负责人","sort":{"type":"value","order":"desc","nulls":"last"}}]}`, want: "sort 不支持字段 nulls"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			factory, stdout, _ := newExecuteFactory(t)
-			args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--name", "Bad", "--type", "ranking", "--data-config", tc.dataConfig}
+			args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--name", "Bad", "--type", "ranking"}
+			if tc.dataConfig != "" {
+				args = append(args, "--data-config", tc.dataConfig)
+			}
 			err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout)
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
+			if err == nil {
+				t.Fatalf("expected validation error, got nil (stdout=%s)", stdout.String())
+			}
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("expected *errs.ValidationError, got %T %v", err, err)
+			}
+			if ve.Category != errs.CategoryValidation || ve.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("category=%q subtype=%q, want validation/invalid_argument", ve.Category, ve.Subtype)
+			}
+			if ve.Param != "--data-config" {
+				t.Fatalf("param=%q, want --data-config", ve.Param)
+			}
+			if !strings.Contains(ve.Error(), tc.want) {
 				t.Fatalf("err=%v, want %q", err, tc.want)
 			}
 		})
