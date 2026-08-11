@@ -528,6 +528,42 @@ func TestWikiNodeGetMountedExplainsResourcePermissionDenied(t *testing.T) {
 	}
 }
 
+func TestWikiNodeGetProblemBoundsRateLimitRetries(t *testing.T) {
+	t.Parallel()
+
+	cause := errors.New("opaque upstream cause")
+	const upstreamHint = "upstream pacing hint"
+	err := errs.NewAPIError(errs.SubtypeRateLimit, "opaque upstream message").
+		WithCode(99991400).
+		WithRetryable().
+		WithRetryAfterSeconds(8).
+		WithHint(upstreamHint).
+		WithCause(cause)
+
+	got := wikiNodeGetProblem(err)
+	p, ok := errs.ProblemOf(got)
+	if !ok {
+		t.Fatalf("ProblemOf() ok=false")
+	}
+	if p.Category != errs.CategoryAPI || p.Subtype != errs.SubtypeRateLimit || p.Code != 99991400 || !p.Retryable {
+		t.Fatalf("problem = %#v, want retryable api/rate_limit/99991400", p)
+	}
+	var apiErr *errs.APIError
+	if !errors.As(got, &apiErr) {
+		t.Fatalf("error = %T, want *errs.APIError", got)
+	}
+	if apiErr.RetryAfterSeconds != 8 {
+		t.Fatalf("retry_after_seconds = %d, want 8", apiErr.RetryAfterSeconds)
+	}
+	wantHint := upstreamHint + "\n" + wikiNodeGetRateLimitHint
+	if p.Hint != wantHint {
+		t.Fatalf("hint = %q, want %q", p.Hint, wantHint)
+	}
+	if !errors.Is(got, cause) {
+		t.Fatalf("error does not preserve cause %v: %v", cause, got)
+	}
+}
+
 func TestWikiNodeGetProblemPreservesPermissionErrorContract(t *testing.T) {
 	t.Parallel()
 
