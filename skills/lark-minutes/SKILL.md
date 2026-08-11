@@ -20,7 +20,7 @@ metadata:
 
 ## 身份
 
-所有 minutes 命令默认使用 `--as user`。
+所有 minutes 命令默认使用 `--as user`。`+detail` 和 `+download` 也支持 `--as bot`（bot 只能访问 bot 有权限的妙记）。
 
 ## Shortcuts
 

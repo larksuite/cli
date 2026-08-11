@@ -1,11 +1,12 @@
 # note +detail
 
-通过 `note_id` 查询会议纪要详情，获取下挂文档 Token（AI 智能纪要、逐字稿、会中共享文档）。只读，仅支持 `--as user`。
+通过 `note_id` 查询会议纪要详情，获取下挂文档 Token（AI 智能纪要、逐字稿、会中共享文档）。只读，支持 `--as user` / `--as bot`。bot 身份下能否读到数据取决于应用对纪要主文档是否有 view 权限。
 
 ## 命令
 
 ```bash
 lark-cli note +detail --note-id <note_id>
+lark-cli note +detail --note-id <note_id> --as bot
 ```
 
 ## `note_id` 来源

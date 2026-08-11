@@ -10,7 +10,7 @@ metadata:
 
 # note (v1)
 
-身份：仅使用 `--as user`。使用前阅读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)。
+身份：`+detail` 支持 `--as user` / `--as bot`。使用前阅读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)。
 
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-vc/references/vc-domain-boundaries.md`](../lark-vc/references/vc-domain-boundaries.md)**，不读将导致命令使用、会议产物决策、领域边界职责判断错误：
 > 1. 了解日历 & VC、会议产物 & 文档的关联关系和职责划分

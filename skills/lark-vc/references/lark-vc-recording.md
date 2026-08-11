@@ -40,9 +40,9 @@ lark-cli vc +recording --meeting-ids 69xxxxxxxxxxxxx28 --dry-run
 
 每次只能指定一种输入方式。同时传入会报错。
 
-### 2. 仅支持 user 身份
+### 2. 身份支持
 
-该命令仅支持 `user` 身份，使用前需完成 `lark-cli auth login`。user token 只能查自己有权限的录制。
+`--meeting-ids` 和 `--calendar-event-ids` 两种模式都支持 `--as user` 和 `--as bot`。user token 只能查自己有权限的录制；bot 使用 tenant_access_token，只能查 bot 有权限的录制。
 
 ### 3. 批量上限
 

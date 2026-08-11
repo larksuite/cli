@@ -20,7 +20,7 @@ metadata:
 
 ## 身份
 
-本 skill 默认使用 `--as user`。`meeting get`、`+meeting-list-active`、`+meeting-events` 和 `+meeting-message-send` 也支持 `--as bot`；`+meeting-events` 和 `+meeting-message-send` 必须沿用 `meeting_id` 的来源身份。`+search` 仅支持 `--as user`。
+本 skill 默认使用 `--as user`。+search`、`meeting get`、`+meeting-list-active`、`+meeting-events` 和 `+meeting-message-send` 也支持 `--as bot`；`+meeting-events` 和 `+meeting-message-send` 必须沿用 `meeting_id` 的来源身份。
 
 ```bash
 # BAD — 查昨天的会议用 calendar，会漏掉即时会议
