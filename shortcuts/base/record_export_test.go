@@ -338,28 +338,14 @@ func TestRecordListNDJSONAutoNamesArtifactPair(t *testing.T) {
 	}
 }
 
-func TestRecordListNDJSONJQFiltersStdoutManifest(t *testing.T) {
-	dir := t.TempDir()
-	withBaseWorkingDir(t, dir)
-	factory, stdout, registry := newExecuteFactory(t)
-	registry.Register(&httpmock.Stub{
-		Method: "GET", URL: "limit=1&offset=0",
-		Body: map[string]any{"code": 0, "data": recordMatrixPage(0, 1, false, "fld_name")},
-	})
+func TestRecordListNDJSONRequiresJQRecords(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
 	err := runShortcut(t, BaseRecordList, []string{
 		"+record-list", "--base-token", "app_x", "--table-id", "tbl_x",
 		"--limit", "1", "--output", "jq.ndjson", "--jq", ".record_file",
 	}, factory, stdout)
-	if err != nil {
-		t.Fatalf("runShortcut() error = %v", err)
-	}
-	canonicalDir, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := filepath.Join(canonicalDir, "jq.ndjson")
-	if got := strings.TrimSpace(stdout.String()); got != want {
-		t.Fatalf("stdout = %q, want %q", got, want)
+	if err == nil || !strings.Contains(err.Error(), "use --jq-records to process records") {
+		t.Fatalf("runShortcut() error = %v, want --jq-records guidance", err)
 	}
 }
 
@@ -415,9 +401,9 @@ func TestRecordListJQRecordsValidatesOutputContractBeforeRequest(t *testing.T) {
 			want: "--jq-records requires --format ndjson",
 		},
 		{
-			name: "conflicts with manifest jq",
+			name: "general jq is unavailable for ndjson",
 			args: []string{"--format", "ndjson", "--jq", ".record_file", "--jq-records", "length"},
-			want: "--jq-records and --jq are mutually exclusive",
+			want: "use --jq-records to process records",
 		},
 		{
 			name: "conflicts with minimal stdout",

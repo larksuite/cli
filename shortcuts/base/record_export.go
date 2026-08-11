@@ -26,7 +26,7 @@ const (
 	maxInlineRecordReadLimit = 200
 	ndjsonRecordPageSize     = 500
 	maxNDJSONRecordReadLimit = 2000
-	recordAnalysisOutputTip  = "For analysis, parsing, comparison, or reusable local input, prefer --output ./records.ndjson --minimal-stdout; ndjson defaults to limit 2000, so set a smaller --limit only for probes, previews, or an explicitly bounded result."
+	recordAnalysisOutputTip  = "For analysis, parsing, comparison, or reusable local input, prefer --output ./records.ndjson --minimal-stdout; ndjson defaults to limit 2000, so set a smaller --limit only for probes, previews, or an explicitly bounded result. To process NDJSON records with the built-in jq engine, use --jq-records; --jq does not support ndjson."
 )
 
 var recordExportNow = time.Now
@@ -48,7 +48,7 @@ func recordMinimalStdoutFlag() common.Flag {
 func recordJQRecordsFlag() common.Flag {
 	return common.Flag{
 		Name: "jq-records",
-		Desc: "for ndjson, run a jq expression once against the exported records array and print the result; artifact files remain unchanged",
+		Desc: "required instead of --jq to process ndjson records with the built-in jq engine; runs once against the exported records array and leaves artifact files unchanged",
 	}
 }
 
@@ -75,8 +75,18 @@ func normalizeRecordReadOutput(_ context.Context, flags *common.FlagContext) err
 				WithHint("Remove --format or set --format ndjson.")
 		}
 		if !flags.Changed("format") {
-			return flags.SetCanonicalFrom("output", "format", recordexport.FormatNDJSON)
+			if err := flags.SetCanonicalFrom("output", "format", recordexport.FormatNDJSON); err != nil {
+				return err
+			}
 		}
+	}
+	if flags.Str("format") == recordexport.FormatNDJSON && strings.TrimSpace(flags.Str("jq")) != "" {
+		return errs.NewValidationError(
+			errs.SubtypeInvalidArgument,
+			"--jq does not support ndjson; use --jq-records to process records",
+		).
+			WithParam("--jq").
+			WithHint("Replace --jq with --jq-records.")
 	}
 	return nil
 }

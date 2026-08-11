@@ -171,7 +171,7 @@ Agent 上下文曾下载过当前表的 NDJSON 时，按以下规则判断是否
 
 NDJSON 每行是一条 record。单表短筛选、计数和简单聚合可直接用 jq；下面筛选“状态”包含“进行中”的记录，并统计记录数和金额合计：
 
-默认导出后使用本地 `jq -s`，同一 artifact 可反复查询而无需重新下载。表达式很短且只执行一次，或本地 jq 不可用时，可改用 `--jq-records '<expr>'` 等价 `js -s '<expr>' records.ndjson`；注意：通用的 `--jq` 只处理 stdout 里的内容，`--jq-records` 才能处理 NDJSON 文件内容。
+默认导出后使用本地 `jq -s`，同一 artifact 可反复查询而无需重新下载。表达式很短且只执行一次，或本地 jq 不可用时，可改用 `--jq-records '<expr>'` 等价 `jq -s '<expr>' records.ndjson`。使用 CLI 内置 jq 处理 NDJSON 记录时必须使用 `--jq-records`；通用 `--jq` 不支持 ndjson。
 
 ```bash
 lark-cli base +record-list \

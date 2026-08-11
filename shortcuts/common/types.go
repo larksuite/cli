@@ -53,10 +53,6 @@ type Shortcut struct {
 	HasFormat bool     // Deprecated: --format is now always injected; this field has no effect.
 	Tips      []string // optional tips shown in --help output
 	Hidden    bool     // hide from --help / tab completion (still executable); use when deprecating a command in favor of a replacement
-	// JQFormats allows a shortcut-owned artifact format to keep stdout as JSON
-	// and apply --jq to that JSON value. Ordinary record-stream formats remain
-	// governed by the global JSON-only jq rule.
-	JQFormats []string
 
 	// Business logic hooks.
 	// Normalize is the business-owned compatibility stage inside shortcut

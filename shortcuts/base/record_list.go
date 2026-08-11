@@ -49,7 +49,6 @@ var BaseRecordList = common.Shortcut{
 		"Use --field-id repeatedly to keep output small and aligned with the task.",
 	},
 	Normalize: common.ChainNormalizers(normalizeRecordReadOutput, normalizeRecordNDJSONLimit),
-	JQFormats: []string{"ndjson"},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if err := validateRecordReadFormat(runtime); err != nil {
 			return err

@@ -32,7 +32,6 @@ var BaseRecordGet = common.Shortcut{
 		recordOverwriteFlag(),
 	},
 	Normalize: normalizeRecordReadOutput,
-	JQFormats: []string{"ndjson"},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if err := validateRecordReadFormat(runtime); err != nil {
 			return err

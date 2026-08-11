@@ -1011,10 +1011,6 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 		if err := s.Normalize(rctx.ctx, flagContext); err != nil {
 			return attributeAliasValidationError(rctx, err)
 		}
-		// Normalize may canonicalize --format from another strong user signal
-		// (for example, an artifact --output path). Keep the cached value used by
-		// output and jq validation aligned with the canonical flag.
-		rctx.Format = rctx.Str("format")
 	}
 	if err := validateEnumFlags(rctx, s.Flags); err != nil {
 		return attributeAliasValidationError(rctx, err)
@@ -1024,14 +1020,8 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 			return attributeAliasValidationError(rctx, err)
 		}
 	}
-	if rctx.JqExpr != "" && slices.Contains(s.JQFormats, rctx.Format) {
-		if err := output.ValidateJqExpression(rctx.JqExpr); err != nil {
-			return err
-		}
-	} else {
-		if err := output.ValidateJqFlags(rctx.JqExpr, "", rctx.Format); err != nil {
-			return err
-		}
+	if err := output.ValidateJqFlags(rctx.JqExpr, "", rctx.Format); err != nil {
+		return err
 	}
 	if s.Validate != nil {
 		if err := s.Validate(rctx.ctx, rctx); err != nil {

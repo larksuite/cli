@@ -54,7 +54,6 @@ var BaseRecordSearch = common.Shortcut{
 		recordAnalysisOutputTip,
 	},
 	Normalize: normalizeRecordSearchOutput,
-	JQFormats: []string{"ndjson"},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateRecordSearchFlags(runtime)
 	},
