@@ -422,7 +422,7 @@ func buildDriveExportTaskBody(spec driveExportSpec) map[string]interface{} {
 func createDriveExportTask(runtime *common.RuntimeContext, spec driveExportSpec) (string, error) {
 	data, err := runtime.CallAPITyped("POST", "/open-apis/drive/v1/export_tasks", nil, buildDriveExportTaskBody(spec))
 	if err != nil {
-		return "", withDriveExportCreateRateLimitRecovery(err)
+		return "", withDriveExportCreateRecovery(err)
 	}
 
 	ticket := common.GetString(data, "ticket")

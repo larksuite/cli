@@ -22,6 +22,10 @@ var driveCodeMeta = map[int]CodeMeta{
 	1063001:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},            // secure label invalid parameter
 	1063002:   {Category: errs.CategoryAuthorization, Subtype: errs.SubtypePermissionDenied},   // secure label permission denied
 	1063013:   {Category: errs.CategoryValidation, Subtype: errs.SubtypeFailedPrecondition},    // secure label downgrade requires approval
+	1069902:   {Category: errs.CategoryAuthorization, Subtype: errs.SubtypePermissionDenied},   // export task caller cannot export the source document
+	1069906:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},                     // export source document was deleted
+	1069914:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},                     // export file token is invalid or mismatched with type
+	1069918:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},            // export file extension does not match source type
 	1069302:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},            // comment endpoint "Invalid or missing parameters"
 	99992402:  {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},            // platform field validation failed
 	9499:      {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},            // invalid parameter type in JSON field
