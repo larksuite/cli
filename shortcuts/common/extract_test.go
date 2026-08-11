@@ -47,8 +47,9 @@ func TestGetStringLoose(t *testing.T) {
 	m := map[string]interface{}{
 		"quoted":  "ou_abc123",
 		"jsonNum": json.Number("1234567890123456"), // the production path: dec.UseNumber()
+		"i":       int(42),
 		"i64":     int64(700123456789),
-		"f":       float64(42),
+		"f":       float64(1e-7), // would be "1e-07" under 'g'; the 'f' verb must keep it fixed-point
 		"nested": map[string]interface{}{
 			"num": json.Number("999"),
 		},
@@ -61,8 +62,9 @@ func TestGetStringLoose(t *testing.T) {
 	}{
 		{"quoted string", []string{"quoted"}, "ou_abc123"},
 		{"json.Number keeps full precision", []string{"jsonNum"}, "1234567890123456"},
+		{"int", []string{"i"}, "42"},
 		{"int64", []string{"i64"}, "700123456789"},
-		{"float64 no scientific notation", []string{"f"}, "42"},
+		{"float64 no scientific notation", []string{"f"}, "0.0000001"},
 		{"nested json.Number", []string{"nested", "num"}, "999"},
 		{"missing key", []string{"missing"}, ""},
 		{"empty keys", []string{}, ""},
