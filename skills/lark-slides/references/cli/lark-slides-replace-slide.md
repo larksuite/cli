@@ -226,7 +226,7 @@ lark-cli slides +replace-slide --as user \
 # 读时记录 revision_id
 REV=$(lark-cli slides xml_presentation.slide get --as user \
   --params "{\"xml_presentation_id\":\"$PID\",\"slide_id\":\"$SID\"}" \
-  | jq '.data.revision_id')
+  --jq '.data.revision_id')
 
 # 写时传 --revision-id；传不存在的版本号（超过当前 revision）返回 3350002
 lark-cli slides +replace-slide --as user \

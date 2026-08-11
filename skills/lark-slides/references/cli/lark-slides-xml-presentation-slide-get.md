@@ -48,7 +48,7 @@ lark-cli slides xml_presentation.slide get --as user --params '{
 ```bash
 lark-cli slides xml_presentation.slide get --as user \
   --params '{"xml_presentation_id":"slides_example_presentation_id","slide_id":"slide_example_id"}' \
-  | jq -r '.data.slide.content'
+  --jq '.data.slide.content'
 ```
 
 ### 读指定历史版本
@@ -99,7 +99,7 @@ lark-cli slides xml_presentation.slide get --as user --params '{
    ```bash
    lark-cli slides xml_presentation.slide get --as user \
      --params "{\"xml_presentation_id\":\"$PID\",\"slide_id\":\"$SID\"}" \
-     | jq -r '.data.slide.content' | grep -oE 'id="[^"]+"' | sed 's/id="//;s/"//'
+     --jq '.data.slide.content' | grep -oE 'id="[^"]+"' | sed 's/id="//;s/"//'
    ```
 
 ## 相关命令
