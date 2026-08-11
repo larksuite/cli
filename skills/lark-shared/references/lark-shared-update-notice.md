@@ -19,5 +19,5 @@ lark-cli update
 **重要**：始终使用 `lark-cli update` 更新，它会同时更新 CLI 和 AI Skills。
 
 另外两类 notice：
-- `_notice.skills`：内置 AI Skills 落后于 CLI，同样建议升级。
+- `_notice.skills`：本地 Skills 与当前 CLI 不同步。
 - `_notice.deprecated_command`：本次使用了兼容保留的旧命令；后续调用改用 `replacement`。如果同时提供 `action: "lark-cli update"`，同样建议升级。

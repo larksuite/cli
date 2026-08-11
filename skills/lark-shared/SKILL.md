@@ -15,13 +15,11 @@ metadata:
 
 1. **调用前先确认用法**：执行前读对应 reference 或跑 `--help`，别猜 flag 盲调。
 
-2. **身份决定你代表谁操作**：`--as user` 代表用户本人（其日历 / 云空间 / 邮箱等），`--as bot` 代表应用自己，只能访问bot自己的资源，bot 查用户资源会返回空成功而非报错，动手前先搞清楚身份`identity` → [`identity-and-permissions`](references/lark-shared-identity-and-permissions.md)。
+2. **身份决定你代表谁操作**：`--as user` 代表用户本人（能看到、也能操作其日历、云空间/云盘/云存储等个人资源），`--as bot` 代表应用自己，应用级操作，只能访问bot自己的资源，bot 查用户资源会返回空成功而非报错，动手前先搞清楚身份`identity`。身份模型和权限管理 → [`identity-and-permissions`](references/lark-shared-identity-and-permissions.md)。
 
-3. **`--format json`（默认）下，判断成功用 `ok == true`（或进程退出码 0），不要用 `code == 0`**：成功信封没有顶层 `code` / `msg` 字段，`code` 只出现在错误信封的 `error` 内。按 OpenAPI 老格式 `{"code": 0, "msg": "ok"}`判断会把所有成功调用误判为失败——封装写入类命令时尤其危险 → [`output-contract`](references/lark-shared-output-contract.md)。
+3. **授权 / 配置类 URL 必须配二维码**：当命令输出 `verification_url`、`verification_uri_complete`、`console_url` 等 URL 字段时，必须用 `lark-cli auth qrcode` 生成并在回复中展示，URL 在前二维码在后；优先生成 PNG（`--output`），仅当用户明确要求时才使用 ASCII（`--ascii`）。URL 原样转发——不编解码、不加标点、不重拼 query，二维码和链接请一起展示给用户。
 
-4. **代表用户发起 `auth login` 授权时绝不阻塞**：走 split-flow（发起后交还控制权、下一轮再完成），别在同一轮阻塞等授权 → [`auth-split-flow`](references/lark-shared-auth-split-flow.md)。
-
-5. **授权 / 配置类 URL 必须配二维码**：当命令输出 `verification_url`、`verification_uri_complete`、`console_url` 等 URL 字段时，必须用 `lark-cli auth qrcode` 生成并在回复中展示，URL 在前二维码在后；优先生成 PNG（`--output`），仅当用户明确要求时才使用 ASCII（`--ascii`）。URL 原样转发——不编解码、不加标点、不重拼 query，二维码和链接请一起展示给用户。
+4. **`--format json`（默认）下，判断成功用 `ok == true`（或进程退出码 0），不要用 `code == 0`**：成功信封没有顶层 `code` / `msg` 字段，`code` 只出现在错误信封的 `error` 内。按 OpenAPI 老格式 `{"code": 0, "msg": "ok"}`判断会把所有成功调用误判为失败——封装写入类命令时尤其危险。JSON 输出契约 → [`output-contract`](references/lark-shared-output-contract.md)。
 
 
 ## 安全规则
@@ -43,8 +41,7 @@ metadata:
 
 | 强触发条件（命中任一即必读） | Reference |
 |---|---|
-| 查看自己是谁(user/bot)、不清楚当前身份、获取当前身份详细字段信息、登录态、认证、scope、授权、权限、`missing_scopes` 或 `console_url` | [`identity-and-permissions`](references/lark-shared-identity-and-permissions.md) |
-| Agent 准备发起或完成 `auth login`，或该命令输出 `verification_url`、`device_code` | [`auth-split-flow`](references/lark-shared-auth-split-flow.md) |
+| 查看自己是谁(user/bot)、获取当前身份详细字段信息、身份诊断、登录态、认证、scope、授权和权限管理、`missing_scopes` 或 `console_url`、Agent 准备发起或完成 `auth login` | [`identity-and-permissions`](references/lark-shared-identity-and-permissions.md) |
 | 需要依赖 JSON 输出契约判断成功 / 失败、读取 stdout / stderr，或为命令编写脚本与封装 | [`output-contract`](references/lark-shared-output-contract.md) |
 | 准备执行high-risk-write(高风险操作)、判断命令风险等级、遇到退出码 exit 10、`confirmation_required`、确认后重试 | [`high-risk-approval`](references/lark-shared-high-risk-approval.md) |
 | 首次使用CLI需运行 `lark-cli config init` 完成应用配置、或 CLI 明确提示 `config init --new` | [`config-init`](references/lark-shared-config-init.md) |
