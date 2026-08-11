@@ -120,7 +120,7 @@ lark-cli drive +push --local-dir ./repo --folder-token fldcnxxxxxxxxx \
     {"rel_path": "...", "file_token": "...", "action": "uploaded",       "size_bytes": 0},
     {"rel_path": "...", "file_token": "...", "action": "overwritten",    "version": "...", "size_bytes": 0},
     {"rel_path": "...", "file_token": "...", "action": "skipped",        "size_bytes": 0},
-    {"rel_path": "...",                       "action": "failed",        "size_bytes": 0, "error": "...", "hint": "...", "phase": "upload", "error_class": "...", "code": 0, "subtype": "...", "retryable": false, "retry_after_seconds": 0},
+    {"rel_path": "...",                       "action": "failed",        "size_bytes": 0, "error": "...", "hint": "...", "phase": "upload", "error_class": "...", "code": 0, "subtype": "...", "retryable": false},
     {"rel_path": "...", "file_token": "...", "action": "deleted_remote"},
     {"rel_path": "...", "file_token": "...", "action": "already_deleted"},
     {"rel_path": "...", "file_token": "...", "action": "delete_failed",  "error": "...", "hint": "...", "phase": "delete", "error_class": "...", "code": 0, "subtype": "...", "retryable": false}
@@ -134,7 +134,7 @@ lark-cli drive +push --local-dir ./repo --folder-token fldcnxxxxxxxxx \
 
 `+push` 的失败项带结构化字段，agent 必须优先读 `items[].error_class` / `phase` / `code`，不要只看自然语言 `error` 文本。`summary.aborted=true` 表示命令已经遇到终止性错误并停止后续批处理；这时**不要原样重试**，先修复根因。
 
-失败项会保留上游 typed error 已提供的 `hint` 和 `retry_after_seconds`。`retryable=true` 只表示修复根因或等待后可以再次尝试，不表示应该立即、无限重放整个 push；有 `retry_after_seconds` 时至少等待该时长，否则采用有上限的指数退避和抖动。
+失败项会保留上游 typed error 已提供的 `hint`。`retryable=true` 只表示修复根因或等待后可以再次尝试，不表示应该立即、无限重放整个 push；重试时采用有上限的指数退避和抖动。
 
 常见终止性错误：
 

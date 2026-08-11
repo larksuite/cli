@@ -29,29 +29,27 @@ const (
 )
 
 type drivePushItem struct {
-	RelPath           string `json:"rel_path"`
-	FileToken         string `json:"file_token,omitempty"`
-	Action            string `json:"action"`
-	Version           string `json:"version,omitempty"`
-	SizeBytes         int64  `json:"size_bytes,omitempty"`
-	Error             string `json:"error,omitempty"`
-	Hint              string `json:"hint,omitempty"`
-	Phase             string `json:"phase,omitempty"`
-	ErrorClass        string `json:"error_class,omitempty"`
-	Code              int    `json:"code,omitempty"`
-	Subtype           string `json:"subtype,omitempty"`
-	Retryable         *bool  `json:"retryable,omitempty"`
-	RetryAfterSeconds int    `json:"retry_after_seconds,omitempty"`
+	RelPath    string `json:"rel_path"`
+	FileToken  string `json:"file_token,omitempty"`
+	Action     string `json:"action"`
+	Version    string `json:"version,omitempty"`
+	SizeBytes  int64  `json:"size_bytes,omitempty"`
+	Error      string `json:"error,omitempty"`
+	Hint       string `json:"hint,omitempty"`
+	Phase      string `json:"phase,omitempty"`
+	ErrorClass string `json:"error_class,omitempty"`
+	Code       int    `json:"code,omitempty"`
+	Subtype    string `json:"subtype,omitempty"`
+	Retryable  *bool  `json:"retryable,omitempty"`
 }
 
 type driveBatchFailureDecision struct {
-	Class             string
-	Code              int
-	Subtype           string
-	Retryable         bool
-	RetryAfterSeconds int
-	Terminal          bool
-	Hint              string
+	Class     string
+	Code      int
+	Subtype   string
+	Retryable bool
+	Terminal  bool
+	Hint      string
 }
 
 // DrivePush is a one-way, file-level mirror from a local directory onto a
@@ -577,18 +575,17 @@ func drivePushShouldSkipSmart(localFile drivePushLocalFile, remoteFile driveRemo
 func drivePushFailedItem(relPath, fileToken, action, phase string, sizeBytes int64, err error) (drivePushItem, bool) {
 	decision := driveClassifyBatchFailure(err)
 	item := drivePushItem{
-		RelPath:           relPath,
-		FileToken:         fileToken,
-		Action:            action,
-		SizeBytes:         sizeBytes,
-		Error:             err.Error(),
-		Hint:              decision.Hint,
-		Phase:             phase,
-		ErrorClass:        decision.Class,
-		Code:              decision.Code,
-		Subtype:           decision.Subtype,
-		Retryable:         driveBoolPtr(decision.Retryable),
-		RetryAfterSeconds: decision.RetryAfterSeconds,
+		RelPath:    relPath,
+		FileToken:  fileToken,
+		Action:     action,
+		SizeBytes:  sizeBytes,
+		Error:      err.Error(),
+		Hint:       decision.Hint,
+		Phase:      phase,
+		ErrorClass: decision.Class,
+		Code:       decision.Code,
+		Subtype:    decision.Subtype,
+		Retryable:  driveBoolPtr(decision.Retryable),
 	}
 	return item, decision.Terminal
 }
@@ -607,9 +604,6 @@ func driveClassifyBatchFailure(err error) driveBatchFailureDecision {
 	decision.Subtype = string(problem.Subtype)
 	decision.Retryable = problem.Retryable
 	decision.Hint = problem.Hint
-	if retryAfter, ok := errs.RetryAfter(err); ok {
-		decision.RetryAfterSeconds = int(retryAfter / time.Second)
-	}
 
 	switch {
 	case problem.Category == errs.CategoryAuthorization && problem.Code == 99991672:
@@ -636,11 +630,7 @@ func driveClassifyBatchFailure(err error) driveBatchFailureDecision {
 	case problem.Subtype == errs.SubtypeRateLimit || problem.Code == 99991400:
 		decision.Class = "rate_limited"
 		decision.Terminal = true
-		if decision.RetryAfterSeconds > 0 {
-			decision.Hint = fmt.Sprintf("Stop immediate retries and wait at least %d second(s) before retrying this push.", decision.RetryAfterSeconds)
-		} else {
-			decision.Hint = "Stop immediate retries and retry later with exponential backoff and jitter."
-		}
+		decision.Hint = "Stop immediate retries and retry later with exponential backoff and jitter."
 	case problem.Code == 1061045:
 		decision.Class = "conflict"
 		decision.Terminal = true

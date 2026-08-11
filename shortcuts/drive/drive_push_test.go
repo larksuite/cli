@@ -1611,23 +1611,6 @@ func TestDrivePushAbortsAfterCreateFolderConflict(t *testing.T) {
 	}
 }
 
-func TestDrivePushFailedItemPreservesRetryAfter(t *testing.T) {
-	rateErr := errs.NewAPIError(errs.SubtypeRateLimit, "rate limited").
-		WithCode(99991400).
-		WithRetryable().
-		WithRetryAfterSeconds(7)
-	rateItem, terminal := drivePushFailedItem("b.txt", "", "failed", "upload", 1, rateErr)
-	if !terminal {
-		t.Fatal("rate limit must be terminal")
-	}
-	if rateItem.RetryAfterSeconds != 7 || rateItem.Retryable == nil || !*rateItem.Retryable {
-		t.Fatalf("retry metadata was not preserved: %#v", rateItem)
-	}
-	if !strings.Contains(rateItem.Hint, "wait at least 7 second") {
-		t.Fatalf("rate-limit hint must honor retry_after_seconds: %#v", rateItem)
-	}
-}
-
 func TestDrivePushDetectsLocalFileChangedBeforeUpload(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 
