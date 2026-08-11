@@ -351,6 +351,38 @@ func (m *mapFlagView) normalizeAndValidateEnums() error {
 	return nil
 }
 
+// normalizeRangeSheetPrefix mirrors the standalone chainRangeSheetPrefix
+// rewrite (range_sheet_prefix.go) for the map-backed paths, +batch-update
+// sub-ops and +cells-set --writes items: one that named its sheet only inside
+// "range" ("Sheet1!A1:D20") gets sheet_name filled in and the bare range left
+// behind, so every form accepts the same input.
+//
+// The derived selector is written under the underscore key the sub-op input
+// vocabulary uses; lookupRaw is separator-tolerant, so a translator asking for
+// "sheet-name" finds it either way.
+func (m *mapFlagView) normalizeRangeSheetPrefix() {
+	if !rangeSheetPrefixApplies(m.command) {
+		return
+	}
+	if strings.TrimSpace(m.Str("sheet-id")) != "" || strings.TrimSpace(m.Str("sheet-name")) != "" {
+		return
+	}
+	rangeKey, raw, ok := m.lookupRawWithKey(rangeSheetPrefixFlag)
+	if !ok {
+		return
+	}
+	value, isString := raw.(string)
+	if !isString {
+		return
+	}
+	sheet, rest, ok := splitRangeSheetPrefix(value)
+	if !ok {
+		return
+	}
+	m.raw[rangeKey] = rest
+	m.raw["sheet_name"] = sheet
+}
+
 // jsonTypeName names the JSON kind of a value decoded by encoding/json, for
 // type-mismatch error messages.
 func jsonTypeName(v interface{}) string {

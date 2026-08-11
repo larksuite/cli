@@ -44,6 +44,23 @@ func TestCellsSetWrites(t *testing.T) {
 		requireValidation(t, err, "sheet-id or --sheet-name")
 	})
 
+	t.Run("item names its sheet only in range", func(t *testing.T) {
+		t.Parallel()
+		// The third entry point for a sheet-prefixed range: --writes builds its
+		// own per-item flag view, so it needs the rewrite the standalone command
+		// (cobra PreRunE) and the +batch-update sub-op each carry — otherwise the
+		// same item that translates as a sub-op dies on the selector check here.
+		stdout, _, err := writes(`[{"range":"Sheet1!A1","cells":[[{"value":"x"}]]}]`)
+		if err != nil {
+			t.Fatalf("item with a sheet-prefixed range must translate, got: %v", err)
+		}
+		for _, want := range []string{`\"sheet_name\":\"Sheet1\"`, `\"range\":\"A1\"`} {
+			if !strings.Contains(stdout, want) {
+				t.Fatalf("dry-run body missing %s: %s", want, stdout[:min(len(stdout), 400)])
+			}
+		}
+	})
+
 	t.Run("top-level sheet selector rejected with prescription", func(t *testing.T) {
 		t.Parallel()
 		_, _, err := writes(`[{"sheet_name":"S1","range":"A1","cells":[[{"value":"x"}]]}]`,

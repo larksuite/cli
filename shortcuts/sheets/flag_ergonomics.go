@@ -29,8 +29,8 @@ import (
 
 // withFlagErgonomics wraps an optional PostMount so that, after it runs,
 // the command gets the sheets-specific unknown-flag error (valid flags
-// inlined) and enum-value normalization (canonical vocabulary auto-applied,
-// typos suggested).
+// inlined), enum-value normalization (canonical vocabulary auto-applied,
+// typos suggested), and the --range sheet-prefix rewrite.
 func withFlagErgonomics(prev func(cmd *cobra.Command)) func(cmd *cobra.Command) {
 	return func(cmd *cobra.Command) {
 		if prev != nil {
@@ -39,6 +39,7 @@ func withFlagErgonomics(prev func(cmd *cobra.Command)) func(cmd *cobra.Command) 
 		cmd.SetFlagErrorFunc(sheetsFlagErrorFunc)
 		chainEnumNormalization(cmd)
 		chainFlagAliases(cmd)
+		chainRangeSheetPrefix(cmd)
 	}
 }
 

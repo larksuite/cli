@@ -470,19 +470,16 @@ func pivotPlacementWarn(rt flagView) string {
 }
 
 // sheetNameFromA1 extracts the sheet name from a sheet-prefixed A1 reference,
-// stripping the single quotes Lark wraps around names that contain spaces:
-// "'Sheet 1'!A1:D100" → "Sheet 1", "Data!A1" → "Data". Returns "" when there
-// is no sheet prefix. (splitSheetPrefixedRange keeps the quotes; this one drops
-// them, which is what name comparison needs.)
+// stripping the single quotes Lark wraps around names that are not pure
+// letters: "'Sheet 1'!A1:D100" → "Sheet 1", "Data!A1" → "Data". Returns "" when
+// there is no sheet prefix. (splitSheetPrefixedRange keeps the quotes; this one
+// drops them, which is what name comparison needs.) The grammar comes from
+// splitRangeSheetPrefix, so a doubled-quote escape or a "!" inside the quotes
+// ('Q!A'!A1) still compares equal to the sheet it names.
 func sheetNameFromA1(ref string) string {
-	ref = strings.TrimSpace(ref)
-	idx := strings.Index(ref, "!")
-	if idx <= 0 {
+	name, _, ok := splitRangeSheetPrefix(ref)
+	if !ok {
 		return ""
-	}
-	name := strings.TrimSpace(ref[:idx])
-	if len(name) >= 2 && strings.HasPrefix(name, "'") && strings.HasSuffix(name, "'") {
-		name = name[1 : len(name)-1]
 	}
 	return name
 }

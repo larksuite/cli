@@ -620,6 +620,8 @@ func translateBatchOp(raw interface{}, token string, index int) (map[string]inte
 	if err := fv.normalizeAndValidateEnums(); err != nil {
 		return nil, sheetsValidationForFlag("operations", "operations[%d] (%s): %v", index, sc, err)
 	}
+	// Fill the selector from a "Sheet1!A1:D20" range before it is read below.
+	fv.normalizeRangeSheetPrefix()
 	sheetIDFlag, sheetNameFlag := sheetSelectorFlagsForSubOp(sc)
 	sheetID := strings.TrimSpace(fv.Str(sheetIDFlag))
 	sheetName := strings.TrimSpace(fv.Str(sheetNameFlag))

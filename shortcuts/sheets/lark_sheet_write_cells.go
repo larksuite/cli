@@ -166,6 +166,8 @@ func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interfac
 			}
 		}
 		fv := newMapFlagViewForCommand("+cells-set", item)
+		// Fill the selector from a "Sheet1!A1" range before it is read below.
+		fv.normalizeRangeSheetPrefix()
 		sheetID := strings.TrimSpace(fv.Str("sheet-id"))
 		sheetName := strings.TrimSpace(fv.Str("sheet-name"))
 		input, err := cellsSetInput(fv, token, sheetID, sheetName)
