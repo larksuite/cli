@@ -129,6 +129,6 @@ VC_CanNotSee, VC_NoSound, VC_LooksGood, VC_SoundsClear
 
 ## 相关
 
-- [lark-vc-agent-meeting-list-active](lark-vc-agent-meeting-list-active.md) — 发现当前进行中会议 ID
-- [lark-vc-agent-meeting-events](lark-vc-agent-meeting-events.md) — 读取会中事件
-- [lark-vc-agent-meeting-join](lark-vc-agent-meeting-join.md) — 应用机器人入会
+- [lark-vc-meeting-list-active](lark-vc-meeting-list-active.md) — 发现当前进行中会议 ID
+- [lark-vc-meeting-events](lark-vc-meeting-events.md) — 读取会中事件
+- [lark-vc-agent-meeting-join](../../lark-vc-agent/references/lark-vc-agent-meeting-join.md) — 应用机器人入会

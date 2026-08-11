@@ -83,7 +83,7 @@
 | ✓ | base +role-get | shortcut | base_role_workflow_test.go::TestBase_RoleWorkflow/get as bot | `--base-token`; `--role-id` | |
 | ✓ | base +role-list | shortcut | base_role_workflow_test.go::TestBase_RoleWorkflow/list as bot | `--base-token` | |
 | ✓ | base +role-update | shortcut | base_role_workflow_test.go::TestBase_RoleWorkflow/update as bot | `--base-token`; `--role-id`; `--json` | |
-| ✓ | base +table-create | shortcut | base/helpers_test.go::createTableWithRetry | `--base-token`; `--name`; optional `--fields`; optional `--view` | helper asserts table id |
+| ✓ | base +table-create | shortcut | base/helpers_test.go::createTableWithRetry | `--base-token`; `--name`; `--fields`; optional `--view` | helper asserts table id |
 | ✓ | base +table-copy | shortcut | base_table_copy_dryrun_test.go::TestBaseTableCopyDryRun; base_table_copy_workflow_test.go::TestBaseTableCopyWorkflow | `--table-id` ID/name; default `--range schema`; explicit `--range all --wait --timeout` | dry-run covered; live workflow is deployment-gated and not yet verified |
 | ✓ | base +table-copy-status | shortcut | base_table_copy_dryrun_test.go::TestBaseTableCopyDryRun/status; base_table_copy_workflow_test.go::TestBaseTableCopyWorkflow/all no-wait and status | opaque `--task-id` | dry-run covered; live polling is deployment-gated and not yet verified |
 | ✕ | base +table-delete | shortcut |  | none | cleanup only |

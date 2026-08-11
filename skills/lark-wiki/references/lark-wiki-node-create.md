@@ -78,7 +78,7 @@ lark-cli wiki +node-create \
 | `--parent-node-token` | 否 | 父知识库节点 token；传入后会在该节点下创建新节点 |
 | `--title` | 否 | 节点标题 |
 | `--node-type` | 否 | 节点类型，默认 `origin`；可选值：`origin`、`shortcut` |
-| `--obj-type` | 否 | 节点对应对象类型，默认 `docx`；可选值：`sheet`、`mindnote`、`bitable`、`docx`、`slides` |
+| `--obj-type` | 否 | 节点对应对象类型，默认 `docx`；可选值：`sheet`、`mindnote`、`bitable`、`file`、`docx`、`slides`。`file` 仅支持 `shortcut` 节点 |
 | `--origin-node-token` | 否 | 当 `--node-type=shortcut` 时必填，表示快捷方式指向的源节点 token |
 
 ## 空间解析规则
@@ -89,11 +89,27 @@ lark-cli wiki +node-create \
 - **个人知识库回退**：`user` 身份下，如果 `--space-id` 和 `--parent-node-token` 都没传，会自动解析 `my_library`
 - **bot 身份限制**：`bot` 身份既没有“个人知识库”回退语义，也不支持显式传 `--space-id my_library`；请改用真实 `space_id` 或 `--parent-node-token`
 
-## shortcut 节点规则
+## 节点类型与对象类型
+
+| `node_type` | 支持的 `obj_type` |
+|-------------|-------------------|
+| `origin` | `sheet`、`mindnote`、`bitable`、`docx`、`slides` |
+| `shortcut` | `sheet`、`mindnote`、`bitable`、`file`、`docx`、`slides` |
 
 - `--node-type=shortcut` 时，必须同时提供 `--origin-node-token`
 - `--node-type=origin` 时，不能传 `--origin-node-token`
+- `--obj-type=file` 仅支持 `--node-type=shortcut`；实体节点不支持创建 `file` 类型
 - `shortcut` 节点只是知识库中的快捷方式入口；真正被引用的节点由 `--origin-node-token` 指定
+- 如果 `+node-create` 因上述组合返回参数校验错误，禁止改用 raw `wiki nodes create` 或直接调用 OpenAPI 绕过校验；应修正 `node_type`、`obj_type` 或 `origin_node_token`
+
+```bash
+# 创建一个指向文件的快捷方式节点
+lark-cli wiki +node-create \
+  --space-id <SPACE_ID> \
+  --node-type shortcut \
+  --obj-type file \
+  --origin-node-token <ORIGIN_NODE_TOKEN>
+```
 
 ## 一致性校验
 

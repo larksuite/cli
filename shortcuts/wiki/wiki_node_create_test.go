@@ -192,6 +192,57 @@ func TestValidateWikiNodeCreateSpecRejectsOriginTokenForOriginNode(t *testing.T)
 	}
 }
 
+func TestValidateWikiNodeCreateSpecRejectsFileForOriginNode(t *testing.T) {
+	t.Parallel()
+
+	err := validateWikiNodeCreateSpec(wikiNodeCreateSpec{
+		NodeType: wikiNodeTypeOrigin,
+		ObjType:  "file",
+	}, core.AsUser)
+	if err == nil || !strings.Contains(err.Error(), "--obj-type file is not supported when --node-type=origin") {
+		t.Fatalf("expected origin file validation error, got %v", err)
+	}
+	requireWikiValidationParams(t, err, "--node-type", "--obj-type")
+	p, ok := errs.ProblemOf(err)
+	if !ok || !strings.Contains(p.Hint, "--node-type shortcut --obj-type file") {
+		t.Fatalf("expected shortcut recovery hint, got %v", err)
+	}
+}
+
+func TestValidateWikiNodeCreateSpecAllowsFileForShortcutNode(t *testing.T) {
+	t.Parallel()
+
+	spec := wikiNodeCreateSpec{
+		NodeType:        wikiNodeTypeShortcut,
+		ObjType:         "file",
+		OriginNodeToken: "wik_file_origin",
+	}
+	if err := validateWikiNodeCreateSpec(spec, core.AsUser); err != nil {
+		t.Fatalf("validateWikiNodeCreateSpec() error = %v", err)
+	}
+	body := spec.RequestBody()
+	if body["node_type"] != wikiNodeTypeShortcut || body["obj_type"] != "file" || body["origin_node_token"] != "wik_file_origin" {
+		t.Fatalf("RequestBody() = %#v, want shortcut file payload", body)
+	}
+}
+
+func TestWikiNodeCreateObjTypeEnumIncludesFile(t *testing.T) {
+	t.Parallel()
+
+	for _, flag := range WikiNodeCreate.Flags {
+		if flag.Name != "obj-type" {
+			continue
+		}
+		for _, value := range flag.Enum {
+			if value == "file" {
+				return
+			}
+		}
+		t.Fatalf("--obj-type enum = %v, want file", flag.Enum)
+	}
+	t.Fatal("--obj-type flag not found")
+}
+
 func TestValidateWikiNodeCreateSpecRejectsBotWithoutLocation(t *testing.T) {
 	t.Parallel()
 

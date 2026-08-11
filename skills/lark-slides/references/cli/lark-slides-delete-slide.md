@@ -1,6 +1,6 @@
 # slides +delete-slide（按 slide_id 删除单页）
 
-从演示文稿删除**一页**，按 `slide_id` 指定。只改一页里的局部内容用 [`+replace-slide`](../cli/lark-slides-replace-slide.md)，不要删了重建。
+从演示文稿删除**一页**，按 `slide_id` 指定。只改一页里的局部内容用 [`+replace-slide`](lark-slides-replace-slide.md)，不要删了重建。
 
 `--presentation` 接受 token / `/slides/` URL / `/wiki/` URL，ID 是普通 flag 而不是 `--params` JSON 串。
 
@@ -54,7 +54,7 @@ lark-cli slides +delete-slide --presentation "$PID" --slide-id "$SID" --dry-run
 
 ## 删错了怎么办
 
-删除在原地不可撤销，但可以走历史版本回滚：`+history-list` 找 `history_version_id` → `+history-revert`（只接受 `history_version_id`，不能传 `revision_id`）→ `+history-revert-status` 轮询。命令用法见 [lark-slides-history.md](../cli/lark-slides-history.md)。
+删除在原地不可撤销，但可以走历史版本回滚：`+history-list` 找 `history_version_id` → `+history-revert`（只接受 `history_version_id`，不能传 `revision_id`）→ `+history-revert-status` 轮询。命令用法见 [lark-slides-history.md](lark-slides-history.md)。
 
 ## 常见错误
 

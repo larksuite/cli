@@ -2,6 +2,8 @@
 
 只在 `note +detail` 已确认 `note_display_type=unified` 时使用。普通纪要逐字稿是独立 Docx 文档，应回到 [lark-doc](../../lark-doc/SKILL.md) 读取 `verbatim_doc_token`。
 
+只支持 `--as user`，不支持 `--as bot`。如果 `note +detail --as bot` 返回 `unified`，不要在这里静默省略 `--as` 或改用 user 身份继续——先停下来向用户说明"该纪要逐字稿只能以 user 身份读取"，只有用户明确同意才切换身份重试。
+
 ```bash
 lark-cli note +transcript --note-id NOTE_ID
 ```

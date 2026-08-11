@@ -271,13 +271,46 @@ func TestWikiNodeListProblemAddsActionableHint(t *testing.T) {
 	t.Parallel()
 
 	err := errs.NewAPIError(errs.SubtypeInvalidParameters, "param err: invalid page_token").WithCode(131002)
-	got := wikiNodeListProblem(err, nil)
+	got := wikiNodeListProblem(err)
 	p, ok := errs.ProblemOf(got)
 	if !ok {
 		t.Fatalf("ProblemOf() ok=false")
 	}
 	if !strings.Contains(p.Hint, "page token is invalid or stale") {
 		t.Fatalf("hint = %q, want invalid page token guidance", p.Hint)
+	}
+}
+
+func TestWikiNodeListProblemExplainsResourcePermissionDenied(t *testing.T) {
+	tests := []string{
+		"permission denied: wiki space permission denied, user needs read permission.",
+		"permission denied: node permission denied, tenant needs read permission.",
+	}
+
+	for _, message := range tests {
+		t.Run(message, func(t *testing.T) {
+			cause := errors.New("upstream permission failure")
+			err := errs.NewPermissionError(errs.SubtypePermissionDenied, message).
+				WithCode(131006).
+				WithCause(cause)
+			got := wikiNodeListProblem(err)
+			p, ok := errs.ProblemOf(got)
+			if !ok {
+				t.Fatalf("ProblemOf() ok=false")
+			}
+			if p.Category != errs.CategoryAuthorization || p.Subtype != errs.SubtypePermissionDenied || p.Code != 131006 {
+				t.Fatalf("problem = %#v, want authorization/permission_denied/131006", p)
+			}
+			if p.Retryable {
+				t.Fatalf("problem retryable = true, want false: %#v", p)
+			}
+			if !errors.Is(got, cause) {
+				t.Fatalf("errors.Is(got, cause) = false, want preserved cause")
+			}
+			if !strings.Contains(p.Hint, "resource access, not app scope authorization") || !strings.Contains(p.Hint, "Do not retry the same request") {
+				t.Fatalf("hint = %q, want non-retryable resource-access guidance", p.Hint)
+			}
+		})
 	}
 }
 

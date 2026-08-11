@@ -65,7 +65,7 @@ lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --page-token 
 lark-cli vc +meeting-join --as bot --meeting-number 123456789
 
 # 再查询事件
-lark-cli vc +meeting-events --as bot --meeting-id <id>
+lark-cli vc +meeting-events --as bot --meeting-id <id> --page-all --format pretty
 ```
 
 如果应用机器人已经在会中，也可以先通过 active meeting 找会：
@@ -114,7 +114,9 @@ lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format pret
 - `--format pretty`：默认推荐格式，输出当前身份和逐条时间线，适合快速理解“发生了什么”。
 - `--format ndjson`：输出事件行，并带 metadata 行，适合流式消费。
 
-**选型原则**：只在 `pretty`、`json`、`ndjson` 之间选择。目标是告诉用户“发生了什么”时，用 `--page-all --format pretty`；需要稳定字段给 agent 做结构化消费、总结、转发或二次处理时用 `--format json`；需要流式消费时用 `--format ndjson`。
+**选型原则**：默认先用 `--format pretty`；仅当 `pretty` 缺少完成任务所必需的结构化字段时，才改用 `--format json`。用户明确要求 JSON 或规则明确要求结构化字段时可直接用 `--format json`；需要流式消费时用 `--format ndjson`。
+
+> **JSON 成本**：JSON 保留完整 payload，输出通常远大于 `pretty`；长会全量拉取时会显著占用上下文空间。
 
 > **注意**：pretty 输出中的正文文本会做单行转义，真实换行会显示为 `\n`，避免打乱时间线布局。
 
@@ -131,19 +133,117 @@ lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format pret
 
 执行准则：
 
-- 如果上下文已有明确 `meeting_id`，沿用该 `meeting_id` 的来源身份执行 `+meeting-events --page-all --format json`。
 - 如果上下文没有明确 `meeting_id`，先按用户当前意图选择身份：问“我/当前用户所在会议”用 `lark-cli vc +meeting-list-active --as user --format json`；问“应用机器人可见的目标用户会议”用 `lark-cli vc +meeting-list-active --as bot --user-id <user_open_id> --format json`。返回多个会议时先让用户选择。
 - 如果上下文只有 9 位会议号，先按当前身份执行 `+meeting-list-active` 并按 `meeting_no` 匹配；匹配到唯一会议后再查事件。不要为了总结会议而自动调用 `+meeting-join`。
-- 这类问题拿到 `meeting_id` 后，用同一身份执行 `lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --page-all --format json` 拉取最新事件流。
-- 如果事件中出现共享文档线索，例如：
-  - `magic_share_started`
-  - `share_doc.title`
-  - `share_doc.url`
-- 必须继续读取共享文档内容，再生成总结，不能只根据“开始共享了某文档”这条事件和文档标题来概括会议内容。
-- 若存在多个共享文档，优先读取**最近一次共享**的文档。
+- 确认 `meeting_id` 后，沿用其来源身份执行 `lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --page-all --format pretty` 拉取最新事件流。
+- 如果事件流显示开始共享内容（JSON 事件类型为 `magic_share_started`，pretty 时间线显示“开始共享”），并包含文档标题或 URL 等线索，必须继续读取共享文档内容后再生成总结，不能只根据共享事件和文档标题概括会议内容。
+- 若存在多个共享文档，按用户问题读取相关文档；处理某条文档上下文事件时必须按该 item 的 `share_id` 精确关联，不能用“最近一次共享”替代。
 - 若文档读取失败，必须明确说明“以下总结仅基于会中事件流，未成功读取共享文档内容”。
 
-### 7. 关于 `page_token` 的返回与续拉
+### 7. 文档上下文事件消费
+
+`document_context_changed` 是只读线索事件。需要根据该事件执行评论、章节或预览等后续处理时，必须用 `+meeting-events --page-all --format json` 读取 `share_id`、`comment_id`、`element_token` 等完整字段；仅向用户展示时间线时仍默认使用 pretty。`vc +meeting-events` 保留原始 payload，并按既有事件输出约定派生 actor 与 pretty timeline；它不会为单个事件类型扩张 JSON/NDJSON 公共 envelope，也不会查询评论、下载素材或写文件。后续 Drive/Docs 命令只能由 Agent 按下表显式选择。
+
+#### 共享会话关联
+
+`share_id` 标识一次共享会话。Agent 按事件时间顺序消费完整事件流，并维护共享会话状态：
+
+1. 从 `payload.magic_share_started_items[]` 读取 `share_id` 和 `share_doc`，建立 `share_id -> share_doc` 映射并标记会话开始。同一 `share_id` 重复携带相同文档时按幂等事件处理；若指向不同文档则停止解析，不覆盖旧映射。
+2. `document_context_changed_items[]` 通过自己的 `share_id` 精确查找该映射。当前契约中 item 自带的 `share_doc` 不提供文档信息；只保留它的原始值，不作为 URL/title 来源，也不做冲突判定。
+3. `payload.magic_share_ended_items[]` 使用相同 `share_id` 标记该会话结束。历史映射可保留用于解释本批次中结束前已发生的上下文事件，但不能再作为新的活动共享会话。
+4. 增量拉取从会话中途开始且本地没有对应映射时，重新拉取包含 `magic_share_started` 的完整事件流；仍无法命中则标记未解析。禁止回退到当前文档、最近一次共享或其他 `share_id`。
+
+#### 字段合同
+
+| 路径 | 含义与处理 |
+| --- | --- |
+| `payload.magic_share_started_items[].share_id/share_doc` | 建立一次共享会话与文档 URL/title 的映射。缺 `share_id` 时不建立映射。 |
+| `payload.magic_share_ended_items[].share_id` | 结束同一 `share_id` 的共享会话；不得结束其他映射。 |
+| `payload.document_context_changed_items[]` | 结构化消费按原序读取；pretty timeline 沿用统一时间排序。每项恰有一个已知 context 才生成 pretty 条目，未知/歧义项只保留 raw。 |
+| `item.operator` | 当前 item 的 actor；缺 ID/name 时不猜共享发起人。 |
+| `item.share_id` | 当前上下文所属共享会话；用它精确查找 `magic_share_started` 建立的 `share_doc` 映射。 |
+| `item.share_doc.url/title` | 当前不作为文档元信息来源；保留在 raw payload 以兼容未来扩展。文档 URL/title 只从同 `share_id` 的 `magic_share_started` 映射取得。 |
+| `item.time` | Unix 毫秒字符串；缺失或非法时 timeline 回退到事件时间。 |
+| `item.comment_focus.comment_id/focused` | `focused=true` 才精确查询一个 comment ID；`false` 是清除焦点，零查询。 |
+| `item.section_location.parent_titles/title/level` | `section_path` 按 parent 原序再追加 title，trim 后丢弃空段，以 ` > ` 连接；`level` 仅作诊断，不参与截断或补层。 |
+| `item.element_preview.action/element_type/element_token/block_id` | 只有 `open + image + token`、`open + whiteboard + token` 可在明确预览意图下路由；其他组合零调用。 |
+| 事件公共 envelope | JSON/NDJSON 只使用既有 `event_id/event_type/event_time/actors/payload`；不新增顶层 `summary/section_path`，也不发明 `derived.document_context`。 |
+| 事件 `payload` | 原始恢复面；未知字段保留，顶层空数组沿用所有会议事件共用的压缩规则，派生字段不会写回 payload。 |
+
+#### 评论聚焦：只查一个 ID
+
+先读取当前 item 的 `share_id` 和 `comment_focus.comment_id`，再按“共享会话关联”取得 `share_doc.url`。优先把完整 URL 传给现有 shortcut，由它解析实际 `file_token/file_type`（含 Wiki 解包）；如果上游只留下裸 token，则必须同时提供已解析且受支持的 `file_type`。
+
+```bash
+# 推荐：share_doc.url 完整可用
+lark-cli drive +batch-query-comments \
+  --as <same_identity> \
+  --url "<share_doc.url>" \
+  --comment-ids "<comment_focus.comment_id>" \
+  --format json
+
+# 只有已经可靠解析出裸 token/type 时使用
+lark-cli drive +batch-query-comments \
+  --as <same_identity> \
+  --token "<file_token>" \
+  --type "<file_type>" \
+  --comment-ids "<comment_focus.comment_id>" \
+  --format json
+```
+
+该 shortcut 对应 `drive.file.comments.batch_query`，请求体必须只有 `comment_ids:["<当前comment_id>"]`。响应处理规则：
+
+1. 整个响应 `items` 长度必须恰为 1，且 `items[0].comment_id` 必须与请求 ID 完全相等。`items` 为空、多于 1 项或唯一项 ID 不同都停止；即使多项中恰有一项匹配，也不得挑选该项继续。失败时保留 `share_doc/comment_id`，禁止改用 `drive +list-comments` 扫描整篇文档。
+2. `item.quote` 是引用位置；评论正文和回复在 `item.reply_list.replies`，其中第一条是根评论。
+3. 完整性看命中评论卡片的 **`item.has_more`**，不是外层评论分页，也不是根据非空 `page_token` 猜测。`item.has_more=false` 时直接使用内嵌列表，零 `+list-replies` 调用。
+4. `item.has_more=true` 时忽略截断列表，从**不带 `--page-token` 的第一页**开始重建完整 replies：
+
+```bash
+lark-cli drive +list-replies \
+  --as <same_identity> \
+  --url "<share_doc.url>" \
+  --comment-id "<comment_focus.comment_id>" \
+  --page-size 100 \
+  --format json
+
+lark-cli drive +list-replies \
+  --as <same_identity> \
+  --url "<share_doc.url>" \
+  --comment-id "<comment_focus.comment_id>" \
+  --page-size 100 \
+  --page-token "<returned_page_token>" \
+  --format json
+```
+
+第一页 `items[0]` 才是根评论；后续页的 `items[0]` 是普通回复。按页原序累积，直到页级 `has_more=false`。如果 `has_more=true` 但 `page_token` 为空、与已用 token 重复、API/权限失败或 comment ID 改变，立即停止并标记为 `partial`；保留已经取得的内容和原始标识，不循环、不重复根评论、不声称完整。
+
+#### 章节定位
+
+结构化消费直接读取当前 `section_location` item。pretty timeline 会按 `parent_titles` 原序追加 `title`，trim 后丢弃空段，并以 ` > ` 连接；多个 section item 分别展示，不选择其中一个覆盖事件级标量；标题全空时不生成 pretty 条目，只保留 raw。该路径是本地展示派生，不写回 JSON/NDJSON，也不需要或允许为它新增 API 查询。
+
+#### 元素预览：显式白名单
+
+只有用户或上层 Agent 明确要求预览，并且 item 命中下表时才执行。两个命令都会写入 `--output`，因此输出路径必须由本次调用显式选择；不得默认覆盖已有文件。
+
+| action | element_type | token 条件 | 精确命令 |
+| --- | --- | --- | --- |
+| `open` | `image` | `element_token` 非空 | `lark-cli docs +media-preview --as <same_identity> --token "<element_token>" --output "<explicit-path>"` |
+| `open` | `whiteboard` | `element_token` 非空 | `lark-cli docs +media-download --as <same_identity> --type whiteboard --token "<element_token>" --output "<explicit-path>"` |
+| `close` | `image`/`whiteboard` | 任意 | 零调用；pretty 只记录预览关闭 |
+| 未知 | 任意 | 任意 | 零调用；不生成 pretty 条目，只保留 raw |
+| `open` | 未知/空 | 任意 | 零调用；禁止把原值透传到 `--type` |
+| `open` | `image`/`whiteboard` | token 为空 | 零调用；保留 `block_id/element_type/action` 并提示缺 token |
+
+#### 失败恢复
+
+- parser 遇到未知字段、歧义 one-of 或单 item 缺字段：保留整个事件 `payload`、`event_id/event_type/event_time` 和可用 sibling；该 item 不生成 pretty 条目，也不合成通用描述。
+- `share_id` 缺失、映射未命中或 `share_doc` 冲突：回显 `share_id`、可用的 `share_doc.url/title` 与 `comment_id`；必要时重新拉取完整事件流，仍无法关联则停止，不用最近一次共享兜底。
+- `share_doc` 无法解析：回显 `share_id`、`share_doc.url/title` 与 `comment_id`，提示需要有效文档 URL 或已确认的 `file_token/file_type`；不要猜 type。
+- Drive API/权限失败：保留精确 batch-query 命令与 `comment_id`，根据 CLI 的 `missing_scopes/hint` 恢复权限后重试；不要扫描全部评论。
+- Docs 预览失败：保留 `action/element_type/element_token/block_id` 和用户选择的输出路径，修复权限或 token 后重试同一白名单命令；不要让 `meeting-events` 自动下载兜底。
+- 未知 context/type/action：保留 raw 并说明当前 CLI 没有安全路由；不得自动调用 overwrite、download 或任何猜测的 shortcut。
+
+### 8. 关于 `page_token` 的返回与续拉
 
 - 不管这次是只查 1 页，还是通过 `--page-all` 已经把当前可见事件都拿完，都应把最后拿到的 `page_token` 一并保留下来并返回给用户。
 - 只要响应里出现 `has_more=true`、pretty 里出现 `more available`，或返回了非空 `page_token`，就必须先判断当前结果是否完整；默认情况下，这意味着你还需要继续分页。
@@ -160,7 +260,7 @@ lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format pret
 |------|------|
 | `meeting` | 会议身份与时间状态，包含 `id/topic/meeting_no/start_time/end_time/status` |
 | `identity` | 当前读取身份，包含 `id/name/participant_type/label` |
-| `events` | 结构化事件列表；每条事件含参与者 `actors` 和事件细节 `payload` |
+| `events` | 结构化事件列表；每条事件沿用 `event_id/event_type/event_time/actors/payload` 公共 envelope，事件专属数据保留在 `payload` |
 | `warnings` | 非阻断告警列表；事件列表本身仍可使用 |
 | `has_more` | 是否还有下一页 |
 | `page_token` | 下一页游标 |
@@ -175,6 +275,7 @@ lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format pret
 | `transcript_received` | 收到转写文本 |
 | `magic_share_started` | 开始共享内容 / 文档 |
 | `magic_share_ended` | 结束共享 |
+| `document_context_changed` | 评论聚焦、章节定位或元素预览上下文变化 |
 
 ### Forwarding meeting chat and reactions to IM
 
@@ -304,12 +405,12 @@ lark-cli vc +meeting-events \
 
 ## 参考
 
-- [lark-vc-agent-meeting-join](lark-vc-agent-meeting-join.md) — 先真实入会
-- [lark-vc-agent-meeting-list-active](lark-vc-agent-meeting-list-active.md) — 发现当前可读事件的进行中会议 ID
-- [lark-vc-agent-meeting-leave](lark-vc-agent-meeting-leave.md) — 用户明确要求时离会
-- [lark-vc-search](../../lark-vc/references/lark-vc-search.md) — 搜索历史会议（获取 meeting_id）
-- [lark-vc-recording](../../lark-vc/references/lark-vc-recording.md) — 查询 minute_token
-- [lark-vc-detail](../../lark-vc/references/lark-vc-detail.md) — 获取会议详情
-- [lark-vc-agent](../SKILL.md) — Agent 参会能力（本 skill）
-- [lark-vc](../../lark-vc/SKILL.md) — 视频会议原子域（Meeting / Note 等核心概念）
+- [lark-vc-agent-meeting-join](../../lark-vc-agent/references/lark-vc-agent-meeting-join.md) — 先真实入会
+- [lark-vc-meeting-list-active](lark-vc-meeting-list-active.md) — 发现当前可读事件的进行中会议 ID
+- [lark-vc-agent-meeting-leave](../../lark-vc-agent/references/lark-vc-agent-meeting-leave.md) — 用户明确要求时离会
+- [lark-vc-search](lark-vc-search.md) — 搜索历史会议（获取 meeting_id）
+- [lark-vc-recording](lark-vc-recording.md) — 查询 minute_token
+- [lark-vc-detail](lark-vc-detail.md) — 获取会议详情
+- [lark-vc-agent](../../lark-vc-agent/SKILL.md) — Agent 参会能力
+- [lark-vc](../SKILL.md) — 视频会议原子域（Meeting / Note 等核心概念）
 - [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数

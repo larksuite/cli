@@ -19,6 +19,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// TestImportDefaultFileName verifies filename derivation for supported import sources.
 func TestImportDefaultFileName(t *testing.T) {
 	t.Parallel()
 
@@ -60,6 +61,7 @@ func TestImportDefaultFileName(t *testing.T) {
 	}
 }
 
+// TestImportTargetFileName verifies explicit and inferred import target names.
 func TestImportTargetFileName(t *testing.T) {
 	t.Parallel()
 
@@ -71,6 +73,7 @@ func TestImportTargetFileName(t *testing.T) {
 	}
 }
 
+// TestDriveImportDryRunUsesExtensionlessDefaultName verifies the default imported document name.
 func TestDriveImportDryRunUsesExtensionlessDefaultName(t *testing.T) {
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)
@@ -109,14 +112,15 @@ func TestDriveImportDryRunUsesExtensionlessDefaultName(t *testing.T) {
 	var got struct {
 		API []struct {
 			Desc string                 `json:"desc"`
+			URL  string                 `json:"url"`
 			Body map[string]interface{} `json:"body"`
 		} `json:"api"`
 	}
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal dry run json: %v", err)
 	}
-	if len(got.API) != 4 {
-		t.Fatalf("expected 4 API calls, got %d", len(got.API))
+	if len(got.API) != 5 {
+		t.Fatalf("expected 5 API calls, got %d", len(got.API))
 	}
 	wantDesc := "After the import result returns the final cloud document target in bot mode, the CLI will also try to grant the current CLI user full_access on it."
 	if got.API[len(got.API)-1].Desc != wantDesc {
@@ -132,12 +136,17 @@ func TestDriveImportDryRunUsesExtensionlessDefaultName(t *testing.T) {
 		t.Fatalf("upload file_name = %q, want %q", uploadName, "base-import.xlsx")
 	}
 
-	importName, _ := got.API[2].Body["file_name"].(string)
+	if got.API[2].URL != "/open-apis/drive/v1/lark_cli_file_event/report" {
+		t.Fatalf("report URL = %q, want lark_cli_file_event/report", got.API[2].URL)
+	}
+
+	importName, _ := got.API[3].Body["file_name"].(string)
 	if importName != "base-import" {
 		t.Fatalf("import task file_name = %q, want %q", importName, "base-import")
 	}
 }
 
+// TestDriveImportDryRunShowsMultipartUploadForLargeFile verifies the multipart plan for oversized single-part inputs.
 func TestDriveImportDryRunShowsMultipartUploadForLargeFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)
@@ -186,8 +195,8 @@ func TestDriveImportDryRunShowsMultipartUploadForLargeFile(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal dry run json: %v", err)
 	}
-	if len(got.API) != 5 {
-		t.Fatalf("expected 5 API calls, got %d", len(got.API))
+	if len(got.API) != 6 {
+		t.Fatalf("expected 6 API calls, got %d", len(got.API))
 	}
 	if got.API[0].URL != "/open-apis/drive/v1/medias/upload_prepare" {
 		t.Fatalf("dry-run first URL = %q, want upload_prepare", got.API[0].URL)
@@ -198,8 +207,12 @@ func TestDriveImportDryRunShowsMultipartUploadForLargeFile(t *testing.T) {
 	if got.API[2].URL != "/open-apis/drive/v1/medias/upload_finish" {
 		t.Fatalf("dry-run third URL = %q, want upload_finish", got.API[2].URL)
 	}
+	if got.API[3].URL != "/open-apis/drive/v1/lark_cli_file_event/report" {
+		t.Fatalf("report URL = %q, want lark_cli_file_event/report", got.API[3].URL)
+	}
 }
 
+// TestDriveImportDryRunReturnsErrorForUnsafePath verifies rejection of unsafe import paths.
 func TestDriveImportDryRunReturnsErrorForUnsafePath(t *testing.T) {
 	t.Parallel()
 
@@ -242,6 +255,7 @@ func TestDriveImportDryRunReturnsErrorForUnsafePath(t *testing.T) {
 	}
 }
 
+// TestDriveImportDryRunReturnsErrorForOversizedMarkdown verifies the Markdown import size limit.
 func TestDriveImportDryRunReturnsErrorForOversizedMarkdown(t *testing.T) {
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)
@@ -296,6 +310,7 @@ func TestDriveImportDryRunReturnsErrorForOversizedMarkdown(t *testing.T) {
 	}
 }
 
+// TestDriveImportDryRunReturnsErrorForDirectoryInput verifies rejection of directory inputs.
 func TestDriveImportDryRunReturnsErrorForDirectoryInput(t *testing.T) {
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)
@@ -343,6 +358,7 @@ func TestDriveImportDryRunReturnsErrorForDirectoryInput(t *testing.T) {
 	}
 }
 
+// TestDriveImportCreateTaskBodyKeepsEmptyMountKeyForRoot verifies the root import task contract.
 func TestDriveImportCreateTaskBodyKeepsEmptyMountKeyForRoot(t *testing.T) {
 	t.Parallel()
 
@@ -380,6 +396,7 @@ func TestDriveImportCreateTaskBodyKeepsEmptyMountKeyForRoot(t *testing.T) {
 	}
 }
 
+// TestDriveImportCreateTaskBodyWithTargetToken verifies Base import task targeting.
 func TestDriveImportCreateTaskBodyWithTargetToken(t *testing.T) {
 	t.Parallel()
 
@@ -406,6 +423,7 @@ func TestDriveImportCreateTaskBodyWithTargetToken(t *testing.T) {
 	}
 }
 
+// TestDriveImportCreateTaskBodyTargetTokenIgnoredForNonBitable verifies that only Base imports use target tokens.
 func TestDriveImportCreateTaskBodyTargetTokenIgnoredForNonBitable(t *testing.T) {
 	t.Parallel()
 
@@ -431,6 +449,7 @@ func TestDriveImportCreateTaskBodyTargetTokenIgnoredForNonBitable(t *testing.T) 
 	}
 }
 
+// TestDriveImportDryRunWithTargetToken verifies that a target token is preserved in the import plan.
 func TestDriveImportDryRunWithTargetToken(t *testing.T) {
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)
@@ -475,12 +494,16 @@ func TestDriveImportDryRunWithTargetToken(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal dry run json: %v", err)
 	}
-	if len(got.API) != 3 {
-		t.Fatalf("expected 3 API calls, got %d", len(got.API))
+	if len(got.API) != 4 {
+		t.Fatalf("expected 4 API calls, got %d", len(got.API))
 	}
 
-	// The import task body (API[1]) should contain target_token in point
-	importTaskBody := got.API[1].Body
+	if got.API[1].URL != "/open-apis/drive/v1/lark_cli_file_event/report" {
+		t.Fatalf("report URL = %q, want lark_cli_file_event/report", got.API[1].URL)
+	}
+
+	// The import task body (API[2]) should contain target_token in point.
+	importTaskBody := got.API[2].Body
 	point, ok := importTaskBody["point"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("point = %#v, want map", importTaskBody["point"])
@@ -493,6 +516,7 @@ func TestDriveImportDryRunWithTargetToken(t *testing.T) {
 	}
 }
 
+// TestDriveImportDryRunTargetTokenRejectedForSheet verifies target-token validation for sheet imports.
 func TestDriveImportDryRunTargetTokenRejectedForSheet(t *testing.T) {
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)
@@ -585,6 +609,7 @@ func driveImportTestConfig(suffix string, brands ...core.LarkBrand) *core.CliCon
 	}
 }
 
+// TestDriveImportFallbackURLWhenBackendOmitsIt verifies client-side URL construction.
 func TestDriveImportFallbackURLWhenBackendOmitsIt(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveImportTestConfig("missing-url"))
 	driveImportMockEnv(t, reg, "ticket_fallback", map[string]interface{}{
@@ -617,6 +642,7 @@ func TestDriveImportFallbackURLWhenBackendOmitsIt(t *testing.T) {
 	}
 }
 
+// TestDriveImportPreservesBackendURL verifies that a server-provided URL is returned unchanged.
 func TestDriveImportPreservesBackendURL(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveImportTestConfig("preserve-url"))
 	driveImportMockEnv(t, reg, "ticket_preserve", map[string]interface{}{
@@ -648,6 +674,7 @@ func TestDriveImportPreservesBackendURL(t *testing.T) {
 	}
 }
 
+// TestDriveImportFallbackURLWhenServerURLIsWhitespace verifies fallback for blank server URLs.
 func TestDriveImportFallbackURLWhenServerURLIsWhitespace(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveImportTestConfig("whitespace-url"))
 	driveImportMockEnv(t, reg, "ticket_whitespace", map[string]interface{}{
@@ -679,6 +706,7 @@ func TestDriveImportFallbackURLWhenServerURLIsWhitespace(t *testing.T) {
 	}
 }
 
+// TestDriveImportFallbackURLForLarkBrand verifies fallback URL construction for Lark tenants.
 func TestDriveImportFallbackURLForLarkBrand(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveImportTestConfig("lark-brand", core.BrandLark))
 	driveImportMockEnv(t, reg, "ticket_lark", map[string]interface{}{
@@ -710,6 +738,7 @@ func TestDriveImportFallbackURLForLarkBrand(t *testing.T) {
 	}
 }
 
+// TestDriveImportFallbackURLWhenServerTypeIsAlias verifies normalization of server document-type aliases.
 func TestDriveImportFallbackURLWhenServerTypeIsAlias(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveImportTestConfig("alias-type"))
 	driveImportMockEnv(t, reg, "ticket_alias", map[string]interface{}{
@@ -742,6 +771,7 @@ func TestDriveImportFallbackURLWhenServerTypeIsAlias(t *testing.T) {
 	}
 }
 
+// TestDriveImportFallbackURLForSlides verifies fallback URL construction for imported slides.
 func TestDriveImportFallbackURLForSlides(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveImportTestConfig("slides"))
 	driveImportMockEnv(t, reg, "ticket_slides", map[string]interface{}{

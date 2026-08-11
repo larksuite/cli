@@ -13,6 +13,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/client"
+	"github.com/larksuite/cli/internal/fileevent"
 )
 
 const MaxDriveMediaUploadSinglePartSize int64 = 20 * 1024 * 1024 // 20MB
@@ -21,6 +22,13 @@ const (
 	driveMediaUploadAllAction    = "upload media failed"
 	driveMediaUploadPartAction   = "upload media part failed"
 	driveMediaUploadFinishAction = "upload media finish failed"
+)
+
+const (
+	driveMediaUploadAllPath     = "/open-apis/drive/v1/medias/upload_all"
+	driveMediaUploadPreparePath = "/open-apis/drive/v1/medias/upload_prepare"
+	driveMediaUploadPartPath    = "/open-apis/drive/v1/medias/upload_part"
+	driveMediaUploadFinishPath  = "/open-apis/drive/v1/medias/upload_finish"
 )
 
 type DriveMediaMultipartUploadSession struct {
@@ -83,20 +91,32 @@ func UploadDriveMediaAllTyped(runtime *RuntimeContext, cfg DriveMediaUploadAllCo
 	}
 	fd.AddFile("file", fileReader)
 
+	meta := fileevent.UploadMeta{
+		APIPath:      driveMediaUploadAllPath,
+		ResourceType: "media",
+		ParentType:   cfg.ParentType,
+	}
+
 	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
-		ApiPath:    "/open-apis/drive/v1/medias/upload_all",
+		ApiPath:    driveMediaUploadAllPath,
 		Body:       fd,
 	}, larkcore.WithFileUpload())
 	if err != nil {
-		return "", prefixDriveMediaUploadProblem(client.WrapDoAPIError(err), driveMediaUploadAllAction)
+		return "", fileevent.ReportUploadError(runtime, prefixDriveMediaUploadProblem(client.WrapDoAPIError(err), driveMediaUploadAllAction), meta)
 	}
 
 	data, err := runtime.ClassifyAPIResponse(apiResp)
 	if err != nil {
-		return "", prefixDriveMediaUploadProblem(err, driveMediaUploadAllAction)
+		return "", fileevent.ReportUploadError(runtime, prefixDriveMediaUploadProblem(err, driveMediaUploadAllAction), meta)
 	}
-	return extractDriveMediaUploadFileTokenTyped(data, driveMediaUploadAllAction)
+	fileToken, err := extractDriveMediaUploadFileTokenTyped(data, driveMediaUploadAllAction)
+	if err != nil {
+		return "", fileevent.ReportUploadError(runtime, err, meta)
+	}
+	meta.FileToken = fileToken
+	fileevent.ReportUpload(runtime, meta)
+	return fileToken, nil
 }
 
 // UploadDriveMediaMultipartTyped uploads a file in server-planned chunks:
@@ -118,22 +138,36 @@ func UploadDriveMediaMultipartTyped(runtime *RuntimeContext, cfg DriveMediaMulti
 		prepareBody["extra"] = cfg.Extra
 	}
 
-	data, err := runtime.CallAPITyped("POST", "/open-apis/drive/v1/medias/upload_prepare", nil, prepareBody)
+	meta := fileevent.UploadMeta{
+		APIPath:      driveMediaUploadPreparePath,
+		ResourceType: "media",
+		ParentType:   cfg.ParentType,
+	}
+
+	data, err := runtime.CallAPITyped("POST", driveMediaUploadPreparePath, nil, prepareBody)
 	if err != nil {
-		return "", err
+		return "", fileevent.ReportUploadError(runtime, err, meta)
 	}
 
 	session, err := parseDriveMediaMultipartUploadSessionTyped(data)
 	if err != nil {
-		return "", err
+		return "", fileevent.ReportUploadError(runtime, err, meta)
 	}
 	fmt.Fprintf(runtime.IO().ErrOut, "Multipart upload initialized: %d chunks x %s\n", session.BlockNum, FormatSize(session.BlockSize))
 
+	meta.APIPath = driveMediaUploadPartPath
 	if err = uploadDriveMediaMultipartPartsTyped(runtime, cfg, session); err != nil {
-		return "", err
+		return "", fileevent.ReportUploadError(runtime, err, meta)
 	}
 
-	return finishDriveMediaMultipartUploadTyped(runtime, session.UploadID, session.BlockNum)
+	meta.APIPath = driveMediaUploadFinishPath
+	fileToken, err := finishDriveMediaMultipartUploadTyped(runtime, session.UploadID, session.BlockNum)
+	if err != nil {
+		return "", fileevent.ReportUploadError(runtime, err, meta)
+	}
+	meta.FileToken = fileToken
+	fileevent.ReportUpload(runtime, meta)
+	return fileToken, nil
 }
 
 // prefixDriveMediaUploadProblem prepends the upload action to a typed error's
@@ -226,6 +260,7 @@ func uploadDriveMediaMultipartPartsTyped(runtime *RuntimeContext, cfg DriveMedia
 	return nil
 }
 
+// uploadDriveMediaMultipartPartTyped uploads one indexed block of a multipart media upload.
 func uploadDriveMediaMultipartPartTyped(runtime *RuntimeContext, uploadID string, seq int, chunk []byte) error {
 	fd := larkcore.NewFormdata()
 	fd.AddField("upload_id", uploadID)
@@ -235,7 +270,7 @@ func uploadDriveMediaMultipartPartTyped(runtime *RuntimeContext, uploadID string
 
 	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
-		ApiPath:    "/open-apis/drive/v1/medias/upload_part",
+		ApiPath:    driveMediaUploadPartPath,
 		Body:       fd,
 	}, larkcore.WithFileUpload())
 	if err != nil {
@@ -248,8 +283,9 @@ func uploadDriveMediaMultipartPartTyped(runtime *RuntimeContext, uploadID string
 	return nil
 }
 
+// finishDriveMediaMultipartUploadTyped completes a multipart media upload and returns its file token.
 func finishDriveMediaMultipartUploadTyped(runtime *RuntimeContext, uploadID string, blockNum int) (string, error) {
-	data, err := runtime.CallAPITyped("POST", "/open-apis/drive/v1/medias/upload_finish", nil, map[string]interface{}{
+	data, err := runtime.CallAPITyped("POST", driveMediaUploadFinishPath, nil, map[string]interface{}{
 		"upload_id": uploadID,
 		"block_num": blockNum,
 	})
