@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -206,8 +205,14 @@ func TestSortedKnownDomains(t *testing.T) {
 	}
 }
 
-func TestGetShortcutOnlyDomainNames_HaveDescriptions(t *testing.T) {
-	for _, name := range getShortcutOnlyDomainNames() {
+func TestShortcutDomainsHaveDescriptions(t *testing.T) {
+	seen := make(map[string]struct{})
+	for _, shortcut := range shortcuts.AllShortcuts() {
+		name := shortcut.Service
+		if _, duplicate := seen[name]; duplicate {
+			continue
+		}
+		seen[name] = struct{}{}
 		zhDesc := registry.GetServiceDescription(name, "zh")
 		enDesc := registry.GetServiceDescription(name, "en")
 		if zhDesc == "" {
@@ -219,10 +224,13 @@ func TestGetShortcutOnlyDomainNames_HaveDescriptions(t *testing.T) {
 	}
 }
 
-func TestGetShortcutOnlyDomainNames_IncludesNote(t *testing.T) {
-	if !slices.Contains(getShortcutOnlyDomainNames(), "note") {
-		t.Fatal("shortcut-only domains must include note so auth login can select vc:note:read")
+func TestGetDomainMetadataIncludesNote(t *testing.T) {
+	for _, domain := range getDomainMetadata("zh") {
+		if domain.Name == "note" {
+			return
+		}
 	}
+	t.Fatal("domain metadata must include note so auth login can select vc:note:read")
 }
 
 func TestCollectScopesForDomains(t *testing.T) {
@@ -279,16 +287,32 @@ func TestGetDomainMetadata_IncludesFromMeta(t *testing.T) {
 	}
 }
 
-func TestGetDomainMetadata_IncludesShortcutOnlyDomains(t *testing.T) {
+func TestGetDomainMetadataIncludesAuthorizableShortcutDomains(t *testing.T) {
 	domains := getDomainMetadata("zh")
 	nameSet := make(map[string]bool)
 	for _, dm := range domains {
 		nameSet[dm.Name] = true
 	}
 
-	for _, name := range getShortcutOnlyDomainNames() {
-		if !nameSet[name] {
-			t.Errorf("shortcut-only domain %q missing from getDomainMetadata", name)
+	for _, shortcut := range shortcuts.AllShortcuts() {
+		if registry.HasAuthDomain(shortcut.Service) || !shortcutHasDeclaredScopes(shortcut) {
+			continue
+		}
+		if !nameSet[shortcut.Service] {
+			t.Errorf("authorizable shortcut domain %q missing from getDomainMetadata", shortcut.Service)
+		}
+	}
+}
+
+func TestGetDomainMetadataMatchesAllKnownDomains(t *testing.T) {
+	metadata := getDomainMetadata("zh")
+	known := allKnownDomains("")
+	if len(metadata) != len(known) {
+		t.Fatalf("domain metadata count = %d, allKnownDomains count = %d", len(metadata), len(known))
+	}
+	for _, domain := range metadata {
+		if !known[domain.Name] {
+			t.Errorf("domain metadata contains %q outside allKnownDomains", domain.Name)
 		}
 	}
 }

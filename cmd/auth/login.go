@@ -560,11 +560,20 @@ func allKnownDomains(brand core.LarkBrand) map[string]bool {
 		if !shortcuts.IsShortcutServiceAvailable(sc.Service, brand) {
 			continue
 		}
-		if !registry.HasAuthDomain(sc.Service) {
+		if !registry.HasAuthDomain(sc.Service) && shortcutHasDeclaredScopes(sc) {
 			domains[sc.Service] = true
 		}
 	}
 	return domains
+}
+
+func shortcutHasDeclaredScopes(shortcut common.Shortcut) bool {
+	for _, identity := range []string{"user", "bot"} {
+		if len(shortcut.DeclaredScopesForIdentity(identity)) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // sortedKnownDomains returns all valid domain names sorted alphabetically.
