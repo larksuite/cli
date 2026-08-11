@@ -51,18 +51,6 @@ func NewCmdSchema(f *cmdutil.Factory, runF func(*SchemaOptions) error) *cobra.Co
 	return NewCmdSchemaWithVisibilityAndShortcuts(f, nil, shortcuts.AllShortcuts(), runF)
 }
 
-// NewCmdSchemaWithVisibility creates the schema command projected through one
-// build-local command surface. Existing callers should use NewCmdSchema; the
-// root builder uses this form so schema execution and completion share the
-// exact presentation plan captured by that Cobra tree.
-func NewCmdSchemaWithVisibility(
-	f *cmdutil.Factory,
-	visibility CommandVisibility,
-	runF func(*SchemaOptions) error,
-) *cobra.Command {
-	return NewCmdSchemaWithVisibilityAndShortcuts(f, visibility, shortcuts.AllShortcuts(), runF)
-}
-
 // NewCmdSchemaWithVisibilityAndShortcuts creates schema commands from one build-local shortcut snapshot.
 func NewCmdSchemaWithVisibilityAndShortcuts(
 	f *cmdutil.Factory,
@@ -125,28 +113,10 @@ func completeSchemaPath(
 	}
 }
 
-func schemaRunWithVisibility(opts *SchemaOptions, visibility CommandVisibility) error {
-	return schemaRunWithVisibilityAndShortcuts(opts, visibility, shortcuts.AllShortcuts())
-}
-
 func schemaRunWithVisibilityAndShortcuts(opts *SchemaOptions, visibility CommandVisibility, registered []common.Shortcut) error {
 	out := opts.Factory.IOStreams.Out
 	mode := opts.Factory.ResolveStrictMode(opts.Ctx)
 	return runSchemaCatalogWithShortcuts(out, apicatalog.ParsePath(opts.Args), mode, registry.SchemaCatalog(), visibility, registered)
-}
-
-// runSchemaWithVisibility resolves the path through the schema catalog and renders the
-// matching envelope(s). The catalog owns navigation (Resolve + MethodRefs) and
-// schema owns rendering (Envelope/Envelopes); this adapter only chooses the
-// output shape — a single resolved method renders as one envelope object,
-// anything broader as an array — and maps resolve failures to hints.
-func runSchemaWithVisibility(
-	out io.Writer,
-	parts []string,
-	mode core.StrictMode,
-	visibility CommandVisibility,
-) error {
-	return runSchemaCatalog(out, parts, mode, registry.SchemaCatalog(), visibility)
 }
 
 func runSchemaCatalog(

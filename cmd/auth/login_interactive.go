@@ -72,11 +72,6 @@ func buildDomainMeta(name, lang string) domainMeta {
 	return dm
 }
 
-// runInteractiveLogin shows an interactive TUI form for domain and permission selection.
-func runInteractiveLogin(ios *cmdutil.IOStreams, lang string, msg *loginMsg, brand core.LarkBrand) (*interactiveResult, error) {
-	return runInteractiveLoginWithShortcuts(ios, lang, msg, brand, shortcuts.AllShortcuts())
-}
-
 func runInteractiveLoginWithShortcuts(ios *cmdutil.IOStreams, lang string, msg *loginMsg, brand core.LarkBrand, registered []common.Shortcut) (*interactiveResult, error) {
 	allDomains := getDomainMetadataWithShortcuts(lang, brand, registered)
 
