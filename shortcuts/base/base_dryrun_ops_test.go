@@ -120,6 +120,47 @@ func TestDryRunFieldOps(t *testing.T) {
 	}
 }
 
+func TestDryRunButtonRuleOps(t *testing.T) {
+	ctx := context.Background()
+	rt := newBaseTestRuntime(
+		map[string]string{
+			"base-token":  "app_x",
+			"table-id":    "tbl_1",
+			"field-id":    "fld_button",
+			"workflow-id": "wkf_1",
+		},
+		nil,
+		nil,
+	)
+
+	assertDryRunContains(t, dryRunButtonBind(ctx, rt), "PUT /open-apis/base/v3/bases/app_x/tables/tbl_1/fields/fld_button/button_rule", `"workflow_id":"wkf_1"`)
+	assertDryRunContains(t, dryRunButtonGet(ctx, rt), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/fields/fld_button/button_rule")
+	assertDryRunContains(t, dryRunButtonUnbind(ctx, rt), "DELETE /open-apis/base/v3/bases/app_x/tables/tbl_1/fields/fld_button/button_rule")
+}
+
+func TestValidateButtonRuleOps(t *testing.T) {
+	valid := newBaseTestRuntime(map[string]string{
+		"base-token": "app_x", "table-id": "tbl_1", "field-id": "fld_button", "workflow-id": "wkfAbcdefg",
+	}, nil, nil)
+	if err := validateButtonBind(valid); err != nil {
+		t.Fatalf("valid button bind rejected: %v", err)
+	}
+
+	badWorkflow := newBaseTestRuntime(map[string]string{
+		"base-token": "app_x", "table-id": "tbl_1", "field-id": "fld_button", "workflow-id": "tblAbcdefg",
+	}, nil, nil)
+	if err := validateButtonBind(badWorkflow); err == nil || !strings.Contains(err.Error(), "wkf prefix") {
+		t.Fatalf("expected public workflow ID validation error, got %v", err)
+	}
+
+	missingField := newBaseTestRuntime(map[string]string{
+		"base-token": "app_x", "table-id": "tbl_1", "workflow-id": "wkfAbcdefg",
+	}, nil, nil)
+	if err := validateButtonRuleLocator(missingField); err == nil || !strings.Contains(err.Error(), "--field-id") {
+		t.Fatalf("expected missing field validation error, got %v", err)
+	}
+}
+
 func TestDryRunRecordOps(t *testing.T) {
 	ctx := context.Background()
 

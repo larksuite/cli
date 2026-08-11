@@ -72,6 +72,7 @@ metadata:
 | 分享表单详情 | `+form-detail --share-token <share_token>` | 只接受表单分享链接里的 `share_token`，不要传 `--base-token` / `--form-id`；提交前读 [lark-base-form-detail.md](references/lark-base-form-detail.md) |
 | 仪表盘与组件 | `+dashboard-*` / `+dashboard-block-*` | 提到图表/看板/block 时先读 [lark-base-dashboard.md](references/lark-base-dashboard.md)；组件 `data_config` 读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)；读取一个或多个图表计算结果用 `+dashboard-block-get-data`；读取完整仪表盘时按 block 类型分流，文本和不支持直接取数的图表按 reference 恢复 |
 | Workflow | `+workflow-*` | 创建/更新或理解 steps 时读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) 和 steps JSON SSOT [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)；list/get/enable/disable 只处理 workflow ID 与启停状态 |
+| 按钮字段绑定 Workflow | `+button-bind/get/unbind` | 先创建带按钮触发器的 workflow，再创建 `type:"button"` 字段，最后用 `+button-bind` 绑定 `wkf_` workflow ID；字段 JSON 不写 `workflow_id` |
 | 高级权限与角色 | `+advperm-*` / `+role-*` | 角色操作先读入口 [lark-base-role-guide.md](references/lark-base-role-guide.md)；角色 create/update 或解读完整配置再读权限 JSON SSOT [role-config.md](references/role-config.md)；系统角色不可删除；关闭高级权限会影响自定义角色 |
 
 ## Base 心智模型
