@@ -44,10 +44,6 @@ lark-cli drive +copy --token <WIKI_TOKEN> --type wiki --name '副本名称' --fo
 
 - bot 身份复制成功后，CLI 会自动尝试给当前 CLI 用户授予新副本的 `full_access`，结果在输出的 `data.permission_grant` 字段中；授权失败不影响复制本身的成功状态
 
-## 按标题定位
-
-需要按标题定位源文件时，先按 [`lark-drive-search.md`](lark-drive-search.md) 使用 `drive +search` 得到唯一匹配；已提供可直接使用的 URL 或 token 时直接复制。
-
 ## 输出
 
 ```json
