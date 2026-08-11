@@ -325,7 +325,7 @@ var dbSyncCodeHints = map[int]string{
 	400002479: "Run +db-sync-get --task-id <task_id> to inspect the completed task, or create a new task with the required mode.",
 	400002480: "Verify --task-id and list tasks with +db-sync-list.",
 	400002481: "Use a task_id returned by +db-sync-create or +db-sync-list, such as streaming_<id> or batch_<id>.",
-	400002482: "Correct source.table in the config file, then run +db-sync-create --preview again.",
+	400002482: "Correct source.table in the config, then resubmit: rerun +db-sync-create --preview for a new task, or resubmit the same task_id with +db-sync-update.",
 	400002483: "Set target.table.action to 'create', or create the table with +db-execute, then rerun preview.",
 }
 

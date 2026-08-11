@@ -213,6 +213,41 @@ func TestAppsDBSyncCreatePreviewExecuteWritesConfigOnly(t *testing.T) {
 	}
 }
 
+func TestAppsDBSyncCreatePreviewRejectsMissingConfig(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		data map[string]interface{}
+	}{
+		{"no config key", map[string]interface{}{}},
+		{"config not an object", map[string]interface{}{"config": "oops"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			chdirTemp(t)
+			factory, stdout, reg := newAppsExecuteFactory(t)
+			reg.Register(&httpmock.Stub{
+				Method: "POST", URL: dbSyncURL,
+				Body: map[string]interface{}{"code": 0, "data": tc.data},
+			})
+
+			err := runAppsShortcut(t, AppsDBSyncCreate, []string{
+				"+db-sync-create", "--app-id", "app_x", "--config", dbSyncPreviewConfig,
+				"--preview", "--output", "resolved.json", "--as", "user",
+			}, factory, stdout)
+
+			var ie *errs.InternalError
+			if !errors.As(err, &ie) {
+				t.Fatalf("err = %T %v, want internal invalid_response", err, err)
+			}
+			if ie.Subtype != errs.SubtypeInvalidResponse {
+				t.Fatalf("subtype = %q, want %q", ie.Subtype, errs.SubtypeInvalidResponse)
+			}
+			if _, statErr := os.Stat("resolved.json"); !os.IsNotExist(statErr) {
+				t.Fatalf("must not write output file on invalid config, stat err = %v", statErr)
+			}
+		})
+	}
+}
+
 func TestAppsDBSyncCreateCommitExecuteOutputsTask(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stub := &httpmock.Stub{
@@ -448,6 +483,24 @@ func TestAppsDBSyncUpdateExecuteSuccess(t *testing.T) {
 	data := dbSyncEnvelopeData(t, stdout.String())
 	if data["task_id"] != "streaming_1" || data["mode"] != "streaming" || data["status"] != "active" {
 		t.Fatalf("output data = %v", data)
+	}
+}
+
+func TestAppsDBSyncUpdateSourceTableErrorHintStaysCommandNeutral(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "PUT", URL: dbSyncUpdateURL,
+		Body: map[string]interface{}{"code": 400002482, "msg": "invalid source table"},
+	})
+
+	err := runAppsShortcut(t, AppsDBSyncUpdate, []string{
+		"+db-sync-update", "--app-id", "app_x", "--task-id", "streaming_1",
+		"--config", dbSyncCommitConfig, "--yes", "--as", "user",
+	}, factory, stdout)
+	p := requireAppsAPIProblem(t, err)
+	// Update must not be steered into a create-only recovery path.
+	if !strings.Contains(p.Hint, "+db-sync-update") {
+		t.Fatalf("update hint = %q, want +db-sync-update guidance", p.Hint)
 	}
 }
 

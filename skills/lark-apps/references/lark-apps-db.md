@@ -179,9 +179,11 @@ lark-cli apps +db-sync-create --app-id app_xxx --environment dev --config @payme
 
 `+db-sync-get` 返回的 `source` **不含 `base_url`**（只有 token / tableId，服务端没有 domain 拼不出完整 URL），这是正常的。原表 update 直接省略 `base_url` 即可；只有要换成另一张 Base 表时，才在 config 里显式补一个新的 `base_url`。不要为了"补全" `base_url` 而编造 domain 或拼接 URL——拿不到就省略，让服务端复用原任务的源 URL。
 
+`+db-sync-update` 也遵循 db-sync 家族「省略 `--environment` 落 online」的规则，所以改 dev 上的任务必须显式带该任务所在环境的 `--environment`（多环境应用的 streaming 任务通常在 `dev`），否则会错落 online、找不到任务或改错分支。
+
 ```bash
 lark-cli apps +db-sync-get --app-id app_xxx --task-id streaming_123 -q '.data | {mode, source, target, field_maps}' > sync.json
-lark-cli apps +db-sync-update --app-id app_xxx --task-id streaming_123 --config @sync.json --yes
+lark-cli apps +db-sync-update --app-id app_xxx --task-id streaming_123 --environment dev --config @sync.json --yes
 ```
 
 **列表与生命周期**：
@@ -203,7 +205,12 @@ lark-cli apps +db-sync-get --app-id app_xxx --task-id batch_123
 
 把 `status`、`result`、`warnings` 和目标表写入情况告诉用户。若用户要的是后续持续同步，不是“重启这个 batch”，应新建 `mode=streaming` 任务：先 `+db-sync-create --preview` 给用户确认映射和影响，再带 `--yes` 创建；不要强行 enable 已完成的 batch 任务。若此时 CLI 还缺授权，仍要先解释这个生命周期边界，再提示授权完成后用 `+db-sync-get` 查结果。
 
-**失败恢复**：看到 `warnings` 不要直接说同步成功。按 warning 或 error 的 `hint` 继续排查：常见路径是 `+log-list --keyword <target_table>` / `+log-get` 查日志，然后用 `+db-execute` 修目标表结构，或用 `+db-sync-update` 修字段映射，最后对同一 `task_id` 再 `+db-sync-get`。若此时 CLI 还缺授权、查不到 warning 详情，也不要只给泛化的字段核对建议：先说明被授权卡住，再把上面这条固定命令链（`+log-list`/`+log-get` → `+db-execute` 或 `+db-sync-update` → 再 `+db-sync-get` 复查）作为授权完成后的下一步明确交代给用户。
+**失败恢复**：看到 `warnings` 不要直接说同步成功。按 warning 或 error 的 `hint` 继续排查，恢复路径按任务 mode 分支：
+
+- **streaming 任务**：常见路径是 `+log-list --keyword <target_table>` / `+log-get` 查日志，然后用 `+db-execute` 修目标表结构，或用 `+db-sync-update`（带该任务所在环境的 `--environment`）修字段映射，最后对同一 `task_id` 再 `+db-sync-get` 复查。
+- **batch 任务**：batch 是一次性任务、**不能 update**（见上文生命周期）。修完目标表结构（`+db-execute`）后不要 update 原 batch，而是重新 `+db-sync-create --preview` 建新任务；只想看这个 batch 的结果就直接 `+db-sync-get`。
+
+若此时 CLI 还缺授权、查不到 warning 详情，也不要只给泛化的字段核对建议：先说明被授权卡住，再把对应 mode 的固定命令链作为授权完成后的下一步明确交代给用户。
 
 **online 禁 DDL（`k_dl_4000001`）恢复**：`+db-sync-create` 建表报 `k_dl_4000001：forbid ddl/dcl operation in online env` 时，这必然是多环境应用（共享库在 online 建表不会报此码）。online 分支**本就不允许**直接建表，这是多环境应用的产品设计、不是可绕过的限制。改用 `--environment dev` 重跑 `+db-sync-create`，把表建到 dev 分支；不要试图「在 online 想办法重试建表」，没有这个选项。
 

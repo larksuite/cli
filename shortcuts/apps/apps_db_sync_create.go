@@ -115,7 +115,14 @@ func allowDBSyncPreviewWithoutConfirmation(cmd *cobra.Command) {
 func outputDBSyncPreview(rctx *common.RuntimeContext, data map[string]interface{}) error {
 	output := strings.TrimSpace(rctx.Str("output"))
 	if output != "" {
-		configJSON, err := json.MarshalIndent(data["config"], "", "  ")
+		// The saved file is documented as a ready-to-use create input, so refuse to
+		// persist a missing or non-object config rather than writing "null" and
+		// exiting success.
+		config, ok := data["config"].(map[string]interface{})
+		if !ok {
+			return errs.NewInternalError(errs.SubtypeInvalidResponse, "preview response has no config object to write")
+		}
+		configJSON, err := json.MarshalIndent(config, "", "  ")
 		if err != nil {
 			return errs.NewInternalError(errs.SubtypeInvalidResponse, "preview config is not JSON-serializable").WithCause(err)
 		}
