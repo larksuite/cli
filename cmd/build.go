@@ -21,11 +21,13 @@ import (
 	"github.com/larksuite/cli/cmd/skill"
 	cmdupdate "github.com/larksuite/cli/cmd/update"
 	"github.com/larksuite/cli/cmd/whoami"
+	"github.com/larksuite/cli/extension/command"
 	"github.com/larksuite/cli/internal/affordance"
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/commandhost"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/hook"
 	"github.com/larksuite/cli/internal/keychain"
@@ -55,6 +57,7 @@ type buildConfig struct {
 	startupBrand    core.LarkBrand
 	startupBrandSet bool
 	hideProfileSet  bool
+	commandSets     []command.Set
 }
 
 // buildRuntime owns presentation state for exactly one command tree. Factory
@@ -159,6 +162,16 @@ func WithServiceCatalog(catalog apicatalog.Catalog) BuildOption {
 	}
 }
 
+// WithCommandSets adds build-time business commands to an independently built CLI.
+// The supplied declarations are copied when this option is created and compiled
+// as one atomic contribution during command-tree construction.
+func WithCommandSets(sets ...command.Set) BuildOption {
+	captured := command.CloneSets(sets)
+	return func(c *buildConfig) {
+		c.commandSets = append(c.commandSets, command.CloneSets(captured)...)
+	}
+}
+
 // Build constructs the full command tree. It also installs registered
 // plugins and emits the Startup lifecycle event during assembly --
 // so Plugin.On(Startup) handlers run even if the returned command is
@@ -198,6 +211,10 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext, cfg *buildConfig) (*buildRuntime, *cobra.Command, *hook.Registry) {
 	if cfg == nil {
 		cfg = &buildConfig{}
+	}
+	externalCommands, commandSetErr := commandhost.CompileSets(cfg.commandSets)
+	if commandSetErr == nil {
+		commandSetErr = shortcuts.RegisterExternal(externalCommands)
 	}
 	// Default streams when WithIO is not supplied so the root command's
 	// SetIn/Out/Err calls below don't deref nil. NewDefault also normalizes
@@ -291,6 +308,10 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 		}
 	}
 	shortcuts.RegisterShortcutsWithContext(ctx, rootCmd, f)
+	if commandSetErr != nil {
+		installCommandSetErrorGuard(rootCmd, commandSetErr)
+		return finalizeFailedBuild(runtime, rootCmd)
+	}
 
 	classifyRootCommands(rootCmd)
 
