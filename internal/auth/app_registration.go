@@ -11,7 +11,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"slices"
 	"strings"
 	"time"
 
@@ -66,6 +65,7 @@ type AppRegistrationResponse struct {
 	VerificationUriComplete string
 	ExpiresIn               int
 	Interval                int
+	RequestedAuthMethod     string
 }
 
 // AppRegistrationResult is the result of a successful app registration poll.
@@ -73,11 +73,6 @@ type AppRegistrationResult struct {
 	ClientID     string
 	ClientSecret string
 	UserInfo     *AppRegUserInfo
-	// AuthMethods is the authoritative auth method(s) the app must use, as
-	// decided by the user/admin at confirmation (20260409 `auth_method` field).
-	// It may differ from what the client requested — e.g. selecting an existing
-	// client_secret app. Empty on older servers.
-	AuthMethods []string
 }
 
 // AppRegUserInfo contains user info returned from app registration.
@@ -276,27 +271,18 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 		VerificationUriComplete: verificationUriComplete,
 		ExpiresIn:               expiresIn,
 		Interval:                interval,
+		RequestedAuthMethod:     authMethod,
 	}, nil
 }
 
-// parseAuthMethods normalizes the poll response `auth_method` field, which the
-// server returns as a JSON array of strings (e.g. ["private_key_jwt"]) — or, on
-// some variants, a single space-separated string.
-func parseAuthMethods(v interface{}) []string {
-	switch t := v.(type) {
-	case []interface{}:
-		out := make([]string, 0, len(t))
-		for _, m := range t {
-			if s, ok := m.(string); ok && s != "" {
-				out = append(out, s)
-			}
-		}
-		return out
-	case string:
-		return strings.Fields(t)
-	default:
-		return nil
+func registrationResultComplete(result *AppRegistrationResult, requestedAuthMethod string) bool {
+	if result.ClientID == "" {
+		return false
 	}
+	// Poll never returns auth_method. A secret registration completes with both
+	// credentials; a private_key_jwt registration intentionally returns no
+	// client_secret, so the normalized method sent by begin is authoritative.
+	return result.ClientSecret != "" || requestedAuthMethod == core.AuthMethodPrivateKeyJWT
 }
 
 // BuildVerificationURL appends CLI tracking parameters to the verification URL.
@@ -434,7 +420,6 @@ func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp
 			result := &AppRegistrationResult{
 				ClientID:     getStr(data, "client_id"),
 				ClientSecret: getStr(data, "client_secret"),
-				AuthMethods:  parseAuthMethods(data["auth_method"]),
 			}
 			if userInfoRaw, ok := data["user_info"].(map[string]interface{}); ok {
 				result.UserInfo = &AppRegUserInfo{
@@ -443,10 +428,9 @@ func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp
 				}
 			}
 
-			// private_key_jwt succeeds without returning a client secret. The caller
-			// resolves the authoritative auth method and enforces the corresponding
-			// credential shape before persisting the result.
-			if result.ClientID != "" && (result.ClientSecret != "" || slices.Contains(result.AuthMethods, core.AuthMethodPrivateKeyJWT)) {
+			// private_key_jwt succeeds without returning a client secret. Completion
+			// therefore also depends on the normalized auth method sent by begin.
+			if registrationResultComplete(result, resp.RequestedAuthMethod) {
 				// The issuing domain is authoritative; a contradictory final
 				// tenant report is a protocol violation, not a brand override.
 				if result.UserInfo != nil && result.UserInfo.TenantBrand != "" &&
