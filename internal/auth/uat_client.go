@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptrace"
+	"net/url"
 	"os"
 	"sync/atomic"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/errclass"
+	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/recovery"
 )
 
@@ -28,7 +30,10 @@ type UATCallOptions struct {
 	AppId      string
 	AppSecret  string
 	Domain     core.LarkBrand
-	ErrOut     io.Writer // diagnostic/status output (caller injects f.IOStreams.ErrOut)
+	AuthMethod string           // "" == client_secret; core.AuthMethodPrivateKeyJWT
+	KeyLabel   string           // TEE key handle for private_key_jwt
+	Signer     keysigner.Signer // active signer for private_key_jwt
+	ErrOut     io.Writer        // diagnostic/status output (caller injects f.IOStreams.ErrOut)
 }
 
 // UATStatus represents the status of a user access token.
@@ -52,6 +57,9 @@ func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer) UATCallOptions {
 		AppId:      cfg.AppID,
 		AppSecret:  cfg.AppSecret,
 		Domain:     cfg.Brand,
+		AuthMethod: cfg.AuthMethod,
+		KeyLabel:   cfg.KeyLabel,
+		Signer:     keysigner.Active(),
 		ErrOut:     errOut,
 	}
 }
@@ -139,10 +147,12 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions) (*StoredUATok
 const refreshMaxAttempts = 2
 
 type refreshRequest struct {
-	GrantType    string `json:"grant_type"`
-	RefreshToken string `json:"refresh_token"`
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
+	GrantType           string `json:"grant_type"`
+	RefreshToken        string `json:"refresh_token"`
+	ClientID            string `json:"client_id"`
+	ClientSecret        string `json:"client_secret,omitempty"`
+	ClientAssertionType string `json:"client_assertion_type,omitempty"`
+	ClientAssertion     string `json:"client_assertion,omitempty"`
 }
 
 // refreshResponse contains the OAuth token fields consumed by the refresh
@@ -275,12 +285,24 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 }
 
 func refreshOnce(httpClient *http.Client, endpoint string, opts UATCallOptions, stored *StoredUAToken) refreshResult {
-	payload, err := json.Marshal(refreshRequest{
+	request := refreshRequest{
 		GrantType:    "refresh_token",
 		RefreshToken: stored.RefreshToken,
 		ClientID:     opts.AppId,
-		ClientSecret: opts.AppSecret,
-	})
+	}
+	form := url.Values{}
+	clientAuth := ClientAuth{AppID: opts.AppId, AppSecret: opts.AppSecret, AuthMethod: opts.AuthMethod, Signer: opts.Signer, KeyLabel: opts.KeyLabel}
+	usedAssertion, err := clientAuth.applyClientAssertion(context.Background(), form, core.OpenAPIAudience(opts.Domain))
+	if err != nil {
+		return refreshResult{action: refreshStopAndPreserve, err: err}
+	}
+	if usedAssertion {
+		request.ClientAssertionType = form.Get("client_assertion_type")
+		request.ClientAssertion = form.Get("client_assertion")
+	} else {
+		request.ClientSecret = opts.AppSecret
+	}
+	payload, err := json.Marshal(request)
 	if err != nil {
 		return refreshResult{
 			action: refreshStopAndPreserve,

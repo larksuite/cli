@@ -177,3 +177,12 @@ func TestIsPlatformEndpointURL_RequiresSecureStandardOrigin(t *testing.T) {
 		}
 	}
 }
+
+func TestOpenAPIAudience(t *testing.T) {
+	if got := OpenAPIAudience(BrandFeishu); got != "open.feishu.cn" {
+		t.Errorf("OpenAPIAudience(feishu) = %q, want open.feishu.cn", got)
+	}
+	if got := OpenAPIAudience(BrandLark); got != "open.larksuite.com" {
+		t.Errorf("OpenAPIAudience(lark) = %q, want open.larksuite.com", got)
+	}
+}

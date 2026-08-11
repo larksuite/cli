@@ -230,7 +230,9 @@ func diagnoseBot(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, v
 			Hint:    "check strict mode or the active credential provider",
 		}
 	}
-	if cfg.SupportedIdentities == 0 && !credential.HasRealAppSecret(cfg.AppSecret) {
+	// private_key_jwt apps have no app secret — the bot/tenant token is minted via
+	// a TEE-signed client_assertion — so absence of a secret is NOT "unconfigured".
+	if cfg.SupportedIdentities == 0 && !credential.HasRealAppSecret(cfg.AppSecret) && cfg.AuthMethod != core.AuthMethodPrivateKeyJWT {
 		return withCommandRecovery(Identity{
 			Status:  StatusNotConfigured,
 			Message: "Bot identity: not configured (missing app secret or bot token)",

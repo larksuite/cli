@@ -49,7 +49,7 @@ jobs.each do |job_name, job|
   end
 end
 
-expected_jobs = %w[preflight build-sign-notarize create-draft-release verify-macos publish-github publish-npm retry-guidance]
+expected_jobs = %w[preflight signer-test-macos build-sign-notarize create-draft-release verify-macos publish-github publish-npm retry-guidance]
 expect_equal(jobs.keys.sort, expected_jobs.sort, "release jobs")
 
 expect_equal(workflow.fetch("concurrency"), {
@@ -59,7 +59,8 @@ expect_equal(workflow.fetch("concurrency"), {
 
 expected_needs = {
   "preflight" => nil,
-  "build-sign-notarize" => "preflight",
+  "signer-test-macos" => "preflight",
+  "build-sign-notarize" => %w[preflight signer-test-macos],
   "create-draft-release" => %w[preflight build-sign-notarize],
   "verify-macos" => %w[preflight build-sign-notarize create-draft-release],
   "publish-github" => %w[preflight create-draft-release verify-macos],
@@ -72,6 +73,7 @@ end
 
 expected_permissions = {
   "preflight" => { "contents" => "read" },
+  "signer-test-macos" => { "contents" => "read" },
   "build-sign-notarize" => { "contents" => "read" },
   "create-draft-release" => { "contents" => "write" },
   "verify-macos" => { "contents" => "read" },
@@ -194,7 +196,7 @@ notarize = goreleaser.fetch("notarize").fetch("macos")
 expect_equal(notarize.length, 1, "number of macOS notarization configurations")
 macos_notarize = notarize.first
 expect_equal(macos_notarize.fetch("enabled"), '{{ isEnvSet "MACOS_SIGN_P12" }}', "macOS notarization enablement")
-expect_equal(macos_notarize.fetch("ids"), ["lark-cli"], "notarized build IDs")
+expect_equal(macos_notarize.fetch("ids"), ["darwin"], "notarized build IDs")
 expect_equal(macos_notarize.fetch("sign"), {
   "certificate" => "{{ .Env.MACOS_SIGN_P12 }}",
   "password" => "{{ .Env.MACOS_SIGN_PASSWORD }}",

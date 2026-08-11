@@ -10,8 +10,24 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
 )
+
+// TestRunRestoreFlow_NothingToRestore covers the early guards that return before
+// any network/registration call: no config at all, and a config whose resolved
+// app has no app id (nothing to send on begin).
+func TestRunRestoreFlow_NothingToRestore(t *testing.T) {
+	// No config on disk.
+	if err := runRestoreFlow(&ConfigInitOptions{}, nil, nil, nil); err == nil {
+		t.Fatal("expected error when there is no config to restore")
+	}
+	// Config present but the resolved app has no app id.
+	existing := &core.MultiAppConfig{Apps: []core.AppConfig{{AppId: ""}}}
+	if err := runRestoreFlow(&ConfigInitOptions{}, existing, nil, nil); err == nil {
+		t.Fatal("expected error when the resolved app has no app id")
+	}
+}
 
 // updateExistingProfileWithoutSecret guards four blank-input scenarios. Each
 // must surface as *ValidationError(SubtypeInvalidArgument) per RFC 6749 §5.2:
@@ -117,5 +133,60 @@ func assertValidationParam(t *testing.T, err error, wantParam string) {
 	}
 	if valErr.Param != wantParam {
 		t.Errorf("Param = %q, want %q", valErr.Param, wantParam)
+	}
+}
+
+// countingKeychain is an in-memory KeychainAccess that records whether Remove
+// was invoked, so the stale-secret cleanup can be asserted without a real OS
+// keychain.
+type countingKeychain struct {
+	store        map[string]string
+	removeCalled bool
+}
+
+func newCountingKeychain() *countingKeychain {
+	return &countingKeychain{store: map[string]string{}}
+}
+
+func (k *countingKeychain) Get(service, account string) (string, error) {
+	v, ok := k.store[service+"/"+account]
+	if !ok {
+		return "", keychain.ErrNotFound
+	}
+	return v, nil
+}
+
+func (k *countingKeychain) Set(service, account, value string) error {
+	k.store[service+"/"+account] = value
+	return nil
+}
+
+func (k *countingKeychain) Remove(service, account string) error {
+	k.removeCalled = true
+	delete(k.store, service+"/"+account)
+	return nil
+}
+
+func TestRemoveStaleSecretForPKJWT_SameAppID(t *testing.T) {
+	kc := newCountingKeychain()
+	ref, err := core.ForStorage("cli_same", core.PlainSecret("old-secret"), kc) // → Source:"keychain"
+	if err != nil {
+		t.Fatal(err)
+	}
+	existing := &core.MultiAppConfig{Apps: []core.AppConfig{{AppId: "cli_same", AppSecret: ref}}}
+	removeStaleSecretForPKJWT(existing, "", "cli_same", kc)
+	if !kc.removeCalled {
+		t.Error("same appId with keychain secret: expected kc.Remove to be invoked")
+	}
+}
+
+func TestRemoveStaleSecretForPKJWT_DifferentAppID(t *testing.T) {
+	kc := newCountingKeychain()
+	ref, _ := core.ForStorage("cli_old", core.PlainSecret("old-secret"), kc)
+	kc.removeCalled = false // ForStorage does not call Remove, but reset to be safe
+	existing := &core.MultiAppConfig{Apps: []core.AppConfig{{AppId: "cli_old", AppSecret: ref}}}
+	removeStaleSecretForPKJWT(existing, "", "cli_new", kc)
+	if kc.removeCalled {
+		t.Error("different appId: must NOT remove")
 	}
 }

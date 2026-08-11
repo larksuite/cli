@@ -956,7 +956,7 @@ func TestAuthLoginRun_DeviceCodeTokenNilCleansScopeCache(t *testing.T) {
 
 	original := pollDeviceToken
 	t.Cleanup(func() { pollDeviceToken = original })
-	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
+	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, ca larkauth.ClientAuth, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
 		return &larkauth.DeviceFlowResult{OK: true, Token: nil}
 	}
 
@@ -995,7 +995,7 @@ func TestAuthLoginRun_JSONAbort_StdoutEventOnly_StderrEmpty(t *testing.T) {
 
 	original := pollDeviceToken
 	t.Cleanup(func() { pollDeviceToken = original })
-	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
+	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, ca larkauth.ClientAuth, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
 		return &larkauth.DeviceFlowResult{OK: false, Message: "user denied"}
 	}
 

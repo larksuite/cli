@@ -159,6 +159,49 @@ func TestResolveConfigFromMulti_CarriesLang(t *testing.T) {
 	}
 }
 
+// TestResolveConfigFromMulti_PKJWTSkipsSecretResolution ensures a private_key_jwt
+// profile that carries a stale/broken AppSecret ref still resolves cleanly: the
+// auth method is judged before any secret handling, so the stale ref is ignored
+// instead of producing a confusing secret-resolution failure.
+func TestResolveConfigFromMulti_PKJWTSkipsSecretResolution(t *testing.T) {
+	raw := &MultiAppConfig{
+		Apps: []AppConfig{{
+			AppId: "cli_pk",
+			// Stale keychain ref whose ID does not match appId — would trip
+			// ValidateSecretKeyMatch / ResolveSecretInput if it were reached.
+			AppSecret:  SecretInput{Ref: &SecretRef{Source: "keychain", ID: "appsecret:cli_OTHER"}},
+			Brand:      BrandFeishu,
+			AuthMethod: AuthMethodPrivateKeyJWT,
+			KeyRef:     &SecretRef{Source: "tee", ID: "agent-key"},
+			Users:      []AppUser{},
+		}},
+	}
+	cfg, err := ResolveConfigFromMulti(raw, stubKeychain{}, "", ProfileFromConfig)
+	if err != nil {
+		t.Fatalf("pkjwt with stale secret ref must skip secret resolution, got %v", err)
+	}
+	if cfg.AuthMethod != AuthMethodPrivateKeyJWT || cfg.KeyLabel != "agent-key" {
+		t.Errorf("got authMethod=%q keyLabel=%q", cfg.AuthMethod, cfg.KeyLabel)
+	}
+}
+
+// TestResolveConfigFromMulti_PKJWTRejectsBadKeyRef ensures the stricter keyRef
+// check (Source=="tee" && ID!="") rejects malformed handles.
+func TestResolveConfigFromMulti_PKJWTRejectsBadKeyRef(t *testing.T) {
+	for i, ref := range []*SecretRef{
+		{Source: "keychain", ID: "x"}, // wrong source
+		{Source: "tee", ID: ""},       // empty id
+	} {
+		raw := &MultiAppConfig{Apps: []AppConfig{{
+			AppId: "cli_pk", Brand: BrandFeishu,
+			AuthMethod: AuthMethodPrivateKeyJWT, KeyRef: ref, Users: []AppUser{},
+		}}}
+		if _, err := ResolveConfigFromMulti(raw, stubKeychain{}, "", ProfileFromConfig); err == nil {
+			t.Errorf("case %d: expected ConfigError for bad keyRef", i)
+		}
+	}
+}
+
 func TestResolveConfigFromMulti_MatchingKeychainRefPassesValidation(t *testing.T) {
 	// Keychain ref matches appId, so validation passes.
 	// The subsequent ResolveSecretInput will fail (no real keychain),
@@ -250,5 +293,49 @@ func TestResolveConfigFromMulti_NormalizesBrand(t *testing.T) {
 	}
 	if cfg.Brand != BrandLark {
 		t.Errorf("Brand = %q, want %q (normalized at ingress)", cfg.Brand, BrandLark)
+	}
+}
+
+func TestResolveConfigFromMulti_RejectsUnknownAuthMethod(t *testing.T) {
+	raw := &MultiAppConfig{Apps: []AppConfig{{
+		AppId:      "cli_abc",
+		AppSecret:  PlainSecret("my-secret"),
+		Brand:      BrandFeishu,
+		AuthMethod: "bogus_method",
+	}}}
+
+	_, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
+	if err == nil {
+		t.Fatal("expected error for unknown authMethod")
+	}
+	var configErr *errs.ConfigError
+	if !errors.As(err, &configErr) {
+		t.Fatalf("expected ConfigError, got %T: %v", err, err)
+	}
+}
+
+func TestResolveConfigFromMulti_PrivateKeyJWTRequiresKeyRef(t *testing.T) {
+	raw := &MultiAppConfig{Apps: []AppConfig{{
+		AppId:      "cli_abc",
+		Brand:      BrandFeishu,
+		AuthMethod: AuthMethodPrivateKeyJWT,
+	}}}
+
+	_, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
+	if err == nil {
+		t.Fatal("expected error for private_key_jwt without keyRef")
+	}
+	var configErr *errs.ConfigError
+	if !errors.As(err, &configErr) {
+		t.Fatalf("expected ConfigError, got %T: %v", err, err)
+	}
+
+	raw.Apps[0].KeyRef = &SecretRef{Source: "tee", ID: "larksuite-cli-agent"}
+	cfg, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
+	if err != nil {
+		t.Fatalf("unexpected error with keyRef present: %v", err)
+	}
+	if cfg.KeyLabel != "larksuite-cli-agent" {
+		t.Errorf("KeyLabel = %q, want larksuite-cli-agent", cfg.KeyLabel)
 	}
 }

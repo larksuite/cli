@@ -6,6 +6,11 @@ package config
 import (
 	"bytes"
 	"context"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	crand "crypto/rand"
+	"crypto/sha256"
 	"errors"
 	"io"
 	"net/http"
@@ -17,14 +22,17 @@ import (
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keysigner"
 )
 
 // fakeRT routes requests to per-path handlers and records what it saw.
 type fakeRT struct {
 	tatHandler   func(req *http.Request) (*http.Response, error)
 	probeHandler func(req *http.Request) (*http.Response, error)
+	oauthHandler func(req *http.Request) (*http.Response, error)
 	tatCalls     int
 	probeCalls   int
+	oauthCalls   int
 	probeReq     *http.Request
 	probeBody    string
 }
@@ -48,8 +56,48 @@ func (f *fakeRT) RoundTrip(req *http.Request) (*http.Response, error) {
 			return jsonResp(200, `{"code":0,"data":{},"msg":"success"}`), nil
 		}
 		return f.probeHandler(req)
+	case strings.HasSuffix(req.URL.Path, "/authen/v2/oauth/token"):
+		f.oauthCalls++
+		if f.oauthHandler == nil {
+			return jsonResp(200, `{"access_token":"test-token"}`), nil
+		}
+		return f.oauthHandler(req)
 	}
 	return nil, errors.New("unexpected URL: " + req.URL.String())
+}
+
+// probeTestSigner is an in-memory real ECDSA P-256 signer used to sign the
+// client_assertion in runProbePKJWT tests (authMethodTestSigner returns a nil
+// key and cannot sign).
+type probeTestSigner struct{ key *ecdsa.PrivateKey }
+
+func newProbeTestSigner(t *testing.T) *probeTestSigner {
+	t.Helper()
+	k, err := ecdsa.GenerateKey(elliptic.P256(), crand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &probeTestSigner{key: k}
+}
+
+func (p *probeTestSigner) EnsureKey(context.Context, keysigner.KeyRef) (crypto.PublicKey, error) {
+	return p.key.Public(), nil
+}
+
+func (p *probeTestSigner) PublicKey(context.Context, keysigner.KeyRef) (crypto.PublicKey, error) {
+	return p.key.Public(), nil
+}
+
+func (p *probeTestSigner) Sign(_ context.Context, _ keysigner.KeyRef, in []byte) ([]byte, string, error) {
+	h := sha256.Sum256(in)
+	r, s, err := ecdsa.Sign(crand.Reader, p.key, h[:])
+	if err != nil {
+		return nil, "", err
+	}
+	sig := make([]byte, 64)
+	r.FillBytes(sig[:32])
+	s.FillBytes(sig[32:])
+	return sig, keysigner.AlgES256, nil
 }
 
 func jsonResp(code int, body string) *http.Response {
@@ -208,10 +256,12 @@ func TestRunProbe_TATSuccess_ProbeFails_Silent(t *testing.T) {
 	assertSilent(t, err, errBuf)
 }
 
-func TestRunProbe_TATSuccess_ProbeOK_Silent(t *testing.T) {
+func TestProbeInitResult_ClientSecret(t *testing.T) {
 	rt := &fakeRT{}
 	f, errBuf := fakeFactory(t, rt)
-	err := runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu)
+	opts := &ConfigInitOptions{Ctx: context.Background()}
+	result := &configInitResult{AppID: "cli_x", AppSecret: "test-secret", Brand: core.BrandFeishu}
+	err := probeInitResult(opts, f, result)
 	if rt.tatCalls != 1 || rt.probeCalls != 1 {
 		t.Errorf("expected 1/1 calls, got tat=%d probe=%d", rt.tatCalls, rt.probeCalls)
 	}
@@ -284,4 +334,48 @@ func TestRunProbe_TimeoutHonored(t *testing.T) {
 	// A timeout is an ambiguous failure (context deadline → untyped), so it
 	// must stay silent and not block.
 	assertSilent(t, err, errBuf)
+}
+
+// runProbePKJWT: a deterministic server rejection (invalid_client) is propagated
+// as a typed ConfigError so config init exits non-zero.
+func TestRunProbePKJWT_DeterministicReject_Propagates(t *testing.T) {
+	rt := &fakeRT{oauthHandler: func(*http.Request) (*http.Response, error) {
+		return jsonResp(401, `{"error":"invalid_client","error_description":"unknown key"}`), nil
+	}}
+	f, errBuf := fakeFactory(t, rt)
+	err := runProbePKJWT(context.Background(), f, core.BrandFeishu, "cli_x", newProbeTestSigner(t), "agent-key")
+	if err == nil || !errs.IsTyped(err) {
+		t.Fatalf("expected propagated typed error, got %T %v", err, err)
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("runProbePKJWT must not write stderr, got %q", errBuf.String())
+	}
+}
+
+// runProbePKJWT: ambiguous upstream noise (HTTP 503) is swallowed — silent, exit 0.
+func TestRunProbePKJWT_Ambiguous_Silent(t *testing.T) {
+	rt := &fakeRT{oauthHandler: func(*http.Request) (*http.Response, error) {
+		return jsonResp(503, `unavailable`), nil
+	}}
+	f, errBuf := fakeFactory(t, rt)
+	assertSilent(t, runProbePKJWT(context.Background(), f, core.BrandFeishu, "cli_x", newProbeTestSigner(t), "agent-key"), errBuf)
+}
+
+// probeInitResult dispatches private_key_jwt to the assertion-backed probe.
+func TestProbeInitResult_PrivateKeyJWT(t *testing.T) {
+	rt := &fakeRT{} // default oauth handler returns 200 + access_token
+	f, errBuf := fakeFactory(t, rt)
+	previous := keysigner.Active()
+	keysigner.Register(newProbeTestSigner(t))
+	t.Cleanup(func() { keysigner.Register(previous) })
+	opts := &ConfigInitOptions{Ctx: context.Background()}
+	result := &configInitResult{AppID: "cli_x", AuthMethod: core.AuthMethodPrivateKeyJWT, KeyLabel: "agent-key", Brand: core.BrandFeishu}
+	assertSilent(t, probeInitResult(opts, f, result), errBuf)
+}
+
+// runProbePKJWT: a nil signer is a defensive no-op (should not be reached, must
+// not panic).
+func TestRunProbePKJWT_NilSigner_Silent(t *testing.T) {
+	f, errBuf := fakeFactory(t, &fakeRT{})
+	assertSilent(t, runProbePKJWT(context.Background(), f, core.BrandFeishu, "cli_x", nil, "k"), errBuf)
 }

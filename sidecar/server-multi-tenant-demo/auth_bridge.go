@@ -204,7 +204,7 @@ func (ab *authBridge) handleLogin(w http.ResponseWriter, _ *http.Request, body [
 		len(strings.Fields(scope)), req.Domains, clientID)
 
 	authResp, err := larkauth.RequestDeviceAuthorization(
-		ab.httpCl, ab.appID, ab.appSecret, ab.brand, scope, io.Discard,
+		context.Background(), ab.httpCl, larkauth.ClientAuth{AppID: ab.appID, AppSecret: ab.appSecret}, ab.brand, scope, io.Discard,
 	)
 	if err != nil {
 		jsonError(w, http.StatusBadGateway, "device authorization failed: "+err.Error())
@@ -255,7 +255,7 @@ func (ab *authBridge) handlePoll(w http.ResponseWriter, r *http.Request, body []
 	}()
 
 	result := larkauth.PollDeviceToken(
-		ctx, ab.httpCl, ab.appID, ab.appSecret, ab.brand,
+		ctx, ab.httpCl, larkauth.ClientAuth{AppID: ab.appID, AppSecret: ab.appSecret}, ab.brand,
 		req.DeviceCode, 5, 600, io.Discard,
 	)
 

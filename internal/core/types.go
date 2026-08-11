@@ -143,3 +143,10 @@ func IsPlatformEndpointURL(candidate *url.URL) bool {
 	}
 	return IsPlatformEndpointHost(candidate.Hostname())
 }
+
+// OpenAPIAudience returns the client_assertion `aud` value for the brand: the
+// bare Open API host per the App Authentication JWT spec — "open.feishu.cn" or
+// "open.larksuite.com" — not the full token endpoint URL.
+func OpenAPIAudience(brand LarkBrand) string {
+	return strings.TrimPrefix(ResolveOpenBaseURL(brand), "https://")
+}

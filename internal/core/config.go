@@ -36,6 +36,14 @@ type AppUser struct {
 	UserName   string `json:"userName"`
 }
 
+// Auth methods for app credentials. An empty AppConfig.AuthMethod means the
+// default, client_secret.
+const (
+	AuthMethodClientSecret  = "client_secret"   // app_id + app_secret
+	authMethodPKJWTValue    = "private_key_jwt" // TEE-signed client_assertion; no app secret
+	AuthMethodPrivateKeyJWT = authMethodPKJWTValue
+)
+
 // AppConfig is a per-app configuration entry (stored format — secrets may be unresolved).
 type AppConfig struct {
 	Name       string      `json:"name,omitempty"`
@@ -46,6 +54,15 @@ type AppConfig struct {
 	DefaultAs  Identity    `json:"defaultAs,omitempty"` // AsUser | AsBot | AsAuto
 	StrictMode *StrictMode `json:"strictMode,omitempty"`
 	Users      []AppUser   `json:"users"`
+
+	// AuthMethod selects how tokens are minted. Empty == AuthMethodClientSecret
+	// (back-compat). AuthMethodPrivateKeyJWT uses a TEE-held key (see KeyRef) to
+	// sign client_assertion JWTs instead of sending an app secret.
+	AuthMethod string `json:"authMethod,omitempty"`
+	// KeyRef references the non-exportable signing key for private_key_jwt.
+	// Source is "tee" and ID is the backend key label; the actual key never
+	// leaves the secure backend, so this is a handle, not secret material.
+	KeyRef *SecretRef `json:"keyRef,omitempty"`
 }
 
 // ProfileName returns the display name for this app config.
@@ -59,11 +76,12 @@ func (a *AppConfig) ProfileName() string {
 
 // MultiAppConfig is the multi-app config file format.
 type MultiAppConfig struct {
-	StrictMode  StrictMode  `json:"strictMode,omitempty"`
-	RiskControl *bool       `json:"riskControl,omitempty"`
-	CurrentApp  string      `json:"currentApp,omitempty"`
-	PreviousApp string      `json:"previousApp,omitempty"`
-	Apps        []AppConfig `json:"apps"`
+	StrictMode       StrictMode  `json:"strictMode,omitempty"`
+	RiskControl      *bool       `json:"riskControl,omitempty"`
+	CurrentApp       string      `json:"currentApp,omitempty"`
+	PreviousApp      string      `json:"previousApp,omitempty"`
+	KeylessSignerCmd string      `json:"keylessSignerCmd,omitempty"`
+	Apps             []AppConfig `json:"apps"`
 }
 
 // RiskControlEnabled resolves the workspace policy. An omitted preference
@@ -187,7 +205,9 @@ type CliConfig struct {
 	UserOpenId          string
 	UserName            string
 	Lang                i18n.Lang
-	SupportedIdentities uint8 `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
+	SupportedIdentities uint8  `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
+	AuthMethod          string // "" == client_secret; AuthMethodPrivateKeyJWT
+	KeyLabel            string // resolved TEE key handle for private_key_jwt
 }
 
 // identityBotBit is the bit flag for bot identity in SupportedIdentities.
@@ -276,23 +296,47 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 		return nil, err
 	}
 
-	if err := ValidateSecretKeyMatch(app.AppId, app.AppSecret); err != nil {
-		return nil, errs.NewConfigError(errs.SubtypeNotConfigured, "appId and appSecret keychain key are out of sync").
-			WithHint("%s", err.Error()).
-			WithCause(err)
+	// Validate the auth method first so a malformed profile fails here rather
+	// than silently degrading to client_secret (unknown method) or failing later
+	// at token-signing. Empty stays empty — downstream treats it as client_secret
+	// (back-compat).
+	switch app.AuthMethod {
+	case "", AuthMethodClientSecret, AuthMethodPrivateKeyJWT:
+	default:
+		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+			"unknown authMethod %q", app.AuthMethod).
+			WithHint("supported: %s, %s (empty defaults to %s)", AuthMethodClientSecret, AuthMethodPrivateKeyJWT, AuthMethodClientSecret)
+	}
+	// private_key_jwt carries no secret: validate the key handle and skip secret
+	// resolution entirely, so a stale/broken AppSecret ref never produces a
+	// confusing secret-resolution error for an otherwise-valid pkjwt profile.
+	var secret string
+	if app.AuthMethod == AuthMethodPrivateKeyJWT {
+		if app.KeyRef == nil || app.KeyRef.Source != "tee" || app.KeyRef.ID == "" {
+			return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+				"private_key_jwt requires a valid tee key handle (keyRef)").
+				WithHint("re-run: lark-cli config init --new --private-key-jwt")
+		}
+	} else {
+		if err := ValidateSecretKeyMatch(app.AppId, app.AppSecret); err != nil {
+			return nil, errs.NewConfigError(errs.SubtypeNotConfigured,
+				"appId and appSecret keychain key are out of sync").
+				WithHint("%s", err.Error()).
+				WithCause(err)
+		}
+		secret, err = ResolveSecretInput(app.AppSecret, kc)
+		if err != nil {
+			if errs.IsTyped(err) {
+				return nil, err
+			}
+			subtype := errs.SubtypeNotConfigured
+			if isMalformedConfigError(err) {
+				subtype = errs.SubtypeInvalidConfig
+			}
+			return nil, errs.NewConfigError(subtype, "%s", err.Error()).WithCause(err)
+		}
 	}
 
-	secret, err := ResolveSecretInput(app.AppSecret, kc)
-	if err != nil {
-		if errs.IsTyped(err) {
-			return nil, err
-		}
-		subtype := errs.SubtypeNotConfigured
-		if isMalformedConfigError(err) {
-			subtype = errs.SubtypeInvalidConfig
-		}
-		return nil, errs.NewConfigError(subtype, "%s", err.Error()).WithCause(err)
-	}
 	cfg := &CliConfig{
 		ProfileName: app.ProfileName(),
 		AppID:       app.AppId,
@@ -300,6 +344,10 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 		Brand:       ParseBrand(string(app.Brand)),
 		Lang:        app.Lang,
 		DefaultAs:   app.DefaultAs,
+		AuthMethod:  app.AuthMethod,
+	}
+	if app.KeyRef != nil {
+		cfg.KeyLabel = app.KeyRef.ID
 	}
 	if len(app.Users) > 0 {
 		cfg.UserOpenId = app.Users[0].UserOpenId

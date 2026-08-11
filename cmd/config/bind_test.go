@@ -274,6 +274,48 @@ func TestConfigBindRun_OmitLangPreservesPrior(t *testing.T) {
 	}
 }
 
+func TestConfigBindRun_PreservesKeylessSignerCommand(t *testing.T) {
+	saveWorkspace(t)
+	configDir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
+	hermesHome := t.TempDir()
+	t.Setenv("HERMES_HOME", hermesHome)
+	if err := os.WriteFile(filepath.Join(hermesHome, ".env"), []byte("FEISHU_APP_ID=cli_abc\nFEISHU_APP_SECRET=test-secret"), 0600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	hermesDir := filepath.Join(configDir, "hermes")
+	if err := os.MkdirAll(hermesDir, 0700); err != nil {
+		t.Fatalf("mkdir workspace config: %v", err)
+	}
+	previous := &core.MultiAppConfig{
+		KeylessSignerCmd: `/usr/local/bin/lark-keyless-signer`,
+		Apps: []core.AppConfig{{
+			AppId: "cli_old", AppSecret: core.PlainSecret("old-secret"), Brand: core.BrandFeishu,
+		}},
+	}
+	data, err := json.Marshal(previous)
+	if err != nil {
+		t.Fatalf("marshal previous config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(hermesDir, "config.json"), data, 0600); err != nil {
+		t.Fatalf("write previous config: %v", err)
+	}
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f, Source: "hermes"}); err != nil {
+		t.Fatalf("configBindRun() error = %v", err)
+	}
+
+	multi, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig() error = %v", err)
+	}
+	if multi.KeylessSignerCmd != previous.KeylessSignerCmd {
+		t.Fatalf("KeylessSignerCmd = %q, want preserved %q", multi.KeylessSignerCmd, previous.KeylessSignerCmd)
+	}
+}
+
 // TestPriorLang_RespectsCurrentApp guards against priorLang scanning all apps
 // and silently returning a non-current profile's Lang. In a multi-profile
 // workspace (set up via `profile add` before a re-bind), the active profile's
