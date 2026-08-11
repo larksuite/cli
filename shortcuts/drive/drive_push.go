@@ -5,7 +5,6 @@ package drive
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -30,23 +29,19 @@ const (
 )
 
 type drivePushItem struct {
-	RelPath           string   `json:"rel_path"`
-	FileToken         string   `json:"file_token,omitempty"`
-	Action            string   `json:"action"`
-	Version           string   `json:"version,omitempty"`
-	SizeBytes         int64    `json:"size_bytes,omitempty"`
-	Error             string   `json:"error,omitempty"`
-	Hint              string   `json:"hint,omitempty"`
-	Phase             string   `json:"phase,omitempty"`
-	ErrorClass        string   `json:"error_class,omitempty"`
-	Code              int      `json:"code,omitempty"`
-	Subtype           string   `json:"subtype,omitempty"`
-	Retryable         *bool    `json:"retryable,omitempty"`
-	RetryAfterSeconds int      `json:"retry_after_seconds,omitempty"`
-	LogID             string   `json:"log_id,omitempty"`
-	Troubleshooter    string   `json:"troubleshooter,omitempty"`
-	MissingScopes     []string `json:"missing_scopes,omitempty"`
-	ConsoleURL        string   `json:"console_url,omitempty"`
+	RelPath           string `json:"rel_path"`
+	FileToken         string `json:"file_token,omitempty"`
+	Action            string `json:"action"`
+	Version           string `json:"version,omitempty"`
+	SizeBytes         int64  `json:"size_bytes,omitempty"`
+	Error             string `json:"error,omitempty"`
+	Hint              string `json:"hint,omitempty"`
+	Phase             string `json:"phase,omitempty"`
+	ErrorClass        string `json:"error_class,omitempty"`
+	Code              int    `json:"code,omitempty"`
+	Subtype           string `json:"subtype,omitempty"`
+	Retryable         *bool  `json:"retryable,omitempty"`
+	RetryAfterSeconds int    `json:"retry_after_seconds,omitempty"`
 }
 
 type driveBatchFailureDecision struct {
@@ -57,10 +52,6 @@ type driveBatchFailureDecision struct {
 	RetryAfterSeconds int
 	Terminal          bool
 	Hint              string
-	LogID             string
-	Troubleshooter    string
-	MissingScopes     []string
-	ConsoleURL        string
 }
 
 // DrivePush is a one-way, file-level mirror from a local directory onto a
@@ -598,10 +589,6 @@ func drivePushFailedItem(relPath, fileToken, action, phase string, sizeBytes int
 		Subtype:           decision.Subtype,
 		Retryable:         driveBoolPtr(decision.Retryable),
 		RetryAfterSeconds: decision.RetryAfterSeconds,
-		LogID:             decision.LogID,
-		Troubleshooter:    decision.Troubleshooter,
-		MissingScopes:     decision.MissingScopes,
-		ConsoleURL:        decision.ConsoleURL,
 	}
 	return item, decision.Terminal
 }
@@ -620,15 +607,8 @@ func driveClassifyBatchFailure(err error) driveBatchFailureDecision {
 	decision.Subtype = string(problem.Subtype)
 	decision.Retryable = problem.Retryable
 	decision.Hint = problem.Hint
-	decision.LogID = problem.LogID
-	decision.Troubleshooter = problem.Troubleshooter
 	if retryAfter, ok := errs.RetryAfter(err); ok {
 		decision.RetryAfterSeconds = int(retryAfter / time.Second)
-	}
-	var permissionErr *errs.PermissionError
-	if errors.As(err, &permissionErr) && permissionErr != nil {
-		decision.MissingScopes = append([]string(nil), permissionErr.MissingScopes...)
-		decision.ConsoleURL = permissionErr.ConsoleURL
 	}
 
 	switch {
@@ -694,7 +674,7 @@ func driveClassifyBatchFailure(err error) driveBatchFailureDecision {
 		decision.Class = "server_error"
 		decision.Terminal = true
 		if decision.Hint == "" {
-			decision.Hint = "Stop the current push and retry later with bounded exponential backoff; keep log_id for server-side diagnosis."
+			decision.Hint = "Stop the current push and retry later with bounded exponential backoff."
 		}
 	case problem.Subtype == errs.SubtypeFailedPrecondition:
 		decision.Class = "local_file_changed"

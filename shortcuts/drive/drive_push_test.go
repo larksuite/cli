@@ -1304,14 +1304,11 @@ func TestDrivePushAbortsAfterUploadBadGateway(t *testing.T) {
 		},
 	})
 	reg.Register(&httpmock.Stub{
-		Method:  "POST",
-		URL:     "/open-apis/drive/v1/files/upload_all",
-		Status:  http.StatusBadGateway,
-		RawBody: []byte("bad gateway"),
-		Headers: http.Header{
-			"Content-Type": []string{"text/plain"},
-			"X-Tt-Logid":   []string{"push-log-502"},
-		},
+		Method:      "POST",
+		URL:         "/open-apis/drive/v1/files/upload_all",
+		Status:      http.StatusBadGateway,
+		RawBody:     []byte("bad gateway"),
+		ContentType: "text/plain",
 	})
 
 	err := mountAndRunDrive(t, DrivePush, []string{
@@ -1338,7 +1335,7 @@ func TestDrivePushAbortsAfterUploadBadGateway(t *testing.T) {
 	if item["rel_path"] != "a.txt" || item["error_class"] != "server_error" {
 		t.Fatalf("unexpected failed item: %#v", item)
 	}
-	if item["code"] != float64(http.StatusBadGateway) || item["retryable"] != true || item["log_id"] != "push-log-502" {
+	if item["code"] != float64(http.StatusBadGateway) || item["retryable"] != true {
 		t.Fatalf("unexpected gateway failure metadata: %#v", item)
 	}
 	if got, _ := item["hint"].(string); !strings.Contains(got, "Stop the current push") || !strings.Contains(got, "backoff") {
@@ -1614,29 +1611,7 @@ func TestDrivePushAbortsAfterCreateFolderConflict(t *testing.T) {
 	}
 }
 
-func TestDrivePushFailedItemPreservesTypedDiagnostics(t *testing.T) {
-	permissionErr := errs.NewPermissionError(errs.SubtypeAppScopeNotApplied, "scope missing").
-		WithCode(99991672).
-		WithHint("open the developer console").
-		WithLogID("push-log-permission").
-		WithMissingScopes("drive:file:upload").
-		WithConsoleURL("https://open.feishu.cn/app/cli_test/permission")
-	permissionErr.Troubleshooter = "https://open.feishu.cn/document/troubleshoot/push"
-
-	item, terminal := drivePushFailedItem("a.txt", "", "failed", "upload", 1, permissionErr)
-	if !terminal {
-		t.Fatal("app scope failure must be terminal")
-	}
-	if item.Hint != "open the developer console" || item.LogID != "push-log-permission" {
-		t.Fatalf("typed hint/log_id were not preserved: %#v", item)
-	}
-	if item.Troubleshooter != permissionErr.Troubleshooter || item.ConsoleURL != permissionErr.ConsoleURL {
-		t.Fatalf("typed diagnostic URLs were not preserved: %#v", item)
-	}
-	if len(item.MissingScopes) != 1 || item.MissingScopes[0] != "drive:file:upload" {
-		t.Fatalf("missing_scopes were not preserved: %#v", item)
-	}
-
+func TestDrivePushFailedItemPreservesRetryAfter(t *testing.T) {
 	rateErr := errs.NewAPIError(errs.SubtypeRateLimit, "rate limited").
 		WithCode(99991400).
 		WithRetryable().

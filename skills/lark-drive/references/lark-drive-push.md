@@ -120,7 +120,7 @@ lark-cli drive +push --local-dir ./repo --folder-token fldcnxxxxxxxxx \
     {"rel_path": "...", "file_token": "...", "action": "uploaded",       "size_bytes": 0},
     {"rel_path": "...", "file_token": "...", "action": "overwritten",    "version": "...", "size_bytes": 0},
     {"rel_path": "...", "file_token": "...", "action": "skipped",        "size_bytes": 0},
-    {"rel_path": "...",                       "action": "failed",        "size_bytes": 0, "error": "...", "hint": "...", "phase": "upload", "error_class": "...", "code": 0, "subtype": "...", "retryable": false, "retry_after_seconds": 0, "log_id": "...", "troubleshooter": "...", "missing_scopes": ["..."], "console_url": "..."},
+    {"rel_path": "...",                       "action": "failed",        "size_bytes": 0, "error": "...", "hint": "...", "phase": "upload", "error_class": "...", "code": 0, "subtype": "...", "retryable": false, "retry_after_seconds": 0},
     {"rel_path": "...", "file_token": "...", "action": "deleted_remote"},
     {"rel_path": "...", "file_token": "...", "action": "already_deleted"},
     {"rel_path": "...", "file_token": "...", "action": "delete_failed",  "error": "...", "hint": "...", "phase": "delete", "error_class": "...", "code": 0, "subtype": "...", "retryable": false}
@@ -134,7 +134,7 @@ lark-cli drive +push --local-dir ./repo --folder-token fldcnxxxxxxxxx \
 
 `+push` 的失败项带结构化字段，agent 必须优先读 `items[].error_class` / `phase` / `code`，不要只看自然语言 `error` 文本。`summary.aborted=true` 表示命令已经遇到终止性错误并停止后续批处理；这时**不要原样重试**，先修复根因。
 
-失败项会保留上游 typed error 已提供的 `hint`、`log_id`、`troubleshooter`、`retry_after_seconds`，以及权限错误的 `missing_scopes` / `console_url`。`retryable=true` 只表示修复根因或等待后可以再次尝试，不表示应该立即、无限重放整个 push；有 `retry_after_seconds` 时至少等待该时长，否则采用有上限的指数退避和抖动。
+失败项会保留上游 typed error 已提供的 `hint` 和 `retry_after_seconds`。`retryable=true` 只表示修复根因或等待后可以再次尝试，不表示应该立即、无限重放整个 push；有 `retry_after_seconds` 时至少等待该时长，否则采用有上限的指数退避和抖动。
 
 常见终止性错误：
 
@@ -148,7 +148,7 @@ lark-cli drive +push --local-dir ./repo --folder-token fldcnxxxxxxxxx \
 | `parent_sibling_limit` | `1062507` | 目标父文件夹单层子节点数量超过上限 | 停止重试，清理目标目录、换一个 `--folder-token`，或把上传内容拆到多个子目录 |
 | `rate_limited` | `99991400` | 触发频控 | 停止当前批次，退避后再重试 |
 | `conflict` | `1061045` | 同一目标发生资源竞争 | 停止当前批次，避免并发操作同一目标；退避后有限重试 |
-| `server_error` | `1663` / `1061001` / `2200` / HTTP 5xx | Drive 服务端或网关异常 | 停止当前批次，稍后有限重试；保留 `log_id` 便于排查 |
+| `server_error` | `1663` / `1061001` / `2200` / HTTP 5xx | Drive 服务端或网关异常 | 停止当前批次，稍后有限重试 |
 
 非终止但需要解释的状态：
 
