@@ -172,8 +172,8 @@ func TestShortcutsCatalog(t *testing.T) {
 		"+data-query",
 		"+form-create", "+form-delete", "+form-list", "+form-update", "+form-get", "+form-detail",
 		"+form-questions-create", "+form-questions-delete", "+form-questions-update", "+form-questions-list",
-		"+form-submit",
-		"+dashboard-list", "+dashboard-get", "+dashboard-create", "+dashboard-update", "+dashboard-delete", "+dashboard-arrange",
+		"+form-submit", "+form-share-get", "+form-share-update",
+		"+dashboard-list", "+dashboard-get", "+dashboard-share-get", "+dashboard-share-update", "+dashboard-create", "+dashboard-update", "+dashboard-delete", "+dashboard-arrange",
 		"+dashboard-block-list", "+dashboard-block-get", "+dashboard-block-get-data", "+dashboard-block-create", "+dashboard-block-update", "+dashboard-block-delete",
 		"+workspace-create", "+workspace-entity-list", "+workspace-move-in",
 		"+app-create", "+app-get",
@@ -187,6 +187,43 @@ func TestShortcutsCatalog(t *testing.T) {
 		if shortcuts[index].Command != command {
 			t.Fatalf("command[%d]=%q want=%q", index, shortcuts[index].Command, command)
 		}
+	}
+}
+
+func TestShareManagementShortcutScopes(t *testing.T) {
+	tests := []struct {
+		name   string
+		scopes []string
+		want   []string
+	}{
+		{
+			name:   "dashboard get requires update scope",
+			scopes: BaseDashboardShareGet.Scopes,
+			want:   []string{"base:dashboard:update"},
+		},
+		{
+			name:   "dashboard update requires update scope",
+			scopes: BaseDashboardShareUpdate.Scopes,
+			want:   []string{"base:dashboard:update"},
+		},
+		{
+			name:   "form get requires update scope",
+			scopes: BaseFormShareGet.Scopes,
+			want:   []string{"base:form:update"},
+		},
+		{
+			name:   "form update requires update scope",
+			scopes: BaseFormShareUpdate.Scopes,
+			want:   []string{"base:form:update"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !reflect.DeepEqual(tt.scopes, tt.want) {
+				t.Fatalf("Scopes=%v want=%v", tt.scopes, tt.want)
+			}
+		})
 	}
 }
 
