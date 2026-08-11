@@ -285,7 +285,7 @@ var MinutesDetail = common.Shortcut{
 	Description: "Query minute details with selective artifact flags (summary, todo, chapter, transcript, keyword)",
 	Risk:        "read",
 	Scopes:      []string{"minutes:minutes.basic:read", "minutes:minutes.artifacts:read"},
-	AuthTypes:   []string{"user"},
+	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "minute-tokens", Desc: "minute tokens, comma-separated for batch", Required: true},

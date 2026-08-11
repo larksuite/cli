@@ -20,7 +20,9 @@ metadata:
 
 ## 身份
 
-本 skill 默认使用 `--as user`。`meeting get`、`+meeting-list-active`、`+meeting-events` 和 `+meeting-message-send` 也支持 `--as bot`；`+meeting-events` 和 `+meeting-message-send` 必须沿用 `meeting_id` 的来源身份。`+search` 仅支持 `--as user`。
+身份是跨命令工作流的状态，不是单条命令的局部参数：一旦某个 ID（如 `note_id`、`minute_token`）由某个身份取得，后续消费它的命令（包括跨到 lark-minutes / lark-note / lark-doc）必须显式沿用相同 `--as`；不要依赖 profile 默认身份，也不要为绕过权限错误切换身份。完整规则见 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) 的「身份延续」。
+
+本 skill 默认使用 `--as user`。`+detail`、`+recording`、`meeting get`、`+meeting-list-active`、`+meeting-events` 和 `+meeting-message-send` 也支持 `--as bot`；`+meeting-events` 和 `+meeting-message-send` 必须沿用 `meeting_id` 的来源身份。`+search` 仅支持 `--as user`。
 
 ```bash
 # BAD — 查昨天的会议用 calendar，会漏掉即时会议
@@ -178,6 +180,7 @@ Meeting (视频会议)
 > - 已有 `doc_token` 且目标是读正文 → [lark-doc](../lark-doc/SKILL.md)。
 > - 只有自然语言纪要标题 → 文档搜索 / Docx 正文读取；有显式 `vc-node-id` 才进入 [lark-note](../lark-note/SKILL.md)。
 > - 从日程出发（只有 `event_id`）→ 先走 [`calendar +meeting`](../lark-calendar/references/lark-calendar-meeting.md) 拿到 `meeting_id` 或 `meeting_note`，再按上述路径继续。
+> - **跨到 lark-minutes / lark-note / lark-doc 时必须沿用来源身份**：例如 `vc +detail --as bot` 拿到的 `note_id`，下一步 `note +detail --note-id <note_id>` 也要显式加 `--as bot`；不要省略 `--as` 让身份被 profile 默认值悄悄换成 user（或反过来）。`note +transcript` 目前仅支持 `--as user`——如果 `note +detail --as bot` 返回 `note_display_type=unified`，停在这一步向用户说明"该纪要的逐字稿只能以 user 身份读取"，只有用户明确同意才切到 `--as user`，不要静默切换。
 
 ## API Resources
 

@@ -99,6 +99,8 @@ lark-cli vc +search --start "<YYYY-MM-DD>" --end "<YYYY-MM-DD>" --format json
 
 #### Step 2: 根据 meeting_id 查询产物
 
+> **身份延续**：`vc +detail` 支持 `--as user` / `--as bot`。用哪个身份取到 `note_id` / `minute_token`，Step 2、Step 3 后续每一条命令（`note +detail`、`minutes +detail`、`docs +fetch`）都要显式带上**同一个** `--as`；不要省略让身份被 profile 默认值悄悄换掉。完整规则见 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 的「身份延续」。
+
 ##### 获取会议产物
 
 当用户提供 `meeting_id` 并需要会议产物时，先用 `vc +detail` 拿到 `note_id` 和 `minute_token`：
@@ -111,7 +113,7 @@ lark-cli vc +detail --meeting-ids '<meeting_id1>,<meeting_id2>'
 
 **优先路径：通过 `note_id` 获取纪要产物**
 
-如果用户未明确要求使用妙记，且返回了 `note_id`，**优先**使用 `note +detail` 获取纪要文档的 token 信息：
+如果用户未明确要求使用妙记，且返回了 `note_id`，**优先**使用 `note +detail` 获取纪要文档的 token 信息（沿用上一步的 `--as`）：
 
 ```bash
 lark-cli note +detail --note-id <note_id>
@@ -149,6 +151,9 @@ lark-cli docs +fetch --doc <note_doc_token> --doc-format markdown
 lark-cli docs +fetch --doc <verbatim_doc_token> --doc-format markdown
 
 # note_display_type=unified：逐字稿不是独立文档，按 note_id 拉取
+# ⚠️ note +transcript 目前仅支持 --as user；如果上面的 note_id 是通过 --as bot
+#    拿到的，在这一步停下来向用户说明"该纪要逐字稿只能以 user 身份读取"，
+#    只有用户明确同意才切到 --as user，不要静默切换身份重试
 lark-cli note +transcript --note-id <note_id>
 ```
 

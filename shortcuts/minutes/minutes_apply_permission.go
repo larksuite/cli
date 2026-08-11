@@ -21,7 +21,7 @@ var MinutesApplyPermission = common.Shortcut{
 	Description: "Apply for view or edit permission on a minute",
 	Risk:        "write",
 	Scopes:      []string{"minutes:permission:apply"},
-	AuthTypes:   []string{"user"},
+	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "minute-token", Desc: "minute token", Required: true},
 		{Name: "perm", Desc: "permission to apply for", Required: true, Enum: []string{"view", "edit"}},
