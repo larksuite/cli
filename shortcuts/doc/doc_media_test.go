@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -24,6 +25,8 @@ import (
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+const expectedDocMediaRateLimitHint = "the request was rate limited; stop immediate retries and retry later using exponential backoff with jitter"
 
 func docsTestConfigWithAppID(appID string) *core.CliConfig {
 	return &core.CliConfig{
@@ -737,10 +740,8 @@ func TestDocMediaDownloadHTTP429SuggestsBackoff(t *testing.T) {
 	if !ok || problem.Category != errs.CategoryNetwork || problem.Code != http.StatusTooManyRequests {
 		t.Fatalf("problem=%+v ok=%v, want network HTTP 429", problem, ok)
 	}
-	for _, want := range []string{"stop immediate retries", "retry later with exponential backoff"} {
-		if !strings.Contains(problem.Hint, want) {
-			t.Fatalf("hint=%q, want %q", problem.Hint, want)
-		}
+	if problem.Hint != expectedDocMediaRateLimitHint {
+		t.Fatalf("hint=%q, want generic rate-limit hint %q", problem.Hint, expectedDocMediaRateLimitHint)
 	}
 	if strings.Contains(problem.Hint, "1 minute") {
 		t.Fatalf("hint=%q, want no fixed retry duration", problem.Hint)
@@ -774,13 +775,45 @@ func TestDocMediaDownloadExportAuthRateLimitPreservesAPIErrorAndSuggestsBackoff(
 	if problem.LogID != "log-doc-auth-limited" || !problem.Retryable {
 		t.Fatalf("problem=%+v, want preserved log_id and retryable", problem)
 	}
-	for _, want := range []string{"stop immediate retries", "retry later with exponential backoff"} {
-		if !strings.Contains(problem.Hint, want) {
-			t.Fatalf("hint=%q, want %q", problem.Hint, want)
-		}
+	if problem.Hint != expectedDocMediaRateLimitHint {
+		t.Fatalf("hint=%q, want generic rate-limit hint %q", problem.Hint, expectedDocMediaRateLimitHint)
 	}
 	if strings.Contains(problem.Hint, "1 minute") {
 		t.Fatalf("hint=%q, want no fixed retry duration", problem.Hint)
+	}
+}
+
+func TestDocMediaDownloadExportAuthAppScopeAddsStopRetryingHint(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-auth-scope-app"))
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/drive/v1/permissions/media_auth_scope/members/auth",
+		Body: map[string]interface{}{
+			"code": 99991672,
+			"msg":  "app scope not enabled",
+			"error": map[string]interface{}{
+				"permission_violations": []interface{}{
+					map[string]interface{}{"subject": "docs:document.media:download"},
+				},
+			},
+		},
+	})
+
+	withDocsWorkingDir(t, t.TempDir())
+	err := mountAndRunDocs(t, DocMediaDownload, []string{
+		"+media-download",
+		"--token", "media_auth_scope",
+		"--output", "blocked.bin",
+		"--as", "bot",
+	}, f, nil)
+	var permissionErr *errs.PermissionError
+	if !errors.As(err, &permissionErr) || permissionErr.Code != 99991672 || permissionErr.Subtype != errs.SubtypeAppScopeNotApplied {
+		t.Fatalf("error=%T %v, want authorization/app_scope_not_applied/99991672", err, err)
+	}
+	for _, want := range []string{"developer console", "stop retrying now", "retry only after", "approved and enabled"} {
+		if !strings.Contains(permissionErr.Hint, want) {
+			t.Fatalf("hint=%q, want %q", permissionErr.Hint, want)
+		}
 	}
 }
 
@@ -798,13 +831,104 @@ func TestDocMediaDownloadTypedRateLimitSuggestsBackoff(t *testing.T) {
 	if problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeRateLimit || problem.Code != 99991400 || !problem.Retryable {
 		t.Fatalf("problem=%+v, want preserved API rate-limit metadata", problem)
 	}
-	for _, want := range []string{"upstream hint", "stop immediate retries", "retry later with exponential backoff"} {
-		if !strings.Contains(problem.Hint, want) {
-			t.Fatalf("hint=%q, want %q", problem.Hint, want)
-		}
+	if want := "upstream hint\n" + expectedDocMediaRateLimitHint; problem.Hint != want {
+		t.Fatalf("hint=%q, want %q", problem.Hint, want)
 	}
 	if strings.Contains(problem.Hint, "1 minute") {
 		t.Fatalf("hint=%q, want no fixed retry duration", problem.Hint)
+	}
+}
+
+func TestDocMediaStreamCommandsClassifyLarkRecoveryErrors(t *testing.T) {
+	commands := []struct {
+		name       string
+		shortcut   common.Shortcut
+		args       []string
+		endpoint   string
+		exportAuth bool
+	}{
+		{
+			name:       "media download",
+			shortcut:   DocMediaDownload,
+			args:       []string{"+media-download", "--token", "media_stream_error", "--output", "blocked.bin", "--as", "bot"},
+			endpoint:   "/open-apis/drive/v1/medias/media_stream_error/download",
+			exportAuth: true,
+		},
+		{
+			name:     "media preview",
+			shortcut: DocMediaPreview,
+			args:     []string{"+media-preview", "--token", "media_stream_error", "--output", "blocked.bin", "--as", "bot"},
+			endpoint: "/open-apis/drive/v1/medias/media_stream_error/preview_download",
+		},
+	}
+	errorsToClassify := []struct {
+		name string
+		code int
+	}{
+		{name: "app scope not applied", code: 99991672},
+		{name: "rate limited", code: 99991400},
+	}
+
+	for _, command := range commands {
+		for _, apiFailure := range errorsToClassify {
+			t.Run(command.name+"/"+apiFailure.name, func(t *testing.T) {
+				f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-stream-error-app"))
+				if command.exportAuth {
+					registerDocMediaExportAuth(reg, "media_stream_error", true)
+				}
+				reg.Register(&httpmock.Stub{
+					Method: http.MethodGet,
+					URL:    command.endpoint,
+					Status: http.StatusBadRequest,
+					Body: map[string]interface{}{
+						"code": apiFailure.code,
+						"msg":  "media stream API error",
+						"error": map[string]interface{}{
+							"permission_violations": []interface{}{
+								map[string]interface{}{"subject": "docs:document.media:download"},
+							},
+						},
+					},
+				})
+
+				withDocsWorkingDir(t, t.TempDir())
+				err := mountAndRunDocs(t, command.shortcut, command.args, f, nil)
+				problem, ok := errs.ProblemOf(err)
+				if !ok || problem.Code != apiFailure.code {
+					t.Fatalf("problem=%+v ok=%v, want code=%d", problem, ok, apiFailure.code)
+				}
+				var streamErr *errs.NetworkError
+				if !errors.As(err, &streamErr) || streamErr.Code != http.StatusBadRequest {
+					t.Fatalf("error chain=%T %v, want original HTTP 400 network error preserved as cause", err, err)
+				}
+
+				switch apiFailure.code {
+				case 99991672:
+					var permissionErr *errs.PermissionError
+					if !errors.As(err, &permissionErr) || permissionErr.Subtype != errs.SubtypeAppScopeNotApplied {
+						t.Fatalf("error=%T %v, want authorization/app_scope_not_applied", err, err)
+					}
+					if len(permissionErr.MissingScopes) != 1 || permissionErr.MissingScopes[0] != "docs:document.media:download" {
+						t.Fatalf("missing_scopes=%v, want docs:document.media:download", permissionErr.MissingScopes)
+					}
+					if permissionErr.ConsoleURL == "" || !strings.Contains(permissionErr.Hint, "developer console") {
+						t.Fatalf("console_url=%q hint=%q, want developer-console recovery", permissionErr.ConsoleURL, permissionErr.Hint)
+					}
+					for _, want := range []string{"stop retrying now", "retry only after", "approved and enabled"} {
+						if !strings.Contains(permissionErr.Hint, want) {
+							t.Fatalf("hint=%q, want %q", permissionErr.Hint, want)
+						}
+					}
+				case 99991400:
+					if problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeRateLimit || !problem.Retryable {
+						t.Fatalf("problem=%+v, want retryable api/rate_limit", problem)
+					}
+					if problem.Hint != expectedDocMediaRateLimitHint {
+						t.Fatalf("hint=%q, want generic rate-limit hint %q", problem.Hint, expectedDocMediaRateLimitHint)
+					}
+				}
+			})
+		}
 	}
 }
 

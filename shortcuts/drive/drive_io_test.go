@@ -32,6 +32,8 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+const expectedDriveFileReadRateLimitHint = "the request was rate limited; stop immediate retries and retry later using exponential backoff with jitter"
+
 type driveRoundTripFunc func(*http.Request) (*http.Response, error)
 
 // RoundTrip delegates an HTTP request to the test transport function.
@@ -1827,10 +1829,8 @@ func TestDriveDownloadHTTP429SuggestsBackoff(t *testing.T) {
 	if !ok || problem.Category != errs.CategoryNetwork || problem.Code != http.StatusTooManyRequests {
 		t.Fatalf("problem=%+v ok=%v, want network HTTP 429", problem, ok)
 	}
-	for _, want := range []string{"stop immediate retries", "retry later with exponential backoff"} {
-		if !strings.Contains(problem.Hint, want) {
-			t.Fatalf("hint=%q, want %q", problem.Hint, want)
-		}
+	if problem.Hint != expectedDriveFileReadRateLimitHint {
+		t.Fatalf("hint=%q, want generic rate-limit hint %q", problem.Hint, expectedDriveFileReadRateLimitHint)
 	}
 	if strings.Contains(problem.Hint, "1 minute") {
 		t.Fatalf("hint=%q, want no fixed retry duration", problem.Hint)
@@ -1864,13 +1864,45 @@ func TestDriveDownloadExportAuthRateLimitPreservesAPIErrorAndSuggestsBackoff(t *
 	if problem.LogID != "log-drive-auth-limited" || !problem.Retryable {
 		t.Fatalf("problem=%+v, want preserved log_id and retryable", problem)
 	}
-	for _, want := range []string{"stop immediate retries", "retry later with exponential backoff"} {
-		if !strings.Contains(problem.Hint, want) {
-			t.Fatalf("hint=%q, want %q", problem.Hint, want)
-		}
+	if problem.Hint != expectedDriveFileReadRateLimitHint {
+		t.Fatalf("hint=%q, want generic rate-limit hint %q", problem.Hint, expectedDriveFileReadRateLimitHint)
 	}
 	if strings.Contains(problem.Hint, "1 minute") {
 		t.Fatalf("hint=%q, want no fixed retry duration", problem.Hint)
+	}
+}
+
+func TestDriveDownloadExportAuthAppScopeAddsStopRetryingHint(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/drive/v1/permissions/file_auth_scope/members/auth",
+		Body: map[string]interface{}{
+			"code": 99991672,
+			"msg":  "app scope not enabled",
+			"error": map[string]interface{}{
+				"permission_violations": []interface{}{
+					map[string]interface{}{"subject": "drive:file:download"},
+				},
+			},
+		},
+	})
+
+	withDriveWorkingDir(t, t.TempDir())
+	err := mountAndRunDrive(t, DriveDownload, []string{
+		"+download",
+		"--file-token", "file_auth_scope",
+		"--output", "blocked.bin",
+		"--as", "bot",
+	}, f, nil)
+	var permissionErr *errs.PermissionError
+	if !errors.As(err, &permissionErr) || permissionErr.Code != 99991672 || permissionErr.Subtype != errs.SubtypeAppScopeNotApplied {
+		t.Fatalf("error=%T %v, want authorization/app_scope_not_applied/99991672", err, err)
+	}
+	for _, want := range []string{"developer console", "stop retrying now", "retry only after", "approved and enabled"} {
+		if !strings.Contains(permissionErr.Hint, want) {
+			t.Fatalf("hint=%q, want %q", permissionErr.Hint, want)
+		}
 	}
 }
 
@@ -1888,13 +1920,88 @@ func TestDriveDownloadTypedRateLimitSuggestsBackoff(t *testing.T) {
 	if problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeRateLimit || problem.Code != 99991400 || !problem.Retryable {
 		t.Fatalf("problem=%+v, want preserved API rate-limit metadata", problem)
 	}
-	for _, want := range []string{"upstream hint", "stop immediate retries", "retry later with exponential backoff"} {
-		if !strings.Contains(problem.Hint, want) {
-			t.Fatalf("hint=%q, want %q", problem.Hint, want)
-		}
+	if want := "upstream hint\n" + expectedDriveFileReadRateLimitHint; problem.Hint != want {
+		t.Fatalf("hint=%q, want %q", problem.Hint, want)
 	}
 	if strings.Contains(problem.Hint, "1 minute") {
 		t.Fatalf("hint=%q, want no fixed retry duration", problem.Hint)
+	}
+}
+
+func TestDriveDownloadFinalStreamClassifiesLarkRecoveryErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		code int
+	}{
+		{name: "app scope not applied", code: 99991672},
+		{name: "rate limited", code: 99991400},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+			registerDriveDownloadExportAuth(reg, "file_stream_error", true)
+			reg.Register(&httpmock.Stub{
+				Method: http.MethodGet,
+				URL:    "/open-apis/drive/v1/files/file_stream_error/download",
+				Status: http.StatusBadRequest,
+				Body: map[string]interface{}{
+					"code": tt.code,
+					"msg":  "stream API error",
+					"error": map[string]interface{}{
+						"permission_violations": []interface{}{
+							map[string]interface{}{"subject": "drive:file:download"},
+						},
+					},
+				},
+				Headers: http.Header{
+					"Content-Type":              []string{"application/json"},
+					larkcore.HttpHeaderKeyLogId: []string{"log-drive-stream"},
+				},
+			})
+
+			withDriveWorkingDir(t, t.TempDir())
+			err := mountAndRunDrive(t, DriveDownload, []string{
+				"+download",
+				"--file-token", "file_stream_error",
+				"--output", "blocked.bin",
+				"--as", "bot",
+			}, f, nil)
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Code != tt.code || problem.LogID != "log-drive-stream" {
+				t.Fatalf("problem=%+v ok=%v, want code=%d and stream log id", problem, ok, tt.code)
+			}
+			var streamErr *errs.NetworkError
+			if !errors.As(err, &streamErr) || streamErr.Code != http.StatusBadRequest {
+				t.Fatalf("error chain=%T %v, want original HTTP 400 network error preserved as cause", err, err)
+			}
+
+			switch tt.code {
+			case 99991672:
+				var permissionErr *errs.PermissionError
+				if !errors.As(err, &permissionErr) || permissionErr.Subtype != errs.SubtypeAppScopeNotApplied {
+					t.Fatalf("error=%T %v, want authorization/app_scope_not_applied", err, err)
+				}
+				if len(permissionErr.MissingScopes) != 1 || permissionErr.MissingScopes[0] != "drive:file:download" {
+					t.Fatalf("missing_scopes=%v, want drive:file:download", permissionErr.MissingScopes)
+				}
+				if permissionErr.ConsoleURL == "" || !strings.Contains(permissionErr.Hint, "developer console") {
+					t.Fatalf("console_url=%q hint=%q, want developer-console recovery", permissionErr.ConsoleURL, permissionErr.Hint)
+				}
+				for _, want := range []string{"stop retrying now", "retry only after", "approved and enabled"} {
+					if !strings.Contains(permissionErr.Hint, want) {
+						t.Fatalf("hint=%q, want %q", permissionErr.Hint, want)
+					}
+				}
+			case 99991400:
+				if problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeRateLimit || !problem.Retryable {
+					t.Fatalf("problem=%+v, want retryable api/rate_limit", problem)
+				}
+				if problem.Hint != expectedDriveFileReadRateLimitHint {
+					t.Fatalf("hint=%q, want generic rate-limit hint %q", problem.Hint, expectedDriveFileReadRateLimitHint)
+				}
+			}
+		})
 	}
 }
 

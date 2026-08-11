@@ -94,6 +94,7 @@ var DocMediaDownload = common.Shortcut{
 			ApiPath:    apiPath,
 		})
 		if err != nil {
+			err = classifyDocMediaStreamError(runtime, err)
 			return withDocMediaDownloadRecoveryHint(wrapDocNetworkErr(err, "download failed: %v", err), mediaType)
 		}
 		defer resp.Body.Close()

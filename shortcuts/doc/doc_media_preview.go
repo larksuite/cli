@@ -65,7 +65,8 @@ var DocMediaPreview = common.Shortcut{
 			},
 		})
 		if err != nil {
-			return wrapDocNetworkErr(err, "preview failed: %v", err)
+			err = classifyDocMediaStreamError(runtime, err)
+			return withDocMediaPreviewRecoveryHint(wrapDocNetworkErr(err, "preview failed: %v", err))
 		}
 		defer resp.Body.Close()
 
