@@ -244,11 +244,11 @@ func buildConvertResult(convertType string, ids []string, resp map[string]interf
 		if !ok {
 			continue
 		}
-		src := common.GetString(item, "source_id")
+		src := common.GetStringLoose(item, "source_id")
 		if src == "" {
 			continue
 		}
-		returned[src] = append(returned[src], common.GetString(item, "target_id"))
+		returned[src] = append(returned[src], common.GetStringLoose(item, "target_id"))
 	}
 
 	items := make([]idConvertItem, 0, len(ids))

@@ -307,7 +307,9 @@ func TestAppsUserIDConvert_InvalidConvertType(t *testing.T) {
 // resolveConvertType is the internal mapping used by Execute/DryRun. Table-drive
 // every direction so each --convert-type → id_convert_type mapping (10/11/20/21/40)
 // is directly protected; the HTTP tests do not assert the request body. Also cover
-// the empty-input hint wording (pipe-joined allowed list).
+// both error branches: the empty-input hint wording (pipe-joined allowed list) and
+// the non-empty "not a valid direction" message the runner's enum gate normally
+// preempts.
 func TestResolveConvertType(t *testing.T) {
 	cases := []struct {
 		flag string
@@ -332,6 +334,19 @@ func TestResolveConvertType(t *testing.T) {
 	ve := requireConvertValidation(t, err)
 	if ve.Param != "--convert-type" || !strings.Contains(ve.Hint, "|") {
 		t.Fatalf("empty convert-type: param=%q hint=%q", ve.Param, ve.Hint)
+	}
+
+	// A non-empty bad value takes resolveConvertType's other branch. The runner's
+	// enum gate normally rejects this first, so this branch is only reachable by a
+	// direct caller (DryRun/Execute call resolveConvertType themselves) — exercise
+	// it so the distinct "not a valid direction" wording stays covered, not dead.
+	_, err = resolveConvertType("bogus")
+	ve = requireConvertValidation(t, err)
+	if ve.Param != "--convert-type" {
+		t.Fatalf("bad convert-type: param=%q, want --convert-type", ve.Param)
+	}
+	if !strings.Contains(ve.Message, "bogus") || !strings.Contains(ve.Message, "not a valid direction") {
+		t.Fatalf("bad convert-type message should name the value and reason: %q", ve.Message)
 	}
 }
 
@@ -407,6 +422,42 @@ func TestAppsUserIDConvert_WholeBatchRejected(t *testing.T) {
 	}
 	if p.LogID != "logid-xyz" {
 		t.Fatalf("log_id=%q, want logid-xyz", p.LogID)
+	}
+}
+
+// Numeric JSON IDs must be stringified, not silently coerced to "". Responses
+// decode with json.Number (client.ParseJSONResponse uses dec.UseNumber()), so a
+// server that emits source_id/target_id as bare numbers — plausible for the
+// numeric Miaoda user_id form — would, under a strict string assertion, drop the
+// source_id (→ false not_found) and blank the target_id (→ false success). This
+// asserts the loose reader keeps such rows intact with their literal digits.
+func TestAppsUserIDConvert_NumericJSONIDs(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/directory/user/id_convert",
+		// RawBody so the numbers stay bare in the wire JSON and decode as
+		// json.Number, exactly as the live endpoint would deliver them.
+		RawBody: []byte(`{"code":0,"data":{"items":[{"source_id":1234567890123456,"target_id":700123456789}]}}`),
+	})
+
+	if err := runAppsShortcut(t, AppsUserIDConvert,
+		[]string{"+user-id-convert", "--convert-type", "miaoda-to-feishu-user-id", "--ids", "1234567890123456", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	env := decodeIDConvert(t, stdout.String())
+	if len(env.Data.Missed) != 0 {
+		t.Fatalf("numeric source_id was dropped → false not_found: %+v", env.Data.Missed)
+	}
+	if len(env.Data.Items) != 1 {
+		t.Fatalf("want one resolved item, got: %+v", env.Data.Items)
+	}
+	if env.Data.Items[0].SourceID != "1234567890123456" {
+		t.Fatalf("source_id = %q, want the literal digits (no float rounding)", env.Data.Items[0].SourceID)
+	}
+	if env.Data.Items[0].TargetID != "700123456789" {
+		t.Fatalf("target_id = %q, want literal digits, not blank/rounded", env.Data.Items[0].TargetID)
 	}
 }
 

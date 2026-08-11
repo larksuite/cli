@@ -4,6 +4,7 @@
 package common
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -37,6 +38,39 @@ func TestGetString(t *testing.T) {
 			got := GetString(m, tt.keys...)
 			if got != tt.want {
 				t.Errorf("GetString() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetStringLoose(t *testing.T) {
+	m := map[string]interface{}{
+		"quoted":  "ou_abc123",
+		"jsonNum": json.Number("1234567890123456"), // the production path: dec.UseNumber()
+		"i64":     int64(700123456789),
+		"f":       float64(42),
+		"nested": map[string]interface{}{
+			"num": json.Number("999"),
+		},
+	}
+
+	tests := []struct {
+		name string
+		keys []string
+		want string
+	}{
+		{"quoted string", []string{"quoted"}, "ou_abc123"},
+		{"json.Number keeps full precision", []string{"jsonNum"}, "1234567890123456"},
+		{"int64", []string{"i64"}, "700123456789"},
+		{"float64 no scientific notation", []string{"f"}, "42"},
+		{"nested json.Number", []string{"nested", "num"}, "999"},
+		{"missing key", []string{"missing"}, ""},
+		{"empty keys", []string{}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := GetStringLoose(m, tt.keys...); got != tt.want {
+				t.Errorf("GetStringLoose(%v) = %q, want %q", tt.keys, got, tt.want)
 			}
 		})
 	}
