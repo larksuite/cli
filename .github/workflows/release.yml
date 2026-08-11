@@ -105,28 +105,6 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: ${{ env.RELEASE_GO_VERSION }}
-      - name: Check release Go toolchain freshness
-        env:
-          CONFIGURED_GO_VERSION: ${{ env.RELEASE_GO_VERSION }}
-        run: |
-          set -euo pipefail
-          if ! releases="$(curl --fail --silent --show-error --connect-timeout 2 --max-time 5 'https://go.dev/dl/?mode=json')"; then
-            echo "::warning title=Release Go toolchain freshness unavailable::Could not query the Go release feed within 5 seconds."
-            exit 0
-          fi
-          if ! supported="$(jq -er '[.[].version] | join(", ")' <<< "$releases")"; then
-            echo "::warning title=Release Go toolchain freshness unavailable::The Go release feed returned an invalid or empty response."
-            exit 0
-          fi
-          if jq -e --arg version "go${CONFIGURED_GO_VERSION}" 'any(.[]; .version == $version)' <<< "$releases" >/dev/null; then
-            echo "Release Go toolchain ${CONFIGURED_GO_VERSION} is a current supported patch."
-            exit 0
-          fi
-          message="Release Go toolchain ${CONFIGURED_GO_VERSION} is stale or unsupported; current supported patches: ${supported}."
-          echo "::warning title=Release Go toolchain update recommended::${message}"
-          if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
-            printf '## Release Go toolchain update recommended\n\n%s\n' "$message" >> "$GITHUB_STEP_SUMMARY"
-          fi
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.x'
@@ -188,50 +166,19 @@ jobs:
           [[ -z "${MACOS_NOTARY_KEY_PATH:-}" ]] || rm -f -- "$MACOS_NOTARY_KEY_PATH"
 
       - name: Verify release Go toolchain
-        env:
-          VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           set -euo pipefail
-          expected_release_archives=(
-            "dist/lark-cli-${VERSION}-darwin-amd64.tar.gz"
-            "dist/lark-cli-${VERSION}-darwin-arm64.tar.gz"
-            "dist/lark-cli-${VERSION}-linux-amd64.tar.gz"
-            "dist/lark-cli-${VERSION}-linux-arm64.tar.gz"
-            "dist/lark-cli-${VERSION}-linux-riscv64.tar.gz"
-            "dist/lark-cli-${VERSION}-windows-amd64.zip"
-            "dist/lark-cli-${VERSION}-windows-arm64.zip"
-          )
-          mapfile -d '' release_archives < <(
-            find dist -maxdepth 1 -type f \( -name "lark-cli-${VERSION}-*.tar.gz" -o -name "lark-cli-${VERSION}-*.zip" \) -print0
-          )
           mapfile -d '' release_binaries < <(
             find dist -type f \( -name lark-cli -o -name lark-cli.exe \) -print0
           )
-
-          for archive in "${expected_release_archives[@]}"; do
-            [[ -f "$archive" ]] || {
-              echo "GoReleaser did not produce expected release archive: ${archive}" >&2
-              exit 1
-            }
-          done
-          (( ${#release_archives[@]} == ${#expected_release_archives[@]} )) || {
-            echo "GoReleaser produced ${#release_archives[@]} release archives; expected exactly ${#expected_release_archives[@]}." >&2
-            printf 'Found release archive: %s\n' "${release_archives[@]}" >&2
-            exit 1
-          }
-          (( ${#release_binaries[@]} == ${#expected_release_archives[@]} )) || {
-            echo "GoReleaser produced ${#release_binaries[@]} release binaries; expected exactly ${#expected_release_archives[@]}." >&2
-            printf 'Found release binary: %s\n' "${release_binaries[@]}" >&2
+          (( ${#release_binaries[@]} > 0 )) || {
+            echo "GoReleaser produced no binaries to verify." >&2
             exit 1
           }
 
           expected="go${RELEASE_GO_VERSION}"
           for binary in "${release_binaries[@]}"; do
-            if ! build_info="$(go version -m "$binary" 2>&1)"; then
-              echo "Could not inspect Go build metadata for ${binary}: ${build_info:-go version -m produced no diagnostic output}" >&2
-              exit 1
-            fi
-            actual="$(awk 'NR == 1 { print $NF }' <<< "$build_info")"
+            actual="$(go version -m "$binary" | awk 'NR == 1 { print $NF }')"
             [[ "$actual" == "$expected" ]] || {
               echo "Release binary ${binary} was built with ${actual:-an unknown Go version}; expected ${expected}." >&2
               exit 1

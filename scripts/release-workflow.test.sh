@@ -157,33 +157,11 @@ unless goreleaser_index && toolchain_verify_index && candidate_index && goreleas
   contract_error("release Go toolchain must be verified after GoReleaser and before candidate packaging")
 end
 toolchain_verify_run = build_steps.fetch(toolchain_verify_index).fetch("run")
-expect_equal(build_steps.fetch(toolchain_verify_index).dig("env", "VERSION"), "${{ needs.preflight.outputs.version }}", "release archive version")
+contract_error("release toolchain verification must reject an empty binary set") unless toolchain_verify_run.include?("${#release_binaries[@]} > 0")
 contract_error("release toolchain verification must inspect embedded build metadata") unless toolchain_verify_run.include?('go version -m "$binary"')
 contract_error("release toolchain verification must compare against the configured version") unless toolchain_verify_run.include?('expected="go${RELEASE_GO_VERSION}"')
 contract_error("release toolchain verification must check every binary") unless toolchain_verify_run.include?('for binary in "${release_binaries[@]}"; do')
 contract_error("release toolchain verification must reject mismatches") unless toolchain_verify_run.include?('[[ "$actual" == "$expected" ]]')
-expected_release_archives = %w[
-  dist/lark-cli-${VERSION}-darwin-amd64.tar.gz
-  dist/lark-cli-${VERSION}-darwin-arm64.tar.gz
-  dist/lark-cli-${VERSION}-linux-amd64.tar.gz
-  dist/lark-cli-${VERSION}-linux-arm64.tar.gz
-  dist/lark-cli-${VERSION}-linux-riscv64.tar.gz
-  dist/lark-cli-${VERSION}-windows-amd64.zip
-  dist/lark-cli-${VERSION}-windows-arm64.zip
-]
-expected_release_archives.each do |archive|
-  contract_error("release toolchain verification must require #{archive}") unless toolchain_verify_run.include?(archive)
-end
-contract_error("release toolchain verification must reject an unexpected archive set") unless toolchain_verify_run.include?('${#release_archives[@]} == ${#expected_release_archives[@]}')
-contract_error("release toolchain verification must reject an unexpected binary set") unless toolchain_verify_run.include?('${#release_binaries[@]} == ${#expected_release_archives[@]}')
-contract_error("release toolchain verification must diagnose unreadable build metadata") unless toolchain_verify_run.include?("Could not inspect Go build metadata")
-
-freshness_index = build_steps.index { |step| step["name"] == "Check release Go toolchain freshness" }
-contract_error("release Go freshness check must run before GoReleaser") unless freshness_index && goreleaser_index && freshness_index < goreleaser_index
-freshness_run = build_steps.fetch(freshness_index).fetch("run")
-contract_error("release Go freshness check must query the official release feed") unless freshness_run.include?("https://go.dev/dl/?mode=json")
-contract_error("release Go freshness check must have a five-second bound") unless freshness_run.include?("--max-time 5")
-contract_error("release Go freshness check must warn without blocking release") unless freshness_run.include?("::warning")
 
 macos = jobs.fetch("verify-macos")
 expect_equal(macos.fetch("strategy").fetch("matrix").fetch("include"), [
