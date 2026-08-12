@@ -77,7 +77,7 @@ Two ways to get the binaries:
 
 ## Thread Expansion (`thread_id`)
 
-`+chat-messages-list` automatically fetches replies for every returned message that has a `thread_id` and attaches them as `thread_replies`. The expansion fetches at most 50 messages per thread and 500 across the result; `thread_has_more: true` means that thread is not complete, and `thread_replies_error: true` means its fetch failed. Use [`im +threads-messages-list`](lark-im-threads-messages-list.md) with the retained `thread_id` to continue or retry:
+In JSON output, a message may contain a `thread_id` (`omt_xxx`) field, which means the message has replies in a thread. Use [`im +threads-messages-list`](lark-im-threads-messages-list.md) to inspect replies in that thread:
 
 ```bash
 lark-cli im +threads-messages-list --thread omt_xxx
@@ -85,22 +85,9 @@ lark-cli im +threads-messages-list --thread omt_xxx
 
 | Scenario | Recommendation |
 |------|------|
-| You need the current page's context | Use `--format pretty`; the automatically expanded replies are nested under each root |
-| `thread_has_more` or `thread_replies_error` is reported | Call `im +threads-messages-list --order asc --page-size 50` for that `thread_id`, then paginate or retry |
-| The user asks for a guaranteed complete thread | Use `im +threads-messages-list --order asc --page-size 50`, then paginate until `has_more=false` |
-
-## Pretty Transcript
-
-`--format pretty` renders the already-fetched result as a conversation transcript:
-
-- Outer messages are separated into blocks and keep `message_id`, optional `thread_id`, and optional `reply_to` for ordinary non-thread replies. Nested replies show only time, sender, content, and reactions.
-- Expanded `thread_replies` are nested below their root; the duplicate root returned by the thread API is removed by matching `message_id`.
-- Message bodies are never truncated but occupy one physical output line. Backslashes, line breaks, carriage returns, and tabs are escaped as `\\`, `\n`, `\r`, and `\t` after a single `>` marker.
-- Recalled messages render as `已撤回`; reactions render from the enriched counts, for example `表情：THUMBSUP×2、DONE×1`.
-- Transport details such as tenant fields, positions, AppLink, localized sender maps, and edit state stay hidden. Use JSON when those fields or a machine-stable shape are required.
-- The footer reports outer-message count, visible thread-reply count, `has_more`, and `page_token`. Thread-level continuation/failure is reported beside the affected root.
-
-`pretty` is a reading format, not a reversible serialization. Continue to use JSON, NDJSON, CSV, or table for programmatic processing.
+| You need context | Call `im +threads-messages-list --order desc --page-size 10` for the discovered thread_id to inspect recent replies |
+| The user asks for the "full discussion" | Use `im +threads-messages-list --order asc --page-size 50`, then paginate if needed |
+| You only need an overview | Skip thread expansion |
 
 ## Output Fields
 
@@ -124,11 +111,6 @@ Each message contains:
 | `updated` | Whether the message has been edited after sending |
 | `mentions` | Array of @mentions in the message; each item contains `{id, key, name}`. Present only when the message contains @mentions |
 | `thread_id` | Thread ID (`omt_xxx`) if the message has replies in a thread. Present only when replies exist |
-| `reply_to` | Parent message ID for an ordinary non-thread reply |
-| `thread_replies` | Automatically expanded thread messages; includes the root in JSON because that is the upstream thread API result |
-| `thread_has_more` | The expanded thread has additional messages beyond the per-thread or total expansion limit |
-| `thread_replies_error` | The best-effort thread fetch failed |
-| `reactions` | Reaction `{counts, details}` when the enrichment API returns data |
 
 ## Pagination (`has_more` / `page_token`)
 
@@ -170,7 +152,7 @@ lark-cli api GET /open-apis/im/v1/messages \
 2. **Prefer `--chat-id` when available:** if the chat_id is already known, use it directly to avoid extra API calls.
 3. **For direct messages:** use `--user-id` to resolve the p2p chat automatically instead of looking it up manually. This requires user identity (`--as user`); with bot identity, resolve the p2p `chat_id` yourself and pass it via `--chat-id`.
 4. **For time ranges:** both ISO 8601 and date-only inputs are supported. Date-only is usually simpler.
-5. **For full readable context:** use `--format pretty` to read complete message bodies and expanded thread replies without OpenAPI transport fields. Use JSON when a program needs stable fields or data not shown in the reading view. Table remains a compact, truncated overview.
+5. **Choose output by task:** use `--format pretty` to read complete conversations with thread replies; use `--format json` for programmatic processing.
 6. **For sender info:** the command already resolves sender names, so you do not need a separate lookup.
 7. **Application/bot identity + named group history:** If the user says "使用应用身份/以 bot 身份" and asks to list or read historical messages for a named group, use bot identity for both steps:
    ```bash
