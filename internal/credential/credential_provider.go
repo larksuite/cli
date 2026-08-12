@@ -113,8 +113,9 @@ func (s defaultTokenSource) TryResolveToken(ctx context.Context, req TokenSpec) 
 	if result.Token == "" {
 		return nil, false, &MalformedTokenResultError{Source: s.Name(), Type: req.Type, Reason: "empty token"}
 	}
-	result.Source = core.CredentialSource(s.CredentialSource())
-	return result, true, nil
+	resultCopy := *result
+	resultCopy.Source = core.CredentialSource(s.CredentialSource())
+	return &resultCopy, true, nil
 }
 
 func (s defaultTokenSource) ResolveIdentityHint(ctx context.Context, acct *Account) (*IdentityHint, error) {
