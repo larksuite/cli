@@ -2,6 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // Package command defines the public contract for build-time command extensions.
+//
+// Business command authors use Definition, Define, and the CommandContext
+// helpers. The Host* types, InspectCommand, InspectDomain and CloneSets are the
+// erased read side that lark-cli's host adapter and commandtest consume. They
+// stay exported because a Command holds its declaration unexported and Go gives
+// a sibling package no way to reach it; business commands never call them.
 package command
 
 import (
@@ -22,7 +28,7 @@ type Definition[Args any, Data any] struct {
 
 // CommandMetadata describes the command name, help, risk, and authorization.
 type CommandMetadata struct {
-	Service       string
+	Service       DomainName
 	Command       string
 	Description   string
 	Risk          Risk

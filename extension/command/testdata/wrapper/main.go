@@ -25,7 +25,7 @@ type readData struct {
 
 var readCommand = command.Define(command.Definition[readArgs, readData]{
 	Metadata: command.CommandMetadata{
-		Service: "im", Command: "+wrapper-read", Description: "Read one wrapper resource", Risk: command.RiskRead,
+		Service: command.DomainIm, Command: "+wrapper-read", Description: "Read one wrapper resource", Risk: command.RiskRead,
 		Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{
 			command.IdentityUser: {RequiredScopes: []string{"im:chat:read"}},
 		}},

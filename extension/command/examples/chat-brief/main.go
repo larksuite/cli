@@ -56,13 +56,13 @@ type chatWire struct {
 // from the real call. User input concatenated into the path goes through
 // PathSegment.
 func chatRequest(args *chatBriefArgs) command.Request {
-	return command.GET("/open-apis/im/v1/chats/" + command.PathSegment(args.ChatID)).
+	return command.GET("/open-apis/im/v1/chats/"+command.PathSegment(args.ChatID)).
 		Set("user_id_type", args.IDType)
 }
 
 var chatBrief = command.Define(command.Definition[chatBriefArgs, chatBriefData]{
 	Metadata: command.CommandMetadata{
-		Service:     "im",
+		Service:     command.DomainIm,
 		Command:     "+chat-brief",
 		Description: "Get a concise chat projection",
 		Risk:        command.RiskRead,
@@ -123,7 +123,7 @@ func chatListRequest(args *chatListArgs) command.Request {
 // framework pagination flags; the Args stay free of paging fields.
 var chatList = command.Define(command.Definition[chatListArgs, command.Page[chatItem]]{
 	Metadata: command.CommandMetadata{
-		Service:     "im",
+		Service:     command.DomainIm,
 		Command:     "+chat-brief-list",
 		Description: "List visible chats",
 		Risk:        command.RiskRead,

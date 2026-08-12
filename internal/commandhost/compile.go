@@ -49,11 +49,11 @@ func CompileSets(sets []command.Set) ([]common.Shortcut, error) {
 		}
 		for commandIndex, declaration := range set.Commands {
 			definition := command.InspectCommand(declaration)
-			if definition.Metadata.Service != domain.Name {
+			if string(definition.Metadata.Service) != domain.Name {
 				return nil, fmt.Errorf("command set %d command %d: Metadata.Service %q does not match domain %q",
 					setIndex+1, commandIndex+1, definition.Metadata.Service, domain.Name)
 			}
-			shortcutPath := definition.Metadata.Service + " " + definition.Metadata.Command
+			shortcutPath := string(definition.Metadata.Service) + " " + definition.Metadata.Command
 			if owner, duplicate := paths[shortcutPath]; duplicate {
 				return nil, fmt.Errorf("command set %d command %d: command path %q conflicts with %s",
 					setIndex+1, commandIndex+1, shortcutPath, owner)
@@ -137,7 +137,7 @@ func convertMetadata(metadata command.CommandMetadata) common.CommandMetadata {
 		identityOrder[index] = common.Identity(identity)
 	}
 	return common.CommandMetadata{
-		Service: metadata.Service, Command: metadata.Command, Description: metadata.Description,
+		Service: string(metadata.Service), Command: metadata.Command, Description: metadata.Description,
 		Risk: common.Risk(metadata.Risk), Hidden: metadata.Hidden, Tips: append([]string(nil), metadata.Tips...),
 		Authorization: common.AuthorizationDefinition{Identities: identities, IdentityOrder: identityOrder},
 	}
