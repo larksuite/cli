@@ -55,6 +55,31 @@ func initWithCache(t *testing.T, embeddedVer, cacheVer string) {
 	InitWithBrand(core.BrandFeishu)
 }
 
+func initWithEmbeddedAndCache(t *testing.T, embedded, cached MergedRegistry) {
+	t.Helper()
+	embeddedData, _ := json.Marshal(embedded)
+	swapEmbeddedMeta(t, embeddedData)
+	tmp := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
+	t.Setenv("LARKSUITE_CLI_REMOTE_META", "on")
+	t.Setenv("LARKSUITE_CLI_META_TTL", "3600")
+
+	cDir := filepath.Join(tmp, "cache")
+	if err := os.MkdirAll(cDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	cachedData, _ := json.Marshal(cached)
+	if err := os.WriteFile(filepath.Join(cDir, "remote_meta.json"), cachedData, 0644); err != nil {
+		t.Fatal(err)
+	}
+	cm := CacheMeta{LastCheckAt: time.Now().Unix(), Version: cached.Version, Brand: "feishu"}
+	metaData, _ := json.Marshal(cm)
+	if err := os.WriteFile(filepath.Join(cDir, "remote_meta.meta.json"), metaData, 0644); err != nil {
+		t.Fatal(err)
+	}
+	InitWithBrand(core.BrandFeishu)
+}
+
 func titleOf(t *testing.T, name string) string {
 	t.Helper()
 	svc, ok := ServiceTyped(name)
@@ -98,5 +123,60 @@ func TestOverlayGate_StubEmbedded_OverlaysRealCache(t *testing.T) {
 	initWithCache(t, "0.0.0", "1.0.0")
 	if got := titleOf(t, "svc"); got != "CACHE" {
 		t.Errorf("stub-embedded baseline: got %q, want CACHE", got)
+	}
+}
+
+func TestOverlayGate_NewerCachePreservesEmbeddedOnlyResources(t *testing.T) {
+	initWithEmbeddedAndCache(t,
+		MergedRegistry{
+			Version: "1.0.0",
+			Services: []meta.Service{{
+				Name:        "mail",
+				Version:     "embedded",
+				Title:       "EMBEDDED",
+				ServicePath: "/open-apis/mail/v1",
+				Resources: map[string]meta.Resource{
+					"user_mailbox.auto_reply": {
+						Methods: map[string]meta.Method{
+							"get": {HTTPMethod: "GET", Path: "user_mailboxes/{user_mailbox_id}/auto_reply"},
+						},
+					},
+				},
+			}},
+		},
+		MergedRegistry{
+			Version: "2.0.0",
+			Services: []meta.Service{{
+				Name:        "mail",
+				Version:     "cache",
+				Title:       "CACHE",
+				ServicePath: "/open-apis/mail/v1",
+				Resources: map[string]meta.Resource{
+					"user_mailbox.messages": {
+						Methods: map[string]meta.Method{
+							"list": {HTTPMethod: "GET", Path: "user_mailboxes/{user_mailbox_id}/messages"},
+						},
+					},
+				},
+			}},
+		},
+	)
+
+	svc, ok := ServiceTyped("mail")
+	if !ok {
+		t.Fatal("mail service not loaded")
+	}
+	if svc.Title != "CACHE" {
+		t.Fatalf("newer cache should still overlay service metadata, title=%q", svc.Title)
+	}
+	if _, ok := svc.Resources["user_mailbox.messages"]; !ok {
+		t.Fatal("expected cache-only resource user_mailbox.messages")
+	}
+	res, ok := svc.Resources["user_mailbox.auto_reply"]
+	if !ok {
+		t.Fatal("expected embedded-only resource user_mailbox.auto_reply to remain executable")
+	}
+	if _, ok := res.Method("get"); !ok {
+		t.Fatal("expected embedded-only auto_reply get method")
 	}
 }
