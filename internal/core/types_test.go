@@ -4,10 +4,23 @@
 package core
 
 import (
+	"context"
 	"net/url"
 	"reflect"
 	"testing"
 )
+
+func TestCredentialSourceContext(t *testing.T) {
+	ctx := WithCredentialSource(context.Background(), CredentialSourceEnv)
+	if source, ok := CredentialSourceFromContext(ctx); !ok || source != CredentialSourceEnv {
+		t.Fatalf("CredentialSourceFromContext() = %q, %t; want env, true", source, ok)
+	}
+
+	ctx = WithCredentialSource(ctx, CredentialSource("vault:prod"))
+	if source, ok := CredentialSourceFromContext(ctx); ok || source != "" {
+		t.Fatalf("CredentialSourceFromContext() = %q, %t; want empty, false", source, ok)
+	}
+}
 
 func TestResolveEndpoints_Feishu(t *testing.T) {
 	ep := ResolveEndpoints(BrandFeishu)

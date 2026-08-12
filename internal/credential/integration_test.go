@@ -50,6 +50,9 @@ func TestFullChain_EnvWins(t *testing.T) {
 	if result.Token != "env_uat" {
 		t.Errorf("expected env_uat, got %s", result.Token)
 	}
+	if result.Source != core.CredentialSourceEnv {
+		t.Errorf("source = %q, want env", result.Source)
+	}
 }
 
 func TestFullChain_Fallthrough(t *testing.T) {
@@ -69,6 +72,9 @@ func TestFullChain_Fallthrough(t *testing.T) {
 	}
 	if result.Token != "mock_tok" || result.Scopes != "drive:read" {
 		t.Errorf("unexpected: %+v", result)
+	}
+	if result.Source != core.CredentialSourceLocal {
+		t.Errorf("source = %q, want local", result.Source)
 	}
 }
 

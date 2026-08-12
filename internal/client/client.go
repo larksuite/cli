@@ -47,24 +47,24 @@ type APIClient struct {
 	Credential *credential.CredentialProvider
 }
 
-func (c *APIClient) resolveAccessToken(ctx context.Context, as core.Identity) (string, error) {
+func (c *APIClient) resolveAccessToken(ctx context.Context, as core.Identity) (*credential.TokenResult, error) {
 	result, err := c.Credential.ResolveToken(ctx, credential.NewTokenSpec(as, c.Config.AppID))
 	if err != nil {
 		var unavailableErr *credential.TokenUnavailableError
 		if errors.As(err, &unavailableErr) {
-			return "", newTokenMissingError(as, unavailableErr)
+			return nil, newTokenMissingError(as, unavailableErr)
 		}
 		// The credential chain already emits a typed *errs.AuthenticationError
 		// for the missing-UAT case (e.g. UAT refresh returned
 		// need_user_authorization), so it flows through unchanged: the
 		// outer-typed gate in cmd/root.go and the idempotent WrapDoAPIError
 		// both preserve its authentication category and exit 3.
-		return "", err
+		return nil, err
 	}
 	if result.Token == "" {
-		return "", newTokenMissingError(as, nil)
+		return nil, newTokenMissingError(as, nil)
 	}
-	return result.Token, nil
+	return result, nil
 }
 
 // newTokenMissingError builds the typed *errs.AuthenticationError that
@@ -138,14 +138,15 @@ func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as c
 	}
 	if as.IsBot() {
 		req.SupportedAccessTokenTypes = []larkcore.AccessTokenType{larkcore.AccessTokenTypeTenant}
-		opts = append(opts, larkcore.WithTenantAccessToken(token))
+		opts = append(opts, larkcore.WithTenantAccessToken(token.Token))
 	} else {
 		req.SupportedAccessTokenTypes = []larkcore.AccessTokenType{larkcore.AccessTokenTypeUser}
-		opts = append(opts, larkcore.WithUserAccessToken(token))
+		opts = append(opts, larkcore.WithUserAccessToken(token.Token))
 	}
 
 	opts = append(opts, extraOpts...)
-	resp, err := c.SDK.Do(ctx, req, opts...)
+	requestCtx := core.WithCredentialSource(ctx, token.Source)
+	resp, err := c.SDK.Do(requestCtx, req, opts...)
 	if err != nil {
 		return nil, WrapDoAPIError(err)
 	}
@@ -188,10 +189,10 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 	httpClient := *c.HTTP
 	httpClient.Timeout = 0
 	cancel := func() {}
-	requestCtx := ctx
+	requestCtx := core.WithCredentialSource(ctx, token.Source)
 	if cfg.timeout > 0 {
-		if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-			requestCtx, cancel = context.WithTimeout(ctx, cfg.timeout)
+		if _, hasDeadline := requestCtx.Deadline(); !hasDeadline {
+			requestCtx, cancel = context.WithTimeout(requestCtx, cfg.timeout)
 		}
 	}
 
@@ -212,7 +213,7 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 	if contentType != "" {
 		httpReq.Header.Set("Content-Type", contentType)
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+token)
+	httpReq.Header.Set("Authorization", "Bearer "+token.Token)
 
 	resp, err := httpClient.Do(httpReq)
 	if err != nil {
