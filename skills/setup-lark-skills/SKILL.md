@@ -112,36 +112,97 @@ done
 
 ### 5. 执行休眠/激活（幂等）
 
-编辑同样只作用于 frontmatter 块——休眠只在 frontmatter 内生效（已有该字段则改写为 `true`，没有才插入），激活只删 frontmatter 内的该字段，正文里的同名文本原样保留。写入走「`cp -a` 克隆元数据 → awk 改写 → mv 替换」，保留原文件的权限/ACL；任一步失败都会清理临时文件并报错退出：
+编辑同样只作用于 frontmatter 块——休眠只在 frontmatter 内生效（已有该字段则改写为 `true`，没有才插入），激活只删 frontmatter 内的该字段，正文里的同名文本原样保留。为避免通过符号链接意外改写链接目标，编辑前必须拒绝符号链接；写入使用同目录下由 `mktemp` 创建的唯一快照和输出文件，判断与改写都只读取已验证快照，替换前用 `cmp` 检查当时可见的冲突，最后由 `mv` 原子替换。输出文件从快照克隆元数据，因此保留原文件的权限/ACL。任一步失败或进程收到中断信号，都会清理临时文件并报错退出。可移植 shell 无法把 `cmp` 与 `mv` 合成单个比较交换操作，因此执行期间不要让其他工具同时编辑同一文件：
 
 ```bash
 f="$ROOT/lark-<name>/SKILL.md"
 
+prepare_skill_edit() {
+  local source="$1" dir
+  if [ -L "$source" ]; then
+    echo "ERROR: 拒绝编辑符号链接: $source" >&2
+    return 1
+  fi
+  if [ ! -f "$source" ]; then
+    echo "ERROR: 不是普通文件或文件不存在: $source" >&2
+    return 1
+  fi
+  dir=$(dirname "$source") || return 1
+  snapshot=$(mktemp "$dir/.SKILL.md.snapshot.XXXXXX") || return 1
+  output=$(mktemp "$dir/.SKILL.md.output.XXXXXX") || return 1
+  if ! cp -a -- "$source" "$snapshot"; then
+    return 1
+  fi
+  # `cp -a` preserves links. Re-check its destination so a source replaced
+  # between the checks above and the copy cannot turn our snapshot into a
+  # symlink. No output redirection ever opens the original path.
+  if [ -L "$snapshot" ] || [ ! -f "$snapshot" ]; then
+    echo "ERROR: 快照不是普通文件: $snapshot" >&2
+    return 1
+  fi
+  if ! cp -a -- "$snapshot" "$output"; then
+    return 1
+  fi
+  if [ -L "$output" ] || [ ! -f "$output" ]; then
+    echo "ERROR: 输出临时文件不是普通文件: $output" >&2
+    return 1
+  fi
+}
+
+commit_skill_edit() {
+  local target="$1"
+  if [ -L "$target" ] || [ ! -f "$target" ] || ! cmp -s -- "$snapshot" "$target"; then
+    echo "ERROR: 文件在编辑期间发生变化，拒绝覆盖: $target" >&2
+    return 1
+  fi
+  mv -- "$output" "$target" || return 1
+  output=""
+}
+
 # 休眠（幂等：frontmatter 内已有 disable-model-invocation 字段则改写为 true，
 # 没有则插在 name: 行之后，避开多行 description 陷阱；不会产生重复字段。
 # 匹配用去掉行尾 \r 的副本，输出一律用原始行，新插入的行跟随该文件的行尾风格）
-is_disabled "$f" || {
-  cp -a "$f" "$f.tmp" &&
-  awk '
-    { cr = (/\r$/ ? "\r" : ""); l = $0; sub(/\r$/, "", l) }
-    l == "---" { c++; print; next }
-    c==1 && l ~ /^disable-model-invocation:[[:space:]]*/ { if (!d) { print "disable-model-invocation: true" cr; d=1 }; next }
-    c==1 && l ~ /^name:/ && !d { print; print "disable-model-invocation: true" cr; d=1; next }
-    { print }
-  ' "$f" > "$f.tmp" &&
-  mv "$f.tmp" "$f"
-} || { rm -f "$f.tmp"; echo "ERROR: 休眠写入失败: $f" >&2; exit 1; }
+(
+  snapshot=""
+  output=""
+  trap '[ -z "$snapshot" ] || rm -f -- "$snapshot"; [ -z "$output" ] || rm -f -- "$output"' EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  prepare_skill_edit "$f" || exit 1
+  if ! is_disabled "$snapshot"; then
+    if ! awk '
+      { cr = (/\r$/ ? "\r" : ""); l = $0; sub(/\r$/, "", l) }
+      l == "---" { c++; print; next }
+      c==1 && l ~ /^disable-model-invocation:[[:space:]]*/ { if (!d) { print "disable-model-invocation: true" cr; d=1 }; next }
+      c==1 && l ~ /^name:/ && !d { print; print "disable-model-invocation: true" cr; d=1; next }
+      { print }
+    ' "$snapshot" > "$output"; then
+      exit 1
+    fi
+    commit_skill_edit "$f" || exit 1
+  fi
+) || { echo "ERROR: 休眠写入失败: $f" >&2; exit 1; }
 
 # 激活（幂等：删除 frontmatter 内该字段的全部取值，正文同名文本保留，原始行尾原样输出）
-cp -a "$f" "$f.tmp" &&
-awk '
-  { l = $0; sub(/\r$/, "", l) }
-  l == "---" { c++; print; next }
-  c==1 && l ~ /^disable-model-invocation:[[:space:]]*/ { next }
-  { print }
-' "$f" > "$f.tmp" &&
-mv "$f.tmp" "$f" ||
-{ rm -f "$f.tmp"; echo "ERROR: 激活写入失败: $f" >&2; exit 1; }
+(
+  snapshot=""
+  output=""
+  trap '[ -z "$snapshot" ] || rm -f -- "$snapshot"; [ -z "$output" ] || rm -f -- "$output"' EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  prepare_skill_edit "$f" || exit 1
+  if ! awk '
+    { l = $0; sub(/\r$/, "", l) }
+    l == "---" { c++; print; next }
+    c==1 && l ~ /^disable-model-invocation:[[:space:]]*/ { next }
+    { print }
+  ' "$snapshot" > "$output"; then
+    exit 1
+  fi
+  commit_skill_edit "$f" || exit 1
+) || { echo "ERROR: 激活写入失败: $f" >&2; exit 1; }
 ```
 
 （awk 在 macOS / Linux 行为一致，无需区分平台；匹配前剥离行尾 `\r`，CRLF 格式的 SKILL.md 同样正确处理。）
