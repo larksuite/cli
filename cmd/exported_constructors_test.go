@@ -9,7 +9,6 @@ import (
 	"github.com/larksuite/cli/cmd/auth"
 	"github.com/larksuite/cli/cmd/schema"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/recovery"
 	"github.com/spf13/cobra"
 )
 
@@ -21,15 +20,35 @@ import (
 // *recovery.Projector is internal -- an outside caller cannot name the type but
 // can still pass nil for it.
 //
-// Written as assignments rather than calls so the assertion is the signature
-// itself: a later parameter addition fails here before it reaches anyone
-// downstream.
-func TestPreExistingExportedConstructorsKeepTheirSignatures(t *testing.T) {
-	var (
-		_ func(*cmdutil.Factory) *cobra.Command                                    = auth.NewCmdAuth
-		_ func(*cmdutil.Factory, *recovery.Projector) *cobra.Command               = auth.NewCmdAuthWithRecovery
-		_ func(*cmdutil.Factory, func(*auth.LoginOptions) error) *cobra.Command    = auth.NewCmdAuthLogin
-		_ func(*cmdutil.Factory, func(*schema.SchemaOptions) error) *cobra.Command = schema.NewCmdSchema
-	)
-	var _ func(*cmdutil.Factory, schema.CommandVisibility, func(*schema.SchemaOptions) error) *cobra.Command = schema.NewCmdSchemaWithVisibility
+// The constructors are invoked rather than merely referenced. Only an outside
+// module calls them, so nothing inside the repository would otherwise reach
+// them, and a signature-only assertion leaves them looking unreachable while
+// also proving nothing about whether they still build a working command.
+func TestPreExistingExportedConstructorsStillBuildCommands(t *testing.T) {
+	factory := &cmdutil.Factory{}
+
+	assertCommand := func(name string, built *cobra.Command, use string) {
+		t.Helper()
+		if built == nil {
+			t.Fatalf("%s returned nil", name)
+		}
+		if built.Use != use {
+			t.Fatalf("%s built %q, want %q", name, built.Use, use)
+		}
+		if !built.HasSubCommands() && use == "auth" {
+			t.Fatalf("%s built no subcommands", name)
+		}
+	}
+
+	assertCommand("NewCmdAuth", auth.NewCmdAuth(factory), "auth")
+	// nil projector: an outside caller cannot name *recovery.Projector but can
+	// pass nil, which is exactly the call this wrapper exists to keep compiling.
+	assertCommand("NewCmdAuthWithRecovery", auth.NewCmdAuthWithRecovery(factory, nil), "auth")
+	assertCommand("NewCmdAuthLogin", auth.NewCmdAuthLogin(factory, nil), "login")
+
+	visibility := schema.CommandVisibility(func([]string) bool { return true })
+	assertCommand("NewCmdSchema", schema.NewCmdSchema(factory, nil),
+		"schema [path | service resource method]")
+	assertCommand("NewCmdSchemaWithVisibility", schema.NewCmdSchemaWithVisibility(factory, visibility, nil),
+		"schema [path | service resource method]")
 }
