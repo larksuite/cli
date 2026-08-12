@@ -46,7 +46,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 - `link` 更新限制：
   - 不能把非 `link` 字段改成 `link`，也不能把 `link` 改成非 `link`。
   - 现有 `link` 字段的 `bidirectional` 不能改。
-- `auto_number` 的 `style.rules` 支持 `text`、`created_time`、`incremental_number`；更新规则会同时应用到已有编号。
+- 更新 `auto_number.style.rules` 会按新规则更新已有记录的编号；规则结构见 [字段 JSON](lark-base-field-json.md)。
 
 **推荐更新示例**
 
