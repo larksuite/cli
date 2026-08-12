@@ -260,8 +260,8 @@ func TestBaseFieldCreateTipsGuideTypeSelectionByStoredValue(t *testing.T) {
 		"formula, lookup, link, workflow, or automation",
 		"If unsupported, do not probe code/web/OpenAPI, create a storage placeholder, or claim completion",
 		"report the boundary and alternatives",
-		"arrays remain sequential per-field requests",
-		"split only for timeout bounds, not a fixed chunk size",
+		"for multiple fields in one table, prefer one array",
+		"array items are created sequentially",
 		"prefer --json @file or an argv-safe subprocess call",
 		"do not double-escape JSON inside shell command substitution",
 		"For large arrays, bound successful stdout with --jq",
@@ -895,7 +895,7 @@ func TestBaseJSONExamplesLiveInFlagDescriptions(t *testing.T) {
 			name:     "record upsert json",
 			shortcut: BaseRecordUpsert,
 			wantHelp: []string{
-				`record field map JSON object, e.g. {"Name":"Alice","Status":"Todo"}; do not wrap in fields`,
+				`record field map JSON object, e.g. {"Name":"Alice","Status":["Todo"]}; do not wrap in fields`,
 			},
 		},
 		{
@@ -903,7 +903,7 @@ func TestBaseJSONExamplesLiveInFlagDescriptions(t *testing.T) {
 			shortcut: BaseRecordBatchCreate,
 			wantHelp: []string{
 				"create_records contains one field map per record",
-				`{"create_records":[{"Name":"Task A","Status":"Todo"},{"Name":"Task B","Score":20}]}`,
+				`{"create_records":[{"Name":"Task A","Status":["Todo"]},{"Name":"Task B","Score":20}]}`,
 			},
 		},
 		{
@@ -971,7 +971,7 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 			wantTips: []string{
 				"Happy path field: create_records",
 				"create_records is an array of independent record field maps",
-				`{"create_records":[{"Name":"Task A","Status":"Todo"},{"Name":"Task B","Score":20}]}`,
+				`{"create_records":[{"Name":"Task A","Status":["Todo"]},{"Name":"Task B","Score":20}]}`,
 				"use +field-list to confirm real writable fields",
 				"Batch create supports max 200 records per call",
 				"do not immediately +record-list the same table",

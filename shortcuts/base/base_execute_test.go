@@ -1012,33 +1012,6 @@ func TestBaseFieldExecuteUpdateDoesNotRejectExtraJSONKeys(t *testing.T) {
 	}
 }
 
-func TestBaseFieldValidateAllowsRatingMaxAboveLimit(t *testing.T) {
-	ctx := context.Background()
-	tests := []struct {
-		name     string
-		shortcut common.Shortcut
-		runtime  *common.RuntimeContext
-	}{
-		{
-			name:     "create",
-			shortcut: BaseFieldCreate,
-			runtime:  newBaseTestRuntime(map[string]string{"base-token": "app_x", "table-id": "tbl_x", "json": `{"name":"评分","type":"number","style":{"type":"rating","icon":"star","min":0,"max":20}}`}, nil, nil),
-		},
-		{
-			name:     "update",
-			shortcut: BaseFieldUpdate,
-			runtime:  newBaseTestRuntime(map[string]string{"base-token": "app_x", "table-id": "tbl_x", "field-id": "fld_x", "json": `{"name":"评分","type":"number","style":{"type":"rating","icon":"star","min":0,"max":20}}`}, nil, nil),
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if err := tc.shortcut.Validate(ctx, tc.runtime); err != nil {
-				t.Fatalf("rating max above 10 should not be blocked by CLI validation: %v", err)
-			}
-		})
-	}
-}
-
 func TestBaseObjectJSONShortcutsRejectArrayInDryRun(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -45,7 +45,7 @@
 }
 ```
 
-全表分析的常规资源链路是 `+table-list` 确认目标表与规模，对所有参与分析的表并发执行 `+field-list` 读取所需 schema，再用 `+record-list` 导出记录；已有可信的 `table_id` 时可直接并发读取各表 `+field-list`。`+view-get` 可按需读取，作为用户持久化访问习惯的可选参考；其中的 filter、sort 与字段范围可辅助理解用户常用的查询范围和排序偏好，并结合当前任务确定最终口径。
+全表分析的常规资源链路是 `+base-block-list --type table` 确认目标表与规模，对所有参与分析的表并发执行 `+field-list` 读取所需 schema，再用 `+record-list` 导出记录；已有可信的 `table_id` 时可直接并发读取各表 `+field-list`。`+view-get` 可按需读取，作为用户持久化访问习惯的可选参考；其中的 filter、sort 与字段范围可辅助理解用户常用的查询范围和排序偏好，并结合当前任务确定最终口径。
 
 1. 每次读取使用任务所需的最小投影，并包含 JOIN、解释、回查或写入需要的业务 key。
 2. 全局结论以 `has_more=false` 的完整导出或 Cloud 聚合结果为依据；`has_more=true` 时继续收敛单表谓词或选择 Cloud 路径。
@@ -53,16 +53,16 @@
 4. Base 标量空值很常见；聚合前按用户口径确定空值是排除、按零计入还是进入分母。用户未指定且不同处理会实质改变结论时，说明空值数量、采用的口径及其影响；任务涉及业务键、展开、JOIN 或金额分摊时，同样明确目标粒度及与口径直接相关的重复或总量守恒。
 5. 最终结果保留真实表、查询范围和计算口径，展示用户可读字段；内部 ID 用于连接或定位。
 
-`+table-list` / `+base-block-list` 返回的 `records_count` 表示整表行数；manifest 的 `records_count` 表示本次查询实际导出的行数。
+`+base-block-list --type table` 返回的 `records_count` 表示整表行数；manifest 的 `records_count` 表示本次查询实际导出的行数。
 
 ## 复用本轮 NDJSON
 
 Agent 上下文曾下载过当前表的 NDJSON 时，按以下规则判断是否复用：
 
 1. 短时间内继续分析或表中数据低频变化时，谓词下推口径一致且已有列覆盖计算需求即可优先复用。
-2. 间隔较长或表中数据高频变化时，批量提取 manifests 的 `base_token/table_id/rev`，并发执行 `+table-list` 校验最新 `rev`；版本一致且谓词口径未变时复用，否则重新导出对应表。
+2. 间隔较长或表中数据高频变化时，批量提取 manifests 的 `base_token/table_id/rev`，并发执行 `+base-block-list --type table` 校验最新 `rev`；版本一致且谓词口径未变时复用，否则重新导出对应表。
 
-> 例：本轮已按“日期在 2026 年”导出 `orders.ndjson`，用户继续要求按负责人聚合；谓词和所需列未变，直接复用。若间隔较长或该表频繁写入，manifest `rev=42` 与 `+table-list` 最新 `rev` 相同则复用，最新 `rev=43` 则重新导出。
+> 例：本轮已按“日期在 2026 年”导出 `orders.ndjson`，用户继续要求按负责人聚合；谓词和所需列未变，直接复用。若间隔较长或该表频繁写入，manifest `rev=42` 与 `+base-block-list --type table` 最新 `rev` 相同则复用，最新 `rev=43` 则重新导出。
 
 ## LLM 语义分析
 
@@ -115,7 +115,7 @@ Agent 上下文曾下载过当前表的 NDJSON 时，按以下规则判断是否
 
 - stdout 的 `records_count` 和 `has_more` 描述本次导出；确认后无需在分析代码中重读 manifest 或重新统计 NDJSON 行数。
 - `record_file_size_bytes` 是 NDJSON artifact 的实际字节数，用于选择一次读取、预览或分批方式；确定性计算由 jq/Python 直接读取文件。
-- manifest 的 `rev` 是导出首个响应页返回的 table revision；与 `+table-list` 返回的最新 `rev` 比较，可判断本轮 NDJSON 是否仍对应当前表版本。
+- manifest 的 `rev` 是导出首个响应页返回的 table revision；与 `+base-block-list --type table` 返回的最新 `rev` 比较，可判断本轮 NDJSON 是否仍对应当前表版本。
 - `query_context` 保存导出查询范围；复用本轮 NDJSON 时结合原查询上下文确认谓词下推口径保持一致。
 - 仅在需要 `columns`、example、hint 或执行 artifact 复用判断时读取 `manifest_file`；满足复用条件后直接继续分析现有 NDJSON。
 - `ignored_fields` 和 `record_not_found` 仅在 stdout 返回时关注。
