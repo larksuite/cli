@@ -412,3 +412,36 @@ func TestPublicPackageHasNoForbiddenImports(t *testing.T) {
 		}
 	}
 }
+
+// PathSegment must keep one user value inside one path segment: separators,
+// dot sequences, and query metacharacters cannot change the request target,
+// and the escaped form must pass the same-origin validation.
+func TestPathSegmentNeutralizesSeparatorsAndTraversal(t *testing.T) {
+	cases := map[string]string{
+		"oc_plain":     "oc_plain",
+		"a/b":          "a%2Fb",
+		"..":           "..", // url.PathEscape keeps dots; the ../ traversal form below is what must break
+		"../../secret": "..%2F..%2Fsecret",
+		"a?x=1":        "a%3Fx=1",
+		"a#frag":       "a%23frag",
+	}
+	for input, want := range cases {
+		if got := PathSegment(input); got != want {
+			t.Errorf("PathSegment(%q) = %q, want %q", input, got, want)
+		}
+	}
+	// Traversal fails validation in both spellings: the validator decodes
+	// percent-encoding before the canonical check, so escaping cannot smuggle
+	// a dot sequence through, and raw concatenation is rejected outright.
+	for _, spelling := range []string{PathSegment("../../etc"), "../../etc"} {
+		request := GET("/open-apis/im/v1/chats/" + spelling)
+		if err := ValidateRequestView(InspectRequest(request)); err == nil {
+			t.Fatalf("traversal spelling %q must fail validation", spelling)
+		}
+	}
+	// A regular escaped ID stays valid.
+	ordinary := GET("/open-apis/im/v1/chats/" + PathSegment("oc_a b+c"))
+	if err := ValidateRequestView(InspectRequest(ordinary)); err != nil {
+		t.Fatalf("escaped ordinary id should validate: %v", err)
+	}
+}

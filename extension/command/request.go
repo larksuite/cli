@@ -34,6 +34,13 @@ func PATCH(apiPath string) Request { return newRequest(http.MethodPatch, apiPath
 // DELETE creates a DELETE OpenAPI request.
 func DELETE(apiPath string) Request { return newRequest(http.MethodDelete, apiPath) }
 
+// PathSegment escapes one user-provided value for use as a single OpenAPI
+// path segment. Every variable concatenated into a request path must be
+// wrapped with it, mirroring the host convention (internal/validate
+// EncodePathSegment); an unescaped separator or dot sequence would otherwise
+// change the request target.
+func PathSegment(s string) string { return url.PathEscape(s) }
+
 func newRequest(method, apiPath string) Request {
 	return Request{method: method, path: apiPath, query: make(map[string]any)}
 }

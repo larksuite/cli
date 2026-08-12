@@ -27,7 +27,7 @@ type documentData struct {
 
 func documentGetDefinition() command.Definition[documentGetArgs, documentData] {
 	request := func(args *documentGetArgs) command.Request {
-		return command.GET("/open-apis/docx/v1/documents/" + args.DocumentID + "/raw_content")
+		return command.GET("/open-apis/docx/v1/documents/" + command.PathSegment(args.DocumentID) + "/raw_content")
 	}
 	return command.Definition[documentGetArgs, documentData]{
 		Metadata: command.CommandMetadata{
@@ -153,7 +153,7 @@ func taskAuditDefinition() command.Definition[taskAuditArgs, taskAuditData] {
 				for _, task := range tasks {
 					owner, ownerErr := command.CallJSON[struct {
 						Name string `json:"name"`
-					}](ctx, commandContext, command.GET("/open-apis/contact/v3/users/"+task.OwnerID))
+					}](ctx, commandContext, command.GET("/open-apis/contact/v3/users/"+command.PathSegment(task.OwnerID)))
 					if ownerErr != nil {
 						data.Items = append(data.Items, taskAuditItem{TaskID: task.TaskID, State: "failed"})
 						data.Failures = append(data.Failures, command.SnapshotFailure(ownerErr))
@@ -196,14 +196,14 @@ func memberListDefinition() command.Definition[memberListArgs, memberListData] {
 		},
 		Hooks: command.Hooks[memberListArgs, memberListData]{
 			DryRun: func(_ context.Context, _ command.CommandContext, args *memberListArgs) *command.DryRun {
-				preview := command.Preview(command.GET("/open-apis/im/v1/chats/" + args.ChatID))
+				preview := command.Preview(command.GET("/open-apis/im/v1/chats/" + command.PathSegment(args.ChatID)))
 				if args.IncludeMembers {
-					preview.Add(command.GET("/open-apis/im/v1/chats/" + args.ChatID + "/members"))
+					preview.Add(command.GET("/open-apis/im/v1/chats/" + command.PathSegment(args.ChatID) + "/members"))
 				}
 				return preview
 			},
 			Execute: func(ctx context.Context, commandContext command.CommandContext, args *memberListArgs) (command.Result[memberListData], error) {
-				data, err := command.CallJSON[memberListData](ctx, commandContext, command.GET("/open-apis/im/v1/chats/"+args.ChatID))
+				data, err := command.CallJSON[memberListData](ctx, commandContext, command.GET("/open-apis/im/v1/chats/"+command.PathSegment(args.ChatID)))
 				if err != nil {
 					return command.Result[memberListData]{}, err
 				}
@@ -215,7 +215,7 @@ func memberListDefinition() command.Definition[memberListArgs, memberListData] {
 				}
 				members, err := command.CallJSON[struct {
 					Items []string `json:"items"`
-				}](ctx, commandContext, command.GET("/open-apis/im/v1/chats/"+args.ChatID+"/members"))
+				}](ctx, commandContext, command.GET("/open-apis/im/v1/chats/"+command.PathSegment(args.ChatID)+"/members"))
 				if err != nil {
 					return command.Result[memberListData]{}, err
 				}
