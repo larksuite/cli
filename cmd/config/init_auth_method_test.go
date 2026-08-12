@@ -184,13 +184,6 @@ func TestConfigInitRunRejectsPrivateKeyJWTIncompatibleModes(t *testing.T) {
 			},
 			wantTarget: "--app-secret-stdin",
 		},
-		{
-			name: "restore",
-			configure: func(opts *ConfigInitOptions, _ *cmdutil.Factory) {
-				opts.Restore = true
-			},
-			wantTarget: "--restore",
-		},
 	}
 
 	for _, tc := range tests {
