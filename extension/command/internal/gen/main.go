@@ -76,7 +76,7 @@ const (
 `)
 	for _, domain := range domains {
 		identifier := domainIdentifier(domain)
-		fmt.Fprintf(&output, "\t// Domain%s 表示%s域。\n", identifier, registry.GetServiceTitle(domain, "zh"))
+		fmt.Fprintf(&output, "\t// Domain%s is the %s domain.\n", identifier, registry.GetServiceTitle(domain, "en"))
 		fmt.Fprintf(&output, "\tDomain%s DomainName = %q\n", identifier, domain)
 	}
 	output.WriteString(")\n")

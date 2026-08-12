@@ -6,44 +6,44 @@
 package command
 
 const (
-	// DomainApplication 表示应用管理域。
+	// DomainApplication is the Application domain.
 	DomainApplication DomainName = "application"
-	// DomainApps 表示应用域。
+	// DomainApps is the Apps domain.
 	DomainApps DomainName = "apps"
-	// DomainBase 表示多维表格域。
+	// DomainBase is the Base domain.
 	DomainBase DomainName = "base"
-	// DomainCalendar 表示日历域。
+	// DomainCalendar is the Calendar domain.
 	DomainCalendar DomainName = "calendar"
-	// DomainContact 表示通讯录域。
+	// DomainContact is the Contacts domain.
 	DomainContact DomainName = "contact"
-	// DomainDocs 表示文档域。
+	// DomainDocs is the Docs domain.
 	DomainDocs DomainName = "docs"
-	// DomainDrive 表示云空间域。
+	// DomainDrive is the Drive domain.
 	DomainDrive DomainName = "drive"
-	// DomainEvent 表示事件订阅域。
+	// DomainEvent is the Event domain.
 	DomainEvent DomainName = "event"
-	// DomainIm 表示消息与群组域。
+	// DomainIm is the Messenger domain.
 	DomainIm DomainName = "im"
-	// DomainMail 表示邮箱域。
+	// DomainMail is the Mail domain.
 	DomainMail DomainName = "mail"
-	// DomainMarkdown 表示Markdown域。
+	// DomainMarkdown is the Markdown domain.
 	DomainMarkdown DomainName = "markdown"
-	// DomainMinutes 表示妙记域。
+	// DomainMinutes is the Minutes domain.
 	DomainMinutes DomainName = "minutes"
-	// DomainNote 表示会议纪要域。
+	// DomainNote is the Note domain.
 	DomainNote DomainName = "note"
-	// DomainOkr 表示OKR域。
+	// DomainOkr is the OKR domain.
 	DomainOkr DomainName = "okr"
-	// DomainSheets 表示电子表格域。
+	// DomainSheets is the Sheets domain.
 	DomainSheets DomainName = "sheets"
-	// DomainSlides 表示幻灯片域。
+	// DomainSlides is the Slides domain.
 	DomainSlides DomainName = "slides"
-	// DomainTask 表示任务域。
+	// DomainTask is the Task domain.
 	DomainTask DomainName = "task"
-	// DomainVc 表示视频会议域。
+	// DomainVc is the VC domain.
 	DomainVc DomainName = "vc"
-	// DomainWhiteboard 表示画板域。
+	// DomainWhiteboard is the Whiteboard domain.
 	DomainWhiteboard DomainName = "whiteboard"
-	// DomainWiki 表示知识库域。
+	// DomainWiki is the Wiki domain.
 	DomainWiki DomainName = "wiki"
 )
