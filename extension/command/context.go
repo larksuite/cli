@@ -14,6 +14,7 @@ import (
 type CommandContext struct {
 	identity        Identity
 	dryRun          bool
+	inputStage      bool
 	callJSON        func(context.Context, Request) (map[string]any, error)
 	preflightScopes func(...string) error
 	collectPages    func(context.Context, Request, bool) ([]map[string]any, HostPagination, error)
@@ -30,8 +31,16 @@ type PaginationOptions struct {
 // ContextOptions supplies safe callbacks when a host creates a CommandContext.
 // It is intended for the lark-cli host adapter and commandtest.
 type ContextOptions struct {
-	Identity        Identity
-	DryRun          bool
+	Identity Identity
+	DryRun   bool
+
+	// InputStage marks a context serving Normalize or Validate. Those hooks
+	// run before the high-risk confirmation gate, so the design gives them no
+	// network: Validate is specified as parameter checking that issues no
+	// request, and a command that reached out from there would produce remote
+	// side effects the user was never asked to confirm.
+	InputStage bool
+
 	CallJSON        func(context.Context, Request) (map[string]any, error)
 	PreflightScopes func(...string) error
 	CollectPages    func(context.Context, Request, bool) ([]map[string]any, HostPagination, error)
@@ -42,6 +51,7 @@ func NewCommandContext(options ContextOptions) CommandContext {
 	return CommandContext{
 		identity:        options.Identity,
 		dryRun:          options.DryRun,
+		inputStage:      options.InputStage,
 		callJSON:        options.CallJSON,
 		preflightScopes: options.PreflightScopes,
 		collectPages:    options.CollectPages,
@@ -56,6 +66,9 @@ func CallJSON[T any](ctx context.Context, command CommandContext, request Reques
 	var result T
 	if err := validateRequest(request); err != nil {
 		return result, err
+	}
+	if command.inputStage {
+		return result, ValidationErrorf("network requests are unavailable in Normalize and Validate; move the call to Execute")
 	}
 	if command.dryRun {
 		return result, ValidationErrorf("network requests are unavailable during dry-run")

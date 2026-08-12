@@ -110,9 +110,15 @@ func CollectAllPages[T any](ctx context.Context, command CommandContext, request
 }
 
 func collectPages[T any](ctx context.Context, command CommandContext, request Request, all bool) (Page[T], error) {
-	result := Page[T]{meta: &paginationMeta{}}
+	// Items starts non-nil so a zero-item page encodes as [] rather than null:
+	// the field is declared required;nonnullable, and a caller generating types
+	// from that schema would reject the null.
+	result := Page[T]{Items: make([]T, 0), meta: &paginationMeta{}}
 	if err := validateRequest(request); err != nil {
 		return result, err
+	}
+	if command.inputStage {
+		return result, ValidationErrorf("network requests are unavailable in Normalize and Validate; move the call to Execute")
 	}
 	if command.dryRun {
 		return result, ValidationErrorf("network requests are unavailable during dry-run")

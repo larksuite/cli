@@ -51,6 +51,14 @@ func NewCmdSchema(f *cmdutil.Factory, runF func(*SchemaOptions) error) *cobra.Co
 	return NewCmdSchemaWithVisibilityAndShortcuts(f, nil, shortcuts.AllShortcuts(), runF)
 }
 
+// NewCmdSchemaWithVisibility creates the schema command projected through one
+// visibility predicate, resolving shortcuts from the registered set. Retained at
+// its established signature: CommandVisibility is an ordinary exported function
+// type, so callers outside this module can and do construct one.
+func NewCmdSchemaWithVisibility(f *cmdutil.Factory, visibility CommandVisibility, runF func(*SchemaOptions) error) *cobra.Command {
+	return NewCmdSchemaWithVisibilityAndShortcuts(f, visibility, shortcuts.AllShortcuts(), runF)
+}
+
 // NewCmdSchemaWithVisibilityAndShortcuts creates schema commands from one build-local shortcut snapshot.
 func NewCmdSchemaWithVisibilityAndShortcuts(
 	f *cmdutil.Factory,

@@ -28,6 +28,15 @@ func NewCmdAuth(f *cmdutil.Factory) *cobra.Command {
 	return newCmdAuth(f, nil, shortcuts.AllShortcuts())
 }
 
+// NewCmdAuthWithRecovery creates the auth command with a build-local recovery
+// presenter, resolving domains from the registered shortcut set. Retained at its
+// established signature: callers outside this module cannot name
+// *recovery.Projector, but they can pass nil for it, so dropping this would
+// break them at compile time.
+func NewCmdAuthWithRecovery(f *cmdutil.Factory, projector *recovery.Projector) *cobra.Command {
+	return NewCmdAuthWithRecoveryAndShortcuts(f, projector, shortcuts.AllShortcuts())
+}
+
 // NewCmdAuthWithRecoveryAndShortcuts creates auth commands from one build-local shortcut snapshot.
 func NewCmdAuthWithRecoveryAndShortcuts(f *cmdutil.Factory, projector *recovery.Projector, registered []shortcutcommon.Shortcut) *cobra.Command {
 	return newCmdAuth(f, projector, registered)

@@ -78,6 +78,18 @@ func (r *Recorder) DryRunContext(identity command.Identity) command.CommandConte
 	return r.commandContext(identity, true)
 }
 
+// InputStageContext returns the network-free context the host gives Normalize
+// and Validate. Tests that drive those hooks directly must use it, or a command
+// that calls the API before the high-risk confirmation gate passes its tests
+// and fails only in production.
+func (r *Recorder) InputStageContext(identity command.Identity) command.CommandContext {
+	return command.NewCommandContext(command.ContextOptions{
+		Identity:        identity,
+		InputStage:      true,
+		PreflightScopes: r.preflightScopes,
+	})
+}
+
 func (r *Recorder) commandContext(identity command.Identity, dryRun bool) command.CommandContext {
 	return command.NewCommandContext(command.ContextOptions{
 		Identity:        identity,
@@ -99,13 +111,14 @@ func Execute[Args any, Data any](ctx context.Context, recorder *Recorder, identi
 	var execution Execution[Data]
 	declaration := command.InspectCommand(command.Define(definition))
 	commandContext := recorder.CommandContext(identity)
+	inputContext := recorder.InputStageContext(identity)
 	if declaration.Hooks.Normalize != nil {
-		if err := declaration.Hooks.Normalize(ctx, commandContext, args); err != nil {
+		if err := declaration.Hooks.Normalize(ctx, inputContext, args); err != nil {
 			return execution, err
 		}
 	}
 	if declaration.Hooks.Validate != nil {
-		if err := declaration.Hooks.Validate(ctx, commandContext, args); err != nil {
+		if err := declaration.Hooks.Validate(ctx, inputContext, args); err != nil {
 			return execution, err
 		}
 	}

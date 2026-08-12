@@ -418,12 +418,12 @@ func TestPublicPackageHasNoForbiddenImports(t *testing.T) {
 // and the escaped form must pass the same-origin validation.
 func TestPathSegmentNeutralizesSeparatorsAndTraversal(t *testing.T) {
 	cases := map[string]string{
-		"oc_plain":     "oc_plain",
-		"a/b":          "a%2Fb",
-		"..":           "..", // url.PathEscape keeps dots; the ../ traversal form below is what must break
-		"../../secret": "..%2F..%2Fsecret",
-		"a?x=1":        "a%3Fx=1",
-		"a#frag":       "a%23frag",
+		"oc_plain":      "oc_plain",
+		"a/b":           "a%2Fb",
+		"..":            "..", // url.PathEscape keeps dots; the ../ traversal form below is what must break
+		"../../outside": "..%2F..%2Foutside",
+		"a?x=1":         "a%3Fx=1",
+		"a#frag":        "a%23frag",
 	}
 	for input, want := range cases {
 		if got := PathSegment(input); got != want {

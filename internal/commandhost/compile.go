@@ -241,7 +241,7 @@ func adaptHook(hook func(context.Context, command.CommandContext, any) error) fu
 		return nil
 	}
 	return func(ctx context.Context, host common.CommandContext, args any) error {
-		return hook(ctx, publicContext(host), args)
+		return hook(ctx, inputStageContext(host), args)
 	}
 }
 
@@ -281,6 +281,19 @@ func cloneRenderers(renderers map[string]func(io.Writer, any) error) map[string]
 		cloned[name] = renderer
 	}
 	return cloned
+}
+
+// inputStageContext serves Normalize and Validate. Both run before the
+// high-risk confirmation gate, so they get the same context minus the network:
+// otherwise a high-risk command could reach the API from Validate and leave
+// remote side effects behind before the user was ever asked to confirm.
+func inputStageContext(host common.CommandContext) command.CommandContext {
+	return command.NewCommandContext(command.ContextOptions{
+		Identity:        command.Identity(host.Identity()),
+		DryRun:          host.IsDryRun(),
+		InputStage:      true,
+		PreflightScopes: host.RequireConditionalScopes,
+	})
 }
 
 func publicContext(host common.CommandContext) command.CommandContext {
