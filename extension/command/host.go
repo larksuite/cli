@@ -67,76 +67,102 @@ type hostDefinition struct {
 }
 
 func newCommand[Args any, Data any](definition Definition[Args, Data]) Command {
-	host := hostDefinition{
+	return Command{definition: hostDefinition{
 		metadata:   cloneMetadata(definition.Metadata),
 		input:      cloneInputDefinition(definition.Input),
 		output:     cloneOutputDefinition(definition.Output),
 		argsType:   reflect.TypeFor[Args](),
 		dataType:   reflect.TypeFor[Data](),
 		newArgs:    func() any { return new(Args) },
+		hooks:      bindHooks(definition.Hooks),
 		pageOutput: reflect.TypeFor[Data]().Implements(reflect.TypeFor[interface{ commandPagination() *paginationMeta }]()),
+	}}
+}
+
+// bindHooks erases the typed hook set for the host adapter. Every binder
+// re-asserts the concrete type because the erased call site can no longer
+// prove it, and a nil hook must stay nil so the adapter can tell a hook
+// apart from one that was never declared.
+func bindHooks[Args any, Data any](hooks Hooks[Args, Data]) HostHooks {
+	return HostHooks{
+		Normalize: bindArgsHook(hooks.Normalize, "Normalize"),
+		Validate:  bindArgsHook(hooks.Validate, "Validate"),
+		DryRun:    bindDryRunHook(hooks.DryRun),
+		DryRunE:   bindDryRunErrorHook(hooks.DryRunE),
+		Execute:   bindExecuteHook(hooks.Execute),
+		Renderers: bindRenderers(hooks.Renderers),
 	}
-	if definition.Hooks.Normalize != nil {
-		host.hooks.Normalize = func(ctx context.Context, command CommandContext, args any) error {
-			typed, ok := args.(*Args)
+}
+
+func bindArgsHook[Args any](hook func(context.Context, CommandContext, *Args) error, name string) func(context.Context, CommandContext, any) error {
+	if hook == nil {
+		return nil
+	}
+	return func(ctx context.Context, command CommandContext, args any) error {
+		typed, ok := args.(*Args)
+		if !ok {
+			return InternalErrorf("%s received %T, expected %T", name, args, (*Args)(nil))
+		}
+		return hook(ctx, command, typed)
+	}
+}
+
+func bindDryRunHook[Args any](hook func(context.Context, CommandContext, *Args) *DryRun) func(context.Context, CommandContext, any) *DryRun {
+	if hook == nil {
+		return nil
+	}
+	return func(ctx context.Context, command CommandContext, args any) *DryRun {
+		typed, ok := args.(*Args)
+		if !ok {
+			return nil
+		}
+		return hook(ctx, command, typed)
+	}
+}
+
+func bindDryRunErrorHook[Args any](hook func(context.Context, CommandContext, *Args) (*DryRun, error)) func(context.Context, CommandContext, any) (*DryRun, error) {
+	if hook == nil {
+		return nil
+	}
+	return func(ctx context.Context, command CommandContext, args any) (*DryRun, error) {
+		typed, ok := args.(*Args)
+		if !ok {
+			return nil, InternalErrorf("DryRunE received %T, expected %T", args, (*Args)(nil))
+		}
+		return hook(ctx, command, typed)
+	}
+}
+
+func bindExecuteHook[Args any, Data any](hook func(context.Context, CommandContext, *Args) (Result[Data], error)) func(context.Context, CommandContext, any) (HostResult, error) {
+	if hook == nil {
+		return nil
+	}
+	return func(ctx context.Context, command CommandContext, args any) (HostResult, error) {
+		typed, ok := args.(*Args)
+		if !ok {
+			return HostResult{}, InternalErrorf("Execute received %T, expected %T", args, (*Args)(nil))
+		}
+		result, err := hook(ctx, command, typed)
+		return hostResult(result), err
+	}
+}
+
+func bindRenderers[Data any](renderers map[string]Renderer[Data]) map[string]func(io.Writer, any) error {
+	if len(renderers) == 0 {
+		return nil
+	}
+	bound := make(map[string]func(io.Writer, any) error, len(renderers))
+	for name, renderer := range renderers {
+		bound[name] = func(writer io.Writer, data any) error {
+			typed, ok := data.(Data)
 			if !ok {
-				return InternalErrorf("Normalize received %T, expected %T", args, (*Args)(nil))
+				var expected Data
+				return InternalErrorf("renderer received %T, expected %T", data, expected)
 			}
-			return definition.Hooks.Normalize(ctx, command, typed)
+			return renderer(writer, typed)
 		}
 	}
-	if definition.Hooks.Validate != nil {
-		host.hooks.Validate = func(ctx context.Context, command CommandContext, args any) error {
-			typed, ok := args.(*Args)
-			if !ok {
-				return InternalErrorf("Validate received %T, expected %T", args, (*Args)(nil))
-			}
-			return definition.Hooks.Validate(ctx, command, typed)
-		}
-	}
-	if definition.Hooks.DryRun != nil {
-		host.hooks.DryRun = func(ctx context.Context, command CommandContext, args any) *DryRun {
-			typed, ok := args.(*Args)
-			if !ok {
-				return nil
-			}
-			return definition.Hooks.DryRun(ctx, command, typed)
-		}
-	}
-	if definition.Hooks.DryRunE != nil {
-		host.hooks.DryRunE = func(ctx context.Context, command CommandContext, args any) (*DryRun, error) {
-			typed, ok := args.(*Args)
-			if !ok {
-				return nil, InternalErrorf("DryRunE received %T, expected %T", args, (*Args)(nil))
-			}
-			return definition.Hooks.DryRunE(ctx, command, typed)
-		}
-	}
-	if definition.Hooks.Execute != nil {
-		host.hooks.Execute = func(ctx context.Context, command CommandContext, args any) (HostResult, error) {
-			typed, ok := args.(*Args)
-			if !ok {
-				return HostResult{}, InternalErrorf("Execute received %T, expected %T", args, (*Args)(nil))
-			}
-			result, err := definition.Hooks.Execute(ctx, command, typed)
-			return hostResult(result), err
-		}
-	}
-	if len(definition.Hooks.Renderers) > 0 {
-		host.hooks.Renderers = make(map[string]func(io.Writer, any) error, len(definition.Hooks.Renderers))
-		for name, renderer := range definition.Hooks.Renderers {
-			typedRenderer := renderer
-			host.hooks.Renderers[name] = func(writer io.Writer, data any) error {
-				typed, ok := data.(Data)
-				if !ok {
-					var expected Data
-					return InternalErrorf("renderer received %T, expected %T", data, expected)
-				}
-				return typedRenderer(writer, typed)
-			}
-		}
-	}
-	return Command{definition: host}
+	return bound
 }
 
 func hostResult[Data any](result Result[Data]) HostResult {

@@ -38,6 +38,7 @@ import (
 	"github.com/larksuite/cli/internal/skillref"
 	"github.com/larksuite/cli/internal/surface"
 	"github.com/larksuite/cli/shortcuts"
+	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
 
@@ -205,6 +206,18 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 	return buildInternalWithConfig(ctx, inv, cfg)
 }
 
+// resolveShortcutSnapshot compiles this build's business command sets and returns
+// one snapshot carrying built-in and external shortcuts together. The error is
+// returned rather than raised so the caller still mounts a root command able to
+// report it; on failure the snapshot holds whatever the host could resolve.
+func resolveShortcutSnapshot(sets []command.Set) ([]common.Shortcut, error) {
+	external, err := commandhost.CompileSets(sets)
+	if err != nil {
+		return shortcuts.AllShortcuts(), err
+	}
+	return shortcuts.AllShortcutsWithExternal(external)
+}
+
 // buildInternalWithConfig assembles one command tree from an already-applied
 // option snapshot. Execute uses this boundary so stateful BuildOptions are
 // never evaluated once for bootstrap inspection and a second time for Build.
@@ -212,11 +225,7 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 	if cfg == nil {
 		cfg = &buildConfig{}
 	}
-	externalCommands, commandSetErr := commandhost.CompileSets(cfg.commandSets)
-	registeredShortcuts := shortcuts.AllShortcuts()
-	if commandSetErr == nil {
-		registeredShortcuts, commandSetErr = shortcuts.AllShortcutsWithExternal(externalCommands)
-	}
+	registeredShortcuts, commandSetErr := resolveShortcutSnapshot(cfg.commandSets)
 	// Default streams when WithIO is not supplied so the root command's
 	// SetIn/Out/Err calls below don't deref nil. NewDefault also normalizes
 	// partial streams internally; keep both in sync so cfg.streams reflects
