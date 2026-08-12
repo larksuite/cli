@@ -95,9 +95,9 @@ type AppRegistrationInit struct {
 // AppRegistrationBeginOptions parametrizes the registration begin request.
 // A zero value selects the legacy client_secret flow, preserving prior behavior.
 type AppRegistrationBeginOptions struct {
-	AuthMethod      string // "" => client_secret; core.AuthMethodPrivateKeyJWT
-	AuthAttestation string // private_key_jwt: the TEE-signed attestation JWT
-	RestoreAppID    string // when set, asks the server to re-register this existing app
+	AuthMethod         string // "" => client_secret; core.AuthMethodPrivateKeyJWT
+	AuthAttestation    string // private_key_jwt: the TEE-signed attestation JWT
+	PrivateKeyJWTAppID string // private_key_jwt migration target; empty creates a new app
 }
 
 // RequestAppRegistrationInit performs the init step of the registration flow,
@@ -188,10 +188,8 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 	if opts.AuthAttestation != "" {
 		form.Set("auth_attestation", opts.AuthAttestation)
 	}
-	// Restore flow: carry the existing app id so the server re-registers it
-	// rather than creating a new app.
-	if opts.RestoreAppID != "" {
-		form.Set("app_id", opts.RestoreAppID)
+	if opts.PrivateKeyJWTAppID != "" {
+		form.Set("app_id", opts.PrivateKeyJWTAppID)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, strings.NewReader(form.Encode()))
