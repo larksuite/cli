@@ -28,6 +28,8 @@ import (
 	"github.com/spf13/pflag"
 )
 
+const maxMailRuleReorderListPages = 100
+
 // RegisterServiceCommands registers all service commands from from_meta specs.
 func RegisterServiceCommands(parent *cobra.Command, f *cmdutil.Factory) {
 	RegisterServiceCommandsWithContext(context.Background(), parent, f)
@@ -522,7 +524,10 @@ func fetchAllMailRuleIDs(ctx context.Context, ac *client.APIClient, reorderReque
 
 	var ids []string
 	seenPageTokens := map[string]bool{}
-	for {
+	for page := 0; ; page++ {
+		if page >= maxMailRuleReorderListPages {
+			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list exceeded %d pages while completing reorder rule IDs", maxMailRuleReorderListPages)
+		}
 		result, err := ac.CallAPI(ctx, client.RawApiRequest{
 			Method:    "GET",
 			URL:       listURL,
@@ -596,7 +601,7 @@ func nextPageToken(data map[string]interface{}) (bool, string) {
 
 func completeMailRuleReorderIDs(currentIDs, requestedIDs []string) ([]string, error) {
 	if len(currentIDs) == 0 {
-		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list returned no rule IDs")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "rule IDs do not exist in current mailbox rules").WithParam("rule_ids")
 	}
 	currentSet := make(map[string]bool, len(currentIDs))
 	for i, id := range currentIDs {

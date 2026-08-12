@@ -6,6 +6,7 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"reflect"
 	"strings"
@@ -109,7 +110,8 @@ func TestCompleteMailRuleReorderIDs(t *testing.T) {
 			name:      "empty current list",
 			current:   nil,
 			requested: []string{"A"},
-			wantErr:   "returned no rule IDs",
+			wantErr:   "do not exist",
+			wantParam: "rule_ids",
 		},
 		{
 			name:      "duplicate current list",
@@ -299,6 +301,73 @@ func TestMailRulesReorderRejectsRepeatedPageToken(t *testing.T) {
 		t.Fatal("expected repeated page token error")
 	}
 	requireMailRulesProblem(t, err, errs.CategoryInternal, errs.SubtypeInvalidResponse)
+}
+
+func TestMailRulesReorderRejectsTooManyListPages(t *testing.T) {
+	_, reg, shim := newMailRulesReorderCommand(t)
+	var calls int
+	for i := 0; i < maxMailRuleReorderListPages; i++ {
+		nextToken := "next"
+		if i+1 < maxMailRuleReorderListPages {
+			nextToken = fmt.Sprintf("next-%d", i+1)
+		}
+		reg.Register(&httpmock.Stub{
+			Method: http.MethodGet,
+			URL:    "/open-apis/mail/v1/user_mailboxes/me/rules",
+			OnMatch: func(req *http.Request) {
+				calls++
+			},
+			Body: map[string]interface{}{
+				"code": 0,
+				"msg":  "ok",
+				"data": map[string]interface{}{
+					"items":      []interface{}{map[string]interface{}{"id": "A"}},
+					"has_more":   true,
+					"page_token": nextToken,
+				},
+			},
+		})
+	}
+
+	shim.cmd.SetArgs([]string{
+		"--as", "bot",
+		"--params", `{"user_mailbox_id":"me"}`,
+		"--data", `{"rule_ids":["A"]}`,
+	})
+	err := shim.cmd.Execute()
+	if err == nil {
+		t.Fatal("expected too many pages error")
+	}
+	requireMailRulesProblem(t, err, errs.CategoryInternal, errs.SubtypeInvalidResponse)
+	if calls != maxMailRuleReorderListPages {
+		t.Fatalf("list calls = %d, want %d", calls, maxMailRuleReorderListPages)
+	}
+}
+
+func TestMailRulesReorderEmptyListReturnsRuleIDValidation(t *testing.T) {
+	_, reg, shim := newMailRulesReorderCommand(t)
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/mail/v1/user_mailboxes/me/rules",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"items": []interface{}{},
+			},
+		},
+	})
+
+	shim.cmd.SetArgs([]string{
+		"--as", "bot",
+		"--params", `{"user_mailbox_id":"me"}`,
+		"--data", `{"rule_ids":["deleted-rule"]}`,
+	})
+	err := shim.cmd.Execute()
+	if err == nil {
+		t.Fatal("expected rule_ids validation error")
+	}
+	requireValidationParam(t, err, "rule_ids")
 }
 
 func TestMailRulesReorderListFailureDoesNotCallReorder(t *testing.T) {
