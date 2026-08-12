@@ -65,10 +65,15 @@ const appNoContainerCode = 400002655
 // It replaces the infra-sounding "Container not exists" with the actual cause.
 const appNoContainerMessage = "this app has no running container; online metrics and analytics are only produced after the app is deployed and serving traffic"
 
-// appNoContainerHint guides deploying the app so observability data starts
-// flowing. It uses an existing command with a stable placeholder arg so a
-// harness can act on it without parsing natural-language error text.
-const appNoContainerHint = "confirm the app is deployed and running in the online environment (a newly created or undeployed app produces no metrics yet); deploy it with `lark-cli apps +release-create --app-id <app_id>`, then retry once it is serving traffic"
+// appNoContainerHint guides diagnosing and (only with user authorization)
+// deploying the app so observability data starts flowing. Deploying via
+// +release-create is a "write" that takes the whole app live and can affect
+// existing production traffic, so — like appNoDatabaseHint — the hint gates
+// that go-live behind an explicit user confirmation and leads with a read-only
+// status check; a failed metrics read alone does not authorize a release. It
+// names existing commands with a stable placeholder arg so a harness can act on
+// it without parsing natural-language error text.
+const appNoContainerHint = "check the app's deployment status with `lark-cli apps +release-list --app-id <app_id> --status finished` (a newly created or undeployed app has no finished release, so it produces no metrics yet); if it is not deployed, ask the user whether to deploy — deploying takes the whole app live and can affect existing production traffic — and only if confirmed run `lark-cli apps +release-create --app-id <app_id>`, then retry once it is serving traffic"
 
 // appNoContainerMessageMarkers are lowercase substrings of the raw "Container
 // not exists" server message, used as a fallback when the business code is not
