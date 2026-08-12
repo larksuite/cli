@@ -68,6 +68,8 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 
 - 返回 `field` 和 `updated: true`。
 - 按返回的 `next_step` 和 `verification_hint` 继续；类型转换涉及已有值时抽样读取记录。
+- 返回 no-op 时不重复提交相同更新；当前完整字段状态尚未确认时执行一次 `+field-get`，与目标一致即可完成。
+- 响应中的 `field.type` 与提交值不一致时仍是待核验状态；执行 `+field-get`，类型转换还需抽样读取记录值，确认最终结构和值后再完成。
 
 ## 工作流
 

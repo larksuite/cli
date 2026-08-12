@@ -70,6 +70,13 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/fields
 }
 ```
 
+## 返回与恢复
+
+- 数组部分失败时返回 `ok:false`、`summary` 和有序 `items`；item 状态分为 `created`、`failed`、`not_attempted`，已创建项保留字段 ID。
+- 保留 `created` 项，不重复创建；`retryable:true` 的失败项可原样重试，其他失败项先按 `hint` 修正，再只提交失败项和后续未执行项，并保持依赖顺序。
+- 调用超时且没有终态输出时，先按本次提交的字段名定向读取，只创建缺失项；没有写前快照时，已存在的同名字段只能标记为 `ambiguous`，不能归因于本次创建。
+- 完整成功且 `field_get_recommended:false`、`next_step:"done"` 时结束；推荐读回时按 `verification_hint` 定向执行 `+field-get`。
+
 ## 参考
 
 - [lark-base-field-json.md](lark-base-field-json.md) — 字段 JSON 规范（推荐）

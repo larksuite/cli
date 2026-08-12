@@ -146,6 +146,8 @@ text 字段的 `style.type` 影响单元格检查逻辑：
 
 写入只读字段通常不会更新数据；返回里可能出现 `ignored_fields`，reason 会说明 `READONLY`。看到这种返回时，不要重试同一 payload，应移除只读字段，只写存储字段。
 
+读取单元格时，`auto_number`、`formula`、`lookup` 为 `string | null`；`created_at`、`updated_at` 为 RFC3339 字符串或 `null`；`created_by`、`updated_by` 为 `array<{id, name}>`。
+
 ## 4. 完整示例
 
 ```json
