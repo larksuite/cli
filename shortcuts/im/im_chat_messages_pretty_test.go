@@ -142,6 +142,32 @@ func TestRenderChatMessagesPrettyEmpty(t *testing.T) {
 	}
 }
 
+func TestRenderChatMessagesPrettyDeduplicatesRootMessageIDs(t *testing.T) {
+	root := map[string]interface{}{
+		"message_id":  "om_root",
+		"create_time": "2026-08-11 21:37",
+		"content":     "root",
+	}
+	messages := []map[string]interface{}{
+		root,
+		root,
+		{"create_time": "2026-08-11 21:38", "content": "without id one"},
+		{"create_time": "2026-08-11 21:39", "content": "without id two"},
+	}
+
+	var out bytes.Buffer
+	renderChatMessagesPretty(&out, messages, false, "")
+	got := out.String()
+	if count := strings.Count(got, "message: om_root"); count != 1 {
+		t.Fatalf("root message rendered %d times, want 1:\n%s", count, got)
+	}
+	for _, want := range []string{"without id one", "without id two", "3 messages · 0 thread replies"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("pretty output missing %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestEscapePrettyContent(t *testing.T) {
 	input := "line 1\r\nline 2\tC:\\tmp"
 	want := `line 1\r\nline 2\tC:\\tmp`

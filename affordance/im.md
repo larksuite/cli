@@ -60,7 +60,7 @@ Use this for message history when the conversation is already known.
 - Fetching full details for known message ids → use [[+messages-mget]].
 
 ### Tips
-- Use `--format pretty` for a complete readable transcript with nested thread replies; use JSON for machine processing or transport fields.
+- Use `--format pretty` to read returned messages and expanded replies. Continue with `--page-token` or `--page-all` for more outer messages; use `+threads-messages-list --page-all` for a complete thread. Use JSON for machine processing or transport fields.
 
 ### Examples
 

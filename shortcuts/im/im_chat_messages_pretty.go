@@ -25,8 +25,21 @@ func renderChatMessagesPretty(w io.Writer, messages []map[string]interface{}, ha
 		return
 	}
 
+	visibleMessages := make([]map[string]interface{}, 0, len(messages))
+	seenMessageIDs := make(map[string]struct{}, len(messages))
+	for _, msg := range messages {
+		id, _ := msg["message_id"].(string)
+		if id != "" {
+			if _, duplicate := seenMessageIDs[id]; duplicate {
+				continue
+			}
+			seenMessageIDs[id] = struct{}{}
+		}
+		visibleMessages = append(visibleMessages, msg)
+	}
+
 	threadReplyCount := 0
-	for i, msg := range messages {
+	for i, msg := range visibleMessages {
 		if i > 0 {
 			fmt.Fprintln(w)
 		}
@@ -36,7 +49,7 @@ func renderChatMessagesPretty(w io.Writer, messages []map[string]interface{}, ha
 	}
 
 	fmt.Fprintln(w)
-	writeChatMessagesPrettyFooter(w, len(messages), threadReplyCount, hasMore, pageToken)
+	writeChatMessagesPrettyFooter(w, len(visibleMessages), threadReplyCount, hasMore, pageToken)
 }
 
 func renderChatMessagePretty(w io.Writer, msg map[string]interface{}) {
