@@ -59,7 +59,6 @@ func NewCmdSchemaWithVisibilityAndShortcuts(
 	runF func(*SchemaOptions) error,
 ) *cobra.Command {
 	opts := &SchemaOptions{Factory: f}
-	registered = common.CloneShortcuts(registered)
 
 	cmd := &cobra.Command{
 		Use:   "schema [path | service resource method]",

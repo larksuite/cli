@@ -95,7 +95,15 @@ func init() {
 	allShortcuts = append(allShortcuts, okr.Shortcuts()...)
 }
 
-// AllShortcuts returns a copy of all registered shortcuts (for dump-shortcuts).
+// AllShortcuts returns an isolated copy of all registered shortcuts.
+//
+// This is the isolation boundary, and the only place that needs to deep-copy:
+// the package global is filled once by init and never written again, but a
+// Shortcut carries slice fields whose backing arrays a shallow copy would still
+// share, so an external distribution mutating an element (registered[0].Flags[0])
+// would corrupt the global for the whole process. Callers inside this repository
+// receive an already-isolated snapshot and must not clone it again -- the copy
+// costs ~165us over 500+ shortcuts, which lands on every CLI startup.
 //
 //go:noinline
 func AllShortcuts() []common.Shortcut {
@@ -131,7 +139,6 @@ func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f
 
 // RegisterShortcutSnapshotWithContext mounts one build-local shortcut snapshot.
 func RegisterShortcutSnapshotWithContext(ctx context.Context, program *cobra.Command, f *cmdutil.Factory, registered []common.Shortcut) {
-	registered = common.CloneShortcuts(registered)
 	// Factory.Config may be nil in tests that pass a zero-value factory.
 	var brand core.LarkBrand
 	if f != nil && f.Config != nil {

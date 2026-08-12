@@ -48,7 +48,7 @@ func NewCmdAuthLogin(f *cmdutil.Factory, runF func(*LoginOptions) error) *cobra.
 }
 
 func newCmdAuthLoginWithShortcuts(f *cmdutil.Factory, runF func(*LoginOptions) error, registered []common.Shortcut) *cobra.Command {
-	opts := &LoginOptions{Factory: f, shortcuts: common.CloneShortcuts(registered)}
+	opts := &LoginOptions{Factory: f, shortcuts: registered}
 
 	cmd := &cobra.Command{
 		Use:   "login",
