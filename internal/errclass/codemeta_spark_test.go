@@ -33,6 +33,7 @@ func TestLookupCodeMetaSparkRoleCodes(t *testing.T) {
 		{3344041, errs.CategoryAPI, errs.SubtypeInvalidParameters},
 		{400002465, errs.CategoryValidation, errs.SubtypeFailedPrecondition},
 		{500002759, errs.CategoryValidation, errs.SubtypeFailedPrecondition},
+		{400002655, errs.CategoryValidation, errs.SubtypeFailedPrecondition},
 		{400002469, errs.CategoryAPI, errs.SubtypeNotFound},
 	}
 

@@ -29,7 +29,7 @@ func TestAppsMetricList_NoContainerRewriteThroughExecute(t *testing.T) {
 		"+metric-list", "--app-id", "app_x", "--metric", "requests", "--as", "user",
 	}, factory, stdout)
 
-	p := requireAppsAPIProblem(t, err)
+	p := requireAppsValidationProblem(t, err)
 	if p.Code != appNoContainerCode {
 		t.Errorf("Code = %d, want %d", p.Code, appNoContainerCode)
 	}
@@ -53,7 +53,7 @@ func TestAppsAnalyticsList_NoContainerRewriteThroughExecute(t *testing.T) {
 		"+analytics-list", "--app-id", "app_x", "--analytics", "users", "--as", "user",
 	}, factory, stdout)
 
-	p := requireAppsAPIProblem(t, err)
+	p := requireAppsValidationProblem(t, err)
 	if p.Code != appNoContainerCode {
 		t.Errorf("Code = %d, want %d", p.Code, appNoContainerCode)
 	}

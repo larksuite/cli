@@ -26,6 +26,7 @@ var sparkCodeMeta = map[int]CodeMeta{
 
 	400002465: {Category: errs.CategoryValidation, Subtype: errs.SubtypeFailedPrecondition}, // app has no database yet
 	500002759: {Category: errs.CategoryValidation, Subtype: errs.SubtypeFailedPrecondition}, // app has no database yet, pre-4xx renumber
+	400002655: {Category: errs.CategoryValidation, Subtype: errs.SubtypeFailedPrecondition}, // app has no running container yet (online observability)
 	400002469: {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},                  // table does not exist
 
 	400002477: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},         // db sync mapping is invalid
