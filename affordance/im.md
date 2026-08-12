@@ -59,11 +59,14 @@ Use this for message history when the conversation is already known.
 - Searching across conversations → use [[+messages-search]].
 - Fetching full details for known message ids → use [[+messages-mget]].
 
+### Tips
+- Use `--format pretty` for a complete readable transcript with nested thread replies; use JSON for machine processing or transport fields.
+
 ### Examples
 
-**List messages in a group chat**
+**Read a group conversation with full bodies and thread replies**
 ```bash
-lark-cli im +chat-messages-list --chat-id oc_xxx
+lark-cli im +chat-messages-list --chat-id oc_xxx --format pretty
 ```
 
 ### Skills

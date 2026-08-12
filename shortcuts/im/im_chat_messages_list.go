@@ -183,31 +183,18 @@ var ImChatMessageList = common.Shortcut{
 			"has_more":   hasMore,
 			"page_token": nextPageToken,
 		}
-		runtime.OutFormat(outData, &output.Meta{
+		emitMeta := &output.Meta{
 			Pagination: pagination,
-		}, func(w io.Writer) {
-			if len(messages) == 0 {
-				fmt.Fprintln(w, "No messages in this time range.")
-				return
-			}
-			var rows []map[string]interface{}
-			for _, msg := range messages {
-				row := map[string]interface{}{
-					"time": msg["create_time"],
-					"type": msg["msg_type"],
-				}
-				if sender, ok := msg["sender"].(map[string]interface{}); ok {
-					if disp := senderDisplay(sender); disp != "" {
-						row["sender"] = disp
-					}
-				}
-				if content, _ := msg["content"].(string); content != "" {
-					row["content"] = convertlib.TruncateContent(content, 40)
-				}
-				rows = append(rows, row)
-			}
-			output.PrintTable(w, rows)
-			fmt.Fprintf(w, "\n%d message(s)\ntip: use --format json to view full message content\n", len(messages))
+		}
+		// The conversation renderer owns its footer because it reports both
+		// outer messages and visible thread replies. Suppress the framework's
+		// second pagination summary only for an actual pretty render; JSON/jq,
+		// table, CSV and NDJSON keep their established metadata contracts.
+		if runtime.Format == "pretty" && runtime.JqExpr == "" {
+			emitMeta = nil
+		}
+		runtime.OutFormat(outData, emitMeta, func(w io.Writer) {
+			renderChatMessagesPretty(w, messages, hasMore, nextPageToken)
 		})
 		return nil
 	},

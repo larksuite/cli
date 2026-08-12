@@ -26,7 +26,7 @@ var imAffordanceExamples = []imAffordanceExample{
 	{method: "+chat-create", command: `lark-cli im +chat-create --name "My Group"`, source: "lark-im/references/lark-im-chat-create.md"},
 	{method: "+chat-list", command: "lark-cli im +chat-list", source: "lark-im/references/lark-im-chat-list.md"},
 	{method: "+chat-members-list", command: "lark-cli im +chat-members-list --chat-id oc_xxx", source: "lark-im/references/lark-im-chat-members-list.md"},
-	{method: "+chat-messages-list", command: "lark-cli im +chat-messages-list --chat-id oc_xxx", source: "lark-im/references/lark-im-chat-messages-list.md"},
+	{method: "+chat-messages-list", command: "lark-cli im +chat-messages-list --chat-id oc_xxx --format pretty", source: "lark-im/references/lark-im-chat-messages-list.md"},
 	{method: "+chat-search", command: `lark-cli im +chat-search --query "project"`, source: "lark-im/references/lark-im-chat-search.md"},
 	{method: "+chat-update", command: `lark-cli im +chat-update --chat-id oc_xxx --name "New Group Name"`, source: "lark-im/references/lark-im-chat-update.md"},
 	{method: "+messages-mget", command: "lark-cli im +messages-mget --message-ids om_xxx", source: "lark-im/references/lark-im-messages-mget.md"},
