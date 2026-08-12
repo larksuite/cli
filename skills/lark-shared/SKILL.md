@@ -15,7 +15,7 @@ metadata:
 
 1. **调用前先确认用法**：执行前读对应 reference 或跑 `--help`，别猜 flag 盲调。
 
-2. **身份决定你代表谁操作**：`--as user` 代表用户本人（能看到、也能操作其日历、云空间/云盘/云存储等个人资源），`--as bot` 代表应用自己，应用级操作，只能访问bot自己的资源，bot 查用户资源会返回空成功而非报错。身份是**整个工作流的状态**，不是单条命令的局部参数。CLI 不会在进程之间继承"上一步用的身份"——省略 `--as` 不代表"保持当前身份"，动手前先搞清楚身份`identity`。身份模型和权限管理 → [`lark-shared-identity-and-permissions.md`](references/lark-shared-identity-and-permissions.md)。
+2. **身份决定你代表谁操作**：`--as user` 代表用户本人（能看到、也能操作其日历、云空间/云盘/云存储等个人资源），`--as bot` 代表应用自己，应用级操作，只能访问bot自己的资源，bot 查用户资源会返回空成功而非报错。动手前先搞清楚身份`identity`。身份模型和权限管理 → [`lark-shared-identity-and-permissions.md`](references/lark-shared-identity-and-permissions.md)。
 
 3. **授权 / 配置类 URL 必须配二维码**：当命令输出 `verification_url`、`verification_uri_complete`、`console_url` 等 URL 字段时，必须用 `lark-cli auth qrcode` 生成并在回复中展示，URL 在前二维码在后；优先生成 PNG（`--output`），仅当用户明确要求时才使用 ASCII（`--ascii`）。URL 原样转发——不编解码、不加标点、不重拼 query，二维码和链接请一起展示给用户。
 
@@ -41,7 +41,7 @@ metadata:
 
 | 强触发条件（命中任一即必读） | Reference |
 |---|---|
-| 查看自己是谁(user/bot)、获取当前身份详细字段信息、身份诊断、`--as`选择逻辑、登录态、认证、scope、授权和权限管理、`missing_scopes` 或 `console_url`、Agent 准备发起或完成 `auth login` | [`lark-shared-identity-and-permissions.md`](references/lark-shared-identity-and-permissions.md) |
+| 查看自己是谁(user/bot)、获取当前身份详细字段信息、身份诊断、`--as`选择逻辑、身份延续、登录态、认证、scope、授权和权限管理、`missing_scopes` 或 `console_url`、Agent 准备发起或完成 `auth login` | [`lark-shared-identity-and-permissions.md`](references/lark-shared-identity-and-permissions.md) |
 | 需要依赖 JSON 输出契约判断成功 / 失败、读取 stdout / stderr，或为命令编写脚本与封装 | [`lark-shared-output-contract.md`](references/lark-shared-output-contract.md) |
 | 准备执行high-risk-write(高风险操作)、判断命令风险等级、遇到退出码 exit 10、`confirmation_required`、确认后重试 | [`lark-shared-high-risk-approval.md`](references/lark-shared-high-risk-approval.md) |
 | 首次使用CLI需运行 `lark-cli config init` 完成应用配置、或 CLI 明确提示 `config init --new` | [`lark-shared-config-init.md`](references/lark-shared-config-init.md) |
