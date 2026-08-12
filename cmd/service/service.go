@@ -419,6 +419,10 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 		return err
 	}
 
+	if err := prepareMailRuleReorder(opts.Ctx, ac, opts, &request); err != nil {
+		return err
+	}
+
 	out := f.IOStreams.Out
 	format, formatOK := output.ParseFormat(opts.Format)
 	if !formatOK {
@@ -439,7 +443,7 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	if err != nil {
 		return err
 	}
-	return client.HandleResponse(resp, client.ResponseOptions{
+	err = client.HandleResponse(resp, client.ResponseOptions{
 		OutputPath:  opts.Output,
 		Format:      format,
 		JqExpr:      opts.JqExpr,
@@ -450,6 +454,188 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 		Identity:    opts.As,
 		CheckError:  checkErr,
 	})
+	if err != nil && opts.SchemaPath == mailRulesReorderSchemaPath {
+		return withMailRuleReorderHint(err)
+	}
+	return err
+}
+
+const mailRulesReorderSchemaPath = "mail.user_mailbox.rules.reorder"
+
+func prepareMailRuleReorder(ctx context.Context, ac *client.APIClient, opts *ServiceMethodOptions, request *client.RawApiRequest) error {
+	if opts.SchemaPath != mailRulesReorderSchemaPath {
+		return nil
+	}
+	body, ok := request.Data.(map[string]interface{})
+	if !ok {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--data must be a JSON object").WithParam("--data")
+	}
+	requestedIDs, err := serviceStringSlice(body["rule_ids"], "rule_ids")
+	if err != nil {
+		return err
+	}
+	if len(requestedIDs) == 0 {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "rule_ids must contain at least one rule ID").WithParam("rule_ids")
+	}
+	currentIDs, err := fetchAllMailRuleIDs(ctx, ac, *request)
+	if err != nil {
+		return err
+	}
+	completedIDs, err := completeMailRuleReorderIDs(currentIDs, requestedIDs)
+	if err != nil {
+		return err
+	}
+	body["rule_ids"] = completedIDs
+	request.Data = body
+	return nil
+}
+
+func serviceStringSlice(value interface{}, field string) ([]string, error) {
+	switch v := value.(type) {
+	case []string:
+		return append([]string(nil), v...), nil
+	case []interface{}:
+		out := make([]string, 0, len(v))
+		for i, item := range v {
+			s, ok := item.(string)
+			if !ok || s == "" {
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s[%d] must be a non-empty string", field, i).WithParam(field)
+			}
+			out = append(out, s)
+		}
+		return out, nil
+	default:
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s must be an array of strings", field).WithParam(field)
+	}
+}
+
+func fetchAllMailRuleIDs(ctx context.Context, ac *client.APIClient, reorderRequest client.RawApiRequest) ([]string, error) {
+	listURL, ok := strings.CutSuffix(reorderRequest.URL, "/reorder")
+	if !ok {
+		return nil, errs.NewInternalError(errs.SubtypeUnknown, "mail rules reorder URL %q does not end with /reorder", reorderRequest.URL)
+	}
+	params := map[string]interface{}{}
+	for k, v := range reorderRequest.Params {
+		params[k] = v
+	}
+
+	var ids []string
+	for {
+		result, err := ac.CallAPI(ctx, client.RawApiRequest{
+			Method:    "GET",
+			URL:       listURL,
+			Params:    params,
+			As:        reorderRequest.As,
+			ExtraOpts: reorderRequest.ExtraOpts,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if err := ac.CheckResponse(result, reorderRequest.As); err != nil {
+			return nil, err
+		}
+		data, ok := resultDataMap(result)
+		if !ok {
+			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list response missing data object")
+		}
+		items, ok := data["items"].([]interface{})
+		if !ok {
+			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list response missing items array")
+		}
+		for i, item := range items {
+			itemMap, ok := item.(map[string]interface{})
+			if !ok {
+				return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list item %d is not an object", i)
+			}
+			id, ok := itemMap["id"].(string)
+			if !ok || id == "" {
+				return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list item %d missing id", i)
+			}
+			ids = append(ids, id)
+		}
+
+		hasMore, nextToken := nextPageToken(data)
+		if !hasMore {
+			break
+		}
+		if nextToken == "" {
+			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list response has more pages but no page token")
+		}
+		params["page_token"] = nextToken
+	}
+	return ids, nil
+}
+
+func resultDataMap(result interface{}) (map[string]interface{}, bool) {
+	resultMap, ok := result.(map[string]interface{})
+	if !ok {
+		return nil, false
+	}
+	data, ok := resultMap["data"].(map[string]interface{})
+	return data, ok
+}
+
+func nextPageToken(data map[string]interface{}) (bool, string) {
+	hasMore, _ := data["has_more"].(bool)
+	if !hasMore {
+		return false, ""
+	}
+	for _, key := range []string{"page_token", "next_page_token"} {
+		if token, ok := data[key].(string); ok && token != "" {
+			return true, token
+		}
+	}
+	return true, ""
+}
+
+func completeMailRuleReorderIDs(currentIDs, requestedIDs []string) ([]string, error) {
+	if len(currentIDs) == 0 {
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list returned no rule IDs")
+	}
+	currentSet := make(map[string]bool, len(currentIDs))
+	for i, id := range currentIDs {
+		if id == "" {
+			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list item %d missing id", i)
+		}
+		if currentSet[id] {
+			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list returned duplicate rule ID %q", id)
+		}
+		currentSet[id] = true
+	}
+
+	completed := make([]string, 0, len(currentIDs))
+	requestedSet := make(map[string]bool, len(requestedIDs))
+	for _, id := range requestedIDs {
+		if requestedSet[id] {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "duplicate rule ID %q in rule_ids", id).WithParam("rule_ids")
+		}
+		if !currentSet[id] {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "rule ID %q does not exist in current mailbox rules", id).WithParam("rule_ids")
+		}
+		requestedSet[id] = true
+		completed = append(completed, id)
+	}
+	for _, id := range currentIDs {
+		if !requestedSet[id] {
+			completed = append(completed, id)
+		}
+	}
+	if len(completed) != len(currentIDs) {
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "completed rule ID count %d does not match current rule count %d", len(completed), len(currentIDs))
+	}
+	return completed, nil
+}
+
+func withMailRuleReorderHint(err error) error {
+	if problem, ok := errs.ProblemOf(err); ok {
+		hint := "Rules may have changed since they were listed; run `lark-cli mail user_mailbox.rules list` again and retry reorder."
+		if problem.Hint == "" {
+			problem.Hint = hint
+		} else if !strings.Contains(problem.Hint, hint) {
+			problem.Hint += "\n" + hint
+		}
+	}
+	return err
 }
 
 // checkServiceScopes pre-checks user scopes before making the API call.
