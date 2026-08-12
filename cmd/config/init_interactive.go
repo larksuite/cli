@@ -224,10 +224,9 @@ func resolveRegisterAuthMethod(ctx context.Context, _ *cmdutil.Factory, requeste
 // runCreateAppFlow runs the "create new app" flow via OpenClaw device flow.
 // If brandOverride is non-empty, skip the interactive brand selection.
 // requestedAuthMethod is the requested auth method; empty means client_secret.
-// restoreAppID, when non-empty, is sent on the registration begin request so the
-// server re-registers that existing app (credential recovery) instead of creating
-// a new one. Empty preserves the normal new-app flow.
-func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride core.LarkBrand, requestedAuthMethod string, msg *initMsg, restoreAppID string) (*configInitResult, error) {
+// privateKeyJWTAppID, when non-empty, identifies an existing app being migrated
+// to private_key_jwt. Empty preserves the normal new-app flow.
+func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride core.LarkBrand, requestedAuthMethod string, msg *initMsg, privateKeyJWTAppID string) (*configInitResult, error) {
 	var larkBrand core.LarkBrand
 	if brandOverride != "" {
 		larkBrand = brandOverride
@@ -299,8 +298,7 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 		}
 	}
 
-	// Restore flow: re-register the existing app instead of creating a new one.
-	beginOpts.RestoreAppID = restoreAppID
+	beginOpts.PrivateKeyJWTAppID = privateKeyJWTAppID
 
 	authResp, err := larkauth.RequestAppRegistration(ctx, httpClient, larkBrand, beginOpts, f.IOStreams.ErrOut)
 	if err != nil {
@@ -308,7 +306,7 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 	}
 
 	// Step 2: Build and display verification URL + QR code
-	verificationURL := larkauth.BuildVerificationURL(authResp.VerificationUriComplete, build.Version, restoreAppID)
+	verificationURL := larkauth.BuildVerificationURL(authResp.VerificationUriComplete, build.Version, privateKeyJWTAppID)
 
 	// Branch on TTY: human-friendly copy in interactive terminals,
 	// preserve original copy for AI / non-interactive callers.

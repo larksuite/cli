@@ -493,27 +493,9 @@ func TestRequestAppRegistration_BeginDefaultsToClientSecret(t *testing.T) {
 	if body.Has("auth_attestation") {
 		t.Errorf("auth_attestation should be absent for client_secret, got %q", body.Get("auth_attestation"))
 	}
-	// Normal (non-restore) begin must NOT carry app_id.
+	// A new-app begin must not carry an existing app id.
 	if body.Has("app_id") {
-		t.Errorf("app_id should be absent when RestoreAppID is empty, got %q", body.Get("app_id"))
-	}
-}
-
-// TestRequestAppRegistration_BeginRestoreAppID verifies the restore flow sends the
-// existing app id on begin so the server re-registers that app.
-func TestRequestAppRegistration_BeginRestoreAppID(t *testing.T) {
-	var body url.Values
-	hc := captureClient(&body, beginRespJSON)
-
-	opts := AppRegistrationBeginOptions{RestoreAppID: "cli_restore_me"}
-	if _, err := RequestAppRegistration(context.Background(), hc, core.BrandFeishu, opts, nil); err != nil {
-		t.Fatal(err)
-	}
-	if body.Get("action") != "begin" {
-		t.Errorf("action = %q, want begin", body.Get("action"))
-	}
-	if body.Get("app_id") != "cli_restore_me" {
-		t.Errorf("app_id = %q, want cli_restore_me", body.Get("app_id"))
+		t.Errorf("app_id should be absent when PrivateKeyJWTAppID is empty, got %q", body.Get("app_id"))
 	}
 }
 
@@ -588,9 +570,9 @@ func TestRequestAppRegistration_BeginPrivateKeyJWTExistingAppID(t *testing.T) {
 	hc := captureClient(&body, beginRespJSON)
 
 	opts := AppRegistrationBeginOptions{
-		AuthMethod:      core.AuthMethodPrivateKeyJWT,
-		AuthAttestation: "header.claims.sig",
-		RestoreAppID:    "cli_existing",
+		AuthMethod:         core.AuthMethodPrivateKeyJWT,
+		AuthAttestation:    "header.claims.sig",
+		PrivateKeyJWTAppID: "cli_existing",
 	}
 	if _, err := RequestAppRegistration(context.Background(), hc, core.BrandFeishu, opts, nil); err != nil {
 		t.Fatal(err)
