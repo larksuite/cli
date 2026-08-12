@@ -10,9 +10,9 @@
 - `+field-create --json` 接受一个字段对象或非空字段对象数组。
 - `+field-update --json` 只接受一个字段对象。
 - 所有字段类型都支持可选 `description`；支持纯文本，也支持 Markdown 链接。
-- 字段默认值使用 `default_value`，直接传对应 CellValue；支持范围只有 `text`、`number`、静态 `select`、`datetime`、`user`。清空默认值传 `null`；创建时省略表示不设置，更新时要保留现有默认值则随完整字段配置一并写回。
+- 字段默认值使用 `default_value`，直接传对应 CellValue；支持范围只有 `text`、`number`、静态 `select`、`datetime`、`user`。清空默认值传 `null`；创建时省略表示不设置。
 - 不要使用旧结构：`field_name`、`property`、`ui_type`、数字枚举 `type`。
-- `+field-update` 使用同样的字段 JSON 结构，但属于完整覆盖的 `PUT`，不是局部 patch；先用 `+field-get` 读取当前定义，在其基础上修改目标属性，并把需要保留的其他可写配置完整写回，同时带 `--yes`。
+- `+field-update` 是 override 式的完整覆盖 `PUT`，不是 partial update；先用 `+field-get` 读取当前定义，在其基础上修改目标属性，并把整个字段需要保留的可写配置完整写回，同时带 `--yes`。
 - `type=formula` 或 `type=lookup` 创建/更新前，必须先读对应 guide。
 
 推荐示例：
