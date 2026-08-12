@@ -320,56 +320,12 @@ func shouldRefresh(cm CacheMeta) bool {
 }
 
 // overlayMergedServices merges remote services into the in-memory map.
-// Remote entries override embedded entries with the same name, but do not drop
-// embedded-only resources. This keeps a branch build's compiled metadata
-// executable even when a newer cached remote payload for the same service has
-// not yet published that branch's resource.
+// Remote entries override embedded entries with the same name.
 func overlayMergedServices(reg *MergedRegistry) {
 	for _, svc := range reg.Services {
 		if svc.Name == "" {
 			continue
 		}
-		if base, ok := mergedServices[svc.Name]; ok {
-			svc.Resources = mergeResources(base.Resources, svc.Resources)
-		}
 		mergedServices[svc.Name] = svc
 	}
-}
-
-func mergeResources(base, overlay map[string]meta.Resource) map[string]meta.Resource {
-	if len(base) == 0 {
-		return overlay
-	}
-	if len(overlay) == 0 {
-		return base
-	}
-	merged := make(map[string]meta.Resource, len(base)+len(overlay))
-	for name, res := range base {
-		merged[name] = res
-	}
-	for name, res := range overlay {
-		if baseRes, ok := merged[name]; ok {
-			res.Methods = mergeMethods(baseRes.Methods, res.Methods)
-			res.Resources = mergeResources(baseRes.Resources, res.Resources)
-		}
-		merged[name] = res
-	}
-	return merged
-}
-
-func mergeMethods(base, overlay map[string]meta.Method) map[string]meta.Method {
-	if len(base) == 0 {
-		return overlay
-	}
-	if len(overlay) == 0 {
-		return base
-	}
-	merged := make(map[string]meta.Method, len(base)+len(overlay))
-	for name, method := range base {
-		merged[name] = method
-	}
-	for name, method := range overlay {
-		merged[name] = method
-	}
-	return merged
 }
