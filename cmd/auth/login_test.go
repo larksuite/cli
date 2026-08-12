@@ -323,20 +323,45 @@ func TestExternalShortcutScopesParticipateInAuthDomainResolution(t *testing.T) {
 	}
 }
 
-func TestGetDomainMetadataMatchesAllKnownDomains(t *testing.T) {
+// The interactive selector shows exactly allKnownDomains minus scope-less
+// shortcut-only domains (e.g. event). --domain and the help list keep
+// accepting those, matching main: selecting a scope-less domain fails later
+// with "no matching scopes found" instead of "unknown domain".
+func TestGetDomainMetadataMatchesAllKnownDomainsMinusScopeless(t *testing.T) {
 	metadata := getDomainMetadata("zh")
 	known := allKnownDomains("")
-	if len(metadata) != len(known) {
-		t.Fatalf("domain metadata count = %d, allKnownDomains count = %d", len(metadata), len(known))
+	scopeless := scopelessShortcutOnlyDomains(shortcuts.AllShortcuts())
+	if len(scopeless) == 0 {
+		t.Fatal("expected at least one scope-less domain (event) to exercise the filter")
+	}
+	if len(metadata) != len(known)-len(scopeless) {
+		t.Fatalf("domain metadata count = %d, want allKnownDomains (%d) minus scopeless (%d)",
+			len(metadata), len(known), len(scopeless))
 	}
 	for _, domain := range metadata {
 		if !known[domain.Name] {
 			t.Errorf("domain metadata contains %q outside allKnownDomains", domain.Name)
 		}
+		if scopeless[domain.Name] {
+			t.Errorf("interactive selector lists scope-less domain %q", domain.Name)
+		}
 	}
 }
 
-func TestAuthLoginHelpMatchesInteractiveDomains(t *testing.T) {
+// A scope-less domain stays addressable via --domain (main behavior): it
+// passes domain validation and fails later on scope resolution, not with
+// "unknown domain".
+func TestScopelessDomainStaysAddressableViaDomainFlag(t *testing.T) {
+	known := allKnownDomains("")
+	if !known["event"] {
+		t.Fatal("event must remain in allKnownDomains to match main behavior")
+	}
+	if scopes := collectScopesForDomains([]string{"event"}, "user", ""); len(scopes) != 0 {
+		t.Fatalf("event scopes = %v, want none", scopes)
+	}
+}
+
+func TestAuthLoginHelpMatchesKnownDomains(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	factory, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{})
 	login := NewCmdAuthLogin(factory, nil)
@@ -344,11 +369,7 @@ func TestAuthLoginHelpMatchesInteractiveDomains(t *testing.T) {
 	if domainFlag == nil {
 		t.Fatal("auth login --domain flag is missing")
 	}
-	metadata := getDomainMetadata("zh")
-	names := make([]string, len(metadata))
-	for index, domain := range metadata {
-		names[index] = domain.Name
-	}
+	names := sortedKnownDomains("")
 	want := "available: " + strings.Join(names, ", ") + ", all"
 	if !strings.Contains(domainFlag.Usage, want) {
 		t.Fatalf("domain help = %q, want %q", domainFlag.Usage, want)

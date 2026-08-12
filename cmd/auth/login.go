@@ -577,7 +577,11 @@ func allKnownDomainsWithShortcuts(brand core.LarkBrand, registered []common.Shor
 		if !shortcuts.IsShortcutServiceAvailable(sc.Service, brand) {
 			continue
 		}
-		if !registry.HasAuthDomain(sc.Service) && shortcutHasDeclaredScopes(sc) {
+		// No scope filter here: matching main, a scope-less domain (e.g.
+		// event) stays addressable via --domain and the --help list, and
+		// fails later with "no matching scopes found". Only the interactive
+		// selector hides it (see getDomainMetadataWithShortcuts).
+		if !registry.HasAuthDomain(sc.Service) {
 			domains[sc.Service] = true
 		}
 	}
@@ -591,6 +595,32 @@ func shortcutHasDeclaredScopes(shortcut common.Shortcut) bool {
 		}
 	}
 	return false
+}
+
+// scopelessShortcutOnlyDomains returns shortcut-only domains none of whose
+// shortcuts declare any scope (e.g. event). The interactive selector hides
+// them — picking one can only end in "no matching scopes found" — while
+// --domain and the help list keep accepting them, matching main.
+func scopelessShortcutOnlyDomains(registered []common.Shortcut) map[string]bool {
+	fromMeta := make(map[string]bool)
+	for _, p := range registry.ListFromMetaProjects() {
+		fromMeta[p] = true
+	}
+	hasScopes := make(map[string]bool)
+	seen := make(map[string]bool)
+	for _, sc := range registered {
+		seen[sc.Service] = true
+		if shortcutHasDeclaredScopes(sc) {
+			hasScopes[sc.Service] = true
+		}
+	}
+	scopeless := make(map[string]bool)
+	for service := range seen {
+		if !fromMeta[service] && !hasScopes[service] {
+			scopeless[service] = true
+		}
+	}
+	return scopeless
 }
 
 // sortedKnownDomains returns all valid domain names sorted alphabetically.

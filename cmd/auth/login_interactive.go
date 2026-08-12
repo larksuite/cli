@@ -39,8 +39,12 @@ func getDomainMetadata(lang string) []domainMeta {
 
 func getDomainMetadataWithShortcuts(lang string, brand core.LarkBrand, registered []common.Shortcut) []domainMeta {
 	known := allKnownDomainsWithShortcuts(brand, registered)
+	scopeless := scopelessShortcutOnlyDomains(registered)
 	domains := make([]domainMeta, 0, len(known))
 	for name := range known {
+		if scopeless[name] {
+			continue
+		}
 		domains = append(domains, buildDomainMeta(name, lang))
 	}
 
