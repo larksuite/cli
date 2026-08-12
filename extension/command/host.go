@@ -39,7 +39,9 @@ type HostResult struct {
 	Pagination *HostPagination
 }
 
-// HostPagination is the copied pagination metadata consumed by lark-cli's host adapter.
+// HostPagination is the copied pagination metadata consumed by lark-cli's host
+// adapter. It also appears in ContextOptions and commandtest, which supply the
+// page-collection callback a CommandContext exposes to business commands.
 type HostPagination struct {
 	Complete  bool
 	Pages     int
@@ -170,7 +172,8 @@ func InspectDomain(domain Domain) HostDomain {
 	return HostDomain{Name: domain.name, IsNew: domain.kind == domainNew}
 }
 
-// CloneSets copies set slices and immutable command declarations for BuildOption capture.
+// CloneSets copies set slices and immutable command declarations for BuildOption
+// capture. It is intended for the lark-cli host adapter, not for business commands.
 func CloneSets(sets []Set) []Set {
 	cloned := make([]Set, len(sets))
 	for index, set := range sets {
