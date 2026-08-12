@@ -216,11 +216,38 @@ const (
 
 // Hooks contains the optional preparation hooks and required Execute hook.
 type Hooks[Args any, Data any] struct {
+	// Normalize folds legacy input spellings into current semantics. It runs
+	// first and only when a legacy form exists.
+	//
+	// Normalize and Validate both run before the high-risk confirmation gate,
+	// so their CommandContext carries no network: CallJSON and CollectPages
+	// refuse there. A check that needs the API belongs in Execute, after the
+	// user has confirmed.
 	Normalize func(context.Context, CommandContext, *Args) error
-	Validate  func(context.Context, CommandContext, *Args) error
-	DryRun    func(context.Context, CommandContext, *Args) *DryRun
-	DryRunE   func(context.Context, CommandContext, *Args) (*DryRun, error)
-	Execute   func(context.Context, CommandContext, *Args) (Result[Data], error)
+
+	// Validate checks format, range and field combinations. Requirements the
+	// schema tag already states are enforced by the framework; this hook is for
+	// the rules a tag cannot express. It issues no request -- see Normalize.
+	Validate func(context.Context, CommandContext, *Args) error
+
+	// DryRun returns the requests the command would send, which the framework
+	// prints instead of executing. Set this or DryRunE, never both -- compiling
+	// a command that sets both fails.
+	//
+	// Choose by whether building the preview can fail: DryRun when the requests
+	// follow from Args alone, DryRunE when constructing them may error.
+	DryRun func(context.Context, CommandContext, *Args) *DryRun
+
+	// DryRunE is DryRun with an error channel. See DryRun for the choice.
+	DryRunE func(context.Context, CommandContext, *Args) (*DryRun, error)
+
+	// Execute carries the business logic and returns Success or Partial. It is
+	// the only hook that may call the API, and it must not write to stdout --
+	// the framework owns the envelope, format and exit code.
+	Execute func(context.Context, CommandContext, *Args) (Result[Data], error)
+
+	// Renderers customize --format pretty, keyed by format name. table, CSV and
+	// NDJSON are rendered by the framework and need no entry here.
 	Renderers map[string]Renderer[Data]
 }
 
