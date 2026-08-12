@@ -518,8 +518,10 @@ func fetchAllMailRuleIDs(ctx context.Context, ac *client.APIClient, reorderReque
 	for k, v := range reorderRequest.Params {
 		params[k] = v
 	}
+	delete(params, "page_token")
 
 	var ids []string
+	seenPageTokens := map[string]bool{}
 	for {
 		result, err := ac.CallAPI(ctx, client.RawApiRequest{
 			Method:    "GET",
@@ -561,6 +563,10 @@ func fetchAllMailRuleIDs(ctx context.Context, ac *client.APIClient, reorderReque
 		if nextToken == "" {
 			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list response has more pages but no page token")
 		}
+		if seenPageTokens[nextToken] {
+			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "mail rules list response repeated page token %q", nextToken)
+		}
+		seenPageTokens[nextToken] = true
 		params["page_token"] = nextToken
 	}
 	return ids, nil

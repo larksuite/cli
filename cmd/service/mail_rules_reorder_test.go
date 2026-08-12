@@ -45,6 +45,7 @@ func mailRulesReorderMethod() meta.Method {
 
 func newMailRulesReorderCommand(t *testing.T) (*cmdutil.Factory, *httpmock.Registry, *cobraCommandShim) {
 	t.Helper()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app-mail-rules", AppSecret: "test-secret-mail-rules", Brand: core.BrandFeishu,
 	})
@@ -70,6 +71,7 @@ func TestCompleteMailRuleReorderIDs(t *testing.T) {
 		requested []string
 		want      []string
 		wantErr   string
+		wantParam string
 	}{
 		{
 			name:      "complete input unchanged",
@@ -94,12 +96,14 @@ func TestCompleteMailRuleReorderIDs(t *testing.T) {
 			current:   []string{"A", "B", "C"},
 			requested: []string{"B", "B"},
 			wantErr:   "duplicate rule ID",
+			wantParam: "rule_ids",
 		},
 		{
 			name:      "unknown requested ID",
 			current:   []string{"A", "B", "C"},
 			requested: []string{"C", "X"},
 			wantErr:   "does not exist",
+			wantParam: "rule_ids",
 		},
 		{
 			name:      "empty current list",
@@ -121,6 +125,9 @@ func TestCompleteMailRuleReorderIDs(t *testing.T) {
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("error = %v, want containing %q", err, tt.wantErr)
+				}
+				if tt.wantParam != "" {
+					requireValidationParam(t, err, tt.wantParam)
 				}
 				return
 			}
@@ -239,7 +246,7 @@ func TestMailRulesReorderFetchesAllListPages(t *testing.T) {
 
 	shim.cmd.SetArgs([]string{
 		"--as", "bot",
-		"--params", `{"user_mailbox_id":"me"}`,
+		"--params", `{"user_mailbox_id":"me","page_token":"stale"}`,
 		"--data", `{"rule_ids":["B"]}`,
 	})
 	if err := shim.cmd.Execute(); err != nil {
@@ -251,6 +258,47 @@ func TestMailRulesReorderFetchesAllListPages(t *testing.T) {
 	if got, want := stringifyInterfaceSlice(reorderBody["rule_ids"]), []string{"B", "A", "C"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("reorder rule_ids = %#v, want %#v", got, want)
 	}
+}
+
+func TestMailRulesReorderRejectsRepeatedPageToken(t *testing.T) {
+	_, reg, shim := newMailRulesReorderCommand(t)
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/mail/v1/user_mailboxes/me/rules",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"items":      []interface{}{map[string]interface{}{"id": "A"}},
+				"has_more":   true,
+				"page_token": "next-1",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/mail/v1/user_mailboxes/me/rules",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"items":      []interface{}{map[string]interface{}{"id": "B"}},
+				"has_more":   true,
+				"page_token": "next-1",
+			},
+		},
+	})
+
+	shim.cmd.SetArgs([]string{
+		"--as", "bot",
+		"--params", `{"user_mailbox_id":"me"}`,
+		"--data", `{"rule_ids":["A"]}`,
+	})
+	err := shim.cmd.Execute()
+	if err == nil {
+		t.Fatal("expected repeated page token error")
+	}
+	requireMailRulesProblem(t, err, errs.CategoryInternal, errs.SubtypeInvalidResponse)
 }
 
 func TestMailRulesReorderListFailureDoesNotCallReorder(t *testing.T) {
@@ -302,9 +350,37 @@ func TestMailRulesReorderValidationFailureDoesNotCallReorder(t *testing.T) {
 	if strings.Contains(err.Error(), "no stub") {
 		t.Fatalf("reorder was called after validation failure: %v", err)
 	}
-	var validationErr *errs.ValidationError
-	if !errors.As(err, &validationErr) {
-		t.Fatalf("error = %T, want *errs.ValidationError: %v", err, err)
+	requireValidationParam(t, err, "rule_ids")
+}
+
+func TestMailRulesReorderLocalBodyValidationDoesNotCallListOrReorder(t *testing.T) {
+	tests := []struct {
+		name string
+		data string
+	}{
+		{name: "missing rule_ids", data: `{}`},
+		{name: "empty rule_ids", data: `{"rule_ids":[]}`},
+		{name: "empty ID", data: `{"rule_ids":[""]}`},
+		{name: "non-string ID", data: `{"rule_ids":[123]}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, shim := newMailRulesReorderCommand(t)
+			shim.cmd.SetArgs([]string{
+				"--as", "bot",
+				"--params", `{"user_mailbox_id":"me"}`,
+				"--data", tt.data,
+			})
+			err := shim.cmd.Execute()
+			if err == nil {
+				t.Fatal("expected local validation error")
+			}
+			if strings.Contains(err.Error(), "no stub") {
+				t.Fatalf("list or reorder was called after local validation failure: %v", err)
+			}
+			requireValidationParam(t, err, "rule_ids")
+		})
 	}
 }
 
@@ -348,4 +424,31 @@ func stringifyInterfaceSlice(value interface{}) []string {
 		out = append(out, item.(string))
 	}
 	return out
+}
+
+func requireValidationParam(t *testing.T, err error, wantParam string) {
+	t.Helper()
+	requireMailRulesProblem(t, err, errs.CategoryValidation, errs.SubtypeInvalidArgument)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %T, want *errs.ValidationError: %v", err, err)
+	}
+	if validationErr.Param != wantParam {
+		t.Fatalf("validation param = %q, want %q", validationErr.Param, wantParam)
+	}
+}
+
+func requireMailRulesProblem(t *testing.T, err error, wantCategory errs.Category, wantSubtype errs.Subtype) *errs.Problem {
+	t.Helper()
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf(%T) ok = false; err = %v", err, err)
+	}
+	if problem.Category != wantCategory {
+		t.Fatalf("problem category = %q, want %q", problem.Category, wantCategory)
+	}
+	if problem.Subtype != wantSubtype {
+		t.Fatalf("problem subtype = %q, want %q", problem.Subtype, wantSubtype)
+	}
+	return problem
 }
