@@ -4,6 +4,7 @@
 package sheets
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -489,8 +490,10 @@ func TestShortcuts_IntuitiveFlagAliases(t *testing.T) {
 		if err != nil {
 			t.Fatalf("--values should alias to --cells and pass, got: %v", err)
 		}
-		if !strings.Contains(stdout, `{\"value\":\"工作内容\"}`) {
-			t.Errorf("dry-run body should carry the lifted cell, got %q", stdout)
+		input := decodeToolInput(t, decodeDryRunFirstCall(t, stdout), "set_cell_range")
+		cells, _ := json.Marshal(input["cells"])
+		if string(cells) != `[[{"value":"工作内容"}]]` {
+			t.Errorf("cells = %s, want the lifted [[{\"value\":\"工作内容\"}]]", cells)
 		}
 	})
 

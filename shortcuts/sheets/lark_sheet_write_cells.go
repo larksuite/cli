@@ -126,7 +126,9 @@ var CellsSet = common.Shortcut{
 // fallback, no precedence table to remember). Every item runs through the
 // exact standalone pipeline (key vocabulary, style acceptance layer, matrix
 // precheck, schema validation) via a per-item flag view, and item errors are
-// aggregated so one retry fixes them all.
+// aggregated so one retry fixes them all. The payload rewrites land one step
+// earlier still, in normalizeWritesFlagValue, since the array is schema-checked
+// before it gets here.
 func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interface{}, error) {
 	for _, conflicting := range []string{"range", "cells", "copy-to-range"} {
 		if runtime.Changed(conflicting) {
@@ -969,9 +971,17 @@ func raggedCellsError(cells []interface{}) error {
 // payload disagreeing with a stated extent is a real mismatch. A ragged or
 // non-array payload has no extent to compute and falls through to
 // checkCellsMatchRange's prescription.
+//
+// A qualified anchor ("Sheet1!A1") does not expand either. It only reaches
+// here when the caller also passed --sheet-id / --sheet-name, since all three
+// entry points consume the prefix into the selector when none was given — so
+// the prefix is one that disagrees with the selector, and sizing it would ship
+// a range naming one sheet next to a sheet_name naming another. Left alone it
+// keeps failing checkCellsMatchRange locally, which is what it did before
+// anchors were inferred at all.
 func expandAnchorRange(rangeStr string, cells []interface{}) string {
 	anchor, err := parseCellRange(rangeStr)
-	if err != nil || !anchor.anchored {
+	if err != nil || !anchor.anchored || anchor.sheetQualifier != "" {
 		return rangeStr
 	}
 	rows, cols, ok := cellsExtent(cells)

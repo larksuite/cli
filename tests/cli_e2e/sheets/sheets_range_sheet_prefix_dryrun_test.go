@@ -132,6 +132,71 @@ func TestSheets_RangeSheetPrefixExplicitSelectorWinsDryRun(t *testing.T) {
 	require.Equal(t, "Sheet1!A1:D20", gjson.Get(input, "ranges.0").String(), "input:\n%s", input)
 }
 
+// A single-cell --range is an anchor sized from the payload — but not when it
+// carries a sheet prefix. Such a range only survives the rewrite beside an
+// explicit selector it contradicts, and sizing it would ship a range naming
+// one sheet next to a sheet_name naming another. It fails locally instead,
+// with the mismatch the caller can act on.
+func TestSheets_QualifiedAnchorNotExpandedDryRun(t *testing.T) {
+	setSheetsDryRunEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"sheets", "+cells-set",
+			"--spreadsheet-token", "shtDryRun",
+			"--sheet-name", "Other",
+			"--range", "Sheet1!A1",
+			"--cells", `[[{"value":"a"},{"value":"b"}],[{"value":"c"},{"value":"d"}]]`,
+			"--dry-run",
+		},
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 2)
+	combined := result.Stdout + "\n" + result.Stderr
+	if !strings.Contains(combined, "2 rows") {
+		t.Fatalf("expected a cells-vs-range mismatch, got:\nstdout:\n%s\nstderr:\n%s", result.Stdout, result.Stderr)
+	}
+}
+
+// The +batch-update sub-op is the second entry point: translateBatchOp reaches
+// the rewrite through the sub-op's own flag view rather than cobra's PreRunE,
+// so a prefixed range has to fill the selector there too.
+func TestSheets_BatchUpdateSheetPrefixDryRun(t *testing.T) {
+	setSheetsDryRunEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"sheets", "+batch-update",
+			"--spreadsheet-token", "shtDryRun",
+			"--operations", `[
+				{"shortcut":"+cells-set","input":{"range":"Sheet1!A1","cells":[[{"value":"x"}]]}},
+				{"shortcut":"+cells-set","input":{"range":"'My Sheet'!B2","cells":[[{"value":"y"}]]}}
+			]`,
+			"--dry-run",
+		},
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	out := clie2e.DryRunData(result.Stdout)
+	require.Equal(t, "batch_update", gjson.Get(out, "api.0.body.tool_name").String(), "stdout:\n%s", out)
+
+	input := gjson.Get(out, "api.0.body.input").String()
+	require.Equal(t, "set_cell_range", gjson.Get(input, "operations.0.tool_name").String(), "input:\n%s", input)
+	require.Equal(t, "Sheet1", gjson.Get(input, "operations.0.input.sheet_name").String(), "input:\n%s", input)
+	require.Equal(t, "A1", gjson.Get(input, "operations.0.input.range").String(), "input:\n%s", input)
+	require.Equal(t, "My Sheet", gjson.Get(input, "operations.1.input.sheet_name").String(), "input:\n%s", input)
+	require.Equal(t, "B2", gjson.Get(input, "operations.1.input.range").String(), "input:\n%s", input)
+}
+
 // The --writes plural form builds its own per-item flag view, which makes it a
 // third entry point for the prefix rewrite alongside the standalone command and
 // the +batch-update sub-op. Each item resolves independently, so one batch can

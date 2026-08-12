@@ -110,6 +110,47 @@ func TestSheets_CellsSetMixedScalarAndTypedRowDryRun(t *testing.T) {
 		gjson.Get(input, "cells").Raw, "input:\n%s", input)
 }
 
+// A --writes item gets the same rewrites as the standalone flag and the
+// +batch-update sub-op. The rewrite runs before the writes array is
+// schema-validated, which is what it takes for the array's own "cells is
+// required" check to see the payload under the name it expects.
+func TestSheets_CellsSetWritesHabitualShapesDryRun(t *testing.T) {
+	setSheetsDryRunEnv(t)
+
+	tests := []struct {
+		name  string
+		items string
+	}{
+		{"values alias", `[{"sheet_name":"S1","range":"A1","values":[["x"]]}]`},
+		{"cells envelope", `[{"sheet_name":"S1","range":"A1","cells":{"cells":[[{"value":"x"}]]}}]`},
+		{"bare scalar matrix", `[{"sheet_name":"S1","range":"A1","cells":[["x"]]}]`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			t.Cleanup(cancel)
+
+			result, err := clie2e.RunCmd(ctx, clie2e.Request{
+				Args: []string{
+					"sheets", "+cells-set",
+					"--spreadsheet-token", "shtDryRun",
+					"--writes", tt.items,
+					"--dry-run",
+				},
+				DefaultAs: "user",
+			})
+			require.NoError(t, err)
+			result.AssertExitCode(t, 0)
+
+			input := gjson.Get(clie2e.DryRunData(result.Stdout), "api.0.body.input").String()
+			require.Equal(t, "S1", gjson.Get(input, "operations.0.input.sheet_name").String(), "input:\n%s", input)
+			require.Equal(t, `[[{"value":"x"}]]`,
+				gjson.Get(input, "operations.0.input.cells").Raw, "input:\n%s", input)
+		})
+	}
+}
+
 // null is deliberately NOT lifted: {} (leave the cell alone) and {"value":""}
 // (write an empty string) are both plausible readings, so the caller is asked
 // which one they meant instead of having one guessed for them.

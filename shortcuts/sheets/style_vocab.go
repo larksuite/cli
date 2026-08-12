@@ -493,6 +493,41 @@ func normalizeCellsFlagValue(v interface{}) interface{} {
 	return v
 }
 
+// normalizeWritesFlagValue runs the --cells rewrites on every --writes item
+// before the writes array meets its schema. cellsSetWritesOps already gives
+// each item the standalone pipeline through a per-item flag view, but that
+// runs after requireJSONArray has validated the array, so an item spelling
+// its payload "values" or wrapping it in a {"cells": …} envelope died on the
+// array schema ("required property \"cells\" is missing") while the identical
+// +batch-update sub-op was accepted. Same rewrites, one step earlier, so the
+// two forms of the same write agree.
+//
+// values → cells only when "cells" is absent: two spellings carrying
+// different payloads is a conflict for normalizeSubOpInputKeys to report, not
+// one to silently resolve here.
+func normalizeWritesFlagValue(v interface{}) interface{} {
+	items, ok := v.([]interface{})
+	if !ok {
+		return v
+	}
+	for _, itemRaw := range items {
+		item, ok := itemRaw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if _, taken := item["cells"]; !taken {
+			if values, ok := item["values"]; ok {
+				item["cells"] = values
+				delete(item, "values")
+			}
+		}
+		if cells, ok := item["cells"]; ok {
+			item["cells"] = normalizeCellsFlagValue(cells)
+		}
+	}
+	return v
+}
+
 // borderStylesFromFlag parses --border-styles as a JSON object (top/bottom/
 // left/right with style sub-objects), expanding the "all" side shorthand the
 // same as the typed --cells and --styles paths so +cells-set-style /

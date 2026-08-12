@@ -452,7 +452,7 @@ func parseJSONFlag(runtime flagView, name string) (interface{}, error) {
 // doubt may be rewritten; anything ambiguous must fail with a prescription
 // instead. Applied to the parsed JSON value inside parseJSONFlag.
 var jsonFlagNormalizers = map[string]map[string]func(interface{}) interface{}{
-	"+cells-set":             {"cells": normalizeCellsFlagValue},
+	"+cells-set":             {"cells": normalizeCellsFlagValue, "writes": normalizeWritesFlagValue},
 	"+cells-set-style":       {"border-styles": normalizeBorderStylesFlagValue},
 	"+cells-batch-set-style": {"border-styles": normalizeBorderStylesFlagValue},
 	"+chart-create":          {"properties": normalizeChartHexColors},

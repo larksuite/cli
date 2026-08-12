@@ -581,7 +581,10 @@ func TestExpandAnchorRange(t *testing.T) {
 		want  string
 	}{
 		{"bare anchor sizes to the payload", "B2", []interface{}{row(3), row(3), row(3)}, "B2:D4"},
-		{"anchor keeps its sheet prefix", "甘特图!F5", []interface{}{row(53)}, "甘特图!F5:BF5"},
+		// A qualified anchor survives to here only beside an explicit selector
+		// it disagrees with, so sizing it would ship a range naming one sheet
+		// and a sheet_name naming another. It stays a mismatch instead.
+		{"qualified anchor is not expanded", "甘特图!F5", []interface{}{row(53)}, "甘特图!F5"},
 		{"1x1 payload leaves the anchor alone", "A1", []interface{}{row(1)}, "A1"},
 		{"explicit extent is never inferred over", "A1:A1", []interface{}{row(2)}, "A1:A1"},
 		{"explicit range stays", "A1:C10", []interface{}{row(3), row(3)}, "A1:C10"},

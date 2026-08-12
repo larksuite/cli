@@ -187,3 +187,36 @@ func TestRangeSheetPrefix_BatchSubOp(t *testing.T) {
 		t.Errorf("range = %v, want %q", got, "A1")
 	}
 }
+
+// An input may reach the flag view carrying both spellings of the selector:
+// normalizeSubOpInputKeys keeps a duplicate whose two values agree instead of
+// erroring, and two empty strings agree. lookupRaw answers with the first
+// spelling it finds, so the derived selector has to end up as the only one —
+// an empty "sheet-name" left beside it would shadow it back to "no selector".
+func TestRangeSheetPrefix_BothSelectorSpellingsEmpty(t *testing.T) {
+	t.Parallel()
+
+	var subInput map[string]interface{}
+	if err := json.Unmarshal([]byte(
+		`{"range":"Sheet1!A1","cells":[[{"value":"x"}]],"sheet-name":"","sheet_name":""}`,
+	), &subInput); err != nil {
+		t.Fatalf("bad subInput JSON: %v", err)
+	}
+	op, err := translateBatchOp(map[string]interface{}{
+		"shortcut": "+cells-set",
+		"input":    subInput,
+	}, testToken, 0)
+	if err != nil {
+		t.Fatalf("empty selector keys must not shadow the derived one, got: %v", err)
+	}
+	input, ok := op["input"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("translated op carries no input map: %#v", op)
+	}
+	if got := input["sheet_name"]; got != "Sheet1" {
+		t.Errorf("sheet_name = %v, want %q", got, "Sheet1")
+	}
+	if got := input["range"]; got != "A1" {
+		t.Errorf("range = %v, want %q", got, "A1")
+	}
+}

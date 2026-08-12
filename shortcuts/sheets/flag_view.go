@@ -358,8 +358,8 @@ func (m *mapFlagView) normalizeAndValidateEnums() error {
 // behind, so every form accepts the same input.
 //
 // The derived selector is written under the underscore key the sub-op input
-// vocabulary uses; lookupRaw is separator-tolerant, so a translator asking for
-// "sheet-name" finds it either way.
+// vocabulary uses, and left as the only spelling of it; lookupRaw is
+// separator-tolerant, so a translator asking for "sheet-name" finds it anyway.
 func (m *mapFlagView) normalizeRangeSheetPrefix() {
 	if !rangeSheetPrefixApplies(m.command) {
 		return
@@ -380,6 +380,12 @@ func (m *mapFlagView) normalizeRangeSheetPrefix() {
 		return
 	}
 	m.raw[rangeKey] = rest
+	// Drop the hyphen spelling before writing the underscore one. An item may
+	// carry both when their values agree (normalizeSubOpInputKeys keeps a
+	// harmless duplicate rather than erroring), and lookupRaw answers with the
+	// first spelling it finds — so an empty "sheet-name" left in place would
+	// shadow the selector just derived and fail as "no sheet selector".
+	delete(m.raw, "sheet-name")
 	m.raw["sheet_name"] = sheet
 }
 
