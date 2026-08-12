@@ -73,7 +73,7 @@ metadata:
 
 **批量操作**（`batch_*`）的预览必须包含**受影响数量**，例如"将删除 234 封邮件，确认？"。
 
-**已授权判定**：当且仅当用户在最近一轮对话**同时**明确了 (a) 目标对象 和 (b) 动作时（例如"删掉刚才那封 spam"），视为已授权，无需再确认。仅说"删了它"但目标对象只来自历史上下文且未在本轮复述时，仍需展示预览。
+**已授权判定**：当且仅当用户在最近一轮对话**同时**明确了 (a) 目标对象 和 (b) 动作时（例如"删掉刚才那封 spam"），视为已授权，无需再确认。仅说"删了它"但目标对象只来自历史上下文且未在本轮复述时，仍需展示预览。`user_mailbox.auto_reply update` 不适用本例外：每次更新前都必须展示 `enabled`、时间范围、时区、收件范围和内容摘要，并取得明确确认。
 
 ### 正确流程示例
 
@@ -90,7 +90,7 @@ metadata:
 - **`--as user`（推荐）**：以当前登录用户的身份访问其邮箱。需要先通过 `lark-cli auth login --domain mail` 完成用户授权。
 - **`--as bot`**：以应用身份访问邮箱。需要在飞书开发者后台为应用开通相应权限，否则请求会被拒绝。**注意：bot 身份仅适用于读取类操作，所有写操作（发送、回复、转发、草稿编辑等）仅支持 user 身份。**
 
-1. 所有邮件写操作（发送、回复、转发、草稿编辑） → 必须使用 `--as user`，未登录时先使用 `lark-cli auth login --domain mail` 进行登录
+1. 所有邮件写操作（发送、回复、转发、草稿编辑、自动回复更新） → 必须使用 `--as user`，未登录时先使用 `lark-cli auth login --domain mail` 进行登录
 2. 读取类操作（查看邮件、会话、收件箱列表等） → 推荐使用 `--as user`；如需应用级批量读取（如管理员代操作），可使用 `--as bot`，确保应用已开通对应权限
 
 ## 典型工作流
@@ -105,7 +105,7 @@ metadata:
 8. **HTML body 预检（可选）** — 复杂 HTML body 提交前可先跑 `+lint-html` 看 lint 会改 / 删什么；写信路径（`+send` / `+draft-create` / `+reply` / `+reply-all` / `+forward` / `+draft-edit` body op）已内置 autofix，普通正文不必先跑。详见 [references/lark-mail-html.md](references/lark-mail-html.md) 中的「写入路径内置 HTML lint」章节
 9. **确认投递** — 立即发送后用 `send_status` 查询投递状态，定时发送后在预定时间后再查询；取消定时发送用 `cancel_scheduled_send`
 10. **编辑草稿** — `+draft-edit` 修改已有草稿。正文编辑通过 `--patch-file`：回复/转发草稿用 `set_reply_body` op 保留引用区，普通草稿用 `set_body` op
-11. **自动回复设置** — 查看当前外出回复用 `user_mailbox.auto_reply get`；开启、修改或关闭自动回复用 `user_mailbox.auto_reply update`。更新是全量替换，执行前先向用户展示 `enabled`、时间范围、时区和内容摘要并取得确认。
+11. **自动回复设置** — 查看当前外出回复用 `user_mailbox.auto_reply get`；开启、修改或关闭自动回复用 `user_mailbox.auto_reply update --as user`。该资源来自 CLI registry metadata，调用前先用 `-h` 确认当前 CLI 可见；更新是全量替换，必须先 `get` 当前配置，只合并用户要求变更的字段，再向用户展示完整替换后的 `enabled`、时间范围、时区、收件范围和内容摘要并取得确认；关闭自动回复也要确认，因为内容和时间配置会保留在设置中。
 12. **已读回执** —
    - **请求回执（写信侧）**：`--request-receipt` 仅在**用户显式要求**时添加，**不要从 subject / body 内容推断意图**。
    - **响应回执（拉信侧）**：拉信看到 `label_ids` 含 `READ_RECEIPT_REQUEST`（或 `-607`）时，**必须先问用户**是否回执（不要自动回执，涉及隐私）。用户同意 → `+send-receipt` 响应；用户不同意但想消掉提示 → `+decline-receipt` 只清本地标签、不发邮件。
@@ -273,10 +273,17 @@ lark-cli mail user_mailbox.auto_reply get \
 **PUT 全量更新自动回复设置**：
 
 ```bash
+lark-cli mail user_mailbox.auto_reply get \
+  --params '{"user_mailbox_id":"me"}'
+
+# 将用户要求变更的字段合并进 get 返回的当前配置后，再预览完整 payload。
 lark-cli mail user_mailbox.auto_reply update \
+  --as user \
   --params '{"user_mailbox_id":"me"}' \
   --data '{"enabled":true,"content_html":"<div>Out of office</div>","content_summary":"Out of office","start_time":"0","end_time":"0","time_zone":"Asia/Shanghai","only_send_to_tenant":false}'
 ```
+
+执行更新命令前，先读取当前配置，只合并用户要求变更的字段，再向用户展示本次全量替换后的 `enabled`、`start_time`、`end_time`、`time_zone`、`only_send_to_tenant` 和 `content_summary`，得到明确确认后再调用。若 `lark-cli mail user_mailbox.auto_reply -h` 不存在该资源，直接告知当前 CLI 不支持该内部 Meta 资源，不要改用收信规则 API 伪造自动回复能力。
 
 ### 常用约定
 
