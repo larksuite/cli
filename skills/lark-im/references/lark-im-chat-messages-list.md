@@ -93,9 +93,9 @@ lark-cli im +threads-messages-list --thread omt_xxx
 
 `--format pretty` renders the already-fetched result as a conversation transcript:
 
-- Outer messages are separated into blocks and keep `message_id`, optional `thread_id`, and optional `reply_to` for ordinary non-thread replies.
+- Outer messages are separated into blocks and keep `message_id`, optional `thread_id`, and optional `reply_to` for ordinary non-thread replies. Nested replies show only time, sender, content, and reactions.
 - Expanded `thread_replies` are nested below their root; the duplicate root returned by the thread API is removed by matching `message_id`.
-- Message bodies are never truncated. Every line, including blank lines and Markdown/code-block lines, is prefixed with `>` while preserving its content.
+- Message bodies are never truncated but occupy one physical output line. Backslashes, line breaks, carriage returns, and tabs are escaped as `\\`, `\n`, `\r`, and `\t` after a single `>` marker.
 - Recalled messages render as `已撤回`; reactions render from the enriched counts, for example `表情：THUMBSUP×2、DONE×1`.
 - Transport details such as tenant fields, positions, AppLink, localized sender maps, and edit state stay hidden. Use JSON when those fields or a machine-stable shape are required.
 - The footer reports outer-message count, visible thread-reply count, `has_more`, and `page_token`. Thread-level continuation/failure is reported beside the affected root.

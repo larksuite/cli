@@ -63,24 +63,17 @@ func TestRenderChatMessagesPrettyConversation(t *testing.T) {
 	renderChatMessagesPretty(&out, []map[string]interface{}{root, ordinaryReply}, true, "next-token")
 
 	want := `2026-08-11 21:37 · 豆包
-> 第一行
->` + " " + `
-> ` + "```go" + `
-> fmt.Println("hello")
-> ` + "```" + `
+> 第一行\n\n` + "```go" + `\nfmt.Println("hello")\n` + "```" + `
 
 message: om_root · thread: omt_topic
 表情：THUMBSUP×2、DONE×1
 
   ↳ 21:38 · boe 的
-    > Completed
-    > 第二行
-    message: om_reply
+    > Completed\n第二行
     表情：SMILE×1
 
   ↳ 2026-08-12 00:03 · ou_user
     > 已撤回
-    message: om_recalled
 
   ↳ 还有更多话题回复 · thread: omt_topic
 ────────────────────────
@@ -149,6 +142,14 @@ func TestRenderChatMessagesPrettyEmpty(t *testing.T) {
 	}
 }
 
+func TestEscapePrettyContent(t *testing.T) {
+	input := "line 1\r\nline 2\tC:\\tmp"
+	want := `line 1\r\nline 2\tC:\\tmp`
+	if got := escapePrettyContent(input); got != want {
+		t.Fatalf("escapePrettyContent() = %q, want %q", got, want)
+	}
+}
+
 func TestImChatMessageListExecuteUsesConversationPrettyRenderer(t *testing.T) {
 	transport := shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Path != imMessagesListPath {
@@ -206,15 +207,14 @@ func TestImChatMessageListExecuteUsesConversationPrettyRenderer(t *testing.T) {
 	for _, want := range []string{
 		"a long root message that must not be truncated after forty characters",
 		"  ↳ reply-time · boe 的",
-		"    > reply line 1\n    > reply line 2",
-		"message: om_reply",
+		"    > reply line 1\\nreply line 2",
 		"1 messages · 1 thread replies · has_more: true · page_token: next-token",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("pretty Execute output missing %q:\n%s", want, got)
 		}
 	}
-	if strings.Contains(got, "tip: use --format json") || strings.Contains(got, "Pagination:") {
+	if strings.Contains(got, "message: om_reply") || strings.Contains(got, "tip: use --format json") || strings.Contains(got, "Pagination:") {
 		t.Fatalf("legacy table/footer leaked into conversation pretty output:\n%s", got)
 	}
 }

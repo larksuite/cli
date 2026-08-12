@@ -81,9 +81,6 @@ func renderChatMessageRepliesPretty(w io.Writer, root map[string]interface{}) in
 		fmt.Fprintln(w)
 		fmt.Fprintf(w, "  ↳ %s · %s\n", prettyReplyTime(prettyMessageTime(root), prettyMessageTime(reply)), prettyMessageSender(reply))
 		writePrettyQuotedContent(w, prettyMessageContent(reply), "    ")
-		if metadata := prettyReplyMetadata(reply); len(metadata) > 0 {
-			fmt.Fprintf(w, "    %s\n", strings.Join(metadata, " · "))
-		}
 		if reactions := prettyReactionSummary(reply); reactions != "" {
 			fmt.Fprintf(w, "    表情：%s\n", reactions)
 		}
@@ -116,17 +113,6 @@ func prettyMessageMetadata(msg map[string]interface{}) []string {
 	}
 	if threadID, _ := msg["thread_id"].(string); threadID != "" {
 		parts = append(parts, "thread: "+threadID)
-	}
-	if replyTo, _ := msg["reply_to"].(string); replyTo != "" {
-		parts = append(parts, "reply_to: "+replyTo)
-	}
-	return parts
-}
-
-func prettyReplyMetadata(msg map[string]interface{}) []string {
-	parts := make([]string, 0, 2)
-	if id, _ := msg["message_id"].(string); id != "" {
-		parts = append(parts, "message: "+id)
 	}
 	if replyTo, _ := msg["reply_to"].(string); replyTo != "" {
 		parts = append(parts, "reply_to: "+replyTo)
@@ -182,9 +168,16 @@ func prettyMessageContent(msg map[string]interface{}) string {
 }
 
 func writePrettyQuotedContent(w io.Writer, content, indent string) {
-	for _, line := range strings.Split(content, "\n") {
-		fmt.Fprintf(w, "%s> %s\n", indent, line)
-	}
+	fmt.Fprintf(w, "%s> %s\n", indent, escapePrettyContent(content))
+}
+
+func escapePrettyContent(content string) string {
+	return strings.NewReplacer(
+		"\\", "\\\\",
+		"\r", "\\r",
+		"\n", "\\n",
+		"\t", "\\t",
+	).Replace(content)
 }
 
 func prettyReactionSummary(msg map[string]interface{}) string {
