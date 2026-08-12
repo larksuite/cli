@@ -108,7 +108,7 @@ var DriveInspect = common.Shortcut{
 				},
 			)
 			if err != nil {
-				return driveInspectAnnotateError("resolve_wiki", err)
+				return driveInspectAnnotateWikiResolveError(err)
 			}
 
 			node := common.GetMap(data, "node")
@@ -257,6 +257,20 @@ func driveInspectWait(ctx context.Context, d time.Duration) error {
 	case <-driveInspectAfter(d):
 		return nil
 	}
+}
+
+const (
+	driveInspectWikiPermissionDeniedCode = 131006
+	driveInspectWikiPermissionDeniedHint = "The current user or app/bot identity lacks access to the target wiki space or node. This is resource access, not app scope authorization. Do not retry the same request, reauthorize, or switch identity as trial and error; ask the resource owner or wiki administrator to grant read access, or use an accessible resource."
+)
+
+func driveInspectAnnotateWikiResolveError(err error) error {
+	err = driveInspectAnnotateError("resolve_wiki", err)
+	problem, ok := errs.ProblemOf(err)
+	if ok && problem != nil && problem.Code == driveInspectWikiPermissionDeniedCode {
+		problem.Hint = driveInspectWikiPermissionDeniedHint
+	}
+	return err
 }
 
 func driveInspectAnnotateError(stage string, err error) error {
