@@ -50,6 +50,17 @@ func TestExternalWrapperCommandSurface(t *testing.T) {
 	if !strings.Contains(dryRun, `"dry_run": true`) || !strings.Contains(dryRun, "/open-apis/im/v1/chats/chat_1") {
 		t.Fatalf("wrapper dry-run = %s", dryRun)
 	}
+	// A value that is unchanged by escaping cannot tell whether the wrapper
+	// wrapped it at all, so send a separator: dropping PathSegment retargets
+	// the request at a sibling resource, and ValidateRequestView would not
+	// catch it because the concatenated path is still canonical.
+	escaped := run("im", "+wrapper-read", "--id", "chat/1", "--as", "user", "--dry-run")
+	if !strings.Contains(escaped, "/open-apis/im/v1/chats/chat%2F1") {
+		t.Fatalf("wrapper did not escape the path segment: %s", escaped)
+	}
+	if strings.Contains(escaped, "/open-apis/im/v1/chats/chat/1") {
+		t.Fatalf("wrapper leaked an unescaped separator into the path: %s", escaped)
+	}
 	schema := run("schema", "im", "+wrapper-read")
 	if !strings.Contains(schema, `"name": "im +wrapper-read"`) || !strings.Contains(schema, `"outputSchema"`) {
 		t.Fatalf("wrapper schema = %s", schema)

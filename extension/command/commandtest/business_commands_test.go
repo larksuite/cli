@@ -15,6 +15,7 @@ import (
 	"github.com/larksuite/cli/extension/command"
 	"github.com/larksuite/cli/extension/command/commandtest"
 	"github.com/larksuite/cli/internal/commandhost"
+	internalpagination "github.com/larksuite/cli/internal/pagination"
 )
 
 type documentGetArgs struct {
@@ -357,7 +358,10 @@ func TestCollectAllPagesRejectsInvalidCursors(t *testing.T) {
 }
 
 func TestCollectAllPagesHardLimitPreventsFollowingWrite(t *testing.T) {
-	responses := make([]commandtest.Response, 1000)
+	// Scripted from the shared bound, not a literal: a recorder that walked
+	// further than the production host adapter would let a business command
+	// pass its tests and then fail its first real --page-all run.
+	responses := make([]commandtest.Response, internalpagination.CollectAllHardPageBound)
 	for index := range responses {
 		responses[index] = commandtest.Respond(map[string]any{
 			"items": []map[string]any{}, "has_more": true, "page_token": fmt.Sprintf("page-%d", index+1),
@@ -391,7 +395,7 @@ func TestCollectAllPagesHardLimitPreventsFollowingWrite(t *testing.T) {
 	if !errors.As(err, &internal) || internal.Subtype != errs.SubtypeQuotaExceeded {
 		t.Fatalf("hard-limit typed error = %#v", err)
 	}
-	if requests := recorder.Requests(); len(requests) != 1000 || requests[len(requests)-1].Method != "GET" {
+	if requests := recorder.Requests(); len(requests) != internalpagination.CollectAllHardPageBound || requests[len(requests)-1].Method != "GET" {
 		t.Fatalf("requests after incomplete read = %d, last=%#v", len(requests), requests[len(requests)-1])
 	}
 	recorder.AssertScriptConsumed()

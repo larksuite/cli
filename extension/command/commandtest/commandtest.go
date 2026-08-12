@@ -337,7 +337,9 @@ func (r *Recorder) collectPages(ctx context.Context, request command.Request, al
 	options := r.pagination
 	r.mu.Unlock()
 	if all {
-		options = command.PaginationOptions{All: true, MaxPages: 1000}
+		// Same bound as the production host adapter (commandPagePolicy), so a
+		// complete-set collection that passes here cannot fail only in production.
+		options = command.PaginationOptions{All: true, MaxPages: internalpagination.CollectAllHardPageBound}
 	} else if !options.All {
 		options.MaxPages = 1
 	}

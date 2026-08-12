@@ -3,7 +3,11 @@
 
 package common
 
-import "testing"
+import (
+	"testing"
+
+	internalpagination "github.com/larksuite/cli/internal/pagination"
+)
 
 // A complete-set collection holds every page in memory before the workflow's
 // writes run, so its bound is a host resource decision — deliberately tighter
@@ -13,14 +17,14 @@ func TestCollectAllPolicyUsesWorkflowHardBound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if policy.maxPages != collectAllHardPageBound {
-		t.Fatalf("collect-all maxPages = %d, want %d", policy.maxPages, collectAllHardPageBound)
+	if policy.maxPages != internalpagination.CollectAllHardPageBound {
+		t.Fatalf("collect-all maxPages = %d, want %d", policy.maxPages, internalpagination.CollectAllHardPageBound)
 	}
-	if collectAllHardPageBound >= pageLimitMaximum {
+	if internalpagination.CollectAllHardPageBound >= pageLimitMaximum {
 		t.Fatalf("workflow bound (%d) must stay below the user-facing --page-limit maximum (%d)",
-			collectAllHardPageBound, pageLimitMaximum)
+			internalpagination.CollectAllHardPageBound, pageLimitMaximum)
 	}
-	if collectAllHardPageBound != 100 {
-		t.Fatalf("workflow bound = %d, want the Phase 0 value 100", collectAllHardPageBound)
+	if internalpagination.CollectAllHardPageBound != 100 {
+		t.Fatalf("workflow bound = %d, want the Phase 0 value 100", internalpagination.CollectAllHardPageBound)
 	}
 }

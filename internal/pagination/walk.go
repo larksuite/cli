@@ -11,6 +11,17 @@ import (
 	"time"
 )
 
+// CollectAllHardPageBound caps complete-set collections. It is deliberately
+// tighter than the user-facing --page-limit maximum (1000): such a collection
+// holds every page in memory before the caller's writes run, so its upper bound
+// is a host resource decision, not a display preference. Value from the
+// extension design's Phase 0 (owner plan §8.3).
+//
+// It lives here because the production host adapter and the commandtest
+// recorder must enforce the same bound: a business command whose tests pass at
+// 300 pages but fails in production at 101 is worse than one that fails in both.
+const CollectAllHardPageBound = 100
+
 // CursorErrorKind identifies an invalid cursor transition returned by an API.
 type CursorErrorKind uint8
 

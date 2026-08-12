@@ -23,6 +23,12 @@ type readData struct {
 	ID string `json:"id" schema:"required" doc:"resource identifier"`
 }
 
+// readRequest is shared by DryRunE and Execute so the preview cannot drift from
+// the real call. User input concatenated into the path goes through PathSegment.
+func readRequest(args *readArgs) command.Request {
+	return command.GET("/open-apis/im/v1/chats/" + command.PathSegment(args.ID))
+}
+
 var readCommand = command.Define(command.Definition[readArgs, readData]{
 	Metadata: command.CommandMetadata{
 		Service: command.DomainIm, Command: "+wrapper-read", Description: "Read one wrapper resource", Risk: command.RiskRead,
@@ -32,10 +38,10 @@ var readCommand = command.Define(command.Definition[readArgs, readData]{
 	},
 	Hooks: command.Hooks[readArgs, readData]{
 		DryRunE: func(_ context.Context, _ command.CommandContext, args *readArgs) (*command.DryRun, error) {
-			return command.Preview(command.GET("/open-apis/im/v1/chats/" + args.ID)), nil
+			return command.Preview(readRequest(args)), nil
 		},
 		Execute: func(ctx context.Context, commandContext command.CommandContext, args *readArgs) (command.Result[readData], error) {
-			data, err := command.CallJSON[readData](ctx, commandContext, command.GET("/open-apis/im/v1/chats/"+args.ID))
+			data, err := command.CallJSON[readData](ctx, commandContext, readRequest(args))
 			if err != nil {
 				return command.Result[readData]{}, err
 			}
