@@ -44,8 +44,6 @@ type ConfigInitOptions struct {
 
 	ProfileName string // when set, create/update a named profile instead of replacing Apps[0]
 
-	Restore bool // Restore re-registers the app already in config to recover a lost credential
-
 	// ForceInit overrides the agent-workspace guard. Without it, running
 	// init under OPENCLAW_HOME / HERMES_HOME refuses so the distribution's
 	// supported Agent-app setup flow remains the default. Manual users with
@@ -116,7 +114,6 @@ func NewCmdConfigInit(f *cmdutil.Factory, runF func(*ConfigInitOptions) error) *
 	cmd.Flags().StringVar(&opts.Brand, "brand", "feishu", "feishu or lark (non-interactive, default feishu)")
 	cmd.Flags().StringVar(&opts.Lang, "lang", "", "language preference (e.g. zh or zh_cn)")
 	cmd.Flags().StringVar(&opts.ProfileName, "name", "", "create or update a named profile (append instead of replace)")
-	cmd.Flags().BoolVar(&opts.Restore, "restore", false, "re-register the app already in config to recover a lost credential (keychain key / app secret); reuses the stored app ID and auth method")
 	cmd.Flags().BoolVar(&opts.ForceInit, "force-init", false, forceInitUsageWithBind)
 	cmdutil.SetRisk(cmd, "write")
 
@@ -206,7 +203,7 @@ func guardAgentWorkspace(opts *ConfigInitOptions) error {
 
 // hasAnyNonInteractiveFlag returns true if any non-interactive flag is set.
 func (o *ConfigInitOptions) hasAnyNonInteractiveFlag() bool {
-	return o.New || o.Restore || o.AppID != "" || o.AppSecretStdin
+	return o.New || o.AppID != "" || o.AppSecretStdin
 }
 
 // cleanupOldConfig clears keychain entries (AppSecret + UAT) for all apps in existing config except the app whose AppId equals skipAppID.
@@ -459,9 +456,9 @@ func probeInitResult(opts *ConfigInitOptions, f *cmdutil.Factory, result *config
 	return nil
 }
 
-// persistAndProbeResult saves a registration/restore result into profileName and
-// runs the post-registration probe. profileName == "" replaces the single app
-// (legacy); a named profile is updated in place. Shared by --new and --restore.
+// persistAndProbeResult saves a registration result into profileName and runs
+// the post-registration probe. profileName == "" replaces the single app
+// (legacy); a named profile is updated in place.
 func persistAndProbeResult(opts *ConfigInitOptions, f *cmdutil.Factory, profileName string, result *configInitResult) error {
 	if err := persistInitResult(opts, f, profileName, result); err != nil {
 		return err
@@ -475,71 +472,10 @@ func persistAndProbeResult(opts *ConfigInitOptions, f *cmdutil.Factory, profileN
 	return probeInitResult(opts, f, result)
 }
 
-// runRestoreFlow re-registers the app already in config to recover a lost
-// credential (deleted keychain key / lost app secret). It reads the existing
-// app id + auth method + brand from config (no secret needed — that's the lost
-// part) and re-runs the device-flow registration with the app id sent on begin,
-// so the server re-registers that app instead of creating a new one. The
-// re-issued credential is written back to the same profile.
-func runRestoreFlow(opts *ConfigInitOptions, existing *core.MultiAppConfig, f *cmdutil.Factory, msg *initMsg) error {
-	if existing == nil {
-		return errs.NewConfigError(errs.SubtypeNotConfigured, "nothing to restore: no config found").
-			WithHint("run: lark-cli config init")
-	}
-	app := existing.CurrentAppConfig(opts.ProfileName)
-	if app == nil || app.AppId == "" {
-		return errs.NewConfigError(errs.SubtypeNotConfigured, "nothing to restore: no app id in config%s", profileSuffix(opts.ProfileName)).
-			WithHint("run: lark-cli config init")
-	}
-
-	restoreAppID := app.AppId
-	// Reuse the stored auth method authoritatively — never prompt. Empty on disk
-	// means client_secret (omitempty back-compat); pass it explicitly so restore
-	// preserves the existing credential type.
-	authMethod := app.AuthMethod
-	if authMethod == "" {
-		authMethod = core.AuthMethodClientSecret
-	}
-	result, err := runCreateAppFlow(opts.Ctx, f, app.Brand, authMethod, msg, restoreAppID)
-	if err != nil {
-		return err
-	}
-	if result == nil {
-		return errs.NewInternalError(errs.SubtypeSDKError, "app restore returned no result")
-	}
-
-	// Safety: if the server did not honor app_id (e.g. not yet supported), it may
-	// have created a NEW app instead of restoring. Warn so the user is not silently
-	// switched to a different app id.
-	if result.AppID != restoreAppID {
-		fmt.Fprintf(f.IOStreams.ErrOut, "[lark-cli] [WARN] restore: server returned app %s, expected %s — it may have created a new app instead of restoring\n", result.AppID, restoreAppID)
-	}
-
-	// Write back to the profile we restored: an explicit --name, else the resolved
-	// app's own name. Empty name => legacy single-app replace.
-	saveProfile := opts.ProfileName
-	if saveProfile == "" {
-		saveProfile = app.Name
-	}
-	return persistAndProbeResult(opts, f, saveProfile, result)
-}
-
-// profileSuffix renders " (profile %q)" for error messages, or "" when unnamed.
-func profileSuffix(profileName string) string {
-	if profileName == "" {
-		return ""
-	}
-	return fmt.Sprintf(" (profile %q)", profileName)
-}
-
 func configInitRun(opts *ConfigInitOptions) error {
 	f := opts.Factory
 	if opts.PrivateKeyJWT {
 		switch {
-		case opts.Restore:
-			return errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"--private-key-jwt cannot be combined with --restore; restore preserves the stored auth method").
-				WithParam("--private-key-jwt")
 		case opts.AppID != "":
 			return errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"--private-key-jwt cannot be combined with --app-id; use --new to register a private_key_jwt app").
@@ -581,21 +517,10 @@ func configInitRun(opts *ConfigInitOptions) error {
 		}
 	}
 
-	// --restore recovers an existing app; it is incompatible with creating a new
-	// app (--new) or importing one non-interactively (--app-id / stdin secret).
-	if opts.Restore {
-		if opts.New {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--restore cannot be combined with --new").WithParam("--restore")
-		}
-		if opts.AppID != "" || opts.AppSecretStdin {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--restore cannot be combined with --app-id / --app-secret-stdin").WithParam("--restore")
-		}
-	}
-
 	// A user who explicitly asks for private_key_jwt needs immediate feedback
 	// before any interactive prompt. Otherwise unsupported machines enter the
 	// TUI and fail only after the user chooses a create flow.
-	if opts.PrivateKeyJWT && !opts.New && !opts.Restore {
+	if opts.PrivateKeyJWT && !opts.New {
 		if _, err := resolveRegisterAuthMethod(opts.Ctx, f, core.AuthMethodPrivateKeyJWT); err != nil {
 			return err
 		}
@@ -633,11 +558,6 @@ func configInitRun(opts *ConfigInitOptions) error {
 	}
 
 	msg := getInitMsg(opts.UILang)
-
-	// Mode: Restore (--restore) — re-register the app already in config.
-	if opts.Restore {
-		return runRestoreFlow(opts, existing, f, msg)
-	}
 
 	// Mode 3: Create new app directly (--new)
 	if opts.New {
