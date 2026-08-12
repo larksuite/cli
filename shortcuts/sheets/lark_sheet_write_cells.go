@@ -981,13 +981,20 @@ func expandAnchorRange(rangeStr string, cells []interface{}) string {
 	return anchor.sized(rows, cols)
 }
 
-// cellRange is a rectangular A1 range taken apart once, so the three things
-// callers keep re-deriving from the string — the "Sheet!" prefix, the
-// top-left, the stated extent — are read off fields instead of re-parsed.
-// anchored marks a bare "A1": a top-left that states no extent (rows/cols
-// are still 1, since that is the block it covers on its own).
+// cellRange is a rectangular A1 range taken apart once, so the things callers
+// keep re-deriving from the string — the sheet part it carries, its top-left,
+// the extent it states — are read off fields instead of re-parsed. anchored
+// marks a bare "A1": a top-left that states no extent (rows/cols are still 1,
+// since that is the block it covers on its own).
 type cellRange struct {
-	prefix     string // "Sheet1!" or "", kept so rewrites paste back in
+	// sheetQualifier is the sheet part exactly as written, separator included
+	// ("Sheet1!", "'My Sheet'！"), or "" when the range names no sheet. Ranges
+	// rendered from it are shipped to the server and printed for the caller to
+	// paste back, so the spelling has to survive verbatim — a name unquoted and
+	// then re-quoted would not. Callers that want the name itself unquoted go
+	// through splitRangeSheetPrefix.
+	sheetQualifier string
+
 	start      string // the top-left as written, e.g. "B2"
 	col, row   int    // 0-based top-left
 	rows, cols int    // extent, in cells
@@ -996,47 +1003,53 @@ type cellRange struct {
 
 // sized renders the range this one's top-left fills with a rows×cols block.
 func (r cellRange) sized(rows, cols int) string {
-	return fmt.Sprintf("%s%s:%s%d", r.prefix, r.start, columnIndexToLetter(r.col+cols-1), r.row+rows)
+	return fmt.Sprintf("%s%s:%s%d", r.sheetQualifier, r.start, columnIndexToLetter(r.col+cols-1), r.row+rows)
 }
 
-// parseCellRange splits "sheet1!B2:D10" into its prefix, top-left and extent.
-// Errors on non-rectangular forms like "A:C" (whole-column) or "3:6"
-// (whole-row) — those need a row/col total from get_sheet_structure, outside
-// the scope of pure local parsing. The error wording is load-bearing:
-// +styles-put surfaces it verbatim ("cell_styles range %q: %v").
+// parseCellRange splits "sheet1!B2:D10" into the sheet part it carries, its
+// top-left and its extent. Errors on non-rectangular forms like "A:C"
+// (whole-column) or "3:6" (whole-row) — those need a row/col total from
+// get_sheet_structure, outside the scope of pure local parsing. The error
+// wording is load-bearing: +styles-put surfaces it verbatim
+// ("cell_styles range %q: %v").
+//
+// The sheet part is cut by scanSheetQualifier, the same grammar the selector
+// rewrite uses, so both agree with the front-end ref lexer on what counts as a
+// separator. Splitting on the first "!" instead would miss the full-width
+// separator entirely and would cut a quoted name in half at its own "!".
 func parseCellRange(s string) (cellRange, error) {
 	out := cellRange{}
-	// Trim before splitting the prefix, not after: otherwise " sheet1!B2"
-	// carries the leading space into prefix and every range rendered from it.
+	// Trim before cutting the qualifier, not after: otherwise " sheet1!B2"
+	// carries the leading space into it and into every range rendered from it.
 	body := strings.TrimSpace(s)
-	if idx := strings.Index(body, "!"); idx >= 0 {
-		out.prefix, body = body[:idx+1], body[idx+1:]
+	if _, end, ok := scanSheetQualifier(body); ok {
+		out.sheetQualifier = body[:end]
+		body = strings.TrimSpace(body[end:])
 	}
-	body = strings.TrimSpace(body)
 	if body == "" {
 		return out, fmt.Errorf("empty range") //nolint:forbidigo // intermediate error; callers wrap it into a typed --range/--source-range validation error
 	}
 	parts := strings.SplitN(body, ":", 2)
-	start := strings.TrimSpace(parts[0])
-	startCol, startRow, ok := splitCellRef(start)
+	out.start = strings.TrimSpace(parts[0])
+	startCol, startRow, ok := splitCellRef(out.start)
+	out.col, out.row = startCol, startRow
 	if len(parts) == 1 {
 		// single cell, e.g. "A1"
 		if !ok {
-			return out, fmt.Errorf("invalid cell ref %q", parts[0]) //nolint:forbidigo // intermediate error; callers wrap it into a typed --range/--source-range validation error
+			return cellRange{}, fmt.Errorf("invalid cell ref %q", parts[0]) //nolint:forbidigo // intermediate error; callers wrap it into a typed --range/--source-range validation error
 		}
-		return cellRange{prefix: out.prefix, start: start, col: startCol, row: startRow, rows: 1, cols: 1, anchored: true}, nil
+		out.rows, out.cols, out.anchored = 1, 1, true
+		return out, nil
 	}
 	endCol, endRow, okEnd := splitCellRef(parts[1])
 	if !ok || !okEnd {
-		return out, fmt.Errorf("unsupported range form %q (need rectangular A1:B2)", body) //nolint:forbidigo // intermediate error; callers wrap it into a typed --range/--source-range validation error
+		return cellRange{}, fmt.Errorf("unsupported range form %q (need rectangular A1:B2)", body) //nolint:forbidigo // intermediate error; callers wrap it into a typed --range/--source-range validation error
 	}
 	if endRow < startRow || endCol < startCol {
-		return out, fmt.Errorf("end %q must be at or after start %q", parts[1], parts[0]) //nolint:forbidigo // intermediate error; callers wrap it into a typed --range/--source-range validation error
+		return cellRange{}, fmt.Errorf("end %q must be at or after start %q", parts[1], parts[0]) //nolint:forbidigo // intermediate error; callers wrap it into a typed --range/--source-range validation error
 	}
-	return cellRange{
-		prefix: out.prefix, start: start, col: startCol, row: startRow,
-		rows: endRow - startRow + 1, cols: endCol - startCol + 1,
-	}, nil
+	out.rows, out.cols = endRow-startRow+1, endCol-startCol+1
+	return out, nil
 }
 
 func rangeDimensions(rangeStr string) (rows, cols int, err error) {

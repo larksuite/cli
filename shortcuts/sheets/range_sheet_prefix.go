@@ -61,64 +61,81 @@ func rangeSheetPrefixApplies(command string) bool {
 	return hasRange && hasID && hasName
 }
 
-// sheetRangeSeparators normalizes the spellings of the "!" that divides a sheet
-// name from its range. The front-end ref lexer treats the full-width ！ as an
-// equal alternative (byted-sheet TractorLexer.ts, ExclamationMark =
-// `[ \t\r\n]*(?:!|！)[ \t\r\n]*`), and the backslash-escaped forms survive
-// shell history expansion — the legacy v2 shortcuts already normalize the same
-// three (backward/helpers.go, sheetRangeSeparatorReplacer).
+// splitRangeSheetPrefix splits "Sheet1!A1:D20" into ("Sheet1", "A1:D20"),
+// following the front-end ref lexer so a reference copied out of a formula or
+// a sheet UI parses here the way it does there:
 //
-// Safe to apply to an unquoted prefix because the lexer's unquoted sheet-name
-// production (Identifier) excludes every one of these characters; a quoted name
-// may legally contain them, which is why splitRangeSheetPrefix runs this on the
-// tail only, never across the quotes.
-var sheetRangeSeparators = strings.NewReplacer(`\！`, "!", `\!`, "!", "！", "!")
-
-// splitRangeSheetPrefix splits "Sheet1!A1:D20" into ("Sheet1", "A1:D20").
+//   - The separator has four equal spellings: "!", the full-width "！"
+//     (TractorLexer.ts, ExclamationMark = `[ \t\r\n]*(?:!|！)[ \t\r\n]*`), and
+//     the backslash-escaped forms of both, which survive shell history
+//     expansion. Legacy v2 normalizes the same set (backward/helpers.go,
+//     sheetRangeSeparatorReplacer).
+//   - Quoted names ('My Sheet'!A1) are unwrapped, doubled-quote escape
+//     collapsed. The quotes are what delimit the name, so one may contain a
+//     "!"; escapeSheetName quotes everything that is not pure a-z, so any name
+//     with a space, a digit or CJK arrives in this form.
+//   - Unquoted names split on the first separator — the lexer's Identifier
+//     production excludes "!" at both widths, so a name cannot contain one.
 //
-// The grammar mirrors the front end's ref lexer, so a reference copied out of
-// a formula or a sheet UI parses here the same way it does there:
+// One deliberate divergence: the lexer also bars whitespace from an unquoted
+// name so that `SUM(My Sheet!A1)` tokenizes; a flag has no such ambiguity, so
+// `My Sheet!A1` is accepted rather than rejected over missing quotes.
 //
-//   - Quoted names ('My Sheet'!A1) are unwrapped, with the doubled-quote escape
-//     collapsed back to one — QuotedSingleSheetPrefix admits any run of
-//     non-quote characters plus that escape, and the visitor undoes it the same
-//     way. Since the quotes are what delimit the name, one may contain a "!".
-//     escapeSheetName quotes every name that is not pure a-z, so anything with
-//     a space, a digit or CJK arrives in this form.
-//   - Unquoted names split on the first separator: the lexer's Identifier
-//     production excludes "!" (both widths), so a name can never contain one.
-//
-// The one deliberate divergence: the lexer also excludes whitespace from an
-// unquoted name, because in a formula `SUM(My Sheet!A1)` has to tokenize.
-// A --range flag has no such ambiguity, so `My Sheet!A1` is accepted here
-// rather than rejected over a missing pair of quotes.
-//
-// ok is false when there is no separator at all, when either side is empty
-// ("!A1", "Sheet1!"), or when a quote is left open — those are malformed rather
-// than prefixed, and the flag's own validation names the problem better than a
-// half-applied rewrite would.
+// ok is false with no separator, an empty side ("!A1", "Sheet1!"), or an
+// unclosed quote — malformed rather than prefixed, and the flag's own
+// validation names those better than a half-applied rewrite would.
 func splitRangeSheetPrefix(rng string) (sheet, rest string, ok bool) {
 	rng = strings.TrimSpace(rng)
-	if strings.HasPrefix(rng, "'") {
-		return splitQuotedRangeSheetPrefix(rng)
-	}
-	rng = sheetRangeSeparators.Replace(rng)
-	idx := strings.Index(rng, "!")
-	if idx < 0 {
+	sheet, end, ok := scanSheetQualifier(rng)
+	if !ok {
 		return "", "", false
 	}
-	sheet = strings.TrimSpace(rng[:idx])
-	rest = strings.TrimSpace(rng[idx+1:])
+	rest = strings.TrimSpace(rng[end:])
 	if sheet == "" || rest == "" {
 		return "", "", false
 	}
 	return sheet, rest, true
 }
 
-// splitQuotedRangeSheetPrefix handles the 'Sheet name'!A1 form. Scanning byte
-// by byte is safe for multi-byte names: only the ASCII quote is compared, and
-// every other byte is copied through verbatim.
-func splitQuotedRangeSheetPrefix(rng string) (sheet, rest string, ok bool) {
+// scanSheetQualifier is the grammar itself. It returns the sheet the qualifier
+// names (unquoted, escapes collapsed) and the byte offset just past its
+// separator, so rng[:end] is the verbatim qualifier and rng[end:] is the A1
+// part. rng is expected pre-trimmed.
+//
+// The offset is what callers re-rendering a range need: parseCellRange's output
+// is both shipped to the server and printed for the caller to paste back, so
+// the qualifier has to survive EXACTLY as written — full-width separator,
+// quotes and all — which a parsed-and-reassembled name cannot promise.
+//
+// ok is false with no qualifier at all or an unclosed quote. An empty side is
+// the caller's to judge: "!A1" is malformed to the selector rewrite but has
+// always been tolerated by the dimension parser.
+func scanSheetQualifier(rng string) (sheet string, end int, ok bool) {
+	if strings.HasPrefix(rng, "'") {
+		return scanQuotedSheetQualifier(rng)
+	}
+	// The lexer's unquoted name production (Identifier) excludes both widths
+	// of the separator, so the first one is necessarily the boundary.
+	for i, r := range rng {
+		if r != '!' && r != '！' {
+			continue
+		}
+		nameEnd := i
+		// A backslash immediately before is part of the separator's spelling,
+		// not of the name: `Sheet1\!A1` survives shell history expansion.
+		if i > 0 && rng[i-1] == '\\' {
+			nameEnd = i - 1
+		}
+		return strings.TrimSpace(rng[:nameEnd]), i + len(string(r)), true
+	}
+	return "", 0, false
+}
+
+// scanQuotedSheetQualifier handles the 'Sheet name'!A1 form. Scanning byte by
+// byte is safe for multi-byte names: only the ASCII quote is compared, and
+// every other byte is copied through verbatim. Since the quotes are what
+// delimit the name, one may contain a separator.
+func scanQuotedSheetQualifier(rng string) (sheet string, end int, ok bool) {
 	var name strings.Builder
 	for i := 1; i < len(rng); i++ {
 		if rng[i] != '\'' {
@@ -131,18 +148,25 @@ func splitQuotedRangeSheetPrefix(rng string) (sheet, rest string, ok bool) {
 			i++
 			continue
 		}
-		tail := sheetRangeSeparators.Replace(strings.TrimSpace(rng[i+1:]))
-		if !strings.HasPrefix(tail, "!") {
-			return "", "", false
+		sepStart := i + 1
+		tail := rng[sepStart:]
+		ws := len(tail) - len(strings.TrimLeft(tail, " \t\r\n"))
+		tail = tail[ws:]
+		sepLen := ws
+		if strings.HasPrefix(tail, `\`) {
+			tail, sepLen = tail[1:], sepLen+1
 		}
-		sheet = strings.TrimSpace(name.String())
-		rest = strings.TrimSpace(tail[1:])
-		if sheet == "" || rest == "" {
-			return "", "", false
+		switch {
+		case strings.HasPrefix(tail, "!"):
+			sepLen++
+		case strings.HasPrefix(tail, "！"):
+			sepLen += len("！")
+		default:
+			return "", 0, false
 		}
-		return sheet, rest, true
+		return strings.TrimSpace(name.String()), sepStart + sepLen, true
 	}
-	return "", "", false
+	return "", 0, false
 }
 
 // chainRangeSheetPrefix installs a PreRunE stage (composed onto any prior

@@ -628,11 +628,20 @@ func TestCellRange_Sized(t *testing.T) {
 		{"A1:C10", 12, 3, "A1:C12"},           // range under-counted the rows
 		{"A1", 13, 3, "A1:C13"},               // single-cell anchor habit
 		{"B2:C3", 3, 3, "B2:D4"},              // both axes off, non-A1 origin
-		{"甘特图!F5:BF5", 1, 53, "甘特图!F5:BF5"},   // prefix kept, multi-letter column
+		{"甘特图!F5:BF5", 1, 53, "甘特图!F5:BF5"},   // qualifier kept, multi-letter column
 		{"C3:D4", 2, 26, "C3:AB4"},            // column carry past Z
 		{" sheet1!B2 ", 2, 2, "sheet1!B2:C3"}, // surrounding space trimmed
 		{"A:C", 2, 2, ""},                     // whole-column: no top-left to anchor
 		{"3:6", 2, 2, ""},                     // whole-row: same
+
+		// The separator spellings the front-end ref lexer treats as one.
+		// Splitting on the first "!" used to leave these unparsable, which
+		// silently disabled BOTH the anchor expansion and the dimension
+		// prescription for every range that named its sheet this way.
+		{"甘特图！B3", 3, 2, "甘特图！B3:C5"},                 // full-width separator
+		{`Sheet1\!B3`, 2, 2, `Sheet1\!B3:C4`},         // shell-escaped separator
+		{"'Q1!Actual'!B3", 2, 2, "'Q1!Actual'!B3:C4"}, // quoted name owning a "!"
+		{"'My Sheet'！B3", 2, 2, "'My Sheet'！B3:C4"},   // quoted name, full-width separator
 	}
 	for _, c := range cases {
 		r, err := parseCellRange(c.in)
@@ -648,6 +657,36 @@ func TestCellRange_Sized(t *testing.T) {
 		}
 		if got := r.sized(c.rows, c.cols); got != c.want {
 			t.Errorf("parseCellRange(%q).sized(%d, %d) = %q, want %q", c.in, c.rows, c.cols, got, c.want)
+		}
+	}
+}
+
+// TestParseCellRange_SheetQualifier pins that the sheet part kept for
+// re-rendering is the caller's own spelling, byte for byte — quotes, escapes
+// and separator width included. (What the name unquotes TO is
+// TestSplitRangeSheetPrefix's job; nothing re-quotes it from here.)
+func TestParseCellRange_SheetQualifier(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		in            string
+		wantQualifier string
+	}{
+		{"A1:B2", ""},
+		{"Sheet1!A1:B2", "Sheet1!"},
+		{"甘特图！A1", "甘特图！"},
+		{"'My Sheet'!A1", "'My Sheet'!"},
+		{"'Q1!Actual'!A1", "'Q1!Actual'!"},
+		{"'It''s'!A1", "'It''s'!"},
+		{`Sheet1\!A1`, `Sheet1\!`},
+	}
+	for _, c := range cases {
+		r, err := parseCellRange(c.in)
+		if err != nil {
+			t.Errorf("parseCellRange(%q): %v", c.in, err)
+			continue
+		}
+		if r.sheetQualifier != c.wantQualifier {
+			t.Errorf("parseCellRange(%q) qualifier = %q, want %q", c.in, r.sheetQualifier, c.wantQualifier)
 		}
 	}
 }
