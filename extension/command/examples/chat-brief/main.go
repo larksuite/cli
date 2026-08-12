@@ -100,7 +100,8 @@ var chatBrief = command.Define(command.Definition[chatBriefArgs, chatBriefData]{
 })
 
 type chatListArgs struct {
-	PageSize int `flag:"page-size" schema:"optional;default=20;minimum=1;maximum=100" doc:"items per page"`
+	PageSize  int    `flag:"page-size" schema:"optional;default=20;minimum=1;maximum=100" doc:"items per page"`
+	PageToken string `flag:"page-token" schema:"optional" doc:"resume cursor from a previous response"`
 }
 
 type chatItem struct {
@@ -108,8 +109,14 @@ type chatItem struct {
 	Name   string `json:"name" schema:"required" doc:"chat name"`
 }
 
+// chatListRequest seeds page_token when resuming; --page-all and the
+// starting cursor are independent, so a resumed walk keeps paginating.
 func chatListRequest(args *chatListArgs) command.Request {
-	return command.GET("/open-apis/im/v1/chats").Set("page_size", args.PageSize)
+	request := command.GET("/open-apis/im/v1/chats").Set("page_size", args.PageSize)
+	if args.PageToken != "" {
+		request = request.Set("page_token", args.PageToken)
+	}
+	return request
 }
 
 // chatList declares Page[T] as its Data, so the compiler installs the

@@ -102,7 +102,7 @@ func compileCommand(definition command.HostDefinition) (common.Shortcut, error) 
 	if err != nil {
 		return common.Shortcut{}, err
 	}
-	hooks := convertHooks(definition.Hooks)
+	hooks := convertHooks(definition.Hooks, definition.PageOutput)
 	hooks.NewArgs = definition.NewArgs
 	return common.CompileErasedDefinition(common.ErasedDefinition{
 		Metadata:   metadata,
@@ -212,10 +212,10 @@ func convertOutput(output command.OutputDefinition) (common.OutputDefinition, er
 	return converted, nil
 }
 
-func convertHooks(hooks command.HostHooks) common.ErasedHooks {
-	dryRun := adaptDryRunHook(hooks.DryRun)
+func convertHooks(hooks command.HostHooks, pageOutput bool) common.ErasedHooks {
+	dryRun := adaptDryRunHook(hooks.DryRun, pageOutput)
 	if hooks.DryRunE != nil {
-		dryRun = adaptDryRunErrorHook(hooks.DryRunE)
+		dryRun = adaptDryRunErrorHook(hooks.DryRunE, pageOutput)
 	}
 	return common.ErasedHooks{
 		Normalize: adaptHook(hooks.Normalize),
@@ -226,13 +226,13 @@ func convertHooks(hooks command.HostHooks) common.ErasedHooks {
 	}
 }
 
-func adaptDryRunErrorHook(hook func(context.Context, command.CommandContext, any) (*command.DryRun, error)) func(context.Context, common.CommandContext, any) (*common.DryRunAPI, error) {
+func adaptDryRunErrorHook(hook func(context.Context, command.CommandContext, any) (*command.DryRun, error), pageOutput bool) func(context.Context, common.CommandContext, any) (*common.DryRunAPI, error) {
 	return func(ctx context.Context, host common.CommandContext, args any) (*common.DryRunAPI, error) {
 		preview, err := hook(ctx, publicContext(host), args)
 		if err != nil {
 			return nil, err
 		}
-		return convertDryRun(preview)
+		return convertDryRun(preview, pageOutput)
 	}
 }
 
@@ -245,13 +245,13 @@ func adaptHook(hook func(context.Context, command.CommandContext, any) error) fu
 	}
 }
 
-func adaptDryRunHook(hook func(context.Context, command.CommandContext, any) *command.DryRun) func(context.Context, common.CommandContext, any) (*common.DryRunAPI, error) {
+func adaptDryRunHook(hook func(context.Context, command.CommandContext, any) *command.DryRun, pageOutput bool) func(context.Context, common.CommandContext, any) (*common.DryRunAPI, error) {
 	if hook == nil {
 		return nil
 	}
 	return func(ctx context.Context, host common.CommandContext, args any) (*common.DryRunAPI, error) {
 		preview := hook(ctx, publicContext(host), args)
-		return convertDryRun(preview)
+		return convertDryRun(preview, pageOutput)
 	}
 }
 
@@ -353,7 +353,12 @@ func derefQueryValue(value any) any {
 	return reflected.Interface()
 }
 
-func convertDryRun(preview *command.DryRun) (*common.DryRunAPI, error) {
+// pageAllRepeatNote is the bounded-repeat explanation a Page[T] command's
+// dry-run carries: only the first request is previewable, and the preview
+// must not fabricate response-dependent page tokens.
+const pageAllRepeatNote = "with --page-all, repeats with the returned page_token until exhaustion or --page-limit"
+
+func convertDryRun(preview *command.DryRun, pageOutput bool) (*common.DryRunAPI, error) {
 	if preview == nil {
 		return nil, nil
 	}
@@ -387,6 +392,13 @@ func convertDryRun(preview *command.DryRun) (*common.DryRunAPI, error) {
 		if request.Description != "" {
 			converted.Desc(request.Description)
 		}
+	}
+	if pageOutput && len(view.Requests) > 0 {
+		note := pageAllRepeatNote
+		if last := view.Requests[len(view.Requests)-1].Description; last != "" {
+			note = last + "; " + note
+		}
+		converted.Desc(note)
 	}
 	return converted, nil
 }

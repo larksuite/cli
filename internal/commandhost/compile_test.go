@@ -319,3 +319,47 @@ func TestExternalDryRunEPropagatesError(t *testing.T) {
 		t.Fatalf("dry-run typed error = %#v", err)
 	}
 }
+
+// A Page[T] command's dry-run can only show the first request; the preview
+// must say the walk repeats instead of fabricating response-dependent
+// page tokens.
+func TestExternalPageDryRunNotesBoundedRepetition(t *testing.T) {
+	declaration := command.Define(command.Definition[fixtureArgs, command.Page[fixtureData]]{
+		Metadata: command.CommandMetadata{
+			Service: "im", Command: "+external-page-note", Description: "Page preview note", Risk: command.RiskRead,
+			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{
+				command.IdentityUser: {RequiredScopes: []string{"im:chat:read"}},
+			}},
+		},
+		Hooks: command.Hooks[fixtureArgs, command.Page[fixtureData]]{
+			DryRun: func(_ context.Context, _ command.CommandContext, _ *fixtureArgs) *command.DryRun {
+				return command.Preview(command.GET("/open-apis/im/v1/chats").Desc("list visible chats"))
+			},
+			Execute: func(context.Context, command.CommandContext, *fixtureArgs) (command.Result[command.Page[fixtureData]], error) {
+				return command.Success(command.Page[fixtureData]{}), nil
+			},
+		},
+	})
+	compiled, err := CompileSets([]command.Set{{
+		Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{declaration},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	factory, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "app-id", AppSecret: "app-secret"})
+	root := &cobra.Command{Use: "lark-cli", SilenceErrors: true, SilenceUsage: true}
+	service := &cobra.Command{Use: "im"}
+	root.AddCommand(service)
+	compiled[0].Mount(service, factory)
+	root.SetArgs([]string{"im", "+external-page-note", "--id", "chat_1", "--as", "user", "--dry-run"})
+	if _, err := root.ExecuteC(); err != nil {
+		t.Fatal(err)
+	}
+	output := stdout.String()
+	if !strings.Contains(output, "repeats with the returned page_token until exhaustion or --page-limit") {
+		t.Fatalf("dry-run output lacks the bounded-repeat note:\n%s", output)
+	}
+	if !strings.Contains(output, "list visible chats; ") {
+		t.Fatalf("business description was not preserved before the note:\n%s", output)
+	}
+}
