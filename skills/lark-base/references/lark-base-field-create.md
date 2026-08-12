@@ -45,7 +45,7 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/fields
 ## JSON 值规范
 
 - `--json` 接受单个字段 **JSON 对象**，也接受多个字段对象组成的非空数组；不要再套 `fields` 等外层对象。
-- 数组按顺序创建字段，遇到首个失败即停止且不自动回滚已创建字段；需要原子写入时不要假设数组具备事务语义。
+- 数组按顺序创建字段，遇到首个失败即停止且不自动回滚；部分失败时保留 `items` 中的 `created` 项，按 `hint` 修正后只提交 `failed` 和 `not_attempted` 项，并保持依赖顺序。
 - 每个字段对象最少包含：`name`、`type`。
 - 所有字段类型都支持可选 `description`；支持纯文本，也支持 Markdown 链接，如 `协作约定可参考[团队字段约定](https://example.com/field-spec)`。
 - 需要字段默认值时传 `default_value`，直接使用字段对应 CellValue；`datetime` / `user` 的动态填充用 `$slot`。完整规则见 [lark-base-field-json.md](lark-base-field-json.md)。
@@ -69,11 +69,6 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/fields
   ]
 }
 ```
-
-## 失败恢复
-
-- 数组部分失败时保留 `items` 中的 `created` 项；按 `hint` 修正失败项后，只提交 `failed` 和 `not_attempted` 项，并保持依赖顺序。
-- 调用超时且没有终态输出时，先按字段名定向读取，只创建缺失项；没有写前快照时，已存在的同名字段不能归因于本次创建。
 
 ## 参考
 
