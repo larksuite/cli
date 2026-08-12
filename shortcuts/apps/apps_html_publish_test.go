@@ -544,9 +544,11 @@ func newTOSTestRuntime(t *testing.T) (*common.RuntimeContext, *httpmock.Registry
 // registerAppTypeStub registers the GET /apps/{id} stub that the app_type
 // precheck at the top of runHTMLPublishTOS issues via queryAppType. appType is
 // the uppercase server value ("HTML", "FULL_STACK", ...); queryAppType
-// normalizes it to lowercase. The bare /apps/{id} URL is not a substring of the
-// downstream /apps/{id}/pre_release or /apps/{id}/releases stubs, so httpmock
-// resolution stays order-independent.
+// normalizes it to lowercase. httpmock matches a stub when the request URL
+// contains stub.URL (strings.Contains). queryAppType requests the bare
+// /apps/{id} path, which cannot contain a longer /apps/{id}/pre_release or
+// /apps/{id}/releases stub URL, so it only ever matches this app_type stub —
+// resolution stays unambiguous regardless of registration order.
 func registerAppTypeStub(reg *httpmock.Registry, appID, appType string) {
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
