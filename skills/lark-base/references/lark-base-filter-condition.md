@@ -60,10 +60,18 @@ value 类型取决于条件引用对象（字段 / 题目）的类型。
 
 ### `text`
 
-用字符串：
+用字符串；`==` / `!=` 比较完整文本，`intersects` / `disjoint` 判断是否包含目标片段：
+
+```json
+["标题", "!=", "已归档"]
+```
 
 ```json
 ["标题", "intersects", "发布"]
+```
+
+```json
+["标题", "disjoint", "内部"]
 ```
 
 ### `location`
@@ -86,10 +94,14 @@ location 筛选只按 `full_address` 字符串匹配，不能直接按经纬度�
 
 ### `select`
 
-用选项名数组：
+用选项名数组；`intersects` 表示命中任意选项，`disjoint` 表示不包含其中任何选项：
 
 ```json
 ["状态", "intersects", ["Doing", "Blocked"]]
+```
+
+```json
+["状态", "disjoint", ["Archived"]]
 ```
 
 ### `user` / `created_by` / `updated_by`
@@ -100,6 +112,10 @@ location 筛选只按 `full_address` 字符串匹配，不能直接按经纬度�
 
 ```json
 ["负责人", "intersects", [{ "id": "ou_xxx" }]]
+```
+
+```json
+["负责人", "disjoint", [{ "id": "ou_xxx" }]]
 ```
 
 ### `group_chat`
@@ -171,7 +187,7 @@ location 筛选只按 `full_address` 字符串匹配，不能直接按经纬度�
 
 - 不要再写旧对象风格：`{"field_name":...,"operator":...}`。
 - `user` / `group_chat` / `link` 不要写成单个标量。
-- `empty` / `non_empty` 不要硬塞无意义的 value。
+- `empty` / `non_empty` 统一表示格子为空 / 非空，不要传 value；标量空格子和多值字段没有任何元素都属于空。
 - 日期条件稳定写法用 `ExactDate(...)` 或 `Today` / `Yesterday` / `Tomorrow`。
 - `formula` / `lookup` 的 value 形状不固定；拿不准时先读当前配置或字段定义，或根据错误提示修正类型。
 
