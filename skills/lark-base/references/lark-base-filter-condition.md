@@ -60,11 +60,7 @@ value 类型取决于条件引用对象（字段 / 题目）的类型。
 
 ### `text`
 
-用字符串；`==` / `!=` 比较完整文本，`intersects` / `disjoint` 判断是否包含目标片段：
-
-```json
-["标题", "!=", "已归档"]
-```
+用字符串；高频的片段包含 / 排除使用 `intersects` / `disjoint`，完整文本比较使用 `==` / `!=`：
 
 ```json
 ["标题", "intersects", "发布"]
@@ -76,7 +72,11 @@ value 类型取决于条件引用对象（字段 / 题目）的类型。
 
 ### `location`
 
-按 `full_address` 字符串筛选，不支持直接筛经纬度；地址片段使用 `["位置", "intersects", "深圳"]`，完整地址才使用 `==`。
+location 筛选只按 `full_address` 字符串匹配，不能直接按经纬度筛选；优先使用 `intersects` 做包含匹配，例如查深圳：
+
+```json
+["位置", "intersects", "深圳"]
+```
 
 ### `number` / `auto_number`
 
