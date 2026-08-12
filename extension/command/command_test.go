@@ -445,3 +445,50 @@ func TestPathSegmentNeutralizesSeparatorsAndTraversal(t *testing.T) {
 		t.Fatalf("escaped ordinary id should validate: %v", err)
 	}
 }
+
+// pageContext returns a context whose host callback replays the given pages.
+func pageContext(pages []map[string]any) CommandContext {
+	return NewCommandContext(ContextOptions{
+		Identity: IdentityUser,
+		CollectPages: func(_ context.Context, _ Request, _ bool) ([]map[string]any, HostPagination, error) {
+			return pages, HostPagination{Complete: true, Pages: len(pages)}, nil
+		},
+	})
+}
+
+// Upstream list endpoints spell their array field differently (items,
+// records, files, ...). Each page's single top-level array must normalize
+// into Page.Items regardless of its name.
+func TestCollectPagesNormalizesAnyTopLevelArrayField(t *testing.T) {
+	for _, field := range []string{"items", "records", "files"} {
+		pages := []map[string]any{
+			{field: []any{map[string]any{"id": "1"}, map[string]any{"id": "2"}}, "has_more": false},
+		}
+		page, err := CollectPages[contractData](context.Background(), pageContext(pages), GET("/open-apis/x/v1/list"))
+		if err != nil {
+			t.Fatalf("field %q: %v", field, err)
+		}
+		if len(page.Items) != 2 {
+			t.Fatalf("field %q: items = %d, want 2", field, len(page.Items))
+		}
+	}
+}
+
+// Zero or multiple top-level arrays must fail closed. Silently decoding
+// nothing would let CollectAllPages report an empty-but-complete set and
+// downstream writes would run against it.
+func TestCollectPagesRejectsAmbiguousPageShapes(t *testing.T) {
+	cases := map[string][]map[string]any{
+		"no array":       {{"has_more": false, "page_token": ""}},
+		"two arrays":     {{"items": []any{}, "files": []any{}, "has_more": false}},
+		"null-only page": {{"items": nil, "has_more": false}},
+	}
+	for name, pages := range cases {
+		if _, err := CollectPages[contractData](context.Background(), pageContext(pages), GET("/open-apis/x/v1/list")); err == nil {
+			t.Errorf("%s: expected typed invalid-response error, got nil", name)
+		}
+		if _, err := CollectAllPages[contractData](context.Background(), pageContext(pages), GET("/open-apis/x/v1/list")); err == nil {
+			t.Errorf("%s: CollectAllPages must not report an empty complete set", name)
+		}
+	}
+}

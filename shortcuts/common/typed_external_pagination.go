@@ -53,9 +53,16 @@ func CollectCommandPages(ctx context.Context, command CommandContext, request Pa
 	return collection, nil
 }
 
+// collectAllHardPageBound caps CollectAllPages workflows. It is deliberately
+// tighter than the user-facing --page-limit maximum (1000): a complete-set
+// collection holds every page in memory before the workflow's writes run, so
+// its upper bound is a host resource decision, not a display preference.
+// Value from the extension design's Phase 0 (owner plan §8.3).
+const collectAllHardPageBound = 100
+
 func commandPagePolicy(command CommandContext, all bool) (paginationPolicy, error) {
 	if all {
-		return paginationPolicy{maxPages: pageLimitMaximum}, nil
+		return paginationPolicy{maxPages: collectAllHardPageBound}, nil
 	}
 	options, err := command.PaginationOptions()
 	if err != nil {

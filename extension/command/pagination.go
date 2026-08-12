@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"sort"
+	"strings"
 )
 
 // Page contains items and host-owned pagination state.
@@ -58,11 +60,36 @@ func clonePaginationMeta(meta *paginationMeta) *paginationMeta {
 	return &copy
 }
 
-type pageEnvelope[T any] struct {
-	Items         []T    `json:"items"`
-	HasMore       bool   `json:"has_more"`
-	PageToken     string `json:"page_token"`
-	NextPageToken string `json:"next_page_token"`
+// pageItems extracts the single top-level array field of one page's data
+// object, so upstream spellings (items, records, files, ...) all normalize
+// into Page.Items. Zero or multiple array fields fail closed instead of
+// silently dropping rows: pagination bookkeeping (has_more, page_token)
+// would otherwise keep walking while every page decodes to nothing.
+func pageItems[T any](data map[string]any) ([]T, error) {
+	arrays := make([]string, 0, 1)
+	for key, value := range data {
+		if _, isArray := value.([]any); isArray {
+			arrays = append(arrays, key)
+		}
+	}
+	sort.Strings(arrays)
+	if len(arrays) == 0 {
+		return nil, InvalidResponseErrorf("pagination page has no top-level array field")
+	}
+	if len(arrays) > 1 {
+		return nil, InvalidResponseErrorf("pagination page has multiple top-level array fields: %s", strings.Join(arrays, ", "))
+	}
+	encoded, err := json.Marshal(data[arrays[0]])
+	if err != nil {
+		return nil, err
+	}
+	var items []T
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.UseNumber()
+	if err := decoder.Decode(&items); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 // CollectPages fetches one page by default or follows standard pagination flags.
@@ -98,26 +125,12 @@ func collectPages[T any](ctx context.Context, command CommandContext, request Re
 	result.meta.Pages = pagination.Pages
 	result.meta.NextToken = pagination.NextToken
 	for pageNumber, data := range pages {
-		page, decodeErr := decodePageEnvelope[T](data)
+		items, decodeErr := pageItems[T](data)
 		if decodeErr != nil {
 			return result, InvalidResponseErrorf("decode pagination page %d: %v", pageNumber+1, decodeErr).WithCause(decodeErr)
 		}
-		result.Items = append(result.Items, page.Items...)
+		result.Items = append(result.Items, items...)
 	}
 	result.meta.Items = len(result.Items)
 	return result, err
-}
-
-func decodePageEnvelope[T any](data map[string]any) (pageEnvelope[T], error) {
-	var page pageEnvelope[T]
-	encoded, err := json.Marshal(data)
-	if err != nil {
-		return page, err
-	}
-	decoder := json.NewDecoder(bytes.NewReader(encoded))
-	decoder.UseNumber()
-	if err := decoder.Decode(&page); err != nil {
-		return page, err
-	}
-	return page, nil
 }
