@@ -349,9 +349,27 @@ func mergeResources(base, overlay map[string]meta.Resource) map[string]meta.Reso
 	}
 	for name, res := range overlay {
 		if baseRes, ok := merged[name]; ok {
+			res.Methods = mergeMethods(baseRes.Methods, res.Methods)
 			res.Resources = mergeResources(baseRes.Resources, res.Resources)
 		}
 		merged[name] = res
+	}
+	return merged
+}
+
+func mergeMethods(base, overlay map[string]meta.Method) map[string]meta.Method {
+	if len(base) == 0 {
+		return overlay
+	}
+	if len(overlay) == 0 {
+		return base
+	}
+	merged := make(map[string]meta.Method, len(base)+len(overlay))
+	for name, method := range base {
+		merged[name] = method
+	}
+	for name, method := range overlay {
+		merged[name] = method
 	}
 	return merged
 }

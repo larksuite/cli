@@ -5,13 +5,13 @@ package registry
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/meta"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // seedCache writes a cache file + cache meta for one service whose Title is
@@ -19,7 +19,7 @@ import (
 func seedCache(t *testing.T, dir, name, marker, version, brand string) {
 	t.Helper()
 	cDir := filepath.Join(dir, "cache")
-	if err := os.MkdirAll(cDir, 0700); err != nil {
+	if err := vfs.MkdirAll(cDir, 0700); err != nil {
 		t.Fatal(err)
 	}
 	reg := MergedRegistry{
@@ -27,12 +27,12 @@ func seedCache(t *testing.T, dir, name, marker, version, brand string) {
 		Services: []meta.Service{{Name: name, Version: "cache", Title: marker}},
 	}
 	data, _ := json.Marshal(reg)
-	if err := os.WriteFile(filepath.Join(cDir, "remote_meta.json"), data, 0644); err != nil {
+	if err := vfs.WriteFile(filepath.Join(cDir, "remote_meta.json"), data, 0644); err != nil {
 		t.Fatal(err)
 	}
 	cm := CacheMeta{LastCheckAt: time.Now().Unix(), Version: version, Brand: brand}
 	mData, _ := json.Marshal(cm)
-	if err := os.WriteFile(filepath.Join(cDir, "remote_meta.meta.json"), mData, 0644); err != nil {
+	if err := vfs.WriteFile(filepath.Join(cDir, "remote_meta.meta.json"), mData, 0644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -65,16 +65,16 @@ func initWithEmbeddedAndCache(t *testing.T, embedded, cached MergedRegistry) {
 	t.Setenv("LARKSUITE_CLI_META_TTL", "3600")
 
 	cDir := filepath.Join(tmp, "cache")
-	if err := os.MkdirAll(cDir, 0700); err != nil {
+	if err := vfs.MkdirAll(cDir, 0700); err != nil {
 		t.Fatal(err)
 	}
 	cachedData, _ := json.Marshal(cached)
-	if err := os.WriteFile(filepath.Join(cDir, "remote_meta.json"), cachedData, 0644); err != nil {
+	if err := vfs.WriteFile(filepath.Join(cDir, "remote_meta.json"), cachedData, 0644); err != nil {
 		t.Fatal(err)
 	}
 	cm := CacheMeta{LastCheckAt: time.Now().Unix(), Version: cached.Version, Brand: "feishu"}
 	metaData, _ := json.Marshal(cm)
-	if err := os.WriteFile(filepath.Join(cDir, "remote_meta.meta.json"), metaData, 0644); err != nil {
+	if err := vfs.WriteFile(filepath.Join(cDir, "remote_meta.meta.json"), metaData, 0644); err != nil {
 		t.Fatal(err)
 	}
 	InitWithBrand(core.BrandFeishu)
@@ -137,6 +137,13 @@ func TestOverlayGate_NewerCachePreservesEmbeddedOnlyResources(t *testing.T) {
 				ServicePath: "/open-apis/mail/v1",
 				Resources: map[string]meta.Resource{
 					"user_mailbox.auto_reply": {
+						Resources: map[string]meta.Resource{
+							"preview": {
+								Methods: map[string]meta.Method{
+									"get": {HTTPMethod: "GET", Path: "user_mailboxes/{user_mailbox_id}/auto_reply/preview"},
+								},
+							},
+						},
 						Methods: map[string]meta.Method{
 							"get": {HTTPMethod: "GET", Path: "user_mailboxes/{user_mailbox_id}/auto_reply"},
 						},
@@ -152,6 +159,18 @@ func TestOverlayGate_NewerCachePreservesEmbeddedOnlyResources(t *testing.T) {
 				Title:       "CACHE",
 				ServicePath: "/open-apis/mail/v1",
 				Resources: map[string]meta.Resource{
+					"user_mailbox.auto_reply": {
+						Resources: map[string]meta.Resource{
+							"history": {
+								Methods: map[string]meta.Method{
+									"list": {HTTPMethod: "GET", Path: "user_mailboxes/{user_mailbox_id}/auto_reply/history"},
+								},
+							},
+						},
+						Methods: map[string]meta.Method{
+							"update": {HTTPMethod: "PUT", Path: "user_mailboxes/{user_mailbox_id}/auto_reply"},
+						},
+					},
 					"user_mailbox.messages": {
 						Methods: map[string]meta.Method{
 							"list": {HTTPMethod: "GET", Path: "user_mailboxes/{user_mailbox_id}/messages"},
@@ -178,5 +197,14 @@ func TestOverlayGate_NewerCachePreservesEmbeddedOnlyResources(t *testing.T) {
 	}
 	if _, ok := res.Method("get"); !ok {
 		t.Fatal("expected embedded-only auto_reply get method")
+	}
+	if _, ok := res.Method("update"); !ok {
+		t.Fatal("expected cache auto_reply update method")
+	}
+	if _, ok := res.Resources["preview"]; !ok {
+		t.Fatal("expected embedded nested auto_reply.preview resource to remain executable")
+	}
+	if _, ok := res.Resources["history"]; !ok {
+		t.Fatal("expected cache nested auto_reply.history resource to remain executable")
 	}
 }
