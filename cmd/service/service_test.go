@@ -54,6 +54,150 @@ func driveMethod(httpMethod string, params map[string]interface{}) meta.Method {
 	return meta.FromMap(m)
 }
 
+func mailRulesSpec() meta.Service {
+	return meta.ServiceFromMap(map[string]interface{}{
+		"name":        "mail",
+		"servicePath": "/open-apis/mail/v1",
+	})
+}
+
+func mailRulesReorderMethod() meta.Method {
+	return meta.FromMap(map[string]interface{}{
+		"path":       "user_mailboxes/{user_mailbox_id}/rules/reorder",
+		"httpMethod": "POST",
+		"parameters": map[string]interface{}{
+			"user_mailbox_id": map[string]interface{}{
+				"type": "string", "location": "path", "required": true,
+			},
+		},
+		"requestBody": map[string]interface{}{
+			"rule_ids": map[string]interface{}{"type": "array", "required": true},
+		},
+	})
+}
+
+func TestNewPreflightMissingScopeErrorUsesCanonicalFieldGate(t *testing.T) {
+	err := newPreflightMissingScopeError(
+		"feishu",
+		"cli_test",
+		"user",
+		[]string{"docx:document"},
+	)
+	var permissionErr *errs.PermissionError
+	if !errors.As(err, &permissionErr) {
+		t.Fatalf("error = %T, want *errs.PermissionError", err)
+	}
+	if permissionErr.Subtype != errs.SubtypeMissingScope {
+		t.Fatalf("subtype = %q, want %q", permissionErr.Subtype, errs.SubtypeMissingScope)
+	}
+	if permissionErr.ConsoleURL != "" {
+		t.Fatalf("missing_scope console_url = %q, want empty", permissionErr.ConsoleURL)
+	}
+	if len(permissionErr.MissingScopes) != 1 ||
+		permissionErr.MissingScopes[0] != "docx:document" ||
+		permissionErr.Identity != "user" {
+		t.Fatalf("permission facts = %+v", permissionErr)
+	}
+}
+
+func TestServiceMethod_MailRuleReorderCompletesPartialIDs(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, testConfig)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/mail/v1/user_mailboxes/me/rules",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"rules": []map[string]interface{}{
+					{"rule_id": "A"},
+					{"rule_id": "B"},
+					{"rule_id": "C"},
+					{"rule_id": "D"},
+				},
+			},
+		},
+	})
+	var submitted []string
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/mail/v1/user_mailboxes/me/rules/reorder",
+		BodyFilter: func(body []byte) bool {
+			var payload map[string][]string
+			if err := json.Unmarshal(body, &payload); err != nil {
+				return false
+			}
+			submitted = payload["rule_ids"]
+			return strings.Join(submitted, ",") == "C,A,B,D"
+		},
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"ok": true},
+		},
+	})
+
+	cmd := NewCmdServiceMethod(f, mailRulesSpec(), mailRulesReorderMethod(), "reorder", "user_mailbox.rules", nil)
+	cmd.SetArgs([]string{
+		"--as", "bot",
+		"--params", `{"user_mailbox_id":"me"}`,
+		"--data", `{"rule_ids":["C","A"]}`,
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	reg.Verify(t)
+	if strings.Join(submitted, ",") != "C,A,B,D" {
+		t.Fatalf("submitted rule_ids = %v", submitted)
+	}
+	if !strings.Contains(stdout.String(), `"ok": true`) {
+		t.Fatalf("unexpected stdout: %s", stdout.String())
+	}
+}
+
+func TestServiceMethod_MailRuleReorderRejectsMissingIDBeforeSubmit(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, testConfig)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/mail/v1/user_mailboxes/me/rules",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"rules": []map[string]interface{}{{"rule_id": "A"}},
+			},
+		},
+	})
+
+	cmd := NewCmdServiceMethod(f, mailRulesSpec(), mailRulesReorderMethod(), "reorder", "user_mailbox.rules", nil)
+	cmd.SetArgs([]string{
+		"--as", "bot",
+		"--params", `{"user_mailbox_id":"me"}`,
+		"--data", `{"rule_ids":["missing"]}`,
+	})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "rule ID not found: missing") {
+		t.Fatalf("Execute() error = %v, want missing rule ID validation", err)
+	}
+	reg.Verify(t)
+}
+
+func TestServiceMethod_MailRuleReorderRejectsEmptyInputBeforeList(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, testConfig)
+
+	cmd := NewCmdServiceMethod(f, mailRulesSpec(), mailRulesReorderMethod(), "reorder", "user_mailbox.rules", nil)
+	cmd.SetArgs([]string{
+		"--as", "bot",
+		"--params", `{"user_mailbox_id":"me"}`,
+		"--data", `{"rule_ids":[]}`,
+	})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "provide at least one rule ID") {
+		t.Fatalf("Execute() error = %v, want empty rule ID validation", err)
+	}
+	reg.Verify(t)
+}
+
 // ── registerService ──
 
 func TestRegisterService(t *testing.T) {
@@ -224,10 +368,36 @@ func TestServiceMethod_DryRun_PathParam(t *testing.T) {
 			if err := cmd.Execute(); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if !strings.Contains(stdout.String(), tt.wantInURL) {
-				t.Errorf("expected URL containing %q, got:\n%s", tt.wantInURL, stdout.String())
+			var got map[string]interface{}
+			if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+				t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, stdout.String())
+			}
+			if got["ok"] != true || got["dry_run"] != true {
+				t.Fatalf("unexpected dry-run envelope: %#v", got)
+			}
+			data := got["data"].(map[string]interface{})
+			api := data["api"].([]interface{})
+			call := api[0].(map[string]interface{})
+			if call["url"] != tt.wantInURL {
+				t.Errorf("url = %q, want %q\nstdout:\n%s", call["url"], tt.wantInURL, stdout.String())
 			}
 		})
+	}
+}
+
+func TestServiceMethod_DryRunWithJq(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, driveSpec(), driveMethod("GET", nil), "get", "files", nil)
+	cmd.SetArgs([]string{
+		"--params", `{"file_token":"boxcn123abc"}`,
+		"--dry-run",
+		"--jq", ".data.api[0].url",
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got, want := strings.TrimSpace(stdout.String()), "/open-apis/drive/v1/files/boxcn123abc/copy"; got != want {
+		t.Fatalf("jq output = %q, want %q", got, want)
 	}
 }
 
@@ -318,8 +488,12 @@ func TestServiceMethod_PaginationParamSkippedWithPageAll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error with --page-all skipping page_size, got: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "Dry Run") {
-		t.Error("expected dry-run output")
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, stdout.String())
+	}
+	if got["dry_run"] != true {
+		t.Fatalf("dry_run = %#v, want true", got["dry_run"])
 	}
 }
 
@@ -1081,11 +1255,23 @@ func TestServiceMethod_FileUpload_DryRun(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "image") {
-		t.Errorf("expected dry-run output to mention file field, got: %s", out)
+	var env map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, out)
 	}
-	if !strings.Contains(out, "Dry Run") {
-		t.Errorf("expected dry-run header, got: %s", out)
+	if env["dry_run"] != true {
+		t.Fatalf("dry_run = %#v, want true", env["dry_run"])
+	}
+	data := env["data"].(map[string]interface{})
+	api := data["api"].([]interface{})
+	call := api[0].(map[string]interface{})
+	body := call["body"].(map[string]interface{})
+	file := body["file"].(map[string]interface{})
+	if file["field"] != "image" || file["path"] != tmpFile {
+		t.Fatalf("unexpected file dry-run body: %#v", body)
+	}
+	if strings.Contains(out, "=== Dry Run ===") {
+		t.Fatalf("stdout should not contain dry-run banner: %s", out)
 	}
 }
 

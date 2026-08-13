@@ -28,6 +28,7 @@ func Shortcuts() []common.Shortcut {
 		MailShareToChat,
 		MailTemplateCreate,
 		MailTemplateUpdate,
+		MailRuleReorder,
 		MailLintHTML,
 	}
 }

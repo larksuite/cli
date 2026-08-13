@@ -5,6 +5,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
@@ -21,6 +22,7 @@ import (
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/validate"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -403,9 +405,9 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 
 	if opts.DryRun {
 		if fileMeta != nil {
-			return cmdutil.PrintDryRunWithFile(f.IOStreams.Out, request, config, opts.Format, fileMeta.FieldName, fileMeta.FilePath, fileMeta.FormFields)
+			return serviceDryRunWithFile(f, request, config, opts, *fileMeta)
 		}
-		return serviceDryRun(f, request, config, opts.Format)
+		return serviceDryRun(f, request, config, opts)
 	}
 
 	if opts.Method.Risk == cmdutil.RiskHighRiskWrite {
@@ -433,6 +435,11 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	if opts.PageAll {
 		return servicePaginate(opts.Ctx, ac, request, format, opts.JqExpr, out, f.IOStreams.ErrOut, opts.Cmd.CommandPath(),
 			client.PaginationOptions{PageLimit: opts.PageLimit, PageDelay: opts.PageDelay}, checkErr)
+	}
+
+	request, err = completeMailRuleReorderRequest(opts.Ctx, ac, request)
+	if err != nil {
+		return err
 	}
 
 	resp, err := ac.DoAPI(opts.Ctx, request)
@@ -490,8 +497,9 @@ func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider
 
 // newPreflightMissingScopeError constructs a PermissionError for the local
 // pre-flight scope check that converges byte-for-byte with the dispatcher's
-// BuildAPIError path. Uses the canonical helpers in internal/errclass so
-// Hint and Message stay in lock-step with the server-response classifier.
+// BuildAPIError path. It records the same typed facts and canonical message;
+// the root presenter supplies identity-appropriate recovery at the final
+// command boundary.
 // ConsoleURL is deliberately omitted: the dispatcher only sets it for
 // SubtypeAppScopeNotApplied (bot-perspective dev-action recovery), and this
 // pre-flight path is user-perspective SubtypeMissingScope whose recovery is
@@ -529,12 +537,28 @@ func unusableParamValue(v interface{}) bool {
 // only the --params form: a flag with its kebab name exists but belongs to
 // something else (e.g. the output --format), and the hint must not steer
 // there. Asking the binder, not cmd.Flags(), is what tells those apart.
-func missingParamHint(opts *ServiceMethodOptions, f meta.Field) string {
+func missingParamHint(opts *ServiceMethodOptions, f meta.Field) recovery.Hint {
 	paramsForm := fmt.Sprintf("--params '{%q: \"<value>\"}'", f.Name)
+	var input string
 	if opts.binder.hasTypedFlag(f.Name) {
-		return fmt.Sprintf("set --%s <value> (or %s); see: lark-cli schema %s", f.FlagName(), paramsForm, opts.SchemaPath)
+		input = fmt.Sprintf("set --%s <value> (or %s)", f.FlagName(), paramsForm)
+	} else {
+		input = fmt.Sprintf("set %s", paramsForm)
 	}
-	return fmt.Sprintf("set %s; see: lark-cli schema %s", paramsForm, opts.SchemaPath)
+	return recovery.Join("; ",
+		recovery.Text(input),
+		recovery.Command(recovery.TargetSchema, "see: lark-cli schema "+opts.SchemaPath),
+	)
+}
+
+func missingRequiredParamError(opts *ServiceMethodOptions, f meta.Field, location string) error {
+	hint := missingParamHint(opts, f)
+	return recovery.Attach(
+		errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"missing required %s parameter: %s", location, f.Name).
+			WithParam(f.Name),
+		hint,
+	)
 }
 
 // buildServiceRequest parses flags, builds the URL with path/query params, and returns a RawApiRequest.
@@ -571,10 +595,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		}
 		val, ok := params[s.Name]
 		if !ok || unusableParamValue(val) {
-			return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"missing required path parameter: %s", s.Name).
-				WithHint("%s", missingParamHint(opts, s)).
-				WithParam(s.Name)
+			return client.RawApiRequest{}, nil, missingRequiredParamError(opts, s, "path")
 		}
 		valStr := fmt.Sprintf("%v", val)
 		if err := validate.ResourceName(valStr, s.Name); err != nil {
@@ -592,10 +613,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		value, exists := params[s.Name]
 		isPaginationParam := opts.PageAll && (s.Name == "page_token" || s.Name == "page_size")
 		if s.Required && !isPaginationParam && (!exists || unusableParamValue(value)) {
-			return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"missing required query parameter: %s", s.Name).
-				WithHint("%s", missingParamHint(opts, s)).
-				WithParam(s.Name)
+			return client.RawApiRequest{}, nil, missingRequiredParamError(opts, s, "query")
 		}
 		if exists && !unusableParamValue(value) {
 			queryParams[s.Name] = value
@@ -667,8 +685,83 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 	return request, nil, nil
 }
 
-func serviceDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *core.CliConfig, format string) error {
-	return cmdutil.PrintDryRun(f.IOStreams.Out, request, config, format)
+func serviceDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *core.CliConfig, opts *ServiceMethodOptions) error {
+	dr := newServiceDryRunAPI(request, config)
+	return writeServiceDryRunEnvelope(f, opts, dr)
+}
+
+func serviceDryRunWithFile(f *cmdutil.Factory, request client.RawApiRequest, config *core.CliConfig, opts *ServiceMethodOptions, fileMeta cmdutil.FileUploadMeta) error {
+	dr := newServiceDryRunAPI(request, config)
+	filePath := fileMeta.FilePath
+	if filePath == "" {
+		filePath = "<stdin>"
+	}
+	fileInfo := map[string]any{
+		"file": map[string]string{"field": fileMeta.FieldName, "path": filePath},
+	}
+	if fileMeta.FormFields != nil {
+		fileInfo["form_fields"] = fileMeta.FormFields
+	}
+	fileInfo["options"] = []string{"WithFileUpload"}
+	dr.Body(fileInfo)
+	return writeServiceDryRunEnvelope(f, opts, dr)
+}
+
+func writeServiceDryRunEnvelope(f *cmdutil.Factory, opts *ServiceMethodOptions, data interface{}) error {
+	plain, err := serviceDryRunPlainData(data)
+	if err != nil {
+		return err
+	}
+	env := map[string]interface{}{
+		"ok":      true,
+		"dry_run": true,
+		"data":    plain,
+	}
+	if opts.JqExpr != "" {
+		return output.JqFilter(f.IOStreams.Out, env, opts.JqExpr)
+	}
+	output.PrintJson(f.IOStreams.Out, env)
+	return nil
+}
+
+func serviceDryRunPlainData(data interface{}) (interface{}, error) {
+	b, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	var out interface{}
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func newServiceDryRunAPI(request client.RawApiRequest, config *core.CliConfig) *cmdutil.DryRunAPI {
+	dr := cmdutil.NewDryRunAPI()
+	switch request.Method {
+	case "POST":
+		dr.POST(request.URL)
+	case "PUT":
+		dr.PUT(request.URL)
+	case "PATCH":
+		dr.PATCH(request.URL)
+	case "DELETE":
+		dr.DELETE(request.URL)
+	default:
+		dr.GET(request.URL)
+	}
+	if len(request.Params) > 0 {
+		dr.Params(request.Params)
+	}
+	if request.Data != nil {
+		dr.Body(request.Data)
+	}
+	dr.Set("as", string(request.As))
+	dr.Set("appId", config.AppID)
+	if config.UserOpenId != "" {
+		dr.Set("userOpenId", config.UserOpenId)
+	}
+	return dr
 }
 
 func servicePaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, commandPath string, pagOpts client.PaginationOptions, checkErr func(interface{}, core.Identity) error) error {
