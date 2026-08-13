@@ -1,6 +1,6 @@
 # BaseApp Block `data_config`
 
-本文件说明 BaseApp 组件 data_config 的 CLI 映射与操作约束，不复制完整字段 Schema。具体字段以服务端返回和校验为准。
+本文件说明 BaseApp 组件 `data_config` 的 CLI 映射与操作约束，不复制完整字段 Schema。App 图表的每个 `data_sources[]` 元素复用 [Dashboard block data_config](dashboard-block-data-config.md) 的字段取值、筛选、分组、排序及规范化规则；区别是 Dashboard 使用扁平单数据源结构，而 App 图表在顶层使用共享的 `base_token` 和多数据源 `data_sources[]`。列表组件是 App 独有协议，不复用 Dashboard 图表结构。本文所称“组件协议”是指 CLI 随版本发布的 API 元数据、本文明确列出的约束及实际服务端校验结果。
 
 ## 类型映射
 
@@ -22,7 +22,7 @@
 
 列表公共数据源字段为单值 `base_token` 和 `table_name`。每个列表最多关联一个 Base，且该 Base 必须位于 App 所在的同一 Workspace。
 
-按服务端协议，各 subtype 使用以下字段组：
+按组件协议，各 subtype 使用以下字段组：
 
 - 公共：`base_token`、`table_name`、`filter`、`sort_by`
 - `standard/grouped/collapsible`：`columns`、`group_by`
@@ -52,9 +52,11 @@ lark-cli base +app-block-create \
   --data-config '{"base_token":"<base_token>","table_name":"订单"}'
 ```
 
-字段的具体对象结构与必填性直接查服务端协议，不在这里猜测或复制。
+字段的具体对象结构与必填性以 CLI 当前版本的 API 元数据和服务端校验结果为准，不在这里猜测未公开属性。
 
 ## 更新语义
+
+下面是只更新顶层 `filter` 的示例，适用于协议将 `filter` 定义在 `data_config` 顶层的组件（所有列表 subtype 均可使用）。组件类型在创建后不可修改，所以 update 命令不再传 `--type`。App 图表的 `filter` 定义在对应的 `data_sources[]` 元素中；更新图表筛选时必须按图表结构传入完整 `data_sources`，不能把 `filter` 提到顶层。
 
 ```bash
 lark-cli base +app-block-update \
@@ -65,7 +67,7 @@ lark-cli base +app-block-update \
 - CLI 只发送用户显式传入的字段。
 - 未传字段由服务端保持不变。
 - 不为 update 注入 create 默认值，不先读取后拼成全量配置。
-- 数组/对象字段的替换粒度以服务端协议为准。
+- 数组/对象字段的替换粒度以组件协议和服务端校验结果为准。
 
 ## 图表与富文本
 
@@ -117,4 +119,4 @@ lark-cli base +app-block-create \
   --data-config '{"base_token":"bas_xxx","data_source_mode":"compare","data_sources":[{"table_name":"销售表","group_by":[{"field_name":"月份","sort":{"type":"group","order":"asc"}}],"series":[{"field_name":"销售额","rollup":"SUM"}]},{"table_name":"成本表","group_by":[{"field_name":"月份","sort":{"type":"group","order":"asc"}}],"series":[{"field_name":"成本","rollup":"SUM"}]}],"sort":{"type":"group","order":"asc"}}'
 ```
 
-Update 语义：传入 `data_sources` 即全量替换整个有序数组；修改 `base_token` 时必须同时传入完整 `data_sources`。请求不得包含 `sub_type`（平滑/堆积/百分比等展示变体走产品默认值）。布局、位置、尺寸和展示配置不属于本期公开 Create/Update 协议。具体请求字段仍以服务端协议为准。
+Update 语义：传入 `data_sources` 即全量替换整个有序数组；修改 `base_token` 时必须同时传入完整 `data_sources`。请求不得包含 `sub_type`（平滑/堆积/百分比等展示变体走产品默认值）。布局、位置、尺寸和展示配置不属于本期公开 Create/Update 协议。其他请求字段以 CLI 当前版本的 API 元数据和服务端校验结果为准。

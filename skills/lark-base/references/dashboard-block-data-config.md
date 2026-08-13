@@ -1,6 +1,6 @@
 # dashboard block data_config SSOT
 
-Block 的 `data_config` 字段因 `type` 不同而变化。本文档是 dashboard block `data_config` 的单一事实来源（SSOT），包含组件类型、字段结构、筛选格式、约束和可复制模板。
+Block 的 `data_config` 字段因 `type` 不同而变化。本文档是 Dashboard block 扁平单数据源 `data_config` 的单一事实来源（SSOT），包含组件类型、字段结构、筛选格式、约束和可复制模板。BaseApp 图表的外层结构不同，但每个 `data_sources[]` 元素复用本文的字段取值、筛选、分组、排序及规范化规则；创建或更新 App 组件时，还必须读取 [BaseApp Block data_config](lark-base-app-block-data-config.md) 了解共享 `base_token`、多数据源封装，以及 App 独有的列表组件协议。
 
 ## 支持的组件类型（`type` 枚举）
 
@@ -33,6 +33,8 @@ datetime: is, isGreater, isLess, isEmpty, isNotEmpty
 checkbox: is (value: true/false)
 user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 ```
+
+`isGreaterEqual` / `isLessEqual` 不是全局不支持：它们可用于 `number`，但不能用于 `datetime` / `created_at` / `updated_at`。日期范围必须用 `isGreater` / `isLess` 配合 `ExactDate`；不要把数字字段的操作符集合套到日期字段上。
 
 ## data_config 通用结构
 

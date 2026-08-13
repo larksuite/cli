@@ -1,7 +1,7 @@
 ---
 name: lark-base
 version: 1.2.6
-description: "飞书多维表格（Base）操作：建表、字段、记录、视图、统计、公式/lookup、表单、仪表盘、应用模式（BaseApp/AppMode 页面与组件）、Workspace 目录、workflow、角色权限；遇到 Base/多维表格/bitable、BaseApp/AppMode，或带 /base/、base/workspace 上下文的 /app/ 链接时使用。BaseApp 不走 lark-apps；文件导入/导出转 lark-drive，认证/授权转 lark-shared。"
+description: "飞书多维表格（Base）操作：建表、字段、记录、视图、统计、公式/lookup、表单、仪表盘、应用模式（BaseApp/AppMode 页面与组件）、Workspace 目录、workflow、角色权限；遇到 Base/多维表格/bitable、BaseApp/AppMode，或应用模式的 /app/ 链接（可能同时包含 /base/workspace/<workspace_token>）时使用。BaseApp 不走 lark-apps；文件导入/导出转 lark-drive，认证/授权转 lark-shared。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -19,7 +19,7 @@ metadata:
 - 用户要在 Base 内做公式字段、lookup 字段、跨表计算、派生指标、筛选聚合、TopN、统计分析。
 - 用户要管理 Base 表单、仪表盘、workflow、高级权限或角色。
 - 用户要用应用模式（BaseApp）：新建应用、管理应用页面、在页面上加图表/列表/富文本组件，或整理 Workspace 目录。
-- 用户明确提到 BaseApp / AppMode / 应用模式 / Workspace 内应用，或 `/app/` 链接同时带有 `/base/workspace/` 上下文，并要查询页面或组件；这类应用属于 Base，不走 `lark-apps`。
+- 用户明确提到 BaseApp / AppMode / 应用模式 / Workspace 内应用，或给出应用模式的 `/app/` 链接（链接可能同时携带 `/base/workspace/<workspace_token>` 路径信息），并要查询页面或组件；这类应用属于 Base，不走 `lark-apps`。
 - 用户要把旧 Base 聚合式命令或旧写法迁移到当前 `lark-cli base +...` shortcut。
 
 不要使用本 skill：
@@ -38,6 +38,14 @@ metadata:
 - **低频：在线复制。** 复制整个 Base 使用 `+base-copy`，复制 Base 内单张数据表使用 `+table-copy`。
 - **更低频：文件导入/导出。** 本地文件与 Base 之间的导入/导出转 `lark-drive`；具体格式、参数、路径限制和仅结构导出规则由 `lark-drive` 负责，导入完成后再回到 Base 命令。
 - 认证、初始化、scope、身份切换、权限不足恢复属于 `lark-shared`；Base 文档只保留会影响 Base 路径选择的权限规则。
+
+## 应用模式与 Workspace 心智模型
+
+- Workspace 是组织 Base 和 BaseApp 的空间容器；BaseApp 创建时必须归属一个 Workspace，`workspace_token` 标识这个容器。
+- BaseApp（应用模式）不是 Base 的别名。它用 Page 组织界面，每个 Page 再包含图表、列表或富文本 Block；`app_token`、`page_id`、`block_id` 分别标识这三层对象。
+- Base 保存表、字段和记录等数据。BaseApp 的组件通过 `data_config` 引用 Base 中的数据，但引用关系不会把 Base 变成 App 的子对象。
+- App 的列表组件最多引用一个 Base，而且该 Base 必须与 App 位于同一 Workspace；App 图表的多个数据源也共用一个 `base_token`。
+- Workspace 负责资源归属，App 负责页面和组件，Base 负责数据。按操作对象选择 `+workspace-*`、`+app-*` 或 Base 数据命令，不要混用 token。
 
 ## 先获取 Base Token 和所需 ID
 
