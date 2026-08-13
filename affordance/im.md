@@ -162,6 +162,7 @@ Use this for new outbound content. Select text, markdown, exact JSON, or one med
 
 ### Tips
 - Do not pin user or bot in a generic call: both are supported, and the sender must match the user's intent.
+- For multiline or long content, pass `--text`/`--markdown`/`--content` via `-` (stdin) or `@path` (file) to avoid shell-escaping damage.
 
 ### Examples
 
