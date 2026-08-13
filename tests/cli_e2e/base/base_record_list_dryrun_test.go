@@ -126,7 +126,7 @@ func TestBaseRecordListDryRunInfersNDJSONAndCapsFirstPage(t *testing.T) {
 	)
 
 	out := result.Stdout
-	require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/records?limit=200&offset=50", gjson.Get(out, "data.api.0.url").String(), out)
+	require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/records?limit=500&offset=50", gjson.Get(out, "data.api.0.url").String(), out)
 	require.Equal(t, "ndjson", gjson.Get(out, "data.export_format").String(), out)
 	require.Equal(t, int64(2000), gjson.Get(out, "data.requested_limit").Int(), out)
 	require.Equal(t, "exports/records.ndjson", gjson.Get(out, "data.output").String(), out)
@@ -146,7 +146,7 @@ func TestBaseRecordSearchDryRunNDJSONCapsFirstPageAndKeepsQuery(t *testing.T) {
 
 	out := result.Stdout
 	require.Equal(t, int64(25), gjson.Get(out, "data.api.0.body.offset").Int(), out)
-	require.Equal(t, int64(200), gjson.Get(out, "data.api.0.body.limit").Int(), out)
+	require.Equal(t, int64(500), gjson.Get(out, "data.api.0.body.limit").Int(), out)
 	require.Equal(t, "Alice", gjson.Get(out, "data.api.0.body.keyword").String(), out)
 	require.Equal(t, "ndjson", gjson.Get(out, "data.export_format").String(), out)
 	require.Equal(t, int64(500), gjson.Get(out, "data.requested_limit").Int(), out)
