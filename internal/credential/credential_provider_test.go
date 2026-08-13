@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
@@ -191,6 +192,172 @@ func TestCredentialProvider_SelectedSourceWithoutTokenReturnsUnavailableError(t 
 	}
 	if unavailableErr.Source != "env" || unavailableErr.Type != TokenTypeUAT {
 		t.Fatalf("ResolveToken() unavailable error = %+v, want source env and type uat", unavailableErr)
+	}
+}
+
+func TestCredentialProvider_SelectedExtensionAppSecretMintsTAT(t *testing.T) {
+	rt := &stubRoundTripper{
+		respCode: 200,
+		respBody: `{"code":0,"access_token":"minted-tat","token_type":"Bearer","expires_in":7200}`,
+	}
+	httpClientCalls := 0
+	cp := NewCredentialProvider(
+		[]extcred.Provider{&mockExtProvider{
+			name: "env",
+			account: &extcred.Account{
+				AppID:     "ext_app",
+				AppSecret: "ext_secret",
+				Brand:     extcred.BrandFeishu,
+			},
+		}},
+		nil,
+		nil,
+		func() (*http.Client, error) {
+			httpClientCalls++
+			return &http.Client{Transport: rt}, nil
+		},
+	)
+
+	if _, err := cp.ResolveAccount(context.Background()); err != nil {
+		t.Fatalf("ResolveAccount() error = %v", err)
+	}
+
+	result, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeTAT, AppID: "ext_app"})
+	if err != nil {
+		t.Fatalf("ResolveToken() error = %v", err)
+	}
+	if result.Token != "minted-tat" {
+		t.Fatalf("ResolveToken() token = %q, want minted-tat", result.Token)
+	}
+	if httpClientCalls != 1 {
+		t.Fatalf("httpClient() calls = %d, want 1", httpClientCalls)
+	}
+	for _, want := range []string{"grant_type=client_credentials", "client_id=ext_app", "client_secret=ext_secret"} {
+		if !strings.Contains(rt.gotBody, want) {
+			t.Fatalf("TAT request body missing %q: %s", want, rt.gotBody)
+		}
+	}
+
+	result, err = cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeTAT, AppID: "ext_app"})
+	if err != nil {
+		t.Fatalf("second ResolveToken() error = %v", err)
+	}
+	if result.Token != "minted-tat" {
+		t.Fatalf("second ResolveToken() token = %q, want minted-tat", result.Token)
+	}
+	if httpClientCalls != 1 {
+		t.Fatalf("httpClient() calls after cached token = %d, want 1", httpClientCalls)
+	}
+}
+
+func TestCredentialProvider_SelectedExtensionAppSecretDoesNotMintTATForDifferentApp(t *testing.T) {
+	httpClientCalls := 0
+	cp := NewCredentialProvider(
+		[]extcred.Provider{&mockExtProvider{
+			name: "env",
+			account: &extcred.Account{
+				AppID:     "ext_app",
+				AppSecret: "ext_secret",
+				Brand:     extcred.BrandFeishu,
+			},
+		}},
+		nil,
+		nil,
+		func() (*http.Client, error) {
+			httpClientCalls++
+			return &http.Client{Transport: &stubRoundTripper{}}, nil
+		},
+	)
+
+	if _, err := cp.ResolveAccount(context.Background()); err != nil {
+		t.Fatalf("ResolveAccount() error = %v", err)
+	}
+
+	_, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeTAT, AppID: "other_app"})
+	if err == nil {
+		t.Fatal("ResolveToken() error = nil, want unavailable token")
+	}
+	var unavailableErr *TokenUnavailableError
+	if !errors.As(err, &unavailableErr) {
+		t.Fatalf("ResolveToken() error type = %T, want *TokenUnavailableError", err)
+	}
+	if unavailableErr.Source != "env" || unavailableErr.Type != TokenTypeTAT {
+		t.Fatalf("ResolveToken() unavailable error = %+v, want source env and type tat", unavailableErr)
+	}
+	if httpClientCalls != 0 {
+		t.Fatalf("httpClient() calls = %d, want 0", httpClientCalls)
+	}
+}
+
+func TestCredentialProvider_SelectedExtensionAppSecretTATFailureRetries(t *testing.T) {
+	rt := &stubRoundTripper{
+		respCode: 200,
+		respBody: `{"code":0,"access_token":"minted-after-retry","token_type":"Bearer","expires_in":7200}`,
+	}
+	transientErr := errors.New("temporary transport failure")
+	httpClientCalls := 0
+	cp := NewCredentialProvider(
+		[]extcred.Provider{&mockExtProvider{
+			name: "env",
+			account: &extcred.Account{
+				AppID:     "ext_app",
+				AppSecret: "ext_secret",
+				Brand:     extcred.BrandFeishu,
+			},
+		}},
+		nil,
+		nil,
+		func() (*http.Client, error) {
+			httpClientCalls++
+			if httpClientCalls == 1 {
+				return nil, transientErr
+			}
+			return &http.Client{Transport: rt}, nil
+		},
+	)
+
+	if _, err := cp.ResolveAccount(context.Background()); err != nil {
+		t.Fatalf("ResolveAccount() error = %v", err)
+	}
+
+	_, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeTAT, AppID: "ext_app"})
+	if err == nil {
+		t.Fatal("first ResolveToken() error = nil, want typed network error")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("first ResolveToken() error type = %T, want typed problem", err)
+	}
+	if problem.Category != errs.CategoryNetwork {
+		t.Fatalf("first ResolveToken() category = %q, want %q", problem.Category, errs.CategoryNetwork)
+	}
+	if problem.Subtype != errs.SubtypeNetworkTransport {
+		t.Fatalf("first ResolveToken() subtype = %q, want %q", problem.Subtype, errs.SubtypeNetworkTransport)
+	}
+	if !errors.Is(err, transientErr) {
+		t.Fatalf("first ResolveToken() error does not preserve cause %v: %v", transientErr, err)
+	}
+
+	result, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeTAT, AppID: "ext_app"})
+	if err != nil {
+		t.Fatalf("second ResolveToken() error = %v", err)
+	}
+	if result.Token != "minted-after-retry" {
+		t.Fatalf("second ResolveToken() token = %q, want minted-after-retry", result.Token)
+	}
+	if httpClientCalls != 2 {
+		t.Fatalf("httpClient() calls after retry = %d, want 2", httpClientCalls)
+	}
+
+	result, err = cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeTAT, AppID: "ext_app"})
+	if err != nil {
+		t.Fatalf("third ResolveToken() error = %v", err)
+	}
+	if result.Token != "minted-after-retry" {
+		t.Fatalf("third ResolveToken() token = %q, want minted-after-retry", result.Token)
+	}
+	if httpClientCalls != 2 {
+		t.Fatalf("httpClient() calls after cached success = %d, want 2", httpClientCalls)
 	}
 }
 
