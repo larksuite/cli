@@ -5,15 +5,20 @@ package drive
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 func TestValidateDriveImportSpec(t *testing.T) {
@@ -480,6 +485,29 @@ func TestDriveImportContinuesWhenFolderTokenDoesNotResolveAsWiki(t *testing.T) {
 	point, _ := body["point"].(map[string]interface{})
 	if got := point["mount_key"]; got != "fldcnImportTarget" {
 		t.Fatalf("import mount_key = %#v, want fldcnImportTarget", got)
+	}
+}
+
+func TestDriveImportWikiProbePermissionFailureRemainsNonBlocking(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 131006,
+			"msg":  "permission denied: node permission denied, user needs read permission.",
+		},
+	})
+	runtime := common.TestNewRuntimeContextForAPI(
+		context.Background(),
+		&cobra.Command{Use: "drive +import"},
+		driveTestConfig(),
+		f,
+		core.AsUser,
+	)
+
+	if err := rejectDriveImportWikiFolderToken(runtime, "fldcnImportTarget"); err != nil {
+		t.Fatalf("wiki probe permission failure must not block a valid Drive folder token: %v", err)
 	}
 }
 

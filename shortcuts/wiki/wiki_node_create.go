@@ -35,6 +35,12 @@ const (
 	// wikiNodeCreateRetryBaseDelay is the initial backoff delay for lock
 	// contention retries. Subsequent retries double the delay (250ms, 500ms).
 	wikiNodeCreateRetryBaseDelay = 250 * time.Millisecond
+
+	// 131003 is command-specific here. For node creation it covers multiple
+	// structural limits, so do not classify it globally or infer a particular
+	// limit from the upstream error message.
+	wikiNodeCreateStructuralLimitCode = 131003
+	wikiNodeCreateStructuralLimitHint = "Wiki node creation reached a structural limit, such as the space node count, hierarchy depth, or direct-child count. This is not a transient failure. Do not retry with the same parameters; review the upstream error message, then choose a shallower or different parent, reorganize existing nodes, or clean up or use another Wiki space as appropriate."
 )
 
 var wikiObjectTypes = []string{
@@ -341,7 +347,7 @@ func runWikiNodeCreate(ctx context.Context, client wikiNodeCreateClient, identit
 			break
 		}
 		if !isWikiNodeLockContention(lastErr) {
-			return nil, lastErr
+			return nil, withWikiNodeCreateRecoveryHint(lastErr)
 		}
 	}
 	if lastErr != nil {
@@ -355,6 +361,20 @@ func runWikiNodeCreate(ctx context.Context, client wikiNodeCreateClient, identit
 		Node:          node,
 		ResolvedSpace: resolvedSpace,
 	}, nil
+}
+
+func withWikiNodeCreateRecoveryHint(err error) error {
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Code != wikiNodeCreateStructuralLimitCode {
+		return err
+	}
+	p.Retryable = false
+	if existing := strings.TrimSpace(p.Hint); existing != "" {
+		p.Hint = existing + "\n" + wikiNodeCreateStructuralLimitHint
+	} else {
+		p.Hint = wikiNodeCreateStructuralLimitHint
+	}
+	return err
 }
 
 // isWikiNodeLockContention returns true if the error is a Lark API error with

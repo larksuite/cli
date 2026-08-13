@@ -1020,6 +1020,54 @@ func TestRunWikiNodeCreateNoRetryOnNonContentionError(t *testing.T) {
 	}
 }
 
+func TestRunWikiNodeCreateClassifiesStructuralLimitAsNonRetryable(t *testing.T) {
+	t.Parallel()
+
+	cause := errors.New("opaque upstream cause")
+	const upstreamHint = "upstream recovery hint"
+	limitErr := errs.NewAPIError(errs.SubtypeUnknown, "opaque upstream message").
+		WithCode(wikiNodeCreateStructuralLimitCode).
+		WithRetryable().
+		WithHint(upstreamHint).
+		WithCause(cause)
+	client := &fakeWikiNodeCreateClient{
+		spaces: map[string]*wikiSpaceRecord{
+			wikiMyLibrarySpaceID: {SpaceID: "space_my_library"},
+		},
+		createErrs: []error{limitErr},
+	}
+
+	var stderr bytes.Buffer
+	_, err := runWikiNodeCreate(context.Background(), client, core.AsUser, wikiNodeCreateSpec{
+		NodeType: wikiNodeTypeOrigin,
+		ObjType:  "docx",
+		Title:    "Roadmap",
+	}, &stderr)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if len(client.createInvoked) != 1 {
+		t.Fatalf("create invoked %d times, want 1", len(client.createInvoked))
+	}
+	if strings.Contains(stderr.String(), "retrying") {
+		t.Fatalf("stderr = %q, should not contain retry log", stderr.String())
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error = %T, want typed problem", err)
+	}
+	if problem.Category != errs.CategoryAPI || problem.Code != wikiNodeCreateStructuralLimitCode || problem.Retryable {
+		t.Fatalf("problem = %#v, want API code %d and retryable=false", problem, wikiNodeCreateStructuralLimitCode)
+	}
+	wantHint := upstreamHint + "\n" + wikiNodeCreateStructuralLimitHint
+	if problem.Hint != wantHint {
+		t.Fatalf("hint = %q, want %q", problem.Hint, wantHint)
+	}
+	if !errors.Is(err, cause) {
+		t.Fatalf("error does not preserve cause %v: %v", cause, err)
+	}
+}
+
 func TestRunWikiNodeCreateRetriesOnFirstLockThenSucceeds(t *testing.T) {
 	t.Parallel()
 
