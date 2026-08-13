@@ -14,7 +14,7 @@
 
 ## 执行与交付
 
-所有 records 读取统一使用 `--format ndjson --output <artifact>.ndjson --minimal-stdout`。未传 `--limit` 时最多读取 2000 条；仅在探测、预览或用户明确要求前 N 条时缩小限制。面向用户的小结果从 NDJSON artifact 提取。
+所有 records 读取统一使用 `--format ndjson --output <artifact>.ndjson --minimal-stdout`。NDJSON 将大记录集写入 records 文件，将摘要、列 schema 和 stats 写入 manifest；minimal stdout 只返回 artifact 路径和短摘要，避免把过长用户数据加载进模型上下文。用 Python 或数据分析引擎直接处理 records 文件。未传 `--limit` 时最多读取 2000 条；仅在探测、预览或用户明确要求前 N 条时缩小限制。
 
 ### NDJSON 读取示例
 

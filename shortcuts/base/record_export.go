@@ -26,7 +26,7 @@ const (
 	maxInlineRecordReadLimit = 200
 	ndjsonRecordPageSize     = 500
 	maxNDJSONRecordReadLimit = 2000
-	recordAnalysisOutputTip  = "For analysis, parsing, comparison, or reusable local input, prefer --output ./records.ndjson --minimal-stdout; ndjson defaults to limit 2000, so set a smaller --limit only for probes, previews, or an explicitly bounded result. To process NDJSON records with the built-in jq engine, use --jq-records; --jq does not support ndjson."
+	recordAnalysisOutputTip  = "If file I/O is available, prefer --format ndjson --output ./records.ndjson --minimal-stdout for analysis, parsing, or comparison to keep long user data out of model context; process the records file with Python or another data analysis engine. Follow the lark-base data analysis SOP for engine selection and complete-data checks. Ndjson defaults to limit 2000, so set a smaller --limit only for probes, previews, or an explicitly bounded result. Use --jq-records instead of --jq for the built-in jq engine."
 )
 
 var recordExportNow = time.Now
