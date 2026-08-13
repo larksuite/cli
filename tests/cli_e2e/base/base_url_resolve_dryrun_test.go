@@ -32,6 +32,8 @@ func TestBaseURLResolveSelectedBlockDryRun(t *testing.T) {
 
 	require.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String(), result.Stdout)
 	require.Equal(t, "/open-apis/base/v3/bases/app_x/blocks/list", clie2e.DryRunGet(result.Stdout, "api.0.url").String(), result.Stdout)
+	require.Equal(t, "GET", clie2e.DryRunGet(result.Stdout, "api.1.method").String(), result.Stdout)
+	require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/blk_selected", clie2e.DryRunGet(result.Stdout, "api.1.url").String(), result.Stdout)
 	require.Equal(t, "blk_selected", clie2e.DryRunGet(result.Stdout, "selected_block_id").String(), result.Stdout)
 }
 
@@ -58,5 +60,7 @@ func TestBaseURLResolveWikiSelectedBlockDryRun(t *testing.T) {
 	require.Equal(t, "wik_x", clie2e.DryRunGet(result.Stdout, "api.0.params.token").String(), result.Stdout)
 	require.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.1.method").String(), result.Stdout)
 	require.Equal(t, "/open-apis/base/v3/bases/%3Cobj_token%20from%20step%201%3E/blocks/list", clie2e.DryRunGet(result.Stdout, "api.1.url").String(), result.Stdout)
+	require.Equal(t, "GET", clie2e.DryRunGet(result.Stdout, "api.2.method").String(), result.Stdout)
+	require.Equal(t, "/open-apis/base/v3/bases/%3Cobj_token%20from%20step%201%3E/tables/wkf_selected", clie2e.DryRunGet(result.Stdout, "api.2.url").String(), result.Stdout)
 	require.Equal(t, "wkf_selected", clie2e.DryRunGet(result.Stdout, "selected_block_id").String(), result.Stdout)
 }

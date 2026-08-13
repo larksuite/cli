@@ -32,6 +32,7 @@ var BaseURLResolve = common.Shortcut{
 		"base:block:read",
 		"base:field:read",
 		"base:record:read",
+		"base:table:read",
 		"wiki:node:retrieve",
 	},
 	AuthTypes: authTypes(),
@@ -60,9 +61,15 @@ var BaseURLResolve = common.Shortcut{
 		case "base_url":
 			baseToken := firstPathSegmentAfter(parsed.Path, "/base/")
 			if selectedBlockID := strings.TrimSpace(parsed.Query().Get("table")); selectedBlockID != "" {
-				return common.NewDryRunAPI().
+				dry := common.NewDryRunAPI().
+					Desc("2-step: list Base blocks first, then confirm table selection if the block list does not include it")
+				dry.
 					POST("/open-apis/base/v3/bases/:base_token/blocks/list").
+					Desc("[1] List Base blocks and match selected_block_id").
 					Body(map[string]interface{}{}).
+					GET("/open-apis/base/v3/bases/:base_token/tables/:selected_block_id").
+					Desc("[2] Fallback: confirm selected_block_id as a table when block list is nonmatching")
+				return dry.
 					Set("base_token", baseToken).
 					Set("selected_block_id", selectedBlockID)
 			}
@@ -82,6 +89,8 @@ var BaseURLResolve = common.Shortcut{
 			dry.POST("/open-apis/base/v3/bases/:base_token/blocks/list").
 				Desc("[2] List Base blocks and match selected_block_id").
 				Body(map[string]interface{}{})
+			dry.GET("/open-apis/base/v3/bases/:base_token/tables/:selected_block_id").
+				Desc("[3] Fallback: confirm selected_block_id as a table when block list is nonmatching")
 			return dry.
 				Set("base_token", "<obj_token from step 1>").
 				Set("selected_block_id", selectedBlockID)
@@ -441,6 +450,16 @@ func enrichBaseResolveHint(runtime *common.RuntimeContext, out map[string]interf
 		return
 	}
 
+	if table, found := resolveSelectedBaseTable(runtime, baseToken, selectedBlockID); found {
+		out["block_type"] = "table"
+		if name := strings.TrimSpace(tableNameFromMap(table)); name != "" {
+			out["block_name"] = name
+		}
+		applyResolvedTableSelection(out, selection)
+		enrichResolvedTable(runtime, out, baseToken, selectedBlockID)
+		return
+	}
+
 	out["hint"] = resolveUnknownBlockHint()
 }
 
@@ -472,6 +491,21 @@ func resolveSelectedBaseBlock(runtime *common.RuntimeContext, baseToken, selecte
 		}
 	}
 	return resolvedBaseBlock{}, false, nil
+}
+
+func resolveSelectedBaseTable(runtime *common.RuntimeContext, baseToken, selectedTableID string) (map[string]interface{}, bool) {
+	table, err := baseV3Call(runtime, "GET", baseV3Path("bases", baseToken, "tables", selectedTableID), nil, nil)
+	if err != nil {
+		return nil, false
+	}
+	confirmedID := strings.TrimSpace(tableID(table))
+	if confirmedID != "" && confirmedID != selectedTableID {
+		return nil, false
+	}
+	if confirmedID == "" {
+		table["id"] = selectedTableID
+	}
+	return table, true
 }
 
 func enrichResolvedTable(runtime *common.RuntimeContext, out map[string]interface{}, baseToken, tableID string) {

@@ -45,6 +45,31 @@ func TestBaseURLResolveBaseURL(t *testing.T) {
 		}
 	})
 
+	t.Run("table selection falls back when block list omits table", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(baseBlockListResolveStub("bas123",
+			map[string]interface{}{"id": "blk_dashboard", "type": "dashboard", "name": "Sales"},
+		))
+		reg.Register(tableGetResolveStub("bas123", "tbl123", "Orders"))
+		reg.Register(fieldListStub("bas123", "tbl123"))
+		err := runShortcutWithAuthTypes(t, BaseURLResolve, authTypes(), []string{
+			"+url-resolve",
+			"--url", "https://example.larkoffice.com/base/bas123?table=tbl123&view=vew123&record=rec123",
+			"--as", "user",
+		}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+
+		data := decodeBaseEnvelope(t, stdout)
+		if data["block_id"] != "tbl123" || data["selection_source"] != "url_query" || data["block_type"] != "table" || data["table_id"] != "tbl123" || data["view_id"] != "vew123" || data["record_id"] != "rec123" {
+			t.Fatalf("missing fallback table coordinates: %#v", data)
+		}
+		if data["block_name"] != "Orders" {
+			t.Fatalf("missing table name from fallback: %#v", data)
+		}
+	})
+
 	t.Run("base only", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
 		err := runShortcutWithAuthTypes(t, BaseURLResolve, authTypes(), []string{
@@ -264,6 +289,20 @@ func baseBlockListResolveStub(baseToken string, blocks ...map[string]interface{}
 			"data": map[string]interface{}{
 				"blocks": items,
 				"total":  len(items),
+			},
+		},
+	}
+}
+
+func tableGetResolveStub(baseToken, tableID, name string) *httpmock.Stub {
+	return &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/bases/" + baseToken + "/tables/" + tableID,
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"id":   tableID,
+				"name": name,
 			},
 		},
 	}
