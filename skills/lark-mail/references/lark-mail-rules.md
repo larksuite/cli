@@ -1,8 +1,87 @@
-# 收信规则
+# 收信规则 Shortcut
 
-管理自动处理收到邮件的规则。规则写操作需使用真实 `rule_id`，不要猜测 ID。规则写操作执行前需按 SKILL.md 的写操作确认规则获得用户确认。
+管理自动处理收到邮件的规则。优先使用 `mail +rule-*` shortcut，通过稳定英文 alias 编写条件和动作；只有 shortcut 提示存在 unknown raw、无法安全替换集合，或需要当前 shortcut 尚未建模的服务端字段时，才回退到 `mail user_mailbox.rules` 原子 raw 命令。规则写操作需使用真实 `rule_id`，不要猜测 ID。写操作执行前需按 SKILL.md 的写操作确认规则获得用户确认。
 
-## 主题包含文本 → 标记为已读
+## 常用 shortcut
+
+```bash
+# 列出规则，输出 semantic_spec、description、unknowns
+lark-cli mail +rule-list --as user --user-mailbox-id me --format json
+
+# 查看单条规则
+lark-cli mail +rule-get --as user --user-mailbox-id me --rule-id "<rule_id>"
+
+# dry-run 创建：主题包含 Alpha 时标为已读，不产生服务端副作用
+lark-cli mail +rule-create --as user --dry-run \
+  --name "Alpha通知已读" \
+  --condition "subject:contains:Alpha" \
+  --action "mark_read"
+
+# 创建同一规则
+lark-cli mail +rule-create --as user \
+  --name "Alpha通知已读" \
+  --condition "subject:contains:Alpha" \
+  --action "mark_read"
+
+# 更新规则：未传字段会先读当前规则并保留；传 --condition/--action 会替换对应完整集合
+lark-cli mail +rule-update --as user \
+  --rule-id "<rule_id>" \
+  --name "Alpha通知归档" \
+  --action "archive"
+
+# 启停规则
+lark-cli mail +rule-disable --as user --rule-id "<rule_id>"
+lark-cli mail +rule-enable --as user --rule-id "<rule_id>"
+
+# 删除规则：真实删除必须显式 --yes；不确定时先 --dry-run
+lark-cli mail +rule-delete --as user --rule-id "<rule_id>" --dry-run
+lark-cli mail +rule-delete --as user --rule-id "<rule_id>" --yes
+
+# 调整顺序：完整顺序或单条移动二选一
+lark-cli mail +rule-reorder --as user --rule-ids "<rule_id_1>,<rule_id_2>,<rule_id_3>"
+lark-cli mail +rule-reorder --as user --move-rule-id "<rule_id_3>" --before-rule-id "<rule_id_1>"
+```
+
+## Alias 速查
+
+条件 grammar:
+
+```text
+--condition field:op:value
+--condition field:op
+--condition field
+```
+
+常用字段：`from`/`sender`、`to`/`recipient`、`cc`、`to_or_cc`、`subject`/`title`、`body`、`attachment_name`、`attachment_type`、`any_address`、`all_mail`/`all`、`external`、`spam`、`not_spam`、`has_attachment`。
+
+常用操作符：`contains`/`include`、`not_contains`/`exclude`、`starts_with`/`prefix`、`ends_with`/`suffix`、`equals`/`eq`/`is`、`not_equals`/`ne`、`contains_self`/`self`、`empty`/`is_empty`。
+
+动作 grammar:
+
+```text
+--action kind
+--action kind:key=value
+--action kind:json={"key":"value"}
+```
+
+常用动作：`archive`、`delete_mail`/`trash`、`mark_read`/`read`、`move_spam`/`spam`、`not_spam`/`never_spam`、`add_user_label:label_id=<id>`、`star`/`flag`、`mute_notification`/`mute`、`move_folder:folder_id=<id>`、`forward:email=<addr>`、`share_to_chat:chat_id=<id>`。
+
+`--conditions` / `--actions` 支持 JSON 或 `@file`。JSON 示例：
+
+```json
+[
+  {"field":"subject","operator":"contains","value":"Alpha"},
+  {"field":"has_attachment"}
+]
+```
+
+## Unknown raw 策略
+
+- 读路径宽容：`+rule-list` / `+rule-get` 遇到未知枚举或扩展字段仍输出规则，`unknowns[]` 会说明无法识别的 raw 片段，`raw` 会保留原始规则。
+- 安全更新：`+rule-update` 只改名称、启停、match 或 stop-after-match 时会保留 unknown raw；如果你传入新的 `--condition(s)` 或 `--action(s)`，而旧集合含 unknown，shortcut 会拒绝，避免丢失后端扩展字段。
+- raw fallback：遇到 unknown 且必须替换完整集合时，先读取 `raw`，人工修改后使用原子 `user_mailbox.rules update`。
+
+## 原子 raw fallback：主题包含文本 → 标记为已读
 
 ```bash
 # 1. 创建规则：主题包含指定文本时标记为已读

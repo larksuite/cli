@@ -1,0 +1,157 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
+package mail
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/larksuite/cli/internal/httpmock"
+)
+
+func TestMailRuleParserGrammarAndEncode(t *testing.T) {
+	cond, err := parseRuleConditionGrammar("subject:contains:Alpha通知", "--condition")
+	if err != nil {
+		t.Fatalf("parseRuleConditionGrammar() error = %v", err)
+	}
+	if cond.Field != "subject" || cond.Operator != "contains" || cond.Value != "Alpha通知" {
+		t.Fatalf("condition = %+v", cond)
+	}
+	action, err := parseRuleActionGrammar("move_folder:folder_id=fld_123", "--action")
+	if err != nil {
+		t.Fatalf("parseRuleActionGrammar() error = %v", err)
+	}
+	if action.Kind != "move_folder" || action.Params["folder_id"] != "fld_123" {
+		t.Fatalf("action = %+v", action)
+	}
+	spec := &mailRuleSpec{Version: mailRuleSpecVersion}
+	spec.Mailbox.UserMailboxID = "me"
+	spec.Rule.Name = "Alpha"
+	spec.Rule.Enabled = true
+	spec.Rule.Match = "all"
+	spec.Rule.Conditions = []mailRuleCondition{cond}
+	spec.Rule.Actions = []mailRuleAction{action}
+	raw, err := encodeRuleSpec(spec)
+	if err != nil {
+		t.Fatalf("encodeRuleSpec() error = %v", err)
+	}
+	conditionItems := raw["condition"].(map[string]any)["items"].([]map[string]any)
+	if got := conditionItems[0]["type"]; got != 6 {
+		t.Fatalf("condition type = %v, want 6", got)
+	}
+	actionItems := raw["action"].(map[string]any)["items"].([]map[string]any)
+	if got := actionItems[0]["type"]; got != 11 {
+		t.Fatalf("action type = %v, want 11", got)
+	}
+	if got := actionItems[0]["folder_id"]; got != "fld_123" {
+		t.Fatalf("folder_id = %v", got)
+	}
+}
+
+func TestMailRuleParserRejectsUnknownAliasWithHint(t *testing.T) {
+	_, err := parseRuleConditionGrammar("topic:contains:x", "--condition")
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "subject") || !strings.Contains(err.Error(), "Accepted fields") {
+		t.Fatalf("error should include accepted aliases, got %v", err)
+	}
+	_, err = parseRuleActionGrammar("move_folder", "--action")
+	if err == nil || !strings.Contains(err.Error(), "folder_id") {
+		t.Fatalf("expected missing folder_id error, got %v", err)
+	}
+}
+
+func TestDecodeMailRuleEnvelopePreservesUnknowns(t *testing.T) {
+	raw := map[string]any{
+		"rule_id":                  "rule_1",
+		"name":                     "Alpha",
+		"is_enable":                true,
+		"ignore_the_rest_of_rules": false,
+		"condition": map[string]any{
+			"match_type": 1,
+			"items": []interface{}{
+				map[string]interface{}{"type": float64(6), "operator": float64(1), "input": "Alpha"},
+				map[string]interface{}{"type": float64(999), "operator": float64(1), "input": "unknown"},
+			},
+		},
+		"action": map[string]any{
+			"items": []interface{}{
+				map[string]interface{}{"type": float64(3)},
+				map[string]interface{}{"type": float64(777)},
+			},
+		},
+	}
+	env := decodeMailRuleEnvelope(raw, "me")
+	if env.SemanticSpec == nil || len(env.SemanticSpec.Rule.Conditions) != 1 || len(env.SemanticSpec.Rule.Actions) != 1 {
+		t.Fatalf("semantic decode mismatch: %+v", env.SemanticSpec)
+	}
+	if len(env.Unknowns) != 2 {
+		t.Fatalf("unknowns = %+v, want 2", env.Unknowns)
+	}
+	if !strings.Contains(env.Description, "无法识别") {
+		t.Fatalf("description should mention unknown raw, got %q", env.Description)
+	}
+}
+
+func TestMailRuleListShortcutDecodesResponse(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	reg.Register(
+		&httpmock.Stub{
+			Method: "GET",
+			URL:    "open-apis/mail/v1/user_mailboxes/me/rules",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"rules": []interface{}{
+						map[string]interface{}{
+							"rule_id":   "rule_1",
+							"name":      "Alpha通知",
+							"is_enable": true,
+							"condition": map[string]interface{}{
+								"match_type": 1,
+								"items": []interface{}{
+									map[string]interface{}{"type": 6, "operator": 1, "input": "Alpha"},
+								},
+							},
+							"action": map[string]interface{}{
+								"items": []interface{}{map[string]interface{}{"type": 3}},
+							},
+						},
+					},
+				},
+			},
+		},
+	)
+	if err := runMountedMailShortcut(t, MailRuleList, []string{"+rule-list", "--format", "json"}, f, stdout); err != nil {
+		t.Fatalf("run +rule-list error = %v", err)
+	}
+	data := decodeShortcutEnvelopeData(t, stdout)
+	rules, ok := data["rules"].([]interface{})
+	if !ok || len(rules) != 1 {
+		b, _ := json.Marshal(data)
+		t.Fatalf("rules output mismatch: %s", b)
+	}
+	rule := rules[0].(map[string]interface{})
+	if !strings.Contains(rule["description"].(string), "主题包含") {
+		t.Fatalf("description = %v", rule["description"])
+	}
+}
+
+func TestRuleReorderComputesMoveTarget(t *testing.T) {
+	current := []mailRuleEnvelope{{RuleID: "a"}, {RuleID: "b"}, {RuleID: "c"}}
+	f, _, _, _ := mailShortcutTestFactory(t)
+	err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--move-rule-id", "c", "--before-rule-id", "a", "--dry-run"}, f, nil)
+	if err != nil {
+		t.Fatalf("dry-run should validate move flags: %v", err)
+	}
+	order, err := insertRelative(removeString(envelopeRuleIDs(current), "c"), "c", "a", false)
+	if err != nil {
+		t.Fatalf("insertRelative() error = %v", err)
+	}
+	if got := strings.Join(order, ","); got != "c,a,b" {
+		t.Fatalf("order = %s", got)
+	}
+}
