@@ -1,6 +1,6 @@
 ---
 name: lark-base
-version: 1.2.14
+version: 1.2.15
 description: "飞书多维表格（Base）操作：建表、字段、记录、视图、统计、公式/lookup、表单、仪表盘、workflow、角色权限；遇到 Base/多维表格/bitable 或 /base/ 链接时使用。文件导入/导出转 lark-drive，认证/授权转 lark-shared。"
 metadata:
   requires:
@@ -101,7 +101,7 @@ Form 依附于 Table，以 Field 作为题目，每次有效提交会创建一�
 
 ## Dashboard Block
 
-Dashboard Block 是 Base Block 树中的仪表盘容器，负责承载页面主题、布局和内部组件集合，本身不表示某一项图表数据。按上文统一发现入口以 `--type dashboard` 定位容器，`+dashboard-get` 读取容器信息，`+dashboard-update` 修改主题，`+dashboard-arrange` 统一编排内部组件布局。
+Dashboard Block 是 Base Block 树中的仪表盘容器，负责承载页面主题、布局和内部组件集合，本身不表示某一项图表数据。使用 `+dashboard-list` 定位容器，`+dashboard-get` 读取容器信息，`+dashboard-update` 修改主题，`+dashboard-arrange` 统一编排内部组件布局。
 
 容器内部的图表、指标卡和文本等组件在 Dashboard API 中也称为 Block，但不属于 Base Block 树。内部 Block 分为三条操作路径：
 
@@ -115,7 +115,7 @@ Dashboard Block 是 Base Block 树中的仪表盘容器，负责承载页面主�
 
 Workflow 本身是 Base Block，其内部是一张由 `next` / `children` 连接的 steps 执行图；触发器、动作、条件分支和循环都是 step 类型。它适合定时执行、Record 新增或变更联动、消息通知、记录读写和跨系统调用。Workflow 分为三条操作路径：
 
-1. **读取配置：** 按上文统一发现入口以 `--type workflow` 定位流程，`+workflow-get` 读取 `title`、`status` 和完整 `steps` 执行图。
+1. **读取配置：** `+workflow-list` 定位流程，`+workflow-get` 读取 `title`、`status` 和完整 `steps` 执行图。
 2. **写入配置：** `+workflow-create` 创建完整定义，`+workflow-update` 更新完整定义；构造或修改配置前读取 [Workflow](references/lark-base-workflow-guide.md)，由该入口继续路由 step 类型和 schema。
 3. **运行状态控制：** `+workflow-enable` / `+workflow-disable` 启用或停用已有 Workflow，不修改 steps 执行图。
 
@@ -129,11 +129,11 @@ AdvPerm 为 Base 开启细粒度权限模式；Role 在此基础上配置 Base�
 
 Docx Block 是组织在 Base 目录中的飞书文档资源，适合把说明、方案和报告与数据表、仪表盘及流程放在同一 Base 中；正文仍使用标准 Docx 数据模型。
 
-按上文统一发现入口以 `--type docx` 定位文档并取得 `docx_token`；正文读取、创建与编辑使用 `lark-doc`。
+从 Base Block 资源目录按 `--type docx` 定位文档并取得 `docx_token`；正文读取、创建与编辑使用 `lark-doc`。
 
 ## Folder Block
 
-Folder Block 只承担 Base 目录分组和层级组织。按上文统一发现入口以 `--parent-id <folder_block_id>` 读取直接子项。
+Folder Block 只承担 Base 目录分组和层级组织。读取 Base Block 资源目录时传 `--parent-id <folder_block_id>` 获取直接子项。
 
 ## 通用执行契约
 
