@@ -20,6 +20,7 @@ builds:
     goarch:
       - amd64
       - arm64
+      - riscv64
   - id: windows
     binary: lark-cli
     main: .

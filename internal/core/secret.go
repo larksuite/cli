@@ -19,6 +19,12 @@ type SecretRef struct {
 	ID       string `json:"id"`                 // env var name / file path / command / keychain key
 }
 
+// KeylessProviderLarkSuite is the only external private_key_jwt signer route.
+// An absent or empty provider always means the CLI's built-in signer.
+const KeylessProviderLarkSuite = "larksuite.keyless"
+
+const SecretSourceTEE = "tee"
+
 // ---------------------------------------------------------------------------
 // SecretInput — union type: plain string or SecretRef
 // ---------------------------------------------------------------------------
