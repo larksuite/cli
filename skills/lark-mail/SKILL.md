@@ -263,27 +263,11 @@ lark-cli mail user_mailbox.folders create \
   --data '{"name":"newsletter","parent_folder_id":"0"}'
 ```
 
-**GET 自动回复设置**：
+**自动回复设置**：
 
-```bash
-lark-cli mail user_mailbox.auto_reply get \
-  --params '{"user_mailbox_id":"me"}'
-```
+当前能力对应 Meta API 资源 `user_mailbox.auto_reply`，方法为 `get` 和 `update`。执行前先确认当前 CLI 的 `mail` 命令帮助中已经暴露该资源；若未暴露，直接告知当前 CLI 不支持该内部 Meta 资源，不要改用收信规则 API 伪造自动回复能力。
 
-**PUT 全量更新自动回复设置**：
-
-```bash
-lark-cli mail user_mailbox.auto_reply get \
-  --params '{"user_mailbox_id":"me"}'
-
-# 将用户要求变更的字段合并进 get 返回的当前配置后，再预览完整 payload。
-lark-cli mail user_mailbox.auto_reply update \
-  --as user \
-  --params '{"user_mailbox_id":"me"}' \
-  --data '{"enabled":true,"content_html":"<div>Out of office</div>","content_summary":"Out of office","start_time":"0","end_time":"0","time_zone":"Asia/Shanghai","only_send_to_tenant":false}'
-```
-
-执行更新命令前，先读取当前配置，只合并用户要求变更的字段，再向用户展示本次全量替换后的 `enabled`、`start_time`、`end_time`、`time_zone`、`only_send_to_tenant` 和 `content_summary`，得到明确确认后再调用。若 `lark-cli mail user_mailbox.auto_reply -h` 不存在该资源，直接告知当前 CLI 不支持该内部 Meta 资源，不要改用收信规则 API 伪造自动回复能力。
+读取自动回复时传入 `user_mailbox_id=me`。更新自动回复时必须先读取当前配置，只合并用户要求变更的字段，再向用户展示本次全量替换后的 `enabled`、`start_time`、`end_time`、`time_zone`、`only_send_to_tenant` 和 `content_summary`，得到明确确认后再调用。更新 payload 应包含完整配置，例如 `enabled`、`content_html`、`content_summary`、`start_time`、`end_time`、`time_zone` 和 `only_send_to_tenant`。
 
 ### 常用约定
 
