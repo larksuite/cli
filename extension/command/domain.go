@@ -3,7 +3,7 @@
 
 package command
 
-// DomainName is a generated name of an existing shortcut domain.
+// DomainName is the name of an existing Lark business domain.
 type DomainName string
 
 type domainKind uint8

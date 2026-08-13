@@ -9,11 +9,9 @@ type DryRun struct {
 	requests    []Request
 }
 
-// NewDryRun creates an empty dry-run request list.
-func NewDryRun() *DryRun { return &DryRun{} }
-
-// Preview creates a dry-run request list from shared Request values.
-func Preview(requests ...Request) *DryRun {
+// NewDryRun creates a dry-run request list from shared Request values. Passing
+// no requests creates an empty list to fill in with the chained methods below.
+func NewDryRun(requests ...Request) *DryRun {
 	return &DryRun{requests: append([]Request(nil), requests...)}
 }
 

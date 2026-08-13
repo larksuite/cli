@@ -39,7 +39,7 @@ func TestRecorderScriptsRequestsScopesAndDryRun(t *testing.T) {
 	if got := recorder.ScopeChecks(); !reflect.DeepEqual(got, [][]string{{"im:chat:read"}}) {
 		t.Fatalf("scope checks = %#v", got)
 	}
-	recorder.AssertDryRunMatches(command.Preview(request))
+	recorder.AssertDryRunMatches(command.NewDryRun(request))
 	recorder.AssertScriptConsumed()
 }
 

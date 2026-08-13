@@ -28,10 +28,9 @@ type contractData struct {
 
 func TestDefineCopiesMutableMetadata(t *testing.T) {
 	scopes := []string{"im:chat:read"}
-	tips := []string{"Example"}
 	definition := Definition[contractArgs, contractData]{
 		Metadata: CommandMetadata{
-			Service: "im", Command: "+contract-copy", Description: "Copy test", Risk: RiskRead, Tips: tips,
+			Service: "im", Command: "+contract-copy", Description: "Copy test", Risk: RiskRead,
 			Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{
 				IdentityUser: {RequiredScopes: scopes},
 			}},
@@ -44,15 +43,11 @@ func TestDefineCopiesMutableMetadata(t *testing.T) {
 	}
 	declared := Define(definition)
 	scopes[0] = "changed"
-	tips[0] = "changed"
 	definition.Metadata.Authorization.Identities[IdentityUser] = IdentityAuthorization{}
 
 	host := InspectCommand(declared)
 	if got := host.Metadata.Authorization.Identities[IdentityUser].RequiredScopes; !reflect.DeepEqual(got, []string{"im:chat:read"}) {
 		t.Fatalf("required scopes = %#v", got)
-	}
-	if !reflect.DeepEqual(host.Metadata.Tips, []string{"Example"}) {
-		t.Fatalf("tips = %#v", host.Metadata.Tips)
 	}
 }
 

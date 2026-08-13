@@ -39,7 +39,7 @@ func documentGetDefinition() command.Definition[documentGetArgs, documentData] {
 		},
 		Hooks: command.Hooks[documentGetArgs, documentData]{
 			DryRun: func(_ context.Context, _ command.CommandContext, args *documentGetArgs) *command.DryRun {
-				return command.Preview(request(args))
+				return command.NewDryRun(request(args))
 			},
 			Execute: func(ctx context.Context, commandContext command.CommandContext, args *documentGetArgs) (command.Result[documentData], error) {
 				data, err := command.CallJSON[documentData](ctx, commandContext, request(args))
@@ -74,7 +74,7 @@ func chatListDefinition() command.Definition[chatListArgs, command.Page[chatData
 		},
 		Hooks: command.Hooks[chatListArgs, command.Page[chatData]]{
 			DryRun: func(_ context.Context, _ command.CommandContext, args *chatListArgs) *command.DryRun {
-				return command.Preview(request(args))
+				return command.NewDryRun(request(args))
 			},
 			Execute: func(ctx context.Context, commandContext command.CommandContext, args *chatListArgs) (command.Result[command.Page[chatData]], error) {
 				page, err := command.CollectPages[chatData](ctx, commandContext, request(args))
@@ -130,7 +130,7 @@ func taskAuditDefinition() command.Definition[taskAuditArgs, taskAuditData] {
 		}}},
 		Hooks: command.Hooks[taskAuditArgs, taskAuditData]{
 			DryRun: func(_ context.Context, _ command.CommandContext, _ *taskAuditArgs) *command.DryRun {
-				return command.Preview(listRequest).Desc("Owner requests depend on task owner identifiers returned by the list call.")
+				return command.NewDryRun(listRequest).Desc("Owner requests depend on task owner identifiers returned by the list call.")
 			},
 			Execute: func(ctx context.Context, commandContext command.CommandContext, args *taskAuditArgs) (command.Result[taskAuditData], error) {
 				tasks, err := command.CollectAllPages[taskRecord](ctx, commandContext, listRequest)
@@ -197,7 +197,7 @@ func memberListDefinition() command.Definition[memberListArgs, memberListData] {
 		},
 		Hooks: command.Hooks[memberListArgs, memberListData]{
 			DryRun: func(_ context.Context, _ command.CommandContext, args *memberListArgs) *command.DryRun {
-				preview := command.Preview(command.GET("/open-apis/im/v1/chats/" + command.PathSegment(args.ChatID)))
+				preview := command.NewDryRun(command.GET("/open-apis/im/v1/chats/" + command.PathSegment(args.ChatID)))
 				if args.IncludeMembers {
 					preview.Add(command.GET("/open-apis/im/v1/chats/" + command.PathSegment(args.ChatID) + "/members"))
 				}

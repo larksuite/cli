@@ -1,15 +1,23 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-// Code generated from shortcuts.AllShortcuts; DO NOT EDIT.
-
 package command
 
+// The Lark business domains a command set may extend. The list is maintained by
+// hand rather than generated from the shortcut registry: a domain exists once
+// the CLI publishes it under `lark-cli --help`, which includes domains served
+// only by typed and raw API commands. Generating from shortcuts.AllShortcuts
+// would silently drop those. TestDomainConstantsCoverEveryService in
+// internal/commandhost guards this list against the service registry.
 const (
 	// DomainApplication is the Application domain.
 	DomainApplication DomainName = "application"
+	// DomainApproval is the Approval domain.
+	DomainApproval DomainName = "approval"
 	// DomainApps is the Apps domain.
 	DomainApps DomainName = "apps"
+	// DomainAttendance is the Attendance domain.
+	DomainAttendance DomainName = "attendance"
 	// DomainBase is the Base domain.
 	DomainBase DomainName = "base"
 	// DomainCalendar is the Calendar domain.
@@ -28,6 +36,8 @@ const (
 	DomainMail DomainName = "mail"
 	// DomainMarkdown is the Markdown domain.
 	DomainMarkdown DomainName = "markdown"
+	// DomainMindnotes is the Mindnote domain.
+	DomainMindnotes DomainName = "mindnotes"
 	// DomainMinutes is the Minutes domain.
 	DomainMinutes DomainName = "minutes"
 	// DomainNote is the Note domain.

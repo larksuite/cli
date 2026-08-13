@@ -30,14 +30,13 @@ func businessCommand(name string, executed *bool) command.Command {
 	return command.Define(command.Definition[businessArgs, businessData]{
 		Metadata: command.CommandMetadata{
 			Service: "im", Command: name, Description: "Business command", Risk: command.RiskRead,
-			Tips: []string{"Uses the distribution-specific chat policy."},
 			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{
 				command.IdentityUser: {RequiredScopes: []string{"im:chat:read"}},
 			}},
 		},
 		Hooks: command.Hooks[businessArgs, businessData]{
 			DryRun: func(_ context.Context, _ command.CommandContext, args *businessArgs) *command.DryRun {
-				return command.Preview(command.GET("/open-apis/im/v1/chats/" + args.ChatID))
+				return command.NewDryRun(command.GET("/open-apis/im/v1/chats/" + args.ChatID))
 			},
 			Execute: func(_ context.Context, _ command.CommandContext, args *businessArgs) (command.Result[businessData], error) {
 				if executed != nil {
@@ -121,8 +120,8 @@ func TestCommandSetSubprocess(t *testing.T) {
 		if err := leaf.Help(); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(help.String(), "distribution-specific chat policy") {
-			t.Fatalf("business tip is missing from help:\n%s", help.String())
+		if rendered := help.String(); !strings.Contains(rendered, "Risk: read") {
+			t.Fatalf("business metadata is missing from help:\n%s", rendered)
 		}
 	case "atomic":
 		set := command.Set{Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{

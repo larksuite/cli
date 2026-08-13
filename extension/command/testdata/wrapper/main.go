@@ -38,7 +38,7 @@ var readCommand = command.Define(command.Definition[readArgs, readData]{
 	},
 	Hooks: command.Hooks[readArgs, readData]{
 		DryRunE: func(_ context.Context, _ command.CommandContext, args *readArgs) (*command.DryRun, error) {
-			return command.Preview(readRequest(args)), nil
+			return command.NewDryRun(readRequest(args)), nil
 		},
 		Execute: func(ctx context.Context, commandContext command.CommandContext, args *readArgs) (command.Result[readData], error) {
 			data, err := command.CallJSON[readData](ctx, commandContext, readRequest(args))

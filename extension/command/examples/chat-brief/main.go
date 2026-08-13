@@ -15,7 +15,7 @@
 //
 //	cd extension/command/examples/chat-brief
 //	go build -o chat-brief-cli .
-//	./chat-brief-cli im +chat-brief --help                     # Tips + flags from tags
+//	./chat-brief-cli im +chat-brief --help                     # description + flags from tags
 //	./chat-brief-cli im +chat-brief --chat-id oc_xxx --dry-run # offline request preview
 //	./chat-brief-cli im +chat-brief --chat-id oc_xxx           # real call (requires auth login)
 //	./chat-brief-cli im +chat-brief-list --page-all --page-limit 2   # framework pagination flags
@@ -66,9 +66,6 @@ var chatBrief = command.Define(command.Definition[chatBriefArgs, chatBriefData]{
 		Command:     "+chat-brief",
 		Description: "Get a concise chat projection",
 		Risk:        command.RiskRead,
-		Tips: []string{
-			"Example: chat-brief-cli im +chat-brief --chat-id oc_xxx",
-		},
 		Authorization: command.AuthorizationDefinition{
 			Identities: map[command.Identity]command.IdentityAuthorization{
 				command.IdentityUser: {RequiredScopes: []string{"im:chat:read"}},
@@ -83,7 +80,7 @@ var chatBrief = command.Define(command.Definition[chatBriefArgs, chatBriefData]{
 			return nil
 		},
 		DryRun: func(_ context.Context, _ command.CommandContext, args *chatBriefArgs) *command.DryRun {
-			return command.Preview(chatRequest(args))
+			return command.NewDryRun(chatRequest(args))
 		},
 		Execute: func(ctx context.Context, c command.CommandContext, args *chatBriefArgs) (command.Result[chatBriefData], error) {
 			chat, err := command.CallJSON[chatWire](ctx, c, chatRequest(args))
@@ -127,9 +124,6 @@ var chatList = command.Define(command.Definition[chatListArgs, command.Page[chat
 		Command:     "+chat-brief-list",
 		Description: "List visible chats",
 		Risk:        command.RiskRead,
-		Tips: []string{
-			"Example: chat-brief-cli im +chat-brief-list --page-all --page-limit 2",
-		},
 		Authorization: command.AuthorizationDefinition{
 			Identities: map[command.Identity]command.IdentityAuthorization{
 				command.IdentityUser: {RequiredScopes: []string{"im:chat:read"}},
@@ -138,7 +132,7 @@ var chatList = command.Define(command.Definition[chatListArgs, command.Page[chat
 	},
 	Hooks: command.Hooks[chatListArgs, command.Page[chatItem]]{
 		DryRun: func(_ context.Context, _ command.CommandContext, args *chatListArgs) *command.DryRun {
-			return command.Preview(chatListRequest(args))
+			return command.NewDryRun(chatListRequest(args))
 		},
 		Execute: func(ctx context.Context, c command.CommandContext, args *chatListArgs) (command.Result[command.Page[chatItem]], error) {
 			page, err := command.CollectPages[chatItem](ctx, c, chatListRequest(args))

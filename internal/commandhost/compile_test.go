@@ -27,11 +27,15 @@ type fixtureData struct {
 }
 
 func fixtureCommand(name string) command.Command {
+	return fixtureCommandIn(command.DomainIm, name)
+}
+
+func fixtureCommandIn(service command.DomainName, name string) command.Command {
 	return command.Define(command.Definition[fixtureArgs, fixtureData]{
 		Metadata: command.CommandMetadata{
-			Service: "im", Command: name, Description: "Fixture command", Risk: command.RiskRead,
+			Service: service, Command: name, Description: "Fixture command", Risk: command.RiskRead,
 			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{
-				command.IdentityUser: {RequiredScopes: []string{"im:chat:read"}},
+				command.IdentityUser: {RequiredScopes: []string{string(service) + ":read"}},
 			}},
 		},
 		Hooks: command.Hooks[fixtureArgs, fixtureData]{
@@ -54,6 +58,25 @@ func TestCompileSetsCompilesTypedShortcut(t *testing.T) {
 	}
 	if len(compiled[0].AuthTypes) != 1 || compiled[0].AuthTypes[0] != "user" {
 		t.Fatalf("auth types = %#v", compiled[0].AuthTypes)
+	}
+}
+
+// These three domains ship only typed and raw API commands, so deriving the
+// mountable domains from shortcuts.AllShortcuts would reject them.
+func TestCompileSetsExtendsDomainsWithoutShortcuts(t *testing.T) {
+	for _, domain := range []command.DomainName{command.DomainApproval, command.DomainAttendance, command.DomainMindnotes} {
+		t.Run(string(domain), func(t *testing.T) {
+			compiled, err := CompileSets([]command.Set{{
+				Domain:   command.ExtendDomain(domain),
+				Commands: []command.Command{fixtureCommandIn(domain, "+external-fixture")},
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(compiled) != 1 || compiled[0].Service != string(domain) {
+				t.Fatalf("compiled shortcuts = %#v", compiled)
+			}
+		})
 	}
 }
 
@@ -238,7 +261,7 @@ func TestExternalDryRunUsesOfflineContext(t *testing.T) {
 			DryRun: func(ctx context.Context, commandContext command.CommandContext, _ *fixtureArgs) *command.DryRun {
 				scopeErr = command.PreflightScopes(commandContext, "im:chat:update")
 				_, callErr = command.CallJSON[map[string]any](ctx, commandContext, request)
-				return command.Preview(request)
+				return command.NewDryRun(request)
 			},
 			Execute: func(context.Context, command.CommandContext, *fixtureArgs) (command.Result[fixtureData], error) {
 				executed = true
@@ -333,7 +356,7 @@ func TestExternalPageDryRunNotesBoundedRepetition(t *testing.T) {
 		},
 		Hooks: command.Hooks[fixtureArgs, command.Page[fixtureData]]{
 			DryRun: func(_ context.Context, _ command.CommandContext, _ *fixtureArgs) *command.DryRun {
-				return command.Preview(command.GET("/open-apis/im/v1/chats").Desc("list visible chats"))
+				return command.NewDryRun(command.GET("/open-apis/im/v1/chats").Desc("list visible chats"))
 			},
 			Execute: func(context.Context, command.CommandContext, *fixtureArgs) (command.Result[command.Page[fixtureData]], error) {
 				return command.Success(command.Page[fixtureData]{}), nil

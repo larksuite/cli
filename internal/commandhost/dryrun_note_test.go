@@ -17,7 +17,7 @@ import (
 // accumulate the note: the preview would then claim the command pages more
 // times than it does.
 func TestConvertDryRunNoteDoesNotAccumulateAcrossCalls(t *testing.T) {
-	preview := command.Preview(command.GET("/open-apis/im/v1/chats"))
+	preview := command.NewDryRun(command.GET("/open-apis/im/v1/chats"))
 
 	first := convertedDryRunJSON(t, preview)
 	second := convertedDryRunJSON(t, preview)
@@ -34,7 +34,7 @@ func TestConvertDryRunNoteDoesNotAccumulateAcrossCalls(t *testing.T) {
 // onto a copy, so the business description must survive unchanged and must not
 // grow a second note on the next conversion.
 func TestConvertDryRunKeepsBusinessDescriptionIntact(t *testing.T) {
-	preview := command.Preview(command.GET("/open-apis/im/v1/chats").Desc("lists the first page"))
+	preview := command.NewDryRun(command.GET("/open-apis/im/v1/chats").Desc("lists the first page"))
 
 	first := convertedDryRunJSON(t, preview)
 	second := convertedDryRunJSON(t, preview)

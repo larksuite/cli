@@ -225,7 +225,6 @@ func cloneHostHooks(hooks HostHooks) HostHooks {
 }
 
 func cloneMetadata(metadata CommandMetadata) CommandMetadata {
-	metadata.Tips = append([]string(nil), metadata.Tips...)
 	metadata.Authorization.IdentityOrder = append([]Identity(nil), metadata.Authorization.IdentityOrder...)
 	identities := make(map[Identity]IdentityAuthorization, len(metadata.Authorization.Identities))
 	for identity, authorization := range metadata.Authorization.Identities {

@@ -14,6 +14,7 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/extension/command"
+	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -31,12 +32,11 @@ func CompileSets(sets []command.Set) ([]common.Shortcut, error) {
 	}
 
 	builtins := shortcuts.AllShortcuts()
-	existingDomains := make(map[string]struct{})
 	paths := make(map[string]string, len(builtins))
 	for _, shortcut := range builtins {
-		existingDomains[shortcut.Service] = struct{}{}
 		paths[shortcut.Service+" "+shortcut.Command] = "built-in command"
 	}
+	existingDomains := businessDomains()
 
 	compiled := make([]common.Shortcut, 0)
 	for setIndex, set := range sets {
@@ -67,6 +67,19 @@ func CompileSets(sets []command.Set) ([]common.Shortcut, error) {
 		}
 	}
 	return compiled, nil
+}
+
+// businessDomains reports the domains a command set may extend. It reads the
+// service registry rather than deriving domains from shortcuts.AllShortcuts:
+// approval, attendance and mindnotes ship only typed and raw API commands, and
+// a shortcut-derived set would reject them as non-existent.
+func businessDomains() map[string]struct{} {
+	names := registry.AllServiceNames()
+	domains := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		domains[name] = struct{}{}
+	}
+	return domains
 }
 
 func validateDomain(domain command.HostDomain, existing map[string]struct{}) error {
@@ -138,7 +151,7 @@ func convertMetadata(metadata command.CommandMetadata) common.CommandMetadata {
 	}
 	return common.CommandMetadata{
 		Service: string(metadata.Service), Command: metadata.Command, Description: metadata.Description,
-		Risk: common.Risk(metadata.Risk), Hidden: metadata.Hidden, Tips: append([]string(nil), metadata.Tips...),
+		Risk: common.Risk(metadata.Risk), Hidden: metadata.Hidden,
 		Authorization: common.AuthorizationDefinition{Identities: identities, IdentityOrder: identityOrder},
 	}
 }

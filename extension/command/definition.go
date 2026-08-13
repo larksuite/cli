@@ -33,7 +33,6 @@ type CommandMetadata struct {
 	Description   string
 	Risk          Risk
 	Hidden        bool
-	Tips          []string
 	Authorization AuthorizationDefinition
 }
 
