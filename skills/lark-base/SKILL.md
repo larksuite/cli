@@ -71,9 +71,7 @@ Table 下的大多数更新通过异步链路生效，接口成功返回后立�
 
 ### Record Read Gate
 
-任何数据表记录读取都必须先完整读取 [数据表查询与分析 SOP](references/lark-base-data-analysis-sop.md)。只要任务会调用 `+record-get`、`+record-list` 或 `+record-search`，必须在第一次记录读取前读取该 SOP；不得仅凭本文件或命令 `--help` 直接读取。记录预览、查询、搜索、筛选、排序、去重、统计、聚合、TopN、多表 JOIN、批量导出，以及写入、更新、删除或附件操作前定位记录和写后验收，都受此门禁约束。
-
-按 SOP 使用 `--format ndjson --output <artifact>.ndjson --minimal-stdout` 读取 records；不要为 records 选择其他输出格式。
+调用 `+record-get`、`+record-list` 或 `+record-search` 前，必须完整读取 [数据表查询与分析 SOP](references/lark-base-data-analysis-sop.md)；写操作中的记录定位和结果验收也适用。
 
 ### Field
 
@@ -85,7 +83,7 @@ Field 定义列 schema。`field_id` 是稳定列标识，`name` 是可修改的�
 
 Record 是 Table 中的一行数据，包含该记录在各个 Field 下的 CellValue。系统 `record_id` 是表内稳定、非空且唯一的主键，Table 的主字段只是展示字段。
 
-**读取 Record：** 先完整读取 [数据表查询与分析 SOP](references/lark-base-data-analysis-sop.md)，再按其 NDJSON 契约调用 `+record-get` / `+record-list` / `+record-search`。**写入 Record：** 优先使用 [batch create](references/lark-base-record-batch-create.md) / [batch update](references/lark-base-record-batch-update.md) 创建或更新一条或多条记录，按其文档中的 CellValue 协议提交字段值。
+**读取 Record：** 按上述门禁调用 `+record-get` / `+record-list` / `+record-search`。**写入 Record：** 优先使用 [batch create](references/lark-base-record-batch-create.md) / [batch update](references/lark-base-record-batch-update.md) 创建或更新一条或多条记录，按其文档中的 CellValue 协议提交字段值。
 
 **Record 生命周期：** `+record-delete` 删除记录；`+record-share-link-create` 创建记录分享链接；`+record-history-list` 查询单条记录的变更事件，读取 [历史记录协议](references/lark-base-record-history-list.md)。附件使用 `+record-upload-attachment` / `+record-download-attachment` / `+record-remove-attachment` 操作。
 

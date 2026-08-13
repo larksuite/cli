@@ -1,6 +1,6 @@
 # Base 数据表查询与分析 SOP
 
-任何数据表记录读取任务都必须先完整读取本 SOP。只要任务会调用 `+record-get`、`+record-list` 或 `+record-search`，无论目的是记录预览、查询、搜索、筛选、排序、去重、统计、聚合、TopN、多值计算、Link 或多表关联、复杂行级计算、批量导出、形成全局结论，还是在写入、更新、删除或附件操作前定位记录以及写后验收，都不得跳过本 SOP。先区分需要 LLM 理解原文的语义分析与可程序化计算的确定性分析，再按任务所需数据规模与计算复杂度选择对应路径。用户直接要求解释、编写或排错 `+data-query` 命令或 DSL 时，直接读 [data-query guide](lark-base-data-query-guide.md)。
+调用 `+record-get`、`+record-list` 或 `+record-search` 前必须完整读取本 SOP；写操作中的记录定位和结果验收也适用。先区分需要 LLM 理解原文的语义分析与可程序化计算的确定性分析，再按数据规模与计算复杂度选择路径。用户直接要求解释、编写或排错 `+data-query` 命令或 DSL 时，直接读 [data-query guide](lark-base-data-query-guide.md)。
 
 ## 分流决策
 
@@ -14,11 +14,11 @@
 
 ## 执行与交付
 
-所有 records 读取统一使用 NDJSON artifact：显式传入 `--format ndjson --output <artifact>.ndjson --minimal-stdout`。NDJSON 未显式传 `--limit` 时默认读取最多 2000 条，正式分析通常沿用该范围；窄投影探测、快速预览或用户明确要求前 N 条时再设置较小的 `--limit`。面向用户的小结果先从 NDJSON artifact 计算或提取，再在最终回答中展示。
+所有 records 读取统一使用 `--format ndjson --output <artifact>.ndjson --minimal-stdout`。未传 `--limit` 时最多读取 2000 条；仅在探测、预览或用户明确要求前 N 条时缩小限制。面向用户的小结果从 NDJSON artifact 提取。
 
-### 统一 NDJSON 读取模板
+### NDJSON 读取示例
 
-按任务替换真实 token、ID、投影、条件和 artifact 名称：
+按任务替换真实 token、ID、投影、条件和 artifact 名称；`+record-search` 和 `+record-get` 使用相同的 NDJSON 输出参数。
 
 ```bash
 lark-cli base +record-list \
@@ -27,27 +27,6 @@ lark-cli base +record-list \
   --field-id <field> \
   --format ndjson \
   --output ./records.ndjson \
-  --minimal-stdout \
-  --as user
-
-lark-cli base +record-search \
-  --base-token <base_token> \
-  --table-id <table_id> \
-  --keyword <keyword> \
-  --search-field <field> \
-  --field-id <field> \
-  --format ndjson \
-  --output ./search-results.ndjson \
-  --minimal-stdout \
-  --as user
-
-lark-cli base +record-get \
-  --base-token <base_token> \
-  --table-id <table_id> \
-  --record-id <record_id> \
-  --field-id <field> \
-  --format ndjson \
-  --output ./record.ndjson \
   --minimal-stdout \
   --as user
 ```
@@ -81,7 +60,7 @@ lark-cli base +record-get \
 }
 ```
 
-全表分析的常规资源链路是 `+base-block-list --type table` 确认目标表与规模，对所有参与分析的表并发执行 `+field-list` 读取所需 schema，再用 `+record-list --format ndjson --output <artifact>.ndjson --minimal-stdout` 导出记录；已有可信的 `table_id` 时可直接并发读取各表 `+field-list`。`+view-get` 可按需读取，作为用户持久化访问习惯的可选参考；其中的 filter、sort 与字段范围可辅助理解用户常用的查询范围和排序偏好，并结合当前任务确定最终口径。
+全表分析的常规资源链路是 `+base-block-list --type table` 确认目标表与规模，对所有参与分析的表并发执行 `+field-list` 读取所需 schema，再按上述 NDJSON 契约用 `+record-list` 导出记录；已有可信的 `table_id` 时可直接并发读取各表 `+field-list`。`+view-get` 可按需读取，作为用户持久化访问习惯的可选参考；其中的 filter、sort 与字段范围可辅助理解用户常用的查询范围和排序偏好，并结合当前任务确定最终口径。
 
 1. 每次读取使用任务所需的最小投影，并包含 JOIN、解释、回查或写入需要的业务 key。
 2. 全局结论以 `has_more=false` 的完整导出或 Cloud 聚合结果为依据；`has_more=true` 时继续收敛单表谓词或选择 Cloud 路径。
