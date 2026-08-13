@@ -1,6 +1,6 @@
 ---
 name: lark-base
-version: 1.2.9
+version: 1.2.10
 description: "飞书多维表格（Base）操作：建表、字段、记录、视图、统计、公式/lookup、表单、仪表盘、workflow、角色权限；遇到 Base/多维表格/bitable 或 /base/ 链接时使用。文件导入/导出转 lark-drive，认证/授权转 lark-shared。"
 metadata:
   requires:
@@ -69,10 +69,6 @@ Table 本身是 Base Block，也是 Base 的核心数据存储层；Field、Reco
 
 Table 下的大多数更新通过异步链路生效，接口成功返回后立即读取可能暂时看不到最新状态。优先以写入成功响应作为操作结果；任务必须确认最终状态时，先完成本轮相关变更，再统一读取验收，避免逐项写后立即读回。
 
-### Record Read Gate
-
-调用 `+record-get`、`+record-list` 或 `+record-search` 前，必须完整读取 [数据表查询与分析 SOP](references/lark-base-data-analysis-sop.md)；写操作中的记录定位和结果验收也适用。
-
 ### Field
 
 Field 定义列 schema。`field_id` 是稳定列标识，`name` 是可修改的展示名称；Formula、Lookup、Link、Select 等属于 Field 类型或能力。
@@ -83,7 +79,7 @@ Field 定义列 schema。`field_id` 是稳定列标识，`name` 是可修改的�
 
 Record 是 Table 中的一行数据，包含该记录在各个 Field 下的 CellValue。系统 `record_id` 是表内稳定、非空且唯一的主键，Table 的主字段只是展示字段。
 
-**读取 Record：** 按上述门禁调用 `+record-get` / `+record-list` / `+record-search`。**写入 Record：** 优先使用 [batch create](references/lark-base-record-batch-create.md) / [batch update](references/lark-base-record-batch-update.md) 创建或更新一条或多条记录，按其文档中的 CellValue 协议提交字段值。
+**读取 Record：** 凡涉及记录读取，包括直接调用 `+record-get` / `+record-list` / `+record-search`、写前定位记录或写后验收，必须先完整读取 [数据表查询与分析 SOP](references/lark-base-data-analysis-sop.md)。**写入 Record：** 优先使用 [batch create](references/lark-base-record-batch-create.md) / [batch update](references/lark-base-record-batch-update.md) 创建或更新一条或多条记录，按其文档中的 CellValue 协议提交字段值。
 
 **Record 生命周期：** `+record-delete` 删除记录；`+record-share-link-create` 创建记录分享链接；`+record-history-list` 查询单条记录的变更事件，读取 [历史记录协议](references/lark-base-record-history-list.md)。附件使用 `+record-upload-attachment` / `+record-download-attachment` / `+record-remove-attachment` 操作。
 
