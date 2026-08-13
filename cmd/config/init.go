@@ -17,10 +17,8 @@ import (
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/keychain"
-	"github.com/larksuite/cli/internal/keylesshelper"
 	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
@@ -145,19 +143,6 @@ func requestedInitAuthMethod(opts *ConfigInitOptions) string {
 	return core.AuthMethodClientSecret
 }
 
-func validateKeylessSignerEnvironment() error {
-	if !keylesshelper.ConfiguredFromEnvironment() {
-		return nil
-	}
-	if err := keylesshelper.ValidateConfigured(); err != nil {
-		return errs.NewConfigError(errs.SubtypeInvalidClient,
-			"invalid keyless signer command: %v", err).
-			WithCause(err).
-			WithHint("fix or unset %s before running config init", envvars.CliKeylessSignerCmd)
-	}
-	return nil
-}
-
 // printLangPreferenceConfirmation echoes the set preference to stderr, only
 // when --lang explicitly set a non-empty value.
 func printLangPreferenceConfirmation(opts *ConfigInitOptions) {
@@ -262,11 +247,6 @@ func saveAsOnlyApp(appId string, secret core.SecretInput, brand core.LarkBrand, 
 			AuthMethod: authMethod, KeyRef: keyRef,
 		}},
 	}
-	return saveMultiAppConfigForInit(config)
-}
-
-func saveMultiAppConfigForInit(config *core.MultiAppConfig) error {
-	config.KeylessSignerCmd = strings.TrimSpace(os.Getenv(envvars.CliKeylessSignerCmd))
 	return core.SaveMultiAppConfig(config)
 }
 
@@ -345,7 +325,7 @@ func saveAsProfile(existing *core.MultiAppConfig, kc keychain.KeychainAccess, pr
 			KeyRef:     keyRef,
 		})
 	}
-	return saveMultiAppConfigForInit(multi)
+	return core.SaveMultiAppConfig(multi)
 }
 
 func findProfileIndexByName(multi *core.MultiAppConfig, profileName string) int {
@@ -417,7 +397,7 @@ func updateExistingProfileWithoutSecret(existing *core.MultiAppConfig, profileNa
 	app.AppId = appID
 	app.Brand = brand
 	app.Lang = preferredLang(i18n.Lang(lang), app.Lang)
-	return saveMultiAppConfigForInit(existing)
+	return core.SaveMultiAppConfig(existing)
 }
 
 func persistInitResult(opts *ConfigInitOptions, f *cmdutil.Factory, profileName string, result *configInitResult) error {
@@ -486,10 +466,6 @@ func configInitRun(opts *ConfigInitOptions) error {
 				WithParam("--private-key-jwt")
 		}
 	}
-	if err := validateKeylessSignerEnvironment(); err != nil {
-		return err
-	}
-
 	// Read secret from stdin if --app-secret-stdin is set
 	if opts.AppSecretStdin {
 		scanner := bufio.NewScanner(f.IOStreams.In)
