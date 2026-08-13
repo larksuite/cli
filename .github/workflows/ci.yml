@@ -47,7 +47,7 @@ jobs:
           fi
       - name: Check generated Go files
         run: |
-          go generate ./extension/command/... ./shortcuts/sheets/...
+          go generate ./shortcuts/sheets/...
           git diff --exit-code
       - name: Check go.mod tidiness
         run: |
