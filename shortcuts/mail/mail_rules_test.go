@@ -51,12 +51,28 @@ func TestMailRuleParserGrammarAndEncode(t *testing.T) {
 }
 
 func TestMailRuleParserRejectsUnknownAliasWithHint(t *testing.T) {
-	_, err := parseRuleConditionGrammar("topic:contains:x", "--condition")
+	_, err := parseRuleConditionGrammar("subjct:contains:x", "--condition")
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
-	if !strings.Contains(err.Error(), "subject") || !strings.Contains(err.Error(), "Accepted fields") {
-		t.Fatalf("error should include accepted aliases, got %v", err)
+	for _, want := range []string{`unknown rule condition field "subjct"`, `did you mean "subject"?`, "Accepted fields and aliases", "title"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error should include %q, got %v", want, err)
+		}
+	}
+	_, err = parseRuleConditionGrammar("subject:contaiins:x", "--condition")
+	if err == nil {
+		t.Fatal("expected operator validation error")
+	}
+	if !strings.Contains(err.Error(), `did you mean "contains"?`) || !strings.Contains(err.Error(), "Accepted operators and aliases") {
+		t.Fatalf("operator error should include suggestion and accepted aliases, got %v", err)
+	}
+	_, err = parseRuleActionGrammar("markread", "--action")
+	if err == nil {
+		t.Fatal("expected action validation error")
+	}
+	if !strings.Contains(err.Error(), `did you mean "mark_read"?`) || !strings.Contains(err.Error(), "Accepted actions and aliases") {
+		t.Fatalf("action error should include suggestion and accepted aliases, got %v", err)
 	}
 	_, err = parseRuleActionGrammar("move_folder", "--action")
 	if err == nil || !strings.Contains(err.Error(), "folder_id") {

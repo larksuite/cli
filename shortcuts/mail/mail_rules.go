@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/internal/output"
+	internalsuggest "github.com/larksuite/cli/internal/suggest"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -746,7 +747,7 @@ func parseRuleActionGrammar(raw, flag string) (mailRuleAction, error) {
 func validateRuleCondition(cond mailRuleCondition, flag string) (mailRuleCondition, error) {
 	field, ok := mailRuleFieldByName[strings.TrimSpace(cond.Field)]
 	if !ok {
-		return mailRuleCondition{}, mailValidationParamError(flag, "unknown rule condition field %q. Accepted fields and aliases: %s", cond.Field, acceptedAliasList(mailRuleFields))
+		return mailRuleCondition{}, mailValidationParamError(flag, unknownRuleAliasMessage("condition field", cond.Field, "fields", mailRuleFields))
 	}
 	cond.Field = field.Canonical
 	if !field.NeedsArg {
@@ -757,7 +758,7 @@ func validateRuleCondition(cond mailRuleCondition, flag string) (mailRuleConditi
 	}
 	op, ok := mailRuleOpByName[strings.TrimSpace(cond.Operator)]
 	if !ok {
-		return mailRuleCondition{}, mailValidationParamError(flag, "unknown rule condition operator %q. Accepted operators and aliases: %s", cond.Operator, acceptedAliasList(mailRuleOperators))
+		return mailRuleCondition{}, mailValidationParamError(flag, unknownRuleAliasMessage("condition operator", cond.Operator, "operators", mailRuleOperators))
 	}
 	cond.Operator = op.Canonical
 	if op.NeedsArg && strings.TrimSpace(cond.Value) == "" {
@@ -772,7 +773,7 @@ func validateRuleCondition(cond mailRuleCondition, flag string) (mailRuleConditi
 func validateRuleAction(action mailRuleAction, flag string) (mailRuleAction, error) {
 	alias, ok := mailRuleActionByName[strings.TrimSpace(action.Kind)]
 	if !ok {
-		return mailRuleAction{}, mailValidationParamError(flag, "unknown rule action %q. Accepted actions and aliases: %s", action.Kind, acceptedAliasList(mailRuleActions))
+		return mailRuleAction{}, mailValidationParamError(flag, unknownRuleAliasMessage("action", action.Kind, "actions", mailRuleActions))
 	}
 	action.Kind = alias.Canonical
 	needed := requiredActionParam(action.Kind)
@@ -808,6 +809,30 @@ func acceptedAliasList(items []mailRuleAlias) string {
 	}
 	sort.Strings(values)
 	return strings.Join(values, ", ")
+}
+
+func unknownRuleAliasMessage(noun, raw, acceptedKind string, items []mailRuleAlias) string {
+	accepted := acceptedAliasList(items)
+	if suggestion := closestRuleAlias(raw, items); suggestion != "" {
+		return fmt.Sprintf("unknown rule %s %q; did you mean %q? Accepted %s and aliases: %s", noun, raw, suggestion, acceptedKind, accepted)
+	}
+	return fmt.Sprintf("unknown rule %s %q. Accepted %s and aliases: %s", noun, raw, acceptedKind, accepted)
+}
+
+func closestRuleAlias(raw string, items []mailRuleAlias) string {
+	typed := strings.ToLower(strings.TrimSpace(raw))
+	if typed == "" {
+		return ""
+	}
+	candidates := make([]string, 0, len(items)*2)
+	for _, item := range items {
+		candidates = append(candidates, item.Canonical)
+		candidates = append(candidates, item.Aliases...)
+	}
+	if matches := internalsuggest.Closest(typed, candidates, 1); len(matches) > 0 {
+		return matches[0]
+	}
+	return ""
 }
 
 func encodeRuleSpec(spec *mailRuleSpec) (map[string]any, error) {
