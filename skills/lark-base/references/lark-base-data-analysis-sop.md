@@ -1,12 +1,12 @@
 # Base 数据表查询与分析 SOP
 
-数据表记录查询和分析任务先读本 SOP，包括记录预览、筛选、排序、去重、统计、聚合、TopN、多值计算、Link 或多表关联、复杂行级计算、全局结论和查询后写入。先区分需要 LLM 理解原文的语义分析与可程序化计算的确定性分析，再按任务所需数据规模与计算复杂度选择对应路径。用户直接要求解释、编写或排错 `+data-query` 命令或 DSL 时，直接读 [data-query guide](lark-base-data-query-guide.md)。
+任何数据表记录读取任务都必须先完整读取本 SOP。只要任务会调用 `+record-get`、`+record-list` 或 `+record-search`，无论目的是记录预览、查询、搜索、筛选、排序、去重、统计、聚合、TopN、多值计算、Link 或多表关联、复杂行级计算、批量导出、形成全局结论，还是在写入、更新、删除或附件操作前定位记录以及写后验收，都不得跳过本 SOP。先区分需要 LLM 理解原文的语义分析与可程序化计算的确定性分析，再按任务所需数据规模与计算复杂度选择对应路径。用户直接要求解释、编写或排错 `+data-query` 命令或 DSL 时，直接读 [data-query guide](lark-base-data-query-guide.md)。
 
 ## 分流决策
 
 1. 明确所有需要参与分析的表及其 `records_count`。
 2. 如果结论必须依赖 LLM 理解原始内容，例如开放文本打标、情绪或意图识别、主题归纳、语义分类、相似性判断或实体消歧，进入下文“LLM 语义分析”路径。
-3. 对于其余确定性查询，任一分析表超过 2000 行时，先从任务意图中为所有大表提取可在单表内独立执行的谓词，例如日期范围、状态和关键词，再按下文将谓词逐表下推，并用 `--field-id '<一个简单标量字段>' --limit 2000 --output <probe>.ndjson --minimal-stdout` 探测。目标是每张表都达到 `has_more=false`；任一表无法压缩到 2000 行以内时，转 [lark-base-data-analysis-cloud.md](lark-base-data-analysis-cloud.md) 用云端的数据分析能力。
+3. 对于其余确定性查询，任一分析表超过 2000 行时，先从任务意图中为所有大表提取可在单表内独立执行的谓词，例如日期范围、状态和关键词，再按下文将谓词逐表下推，并用 `--field-id '<一个简单标量字段>' --limit 2000 --format ndjson --output <probe>.ndjson --minimal-stdout` 探测。目标是每张表都达到 `has_more=false`；任一表无法压缩到 2000 行以内时，转 [lark-base-data-analysis-cloud.md](lark-base-data-analysis-cloud.md) 用云端的数据分析能力。
 4. 所有分析表都不超过 2000 行后：若只有一张表且短 jq 可清晰完成筛选、计数、简单分组/聚合/排序、TopN 可以使用 jq。
 5. 其余确定性任务比如多表、日历计算和复杂数据分析，在 Python 可用时使用 Python，否则进入 [Cloud SOP](lark-base-data-analysis-cloud.md)。
 
@@ -14,7 +14,43 @@
 
 ## 执行与交付
 
-分析输入默认采用 `--output x.ndjson`；NDJSON 未显式传 `--limit` 时默认读取最多 2000 条，正式分析通常沿用该范围。窄投影探测、快速预览或用户明确要求前 N 条时再设置较小的 `--limit`。`--format json` 和 Markdown 适用于向用户即时展示的小结果。
+所有 records 读取统一使用 NDJSON artifact：显式传入 `--format ndjson --output <artifact>.ndjson --minimal-stdout`。NDJSON 未显式传 `--limit` 时默认读取最多 2000 条，正式分析通常沿用该范围；窄投影探测、快速预览或用户明确要求前 N 条时再设置较小的 `--limit`。面向用户的小结果先从 NDJSON artifact 计算或提取，再在最终回答中展示。
+
+### 统一 NDJSON 读取模板
+
+按任务替换真实 token、ID、投影、条件和 artifact 名称：
+
+```bash
+lark-cli base +record-list \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --field-id <field> \
+  --format ndjson \
+  --output ./records.ndjson \
+  --minimal-stdout \
+  --as user
+
+lark-cli base +record-search \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --keyword <keyword> \
+  --search-field <field> \
+  --field-id <field> \
+  --format ndjson \
+  --output ./search-results.ndjson \
+  --minimal-stdout \
+  --as user
+
+lark-cli base +record-get \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --record-id <record_id> \
+  --field-id <field> \
+  --format ndjson \
+  --output ./record.ndjson \
+  --minimal-stdout \
+  --as user
+```
 
 缩小大表记录范围时，展示文本关键词用 `+record-search`，日期、状态、数字、空值、选项、人员和关联等结构化条件用 `+record-list --filter-json`。
 
@@ -45,7 +81,7 @@
 }
 ```
 
-全表分析的常规资源链路是 `+base-block-list --type table` 确认目标表与规模，对所有参与分析的表并发执行 `+field-list` 读取所需 schema，再用 `+record-list` 导出记录；已有可信的 `table_id` 时可直接并发读取各表 `+field-list`。`+view-get` 可按需读取，作为用户持久化访问习惯的可选参考；其中的 filter、sort 与字段范围可辅助理解用户常用的查询范围和排序偏好，并结合当前任务确定最终口径。
+全表分析的常规资源链路是 `+base-block-list --type table` 确认目标表与规模，对所有参与分析的表并发执行 `+field-list` 读取所需 schema，再用 `+record-list --format ndjson --output <artifact>.ndjson --minimal-stdout` 导出记录；已有可信的 `table_id` 时可直接并发读取各表 `+field-list`。`+view-get` 可按需读取，作为用户持久化访问习惯的可选参考；其中的 filter、sort 与字段范围可辅助理解用户常用的查询范围和排序偏好，并结合当前任务确定最终口径。
 
 1. 每次读取使用任务所需的最小投影，并包含 JOIN、解释、回查或写入需要的业务 key。
 2. 全局结论以 `has_more=false` 的完整导出或 Cloud 聚合结果为依据；`has_more=true` 时继续收敛单表谓词或选择 Cloud 路径。
@@ -182,6 +218,7 @@ lark-cli base +record-list \
   --table-id <table_id> \
   --field-id 状态 \
   --field-id 金额 \
+  --format ndjson \
   --output records.ndjson \
   --minimal-stdout &&
 jq -s '
