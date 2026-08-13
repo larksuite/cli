@@ -229,6 +229,8 @@
 
 #### 动态选项
 
+当新字段要引用或复用另一选项字段的选项列表时，优先使用 `dynamic_options_source`，避免重复定义和维护 `options`。
+
 支持字段：`multiple`、`dynamic_options_source`
 动态选项不支持 `default_value`。
 
