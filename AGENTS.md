@@ -143,6 +143,10 @@ For plugin distributions, read [Ship skills and command guidance](extension/plat
   shipped docs must ship. Before referencing a new content directory, update
   `content_embed.go` and add an embedded-FS reachability test; `assets/` and
   `scripts/` stay source-only unless the distribution contract changes.
+- When adding or changing a Base dashboard block type, update the command type
+  description, `dashboardBlockExampleTemplates`, its exact-type coverage and
+  validation test, and the `lark-base` dashboard references in the same change.
+  Every supported canonical type must have a locally valid example template.
 
 ## Tests
 
