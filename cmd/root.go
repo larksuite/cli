@@ -675,7 +675,12 @@ func flagDidYouMean(c *cobra.Command, ferr error) error {
 				WithHint("run `%s --help` to see valid flags", c.CommandPath())
 		}
 		validationErr := errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", ferr.Error()).
-			WithHint("run `%s --help` for valid flags", c.CommandPath())
+			WithHint("run `%s --help` for valid flags", c.CommandPath()).
+			WithCause(ferr)
+		var invalidValue *pflag.InvalidValueError
+		if errors.As(ferr, &invalidValue) && invalidValue.GetFlag() != nil && invalidValue.GetFlag().Name == "timeout" {
+			validationErr.WithParam("--timeout")
+		}
 		if attribution, ok := flagalias.InvalidValueAttributionOf(ferr); ok {
 			validationErr.WithParam("--" + attribution.Source)
 			if attribution.Source != attribution.Canonical {

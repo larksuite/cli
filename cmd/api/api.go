@@ -9,6 +9,7 @@ import (
 	"io"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/client"
@@ -43,6 +44,7 @@ type APIOptions struct {
 	JqExpr    string
 	DryRun    bool
 	File      string
+	Timeout   time.Duration
 }
 
 var urlPrefixRe = regexp.MustCompile(`https?://[^/]+(/open-apis/.+)`)
@@ -107,6 +109,7 @@ Examples:
 	cmd.Flags().Bool("json", false, "shorthand for --format json")
 	cmd.Flags().StringVarP(&opts.JqExpr, "jq", "q", "", "jq expression to filter JSON output")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "print request without executing")
+	cmd.Flags().DurationVar(&opts.Timeout, "timeout", 0, "per-request timeout in Go duration format (0 = client default)")
 	cmd.Flags().StringVar(&opts.File, "file", "", "file to upload as multipart/form-data ([field=]path, supports - for stdin)")
 
 	cmd.ValidArgsFunction = func(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
@@ -162,10 +165,11 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, *cmdutil.FileUploa
 	}
 
 	request := client.RawApiRequest{
-		Method: opts.Method,
-		URL:    normalisePath(opts.Path),
-		Params: params,
-		As:     opts.As,
+		Method:  opts.Method,
+		URL:     normalisePath(opts.Path),
+		Params:  params,
+		As:      opts.As,
+		Timeout: opts.Timeout,
 	}
 
 	if opts.File != "" {
@@ -219,6 +223,9 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, *cmdutil.FileUploa
 
 func apiRun(opts *APIOptions) error {
 	f := opts.Factory
+	if opts.Timeout < 0 {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--timeout must be zero or greater").WithParam("--timeout")
+	}
 	opts.As = f.ResolveAs(opts.Ctx, opts.Cmd, opts.As)
 
 	if err := f.CheckStrictMode(opts.Ctx, opts.As); err != nil {

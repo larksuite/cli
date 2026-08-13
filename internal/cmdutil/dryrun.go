@@ -33,11 +33,12 @@ type DryRunOutputOptions struct {
 
 // DryRunAPICall describes a single API call in dry-run output.
 type DryRunAPICall struct {
-	Desc   string                 `json:"desc,omitempty"`
-	Method string                 `json:"method"`
-	URL    string                 `json:"url"`
-	Params map[string]interface{} `json:"params,omitempty"`
-	Body   interface{}            `json:"body,omitempty"`
+	Desc    string                 `json:"desc,omitempty"`
+	Method  string                 `json:"method"`
+	URL     string                 `json:"url"`
+	Params  map[string]interface{} `json:"params,omitempty"`
+	Body    interface{}            `json:"body,omitempty"`
+	Timeout string                 `json:"timeout,omitempty"`
 }
 
 // DryRunContext is the execution context shared by every dry-run preview:
@@ -140,11 +141,12 @@ func (d *DryRunAPI) MarshalJSON() ([]byte, error) {
 	resolved := make([]DryRunAPICall, len(d.calls))
 	for i, c := range d.calls {
 		resolved[i] = DryRunAPICall{
-			Desc:   c.Desc,
-			Method: c.Method,
-			URL:    d.resolveURL(c.URL),
-			Params: c.Params,
-			Body:   c.Body,
+			Desc:    c.Desc,
+			Method:  c.Method,
+			URL:     d.resolveURL(c.URL),
+			Params:  c.Params,
+			Body:    c.Body,
+			Timeout: c.Timeout,
 		}
 	}
 	m := make(map[string]interface{}, len(d.extra)+3)
@@ -248,6 +250,9 @@ func encodeParams(params map[string]interface{}) string {
 // query params, and the app/user context common to every dry-run.
 func buildDryRunPreview(request client.RawApiRequest, config *core.CliConfig) *DryRunAPI {
 	dr := NewDryRunAPI().call(request.Method, request.URL)
+	if request.Timeout > 0 {
+		dr.calls[0].Timeout = request.Timeout.String()
+	}
 	if len(request.Params) > 0 {
 		dr.Params(request.Params)
 	}

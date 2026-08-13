@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	"github.com/larksuite/cli/cmd/api"
 	"github.com/larksuite/cli/cmd/auth"
 	"github.com/larksuite/cli/cmd/service"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -62,6 +64,52 @@ func executeRootIntegration(t *testing.T, f *cmdutil.Factory, rootCmd *cobra.Com
 		return handleRootError(f, err, nil)
 	}
 	return 0
+}
+
+func TestRequestTimeoutInvalidFormatAttributesFlag(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		root func(*cmdutil.Factory) *cobra.Command
+		args []string
+	}{
+		{
+			name: "api",
+			root: func(f *cmdutil.Factory) *cobra.Command {
+				root := &cobra.Command{Use: "lark-cli", SilenceErrors: true, SilenceUsage: true}
+				root.AddCommand(api.NewCmdApi(f, nil))
+				return root
+			},
+			args: []string{"api", "GET", "/open-apis/test", "--timeout", "nope"},
+		},
+		{
+			name: "service",
+			root: func(f *cmdutil.Factory) *cobra.Command {
+				root := &cobra.Command{Use: "lark-cli", SilenceErrors: true, SilenceUsage: true}
+				service.RegisterServiceCommandsFromCatalog(context.Background(), root, f, strictModeFixtureCatalog())
+				return root
+			},
+			args: []string{"fixture", "things", "create", "--timeout", "nope"},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu})
+			root := test.root(f)
+			root.SetFlagErrorFunc(flagDidYouMean)
+			root.SetArgs(test.args)
+			err := root.Execute()
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error = %T, want *errs.ValidationError", err)
+			}
+			if validationErr.Param != "--timeout" || validationErr.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("validation error = %+v, want invalid_argument param=--timeout", validationErr)
+			}
+			if validationErr.Unwrap() == nil {
+				t.Fatal("validation error did not preserve the flag parse cause")
+			}
+		})
+	}
 }
 
 // typedErrorEnvelope mirrors the typed wire shape produced by

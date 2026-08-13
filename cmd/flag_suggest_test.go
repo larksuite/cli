@@ -104,6 +104,29 @@ func TestFlagDidYouMean_OtherErrorStaysGeneric(t *testing.T) {
 	}
 }
 
+func TestFlagDidYouMean_InvalidTimeoutAttributesParam(t *testing.T) {
+	c := &cobra.Command{Use: "demo"}
+	c.Flags().Duration("timeout", 0, "")
+	parseErr := c.ParseFlags([]string{"--timeout", "nope"})
+	if parseErr == nil {
+		t.Fatal("ParseFlags succeeded, want invalid duration")
+	}
+	err := flagDidYouMean(c, parseErr)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %T, want *errs.ValidationError", err)
+	}
+	if validationErr.Param != "--timeout" {
+		t.Fatalf("Param = %q, want --timeout", validationErr.Param)
+	}
+	if validationErr.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("Subtype = %q, want %q", validationErr.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if !errors.Is(err, parseErr) {
+		t.Fatal("converted validation error does not preserve the flag parse cause")
+	}
+}
+
 func TestFlagDidYouMean_InvalidAliasValueUsesCallerSpelling(t *testing.T) {
 	tests := []struct {
 		name      string

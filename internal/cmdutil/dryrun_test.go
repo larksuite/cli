@@ -10,6 +10,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/client"
@@ -190,6 +191,49 @@ func TestPrintDryRun_JSON(t *testing.T) {
 	call, ok := api[0].(map[string]interface{})
 	if !ok || call["url"] != "/open-apis/test" {
 		t.Fatalf("api[0] = %#v", api[0])
+	}
+}
+
+func TestPrintDryRun_RequestTimeout(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		timeout  time.Duration
+		withFile bool
+		want     string
+	}{
+		{name: "standard", timeout: 5 * time.Second, want: "5s"},
+		{name: "file upload", timeout: 5 * time.Second, withFile: true, want: "5s"},
+		{name: "zero omitted"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			request := client.RawApiRequest{Method: "GET", URL: "/open-apis/test", Timeout: tt.timeout}
+			opts := DryRunOutputOptions{Format: "json", Out: &buf}
+			var err error
+			if tt.withFile {
+				err = PrintDryRunWithFile(request, &core.CliConfig{}, opts, FileUploadMeta{FieldName: "file", FilePath: "x"})
+			} else {
+				err = PrintDryRun(request, &core.CliConfig{}, opts)
+			}
+			if err != nil {
+				t.Fatalf("dry-run failed: %v", err)
+			}
+			var envelope struct {
+				Data struct {
+					API []map[string]interface{} `json:"api"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(buf.Bytes(), &envelope); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			got, exists := envelope.Data.API[0]["timeout"]
+			if tt.want == "" && exists {
+				t.Fatalf("timeout = %v, want omitted", got)
+			}
+			if tt.want != "" && got != tt.want {
+				t.Fatalf("timeout = %v, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
