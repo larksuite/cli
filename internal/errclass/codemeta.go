@@ -53,15 +53,16 @@ var codeMeta = map[int]CodeMeta{
 	99991662: {Category: errs.CategoryAuthorization, Subtype: errs.SubtypeAppDisabled},      // app currently disabled in tenant
 
 	// CategoryAPI
-	99991400: {Category: errs.CategoryAPI, Subtype: errs.SubtypeRateLimit, Retryable: true},
-	1061045:  {Category: errs.CategoryAPI, Subtype: errs.SubtypeConflict, Retryable: true},
-	131009:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeConflict, Retryable: true}, // wiki write-path lock contention; retryable with backoff
-	1064510:  {Category: errs.CategoryAPI, Subtype: errs.SubtypeCrossTenant},
-	1064511:  {Category: errs.CategoryAPI, Subtype: errs.SubtypeCrossBrand},
-	1310246:  {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},
-	1063006:  {Category: errs.CategoryAPI, Subtype: errs.SubtypeRateLimit}, // drive perm-apply quota; 5/day, not short-term retryable
-	1063007:  {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},
-	231205:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeOwnershipMismatch},
+	800004006: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters}, // common invalid parameter
+	99991400:  {Category: errs.CategoryAPI, Subtype: errs.SubtypeRateLimit, Retryable: true},
+	1061045:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeConflict, Retryable: true},
+	131009:    {Category: errs.CategoryAPI, Subtype: errs.SubtypeConflict, Retryable: true}, // wiki write-path lock contention; retryable with backoff
+	1064510:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeCrossTenant},
+	1064511:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeCrossBrand},
+	1310246:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},
+	1063006:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeRateLimit}, // drive perm-apply quota; 5/day, not short-term retryable
+	1063007:   {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},
+	231205:    {Category: errs.CategoryAPI, Subtype: errs.SubtypeOwnershipMismatch},
 
 	// CategoryConfig
 	99991543: {Category: errs.CategoryConfig, Subtype: errs.SubtypeInvalidClient}, // RFC 6749 §5.2 — app_id / app_secret incorrect (Open API)

@@ -27,9 +27,21 @@ type Meta struct {
 	Count       int             `json:"count,omitempty"`
 	Rollback    string          `json:"rollback,omitempty"`
 	Pagination  *PaginationMeta `json:"pagination,omitempty"`
+	Next        []NextAction    `json:"next,omitempty"`
 	Total       *int            `json:"total,omitempty"`
 	HitCount    *int            `json:"hit_count,omitempty"`
 	MissedCount *int            `json:"missed_count,omitempty"`
+}
+
+// NextAction is a typed "suggested next command" that an AI caller can execute
+// directly.
+type NextAction struct {
+	Label   string `json:"label"`
+	Command string `json:"command"`
+	// Template, when true, marks a Command that contains <...> placeholders and
+	// must be fully substituted by the caller before execution; it is not
+	// directly executable as-is. Directly executable commands omit the field.
+	Template bool `json:"template,omitempty"`
 }
 
 // PaginationMeta reports how a paginated read ended.

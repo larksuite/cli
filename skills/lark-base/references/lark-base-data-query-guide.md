@@ -1,6 +1,8 @@
 # Base data-query guide
 
-Read this guide after the [data analysis SOP](lark-base-data-analysis-sop.md) enters the Cloud path and selects `+data-query`, or directly when the user explicitly asks about the `+data-query` command or DSL. It provides common aggregation fewshots; use [lark-base-data-query.md](lark-base-data-query.md) only for complete DSL fields, operators, limits, response details, or error recovery.
+> **默认路由：** 自然语言问数、统计和分析统一走 `base:assistant`。仅当用户明确指定 `lark-cli base +data-query`、正在排障，或执行确定性写入所需的内部查询时使用本文；详见 [`../SKILL.md`](../SKILL.md)。
+
+Read this guide after the [data analysis SOP](lark-base-data-analysis-sop.md) enters the Cloud path and selects `+data-query`, or directly when the user explicitly asks about the `+data-query` command or DSL. It provides common aggregation fewshots and command selection; use [lark-base-data-query.md](lark-base-data-query.md) only for complete DSL fields, operators, limits, response details, or error recovery.
 
 ## When to use
 

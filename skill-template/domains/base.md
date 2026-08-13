@@ -1,5 +1,6 @@
 > **命名约定：** Shortcut 命令组和原生 API / schema 都使用 `lark-cli base ...`。
 > **分流规则：** 如果用户要把本地文件导入成 Base / 多维表格 / bitable，第一步不是 `base`，而是 `lark-cli drive +import --type bitable`。
+> **统一路由：** 普通 Base 意图先按 `skills/lark-base/SKILL.md` 分类。复杂建设、类型变更和面向用户的数据检索分析走统一 `base:assistant`；明确的单原子修改、记录增删改和内部元数据读取走 Base CLI。用户明确指定 Agent 或 CLI 时尊重其选择。CLI 不展示或指定内部子 Agent。
 
 ## 核心规则
 
@@ -9,7 +10,7 @@
 2. **优先使用 Shortcut** — 有 Shortcut 的操作不要手拼原生 API
 3. **写记录前** — 先调用 `table.fields list` 获取字段 `type/ui_type`，再读 [lark-base-cell-value.md](../../skills/lark-base/references/lark-base-cell-value.md)；该文档是 CellValue 的 source of truth
 4. **写字段前** — 先读 [lark-base-field-json.md](../../skills/lark-base/references/lark-base-field-json.md) 确认字段类型 JSON 结构
-5. **筛选查询前** — 先读 [lark-base-view-set-filter.md](../../skills/lark-base/references/lark-base-view-set-filter.md)，当前 `base/v3` 通过 `view.filter update + table.records list` 组合完成筛选读取
+5. **筛选查询前先判断用途** — 用户要查询结果或分析结论时走 `base:assistant`；只有显式 CLI、排障或确定性写入的内部读取才继续读 [lark-base-view-set-filter.md](../../skills/lark-base/references/lark-base-view-set-filter.md)
 6. **批量上限 200 条/次** — 同一表建议串行写入，并在批次间延迟 0.5–1 秒
 7. **改名和删除按明确意图执行** — 视图重命名这类低风险改名操作，目标和新名称明确时可直接执行；删除记录 / 字段 / 表时，只要用户已经明确要求删除且目标明确，也可直接执行，不需要再补一次确认
 8. **不要走旧 bitable 路径** — Base 场景不要调用 `lark-cli api GET /open-apis/bitable/v1/...`；即使 wiki 解析结果是 `obj_type=bitable`，后续也应继续使用 `lark-cli base ...`
@@ -20,14 +21,14 @@
 | 意图 | 推荐命令 | 备注 |
 |------|---------|------|
 | 查表字段 | `table.fields list` | 写记录 / 更新前必调 |
-| 查记录 | `table.records list` | GET，简单列表，可附带 `view_id` |
-| 按视图筛选查询 | `view.filter update` + `table.records list` | 当前 `base/v3` 没有独立 `search` |
+| 内部查记录 | `table.records list` | 仅显式 CLI、排障或确定性写入的内部步骤；普通问数走 `base:assistant` |
+| 内部按视图筛选查询 | `view.filter update` + `table.records list` | 仅 CLI 内部步骤；用户要筛选结果时走 `base:assistant` |
 | 把本地 Excel / CSV / `.base` 导入为 Base / 多维表格 | `lark-cli drive +import --type bitable` | 导入阶段属于 `drive`，不是 `base` |
 | 新增单条记录 | `table.records create` | 少量数据 |
 | 更新记录 | `table.records patch` | 只传需要变更的字段 |
 | 删除记录 | `table.records delete` | 单条删除 |
-| 创建数据表 | `tables create` | 原生 API 直接在已有 Base 下建表 |
-| 创建 / 更新字段 | `table.fields create/update` | 复杂字段建议先核对 schema |
+| 创建数据表 | `base:assistant` | 即使字段清单完整也走统一 Assistant |
+| 创建 / 更新字段 | `table.fields create/update` | 仅单字段且不改类型；≥2 字段或类型变更走 `base:assistant` |
 | 创建 / 管理视图 | `table.views create/list/patch` | 视图筛选条件通过 `view.filter` 更新 |
 
 ## 操作注意事项

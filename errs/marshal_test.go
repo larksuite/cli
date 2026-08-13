@@ -307,3 +307,23 @@ func TestConfirmationRequiredError_MarshalJSON(t *testing.T) {
 		}
 	}
 }
+
+// TestValidationErrorResolvedAnswersJSON pins the resolved_answers wire shape —
+// the failed_precondition extension the agents input_required flow's recovery
+// playbook branches on (the field NAME is the AI-consumer contract).
+func TestValidationErrorResolvedAnswersJSON(t *testing.T) {
+	ve := NewValidationError(SubtypeFailedPrecondition, "任务已不在等待输入").
+		WithResolvedAnswers(map[string][]string{"q1_a8": {"by_region"}})
+	b, err := json.Marshal(ve)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `"resolved_answers":{"q1_a8":["by_region"]}`; !strings.Contains(string(b), want) {
+		t.Errorf("marshal should carry %s, got %s", want, b)
+	}
+	// Absent when unset (omitempty).
+	b, _ = json.Marshal(NewValidationError(SubtypeFailedPrecondition, "x"))
+	if strings.Contains(string(b), "resolved_answers") {
+		t.Errorf("unset resolved_answers must be omitted, got %s", b)
+	}
+}

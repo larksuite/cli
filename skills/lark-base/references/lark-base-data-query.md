@@ -1,6 +1,8 @@
 
 # Base data-query DSL SSOT
 
+> **默认路由：** 用户要查询结果或分析结论时统一走 `base:assistant`。本文 DSL 只服务于显式 CLI、排障或确定性写入的内部查询，不是自然语言问数默认入口；详见 [`../SKILL.md`](../SKILL.md)。
+
 > **入口指南**: [lark-base-data-query-guide.md](lark-base-data-query-guide.md) | **认证或授权问题**: [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)
 
 本文档是 `+data-query` JSON DSL 的单一事实来源（SSOT），用于说明完整字段、操作符、限制、返回和错误恢复。数据表查询与分析先由 [data analysis SOP](lark-base-data-analysis-sop.md) 选路；Cloud SOP 选定 `+data-query` 后先读 [data-query guide](lark-base-data-query-guide.md)，guide 未覆盖需求或用户明确要求完整 DSL/API reference 时再读本文。

@@ -9,6 +9,8 @@ import (
 	"io/fs"
 	"strings"
 
+	_ "github.com/larksuite/cli/agents"
+	"github.com/larksuite/cli/cmd/agents"
 	"github.com/larksuite/cli/cmd/api"
 	"github.com/larksuite/cli/cmd/auth"
 	"github.com/larksuite/cli/cmd/completion"
@@ -283,6 +285,7 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 	rootCmd.AddCommand(cmdupdate.NewCmdUpdate(f))
 	rootCmd.AddCommand(cmdevent.NewCmdEvents(f))
 	rootCmd.AddCommand(skill.NewCmdSkill(f))
+	rootCmd.AddCommand(agents.NewCmdAgents(f))
 	if !cfg.skipService {
 		if cfg.serviceCatalog != nil {
 			service.RegisterServiceCommandsFromCatalog(ctx, rootCmd, f, *cfg.serviceCatalog)

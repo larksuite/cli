@@ -160,6 +160,51 @@ func TestLookupCodeMeta_WikiCodes(t *testing.T) {
 	}
 }
 
+func TestLookupCodeMeta_BaseAgentCodes(t *testing.T) {
+	cases := []struct {
+		code        int
+		wantCat     errs.Category
+		wantSubtype errs.Subtype
+		wantRetry   bool
+	}{
+		{800004000, errs.CategoryAPI, errs.SubtypeNotFound, false},
+		{800004011, errs.CategoryAuthorization, errs.SubtypePermissionDenied, false},
+		{800004780, errs.CategoryAuthorization, errs.SubtypePermissionDenied, false},
+		{800004135, errs.CategoryAPI, errs.SubtypeRateLimit, true},
+		{800004907, errs.CategoryAPI, errs.SubtypeConflict, false},
+		{800007006, errs.CategoryAPI, errs.SubtypeConflict, false},
+		{800004921, errs.CategoryAPI, errs.SubtypeQuotaExceeded, false},
+		{800004936, errs.CategoryAPI, errs.SubtypeQuotaExceeded, false},
+		{800004961, errs.CategoryAPI, errs.SubtypeQuotaExceeded, false},
+		{800004962, errs.CategoryAPI, errs.SubtypeQuotaExceeded, false},
+		{800004991, errs.CategoryAPI, errs.SubtypeQuotaExceeded, false},
+		{800004906, errs.CategoryPolicy, errs.SubtypeContentSafety, false},
+		{800004932, errs.CategoryAPI, errs.SubtypeServerError, true},
+		{800004934, errs.CategoryAPI, errs.SubtypeServerError, true},
+		{800004946, errs.CategoryAPI, errs.SubtypeServerError, true},
+		{800004988, errs.CategoryAPI, errs.SubtypeServerError, true},
+		{800005009, errs.CategoryAPI, errs.SubtypeServerError, true},
+		{800008006, errs.CategoryAPI, errs.SubtypeServerError, true},
+		{800006002, errs.CategoryInternal, errs.SubtypeInvalidResponse, false},
+		{800006003, errs.CategoryAPI, errs.SubtypeInvalidParameters, false},
+		{800009999, errs.CategoryInternal, errs.SubtypeSDKError, false},
+		{800004953, errs.CategoryAPI, errs.SubtypeNotFound, false},
+		{800004989, errs.CategoryAPI, errs.SubtypeNotFound, false},
+	}
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("%d", tc.code), func(t *testing.T) {
+			got, ok := LookupCodeMeta(tc.code)
+			if !ok {
+				t.Fatalf("LookupCodeMeta(%d) ok=false, want true", tc.code)
+			}
+			if got.Category != tc.wantCat || got.Subtype != tc.wantSubtype || got.Retryable != tc.wantRetry {
+				t.Fatalf("LookupCodeMeta(%d) = %+v, want Category=%v Subtype=%v Retryable=%v",
+					tc.code, got, tc.wantCat, tc.wantSubtype, tc.wantRetry)
+			}
+		})
+	}
+}
+
 func TestLookupCodeMeta_Unknown(t *testing.T) {
 	_, ok := LookupCodeMeta(999999)
 	if ok {

@@ -63,7 +63,15 @@ type ValidationError struct {
 	Problem
 	Param  string         `json:"param,omitempty"`
 	Params []InvalidParam `json:"params,omitempty"`
-	Cause  error          `json:"-"`
+	// ResolvedAnswers is the failed_precondition extension for the agents
+	// input_required flow (per-Subtype extension field, same convention as
+	// PermissionError.MissingScopes): when a question-group answer arrives after
+	// the group was already resolved (another endpoint answered first, or a
+	// retry landed twice), the provider echoes WHAT was accepted — keyed like
+	// the answer submission itself — so an AI caller can tell the user the
+	// outcome without parsing prose.
+	ResolvedAnswers map[string][]string `json:"resolved_answers,omitempty"`
+	Cause           error               `json:"-"`
 }
 
 // InvalidParam is one structured validation diagnostic: the parameter that
@@ -81,6 +89,11 @@ type InvalidParam struct {
 	// parameter (e.g. did-you-mean flags or subcommands), so an agent can retry
 	// without parsing the human-facing hint. Omitted when there are none.
 	Suggestions []string `json:"suggestions,omitempty"`
+	// Spec optionally embeds the parameter's full declaration (type, enum,
+	// default, description, ...) so the error is self-contained: a caller can
+	// fix the value without a discovery round-trip. Producers pass a
+	// JSON-marshalable declaration struct; omitted when not applicable.
+	Spec any `json:"spec,omitempty"`
 }
 
 // Unwrap exposes the wrapped cause so errors.Unwrap / errors.Is can traverse
@@ -137,6 +150,22 @@ func (e *ValidationError) WithRetryable() *ValidationError {
 
 func (e *ValidationError) WithParam(param string) *ValidationError {
 	e.Param = param
+	return e
+}
+
+// WithResolvedAnswers attaches the already-accepted answer set to a
+// failed_precondition (see the ResolvedAnswers field doc). The map and its
+// value slices are cloned — the builder never aliases caller-owned memory
+// (same immutability rule as WithMissingScopes/slices.Clone).
+func (e *ValidationError) WithResolvedAnswers(answers map[string][]string) *ValidationError {
+	if len(answers) == 0 {
+		return e
+	}
+	cp := make(map[string][]string, len(answers))
+	for k, v := range answers {
+		cp[k] = slices.Clone(v)
+	}
+	e.ResolvedAnswers = cp
 	return e
 }
 

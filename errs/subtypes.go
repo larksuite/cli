@@ -12,9 +12,11 @@ const (
 
 // CategoryValidation subtypes
 const (
-	SubtypeInvalidArgument    Subtype = "invalid_argument"    // user-supplied flag / arg failed validation (gRPC INVALID_ARGUMENT alignment)
-	SubtypeFailedPrecondition Subtype = "failed_precondition" // request is valid but the system/resource state is not in the state required to execute; caller must change state (not retry) — e.g. ambiguous remote mapping (gRPC FAILED_PRECONDITION alignment)
-	SubtypeCommandUnavailable Subtype = "command_unavailable" // command not included in this build (integrator-restricted distribution); absent, not gated
+	SubtypeInvalidArgument       Subtype = "invalid_argument"       // user-supplied flag / arg failed validation (gRPC INVALID_ARGUMENT alignment)
+	SubtypeFailedPrecondition    Subtype = "failed_precondition"    // request is valid but the system/resource state is not in the state required to execute; caller must change state (not retry) — e.g. ambiguous remote mapping (gRPC FAILED_PRECONDITION alignment)
+	SubtypeCommandUnavailable    Subtype = "command_unavailable"    // command not included in this build (integrator-restricted distribution); absent, not gated
+	SubtypeUnsupportedCapability Subtype = "unsupported_capability" // the addressed provider/agent does not support the requested capability (capability gating on the agent card); exit 2, no request is sent
+	SubtypeUnavailableForBrand   Subtype = "unavailable_for_brand"  // the addressed agent/capability exists but is not available under the current login brand (feishu vs lark); exit 2, no request is sent (sibling of unsupported_capability)
 )
 
 // CategoryAuthentication subtypes

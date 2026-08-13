@@ -55,3 +55,8 @@ cover*.out
 
 lark-env.sh
 /automations/
+
+# Local-only proof artifacts and coverage reports (never committed)
+coverage.html
+tests_e2e/
+tests_skill_eval/
