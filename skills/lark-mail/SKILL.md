@@ -126,7 +126,7 @@ metadata:
 - 修改邮件标签/已读状态/文件夹：优先使用 `+message-modify`。ref: [`+message-modify`](references/lark-mail-message-modify.md)
 - 软删除邮件：优先使用 `+message-trash`。ref: [`+message-trash`](references/lark-mail-message-trash.md)
 - 收信规则：创建、验证、删除自动处理收到邮件的规则。ref: [lark-mail-rules](references/lark-mail-rules.md)
-- 自动回复：查看或全量更新用户邮箱自动回复设置。使用原生 Meta API `user_mailbox.auto_reply get/update`，读取需 `mail:user_mailbox:readonly`，更新需 `mail:user_mailbox`。
+- 自动回复：查看或全量更新用户邮箱自动回复设置。使用原生 Meta API `user_mailbox.auto_reply get/update`，读取需 `mail:user_mailbox.message:readonly`，更新需 `mail:user_mailbox.message:modify`。
 - 分享邮件到 IM：分享邮件或会话到群聊、个人会话。ref: [lark-mail-share-to-chat](references/lark-mail-share-to-chat.md)
 - 发送日程邀请邮件：在邮件中嵌入 `text/calendar` 日程邀请。ref: [lark-mail-calendar-invite](references/lark-mail-calendar-invite.md)
 - 编写复杂 HTML 正文：复杂 HTML、本地图片、安全不确定时读取规范或运行 `+lint-html`；普通正文无需预读。ref: [lark-mail-html](references/lark-mail-html.md)
@@ -278,8 +278,8 @@ lark-cli mail user_mailbox.folders create \
 
 | 命令 | Scope |
 |---|---|
-| `user_mailbox.auto_reply get` | `mail:user_mailbox:readonly` |
-| `user_mailbox.auto_reply update` | `mail:user_mailbox` |
+| `user_mailbox.auto_reply get` | `mail:user_mailbox.message:readonly` |
+| `user_mailbox.auto_reply update` | `mail:user_mailbox.message:modify` |
 
 ## Shortcuts（推荐优先使用）
 
