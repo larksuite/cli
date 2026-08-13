@@ -14,7 +14,7 @@ metadata:
 
 **CRITICAL：先判断场景，再读取该场景的参考文件；不要在任务开始时一次性读取全部参考文件。每个文件只在首次进入对应阶段时读取一次。**
 
-**身份：文档操作推荐显式指定 `--as user`。例外：如果 `doc_token` / `note_doc_token` 等是从 bot 链路（如 `vc +detail --as bot` → `note +detail --as bot`）取得的，应继续显式使用 `--as bot`，不要无条件切回 user——身份延续规则见 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)。**
+**身份：文档操作推荐显式指定 `--as user`。**
 
 **所有表示本地文件的 `@path` 均使用 `@./xxx` 形式的相对路径，并以运行 `lark-cli` 时的当前工作目录（CWD）为基准。**
 

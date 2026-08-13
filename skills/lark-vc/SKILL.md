@@ -22,6 +22,8 @@ metadata:
 
 身份是跨命令工作流的状态，不是单条命令的局部参数：一旦某个 ID（如 `note_id`、`minute_token`）由某个身份取得，后续消费它的命令（包括跨到 lark-minutes / lark-note / lark-doc）必须显式沿用相同 `--as`；不要依赖 profile 默认身份，也不要为绕过权限错误切换身份。完整规则见 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) 的「身份延续」。
 
+**本链路的身份策略覆盖到最后一跳读正文**：`vc +detail` → `note +detail` → `docs +fetch --doc <note_doc_token> / <verbatim_doc_token>` 全程用同一个 `--as`。[lark-doc](../lark-doc/SKILL.md) 对普通文档推荐 `--as user`，**不覆盖本链路取得的纪要文档 token**；读正文时不要因此切回 user。
+
 本 skill 默认使用 `--as user`。`+detail`、`+recording`、`meeting get`、`+meeting-list-active`、`+meeting-events` 和 `+meeting-message-send` 也支持 `--as bot`；`+meeting-events` 和 `+meeting-message-send` 必须沿用 `meeting_id` 的来源身份。`+search` 仅支持 `--as user`。
 
 ```bash

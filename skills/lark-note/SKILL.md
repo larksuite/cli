@@ -12,6 +12,8 @@ metadata:
 
 身份：`+detail` 支持 `--as user` / `--as bot`；`+transcript` 仅支持 `--as user`。`note_id` 若由某个身份取得（例如 `vc +detail --as bot`），`+detail` 必须显式沿用同一个 `--as`——不要依赖 profile 默认身份。完整身份延续规则见 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，使用前必读。
 
+`+detail` 返回的 `note_doc_token` / `verbatim_doc_token` / `shared_doc_tokens` 交给 [lark-doc](../lark-doc/SKILL.md) 读正文时，仍要显式带上同一个 `--as`。lark-doc 对普通文档推荐 `--as user`，**不覆盖这些纪要文档 token 的来源身份**。
+
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-vc/references/vc-domain-boundaries.md`](../lark-vc/references/vc-domain-boundaries.md)**，不读将导致命令使用、会议产物决策、领域边界职责判断错误：
 > 1. 了解日历 & VC、会议产物 & 文档的关联关系和职责划分
 > 2. 了解会议产物（妙记和纪要）之间的关联关系，例如：**妙记和纪要产生条件相互独立**
