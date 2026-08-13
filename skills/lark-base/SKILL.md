@@ -1,6 +1,6 @@
 ---
 name: lark-base
-version: 1.2.13
+version: 1.2.14
 description: "飞书多维表格（Base）操作：建表、字段、记录、视图、统计、公式/lookup、表单、仪表盘、workflow、角色权限；遇到 Base/多维表格/bitable 或 /base/ 链接时使用。文件导入/导出转 lark-drive，认证/授权转 lark-shared。"
 metadata:
   requires:
@@ -63,9 +63,9 @@ Block 的 `id` 按类型直接作为对应模块坐标：
 
 ## Table Block（The Core）
 
-Table 本身是 Base Block，也是 Base 的核心数据存储层；Field、Record、View 和 Form 是 Table 内部对象，不是 Base Block。业务数据查询、写入、关联、统计和分析都从 Table 开始；已有可信 `table_id` 时直接进入下方对象操作，多表的 `+field-list` 可以并发执行。
+Table 本身是 Base Block，也是 Base 的核心数据存储层；Field、Record、View 和 Form 是 Table 内部对象，不是 Base Block。业务数据查询、写入、关联、统计和分析都从 Table 开始；常规资源链路是 `+table-list → +field-list → +record-list` / `+record-search`，多表的 `+field-list` 可以并发执行。
 
-**读取 Table：** 目标表未知或需要枚举时按上文资源目录定位；已有可信 `table_id` 时直接使用 `+table-get` 或下方对象命令。Table 专属复制使用 `+table-copy`，异步状态用 `+table-copy-status`。
+**读取 Table：** `+table-list` 定位表，`+table-get` 读取详情。Table 专属复制使用 `+table-copy`，异步状态用 `+table-copy-status`；schema 和 records 由下方内部对象操作。
 
 Table 下的大多数更新通过异步链路生效，接口成功返回后立即读取可能暂时看不到最新状态。优先以写入成功响应作为操作结果；任务必须确认最终状态时，先完成本轮相关变更，再统一读取验收，避免逐项写后立即读回。
 
