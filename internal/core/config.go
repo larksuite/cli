@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/larksuite/cli/errs"
@@ -93,12 +94,11 @@ func (c *AppConfig) SetDPoPMode(mode DPoPMode) {
 
 // MultiAppConfig is the multi-app config file format.
 type MultiAppConfig struct {
-	StrictMode       StrictMode  `json:"strictMode,omitempty"`
-	RiskControl      *bool       `json:"riskControl,omitempty"`
-	CurrentApp       string      `json:"currentApp,omitempty"`
-	PreviousApp      string      `json:"previousApp,omitempty"`
-	KeylessSignerCmd string      `json:"keylessSignerCmd,omitempty"`
-	Apps             []AppConfig `json:"apps"`
+	StrictMode  StrictMode  `json:"strictMode,omitempty"`
+	RiskControl *bool       `json:"riskControl,omitempty"`
+	CurrentApp  string      `json:"currentApp,omitempty"`
+	PreviousApp string      `json:"previousApp,omitempty"`
+	Apps        []AppConfig `json:"apps"`
 }
 
 // RiskControlEnabled resolves the workspace policy. An omitted preference
@@ -225,6 +225,7 @@ type CliConfig struct {
 	SupportedIdentities uint8  `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
 	AuthMethod          string // "" == client_secret; AuthMethodPrivateKeyJWT
 	KeyLabel            string // resolved TEE key handle for private_key_jwt
+	KeyProvider         string // empty == built-in signer; otherwise an explicit external signer route
 }
 
 // identityBotBit is the bit flag for bot identity in SupportedIdentities.
@@ -346,10 +347,18 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 	// confusing secret-resolution error for an otherwise-valid pkjwt profile.
 	var secret string
 	if app.AuthMethod == AuthMethodPrivateKeyJWT {
-		if app.KeyRef == nil || app.KeyRef.Source != "tee" || app.KeyRef.ID == "" {
+		if app.KeyRef == nil || app.KeyRef.Source != SecretSourceTEE || app.KeyRef.ID == "" {
 			return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
 				"private_key_jwt requires a valid tee key handle (keyRef)").
 				WithHint("re-run: lark-cli config init --new --private-key-jwt")
+		}
+		provider := strings.TrimSpace(app.KeyRef.Provider)
+		switch provider {
+		case "", KeylessProviderLarkSuite:
+		default:
+			return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+				"unknown keyless signer provider %q", app.KeyRef.Provider).
+				WithHint("supported external provider: %s; omit provider to use the built-in signer", KeylessProviderLarkSuite)
 		}
 	} else {
 		if err := ValidateSecretKeyMatch(app.AppId, app.AppSecret); err != nil {
@@ -382,6 +391,7 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 	}
 	if app.KeyRef != nil {
 		cfg.KeyLabel = app.KeyRef.ID
+		cfg.KeyProvider = strings.TrimSpace(app.KeyRef.Provider)
 	}
 	if len(app.Users) > 0 {
 		cfg.UserOpenId = app.Users[0].UserOpenId
