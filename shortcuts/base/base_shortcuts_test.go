@@ -372,7 +372,7 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 				"Option intersection filter",
 				"Query priority",
 				"Example for analysis",
-				"prefer --format ndjson --output ./records.ndjson --minimal-stdout",
+				"prefer --format ndjson --output ./records.ndjson",
 				"keep long user data out of model context",
 				"process the records file with Python or another data analysis engine",
 				"Follow the lark-base data analysis SOP",
@@ -399,7 +399,7 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 				"Query priority",
 				"Use --json only when you need to pass the full search body directly",
 				"Example for analysis",
-				"prefer --format ndjson --output ./records.ndjson --minimal-stdout",
+				"prefer --format ndjson --output ./records.ndjson",
 				"keep long user data out of model context",
 				"process the records file with Python or another data analysis engine",
 				"Follow the lark-base data analysis SOP",
@@ -419,7 +419,7 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 				"lark-cli base +record-get --base-token <base_token> --table-id <table_id> --record-id <record_id>",
 				"lark-cli base +record-get --base-token <base_token> --table-id <table_id> --record-id rec_001 --record-id rec_002 --field-id Name --field-id Status",
 				"Example for analysis input",
-				"prefer --format ndjson --output ./records.ndjson --minimal-stdout",
+				"prefer --format ndjson --output ./records.ndjson",
 				"keep long user data out of model context",
 				"process the records file with Python or another data analysis engine",
 				"Follow the lark-base data analysis SOP",
@@ -448,6 +448,15 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 			for _, want := range tt.wantTips {
 				if !strings.Contains(tips, want) {
 					t.Fatalf("tips missing %q:\n%s", want, tips)
+				}
+			}
+			for _, flagName := range []string{"minimal-stdout", "jq-records"} {
+				flag := cmd.Flags().Lookup(flagName)
+				if flag == nil || !flag.Hidden {
+					t.Fatalf("--%s should remain available but hidden", flagName)
+				}
+				if strings.Contains(help, "--"+flagName) || strings.Contains(tips, "--"+flagName) {
+					t.Fatalf("--%s should not appear in help or tips", flagName)
 				}
 			}
 		})

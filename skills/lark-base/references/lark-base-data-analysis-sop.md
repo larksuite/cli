@@ -6,7 +6,7 @@
 
 1. 明确所有需要参与分析的表及其 `records_count`。
 2. 如果结论必须依赖 LLM 理解原始内容，例如开放文本打标、情绪或意图识别、主题归纳、语义分类、相似性判断或实体消歧，进入下文“LLM 语义分析”路径。
-3. 对于其余确定性查询，任一分析表超过 2000 行时，先从任务意图中为所有大表提取可在单表内独立执行的谓词，例如日期范围、状态和关键词，再按下文将谓词逐表下推，并用 `--field-id '<一个简单标量字段>' --limit 2000 --format ndjson --output <probe>.ndjson --minimal-stdout` 探测。目标是每张表都达到 `has_more=false`；任一表无法压缩到 2000 行以内时，转 [lark-base-data-analysis-cloud.md](lark-base-data-analysis-cloud.md) 用云端的数据分析能力。
+3. 对于其余确定性查询，任一分析表超过 2000 行时，先从任务意图中为所有大表提取可在单表内独立执行的谓词，例如日期范围、状态和关键词，再按下文将谓词逐表下推，并用 `--field-id '<一个简单标量字段>' --limit 2000 --format ndjson --output <probe>.ndjson` 探测。目标是每张表都达到 `has_more=false`；任一表无法压缩到 2000 行以内时，转 [lark-base-data-analysis-cloud.md](lark-base-data-analysis-cloud.md) 用云端的数据分析能力。
 4. 所有分析表都不超过 2000 行后：若只有一张表且短 jq 可清晰完成筛选、计数、简单分组/聚合/排序、TopN 可以使用 jq。
 5. 其余确定性任务比如多表、日历计算和复杂数据分析，在 Python 可用时使用 Python，否则进入 [Cloud SOP](lark-base-data-analysis-cloud.md)。
 
@@ -14,7 +14,7 @@
 
 ## 执行与交付
 
-所有 records 读取统一使用 `--format ndjson --output <artifact>.ndjson --minimal-stdout`。NDJSON 将大记录集写入 records 文件，将摘要、列 schema 和 stats 写入 manifest；minimal stdout 只返回 artifact 路径和短摘要，避免把过长用户数据加载进模型上下文。用 Python 或数据分析引擎直接处理 records 文件。未传 `--limit` 时最多读取 2000 条；仅在探测、预览或用户明确要求前 N 条时缩小限制。
+所有 records 读取统一使用 `--format ndjson --output <artifact>.ndjson`。NDJSON 将大记录集写入 records 文件，并在 stdout 返回包含摘要、列 schema 和 stats 的 manifest，避免把过长用户数据直接加载进模型上下文。用 Python 或数据分析引擎直接处理 records 文件。未传 `--limit` 时最多读取 2000 条；仅在探测、预览或用户明确要求前 N 条时缩小限制。
 
 ### NDJSON 读取示例
 
@@ -27,7 +27,6 @@ lark-cli base +record-list \
   --field-id <field> \
   --format ndjson \
   --output ./records.ndjson \
-  --minimal-stdout \
   --as user
 ```
 
@@ -91,7 +90,7 @@ Agent 上下文曾下载过当前表的 NDJSON 时，按以下规则判断是否
 
 ## Manifest
 
-`--output <path>.ndjson` 生成 `<path>.ndjson` 与 `<path>.manifest.json`；记录写入 NDJSON，stdout 返回 manifest，`--minimal-stdout` 只保留文件位置、文件字节数、`records_count` 和 `has_more`。
+`--output <path>.ndjson` 生成 `<path>.ndjson` 与 `<path>.manifest.json`；记录写入 NDJSON，stdout 返回 manifest。
 
 分析 artifact 使用相对路径输出到当前工作目录，例如 `--output ./records.ndjson`。
 
@@ -189,7 +188,7 @@ Agent 上下文曾下载过当前表的 NDJSON 时，按以下规则判断是否
 
 NDJSON 每行是一条 record。单表短筛选、计数和简单聚合可直接用 jq；下面筛选“状态”包含“进行中”的记录，并统计记录数和金额合计：
 
-默认导出后使用本地 `jq -s`，同一 artifact 可反复查询而无需重新下载。表达式很短且只执行一次，或本地 jq 不可用时，可改用 `--jq-records '<expr>'` 等价 `jq -s '<expr>' records.ndjson`。使用 CLI 内置 jq 处理 NDJSON 记录时必须使用 `--jq-records`；通用 `--jq` 不支持 ndjson。
+默认导出后使用本地 `jq -s`，同一 artifact 可反复查询而无需重新下载；本地 jq 不可用时，使用 Python 或其他数据分析引擎处理 records 文件。
 
 ```bash
 lark-cli base +record-list \
@@ -198,8 +197,7 @@ lark-cli base +record-list \
   --field-id 状态 \
   --field-id 金额 \
   --format ndjson \
-  --output records.ndjson \
-  --minimal-stdout &&
+  --output records.ndjson &&
 jq -s '
   map(select((.["状态"] | index("进行中")) != null)) as $records
   | ($records | map(.["金额"] | select(. != null))) as $amounts
