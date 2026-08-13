@@ -16,7 +16,7 @@
 //	cd extension/command/examples/chat-brief
 //	go build -o chat-brief-cli .
 //	./chat-brief-cli im +chat-brief --help                     # description + flags from tags
-//	./chat-brief-cli im +chat-brief --chat-id oc_xxx --dry-run # offline request preview
+//	./chat-brief-cli im +chat-brief --chat-id oc_xxx --dry-run # request preview, sends nothing
 //	./chat-brief-cli im +chat-brief --chat-id oc_xxx           # real call (requires auth login)
 //	./chat-brief-cli im +chat-brief-list --page-all --page-limit 2   # framework pagination flags
 //	./chat-brief-cli auth login --domain im                    # aggregates business scopes too

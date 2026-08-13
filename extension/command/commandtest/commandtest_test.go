@@ -179,7 +179,8 @@ func TestExecuteRejectsResultAndErrorTogether(t *testing.T) {
 	}
 }
 
-func TestPreviewPropagatesDryRunE(t *testing.T) {
+// DryRun cannot fail, so Validate is the only hook that can stop a preview.
+func TestPreviewPropagatesValidateError(t *testing.T) {
 	type args struct{}
 	type data struct{}
 	sentinel := command.ValidationErrorf("dry-run input is invalid")
@@ -189,8 +190,11 @@ func TestPreviewPropagatesDryRunE(t *testing.T) {
 			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{command.IdentityUser: {}}},
 		},
 		Hooks: command.Hooks[args, data]{
-			DryRunE: func(context.Context, command.CommandContext, *args) (*command.DryRun, error) {
-				return nil, sentinel
+			Validate: func(context.Context, command.CommandContext, *args) error {
+				return sentinel
+			},
+			DryRun: func(context.Context, command.CommandContext, *args) *command.DryRun {
+				return command.NewDryRun(command.GET("/open-apis/im/v1/chats"))
 			},
 			Execute: func(context.Context, command.CommandContext, *args) (command.Result[data], error) {
 				return command.Success(data{}), nil

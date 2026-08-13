@@ -73,7 +73,7 @@ func (r *Recorder) CommandContext(identity command.Identity) command.CommandCont
 	return r.commandContext(identity, false)
 }
 
-// DryRunContext returns an offline context for invoking a DryRun hook.
+// DryRunContext returns the network-free context the host gives a DryRun hook.
 func (r *Recorder) DryRunContext(identity command.Identity) command.CommandContext {
 	return r.commandContext(identity, true)
 }
@@ -172,7 +172,7 @@ func parsePaginationFlags(arguments []string) (command.PaginationOptions, error)
 	}, nil
 }
 
-// Preview runs Normalize, Validate, and DryRun with an offline test context.
+// Preview runs Normalize, Validate, and DryRun with a network-free test context.
 func Preview[Args any, Data any](ctx context.Context, recorder *Recorder, identity command.Identity, definition command.Definition[Args, Data], args *Args) (*command.DryRun, error) {
 	declaration := command.InspectCommand(command.Define(definition))
 	commandContext := recorder.DryRunContext(identity)
@@ -186,11 +186,8 @@ func Preview[Args any, Data any](ctx context.Context, recorder *Recorder, identi
 			return nil, err
 		}
 	}
-	if declaration.Hooks.DryRun == nil && declaration.Hooks.DryRunE == nil {
+	if declaration.Hooks.DryRun == nil {
 		return nil, errors.New("business command has no DryRun hook")
-	}
-	if declaration.Hooks.DryRunE != nil {
-		return declaration.Hooks.DryRunE(ctx, commandContext, args)
 	}
 	return declaration.Hooks.DryRun(ctx, commandContext, args), nil
 }

@@ -180,30 +180,6 @@ func TestCompileSetsRejectsFileInputSource(t *testing.T) {
 	}
 }
 
-func TestCompileSetsRejectsBothDryRunHooks(t *testing.T) {
-	definition := command.Define(command.Definition[fixtureArgs, fixtureData]{
-		Metadata: command.CommandMetadata{
-			Service: "im", Command: "+external-dry-run-conflict", Description: "Dry-run conflict", Risk: command.RiskRead,
-			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{command.IdentityUser: {}}},
-		},
-		Hooks: command.Hooks[fixtureArgs, fixtureData]{
-			DryRun: func(context.Context, command.CommandContext, *fixtureArgs) *command.DryRun {
-				return command.NewDryRun()
-			},
-			DryRunE: func(context.Context, command.CommandContext, *fixtureArgs) (*command.DryRun, error) {
-				return command.NewDryRun(), nil
-			},
-			Execute: func(context.Context, command.CommandContext, *fixtureArgs) (command.Result[fixtureData], error) {
-				return command.Success(fixtureData{}), nil
-			},
-		},
-	})
-	_, err := CompileSets([]command.Set{{Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{definition}}})
-	if err == nil || !strings.Contains(err.Error(), "cannot both be set") {
-		t.Fatalf("CompileSets() error = %v", err)
-	}
-}
-
 func TestCompileSetsAddsPaginationFlags(t *testing.T) {
 	declaration := command.Define(command.Definition[fixtureArgs, command.Page[fixtureData]]{
 		Metadata: command.CommandMetadata{
@@ -240,14 +216,14 @@ func (r *countingTokenResolver) ResolveToken(context.Context, credential.TokenSp
 	return &credential.TokenResult{Token: "unexpected-token"}, nil
 }
 
-func TestExternalDryRunUsesOfflineContext(t *testing.T) {
+func TestExternalDryRunContextSendsNothing(t *testing.T) {
 	request := command.GET("/open-apis/im/v1/chats/chat_1")
 	var callErr error
 	var scopeErr error
 	executed := false
 	declaration := command.Define(command.Definition[fixtureArgs, fixtureData]{
 		Metadata: command.CommandMetadata{
-			Service: "im", Command: "+external-offline", Description: "Offline preview", Risk: command.RiskRead,
+			Service: "im", Command: "+external-preview", Description: "Preview", Risk: command.RiskRead,
 			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{
 				command.IdentityUser: {
 					RequiredScopes: []string{"im:chat:read"},
@@ -282,7 +258,7 @@ func TestExternalDryRunUsesOfflineContext(t *testing.T) {
 	service := &cobra.Command{Use: "im"}
 	root.AddCommand(service)
 	compiled[0].Mount(service, factory)
-	root.SetArgs([]string{"im", "+external-offline", "--id", "chat_1", "--as", "user", "--dry-run"})
+	root.SetArgs([]string{"im", "+external-preview", "--id", "chat_1", "--as", "user", "--dry-run"})
 	if _, err := root.ExecuteC(); err != nil {
 		t.Fatal(err)
 	}
@@ -307,16 +283,21 @@ func TestExternalDryRunUsesOfflineContext(t *testing.T) {
 	}
 }
 
-func TestExternalDryRunEPropagatesError(t *testing.T) {
+// DryRun reports nothing back, so Validate is what stops a preview. Its error
+// has to reach the caller typed, not as a rendered dry-run.
+func TestExternalDryRunSurfacesValidateError(t *testing.T) {
 	sentinel := command.ValidationErrorf("dry-run input is invalid")
 	declaration := command.Define(command.Definition[fixtureArgs, fixtureData]{
 		Metadata: command.CommandMetadata{
-			Service: "im", Command: "+external-dry-run-error", Description: "Offline preview error", Risk: command.RiskRead,
+			Service: "im", Command: "+external-dry-run-error", Description: "Preview error", Risk: command.RiskRead,
 			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{command.IdentityUser: {}}},
 		},
 		Hooks: command.Hooks[fixtureArgs, fixtureData]{
-			DryRunE: func(context.Context, command.CommandContext, *fixtureArgs) (*command.DryRun, error) {
-				return nil, sentinel
+			Validate: func(context.Context, command.CommandContext, *fixtureArgs) error {
+				return sentinel
+			},
+			DryRun: func(context.Context, command.CommandContext, *fixtureArgs) *command.DryRun {
+				return command.NewDryRun(command.GET("/open-apis/im/v1/chats"))
 			},
 			Execute: func(context.Context, command.CommandContext, *fixtureArgs) (command.Result[fixtureData], error) {
 				return command.Success(fixtureData{}), nil
@@ -346,7 +327,10 @@ func TestExternalDryRunEPropagatesError(t *testing.T) {
 // A Page[T] command's dry-run can only show the first request; the preview
 // must say the walk repeats instead of fabricating response-dependent
 // page tokens.
-func TestExternalPageDryRunNotesBoundedRepetition(t *testing.T) {
+// A paginated command's dry-run renders exactly what the hook described. The
+// framework appends no paging note of its own: built-in shortcuts that want one
+// write it themselves with dry.Desc, and external commands do the same.
+func TestExternalPageDryRunRendersOnlyTheBusinessDescription(t *testing.T) {
 	declaration := command.Define(command.Definition[fixtureArgs, command.Page[fixtureData]]{
 		Metadata: command.CommandMetadata{
 			Service: "im", Command: "+external-page-note", Description: "Page preview note", Risk: command.RiskRead,
@@ -379,10 +363,10 @@ func TestExternalPageDryRunNotesBoundedRepetition(t *testing.T) {
 		t.Fatal(err)
 	}
 	output := stdout.String()
-	if !strings.Contains(output, "repeats with the returned page_token until exhaustion or --page-limit") {
-		t.Fatalf("dry-run output lacks the bounded-repeat note:\n%s", output)
+	if !strings.Contains(output, "list visible chats") {
+		t.Fatalf("business description is missing from the preview:\n%s", output)
 	}
-	if !strings.Contains(output, "list visible chats; ") {
-		t.Fatalf("business description was not preserved before the note:\n%s", output)
+	if strings.Contains(output, "--page-all") || strings.Contains(output, "page_token") {
+		t.Fatalf("the framework added a paging note the hook did not write:\n%s", output)
 	}
 }

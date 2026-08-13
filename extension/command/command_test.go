@@ -61,7 +61,6 @@ func TestHostHooksRejectMismatchedErasedValues(t *testing.T) {
 			Normalize: func(context.Context, CommandContext, *contractArgs) error { return nil },
 			Validate:  func(context.Context, CommandContext, *contractArgs) error { return nil },
 			DryRun:    func(context.Context, CommandContext, *contractArgs) *DryRun { return NewDryRun() },
-			DryRunE:   func(context.Context, CommandContext, *contractArgs) (*DryRun, error) { return NewDryRun(), nil },
 			Execute: func(context.Context, CommandContext, *contractArgs) (Result[contractData], error) {
 				return Success(contractData{}), nil
 			},
@@ -84,9 +83,7 @@ func TestHostHooksRejectMismatchedErasedValues(t *testing.T) {
 	if dryRun := host.Hooks.DryRun(context.Background(), commandContext, wrong); dryRun != nil {
 		t.Fatalf("DryRun = %#v", dryRun)
 	}
-	_, err := host.Hooks.DryRunE(context.Background(), commandContext, wrong)
-	assertInternal("DryRunE", err)
-	_, err = host.Hooks.Execute(context.Background(), commandContext, wrong)
+	_, err := host.Hooks.Execute(context.Background(), commandContext, wrong)
 	assertInternal("Execute", err)
 	assertInternal("renderer", host.Hooks.Renderers["pretty"](io.Discard, wrong))
 }

@@ -27,7 +27,6 @@ type HostHooks struct {
 	Normalize func(context.Context, CommandContext, any) error
 	Validate  func(context.Context, CommandContext, any) error
 	DryRun    func(context.Context, CommandContext, any) *DryRun
-	DryRunE   func(context.Context, CommandContext, any) (*DryRun, error)
 	Execute   func(context.Context, CommandContext, any) (HostResult, error)
 	Renderers map[string]func(io.Writer, any) error
 }
@@ -88,7 +87,6 @@ func bindHooks[Args any, Data any](hooks Hooks[Args, Data]) HostHooks {
 		Normalize: bindArgsHook(hooks.Normalize, "Normalize"),
 		Validate:  bindArgsHook(hooks.Validate, "Validate"),
 		DryRun:    bindDryRunHook(hooks.DryRun),
-		DryRunE:   bindDryRunErrorHook(hooks.DryRunE),
 		Execute:   bindExecuteHook(hooks.Execute),
 		Renderers: bindRenderers(hooks.Renderers),
 	}
@@ -115,19 +113,6 @@ func bindDryRunHook[Args any](hook func(context.Context, CommandContext, *Args) 
 		typed, ok := args.(*Args)
 		if !ok {
 			return nil
-		}
-		return hook(ctx, command, typed)
-	}
-}
-
-func bindDryRunErrorHook[Args any](hook func(context.Context, CommandContext, *Args) (*DryRun, error)) func(context.Context, CommandContext, any) (*DryRun, error) {
-	if hook == nil {
-		return nil
-	}
-	return func(ctx context.Context, command CommandContext, args any) (*DryRun, error) {
-		typed, ok := args.(*Args)
-		if !ok {
-			return nil, InternalErrorf("DryRunE received %T, expected %T", args, (*Args)(nil))
 		}
 		return hook(ctx, command, typed)
 	}

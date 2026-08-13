@@ -230,15 +230,9 @@ type Hooks[Args any, Data any] struct {
 	Validate func(context.Context, CommandContext, *Args) error
 
 	// DryRun returns the requests the command would send, which the framework
-	// prints instead of executing. Set this or DryRunE, never both -- compiling
-	// a command that sets both fails.
-	//
-	// Choose by whether building the preview can fail: DryRun when the requests
-	// follow from Args alone, DryRunE when constructing them may error.
+	// prints instead of executing. Validate has already run, so the requests
+	// follow from Args alone and the hook reports nothing back.
 	DryRun func(context.Context, CommandContext, *Args) *DryRun
-
-	// DryRunE is DryRun with an error channel. See DryRun for the choice.
-	DryRunE func(context.Context, CommandContext, *Args) (*DryRun, error)
 
 	// Execute carries the business logic and returns Success or Partial. It is
 	// the only hook that may call the API, and it must not write to stdout --
