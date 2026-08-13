@@ -280,6 +280,16 @@ func inputStageContext(host common.CommandContext) command.CommandContext {
 	})
 }
 
+// commandPages is the accumulator the public command contract needs: it keeps
+// each page undecoded, because the business command's own item type lives in
+// its module and Page[T] decodes there.
+type commandPages struct{ data []map[string]any }
+
+func (c *commandPages) AddPage(page map[string]any) error {
+	c.data = append(c.data, page)
+	return nil
+}
+
 func publicContext(host common.CommandContext) command.CommandContext {
 	return command.NewCommandContext(command.ContextOptions{
 		Identity: command.Identity(host.Identity()),
@@ -294,14 +304,15 @@ func publicContext(host common.CommandContext) command.CommandContext {
 			if err := command.ValidateRequestView(view); err != nil {
 				return nil, command.HostPagination{}, err
 			}
-			collection, err := common.CollectCommandPages(ctx, host, common.PageRequest{
+			pages := &commandPages{}
+			meta, err := common.CollectCommandPages(ctx, host, common.PageRequest{
 				Method: view.Method, Path: view.Path, Params: view.Query, Body: view.Body,
-			}, all)
+			}, all, pages)
 			pagination := command.HostPagination{
-				Complete: collection.Complete, Pages: collection.Pages,
-				NextToken: collection.NextToken,
+				Complete: meta.Complete, Pages: meta.Pages,
+				NextToken: meta.NextToken,
 			}
-			return collection.Data, pagination, err
+			return pages.data, pagination, err
 		},
 	})
 }
