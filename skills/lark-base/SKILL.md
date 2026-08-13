@@ -1,6 +1,6 @@
 ---
 name: lark-base
-version: 1.2.10
+version: 1.2.11
 description: "飞书多维表格（Base）操作：建表、字段、记录、视图、统计、公式/lookup、表单、仪表盘、workflow、角色权限；遇到 Base/多维表格/bitable 或 /base/ 链接时使用。文件导入/导出转 lark-drive，认证/授权转 lark-shared。"
 metadata:
   requires:
@@ -21,7 +21,7 @@ Base 是顶层容器，由一棵 Base Block 资源树和 Base 级配置组成。
 开始操作前先确定 `base_token` 和目标实体类型；上下文已提供 `<bitable>` / `<base_refer>` 标签及资源 ID 时直接使用。其余情况从两个入口解析：
 
 1. **URL 或分享链接：** `lark-cli base +url-resolve --url '<url>' --as user`。根据返回的 `resource_type` / `block_type` 及 `table_id`、`view_id`、`record_id`、`dashboard_id`、`workflow_id`、`docx_token`、`share_token` 等坐标进入下方对应模块；实体类型以解析结果为准。
-2. **Base 标题或关键词：** `lark-cli base +title-resolve --title '<keyword>' --as user`。单一结果直接取得 `base_token`；多个候选结合标题、所有者和更新时间消歧，仍无法唯一确定时请用户选择。随后用 `+base-block-list` 查看 Base 目录，并按返回的 `type`、`name` 和 ID 定位目标实体；已知类型时可传 `--type table|dashboard|workflow|docx|folder`。
+2. **Base 标题或关键词：** `lark-cli base +title-resolve --title '<keyword>' --as user`。单一结果直接取得 `base_token`；多个候选结合标题、所有者和更新时间消歧，仍无法唯一确定时请用户选择。随后按下方 Base Block 资源模型定位目标实体。
 
 **读取 Base：** Base 信息用 `+base-get`，资源目录用 `+base-block-list`。
 
@@ -47,7 +47,7 @@ Base
     └── Advanced Permission / Roles
 ```
 
-每个 Base Block 都有 `id`、`type`、可修改的 `name`、所在 Folder 的 `parent_id`，并在同级目录中具有顺序。`+base-block-list` 是统一发现入口；`+base-block-create` 创建 Block，`+base-block-rename` 修改名称，`+base-block-move` 通过 `--parent-id` 调整目录并通过 `--before-id` / `--after-id` 调整顺序，`+base-block-delete` 删除 Block。类型专属内容再由对应模块命令处理。
+每个 Base Block 都有 `id`、`type`、可修改的 `name`、所在 Folder 的 `parent_id`，并在同级目录中具有顺序。`+base-block-create` 创建 Block，`+base-block-rename` 修改名称，`+base-block-move` 通过 `--parent-id` 调整目录并通过 `--before-id` / `--after-id` 调整顺序，`+base-block-delete` 删除 Block。类型专属内容再由对应模块命令处理。
 
 创建时已经明确类型专属初始内容，可直接使用对应构造命令一次完成：Table 用 `+table-create --fields`，Dashboard 用 `+dashboard-create` 设置主题，Workflow 用 `+workflow-create --json` 提交完整定义；Folder 和 Docx 使用 `+base-block-create`。
 
@@ -63,9 +63,9 @@ Block 的 `id` 按类型直接作为对应模块坐标：
 
 ## Table Block（The Core）
 
-Table 本身是 Base Block，也是 Base 的核心数据存储层；Field、Record、View 和 Form 是 Table 内部对象，不是 Base Block。业务数据查询、写入、关联、统计和分析都从 Table 开始；常规资源链路是 `+base-block-list --type table → +field-list → +record-list` / `+record-search`，多表的 `+field-list` 可以并发执行。
+Table 本身是 Base Block，也是 Base 的核心数据存储层；Field、Record、View 和 Form 是 Table 内部对象，不是 Base Block。业务数据查询、写入、关联、统计和分析都从 Table 开始；已有可信 `table_id` 时直接进入下方对象操作，多表的 `+field-list` 可以并发执行。
 
-**读取 Table：** `+base-block-list --type table` 定位表，`+table-get` 读取详情。Table 专属复制使用 `+table-copy`，异步状态用 `+table-copy-status`；schema 和 records 由下方内部对象操作。
+**读取 Table：** 目标表未知或需要枚举时按上文资源目录定位；已有可信 `table_id` 时直接使用 `+table-get` 或下方对象命令。Table 专属复制使用 `+table-copy`，异步状态用 `+table-copy-status`。
 
 Table 下的大多数更新通过异步链路生效，接口成功返回后立即读取可能暂时看不到最新状态。优先以写入成功响应作为操作结果；任务必须确认最终状态时，先完成本轮相关变更，再统一读取验收，避免逐项写后立即读回。
 
