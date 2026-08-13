@@ -109,7 +109,7 @@ var AppsDBDataExport = common.Shortcut{
 			QueryParams: exportQuery,
 		})
 		if err != nil {
-			return withAppsHint(errs.NewNetworkError(errs.SubtypeNetworkTransport, "export request failed").WithCause(err).WithRetryable(), dbDataExportHint)
+			return dbDataRequestError(err, "export request failed", dbDataExportHint)
 		}
 		// 成功是原始字节；业务错误网关以 JSON 信封 {code,msg} 返回（以 '{' 开头）。
 		if b := bytes.TrimSpace(resp.RawBody); len(b) > 0 && b[0] == '{' {

@@ -20,7 +20,9 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/runtimeplan"
 	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -147,6 +149,115 @@ func TestMailWatchDryRunMinimalFormatFetchesMessage(t *testing.T) {
 	}
 	if got := apis[2].Params["format"]; got != "metadata" {
 		t.Fatalf("unexpected fetch format: %#v", got)
+	}
+}
+
+func TestMailWatchFrameworkRejectsDeniedRuntimeCapability(t *testing.T) {
+	denied := errs.NewValidationError(errs.SubtypeFailedPrecondition,
+		"real-time events are unavailable in this runtime").
+		WithHint("use a runtime that supports real-time events")
+	plan := runtimeplan.New(runtimeplan.Options{
+		Capabilities: func(capability runtimeplan.Capability) error {
+			if capability == runtimeplan.CapabilityRealtimeEvents {
+				return denied
+			}
+			return nil
+		},
+	})
+	cfg := &core.CliConfig{
+		AppID: "cli_mail_test", AppSecret: "secret", Brand: core.BrandFeishu,
+	}
+	factory, _, _, _ := cmdutil.TestFactoryWithRuntimePlan(t, cfg, plan)
+	var stdout bytes.Buffer
+
+	err := runMountedMailShortcut(t, MailWatch, []string{
+		"+watch", "--output-dir", "/must-not-be-created",
+	}, factory, &stdout)
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error = %T %v, want typed problem", err, err)
+	}
+	if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeFailedPrecondition {
+		t.Fatalf("problem = %s/%s, want %s/%s",
+			problem.Category, problem.Subtype, errs.CategoryValidation, errs.SubtypeFailedPrecondition)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %T, want *errs.ValidationError", err)
+	}
+	if validationErr.Param != "" {
+		t.Fatalf("param = %q, want empty", validationErr.Param)
+	}
+	if problem.Hint == "" {
+		t.Fatal("hint is empty")
+	}
+}
+
+func TestMailWatchPrintOutputSchemaStaysLocalWhenRuntimeCannotStart(t *testing.T) {
+	startupErr := errs.NewConfigError(
+		errs.SubtypeInvalidConfig,
+		"managed runtime configuration is unavailable",
+	)
+	factory, stdout, _, _ := cmdutil.TestFactoryWithRuntimePlan(
+		t,
+		nil,
+		runtimeplan.Failed(startupErr, runtimeplan.MetadataEmbeddedOnly),
+	)
+	configCalls := 0
+	factory.Config = func() (*core.CliConfig, error) {
+		configCalls++
+		return nil, errors.New("Config must not run for local schema output")
+	}
+
+	err := runMountedMailShortcut(t, MailWatch, []string{
+		"+watch", "--print-output-schema",
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("mail +watch --print-output-schema error = %v", err)
+	}
+	if configCalls != 0 {
+		t.Fatalf("Config called %d times, want 0", configCalls)
+	}
+	for _, field := range []string{`"event"`, `"metadata"`, `"body_plain_text"`} {
+		if !strings.Contains(stdout.String(), field) {
+			t.Fatalf("schema output missing %s: %s", field, stdout.String())
+		}
+	}
+}
+
+func TestMailWatchPrintOutputSchemaPreservesFlagValidation(t *testing.T) {
+	factory, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	err := runMountedMailShortcut(t, MailWatch, []string{
+		"+watch", "--print-output-schema", "--format", "invalid",
+	}, factory, stdout)
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error = %T %v, want typed validation error", err, err)
+	}
+	var validationErr *errs.ValidationError
+	if problem.Subtype != errs.SubtypeInvalidArgument ||
+		!errors.As(err, &validationErr) ||
+		validationErr.Param != "--format" {
+		t.Fatalf("error = %#v, want invalid_argument for --format", err)
+	}
+}
+
+func TestMailWatchDryRunPrecedesPrintOutputSchema(t *testing.T) {
+	cfg := &core.CliConfig{
+		AppID: "cli_mail_test", AppSecret: "secret", Brand: core.BrandFeishu,
+	}
+	factory, stdout, _, _ := cmdutil.TestFactory(t, cfg)
+	err := runMountedMailShortcut(t, MailWatch, []string{
+		"+watch", "--print-output-schema", "--dry-run", "--as", "user",
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("mail +watch --print-output-schema --dry-run error = %v", err)
+	}
+	if strings.Contains(stdout.String(), `"minimal"`) {
+		t.Fatalf("stdout contains schema instead of dry-run output: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `"dry_run": true`) {
+		t.Fatalf("stdout does not contain dry-run output: %s", stdout.String())
 	}
 }
 

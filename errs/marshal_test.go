@@ -27,7 +27,11 @@ func TestPermissionError_MarshalJSON_HasAllWireFields(t *testing.T) {
 		Identity:      "user",
 		ConsoleURL:    "https://example",
 	}
-	b, err := json.Marshal(pe)
+	withMetadata := WithDiagnosticMetadata(pe, DiagnosticMetadata{
+		Origin:         "proxy",
+		ProxyRequestID: "proxy_req_123",
+	})
+	b, err := json.Marshal(withMetadata)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,6 +43,8 @@ func TestPermissionError_MarshalJSON_HasAllWireFields(t *testing.T) {
 		`"message":"x"`,
 		`"hint":"y"`,
 		`"log_id":"lg"`,
+		`"origin":"proxy"`,
+		`"proxy_request_id":"proxy_req_123"`,
 		`"missing_scopes":["docx:document"]`,
 		`"identity":"user"`,
 		`"console_url":"https://example"`,

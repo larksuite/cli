@@ -17,11 +17,13 @@ import (
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/extension/fileio"
 	exttransport "github.com/larksuite/cli/extension/transport"
+	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/runtimeplan"
 	"github.com/larksuite/cli/internal/skillref"
 	"github.com/larksuite/cli/internal/transport"
 )
@@ -52,11 +54,39 @@ type Factory struct {
 
 	Credential *credential.CredentialProvider
 
+	runtimePlan         *runtimeplan.Plan
+	apiCatalog          *apicatalog.Catalog
+	sdkBootstrapContext func(context.Context) context.Context
+
 	FileIOProvider fileio.Provider // file transfer provider (default: local filesystem)
 
 	SkillContent    fs.FS               // embedded skill tree (rooted at the skill list); nil when the build embeds no skills
 	SkillReferences *skillref.Resolver  // build-local projection from canonical skill references to embedded content
 	Recovery        *recovery.Projector // build-local recovery presentation; nil means the default fully-visible surface
+}
+
+// APICatalog returns the immutable metadata view selected for this command
+// tree. The boolean is false for standalone/test Factories that rely on the
+// legacy process-wide registry adapter.
+func (f *Factory) APICatalog() (apicatalog.Catalog, bool) {
+	if f == nil || f.apiCatalog == nil {
+		return apicatalog.Catalog{}, false
+	}
+	return *f.apiCatalog, true
+}
+
+// SDKBootstrapContext binds the Factory's invocation policy to dependency
+// bootstrap requests. The WebSocket SDK owns a process-global HTTP client, so
+// request context is the only boundary that can preserve multiple Factories in
+// one process without replacing another Factory's policy.
+func (f *Factory) SDKBootstrapContext(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if f == nil || f.sdkBootstrapContext == nil {
+		return ctx
+	}
+	return f.sdkBootstrapContext(ctx)
 }
 
 // RenderRecoveryHint renders semantic recovery against this command tree.
@@ -109,6 +139,41 @@ func (f *Factory) ResolveFileIO(ctx context.Context) fileio.FileIO {
 		return nil
 	}
 	return f.FileIOProvider.ResolveFileIO(ctx)
+}
+
+// NewRemoteFiles returns the invocation's file-transfer boundary without
+// exposing credential source, mode, or edition to business shortcuts.
+func (f *Factory) NewRemoteFiles(identity core.Identity) *client.RemoteFiles {
+	if f == nil {
+		return client.NewRemoteFiles(nil, nil, identity)
+	}
+	managedClient := func() (*http.Client, error) {
+		resolved, err := f.HttpClient()
+		if err != nil {
+			return nil, err
+		}
+		return transport.ClientForRequestClass(resolved, exttransport.RequestClassPlatform), nil
+	}
+	return client.NewRemoteFiles(runtimeplan.Ensure(f.runtimePlan), managedClient, identity)
+}
+
+// RuntimeDescription returns sanitized diagnostics for the active plan.
+func (f *Factory) RuntimeDescription() runtimeplan.Description {
+	if f == nil {
+		return runtimeplan.Description{}
+	}
+	return runtimeplan.Ensure(f.runtimePlan).Describe()
+}
+
+// RuntimeStartupError reports whether invocation bootstrap failed before an
+// effective credential/runtime configuration could be selected. It exposes
+// only the source-neutral plan contract so diagnostic commands do not need to
+// know which edition or credential product produced the failure.
+func (f *Factory) RuntimeStartupError() error {
+	if f == nil {
+		return nil
+	}
+	return runtimeplan.Ensure(f.runtimePlan).StartupError()
 }
 
 // ResolveAs returns the effective identity type.
@@ -268,27 +333,4 @@ func (f *Factory) NewAPIClientWithConfig(cfg *core.CliConfig) (*client.APIClient
 		ErrOut:     errOut,
 		Credential: f.Credential,
 	}, nil
-}
-
-// RequireBuiltinCredentialProvider returns a typed validation error when an
-// extension provider is actively managing credentials. Intended for use as
-// PersistentPreRunE on the auth and config parent commands.
-//
-// Returns nil when:
-//   - f.Credential is nil (test environments without credential setup)
-//   - No extension provider is active (built-in keychain/config path is used)
-func (f *Factory) RequireBuiltinCredentialProvider(ctx context.Context, command string) error {
-	if f.Credential == nil {
-		return nil
-	}
-	provName, err := f.Credential.ActiveExtensionProviderName(ctx)
-	if err != nil {
-		return err
-	}
-	if provName == "" {
-		return nil
-	}
-	return errs.NewValidationError(errs.SubtypeInvalidArgument,
-		"%q is not supported: credentials are provided externally and do not support interactive management", command).
-		WithHint("If another tool or method for authorization is available in this environment, try that. Otherwise, ask the user to set up credentials through the appropriate channel.")
 }

@@ -56,6 +56,7 @@ For ASCII output, the result is printed to stdout with fixed size.`,
 	cmd.Flags().IntVar(&opts.Size, "size", 256, "Size of the QR code image in pixels (default: 256, for PNG mode only)")
 	cmd.Flags().BoolVar(&opts.ASCII, "ascii", false, "Output ASCII QR code to stdout")
 	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "Output file path for PNG image (relative path within current directory, required for non-ASCII mode)")
+	cmdutil.SetRisk(cmd, "read")
 
 	return cmd
 }

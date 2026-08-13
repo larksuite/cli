@@ -34,6 +34,7 @@ import (
 	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
 	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
+	"github.com/spf13/cobra"
 )
 
 type mailWatchLogger struct {
@@ -99,6 +100,17 @@ var MailWatch = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{"mail:event", "mail:user_mailbox.event.mail_address:read", "mail:user_mailbox:readonly", "mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user"},
+	PostMount: common.RuntimePostMount(
+		common.RequireRuntimeCapabilities(common.RuntimeCapabilityRealtimeEvents),
+		common.EnableLocalIntrospection(func(cmd *cobra.Command) ([]byte, bool, error) {
+			want, err := cmd.Flags().GetBool("print-output-schema")
+			if err != nil || !want {
+				return nil, false, err
+			}
+			out, err := watchOutputSchemaJSON()
+			return out, true, err
+		}),
+	),
 	Flags: []common.Flag{
 		{Name: "format", Default: "data", Enum: []string{"json", "data"}, Desc: "json: NDJSON stream with ok/data envelope; data: bare NDJSON stream"},
 		{Name: "msg-format", Default: "metadata", Desc: "message payload mode: metadata(headers + meta, for triage/notification) | minimal(IDs and state only, no headers, for tracking read/folder changes) | plain_text_full(all metadata fields + full plain-text body) | event(raw WebSocket event, no API call, for debug) | full(full message including HTML body and attachments)"},
@@ -179,10 +191,6 @@ var MailWatch = common.Shortcut{
 		return d
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if runtime.Bool("print-output-schema") {
-			printWatchOutputSchema(runtime)
-			return nil
-		}
 		mailbox := resolveMailboxID(runtime)
 		hintIdentityFirst(runtime, mailbox)
 		outFormat := runtime.Str("format")
@@ -438,7 +446,7 @@ var MailWatch = common.Shortcut{
 			larkws.WithLogger(sdkLogger),
 		)
 
-		watchCtx, cancelWatch := context.WithCancel(ctx)
+		watchCtx, cancelWatch := context.WithCancel(runtime.Factory.SDKBootstrapContext(ctx))
 		defer cancelWatch()
 
 		sigCh := make(chan os.Signal, 1)

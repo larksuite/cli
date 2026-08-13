@@ -6,6 +6,7 @@ package registry
 import (
 	_ "embed"
 	"encoding/json"
+	"sync"
 )
 
 //go:embed service_descriptions.json
@@ -24,14 +25,17 @@ type serviceDescEntry struct {
 	AuthDomain string            `json:"auth_domain,omitempty"`
 }
 
-var serviceDescMap map[string]serviceDescEntry
+var (
+	serviceDescMap  map[string]serviceDescEntry
+	serviceDescOnce sync.Once
+)
 
 func loadServiceDescriptions() map[string]serviceDescEntry {
-	if serviceDescMap != nil {
-		return serviceDescMap
-	}
-	serviceDescMap = make(map[string]serviceDescEntry)
-	_ = json.Unmarshal(serviceDescJSON, &serviceDescMap)
+	serviceDescOnce.Do(func() {
+		parsed := make(map[string]serviceDescEntry)
+		_ = json.Unmarshal(serviceDescJSON, &parsed)
+		serviceDescMap = parsed
+	})
 	return serviceDescMap
 }
 

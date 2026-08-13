@@ -82,6 +82,56 @@ jobs:
       - name: Run sidecar tag build + HMAC round-trip
         run: make sidecar-test
 
+  extended-integration:
+    needs: fast-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.x'
+      - name: Fetch meta data
+        run: python3 scripts/fetch_meta.py
+      - name: Build both editions and verify identity
+        run: |
+          set -euo pipefail
+          go build -o /tmp/lark-cli-standard .
+          go build -tags extended -o /tmp/lark-cli-extended .
+          test "$(/tmp/lark-cli-standard version --json | jq -r .edition)" = "standard"
+          test "$(/tmp/lark-cli-extended version --json | jq -r .edition)" = "extended"
+          test "$(/tmp/lark-cli-extended version --json | jq -r '.capabilities[]')" = "external-credential-platform"
+      - name: Cross-compile Extended platform-specific security code
+        run: |
+          set -euo pipefail
+          GOOS=darwin GOARCH=arm64 go build -tags extended -o /tmp/lark-cli-extended-darwin .
+          GOOS=windows GOARCH=amd64 go build -tags extended -o /tmp/lark-cli-extended-windows.exe .
+      - name: Verify edition source isolation
+        run: go test -count=1 ./internal/externalcredential -run '^TestEditionSourceIsolation$'
+      - name: Run Extended tests
+        run: make extended-test
+
+  extended-platform-security:
+    needs: fast-gate
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - name: Run native helper isolation and path trust tests
+        run: go test -tags extended -count=1 ./internal/externalcredential -run '^(TestNativeAdminControlledPath|TestCredentialProcessEnvironmentUsesExplicitAllowlist|TestCredentialProcessCommandRunsWithIsolatedEnvironment)$'
+
   # ── Layer 2: Quality Gate ──────────────────────────────────────────
   unit-test:
     needs: fast-gate
@@ -142,6 +192,28 @@ jobs:
           node-version: '22'
       - name: Run script tests
         run: make script-test
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        with:
+          version: '~> v2'
+          install-only: true
+      - name: Validate GoReleaser configuration
+        run: goreleaser check
+      - name: Check Extended installer syntax
+        shell: pwsh
+        run: |
+          sh -n scripts/install-extended.sh
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path scripts/install-extended.ps1),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -ne 0) {
+            $errors | ForEach-Object { Write-Error $_ }
+            exit 1
+          }
 
   deterministic-gate:
     needs: fast-gate
@@ -216,16 +288,20 @@ jobs:
           # second time here — and, crucially, so an observe-only suite's failure
           # can never block merges through coverage's spot in the results loop.
           packages=$(go list ./... | grep -v '^github.com/larksuite/cli/tests/')
-          go test -race -coverprofile=coverage.txt -covermode=atomic $packages
+          go test -race -coverprofile=coverage-standard.txt -covermode=atomic $packages
+          # Extended implementation files are selected by build tags and would
+          # otherwise be absent from the uploaded report. Their race-enabled
+          # suite runs in extended-integration; this pass contributes coverage.
+          go test -tags extended -coverprofile=coverage-extended.txt -covermode=atomic $packages
       - name: Upload coverage to Codecov
         if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
         uses: codecov/codecov-action@3f20e214133d0983f9a10f3d63b0faf9241a3daa # v6
         with:
-          files: coverage.txt
+          files: coverage-standard.txt,coverage-extended.txt
           token: ${{ secrets.CODECOV_TOKEN }}
       - name: Check coverage threshold
         run: |
-          total=$(go tool cover -func=coverage.txt | grep total | awk '{print $3}' | tr -d '%')
+          total=$(go tool cover -func=coverage-standard.txt | grep total | awk '{print $3}' | tr -d '%')
           threshold=40
           echo "Coverage: ${total}% (threshold: ${threshold}%)"
           if (( $(echo "$total < $threshold" | bc -l) )); then
@@ -235,21 +311,31 @@ jobs:
       - name: Coverage summary
         if: ${{ !cancelled() }}
         run: |
-          if [ ! -f coverage.txt ]; then
-            echo "No coverage data available" >> $GITHUB_STEP_SUMMARY
-            exit 0
-          fi
-          total=$(go tool cover -func=coverage.txt | grep total | awk '{print $3}')
           echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Total coverage: ${total}**" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "<details><summary>Details</summary>" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          go tool cover -func=coverage.txt >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "</details>" >> $GITHUB_STEP_SUMMARY
+          report_coverage() {
+            profile="$1"
+            label="$2"
+            echo "### ${label} edition" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            if [ ! -f "$profile" ]; then
+              echo "No ${label} coverage data available." >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              return
+            fi
+            total=$(go tool cover -func="$profile" | grep total | awk '{print $3}')
+            echo "**Total coverage: ${total}**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "<details><summary>Details</summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            go tool cover -func="$profile" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          }
+          report_coverage coverage-standard.txt Standard
+          report_coverage coverage-extended.txt Extended
 
   deadcode:
     needs: fast-gate
@@ -515,7 +601,7 @@ jobs:
   # ── Results Gate (single required check for branch protection) ─────
   results:
     if: ${{ always() }}
-    needs: [fast-gate, unit-test, lint, script-test, deterministic-gate, coverage, deadcode, e2e-dry-run, e2e-live, security, license-header, plugin-integration, sidecar-integration]
+    needs: [fast-gate, unit-test, lint, script-test, deterministic-gate, coverage, deadcode, e2e-dry-run, e2e-live, security, license-header, plugin-integration, sidecar-integration, extended-integration, extended-platform-security]
     runs-on: ubuntu-latest
     steps:
       - name: Evaluate results
@@ -537,6 +623,8 @@ jobs:
           echo "| L4 | license-header | ${{ needs.license-header.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L4 | plugin-integration (observe-only) | ${{ needs.plugin-integration.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L4 | sidecar-integration (observe-only) | ${{ needs.sidecar-integration.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| L4 | extended-integration | ${{ needs.extended-integration.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| L4 | extended-platform-security | ${{ needs.extended-platform-security.result }} |" >> $GITHUB_STEP_SUMMARY
 
           # Any failure or cancellation in any job blocks the merge.
           # Legitimately skipped jobs (deadcode on push, e2e-live when not
@@ -560,7 +648,9 @@ jobs:
             "${{ needs.e2e-dry-run.result }}" \
             "${{ needs.e2e-live.result }}" \
             "${{ needs.security.result }}" \
-            "${{ needs.license-header.result }}"; do
+            "${{ needs.license-header.result }}" \
+            "${{ needs.extended-integration.result }}" \
+            "${{ needs.extended-platform-security.result }}"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
               FAILED=1
             fi

@@ -13,9 +13,20 @@ import (
 )
 
 // methodsForProjects walks the runtime catalog once and returns the methods in
-// the given projects that are reachable by the identity. Catalog navigation is
-// owned by apicatalog; the collectors below only apply scope policy.
+// the given projects that are reachable by the identity. Standalone registry
+// callers retain this process-wide adapter; command trees with an explicit
+// metadata view use methodsForProjectsFromCatalog.
 func methodsForProjects(projects []string, identity string) []apicatalog.MethodRef {
+	return methodsForProjectsFromCatalog(RuntimeCatalog(), projects, identity)
+}
+
+// methodsForProjectsFromCatalog keeps catalog navigation build-local while the
+// registry package owns scope-selection policy.
+func methodsForProjectsFromCatalog(
+	catalog apicatalog.Catalog,
+	projects []string,
+	identity string,
+) []apicatalog.MethodRef {
 	want := make(map[string]bool, len(projects))
 	for _, p := range projects {
 		want[p] = true
@@ -25,7 +36,7 @@ func methodsForProjects(projects []string, identity string) []apicatalog.MethodR
 	// Walk only the requested services (in catalog name order) instead of every
 	// service's methods then discarding the rest.
 	var out []apicatalog.MethodRef
-	for _, svc := range RuntimeCatalog().Services() {
+	for _, svc := range catalog.Services() {
 		if want[svc.Name] {
 			out = append(out, apicatalog.ServiceMethods(svc, supported)...)
 		}
@@ -157,9 +168,20 @@ func CollectAllScopesFromMeta(identity string) []string {
 // in the specified from_meta projects. For each method, only the scope with
 // the highest priority score is selected.
 func CollectScopesForProjects(projects []string, identity string) []string {
+	return CollectScopesForProjectsFromCatalog(RuntimeCatalog(), projects, identity)
+}
+
+// CollectScopesForProjectsFromCatalog is CollectScopesForProjects over an
+// immutable caller-selected metadata view. It lets one command tree compute
+// scopes without inheriting another tree's process-wide runtime catalog.
+func CollectScopesForProjectsFromCatalog(
+	catalog apicatalog.Catalog,
+	projects []string,
+	identity string,
+) []string {
 	priorities := LoadScopePriorities()
 	scopeSet := make(map[string]bool)
-	for _, ref := range methodsForProjects(projects, identity) {
+	for _, ref := range methodsForProjectsFromCatalog(catalog, projects, identity) {
 		if best := bestScope(ref.Method.Scopes, priorities); best != "" {
 			scopeSet[best] = true
 		}

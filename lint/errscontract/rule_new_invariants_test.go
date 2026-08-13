@@ -578,6 +578,93 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 	}
 }
 
+func TestCheckBuildAPIErrorArms_AcceptsMetadataWrappedInternalError(t *testing.T) {
+	src := `package errclass
+
+import "github.com/larksuite/cli/errs"
+
+type ClassifyContext struct{}
+
+func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
+	var cat errs.Category
+	switch cat {
+	case errs.CategoryValidation:
+		return &errs.ValidationError{}
+	case errs.CategoryAuthentication:
+		return &errs.AuthenticationError{}
+	case errs.CategoryAuthorization:
+		return &errs.PermissionError{}
+	case errs.CategoryConfig:
+		return &errs.ConfigError{}
+	case errs.CategoryNetwork:
+		return &errs.NetworkError{}
+	case errs.CategoryAPI:
+		return &errs.APIError{}
+	case errs.CategoryPolicy:
+		return &errs.SecurityPolicyError{}
+	case errs.CategoryInternal:
+		return &errs.InternalError{}
+	case errs.CategoryConfirmation:
+		return &errs.ConfirmationRequiredError{}
+	default:
+		return errs.WithDiagnosticMetadata(
+			&errs.InternalError{},
+			errs.DiagnosticMetadata{Origin: "lark"},
+		)
+	}
+}
+`
+	v := CheckBuildAPIErrorArms("internal/errclass/classify.go", src)
+	if len(v) != 0 {
+		t.Errorf("metadata-wrapped InternalError must be accepted, got: %+v", v)
+	}
+}
+
+func TestCheckBuildAPIErrorArms_RejectsMetadataWrappedWrongError(t *testing.T) {
+	src := `package errclass
+
+import "github.com/larksuite/cli/errs"
+
+type ClassifyContext struct{}
+
+func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
+	var cat errs.Category
+	switch cat {
+	case errs.CategoryValidation:
+		return &errs.ValidationError{}
+	case errs.CategoryAuthentication:
+		return &errs.AuthenticationError{}
+	case errs.CategoryAuthorization:
+		return &errs.PermissionError{}
+	case errs.CategoryConfig:
+		return &errs.ConfigError{}
+	case errs.CategoryNetwork:
+		return &errs.NetworkError{}
+	case errs.CategoryAPI:
+		return &errs.APIError{}
+	case errs.CategoryPolicy:
+		return &errs.SecurityPolicyError{}
+	case errs.CategoryInternal:
+		return &errs.InternalError{}
+	case errs.CategoryConfirmation:
+		return &errs.ConfirmationRequiredError{}
+	default:
+		return errs.WithDiagnosticMetadata(
+			&errs.APIError{},
+			errs.DiagnosticMetadata{Origin: "lark"},
+		)
+	}
+}
+`
+	v := CheckBuildAPIErrorArms("internal/errclass/classify.go", src)
+	if len(v) != 1 {
+		t.Fatalf("expected 1 violation (wrapped wrong-type default), got %d: %+v", len(v), v)
+	}
+	if !strings.Contains(v[0].Message, "InternalError") {
+		t.Errorf("violation must call out InternalError requirement: %s", v[0].Message)
+	}
+}
+
 func TestCheckBuildAPIErrorArms_ScopedToClassifyFile(t *testing.T) {
 	// Identical violating shape outside the canonical path — must NOT fire.
 	src := `package custom

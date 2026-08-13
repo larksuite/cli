@@ -74,6 +74,11 @@ var AppsFileDownload = common.Shortcut{
 		if signedURL == "" {
 			return errs.NewInternalError(errs.SubtypeInvalidResponse, "sign returned no signed_url")
 		}
+		remoteFiles := rctx.RemoteFiles()
+		remoteFile, err := remoteFiles.Validate(rctx.Ctx(), signedURL)
+		if err != nil {
+			return err
+		}
 
 		// 2. 直连 GET signed_url 落盘。
 		out := strings.TrimSpace(rctx.Str("output"))
@@ -83,12 +88,15 @@ var AppsFileDownload = common.Shortcut{
 				out = "download"
 			}
 		}
-		req, err := http.NewRequestWithContext(rctx.Ctx(), http.MethodGet, signedURL, nil) //nolint:forbidigo // GET from a presigned object-storage URL bypasses the Lark gateway; raw HTTP required (not a Lark API call).
+		req, err := remoteFile.NewRequest(rctx.Ctx(), http.MethodGet, nil)
 		if err != nil {
-			return errs.NewNetworkError(errs.SubtypeNetworkTransport, "build download request").WithCause(err)
+			return err
 		}
-		resp, err := newFileTransferClient().Do(req) //nolint:forbidigo // see above: direct presigned-URL download, RuntimeContext.DoAPI does not apply.
+		resp, err := remoteFiles.Do(req, remoteFile, nil)
 		if err != nil {
+			if _, ok := errs.ProblemOf(err); ok {
+				return err
+			}
 			// dial/transport 失败是典型可重试场景。
 			return errs.NewNetworkError(errs.SubtypeNetworkTransport, "download failed").WithCause(err).WithRetryable()
 		}

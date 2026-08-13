@@ -108,6 +108,10 @@ func TestBuildAPIError_UnknownCategoryRoutesToInternalError(t *testing.T) {
 	if ie.Code != stubCode {
 		t.Errorf("Code = %d, want %d (raw Lark code should propagate)", ie.Code, stubCode)
 	}
+	metadata, _ := errs.DiagnosticMetadataOf(err)
+	if metadata.Origin != larkErrorOrigin() {
+		t.Errorf("Origin = %q, want %q", metadata.Origin, larkErrorOrigin())
+	}
 }
 
 // TestBuildAPIError_ConfigInvalidClient_HasHint pins that when a

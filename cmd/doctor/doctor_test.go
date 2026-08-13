@@ -4,7 +4,6 @@
 package doctor
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -202,6 +201,44 @@ func (p *fakeExtProvider) ResolveToken(context.Context, extcred.TokenSpec) (*ext
 	return nil, nil
 }
 
+type failingDefaultAccountResolver struct {
+	err error
+}
+
+func (r *failingDefaultAccountResolver) ResolveAccount(context.Context) (*credential.Account, error) {
+	return nil, r.err
+}
+
+func TestDoctor_DefaultResolutionFailurePreservesConfigFileCheck(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, out, _, _ := cmdutil.TestFactory(t, nil)
+	f.Credential = credential.NewCredentialProvider(
+		nil,
+		&failingDefaultAccountResolver{err: core.NotConfiguredError()},
+		nil,
+		nil,
+	)
+
+	if err := doctorRun(&DoctorOptions{Factory: f, Ctx: context.Background(), Offline: true}, nil); err == nil {
+		t.Fatal("doctorRun() = nil, want not-configured failure")
+	}
+	var got struct {
+		Checks []checkResult `json:"checks"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v\n%s", err, out.String())
+	}
+	configCheck := findCheck(t, got.Checks, "config_file")
+	if configCheck.Status != "fail" {
+		t.Fatalf("config_file = %#v, want fail", configCheck)
+	}
+	for _, check := range got.Checks {
+		if check.Name == "credential_source" {
+			t.Fatalf("default source resolution replaced the legacy config check: %#v", got.Checks)
+		}
+	}
+}
+
 // Under an external credential provider with no usable identity, the
 // identity_ready hint must not point at `auth status` (blocked there); the
 // per-identity checks already carry the source-appropriate escalation.
@@ -222,12 +259,8 @@ func TestDoctor_ExternalProvider_IdentityReadyHintNotBlockedCommand(t *testing.T
 		nil, nil,
 		func() (*http.Client, error) { return nil, nil },
 	)
-	out := &bytes.Buffer{}
-	f := &cmdutil.Factory{
-		Config:     func() (*core.CliConfig, error) { return cfg, nil },
-		Credential: cred,
-		IOStreams:  &cmdutil.IOStreams{Out: out, ErrOut: &bytes.Buffer{}},
-	}
+	f, out, _, _ := cmdutil.TestFactory(t, cfg)
+	f.Credential = cred
 
 	if err := doctorRun(&DoctorOptions{Factory: f, Ctx: context.Background(), Offline: true}, nil); err == nil {
 		t.Fatalf("doctorRun() = nil, want failure when no identity is available")

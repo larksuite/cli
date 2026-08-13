@@ -42,6 +42,16 @@ func NewCmdConfigShow(f *cmdutil.Factory, runF func(*ConfigShowOptions) error) *
 
 func configShowRun(opts *ConfigShowOptions) error {
 	f := opts.Factory
+	// config show describes the effective invocation configuration, not merely
+	// the bytes in config.json. Preserve the typed bootstrap failure so a
+	// Standard binary cannot present a local Profile as active when the system
+	// requires Extended runtime support.
+	if startupErr := f.RuntimeStartupError(); startupErr != nil {
+		return startupErr
+	}
+	if handled, editionErr := showEditionConfig(f); handled {
+		return editionErr
+	}
 
 	config, err := core.LoadMultiAppConfig()
 	if err != nil {

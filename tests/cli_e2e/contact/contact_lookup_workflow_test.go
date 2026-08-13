@@ -73,7 +73,13 @@ func TestContact_LookupWorkflowAsBot(t *testing.T) {
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 
-		targetOpenID = gjson.Get(result.Stdout, "data.items.0.open_id").String()
+		items := gjson.Get(result.Stdout, "data.items")
+		require.True(t, items.Exists(), "expected contact API response to include data.items; stdout:\n%s", result.Stdout)
+		if len(items.Array()) == 0 {
+			t.Skip("skip bot contact workflow because the live test tenant has no users visible to the bot")
+		}
+
+		targetOpenID = items.Get("0.open_id").String()
 		require.NotEmpty(t, targetOpenID, "expected to find at least one user via raw API")
 	})
 

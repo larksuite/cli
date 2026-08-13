@@ -91,29 +91,13 @@ func Diagnose(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, veri
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	// An external provider mints tokens on demand and blocks interactive auth,
-	// so the built-in keychain heuristics and "auth login" hints don't apply.
-	if provider := activeExternalProvider(ctx, f); provider != "" {
-		return diagnoseExternal(ctx, f, cfg, provider, verify)
+	if result, handled := diagnoseEditionSource(ctx, f, cfg, verify); handled {
+		return result
 	}
 	return Result{
 		Bot:  diagnoseBot(ctx, f, cfg, verify),
 		User: diagnoseUser(ctx, f, cfg, verify),
 	}
-}
-
-// activeExternalProvider returns the active extension provider name, or "".
-// An error degrades to the built-in path: an unreachable provider would already
-// have failed the f.Config() that produced cfg.
-func activeExternalProvider(ctx context.Context, f *cmdutil.Factory) string {
-	if f == nil || f.Credential == nil {
-		return ""
-	}
-	name, err := f.Credential.ActiveExtensionProviderName(ctx)
-	if err != nil {
-		return ""
-	}
-	return name
 }
 
 func diagnoseExternal(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, provider string, verify bool) Result {
@@ -295,20 +279,27 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 		UserName: cfg.UserName,
 		OpenID:   cfg.UserOpenId,
 	}
-	stored := larkauth.GetStoredToken(cfg.AppID, cfg.UserOpenId)
-	if stored == nil {
+	if f == nil || f.Credential == nil {
+		id.Status = StatusMissing
+		id.Message = "User identity: missing (no token in keychain for " + cfg.UserOpenId + ")"
+		return withCommandRecovery(id, recovery.TargetAuthLogin, "run: lark-cli auth login --help")
+	}
+	inspected, err := f.Credential.InspectToken(ctx, credential.TokenInspectionRequest{
+		TokenSpec: credential.TokenSpec{Type: credential.TokenTypeUAT, AppID: cfg.AppID},
+	})
+	if err != nil || inspected == nil || !inspected.Present {
 		id.Status = StatusMissing
 		id.Message = "User identity: missing (no token in keychain for " + cfg.UserOpenId + ")"
 		return withCommandRecovery(id, recovery.TargetAuthLogin, "run: lark-cli auth login --help")
 	}
 
-	fillTokenFields(&id, stored)
-	switch larkauth.TokenStatus(stored) {
-	case "valid":
+	fillTokenFields(&id, inspected)
+	switch inspected.Status {
+	case credential.TokenInspectionReady:
 		id.Status = StatusReady
 		id.Available = true
 		id.Message = "User identity: ready"
-	case "needs_refresh":
+	case credential.TokenInspectionNeedsRefresh:
 		id.Status = StatusNeedsRefresh
 		id.Available = true
 		id.Message = "User identity: needs refresh (will auto-refresh on next user API call)"
@@ -333,13 +324,15 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 		return id
 	}
 
-	httpClient, err := f.HttpClient()
-	if err != nil {
+	if _, err := f.HttpClient(); err != nil {
 		return markVerifyFailed("create HTTP client: "+err.Error(), "", "")
 	}
-	token, err := larkauth.GetValidAccessToken(httpClient, larkauth.NewUATCallOptions(cfg, f.IOStreams.ErrOut))
+	token, err := f.Credential.ResolveToken(ctx, credential.NewTokenSpec(core.AsUser, cfg.AppID))
 	if err != nil {
 		return markVerifyFailed("token unusable: "+err.Error(), "run: lark-cli auth login --help", recovery.TargetAuthLogin)
+	}
+	if token == nil || token.Token == "" {
+		return markVerifyFailed("token unusable: credential source returned no user access token", "run: lark-cli auth login --help", recovery.TargetAuthLogin)
 	}
 	sdk, err := f.LarkClient()
 	if err != nil {
@@ -347,7 +340,7 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	}
 	verifyCtx, cancel := context.WithTimeout(ctx, verifyTimeout)
 	defer cancel()
-	if err := larkauth.VerifyUserToken(verifyCtx, sdk, token); err != nil {
+	if err := larkauth.VerifyUserToken(verifyCtx, sdk, token.Token); err != nil {
 		return markVerifyFailed("server rejected token: "+err.Error(), "run: lark-cli auth login --help", recovery.TargetAuthLogin)
 	}
 
@@ -384,6 +377,7 @@ func fetchBotInfo(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP client: %w", err)
 	}
+	ctx = withEditionIdentity(ctx, core.AsBot)
 	ctx, cancel := context.WithTimeout(ctx, verifyTimeout)
 	defer cancel()
 	url := strings.TrimRight(core.ResolveEndpoints(cfg.Brand).Open, "/") + "/open-apis/bot/v3/info"
@@ -433,12 +427,18 @@ func fetchBotInfo(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	return &botInfo{OpenID: envelope.Data.OpenID, AppName: envelope.Data.AppName}, nil
 }
 
-func fillTokenFields(id *Identity, token *larkauth.StoredUAToken) {
-	id.TokenStatus = larkauth.TokenStatus(token)
-	id.Scope = token.Scope
-	id.ExpiresAt = formatMillis(token.ExpiresAt)
-	id.RefreshExpiresAt = formatMillis(token.RefreshExpiresAt)
-	id.GrantedAt = formatMillis(token.GrantedAt)
+func fillTokenFields(id *Identity, token *credential.TokenInspection) {
+	id.TokenStatus = string(token.Status)
+	if !token.Source.Managed && token.Status == credential.TokenInspectionReady {
+		// Preserve the established local/keychain wire contract. The generic
+		// inspection API calls this state "ready", while auth status has always
+		// exposed a valid local token as "valid".
+		id.TokenStatus = "valid"
+	}
+	id.Scope = token.Scopes
+	id.ExpiresAt = formatMillis(token.ExpiresAtMillis)
+	id.RefreshExpiresAt = formatMillis(token.RefreshExpiresAtMillis)
+	id.GrantedAt = formatMillis(token.GrantedAtMillis)
 }
 
 func formatMillis(ms int64) string {

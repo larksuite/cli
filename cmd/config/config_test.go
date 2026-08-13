@@ -21,6 +21,7 @@ import (
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/runtimeplan"
 	"github.com/larksuite/cli/internal/surface"
 )
 
@@ -466,10 +467,16 @@ func TestUpdateExistingProfileWithoutSecret_RejectsAppIDChange(t *testing.T) {
 }
 
 // stubConfigExtProvider simulates env/sidecar credential mode for config guard tests.
-type stubConfigExtProvider struct{ name string }
+type stubConfigExtProvider struct {
+	name string
+	err  error
+}
 
 func (s *stubConfigExtProvider) Name() string { return s.name }
 func (s *stubConfigExtProvider) ResolveAccount(_ context.Context) (*extcred.Account, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
 	return &extcred.Account{AppID: "test-app"}, nil
 }
 func (s *stubConfigExtProvider) ResolveToken(_ context.Context, _ extcred.TokenSpec) (*extcred.Token, error) {
@@ -495,7 +502,6 @@ func TestConfigBlockedByExternalProvider(t *testing.T) {
 	}{
 		{"init", []string{"init", "--app-id", "x", "--app-secret-stdin"}},
 		{"remove", []string{"remove"}},
-		{"show", []string{"show"}},
 		{"default-as", []string{"default-as", "user"}},
 		{"strict-mode", []string{"strict-mode", "off"}},
 	}
@@ -518,6 +524,63 @@ func TestConfigBlockedByExternalProvider(t *testing.T) {
 			}
 			if gotCode := output.ExitCodeOf(err); gotCode != output.ExitValidation {
 				t.Errorf("exit code = %d, want %d", gotCode, output.ExitValidation)
+			}
+		})
+	}
+}
+
+func TestConfigIdentityCommandsCheckProfileOwnershipBeforeCredentialOwnership(t *testing.T) {
+	profileDenied := errors.New("Profile identity settings are deployment-managed")
+	credentialChecks := 0
+	plan := runtimeplan.New(runtimeplan.Options{
+		Capabilities: func(capability runtimeplan.Capability) error {
+			switch capability {
+			case runtimeplan.CapabilityLocalProfileMutation:
+				return profileDenied
+			case runtimeplan.CapabilityLocalCredentialManagement:
+				credentialChecks++
+			}
+			return nil
+		},
+	})
+
+	for _, args := range [][]string{
+		{"default-as", "bot"},
+		{"strict-mode", "bot"},
+	} {
+		t.Run(args[0], func(t *testing.T) {
+			f, _, _, _ := cmdutil.TestFactoryWithRuntimePlan(t, nil, plan)
+			cmd := NewCmdConfig(f)
+			cmd.SetArgs(args)
+
+			err := cmd.Execute()
+			if !errors.Is(err, profileDenied) {
+				t.Fatalf("Execute(%v) error = %v, want Profile ownership denial", args, err)
+			}
+		})
+	}
+	if credentialChecks != 0 {
+		t.Fatalf("credential capability checked %d times after Profile denial, want 0", credentialChecks)
+	}
+}
+
+func TestConfigIdentityCommandsRetainCredentialOwnershipCapability(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	root := NewCmdConfig(f)
+
+	for _, name := range []string{"default-as", "strict-mode"} {
+		t.Run(name, func(t *testing.T) {
+			leaf, _, err := root.Find([]string{name})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := cmdutil.GetRuntimeCapabilities(leaf)
+			want := []runtimeplan.Capability{
+				runtimeplan.CapabilityLocalProfileMutation,
+				runtimeplan.CapabilityLocalCredentialManagement,
+			}
+			if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+				t.Fatalf("%s capabilities = %v, want %v", name, got, want)
 			}
 		})
 	}

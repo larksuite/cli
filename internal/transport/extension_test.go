@@ -530,6 +530,48 @@ func TestDefaultClientBridgeCoversWebSocketSDKBootstrap(t *testing.T) {
 	}
 }
 
+func TestWebSocketSDKBootstrapPreservesRequestScopedPolicy(t *testing.T) {
+	preserveHTTPClientState(t, sdkBootstrapHTTPClient)
+	sdkBootstrapHTTPClient.Transport = http.DefaultTransport
+	sdkBootstrapHTTPClient.CheckRedirect = nil
+
+	seenPolicy := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		seenPolicy <- req.Header.Get("X-Test-Bootstrap-Policy")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"code":400,"msg":"stop after bootstrap"}`)
+	}))
+	t.Cleanup(server.Close)
+
+	policy := func(value string) transportPolicyBuilder {
+		return func(base http.RoundTripper) http.RoundTripper {
+			return roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				scoped := req.Clone(req.Context())
+				scoped.Header.Set("X-Test-Bootstrap-Policy", value)
+				return base.RoundTrip(scoped)
+			})
+		}
+	}
+	installSDKTransportBridge(sdkBootstrapHTTPClient, func(req *http.Request) bool {
+		return req.URL != nil && req.URL.Host == strings.TrimPrefix(server.URL, "http://")
+	}, policy("process-fallback"))
+
+	client := larkws.NewClient(
+		"test-app",
+		"test-secret",
+		larkws.WithDomain(server.URL),
+		larkws.WithAutoReconnect(false),
+	)
+	ctx := WithSDKBootstrapPolicy(context.Background(), policy("factory-scoped"))
+	if err := client.Start(ctx); err == nil {
+		t.Fatal("WebSocket SDK Start() error = nil, want bootstrap failure")
+	}
+	if got := <-seenPolicy; got != "factory-scoped" {
+		t.Fatalf("WebSocket bootstrap policy = %q, want request-scoped policy", got)
+	}
+}
+
 func TestSDKTransportBridgeUsesPinnedClientAfterGlobalReplacement(t *testing.T) {
 	preserveHTTPClientState(t, sdkBootstrapHTTPClient)
 	oldDefaultClient := http.DefaultClient
@@ -703,7 +745,7 @@ func TestSDKTransportBridgeNilBasePreservesDefaultTransportForUnmatchedRequest(t
 	}
 }
 
-func TestSDKTransportBridgeUpdatesPlatformPolicy(t *testing.T) {
+func TestSDKTransportBridgeKeepsInitialPlatformPolicy(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		return noContentResponse(req), nil
 	})}
@@ -726,8 +768,8 @@ func TestSDKTransportBridgeUpdatesPlatformPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if firstCalls != 0 || secondCalls != 1 {
-		t.Fatalf("policy calls = (%d, %d), want (0, 1)", firstCalls, secondCalls)
+	if firstCalls != 1 || secondCalls != 0 {
+		t.Fatalf("policy calls = (%d, %d), want (1, 0)", firstCalls, secondCalls)
 	}
 }
 

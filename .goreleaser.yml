@@ -1,7 +1,7 @@
 version: 2
 
 builds:
-  - id: lark-cli
+  - id: standard
     binary: lark-cli
     env:
       - CGO_ENABLED=0
@@ -15,12 +15,39 @@ builds:
       - amd64
       - arm64
       - riscv64
+    ignore:
+      - goos: darwin
+        goarch: riscv64
+      - goos: windows
+        goarch: riscv64
+  - id: extended
+    binary: lark-cli
+    tags:
+      - extended
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X github.com/larksuite/cli/internal/build.Version={{ .Version }} -X github.com/larksuite/cli/internal/build.Date={{ .Date }}
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - riscv64
+    ignore:
+      - goos: darwin
+        goarch: riscv64
+      - goos: windows
+        goarch: riscv64
 
 notarize:
   macos:
     - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
       ids:
-        - lark-cli
+        - standard
+        - extended
       sign:
         certificate: "{{ .Env.MACOS_SIGN_P12 }}"
         password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
@@ -32,7 +59,22 @@ notarize:
         timeout: 20m
 
 archives:
-  - name_template: "lark-cli-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+  - id: standard
+    ids:
+      - standard
+    name_template: "lark-cli-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+      - CHANGELOG.md
+  - id: extended
+    ids:
+      - extended
+    name_template: "lark-cli-extended-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
     formats: [tar.gz]
     format_overrides:
       - goos: windows
@@ -44,6 +86,9 @@ archives:
 
 checksum:
   name_template: checksums.txt
+  extra_files:
+    - glob: ./scripts/install-extended.sh
+    - glob: ./scripts/install-extended.ps1
 
 changelog:
   sort: asc

@@ -7,6 +7,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/runtimeplan"
 	"github.com/spf13/cobra"
 )
 
@@ -30,22 +31,38 @@ func newCmdConfig(f *cmdutil.Factory, projector *recovery.Projector) *cobra.Comm
 			// PersistentPreRun[E] found walking up the chain, so the root-level
 			// SilenceUsage=true would be skipped without this line.
 			cmd.SilenceUsage = true
-			// Pass "config" as a literal — cmd.Name() would return the subcommand name.
-			return f.RequireBuiltinCredentialProvider(cmd.Context(), "config")
+			return f.RequireCommandRuntimeCapabilities(cmd.Context(), cmd)
 		},
 	}
 	cmdutil.DisableAuthCheck(cmd)
+	cmdutil.SetRuntimeCapabilities(cmd, runtimeplan.CapabilityLocalCredentialManagement)
 
-	cmd.AddCommand(NewCmdConfigInit(f, nil))
-	cmd.AddCommand(newCmdConfigBind(f, nil, projector))
-	cmd.AddCommand(NewCmdConfigRemove(f, nil))
-	cmd.AddCommand(NewCmdConfigShow(f, nil))
-	cmd.AddCommand(NewCmdConfigDefaultAs(f))
-	cmd.AddCommand(NewCmdConfigStrictMode(f))
-	cmd.AddCommand(NewCmdConfigRiskControl(f))
-	cmd.AddCommand(NewCmdConfigPolicy(f))
-	cmd.AddCommand(NewCmdConfigPlugins(f))
-	cmd.AddCommand(NewCmdConfigKeychainDowngrade(f))
+	initCmd := NewCmdConfigInit(f, nil)
+	bind := newCmdConfigBind(f, nil, projector)
+	remove := NewCmdConfigRemove(f, nil)
+	show := NewCmdConfigShow(f, nil)
+	defaultAs := NewCmdConfigDefaultAs(f)
+	strictMode := NewCmdConfigStrictMode(f)
+	riskControl := NewCmdConfigRiskControl(f)
+	policy := NewCmdConfigPolicy(f)
+	plugins := NewCmdConfigPlugins(f)
+	keychainDowngrade := NewCmdConfigKeychainDowngrade(f)
+	// Identity preferences live in the Profile, but external providers have
+	// historically treated these config commands as credential management.
+	// Check Profile ownership first so a managed runtime gives the actionable
+	// deployment-managed Profile error, then retain the credential capability
+	// so Standard external-provider behavior stays unchanged.
+	for _, identitySetting := range []*cobra.Command{defaultAs, strictMode} {
+		cmdutil.SetRuntimeCapabilities(
+			identitySetting,
+			runtimeplan.CapabilityLocalProfileMutation,
+			runtimeplan.CapabilityLocalCredentialManagement,
+		)
+	}
+	for _, sourceNeutral := range []*cobra.Command{show, riskControl, policy, plugins} {
+		cmdutil.SetRuntimeCapabilities(sourceNeutral)
+	}
+	cmd.AddCommand(initCmd, bind, remove, show, defaultAs, strictMode, riskControl, policy, plugins, keychainDowngrade)
 	return cmd
 }
 

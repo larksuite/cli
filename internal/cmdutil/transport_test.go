@@ -10,11 +10,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	exttransport "github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/riskcontrol"
+	"github.com/larksuite/cli/internal/runtimeplan"
 	internaltransport "github.com/larksuite/cli/internal/transport"
 )
 
@@ -364,6 +367,110 @@ func TestNewDefaultInstallsSDKBootstrapSecurityPolicy(t *testing.T) {
 	}
 	if got := received.Get(HeaderUserAgent); got != UserAgentValue() {
 		t.Fatalf("%s = %q, want %q", HeaderUserAgent, got, UserAgentValue())
+	}
+}
+
+func TestSDKBootstrapRuntimePolicyIsFactoryScoped(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	oldTransport := http.DefaultClient.Transport
+	oldCheckRedirect := http.DefaultClient.CheckRedirect
+	t.Cleanup(func() {
+		http.DefaultClient.Transport = oldTransport
+		http.DefaultClient.CheckRedirect = oldCheckRedirect
+	})
+
+	var networkCalls atomic.Int32
+	http.DefaultClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		networkCalls.Add(1)
+		return &http.Response{
+			StatusCode: http.StatusNoContent,
+			Body:       http.NoBody,
+			Request:    req,
+		}, nil
+	})
+	http.DefaultClient.CheckRedirect = nil
+
+	earlier := NewDefaultWithRuntimePlan(
+		nil,
+		InvocationContext{},
+		nil,
+		runtimeplan.Default(),
+		nil,
+	)
+	laterFailure := errors.New("later managed runtime is unavailable")
+	later := NewDefaultWithRuntimePlan(
+		nil,
+		InvocationContext{},
+		nil,
+		runtimeplan.Failed(laterFailure, runtimeplan.MetadataEmbeddedOnly),
+		nil,
+	)
+
+	request := func(ctx context.Context) (*http.Response, error) {
+		req, err := http.NewRequestWithContext(
+			ctx,
+			http.MethodPost,
+			"https://open.feishu.cn/callback/ws/endpoint",
+			strings.NewReader(`{"app_secret":"secret"}`),
+		)
+		if err != nil {
+			return nil, err
+		}
+		return http.DefaultClient.Do(req)
+	}
+
+	resp, err := request(earlier.SDKBootstrapContext(context.Background()))
+	if err != nil {
+		t.Fatalf("earlier Factory bootstrap inherited later plan: %v", err)
+	}
+	resp.Body.Close()
+
+	if resp, err = request(later.SDKBootstrapContext(context.Background())); !errors.Is(err, laterFailure) {
+		if resp != nil && resp.Body != nil {
+			resp.Body.Close()
+		}
+		t.Fatalf("later Factory bootstrap error = %v, want %v", err, laterFailure)
+	}
+
+	// Unscoped dependency traffic uses only the process-wide common policy; a
+	// Factory plan must never become its implicit fallback.
+	resp, err = request(context.Background())
+	if err != nil {
+		t.Fatalf("unscoped bootstrap inherited a Factory plan: %v", err)
+	}
+	resp.Body.Close()
+	const concurrentRequests = 16
+	var wg sync.WaitGroup
+	failures := make(chan error, concurrentRequests*2)
+	for i := 0; i < concurrentRequests; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			resp, err := request(earlier.SDKBootstrapContext(context.Background()))
+			if err != nil {
+				failures <- err
+				return
+			}
+			resp.Body.Close()
+		}()
+		go func() {
+			defer wg.Done()
+			resp, err := request(later.SDKBootstrapContext(context.Background()))
+			if resp != nil && resp.Body != nil {
+				resp.Body.Close()
+			}
+			if !errors.Is(err, laterFailure) {
+				failures <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(failures)
+	for err := range failures {
+		t.Errorf("concurrent bootstrap policy mismatch: %v", err)
+	}
+	if got, want := networkCalls.Load(), int32(2+concurrentRequests); got != want {
+		t.Fatalf("network calls = %d, want %d (default-plan requests only)", got, want)
 	}
 }
 

@@ -530,10 +530,7 @@ func TestAuthBlockedByExternalProvider(t *testing.T) {
 	}{
 		{"login", []string{"login"}},
 		{"logout", []string{"logout"}},
-		{"status", []string{"status"}},
-		{"check", []string{"check", "--scope", "calendar:read"}}, // --scope is required
 		{"list", []string{"list"}},
-		{"scopes", []string{"scopes"}},
 	}
 
 	for _, tt := range tests {
@@ -554,6 +551,22 @@ func TestAuthBlockedByExternalProvider(t *testing.T) {
 			}
 			if gotCode := output.ExitCodeOf(err); gotCode != output.ExitValidation {
 				t.Errorf("exit code = %d, want %d", gotCode, output.ExitValidation)
+			}
+		})
+	}
+}
+
+func TestAuthReadOnlyCommandsAllowedByExternalProvider(t *testing.T) {
+	f := newFactoryWithExternalProvider(t)
+	for _, name := range []string{"status", "check", "scopes", "qrcode"} {
+		t.Run(name, func(t *testing.T) {
+			cmd := NewCmdAuth(f)
+			matched, _, err := cmd.Find([]string{name})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := cmd.PersistentPreRunE(matched, nil); err != nil {
+				t.Fatalf("read-only command blocked: %v", err)
 			}
 		})
 	}

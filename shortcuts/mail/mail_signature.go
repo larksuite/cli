@@ -133,6 +133,14 @@ func executeSignatureDetail(runtime *common.RuntimeContext, resp *signature.GetS
 
 	// Images metadata — output the full structure from API.
 	if len(sig.Images) > 0 {
+		for _, image := range sig.Images {
+			if image.DownloadURL == "" {
+				continue
+			}
+			if _, err := runtime.RemoteFiles().Validate(runtime.Ctx(), image.DownloadURL); err != nil {
+				return err
+			}
+		}
 		detail["images"] = sig.Images
 	}
 

@@ -217,14 +217,23 @@ func classifyMCPMessageError(msg, identity string) error {
 }
 
 func withMCPAuthenticationRecovery(err error, identity string) error {
-	authErr, ok := err.(*errs.AuthenticationError) //nolint:errorlint // enrich only fresh direct MCP classifier errors, never a wrapped cause
+	// UnwrapTypedError stops at the outermost producer, so this still enriches
+	// only the fresh MCP classifier error and never a wrapped cause. Returning
+	// err rather than the bare typed error keeps any diagnostic decoration the
+	// classifier attached.
+	typed, ok := errs.UnwrapTypedError(err)
+	if !ok {
+		return err
+	}
+	authErr, ok := typed.(*errs.AuthenticationError) //nolint:errorlint // the outermost producer is the invariant being enforced
 	if !ok || authErr.Hint != "" {
 		return err
 	}
 	if identity == string(core.AsBot) {
-		return authErr.WithHint("configure valid app credentials for the bot identity")
+		authErr.WithHint("configure valid app credentials for the bot identity")
+		return err
 	}
-	return recovery.Attach(authErr, recovery.UserAuthorization())
+	return recovery.Attach(err, recovery.UserAuthorization())
 }
 
 func extractMCPBusinessError(payload map[string]interface{}) (int, string, bool) {

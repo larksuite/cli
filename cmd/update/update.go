@@ -101,15 +101,7 @@ func NewCmdUpdate(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update",
 		Short: "Update lark-cli to the latest version",
-		Long: `Update lark-cli to the latest version.
-
-Detects the installation method automatically:
-  - npm install:  runs npm install -g @larksuite/cli@<version>
-  - pnpm install: runs pnpm add -g @larksuite/cli@<version>
-  - manual/other: shows GitHub Releases download URL
-
-Use --json for structured output (for AI agents and scripts).
-Use --check to only check for updates without installing.`,
+		Long:  updateLongDescription(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return updateRun(opts)
 		},
@@ -124,6 +116,9 @@ Use --check to only check for updates without installing.`,
 }
 
 func updateRun(opts *UpdateOptions) error {
+	if handled, err := runEditionUpdate(opts); handled {
+		return err
+	}
 	io := opts.Factory.IOStreams
 	cur := currentVersion()
 	updater := newUpdater()

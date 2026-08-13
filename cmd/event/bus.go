@@ -54,7 +54,7 @@ func NewCmdBus(f *cmdutil.Factory, snap *catalog.Snapshot) *cobra.Command {
 			}
 			b := bus.NewBus(cfg.AppID, cfg.AppSecret, domain, tr, logger, snap, ingress)
 
-			ctx, cancel := context.WithCancel(cmd.Context())
+			ctx, cancel := context.WithCancel(f.SDKBootstrapContext(cmd.Context()))
 			defer cancel()
 
 			sigCh := make(chan os.Signal, 1)

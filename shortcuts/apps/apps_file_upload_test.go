@@ -17,8 +17,22 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/runtimeplan"
 )
+
+type appsManagedFilePolicy struct{}
+
+func (appsManagedFilePolicy) ValidateRemoteFile(rawURL string) error {
+	if strings.HasPrefix(rawURL, "https://proxy.example/lark-cli/v1/files/") {
+		return nil
+	}
+	return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+		"managed runtime requires an opaque file handle")
+}
+
+func (appsManagedFilePolicy) UsesManagedFilePlane() bool { return true }
 
 // TestAppsFileUpload_RequiresAppIDAndFile 验证仅含空白的 --file 经 Validate 去空后触发 --file typed 校验错误。
 func TestAppsFileUpload_RequiresAppIDAndFile(t *testing.T) {
@@ -290,6 +304,52 @@ func TestAppsFileUpload_RejectsDeviceWithoutReadingIt(t *testing.T) {
 	}
 	if !strings.Contains(validationErr.Error(), "regular file") {
 		t.Fatalf("error = %v, want non-regular-file context", validationErr)
+	}
+}
+
+func TestAppsFileUploadProxyRejectsRawDownloadURLFromCallback(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "logo.png"), []byte("PNGBYTES"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	oldWD, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWD) })
+
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	cmdutil.TestSetRuntimePlan(t, factory, runtimeplan.New(runtimeplan.Options{
+		RemoteFiles: appsManagedFilePolicy{},
+	}))
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/spark/v1/apps/app_x/storage/file_pre_upload",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+			"upload_url": "https://proxy.example/lark-cli/v1/files/upload-handle", "upload_id": "up-1",
+		}},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "PUT",
+		URL:     "proxy.example/lark-cli/v1/files/upload-handle",
+		RawBody: []byte{},
+		Headers: http.Header{"ETag": []string{`"etag-123"`}},
+	})
+	const leakedURL = "https://tos.example/raw-presigned?signature=secret"
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/spark/v1/apps/app_x/storage/file_upload_callback",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+			"file_name": "logo.png", "path": "/1858537546760216.png", "download_url": leakedURL,
+		}},
+	})
+
+	err := runAppsShortcut(t, AppsFileUpload,
+		[]string{"+file-upload", "--app-id", "app_x", "--file", "logo.png", "--as", "user"}, factory, stdout)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) || validationErr.Subtype != errs.SubtypeFailedPrecondition {
+		t.Fatalf("err = %T %v, want validation/failed_precondition", err, err)
+	}
+	if strings.Contains(stdout.String(), leakedURL) {
+		t.Fatalf("raw presigned URL leaked to stdout: %s", stdout.String())
 	}
 }
 

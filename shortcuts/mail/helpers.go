@@ -208,9 +208,10 @@ func printMessageOutputSchema(runtime *common.RuntimeContext) {
 	runtime.Out(schema, nil)
 }
 
-// printWatchOutputSchema prints the per-format field reference for +watch output.
-// Used by --print-output-schema to let callers discover field names without reading skill docs.
-func printWatchOutputSchema(runtime *common.RuntimeContext) {
+// watchOutputSchemaJSON returns the per-format field reference for +watch
+// without requiring a runtime context. This keeps --print-output-schema a
+// genuinely local operation.
+func watchOutputSchemaJSON() ([]byte, error) {
 	schema := map[string]interface{}{
 		"minimal": map[string]interface{}{
 			"message": map[string]interface{}{
@@ -276,8 +277,7 @@ func printWatchOutputSchema(runtime *common.RuntimeContext) {
 			},
 		},
 	}
-	b, _ := json.MarshalIndent(schema, "", "  ")
-	fmt.Fprintln(runtime.IO().Out, string(b))
+	return json.MarshalIndent(schema, "", "  ")
 }
 
 // resolveMailboxID returns the user_mailbox_id from --mailbox flag, defaulting to "me".
@@ -1777,9 +1777,15 @@ func toInlineSourceParts(out normalizedMessageForCompose) []inlineSourcePart {
 
 // downloadAttachmentContent fetches the content at downloadURL.
 // Lark pre-signed download URLs embed an authcode in the query string and do
-// not require an Authorization header, so we never send the Bearer token.
+// not require a Feishu Authorization header. The active runtime policy adds
+// any data-plane authorization required for managed file transfers.
 func downloadAttachmentContent(runtime *common.RuntimeContext, downloadURL string) ([]byte, error) {
-	u, err := url.Parse(downloadURL)
+	remoteFiles := runtime.RemoteFiles()
+	remoteFile, err := remoteFiles.Validate(runtime.Ctx(), downloadURL)
+	if err != nil {
+		return nil, err
+	}
+	u, err := url.Parse(remoteFile.URL())
 	if err != nil {
 		return nil, mailInvalidResponseError("invalid attachment download URL: %v", err).WithCause(err)
 	}
@@ -1794,15 +1800,17 @@ func downloadAttachmentContent(runtime *common.RuntimeContext, downloadURL strin
 	if err != nil {
 		return nil, errs.NewInternalError(errs.SubtypeSDKError, "failed to get HTTP client: %v", err).WithCause(err)
 	}
-	req, err := http.NewRequestWithContext(runtime.Ctx(), http.MethodGet, downloadURL, nil)
+	req, err := remoteFile.NewRequest(runtime.Ctx(), http.MethodGet, nil)
 	if err != nil {
-		return nil, errs.NewInternalError(errs.SubtypeSDKError, "failed to build attachment download request: %v", err).WithCause(err)
+		return nil, err
 	}
-	// Do NOT send Authorization: the download_url is a pre-signed URL with an
-	// authcode embedded in the query string. Attaching the Bearer token would
-	// leak it to whatever host the URL points at (SSRF / token exfiltration).
-	resp, err := httpClient.Do(req)
+	// Do not attach a Feishu Authorization header: the runtime file boundary
+	// validates the reference and applies only its required transfer policy.
+	resp, err := remoteFiles.Do(req, remoteFile, httpClient)
 	if err != nil {
+		if _, ok := errs.ProblemOf(err); ok {
+			return nil, err
+		}
 		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "failed to download attachment: %v", err).WithCause(err)
 	}
 	defer resp.Body.Close()

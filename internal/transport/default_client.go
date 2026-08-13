@@ -21,6 +21,7 @@ type requestMatcher func(*http.Request) bool
 type transportPolicyBuilder func(http.RoundTripper) http.RoundTripper
 
 type sdkBootstrapRedirectContextKey struct{}
+type sdkBootstrapPolicyContextKey struct{}
 
 var (
 	// larkws pins this client during package initialization.
@@ -35,8 +36,6 @@ type sdkBootstrapTransport struct {
 	base                http.RoundTripper
 	match               requestMatcher
 	buildPlatformPolicy transportPolicyBuilder
-
-	policyMu sync.RWMutex
 }
 
 func (t *sdkBootstrapTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -50,7 +49,10 @@ func (t *sdkBootstrapTransport) RoundTrip(req *http.Request) (*http.Response, er
 		// workspace-scoped proxy state ahead of workspace selection.
 		base = Shared()
 	}
-	buildPlatformPolicy := t.platformPolicyBuilder()
+	buildPlatformPolicy := t.buildPlatformPolicy
+	if scoped, ok := req.Context().Value(sdkBootstrapPolicyContextKey{}).(transportPolicyBuilder); ok {
+		buildPlatformPolicy = scoped
+	}
 	if buildPlatformPolicy == nil {
 		return nil, errs.NewInternalError(
 			errs.SubtypeUnknown,
@@ -71,16 +73,25 @@ func (t *sdkBootstrapTransport) RoundTrip(req *http.Request) (*http.Response, er
 	return guarded.RoundTrip(req)
 }
 
-func (t *sdkBootstrapTransport) platformPolicyBuilder() transportPolicyBuilder {
-	t.policyMu.RLock()
-	defer t.policyMu.RUnlock()
-	return t.buildPlatformPolicy
-}
-
-func (t *sdkBootstrapTransport) setPlatformPolicyBuilder(build transportPolicyBuilder) {
-	t.policyMu.Lock()
-	t.buildPlatformPolicy = build
-	t.policyMu.Unlock()
+// WithSDKBootstrapPolicy binds one invocation's platform policy to SDK
+// bootstrap requests issued with ctx. larkws captures http.DefaultClient at
+// package initialization, so replacing a process-global builder cannot isolate
+// multiple command trees; request context can.
+func WithSDKBootstrapPolicy(
+	ctx context.Context,
+	buildPlatformPolicy func(http.RoundTripper) http.RoundTripper,
+) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if buildPlatformPolicy == nil {
+		return ctx
+	}
+	return context.WithValue(
+		ctx,
+		sdkBootstrapPolicyContextKey{},
+		transportPolicyBuilder(buildPlatformPolicy),
+	)
 }
 
 func (t *sdkBootstrapTransport) isBootstrapRequest(req *http.Request) bool {
@@ -216,8 +227,10 @@ func isFollowedRedirect(status int) bool {
 
 // InstallSDKTransportBridge wraps larkws's captured HTTP bootstrap client. All
 // requests through that client hit the bridge, but only matched bootstrap
-// traffic uses platform policy. The SDK owns the subsequent WebSocket dial,
-// which does not use this net/http transport.
+// traffic uses platform policy. Installation is idempotent: the process-wide
+// fallback is immutable after the first install, while invocation-specific
+// policy is supplied through WithSDKBootstrapPolicy. The SDK owns the
+// subsequent WebSocket dial, which does not use this net/http transport.
 func InstallSDKTransportBridge(buildPlatformPolicy func(http.RoundTripper) http.RoundTripper) {
 	installDefaultClientMu.Lock()
 	defer installDefaultClientMu.Unlock()
@@ -243,8 +256,7 @@ func installSDKTransportBridge(
 	if client == nil {
 		return
 	}
-	if existing, ok := client.Transport.(*sdkBootstrapTransport); ok {
-		existing.setPlatformPolicyBuilder(buildPlatformPolicy)
+	if _, ok := client.Transport.(*sdkBootstrapTransport); ok {
 		return
 	}
 	base := client.Transport

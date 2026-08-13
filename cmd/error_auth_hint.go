@@ -52,7 +52,7 @@ func resolveDeclaredScopesForCurrentCommand(f *cmdutil.Factory) []string {
 	if scopes := resolveDeclaredShortcutScopes(f.CurrentCommand, identity); len(scopes) > 0 {
 		return scopes
 	}
-	return resolveDeclaredServiceMethodScopes(f.CurrentCommand, identity)
+	return resolveDeclaredServiceMethodScopes(f, identity)
 }
 
 // resolveDeclaredShortcutScopes returns the scopes declared by a mounted
@@ -83,7 +83,11 @@ func resolveDeclaredShortcutScopes(cmd *cobra.Command, identity string) []string
 // resources instead of hard-coding a root->service->resource->method depth.
 // Non-method commands (services, resources, shortcuts) resolve to a non-method
 // target and yield no scopes.
-func resolveDeclaredServiceMethodScopes(cmd *cobra.Command, identity string) []string {
+func resolveDeclaredServiceMethodScopes(f *cmdutil.Factory, identity string) []string {
+	if f == nil {
+		return nil
+	}
+	cmd := f.CurrentCommand
 	if cmd == nil || strings.HasPrefix(cmd.Name(), "+") {
 		return nil
 	}
@@ -91,7 +95,11 @@ func resolveDeclaredServiceMethodScopes(cmd *cobra.Command, identity string) []s
 	if len(path) == 0 {
 		return nil
 	}
-	target, err := registry.RuntimeCatalog().Resolve(path)
+	catalog, ok := f.APICatalog()
+	if !ok {
+		catalog = registry.RuntimeCatalog()
+	}
+	target, err := catalog.Resolve(path)
 	if err != nil || target.Kind != apicatalog.TargetMethod {
 		return nil
 	}

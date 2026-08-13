@@ -7,14 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -73,11 +71,6 @@ func normalizeTimestamp(raw string) (string, error) {
 		return t.UTC().Format(time.RFC3339), nil
 	}
 	return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid timestamp %q (want relative 7d/2h/30s, date 2026-04-15, datetime 2026-04-15T10:00:00, or ISO 8601 with TZ)", s)
-}
-
-//nolint:forbidigo // Presigned transfers use the external HTTP policy.
-func newFileTransferClient() *http.Client {
-	return transport.NewExternalHTTPClient(0)
 }
 
 // URL helpers for the file (storage) CLI commands.

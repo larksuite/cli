@@ -108,21 +108,22 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 		base.Hint = detailHint
 	}
 
+	var classified error
 	switch meta.Category {
 	case errs.CategoryAuthorization:
-		return buildPermissionError(base, resp, cc)
+		classified = buildPermissionError(base, resp, cc)
 	case errs.CategoryAuthentication:
-		return &errs.AuthenticationError{Problem: base}
+		classified = &errs.AuthenticationError{Problem: base}
 	case errs.CategoryConfig:
-		return buildConfigError(base)
+		classified = buildConfigError(base)
 	case errs.CategoryPolicy:
-		return buildSecurityPolicyError(base, resp)
+		classified = buildSecurityPolicyError(base, resp)
 	case errs.CategoryValidation:
-		return &errs.ValidationError{Problem: base}
+		classified = &errs.ValidationError{Problem: base}
 	case errs.CategoryNetwork:
-		return &errs.NetworkError{Problem: base}
+		classified = &errs.NetworkError{Problem: base}
 	case errs.CategoryInternal:
-		return &errs.InternalError{Problem: base}
+		classified = &errs.InternalError{Problem: base}
 	case errs.CategoryConfirmation:
 		// Risk + Action are non-omitempty wire fields. Derive from
 		// CodeMeta when available; otherwise emit RiskUnknown +
@@ -138,7 +139,7 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 		if action == "" {
 			action = "unknown"
 		}
-		return &errs.ConfirmationRequiredError{
+		classified = &errs.ConfirmationRequiredError{
 			Problem: base,
 			Risk:    risk,
 			Action:  action,
@@ -149,20 +150,24 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 		if base.Hint == "" {
 			base.Hint = APIHint(base.Subtype) // "" for subtypes without a context-free default
 		}
-		return &errs.APIError{Problem: base}
+		classified = &errs.APIError{Problem: base}
 	default:
 		// Fail closed: an unrecognized Category routes to InternalError
 		// instead of emitting an empty Problem on the wire.
-		return &errs.InternalError{
-			Problem: errs.Problem{
-				Category: errs.CategoryInternal,
-				Subtype:  errs.SubtypeSDKError,
-				Code:     base.Code,
-				Message:  fmt.Sprintf("unrecognized Category %q for code %d", base.Category, base.Code),
-				LogID:    base.LogID,
+		return errs.WithDiagnosticMetadata(
+			&errs.InternalError{
+				Problem: errs.Problem{
+					Category: errs.CategoryInternal,
+					Subtype:  errs.SubtypeSDKError,
+					Code:     base.Code,
+					Message:  fmt.Sprintf("unrecognized Category %q for code %d", base.Category, base.Code),
+					LogID:    base.LogID,
+				},
 			},
-		}
+			errs.DiagnosticMetadata{Origin: larkErrorOrigin()},
+		)
 	}
+	return errs.WithDiagnosticMetadata(classified, errs.DiagnosticMetadata{Origin: larkErrorOrigin()})
 }
 
 // buildSecurityPolicyError extracts challenge_url and the hint from a Lark API

@@ -53,6 +53,10 @@ func newCmdAuthStatus(
 
 func authStatusRun(opts *StatusOptions, projector *recovery.Projector) error {
 	f := opts.Factory
+	editionStatus, err := inspectEditionStatus(f)
+	if err != nil {
+		return err
+	}
 
 	config, err := f.Config()
 	if err != nil {
@@ -76,7 +80,9 @@ func authStatusRun(opts *StatusOptions, projector *recovery.Projector) error {
 	result["identities"] = diagnostics
 	result["identity"] = effectiveIdentity(diagnostics)
 	addEffectiveVerification(result, diagnostics)
-	addStatusNote(result, diagnostics, projector.CanReference(recovery.TargetAuthLogin))
+	if !applyEditionStatus(result, diagnostics, editionStatus) {
+		addStatusNote(result, diagnostics, projector.CanReference(recovery.TargetAuthLogin))
+	}
 
 	output.PrintJson(f.IOStreams.Out, result)
 	return nil

@@ -16,13 +16,17 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/apicatalog"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/internal/runtimeplan"
 	"github.com/larksuite/cli/shortcuts"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/zalando/go-keyring"
@@ -261,6 +265,89 @@ func TestCollectScopesForDomains_NonexistentDomain(t *testing.T) {
 	scopes := collectScopesForDomains([]string{"nonexistent_domain_xyz"}, "user", "")
 	if len(scopes) != 0 {
 		t.Errorf("expected empty scopes for nonexistent domain, got %d", len(scopes))
+	}
+}
+
+func TestCollectScopesForDomainsUsesSuppliedCatalog(t *testing.T) {
+	const (
+		serviceName = "build_local_auth_service"
+		scopeName   = "build_local_auth_service:item:read"
+	)
+	catalog := apicatalog.New(apicatalog.SourceEmbedded, []meta.Service{{
+		Name: serviceName,
+		Resources: map[string]meta.Resource{
+			"items": {
+				Methods: map[string]meta.Method{
+					"list": {
+						Scopes:       []string{scopeName},
+						AccessTokens: []meta.Token{meta.TokenUser},
+					},
+				},
+			},
+		},
+	}})
+
+	scopes := collectScopesForDomainsFromCatalog([]string{serviceName}, "user", "", catalog)
+	if !slices.Equal(scopes, []string{scopeName}) {
+		t.Fatalf("build-local scopes = %v, want [%s]", scopes, scopeName)
+	}
+}
+
+func TestAuthLoginRunRejectsDomainOutsideFactoryCatalog(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	embeddedOnly := apicatalog.New(apicatalog.SourceEmbedded, nil)
+	localDomains := allKnownDomainsFromCatalog(core.BrandFeishu, embeddedOnly)
+	globalOnly := ""
+	for _, service := range registry.RuntimeCatalog().Services() {
+		if !localDomains[service.Name] {
+			globalOnly = service.Name
+			break
+		}
+	}
+	if globalOnly == "" {
+		t.Skip("runtime catalog has no service outside the shortcut-only domain set")
+	}
+
+	profile := &core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []core.AppConfig{{
+			Name:      "default",
+			AppId:     "cli_catalog_auth_test",
+			AppSecret: core.PlainSecret("test-secret"),
+			Brand:     core.BrandFeishu,
+		}},
+	}
+	f := cmdutil.NewDefaultWithRuntimePlan(
+		cmdutil.NewIOStreams(strings.NewReader(""), io.Discard, io.Discard),
+		cmdutil.InvocationContext{},
+		profile,
+		runtimeplan.Default(),
+		&embeddedOnly,
+	)
+	networkCalled := false
+	f.HttpClient = func() (*http.Client, error) {
+		networkCalled = true
+		return nil, errors.New("unexpected device authorization")
+	}
+
+	err := authLoginRun(&LoginOptions{
+		Factory: f,
+		Ctx:     context.Background(),
+		JSON:    true,
+		Domains: []string{globalOnly},
+		NoWait:  true,
+	})
+	problem, ok := errs.ProblemOf(err)
+	var validation *errs.ValidationError
+	if !ok ||
+		problem.Category != errs.CategoryValidation ||
+		problem.Subtype != errs.SubtypeInvalidArgument ||
+		!errors.As(err, &validation) ||
+		validation.Param != "--domain" {
+		t.Fatalf("auth login error = %#v, %v; want validation/invalid_argument --domain", problem, ok)
+	}
+	if networkCalled {
+		t.Fatal("auth login consulted the global catalog and reached device authorization")
 	}
 }
 

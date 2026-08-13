@@ -14,6 +14,7 @@ import (
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/i18n"
 )
 
 // DefaultAccountResolver is implemented by the default account provider.
@@ -24,6 +25,34 @@ type DefaultAccountResolver interface {
 // DefaultTokenResolver is implemented by the default token provider.
 type DefaultTokenResolver interface {
 	ResolveToken(ctx context.Context, req TokenSpec) (*TokenResult, error)
+}
+
+type userInfoEnrichmentSkipper interface {
+	SkipUserInfoEnrichment() bool
+}
+
+// ProviderCapabilities describes source-neutral credential behavior used by
+// inspection and account resolution. It carries no provider configuration.
+type ProviderCapabilities struct {
+	SkipUserInfoEnrichment bool
+	ProvidesOnDemandAuth   bool
+	CanInspectScopes       bool
+}
+
+type providerCapabilitiesSource interface {
+	CredentialCapabilities() ProviderCapabilities
+}
+
+// ProviderAccountMetadata carries source-neutral Profile preferences that are
+// not part of the public credential extension account contract. Internal
+// runtime providers can expose them without coupling core configuration to a
+// concrete credential product.
+type ProviderAccountMetadata struct {
+	Lang i18n.Lang
+}
+
+type providerAccountMetadataSource interface {
+	CredentialAccountMetadata() ProviderAccountMetadata
 }
 
 var (
@@ -136,10 +165,12 @@ type CredentialProvider struct {
 	httpClient   func() (*http.Client, error)
 	warnOut      io.Writer
 
-	accountOnce    sync.Once
-	account        *Account
-	accountErr     error
-	selectedSource credentialSource
+	accountOnce      sync.Once
+	account          *Account
+	accountErr       error
+	selectedSource   credentialSource
+	selectedProvider extcred.Provider
+	selectedCaps     ProviderCapabilities
 
 	hintOnce sync.Once
 	hint     *IdentityHint
@@ -176,34 +207,59 @@ func (p *CredentialProvider) doResolveAccount(ctx context.Context) (*Account, er
 	for _, prov := range p.providers {
 		acct, err := prov.ResolveAccount(ctx)
 		if err != nil {
+			// A provider error stops the chain, so remember that source as the
+			// immutable selection even though account resolution failed.
+			p.selectedSource = extensionTokenSource{provider: prov}
+			p.selectedProvider = prov
+			p.selectedCaps = credentialProviderCapabilities(prov)
 			return nil, err
 		}
 		if acct != nil {
 			internal := convertAccount(acct)
+			if source, ok := prov.(providerAccountMetadataSource); ok {
+				metadata := source.CredentialAccountMetadata()
+				internal.Lang = metadata.Lang
+			}
 			source := extensionTokenSource{provider: prov}
-			if err := p.enrichUserInfo(ctx, internal, source); err != nil {
-				if p.warnOut != nil {
-					_, _ = fmt.Fprintf(p.warnOut, "warning: unable to verify user identity from credential source %q: %v\n", source.Name(), err)
+			capabilities := credentialProviderCapabilities(prov)
+			skipEnrichment := capabilities.SkipUserInfoEnrichment
+			if skipper, ok := prov.(userInfoEnrichmentSkipper); ok {
+				skipEnrichment = skipper.SkipUserInfoEnrichment()
+			}
+			if !skipEnrichment {
+				if err := p.enrichUserInfo(ctx, internal, source); err != nil {
+					if p.warnOut != nil {
+						_, _ = fmt.Fprintf(p.warnOut, "warning: unable to verify user identity from credential source %q: %v\n", source.Name(), err)
+					}
+					// enrichUserInfo failure is non-fatal: SupportedIdentities
+					// (used for strict mode) is already set by the provider.
+					// Clear unverified user identity for safety.
+					internal.UserOpenId = ""
+					internal.UserName = ""
 				}
-				// enrichUserInfo failure is non-fatal: SupportedIdentities
-				// (used for strict mode) is already set by the provider.
-				// Clear unverified user identity for safety.
-				internal.UserOpenId = ""
-				internal.UserName = ""
 			}
 			p.selectedSource = source
+			p.selectedProvider = prov
+			p.selectedCaps = capabilities
 			return internal, nil
 		}
 	}
 	if p.defaultAcct != nil {
+		p.selectedSource = defaultTokenSource{resolver: p.defaultToken}
 		acct, err := p.defaultAcct.ResolveAccount(ctx)
 		if err != nil {
 			return nil, err
 		}
-		p.selectedSource = defaultTokenSource{resolver: p.defaultToken}
 		return acct, nil
 	}
 	return nil, core.NotConfiguredError()
+}
+
+func credentialProviderCapabilities(provider extcred.Provider) ProviderCapabilities {
+	if source, ok := provider.(providerCapabilitiesSource); ok {
+		return source.CredentialCapabilities()
+	}
+	return ProviderCapabilities{CanInspectScopes: true}
 }
 
 // enrichUserInfo resolves user identity when extension provides a UAT.

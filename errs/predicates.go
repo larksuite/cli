@@ -47,7 +47,24 @@ func ProblemOf(err error) (*Problem, bool) {
 // embeds Problem (i.e. any typed error in this package). Returns the typed
 // error itself (as error) so callers — notably JSON marshaling — see the
 // concrete value's own struct tags rather than an opaque wrapper.
+//
+// Diagnostic metadata decorates a typed producer rather than being one, so it
+// stays transparent here: callers switch on the concrete producer type.
 func UnwrapTypedError(err error) (error, bool) {
+	carrier, ok := firstProblemCarrier(err)
+	if !ok {
+		return nil, false
+	}
+	if wrapper, decorated := carrier.(*diagnosticMetadataWrapper); decorated && wrapper.typed != nil { //nolint:errorlint // Exact decoration identity is the invariant being enforced; unwrapping further would select an inner cause.
+		return wrapper.typed, true
+	}
+	return carrier, true
+}
+
+// firstProblemCarrier returns the outermost error in the chain that carries a
+// Problem, keeping any diagnostic decoration intact. Metadata lookup needs the
+// decoration; type-switching callers do not.
+func firstProblemCarrier(err error) (error, bool) {
 	var c problemCarrier
 	if errors.As(err, &c) {
 		if e, ok := c.(error); ok {

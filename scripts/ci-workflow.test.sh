@@ -37,6 +37,8 @@ deterministic_section="$(awk '
   /^  coverage:/ { exit }
 ' "$workflow")"
 coverage_job_section="$(job_section coverage)"
+extended_integration_section="$(job_section extended-integration)"
+extended_platform_security_section="$(job_section extended-platform-security)"
 deadcode_section="$(job_section deadcode)"
 dry_run_section="$(job_section e2e-dry-run)"
 section="$(awk '
@@ -165,6 +167,21 @@ if ! grep -Fq "actions/setup-node" <<<"$script_test_section"; then
   exit 1
 fi
 
+if ! grep -Fq "goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a" <<<"$script_test_section"; then
+  echo "script-test job should install the same commit-pinned GoReleaser action used by release"
+  exit 1
+fi
+
+if ! grep -Fq "install-only: true" <<<"$script_test_section"; then
+  echo "script-test job should install GoReleaser without publishing"
+  exit 1
+fi
+
+if ! grep -Fq "run: goreleaser check" <<<"$script_test_section"; then
+  echo "script-test job should validate the GoReleaser configuration"
+  exit 1
+fi
+
 if grep -Fq '${{ secrets.' <<<"$script_test_section"; then
   echo "script-test must not reference secrets"
   exit 1
@@ -233,6 +250,55 @@ fi
 
 if ! grep -Fq "deterministic-gate" <<<"$results_section"; then
   echo "results job should include deterministic-gate"
+  exit 1
+fi
+
+if ! grep -Fq "extended-integration" <<<"$extended_integration_section"; then
+  echo "CI should define the Extended integration job"
+  exit 1
+fi
+
+if ! grep -Fq "TestEditionSourceIsolation" <<<"$extended_integration_section"; then
+  echo "Extended integration should enforce the repository-local edition source contract" >&2
+  exit 1
+fi
+
+if ! grep -Fq "extended-integration" <<<"$(grep -F 'needs:' <<<"$results_section" | head -1)"; then
+  echo "results job should wait for extended-integration"
+  exit 1
+fi
+
+if [ "$(grep -Foc '${{ needs.extended-integration.result }}' <<<"$results_section")" -lt 2 ]; then
+  echo "results job should summarize and enforce extended-integration"
+  exit 1
+fi
+
+if ! grep -Fq "extended-platform-security" <<<"$extended_platform_security_section"; then
+  echo "CI should define native Extended platform security tests"
+  exit 1
+fi
+
+for runner in macos-latest windows-latest; do
+  if ! grep -Fq "$runner" <<<"$extended_platform_security_section"; then
+    echo "native Extended platform security tests should run on $runner" >&2
+    exit 1
+  fi
+done
+
+for test_name in TestNativeAdminControlledPath TestCredentialProcessEnvironmentUsesExplicitAllowlist TestCredentialProcessCommandRunsWithIsolatedEnvironment; do
+  if ! grep -Fq "$test_name" <<<"$extended_platform_security_section"; then
+    echo "native Extended platform security job should run $test_name" >&2
+    exit 1
+  fi
+done
+
+if ! grep -Fq "extended-platform-security" <<<"$(grep -F 'needs:' <<<"$results_section" | head -1)"; then
+  echo "results job should wait for extended-platform-security" >&2
+  exit 1
+fi
+
+if [ "$(grep -Foc '${{ needs.extended-platform-security.result }}' <<<"$results_section")" -lt 2 ]; then
+  echo "results job should summarize and enforce extended-platform-security" >&2
   exit 1
 fi
 
@@ -536,6 +602,25 @@ coverage_step="$(awk '
   in_step { print }
   in_step && /^      - name: Check coverage threshold/ { exit }
 ' "$workflow")"
+
+coverage_summary_step="$(awk '
+  /^      - name: Coverage summary/ { in_step = 1 }
+  in_step { print }
+  in_step && /^  [A-Za-z0-9_-]+:/ { exit }
+' "$workflow")"
+
+for profile in coverage-standard.txt coverage-extended.txt; do
+  if ! grep -Fq "$profile" <<<"$coverage_summary_step"; then
+    echo "coverage summary should report $profile" >&2
+    exit 1
+  fi
+done
+
+if grep -Fq 'cover -func=coverage.txt' <<<"$coverage_summary_step" ||
+   grep -Fq '[ ! -f coverage.txt ]' <<<"$coverage_summary_step"; then
+  echo "coverage summary should not read the obsolete coverage.txt profile" >&2
+  exit 1
+fi
 
 if grep -Fq '${{ secrets.CODECOV_TOKEN }}' <<<"$coverage_step" &&
    ! grep -Fq "if: \${{ $fork_safe_guard }}" <<<"$coverage_step"; then

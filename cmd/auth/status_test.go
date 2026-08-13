@@ -35,6 +35,15 @@ func TestAuthStatusRun_SplitsBotAndUserIdentity(t *testing.T) {
 	if got.Identities.User.Status != "missing" || got.Identities.User.Available {
 		t.Fatalf("user = %#v, want missing and unavailable", got.Identities.User)
 	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(stdout.Bytes(), &raw); err != nil {
+		t.Fatalf("json.Unmarshal(raw) error = %v", err)
+	}
+	for _, field := range []string{"source", "credentialProvider", "externalCredentialMode"} {
+		if _, exists := raw[field]; exists {
+			t.Fatalf("local auth status unexpectedly contains edition field %q: %s", field, stdout.String())
+		}
+	}
 }
 
 func TestAuthStatusRun_VerifyReportsBotIdentity(t *testing.T) {

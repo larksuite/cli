@@ -24,6 +24,7 @@ import (
 	"github.com/larksuite/cli/internal/hook"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/runtimebootstrap"
 	"github.com/larksuite/cli/internal/skillref"
 	"github.com/larksuite/cli/internal/skillscheck"
 	"github.com/larksuite/cli/internal/suggest"
@@ -71,11 +72,17 @@ func executeWithOptions(opts []BuildOption) int {
 	if cfg.streams == nil {
 		WithIO(os.Stdin, os.Stdout, os.Stderr)(cfg)
 	}
+	// Resolve all startup state from the detected workspace. This must happen
+	// before the startup brand, isSingleAppMode, or buildInternalWithConfig
+	// reads workspace-scoped configuration.
+	selectInvocationWorkspace()
+	startup := runtimebootstrap.Resolve(inv.Profile)
+	withRuntimeBootstrap(startup)(cfg)
 	if !cfg.hideProfileSet {
 		HideProfile(isSingleAppMode())(cfg)
 	}
 	if !cfg.startupBrandSet {
-		WithStartupBrand(ResolveStartupBrand(inv.Profile))(cfg)
+		WithStartupBrand(resolveStartupBrandFromConfig(inv.Profile, startup.ProfileConfig))(cfg)
 	}
 	configureFlagCompletions(os.Args)
 
@@ -134,8 +141,8 @@ func isDeferredBootstrapProfileError(err error) bool {
 // skills-state access" contract directly testable. Production always uses the
 // concrete implementations below.
 var (
-	checkCachedUpdate     = update.CheckCached
-	refreshUpdateCache    = update.RefreshCache
+	checkCachedUpdate     = checkCachedEditionUpdate
+	refreshUpdateCache    = refreshEditionUpdateCache
 	initializeSkillsCheck = skillscheck.Init
 )
 

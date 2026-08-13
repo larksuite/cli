@@ -20,6 +20,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/lockfile"
+	"github.com/larksuite/cli/internal/runtimeplan"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
 	"github.com/spf13/cobra"
@@ -208,6 +209,41 @@ func TestEventSubscribeExecuteRejectsUnsafeOutputDir(t *testing.T) {
 	requireProblem(t, err, errs.CategoryValidation, errs.SubtypeInvalidArgument, "--output-dir")
 	if errors.Unwrap(err) == nil {
 		t.Fatal("unsafe output-dir error should preserve its cause")
+	}
+}
+
+func TestEventSubscribeFrameworkRejectsDeniedRuntimeCapability(t *testing.T) {
+	denied := errs.NewValidationError(errs.SubtypeFailedPrecondition,
+		"real-time events are unavailable in this runtime").
+		WithHint("use a runtime that supports real-time events")
+	plan := runtimeplan.New(runtimeplan.Options{
+		Capabilities: func(capability runtimeplan.Capability) error {
+			if capability == runtimeplan.CapabilityRealtimeEvents {
+				return denied
+			}
+			return nil
+		},
+	})
+	cfg := &core.CliConfig{
+		AppID: "cli_event_test", AppSecret: "secret", Brand: core.BrandFeishu,
+	}
+	factory, _, _, _ := cmdutil.TestFactoryWithRuntimePlan(t, cfg, plan)
+	parent := &cobra.Command{Use: "event"}
+	EventSubscribe.Mount(parent, factory)
+	parent.SetArgs([]string{"+subscribe", "--output-dir", "/must-not-be-validated"})
+
+	err := parent.Execute()
+	requireProblem(t, err, errs.CategoryValidation, errs.SubtypeFailedPrecondition, "")
+	problem, _ := errs.ProblemOf(err)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %T, want *errs.ValidationError", err)
+	}
+	if validationErr.Param != "" {
+		t.Fatalf("param = %q, want empty", validationErr.Param)
+	}
+	if problem.Hint == "" {
+		t.Fatal("hint is empty")
 	}
 }
 

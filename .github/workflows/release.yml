@@ -97,6 +97,8 @@ jobs:
     environment: npm-production
     permissions:
       contents: read
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -191,9 +193,13 @@ jobs:
           VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           set -euo pipefail
+          # checksums.txt covers the Extended installers, so they must sit
+          # alongside the archives before the digests are verified.
+          cp scripts/install-extended.sh scripts/install-extended.ps1 dist/
           (cd dist && sha256sum --check checksums.txt)
           mkdir release-candidate
           cp dist/*.tar.gz dist/*.zip dist/checksums.txt release-candidate/
+          cp dist/install-extended.sh dist/install-extended.ps1 release-candidate/
           cp dist/CHANGELOG.md release-candidate/CHANGELOG.md
           cp dist/checksums.txt checksums.txt
           npm install --global npm@11.16.0
@@ -205,6 +211,39 @@ jobs:
             throw new Error("npm pack did not produce the expected release package");
           }
           NODE
+
+      - name: Verify release edition identities
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d "${RUNNER_TEMP}/release-editions.XXXXXX")"
+          trap 'rm -rf -- "$work"' EXIT
+          for edition in standard extended; do
+            prefix=lark-cli
+            [[ "$edition" != "extended" ]] || prefix=lark-cli-extended
+            archive="dist/${prefix}-${VERSION}-linux-amd64.tar.gz"
+            mkdir -p "$work/$edition"
+            tar -xzf "$archive" -C "$work/$edition" lark-cli
+            metadata="$("$work/$edition/lark-cli" version --json)"
+            [[ "$(jq -r .edition <<<"$metadata")" == "$edition" ]] || { echo "${archive} does not report edition ${edition}." >&2; exit 1; }
+            [[ "$(jq -r .version <<<"$metadata")" == "$VERSION" ]] || { echo "${archive} does not report version ${VERSION}." >&2; exit 1; }
+          done
+
+      - name: Verify release platform asset matrix
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: bash scripts/verify-release-assets.sh dist "$VERSION"
+
+      - name: Attest release archives
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
+            dist/install-extended.sh
+            dist/install-extended.ps1
 
       - name: Upload release candidate
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -250,7 +289,7 @@ jobs:
         run: |
           set -euo pipefail
           release_notes=release-candidate/CHANGELOG.md
-          release_assets=(release-candidate/*.tar.gz release-candidate/*.zip release-candidate/checksums.txt)
+          release_assets=(release-candidate/*.tar.gz release-candidate/*.zip release-candidate/checksums.txt release-candidate/install-extended.sh release-candidate/install-extended.ps1)
           release_error="$(mktemp "${RUNNER_TEMP}/release-view.XXXXXX")"
           trap 'rm -f -- "$release_error"' EXIT
           verify_release_metadata() {
@@ -336,7 +375,7 @@ jobs:
         with:
           name: release-candidate-${{ github.run_id }}
           path: release-candidate
-      - name: Verify notarized macOS binary
+      - name: Verify notarized macOS binaries
         env:
           ARCH: ${{ matrix.arch }}
           MACOS_TEAM_ID: ${{ vars.MACOS_TEAM_ID }}
@@ -344,24 +383,29 @@ jobs:
         run: |
           set -euo pipefail
           [[ -n "$MACOS_TEAM_ID" ]] || { echo "MACOS_TEAM_ID is not configured." >&2; exit 1; }
-          archive="lark-cli-${VERSION}-darwin-${ARCH}.tar.gz"
-          awk -v archive="$archive" '$2 == archive { print }' release-candidate/checksums.txt > checksum.txt
-          [[ "$(wc -l < checksum.txt | tr -d '[:space:]')" == "1" ]] || { echo "checksums.txt must contain exactly one entry for ${archive}." >&2; exit 1; }
-          (cd release-candidate && shasum -a 256 -c ../checksum.txt)
           work="$(mktemp -d "${RUNNER_TEMP}/macos-release.XXXXXX")"
           trap 'rm -rf -- "$work" checksum.txt' EXIT
-          tar -xzf "release-candidate/$archive" -C "$work"
-          binary="$work/lark-cli"
-          [[ -f "$binary" && ! -L "$binary" ]] || { echo "Archive did not contain a regular lark-cli binary." >&2; exit 1; }
-          codesign --verify --strict --verbose=4 "$binary"
-          details="$(codesign -dv --verbose=4 "$binary" 2>&1)"
-          grep -Eq '^Authority=Developer ID Application: .+' <<<"$details"
-          grep -Fxq "TeamIdentifier=${MACOS_TEAM_ID}" <<<"$details"
-          grep -Eq '^CodeDirectory .*flags=0x[0-9A-Fa-f]+[(][^)]*runtime[^)]*[)]' <<<"$details"
-          grep -Eq '^Timestamp=.+' <<<"$details"
-          codesign --verify --strict --verbose=4 --check-notarization -R='notarized' "$binary"
           escaped_version="${VERSION//./\\.}"
-          "$binary" --version | grep -Eq "(^|[^0-9A-Za-z.])${escaped_version}([^0-9A-Za-z.]|$)"
+          # Every published macOS archive is verified, so each distributed
+          # edition is checked on both architectures.
+          for archive in "lark-cli-${VERSION}-darwin-${ARCH}.tar.gz" "lark-cli-extended-${VERSION}-darwin-${ARCH}.tar.gz"; do
+            awk -v archive="$archive" '$2 == archive { print }' release-candidate/checksums.txt > checksum.txt
+            [[ "$(wc -l < checksum.txt | tr -d '[:space:]')" == "1" ]] || { echo "checksums.txt must contain exactly one entry for ${archive}." >&2; exit 1; }
+            (cd release-candidate && shasum -a 256 -c ../checksum.txt)
+            extracted="$work/${archive%.tar.gz}"
+            mkdir -p "$extracted"
+            tar -xzf "release-candidate/$archive" -C "$extracted"
+            binary="$extracted/lark-cli"
+            [[ -f "$binary" && ! -L "$binary" ]] || { echo "Archive ${archive} did not contain a regular lark-cli binary." >&2; exit 1; }
+            codesign --verify --strict --verbose=4 "$binary"
+            details="$(codesign -dv --verbose=4 "$binary" 2>&1)"
+            grep -Eq '^Authority=Developer ID Application: .+' <<<"$details"
+            grep -Fxq "TeamIdentifier=${MACOS_TEAM_ID}" <<<"$details"
+            grep -Eq '^CodeDirectory .*flags=0x[0-9A-Fa-f]+[(][^)]*runtime[^)]*[)]' <<<"$details"
+            grep -Eq '^Timestamp=.+' <<<"$details"
+            codesign --verify --strict --verbose=4 --check-notarization -R='notarized' "$binary"
+            "$binary" --version | grep -Eq "(^|[^0-9A-Za-z.])${escaped_version}([^0-9A-Za-z.]|$)"
+          done
 
   publish-github:
     needs: [preflight, create-draft-release, verify-macos]
@@ -405,7 +449,7 @@ jobs:
           cmp --silent release-candidate/checksums.txt "$existing/checksums.txt" || { echo "Draft Release checksums do not match the verified candidate." >&2; exit 1; }
           (cd "$existing" && sha256sum --check checksums.txt)
           diff --brief \
-            <(find release-candidate -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name checksums.txt \) -printf '%f\n' | sort) \
+            <(find release-candidate -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name checksums.txt -o -name install-extended.sh -o -name install-extended.ps1 \) -printf '%f\n' | sort) \
             <(gh release view "$TAG" --json assets -q '.assets[].name' | sort)
       - name: Refuse GitHub publication if npm channel is newer
         env:

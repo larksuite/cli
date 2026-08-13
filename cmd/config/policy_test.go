@@ -135,19 +135,16 @@ func TestConfigPolicyShow_YamlSourceNameIsEmpty(t *testing.T) {
 	}
 }
 
-// Regression: the parent `config` command declares a PersistentPreRunE
-// that calls RequireBuiltinCredentialProvider; env credentials cause
-// it to return external_provider. `config policy` is a diagnostic
-// group that must not be blocked by that check. The group declares
-// its own no-op PersistentPreRunE so cobra's "first walking up from
-// leaf" picks ours over the config parent's.
-func TestConfigPolicy_BypassesConfigParentPersistentPreRunE(t *testing.T) {
+// The policy group explicitly overrides the config parent's local credential
+// management capability because it is source-neutral diagnostics.
+func TestConfigPolicyOverridesCredentialManagementCapability(t *testing.T) {
 	f, _, _ := newPolicyTestFactory()
-	group := NewCmdConfigPolicy(f)
-	if group.PersistentPreRunE == nil {
-		t.Fatal("config policy group must declare its own PersistentPreRunE to win over config parent")
+	root := NewCmdConfig(f)
+	leaf, _, err := root.Find([]string{"policy", "show"})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if err := group.PersistentPreRunE(group, nil); err != nil {
-		t.Errorf("config policy PersistentPreRunE should be no-op, got %v", err)
+	if capabilities := cmdutil.GetRuntimeCapabilities(leaf); len(capabilities) != 0 {
+		t.Fatalf("policy capabilities = %v, want source-neutral", capabilities)
 	}
 }

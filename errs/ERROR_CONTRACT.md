@@ -61,6 +61,8 @@ Typed errors render to **stderr** as one JSON object per process exit:
 | `error.message` | informational | not safe to branch on |
 | `error.hint` | informational | actionable recovery guidance |
 | `error.log_id` | informational | upstream request id (server-side trace) |
+| `error.origin` | informational | Extended producer: `cli`, `credential_process`, `proxy`, or `lark`; omitted by Standard to preserve its existing envelope; consumers must tolerate absence and unknown future values |
+| `error.proxy_request_id` | informational | external credential platform trace id; never stored in `log_id` |
 | `error.retryable` | wire-stable | `true` when present; omitted when `false` |
 | `error.retry_after_seconds` | per-Subtype-stable | upstream-provided minimum delay before retry; emitted when available for retryable `api/rate_limit` and HTTP-backed `network` errors |
 | `error.param` | per-Subtype-stable | single offending parameter (`ValidationError`); see **Validation parameters** |
@@ -116,7 +118,7 @@ already succeeded).
 | `config` | local config missing / unbound | 3 | `ConfigError` |
 | `network` | DNS, refused, timeout, transport | 4 | `NetworkError` |
 | `api` | server-side Lark error w/o specific bucket | 1 | `APIError` |
-| `policy` | content safety / security challenge | 6 | `SecurityPolicyError`, `ContentSafetyError` |
+| `policy` | security policy denial/challenge, including content safety | 6 | `SecurityPolicyError`, `ContentSafetyError` |
 | `internal` | SDK contract violation / decode failure | 5 | `InternalError` |
 | `confirmation` | high-risk action needs `--yes` | 10 | `ConfirmationRequiredError` |
 
@@ -319,7 +321,7 @@ legal for framework dynamic paths (e.g. classifier fanout) but the lint
 | Login required | `errs.NewAuthenticationError(errs.SubtypeTokenMissing, msg)` |
 | Token lacks scope | `errclass.BuildAPIError(resp, ctx)` |
 | Local config missing | `errs.NewConfigError(errs.SubtypeNotConfigured, msg)` |
-| Transport failure | `errs.NewNetworkError(errs.SubtypeNetworkTimeout, msg).WithCause(err)` (subtype: `timeout` / `tls` / `dns` / `server_error` / `transport` / `protocol`) |
+| Transport or external dependency failure | `errs.NewNetworkError(subtype, msg).WithCause(err)` (subtype: `timeout` / `tls` / `dns` / `server_error` / `transport` / `protocol` / `credential_source_unavailable` / `upstream_unavailable`) |
 | Peer answered but broke the protocol | `errs.NewNetworkError(errs.SubtypeNetworkProtocol, msg)` — e.g. a `206` whose `Content-Range` is not the range the transfer resumed from. Never retryable: replaying the same request cannot change the answer. |
 | Resource changed mid-transfer | `errs.NewNetworkError(errs.SubtypeNetworkRepresentationChanged, msg).WithRetryable().WithHint(...)` — the peer behaved correctly, so starting the transfer over reads the current version. |
 | Lark API error | `errclass.BuildAPIError(resp, ctx)` |
@@ -565,7 +567,11 @@ Rare; the existing structs cover the 9 Categories with room. If you must:
 `CheckProblemEmbed` enforces the `Problem` embed at lint time. New
 top-level wire fields are forbidden — per-Subtype data goes into the
 typed struct as a documented extension field, not into the envelope's
-top level.
+top level. The external credential platform contract is the single explicit
+exception: `origin` and `proxy_request_id` are shared across several error
+categories and therefore live in `Problem`. Both fields are optional, and
+consumers must ignore them when absent or unknown. Any further shared field
+still requires an explicit contract revision and wire-format pin.
 
 ## CI guards
 

@@ -66,3 +66,13 @@ func TestAppsFileSign_PrettyPrintsSignedURL(t *testing.T) {
 		t.Fatalf("pretty should print only signed_url, got: %q", got)
 	}
 }
+
+func TestAppsFileSignTipsDoNotRecommendUnauthenticatedCurl(t *testing.T) {
+	tips := strings.ToLower(strings.Join(AppsFileSign.Tips, "\n"))
+	if strings.Contains(tips, "curl") {
+		t.Fatalf("file-sign tips must not recommend bare curl for proxy-mode file handles: %q", tips)
+	}
+	if !strings.Contains(tips, "+file-download") {
+		t.Fatalf("file-sign tips should direct users to the CLI-managed download path: %q", tips)
+	}
+}

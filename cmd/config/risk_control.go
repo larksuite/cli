@@ -23,11 +23,6 @@ func NewCmdConfigRiskControl(f *cmdutil.Factory) *cobra.Command {
 Account protection is on by default. Use off to opt this workspace out, on to
 opt it back in explicitly, or default to remove the explicit preference.`,
 		Args: cobra.MaximumNArgs(1),
-		// This is persistent workspace policy, not credential management.
-		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-			cmd.SilenceUsage = true
-			return nil
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config, err := core.LoadOrNotConfigured()
 			if err != nil {

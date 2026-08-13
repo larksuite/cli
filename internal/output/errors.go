@@ -60,6 +60,7 @@ func WriteTypedErrorEnvelope(w io.Writer, err error, identity string) bool {
 	if !ok {
 		return false
 	}
+	typed = setDefaultErrorOrigin(typed)
 	env := typedEnvelope{
 		OK:       false,
 		Identity: identity,

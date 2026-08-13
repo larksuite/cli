@@ -846,8 +846,8 @@ func TestDocsFetchV2ReturnsAPIError(t *testing.T) {
 	if p.Message != "fetch failed" {
 		t.Errorf("message = %q, want %q", p.Message, "fetch failed")
 	}
-	if cause := errors.Unwrap(err); cause != nil {
-		t.Fatalf("unexpected wrapped cause for API response error: %T %v", cause, cause)
+	if apiErr.Cause != nil {
+		t.Fatalf("unexpected API response cause: %T %v", apiErr.Cause, apiErr.Cause)
 	}
 }
 

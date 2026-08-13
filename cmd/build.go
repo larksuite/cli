@@ -32,6 +32,7 @@ import (
 	internalplatform "github.com/larksuite/cli/internal/platform"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/internal/runtimebootstrap"
 	"github.com/larksuite/cli/internal/skillpolicy"
 	"github.com/larksuite/cli/internal/skillref"
 	"github.com/larksuite/cli/internal/surface"
@@ -55,6 +56,7 @@ type buildConfig struct {
 	startupBrand    core.LarkBrand
 	startupBrandSet bool
 	hideProfileSet  bool
+	runtime         *runtimebootstrap.Result
 }
 
 // buildRuntime owns presentation state for exactly one command tree. Factory
@@ -68,15 +70,22 @@ type buildRuntime struct {
 	skillReferences *skillref.Resolver
 }
 
-// WithStartupBrand initializes the API registry with the given brand before
-// any command registration touches the runtime catalog. Without it the
-// registry's sync.Once locks onto the Feishu default at first catalog access,
-// long before the lazily-resolved config brand is known — see
-// ResolveStartupBrand for the caller-side resolution.
+// WithStartupBrand selects the brand used when an ordinary build initializes
+// the runtime API catalog. Embedded-only and explicitly supplied catalogs do
+// not consume the process-wide registry — see ResolveStartupBrand for the
+// caller-side resolution.
 func WithStartupBrand(brand core.LarkBrand) BuildOption {
 	return func(c *buildConfig) {
 		c.startupBrand = brand
 		c.startupBrandSet = true
+	}
+}
+
+// withRuntimeBootstrap shares one invocation snapshot across registry,
+// credentials, transports, and command capabilities.
+func withRuntimeBootstrap(runtime *runtimebootstrap.Result) BuildOption {
+	return func(c *buildConfig) {
+		c.runtime = runtime
 	}
 }
 
@@ -150,9 +159,10 @@ func WithoutServiceCommands() BuildOption {
 	}
 }
 
-// WithServiceCatalog builds generated service commands from a specific metadata
-// catalog. It is intended for offline inspection tools that need deterministic
-// embedded metadata while production execution keeps using the runtime catalog.
+// WithServiceCatalog builds the command tree from a specific metadata catalog.
+// It is intended for offline inspection tools that need deterministic metadata;
+// generated services, schema, completion, and error enrichment all observe the
+// same build-local view.
 func WithServiceCatalog(catalog apicatalog.Catalog) BuildOption {
 	return func(c *buildConfig) {
 		c.serviceCatalog = &catalog
@@ -172,9 +182,9 @@ func Build(ctx context.Context, inv cmdutil.InvocationContext, opts ...BuildOpti
 	return rootCmd
 }
 
-// buildInternal is a pure assembly function: it wires the command tree from
-// inv and BuildOptions alone. Any state-dependent decision (disk, network,
-// env) belongs in the caller and must be threaded in via BuildOption.
+// buildInternal assembles the command tree from one immutable startup
+// configuration snapshot. Profile selection happens before any registry
+// network decision and the same result is passed to the Factory.
 //
 // Returns (runtime, rootCmd, registry). The registry is nil when plugin
 // install failed (FailClosed guard installed) or when no plugin produced
@@ -206,11 +216,19 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 	if cfg.streams == nil {
 		cfg.streams = cmdutil.SystemIO()
 	}
-	// Initialize the registry brand before anything touches the runtime
-	// catalog (its sync.Once would otherwise lock onto the Feishu default).
-	if cfg.startupBrand != "" {
-		registry.InitWithBrand(cfg.startupBrand)
+	startup := cfg.runtime
+	if startup == nil {
+		startup = runtimebootstrap.Resolve(inv.Profile)
 	}
+
+	// Select one immutable catalog for the whole command tree. The process-wide
+	// runtime registry remains an ordinary-mode cache; embedded-only runtimes do
+	// not initialize it, so one Build cannot consume another Build's sync.Once.
+	registryBrand := cfg.startupBrand
+	if registryBrand == "" {
+		registryBrand = resolveStartupBrandFromConfig(inv.Profile, startup.ProfileConfig)
+	}
+	apiCatalog := selectBuildAPICatalog(cfg.serviceCatalog, startup, registryBrand)
 
 	// Reset the legacy process-global diagnostic snapshots before paths that
 	// may return early. Distribution presentation state is deliberately not
@@ -218,7 +236,13 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 	cmdpolicy.SetActive(nil)
 	internalplatform.SetActiveInventory(nil)
 
-	f := cmdutil.NewDefault(cfg.streams, inv)
+	f := cmdutil.NewDefaultWithRuntimePlan(
+		cfg.streams,
+		inv,
+		startup.ProfileConfig,
+		startup.Plan,
+		&apiCatalog,
+	)
 	if cfg.keychain != nil {
 		f.Keychain = cfg.keychain
 	}
@@ -281,14 +305,11 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 	}, nil))
 	rootCmd.AddCommand(completion.NewCmdCompletion(f))
 	rootCmd.AddCommand(cmdupdate.NewCmdUpdate(f))
+	registerEditionCommands(rootCmd, f)
 	rootCmd.AddCommand(cmdevent.NewCmdEvents(f))
 	rootCmd.AddCommand(skill.NewCmdSkill(f))
 	if !cfg.skipService {
-		if cfg.serviceCatalog != nil {
-			service.RegisterServiceCommandsFromCatalog(ctx, rootCmd, f, *cfg.serviceCatalog)
-		} else {
-			service.RegisterServiceCommandsWithContext(ctx, rootCmd, f)
-		}
+		service.RegisterServiceCommandsFromCatalog(ctx, rootCmd, f, apiCatalog)
 	}
 	shortcuts.RegisterShortcutsWithContext(ctx, rootCmd, f)
 
@@ -386,6 +407,24 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 
 	recordInventory(installResult)
 	return runtime, rootCmd, hookRegistry
+}
+
+func selectBuildAPICatalog(
+	explicit *apicatalog.Catalog,
+	startup *runtimebootstrap.Result,
+	brand core.LarkBrand,
+) apicatalog.Catalog {
+	if explicit != nil {
+		return *explicit
+	}
+	if startup != nil && startup.Plan != nil && !startup.Plan.AllowsRemoteMetadata() {
+		return registry.EmbeddedCatalog()
+	}
+	if brand == "" {
+		brand = core.BrandFeishu
+	}
+	registry.InitWithBrand(brand)
+	return registry.RuntimeCatalog()
 }
 
 func finalizeFailedBuild(runtime *buildRuntime, root *cobra.Command) (*buildRuntime, *cobra.Command, *hook.Registry) {

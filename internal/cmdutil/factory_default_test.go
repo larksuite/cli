@@ -6,6 +6,7 @@ package cmdutil
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
@@ -14,6 +15,9 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/envvars"
+	"github.com/larksuite/cli/internal/runtimebootstrap"
+	"github.com/larksuite/cli/internal/runtimeplan"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
@@ -211,5 +215,70 @@ func TestNewDefault_FileIOProviderDoesNotResolveDuringInitialization(t *testing.
 	}
 	if provider.resolveCalls != 1 {
 		t.Fatalf("ResolveFileIO() calls after explicit resolve = %d, want 1", provider.resolveCalls)
+	}
+}
+
+func TestEmbeddedRuntimePlanDoesNotConsumeGlobalRegistry(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "")
+	t.Setenv(envvars.CliAppSecret, "")
+	t.Setenv(envvars.CliUserAccessToken, "")
+	t.Setenv(envvars.CliTenantAccessToken, "")
+
+	originalRemote := initRegistryWithBrand
+	t.Cleanup(func() {
+		initRegistryWithBrand = originalRemote
+	})
+
+	var remoteCalls int
+	initRegistryWithBrand = func(core.LarkBrand) { remoteCalls++ }
+
+	profile := &core.MultiAppConfig{Apps: []core.AppConfig{{
+		AppId:     "cli_test",
+		AppSecret: core.PlainSecret("secret"),
+		Brand:     core.BrandFeishu,
+	}}}
+	plan := runtimeplan.New(runtimeplan.Options{Metadata: runtimeplan.MetadataEmbeddedOnly})
+	f := NewDefaultWithRuntimePlan(nil, InvocationContext{}, profile, plan, nil)
+	if _, err := f.Config(); err != nil {
+		t.Fatalf("Config() error = %v", err)
+	}
+	if remoteCalls != 0 {
+		t.Fatalf("registry init calls after embedded-only Factory = %d, want 0", remoteCalls)
+	}
+
+	ordinary := NewDefaultWithRuntimePlan(nil, InvocationContext{}, profile, runtimeplan.Default(), nil)
+	if _, err := ordinary.Config(); err != nil {
+		t.Fatalf("ordinary Config() error = %v", err)
+	}
+	if remoteCalls != 1 {
+		t.Fatalf("registry init calls after later ordinary Factory = %d, want 1", remoteCalls)
+	}
+}
+
+func TestCLICompositionPreservesEnvironmentCredentialsWhenProfileIsUnreadable(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
+	t.Setenv(envvars.CliExternalCredentialConfig,
+		filepath.Join(configDir, "missing-external-credential.json"))
+	t.Setenv(envvars.CliAppID, "cli_env")
+	t.Setenv(envvars.CliAppSecret, "env-secret")
+	t.Setenv(envvars.CliUserAccessToken, "")
+	t.Setenv(envvars.CliTenantAccessToken, "")
+	core.SetCurrentWorkspace(core.WorkspaceLocal)
+	if err := vfs.MkdirAll(core.GetConfigPath(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	startup := runtimebootstrap.Resolve("")
+	if err := startup.Plan.StartupError(); err != nil {
+		t.Fatalf("runtime bootstrap changed legacy environment fallback: %v", err)
+	}
+	f := NewDefaultWithRuntimePlan(nil, InvocationContext{}, startup.ProfileConfig, startup.Plan, nil)
+	account, err := f.Credential.ResolveAccount(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveAccount() error = %v", err)
+	}
+	if account.AppID != "cli_env" {
+		t.Fatalf("account AppID = %q, want environment account", account.AppID)
 	}
 }

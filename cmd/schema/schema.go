@@ -98,7 +98,7 @@ func completeSchemaPath(
 ) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		mode := f.ResolveStrictMode(cmd.Context())
-		catalog := projectSchemaCatalog(registry.SchemaCatalog(), visibility)
+		catalog := projectSchemaCatalog(catalogForFactory(f), visibility)
 		completions, noSpace := catalog.Complete(args, toComplete, registry.FilterForStrictMode(mode))
 		directive := cobra.ShellCompDirectiveNoFileComp
 		if noSpace {
@@ -111,23 +111,27 @@ func completeSchemaPath(
 func schemaRunWithVisibility(opts *SchemaOptions, visibility CommandVisibility) error {
 	out := opts.Factory.IOStreams.Out
 	mode := opts.Factory.ResolveStrictMode(opts.Ctx)
-	return runSchemaWithVisibility(out, apicatalog.ParsePath(opts.Args), mode, visibility)
+	return runSchemaCatalog(
+		out,
+		apicatalog.ParsePath(opts.Args),
+		mode,
+		catalogForFactory(opts.Factory),
+		visibility,
+	)
 }
 
-// runSchemaWithVisibility resolves the path through the schema catalog and renders the
+func catalogForFactory(f *cmdutil.Factory) apicatalog.Catalog {
+	if catalog, ok := f.APICatalog(); ok {
+		return catalog
+	}
+	return registry.SchemaCatalog()
+}
+
+// runSchemaCatalog resolves the path through the schema catalog and renders the
 // matching envelope(s). The catalog owns navigation (Resolve + MethodRefs) and
 // schema owns rendering (Envelope/Envelopes); this adapter only chooses the
 // output shape — a single resolved method renders as one envelope object,
 // anything broader as an array — and maps resolve failures to hints.
-func runSchemaWithVisibility(
-	out io.Writer,
-	parts []string,
-	mode core.StrictMode,
-	visibility CommandVisibility,
-) error {
-	return runSchemaCatalog(out, parts, mode, registry.SchemaCatalog(), visibility)
-}
-
 func runSchemaCatalog(
 	out io.Writer,
 	parts []string,

@@ -126,6 +126,9 @@ func TestDiagnose_VerifyUserIdentity(t *testing.T) {
 	if got.User.Status != StatusReady || !got.User.Available {
 		t.Fatalf("user = %#v, want ready and available", got.User)
 	}
+	if got.User.TokenStatus != "valid" {
+		t.Fatalf("user tokenStatus = %q, want valid", got.User.TokenStatus)
+	}
 	if got.User.Verified == nil || !*got.User.Verified {
 		t.Fatalf("user verified = %v, want true", got.User.Verified)
 	}
@@ -267,6 +270,9 @@ func TestDiagnose_UserIdentityExpired(t *testing.T) {
 	if got.User.Status != StatusMissing || got.User.Available {
 		t.Fatalf("user = %#v, want missing and unavailable", got.User)
 	}
+	if got.User.TokenStatus != "expired" {
+		t.Fatalf("user tokenStatus = %q, want expired", got.User.TokenStatus)
+	}
 	if got.User.Hint == "" {
 		t.Fatalf("user hint is empty, want re-login hint")
 	}
@@ -358,6 +364,7 @@ type fakeExtProvider struct {
 	name    string
 	account *extcred.Account
 	token   *extcred.Token
+	caps    credential.ProviderCapabilities
 }
 
 func (p *fakeExtProvider) Name() string { return p.name }
@@ -366,6 +373,10 @@ func (p *fakeExtProvider) ResolveAccount(context.Context) (*extcred.Account, err
 }
 func (p *fakeExtProvider) ResolveToken(context.Context, extcred.TokenSpec) (*extcred.Token, error) {
 	return p.token, nil
+}
+func (p *fakeExtProvider) SkipUserInfoEnrichment() bool { return true }
+func (p *fakeExtProvider) CredentialCapabilities() credential.ProviderCapabilities {
+	return p.caps
 }
 
 func externalFactory(prov *fakeExtProvider, cfg *core.CliConfig) *cmdutil.Factory {

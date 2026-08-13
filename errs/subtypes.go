@@ -59,6 +59,8 @@ const (
 	// resource changed while it was being read. The peer behaved correctly, so
 	// this is retryable: starting the transfer over reads the current version.
 	SubtypeNetworkRepresentationChanged Subtype = "representation_changed"
+	SubtypeCredentialSourceUnavailable  Subtype = "credential_source_unavailable" // external credential program or identity service is temporarily unavailable
+	SubtypeUpstreamUnavailable          Subtype = "upstream_unavailable"          // external proxy cannot reach the requested upstream service
 )
 
 // CategoryAPI subtypes

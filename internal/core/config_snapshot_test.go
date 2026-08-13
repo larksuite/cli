@@ -38,6 +38,19 @@ func TestConfigSnapshotZeroValueIsMissing(t *testing.T) {
 	}
 }
 
+func TestNewConfigSnapshotFromPreservesCapturedConfig(t *testing.T) {
+	want := &MultiAppConfig{CurrentApp: "captured"}
+	snapshot := NewConfigSnapshotFrom(want)
+
+	got, err := snapshot.MultiAppConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want || got.CurrentApp != "captured" {
+		t.Fatalf("MultiAppConfig() = %#v, want captured pointer %#v", got, want)
+	}
+}
+
 func TestConfigSnapshotCachesError(t *testing.T) {
 	calls := 0
 	want := errors.New("load failed")

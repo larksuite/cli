@@ -6,7 +6,6 @@ package cmd
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,13 +17,21 @@ import (
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/surface"
 	"github.com/larksuite/cli/internal/update"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/spf13/cobra"
 )
 
-func writeUpdateState(t *testing.T, dir, latest string) {
+func updateStateFileForEdition(edition string) string {
+	if edition == "extended" {
+		return "update-state-extended.json"
+	}
+	return "update-state.json"
+}
+
+func writeUpdateState(t *testing.T, dir, edition, latest string) {
 	t.Helper()
 	data := fmt.Sprintf(`{"latest_version":%q,"checked_at":%d}`, latest, time.Now().Unix())
-	if err := os.WriteFile(filepath.Join(dir, "update-state.json"), []byte(data), 0o644); err != nil {
+	if err := vfs.WriteFile(filepath.Join(dir, updateStateFileForEdition(edition)), []byte(data), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -108,7 +115,7 @@ func TestOfferRootUpgrade(t *testing.T) {
 			t.Setenv("RUN_ID", "")
 			t.Setenv("LARKSUITE_CLI_NO_UPDATE_NOTIFIER", "")
 			if tc.latest != "" {
-				writeUpdateState(t, dir, tc.latest)
+				writeUpdateState(t, dir, build.Edition, tc.latest)
 			}
 			if tc.optOut {
 				t.Setenv("LARKSUITE_CLI_NO_UPDATE_NOTIFIER", "1")
@@ -174,6 +181,55 @@ func TestOfferRootUpgradeDoesNotReadCacheWhenUpdateIsConcealed(t *testing.T) {
 	offerRootUpgrade(f, &cobra.Command{}, projector)
 	if cacheReads != 0 {
 		t.Fatalf("concealed update read cache %d time(s)", cacheReads)
+	}
+}
+
+func TestOfferRootUpgradeIgnoresOtherEditionCache(t *testing.T) {
+	origV := build.Version
+	build.Version = "1.0.0"
+	t.Cleanup(func() { build.Version = origV })
+
+	origRun := runRootUpgrade
+	t.Cleanup(func() { runRootUpgrade = origRun })
+
+	origWS := core.CurrentWorkspace()
+	t.Cleanup(func() { core.SetCurrentWorkspace(origWS) })
+	core.SetCurrentWorkspace(core.WorkspaceLocal)
+
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+	t.Setenv("CI", "")
+	t.Setenv("BUILD_NUMBER", "")
+	t.Setenv("RUN_ID", "")
+	t.Setenv("LARKSUITE_CLI_NO_UPDATE_NOTIFIER", "")
+
+	otherEdition := "extended"
+	if build.Edition == "extended" {
+		otherEdition = "standard"
+	}
+	writeUpdateState(t, dir, otherEdition, "9.0.0")
+
+	called := false
+	runRootUpgrade = func(*cobra.Command) { called = true }
+	var errBuf bytes.Buffer
+	f := &cmdutil.Factory{IOStreams: &cmdutil.IOStreams{
+		In:               strings.NewReader("y\n"),
+		Out:              &bytes.Buffer{},
+		ErrOut:           &errBuf,
+		IsTerminal:       true,
+		OutIsTerminal:    true,
+		StderrIsTerminal: true,
+	}}
+
+	// A nil projector conceals nothing, so the prompt reaches the cache check
+	// and this asserts edition isolation rather than surface concealment.
+	offerRootUpgrade(f, &cobra.Command{}, nil)
+
+	if strings.Contains(errBuf.String(), "available") {
+		t.Fatalf("%s prompt consumed %s cache: %q", build.Edition, otherEdition, errBuf.String())
+	}
+	if called {
+		t.Fatalf("%s upgrade ran from %s cache", build.Edition, otherEdition)
 	}
 }
 

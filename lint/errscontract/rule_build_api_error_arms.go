@@ -217,11 +217,12 @@ func checkSwitchArms(path string, fset *token.FileSet, sw *ast.SwitchStmt) []Vio
 // defaultReturnsInternalError checks the default arm's body has a return
 // statement whose first result is *errs.InternalError — either constructed
 // via `&errs.InternalError{...}` composite literal or `errs.NewInternalError(...)`
-// constructor. Accepts both selector form (`errs.InternalError`) and bare
-// identifier (`InternalError`) so unit-test fixtures with a local stub
-// package match. The BuildAPIError default arm MUST fail closed to
-// InternalError; other typed errors (APIError, etc.) silently drop the
-// "unknown Category" signal and are rejected by this rule.
+// constructor, optionally wrapped by errs.WithDiagnosticMetadata. Accepts
+// both selector form (`errs.InternalError`) and bare identifier
+// (`InternalError`) so unit-test fixtures with a local stub package match.
+// The BuildAPIError default arm MUST fail closed to InternalError; other
+// typed errors (APIError, etc.) silently drop the "unknown Category" signal
+// and are rejected by this rule.
 func defaultReturnsInternalError(cc *ast.CaseClause) bool {
 	for _, stmt := range cc.Body {
 		ret, ok := stmt.(*ast.ReturnStmt)
@@ -250,7 +251,15 @@ func isInternalErrorReturn(expr ast.Expr) bool {
 		return isInternalErrorType(e.Type)
 	case *ast.CallExpr:
 		// errs.NewInternalError(...) or NewInternalError(...)
-		return isNewInternalErrorCall(e.Fun)
+		if isNewInternalErrorCall(e.Fun) {
+			return true
+		}
+		// WithDiagnosticMetadata is a transparent wire-metadata wrapper.
+		// Recursively validate its first argument so it cannot be used to
+		// disguise a fail-open or wrongly classified default.
+		return isDiagnosticMetadataWrapperCall(e.Fun) &&
+			len(e.Args) > 0 &&
+			isInternalErrorReturn(e.Args[0])
 	}
 	return false
 }
@@ -271,6 +280,16 @@ func isNewInternalErrorCall(fn ast.Expr) bool {
 		return x.Sel.Name == "NewInternalError"
 	case *ast.Ident:
 		return x.Name == "NewInternalError"
+	}
+	return false
+}
+
+func isDiagnosticMetadataWrapperCall(fn ast.Expr) bool {
+	switch x := fn.(type) {
+	case *ast.SelectorExpr:
+		return x.Sel.Name == "WithDiagnosticMetadata"
+	case *ast.Ident:
+		return x.Name == "WithDiagnosticMetadata"
 	}
 	return false
 }

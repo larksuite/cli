@@ -18,10 +18,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
+	apiclient "github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/runtimeplan"
 	internaltransport "github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -37,6 +39,17 @@ type minutesRoundTripFunc func(*http.Request) (*http.Response, error)
 func (f minutesRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
+
+type minutesManagedFilePolicy struct{ allowed string }
+
+func (p minutesManagedFilePolicy) ValidateRemoteFile(rawURL string) error {
+	if rawURL != p.allowed {
+		return errors.New("unexpected remote file URL")
+	}
+	return nil
+}
+
+func (minutesManagedFilePolicy) UsesManagedFilePlane() bool { return true }
 
 func warmTokenCache(t *testing.T) {
 	t.Helper()
@@ -361,6 +374,39 @@ func TestDownload_UrlOnly(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "https://example.com/presigned/download") {
 		t.Errorf("url-only should output download URL, got: %s", stdout.String())
+	}
+}
+
+func TestDownloadURLOnlyHelpIsCredentialSourceNeutral(t *testing.T) {
+	for _, flag := range MinutesDownload.Flags {
+		if flag.Name != "url-only" {
+			continue
+		}
+		if flag.Desc != "only print the download URL(s) without downloading" {
+			t.Fatalf("url-only description = %q, want existing credential-source-neutral help", flag.Desc)
+		}
+		return
+	}
+	t.Fatal("url-only flag not found")
+}
+
+func TestDownloadURLOnlyRejectsProxyFileHandle(t *testing.T) {
+	cfg := defaultConfig()
+	f, stdout, _, _ := cmdutil.TestFactoryWithRuntimePlan(t, cfg, runtimeplan.New(runtimeplan.Options{
+		RemoteFiles: minutesManagedFilePolicy{},
+	}))
+	err := mountAndRun(t, MinutesDownload, []string{
+		"+download", "--minute-tokens", "tok001", "--url-only", "--as", "bot",
+	}, f, stdout)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("err = %T %v, want *errs.ValidationError", err, err)
+	}
+	if validationErr.Subtype != errs.SubtypeFailedPrecondition || validationErr.Param != "--url-only" {
+		t.Fatalf("error = subtype %q param %q, want failed_precondition/--url-only", validationErr.Subtype, validationErr.Param)
+	}
+	if !strings.Contains(validationErr.Hint, "omit --url-only") {
+		t.Fatalf("hint = %q, want actionable CLI download guidance", validationErr.Hint)
 	}
 }
 
@@ -829,6 +875,37 @@ func TestDownload_TypedErr_NetworkTransport_HttpError(t *testing.T) {
 	}
 	if !strings.Contains(ne.Error(), "503") {
 		t.Errorf("error message should contain status code 503, got: %v", ne)
+	}
+}
+
+func TestDownloadMediaFileAllowsConfiguredInternalProxyEndpoint(t *testing.T) {
+	chdir(t, t.TempDir())
+	var capturedErr error
+	probe := common.Shortcut{
+		Service: "minutes", Command: "+probe-proxy-download", AuthTypes: []string{"bot"},
+		Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
+			client, err := rctx.Factory.HttpClient()
+			if err != nil {
+				return err
+			}
+			_, capturedErr = downloadMediaFile(ctx, client, "http://127.0.0.1/lark-cli/v1/files/handle", "tok001", downloadOpts{
+				fio: rctx.FileIO(), outputPath: "out.media",
+				remoteFiles: apiclient.NewRemoteFiles(
+					minutesManagedFilePolicy{allowed: "http://127.0.0.1/lark-cli/v1/files/handle"},
+					func() (*http.Client, error) { return client, nil },
+					core.AsBot,
+				),
+			})
+			return nil
+		},
+	}
+	f, _, _, registry := cmdutil.TestFactory(t, defaultConfig())
+	registry.Register(downloadStub("127.0.0.1/lark-cli/v1/files/handle", []byte("media"), "application/octet-stream"))
+	if err := mountAndRun(t, probe, []string{"+probe-proxy-download", "--as", "bot"}, f, nil); err != nil {
+		t.Fatal(err)
+	}
+	if capturedErr != nil {
+		t.Fatalf("proxy download error = %v", capturedErr)
 	}
 }
 

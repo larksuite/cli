@@ -55,6 +55,11 @@ var AppsFileGet = common.Shortcut{
 			return err
 		}
 		info := projectFileInfo(data)
+		if info.DownloadURL != "" {
+			if _, err := rctx.RemoteFiles().Validate(rctx.Ctx(), info.DownloadURL); err != nil {
+				return err
+			}
+		}
 		rctx.OutFormat(info, nil, func(w io.Writer) {
 			renderFileGetPretty(w, info)
 		})

@@ -320,3 +320,21 @@ func assertDBSyncConfigValidation(t *testing.T, raw string, requireFieldMaps, al
 		t.Fatalf("error message echoes config: %q", validationErr.Message)
 	}
 }
+
+func TestDBDataRequestErrorClassifiesUntypedFailure(t *testing.T) {
+	cause := errors.New("dial failed")
+	got := dbDataRequestError(cause, "export request failed", "repair export input")
+
+	problem, ok := errs.ProblemOf(got)
+	if !ok ||
+		problem.Category != errs.CategoryNetwork ||
+		problem.Subtype != errs.SubtypeNetworkTransport ||
+		problem.Message != "export request failed" ||
+		problem.Hint != "repair export input" ||
+		!problem.Retryable {
+		t.Fatalf("fallback problem = %#v", problem)
+	}
+	if !errors.Is(got, cause) {
+		t.Fatal("fallback lost the original transport cause")
+	}
+}

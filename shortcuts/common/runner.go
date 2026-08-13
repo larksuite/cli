@@ -546,6 +546,16 @@ func (ctx *RuntimeContext) DoAPIStream(callCtx context.Context, req *larkcore.Ap
 	return ac.DoStream(callCtx, req, ctx.As(), append(base, opts...)...)
 }
 
+// RemoteFiles returns the runtime boundary for known service-returned file
+// references. Business shortcuts use this instead of inspecting credential
+// modes or editions.
+func (ctx *RuntimeContext) RemoteFiles() *client.RemoteFiles {
+	if ctx.Factory == nil {
+		return client.NewRemoteFiles(nil, nil, ctx.As())
+	}
+	return ctx.Factory.NewRemoteFiles(ctx.As())
+}
+
 // DoAPIJSONTyped issues a larkcore.ApiReq request, parses the JSON response,
 // and classifies failures into typed errs.* errors via ClassifyAPIResponse,
 // which lifts MissingScopes / ConsoleURL / Identity onto the typed error at the
@@ -946,6 +956,9 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 	registerShortcutFlagsWithContext(ctx, cmd, f, &shortcut)
 	cmdutil.SetTips(cmd, shortcut.Tips)
 	cmdutil.SetRisk(cmd, shortcut.Risk)
+	// A shortcut with no explicit runtime behavior must preserve the historic
+	// no-capability path even when mounted below a guarded parent command.
+	cmdutil.SetRuntimeCapabilities(cmd)
 	parent.AddCommand(cmd)
 	if shortcut.PostMount != nil {
 		shortcut.PostMount(cmd)
@@ -979,6 +992,38 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 			}
 			fmt.Fprintln(f.IOStreams.Out, string(out))
 			return nil
+		}
+	}
+	dryRunRequested, _ := cmd.Flags().GetBool("dry-run")
+	localIntrospection := localIntrospectionFromContext(cmd.Context())
+	if localIntrospection != nil && !dryRunRequested {
+		out, handled, err := localIntrospection(cmd)
+		if err != nil {
+			return typedOrInternal(err)
+		}
+		if handled {
+			if err := validateLocalIntrospectionFlags(cmd, s); err != nil {
+				return err
+			}
+			if len(out) == 0 {
+				return nil
+			}
+			if f == nil || f.IOStreams == nil || f.IOStreams.Out == nil {
+				return errs.NewInternalError(errs.SubtypeUnknown,
+					"shortcut local introspection output is unavailable")
+			}
+			if _, err := fmt.Fprintln(f.IOStreams.Out, string(out)); err != nil {
+				return errs.NewInternalError(errs.SubtypeUnknown,
+					"failed to write shortcut local introspection output: %s", err).
+					WithCause(err)
+			}
+			return nil
+		}
+	}
+
+	if !dryRunRequested {
+		if err := f.RequireCommandRuntimeCapabilities(cmd.Context(), cmd); err != nil {
+			return err
 		}
 	}
 	as, err := resolveShortcutIdentity(cmd, f, s)
@@ -1041,6 +1086,39 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 		return attributeAliasValidationError(rctx, err)
 	}
 	return rctx.outputErr
+}
+
+func validateLocalIntrospectionFlags(cmd *cobra.Command, s *Shortcut) error {
+	if cmd.Flags().Changed("as") {
+		as, err := cmd.Flags().GetString("as")
+		if err != nil {
+			return ValidationErrorf("invalid --as value: %v", err).
+				WithParam("--as").
+				WithCause(err)
+		}
+		if as != "" && as != string(core.AsAuto) {
+			supported := false
+			for _, candidate := range s.AuthTypes {
+				if as == candidate {
+					supported = true
+					break
+				}
+			}
+			if !supported {
+				return ValidationErrorf("--as %s is not supported, this command only supports: %s",
+					as, strings.Join(s.AuthTypes, ", ")).
+					WithParam("--as")
+			}
+		}
+	}
+
+	if err := validateEnumFlagsForCommand(cmd, s.Flags); err != nil {
+		return err
+	}
+	applyJSONShorthand(cmd, s)
+	format, _ := cmd.Flags().GetString("format")
+	jqExpr, _ := cmd.Flags().GetString("jq")
+	return output.ValidateJqFlags(jqExpr, "", format)
 }
 
 // resolveShortcutIdentity selects the effective identity for a shortcut invocation.
@@ -1222,11 +1300,19 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 
 // validateEnumFlags rejects shortcut flag values outside their declared enum choices.
 func validateEnumFlags(rctx *RuntimeContext, flags []Flag) error {
+	return validateEnumFlagsForCommand(rctx.Cmd, flags)
+}
+
+func validateEnumFlagsForCommand(cmd *cobra.Command, flags []Flag) error {
 	for _, fl := range flags {
 		if len(fl.Enum) == 0 {
 			continue
 		}
-		val := rctx.Str(fl.Name)
+		// Preserve the established behavior for non-string enum flags: the
+		// legacy RuntimeContext.Str lookup returned an empty value when pflag's
+		// concrete type was not string, so validation was intentionally left to
+		// the shortcut. Only string enum flags are checked here.
+		val, _ := cmd.Flags().GetString(fl.Name)
 		if val == "" {
 			continue
 		}

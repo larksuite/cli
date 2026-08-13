@@ -470,14 +470,16 @@ func TestPrintMessageOutputSchema(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// printWatchOutputSchema
+// watchOutputSchemaJSON
 // ---------------------------------------------------------------------------
 
-// TestPrintWatchOutputSchema verifies print watch output schema.
-func TestPrintWatchOutputSchema(t *testing.T) {
-	rt, stdout, _ := newOutputRuntime(t)
-	printWatchOutputSchema(rt)
-	out := stdout.String()
+// TestWatchOutputSchemaJSON verifies print watch output schema.
+func TestWatchOutputSchemaJSON(t *testing.T) {
+	schema, err := watchOutputSchemaJSON()
+	if err != nil {
+		t.Fatalf("watchOutputSchemaJSON() error = %v", err)
+	}
+	out := string(schema)
 	for _, key := range []string{
 		"event", "minimal", "metadata", "plain_text_full", "full",
 		"event_id", "message_id",

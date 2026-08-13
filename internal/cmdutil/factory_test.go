@@ -19,6 +19,7 @@ import (
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/runtimeplan"
 	"github.com/larksuite/cli/internal/skillref"
 	"github.com/larksuite/cli/internal/surface"
 )
@@ -470,13 +471,13 @@ func (s *stubExtProvider) ResolveToken(_ context.Context, _ extcred.TokenSpec) (
 	return nil, nil
 }
 
-func TestRequireBuiltinCredentialProvider_BlocksExternalProvider(t *testing.T) {
+func TestRequireRuntimeCapabilities_BlocksProviderOwnedCredentials(t *testing.T) {
 	stub := &stubExtProvider{name: "env", acct: &extcred.Account{AppID: "app"}}
 	cred := credential.NewCredentialProvider([]extcred.Provider{stub}, nil, nil, nil)
 	f, _, _, _ := TestFactory(t, nil)
 	f.Credential = cred
 
-	err := f.RequireBuiltinCredentialProvider(context.Background(), "auth")
+	err := f.RequireRuntimeCapabilities(context.Background(), "auth", runtimeplan.CapabilityLocalCredentialManagement)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -496,25 +497,44 @@ func TestRequireBuiltinCredentialProvider_BlocksExternalProvider(t *testing.T) {
 	}
 }
 
-func TestRequireBuiltinCredentialProvider_AllowsBuiltinProvider(t *testing.T) {
+func TestRequireRuntimeCapabilities_DefaultCommandLabel(t *testing.T) {
+	stub := &stubExtProvider{name: "env", acct: &extcred.Account{AppID: "app"}}
+	cred := credential.NewCredentialProvider([]extcred.Provider{stub}, nil, nil, nil)
+	f, _, _, _ := TestFactory(t, nil)
+	f.Credential = cred
+
+	err := f.RequireRuntimeCapabilities(context.Background(), "", runtimeplan.CapabilityLocalCredentialManagement)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error type = %T, want typed error", err)
+	}
+	if problem.Subtype != errs.SubtypeFailedPrecondition {
+		t.Errorf("subtype = %q, want %q", problem.Subtype, errs.SubtypeFailedPrecondition)
+	}
+}
+
+func TestRequireRuntimeCapabilities_AllowsLocalCredentialProvider(t *testing.T) {
 	// No extension providers → built-in path → no error
 	f, _, _, _ := TestFactory(t, nil)
-	err := f.RequireBuiltinCredentialProvider(context.Background(), "auth")
+	err := f.RequireRuntimeCapabilities(context.Background(), "auth", runtimeplan.CapabilityLocalCredentialManagement)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestRequireBuiltinCredentialProvider_NilCredential(t *testing.T) {
+func TestRequireRuntimeCapabilities_AllowsNilCredential(t *testing.T) {
 	f, _, _, _ := TestFactory(t, nil)
 	f.Credential = nil
-	err := f.RequireBuiltinCredentialProvider(context.Background(), "auth")
+	err := f.RequireRuntimeCapabilities(context.Background(), "auth", runtimeplan.CapabilityLocalCredentialManagement)
 	if err != nil {
 		t.Fatalf("unexpected error with nil Credential: %v", err)
 	}
 }
 
-func TestRequireBuiltinCredentialProvider_PropagatesProviderError(t *testing.T) {
+func TestRequireRuntimeCapabilities_PropagatesProviderError(t *testing.T) {
 	sentinel := errors.New("provider unavailable")
 	stub := &stubExtProvider{name: "env", err: sentinel}
 	cred := credential.NewCredentialProvider([]extcred.Provider{stub}, nil, nil, nil)
@@ -522,7 +542,7 @@ func TestRequireBuiltinCredentialProvider_PropagatesProviderError(t *testing.T) 
 	f, _, _, _ := TestFactory(t, nil)
 	f.Credential = cred
 
-	err := f.RequireBuiltinCredentialProvider(context.Background(), "auth")
+	err := f.RequireRuntimeCapabilities(context.Background(), "auth", runtimeplan.CapabilityLocalCredentialManagement)
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v, want sentinel", err)
 	}

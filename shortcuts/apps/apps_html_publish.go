@@ -352,17 +352,24 @@ func runHTMLPublishTOS(ctx context.Context, rctx *common.RuntimeContext, spec ap
 	if uploadURL == "" || tosPath == "" {
 		return nil, appsSubprocessEnvelopeError("pre_release kvs missing upload_url or tos_path")
 	}
-
-	// Step 2: upload tar.gz to TOS via presigned URL (bypasses Lark gateway).
-	//nolint:forbidigo // presigned TOS upload bypasses the Lark gateway — raw http is required; not a Lark API call, so RuntimeContext.DoAPI does not apply.
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, uploadURL, bytes.NewReader(tarball.Body))
+	remoteFiles := rctx.RemoteFiles()
+	remoteFile, err := remoteFiles.Validate(ctx, uploadURL)
 	if err != nil {
-		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "build TOS upload request").WithCause(err)
+		return nil, err
+	}
+
+	// Step 2: upload tar.gz through the runtime's validated file boundary.
+	req, err := remoteFile.NewRequest(ctx, http.MethodPut, bytes.NewReader(tarball.Body))
+	if err != nil {
+		return nil, err
 	}
 	req.ContentLength = tarball.Size
 	req.Header.Set("Content-Type", "application/gzip")
-	resp, err := newFileTransferClient().Do(req) //nolint:forbidigo // presigned TOS upload, see above.
+	resp, err := remoteFiles.Do(req, remoteFile, nil)
 	if err != nil {
+		if _, ok := errs.ProblemOf(err); ok {
+			return nil, err
+		}
 		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "TOS upload failed").WithCause(err).WithRetryable()
 	}
 	defer resp.Body.Close()

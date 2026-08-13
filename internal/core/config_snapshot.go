@@ -21,6 +21,14 @@ func NewConfigSnapshot() *ConfigSnapshot {
 	return newConfigSnapshot(LoadMultiAppConfig)
 }
 
+// NewConfigSnapshotFrom creates a snapshot from configuration that was
+// already captured by another invocation-start boundary.
+func NewConfigSnapshotFrom(config *MultiAppConfig) *ConfigSnapshot {
+	return newConfigSnapshot(func() (*MultiAppConfig, error) {
+		return config, nil
+	})
+}
+
 func newConfigSnapshot(load func() (*MultiAppConfig, error)) *ConfigSnapshot {
 	if load == nil {
 		return &ConfigSnapshot{}

@@ -17,6 +17,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/runtimeplan"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -74,6 +75,29 @@ func TestFactory(t *testing.T, config *core.CliConfig) (*Factory, *bytes.Buffer,
 		FileIOProvider: fileio.GetProvider(),
 	}
 	return f, stdoutBuf, stderrBuf, reg
+}
+
+// TestFactoryWithRuntimePlan creates a TestFactory with an explicit
+// source-neutral runtime policy.
+func TestFactoryWithRuntimePlan(
+	t *testing.T,
+	config *core.CliConfig,
+	plan *runtimeplan.Plan,
+) (*Factory, *bytes.Buffer, *bytes.Buffer, *httpmock.Registry) {
+	t.Helper()
+	f, out, errOut, registry := TestFactory(t, config)
+	f.runtimePlan = runtimeplan.Ensure(plan)
+	return f, out, errOut, registry
+}
+
+// TestSetRuntimePlan replaces a Factory's runtime policy in tests that need to
+// preserve an existing HTTP mock registry or other custom wiring.
+func TestSetRuntimePlan(t *testing.T, f *Factory, plan *runtimeplan.Plan) {
+	t.Helper()
+	if f == nil {
+		t.Fatal("cannot install a runtime plan on a nil Factory")
+	}
+	f.runtimePlan = runtimeplan.Ensure(plan)
 }
 
 type testDefaultAcct struct {

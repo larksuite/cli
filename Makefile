@@ -23,7 +23,7 @@ PREFIX   ?= /usr/local
 TEST_GOARCH := $(or $(GOARCH),$(shell go env GOARCH))
 RACE_FLAG := $(if $(filter riscv64,$(TEST_GOARCH)),,-race)
 
-.PHONY: all build vet fmt-check script-test test unit-test live-skills-test integration-test examples-build quality-gate install uninstall clean fetch_meta gitleaks sidecar-test
+.PHONY: all build vet fmt-check script-test test unit-test live-skills-test integration-test examples-build quality-gate install uninstall clean fetch_meta gitleaks sidecar-test extended-test
 
 all: test
 
@@ -121,6 +121,12 @@ sidecar-test:
 	go test $(RACE_FLAG) -count=1 -tags authsidecar ./extension/credential/sidecar/ ./extension/transport/sidecar/ ./internal/cmdutil/
 	go test $(RACE_FLAG) -count=1 -tags authsidecar_demo ./sidecar/server-demo/
 	go test $(RACE_FLAG) -count=1 -tags authsidecar ./tests/sidecar_e2e/
+
+# extended-test compiles and exercises the separately distributed Extended
+# edition. The default build remains the Standard npm/npx binary.
+extended-test:
+	go build -tags extended -o /dev/null .
+	go test $(RACE_FLAG) -count=1 -tags extended ./cmd/... ./internal/... ./shortcuts/... ./extension/... ./tests/externalcredential_e2e
 
 # Run secret-leak checks locally before pushing.
 # Step 1: check-doc-tokens catches realistic-looking example tokens in reference

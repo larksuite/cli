@@ -12,7 +12,6 @@ import (
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/recovery"
-	"github.com/larksuite/cli/internal/update"
 	"github.com/spf13/cobra"
 )
 
@@ -29,7 +28,7 @@ var runRootUpgrade = func(cmd *cobra.Command) {
 	}
 }
 
-var checkRootCachedUpdate = update.CheckCached
+var checkRootCachedUpdate = checkCachedEditionUpdate
 
 // isBareRootInvocation reports whether this is a bare `lark-cli` (no subcommand,
 // no flags) — the only invocation that triggers the interactive upgrade prompt.
@@ -64,9 +63,11 @@ func offerRootUpgrade(f *cmdutil.Factory, cmd *cobra.Command, projector *recover
 	if !ios.IsTerminal || !ios.OutIsTerminal || !ios.StderrIsTerminal {
 		return
 	}
-	// Gate 4: cached newer version. CheckCached applies opt-out (shouldSkip)
-	// and the IsNewer/semver validation chain; it reads the on-disk cache that
-	// the 24h-throttled RefreshCache maintains (CheckCached itself has no TTL).
+	// Gate 4: cached newer version from this binary's release channel. Standard
+	// reads the npm-backed cache; Extended reads its separate GitHub-release
+	// cache. Both apply opt-out (shouldSkip) and the IsNewer/semver validation
+	// chain against the on-disk cache that the 24h-throttled RefreshCache
+	// maintains (the cached check itself has no TTL).
 	info := checkRootCachedUpdate(build.Version)
 	if info == nil {
 		return

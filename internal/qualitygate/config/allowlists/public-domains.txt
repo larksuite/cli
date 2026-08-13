@@ -1,6 +1,7 @@
 # Exact public hostnames. Keep sorted.
 accounts.feishu.cn
 accounts.larksuite.com
+api.github.com
 applink.feishu.cn
 applink.larksuite.com
 ark.ap-southeast.bytepluses.com

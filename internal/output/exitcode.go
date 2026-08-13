@@ -19,7 +19,7 @@ const (
 	ExitAuth                 = 3  // 认证失败（token 无效 / 过期），或登录成功但请求 scopes 未全部授予
 	ExitNetwork              = 4  // 网络错误（连接超时、DNS 解析失败等）
 	ExitInternal             = 5  // 内部错误（不应发生）
-	ExitContentSafety        = 6  // content safety violation (block mode)
+	ExitContentSafety        = 6  // security policy denial or challenge (including content safety)
 	ExitConfirmationRequired = 10 // 高风险操作需要 --yes 确认（agent 协议信号）
 )
 

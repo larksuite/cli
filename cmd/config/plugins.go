@@ -27,13 +27,6 @@ func NewCmdConfigPlugins(f *cmdutil.Factory) *cobra.Command {
 		Use:    "plugins",
 		Hidden: true, // diagnostic-only; kept callable, omitted from --help so it stays out of AI-agent context
 		Short:  "Inspect installed plugins and their hook contributions",
-		// Same leaf-level no-op as config policy: the parent `config`
-		// group's PersistentPreRunE requires builtin credential, but
-		// this is a read-only diagnostic that must work everywhere.
-		PersistentPreRunE: func(c *cobra.Command, _ []string) error {
-			c.SilenceUsage = true
-			return nil
-		},
 	}
 	cmd.AddCommand(newCmdConfigPluginsShow(f))
 	return cmd

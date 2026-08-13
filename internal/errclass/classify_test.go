@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/output"
 )
@@ -59,6 +60,22 @@ func TestBuildAPIError_NilAndZeroCode(t *testing.T) {
 	}
 }
 
+func TestBuildAPIErrorMarksLarkOrigin(t *testing.T) {
+	err := errclass.BuildAPIError(map[string]any{
+		"code": 99991663,
+		"msg":  "token invalid",
+	}, errclass.ClassifyContext{})
+	problem, ok := errs.ProblemOf(err)
+	wantOrigin := ""
+	if build.Edition == "extended" {
+		wantOrigin = "lark"
+	}
+	metadata, _ := errs.DiagnosticMetadataOf(err)
+	if !ok || metadata.Origin != wantOrigin {
+		t.Fatalf("problem = %#v, metadata = %#v, ok = %v, want origin %q", problem, metadata, ok, wantOrigin)
+	}
+}
+
 // matchesTypedError reports whether err is the typed-error variant identified by
 // wantTyped (e.g. "ValidationError" → *errs.ValidationError). Used by the
 // ExitCode matrix so a wrong-Category routing (e.g. CategoryValidation falling
@@ -90,10 +107,8 @@ func matchesTypedError(err error, wantTyped string) bool {
 		var x *errs.SecurityPolicyError
 		return errors.As(err, &x)
 	case "APIError":
-		// APIError is the default fallback; use a direct type assertion to avoid
-		// matching against typed subclasses that also satisfy IsAPI.
-		_, ok := err.(*errs.APIError)
-		return ok
+		var x *errs.APIError
+		return errors.As(err, &x)
 	}
 	return false
 }
@@ -105,6 +120,15 @@ func requirePermissionError(t *testing.T, err error) *errs.PermissionError {
 		t.Fatalf("expected *errs.PermissionError in error chain, got %T", err)
 	}
 	return permission
+}
+
+func requireSecurityPolicyError(t *testing.T, err error) *errs.SecurityPolicyError {
+	t.Helper()
+	var policy *errs.SecurityPolicyError
+	if !errors.As(err, &policy) {
+		t.Fatalf("expected *errs.SecurityPolicyError, got %T", err)
+	}
+	return policy
 }
 
 func TestBuildAPIError_ExitCodeMatrix(t *testing.T) {
@@ -625,7 +649,9 @@ func TestServiceShortcutEnvelopeConverge(t *testing.T) {
 		t.Fatal("direct path failed to emit typed envelope")
 	}
 
-	// Strip `code` from both envelopes — see test doc above.
+	// Strip fields that only exist when the error came from an upstream Lark
+	// response. The remaining fields must converge with the local preflight
+	// error.
 	stripA := stripUpstreamFields(t, bufA.Bytes())
 	stripB := stripUpstreamFields(t, bufB.Bytes())
 	if stripA != stripB {
@@ -633,9 +659,9 @@ func TestServiceShortcutEnvelopeConverge(t *testing.T) {
 	}
 }
 
-// stripUpstreamFields parses an envelope JSON and re-marshals it with the
-// upstream-derived "code" key removed from the inner "error" block. Used by
-// the convergence test to isolate contract fields shared between the
+// stripUpstreamFields parses an envelope JSON and re-marshals it with fields
+// that identify an upstream Lark response removed from the inner "error"
+// block. Used by the convergence test to isolate fields shared between the
 // dispatcher and pre-flight paths.
 func stripUpstreamFields(t *testing.T, raw []byte) string {
 	t.Helper()
@@ -645,6 +671,7 @@ func stripUpstreamFields(t *testing.T, raw []byte) string {
 	}
 	if errBlock, ok := obj["error"].(map[string]any); ok {
 		delete(errBlock, "code")
+		delete(errBlock, "origin")
 	}
 	out, err := json.Marshal(obj)
 	if err != nil {
@@ -1077,10 +1104,7 @@ func TestBuildAPIError_SecurityPolicyExtractsChallenge(t *testing.T) {
 		},
 	}
 	err := errclass.BuildAPIError(resp, errclass.ClassifyContext{Brand: "feishu", AppID: "cli_test", Identity: "user"})
-	spe, ok := err.(*errs.SecurityPolicyError)
-	if !ok {
-		t.Fatalf("expected *SecurityPolicyError, got %T", err)
-	}
+	spe := requireSecurityPolicyError(t, err)
 	if spe.ChallengeURL != "https://passport.feishu.cn/challenge/xyz" {
 		t.Errorf("ChallengeURL = %q, want https://passport.feishu.cn/challenge/xyz", spe.ChallengeURL)
 	}
@@ -1100,10 +1124,7 @@ func TestBuildAPIError_SecurityPolicyHintFallsBackToCliHint(t *testing.T) {
 		},
 	}
 	err := errclass.BuildAPIError(resp, errclass.ClassifyContext{Brand: "feishu", AppID: "cli_test", Identity: "user"})
-	spe, ok := err.(*errs.SecurityPolicyError)
-	if !ok {
-		t.Fatalf("expected *SecurityPolicyError, got %T", err)
-	}
+	spe := requireSecurityPolicyError(t, err)
 	if spe.Hint != "ask your admin for elevated approval" {
 		t.Errorf("Hint = %q, want cli_hint fallback", spe.Hint)
 	}
@@ -1127,10 +1148,7 @@ func TestBuildAPIError_SecurityPolicyDropsNonHTTPSChallenge(t *testing.T) {
 				"data": map[string]any{"challenge_url": bad, "hint": "h"},
 			}
 			err := errclass.BuildAPIError(resp, errclass.ClassifyContext{})
-			spe, ok := err.(*errs.SecurityPolicyError)
-			if !ok {
-				t.Fatalf("expected *SecurityPolicyError, got %T", err)
-			}
+			spe := requireSecurityPolicyError(t, err)
 			if spe.ChallengeURL != "" {
 				t.Errorf("ChallengeURL should be dropped for %q, got %q", bad, spe.ChallengeURL)
 			}
@@ -1144,10 +1162,7 @@ func TestBuildAPIError_SecurityPolicyDropsNonHTTPSChallenge(t *testing.T) {
 func TestBuildAPIError_SecurityPolicyNoData(t *testing.T) {
 	resp := map[string]any{"code": 21000, "msg": "challenge required"}
 	err := errclass.BuildAPIError(resp, errclass.ClassifyContext{})
-	spe, ok := err.(*errs.SecurityPolicyError)
-	if !ok {
-		t.Fatalf("expected *SecurityPolicyError, got %T", err)
-	}
+	spe := requireSecurityPolicyError(t, err)
 	if spe.ChallengeURL != "" {
 		t.Errorf("ChallengeURL should be empty without data; got %q", spe.ChallengeURL)
 	}
@@ -1181,10 +1196,7 @@ func TestBuildAPIError_SecurityPolicyMalformedData(t *testing.T) {
 				}
 			}()
 			err := errclass.BuildAPIError(tc.resp, errclass.ClassifyContext{})
-			spe, ok := err.(*errs.SecurityPolicyError)
-			if !ok {
-				t.Fatalf("expected *SecurityPolicyError even with malformed data, got %T", err)
-			}
+			spe := requireSecurityPolicyError(t, err)
 			if spe.ChallengeURL != "" {
 				t.Errorf("ChallengeURL should be empty for malformed data, got %q", spe.ChallengeURL)
 			}
@@ -1207,10 +1219,7 @@ func TestBuildAPIError_SecurityPolicyErrorDataShape(t *testing.T) {
 		},
 	}
 	err := errclass.BuildAPIError(resp, errclass.ClassifyContext{})
-	spe, ok := err.(*errs.SecurityPolicyError)
-	if !ok {
-		t.Fatalf("expected *SecurityPolicyError, got %T", err)
-	}
+	spe := requireSecurityPolicyError(t, err)
 	if spe.ChallengeURL != "https://passport.feishu.cn/c/abc" {
 		t.Errorf("ChallengeURL = %q, want https://passport.feishu.cn/c/abc", spe.ChallengeURL)
 	}

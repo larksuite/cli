@@ -96,6 +96,13 @@ var AppsFileList = common.Shortcut{
 		}
 		// 白名单投影：server created_at/created_by → uploaded_at/uploaded_by，替换原始 items[]。
 		items := projectFileItems(data["items"])
+		for _, item := range items {
+			if item.DownloadURL != "" {
+				if _, err := rctx.RemoteFiles().Validate(rctx.Ctx(), item.DownloadURL); err != nil {
+					return err
+				}
+			}
+		}
 		data["items"] = items
 		rctx.OutFormat(data, nil, func(w io.Writer) {
 			renderFileListPretty(w, items)

@@ -172,3 +172,31 @@ func TestAppsDBDataImport_TableDefaultsToFileBasename(t *testing.T) {
 		t.Fatalf("expected table=customers (from file basename) in params, got %v", env.API[0].Params)
 	}
 }
+
+func TestDBDataImportRequestErrorPreservesTypedProducer(t *testing.T) {
+	typed := errs.WithDiagnosticMetadata(
+		errs.NewSecurityPolicyError(errs.SubtypeAccessDenied, "proxy denied import"),
+		errs.DiagnosticMetadata{
+			Origin:         "proxy",
+			ProxyRequestID: "proxy_req_import",
+		},
+	)
+
+	got := dbDataRequestError(typed, "import request failed", dbDataImportHint)
+	if got != typed {
+		t.Fatalf("typed request error identity changed: got %T %v", got, got)
+	}
+	problem, ok := errs.ProblemOf(got)
+	if !ok ||
+		problem.Category != errs.CategoryPolicy ||
+		problem.Subtype != errs.SubtypeAccessDenied ||
+		problem.Message != "proxy denied import" {
+		t.Fatalf("typed request problem changed: %#v", problem)
+	}
+	metadata, ok := errs.DiagnosticMetadataOf(got)
+	if !ok ||
+		metadata.Origin != "proxy" ||
+		metadata.ProxyRequestID != "proxy_req_import" {
+		t.Fatalf("typed request metadata changed: (%#v, %v)", metadata, ok)
+	}
+}

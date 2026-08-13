@@ -97,6 +97,10 @@ func doctorRun(opts *DoctorOptions, projector *recovery.Projector) error {
 		checks = append(checks, checkCLIUpdate()...)
 	}
 
+	if handled, editionErr := runEditionDoctor(opts, checks); handled {
+		return editionErr
+	}
+
 	// ── 1. Config file ──
 	_, err := core.LoadMultiAppConfig()
 	if err != nil {
@@ -131,19 +135,7 @@ func doctorRun(opts *DoctorOptions, projector *recovery.Projector) error {
 	}
 	checks = append(checks, pass("app_resolved", fmt.Sprintf("app: %s (%s)", cfg.AppID, cfg.Brand)))
 
-	// An external credential provider resolves the account without consulting
-	// profiles at all, so an explicit selector is silently inert. Say so:
-	// nothing else in the session will. ProfileName is only populated by the
-	// built-in config-backed provider, which makes it the provider telltale.
-	if f.Invocation.Profile != "" && cfg.ProfileName == "" {
-		selector := "--profile"
-		if f.Invocation.ProfileSource == core.ProfileFromEnvironment {
-			selector = envvars.CliProfile
-		}
-		checks = append(checks, warn("profile_selector",
-			fmt.Sprintf("%s=%q is ignored: credentials are provided externally", selector, f.Invocation.Profile),
-			fmt.Sprintf("unset %s, or remove the external credential variables to select accounts by profile", selector)))
-	}
+	checks = appendProfileSelectorCheck(checks, f, cfg)
 
 	ep := core.ResolveEndpoints(cfg.Brand)
 
@@ -160,8 +152,7 @@ func doctorRun(opts *DoctorOptions, projector *recovery.Projector) error {
 		checks = append(checks, pass("identity_ready", "at least one identity is available"))
 	} else {
 		// No hint: this only summarizes the two checks above, which already carry
-		// the source-appropriate remediation. A command here would be redundant,
-		// or wrong (`auth status` is blocked under an external provider).
+		// the source-appropriate remediation. A command here would be redundant.
 		checks = append(checks, fail("identity_ready", "no usable bot or user identity is available", ""))
 	}
 
@@ -258,7 +249,27 @@ func checkCLIUpdate() []checkResult {
 	return []checkResult{pass("cli_update", latest+" (up to date)")}
 }
 
-var fetchLatestForDoctor = update.FetchLatest
+// appendProfileSelectorCheck reports an explicit but inert profile selector.
+// An external credential provider resolves the account without consulting
+// profiles at all, so the selector is silently ignored. Say so: nothing else in
+// the session will. ProfileName is only populated by the built-in config-backed
+// provider, which makes it the provider telltale. Every edition's check
+// sequence calls this, because a managed credential source is exactly the case
+// the warning describes.
+func appendProfileSelectorCheck(checks []checkResult, f *cmdutil.Factory, cfg *core.CliConfig) []checkResult {
+	if f.Invocation.Profile == "" || cfg.ProfileName != "" {
+		return checks
+	}
+	selector := "--profile"
+	if f.Invocation.ProfileSource == core.ProfileFromEnvironment {
+		selector = envvars.CliProfile
+	}
+	return append(checks, warn("profile_selector",
+		fmt.Sprintf("%s=%q is ignored: credentials are provided externally", selector, f.Invocation.Profile),
+		fmt.Sprintf("unset %s, or remove the external credential variables to select accounts by profile", selector)))
+}
+
+var fetchLatestForDoctor = fetchLatestForEdition
 
 func finishDoctor(f *cmdutil.Factory, checks []checkResult) error {
 	allOK := true

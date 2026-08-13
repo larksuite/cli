@@ -19,6 +19,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	apiclient "github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -78,6 +79,11 @@ var MinutesDownload = common.Shortcut{
 		}
 		if outDir != "" {
 			if err := common.ValidateSafePathTyped(runtime.FileIO(), outDir); err != nil {
+				return err
+			}
+		}
+		if runtime.Bool("url-only") {
+			if err := runtime.RemoteFiles().RequirePortableURL("--url-only"); err != nil {
 				return err
 			}
 		}
@@ -201,7 +207,7 @@ var MinutesDownload = common.Shortcut{
 
 			fmt.Fprintf(errOut, "Downloading media: %s\n", common.MaskToken(token))
 
-			opts := downloadOpts{fio: runtime.FileIO(), overwrite: overwrite}
+			opts := downloadOpts{fio: runtime.FileIO(), overwrite: overwrite, remoteFiles: runtime.RemoteFiles()}
 			switch {
 			case useDefaultLayout:
 				// Per-token subdirectory guarantees unique paths, so no dedup map.
@@ -284,6 +290,9 @@ func fetchDownloadURL(ctx context.Context, runtime *common.RuntimeContext, minut
 	if downloadURL == "" {
 		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "API returned empty download_url for %s", minuteToken)
 	}
+	if _, err := runtime.RemoteFiles().Validate(ctx, downloadURL); err != nil {
+		return "", err
+	}
 	return downloadURL, nil
 }
 
@@ -293,27 +302,42 @@ type downloadResult struct {
 }
 
 type downloadOpts struct {
-	fio        fileio.FileIO // file I/O abstraction
-	outputPath string        // explicit output file path (single mode only)
-	outputDir  string        // output directory (single or batch)
-	overwrite  bool
-	usedNames  map[string]bool // tracks used filenames to deduplicate in batch mode
+	fio         fileio.FileIO // file I/O abstraction
+	outputPath  string        // explicit output file path (single mode only)
+	outputDir   string        // output directory (single or batch)
+	overwrite   bool
+	usedNames   map[string]bool // tracks used filenames to deduplicate in batch mode
+	remoteFiles *apiclient.RemoteFiles
 }
 
 // downloadMediaFile streams a media file from a pre-signed URL to disk.
 // Filename resolution: opts.outputPath > Content-Disposition filename > Content-Type ext > <token>.media.
 func downloadMediaFile(ctx context.Context, client *http.Client, downloadURL, minuteToken string, opts downloadOpts) (*downloadResult, error) {
-	if err := validate.ValidateDownloadSourceURL(ctx, downloadURL); err != nil {
-		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "blocked download URL: %s", err).WithCause(err)
+	remoteFiles := opts.remoteFiles
+	if remoteFiles == nil {
+		remoteFiles = apiclient.NewRemoteFiles(nil, nil, "")
+	}
+	remoteFile, err := remoteFiles.Validate(ctx, downloadURL,
+		func(ctx context.Context, rawURL string) error {
+			if err := validate.ValidateDownloadSourceURL(ctx, rawURL); err != nil {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "blocked download URL: %s", err).WithCause(err)
+			}
+			return nil
+		})
+	if err != nil {
+		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	req, err := remoteFile.NewRequest(ctx, http.MethodGet, nil)
 	if err != nil {
-		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "invalid download URL: %s", err).WithCause(err)
+		return nil, err
 	}
 
-	resp, err := client.Do(req)
+	resp, err := remoteFiles.Do(req, remoteFile, client)
 	if err != nil {
+		if _, ok := errs.ProblemOf(err); ok {
+			return nil, err
+		}
 		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "download failed: %s", err).WithCause(err)
 	}
 	defer resp.Body.Close()

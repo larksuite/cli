@@ -185,3 +185,31 @@ func TestAppsDBDataExport_BusinessErrorEnvelope(t *testing.T) {
 		t.Fatalf("error path must not write the output file")
 	}
 }
+
+func TestDBDataExportRequestErrorPreservesTypedProducer(t *testing.T) {
+	typed := errs.WithDiagnosticMetadata(
+		errs.NewPermissionError(errs.SubtypePermissionDenied, "proxy denied export"),
+		errs.DiagnosticMetadata{
+			Origin:         "proxy",
+			ProxyRequestID: "proxy_req_export",
+		},
+	)
+
+	got := dbDataRequestError(typed, "export request failed", dbDataExportHint)
+	if got != typed {
+		t.Fatalf("typed request error identity changed: got %T %v", got, got)
+	}
+	problem, ok := errs.ProblemOf(got)
+	if !ok ||
+		problem.Category != errs.CategoryAuthorization ||
+		problem.Subtype != errs.SubtypePermissionDenied ||
+		problem.Message != "proxy denied export" {
+		t.Fatalf("typed request problem changed: %#v", problem)
+	}
+	metadata, ok := errs.DiagnosticMetadataOf(got)
+	if !ok ||
+		metadata.Origin != "proxy" ||
+		metadata.ProxyRequestID != "proxy_req_export" {
+		t.Fatalf("typed request metadata changed: (%#v, %v)", metadata, ok)
+	}
+}

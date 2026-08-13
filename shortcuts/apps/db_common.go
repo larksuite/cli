@@ -65,6 +65,21 @@ func rejectLegacyEnvFlag(rctx *common.RuntimeContext) error {
 	return nil
 }
 
+// dbDataRequestError preserves typed API/transport producers, including
+// managed-proxy diagnostics. Only untyped failures receive the generic
+// retryable network fallback used by the existing import/export commands.
+func dbDataRequestError(err error, fallbackMessage, hint string) error {
+	if _, ok := errs.ProblemOf(err); ok {
+		return withAppsHint(err, hint)
+	}
+	return withAppsHint(
+		errs.NewNetworkError(errs.SubtypeNetworkTransport, fallbackMessage).
+			WithCause(err).
+			WithRetryable(),
+		hint,
+	)
+}
+
 // pollUntil 轮询异步任务直到 check 判定终态。async migrate/recovery 用：dataloom 立即返
 // task_id/preview_request_id，CLI 自己 poll（避免单连接长挂被网关/SDK 30s 中断）。
 // 首次立即 fetch（不睡）；check 返 done→返回；返 err→透传（失败终态）；否则按 interval 间隔重试至 maxWait。

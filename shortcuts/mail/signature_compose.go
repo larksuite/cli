@@ -213,11 +213,17 @@ func resolveSenderInfo(runtime *common.RuntimeContext, mailboxID, fromEmail stri
 }
 
 // downloadSignatureImage downloads a signature image by its direct URL.
-// Security: enforces https, does not send Bearer token (URL is pre-signed),
-// uses context timeout, and limits response size. Aligned with
+// Security: enforces https, does not attach a Feishu Bearer token (a proxy
+// Transport may add its short-lived platform bearer), uses context timeout,
+// and limits response size. Aligned with
 // downloadAttachmentContent in helpers.go.
 func downloadSignatureImage(runtime *common.RuntimeContext, downloadURL, filename string) ([]byte, string, error) {
-	u, err := url.Parse(downloadURL)
+	remoteFiles := runtime.RemoteFiles()
+	remoteFile, err := remoteFiles.Validate(runtime.Ctx(), downloadURL)
+	if err != nil {
+		return nil, "", err
+	}
+	u, err := url.Parse(remoteFile.URL())
 	if err != nil {
 		return nil, "", mailInvalidResponseError("signature image download: invalid URL: %v", err).WithCause(err)
 	}
@@ -234,14 +240,18 @@ func downloadSignatureImage(runtime *common.RuntimeContext, downloadURL, filenam
 	}
 	ctx, cancel := context.WithTimeout(runtime.Ctx(), 30*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	req, err := remoteFile.NewRequest(ctx, http.MethodGet, nil)
 	if err != nil {
-		return nil, "", errs.NewInternalError(errs.SubtypeSDKError, "signature image download: %v", err).WithCause(err)
+		return nil, "", err
 	}
-	// Do NOT send Authorization: the download URL is pre-signed.
+	// Do not attach a Feishu Authorization header. The runtime file boundary
+	// applies only the authorization required by its selected data plane.
 
-	resp, err := httpClient.Do(req)
+	resp, err := remoteFiles.Do(req, remoteFile, httpClient)
 	if err != nil {
+		if _, ok := errs.ProblemOf(err); ok {
+			return nil, "", err
+		}
 		return nil, "", errs.NewNetworkError(errs.SubtypeNetworkTransport, "signature image download: %v", err).WithCause(err)
 	}
 	defer resp.Body.Close()

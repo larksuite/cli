@@ -18,11 +18,10 @@ import (
 // Note: os.Exit skips deferred functions, so cleanup runs explicitly after
 // m.Run before exiting.
 func TestMain(m *testing.M) {
-	if isStartupBrandHelper() {
-		// Re-exec helper subprocess (startup_brand_test.go): the parent test
-		// already provides an isolated config dir and disables remote metadata,
-		// and the helper must own the first registry Init to prove the startup
-		// order — do not seed or eagerly initialize here.
+	if isStartupBrandHelper() || isRuntimeCatalogIsolationHelper() {
+		// Re-exec helper subprocesses provide their own isolated config/cache and
+		// must own the first registry access to prove startup ordering and
+		// multi-Build isolation — do not seed or eagerly initialize here.
 		os.Exit(m.Run())
 	}
 	root, err := os.MkdirTemp("", "lark-cli-cmd-test-*")

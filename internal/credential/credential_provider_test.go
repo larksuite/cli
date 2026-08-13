@@ -120,7 +120,7 @@ func TestCredentialProvider_TokenFromExtension(t *testing.T) {
 		[]extcred.Provider{&mockExtProvider{
 			name:    "env",
 			account: &extcred.Account{AppID: "ext_app", Brand: "feishu"},
-			token:   &extcred.Token{Value: "ext_tok", Source: "env"},
+			token:   &extcred.Token{Value: "ext_tok", Scopes: "im:message", Source: "env"},
 		}},
 		&mockDefaultAcct{}, &mockDefaultToken{result: &TokenResult{Token: "default_tok"}}, nil,
 	)
@@ -128,8 +128,28 @@ func TestCredentialProvider_TokenFromExtension(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Token != "ext_tok" {
-		t.Errorf("expected ext_tok, got %s", result.Token)
+	if result.Token != "ext_tok" || result.Scopes != "im:message" {
+		t.Errorf("extension token = %#v, want token and scopes preserved", result)
+	}
+}
+
+func TestCredentialProvider_ResolveTokenTreatsEmptyExtensionTokenAsMalformed(t *testing.T) {
+	cp := NewCredentialProvider(
+		[]extcred.Provider{&mockExtProvider{
+			name:    "env",
+			account: &extcred.Account{AppID: "ext_app", Brand: "feishu"},
+			token:   &extcred.Token{},
+		}},
+		nil, nil, nil,
+	)
+
+	_, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT})
+	var malformedErr *MalformedTokenResultError
+	if !errors.As(err, &malformedErr) {
+		t.Fatalf("ResolveToken() error = %T %v, want *MalformedTokenResultError", err, err)
+	}
+	if malformedErr.Source != "env" || malformedErr.Type != TokenTypeUAT || malformedErr.Reason != "empty token" {
+		t.Fatalf("malformed token error = %+v, want env/uat/empty token", malformedErr)
 	}
 }
 

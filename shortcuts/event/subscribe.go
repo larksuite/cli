@@ -87,6 +87,9 @@ var EventSubscribe = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{}, // no direct OAPI; scopes depend on subscribed event types
 	AuthTypes:   []string{"bot"},
+	PostMount: common.RuntimePostMount(
+		common.RequireRuntimeCapabilities(common.RuntimeCapabilityRealtimeEvents),
+	),
 	// Hidden: superseded by `event consume`. Kept executable so existing
 	// scripts keep working, but removed from --help/tab-completion so new
 	// users land on the replacement. Delete once downstream callers have
@@ -277,7 +280,7 @@ var EventSubscribe = common.Shortcut{
 
 		startErrCh := make(chan error, 1)
 		go func() {
-			startErrCh <- cli.Start(ctx)
+			startErrCh <- cli.Start(runtime.Factory.SDKBootstrapContext(ctx))
 		}()
 
 		info(fmt.Sprintf("%s%sConnected.%s Waiting for events... (Ctrl+C to stop)", output.Bold, output.Green, output.Reset))

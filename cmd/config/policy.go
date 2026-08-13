@@ -16,12 +16,6 @@ func NewCmdConfigPolicy(f *cmdutil.Factory) *cobra.Command {
 		Use:    "policy",
 		Hidden: true,
 		Short:  "Inspect the user-layer command policy",
-		// Override parent's RequireBuiltinCredentialProvider check; this
-		// group is read-only diagnostic and must work under any provider.
-		PersistentPreRunE: func(c *cobra.Command, _ []string) error {
-			c.SilenceUsage = true
-			return nil
-		},
 	}
 	cmd.AddCommand(newCmdConfigPolicyShow(f))
 	return cmd
