@@ -148,6 +148,29 @@ func TestDocsUpdateV2BlockIDFlagDocumentsServiceSentinels(t *testing.T) {
 	}
 }
 
+func TestDocsUpdateV2ExposesBlockMutationRangeFlags(t *testing.T) {
+	t.Parallel()
+
+	flags := make(map[string]common.Flag)
+	for _, flag := range v2UpdateFlags() {
+		flags[flag.Name] = flag
+	}
+	for _, name := range []string{"start-block-id", "end-block-id"} {
+		flag, ok := flags[name]
+		if !ok {
+			t.Fatalf("%s flag not found", name)
+		}
+		if flag.Hidden {
+			t.Fatalf("%s flag should be public", name)
+		}
+		for _, want := range []string{"inclusive", "block_replace", "block_delete"} {
+			if !strings.Contains(flag.Desc, want) {
+				t.Fatalf("%s help = %q, want it to contain %q", name, flag.Desc, want)
+			}
+		}
+	}
+}
+
 func TestDocsUpdateV2CommandFlagDocumentsStrReplaceLimits(t *testing.T) {
 	t.Parallel()
 
@@ -195,6 +218,135 @@ func TestBuildUpdateBodyIncludesReferenceMap(t *testing.T) {
 	}
 	if got, want := body["block_id"], "-1"; got != want {
 		t.Fatalf("block_id = %#v, want %q", got, want)
+	}
+}
+
+func TestBuildUpdateBodyIncludesBlockMutationRange(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		command string
+		content string
+	}{
+		{name: "replace", command: "block_replace", content: "replacement"},
+		{name: "delete", command: "block_delete"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runtime := newUpdateShortcutTestRuntime(t, "", map[string]string{
+				"command":        tt.command,
+				"block-id":       "   ",
+				"start-block-id": " li1 ",
+				"end-block-id":   " li3 ",
+				"content":        tt.content,
+			})
+			if err := validateUpdateV2(context.Background(), runtime); err != nil {
+				t.Fatalf("validateUpdateV2() error = %v", err)
+			}
+
+			body := buildUpdateBody(runtime)
+			if _, ok := body["block_id"]; ok {
+				t.Fatalf("block_id should be omitted for a range: %#v", body)
+			}
+			if got := body["start_block_id"]; got != " li1 " {
+				t.Fatalf("start_block_id = %#v, want exact caller value", got)
+			}
+			if got := body["end_block_id"]; got != " li3 " {
+				t.Fatalf("end_block_id = %#v, want exact caller value", got)
+			}
+		})
+	}
+}
+
+func TestValidateUpdateV2RejectsInvalidBlockMutationRange(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		setFlags  map[string]string
+		wantParam string
+		want      []string
+	}{
+		{
+			name: "missing end",
+			setFlags: map[string]string{
+				"command":        "block_replace",
+				"block-id":       "",
+				"start-block-id": "li1",
+			},
+			want: []string{"--start-block-id", "--end-block-id"},
+		},
+		{
+			name: "delete missing start",
+			setFlags: map[string]string{
+				"command":      "block_delete",
+				"block-id":     "",
+				"end-block-id": "li3",
+				"content":      "",
+			},
+			want: []string{"--start-block-id", "--end-block-id"},
+		},
+		{
+			name: "conflicting block id",
+			setFlags: map[string]string{
+				"command":        "block_replace",
+				"block-id":       "li1",
+				"start-block-id": "li1",
+				"end-block-id":   "li3",
+			},
+			want: []string{"--block-id", "--start-block-id", "--end-block-id"},
+		},
+		{
+			name: "delete conflicting block id",
+			setFlags: map[string]string{
+				"command":        "block_delete",
+				"block-id":       "li1",
+				"start-block-id": "li1",
+				"end-block-id":   "li3",
+				"content":        "",
+			},
+			want: []string{"--block-id", "--start-block-id", "--end-block-id"},
+		},
+		{
+			name: "unsupported command",
+			setFlags: map[string]string{
+				"command":        "block_insert_after",
+				"block-id":       "li1",
+				"start-block-id": "li1",
+				"end-block-id":   "li3",
+			},
+			want: []string{"--start-block-id", "--end-block-id"},
+		},
+		{
+			name: "minus one cannot start",
+			setFlags: map[string]string{
+				"command":        "block_replace",
+				"block-id":       "",
+				"start-block-id": "-1",
+				"end-block-id":   "li3",
+			},
+			wantParam: "--start-block-id",
+		},
+		{
+			name: "zero cannot end",
+			setFlags: map[string]string{
+				"command":        "block_delete",
+				"block-id":       "",
+				"start-block-id": "li1",
+				"end-block-id":   "0",
+				"content":        "",
+			},
+			wantParam: "--end-block-id",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runtime := newUpdateShortcutTestRuntime(t, "", tt.setFlags)
+			err := validateUpdateV2(context.Background(), runtime)
+			assertValidationContract(t, err, errs.SubtypeInvalidArgument, tt.wantParam, tt.want...)
+		})
 	}
 }
 
@@ -328,6 +480,8 @@ func newUpdateShortcutTestRuntime(t *testing.T, apiVersion string, setFlags map[
 	cmd.Flags().String("reference-map", "", "")
 	cmd.Flags().String("pattern", "", "")
 	cmd.Flags().String("block-id", "", "")
+	cmd.Flags().String("start-block-id", "", "")
+	cmd.Flags().String("end-block-id", "", "")
 	cmd.Flags().String("src-block-ids", "", "")
 	cmd.Flags().String("mode", "", "")
 	cmd.Flags().String("markdown", "", "")

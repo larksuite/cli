@@ -958,6 +958,24 @@ func TestDocMediaPreviewDryRunUsesMediaEndpoint(t *testing.T) {
 	}
 }
 
+func TestDocMediaPreviewDocumentsCommentImageTokens(t *testing.T) {
+	t.Parallel()
+
+	if !strings.Contains(DocMediaPreview.Description, "comment image") {
+		t.Fatalf("description = %q, want comment image support", DocMediaPreview.Description)
+	}
+	for _, flag := range DocMediaPreview.Flags {
+		if flag.Name != "token" {
+			continue
+		}
+		if !strings.Contains(flag.Desc, "comment image token") {
+			t.Fatalf("--token help = %q, want comment image token support", flag.Desc)
+		}
+		return
+	}
+	t.Fatal("--token flag not found")
+}
+
 func TestDocMediaPreviewRejectsOverwriteWithoutFlag(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-preview-overwrite-app"))
 	reg.Register(&httpmock.Stub{

@@ -25,6 +25,25 @@ func docsAPIVersionCompatFlag() common.Flag {
 	}
 }
 
+func docsOutputFormatCompatFlag() common.Flag {
+	return common.Flag{
+		Name:    "format",
+		Default: "json",
+		Desc:    "deprecated output-format compatibility flag",
+		Hidden:  true,
+		Enum:    []string{"json", "pretty", "table", "ndjson", "csv"},
+	}
+}
+
+func docsJSONOutputCompatFlag() common.Flag {
+	return common.Flag{
+		Name:   "json",
+		Type:   "bool",
+		Desc:   "deprecated JSON-output compatibility flag",
+		Hidden: true,
+	}
+}
+
 func docsCreateLegacyFlags() []docsLegacyFlag {
 	return []docsLegacyFlag{
 		{Name: "markdown", Replacement: "use --content with --doc-format markdown"},
