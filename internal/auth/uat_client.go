@@ -28,14 +28,15 @@ import (
 
 // UATCallOptions contains options for UAT API calls.
 type UATCallOptions struct {
-	UserOpenId string
-	AppId      string
-	AppSecret  string
-	Domain     core.LarkBrand
-	AuthMethod string           // "" == client_secret; core.AuthMethodPrivateKeyJWT
-	KeyLabel   string           // TEE key handle for private_key_jwt
-	Signer     keysigner.Signer // active signer for private_key_jwt
-	ErrOut     io.Writer        // diagnostic/status output (caller injects f.IOStreams.ErrOut)
+	UserOpenId  string
+	AppId       string
+	AppSecret   string
+	Domain      core.LarkBrand
+	AuthMethod  string           // "" == client_secret; core.AuthMethodPrivateKeyJWT
+	KeyLabel    string           // TEE key handle for private_key_jwt
+	KeyProvider string           // empty == built-in signer; explicit external route otherwise
+	Signer      keysigner.Signer // active signer for private_key_jwt
+	ErrOut      io.Writer        // diagnostic/status output (caller injects f.IOStreams.ErrOut)
 }
 
 // UATStatus represents the status of a user access token.
@@ -59,32 +60,20 @@ func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer) UATCallOptions {
 		mode = core.DPoPModeDisabled
 	}
 	return UATCallOptions{
-		UserOpenId: cfg.UserOpenId,
-		AppId:      cfg.AppID,
-		AppSecret:  cfg.AppSecret,
-		Domain:     cfg.Brand,
-		AuthMethod: cfg.AuthMethod,
-		KeyLabel:   cfg.KeyLabel,
-		Signer:     keysigner.Active(),
-		ErrOut:     errOut,
+		UserOpenId:  cfg.UserOpenId,
+		AppId:       cfg.AppID,
+		AppSecret:   cfg.AppSecret,
+		Domain:      cfg.Brand,
+		AuthMethod:  cfg.AuthMethod,
+		KeyLabel:    cfg.KeyLabel,
+		KeyProvider: cfg.KeyProvider,
+		Signer:      keysigner.Active(),
+		ErrOut:      errOut,
 	}
 }
 
-// AccessTokenResult carries the token together with its proof-of-possession
-// binding. Binding is nil for Bearer tokens.
-type AccessTokenResult struct {
-	AccessToken string
-	DPoP        *dpop.Binding
-}
-
-// GetValidAccessToken obtains a valid user token and restores its local DPoP binding.
-func GetValidAccessToken(ctx context.Context, httpClient *http.Client, opts UATCallOptions) (*AccessTokenResult, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if opts.DPoPKeyStore == nil {
-		opts.DPoPKeyStore = dpop.NewKeyStore(nil)
-	}
+// GetValidAccessToken obtains a valid access token for the given user.
+func GetValidAccessToken(ctx context.Context, httpClient *http.Client, opts UATCallOptions) (string, error) {
 	stored, err := GetStoredToken(opts.AppId, opts.UserOpenId)
 	if err != nil {
 		return nil, err
@@ -331,6 +320,18 @@ func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOp
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	clientAuth := ClientAuth{
+		AppID:       opts.AppId,
+		AppSecret:   opts.AppSecret,
+		AuthMethod:  opts.AuthMethod,
+		Signer:      opts.Signer,
+		KeyLabel:    opts.KeyLabel,
+		KeyProvider: opts.KeyProvider,
+	}
+	clientAuth, err := clientAuth.ResolveSigner(ctx)
+	if err != nil {
+		return nil, err
+	}
 	// Once token rotation starts, finish it even if the caller disconnects.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uatRefreshTimeout)
 	defer cancel()
@@ -339,7 +340,7 @@ func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOp
 	clockRecoveryUsed := false
 	ordinaryAttempts := 0
 	for {
-		result := refreshOnce(ctx, httpClient, endpoint, opts, stored, proofKey, !clockRecoveryUsed)
+		result := refreshOnce(ctx, httpClient, endpoint, clientAuth, opts, stored, proofKey, !clockRecoveryUsed)
 		if result.action == refreshSaveResponse {
 			saved, saveErr := saveRefreshResponse(opts, stored, result.response, proofKey)
 			if saveErr != nil {
@@ -376,7 +377,7 @@ func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOp
 		}
 
 		clearAfterUncertainResult := result.action == refreshRetryAndClear ||
-			(result.action == refreshRetryAndPreserve && uncertain)
+			(uncertain && (result.action == refreshRetryAndPreserve || result.action == refreshStopAndPreserve))
 		clearToken := result.action == refreshStopAndClear || clearAfterUncertainResult
 		if !clearToken {
 			fmt.Fprintf(errOut,
@@ -445,14 +446,13 @@ func synchronizeStoredTokenClock(ctx context.Context, httpClient *http.Client, o
 	return nil
 }
 
-func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, opts UATCallOptions, stored *StoredUAToken, proofKey *dpop.Key, allowClockRecovery bool) refreshResult {
+func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, clientAuth ClientAuth, opts UATCallOptions, stored *StoredUAToken, proofKey *dpop.Key, allowClockRecovery bool) refreshResult {
 	request := refreshRequest{
 		GrantType:    "refresh_token",
 		RefreshToken: stored.RefreshToken,
 		ClientID:     opts.AppId,
 	}
 	form := url.Values{}
-	clientAuth := ClientAuth{AppID: opts.AppId, AppSecret: opts.AppSecret, AuthMethod: opts.AuthMethod, Signer: opts.Signer, KeyLabel: opts.KeyLabel}
 	usedAssertion, err := clientAuth.applyClientAssertion(ctx, form, core.OpenAPIAudience(opts.Domain))
 	if err != nil {
 		return refreshResult{action: refreshStopAndPreserve, err: err}

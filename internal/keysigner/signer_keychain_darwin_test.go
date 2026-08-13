@@ -6,6 +6,7 @@
 package keysigner
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/rsa"
@@ -14,13 +15,16 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ebitengine/purego"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 var (
@@ -199,6 +203,194 @@ func TestEnsureKeychainUnlocksExistingKeychain(t *testing.T) {
 		if value != 0 {
 			t.Fatalf("borrowed password byte %d was not cleared after use", i)
 		}
+	}
+}
+
+type keychainFirstCreationRaceFS struct {
+	vfs.OsFs
+	id       string
+	coordDir string
+}
+
+func (f keychainFirstCreationRaceFS) ReadFile(name string) ([]byte, error) {
+	data, err := f.OsFs.ReadFile(name)
+	if filepath.Base(name) != "keychain.pass" || !os.IsNotExist(err) {
+		return data, err
+	}
+	if writeErr := os.WriteFile(filepath.Join(f.coordDir, "password-missing-"+f.id), nil, 0600); writeErr != nil {
+		return nil, writeErr
+	}
+	if !waitForKeychainRaceFile(filepath.Join(f.coordDir, "release-password-"+f.id), 10*time.Second) {
+		return nil, fmt.Errorf("timed out waiting to release password read for child %s", f.id)
+	}
+	return data, err
+}
+
+func waitForKeychainRaceFile(path string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); err == nil {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return false
+}
+
+type keychainRaceChild struct {
+	cmd      *exec.Cmd
+	output   *bytes.Buffer
+	waitOnce sync.Once
+	waitErr  error
+}
+
+func (c *keychainRaceChild) wait(kill bool) error {
+	c.waitOnce.Do(func() {
+		if kill && c.cmd.ProcessState == nil {
+			_ = c.cmd.Process.Kill()
+		}
+		c.waitErr = c.cmd.Wait()
+	})
+	return c.waitErr
+}
+
+func TestEnsureKeychainSerializesFirstCreationAcrossProcesses(t *testing.T) {
+	const childEnv = "LARK_KEYCHAIN_FIRST_CREATION_CHILD"
+	if childID := os.Getenv(childEnv); childID != "" {
+		coordDir := os.Getenv("LARK_KEYCHAIN_FIRST_CREATION_COORD_DIR")
+		vfs.DefaultFS = keychainFirstCreationRaceFS{id: childID, coordDir: coordDir}
+		createKeychainFile = func(path string, password []byte) error {
+			if err := os.WriteFile(filepath.Join(coordDir, "create-ready-"+childID), nil, 0600); err != nil {
+				return err
+			}
+			if !waitForKeychainRaceFile(filepath.Join(coordDir, "release-create-"+childID), 10*time.Second) {
+				return fmt.Errorf("timed out waiting to create keychain for child %s", childID)
+			}
+			file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+			if err != nil {
+				return err
+			}
+			if _, err := file.Write(password); err != nil {
+				_ = file.Close()
+				return err
+			}
+			if err := file.Close(); err != nil {
+				return err
+			}
+			return os.WriteFile(filepath.Join(coordDir, "created-"+childID), nil, 0600)
+		}
+		unlockKeychainFile = func(path string, password []byte) error {
+			createdWith, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			if !bytes.Equal(createdWith, password) {
+				return fmt.Errorf("keychain password mismatch")
+			}
+			return nil
+		}
+		if _, err := ensureKeychain(); err != nil {
+			t.Fatalf("ensureKeychain child %s: %v", childID, err)
+		}
+		return
+	}
+
+	home := t.TempDir()
+	coordDir := t.TempDir()
+	startChild := func(id string) *keychainRaceChild {
+		t.Helper()
+		output := &bytes.Buffer{}
+		cmd := exec.Command(os.Args[0], "-test.run=^TestEnsureKeychainSerializesFirstCreationAcrossProcesses$")
+		cmd.Env = append(os.Environ(),
+			"HOME="+home,
+			childEnv+"="+id,
+			"LARK_KEYCHAIN_FIRST_CREATION_COORD_DIR="+coordDir,
+		)
+		cmd.Stdout = output
+		cmd.Stderr = output
+		if err := cmd.Start(); err != nil {
+			t.Fatalf("start child %s: %v", id, err)
+		}
+		child := &keychainRaceChild{cmd: cmd, output: output}
+		t.Cleanup(func() { _ = child.wait(true) })
+		return child
+	}
+
+	childA := startChild("a")
+	childB := startChild("b")
+	passwordMissing := func(id string) string {
+		return filepath.Join(coordDir, "password-missing-"+id)
+	}
+	keychainDir := filepath.Join(home, "Library", "Application Support", "lark-cli", "keysigner")
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		aMissing := waitForKeychainRaceFile(passwordMissing("a"), 10*time.Millisecond)
+		bMissing := waitForKeychainRaceFile(passwordMissing("b"), 10*time.Millisecond)
+		_, lockErr := os.Stat(filepath.Join(keychainDir, "keychain.init.lock"))
+		if aMissing && bMissing || (aMissing || bMissing) && lockErr == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	aMissing := waitForKeychainRaceFile(passwordMissing("a"), 10*time.Millisecond)
+	bMissing := waitForKeychainRaceFile(passwordMissing("b"), 10*time.Millisecond)
+	if !aMissing && !bMissing {
+		t.Fatal("neither child observed a missing password file")
+	}
+	for _, id := range []string{"a", "b"} {
+		if (id == "a" && aMissing) || (id == "b" && bMissing) {
+			if err := os.WriteFile(filepath.Join(coordDir, "release-password-"+id), nil, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	winner := "a"
+	if !aMissing {
+		winner = "b"
+	}
+	if !waitForKeychainRaceFile(filepath.Join(coordDir, "create-ready-"+winner), 10*time.Second) {
+		t.Fatalf("child %s did not reach keychain creation", winner)
+	}
+	if aMissing && bMissing {
+		loser := "b"
+		if winner == "b" {
+			loser = "a"
+		}
+		if !waitForKeychainRaceFile(filepath.Join(coordDir, "create-ready-"+loser), 10*time.Second) {
+			t.Fatalf("child %s did not reach competing keychain creation", loser)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(coordDir, "release-create-"+winner), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if !waitForKeychainRaceFile(filepath.Join(coordDir, "created-"+winner), 10*time.Second) {
+		t.Fatalf("child %s did not create the keychain", winner)
+	}
+	loser := "b"
+	if winner == "b" {
+		loser = "a"
+	}
+	if err := os.WriteFile(filepath.Join(coordDir, "release-create-"+loser), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	errA := childA.wait(false)
+	errB := childB.wait(false)
+	if errA != nil || errB != nil {
+		t.Fatalf("concurrent ensureKeychain failed: child a: %v\n%s\nchild b: %v\n%s", errA, childA.output, errB, childB.output)
+	}
+	storedPassword, err := os.ReadFile(filepath.Join(keychainDir, "keychain.pass"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	createdWith, err := os.ReadFile(filepath.Join(keychainDir, "lark-cli.keychain"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(bytes.TrimSpace(storedPassword), createdWith) {
+		t.Fatal("stored password does not unlock the concurrently created keychain")
 	}
 }
 
