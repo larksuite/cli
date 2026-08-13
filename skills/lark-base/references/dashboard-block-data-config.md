@@ -156,12 +156,12 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 | `number` | number | is, isNot, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty | `{"field_name":"金额","operator":"isGreater","value":0}` |
 | `select` (`multiple=false`) | string（选项名） | is, isNot, isEmpty, isNotEmpty | `{"field_name":"状态","operator":"is","value":"已完成"}` |
 | `select` (`multiple=true`) | string[]（选多个）/ string（选单个） | is, isNot, contains, doesNotContain, isEmpty, isNotEmpty | 多选传数组如 `["标签1","标签2"]`；单选传单个字符串 |
-| `datetime` / `created_at` / `updated_at` | number（Unix 毫秒时间戳，13位） | is, isGreater, isGreaterEqual, isLess, isLessEqual, isEmpty, isNotEmpty | `{"field_name":"创建日期","operator":"isGreater","value":1704038400000}` |
+| `datetime` / `created_at` / `updated_at` | string[]（日期关键字数组） | is, isGreater, isLess, isEmpty, isNotEmpty | 精确日期：`{"field_name":"创建日期","operator":"isGreater","value":["ExactDate","1704038400000"]}`；相对日期：`["Today"]` / `["Tomorrow"]` / `["Yesterday"]` |
 | `checkbox` | boolean | is | `{"field_name":"已审核","operator":"is","value":true}` |
 | `user` / `created_by` / `updated_by` | string 或 string[]（用户 ID，格式 `ou_xxx`）。不知道 `open_id` 时先用 `lark-cli contact +search-user --query "<姓名/邮箱/手机号>" --as user` 查 id。 | is, isNot, isEmpty, isNotEmpty | `{"field_name":"负责人","operator":"is","value":"ou_xxxxxxxxxxxxxxxx"}` |
 | 所有类型（为空/不为空） | 不需要 value | isEmpty, isNotEmpty | `{"field_name":"备注","operator":"isEmpty"}` |
 
-> `value` 类型为 `string | number | boolean | string[]`，需根据字段类型匹配正确格式
+> `value` 类型为 `string | number | boolean | string[]`，需根据字段类型匹配正确格式。日期字段必须使用日期关键字数组；精确日期的毫秒时间戳建议以字符串传入。`isEmpty` / `isNotEmpty` 不传 `value`。
 
 ## 约束与本地校验
 
