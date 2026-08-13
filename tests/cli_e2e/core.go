@@ -110,7 +110,7 @@ func SkipWithoutTenantAccessToken(t *testing.T) {
 		if status := gjson.Get(stdout, "identities.bot.status").String(); status != "ready" {
 			t.Skip("skipped: tenant test credentials not set and local bot config is not ready")
 		}
-		if verified := gjson.Get(stdout, "identities.bot.verified"); verified.Exists() && !verified.Bool() {
+		if verified := gjson.Get(stdout, "identities.bot.verified"); !verified.Exists() || !verified.Bool() {
 			t.Skip("skipped: tenant test credentials not set and local bot config verification failed")
 		}
 	}

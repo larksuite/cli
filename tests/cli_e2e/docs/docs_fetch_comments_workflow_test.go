@@ -846,6 +846,9 @@ func assertCommentXML(t *testing.T, data string) docsFetchCommentShape {
 		require.Empty(t, blockID, "whole-document comments must not have block-id")
 		require.Empty(t, startBlockID, "whole-document comments must not have start-block-id")
 		require.Empty(t, endBlockID, "whole-document comments must not have end-block-id")
+	} else {
+		require.True(t, blockID != "" || startBlockID != "",
+			"local comments must carry block-id or the start-block-id/end-block-id pair")
 	}
 	require.Positive(t, messageCount, "comment must contain at least one msg")
 	return docsFetchCommentShape{hasQuote: sawQuote, commentID: commentID, isWhole: isWhole}

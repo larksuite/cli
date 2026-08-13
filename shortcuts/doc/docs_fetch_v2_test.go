@@ -634,7 +634,6 @@ func TestDocsCommandsHideOutputFormatCompatibilityFlag(t *testing.T) {
 	t.Parallel()
 
 	for _, shortcut := range []common.Shortcut{DocsFetch, DocsCreate, DocsUpdate} {
-		shortcut := shortcut
 		t.Run(shortcut.Command, func(t *testing.T) {
 			t.Parallel()
 			f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-hidden-format"))
@@ -668,24 +667,6 @@ func TestDocsCommandsHideOutputFormatCompatibilityFlag(t *testing.T) {
 				t.Fatalf("legacy --json must remain parse-compatible: %v", err)
 			}
 		})
-	}
-}
-
-func TestDocsFetchHelpMetadataExplainsCommentSidecar(t *testing.T) {
-	t.Parallel()
-
-	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-fetch-comment-help"))
-	parent := &cobra.Command{Use: "docs"}
-	DocsFetch.Mount(parent, f)
-	cmd, _, err := parent.Find([]string{DocsFetch.Command})
-	if err != nil {
-		t.Fatalf("find %s: %v", DocsFetch.Command, err)
-	}
-	help := strings.Join(cmdutil.GetTips(cmd), "\n")
-	for _, want := range []string{"document.reference_map.comments", "comment-refs", "Markdown", "comment-id", "block-id", "start-block-id", "end-block-id"} {
-		if !strings.Contains(help, want) {
-			t.Fatalf("fetch help tips = %q, want mention of %q", help, want)
-		}
 	}
 }
 

@@ -115,6 +115,7 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 				"command":        "block_replace",
 				"start_block_id": "li1",
 				"end_block_id":   "li3",
+				"content":        "<li>combined</li>",
 			},
 		},
 		{
