@@ -18,6 +18,7 @@ import (
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/keylesshelper"
+	"github.com/larksuite/cli/internal/keylessprovider"
 	"github.com/larksuite/cli/internal/keysigner"
 )
 
@@ -157,7 +158,13 @@ func tatRetryAfterSeconds(header http.Header) int {
 // The unified v2 token endpoint returns the minted token as access_token
 // (tenant_access_token is accepted as a fallback).
 func FetchTATWithAssertion(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, clientID string, signer keysigner.Signer, keyLabel string) (string, error) {
-	helper, err := keylesshelper.Resolve()
+	return FetchTATWithAssertionForProvider(ctx, httpClient, brand, clientID, signer, "", keyLabel)
+}
+
+// FetchTATWithAssertionForProvider resolves an explicit external signer once.
+// An empty provider preserves the built-in signer behavior.
+func FetchTATWithAssertionForProvider(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, clientID string, signer keysigner.Signer, provider, keyLabel string) (string, error) {
+	helper, err := keylessprovider.Resolve(ctx, provider)
 	if err != nil {
 		return "", err
 	}
@@ -170,7 +177,7 @@ func FetchTATWithAssertionWithHelper(ctx context.Context, httpClient *http.Clien
 	if signer == nil && helper == nil {
 		return "", errs.NewConfigError(errs.SubtypeInvalidClient,
 			"profile uses private_key_jwt but no TEE key signer is available on this build").
-			WithHint("install a build with the platform key-signer extension, configure an external keyless signer, or reconfigure the app to use an app secret")
+			WithHint("install a build with the platform key-signer extension or repair the configured OpenClaw signer provider")
 	}
 	ep := core.ResolveEndpoints(brand)
 	endpoint := ep.Open + auth.PathOAuthTokenV2

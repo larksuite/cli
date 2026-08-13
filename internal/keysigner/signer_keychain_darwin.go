@@ -35,9 +35,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
+	"github.com/gofrs/flock"
+	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -65,6 +68,9 @@ const (
 
 	publicKeyAttributes  = cssmKeyAttrPermanent | cssmKeyAttrExtractable
 	privateKeyAttributes = cssmKeyAttrPermanent | cssmKeyAttrSensitive
+
+	keychainInitLockTimeout    = 10 * time.Second
+	keychainInitLockRetryDelay = 100 * time.Millisecond
 )
 
 var (
@@ -697,7 +703,35 @@ func writeKeyMetadata(path string, md keyMetadata) error {
 	return vfs.WriteFile(path, data, 0600)
 }
 
-func ensureKeychain() (string, error) {
+func ensureKeychain() (keychainPath string, err error) {
+	dir, err := keysignerDir()
+	if err != nil {
+		return "", err
+	}
+	if err := vfs.MkdirAll(dir, 0700); err != nil {
+		return "", err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), keychainInitLockTimeout)
+	defer cancel()
+	initLock := flock.New(filepath.Join(dir, "keychain.init.lock"))
+	locked, err := initLock.TryLockContext(ctx, keychainInitLockRetryDelay)
+	if err != nil {
+		return "", fmt.Errorf("keysigner: acquire keychain initialization lock: %w", err)
+	}
+	if !locked {
+		return "", fmt.Errorf("keysigner: acquire keychain initialization lock: %w", context.DeadlineExceeded)
+	}
+	defer func() {
+		if unlockErr := initLock.Unlock(); err == nil && unlockErr != nil {
+			err = fmt.Errorf("keysigner: release keychain initialization lock: %w", unlockErr)
+		}
+	}()
+
+	return ensureKeychainLocked()
+}
+
+func ensureKeychainLocked() (string, error) {
 	keychainPath, err := keychainFilePath()
 	if err != nil {
 		return "", err
@@ -710,9 +744,6 @@ func ensureKeychain() (string, error) {
 	if _, err := vfs.Stat(keychainPath); err != nil {
 		if !os.IsNotExist(err) {
 			return "", fmt.Errorf("keysigner: stat keychain: %w", err)
-		}
-		if err := vfs.MkdirAll(filepath.Dir(keychainPath), 0700); err != nil {
-			return "", err
 		}
 		if err := createKeychainFile(keychainPath, password); err != nil {
 			return "", err
@@ -823,7 +854,7 @@ func keychainPassword() ([]byte, error) {
 		return nil, err
 	}
 	stored := append(append([]byte(nil), pw...), '\n')
-	if err := vfs.WriteFile(path, stored, 0600); err != nil {
+	if err := validate.AtomicWrite(path, stored, 0600); err != nil {
 		clear(stored)
 		clear(pw)
 		return nil, err

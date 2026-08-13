@@ -18,7 +18,6 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/surface"
@@ -204,39 +203,6 @@ func TestTeeCheckResult(t *testing.T) {
 				t.Errorf("status = %q, want %q (msg=%q)", got.Status, tc.want, got.Message)
 			}
 		})
-	}
-}
-
-func TestTeeSignerCheck_InvalidKeylessHelperEnvFailsPKJWT(t *testing.T) {
-	t.Setenv(envvars.CliKeylessSignerCmd, `[""]`)
-
-	got := teeSignerCheck(context.Background(), &core.CliConfig{AuthMethod: core.AuthMethodPrivateKeyJWT})
-	if got.Status != "fail" {
-		t.Fatalf("status = %q, want fail (msg=%q, hint=%q)", got.Status, got.Message, got.Hint)
-	}
-	if !strings.Contains(got.Hint, envvars.CliKeylessSignerCmd) {
-		t.Fatalf("hint = %q, want env var name", got.Hint)
-	}
-}
-
-func TestTeeSignerCheck_InvalidKeylessHelperConfigHasActionableHint(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	t.Setenv(envvars.CliKeylessSignerCmd, "")
-	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
-		KeylessSignerCmd: `[""]`,
-		Apps: []core.AppConfig{{
-			AppId: "cli_test", AppSecret: core.PlainSecret("secret"), Brand: core.BrandFeishu,
-		}},
-	}); err != nil {
-		t.Fatalf("SaveMultiAppConfig() error = %v", err)
-	}
-
-	got := teeSignerCheck(context.Background(), &core.CliConfig{AuthMethod: core.AuthMethodPrivateKeyJWT})
-	if got.Status != "fail" {
-		t.Fatalf("status = %q, want fail (msg=%q, hint=%q)", got.Status, got.Message, got.Hint)
-	}
-	if !strings.Contains(got.Hint, "config init") || !strings.Contains(got.Hint, "keylessSignerCmd") {
-		t.Fatalf("hint = %q, want config init repair guidance", got.Hint)
 	}
 }
 

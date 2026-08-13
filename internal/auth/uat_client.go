@@ -25,14 +25,15 @@ import (
 
 // UATCallOptions contains options for UAT API calls.
 type UATCallOptions struct {
-	UserOpenId string
-	AppId      string
-	AppSecret  string
-	Domain     core.LarkBrand
-	AuthMethod string           // "" == client_secret; core.AuthMethodPrivateKeyJWT
-	KeyLabel   string           // TEE key handle for private_key_jwt
-	Signer     keysigner.Signer // active signer for private_key_jwt
-	ErrOut     io.Writer        // diagnostic/status output (caller injects f.IOStreams.ErrOut)
+	UserOpenId  string
+	AppId       string
+	AppSecret   string
+	Domain      core.LarkBrand
+	AuthMethod  string           // "" == client_secret; core.AuthMethodPrivateKeyJWT
+	KeyLabel    string           // TEE key handle for private_key_jwt
+	KeyProvider string           // empty == built-in signer; explicit external route otherwise
+	Signer      keysigner.Signer // active signer for private_key_jwt
+	ErrOut      io.Writer        // diagnostic/status output (caller injects f.IOStreams.ErrOut)
 }
 
 // UATStatus represents the status of a user access token.
@@ -52,19 +53,20 @@ func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer) UATCallOptions {
 		errOut = os.Stderr
 	}
 	return UATCallOptions{
-		UserOpenId: cfg.UserOpenId,
-		AppId:      cfg.AppID,
-		AppSecret:  cfg.AppSecret,
-		Domain:     cfg.Brand,
-		AuthMethod: cfg.AuthMethod,
-		KeyLabel:   cfg.KeyLabel,
-		Signer:     keysigner.Active(),
-		ErrOut:     errOut,
+		UserOpenId:  cfg.UserOpenId,
+		AppId:       cfg.AppID,
+		AppSecret:   cfg.AppSecret,
+		Domain:      cfg.Brand,
+		AuthMethod:  cfg.AuthMethod,
+		KeyLabel:    cfg.KeyLabel,
+		KeyProvider: cfg.KeyProvider,
+		Signer:      keysigner.Active(),
+		ErrOut:      errOut,
 	}
 }
 
 // GetValidAccessToken obtains a valid access token for the given user.
-func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, error) {
+func GetValidAccessToken(ctx context.Context, httpClient *http.Client, opts UATCallOptions) (string, error) {
 	stored, err := GetStoredToken(opts.AppId, opts.UserOpenId)
 	if err != nil {
 		return "", err
@@ -77,7 +79,7 @@ func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, 
 		return stored.AccessToken, nil
 	}
 
-	refreshed, err := refreshWithLock(httpClient, opts)
+	refreshed, err := refreshWithLock(ctx, httpClient, opts)
 	if err != nil {
 		return "", err
 	}
@@ -89,7 +91,7 @@ func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, 
 
 // refreshWithLock serializes the complete refresh transaction with every
 // stored-token writer and remover for this account.
-func refreshWithLock(httpClient *http.Client, opts UATCallOptions) (*StoredUAToken, error) {
+func refreshWithLock(ctx context.Context, httpClient *http.Client, opts UATCallOptions) (*StoredUAToken, error) {
 	var refreshed *StoredUAToken
 	err := withTokenStorageLock(opts.AppId, opts.UserOpenId, func() error {
 		freshStored, err := GetStoredToken(opts.AppId, opts.UserOpenId)
@@ -131,7 +133,7 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions) (*StoredUATok
 			return err
 		}
 
-		refreshed, err = doRefreshToken(httpClient, opts, freshStored)
+		refreshed, err = doRefreshToken(ctx, httpClient, opts, freshStored)
 		return err
 	})
 	return refreshed, err
@@ -186,7 +188,7 @@ type refreshResult struct {
 
 // doRefreshToken performs the HTTP refresh and applies its storage result.
 // The caller must hold the account's token storage lock.
-func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *StoredUAToken) (*StoredUAToken, error) {
+func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOptions, stored *StoredUAToken) (*StoredUAToken, error) {
 	errOut := opts.ErrOut
 	if errOut == nil {
 		errOut = os.Stderr
@@ -206,9 +208,21 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 	}
 
 	endpoint := ResolveOAuthEndpoints(opts.Domain).Token
+	clientAuth := ClientAuth{
+		AppID:       opts.AppId,
+		AppSecret:   opts.AppSecret,
+		AuthMethod:  opts.AuthMethod,
+		Signer:      opts.Signer,
+		KeyLabel:    opts.KeyLabel,
+		KeyProvider: opts.KeyProvider,
+	}
+	clientAuth, err := clientAuth.ResolveSigner(ctx)
+	if err != nil {
+		return nil, err
+	}
 	uncertain := false
 	for attempt := 1; attempt <= refreshMaxAttempts; attempt++ {
-		result := refreshOnce(httpClient, endpoint, opts, stored)
+		result := refreshOnce(ctx, httpClient, endpoint, clientAuth, opts, stored)
 		if result.action == refreshSaveResponse {
 			return saveRefreshResponse(opts, stored, result.response)
 		}
@@ -231,7 +245,7 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 		}
 
 		clearAfterUncertainResult := result.action == refreshRetryAndClear ||
-			(result.action == refreshRetryAndPreserve && uncertain)
+			(uncertain && (result.action == refreshRetryAndPreserve || result.action == refreshStopAndPreserve))
 		clearToken := result.action == refreshStopAndClear || clearAfterUncertainResult
 		if !clearToken {
 			fmt.Fprintf(errOut,
@@ -277,15 +291,14 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 		"token refresh exhausted attempts without a result")
 }
 
-func refreshOnce(httpClient *http.Client, endpoint string, opts UATCallOptions, stored *StoredUAToken) refreshResult {
+func refreshOnce(ctx context.Context, httpClient *http.Client, endpoint string, clientAuth ClientAuth, opts UATCallOptions, stored *StoredUAToken) refreshResult {
 	request := refreshRequest{
 		GrantType:    "refresh_token",
 		RefreshToken: stored.RefreshToken,
 		ClientID:     opts.AppId,
 	}
 	form := url.Values{}
-	clientAuth := ClientAuth{AppID: opts.AppId, AppSecret: opts.AppSecret, AuthMethod: opts.AuthMethod, Signer: opts.Signer, KeyLabel: opts.KeyLabel}
-	usedAssertion, err := clientAuth.applyClientAssertion(context.Background(), form, core.OpenAPIAudience(opts.Domain))
+	usedAssertion, err := clientAuth.applyClientAssertion(ctx, form, core.OpenAPIAudience(opts.Domain))
 	if err != nil {
 		return refreshResult{action: refreshStopAndPreserve, err: err}
 	}
@@ -311,8 +324,8 @@ func refreshOnce(httpClient *http.Client, endpoint string, opts UATCallOptions, 
 			wroteRequest.Store(true)
 		},
 	}
-	ctx := httptrace.WithClientTrace(context.Background(), trace)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	requestCtx := httptrace.WithClientTrace(ctx, trace)
+	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return refreshResult{
 			action: refreshStopAndPreserve,

@@ -43,11 +43,12 @@ func TestNewUATCallOptions(t *testing.T) {
 // so the refresh path can mint a client_assertion instead of sending a secret.
 func TestNewUATCallOptions_PrivateKeyJWT(t *testing.T) {
 	cfg := &core.CliConfig{
-		AppID:      "cli_pk",
-		Brand:      core.BrandFeishu,
-		UserOpenId: "ou_test",
-		AuthMethod: core.AuthMethodPrivateKeyJWT,
-		KeyLabel:   "agent-key",
+		AppID:       "cli_pk",
+		Brand:       core.BrandFeishu,
+		UserOpenId:  "ou_test",
+		AuthMethod:  core.AuthMethodPrivateKeyJWT,
+		KeyLabel:    "agent-key",
+		KeyProvider: core.KeylessProviderLarkSuite,
 	}
 	opts := NewUATCallOptions(cfg, &bytes.Buffer{})
 
@@ -56,5 +57,8 @@ func TestNewUATCallOptions_PrivateKeyJWT(t *testing.T) {
 	}
 	if opts.KeyLabel != "agent-key" {
 		t.Errorf("KeyLabel = %q, want agent-key", opts.KeyLabel)
+	}
+	if opts.KeyProvider != core.KeylessProviderLarkSuite {
+		t.Errorf("KeyProvider = %q, want %q", opts.KeyProvider, core.KeylessProviderLarkSuite)
 	}
 }
