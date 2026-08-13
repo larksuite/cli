@@ -59,7 +59,7 @@ lark-cli base +record-list \
 }
 ```
 
-已有可信 `table_id` 时，直接对参与分析的表并发执行 `+field-list` 读取所需 schema，再按上述 NDJSON 契约导出记录，不要为常规记录读取重复枚举表。仅在目标表未知、需要枚举多表或用户明确要求整表规模时使用 `+base-block-list --type table`；表元数据的 `records_count` 表示整表行数，manifest 的 `records_count` 表示本次查询实际导出的行数。`+view-get` 可按需读取，作为用户持久化访问习惯的可选参考；其中的 filter、sort 与字段范围可辅助理解用户常用的查询范围和排序偏好，并结合当前任务确定最终口径。
+全表分析的常规资源链路是 `+table-list` 确认目标表，并用已有整表 `records_count` 或 NDJSON `has_more` 确认规模；对所有参与分析的表并发执行 `+field-list` 读取所需 schema，再按上述 NDJSON 契约用 `+record-list` 导出记录。已有可信的 `table_id` 时可直接并发读取各表 `+field-list`。`+view-get` 可按需读取，作为用户持久化访问习惯的可选参考；其中的 filter、sort 与字段范围可辅助理解用户常用的查询范围和排序偏好，并结合当前任务确定最终口径。
 
 1. 每次读取使用任务所需的最小投影，并包含 JOIN、解释、回查或写入需要的业务 key。
 2. 全局结论以 `has_more=false` 的完整导出或 Cloud 聚合结果为依据；`has_more=true` 时继续收敛单表谓词或选择 Cloud 路径。
