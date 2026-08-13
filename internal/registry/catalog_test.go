@@ -6,6 +6,7 @@ package registry
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/apicatalog"
@@ -63,5 +64,52 @@ func TestSchemaCatalog_FallsBackToRuntimeWhenNoEmbedded(t *testing.T) {
 	}
 	if _, ok := c.Service("remote_svc"); !ok {
 		t.Fatal("expected remote_svc from runtime fallback")
+	}
+}
+
+func TestEmbeddedCatalogIncludesMailAutoReply(t *testing.T) {
+	c := EmbeddedCatalog()
+
+	tests := []struct {
+		method string
+		scope  string
+		risk   string
+		danger bool
+	}{
+		{method: "get", scope: "mail:user_mailbox.message:readonly", risk: "read"},
+		{method: "update", scope: "mail:user_mailbox.message:modify", risk: "write", danger: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.method, func(t *testing.T) {
+			target, err := c.Resolve([]string{"mail", "user_mailbox.auto_reply", tt.method})
+			if err != nil {
+				t.Fatalf("Resolve() error = %v", err)
+			}
+			if target.Kind != apicatalog.TargetMethod {
+				t.Fatalf("Resolve() kind = %q, want %q", target.Kind, apicatalog.TargetMethod)
+			}
+			gotPath := strings.Join(target.Method.CommandPath(), " ")
+			wantPath := "mail user_mailbox.auto_reply " + tt.method
+			if gotPath != wantPath {
+				t.Fatalf("CommandPath() = %q, want %q", gotPath, wantPath)
+			}
+			method := target.Method.Method
+			if method.ID != "user_mailbox.auto_reply."+tt.method {
+				t.Fatalf("Method.ID = %q", method.ID)
+			}
+			if len(method.Scopes) != 1 || method.Scopes[0] != tt.scope {
+				t.Fatalf("Scopes = %v, want [%s]", method.Scopes, tt.scope)
+			}
+			if len(method.RequiredScopes) != 1 || method.RequiredScopes[0] != tt.scope {
+				t.Fatalf("RequiredScopes = %v, want [%s]", method.RequiredScopes, tt.scope)
+			}
+			if method.Risk != tt.risk {
+				t.Fatalf("Risk = %q, want %q", method.Risk, tt.risk)
+			}
+			if method.Danger != tt.danger {
+				t.Fatalf("Danger = %v, want %v", method.Danger, tt.danger)
+			}
+		})
 	}
 }
