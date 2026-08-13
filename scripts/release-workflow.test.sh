@@ -151,6 +151,9 @@ fetch_metadata_index = build_steps.index { |step| step["name"] == "Fetch build m
 prepare_key_index = build_steps.index { |step| step["name"] == "Prepare Apple notarization key" }
 contract_error("build metadata must be fetched before Apple credentials are prepared") unless fetch_metadata_index && prepare_key_index && fetch_metadata_index < prepare_key_index
 contract_error("build metadata must be fetched outside GoReleaser hooks") if goreleaser.dig("before", "hooks")&.include?("python3 scripts/fetch_meta.py")
+linux_build = goreleaser.fetch("builds").find { |build| build["id"] == "linux" }
+contract_error("GoReleaser Linux build is missing") unless linux_build
+expect_equal(linux_build.fetch("goarch"), %w[amd64 arm64 riscv64], "Linux release architectures")
 
 goreleaser_index = build_steps.index { |step| step["name"] == "Run GoReleaser" }
 toolchain_verify_index = build_steps.index { |step| step["name"] == "Verify release Go toolchain" }

@@ -16,7 +16,6 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/keylesshelper"
 	"github.com/larksuite/cli/internal/keysigner"
 )
 
@@ -103,8 +102,7 @@ func runProbePKJWT(parent context.Context, factory *cmdutil.Factory, brand core.
 	if factory == nil {
 		return nil
 	}
-	helper, err := keylesshelper.Resolve()
-	if err != nil || (signer == nil && helper == nil) {
+	if signer == nil {
 		return nil
 	}
 	httpClient, err := factory.HttpClient()
@@ -115,7 +113,7 @@ func runProbePKJWT(parent context.Context, factory *cmdutil.Factory, brand core.
 	ctx, cancel := context.WithTimeout(parent, probeTimeout)
 	defer cancel()
 
-	if _, err := credential.FetchTATWithAssertionWithHelper(ctx, httpClient, brand, clientID, signer, helper, keyLabel); err != nil {
+	if _, err := credential.FetchTATWithAssertion(ctx, httpClient, brand, clientID, signer, keyLabel); err != nil {
 		// Typed = deterministic credential rejection → propagate. Untyped
 		// (transport / HTTP / parse / timeout) is ambiguous → stay silent.
 		if errs.IsTyped(err) {

@@ -185,6 +185,35 @@ func TestResolveConfigFromMulti_PKJWTSkipsSecretResolution(t *testing.T) {
 	}
 }
 
+func TestResolveConfigFromMulti_KeyProviderRouting(t *testing.T) {
+	base := AppConfig{
+		AppId: "cli_pk", Brand: BrandFeishu, AuthMethod: AuthMethodPrivateKeyJWT,
+		KeyRef: &SecretRef{Source: SecretSourceTEE, ID: "key-1"}, Users: []AppUser{},
+	}
+
+	for _, provider := range []string{"", KeylessProviderLarkSuite} {
+		app := base
+		ref := *base.KeyRef
+		ref.Provider = provider
+		app.KeyRef = &ref
+		cfg, err := ResolveConfigFromMulti(&MultiAppConfig{Apps: []AppConfig{app}}, stubKeychain{}, "", ProfileFromConfig)
+		if err != nil {
+			t.Fatalf("provider %q: %v", provider, err)
+		}
+		if cfg.KeyProvider != provider {
+			t.Fatalf("KeyProvider = %q, want %q", cfg.KeyProvider, provider)
+		}
+	}
+
+	app := base
+	ref := *base.KeyRef
+	ref.Provider = "unknown.provider"
+	app.KeyRef = &ref
+	if _, err := ResolveConfigFromMulti(&MultiAppConfig{Apps: []AppConfig{app}}, stubKeychain{}, "", ProfileFromConfig); err == nil {
+		t.Fatal("unknown provider must fail closed")
+	}
+}
+
 // TestResolveConfigFromMulti_PKJWTRejectsBadKeyRef ensures the stricter keyRef
 // check (Source=="tee" && ID!="") rejects malformed handles.
 func TestResolveConfigFromMulti_PKJWTRejectsBadKeyRef(t *testing.T) {

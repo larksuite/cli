@@ -300,7 +300,7 @@ func TestPollDeviceToken_PreservesStatusMessage(t *testing.T) {
 		}),
 	}
 
-	result := PollDeviceToken(context.Background(), client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 1, 3, nil)
+	result := PollDeviceToken(context.Background(), client, ClientAuth{AppID: "cli_a", AppSecret: "secret_b"}, core.BrandFeishu, "device-code", 1, 3, nil)
 	if result == nil || !result.OK || result.Token == nil {
 		t.Fatalf("PollDeviceToken() = %#v, want successful token result", result)
 	}
@@ -327,7 +327,7 @@ func TestPollDeviceToken_MissingStatusMessageIsEmpty(t *testing.T) {
 		}),
 	}
 
-	result := PollDeviceToken(context.Background(), client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 1, 3, nil)
+	result := PollDeviceToken(context.Background(), client, ClientAuth{AppID: "cli_a", AppSecret: "secret_b"}, core.BrandFeishu, "device-code", 1, 3, nil)
 	if result == nil || !result.OK || result.Token == nil {
 		t.Fatalf("PollDeviceToken() = %#v, want successful token result", result)
 	}

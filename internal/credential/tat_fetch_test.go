@@ -81,6 +81,19 @@ func TestFetchTAT_Success(t *testing.T) {
 	}
 }
 
+func TestFetchTATWithAssertionForProvider_UnknownProviderFailsBeforeHTTP(t *testing.T) {
+	rt := &stubRoundTripper{respCode: http.StatusOK, respBody: `{"code":0,"access_token":"must-not-use"}`}
+	hc := &http.Client{Transport: rt}
+
+	_, err := FetchTATWithAssertionForProvider(context.Background(), hc, core.BrandFeishu, "cli_app", nil, "unknown.provider", "key-1")
+	if err == nil {
+		t.Fatal("expected unknown provider error")
+	}
+	if rt.gotReq != nil {
+		t.Fatalf("provider failure sent HTTP request to %s", rt.gotReq.URL)
+	}
+}
+
 // invalid_client (wrong app_id/app_secret on the client_credentials grant) is a
 // deterministic client-side rejection that FetchTAT routes to
 // classifyTATResponseCode as CategoryConfig / SubtypeInvalidClient — the same
