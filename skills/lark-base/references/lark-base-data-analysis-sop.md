@@ -6,7 +6,7 @@
 
 1. 明确所有需要参与分析的表；上下文已有整表 `records_count` 时用于提前分流，否则直接按下文导出或探测，不为获取规模单独枚举表。
 2. 如果结论必须依赖 LLM 理解原始内容，例如开放文本打标、情绪或意图识别、主题归纳、语义分类、相似性判断或实体消歧，进入下文“LLM 语义分析”路径。
-3. 对于其余确定性查询，任一分析表已知超过 2000 行或 NDJSON 探测返回 `has_more=true` 时，先从任务意图中提取可在单表内独立执行的日期、状态、关键词等谓词，逐表下推后用 `--field-id '<一个简单标量字段>' --limit 2000 --format ndjson --output <probe>.ndjson` 复查。目标是每张表都达到 `has_more=false`；任一表无法压缩到 2000 行以内时，转 [lark-base-data-analysis-cloud.md](lark-base-data-analysis-cloud.md) 用云端的数据分析能力。
+3. 对于其余确定性查询，任一分析表已知超过 2000 行或 NDJSON 探测返回 `has_more=true` 时，先从任务意图中提取可在单表内独立执行的日期、状态、关键词等谓词，逐表下推后用 `--field-id '<一个简单标量字段>' --limit 2000 --format ndjson --output <probe>.ndjson --minimal-stdout` 复查。目标是每张表都达到 `has_more=false`；任一表无法压缩到 2000 行以内时，转 [lark-base-data-analysis-cloud.md](lark-base-data-analysis-cloud.md) 用云端的数据分析能力。
 4. 所有分析表都不超过 2000 行后：若只有一张表且短 jq 可清晰完成筛选、计数、简单分组/聚合/排序、TopN 可以使用 jq。
 5. 其余确定性任务比如多表、日历计算和复杂数据分析，在 Python 可用时使用 Python，否则进入 [Cloud SOP](lark-base-data-analysis-cloud.md)。
 
