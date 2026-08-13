@@ -19,38 +19,31 @@ type CommandPageCollection struct {
 	NextToken string
 }
 
-// CollectCommandPages uses the shared cursor walker for an externally declared command.
+// CollectCommandPages walks pages for an externally declared command. It runs
+// the same pageWalk built-in shortcuts use; only the policy source, the call
+// path and the accumulator differ. Pages stay undecoded here because the public
+// command contract decodes them into its own Page[T].
 func CollectCommandPages(ctx context.Context, command CommandContext, request PageRequest, all bool) (CommandPageCollection, error) {
 	policy, err := commandPagePolicy(command, all)
 	if err != nil {
 		return CommandPageCollection{}, err
 	}
 	collection := CommandPageCollection{}
-	state, walkErr := internalpagination.Walk(ctx, internalpagination.Options{
-		InitialToken: pageTokenParam(request.Params),
-		MaxPages:     policy.maxPages,
-		Delay:        policy.pageDelay,
-		Fetch: func(ctx context.Context, _ int, pageToken string) (bool, string, error) {
-			params := clonePageParams(request.Params)
-			if pageToken != "" {
-				params["page_token"] = pageToken
-			}
-			data, err := CallTypedAPI(ctx, command, request.Method, request.Path, params, request.Body)
-			if err != nil {
-				return false, "", err
-			}
-			collection.Data = append(collection.Data, data)
-			hasMore, nextToken := PaginationMeta(data)
-			return hasMore, nextToken, nil
+	state, walkErr := pageWalk{
+		policy:  policy,
+		request: request,
+		fetch: func(ctx context.Context, page PageRequest) (map[string]interface{}, error) {
+			return CallTypedAPI(ctx, command, page.Method, page.Path, page.Params, page.Body)
 		},
-	})
+		accumulate: func(data map[string]interface{}, _ int) error {
+			collection.Data = append(collection.Data, data)
+			return nil
+		},
+	}.run(ctx)
 	collection.Complete = state.Complete
 	collection.Pages = state.Pages
 	collection.NextToken = state.NextToken
-	if walkErr != nil {
-		return collection, paginationWalkError(walkErr)
-	}
-	return collection, nil
+	return collection, walkErr
 }
 
 func commandPagePolicy(command CommandContext, all bool) (paginationPolicy, error) {

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/larksuite/cli/errs"
@@ -63,47 +64,92 @@ func paginateInto[T any](runtime *RuntimeContext, request PageRequest, dst PageA
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	walk := pageWalk{
+		policy:  policy,
+		request: request,
+		wait:    wait,
+		// The runtime carries its own context, so this fetch ignores the
+		// walker's -- unlike the externally declared commands, whose context
+		// arrives with the call.
+		fetch: func(_ context.Context, page PageRequest) (map[string]interface{}, error) {
+			return runtime.CallAPITyped(page.Method, page.Path, page.Params, page.Body)
+		},
+		accumulate: func(data map[string]interface{}, pageNumber int) error {
+			return addDecodedPage(data, pageNumber, dst)
+		},
+	}
+	if policy.showProgress {
+		walk.progress = runtime.IO().ErrOut
+	}
+	state, walkErr := walk.run(ctx)
+	meta.Complete = state.Complete
+	meta.Pages = state.Pages
+	meta.NextToken = state.NextToken
+	return meta, walkErr
+}
+
+// pageWalk is one pagination run. Built-in shortcuts and externally declared
+// commands differ only in where the policy comes from, how a page is fetched
+// and what accumulates it; the cursor walk, the inter-page delay and the error
+// mapping are the same and live here.
+type pageWalk struct {
+	policy     paginationPolicy
+	request    PageRequest
+	fetch      func(context.Context, PageRequest) (map[string]interface{}, error)
+	accumulate func(data map[string]interface{}, pageNumber int) error
+	wait       pageDelayWaiter
+	progress   io.Writer // nil when the run reports no per-page progress
+}
+
+func (w pageWalk) run(ctx context.Context) (internalpagination.State, error) {
 	state, walkErr := internalpagination.Walk(ctx, internalpagination.Options{
-		InitialToken: pageTokenParam(request.Params),
-		MaxPages:     policy.maxPages,
-		Delay:        policy.pageDelay,
-		Wait:         wait,
-		Fetch: func(_ context.Context, pageNumber int, pageToken string) (bool, string, error) {
-			params := clonePageParams(request.Params)
+		InitialToken: pageTokenParam(w.request.Params),
+		MaxPages:     w.policy.maxPages,
+		Delay:        w.policy.pageDelay,
+		Wait:         w.wait,
+		Fetch: func(ctx context.Context, pageNumber int, pageToken string) (bool, string, error) {
+			page := w.request
+			page.Params = clonePageParams(w.request.Params)
 			if pageToken != "" {
-				params["page_token"] = pageToken
+				page.Params["page_token"] = pageToken
 			}
-			if policy.showProgress {
-				fmt.Fprintf(runtime.IO().ErrOut, "[page %d] fetching...\n", pageNumber)
+			if w.progress != nil {
+				fmt.Fprintf(w.progress, "[page %d] fetching...\n", pageNumber)
 			}
 
-			data, err := runtime.CallAPITyped(request.Method, request.Path, params, request.Body)
+			data, err := w.fetch(ctx, page)
 			if err != nil {
 				return false, "", err
 			}
-			page, err := decodePageData[T](data, pageNumber)
-			if err != nil {
+			if err := w.accumulate(data, pageNumber); err != nil {
 				return false, "", err
-			}
-			if err := dst.AddPage(page); err != nil {
-				if _, ok := errs.ProblemOf(err); ok {
-					return false, "", err
-				}
-				return false, "", errs.NewInternalError(errs.SubtypeUnknown,
-					"accumulate pagination page %d: %v", pageNumber, err).
-					WithCause(err)
 			}
 			hasMore, nextPageToken := PaginationMeta(data)
 			return hasMore, nextPageToken, nil
 		},
 	})
-	meta.Complete = state.Complete
-	meta.Pages = state.Pages
-	meta.NextToken = state.NextToken
-	if walkErr == nil {
-		return meta, nil
+	if walkErr != nil {
+		return state, paginationWalkError(walkErr)
 	}
-	return meta, paginationWalkError(walkErr)
+	return state, nil
+}
+
+// addDecodedPage keeps the typed-accumulator half of the walk out of pageWalk,
+// which stays generic-free so both entry points can share one struct.
+func addDecodedPage[T any](data map[string]interface{}, pageNumber int, dst PageAccumulator[T]) error {
+	page, err := decodePageData[T](data, pageNumber)
+	if err != nil {
+		return err
+	}
+	if err := dst.AddPage(page); err != nil {
+		if _, ok := errs.ProblemOf(err); ok {
+			return err
+		}
+		return errs.NewInternalError(errs.SubtypeUnknown,
+			"accumulate pagination page %d: %v", pageNumber, err).
+			WithCause(err)
+	}
+	return nil
 }
 
 func paginationWalkError(walkErr error) error {
