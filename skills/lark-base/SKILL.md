@@ -36,6 +36,17 @@ metadata:
 - **更低频：文件导入/导出。** 本地文件与 Base 之间的导入/导出转 `lark-drive`；具体格式、参数、路径限制和仅结构导出规则由 `lark-drive` 负责，导入完成后再回到 Base 命令。
 - 认证、初始化、scope、身份切换、权限不足恢复属于 `lark-shared`；Base 文档只保留会影响 Base 路径选择的权限规则。
 
+### 未支持能力边界
+
+遇到 Base UI 上可能存在、但 `lark-cli base --help`、本 skill 或 reference 没有明确支持的能力时，先停止探索并说明 CLI 当前不支持；不要 grep 源码、读 registry metadata、启动研究子任务、跨 skill 搜索，或用 `lark-cli api` 猜测未文档化写参数。常见高风险边界：
+
+- 子记录、层级记录、树形记录、`parent_record_id` 写入：当前 `+record-*` 只支持普通记录创建/更新/删除，不要用普通 link 字段擅自模拟"子记录"。可说明暂不支持，并询问是否改为新增普通记录或关联记录。
+- 视图行高、密度、TableManager 行高设置：当前 `+view-*` 支持 filter/sort/group/card/timebar/visible-fields 等已列出的配置；没有行高/密度写命令。不要用裸 API 猜 `row_height`、`record_height`、`line_height` 等字段。
+- 自动编号"将修改用于已有编号 / 重新编号已有记录"开关：当前字段 JSON 只支持自动编号规则本身；没有已验证的重算已有编号开关。不要猜 `apply_existing`、`reformat_existing`、`renumber` 等参数或切换到旧版 bitable 裸接口。
+- 分享视图、分享仪表盘、记录分享链接、Base workspace 链接等"Token 与链接"表里声明暂不支持直接访问的链接：不要换身份或裸调绕过，按表中替代路径处理。
+
+如果用户请求的是已支持的字段、记录、表、视图配置，继续按"快速路由"执行；不要因为上面的边界拒绝正常 CRUD。
+
 ## 先获取 Base Token 和所需 ID
 
 进入任何需要目标 Base 的 shortcut 前，必须先拿到可用的 `base_token`，以及当前任务需要的 `table_id` / `view_id` / `record_id` / `form_id` / `dashboard_id` / `workflow_id` 等真实 ID；不要把完整 URL、wiki token、workspace token 或孤立 raw token 直接当作 `--base-token`。
