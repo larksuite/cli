@@ -21,7 +21,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/identitydiag"
-	"github.com/larksuite/cli/internal/keylesshelper"
+	"github.com/larksuite/cli/internal/keylessprovider"
 	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
@@ -193,27 +193,17 @@ const teeUnavailableHint = "ensure the device secure hardware is accessible (Lin
 // informational for client_secret apps.
 func teeSignerCheck(ctx context.Context, cfg *core.CliConfig) checkResult {
 	usesPKJWT := cfg != nil && cfg.AuthMethod == core.AuthMethodPrivateKeyJWT
-	helper, err := keylesshelper.Resolve()
-	if err != nil {
-		hint := fmt.Sprintf("fix the external keyless signer source, or re-run config init to replace/remove config.json keylessSignerCmd: %v", err)
-		if usesPKJWT {
-			return fail("tee_signer", "external keyless signer is misconfigured", hint)
+	if usesPKJWT && cfg.KeyProvider != "" {
+		helper, err := keylessprovider.Resolve(ctx, cfg.KeyProvider)
+		if err != nil {
+			return fail("tee_signer", "OpenClaw keyless signer is unavailable",
+				fmt.Sprintf("repair or reinstall the OpenClaw plugin and platform signer: %v", err))
 		}
-		return warn("tee_signer", "external keyless signer is misconfigured", hint)
-	}
-	if helper != nil {
-		keyLabel := ""
-		if cfg != nil {
-			keyLabel = cfg.KeyLabel
+		if err := helper.Probe(ctx, cfg.KeyLabel); err != nil {
+			return fail("tee_signer", "OpenClaw keyless signer probe failed",
+				fmt.Sprintf("repair or reinstall the OpenClaw plugin and platform signer: %v", err))
 		}
-		if err := helper.Probe(ctx, keyLabel); err != nil {
-			hint := fmt.Sprintf("fix the configured external keyless signer, or re-run config init to replace/remove it: %v", err)
-			if usesPKJWT {
-				return fail("tee_signer", "external keyless signer is misconfigured", hint)
-			}
-			return warn("tee_signer", "external keyless signer is misconfigured", hint)
-		}
-		return pass("tee_signer", "external keyless signer available")
+		return pass("tee_signer", "OpenClaw keyless signer available")
 	}
 	info, ok, err := keysigner.ProbeActiveHardware(ctx)
 	return teeCheckResult(info, ok, err, usesPKJWT)

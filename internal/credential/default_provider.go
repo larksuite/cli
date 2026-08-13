@@ -148,7 +148,7 @@ func (p *DefaultTokenProvider) resolveUAT(ctx context.Context) (*TokenResult, er
 	if err != nil {
 		return nil, err
 	}
-	token, err := auth.GetValidAccessToken(httpClient, auth.NewUATCallOptions(acct.ToCliConfig(), p.errOut))
+	token, err := auth.GetValidAccessToken(ctx, httpClient, auth.NewUATCallOptions(acct.ToCliConfig(), p.errOut))
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +183,7 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 	// using a TEE-signed client_assertion instead.
 	if acct.AuthMethod == core.AuthMethodPrivateKeyJWT {
 		signer := keysigner.Active()
-		token, err := FetchTATWithAssertion(ctx, httpClient, acct.Brand, acct.AppID, signer, acct.KeyLabel)
+		token, err := FetchTATWithAssertionForProvider(ctx, httpClient, acct.Brand, acct.AppID, signer, acct.KeyProvider, acct.KeyLabel)
 		if err != nil {
 			return nil, err
 		}

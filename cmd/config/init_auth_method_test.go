@@ -13,7 +13,6 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/keysigner"
 )
 
@@ -78,91 +77,6 @@ func TestResolveRegisterAuthMethod(t *testing.T) {
 	}
 }
 
-func TestResolveRegisterAuthMethod_PrivateKeyJWTAllowsKeylessHelper(t *testing.T) {
-	t.Setenv(envvars.CliKeylessSignerCmd, "/helper")
-	prevSigner := keysigner.Active()
-	t.Cleanup(func() { keysigner.Register(prevSigner) })
-	keysigner.Register(nil)
-
-	m, err := resolveRegisterAuthMethod(context.Background(), &cmdutil.Factory{}, core.AuthMethodPrivateKeyJWT)
-	if err != nil {
-		t.Fatalf("private_key_jwt with helper: %v", err)
-	}
-	if m != core.AuthMethodPrivateKeyJWT {
-		t.Fatalf("method = %q", m)
-	}
-}
-
-func TestResolveRegisterAuthMethod_PrivateKeyJWTConfigOnlyHelperFallsBackToPlatformSigner(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	t.Setenv(envvars.CliKeylessSignerCmd, "")
-	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
-		KeylessSignerCmd: "/config/helper",
-		Apps: []core.AppConfig{{
-			AppId: "cli_test", AppSecret: core.PlainSecret("secret"), Brand: core.BrandFeishu,
-		}},
-	}); err != nil {
-		t.Fatalf("SaveMultiAppConfig() error = %v", err)
-	}
-
-	prevSigner := keysigner.Active()
-	t.Cleanup(func() { keysigner.Register(prevSigner) })
-	keysigner.Register(authMethodTestSigner{info: keysigner.HardwareInfo{Backend: "tpm2", Available: true}})
-
-	m, err := resolveRegisterAuthMethod(context.Background(), &cmdutil.Factory{}, core.AuthMethodPrivateKeyJWT)
-	if err != nil {
-		t.Fatalf("private_key_jwt with platform signer: %v", err)
-	}
-	if m != core.AuthMethodPrivateKeyJWT {
-		t.Fatalf("method = %q, want %q", m, core.AuthMethodPrivateKeyJWT)
-	}
-}
-
-func TestResolveRegisterAuthMethod_PrivateKeyJWTConfigOnlyHelperWithoutPlatformSignerRejects(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	t.Setenv(envvars.CliKeylessSignerCmd, "")
-	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
-		KeylessSignerCmd: "/config/helper",
-		Apps: []core.AppConfig{{
-			AppId: "cli_test", AppSecret: core.PlainSecret("secret"), Brand: core.BrandFeishu,
-		}},
-	}); err != nil {
-		t.Fatalf("SaveMultiAppConfig() error = %v", err)
-	}
-
-	prevSigner := keysigner.Active()
-	t.Cleanup(func() { keysigner.Register(prevSigner) })
-	keysigner.Register(nil)
-
-	_, err := resolveRegisterAuthMethod(context.Background(), &cmdutil.Factory{}, core.AuthMethodPrivateKeyJWT)
-	if err == nil {
-		t.Fatal("expected private_key_jwt without a persistent signer to be rejected")
-	}
-	problem, ok := errs.ProblemOf(err)
-	if !ok || problem.Subtype != errs.SubtypeInvalidClient {
-		t.Fatalf("error = %T %v, want typed invalid_client", err, err)
-	}
-}
-
-func TestResolveRegisterAuthMethod_PrivateKeyJWTRejectsInvalidKeylessHelper(t *testing.T) {
-	t.Setenv(envvars.CliKeylessSignerCmd, `[""]`)
-	prevSigner := keysigner.Active()
-	t.Cleanup(func() { keysigner.Register(prevSigner) })
-	keysigner.Register(nil)
-
-	_, err := resolveRegisterAuthMethod(context.Background(), &cmdutil.Factory{}, core.AuthMethodPrivateKeyJWT)
-	if err == nil {
-		t.Fatal("expected invalid helper error")
-	}
-	prob, ok := errs.ProblemOf(err)
-	if !ok {
-		t.Fatalf("expected typed error, got %T %v", err, err)
-	}
-	if prob.Category != errs.CategoryConfig {
-		t.Fatalf("category = %q, want %q", prob.Category, errs.CategoryConfig)
-	}
-}
-
 func TestConfigInitRunRejectsPrivateKeyJWTIncompatibleModes(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -189,7 +103,6 @@ func TestConfigInitRunRejectsPrivateKeyJWTIncompatibleModes(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-			t.Setenv(envvars.CliKeylessSignerCmd, "/helper")
 			f, _, _, _ := cmdutil.TestFactory(t, nil)
 			opts := &ConfigInitOptions{
 				Factory:       f,
@@ -220,27 +133,6 @@ func TestConfigInitRunRejectsPrivateKeyJWTIncompatibleModes(t *testing.T) {
 				t.Fatalf("message = %q, want %s", problem.Message, tc.wantTarget)
 			}
 		})
-	}
-}
-
-func TestConfigInitRunRejectsInvalidKeylessSignerEnvironment(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	t.Setenv(envvars.CliKeylessSignerCmd, `[""]`)
-	f, _, _, _ := cmdutil.TestFactory(t, nil)
-
-	err := configInitRun(&ConfigInitOptions{Factory: f, Ctx: context.Background()})
-	if err == nil {
-		t.Fatal("expected invalid keyless signer environment error")
-	}
-	problem, ok := errs.ProblemOf(err)
-	if !ok {
-		t.Fatalf("error is not typed: %T %[1]v", err)
-	}
-	if problem.Category != errs.CategoryConfig || problem.Subtype != errs.SubtypeInvalidClient {
-		t.Fatalf("problem = %s/%s, want config/invalid_client", problem.Category, problem.Subtype)
-	}
-	if !strings.Contains(problem.Message, "invalid keyless signer command") {
-		t.Fatalf("message = %q, want invalid signer command", problem.Message)
 	}
 }
 

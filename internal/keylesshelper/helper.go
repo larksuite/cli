@@ -1,31 +1,37 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-// Package keylesshelper invokes an external lark-keyless-signer-compatible
-// helper configured by environment or config.json.
+// Package keylesshelper invokes a signer generation that has already been
+// resolved and verified by internal/keylessprovider.
 package keylesshelper
 
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
-	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/keysigner"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
-const helperOutputLimit = 1 << 20
+const (
+	helperOutputLimit      = 1 << 20
+	helperStderrLimit      = 64 << 10
+	helperExecutionTimeout = 10 * time.Second
+)
 
 type request struct {
 	Op       string `json:"op"`
 	KeyRef   string `json:"keyRef,omitempty"`
-	Nonce    string `json:"nonce,omitempty"`
 	ClientID string `json:"clientId,omitempty"`
 	Audience string `json:"aud,omitempty"`
 }
@@ -33,7 +39,6 @@ type request struct {
 type response struct {
 	OK                  bool           `json:"ok"`
 	Error               *protocolError `json:"error,omitempty"`
-	Attestation         string         `json:"attestation,omitempty"`
 	ClientAssertionType string         `json:"client_assertion_type,omitempty"`
 	ClientAssertion     string         `json:"client_assertion,omitempty"`
 }
@@ -43,58 +48,30 @@ type protocolError struct {
 	Message string `json:"message"`
 }
 
-type runner func(context.Context, []string, request) (response, error)
-
-var run runner = runCommand
-
-// Command is one resolved helper command. It pins the environment/config
-// snapshot used by an operation so a concurrent atomic config replacement
-// cannot switch signing backends between the configured check and execution.
+// Command is one verified provider executable. It is intentionally impossible
+// to construct from an app-config path, argv, or environment variable.
 type Command struct {
-	argv []string
+	argv        []string
+	providerCWD string
+	providerSHA string
 }
 
-// ConfiguredFromEnvironment reports whether the current process explicitly
-// supplied an external helper command. Config init uses this distinction
-// because it removes a config-only command when the environment is absent.
-func ConfiguredFromEnvironment() bool {
-	return strings.TrimSpace(os.Getenv(envvars.CliKeylessSignerCmd)) != ""
-}
-
-// ValidateConfigured reports whether the configured helper command can be parsed.
-func ValidateConfigured() error {
-	helper, err := Resolve()
-	if err != nil {
-		return err
+// NewProviderCommand builds the fixed empty-argv command used by a verified
+// provider executable. Provider execution never accepts argv from app config or
+// the environment.
+func NewProviderCommand(binaryPath, providerRoot, expectedSHA256 string) (*Command, error) {
+	if strings.TrimSpace(binaryPath) == "" || strings.TrimSpace(providerRoot) == "" {
+		return nil, fmt.Errorf("provider binary path and root must be non-empty")
 	}
-	if helper == nil {
-		return fmt.Errorf("%s is not set", envvars.CliKeylessSignerCmd)
+	if len(expectedSHA256) != 64 {
+		return nil, fmt.Errorf("provider binary digest must be a SHA-256 hex string")
 	}
-	return nil
-}
-
-// Resolve loads and validates the external helper once. A nil command and nil
-// error means neither the environment nor config.json configured a helper.
-// Missing config is treated as unconfigured; malformed or unreadable config
-// fails closed with the config source and path preserved in the error.
-func Resolve() (*Command, error) {
-	raw, source, err := configuredCommand()
-	if err != nil {
-		return nil, err
-	}
-	if raw == "" {
-		return nil, nil
-	}
-	argv, err := parseCommandFromSource(raw, source)
-	if err != nil {
-		return nil, err
-	}
-	return &Command{argv: argv}, nil
+	return &Command{argv: []string{binaryPath}, providerCWD: providerRoot, providerSHA: expectedSHA256}, nil
 }
 
 // Probe asks this resolved helper for its public key.
 func (c *Command) Probe(ctx context.Context, keyRef string) error {
-	resp, err := run(ctx, c.argv, request{
+	resp, err := c.execute(ctx, request{
 		Op:     "pubkey",
 		KeyRef: defaultKeyRef(keyRef),
 	})
@@ -104,40 +81,9 @@ func (c *Command) Probe(ctx context.Context, keyRef string) error {
 	return validateResponse(resp)
 }
 
-// SignAttestation asks the helper to mint a registration attestation JWT.
-func SignAttestation(ctx context.Context, keyRef, nonce string) (string, error) {
-	helper, err := Resolve()
-	if err != nil {
-		return "", err
-	}
-	if helper == nil {
-		return "", fmt.Errorf("%s is not set", envvars.CliKeylessSignerCmd)
-	}
-	return helper.SignAttestation(ctx, keyRef, nonce)
-}
-
-// SignAttestation asks this resolved helper to mint a registration attestation JWT.
-func (c *Command) SignAttestation(ctx context.Context, keyRef, nonce string) (string, error) {
-	resp, err := run(ctx, c.argv, request{
-		Op:     "sign-attestation",
-		KeyRef: defaultKeyRef(keyRef),
-		Nonce:  nonce,
-	})
-	if err != nil {
-		return "", err
-	}
-	if err := validateResponse(resp); err != nil {
-		return "", err
-	}
-	if resp.Attestation == "" {
-		return "", fmt.Errorf("keyless helper returned empty attestation")
-	}
-	return resp.Attestation, nil
-}
-
 // SignClientAssertion asks this resolved helper to mint a token-endpoint client_assertion.
 func (c *Command) SignClientAssertion(ctx context.Context, keyRef, clientID, audience string) (string, string, error) {
-	resp, err := run(ctx, c.argv, request{
+	resp, err := c.execute(ctx, request{
 		Op:       "sign-assertion",
 		KeyRef:   defaultKeyRef(keyRef),
 		ClientID: clientID,
@@ -158,12 +104,46 @@ func (c *Command) SignClientAssertion(ctx context.Context, keyRef, clientID, aud
 	return resp.ClientAssertionType, resp.ClientAssertion, nil
 }
 
+func (c *Command) execute(ctx context.Context, req request) (response, error) {
+	if err := verifyProviderBinary(c.argv[0], c.providerSHA); err != nil {
+		return response{}, err
+	}
+	return runCommandConfigured(ctx, c.argv, req, c.providerCWD, providerEnvironment())
+}
+
+func verifyProviderBinary(path, expectedSHA string) error {
+	info, err := vfs.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("recheck provider signer: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() <= 0 || info.Size() > 512<<20 {
+		return fmt.Errorf("provider signer changed before execution")
+	}
+	f, err := vfs.Open(path)
+	if err != nil {
+		return fmt.Errorf("reopen provider signer: %w", err)
+	}
+	defer f.Close()
+	h := sha256.New()
+	n, err := io.Copy(h, io.LimitReader(f, 512<<20+1))
+	if err != nil || n != info.Size() {
+		return fmt.Errorf("rehash provider signer: file changed while reading")
+	}
+	if hex.EncodeToString(h.Sum(nil)) != expectedSHA {
+		return fmt.Errorf("provider signer digest changed before execution")
+	}
+	return nil
+}
+
 func validateResponse(resp response) error {
 	if resp.Error != nil {
-		return fmt.Errorf("keyless helper %s: %s", resp.Error.Type, resp.Error.Message)
+		return fmt.Errorf("keyless helper reported an error")
 	}
 	if !resp.OK {
 		return fmt.Errorf("keyless helper returned ok=false")
+	}
+	if len(resp.ClientAssertion) > helperOutputLimit || len(resp.ClientAssertionType) > 256 {
+		return fmt.Errorf("keyless helper response field exceeds the allowed size")
 	}
 	return nil
 }
@@ -175,77 +155,53 @@ func defaultKeyRef(keyRef string) string {
 	return keysigner.DefaultKeyLabel
 }
 
-func configuredCommand() (string, string, error) {
-	if raw := strings.TrimSpace(os.Getenv(envvars.CliKeylessSignerCmd)); raw != "" {
-		return raw, envvars.CliKeylessSignerCmd, nil
-	}
-	config, err := core.LoadMultiAppConfig()
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return "", "config.json keylessSignerCmd", nil
-		}
-		return "", "config.json keylessSignerCmd", fmt.Errorf("load config.json keylessSignerCmd from %s: %w", core.GetConfigPath(), err)
-	}
-	if config == nil {
-		return "", "config.json keylessSignerCmd", nil
-	}
-	return strings.TrimSpace(config.KeylessSignerCmd), "config.json keylessSignerCmd", nil
-}
-
-// parseCommand accepts either a direct helper path or a JSON argv array. The
-// resulting argv is executed directly, never through a shell.
-func parseCommand(raw string) ([]string, error) {
-	return parseCommandFromSource(raw, envvars.CliKeylessSignerCmd)
-}
-
-func parseCommandFromSource(raw, source string) ([]string, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil, fmt.Errorf("%s is not set", source)
-	}
-	if strings.HasPrefix(raw, "[") {
-		var argv []string
-		if err := json.Unmarshal([]byte(raw), &argv); err != nil {
-			return nil, fmt.Errorf("parse %s JSON argv: %w", source, err)
-		}
-		return validateArgv(argv, source)
-	}
-	return validateArgv([]string{raw}, source)
-}
-
-func validateArgv(argv []string, source string) ([]string, error) {
-	if len(argv) == 0 || strings.TrimSpace(argv[0]) == "" {
-		return nil, fmt.Errorf("%s must name a helper binary", source)
-	}
-	for i, arg := range argv {
-		if arg == "" {
-			return nil, fmt.Errorf("%s argv[%d] is empty", source, i)
-		}
-	}
-	return argv, nil
-}
-
-func runCommand(ctx context.Context, argv []string, req request) (response, error) {
+func runCommandConfigured(ctx context.Context, argv []string, req request, cwd string, env []string) (response, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return response{}, fmt.Errorf("marshal keyless helper request: %w", err)
 	}
 	body = append(body, '\n')
 
-	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	helperCtx, cancel := withExecutionTimeout(ctx)
+	defer cancel()
+
+	// CommandContext's default cancellation kills the helper process. This is
+	// important for unattended agent calls: a signer blocked on platform UI must
+	// not hold the caller indefinitely.
+	cmd := exec.CommandContext(helperCtx, argv[0], argv[1:]...)
+	if cwd != "" {
+		cmd.Dir = cwd
+		cmd.Env = env
+	}
 	cmd.Stdin = bytes.NewReader(body)
 	stdout := &limitedBuffer{limit: helperOutputLimit}
-	stderr := &limitedBuffer{limit: helperOutputLimit}
+	stderr := &limitedBuffer{limit: helperStderrLimit}
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 
 	runErr := cmd.Run()
+	if err := helperCtx.Err(); err != nil {
+		// Never parse or include helper output on cancellation. A partially written
+		// response may contain a client assertion or other credential material.
+		if errors.Is(err, context.DeadlineExceeded) {
+			return response{}, fmt.Errorf("keyless helper timed out: %w", context.DeadlineExceeded)
+		}
+		return response{}, fmt.Errorf("keyless helper canceled: %w", err)
+	}
+	if stdout.Exceeded() || stderr.Exceeded() {
+		return response{}, fmt.Errorf("keyless helper output exceeded the allowed size")
+	}
 	var resp response
-	if err := json.Unmarshal(stdout.Bytes(), &resp); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
+	if err := decoder.Decode(&resp); err != nil {
 		if runErr != nil {
 			return response{}, helperRunError(runErr, stderr.String())
 		}
 		return response{}, fmt.Errorf("keyless helper produced invalid JSON: %w", err)
+	}
+	var trailing json.RawMessage
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return response{}, fmt.Errorf("keyless helper produced trailing JSON data")
 	}
 	if runErr != nil && resp.Error == nil {
 		return response{}, helperRunError(runErr, stderr.String())
@@ -253,7 +209,32 @@ func runCommand(ctx context.Context, argv []string, req request) (response, erro
 	return resp, nil
 }
 
+func providerEnvironment() []string {
+	// Signer implementations use OS facilities and must not inherit language
+	// runtime/proxy/library injection variables. HOME/TMPDIR/SystemRoot are the
+	// minimal cross-platform values currently needed by supported backends.
+	keep := map[string]bool{"HOME": true, "TMPDIR": true, "TEMP": true, "TMP": true, "SystemRoot": true, "WINDIR": true}
+	var env []string
+	for _, entry := range os.Environ() {
+		name := entry
+		if idx := strings.IndexByte(entry, '='); idx >= 0 {
+			name = entry[:idx]
+		}
+		if keep[name] {
+			env = append(env, entry)
+		}
+	}
+	return env
+}
+
+func withExecutionTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, helperExecutionTimeout)
+}
+
 func helperRunError(runErr error, stderr string) error {
+	if errors.Is(runErr, os.ErrNotExist) {
+		return fmt.Errorf("keyless helper executable no longer exists; repair or reinstall the OpenClaw Feishu plugin: %w", runErr)
+	}
 	if strings.TrimSpace(stderr) != "" {
 		return fmt.Errorf("keyless helper failed: %w (stderr omitted)", runErr)
 	}
@@ -261,8 +242,9 @@ func helperRunError(runErr error, stderr string) error {
 }
 
 type limitedBuffer struct {
-	buf   bytes.Buffer
-	limit int
+	buf      bytes.Buffer
+	limit    int
+	exceeded bool
 }
 
 func (b *limitedBuffer) Write(p []byte) (int, error) {
@@ -270,6 +252,9 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 		return len(p), nil
 	}
 	remaining := b.limit - b.buf.Len()
+	if len(p) > remaining {
+		b.exceeded = true
+	}
 	if remaining > 0 {
 		if len(p) < remaining {
 			remaining = len(p)
@@ -285,4 +270,8 @@ func (b *limitedBuffer) Bytes() []byte {
 
 func (b *limitedBuffer) String() string {
 	return b.buf.String()
+}
+
+func (b *limitedBuffer) Exceeded() bool {
+	return b.exceeded
 }
