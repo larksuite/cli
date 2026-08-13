@@ -207,18 +207,6 @@ func convertOutput(output command.OutputDefinition) (common.OutputDefinition, er
 		Meta: common.ResultMetaDefinition{Count: output.Meta.Count, Pagination: output.Meta.Pagination},
 		Mode: common.OutputMode(output.Mode), DisableHTMLEscaping: output.DisableHTMLEscaping,
 	}
-	if output.Outcomes.PartialFailure != nil {
-		partial := output.Outcomes.PartialFailure
-		convertedPartial := &common.PartialFailureDefinition{ExitCode: partial.ExitCode}
-		if partial.FailedItems != nil {
-			failed := partial.FailedItems
-			convertedPartial.FailedItems = &common.FailedItemDefinition{
-				ItemsPath: failed.ItemsPath, IdentityPaths: append([]string(nil), failed.IdentityPaths...), AllItems: failed.AllItems,
-				StatePath: failed.StatePath, FailedValues: append([]common.JSONValue(nil), failed.FailedValues...),
-			}
-		}
-		converted.Outcomes.PartialFailure = convertedPartial
-	}
 	return converted, nil
 }
 

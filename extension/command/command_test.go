@@ -126,14 +126,16 @@ func TestDefineCopiesShapePointersAndTypedJSONContainers(t *testing.T) {
 	maxItems := 20
 	minimum := int64(0)
 	maximum := 100.0
-	failedValues := map[string][]string{"ids": {"original"}}
+	defaultValue := map[string][]string{"ids": {"original"}}
 	declaration := Define(Definition[contractArgs, contractData]{
 		Metadata: CommandMetadata{
 			Service: "im", Command: "+contract-deep-copy", Description: "Deep copy", Risk: RiskRead,
 			Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}},
 		},
 		Input: InputDefinition{Fields: []InputField{{
-			Name: "id", Shape: StringShape{MinLength: &minLength, MaxLength: &maxLength},
+			Name:    "id",
+			Shape:   StringShape{MinLength: &minLength, MaxLength: &maxLength},
+			Default: InputDefault{Set: true, Value: defaultValue},
 		}}},
 		Output: OutputDefinition{
 			Data: DataDefinition{
@@ -142,12 +144,6 @@ func TestDefineCopiesShapePointersAndTypedJSONContainers(t *testing.T) {
 				},
 				Overrides: []DataField{{Path: "/score", Shape: NumberShape{Maximum: &maximum}}},
 			},
-			Outcomes: OutcomeDefinition{PartialFailure: &PartialFailureDefinition{
-				ExitCode: 2,
-				FailedItems: &FailedItemDefinition{
-					ItemsPath: "/items", IdentityPaths: []string{"/id"}, FailedValues: []JSONValue{failedValues},
-				},
-			}},
 		},
 		Hooks: Hooks[contractArgs, contractData]{Execute: func(context.Context, CommandContext, *contractArgs) (Result[contractData], error) {
 			return Success(contractData{}), nil
@@ -160,12 +156,12 @@ func TestDefineCopiesShapePointersAndTypedJSONContainers(t *testing.T) {
 	maxItems = 10
 	minimum = 1
 	maximum = 50
-	failedValues["ids"][0] = "mutated"
+	defaultValue["ids"][0] = "mutated"
 
 	first := InspectCommand(declaration)
 	assertCopiedDefinitionValues(t, first)
 	*first.Input.Fields[0].Shape.(StringShape).MinLength = 9
-	first.Output.Outcomes.PartialFailure.FailedItems.FailedValues[0].(map[string][]string)["ids"][0] = "inspected"
+	first.Input.Fields[0].Default.Value.(map[string][]string)["ids"][0] = "inspected"
 
 	second := InspectCommand(declaration)
 	assertCopiedDefinitionValues(t, second)
@@ -186,9 +182,9 @@ func assertCopiedDefinitionValues(t *testing.T, definition HostDefinition) {
 	if *numberShape.Maximum != 100 {
 		t.Fatalf("number constraints = %#v", numberShape)
 	}
-	failed := definition.Output.Outcomes.PartialFailure.FailedItems.FailedValues[0].(map[string][]string)
-	if failed["ids"][0] != "original" {
-		t.Fatalf("failed values = %#v", failed)
+	defaultValue := definition.Input.Fields[0].Default.Value.(map[string][]string)
+	if defaultValue["ids"][0] != "original" {
+		t.Fatalf("default value = %#v", defaultValue)
 	}
 }
 

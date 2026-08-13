@@ -126,7 +126,7 @@ func TestRecorderInjectsCancellationIntoPaginationWait(t *testing.T) {
 	recorder.AssertScriptConsumed()
 }
 
-func TestExecuteRunsPreparationAndReturnsTypedOutcome(t *testing.T) {
+func TestExecuteRunsPreparationAndReturnsTypedData(t *testing.T) {
 	type args struct {
 		ID string `flag:"id" schema:"required" doc:"identifier"`
 	}
@@ -144,7 +144,7 @@ func TestExecuteRunsPreparationAndReturnsTypedOutcome(t *testing.T) {
 				return nil
 			},
 			Execute: func(_ context.Context, _ command.CommandContext, args *args) (command.Result[data], error) {
-				return command.Partial(data{ID: args.ID}), nil
+				return command.Success(data{ID: args.ID}), nil
 			},
 		},
 	}
@@ -153,7 +153,7 @@ func TestExecuteRunsPreparationAndReturnsTypedOutcome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if execution.Data.ID != "normalized-one" || !execution.Partial {
+	if execution.Data.ID != "normalized-one" {
 		t.Fatalf("execution = %#v", execution)
 	}
 }

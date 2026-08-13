@@ -122,12 +122,6 @@ func taskAuditDefinition() command.Definition[taskAuditArgs, taskAuditData] {
 				},
 			}},
 		},
-		Output: command.OutputDefinition{Outcomes: command.OutcomeDefinition{PartialFailure: &command.PartialFailureDefinition{
-			ExitCode: 3,
-			FailedItems: &command.FailedItemDefinition{
-				ItemsPath: "/items", IdentityPaths: []string{"/task_id"}, StatePath: "/state", FailedValues: []command.JSONValue{"failed"},
-			},
-		}}},
 		Hooks: command.Hooks[taskAuditArgs, taskAuditData]{
 			DryRun: func(_ context.Context, _ command.CommandContext, _ *taskAuditArgs) *command.DryRun {
 				return command.NewDryRun(listRequest).Desc("Owner requests depend on task owner identifiers returned by the list call.")
@@ -149,7 +143,7 @@ func taskAuditDefinition() command.Definition[taskAuditArgs, taskAuditData] {
 						data.Items = append(data.Items, taskAuditItem{TaskID: task.TaskID, State: "failed"})
 					}
 					data.Failures = append(data.Failures, command.SnapshotFailure(err))
-					return command.Partial(data), nil
+					return command.Success(data), nil
 				}
 				for _, task := range tasks {
 					owner, ownerErr := command.CallJSON[struct {
@@ -161,9 +155,6 @@ func taskAuditDefinition() command.Definition[taskAuditArgs, taskAuditData] {
 						continue
 					}
 					data.Items = append(data.Items, taskAuditItem{TaskID: task.TaskID, OwnerName: owner.Name, State: "success"})
-				}
-				if len(data.Failures) > 0 {
-					return command.Partial(data), nil
 				}
 				return command.Success(data), nil
 			},
@@ -401,7 +392,7 @@ func TestCollectAllPagesHardLimitPreventsFollowingWrite(t *testing.T) {
 	recorder.AssertScriptConsumed()
 }
 
-func TestBestEffortScopeFailureReturnsPartialTasks(t *testing.T) {
+func TestBestEffortScopeFailureMarksEveryItemFailed(t *testing.T) {
 	want := errs.NewPermissionError(errs.SubtypeMissingScope, "owner scope is unavailable")
 	recorder := commandtest.New(t, commandtest.Respond(map[string]any{
 		"items": []map[string]any{
@@ -415,7 +406,7 @@ func TestBestEffortScopeFailureReturnsPartialTasks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !execution.Partial || len(execution.Data.Items) != 2 || len(execution.Data.Failures) != 1 {
+	if len(execution.Data.Items) != 2 || len(execution.Data.Failures) != 1 {
 		t.Fatalf("execution = %#v", execution)
 	}
 	for _, item := range execution.Data.Items {
@@ -432,7 +423,7 @@ func TestBestEffortScopeFailureReturnsPartialTasks(t *testing.T) {
 	recorder.AssertScriptConsumed()
 }
 
-func TestMultiCallCommandReturnsPartialData(t *testing.T) {
+func TestMultiCallCommandRecordsTheFailedOwner(t *testing.T) {
 	wantFailure := command.InvalidResponseErrorf("owner record is unavailable")
 	recorder := commandtest.New(t,
 		commandtest.Respond(map[string]any{
@@ -448,7 +439,7 @@ func TestMultiCallCommandReturnsPartialData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !execution.Partial || len(execution.Data.Items) != 2 || len(execution.Data.Failures) != 1 {
+	if len(execution.Data.Items) != 2 || len(execution.Data.Failures) != 1 {
 		t.Fatalf("execution = %#v", execution)
 	}
 	if execution.Data.Items[0].OwnerName != "Owner One" || execution.Data.Items[1].State != "failed" {

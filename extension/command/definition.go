@@ -234,7 +234,7 @@ type Hooks[Args any, Data any] struct {
 	// follow from Args alone and the hook reports nothing back.
 	DryRun func(context.Context, CommandContext, *Args) *DryRun
 
-	// Execute carries the business logic and returns Success or Partial. It is
+	// Execute carries the business logic and returns Success. It is
 	// the only hook that may call the API, and it must not write to stdout --
 	// the framework owns the envelope, format and exit code.
 	Execute func(context.Context, CommandContext, *Args) (Result[Data], error)

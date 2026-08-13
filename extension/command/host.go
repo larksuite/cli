@@ -248,19 +248,6 @@ func cloneOutputDefinition(output OutputDefinition) OutputDefinition {
 	for index := range output.Data.Overrides {
 		output.Data.Overrides[index].Shape = cloneValueShape(output.Data.Overrides[index].Shape)
 	}
-	if output.Outcomes.PartialFailure != nil {
-		partial := *output.Outcomes.PartialFailure
-		if partial.FailedItems != nil {
-			failed := *partial.FailedItems
-			failed.IdentityPaths = append([]string(nil), failed.IdentityPaths...)
-			failed.FailedValues = append([]JSONValue(nil), failed.FailedValues...)
-			for index := range failed.FailedValues {
-				failed.FailedValues[index] = cloneJSONValue(failed.FailedValues[index])
-			}
-			partial.FailedItems = &failed
-		}
-		output.Outcomes.PartialFailure = &partial
-	}
 	return output
 }
 

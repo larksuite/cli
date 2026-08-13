@@ -3,12 +3,11 @@
 
 package command
 
-// OutputDefinition declares result formats and partial outcomes.
+// OutputDefinition declares result formats.
 type OutputDefinition struct {
-	Data     DataDefinition
-	Outcomes OutcomeDefinition
-	Meta     ResultMetaDefinition
-	Mode     OutputMode
+	Data DataDefinition
+	Meta ResultMetaDefinition
+	Mode OutputMode
 
 	DisableHTMLEscaping bool
 }
@@ -17,26 +16,6 @@ type OutputDefinition struct {
 type ResultMetaDefinition struct {
 	Count      bool
 	Pagination bool
-}
-
-// OutcomeDefinition declares optional non-success outcomes.
-type OutcomeDefinition struct {
-	PartialFailure *PartialFailureDefinition
-}
-
-// PartialFailureDefinition declares the exit code and optional failed-item receipt.
-type PartialFailureDefinition struct {
-	ExitCode    int
-	FailedItems *FailedItemDefinition
-}
-
-// FailedItemDefinition identifies failed records in a partial result.
-type FailedItemDefinition struct {
-	ItemsPath     string      `json:"items_path"`
-	IdentityPaths []string    `json:"identity_paths"`
-	AllItems      bool        `json:"all_items,omitempty"`
-	StatePath     string      `json:"state_path,omitempty"`
-	FailedValues  []JSONValue `json:"failed_values,omitempty"`
 }
 
 // OutputMode selects the framework output behavior.
@@ -51,12 +30,12 @@ const (
 
 type outcomeKind string
 
-const (
-	outcomeSuccess outcomeKind = "success"
-	outcomePartial outcomeKind = "partial"
-)
+// outcomeSuccess is the only outcome a business command declares. It doubles as
+// the marker that Execute produced a Result at all, which is how the host tells
+// a returned result apart from the zero value accompanying an error.
+const outcomeSuccess outcomeKind = "success"
 
-// Result is an opaque command result created with Success or Partial.
+// Result is an opaque command result created with Success.
 type Result[Data any] struct {
 	data       Data
 	outcome    outcomeKind
@@ -66,11 +45,6 @@ type Result[Data any] struct {
 // Success creates a complete successful result.
 func Success[Data any](data Data) Result[Data] {
 	return resultWithOutcome(data, outcomeSuccess)
-}
-
-// Partial creates a partial result whose completed operations remain in Data.
-func Partial[Data any](data Data) Result[Data] {
-	return resultWithOutcome(data, outcomePartial)
 }
 
 func resultWithOutcome[Data any](data Data, outcome outcomeKind) Result[Data] {

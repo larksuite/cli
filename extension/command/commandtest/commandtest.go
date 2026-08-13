@@ -102,8 +102,7 @@ func (r *Recorder) commandContext(identity command.Identity, dryRun bool) comman
 
 // Execution is the inspected outcome of one business Execute hook.
 type Execution[Data any] struct {
-	Data    Data
-	Partial bool
+	Data Data
 }
 
 // Execute runs Normalize, Validate, and Execute with the restricted test runtime.
@@ -136,7 +135,7 @@ func Execute[Args any, Data any](ctx context.Context, recorder *Recorder, identi
 	if !ok {
 		return execution, fmt.Errorf("business Execute returned %T, expected %T", result.Data, execution.Data)
 	}
-	return Execution[Data]{Data: data, Partial: result.Outcome == "partial"}, nil
+	return Execution[Data]{Data: data}, nil
 }
 
 // RunWithFlags executes a page-returning command with the framework's standard pagination flags.
