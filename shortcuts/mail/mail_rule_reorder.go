@@ -46,24 +46,22 @@ type mailRuleReorderResult struct {
 }
 
 func validateRuleReorder(ctx context.Context, rt *common.RuntimeContext) error {
-	_, err := normalizeRuleReorderInput(rt.StrArray("rule-ids"))
+	_, _, err := normalizeRuleReorderInput(rt.StrArray("rule-ids"))
 	return err
 }
 
 func dryRunRuleReorder(ctx context.Context, rt *common.RuntimeContext) *common.DryRunAPI {
 	mailboxID := resolveMailboxID(rt)
-	input, _ := normalizeRuleReorderInput(rt.StrArray("rule-ids"))
 	return common.NewDryRunAPI().
 		Desc("Read current inbox rules, complete the submitted rule ID list, then call the existing reorder API with the full order").
 		GET(mailboxPath(mailboxID, "rules")).
-		POST(mailboxPath(mailboxID, "rules", "reorder")).
-		Body(map[string]interface{}{"rule_ids": input})
+		POST(mailboxPath(mailboxID, "rules", "reorder"))
 }
 
 func executeRuleReorder(ctx context.Context, rt *common.RuntimeContext) error {
 	mailboxID := resolveMailboxID(rt)
 	rawInput := rt.StrArray("rule-ids")
-	input, err := normalizeRuleReorderInput(rawInput)
+	input, duplicateCount, err := normalizeRuleReorderInput(rawInput)
 	if err != nil {
 		return err
 	}
@@ -88,7 +86,7 @@ func executeRuleReorder(ctx context.Context, rt *common.RuntimeContext) error {
 		SubmittedRuleID: completed,
 		SubmittedCount:  len(completed),
 		InputCount:      len(input),
-		DedupedCount:    len(rawInput) - len(input),
+		DedupedCount:    duplicateCount,
 	}
 	rt.OutFormat(result, &output.Meta{Count: len(completed)}, func(w io.Writer) {
 		fmt.Fprintf(w, "reordered %d inbox rules for %s\n", len(completed), mailboxID)
@@ -99,21 +97,26 @@ func executeRuleReorder(ctx context.Context, rt *common.RuntimeContext) error {
 	return nil
 }
 
-func normalizeRuleReorderInput(raw []string) ([]string, error) {
+func normalizeRuleReorderInput(raw []string) ([]string, int, error) {
 	ids := make([]string, 0, len(raw))
+	duplicateCount := 0
 	seen := map[string]bool{}
 	for _, id := range raw {
 		id = strings.TrimSpace(id)
-		if id == "" || seen[id] {
+		if id == "" {
+			continue
+		}
+		if seen[id] {
+			duplicateCount++
 			continue
 		}
 		ids = append(ids, id)
 		seen[id] = true
 	}
 	if len(ids) == 0 {
-		return nil, mailValidationParamError("--rule-ids", "provide at least one rule ID")
+		return nil, duplicateCount, mailValidationParamError("--rule-ids", "provide at least one rule ID")
 	}
-	return ids, nil
+	return ids, duplicateCount, nil
 }
 
 func fetchMailRules(rt *common.RuntimeContext, mailboxID string) ([]mailRuleOrderEntry, error) {
@@ -155,7 +158,7 @@ func firstRuleList(data map[string]interface{}) ([]interface{}, bool) {
 }
 
 func completeRuleOrder(inputIDs []string, currentRules []mailRuleOrderEntry) ([]string, error) {
-	selected, err := normalizeRuleReorderInput(inputIDs)
+	selected, _, err := normalizeRuleReorderInput(inputIDs)
 	if err != nil {
 		return nil, err
 	}

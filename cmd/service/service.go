@@ -553,10 +553,16 @@ func missingParamHint(opts *ServiceMethodOptions, f meta.Field) recovery.Hint {
 
 func missingRequiredParamError(opts *ServiceMethodOptions, f meta.Field, location string) error {
 	hint := missingParamHint(opts, f)
+	param := f.Name
+	if opts.binder.hasTypedFlag(f.Name) {
+		param = "--" + f.FlagName()
+	} else {
+		param = "--params"
+	}
 	return recovery.Attach(
 		errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"missing required %s parameter: %s", location, f.Name).
-			WithParam(f.Name),
+			WithParam(param),
 		hint,
 	)
 }
