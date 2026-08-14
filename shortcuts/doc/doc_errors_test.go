@@ -362,6 +362,11 @@ func TestValidateUpdateV2Contract(t *testing.T) {
 			wantParam: "--block-id",
 		},
 		{
+			name:      "block_delete rejects content",
+			str:       map[string]string{"doc": testDocxToken, "command": "block_delete", "block-id": "blkX", "content": "unexpected"},
+			wantParam: "--content",
+		},
+		{
 			name:      "block_insert_after without block id",
 			str:       map[string]string{"doc": testDocxToken, "command": "block_insert_after"},
 			wantParam: "--block-id",
