@@ -17,8 +17,8 @@ lark-cli mail +auto-reply --as user --from shared@example.com
 lark-cli mail +auto-reply-modify --as user \
   --enable \
   --content '<p>我正在休假，回来后回复。</p>' \
-  --start 2026-08-15T09:00:00+08:00 \
-  --end 2026-08-18T09:00:00+08:00 \
+  --start 2026-08-15 \
+  --end 2026-08-18 \
   --timezone Asia/Shanghai
 
 # 从文件读取正文
@@ -38,8 +38,8 @@ lark-cli mail +auto-reply-modify --as user --disable
 | `--content <html>` | modify | 否 | 自动回复正文；支持直接传值、`@file` 和 `-` stdin |
 | `--content-file <path>` | modify | 否 | 从路径读取正文；与 `--content` 互斥 |
 | `--summary <text>` | modify | 否 | 正文摘要；不传时由 `--content` / `--content-file` 自动生成预览 |
-| `--start <time>` | modify | 否 | 开始时间，支持 Unix 秒或 ISO 8601 |
-| `--end <time>` | modify | 否 | 结束时间，支持 Unix 秒或 ISO 8601；同时传 `--start` 时必须晚于开始时间 |
+| `--start <time>` | modify | 否 | 开始日期，支持 Unix timestamp 或 ISO 8601；按当天开始保存 |
+| `--end <time>` | modify | 否 | 结束日期，支持 Unix timestamp 或 ISO 8601；按当天结束保存 |
 | `--timezone <tz>` | modify | 否 | 时区，例如 `Asia/Shanghai` |
 | `--internal-only` | modify | 否 | 仅对租户内发件人发送自动回复；与 `--external` 互斥 |
 | `--external` | modify | 否 | 外部发件人也发送自动回复；与 `--internal-only` 互斥 |
@@ -48,6 +48,7 @@ lark-cli mail +auto-reply-modify --as user --disable
 
 - `+auto-reply` 只调用读取接口，需要 `mail:user_mailbox.message:readonly`。
 - `+auto-reply-modify` 只更新用户提供的选项，未指定的配置会保留。
+- 自动回复时间按天保存，不保存小时分钟。
 - 修改需要 `mail:user_mailbox.message:readonly` 和 `mail:user_mailbox.message:modify`。
 - 写操作必须先向用户展示预览并取得明确确认。预览至少包含：`enabled`、时间范围、时区、收件范围和内容摘要。
 - 关闭自动回复也要确认，因为内容和时间配置可能仍会保留在设置中。
@@ -64,8 +65,8 @@ lark-cli mail +auto-reply-modify --as user --disable
       "enabled": true,
       "content_html": "<p>我正在休假，回来后回复。</p>",
       "content_summary": "我正在休假，回来后回复。",
-      "start_time": "1786755600",
-      "end_time": "1787014800",
+      "start_time": "1786723200000",
+      "end_time": "1787068799999",
       "time_zone": "Asia/Shanghai",
       "only_send_to_tenant": false
     }
@@ -80,7 +81,7 @@ lark-cli mail +auto-reply-modify --as user --disable
 | `enabled` | 是否开启自动回复 |
 | `content_html` | 自动回复 HTML 正文 |
 | `content_summary` | 自动回复摘要 |
-| `start_time` | Unix 秒级开始时间字符串 |
-| `end_time` | Unix 秒级结束时间字符串 |
+| `start_time` | 毫秒级开始日期时间戳 |
+| `end_time` | 毫秒级结束日期时间戳 |
 | `time_zone` | 自动回复时间范围对应的时区 |
 | `only_send_to_tenant` | 是否仅对租户内发件人发送自动回复 |
