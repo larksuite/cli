@@ -16,6 +16,7 @@ Dashboard 是 Base 中的数据可视化看板，可以把表格数据变成**�
 |------|-----------|---------|
 | 创建/删除/改名称 | `+dashboard-create/delete/update` | 本页下方「仪表盘管理」 |
 | 在仪表盘里添加组件 | `+dashboard-block-create` | 先定位 dashboard、表和字段，再读 [dashboard-block-data-config.md](dashboard-block-data-config.md) 构造 `data_config` |
+| 获取某类组件的最小配置模板 | `+dashboard-block-create --print-example <type>` | 纯本地输出；无需 Base 参数、认证或网络请求，不会创建组件 |
 | 修改组件 | `+dashboard-block-update` | 先读 block 现状，再读 [dashboard-block-data-config.md](dashboard-block-data-config.md) 决定替换哪些顶层 key |
 | 查看仪表盘有哪些组件 | `+dashboard-get` 或 `+dashboard-block-list` | 本页下方「查看仪表盘」 |
 | 读取图表计算结果 | `+dashboard-block-get-data` | 返回图表最终数据协议；需要 block 元数据先用 `+dashboard-block-get` |
@@ -46,9 +47,12 @@ lark-cli base +field-list --base-token xxx --table-id <table_id>
 # 第 3 步：规划应该创建哪些组件（根据用户需求确定组件类型和数量）
 # 例如：总销售额（指标卡）、月度趋势（折线图）、品类占比（饼图）
 
-# 第 4 步：顺序创建每个组件（必须串行执行，不能并发）
-# 重要：创建组件前，先确定 dashboard_id、组件 name/type 和真实表字段
-# 再阅读 dashboard-block-data-config.md 了解 data_config 结构、组件类型和 filter 规则
+# 第 4 步：先按 type 获取一个最小 data_config 模板，再顺序创建组件
+# print-example 纯本地运行，不需要 base-token/dashboard-id/name，也不会创建组件
+lark-cli base +dashboard-block-create --print-example statistics
+
+# 用真实表名和字段名替换模板占位符；复杂筛选和类型约束再读 dashboard-block-data-config.md
+# 同一 dashboard 的组件必须串行创建，不能并发
 
 # 第 1 个组件
 lark-cli base +dashboard-block-create \
@@ -91,9 +95,10 @@ lark-cli base +dashboard-get --base-token xxx --dashboard-id blk_xxx
 lark-cli base +table-list --base-token xxx
 lark-cli base +field-list --base-token xxx --table-id <table_id>
 
-# 第 4 步：顺序创建每个新组件（必须串行执行，不能并发）
-# 重要：先确定 dashboard_id、组件 name/type 和真实表字段
-# 再阅读 dashboard-block-data-config.md 了解 data_config 结构
+# 第 4 步：按选定 type 获取最小模板，再替换成真实表名和字段名
+lark-cli base +dashboard-block-create --print-example column
+
+# 顺序创建每个新组件（必须串行执行，不能并发）
 lark-cli base +dashboard-block-create \
   --base-token xxx \
   --dashboard-id blk_xxx \
@@ -216,7 +221,8 @@ lark-cli base +dashboard-block-get-data --base-token xxx --block-id chtxxxxxxxx
 **Q: 创建组件的命令和 data_config 怎么写？**
 A:
 1. 先确定 `dashboard_id`、组件 `name`、组件 `type` 和真实表字段
-2. 再读 [dashboard-block-data-config.md](dashboard-block-data-config.md) 了解：
+2. 运行 `lark-cli base +dashboard-block-create --print-example <type>` 获取该类型的最小 `data_config` JSON
+3. 复杂配置再读 [dashboard-block-data-config.md](dashboard-block-data-config.md) 了解：
    - 全部组件类型的可复制模板
    - filter 筛选条件格式
    - 字段类型与操作符对应表

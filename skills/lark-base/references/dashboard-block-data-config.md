@@ -2,6 +2,14 @@
 
 Block 的 `data_config` 字段因 `type` 不同而变化。本文档是 Dashboard block 扁平单数据源 `data_config` 的单一事实来源（SSOT），包含组件类型、字段结构、筛选格式、约束和可复制模板。BaseApp 图表的外层结构不同，但每个 `data_sources[]` 元素复用本文的字段取值、筛选、分组、排序及规范化规则；创建或更新 App 组件时，还必须读取 [BaseApp Block data_config](lark-base-app-block-data-config.md) 了解共享 `base_token`、多数据源封装，以及 App 独有的列表组件协议。
 
+只需要某一类型的最小可编辑模板时，优先运行下面的纯本地命令，避免把本页全部模板加载进上下文：
+
+```bash
+lark-cli base +dashboard-block-create --print-example <type>
+```
+
+该模式无需 Base 参数、认证或网络请求，也不会创建组件。获取模板后，用 `+table-list` / `+field-list` 返回的真实表名和字段名替换占位符；需要筛选、排序或业务口径说明时再继续阅读本页。
+
 ## 支持的组件类型（`type` 枚举）
 
 | type 值 | 说明 |
