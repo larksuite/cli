@@ -2,7 +2,7 @@
 
 > **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-查看或修改用户邮箱自动回复设置。读写是两个独立 shortcut：读取用 `+auto-reply`，修改用 `+auto-reply-modify`。
+查看或修改用户邮箱自动回复设置。读写是两个独立 shortcut：读取用 `+auto-reply`，修改用 `+auto-reply-modify`。同一个发件人 4 天内仅会收到一次外出自动回复邮件。该自动回复不与其他邮箱服务同步，请勿重复设置。
 
 ## 命令
 
