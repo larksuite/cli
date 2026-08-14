@@ -299,6 +299,10 @@ func pluginStageTGZ(tgzData []byte, parentDir string) (string, error) {
 }
 
 func pluginReplaceDirectory(stagedDir, destDir string) error {
+	return pluginReplaceDirectoryWithRename(stagedDir, destDir, os.Rename) //nolint:forbidigo // same-filesystem staged replacement and rollback.
+}
+
+func pluginReplaceDirectoryWithRename(stagedDir, destDir string, rename func(string, string) error) error {
 	parentDir := filepath.Dir(destDir)
 	if err := os.MkdirAll(parentDir, 0o755); err != nil { //nolint:forbidigo // local project-owned node_modules directory.
 		return err
@@ -307,12 +311,17 @@ func pluginReplaceDirectory(stagedDir, destDir string) error {
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(backupRoot) //nolint:forbidigo // remove prior version after successful replacement or rollback.
+	removeBackup := true
+	defer func() {
+		if removeBackup {
+			_ = os.RemoveAll(backupRoot) //nolint:forbidigo // remove prior version after successful replacement or rollback.
+		}
+	}()
 
 	backupDir := filepath.Join(backupRoot, "previous")
 	hadExisting := false
 	if _, err := os.Lstat(destDir); err == nil { //nolint:forbidigo // local project directory state check.
-		if err := os.Rename(destDir, backupDir); err != nil { //nolint:forbidigo // preserve current version for rollback.
+		if err := rename(destDir, backupDir); err != nil {
 			return err
 		}
 		hadExisting = true
@@ -320,10 +329,11 @@ func pluginReplaceDirectory(stagedDir, destDir string) error {
 		return err
 	}
 
-	if err := os.Rename(stagedDir, destDir); err != nil { //nolint:forbidigo // same-filesystem staged replacement.
+	if err := rename(stagedDir, destDir); err != nil {
 		if hadExisting {
-			if restoreErr := os.Rename(backupDir, destDir); restoreErr != nil { //nolint:forbidigo // best-effort rollback of current version.
-				return fmt.Errorf("replace plugin: %w; restore previous plugin: %v", err, restoreErr) //nolint:forbidigo // intermediate helper error; callers wrap as typed
+			if restoreErr := rename(backupDir, destDir); restoreErr != nil {
+				removeBackup = false
+				return fmt.Errorf("replace plugin: %w; restore previous plugin: %v; previous plugin preserved at %s", err, restoreErr, backupDir) //nolint:forbidigo // intermediate helper error; callers wrap as typed
 			}
 		}
 		return err

@@ -8,11 +8,14 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
@@ -268,6 +271,16 @@ func TestPluginInstall_RejectedArchivePreservesExistingPlugin(t *testing.T) {
 	if err == nil {
 		t.Fatal("install should reject malformed plugin archive")
 	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("install error is not structured: %v", err)
+	}
+	if problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeFileIO {
+		t.Fatalf("error classification = %s/%s, want %s/%s", problem.Category, problem.Subtype, errs.CategoryInternal, errs.SubtypeFileIO)
+	}
+	if !errors.Is(err, gzip.ErrHeader) {
+		t.Fatalf("malformed gzip cause not preserved: %v", err)
+	}
 	data, readErr := os.ReadFile(markerPath)
 	if readErr != nil {
 		t.Fatalf("existing plugin was not preserved: %v", readErr)
@@ -284,6 +297,59 @@ func TestPluginInstall_RejectedArchivePreservesExistingPlugin(t *testing.T) {
 	}
 }
 
+func TestPluginReplaceDirectory_RollbackFailurePreservesBackup(t *testing.T) {
+	root := t.TempDir()
+	stagedDir := filepath.Join(root, "staged")
+	destDir := filepath.Join(root, "plugin")
+	if err := os.MkdirAll(stagedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(destDir, "keep.txt"), []byte("old plugin"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	replaceErr := errors.New("replace failed")
+	restoreErr := errors.New("restore failed")
+	renameCalls := 0
+	err := pluginReplaceDirectoryWithRename(stagedDir, destDir, func(oldPath, newPath string) error {
+		renameCalls++
+		switch renameCalls {
+		case 1:
+			return os.Rename(oldPath, newPath)
+		case 2:
+			return replaceErr
+		case 3:
+			return restoreErr
+		default:
+			t.Fatalf("unexpected rename call %d", renameCalls)
+			return nil
+		}
+	})
+	if !errors.Is(err, replaceErr) {
+		t.Fatalf("replace error = %v, want preserved replacement cause", err)
+	}
+	if !strings.Contains(err.Error(), "previous plugin preserved at") {
+		t.Fatalf("replace error = %v, want backup recovery path", err)
+	}
+	backups, globErr := filepath.Glob(filepath.Join(root, ".plugin-backup-*", "previous", "keep.txt"))
+	if globErr != nil {
+		t.Fatal(globErr)
+	}
+	if len(backups) != 1 {
+		t.Fatalf("preserved backup files = %v, want one", backups)
+	}
+	data, readErr := os.ReadFile(backups[0])
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(data) != "old plugin" {
+		t.Fatalf("preserved backup = %q, want old plugin", data)
+	}
+}
+
 // buildTestTGZ creates a .tgz in memory with files under a "package/" prefix.
 func buildTestTGZ(t *testing.T, files map[string]string) []byte {
 	t.Helper()
@@ -291,7 +357,13 @@ func buildTestTGZ(t *testing.T, files map[string]string) []byte {
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
 
-	for name, content := range files {
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		content := files[name]
 		tw.WriteHeader(&tar.Header{
 			Name:     "package/" + name,
 			Size:     int64(len(content)),
