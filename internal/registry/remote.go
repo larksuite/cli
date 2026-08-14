@@ -75,7 +75,13 @@ func remoteMetaURL(version string) string {
 	if testMetaURL != "" {
 		return testMetaURL
 	}
-	base := core.ResolveEndpoints(configuredBrand).Open + "/api/tools/open/api_definition"
+	var base string
+	switch configuredBrand {
+	case core.BrandLark:
+		base = "https://open.larksuite.com/api/tools/open/api_definition"
+	default:
+		base = "https://open.feishu.cn/api/tools/open/api_definition"
+	}
 	q := "protocol=meta&client_version=" + url.QueryEscape(build.Version)
 	if version != "" {
 		q += "&data_version=" + url.QueryEscape(version)
@@ -180,8 +186,8 @@ func saveCachedMerged(data []byte, cm CacheMeta) error {
 // localVersion is sent as data_version query param for server-side version comparison.
 // Returns (data, reg, err). A nil reg means the version is unchanged (not modified).
 func fetchRemoteMerged(localVersion string) (data []byte, reg *MergedRegistry, err error) {
-	// Remote metadata is platform traffic and must honor both the shared proxy
-	// configuration and the registered platform transport extension.
+	// Route through the shared proxy-plugin-aware transport so remote API
+	// definition fetches honor proxy plugin mode instead of bypassing it.
 	client := transport.NewHTTPClient(fetchTimeout)
 	req, err := http.NewRequest("GET", remoteMetaURL(localVersion), nil)
 	if err != nil {

@@ -12,9 +12,7 @@
     "vc:meeting.meetingevent:read": 75
   },
   "recommend": {
-    "allow": [
-      "application:app_slash_command:read"
-    ],
+    "allow": [],
     "deny": [
       "im:chat",
       "im:message.send_as_user"
