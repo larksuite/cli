@@ -24,6 +24,7 @@ func TestSheets_BorderWeightVocabularyDryRun(t *testing.T) {
 		name         string
 		borderStyles string
 		wantWeight   string // empty means the call must be rejected
+		wantStyle    string // empty means the style slot is not asserted
 	}{
 		{
 			name:         "hair in the weight slot",
@@ -31,9 +32,12 @@ func TestSheets_BorderWeightVocabularyDryRun(t *testing.T) {
 			wantWeight:   "thin",
 		},
 		{
+			// hair names a thickness, so the style slot it arrived in has to
+			// be refilled with the line type the word implies.
 			name:         "hair in the style slot",
 			borderStyles: `{"top":{"style":"hair"}}`,
 			wantWeight:   "thin",
+			wantStyle:    "solid",
 		},
 		{
 			name:         "numeric line width",
@@ -48,6 +52,10 @@ func TestSheets_BorderWeightVocabularyDryRun(t *testing.T) {
 		{
 			name:         "unobserved openpyxl line style stays rejected",
 			borderStyles: `{"top":{"style":"mediumDashed"}}`,
+		},
+		{
+			name:         "infinite line width stays rejected",
+			borderStyles: `{"top":{"style":"solid","weight":"Infinity"}}`,
 		},
 	}
 
@@ -85,6 +93,10 @@ func TestSheets_BorderWeightVocabularyDryRun(t *testing.T) {
 			input := gjson.Get(out, "api.0.body.input").String()
 			require.Equal(t, tt.wantWeight,
 				gjson.Get(input, "cells.0.0.border_styles.top.weight").String(), "input:\n%s", input)
+			if tt.wantStyle != "" {
+				require.Equal(t, tt.wantStyle,
+					gjson.Get(input, "cells.0.0.border_styles.top.style").String(), "input:\n%s", input)
+			}
 		})
 	}
 }

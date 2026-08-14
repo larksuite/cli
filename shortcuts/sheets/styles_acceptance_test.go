@@ -171,7 +171,8 @@ var stylesPriorCorpus = []struct {
 		check:  wantBorder("top", "weight", "thin")},
 	{name: "openpyxl hair in the style slot means a thin solid line",
 		fields: map[string]interface{}{"border_styles": map[string]interface{}{"top": map[string]interface{}{"style": "hair"}}},
-		check:  wantBorder("top", "weight", "thin")},
+		check: wantAll(wantBorder("top", "weight", "thin"),
+			wantBorder("top", "style", "solid"))},
 	{name: "flattened border_style hair",
 		fields: map[string]interface{}{"border_style": "hair"},
 		check:  wantBorder("top", "weight", "thin")},
@@ -221,6 +222,21 @@ func wantBorder(side, attr, want string) func(map[string]interface{}) string {
 		sideObj, _ := bs[side].(map[string]interface{})
 		if sideObj == nil || sideObj[attr] != want {
 			return fmt.Sprintf("border_styles.%s.%s = %v, want %q", side, attr, sideObj[attr], want)
+		}
+		return ""
+	}
+}
+
+// wantAll reports the first failing check, so one corpus row can pin every
+// field a rewrite touches (a thickness word in the style slot moves the word
+// to weight AND defaults the line type — asserting one of the two leaves the
+// other free to regress).
+func wantAll(checks ...func(map[string]interface{}) string) func(map[string]interface{}) string {
+	return func(proto map[string]interface{}) string {
+		for _, check := range checks {
+			if detail := check(proto); detail != "" {
+				return detail
+			}
 		}
 		return ""
 	}

@@ -42,6 +42,7 @@ func TestSplitRangeSheetPrefix(t *testing.T) {
 		{"escaped separator", `Sheet1\!A1:D20`, "Sheet1", "A1:D20", true},
 		{"escaped full-width separator", `Sheet1\！A1`, "Sheet1", "A1", true},
 		{"full-width separator after quotes", "'My Sheet'！A1", "My Sheet", "A1", true},
+		{"escaped separator after quotes", `'My Sheet'\!A1`, "My Sheet", "A1", true},
 
 		// Quotes delimit the name, so one may legally contain a separator —
 		// splitting on the first "!" would name the wrong sheet.

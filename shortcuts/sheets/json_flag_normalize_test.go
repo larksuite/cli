@@ -324,6 +324,17 @@ func TestCellsSetStyle_BorderValueVocabularyNormalizes(t *testing.T) {
 			want: []string{`"style": "solid"`, `"weight": "thin"`}},
 		{name: "Google Sheets width key", border: `{"top":{"style":"solid","width":1}}`,
 			want: []string{`"weight": "thin"`}},
+		// The two ends of the width mapping: 3 is where thick starts, and a
+		// width the mapping deliberately does not guess at ("no width" is a
+		// border the caller should spell style:"none") keeps its own error.
+		{name: "numeric width at the thick boundary", border: `{"top":{"style":"solid","weight":3}}`,
+			want: []string{`"weight": "thick"`}},
+		{name: "zero width is not guessed at", border: `{"top":{"style":"solid","weight":0}}`,
+			wantErr: `expected type "string", got "number"`},
+		// strconv.ParseFloat answers yes to these; an infinite line width is
+		// not a width the caller meant, so it must not fold onto thick.
+		{name: "infinite width stays rejected", border: `{"top":{"style":"solid","weight":"Inf"}}`,
+			wantErr: "not in enum"},
 		{name: "unobserved line style stays rejected", border: `{"top":{"style":"dashDot"}}`,
 			wantErr: "not in enum"},
 	}

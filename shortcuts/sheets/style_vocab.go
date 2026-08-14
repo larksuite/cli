@@ -5,6 +5,7 @@ package sheets
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"sort"
 	"strconv"
@@ -432,15 +433,29 @@ func normalizeBorderSideVocab(side map[string]interface{}) {
 // "is this cell a number?" for column typing and must NOT accept a quoted
 // number, whereas in the weight slot a quoted number is unambiguously a
 // width.
+//
+// A non-finite result is NOT a width: ParseFloat accepts "Inf" / "Infinity" /
+// "NaN", and an infinite line width folded onto "thick" would be a guess at
+// input that means nothing. Those stay on the enum error path with the three
+// accepted words in the message.
 func borderLineWidth(v interface{}) (float64, bool) {
+	var n float64
 	switch t := v.(type) {
 	case float64:
-		return t, true
+		n = t
 	case string:
-		n, err := strconv.ParseFloat(strings.TrimSpace(t), 64)
-		return n, err == nil
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(t), 64)
+		if err != nil {
+			return 0, false
+		}
+		n = parsed
+	default:
+		return 0, false
 	}
-	return 0, false
+	if math.IsInf(n, 0) || math.IsNaN(n) {
+		return 0, false
+	}
+	return n, true
 }
 
 // normalizeBorderStylesFlagValue runs the border vocabulary rewrites on the
