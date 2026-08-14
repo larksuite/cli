@@ -139,19 +139,18 @@ func pluginInstallOne(ctx context.Context, rctx *common.RuntimeContext, projectP
 		return err
 	}
 
-	// Extract to node_modules
+	// Extract beside the destination and replace only after validation succeeds.
 	destDir, err := secureModulePath(projectPath, key)
 	if err != nil {
 		return err
 	}
-	if err := os.RemoveAll(destDir); err != nil { //nolint:forbidigo // shortcuts cannot import internal/vfs; clean before extract.
-		return appsFileIOError(err, "cannot clean %s", destDir)
-	}
-	if err := os.MkdirAll(destDir, 0o755); err != nil { //nolint:forbidigo
-		return appsFileIOError(err, "cannot create %s", destDir)
-	}
-	if err := pluginExtractTGZ(bytes.NewReader(tgzData), destDir); err != nil {
+	stagedDir, err := pluginStageTGZ(tgzData, filepath.Dir(destDir))
+	if err != nil {
 		return appsFileIOError(err, "cannot extract plugin package for %s", key)
+	}
+	defer os.RemoveAll(stagedDir) //nolint:forbidigo // best-effort cleanup if replacement fails.
+	if err := pluginReplaceDirectory(stagedDir, destDir); err != nil {
+		return appsFileIOError(err, "cannot replace plugin package for %s", key)
 	}
 
 	// Check peer dependencies
@@ -255,25 +254,14 @@ func pluginInstallLocal(rctx *common.RuntimeContext, projectPath, tgzPath string
 		version = "0.0.0"
 	}
 
-	// Move to node_modules
+	// Move to node_modules without deleting the previous version until the
+	// staged package is ready to replace it.
 	destDir, err := secureModulePath(projectPath, key)
 	if err != nil {
 		return err
 	}
-	if err := os.RemoveAll(destDir); err != nil { //nolint:forbidigo
-		return appsFileIOError(err, "cannot clean %s", destDir)
-	}
-	if err := os.MkdirAll(filepath.Dir(destDir), 0o755); err != nil { //nolint:forbidigo
-		return appsFileIOError(err, "cannot create parent dir for %s", destDir)
-	}
-	if err := os.Rename(tmpDir, destDir); err != nil { //nolint:forbidigo
-		// rename may fail across filesystems; fall back to re-extract
-		if err2 := os.MkdirAll(destDir, 0o755); err2 != nil { //nolint:forbidigo
-			return appsFileIOError(err2, "cannot create %s", destDir)
-		}
-		if err2 := pluginExtractTGZ(bytes.NewReader(tgzData), destDir); err2 != nil {
-			return appsFileIOError(err2, "cannot extract plugin to %s", destDir)
-		}
+	if err := pluginReplaceDirectory(tmpDir, destDir); err != nil {
+		return appsFileIOError(err, "cannot replace plugin package for %s", key)
 	}
 
 	// Update package.json actionPlugins
@@ -292,6 +280,54 @@ func pluginInstallLocal(rctx *common.RuntimeContext, projectPath, tgzPath string
 	rctx.OutFormat(result, nil, func(w io.Writer) {
 		fmt.Fprintf(w, "✓ Installed %s@%s (from local %s)\n", key, version, tgzPath)
 	})
+	return nil
+}
+
+func pluginStageTGZ(tgzData []byte, parentDir string) (string, error) {
+	if err := os.MkdirAll(parentDir, 0o755); err != nil { //nolint:forbidigo // local project-owned node_modules directory.
+		return "", err
+	}
+	stagedDir, err := os.MkdirTemp(parentDir, ".plugin-install-*") //nolint:forbidigo // same filesystem as destination for rename.
+	if err != nil {
+		return "", err
+	}
+	if err := pluginExtractTGZ(bytes.NewReader(tgzData), stagedDir); err != nil {
+		_ = os.RemoveAll(stagedDir) //nolint:forbidigo // discard rejected partial extraction.
+		return "", err
+	}
+	return stagedDir, nil
+}
+
+func pluginReplaceDirectory(stagedDir, destDir string) error {
+	parentDir := filepath.Dir(destDir)
+	if err := os.MkdirAll(parentDir, 0o755); err != nil { //nolint:forbidigo // local project-owned node_modules directory.
+		return err
+	}
+	backupRoot, err := os.MkdirTemp(parentDir, ".plugin-backup-*") //nolint:forbidigo // unique same-filesystem rollback location.
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(backupRoot) //nolint:forbidigo // remove prior version after successful replacement or rollback.
+
+	backupDir := filepath.Join(backupRoot, "previous")
+	hadExisting := false
+	if _, err := os.Lstat(destDir); err == nil { //nolint:forbidigo // local project directory state check.
+		if err := os.Rename(destDir, backupDir); err != nil { //nolint:forbidigo // preserve current version for rollback.
+			return err
+		}
+		hadExisting = true
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
+	if err := os.Rename(stagedDir, destDir); err != nil { //nolint:forbidigo // same-filesystem staged replacement.
+		if hadExisting {
+			if restoreErr := os.Rename(backupDir, destDir); restoreErr != nil { //nolint:forbidigo // best-effort rollback of current version.
+				return fmt.Errorf("replace plugin: %w; restore previous plugin: %v", err, restoreErr) //nolint:forbidigo // intermediate helper error; callers wrap as typed
+			}
+		}
+		return err
+	}
 	return nil
 }
 

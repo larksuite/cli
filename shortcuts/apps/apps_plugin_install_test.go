@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/httpmock"
@@ -18,6 +19,17 @@ import (
 func TestPluginInstall_SinglePlugin(t *testing.T) {
 	dir := t.TempDir()
 	writeTestPkgJSON(t, dir, map[string]interface{}{})
+	oldPluginDir := filepath.Join(dir, "node_modules", "@test", "my-plugin")
+	if err := os.MkdirAll(oldPluginDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(oldPluginDir, "package.json"), []byte(`{"version":"0.9.0"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	oldMarker := filepath.Join(oldPluginDir, "old.txt")
+	if err := os.WriteFile(oldMarker, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	chdirTest(t, dir)
 
 	factory, stdout, reg := newAppsExecuteFactory(t)
@@ -65,6 +77,9 @@ func TestPluginInstall_SinglePlugin(t *testing.T) {
 	manifestPath := filepath.Join(dir, "node_modules", "@test/my-plugin", "manifest.json")
 	if _, err := os.Stat(manifestPath); err != nil {
 		t.Fatalf("manifest.json not extracted: %v", err)
+	}
+	if _, err := os.Stat(oldMarker); !os.IsNotExist(err) {
+		t.Fatalf("old plugin content must be replaced after successful extraction, stat error = %v", err)
 	}
 
 	// Verify package.json updated
@@ -155,6 +170,117 @@ func TestPluginExtractTGZ_PathTraversal(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(destDir, "..", "..", "etc", "passwd")); err == nil {
 		t.Error("path traversal should have been blocked")
+	}
+}
+
+func TestPluginExtractTGZ_RejectsAggregateExpandedSize(t *testing.T) {
+	tgzData := buildTestTGZ(t, map[string]string{
+		"first.txt":  "123456",
+		"second.txt": "12345",
+	})
+	destDir := t.TempDir()
+	err := pluginExtractTGZWithLimits(bytes.NewReader(tgzData), destDir, pluginExtractLimits{
+		maxEntryBytes: 10,
+		maxTotalBytes: 10,
+		maxEntries:    10,
+	})
+	if err == nil || !strings.Contains(err.Error(), "expanded size limit") {
+		t.Fatalf("extract error = %v, want expanded size limit", err)
+	}
+	if _, err := os.Stat(filepath.Join(destDir, "second.txt")); !os.IsNotExist(err) {
+		t.Fatalf("second entry must not be created after aggregate limit failure, stat error = %v", err)
+	}
+}
+
+func TestPluginExtractTGZ_RejectsOversizedEntryWithoutTruncation(t *testing.T) {
+	tgzData := buildTestTGZ(t, map[string]string{"large.txt": "12345"})
+	destDir := t.TempDir()
+	err := pluginExtractTGZWithLimits(bytes.NewReader(tgzData), destDir, pluginExtractLimits{
+		maxEntryBytes: 4,
+		maxTotalBytes: 10,
+		maxEntries:    10,
+	})
+	if err == nil || !strings.Contains(err.Error(), "size limit") {
+		t.Fatalf("extract error = %v, want entry size limit", err)
+	}
+	if _, err := os.Stat(filepath.Join(destDir, "large.txt")); !os.IsNotExist(err) {
+		t.Fatalf("oversized entry must not be truncated to disk, stat error = %v", err)
+	}
+}
+
+func TestPluginExtractTGZ_RejectsTooManyEntries(t *testing.T) {
+	tgzData := buildTestTGZ(t, map[string]string{
+		"first.txt":  "1",
+		"second.txt": "2",
+		"third.txt":  "3",
+	})
+	destDir := t.TempDir()
+	err := pluginExtractTGZWithLimits(bytes.NewReader(tgzData), destDir, pluginExtractLimits{
+		maxEntryBytes: 10,
+		maxTotalBytes: 10,
+		maxEntries:    2,
+	})
+	if err == nil || !strings.Contains(err.Error(), "entry limit") {
+		t.Fatalf("extract error = %v, want entry limit", err)
+	}
+}
+
+func TestPluginInstall_RejectedArchivePreservesExistingPlugin(t *testing.T) {
+	dir := t.TempDir()
+	writeTestPkgJSON(t, dir, map[string]interface{}{
+		"actionPlugins": map[string]interface{}{"@test/my-plugin": "0.9.0"},
+	})
+	pluginDir := filepath.Join(dir, "node_modules", "@test", "my-plugin")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	markerPath := filepath.Join(pluginDir, "keep.txt")
+	if err := os.WriteFile(filepath.Join(pluginDir, "package.json"), []byte(`{"version":"0.9.0"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(markerPath, []byte("old plugin"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	chdirTest(t, dir)
+
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/plugin/versions/batch_query",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"items": []interface{}{
+				map[string]interface{}{"key": "@test/my-plugin", "version": "1.0.0"},
+			}},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:      "POST",
+		URL:         "/open-apis/spark/v1/plugin/versions/download_package",
+		RawBody:     []byte("not a gzip stream"),
+		ContentType: "application/octet-stream",
+	})
+
+	err := runAppsShortcut(t, AppsPluginInstall, []string{
+		"+plugin-install", "--name", "@test/my-plugin", "--version", "1.0.0",
+		"--format", "json", "--as", "user",
+	}, factory, stdout)
+	if err == nil {
+		t.Fatal("install should reject malformed plugin archive")
+	}
+	data, readErr := os.ReadFile(markerPath)
+	if readErr != nil {
+		t.Fatalf("existing plugin was not preserved: %v", readErr)
+	}
+	if string(data) != "old plugin" {
+		t.Fatalf("existing marker = %q, want old plugin", data)
+	}
+	staged, globErr := filepath.Glob(filepath.Join(filepath.Dir(pluginDir), ".plugin-install-*"))
+	if globErr != nil {
+		t.Fatal(globErr)
+	}
+	if len(staged) != 0 {
+		t.Fatalf("rejected staging directories were not cleaned up: %v", staged)
 	}
 }
 
