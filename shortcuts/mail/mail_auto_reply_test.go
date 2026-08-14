@@ -114,21 +114,18 @@ func TestMailAutoReplyModifyBuildsFriendlyPayload(t *testing.T) {
 	}
 	reg.Verify(t)
 
-	autoReply, ok := captured["auto_reply"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("auto_reply missing from request: %#v", captured)
-	}
-	assertAutoReplyPayloadValue(t, autoReply, "enabled", true)
-	assertAutoReplyPayloadValue(t, autoReply, "content_html", "<p>Out today</p>")
-	assertAutoReplyPayloadValue(t, autoReply, "content_summary", "Out today")
-	assertAutoReplyPayloadValue(t, autoReply, "start_time", "1786755600")
-	assertAutoReplyPayloadValue(t, autoReply, "end_time", "1787014800")
-	assertAutoReplyPayloadValue(t, autoReply, "time_zone", "Asia/Shanghai")
-	assertAutoReplyPayloadValue(t, autoReply, "only_send_to_tenant", false)
-	assertAutoReplyPayloadAbsent(t, autoReply, "enable")
-	assertAutoReplyPayloadAbsent(t, autoReply, "content")
-	assertAutoReplyPayloadAbsent(t, autoReply, "timezone")
-	assertAutoReplyPayloadAbsent(t, autoReply, "only_send_inner_sender")
+	assertAutoReplyPayloadValue(t, captured, "enabled", true)
+	assertAutoReplyPayloadValue(t, captured, "content_html", "<p>Out today</p>")
+	assertAutoReplyPayloadValue(t, captured, "content_summary", "Out today")
+	assertAutoReplyPayloadValue(t, captured, "start_time", "1786755600")
+	assertAutoReplyPayloadValue(t, captured, "end_time", "1787014800")
+	assertAutoReplyPayloadValue(t, captured, "time_zone", "Asia/Shanghai")
+	assertAutoReplyPayloadValue(t, captured, "only_send_to_tenant", false)
+	assertAutoReplyPayloadAbsent(t, captured, "auto_reply")
+	assertAutoReplyPayloadAbsent(t, captured, "enable")
+	assertAutoReplyPayloadAbsent(t, captured, "content")
+	assertAutoReplyPayloadAbsent(t, captured, "timezone")
+	assertAutoReplyPayloadAbsent(t, captured, "only_send_inner_sender")
 }
 
 func TestMailAutoReplyContentFile(t *testing.T) {
@@ -177,11 +174,11 @@ func TestMailAutoReplyContentFile(t *testing.T) {
 	}
 	reg.Verify(t)
 
-	autoReply := captured["auto_reply"].(map[string]interface{})
-	assertAutoReplyPayloadValue(t, autoReply, "content_html", "<p>From file</p>")
-	assertAutoReplyPayloadValue(t, autoReply, "content_summary", "From file")
-	assertAutoReplyPayloadValue(t, autoReply, "enabled", true)
-	assertAutoReplyPayloadValue(t, autoReply, "only_send_to_tenant", true)
+	assertAutoReplyPayloadValue(t, captured, "content_html", "<p>From file</p>")
+	assertAutoReplyPayloadValue(t, captured, "content_summary", "From file")
+	assertAutoReplyPayloadValue(t, captured, "enabled", true)
+	assertAutoReplyPayloadValue(t, captured, "only_send_to_tenant", true)
+	assertAutoReplyPayloadAbsent(t, captured, "auto_reply")
 }
 
 func TestMailAutoReplyRejectsConflictingFlags(t *testing.T) {

@@ -66,10 +66,10 @@ var MailAutoReplyModify = common.Shortcut{
 		mailboxID := resolveAutoReplyMailboxID(runtime)
 		patch, _ := buildAutoReplyPatch(runtime)
 		return common.NewDryRunAPI().
-			Desc("Modify mailbox auto-reply settings: GET current setting, merge provided flags, then PUT the full auto_reply object. Dry-run body shows only the flag-derived patch because the live current value is unavailable.").
+			Desc("Modify mailbox auto-reply settings: GET current setting, merge provided flags, then PUT the full setting as top-level OpenAPI fields. Dry-run body shows only the flag-derived patch because the live current value is unavailable.").
 			GET(autoReplyPath(mailboxID)).
 			PUT(autoReplyPath(mailboxID)).
-			Body(map[string]interface{}{"auto_reply": patch})
+			Body(patch)
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if runtime.Bool("enable") && runtime.Bool("disable") {
@@ -110,7 +110,7 @@ var MailAutoReplyModify = common.Shortcut{
 			return mailDecorateProblemMessage(err, "get auto-reply failed")
 		}
 		merged := mergeAutoReply(current, patch)
-		data, err := runtime.CallAPITyped("PUT", autoReplyPath(mailboxID), nil, map[string]interface{}{"auto_reply": merged})
+		data, err := runtime.CallAPITyped("PUT", autoReplyPath(mailboxID), nil, merged)
 		if err != nil {
 			return mailDecorateProblemMessage(err, "modify auto-reply failed")
 		}

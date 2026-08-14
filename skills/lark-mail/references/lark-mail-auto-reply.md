@@ -47,7 +47,7 @@ lark-cli mail +auto-reply-modify --as user --disable
 ## 行为
 
 - `+auto-reply` 只调用读取接口，需要 `mail:user_mailbox.message:readonly`。
-- `+auto-reply-modify` 会先读取当前配置，再把用户提供的 flag 合并进去，最后写回完整 `auto_reply` 对象。
+- `+auto-reply-modify` 会先读取当前配置，再把用户提供的 flag 合并进去，最后用 top-level OpenAPI 字段写回完整配置。
 - 修改需要 `mail:user_mailbox.message:readonly` 和 `mail:user_mailbox.message:modify`。
 - 写操作必须先向用户展示预览并取得明确确认。预览至少包含：`enabled`、时间范围、时区、收件范围和内容摘要。
 - 关闭自动回复也要确认，因为内容和时间配置可能仍会保留在设置中。
