@@ -4,6 +4,7 @@
 package mail
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"strings"
@@ -179,6 +180,65 @@ func TestMailAutoReplyContentFile(t *testing.T) {
 	assertAutoReplyPayloadValue(t, captured, "enabled", true)
 	assertAutoReplyPayloadValue(t, captured, "only_send_to_tenant", true)
 	assertAutoReplyPayloadAbsent(t, captured, "auto_reply")
+}
+
+func TestMailAutoReplyEmbedsLocalImages(t *testing.T) {
+	chdirTemp(t)
+	png, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("logo.png", png, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	var captured map[string]interface{}
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    mailboxPath("me", "settings", "auto_reply"),
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"auto_reply": map[string]interface{}{
+					"enabled":             true,
+					"start_time":          "1786723200000",
+					"end_time":            "1787068799999",
+					"time_zone":           "Asia/Shanghai",
+					"only_send_to_tenant": false,
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "PUT",
+		URL:    mailboxPath("me", "settings", "auto_reply"),
+		BodyFilter: func(body []byte) bool {
+			if err := json.Unmarshal(body, &captured); err != nil {
+				t.Fatalf("unmarshal request body: %v; body=%s", err, body)
+			}
+			return true
+		},
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{"auto_reply": map[string]interface{}{"content_summary": "With image"}},
+		},
+	})
+
+	if err := runMountedMailShortcut(t, MailAutoReplyModify, []string{"+auto-reply-modify", "--content", `<p>Hi<img src="logo.png"></p>`, "--summary", "With image"}, f, stdout); err != nil {
+		t.Fatalf("runMountedMailShortcut() error = %v", err)
+	}
+	reg.Verify(t)
+
+	html, _ := captured["content_html"].(string)
+	if !strings.Contains(html, `src="data:image/png;base64,`) {
+		t.Fatalf("content_html should embed local image as data URI, got %q", html)
+	}
+	if strings.Contains(html, `src="logo.png"`) {
+		t.Fatalf("local image path should have been replaced, got %q", html)
+	}
 }
 
 func TestMailAutoReplyRejectsConflictingFlags(t *testing.T) {
