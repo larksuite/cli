@@ -5,14 +5,17 @@ package mail
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
+	"github.com/larksuite/cli/shortcuts/mail/filecheck"
 )
 
 var MailAutoReply = common.Shortcut{
@@ -54,7 +57,7 @@ var MailAutoReplyModify = common.Shortcut{
 		{Name: "from", Default: "me", Desc: "Mailbox address (default: me)."},
 		{Name: "enable", Type: "bool", Desc: "Turn auto-reply on."},
 		{Name: "disable", Type: "bool", Desc: "Turn auto-reply off."},
-		{Name: "content", Desc: "Auto-reply HTML content. Plain text is accepted and sent as-is. Supports @file and - stdin.", Input: []string{common.File, common.Stdin}},
+		{Name: "content", Desc: "Auto-reply HTML content. Plain text is accepted and sent as-is. Supports @file and - stdin. Local <img src=\"./file.png\"> references are embedded as data:image URIs.", Input: []string{common.File, common.Stdin}},
 		{Name: "content-file", Desc: "Read auto-reply content from a file path. Mutually exclusive with --content."},
 		{Name: "summary", Desc: "Plain-text content summary. Defaults to a preview generated from --content/--content-file."},
 		{Name: "start", Desc: "Start date as Unix timestamp or ISO 8601. Stored as the day's 00:00:00.000."},
@@ -65,7 +68,7 @@ var MailAutoReplyModify = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		mailboxID := resolveAutoReplyMailboxID(runtime)
-		patch, _ := buildAutoReplyPatch(runtime)
+		patch, _ := buildAutoReplyPatch(runtime, false)
 		return common.NewDryRunAPI().
 			Desc("Modify mailbox auto-reply settings. Dry-run body shows only the options provided by flags because the live current value is unavailable.").
 			GET(autoReplyPath(mailboxID)).
@@ -97,12 +100,12 @@ var MailAutoReplyModify = common.Shortcut{
 		if !autoReplyHasModify(runtime) {
 			return mailValidationError("no auto-reply changes provided")
 		}
-		_, err := buildAutoReplyPatch(runtime)
+		_, err := buildAutoReplyPatch(runtime, false)
 		return err
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		mailboxID := resolveAutoReplyMailboxID(runtime)
-		patch, err := buildAutoReplyPatch(runtime)
+		patch, err := buildAutoReplyPatch(runtime, true)
 		if err != nil {
 			return err
 		}
@@ -142,7 +145,7 @@ func autoReplyHasModify(runtime *common.RuntimeContext) bool {
 	return false
 }
 
-func buildAutoReplyPatch(runtime *common.RuntimeContext) (map[string]interface{}, error) {
+func buildAutoReplyPatch(runtime *common.RuntimeContext, embedLocalImages bool) (map[string]interface{}, error) {
 	autoReply := map[string]interface{}{}
 	if runtime.Bool("enable") {
 		autoReply["enabled"] = true
@@ -154,7 +157,20 @@ func buildAutoReplyPatch(runtime *common.RuntimeContext) (map[string]interface{}
 	if err != nil {
 		return nil, err
 	}
+	hasLocalImages := false
+	if embedLocalImages && content != "" {
+		hasLocalImages = len(parseLocalImgs(content)) > 0
+		content, err = embedAutoReplyLocalImages(runtime, content)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if content != "" {
+		if hasLocalImages && int64(len(content)) > maxTemplateContentBytes {
+			return nil, mailFailedPreconditionError("auto-reply content + images exceed %d MB (got %.1f MB)",
+				maxTemplateContentBytes/(1024*1024),
+				float64(len(content))/1024/1024)
+		}
 		autoReply["content_html"] = content
 		if strings.TrimSpace(runtime.Str("summary")) == "" {
 			autoReply["content_summary"] = contentPreview(content, 200, resolveLang(runtime))
@@ -222,6 +238,41 @@ func resolveAutoReplyContent(runtime *common.RuntimeContext) (string, error) {
 		return "", mailValidationParamError("--content-file", "read --content-file %s: %v", path, err).WithCause(err)
 	}
 	return string(buf), nil
+}
+
+func embedAutoReplyLocalImages(runtime *common.RuntimeContext, content string) (string, error) {
+	imgs := parseLocalImgs(content)
+	pathToDataURI := make(map[string]string, len(imgs))
+	for _, img := range imgs {
+		dataURI, ok := pathToDataURI[img.Path]
+		if !ok {
+			buf, err := readAutoReplyImage(runtime, img.Path)
+			if err != nil {
+				return "", err
+			}
+			mimeType, err := filecheck.CheckInlineImageFormat(filepath.Base(img.Path), buf)
+			if err != nil {
+				return "", mailValidationParamError("--content", "inline image %s: %v", img.Path, err).WithCause(err)
+			}
+			dataURI = "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(buf)
+			pathToDataURI[img.Path] = dataURI
+		}
+		content = replaceImgSrcOnce(content, img.RawSrc, dataURI)
+	}
+	return content, nil
+}
+
+func readAutoReplyImage(runtime *common.RuntimeContext, path string) ([]byte, error) {
+	f, err := runtime.FileIO().Open(path)
+	if err != nil {
+		return nil, mailValidationParamError("--content", "open inline image %s: %v", path, err).WithCause(mailInputStatError(err))
+	}
+	defer f.Close()
+	buf, err := io.ReadAll(f)
+	if err != nil {
+		return nil, mailValidationParamError("--content", "read inline image %s: %v", path, err).WithCause(err)
+	}
+	return buf, nil
 }
 
 func parseAutoReplyDateMillis(flag, raw, timezone string, endOfDay bool) (string, error) {
