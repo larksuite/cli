@@ -20,6 +20,7 @@ var BaseRecordUpsert = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		recordRefFlag(false),
+		{Name: "user-id-type", Desc: "user ID type for user fields: open_id / union_id / user_id", Enum: []string{"open_id", "union_id", "user_id"}},
 		{Name: "json", Desc: `record field map JSON object, e.g. {"Name":"Alice","Status":"Todo"}; do not wrap in fields`, Required: true},
 	},
 	Tips: append([]string{
