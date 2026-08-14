@@ -9,6 +9,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -56,8 +57,8 @@ var MailAutoReplyModify = common.Shortcut{
 		{Name: "content", Desc: "Auto-reply HTML content. Plain text is accepted and sent as-is. Supports @file and - stdin.", Input: []string{common.File, common.Stdin}},
 		{Name: "content-file", Desc: "Read auto-reply content from a file path. Mutually exclusive with --content."},
 		{Name: "summary", Desc: "Plain-text content summary. Defaults to a preview generated from --content/--content-file."},
-		{Name: "start", Desc: "Start time as Unix seconds or ISO 8601, e.g. 2026-08-14T09:00:00+08:00."},
-		{Name: "end", Desc: "End time as Unix seconds or ISO 8601. Must be after --start when both are set."},
+		{Name: "start", Desc: "Start date as Unix timestamp or ISO 8601. Stored as the day's 00:00:00.000."},
+		{Name: "end", Desc: "End date as Unix timestamp or ISO 8601. Stored as the day's 23:59:59.999."},
 		{Name: "timezone", Desc: "Time zone for the auto-reply range, e.g. Asia/Shanghai. Defaults to the start time zone when it can be inferred."},
 		{Name: "internal-only", Type: "bool", Desc: "Only send auto-replies to tenant-internal senders."},
 		{Name: "external", Type: "bool", Desc: "Send auto-replies to external senders too."},
@@ -66,7 +67,7 @@ var MailAutoReplyModify = common.Shortcut{
 		mailboxID := resolveAutoReplyMailboxID(runtime)
 		patch, _ := buildAutoReplyPatch(runtime)
 		return common.NewDryRunAPI().
-			Desc("Modify mailbox auto-reply settings: GET current setting, merge provided flags, then PUT the full setting as top-level OpenAPI fields. Dry-run body shows only the flag-derived patch because the live current value is unavailable.").
+			Desc("Modify mailbox auto-reply settings. Dry-run body shows only the options provided by flags because the live current value is unavailable.").
 			GET(autoReplyPath(mailboxID)).
 			PUT(autoReplyPath(mailboxID)).
 			Body(patch)
@@ -162,15 +163,16 @@ func buildAutoReplyPatch(runtime *common.RuntimeContext) (map[string]interface{}
 	if summary := strings.TrimSpace(runtime.Str("summary")); summary != "" {
 		autoReply["content_summary"] = summary
 	}
+	timezone := strings.TrimSpace(runtime.Str("timezone"))
 	if start := strings.TrimSpace(runtime.Str("start")); start != "" {
-		ts, err := parseAutoReplyTimestamp("--start", start)
+		ts, err := parseAutoReplyDateMillis("--start", start, timezone, false)
 		if err != nil {
 			return nil, err
 		}
 		autoReply["start_time"] = ts
 	}
 	if end := strings.TrimSpace(runtime.Str("end")); end != "" {
-		ts, err := parseAutoReplyTimestamp("--end", end)
+		ts, err := parseAutoReplyDateMillis("--end", end, timezone, true)
 		if err != nil {
 			return nil, err
 		}
@@ -185,7 +187,7 @@ func buildAutoReplyPatch(runtime *common.RuntimeContext) (map[string]interface{}
 			}
 		}
 	}
-	if timezone := strings.TrimSpace(runtime.Str("timezone")); timezone != "" {
+	if timezone != "" {
 		autoReply["time_zone"] = timezone
 	} else if inferred := inferAutoReplyTimezone(runtime.Str("start")); inferred != "" {
 		autoReply["time_zone"] = inferred
@@ -222,15 +224,80 @@ func resolveAutoReplyContent(runtime *common.RuntimeContext) (string, error) {
 	return string(buf), nil
 }
 
-func parseAutoReplyTimestamp(flag, raw string) (string, error) {
-	if _, err := strconv.ParseInt(raw, 10, 64); err == nil {
-		return raw, nil
+func parseAutoReplyDateMillis(flag, raw, timezone string, endOfDay bool) (string, error) {
+	if value, err := strconv.ParseInt(raw, 10, 64); err == nil {
+		t := time.Unix(value, 0)
+		if value >= 1_000_000_000_000 {
+			t = time.UnixMilli(value)
+		}
+		loc, err := autoReplyLocation(timezone, t.Location())
+		if err != nil {
+			return "", err
+		}
+		return strconv.FormatInt(autoReplyDayBoundary(t.In(loc), endOfDay).UnixMilli(), 10), nil
 	}
-	t, err := parseISO8601(raw)
+
+	t, err := parseAutoReplyISODate(raw, timezone)
 	if err != nil {
 		return "", mailValidationParamError(flag, "%s must be Unix seconds or ISO 8601, got %q", flag, raw).WithCause(err)
 	}
-	return strconv.FormatInt(t.Unix(), 10), nil
+	return strconv.FormatInt(autoReplyDayBoundary(t, endOfDay).UnixMilli(), 10), nil
+}
+
+func parseAutoReplyISODate(raw, timezone string) (time.Time, error) {
+	if timezone != "" && !autoReplyHasExplicitZone(raw) {
+		loc, err := time.LoadLocation(timezone)
+		if err != nil {
+			return time.Time{}, mailValidationParamError("--timezone", "invalid --timezone %q", timezone).WithCause(err)
+		}
+		for _, layout := range []string{"2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02"} {
+			if t, err := time.ParseInLocation(layout, raw, loc); err == nil {
+				return t, nil
+			}
+		}
+	}
+	t, err := parseISO8601(raw)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if timezone != "" {
+		loc, err := time.LoadLocation(timezone)
+		if err != nil {
+			return time.Time{}, mailValidationParamError("--timezone", "invalid --timezone %q", timezone).WithCause(err)
+		}
+		t = t.In(loc)
+	}
+	return t, nil
+}
+
+func autoReplyLocation(timezone string, fallback *time.Location) (*time.Location, error) {
+	if timezone == "" {
+		return fallback, nil
+	}
+	loc, err := time.LoadLocation(timezone)
+	if err != nil {
+		return nil, mailValidationParamError("--timezone", "invalid --timezone %q", timezone).WithCause(err)
+	}
+	return loc, nil
+}
+
+func autoReplyDayBoundary(t time.Time, endOfDay bool) time.Time {
+	start := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+	if endOfDay {
+		return start.AddDate(0, 0, 1).Add(-time.Millisecond)
+	}
+	return start
+}
+
+func autoReplyHasExplicitZone(raw string) bool {
+	if strings.HasSuffix(raw, "Z") {
+		return true
+	}
+	tPos := strings.Index(raw, "T")
+	if tPos < 0 {
+		return false
+	}
+	return strings.ContainsAny(raw[tPos+1:], "+-")
 }
 
 func inferAutoReplyTimezone(rawStart string) string {

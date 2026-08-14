@@ -24,8 +24,8 @@ func TestMailAutoReply(t *testing.T) {
 				"auto_reply": map[string]interface{}{
 					"enabled":             true,
 					"content_summary":     "OOO",
-					"start_time":          "1786755600",
-					"end_time":            "1787014800",
+					"start_time":          "1786723200000",
+					"end_time":            "1787068799999",
 					"time_zone":           "Asia/Shanghai",
 					"only_send_to_tenant": true,
 				},
@@ -65,8 +65,8 @@ func TestMailAutoReplyModifyBuildsFriendlyPayload(t *testing.T) {
 					"enabled":             false,
 					"content_html":        "<p>Old</p>",
 					"content_summary":     "Old",
-					"start_time":          "1786669200",
-					"end_time":            "1786928400",
+					"start_time":          "1786636800000",
+					"end_time":            "1786895999999",
 					"time_zone":           "Asia/Shanghai",
 					"only_send_to_tenant": true,
 				},
@@ -89,8 +89,8 @@ func TestMailAutoReplyModifyBuildsFriendlyPayload(t *testing.T) {
 				"auto_reply": map[string]interface{}{
 					"enabled":             true,
 					"content_summary":     "Out today",
-					"start_time":          "1786755600",
-					"end_time":            "1787014800",
+					"start_time":          "1786723200000",
+					"end_time":            "1787068799999",
 					"time_zone":           "Asia/Shanghai",
 					"only_send_to_tenant": false,
 				},
@@ -117,8 +117,8 @@ func TestMailAutoReplyModifyBuildsFriendlyPayload(t *testing.T) {
 	assertAutoReplyPayloadValue(t, captured, "enabled", true)
 	assertAutoReplyPayloadValue(t, captured, "content_html", "<p>Out today</p>")
 	assertAutoReplyPayloadValue(t, captured, "content_summary", "Out today")
-	assertAutoReplyPayloadValue(t, captured, "start_time", "1786755600")
-	assertAutoReplyPayloadValue(t, captured, "end_time", "1787014800")
+	assertAutoReplyPayloadValue(t, captured, "start_time", "1786723200000")
+	assertAutoReplyPayloadValue(t, captured, "end_time", "1787068799999")
 	assertAutoReplyPayloadValue(t, captured, "time_zone", "Asia/Shanghai")
 	assertAutoReplyPayloadValue(t, captured, "only_send_to_tenant", false)
 	assertAutoReplyPayloadAbsent(t, captured, "auto_reply")
@@ -145,8 +145,8 @@ func TestMailAutoReplyContentFile(t *testing.T) {
 			"data": map[string]interface{}{
 				"auto_reply": map[string]interface{}{
 					"enabled":             true,
-					"start_time":          "1786755600",
-					"end_time":            "1787014800",
+					"start_time":          "1786723200000",
+					"end_time":            "1787068799999",
 					"time_zone":           "Asia/Shanghai",
 					"only_send_to_tenant": true,
 				},
