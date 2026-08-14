@@ -6,8 +6,11 @@ package slides
 import (
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -21,6 +24,9 @@ const testPageXML = `<slide><style><fill type="solid" color="rgba(0,0,0,1)"/></s
 	`<data><shape id="bUn" type="text"><content fontFamily="思源黑体"><p>hi</p></content></shape></data></slide>`
 
 func TestUpdateSlideDeclaredScopes(t *testing.T) {
+	// Pre-flight stays at the two slides scopes: an XML-only page needs neither
+	// wiki read nor media upload, and gating every call on them would force
+	// unrelated consent.
 	want := []string{"slides:presentation:update", "slides:presentation:write_only"}
 	for _, identity := range []string{"user", "bot"} {
 		if got := SlidesUpdateSlide.ScopesForIdentity(identity); !reflect.DeepEqual(got, want) {
@@ -28,8 +34,9 @@ func TestUpdateSlideDeclaredScopes(t *testing.T) {
 		}
 	}
 	got := SlidesUpdateSlide.DeclaredScopesForIdentity("user")
-	if !reflect.DeepEqual(got, append(append([]string{}, want...), "wiki:node:read")) {
-		t.Fatalf("declared scopes = %#v", got)
+	wantDeclared := []string{"slides:presentation:update", "slides:presentation:write_only", "wiki:node:read", "docs:document.media:upload"}
+	if !reflect.DeepEqual(got, wantDeclared) {
+		t.Fatalf("declared scopes = %#v, want %#v", got, wantDeclared)
 	}
 }
 
@@ -575,5 +582,304 @@ func TestUpdateSlideKeepsUpstreamHint(t *testing.T) {
 	}
 	if p.Hint != before {
 		t.Fatalf("hint was clobbered on a second pass: %q -> %q", before, p.Hint)
+	}
+}
+
+// testPageImageXML references the same local image twice so the dedupe path is
+// exercised: two <img> placeholders, one upload, both rewritten.
+const testPageImageXML = `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data>` +
+	`<img src="@./chart.png" topLeftX="10" topLeftY="10" width="100" height="100"/>` +
+	`<img src="@./chart.png" topLeftX="200" topLeftY="10" width="100" height="100"/>` +
+	`</data></slide>`
+
+// TestUpdateSlideUploadsImagePlaceholder is why +update-slide gained @path
+// support: before it, replacing a page with a fresh local image meant calling
+// +media-upload and splicing the token into the XML by hand. The same image
+// referenced twice must still upload once.
+func TestUpdateSlideUploadsImagePlaceholder(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "chart.png"), []byte("png-bytes"), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	withSlidesTestWorkingDir(t, dir)
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"file_token": "tok_chart"}},
+	})
+	replaceStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_img/slide/replace",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"revision_id": 11}},
+	}
+	reg.Register(replaceStub)
+
+	err := runSlidesShortcut(t, f, stdout, SlidesUpdateSlide, []string{
+		"+update-slide",
+		"--presentation", "pres_img",
+		"--slide-id", "pYw",
+		"--content", testPageImageXML,
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var body struct {
+		Parts []struct{ Replacement string } `json:"parts"`
+	}
+	if err := json.Unmarshal(replaceStub.CapturedBody, &body); err != nil {
+		t.Fatalf("decode body: %v raw=%s", err, replaceStub.CapturedBody)
+	}
+	if len(body.Parts) != 1 {
+		t.Fatalf("sent %d parts, want exactly 1: %s", len(body.Parts), replaceStub.CapturedBody)
+	}
+	content := body.Parts[0].Replacement
+	if strings.Contains(content, "@./chart.png") {
+		t.Fatalf("placeholder was not rewritten: %s", content)
+	}
+	if strings.Count(content, `src="tok_chart"`) != 2 {
+		t.Fatalf("both references should carry the uploaded token, got: %s", content)
+	}
+
+	data := decodeShortcutData(t, stdout)
+	if data["images_uploaded"] != float64(1) {
+		t.Fatalf("images_uploaded = %v, want 1 (deduped by path)", data["images_uploaded"])
+	}
+}
+
+// TestUpdateSlideMissingImageFailsBeforeAnyCall proves the placeholder check
+// runs in Validate: a bad path must not reach the API, or the caller is left
+// guessing whether the page was overwritten.
+func TestUpdateSlideMissingImageFailsBeforeAnyCall(t *testing.T) {
+	withSlidesTestWorkingDir(t, t.TempDir())
+
+	// Register nothing on purpose: httpmock rejects any unstubbed request, so
+	// reaching the API surfaces as "no stub for POST ..." rather than the
+	// ValidationError asserted below. That is the no-call assertion.
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+
+	err := runSlidesShortcut(t, f, stdout, SlidesUpdateSlide, []string{
+		"+update-slide",
+		"--presentation", "pres_abc",
+		"--slide-id", "pYw",
+		"--content", `<slide><data><img src="@./missing.png"/></data></slide>`,
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected a validation error for a missing image file")
+	}
+	// The Stat failure is wrapped, so a caller can still tell a missing file
+	// apart from an unreadable one without parsing the message.
+	assertValidationProblem(t, err, "--content", fs.ErrNotExist)
+	// The path came from an <img> inside the XML, not from an @file passed to
+	// --content. Naming the element keeps the caller from re-checking the flag
+	// argument.
+	if !strings.Contains(err.Error(), `<img src="@./missing.png">`) {
+		t.Fatalf("error should quote the <img> placeholder, got %v", err)
+	}
+}
+
+// TestUpdateSlideRejectsDirectoryImagePlaceholder covers the placeholder that
+// exists but is not a file: Stat succeeds, so only the mode check stops a
+// directory from being streamed at the upload endpoint.
+func TestUpdateSlideRejectsDirectoryImagePlaceholder(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "chart.png"), 0o750); err != nil {
+		t.Fatalf("make fixture dir: %v", err)
+	}
+	withSlidesTestWorkingDir(t, dir)
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	err := runSlidesShortcut(t, f, stdout, SlidesUpdateSlide, []string{
+		"+update-slide",
+		"--presentation", "pres_abc",
+		"--slide-id", "pYw",
+		"--content", `<slide><data><img src="@./chart.png"/></data></slide>`,
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected a validation error for a directory placeholder")
+	}
+	// No cause: Stat succeeded, so there is no underlying error to wrap.
+	assertValidationProblem(t, err, "--content", nil)
+	if !strings.Contains(err.Error(), "must be a regular file") {
+		t.Fatalf("err = %v, want the regular-file diagnosis", err)
+	}
+}
+
+// TestUpdateSlideDryRunPlansUploadsBeforeReplace proves the plan states the
+// upload cost up front. The uploads are the irreversible half of the command —
+// they land in the deck's media store even if the replace later fails — so a
+// caller who dry-runs first must be able to see them coming.
+func TestUpdateSlideDryRunPlansUploadsBeforeReplace(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "chart.png"), []byte("png-bytes"), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	withSlidesTestWorkingDir(t, dir)
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	slideXML := `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data>` +
+		`<img src="@./chart.png" topLeftX="10" topLeftY="10" width="100" height="100"/>` +
+		`</data></slide>`
+
+	err := runSlidesShortcut(t, f, stdout, SlidesUpdateSlide, []string{
+		"+update-slide",
+		"--presentation", "pres_img",
+		"--slide-id", "pYw",
+		"--content", slideXML,
+		"--dry-run",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeShortcutData(t, stdout)
+	if data["images_to_upload"] != float64(1) {
+		t.Fatalf("images_to_upload = %v, want 1", data["images_to_upload"])
+	}
+	steps := decodeShortcutDryRunAPI(t, stdout)
+	if len(steps) != 2 {
+		t.Fatalf("planned %d calls, want upload then replace: %#v", len(steps), steps)
+	}
+	upload := assertDryRunStep(t, steps, 0, "POST", "/open-apis/drive/v1/medias/upload_all")
+	uploadBody, _ := upload["body"].(map[string]interface{})
+	if uploadBody["parent_type"] != slidesMediaParentType {
+		t.Fatalf("upload parent_type = %v, want %q", uploadBody["parent_type"], slidesMediaParentType)
+	}
+	if uploadBody["parent_node"] != "pres_img" {
+		t.Fatalf("upload parent_node = %v, want pres_img", uploadBody["parent_node"])
+	}
+	assertDryRunStep(t, steps, 1, "POST", "/open-apis/slides_ai/v1/xml_presentations/pres_img/slide/replace")
+}
+
+// TestUpdateSlideDryRunPlansSingleReplaceWithoutImages keeps the plain case
+// honest: no @path means one POST and images_to_upload=0.
+func TestUpdateSlideDryRunPlansSingleReplaceWithoutImages(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	err := runSlidesShortcut(t, f, stdout, SlidesUpdateSlide, []string{
+		"+update-slide",
+		"--presentation", "pres_abc",
+		"--slide-id", "pYw",
+		"--content", testPageXML,
+		"--dry-run",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeShortcutData(t, stdout)
+	if data["images_to_upload"] != float64(0) {
+		t.Fatalf("images_to_upload = %v, want 0", data["images_to_upload"])
+	}
+	steps := decodeShortcutDryRunAPI(t, stdout)
+	if len(steps) != 1 {
+		t.Fatalf("planned %d calls, want a single POST: %#v", len(steps), steps)
+	}
+	assertDryRunStep(t, steps, 0, "POST", "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide/replace")
+}
+
+// TestUpdateSlideReportsUploadedImagesWhenReplaceFails covers the partial-
+// failure hint. The images are already in the deck's media store at that point,
+// so a blind retry silently uploads a second copy; the hint is the only thing
+// telling the caller they already landed.
+func TestUpdateSlideReportsUploadedImagesWhenReplaceFails(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "chart.png"), []byte("png-bytes"), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	withSlidesTestWorkingDir(t, dir)
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"file_token": "tok_chart"}},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_img/slide/replace",
+		Body:   map[string]interface{}{"code": 3350001, "msg": "invalid slide xml"},
+	})
+
+	slideXML := `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data>` +
+		`<img src="@./chart.png" topLeftX="10" topLeftY="10" width="100" height="100"/>` +
+		`</data></slide>`
+
+	err := runSlidesShortcut(t, f, stdout, SlidesUpdateSlide, []string{
+		"+update-slide",
+		"--presentation", "pres_img",
+		"--slide-id", "pYw",
+		"--content", slideXML,
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected the backend rejection to surface")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("err = %v, want typed problem metadata", err)
+	}
+	// The backend rejection must survive the appended hint: only the category
+	// separates a preserved API error from the Internal/Unknown fallback wrap.
+	if problem.Category != errs.CategoryAPI {
+		t.Fatalf("Category = %q, want %q: the backend rejection must survive the hint",
+			problem.Category, errs.CategoryAPI)
+	}
+	if !strings.Contains(problem.Hint, "1 image(s) were uploaded before the slide failed") {
+		t.Fatalf("Hint = %q, want the already-uploaded count", problem.Hint)
+	}
+}
+
+// TestUpdateSlideReportsProgressWhenUploadFails covers the other half of the
+// partial-failure story: the replace was never attempted, so the hint must say
+// the slide was not updated rather than leave the caller checking.
+func TestUpdateSlideReportsProgressWhenUploadFails(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "chart.png"), []byte("png-bytes"), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	withSlidesTestWorkingDir(t, dir)
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body:   map[string]interface{}{"code": 1061002, "msg": "params error"},
+	})
+	// The replace endpoint is deliberately unstubbed: reaching it would fail as
+	// "no stub for POST .../slide/replace", which is the no-write assertion.
+
+	slideXML := `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data>` +
+		`<img src="@./chart.png" topLeftX="10" topLeftY="10" width="100" height="100"/>` +
+		`</data></slide>`
+
+	err := runSlidesShortcut(t, f, stdout, SlidesUpdateSlide, []string{
+		"+update-slide",
+		"--presentation", "pres_img",
+		"--slide-id", "pYw",
+		"--content", slideXML,
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected the upload failure to surface")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("err = %v, want typed problem metadata", err)
+	}
+	if problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeInvalidParameters {
+		t.Fatalf("problem = %#v, want %s/%s: the upload rejection must survive the hint",
+			problem, errs.CategoryAPI, errs.SubtypeInvalidParameters)
+	}
+	if !strings.Contains(problem.Hint, "slide was not updated") {
+		t.Fatalf("Hint = %q, want it to state the slide was not updated", problem.Hint)
 	}
 }

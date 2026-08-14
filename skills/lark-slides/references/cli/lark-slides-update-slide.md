@@ -54,6 +54,22 @@ lark-cli slides +update-slide --as user \
 
 一次请求就能同时做完改样式、插入、删除、换备注、换背景——这是 `+replace-slide` 逐元素 part 做不到的（它没法寻址背景，也没有 move 操作）。
 
+## 本地图片：`@路径` 占位符
+
+`--content` 的 XML 里写 `<img src="@./chart.png" .../>`，CLI 会：先把每个不重复的本地文件上传到这份演示文稿（`parent_type=slide_file`），再把 `src` 替换成返回的 `file_token`，最后才整页写回。
+
+占位符路径按**执行命令时的 CWD** 解析，跟 `--content @file` 所在目录无关；`@./assets/x.png` 找的是 `$PWD/assets/x.png`。
+
+```bash
+lark-cli slides +update-slide --as user \
+  --presentation "$PRES" --slide-id "$SLIDE" \
+  --content '<slide xmlns="https://www.larkoffice.com/sml/2.0"><data><img src="@./chart.png" topLeftX="100" topLeftY="100" width="320" height="180"/></data></slide>'
+```
+
+- 文件不存在、不是普通文件、超过 20 MB，都在**调用任何接口之前**报错，不会留下半成品。
+- 去重只在**单次调用内**生效：多页共用同一张图时，逐页更新会把它每页重传一次。这种图先用 [`+media-upload`](lark-slides-media-upload.md) 传一次，把 `file_token` 写进各页的 `src`。
+- 整页只发一个 part，所以上传是这条命令里**唯一不可逆的一半**：图先落进演示文稿的 media store，若随后 replace 失败，报错 hint 会告诉你已经传了几张，直接重试会再传一份。先 `--dry-run` 可提前看到 `images_to_upload` 和上传步骤。
+
 ## 标准读-改-写流程
 
 ```bash
@@ -130,6 +146,7 @@ lark-cli slides +xml-get --as user \
 | `xml_presentation_id` | 实际写入的演示文稿 ID |
 | `slide_id` | 与传入相同——整页覆盖不换页 id |
 | `revision_id` | 写入后的新版本号 |
+| `images_uploaded` | 仅当 `--content` 带 `@` 占位符时出现：本次去重后实际上传的图片张数 |
 
 服务端拒绝这次写入时（`failed_reason` 非空）**不会**返回成功输出，而是报错并带上原因——单个 part 承载整页，任何失败都意味着页面没被写入。
 
@@ -143,4 +160,4 @@ lark-cli slides +xml-get --as user \
 | 3350001，原因包含 `not found` | `--presentation` 不匹配，或 `--slide-id` 对应的页面已被删除 | 检查 `--presentation` 和 `--slide-id`，再用 `slides +xml-get` 回读当前页面 ID |
 | 3350001，其他 invalid param | `--content` 的 XML 结构有问题（如 `<shape>` 缺 `<content/>`、包含服务端不支持的元素） | 按 [error-handling.md](../workflow/error-handling.md) 检查 `--content` 的 XML 结构 |
 | 3350002 not found | `--revision-id` 传了不存在的版本号 | 用 `-1` 或真实存在的 `revision_id` |
-| 1061004 / 403 | 当前身份对这份 PPT 没有编辑权限 | 检查是否拥有 `slides:presentation:update` 或 `slides:presentation:write_only` scope；wiki 链接另需 `wiki:node:read`；`--as bot` 还要求该 bot 对目标 PPT 有编辑权限 |
+| 1061004 / 403 | 当前身份对这份 PPT 没有编辑权限 | 检查是否拥有 `slides:presentation:update` 或 `slides:presentation:write_only` scope；wiki 链接另需 `wiki:node:read`，`@` 占位符另需 `docs:document.media:upload`；`--as bot` 还要求该 bot 对目标 PPT 有编辑权限 |

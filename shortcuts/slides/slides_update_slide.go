@@ -43,13 +43,16 @@ var SlidesUpdateSlide = common.Shortcut{
 	Description: "Apply a full <slide> XML to an existing slide, replacing the page in one request (keeps slide_id and page order)",
 	Risk:        "write",
 	Scopes:      []string{"slides:presentation:update", "slides:presentation:write_only"},
-	// wiki:node:read is required only when --presentation is a wiki URL.
-	ConditionalScopes: []string{"wiki:node:read"},
+	// Both extras are path-dependent, so they stay conditional rather than
+	// gating every call: wiki:node:read only when --presentation is a wiki URL,
+	// docs:document.media:upload only when --content carries @-placeholders.
+	ConditionalScopes: []string{"wiki:node:read", "docs:document.media:upload"},
 	AuthTypes:         []string{"user", "bot"},
 	Tips: []string{
 		"Read the page first with `slides +xml-get --slide-id <id>`, edit that XML, hand it back whole",
 		"Anything left out of --content is removed from the page — pass the full page, not a fragment",
 		"Editing one element is cheaper with `slides +replace-slide`",
+		"<img src=\"@path\"> placeholders resolve against the current directory, not the directory of an @file passed to --content, and are deduplicated per call",
 	},
 	Flags:    updateSlideFlags,
 	Validate: updateSlideValidate,
@@ -111,8 +114,22 @@ func updateSlideValidate(_ context.Context, runtime *common.RuntimeContext) erro
 	if err != nil {
 		return err
 	}
-	_, err = updateSlideContent(runtime, slideID)
-	return err
+	content, err := updateSlideContent(runtime, slideID)
+	if err != nil {
+		return err
+	}
+	// Check placeholder files before any API call so a typo in a path fails
+	// locally instead of after part of the page's images are uploaded.
+	placeholders := extractImagePlaceholderPaths([]string{content})
+	if len(placeholders) > 0 {
+		if err := runtime.EnsureScopes([]string{"docs:document.media:upload"}); err != nil {
+			return err
+		}
+		if err := validateImagePlaceholderFiles(runtime, "--content", placeholders); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func updateSlideDryRun(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -132,21 +149,47 @@ func updateSlideDryRun(_ context.Context, runtime *common.RuntimeContext) *commo
 		return fail(err)
 	}
 
+	placeholders := extractImagePlaceholderPaths([]string{content})
 	dry := common.NewDryRunAPI()
+
 	presentationID := ref.Token
+	step := 1
+	total := 1 + len(placeholders)
+	if ref.Kind == "wiki" {
+		total++
+	}
+
 	if ref.Kind == "wiki" {
 		presentationID = "<resolved_slides_token>"
-		dry.Desc("2-step orchestration: resolve wiki → replace slide").
+		dry.Desc(fmt.Sprintf("%d-step orchestration: resolve wiki → replace slide", total)).
 			GET("/open-apis/wiki/v2/spaces/get_node").
-			Desc("[1] Resolve wiki node to slides presentation").
+			Desc(fmt.Sprintf("[%d/%d] Resolve wiki node to slides presentation", step, total)).
 			Params(map[string]interface{}{"token": ref.Token})
+		step++
+	} else if len(placeholders) > 0 {
+		dry.Desc(fmt.Sprintf("Upload %d image(s) + replace slide %s", len(placeholders), slideID))
 	} else {
 		dry.Desc(fmt.Sprintf("Replace slide %s with the supplied page XML", slideID))
 	}
+
+	// Uploads run against the target presentation, so a wiki ref resolves to a
+	// real id first; the placeholder tokens are unknown until then.
+	for _, path := range placeholders {
+		appendSlidesUploadDryRun(dry, path, presentationID, step)
+		step++
+	}
+
+	descSuffix := ""
+	if len(placeholders) > 0 {
+		descSuffix = " (img placeholders auto-replaced)"
+	}
 	dry.POST(slideReplaceAPIPath(presentationID)).
+		Desc(fmt.Sprintf("[%d/%d] Replace slide%s", step, total, descSuffix)).
 		Params(updateSlideQuery(runtime, slideID)).
 		Body(map[string]interface{}{"parts": updateSlideParts(slideID, content)})
-	return dry.Set("slide_id", slideID).Set("content_bytes", len(content))
+	return dry.Set("slide_id", slideID).
+		Set("content_bytes", len(content)).
+		Set("images_to_upload", len(placeholders))
 }
 
 func updateSlideExecute(_ context.Context, runtime *common.RuntimeContext) error {
@@ -167,10 +210,35 @@ func updateSlideExecute(_ context.Context, runtime *common.RuntimeContext) error
 		return err
 	}
 
+	result := map[string]interface{}{
+		"xml_presentation_id": presentationID,
+		"slide_id":            slideID,
+	}
+
+	// Uploads run against the target presentation, so they can only happen
+	// after a wiki ref has been resolved to a real presentation id. A single
+	// part carries the whole page, so an upload failure here means nothing was
+	// written; the hint says how many images already landed so a retry does not
+	// silently upload a second copy.
+	placeholders := extractImagePlaceholderPaths([]string{content})
+	if len(placeholders) > 0 {
+		tokens, uploaded, err := uploadSlidesPlaceholders(runtime, presentationID, placeholders, "--content")
+		if err != nil {
+			return appendSlidesProgressHint(err, fmt.Sprintf("slide was not updated; %d of %d image(s) uploaded before failure", uploaded, len(placeholders)))
+		}
+		content = replaceImagePlaceholders(content, tokens)
+		result["images_uploaded"] = uploaded
+	}
+
 	data, err := runtime.CallAPITyped("POST", slideReplaceAPIPath(presentationID),
 		updateSlideQuery(runtime, slideID),
 		map[string]interface{}{"parts": updateSlideParts(slideID, content)})
 	if err != nil {
+		if len(placeholders) > 0 {
+			// The images are already in the deck's media store; say so, or a
+			// retry silently uploads a second copy of every file.
+			err = appendSlidesProgressHint(err, fmt.Sprintf("%d image(s) were uploaded before the slide failed; re-running will upload them again", len(placeholders)))
+		}
 		return enrichUpdateSlideError(err)
 	}
 
@@ -182,15 +250,15 @@ func updateSlideExecute(_ context.Context, runtime *common.RuntimeContext) error
 		if updateSlideReasonIsNotFound(reason) {
 			hint = updateSlideNotFoundHint
 		}
-		return errs.NewAPIError(errs.SubtypeInvalidParameters,
+		err := errs.NewAPIError(errs.SubtypeInvalidParameters,
 			"slide %s was not updated: %s", slideID, reason).
 			WithHint(hint)
+		if len(placeholders) > 0 {
+			return appendSlidesProgressHint(err, fmt.Sprintf("%d image(s) were uploaded before the slide failed; re-running will upload them again", len(placeholders)))
+		}
+		return err
 	}
 
-	result := map[string]interface{}{
-		"xml_presentation_id": presentationID,
-		"slide_id":            slideID,
-	}
 	if v, ok := data["revision_id"]; ok {
 		result["revision_id"] = v
 	}
