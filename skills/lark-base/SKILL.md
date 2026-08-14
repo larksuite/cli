@@ -38,6 +38,8 @@ metadata:
 - **低频：在线复制。** 复制整个 Base 使用 `+base-copy`，复制 Base 内单张数据表使用 `+table-copy`。
 - **更低频：文件导入/导出。** 本地文件与 Base 之间的导入/导出转 `lark-drive`；具体格式、参数、路径限制和仅结构导出规则由 `lark-drive` 负责，导入完成后再回到 Base 命令。
 - 认证、初始化、scope、身份切换、权限不足恢复属于 `lark-shared`；Base 文档只保留会影响 Base 路径选择的权限规则。
+- 用户给本地附件路径时，只检查当前工作目录下的精确路径和一次 `files/<name>` 相对路径；找不到就先报告缺失文件并停止，不要扩大到父目录、临时目录、全仓库搜索或派子 agent。
+- Base 业务命令返回 `authentication/token_missing` 时，停止继续 Base 探测；简短告知用户先运行 `lark-cli auth login --domain base` 或按错误中的 missing scope 授权。不要为了当前 Base 任务再查 auth help、生成/读取二维码图片，除非用户明确要求你代发起授权或要二维码。
 
 ## 应用模式与 Workspace 心智模型
 
