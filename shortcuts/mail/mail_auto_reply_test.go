@@ -22,12 +22,12 @@ func TestMailAutoReply(t *testing.T) {
 			"msg":  "ok",
 			"data": map[string]interface{}{
 				"auto_reply": map[string]interface{}{
-					"enable":                 true,
-					"content_summary":        "OOO",
-					"start_time":             "1786755600",
-					"end_time":               "1787014800",
-					"timezone":               "Asia/Shanghai",
-					"only_send_inner_sender": true,
+					"enabled":             true,
+					"content_summary":     "OOO",
+					"start_time":          "1786755600",
+					"end_time":            "1787014800",
+					"time_zone":           "Asia/Shanghai",
+					"only_send_to_tenant": true,
 				},
 			},
 		},
@@ -43,8 +43,8 @@ func TestMailAutoReply(t *testing.T) {
 	if !ok {
 		t.Fatalf("auto_reply missing from output: %#v", data)
 	}
-	if autoReply["enable"] != true {
-		t.Fatalf("enable = %#v, want true", autoReply["enable"])
+	if autoReply["enabled"] != true {
+		t.Fatalf("enabled = %#v, want true", autoReply["enabled"])
 	}
 	if autoReply["content_summary"] != "OOO" {
 		t.Fatalf("content_summary = %#v", autoReply["content_summary"])
@@ -62,13 +62,13 @@ func TestMailAutoReplyModifyBuildsFriendlyPayload(t *testing.T) {
 			"msg":  "ok",
 			"data": map[string]interface{}{
 				"auto_reply": map[string]interface{}{
-					"enable":                 false,
-					"content":                "<p>Old</p>",
-					"content_summary":        "Old",
-					"start_time":             "1786669200",
-					"end_time":               "1786928400",
-					"timezone":               "Asia/Shanghai",
-					"only_send_inner_sender": true,
+					"enabled":             false,
+					"content_html":        "<p>Old</p>",
+					"content_summary":     "Old",
+					"start_time":          "1786669200",
+					"end_time":            "1786928400",
+					"time_zone":           "Asia/Shanghai",
+					"only_send_to_tenant": true,
 				},
 			},
 		},
@@ -87,12 +87,12 @@ func TestMailAutoReplyModifyBuildsFriendlyPayload(t *testing.T) {
 			"msg":  "ok",
 			"data": map[string]interface{}{
 				"auto_reply": map[string]interface{}{
-					"enable":                 true,
-					"content_summary":        "Out today",
-					"start_time":             "1786755600",
-					"end_time":               "1787014800",
-					"timezone":               "Asia/Shanghai",
-					"only_send_inner_sender": false,
+					"enabled":             true,
+					"content_summary":     "Out today",
+					"start_time":          "1786755600",
+					"end_time":            "1787014800",
+					"time_zone":           "Asia/Shanghai",
+					"only_send_to_tenant": false,
 				},
 			},
 		},
@@ -118,13 +118,17 @@ func TestMailAutoReplyModifyBuildsFriendlyPayload(t *testing.T) {
 	if !ok {
 		t.Fatalf("auto_reply missing from request: %#v", captured)
 	}
-	assertAutoReplyPayloadValue(t, autoReply, "enable", true)
-	assertAutoReplyPayloadValue(t, autoReply, "content", "<p>Out today</p>")
+	assertAutoReplyPayloadValue(t, autoReply, "enabled", true)
+	assertAutoReplyPayloadValue(t, autoReply, "content_html", "<p>Out today</p>")
 	assertAutoReplyPayloadValue(t, autoReply, "content_summary", "Out today")
 	assertAutoReplyPayloadValue(t, autoReply, "start_time", "1786755600")
 	assertAutoReplyPayloadValue(t, autoReply, "end_time", "1787014800")
-	assertAutoReplyPayloadValue(t, autoReply, "timezone", "Asia/Shanghai")
-	assertAutoReplyPayloadValue(t, autoReply, "only_send_inner_sender", false)
+	assertAutoReplyPayloadValue(t, autoReply, "time_zone", "Asia/Shanghai")
+	assertAutoReplyPayloadValue(t, autoReply, "only_send_to_tenant", false)
+	assertAutoReplyPayloadAbsent(t, autoReply, "enable")
+	assertAutoReplyPayloadAbsent(t, autoReply, "content")
+	assertAutoReplyPayloadAbsent(t, autoReply, "timezone")
+	assertAutoReplyPayloadAbsent(t, autoReply, "only_send_inner_sender")
 }
 
 func TestMailAutoReplyContentFile(t *testing.T) {
@@ -143,11 +147,11 @@ func TestMailAutoReplyContentFile(t *testing.T) {
 			"msg":  "ok",
 			"data": map[string]interface{}{
 				"auto_reply": map[string]interface{}{
-					"enable":                 true,
-					"start_time":             "1786755600",
-					"end_time":               "1787014800",
-					"timezone":               "Asia/Shanghai",
-					"only_send_inner_sender": true,
+					"enabled":             true,
+					"start_time":          "1786755600",
+					"end_time":            "1787014800",
+					"time_zone":           "Asia/Shanghai",
+					"only_send_to_tenant": true,
 				},
 			},
 		},
@@ -174,10 +178,10 @@ func TestMailAutoReplyContentFile(t *testing.T) {
 	reg.Verify(t)
 
 	autoReply := captured["auto_reply"].(map[string]interface{})
-	assertAutoReplyPayloadValue(t, autoReply, "content", "<p>From file</p>")
+	assertAutoReplyPayloadValue(t, autoReply, "content_html", "<p>From file</p>")
 	assertAutoReplyPayloadValue(t, autoReply, "content_summary", "From file")
-	assertAutoReplyPayloadValue(t, autoReply, "enable", true)
-	assertAutoReplyPayloadValue(t, autoReply, "only_send_inner_sender", true)
+	assertAutoReplyPayloadValue(t, autoReply, "enabled", true)
+	assertAutoReplyPayloadValue(t, autoReply, "only_send_to_tenant", true)
 }
 
 func TestMailAutoReplyRejectsConflictingFlags(t *testing.T) {
@@ -212,5 +216,12 @@ func assertAutoReplyPayloadValue(t *testing.T, payload map[string]interface{}, k
 	t.Helper()
 	if got := payload[key]; got != want {
 		t.Fatalf("%s = %#v, want %#v (payload=%#v)", key, got, want, payload)
+	}
+}
+
+func assertAutoReplyPayloadAbsent(t *testing.T, payload map[string]interface{}, key string) {
+	t.Helper()
+	if _, ok := payload[key]; ok {
+		t.Fatalf("%s should be absent (payload=%#v)", key, payload)
 	}
 }

@@ -61,13 +61,13 @@ lark-cli mail +auto-reply-modify --as user --disable
   "ok": true,
   "data": {
     "auto_reply": {
-      "enable": true,
-      "content": "<p>我正在休假，回来后回复。</p>",
+      "enabled": true,
+      "content_html": "<p>我正在休假，回来后回复。</p>",
       "content_summary": "我正在休假，回来后回复。",
       "start_time": "1786755600",
       "end_time": "1787014800",
-      "timezone": "Asia/Shanghai",
-      "only_send_inner_sender": false
+      "time_zone": "Asia/Shanghai",
+      "only_send_to_tenant": false
     }
   }
 }
@@ -77,10 +77,10 @@ lark-cli mail +auto-reply-modify --as user --disable
 
 | 字段 | 说明 |
 |------|------|
-| `enable` | 是否开启自动回复 |
-| `content` | 自动回复 HTML 正文 |
+| `enabled` | 是否开启自动回复 |
+| `content_html` | 自动回复 HTML 正文 |
 | `content_summary` | 自动回复摘要 |
 | `start_time` | Unix 秒级开始时间字符串 |
 | `end_time` | Unix 秒级结束时间字符串 |
-| `timezone` | 自动回复时间范围对应的时区 |
-| `only_send_inner_sender` | 是否仅对租户内发件人发送自动回复 |
+| `time_zone` | 自动回复时间范围对应的时区 |
+| `only_send_to_tenant` | 是否仅对租户内发件人发送自动回复 |

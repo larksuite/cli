@@ -144,17 +144,17 @@ func autoReplyHasModify(runtime *common.RuntimeContext) bool {
 func buildAutoReplyPatch(runtime *common.RuntimeContext) (map[string]interface{}, error) {
 	autoReply := map[string]interface{}{}
 	if runtime.Bool("enable") {
-		autoReply["enable"] = true
+		autoReply["enabled"] = true
 	}
 	if runtime.Bool("disable") {
-		autoReply["enable"] = false
+		autoReply["enabled"] = false
 	}
 	content, err := resolveAutoReplyContent(runtime)
 	if err != nil {
 		return nil, err
 	}
 	if content != "" {
-		autoReply["content"] = content
+		autoReply["content_html"] = content
 		if strings.TrimSpace(runtime.Str("summary")) == "" {
 			autoReply["content_summary"] = contentPreview(content, 200, resolveLang(runtime))
 		}
@@ -186,15 +186,15 @@ func buildAutoReplyPatch(runtime *common.RuntimeContext) (map[string]interface{}
 		}
 	}
 	if timezone := strings.TrimSpace(runtime.Str("timezone")); timezone != "" {
-		autoReply["timezone"] = timezone
+		autoReply["time_zone"] = timezone
 	} else if inferred := inferAutoReplyTimezone(runtime.Str("start")); inferred != "" {
-		autoReply["timezone"] = inferred
+		autoReply["time_zone"] = inferred
 	}
 	if runtime.Bool("internal-only") {
-		autoReply["only_send_inner_sender"] = true
+		autoReply["only_send_to_tenant"] = true
 	}
 	if runtime.Bool("external") {
-		autoReply["only_send_inner_sender"] = false
+		autoReply["only_send_to_tenant"] = false
 	}
 	if len(autoReply) == 0 {
 		return nil, mailValidationError("no auto-reply changes provided")
@@ -258,10 +258,32 @@ func mergeAutoReply(current map[string]interface{}, patch map[string]interface{}
 			merged[k] = v
 		}
 	}
+	merged = normalizeAutoReplyFields(merged)
 	for k, v := range patch {
 		merged[k] = v
 	}
 	return merged
+}
+
+func normalizeAutoReplyFields(in map[string]interface{}) map[string]interface{} {
+	out := map[string]interface{}{}
+	for k, v := range in {
+		out[k] = v
+	}
+	moveAutoReplyField(out, "enable", "enabled")
+	moveAutoReplyField(out, "content", "content_html")
+	moveAutoReplyField(out, "timezone", "time_zone")
+	moveAutoReplyField(out, "only_send_inner_sender", "only_send_to_tenant")
+	return out
+}
+
+func moveAutoReplyField(values map[string]interface{}, oldKey, newKey string) {
+	if v, ok := values[oldKey]; ok {
+		if _, exists := values[newKey]; !exists {
+			values[newKey] = v
+		}
+		delete(values, oldKey)
+	}
 }
 
 func outputAutoReply(runtime *common.RuntimeContext, data map[string]interface{}, message string) error {
@@ -269,6 +291,7 @@ func outputAutoReply(runtime *common.RuntimeContext, data map[string]interface{}
 	if nested, ok := data["auto_reply"].(map[string]interface{}); ok {
 		autoReply = nested
 	}
+	autoReply = normalizeAutoReplyFields(autoReply)
 	runtime.OutFormat(
 		map[string]interface{}{"auto_reply": autoReply},
 		&output.Meta{Count: 1},
@@ -276,7 +299,7 @@ func outputAutoReply(runtime *common.RuntimeContext, data map[string]interface{}
 			if message != "" {
 				fmt.Fprintln(w, message)
 			}
-			if enabled, ok := autoReply["enable"].(bool); ok {
+			if enabled, ok := autoReply["enabled"].(bool); ok {
 				fmt.Fprintf(w, "enabled: %v\n", enabled)
 			}
 			if summary, ok := autoReply["content_summary"].(string); ok && summary != "" {
@@ -288,10 +311,10 @@ func outputAutoReply(runtime *common.RuntimeContext, data map[string]interface{}
 			if end, ok := autoReply["end_time"].(string); ok && end != "" {
 				fmt.Fprintf(w, "end_time: %s\n", end)
 			}
-			if timezone, ok := autoReply["timezone"].(string); ok && timezone != "" {
+			if timezone, ok := autoReply["time_zone"].(string); ok && timezone != "" {
 				fmt.Fprintf(w, "timezone: %s\n", timezone)
 			}
-			if innerOnly, ok := autoReply["only_send_inner_sender"].(bool); ok {
+			if innerOnly, ok := autoReply["only_send_to_tenant"].(bool); ok {
 				fmt.Fprintf(w, "internal_only: %v\n", innerOnly)
 			}
 		},
