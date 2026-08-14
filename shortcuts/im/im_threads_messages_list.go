@@ -24,15 +24,16 @@ const (
 )
 
 var ImThreadsMessagesList = common.Shortcut{
-	Service:     "im",
-	Command:     "+threads-messages-list",
-	Description: "List messages in a thread; user/bot; accepts om_/omt_ input, resolves message IDs to thread_id, supports --order asc/desc sorting, auto-pagination",
-	Risk:        "read",
-	Scopes:      []string{"im:message:readonly"},
-	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "im:message.reactions:read"},
-	BotScopes:   []string{"im:message.group_msg", "im:message.p2p_msg:readonly", "im:message.reactions:read"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	Service:           "im",
+	Command:           "+threads-messages-list",
+	Description:       "List messages in a thread; user/bot; accepts om_/omt_ input, resolves message IDs to thread_id, supports --order asc/desc sorting, auto-pagination",
+	Risk:              "read",
+	Scopes:            []string{"im:message:readonly"},
+	UserScopes:        []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user"},
+	BotScopes:         []string{"im:message.group_msg", "im:message.p2p_msg:readonly"},
+	ConditionalScopes: []string{messageReactionReadScope},
+	AuthTypes:         []string{"user", "bot"},
+	HasFormat:         true,
 	Flags: append([]common.Flag{
 		{Name: "thread", Aliases: []string{"thread-id"}, Desc: "thread ID (om_xxx or omt_xxx)", Required: true},
 		{Name: "order", Aliases: []string{"sort"}, Default: "asc", Desc: "sort order: asc | desc", Enum: []string{"asc", "desc"}},
@@ -88,7 +89,10 @@ var ImThreadsMessagesList = common.Shortcut{
 		if _, err := common.ValidatePageSizeTyped(runtime, "page-size", threadsMessagesListDefaultPageSize, 1, threadsMessagesListMaxPageSize); err != nil {
 			return err
 		}
-		return common.ValidatePageAllFlags(runtime)
+		if err := common.ValidatePageAllFlags(runtime); err != nil {
+			return err
+		}
+		return ensureMessageReactionScope(runtime)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		pageSize, err := common.ValidatePageSizeTyped(runtime, "page-size", threadsMessagesListDefaultPageSize, 1, threadsMessagesListMaxPageSize)
