@@ -698,7 +698,10 @@ func validateDropdownRanges(runtime *common.RuntimeContext) ([]string, error) {
 			return nil, sheetsValidationForFlag("ranges", "--ranges[%d] must be a string", i)
 		}
 		s = strings.TrimSpace(s)
-		if !strings.Contains(s, "!") {
+		// scanSheetQualifier rather than a literal "!" scan: the separator has
+		// four equal spellings, so a full-width "工作表1！A1:B2" does carry a
+		// prefix and must not be told it doesn't.
+		if _, _, ok := scanSheetQualifier(s); !ok {
 			return nil, sheetsValidationForFlag("ranges", "--ranges[%d] (%q) must include a sheet prefix", i, s)
 		}
 		// Validate the sheet!range shape up front so malformed entries like
@@ -720,10 +723,19 @@ func validateDropdownRanges(runtime *common.RuntimeContext) ([]string, error) {
 }
 
 // splitSheetPrefixedRange splits "sheet1!A2:A100" into ("sheet1", "A2:A100").
+//
+// The grammar is splitRangeSheetPrefix's, so every --ranges item parses the way
+// the same prefix does in --range: the full-width and backslash-escaped
+// separators count, and a quoted name is unwrapped. The sheet returned here
+// goes straight into a sub-op's "sheet_name", so keeping the quotes would ship
+// a name the backend cannot find ('My Sheet' instead of My Sheet).
+//
+// err distinguishes only the malformed cases (empty side); "no prefix at all"
+// is the caller's own check, which names the flag and the item index.
 func splitSheetPrefixedRange(rng string) (sheet, sub string, err error) {
-	idx := strings.Index(rng, "!")
-	if idx <= 0 || idx == len(rng)-1 {
+	sheet, sub, ok := splitRangeSheetPrefix(rng)
+	if !ok {
 		return "", "", sheetsValidationForFlag("range", "range %q must use sheet!range form", rng)
 	}
-	return strings.TrimSpace(rng[:idx]), strings.TrimSpace(rng[idx+1:]), nil
+	return sheet, sub, nil
 }

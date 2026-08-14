@@ -27,6 +27,59 @@ func TestBatchOperations_PreflightCellBudgetBeforeMaterialization(t *testing.T) 
 	requireValidation(t, err, "over the 200000-cell safety cap")
 }
 
+// TestBatchOperations_PreflightBudgetsEnvelopedCells is the same guard on the
+// typed-cells carrier, in the habitual shape: the payload arrives wrapped in a
+// {"cells": …} envelope, which the preflight has to see through — it runs
+// before the translator's normalizers, and a shape it scores as zero cells is
+// one that materializes with no budget applied at all.
+func TestBatchOperations_PreflightBudgetsEnvelopedCells(t *testing.T) {
+	t.Parallel()
+	row := make([]interface{}, maxStampMatrixCells/2+1)
+	for i := range row {
+		row[i] = map[string]interface{}{"value": 1}
+	}
+	ops := []interface{}{}
+	for i := 0; i < 2; i++ {
+		ops = append(ops, subOp("+cells-set", map[string]interface{}{
+			"sheet_name": "S1",
+			"range":      "A1:A1",
+			"cells":      map[string]interface{}{"cells": []interface{}{row}},
+		}))
+	}
+	_, err := translateBatchOperations(ops, testToken)
+	requireValidation(t, err, "over the 200000-cell safety cap")
+}
+
+// TestEstimatedBatchOpCells_CountsAcceptedCellsShapes pins the preflight
+// estimator against every --cells shape the translator accepts. It runs before
+// any normalizer, so a shape it fails to recognize scores zero and materializes
+// outside the budget — which is exactly what the preflight exists to prevent.
+func TestEstimatedBatchOpCells_CountsAcceptedCellsShapes(t *testing.T) {
+	t.Parallel()
+	row := []interface{}{map[string]interface{}{"value": 1}, map[string]interface{}{"value": 2}}
+	matrix := []interface{}{row, row}
+	cases := []struct {
+		name  string
+		input map[string]interface{}
+		want  int64
+	}{
+		{"wire shape", map[string]interface{}{"range": "A1:B2", "cells": matrix}, 4},
+		{"cells envelope", map[string]interface{}{"range": "A1:B2", "cells": map[string]interface{}{"cells": matrix}}, 4},
+		{"values alias", map[string]interface{}{"range": "A1:B2", "values": matrix}, 4},
+		{"lone cell object", map[string]interface{}{"range": "A1", "cells": map[string]interface{}{"value": 1}}, 1},
+		{"scalar rows", map[string]interface{}{"range": "A1:B2", "cells": []interface{}{[]interface{}{1, 2}}}, 2},
+		{"malformed stays zero", map[string]interface{}{"range": "A1:B2", "cells": "A1"}, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := estimatedBatchOpCells(subOp("+cells-set", tc.input)); got != tc.want {
+				t.Errorf("estimatedBatchOpCells = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
 // off-vocabulary sub-op input key must error with a did-you-mean instead of
 // being silently ignored (silent ignore surfaced as misleading "missing
 // required flag" errors — the top batch error cluster in eval traces).

@@ -757,7 +757,17 @@ func estimatedBatchOpCells(raw interface{}) int64 {
 		return nil
 	}
 	if shortcut == "+cells-set" {
-		cells, ok := lookup("cells").([]interface{})
+		// The payload is still in whatever shape the caller sent: the
+		// translator's normalizers run later, so counting the raw value alone
+		// would score a {"cells": …} envelope, a lone cell object or a payload
+		// spelled "values" as zero and let it materialize outside the budget.
+		// Shape-only unwrapping, no mutation — the per-cell rewrites are the
+		// translator's to apply and change no count.
+		payload := lookup("cells")
+		if payload == nil {
+			payload = lookup("values")
+		}
+		cells, ok := wrapLoneCellObject(unwrapCellsEnvelope(payload)).([]interface{})
 		if !ok {
 			return 0
 		}
