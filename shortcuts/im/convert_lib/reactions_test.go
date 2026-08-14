@@ -437,3 +437,36 @@ func TestEnrichReactions_MissingScopeMarksAllNodes(t *testing.T) {
 		t.Fatalf("nested thread reply missing reactions_error flag: %#v", child)
 	}
 }
+
+// TestEnrichReactions_MissingScopeMarksInterfaceBackedNestedNodes pins the
+// []interface{} branch of markAllReactionNodes: interface-backed thread
+// replies must be recursed into so grandchildren are flagged too.
+func TestEnrichReactions_MissingScopeMarksInterfaceBackedNestedNodes(t *testing.T) {
+	apiCalled := false
+	runtime := newBotConvertlibRuntimeWithScopes(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		apiCalled = true
+		return convertlibJSONResponse(200, map[string]interface{}{"code": 0, "data": map[string]interface{}{}}), nil
+	}), "im:message:readonly")
+
+	grandchild := map[string]interface{}{"message_id": "om_a2"}
+	child := map[string]interface{}{"message_id": "om_a1"}
+	child["thread_replies"] = []interface{}{grandchild}
+	parent := map[string]interface{}{"message_id": "om_a"}
+	parent["thread_replies"] = []interface{}{child}
+	messages := []map[string]interface{}{parent}
+
+	EnrichReactions(runtime, messages)
+
+	if apiCalled {
+		t.Fatalf("batch_query must not be called when the reactions scope is missing")
+	}
+	if parent["reactions_error"] != true {
+		t.Fatalf("parent missing reactions_error flag: %#v", parent)
+	}
+	if child["reactions_error"] != true {
+		t.Fatalf("interface-backed reply missing reactions_error flag: %#v", child)
+	}
+	if grandchild["reactions_error"] != true {
+		t.Fatalf("grandchild (nested inside interface-backed reply) missing reactions_error flag: %#v", grandchild)
+	}
+}

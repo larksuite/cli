@@ -142,11 +142,13 @@ func markAllReactionNodes(messages []map[string]interface{}) {
 		case []map[string]interface{}:
 			markAllReactionNodes(nested)
 		case []interface{}:
+			typed := make([]map[string]interface{}, 0, len(nested))
 			for _, raw := range nested {
 				if m, ok := raw.(map[string]interface{}); ok {
-					m["reactions_error"] = true
+					typed = append(typed, m)
 				}
 			}
+			markAllReactionNodes(typed)
 		}
 	}
 }
