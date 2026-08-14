@@ -255,12 +255,8 @@ const suiteFixture = `---
 name: lark-suite
 description: 飞书/Lark 聚合能力入口：管理飞书/Lark 产品能力（日历、邮件等）。当用户需要时使用。
 ---
-<!-- lark-suite-route:lark-calendar:start -->
 - lark-calendar（日历）: calendar
-<!-- lark-suite-route:lark-calendar:end -->
-<!-- lark-suite-route:lark-mail:start -->
 - lark-mail（邮件）: mail
-<!-- lark-suite-route:lark-mail:end -->
 `
 
 func TestSyncSkillsSeparateRetriesOtherDomain(t *testing.T) {
@@ -560,7 +556,7 @@ func TestPrepareSuiteCropsRoutesKeywordsAndReferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	content := string(raw)
-	if strings.Contains(content, "lark-mail") || strings.Contains(content, "日历、邮件等") || !strings.Contains(content, "（日历等）") {
+	if strings.Contains(content, "lark-mail") || strings.Contains(content, "日历、邮件等") || !strings.Contains(content, "（日历等）") || !strings.Contains(content, "- lark-calendar（日历）: calendar") {
 		t.Fatalf("unexpected cropped SKILL.md:\n%s", content)
 	}
 	if _, err := os.Stat(filepath.Join(suite, "references", "lark-mail")); !os.IsNotExist(err) {

@@ -122,19 +122,20 @@ func prepareSuite(suitePath string, official, target []string) error {
 }
 
 func cropSuiteRoutes(content string, removed, target []string) (string, error) {
+	routeLine := func(name string) *regexp.Regexp {
+		return regexp.MustCompile(`(?m)^- ` + regexp.QuoteMeta(name) + `(?:（[^）\n]*）)?:[^\n]*(?:\n|$)`)
+	}
+
 	for _, name := range removed {
-		start := "<!-- lark-suite-route:" + name + ":start -->"
-		end := "<!-- lark-suite-route:" + name + ":end -->"
-		block := regexp.MustCompile(`(?s)` + regexp.QuoteMeta(start) + `\n.*?` + regexp.QuoteMeta(end) + `\n?`)
-		if len(block.FindAllStringIndex(content, -1)) != 1 {
+		line := routeLine(name)
+		if len(line.FindAllStringIndex(content, -1)) != 1 {
 			return "", fmt.Errorf("suite route for %s is missing or duplicated", name)
 		}
-		content = block.ReplaceAllString(content, "")
+		content = line.ReplaceAllString(content, "")
 	}
 
 	for _, name := range target {
-		marker := "<!-- lark-suite-route:" + name + ":start -->"
-		if strings.Count(content, marker) != 1 {
+		if len(routeLine(name).FindAllStringIndex(content, -1)) != 1 {
 			return "", fmt.Errorf("cropped suite route for %s is missing or duplicated", name)
 		}
 	}
