@@ -58,6 +58,13 @@ metadata:
 - 文档嵌入 Base 标签：直接读取 `<bitable>` / `<base_refer>` 的 `token` 作为 `--base-token`，`table-id` 作为 `--table-id`，`view-id` 作为 `--view-id`；孤立 raw token 不走 `+url-resolve`。
 - 仍无法定位且用户不是要新建 Base 时，先反问用户要操作哪一个 Base；用户要新建时才用 `+base-create`。
 
+## 字段更新固定流程
+
+`+field-get` 读取目标字段 → 按 [字段 JSON 规范](references/lark-base-field-json.md) 移除 `id` 等只读属性、保留其余全部可写配置并只修改用户指定的属性 → 首次使用完整配置调用 `+field-update`；用户已明确指定当前目标、变更内容并确认执行时，这个首次调用必须直接使用 `+field-update --yes`。
+
+- 每次调用 `+field-update` 前都单独调用一次 `+field-get`；字段刚由 `+field-create` 创建且创建响应已包含 `field` 时，也以随后的 `+field-get` 返回作为更新 payload 的唯一来源。`+field-update` 是 PUT 全量更新，即使只改字段名，首次调用的 payload 也从读回的完整可写配置派生。
+- 上述确认只覆盖这一次明确的目标和操作；读回后如果发现实际修改会超出用户要求，先说明额外影响并重新确认，再执行更新。
+
 ## 快速路由
 
 | 用户目标 | 优先命令 | 何时读 reference |
