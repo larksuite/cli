@@ -3,9 +3,17 @@
     "en": { "title": "Approval", "description": "Approval instance, and task management" },
     "zh": { "title": "审批", "description": "审批实例、审批任务管理" }
   },
+  "application": {
+    "en": { "title": "Application", "description": "Open Platform app self-management: slash commands for the currently bound app" },
+    "zh": { "title": "应用管理", "description": "开放平台应用自管理：当前绑定应用的斜杠指令管理" }
+  },
   "apps": {
     "en": { "title": "Apps", "description": "Develop, deploy HTML, web pages and applications" },
     "zh": { "title": "应用", "description": "开发、部署 HTML、Web 页面和应用" }
+  },
+  "attendance": {
+    "en": { "title": "Attendance", "description": "Attendance check-in result query" },
+    "zh": { "title": "考勤打卡", "description": "考勤打卡结果查询" }
   },
   "base": {
     "en": { "title": "Base", "description": "Table, field, record, view, dashboard, workflow, form, role & permission management" },
@@ -42,6 +50,10 @@
   "markdown": {
     "en": { "title": "Markdown", "description": "Drive-native Markdown file create, fetch, and overwrite" },
     "zh": { "title": "Markdown", "description": "Drive 原生 Markdown 文件的创建、读取和覆盖更新" }
+  },
+  "mindnotes": {
+    "en": { "title": "Mindnote", "description": "Mindnote node listing, creation, and update" },
+    "zh": { "title": "思维笔记", "description": "思维笔记节点查询、创建和更新" }
   },
   "minutes": {
     "en": { "title": "Minutes", "description": "Minutes content and metadata retrieval" },
