@@ -73,3 +73,35 @@ func TestDocsMediaDownloadDryRun_WhiteboardSkipsExportAuth(t *testing.T) {
 		t.Fatalf("api.0.url=%q, want whiteboard download only\nstdout:\n%s", got, out)
 	}
 }
+
+func TestDocsMediaPreviewDryRun_PlansCommentImageFallback(t *testing.T) {
+	setDocsDryRunEnv(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"docs", "+media-preview",
+			"--token", "commentImageDryRun",
+			"--output", "./artifacts/comment-image",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	out := result.Stdout
+	if got := clie2e.DryRunGet(out, "api.#").Int(); got != 2 {
+		t.Fatalf("api count=%d, want preview plus fallback\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/drive/v1/medias/commentImageDryRun/preview_download" {
+		t.Fatalf("api.0.url=%q, want source preview\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.params.preview_type").String(); got != "16" {
+		t.Fatalf("api.0.params.preview_type=%q, want 16\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.1.url").String(); got != "/open-apis/drive/v1/medias/commentImageDryRun/download" {
+		t.Fatalf("api.1.url=%q, want comment image fallback\nstdout:\n%s", got, out)
+	}
+}

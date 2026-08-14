@@ -21,12 +21,12 @@ const PreviewType_SOURCE_FILE = "16"
 var DocMediaPreview = common.Shortcut{
 	Service:     "docs",
 	Command:     "+media-preview",
-	Description: "Preview document media file (auto-detects extension)",
+	Description: "Preview document media or download a comment image token (auto-detects extension)",
 	Risk:        "read",
 	Scopes:      []string{"docs:document.media:download"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "token", Desc: "media file token", Required: true},
+		{Name: "token", Desc: "document media token or comment-sidecar image token", Required: true},
 		{Name: "output", Desc: "local save path", Required: true},
 		{Name: "overwrite", Type: "bool", Desc: "overwrite existing output file"},
 	},
@@ -37,6 +37,8 @@ var DocMediaPreview = common.Shortcut{
 			GET("/open-apis/drive/v1/medias/:token/preview_download").
 			Desc("Preview document media file").
 			Params(map[string]interface{}{"preview_type": PreviewType_SOURCE_FILE}).
+			GET("/open-apis/drive/v1/medias/:token/download").
+			Desc("[2] Fallback only when the source preview rejects a comment image token").
 			Set("token", token).Set("output", outputPath)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -64,6 +66,13 @@ var DocMediaPreview = common.Shortcut{
 				"preview_type": []string{PreviewType_SOURCE_FILE},
 			},
 		})
+		if err != nil && shouldFallbackDocCommentImageDownload(err) {
+			fmt.Fprintln(runtime.IO().ErrOut, "Source preview is unavailable; trying comment image download.")
+			resp, err = runtime.DoAPIStream(ctx, &larkcore.ApiReq{
+				HttpMethod: http.MethodGet,
+				ApiPath:    fmt.Sprintf("/open-apis/drive/v1/medias/%s/download", encodedToken),
+			})
+		}
 		if err != nil {
 			return wrapDocNetworkErr(err, "preview failed: %v", err)
 		}
@@ -101,4 +110,15 @@ var DocMediaPreview = common.Shortcut{
 		}, nil)
 		return nil
 	},
+}
+
+func shouldFallbackDocCommentImageDownload(err error) bool {
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem == nil {
+		return false
+	}
+	return problem.Code >= http.StatusBadRequest &&
+		problem.Code < http.StatusInternalServerError &&
+		problem.Code != http.StatusRequestTimeout &&
+		problem.Code != http.StatusTooManyRequests
 }

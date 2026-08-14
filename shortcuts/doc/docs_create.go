@@ -37,6 +37,8 @@ var DocsCreate = common.Shortcut{
 	Flags: concatFlags(
 		[]common.Flag{
 			docsAPIVersionCompatFlag(),
+			docsOutputFormatCompatFlag(),
+			docsJSONOutputCompatFlag(),
 		},
 		v2CreateFlags(),
 		v1CreateFlags(),

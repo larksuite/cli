@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -944,8 +945,8 @@ func TestDocMediaPreviewDryRunUsesMediaEndpoint(t *testing.T) {
 	}
 
 	dry := decodeDocDryRun(t, DocMediaPreview.DryRun(context.Background(), common.TestNewRuntimeContext(cmd, nil)))
-	if len(dry.API) != 1 {
-		t.Fatalf("expected 1 API call, got %d", len(dry.API))
+	if len(dry.API) != 2 {
+		t.Fatalf("expected preview plus comment-image fallback, got %d API calls", len(dry.API))
 	}
 	if dry.API[0].Desc != "Preview document media file" {
 		t.Fatalf("dry-run api desc = %q", dry.API[0].Desc)
@@ -955,6 +956,9 @@ func TestDocMediaPreviewDryRunUsesMediaEndpoint(t *testing.T) {
 	}
 	if got, _ := dry.API[0].Params["preview_type"].(string); got != PreviewType_SOURCE_FILE {
 		t.Fatalf("preview_type = %q, want %q", got, PreviewType_SOURCE_FILE)
+	}
+	if dry.API[1].URL != "/open-apis/drive/v1/medias/tok_preview/download" {
+		t.Fatalf("fallback URL = %q, want direct media download endpoint", dry.API[1].URL)
 	}
 }
 
@@ -988,14 +992,21 @@ func TestDocMediaPreviewRejectsOverwriteWithoutFlag(t *testing.T) {
 	}
 }
 
-func TestDocMediaPreviewRejectsHTTPErrorBeforeWrite(t *testing.T) {
-	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-preview-app"))
+func TestDocMediaPreviewFallsBackToCommentImageDownload(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-preview-comment-image-app"))
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
 		URL:     "/open-apis/drive/v1/medias/tok_123/preview_download?preview_type=" + PreviewType_SOURCE_FILE,
 		Status:  404,
 		Body:    "not found",
 		Headers: http.Header{"Content-Type": []string{"text/plain"}},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/medias/tok_123/download",
+		Status:  200,
+		RawBody: []byte("comment-image"),
+		Headers: http.Header{"Content-Type": []string{"image/png"}},
 	})
 
 	tmpDir := t.TempDir()
@@ -1004,17 +1015,44 @@ func TestDocMediaPreviewRejectsHTTPErrorBeforeWrite(t *testing.T) {
 	err := mountAndRunDocs(t, DocMediaPreview, []string{
 		"+media-preview",
 		"--token", "tok_123",
-		"--output", "preview.bin",
+		"--output", "comment-image",
 		"--as", "bot",
-	}, f, nil)
-	if err == nil {
-		t.Fatal("expected HTTP error, got nil")
-	}
-	if !strings.Contains(err.Error(), "HTTP 404") {
+	}, f, stdout)
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if _, statErr := os.Stat(filepath.Join(tmpDir, "preview.bin")); !os.IsNotExist(statErr) {
-		t.Fatalf("preview target should not be created, statErr=%v", statErr)
+	wantPath := filepath.Join(tmpDir, "comment-image.png")
+	got, readErr := os.ReadFile(wantPath)
+	if readErr != nil {
+		t.Fatalf("read fallback image: %v", readErr)
+	}
+	if string(got) != "comment-image" {
+		t.Fatalf("fallback image bytes = %q", got)
+	}
+}
+
+func TestShouldFallbackDocCommentImageDownload(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "bad request", err: errs.NewNetworkError(errs.SubtypeNetworkTransport, "HTTP 400").WithCode(http.StatusBadRequest), want: true},
+		{name: "forbidden", err: errs.NewNetworkError(errs.SubtypeNetworkTransport, "HTTP 403").WithCode(http.StatusForbidden), want: true},
+		{name: "not found", err: errs.NewNetworkError(errs.SubtypeNetworkTransport, "HTTP 404").WithCode(http.StatusNotFound), want: true},
+		{name: "timeout", err: errs.NewNetworkError(errs.SubtypeNetworkTimeout, "HTTP 408").WithCode(http.StatusRequestTimeout)},
+		{name: "rate limited", err: errs.NewNetworkError(errs.SubtypeNetworkTransport, "HTTP 429").WithCode(http.StatusTooManyRequests)},
+		{name: "server error", err: errs.NewNetworkError(errs.SubtypeNetworkServer, "HTTP 500").WithCode(http.StatusInternalServerError)},
+		{name: "raw transport error", err: errors.New("connection reset")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got := shouldFallbackDocCommentImageDownload(test.err); got != test.want {
+				t.Fatalf("shouldFallbackDocCommentImageDownload() = %v, want %v", got, test.want)
+			}
+		})
 	}
 }
 

@@ -8,6 +8,9 @@
 # 读取整篇文档
 lark-cli docs +fetch --doc "文档URL或token"
 
+# 读取正文，并附带当前用户可见的未解决评论；默认 JSON 同时保留正文和评论 sidecar
+lark-cli docs +fetch --doc "文档URL或token" --doc-format xml --as user
+
 # 按 URL 中的 #share 锚点局部读取
 lark-cli docs +fetch --doc '文档URL#share-anchor'
 
@@ -34,7 +37,6 @@ lark-cli docs +fetch --doc Z1Fj...tnAc --scope section --start-block-id blkTitle
 |`--context-before`|否|返回命中项之前的顶层兄弟块数量（默认 `0`）|
 |`--context-after`|否|返回命中项之后的顶层兄弟块数量（默认 `0`）|
 |`--max-depth`|否|`outline` 表示标题层级上限；其它模式表示子树深度（默认 `-1`，不限）|
-|`--format`|否|`json`（默认）\| `pretty`|
 
 ## 选择详细度：`--detail`
 
@@ -90,6 +92,14 @@ lark-cli docs +fetch --doc Z1Fj...tnAc --scope section --start-block-id blkTitle
           "<ref>": {
             "<real-attr-key>": "<real-attr-value>"
           }
+        },
+        "comments": {
+          "c1": {
+            "data": "<comment comment-id=\"739284756192837\" block-id=\"doxcnBlockID\">...</comment>"
+          },
+          "tips": {
+            "data": "Comments are truncated. Use the comment API to fetch complete content."
+          }
         }
       },
       "tips": "<safe replay or degradation guidance>"
@@ -97,7 +107,43 @@ lark-cli docs +fetch --doc Z1Fj...tnAc --scope section --start-block-id blkTitle
   }
 }
 ```
-`content` 的格式由 `--doc-format` 决定。`reference_map` 是正文引用数据的结构化 sidecar：一级键 `block_type` 表示引用所在的块类型，二级键 `ref` 对应正文中的临时引用；每个引用的值是由 `real-attr-key` 和 `real-attr-value` 组成的真实属性映射，具体属性由块类型决定。没有提取数据时，`reference_map` 可能为空。`content` 和 `reference_map` 属于同一份响应，保留或回放内容时应配套处理。`tips` 给出安全回放或降级提示。`im-markdown` 仅用于获取内容后在 `lark-im` 场景下使用。设置 `--scope` 时会被 `<fragment>` 包裹，详见上文"局部读取的输出结构"。
+`content` 的格式由 `--doc-format` 决定。`reference_map` 是结构化 sidecar，一级键表示引用组：普通资源组通常以 `block_type` 命名，二级键 `ref` 对应正文中的临时引用，其值由真实属性组成；保留组 `comments` 使用 `<ref>.data` 保存评论。XML、Markdown 和 IM Markdown 在存在可见评论时都会返回该组；Markdown 正文没有与评论 key 对应的内联引用，这是有意的协议设计。没有提取数据时，`reference_map` 可能为空。`comments.tips.data` 表示评论因数量上限被截断，文档顶层 `tips` 则给出安全回放或依赖降级提示。`content` 和 `reference_map` 属于同一份响应，应保留完整 JSON 响应；`im-markdown` 仅用于获取内容后在 `lark-im` 场景下使用。设置 `--scope` 时会被 `<fragment>` 包裹，详见下文“局部读取的输出结构”。
+
+### 理解评论返回
+
+评论采用紧凑、只读的 AI 上下文，不代替 `drive +list-comments` 等完整评论 API：
+
+- XML 正文中的局部评论落点使用 `comment-refs="c1 c2"`；同一条评论跨多个 block 时会在这些 block 上重复同一个 ref。
+- 局部评论和全文评论统一放在 `reference_map.comments.<ref>.data`；全文评论使用 `<comment comment-id="..." is_whole="true">`，没有正文落点，也不输出 `<quote>`。
+- `<comment>` 根节点的 `comment-id` 是评论 API 可继续使用的正整数评论 ID。单 block 评论仅输出 `block-id`；跨 block 评论输出 `start-block-id` 与 `end-block-id`，二者均为文档原始 block ID。局部读取仍保留该评论在完整文档中的真实起止范围；无法可靠恢复 block ID 时宁可省略范围属性，也不会输出错误映射。
+- `<comment>` 只表达引用文本、`<msg>` 消息以及有效的图片、文档引用和 reaction；状态和完整格式仍应通过 `lark-drive` 评论命令获取。
+- 评论消息里的 Docx、Wiki、Sheet、Base、Slides 等云文档引用尽可能规范为 `[标题](url)`；取不到标题时降级为 `[url](url)`，不再输出 `<cite type="doc">`。
+- 全文读取最多返回 1000 条局部评论和 200 条全文评论；`keyword` / `range` / `section` 只返回与片段相交的局部评论，不返回全文评论；`outline` 不查询评论。发生截断时只增加 `reference_map.comments.tips`。
+- reaction 属于 best-effort 展示信息；省略 reaction 不影响评论正文和引用关系。
+- Markdown 与 IM Markdown 返回同一份 `reference_map.comments` sidecar，但正文不输出 `comment-refs` 或其它评论占位符；需要正文落点时使用默认的 `--doc-format xml`。
+- 指定历史 `--revision-id` 时，正文来自该历史版本；评论是“当前仍可见、仍未解决”的快照投影到这份正文。局部评论仅在该 revision 能解析到锚点时返回，全文评论仅在全文读取时返回；它不是历史时刻的评论回放。
+- 命令默认返回 JSON；应直接读取 `data.document.content` 与 `data.document.reference_map.comments`，不要只复制正文文本。
+- 评论或锚点依赖不可用时，正文仍正常返回，评论整体省略，并在 `tips` 中出现 `comments_omitted:<reason>`。
+
+`--as user` 和 `--as bot` 都支持所有文档格式的评论读取，且只需当前身份具备文档阅读权限，不需要评论专属 scope。服务端始终使用当前 UAT 用户或 TAT bot/service principal 的同一可信身份读取其可见评论；bot 不继承 app owner、安装者或租户管理员的可见范围。
+
+```xml
+<p comment-refs="c1">评论引用的正文</p>
+```
+
+对应的 `reference_map.comments.c1.data`：
+
+```xml
+<comment comment-id="739284756192837" block-id="doxcnBlockID">
+<quote>评论引用的正文</quote>
+<msg user="曹杰">
+问题一：在职转移会删除协作者权限
+<img src="IMG_TOKEN"/>
+[文档标题](https://tenant.example/docx/DOC_TOKEN)
+<reaction key="THUMBSUP" users="方树煜、曹杰"/>
+</msg>
+</comment>
+```
 
 ### 理解局部读取结果
 
@@ -118,7 +164,7 @@ lark-cli docs +fetch --doc Z1Fj...tnAc --scope section --start-block-id blkTitle
 
 |返回内容|处理方式|
 |-|-|
-|`<img>`、`<source>`|有 `url` 时仅下载可信的公开 HTTPS URL：拒绝 userinfo 及解析到 private、loopback、link-local、multicast、unspecified 地址的 host，并逐次校验重定向；不满足时禁止请求。无 `url` 时提取 `token`，预览用 `docs +media-preview`，下载用 `docs +media-download`|
+|`<img>`、`<source>`，以及 `reference_map.comments` 内的 `<img src="TOKEN"/>`|有 `url` 时仅下载可信的公开 HTTPS URL：拒绝 userinfo 及解析到 private、loopback、link-local、multicast、unspecified 地址的 host，并逐次校验重定向；不满足时禁止请求。正文资源提取 `token`，评论图片提取 `src`，预览或评论图片下载使用 `docs +media-preview`，明确下载正文资源使用 `docs +media-download`|
 |`<whiteboard>`|提取 `token`，使用 `docs +media-download`|
 |`<sheet>`、`<cite file-type="sheets">`|提取 `token` 和 `sheet-id`，转到 [`lark-sheets`](../../lark-sheets/SKILL.md)|
 |`<bitable>`、`<cite file-type="bitable">`|提取 `token` 和 `table-id`，转到 [`lark-base`](../../lark-base/SKILL.md)|

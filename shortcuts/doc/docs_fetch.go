@@ -21,10 +21,17 @@ var DocsFetch = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{"docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	Tips: []string{
+		"Visible unresolved comments are returned by default in data.document.reference_map.comments for full and partial reads; outline reads remain comment-free.",
+		"XML content marks local comment anchors with comment-refs. Markdown and im-markdown return the comments sidecar without inline comment markers.",
+		"Each local comment sidecar uses comment-id plus block-id for one block, or start-block-id and end-block-id when it spans blocks.",
+		"Comment images expose media tokens as <img src=\"...\"/> inside the comments sidecar; download them with docs +media-preview.",
+	},
 	Flags: concatFlags(
 		[]common.Flag{
 			docsAPIVersionCompatFlag(),
+			docsOutputFormatCompatFlag(),
+			docsJSONOutputCompatFlag(),
 			{Name: "doc", Desc: "document URL or token", Required: true},
 		},
 		v2FetchFlags(),
