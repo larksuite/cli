@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/larksuite/cli/internal/core"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -41,6 +43,8 @@ func TestTransportAuthorizesBeforeCollecting(t *testing.T) {
 		{name: "official explicit HTTPS port", requestURL: "https://OPEN.FEISHU.CN:443/open-apis/test", authorization: "Bearer token", wantSignals: true},
 		{name: "unauthenticated", requestURL: "https://open.feishu.cn/open-apis/test", wantSignals: true},
 		{name: "official non-OpenAPI origin", requestURL: "https://accounts.feishu.cn/open-apis/test", authorization: "Bearer token", wantSignals: true},
+		{name: "Feishu MCP", requestURL: "https://mcp.feishu.cn/mcp", wantSignals: true},
+		{name: "Lark MCP", requestURL: "https://mcp.larksuite.com/mcp", wantSignals: true},
 		{name: "off domain", requestURL: "https://example.com/test", authorization: "Bearer token", wantSignals: false},
 		{name: "lookalike", requestURL: "https://open.feishu.cn.evil.example/test", authorization: "Bearer token", wantSignals: false},
 		{name: "plain HTTP", requestURL: "http://open.feishu.cn/test", authorization: "Bearer token", wantSignals: false},
@@ -62,7 +66,9 @@ func TestTransportAuthorizesBeforeCollecting(t *testing.T) {
 			req.Header.Set("Authorization", test.authorization)
 			req.Header.Set(HeaderOSType, "caller-value")
 			req.Header.Set(HeaderProductModel, "caller-value")
+			req.Header.Set(HeaderCredentialSource, "caller-value")
 			req.Header["x-agent-device-type"] = []string{"non-canonical-caller-value"}
+			req = req.WithContext(core.WithCredentialSource(req.Context(), core.CredentialSourceLocal))
 
 			resp, err := NewTransport(base, source).RoundTrip(req)
 			if err != nil {
@@ -81,6 +87,9 @@ func TestTransportAuthorizesBeforeCollecting(t *testing.T) {
 			if got := source.calls.Load(); got != wantCalls {
 				t.Fatalf("Snapshot calls = %d, want %d", got, wantCalls)
 			}
+			if got := received.Get(HeaderCredentialSource); test.wantSignals && got != "local" {
+				t.Fatalf("credential source = %q, want local", got)
+			}
 			if got := req.Header.Get(HeaderOSType); got != "caller-value" {
 				t.Fatalf("caller request OS header = %q, want unchanged", got)
 			}
@@ -89,10 +98,75 @@ func TestTransportAuthorizesBeforeCollecting(t *testing.T) {
 			}
 			if !test.wantSignals {
 				for name := range received {
-					if strings.EqualFold(name, HeaderProductModel) || strings.EqualFold(name, HeaderOSType) {
+					if strings.EqualFold(name, HeaderProductModel) || strings.EqualFold(name, HeaderOSType) || strings.EqualFold(name, HeaderCredentialSource) {
 						t.Fatalf("restricted header leaked as %q", name)
 					}
 				}
+			}
+		})
+	}
+}
+
+func TestTransportRiskControlDisabledSuppressesAllSignals(t *testing.T) {
+	var received http.Header
+	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		received = req.Header.Clone()
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+	})
+	req, err := http.NewRequest(http.MethodGet, "https://open.feishu.cn/open-apis/test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Restricted values must not survive from either the caller or the trusted
+	// credential provider after the workspace opts out of risk control.
+	req.Header.Set(HeaderOSType, "caller-value")
+	req.Header.Set(HeaderProductModel, "caller-value")
+	req.Header.Set(HeaderCredentialSource, "caller-value")
+	req = req.WithContext(core.WithCredentialSource(req.Context(), core.CredentialSourceLocal))
+
+	resp, err := NewTransport(base, nil).RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	for _, name := range restrictedHeaders {
+		if got := received.Get(name); got != "" {
+			t.Fatalf("risk-control opt-out sent %s=%q", name, got)
+		}
+	}
+}
+
+func TestTransportCredentialSourceIsRequestScoped(t *testing.T) {
+	var received http.Header
+	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		received = req.Header.Clone()
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+	})
+	transport := NewTransport(base, staticSource{OSType: OSTypeMacOS})
+
+	for _, test := range []struct {
+		name   string
+		source core.CredentialSource
+		want   string
+	}{
+		{name: "local request", source: core.CredentialSourceLocal, want: "local"},
+		{name: "environment request", source: core.CredentialSourceEnv, want: "env"},
+		{name: "request without resolved credential"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodGet, "https://open.feishu.cn/open-apis/test", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req = req.WithContext(core.WithCredentialSource(req.Context(), test.source))
+			resp, err := transport.RoundTrip(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			if got := received.Get(HeaderCredentialSource); got != test.want {
+				t.Fatalf("%s = %q, want %q", HeaderCredentialSource, got, test.want)
 			}
 		})
 	}

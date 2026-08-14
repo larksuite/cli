@@ -36,6 +36,7 @@ lark-cli calendar +create --summary "..." --start "..." --end "..." \
 | `--attendee-ids <id_list>` | 否 | 参与人 ID 列表（逗号分隔）。支持用户（`ou_`）、群组（`oc_`）和会议室（`omm_`）。AI 提取时请务必保留对应前缀。bot 可作为合法参会人，无需剔除 |
 | `--calendar-id <id>` | 否 | 日历 ID（省略则使用主日历） |
 | `--rrule <rrule>` | 否 | 重复日程的重复性规则，规则设置方式参考rfc5545。示例值："FREQ=DAILY;INTERVAL=1;UNTIL=<具体日期>" |
+| `--meeting-owner-id <ou_>` | 否 | 设置 VC 会议 owner。仅以应用（bot）身份在应用日历上操作时生效（需 `--as bot`）；owner 必须为本租户用户身份的 open_id（`ou_`） |
 | `--dry-run` | 否 | 预览 API 调用，不执行 |
 
 > 当用户表达'每周 X'、'每周重复'、'连续 N 周'时，必须使用 rrule 创建重复性日程，而非创建多个独立日程
@@ -49,7 +50,8 @@ lark-cli calendar +create --summary "..." --start "..." --end "..." \
 
 ## 高级用法（完整 API 命令）
 
-如需配置 `location`（地理位置，不含会议室位置）、`visibility`（日程公开范围）、自定义 `reminders`（提醒设置）、自定义 `attendee_ability`（参与人权限）、自定义 `free_busy_status`（日程忙闲状态）、参与人可选参加状态或全天日程等高级参数，请使用完整的 API 命令：
+> 优先策略：创建日程优先走 `+create`。遇到 `+create` 不支持的高级参数（如 `location`（地理位置，不含会议室位置）、`visibility`（日程公开范围）、自定义 `reminders`（提醒设置）、自定义 `attendee_ability`（参与人权限）、自定义 `free_busy_status`（日程忙闲状态）、参与人可选参加状态或全天日程等），**优先先用 `+create` 创建成功，再用完整 API update 对这些字段做编辑补齐**，而非整体改用完整 API 从零创建。
+
 **注意**：
 - 全天日程的开始日期和结束日期必须分别是日程开始的第一天和结束的最后一天。如果只有一天的话，开始日期和结束日期是相同。
 
@@ -60,12 +62,10 @@ lark-cli calendar event.attendees create \
   --params '{"calendar_id":"<CALENDAR_ID>","event_id":"<EVENT_ID>"}' \
   --data '{"attendees": [{"type": "resource", "room_id": "omm_xxx", "approval_reason": "申请原因"}]}'
 
-完整 API 命令的关键差异：
-- `+create` 在传入 `--attendee-ids`（即需要邀请其他参会人）时，会自动把当前身份一并加进参会人，但 `calendar events create` / `calendar event.attendees create` 等完整 API **不会**自动加。需自行把调用身份的 open_id 以 `type:user` 写入 attendees，与邀请的其他参会人合并去重后添加。open_id 用 `lark-cli auth status --json --verify` 获取：bot 取 `identities.bot.openId`（`--verify` 才会填充），user 取 `identities.user.openId`。
+完整 API 命令的关键差异和处理策略：
 - 时间参数是 **Unix 秒字符串**（非 ISO 8601）。换算时**禁止依赖容器默认时区**（常为 UTC，会导致 8 小时偏移），必须显式指定目标时区。
 - 全天日程的开始日期和结束日期必须分别是日程开始的第一天和结束的最后一天；单日全天日程两者相同。
 - 手动拆成“创建日程 + 添加参会人”两步时，若第二步失败，建议删除刚创建的空日程，避免遗留无参会人的日程。
-- 设置会议 owner：`+create` 不支持，需用完整 API 命令在 `vchat.meeting_settings.owner_id` 中设置，且必须同时设置 `vchat.vc_type` 为 `vc`（代表该日程为 VC 视频会议）。仅当以应用（bot）身份在应用日历上操作时生效；owner 必须为用户身份（`ou_` open_id），不能为非用户或外部租户用户。
 
 ## 参会人类型
 

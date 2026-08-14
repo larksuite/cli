@@ -143,6 +143,8 @@ lark-cli minutes +detail --minute-tokens '<minute_token1>,<minute_token2>' \
 
 智能纪要（`note_doc_token`）是飞书文档，使用 `docs +fetch` 读取正文内容；**逐字稿的读取方式由 `note_display_type` 决定**：
 
+读正文是本链路的最后一跳，身份仍由本链路决定：`--as <user|bot>` 一律填 Step 2 取得 token 时用的那个身份。[lark-doc](../../lark-doc/SKILL.md) 对普通文档推荐 `--as user`，那是用户自有文档的默认建议，**不适用于这里的纪要文档 token**，不要因此切回 user。
+
 ```bash
 # 纪要正文（两种展示类型都适用）
 lark-cli docs +fetch --doc <note_doc_token> --doc-format markdown

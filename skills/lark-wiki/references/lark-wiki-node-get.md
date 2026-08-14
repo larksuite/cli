@@ -63,6 +63,10 @@ These HTTP 200 responses carry a non-zero business code and are not retryable wi
 | `131013` | The resource token is invalid | Do not switch identity or reauthorize; correct the URL/token |
 | `131014` | The document is not mounted in Wiki | Stop Wiki resolution; use the corresponding docs/sheets/base/drive command, or provide a Wiki URL/node_token |
 
+## Rate limiting
+
+For `99991400` / `rate_limit`: Do not retry immediately. Wait `retry_after_seconds`, or use exponential backoff with jitter. Stop after 3 total attempts (1 initial + 2 retries).
+
 ## Required Scope
 
 `wiki:node:retrieve`

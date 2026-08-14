@@ -269,6 +269,53 @@ func baseBlockListResolveStub(baseToken string, blocks ...map[string]interface{}
 	}
 }
 
+func TestBaseURLResolveBaseAppURL(t *testing.T) {
+	t.Run("with page and workspace coordinates", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcutWithAuthTypes(t, BaseURLResolve, authTypes(), []string{
+			"+url-resolve",
+			"--url", "https://example.larkoffice.com/app/app_123?pre_pathname=%2Fbase%2Fworkspace%2Fws_123&pageId=pge_123",
+			"--as", "user",
+		}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+
+		data := decodeBaseEnvelope(t, stdout)
+		if data["input_type"] != "baseapp_url" || data["resource_type"] != "baseapp" {
+			t.Fatalf("unexpected resource classification: %#v", data)
+		}
+		if data["app_token"] != "app_123" || data["workspace_token"] != "ws_123" || data["page_id"] != "pge_123" {
+			t.Fatalf("missing BaseApp coordinates: %#v", data)
+		}
+		hint, _ := data["hint"].(map[string]interface{})
+		if hint["next_step"] != nextStepBaseApp {
+			t.Fatalf("unexpected hint: %#v", hint)
+		}
+	})
+
+	t.Run("omits absent optional coordinates", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcutWithAuthTypes(t, BaseURLResolve, authTypes(), []string{
+			"+url-resolve", "--url", "https://example.larkoffice.com/app/app_123", "--as", "user",
+		}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+
+		data := decodeBaseEnvelope(t, stdout)
+		if data["app_token"] != "app_123" {
+			t.Fatalf("unexpected output: %#v", data)
+		}
+		if _, ok := data["workspace_token"]; ok {
+			t.Fatalf("workspace_token should be omitted: %#v", data)
+		}
+		if _, ok := data["page_id"]; ok {
+			t.Fatalf("page_id should be omitted: %#v", data)
+		}
+	})
+}
+
 func TestBaseURLResolveWikiURL(t *testing.T) {
 	t.Run("bitable", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
@@ -537,7 +584,7 @@ func TestBaseResolveHelpFlags(t *testing.T) {
 			shortcut:    "+url-resolve",
 			definition:  BaseURLResolve,
 			primaryFlag: "url",
-			primaryDesc: "Base/Wiki/record-share URL to resolve",
+			primaryDesc: "Base/BaseApp/Wiki/record-share URL to resolve",
 			aliasFlags:  []string{"query"},
 		},
 		{

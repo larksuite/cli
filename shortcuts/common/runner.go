@@ -205,19 +205,30 @@ func (ctx *RuntimeContext) getAPIClient() (*client.APIClient, error) {
 // For user: returns user access token (with auto-refresh).
 // For bot: returns tenant access token.
 func (ctx *RuntimeContext) AccessToken() (string, error) {
+	result, err := ctx.resolveAccessToken()
+	if err != nil {
+		return "", err
+	}
+	return result.Token, nil
+}
+
+// resolveAccessToken retains the request-scoped origin metadata needed by
+// direct HTTP paths such as MCP. Callers that only need the token value should
+// use AccessToken.
+func (ctx *RuntimeContext) resolveAccessToken() (*credential.TokenResult, error) {
 	result, err := ctx.Factory.Credential.ResolveToken(ctx.ctx, credential.NewTokenSpec(ctx.As(), ctx.Config.AppID))
 	if err != nil {
 		// ResolveToken classifies its own failures (config/api); pass those
 		// through so a typed lower-layer error is not flattened to token_invalid.
 		if _, ok := errs.ProblemOf(err); ok {
-			return "", err
+			return nil, err
 		}
-		return "", errs.NewAuthenticationError(errs.SubtypeTokenInvalid, "failed to get access token: %s", err).WithCause(err)
+		return nil, errs.NewAuthenticationError(errs.SubtypeTokenInvalid, "failed to get access token: %s", err).WithCause(err)
 	}
 	if result == nil || result.Token == "" {
-		return "", errs.NewAuthenticationError(errs.SubtypeTokenMissing, "no access token available for %s", ctx.As())
+		return nil, errs.NewAuthenticationError(errs.SubtypeTokenMissing, "no access token available for %s", ctx.As())
 	}
-	return result.Token, nil
+	return result, nil
 }
 
 // LarkSDK returns the eagerly-initialized Lark SDK client.

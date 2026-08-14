@@ -18,13 +18,17 @@ import (
 )
 
 func buildEventData(runtime *common.RuntimeContext, startTs, endTs string) map[string]interface{} {
+	vchat := map[string]interface{}{"vc_type": "vc"}
+	if ownerId := strings.TrimSpace(runtime.Str("meeting-owner-id")); ownerId != "" {
+		vchat["meeting_settings"] = map[string]interface{}{"owner_id": ownerId}
+	}
 	eventData := map[string]interface{}{
 		"summary":          runtime.Str("summary"),
 		"start_time":       map[string]string{"timestamp": startTs},
 		"end_time":         map[string]string{"timestamp": endTs},
 		"attendee_ability": "can_modify_event",
 		"free_busy_status": "busy",
-		"vchat":            map[string]string{"vc_type": "vc"},
+		"vchat":            vchat,
 		"reminders": []map[string]int{
 			{"minutes": 5},
 		},
@@ -124,6 +128,7 @@ var CalendarCreate = common.Shortcut{
 		{Name: "attendee-ids", Desc: "attendee IDs, comma-separated (supports user ou_, chat oc_, room omm_)"},
 		{Name: "calendar-id", Desc: "calendar ID (default: primary)"},
 		{Name: "rrule", Desc: "recurrence rule (rfc5545)"},
+		{Name: "meeting-owner-id", Desc: "VC meeting owner open_id (ou_). Only effective as a bot on the app calendar; owner must be an in-tenant user"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if err := rejectCalendarAutoBotFallback(runtime); err != nil {
@@ -146,6 +151,18 @@ var CalendarCreate = common.Shortcut{
 				if !strings.HasPrefix(id, "ou_") && !strings.HasPrefix(id, "oc_") && !strings.HasPrefix(id, "omm_") {
 					return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid attendee id format %q: should start with 'ou_', 'oc_', or 'omm_'", id).WithParam("--attendee-ids")
 				}
+			}
+		}
+
+		if ownerId := strings.TrimSpace(runtime.Str("meeting-owner-id")); ownerId != "" {
+			if err := common.RejectDangerousCharsTyped("--meeting-owner-id", ownerId); err != nil {
+				return err
+			}
+			if !strings.HasPrefix(ownerId, "ou_") || ownerId == "ou_" {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --meeting-owner-id %q: meeting owner must be a user open_id starting with 'ou_'", ownerId).WithParam("--meeting-owner-id")
+			}
+			if !runtime.IsBot() {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--meeting-owner-id only takes effect when running as a bot on the app calendar; re-run with --as bot").WithParam("--meeting-owner-id")
 			}
 		}
 
