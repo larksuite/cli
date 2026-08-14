@@ -5,6 +5,7 @@ package sheets
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -92,6 +93,32 @@ func TestEveryPrescriptionCarriesAHint(t *testing.T) {
 			t.Errorf("%s: hint should spell the target %q so the prose and the machine-readable suggestion agree, got %q",
 				typed, rx.Command, rx.Hint)
 		}
+	}
+}
+
+// TestPrescribedExamplesActuallyValidate runs the flags a hint spells out
+// through the command it names. A hint is the only thing the caller gets back —
+// the ranked candidate list is replaced — so one whose own example fails
+// validation costs them a round trip and teaches the wrong shape. The +cells-put
+// hint shipped exactly that: a 1×2 matrix against A1:B2, plus prose forbidding
+// the bare scalars this domain now accepts.
+func TestPrescribedExamplesActuallyValidate(t *testing.T) {
+	t.Parallel()
+	// Pull the example out of the hint rather than restating it, so prose and
+	// assertion cannot drift apart.
+	flagRe := regexp.MustCompile(`--range (\S+) --cells '([^']*)'`)
+	m := flagRe.FindStringSubmatch(unknownSubcommandHints["+cells-put"].Hint)
+	if m == nil {
+		t.Fatalf("+cells-put hint no longer spells a --range/--cells example: %q", unknownSubcommandHints["+cells-put"].Hint)
+	}
+	if _, _, err := runShortcutCapturingErr(t, CellsSet, []string{
+		"--url", testURL,
+		"--sheet-name", "S1",
+		"--range", m[1],
+		"--cells", m[2],
+		"--dry-run",
+	}); err != nil {
+		t.Errorf("the +cells-put hint prescribes --range %s --cells %s, which does not validate: %v", m[1], m[2], err)
 	}
 }
 

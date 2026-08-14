@@ -47,7 +47,7 @@ var unknownSubcommandHints = map[string]prescription{
 	"+row-resize": {Command: "+rows-resize", Hint: rowsResizeForm},
 	"+cells-put": {
 		Command: "+cells-set",
-		Hint:    `write cell values with +cells-set --range A1:B2 --cells '[[{"value":"a"},{"value":"b"}]]' — each cell is an object, not a bare scalar`,
+		Hint:    `write cell values with +cells-set --range A1:B2 --cells '[["a","b"],["c","d"]]' — one inner array per row, sized to the range; a cell slot takes a bare scalar or an object like {"formula":"=A1*2"}`,
 	},
 	"+freeze-rows": {
 		Command: "+dim-freeze",

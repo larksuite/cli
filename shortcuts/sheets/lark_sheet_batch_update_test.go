@@ -5,6 +5,7 @@ package sheets
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -734,8 +735,16 @@ func TestSplitSheetPrefixedRange(t *testing.T) {
 		}
 	}
 	for _, in := range []string{"A2:A100", "!A2", "sheet1!", "'unclosed!A1"} {
-		if _, _, err := splitSheetPrefixedRange(in); err == nil {
-			t.Errorf("split(%q): expected error", in)
+		_, _, err := splitSheetPrefixedRange(in)
+		// Typed metadata, not just "an error": the flag attribution is what
+		// lets a caller find what to fix, and a plain error would otherwise
+		// pass this regression test.
+		ve := requireValidation(t, err, "must use sheet!range form")
+		if ve.Param != "--range" {
+			t.Errorf("split(%q): Param = %q, want --range", in, ve.Param)
+		}
+		if !strings.Contains(ve.Message, strconv.Quote(in)) {
+			t.Errorf("split(%q): message %q does not name the offending input", in, ve.Message)
 		}
 	}
 	// Compile-time use of json import
