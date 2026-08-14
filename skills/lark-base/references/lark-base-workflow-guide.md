@@ -4,7 +4,7 @@
 
 > **配套文档**:
 > - Workflow 的数据结构参考：[lark-base-workflow-schema.md](lark-base-workflow-schema.md)
-> - 创建/更新时重点构造 `title`、`status` 和 `steps`；复杂度集中在 `steps[].type/data/next`
+> - 创建/更新时重点构造 `title` 和 `steps`；`status` 通过 `+workflow-enable` 或 `+workflow-disable` 单独管理；复杂度集中在 `steps[].type/data/next`
 
 ---
 

@@ -101,6 +101,10 @@
 | `ButtonTrigger` | 按钮点击触发 |
 | `LarkMessageTrigger` | 接收飞书消息触发 |
 
+> **已知不支持的能力。** `DeleteRecordTrigger` 当前不可用，不要构造或提交该 type。未列入此清单的新 type 仍以服务端能力为准；`--dry-run` 只预览最终请求，不能证明服务端支持某个 StepType。
+>
+> **不支持不等于授权改写目标。** 当请求的能力不可用时，先说明能力边界并停止写入，保持用户原始意图。任何会改变触发条件、数据结构或业务结果的替代方案都只能作为建议；只有用户明确选择该替代方案后才能执行相关写入。先前请求失败、用户保持沉默，或要求减少追问，都不构成改变原始语义的授权。
+
 > 所有 Trigger 节点**请勿设置** `children` ，通过 `next` 串联后继。
 
 ### 触发器选型指南
@@ -442,11 +446,11 @@
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
-| `receiver` | 是 | ValueInfo[] |
-| `send_to_everyone` | 是 | 是否发送给所有人 |
+| `receiver` | 是 | 非空 ValueInfo[] |
+| `send_to_everyone` | 否 | boolean；是否发送给所有人，省略时按 `false` 处理 |
 | `title` | 否 | TextRefItem[] 消息标题 |
-| `content` | 是 | TextRefItem[] 消息内容 |
-| `btn_list` | 是 | 按钮列表，不需要时为空数组 |
+| `content` | 是 | 非空 TextRefItem[] 消息内容 |
+| `btn_list` | 否 | ButtonConfig[]；不需要时可省略（`+workflow-get` 会省略空列表） |
 
 `ButtonConfig`：
 
