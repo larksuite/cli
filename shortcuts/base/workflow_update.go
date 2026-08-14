@@ -20,12 +20,15 @@ var BaseWorkflowUpdate = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "workflow-id", Desc: "workflow ID (wkf... prefix)", Required: true},
-		{Name: "json", Desc: "workflow body JSON; read lark-base-workflow-guide.md and lark-base-workflow-schema.md before replacing steps", Required: true},
+		{Name: "json", Desc: "workflow body JSON; read lark-base-workflow-guide.md and lark-base-workflow-schema.md before replacing steps", Required: true, Input: []string{common.File, common.Stdin}},
 	},
 	Tips: []string{
 		"lark-cli base +workflow-update --base-token <base_token> --workflow-id <workflow_id> --json @workflow.json",
+		"JSON files must use a relative path such as --json @./workflow.json; for generated or temporary JSON, pipe it to --json - instead of using @/absolute/path.",
 		"PUT uses full replacement semantics; omitting steps clears the existing workflow steps.",
 		"Use +workflow-get first, then edit the returned definition and keep title/status/steps fields you do not intend to change.",
+		"An explicit update request requires calling this command even if get already shows the requested values; then use +workflow-get to verify every requested field and its normalized meaning.",
+		"ReminderTrigger offset is directional: +N means N units before (early), while -N means N units after (delayed); translate the value back to natural language before sending the update.",
 		"workflow-id must start with wkf; do not pass a tbl table ID.",
 		"Step ids must be unique, and every next/children link must reference an existing step id.",
 		"Updating does not enable or disable a workflow; call +workflow-enable or +workflow-disable separately.",

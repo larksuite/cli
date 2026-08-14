@@ -149,6 +149,8 @@ metadata:
 - 本期不支持 Page 复制和页面图标。识别到任一需求后不得产生写入，也不得调用 `+app-page-create` 冒充完整复制。最终答复先明确“不支持且未执行写入”，再单独总结替代能力：“当前 CLI 可以新建空 Page，但不会复制原 Page 的内容、组件或图标；如需新建，请另行明确要求。”在用户后续明确要求前，不得执行该替代方案。
 - 应用页面的 block 与仪表盘的 block 是同一套底层实体，但 ID 体系不通用：`+app-block-*` 的 `block_id` 不要拿去打 `+dashboard-block-*`，反之亦然。图表类 `data_config` 两边同构，列表类和富文本是应用模式独有。
 - Workflow 的复杂点是 `steps` 结构。创建、更新或解释完整 workflow 时读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) 和 steps JSON SSOT [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)；enable/disable/list 只需确认 workflow ID、当前启停状态和用户意图。
+- 用户显式要求 `workflow-update/enable/disable` 时，读取现状只用于定位和构造请求，不能代替写操作：必须执行对应命令，再用 `+workflow-get` 回读目标 workflow 验证结果；即使预读状态或字段已经符合目标，也不要跳过这次明确请求。
+- `workflow-update` 只修改用户授权的字段并保留其余定义；方向性配置在写前、回读后都要用自然语言复核。ReminderTrigger 的“提前 N 个单位”必须写正 `offset=N`，“延后 N 个单位”必须写负 `offset=-N`。`workflow-enable` 因业务配置缺失等前置条件失败时，不要擅自修改 steps 绕过校验，继续处理其他对象并报告无法启用项。
 - Role 的复杂点是权限 JSON。角色操作先读入口 [lark-base-role-guide.md](references/lark-base-role-guide.md)；`+role-create` 只支持自定义角色；`+role-update` 是 delta merge；角色 create/update 或解读完整配置时读权限 JSON SSOT [role-config.md](references/role-config.md)。`+role-delete` 只适用于自定义角色，系统角色不可删除；删除角色和关闭高级权限前必须确认目标和影响。
 
 ## 常见恢复

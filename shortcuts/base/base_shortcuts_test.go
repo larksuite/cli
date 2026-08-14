@@ -760,9 +760,16 @@ func TestBaseWorkflowHelpGuidesAgents(t *testing.T) {
 			shortcut: BaseWorkflowUpdate,
 			wantTips: []string{
 				"lark-cli base +workflow-update --base-token <base_token> --workflow-id <workflow_id> --json @workflow.json",
+				"relative path such as --json @./workflow.json",
+				"pipe it to --json -",
 				"PUT uses full replacement semantics",
 				"Use +workflow-get first",
 				"keep title/status/steps fields",
+				"explicit update request requires calling this command",
+				"use +workflow-get to verify every requested field",
+				"ReminderTrigger offset is directional",
+				"+N means N units before",
+				"-N means N units after",
 				"workflow-id must start with wkf",
 				"Updating does not enable or disable",
 				"do not invent steps[].type/data/next/children from natural language",
@@ -775,6 +782,8 @@ func TestBaseWorkflowHelpGuidesAgents(t *testing.T) {
 				"workflow-id must start with wkf",
 				"does not modify steps",
 				"New workflows are created disabled",
+				"explicit enable request requires calling this command",
+				"do not change steps unless the user explicitly requested",
 			},
 		},
 		{
@@ -783,6 +792,8 @@ func TestBaseWorkflowHelpGuidesAgents(t *testing.T) {
 			wantTips: []string{
 				"workflow-id must start with wkf",
 				"does not delete the workflow or its steps",
+				"explicit disable request requires calling this command",
+				"use +workflow-get to verify status",
 			},
 		},
 	}

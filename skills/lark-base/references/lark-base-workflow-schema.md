@@ -235,6 +235,8 @@
 
 ### ReminderTrigger
 
+> ⚠️ **先翻译方向，再填写数值：** `offset=N` 表示日期前 N 个单位触发（提前 N）；`offset=-N` 表示日期后 N 个单位触发（延后 N）。提交和回读时都按这句自然语言复核，不要只比较绝对值。
+
 ```json
 {
   "table_name": "项目表",
@@ -252,7 +254,7 @@
 | `table_name` | 是 | 数据表名 |
 | `field_name` | 是 | 日期字段名（必须为 `datetime` / `created_at` / `formula` / `lookup` 类型） |
 | `unit` | 是 | 偏移单位：`MINUTE` / `HOUR` / `DAY` / `WEEK` / `MONTH` |
-| `offset` | 是 | 提前/延后的偏移量（正数=提前，负数=延后；范围由 `unit` 决定）：`MINUTE` ∈ {0, 5, 15, 30, -5, -15, -30}；`HOUR` ∈ [-6, -1] ∪ [1, 6]；`DAY` ∈ [-7, 7]；`WEEK` ∈ [-7, -1] ∪ [1, 7]；`MONTH` ∈ [-7, -1] ∪ [1, 7] |
+| `offset` | 是 | 偏移量：正数=日期前/提前，负数=日期后/延后；范围由 `unit` 决定：`MINUTE` ∈ {0, 5, 15, 30, -5, -15, -30}；`HOUR` ∈ [-6, -1] ∪ [1, 6]；`DAY` ∈ [-7, 7]；`WEEK` ∈ [-7, -1] ∪ [1, 7]；`MONTH` ∈ [-7, -1] ∪ [1, 7] |
 | `hour` | 是 | 触发小时 (0-23)，默认 9 |
 | `minute` | 是 | 触发分钟 (0-59)，默认 0 |
 | `condition_list` | 否 | 过滤条件数组，数组中每个元素为 AndCondition 结构，多个 AndCondition 之间为 OR 关系  | 
