@@ -268,13 +268,6 @@ lark-cli mail user_mailbox.folders create \
 - `user_mailbox_id` 几乎所有邮箱 API 都需要，一般传 `"me"` 代表当前用户
 - 列表接口支持 `--page-all` 自动翻页，无需手动处理 `page_token`
 
-### 权限速查
-
-| 命令 | Scope |
-|---|---|
-| `+auto-reply` | `mail:user_mailbox.message:readonly` |
-| `+auto-reply-modify` | `mail:user_mailbox.message:readonly`, `mail:user_mailbox.message:modify` |
-
 ## Shortcuts（推荐优先使用）
 
 Shortcut 是对常用操作的高级封装（`lark-cli mail +<verb> [flags]`）。有 Shortcut 的操作优先使用。
