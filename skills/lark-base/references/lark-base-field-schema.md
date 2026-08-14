@@ -1,4 +1,4 @@
-# Base field JSON SSOT
+# Base Field Schema
 
 > 适用命令：`lark-cli base +field-create`、`lark-cli base +field-update`
 
@@ -366,7 +366,7 @@
 
 ### 3.9 formula
 
-公式字段；`expression` 必填。创建/更新前先读 [formula-field-guide.md](formula-field-guide.md) 学习公式语法。
+公式字段；`expression` 必填。创建/更新前先读 [Formula Field](lark-base-field-formula.md) 学习公式语法。
 
 ```json
 {
@@ -378,7 +378,7 @@
 
 ### 3.10 lookup
 
-查找引用字段使用 `from`、`select`、`where` 和可选 `aggregate`；结构、条件和聚合值必须按 [lookup-field-guide.md](lookup-field-guide.md) 构造。
+查找引用字段使用 `from`、`select`、`where` 和可选 `aggregate`；结构、条件和聚合值必须按 [Lookup Field](lark-base-field-lookup.md) 构造。
 
 ### 3.11 auto_number
 

@@ -1,6 +1,6 @@
 # BaseApp Block `data_config`
 
-本文件说明 BaseApp 组件 `data_config` 的 CLI 映射与操作约束，不复制完整字段 Schema。App 图表的每个 `data_sources[]` 元素复用 [Dashboard block data_config](dashboard-block-data-config.md) 的字段取值、筛选、分组、排序及规范化规则；区别是 Dashboard 使用扁平单数据源结构，而 App 图表在顶层使用共享的 `base_token` 和多数据源 `data_sources[]`。列表组件是 App 独有协议，不复用 Dashboard 图表结构。本文所称“组件协议”是指 CLI 随版本发布的 API 元数据、本文明确列出的约束及实际服务端校验结果。
+本文件说明 BaseApp 组件 `data_config` 的 CLI 映射与操作约束，不复制完整字段 Schema。App 图表的每个 `data_sources[]` 元素复用 [Dashboard Block 配置](lark-base-dashboard-block-config.md) 的字段取值、筛选、分组、排序及规范化规则；区别是 Dashboard 使用扁平单数据源结构，而 App 图表在顶层使用共享的 `base_token` 和多数据源 `data_sources[]`。列表组件是 App 独有协议，不复用 Dashboard 图表结构。本文所称“组件协议”是指 CLI 随版本发布的 API 元数据、本文明确列出的约束及实际服务端校验结果。
 
 ## 类型映射
 
@@ -71,7 +71,7 @@ lark-cli base +app-block-update \
 
 ## 图表与富文本
 
-**App 图表是多数据源结构（`ChartDataConfig`），与 Dashboard 的扁平单源结构不同。** 顶层用一个 `base_token`（所有数据源共用），`table_name` / `series` / `count_all` / `group_by` / `filter` 下沉到每个 `data_sources[]` 元素里；顶层另有可选的 `data_source_mode` 和 `sort`。每个数据源内部各字段的取值逻辑与 [dashboard-block-data-config.md](dashboard-block-data-config.md) 完全一致（`series[].rollup` 大写、`group_by[].sort` 小写等），CLI 对每个 `data_sources[]` 元素复用同一套规范化与校验。富文本使用 `--type text`，配置为 `{"text":"..."}`，无数据源；Create 时可省略 `data_config`，等价于空文本。
+**App 图表是多数据源结构（`ChartDataConfig`），与 Dashboard 的扁平单源结构不同。** 顶层用一个 `base_token`（所有数据源共用），`table_name` / `series` / `count_all` / `group_by` / `filter` 下沉到每个 `data_sources[]` 元素里；顶层另有可选的 `data_source_mode` 和 `sort`。每个数据源内部各字段的取值逻辑与 [Dashboard Block 配置](lark-base-dashboard-block-config.md) 完全一致（`series[].rollup` 大写、`group_by[].sort` 小写等），CLI 对每个 `data_sources[]` 元素复用同一套规范化与校验。富文本使用 `--type text`，配置为 `{"text":"..."}`，无数据源；Create 时可省略 `data_config`，等价于空文本。
 
 > **text 内容怎么取**：text 组件没有 `/data` 接口，走 `+app-block-get-data` 会被服务端兜底成通用 500。改用 `+app-block-get --block-id <widget_id>` 直接读 `data_config.text`（Markdown 原文）。图表仍走 `+app-block-get-data --block-id <chart_token>`。
 

@@ -379,7 +379,7 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 				"prefer --format ndjson --output ./records.ndjson",
 				"keep long user data out of model context",
 				"process the records file with Python or another data analysis engine",
-				"Follow the lark-base data analysis SOP",
+				"Follow lark-base-record-query-and-analysis-sop.md",
 				"Use --field-id repeatedly to keep output small",
 			},
 		},
@@ -406,7 +406,7 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 				"prefer --format ndjson --output ./records.ndjson",
 				"keep long user data out of model context",
 				"process the records file with Python or another data analysis engine",
-				"Follow the lark-base data analysis SOP",
+				"Follow lark-base-record-query-and-analysis-sop.md",
 			},
 		},
 		{
@@ -426,7 +426,7 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 				"prefer --format ndjson --output ./records.ndjson",
 				"keep long user data out of model context",
 				"process the records file with Python or another data analysis engine",
-				"Follow the lark-base data analysis SOP",
+				"Follow lark-base-record-query-and-analysis-sop.md",
 				"projection boundary",
 				"record_id is already known",
 			},
@@ -465,6 +465,29 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBaseDataQueryHelpRoutesThroughAnalysisSOP(t *testing.T) {
+	parent := &cobra.Command{Use: "base"}
+	BaseDataQuery.Mount(parent, &cmdutil.Factory{})
+	cmd := parent.Commands()[0]
+
+	help := cmd.Flags().FlagUsages()
+	if !strings.Contains(help, "first follow lark-base-record-query-and-analysis-sop.md") {
+		t.Fatalf("flag help should route through the analysis SOP:\n%s", help)
+	}
+
+	tips := strings.Join(cmdutil.GetTips(cmd), "\n")
+	for _, want := range []string{
+		"Read lark-base-record-query-and-analysis-sop.md before using this command",
+		"use +data-query only when that SOP selects the Cloud aggregation path",
+		"After the SOP selects +data-query, read lark-base-data-query.md",
+	} {
+		if !strings.Contains(tips, want) {
+			t.Fatalf("tips missing %q:\n%s", want, tips)
+		}
+	}
+	assertHelpOrder(t, tips, "lark-base-record-query-and-analysis-sop.md", "lark-base-data-query.md")
 }
 
 func TestBasePaginationHelpShowsDefaults(t *testing.T) {
@@ -693,7 +716,7 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 				`--type text --data-config '{"text":"# Sales Dashboard"}'`,
 				"+table-list and +field-list",
 				"not table_id or field_id",
-				"dashboard-block-data-config.md as the SSOT",
+				"lark-base-dashboard-block-config.md as the SSOT",
 				"do not invent data_config from natural language",
 				"set the intended group_by.sort in the initial create request",
 				"do not create first and then issue a second update",
@@ -706,7 +729,7 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 			wantTips: []string{
 				`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --name "Total Sales"`,
 				`--data-config '{"series":[{"field_name":"Amount","rollup":"SUM"}]}'`,
-				"dashboard-block-data-config.md as the SSOT",
+				"lark-base-dashboard-block-config.md as the SSOT",
 				"do not invent data_config from natural language",
 				"Block type cannot be changed",
 				"top-level keys",
@@ -771,7 +794,7 @@ func TestBaseWorkflowHelpGuidesAgents(t *testing.T) {
 				"New workflows are created disabled",
 				"+table-list and +field-list",
 				"Step ids must be unique",
-				"lark-base-workflow-guide.md as the entry guide",
+				"lark-base-workflow.md as the module entry",
 				"lark-base-workflow-schema.md as the steps JSON SSOT",
 				"do not invent steps[].type/data/next/children from natural language",
 			},
@@ -1352,7 +1375,7 @@ func TestBaseCreateTipsGuideFieldSchema(t *testing.T) {
 
 	tips := strings.Join(cmdutil.GetTips(cmd), "\n")
 	for _, want := range []string{
-		"Before using --fields, read lark-base-field-json.md",
+		"Before using --fields, read lark-base-field-schema.md",
 		"do not invent field properties",
 	} {
 		if !strings.Contains(tips, want) {

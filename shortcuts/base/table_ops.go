@@ -59,7 +59,7 @@ func validateTableCreate(runtime *common.RuntimeContext) error {
 	if raw == "" {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--fields is required and cannot be blank").
 			WithParam("--fields").
-			WithHint(`Pass the table schema as a JSON array, e.g. --fields '[{"name":"Title","type":"text"}]'. Read lark-base-field-json.md for the field JSON shape.`)
+			WithHint(`Pass the table schema as a JSON array, e.g. --fields '[{"name":"Title","type":"text"}]'. Read lark-base-field-schema.md for the field JSON shape.`)
 	}
 	items, err := parseJSONArray(newParseCtx(runtime), raw, "fields")
 	if err != nil {

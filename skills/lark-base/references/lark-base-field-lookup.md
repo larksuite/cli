@@ -1,4 +1,4 @@
-# Base Lookup Field Configuration Guide
+# Base Lookup Field
 
 ## Mandatory Read Acknowledgement
 

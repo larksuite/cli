@@ -1,9 +1,9 @@
 
-# Base data-query DSL SSOT
+# Base data-query DSL reference
 
-> **入口指南**: [lark-base-data-query-guide.md](lark-base-data-query-guide.md) | **认证或授权问题**: [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)
+> **前置路由**: [Record 查询与分析 SOP](lark-base-record-query-and-analysis-sop.md) | **认证或授权问题**: [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)
 
-本文档是 `+data-query` JSON DSL 的单一事实来源（SSOT），用于说明完整字段、操作符、限制、返回和错误恢复。数据表查询与分析先由 [data analysis SOP](lark-base-data-analysis-sop.md) 选路；Cloud SOP 选定 `+data-query` 后先读 [data-query guide](lark-base-data-query-guide.md)，guide 未覆盖需求或用户明确要求完整 DSL/API reference 时再读本文。
+本文档合并常用 fewshot 与完整 DSL 协议。只有 [Record 查询与分析 SOP](lark-base-record-query-and-analysis-sop.md) 的 Cloud 路径选定 `+data-query` 后才读取，并优先定位与当前查询有关的示例、字段或错误协议。
 
 ## 限制
 
@@ -453,6 +453,6 @@ CLI 输出标准信封 `{ok, identity, data}`（失败时为 `{ok:false, identit
 
 - [lark-base](../SKILL.md) — 多维表格全部命令
 - [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数
-- [lark-base-data-analysis-cloud.md](lark-base-data-analysis-cloud.md) — Cloud 路径的查询范围、下推、分页、`+record-list` / `+record-search` 回查和关系查询 SOP
+- [Cloud SOP](lark-base-record-query-and-analysis-cloud-sop.md) — Cloud 路径的查询范围、下推、分页、`+record-list` / `+record-search` 回查和关系查询
 - [lark-base-cell-value.md](lark-base-cell-value.md) — CellValue 格式规范
-- [lark-base-field-json.md](lark-base-field-json.md) — 字段类型与 JSON 结构
+- [Field Schema](lark-base-field-schema.md) — 字段类型与 JSON 结构

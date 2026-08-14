@@ -15,8 +15,8 @@ Dashboard 是 Base 中的数据可视化看板，可以把表格数据变成**�
 | 你想做什么 | 用这些命令 | 关键文档 |
 |------|-----------|---------|
 | 创建/删除/改名称 | `+dashboard-create/delete/update` | 本页下方「仪表盘管理」 |
-| 在仪表盘里添加组件 | `+dashboard-block-create` | 先定位 dashboard、表和字段，再读 [dashboard-block-data-config.md](dashboard-block-data-config.md) 构造 `data_config` |
-| 修改组件 | `+dashboard-block-update` | 先读 block 现状，再读 [dashboard-block-data-config.md](dashboard-block-data-config.md) 决定替换哪些顶层 key |
+| 在仪表盘里添加组件 | `+dashboard-block-create` | 先定位 dashboard、表和字段，再读 [Dashboard Block 配置](lark-base-dashboard-block-config.md) 构造 `data_config` |
+| 修改组件 | `+dashboard-block-update` | 先读 block 现状，再读 [Dashboard Block 配置](lark-base-dashboard-block-config.md) 决定替换哪些顶层 key |
 | 查看仪表盘有哪些组件 | `+dashboard-get` 或 `+dashboard-block-list` | 本页下方「查看仪表盘」 |
 | 读取图表计算结果 | `+dashboard-block-get-data` | 返回图表最终数据协议；需要 block 元数据先用 `+dashboard-block-get` |
 | 智能重排组件布局 | `+dashboard-arrange` | 用户明确要求重排，或本次会话新建仪表盘的收尾整理；无法指定 `x/y/w/h`、精确位置或尺寸 |
@@ -48,7 +48,7 @@ lark-cli base +field-list --base-token xxx --table-id <table_id>
 
 # 第 4 步：顺序创建每个组件（必须串行执行，不能并发）
 # 重要：创建组件前，先确定 dashboard_id、组件 name/type 和真实表字段
-# 再阅读 dashboard-block-data-config.md 了解 data_config 结构、组件类型和 filter 规则
+# 再阅读 lark-base-dashboard-block-config.md 了解 data_config 结构、组件类型和 filter 规则
 
 # 第 1 个组件
 lark-cli base +dashboard-block-create \
@@ -93,7 +93,7 @@ lark-cli base +field-list --base-token xxx --table-id <table_id>
 
 # 第 4 步：顺序创建每个新组件（必须串行执行，不能并发）
 # 重要：先确定 dashboard_id、组件 name/type 和真实表字段
-# 再阅读 dashboard-block-data-config.md 了解 data_config 结构
+# 再阅读 lark-base-dashboard-block-config.md 了解 data_config 结构
 lark-cli base +dashboard-block-create \
   --base-token xxx \
   --dashboard-id blk_xxx \
@@ -127,7 +127,7 @@ lark-cli base +field-list --base-token xxx --table-id <table_id>
 
 # 第 5 步：执行更新
 # 重要：先读取当前 block 的 name/type/data_config
-# 再阅读 dashboard-block-data-config.md 了解 data_config 更新规则
+# 再阅读 lark-base-dashboard-block-config.md 了解 data_config 更新规则
 lark-cli base +dashboard-block-update \
   --base-token xxx \
   --dashboard-id blk_xxx \
@@ -169,7 +169,7 @@ lark-cli base +dashboard-arrange \
 
 1. 图表或指标卡：使用方式 D 读取计算结果。
 2. `text`：使用方式 C，正文位于 `data_config.text`；text 没有计算结果，但属于完整仪表盘内容。
-3. get-data 返回不支持的图表类型：先用方式 C 读取真实 `data_config`，确认 `table_name`、维度、指标、聚合与筛选，再按 [数据分析 SOP](lark-base-data-analysis-sop.md) 使用 `+data-query` 重建同口径结果。字段必须来自真实配置和表结构，不得猜测；无法等价重建时明确报告限制，不能静默省略该 block。
+3. get-data 返回不支持的图表类型：先用方式 C 读取真实 `data_config`，确认 `table_name`、维度、指标、聚合与筛选，再按 [Record 查询与分析 SOP](lark-base-record-query-and-analysis-sop.md) 使用 `+data-query` 重建同口径结果。字段必须来自真实配置和表结构，不得猜测；无法等价重建时明确报告限制，不能静默省略该 block。
 
 ```bash
 # 第 1 步：列出仪表盘，定位到当前仪表盘
@@ -209,14 +209,14 @@ lark-cli base +dashboard-block-get-data --base-token xxx --block-id chtxxxxxxxx
 | 单个关键指标 | statistics | 指标卡组件 |
 | 富文本说明/标题/注释 | text | 文本组件（支持 Markdown） |
 
-详细组件类型和 data_config 完整规则：[dashboard-block-data-config.md](dashboard-block-data-config.md)
+详细组件类型和 data_config 完整规则：[Dashboard Block 配置](lark-base-dashboard-block-config.md)
 
 ## 常见问题
 
 **Q: 创建组件的命令和 data_config 怎么写？**
 A:
 1. 先确定 `dashboard_id`、组件 `name`、组件 `type` 和真实表字段
-2. 再读 [dashboard-block-data-config.md](dashboard-block-data-config.md) 了解：
+2. 再读 [Dashboard Block 配置](lark-base-dashboard-block-config.md) 了解：
    - 全部组件类型的可复制模板
    - filter 筛选条件格式
    - 字段类型与操作符对应表
@@ -237,7 +237,7 @@ A: 不能。`+dashboard-block-update` 只能修改 `name` 和 `data_config`，�
 **Q: 更新组件的命令和 data_config 怎么写？**
 A:
 1. 先读取当前 block，确认 `block_id`、当前 `type` 和已有 `data_config`
-2. 再读 [dashboard-block-data-config.md](dashboard-block-data-config.md) 了解 data_config 结构
+2. 再读 [Dashboard Block 配置](lark-base-dashboard-block-config.md) 了解 data_config 结构
 
 **data_config 更新策略（顶层 key merge）**：
 - 只传入需要修改的顶层字段（如 `series`、`filter`）

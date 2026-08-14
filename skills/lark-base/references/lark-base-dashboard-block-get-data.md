@@ -730,4 +730,4 @@ GET /open-apis/base/v3/bases/bascn_example_token/dashboards/blocks/chtxxxxxxxx/d
 
 - [lark-base-dashboard.md](lark-base-dashboard.md) — dashboard 模块总指引
 - `+dashboard-block-get` — 获取 block 元数据
-- [dashboard-block-data-config.md](dashboard-block-data-config.md) — data_config 结构和组件类型说明
+- [Dashboard Block 配置](lark-base-dashboard-block-config.md) — data_config 结构和组件类型说明

@@ -57,7 +57,7 @@ func TestBaseSkillContract_AppModeConceptsAndDataConfigRelationship(t *testing.T
 
 	appConfig := readSkillContractFile(t, "../../skills/lark-base/references/lark-base-app-block-data-config.md")
 	for _, contract := range []string{
-		"复用 [Dashboard block data_config](dashboard-block-data-config.md)",
+		"复用 [Dashboard Block 配置](lark-base-dashboard-block-config.md)",
 		"列表组件是 App 独有协议",
 		"所有列表 subtype 均可使用",
 		"不能把 `filter` 提到顶层",
@@ -67,7 +67,7 @@ func TestBaseSkillContract_AppModeConceptsAndDataConfigRelationship(t *testing.T
 		}
 	}
 
-	dashboardConfig := readSkillContractFile(t, "../../skills/lark-base/references/dashboard-block-data-config.md")
+	dashboardConfig := readSkillContractFile(t, "../../skills/lark-base/references/lark-base-dashboard-block-config.md")
 	for _, contract := range []string{
 		"复用本文的字段取值、筛选、分组、排序及规范化规则",
 		"`isGreaterEqual` / `isLessEqual` 不是全局不支持",

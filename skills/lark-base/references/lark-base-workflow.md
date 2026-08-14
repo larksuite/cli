@@ -1,4 +1,4 @@
-# Workflow guide
+# Base Workflow
 
 本文档是 Workflow 的入口指南，帮助选择步骤组合、理解创建/更新边界，并引导到 steps JSON SSOT。
 

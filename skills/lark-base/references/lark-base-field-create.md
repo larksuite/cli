@@ -48,7 +48,7 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/fields
 - 数组按顺序创建字段，遇到首个失败即停止且不自动回滚；部分失败时保留 `items` 中的 `created` 项，按 `hint` 修正后只提交 `failed` 和 `not_attempted` 项，并保持依赖顺序。
 - 每个字段对象最少包含：`name`、`type`。
 - 所有字段类型都支持可选 `description`；支持纯文本，也支持 Markdown 链接，如 `协作约定可参考[团队字段约定](https://example.com/field-spec)`。
-- 需要字段默认值时传 `default_value`，直接使用字段对应 CellValue；`datetime` / `user` 的动态填充用 `$slot`。完整规则见 [lark-base-field-json.md](lark-base-field-json.md)。
+- 需要字段默认值时传 `default_value`，直接使用字段对应 CellValue；`datetime` / `user` 的动态填充用 `$slot`。完整规则见 [Field Schema](lark-base-field-schema.md)。
 - `type` 不同，必填子字段不同：
   - `select`：`multiple` 控制是否多选，`options` 定义静态选项，`dynamic_options_source` 定义动态选项来源。静态与动态选项配置二选一，不能同时传。
   - `link`：必须有 `link_table`，可选 `bidirectional`、`bidirectional_link_field_name`。
@@ -72,6 +72,6 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/fields
 
 ## 参考
 
-- [lark-base-field-json.md](lark-base-field-json.md) — 字段 JSON 规范（推荐）
-- [formula-field-guide.md](formula-field-guide.md) — formula 指南（创建公式必读）
-- [lookup-field-guide.md](lookup-field-guide.md) — lookup 指南（创建查找引用必读）
+- [Field Schema](lark-base-field-schema.md) — 字段 JSON 规范（推荐）
+- [Formula Field](lark-base-field-formula.md) — 创建公式必读
+- [Lookup Field](lark-base-field-lookup.md) — 创建查找引用必读

@@ -41,12 +41,12 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 - `--json` 必须是 **JSON 对象**，顶层直接传字段定义。
 - 更新语义是 override 式的完整覆盖 `PUT`，不是 partial update；先读取当前定义，再提交整个字段需要保留的可写配置，不要只传零散片段。
 - 所有字段类型都支持可选 `description`；支持纯文本，也支持 Markdown 链接。
-- 需要字段默认值时传 `default_value`，直接使用字段对应 CellValue；传 `null` 清空。完整规则见 [lark-base-field-json.md](lark-base-field-json.md)。
+- 需要字段默认值时传 `default_value`，直接使用字段对应 CellValue；传 `null` 清空。完整规则见 [Field Schema](lark-base-field-schema.md)。
 - `select` 更新时：`options` 仍按对象数组传，避免混入无效字段。
 - `link` 更新限制：
   - 不能把非 `link` 字段改成 `link`，也不能把 `link` 改成非 `link`。
   - 现有 `link` 字段的 `bidirectional` 不能改。
-- 更新 `auto_number.style.rules` 会按新规则更新已有记录的编号；规则结构见 [字段 JSON](lark-base-field-json.md)。
+- 更新 `auto_number.style.rules` 会按新规则更新已有记录的编号；规则结构见 [Field Schema](lark-base-field-schema.md)。
 
 **推荐更新示例**
 
@@ -146,6 +146,6 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 ## 参考
 
 - 更新前读取当前字段，确认现有 `type` 和具体配置细节，再决定是原地更新还是新建字段迁移。
-- [lark-base-field-json.md](lark-base-field-json.md) — 字段 JSON 规范（推荐）
-- [formula-field-guide.md](formula-field-guide.md) — formula 指南（更新公式前必读）
-- [lookup-field-guide.md](lookup-field-guide.md) — lookup 指南（更新查找引用前必读）
+- [Field Schema](lark-base-field-schema.md) — 字段 JSON 规范（推荐）
+- [Formula Field](lark-base-field-formula.md) — 更新公式前必读
+- [Lookup Field](lark-base-field-lookup.md) — 更新查找引用前必读
