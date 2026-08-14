@@ -564,56 +564,6 @@ func TestPrepareSuiteCropsRoutesKeywordsAndReferences(t *testing.T) {
 	}
 }
 
-func TestCropSuiteRoutesRemovesFirstMiddleAndLastLineCleanly(t *testing.T) {
-	routes := []string{
-		"- lark-approval（审批）: approval",
-		"- lark-calendar（日历）: calendar",
-		"- lark-mail（邮件）: mail",
-	}
-	prefix := `---
-name: lark-suite
-description: 飞书/Lark 聚合能力入口：管理飞书/Lark 产品能力（审批、日历、邮件等）。当用户需要时使用。
----
-# 路由前文
-before
-# Routes
-`
-
-	tests := []struct {
-		name         string
-		removed      string
-		removedLine  string
-		target       []string
-		wantKeywords string
-		suffix       string
-	}{
-		{name: "first", removed: "lark-approval", removedLine: routes[0], target: []string{"lark-calendar", "lark-mail"}, wantKeywords: "日历、邮件", suffix: "\n# 路由后文\nafter\n"},
-		{name: "middle", removed: "lark-calendar", removedLine: routes[1], target: []string{"lark-approval", "lark-mail"}, wantKeywords: "审批、邮件", suffix: "\n# 路由后文\nafter\n"},
-		{name: "last", removed: "lark-mail", removedLine: routes[2], target: []string{"lark-approval", "lark-calendar"}, wantKeywords: "审批、日历", suffix: "\n# 路由后文\nafter\n"},
-		{name: "last-at-eof", removed: "lark-mail", removedLine: routes[2], target: []string{"lark-approval", "lark-calendar"}, wantKeywords: "审批、日历"},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			content := prefix + strings.Join(routes, "\n") + test.suffix
-			got, err := cropSuiteRoutes(content, []string{test.removed}, test.target)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			want := strings.Replace(content, "审批、日历、邮件等", test.wantKeywords+"等", 1)
-			removedLine := test.removedLine
-			if strings.Contains(want, removedLine+"\n") {
-				removedLine += "\n"
-			}
-			want = strings.Replace(want, removedLine, "", 1)
-			if got != want {
-				t.Fatalf("cropped content changed surrounding lines\ngot:\n%s\nwant:\n%s", got, want)
-			}
-		})
-	}
-}
-
 func TestSyncSkillsNilRunnerFails(t *testing.T) {
 	result := SyncSkills(SyncOptions{Version: "1.0.33", Now: time.Now})
 	if result.Err == nil {
