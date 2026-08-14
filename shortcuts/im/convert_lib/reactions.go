@@ -27,6 +27,12 @@ const reactionsBatchQueryMaxQueries = 20
 // ~700ms) the effective rate stays well under 6/s.
 const reactionsBatchQueryConcurrency = 4
 
+// ImMessageReactionsReadScope is required only when reaction enrichment is
+// actually requested (the default mode). The message-listing shortcuts declare
+// it as a conditional scope, so --no-reactions does not fail the scope
+// pre-flight (issue #2352); it is enforced lazily here instead.
+const ImMessageReactionsReadScope = "im:message.reactions:read"
+
 // EnrichReactions enriches messages with their reactions by calling the
 // im.reactions.batch_query API. Messages are modified in place: each message
 // that the server returns reactions for gets a "reactions" map attached.
@@ -53,6 +59,16 @@ const reactionsBatchQueryConcurrency = 4
 // batches of size <= 20 before invoking the API.
 func EnrichReactions(runtime *common.RuntimeContext, messages []map[string]interface{}) {
 	if len(messages) == 0 {
+		return
+	}
+
+	// The reactions scope is conditional: --no-reactions callers never reach
+	// this function, so enforce it lazily here (not in the unconditional
+	// pre-flight) and fail soft like the other enrichment failure modes.
+	if err := runtime.EnsureScopes([]string{ImMessageReactionsReadScope}); err != nil {
+		warnSyncf(nil, runtime.IO().ErrOut,
+			"warning: reactions_batch_query_skipped: %v\n", err)
+		markAllReactionNodes(messages)
 		return
 	}
 
@@ -114,6 +130,25 @@ func EnrichReactions(runtime *common.RuntimeContext, messages []map[string]inter
 		}()
 	}
 	wg.Wait()
+}
+
+// markAllReactionNodes marks every message map (including nested thread
+// replies) with reactions_error: true, matching fetchReactionsBatch's failure
+// marker so consumers handle skipped enrichment uniformly.
+func markAllReactionNodes(messages []map[string]interface{}) {
+	for _, msg := range messages {
+		msg["reactions_error"] = true
+		switch nested := msg["thread_replies"].(type) {
+		case []map[string]interface{}:
+			markAllReactionNodes(nested)
+		case []interface{}:
+			for _, raw := range nested {
+				if m, ok := raw.(map[string]interface{}); ok {
+					m["reactions_error"] = true
+				}
+			}
+		}
+	}
 }
 
 // collectMessageNodes walks messages (and any nested thread_replies) and
