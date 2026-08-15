@@ -122,6 +122,12 @@ lark-cli auth login --scope "<missing_scope>" --no-wait --json  # 按具体 scop
 
 **规则**：auth login 必须指定范围（`--domain` 或 `--scope`）。多次 login 的 scope 会累积（增量授权）。
 
+### 指定最小 scope 后页面仍出现历史权限
+
+当用户已经执行最小化的 `auth login --scope "<scope>"`，但开发者后台授权页面仍显示此前申请过的全部常用权限时，不要反复更换 `--scope` 或重复发起登录。先让应用管理员在开发者后台的权限申请/授权管理页面检查并取消、驳回或处理遗留的待审批申请；历史申请没有清理时，后台可能继续合并展示旧请求。
+
+CLI 无法代替管理员取消开发者后台的待审批 scope 申请。清理后重新执行最小 scope 登录，并用 `lark-cli auth status --verify --json` 核对实际已授予的 scope。
+
 #### Agent 代理发起认证（推荐）
 
 当你作为 AI agent 需要帮用户完成认证时，优先使用 split-flow，避免在同一轮对话中阻塞等待用户授权：
