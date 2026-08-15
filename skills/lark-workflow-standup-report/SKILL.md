@@ -37,6 +37,10 @@ lark-cli auth login --domain calendar,task
               AI 汇总（时间转换 + 冲突检测 + 排序）──► 摘要
 ```
 
+### Step 0: 确定目标日期
+
+对“今天”“明天”“本周”等相对日期，先按 [`lark-shared` 的「日期锚点与相对日期」](../lark-shared/SKILL.md#日期锚点与相对日期) 确定真实当前日期和时区，再计算 `--start` / `--end` / `--due-end` 需要的绝对时间。下方示例日期只说明格式，不代表当前年份。
+
 ### Step 1: 获取日程
 
 ```bash
