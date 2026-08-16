@@ -8,6 +8,7 @@ import (
 	"io"
 
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/core"
 )
@@ -169,6 +170,11 @@ type Hooks[Args any, Data any] struct {
 	DryRun    func(context.Context, CommandContext, *Args) *DryRunAPI
 	Execute   func(context.Context, CommandContext, *Args) (Result[Data], error)
 	Renderers map[string]Renderer[Data]
+
+	// BuildCitation builds this result's citations from the final output and
+	// the bound args. It runs only when the gate is on and the result goes
+	// through an envelope; it must not call any API and must not fail.
+	BuildCitation func(context.Context, CommandContext, *Args, Data) []citation.Citation
 }
 
 type Renderer[Data any] func(io.Writer, Data) error

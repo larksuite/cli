@@ -20,6 +20,9 @@ const (
 	// Content safety scanning mode
 	CliContentSafetyMode = "LARKSUITE_CLI_CONTENT_SAFETY_MODE"
 
+	// Citation output gate. Exactly "1" enables citations in JSON envelopes.
+	CliCitation = "LARKSUITE_CLI_CITATION"
+
 	CliAgentName  = "LARKSUITE_CLI_AGENT_NAME"
 	CliAgentTrace = "LARKSUITE_CLI_AGENT_TRACE"
 

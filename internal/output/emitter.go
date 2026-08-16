@@ -10,6 +10,7 @@ import (
 	"io"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/citation"
 )
 
 // NoticeProvider supplies the notice attached to a structured envelope.
@@ -51,6 +52,13 @@ type EmitOptions struct {
 	DryRun          bool
 	Pretty          PrettyRenderer
 	JQSafetyWarning bool
+
+	// Citations lazily builds the envelope citations. emitEnvelope invokes it
+	// only after the format dispatch has committed to an envelope; nil means
+	// this result carries no citations. Laziness matters: only the emitter
+	// knows which branch really produces an envelope (jq precedence, pretty
+	// fallback, unknown-format fallback), so callers must not pre-judge.
+	Citations func() []citation.Citation
 }
 
 // StreamOptions describes one streamed page's wire representation. Streaming
@@ -201,6 +209,9 @@ func (e *Emitter) emitEnvelope(data interface{}, ok bool, opts EmitOptions) erro
 		Data:     data,
 		Meta:     opts.Meta,
 		Notice:   e.notice(),
+	}
+	if opts.Citations != nil {
+		env.Citations = opts.Citations()
 	}
 	if scanResult.Alert != nil {
 		env.ContentSafetyAlert = scanResult.Alert

@@ -96,6 +96,11 @@ type Shortcut struct {
 	// tweak the command; cmd.Parent() is available at this point.
 	PostMount func(cmd *cobra.Command)
 
+	// Citation declares this read command's citation capability. Declaring it
+	// requires explicit Risk "read", a non-empty allocated SourceTypes set and
+	// a Build hook; violations panic at mount time. See CitationDefinition.
+	Citation *CitationDefinition
+
 	// typed is the fully compiled contract produced by Define. It remains
 	// private so legacy registry and public Schema cannot observe a partially
 	// migrated Typed Shortcut.

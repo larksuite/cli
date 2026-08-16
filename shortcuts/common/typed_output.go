@@ -16,6 +16,11 @@ type OutputDefinition struct {
 	// envelopes and jq JSON output. It does not enable bare stdout output or
 	// bypass content-safety scanning.
 	DisableHTMLEscaping bool
+
+	// Citation declares this read command's citation capability. Only
+	// SourceTypes is honored on the typed path; the builder lives in
+	// Hooks.BuildCitation so it can see typed *Args and Data.
+	Citation *CitationDefinition
 }
 
 // ResultMetaDefinition declares which standard envelope metadata a command may

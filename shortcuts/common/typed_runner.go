@@ -9,6 +9,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -67,7 +68,16 @@ func runTypedShortcut(cmdFactory *cmdutil.Factory, runtime *RuntimeContext, shor
 	if err := validateTypedResultProtocol(command, result); err != nil {
 		return err
 	}
-	return emitTypedResult(runtime, command, result)
+	var citations func() []citation.Citation
+	if command.hooks.buildCitation != nil && result.outcome != "" {
+		boundArgs, resultData := bound.value, result.data
+		citations = wrapCitationBuilder(cmdFactory.IOStreams.ErrOut, runtime.Cmd.CommandPath(),
+			command.output.Citation.SourceTypes,
+			func() []citation.Citation {
+				return command.hooks.buildCitation(runtime.ctx, commandContext, boundArgs, resultData)
+			})
+	}
+	return emitTypedResult(runtime, command, result, citations)
 }
 
 func validateTypedStdinInputs(runtime *RuntimeContext, command *compiledCommand) error {
@@ -108,7 +118,7 @@ func validateTypedStdinInputs(runtime *RuntimeContext, command *compiledCommand)
 	return nil
 }
 
-func emitTypedResult(runtime *RuntimeContext, command *compiledCommand, result compiledResult) error {
+func emitTypedResult(runtime *RuntimeContext, command *compiledCommand, result compiledResult, citations func() []citation.Citation) error {
 	if result.outcome == "" {
 		return errs.NewInternalError(errs.SubtypeUnknown, "typed Execute returned a Result without Outcome")
 	}
@@ -124,7 +134,7 @@ func emitTypedResult(runtime *RuntimeContext, command *compiledCommand, result c
 		// injected --format flag existed but output was always JSON.
 		format = ""
 	}
-	options := output.EmitOptions{Format: format, Raw: command.output.DisableHTMLEscaping, JQ: runtime.JqExpr, Pretty: pretty, Meta: outputMetaFromTyped(result.meta)}
+	options := output.EmitOptions{Format: format, Raw: command.output.DisableHTMLEscaping, JQ: runtime.JqExpr, Pretty: pretty, Meta: outputMetaFromTyped(result.meta), Citations: citations}
 	switch result.outcome {
 	case OutcomeSuccess:
 		runtime.handleEmitterError(runtime.newEmitter().Success(result.data, options))

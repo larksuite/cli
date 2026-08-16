@@ -11,6 +11,8 @@ import (
 	"io"
 	"reflect"
 	"strings"
+
+	"github.com/larksuite/cli/internal/citation"
 )
 
 // Define compiles a Typed Shortcut definition. Invalid definitions are
@@ -65,6 +67,9 @@ func compileDefinition[Args any, Data any](definition Definition[Args, Data]) (*
 		return nil, err
 	}
 	if err := validateOutputHooks(definition.Output, rendererMarkers(definition.Hooks.Renderers)); err != nil {
+		return nil, err
+	}
+	if err := validateTypedCitation(definition.Output.Citation, definition.Hooks.BuildCitation != nil, metadata.Risk, definition.Output.Mode); err != nil {
 		return nil, err
 	}
 	command := &compiledCommand{
@@ -195,6 +200,46 @@ func validateScopeList(scopes []string, path string) error {
 	return nil
 }
 
+// validateTypedCitation enforces that Output.Citation and Hooks.BuildCitation
+// are declared together, that the typed path does not carry the legacy
+// Build builder, that the command's output mode can actually carry a JSON
+// envelope (citations ride the envelope; a mode whose format set drops JSON
+// would compile a declaration nothing ever emits), and defers the rest to
+// the shared citation contract.
+func validateTypedCitation(def *CitationDefinition, hasHook bool, risk Risk, mode OutputMode) error {
+	if def == nil && !hasHook {
+		return nil
+	}
+	if def == nil || !hasHook {
+		return fmt.Errorf("Output.Citation and Hooks.BuildCitation must be set together")
+	}
+	if def.Build != nil {
+		return fmt.Errorf("Output.Citation.Build is legacy-only; use Hooks.BuildCitation")
+	}
+	if !outputModeIncludesJSON(mode) {
+		return fmt.Errorf("citation requires an output mode whose format set includes JSON, got %q", mode)
+	}
+	return validateCitationDeclaration(def, string(risk))
+}
+
+// outputModeIncludesJSON reports whether mode's format set includes a JSON
+// envelope. Both OutputGeneric (typedOutputFormats always lists "json" first,
+// selectable by --format json and the default) and OutputFixedJSON (every
+// successful invocation is a JSON envelope) satisfy this today, so this
+// check is vacuously true for every mode validateOutput currently accepts.
+// It is written as an explicit enumeration rather than a default-true
+// fallback so a future OutputMode that drops JSON support fails this check
+// at Define time instead of silently compiling a citation declaration that
+// nothing will ever emit.
+func outputModeIncludesJSON(mode OutputMode) bool {
+	switch mode {
+	case OutputGeneric, OutputFixedJSON:
+		return true
+	default:
+		return false
+	}
+}
+
 func adaptHooks[Args any, Data any](hooks Hooks[Args, Data]) compiledHooks {
 	adapted := compiledHooks{newArgs: func() any { return new(Args) }}
 	if hooks.Normalize != nil {
@@ -215,6 +260,11 @@ func adaptHooks[Args any, Data any](hooks Hooks[Args, Data]) compiledHooks {
 	adapted.execute = func(ctx context.Context, cc CommandContext, args any) (compiledResult, error) {
 		result, err := hooks.Execute(ctx, cc, args.(*Args))
 		return compiledResult{data: result.Data, outcome: result.Outcome, meta: result.Meta}, err
+	}
+	if hooks.BuildCitation != nil {
+		adapted.buildCitation = func(ctx context.Context, cc CommandContext, args any, data any) []citation.Citation {
+			return hooks.BuildCitation(ctx, cc, args.(*Args), data.(Data))
+		}
 	}
 	if len(hooks.Renderers) > 0 {
 		adapted.renderers = make(map[string]func(io.Writer, any) error, len(hooks.Renderers))

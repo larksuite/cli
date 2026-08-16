@@ -3,7 +3,12 @@
 
 package common
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/larksuite/cli/internal/citation"
+	"github.com/larksuite/cli/internal/envvars"
+)
 
 // typedSchemaContract is intentionally private during migration. Compiler and
 // snapshot tests consume it now; public cmd/schema registration happens only
@@ -62,6 +67,26 @@ type typedSchemaMeta struct {
 	Outcomes        typedSchemaOutcomes      `json:"outcomes"`
 	ResultMeta      *typedSchemaNode         `json:"result_meta,omitempty"`
 	Artifacts       []ArtifactDefinition     `json:"artifacts"`
+	Citation        *typedSchemaCitation     `json:"citation,omitempty"`
+}
+
+type typedSchemaCitation struct {
+	Env          string                `json:"env"`
+	EnabledValue string                `json:"enabled_value"`
+	EnvelopeKey  string                `json:"envelope_key"`
+	SourceTypes  []citation.SourceType `json:"source_types"`
+}
+
+func typedCitationSchema(def *CitationDefinition) *typedSchemaCitation {
+	if def == nil {
+		return nil
+	}
+	return &typedSchemaCitation{
+		Env:          envvars.CliCitation,
+		EnabledValue: "1",
+		EnvelopeKey:  "citations",
+		SourceTypes:  append([]citation.SourceType{}, def.SourceTypes...),
+	}
 }
 
 type typedSchemaAuthorization struct {
@@ -167,6 +192,7 @@ func buildTypedSchemaContract(command *compiledCommand) typedSchemaContract {
 			Outcomes:   typedSchemaOutcomes{Success: typedSchemaOutcome{Supported: true, EnvelopeOK: true, ExitCode: 0, Stdout: "result_envelope"}, PartialFailure: partial},
 			ResultMeta: typedResultMetaSchema(command.output.Meta),
 			Artifacts:  append([]ArtifactDefinition{}, command.output.Artifacts...),
+			Citation:   typedCitationSchema(command.output.Citation),
 		},
 	}
 }

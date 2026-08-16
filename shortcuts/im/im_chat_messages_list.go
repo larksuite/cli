@@ -8,9 +8,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/citation"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
@@ -178,6 +181,7 @@ var ImChatMessageList = common.Shortcut{
 		// Emit: pagination completion belongs to framework metadata; the
 		// business payload remains compatible for existing consumers.
 		outData := map[string]interface{}{
+			"chat_id":    chatId,
 			"messages":   messages,
 			"total":      len(messages),
 			"has_more":   hasMore,
@@ -210,6 +214,10 @@ var ImChatMessageList = common.Shortcut{
 			fmt.Fprintf(w, "\n%d message(s)\ntip: use --format json to view full message content\n", len(messages))
 		})
 		return nil
+	},
+	Citation: &common.CitationDefinition{
+		SourceTypes: []citation.SourceType{citation.SourceMessage},
+		Build:       chatMessagesListCitations,
 	},
 }
 
@@ -282,4 +290,66 @@ func resolveChatIDForMessagesList(runtime *common.RuntimeContext, dryRun bool) (
 		return "", errs.NewAPIError(errs.SubtypeNotFound, "P2P chat not found for this user")
 	}
 	return chatId, nil
+}
+
+// chatMessageCitation builds one message's citation. The URL opens the chat
+// via the brand's applink endpoint; title is a 50-rune excerpt of the text.
+func chatMessageCitation(brand core.LarkBrand, chatID, messageID, text, createTime string) citation.Citation {
+	entry := citation.Citation{
+		SourceType:  citation.SourceMessage,
+		Snippet:     text,
+		Title:       truncateRunes(text, 50),
+		PublishTime: citation.Time(createTime),
+	}
+	if chatID != "" {
+		entry.URL = core.ResolveEndpoints(brand).AppLink + "/client/chat/open?openChatId=" + url.QueryEscape(chatID)
+		if messageID != "" {
+			entry.ResourceID = chatID + "/" + messageID
+		}
+	}
+	return entry
+}
+
+func truncateRunes(s string, max int) string {
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max]) + "…"
+}
+
+// chatMessagesListCitations adapts the final output payload to per-message
+// citations. It tolerates both concrete and interface slice shapes and
+// returns nil on any unexpected shape instead of failing the command.
+func chatMessagesListCitations(rt *common.RuntimeContext, data any) []citation.Citation {
+	out, ok := data.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	chatID, _ := out["chat_id"].(string)
+	brand := core.BrandFeishu
+	if rt != nil && rt.Config != nil {
+		brand = rt.Config.Brand
+	}
+	var items []map[string]interface{}
+	switch v := out["messages"].(type) {
+	case []map[string]interface{}:
+		items = v
+	case []interface{}:
+		for _, entry := range v {
+			if m, ok := entry.(map[string]interface{}); ok {
+				items = append(items, m)
+			}
+		}
+	default:
+		return nil
+	}
+	citations := make([]citation.Citation, 0, len(items))
+	for _, msg := range items {
+		messageID, _ := msg["message_id"].(string)
+		text, _ := msg["content"].(string)
+		createTime, _ := msg["create_time"].(string)
+		citations = append(citations, chatMessageCitation(brand, chatID, messageID, text, createTime))
+	}
+	return citations
 }

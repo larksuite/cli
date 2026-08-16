@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/citation"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -111,11 +113,14 @@ var WikiNodeGet = common.Define(common.Definition[wikiNodeGetArgs, wikiNodeGetDa
 			{Name: "token", Mode: common.AliasIndependent, Conflict: common.AliasTrimmedEqualOrError, Hidden: true, Deprecated: true},
 		}}},
 	}},
-	Output: common.OutputDefinition{Data: common.DataDefinition{Overrides: []common.DataField{
-		{Path: "/updated_at", Shape: common.OneOfShape{Variants: []common.ValueShape{
-			common.StringShape{Format: "date-time"}, common.ConstShape{Value: ""},
-		}}},
-	}}},
+	Output: common.OutputDefinition{
+		Data: common.DataDefinition{Overrides: []common.DataField{
+			{Path: "/updated_at", Shape: common.OneOfShape{Variants: []common.ValueShape{
+				common.StringShape{Format: "date-time"}, common.ConstShape{Value: ""},
+			}}},
+		}},
+		Citation: &common.CitationDefinition{SourceTypes: []citation.SourceType{citation.SourceWiki}},
+	},
 	Hooks: common.Hooks[wikiNodeGetArgs, wikiNodeGetData]{
 		Normalize: func(_ context.Context, _ common.CommandContext, args *wikiNodeGetArgs) error {
 			spec, err := parseWikiNodeGetSpec(args.NodeToken, args.ObjType, args.SpaceID)
@@ -153,6 +158,9 @@ var WikiNodeGet = common.Define(common.Definition[wikiNodeGetArgs, wikiNodeGetDa
 			renderWikiNodeGetPretty(w, data.toMap())
 			return nil
 		}},
+		BuildCitation: func(_ context.Context, c common.CommandContext, _ *wikiNodeGetArgs, d wikiNodeGetData) []citation.Citation {
+			return wikiNodeCitation(c.Config().Brand, d.SpaceID, d.NodeToken, d.Title, d.ObjEditTime)
+		},
 	},
 })
 
@@ -364,6 +372,33 @@ func wikiNodeGetOutput(node *wikiNodeRecord, raw map[string]interface{}) map[str
 	out["updated_at"] = formatWikiTimestamp(objEditRaw)
 
 	return out
+}
+
+// wikiNodeCitation builds the node's citation entry for the envelope-level
+// citations array. The URL uses the brand's applink deep link
+// (applink.<brand>/client/wiki/open?wikiToken=<token>), not the
+// www.feishu.cn/wiki/<token> web link that wikiNodeGetOutput's doc comment
+// above deliberately omits from `data`: that web form is a non-canonical
+// redirect and would mislead in a read/confirm command's structured output.
+// The applink form doesn't carry that problem — it is the documented
+// client-side deep-link contract, gated behind LARKSUITE_CLI_CITATION (off by
+// default) and surfaced only in the top-level citations array, never in
+// `data`. So the two decisions coexist: `data` still emits no url; citations
+// may carry an applink url. An empty nodeToken yields an empty URL and the
+// framework drops the entry (citation.Normalize).
+func wikiNodeCitation(brand core.LarkBrand, spaceID, nodeToken, title, objEditTime string) []citation.Citation {
+	entry := citation.Citation{
+		SourceType:  citation.SourceWiki,
+		Title:       title,
+		PublishTime: citation.Time(objEditTime),
+	}
+	if nodeToken != "" {
+		entry.URL = core.ResolveEndpoints(brand).AppLink + "/client/wiki/open?wikiToken=" + url.QueryEscape(nodeToken)
+		if spaceID != "" {
+			entry.ResourceID = spaceID + "/" + nodeToken
+		}
+	}
+	return []citation.Citation{entry}
 }
 
 // formatWikiTimestamp turns a Lark unix-seconds string (the format used by

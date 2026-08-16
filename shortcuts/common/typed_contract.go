@@ -7,6 +7,8 @@ import (
 	"context"
 	"io"
 	"reflect"
+
+	"github.com/larksuite/cli/internal/citation"
 )
 
 type compiledCommand struct {
@@ -58,4 +60,6 @@ type compiledHooks struct {
 	dryRun    func(context.Context, CommandContext, any) *DryRunAPI
 	execute   func(context.Context, CommandContext, any) (compiledResult, error)
 	renderers map[string]func(io.Writer, any) error
+
+	buildCitation func(context.Context, CommandContext, any, any) []citation.Citation
 }
