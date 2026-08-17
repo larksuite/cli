@@ -5,6 +5,7 @@ package mail
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -15,6 +16,14 @@ import (
 
 func threadManageID(suffix string) string {
 	return "thread_abcdefghijklmnop_" + suffix
+}
+
+func threadManageIDs(count int) []string {
+	ids := make([]string, 0, count)
+	for i := 0; i < count; i++ {
+		ids = append(ids, threadManageID(fmt.Sprintf("%02d", i+1)))
+	}
+	return ids
 }
 
 func stubThreadManagePost(reg *httpmock.Registry, endpoint string, body map[string]interface{}) *httpmock.Stub {
@@ -79,6 +88,21 @@ func TestThreadManage_NormalizeThreadIDs(t *testing.T) {
 	for _, tc := range [][]string{{}, {""}, {" , "}} {
 		_, err := normalizeThreadManageIDs(tc)
 		requireMessageManageValidationParam(t, err, "--thread-ids")
+	}
+	tooMany := threadManageIDs(mailThreadManageMaxIDs + 1)
+	_, err = normalizeThreadManageIDs(tooMany)
+	validationErr := requireMessageManageValidationParam(t, err, "--thread-ids")
+	if !strings.Contains(validationErr.Error(), "thread_ids") || !strings.Contains(validationErr.Error(), "20") {
+		t.Fatalf("error = %v, want thread_ids max 20 validation", validationErr)
+	}
+
+	withDuplicates := append(threadManageIDs(mailThreadManageMaxIDs), threadManageID("01"))
+	got, err = normalizeThreadManageIDs(withDuplicates)
+	if err != nil {
+		t.Fatalf("normalizeThreadManageIDs with duplicate over raw max returned error: %v", err)
+	}
+	if len(got) != mailThreadManageMaxIDs {
+		t.Fatalf("ids len = %d, want %d after dedupe", len(got), mailThreadManageMaxIDs)
 	}
 }
 
@@ -157,6 +181,51 @@ func TestThreadModify_Validation(t *testing.T) {
 	requireMessageManageValidationParam(t, err, "--folder-id")
 	if !strings.Contains(err.Error(), "use +thread-trash") {
 		t.Fatalf("error = %v, want +thread-trash hint", err)
+	}
+}
+
+func TestThreadManage_ThreadIDsMaxValidationRunsBeforeAPI(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		shortcut common.Shortcut
+		args     []string
+		endpoint string
+	}{
+		{
+			name:     "modify",
+			shortcut: MailThreadModify,
+			args: []string{
+				"+thread-modify",
+				"--thread-ids", strings.Join(threadManageIDs(mailThreadManageMaxIDs+1), ","),
+				"--add-label-ids", "FLAGGED",
+			},
+			endpoint: "batch_modify",
+		},
+		{
+			name:     "trash",
+			shortcut: MailThreadTrash,
+			args: []string{
+				"+thread-trash",
+				"--thread-ids", strings.Join(threadManageIDs(mailThreadManageMaxIDs+1), ","),
+				"--yes",
+			},
+			endpoint: "batch_trash",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, stdout, _, reg := mailShortcutTestFactory(t)
+			stub := stubThreadManagePost(reg, tc.endpoint, map[string]interface{}{"code": 0, "data": map[string]interface{}{}})
+			stub.Optional = true
+
+			err := runMountedMailShortcut(t, tc.shortcut, tc.args, f, stdout)
+			validationErr := requireMessageManageValidationParam(t, err, "--thread-ids")
+			if !strings.Contains(validationErr.Error(), "thread_ids") || !strings.Contains(validationErr.Error(), "20") {
+				t.Fatalf("error = %v, want thread_ids max 20 validation", validationErr)
+			}
+			if len(stub.CapturedBody) != 0 {
+				t.Fatalf("API was called with body %s, want local validation before request", string(stub.CapturedBody))
+			}
+		})
 	}
 }
 
