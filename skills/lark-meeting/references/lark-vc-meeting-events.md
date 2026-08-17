@@ -56,31 +56,7 @@ lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --page-token 
 - 应用身份路径：应用机器人必须在会中或参会过；不要拿任意 `meeting_id` 直接查。
 - 不要在拿到 `meeting_id` 后随意切换身份。身份不一致时，常见结果是空列表、`no permission` 或 `bot is not in meeting`。
 
-### 3. 读取事件前必须先拿到可见的 meeting_id
-
-最稳妥的调用顺序通常是：
-
-```bash
-# 方式 1：先入会，直接记录返回的 meeting.id
-lark-cli vc +meeting-join --as bot --meeting-number 123456789
-
-# 再查询事件
-lark-cli vc +meeting-events --as bot --meeting-id <id> --page-all --format pretty
-```
-
-如果应用机器人已经在会中，也可以先通过 active meeting 找会：
-
-```bash
-lark-cli vc +meeting-list-active --as bot --user-id <user_open_id> --format json
-lark-cli vc +meeting-events --as bot --meeting-id <id> --page-all --format pretty
-```
-
-如果要查询当前登录用户所在会议：
-
-```bash
-lark-cli vc +meeting-list-active --as user --format json
-lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format pretty
-```
+### 3. 应用身份的可见性窗口
 
 若应用机器人已离会、未入会、或会议已经无法再判断身份，后端通常会报：
 - `bot is not in meeting, no permission`
@@ -110,8 +86,8 @@ lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format pret
 
 ### 5. 输出格式差异
 
-- `--format json`：结构化契约，顶层包含 `meeting`、`identity`、`events`、`has_more`、`page_token`。`identity` 表示当前读取身份；事件 actor 统一含 `participant_type`、`role`、`label`；每条事件保留 `payload` 便于追溯细节。
 - `--format pretty`：默认推荐格式，输出当前身份和逐条时间线，适合快速理解“发生了什么”。
+- `--format json`：结构化契约，顶层包含 `meeting`、`identity`、`events`、`has_more`、`page_token`。`identity` 表示当前读取身份；事件 actor 统一含 `participant_type`、`role`、`label`；每条事件保留 `payload` 便于追溯细节。
 - `--format ndjson`：输出事件行，并带 metadata 行，适合流式消费。
 
 **选型原则**：默认先用 `--format pretty`；仅当 `pretty` 缺少完成任务所必需的结构化字段时，才改用 `--format json`。用户明确要求 JSON 或规则明确要求结构化字段时可直接用 `--format json`；需要流式消费时用 `--format ndjson`。
@@ -324,70 +300,12 @@ lark-cli vc +meeting-events \
 | `start` / `end` | 用户给出的时间范围；如未给出则默认取全量可见事件 |
 | `page-token` | 上一页或上一次查询结果中保存的 `page_token`；建议持久化保存，便于下次继续拉取新增事件 |
 
-## Agent 组合场景
-
-### 场景 1：入会后读取会中发生了什么
-
-```bash
-# 第 1 步：加入会议，记录返回的 meeting.id
-JOIN=$(lark-cli vc +meeting-join --as bot --meeting-number 123456789 --format json)
-MID=$(echo "$JOIN" | jq -r '.data.meeting.id')
-
-# 第 2 步：用 meeting.id 读取当前可见事件
-lark-cli vc +meeting-events --as bot --meeting-id "$MID" --page-all --format pretty
-```
-
-### 场景 1b：应用机器人已在会中，先发现 meeting_id 再读事件
-
-```bash
-lark-cli vc +meeting-list-active --as bot --user-id <user_open_id> --format json
-lark-cli vc +meeting-events --as bot --meeting-id <id> --page-all --format pretty
-```
-
-### 场景 1c：当前登录用户正在会中，先发现 meeting_id 再读事件
-
-```bash
-lark-cli vc +meeting-list-active --as user --format json
-lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format pretty
-```
-
-### 场景 2：过滤某段时间内的事件
-
-```bash
-lark-cli vc +meeting-events \
-  --as <same_identity> \
-  --meeting-id <id> \
-  --start 2026-04-17T15:00:00+08:00 \
-  --end 2026-04-17T16:00:00+08:00 \
-  --page-all \
-  --format pretty
-```
-
-### 场景 3：基于上一次的 `page_token` 继续查新增事件
-
-```bash
-# 上一次查询结束后，保留最后返回的 page_token
-# 这次直接从该游标继续拉新增事件
-lark-cli vc +meeting-events \
-  --as <same_identity> \
-  --meeting-id <id> \
-  --page-token <last_page_token> \
-  --page-all \
-  --format pretty
-```
-
-适用规则：
-
-- 当用户说“继续看新事件”“看上次之后新增了什么”时，优先使用上一次保存的 `page_token`。
-- 如果这次返回里仍有 `has_more=true`、pretty 里出现 `more available`，或又返回了新的 `page_token`，说明新增事件还没拉完，应继续分页，而不是把当前页误当成完整增量结果。
-- 只有在用户明确要求“从头回放全部事件”时，才忽略已有 `page_token`，重新从第一页开始。
-
 ## 常见错误与排查
 
 | 错误现象 | 根本原因 | 解决方案 |
 |---------|---------|---------|
 | `--meeting-id is required` | 未传入 `--meeting-id` | 传入长数字 `meeting.id` |
-| `10005 bot is not in meeting` | 使用应用身份读取，但应用机器人从未真实入会该会议；或会议已结束但应用机器人从未在会中出现过 | 如果 `meeting_id` 来自用户身份发现，改回 `--as user`；如果确实要应用身份读取，先让应用机器人入会或确认它曾参会后再用 `--as bot`。**如果只是想看参会人快照，改用 `lark-cli vc meeting get --params '{"meeting_id":"<meeting.id>"}' --with-participants`** |
+| `10005 bot is not in meeting` | 使用应用身份读取，但应用机器人从未真实入会该会议；或会议已结束但应用机器人从未在会中出现过 | 如果 `meeting_id` 来自用户身份发现，改回 `--as user`；如果确实要应用身份读取，先让应用机器人入会或确认它曾参会后再用 `--as bot`。**如果只是想看参会人快照，改用 `lark-cli vc meeting get --params '{"meeting_id":"<meeting.id>","with_participants":true}'`** |
 | 用户身份无权限 / 不可见 | 当前用户不是该会议的可见参与者，或 `meeting_id` 不是从用户身份路径获得 | 不要反复执行 `auth login`。先确认 `meeting_id` 是否来自 `+meeting-list-active --as user`；如果用户明确要切到应用身份，再通过 `+meeting-list-active --as bot --user-id <user_open_id>` 获取应用身份可读的 `meeting_id`，或在用户明确同意后让应用机器人入会，再用 `+meeting-events --as bot` 读取 |
 | `20001 meeting_status_MEETING_END` | 会议已结束且已超出后端允许的 5 分钟宽限窗口 | 本接口不再适合继续拉取事件。先用 `lark-cli vc +detail --meeting-ids <meeting.id>` 获取会议产物信息，再根据 `note_display_type` / `note_id` / `minute_token` 和用户意图选择纪要正文、逐字稿或妙记；参会人请用 `lark-cli vc meeting get --params '{"meeting_id":"<meeting.id>"}' --with-participants` |
 | `20002 meeting not exist` | `meeting_id` 错误，或会议实例当前已不可获取（常见于把 9 位会议号当 meeting_id 传） | 确认传入的是长数字 `meeting_id`，不是 9 位会议号 |
@@ -399,18 +317,10 @@ lark-cli vc +meeting-events \
 - 这是**会中事件流**查询，不适合拿来搜历史会议记录；搜历史会议请用 `+search`。
 - 如果会议已经结束，不要卡在 `+meeting-events`：  
   - 先用 `lark-cli vc +detail --meeting-ids <meeting.id>` 获取会议产物信息。
-  - 再根据 `note_display_type`、`note_id`、`minute_token` 和用户意图，按 `lark-vc` 的产物决策读取纪要正文、逐字稿或妙记。
+  - 再根据 `note_display_type`、`note_id`、`minute_token` 和用户意图，按 `lark-meeting` 的产物决策读取纪要正文、逐字稿或妙记。
 - 事件列表是否完整，取决于应用机器人何时入会、何时离会，以及后端当前可见的会中事件范围。对于已结束会议，通常只在**结束后 5 分钟内**、且应用机器人**曾经在会中**时还能继续拉到事件。
 - 查询"谁参加过某会议"请用 `vc meeting get --params '{"meeting_id":"<id>","with_participants":true}'`——这是参会人**快照** API，不依赖 bot 是否参会，对已结束会议也可查；**不要** 用 `+meeting-events` 做参会人查询。
 
-## 参考
-
-- [lark-vc-agent-meeting-join](../../lark-vc-agent/references/lark-vc-agent-meeting-join.md) — 先真实入会
-- [lark-vc-meeting-list-active](lark-vc-meeting-list-active.md) — 发现当前可读事件的进行中会议 ID
-- [lark-vc-agent-meeting-leave](../../lark-vc-agent/references/lark-vc-agent-meeting-leave.md) — 用户明确要求时离会
-- [lark-vc-search](lark-vc-search.md) — 搜索历史会议（获取 meeting_id）
-- [lark-vc-recording](lark-vc-recording.md) — 查询 minute_token
-- [lark-vc-detail](lark-vc-detail.md) — 获取会议详情
-- [lark-vc-agent](../../lark-vc-agent/SKILL.md) — Agent 参会能力
-- [lark-vc](../SKILL.md) — 视频会议原子域（Meeting / Note 等核心概念）
-- [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数
+## 相关场景
+- [会中事件与会中互动](../scenes/live-meeting-interact.md)
+- [应用机器人参会与会中互动](../scenes/live-meeting-attend.md)

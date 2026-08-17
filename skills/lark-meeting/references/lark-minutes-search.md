@@ -117,19 +117,6 @@ CLI 会先按输入的本地日历日语义解析，再标准化为 RFC3339 时�
 
 如果用户说“昨天的妙记”“今天的妙记”“某一天内的妙记”，应把 `--start` 和 `--end` 都设置为同一天，而不是把 `--end` 设成下一天。
 
-### 7. 会议的妙记先定位会议
-
-如果用户明确要找某场会议的妙记，或同时提到“会议 / 开会 / 会”和“妙记”，应优先使用 `vc +search` 先定位会议，再按需通过 `vc +recording` 获取 `minute_token`，不要直接按妙记时间范围或关键词搜索。
-只有在无法通过会议搜索定位目标会议，或用户明确要求按妙记维度检索时，才回退到 `minutes +search`。
-
-如果用户要的是"某场会议的妙记信息""某个日程对应的妙记详情""minute\_token""妙记链接""标题""时长""owner"，正确链路是：
-
-1. `vc +search` 或 `calendar +agenda` 先定位会议 / 日程
-2. `vc +recording` 获取 `minute_token`
-3. `minutes minutes get` 查询妙记基础信息
-
-<br />
-
 ## 时间格式
 
 `--start` 和 `--end` 支持以下时间格式：
@@ -159,21 +146,6 @@ lark-cli minutes +search --query "预算复盘" --page-size 20
 lark-cli minutes +search --query "预算复盘" --page-size 20 --page-token '<PAGE_TOKEN>'
 ```
 
-## 搜索结果中的下一步
-
-搜索结果中的 `token` 可直接作为 `minute_token` 用于继续查询妙记产物：
-通常先用搜索结果中的 `token` 获取妙记基础信息，确认描述、链接等元数据是否命中目标；只有需要进一步查看逐字稿、总结、待办、章节时，再继续查询关联的纪要产物。
-
-如果你已经确定目标妙记，优先直接复用搜索结果中的 `token`，避免重复搜索。
-
-```bash
-# 首先查询妙记元信息（标题、时长、封面） → 用本 skill
-lark-cli minutes minutes get --params '{"minute_token": "obcn***************"}'
-
-# 查妙记关联的产物(--summary --todo --chapter --keyword --transcript 按需返回)
-lark-cli minutes +detail --minute-tokens <minute_token> --summary
-```
-
 ## 常见错误与排查
 
 | 错误现象                   | 根本原因                                                  | 解决方案                                         |
@@ -194,8 +166,5 @@ lark-cli minutes +detail --minute-tokens <minute_token> --summary
 - 排查参数与请求结构时优先使用 `--dry-run`。
 - 搜索的时间范围最大为 1 个月，如果需要搜索更长时间范围的妙记，需要拆分为多次时间范围为一个月查询。
 
-## 参考
-
-- [lark-minutes](../SKILL.md) -- 妙记相关命令
-- [lark-minutes-detail](lark-minutes-detail.md) -- 基于 `minute_token` 获取逐字稿、总结、待办、章节等产物
-- [lark-vc](../../lark-vc/SKILL.md) -- 视频会议全部命令
+## 相关场景
+- [查询妙记及其产物](../scenes/query-minutes-and-artifacts.md)

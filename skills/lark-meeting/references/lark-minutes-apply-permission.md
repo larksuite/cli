@@ -88,8 +88,5 @@ lark-cli minutes +apply-permission --minute-token obcnxxxxxxxxxxxxxxxxxxxx --per
 | `missing required scope(s)` | 当前身份缺少 `minutes:permission:apply` | 见上方「missing scope 与资源 ACL」 |
 | 申请后仍无权限 | 所有者尚未同意 | 这是异步申请，需等待所有者处理；不代表命令执行失败 |
 
-## 参考
-
-- [lark-minutes](../SKILL.md) — 妙记全部命令
-- [minutes +detail](lark-minutes-detail.md) — 妙记内容与产物查询
-- [lark-shared](../../lark-shared/SKILL.md) — 身份延续与权限管理
+## 相关场景
+- [生成和修改妙记](../scenes/create-and-edit-minutes.md)

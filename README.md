@@ -45,7 +45,7 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 | 📚 Wiki       | Create and manage knowledge spaces, nodes, and documents                                                                          |
 | 👤 Contact    | Search users by name/email/phone, get user profiles                                                                               |
 | 📧 Mail       | Browse, search, read emails, send, reply, forward, manage drafts, watch new mail                                                  |
-| 🎥 Meetings   | Search meeting records, query meeting minutes artifacts and recordings                                                            |
+| 🎥 Meetings   | Search live and historical meetings, inspect participants and artifacts, analyze transcripts, manage Minutes, and assist in meetings |
 | 🕐 Attendance | Query personal attendance check-in records                                                                                        |
 | ✍️ Approval   | Query approval tasks, approve/reject/transfer tasks, cancel and CC instances                                                      |
 | 🎯 OKR        | Query, create, update OKRs; manage objective & key results, alignments, indicators and progress.                                  |
@@ -151,9 +151,8 @@ lark-cli auth status
 | `lark-contact`                  | Search users by name/email/phone, get user profiles                                                            |
 | `lark-wiki`                     | Knowledge spaces, nodes, documents                                                                             |
 | `lark-event`                    | Real-time event subscriptions (WebSocket), regex routing & agent-friendly format                               |
-| `lark-vc`                       | Search meeting records, query meeting minutes (summary, todos, transcript)                                     |
+| `lark-meeting`                  | Search live or historical meetings, inspect participants and artifacts, analyze transcripts, manage Minutes, and assist in meetings |
 | `lark-whiteboard`               | Whiteboard/chart DSL rendering                                                                                 |
-| `lark-minutes`                  | Minutes metadata & AI artifacts (summary, todos, chapters); upload audio/video to create minutes, download media |
 | `lark-openapi-explorer`         | Explore underlying APIs from official docs                                                                     |
 | `lark-skill-maker`              | Custom skill creation framework                                                                                |
 | `lark-attendance`               | Query personal attendance check-in records                                                                     |

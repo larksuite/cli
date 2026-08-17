@@ -5,25 +5,13 @@
 
 本 skill 对应 shortcut：`lark-cli vc +meeting-join`（调用 `POST /open-apis/vc/v1/bots/join`）。
 
-> **不要把 9 位会议号等同于入会意图。** 用户给出 9 位会议号并询问“会议讲了什么 / 查会中事件”时，先用 `+meeting-list-active` 查当前 active meetings 并按 `meeting_no` 匹配；只有用户明确要求“入会 / 让应用机器人旁听 / 代我参会”时才调用本命令。
+> **不要把 9 位会议号等同于入会意图。** 用户给出 9 位会议号并询问“会议讲了什么 / 查会中事件”时，先用 `vc +meeting-list-active` 查当前 active meetings 并按 `meeting_no` 匹配；只有用户明确要求“入会 / 让应用机器人旁听 / 代我参会”时才调用本命令。
 
 ## 命令
 
 ```bash
 # 仅指定会议号（无密码）
 lark-cli vc +meeting-join --as bot --meeting-number 123456789
-
-# 指定会议号 + 密码
-lark-cli vc +meeting-join --as bot --meeting-number 123456789 --password 8888
-
-# 从邀请事件透传 call_id（参见「如何获取输入参数」）
-lark-cli vc +meeting-join --as bot --meeting-number 123456789 --call-id a08e06bf-9a41-44e4-a89c-a7871899e783
-
-# 输出格式
-lark-cli vc +meeting-join --as bot --meeting-number 123456789 --format json
-
-# 预览 API 调用（不实际加入会议）
-lark-cli vc +meeting-join --as bot --meeting-number 123456789 --dry-run
 ```
 
 ## 参数
@@ -81,36 +69,6 @@ lark-cli vc +meeting-join --as bot --meeting-number 123456789 --dry-run
 | `password` | 若会议设置了入会密码，由主持人提供 |
 | `call-id` | 由 `vc.bot.meeting_invited_v1` 邀请事件的 `call_id` 字段携带，Agent 收到事件时透传过来；无邀请事件场景（如 Agent 主动入会）不传 |
 
-## Agent 组合场景
-
-### 场景 1：加入会议 → 监听会中事件
-
-```bash
-# 第 1 步：加入会议，记录返回的 meeting.id
-lark-cli vc +meeting-join --as bot --meeting-number 123456789
-
-# 第 2 步：使用返回的 meeting.id 查询会中事件
-lark-cli vc +meeting-events --as bot --meeting-id <meeting.id> --page-all --format pretty
-```
-
-如果 bot 已经在会中，也可以通过 active meeting 找回 `meeting_id`：
-
-```bash
-lark-cli vc +meeting-list-active --as bot --user-id <user_open_id> --format json
-```
-
-### 场景 2：加入会议 → 会后进入 lark-vc 获取会议产物信息
-
-```bash
-# 第 1 步：加入并参会
-lark-cli vc +meeting-join --as bot --meeting-number 123456789
-
-# 第 2 步：会议结束后，先查询会议产物
-lark-cli vc +detail --meeting-ids <meeting.id>
-```
-
-后续按 `lark-vc` 的产物决策处理：根据 `note_display_type`、`note_id`、`minute_token` 和用户意图选择纪要正文、逐字稿或妙记。
-
 ## 常见错误与排查
 
 | 错误现象 | 根本原因 | 解决方案 |
@@ -128,14 +86,5 @@ lark-cli vc +detail --meeting-ids <meeting.id>
 - 入会会让机器人立即出现在参会列表；若用户要求退出 / 离开 / 结束参会，直接使用 `+meeting-leave --as bot --meeting-id <meeting.id>`。参数格式不确定时可选 `--dry-run` 预览，但不是必经步骤。
 - 执行成功后，立即记录返回的 `meeting.id`，用于后续 `+meeting-leave` / `+meeting-events`。
 
-## 参考
-
-- [lark-vc-agent-meeting-leave](lark-vc-agent-meeting-leave.md) — 对应的离会命令
-- [lark-vc-meeting-list-active](../../lark-vc/references/lark-vc-meeting-list-active.md) — 发现当前可读事件的进行中会议 ID
-- [lark-vc-meeting-events](../../lark-vc/references/lark-vc-meeting-events.md) — 会中事件流
-- [lark-vc-search](../../lark-vc/references/lark-vc-search.md) — 搜索历史会议记录
-- [lark-vc-recording](../../lark-vc/references/lark-vc-recording.md) — 查询 minute_token
-- [lark-vc-detail](../../lark-vc/references/lark-vc-detail.md) — 获取会议详情
-- [lark-vc-agent](../SKILL.md) — Agent 参会能力（本 skill）
-- [lark-vc](../../lark-vc/SKILL.md) — 视频会议原子域（Meeting / Note 等核心概念）
-- [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数
+## 相关场景
+- [应用机器人参会与会中互动](../scenes/live-meeting-attend.md)

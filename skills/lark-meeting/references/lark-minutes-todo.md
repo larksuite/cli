@@ -1,6 +1,6 @@
 # minutes +todo
 
-> **路由**：本命令操作**妙记内的 AI 待办**，不是飞书任务（Task）。用户说「在妙记里新建待办」时**必须**用本命令，**禁止**走 `lark-cli task` / `tasklists list` / `task +create`。详见 [lark-minutes/SKILL.md](../SKILL.md) 第 6 节。
+> **路由**：本命令操作**妙记内的 AI 待办**，不是飞书任务（Task）。用户说「在妙记里新建待办」时**必须**用本命令，**禁止**走 `lark-cli task` / `tasklists list` / `task +create`。详见 [生成和修改妙记](../scenes/create-and-edit-minutes.md)。
 
 
 对妙记中的待办做新增 / 更新 / 删除（单条或批量）。写操作。
@@ -24,17 +24,10 @@
 lark-cli minutes +todo --minute-token obcnxxxxxxxxxxxxxxxxxxxx --operation add --todo "跟进预算审批" --is-done=false --as user
 
 # 批量：一次新增两条
-lark-cli minutes +todo --minute-token obcnxxxxxxxxxxxxxxxxxxxx --as user --todos '[
-  {"operation":"add","content":"晚上好1","is_done":true},
-  {"operation":"add","content":"晚上好2","is_done":false}
-]'
+lark-cli minutes +todo --minute-token obcnxxxxxxxxxxxxxxxxxxxx --as user --todos '[{"operation":"add","content":"晚上好1","is_done":true},{"operation":"add","content":"晚上好2","is_done":false}]'
 
 # 批量：混合增删改
-lark-cli minutes +todo --minute-token obcnxxxxxxxxxxxxxxxxxxxx --as user --todos '[
-  {"operation":"add","content":"新待办","is_done":false},
-  {"operation":"update","todo_id":"1234567890","content":"已更新","is_done":true},
-  {"operation":"delete","todo_id":"9876543210"}
-]'
+lark-cli minutes +todo --minute-token obcnxxxxxxxxxxxxxxxxxxxx --as user --todos '[{"operation":"add","content":"新待办","is_done":false},{"operation":"update","todo_id":"1234567890","content":"已更新","is_done":true},{"operation":"delete","todo_id":"9876543210"}]'
 
 # 从文件读取
 lark-cli minutes +todo --minute-token obcnxxxxxxxxxxxxxxxxxxxx --as user --todos @todos.json
@@ -129,8 +122,5 @@ lark-cli minutes +todo --minute-token obcnxxxxxxxxxxxxxxxxxxxx --operation add -
 | `error.subtype` = `permission_denied` | **妙记资源无编辑权**：向妙记所有者申请该妙记的编辑/协作权限；**不要**走 `auth login --scope` |
 | 缺少 OAuth scope（`error.missing_scopes` 含 `minutes:minutes:update`） | `lark-cli auth login --scope "minutes:minutes:update"` |
 
-## 参考
-
-- [lark-minutes](../SKILL.md)
-- [minutes +summary](lark-minutes-summary.md)
-- [minutes +detail](lark-minutes-detail.md)
+## 相关场景
+- [生成和修改妙记](../scenes/create-and-edit-minutes.md)

@@ -39,7 +39,7 @@
 3. **解析 `--from-speaker-id`**
    - 根据用户描述的原说话人（展示名，如「说话人1」「张三」），在 `speakers[]` 里按 `name` **精确匹配**，取对应的 **`speaker_id`** 作为 `--from-speaker-id` 的值。
    - **`--from-speaker-id` 只传 `speaker_id`，不传展示名。**
-   - 若同名有多条（`name` 相同、`speaker_id` 不同）：**不要擅自挑选**。可结合 [`vc +notes --minute-tokens`](../../lark-vc/references/lark-vc-notes.md) 对照各人发言内容，请用户确认后再用精确的 `speaker_id`。
+   - 若同名有多条（`name` 相同、`speaker_id` 不同）：**不要擅自挑选**。可用 [`minutes +detail --transcript`](lark-minutes-detail.md) 对照各人发言内容，请用户确认后再用精确的 `speaker_id`。
    - 若列表中无匹配展示名：告知用户并核对拼写，或请用户在妙记页面确认标签。
 
 4. **解析 `--to-user-id`**
@@ -102,6 +102,5 @@ Agent 必须先 `lark-cli api GET .../speakerlist`，再 `+speaker-replace`；`-
 | `from_speaker_id` | 实际用于替换的不透明说话人标识 |
 | `to_user_id` | 替换后的新说话人 open_id，与输入的 `--to-user-id` 一致 |
 
-## 参考
-
-- [lark-minutes](../SKILL.md) -- 妙记相关功能说明
+## 相关场景
+- [生成和修改妙记](../scenes/create-and-edit-minutes.md)

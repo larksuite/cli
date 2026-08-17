@@ -126,12 +126,10 @@ API 限流 5 次/秒，批量下载时需注意控制频率。
 ## 提示
 
 - 音视频文件可能较大，下载无固定超时限制（由用户 Ctrl+C 控制取消）。
-- 默认落点 `./minutes/{minute_token}/` 与 `minutes +detail` 的逐字稿共享同一目录，方便 Agent 聚合同一会议的所有产物。
+- 默认落点 `./minutes/{minute_token}/` 与 `minutes +detail` 的逐字稿共享同一目录，方便 Agent 聚合同一妙记的原始音视频和逐字稿。
 - 单 token 模式下 `--output` 若传入已存在目录（如 `--output ./existing-dir`），等价于 `--output-dir`，文件落入该目录（cp 语义）。
 - 批量模式下 `--output` 不接受已存在的文件路径（会报错），应改用 `--output-dir`。
 - 如需获取妙记的纪要内容（逐字稿、AI 总结等），请使用 [minutes +detail](lark-minutes-detail.md)。
 
-## 参考
-
-- [lark-minutes](../SKILL.md) — 妙记全部命令
-- [lark-minutes-detail](lark-minutes-detail.md) — 妙记详情与 AI 产物查询
+## 相关场景
+- [查询妙记及其产物](../scenes/query-minutes-and-artifacts.md)

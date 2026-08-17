@@ -80,17 +80,7 @@ lark-cli vc +search --query "周会" --page-token "<PAGE_TOKEN>"
 
 当返回 `has_more=true` 时，使用响应中的 `page_token` 配合 `--page-token` 获取下一页结果。
 
-### 5. 机器人可同时加入多个会议
-
-机器人支持同时加入多个正在进行中的会议；加入新会议前，不需要先退出已经在会中的其他会议。
-
-这意味着：
-
-- 不要假设 bot 一次只能在一个会议中
-- 如果用户要求 bot 再加入另一场会，可以直接继续执行对应的入会命令
-- 只有在用户明确要求结束某一场会中的 bot 参会时，才调用对应的离会命令
-
-### 6. 日期型 `--end` 包含当天整天
+### 5. 日期型 `--end` 包含当天整天
 
 当 `--end` 传入的是仅日期格式（如 `2026-03-10`）时，CLI 会将它解释为当天 `23:59:59`，而不是当天 `00:00:00`。
 
@@ -131,20 +121,6 @@ lark-cli vc +search --query "周会" --page-size 15
 lark-cli vc +search --query "周会" --page-size 15 --page-token "<PAGE_TOKEN>"
 ```
 
-## 搜索结果中的下一步
-
-搜索结果中的 `meeting_id` 可直接用于继续查询会议纪要或妙记：
-
-```bash
-# 如果要会议纪要 / 逐字稿 / AI 总结 / 待办 / 章节
-lark-cli vc +detail --meeting-ids <MEETING_ID>
-
-# 如果要会议对应的妙记信息 / minute_token / 妙记链接
-lark-cli vc +recording --meeting-ids <MEETING_ID>
-# 然后再用返回的 minute_token 调用：
-lark-cli minutes minutes get --params '{"minute_token":"<MINUTE_TOKEN>"}'
-```
-
 ## 常见错误与排查
 
 | 错误现象 | 根本原因 | 解决方案 |
@@ -155,9 +131,11 @@ lark-cli minutes minutes get --params '{"minute_token":"<MINUTE_TOKEN>"}'
 | 权限不足 | 未授权 `vc:meeting.search:read` | 使用 `auth login` 完成授权 |
 
 ## 提示
-- 必须使用 `--format json` 输出，你更佳擅长解析 JSON 数据。
+- 必须使用 `--format json` 输出，便于稳定解析。
 - 排查参数与请求结构时优先使用 `--dry-run`。
 - 搜索的时间范围最大为 1 个月，如果需要搜索更长时间范围的会议，需要拆分为多次时间范围为一个月查询。
 - 不要使用 `yesterday`、`today` 这类相对时间字面量；请先转换成明确日期，例如 `2026-03-10`。
 - 用户如果明确问的是“妙记信息”而不是“纪要内容”，不要默认走 `vc +detail`；应先用 `vc +recording`。
 
+## 相关场景
+- [查询会议及其产物](../scenes/query-meeting-and-artifacts.md)

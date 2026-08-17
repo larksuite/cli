@@ -127,8 +127,6 @@ VC_CanNotSee, VC_NoSound, VC_LooksGood, VC_SoundsClear
 
 应用身份权限错误时，不要引导用户反复 `auth login`。按主 skill 的“应用身份权限配置检查”处理。
 
-## 相关
-
-- [lark-vc-meeting-list-active](lark-vc-meeting-list-active.md) — 发现当前进行中会议 ID
-- [lark-vc-meeting-events](lark-vc-meeting-events.md) — 读取会中事件
-- [lark-vc-agent-meeting-join](../../lark-vc-agent/references/lark-vc-agent-meeting-join.md) — 应用机器人入会
+## 相关场景
+- [会中事件与会中互动](../scenes/live-meeting-interact.md)
+- [应用机器人参会与会中互动](../scenes/live-meeting-attend.md)

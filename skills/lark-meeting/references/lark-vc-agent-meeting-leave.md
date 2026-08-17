@@ -10,12 +10,6 @@
 ```bash
 # 通过 meeting_id 离会
 lark-cli vc +meeting-leave --as bot --meeting-id 69xxxxxxxxxxxxx28
-
-# 输出格式
-lark-cli vc +meeting-leave --as bot --meeting-id 69xxxxxxxxxxxxx28 --format json
-
-# 预览 API 调用（不实际离会）
-lark-cli vc +meeting-leave --as bot --meeting-id 69xxxxxxxxxxxxx28 --dry-run
 ```
 
 ## 参数
@@ -54,30 +48,6 @@ lark-cli vc +meeting-leave --as bot --meeting-id 69xxxxxxxxxxxxx28 --dry-run
 |---------|---------|
 | `meeting-id` | `+meeting-join --as bot` 返回的 `meeting.id`；或应用身份 `+meeting-list-active --as bot --user-id <user_open_id>` 返回的 `meeting_id` |
 
-## Agent 组合场景
-
-### 场景 1：加入 → 用户明确要求时离开
-
-```bash
-# 第 1 步：加入会议，记录 meeting.id
-lark-cli vc +meeting-join --as bot --meeting-number 123456789
-
-# 第 2 步：在会中处理用户请求（如监听发言、记录信息等）
-# ...
-
-# 第 3 步：仅在用户明确要求退出 / 离开 / 结束参会时，使用上一步记录的 meeting.id 离会
-lark-cli vc +meeting-leave --as bot --meeting-id <meeting.id>
-```
-
-### 场景 2：会后补拉产物（不需要离会）
-
-如果用户只是要求会议结束后拉录制、纪要或逐字稿，不要先调用 `+meeting-leave`；直接跨到 `lark-vc` 查询会后产物。
-
-```bash
-# 第 1 步：会议结束后进入 lark-vc 获取会议产物信息
-lark-cli vc +detail --meeting-ids <meeting.id>
-```
-
 ## 常见错误与排查
 
 | 错误现象 | 根本原因 | 解决方案 |
@@ -92,14 +62,5 @@ lark-cli vc +detail --meeting-ids <meeting.id>
 - `+meeting-leave` 优先使用 `+meeting-join --as bot` 返回的 `meeting.id`，但不是每次 join 后都必须调用 leave。
 - `meeting_id` 如果来自 `+meeting-list-active`，必须来自应用身份，并确认应用机器人就在该会议中。不要用 9 位会议号。
 
-## 参考
-
-- [lark-vc-agent-meeting-join](lark-vc-agent-meeting-join.md) — 对应的入会命令
-- [lark-vc-meeting-list-active](../../lark-vc/references/lark-vc-meeting-list-active.md) — 发现当前可读事件的进行中会议 ID
-- [lark-vc-meeting-events](../../lark-vc/references/lark-vc-meeting-events.md) — 会中事件流
-- [lark-vc-search](../../lark-vc/references/lark-vc-search.md) — 搜索历史会议（获取 meeting_id）
-- [lark-vc-recording](../../lark-vc/references/lark-vc-recording.md) — 查询 minute_token
-- [lark-vc-detail](../../lark-vc/references/lark-vc-detail.md) — 获取会议详情
-- [lark-vc-agent](../SKILL.md) — Agent 参会能力（本 skill）
-- [lark-vc](../../lark-vc/SKILL.md) — 视频会议原子域（Meeting / Note 等核心概念）
-- [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数
+## 相关场景
+- [应用机器人参会与会中互动](../scenes/live-meeting-attend.md)

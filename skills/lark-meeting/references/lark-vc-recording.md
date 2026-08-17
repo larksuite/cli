@@ -42,9 +42,7 @@ lark-cli vc +recording --meeting-ids 69xxxxxxxxxxxxx28 --dry-run
 
 ### 2. 身份支持
 
-`--meeting-ids` 和 `--calendar-event-ids` 两种模式都支持 `--as user` 和 `--as bot`。user token 只能查自己有权限的录制；bot 使用 tenant_access_token，只能查 bot 有权限的录制。
-
-拿到的 `minute_token` 是在某个身份下解析出来的：下一步传给 `minutes minutes get` / `minutes +detail` / `minutes +download` 时必须显式沿用同一个 `--as`，不要省略让身份被 profile 默认值悄悄换掉（完整规则见 [lark-shared](../../lark-shared/SKILL.md) 的「身份延续」）。
+`--meeting-ids` 和 `--calendar-event-ids` 都支持 `--as user` / `--as bot`。用户身份只能查自己有权限的录制；应用身份只能查应用有权限的录制。拿到 `minute_token` 后，传给 `minutes minutes get`、`minutes +detail` 或 `minutes +download` 时必须显式沿用同一个 `--as`。
 
 ### 3. 批量上限
 
@@ -74,62 +72,6 @@ lark-cli vc +recording --meeting-ids 69xxxxxxxxxxxxx28 --dry-run
 | `meeting_id` | 使用 `lark-cli vc +search` 搜索历史会议，取结果中的 `id` 字段 |
 | `calendar_event_id` | 使用 `lark-cli calendar +agenda` 查看日程，取结果中的 `event_id` 字段 |
 
-## Agent 组合场景
-
-### 场景 1：知道 meeting_id，想下载录制
-
-```bash
-# 第 1 步：通过 meeting_id 查询录制，拿到 minute_token
-lark-cli vc +recording --meeting-ids xxx --as bot
-
-# 第 2 步：使用上一步返回的 minute_token 下载妙记文件，沿用第 1 步的身份
-lark-cli minutes +download --minute-tokens obcnxxxxxxxxxxxxxxxxxxxx --as bot
-```
-
-### 场景 2：知道 meeting_id，想查询妙记基础信息
-
-```bash
-# 第 1 步：通过 meeting_id 查询录制，拿到 minute_token
-lark-cli vc +recording --meeting-ids xxx
-
-# 第 2 步：使用上一步返回的 minute_token 查询妙记基础信息
-lark-cli minutes minutes get --params '{"minute_token":"<minute_token>"}'
-```
-
-### 场景 3：知道 meeting_id，想获取完整纪要（含 AI 产物）
-
-```bash
-# 第 1 步：通过 meeting_id 查询录制，拿到 minute_token
-lark-cli vc +recording --meeting-ids xxx
-
-# 第 2 步：使用上一步返回的 minute_token 获取完整纪要
-# ⚠️ 必须显式指定要获取的产物 flag（--summary, --keyword, --todo, --chapter, --transcript）
-lark-cli minutes +detail --minute-tokens <minute_token> --summary --todo --chapter --transcript
-```
-
-### 场景 4：先搜索会议，再获取录制并下载
-
-```bash
-# 第 1 步：搜索历史会议，拿到 meeting_ids
-lark-cli vc +search --query "周会" --start 2026-03-10
-
-# 第 2 步：使用上一步返回的 meeting_ids 查询录制，拿到 minute_tokens
-lark-cli vc +recording --meeting-ids <ids>
-
-# 第 3 步：使用其中一个 minute_token 下载妙记文件
-lark-cli minutes +download --minute-tokens <token>
-```
-
-### 场景 5：从日历事件获取录制
-
-```bash
-# 第 1 步：通过日历 event_id 查询录制，拿到 minute_token
-lark-cli vc +recording --calendar-event-ids <event_id>
-
-# 第 2 步：使用上一步返回的 minute_token 下载妙记文件
-lark-cli minutes +download --minute-tokens <minute_token>
-```
-
 ## 常见错误与排查
 
 | 错误现象 | 根本原因 | 解决方案 |
@@ -147,8 +89,5 @@ lark-cli minutes +download --minute-tokens <minute_token>
 - `minute_token` 从录制 URL 尾段解析（`https://meetings.feishu.cn/minutes/{minute_token}`）。
 - 拿到 `minute_token` 后，如果要妙记基础信息，优先传给 `minutes minutes get`；如果要下载媒体文件，传给 `minutes +download`；如果要逐字稿、总结、待办、章节，再传给 `minutes +detail --minute-tokens`。
 
-## 参考
-
-- [lark-vc](../SKILL.md) — 视频会议全部命令
-- [lark-vc-search](lark-vc-search.md) — 搜索历史会议（获取 meeting_id）
-- [lark-minutes-detail](../../lark-minutes/references/lark-minutes-detail.md) — 获取会议纪要
+## 相关场景
+- [查询会议及其产物](../scenes/query-meeting-and-artifacts.md)

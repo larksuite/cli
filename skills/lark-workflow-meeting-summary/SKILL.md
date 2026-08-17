@@ -5,17 +5,12 @@ description: "会议纪要整理工作流：汇总指定时间范围内的会议
 metadata:
   requires:
     bins: ["lark-cli"]
+    skills: ["lark-meeting"]
 ---
 
 # 会议纪要汇总工作流
 
-**CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**。然后阅读 [`../lark-vc/SKILL.md`](../lark-vc/SKILL.md)，了解会议纪要相关操作。
-
-**CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-vc/references/vc-domain-boundaries.md`](../lark-vc/references/vc-domain-boundaries.md)**，不读将导致命令使用、会议产物决策、领域边界职责判断错误：
-> 1. 了解日历 & VC、会议产物 & 文档的关联关系和职责划分
-> 2. 了解会议产物（妙记和纪要）之间的关联关系，例如：**妙记和纪要产生条件相互独立**
-> 3. 了解不同会议产物的组成部分，以便根据需求决策使用哪种产物的数据
-> 4. 了解会议总结、分析和信息提取的标准流程
+**CRITICAL — 开始前 MUST 先完整读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) 和 [`../lark-meeting/SKILL.md`](../lark-meeting/SKILL.md)**。认证、身份和权限以 lark-shared 为准；会议与产物关系、产物选择和逐字稿路由以 lark-meeting 为准。
 
 ## 适用场景
 
@@ -91,11 +86,11 @@ lark-cli note +detail --note-id "note_id"
 > lark-cli minutes +detail --minute-tokens "<minute_token>" --transcript --output-dir ./transcripts --as user
 > ```
 >
-> 逐字稿会落盘，供 Step 4 基于原始发言独立提炼（不要照搬 AI 总结）。若返回 `No read permission`（`2091005`），先把无权限事实告知用户，用户明确同意后再用单数 flag 申请：`lark-cli minutes +apply-permission --minute-token "<minute_token>" --perm view --as user`；申请需 owner 在客户端批准后才可重试。详见 [lark-minutes](../lark-minutes/SKILL.md)。
+> 逐字稿会落盘，供 Step 4 基于原始发言独立提炼（不要照搬 AI 总结）。若返回 `No read permission`（`2091005`），先把无权限事实告知用户，用户明确同意后再用单数 flag 申请：`lark-cli minutes +apply-permission --minute-token "<minute_token>" --perm view --as user`；申请需 owner 在客户端批准后才可重试。详见 [基于 minute_token 查询妙记及关联产物](../lark-meeting/scenes/query-minutes-and-artifacts.md)。
 
-> **逐字稿路由按 `note_display_type` 决定**（详见 [vc-domain-boundaries.md](../lark-vc/references/vc-domain-boundaries.md) 的 Note 域）：
+> **逐字稿路由按 `note_display_type` 决定**（详见 [基于 note_id 查询智能纪要及关联产物](../lark-meeting/scenes/query-note-and-artifacts.md)）：
 > - `normal`：逐字稿是独立文档，链接/正文走 `verbatim_doc_token`。
-> - `unified`：逐字稿**不是独立文档**，没有可分享的逐字稿文档链接；需要逐字稿内容时用 `note +transcript --note-id <note_id>`（[lark-note](../lark-note/SKILL.md)）拉取到本地，报告中标注"unified 纪要"即可。
+> - `unified`：逐字稿**不是独立文档**，没有可分享的逐字稿文档链接；需要逐字稿内容时用 `note +transcript --note-id <note_id>`（[lark-meeting](../lark-meeting/SKILL.md)）拉取到本地，报告中标注"unified 纪要"即可。
 
 2. 获取纪要文档和逐字稿文档链接
 ```bash
@@ -127,7 +122,8 @@ lark-cli docs +update --doc "<url_or_token>" --command append --doc-format markd
 ## 参考
 
 - [lark-shared](../lark-shared/SKILL.md) — 认证、权限（必读）
-- [lark-vc](../lark-vc/SKILL.md) — `+search`、`+detail` 详细用法
-- [lark-note](../lark-note/SKILL.md) — `note +detail`、`note +transcript`（unified 纪要逐字稿）
-- [lark-minutes](../lark-minutes/SKILL.md) — `minutes +detail`、`+apply-permission`（无 `note_id` 时的妙记备选路径）
+- [lark-meeting](../lark-meeting/SKILL.md) — 会议与产物统一路由
+- [查询会议与会议产物](../lark-meeting/scenes/query-meeting-and-artifacts.md) — 搜索、消歧、产物获取与逐字稿分析流程
+- [查询妙记及关联产物](../lark-meeting/scenes/query-minutes-and-artifacts.md) — 无 `note_id` 时的妙记备选路径
+- [`vc +search`](../lark-meeting/references/lark-vc-search.md)、[`vc +detail`](../lark-meeting/references/lark-vc-detail.md)、[`note +detail`](../lark-meeting/references/lark-note-detail.md)、[`note +transcript`](../lark-meeting/references/lark-note-transcript.md)、[`minutes +detail`](../lark-meeting/references/lark-minutes-detail.md)、[`minutes +apply-permission`](../lark-meeting/references/lark-minutes-apply-permission.md) — 命令细节
 - [lark-doc](../lark-doc/SKILL.md) — `+fetch`、`+create`、`+update` 详细用法

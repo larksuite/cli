@@ -113,8 +113,5 @@ lark-cli minutes +summary --minute-token obcnxxxxxxxxxxxxxxxxxxxx --summary @sum
 | 参数无效 | — | `minute_token` 缺失或格式错误 | 检查 token 是否完整 |
 | 权限不足 | — | 缺少 `minutes:minutes:update` | 运行 `auth login --scope "minutes:minutes:update"` |
 
-## 参考
-
-- [lark-minutes](../SKILL.md) — 妙记全部命令
-- [minutes +todo](lark-minutes-todo.md) — 替换待办项
-- [minutes +detail](lark-minutes-detail.md) — 读取总结、待办等 AI 产物
+## 相关场景
+- [生成和修改妙记](../scenes/create-and-edit-minutes.md)

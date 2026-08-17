@@ -33,22 +33,6 @@ lark-cli vc +meeting-list-active --as bot --user-id ou_xxx --format json
 
 应用身份返回空，不代表目标用户不在任何会议中，只能说明没有找到“目标用户在会中且应用机器人也在会中”的当前会。
 
-常见流程：
-
-```bash
-# 方式 1：先让应用机器人入会，直接从 join 响应拿 meeting.id
-lark-cli vc +meeting-join --as bot --meeting-number 123456789 --format json
-lark-cli vc +meeting-events --as bot --meeting-id <id> --page-all --format pretty
-
-# 方式 2：应用机器人已经在会中时，用应用身份发现 meeting_id
-lark-cli vc +meeting-list-active --as bot --user-id <user_open_id> --format json
-lark-cli vc +meeting-events --as bot --meeting-id <id> --page-all --format pretty
-
-# 方式 3：查询当前登录用户所在会议发生了什么
-lark-cli vc +meeting-list-active --as user --format json
-lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format pretty
-```
-
 ## 多会议选择
 
 - 如果返回多个会议，不要自动挑第一个。
@@ -58,14 +42,6 @@ lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format pret
 ## 9 位会议号匹配
 
 用户提供 9 位会议号但没有明确要求应用机器人入会时，把会议号当作 active meeting 的筛选条件，而不是写操作指令。
-
-```bash
-# 用户问“我当前这个会讲了什么”
-lark-cli vc +meeting-list-active --as user --format json
-
-# 用户问“让应用机器人所在/可见的这个会讲了什么”
-lark-cli vc +meeting-list-active --as bot --user-id <user_open_id> --format json
-```
 
 匹配规则：
 
@@ -85,7 +61,6 @@ lark-cli vc +meeting-list-active --as bot --user-id <user_open_id> --format json
 | `--user-id` 格式错误 | 传入了 internal user_id 或其他非 `ou_...` 值 | 改传目标用户 open_id |
 | 应用身份权限不足 | 应用权限、租户安装、权限可访问的数据范围或 VC Agent privilege 未配置完整 | 不要执行 `auth login`。请应用开发者开通 `vc:meeting.bot.join:write`；再检查应用发布/安装和权限可访问的数据范围，均正确仍失败时再排查内测灰度权限 |
 
-## 参考
-
-- [lark-vc-agent-meeting-join](../../lark-vc-agent/references/lark-vc-agent-meeting-join.md) — 让应用机器人真实入会并拿 `meeting.id`
-- [lark-vc-meeting-events](lark-vc-meeting-events.md) — 使用 `meeting_id` 读取会中事件
+## 相关场景
+- [会中事件与会中互动](../scenes/live-meeting-interact.md)
+- [应用机器人参会与会中互动](../scenes/live-meeting-attend.md)
