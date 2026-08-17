@@ -52,6 +52,11 @@ func TestEmbeddedDocsAffordanceComplementsShortcutMetadata(t *testing.T) {
 			useWhen: []string{
 				"Read an entire Lark document, or limit the result to an outline, section, block range, or keyword match.",
 			},
+			tips: []string{
+				"XML output preserves inline comment anchors in `comment-refs`; comments are returned with the document by default.",
+				"Markdown and IM Markdown return comments in `document.reference_map.comments`.",
+				"Comments are returned with the document by default; no opt-in flag is required.",
+			},
 		},
 		"+update": {
 			description: "Update a Lark document",
