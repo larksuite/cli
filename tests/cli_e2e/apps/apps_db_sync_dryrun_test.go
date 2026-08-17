@@ -192,7 +192,7 @@ func TestAppsDBSyncDryRunRequestContracts(t *testing.T) {
 	})
 }
 
-func TestAppsDBSyncValidationErrors(t *testing.T) {
+func TestAppsDBSyncValidationErrorsDryRun(t *testing.T) {
 	setAppsDryRunEnv(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -213,7 +213,7 @@ func TestAppsDBSyncValidationErrors(t *testing.T) {
 	assert.Contains(t, message, "--config")
 }
 
-func TestAppsDBSyncPreviewRejectsNonArrayFieldMaps(t *testing.T) {
+func TestAppsDBSyncPreviewRejectsNonArrayFieldMapsDryRun(t *testing.T) {
 	setAppsDryRunEnv(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -232,7 +232,7 @@ func TestAppsDBSyncPreviewRejectsNonArrayFieldMaps(t *testing.T) {
 	assert.Contains(t, dbSyncValidateErrorMessage(result), "field_maps must be an array")
 }
 
-func TestAppsDBSyncCreateRequiresSourceTable(t *testing.T) {
+func TestAppsDBSyncCreateRequiresSourceTableDryRun(t *testing.T) {
 	setAppsDryRunEnv(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

@@ -203,7 +203,7 @@ func TestAppsRoleManagementDryRun_RequestShapes(t *testing.T) {
 	}
 }
 
-func TestAppsRoleManagementValidation(t *testing.T) {
+func TestAppsRoleManagementValidationDryRun(t *testing.T) {
 	setAppsRoleDryRunEnv(t)
 
 	tests := []struct {
