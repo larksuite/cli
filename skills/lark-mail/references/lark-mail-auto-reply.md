@@ -39,8 +39,7 @@ lark-cli mail +auto-reply-modify --as user --disable
 | `--enable` | modify | 否 | 开启自动回复；与 `--disable` 互斥 |
 | `--disable` | modify | 否 | 关闭自动回复；与 `--enable` 互斥 |
 | `--content <html>` | modify | 否 | 自动回复正文；支持直接传值、`@file` 和 `-` stdin；本地 `<img src="./file.png">` 会自动内嵌 |
-| `--content-file <path>` | modify | 否 | 从路径读取正文；与 `--content` 互斥；正文里的本地图片会自动内嵌 |
-| `--summary <text>` | modify | 否 | 正文摘要；不传时由 `--content` / `--content-file` 自动生成预览 |
+| `--content-file <path>` | modify | 否 | 从当前目录下的文件读取正文；与 `--content` 互斥；正文里的本地图片会自动内嵌 |
 | `--start <time>` | modify | 否 | 开始日期，支持 Unix timestamp 或 ISO 8601；按当天开始保存 |
 | `--end <time>` | modify | 否 | 结束日期，支持 Unix timestamp 或 ISO 8601；按当天结束保存 |
 | `--timezone <tz>` | modify | 否 | 时区，例如 `Asia/Shanghai` |
@@ -51,6 +50,7 @@ lark-cli mail +auto-reply-modify --as user --disable
 
 - `+auto-reply` 只调用读取接口，需要 `mail:user_mailbox.message:readonly`。
 - `+auto-reply-modify` 只更新用户提供的选项，未指定的配置会保留。
+- 修改正文时会自动生成正文摘要。
 - 修改需要 `mail:user_mailbox.message:readonly` 和 `mail:user_mailbox.message:modify`。
 - 写操作必须先向用户展示预览并取得明确确认。预览至少包含：`enabled`、时间范围、时区、收件范围和内容摘要。
 - 关闭自动回复也要确认，因为内容和时间配置可能仍会保留在设置中。
