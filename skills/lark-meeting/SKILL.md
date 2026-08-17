@@ -80,22 +80,26 @@ Calendar 日程 ──meeting_note────────────► Doc（
 
 ## 快速行动
 
-### 查询进行中的会议内容
+### 查询用户当日会议相关问题
+
+当用户以个人身份询问与当天会议内容相关的问题时，可调用脚本一次性获取当天全部会议概览，快速定位目标会议。
 
 ```bash
-# 当前用户所在会议
-lark-cli vc +meeting-list-active --as user
-
-# 应用机器人可见的目标用户会议
-lark-cli vc +meeting-list-active --as bot --user-id <open_id>
-
-# 确定唯一 meeting_id 后沿用来源身份
-lark-cli vc +meeting-events --as <source_identity> --meeting-id <meeting_id> --page-all --format pretty
+python3 <skill_dir>/lark-meeting/scripts/meeting_qa_bootstrap.py
 ```
 
-同时有多场会议时，需要先选择要查询的会议；只有一场会议时，直接查询该场会议的会议事件。
+> 执行时替换 `<skill_dir>` 为当前环境 skill 路径
 
-应用身份只返回“目标用户正在参会、且应用机器人也在同一会议中”的会议；返回空不代表目标用户没有在开会。向用户说明结果时使用“用户身份”或“应用身份”，不要暴露 `user` / `bot` 这类内部缩写。
+脚本会一次性完成：
+- 查询当前用户进行中会议，并拉取第一页事件预览
+- 查询今天已结束的会议列表，并预取纪要/逐字稿的文档 token
+- 查询今天尚未开始的会议
+- 输出读取进行会议内容、结束会议纪要逐字稿的可执行的命令
+
+为何调用脚本：
+- 只要目标是当日会议，而且需要获取对应纪要、逐字稿、妙记链接等信息，脚本是最快方式，
+- 集成cli调用，大幅减少模型思考和调用cli次数，更快拿到会议具体内容，减少用户等待
+- 直接返回可执行命令，无需再阅读 reference
 
 ## 场景手册
 
