@@ -107,7 +107,7 @@ func TestMailAutoReplyModifyBuildsFriendlyPayload(t *testing.T) {
 		"--start", "2026-08-15T09:00:00+08:00",
 		"--end", "2026-08-18T09:00:00+08:00",
 		"--timezone", "Asia/Shanghai",
-		"--external",
+		"--all",
 		"--format", "json",
 	}, f, stdout)
 	if err != nil {
