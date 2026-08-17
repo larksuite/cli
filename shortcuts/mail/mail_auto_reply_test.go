@@ -101,7 +101,7 @@ func TestMailAutoReplyModifyBuildsFriendlyPayload(t *testing.T) {
 
 	err := runMountedMailShortcut(t, MailAutoReplyModify, []string{
 		"+auto-reply-modify",
-		"--from", "user@example.com",
+		"--mailbox", "user@example.com",
 		"--enable",
 		"--content", "<p>Out today</p>",
 		"--start", "2026-08-15T09:00:00+08:00",

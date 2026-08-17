@@ -11,7 +11,7 @@
 lark-cli mail +auto-reply --as user
 
 # 指定邮箱查看
-lark-cli mail +auto-reply --as user --from shared@example.com
+lark-cli mail +auto-reply --as user --mailbox shared@example.com
 
 # 开启或修改自动回复
 lark-cli mail +auto-reply-modify --as user \
@@ -35,7 +35,7 @@ lark-cli mail +auto-reply-modify --as user --disable
 
 | 参数 | 命令 | 必填 | 说明 |
 |------|------|------|------|
-| `--from <email>` | 两者 | 否 | 邮箱地址，默认 `me` |
+| `--mailbox <email>` | 两者 | 否 | 邮箱地址，默认 `me` |
 | `--enable` | modify | 否 | 开启自动回复；与 `--disable` 互斥 |
 | `--disable` | modify | 否 | 关闭自动回复；与 `--enable` 互斥 |
 | `--content <html>` | modify | 否 | 自动回复正文；支持直接传值、`@file` 和 `-` stdin；本地 `<img src="./file.png">` 会自动内嵌 |
