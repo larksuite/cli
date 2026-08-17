@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -186,6 +187,47 @@ func TestRecorderReplyJSONRejectsUnexpectedRequest(t *testing.T) {
 	_, err := command.CallJSON[map[string]any](context.Background(), recorder.CommandContext(command.IdentityUser), command.GET("/open-apis/im/v1/chats"))
 	if err == nil || !strings.Contains(err.Error(), "expected") {
 		t.Fatalf("CallJSON() error = %v", err)
+	}
+	recorder.AssertScriptConsumed()
+}
+
+func TestRecorderReplyURLChecksTheRequestedURLInOrder(t *testing.T) {
+	const first = "https://cdn.example.com/files/first.bin?signature=a"
+	const second = "https://cdn.example.com/files/second.bin?signature=b"
+	recorder := New(t).
+		ReplyURL(first, "application/octet-stream", []byte("one")).
+		ReplyURL(second, "image/png", []byte("two"))
+	commandContext := recorder.CommandContext(command.IdentityUser)
+
+	for index, source := range []string{first, second} {
+		target := command.FileTarget{Name: "download-" + strconv.Itoa(index) + ".bin"}
+		artifact, err := command.DownloadURL(context.Background(), commandContext, source, target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if artifact.Name != target.Name || artifact.Size != 3 {
+			t.Fatalf("artifact %d = %#v", index+1, artifact)
+		}
+	}
+	if !reflect.DeepEqual(recorder.URLs(), []string{first, second}) {
+		t.Fatalf("URLs = %#v", recorder.URLs())
+	}
+	files := recorder.Files()
+	if len(files) != 2 || files[0].SourceURL != first || files[1].SourceURL != second {
+		t.Fatalf("recorded files = %#v", files)
+	}
+	if files[0].Artifact.ContentType != "application/octet-stream" || files[1].Artifact.ContentType != "image/png" {
+		t.Fatalf("content types = %q / %q", files[0].Artifact.ContentType, files[1].Artifact.ContentType)
+	}
+	recorder.AssertScriptConsumed()
+}
+
+func TestRecorderReplyURLRejectsUnexpectedURL(t *testing.T) {
+	recorder := New(t).ReplyURL("https://cdn.example.com/files/expected.bin", "application/octet-stream", []byte("payload"))
+	_, err := command.DownloadURL(context.Background(), recorder.CommandContext(command.IdentityUser),
+		"https://cdn.example.com/files/other.bin", command.FileTarget{Name: "download.bin"})
+	if err == nil || !strings.Contains(err.Error(), "expected") {
+		t.Fatalf("DownloadURL() error = %v", err)
 	}
 	recorder.AssertScriptConsumed()
 }
