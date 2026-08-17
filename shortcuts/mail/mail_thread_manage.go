@@ -20,6 +20,8 @@ type threadModifyInput struct {
 	FolderID       string
 }
 
+const mailThreadManageMaxIDs = 20
+
 type threadModifyOutput struct {
 	Operation          string   `json:"operation"`
 	Mailbox            string   `json:"mailbox"`
@@ -201,6 +203,9 @@ func normalizeThreadManageIDs(raw []string) ([]string, error) {
 	}
 	if len(ids) == 0 {
 		return nil, mailValidationParamError("--thread-ids", "--thread-ids must include at least one non-empty thread ID")
+	}
+	if len(ids) > mailThreadManageMaxIDs {
+		return nil, mailValidationParamError("--thread-ids", "thread_ids accepts at most %d thread IDs (got %d)", mailThreadManageMaxIDs, len(ids))
 	}
 	return ids, nil
 }
