@@ -1,7 +1,7 @@
 ---
 name: lark-meeting
 version: 1.0.0
-description: "飞书视频会议：搜索会议记录、查询会议信息和关联产物(参会人列表、妙记、智能纪要文档、文字记录文档)。查询进行中的会议与实时会议事件，会议互动(发送会中消息或表情)，机器人参与会议；管理妙记(minutes)，搜索、阅读(总结、待办、文字记录)、上传(音视频)、下载(音视频)和编辑。基于 meeting_id、event_id、minute_token、note_id、vc-node-id、妙记 URL查询相关信息。预约会议、查询忙闲和会议室管理，使用 lark-calendar。"
+description: "飞书视频会议：查询会议记录与会议产物(纪要/逐字稿/妙记)、实时会议互动、智能体参与会议、妙记搜索/上传/下载/编辑。查询历史会议/参会人/录制；查询进行中的会议、获取会议内容、发送会中消息/表情；基于 meeting_id、event_id、note_id、minute_token、vc-node-id 或妙记 URL 查询相关信息。预约会议、忙闲和会议室管理走 lark-calendar。"
 metadata:
   requires:
     bins: ["lark-cli"]
