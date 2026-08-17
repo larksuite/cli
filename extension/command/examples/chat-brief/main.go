@@ -20,6 +20,7 @@
 //	./chat-brief-cli im +chat-brief --chat-id oc_xxx           # real call (requires auth login)
 //	./chat-brief-cli im +chat-brief-list --page-all --page-limit 2   # framework pagination flags
 //	./chat-brief-cli auth login --domain im                    # aggregates business scopes too
+//	go test ./...                                              # hooks under commandtest, no network
 package main
 
 import (
@@ -60,41 +61,49 @@ func chatRequest(args *chatBriefArgs) command.Request {
 		Set("user_id_type", args.IDType)
 }
 
-var chatBrief = command.Define(command.Definition[chatBriefArgs, chatBriefData]{
-	Metadata: command.CommandMetadata{
-		Service:     command.DomainIm,
-		Command:     "+chat-brief",
-		Description: "Get a concise chat projection",
-		Risk:        command.RiskRead,
-		Authorization: command.AuthorizationDefinition{
-			Identities: map[command.Identity]command.IdentityAuthorization{
-				command.IdentityUser: {RequiredScopes: []string{"im:chat:read"}},
+// chatBriefDefinition returns the declaration rather than an already compiled
+// Command so commandtest.Execute can drive the same hooks in a unit test; see
+// main_test.go. Define erases the type parameters, and a Command cannot hand
+// its Definition back.
+func chatBriefDefinition() command.Definition[chatBriefArgs, chatBriefData] {
+	return command.Definition[chatBriefArgs, chatBriefData]{
+		Metadata: command.CommandMetadata{
+			Service:     command.DomainIm,
+			Command:     "+chat-brief",
+			Description: "Get a concise chat projection",
+			Risk:        command.RiskRead,
+			Authorization: command.AuthorizationDefinition{
+				Identities: map[command.Identity]command.IdentityAuthorization{
+					command.IdentityUser: {RequiredScopes: []string{"im:chat:read"}},
+				},
 			},
 		},
-	},
-	Hooks: command.Hooks[chatBriefArgs, chatBriefData]{
-		Validate: func(_ context.Context, _ command.CommandContext, args *chatBriefArgs) error {
-			if !strings.HasPrefix(args.ChatID, "oc_") {
-				return command.ValidationErrorf("--chat-id must start with oc_")
-			}
-			return nil
+		Hooks: command.Hooks[chatBriefArgs, chatBriefData]{
+			Validate: func(_ context.Context, _ command.CommandContext, args *chatBriefArgs) error {
+				if !strings.HasPrefix(args.ChatID, "oc_") {
+					return command.ValidationErrorf("--chat-id must start with oc_")
+				}
+				return nil
+			},
+			DryRun: func(_ context.Context, _ command.CommandContext, args *chatBriefArgs) *command.DryRun {
+				return command.NewDryRun(chatRequest(args))
+			},
+			Execute: func(ctx context.Context, c command.CommandContext, args *chatBriefArgs) (command.Result[chatBriefData], error) {
+				chat, err := command.CallJSON[chatWire](ctx, c, chatRequest(args))
+				if err != nil {
+					return command.Result[chatBriefData]{}, err
+				}
+				return command.Success(chatBriefData{
+					ChatID: args.ChatID,
+					Name:   chat.Name,
+					Owner:  chat.Owner,
+				}), nil
+			},
 		},
-		DryRun: func(_ context.Context, _ command.CommandContext, args *chatBriefArgs) *command.DryRun {
-			return command.NewDryRun(chatRequest(args))
-		},
-		Execute: func(ctx context.Context, c command.CommandContext, args *chatBriefArgs) (command.Result[chatBriefData], error) {
-			chat, err := command.CallJSON[chatWire](ctx, c, chatRequest(args))
-			if err != nil {
-				return command.Result[chatBriefData]{}, err
-			}
-			return command.Success(chatBriefData{
-				ChatID: args.ChatID,
-				Name:   chat.Name,
-				Owner:  chat.Owner,
-			}), nil
-		},
-	},
-})
+	}
+}
+
+var chatBrief = command.Define(chatBriefDefinition())
 
 type chatListArgs struct {
 	PageSize  int    `flag:"page-size" schema:"optional;default=20;minimum=1;maximum=100" doc:"items per page"`
@@ -116,33 +125,38 @@ func chatListRequest(args *chatListArgs) command.Request {
 	return request
 }
 
-// chatList declares Page[T] as its Data, so the compiler installs the
-// framework pagination flags; the Args stay free of paging fields.
-var chatList = command.Define(command.Definition[chatListArgs, command.Page[chatItem]]{
-	Metadata: command.CommandMetadata{
-		Service:     command.DomainIm,
-		Command:     "+chat-brief-list",
-		Description: "List visible chats",
-		Risk:        command.RiskRead,
-		Authorization: command.AuthorizationDefinition{
-			Identities: map[command.Identity]command.IdentityAuthorization{
-				command.IdentityUser: {RequiredScopes: []string{"im:chat:read"}},
+// chatListDefinition declares Page[T] as its Data, so the compiler installs the
+// framework pagination flags; the Args stay free of paging fields. It is a
+// function for the same reason as chatBriefDefinition.
+func chatListDefinition() command.Definition[chatListArgs, command.Page[chatItem]] {
+	return command.Definition[chatListArgs, command.Page[chatItem]]{
+		Metadata: command.CommandMetadata{
+			Service:     command.DomainIm,
+			Command:     "+chat-brief-list",
+			Description: "List visible chats",
+			Risk:        command.RiskRead,
+			Authorization: command.AuthorizationDefinition{
+				Identities: map[command.Identity]command.IdentityAuthorization{
+					command.IdentityUser: {RequiredScopes: []string{"im:chat:read"}},
+				},
 			},
 		},
-	},
-	Hooks: command.Hooks[chatListArgs, command.Page[chatItem]]{
-		DryRun: func(_ context.Context, _ command.CommandContext, args *chatListArgs) *command.DryRun {
-			return command.NewDryRun(chatListRequest(args))
+		Hooks: command.Hooks[chatListArgs, command.Page[chatItem]]{
+			DryRun: func(_ context.Context, _ command.CommandContext, args *chatListArgs) *command.DryRun {
+				return command.NewDryRun(chatListRequest(args))
+			},
+			Execute: func(ctx context.Context, c command.CommandContext, args *chatListArgs) (command.Result[command.Page[chatItem]], error) {
+				page, err := command.CollectPages[chatItem](ctx, c, chatListRequest(args))
+				if err != nil {
+					return command.Result[command.Page[chatItem]]{}, err
+				}
+				return command.Success(page), nil
+			},
 		},
-		Execute: func(ctx context.Context, c command.CommandContext, args *chatListArgs) (command.Result[command.Page[chatItem]], error) {
-			page, err := command.CollectPages[chatItem](ctx, c, chatListRequest(args))
-			if err != nil {
-				return command.Result[command.Page[chatItem]]{}, err
-			}
-			return command.Success(page), nil
-		},
-	},
-})
+	}
+}
+
+var chatList = command.Define(chatListDefinition())
 
 func main() {
 	// A wrapper main has no implicit embedded content; reuse the repository
