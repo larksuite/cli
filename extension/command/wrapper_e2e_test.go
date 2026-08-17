@@ -50,6 +50,11 @@ func TestExternalWrapperCommandSurface(t *testing.T) {
 	if !strings.Contains(dryRun, `"dry_run": true`) || !strings.Contains(dryRun, "/open-apis/im/v1/chats/chat_1") {
 		t.Fatalf("wrapper dry-run = %s", dryRun)
 	}
+	backupDryRun := run("drive", "+wrapper-backup", "--file-token", "file_1", "--output", "reports/file.bin", "--as", "user", "--dry-run")
+	if !strings.Contains(backupDryRun, "/open-apis/drive/v1/files/file_1/download_url") || !strings.Contains(backupDryRun, `"files"`) ||
+		!strings.Contains(backupDryRun, `"name": "reports/file.bin"`) || !strings.Contains(backupDryRun, `"if_exists": "fail"`) {
+		t.Fatalf("wrapper backup dry-run = %s", backupDryRun)
+	}
 	// A value that is unchanged by escaping cannot tell whether the wrapper
 	// wrapped it at all, so send a separator: dropping PathSegment retargets
 	// the request at a sibling resource, and ValidateRequestView would not

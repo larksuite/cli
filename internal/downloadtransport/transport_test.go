@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-package download
+package downloadtransport
 
 import (
 	"context"
@@ -17,6 +17,7 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/errs"
+	extdownload "github.com/larksuite/cli/extension/download"
 	"github.com/larksuite/cli/internal/client"
 )
 
@@ -34,8 +35,8 @@ func TestURLAppliesDownloadHeaders(t *testing.T) {
 		}, nil
 	})}
 
-	resp, err := URL(httpClient, "https://example.com/object")(context.Background(), Request{
-		Range:   &ByteRange{Start: 4, End: 9},
+	resp, err := URL(httpClient, "https://example.com/object")(context.Background(), extdownload.Request{
+		Range:   &extdownload.ByteRange{Start: 4, End: 9},
 		IfRange: `"v1"`,
 	})
 	if err != nil {
@@ -59,9 +60,9 @@ func TestURLOpensImmutableMultipartSource(t *testing.T) {
 			t.Fatalf("Range = %q: %v", value, err)
 		}
 		end = min(end, int64(len(payload))-1)
-		return testPartial(payload[start:end+1], start, end, int64(len(payload)), ""), nil
+		return transportTestPartial(payload[start:end+1], start, end, int64(len(payload))), nil
 	})}
-	stream, err := Open(context.Background(), ImmutableSource(URL(httpClient, "https://example.com/object")), Options{PartSize: 4})
+	stream, err := extdownload.Open(context.Background(), extdownload.ImmutableSource(URL(httpClient, "https://example.com/object")), extdownload.Options{PartSize: 4})
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -96,7 +97,7 @@ func TestURLClassifiesHTTPStatus(t *testing.T) {
 					Body:       io.NopCloser(strings.NewReader("upstream response")),
 				}, nil
 			})}
-			_, err := URL(httpClient, "https://example.com/object")(context.Background(), Request{})
+			_, err := URL(httpClient, "https://example.com/object")(context.Background(), extdownload.Request{})
 			problem, ok := errs.ProblemOf(err)
 			if !ok || problem.Subtype != tt.subtype || problem.Code != tt.status || problem.Retryable != tt.retryable {
 				t.Fatalf("problem = %#v, %v", problem, ok)
@@ -125,7 +126,7 @@ func TestURLTransportFailureOwnsRetryability(t *testing.T) {
 			httpClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 				return nil, tt.err
 			})}
-			_, err := URL(httpClient, "https://example.com/object")(context.Background(), Request{})
+			_, err := URL(httpClient, "https://example.com/object")(context.Background(), extdownload.Request{})
 			problem, ok := errs.ProblemOf(err)
 			if !ok || problem.Subtype != tt.subtype || problem.Retryable != tt.retryable {
 				t.Fatalf("problem = %#v, %v", problem, ok)
@@ -141,7 +142,7 @@ func TestURLCallerDeadlineIsNotRetryable(t *testing.T) {
 	})}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
-	_, err := URL(httpClient, "https://example.com/object")(ctx, Request{})
+	_, err := URL(httpClient, "https://example.com/object")(ctx, extdownload.Request{})
 	problem, ok := errs.ProblemOf(err)
 	if !ok || problem.Subtype != errs.SubtypeNetworkTimeout || problem.Retryable || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("problem = %#v, %v; error = %v", problem, ok, err)
@@ -162,10 +163,33 @@ func TestURLRedirectPolicyFailureIsNotRetryable(t *testing.T) {
 			return errors.New("blocked redirect target")
 		},
 	}
-	_, err := URL(httpClient, "https://example.com/object")(context.Background(), Request{})
+	_, err := URL(httpClient, "https://example.com/object")(context.Background(), extdownload.Request{})
 	problem, ok := errs.ProblemOf(err)
 	if !ok || problem.Subtype != errs.SubtypeNetworkTransport || problem.Retryable {
 		t.Fatalf("problem = %#v, %v; error = %v", problem, ok, err)
+	}
+}
+
+func TestURLFailuresDoNotExposeSignedURLOrResponseBody(t *testing.T) {
+	const signedURL = "https://example.com/object?signature=top-secret"
+	transportFailure := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("connection failed")
+	})}
+	_, err := URL(transportFailure, signedURL)(context.Background(), extdownload.Request{})
+	if err == nil || strings.Contains(err.Error(), "top-secret") || strings.Contains(err.Error(), signedURL) {
+		t.Fatalf("transport error leaked signed URL: %v", err)
+	}
+
+	httpFailure := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusForbidden,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("rejected signature=top-secret")),
+		}, nil
+	})}
+	_, err = URL(httpFailure, signedURL)(context.Background(), extdownload.Request{})
+	if err == nil || strings.Contains(err.Error(), "top-secret") || strings.Contains(err.Error(), "rejected signature") {
+		t.Fatalf("HTTP error leaked signed response detail: %v", err)
 	}
 }
 
@@ -203,7 +227,7 @@ func TestOAPIGetBuildsFreshRequestsFromInjectedStream(t *testing.T) {
 		QueryIf("empty", ""),
 	)
 	for i := 0; i < 2; i++ {
-		resp, err := transport(context.Background(), Request{Range: &ByteRange{Start: int64(i * 4), End: int64(i*4 + 3)}})
+		resp, err := transport(context.Background(), extdownload.Request{Range: &extdownload.ByteRange{Start: int64(i * 4), End: int64(i*4 + 3)}})
 		if err != nil {
 			t.Fatalf("transport() call %d error = %v", i+1, err)
 		}
@@ -218,4 +242,15 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
+}
+
+func transportTestPartial(body []byte, start, end, total int64) *http.Response {
+	return &http.Response{
+		StatusCode: http.StatusPartialContent,
+		Header: http.Header{
+			"Content-Range": {fmt.Sprintf("bytes %d-%d/%d", start, end, total)},
+		},
+		Body:          io.NopCloser(strings.NewReader(string(body))),
+		ContentLength: int64(len(body)),
+	}
 }

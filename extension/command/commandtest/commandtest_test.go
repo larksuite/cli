@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/extension/command"
+	"github.com/larksuite/cli/extension/download"
 )
 
 func TestRecorderScriptsRequestsScopesAndDryRun(t *testing.T) {
@@ -40,6 +41,88 @@ func TestRecorderScriptsRequestsScopesAndDryRun(t *testing.T) {
 		t.Fatalf("scope checks = %#v", got)
 	}
 	recorder.AssertDryRunMatches(command.NewDryRun(request))
+	recorder.AssertScriptConsumed()
+}
+
+func TestRecorderScriptsFileDownloadAndMatchesDryRunIntent(t *testing.T) {
+	request := command.GET("/open-apis/drive/v1/files/file_1/download").Set("version", "7")
+	target := command.FileTarget{Name: "reports/file.bin"}
+	recorder := New(t).ReplyFile("GET", "/open-apis/drive/v1/files/file_1/download", "application/octet-stream", []byte("payload"))
+
+	options := command.DownloadOptions{Representation: download.Immutable, Transfer: download.Options{PartSize: 4}}
+	artifact, err := command.Download(context.Background(), recorder.CommandContext(command.IdentityUser), request, target, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if artifact.Name != target.Name || artifact.Location != target.Name || artifact.Size != 7 || artifact.ContentType != "application/octet-stream" {
+		t.Fatalf("artifact = %#v", artifact)
+	}
+	files := recorder.Files()
+	if len(files) != 1 || string(files[0].Content) != "payload" || files[0].Target.Name != target.Name || !reflect.DeepEqual(files[0].Options, options) {
+		t.Fatalf("recorded files = %#v", files)
+	}
+	recorder.AssertDryRunMatches(command.NewDryRun(request).File(target.Intent("OpenAPI response body")))
+	recorder.AssertScriptConsumed()
+}
+
+func TestBusinessShortcutComposesOAPIAndURLDownload(t *testing.T) {
+	type args struct {
+		ID     string
+		Output string
+	}
+	type descriptor struct {
+		DownloadURL string `json:"download_url"`
+	}
+	type data struct {
+		ID       string
+		Artifact command.Artifact
+	}
+	const sourceURL = "https://cdn.example.com/files/report.bin?signature=test"
+	request := func(args *args) command.Request {
+		return command.GET("/open-apis/drive/v1/files/" + command.PathSegment(args.ID) + "/download_url")
+	}
+	target := func(args *args) command.FileTarget { return command.FileTarget{Name: args.Output} }
+	definition := command.Definition[args, data]{
+		Metadata: command.CommandMetadata{
+			Service: command.DomainDrive, Command: "+test-backup", Description: "Back up one file", Risk: command.RiskWrite,
+			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{command.IdentityUser: {}}},
+		},
+		Hooks: command.Hooks[args, data]{
+			DryRun: func(_ context.Context, _ command.CommandContext, args *args) *command.DryRun {
+				return command.NewDryRun(request(args)).File(target(args).Intent("resolved URL response body"))
+			},
+			Execute: func(ctx context.Context, commandContext command.CommandContext, args *args) (command.Result[data], error) {
+				resolved, err := command.CallJSON[descriptor](ctx, commandContext, request(args))
+				if err != nil {
+					return command.Result[data]{}, err
+				}
+				artifact, err := command.DownloadURL(ctx, commandContext, resolved.DownloadURL, target(args),
+					command.DownloadOptions{Representation: download.Immutable})
+				if err != nil {
+					return command.Result[data]{}, err
+				}
+				return command.Success(data{ID: args.ID, Artifact: artifact}), nil
+			},
+		},
+	}
+	input := &args{ID: "file_1", Output: "report.bin"}
+	recorder := New(t, Respond(map[string]any{"download_url": sourceURL}), RespondFile("application/octet-stream", []byte("payload")))
+	execution, err := Execute(context.Background(), recorder, command.IdentityUser, definition, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if execution.Data.ID != "file_1" || execution.Data.Artifact.Size != 7 || !reflect.DeepEqual(recorder.URLs(), []string{sourceURL}) {
+		t.Fatalf("execution = %#v, URLs = %#v", execution, recorder.URLs())
+	}
+	files := recorder.Files()
+	if len(files) != 1 || files[0].SourceURL != sourceURL || string(files[0].Content) != "payload" {
+		t.Fatalf("recorded files = %#v", files)
+	}
+	preview, err := Preview(context.Background(), recorder, command.IdentityUser, definition, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder.AssertDryRunMatches(preview)
 	recorder.AssertScriptConsumed()
 }
 

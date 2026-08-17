@@ -16,6 +16,8 @@ type CommandContext struct {
 	dryRun          bool
 	inputStage      bool
 	callJSON        func(context.Context, Request) (map[string]any, error)
+	download        func(context.Context, Request, FileTarget, DownloadOptions) (Artifact, error)
+	downloadURL     func(context.Context, string, FileTarget, DownloadOptions) (Artifact, error)
 	preflightScopes func(...string) error
 	collectPages    func(context.Context, Request, bool) ([]map[string]any, HostPagination, error)
 }
@@ -42,6 +44,8 @@ type ContextOptions struct {
 	InputStage bool
 
 	CallJSON        func(context.Context, Request) (map[string]any, error)
+	Download        func(context.Context, Request, FileTarget, DownloadOptions) (Artifact, error)
+	DownloadURL     func(context.Context, string, FileTarget, DownloadOptions) (Artifact, error)
 	PreflightScopes func(...string) error
 	CollectPages    func(context.Context, Request, bool) ([]map[string]any, HostPagination, error)
 }
@@ -53,6 +57,8 @@ func NewCommandContext(options ContextOptions) CommandContext {
 		dryRun:          options.DryRun,
 		inputStage:      options.InputStage,
 		callJSON:        options.CallJSON,
+		download:        options.Download,
+		downloadURL:     options.DownloadURL,
 		preflightScopes: options.PreflightScopes,
 		collectPages:    options.CollectPages,
 	}

@@ -10,6 +10,7 @@ import (
 	defaultaffordance "github.com/larksuite/cli/affordance"
 	"github.com/larksuite/cli/cmd"
 	"github.com/larksuite/cli/extension/command"
+	"github.com/larksuite/cli/extension/download"
 	defaultskills "github.com/larksuite/cli/skills"
 
 	_ "github.com/larksuite/cli/extension/credential/env"
@@ -50,14 +51,64 @@ var readCommand = command.Define(command.Definition[readArgs, readData]{
 	},
 })
 
+type backupArgs struct {
+	FileToken string `flag:"file-token" schema:"required;minLength=1" doc:"file token"`
+	Output    string `flag:"output" schema:"required;minLength=1" doc:"logical output name"`
+}
+
+type backupDescriptor struct {
+	DownloadURL string `json:"download_url"`
+}
+
+type backupData struct {
+	FileToken string           `json:"file_token" schema:"required" doc:"backed-up file token"`
+	Artifact  command.Artifact `json:"artifact" schema:"required" doc:"saved backup artifact"`
+}
+
+func backupDescriptorRequest(args *backupArgs) command.Request {
+	return command.GET("/open-apis/drive/v1/files/" + command.PathSegment(args.FileToken) + "/download_url")
+}
+
+func backupTarget(args *backupArgs) command.FileTarget {
+	return command.FileTarget{Name: args.Output}
+}
+
+var backupCommand = command.Define(command.Definition[backupArgs, backupData]{
+	Metadata: command.CommandMetadata{
+		Service: command.DomainDrive, Command: "+wrapper-backup", Description: "Resolve and save one file backup", Risk: command.RiskWrite,
+		Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{
+			command.IdentityUser: {RequiredScopes: []string{"drive:drive.metadata:readonly", "drive:file:download"}},
+		}},
+	},
+	Hooks: command.Hooks[backupArgs, backupData]{
+		DryRun: func(_ context.Context, _ command.CommandContext, args *backupArgs) *command.DryRun {
+			return command.NewDryRun(backupDescriptorRequest(args).Desc("resolve a short-lived download URL")).
+				File(backupTarget(args).Intent("file content returned by the resolved URL"))
+		},
+		Execute: func(ctx context.Context, commandContext command.CommandContext, args *backupArgs) (command.Result[backupData], error) {
+			descriptor, err := command.CallJSON[backupDescriptor](ctx, commandContext, backupDescriptorRequest(args))
+			if err != nil {
+				return command.Result[backupData]{}, err
+			}
+			artifact, err := command.DownloadURL(ctx, commandContext, descriptor.DownloadURL, backupTarget(args), command.DownloadOptions{
+				Representation: download.Immutable,
+			})
+			if err != nil {
+				return command.Result[backupData]{}, err
+			}
+			return command.Success(backupData{FileToken: args.FileToken, Artifact: artifact}), nil
+		},
+	},
+})
+
 func main() {
 	cmd.SetEmbeddedSkillContent(defaultskills.DefaultFS())
 	cmd.SetEmbeddedAffordanceContent(defaultaffordance.DefaultFS())
 	os.Exit(cmd.ExecuteWithOptions(
-		cmd.WithCommandSets(command.Set{
-			Domain:   command.ExtendDomain(command.DomainIm),
-			Commands: []command.Command{readCommand},
-		}),
+		cmd.WithCommandSets(
+			command.Set{Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{readCommand}},
+			command.Set{Domain: command.ExtendDomain(command.DomainDrive), Commands: []command.Command{backupCommand}},
+		),
 		cmd.WithoutPlugins(),
 		cmd.WithoutStrictMode(),
 		cmd.WithoutServiceCommands(),

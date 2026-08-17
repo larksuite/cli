@@ -24,13 +24,25 @@ import (
 // Response is one scripted OpenAPI response.
 type Response struct {
 	data           any
+	file           *fileResponse
 	err            error
 	expectedMethod string
 	expectedPath   string
+	expectedURL    string
+}
+
+type fileResponse struct {
+	contentType string
+	content     []byte
 }
 
 // Respond creates a successful scripted response containing an OpenAPI data object.
 func Respond(data any) Response { return Response{data: data} }
+
+// RespondFile creates a successful scripted file response.
+func RespondFile(contentType string, content []byte) Response {
+	return Response{file: &fileResponse{contentType: contentType, content: append([]byte(nil), content...)}}
+}
 
 // Fail creates a failed scripted response.
 func Fail(err error) Response { return Response{err: err} }
@@ -42,6 +54,9 @@ type Recorder struct {
 	mu                 sync.Mutex
 	responses          []Response
 	requests           []command.RequestView
+	urls               []string
+	files              []RecordedFile
+	operations         int
 	scopeChecks        [][]string
 	scopeError         error
 	pagination         command.PaginationOptions
@@ -64,6 +79,32 @@ func (r *Recorder) ReplyJSON(method, path string, data any) *Recorder {
 	r.testing.Helper()
 	r.mu.Lock()
 	r.responses = append(r.responses, Response{data: data, expectedMethod: method, expectedPath: path})
+	r.mu.Unlock()
+	return r
+}
+
+// ReplyFile appends an ordered successful file response with an expected
+// request method and path.
+func (r *Recorder) ReplyFile(method, path, contentType string, content []byte) *Recorder {
+	r.testing.Helper()
+	r.mu.Lock()
+	r.responses = append(r.responses, Response{
+		file:           &fileResponse{contentType: contentType, content: append([]byte(nil), content...)},
+		expectedMethod: method,
+		expectedPath:   path,
+	})
+	r.mu.Unlock()
+	return r
+}
+
+// ReplyURL appends an ordered successful direct-URL file response.
+func (r *Recorder) ReplyURL(rawURL, contentType string, content []byte) *Recorder {
+	r.testing.Helper()
+	r.mu.Lock()
+	r.responses = append(r.responses, Response{
+		file:        &fileResponse{contentType: contentType, content: append([]byte(nil), content...)},
+		expectedURL: rawURL,
+	})
 	r.mu.Unlock()
 	return r
 }
@@ -95,6 +136,8 @@ func (r *Recorder) commandContext(identity command.Identity, dryRun bool) comman
 		Identity:        identity,
 		DryRun:          dryRun,
 		CallJSON:        r.callJSON,
+		Download:        r.download,
+		DownloadURL:     r.downloadURL,
 		PreflightScopes: r.preflightScopes,
 		CollectPages:    r.collectPages,
 	})
@@ -103,6 +146,15 @@ func (r *Recorder) commandContext(identity command.Identity, dryRun bool) comman
 // Execution is the inspected outcome of one business Execute hook.
 type Execution[Data any] struct {
 	Data Data
+}
+
+// RecordedFile is one scripted download committed by the test runtime.
+type RecordedFile struct {
+	Target    command.FileTarget
+	Options   command.DownloadOptions
+	SourceURL string
+	Artifact  command.Artifact
+	Content   []byte
 }
 
 // Execute runs Normalize, Validate, and Execute with the restricted test runtime.
@@ -259,6 +311,25 @@ func (r *Recorder) Requests() []command.RequestView {
 	return cloned
 }
 
+// Files returns copied file downloads in execution order.
+func (r *Recorder) Files() []RecordedFile {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	files := make([]RecordedFile, len(r.files))
+	for index, file := range r.files {
+		files[index] = file
+		files[index].Content = append([]byte(nil), file.Content...)
+	}
+	return files
+}
+
+// URLs returns copied direct download URLs in execution order.
+func (r *Recorder) URLs() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.urls...)
+}
+
 // ScopeChecks returns copied scope preflights in execution order.
 func (r *Recorder) ScopeChecks() [][]string {
 	r.mu.Lock()
@@ -305,11 +376,90 @@ func (r *Recorder) AssertDryRunMatches(dryRun *command.DryRun) {
 			r.testing.Errorf("dry-run request %d differs from executed request\nclaimed: %s\nexecuted: %s", index+1, claimedValue, actualValue)
 		}
 	}
+	claimedFiles := command.InspectDryRun(dryRun).Files
+	actualFiles := r.Files()
+	if len(claimedFiles) != len(actualFiles) {
+		r.testing.Errorf("dry-run file count = %d, executed download count = %d", len(claimedFiles), len(actualFiles))
+		return
+	}
+	for index := range claimedFiles {
+		if claimedFiles[index].Name != actualFiles[index].Target.Name || claimedFiles[index].IfExists != actualFiles[index].Target.IfExists {
+			r.testing.Errorf("dry-run file %d target = %#v, executed target = %#v", index+1, claimedFiles[index], actualFiles[index].Target)
+		}
+	}
 }
 
 func (r *Recorder) callJSON(ctx context.Context, request command.Request) (map[string]any, error) {
-	if err := ctx.Err(); err != nil {
+	response, requestNumber, finish, err := r.nextResponse(ctx, request)
+	if err != nil {
 		return nil, err
+	}
+	if response.err != nil {
+		return nil, response.err
+	}
+	if response.file != nil {
+		return nil, fmt.Errorf("scripted response %d is a file, not a JSON data object", requestNumber)
+	}
+	data, err := responseDataObject(response.data)
+	if err != nil {
+		return nil, fmt.Errorf("scripted response %d: %w", requestNumber, err)
+	}
+	finish()
+	return data, nil
+}
+
+func (r *Recorder) download(ctx context.Context, request command.Request, target command.FileTarget, options command.DownloadOptions) (command.Artifact, error) {
+	response, requestNumber, finish, err := r.nextResponse(ctx, request)
+	if err != nil {
+		return command.Artifact{}, err
+	}
+	if response.err != nil {
+		return command.Artifact{}, response.err
+	}
+	if response.file == nil {
+		return command.Artifact{}, fmt.Errorf("scripted response %d is JSON, not a file", requestNumber)
+	}
+	artifact := command.Artifact{
+		Name: target.Name, Location: target.Name,
+		Size: int64(len(response.file.content)), ContentType: response.file.contentType,
+	}
+	r.mu.Lock()
+	r.files = append(r.files, RecordedFile{
+		Target: target, Options: options, Artifact: artifact, Content: append([]byte(nil), response.file.content...),
+	})
+	r.mu.Unlock()
+	finish()
+	return artifact, nil
+}
+
+func (r *Recorder) downloadURL(ctx context.Context, rawURL string, target command.FileTarget, options command.DownloadOptions) (command.Artifact, error) {
+	response, requestNumber, finish, err := r.nextURLResponse(ctx, rawURL)
+	if err != nil {
+		return command.Artifact{}, err
+	}
+	if response.err != nil {
+		return command.Artifact{}, response.err
+	}
+	if response.file == nil {
+		return command.Artifact{}, fmt.Errorf("scripted response %d is JSON, not a file", requestNumber)
+	}
+	artifact := command.Artifact{
+		Name: target.Name, Location: target.Name,
+		Size: int64(len(response.file.content)), ContentType: response.file.contentType,
+	}
+	r.mu.Lock()
+	r.files = append(r.files, RecordedFile{
+		Target: target, Options: options, SourceURL: rawURL,
+		Artifact: artifact, Content: append([]byte(nil), response.file.content...),
+	})
+	r.mu.Unlock()
+	finish()
+	return artifact, nil
+}
+
+func (r *Recorder) nextResponse(ctx context.Context, request command.Request) (Response, int, func(), error) {
+	if err := ctx.Err(); err != nil {
+		return Response{}, 0, nil, err
 	}
 	view := command.InspectRequest(request)
 	cloned, cloneErr := cloneRequestView(view)
@@ -318,10 +468,11 @@ func (r *Recorder) callJSON(ctx context.Context, request command.Request) (map[s
 	}
 	r.mu.Lock()
 	r.requests = append(r.requests, cloned)
-	requestNumber := len(r.requests)
+	r.operations++
+	requestNumber := r.operations
 	if len(r.responses) == 0 {
 		r.mu.Unlock()
-		return nil, fmt.Errorf("request %d has no scripted response", requestNumber)
+		return Response{}, 0, nil, fmt.Errorf("request %d has no scripted response", requestNumber)
 	}
 	response := r.responses[0]
 	r.responses = r.responses[1:]
@@ -329,23 +480,45 @@ func (r *Recorder) callJSON(ctx context.Context, request command.Request) (map[s
 	shouldCancel := r.cancelAfterRequest == requestNumber
 	r.mu.Unlock()
 	if response.expectedMethod != "" && response.expectedMethod != view.Method {
-		return nil, fmt.Errorf("request %d method = %q, expected %q", requestNumber, view.Method, response.expectedMethod)
+		return Response{}, 0, nil, fmt.Errorf("request %d method = %q, expected %q", requestNumber, view.Method, response.expectedMethod)
 	}
 	if response.expectedPath != "" && response.expectedPath != view.Path {
-		return nil, fmt.Errorf("request %d path = %q, expected %q", requestNumber, view.Path, response.expectedPath)
+		return Response{}, 0, nil, fmt.Errorf("request %d path = %q, expected %q", requestNumber, view.Path, response.expectedPath)
 	}
+	finish := func() {
+		if shouldCancel && cancel != nil {
+			cancel()
+		}
+	}
+	return response, requestNumber, finish, nil
+}
 
-	if response.err != nil {
-		return nil, response.err
+func (r *Recorder) nextURLResponse(ctx context.Context, rawURL string) (Response, int, func(), error) {
+	if err := ctx.Err(); err != nil {
+		return Response{}, 0, nil, err
 	}
-	data, err := responseDataObject(response.data)
-	if err != nil {
-		return nil, fmt.Errorf("scripted response %d: %w", requestNumber, err)
+	r.mu.Lock()
+	r.urls = append(r.urls, rawURL)
+	r.operations++
+	requestNumber := r.operations
+	if len(r.responses) == 0 {
+		r.mu.Unlock()
+		return Response{}, 0, nil, fmt.Errorf("request %d has no scripted response", requestNumber)
 	}
-	if shouldCancel && cancel != nil {
-		cancel()
+	response := r.responses[0]
+	r.responses = r.responses[1:]
+	cancel := r.cancel
+	shouldCancel := r.cancelAfterRequest == requestNumber
+	r.mu.Unlock()
+	if response.expectedURL != "" && response.expectedURL != rawURL {
+		return Response{}, 0, nil, fmt.Errorf("request %d URL = %q, expected %q", requestNumber, rawURL, response.expectedURL)
 	}
-	return data, nil
+	finish := func() {
+		if shouldCancel && cancel != nil {
+			cancel()
+		}
+	}
+	return response, requestNumber, finish, nil
 }
 
 func (r *Recorder) collectPages(ctx context.Context, request command.Request, all bool) ([]map[string]any, command.HostPagination, error) {

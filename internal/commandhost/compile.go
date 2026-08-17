@@ -14,6 +14,7 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/extension/command"
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -308,6 +309,12 @@ func publicContext(host common.CommandContext) command.CommandContext {
 			view := command.InspectRequest(request)
 			return common.DoTypedAPIJSON(ctx, host, view.Method, view.Path, queryParams(view.Query), view.Body)
 		},
+		Download: func(ctx context.Context, request command.Request, target command.FileTarget, options command.DownloadOptions) (command.Artifact, error) {
+			return downloadCommand(ctx, host, request, target, options)
+		},
+		DownloadURL: func(ctx context.Context, rawURL string, target command.FileTarget, options command.DownloadOptions) (command.Artifact, error) {
+			return downloadURLCommand(ctx, host, rawURL, target, options)
+		},
 		PreflightScopes: host.RequireConditionalScopes,
 		CollectPages: func(ctx context.Context, request command.Request, all bool) ([]map[string]any, command.HostPagination, error) {
 			view := command.InspectRequest(request)
@@ -405,6 +412,19 @@ func convertDryRun(preview *command.DryRun) (*common.DryRunAPI, error) {
 		if request.Description != "" {
 			converted.Desc(request.Description)
 		}
+	}
+	for index, file := range view.Files {
+		if file.Name == "" || file.Name != strings.TrimSpace(file.Name) {
+			return nil, command.ValidationErrorf("dry-run file %d: target name must be non-empty and trimmed", index+1)
+		}
+		policy := file.IfExists
+		if policy == "" {
+			policy = command.IfExistsFail
+		}
+		if policy != command.IfExistsFail && policy != command.IfExistsOverwrite {
+			return nil, command.ValidationErrorf("dry-run file %d: unsupported conflict policy %q", index+1, policy)
+		}
+		converted.File(cmdutil.DryRunFileIntent{Name: file.Name, IfExists: string(policy), Content: file.Content})
 	}
 	return converted, nil
 }

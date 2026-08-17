@@ -7,6 +7,17 @@ package command
 type DryRun struct {
 	description string
 	requests    []Request
+	files       []FileIntent
+}
+
+// File appends one logical file effect. It does not inspect the destination or
+// create storage; conflict and final-location decisions remain live-only.
+func (d *DryRun) File(intent FileIntent) *DryRun {
+	if d == nil {
+		return d
+	}
+	d.files = append(d.files, intent)
+	return d
 }
 
 // NewDryRun creates a dry-run request list from shared Request values. Passing
@@ -83,6 +94,7 @@ func (d *DryRun) Desc(description string) *DryRun {
 type DryRunView struct {
 	Description string
 	Requests    []RequestView
+	Files       []FileIntent
 }
 
 // InspectDryRun returns a copied dry-run projection for host adapters and tests.
@@ -90,7 +102,11 @@ func InspectDryRun(dryRun *DryRun) DryRunView {
 	if dryRun == nil {
 		return DryRunView{}
 	}
-	view := DryRunView{Description: dryRun.description, Requests: make([]RequestView, len(dryRun.requests))}
+	view := DryRunView{
+		Description: dryRun.description,
+		Requests:    make([]RequestView, len(dryRun.requests)),
+		Files:       append([]FileIntent(nil), dryRun.files...),
+	}
 	for index, request := range dryRun.requests {
 		view.Requests[index] = InspectRequest(request)
 	}

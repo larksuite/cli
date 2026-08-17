@@ -1,18 +1,20 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-package download
+// Package downloadtransport adapts host-owned OAPI and URL clients to the
+// public extension/download transport contract.
+package downloadtransport
 
 import (
 	"context"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/errs"
+	extdownload "github.com/larksuite/cli/extension/download"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/ratelimit"
 )
@@ -62,7 +64,7 @@ func QueryIf(name, value string) OAPIRequestOption {
 }
 
 // Get creates fresh SDK request state for every fetch.
-func (o OAPI) Get(path string, options ...OAPIRequestOption) Transport {
+func (o OAPI) Get(path string, options ...OAPIRequestOption) extdownload.Transport {
 	spec := oapiRequestSpec{
 		pathParams:  larkcore.PathParams{},
 		queryParams: larkcore.QueryParams{},
@@ -70,7 +72,7 @@ func (o OAPI) Get(path string, options ...OAPIRequestOption) Transport {
 	for _, option := range options {
 		option(&spec)
 	}
-	return func(ctx context.Context, request Request) (*http.Response, error) {
+	return func(ctx context.Context, request extdownload.Request) (*http.Response, error) {
 		if o.doStream == nil {
 			return nil, errs.NewInternalError(errs.SubtypeUnknown, "OAPI download transport is not configured")
 		}
@@ -100,9 +102,10 @@ func cloneQueryParams(params larkcore.QueryParams) larkcore.QueryParams {
 	return cloned
 }
 
-// URL adapts a caller-validated URL and HTTP client to Transport. The caller
-// owns source and redirect validation; Open owns transfer timeouts.
-func URL(httpClient *http.Client, rawURL string) Transport {
+// URL adapts a caller-validated URL and HTTP client to a public download
+// Transport. The caller owns source and redirect validation;
+// extension/download.Open owns transfer timeouts.
+func URL(httpClient *http.Client, rawURL string) extdownload.Transport {
 	var downloadClient *http.Client
 	if httpClient != nil {
 		downloadClient = &http.Client{
@@ -111,13 +114,13 @@ func URL(httpClient *http.Client, rawURL string) Transport {
 			Jar:           httpClient.Jar,
 		}
 	}
-	return func(ctx context.Context, request Request) (*http.Response, error) {
+	return func(ctx context.Context, request extdownload.Request) (*http.Response, error) {
 		if downloadClient == nil {
 			return nil, errs.NewInternalError(errs.SubtypeUnknown, "download URL transport requires an HTTP client")
 		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 		if err != nil {
-			return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "invalid download URL: %s", err).WithCause(err)
+			return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "invalid download URL").WithCause(err)
 		}
 		req.Header = request.Headers()
 
@@ -131,9 +134,9 @@ func URL(httpClient *http.Client, rawURL string) Transport {
 				return nil, err
 			}
 			if hasResponse {
-				return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "download redirect failed: %s", err).WithCause(err)
+				return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "download redirect failed").WithCause(err)
 			}
-			return nil, client.WrapReplaySafeTransportError(ctx, err, "download failed: %s", err)
+			return nil, client.WrapReplaySafeTransportError(ctx, err, "download failed")
 		}
 		if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
 			return resp, nil
@@ -143,11 +146,9 @@ func URL(httpClient *http.Client, rawURL string) Transport {
 }
 
 func urlResponseError(resp *http.Response) error {
-	var detail string
 	if resp.Body != nil {
 		defer resp.Body.Close()
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		detail = strings.TrimSpace(string(body))
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	}
 
 	subtype := errs.SubtypeNetworkTransport
@@ -156,13 +157,7 @@ func urlResponseError(resp *http.Response) error {
 	} else if resp.StatusCode >= http.StatusInternalServerError {
 		subtype = errs.SubtypeNetworkServer
 	}
-	message := "download failed: HTTP %d"
-	args := []any{resp.StatusCode}
-	if detail != "" {
-		message += ": %s"
-		args = append(args, detail)
-	}
-	networkErr := errs.NewNetworkError(subtype, message, args...).WithCode(resp.StatusCode)
+	networkErr := errs.NewNetworkError(subtype, "download failed: HTTP %d", resp.StatusCode).WithCode(resp.StatusCode)
 	if resp.StatusCode == http.StatusRequestTimeout || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= http.StatusInternalServerError {
 		networkErr.WithRetryable()
 		if retry := ratelimit.ParseStandardHeaders(resp.Header, time.Now()).RetryAfterSeconds(); retry > 0 {
