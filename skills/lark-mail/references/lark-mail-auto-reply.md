@@ -43,8 +43,8 @@ lark-cli mail +auto-reply-modify --as user --disable
 | `--start <time>` | modify | 否 | 开始日期，支持 Unix timestamp 或 ISO 8601；按当天开始保存 |
 | `--end <time>` | modify | 否 | 结束日期，支持 Unix timestamp 或 ISO 8601；按当天结束保存 |
 | `--timezone <tz>` | modify | 否 | 时区，例如 `Asia/Shanghai` |
-| `--internal-only` | modify | 否 | 仅对租户内发件人发送自动回复；与 `--external` 互斥 |
-| `--external` | modify | 否 | 外部发件人也发送自动回复；与 `--internal-only` 互斥 |
+| `--internal-only` | modify | 否 | 仅对租户内发件人发送自动回复；与 `--all` 互斥 |
+| `--all` | modify | 否 | 对所有发件人发送自动回复，包括外部发件人；与 `--internal-only` 互斥 |
 
 ## 行为
 

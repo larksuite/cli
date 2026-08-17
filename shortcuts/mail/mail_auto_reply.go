@@ -63,7 +63,7 @@ var MailAutoReplyModify = common.Shortcut{
 		{Name: "end", Desc: "End date as Unix timestamp or ISO 8601. Stored as the day's 23:59:59.999."},
 		{Name: "timezone", Desc: "Time zone for the auto-reply range, e.g. Asia/Shanghai. Defaults to the start time zone when it can be inferred."},
 		{Name: "internal-only", Type: "bool", Desc: "Only send auto-replies to tenant-internal senders."},
-		{Name: "external", Type: "bool", Desc: "Send auto-replies to external senders too."},
+		{Name: "all", Type: "bool", Desc: "Send auto-replies to all senders, including external senders."},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		mailboxID := resolveAutoReplyMailboxID(runtime)
@@ -82,11 +82,11 @@ var MailAutoReplyModify = common.Shortcut{
 					mailInvalidParam("--disable", "mutually exclusive with --enable"),
 				)
 		}
-		if runtime.Bool("internal-only") && runtime.Bool("external") {
-			return mailValidationError("--internal-only and --external are mutually exclusive").
+		if runtime.Bool("internal-only") && runtime.Bool("all") {
+			return mailValidationError("--internal-only and --all are mutually exclusive").
 				WithParams(
-					mailInvalidParam("--internal-only", "mutually exclusive with --external"),
-					mailInvalidParam("--external", "mutually exclusive with --internal-only"),
+					mailInvalidParam("--internal-only", "mutually exclusive with --all"),
+					mailInvalidParam("--all", "mutually exclusive with --internal-only"),
 				)
 		}
 		if runtime.Str("content") != "" && runtime.Str("content-file") != "" {
@@ -135,7 +135,7 @@ func resolveAutoReplyMailboxID(runtime *common.RuntimeContext) string {
 func autoReplyHasModify(runtime *common.RuntimeContext) bool {
 	for _, flag := range []string{
 		"enable", "disable", "content", "content-file",
-		"start", "end", "timezone", "internal-only", "external",
+		"start", "end", "timezone", "internal-only", "all",
 	} {
 		if runtime.Changed(flag) {
 			return true
@@ -205,7 +205,7 @@ func buildAutoReplyPatch(runtime *common.RuntimeContext, embedLocalImages bool) 
 	if runtime.Bool("internal-only") {
 		autoReply["only_send_to_tenant"] = true
 	}
-	if runtime.Bool("external") {
+	if runtime.Bool("all") {
 		autoReply["only_send_to_tenant"] = false
 	}
 	if len(autoReply) == 0 {
