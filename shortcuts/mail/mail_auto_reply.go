@@ -27,7 +27,7 @@ var MailAutoReply = common.Shortcut{
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "from", Default: "me", Desc: "Mailbox address (default: me)."},
+		{Name: "mailbox", Default: "me", Desc: "Mailbox address (default: me)."},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		mailboxID := resolveAutoReplyMailboxID(runtime)
@@ -54,7 +54,7 @@ var MailAutoReplyModify = common.Shortcut{
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "from", Default: "me", Desc: "Mailbox address (default: me)."},
+		{Name: "mailbox", Default: "me", Desc: "Mailbox address (default: me)."},
 		{Name: "enable", Type: "bool", Desc: "Turn auto-reply on."},
 		{Name: "disable", Type: "bool", Desc: "Turn auto-reply off."},
 		{Name: "content", Desc: "Auto-reply HTML content. Plain text is accepted and sent as-is. Supports @file and - stdin. Local <img src=\"./file.png\"> references are embedded as data:image URIs.", Input: []string{common.File, common.Stdin}},
@@ -127,8 +127,8 @@ func autoReplyPath(mailboxID string) string {
 }
 
 func resolveAutoReplyMailboxID(runtime *common.RuntimeContext) string {
-	if from := strings.TrimSpace(runtime.Str("from")); from != "" {
-		return from
+	if mailbox := strings.TrimSpace(runtime.Str("mailbox")); mailbox != "" {
+		return mailbox
 	}
 	return "me"
 }
