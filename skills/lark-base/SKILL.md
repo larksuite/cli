@@ -102,7 +102,7 @@ Form 依附于 Table，以 Field 作为题目，每次有效提交会创建一�
 
 ## Dashboard Block
 
-Dashboard Block 是 Base Block 树中的仪表盘容器，负责承载页面主题、布局和内部组件集合，本身不表示某一项图表数据。使用 `+dashboard-list` 定位容器，`+dashboard-get` 读取容器信息，`+dashboard-update` 修改主题。`+dashboard-arrange` 是服务端智能重排，只在用户明确要求重排/美化，或本次会话从零新建且没有为任何组件显式使用 `--position` 时执行；只要任一组件使用了 `--position`，不要自动重排，除非用户明确同意放弃精确布局。
+Dashboard Block 是 Base Block 树中的仪表盘容器，负责承载页面主题、布局和内部组件集合，本身不表示某一项图表数据。使用 `+dashboard-list` 定位容器，`+dashboard-get` 读取容器信息，`+dashboard-update` 修改主题。用户只要求调整布局、重排、美化、撑满或铺满，且没有给出组件级坐标或尺寸时，优先用 `+dashboard-arrange` 做整盘编排，而不是逐个 `--position` 更新；通常一次编排就够，不要仅为查看效果反复重排或逐个读回组件。对本次会话从零新建、且没有使用显式 `--position` 的仪表盘，收尾时用一次 arrange 即可。
 
 容器内部的图表、指标卡和文本等组件在 Dashboard API 中也称为 Block，但不属于 Base Block 树。内部 Block 分为三条操作路径：
 
@@ -110,7 +110,7 @@ Dashboard Block 是 Base Block 树中的仪表盘容器，负责承载页面主�
 2. **写入配置：** `+dashboard-block-create` / `+dashboard-block-update` / `+dashboard-block-delete` 管理组件，`data_config` 定义数据源、维度、指标、聚合或文本内容。
 3. **读取内容：** `+dashboard-block-get-data` 读取图表、指标卡等数据组件的计算结果。
 
-创建或更新组件时可选 `--position`，使用 12 列栅格 `{x,y,w,h}` 精确布局；不要把 `+dashboard-arrange` 当作等价实现，它无法指定坐标。坐标只解析完整数值形状、不校验取值并原样透传；服务端如何处理越界或重叠坐标尚未验证。`statistics` 的 `data_config.number_format` 支持 `formatName` 和 `precision`，create/update 都会做本地校验，非 statistics 类型会拒绝该字段。具体规则读取 [Dashboard](references/lark-base-dashboard.md) 和 [Dashboard Block 配置](references/lark-base-dashboard-block-config.md)。
+只有用户明确给出 `x/y/w/h`、具体行列/顺序、每个组件宽高或可直接换算的尺寸比例时，才在 create/update 使用 `--position` 精确布局。命令成功即视为写入成功，一般无需仅为读回 position 再调用 get/list；成功响应不代表最终渲染位置已经过读回验证。坐标只解析完整数值形状、不校验取值并原样透传；服务端如何处理越界或重叠坐标尚未验证。若 block 类型为 `unknown` 或接口返回 `unsupported block type unknown`，说明该组件不支持精确布局：不要用 `--no-validate` 重试或删除重建来硬凑坐标；泛化布局诉求可回退为一次 arrange，明确坐标诉求则告知该 block 当前不支持。`statistics` 的 `data_config.number_format` 支持 `formatName` 和 `precision`；create 会校验组件类型和子字段，update 只能校验子字段，组件类型由服务端按现有 block 裁决。具体规则和服务端未部署该字段时的处理策略读取 [Dashboard](references/lark-base-dashboard.md) 与 [Dashboard Block 配置](references/lark-base-dashboard-block-config.md)。
 
 操作内部 Block 前先读 [Dashboard](references/lark-base-dashboard.md)，由该入口继续路由组件配置和结果协议。
 
