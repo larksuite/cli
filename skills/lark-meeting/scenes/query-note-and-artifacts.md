@@ -12,7 +12,7 @@ Note 域只接受明确的 `note_id`：
 - `minutes +detail` 从 `minute_token` 返回的顶层 `note_id`。
 - `docs +fetch` 返回的 `<vc-transcribe-tab vc-node-id="...">` 中的 `vc-node-id`。
 
-不要从 Doc token、Docx URL、文档标题、正文或 backlink 反推 `note_id`。只有自然语言纪要标题或 Docx 链接时，先使用 Drive/Doc 搜索或读取文档；没有明确 `vc-node-id` 时继续按 Doc 处理，不进入 Note 查询。
+不要从 Doc token、Docx URL、文档标题、正文或 backlink 反推 `note_id`。只有自然语言纪要标题或 Docx 链接时，先使用 Drive/Doc 搜索或读取文档；没有明确 `vc-node-id` 时继续按 Doc 处理，不进入 Note 查询。如果文档正文明确给出“逐字稿”或“文字记录”的 Docx 链接，将该链接继续作为 Doc 沿用当前身份读取；该链接仍不是 `note_id`。
 
 如果当前只有 `meeting_id`、`minute_token` 或 Calendar `event_id`，先使用会议、妙记或日程场景取得 `note_id`；不要把这些标识直接传给 Note 命令。
 
@@ -59,6 +59,8 @@ lark-cli drive metas batch_query --data '{"request_docs":[{"doc_type":"docx","do
 ## 读取逐字稿(文字记录)
 
 逐字稿入口由 `note +detail` 返回的 `note_display_type` 决定，不要只根据 `verbatim_doc_token` 是否为空判断：
+
+normal Note 逐字稿是 Doc 读取结果，unified Note 可由 `note +transcript` 保存为 Markdown 或 plain text，Minutes Transcript 则是妙记产物文本。它们都可作为原始发言记录，但序列化格式不是统一契约；应以实际返回内容为准，不要硬编码“发言人 + 相对时间戳”等固定行格式。
 
 ### note_display_type = normal 且 有 verbatim_doc_token
 

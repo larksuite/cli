@@ -56,7 +56,9 @@ lark-cli vc +detail --meeting-ids <meeting_id> --as <source_identity>
 Note 与 Minutes 来自相互独立的 AI 总结和录制链路，可能同时存在、只存在一个或都不存在：
 
 - 用户明确指定“智能纪要”或“妙记”时，沿指定链路处理，不要改道。
-- 两者都存在且用户未指定时，优先使用 Note；Note 及其逐字稿通常会后自动授权给参会人，Minutes 通常需要单独授权。
+- 只存在一类产物时，使用存在的那一类，不要因默认优先级而把缺失的 Note 或 Minutes 当作错误。
+- 两者都存在且用户未指定时，优先使用 Note。Note 及其逐字稿会后通常直接对参会人可读；Minutes 包含原始音视频并受独立资源 ACL 控制，往往需要所有者授权或由用户明确申请权限。
+- Note 和 Minutes 的总结、待办等 AI 产物可能内容重叠。按上述规则选定一条主链路；除非用户明确要求对照，不要自动拼接、合并或去重两份 AI 产物。
 - 用户只要产物标识时，返回取得的 `note_id` / `minute_token` 后停止；需要产物链接时，进入对应下游场景解析，不继续读取正文。
 - `meeting_note` 是 Calendar 日程上由用户绑定的 Doc，只能从 `event_id` 经 `calendar +meeting` 获取；它与 AI 智能纪要独立，不要从 `meeting_id` 或 `note_id` 推断。
 - 用户询问“有哪些纪要”或“纪要链接”且上下文包含 `event_id` 时，保留 `calendar +meeting` 返回的 `meeting_note`；如存在 `note_id`，进入智能纪要场景取得 `note_doc_token`，再同时返回两者供用户区分选择。
@@ -75,7 +77,7 @@ Note 与 Minutes 来自相互独立的 AI 总结和录制链路，可能同时�
 
 ## 基于会议内容回答或分析
 
-- 用户只要现成的 AI 总结、待办或章节时，直接返回对应 AI 产物。
+- 用户只要现成的 AI 总结、待办或章节时，直接返回选定链路的对应 AI 产物，不为此额外读取逐字稿。待办通常包含提出人或负责人，章节按话题组织，因此查看待办或会议结构时应优先使用这些结构化 AI 产物。
 - 用户要求提炼、重新总结、复盘、争议分析或“谁说了什么”时，读取 Note 逐字稿或 Minutes Transcript 的原始对话并独立分析；禁止把现成 AI 总结重新排版后冒充独立结论。
 - Note 和 Minutes 都有原始记录且用户未指定时，优先使用 Note 逐字稿；用户明确说“基于妙记”时使用 Minutes Transcript。
 - 如果产物不存在或无权限，如实说明，并保留已经取得的 `meeting_id`、`note_id`、`minute_token` 或文档 token，方便用户继续处理。
