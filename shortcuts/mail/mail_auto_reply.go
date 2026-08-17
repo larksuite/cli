@@ -58,8 +58,7 @@ var MailAutoReplyModify = common.Shortcut{
 		{Name: "enable", Type: "bool", Desc: "Turn auto-reply on."},
 		{Name: "disable", Type: "bool", Desc: "Turn auto-reply off."},
 		{Name: "content", Desc: "Auto-reply HTML content. Plain text is accepted and sent as-is. Supports @file and - stdin. Local <img src=\"./file.png\"> references are embedded as data:image URIs.", Input: []string{common.File, common.Stdin}},
-		{Name: "content-file", Desc: "Read auto-reply content from a file path. Mutually exclusive with --content."},
-		{Name: "summary", Desc: "Plain-text content summary. Defaults to a preview generated from --content/--content-file."},
+		{Name: "content-file", Desc: "Read auto-reply content from a file in the current directory. Mutually exclusive with --content."},
 		{Name: "start", Desc: "Start date as Unix timestamp or ISO 8601. Stored as the day's 00:00:00.000."},
 		{Name: "end", Desc: "End date as Unix timestamp or ISO 8601. Stored as the day's 23:59:59.999."},
 		{Name: "timezone", Desc: "Time zone for the auto-reply range, e.g. Asia/Shanghai. Defaults to the start time zone when it can be inferred."},
@@ -135,7 +134,7 @@ func resolveAutoReplyMailboxID(runtime *common.RuntimeContext) string {
 
 func autoReplyHasModify(runtime *common.RuntimeContext) bool {
 	for _, flag := range []string{
-		"enable", "disable", "content", "content-file", "summary",
+		"enable", "disable", "content", "content-file",
 		"start", "end", "timezone", "internal-only", "external",
 	} {
 		if runtime.Changed(flag) {
@@ -172,12 +171,7 @@ func buildAutoReplyPatch(runtime *common.RuntimeContext, embedLocalImages bool) 
 				float64(len(content))/1024/1024)
 		}
 		autoReply["content_html"] = content
-		if strings.TrimSpace(runtime.Str("summary")) == "" {
-			autoReply["content_summary"] = contentPreview(content, 200, resolveLang(runtime))
-		}
-	}
-	if summary := strings.TrimSpace(runtime.Str("summary")); summary != "" {
-		autoReply["content_summary"] = summary
+		autoReply["content_summary"] = contentPreview(content, 200, resolveLang(runtime))
 	}
 	timezone := strings.TrimSpace(runtime.Str("timezone"))
 	if start := strings.TrimSpace(runtime.Str("start")); start != "" {
@@ -228,6 +222,9 @@ func resolveAutoReplyContent(runtime *common.RuntimeContext) (string, error) {
 	if path == "" {
 		return "", nil
 	}
+	if err := validateAutoReplyContentFilePath(path); err != nil {
+		return "", err
+	}
 	f, err := runtime.FileIO().Open(path)
 	if err != nil {
 		return "", mailValidationParamError("--content-file", "open --content-file %s: %v", path, err).WithCause(mailInputStatError(err))
@@ -238,6 +235,14 @@ func resolveAutoReplyContent(runtime *common.RuntimeContext) (string, error) {
 		return "", mailValidationParamError("--content-file", "read --content-file %s: %v", path, err).WithCause(err)
 	}
 	return string(buf), nil
+}
+
+func validateAutoReplyContentFilePath(path string) error {
+	clean := filepath.Clean(strings.TrimSpace(path))
+	if clean == "." || clean == ".." || filepath.IsAbs(clean) || filepath.Base(clean) != clean {
+		return mailValidationParamError("--content-file", "--content-file must be a file in the current directory")
+	}
+	return nil
 }
 
 func embedAutoReplyLocalImages(runtime *common.RuntimeContext, content string) (string, error) {

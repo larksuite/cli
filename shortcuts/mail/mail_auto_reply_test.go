@@ -227,7 +227,7 @@ func TestMailAutoReplyEmbedsLocalImages(t *testing.T) {
 		},
 	})
 
-	if err := runMountedMailShortcut(t, MailAutoReplyModify, []string{"+auto-reply-modify", "--content", `<p>Hi<img src="logo.png"></p>`, "--summary", "With image"}, f, stdout); err != nil {
+	if err := runMountedMailShortcut(t, MailAutoReplyModify, []string{"+auto-reply-modify", "--content", `<p>Hi<img src="logo.png"></p>`}, f, stdout); err != nil {
 		t.Fatalf("runMountedMailShortcut() error = %v", err)
 	}
 	reg.Verify(t)
@@ -238,6 +238,25 @@ func TestMailAutoReplyEmbedsLocalImages(t *testing.T) {
 	}
 	if strings.Contains(html, `src="logo.png"`) {
 		t.Fatalf("local image path should have been replaced, got %q", html)
+	}
+	summary, _ := captured["content_summary"].(string)
+	if !strings.Contains(summary, "Hi") || !strings.Contains(summary, "图片") {
+		t.Fatalf("content_summary should be auto-generated from content, got %q", summary)
+	}
+}
+
+func TestMailAutoReplyContentFileRequiresCurrentDirectory(t *testing.T) {
+	for _, path := range []string{"nested/auto_reply.html", "../auto_reply.html", "/tmp/auto_reply.html"} {
+		t.Run(path, func(t *testing.T) {
+			f, stdout, _, _ := mailShortcutTestFactory(t)
+			err := runMountedMailShortcut(t, MailAutoReplyModify, []string{"+auto-reply-modify", "--content-file", path}, f, stdout)
+			if err == nil {
+				t.Fatal("expected content-file path validation error")
+			}
+			if !strings.Contains(err.Error(), "--content-file must be a file in the current directory") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
 	}
 }
 
