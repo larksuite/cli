@@ -2,12 +2,6 @@
 
 编排应用机器人的完整会中流程：发现已在参加的会议，或在用户明确授权后真实入会；随后拉取会中事件、发送文本或会中表情，并仅在用户明确要求时离会。
 
-## 内测提示
-
-- 当前 VC Agent 会中能力正在内测，仅少数租户和应用可用。
-- 出现 `missing required scope(s)`、`missing_scopes`、`error.code=20017` 或 `ErrNotInGray` 时，先确认租户和应用已获得内测资格；不要直接套用普通用户权限申请流程。
-- scope、应用发布/安装和数据范围均正确后仍返回 `20017` / `ErrNotInGray`，提示用户加入早鸟群确认资格：`https://go.larkoffice.com/join-chat/2f4nb0e1-fe00-4f67-bed7-25beaf533fbd`。
-
 ## 选择入口
 
 | 当前条件 | 起点 |
@@ -100,13 +94,12 @@ lark-cli vc +meeting-leave --as bot --meeting-id <meeting_id>
 
 ## 应用身份权限配置检查
 
-应用身份返回 `no permission`、`missing required scope(s)`、`missing_scopes`、`20017` 或 `ErrNotInGray` 时，不要执行 `auth login`。按顺序检查：
+应用身份返回 `no permission`、`missing required scope(s)` 或 `missing_scopes` 时，不要执行 `auth login`。按顺序检查：
 
-1. 先确认当前租户和应用已获得 VC Agent 内测资格。
-2. 按 CLI 错误中的 `hint` 处理；返回 `console_url` 时将其原样提供给用户。
-3. 确认应用已开通对应权限，已发布并安装到当前租户。入会和应用身份会议查询需要 `vc:meeting.bot.join:write`；会中发消息需要 `vc:meeting.message:write`。
-4. 在开放平台确认“权限可访问的数据范围”已保存为“按条件筛选”，条件为“会议的归属者 包含 与应用的可用范围一致”。
-5. 上述配置均正确仍返回 `20017` / `ErrNotInGray` 时，按内测灰度问题处理，提示用户加入早鸟群确认资格。
+1. 按 CLI 错误中的 `hint` 处理；返回 `console_url` 时将其原样提供给用户。
+2. 确认应用已开通对应权限，已发布并安装到当前租户。入会和应用身份会议查询需要 `vc:meeting.bot.join:write`；会中发消息需要 `vc:meeting.message:write`。
+3. 在开放平台确认“权限可访问的数据范围”已保存为“按条件筛选”，条件为“会议的归属者 包含 与应用的可用范围一致”。
+4. 上述配置均正确仍失败时，保留 CLI 返回的错误码和 `log_id`，按服务端权限异常排查；不要反复登录或改用其他身份重试。
 
 ## 会后边界
 

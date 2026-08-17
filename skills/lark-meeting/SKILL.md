@@ -83,7 +83,7 @@ lark-cli vc +meeting-events --as <same_identity> --meeting-id <meeting_id> --pag
 - [查询妙记及其产物](scenes/query-minutes-and-artifacts.md)：已有妙记 URL / `minute_token`，或按标题、所有者、参与者搜索妙记；读取总结、待办、章节、关键词、逐字稿，下载原始音视频，或查询关联智能纪要。
 - [生成和修改妙记](scenes/create-and-edit-minutes.md)：将本地音视频生成妙记、逐字稿、总结、待办或章节；修改妙记标题、总结、待办、关键词或说话人；申请妙记权限。
 - [基于 note_id 查询纪要、逐字稿、共享文档等](scenes/query-note-and-artifacts.md)：已有 `note_id`，需要完整查询或读取智能纪要正文(总结、待办)、逐字稿(文字记录)和共享文档等关联产物。
-- [应用机器人参会与会中互动](scenes/live-meeting-attend.md)：完整编排应用机器人的活跃会议发现、真实入会、事件拉取、文本/表情互动和明确授权后的离会；包含内测资格与应用权限恢复。
+- [应用机器人参会与会中互动](scenes/live-meeting-attend.md)：完整编排应用机器人的活跃会议发现、真实入会、事件拉取、文本/表情互动和明确授权后的离会。
 - [会中事件与会中互动](scenes/live-meeting-interact.md)：在不触发新的入会/离会操作时，使用用户身份或已在会中的应用身份查询活跃会议、查看发言/聊天/共享内容，或发送文本和表情。
 
 ## 命令参考
