@@ -112,7 +112,7 @@ func compileCommand(definition command.HostDefinition) (common.Shortcut, error) 
 	if err != nil {
 		return common.Shortcut{}, err
 	}
-	hooks := convertHooks(definition.Hooks)
+	hooks := convertHooks(definition)
 	hooks.NewArgs = definition.NewArgs
 	return common.CompileErasedDefinition(common.ErasedDefinition{
 		Metadata:   metadata,
@@ -210,12 +210,13 @@ func convertOutput(output command.OutputDefinition) (common.OutputDefinition, er
 	return converted, nil
 }
 
-func convertHooks(hooks command.HostHooks) common.ErasedHooks {
+func convertHooks(definition command.HostDefinition) common.ErasedHooks {
+	hooks := definition.Hooks
 	return common.ErasedHooks{
 		Normalize: adaptHook(hooks.Normalize),
 		Validate:  adaptHook(hooks.Validate),
 		DryRun:    adaptDryRunHook(hooks.DryRun),
-		Execute:   adaptExecuteHook(hooks.Execute),
+		Execute:   adaptExecuteHook(definition),
 		Renderers: cloneRenderers(hooks.Renderers),
 	}
 }
@@ -239,12 +240,21 @@ func adaptDryRunHook(hook func(context.Context, command.CommandContext, any) *co
 	}
 }
 
-func adaptExecuteHook(hook func(context.Context, command.CommandContext, any) (command.HostResult, error)) func(context.Context, common.CommandContext, any) (common.ErasedResult, error) {
+func adaptExecuteHook(definition command.HostDefinition) func(context.Context, common.CommandContext, any) (common.ErasedResult, error) {
+	hook := definition.Hooks.Execute
 	if hook == nil {
 		return nil
 	}
 	return func(ctx context.Context, host common.CommandContext, args any) (common.ErasedResult, error) {
 		result, err := hook(ctx, publicContext(host), args)
+		// Check the extension-facing protocol at the extension boundary, where
+		// the diagnostic can name the public constructor. commandtest runs the
+		// same check, so the two surfaces cannot drift apart.
+		if err == nil {
+			if invalid := command.ValidateHostResult(definition, result); invalid != nil {
+				return common.ErasedResult{}, invalid
+			}
+		}
 		converted := common.ErasedResult{Data: result.Data, Outcome: common.OutcomeKind(result.Outcome)}
 		if result.Pagination != nil {
 			converted.Meta = &common.ResultMeta{Pagination: &common.ResultPaginationMeta{

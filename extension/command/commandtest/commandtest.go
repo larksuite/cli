@@ -131,6 +131,13 @@ func Execute[Args any, Data any](ctx context.Context, recorder *Recorder, identi
 		}
 		return execution, err
 	}
+	// The same protocol the host adapter enforces. Without it a zero-value
+	// Result passes here -- generic erasure leaves a correctly typed zero Data
+	// behind, so the type assertion below succeeds and the test reports success
+	// for a command every real invocation would fail.
+	if err := command.ValidateHostResult(declaration, result); err != nil {
+		return execution, err
+	}
 	data, ok := result.Data.(Data)
 	if !ok {
 		return execution, fmt.Errorf("business Execute returned %T, expected %T", result.Data, execution.Data)
