@@ -39,7 +39,7 @@ func compileData(dataType reflect.Type, definition DataDefinition) (ValueShape, 
 	if dataType.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("Data must be a non-pointer struct or any unless Output.Data.Shape is explicit, got %s", dataType)
 	}
-	shape, err := compileStructShape(dataType, false, "Data")
+	shape, err := compileStructShape(dataType, false, "Data", map[reflect.Type]struct{}{})
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +57,10 @@ func compileData(dataType reflect.Type, definition DataDefinition) (ValueShape, 
 	return shape, nil
 }
 
-func shapeForType(t reflect.Type, schema schemaTag, input bool) (ValueShape, error) {
+// shapeForType derives the ValueShape of one Go type. active carries the struct
+// types on the current recursion path so a self-referential type is rejected
+// with a compile error; see compileStructShape.
+func shapeForType(t reflect.Type, schema schemaTag, input bool, active map[reflect.Type]struct{}) (ValueShape, error) {
 	baseType := t
 	for baseType.Kind() == reflect.Pointer {
 		baseType = baseType.Elem()
@@ -137,7 +140,7 @@ func shapeForType(t reflect.Type, schema schemaTag, input bool) (ValueShape, err
 			return nil, fmt.Errorf("array field has incompatible schema constraint")
 		}
 		elementSchema := schemaTag{required: true}
-		elementShape, err := shapeForType(baseType.Elem(), elementSchema, input)
+		elementShape, err := shapeForType(baseType.Elem(), elementSchema, input, active)
 		if err != nil {
 			return nil, fmt.Errorf("array item: %w", err)
 		}
@@ -149,7 +152,7 @@ func shapeForType(t reflect.Type, schema schemaTag, input bool) (ValueShape, err
 		if len(schema.enum) > 0 || hasStringConstraints(schema) || hasNumberConstraints(schema) || hasItemConstraints(schema) || schema.format != "" {
 			return nil, fmt.Errorf("object field has incompatible schema constraint")
 		}
-		object, err := compileStructShape(baseType, input, baseType.String())
+		object, err := compileStructShape(baseType, input, baseType.String(), active)
 		if err != nil {
 			return nil, err
 		}
@@ -167,7 +170,23 @@ func shapeForType(t reflect.Type, schema schemaTag, input bool) (ValueShape, err
 	return shape, nil
 }
 
-func compileStructShape(t reflect.Type, input bool, path string) (ObjectShape, error) {
+// compileStructShape walks one struct into an ObjectShape. active holds the
+// struct types already open on the current recursion path, so a type that
+// refers back to itself is reported as a compile error. Without the guard the
+// walk never terminates and the goroutine stack is exhausted -- that is a
+// fatal runtime error, not a panic, so no recover boundary can contain it and
+// the whole CLI dies during command registration.
+//
+// Membership is scoped to the path rather than the whole walk: a type is
+// removed once its fields are compiled, so the same type appearing twice as a
+// sibling stays legal.
+func compileStructShape(t reflect.Type, input bool, path string, active map[reflect.Type]struct{}) (ObjectShape, error) {
+	if _, cyclic := active[t]; cyclic {
+		return ObjectShape{}, fmt.Errorf("recursive type %s requires an explicit Shape", t)
+	}
+	active[t] = struct{}{}
+	defer delete(active, t)
+
 	shape := ObjectShape{}
 	seen := make(map[string]string)
 	for i := 0; i < t.NumField(); i++ {
@@ -221,7 +240,7 @@ func compileStructShape(t reflect.Type, input bool, path string) (ObjectShape, e
 		if input && description == "" {
 			return ObjectShape{}, fmt.Errorf("%s field %s (%s): description is required via doc", path, field.Name, name)
 		}
-		fieldShape, err := shapeForType(field.Type, schema, input)
+		fieldShape, err := shapeForType(field.Type, schema, input, active)
 		if err != nil {
 			return ObjectShape{}, fmt.Errorf("%s field %s (%s): %w", path, field.Name, name, err)
 		}

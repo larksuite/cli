@@ -154,7 +154,7 @@ func collectArgFields(t reflect.Type, parentIndex []int, insideInline bool, out 
 				return fmt.Errorf("Args field %s (--%s): InputField.Shape conflicts with schema constraints or nullable declaration", field.Name, flagName)
 			}
 		} else {
-			shape, err = shapeForType(valueType, schema, true)
+			shape, err = shapeForType(valueType, schema, true, map[reflect.Type]struct{}{})
 			if err != nil {
 				return fmt.Errorf("Args field %s (--%s): %w", field.Name, flagName, err)
 			}
