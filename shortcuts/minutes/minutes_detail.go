@@ -18,8 +18,6 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -33,14 +31,11 @@ const (
 	minutesDetailNoReadPermissionCode = 2091005
 	minutesDetailWaitTimeoutDefault   = 300
 	minutesDetailWaitIntervalDefault  = 15
+	minutesDetailBasicScope           = "minutes:minutes.basic:read"
+	minutesDetailArtifactsScope       = "minutes:minutes.artifacts:read"
 )
 
 var validMinuteTokenDetail = regexp.MustCompile(`^[a-z0-9]+$`)
-
-var scopesDetailMinuteTokens = []string{
-	"minutes:minutes.basic:read",
-	"minutes:minutes.artifacts:read",
-}
 
 // minuteDetailItem represents a single minute detail result.
 type minuteDetailItem struct {
@@ -97,7 +92,7 @@ func fetchMinuteDetail(ctx context.Context, runtime *common.RuntimeContext, minu
 	needTranscript := runtime.Bool("transcript")
 	needKeyword := runtime.Bool("keyword")
 
-	if needSummary || needTodo || needChapter || needTranscript || needKeyword {
+	if len(artifactFlags) > 0 {
 		artData, err := callMinutesDetailAPIUntilReady(ctx, runtime, waitReady, waitTimeout, waitInterval, func() (map[string]interface{}, error) {
 			return runtime.CallAPITyped(http.MethodGet,
 				fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/artifacts", validate.EncodePathSegment(minuteToken)), nil, nil)
@@ -280,13 +275,14 @@ func sanitizeDetailDirName(title, minuteToken string) string {
 
 // MinutesDetail queries minute details with selective artifact flags.
 var MinutesDetail = common.Shortcut{
-	Service:     "minutes",
-	Command:     "+detail",
-	Description: "Query minute details with selective artifact flags (summary, todo, chapter, transcript, keyword)",
-	Risk:        "read",
-	Scopes:      []string{"minutes:minutes.basic:read", "minutes:minutes.artifacts:read"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	Service:           "minutes",
+	Command:           "+detail",
+	Description:       "Query minute details with selective artifact flags (summary, todo, chapter, transcript, keyword)",
+	Risk:              "read",
+	Scopes:            []string{minutesDetailBasicScope},
+	ConditionalScopes: []string{minutesDetailArtifactsScope},
+	AuthTypes:         []string{"user", "bot"},
+	HasFormat:         true,
 	Flags: []common.Flag{
 		{Name: "minute-tokens", Desc: "minute tokens, comma-separated for batch", Required: true},
 		{Name: "summary", Type: "bool", Desc: "include summary"},
@@ -316,14 +312,9 @@ var MinutesDetail = common.Shortcut{
 				return err
 			}
 		}
-		// dynamic scope check
-		result, err := runtime.Factory.Credential.ResolveToken(ctx, credential.NewTokenSpec(runtime.As(), runtime.Config.AppID))
-		if err == nil && result != nil && result.Scopes != "" {
-			if missing := auth.MissingScopes(result.Scopes, scopesDetailMinuteTokens); len(missing) > 0 {
-				return errs.NewPermissionError(errs.SubtypeMissingScope,
-					"missing required scope(s): %s", strings.Join(missing, ", ")).
-					WithMissingScopes(missing...).
-					WithIdentity(string(runtime.As()))
+		if len(requestedMinutesDetailArtifactFlags(runtime)) > 0 {
+			if err := runtime.EnsureScopes([]string{minutesDetailArtifactsScope}); err != nil {
+				return err
 			}
 		}
 		return nil
@@ -334,7 +325,7 @@ var MinutesDetail = common.Shortcut{
 			GET("/open-apis/minutes/v1/minutes/{minute_token}").
 			Set("minute_tokens", common.SplitCSV(tokens))
 
-		if runtime.Bool("summary") || runtime.Bool("todo") || runtime.Bool("chapter") || runtime.Bool("transcript") || runtime.Bool("keyword") {
+		if len(requestedMinutesDetailArtifactFlags(runtime)) > 0 {
 			d.GET("/open-apis/minutes/v1/minutes/{minute_token}/artifacts")
 		}
 		return d

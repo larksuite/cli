@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -19,10 +20,21 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+// minutesDetailScopedTokenResolver returns a token with caller-controlled scopes
+// so tests can deterministically exercise the shortcut scope preflight.
+type minutesDetailScopedTokenResolver struct {
+	scopes string
+}
+
+func (r *minutesDetailScopedTokenResolver) ResolveToken(ctx context.Context, req credential.TokenSpec) (*credential.TokenResult, error) {
+	return &credential.TokenResult{Token: "test-token", Scopes: r.scopes}, nil
+}
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -140,6 +152,60 @@ func TestDetail_Validation_InvalidToken(t *testing.T) {
 	}
 	if ve.Param != "--minute-tokens" {
 		t.Errorf("Param = %q, want --minute-tokens", ve.Param)
+	}
+}
+
+func TestDetail_ArtifactScopeIsConditional(t *testing.T) {
+	if got := MinutesDetail.Scopes; !reflect.DeepEqual(got, []string{minutesDetailBasicScope}) {
+		t.Fatalf("Scopes = %v, want only %s", got, minutesDetailBasicScope)
+	}
+	if got := MinutesDetail.ConditionalScopes; !reflect.DeepEqual(got, []string{minutesDetailArtifactsScope}) {
+		t.Fatalf("ConditionalScopes = %v, want [%s]", got, minutesDetailArtifactsScope)
+	}
+}
+
+func TestDetail_Validation_BasicReadDoesNotRequireArtifactsScope(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	f.Credential = credential.NewCredentialProvider(nil, nil, &minutesDetailScopedTokenResolver{scopes: minutesDetailBasicScope}, nil)
+	reg.Register(detailMinuteGetStub("tokbasiconly", "note_basic", "Basic Only"))
+
+	err := detailMountAndRun(t, MinutesDetail, []string{"+detail", "--minute-tokens", "tokbasiconly", "--as", "user"}, f, stdout)
+	if err != nil {
+		t.Fatalf("metadata +detail should not require %s: %v", minutesDetailArtifactsScope, err)
+	}
+	m := firstDetailMinute(t, stdout.Bytes())
+	if m["note_id"] != "note_basic" {
+		t.Fatalf("note_id = %v, want note_basic", m["note_id"])
+	}
+}
+
+func TestDetail_Validation_TranscriptRequiresArtifactsScope(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	f.Credential = credential.NewCredentialProvider(nil, nil, &minutesDetailScopedTokenResolver{scopes: minutesDetailBasicScope}, nil)
+
+	err := detailMountAndRun(t, MinutesDetail, []string{"+detail", "--minute-tokens", "toktrans", "--transcript", "--as", "user"}, f, nil)
+	if err == nil {
+		t.Fatal("expected missing_scope error for --transcript without artifacts:read")
+	}
+	var permErr *errs.PermissionError
+	if !errors.As(err, &permErr) {
+		t.Fatalf("expected *errs.PermissionError, got %T: %v", err, err)
+	}
+	if permErr.Subtype != errs.SubtypeMissingScope {
+		t.Fatalf("Subtype = %q, want %q", permErr.Subtype, errs.SubtypeMissingScope)
+	}
+	if permErr.Identity != "user" {
+		t.Fatalf("Identity = %q, want user", permErr.Identity)
+	}
+	foundScope := false
+	for _, s := range permErr.MissingScopes {
+		if s == minutesDetailArtifactsScope {
+			foundScope = true
+			break
+		}
+	}
+	if !foundScope {
+		t.Fatalf("MissingScopes must include %s, got %v", minutesDetailArtifactsScope, permErr.MissingScopes)
 	}
 }
 
