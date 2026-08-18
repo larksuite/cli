@@ -11,16 +11,16 @@
 
 ```bash
 # 仅基础信息
-lark-cli minutes +detail --minute-tokens obcxxxxxxxxxx
+lark-cli minutes +detail --as <source_identity> --minute-tokens obcxxxxxxxxxx
 
 # 批量（逗号分隔，最多 50 个）
-lark-cli minutes +detail --minute-tokens obcxxx,obcyyy --summary --todo
+lark-cli minutes +detail --as <source_identity> --minute-tokens obcxxx,obcyyy --summary --todo
 
 # 全产物
-lark-cli minutes +detail --minute-tokens obcxxx --summary --todo --chapter --keyword --transcript
+lark-cli minutes +detail --as <source_identity> --minute-tokens obcxxx --summary --todo --chapter --keyword --transcript
 
 # 仅逐字稿，覆盖已有文件，指定输出目录
-lark-cli minutes +detail --minute-tokens obcxxx --transcript --overwrite --output-dir ./out
+lark-cli minutes +detail --as <source_identity> --minute-tokens obcxxx --transcript --overwrite --output-dir ./out
 ```
 
 ## 输出

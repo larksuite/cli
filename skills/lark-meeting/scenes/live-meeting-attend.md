@@ -7,7 +7,7 @@
 | 当前条件 | 起点 |
 |---|---|
 | 已有应用身份取得的 `meeting_id` | 直接拉取事件，不重复查询或入会 |
-| 应用机器人可能已在会中 | 先用 `+meeting-list-active --as bot` 发现会议 |
+| 应用机器人可能已在会中 | 已知目标用户 `user_open_id` 时，先用 `+meeting-list-active --as bot --user-id <user_open_id>` 发现会议 |
 | 用户明确要求机器人入会、旁听或代参会 | 使用 `+meeting-join --as bot` |
 | 只想查当前用户所在会议 | 使用 [会中事件与会中互动](live-meeting-interact.md) 的用户身份路径，不让应用机器人入会 |
 
