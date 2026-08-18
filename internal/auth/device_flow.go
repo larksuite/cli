@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 )
 
@@ -140,7 +141,9 @@ func RequestDeviceAuthorization(httpClient *http.Client, appId, appSecret string
 }
 
 // PollDeviceToken polls the token endpoint until authorization completes or times out.
-func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *DeviceFlowResult {
+// Typed policy errors are returned unchanged so callers can surface their
+// recovery fields instead of treating them as transient network failures.
+func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) (*DeviceFlowResult, error) {
 	if errOut == nil {
 		errOut = io.Discard
 	}
@@ -160,13 +163,13 @@ func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 	for time.Now().Before(deadline) && attempts < maxPollAttempts {
 		attempts++
 		if ctx.Err() != nil {
-			return &DeviceFlowResult{OK: false, Error: "expired_token", Message: "Polling was cancelled"}
+			return &DeviceFlowResult{OK: false, Error: "expired_token", Message: "Polling was cancelled"}, nil
 		}
 
 		select {
 		case <-time.After(time.Duration(currentInterval) * time.Second):
 		case <-ctx.Done():
-			return &DeviceFlowResult{OK: false, Error: "expired_token", Message: "Polling was cancelled"}
+			return &DeviceFlowResult{OK: false, Error: "expired_token", Message: "Polling was cancelled"}, nil
 		}
 
 		form := url.Values{}
@@ -183,6 +186,9 @@ func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 
 		resp, err := httpClient.Do(req)
 		if err != nil {
+			if problem, ok := errs.ProblemOf(err); ok && problem.Category == errs.CategoryPolicy {
+				return nil, err
+			}
 			fmt.Fprintf(errOut, "[lark-cli] [WARN] device-flow: poll network error: %v\n", err)
 			currentInterval = minInt(currentInterval+1, maxPollInterval)
 			continue
@@ -225,7 +231,7 @@ func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 					Scope:            getStr(data, "scope"),
 					StatusMessage:    getStr(data, "status_message"),
 				},
-			}
+			}, nil
 		}
 
 		switch errStr {
@@ -240,13 +246,13 @@ func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 			if msg == "" {
 				msg = "Authorization denied by user"
 			}
-			return &DeviceFlowResult{OK: false, Error: "access_denied", Message: msg}
+			return &DeviceFlowResult{OK: false, Error: "access_denied", Message: msg}, nil
 		case "expired_token", "invalid_grant":
 			msg := getStr(data, "error_description")
 			if msg == "" {
 				msg = "Device code expired, please try again"
 			}
-			return &DeviceFlowResult{OK: false, Error: "expired_token", Message: msg}
+			return &DeviceFlowResult{OK: false, Error: "expired_token", Message: msg}, nil
 		}
 
 		desc := getStr(data, "error_description")
@@ -257,13 +263,13 @@ func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 			desc = "Unknown error"
 		}
 		fmt.Fprintf(errOut, "[lark-cli] [WARN] device-flow: unexpected error: error=%s, desc=%s\n", errStr, desc)
-		return &DeviceFlowResult{OK: false, Error: "expired_token", Message: desc}
+		return &DeviceFlowResult{OK: false, Error: "expired_token", Message: desc}, nil
 	}
 
 	if attempts >= maxPollAttempts {
 		fmt.Fprintf(errOut, "[lark-cli] [WARN] device-flow: max poll attempts (%d) reached\n", maxPollAttempts)
 	}
-	return &DeviceFlowResult{OK: false, Error: "expired_token", Message: "Authorization timed out, please try again"}
+	return &DeviceFlowResult{OK: false, Error: "expired_token", Message: "Authorization timed out, please try again"}, nil
 }
 
 // helpers

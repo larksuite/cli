@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/keychain"
@@ -206,7 +207,10 @@ func TestPollDeviceToken_DefaultsZeroIntervalToFiveSeconds(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	t.Cleanup(cancel)
 
-	result := PollDeviceToken(ctx, client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 0, 10, nil)
+	result, err := PollDeviceToken(ctx, client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 0, 10, nil)
+	if err != nil {
+		t.Fatalf("PollDeviceToken() error = %v", err)
+	}
 	if result == nil {
 		t.Fatal("PollDeviceToken() returned nil result")
 	}
@@ -239,7 +243,10 @@ func TestPollDeviceToken_PreservesStatusMessage(t *testing.T) {
 		}),
 	}
 
-	result := PollDeviceToken(context.Background(), client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 1, 3, nil)
+	result, err := PollDeviceToken(context.Background(), client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 1, 3, nil)
+	if err != nil {
+		t.Fatalf("PollDeviceToken() error = %v", err)
+	}
 	if result == nil || !result.OK || result.Token == nil {
 		t.Fatalf("PollDeviceToken() = %#v, want successful token result", result)
 	}
@@ -266,11 +273,37 @@ func TestPollDeviceToken_MissingStatusMessageIsEmpty(t *testing.T) {
 		}),
 	}
 
-	result := PollDeviceToken(context.Background(), client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 1, 3, nil)
+	result, err := PollDeviceToken(context.Background(), client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 1, 3, nil)
+	if err != nil {
+		t.Fatalf("PollDeviceToken() error = %v", err)
+	}
 	if result == nil || !result.OK || result.Token == nil {
 		t.Fatalf("PollDeviceToken() = %#v, want successful token result", result)
 	}
 	if result.Token.StatusMessage != "" {
 		t.Fatalf("StatusMessage = %q, want empty string", result.Token.StatusMessage)
+	}
+}
+
+func TestPollDeviceToken_ReturnsPolicyErrorWithoutRetry(t *testing.T) {
+	var requests atomic.Int32
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			requests.Add(1)
+			return nil, errs.NewSecurityPolicyError(errs.SubtypeChallengeRequired, "challenge required").WithCode(21000)
+		}),
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := PollDeviceToken(ctx, client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 1, 10, nil)
+	if result != nil {
+		t.Fatalf("PollDeviceToken() result = %#v, want nil", result)
+	}
+	if !errs.IsSecurityPolicy(err) {
+		t.Fatalf("PollDeviceToken() error = %T (%v), want security policy error", err, err)
+	}
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("PollDeviceToken() sent %d requests, want exactly 1", got)
 	}
 }
