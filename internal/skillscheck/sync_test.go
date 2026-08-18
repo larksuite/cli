@@ -130,6 +130,31 @@ func TestPlanNormal_WithReadableStatePreservesDeletedAndAddsNew(t *testing.T) {
 	assertStrings(t, got.SkippedDeleted, []string{"lark-mail"})
 }
 
+func TestPlanRestoresAllWhenNoOfficialSkillsRemain(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		official  []string
+		wantAdded []string
+	}{
+		{name: "unchanged official set", official: []string{"lark-calendar", "lark-mail"}, wantAdded: []string{}},
+		{name: "new official skill", official: []string{"lark-calendar", "lark-mail", "lark-new"}, wantAdded: []string{"lark-new"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := PlanSync(SyncInput{
+				Version:        "1.0.33",
+				OfficialSkills: test.official,
+				LocalSkills:    []string{"custom-skill"},
+				PreviousState:  &SkillsState{OfficialSkills: []string{"lark-calendar", "lark-mail"}},
+				StateReadable:  true,
+			})
+
+			assertStrings(t, got.ToUpdate, test.official)
+			assertStrings(t, got.Added, test.wantAdded)
+			assertStrings(t, got.SkippedDeleted, []string{})
+		})
+	}
+}
+
 func TestPlanNormal_MissingStateInstallsAllOfficial(t *testing.T) {
 	got := PlanSync(SyncInput{
 		Version:        "1.0.33",
@@ -303,7 +328,7 @@ func TestSyncSkillsSeparateUsesGitHubLast(t *testing.T) {
 	}
 }
 
-func TestSyncSkillsSeparateDoesNotClaimGitHubFallbackWhenNothingWasInstalled(t *testing.T) {
+func TestSyncSkillsSeparateRestoresAllThroughGitHubFallback(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	if err := WriteState(SkillsState{Version: "1.0.32", Layout: LayoutSeparate, OfficialSkills: []string{"lark-calendar"}}); err != nil {
 		t.Fatal(err)
@@ -321,11 +346,9 @@ func TestSyncSkillsSeparateDoesNotClaimGitHubFallbackWhenNothingWasInstalled(t *
 	if result.Err != nil {
 		t.Fatal(result.Err)
 	}
-	if len(runner.installs) != 0 {
-		t.Fatalf("installs = %v, want none", runner.installs)
-	}
-	if result.Warning != "" {
-		t.Fatalf("warning = %q, want empty because GitHub was not invoked", result.Warning)
+	assertStrings(t, runner.installs, []string{"larksuite/cli:lark-calendar"})
+	if result.Warning == "" {
+		t.Fatal("warning is empty, want GitHub fallback warning")
 	}
 }
 
@@ -477,6 +500,40 @@ func TestSyncSkillsUnreadableSuiteIsReinstalled(t *testing.T) {
 	state, _, _ := ReadState()
 	if state.Layout != LayoutSuite || state.OfficialSkillsUnknown {
 		t.Fatalf("state = %+v, want trusted suite state", state)
+	}
+}
+
+func TestSyncSkillsEmptySuiteRestoresAllOfficial(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := WriteState(SkillsState{
+		Version:        "1.0.32",
+		Layout:         LayoutSuite,
+		OfficialSkills: []string{"lark-calendar", "lark-mail"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	suite := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(suite, "references"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeSkillsRunner{
+		sources:       []string{"primary"},
+		indexes:       map[string]string{"primary": officialSkillsIndexOutput("lark-calendar", "lark-mail")},
+		indexErrors:   map[string]error{},
+		installErrors: map[string]error{},
+		stageErrors:   map[string]error{},
+		globalJSON:    fmt.Sprintf(`[{"name":"lark-suite","path":%q,"scope":"global"}]`, suite),
+	}
+
+	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
+	if result.Err != nil {
+		t.Fatal(result.Err)
+	}
+	assertStrings(t, result.Updated, []string{"lark-calendar", "lark-mail"})
+	assertStrings(t, result.SkippedDeleted, []string{})
+	assertStrings(t, runner.stages, []string{"primary"})
+	if runner.localSuite == "" {
+		t.Fatal("empty suite was not fully restored")
 	}
 }
 

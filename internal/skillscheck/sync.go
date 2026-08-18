@@ -211,6 +211,9 @@ func PlanSync(input SyncInput) SyncPlan {
 	}
 
 	updateSet := toSet(installedOfficial)
+	if len(installedOfficial) == 0 {
+		updateSet = toSet(official)
+	}
 	for _, skill := range newAddedOfficial {
 		updateSet[skill] = true
 	}
