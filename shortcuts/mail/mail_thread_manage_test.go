@@ -53,13 +53,16 @@ func TestThreadModify_Metadata(t *testing.T) {
 	for _, fl := range MailThreadModify.Flags {
 		flags[fl.Name] = fl
 	}
-	for _, name := range []string{"mailbox", "thread-ids", "add-label-ids", "remove-label-ids", "folder-id"} {
+	for _, name := range []string{"mailbox", "thread-ids", "add-label-ids", "remove-label-ids", "add-folder"} {
 		if _, ok := flags[name]; !ok {
 			t.Fatalf("missing --%s flag", name)
 		}
 	}
 	if flags["thread-ids"].Type != "string_array" || !flags["thread-ids"].Required {
 		t.Errorf("--thread-ids = %#v, want required string_array", flags["thread-ids"])
+	}
+	if got := strings.Join(flags["add-folder"].Aliases, ","); got != "folder-id" {
+		t.Errorf("--add-folder aliases = %q, want folder-id", got)
 	}
 }
 
@@ -117,7 +120,7 @@ func TestThreadModify_LabelFolderBodyAndOutputContract(t *testing.T) {
 		"--thread-ids", id1 + "," + id2 + "," + id1,
 		"--add-label-ids", "unread,customA",
 		"--remove-label-ids", "FLAGGED",
-		"--folder-id", "archive",
+		"--add-folder", "archive",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
@@ -150,6 +153,28 @@ func TestThreadModify_LabelFolderBodyAndOutputContract(t *testing.T) {
 	}
 	if _, ok := data["failed_ids"]; ok {
 		t.Fatalf("failed_ids must not be present: %#v", data)
+	}
+}
+
+func TestThreadModify_FolderIDAliasMapsToAddFolder(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	id := threadManageID("alias")
+	post := stubThreadManagePost(reg, "batch_modify", map[string]interface{}{"code": 0, "data": map[string]interface{}{}})
+
+	err := runMountedMailShortcut(t, MailThreadModify, []string{
+		"+thread-modify",
+		"--thread-ids", id,
+		"--folder-id", "archive",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(post.CapturedBody, &body); err != nil {
+		t.Fatalf("unmarshal captured body: %v", err)
+	}
+	if got := body["add_folder"]; got != "ARCHIVED" {
+		t.Fatalf("add_folder = %v, want ARCHIVED", got)
 	}
 }
 
@@ -237,7 +262,7 @@ func TestThreadModify_DryRunShowsPostURLAndBody(t *testing.T) {
 		"+thread-modify",
 		"--thread-ids", id1 + "," + id2,
 		"--add-label-ids", "customA",
-		"--folder-id", "folderA",
+		"--add-folder", "folderA",
 		"--dry-run",
 	}, f, stdout)
 	if err != nil {

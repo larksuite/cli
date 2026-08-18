@@ -9,8 +9,8 @@ Use it instead of raw `user_mailbox.threads batch_modify` for normal thread-leve
 ```bash
 lark-cli mail +thread-modify --thread-ids <thread_id1>,<thread_id2> --add-label-ids unread
 lark-cli mail +thread-modify --thread-ids <thread_id> --remove-label-ids FLAGGED
-lark-cli mail +thread-modify --thread-ids <thread_id> --folder-id archive
-lark-cli mail +thread-modify --mailbox shared@example.com --thread-ids <thread_id> --folder-id folder_xxx
+lark-cli mail +thread-modify --thread-ids <thread_id> --add-folder archive
+lark-cli mail +thread-modify --mailbox shared@example.com --thread-ids <thread_id> --add-folder folder_xxx
 lark-cli mail +thread-modify --thread-ids <thread_id> --add-label-ids custom_label_id --dry-run
 ```
 
@@ -22,9 +22,9 @@ lark-cli mail +thread-modify --thread-ids <thread_id> --add-label-ids custom_lab
 | `--thread-ids` | Yes | `string_array`; supports comma-separated values and repeated flags. Values are trimmed, empty values are ignored, and duplicates are removed in first-seen order. |
 | `--add-label-ids` | No | Adds labels. System labels `unread`, `important`, `other`, `flagged`, and `read_receipt_request` normalize to upper case. |
 | `--remove-label-ids` | No | Removes labels. Cannot overlap with `--add-label-ids`. |
-| `--folder-id` | No | Moves to one folder. This flag maps to the OpenAPI body field `add_folder`. `inbox`, `sent`, `spam`, `archive`, and `archived` normalize to system folder IDs. |
+| `--add-folder` | No | Moves to one folder through the OpenAPI body field `add_folder`. `inbox`, `sent`, `spam`, `archive`, and `archived` normalize to system folder IDs. |
 
-At least one of `--add-label-ids`, `--remove-label-ids`, or `--folder-id` is required.
+At least one of `--add-label-ids`, `--remove-label-ids`, or `--add-folder` is required.
 
 `TRASH` is intentionally rejected by this shortcut. Use [`mail +thread-trash`](./lark-mail-thread-trash.md) with `--yes` for soft deletion.
 
@@ -32,7 +32,7 @@ At least one of `--add-label-ids`, `--remove-label-ids`, or `--folder-id` is req
 
 - Thread IDs are locally trimmed, de-duplicated in first-seen order, and submitted in one `batch_modify` request.
 - The shortcut calls `POST /open-apis/mail/v1/user_mailboxes/<mailbox>/threads/batch_modify`.
-- `--folder-id` is submitted as `add_folder`; the CLI does not expose raw `--add-folder` for threads.
+- `--add-folder` is submitted as the raw API `add_folder` field.
 - Backend diagnostics such as permission failures, missing labels/folders, conflicts, or network errors are preserved in the structured CLI error.
 - JSON output is intentionally request-side only:
 

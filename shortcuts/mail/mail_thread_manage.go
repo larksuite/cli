@@ -57,7 +57,7 @@ var MailThreadModify = common.Shortcut{
 		{Name: "thread-ids", Type: "string_array", Required: true, Desc: "Thread IDs to modify; comma-separated or repeat the flag."},
 		{Name: "add-label-ids", Type: "string_slice", Desc: "Label IDs to add. System labels unread/important/other/flagged are normalized to upper case."},
 		{Name: "remove-label-ids", Type: "string_slice", Desc: "Label IDs to remove. Cannot overlap with --add-label-ids."},
-		{Name: "folder-id", Desc: "Folder ID to move threads to. Maps safely to the OpenAPI add_folder body field."},
+		{Name: "add-folder", Aliases: []string{"folder-id"}, Desc: "Folder ID to move threads to. Maps to the OpenAPI add_folder body field."},
 	},
 	Validate: validateThreadModify,
 	DryRun:   dryRunThreadModify,
@@ -167,12 +167,12 @@ func buildThreadModifyInput(rt *common.RuntimeContext) (threadModifyInput, error
 	if err := validateLabelIntersection(addLabels, removeLabels); err != nil {
 		return threadModifyInput{}, err
 	}
-	folderID, err := normalizeThreadManageFolder(rt.Str("folder-id"))
+	folderID, err := normalizeThreadManageFolder(rt.Str("add-folder"))
 	if err != nil {
 		return threadModifyInput{}, err
 	}
 	if len(addLabels) == 0 && len(removeLabels) == 0 && folderID == "" {
-		return threadModifyInput{}, mailValidationParamError("--thread-modify", "provide at least one of --add-label-ids, --remove-label-ids, or --folder-id")
+		return threadModifyInput{}, mailValidationParamError("--thread-modify", "provide at least one of --add-label-ids, --remove-label-ids, or --add-folder")
 	}
 	return threadModifyInput{
 		ThreadIDs:      threadIDs,
@@ -216,10 +216,10 @@ func normalizeThreadManageFolder(raw string) (string, error) {
 	}
 	folder := strings.TrimSpace(raw)
 	if folder == "" {
-		return "", mailValidationParamError("--folder-id", "--folder-id must not be empty")
+		return "", mailValidationParamError("--add-folder", "--add-folder must not be empty")
 	}
 	if strings.EqualFold(folder, "TRASH") {
-		return "", mailValidationParamError("--folder-id", "TRASH is not supported by +thread-modify; use +thread-trash")
+		return "", mailValidationParamError("--add-folder", "TRASH is not supported by +thread-modify; use +thread-trash")
 	}
 	if system, ok := messageManageSystemFolders[strings.ToUpper(folder)]; ok {
 		return system, nil
