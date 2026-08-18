@@ -5,6 +5,7 @@ package identitydiag
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -19,6 +20,19 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/zalando/go-keyring"
 )
+
+func assertDiagnosticPolicyError(t *testing.T, err error, subtype errs.Subtype, code int, message string) *errs.SecurityPolicyError {
+	t.Helper()
+	var policyErr *errs.SecurityPolicyError
+	if !errors.As(err, &policyErr) {
+		t.Fatalf("diagnostic error = %T (%v), want *errs.SecurityPolicyError", err, err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryPolicy || problem.Subtype != subtype || problem.Code != code || problem.Message != message {
+		t.Fatalf("diagnostic problem = %#v, want policy/%s/%d with message %q", problem, subtype, code, message)
+	}
+	return policyErr
+}
 
 func TestDiagnose_NoUserReportsBotReadyAndUserMissing(t *testing.T) {
 	cfg := &core.CliConfig{AppID: "test-app", AppSecret: "secret", Brand: core.BrandFeishu}
@@ -244,9 +258,7 @@ func TestDiagnose_VerifyUserIdentity_ServerRejects(t *testing.T) {
 		Error:  errs.NewSecurityPolicyError(errs.SubtypeChallengeRequired, "%s", message).WithCode(21000),
 	})
 	got = Diagnose(context.Background(), f, cfg, true)
-	if got.User.Error == nil || got.User.Error.Category != errs.CategoryPolicy || got.User.Error.Subtype != errs.SubtypeChallengeRequired || got.User.Error.Code != 21000 || got.User.Error.Message != message {
-		t.Fatalf("user policy error = %#v, want challenge_required/21000 with message %q", got.User.Error, message)
-	}
+	assertDiagnosticPolicyError(t, got.User.Error, errs.SubtypeChallengeRequired, 21000, message)
 	stored := larkauth.GetStoredToken(cfg.AppID, cfg.UserOpenId)
 	if stored == nil {
 		t.Fatal("GetStoredToken() = nil")
@@ -264,9 +276,7 @@ func TestDiagnose_VerifyUserIdentity_ServerRejects(t *testing.T) {
 		Error:  errs.NewSecurityPolicyError(errs.SubtypeAccessDenied, "%s", refreshMessage).WithCode(21001),
 	})
 	got = Diagnose(context.Background(), f, cfg, true)
-	if got.User.Error == nil || got.User.Error.Subtype != errs.SubtypeAccessDenied || got.User.Error.Code != 21001 || got.User.Error.Message != refreshMessage {
-		t.Fatalf("user refresh policy error = %#v, want access_denied/21001 with message %q", got.User.Error, refreshMessage)
-	}
+	assertDiagnosticPolicyError(t, got.User.Error, errs.SubtypeAccessDenied, 21001, refreshMessage)
 }
 
 func TestDiagnose_UserIdentityExpired(t *testing.T) {
@@ -515,4 +525,12 @@ func TestDiagnose_External_VerifyUserTokenUnavailable(t *testing.T) {
 		t.Fatalf("verified = %v, want false", got.User.Verified)
 	}
 	assertExternalHint(t, got.User.Hint)
+}
+
+func TestExternalVerifyFailed_PreservesPolicyError(t *testing.T) {
+	policyErr := errs.NewSecurityPolicyError(errs.SubtypeChallengeRequired, "challenge required").WithCode(21000)
+	got := externalVerifyFailed(Identity{Available: true}, "User", "corp-sso", policyErr)
+	if got.Error != policyErr {
+		t.Fatalf("external policy error = %#v, want original typed error", got.Error)
+	}
 }

@@ -358,8 +358,11 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 
 	// Step 3: Poll for token
 	log(msg.WaitingAuth)
-	result := pollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
+	result, err := pollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
 		authResp.DeviceCode, authResp.Interval, authResp.ExpiresIn, f.IOStreams.ErrOut)
+	if err != nil {
+		return err
+	}
 
 	if !result.OK {
 		if opts.JSON {
@@ -452,8 +455,15 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		fmt.Fprintln(f.IOStreams.ErrOut, msg.AgentTimeoutHint(recovery.RenderContext{Profile: f.Invocation.Profile}))
 	}
 	log(msg.WaitingAuth)
-	result := pollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
+	result, err := pollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
 		opts.DeviceCode, 5, 600, f.IOStreams.ErrOut)
+	if err != nil {
+		if problem, ok := errs.ProblemOf(err); ok &&
+			problem.Category == errs.CategoryPolicy && problem.Subtype == errs.SubtypeAccessDenied {
+			cleanupRequestedScope()
+		}
+		return err
+	}
 
 	if !result.OK {
 		if shouldRemoveLoginRequestedScope(result) {

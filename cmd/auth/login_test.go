@@ -1172,8 +1172,8 @@ func TestAuthLoginRun_DeviceCodeTokenNilCleansScopeCache(t *testing.T) {
 
 	original := pollDeviceToken
 	t.Cleanup(func() { pollDeviceToken = original })
-	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
-		return &larkauth.DeviceFlowResult{OK: true, Token: nil}
+	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) (*larkauth.DeviceFlowResult, error) {
+		return &larkauth.DeviceFlowResult{OK: true, Token: nil}, nil
 	}
 
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
@@ -1211,8 +1211,8 @@ func TestAuthLoginRun_JSONAbort_StdoutEventOnly_StderrEmpty(t *testing.T) {
 
 	original := pollDeviceToken
 	t.Cleanup(func() { pollDeviceToken = original })
-	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
-		return &larkauth.DeviceFlowResult{OK: false, Message: "user denied"}
+	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) (*larkauth.DeviceFlowResult, error) {
+		return &larkauth.DeviceFlowResult{OK: false, Message: "user denied"}, nil
 	}
 
 	f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
@@ -1283,27 +1283,41 @@ func TestAuthLoginRun_JSONAbort_StdoutEventOnly_StderrEmpty(t *testing.T) {
 func TestAuthLoginRun_PreservesTransportPolicyErrors(t *testing.T) {
 	setupLoginConfigDir(t)
 
+	const message = "Access denied by security policy"
+
 	original := pollDeviceToken
 	t.Cleanup(func() { pollDeviceToken = original })
-	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
+	var pollPolicy bool
+	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) (*larkauth.DeviceFlowResult, error) {
+		if pollPolicy {
+			return nil, errs.NewSecurityPolicyError(errs.SubtypeAccessDenied, "%s", message).WithCode(21001)
+		}
 		return &larkauth.DeviceFlowResult{
 			OK:    true,
 			Token: &larkauth.DeviceFlowTokenData{AccessToken: "user-access-token"},
-		}
+		}, nil
 	}
 
-	const message = "Access denied by security policy"
 	tests := []struct {
 		name             string
 		deviceCode       string
 		deviceAuthPolicy bool
+		pollPolicy       bool
 	}{
 		{name: "device authorization", deviceAuthPolicy: true},
+		{name: "initial token polling", pollPolicy: true},
+		{name: "resumed token polling", deviceCode: "device-code", pollPolicy: true},
 		{name: "initial user info"},
 		{name: "resumed user info", deviceCode: "device-code"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			pollPolicy = tt.pollPolicy
+			if tt.pollPolicy && tt.deviceCode != "" {
+				if err := saveLoginRequestedScope(tt.deviceCode, "im:message:send"); err != nil {
+					t.Fatalf("saveLoginRequestedScope() error = %v", err)
+				}
+			}
 			config := &core.CliConfig{ProfileName: "default", AppID: "cli_test", AppSecret: "secret", Brand: core.BrandFeishu}
 			f, _, _, reg := cmdutil.TestFactory(t, config)
 
@@ -1320,7 +1334,7 @@ func TestAuthLoginRun_PreservesTransportPolicyErrors(t *testing.T) {
 				reg.Register(stub)
 			}
 
-			if !tt.deviceAuthPolicy {
+			if !tt.deviceAuthPolicy && !tt.pollPolicy {
 				reg.Register(&httpmock.Stub{
 					Method: http.MethodGet,
 					URL:    larkauth.PathUserInfoV1,
@@ -1336,6 +1350,11 @@ func TestAuthLoginRun_PreservesTransportPolicyErrors(t *testing.T) {
 				JSON:       true,
 			}, builtinResolver())
 			assertLoginPolicyError(t, err, message)
+			if tt.pollPolicy && tt.deviceCode != "" {
+				if got, loadErr := loadLoginRequestedScope(tt.deviceCode); loadErr != nil || got != "" {
+					t.Fatalf("loadLoginRequestedScope() after access denied = (%q, %v), want empty", got, loadErr)
+				}
+			}
 		})
 	}
 }

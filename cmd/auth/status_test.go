@@ -84,11 +84,14 @@ func TestAuthStatusRun_VerifyReportsBotPolicyError(t *testing.T) {
 	config := &core.CliConfig{AppID: "test-app-policy-bot", AppSecret: "secret", Brand: core.BrandFeishu}
 	f, stdout, _, reg := cmdutil.TestFactory(t, config)
 
-	const message = "Bot token verification was denied by policy"
+	const message = "Bot token verification requires a challenge"
+	const challengeURL = "https://passport.feishu.cn/challenge/bot"
 	reg.Register(&httpmock.Stub{
 		Method: http.MethodGet,
 		URL:    "/open-apis/bot/v3/info",
-		Error:  errs.NewSecurityPolicyError(errs.SubtypeAccessDenied, "%s", message).WithCode(21001),
+		Error: errs.NewSecurityPolicyError(errs.SubtypeChallengeRequired, "%s", message).
+			WithCode(21000).
+			WithChallengeURL(challengeURL),
 	})
 
 	if err := authStatusRun(&StatusOptions{Factory: f, Verify: true}, nil); err != nil {
@@ -103,8 +106,11 @@ func TestAuthStatusRun_VerifyReportsBotPolicyError(t *testing.T) {
 	if problem == nil {
 		t.Fatal("identity.error = nil, want structured policy error")
 	}
-	if problem.Category != errs.CategoryPolicy || problem.Subtype != errs.SubtypeAccessDenied || problem.Code != 21001 || problem.Message != message {
-		t.Fatalf("identity.error = %#v, want policy/access_denied/21001 with message %q", problem, message)
+	if problem.Category != errs.CategoryPolicy || problem.Subtype != errs.SubtypeChallengeRequired || problem.Code != 21000 || problem.Message != message {
+		t.Fatalf("identity.error = %#v, want policy/challenge_required/21000 with message %q", problem, message)
+	}
+	if problem.ChallengeURL != challengeURL {
+		t.Fatalf("identity.error challenge URL = %q, want %q", problem.ChallengeURL, challengeURL)
 	}
 }
 
@@ -118,9 +124,14 @@ type statusOutput struct {
 }
 
 type statusIdentity struct {
-	Status    string        `json:"status"`
-	Available bool          `json:"available"`
-	Verified  *bool         `json:"verified"`
-	OpenID    string        `json:"openId"`
-	Error     *errs.Problem `json:"error"`
+	Status    string             `json:"status"`
+	Available bool               `json:"available"`
+	Verified  *bool              `json:"verified"`
+	OpenID    string             `json:"openId"`
+	Error     *statusPolicyError `json:"error"`
+}
+
+type statusPolicyError struct {
+	errs.Problem
+	ChallengeURL string `json:"challenge_url"`
 }
