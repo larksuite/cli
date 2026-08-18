@@ -29,18 +29,6 @@ func writeUpdateState(t *testing.T, dir, latest string) {
 	}
 }
 
-func TestReadYes(t *testing.T) {
-	cases := map[string]bool{
-		"y\n": true, "Y\n": true, "yes\n": true, "YES\n": true, " y \n": true,
-		"n\n": false, "\n": false, "": false, "nope\n": false, "yeah\n": false,
-	}
-	for in, want := range cases {
-		if got := readYes(strings.NewReader(in)); got != want {
-			t.Errorf("readYes(%q) = %v, want %v", in, got, want)
-		}
-	}
-}
-
 func TestIsBareRootInvocation(t *testing.T) {
 	orig := rawInvocationArgs
 	t.Cleanup(func() { rawInvocationArgs = orig })
@@ -78,23 +66,18 @@ func TestOfferRootUpgrade(t *testing.T) {
 	cases := []struct {
 		name                string
 		in, out, err        bool
-		input               string
 		latest              string // "" → no state file (CheckCached nil)
 		optOut              bool
 		wantPrompt, wantRun bool
 	}{
-		{"all-tty+y", true, true, true, "y\n", "2.0.0", false, true, true},
-		{"all-tty+yes", true, true, true, "yes\n", "2.0.0", false, true, true},
-		{"all-tty+n", true, true, true, "n\n", "2.0.0", false, true, false},
-		{"all-tty+empty", true, true, true, "\n", "2.0.0", false, true, false},
-		{"all-tty+eof", true, true, true, "", "2.0.0", false, true, false},
-		{"stdin-not-tty", false, true, true, "y\n", "2.0.0", false, false, false},
-		{"stdout-not-tty", true, false, true, "y\n", "2.0.0", false, false, false},
-		{"stderr-not-tty", true, true, false, "y\n", "2.0.0", false, false, false},
-		{"no-newer-version", true, true, true, "y\n", "", false, false, false},
-		{"already-latest", true, true, true, "y\n", "1.0.0", false, false, false}, // post-upgrade: current == cached latest → no prompt
-		{"cache-older-than-current", true, true, true, "y\n", "0.9.0", false, false, false},
-		{"opt-out", true, true, true, "y\n", "2.0.0", true, false, false},
+		{"all-tty", true, true, true, "2.0.0", false, true, true},
+		{"stdin-not-tty", false, true, true, "2.0.0", false, false, false},
+		{"stdout-not-tty", true, false, true, "2.0.0", false, false, false},
+		{"stderr-not-tty", true, true, false, "2.0.0", false, false, false},
+		{"no-newer-version", true, true, true, "", false, false, false},
+		{"already-latest", true, true, true, "1.0.0", false, false, false}, // post-upgrade: current == cached latest → no prompt
+		{"cache-older-than-current", true, true, true, "0.9.0", false, false, false},
+		{"opt-out", true, true, true, "2.0.0", true, false, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -118,7 +101,7 @@ func TestOfferRootUpgrade(t *testing.T) {
 
 			var errBuf bytes.Buffer
 			f := &cmdutil.Factory{IOStreams: &cmdutil.IOStreams{
-				In:               strings.NewReader(tc.input),
+				In:               strings.NewReader(""),
 				Out:              &bytes.Buffer{},
 				ErrOut:           &errBuf,
 				IsTerminal:       tc.in,
