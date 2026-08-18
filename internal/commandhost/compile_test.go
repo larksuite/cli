@@ -6,6 +6,7 @@ package commandhost
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
 
@@ -159,23 +161,48 @@ func TestCompileSetsRejectsSystemFlag(t *testing.T) {
 	}
 }
 
-func TestCompileSetsRejectsFileInputSource(t *testing.T) {
-	declaration := command.Define(command.Definition[fixtureArgs, fixtureData]{
+func inputSourceDeclaration(name string, sources ...command.ValueSource) command.Command {
+	return command.Define(command.Definition[fixtureArgs, fixtureData]{
 		Metadata: command.CommandMetadata{
-			Service: "im", Command: "+external-file-input", Description: "File input", Risk: command.RiskRead,
+			Service: "im", Command: name, Description: "Input sources", Risk: command.RiskRead,
 			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{
 				command.IdentityUser: {},
 			}},
 		},
 		Input: command.InputDefinition{Fields: []command.InputField{{
-			Name: "id", CLI: command.CLIInput{ValueSources: []command.ValueSource{command.ValueSource("file")}},
+			Name: "id", CLI: command.CLIInput{ValueSources: sources},
 		}}},
 		Hooks: command.Hooks[fixtureArgs, fixtureData]{Execute: func(context.Context, command.CommandContext, *fixtureArgs) (command.Result[fixtureData], error) {
 			return command.Success(fixtureData{}), nil
 		}},
 	})
+}
+
+// TestCompileSetsCarriesFileInputSource pins the @file source through to the
+// legacy flag, where resolveInputFlags substitutes the file content. Declaring
+// it costs a business command nothing at the call site, so the regression to
+// guard against is the host quietly dropping the source instead of rejecting it.
+func TestCompileSetsCarriesFileInputSource(t *testing.T) {
+	declaration := inputSourceDeclaration("+external-file-input", command.SourceFlag, command.SourceFile, command.SourceStdin)
+	compiled, err := CompileSets([]command.Set{{Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{declaration}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sources []string
+	for _, flag := range compiled[0].Flags {
+		if flag.Name == "id" {
+			sources = flag.Input
+		}
+	}
+	if !slices.Contains(sources, common.File) || !slices.Contains(sources, common.Stdin) {
+		t.Fatalf("compiled --id input sources = %v", sources)
+	}
+}
+
+func TestCompileSetsRejectsUnknownInputSource(t *testing.T) {
+	declaration := inputSourceDeclaration("+external-unknown-input", command.SourceFlag, command.ValueSource("clipboard"))
 	_, err := CompileSets([]command.Set{{Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{declaration}}})
-	if err == nil || !strings.Contains(err.Error(), "source \"file\" is not supported in V1") {
+	if err == nil || !strings.Contains(err.Error(), "source \"clipboard\" is not supported in V1") {
 		t.Fatalf("CompileSets() error = %v", err)
 	}
 }

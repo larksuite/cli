@@ -101,12 +101,57 @@ var backupCommand = command.Define(command.Definition[backupArgs, backupData]{
 	},
 })
 
+type noteArgs struct {
+	ChatID  string `flag:"chat-id" schema:"required;minLength=1" doc:"chat ID"`
+	Content string `flag:"content" schema:"required;minLength=1" doc:"note body"`
+}
+
+type noteData struct {
+	MessageID string `json:"message_id" schema:"required" doc:"created message ID"`
+}
+
+func noteRequest(args *noteArgs) command.Request {
+	return command.POST("/open-apis/im/v1/messages").
+		Set("receive_id_type", "chat_id").
+		Body(map[string]any{"receive_id": args.ChatID, "content": args.Content})
+}
+
+// noteCommand carries a body large enough to hit shell quoting limits, so it
+// declares the file and stdin sources: --content @./note.xml and --content -
+// both reach Execute already substituted with the content.
+var noteCommand = command.Define(command.Definition[noteArgs, noteData]{
+	Metadata: command.CommandMetadata{
+		Service: command.DomainIm, Command: "+wrapper-note", Description: "Post one note from inline text, @file or stdin", Risk: command.RiskWrite,
+		Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{
+			command.IdentityUser: {RequiredScopes: []string{"im:message:send_as_bot"}},
+		}},
+	},
+	Input: command.InputDefinition{Fields: []command.InputField{{
+		Name: "content",
+		CLI: command.CLIInput{ValueSources: []command.ValueSource{
+			command.SourceFlag, command.SourceFile, command.SourceStdin,
+		}},
+	}}},
+	Hooks: command.Hooks[noteArgs, noteData]{
+		DryRun: func(_ context.Context, _ command.CommandContext, args *noteArgs) *command.DryRun {
+			return command.NewDryRun(noteRequest(args))
+		},
+		Execute: func(ctx context.Context, commandContext command.CommandContext, args *noteArgs) (command.Result[noteData], error) {
+			data, err := command.CallJSON[noteData](ctx, commandContext, noteRequest(args))
+			if err != nil {
+				return command.Result[noteData]{}, err
+			}
+			return command.Success(data), nil
+		},
+	},
+})
+
 func main() {
 	cmd.SetEmbeddedSkillContent(defaultskills.DefaultFS())
 	cmd.SetEmbeddedAffordanceContent(defaultaffordance.DefaultFS())
 	os.Exit(cmd.ExecuteWithOptions(
 		cmd.WithCommandSets(
-			command.Set{Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{readCommand}},
+			command.Set{Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{readCommand, noteCommand}},
 			command.Set{Domain: command.ExtendDomain(command.DomainDrive), Commands: []command.Command{backupCommand}},
 		),
 		cmd.WithoutPlugins(),

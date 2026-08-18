@@ -4,6 +4,7 @@
 package command_test
 
 import (
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,9 +29,13 @@ func TestExternalWrapperCommandSurface(t *testing.T) {
 		"LARKSUITE_CLI_CONFIG_DIR", "LARKSUITE_CLI_APP_ID", "LARKSUITE_CLI_APP_SECRET",
 		"LARKSUITE_CLI_USER_ACCESS_TOKEN", "LARKSUITE_CLI_PROFILE",
 	)
-	run := func(args ...string) string {
+	// @file paths resolve against the process working directory, so the input
+	// cases run from a scratch directory instead of the package tree.
+	runFrom := func(dir string, stdin io.Reader, args ...string) string {
 		t.Helper()
 		process := exec.Command(binary, args...)
+		process.Dir = dir
+		process.Stdin = stdin
 		process.Env = append(baseEnv,
 			"LARKSUITE_CLI_CONFIG_DIR="+configDir,
 			"LARKSUITE_CLI_APP_ID=wrapper_test_app",
@@ -44,6 +49,10 @@ func TestExternalWrapperCommandSurface(t *testing.T) {
 			t.Fatalf("wrapper %v: %v\n%s", args, err, output)
 		}
 		return string(output)
+	}
+	run := func(args ...string) string {
+		t.Helper()
+		return runFrom("", nil, args...)
 	}
 
 	dryRun := run("im", "+wrapper-read", "--id", "chat_1", "--as", "user", "--dry-run")
@@ -66,6 +75,28 @@ func TestExternalWrapperCommandSurface(t *testing.T) {
 	if strings.Contains(escaped, "/open-apis/im/v1/chats/chat/1") {
 		t.Fatalf("wrapper leaked an unescaped separator into the path: %s", escaped)
 	}
+	inputDir := t.TempDir()
+	// The fixture keeps the markup and quoting that make callers reach for
+	// @file, but the assertion uses the marker alone: the body is JSON, so
+	// angle brackets and quotes arrive escaped.
+	const noteMarker = "and $shell chars"
+	noteContent := `<p>quotes " ` + noteMarker + `</p>`
+	if err := os.WriteFile(filepath.Join(inputDir, "note.xml"), []byte(noteContent), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fileInput := runFrom(inputDir, nil, "im", "+wrapper-note", "--chat-id", "oc_1", "--content", "@./note.xml", "--as", "user", "--dry-run")
+	if !strings.Contains(fileInput, noteMarker) {
+		t.Fatalf("wrapper did not substitute the @file content: %s", fileInput)
+	}
+	stdinInput := runFrom(inputDir, strings.NewReader(noteContent), "im", "+wrapper-note", "--chat-id", "oc_1", "--content", "-", "--as", "user", "--dry-run")
+	if !strings.Contains(stdinInput, noteMarker) {
+		t.Fatalf("wrapper did not substitute the stdin content: %s", stdinInput)
+	}
+	noteHelp := run("im", "+wrapper-note", "--help")
+	if !strings.Contains(noteHelp, "@file") || !strings.Contains(noteHelp, "stdin with -") {
+		t.Fatalf("wrapper note help = %s", noteHelp)
+	}
+
 	schema := run("schema", "im", "+wrapper-read")
 	if !strings.Contains(schema, `"name": "im +wrapper-read"`) || !strings.Contains(schema, `"outputSchema"`) {
 		t.Fatalf("wrapper schema = %s", schema)

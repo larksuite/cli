@@ -152,7 +152,13 @@ type ValueSource string
 const (
 	// SourceFlag accepts a literal flag value.
 	SourceFlag ValueSource = "flag"
-	// SourceStdin accepts a single dash and reads standard input.
+	// SourceFile accepts an @path value and substitutes the file content. The
+	// path goes through the invocation's FileIO provider, so it stays relative
+	// to the working directory; @@ passes a literal leading @.
+	SourceFile ValueSource = "file"
+	// SourceStdin accepts a single dash and reads standard input. A process has
+	// one stdin, so at most one flag per invocation may use it -- declare
+	// SourceFile alongside it to keep the remaining values passable.
 	SourceStdin ValueSource = "stdin"
 )
 

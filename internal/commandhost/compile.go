@@ -170,7 +170,7 @@ func convertInput(input command.InputDefinition) (common.InputDefinition, error)
 		}
 		sources := make([]common.ValueSource, len(field.CLI.ValueSources))
 		for sourceIndex, source := range field.CLI.ValueSources {
-			if source != command.SourceFlag && source != command.SourceStdin {
+			if source != command.SourceFlag && source != command.SourceFile && source != command.SourceStdin {
 				return common.InputDefinition{}, fmt.Errorf("Input.Fields[%d].CLI.ValueSources[%d]: source %q is not supported in V1", index, sourceIndex, source)
 			}
 			sources[sourceIndex] = common.ValueSource(source)
