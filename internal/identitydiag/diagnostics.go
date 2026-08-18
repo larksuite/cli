@@ -44,20 +44,20 @@ type Result struct {
 
 // Identity is a single identity diagnostic result.
 type Identity struct {
-	Status           string        `json:"status"`
-	Available        bool          `json:"available"`
-	Verified         *bool         `json:"verified,omitempty"`
-	Message          string        `json:"message,omitempty"`
-	Hint             string        `json:"hint,omitempty"`
-	Error            *errs.Problem `json:"error,omitempty"`
-	OpenID           string        `json:"openId,omitempty"`
-	AppName          string        `json:"appName,omitempty"`
-	UserName         string        `json:"userName,omitempty"`
-	TokenStatus      string        `json:"tokenStatus,omitempty"`
-	Scope            string        `json:"scope,omitempty"`
-	ExpiresAt        string        `json:"expiresAt,omitempty"`
-	RefreshExpiresAt string        `json:"refreshExpiresAt,omitempty"`
-	GrantedAt        string        `json:"grantedAt,omitempty"`
+	Status           string          `json:"status"`
+	Available        bool            `json:"available"`
+	Verified         *bool           `json:"verified,omitempty"`
+	Message          string          `json:"message,omitempty"`
+	Hint             string          `json:"hint,omitempty"`
+	Error            errs.TypedError `json:"error,omitempty"`
+	OpenID           string          `json:"openId,omitempty"`
+	AppName          string          `json:"appName,omitempty"`
+	UserName         string          `json:"userName,omitempty"`
+	TokenStatus      string          `json:"tokenStatus,omitempty"`
+	Scope            string          `json:"scope,omitempty"`
+	ExpiresAt        string          `json:"expiresAt,omitempty"`
+	RefreshExpiresAt string          `json:"refreshExpiresAt,omitempty"`
+	GrantedAt        string          `json:"grantedAt,omitempty"`
 	recoveryTarget   recovery.Target
 	recoveryError    error
 }
@@ -76,16 +76,14 @@ func FilterRecovery(result Result, projector *recovery.Projector) Result {
 	filter := func(identity Identity) Identity {
 		if identity.recoveryError != nil {
 			rendered := projector.Render(identity.recoveryError)
-			if problem, ok := errs.ProblemOf(rendered); ok {
-				cloned := *problem
-				identity.Error = &cloned
-				identity.Hint = cloned.Hint
+			if errors.As(rendered, &identity.Error) {
+				identity.Hint = identity.Error.ProblemDetail().Hint
 			}
 		}
 		if identity.recoveryTarget != "" && !projector.CanReference(identity.recoveryTarget) {
 			identity.Hint = ""
-			if identity.Error != nil {
-				identity.Error.Hint = ""
+			if cloned, ok := recovery.CloneTyped(identity.Error); ok && errors.As(cloned, &identity.Error) {
+				identity.Error.ProblemDetail().Hint = ""
 			}
 		}
 		return identity
@@ -96,12 +94,17 @@ func FilterRecovery(result Result, projector *recovery.Projector) Result {
 }
 
 func withPolicyError(identity Identity, err error) Identity {
-	problem, ok := errs.ProblemOf(err)
-	if !ok || problem.Category != errs.CategoryPolicy {
+	var typed errs.TypedError
+	if !errors.As(err, &typed) {
 		return identity
 	}
-	cloned := *problem
-	identity.Error = &cloned
+	problem := typed.ProblemDetail()
+	if problem == nil || problem.Category != errs.CategoryPolicy {
+		return identity
+	}
+	// Keep the concrete typed value: reducing it to Problem would discard
+	// policy-specific wire fields such as challenge_url or rules.
+	identity.Error = typed
 	return identity
 }
 
@@ -226,7 +229,7 @@ func externalVerifyFailed(id Identity, label, provider string, err error) Identi
 	id.TokenStatus = ""
 	id.Message = label + " identity: verify failed: " + err.Error()
 	id.Hint = externalCredentialHint(provider)
-	return id
+	return withPolicyError(id, err)
 }
 
 // externalCredentialHint reports the constraint, not a remediation: the
