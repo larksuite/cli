@@ -21,12 +21,6 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-const (
-	slidesCleanupMaxAttempts    = 5
-	slidesCleanupInitialBackoff = 2 * time.Second
-	slidesCleanupMaxBackoff     = 8 * time.Second
-)
-
 func TestSlidesScreenshotAliasesLiveE2E(t *testing.T) {
 	clie2e.SkipWithoutTenantAccessToken(t)
 
@@ -58,7 +52,7 @@ func TestSlidesScreenshotAliasesLiveE2E(t *testing.T) {
 		cleanupCtx, cleanupCancel := clie2e.CleanupContext()
 		defer cleanupCancel()
 
-		deleteResult, deleteErr := deleteSlidesPresentationWithRetry(parentT, cleanupCtx, presentationID)
+		deleteResult, deleteErr := drivee2e.DeleteDriveResourceAndVerify(cleanupCtx, presentationID, "slides", "bot")
 		clie2e.ReportCleanupFailure(parentT, "delete presentation "+presentationID, deleteResult, deleteErr)
 	})
 	slideID := gjson.Get(createResult.Stdout, "data.slide_ids.0").String()
@@ -146,62 +140,6 @@ func TestSlidesScreenshotAliasesLiveE2E(t *testing.T) {
 	_, decodedFormat, err := image.DecodeConfig(fixedImageFile)
 	require.NoError(t, err)
 	require.Equal(t, actualFormat, decodedFormat, fixedOutputResult.Stdout)
-}
-
-func deleteSlidesPresentationWithRetry(t *testing.T, ctx context.Context, presentationID string) (*clie2e.Result, error) {
-	t.Helper()
-
-	backoff := slidesCleanupInitialBackoff
-	var (
-		result *clie2e.Result
-		err    error
-	)
-	for attempt := 1; attempt <= slidesCleanupMaxAttempts; attempt++ {
-		result, err = drivee2e.DeleteDriveResourceAndVerify(ctx, presentationID, "slides", "bot")
-		if err == nil || clie2e.IsCleanupWarning(err) || !isTransientDriveTaskFailure(result) {
-			return result, err
-		}
-		if attempt == slidesCleanupMaxAttempts {
-			return result, err
-		}
-
-		t.Logf("drive +delete attempt %d failed and slides %s still exists; retrying in %s: stderr=%s", attempt, presentationID, backoff, result.Stderr)
-		timer := time.NewTimer(backoff)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return result, ctx.Err()
-		case <-timer.C:
-		}
-		backoff *= 2
-		if backoff > slidesCleanupMaxBackoff {
-			backoff = slidesCleanupMaxBackoff
-		}
-	}
-	return result, err
-}
-
-func isTransientDriveTaskFailure(result *clie2e.Result) bool {
-	if result == nil {
-		return false
-	}
-	for _, raw := range []string{result.Stderr, result.Stdout} {
-		idx := strings.Index(raw, "{")
-		if idx < 0 {
-			continue
-		}
-		payload := raw[idx:]
-		if !gjson.Valid(payload) {
-			continue
-		}
-		errObj := gjson.Get(payload, "error")
-		if errObj.Get("type").String() == "api" &&
-			errObj.Get("subtype").String() == "server_error" &&
-			errObj.Get("message").String() == "drive task failed" {
-			return true
-		}
-	}
-	return false
 }
 
 func requireScreenshotPathUnderDir(t *testing.T, path, dir string) {

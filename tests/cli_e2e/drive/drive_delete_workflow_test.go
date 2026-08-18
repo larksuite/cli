@@ -5,7 +5,6 @@ package drive
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
@@ -153,32 +152,4 @@ func assertDriveDeleteTaskSucceeded(t *testing.T, ctx context.Context, taskID st
 	failedField := gjson.Get(taskResult.Stdout, "data.failed")
 	require.True(t, failedField.Exists(), "task result must report data.failed\nstdout:\n%s", taskResult.Stdout)
 	require.False(t, failedField.Bool(), "stdout:\n%s", taskResult.Stdout)
-}
-
-// isTransientDriveDeleteFailure reports whether a failed drive +delete carries
-// the one backend error this workflow tolerates: the async delete task
-// transiently reporting a terminal "fail" state (observed as flake in CI; the
-// resource is usually deleted regardless). Everything else — crashes, protocol
-// regressions, auth or parameter errors — stays fatal.
-func isTransientDriveDeleteFailure(result *clie2e.Result) bool {
-	if result == nil {
-		return false
-	}
-	for _, raw := range []string{result.Stderr, result.Stdout} {
-		idx := strings.Index(raw, "{")
-		if idx < 0 {
-			continue
-		}
-		payload := raw[idx:]
-		if !gjson.Valid(payload) {
-			continue
-		}
-		errObj := gjson.Get(payload, "error")
-		if errObj.Get("type").String() == "api" &&
-			errObj.Get("subtype").String() == "server_error" &&
-			errObj.Get("message").String() == "drive task failed" {
-			return true
-		}
-	}
-	return false
 }
