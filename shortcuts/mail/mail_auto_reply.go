@@ -171,7 +171,6 @@ func buildAutoReplyPatch(runtime *common.RuntimeContext, embedLocalImages bool) 
 				float64(len(content))/1024/1024)
 		}
 		autoReply["content_html"] = content
-		autoReply["content_summary"] = contentPreview(content, 200, resolveLang(runtime))
 	}
 	timezone := strings.TrimSpace(runtime.Str("timezone"))
 	if start := strings.TrimSpace(runtime.Str("start")); start != "" {
@@ -385,6 +384,7 @@ func mergeAutoReply(current map[string]interface{}, patch map[string]interface{}
 	for k, v := range patch {
 		merged[k] = v
 	}
+	delete(merged, "content_summary")
 	return merged
 }
 
