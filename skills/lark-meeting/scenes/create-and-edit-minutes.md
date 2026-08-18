@@ -55,7 +55,7 @@ lark-cli minutes +todo --minute-token <token> --operation add|update|delete ... 
 ```
 
 - 多条新增优先使用 `--todos` 批量提交。
-- 更新或删除前，先执行 `minutes +detail --todo --as user`，按内容匹配取得精确 `todo_id`；不要用列表顺序代替 ID。
+- 更新或删除前，先执行 `minutes +detail --minute-tokens <token> --todo --as user`，按内容匹配取得精确 `todo_id`；不要用列表顺序代替 ID。
 - 待办 ID、批量结构和部分成功语义见 [`lark-minutes-todo`](../references/lark-minutes-todo.md)。
 
 ## 批量替换逐字稿关键词
