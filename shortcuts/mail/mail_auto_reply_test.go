@@ -257,6 +257,27 @@ func TestMailAutoReplyContentFileRequiresCurrentDirectory(t *testing.T) {
 	}
 }
 
+func TestMailAutoReplyRejectsUnsafeHTML(t *testing.T) {
+	for _, content := range []string{
+		`<p>away<script>alert(1)</script></p>`,
+		`<p>away<img src="logo.png" onerror="alert(1)"></p>`,
+		`<a href="javascript:alert(1)">click</a>`,
+		"<a href=\"java\nscript:alert(1)\">click</a>",
+		`<p style="background:url(javascript:alert(1))">away</p>`,
+	} {
+		t.Run(content, func(t *testing.T) {
+			f, stdout, _, _ := mailShortcutTestFactory(t)
+			err := runMountedMailShortcut(t, MailAutoReplyModify, []string{"+auto-reply-modify", "--content", content}, f, stdout)
+			if err == nil {
+				t.Fatal("expected unsafe html validation error")
+			}
+			if !strings.Contains(err.Error(), "contains unsafe html") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
 func TestMailAutoReplyRejectsConflictingFlags(t *testing.T) {
 	f, stdout, _, _ := mailShortcutTestFactory(t)
 	err := runMountedMailShortcut(t, MailAutoReplyModify, []string{"+auto-reply-modify", "--enable", "--disable"}, f, stdout)
@@ -265,6 +286,27 @@ func TestMailAutoReplyRejectsConflictingFlags(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--enable and --disable are mutually exclusive") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestMailAutoReplyInvalidTimezoneIsReportedBeforeStartParse(t *testing.T) {
+	for _, args := range [][]string{
+		{"+auto-reply-modify", "--timezone", "Mars/Olympus"},
+		{"+auto-reply-modify", "--start", "2026-08-19T00:00:00", "--timezone", "Mars/Olympus"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			f, stdout, _, _ := mailShortcutTestFactory(t)
+			err := runMountedMailShortcut(t, MailAutoReplyModify, args, f, stdout)
+			if err == nil {
+				t.Fatal("expected timezone validation error")
+			}
+			if !strings.Contains(err.Error(), `invalid --timezone "Mars/Olympus"`) {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if strings.Contains(err.Error(), "--start must be Unix seconds or ISO 8601") {
+				t.Fatalf("timezone error should not be wrapped as a start parse error: %v", err)
+			}
+		})
 	}
 }
 
