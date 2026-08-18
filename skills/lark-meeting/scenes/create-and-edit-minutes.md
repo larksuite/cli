@@ -1,6 +1,6 @@
 # 生成和修改妙记
 
-生成妙记和修改妙记都是写操作，必须有用户明确意图。生成成功后保存 `minute_token`；修改前确认唯一 `minute_token` 和目标内容，提供 token 不等于授权修改。Minutes 写操作默认使用用户身份。
+生成妙记和修改妙记都是写操作，必须有用户明确意图。生成成功后保存 `minute_token`；修改前确认唯一 `minute_token` 和目标内容，提供 token 不等于授权修改。除 `minutes +apply-permission` 外，本场景的 Minutes 写命令仅支持用户身份；来源身份为 bot 时停止并说明限制，只有用户明确同意后，才以 `--as user` 重新开始修改流程。`minutes +apply-permission` 支持用户或应用身份，必须沿用触发权限错误时的身份。
 
 ## 从本地音视频生成妙记
 
@@ -25,7 +25,7 @@ lark-cli minutes +upload --file-token <file_token> --as user
 上传后立即读取产物时必须加 `--wait-ready`：
 
 ```bash
-lark-cli minutes +detail --minute-tokens <minute_token> --wait-ready --transcript
+lark-cli minutes +detail --minute-tokens <minute_token> --wait-ready --transcript --as user
 ```
 
 将 `--transcript` 替换或扩展为用户需要的 `--summary`、`--todo`、`--chapter` 或 `--keyword`。创建任务仍在处理中时，按返回状态和重试提示轮询；不要重复上传或重复创建妙记。
@@ -40,28 +40,28 @@ lark-cli minutes +detail --minute-tokens <minute_token> --wait-ready --transcrip
 
 ## 修改妙记标题
 
-使用 `minutes +update --minute-token <token> ...`。参数见 [`lark-minutes-update`](../references/lark-minutes-update.md)。
+使用 `minutes +update --minute-token <token> ... --as user`。参数见 [`lark-minutes-update`](../references/lark-minutes-update.md)。
 
 ## 替换 AI 总结
 
-使用 `minutes +summary --minute-token <token> ...` 替换总结全文。内容格式与权限见 [`lark-minutes-summary`](../references/lark-minutes-summary.md)。
+使用 `minutes +summary --minute-token <token> ... --as user` 替换总结全文。内容格式与权限见 [`lark-minutes-summary`](../references/lark-minutes-summary.md)。
 
 ## 增删改 AI 待办
 
 妙记 AI 待办不是飞书任务。上下文包含妙记 URL / `minute_token` 并要求修改妙记待办时，禁止改走 `lark-task`。
 
 ```bash
-lark-cli minutes +todo --minute-token <token> --operation add|update|delete ...
+lark-cli minutes +todo --minute-token <token> --operation add|update|delete ... --as user
 ```
 
 - 多条新增优先使用 `--todos` 批量提交。
-- 更新或删除前，先执行 `minutes +detail --todo`，按内容匹配取得精确 `todo_id`；不要用列表顺序代替 ID。
+- 更新或删除前，先执行 `minutes +detail --todo --as user`，按内容匹配取得精确 `todo_id`；不要用列表顺序代替 ID。
 - 待办 ID、批量结构和部分成功语义见 [`lark-minutes-todo`](../references/lark-minutes-todo.md)。
 
 ## 批量替换逐字稿关键词
 
 ```bash
-lark-cli minutes +word-replace --minute-token <token> --replace-words '[{"source_word":"<old>","target_word":"<new>"}]'
+lark-cli minutes +word-replace --minute-token <token> --replace-words '[{"source_word":"<old>","target_word":"<new>"}]' --as user
 ```
 
 多组替换放在同一个 JSON 数组中。具体参数运行 `lark-cli minutes +word-replace --help`。
@@ -73,7 +73,7 @@ lark-cli minutes +word-replace --minute-token <token> --replace-words '[{"source
 1. 调用 `lark-cli api GET "/open-apis/minutes/v1/minutes/<token>/transcript/speakerlist"` 取得 `speaker_id`。
 2. 按原说话人的显示名称精确匹配。存在同名候选时，结合 Transcript 展示候选并让用户确认，不要擅选。
 3. 用户只提供目标姓名时，用 [`lark-contact`](../../lark-contact/SKILL.md) 解析为 `ou_` open_id。
-4. 执行 `minutes +speaker-replace --from-speaker-id <speaker_id> --to-user-id <open_id>`；不要把展示名传给 `--from-speaker-id`。
+4. 执行 `minutes +speaker-replace --from-speaker-id <speaker_id> --to-user-id <open_id> --as user`；不要把展示名传给 `--from-speaker-id`。
 
 完整流程和参数见 [`lark-minutes-speaker-replace`](../references/lark-minutes-speaker-replace.md)。
 
