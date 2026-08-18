@@ -154,6 +154,12 @@ func TestThreadModify_LabelFolderBodyAndOutputContract(t *testing.T) {
 	if _, ok := data["failed_ids"]; ok {
 		t.Fatalf("failed_ids must not be present: %#v", data)
 	}
+	if data["add_folder"] != "ARCHIVED" {
+		t.Fatalf("add_folder = %v, want ARCHIVED", data["add_folder"])
+	}
+	if _, ok := data["folder_id"]; ok {
+		t.Fatalf("folder_id must not be present: %#v", data)
+	}
 }
 
 func TestThreadModify_FolderIDAliasMapsToAddFolder(t *testing.T) {

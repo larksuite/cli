@@ -29,7 +29,7 @@ type threadModifyOutput struct {
 	SubmittedCount     int      `json:"submitted_count"`
 	AddLabelIDs        []string `json:"add_label_ids"`
 	RemoveLabelIDs     []string `json:"remove_label_ids"`
-	FolderID           string   `json:"folder_id"`
+	AddFolder          string   `json:"add_folder"`
 }
 
 type threadTrashOutput struct {
@@ -57,7 +57,7 @@ var MailThreadModify = common.Shortcut{
 		{Name: "thread-ids", Type: "string_array", Required: true, Desc: "Thread IDs to modify; comma-separated or repeat the flag."},
 		{Name: "add-label-ids", Type: "string_slice", Desc: "Label IDs to add. System labels unread/important/other/flagged are normalized to upper case."},
 		{Name: "remove-label-ids", Type: "string_slice", Desc: "Label IDs to remove. Cannot overlap with --add-label-ids."},
-		{Name: "add-folder", Aliases: []string{"folder-id"}, Desc: "Folder ID to move threads to. Maps to the OpenAPI add_folder body field."},
+		{Name: "add-folder", Aliases: []string{"folder-id"}, Desc: "Folder ID to move threads to."},
 	},
 	Validate: validateThreadModify,
 	DryRun:   dryRunThreadModify,
@@ -114,7 +114,7 @@ func executeThreadModify(ctx context.Context, rt *common.RuntimeContext) error {
 		SubmittedCount:     len(input.ThreadIDs),
 		AddLabelIDs:        input.AddLabelIDs,
 		RemoveLabelIDs:     input.RemoveLabelIDs,
-		FolderID:           input.FolderID,
+		AddFolder:          input.FolderID,
 	})
 	return nil
 }
