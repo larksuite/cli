@@ -34,6 +34,8 @@ const maxReplaceParts = 200
 //     it triggers 3350001.
 //  4. On 3350001 errors it enriches the hint with context-specific guidance
 //     so AI agents can self-correct.
+//  5. It asks the backend to lint the page these parts produce, and renders the
+//     refusal when the lint blocks the write. --no-lint opts out.
 //
 // `str_replace` is intentionally NOT exposed: product direction is that
 // slide edits go through structural (block-level) operations only. The backend
@@ -53,6 +55,7 @@ var SlidesReplaceSlide = common.Shortcut{
 		{Name: "parts", Desc: "JSON array of replace parts; accepts replace/insert action aliases, target_id for block_id, and block/content/shape/element for the action's XML payload; max 200", Required: true, Input: []string{common.File, common.Stdin}},
 		{Name: "revision-id", Type: "int", Default: "-1", Desc: "presentation revision (-1 = latest; pass a specific number for optimistic locking)"},
 		{Name: "tid", Desc: "transaction id for concurrent-edit locking (usually empty)"},
+		noLintFlag(),
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		ref, err := parsePresentationRef(runtime.Str("presentation"))
@@ -103,7 +106,7 @@ var SlidesReplaceSlide = common.Shortcut{
 		if tid := runtime.Str("tid"); tid != "" {
 			query["tid"] = tid
 		}
-		body := map[string]interface{}{"parts": injected}
+		body := replaceSlideBody(injected, runtime)
 
 		dry := common.NewDryRunAPI()
 		presentationID := ref.Token
@@ -155,11 +158,14 @@ var SlidesReplaceSlide = common.Shortcut{
 		if tid := strings.TrimSpace(runtime.Str("tid")); tid != "" {
 			query["tid"] = tid
 		}
-		body := map[string]interface{}{"parts": injected}
+		body := replaceSlideBody(injected, runtime)
 
 		data, err := runtime.CallAPITyped("POST", slideReplaceAPIPath(presentationID), query, body)
 		if err != nil {
-			return enrichSlidesReplaceError(err)
+			// Lint first: enrichSlidesReplaceError only fills an empty hint, so
+			// running it second leaves the specific lint finding in place and
+			// the generic 3350001 checklist for everything else.
+			return enrichSlidesReplaceError(enrichSlidesLintError(err))
 		}
 
 		result := map[string]interface{}{
@@ -183,10 +189,25 @@ var SlidesReplaceSlide = common.Shortcut{
 		if raw, ok := data["failed_reason"]; ok {
 			result["failed_reason"] = raw
 		}
+		// issues points the other way from failed_reason: the parts were applied
+		// and committed, and the backend still had something to say about the page
+		// they produced. A finding serious enough to refuse the write leaves as an
+		// error carrying the same report, so whatever arrives here describes a page
+		// that is already stored.
+		if raw, ok := data["issues"]; ok {
+			result["issues"] = raw
+		}
 
 		runtime.Out(result, nil)
 		return nil
 	},
+}
+
+// replaceSlideBody builds the request body shared by dry-run and execute, so the
+// two cannot disagree about the lint switch — the failure mode being a --dry-run
+// that shows a linted request and an execute that sends an unlinted one.
+func replaceSlideBody(parts []map[string]interface{}, runtime *common.RuntimeContext) map[string]interface{} {
+	return withLintXML(map[string]interface{}{"parts": parts}, runtime)
 }
 
 // replacePart is the normalized (post-JSON) representation of one entry in the

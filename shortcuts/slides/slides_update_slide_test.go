@@ -419,6 +419,71 @@ func TestUpdateSlideRevisionAndTIDTravel(t *testing.T) {
 	}
 }
 
+// TestUpdateSlidePassesThroughIssues keeps the backend's lint report visible on
+// a page that was written. A finding serious enough to refuse the write comes
+// back as an error carrying the same report, so anything arriving here describes
+// a page that is already stored — dropping it would leave the caller believing
+// the deck says exactly what they wrote.
+func TestUpdateSlidePassesThroughIssues(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide/replace",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+			"revision_id": 9,
+			"issues":      "[issue=text_overflows_container id=v5 level=warning]",
+		}},
+	})
+
+	if err := runSlidesShortcut(t, f, stdout, SlidesUpdateSlide, []string{
+		"+update-slide",
+		"--presentation", "pres_abc",
+		"--slide-id", "pYw",
+		"--content", testPageXML,
+		"--as", "user",
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeShortcutData(t, stdout)
+	if issues, _ := data["issues"].(string); issues != "[issue=text_overflows_container id=v5 level=warning]" {
+		t.Fatalf("issues = %#v, want the backend report passed through verbatim", data["issues"])
+	}
+	if data["revision_id"] != float64(9) {
+		t.Fatalf("revision_id = %#v, want 9 alongside the report", data["revision_id"])
+	}
+}
+
+// TestUpdateSlideOmitsIssuesWhenAbsent keeps the key out of the output rather
+// than reporting an empty report, so a caller can test for presence.
+func TestUpdateSlideOmitsIssuesWhenAbsent(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide/replace",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"revision_id": 9}},
+	})
+
+	if err := runSlidesShortcut(t, f, stdout, SlidesUpdateSlide, []string{
+		"+update-slide",
+		"--presentation", "pres_abc",
+		"--slide-id", "pYw",
+		"--content", testPageXML,
+		"--as", "user",
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeShortcutData(t, stdout)
+	if _, ok := data["issues"]; ok {
+		t.Fatalf("issues should be omitted when the backend sent none: %#v", data)
+	}
+}
+
 // TestUpdateSlideOmitsEmptyTID keeps an unset --tid out of the query rather than
 // sending tid="".
 func TestUpdateSlideOmitsEmptyTID(t *testing.T) {
