@@ -4,7 +4,7 @@
 
 Use it instead of raw `user_mailbox.threads batch_modify` for normal thread-level organization. If the operation targets concrete `message_id` values rather than conversations, use [`mail +message-modify`](./lark-mail-message-modify.md).
 
-## Common Commands
+## 命令
 
 ```bash
 lark-cli mail +thread-modify --thread-ids <thread_id1>,<thread_id2> --add-label-ids unread
@@ -14,7 +14,7 @@ lark-cli mail +thread-modify --mailbox shared@example.com --thread-ids <thread_i
 lark-cli mail +thread-modify --thread-ids <thread_id> --add-label-ids custom_label_id --dry-run
 ```
 
-## Flags
+## 参数
 
 | Flag | Required | Notes |
 | --- | --- | --- |
@@ -28,7 +28,7 @@ At least one of `--add-label-ids`, `--remove-label-ids`, or `--add-folder` is re
 
 `TRASH` is intentionally rejected by this shortcut. Use [`mail +thread-trash`](./lark-mail-thread-trash.md) with `--yes` for soft deletion.
 
-## Behavior
+## 行为
 
 - Thread IDs are locally trimmed, de-duplicated in first-seen order, and submitted in one request.
 - The raw API batch limit is 20 thread IDs; the shortcut validates this before sending.
@@ -48,10 +48,6 @@ At least one of `--add-label-ids`, `--remove-label-ids`, or `--add-folder` is re
 
 `submitted_count` is the number of IDs submitted by the CLI. It does not mean every thread was changed by the server. The shortcut does not output `updated_count`, `failed_ids`, or per-thread results.
 
-## Getting Thread IDs
-
-If you do not already have thread IDs, first use a conversation listing/search flow such as `mail +triage`, `mail user_mailbox.messages list`, or `mail +message` to obtain `thread_id` values.
-
-## When Raw API Is Still Appropriate
+## 原生 API
 
 Use raw `mail user_mailbox.threads batch_modify` only when reproducing backend/API behavior exactly for diagnostics or when you need a request shape that the shortcut intentionally does not expose.
