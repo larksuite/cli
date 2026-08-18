@@ -4,10 +4,7 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
-	"io"
-	"strings"
 
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -37,18 +34,6 @@ var checkRootCachedUpdate = update.CheckCached
 // AND no flag tokens in the raw invocation.
 func isBareRootInvocation(args []string) bool {
 	return len(args) == 0 && len(flagTokensInArgs(rawInvocationArgs)) == 0
-}
-
-// readYes reads one line and reports whether it is an affirmative y/yes.
-// EOF / empty / anything else → false (default No, matching the [y/N] prompt).
-func readYes(r io.Reader) bool {
-	line, _ := bufio.NewReader(r).ReadString('\n')
-	switch strings.ToLower(strings.TrimSpace(line)) {
-	case "y", "yes":
-		return true
-	default:
-		return false
-	}
 }
 
 // offerRootUpgrade prompts for an interactive upgrade when running bare
@@ -81,10 +66,7 @@ func offerRootUpgrade(f *cmdutil.Factory, cmd *cobra.Command, projector *recover
 	// update subcommand rather than calling RunNpmInstall directly, otherwise
 	// that line disappears and the user approves a global install without ever
 	// being told what gets installed.
-	fmt.Fprintf(ios.ErrOut, "A newer lark-cli is available (current %s). Upgrade now? [y/N]: ", info.Current)
-	if !readYes(ios.In) {
-		return
-	}
+	fmt.Fprintf(ios.ErrOut, "A newer lark-cli is available (current %s). Updating automatically...\n", info.Current)
 	runRootUpgrade(cmd)
 }
 
