@@ -303,6 +303,9 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	}
 	authResp, err := larkauth.RequestDeviceAuthorization(httpClient, config.AppID, config.AppSecret, config.Brand, finalScope, f.IOStreams.ErrOut)
 	if err != nil {
+		if problem, ok := errs.ProblemOf(err); ok && problem.Category == errs.CategoryPolicy {
+			return err
+		}
 		return errs.NewAuthenticationError(errs.SubtypeUnknown, "device authorization failed: %v", err).WithCause(err)
 	}
 
@@ -384,10 +387,14 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	}
 	openId, userName, err := getUserInfo(opts.Ctx, sdk, result.Token.AccessToken)
 	if err != nil {
+		if problem, ok := errs.ProblemOf(err); ok && problem.Category == errs.CategoryPolicy {
+			return err
+		}
 		return errs.NewAuthenticationError(errs.SubtypeUnknown, "failed to get user info: %v", err).WithCause(err)
 	}
 
 	scopeSummary := loadLoginScopeSummary(config.AppID, openId, finalScope, result.Token.Scope)
+	scopeSummary.StatusMessage = result.Token.StatusMessage
 
 	// Step 7: Store token
 	now := time.Now().UnixMilli()
@@ -467,10 +474,14 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	}
 	openId, userName, err := getUserInfo(opts.Ctx, sdk, result.Token.AccessToken)
 	if err != nil {
+		if problem, ok := errs.ProblemOf(err); ok && problem.Category == errs.CategoryPolicy {
+			return err
+		}
 		return errs.NewAuthenticationError(errs.SubtypeUnknown, "failed to get user info: %v", err).WithCause(err)
 	}
 
 	scopeSummary := loadLoginScopeSummary(config.AppID, openId, requestedScope, result.Token.Scope)
+	scopeSummary.StatusMessage = result.Token.StatusMessage
 
 	// Store token
 	now := time.Now().UnixMilli()

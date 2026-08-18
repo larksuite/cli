@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	extcred "github.com/larksuite/cli/extension/credential"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -233,6 +234,38 @@ func TestDiagnose_VerifyUserIdentity_ServerRejects(t *testing.T) {
 	}
 	if !strings.Contains(got.User.Message, "server rejected token") {
 		t.Fatalf("user message = %q, want 'server rejected token'", got.User.Message)
+	}
+
+	const message = "User token verification requires a challenge"
+	f, _, _, reg = cmdutil.TestFactory(t, cfg)
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    larkauth.PathUserInfoV1,
+		Error:  errs.NewSecurityPolicyError(errs.SubtypeChallengeRequired, "%s", message).WithCode(21000),
+	})
+	got = Diagnose(context.Background(), f, cfg, true)
+	if got.User.Error == nil || got.User.Error.Category != errs.CategoryPolicy || got.User.Error.Subtype != errs.SubtypeChallengeRequired || got.User.Error.Code != 21000 || got.User.Error.Message != message {
+		t.Fatalf("user policy error = %#v, want challenge_required/21000 with message %q", got.User.Error, message)
+	}
+	stored := larkauth.GetStoredToken(cfg.AppID, cfg.UserOpenId)
+	if stored == nil {
+		t.Fatal("GetStoredToken() = nil")
+	}
+	stored.ExpiresAt = now.Add(-time.Minute).UnixMilli()
+	if err := larkauth.SetStoredToken(stored); err != nil {
+		t.Fatalf("SetStoredToken() refresh fixture error = %v", err)
+	}
+
+	const refreshMessage = "User token refresh was denied by policy"
+	f, _, _, reg = cmdutil.TestFactory(t, cfg)
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodPost,
+		URL:    larkauth.PathOAuthTokenV2,
+		Error:  errs.NewSecurityPolicyError(errs.SubtypeAccessDenied, "%s", refreshMessage).WithCode(21001),
+	})
+	got = Diagnose(context.Background(), f, cfg, true)
+	if got.User.Error == nil || got.User.Error.Subtype != errs.SubtypeAccessDenied || got.User.Error.Code != 21001 || got.User.Error.Message != refreshMessage {
+		t.Fatalf("user refresh policy error = %#v, want access_denied/21001 with message %q", got.User.Error, refreshMessage)
 	}
 }
 

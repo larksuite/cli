@@ -112,3 +112,22 @@ func TestTryHandleMCPResponse_NonPolicyCodeIgnored(t *testing.T) {
 		t.Fatalf("expected nil (non-policy code), got %v", err)
 	}
 }
+
+func TestTryHandleOAPIResponse_TokenPolicyWithoutData(t *testing.T) {
+	t.Parallel()
+
+	const message = "TAT issuance denied by policy"
+	got := (&SecurityPolicyTransport{}).tryHandleOAPIResponse(map[string]interface{}{
+		"code":                21001,
+		"msg":                 message,
+		"tenant_access_token": "t-issued-but-denied",
+		"expire":              7200,
+	})
+	var policyErr *errs.SecurityPolicyError
+	if !errors.As(got, &policyErr) {
+		t.Fatalf("error = %T (%v), want *errs.SecurityPolicyError", got, got)
+	}
+	if policyErr.Code != 21001 || policyErr.Message != message {
+		t.Fatalf("policy error = %#v, want code 21001 and message %q", policyErr.Problem, message)
+	}
+}

@@ -20,6 +20,7 @@ type loginScopeSummary struct {
 	AlreadyGranted []string
 	Granted        []string
 	Missing        []string
+	StatusMessage  string
 }
 
 type loginScopeIssue struct {
@@ -154,6 +155,9 @@ func writeLoginSuccess(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory, op
 	fmt.Fprintln(f.IOStreams.ErrOut)
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.LoginSuccess, userName, openId))
 	writeLoginScopeBreakdown(f.IOStreams, msg, summary)
+	if summary.StatusMessage != "" {
+		fmt.Fprintln(f.IOStreams.ErrOut, summary.StatusMessage)
+	}
 	if len(summary.Missing) == 0 && msg.StatusHint != "" {
 		fmt.Fprintln(f.IOStreams.ErrOut, msg.StatusHint)
 	}
@@ -190,6 +194,9 @@ func handleLoginScopeIssue(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory
 		fmt.Fprintln(f.IOStreams.ErrOut, issue.Message)
 	}
 	writeLoginScopeBreakdown(f.IOStreams, msg, issue.Summary)
+	if issue.Summary != nil && issue.Summary.StatusMessage != "" {
+		fmt.Fprintln(f.IOStreams.ErrOut, issue.Summary.StatusMessage)
+	}
 	if issue.Hint != "" {
 		fmt.Fprintln(f.IOStreams.ErrOut, issue.Hint)
 	}
@@ -212,6 +219,9 @@ func authorizationCompletePayload(openId, userName string, summary *loginScopeSu
 		"already_granted": emptyIfNil(summary.AlreadyGranted),
 		"missing":         emptyIfNil(summary.Missing),
 		"granted":         emptyIfNil(summary.Granted),
+	}
+	if summary.StatusMessage != "" {
+		payload["status_message"] = summary.StatusMessage
 	}
 	if issue != nil {
 		payload["warning"] = map[string]interface{}{

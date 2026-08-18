@@ -155,6 +155,7 @@ type refreshResponse struct {
 	RefreshTokenExpiresIn *int64 `json:"refresh_token_expires_in"`
 	TokenType             string `json:"token_type"`
 	Scope                 string `json:"scope"`
+	StatusMessage         string `json:"status_message"`
 	Error                 string `json:"error"`
 	ErrorDescription      string `json:"error_description"`
 }
@@ -207,7 +208,14 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 	for attempt := 1; attempt <= refreshMaxAttempts; attempt++ {
 		result := refreshOnce(httpClient, endpoint, opts, stored)
 		if result.action == refreshSaveResponse {
-			return saveRefreshResponse(opts, stored, result.response)
+			refreshed, err := saveRefreshResponse(opts, stored, result.response)
+			if err != nil {
+				return nil, err
+			}
+			if result.response.StatusMessage != "" && errOut != nil {
+				fmt.Fprintln(errOut, result.response.StatusMessage)
+			}
+			return refreshed, nil
 		}
 
 		switch result.action {

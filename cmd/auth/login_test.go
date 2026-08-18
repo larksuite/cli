@@ -18,6 +18,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/command"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -51,6 +52,18 @@ type businessArgs struct {
 
 type businessData struct {
 	ChatID string `json:"chat_id" schema:"required" doc:"chat identifier"`
+}
+
+func assertLoginPolicyError(t *testing.T, err error, message string) {
+	t.Helper()
+	var policyErr *errs.SecurityPolicyError
+	if !errors.As(err, &policyErr) {
+		t.Fatalf("authLoginRun() error = %T (%v), want wrapped *errs.SecurityPolicyError", err, err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryPolicy || problem.Subtype != errs.SubtypeAccessDenied || problem.Code != 21001 || problem.Message != message {
+		t.Fatalf("problem = %#v, want policy/access_denied/21001 with message %q", problem, message)
+	}
 }
 
 func TestSuggestDomain_PrefixMatch(t *testing.T) {
@@ -667,12 +680,14 @@ func TestBuildLoginScopeSummary(t *testing.T) {
 
 func TestWriteLoginSuccess_JSONIncludesScopeDiff(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	const statusMessage = "Some requested scopes were silently trimmed"
 
 	writeLoginSuccess(&LoginOptions{JSON: true}, getLoginMsg("en"), f, "ou_user", "tester", &loginScopeSummary{
 		Requested:      []string{"im:message:send", "im:message:reply"},
 		NewlyGranted:   []string{"im:message:send"},
 		AlreadyGranted: []string{"im:message:reply"},
 		Granted:        []string{"im:message:send", "im:message:reply"},
+		StatusMessage:  statusMessage,
 	})
 
 	var data map[string]interface{}
@@ -684,6 +699,9 @@ func TestWriteLoginSuccess_JSONIncludesScopeDiff(t *testing.T) {
 	}
 	if data["scope"] != "im:message:send im:message:reply" {
 		t.Fatalf("scope = %v", data["scope"])
+	}
+	if data["status_message"] != statusMessage {
+		t.Fatalf("status_message = %v, want %q", data["status_message"], statusMessage)
 	}
 	if len(data["newly_granted"].([]interface{})) != 1 {
 		t.Fatalf("newly_granted = %#v", data["newly_granted"])
@@ -792,6 +810,9 @@ func TestWriteLoginSuccess_JSONEmptySlicesNotNull(t *testing.T) {
 			t.Fatalf("%s = %#v, want JSON array", k, v)
 		}
 	}
+	if _, ok := data["status_message"]; ok {
+		t.Fatalf("status_message should be omitted when empty: %#v", data)
+	}
 }
 
 func TestWriteLoginSuccess_TextOutputScenarios(t *testing.T) {
@@ -896,6 +917,7 @@ func TestAuthLoginRun_MissingRequestedScopeAlignsWithLoginSuccess(t *testing.T) 
 	keyring.MockInit()
 	setupLoginConfigDir(t)
 	t.Setenv("HOME", t.TempDir())
+	const statusMessage = "Some requested scopes were silently trimmed"
 
 	multi := &core.MultiAppConfig{
 		CurrentApp: "default",
@@ -930,11 +952,13 @@ func TestAuthLoginRun_MissingRequestedScopeAlignsWithLoginSuccess(t *testing.T) 
 		Method: "POST",
 		URL:    larkauth.PathOAuthTokenV2,
 		Body: map[string]interface{}{
+			"code":                     0,
 			"access_token":             "user-access-token",
 			"refresh_token":            "refresh-token",
 			"expires_in":               7200,
 			"refresh_token_expires_in": 604800,
 			"scope":                    "offline_access",
+			"status_message":           statusMessage,
 		},
 	})
 	reg.Register(&httpmock.Stub{
@@ -966,6 +990,7 @@ func TestAuthLoginRun_MissingRequestedScopeAlignsWithLoginSuccess(t *testing.T) 
 		"授权结果异常: 以下请求 scopes 未被授予: im:message:send",
 		"当前授权账号: tester (ou_user)",
 		"本次请求 scopes: im:message:send",
+		statusMessage,
 		"以上结果是本次授权请求用户最终确认后的结果，请勿持续重试",
 		"scope 被禁用",
 		"lark-cli auth status",
@@ -1012,6 +1037,7 @@ func TestAuthLoginRun_DeviceCodeUsesCachedRequestedScopes(t *testing.T) {
 	keyring.MockInit()
 	setupLoginConfigDir(t)
 	t.Setenv("HOME", t.TempDir())
+	const statusMessage = "Authorization details returned by OAuth"
 
 	multi := &core.MultiAppConfig{
 		CurrentApp: "default",
@@ -1051,6 +1077,7 @@ func TestAuthLoginRun_DeviceCodeUsesCachedRequestedScopes(t *testing.T) {
 			"expires_in":               7200,
 			"refresh_token_expires_in": 604800,
 			"scope":                    "im:message:send offline_access",
+			"status_message":           statusMessage,
 		},
 	})
 	reg.Register(&httpmock.Stub{
@@ -1095,7 +1122,8 @@ func TestAuthLoginRun_DeviceCodeUsesCachedRequestedScopes(t *testing.T) {
 		"OK: 授权成功! 用户: tester (ou_user)",
 		"本次请求 scopes: im:message:send",
 		"本次新授予 scopes: im:message:send",
-		"可执行 `lark-cli auth status` 查看账号当前已授予的全部 scopes；",
+		statusMessage,
+		"可执行 `lark-cli auth status`",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("stderr missing %q, got:\n%s", want, got)
@@ -1249,6 +1277,66 @@ func TestAuthLoginRun_JSONAbort_StdoutEventOnly_StderrEmpty(t *testing.T) {
 	}
 	if bareErr.Code != output.ExitAuth {
 		t.Fatalf("BareError.Code = %d, want %d", bareErr.Code, output.ExitAuth)
+	}
+}
+
+func TestAuthLoginRun_PreservesTransportPolicyErrors(t *testing.T) {
+	setupLoginConfigDir(t)
+
+	original := pollDeviceToken
+	t.Cleanup(func() { pollDeviceToken = original })
+	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
+		return &larkauth.DeviceFlowResult{
+			OK:    true,
+			Token: &larkauth.DeviceFlowTokenData{AccessToken: "user-access-token"},
+		}
+	}
+
+	const message = "Access denied by security policy"
+	tests := []struct {
+		name             string
+		deviceCode       string
+		deviceAuthPolicy bool
+	}{
+		{name: "device authorization", deviceAuthPolicy: true},
+		{name: "initial user info"},
+		{name: "resumed user info", deviceCode: "device-code"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := &core.CliConfig{ProfileName: "default", AppID: "cli_test", AppSecret: "secret", Brand: core.BrandFeishu}
+			f, _, _, reg := cmdutil.TestFactory(t, config)
+
+			if tt.deviceCode == "" {
+				stub := &httpmock.Stub{
+					Method: http.MethodPost,
+					URL:    larkauth.PathDeviceAuthorization,
+					Body:   map[string]interface{}{"device_code": "device-code", "expires_in": 240, "interval": 5},
+				}
+				if tt.deviceAuthPolicy {
+					stub.Body = nil
+					stub.Error = errs.NewSecurityPolicyError(errs.SubtypeAccessDenied, "%s", message).WithCode(21001)
+				}
+				reg.Register(stub)
+			}
+
+			if !tt.deviceAuthPolicy {
+				reg.Register(&httpmock.Stub{
+					Method: http.MethodGet,
+					URL:    larkauth.PathUserInfoV1,
+					Error:  errs.NewSecurityPolicyError(errs.SubtypeAccessDenied, "%s", message).WithCode(21001),
+				})
+			}
+
+			err := authLoginRun(&LoginOptions{
+				Factory:    f,
+				Ctx:        context.Background(),
+				Scope:      "im:message:send",
+				DeviceCode: tt.deviceCode,
+				JSON:       true,
+			}, builtinResolver())
+			assertLoginPolicyError(t, err, message)
+		})
 	}
 }
 

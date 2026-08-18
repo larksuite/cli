@@ -4,6 +4,7 @@
 package auth
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -107,6 +108,8 @@ func TestGetValidAccessTokenRetriesAndStoresSuccessfulRefresh(t *testing.T) {
 	setupStoredTokenTest(t)
 	stored := newRefreshTestToken()
 	opts := newRefreshTestOptions(stored)
+	var errOut bytes.Buffer
+	opts.ErrOut = &errOut
 	if err := SetStoredToken(stored); err != nil {
 		t.Fatalf("SetStoredToken() error = %v", err)
 	}
@@ -137,7 +140,7 @@ func TestGetValidAccessTokenRetriesAndStoresSuccessfulRefresh(t *testing.T) {
 			return refreshHTTPResponse(req, `{"code":20050,"error_description":"retry"}`), nil
 		}
 		return refreshHTTPResponse(req,
-			`{"code":0,"access_token":"access-new","refresh_token":"refresh-new","expires_in":120,"refresh_token_expires_in":600}`), nil
+			`{"code":0,"access_token":"access-new","refresh_token":"refresh-new","expires_in":120,"refresh_token_expires_in":600,"status_message":"Some requested scopes were silently trimmed"}`), nil
 	})}
 
 	accessToken, err := GetValidAccessToken(client, opts)
@@ -150,6 +153,9 @@ func TestGetValidAccessTokenRetriesAndStoresSuccessfulRefresh(t *testing.T) {
 	current := GetStoredToken(stored.AppId, stored.UserOpenId)
 	if current == nil || current.RefreshToken != "refresh-new" || current.Scope != stored.Scope || current.GrantedAt != stored.GrantedAt {
 		t.Fatalf("stored token = %#v, want refreshed generation with stable metadata", current)
+	}
+	if got := errOut.String(); !strings.Contains(got, "Some requested scopes were silently trimmed") {
+		t.Fatalf("stderr = %q, want status_message", got)
 	}
 }
 
