@@ -303,6 +303,32 @@ func TestSyncSkillsSeparateUsesGitHubLast(t *testing.T) {
 	}
 }
 
+func TestSyncSkillsSeparateDoesNotClaimGitHubFallbackWhenNothingWasInstalled(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := WriteState(SkillsState{Version: "1.0.32", Layout: LayoutSeparate, OfficialSkills: []string{"lark-calendar"}}); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeSkillsRunner{
+		sources:       []string{"primary"},
+		indexes:       map[string]string{},
+		indexErrors:   map[string]error{"primary": fmt.Errorf("down")},
+		installErrors: map[string]error{},
+		stageErrors:   map[string]error{},
+		globalJSON:    `[]`,
+	}
+
+	result := SyncSkills(SyncOptions{Version: "1.0.33", Layout: LayoutSeparate, Runner: runner, Now: time.Now})
+	if result.Err != nil {
+		t.Fatal(result.Err)
+	}
+	if len(runner.installs) != 0 {
+		t.Fatalf("installs = %v, want none", runner.installs)
+	}
+	if result.Warning != "" {
+		t.Fatalf("warning = %q, want empty because GitHub was not invoked", result.Warning)
+	}
+}
+
 func TestSyncSkillsRetriesOfficialSourcesAfterUnknownFallback(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	if err := WriteState(SkillsState{
@@ -538,6 +564,48 @@ func TestSyncSkillsSwitchToSuiteRemovesPreviouslyOfficialSkillMissingFromIndex(t
 	assertStrings(t, runner.removals[0], []string{"lark-calendar", "lark-retired"})
 }
 
+func TestSyncSkillsSwitchToSeparateRemovesSuite(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		indexErrors map[string]error
+		wantInstall string
+	}{
+		{name: "official source", indexErrors: map[string]error{}, wantInstall: "primary:lark-calendar,lark-mail"},
+		{name: "GitHub fallback", indexErrors: map[string]error{"primary": fmt.Errorf("down")}, wantInstall: "larksuite/cli:lark-calendar,lark-mail"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			if err := WriteState(SkillsState{Version: "1.0.32", Layout: LayoutSuite, OfficialSkills: []string{"lark-calendar", "lark-mail"}}); err != nil {
+				t.Fatal(err)
+			}
+			suite := t.TempDir()
+			for _, name := range []string{"lark-calendar", "lark-mail"} {
+				if err := os.MkdirAll(filepath.Join(suite, "references", name), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			runner := &fakeSkillsRunner{
+				sources:       []string{"primary"},
+				indexes:       map[string]string{"primary": officialSkillsIndexOutput("lark-calendar", "lark-mail")},
+				indexErrors:   test.indexErrors,
+				installErrors: map[string]error{},
+				stageErrors:   map[string]error{},
+				globalJSON:    fmt.Sprintf(`[{"name":"lark-suite","path":%q,"scope":"global"}]`, suite),
+			}
+
+			result := SyncSkills(SyncOptions{Version: "1.0.33", Layout: LayoutSeparate, Runner: runner, Now: time.Now})
+			if result.Err != nil {
+				t.Fatal(result.Err)
+			}
+			assertStrings(t, runner.installs, []string{test.wantInstall})
+			if len(runner.removals) != 1 {
+				t.Fatalf("removals = %v, want one removal call", runner.removals)
+			}
+			assertStrings(t, runner.removals[0], []string{"lark-suite"})
+		})
+	}
+}
+
 func TestPrepareSuiteCropsRoutesKeywordsAndReferences(t *testing.T) {
 	suite := t.TempDir()
 	for _, name := range []string{"lark-calendar", "lark-mail"} {
@@ -561,6 +629,45 @@ func TestPrepareSuiteCropsRoutesKeywordsAndReferences(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(suite, "references", "lark-mail")); !os.IsNotExist(err) {
 		t.Fatalf("removed reference still exists: %v", err)
+	}
+}
+
+func TestCropSuiteRoutesRemovesBoundaryLinesWithoutChangingNeighbors(t *testing.T) {
+	routes := []string{
+		"- lark-approval（审批）: approval",
+		"- lark-calendar（日历）: calendar",
+		"- lark-mail（邮件）: mail",
+	}
+	prefix := "description: 飞书/Lark 聚合能力入口：管理飞书/Lark 产品能力（审批、日历、邮件等）。\nbefore\n"
+	for _, test := range []struct {
+		name, removed, keywords, suffix string
+		target                          []string
+	}{
+		{name: "first", removed: "lark-approval", keywords: "日历、邮件", target: []string{"lark-calendar", "lark-mail"}, suffix: "\nafter\n"},
+		{name: "middle", removed: "lark-calendar", keywords: "审批、邮件", target: []string{"lark-approval", "lark-mail"}, suffix: "\nafter\n"},
+		{name: "last", removed: "lark-mail", keywords: "审批、日历", target: []string{"lark-approval", "lark-calendar"}, suffix: "\nafter\n"},
+		{name: "last at EOF", removed: "lark-mail", keywords: "审批、日历", target: []string{"lark-approval", "lark-calendar"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			content := prefix + strings.Join(routes, "\n") + test.suffix
+			got, err := cropSuiteRoutes(content, []string{test.removed}, test.target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := strings.Replace(content, "审批、日历、邮件", test.keywords, 1)
+			line := routes[0]
+			for _, candidate := range routes {
+				if strings.Contains(candidate, test.removed) {
+					line = candidate
+					break
+				}
+			}
+			want = strings.Replace(want, line+"\n", "", 1)
+			want = strings.TrimSuffix(want, line)
+			if got != want {
+				t.Fatalf("cropped content changed surrounding lines\ngot:\n%s\nwant:\n%s", got, want)
+			}
+		})
 	}
 }
 

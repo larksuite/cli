@@ -16,8 +16,10 @@ import (
 type Layout string
 
 const (
-	LayoutSeparate Layout = "separate"
-	LayoutSuite    Layout = "suite"
+	LayoutSeparate         Layout = "separate"
+	LayoutSuite            Layout = "suite"
+	suiteDescriptionPrefix        = "description: 飞书/Lark 聚合能力入口：管理飞书/Lark 产品能力（"
+	suiteDescriptionSuffix        = "等）。"
 )
 
 func ParseLayout(value string) (Layout, error) {
@@ -141,13 +143,12 @@ func cropSuiteRoutes(content string, removed, target []string) (string, error) {
 	}
 
 	keywords := suiteKeywords(content)
-	const descriptionPrefix = "description: 飞书/Lark 聚合能力入口：管理飞书/Lark 产品能力（"
-	start := strings.Index(content, descriptionPrefix)
+	start := strings.Index(content, suiteDescriptionPrefix)
 	if start < 0 {
 		return "", fmt.Errorf("suite description prefix is missing")
 	}
-	valueStart := start + len(descriptionPrefix)
-	valueEndOffset := strings.Index(content[valueStart:], "等）。")
+	valueStart := start + len(suiteDescriptionPrefix)
+	valueEndOffset := strings.Index(content[valueStart:], suiteDescriptionSuffix)
 	if valueEndOffset < 0 {
 		return "", fmt.Errorf("suite description keyword suffix is missing")
 	}

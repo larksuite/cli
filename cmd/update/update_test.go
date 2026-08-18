@@ -1280,6 +1280,29 @@ func TestUpdateRejectsInvalidSkillsLayout(t *testing.T) {
 	}
 }
 
+func TestUpdateCheckRejectsSkillsLayoutBeforeNetwork(t *testing.T) {
+	f, _, _ := newTestFactory(t)
+	origFetch := fetchLatest
+	fetched := false
+	fetchLatest = func() (string, error) {
+		fetched = true
+		return "2.0.0", nil
+	}
+	t.Cleanup(func() { fetchLatest = origFetch })
+
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--check", "--skills-layout", "suite"})
+	err := cmd.Execute()
+	problem, ok := errs.ProblemOf(err)
+	var validation *errs.ValidationError
+	if !ok || problem.Subtype != errs.SubtypeInvalidArgument || !errors.As(err, &validation) || validation.Param != "--skills-layout" {
+		t.Fatalf("problem = %+v, ok = %v", problem, ok)
+	}
+	if fetched {
+		t.Fatal("fetchLatest was called before incompatible flags were rejected")
+	}
+}
+
 func TestRunSkillsAndState_DedupForceBypass(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	if err := skillscheck.WriteState(skillscheck.SkillsState{Version: "1.0.21"}); err != nil {

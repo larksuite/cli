@@ -110,7 +110,9 @@ Detects the installation method automatically:
   - manual/other: shows GitHub Releases download URL
 
 Use --json for structured output (for AI agents and scripts).
-Use --check to only check for updates without installing.`,
+Use --check to only check for updates without installing.
+
+The skill name "lark-suite" is reserved for CLI-managed suite layout.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return updateRun(opts)
 		},
@@ -130,6 +132,12 @@ func updateRun(opts *UpdateOptions) error {
 	if _, err := skillscheck.ParseLayout(opts.SkillsLayout); err != nil {
 		return reportError(opts, io, "validation",
 			errs.NewValidationError(errs.SubtypeInvalidArgument, "--skills-layout must be one of separate or suite").WithParam("--skills-layout"))
+	}
+	if opts.Check && strings.TrimSpace(opts.SkillsLayout) != "" {
+		return reportError(opts, io, "validation",
+			errs.NewValidationError(errs.SubtypeInvalidArgument, "--skills-layout cannot be used with --check").
+				WithParam("--skills-layout").
+				WithHint("Remove --skills-layout when using --check."))
 	}
 	cur := currentVersion()
 	updater := newUpdater()

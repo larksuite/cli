@@ -240,6 +240,32 @@ func TestSkillsCommandsUseExpectedArgs(t *testing.T) {
 	}
 }
 
+func TestStageSuiteUsesProvidedWorkingDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX shell script")
+	}
+	binDir := t.TempDir()
+	stageDir := t.TempDir()
+	logPath := filepath.Join(binDir, "pwd.log")
+	script := filepath.Join(binDir, "npx")
+	if err := os.WriteFile(script, []byte(fmt.Sprintf("#!/bin/sh\npwd > %q\n", logPath)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	result := New().StageSuite("https://open.feishu.cn/lark-cli/skills/regular", stageDir)
+	if result.Err != nil {
+		t.Fatalf("StageSuite() err = %v, want nil", result.Err)
+	}
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := filepath.Clean(strings.TrimSpace(string(raw))); got != filepath.Clean(stageDir) {
+		t.Fatalf("working directory = %q, want %q", got, stageDir)
+	}
+}
+
 func TestListOfficialSkillsIndexSuccess(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"skills":[{"name":"lark-calendar"}]}`)

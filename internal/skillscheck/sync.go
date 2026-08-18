@@ -473,7 +473,10 @@ func fallbackSeparate(opts SyncOptions, previous *SkillsState, readable bool, lo
 		empty := SyncPlan{Version: opts.Version}
 		plan = &empty
 	}
-	warning := "used the GitHub legacy fallback; installed Skill content may be incomplete because the legacy protocol can ignore individual file download failures"
+	warning := ""
+	if installResult != nil {
+		warning = "used the GitHub legacy fallback; installed Skill content may be incomplete because the legacy protocol can ignore individual file download failures"
+	}
 	return finishSync(opts, LayoutSeparate, *plan, "fallback_synced", warning, officialUnknown)
 }
 
