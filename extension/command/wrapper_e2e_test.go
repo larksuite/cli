@@ -105,10 +105,6 @@ func TestExternalWrapperCommandSurface(t *testing.T) {
 	if !strings.Contains(completion, "+wrapper-read") {
 		t.Fatalf("wrapper completion = %s", completion)
 	}
-	skills := run("skills", "list")
-	if !strings.Contains(skills, "lark-doc") {
-		t.Fatalf("wrapper skills = %s", skills)
-	}
 }
 
 func withoutEnvironment(environment []string, names ...string) []string {

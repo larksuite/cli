@@ -28,10 +28,8 @@ import (
 	"os"
 	"strings"
 
-	defaultaffordance "github.com/larksuite/cli/affordance"
 	"github.com/larksuite/cli/cmd"
 	"github.com/larksuite/cli/extension/command"
-	defaultskills "github.com/larksuite/cli/skills"
 
 	_ "github.com/larksuite/cli/extension/credential/env" // activate env credential provider
 )
@@ -158,11 +156,10 @@ func chatListDefinition() command.Definition[chatListArgs, command.Page[chatItem
 
 var chatList = command.Define(chatListDefinition())
 
+// main ships no embedded skill or affordance content: a wrapper does not
+// compile the repository's root content_embed.go, and a distribution that wants
+// agent guidance supplies its own tree through cmd.SetEmbeddedSkillContent.
 func main() {
-	// A wrapper main has no implicit embedded content; reuse the repository
-	// defaults so official command guidance stays available.
-	cmd.SetEmbeddedSkillContent(defaultskills.DefaultFS())
-	cmd.SetEmbeddedAffordanceContent(defaultaffordance.DefaultFS())
 	os.Exit(cmd.ExecuteWithOptions(
 		cmd.WithCommandSets(command.Set{
 			Domain:   command.ExtendDomain(command.DomainIm),

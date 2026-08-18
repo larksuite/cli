@@ -7,11 +7,9 @@ import (
 	"context"
 	"os"
 
-	defaultaffordance "github.com/larksuite/cli/affordance"
 	"github.com/larksuite/cli/cmd"
 	"github.com/larksuite/cli/extension/command"
 	"github.com/larksuite/cli/extension/download"
-	defaultskills "github.com/larksuite/cli/skills"
 
 	_ "github.com/larksuite/cli/extension/credential/env"
 )
@@ -147,8 +145,6 @@ var noteCommand = command.Define(command.Definition[noteArgs, noteData]{
 })
 
 func main() {
-	cmd.SetEmbeddedSkillContent(defaultskills.DefaultFS())
-	cmd.SetEmbeddedAffordanceContent(defaultaffordance.DefaultFS())
 	os.Exit(cmd.ExecuteWithOptions(
 		cmd.WithCommandSets(
 			command.Set{Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{readCommand, noteCommand}},
