@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	slidesCleanupMaxAttempts    = 3
+	slidesCleanupMaxAttempts    = 5
 	slidesCleanupInitialBackoff = 2 * time.Second
 	slidesCleanupMaxBackoff     = 8 * time.Second
 )
