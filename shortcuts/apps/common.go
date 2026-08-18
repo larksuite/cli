@@ -50,6 +50,85 @@ const appNoDatabaseMessage = "this app does not have a database yet"
 // user before starting a +chat.
 const appNoDatabaseHint = "ask the user whether to add a database through Miaoda cloud development; if confirmed, run `lark-cli apps +session-list --app-id <app_id>` and reuse an active session, or run `lark-cli apps +session-create --app-id <app_id>`; send the database requirement with `lark-cli apps +chat --app-id <app_id> --session-id <session_id> --message \"<database requirement>\"`, poll `lark-cli apps +session-get --app-id <app_id> --session-id <session_id>` until `latest_turn.status=completed`, then retry the original db command"
 
+// appNoContainerCode is the Spark business code returned by the online
+// observability endpoints (query_metrics_data / query_analytics_data) when the
+// target app has no running container/deployment. It is an expected business
+// state, not a system fault: an app that is not deployed and serving traffic
+// produces no client_api_request metrics or analytics to query. The raw upstream
+// message is "Container not exists", which reads like an infrastructure failure
+// and misleads callers (including AI agents) into retrying a non-retryable,
+// expected state — so the observability commands rewrite it into a user-facing
+// explanation with a deploy-then-retry next step (see withObservabilityHint).
+const appNoContainerCode = 400002655
+
+// appNoContainerMessage is the user-facing explanation for appNoContainerCode.
+// It replaces the infra-sounding "Container not exists" with the actual cause.
+const appNoContainerMessage = "this app has no running container; online metrics and analytics are only produced after the app is deployed and serving traffic"
+
+// appNoContainerHint guides diagnosing and (only with user authorization)
+// deploying the app so observability data starts flowing. Deploying via
+// +release-create is a "write" that takes the whole app live and can affect
+// existing production traffic, so — like appNoDatabaseHint — the hint gates
+// that go-live behind an explicit user confirmation and leads with a read-only
+// status check; a failed metrics read alone does not authorize a release. It
+// names existing commands with a stable placeholder arg so a harness can act on
+// it without parsing natural-language error text.
+const appNoContainerHint = "check the app's deployment status with `lark-cli apps +release-list --app-id <app_id> --status finished` (a newly created or undeployed app has no finished release, so it produces no metrics yet); if it is not deployed, ask the user whether to deploy — deploying takes the whole app live and can affect existing production traffic — and only if confirmed run `lark-cli apps +release-create --app-id <app_id>`, then retry once it is serving traffic"
+
+// appNoContainerMessageMarkers are lowercase substrings of the raw "Container
+// not exists" server message, used as a fallback when the business code is not
+// the one the CLI knows. A bare numeric literal is not a stable signal — the
+// no-database case (see isAppNoDatabaseError) was silently dropped when the
+// server renumbered it, with nothing in CI to catch it — so detection is
+// code-OR-message here too. "not exist" (no trailing s) matches both
+// "Container not exists" and a possible "Container not exist".
+var appNoContainerMessageMarkers = []string{
+	"container not exist",
+}
+
+// isAppNoContainerError reports whether a typed observability failure is "this
+// app has no running container", matching on business code OR raw server
+// message for the same code-vs-message stability trade-off documented on
+// isAppNoDatabaseError. Only consulted from the observability helper
+// (withObservabilityHint), so the message marker is scoped to observability
+// context and cannot hijack unrelated apps failures.
+func isAppNoContainerError(p *errs.Problem) bool {
+	if p == nil {
+		return false
+	}
+	if p.Code == appNoContainerCode {
+		return true
+	}
+	message := strings.ToLower(p.Message)
+	for _, marker := range appNoContainerMessageMarkers {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// withObservabilityHint wraps an online observability (metric/analytics) API
+// failure. It first rewrites the "app has no running container" business state
+// into a user-facing explanation, since the raw "Container not exists" upstream
+// message reads like an infra fault and drives non-retryable retries; any other
+// failure falls through to the shared app-id recovery hint (which still applies
+// its own no-database override). Scoped to the two observability commands rather
+// than the global withAppsHint chokepoint because 400002655 is not known to be
+// observability-exclusive, and the message-marker fallback must not reach
+// unrelated commands. err==nil and untyped errors pass through unchanged.
+func withObservabilityHint(err error) error {
+	if err == nil {
+		return nil
+	}
+	if p, ok := errs.ProblemOf(err); ok && isAppNoContainerError(p) {
+		p.Message = appNoContainerMessage
+		p.Hint = appNoContainerHint
+		return err
+	}
+	return withAppsHint(err, appIDListHint)
+}
+
 // withAppsHint attaches an actionable next-step hint to a typed failure,
 // preserving its original classification (subtype/code/log_id). A hint already
 // present on the error is kept (the upstream wording wins); only an empty hint

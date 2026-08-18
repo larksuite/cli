@@ -21,10 +21,11 @@ var DocsFetch = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{"docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
 	Flags: concatFlags(
 		[]common.Flag{
 			docsAPIVersionCompatFlag(),
+			docsOutputFormatCompatFlag(),
+			docsJSONOutputCompatFlag(),
 			{Name: "doc", Desc: "document URL or token", Required: true},
 		},
 		v2FetchFlags(),

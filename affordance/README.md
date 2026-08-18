@@ -10,6 +10,8 @@ step. Maintain these files alongside `skills/` and `shortcuts/`.
 A small, fixed markdown subset; each file describes one domain:
 
     # <domain>            optional `> skill: <name>` applies to every command below
+    ## Skills             optional bullets shown on the business-domain help;
+                          merged after `> skill:` and not inherited by commands
     ## <command>          the command as typed, minus `lark-cli <domain>`; a
                           +-prefixed heading (## +create) targets that shortcut
     <lead paragraph>      when to use this command
@@ -36,6 +38,13 @@ nothing. Point a command at its own reference (e.g. `+search-user` →
 domain skill, which the `> skill:` default already covers. When a shortcut also
 sets a hand-authored `Tips` list in Go, the overlay's `### Tips` win — they
 replace the Go tips (not merged), so keep tips in one place.
+
+The reserved domain-level `## Skills` section controls the skill pointers on
+`lark-cli <domain> --help`. Its entries use the same name or name/relpath format
+and existence gating as command-level `### Skills`. The canonical `> skill:` is
+shown first automatically; additional domain entries are display-only and do
+not become defaults for every command. If `## Skills` is absent, the existing
+single domain guide behavior is unchanged.
 
 ## Example
 

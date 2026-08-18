@@ -29,8 +29,8 @@ import (
 
 // withFlagErgonomics wraps an optional PostMount so that, after it runs,
 // the command gets the sheets-specific unknown-flag error (valid flags
-// inlined) and enum-value normalization (canonical vocabulary auto-applied,
-// typos suggested).
+// inlined), enum-value normalization (canonical vocabulary auto-applied,
+// typos suggested), and the --range sheet-prefix rewrite.
 func withFlagErgonomics(prev func(cmd *cobra.Command)) func(cmd *cobra.Command) {
 	return func(cmd *cobra.Command) {
 		if prev != nil {
@@ -39,6 +39,7 @@ func withFlagErgonomics(prev func(cmd *cobra.Command)) func(cmd *cobra.Command) 
 		cmd.SetFlagErrorFunc(sheetsFlagErrorFunc)
 		chainEnumNormalization(cmd)
 		chainFlagAliases(cmd)
+		chainRangeSheetPrefix(cmd)
 	}
 }
 
@@ -76,6 +77,12 @@ var commandFlagAliases = map[string]map[string]string{
 	"+range-fill":  {"source": "source-range", "target": "target-range"},
 	"+range-copy":  {"source": "source-range", "target": "target-range"},
 	"+range-move":  {"source": "source-range", "target": "target-range"},
+	// values → cells: gspread spells the write payload values, and this CLI's
+	// own +workbook-create uses --values for untyped 2D data. It qualifies for
+	// the silent tier only because normalizeCellsFlagValue lifts bare scalars
+	// into {"value":…}, so a --values matrix ('[["工作内容"]]') is accepted
+	// verbatim as --cells — the name was the only thing wrong.
+	"+cells-set": {"values": "cells"},
 }
 
 // intuitiveFlagHints carries the prescription for habitual names whose fix
@@ -125,10 +132,6 @@ var intuitiveFlagHints = map[string]map[string]string{
 		// Predictable prior from +table-put --styles: models will try to
 		// attach range-level styling to a --writes call the same way.
 		"styles": `range-level styling goes through +styles-put (same {"styles":[...]} vocabulary); per-cell styles ride inside the cells objects as cell_styles`,
-		// +workbook-create's untyped-data flag, carried over to the write
-		// command (07-28 root-cause report #9, 63 occurrences; values↔cells
-		// shares no prefix so edit distance never suggests the fix).
-		"values": `cell contents go in --cells as a 2D array of cell objects ('[[{"value":…},…],…]'); --values is +workbook-create's flag for untyped initial data`,
 	},
 	"+table-put": {
 		"start-cell": `anchor each sub-sheet via the "start_cell" field inside --sheets (e.g. {"sheets":[{"name":"Sheet1","start_cell":"B2",…}]}); to paste CSV at a cell use +csv-put --start-cell`,

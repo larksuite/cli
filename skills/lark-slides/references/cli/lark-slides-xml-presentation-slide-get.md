@@ -48,7 +48,7 @@ lark-cli slides xml_presentation.slide get --as user --params '{
 ```bash
 lark-cli slides xml_presentation.slide get --as user \
   --params '{"xml_presentation_id":"slides_example_presentation_id","slide_id":"slide_example_id"}' \
-  | jq -r '.data.slide.content'
+  --jq '.data.slide.content'
 ```
 
 ### 读指定历史版本
@@ -99,7 +99,7 @@ lark-cli slides xml_presentation.slide get --as user --params '{
    ```bash
    lark-cli slides xml_presentation.slide get --as user \
      --params "{\"xml_presentation_id\":\"$PID\",\"slide_id\":\"$SID\"}" \
-     | jq -r '.data.slide.content' | grep -oE 'id="[^"]+"' | sed 's/id="//;s/"//'
+     --jq '.data.slide.content' | grep -oE 'id="[^"]+"' | sed 's/id="//;s/"//'
    ```
 
 ## 相关命令
@@ -107,4 +107,4 @@ lark-cli slides xml_presentation.slide get --as user --params '{
 - [slides +replace-slide](lark-slides-replace-slide.md) — 块级替换 shortcut（推荐）
 - [xml_presentation.slide replace](lark-slides-xml-presentation-slide-replace.md) — 底层 replace API 参考
 - [slides +xml-get](lark-slides-xml-presentations-get.md) — 读整个 PPT 并保存到本地文件
-- [lark-slides-edit-workflows.md](../workflow/slides_editing.md) — 读-改-写闭环
+- [slides-editing.md](../workflow/slides-editing.md) — 读-改-写闭环

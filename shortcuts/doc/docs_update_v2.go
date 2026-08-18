@@ -29,9 +29,9 @@ const docsReferenceMapFlagDesc = "Structured `reference_map` JSON object; must b
 
 const docsUpdateReferenceMapFlagDesc = docsReferenceMapFlagDesc
 
-const docsUpdateBlockIDFlagDesc = "target block ID(s) for block operations (comma-separated for batch delete); sentinel values are passed through to the service: -1 means document end where supported, 0 means document start where supported"
+const docsUpdateBlockIDFlagDesc = "target block ID(s) for block operations (comma-separated for multi-block replace or batch delete); sentinel values are passed through to the service: -1 means document end where supported, 0 means document start where supported"
 
-const docsUpdateCommandFlagDesc = "operation; str_replace does not support resource replacement; prefer block_replace when multiple blocks are involved; requirements: str_replace(--pattern), block_delete(--block-id, comma-separated for batch), block_insert_after/block_replace(--block-id,--content), block_copy_insert_after/block_move_after(--block-id,--src-block-ids), overwrite/append(--content)"
+const docsUpdateCommandFlagDesc = "operation; str_replace does not support resource replacement; prefer block_replace when multiple blocks are involved; requirements: str_replace(--pattern), block_delete(--block-id or --start-block-id/--end-block-id), block_insert_after(--block-id,--content), block_replace(--content plus --block-id or --start-block-id/--end-block-id), block_copy_insert_after/block_move_after(--block-id,--src-block-ids), overwrite/append(--content)"
 
 // v2UpdateFlags returns the flag definitions for the v2 (OpenAPI) update path.
 func v2UpdateFlags() []common.Flag {
@@ -42,6 +42,8 @@ func v2UpdateFlags() []common.Flag {
 		{Name: "reference-map", Desc: docsUpdateReferenceMapFlagDesc, Input: []string{common.File, common.Stdin}},
 		{Name: "pattern", Desc: "simple inline text matched by str_replace; use block_replace for paragraphs, multiline content, or multiple blocks"},
 		{Name: "block-id", Desc: docsUpdateBlockIDFlagDesc},
+		{Name: "start-block-id", Desc: "inclusive start block ID for a block_replace or block_delete sibling range; requires --end-block-id and cannot be combined with --block-id; 0 means document start"},
+		{Name: "end-block-id", Desc: "inclusive end block ID for a block_replace or block_delete sibling range; requires --start-block-id and cannot be combined with --block-id; -1 means document end"},
 		{Name: "src-block-ids", Desc: "comma-separated source block ids for block_copy_insert_after and block_move_after"},
 		{Name: "revision-id", Desc: "base revision id; -1 means latest", Type: "int", Default: "-1"},
 	}
@@ -71,8 +73,50 @@ func validateUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 		return err
 	}
 	pattern := runtime.Str("pattern")
-	blockID := runtime.Str("block-id")
+	blockID := strings.TrimSpace(runtime.Str("block-id"))
+	startBlockID := runtime.Str("start-block-id")
+	endBlockID := runtime.Str("end-block-id")
+	hasStartBlockID := strings.TrimSpace(startBlockID) != ""
+	hasEndBlockID := strings.TrimSpace(endBlockID) != ""
+	hasBlockRange := hasStartBlockID || hasEndBlockID
 	srcBlockIDs := runtime.Str("src-block-ids")
+	isBlockMutation := cmd == "block_replace" || cmd == "block_delete"
+	if hasBlockRange && !isBlockMutation {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--start-block-id and --end-block-id are only supported with --command block_replace or block_delete").
+			WithParams(blockRangeInvalidParams(startBlockID, endBlockID)...)
+	}
+	if isBlockMutation {
+		if blockID != "" && hasBlockRange {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--command %s accepts either --block-id or --start-block-id with --end-block-id, not both", cmd).
+				WithParams(
+					errs.InvalidParam{Name: "--block-id", Reason: "remove --block-id when using a range"},
+					errs.InvalidParam{Name: "--start-block-id", Reason: "use the range pair without --block-id"},
+					errs.InvalidParam{Name: "--end-block-id", Reason: "use the range pair without --block-id"},
+				)
+		}
+		if hasBlockRange && (!hasStartBlockID || !hasEndBlockID) {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--command %s requires --start-block-id and --end-block-id together", cmd).
+				WithParams(
+					errs.InvalidParam{Name: "--start-block-id", Reason: "provide the inclusive range start"},
+					errs.InvalidParam{Name: "--end-block-id", Reason: "provide the inclusive range end"},
+				)
+		}
+		if blockID == "" && !hasBlockRange {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--command %s requires --block-id or both --start-block-id and --end-block-id", cmd).WithParam("--block-id")
+		}
+		if strings.TrimSpace(startBlockID) == "-1" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--start-block-id cannot be -1; -1 is only valid as --end-block-id").WithParam("--start-block-id")
+		}
+		if strings.TrimSpace(endBlockID) == "0" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--end-block-id cannot be 0; 0 is only valid as --start-block-id").WithParam("--end-block-id")
+		}
+	}
 
 	switch cmd {
 	case "str_replace":
@@ -80,8 +124,8 @@ func validateUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command str_replace requires --pattern").WithParam("--pattern")
 		}
 	case "block_delete":
-		if blockID == "" {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command block_delete requires --block-id").WithParam("--block-id")
+		if content != "" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command block_delete does not accept --content").WithParam("--content")
 		}
 	case "block_insert_after":
 		if blockID == "" {
@@ -108,9 +152,6 @@ func validateUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command block_move_after does not accept --content; use --src-block-ids").WithParam("--content")
 		}
 	case "block_replace":
-		if blockID == "" {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command block_replace requires --block-id").WithParam("--block-id")
-		}
 		if content == "" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command block_replace requires --content").WithParam("--content")
 		}
@@ -242,14 +283,31 @@ func buildUpdateBodyBase(runtime *common.RuntimeContext) map[string]interface{} 
 	if v := runtime.Str("pattern"); v != "" {
 		body["pattern"] = v
 	}
-	if blockID != "" {
+	if strings.TrimSpace(blockID) != "" {
 		body["block_id"] = blockID
+	}
+	if v := runtime.Str("start-block-id"); strings.TrimSpace(v) != "" {
+		body["start_block_id"] = v
+	}
+	if v := runtime.Str("end-block-id"); strings.TrimSpace(v) != "" {
+		body["end_block_id"] = v
 	}
 	if v := runtime.Str("src-block-ids"); v != "" {
 		body["src_block_ids"] = v
 	}
 	injectDocsScene(runtime, body)
 	return body
+}
+
+func blockRangeInvalidParams(startBlockID, endBlockID string) []errs.InvalidParam {
+	params := make([]errs.InvalidParam, 0, 2)
+	if strings.TrimSpace(startBlockID) != "" {
+		params = append(params, errs.InvalidParam{Name: "--start-block-id", Reason: "only valid with --command block_replace or block_delete"})
+	}
+	if strings.TrimSpace(endBlockID) != "" {
+		params = append(params, errs.InvalidParam{Name: "--end-block-id", Reason: "only valid with --command block_replace or block_delete"})
+	}
+	return params
 }
 
 func validateUpdateReferenceMap(runtime *common.RuntimeContext, command string, content string) error {

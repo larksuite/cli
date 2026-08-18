@@ -84,20 +84,22 @@ func TestTaskUpdateDryRunPreviewsEveryTaskID(t *testing.T) {
 func TestTaskUpdateNormalizesAllIDsAndReturnsConfirmedFields(t *testing.T) {
 	f, stdout, _, reg := taskShortcutTestFactory(t)
 	warmTenantToken(t, f, reg)
+	firstTaskResponse := fullTaskOutputFixture()
+	firstTaskResponse["guid"] = "task-guid-1"
+	firstTaskResponse["url"] = "https://example.com/task-guid-1"
+	firstTaskResponse["summary"] = "server summary one"
+	firstTaskResponse["description"] = "server description one"
+	secondTaskResponse := fullTaskOutputFixture()
+	secondTaskResponse["guid"] = "task-guid-2"
+	secondTaskResponse["url"] = "https://example.com/task-guid-2"
+	secondTaskResponse["summary"] = "server summary two"
 
 	first := &httpmock.Stub{
 		Method: "PATCH",
 		URL:    "/open-apis/task/v2/tasks/task-guid-1",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
-			"data": map[string]interface{}{
-				"task": map[string]interface{}{
-					"guid":        "task-guid-1",
-					"url":         "https://example.com/task-guid-1",
-					"summary":     "server summary one",
-					"description": "server description one",
-				},
-			},
+			"data": map[string]interface{}{"task": firstTaskResponse},
 		},
 	}
 	second := &httpmock.Stub{
@@ -105,13 +107,7 @@ func TestTaskUpdateNormalizesAllIDsAndReturnsConfirmedFields(t *testing.T) {
 		URL:    "/open-apis/task/v2/tasks/task-guid-2",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
-			"data": map[string]interface{}{
-				"task": map[string]interface{}{
-					"guid":    "task-guid-2",
-					"url":     "https://example.com/task-guid-2",
-					"summary": "server summary two",
-				},
-			},
+			"data": map[string]interface{}{"task": secondTaskResponse},
 		},
 	}
 	reg.Register(first)
@@ -155,6 +151,7 @@ func TestTaskUpdateNormalizesAllIDsAndReturnsConfirmedFields(t *testing.T) {
 	}) {
 		t.Fatalf("first confirmed = %#v", got)
 	}
+	assertStandardTaskFields(t, firstTask)
 
 	secondTask := tasks[1].(map[string]interface{})
 	if got := secondTask["confirmed"]; !reflect.DeepEqual(got, map[string]interface{}{
@@ -162,6 +159,7 @@ func TestTaskUpdateNormalizesAllIDsAndReturnsConfirmedFields(t *testing.T) {
 	}) {
 		t.Fatalf("second confirmed = %#v; omitted server fields must not be echoed from the request", got)
 	}
+	assertStandardTaskFields(t, secondTask)
 }
 
 func TestTaskUpdateValidatesEveryIDBeforeFirstWrite(t *testing.T) {

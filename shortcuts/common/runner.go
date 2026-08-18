@@ -28,6 +28,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/errclass"
+	"github.com/larksuite/cli/internal/fileevent"
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
@@ -46,6 +47,8 @@ type RuntimeContext struct {
 	botOnly        bool                              // set by framework for bot-only shortcuts
 	resolvedAs     core.Identity                     // effective identity resolved by framework
 	declaredScopes []string                          // shortcut-declared scopes for the resolved identity
+	reportOnce     sync.Once                         // lazily initializes the command-scoped upload report budget
+	reportBudget   *fileevent.Budget                 // shared by every upload report in this command
 	Factory        *cmdutil.Factory                  // injected by framework
 	apiClientFunc  func() (*client.APIClient, error) // sync.OnceValues; initialized in newRuntimeContext
 	botInfoFunc    func() (*BotInfo, error)          // sync.OnceValues; lazy bot identity from /bot/v3/info
@@ -99,6 +102,27 @@ func (ctx *RuntimeContext) Command() string {
 		return ""
 	}
 	return ctx.Cmd.Name()
+}
+
+// CommandPath returns the full command path as Cobra knows it. Consumers that
+// expose command identity externally can normalize the binary name as needed.
+func (ctx *RuntimeContext) CommandPath() string {
+	if ctx == nil || ctx.Cmd == nil {
+		return ""
+	}
+	return ctx.Cmd.CommandPath()
+}
+
+// FileEventBudget returns the reporting budget shared by every upload within
+// this command invocation.
+func (ctx *RuntimeContext) FileEventBudget() *fileevent.Budget {
+	if ctx == nil {
+		return nil
+	}
+	ctx.reportOnce.Do(func() {
+		ctx.reportBudget = fileevent.NewBudget()
+	})
+	return ctx.reportBudget
 }
 
 // UserOpenId returns the current user's open_id from config.
@@ -181,19 +205,30 @@ func (ctx *RuntimeContext) getAPIClient() (*client.APIClient, error) {
 // For user: returns user access token (with auto-refresh).
 // For bot: returns tenant access token.
 func (ctx *RuntimeContext) AccessToken() (string, error) {
+	result, err := ctx.resolveAccessToken()
+	if err != nil {
+		return "", err
+	}
+	return result.Token, nil
+}
+
+// resolveAccessToken retains the request-scoped origin metadata needed by
+// direct HTTP paths such as MCP. Callers that only need the token value should
+// use AccessToken.
+func (ctx *RuntimeContext) resolveAccessToken() (*credential.TokenResult, error) {
 	result, err := ctx.Factory.Credential.ResolveToken(ctx.ctx, credential.NewTokenSpec(ctx.As(), ctx.Config.AppID))
 	if err != nil {
 		// ResolveToken classifies its own failures (config/api); pass those
 		// through so a typed lower-layer error is not flattened to token_invalid.
 		if _, ok := errs.ProblemOf(err); ok {
-			return "", err
+			return nil, err
 		}
-		return "", errs.NewAuthenticationError(errs.SubtypeTokenInvalid, "failed to get access token: %s", err).WithCause(err)
+		return nil, errs.NewAuthenticationError(errs.SubtypeTokenInvalid, "failed to get access token: %s", err).WithCause(err)
 	}
 	if result == nil || result.Token == "" {
-		return "", errs.NewAuthenticationError(errs.SubtypeTokenMissing, "no access token available for %s", ctx.As())
+		return nil, errs.NewAuthenticationError(errs.SubtypeTokenMissing, "no access token available for %s", ctx.As())
 	}
-	return result.Token, nil
+	return result, nil
 }
 
 // LarkSDK returns the eagerly-initialized Lark SDK client.
@@ -438,6 +473,7 @@ func (ctx *RuntimeContext) StreamPages(method, url string, params map[string]int
 	}, opts)
 }
 
+// buildRequest converts shortcut inputs into the raw request consumed by APIClient.
 func (ctx *RuntimeContext) buildRequest(method, url string, params map[string]interface{}, data interface{}) client.RawApiRequest {
 	req := client.RawApiRequest{
 		Method: method,
@@ -452,6 +488,7 @@ func (ctx *RuntimeContext) buildRequest(method, url string, params map[string]in
 	return req
 }
 
+// callRaw executes a shortcut request and returns the unprojected API response.
 func (ctx *RuntimeContext) callRaw(method, url string, params map[string]interface{}, data interface{}) (interface{}, error) {
 	ac, err := ctx.getAPIClient()
 	if err != nil {
@@ -473,12 +510,16 @@ func (ctx *RuntimeContext) DoAPI(req *larkcore.ApiReq, opts ...larkcore.RequestO
 
 // DoAPIWithContext executes a raw Lark SDK request using callCtx for request
 // cancellation and deadlines while preserving the shortcut's resolved identity.
+// A nil callCtx falls back to the RuntimeContext's command-wide context.
 func (ctx *RuntimeContext) DoAPIWithContext(callCtx context.Context, req *larkcore.ApiReq, opts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
+	if callCtx == nil {
+		callCtx = ctx.ctx
+	}
 	ac, err := ctx.getAPIClient()
 	if err != nil {
 		return nil, err
 	}
-	if optFn := cmdutil.ShortcutHeaderOpts(ctx.ctx); optFn != nil {
+	if optFn := cmdutil.ShortcutHeaderOpts(callCtx); optFn != nil {
 		opts = append(opts, optFn)
 	}
 	return ac.DoSDKRequest(callCtx, req, ctx.As(), opts...)
@@ -699,6 +740,7 @@ func (ctx *RuntimeContext) ValidatePath(path string) error {
 
 // ── Output helpers ──
 
+// newEmitter creates an output emitter configured for the active runtime.
 func (ctx *RuntimeContext) newEmitter() *output.Emitter {
 	streams := ctx.IO()
 	return output.NewEmitter(output.EmitterConfig{
@@ -711,6 +753,7 @@ func (ctx *RuntimeContext) newEmitter() *output.Emitter {
 	})
 }
 
+// handleEmitterError records output failures without corrupting the command data stream.
 func (ctx *RuntimeContext) handleEmitterError(err error) {
 	if err == nil {
 		return
@@ -729,6 +772,7 @@ func (ctx *RuntimeContext) OutputError() error {
 	return ctx.outputErr
 }
 
+// wrapLegacyPrettyRenderer adapts a writer-only renderer to the current output contract.
 func wrapLegacyPrettyRenderer(prettyFn func(w io.Writer)) output.PrettyRenderer {
 	if prettyFn == nil {
 		return nil
@@ -860,12 +904,14 @@ func (s Shortcut) Mount(parent *cobra.Command, f *cmdutil.Factory) {
 	s.MountWithContext(context.Background(), parent, f)
 }
 
+// MountWithContext registers a shortcut while preserving the caller-provided context.
 func (s Shortcut) MountWithContext(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
 	if s.Execute != nil {
 		s.mountDeclarative(ctx, parent, f)
 	}
 }
 
+// mountDeclarative builds and registers the Cobra command described by a Shortcut.
 func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
 	shortcut := s
 	if len(shortcut.AuthTypes) == 0 {
@@ -1008,6 +1054,7 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 	return rctx.outputErr
 }
 
+// resolveShortcutIdentity selects the effective identity for a shortcut invocation.
 func resolveShortcutIdentity(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) (core.Identity, error) {
 	// Step 1: determine identity (--as > default-as > auto-detect).
 	asFlag, _ := cmd.Flags().GetString("as")
@@ -1024,6 +1071,7 @@ func resolveShortcutIdentity(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut
 	return as, nil
 }
 
+// checkShortcutScopes verifies that the selected identity satisfies the shortcut scope contract.
 func checkShortcutScopes(f *cmdutil.Factory, ctx context.Context, as core.Identity, config *core.CliConfig, scopes []string) error {
 	if len(scopes) == 0 {
 		return nil
@@ -1041,6 +1089,7 @@ func checkShortcutScopes(f *cmdutil.Factory, ctx context.Context, as core.Identi
 		WithMissingScopes(missing...)
 }
 
+// newRuntimeContext assembles the dependencies and resolved identity for one shortcut execution.
 func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, config *core.CliConfig, as core.Identity, botOnly bool) (*RuntimeContext, error) {
 	ctx := cmd.Context()
 	ctx = cmdutil.ContextWithShortcut(ctx, s.Service+":"+s.Command, uuid.New().String())
@@ -1182,6 +1231,7 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 	return nil
 }
 
+// validateEnumFlags rejects shortcut flag values outside their declared enum choices.
 func validateEnumFlags(rctx *RuntimeContext, flags []Flag) error {
 	for _, fl := range flags {
 		if len(fl.Enum) == 0 {
@@ -1206,6 +1256,7 @@ func validateEnumFlags(rctx *RuntimeContext, flags []Flag) error {
 	return nil
 }
 
+// handleShortcutDryRun renders a shortcut plan without sending its API requests.
 func handleShortcutDryRun(f *cmdutil.Factory, rctx *RuntimeContext, s *Shortcut) error {
 	if s.DryRun == nil {
 		return ValidationErrorf("--dry-run is not supported for %s %s", s.Service, s.Command).
@@ -1239,6 +1290,7 @@ func rejectPositionalArgs() cobra.PositionalArgs {
 	}
 }
 
+// registerShortcutFlags adds the shortcut's declared flags to its Cobra command.
 func registerShortcutFlags(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) {
 	registerShortcutFlagsWithContext(context.Background(), cmd, f, s)
 }
@@ -1312,6 +1364,7 @@ func applyJSONShorthand(cmd *cobra.Command, s *Shortcut) {
 	}
 }
 
+// registerShortcutFlagsWithContext registers shortcut flags using the supplied command context.
 func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) {
 	for _, fl := range s.Flags {
 		desc := fl.Desc

@@ -51,7 +51,11 @@ lark-cli base +record-batch-create --base-token <base_token> --table-id <table_i
 ## 坑点
 
 - 每个 `create_records` 元素都是独立的记录字段对象，只提交该记录需要写入的字段。
-- 单次最多 200 条，超出需分批写入。
+- 单次最多 200 条；`1254104` 表示超过单批上限，拆成多个批次。
+- `1254045` 表示字段不存在，重新 `+field-list` 后使用真实字段名或 `field_id`。
+- `1254015` 表示 CellValue 类型不匹配，按真实 Field schema 和 CellValue 规范修正。
+- 返回 `ignored_fields` / `READONLY` 时，从普通 Record 写入中移除 Formula、Lookup、系统字段和自动编号等只读字段。
+- 同一 Table 连续批量写入使用串行执行；`1254291` 表示并发写冲突，短暂等待后重试当前批次。
 - `select` 字段只支持写入字段中已有的选项；构造 CellValue 前先用 `+field-list` 或 `+field-search-options` 确认目标选项存在。
 
 ## 参考

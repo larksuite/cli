@@ -15,17 +15,18 @@ import (
 )
 
 const (
-	baseURLResolveHintGeneric = "Provide a /base/, /wiki/, or /record/ URL, or use base +title-resolve --title if you only know the Base title."
+	baseURLResolveHintGeneric = "Provide a /base/, /app/, /wiki/, or /record/ URL, or use base +title-resolve --title if you only know the Base title."
 	baseTitleResolveHint      = "choose one candidate, then use +base-block-list to list tables, dashboards, workflows, and other Base blocks"
 	nextStepBaseBlockList     = "use +base-block-list to list tables, dashboards, workflows, and other Base blocks"
 	nextStepRecordList        = "use +record-list to list records in the resolved table"
+	nextStepBaseApp           = "use +app-get with app_token; there is no +app-list, so list apps in a workspace with +workspace-entity-list --type baseapp"
 	titleResolveQueryMaxLen   = 30
 )
 
 var BaseURLResolve = common.Shortcut{
 	Service:     "base",
 	Command:     "+url-resolve",
-	Description: "Resolve a Base-related URL into Base coordinates",
+	Description: "Resolve a Base or BaseApp URL into usable coordinates",
 	Risk:        "read",
 	Scopes:      []string{},
 	ConditionalScopes: []string{
@@ -37,10 +38,11 @@ var BaseURLResolve = common.Shortcut{
 	AuthTypes: authTypes(),
 	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "url", Aliases: []string{"query"}, Desc: "Base/Wiki/record-share URL to resolve"},
+		{Name: "url", Aliases: []string{"query"}, Desc: "Base/BaseApp/Wiki/record-share URL to resolve"},
 	},
 	Tips: []string{
-		`Example: lark-cli base +url-resolve --url "https://example.larkoffice.com/base/<base_token>?table=<block_id>&view=<view_id>"`,
+		`Example: lark-cli base +url-resolve --url "https://example.larkoffice.com/base/<base_token>?table=<table_id>&view=<view_id>"`,
+		`BaseApp example: lark-cli base +url-resolve --url "https://example.larkoffice.com/app/<app_token>?pre_pathname=/base/workspace/<workspace_token>&pageId=<page_id>"`,
 		"Only URLs are accepted. For Base titles or keywords, use +title-resolve --title.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -164,6 +166,9 @@ func executeBaseURLResolve(runtime *common.RuntimeContext) error {
 	}
 
 	switch classifyBaseURL(parsed) {
+	case "baseapp_url":
+		runtime.OutFormat(resolveBaseAppURL(parsed), nil, nil)
+		return nil
 	case "base_url":
 		out := resolveBaseURL(parsed)
 		enrichBaseResolveHint(runtime, out, resolveBaseURLSelection(parsed))
@@ -228,6 +233,8 @@ func parseResolveURL(raw string) (*url.URL, error) {
 func classifyBaseURL(u *url.URL) string {
 	path := normalizeResolvePath(u.Path)
 	switch {
+	case pathSegmentExists(path, "/app/"):
+		return "baseapp_url"
 	case pathSegmentExists(path, "/base/workspace/"):
 		return "workspace_url"
 	case pathSegmentExists(path, "/base/add/"):
@@ -247,6 +254,25 @@ func classifyBaseURL(u *url.URL) string {
 	default:
 		return ""
 	}
+}
+
+func resolveBaseAppURL(u *url.URL) map[string]interface{} {
+	query := u.Query()
+	out := map[string]interface{}{
+		"input_type":    "baseapp_url",
+		"resource_type": "baseapp",
+		"app_token":     firstPathSegmentAfter(u.Path, "/app/"),
+		"hint": map[string]interface{}{
+			"next_step": nextStepBaseApp,
+		},
+	}
+	if pageID := strings.TrimSpace(query.Get("pageId")); pageID != "" {
+		out["page_id"] = pageID
+	}
+	if workspaceToken := firstPathSegmentAfter(query.Get("pre_pathname"), "/base/workspace/"); workspaceToken != "" {
+		out["workspace_token"] = workspaceToken
+	}
+	return out
 }
 
 func resolveBaseURL(u *url.URL) map[string]interface{} {
@@ -546,7 +572,7 @@ func resolvedRecordFieldKey(fieldIDs, fieldNames []interface{}, index int) strin
 }
 
 func recordShareNextStep(baseToken, tableID, recordID string) string {
-	return fmt.Sprintf(`use +record-upsert --base-token %s --table-id %s --record-id %s --json '{"<field_id>":"<new_value>"}' to update this record`, baseToken, tableID, recordID)
+	return fmt.Sprintf(`use +record-batch-update --base-token %s --table-id %s --json '{"update_records":{"%s":{"<field_id>":<CellValue>}}}' to update this record`, baseToken, tableID, recordID)
 }
 
 func resolveHint(tableID string, extra map[string]interface{}) map[string]interface{} {

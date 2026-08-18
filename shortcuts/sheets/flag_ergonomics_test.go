@@ -4,6 +4,7 @@
 package sheets
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -472,6 +473,30 @@ func TestShortcuts_IntuitiveFlagAliases(t *testing.T) {
 		}
 	})
 
+	t.Run("cells-set --values parses as --cells", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+cells-set")
+		stdout, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--sheet-name", "s",
+			"--range", "C1",
+			// The gspread payload verbatim: a plain values matrix, not cell
+			// objects. It rides through unchanged because the alias fixes the
+			// name and normalizeCellsFlagValue lifts the bare scalar — the two
+			// halves have to hold together for the silent tier to be correct.
+			"--values", `[["工作内容"]]`,
+			"--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("--values should alias to --cells and pass, got: %v", err)
+		}
+		input := decodeToolInput(t, decodeDryRunFirstCall(t, stdout), "set_cell_range")
+		cells, _ := json.Marshal(input["cells"])
+		if string(cells) != `[[{"value":"工作内容"}]]` {
+			t.Errorf("cells = %s, want the lifted [[{\"value\":\"工作内容\"}]]", cells)
+		}
+	})
+
 	t.Run("alias never shadows a registered flag", func(t *testing.T) {
 		t.Parallel()
 		c := &cobra.Command{Use: "+csv-put"}
@@ -538,12 +563,6 @@ func TestShortcuts_IntuitiveFlagHints(t *testing.T) {
 			args:     []string{"--url", testURL, "--sheets", "{}", "--start-cell", "B2"},
 			wrong:    "--start-cell",
 			wantHint: []string{`"start_cell"`, "+csv-put"},
-		},
-		{
-			command:  "+cells-set",
-			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--values", `[["x"]]`},
-			wrong:    "--values",
-			wantHint: []string{"--cells", "+workbook-create"},
 		},
 		{
 			command:    "+dim-freeze",

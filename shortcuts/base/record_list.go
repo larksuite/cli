@@ -27,12 +27,17 @@ var BaseRecordList = common.Shortcut{
 		recordFilterFlag(),
 		recordSortFlag(),
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
-		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "100", Desc: "pagination size, range 1-200"},
+		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "100", Desc: "maximum records to return; range 1-200, or 1-2000 for ndjson; omitted limit uses 2000 for ndjson"},
 		recordReadFormatFlag(),
+		recordOutputFlag(),
+		recordMinimalStdoutFlag(),
+		recordJQRecordsFlag(),
+		recordOverwriteFlag(),
 	},
 	Tips: []string{
 		"Example: lark-cli base +record-list --base-token <base_token> --table-id <table_id> --limit 50",
 		"Example with projection: lark-cli base +record-list --base-token <base_token> --table-id <table_id> --field-id Name --field-id Status --limit 50",
+		"Example for analysis: lark-cli base +record-list --base-token <base_token> --table-id <table_id> --field-id Name --field-id Status --format ndjson --output ./records.ndjson",
 		`Text equality filter: --filter-json '{"logic":"and","conditions":[["Title","==","Launch plan"]]}'`,
 		`Text contains/like filter: --filter-json '{"logic":"and","conditions":[["Title","intersects","urgent"]]}'`,
 		`Number equality filter: --filter-json '{"logic":"and","conditions":[["Score","==",95]]}'`,
@@ -40,14 +45,18 @@ var BaseRecordList = common.Shortcut{
 		`Option intersection filter: --filter-json '{"logic":"and","conditions":[["Tags","intersects",["P0","Blocked"]]]}'`,
 		`Sort priority follows --sort-json array order: --sort-json '[{"field":"Updated","desc":true},{"field":"Title","desc":false}]'`,
 		formatRecordQueryPriorityTip(),
-		"Default output is markdown; pass --format json to get the raw JSON envelope.",
+		recordAnalysisOutputTip,
 		"Use --field-id repeatedly to keep output small and aligned with the task.",
 	},
+	Normalize: common.ChainNormalizers(normalizeRecordReadOutput, normalizeRecordNDJSONLimit),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if err := validateRecordReadFormat(runtime); err != nil {
 			return err
 		}
-		if _, err := common.ValidatePageSizeTyped(runtime, "limit", 100, 1, 200); err != nil {
+		if err := validateRecordExportFlags(runtime); err != nil {
+			return err
+		}
+		if err := validateRecordReadLimit(runtime, 100); err != nil {
 			return err
 		}
 		if _, err := recordProjectionFields(runtime); err != nil {
@@ -74,7 +83,7 @@ func recordReadFormatFlag() common.Flag {
 	return common.Flag{
 		Name:    "format",
 		Default: "markdown",
-		Enum:    []string{"markdown", "json"},
-		Desc:    "output format: markdown (default) | json",
+		Enum:    []string{"markdown", "json", "ndjson"},
+		Desc:    "output format: markdown (default display) | json raw matrix (current inline behavior may be deprecated and replaced by ndjson-like artifact output) | ndjson artifact (records file plus manifest summary and column schema/stats; preferred with file I/O for analysis)",
 	}
 }

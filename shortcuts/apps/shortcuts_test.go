@@ -13,7 +13,7 @@ import (
 // 6 基础 + 1 init + 3 publish + 1 env-pull
 //   - 6 observability（log-list/log-get/trace-list/trace-get/metric-list/analytics-list）
 //   - 3 env（list/set/delete）
-//   - 16 db（table-list/table-schema/sql/dev-init/data-import/data-export/changelog-list/
+//   - 23 db（table-list/table-schema/sql/dev-init/data-import/data-export/sync create/list/get/enable/disable/update/delete/changelog-list/
 //     audit-status/audit-enable/audit-disable/audit-list/
 //     env-diff/env-migrate/recovery-diff/recovery-apply/quota-get）
 //   - 7 file（list/get/sign/download/upload/delete/quota-get）
@@ -24,11 +24,13 @@ import (
 //   - 3 plugin（install/uninstall/list）
 //   - 6 automation（list/get/create/update/enable/disable）
 //   - 9 role（role CRUD + role-member list/add/remove + role-match-list）
-//   - 6 creative app member/permission settings = 88。
-func TestAppsShortcuts_Returns88(t *testing.T) {
+//   - 6 creative app member/permission settings
+//   - 7 db-sync（create/list/get/enable/disable/update/delete）
+//   - 1 user-id-convert = 96。
+func TestAppsShortcuts_Returns96(t *testing.T) {
 	got := Shortcuts()
-	if len(got) != 88 {
-		t.Fatalf("Shortcuts() returned %d entries, want 88", len(got))
+	if len(got) != 96 {
+		t.Fatalf("Shortcuts() returned %d entries, want 96", len(got))
 	}
 }
 

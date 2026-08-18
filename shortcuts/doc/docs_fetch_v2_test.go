@@ -572,20 +572,133 @@ func TestBuildFetchBodyIncludesFetchExtraParamByDefault(t *testing.T) {
 	if got["return_html5_block_data"] != true {
 		t.Fatalf("return_html5_block_data = %#v, want true in %#v", got["return_html5_block_data"], got)
 	}
+	if got["include_comments"] != true {
+		t.Fatalf("include_comments = %#v, want true in %#v", got["include_comments"], got)
+	}
 	if _, ok := got["reference_map_mode"]; ok {
 		t.Fatalf("extra_param should not use legacy reference_map_mode: %#v", got)
 	}
-	if len(got) != 2 {
-		t.Fatalf("extra_param should only contain fetch reference_map and html5 data toggles: %#v", got)
+	if len(got) != 3 {
+		t.Fatalf("XML extra_param should contain only the two export toggles and include_comments: %#v", got)
 	}
 }
 
-func TestDocsFetchV2ReferenceMapFlagIsNotAvailable(t *testing.T) {
+func TestDocsScriptFetchDoesNotEnableComments(t *testing.T) {
+	t.Parallel()
+
+	body := docsScriptFetchBody(newFetchBodyTestRuntime(context.Background()))
+	var extra map[string]bool
+	if err := json.Unmarshal([]byte(body.ExtraParam), &extra); err != nil {
+		t.Fatalf("decode docs +script extra_param: %v", err)
+	}
+	if _, ok := extra["include_comments"]; ok {
+		t.Fatalf("docs +script must keep its existing comment-free request: %#v", extra)
+	}
+}
+
+func TestBuildFetchBodyIncludesCommentsForEveryDocumentFormat(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name      string
+		docFormat string
+		scope     string
+	}{
+		{name: "XML full", docFormat: "xml", scope: "full"},
+		{name: "XML partial", docFormat: "xml", scope: "keyword"},
+		{name: "XML outline", docFormat: "xml", scope: "outline"},
+		{name: "Markdown full", docFormat: "markdown", scope: "full"},
+		{name: "IM Markdown partial", docFormat: "im-markdown", scope: "keyword"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			runtime := newFetchBodyTestRuntime(context.Background())
+			mustSetFetchFlag(t, runtime, "doc-format", tt.docFormat)
+			mustSetFetchFlag(t, runtime, "scope", tt.scope)
+			if tt.scope == "keyword" {
+				mustSetFetchFlag(t, runtime, "keyword", "commented")
+			}
+			body := buildFetchBody(runtime)
+			var got map[string]bool
+			if err := json.Unmarshal([]byte(body["extra_param"].(string)), &got); err != nil {
+				t.Fatalf("decode extra_param: %v", err)
+			}
+			if got["include_comments"] != true {
+				t.Fatalf("include_comments=%v, want true in %#v", got["include_comments"], got)
+			}
+		})
+	}
+}
+
+func TestDocsCommandsHideOutputFormatCompatibilityFlag(t *testing.T) {
+	t.Parallel()
+
+	for _, shortcut := range []common.Shortcut{DocsFetch, DocsCreate, DocsUpdate} {
+		t.Run(shortcut.Command, func(t *testing.T) {
+			t.Parallel()
+			f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-hidden-format"))
+			parent := &cobra.Command{Use: "docs"}
+			shortcut.Mount(parent, f)
+			cmd, _, err := parent.Find([]string{shortcut.Command})
+			if err != nil {
+				t.Fatalf("find %s: %v", shortcut.Command, err)
+			}
+			formatFlag := cmd.Flags().Lookup("format")
+			if formatFlag == nil {
+				t.Fatal("hidden compatibility flag --format is not registered")
+			}
+			if !formatFlag.Hidden {
+				t.Fatal("--format must be hidden from help")
+			}
+			if got := formatFlag.DefValue; got != "json" {
+				t.Fatalf("--format default = %q, want json", got)
+			}
+			jsonFlag := cmd.Flags().Lookup("json")
+			if jsonFlag == nil {
+				t.Fatal("hidden compatibility flag --json is not registered")
+			}
+			if !jsonFlag.Hidden {
+				t.Fatal("--json must be hidden because JSON is already the default")
+			}
+			if err := cmd.ParseFlags([]string{"--format", "pretty"}); err != nil {
+				t.Fatalf("legacy --format must remain parse-compatible: %v", err)
+			}
+			if err := cmd.ParseFlags([]string{"--json"}); err != nil {
+				t.Fatalf("legacy --json must remain parse-compatible: %v", err)
+			}
+		})
+	}
+}
+
+func TestDocsFetchHasNoCommentSpecificConditionalScope(t *testing.T) {
+	t.Parallel()
+	if len(DocsFetch.ConditionalScopes) != 0 {
+		t.Fatalf("ConditionalScopes=%v, want none", DocsFetch.ConditionalScopes)
+	}
+}
+
+func TestValidateFetchV2AcceptsXMLPrettyForUserAndBot(t *testing.T) {
+	t.Parallel()
+
+	for _, identity := range []core.Identity{core.AsUser, core.AsBot} {
+		t.Run(string(identity), func(t *testing.T) {
+			t.Parallel()
+			base := newFetchBodyTestRuntime(context.Background())
+			runtime := common.TestNewRuntimeContextWithIdentity(base.Cmd, nil, identity)
+			runtime.Format = "pretty"
+			if err := validateFetchV2(context.Background(), runtime); err != nil {
+				t.Fatalf("validateFetchV2() err=%v", err)
+			}
+		})
+	}
+}
+
+func TestDocsFetchV2RemovedFlagsAreNotAvailable(t *testing.T) {
 	t.Parallel()
 
 	for _, flag := range v2FetchFlags() {
-		if flag.Name == "reference-map" {
-			t.Fatal("fetch should not expose reference-map flag")
+		if flag.Name == "reference-map" || flag.Name == "comments" {
+			t.Fatalf("fetch should not expose removed flag --%s", flag.Name)
 		}
 	}
 }
@@ -680,6 +793,76 @@ func TestDocsFetchIMMarkdownIgnoresHTML5BlockInsideCodeFence(t *testing.T) {
 	}
 	if _, ok := doc["reference_map"]; ok {
 		t.Fatalf("fenced html5-block should not create reference_map side effects: %#v", doc["reference_map"])
+	}
+}
+
+func TestDocsFetchXMLOutputContract(t *testing.T) {
+	const (
+		content     = `<p comment-refs="c1">body</p>`
+		commentData = `<comment comment-id="1" block-id="b1"><msg user="Reviewer">looks good</msg></comment>`
+	)
+
+	for _, outputFormat := range []string{"json", "pretty"} {
+		t.Run(outputFormat, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			docToken := "doxcnFetchComments" + outputFormat
+			f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-fetch-comments-"+outputFormat))
+			stub := registerDocsAIStub(reg, "POST", "/open-apis/docs_ai/v1/documents/"+docToken+"/fetch", map[string]interface{}{
+				"document": map[string]interface{}{
+					"document_id": docToken,
+					"revision_id": float64(1),
+					"content":     content,
+					"reference_map": map[string]interface{}{
+						"comments": map[string]interface{}{
+							"c1": map[string]interface{}{"data": commentData},
+						},
+					},
+				},
+			})
+
+			err := mountAndRunDocs(t, DocsFetch, []string{
+				"+fetch",
+				"--doc", docToken,
+				"--doc-format", "xml",
+				"--format", outputFormat,
+				"--as", "bot",
+			}, f, stdout)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			body := decodeRequestBody(t, stub.CapturedBody)
+			var extra map[string]bool
+			if err := json.Unmarshal([]byte(body["extra_param"].(string)), &extra); err != nil {
+				t.Fatalf("decode extra_param: %v", err)
+			}
+			if extra["include_comments"] != true {
+				t.Fatalf("request extra_param = %#v, want include_comments=true", extra)
+			}
+
+			if outputFormat == "pretty" {
+				if got := stdout.String(); got != content+"\n" {
+					t.Fatalf("pretty stdout = %q, want body only", got)
+				}
+				return
+			}
+
+			var envelope map[string]interface{}
+			if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+				t.Fatalf("decode JSON output: %v\nraw=%s", err, stdout.String())
+			}
+			data, _ := envelope["data"].(map[string]interface{})
+			document, _ := data["document"].(map[string]interface{})
+			if got := document["content"]; got != content {
+				t.Fatalf("document.content = %#v, want %q", got, content)
+			}
+			referenceMap, _ := document["reference_map"].(map[string]interface{})
+			comments, _ := referenceMap["comments"].(map[string]interface{})
+			comment, _ := comments["c1"].(map[string]interface{})
+			if got := comment["data"]; got != commentData {
+				t.Fatalf("comments.c1.data = %#v, want %q", got, commentData)
+			}
+		})
 	}
 }
 
@@ -951,6 +1134,7 @@ func TestDocsFetchRejectsLegacyFlags(t *testing.T) {
 
 func newFetchBodyTestRuntime(ctx context.Context) *common.RuntimeContext {
 	cmd := &cobra.Command{Use: "+fetch"}
+	cmd.Flags().String("format", "json", "")
 	cmd.Flags().String("doc", "doxcnFetchDryRun", "")
 	cmd.Flags().String("doc-format", fetchDefault("doc-format"), "")
 	cmd.Flags().String("detail", fetchDefault("detail"), "")

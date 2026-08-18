@@ -198,7 +198,9 @@ func TestForkMainWiresEmbeddedSkillsWithoutOverlay(t *testing.T) {
 
 	docsHelp := run(t, cli, "docs", "--help")
 	if docsHelp.exit != 0 ||
-		!strings.Contains(docsHelp.stdout, "lark-cli skills read lark-doc") {
+		!strings.Contains(docsHelp.stdout,
+			"Domain guide (concepts, command choice, conventions): lark-cli skills read lark-doc") ||
+		strings.Contains(docsHelp.stdout, "Domain skills (concepts, command choice, conventions):") {
 		t.Fatalf("docs help canonical skill pointer missing: exit=%d stdout=%s stderr=%s",
 			docsHelp.exit, docsHelp.stdout, docsHelp.stderr)
 	}
@@ -241,6 +243,48 @@ func TestForkMainWiresEmbeddedSkillsWithoutOverlay(t *testing.T) {
 					tc.shortcut, pointer, rules.exit, rules.stdout, rules.stderr)
 			}
 		}
+	}
+}
+
+func TestForkDomainHelpDisplaysConfiguredSkills(t *testing.T) {
+	affordanceSrc := strings.Replace(
+		customerAffordanceDocs,
+		"> skill: lark-doc\n",
+		"> skill: lark-doc\n\n## Skills\n- lark-a\n- lark-missing\n",
+		1,
+	)
+	bin := buildForkWithAffordance(t, "domain-skills", noopPlugin, affordanceSrc)
+
+	help := run(t, bin, "docs", "--help")
+	if help.exit != 0 {
+		t.Fatalf("docs help: exit=%d stdout=%s stderr=%s", help.exit, help.stdout, help.stderr)
+	}
+	if !strings.Contains(help.stdout, "Domain skills (concepts, command choice, conventions):") {
+		t.Fatalf("configured domain skills did not render as a list:\n%s", help.stdout)
+	}
+	docAt := strings.Index(help.stdout, "lark-cli skills read lark-doc")
+	aAt := strings.Index(help.stdout, "lark-cli skills read lark-a")
+	if docAt < 0 || aAt < 0 || docAt >= aAt {
+		t.Fatalf("domain skill pointers missing or out of order (doc=%d a=%d):\n%s", docAt, aAt, help.stdout)
+	}
+	if strings.Contains(help.stdout, "lark-missing") {
+		t.Fatalf("unreadable domain skill pointer was not filtered:\n%s", help.stdout)
+	}
+	for _, skill := range []string{"lark-doc", "lark-a"} {
+		read := run(t, bin, "skills", "read", skill)
+		if read.exit != 0 || !strings.Contains(read.stdout, "name: "+skill) {
+			t.Errorf("rendered domain skill %q is not readable: exit=%d stdout=%s stderr=%s",
+				skill, read.exit, read.stdout, read.stderr)
+		}
+	}
+
+	commandHelp := run(t, bin, "docs", "+create", "--help")
+	if commandHelp.exit != 0 {
+		t.Fatalf("docs +create help: exit=%d stdout=%s stderr=%s",
+			commandHelp.exit, commandHelp.stdout, commandHelp.stderr)
+	}
+	if strings.Contains(commandHelp.stdout, "lark-cli skills read lark-a") {
+		t.Fatalf("domain-only skill leaked into command help:\n%s", commandHelp.stdout)
 	}
 }
 

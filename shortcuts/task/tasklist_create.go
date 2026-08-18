@@ -123,10 +123,12 @@ var CreateTasklist = common.Shortcut{
 						guid, _ := t["guid"].(string)
 						urlVal, _ := t["url"].(string)
 						urlVal = truncateTaskURL(urlVal)
-						createdTasks = append(createdTasks, map[string]interface{}{
+						item := map[string]interface{}{
 							"guid": guid,
 							"url":  urlVal,
-						})
+						}
+						projectTaskFields(item, t, standardTaskOutputFields...)
+						createdTasks = append(createdTasks, item)
 					}
 				}(i, taskDef)
 			}

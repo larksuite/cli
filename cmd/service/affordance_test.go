@@ -323,6 +323,71 @@ func TestDomainSkillReferenceUsesDeclaredAffordanceName(t *testing.T) {
 	}
 }
 
+func TestPrepareDomainHelpDisplaysConfiguredSkills(t *testing.T) {
+	affordance.SetSource(fstest.MapFS{
+		"docs.md": {Data: []byte("# docs\n> skill: lark-doc\n\n## Skills\n- lark-drive\n- lark-doc\n- lark-missing\n")},
+	})
+	t.Cleanup(func() { affordance.SetSource(nil) })
+	content := fstest.MapFS{
+		"lark-doc/SKILL.md":   {Data: []byte("# docs")},
+		"lark-drive/SKILL.md": {Data: []byte("# drive")},
+	}
+
+	root := &cobra.Command{Use: "lark-cli"}
+	domain := &cobra.Command{Use: "docs", Short: "Docs"}
+	cmdmeta.SetSource(domain, cmdmeta.SourceService, false)
+	cmdmeta.SetDomain(domain, "docs")
+	domain.AddCommand(&cobra.Command{Use: "documents", Run: func(*cobra.Command, []string) {}})
+	root.AddCommand(domain)
+
+	if !PrepareDomainHelp(domain, content) {
+		t.Fatal("PrepareDomainHelp returned false")
+	}
+	if !strings.Contains(domain.Long, "Domain skills (concepts, command choice, conventions):") {
+		t.Fatalf("multiple configured skills did not use the domain list form:\n%s", domain.Long)
+	}
+	docAt := strings.Index(domain.Long, "skills read lark-doc")
+	driveAt := strings.Index(domain.Long, "skills read lark-drive")
+	if docAt < 0 || driveAt < 0 || docAt >= driveAt {
+		t.Fatalf("configured domain skills are missing or out of order (doc=%d drive=%d):\n%s", docAt, driveAt, domain.Long)
+	}
+	if strings.Contains(domain.Long, "lark-missing") {
+		t.Fatalf("unresolvable domain skill must be omitted:\n%s", domain.Long)
+	}
+
+	remappedContent := fstest.MapFS{
+		"acme-docx/SKILL.md":  {Data: []byte("# docs")},
+		"acme-drive/SKILL.md": {Data: []byte("# drive")},
+	}
+	resolver, err := skillref.New(remappedContent, []skillref.Mapping{
+		{From: skillref.Ref{Skill: "lark-doc"}, To: skillref.Ref{Skill: "acme-docx"}},
+		{From: skillref.Ref{Skill: "lark-drive"}, To: skillref.Ref{Skill: "acme-drive"}},
+	})
+	if err != nil {
+		t.Fatalf("skillref.New(): %v", err)
+	}
+	remapped := &cobra.Command{Use: "docs", Short: "Docs"}
+	cmdmeta.SetSource(remapped, cmdmeta.SourceService, false)
+	cmdmeta.SetDomain(remapped, "docs")
+	remapped.AddCommand(&cobra.Command{Use: "documents", Run: func(*cobra.Command, []string) {}})
+	remappedRoot := &cobra.Command{Use: "lark-cli"}
+	remappedRoot.AddCommand(remapped)
+
+	if !PrepareDomainHelpWithReferences(remapped, remappedContent, resolver) {
+		t.Fatal("PrepareDomainHelpWithReferences returned false")
+	}
+	for _, want := range []string{"skills read acme-docx", "skills read acme-drive"} {
+		if !strings.Contains(remapped.Long, want) {
+			t.Errorf("remapped domain help missing %q:\n%s", want, remapped.Long)
+		}
+	}
+	for _, canonical := range []string{"skills read lark-doc", "skills read lark-drive"} {
+		if strings.Contains(remapped.Long, canonical) {
+			t.Errorf("remapped domain help leaked canonical pointer %q:\n%s", canonical, remapped.Long)
+		}
+	}
+}
+
 // A shortcut that sets a hand-authored Long keeps it as the lead: the
 // affordance block is appended below, not clobbered, and re-rendering does not
 // double-append.
@@ -394,8 +459,11 @@ func TestPrepareDomainHelp_GatesGuidePointerOnFS(t *testing.T) {
 	if !PrepareDomainHelp(present, fstest.MapFS{"lark-event/SKILL.md": &fstest.MapFile{Data: []byte("x")}}) {
 		t.Fatal("PrepareDomainHelp returned false for a domain-tagged command")
 	}
-	if !strings.Contains(present.Long, "lark-cli skills read lark-event") {
-		t.Errorf("skill present should emit the domain-guide pointer; got:\n%s", present.Long)
+	const want = "Consume and manage real-time events\n\n" +
+		"Risk levels (read | write | high-risk-write) appear in each command's --help; high-risk-write requires --yes, only after the user confirms.\n\n" +
+		"Domain guide (concepts, command choice, conventions): lark-cli skills read lark-event"
+	if present.Long != want {
+		t.Errorf("single-skill domain help changed\n got: %q\nwant: %q", present.Long, want)
 	}
 
 	removed := domainCmd("Consume and manage real-time events", "")

@@ -18,10 +18,10 @@ import (
 )
 
 // PrepareDomainHelp appends navigational guidance (routing line, risk legend,
-// skill pointer) to a top-level Lark domain's description, returning false for
-// anything that is not such a domain. Built lazily at help time because
+// skill pointers) to a top-level Lark domain's description, returning false
+// for anything that is not such a domain. Built lazily at help time because
 // shortcuts attach after service registration. skillFS (nil-safe) gates the
-// skill pointer.
+// skill pointers.
 //
 // A hand-authored Long is preserved as the base (e.g. event's "Use 'event
 // consume <EventKey>'…"); service domains carry only a Short at this point, so
@@ -68,13 +68,11 @@ func PrepareDomainHelpWithReferences(cmd *cobra.Command, skillFS fs.FS, referenc
 		b.WriteString("\n\nPrefer a +-prefixed shortcut when one matches your task; otherwise use the raw API resource below.")
 	}
 	b.WriteString("\n\nRisk levels (read | write | high-risk-write) appear in each command's --help; high-risk-write requires --yes, only after the user confirms.")
-	canonicalSkill := "lark-" + cmd.Name()
-	if declared, ok := affordance.DomainSkill(cmdmeta.Domain(cmd)); ok {
-		canonicalSkill = declared
+	canonicalSkills := []string{"lark-" + cmd.Name()}
+	if declared, ok := affordance.DomainSkills(cmdmeta.Domain(cmd)); ok {
+		canonicalSkills = declared
 	}
-	if skill, ok := resolveSkillReference(canonicalSkill, skillFS, references); ok {
-		fmt.Fprintf(&b, "\n\nDomain guide (concepts, command choice, conventions): lark-cli skills read %s", skill)
-	}
+	writeDomainSkills(&b, canonicalSkills, skillFS, references)
 	cmd.Long = b.String()
 	return true
 }
@@ -279,15 +277,7 @@ func writeRisk(b *strings.Builder, cmd *cobra.Command) {
 // exist in skillFS. Nothing is written when skillFS is nil or no entry resolves,
 // so help never prints a `skills read` pointer that cannot be opened.
 func writeRelatedSkills(b *strings.Builder, skills []string, skillFS fs.FS, references *skillref.Resolver) {
-	if skillFS == nil || len(skills) == 0 {
-		return
-	}
-	var avail []string
-	for _, s := range skills {
-		if resolved, ok := resolveSkillReference(s, skillFS, references); ok {
-			avail = append(avail, resolved)
-		}
-	}
+	avail := availableSkillReferences(skills, skillFS, references)
 	if len(avail) == 0 {
 		return
 	}
@@ -295,6 +285,39 @@ func writeRelatedSkills(b *strings.Builder, skills []string, skillFS fs.FS, refe
 	for _, s := range avail {
 		fmt.Fprintf(b, "\n  lark-cli skills read %s", s)
 	}
+}
+
+// writeDomainSkills appends the domain-level skill navigation configured by
+// affordance. Preserve the established single-guide sentence for existing
+// domains; only domains that opt into multiple entries get the list form.
+func writeDomainSkills(b *strings.Builder, skills []string, skillFS fs.FS, references *skillref.Resolver) {
+	avail := availableSkillReferences(skills, skillFS, references)
+	switch len(avail) {
+	case 0:
+		return
+	case 1:
+		fmt.Fprintf(b, "\n\nDomain guide (concepts, command choice, conventions): lark-cli skills read %s", avail[0])
+	default:
+		b.WriteString("\n\nDomain skills (concepts, command choice, conventions):")
+		for _, skill := range avail {
+			fmt.Fprintf(b, "\n  lark-cli skills read %s", skill)
+		}
+	}
+}
+
+func availableSkillReferences(skills []string, skillFS fs.FS, references *skillref.Resolver) []string {
+	if skillFS == nil || len(skills) == 0 {
+		return nil
+	}
+	var avail []string
+	for _, skill := range skills {
+		resolved, ok := resolveSkillReference(skill, skillFS, references)
+		if !ok {
+			continue
+		}
+		avail = append(avail, resolved)
+	}
+	return avail
 }
 
 func resolveSkillReference(canonical string, skillFS fs.FS, references *skillref.Resolver) (string, bool) {

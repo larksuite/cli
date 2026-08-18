@@ -109,6 +109,9 @@ func TestCreateTasklist_UserMissingScopeProjectsInlineHint(t *testing.T) {
 func TestCreateTasklist_PartialFailure(t *testing.T) {
 	f, stdout, _, reg := taskShortcutTestFactory(t)
 	warmTenantToken(t, f, reg)
+	createdTask := fullTaskOutputFixture()
+	createdTask["guid"] = "task-ok"
+	createdTask["url"] = "https://example.feishu.cn/task-ok"
 
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -132,12 +135,7 @@ func TestCreateTasklist_PartialFailure(t *testing.T) {
 		BodyFilter: func(b []byte) bool { return bytes.Contains(b, []byte("ok-task")) },
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
-			"data": map[string]interface{}{
-				"task": map[string]interface{}{
-					"guid": "task-ok",
-					"url":  "https://example.feishu.cn/task-ok",
-				},
-			},
+			"data": map[string]interface{}{"task": createdTask},
 		},
 	})
 
@@ -189,6 +187,16 @@ func TestCreateTasklist_PartialFailure(t *testing.T) {
 	if strings.Contains(out, "permission_error") {
 		t.Errorf("legacy type \"permission_error\" leaked into output: %s", out)
 	}
+	var envelope map[string]interface{}
+	if decodeErr := json.Unmarshal(stdout.Bytes(), &envelope); decodeErr != nil {
+		t.Fatalf("decode output: %v\n%s", decodeErr, out)
+	}
+	resultData, _ := envelope["data"].(map[string]interface{})
+	createdTasks, _ := resultData["created_tasks"].([]interface{})
+	if len(createdTasks) != 1 {
+		t.Fatalf("created_tasks = %#v, want one item", resultData["created_tasks"])
+	}
+	assertStandardTaskFields(t, createdTasks[0].(map[string]interface{}))
 }
 
 func TestCreateTasklist_PartialFailurePrettyOutput(t *testing.T) {

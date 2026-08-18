@@ -347,6 +347,7 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	}
 	verifyCtx, cancel := context.WithTimeout(ctx, verifyTimeout)
 	defer cancel()
+	verifyCtx = core.WithCredentialSource(verifyCtx, core.CredentialSourceLocal)
 	if err := larkauth.VerifyUserToken(verifyCtx, sdk, token); err != nil {
 		return markVerifyFailed("server rejected token: "+err.Error(), "run: lark-cli auth login --help", recovery.TargetAuthLogin)
 	}
@@ -360,18 +361,18 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	return id
 }
 
-func resolveBotToken(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig) (string, error) {
+func resolveBotToken(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig) (*credential.TokenResult, error) {
 	if f == nil || f.Credential == nil {
-		return "", &credential.TokenUnavailableError{Type: credential.TokenTypeTAT}
+		return nil, &credential.TokenUnavailableError{Type: credential.TokenTypeTAT}
 	}
 	result, err := f.Credential.ResolveToken(ctx, credential.NewTokenSpec(core.AsBot, cfg.AppID))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if result == nil || result.Token == "" {
-		return "", &credential.TokenUnavailableError{Type: credential.TokenTypeTAT}
+		return nil, &credential.TokenUnavailableError{Type: credential.TokenTypeTAT}
 	}
-	return result.Token, nil
+	return result, nil
 }
 
 type botInfo struct {
@@ -379,11 +380,12 @@ type botInfo struct {
 	AppName string
 }
 
-func fetchBotInfo(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, token string) (*botInfo, error) {
+func fetchBotInfo(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, token *credential.TokenResult) (*botInfo, error) {
 	httpClient, err := f.HttpClient()
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP client: %w", err)
 	}
+	ctx = core.WithCredentialSource(ctx, token.Source)
 	ctx, cancel := context.WithTimeout(ctx, verifyTimeout)
 	defer cancel()
 	url := strings.TrimRight(core.ResolveEndpoints(cfg.Brand).Open, "/") + "/open-apis/bot/v3/info"
@@ -391,7 +393,7 @@ func fetchBotInfo(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+token.Token)
 
 	resp, err := httpClient.Do(req)
 	if err != nil {

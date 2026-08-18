@@ -29,7 +29,7 @@ func MCPEndpoint(brand core.LarkBrand) string {
 
 // CallMCPTool calls an MCP tool via JSON-RPC 2.0 and returns the parsed result.
 func CallMCPTool(runtime *RuntimeContext, toolName string, args map[string]interface{}) (map[string]interface{}, error) {
-	accessToken, err := runtime.AccessToken()
+	token, err := runtime.resolveAccessToken()
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +39,8 @@ func CallMCPTool(runtime *RuntimeContext, toolName string, args map[string]inter
 		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "failed to get HTTP client: %v", err).WithCause(err)
 	}
 
-	raw, err := DoMCPCall(runtime.Ctx(), httpClient, toolName, args, accessToken, MCPEndpoint(runtime.Config.Brand), runtime.IsBot())
+	requestCtx := core.WithCredentialSource(runtime.Ctx(), token.Source)
+	raw, err := DoMCPCall(requestCtx, httpClient, toolName, args, token.Token, MCPEndpoint(runtime.Config.Brand), runtime.IsBot())
 	if err != nil {
 		return nil, err
 	}

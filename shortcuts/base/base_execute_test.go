@@ -85,6 +85,17 @@ func runShortcutWithAuthTypes(t *testing.T, shortcut common.Shortcut, authTypes 
 	return parent.ExecuteContext(context.Background())
 }
 
+func registerEmptyAppBlockList(reg *httpmock.Registry, appToken, pageID string) {
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/base_apps/" + appToken + "/pages/" + pageID + "/blocks?page_size=100",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"items": []interface{}{}, "has_more": false},
+		},
+	})
+}
+
 func assertInvalidArgumentValidation(t *testing.T, err error, wantParam string, wantParams []string, messageContains string) {
 	t.Helper()
 	if err == nil {
@@ -113,6 +124,59 @@ func assertInvalidArgumentValidation(t *testing.T, err error, wantParam string, 
 	}
 	if messageContains != "" && !strings.Contains(err.Error(), messageContains) {
 		t.Fatalf("err=%v, want message containing %q", err, messageContains)
+	}
+}
+
+func TestBaseWorkspaceCreatePreservesResponseAndExposesReferences(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/workspaces",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"workspace_token": "ws_x",
+				"name":            "Growth",
+				"url":             "https://www.feishu.cn/base/workspace/ws_x",
+			},
+		},
+	})
+
+	if err := runShortcut(t, BaseWorkspaceCreate, []string{"+workspace-create", "--name", "Growth"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	data := decodeBaseEnvelope(t, stdout)
+	if data["created"] != true || data["workspace_token"] != "ws_x" || data["url"] != "https://www.feishu.cn/base/workspace/ws_x" {
+		t.Fatalf("unexpected result: %#v", data)
+	}
+	workspace, ok := data["workspace"].(map[string]interface{})
+	if !ok || common.GetString(workspace, "workspace_token") != "ws_x" || common.GetString(workspace, "url") != "https://www.feishu.cn/base/workspace/ws_x" {
+		t.Fatalf("workspace response not preserved: %#v", data["workspace"])
+	}
+}
+
+func TestBaseWorkspaceMoveInReturnsServerDataWithoutSyntheticSuccess(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/workspaces/ws_x/move_in",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"entity_token": "bas_x",
+			},
+		},
+	})
+	if err := runShortcut(t, BaseWorkspaceMoveIn, []string{"+workspace-move-in", "--workspace-token", "ws_x", "--entity-token", "bas_x"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+
+	data := decodeBaseEnvelope(t, stdout)
+	if data["entity_token"] != "bas_x" {
+		t.Fatalf("data=%#v, want server move-in data", data)
+	}
+	if _, exists := data["moved_in"]; exists {
+		t.Fatalf("data=%#v, must not contain synthetic moved_in", data)
 	}
 }
 
@@ -165,6 +229,347 @@ func TestBaseWorkspaceExecuteCreate(t *testing.T) {
 	if body["member_type"] != "openid" || body["member_id"] != "ou_testuser" || body["perm"] != "full_access" || body["type"] != "user" {
 		t.Fatalf("unexpected permission request body: %#v", body)
 	}
+}
+
+func TestBaseAppCreateIsAtomic(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/base_apps",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"app_token": "app_x", "workspace_token": "ws_x"},
+		},
+	})
+	if err := runShortcut(t, BaseAppCreate, []string{"+app-create", "--name", "Sales", "--workspace-token", "ws_x"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	data := decodeBaseEnvelope(t, stdout)
+	if data["created"] != true || data["workspace_token"] != "ws_x" {
+		t.Fatalf("unexpected result: %#v", data)
+	}
+	app, _ := data["app"].(map[string]interface{})
+	if common.GetString(app, "app_token") != "app_x" {
+		t.Fatalf("app=%#v", app)
+	}
+}
+
+func TestBaseAppBlockGetData(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	stub := &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/base_apps/app_x/blocks/cht_x/data?base_token=bas_x",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"main_data": []interface{}{}},
+		},
+	}
+	reg.Register(stub)
+
+	err := runShortcut(t, BaseAppBlockGetData, []string{
+		"+app-block-get-data",
+		"--app-token", "app_x",
+		"--base-token", "bas_x",
+		"--block-id", "cht_x",
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	data := decodeBaseEnvelope(t, stdout)
+	if _, ok := data["main_data"]; !ok {
+		t.Fatalf("unexpected response: %#v", data)
+	}
+}
+
+func TestBaseAppBlockGetDataReturnsTypedAPIErrors(t *testing.T) {
+	t.Run("non-zero API response", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/base_apps/app_x/blocks/cht_x/data?base_token=bas_x",
+			Body: map[string]interface{}{
+				"code": 1254001,
+				"msg":  "invalid chart token",
+			},
+		})
+
+		err := runShortcut(t, BaseAppBlockGetData, []string{
+			"+app-block-get-data",
+			"--app-token", "app_x",
+			"--base-token", "bas_x",
+			"--block-id", "cht_x",
+		}, factory, stdout)
+		assertProblemCode(t, err, 1254001, "invalid chart token")
+	})
+
+	t.Run("transport failure", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		cause := errors.New("connection reset")
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/base_apps/app_x/blocks/cht_x/data?base_token=bas_x",
+			Error:  cause,
+		})
+
+		err := runShortcut(t, BaseAppBlockGetData, []string{
+			"+app-block-get-data",
+			"--app-token", "app_x",
+			"--base-token", "bas_x",
+			"--block-id", "cht_x",
+		}, factory, stdout)
+		problem, ok := errs.ProblemOf(err)
+		if !ok || problem.Category != errs.CategoryNetwork || problem.Subtype != errs.SubtypeNetworkTransport {
+			t.Fatalf("problem=%#v, want typed network error", problem)
+		}
+		if !errors.Is(err, cause) {
+			t.Fatalf("err=%v, want wrapped cause %v", err, cause)
+		}
+	})
+}
+
+func TestBaseAppBlockUpdateRejectsDuplicateName(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/base_apps/app_x/pages/pge_x/blocks?page_size=100",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{"block_id": "blk_current", "name": "Current"},
+					map[string]interface{}{"block_id": "blk_other", "name": "Taken"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+
+	err := runShortcut(t, BaseAppBlockUpdate, []string{
+		"+app-block-update",
+		"--app-token", "app_x",
+		"--page-id", "pge_x",
+		"--block-id", "blk_current",
+		"--name", "Taken",
+	}, factory, stdout)
+	assertInvalidArgumentValidation(t, err, "--name", nil, "组件名称必须唯一")
+}
+
+func TestBaseAppBlockUpdateRejectsListBaseOutsideWorkspace(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/base_apps/app_x/pages/pge_x/blocks/blk_current",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"block_id": "blk_current", "type": "list"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/base_apps/app_x",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"app_token": "app_x", "workspace_token": "ws_x", "ref": map[string]interface{}{}},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/workspaces/ws_x/entities?entity_type=base&page_size=100",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"items": []interface{}{}, "has_more": false},
+		},
+	})
+
+	err := runShortcut(t, BaseAppBlockUpdate, []string{
+		"+app-block-update",
+		"--app-token", "app_x",
+		"--page-id", "pge_x",
+		"--block-id", "blk_current",
+		"--data-config", `{"base_token":"bas_outside","table_name":"Orders"}`,
+	}, factory, stdout)
+	assertInvalidArgumentValidation(t, err, "--data-config", nil, "不在当前 Workspace")
+}
+
+func TestBaseAppBlockUpdateRejectsFieldForCurrentBlockType(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/base_apps/app_x/pages/pge_x/blocks/blk_current",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"block_id": "blk_current",
+				"type":     "list",
+				"sub_type": "standard",
+				"data_config": map[string]interface{}{
+					"base_token": "bas_x",
+					"table_name": "Orders",
+				},
+			},
+		},
+	})
+
+	err := runShortcut(t, BaseAppBlockUpdate, []string{
+		"+app-block-update",
+		"--app-token", "app_x",
+		"--page-id", "pge_x",
+		"--block-id", "blk_current",
+		"--data-config", `{"text":"not valid for a list"}`,
+	}, factory, stdout)
+	assertInvalidArgumentValidation(t, err, "--data-config", nil, "standard 列表不支持字段 text")
+}
+
+func TestBaseAppBlockCreateUsesWorkspaceIDAsWorkspaceToken(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	registerEmptyAppBlockList(reg, "app_x", "pge_x")
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/base_apps/app_x",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"app_token": "app_x", "workspace_id": "ws_x"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/workspaces/ws_x/entities?entity_type=base&page_size=100",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"items": []interface{}{map[string]interface{}{"token": "bas_x"}},
+			},
+		},
+	})
+	createStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/base_apps/app_x/pages/pge_x/blocks",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"block_id": "blk_x", "type": "list", "sub_type": "card"},
+		},
+	}
+	reg.Register(createStub)
+
+	err := runShortcut(t, BaseAppBlockCreate, []string{
+		"+app-block-create",
+		"--app-token", "app_x",
+		"--page-id", "pge_x",
+		"--name", "Cards",
+		"--type", "list",
+		"--sub-type", "card",
+		"--data-config", `{"base_token":"bas_x","table_name":"Orders","fields":[],"card_config":{}}`,
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	data := decodeBaseEnvelope(t, stdout)
+	if data["created"] != true {
+		t.Fatalf("created=%#v, want true", data["created"])
+	}
+	body := decodeCapturedJSONBody(t, createStub)
+	config, _ := body["data_config"].(map[string]interface{})
+	if config["base_token"] != "bas_x" || config["table_name"] != "Orders" {
+		t.Fatalf("data_config=%#v", config)
+	}
+	fields, ok := config["fields"].([]interface{})
+	if !ok || len(fields) != 0 {
+		t.Fatalf("explicit fields must be preserved: %#v", config["fields"])
+	}
+}
+
+func TestBaseAppBlockCreateListOmitsUnspecifiedOptionalFields(t *testing.T) {
+	for _, tc := range []struct {
+		subType     string
+		optionalKey string
+	}{
+		{subType: "standard", optionalKey: "columns"},
+		{subType: "grouped", optionalKey: "columns"},
+		{subType: "collapsible", optionalKey: "columns"},
+		{subType: "card", optionalKey: "fields"},
+		{subType: "detail", optionalKey: "fields"},
+	} {
+		t.Run(tc.subType, func(t *testing.T) {
+			factory, stdout, reg := newExecuteFactory(t)
+			registerEmptyAppBlockList(reg, "app_x", "pge_x")
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/base/v3/base_apps/app_x",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{
+						"app_token": "app_x",
+						"ref": map[string]interface{}{
+							"bas_x": []interface{}{"Orders"},
+						},
+					},
+				},
+			})
+			createStub := &httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/base/v3/base_apps/app_x/pages/pge_x/blocks",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{"block_id": "blk_x"},
+				},
+			}
+			reg.Register(createStub)
+
+			err := runShortcut(t, BaseAppBlockCreate, []string{
+				"+app-block-create",
+				"--app-token", "app_x",
+				"--page-id", "pge_x",
+				"--name", "Orders",
+				"--type", "list",
+				"--sub-type", tc.subType,
+				"--data-config", `{"base_token":"bas_x","table_name":"Orders"}`,
+			}, factory, stdout)
+			if err != nil {
+				t.Fatalf("err=%v", err)
+			}
+			body := decodeCapturedJSONBody(t, createStub)
+			config, _ := body["data_config"].(map[string]interface{})
+			if _, exists := config[tc.optionalKey]; exists {
+				t.Fatalf("unspecified %s must be omitted: %#v", tc.optionalKey, config)
+			}
+		})
+	}
+}
+
+func TestBaseAppBlockCreateRejectsDuplicateNameAcrossPagination(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/base_apps/app_x/pages/pge_x/blocks?page_size=100",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"items":           []interface{}{map[string]interface{}{"block_id": "blk_1", "name": "Other"}},
+				"has_more":        true,
+				"next_page_token": "next_x",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/base_apps/app_x/pages/pge_x/blocks?page_size=100&page_token=next_x",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"block_id": "blk_2", "name": " cards "}},
+				"has_more": false,
+			},
+		},
+	})
+
+	err := runShortcut(t, BaseAppBlockCreate, []string{
+		"+app-block-create",
+		"--app-token", "app_x",
+		"--page-id", "pge_x",
+		"--name", "Cards",
+		"--type", "text",
+	}, factory, stdout)
+	assertInvalidArgumentValidation(t, err, "--name", nil, "组件名称必须唯一")
 }
 
 func TestBaseWorkspaceExecuteCreateWithFields(t *testing.T) {
@@ -840,6 +1245,140 @@ func TestBaseHistoryExecute(t *testing.T) {
 	}
 }
 
+func TestBaseHistoryRecordFormatsUseStandardFormatter(t *testing.T) {
+	for _, format := range []string{"table", "csv", "ndjson"} {
+		t.Run(format, func(t *testing.T) {
+			factory, stdout, reg := newExecuteFactory(t)
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/base/v3/bases/app_x/record_history",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{
+						"items": []interface{}{map[string]interface{}{
+							"activity_type": "update",
+							"operator":      "Operator",
+						}},
+					},
+				},
+			})
+			if err := runShortcut(t, BaseRecordHistoryList, []string{
+				"+record-history-list", "--base-token", "app_x", "--table-id", "tbl_x",
+				"--record-id", "rec_x", "--format", format,
+			}, factory, stdout); err != nil {
+				t.Fatalf("err=%v", err)
+			}
+
+			got := stdout.String()
+			if strings.Contains(got, `"ok"`) || !strings.Contains(got, "activity_type") || !strings.Contains(got, "Operator") {
+				t.Fatalf("history %s output did not use the standard formatter:\n%s", format, got)
+			}
+		})
+	}
+}
+
+func TestBaseHistoryPrettyExecute(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/bases/app_x/record_history",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"has_more":         true,
+				"next_max_version": 7,
+				"items": []interface{}{
+					map[string]interface{}{
+						"activity_type": "update",
+						"create_time":   int64(1774196856),
+						"operator":      "Operator\nName",
+						"field_changes": []interface{}{map[string]interface{}{
+							"field_name": "Status",
+							"before":     "",
+							"after":      "done\nvalue",
+						}},
+					},
+					map[string]interface{}{
+						"activity_type": "create",
+						"create_time":   int64(1774196857),
+						"operator":      "Creator",
+						"field_changes": nil,
+					},
+				},
+			},
+		},
+	})
+	if err := runShortcut(t, BaseRecordHistoryList, []string{
+		"+record-history-list", "--base-token", "app_x", "--table-id", "tbl_x",
+		"--record-id", "rec_x", "--page-size", "2", "--format", "pretty",
+	}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+
+	wantTime := time.Unix(1774196856, 0).Local().Format("2006-01-02 15:04:05 -07:00")
+	got := stdout.String()
+	for _, want := range []string{
+		"1. " + wantTime + " — Operator Name — Status: - -> done value",
+		"2. ",
+		"— Creator — create",
+		"More history is available; continue with --max-version 7.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("pretty history output missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, `"create_time"`) || strings.Contains(got, `"ok"`) {
+		t.Fatalf("pretty history output leaked JSON envelope:\n%s", got)
+	}
+}
+
+func TestFormatRecordHistoryPrettyValidatesNextMaxVersion(t *testing.T) {
+	page := func(cursor interface{}, includeCursor bool) map[string]interface{} {
+		data := map[string]interface{}{
+			"has_more": true,
+			"items": []interface{}{map[string]interface{}{
+				"activity_type": "update",
+			}},
+		}
+		if includeCursor {
+			data["next_max_version"] = cursor
+		}
+		return data
+	}
+
+	got, err := formatRecordHistoryPretty(page(7, true), time.UTC)
+	if err != nil {
+		t.Fatalf("valid cursor: %v", err)
+	}
+	if !strings.Contains(got, "continue with --max-version 7.") {
+		t.Fatalf("valid cursor guidance missing:\n%s", got)
+	}
+
+	for _, test := range []struct {
+		name          string
+		cursor        interface{}
+		includeCursor bool
+	}{
+		{name: "missing"},
+		{name: "zero", cursor: 0, includeCursor: true},
+		{name: "negative", cursor: -1, includeCursor: true},
+		{name: "fractional", cursor: 1.5, includeCursor: true},
+		{name: "string", cursor: "7", includeCursor: true},
+		{name: "object", cursor: map[string]interface{}{"value": 7}, includeCursor: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := formatRecordHistoryPretty(page(test.cursor, test.includeCursor), time.UTC)
+			if err == nil {
+				t.Fatal("expected invalid-response error")
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeInvalidResponse {
+				t.Fatalf("expected internal invalid-response error, got %T %v", err, err)
+			}
+		})
+	}
+}
+
 func TestBaseFieldExecuteUpdate(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
@@ -1009,33 +1548,6 @@ func TestBaseFieldExecuteUpdateDoesNotRejectExtraJSONKeys(t *testing.T) {
 	}
 	if got := stdout.String(); !strings.Contains(got, `"updated": true`) {
 		t.Fatalf("expected successful update, got: %s", got)
-	}
-}
-
-func TestBaseFieldValidateAllowsRatingMaxAboveLimit(t *testing.T) {
-	ctx := context.Background()
-	tests := []struct {
-		name     string
-		shortcut common.Shortcut
-		runtime  *common.RuntimeContext
-	}{
-		{
-			name:     "create",
-			shortcut: BaseFieldCreate,
-			runtime:  newBaseTestRuntime(map[string]string{"base-token": "app_x", "table-id": "tbl_x", "json": `{"name":"评分","type":"number","style":{"type":"rating","icon":"star","min":0,"max":20}}`}, nil, nil),
-		},
-		{
-			name:     "update",
-			shortcut: BaseFieldUpdate,
-			runtime:  newBaseTestRuntime(map[string]string{"base-token": "app_x", "table-id": "tbl_x", "field-id": "fld_x", "json": `{"name":"评分","type":"number","style":{"type":"rating","icon":"star","min":0,"max":20}}`}, nil, nil),
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if err := tc.shortcut.Validate(ctx, tc.runtime); err != nil {
-				t.Fatalf("rating max above 10 should not be blocked by CLI validation: %v", err)
-			}
-		})
 	}
 }
 
@@ -2028,7 +2540,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
-			URL:    "field_id=Name&field_id=Age&limit=2&offset=0",
+			URL:    "field_id=Name&field_id=Age&field_id=Formula&limit=2&offset=0",
 			Body: map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{
@@ -2044,11 +2556,15 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 						"record_scope": "all_records",
 						"field_scope":  "selected_fields",
 					},
-					"ignored_fields": []interface{}{"Formula"},
+					"ignored_fields": []interface{}{map[string]interface{}{
+						"id":     "fld_formula",
+						"name":   "Formula",
+						"reason": "UNSUPPORTED: formula field cannot be read through OpenAPI because this base uses an old schema version without backend formula computation.",
+					}},
 				},
 			},
 		})
-		if err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--limit", "2", "--field-id", "Name", "--field-id", "Age"}, factory, stdout); err != nil {
+		if err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--limit", "2", "--field-id", "Name", "--field-id", "Age", "--field-id", "Formula"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
 		got := stdout.String()
@@ -2057,7 +2573,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			"| _record_id | Name | Age |",
 			"| rec_1 | Alice | 18 |",
 			"Meta: count=2; has_more=false; record_scope=all_records; field_scope=selected_fields; ignored_fields=1",
-			"Ignored fields: Formula",
+			`Ignored fields: {"id":"fld_formula","name":"Formula","reason":"UNSUPPORTED: formula field cannot be read through OpenAPI because this base uses an old schema version without backend formula computation."}`,
 		} {
 			if !strings.Contains(got, want) {
 				t.Fatalf("stdout missing %q:\n%s", want, got)
@@ -2814,11 +3330,15 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			Body: map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{
-					"ignored_fields": []interface{}{"Formula"},
+					"ignored_fields": []interface{}{map[string]interface{}{
+						"id":     "fld_formula",
+						"name":   "Formula",
+						"reason": "READONLY: formula field cannot be written through OpenAPI.",
+					}},
 				},
 			},
 		})
-		if err := runShortcut(t, BaseRecordBatchUpdate, []string{"+record-batch-update", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"update_records":{"rec_1":{"Status":["Done"]}}}`}, factory, stdout); err != nil {
+		if err := runShortcut(t, BaseRecordBatchUpdate, []string{"+record-batch-update", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `{"update_records":{"rec_1":{"Status":["Done"],"Formula":"ignored"}}}`}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
 		if got := stdout.String(); !strings.Contains(got, `"ignored_fields"`) || !strings.Contains(got, `"Formula"`) {

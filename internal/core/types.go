@@ -4,11 +4,55 @@
 package core
 
 import (
+	"context"
 	"net/url"
 	"strings"
 
 	"github.com/larksuite/cli/internal/envvars"
 )
+
+// CredentialSource is the bounded category of the credential used by one
+// outbound request. It excludes provider-specific detail and credential values.
+type CredentialSource string
+
+const (
+	CredentialSourceLocal     CredentialSource = "local"
+	CredentialSourceEnv       CredentialSource = "env"
+	CredentialSourceSidecar   CredentialSource = "sidecar"
+	CredentialSourceExtension CredentialSource = "extension"
+)
+
+func (s CredentialSource) valid() bool {
+	switch s {
+	case CredentialSourceLocal, CredentialSourceEnv, CredentialSourceSidecar, CredentialSourceExtension:
+		return true
+	default:
+		return false
+	}
+}
+
+type credentialSourceContextKey struct{}
+
+// WithCredentialSource binds a resolved token's source to its request flow.
+// Invalid values deliberately shadow inherited metadata.
+func WithCredentialSource(ctx context.Context, source CredentialSource) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, credentialSourceContextKey{}, source)
+}
+
+// CredentialSourceFromContext returns the validated source for this request.
+func CredentialSourceFromContext(ctx context.Context) (CredentialSource, bool) {
+	if ctx == nil {
+		return "", false
+	}
+	source, ok := ctx.Value(credentialSourceContextKey{}).(CredentialSource)
+	if !ok || !source.valid() {
+		return "", false
+	}
+	return source, true
+}
 
 // LarkBrand represents the Lark platform brand.
 // "feishu" targets China-mainland, "lark" targets international.

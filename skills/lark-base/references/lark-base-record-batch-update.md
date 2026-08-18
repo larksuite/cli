@@ -45,9 +45,12 @@ lark-cli base +record-batch-update --base-token <base_token> --table-id <table_i
 
 ## 坑点
 
-- 单次最多更新 200 条记录，超过会被接口校验拒绝。
+- 单次最多更新 200 条记录；`1254104` 表示超过单批上限，拆成多个批次。
+- `1254045` 表示字段不存在，重新 `+field-list` 后使用真实字段名或 `field_id`。
+- `1254015` 表示 CellValue 类型不匹配，按真实 Field schema 和 CellValue 规范修正。
 - 命令不会自动做字段/行映射转换，传什么就发什么。
-- 如果字段映射包含只读字段，返回里可能出现 `ignored_fields`；这些字段不会被更新。
+- 如果字段映射包含只读字段，返回里可能出现 `ignored_fields` / `READONLY`；移除 Formula、Lookup、系统字段和自动编号等只读字段。
+- 同一 Table 连续批量写入使用串行执行；`1254291` 表示并发写冲突，短暂等待后重试当前批次。
 
 ## 参考
 

@@ -77,7 +77,9 @@ var ReminderTask = common.Shortcut{
 
 		if runtime.Bool("remove") {
 			if len(reminders) == 0 {
-				runtime.OutFormat(map[string]interface{}{"guid": taskId}, nil, func(w io.Writer) {
+				outData := map[string]interface{}{"guid": taskId}
+				projectTaskFields(outData, taskObj, standardTaskOutputFields...)
+				runtime.OutFormat(outData, nil, func(w io.Writer) {
 					fmt.Fprintln(w, "No existing reminders to remove.")
 				})
 				return nil
@@ -169,6 +171,7 @@ var ReminderTask = common.Shortcut{
 			"guid": taskId,
 			"url":  urlVal,
 		}
+		projectTaskFields(outData, taskObj, standardTaskOutputFields...)
 
 		runtime.OutFormat(outData, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "✅ Task reminders updated successfully!\n")

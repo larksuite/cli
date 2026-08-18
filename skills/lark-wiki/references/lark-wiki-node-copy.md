@@ -50,6 +50,7 @@ lark-cli wiki +node-copy \
 
 - Copying is non-recursive: only the requested node and its content are copied.
 - Descendant nodes must be copied separately.
+- When the Wiki service returns `131009` lock contention, the CLI retries twice with bounded exponential backoff. If contention remains, wait before retrying again and avoid concurrent writes under the same target parent.
 - To move an existing Wiki node without keeping the source, use [`wiki +move`](lark-wiki-move.md) instead of copy-then-delete.
 
 ## Required Scope

@@ -27,8 +27,9 @@ var (
 )
 
 type serviceAffordance struct {
-	skill   string
-	methods map[string]json.RawMessage
+	skill        string
+	domainSkills []string
+	methods      map[string]json.RawMessage
 }
 
 // SetSource installs the markdown guidance tree (the top-level affordance/
@@ -70,6 +71,24 @@ func DomainSkill(service string) (string, bool) {
 	return skill, skill != ""
 }
 
+// DomainSkills returns the skill references configured for service-level help.
+// The canonical `> skill:` entry is first when present, followed by entries in
+// the domain's `## Skills` section. The returned slice is a copy so callers
+// cannot mutate the lazy parse cache.
+func DomainSkills(service string) ([]string, bool) {
+	mu.Lock()
+	defer mu.Unlock()
+	if !tried[service] {
+		tried[service] = true
+		byService[service] = loadService(service)
+	}
+	skills := byService[service].domainSkills
+	if len(skills) == 0 {
+		return nil, false
+	}
+	return append([]string(nil), skills...), true
+}
+
 // loadService parses a service's markdown guidance into its domain metadata
 // and per-method overlays, marshalling each method to JSON so downstream
 // callers keep the same wire shape.
@@ -88,7 +107,11 @@ func loadService(service string) serviceAffordance {
 			m[id] = b
 		}
 	}
-	return serviceAffordance{skill: parsed.skill, methods: m}
+	return serviceAffordance{
+		skill:        parsed.skill,
+		domainSkills: parsed.domainSkills,
+		methods:      m,
+	}
 }
 
 // commandFormResolver maps a method's command-form heading ("user_mailbox.messages

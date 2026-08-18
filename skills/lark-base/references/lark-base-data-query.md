@@ -1,11 +1,9 @@
 
-# Base data-query DSL SSOT
+# Base data-query DSL reference
 
-> **入口指南**: [lark-base-data-query-guide.md](lark-base-data-query-guide.md) | **前置条件**: 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置路由**: [Record 查询与分析 SOP](lark-base-record-query-and-analysis-sop.md) | **认证或授权问题**: [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)
 
-本文档是 `+data-query` JSON DSL 的单一事实来源（SSOT），用于说明完整字段、操作符、限制、返回和错误恢复。常用 fewshot 与命令选择先读 [lark-base-data-query-guide.md](lark-base-data-query-guide.md)。
-
-查询类任务还必须先遵守 [`lark-base-data-analysis-sop.md`](lark-base-data-analysis-sop.md)。`+data-query` 适合让筛选、分组、聚合、排序和 TopN 在 Base 云端查询服务中执行；不要用默认分页的 `+record-list` 或本地 `jq` 替代聚合查询。
+本文档合并常用 fewshot 与完整 DSL 协议。只有 [Record 查询与分析 SOP](lark-base-record-query-and-analysis-sop.md) 的 Cloud 路径选定 `+data-query` 后才读取，并优先定位与当前查询有关的示例、字段或错误协议。
 
 ## 限制
 
@@ -432,12 +430,12 @@ CLI 输出标准信封 `{ok, identity, data}`（失败时为 `{ok:false, identit
 
 1. 用 `+data-query` 在 Base 云端查询服务中完成全局筛选、分组、聚合、排序和 TopN，得到业务 key、分组值或候选字段组合。
 2. 如果已经拿到候选记录的 `record_id`，用 `+record-get` 读取逐条记录字段。
-3. 如果拿到的是结构化业务 key（例如编号、状态、日期、金额等），用 `+record-list --filter-json` 做精确过滤后读取；不要用 `+record-search` 代替结构化条件。
+3. 如果拿到的是结构化业务 key（例如编号、状态、日期、金额等），用 `+record-list --filter-json` 做精确过滤后读取；`+record-search` 用于文本展示值关键词。
 4. 只有候选条件本身是文本展示值关键词时，才使用 `+record-search`，并用 `search_fields` 限定范围、`select_fields` 做投影。
 5. 若候选记录包含 link 字段，提取关联 `record_id` 后到关联表用 `+record-get` 批量读取展示字段。
-6. 最终回答业务字段，不要把内部 `record_id` 当作用户可读答案。
+6. 最终回答展示真实业务字段；内部 `record_id` 用于连接或定位。
 
-不要把 `data-query pagination.limit` 理解为分页扫描；它只限制 Base 云端查询服务返回的聚合结果行数，不支持 offset。需要全量原始记录导出时回到 data analysis SOP 的 `+record-list` 分页规则。
+不要把 `data-query pagination.limit` 理解为分页扫描；它只限制 Base 云端查询服务返回的聚合结果行数，不支持 offset。需要逐条原始记录时按 Cloud SOP 的 `+record-list` / `+record-search` 回查规则处理。
 
 ## 坑点
 
@@ -450,12 +448,11 @@ CLI 输出标准信封 `{ok, identity, data}`（失败时为 `{ok:false, identit
 - ⚠️ **数据表标识 `tableId` vs `tableName`**：datasource 中可以用 `tableId`（如 `tblXXX`）或 `tableName`（数据表的用户自定义显示名称），二选一，不要混用
 - ⚠️ **`pagination.limit` 最大 5000**：超过会报错，且不支持 offset，只支持 limit
 - ⚠️ **所有 alias 必须全局唯一**：dimensions 和 measures 之间的 alias 也不能重名
-- ⚠️ **不要用本地分页结果替代 data-query**：凡是全局计数、分组、聚合、排序 TopN，优先让 `+data-query` 在 Base 云端查询服务中执行；默认页 `+record-list` 后本地统计只能得到已读取范围内的结果
 
 ## 参考
 
 - [lark-base](../SKILL.md) — 多维表格全部命令
 - [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数
-- [lark-base-data-analysis-sop.md](lark-base-data-analysis-sop.md) — 查询范围、选路、下推、分页、`+record-list` / `+record-search` 回查和关系查询 SOP
+- [Cloud SOP](lark-base-record-query-and-analysis-cloud-sop.md) — Cloud 路径的查询范围、下推、分页、`+record-list` / `+record-search` 回查和关系查询
 - [lark-base-cell-value.md](lark-base-cell-value.md) — CellValue 格式规范
-- [lark-base-field-json.md](lark-base-field-json.md) — 字段类型与 JSON 结构
+- [Field Schema](lark-base-field-schema.md) — 字段类型与 JSON 结构

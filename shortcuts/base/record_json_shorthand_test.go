@@ -63,11 +63,11 @@ func TestRecordSearchGetKeepRequestBodyJSON(t *testing.T) {
 	}
 }
 
-// Enum 已接入：help 描述携带枚举后缀（框架对带 Enum 的 flag 自动追加 " (markdown|json)"）
+// Enum 已接入：help 描述携带枚举后缀。
 func TestRecordReadFormatFlagCarriesEnum(t *testing.T) {
 	cmd := mountBaseShortcutFlags(t, BaseRecordList, "+record-list")
 	usage := cmd.Flags().Lookup("format").Usage
-	if !strings.Contains(usage, "(markdown|json)") {
+	if !strings.Contains(usage, "(markdown|json|ndjson)") {
 		t.Fatalf("format usage missing enum suffix: %q", usage)
 	}
 }

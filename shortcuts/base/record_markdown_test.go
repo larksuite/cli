@@ -156,7 +156,11 @@ func TestRenderRecordMarkdownIncludesMissingRecords(t *testing.T) {
 func TestRenderRecordMarkdownTruncatesIgnoredFields(t *testing.T) {
 	ignored := make([]interface{}, maxRecordMarkdownIgnoredFields+2)
 	for i := range ignored {
-		ignored[i] = fmt.Sprintf("Field%d", i+1)
+		ignored[i] = map[string]interface{}{
+			"id":     fmt.Sprintf("fld_%d", i+1),
+			"name":   fmt.Sprintf("Field%d", i+1),
+			"reason": "UNSUPPORTED",
+		}
 	}
 	got, err := renderRecordMarkdown(map[string]interface{}{
 		"fields":         []interface{}{"Name"},

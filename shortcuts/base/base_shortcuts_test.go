@@ -175,6 +175,10 @@ func TestShortcutsCatalog(t *testing.T) {
 		"+form-submit",
 		"+dashboard-list", "+dashboard-get", "+dashboard-create", "+dashboard-update", "+dashboard-delete", "+dashboard-arrange",
 		"+dashboard-block-list", "+dashboard-block-get", "+dashboard-block-get-data", "+dashboard-block-create", "+dashboard-block-update", "+dashboard-block-delete",
+		"+workspace-create", "+workspace-entity-list", "+workspace-move-in",
+		"+app-create", "+app-get",
+		"+app-page-list", "+app-page-get", "+app-page-create", "+app-page-update", "+app-page-delete",
+		"+app-block-list", "+app-block-get", "+app-block-get-data", "+app-block-create", "+app-block-update",
 	}
 	if len(shortcuts) != len(want) {
 		t.Fatalf("len(shortcuts)=%d want=%d", len(shortcuts), len(want))
@@ -260,8 +264,8 @@ func TestBaseFieldCreateTipsGuideTypeSelectionByStoredValue(t *testing.T) {
 		"formula, lookup, link, workflow, or automation",
 		"If unsupported, do not probe code/web/OpenAPI, create a storage placeholder, or claim completion",
 		"report the boundary and alternatives",
-		"arrays remain sequential per-field requests",
-		"split only for timeout bounds, not a fixed chunk size",
+		"for multiple fields in one table, prefer one array",
+		"array items are created sequentially",
 		"prefer --json @file or an argv-safe subprocess call",
 		"do not double-escape JSON inside shell command substitution",
 		"For large arrays, bound successful stdout with --jq",
@@ -360,8 +364,10 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 				"view ID or name; omit for reading all table records, or set to read a user-specified or temporary filtered/sorted view",
 				`filter JSON object or @file`,
 				`sort JSON array or @file`,
-				"pagination size, range 1-200",
-				"output format: markdown (default) | json",
+				"maximum records to return; range 1-200, or 1-2000 for ndjson",
+				"json raw matrix (current inline behavior may be deprecated",
+				"ndjson artifact (records file plus manifest summary and column schema/stats",
+				"preferred analysis output: relative .ndjson output path",
 			},
 			wantTips: []string{
 				"lark-cli base +record-list --base-token <base_token> --table-id <table_id> --limit 50",
@@ -369,7 +375,11 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 				"Text equality filter",
 				"Option intersection filter",
 				"Query priority",
-				"Default output is markdown",
+				"Example for analysis",
+				"prefer --format ndjson --output ./records.ndjson",
+				"keep long user data out of model context",
+				"process the records file with Python or another data analysis engine",
+				"Follow lark-base-record-query-and-analysis-sop.md",
 				"Use --field-id repeatedly to keep output small",
 			},
 		},
@@ -382,7 +392,9 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 				"field ID or name to search",
 				`filter JSON object or @file`,
 				`sort JSON array or @file`,
-				"output format: markdown (default) | json",
+				"json raw matrix (current inline behavior may be deprecated",
+				"ndjson artifact (records file plus manifest summary and column schema/stats",
+				"preferred analysis output: relative .ndjson output path",
 			},
 			wantTips: []string{
 				"Example: lark-cli base +record-search",
@@ -390,7 +402,11 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 				"Text equality filter",
 				"Query priority",
 				"Use --json only when you need to pass the full search body directly",
-				"Default output is markdown",
+				"Example for analysis",
+				"prefer --format ndjson --output ./records.ndjson",
+				"keep long user data out of model context",
+				"process the records file with Python or another data analysis engine",
+				"Follow lark-base-record-query-and-analysis-sop.md",
 			},
 		},
 		{
@@ -399,15 +415,20 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 			wantHelp: []string{
 				"record ID (repeatable)",
 				"field ID or name to project; repeat to keep only needed columns",
-				"output format: markdown (default) | json",
+				"json raw matrix (current inline behavior may be deprecated",
+				"ndjson artifact (records file plus manifest summary and column schema/stats",
+				"preferred analysis output: relative .ndjson output path",
 			},
 			wantTips: []string{
 				"lark-cli base +record-get --base-token <base_token> --table-id <table_id> --record-id <record_id>",
 				"lark-cli base +record-get --base-token <base_token> --table-id <table_id> --record-id rec_001 --record-id rec_002 --field-id Name --field-id Status",
-				"Default output is markdown",
+				"Example for analysis input",
+				"prefer --format ndjson --output ./records.ndjson",
+				"keep long user data out of model context",
+				"process the records file with Python or another data analysis engine",
+				"Follow lark-base-record-query-and-analysis-sop.md",
 				"projection boundary",
 				"record_id is already known",
-				"lark-base record read SOP",
 			},
 		},
 	}
@@ -433,8 +454,40 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 					t.Fatalf("tips missing %q:\n%s", want, tips)
 				}
 			}
+			for _, flagName := range []string{"minimal-stdout", "jq-records"} {
+				flag := cmd.Flags().Lookup(flagName)
+				if flag == nil || !flag.Hidden {
+					t.Fatalf("--%s should remain available but hidden", flagName)
+				}
+				if strings.Contains(help, "--"+flagName) || strings.Contains(tips, "--"+flagName) {
+					t.Fatalf("--%s should not appear in help or tips", flagName)
+				}
+			}
 		})
 	}
+}
+
+func TestBaseDataQueryHelpRoutesThroughAnalysisSOP(t *testing.T) {
+	parent := &cobra.Command{Use: "base"}
+	BaseDataQuery.Mount(parent, &cmdutil.Factory{})
+	cmd := parent.Commands()[0]
+
+	help := cmd.Flags().FlagUsages()
+	if !strings.Contains(help, "first follow lark-base-record-query-and-analysis-sop.md") {
+		t.Fatalf("flag help should route through the analysis SOP:\n%s", help)
+	}
+
+	tips := strings.Join(cmdutil.GetTips(cmd), "\n")
+	for _, want := range []string{
+		"Read lark-base-record-query-and-analysis-sop.md before using this command",
+		"use +data-query only when that SOP selects the Cloud aggregation path",
+		"After the SOP selects +data-query, read lark-base-data-query.md",
+	} {
+		if !strings.Contains(tips, want) {
+			t.Fatalf("tips missing %q:\n%s", want, tips)
+		}
+	}
+	assertHelpOrder(t, tips, "lark-base-record-query-and-analysis-sop.md", "lark-base-data-query.md")
 }
 
 func TestBasePaginationHelpShowsDefaults(t *testing.T) {
@@ -448,8 +501,7 @@ func TestBasePaginationHelpShowsDefaults(t *testing.T) {
 		{name: "table list", shortcut: BaseTableList, flag: "limit", defaultVal: "50", help: "pagination size, range 1-100"},
 		{name: "field list", shortcut: BaseFieldList, flag: "limit", defaultVal: "100", help: "pagination size, range 1-200"},
 		{name: "field search options", shortcut: BaseFieldSearchOptions, flag: "limit", defaultVal: "30", help: "pagination size, range 1-200"},
-		{name: "record list", shortcut: BaseRecordList, flag: "limit", defaultVal: "100", help: "pagination size, range 1-200"},
-		{name: "record search", shortcut: BaseRecordSearch, flag: "limit", defaultVal: "10", help: "pagination size, range 1-200"},
+		{name: "record list", shortcut: BaseRecordList, flag: "limit", defaultVal: "100", help: "maximum records to return; range 1-200, or 1-2000 for ndjson"},
 		{name: "view list", shortcut: BaseViewList, flag: "limit", defaultVal: "100", help: "pagination size, range 1-200"},
 		{name: "form list", shortcut: BaseFormsList, flag: "page-size", defaultVal: "100", help: "page size per request, range 1-100"},
 		{name: "workflow list", shortcut: BaseWorkflowList, flag: "page-size", defaultVal: "100", help: "page size per request, range 1-100"},
@@ -481,6 +533,22 @@ func TestBasePaginationHelpShowsDefaults(t *testing.T) {
 				t.Fatalf("flag help default %s count=%d, want 1:\n%s", tt.defaultVal, got, help)
 			}
 		})
+	}
+}
+
+func TestBaseRecordSearchLimitHasNoStaticDefault(t *testing.T) {
+	parent := &cobra.Command{Use: "base"}
+	BaseRecordSearch.Mount(parent, &cmdutil.Factory{})
+	cmd := parent.Commands()[0]
+	flag := cmd.Flags().Lookup("limit")
+	if flag == nil {
+		t.Fatal("flag --limit missing")
+	}
+	if flag.DefValue != "0" {
+		t.Fatalf("--limit default=%q, want zero-value registration", flag.DefValue)
+	}
+	if help := cmd.Flags().FlagUsages(); strings.Contains(help, "(default 10)") {
+		t.Fatalf("--limit help exposes a static default:\n%s", help)
 	}
 }
 
@@ -545,13 +613,26 @@ func TestBaseRecordProjectionAliasesAreHidden(t *testing.T) {
 				t.Fatalf("public projection flag --field-id missing or hidden: %#v", primary)
 			}
 			help := cmd.Flags().FlagUsages()
+			fieldAlias := cmd.Flags().Lookup("field")
+			if fieldAlias == nil || fieldAlias.Name != "field-id" {
+				t.Fatalf("Lookup(field) = %#v, want canonical --field-id", fieldAlias)
+			}
 			for _, aliasName := range []string{"fields", "field-names"} {
 				alias := cmd.Flags().Lookup(aliasName)
 				if alias == nil || !alias.Hidden {
 					t.Fatalf("projection alias --%s should exist and be hidden: %#v", aliasName, alias)
 				}
-				if strings.Contains(help, "--"+aliasName) {
-					t.Fatalf("help should not include hidden --%s:\n%s", aliasName, help)
+				for _, line := range strings.Split(help, "\n") {
+					line = strings.TrimSpace(line)
+					if strings.HasPrefix(line, "--"+aliasName+" ") || strings.HasPrefix(line, "--"+aliasName+",") {
+						t.Fatalf("help should not include hidden --%s:\n%s", aliasName, help)
+					}
+				}
+			}
+			for _, line := range strings.Split(help, "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "--field ") || strings.HasPrefix(line, "--field,") {
+					t.Fatalf("help should not list canonical alias --field:\n%s", help)
 				}
 			}
 		})
@@ -648,7 +729,7 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 				`--type text --data-config '{"text":"# Sales Dashboard"}'`,
 				"+table-list and +field-list",
 				"not table_id or field_id",
-				"dashboard-block-data-config.md as the SSOT",
+				"lark-base-dashboard-block-config.md as the SSOT",
 				"do not invent data_config from natural language",
 				"set the intended group_by.sort in the initial create request",
 				"do not create first and then issue a second update",
@@ -661,7 +742,7 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 			wantTips: []string{
 				`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --name "Total Sales"`,
 				`--data-config '{"series":[{"field_name":"Amount","rollup":"SUM"}]}'`,
-				"dashboard-block-data-config.md as the SSOT",
+				"lark-base-dashboard-block-config.md as the SSOT",
 				"do not invent data_config from natural language",
 				"Block type cannot be changed",
 				"top-level keys",
@@ -726,7 +807,7 @@ func TestBaseWorkflowHelpGuidesAgents(t *testing.T) {
 				"New workflows are created disabled",
 				"+table-list and +field-list",
 				"Step ids must be unique",
-				"lark-base-workflow-guide.md as the entry guide",
+				"lark-base-workflow.md as the module entry",
 				"lark-base-workflow-schema.md as the steps JSON SSOT",
 				"do not invent steps[].type/data/next/children from natural language",
 			},
@@ -797,7 +878,7 @@ func TestBaseJSONExamplesLiveInFlagDescriptions(t *testing.T) {
 			name:     "table create fields",
 			shortcut: BaseTableCreate,
 			wantHelp: []string{
-				`field JSON array for create, e.g. [{"name":"Title","type":"text"}`,
+				`field JSON array defining the table schema; must hold at least one field, e.g. [{"name":"Title","type":"text"}`,
 			},
 		},
 		{
@@ -875,7 +956,7 @@ func TestBaseJSONExamplesLiveInFlagDescriptions(t *testing.T) {
 			name:     "record upsert json",
 			shortcut: BaseRecordUpsert,
 			wantHelp: []string{
-				`record field map JSON object, e.g. {"Name":"Alice","Status":"Todo"}; do not wrap in fields`,
+				`record field map JSON object, e.g. {"Name":"Alice","Status":["Todo"]}; do not wrap in fields`,
 			},
 		},
 		{
@@ -883,7 +964,7 @@ func TestBaseJSONExamplesLiveInFlagDescriptions(t *testing.T) {
 			shortcut: BaseRecordBatchCreate,
 			wantHelp: []string{
 				"create_records contains one field map per record",
-				`{"create_records":[{"Name":"Task A","Status":"Todo"},{"Name":"Task B","Score":20}]}`,
+				`{"create_records":[{"Name":"Task A","Status":["Todo"]},{"Name":"Task B","Score":20}]}`,
 			},
 		},
 		{
@@ -932,11 +1013,13 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 				`{"Parent Link":[{"id":"rec_xxx"}]}`,
 				"do not look for parent_record_id or a separate child-record API",
 				"CellValue happy path: text/phone/url",
-				"select (multiple=false) -> \"Todo\"",
-				"select (multiple=true) -> [\"Tag A\",\"Tag B\"]",
-				"datetime -> \"2026-03-24 10:00:00\"",
+				"select -> [\"Todo\"] or [\"Tag A\",\"Tag B\"]",
+				"when multiple=false, the array can contain only one option",
+				"datetime -> \"2026-03-24 10:00\"",
 				"checkbox -> true/false",
 				`ID-based CellValue: user/group/link fields use arrays like [{"id":"ou_xxx"}]`,
+				"User and group fields always use arrays",
+				"when multiple=false, the array can contain only one item",
 				`location uses {"lng":116.397428,"lat":39.90923}`,
 				"Do not guess user/chat/linked-record IDs or location coordinates",
 				"lark-base-cell-value.md",
@@ -949,7 +1032,7 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 			wantTips: []string{
 				"Happy path field: create_records",
 				"create_records is an array of independent record field maps",
-				`{"create_records":[{"Name":"Task A","Status":"Todo"},{"Name":"Task B","Score":20}]}`,
+				`{"create_records":[{"Name":"Task A","Status":["Todo"]},{"Name":"Task B","Score":20}]}`,
 				"use +field-list to confirm real writable fields",
 				"Batch create supports max 200 records per call",
 				"do not immediately +record-list the same table",
@@ -1270,10 +1353,17 @@ func TestBaseFieldValidate(t *testing.T) {
 
 func TestBaseTableValidate(t *testing.T) {
 	ctx := context.Background()
-	if err := BaseTableCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "name": "Orders", "fields": "{"}, nil, nil)); err != nil {
-		t.Fatalf("invalid fields json should bypass CLI validate, err=%v", err)
+	// --fields carries the whole table schema, so it is parsed at validate time:
+	// an unusable schema must fail before the table exists, not after. The
+	// rejection has to stay machine-readable, so assert the typed metadata and
+	// the preserved parse cause rather than the message alone.
+	err := BaseTableCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "name": "Orders", "fields": "{"}, nil, nil))
+	assertInvalidArgumentValidation(t, err, "--fields", []string{"--fields"}, "invalid JSON array")
+	var syntaxErr *json.SyntaxError
+	if !errors.As(err, &syntaxErr) {
+		t.Fatalf("invalid fields json must preserve the json parse cause, err=%v", err)
 	}
-	if err := BaseTableCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "name": "Orders", "view": `[1]`}, nil, nil)); err != nil {
+	if err := BaseTableCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "name": "Orders", "fields": `[{"name":"Name","type":"text"}]`, "view": `[1]`}, nil, nil)); err != nil {
 		t.Fatalf("invalid view json should bypass CLI validate, err=%v", err)
 	}
 	if err := BaseTableCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "name": "Orders", "fields": `[{"name":"Name","type":"text"}]`, "view": `{"name":"Main"}`}, nil, nil)); err != nil {
@@ -1298,7 +1388,7 @@ func TestBaseCreateTipsGuideFieldSchema(t *testing.T) {
 
 	tips := strings.Join(cmdutil.GetTips(cmd), "\n")
 	for _, want := range []string{
-		"Before using --fields, read lark-base-field-json.md",
+		"Before using --fields, read lark-base-field-schema.md",
 		"do not invent field properties",
 	} {
 		if !strings.Contains(tips, want) {

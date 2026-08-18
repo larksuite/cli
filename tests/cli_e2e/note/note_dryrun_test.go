@@ -10,6 +10,7 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestNoteDetailDryRun(t *testing.T) {
@@ -34,6 +35,32 @@ func TestNoteDetailDryRun(t *testing.T) {
 		t.Fatalf("method=%q, want GET\nstdout:\n%s", got, out)
 	}
 	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/vc/v1/notes/note_dryrun" {
+		t.Fatalf("url=%q, want note detail endpoint\nstdout:\n%s", got, out)
+	}
+}
+
+func TestNoteDetailDryRunAsBot(t *testing.T) {
+	setNoteDryRunEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"note", "+detail",
+			"--note-id", "note_dryrun_bot",
+			"--as", "bot",
+			"--dry-run",
+		},
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	out := result.Stdout
+	if got := gjson.Get(out, "identity").String(); got != "bot" {
+		t.Fatalf("identity=%q, want bot\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/vc/v1/notes/note_dryrun_bot" {
 		t.Fatalf("url=%q, want note detail endpoint\nstdout:\n%s", got, out)
 	}
 }

@@ -164,7 +164,7 @@ var VCDetail = common.Shortcut{
 	Description: "Get meeting details including note_id and minute_token by meeting IDs",
 	Risk:        "read",
 	Scopes:      []string{"vc:meeting.meetingevent:read", "vc:record:readonly"},
-	AuthTypes:   []string{"user"},
+	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "meeting-ids", Desc: "meeting IDs, comma-separated for batch", Required: true},

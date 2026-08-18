@@ -24,6 +24,69 @@ func TestBaseRecordListDryRunAcceptsFieldsAlias(t *testing.T) {
 	require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/records?field_id=Name&field_id=Age&limit=3&offset=0", gjson.Get(out, "data.api.0.url").String(), out)
 }
 
+func TestBaseRecordListDryRunAcceptsFieldAlias(t *testing.T) {
+	result := runBaseDryRun(t, 0,
+		"base", "+record-list",
+		"--base-token", "app_x",
+		"--table-id", "tbl_x",
+		"--field", "Name",
+		"--field", "Age",
+		"--limit", "3",
+	)
+
+	out := result.Stdout
+	require.Equal(t, "GET", gjson.Get(out, "data.api.0.method").String(), out)
+	require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/records?field_id=Name&field_id=Age&limit=3&offset=0", gjson.Get(out, "data.api.0.url").String(), out)
+}
+
+func TestBaseRecordListDryRunFieldAliasPreservesFieldValues(t *testing.T) {
+	result := runBaseDryRun(t, 0,
+		"base", "+record-list",
+		"--base-token", "app_x",
+		"--table-id", "tbl_x",
+		"--field", "A,B",
+		"--field", "@Owner",
+		"--field", "[JSON-looking]",
+		"--field", "Project Owner",
+		"--limit", "3",
+	)
+
+	require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/records?field_id=A%2CB&field_id=%40Owner&field_id=%5BJSON-looking%5D&field_id=Project+Owner&limit=3&offset=0", gjson.Get(result.Stdout, "data.api.0.url").String(), result.Stdout)
+}
+
+func TestBaseRecordSearchDryRunAcceptsFieldAlias(t *testing.T) {
+	result := runBaseDryRun(t, 0,
+		"base", "+record-search",
+		"--base-token", "app_x",
+		"--table-id", "tbl_x",
+		"--keyword", "Alice",
+		"--search-field", "Name",
+		"--field-id", "Name",
+		"--field", "Project Owner",
+	)
+
+	out := result.Stdout
+	require.Equal(t, "POST", gjson.Get(out, "data.api.0.method").String(), out)
+	require.Equal(t, "Name", gjson.Get(out, "data.api.0.body.select_fields.0").String(), out)
+	require.Equal(t, "Project Owner", gjson.Get(out, "data.api.0.body.select_fields.1").String(), out)
+}
+
+func TestBaseRecordGetDryRunAcceptsFieldAlias(t *testing.T) {
+	result := runBaseDryRun(t, 0,
+		"base", "+record-get",
+		"--base-token", "app_x",
+		"--table-id", "tbl_x",
+		"--record-id", "rec_1",
+		"--field", "Name",
+		"--field", "Project Owner",
+	)
+
+	out := result.Stdout
+	require.Equal(t, "POST", gjson.Get(out, "data.api.0.method").String(), out)
+	require.Equal(t, "Name", gjson.Get(out, "data.api.0.body.select_fields.0").String(), out)
+	require.Equal(t, "Project Owner", gjson.Get(out, "data.api.0.body.select_fields.1").String(), out)
+}
+
 func TestBaseRecordSearchDryRunAcceptsFieldsAlias(t *testing.T) {
 	result := runBaseDryRun(t, 0,
 		"base", "+record-search",
@@ -113,6 +176,60 @@ func TestBaseRecordListDryRunTreatsLeadingAtFieldNameLiterally(t *testing.T) {
 		"--limit", "3",
 	)
 	require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/records?field_id=%40Owner&limit=3&offset=0", gjson.Get(result.Stdout, "data.api.0.url").String(), result.Stdout)
+}
+
+func TestBaseRecordListDryRunInfersNDJSONAndCapsFirstPage(t *testing.T) {
+	result := runBaseDryRun(t, 0,
+		"base", "+record-list",
+		"--base-token", "app_x",
+		"--table-id", "tbl_x",
+		"--offset", "50",
+		"--limit", "2000",
+		"--output", "exports/records.ndjson",
+	)
+
+	out := result.Stdout
+	require.Equal(t, "/open-apis/base/v3/bases/app_x/tables/tbl_x/records?limit=500&offset=50", gjson.Get(out, "data.api.0.url").String(), out)
+	require.Equal(t, "ndjson", gjson.Get(out, "data.export_format").String(), out)
+	require.Equal(t, int64(2000), gjson.Get(out, "data.requested_limit").Int(), out)
+	require.Equal(t, "exports/records.ndjson", gjson.Get(out, "data.output").String(), out)
+}
+
+func TestBaseRecordSearchDryRunNDJSONCapsFirstPageAndKeepsQuery(t *testing.T) {
+	result := runBaseDryRun(t, 0,
+		"base", "+record-search",
+		"--base-token", "app_x",
+		"--table-id", "tbl_x",
+		"--keyword", "Alice",
+		"--search-field", "Name",
+		"--offset", "25",
+		"--limit", "2000",
+		"--output", "search.ndjson",
+	)
+
+	out := result.Stdout
+	require.Equal(t, int64(25), gjson.Get(out, "data.api.0.body.offset").Int(), out)
+	require.Equal(t, int64(500), gjson.Get(out, "data.api.0.body.limit").Int(), out)
+	require.Equal(t, "Alice", gjson.Get(out, "data.api.0.body.keyword").String(), out)
+	require.Equal(t, "ndjson", gjson.Get(out, "data.export_format").String(), out)
+	require.Equal(t, int64(2000), gjson.Get(out, "data.requested_limit").Int(), out)
+	require.Equal(t, "search.ndjson", gjson.Get(out, "data.output").String(), out)
+}
+
+func TestBaseRecordGetDryRunInfersNDJSON(t *testing.T) {
+	result := runBaseDryRun(t, 0,
+		"base", "+record-get",
+		"--base-token", "app_x",
+		"--table-id", "tbl_x",
+		"--record-id", "rec_x",
+		"--output", "record.ndjson",
+	)
+
+	out := result.Stdout
+	require.Equal(t, "POST", gjson.Get(out, "data.api.0.method").String(), out)
+	require.Equal(t, "rec_x", gjson.Get(out, "data.api.0.body.record_id_list.0").String(), out)
+	require.Equal(t, "ndjson", gjson.Get(out, "data.export_format").String(), out)
+	require.Equal(t, "record.ndjson", gjson.Get(out, "data.output").String(), out)
 }
 
 func TestBaseRecordSearchDryRunJSONConflictReportsActualParams(t *testing.T) {

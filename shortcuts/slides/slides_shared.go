@@ -14,8 +14,8 @@ import (
 )
 
 // Shared helpers for the whole-page slides commands. They lived in
-// slides_replace_pages.go until that command was retired in favour of
-// +update-slide; +add-slide and +delete-slide still use them.
+// slides_replace_pages.go, which is now deprecated in favour of +update-slide
+// but still registered; +add-slide and +delete-slide still use them.
 
 // validateCompleteSlideXML checks that content is exactly one complete <slide>
 // document: a single <slide> root, nothing but whitespace outside it, and every

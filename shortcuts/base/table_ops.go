@@ -7,6 +7,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -54,6 +55,26 @@ func dryRunTableDelete(_ context.Context, runtime *common.RuntimeContext) *commo
 }
 
 func validateTableCreate(runtime *common.RuntimeContext) error {
+	raw := strings.TrimSpace(runtime.Str("fields"))
+	if raw == "" {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--fields is required and cannot be blank").
+			WithParam("--fields").
+			WithHint(`Pass the table schema as a JSON array, e.g. --fields '[{"name":"Title","type":"text"}]'. Read lark-base-field-schema.md for the field JSON shape.`)
+	}
+	items, err := parseJSONArray(newParseCtx(runtime), raw, "fields")
+	if err != nil {
+		return err
+	}
+	if len(items) == 0 {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--fields must define at least one field").
+			WithParam("--fields").
+			WithHint("An empty array is not a schema: the table would be created with the platform default schema instead of the one you asked for.")
+	}
+	for idx, item := range items {
+		if _, ok := item.(map[string]interface{}); !ok {
+			return baseValidationErrorf("--fields item %d must be an object", idx+1)
+		}
+	}
 	return nil
 }
 

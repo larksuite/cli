@@ -88,17 +88,14 @@ func TestAddTaskToTasklist_UserMissingScopeProjectsInlineHint(t *testing.T) {
 func TestAddTaskToTasklist_Success(t *testing.T) {
 	f, stdout, _, reg := taskShortcutTestFactory(t)
 	warmTenantToken(t, f, reg)
+	task := fullTaskOutputFixture()
 
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/task/v2/tasks/task-1/add_tasklist",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
-			"data": map[string]interface{}{
-				"task": map[string]interface{}{
-					"guid": "task-1",
-				},
-			},
+			"data": map[string]interface{}{"task": task},
 		},
 	})
 
@@ -115,6 +112,16 @@ func TestAddTaskToTasklist_Success(t *testing.T) {
 	if !strings.Contains(out, `"tasklist_guid":"tl-123"`) && !strings.Contains(out, `"tasklist_guid": "tl-123"`) {
 		t.Errorf("expected tasklist_guid in output, got: %s", out)
 	}
+	var envelope map[string]interface{}
+	if decodeErr := json.Unmarshal(stdout.Bytes(), &envelope); decodeErr != nil {
+		t.Fatalf("decode output: %v\n%s", decodeErr, out)
+	}
+	data, _ := envelope["data"].(map[string]interface{})
+	successful, _ := data["successful_tasks"].([]interface{})
+	if len(successful) != 1 {
+		t.Fatalf("successful_tasks = %#v, want one item", data["successful_tasks"])
+	}
+	assertStandardTaskFields(t, successful[0].(map[string]interface{}))
 }
 
 // TestAddTaskToTasklist_PartialFailure exercises the batch path: some tasks

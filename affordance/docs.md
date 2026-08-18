@@ -10,6 +10,7 @@ Create a new Lark document from DocxXML or Markdown, optionally in a folder or W
 - For multiline `--content`, prefer `@file` or `-` (stdin) to avoid shell-escaping damage.
 
 ### Skills
+- lark-doc/references/lark-doc-create-workflow.md
 - lark-doc/references/lark-doc-create.md
 - lark-doc/references/lark-doc-xml.md
 - lark-doc/references/lark-doc-md.md

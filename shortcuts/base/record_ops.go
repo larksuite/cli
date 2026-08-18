@@ -19,8 +19,9 @@ const maxBatchGetSelectFieldCount = 100
 const maxRecordSearchSelectFieldCount = 50
 
 var recordCellValueHappyPathTips = []string{
-	`CellValue happy path: text/phone/url -> "text"; number/currency/percent/rating -> 12.5; select (multiple=false) -> "Todo"; select (multiple=true) -> ["Tag A","Tag B"]; datetime -> "2026-03-24 10:00:00"; checkbox -> true/false.`,
+	`CellValue happy path: text/phone/url -> "text"; number/currency/percent/rating -> 12.5; select -> ["Todo"] or ["Tag A","Tag B"] (when multiple=false, the array can contain only one option); datetime -> "2026-03-24 10:00"; checkbox -> true/false.`,
 	`ID-based CellValue: user/group/link fields use arrays like [{"id":"ou_xxx"}], [{"id":"oc_xxx"}], [{"id":"rec_xxx"}]; location uses {"lng":116.397428,"lat":39.90923}; null clears a cell when allowed.`,
+	"User and group fields always use arrays; when multiple=false, the array can contain only one item.",
 	"Do not guess user/chat/linked-record IDs or location coordinates; resolve them first with the relevant contact/im/record lookup flow.",
 	"Use lark-base-cell-value.md for complex CellValue shapes and special field types; do not invent values for fields not covered by the happy path.",
 }
@@ -226,9 +227,13 @@ func dryRunRecordList(_ context.Context, runtime *common.RuntimeContext) *common
 		offset = 0
 	}
 	limit := runtime.Int("limit")
+	requestLimit := limit
+	if runtime.Str("format") == "ndjson" {
+		requestLimit = min(limit, ndjsonRecordPageSize)
+	}
 	params := url.Values{}
 	params.Set("offset", strconv.Itoa(offset))
-	params.Set("limit", strconv.Itoa(limit))
+	params.Set("limit", strconv.Itoa(requestLimit))
 	fields, err := recordProjectionFields(runtime)
 	if err != nil {
 		return common.NewDryRunAPI()
@@ -243,10 +248,17 @@ func dryRunRecordList(_ context.Context, runtime *common.RuntimeContext) *common
 		return common.NewDryRunAPI()
 	}
 	path := "/open-apis/base/v3/bases/:base_token/tables/:table_id/records?" + params.Encode()
-	return common.NewDryRunAPI().
+	dry := common.NewDryRunAPI().
 		GET(path).
 		Set("base_token", runtime.Str("base-token")).
 		Set("table_id", baseTableID(runtime))
+	if runtime.Str("format") == "ndjson" {
+		dry.Set("export_format", "ndjson").Set("requested_limit", limit)
+		if outputPath := strings.TrimSpace(runtime.Str("output")); outputPath != "" {
+			dry.Set("output", outputPath)
+		}
+	}
+	return dry
 }
 
 func dryRunRecordGet(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -254,11 +266,18 @@ func dryRunRecordGet(_ context.Context, runtime *common.RuntimeContext) *common.
 	if err != nil {
 		return common.NewDryRunAPI()
 	}
-	return common.NewDryRunAPI().
+	dry := common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/batch_get").
 		Body(recordGetBatchBody(selection)).
 		Set("base_token", runtime.Str("base-token")).
 		Set("table_id", baseTableID(runtime))
+	if runtime.Str("format") == "ndjson" {
+		dry.Set("export_format", "ndjson")
+		if outputPath := strings.TrimSpace(runtime.Str("output")); outputPath != "" {
+			dry.Set("output", outputPath)
+		}
+	}
+	return dry
 }
 
 func dryRunRecordSearch(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -268,7 +287,18 @@ func dryRunRecordSearch(_ context.Context, runtime *common.RuntimeContext) *comm
 	} else {
 		body, _ = recordSearchFlagBody(runtime)
 	}
-	return common.NewDryRunAPI().
+	dry := common.NewDryRunAPI()
+	if runtime.Str("format") == "ndjson" && body != nil {
+		_, requestedLimit, err := recordSearchPagination(body)
+		if err == nil {
+			body["limit"] = min(requestedLimit, ndjsonRecordPageSize)
+			dry.Set("export_format", "ndjson").Set("requested_limit", requestedLimit)
+			if outputPath := strings.TrimSpace(runtime.Str("output")); outputPath != "" {
+				dry.Set("output", outputPath)
+			}
+		}
+	}
+	return dry.
 		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/search").
 		Body(body).
 		Set("base_token", runtime.Str("base-token")).
@@ -399,6 +429,7 @@ func validateRecordJSON(runtime *common.RuntimeContext) error {
 
 func recordProjectionFieldFlag(desc string) common.Flag {
 	flag := fieldRefFlag(false)
+	flag.Aliases = append(flag.Aliases, "field")
 	flag.Type = "string_array"
 	flag.Desc = desc
 	return flag
@@ -523,7 +554,7 @@ func executeRecordList(runtime *common.RuntimeContext) error {
 		offset = 0
 	}
 	limit := runtime.Int("limit")
-	params := map[string]interface{}{"offset": offset, "limit": limit}
+	params := map[string]interface{}{}
 	fields, err := recordProjectionFields(runtime)
 	if err != nil {
 		return err
@@ -537,6 +568,11 @@ func executeRecordList(runtime *common.RuntimeContext) error {
 	if err := applyRecordQueryToParams(runtime, params); err != nil {
 		return err
 	}
+	if runtime.Str("format") == "ndjson" {
+		return executeRecordListNDJSON(runtime, params, offset, limit)
+	}
+	params["offset"] = offset
+	params["limit"] = limit
 	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records"), params, nil)
 	if err != nil {
 		return err
@@ -564,6 +600,9 @@ func executeRecordGet(runtime *common.RuntimeContext) error {
 	if runtime.Str("format") == "markdown" {
 		return outputRecordGetMarkdown(runtime, data)
 	}
+	if runtime.Str("format") == "ndjson" {
+		return executeRecordGetNDJSON(runtime, data, len(selection.recordIDs))
+	}
 	runtime.Out(data, nil)
 	return nil
 }
@@ -578,6 +617,9 @@ func executeRecordSearch(runtime *common.RuntimeContext) error {
 	}
 	if err != nil {
 		return err
+	}
+	if runtime.Str("format") == "ndjson" {
+		return executeRecordSearchNDJSON(runtime, body)
 	}
 	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "search"), nil, body)
 	if err != nil {

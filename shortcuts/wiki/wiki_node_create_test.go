@@ -192,6 +192,57 @@ func TestValidateWikiNodeCreateSpecRejectsOriginTokenForOriginNode(t *testing.T)
 	}
 }
 
+func TestValidateWikiNodeCreateSpecRejectsFileForOriginNode(t *testing.T) {
+	t.Parallel()
+
+	err := validateWikiNodeCreateSpec(wikiNodeCreateSpec{
+		NodeType: wikiNodeTypeOrigin,
+		ObjType:  "file",
+	}, core.AsUser)
+	if err == nil || !strings.Contains(err.Error(), "--obj-type file is not supported when --node-type=origin") {
+		t.Fatalf("expected origin file validation error, got %v", err)
+	}
+	requireWikiValidationParams(t, err, "--node-type", "--obj-type")
+	p, ok := errs.ProblemOf(err)
+	if !ok || !strings.Contains(p.Hint, "--node-type shortcut --obj-type file") {
+		t.Fatalf("expected shortcut recovery hint, got %v", err)
+	}
+}
+
+func TestValidateWikiNodeCreateSpecAllowsFileForShortcutNode(t *testing.T) {
+	t.Parallel()
+
+	spec := wikiNodeCreateSpec{
+		NodeType:        wikiNodeTypeShortcut,
+		ObjType:         "file",
+		OriginNodeToken: "wik_file_origin",
+	}
+	if err := validateWikiNodeCreateSpec(spec, core.AsUser); err != nil {
+		t.Fatalf("validateWikiNodeCreateSpec() error = %v", err)
+	}
+	body := spec.RequestBody()
+	if body["node_type"] != wikiNodeTypeShortcut || body["obj_type"] != "file" || body["origin_node_token"] != "wik_file_origin" {
+		t.Fatalf("RequestBody() = %#v, want shortcut file payload", body)
+	}
+}
+
+func TestWikiNodeCreateObjTypeEnumIncludesFile(t *testing.T) {
+	t.Parallel()
+
+	for _, flag := range WikiNodeCreate.Flags {
+		if flag.Name != "obj-type" {
+			continue
+		}
+		for _, value := range flag.Enum {
+			if value == "file" {
+				return
+			}
+		}
+		t.Fatalf("--obj-type enum = %v, want file", flag.Enum)
+	}
+	t.Fatal("--obj-type flag not found")
+}
+
 func TestValidateWikiNodeCreateSpecRejectsBotWithoutLocation(t *testing.T) {
 	t.Parallel()
 
@@ -966,6 +1017,54 @@ func TestRunWikiNodeCreateNoRetryOnNonContentionError(t *testing.T) {
 	}
 	if strings.Contains(stderr.String(), "retrying") {
 		t.Fatalf("stderr = %q, should not contain retry log for non-contention error", stderr.String())
+	}
+}
+
+func TestRunWikiNodeCreateClassifiesStructuralLimitAsNonRetryable(t *testing.T) {
+	t.Parallel()
+
+	cause := errors.New("opaque upstream cause")
+	const upstreamHint = "upstream recovery hint"
+	limitErr := errs.NewAPIError(errs.SubtypeUnknown, "opaque upstream message").
+		WithCode(wikiNodeCreateStructuralLimitCode).
+		WithRetryable().
+		WithHint(upstreamHint).
+		WithCause(cause)
+	client := &fakeWikiNodeCreateClient{
+		spaces: map[string]*wikiSpaceRecord{
+			wikiMyLibrarySpaceID: {SpaceID: "space_my_library"},
+		},
+		createErrs: []error{limitErr},
+	}
+
+	var stderr bytes.Buffer
+	_, err := runWikiNodeCreate(context.Background(), client, core.AsUser, wikiNodeCreateSpec{
+		NodeType: wikiNodeTypeOrigin,
+		ObjType:  "docx",
+		Title:    "Roadmap",
+	}, &stderr)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if len(client.createInvoked) != 1 {
+		t.Fatalf("create invoked %d times, want 1", len(client.createInvoked))
+	}
+	if strings.Contains(stderr.String(), "retrying") {
+		t.Fatalf("stderr = %q, should not contain retry log", stderr.String())
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error = %T, want typed problem", err)
+	}
+	if problem.Category != errs.CategoryAPI || problem.Code != wikiNodeCreateStructuralLimitCode || problem.Retryable {
+		t.Fatalf("problem = %#v, want API code %d and retryable=false", problem, wikiNodeCreateStructuralLimitCode)
+	}
+	wantHint := upstreamHint + "\n" + wikiNodeCreateStructuralLimitHint
+	if problem.Hint != wantHint {
+		t.Fatalf("hint = %q, want %q", problem.Hint, wantHint)
+	}
+	if !errors.Is(err, cause) {
+		t.Fatalf("error does not preserve cause %v: %v", cause, err)
 	}
 }
 

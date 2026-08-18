@@ -35,12 +35,19 @@ const (
 	// wikiNodeCreateRetryBaseDelay is the initial backoff delay for lock
 	// contention retries. Subsequent retries double the delay (250ms, 500ms).
 	wikiNodeCreateRetryBaseDelay = 250 * time.Millisecond
+
+	// 131003 is command-specific here. For node creation it covers multiple
+	// structural limits, so do not classify it globally or infer a particular
+	// limit from the upstream error message.
+	wikiNodeCreateStructuralLimitCode = 131003
+	wikiNodeCreateStructuralLimitHint = "Wiki node creation reached a structural limit, such as the space node count, hierarchy depth, or direct-child count. This is not a transient failure. Do not retry with the same parameters; review the upstream error message, then choose a shallower or different parent, reorganize existing nodes, or clean up or use another Wiki space as appropriate."
 )
 
 var wikiObjectTypes = []string{
 	"sheet",
 	"mindnote",
 	"bitable",
+	"file",
 	"docx",
 	"slides",
 }
@@ -60,12 +67,13 @@ var WikiNodeCreate = common.Shortcut{
 		{Name: "parent-node-token", Desc: "parent wiki node token; if set, the new node is created under that parent"},
 		{Name: "title", Desc: "node title"},
 		{Name: "node-type", Default: wikiNodeTypeOrigin, Desc: "node type", Enum: []string{wikiNodeTypeOrigin, wikiNodeTypeShortcut}},
-		{Name: "obj-type", Default: "docx", Desc: "target object type", Enum: wikiObjectTypes},
+		{Name: "obj-type", Default: "docx", Desc: "target object type; file is supported only when --node-type=shortcut", Enum: wikiObjectTypes},
 		{Name: "origin-node-token", Desc: "source node token when --node-type=shortcut"},
 	},
 	Tips: []string{
 		"If --space-id and --parent-node-token are both omitted, user identity falls back to my_library.",
 		"Use --node-type shortcut --origin-node-token <token> to create a shortcut node.",
+		"Use --node-type shortcut --obj-type file --origin-node-token <token> to create a shortcut to a file; origin nodes cannot use --obj-type file.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateWikiNodeCreateSpec(readWikiNodeCreateSpec(runtime), runtime.As())
@@ -236,6 +244,14 @@ func validateWikiNodeCreateSpec(spec wikiNodeCreateSpec, identity core.Identity)
 	if spec.NodeType != wikiNodeTypeShortcut && spec.OriginNodeToken != "" {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--origin-node-token can only be used when --node-type=shortcut").WithParam("--origin-node-token")
 	}
+	if spec.NodeType == wikiNodeTypeOrigin && spec.ObjType == "file" {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--obj-type file is not supported when --node-type=origin").
+			WithParams(
+				errs.InvalidParam{Name: "--node-type", Reason: "use shortcut when creating a Wiki reference to a file"},
+				errs.InvalidParam{Name: "--obj-type", Reason: "file is supported only for shortcut nodes"},
+			).
+			WithHint("use --node-type shortcut --obj-type file --origin-node-token <TOKEN>")
+	}
 
 	// Bot identity has no meaningful "personal document library" target, so
 	// my_library must be rejected explicitly instead of deferring to API-time
@@ -331,7 +347,7 @@ func runWikiNodeCreate(ctx context.Context, client wikiNodeCreateClient, identit
 			break
 		}
 		if !isWikiNodeLockContention(lastErr) {
-			return nil, lastErr
+			return nil, withWikiNodeCreateRecoveryHint(lastErr)
 		}
 	}
 	if lastErr != nil {
@@ -345,6 +361,20 @@ func runWikiNodeCreate(ctx context.Context, client wikiNodeCreateClient, identit
 		Node:          node,
 		ResolvedSpace: resolvedSpace,
 	}, nil
+}
+
+func withWikiNodeCreateRecoveryHint(err error) error {
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Code != wikiNodeCreateStructuralLimitCode {
+		return err
+	}
+	p.Retryable = false
+	if existing := strings.TrimSpace(p.Hint); existing != "" {
+		p.Hint = existing + "\n" + wikiNodeCreateStructuralLimitHint
+	} else {
+		p.Hint = wikiNodeCreateStructuralLimitHint
+	}
+	return err
 }
 
 // isWikiNodeLockContention returns true if the error is a Lark API error with

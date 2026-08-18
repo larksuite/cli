@@ -541,9 +541,210 @@ func newTOSTestRuntime(t *testing.T) (*common.RuntimeContext, *httpmock.Registry
 	return rt, reg
 }
 
+// registerAppTypeStub registers the GET /apps/{id} stub that the app_type
+// precheck at the top of runHTMLPublishTOS issues via queryAppType. appType is
+// the uppercase server value ("HTML", "FULL_STACK", ...); queryAppType
+// normalizes it to lowercase. httpmock matches a stub when the request URL
+// contains stub.URL (strings.Contains). queryAppType requests the bare
+// /apps/{id} path, which cannot contain a longer /apps/{id}/pre_release or
+// /apps/{id}/releases stub URL, so it only ever matches this app_type stub —
+// resolution stays unambiguous regardless of registration order.
+func registerAppTypeStub(reg *httpmock.Registry, appID, appType string) {
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/" + appID,
+		Body: map[string]interface{}{
+			"code": float64(0),
+			"data": map[string]interface{}{
+				"app": map[string]interface{}{
+					"app_id":   appID,
+					"app_type": appType,
+				},
+			},
+		},
+	})
+}
+
+// failIfCalled returns an OnMatch hook that fails the test if a stub is hit,
+// proving the app_type precheck short-circuited before that downstream step.
+func failIfCalled(t *testing.T, step string) func(*http.Request) {
+	t.Helper()
+	return func(*http.Request) { t.Errorf("precheck should have rejected before %s", step) }
+}
+
+func TestRunHTMLPublishTOS_RejectsFullStack(t *testing.T) {
+	rt, reg := newTOSTestRuntime(t)
+	registerAppTypeStub(reg, "app_tos", "FULL_STACK")
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: "/apps/app_tos/pre_release",
+		Optional: true,
+		OnMatch:  failIfCalled(t, "pre_release"),
+		Body:     map[string]interface{}{"code": float64(0)},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/apps/app_tos/releases",
+		Optional: true,
+		OnMatch:  failIfCalled(t, "release-create"),
+		Body:     map[string]interface{}{"code": float64(0)},
+	})
+
+	// A nonexistent --path proves the precheck short-circuits before any
+	// packaging: if the precheck ever moved below prepareHTMLPublishTarball,
+	// walkHTMLPublishCandidates would fail first with a different (non
+	// FailedPrecondition) error and this test would break.
+	missing := filepath.Join(t.TempDir(), "does-not-exist")
+	_, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{AppID: "app_tos", Path: missing})
+	problem := requireAppsProblem(t, err, errs.CategoryValidation)
+	if problem.Subtype != errs.SubtypeFailedPrecondition {
+		t.Fatalf("subtype=%q, want %q", problem.Subtype, errs.SubtypeFailedPrecondition)
+	}
+	if !strings.Contains(problem.Message, "full_stack") {
+		t.Fatalf("message should name the rejected app_type, got %q", problem.Message)
+	}
+	if !strings.Contains(problem.Hint, "+release-create") {
+		t.Fatalf("hint should redirect to +release-create, got %q", problem.Hint)
+	}
+}
+
+func TestRunHTMLPublishTOS_RejectsFrontend(t *testing.T) {
+	rt, reg := newTOSTestRuntime(t)
+	registerAppTypeStub(reg, "app_tos", "FRONTEND")
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: "/apps/app_tos/pre_release",
+		Optional: true,
+		OnMatch:  failIfCalled(t, "pre_release"),
+		Body:     map[string]interface{}{"code": float64(0)},
+	})
+
+	// Nonexistent --path: see the rationale in TestRunHTMLPublishTOS_RejectsFullStack.
+	missing := filepath.Join(t.TempDir(), "does-not-exist")
+	_, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{AppID: "app_tos", Path: missing})
+	problem := requireAppsProblem(t, err, errs.CategoryValidation)
+	if problem.Subtype != errs.SubtypeFailedPrecondition {
+		t.Fatalf("subtype=%q, want %q", problem.Subtype, errs.SubtypeFailedPrecondition)
+	}
+	if !strings.Contains(problem.Message, "frontend") {
+		t.Fatalf("message should name the rejected app_type, got %q", problem.Message)
+	}
+}
+
+func TestRunHTMLPublishTOS_AllowsModernHTML(t *testing.T) {
+	site := writeAppsSampleSite(t)
+	rt, reg := newTOSTestRuntime(t)
+	registerAppTypeStub(reg, "app_tos", "MODERN_HTML")
+
+	tosServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer tosServer.Close()
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/app_tos/pre_release",
+		Body: map[string]interface{}{
+			"code": float64(0),
+			"data": map[string]interface{}{
+				"kvs": []interface{}{
+					map[string]interface{}{"key": "upload_url", "value": tosServer.URL},
+					map[string]interface{}{"key": "tos_path", "value": "tos://bucket/key"},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_tos/releases",
+		Body: map[string]interface{}{
+			"code": float64(0),
+			"data": map[string]interface{}{"release_id": "rel_mh", "status": "publishing"},
+		},
+	})
+
+	out, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{AppID: "app_tos", Path: site})
+	if err != nil {
+		t.Fatalf("modern_html should be publishable, got err=%v", err)
+	}
+	if out["release_id"] != "rel_mh" {
+		t.Fatalf("release_id=%v, want rel_mh", out["release_id"])
+	}
+}
+
+func TestRunHTMLPublishTOS_AppNotExist(t *testing.T) {
+	site := writeAppsSampleSite(t)
+	rt, reg := newTOSTestRuntime(t)
+	// queryAppType resolves the app first; a non-existent app surfaces the
+	// backend "app not exist" business code (400002577). The precheck must
+	// translate it into the actionable +list hint (#8), not leak the raw code.
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/app_tos",
+		Body:   map[string]interface{}{"code": float64(400002577), "msg": "app not exist"},
+	})
+
+	_, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{AppID: "app_tos", Path: site})
+	if err == nil {
+		t.Fatalf("expected error for non-existent app")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if !strings.Contains(problem.Hint, "+list") {
+		t.Fatalf("hint should point to +list to find the right app_id, got %q", problem.Hint)
+	}
+}
+
+// TestRunHTMLPublishTOS_ReleaseAppTypeErrorTranslated pins the defense-in-depth
+// layer: the app_type precheck passes (HTML), pre_release and TOS upload
+// succeed, but release-create still returns the app_type business code
+// (400000059) — e.g. the type changed mid-flight. The opaque code must be
+// translated into the actionable +release-create hint rather than bubbling raw.
+func TestRunHTMLPublishTOS_ReleaseAppTypeErrorTranslated(t *testing.T) {
+	site := writeAppsSampleSite(t)
+	rt, reg := newTOSTestRuntime(t)
+	registerAppTypeStub(reg, "app_tos", "HTML")
+
+	tosServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer tosServer.Close()
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/app_tos/pre_release",
+		Body: map[string]interface{}{
+			"code": float64(0),
+			"data": map[string]interface{}{
+				"kvs": []interface{}{
+					map[string]interface{}{"key": "upload_url", "value": tosServer.URL},
+					map[string]interface{}{"key": "tos_path", "value": "tos://bucket/key"},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_tos/releases",
+		Body:   map[string]interface{}{"code": float64(400000059), "msg": "app_type invalid"},
+	})
+
+	_, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{AppID: "app_tos", Path: site})
+	if err == nil {
+		t.Fatalf("expected error from release-create app_type rejection")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if !strings.Contains(problem.Hint, "+release-create") {
+		t.Fatalf("release-create app_type rejection should be translated to a +release-create hint, got %q", problem.Hint)
+	}
+}
+
 func TestRunHTMLPublishTOS_Success(t *testing.T) {
 	site := writeAppsSampleSite(t)
 	rt, reg := newTOSTestRuntime(t)
+	registerAppTypeStub(reg, "app_tos", "HTML")
 
 	// Start httptest server to accept the TOS upload.
 	tosServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -604,7 +805,8 @@ func TestRunHTMLPublishTOS_MissingIndexHTML(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	rt, _ := newTOSTestRuntime(t)
+	rt, reg := newTOSTestRuntime(t)
+	registerAppTypeStub(reg, "app_tos", "HTML")
 	_, err := runHTMLPublishTOS(context.Background(), rt, appsHTMLPublishSpec{
 		AppID: "app_tos",
 		Path:  dir,
@@ -620,6 +822,7 @@ func TestRunHTMLPublishTOS_MissingIndexHTML(t *testing.T) {
 func TestRunHTMLPublishTOS_PreReleaseError(t *testing.T) {
 	site := writeAppsSampleSite(t)
 	rt, reg := newTOSTestRuntime(t)
+	registerAppTypeStub(reg, "app_tos", "HTML")
 
 	// Register pre_release API stub that returns an error code.
 	reg.Register(&httpmock.Stub{
@@ -643,6 +846,7 @@ func TestRunHTMLPublishTOS_PreReleaseError(t *testing.T) {
 func TestRunHTMLPublishTOS_MissingParams(t *testing.T) {
 	site := writeAppsSampleSite(t)
 	rt, reg := newTOSTestRuntime(t)
+	registerAppTypeStub(reg, "app_tos", "HTML")
 
 	// Register pre_release API stub that returns empty kvs list.
 	reg.Register(&httpmock.Stub{
@@ -672,6 +876,7 @@ func TestRunHTMLPublishTOS_MissingParams(t *testing.T) {
 func TestRunHTMLPublishTOS_MissingParamsObject(t *testing.T) {
 	site := writeAppsSampleSite(t)
 	rt, reg := newTOSTestRuntime(t)
+	registerAppTypeStub(reg, "app_tos", "HTML")
 
 	// Register pre_release API stub that returns no kvs key at all.
 	reg.Register(&httpmock.Stub{
@@ -699,6 +904,7 @@ func TestRunHTMLPublishTOS_MissingParamsObject(t *testing.T) {
 func TestRunHTMLPublishTOS_UploadFails(t *testing.T) {
 	site := writeAppsSampleSite(t)
 	rt, reg := newTOSTestRuntime(t)
+	registerAppTypeStub(reg, "app_tos", "HTML")
 
 	// Start httptest server that returns 500.
 	tosServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

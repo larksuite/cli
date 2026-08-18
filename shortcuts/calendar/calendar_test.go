@@ -196,12 +196,112 @@ func TestBuildEventData_DefaultVChat(t *testing.T) {
 	runtime := common.TestNewRuntimeContext(cmd, defaultConfig())
 	eventData := buildEventData(runtime, "1742515200", "1742518800")
 
-	vchat, ok := eventData["vchat"].(map[string]string)
+	vchat, ok := eventData["vchat"].(map[string]interface{})
 	if !ok {
-		t.Fatalf("vchat = %T, want map[string]string", eventData["vchat"])
+		t.Fatalf("vchat = %T, want map[string]interface{}", eventData["vchat"])
 	}
 	if got := vchat["vc_type"]; got != "vc" {
 		t.Fatalf("vchat.vc_type = %q, want %q", got, "vc")
+	}
+	if _, exists := vchat["meeting_settings"]; exists {
+		t.Fatalf("vchat.meeting_settings should be absent without --meeting-owner-id, got %v", vchat["meeting_settings"])
+	}
+}
+
+func TestBuildEventData_MeetingOwner(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("summary", "", "")
+	cmd.Flags().String("description", "", "")
+	cmd.Flags().String("rrule", "", "")
+	cmd.Flags().String("meeting-owner-id", "", "")
+	cmd.Flags().Set("summary", "Team Sync")
+	cmd.Flags().Set("meeting-owner-id", "ou_owner123")
+
+	runtime := common.TestNewRuntimeContext(cmd, defaultConfig())
+	eventData := buildEventData(runtime, "1742515200", "1742518800")
+
+	vchat, ok := eventData["vchat"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("vchat = %T, want map[string]interface{}", eventData["vchat"])
+	}
+	if got := vchat["vc_type"]; got != "vc" {
+		t.Fatalf("vchat.vc_type = %q, want %q", got, "vc")
+	}
+	settings, ok := vchat["meeting_settings"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("vchat.meeting_settings = %T, want map[string]interface{}", vchat["meeting_settings"])
+	}
+	if got := settings["owner_id"]; got != "ou_owner123" {
+		t.Fatalf("vchat.meeting_settings.owner_id = %q, want %q", got, "ou_owner123")
+	}
+}
+
+func TestCreate_MeetingOwner_DryRun_IncludesOwnerID(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+
+	err := mountAndRun(t, CalendarCreate, []string{
+		"+create",
+		"--summary", "x",
+		"--start", "2025-03-21T10:00:00+08:00",
+		"--end", "2025-03-21T11:00:00+08:00",
+		"--calendar-id", "cal_test123",
+		"--meeting-owner-id", "ou_owner123",
+		"--dry-run",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"owner_id": "ou_owner123"`) {
+		t.Errorf("dry-run should include vchat.meeting_settings.owner_id, got: %s", stdout.String())
+	}
+}
+
+func TestCreate_MeetingOwner_BareOuPrefix_Typed(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarCreate, []string{"+create", "--summary", "x", "--start", "2025-03-21T10:00:00+08:00", "--end", "2025-03-21T11:00:00+08:00", "--calendar-id", "cal_test123", "--meeting-owner-id", "ou_", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype=%q", ve.Subtype)
+	}
+	if ve.Param != "--meeting-owner-id" {
+		t.Errorf("param=%q, want --meeting-owner-id", ve.Param)
+	}
+}
+
+func TestCreate_MeetingOwner_NonOuPrefix_Typed(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarCreate, []string{"+create", "--summary", "x", "--start", "2025-03-21T10:00:00+08:00", "--end", "2025-03-21T11:00:00+08:00", "--calendar-id", "cal_test123", "--meeting-owner-id", "oc_notuser", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Param != "--meeting-owner-id" {
+		t.Errorf("param=%q, want --meeting-owner-id", ve.Param)
+	}
+}
+
+func TestCreate_MeetingOwner_NonBot_Typed(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarCreate, []string{"+create", "--summary", "x", "--start", "2025-03-21T10:00:00+08:00", "--end", "2025-03-21T11:00:00+08:00", "--calendar-id", "cal_test123", "--meeting-owner-id", "ou_owner123", "--as", "user"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Param != "--meeting-owner-id" {
+		t.Errorf("param=%q, want --meeting-owner-id", ve.Param)
 	}
 }
 

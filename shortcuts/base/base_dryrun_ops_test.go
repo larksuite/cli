@@ -27,8 +27,9 @@ func TestDryRunTableOps(t *testing.T) {
 
 	rt := newBaseTestRuntime(map[string]string{"base-token": "app_x", "table-id": "tbl_1", "name": "Orders"}, nil, nil)
 	assertDryRunContains(t, dryRunTableGet(ctx, rt), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1")
-	assertDryRunContains(t, dryRunTableCreate(ctx, rt), "POST /open-apis/base/v3/bases/app_x/tables")
 
+	// +table-create requires --fields, so the fieldless shape is unreachable
+	// through the command surface; see table_create_test.go for that contract.
 	tableCreateWithFieldsRT := newBaseTestRuntime(
 		map[string]string{"base-token": "app_x", "name": "Orders", "fields": `[{"name":"Title","type":"text"}]`},
 		nil,
@@ -130,6 +131,19 @@ func TestDryRunRecordOps(t *testing.T) {
 	)
 	assertDryRunContains(t, dryRunRecordList(ctx, listRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/records", "offset=0", "limit=200", "view_id=viw_1", "field_id=Name", "field_id=Age")
 
+	listNDJSONRT := newBaseTestRuntime(
+		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "format": "ndjson", "output": "records.ndjson"},
+		nil,
+		map[string]int{"limit": 2000},
+	)
+	assertDryRunContains(
+		t,
+		dryRunRecordList(ctx, listNDJSONRT),
+		"GET /open-apis/base/v3/bases/app_x/tables/tbl_1/records",
+		"offset=0",
+		"limit=500",
+	)
+
 	listFieldNamesAliasRT := newBaseTestRuntimeWithArrays(
 		map[string]string{"base-token": "app_x", "table-id": "tbl_1"},
 		map[string][]string{"field-names": {"Name", "Age"}},
@@ -186,6 +200,24 @@ func TestDryRunRecordOps(t *testing.T) {
 		`"search_fields":["Title","fld_owner"]`,
 		`"select_fields":["Title","fld_owner"]`,
 		`"offset":-1`,
+		`"limit":500`,
+	)
+
+	searchNDJSONRT := newBaseTestRuntime(
+		map[string]string{
+			"base-token": "app_x",
+			"table-id":   "tbl_1",
+			"format":     "ndjson",
+			"output":     "search.ndjson",
+			"json":       `{"keyword":"Created","search_fields":["Title"],"limit":2000}`,
+		},
+		nil,
+		nil,
+	)
+	assertDryRunContains(
+		t,
+		dryRunRecordSearch(ctx, searchNDJSONRT),
+		"POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/search",
 		`"limit":500`,
 	)
 

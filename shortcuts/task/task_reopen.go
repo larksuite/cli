@@ -55,6 +55,7 @@ var ReopenTask = common.Shortcut{
 			"guid": guid,
 			"url":  urlVal,
 		}
+		projectTaskFields(outData, task, standardTaskOutputFields...)
 
 		runtime.OutFormat(outData, nil, func(w io.Writer) {
 			summary, _ := task["summary"].(string)

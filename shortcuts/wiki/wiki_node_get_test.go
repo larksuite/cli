@@ -409,6 +409,188 @@ func TestWikiNodeGetMountedExecuteParsesURLAndFormatsOutput(t *testing.T) {
 	}
 }
 
+func TestWikiNodeGetMountedClassifiesTerminalBusinessErrors(t *testing.T) {
+	tests := []struct {
+		name     string
+		code     int
+		message  string
+		subtype  errs.Subtype
+		hintText string
+	}{
+		{
+			name:     "deleted node",
+			code:     131012,
+			message:  "node has been deleted",
+			subtype:  errs.SubtypeNotFound,
+			hintText: "Do not retry the same node token",
+		},
+		{
+			name:     "invalid resource token",
+			code:     131013,
+			message:  "token is invalid",
+			subtype:  errs.SubtypeInvalidParameters,
+			hintText: "Do not retry the same token",
+		},
+		{
+			name:     "document not in wiki",
+			code:     131014,
+			message:  "document is not in wiki",
+			subtype:  errs.SubtypeFailedPrecondition,
+			hintText: "Do not retry wiki +node-get with the same document",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+			factory, stdout, _, reg := cmdutil.TestFactory(t, wikiTestConfig())
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/wiki/v2/spaces/get_node",
+				Body: map[string]interface{}{
+					"code":   tt.code,
+					"msg":    tt.message,
+					"log_id": "log-node-get-terminal",
+				},
+			})
+
+			err := mountAndRunWiki(t, WikiNodeGet, []string{
+				"+node-get",
+				"--node-token", testWikiNodeToken,
+				"--as", "bot",
+			}, factory, stdout)
+			if err == nil {
+				t.Fatal("expected a terminal business error")
+			}
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed error, got %T: %v", err, err)
+			}
+			if p.Category != errs.CategoryAPI || p.Code != tt.code || p.Subtype != tt.subtype {
+				t.Fatalf("problem category/code/subtype = %s/%d/%s, want %s/%d/%s",
+					p.Category, p.Code, p.Subtype, errs.CategoryAPI, tt.code, tt.subtype)
+			}
+			if p.Retryable {
+				t.Fatalf("problem retryable = true, want false: %#v", p)
+			}
+			if !strings.Contains(p.Hint, tt.hintText) {
+				t.Fatalf("hint = %q, want %q", p.Hint, tt.hintText)
+			}
+			if p.LogID != "log-node-get-terminal" {
+				t.Fatalf("log_id = %q, want log-node-get-terminal", p.LogID)
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("stdout = %q, want no success envelope", stdout.String())
+			}
+		})
+	}
+}
+
+func TestWikiNodeGetMountedExplainsResourcePermissionDenied(t *testing.T) {
+	for _, identity := range []string{"user", "bot"} {
+		t.Run(identity, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+			factory, stdout, _, reg := cmdutil.TestFactory(t, wikiTestConfig())
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/wiki/v2/spaces/get_node",
+				Body: map[string]interface{}{
+					"code":   131006,
+					"msg":    "permission denied: node permission denied, user needs read permission.",
+					"log_id": "log-node-get-permission",
+				},
+			})
+
+			err := mountAndRunWiki(t, WikiNodeGet, []string{
+				"+node-get",
+				"--node-token", testWikiNodeToken,
+				"--as", identity,
+			}, factory, stdout)
+			if err == nil {
+				t.Fatal("expected permission error")
+			}
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed error, got %T: %v", err, err)
+			}
+			if p.Category != errs.CategoryAuthorization || p.Subtype != errs.SubtypePermissionDenied || p.Code != 131006 {
+				t.Fatalf("problem = %#v, want authorization/permission_denied/131006", p)
+			}
+			if p.Retryable {
+				t.Fatalf("problem retryable = true, want false: %#v", p)
+			}
+			if !strings.Contains(p.Hint, "resource access, not app scope authorization") || !strings.Contains(p.Hint, "Do not retry the same request") {
+				t.Fatalf("hint = %q, want non-retryable resource-access guidance", p.Hint)
+			}
+		})
+	}
+}
+
+func TestWikiNodeGetProblemBoundsRateLimitRetries(t *testing.T) {
+	t.Parallel()
+
+	cause := errors.New("opaque upstream cause")
+	const upstreamHint = "upstream pacing hint"
+	err := errs.NewAPIError(errs.SubtypeRateLimit, "opaque upstream message").
+		WithCode(99991400).
+		WithRetryable().
+		WithRetryAfterSeconds(8).
+		WithHint(upstreamHint).
+		WithCause(cause)
+
+	got := wikiNodeGetProblem(err)
+	p, ok := errs.ProblemOf(got)
+	if !ok {
+		t.Fatalf("ProblemOf() ok=false")
+	}
+	if p.Category != errs.CategoryAPI || p.Subtype != errs.SubtypeRateLimit || p.Code != 99991400 || !p.Retryable {
+		t.Fatalf("problem = %#v, want retryable api/rate_limit/99991400", p)
+	}
+	var apiErr *errs.APIError
+	if !errors.As(got, &apiErr) {
+		t.Fatalf("error = %T, want *errs.APIError", got)
+	}
+	if apiErr.RetryAfterSeconds != 8 {
+		t.Fatalf("retry_after_seconds = %d, want 8", apiErr.RetryAfterSeconds)
+	}
+	wantHint := upstreamHint + "\n" + wikiNodeGetRateLimitHint
+	if p.Hint != wantHint {
+		t.Fatalf("hint = %q, want %q", p.Hint, wantHint)
+	}
+	if !errors.Is(got, cause) {
+		t.Fatalf("error does not preserve cause %v: %v", cause, got)
+	}
+}
+
+func TestWikiNodeGetProblemPreservesPermissionErrorContract(t *testing.T) {
+	t.Parallel()
+
+	cause := errors.New("opaque upstream cause")
+	err := errs.NewPermissionError(errs.SubtypePermissionDenied, "opaque upstream message").
+		WithCode(131006).
+		WithCause(cause)
+
+	got := wikiNodeGetProblem(err)
+	p, ok := errs.ProblemOf(got)
+	if !ok {
+		t.Fatalf("ProblemOf() ok=false")
+	}
+	if p.Category != errs.CategoryAuthorization || p.Subtype != errs.SubtypePermissionDenied || p.Code != 131006 {
+		t.Fatalf("problem = %#v, want authorization/permission_denied/131006", p)
+	}
+	if p.Retryable {
+		t.Fatalf("problem retryable = true, want false: %#v", p)
+	}
+	if !errors.Is(got, cause) {
+		t.Fatalf("errors.Is(got, cause) = false, want preserved cause")
+	}
+	if p.Hint != wikiPermissionDeniedHint() {
+		t.Fatalf("hint = %q, want %q", p.Hint, wikiPermissionDeniedHint())
+	}
+}
+
 func TestWikiNodeGetMountedAcceptsNodeTokenFlag(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 

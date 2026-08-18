@@ -59,6 +59,7 @@ func shortcutList() []common.Shortcut {
 		// lark_sheet_workbook
 		WorkbookInfo,
 		RevisionGet,
+		SheetList,
 		SheetCreate,
 		SheetDelete,
 		SheetRename,

@@ -4,17 +4,22 @@
 package wiki
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -271,13 +276,46 @@ func TestWikiNodeListProblemAddsActionableHint(t *testing.T) {
 	t.Parallel()
 
 	err := errs.NewAPIError(errs.SubtypeInvalidParameters, "param err: invalid page_token").WithCode(131002)
-	got := wikiNodeListProblem(err, nil)
+	got := wikiNodeListProblem(err)
 	p, ok := errs.ProblemOf(got)
 	if !ok {
 		t.Fatalf("ProblemOf() ok=false")
 	}
 	if !strings.Contains(p.Hint, "page token is invalid or stale") {
 		t.Fatalf("hint = %q, want invalid page token guidance", p.Hint)
+	}
+}
+
+func TestWikiNodeListProblemExplainsResourcePermissionDenied(t *testing.T) {
+	tests := []string{
+		"permission denied: wiki space permission denied, user needs read permission.",
+		"permission denied: node permission denied, tenant needs read permission.",
+	}
+
+	for _, message := range tests {
+		t.Run(message, func(t *testing.T) {
+			cause := errors.New("upstream permission failure")
+			err := errs.NewPermissionError(errs.SubtypePermissionDenied, message).
+				WithCode(131006).
+				WithCause(cause)
+			got := wikiNodeListProblem(err)
+			p, ok := errs.ProblemOf(got)
+			if !ok {
+				t.Fatalf("ProblemOf() ok=false")
+			}
+			if p.Category != errs.CategoryAuthorization || p.Subtype != errs.SubtypePermissionDenied || p.Code != 131006 {
+				t.Fatalf("problem = %#v, want authorization/permission_denied/131006", p)
+			}
+			if p.Retryable {
+				t.Fatalf("problem retryable = true, want false: %#v", p)
+			}
+			if !errors.Is(got, cause) {
+				t.Fatalf("errors.Is(got, cause) = false, want preserved cause")
+			}
+			if !strings.Contains(p.Hint, "resource access, not app scope authorization") || !strings.Contains(p.Hint, "Do not retry the same request") {
+				t.Fatalf("hint = %q, want non-retryable resource-access guidance", p.Hint)
+			}
+		})
 	}
 }
 
@@ -555,6 +593,166 @@ func TestWikiNodeCopyDeclaresNodeOnlySemantics(t *testing.T) {
 	tips := strings.Join(WikiNodeCopy.Tips, " ")
 	if !strings.Contains(tips, "current node only") || !strings.Contains(tips, "descendant nodes are not copied") {
 		t.Fatalf("WikiNodeCopy.Tips = %q, want explicit non-recursive copy guidance", tips)
+	}
+}
+
+func TestRunWikiNodeCopyRetriesLockContentionThenSucceeds(t *testing.T) {
+	t.Parallel()
+
+	lockErr := errs.NewAPIError(errs.SubtypeConflict, "lock contention").
+		WithCode(output.LarkErrWikiLockContention).
+		WithRetryable()
+	calls := 0
+	var stderr bytes.Buffer
+	data, err := runWikiNodeCopyWithRetry(context.Background(), &stderr, 0, func() (map[string]interface{}, error) {
+		calls++
+		if calls == 1 {
+			return nil, lockErr
+		}
+		return map[string]interface{}{"node": map[string]interface{}{"node_token": "wik_copied"}}, nil
+	})
+	if err != nil {
+		t.Fatalf("runWikiNodeCopyWithRetry() error = %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("calls = %d, want 2", calls)
+	}
+	if common.GetString(common.GetMap(data, "node"), "node_token") != "wik_copied" {
+		t.Fatalf("data = %#v, want copied node", data)
+	}
+	if !strings.Contains(stderr.String(), "retrying (attempt 1/2)") {
+		t.Fatalf("stderr = %q, want retry progress", stderr.String())
+	}
+}
+
+func TestRunWikiNodeCopyDoesNotRetryOtherErrors(t *testing.T) {
+	t.Parallel()
+
+	cause := errors.New("permission denied")
+	otherErr := errs.NewPermissionError(errs.SubtypePermissionDenied, "no access").WithCause(cause)
+	calls := 0
+	_, err := runWikiNodeCopyWithRetry(context.Background(), io.Discard, 0, func() (map[string]interface{}, error) {
+		calls++
+		return nil, otherErr
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error = %T, want typed problem", err)
+	}
+	if problem.Category != errs.CategoryAuthorization || problem.Subtype != errs.SubtypePermissionDenied {
+		t.Fatalf("problem = %#v, want authorization/permission_denied", problem)
+	}
+	if !errors.Is(err, cause) {
+		t.Fatalf("error does not preserve cause %v: %v", cause, err)
+	}
+}
+
+func TestRunWikiNodeCopyBackoffCancellationPreservesErrorContract(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		ctx         context.Context
+		wantCause   error
+		wantSubtype errs.Subtype
+	}{
+		{
+			name:        "canceled",
+			ctx:         canceledContext(),
+			wantCause:   context.Canceled,
+			wantSubtype: errs.SubtypeNetworkTransport,
+		},
+		{
+			name:        "deadline exceeded",
+			ctx:         expiredContext(),
+			wantCause:   context.DeadlineExceeded,
+			wantSubtype: errs.SubtypeNetworkTimeout,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			lockErr := errs.NewAPIError(errs.SubtypeConflict, "lock contention").
+				WithCode(output.LarkErrWikiLockContention).
+				WithRetryable()
+			calls := 0
+			_, err := runWikiNodeCopyWithRetry(tc.ctx, io.Discard, time.Hour, func() (map[string]interface{}, error) {
+				calls++
+				return nil, lockErr
+			})
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if calls != 1 {
+				t.Fatalf("calls = %d, want 1", calls)
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("error = %T, want typed problem", err)
+			}
+			if problem.Category != errs.CategoryNetwork || problem.Subtype != tc.wantSubtype || problem.Retryable {
+				t.Fatalf("problem = %#v, want non-retryable network/%s", problem, tc.wantSubtype)
+			}
+			if !errors.Is(err, tc.wantCause) {
+				t.Fatalf("error does not preserve cause %v: %v", tc.wantCause, err)
+			}
+		})
+	}
+}
+
+func canceledContext() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	return ctx
+}
+
+func expiredContext() context.Context {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	cancel()
+	return ctx
+}
+
+func TestRunWikiNodeCopyRetryExhaustionPreservesErrorContract(t *testing.T) {
+	t.Parallel()
+
+	cause := errors.New("upstream lock cause")
+	const upstreamHint = "upstream recovery hint"
+	lockErr := errs.NewAPIError(errs.SubtypeConflict, "lock contention").
+		WithCode(output.LarkErrWikiLockContention).
+		WithRetryable().
+		WithHint(upstreamHint).
+		WithCause(cause)
+	calls := 0
+	_, err := runWikiNodeCopyWithRetry(context.Background(), io.Discard, 0, func() (map[string]interface{}, error) {
+		calls++
+		return nil, lockErr
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if calls != wikiNodeCopyMaxRetries+1 {
+		t.Fatalf("calls = %d, want %d", calls, wikiNodeCopyMaxRetries+1)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error = %T, want typed problem", err)
+	}
+	if problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeConflict || problem.Code != output.LarkErrWikiLockContention || !problem.Retryable {
+		t.Fatalf("problem = %#v, want retryable API conflict %d", problem, output.LarkErrWikiLockContention)
+	}
+	if !strings.Contains(problem.Hint, upstreamHint+"\n") || !strings.Contains(problem.Hint, "failed after 2 retries") {
+		t.Fatalf("hint = %q, want upstream and retry-exhaustion guidance", problem.Hint)
+	}
+	if !errors.Is(err, cause) {
+		t.Fatalf("error does not preserve cause %v: %v", cause, err)
 	}
 }
 
