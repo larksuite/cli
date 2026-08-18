@@ -19,10 +19,10 @@ lark-cli mail +thread-modify --thread-ids <thread_id> --add-label-ids custom_lab
 | Flag | Required | Notes |
 | --- | --- | --- |
 | `--mailbox` | No | Mailbox that owns the threads. Defaults to `me`. |
-| `--thread-ids` | Yes | `string_array`; supports comma-separated values and repeated flags. Values are trimmed, empty values are ignored, and duplicates are removed in first-seen order. |
+| `--thread-ids` | Yes | `string_array`; supports comma-separated values and repeated flags. Up to 20 IDs per command. |
 | `--add-label-ids` | No | Adds labels. System labels `unread`, `important`, `other`, `flagged`, and `read_receipt_request` normalize to upper case. |
 | `--remove-label-ids` | No | Removes labels. Cannot overlap with `--add-label-ids`. |
-| `--add-folder` | No | Moves to one folder through the OpenAPI body field `add_folder`. `inbox`, `sent`, `spam`, `archive`, and `archived` normalize to system folder IDs. |
+| `--add-folder` | No | Moves to one folder. `inbox`, `sent`, `spam`, `archive`, and `archived` normalize to system folder IDs. |
 
 At least one of `--add-label-ids`, `--remove-label-ids`, or `--add-folder` is required.
 
@@ -30,10 +30,8 @@ At least one of `--add-label-ids`, `--remove-label-ids`, or `--add-folder` is re
 
 ## Behavior
 
-- Thread IDs are locally trimmed, de-duplicated in first-seen order, and submitted in one `batch_modify` request.
-- The shortcut calls `POST /open-apis/mail/v1/user_mailboxes/<mailbox>/threads/batch_modify`.
-- `--add-folder` is submitted as the raw API `add_folder` field.
-- Backend diagnostics such as permission failures, missing labels/folders, conflicts, or network errors are preserved in the structured CLI error.
+- Thread IDs are locally trimmed, de-duplicated in first-seen order, and submitted in one request.
+- The raw API batch limit is 20 thread IDs; the shortcut validates this before sending.
 - JSON output is intentionally request-side only:
 
 ```json
@@ -44,7 +42,7 @@ At least one of `--add-label-ids`, `--remove-label-ids`, or `--add-folder` is re
   "submitted_count": 2,
   "add_label_ids": ["UNREAD"],
   "remove_label_ids": [],
-  "folder_id": "ARCHIVED"
+  "add_folder": "ARCHIVED"
 }
 ```
 

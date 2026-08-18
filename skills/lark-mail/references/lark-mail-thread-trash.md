@@ -17,14 +17,13 @@ lark-cli mail +thread-trash --thread-ids <thread_id1> --thread-ids <thread_id2> 
 | Flag | Required | Notes |
 | --- | --- | --- |
 | `--mailbox` | No | Mailbox that owns the threads. Defaults to `me`. |
-| `--thread-ids` | Yes | `string_array`; supports comma-separated values and repeated flags. Values are trimmed, empty values are ignored, and duplicates are removed in first-seen order. |
+| `--thread-ids` | Yes | `string_array`; supports comma-separated values and repeated flags. Up to 20 IDs per command. |
 | `--yes` | Yes for execution | Required by the high-risk write confirmation framework. |
 
 ## Behavior
 
-- Thread IDs are locally trimmed, de-duplicated in first-seen order, and submitted in one `batch_trash` request.
-- The shortcut calls `POST /open-apis/mail/v1/user_mailboxes/<mailbox>/threads/batch_trash`.
-- Backend diagnostics such as permission failures, missing threads, conflicts, or network errors are preserved in the structured CLI error.
+- Thread IDs are locally trimmed, de-duplicated in first-seen order, and submitted in one request.
+- The raw API batch limit is 20 thread IDs; the shortcut validates this before sending.
 - JSON output is intentionally request-side only:
 
 ```json
