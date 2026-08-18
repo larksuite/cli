@@ -6,6 +6,7 @@ package mail
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -257,7 +258,7 @@ func validateAutoReplyContentHTML(runtime *common.RuntimeContext, contentHTML st
 		tokenType := tokenizer.Next()
 		switch tokenType {
 		case html.ErrorToken:
-			if tokenizer.Err() == io.EOF {
+			if errors.Is(tokenizer.Err(), io.EOF) {
 				return nil
 			}
 			return mailValidationParamError(param, "%s contains invalid html", param).WithCause(tokenizer.Err())
