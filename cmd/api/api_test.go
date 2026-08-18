@@ -103,6 +103,32 @@ func TestApiCmd_DryRun(t *testing.T) {
 	}
 }
 
+func TestApiCmd_RejectsInlineQuery(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	cmd := newTestApiCmd(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/contact/v3/users?user_id_type=open_id", "--as", "bot", "--dry-run"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected inline query to be rejected")
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %T, want *errs.ValidationError", err)
+	}
+	if validationErr.Subtype != errs.SubtypeInvalidArgument || validationErr.Param != "path" {
+		t.Fatalf("validation error = %#v, want invalid_argument for path", validationErr)
+	}
+	if !strings.Contains(validationErr.Hint, "--params") {
+		t.Fatalf("validation hint = %q, want --params recovery", validationErr.Hint)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want no dry-run request for rejected input", stdout.String())
+	}
+}
+
 func TestApiCmd_DryRunWithJq(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -786,23 +812,50 @@ func requireProblem(t *testing.T, err error, category errs.Category, subtype err
 	}
 }
 
-func TestNormalisePath_StripsQueryAndFragment(t *testing.T) {
+func TestNormalisePath(t *testing.T) {
 	for _, tt := range []struct {
 		name string
 		raw  string
 		want string
 	}{
 		{"plain path", "/open-apis/test", "/open-apis/test"},
-		{"with query", "/open-apis/test?admin=true", "/open-apis/test"},
-		{"with fragment", "/open-apis/test#section", "/open-apis/test"},
-		{"with both", "/open-apis/test?a=1#frag", "/open-apis/test"},
-		{"full URL with query", "https://open.feishu.cn/open-apis/foo?bar=1", "/open-apis/foo"},
-		{"short path with query", "contact/v3/users?page_size=50", "/open-apis/contact/v3/users"},
+		{"full URL", "https://open.feishu.cn/open-apis/foo", "/open-apis/foo"},
+		{"short path", "contact/v3/users", "/open-apis/contact/v3/users"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			got := normalisePath(tt.raw)
+			got, err := normalisePath(tt.raw)
+			if err != nil {
+				t.Fatalf("normalisePath(%q) returned error: %v", tt.raw, err)
+			}
 			if got != tt.want {
 				t.Errorf("normalisePath(%q) = %q, want %q", tt.raw, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalisePath_RejectsQueryAndFragment(t *testing.T) {
+	for _, raw := range []string{
+		"/open-apis/test?admin=true",
+		"/open-apis/test#section",
+		"/open-apis/test?a=1#frag",
+		"https://open.feishu.cn/open-apis/foo?bar=1",
+		"contact/v3/users?page_size=50",
+	} {
+		t.Run(raw, func(t *testing.T) {
+			got, err := normalisePath(raw)
+			if err == nil {
+				t.Fatalf("normalisePath(%q) = %q, want validation error", raw, got)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("normalisePath(%q) error = %T, want *errs.ValidationError", raw, err)
+			}
+			if validationErr.Subtype != errs.SubtypeInvalidArgument || validationErr.Param != "path" {
+				t.Fatalf("validation error = %#v, want invalid_argument for path", validationErr)
+			}
+			if !strings.Contains(validationErr.Hint, "--params") {
+				t.Fatalf("validation hint = %q, want --params recovery", validationErr.Hint)
 			}
 		})
 	}
