@@ -117,7 +117,7 @@ func TestMailAutoReplyModifyBuildsFriendlyPayload(t *testing.T) {
 
 	assertAutoReplyPayloadValue(t, captured, "enabled", true)
 	assertAutoReplyPayloadValue(t, captured, "content_html", "<p>Out today</p>")
-	assertAutoReplyPayloadValue(t, captured, "content_summary", "Out today")
+	assertAutoReplyPayloadAbsent(t, captured, "content_summary")
 	assertAutoReplyPayloadValue(t, captured, "start_time", "1786723200000")
 	assertAutoReplyPayloadValue(t, captured, "end_time", "1787068799999")
 	assertAutoReplyPayloadValue(t, captured, "time_zone", "Asia/Shanghai")
@@ -176,7 +176,7 @@ func TestMailAutoReplyContentFile(t *testing.T) {
 	reg.Verify(t)
 
 	assertAutoReplyPayloadValue(t, captured, "content_html", "<p>From file</p>")
-	assertAutoReplyPayloadValue(t, captured, "content_summary", "From file")
+	assertAutoReplyPayloadAbsent(t, captured, "content_summary")
 	assertAutoReplyPayloadValue(t, captured, "enabled", true)
 	assertAutoReplyPayloadValue(t, captured, "only_send_to_tenant", true)
 	assertAutoReplyPayloadAbsent(t, captured, "auto_reply")
@@ -239,10 +239,7 @@ func TestMailAutoReplyEmbedsLocalImages(t *testing.T) {
 	if strings.Contains(html, `src="logo.png"`) {
 		t.Fatalf("local image path should have been replaced, got %q", html)
 	}
-	summary, _ := captured["content_summary"].(string)
-	if !strings.Contains(summary, "Hi") || !strings.Contains(summary, "图片") {
-		t.Fatalf("content_summary should be auto-generated from content, got %q", summary)
-	}
+	assertAutoReplyPayloadAbsent(t, captured, "content_summary")
 }
 
 func TestMailAutoReplyContentFileRequiresCurrentDirectory(t *testing.T) {
