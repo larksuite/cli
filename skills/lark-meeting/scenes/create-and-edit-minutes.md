@@ -18,7 +18,7 @@
 lark-cli minutes +upload --file-token <file_token> --as user
 ```
 
-从返回的 `minute_url` 路径最后一段提取 `minute_token`，去掉 query 参数。创建参数、支持格式和任务状态见 [`lark-minutes-upload`](../references/lark-minutes-upload.md)。用户只要妙记时，返回 `minute_url`、`minute_token` 和创建状态后停止。
+从返回的 `minute_url` 路径最后一段提取 `minute_token`，去掉 query 参数。创建参数、支持格式和异步语义见 [`lark-minutes-upload`](../references/lark-minutes-upload.md)。`minutes +upload` 成功仅表示异步创建请求已提交；报告返回的 `minute_url` 和可解析的 `minute_token`。未执行 `minutes +detail` 并确认就绪前，不得声称妙记产物已生成或可用。用户只要求发起创建或返回链接时，到此停止。
 
 ### 等待并读取妙记产物
 

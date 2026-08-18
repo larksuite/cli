@@ -45,7 +45,7 @@ lark-cli minutes +upload --file-token boxcnxxxxxxxxxxxxxxxx
 
 ### 2. 异步生成
 
-API 会立即返回 `minute_url`，但妙记可能仍在异步生成中。上传与后续产物获取由 [`create-and-edit-minutes`](../scenes/create-and-edit-minutes.md) 编排；上传后立即查询产物时，`minutes +detail` 必须使用 `--wait-ready`。
+API 会立即返回 `minute_url`，但妙记可能仍在异步生成中。`minutes +upload` 不返回处理状态，命令成功只表示异步创建请求已提交；只有后续执行 `minutes +detail` 并确认就绪，才能声称妙记产物已生成或可用。上传与后续产物获取由 [`create-and-edit-minutes`](../scenes/create-and-edit-minutes.md) 编排；上传后立即查询产物时，`minutes +detail` 必须使用 `--wait-ready`。
 
 ## 输出结果示例
 

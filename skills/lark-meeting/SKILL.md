@@ -14,6 +14,20 @@ metadata:
 
 无需预读 [`lark-shared`](../lark-shared/SKILL.md) 或预跑 `auth status --verify`，仅遇到未认证、token / 身份或 scope 错误时读取该 Skill，修复后重试。认证、身份或 scope 管理请求则直接使用该 Skill。
 
+## 身份初始化与延续
+
+把 `source_identity` 作为跨命令工作流的状态：
+
+1. 上下文已有来源身份：严格沿用。用户要求切换时先说明身份连续性和权限影响，不静默切换。
+2. 没有来源身份，用户明确指定身份：使用用户指定的 `--as`。
+3. 没有来源身份且用户未指定：操作语义明确要求应用机器人时使用 `--as bot`，否则显式使用 `--as user`。
+
+确定 `source_identity` 后，再检查目标命令是否支持该身份：
+
+- 支持：显式传入并继续执行。
+- 不支持：说明限制并停止；不要为了让命令成功而替换身份。
+- 只有用户明确同意切换身份后，才以新身份重新开始一条工作流。
+
 ## 领域模型与概念
 
 ```text
@@ -68,7 +82,7 @@ lark-cli vc +meeting-list-active --as user
 lark-cli vc +meeting-list-active --as bot --user-id <open_id>
 
 # 确定唯一 meeting_id 后沿用来源身份
-lark-cli vc +meeting-events --as <same_identity> --meeting-id <meeting_id> --page-all --format pretty
+lark-cli vc +meeting-events --as <source_identity> --meeting-id <meeting_id> --page-all --format pretty
 ```
 
 同时有多场会议时，需要先选择要查询的会议；只有一场会议时，直接查询该场会议的会议事件。
