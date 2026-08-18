@@ -4,10 +4,14 @@
 package credential
 
 import (
+	"bytes"
+	"context"
 	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/core"
 )
 
 func TestDefaultTokenProvider_Dispatches(t *testing.T) {
@@ -17,6 +21,43 @@ func TestDefaultTokenProvider_Dispatches(t *testing.T) {
 
 func TestDefaultAccountProvider_Implements(t *testing.T) {
 	var _ DefaultAccountResolver = &DefaultAccountProvider{}
+}
+
+func TestDefaultTokenProvider_SurfacesSuccessfulTATStatusMessage(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
+		Apps: []core.AppConfig{{
+			AppId:     "cli_app",
+			AppSecret: core.PlainSecret("secret_x"),
+			Brand:     core.BrandFeishu,
+		}},
+	}); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	const statusMessage = "Some scopes were silently trimmed by a security policy"
+	var errOut bytes.Buffer
+	provider := NewDefaultTokenProvider(
+		NewDefaultAccountProvider(nil, "", core.ProfileFromConfig),
+		func() (*http.Client, error) {
+			return &http.Client{Transport: &stubRoundTripper{
+				respCode: http.StatusOK,
+				respBody: `{"code":0,"access_token":"t-abc","status_message":"Some scopes were silently trimmed by a security policy"}`,
+			}}, nil
+		},
+		&errOut,
+	)
+
+	result, err := provider.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeTAT, AppID: "cli_app"})
+	if err != nil {
+		t.Fatalf("ResolveToken() error = %v", err)
+	}
+	if result == nil || result.Token != "t-abc" {
+		t.Fatalf("ResolveToken() = %#v, want successful TAT", result)
+	}
+	if got := errOut.String(); got != statusMessage+"\n" {
+		t.Fatalf("stderr = %q, want status_message", got)
+	}
 }
 
 // TestClassifyTATResponseCode_InvalidClient_MapsToInvalidClient pins that the
