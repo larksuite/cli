@@ -1,7 +1,7 @@
 ---
 name: lark-meeting
 version: 1.0.0
-description: "飞书视频会议：查询会议记录与会议产物(纪要/逐字稿/妙记)、实时会议互动、智能体参与会议、妙记搜索/上传/下载/编辑。查询历史会议/参会人/录制；查询进行中的会议、获取会议内容、发送会中消息/表情；基于 meeting_id、event_id、note_id、minute_token、vc-node-id 或妙记 URL 查询相关信息。预约会议、忙闲和会议室管理走 lark-calendar。"
+description: "飞书视频会议：查询会议记录与会议产物(纪要/逐字稿/妙记)、实时会议互动、智能体参与会议、妙记搜索/上传/下载/编辑。查询历史会议/参会人/录制；查询进行中的会议、获取会议内容、发送会中消息/表情；基于 meeting_id、meeting_no、event_id、note_id、minute_token、vc-node-id 或妙记 URL 查询相关信息。预约会议、忙闲和会议室管理走 lark-calendar。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -64,6 +64,14 @@ Calendar 日程 ──meeting_note────────────► Doc（
 | Minutes 妙记 | `minute_token` | 由会议录制或本地音视频上传生成，包含总结、待办、章节、关键词、文字记录和原始音视频；可以关联 VC 会议，也可以独立存在。 |
 | Doc 文档 | Doc token | 内容载体，不是会议标识。`note_doc_token`、`shared_doc_tokens` 和部分 `verbatim_doc_token` 指向 Doc；Doc token 不能当作 `note_id` 或 `meeting_id`。 |
 
+### 核心标识
+
+- `meeting_id`：会议 ID。长数字字符串，不是 9 位会议号。
+- `meeting_no`：会议号。9 位纯数字；CLI 参数名为 `--meeting-number`。
+- `minute_token`：妙记 Token。小写字母数字串，通常取自妙记 URL `/minutes/<minute_token>`。
+
+以上标识均按字符串原样传递，不能相互替代。
+
 ### 领域不变量
 
 - Note 与 Minutes 分别来自 AI 总结和录制两条独立链路。一场会议可能同时有两类产物、只有其中一类，也可能都没有；不能根据 `note_id` 推断必然存在 `minute_token`，反之亦然。
@@ -93,10 +101,10 @@ lark-cli vc +meeting-events --as <source_identity> --meeting-id <meeting_id> --p
 
 当任务目标与场景匹配时，阅读对应的场景手册，按流程执行任务。
 
-- [查询会议及其产物](scenes/query-meeting-and-artifacts.md)：按主题、时间、参会人或 `meeting_id` / `event_id` 定位历史会议；查询参会人、录像和会议关联的智能纪要或妙记；基于会议记录总结或复盘。
+- [查询会议及其产物](scenes/query-meeting-and-artifacts.md)：按主题、时间、参会人或 `meeting_id` / `meeting_no` / `event_id` 定位历史会议；查询参会人、录像和会议关联的智能纪要或妙记；基于会议记录总结或复盘。
 - [查询妙记及其产物](scenes/query-minutes-and-artifacts.md)：已有妙记 URL / `minute_token`，或按标题、所有者、参与者搜索妙记；读取总结、待办、章节、关键词、逐字稿，下载原始音视频，或查询关联智能纪要。
 - [生成和修改妙记](scenes/create-and-edit-minutes.md)：将本地音视频生成妙记、逐字稿、总结、待办或章节；修改妙记标题、总结、待办、关键词或说话人；申请妙记权限。
-- [基于 note_id 查询纪要、逐字稿、共享文档等](scenes/query-note-and-artifacts.md)：已有 `note_id`，需要完整查询或读取智能纪要正文(总结、待办)、逐字稿(文字记录)和共享文档等关联产物。
+- [查询智能纪要及关联产物](scenes/query-note-and-artifacts.md)：已有 `note_id`、智能纪要 Docx URL/token，或需要查询纪要正文、逐字稿、妙记和共享文档等关联产物。
 - [应用机器人参会与会中互动](scenes/live-meeting-attend.md)：完整编排应用机器人的活跃会议发现、真实入会、事件拉取、文本/表情互动和明确授权后的离会。
 - [会中事件与会中互动](scenes/live-meeting-interact.md)：在不触发新的入会/离会操作时，使用用户身份或已在会中的应用身份查询活跃会议、查看发言/聊天/共享内容，或发送文本和表情。
 
@@ -133,5 +141,4 @@ lark-cli vc +meeting-events --as <source_identity> --meeting-id <meeting_id> --p
 
 1. 用户目标符合“快速行动”的进入条件时，直接执行对应 CLI；不要预读场景手册、命令参考、`--help` 或 schema。
 2. 不符合快速行动条件，或缺少关键标识、需要消歧、涉及写操作时，读取与目标匹配的一个主场景手册；主场景明确转交到下游场景时，只继续读取被引用的场景或章节，并按其中流程执行 CLI。
-3. 仅当缺少具体参数、返回字段、特殊约束或异常处理方式时：有参考手册的命令读取对应文件；没有参考手册的命令运行表中列出的精确 `lark-cli ... --help`。
-4. 减少不必要的命令参考手册阅读，除非命令执行失败或无法基于场景手册完成任务。
+3. 仅当缺少具体参数、返回字段、特殊约束或异常处理方式时：有参考手册的命令读取对应文件；没有参考手册的命令运行表中列出的精确 `lark-cli ... --help`。场景或 reference 已给出精确命令时，不再调用 `--help`；仅在参数缺失、命令不识别或文档与运行结果冲突时调用。

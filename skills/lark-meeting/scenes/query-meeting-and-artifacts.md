@@ -4,11 +4,18 @@
 
 ## 定位会议
 
+在决定批量命令和批次大小之前，必须先规范化全部输入标识：
+
+- 恰好 9 位纯数字是 `meeting_no`，即使用户称其为“会议 ID”。
+- `meeting_no` 必须先逐个通过 `vc +search --query` 转换为搜索结果中的 `id`。
+- `vc +search` 不支持批量会议号；多个 `meeting_no` 按输入顺序逐个解析，也可使用脚本批量转换。
+
 优先复用已有标识，不重复搜索：
 
 | 已有信息 | 操作 |
 |---|---|
 | `meeting_id` | 直接查询会议或关联产物 |
+| `meeting_no` / 9 位会议号 | 用 `vc +search --query "<meeting_no>" --format json --as user` 搜索会议，从结果的 `id` 取得 `meeting_id` |
 | Calendar `event_id` | 用 `calendar +meeting` 获取 `meeting_id` 和用户绑定的 `meeting_note` |
 | `note_id` | 直接进入 [智能纪要场景](query-note-and-artifacts.md) |
 | `minute_token` / 妙记 URL | 直接进入 [妙记场景](query-minutes-and-artifacts.md)；URL 取路径最后一段并去掉 query 参数 |

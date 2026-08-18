@@ -3,6 +3,30 @@
 - 身份：`note +detail` 支持 `--as user` / `--as bot`；`note +transcript` 仅支持 `--as user`。`note_id` 若由某个身份取得（例如 `vc +detail --as bot`），`note +detail` 及后续 Doc、Drive 命令必须显式沿用同一个 `--as`。
 - 如果 `note +detail --as bot` 返回 `unified`，不要静默切到 `--as user` 继续。先向用户说明该纪要逐字稿只能以用户身份读取，只有用户明确同意才切换身份重试。
 
+## 从智能纪要 Docx 查询关联链接
+
+当用户提供智能纪要 Docx URL/token，且只需要纪要类型或关联产物链接时，直接执行：
+
+```bash
+lark-cli docs +fetch --doc "<docx_url_or_token>" --doc-format markdown --as <source_identity>
+```
+
+从返回结构中仅提取：
+
+- 输入文档：作为智能纪要主文档，返回用户提供的原始 URL。
+- `<vc-transcribe-tab vc-node-id="...">`：可作为明确的 `note_id`。
+- 标记为“文字记录”的 Docx URL。
+- `/minutes/` 妙记 URL。
+- `<cite type="doc" doc-id="..." file-type="...">` 中的共享文档 token。
+
+如果没有从 `<vc-transcribe-tab>` 取得明确的 `note_id`，但存在妙记 URL，从 URL 路径最后一段提取 `minute_token`，再查询妙记基础信息：
+
+```bash
+lark-cli minutes +detail --minute-tokens "<minute_token>" --as <source_identity>
+```
+
+从对应的 `note_id` 继续 Note 查询；该字段为空或未返回时，继续按 Doc 处理。不要把 Doc token 或 `minute_token` 直接传给 Note 命令。
+
 ## 确认 note_id
 
 Note 域只接受明确的 `note_id`：
