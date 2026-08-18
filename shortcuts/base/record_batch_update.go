@@ -19,7 +19,7 @@ var BaseRecordBatchUpdate = common.Shortcut{
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
-		{Name: "json", Desc: `batch update JSON object; update_records maps each record ID to its field map, e.g. {"update_records":{"recA":{"Status":["Done"]},"recB":{"Score":20}}}`, Required: true},
+		{Name: "json", Desc: `batch update JSON object; update_records maps each record ID to its field map, e.g. {"update_records":{"recA":{"Status":["Done"]},"recB":{"Score":20}}}; do not wrap a record in fields`, Required: true},
 	},
 	Tips: append([]string{
 		"Happy path field: update_records maps each record ID to its own field map.",

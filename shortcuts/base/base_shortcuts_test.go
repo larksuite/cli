@@ -965,6 +965,7 @@ func TestBaseJSONExamplesLiveInFlagDescriptions(t *testing.T) {
 			wantHelp: []string{
 				"create_records contains one field map per record",
 				`{"create_records":[{"Name":"Task A","Status":["Todo"]},{"Name":"Task B","Score":20}]}`,
+				"do not wrap a record in fields",
 			},
 		},
 		{
@@ -973,6 +974,7 @@ func TestBaseJSONExamplesLiveInFlagDescriptions(t *testing.T) {
 			wantHelp: []string{
 				"update_records maps each record ID to its field map",
 				`{"update_records":{"recA":{"Status":["Done"]},"recB":{"Score":20}}}`,
+				"do not wrap a record in fields",
 			},
 		},
 	}

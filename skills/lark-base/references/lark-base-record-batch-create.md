@@ -51,6 +51,7 @@ lark-cli base +record-batch-create --base-token <base_token> --table-id <table_i
 ## 坑点
 
 - 每个 `create_records` 元素都是独立的记录字段对象，只提交该记录需要写入的字段。
+- 记录对象里直接放字段名，**不要再包一层 `fields`**：`{"create_records":[{"fields":{"标题":"任务 A"}}]}` 会把 `fields` 当成字段名，返回 `800010701 Cell value does not match any supported shape`（错误路径 `create_records[0].fields`）。看到该错误路径以 `.fields` 结尾时，先去掉这层包装，再排查 CellValue。
 - 单次最多 200 条；`1254104` 表示超过单批上限，拆成多个批次。
 - `1254045` 表示字段不存在，重新 `+field-list` 后使用真实字段名或 `field_id`。
 - `1254015` 表示 CellValue 类型不匹配，按真实 Field schema 和 CellValue 规范修正。
