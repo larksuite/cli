@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/larksuite/cli/shortcuts/mail/filecheck"
+	"golang.org/x/net/html"
 )
 
 var MailAutoReply = common.Shortcut{
@@ -156,6 +158,9 @@ func buildAutoReplyPatch(runtime *common.RuntimeContext, embedLocalImages bool) 
 	if err != nil {
 		return nil, err
 	}
+	if err := validateAutoReplyContentHTML(runtime, content); err != nil {
+		return nil, err
+	}
 	hasLocalImages := false
 	if embedLocalImages && content != "" {
 		hasLocalImages = len(parseLocalImgs(content)) > 0
@@ -173,6 +178,9 @@ func buildAutoReplyPatch(runtime *common.RuntimeContext, embedLocalImages bool) 
 		autoReply["content_html"] = content
 	}
 	timezone := strings.TrimSpace(runtime.Str("timezone"))
+	if err := validateAutoReplyTimezone(timezone); err != nil {
+		return nil, err
+	}
 	if start := strings.TrimSpace(runtime.Str("start")); start != "" {
 		ts, err := parseAutoReplyDateMillis("--start", start, timezone, false)
 		if err != nil {
@@ -234,6 +242,115 @@ func resolveAutoReplyContent(runtime *common.RuntimeContext) (string, error) {
 		return "", mailValidationParamError("--content-file", "read --content-file %s: %v", path, err).WithCause(err)
 	}
 	return string(buf), nil
+}
+
+func validateAutoReplyContentHTML(runtime *common.RuntimeContext, contentHTML string) error {
+	if strings.TrimSpace(contentHTML) == "" {
+		return nil
+	}
+	param := "--content"
+	if runtime.Str("content") == "" && runtime.Str("content-file") != "" {
+		param = "--content-file"
+	}
+	tokenizer := html.NewTokenizer(strings.NewReader(contentHTML))
+	for {
+		tokenType := tokenizer.Next()
+		switch tokenType {
+		case html.ErrorToken:
+			if tokenizer.Err() == io.EOF {
+				return nil
+			}
+			return mailValidationParamError(param, "%s contains invalid html", param).WithCause(tokenizer.Err())
+		case html.StartTagToken, html.SelfClosingTagToken:
+			token := tokenizer.Token()
+			if isUnsafeAutoReplyHTMLTag(token.Data) {
+				return mailValidationParamError(param, "%s contains unsafe html tag: %s", param, token.Data)
+			}
+			for _, attr := range token.Attr {
+				if isUnsafeAutoReplyHTMLAttr(attr) {
+					return mailValidationParamError(param, "%s contains unsafe html attribute: %s", param, attr.Key)
+				}
+			}
+		}
+	}
+}
+
+func isUnsafeAutoReplyHTMLTag(tag string) bool {
+	switch strings.ToLower(strings.TrimSpace(tag)) {
+	case "script", "style", "iframe", "object", "embed", "form", "input", "button", "textarea", "select", "option", "meta", "link", "base", "svg", "math":
+		return true
+	default:
+		return false
+	}
+}
+
+func isUnsafeAutoReplyHTMLAttr(attr html.Attribute) bool {
+	key := strings.ToLower(strings.TrimSpace(attr.Key))
+	if key == "" {
+		return false
+	}
+	if strings.HasPrefix(key, "on") {
+		return true
+	}
+	switch key {
+	case "src", "href", "action", "formaction", "xlink:href", "poster", "background":
+		return isUnsafeAutoReplyURL(attr.Val)
+	case "style":
+		return isUnsafeAutoReplyStyle(attr.Val)
+	case "srcdoc", "srcset":
+		return true
+	default:
+		return false
+	}
+}
+
+func isUnsafeAutoReplyURL(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	compact := strings.Map(func(r rune) rune {
+		if r <= ' ' || r == 0x7f {
+			return -1
+		}
+		return r
+	}, raw)
+	lowerCompact := strings.ToLower(compact)
+	if strings.HasPrefix(lowerCompact, "javascript:") || strings.HasPrefix(lowerCompact, "vbscript:") {
+		return true
+	}
+	parsed, err := url.Parse(compact)
+	if err != nil {
+		return true
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	switch scheme {
+	case "", "http", "https", "mailto", "cid":
+		return false
+	case "data":
+		mediaType := strings.ToLower(strings.TrimSpace(strings.SplitN(parsed.Opaque, ",", 2)[0]))
+		return !strings.HasPrefix(mediaType, "image/")
+	default:
+		return true
+	}
+}
+
+func isUnsafeAutoReplyStyle(style string) bool {
+	lower := strings.ToLower(style)
+	return strings.Contains(lower, "expression") ||
+		strings.Contains(lower, "behavior:") ||
+		strings.Contains(lower, "-moz-binding") ||
+		strings.Contains(lower, "url(")
+}
+
+func validateAutoReplyTimezone(timezone string) error {
+	if timezone == "" {
+		return nil
+	}
+	if _, err := time.LoadLocation(timezone); err != nil {
+		return mailValidationParamError("--timezone", "invalid --timezone %q", timezone).WithCause(err)
+	}
+	return nil
 }
 
 func validateAutoReplyContentFilePath(path string) error {
