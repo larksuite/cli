@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	extcred "github.com/larksuite/cli/extension/credential"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -27,6 +28,7 @@ const (
 	StatusMissing       = "missing"
 	StatusNeedsRefresh  = "needs_refresh"
 	StatusVerifyFailed  = "verify_failed"
+	StatusStorageError  = "storage_error"
 )
 
 // verifyTimeout bounds each network call made during --verify so that a
@@ -295,7 +297,15 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 		UserName: cfg.UserName,
 		OpenID:   cfg.UserOpenId,
 	}
-	stored := larkauth.GetStoredToken(cfg.AppID, cfg.UserOpenId)
+	stored, err := larkauth.GetStoredToken(cfg.AppID, cfg.UserOpenId)
+	if err != nil {
+		id.Status = StatusStorageError
+		id.Message = "User identity: stored token unavailable: " + err.Error()
+		if problem, ok := errs.ProblemOf(err); ok {
+			id.Hint = problem.Hint
+		}
+		return id
+	}
 	if stored == nil {
 		id.Status = StatusMissing
 		id.Message = "User identity: missing (no token in keychain for " + cfg.UserOpenId + ")"
@@ -456,6 +466,8 @@ func StatusMessage(status string) string {
 		return "not configured"
 	case StatusVerifyFailed:
 		return "verify failed"
+	case StatusStorageError:
+		return "storage error"
 	case StatusNeedsRefresh:
 		return "needs refresh"
 	case StatusMissing:

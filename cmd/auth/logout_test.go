@@ -207,7 +207,10 @@ func TestAuthLogoutRun_RevokesTokenAndClearsLocalState(t *testing.T) {
 	if got := stderr.String(); !strings.Contains(got, "Logged out") {
 		t.Fatalf("stderr = %q, want Logged out", got)
 	}
-	if got := larkauth.GetStoredToken("cli_test", "ou_user"); got != nil {
+	if got, err := larkauth.GetStoredToken("cli_test", "ou_user"); err != nil || got != nil {
+		if err != nil {
+			t.Fatalf("GetStoredToken() error = %v", err)
+		}
 		t.Fatalf("expected stored token removed, got %#v", got)
 	}
 	saved, err := core.LoadMultiAppConfig()
@@ -277,7 +280,10 @@ func TestAuthLogoutRun_FallsBackToAccessTokenWhenRefreshTokenMissing(t *testing.
 	if got := stderr.String(); !strings.Contains(got, "Logged out") {
 		t.Fatalf("stderr = %q, want Logged out", got)
 	}
-	if got := larkauth.GetStoredToken("cli_test", "ou_user"); got != nil {
+	if got, err := larkauth.GetStoredToken("cli_test", "ou_user"); err != nil || got != nil {
+		if err != nil {
+			t.Fatalf("GetStoredToken() error = %v", err)
+		}
 		t.Fatalf("expected stored token removed, got %#v", got)
 	}
 	saved, err := core.LoadMultiAppConfig()
@@ -343,7 +349,10 @@ func TestAuthLogoutRun_RevokeFailureStillClearsLocalState(t *testing.T) {
 	if !strings.Contains(gotErr, "Logged out") {
 		t.Fatalf("stderr = %q, want Logged out", gotErr)
 	}
-	if got := larkauth.GetStoredToken("cli_test", "ou_user"); got != nil {
+	if got, err := larkauth.GetStoredToken("cli_test", "ou_user"); err != nil || got != nil {
+		if err != nil {
+			t.Fatalf("GetStoredToken() error = %v", err)
+		}
 		t.Fatalf("expected stored token removed, got %#v", got)
 	}
 	saved, err := core.LoadMultiAppConfig()

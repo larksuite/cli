@@ -128,7 +128,10 @@ func (s defaultTokenSource) ResolveIdentityHint(ctx context.Context, acct *Accou
 		hint.AutoAs = core.AsBot
 		return hint, nil
 	}
-	stored := getStoredToken(acct.AppID, acct.UserOpenId)
+	stored, err := getStoredToken(acct.AppID, acct.UserOpenId)
+	if err != nil {
+		return nil, err
+	}
 	if stored == nil {
 		hint.AutoAs = core.AsBot
 		return hint, nil

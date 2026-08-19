@@ -83,7 +83,10 @@ func authLogoutRun(opts *LogoutOptions) error {
 
 	for _, user := range app.Users {
 		if httpErr == nil && secretErr == nil {
-			if token := larkauth.GetStoredToken(app.AppId, user.UserOpenId); token != nil {
+			token, err := larkauth.GetStoredToken(app.AppId, user.UserOpenId)
+			if err != nil {
+				fmt.Fprintf(f.IOStreams.ErrOut, "Warning: failed to read token for revocation for %s: %v\n", user.UserOpenId, err)
+			} else if token != nil {
 				revokeToken := token.RefreshToken
 				tokenTypeHint := "refresh_token"
 				if revokeToken == "" {

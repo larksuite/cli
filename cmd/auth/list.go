@@ -109,7 +109,10 @@ func authListRunWithRecovery(opts *ListOptions, projector *recovery.Projector) e
 
 	var items []map[string]interface{}
 	for _, u := range app.Users {
-		stored := larkauth.GetStoredToken(app.AppId, u.UserOpenId)
+		stored, err := larkauth.GetStoredToken(app.AppId, u.UserOpenId)
+		if err != nil {
+			return err
+		}
 		status := "no_token"
 		if stored != nil {
 			status = larkauth.TokenStatus(stored)

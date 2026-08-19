@@ -6,11 +6,13 @@ package auth
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/identitydiag"
 )
 
 func TestAuthStatusRun_SplitsBotAndUserIdentity(t *testing.T) {
@@ -76,6 +78,19 @@ func TestAuthStatusRun_VerifyReportsBotIdentity(t *testing.T) {
 	}
 	if got.Identities.User.Status != "missing" {
 		t.Fatalf("user status = %q, want missing", got.Identities.User.Status)
+	}
+}
+
+func TestAddStatusNote_StorageErrorDoesNotSuggestLogin(t *testing.T) {
+	result := map[string]interface{}{}
+	addStatusNote(result, identitydiag.Result{
+		Bot:  identitydiag.Identity{Status: identitydiag.StatusReady, Available: true},
+		User: identitydiag.Identity{Status: identitydiag.StatusStorageError},
+	}, true)
+
+	note, _ := result["note"].(string)
+	if !strings.Contains(note, "storage") || strings.Contains(note, "auth login") {
+		t.Fatalf("note = %q, want storage guidance without re-login suggestion", note)
 	}
 }
 

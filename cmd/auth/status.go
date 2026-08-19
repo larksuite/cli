@@ -120,6 +120,8 @@ func addEffectiveVerification(result map[string]interface{}, d identitydiag.Resu
 
 func addStatusNote(result map[string]interface{}, d identitydiag.Result, canAuthLogin bool) {
 	switch {
+	case d.User.Status == identitydiag.StatusStorageError:
+		result["note"] = "User credential storage is unavailable; resolve the storage error before using user identity."
 	case !d.User.Available && d.Bot.Available:
 		note := "User identity is " + identitydiag.StatusMessage(d.User.Status) + "; bot identity is ready for bot/tenant API calls."
 		if canAuthLogin {

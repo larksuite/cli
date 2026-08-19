@@ -9,9 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/surface"
@@ -80,6 +82,34 @@ func TestAuthCheckRun_NoStoredToken_ExitOneWithStdoutOnly(t *testing.T) {
 	}
 	if payload["error"] != "no_token" {
 		t.Errorf("stdout.error = %v, want 'no_token'", payload["error"])
+	}
+}
+
+func TestAuthCheckRun_CorruptStoredTokenReturnsStorageError(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
+
+	cfg := &core.CliConfig{
+		AppID:      "test-app-corrupt",
+		AppSecret:  "test-secret",
+		Brand:      core.BrandFeishu,
+		UserOpenId: "ou_corrupt",
+		UserName:   "tester",
+	}
+	if err := keychain.Set(keychain.LarkCliService, cfg.AppID+":"+cfg.UserOpenId,
+		`{"accessToken":"sensitive-access-token"`); err != nil {
+		t.Fatalf("keychain.Set() error = %v", err)
+	}
+	f, stdout, _, _ := cmdutil.TestFactory(t, cfg)
+
+	err := authCheckRun(&CheckOptions{Factory: f, Scope: "calendar:calendar:read"})
+	var storageErr *errs.InternalError
+	if !errors.As(err, &storageErr) || storageErr.Subtype != errs.SubtypeStorage {
+		t.Fatalf("authCheckRun() error = %T %v, want internal/storage", err, err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want no false no_token result", stdout.String())
 	}
 }
 

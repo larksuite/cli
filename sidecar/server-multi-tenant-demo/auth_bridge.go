@@ -342,7 +342,11 @@ func (ab *authBridge) handleStatus(w http.ResponseWriter, _ *http.Request, body 
 			continue
 		}
 		for _, u := range app.Users {
-			stored := larkauth.GetStoredToken(ab.appID, u.UserOpenId)
+			stored, err := larkauth.GetStoredToken(ab.appID, u.UserOpenId)
+			if err != nil {
+				jsonError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
 			status := "unknown"
 			if stored != nil {
 				status = larkauth.TokenStatus(stored)
@@ -368,7 +372,11 @@ func (ab *authBridge) handleStatus(w http.ResponseWriter, _ *http.Request, body 
 		resp["client_id"] = clientID
 		resp["mapped_open_id"] = mappedOpenID
 		if mappedOpenID != "" {
-			stored := larkauth.GetStoredToken(ab.appID, mappedOpenID)
+			stored, err := larkauth.GetStoredToken(ab.appID, mappedOpenID)
+			if err != nil {
+				jsonError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
 			if stored != nil {
 				resp["mapped_status"] = larkauth.TokenStatus(stored)
 				for _, u := range users {

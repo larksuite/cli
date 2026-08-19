@@ -16,6 +16,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/keychain"
 	"github.com/zalando/go-keyring"
 )
 
@@ -304,6 +305,7 @@ func TestStatusMessage(t *testing.T) {
 		StatusReady:         StatusReady,
 		StatusNotConfigured: "not configured",
 		StatusVerifyFailed:  "verify failed",
+		StatusStorageError:  "storage error",
 		StatusNeedsRefresh:  "needs refresh",
 		StatusMissing:       "missing",
 		"unknown":           "unknown",
@@ -312,6 +314,33 @@ func TestStatusMessage(t *testing.T) {
 		if got := StatusMessage(in); got != want {
 			t.Errorf("StatusMessage(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestDiagnose_UserStorageErrorIsNotMissing(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
+
+	cfg := &core.CliConfig{
+		AppID:      "test-app-corrupt",
+		AppSecret:  "secret",
+		Brand:      core.BrandFeishu,
+		UserOpenId: "ou_corrupt",
+		UserName:   "tester",
+	}
+	if err := keychain.Set(keychain.LarkCliService, cfg.AppID+":"+cfg.UserOpenId,
+		`{"accessToken":"sensitive-access-token"`); err != nil {
+		t.Fatalf("keychain.Set() error = %v", err)
+	}
+
+	f, _, _, _ := cmdutil.TestFactory(t, cfg)
+	got := Diagnose(context.Background(), f, cfg, false)
+	if got.User.Status != StatusStorageError || got.User.Available {
+		t.Fatalf("user = %#v, want storage_error and unavailable", got.User)
+	}
+	if strings.Contains(got.User.Message, "sensitive-access-token") {
+		t.Fatalf("diagnostic leaked stored token content: %s", got.User.Message)
 	}
 }
 

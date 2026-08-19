@@ -4,10 +4,14 @@
 package auth
 
 import (
+	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/keychain"
 	"github.com/zalando/go-keyring"
 )
 
@@ -18,6 +22,44 @@ func setupStoredTokenTest(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_DATA_DIR", filepath.Join(root, "data"))
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", filepath.Join(root, "config"))
 	keyring.MockInit()
+}
+
+func mustGetStoredToken(t *testing.T, appID, userOpenID string) *StoredUAToken {
+	t.Helper()
+	token, err := GetStoredToken(appID, userOpenID)
+	if err != nil {
+		t.Fatalf("GetStoredToken() error = %v", err)
+	}
+	return token
+}
+
+func TestGetStoredTokenDistinguishesMissingFromCorrupt(t *testing.T) {
+	setupStoredTokenTest(t)
+
+	stored, err := GetStoredToken("cli_missing", "ou_missing")
+	if err != nil || stored != nil {
+		t.Fatalf("missing token = (%#v, %v), want (nil, nil)", stored, err)
+	}
+
+	const sensitive = "sensitive-access-token"
+	if err := keychain.Set(keychain.LarkCliService, accountKey("cli_corrupt", "ou_corrupt"),
+		`{"accessToken":"`+sensitive+`"`); err != nil {
+		t.Fatalf("keychain.Set() error = %v", err)
+	}
+	stored, err = GetStoredToken("cli_corrupt", "ou_corrupt")
+	if stored != nil || err == nil {
+		t.Fatalf("corrupt token = (%#v, %v), want (nil, error)", stored, err)
+	}
+	var storageErr *errs.InternalError
+	if !errors.As(err, &storageErr) || storageErr.Subtype != errs.SubtypeStorage {
+		t.Fatalf("error = %T %v, want internal/storage", err, err)
+	}
+	if !errors.Is(err, errStoredTokenCorrupt) {
+		t.Fatalf("error = %v, want corrupt-token cause", err)
+	}
+	if strings.Contains(err.Error(), sensitive) {
+		t.Fatalf("error leaked stored token content: %v", err)
+	}
 }
 
 func TestStoredTokenGenerationGuard(t *testing.T) {
@@ -88,7 +130,7 @@ func TestStoredTokenGenerationGuard(t *testing.T) {
 		}
 		return err
 	})
-	if current := GetStoredToken(generation0.AppId, generation0.UserOpenId); current != nil {
+	if current := mustGetStoredToken(t, generation0.AppId, generation0.UserOpenId); current != nil {
 		t.Fatalf("stored token = %#v, want removed", current)
 	}
 }

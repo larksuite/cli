@@ -264,11 +264,11 @@ func TestCredentialProvider_ResolveIdentityHint_DefaultSourceUsesStoredTokenStat
 		getStoredTokenStatus = origTokenStatus
 	})
 
-	getStoredToken = func(appID, userOpenID string) *auth.StoredUAToken {
+	getStoredToken = func(appID, userOpenID string) (*auth.StoredUAToken, error) {
 		if appID != "default_app" || userOpenID != "ou_default" {
 			t.Fatalf("GetStoredToken() args = (%q, %q), want (%q, %q)", appID, userOpenID, "default_app", "ou_default")
 		}
-		return &auth.StoredUAToken{AppId: appID, UserOpenId: userOpenID}
+		return &auth.StoredUAToken{AppId: appID, UserOpenId: userOpenID}, nil
 	}
 	getStoredTokenStatus = func(token *auth.StoredUAToken) string {
 		return "valid"
@@ -300,9 +300,9 @@ func TestCredentialProvider_ResolveIdentityHint_CachesResult(t *testing.T) {
 
 	storedCalls := 0
 	statusCalls := 0
-	getStoredToken = func(appID, userOpenID string) *auth.StoredUAToken {
+	getStoredToken = func(appID, userOpenID string) (*auth.StoredUAToken, error) {
 		storedCalls++
-		return &auth.StoredUAToken{AppId: appID, UserOpenId: userOpenID}
+		return &auth.StoredUAToken{AppId: appID, UserOpenId: userOpenID}, nil
 	}
 	getStoredTokenStatus = func(token *auth.StoredUAToken) string {
 		statusCalls++
@@ -331,6 +331,27 @@ func TestCredentialProvider_ResolveIdentityHint_CachesResult(t *testing.T) {
 	}
 	if statusCalls != 1 {
 		t.Fatalf("TokenStatus() calls = %d, want 1", statusCalls)
+	}
+}
+
+func TestCredentialProvider_ResolveIdentityHint_PropagatesStoredTokenError(t *testing.T) {
+	origGetStoredToken := getStoredToken
+	t.Cleanup(func() { getStoredToken = origGetStoredToken })
+
+	sentinel := errors.New("stored token unavailable")
+	getStoredToken = func(string, string) (*auth.StoredUAToken, error) {
+		return nil, sentinel
+	}
+	cp := NewCredentialProvider(
+		nil,
+		&mockDefaultAcct{account: &Account{AppID: "default_app", Brand: core.BrandFeishu, UserOpenId: "ou_default"}},
+		&mockDefaultToken{result: &TokenResult{Token: "default_tok"}},
+		nil,
+	)
+
+	hint, err := cp.ResolveIdentityHint(context.Background())
+	if hint != nil || !errors.Is(err, sentinel) {
+		t.Fatalf("ResolveIdentityHint() = (%#v, %v), want (nil, stored-token error)", hint, err)
 	}
 }
 

@@ -2368,7 +2368,10 @@ func validateConfirmSendScope(runtime *common.RuntimeContext) error {
 	if appID == "" || userOpenId == "" {
 		return nil
 	}
-	stored := auth.GetStoredToken(appID, userOpenId)
+	stored, err := auth.GetStoredToken(appID, userOpenId)
+	if err != nil {
+		return err
+	}
 	if stored == nil {
 		return nil
 	}
@@ -2392,7 +2395,10 @@ func validateFolderReadScope(runtime *common.RuntimeContext) error {
 	if appID == "" || userOpenId == "" {
 		return nil
 	}
-	stored := auth.GetStoredToken(appID, userOpenId)
+	stored, err := auth.GetStoredToken(appID, userOpenId)
+	if err != nil {
+		return err
+	}
 	if stored == nil {
 		return nil
 	}
@@ -2416,7 +2422,10 @@ func validateLabelReadScope(runtime *common.RuntimeContext) error {
 	if appID == "" || userOpenId == "" {
 		return nil
 	}
-	stored := auth.GetStoredToken(appID, userOpenId)
+	stored, err := auth.GetStoredToken(appID, userOpenId)
+	if err != nil {
+		return err
+	}
 	if stored == nil {
 		return nil
 	}

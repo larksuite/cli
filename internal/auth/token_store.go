@@ -43,12 +43,9 @@ func MaskToken(token string) string {
 }
 
 // GetStoredToken reads the stored UAT for a given (appId, userOpenId) pair.
-func GetStoredToken(appId, userOpenId string) *StoredUAToken {
-	token, _ := readStoredToken(appId, userOpenId)
-	return token
-}
-
-func readStoredToken(appId, userOpenId string) (*StoredUAToken, error) {
+// A missing credential returns (nil, nil); storage and decoding failures are
+// returned so callers cannot misreport an inaccessible credential as missing.
+func GetStoredToken(appId, userOpenId string) (*StoredUAToken, error) {
 	jsonStr, err := keychain.Get(keychain.LarkCliService, accountKey(appId, userOpenId))
 	if err != nil {
 		storageErr := errs.NewInternalError(errs.SubtypeStorage,
@@ -143,7 +140,7 @@ func compareAndSwapStoredToken(appID, userOpenID string, expected, updated *Stor
 			"cannot compare and swap stored tokens for different accounts")
 	}
 
-	current, err := readStoredToken(appID, userOpenID)
+	current, err := GetStoredToken(appID, userOpenID)
 	if err != nil {
 		return nil, false, err
 	}
@@ -169,7 +166,7 @@ func compareAndDeleteStoredToken(appID, userOpenID string, expected *StoredUATok
 			"cannot compare and delete a stored token for a different account")
 	}
 
-	current, err := readStoredToken(appID, userOpenID)
+	current, err := GetStoredToken(appID, userOpenID)
 	if err != nil {
 		return nil, false, err
 	}

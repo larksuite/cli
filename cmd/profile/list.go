@@ -96,7 +96,10 @@ func profileListRun(f *cmdutil.Factory) error {
 
 		if len(app.Users) > 0 {
 			item.User = app.Users[0].UserName
-			stored := larkauth.GetStoredToken(app.AppId, app.Users[0].UserOpenId)
+			stored, err := larkauth.GetStoredToken(app.AppId, app.Users[0].UserOpenId)
+			if err != nil {
+				return err
+			}
 			if stored != nil {
 				item.TokenStatus = larkauth.TokenStatus(stored)
 			}

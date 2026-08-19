@@ -151,7 +151,10 @@ func (p *DefaultTokenProvider) resolveUAT(ctx context.Context) (*TokenResult, er
 	if err != nil {
 		return nil, err
 	}
-	stored := auth.GetStoredToken(acct.AppID, acct.UserOpenId)
+	stored, err := auth.GetStoredToken(acct.AppID, acct.UserOpenId)
+	if err != nil {
+		return nil, err
+	}
 	scopes := ""
 	if stored != nil {
 		scopes = stored.Scope

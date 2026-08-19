@@ -798,7 +798,10 @@ func TestAuthLoginRun_MissingRequestedScopeAlignsWithLoginSuccess(t *testing.T) 
 	if strings.Contains(got, "ERROR:") {
 		t.Fatalf("stderr should not contain error prefix, got:\n%s", got)
 	}
-	stored := larkauth.GetStoredToken("cli_test", "ou_user")
+	stored, err := larkauth.GetStoredToken("cli_test", "ou_user")
+	if err != nil {
+		t.Fatalf("GetStoredToken() error = %v", err)
+	}
 	if stored == nil {
 		t.Fatal("expected token to be stored when authorization succeeds with missing scopes")
 	}
