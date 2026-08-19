@@ -128,6 +128,7 @@ lark-cli calendar +freebusy --start 2026-03-11 --end 2026-03-12 --user-id ou_xxx
 | 用户意图 | 路由到 |
 |----------|--------|
 | 查询过去的会议（"昨天的会议""上周的会"） | [`../lark-meeting/SKILL.md`](../lark-meeting/SKILL.md)（会议数据含即时会议，仅查日程会遗漏） |
+| 今天有哪些会议| 需要合并两部分内容：[`../lark-meeting/SKILL.md`](../lark-meeting/SKILL.md) 中的 `vc +search` 查询今天已结束的会议， `calendar +agenda` 查询进行中或未开始的日程。|
 | 查询日历/日程或未来时间的会议 | 本 skill |
 | 按关键词搜索日程 | 本 skill（`+search-event`） |
 | 从日程获取关联的视频会议 ID 或用户绑定的会议纪要文档 | 本 skill（`+meeting`） |
