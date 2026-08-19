@@ -242,7 +242,10 @@ var MailRuleUpdate = common.Shortcut{
 	Scopes:      []string{"mail:user_mailbox.rule:read", "mail:user_mailbox.rule:write"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
-	Flags:       append(mailRuleWriteFlags(), common.Flag{Name: "rule-id", Required: true, Desc: "Rule ID to update."}),
+	Flags: append(mailRuleWriteFlags(),
+		common.Flag{Name: "name", Desc: "Optional new rule name."},
+		common.Flag{Name: "rule-id", Required: true, Desc: "Rule ID to update."},
+	),
 	Validate: func(ctx context.Context, rt *common.RuntimeContext) error {
 		if strings.TrimSpace(rt.Str("rule-id")) == "" {
 			return mailValidationParamError("--rule-id", "--rule-id is required")

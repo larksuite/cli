@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 func TestMailRuleParserGrammarAndEncode(t *testing.T) {
@@ -169,5 +170,41 @@ func TestRuleReorderComputesMoveTarget(t *testing.T) {
 	}
 	if got := strings.Join(order, ","); got != "c,a,b" {
 		t.Fatalf("order = %s", got)
+	}
+}
+
+func TestMailRuleUpdateRegistersNameFlag(t *testing.T) {
+	flags := map[string]common.Flag{}
+	for _, flag := range MailRuleUpdate.Flags {
+		flags[flag.Name] = flag
+	}
+
+	name, ok := flags["name"]
+	if !ok {
+		t.Fatal("missing --name flag")
+	}
+	if name.Required {
+		t.Fatal("--name must be optional for partial rule updates")
+	}
+
+	ruleID, ok := flags["rule-id"]
+	if !ok {
+		t.Fatal("missing --rule-id flag")
+	}
+	if !ruleID.Required {
+		t.Fatal("--rule-id must remain required")
+	}
+}
+
+func TestMailRuleUpdateHelpListsNameFlag(t *testing.T) {
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+
+	err := runMountedMailShortcutWithCobraOutput(t, MailRuleUpdate, []string{"+rule-update", "-h"}, f, stdout)
+	if err != nil {
+		t.Fatalf("help returned error: %v", err)
+	}
+
+	if !strings.Contains(stdout.String(), "--name") {
+		t.Fatalf("rule-update help missing --name flag\n%s", stdout.String())
 	}
 }
