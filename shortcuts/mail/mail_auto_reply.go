@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"path/filepath"
 	"strconv"
@@ -610,7 +609,7 @@ func hydrateAutoReplyImages(ctx context.Context, runtime *common.RuntimeContext,
 			continue
 		}
 		resp, err := runtime.DoAPIStream(ctx, &larkcore.ApiReq{
-			HttpMethod: http.MethodGet,
+			HttpMethod: "GET",
 			ApiPath:    fmt.Sprintf("/open-apis/drive/v1/medias/%s/download", validate.EncodePathSegment(fileKey)),
 		})
 		if err != nil {
