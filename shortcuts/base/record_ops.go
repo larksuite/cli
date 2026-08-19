@@ -229,7 +229,7 @@ func dryRunRecordList(_ context.Context, runtime *common.RuntimeContext) *common
 	limit := runtime.Int("limit")
 	requestLimit := limit
 	if runtime.Str("format") == "ndjson" {
-		requestLimit = min(limit, maxInlineRecordReadLimit)
+		requestLimit = min(limit, ndjsonRecordPageSize)
 	}
 	params := url.Values{}
 	params.Set("offset", strconv.Itoa(offset))
@@ -291,7 +291,7 @@ func dryRunRecordSearch(_ context.Context, runtime *common.RuntimeContext) *comm
 	if runtime.Str("format") == "ndjson" && body != nil {
 		_, requestedLimit, err := recordSearchPagination(body)
 		if err == nil {
-			body["limit"] = min(requestedLimit, maxInlineRecordReadLimit)
+			body["limit"] = min(requestedLimit, ndjsonRecordPageSize)
 			dry.Set("export_format", "ndjson").Set("requested_limit", requestedLimit)
 			if outputPath := strings.TrimSpace(runtime.Str("output")); outputPath != "" {
 				dry.Set("output", outputPath)
@@ -429,6 +429,7 @@ func validateRecordJSON(runtime *common.RuntimeContext) error {
 
 func recordProjectionFieldFlag(desc string) common.Flag {
 	flag := fieldRefFlag(false)
+	flag.Aliases = append(flag.Aliases, "field")
 	flag.Type = "string_array"
 	flag.Desc = desc
 	return flag

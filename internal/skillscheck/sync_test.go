@@ -30,19 +30,6 @@ lark-cli-harness:dev@0.1.0
 	}
 }
 
-func TestParseOfficialSkillsListAcceptsNonLarkOfficialNames(t *testing.T) {
-	input := `Available Skills
-│    lark-calendar
-│    official-shared
-│    bad/name
-`
-	got := ParseSkillsList(input)
-	want := []string{"lark-calendar", "official-shared"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("ParseSkillsList() (Available Skills) = %#v, want %#v", got, want)
-	}
-}
-
 func TestParseGlobalSkillsList(t *testing.T) {
 	input := `Global Skills
 
@@ -94,52 +81,18 @@ General
 	}
 }
 
-func TestParseGlobalSkillsJSON(t *testing.T) {
-	input := `[
-  {"name":"lark-calendar","path":"/Users/example/.agents/skills/lark-calendar","scope":"global","agents":["Codex"]},
-  {"name":"lark-mail@1.2.3","path":"/Users/example/.agents/skills/lark-mail","scope":"global","agents":["Codex"]},
-  {"name":"lark-calendar","path":"/Users/example/.agents/skills/lark-calendar","scope":"global","agents":["Codex"]},
-  {"name":"  lark-base  ","path":"/Users/example/.agents/skills/lark-base","scope":"global","agents":["Codex"]},
-  {"name":""},
-  {"name":"   "},
-  {"name":"bad skill"}
-]`
-	got := ParseGlobalSkillsJSON(input)
-	want := []string{"lark-base", "lark-calendar", "lark-mail@1.2.3"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("ParseGlobalSkillsJSON() = %#v, want %#v", got, want)
-	}
-}
-
-func TestParseGlobalSkillsJSONInvalidOrUnsupported(t *testing.T) {
-	for _, input := range []string{
-		`not json`,
-		`{"name":"lark-calendar"}`,
-		`[]`,
-	} {
-		if got := ParseGlobalSkillsJSON(input); len(got) != 0 {
-			t.Fatalf("ParseGlobalSkillsJSON(%q) = %#v, want empty", input, got)
-		}
-	}
-}
-
 func TestParseOfficialSkillsIndexJSON(t *testing.T) {
 	input := `{
-  "skills": [
-    {"name":"lark-calendar","description":"Calendar","files":["SKILL.md"]},
-    {"name":"lark-mail","description":"Mail","files":["SKILL.md","references/lark-mail-search.md"]},
-    {"name":"  lark-base  ","description":"Base","files":[]},
-    {"name":"lark-calendar","description":"duplicate","files":["SKILL.md"]},
-    {"name":"custom-skill","description":"not official","files":["SKILL.md"]},
-    {"name":"bad skill","description":"invalid","files":["SKILL.md"]},
-    {"name":"","description":"empty","files":["SKILL.md"]}
-  ]
-}`
+	  "skills": [
+	    {"name":"lark-calendar","type":"archive","url":"./lark-calendar.tar.gz","digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+	    {"name":"lark-mail","type":"archive","url":"./lark-mail.tar.gz","digest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+	  ]
+	}`
 	got, err := ParseOfficialSkillsIndexJSON(input)
 	if err != nil {
 		t.Fatalf("ParseOfficialSkillsIndexJSON() err = %v, want nil", err)
 	}
-	want := []string{"custom-skill", "lark-base", "lark-calendar", "lark-mail"}
+	want := []string{"lark-calendar", "lark-mail"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ParseOfficialSkillsIndexJSON() = %#v, want %#v", got, want)
 	}
@@ -151,7 +104,8 @@ func TestParseOfficialSkillsIndexJSONInvalidOrUnsupported(t *testing.T) {
 		`[{"name":"lark-calendar"}]`,
 		`{"name":"lark-calendar"}`,
 		`{"skills":[]}`,
-		`{"skills":[{"name":"bad skill"}]}`,
+		`{"skills":[{"name":"bad skill","type":"archive","url":"./x.tar.gz","digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}`,
+		`{"skills":[{"name":"lark-mail","type":"archive","url":"./x.tar.gz","digest":"bad"}]}`,
 	} {
 		got, err := ParseOfficialSkillsIndexJSON(input)
 		if err == nil && len(got) != 0 {
@@ -174,6 +128,31 @@ func TestPlanNormal_WithReadableStatePreservesDeletedAndAddsNew(t *testing.T) {
 	assertStrings(t, got.ToUpdate, []string{"lark-calendar", "lark-new"})
 	assertStrings(t, got.Added, []string{"lark-new"})
 	assertStrings(t, got.SkippedDeleted, []string{"lark-mail"})
+}
+
+func TestPlanRestoresAllWhenNoOfficialSkillsRemain(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		official  []string
+		wantAdded []string
+	}{
+		{name: "unchanged official set", official: []string{"lark-calendar", "lark-mail"}, wantAdded: []string{}},
+		{name: "new official skill", official: []string{"lark-calendar", "lark-mail", "lark-new"}, wantAdded: []string{"lark-new"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := PlanSync(SyncInput{
+				Version:        "1.0.33",
+				OfficialSkills: test.official,
+				LocalSkills:    []string{"custom-skill"},
+				PreviousState:  &SkillsState{OfficialSkills: []string{"lark-calendar", "lark-mail"}},
+				StateReadable:  true,
+			})
+
+			assertStrings(t, got.ToUpdate, test.official)
+			assertStrings(t, got.Added, test.wantAdded)
+			assertStrings(t, got.SkippedDeleted, []string{})
+		})
+	}
 }
 
 func TestPlanNormal_MissingStateInstallsAllOfficial(t *testing.T) {
@@ -206,33 +185,17 @@ func TestPlanForceRestoresAllOfficial(t *testing.T) {
 }
 
 type fakeSkillsRunner struct {
-	officialIndexOut string
-	officialOut      string
-	globalJSONOut    string
-	globalOut        string
-	officialIndexErr error
-	officialErr      error
-	globalJSONErr    error
-	globalErr        error
-	installErr       error
-	installAllErr    error
-	installed        [][]string
-	installedAll     int
-	listedIndex      int
-	listedOfficial   int
-	listedGlobalJSON int
-	listedGlobalText int
-}
-
-func officialSkillsOutput(names ...string) string {
-	var b strings.Builder
-	b.WriteString("Available Skills\n")
-	for _, name := range names {
-		b.WriteString("│    ")
-		b.WriteString(name)
-		b.WriteString("\n")
-	}
-	return b.String()
+	sources       []string
+	indexes       map[string]string
+	indexErrors   map[string]error
+	installErrors map[string]error
+	stageErrors   map[string]error
+	stageChildren map[string][]string
+	globalJSON    string
+	installs      []string
+	removals      [][]string
+	localSuite    string
+	stages        []string
 }
 
 func officialSkillsIndexOutput(names ...string) string {
@@ -242,21 +205,9 @@ func officialSkillsIndexOutput(names ...string) string {
 		if i > 0 {
 			b.WriteString(",")
 		}
-		fmt.Fprintf(&b, `{"name":%q,"description":"test skill","files":["SKILL.md"]}`, name)
+		fmt.Fprintf(&b, `{"name":%q,"description":"test","type":"archive","url":"./%s.tar.gz","digest":"sha256:%s"}`, name, name, strings.Repeat("a", 64))
 	}
 	b.WriteString(`]}`)
-	return b.String()
-}
-
-func globalSkillsOutput(names ...string) string {
-	var b strings.Builder
-	b.WriteString("Global Skills\n\n")
-	for _, name := range names {
-		b.WriteString(name)
-		b.WriteString(" ~/.agents/skills/")
-		b.WriteString(name)
-		b.WriteString("\n  Agents: Claude Code\n")
-	}
 	return b.String()
 }
 
@@ -267,469 +218,520 @@ func globalSkillsJSONOutput(names ...string) string {
 		if i > 0 {
 			b.WriteString(",")
 		}
-		fmt.Fprintf(&b, `{"name":%q,"path":"/Users/example/.agents/skills/%s","scope":"global","agents":["Codex"]}`, name, name)
+		fmt.Fprintf(&b, `{"name":%q,"path":"/Users/example/.agents/skills/%s","scope":"global"}`, name, name)
 	}
 	b.WriteString("]")
 	return b.String()
 }
 
-func (f *fakeSkillsRunner) ListOfficialSkillsIndex() *selfupdate.NpmResult {
-	f.listedIndex++
+func (f *fakeSkillsRunner) SkillsSources() []string { return f.sources }
+func (f *fakeSkillsRunner) FetchSkillsIndex(source string) *selfupdate.NpmResult {
 	r := &selfupdate.NpmResult{}
-	r.Stdout.WriteString(f.officialIndexOut)
-	r.Err = f.officialIndexErr
+	r.Stdout.WriteString(f.indexes[source])
+	r.Err = f.indexErrors[source]
 	return r
 }
-
-func (f *fakeSkillsRunner) ListOfficialSkills() *selfupdate.NpmResult {
-	f.listedOfficial++
-	r := &selfupdate.NpmResult{}
-	r.Stdout.WriteString(f.officialOut)
-	r.Err = f.officialErr
-	return r
-}
-
 func (f *fakeSkillsRunner) ListGlobalSkillsJSON() *selfupdate.NpmResult {
-	f.listedGlobalJSON++
 	r := &selfupdate.NpmResult{}
-	r.Stdout.WriteString(f.globalJSONOut)
-	r.Err = f.globalJSONErr
+	r.Stdout.WriteString(f.globalJSON)
 	return r
 }
-
 func (f *fakeSkillsRunner) ListGlobalSkills() *selfupdate.NpmResult {
-	f.listedGlobalText++
-	r := &selfupdate.NpmResult{}
-	r.Stdout.WriteString(f.globalOut)
-	r.Err = f.globalErr
-	return r
+	return &selfupdate.NpmResult{Err: fmt.Errorf("unexpected text fallback")}
+}
+func (f *fakeSkillsRunner) InstallSkills(source string, names []string) *selfupdate.NpmResult {
+	f.installs = append(f.installs, source+":"+strings.Join(names, ","))
+	return &selfupdate.NpmResult{Err: f.installErrors[source]}
+}
+func (f *fakeSkillsRunner) InstallAllSkills(source string) *selfupdate.NpmResult {
+	f.installs = append(f.installs, source+":*")
+	return &selfupdate.NpmResult{Err: f.installErrors[source]}
+}
+func (f *fakeSkillsRunner) StageSuite(source, dir string) *selfupdate.NpmResult {
+	f.stages = append(f.stages, source)
+	if err := f.stageErrors[source]; err != nil {
+		return &selfupdate.NpmResult{Err: err}
+	}
+	suite := filepath.Join(dir, ".agents", "skills", "lark-suite")
+	children := f.stageChildren[source]
+	if children == nil {
+		children = []string{"lark-calendar", "lark-mail"}
+	}
+	for _, name := range children {
+		if err := os.MkdirAll(filepath.Join(suite, "references", name), 0o755); err != nil {
+			return &selfupdate.NpmResult{Err: err}
+		}
+	}
+	if err := os.WriteFile(filepath.Join(suite, "SKILL.md"), []byte(suiteFixture), 0o644); err != nil {
+		return &selfupdate.NpmResult{Err: err}
+	}
+	return &selfupdate.NpmResult{}
+}
+func (f *fakeSkillsRunner) InstallLocalSuite(path string) *selfupdate.NpmResult {
+	f.localSuite = path
+	return &selfupdate.NpmResult{}
+}
+func (f *fakeSkillsRunner) RemoveGlobalSkills(names []string) *selfupdate.NpmResult {
+	f.removals = append(f.removals, append([]string{}, names...))
+	return &selfupdate.NpmResult{}
 }
 
-func (f *fakeSkillsRunner) InstallSkill(nameList []string) *selfupdate.NpmResult {
-	f.installed = append(f.installed, nameList)
-	r := &selfupdate.NpmResult{}
-	r.Err = f.installErr
-	return r
+const suiteFixture = `---
+name: lark-suite
+description: 飞书/Lark 聚合能力入口：管理飞书/Lark 产品能力（日历、邮件等）。当用户需要时使用。
+---
+- lark-calendar（日历）: calendar
+- lark-mail（邮件）: mail
+`
+
+func TestSyncSkillsSeparateRetriesOtherDomain(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	runner := &fakeSkillsRunner{
+		sources:       []string{"primary", "secondary"},
+		indexes:       map[string]string{"primary": officialSkillsIndexOutput("lark-calendar", "lark-mail"), "secondary": officialSkillsIndexOutput("lark-calendar", "lark-mail")},
+		installErrors: map[string]error{"primary": fmt.Errorf("digest mismatch")},
+		indexErrors:   map[string]error{}, stageErrors: map[string]error{},
+		globalJSON: globalSkillsJSONOutput(),
+	}
+	result := SyncSkills(SyncOptions{Version: "1.0.33", Layout: LayoutSeparate, Runner: runner, Now: time.Now})
+	if result.Err != nil {
+		t.Fatal(result.Err)
+	}
+	assertStrings(t, runner.installs, []string{"primary:lark-calendar,lark-mail", "secondary:lark-calendar,lark-mail"})
+	state, _, _ := ReadState()
+	if state.Layout != LayoutSeparate {
+		t.Fatalf("layout = %q, want separate", state.Layout)
+	}
 }
 
-func (f *fakeSkillsRunner) InstallAllSkills() *selfupdate.NpmResult {
-	f.installedAll++
-	r := &selfupdate.NpmResult{}
-	r.Err = f.installAllErr
-	return r
+func TestSyncSkillsSeparateUsesGitHubLast(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	runner := &fakeSkillsRunner{
+		sources: []string{"primary", "secondary"},
+		indexes: map[string]string{}, indexErrors: map[string]error{"primary": fmt.Errorf("down"), "secondary": fmt.Errorf("down")},
+		installErrors: map[string]error{}, stageErrors: map[string]error{}, globalJSON: `[]`,
+	}
+	result := SyncSkills(SyncOptions{Version: "1.0.33", Layout: LayoutSeparate, Runner: runner, Now: time.Now})
+	if result.Err != nil || result.Warning == "" {
+		t.Fatalf("result = %+v, want warned success", result)
+	}
+	assertStrings(t, runner.installs, []string{"larksuite/cli:*"})
+	if !result.OfficialUnknown || len(result.Official) != 0 {
+		t.Fatalf("result = %+v, want unknown official skills", result)
+	}
+	state, ok, err := ReadState()
+	if err != nil || !ok {
+		t.Fatalf("ReadState() = (%+v, %v, %v)", state, ok, err)
+	}
+	if !state.OfficialSkillsUnknown || len(state.OfficialSkills) != 0 {
+		t.Fatalf("state = %+v, want unknown official skills", state)
+	}
 }
 
-func TestSyncSkills_WritesStateAndDoesNotWriteStamp(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+func TestSyncSkillsSeparateRestoresAllThroughGitHubFallback(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := WriteState(SkillsState{Version: "1.0.32", Layout: LayoutSeparate, OfficialSkills: []string{"lark-calendar"}}); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeSkillsRunner{
+		sources:       []string{"primary"},
+		indexes:       map[string]string{},
+		indexErrors:   map[string]error{"primary": fmt.Errorf("down")},
+		installErrors: map[string]error{},
+		stageErrors:   map[string]error{},
+		globalJSON:    `[]`,
+	}
+
+	result := SyncSkills(SyncOptions{Version: "1.0.33", Layout: LayoutSeparate, Runner: runner, Now: time.Now})
+	if result.Err != nil {
+		t.Fatal(result.Err)
+	}
+	assertStrings(t, runner.installs, []string{"larksuite/cli:lark-calendar"})
+	if result.Warning == "" {
+		t.Fatal("warning is empty, want GitHub fallback warning")
+	}
+}
+
+func TestSyncSkillsRetriesOfficialSourcesAfterUnknownFallback(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	if err := WriteState(SkillsState{
-		Version:        "1.0.30",
-		OfficialSkills: []string{"lark-calendar", "lark-mail"},
-		UpdatedAt:      "2026-05-18T00:00:00Z",
+		Version:               "1.0.33",
+		Layout:                LayoutSeparate,
+		OfficialSkillsUnknown: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
-
 	runner := &fakeSkillsRunner{
-		officialIndexOut: officialSkillsIndexOutput("lark-calendar", "lark-mail", "lark-new"),
-		officialOut:      officialSkillsOutput("lark-calendar", "lark-mail", "lark-new"),
-		globalJSONOut:    globalSkillsJSONOutput("lark-calendar", "lark-custom"),
-		globalOut:        globalSkillsOutput("lark-mail"),
+		sources:       []string{"primary"},
+		indexes:       map[string]string{"primary": officialSkillsIndexOutput("lark-calendar", "lark-mail")},
+		indexErrors:   map[string]error{},
+		installErrors: map[string]error{},
+		stageErrors:   map[string]error{},
+		globalJSON:    globalSkillsJSONOutput("lark-calendar"),
 	}
-	result := SyncSkills(SyncOptions{
-		Version: "1.0.33",
-		Runner:  runner,
-		Now:     func() time.Time { return time.Date(2026, 5, 18, 12, 0, 0, 0, time.UTC) },
-	})
 
+	result := SyncSkills(SyncOptions{Version: "1.0.33", Layout: LayoutSeparate, Runner: runner, Now: time.Now})
 	if result.Err != nil {
-		t.Fatalf("SyncSkills() err = %v, want nil", result.Err)
+		t.Fatal(result.Err)
 	}
-	assertStrings(t, runner.installed[0], []string{"lark-calendar", "lark-new"})
-	if runner.listedGlobalJSON != 1 {
-		t.Fatalf("listedGlobalJSON = %d, want 1", runner.listedGlobalJSON)
+	assertStrings(t, runner.installs, []string{"primary:lark-calendar,lark-mail"})
+	if result.OfficialUnknown {
+		t.Fatalf("result = %+v, want trusted official skills", result)
 	}
-	if runner.listedGlobalText != 0 {
-		t.Fatalf("listedGlobalText = %d, want 0 when JSON list succeeds", runner.listedGlobalText)
-	}
-
-	state, readable, err := ReadState()
-	if err != nil || !readable {
-		t.Fatalf("ReadState() = (_, %v, %v), want readable", readable, err)
-	}
-	assertStrings(t, state.OfficialSkills, []string{"lark-calendar", "lark-mail", "lark-new"})
-	assertStrings(t, state.UpdatedSkills, []string{"lark-calendar", "lark-new"})
-	assertStrings(t, state.AddedOfficialSkills, []string{"lark-new"})
-	assertStrings(t, state.SkippedDeletedSkills, []string{"lark-mail"})
-	if _, err := os.Stat(filepath.Join(dir, "skills.stamp")); !os.IsNotExist(err) {
-		t.Fatalf("skills.stamp exists or stat failed with unexpected err: %v", err)
+	state, _, _ := ReadState()
+	if state.OfficialSkillsUnknown {
+		t.Fatalf("state = %+v, want trusted official skills", state)
 	}
 }
 
-func TestSyncSkills_OfficialIndexSuccessSkipsOfficialListCommand(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+func TestSyncSkillsSuiteDoesNotUseGitHub(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	runner := &fakeSkillsRunner{
-		officialIndexOut: officialSkillsIndexOutput("lark-calendar", "lark-mail", "lark-new"),
-		officialOut:      officialSkillsOutput("lark-should-not-be-used"),
-		globalJSONOut:    globalSkillsJSONOutput("lark-calendar"),
-		globalOut:        globalSkillsOutput("lark-mail"),
+		sources: []string{"primary", "secondary"}, indexes: map[string]string{},
+		indexErrors:   map[string]error{"primary": fmt.Errorf("down"), "secondary": fmt.Errorf("down")},
+		installErrors: map[string]error{}, stageErrors: map[string]error{}, globalJSON: `[]`,
+	}
+	result := SyncSkills(SyncOptions{Version: "1.0.33", Layout: LayoutSuite, Runner: runner, Now: time.Now})
+	if result.Err == nil || len(runner.installs) != 0 {
+		t.Fatalf("result = %+v, installs = %v", result, runner.installs)
+	}
+}
+
+func TestSyncSkillsSuiteRetriesOtherDomainAfterArchiveValidationFailure(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	runner := &fakeSkillsRunner{
+		sources:       []string{"primary", "secondary"},
+		indexes:       map[string]string{"primary": officialSkillsIndexOutput("lark-calendar", "lark-mail"), "secondary": officialSkillsIndexOutput("lark-calendar", "lark-mail")},
+		indexErrors:   map[string]error{},
+		installErrors: map[string]error{},
+		stageErrors:   map[string]error{"primary": fmt.Errorf("digest mismatch")},
+		globalJSON:    `[]`,
 	}
 
-	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
+	result := SyncSkills(SyncOptions{Version: "1.0.33", Layout: LayoutSuite, Runner: runner, Now: time.Now})
 	if result.Err != nil {
-		t.Fatalf("SyncSkills() err = %v, want nil", result.Err)
+		t.Fatal(result.Err)
 	}
-	assertStrings(t, result.Official, []string{"lark-calendar", "lark-mail", "lark-new"})
-	assertStrings(t, runner.installed[0], []string{"lark-calendar", "lark-mail", "lark-new"})
-	if runner.listedIndex != 1 {
-		t.Fatalf("listedIndex = %d, want 1", runner.listedIndex)
-	}
-	if runner.listedOfficial != 0 {
-		t.Fatalf("listedOfficial = %d, want 0 when index succeeds", runner.listedOfficial)
+	assertStrings(t, runner.stages, []string{"primary", "secondary"})
+	if runner.localSuite == "" {
+		t.Fatal("suite from secondary source was not installed")
 	}
 }
 
-func TestSyncSkills_OfficialIndexFailureFallsBackToOfficialList(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+func TestSyncSkillsSuiteRetriesOtherDomainAfterChildListMismatch(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	runner := &fakeSkillsRunner{
-		officialIndexErr: fmt.Errorf("index unavailable"),
-		officialOut:      officialSkillsOutput("lark-calendar", "lark-mail"),
-		globalJSONOut:    globalSkillsJSONOutput("lark-calendar"),
+		sources:       []string{"primary", "secondary"},
+		indexes:       map[string]string{"primary": officialSkillsIndexOutput("lark-calendar", "lark-mail"), "secondary": officialSkillsIndexOutput("lark-calendar", "lark-mail")},
+		indexErrors:   map[string]error{},
+		installErrors: map[string]error{},
+		stageErrors:   map[string]error{},
+		stageChildren: map[string][]string{"primary": {"lark-calendar"}, "secondary": {"lark-calendar", "lark-mail"}},
+		globalJSON:    `[]`,
 	}
 
-	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
+	result := SyncSkills(SyncOptions{Version: "1.0.33", Layout: LayoutSuite, Runner: runner, Now: time.Now})
 	if result.Err != nil {
-		t.Fatalf("SyncSkills() err = %v, want nil", result.Err)
+		t.Fatal(result.Err)
 	}
-	assertStrings(t, result.Official, []string{"lark-calendar", "lark-mail"})
-	if runner.listedIndex != 1 || runner.listedOfficial != 1 {
-		t.Fatalf("listed index/official = %d/%d, want 1/1", runner.listedIndex, runner.listedOfficial)
-	}
-	if runner.installedAll != 0 {
-		t.Fatalf("installedAll = %d, want 0", runner.installedAll)
-	}
+	assertStrings(t, runner.stages, []string{"primary", "secondary"})
 }
 
-func TestSyncSkills_OfficialIndexEmptyFallsBackToOfficialList(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+func TestSyncSkillsSuiteFailureKeepsPreviousState(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	before := SkillsState{Version: "1.0.32", Layout: LayoutSeparate, OfficialSkills: []string{"lark-calendar", "lark-mail"}}
+	if err := WriteState(before); err != nil {
+		t.Fatal(err)
+	}
+	beforeRaw, err := os.ReadFile(statePath())
+	if err != nil {
+		t.Fatal(err)
+	}
 	runner := &fakeSkillsRunner{
-		officialIndexOut: `{"skills":[]}`,
-		officialOut:      officialSkillsOutput("lark-calendar", "lark-mail"),
-		globalJSONOut:    globalSkillsJSONOutput("lark-calendar"),
+		sources:       []string{"primary", "secondary"},
+		indexes:       map[string]string{"primary": officialSkillsIndexOutput("lark-calendar", "lark-mail"), "secondary": officialSkillsIndexOutput("lark-calendar", "lark-mail")},
+		indexErrors:   map[string]error{},
+		installErrors: map[string]error{},
+		stageErrors:   map[string]error{"primary": fmt.Errorf("digest mismatch"), "secondary": fmt.Errorf("archive unavailable")},
+		globalJSON:    globalSkillsJSONOutput("lark-calendar", "lark-mail"),
 	}
 
-	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
-	if result.Err != nil {
-		t.Fatalf("SyncSkills() err = %v, want nil", result.Err)
-	}
-	assertStrings(t, result.Official, []string{"lark-calendar", "lark-mail"})
-	if runner.listedIndex != 1 || runner.listedOfficial != 1 {
-		t.Fatalf("listed index/official = %d/%d, want 1/1", runner.listedIndex, runner.listedOfficial)
-	}
-}
-
-func TestSyncSkills_OfficialDiscoveryFailuresFallBackToFullInstallWithReasons(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-	runner := &fakeSkillsRunner{
-		officialIndexErr: fmt.Errorf("index unavailable"),
-		officialErr:      fmt.Errorf("list failed"),
-		installAllErr:    nil,
-	}
-
-	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
-	if result.Action != "fallback_synced" {
-		t.Fatalf("SyncSkills() action = %q, want fallback_synced", result.Action)
-	}
-	if runner.installedAll != 1 {
-		t.Fatalf("installedAll = %d, want 1", runner.installedAll)
-	}
-	if !strings.Contains(result.Detail, "official skills index failed") || !strings.Contains(result.Detail, "official skills list failed") {
-		t.Fatalf("SyncSkills() detail = %q, want both discovery failure reasons", result.Detail)
-	}
-}
-
-func TestSyncSkills_OfficialDiscoveryEmptyFallsBackToFullInstallWithReasons(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-	runner := &fakeSkillsRunner{
-		officialIndexOut: `{"skills":[]}`,
-		installAllErr:    nil,
-	}
-
-	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
-	if result.Action != "fallback_synced" {
-		t.Fatalf("SyncSkills() action = %q, want fallback_synced", result.Action)
-	}
-	if runner.installedAll != 1 {
-		t.Fatalf("installedAll = %d, want 1", runner.installedAll)
-	}
-	if !strings.Contains(result.Detail, "official skills index contains no skills") || !strings.Contains(result.Detail, "official skills list returned no skills") {
-		t.Fatalf("SyncSkills() detail = %q, want both empty discovery reasons", result.Detail)
-	}
-}
-
-func TestSyncSkills_ListOfficialFailureFallsBackToFullInstall(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-	runner := &fakeSkillsRunner{
-		officialIndexErr: fmt.Errorf("index unavailable"),
-		officialErr:      fmt.Errorf("list failed"),
-		installAllErr:    nil,
-	}
-
-	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
-	if result.Action != "fallback_synced" {
-		t.Fatalf("SyncSkills() action = %q, want fallback_synced", result.Action)
-	}
-	if runner.installedAll != 1 {
-		t.Fatalf("installedAll = %d, want 1", runner.installedAll)
-	}
-	if len(runner.installed) != 0 {
-		t.Fatalf("installed = %#v, want no incremental installs", runner.installed)
-	}
-
-	state, readable, err := ReadState()
-	if err != nil || !readable {
-		t.Fatalf("ReadState() = (_, %v, %v), want readable", readable, err)
-	}
-	if state.Version != "1.0.33" {
-		t.Fatalf("state.Version = %q, want %q", state.Version, "1.0.33")
-	}
-	assertStrings(t, state.OfficialSkills, []string{})
-}
-
-func TestSyncSkills_ListOfficialFailureAndFullInstallFails(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-	runner := &fakeSkillsRunner{
-		officialIndexErr: fmt.Errorf("index unavailable"),
-		officialErr:      fmt.Errorf("list failed"),
-		installAllErr:    fmt.Errorf("full install failed"),
-	}
-
-	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
-	if result.Action != "fallback_failed" {
-		t.Fatalf("SyncSkills() action = %q, want fallback_failed", result.Action)
-	}
+	result := SyncSkills(SyncOptions{Version: "1.0.33", Layout: LayoutSuite, Runner: runner, Now: time.Now})
 	if result.Err == nil {
-		t.Fatalf("SyncSkills() err = nil, want error")
+		t.Fatal("expected suite sync failure")
 	}
-	if !strings.Contains(result.Err.Error(), "full skills install failed") {
-		t.Fatalf("SyncSkills() err = %v, want full install failure", result.Err)
+	afterRaw, err := os.ReadFile(statePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(afterRaw) != string(beforeRaw) {
+		t.Fatalf("state file changed after failed sync:\ngot  %s\nwant %s", afterRaw, beforeRaw)
 	}
 }
 
-func TestSyncSkills_GlobalJSONFailureFallsBackToTextList(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+func TestSyncSkillsUnreadableSuiteIsReinstalled(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := WriteState(SkillsState{
+		Version:        "1.0.32",
+		Layout:         LayoutSuite,
+		OfficialSkills: []string{"lark-calendar", "lark-mail"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	missingSuite := filepath.Join(t.TempDir(), "missing-lark-suite")
 	runner := &fakeSkillsRunner{
-		officialIndexOut: officialSkillsIndexOutput("lark-calendar", "lark-mail"),
-		officialOut:      officialSkillsOutput("lark-calendar", "lark-mail"),
-		globalJSONErr:    fmt.Errorf("json list failed"),
-		globalOut:        globalSkillsOutput("lark-calendar"),
+		sources:       []string{"primary"},
+		indexes:       map[string]string{"primary": officialSkillsIndexOutput("lark-calendar", "lark-mail")},
+		indexErrors:   map[string]error{},
+		installErrors: map[string]error{},
+		stageErrors:   map[string]error{},
+		globalJSON:    fmt.Sprintf(`[{"name":"lark-suite","path":%q,"scope":"global"}]`, missingSuite),
 	}
 
 	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
 	if result.Err != nil {
-		t.Fatalf("SyncSkills() err = %v, want nil", result.Err)
-	}
-	if result.Action != "synced" {
-		t.Fatalf("SyncSkills() action = %q, want synced", result.Action)
+		t.Fatal(result.Err)
 	}
 	assertStrings(t, result.Updated, []string{"lark-calendar", "lark-mail"})
-	if runner.listedGlobalJSON != 1 || runner.listedGlobalText != 1 {
-		t.Fatalf("listed JSON/text = %d/%d, want 1/1", runner.listedGlobalJSON, runner.listedGlobalText)
+	assertStrings(t, runner.stages, []string{"primary"})
+	if runner.localSuite == "" {
+		t.Fatal("damaged suite was not reinstalled")
 	}
-	if runner.installedAll != 0 {
-		t.Fatalf("installedAll = %d, want 0", runner.installedAll)
-	}
-}
-
-func TestSyncSkills_LocalListsFailureFallsBackToFullInstall(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-	runner := &fakeSkillsRunner{
-		officialIndexOut: officialSkillsIndexOutput("lark-calendar", "lark-mail"),
-		officialOut:      officialSkillsOutput("lark-calendar", "lark-mail"),
-		globalJSONErr:    fmt.Errorf("json list failed with /Users/example/.agents/skills/lark-calendar agents Codex"),
-		globalErr:        fmt.Errorf("text list failed with /Users/example/.agents/skills/lark-mail agents Codex"),
-	}
-
-	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
-	if result.Action != "fallback_synced" {
-		t.Fatalf("SyncSkills() action = %q, want fallback_synced", result.Action)
-	}
-	if len(runner.installed) != 0 {
-		t.Fatalf("installed = %#v, want no incremental installs", runner.installed)
-	}
-	if runner.installedAll != 1 {
-		t.Fatalf("installedAll = %d, want 1", runner.installedAll)
-	}
-	if strings.Contains(result.Detail, "/Users/example") || strings.Contains(result.Detail, "agents") {
-		t.Fatalf("SyncSkills() detail leaks local command output: %q", result.Detail)
+	state, _, _ := ReadState()
+	if state.Layout != LayoutSuite || state.OfficialSkillsUnknown {
+		t.Fatalf("state = %+v, want trusted suite state", state)
 	}
 }
 
-func TestSyncSkills_ParseEmptyLocalListsFallBackToFullInstall(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-	runner := &fakeSkillsRunner{
-		officialIndexOut: officialSkillsIndexOutput("lark-calendar", "lark-mail"),
-		officialOut:      officialSkillsOutput("lark-calendar", "lark-mail"),
-		globalJSONOut:    `[]`,
-		globalOut:        "Some unrecognized output format\n",
-	}
-
-	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
-	if result.Action != "fallback_synced" {
-		t.Fatalf("SyncSkills() action = %q, want fallback_synced", result.Action)
-	}
-	if len(runner.installed) != 0 {
-		t.Fatalf("installed = %#v, want no incremental installs", runner.installed)
-	}
-	if runner.installedAll != 1 {
-		t.Fatalf("installedAll = %d, want 1", runner.installedAll)
-	}
-}
-
-func TestSyncSkills_EmptyToUpdateFallsBackToFullInstall(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+func TestSyncSkillsEmptySuiteRestoresAllOfficial(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	if err := WriteState(SkillsState{
-		Version:        "1.0.30",
+		Version:        "1.0.32",
+		Layout:         LayoutSuite,
 		OfficialSkills: []string{"lark-calendar", "lark-mail"},
-		UpdatedAt:      "2026-05-18T00:00:00Z",
 	}); err != nil {
 		t.Fatal(err)
 	}
-
+	suite := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(suite, "references"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	runner := &fakeSkillsRunner{
-		officialIndexOut: officialSkillsIndexOutput("lark-calendar", "lark-mail"),
-		officialOut:      officialSkillsOutput("lark-calendar", "lark-mail"),
-		globalOut:        globalSkillsOutput(),
-		installAllErr:    nil,
+		sources:       []string{"primary"},
+		indexes:       map[string]string{"primary": officialSkillsIndexOutput("lark-calendar", "lark-mail")},
+		indexErrors:   map[string]error{},
+		installErrors: map[string]error{},
+		stageErrors:   map[string]error{},
+		globalJSON:    fmt.Sprintf(`[{"name":"lark-suite","path":%q,"scope":"global"}]`, suite),
 	}
 
 	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
-	if result.Action != "fallback_synced" {
-		t.Fatalf("SyncSkills() action = %q, want fallback_synced", result.Action)
+	if result.Err != nil {
+		t.Fatal(result.Err)
 	}
-	if len(runner.installed) != 0 {
-		t.Fatalf("installed = %#v, want no incremental installs", runner.installed)
-	}
-	if runner.installedAll != 1 {
-		t.Fatalf("installedAll = %d, want 1 (fallback triggered)", runner.installedAll)
-	}
-	assertStrings(t, result.Official, []string{"lark-calendar", "lark-mail"})
 	assertStrings(t, result.Updated, []string{"lark-calendar", "lark-mail"})
-	assertStrings(t, result.Added, []string{"lark-calendar", "lark-mail"})
 	assertStrings(t, result.SkippedDeleted, []string{})
+	assertStrings(t, runner.stages, []string{"primary"})
+	if runner.localSuite == "" {
+		t.Fatal("empty suite was not fully restored")
+	}
 }
 
-func TestSyncSkills_InstallFailureFallsBackToFullInstall(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+func TestSyncSkillsMissingSuiteIsReinstalled(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := WriteState(SkillsState{
+		Version:        "1.0.32",
+		Layout:         LayoutSuite,
+		OfficialSkills: []string{"lark-calendar", "lark-mail"},
+	}); err != nil {
+		t.Fatal(err)
+	}
 	runner := &fakeSkillsRunner{
-		officialIndexOut: officialSkillsIndexOutput("lark-calendar", "lark-mail"),
-		officialOut:      officialSkillsOutput("lark-calendar", "lark-mail"),
-		globalJSONOut:    globalSkillsJSONOutput("lark-calendar", "lark-mail"),
-		globalOut:        globalSkillsOutput("lark-calendar", "lark-mail"),
-		installErr:       fmt.Errorf("incremental boom"),
-		installAllErr:    nil,
+		sources:       []string{"primary"},
+		indexes:       map[string]string{"primary": officialSkillsIndexOutput("lark-calendar", "lark-mail")},
+		indexErrors:   map[string]error{},
+		installErrors: map[string]error{},
+		stageErrors:   map[string]error{},
+		globalJSON:    `[]`,
 	}
 
 	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
-	if result.Action != "fallback_synced" {
-		t.Fatalf("SyncSkills() action = %q, want fallback_synced", result.Action)
+	if result.Err != nil {
+		t.Fatal(result.Err)
 	}
-	if len(runner.installed) != 1 {
-		t.Fatalf("installed = %d calls, want 1", len(runner.installed))
+	assertStrings(t, result.Updated, []string{"lark-calendar", "lark-mail"})
+	assertStrings(t, runner.stages, []string{"primary"})
+	if runner.localSuite == "" {
+		t.Fatal("missing suite was not reinstalled")
 	}
-	if runner.installedAll != 1 {
-		t.Fatalf("installedAll = %d, want 1 (fallback triggered)", runner.installedAll)
-	}
-
-	state, readable, err := ReadState()
-	if err != nil || !readable {
-		t.Fatalf("ReadState() = (_, %v, %v), want readable", readable, err)
-	}
-	if state.Version != "1.0.33" {
-		t.Fatalf("state.Version = %q, want %q", state.Version, "1.0.33")
-	}
-	assertStrings(t, state.OfficialSkills, []string{"lark-calendar", "lark-mail"})
 }
 
-func TestSyncSkills_InstallFailureAndFullInstallFails(t *testing.T) {
+func TestSyncSkillsSuiteStagesCropsAndRemovesSeparate(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+	if err := WriteState(SkillsState{Version: "1.0.32", Layout: LayoutSeparate, OfficialSkills: []string{"lark-calendar", "lark-mail"}}); err != nil {
+		t.Fatal(err)
+	}
 	runner := &fakeSkillsRunner{
-		officialIndexOut: officialSkillsIndexOutput("lark-calendar", "lark-mail"),
-		officialOut:      officialSkillsOutput("lark-calendar", "lark-mail"),
-		globalJSONOut:    globalSkillsJSONOutput("lark-calendar", "lark-mail"),
-		globalOut:        globalSkillsOutput("lark-calendar", "lark-mail"),
-		installErr:       fmt.Errorf("incremental boom"),
-		installAllErr:    fmt.Errorf("full install boom"),
+		sources: []string{"primary", "secondary"}, indexes: map[string]string{"primary": officialSkillsIndexOutput("lark-calendar", "lark-mail")},
+		indexErrors: map[string]error{}, installErrors: map[string]error{}, stageErrors: map[string]error{},
+		globalJSON: globalSkillsJSONOutput("lark-calendar"),
+	}
+	result := SyncSkills(SyncOptions{Version: "1.0.33", Layout: LayoutSuite, Runner: runner, Now: time.Now})
+	if result.Err != nil {
+		t.Fatal(result.Err)
+	}
+	if runner.localSuite == "" {
+		t.Fatal("cropped suite was not installed")
+	}
+	assertStrings(t, runner.removals[0], []string{"lark-calendar"})
+	state, _, _ := ReadState()
+	if state.Layout != LayoutSuite {
+		t.Fatalf("layout = %q, want suite", state.Layout)
+	}
+	assertStrings(t, state.SkippedDeletedSkills, []string{"lark-mail"})
+}
+
+func TestSyncSkillsSwitchToSuiteRemovesPreviouslyOfficialSkillMissingFromIndex(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := WriteState(SkillsState{
+		Version:        "1.0.32",
+		Layout:         LayoutSeparate,
+		OfficialSkills: []string{"lark-calendar", "lark-retired"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeSkillsRunner{
+		sources:       []string{"primary"},
+		indexes:       map[string]string{"primary": officialSkillsIndexOutput("lark-calendar")},
+		indexErrors:   map[string]error{},
+		installErrors: map[string]error{},
+		stageErrors:   map[string]error{},
+		stageChildren: map[string][]string{"primary": {"lark-calendar"}},
+		globalJSON:    globalSkillsJSONOutput("lark-calendar", "lark-retired", "lark-user-owned"),
 	}
 
-	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
-	if result.Action != "fallback_failed" {
-		t.Fatalf("SyncSkills() action = %q, want fallback_failed", result.Action)
+	result := SyncSkills(SyncOptions{Version: "1.0.33", Layout: LayoutSuite, Runner: runner, Now: time.Now})
+	if result.Err != nil {
+		t.Fatal(result.Err)
 	}
-	if result.Err == nil {
-		t.Fatalf("SyncSkills() err = nil, want error")
+	if len(runner.removals) != 1 {
+		t.Fatalf("removals = %v, want one removal call", runner.removals)
 	}
-	if !strings.Contains(result.Detail, "incremental boom") {
-		t.Fatalf("SyncSkills() detail = %q, want incremental error text", result.Detail)
-	}
-	if !strings.Contains(result.Err.Error(), "full skills install failed") {
-		t.Fatalf("SyncSkills() err = %v, want full install failure", result.Err)
+	assertStrings(t, runner.removals[0], []string{"lark-calendar", "lark-retired"})
+}
+
+func TestSyncSkillsSwitchToSeparateRemovesSuite(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		indexErrors map[string]error
+		wantInstall string
+	}{
+		{name: "official source", indexErrors: map[string]error{}, wantInstall: "primary:lark-calendar,lark-mail"},
+		{name: "GitHub fallback", indexErrors: map[string]error{"primary": fmt.Errorf("down")}, wantInstall: "larksuite/cli:lark-calendar,lark-mail"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			if err := WriteState(SkillsState{Version: "1.0.32", Layout: LayoutSuite, OfficialSkills: []string{"lark-calendar", "lark-mail"}}); err != nil {
+				t.Fatal(err)
+			}
+			suite := t.TempDir()
+			for _, name := range []string{"lark-calendar", "lark-mail"} {
+				if err := os.MkdirAll(filepath.Join(suite, "references", name), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			runner := &fakeSkillsRunner{
+				sources:       []string{"primary"},
+				indexes:       map[string]string{"primary": officialSkillsIndexOutput("lark-calendar", "lark-mail")},
+				indexErrors:   test.indexErrors,
+				installErrors: map[string]error{},
+				stageErrors:   map[string]error{},
+				globalJSON:    fmt.Sprintf(`[{"name":"lark-suite","path":%q,"scope":"global"}]`, suite),
+			}
+
+			result := SyncSkills(SyncOptions{Version: "1.0.33", Layout: LayoutSeparate, Runner: runner, Now: time.Now})
+			if result.Err != nil {
+				t.Fatal(result.Err)
+			}
+			assertStrings(t, runner.installs, []string{test.wantInstall})
+			if len(runner.removals) != 1 {
+				t.Fatalf("removals = %v, want one removal call", runner.removals)
+			}
+			assertStrings(t, runner.removals[0], []string{"lark-suite"})
+		})
 	}
 }
 
-func TestSyncSkills_NilRunnerFails(t *testing.T) {
+func TestPrepareSuiteCropsRoutesKeywordsAndReferences(t *testing.T) {
+	suite := t.TempDir()
+	for _, name := range []string{"lark-calendar", "lark-mail"} {
+		if err := os.MkdirAll(filepath.Join(suite, "references", name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(suite, "SKILL.md"), []byte(suiteFixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepareSuite(suite, []string{"lark-calendar", "lark-mail"}, []string{"lark-calendar"}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(suite, "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(raw)
+	if strings.Contains(content, "lark-mail") || strings.Contains(content, "日历、邮件等") || !strings.Contains(content, "（日历等）") || !strings.Contains(content, "- lark-calendar（日历）: calendar") {
+		t.Fatalf("unexpected cropped SKILL.md:\n%s", content)
+	}
+	if _, err := os.Stat(filepath.Join(suite, "references", "lark-mail")); !os.IsNotExist(err) {
+		t.Fatalf("removed reference still exists: %v", err)
+	}
+}
+
+func TestCropSuiteRoutesRemovesBoundaryLinesWithoutChangingNeighbors(t *testing.T) {
+	routes := []string{
+		"- lark-approval（审批）: approval",
+		"- lark-calendar（日历）: calendar",
+		"- lark-mail（邮件）: mail",
+	}
+	prefix := "description: 飞书/Lark 聚合能力入口：管理飞书/Lark 产品能力（审批、日历、邮件等）。\nbefore\n"
+	for _, test := range []struct {
+		name, removed, keywords, suffix string
+		target                          []string
+	}{
+		{name: "first", removed: "lark-approval", keywords: "日历、邮件", target: []string{"lark-calendar", "lark-mail"}, suffix: "\nafter\n"},
+		{name: "middle", removed: "lark-calendar", keywords: "审批、邮件", target: []string{"lark-approval", "lark-mail"}, suffix: "\nafter\n"},
+		{name: "last", removed: "lark-mail", keywords: "审批、日历", target: []string{"lark-approval", "lark-calendar"}, suffix: "\nafter\n"},
+		{name: "last at EOF", removed: "lark-mail", keywords: "审批、日历", target: []string{"lark-approval", "lark-calendar"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			content := prefix + strings.Join(routes, "\n") + test.suffix
+			got, err := cropSuiteRoutes(content, []string{test.removed}, test.target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := strings.Replace(content, "审批、日历、邮件", test.keywords, 1)
+			line := routes[0]
+			for _, candidate := range routes {
+				if strings.Contains(candidate, test.removed) {
+					line = candidate
+					break
+				}
+			}
+			want = strings.Replace(want, line+"\n", "", 1)
+			want = strings.TrimSuffix(want, line)
+			if got != want {
+				t.Fatalf("cropped content changed surrounding lines\ngot:\n%s\nwant:\n%s", got, want)
+			}
+		})
+	}
+}
+
+func TestSyncSkillsNilRunnerFails(t *testing.T) {
 	result := SyncSkills(SyncOptions{Version: "1.0.33", Now: time.Now})
-	if result.Err == nil || !strings.Contains(result.Err.Error(), "skills runner is nil") {
-		t.Fatalf("SyncSkills() err = %v, want nil runner failure", result.Err)
-	}
-}
-
-func TestSyncSkills_ParseEmptyWithNonEmptyStdoutFallsBack(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-	runner := &fakeSkillsRunner{
-		officialIndexErr: fmt.Errorf("index unavailable"),
-		officialOut:      "Some unrecognized output format\n",
-		installAllErr:    nil,
-	}
-
-	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
-	if result.Action != "fallback_synced" {
-		t.Fatalf("SyncSkills() action = %q, want fallback_synced", result.Action)
-	}
-	if runner.installedAll != 1 {
-		t.Fatalf("installedAll = %d, want 1", runner.installedAll)
-	}
-}
-
-func TestSyncSkills_ParseEmptyWithNonEmptyStdoutAndFullInstallFails(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-	runner := &fakeSkillsRunner{
-		officialIndexErr: fmt.Errorf("index unavailable"),
-		officialOut:      "Some unrecognized output format\n",
-		installAllErr:    fmt.Errorf("full install failed"),
-	}
-
-	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
-	if result.Action != "fallback_failed" {
-		t.Fatalf("SyncSkills() action = %q, want fallback_failed", result.Action)
-	}
 	if result.Err == nil {
-		t.Fatalf("SyncSkills() err = nil, want error")
+		t.Fatal("expected nil runner failure")
 	}
 }
 
@@ -737,119 +739,5 @@ func assertStrings(t *testing.T, got, want []string) {
 	t.Helper()
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %#v, want %#v", got, want)
-	}
-}
-
-func TestSyncSkills_FallbackWithUnknownOfficialWritesMinimalState(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-	runner := &fakeSkillsRunner{
-		officialIndexErr: fmt.Errorf("index unavailable"),
-		officialOut:      "Some unrecognized output format\n",
-		installAllErr:    nil,
-	}
-
-	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
-	if result.Action != "fallback_synced" {
-		t.Fatalf("SyncSkills() action = %q, want fallback_synced", result.Action)
-	}
-
-	state, readable, err := ReadState()
-	if err != nil || !readable {
-		t.Fatalf("ReadState() = (_, %v, %v), want readable", readable, err)
-	}
-	if state.Version != "1.0.33" {
-		t.Fatalf("state.Version = %q, want %q", state.Version, "1.0.33")
-	}
-	assertStrings(t, state.OfficialSkills, []string{})
-	assertStrings(t, state.UpdatedSkills, []string{})
-	assertStrings(t, state.AddedOfficialSkills, []string{})
-}
-
-func TestSyncSkills_FallbackWithKnownOfficialWritesFullState(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-	runner := &fakeSkillsRunner{
-		officialIndexOut: officialSkillsIndexOutput("lark-calendar", "lark-mail"),
-		officialOut:      officialSkillsOutput("lark-calendar", "lark-mail"),
-		globalJSONOut:    globalSkillsJSONOutput("lark-calendar", "lark-mail"),
-		globalOut:        globalSkillsOutput("lark-calendar", "lark-mail"),
-		installErr:       fmt.Errorf("incremental boom"),
-		installAllErr:    nil,
-	}
-
-	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
-	if result.Action != "fallback_synced" {
-		t.Fatalf("SyncSkills() action = %q, want fallback_synced", result.Action)
-	}
-
-	state, readable, err := ReadState()
-	if err != nil || !readable {
-		t.Fatalf("ReadState() = (_, %v, %v), want readable", readable, err)
-	}
-	assertStrings(t, state.OfficialSkills, []string{"lark-calendar", "lark-mail"})
-	assertStrings(t, state.UpdatedSkills, []string{"lark-calendar", "lark-mail"})
-	assertStrings(t, state.AddedOfficialSkills, []string{"lark-calendar", "lark-mail"})
-}
-
-func TestSyncSkills_FallbackResultContainsMetadata(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-	runner := &fakeSkillsRunner{
-		officialIndexOut: officialSkillsIndexOutput("lark-calendar", "lark-mail"),
-		officialOut:      officialSkillsOutput("lark-calendar", "lark-mail"),
-		globalJSONOut:    globalSkillsJSONOutput("lark-calendar", "lark-mail"),
-		globalOut:        globalSkillsOutput("lark-calendar", "lark-mail"),
-		installErr:       fmt.Errorf("incremental boom"),
-		installAllErr:    nil,
-	}
-
-	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
-	if result.Action != "fallback_synced" {
-		t.Fatalf("SyncSkills() action = %q, want fallback_synced", result.Action)
-	}
-	assertStrings(t, result.Official, []string{"lark-calendar", "lark-mail"})
-	assertStrings(t, result.Updated, []string{"lark-calendar", "lark-mail"})
-	assertStrings(t, result.Added, []string{"lark-calendar", "lark-mail"})
-	assertStrings(t, result.SkippedDeleted, []string{})
-	if !strings.Contains(result.Detail, "incremental boom") {
-		t.Fatalf("SyncSkills() detail = %q, want incremental error text", result.Detail)
-	}
-}
-
-func TestSyncSkills_FallbackBreaksDegradationLoop(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-	runner := &fakeSkillsRunner{
-		officialIndexErr: fmt.Errorf("index unavailable"),
-		officialErr:      fmt.Errorf("list failed"),
-		installAllErr:    nil,
-	}
-
-	result1 := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
-	if result1.Action != "fallback_synced" {
-		t.Fatalf("first sync: action = %q, want fallback_synced", result1.Action)
-	}
-
-	state, readable, err := ReadState()
-	if err != nil || !readable {
-		t.Fatalf("ReadState() after first sync = (_, %v, %v), want readable", readable, err)
-	}
-	if state.Version != "1.0.33" {
-		t.Fatalf("state.Version = %q, want %q", state.Version, "1.0.33")
-	}
-
-	runner2 := &fakeSkillsRunner{
-		officialIndexOut: officialSkillsIndexOutput("lark-calendar", "lark-mail"),
-		officialOut:      officialSkillsOutput("lark-calendar", "lark-mail"),
-		globalJSONOut:    globalSkillsJSONOutput("lark-calendar", "lark-mail"),
-		globalOut:        globalSkillsOutput("lark-calendar", "lark-mail"),
-	}
-	result2 := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner2, Now: time.Now})
-	if result2.Action != "synced" {
-		t.Fatalf("second sync: action = %q, want synced (no fallback loop)", result2.Action)
-	}
-	if runner2.installedAll != 0 {
-		t.Fatalf("second sync: installedAll = %d, want 0 (incremental, not fallback)", runner2.installedAll)
 	}
 }

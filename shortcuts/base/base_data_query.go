@@ -20,11 +20,11 @@ var BaseDataQuery = common.Shortcut{
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
-		{Name: "dsl", Desc: "query JSON DSL; read lark-base-data-query-guide.md first, then lark-base-data-query.md for the full DSL SSOT", Required: true},
+		{Name: "dsl", Desc: "query JSON DSL; first follow lark-base-record-query-and-analysis-sop.md, then read lark-base-data-query.md only if that SOP selects +data-query", Required: true},
 	},
 	Tips: []string{
-		"Use +data-query for server-side aggregation, grouping, filtering, sorting, and Top N queries.",
-		"Read lark-base-data-query-guide.md for common fewshots; use lark-base-data-query.md only when the full DSL reference is needed.",
+		"Read lark-base-record-query-and-analysis-sop.md before using this command; use +data-query only when that SOP selects the Cloud aggregation path.",
+		"After the SOP selects +data-query, read lark-base-data-query.md for its fewshots and DSL contract.",
 		"`dimensions` and `measures` cannot both be empty.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {

@@ -579,3 +579,34 @@ func TestWrapSheetsBackwardDeprecationValidateHook(t *testing.T) {
 		t.Fatalf("Validate hook did not record expected notice: %#v", dep)
 	}
 }
+
+// Registration must wire the sheets subcommand prescriptions onto the live
+// group. The sheets package tests call InstallUnknownSubcommandHints directly,
+// so without this the registration line can be deleted and the suite stays green
+// while the shipped CLI silently reverts to generic ranked suggestions
+// (AGENTS.md: a contract test must fail if the implementation is reverted).
+func TestRegisterShortcutsInstallsSheetsSubcommandHints(t *testing.T) {
+	program := &cobra.Command{Use: "lark-cli"}
+	RegisterShortcuts(program, newRegisterTestFactory(t))
+
+	svc, _, err := program.Find([]string{"sheets"})
+	if err != nil {
+		t.Fatalf("find sheets group: %v", err)
+	}
+	if svc.Args == nil {
+		t.Fatal("sheets group has no Args validator; the prescription hook was not installed")
+	}
+
+	err = svc.Args(svc, []string{"+sheet-add"})
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("+sheet-add should return the typed prescription, got %T (%v)", err, err)
+	}
+	if !strings.Contains(verr.Hint, "+sheet-create") {
+		t.Errorf("hint should name +sheet-create, got %q", verr.Hint)
+	}
+	if len(verr.Params) != 1 || len(verr.Params[0].Suggestions) != 1 ||
+		verr.Params[0].Suggestions[0] != "+sheet-create" {
+		t.Errorf("+sheet-create should be the sole machine-readable suggestion, got %+v", verr.Params)
+	}
+}

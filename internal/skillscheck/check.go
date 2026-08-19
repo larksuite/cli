@@ -6,7 +6,8 @@ package skillscheck
 import "strings"
 
 // Init runs the synchronous skills version check. Stores a StaleNotice when
-// the local skills state records a version that does not match currentVersion.
+// the local skills state records a version that does not match currentVersion,
+// or the last sync could not determine the complete official Skill set.
 // Safe to call from cmd/root.go before rootCmd.Execute(); zero network, zero
 // subprocess — only a local state file read.
 //
@@ -17,15 +18,16 @@ func Init(currentVersion string) {
 	if shouldSkip(currentVersion) {
 		return
 	}
-	version, ok := ReadSyncedVersion()
-	if !ok {
+	state, ok, err := ReadState()
+	if err != nil || !ok || state.Version == "" {
 		return
 	}
-	if strings.TrimPrefix(strings.TrimPrefix(version, "v"), "V") == strings.TrimPrefix(strings.TrimPrefix(currentVersion, "v"), "V") {
+	if strings.TrimPrefix(strings.TrimPrefix(state.Version, "v"), "V") == strings.TrimPrefix(strings.TrimPrefix(currentVersion, "v"), "V") && !state.OfficialSkillsUnknown {
 		return
 	}
 	SetPending(&StaleNotice{
-		Current: version,
-		Target:  currentVersion,
+		Current:         state.Version,
+		Target:          currentVersion,
+		OfficialUnknown: state.OfficialSkillsUnknown,
 	})
 }

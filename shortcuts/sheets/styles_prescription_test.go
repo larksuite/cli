@@ -257,6 +257,11 @@ func TestCellsSetStyle_WordWrapGoogleVocabularyNormalizes(t *testing.T) {
 // values, not a whole-payload skeleton ({"bottom": {…}, "left": {…}, …}
 // told the caller nothing about thin/medium/thick — 07-28 root-cause
 // report #5, 75 occurrences).
+//
+// The probe is a boolean because a NUMBER no longer reaches this path: a
+// numeric weight reads as a line width and normalizes to a bucket
+// (a number reads as a line width). Only a value with no width reading
+// has to answer with the enum.
 func TestCellsSetStyle_BorderWeightNumberNamesEnum(t *testing.T) {
 	t.Parallel()
 	sc := shortcutFromRegistry(t, "+cells-set-style")
@@ -264,10 +269,10 @@ func TestCellsSetStyle_BorderWeightNumberNamesEnum(t *testing.T) {
 		"--url", testURL,
 		"--sheet-name", "s",
 		"--range", "A1",
-		"--border-styles", `{"top":{"style":"solid","weight":1}}`,
+		"--border-styles", `{"top":{"style":"solid","weight":true}}`,
 		"--dry-run",
 	})
-	ve := requireValidation(t, err, `expected type "string", got "number"`)
+	ve := requireValidation(t, err, `expected type "string", got "boolean"`)
 	for _, want := range []string{`"thin"`, `"medium"`, `"thick"`} {
 		if !strings.Contains(ve.Message, want) {
 			t.Errorf("message should name the weight enum %s, got %q", want, ve.Message)

@@ -26,7 +26,7 @@ const (
 	maxInlineRecordReadLimit = 200
 	ndjsonRecordPageSize     = 500
 	maxNDJSONRecordReadLimit = 2000
-	recordAnalysisOutputTip  = "For analysis, parsing, comparison, or reusable local input, prefer --output ./records.ndjson --minimal-stdout; ndjson defaults to limit 2000, so set a smaller --limit only for probes, previews, or an explicitly bounded result. To process NDJSON records with the built-in jq engine, use --jq-records; --jq does not support ndjson."
+	recordAnalysisOutputTip  = "If file I/O is available, prefer --format ndjson --output ./records.ndjson for analysis, parsing, or comparison to keep long user data out of model context; process the records file with Python or another data analysis engine. Follow lark-base-record-query-and-analysis-sop.md for engine selection and complete-data checks. Ndjson defaults to limit 2000, so set a smaller --limit only for probes, previews, or an explicitly bounded result."
 )
 
 var recordExportNow = time.Now
@@ -40,14 +40,14 @@ func recordOutputFlag() common.Flag {
 
 func recordMinimalStdoutFlag() common.Flag {
 	return common.Flag{
-		Name: "minimal-stdout", Type: "bool",
+		Name: "minimal-stdout", Type: "bool", Hidden: true,
 		Desc: "for ndjson, print only artifact paths, record file size, records_count, and has_more",
 	}
 }
 
 func recordJQRecordsFlag() common.Flag {
 	return common.Flag{
-		Name: "jq-records",
+		Name: "jq-records", Hidden: true,
 		Desc: "required instead of --jq to process ndjson records with the built-in jq engine; runs once against the exported records array and leaves artifact files unchanged",
 	}
 }
@@ -83,10 +83,10 @@ func normalizeRecordReadOutput(_ context.Context, flags *common.FlagContext) err
 	if flags.Str("format") == recordexport.FormatNDJSON && strings.TrimSpace(flags.Str("jq")) != "" {
 		return errs.NewValidationError(
 			errs.SubtypeInvalidArgument,
-			"--jq does not support ndjson; use --jq-records to process records",
+			"--jq does not support ndjson; process the saved records file with Python or another data analysis engine",
 		).
 			WithParam("--jq").
-			WithHint("Replace --jq with --jq-records.")
+			WithHint("Remove --jq and process the NDJSON records file after export.")
 	}
 	return nil
 }

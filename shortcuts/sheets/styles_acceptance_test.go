@@ -162,6 +162,32 @@ var stylesPriorCorpus = []struct {
 	{name: "full-form all-shorthand medium in style slot",
 		fields: map[string]interface{}{"border_styles": map[string]interface{}{"all": map[string]interface{}{"style": "medium"}}},
 		check:  wantBorder("bottom", "weight", "medium")},
+	// border VALUE vocabulary (08-11 trace tally over 596 traces): the words
+	// that actually recur are hair (476 hits / 19 tasks in the weight slot,
+	// 76 / 2 in the style slot) and a numeric width; openpyxl's line-style
+	// list and every other library's spelling scored zero and stay rejected.
+	{name: "openpyxl hair in the weight slot means thin",
+		fields: map[string]interface{}{"border_styles": map[string]interface{}{"top": map[string]interface{}{"style": "solid", "weight": "hair"}}},
+		check:  wantBorder("top", "weight", "thin")},
+	{name: "openpyxl hair in the style slot means a thin solid line",
+		fields: map[string]interface{}{"border_styles": map[string]interface{}{"top": map[string]interface{}{"style": "hair"}}},
+		check: wantAll(wantBorder("top", "weight", "thin"),
+			wantBorder("top", "style", "solid"))},
+	{name: "flattened border_style hair",
+		fields: map[string]interface{}{"border_style": "hair"},
+		check:  wantBorder("top", "weight", "thin")},
+	{name: "numeric weight reads as a line width",
+		fields: map[string]interface{}{"border_styles": map[string]interface{}{"top": map[string]interface{}{"style": "solid", "weight": float64(1)}}},
+		check:  wantBorder("top", "weight", "thin")},
+	{name: "numeric weight as string",
+		fields: map[string]interface{}{"border_styles": map[string]interface{}{"top": map[string]interface{}{"style": "solid", "weight": "2"}}},
+		check:  wantBorder("top", "weight", "medium")},
+	{name: "Google Sheets width key aliases to weight",
+		fields: map[string]interface{}{"border_styles": map[string]interface{}{"top": map[string]interface{}{"style": "solid", "width": float64(3)}}},
+		check:  wantBorder("top", "weight", "thick")},
+	{name: "unobserved openpyxl line style stays rejected",
+		fields:  map[string]interface{}{"border_styles": map[string]interface{}{"top": map[string]interface{}{"style": "mediumDashed"}}},
+		wantErr: "is invalid"},
 	// side-first word order + Google Sheets wrap word (07-21 evening batch)
 	{name: "side-first bottom_border object",
 		fields: map[string]interface{}{"bottom_border": map[string]interface{}{"style": "solid"}},
@@ -196,6 +222,21 @@ func wantBorder(side, attr, want string) func(map[string]interface{}) string {
 		sideObj, _ := bs[side].(map[string]interface{})
 		if sideObj == nil || sideObj[attr] != want {
 			return fmt.Sprintf("border_styles.%s.%s = %v, want %q", side, attr, sideObj[attr], want)
+		}
+		return ""
+	}
+}
+
+// wantAll reports the first failing check, so one corpus row can pin every
+// field a rewrite touches (a thickness word in the style slot moves the word
+// to weight AND defaults the line type — asserting one of the two leaves the
+// other free to regress).
+func wantAll(checks ...func(map[string]interface{}) string) func(map[string]interface{}) string {
+	return func(proto map[string]interface{}) string {
+		for _, check := range checks {
+			if detail := check(proto); detail != "" {
+				return detail
+			}
 		}
 		return ""
 	}

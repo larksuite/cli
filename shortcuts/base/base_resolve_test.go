@@ -444,7 +444,7 @@ func TestBaseURLResolveRecordShareURL(t *testing.T) {
 		recordData, _ := hint["record_data"].(map[string]interface{})
 		fields, _ := hint["fields"].(map[string]interface{})
 		nextStep, _ := hint["next_step"].(string)
-		if !strings.Contains(nextStep, "+record-upsert --base-token bas123 --table-id tbl123 --record-id rec123") || recordData["fld_name"] != "Alice" || fields["total"] != float64(2) {
+		if !strings.Contains(nextStep, `+record-batch-update --base-token bas123 --table-id tbl123 --json '{"update_records":{"rec123":{"<field_id>":<CellValue>}}}'`) || recordData["fld_name"] != "Alice" || fields["total"] != float64(2) {
 			t.Fatalf("unexpected hint: %#v", hint)
 		}
 	})
@@ -465,7 +465,7 @@ func TestBaseURLResolveRecordShareURL(t *testing.T) {
 		}
 		hint, _ := data["hint"].(map[string]interface{})
 		nextStep, _ := hint["next_step"].(string)
-		if !strings.Contains(nextStep, "+record-upsert --base-token bas123 --table-id tbl123 --record-id rec123") {
+		if !strings.Contains(nextStep, `+record-batch-update --base-token bas123 --table-id tbl123 --json '{"update_records":{"rec123":{"<field_id>":<CellValue>}}}'`) {
 			t.Fatalf("unexpected hint: %#v", hint)
 		}
 		if _, ok := hint["record_data"]; ok {

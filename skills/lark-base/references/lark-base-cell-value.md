@@ -1,15 +1,14 @@
 # base CellValue 规范（lark-base-cell-value）
 
-> 适用命令：`lark-cli base +record-upsert`、`lark-cli base +record-batch-create`、`lark-cli base +record-batch-update`
+> 适用命令：`lark-cli base +record-batch-create`、`lark-cli base +record-batch-update`
 
 本文件定义 **shortcut 写记录** 时 `CellValue` 的推荐格式，目标是让 AI 一次写对。不同命令的外层 JSON 形状不同，但每个 cell 都以本文为 source of truth。
 
 ## 1. 顶层规则（必须遵守）
 
 - `--json` 必须是 JSON 对象。
-- `+record-upsert`：顶层直接传字段映射：`{"字段名或字段ID": CellValue}`。
-- `+record-batch-create`：使用 `create_records`，其每个元素都是 `Map<FieldNameOrID, CellValue>`。
-- `+record-batch-update`：使用 `update_records`，其每个 value 都是 `Map<FieldNameOrID, CellValue>`。
+- `+record-batch-create --json` 使用 `{"create_records":[{"字段名或字段ID": CellValue}, ...]}`，数组中的每个对象代表一条新 Record。
+- `+record-batch-update --json` 使用 `{"update_records":{"rec_xxx":{"字段名或字段ID": CellValue}, ...}}`，以 `record_id` 定位每条待更新 Record。
 - 一次 payload 里同一字段只用一种 key（字段名或字段 ID），不要重复。
 - 写入前先 `+field-list` 获取字段 `type/style/multiple`，再构造值。
 - 需要清空字段时优先传 `null`（字段允许清空时）。
@@ -119,7 +118,9 @@ text 字段的 `style.type` 影响单元格检查逻辑：
 
 ### 2.8 location
 
-写入对象必须使用 `{lng, lat}`，两者都是数字；`lng` 是经度，`lat` 是纬度。不需要手动传 `full_address`，平台会根据坐标解析地址。
+- 读取：`{lng, lat, full_address}`，三个成员均非空。
+- 写入：`{lng, lat}`，经纬度均为数字；`full_address` 由平台根据坐标解析，不允许手动指定。
+- 筛选行为：按照 `full_address` 做字符串筛选，将 Location 当作文本列使用文本 operator。
 
 ```json
 {
@@ -130,7 +131,6 @@ text 字段的 `style.type` 影响单元格检查逻辑：
 }
 ```
 
-读取单元格时，非空 location 为 `{lng, lat, full_address}`，三个成员均非空，`full_address` 是字符串；筛选、转文本等场景使用 `full_address`，只有公式能访问坐标。如果用户只给地址文本，先获取或确认坐标后再写入；不要把仅有地址文本直接当作 location CellValue。
 
 ### 2.9 attachment（不作为普通 CellValue 写入）
 
@@ -142,23 +142,18 @@ text 字段的 `style.type` 影响单元格检查逻辑：
 
 ## 3. 只读字段（不要写）
 
-以下字段在写记录时应视为只读：
-- `auto_number`
-- `lookup`
-- `formula`
-- `created_at` / `updated_at`
-- `created_by` / `updated_by`
+写记录时，`auto_number`、`lookup`、`formula`、`created_at/updated_at`、`created_by/updated_by` 均为只读字段。
 
 写入只读字段通常不会更新数据；返回里可能出现 `ignored_fields`，reason 会说明 `READONLY`。看到这种返回时，不要重试同一 payload，应移除只读字段，只写存储字段。
 
-读取单元格时，`auto_number`、`formula`、`lookup` 为 `string|null`；`created_at`、`updated_at` 为标准 RFC3339 字符串或 `null`；`created_by`、`updated_by` 为 `array<{id, name}>`。
+读取单元格时，`auto_number`、`formula`、`lookup` 为 `string | null`；`created_at`、`updated_at` 为 RFC3339 字符串或 `null`；`created_by`、`updated_by` 为 `array<{id, name}>`。
 
 ## 4. 完整示例
 
 ```json
 {
     "标题": "Created from shortcut",
-    "状态": "Todo",
+    "状态": ["Todo"],
     "标签": ["高优", "外部依赖"],
     "工时": 8,
     "截止时间": "2026-03-24 10:00",

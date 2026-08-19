@@ -1,20 +1,34 @@
-# Base 数据表查询与分析 SOP
+# Base Record 查询、匹配与分析 SOP
 
-数据表记录查询和分析任务先读本 SOP，包括记录预览、筛选、排序、去重、统计、聚合、TopN、多值计算、Link 或多表关联、复杂行级计算、全局结论和查询后写入。先区分需要 LLM 理解原文的语义分析与可程序化计算的确定性分析，再按任务所需数据规模与计算复杂度选择对应路径。用户直接要求解释、编写或排错 `+data-query` 命令或 DSL 时，直接读 [data-query guide](lark-base-data-query-guide.md)。
+任何 Record 读取、预览、搜索、筛选、匹配、统计、聚合、TopN、多表或语义分析，以及写操作中的记录定位和结果验收，都先完整读取本 SOP。先区分需要 LLM 理解原文的语义分析与可程序化计算的确定性分析，再按数据规模与计算复杂度选择路径；即使用户直接要求解释、编写或排错 `+data-query` 命令或 DSL，也先由本 SOP 确认口径和路径，再读取底层 reference。
 
 ## 分流决策
 
-1. 明确所有需要参与分析的表及其 `records_count`。
+1. 明确所有需要参与分析的表；上下文已有整表 `records_count` 时用于提前分流，否则直接按下文导出或探测，不为获取规模单独枚举表。
 2. 如果结论必须依赖 LLM 理解原始内容，例如开放文本打标、情绪或意图识别、主题归纳、语义分类、相似性判断或实体消歧，进入下文“LLM 语义分析”路径。
-3. 对于其余确定性查询，任一分析表超过 2000 行时，先从任务意图中为所有大表提取可在单表内独立执行的谓词，例如日期范围、状态和关键词，再按下文将谓词逐表下推，并用 `--field-id '<一个简单标量字段>' --limit 2000 --output <probe>.ndjson --minimal-stdout` 探测。目标是每张表都达到 `has_more=false`；任一表无法压缩到 2000 行以内时，转 [lark-base-data-analysis-cloud.md](lark-base-data-analysis-cloud.md) 用云端的数据分析能力。
+3. 对于其余确定性查询，任一分析表已知超过 2000 行或 NDJSON 探测返回 `has_more=true` 时，先从任务意图中提取可在单表内独立执行的日期、状态、关键词等谓词，逐表下推后用 `--field-id '<一个简单标量字段>' --limit 2000 --format ndjson --output <probe>.ndjson --minimal-stdout` 复查。目标是每张表都达到 `has_more=false`；任一表无法压缩到 2000 行以内时，转 [Cloud SOP](lark-base-record-query-and-analysis-cloud-sop.md) 用云端的数据分析能力。
 4. 所有分析表都不超过 2000 行后：若只有一张表且短 jq 可清晰完成筛选、计数、简单分组/聚合/排序、TopN 可以使用 jq。
-5. 其余确定性任务比如多表、日历计算和复杂数据分析，在 Python 可用时使用 Python，否则进入 [Cloud SOP](lark-base-data-analysis-cloud.md)。
+5. 其余确定性任务比如多表、日历计算和复杂数据分析，在 Python 可用时使用 Python，否则进入 [Cloud SOP](lark-base-record-query-and-analysis-cloud-sop.md)。
 
-进入 Cloud 后先由 Cloud SOP 在原始记录查询与聚合查询之间选路；只有选定 `+data-query` 时才读取 data-query guide。
+进入 Cloud 后先由 Cloud SOP 在原始记录查询与聚合查询之间选路；只有选定 `+data-query` 时才读取 [data-query DSL reference](lark-base-data-query.md)。
 
 ## 执行与交付
 
-分析输入默认采用 `--output x.ndjson`；NDJSON 未显式传 `--limit` 时默认读取最多 2000 条，正式分析通常沿用该范围。窄投影探测、快速预览或用户明确要求前 N 条时再设置较小的 `--limit`。`--format json` 和 Markdown 适用于向用户即时展示的小结果。
+所有 records 读取统一使用 `--format ndjson --output <artifact>.ndjson`。NDJSON 将大记录集写入 records 文件，并在 stdout 返回包含摘要、列 schema 和 stats 的 manifest，避免把过长用户数据直接加载进模型上下文。用 Python 或数据分析引擎直接处理 records 文件。未传 `--limit` 时最多读取 2000 条；仅在探测、预览或用户明确要求前 N 条时缩小限制。
+
+### NDJSON 读取示例
+
+按任务替换真实 token、ID、投影、条件和 artifact 名称；`+record-search` 和 `+record-get` 使用相同的 NDJSON 输出参数。
+
+```bash
+lark-cli base +record-list \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --field-id <field> \
+  --format ndjson \
+  --output ./records.ndjson \
+  --as user
+```
 
 缩小大表记录范围时，展示文本关键词用 `+record-search`，日期、状态、数字、空值、选项、人员和关联等结构化条件用 `+record-list --filter-json`。
 
@@ -45,7 +59,7 @@
 }
 ```
 
-全表分析的常规资源链路是 `+table-list` 确认目标表与规模，对所有参与分析的表并发执行 `+field-list` 读取所需 schema，再用 `+record-list` 导出记录；已有可信的 `table_id` 时可直接并发读取各表 `+field-list`。`+view-get` 可按需读取，作为用户持久化访问习惯的可选参考；其中的 filter、sort 与字段范围可辅助理解用户常用的查询范围和排序偏好，并结合当前任务确定最终口径。
+全表分析的常规资源链路是 `+table-list` 确认目标表，并用已有整表 `records_count` 或 NDJSON `has_more` 确认规模；对所有参与分析的表并发执行 `+field-list` 读取所需 schema，再按上述 NDJSON 契约用 `+record-list` 导出记录。已有可信的 `table_id` 时可直接并发读取各表 `+field-list`。`+view-get` 可按需读取，作为用户持久化访问习惯的可选参考；其中的 filter、sort 与字段范围可辅助理解用户常用的查询范围和排序偏好，并结合当前任务确定最终口径。
 
 1. 每次读取使用任务所需的最小投影，并包含 JOIN、解释、回查或写入需要的业务 key。
 2. 全局结论以 `has_more=false` 的完整导出或 Cloud 聚合结果为依据；`has_more=true` 时继续收敛单表谓词或选择 Cloud 路径。
@@ -53,16 +67,12 @@
 4. Base 标量空值很常见；聚合前按用户口径确定空值是排除、按零计入还是进入分母。用户未指定且不同处理会实质改变结论时，说明空值数量、采用的口径及其影响；任务涉及业务键、展开、JOIN 或金额分摊时，同样明确目标粒度及与口径直接相关的重复或总量守恒。
 5. 最终结果保留真实表、查询范围和计算口径，展示用户可读字段；内部 ID 用于连接或定位。
 
-`+table-list` / `+base-block-list` 返回的 `records_count` 表示整表行数；manifest 的 `records_count` 表示本次查询实际导出的行数。
-
 ## 复用本轮 NDJSON
 
 Agent 上下文曾下载过当前表的 NDJSON 时，按以下规则判断是否复用：
 
 1. 短时间内继续分析或表中数据低频变化时，谓词下推口径一致且已有列覆盖计算需求即可优先复用。
-2. 间隔较长或表中数据高频变化时，批量提取 manifests 的 `base_token/table_id/rev`，并发执行 `+table-list` 校验最新 `rev`；版本一致且谓词口径未变时复用，否则重新导出对应表。
-
-> 例：本轮已按“日期在 2026 年”导出 `orders.ndjson`，用户继续要求按负责人聚合；谓词和所需列未变，直接复用。若间隔较长或该表频繁写入，manifest `rev=42` 与 `+table-list` 最新 `rev` 相同则复用，最新 `rev=43` 则重新导出。
+2. 间隔较长或表中数据高频变化时，批量提取 manifests 的 `base_token/table_id/rev`，刷新相关表元数据并校验最新 `rev`；版本一致且谓词口径未变时复用，否则重新导出对应表。
 
 ## LLM 语义分析
 
@@ -76,7 +86,7 @@ Agent 上下文曾下载过当前表的 NDJSON 时，按以下规则判断是否
 
 ## Manifest
 
-`--output <path>.ndjson` 生成 `<path>.ndjson` 与 `<path>.manifest.json`；记录写入 NDJSON，stdout 返回 manifest，`--minimal-stdout` 只保留文件位置、文件字节数、`records_count` 和 `has_more`。
+`--output <path>.ndjson` 生成 `<path>.ndjson` 与 `<path>.manifest.json`；记录写入 NDJSON，stdout 返回 manifest。
 
 分析 artifact 使用相对路径输出到当前工作目录，例如 `--output ./records.ndjson`。
 
@@ -115,7 +125,6 @@ Agent 上下文曾下载过当前表的 NDJSON 时，按以下规则判断是否
 
 - stdout 的 `records_count` 和 `has_more` 描述本次导出；确认后无需在分析代码中重读 manifest 或重新统计 NDJSON 行数。
 - `record_file_size_bytes` 是 NDJSON artifact 的实际字节数，用于选择一次读取、预览或分批方式；确定性计算由 jq/Python 直接读取文件。
-- manifest 的 `rev` 是导出首个响应页返回的 table revision；与 `+table-list` 返回的最新 `rev` 比较，可判断本轮 NDJSON 是否仍对应当前表版本。
 - `query_context` 保存导出查询范围；复用本轮 NDJSON 时结合原查询上下文确认谓词下推口径保持一致。
 - 仅在需要 `columns`、example、hint 或执行 artifact 复用判断时读取 `manifest_file`；满足复用条件后直接继续分析现有 NDJSON。
 - `ignored_fields` 和 `record_not_found` 仅在 stdout 返回时关注。
@@ -174,7 +183,7 @@ Agent 上下文曾下载过当前表的 NDJSON 时，按以下规则判断是否
 
 NDJSON 每行是一条 record。单表短筛选、计数和简单聚合可直接用 jq；下面筛选“状态”包含“进行中”的记录，并统计记录数和金额合计：
 
-默认导出后使用本地 `jq -s`，同一 artifact 可反复查询而无需重新下载。表达式很短且只执行一次，或本地 jq 不可用时，可改用 `--jq-records '<expr>'` 等价 `jq -s '<expr>' records.ndjson`。使用 CLI 内置 jq 处理 NDJSON 记录时必须使用 `--jq-records`；通用 `--jq` 不支持 ndjson。
+默认导出后使用本地 `jq -s`，同一 artifact 可反复查询而无需重新下载；本地 jq 不可用时，使用 Python 或其他数据分析引擎处理 records 文件。
 
 ```bash
 lark-cli base +record-list \
@@ -182,8 +191,8 @@ lark-cli base +record-list \
   --table-id <table_id> \
   --field-id 状态 \
   --field-id 金额 \
-  --output records.ndjson \
-  --minimal-stdout &&
+  --format ndjson \
+  --output records.ndjson &&
 jq -s '
   map(select((.["状态"] | index("进行中")) != null)) as $records
   | ($records | map(.["金额"] | select(. != null))) as $amounts

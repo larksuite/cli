@@ -16,7 +16,6 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/spf13/cobra"
 )
@@ -49,13 +48,19 @@ type APIOptions struct {
 
 var urlPrefixRe = regexp.MustCompile(`https?://[^/]+(/open-apis/.+)`)
 
-func normalisePath(raw string) string {
+func normalisePath(raw string) (string, error) {
+	if strings.ContainsAny(raw, "?#") {
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"path must not contain a query string or fragment").
+			WithHint("pass query parameters with --params and omit URL fragments").
+			WithParam("path")
+	}
 	if matches := urlPrefixRe.FindStringSubmatch(raw); len(matches) > 1 {
 		raw = matches[1]
 	} else if !strings.HasPrefix(raw, "/open-apis/") {
 		raw = "/open-apis/" + strings.TrimPrefix(raw, "/")
 	}
-	return validate.StripQueryFragment(raw)
+	return raw, nil
 }
 
 // NewCmdApi creates the api command. If runF is non-nil it is called instead of apiRun (test hook).
@@ -138,6 +143,10 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, *cmdutil.FileUploa
 			"HTTP method must not be empty").
 			WithHint("pass the verb as the first argument, e.g. lark-cli api GET /open-apis/...").
 			WithParam("<method>")
+	}
+	path, err := normalisePath(opts.Path)
+	if err != nil {
+		return client.RawApiRequest{}, nil, err
 	}
 
 	// Validate --file mutual exclusions first.

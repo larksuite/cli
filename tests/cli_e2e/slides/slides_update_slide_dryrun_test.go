@@ -5,6 +5,8 @@ package slides
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -58,6 +60,55 @@ func TestSlidesUpdateSlideDryRunE2E(t *testing.T) {
 	require.Contains(t, parts[0].Get("replacement").String(), `<slide id="pYw">`, result.Stdout)
 	require.Contains(t, parts[0].Get("replacement").String(), "思源黑体",
 		"the caller's own bytes must reach the request unchanged: %s", result.Stdout)
+}
+
+// TestSlidesUpdateSlideImageDryRunE2E pins the @path pipeline through the built
+// binary: an <img src="@local"> placeholder plans an upload_all step ahead of
+// the slide/replace, so the whole-page swap picks up a fresh local image the
+// same way +add-slide and +create do. The upload is the irreversible half, so
+// a caller who dry-runs first must see it coming.
+func TestSlidesUpdateSlideImageDryRunE2E(t *testing.T) {
+	setSlidesDryRunEnv(t)
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "chart.png"), []byte("png-bytes"), 0o600))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	const imagePage = `<slide><data>` +
+		`<img src="@./chart.png" topLeftX="10" topLeftY="10" width="100" height="100"/>` +
+		`</data></slide>`
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"slides", "+update-slide",
+			"--presentation", "presUpdateImageDryRun",
+			"--slide-id", "pYw",
+			"--content", imagePage,
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+		WorkDir:   dir,
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	require.Equal(t, int64(1), gjson.Get(result.Stdout, "data.images_to_upload").Int(), result.Stdout)
+
+	api := gjson.Get(result.Stdout, "data.api").Array()
+	require.Len(t, api, 2, "an @path page plans upload then replace: %s", result.Stdout)
+
+	require.Equal(t, "POST", gjson.Get(result.Stdout, "data.api.0.method").String(), result.Stdout)
+	require.Equal(t, "/open-apis/drive/v1/medias/upload_all",
+		gjson.Get(result.Stdout, "data.api.0.url").String(), result.Stdout)
+	require.Equal(t, "slide_file",
+		gjson.Get(result.Stdout, "data.api.0.body.parent_type").String(), result.Stdout)
+	require.Equal(t, "presUpdateImageDryRun",
+		gjson.Get(result.Stdout, "data.api.0.body.parent_node").String(), result.Stdout)
+
+	require.Equal(t, "/open-apis/slides_ai/v1/xml_presentations/presUpdateImageDryRun/slide/replace",
+		gjson.Get(result.Stdout, "data.api.1.url").String(), result.Stdout)
 }
 
 // TestSlidesUpdateAliasDryRunE2E exercises the spellings agents actually type:

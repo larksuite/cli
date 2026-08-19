@@ -175,6 +175,7 @@ func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f
 		}
 		if service == "sheets" {
 			applySheetsCompatGroups(svc)
+			sheets.InstallUnknownSubcommandHints(svc)
 		}
 
 		if !IsShortcutServiceAvailable(service, brand) {

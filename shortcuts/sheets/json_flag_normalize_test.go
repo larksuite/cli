@@ -5,6 +5,7 @@ package sheets
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -117,6 +118,126 @@ func TestCellsSet_LoneCellObjectAutoWraps(t *testing.T) {
 	}
 }
 
+// TestUnwrapCellsEnvelope pins the {"cells": …} envelope contract: a lone
+// "cells" key is the flag name mistaken for a JSON key and unwraps; an
+// object carrying siblings is the whole tool input and must not silently
+// lose them.
+func TestUnwrapCellsEnvelope(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		in        string
+		unwrapped bool
+	}{
+		{"envelope around a 2D array", `{"cells":[[{"value":"a"}]]}`, true},
+		{"envelope around a lone cell object", `{"cells":{"value":"a"}}`, true},
+		{"envelope around an empty array", `{"cells":[]}`, true},
+		{"sibling keys stay (dropping them would write elsewhere)", `{"cells":[[{"value":"a"}]],"range":"A1"}`, false},
+		{"scalar under the key stays", `{"cells":"A1"}`, false},
+		{"unrelated object stays", `{"value":"a"}`, false},
+		{"proper 2D array stays", `[[{"value":"a"}]]`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var v interface{}
+			if err := json.Unmarshal([]byte(tc.in), &v); err != nil {
+				t.Fatalf("bad fixture: %v", err)
+			}
+			out := unwrapCellsEnvelope(v)
+			changed := fmt.Sprintf("%#v", out) != fmt.Sprintf("%#v", v)
+			if changed != tc.unwrapped {
+				t.Errorf("unwrapped=%v, want %v (got %#v)", changed, tc.unwrapped, out)
+			}
+		})
+	}
+}
+
+// TestScalarCellValue pins which bare cell-slot values lift into
+// {"value": …}. null stays nil on purpose: {} and {"value":""} are both
+// plausible readings, so it belongs to the validator, not the normalizer.
+func TestScalarCellValue(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		in     interface{}
+		lifted bool
+	}{
+		{"string", "hello", true},
+		{"number", float64(42), true},
+		{"bool", true, true},
+		{"json.Number", json.Number("42"), true},
+		{"null stays for the validator", nil, false},
+		{"cell object stays", map[string]interface{}{"value": "a"}, false},
+		{"array stays", []interface{}{"a"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := scalarCellValue(tc.in)
+			if (got != nil) != tc.lifted {
+				t.Fatalf("lifted=%v, want %v", got != nil, tc.lifted)
+			}
+			if tc.lifted && got["value"] != tc.in {
+				t.Errorf("want value %#v, got %#v", tc.in, got["value"])
+			}
+		})
+	}
+}
+
+// TestCellsSet_EnvelopeAndScalarCellsAccepted runs both new rewrites through
+// the mounted path with the exact eval-trace shapes: a payload script's
+// json.dump({"cells": cells}) envelope, and the openpyxl / gspread habit of
+// a plain values matrix — which real rows MIX with cell objects as soon as a
+// formula appears.
+func TestCellsSet_EnvelopeAndScalarCellsAccepted(t *testing.T) {
+	t.Parallel()
+	sc := shortcutFromRegistry(t, "+cells-set")
+
+	t.Run("envelope with a mixed scalar / object row", func(t *testing.T) {
+		t.Parallel()
+		stdout, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--sheet-name", "s",
+			"--range", "A1:C1",
+			"--cells", `{"cells":[["电动大门",10331.00,{"formula":"=A1*2"}]]}`,
+			"--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("envelope + scalar cells should normalize, got: %v", err)
+		}
+		for _, want := range []string{"电动大门", "10331", "=A1*2"} {
+			if !strings.Contains(stdout, want) {
+				t.Errorf("dry-run body should carry %s, got %q", want, stdout)
+			}
+		}
+	})
+
+	t.Run("null cell keeps the validation error", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--sheet-name", "s",
+			"--range", "A1",
+			"--cells", `[[null]]`,
+			"--dry-run",
+		})
+		requireValidation(t, err, `got "null"`)
+	})
+
+	t.Run("envelope with sibling keys keeps the validation error", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--sheet-name", "s",
+			"--range", "A1",
+			"--cells", `{"cells":[[{"value":"a"}]],"range":"A1"}`,
+			"--dry-run",
+		})
+		requireValidation(t, err, `expected type "array"`)
+	})
+}
+
 // TestCellsSetStyle_BorderWeightWordInStyleNormalizes pins the reachability
 // fix for the border acceptance layer on the --border-styles flag path: the
 // eval-trace failure shape ({"style":"thin"} — 07-28 root-cause report #2,
@@ -175,6 +296,72 @@ func TestCellsSetStyle_BorderWeightWordInStyleNormalizes(t *testing.T) {
 		})
 		requireValidation(t, err, "not in enum")
 	})
+}
+
+// TestCellsSetStyle_BorderValueVocabularyNormalizes pins the two border
+// value habits the 08-11 trace tally (596 traces) actually shows, beyond
+// the weight-word-in-style half fixed on 07-28: openpyxl's "hair" (476
+// hits / 19 tasks in the weight slot) and a thickness that arrives as a
+// number (the 07-28 report's second failing shape). Everything else in
+// openpyxl's line-style list scored zero and must STAY rejected — the
+// last row pins that, so the table cannot quietly grow past its evidence.
+func TestCellsSetStyle_BorderValueVocabularyNormalizes(t *testing.T) {
+	t.Parallel()
+	sc := shortcutFromRegistry(t, "+cells-set-style")
+	cases := []struct {
+		name    string
+		border  string
+		want    []string
+		wantErr string
+	}{
+		{name: "numeric width as string", border: `{"top":{"style":"solid","weight":"1"}}`,
+			want: []string{`"style": "solid"`, `"weight": "thin"`}},
+		{name: "numeric width as number", border: `{"top":{"style":"solid","weight":2}}`,
+			want: []string{`"style": "solid"`, `"weight": "medium"`}},
+		{name: "hair in the weight slot", border: `{"top":{"style":"solid","weight":"hair"}}`,
+			want: []string{`"weight": "thin"`}},
+		{name: "hair in the style slot", border: `{"all":{"style":"hair"}}`,
+			want: []string{`"style": "solid"`, `"weight": "thin"`}},
+		{name: "Google Sheets width key", border: `{"top":{"style":"solid","width":1}}`,
+			want: []string{`"weight": "thin"`}},
+		// The two ends of the width mapping: 3 is where thick starts, and a
+		// width the mapping deliberately does not guess at ("no width" is a
+		// border the caller should spell style:"none") keeps its own error.
+		{name: "numeric width at the thick boundary", border: `{"top":{"style":"solid","weight":3}}`,
+			want: []string{`"weight": "thick"`}},
+		{name: "zero width is not guessed at", border: `{"top":{"style":"solid","weight":0}}`,
+			wantErr: `expected type "string", got "number"`},
+		// strconv.ParseFloat answers yes to these; an infinite line width is
+		// not a width the caller meant, so it must not fold onto thick.
+		{name: "infinite width stays rejected", border: `{"top":{"style":"solid","weight":"Inf"}}`,
+			wantErr: "not in enum"},
+		{name: "unobserved line style stays rejected", border: `{"top":{"style":"dashDot"}}`,
+			wantErr: "not in enum"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			stdout, _, err := runShortcutCapturingErr(t, sc, []string{
+				"--url", testURL,
+				"--sheet-name", "s",
+				"--range", "A1",
+				"--border-styles", tc.border,
+				"--dry-run",
+			})
+			if tc.wantErr != "" {
+				requireValidation(t, err, tc.wantErr)
+				return
+			}
+			if err != nil {
+				t.Fatalf("%s should normalize, got: %v", tc.border, err)
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(stdout, want) {
+					t.Errorf("dry-run body should carry %s, got %q", want, stdout)
+				}
+			}
+		})
+	}
 }
 
 // TestCellsSet_BorderWeightWordInStyleNormalizes pins the same reachability

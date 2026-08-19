@@ -338,14 +338,14 @@ func TestRecordListNDJSONAutoNamesArtifactPair(t *testing.T) {
 	}
 }
 
-func TestRecordListNDJSONRequiresJQRecords(t *testing.T) {
+func TestRecordListNDJSONRejectsInlineJQ(t *testing.T) {
 	factory, stdout, _ := newExecuteFactory(t)
 	err := runShortcut(t, BaseRecordList, []string{
 		"+record-list", "--base-token", "app_x", "--table-id", "tbl_x",
 		"--limit", "1", "--output", "jq.ndjson", "--jq", ".record_file",
 	}, factory, stdout)
-	if err == nil || !strings.Contains(err.Error(), "use --jq-records to process records") {
-		t.Fatalf("runShortcut() error = %v, want --jq-records guidance", err)
+	if err == nil || !strings.Contains(err.Error(), "process the saved records file with Python or another data analysis engine") {
+		t.Fatalf("runShortcut() error = %v, want external analysis guidance", err)
 	}
 }
 
@@ -403,7 +403,7 @@ func TestRecordListJQRecordsValidatesOutputContractBeforeRequest(t *testing.T) {
 		{
 			name: "general jq is unavailable for ndjson",
 			args: []string{"--format", "ndjson", "--jq", ".record_file", "--jq-records", "length"},
-			want: "use --jq-records to process records",
+			want: "process the saved records file with Python or another data analysis engine",
 		},
 		{
 			name: "conflicts with minimal stdout",

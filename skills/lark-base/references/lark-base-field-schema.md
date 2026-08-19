@@ -1,4 +1,4 @@
-# Base field JSON SSOT
+# Base Field Schema
 
 > 适用命令：`lark-cli base +field-create`、`lark-cli base +field-update`
 
@@ -10,9 +10,9 @@
 - `+field-create --json` 接受一个字段对象或非空字段对象数组。
 - `+field-update --json` 只接受一个字段对象。
 - 所有字段类型都支持可选 `description`；支持纯文本，也支持 Markdown 链接。
-- 字段默认值使用 `default_value`，直接传对应 CellValue；支持范围只有 `text`、`number`、静态 `select`、`datetime`、`user`。清空默认值传 `null`；省略表示创建时不设置、更新时不修改。
+- 字段默认值使用 `default_value`，直接传对应 CellValue；支持范围只有 `text`、`number`、静态 `select`、`datetime`、`user`。清空默认值传 `null`；创建时省略表示不设置。
 - 不要使用旧结构：`field_name`、`property`、`ui_type`、数字枚举 `type`。
-- `+field-update` 使用同样的字段 JSON 结构，但语义是 `PUT`；这是高风险写入操作，建议先 `+field-get` 再按目标状态全量提交，并带 `--yes`。
+- `+field-update` 是 override 式的完整覆盖 `PUT`，不是 partial update；先用 `+field-get` 读取当前定义，在其基础上修改目标属性，并把整个字段需要保留的可写配置完整写回，同时带 `--yes`。
 - `type=formula` 或 `type=lookup` 创建/更新前，必须先读对应 guide。
 
 推荐示例：
@@ -185,7 +185,7 @@
 - `icon` 默认 `star`
 - `icon` 可用：`star`、`heart`、`thumbsup`、`fire`、`smile`、`lightning`、`flower`、`number`
 - `min` 取值 `0..1`，默认 `1`
-- `max` 默认 `5`；常见或已文档化的范围为 `1..10`，但 CLI 不强制上限为 `10`。如果用户明确需要更大评分范围，优先确认平台能力或用 `+field-create/update --dry-run` 检查请求形状；平台拒绝后再建议改用普通数字或进度字段。
+- `max` 取值 `1..10`，默认 `5`
 
 ```json
 {
@@ -228,6 +228,8 @@
 ```
 
 #### 动态选项
+
+当新字段要引用或复用另一选项字段的选项列表时，优先使用 `dynamic_options_source`，避免重复定义和维护 `options`。
 
 支持字段：`multiple`、`dynamic_options_source`
 动态选项不支持 `default_value`。
@@ -305,12 +307,7 @@
 
 ### 3.6 user / group_chat
 
-人员字段和群字段都支持 `multiple`。
-`user` 支持 `default_value`：人员 CellValue 数组，元素可用 `{ "id": "ou_xxx" }` 或 `{ "$slot": "current_user" }`；不要猜用户 ID。`group_chat` 不支持默认值。
-
-默认值 / 约束：
-- `multiple` 默认 `true`
-- `user` 字段支持 `default_value` 配置，`group_chat` 字段不支持 `default_value` 配置。
+两者都支持 `multiple`（默认 `true`）；仅 `user` 支持人员数组 `default_value`，元素使用 `{ "id": "ou_xxx" }` 或 `{ "$slot": "current_user" }`，用户 ID 必须来自真实查询。
 
 ```json
 {
@@ -327,15 +324,7 @@
 
 ### 3.7 created_by / updated_by
 
-系统创建人 / 系统修改人字段；记录写入时应视为只读。
-
-```json
-{ "type": "created_by", "name": "创建人" }
-```
-
-```json
-{ "type": "updated_by", "name": "更新人" }
-```
+系统创建人和修改人字段，记录写入时只读：`{ "type": "created_by", "name": "创建人" }`、`{ "type": "updated_by", "name": "更新人" }`。
 
 ### 3.8 link
 
@@ -377,7 +366,7 @@
 
 ### 3.9 formula
 
-公式字段；`expression` 必填。创建/更新前先读 [formula-field-guide.md](formula-field-guide.md) 学习公式语法。
+公式字段；`expression` 必填。创建/更新前先读 [Formula Field](lark-base-field-formula.md) 学习公式语法。
 
 ```json
 {
@@ -389,34 +378,7 @@
 
 ### 3.10 lookup
 
-查找引用字段；`from`、`select`、`where` 必填，`aggregate` 可选。创建/更新前先读 [lookup-field-guide.md](lookup-field-guide.md)。
-
-支持字段：`from`、`select`、`where`、`aggregate`
-
-默认值 / 约束：
-- `from`、`select`、`where` 必填
-- `aggregate` 默认 `raw_value` 代表不进行聚合，直接返回 select 回的原始值
-- `aggregate` 可用：`raw_value`、`sum`、`average`、`counta`、`unique_counta`、`max`、`min`、`unique`
-- `where.logic` 默认 `and`，仅支持 `and` / `or`
-- `where.conditions` 至少 1 条
-- `conditions` 每项是三元组 `[field, op, value?]`
-
-```json
-{
-  "type": "lookup",
-  "name": "状态汇总",
-  "from": "任务表",
-  "select": "状态",
-  "where": {
-    "logic": "and",
-    "conditions": [
-      ["负责人", "==", { "type": "field_ref", "field": "当前负责人" }],
-      ["状态", "non_empty", null]
-    ]
-  },
-  "aggregate": "raw_value"
-}
-```
+查找引用字段使用 `from`、`select`、`where` 和可选 `aggregate`；结构、条件和聚合值必须按 [Lookup Field](lark-base-field-lookup.md) 构造。
 
 ### 3.11 auto_number
 
@@ -431,52 +393,7 @@
 }
 ```
 
-支持字段：`style.rules`
-
-默认值 / 约束：
-- `style.rules` 是规则数组，数量 `1..9`
-- 默认规则：
-
-```json
-{
-  "style": {
-    "rules": [
-      { "type": "text", "text": "NO." },
-      { "type": "incremental_number", "length": 3 }
-    ]
-  }
-}
-```
-
-#### `text`
-
-支持字段：`text`
-
-```json
-{ "type": "text", "text": "TASK-" }
-```
-
-#### `incremental_number`
-
-支持字段：`length`
-
-默认值 / 约束：
-- `length` 取值 `1..9`
-
-```json
-{ "type": "incremental_number", "length": 4 }
-```
-
-#### `created_time`
-
-支持字段：`date_format`
-
-默认值 / 约束：
-- `date_format` 可用：`yyyyMMdd`、`yyyyMM`、`yyMM`、`MMdd`、`yyyy`、`MM`、`dd`
-
-```json
-{ "type": "created_time", "date_format": "yyyyMMdd" }
-```
+`style.rules` 包含 1–9 条规则：固定文本用 `{ "type":"text", "text":"TASK-" }`；递增序号用 `{ "type":"incremental_number", "length":4 }`（长度 1–9）；创建时间用 `{ "type":"created_time", "date_format":"yyyyMMdd" }`，格式支持 `yyyyMMdd`、`yyyyMM`、`yyMM`、`MMdd`、`yyyy`、`MM`、`dd`。
 
 自定义规则：
 
@@ -504,7 +421,7 @@
 { "type": "location", "name": "位置" }
 ```
 
-写入必须使用 `{lng,lat}`。location 读回会包含 `full_address`；筛选和 `location -> text` 类型转换按 `full_address` 字符串处理，只有公式能访问坐标。
+Location 读取为 `{lng,lat,full_address}`；写入只使用数字 `{lng,lat}`，`full_address` 由平台根据坐标解析，不允许手动指定；筛选行为按照 `full_address` 做字符串筛选，将 Location 当作文本列使用文本 operator。`location -> text` 时只保留 `full_address`。
 
 ```json
 { "type": "checkbox", "name": "完成" }
@@ -513,13 +430,11 @@
 ## 4. 创建与更新
 
 - `+field-create`：按目标字段配置直接构造 `--json`。
-- `+field-update`：使用同样的 JSON 结构，但语义是 `PUT`；建议先 `+field-get`，再按目标完整状态提交，并带 `--yes`。当 `type` 是 `auto_number` 时，更新编号规则本身就会把新规则应用到已有编号，无需额外参数，也不要在 JSON 里塞额外的底层实现参数。
+- `+field-update`：使用同样的 JSON 结构，但执行完整覆盖更新，不是局部 patch。先用 `+field-get` 读取当前定义，在其基础上修改目标属性；需要保留的名称、类型、样式、选项、默认值、描述及类型专属配置都应完整写回，并带 `--yes`。
 
 ## 5. 暂不支持字段
 
 Object（对象字段）、Button（按钮字段）、Stage（流程字段）暂时都没有被 CLI 支持。这些字段会展示为 `not_support` 字段并被保护：不允许修改，不允许读取内容。
-
-遇到暂不支持的字段类型时，直接说明 Base CLI 当前不支持并停止；不要猜测未注册的字段 JSON、service 或 schema，也不要用其他字段类型冒充目标能力。
 
 ## 6. 易错点
 

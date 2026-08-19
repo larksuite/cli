@@ -43,7 +43,7 @@ var BaseRecordSearch = common.Shortcut{
 		"view_id scopes search to records in that view; when select_fields is omitted, returned fields follow that view's visible fields.",
 		`Example: lark-cli base +record-search --base-token <base_token> --table-id <table_id> --keyword Alice --search-field Name --field-id Name --field-id Status --limit 20`,
 		`Example with filter/sort JSON: lark-cli base +record-search --base-token <base_token> --table-id <table_id> --keyword Alice --search-field Name --filter-json @filter.json --sort-json '[{"field":"Updated","desc":true}]'`,
-		`Example for analysis: lark-cli base +record-search --base-token <base_token> --table-id <table_id> --keyword Alice --search-field Name --field-id Name --field-id Status --output ./records.ndjson --minimal-stdout`,
+		`Example for analysis: lark-cli base +record-search --base-token <base_token> --table-id <table_id> --keyword Alice --search-field Name --field-id Name --field-id Status --format ndjson --output ./records.ndjson`,
 		`Text equality filter: --filter-json '{"logic":"and","conditions":[["Title","==","Launch plan"]]}'`,
 		`Text contains/like filter: --filter-json '{"logic":"and","conditions":[["Title","intersects","urgent"]]}'`,
 		`Option intersection filter: --filter-json '{"logic":"and","conditions":[["Tags","intersects",["P0","Blocked"]]]}'`,

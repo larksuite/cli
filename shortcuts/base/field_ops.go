@@ -114,9 +114,9 @@ func validateFieldJSON(runtime *common.RuntimeContext) (map[string]interface{}, 
 func validateFormulaLookupGuideAck(runtime *common.RuntimeContext, command string, body map[string]interface{}) error {
 	fieldType := strings.ToLower(strings.TrimSpace(common.GetString(body, "type")))
 	if (fieldType == "formula" || fieldType == "lookup") && !runtime.Bool("i-have-read-guide") {
-		guidePath := "skills/lark-base/references/formula-field-guide.md"
+		guidePath := "skills/lark-base/references/lark-base-field-formula.md"
 		if fieldType == "lookup" {
-			guidePath = "skills/lark-base/references/lookup-field-guide.md"
+			guidePath = "skills/lark-base/references/lark-base-field-lookup.md"
 		}
 		return baseFlagErrorf("--i-have-read-guide is required for %s when --json.type is %q; read %s first, then retry with --i-have-read-guide", command, fieldType, guidePath)
 	}

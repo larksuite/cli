@@ -572,7 +572,7 @@ func resolvedRecordFieldKey(fieldIDs, fieldNames []interface{}, index int) strin
 }
 
 func recordShareNextStep(baseToken, tableID, recordID string) string {
-	return fmt.Sprintf(`use +record-upsert --base-token %s --table-id %s --record-id %s --json '{"<field_id>":"<new_value>"}' to update this record`, baseToken, tableID, recordID)
+	return fmt.Sprintf(`use +record-batch-update --base-token %s --table-id %s --json '{"update_records":{"%s":{"<field_id>":<CellValue>}}}' to update this record`, baseToken, tableID, recordID)
 }
 
 func resolveHint(tableID string, extra map[string]interface{}) map[string]interface{} {

@@ -72,6 +72,10 @@ func TestSheetNameFromA1(t *testing.T) {
 		{"A1:D100", ""},
 		{"", ""},
 		{"  'X'!A1  ", "X"},
+		{"'Q1!Sales'!A1", "Q1!Sales"}, // the quotes delimit, so one may hold a "!"
+		{"工作表1！A1", "工作表1"},           // full-width separator
+		{"Sheet1!", "Sheet1"},         // a prefix with no range still names the sheet
+		{"!A1", ""},
 	}
 	for _, tc := range tests {
 		if got := sheetNameFromA1(tc.in); got != tc.want {

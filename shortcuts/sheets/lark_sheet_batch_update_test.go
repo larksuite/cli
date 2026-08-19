@@ -5,6 +5,7 @@ package sheets
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -713,21 +714,75 @@ func TestBatchUpdate_ResizeNoOperationField(t *testing.T) {
 	}
 }
 
-// TestSplitSheetPrefixedRange exercises the helper directly.
+// TestSplitSheetPrefixedRange exercises the helper directly, including the
+// grammar it shares with --range's selector rewrite: the sheet it returns is
+// written verbatim into a sub-op's "sheet_name", so a quoted name has to come
+// back unwrapped and every spelling of the separator has to be recognized.
 func TestSplitSheetPrefixedRange(t *testing.T) {
 	t.Parallel()
-	sheet, sub, err := splitSheetPrefixedRange("sheet1!A2:A100")
-	if err != nil || sheet != "sheet1" || sub != "A2:A100" {
-		t.Errorf("split = (%q,%q,%v), want (sheet1, A2:A100, nil)", sheet, sub, err)
+	ok := []struct{ in, sheet, sub string }{
+		{"sheet1!A2:A100", "sheet1", "A2:A100"},
+		{"工作表1！A1:B2", "工作表1", "A1:B2"},           // full-width separator
+		{`sheet1\!A2`, "sheet1", "A2"},            // survived shell history expansion
+		{"'My Sheet'!A1:B2", "My Sheet", "A1:B2"}, // quotes are the delimiter, not the name
+		{"'Q1!Sales'!A1", "Q1!Sales", "A1"},       // separator inside a quoted name
+		{"  sheet1!A2  ", "sheet1", "A2"},
 	}
-	if _, _, err := splitSheetPrefixedRange("A2:A100"); err == nil {
-		t.Error("expected error on missing prefix")
+	for _, tc := range ok {
+		sheet, sub, err := splitSheetPrefixedRange(tc.in)
+		if err != nil || sheet != tc.sheet || sub != tc.sub {
+			t.Errorf("split(%q) = (%q,%q,%v), want (%q,%q,nil)", tc.in, sheet, sub, err, tc.sheet, tc.sub)
+		}
 	}
-	if _, _, err := splitSheetPrefixedRange("!A2"); err == nil {
-		t.Error("expected error on empty sheet name")
+	for _, in := range []string{"A2:A100", "!A2", "sheet1!", "'unclosed!A1"} {
+		_, _, err := splitSheetPrefixedRange(in)
+		// Typed metadata, not just "an error": the flag attribution is what
+		// lets a caller find what to fix, and a plain error would otherwise
+		// pass this regression test.
+		ve := requireValidation(t, err, "must use sheet!range form")
+		if ve.Param != "--range" {
+			t.Errorf("split(%q): Param = %q, want --range", in, ve.Param)
+		}
+		if !strings.Contains(ve.Message, strconv.Quote(in)) {
+			t.Errorf("split(%q): message %q does not name the offending input", in, ve.Message)
+		}
 	}
 	// Compile-time use of json import
 	_ = json.Marshal
+}
+
+// TestValidateDropdownRanges_AcceptsPrefixGrammar pins the two --ranges items
+// the literal-"!" scan got wrong: a full-width separator was rejected as
+// carrying no prefix at all, and a quoted name shipped its quotes inside
+// sheet_name for the backend to fail on as sheet-not-found.
+func TestValidateDropdownRanges_AcceptsPrefixGrammar(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ name, ranges, wantSheet string }{
+		{"full-width separator", `["工作表1！A1:B2"]`, "工作表1"},
+		{"quoted sheet name", `["'My Sheet'!A1:B2"]`, "My Sheet"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			body := parseDryRunBody(t, CellsBatchClear, []string{
+				"--url", testURL,
+				"--ranges", tc.ranges,
+				"--yes",
+			})
+			input := decodeToolInput(t, body, "batch_update")
+			ops, _ := input["operations"].([]interface{})
+			if len(ops) != 1 {
+				t.Fatalf("operations length = %d, want 1", len(ops))
+			}
+			params, _ := ops[0].(map[string]interface{})["input"].(map[string]interface{})
+			if params["sheet_name"] != tc.wantSheet {
+				t.Errorf("sheet_name = %q, want %q", params["sheet_name"], tc.wantSheet)
+			}
+			if params["range"] != "A1:B2" {
+				t.Errorf("range = %q, want A1:B2", params["range"])
+			}
+		})
+	}
 }
 
 // TestBatchUpdate_CollidingDimFreezeWarns covers the failure mode the legacy

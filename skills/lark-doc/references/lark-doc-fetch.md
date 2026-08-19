@@ -5,7 +5,7 @@
 ## 常用示例
 
 ```bash
-# 读取整篇文档
+# 读取整篇文档，并附带当前用户可见的未解决评论；
 lark-cli docs +fetch --doc "文档URL或token"
 
 # 按 URL 中的 #share 锚点局部读取
@@ -34,7 +34,6 @@ lark-cli docs +fetch --doc Z1Fj...tnAc --scope section --start-block-id blkTitle
 |`--context-before`|否|返回命中项之前的顶层兄弟块数量（默认 `0`）|
 |`--context-after`|否|返回命中项之后的顶层兄弟块数量（默认 `0`）|
 |`--max-depth`|否|`outline` 表示标题层级上限；其它模式表示子树深度（默认 `-1`，不限）|
-|`--format`|否|`json`（默认）\| `pretty`|
 
 ## 选择详细度：`--detail`
 
@@ -90,6 +89,11 @@ lark-cli docs +fetch --doc Z1Fj...tnAc --scope section --start-block-id blkTitle
           "<ref>": {
             "<real-attr-key>": "<real-attr-value>"
           }
+        },
+        "comments": {
+          "c1": {
+            "data": "<comment comment-id=\"xx\" block-id=\"xx\"><quote>引用内容</quote><msg>评论内容</msg></comment>"
+          }
         }
       },
       "tips": "<safe replay or degradation guidance>"
@@ -97,7 +101,8 @@ lark-cli docs +fetch --doc Z1Fj...tnAc --scope section --start-block-id blkTitle
   }
 }
 ```
-`content` 的格式由 `--doc-format` 决定。`reference_map` 是正文引用数据的结构化 sidecar：一级键 `block_type` 表示引用所在的块类型，二级键 `ref` 对应正文中的临时引用；每个引用的值是由 `real-attr-key` 和 `real-attr-value` 组成的真实属性映射，具体属性由块类型决定。没有提取数据时，`reference_map` 可能为空。`content` 和 `reference_map` 属于同一份响应，保留或回放内容时应配套处理。`tips` 给出安全回放或降级提示。`im-markdown` 仅用于获取内容后在 `lark-im` 场景下使用。设置 `--scope` 时会被 `<fragment>` 包裹，详见上文"局部读取的输出结构"。
+- `content` 的格式由 `--doc-format` 决定。`reference_map` 是结构化 sidecar，一级键表示引用组：普通资源组通常以 `block_type` 命名，二级键 `ref` 对应正文中的临时引用，其值由真实属性组成；保留组 `comments` 使用 `<ref>.data` 保存评论。XML、Markdown 和 IM Markdown 在存在可见评论时都会返回该组；Markdown 正文没有与评论 key 对应的内联引用，这是有意的协议设计。没有提取数据时，`reference_map` 可能为空。`comments.tips.data` 表示评论因数量上限被截断，文档顶层 `tips` 则给出安全回放或依赖降级提示。`content` 和 `reference_map` 属于同一份响应，应保留完整 JSON 响应；`im-markdown` 仅用于获取内容后在 `lark-im` 场景下使用。设置 `--scope` 时会被 `<fragment>` 包裹，详见下文“局部读取的输出结构”。
+- 评论内容不保证全部返回，需要详细信息时使用  `drive +list-comments` 获取完整评论。
 
 ### 理解局部读取结果
 

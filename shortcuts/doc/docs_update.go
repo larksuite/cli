@@ -41,6 +41,8 @@ var DocsUpdate = common.Shortcut{
 	Flags: concatFlags(
 		[]common.Flag{
 			docsAPIVersionCompatFlag(),
+			docsOutputFormatCompatFlag(),
+			docsJSONOutputCompatFlag(),
 			{Name: "doc", Desc: "document URL or token", Required: true},
 		},
 		v2UpdateFlags(),

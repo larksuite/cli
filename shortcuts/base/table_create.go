@@ -30,7 +30,7 @@ var BaseTableCreate = common.Shortcut{
 		{Name: "fields", Required: true, Desc: `field JSON array defining the table schema; must hold at least one field, e.g. [{"name":"Title","type":"text"},{"name":"Status","type":"select","multiple":false,"options":[{"name":"Todo"},{"name":"Done"}]}]`},
 	},
 	Tips: []string{
-		"Before using --fields, read lark-base-field-json.md or rely on the same field JSON shape used by +field-create; do not invent field properties.",
+		"Before using --fields, read lark-base-field-schema.md or rely on the same field JSON shape used by +field-create; do not invent field properties.",
 		"The first --fields item becomes the primary field.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
