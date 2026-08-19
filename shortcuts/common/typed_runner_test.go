@@ -43,16 +43,16 @@ type typedRunnerData struct {
 	Items    []typedRunnerItem `json:"items" schema:"required;nonnullable" doc:"item outcomes"`
 }
 
-func typedRunnerDefinition(capture func(*typedRunnerArgs), partial bool) Definition[typedRunnerArgs, typedRunnerData] {
+func typedRunnerDefinition(capture func(*typedRunnerArgs), partial bool) typedDefinition[typedRunnerArgs, typedRunnerData] {
 	outputDefinition := OutputDefinition{}
 	if partial {
 		outputDefinition.Outcomes.PartialFailure = &PartialFailureDefinition{ExitCode: 9, FailedItems: &FailedItemDefinition{ItemsPath: "/items", StatePath: "/state", FailedValues: []JSONValue{"failed"}}}
 	}
-	return Definition[typedRunnerArgs, typedRunnerData]{
+	return typedDefinition[typedRunnerArgs, typedRunnerData]{
 		Metadata: CommandMetadata{Service: "fixture", Command: "+typed", Description: "Run typed fixture", Risk: RiskRead, Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}}},
 		Input:    InputDefinition{Fields: []InputField{{Name: "token", CLI: CLIInput{Aliases: []FlagAlias{{Name: "legacy-token", Mode: AliasIndependent, Conflict: AliasTrimmedEqualOrError, Hidden: true, Deprecated: true}}}}}},
 		Output:   outputDefinition,
-		Hooks: Hooks[typedRunnerArgs, typedRunnerData]{
+		Hooks: typedHooks[typedRunnerArgs, typedRunnerData]{
 			Normalize: func(_ context.Context, _ CommandContext, args *typedRunnerArgs) error {
 				args.Prepared = strings.ToUpper(args.Token)
 				return nil
@@ -71,14 +71,14 @@ func typedRunnerDefinition(capture func(*typedRunnerArgs), partial bool) Definit
 	}
 }
 
-func runTypedFixture(t *testing.T, definition Definition[typedRunnerArgs, typedRunnerData], stdin string, args ...string) (string, string, error) {
+func runTypedFixture(t *testing.T, definition typedDefinition[typedRunnerArgs, typedRunnerData], stdin string, args ...string) (string, string, error) {
 	t.Helper()
 	factory, stdout, stderr, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "typed-app", AppSecret: "typed-secret", Brand: core.BrandFeishu})
 	factory.IOStreams.In = strings.NewReader(stdin)
 	root := &cobra.Command{Use: "lark-cli", SilenceUsage: true, SilenceErrors: true}
 	service := &cobra.Command{Use: "fixture"}
 	root.AddCommand(service)
-	Define(definition).Mount(service, factory)
+	defineTypedShortcut(definition).Mount(service, factory)
 	root.SetArgs(append([]string{"fixture", "+typed", "--as", "user"}, args...))
 	_, err := root.ExecuteC()
 	return stdout.String(), stderr.String(), err
@@ -92,16 +92,16 @@ func TestTypedHelpSummarizesDeepJSONWithoutExpandingShape(t *testing.T) {
 		OK bool `json:"ok" schema:"required" doc:"success state"`
 	}
 	deepShape := ObjectShape{Fields: []ValueField{{Name: "level_one", Description: "level one", Required: true, Shape: ObjectShape{Fields: []ValueField{{Name: "secret_depth_field", Description: "deep field", Required: true, Shape: StringShape{}}}}}}}
-	definition := Definition[args, data]{
+	definition := typedDefinition[args, data]{
 		Metadata: CommandMetadata{Service: "fixture", Command: "+deep-json", Description: "deep JSON fixture", Risk: RiskRead, Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}}},
 		Input:    InputDefinition{Fields: []InputField{{Name: "properties", Shape: deepShape}}},
-		Hooks: Hooks[args, data]{Execute: func(context.Context, CommandContext, *args) (Result[data], error) {
+		Hooks: typedHooks[args, data]{Execute: func(context.Context, CommandContext, *args) (Result[data], error) {
 			return Success(data{OK: true}), nil
 		}},
 	}
 	factory, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{})
 	service := &cobra.Command{Use: "fixture"}
-	Define(definition).Mount(service, factory)
+	defineTypedShortcut(definition).Mount(service, factory)
 	command, _, err := service.Find([]string{"+deep-json"})
 	if err != nil {
 		t.Fatal(err)
@@ -130,15 +130,15 @@ func TestTypedHelpSupportsCommandWithoutBusinessParameters(t *testing.T) {
 	type data struct {
 		OK bool `json:"ok" schema:"required" doc:"success state"`
 	}
-	definition := Definition[args, data]{
+	definition := typedDefinition[args, data]{
 		Metadata: CommandMetadata{Service: "fixture", Command: "+no-input", Description: "no input fixture", Risk: RiskRead, Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}}},
-		Hooks: Hooks[args, data]{Execute: func(context.Context, CommandContext, *args) (Result[data], error) {
+		Hooks: typedHooks[args, data]{Execute: func(context.Context, CommandContext, *args) (Result[data], error) {
 			return Success(data{OK: true}), nil
 		}},
 	}
 	factory, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{})
 	service := &cobra.Command{Use: "fixture"}
-	shortcut := Define(definition)
+	shortcut := defineTypedShortcut(definition)
 	shortcut.Mount(service, factory)
 	command, _, err := service.Find([]string{"+no-input"})
 	if err != nil {
@@ -175,7 +175,7 @@ func TestTypedMountRejectsPostMountContractMutation(t *testing.T) {
 			root := &cobra.Command{Use: "lark-cli"}
 			service := &cobra.Command{Use: "fixture"}
 			root.AddCommand(service)
-			shortcut := Define(typedRunnerDefinition(nil, false))
+			shortcut := defineTypedShortcut(typedRunnerDefinition(nil, false))
 			shortcut.PostMount = tt.mutate
 			defer func() {
 				value := recover()
@@ -191,7 +191,7 @@ func TestTypedMountRejectsPostMountContractMutation(t *testing.T) {
 func TestTypedMountAllowsNoOpPostMount(t *testing.T) {
 	factory, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{})
 	service := &cobra.Command{Use: "fixture"}
-	shortcut := Define(typedRunnerDefinition(nil, false))
+	shortcut := defineTypedShortcut(typedRunnerDefinition(nil, false))
 	shortcut.PostMount = func(*cobra.Command) {}
 	shortcut.Mount(service, factory)
 }
@@ -203,7 +203,7 @@ func TestTypedRunnerInstallsGroupedHelpFromCompiledFacts(t *testing.T) {
 	root.AddCommand(service)
 	definition := typedRunnerDefinition(nil, true)
 	definition.Output.Meta = ResultMetaDefinition{Count: true, Pagination: true}
-	Define(definition).Mount(service, factory)
+	defineTypedShortcut(definition).Mount(service, factory)
 	cmd, _, err := root.Find([]string{"fixture", "+typed"})
 	if err != nil {
 		t.Fatal(err)
@@ -251,7 +251,7 @@ func TestTypedHelpPaginationSummaryMatchesExecutableOutputPaths(t *testing.T) {
 			definition.Output.Mode = test.mode
 			definition.Output.Meta.Pagination = true
 			if test.pretty {
-				definition.Hooks.Renderers = map[string]Renderer[typedRunnerData]{"pretty": func(io.Writer, typedRunnerData) error { return nil }}
+				definition.Hooks.Renderers = map[string]typedRenderer[typedRunnerData]{"pretty": func(io.Writer, typedRunnerData) error { return nil }}
 			}
 			compiled, err := compileDefinition(definition)
 			if err != nil {
@@ -387,7 +387,7 @@ func TestTypedRunnerDryRunUsesProductionStrictIdentity(t *testing.T) {
 	root := &cobra.Command{Use: "lark-cli", SilenceUsage: true, SilenceErrors: true}
 	service := &cobra.Command{Use: "fixture"}
 	root.AddCommand(service)
-	Define(definition).Mount(service, factory)
+	defineTypedShortcut(definition).Mount(service, factory)
 	root.SetArgs([]string{"fixture", "+typed", "--token", "value", "--dry-run"})
 	if _, err := root.ExecuteC(); err != nil {
 		t.Fatal(err)
@@ -403,7 +403,7 @@ func TestTypedRunnerEmitsResultLevelPartialWithoutFailedItems(t *testing.T) {
 	definition.Hooks.Execute = func(_ context.Context, _ CommandContext, args *typedRunnerArgs) (Result[typedRunnerData], error) {
 		return Partial(typedRunnerData{Token: args.Token, Prepared: "follow-up write failed"}), nil
 	}
-	definition.Hooks.Renderers = map[string]Renderer[typedRunnerData]{"pretty": func(w io.Writer, _ typedRunnerData) error {
+	definition.Hooks.Renderers = map[string]typedRenderer[typedRunnerData]{"pretty": func(w io.Writer, _ typedRunnerData) error {
 		_, err := io.WriteString(w, "partial pretty must not run")
 		return err
 	}}
@@ -468,7 +468,7 @@ func TestTypedRunnerEmitsPaginationMetaForSuccessPretty(t *testing.T) {
 		pagination := &ResultPaginationMeta{Complete: false, Pages: 2, Items: 1, NextToken: "resume-token"}
 		return Success(typedRunnerData{Token: args.Token, Items: []typedRunnerItem{{State: "failed"}}}).WithMeta(PaginationResultMeta(pagination)), nil
 	}
-	definition.Hooks.Renderers = map[string]Renderer[typedRunnerData]{"pretty": func(w io.Writer, data typedRunnerData) error {
+	definition.Hooks.Renderers = map[string]typedRenderer[typedRunnerData]{"pretty": func(w io.Writer, data typedRunnerData) error {
 		_, err := fmt.Fprintf(w, "token=%s\n", data.Token)
 		return err
 	}}
@@ -534,7 +534,7 @@ func TestTypedRunnerGenericPrettyCompatibilityAndOptIn(t *testing.T) {
 		t.Fatalf("generic pretty fallback: stdout = %q, stderr = %q, error = %v", stdout, stderr, err)
 	}
 
-	definition.Hooks.Renderers = map[string]Renderer[typedRunnerData]{"pretty": func(w io.Writer, data typedRunnerData) error {
+	definition.Hooks.Renderers = map[string]typedRenderer[typedRunnerData]{"pretty": func(w io.Writer, data typedRunnerData) error {
 		_, err := fmt.Fprintf(w, "prepared=%s\n", data.Prepared)
 		return err
 	}}

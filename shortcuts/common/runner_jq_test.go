@@ -339,32 +339,6 @@ func TestRunShortcut_DryRunJSONUsesEnvelope(t *testing.T) {
 	}
 }
 
-func TestRunShortcut_DryRunEReturnsTypedError(t *testing.T) {
-	sentinel := errs.NewValidationError(errs.SubtypeInvalidArgument, "dry-run input is invalid")
-	s := &Shortcut{
-		Service: "test", Command: "test-shortcut", AuthTypes: []string{"bot"},
-		DryRunE: func(context.Context, *RuntimeContext) (*DryRunAPI, error) {
-			return nil, sentinel
-		},
-		Execute: func(context.Context, *RuntimeContext) error {
-			t.Fatal("Execute should not run in dry-run")
-			return nil
-		},
-	}
-	f := newTestFactory()
-	cmd := newTestShortcutCmd(s, f)
-	cmd.Flags().Set("dry-run", "true")
-	cmd.Flags().Set("as", "bot")
-	err := runShortcut(cmd, f, s, false)
-	if !errors.Is(err, sentinel) {
-		t.Fatalf("runShortcut() error = %v", err)
-	}
-	var validation *errs.ValidationError
-	if !errors.As(err, &validation) || validation.Subtype != errs.SubtypeInvalidArgument {
-		t.Fatalf("runShortcut() typed error = %#v", err)
-	}
-}
-
 func TestRunShortcut_DryRunWithJq(t *testing.T) {
 	s := &Shortcut{
 		Service:   "test",

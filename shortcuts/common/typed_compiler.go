@@ -16,7 +16,7 @@ import (
 // Define compiles a Typed Shortcut definition. Invalid definitions are
 // programmer errors and panic during registration; no partial legacy fallback
 // is returned.
-func Define[Args any, Data any](definition Definition[Args, Data]) Shortcut {
+func defineTypedShortcut[Args any, Data any](definition typedDefinition[Args, Data]) Shortcut {
 	compiled, err := compileDefinition(definition)
 	if err != nil {
 		service := strings.TrimSpace(definition.Metadata.Service)
@@ -36,12 +36,9 @@ func Define[Args any, Data any](definition Definition[Args, Data]) Shortcut {
 	return shortcut
 }
 
-func compileDefinition[Args any, Data any](definition Definition[Args, Data]) (*compiledCommand, error) {
+func compileDefinition[Args any, Data any](definition typedDefinition[Args, Data]) (*compiledCommand, error) {
 	if definition.Hooks.Execute == nil {
 		return nil, fmt.Errorf("Hooks.Execute is required")
-	}
-	if definition.Hooks.DryRun != nil && definition.Hooks.DryRunE != nil {
-		return nil, fmt.Errorf("Hooks.DryRun and Hooks.DryRunE cannot both be set")
 	}
 	return compileDefinitionParts(
 		definition.Metadata,
@@ -233,7 +230,7 @@ func validateScopeList(scopes []string, path string) error {
 	return nil
 }
 
-func adaptHooks[Args any, Data any](hooks Hooks[Args, Data]) compiledHooks {
+func adaptHooks[Args any, Data any](hooks typedHooks[Args, Data]) compiledHooks {
 	adapted := compiledHooks{newArgs: func() any { return new(Args) }}
 	if hooks.Normalize != nil {
 		adapted.normalize = func(ctx context.Context, cc CommandContext, args any) error {
@@ -248,11 +245,6 @@ func adaptHooks[Args any, Data any](hooks Hooks[Args, Data]) compiledHooks {
 	if hooks.DryRun != nil {
 		adapted.dryRun = func(ctx context.Context, cc CommandContext, args any) (*DryRunAPI, error) {
 			return hooks.DryRun(ctx, cc, args.(*Args)), nil
-		}
-	}
-	if hooks.DryRunE != nil {
-		adapted.dryRun = func(ctx context.Context, cc CommandContext, args any) (*DryRunAPI, error) {
-			return hooks.DryRunE(ctx, cc, args.(*Args))
 		}
 	}
 	adapted.execute = func(ctx context.Context, cc CommandContext, args any) (compiledResult, error) {

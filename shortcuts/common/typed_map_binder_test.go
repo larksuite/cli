@@ -29,10 +29,10 @@ func aliasBinderCommand(t *testing.T, alias FlagAlias) *compiledCommand {
 
 func aliasBinderCommandWithAliases(t *testing.T, aliases []FlagAlias) *compiledCommand {
 	t.Helper()
-	definition := Definition[aliasBinderArgs, aliasBinderData]{
+	definition := typedDefinition[aliasBinderArgs, aliasBinderData]{
 		Metadata: CommandMetadata{Service: "fixture", Command: "+alias", Description: "alias fixture", Risk: RiskRead, Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}}},
 		Input:    InputDefinition{Fields: []InputField{{Name: "value", CLI: CLIInput{Aliases: aliases}}}},
-		Hooks: Hooks[aliasBinderArgs, aliasBinderData]{Execute: func(context.Context, CommandContext, *aliasBinderArgs) (Result[aliasBinderData], error) {
+		Hooks: typedHooks[aliasBinderArgs, aliasBinderData]{Execute: func(context.Context, CommandContext, *aliasBinderArgs) (Result[aliasBinderData], error) {
 			return Success(aliasBinderData{OK: true}), nil
 		}},
 	}
@@ -164,10 +164,10 @@ func TestBindTypedMapPresenceNonZeroUsesProvidedValue(t *testing.T) {
 		First  Provided[string] `flag:"first" schema:"optional" doc:"first value"`
 		Second Provided[string] `flag:"second" schema:"optional" doc:"second value"`
 	}
-	definition := Definition[args, aliasBinderData]{
+	definition := typedDefinition[args, aliasBinderData]{
 		Metadata: CommandMetadata{Service: "fixture", Command: "+presence", Description: "presence fixture", Risk: RiskRead, Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}}},
 		Input:    InputDefinition{Relations: []Relation{{Kind: RelationExactlyOne, Params: []string{"first", "second"}, Presence: PresenceNonZero, Stage: StageAfterPrepare}}},
-		Hooks: Hooks[args, aliasBinderData]{Execute: func(context.Context, CommandContext, *args) (Result[aliasBinderData], error) {
+		Hooks: typedHooks[args, aliasBinderData]{Execute: func(context.Context, CommandContext, *args) (Result[aliasBinderData], error) {
 			return Success(aliasBinderData{OK: true}), nil
 		}},
 	}
@@ -196,10 +196,10 @@ func TestBindTypedMapAcceptsStructuredRawJSONValue(t *testing.T) {
 		Payload json.RawMessage `flag:"payload" schema:"required" cli:"encoding=json" doc:"payload"`
 	}
 	shape := ObjectShape{Fields: []ValueField{{Name: "name", Description: "name", Required: true, Shape: StringShape{}}}}
-	definition := Definition[args, aliasBinderData]{
+	definition := typedDefinition[args, aliasBinderData]{
 		Metadata: CommandMetadata{Service: "fixture", Command: "+raw-json", Description: "raw JSON fixture", Risk: RiskRead, Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}}},
 		Input:    InputDefinition{Fields: []InputField{{Name: "payload", Shape: shape}}},
-		Hooks: Hooks[args, aliasBinderData]{Execute: func(context.Context, CommandContext, *args) (Result[aliasBinderData], error) {
+		Hooks: typedHooks[args, aliasBinderData]{Execute: func(context.Context, CommandContext, *args) (Result[aliasBinderData], error) {
 			return Success(aliasBinderData{OK: true}), nil
 		}},
 	}
@@ -220,10 +220,10 @@ func TestBindTypedMapRejectsNullOutsideExplicitShape(t *testing.T) {
 	type args struct {
 		Payload map[string]string `flag:"payload" schema:"optional" cli:"encoding=json" doc:"payload"`
 	}
-	definition := Definition[args, aliasBinderData]{
+	definition := typedDefinition[args, aliasBinderData]{
 		Metadata: CommandMetadata{Service: "fixture", Command: "+null", Description: "null fixture", Risk: RiskRead, Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}}},
 		Input:    InputDefinition{Fields: []InputField{{Name: "payload", Shape: ObjectShape{AdditionalProperties: true, AdditionalPropertiesShape: StringShape{}}}}},
-		Hooks: Hooks[args, aliasBinderData]{Execute: func(context.Context, CommandContext, *args) (Result[aliasBinderData], error) {
+		Hooks: typedHooks[args, aliasBinderData]{Execute: func(context.Context, CommandContext, *args) (Result[aliasBinderData], error) {
 			return Success(aliasBinderData{OK: true}), nil
 		}},
 	}
@@ -242,9 +242,9 @@ func TestBindTypedMapEnforcesNumberEnum(t *testing.T) {
 	type args struct {
 		Ratio float64 `flag:"ratio" schema:"required;enum=0.5|1.5" doc:"ratio"`
 	}
-	definition := Definition[args, aliasBinderData]{
+	definition := typedDefinition[args, aliasBinderData]{
 		Metadata: CommandMetadata{Service: "fixture", Command: "+number-enum", Description: "number enum fixture", Risk: RiskRead, Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}}},
-		Hooks: Hooks[args, aliasBinderData]{Execute: func(context.Context, CommandContext, *args) (Result[aliasBinderData], error) {
+		Hooks: typedHooks[args, aliasBinderData]{Execute: func(context.Context, CommandContext, *args) (Result[aliasBinderData], error) {
 			return Success(aliasBinderData{OK: true}), nil
 		}},
 	}
@@ -263,9 +263,9 @@ func TestBindTypedMapPreservesLargeIntegerEnum(t *testing.T) {
 	type args struct {
 		Sequence int64 `flag:"sequence" schema:"required;enum=9007199254740993" doc:"sequence"`
 	}
-	definition := Definition[args, aliasBinderData]{
+	definition := typedDefinition[args, aliasBinderData]{
 		Metadata: CommandMetadata{Service: "fixture", Command: "+large-integer", Description: "large integer fixture", Risk: RiskRead, Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}}},
-		Hooks: Hooks[args, aliasBinderData]{Execute: func(context.Context, CommandContext, *args) (Result[aliasBinderData], error) {
+		Hooks: typedHooks[args, aliasBinderData]{Execute: func(context.Context, CommandContext, *args) (Result[aliasBinderData], error) {
 			return Success(aliasBinderData{OK: true}), nil
 		}},
 	}
@@ -282,9 +282,9 @@ func TestBindTypedMapRejectsWrongFixedArrayLength(t *testing.T) {
 	type args struct {
 		Values [2]string `flag:"values" schema:"required" cli:"encoding=repeated" doc:"two values"`
 	}
-	definition := Definition[args, aliasBinderData]{
+	definition := typedDefinition[args, aliasBinderData]{
 		Metadata: CommandMetadata{Service: "fixture", Command: "+array", Description: "array fixture", Risk: RiskRead, Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}}},
-		Hooks: Hooks[args, aliasBinderData]{Execute: func(context.Context, CommandContext, *args) (Result[aliasBinderData], error) {
+		Hooks: typedHooks[args, aliasBinderData]{Execute: func(context.Context, CommandContext, *args) (Result[aliasBinderData], error) {
 			return Success(aliasBinderData{OK: true}), nil
 		}},
 	}

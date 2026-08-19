@@ -68,15 +68,15 @@ func TestRecorderScriptsFileDownloadAndMatchesDryRunIntent(t *testing.T) {
 
 func TestBusinessShortcutComposesOAPIAndURLDownload(t *testing.T) {
 	type args struct {
-		ID     string
-		Output string
+		ID     string `flag:"file-token" schema:"required;minLength=1" doc:"file token"`
+		Output string `flag:"output" schema:"required;minLength=1" doc:"output path"`
 	}
 	type descriptor struct {
 		DownloadURL string `json:"download_url"`
 	}
 	type data struct {
-		ID       string
-		Artifact command.Artifact
+		ID       string           `json:"id" schema:"required" doc:"file token"`
+		Artifact command.Artifact `json:"artifact" schema:"required" doc:"saved artifact"`
 	}
 	const sourceURL = "https://cdn.example.com/files/report.bin?signature=test"
 	request := func(args *args) command.Request {
@@ -350,4 +350,54 @@ func TestRunWithFlagsRejectsNonPageOutput(t *testing.T) {
 	if err == nil {
 		t.Fatal("RunWithFlags() error is nil")
 	}
+}
+
+// Every harness entry point must run the production compiler. A declaration the
+// real CLI would refuse to mount has to fail in the unit test too -- otherwise a
+// green test ships a command that cannot mount. Preview was the entry that
+// skipped this, so the case covers all three.
+func TestEveryEntryPointRunsTheProductionCompiler(t *testing.T) {
+	type args struct {
+		Value string // no flag or arg tag: the compiler refuses this
+	}
+	type data struct {
+		OK bool `json:"ok" schema:"required" doc:"success state"`
+	}
+	definition := command.Definition[args, data]{
+		Metadata: command.CommandMetadata{
+			Service: command.DomainIm, Command: "+test-uncompilable", Description: "Missing flag tag", Risk: command.RiskRead,
+			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{command.IdentityUser: {}}},
+		},
+		Hooks: command.Hooks[args, data]{
+			DryRun: func(context.Context, command.CommandContext, *args) *command.DryRun {
+				return command.NewDryRun(command.GET("/open-apis/im/v1/chats"))
+			},
+			Execute: func(context.Context, command.CommandContext, *args) (command.Result[data], error) {
+				return command.Success(data{OK: true}), nil
+			},
+		},
+	}
+	const want = "must declare exactly one of flag or arg"
+
+	t.Run("Execute", func(t *testing.T) {
+		recorder := New(t, Respond(map[string]any{}))
+		if _, err := Execute(context.Background(), recorder, command.IdentityUser, definition, &args{}); err == nil ||
+			!strings.Contains(err.Error(), want) {
+			t.Fatalf("Execute error = %v, want the compiler refusal", err)
+		}
+	})
+	t.Run("Preview", func(t *testing.T) {
+		recorder := New(t)
+		if _, err := Preview(context.Background(), recorder, command.IdentityUser, definition, &args{}); err == nil ||
+			!strings.Contains(err.Error(), want) {
+			t.Fatalf("Preview error = %v, want the compiler refusal", err)
+		}
+	})
+	t.Run("RunWithFlags", func(t *testing.T) {
+		recorder := New(t)
+		if _, err := RunWithFlags(context.Background(), recorder, command.IdentityUser, definition, &args{}); err == nil ||
+			!strings.Contains(err.Error(), want) {
+			t.Fatalf("RunWithFlags error = %v, want the compiler refusal", err)
+		}
+	})
 }

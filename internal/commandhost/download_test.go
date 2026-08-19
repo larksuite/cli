@@ -292,3 +292,33 @@ func factoryTestRegistry(t *testing.T, factory *cmdutil.Factory) *httpmock.Regis
 	}
 	return registry
 }
+
+// The fail policy must survive a target that appears while the download is in
+// flight. The existence check happens before the network, so only an exclusive
+// commit can refuse the file at that point -- a check-then-save sequence would
+// overwrite whatever the other writer put there.
+func TestExternalDownloadRefusesTargetCreatedDuringTransfer(t *testing.T) {
+	cmdutil.TestChdir(t, t.TempDir())
+	root, factory := mountExternalBackup(t)
+	factoryTestRegistry(t, factory).Register(&httpmock.Stub{
+		Method: http.MethodGet, URL: "/open-apis/drive/v1/files/file_1/download",
+		RawBody: []byte("replacement"), ContentType: "application/octet-stream",
+		OnMatch: func(*http.Request) {
+			// Another writer wins the name after the pre-flight check passed.
+			if err := vfs.WriteFile("file.bin", []byte("concurrent"), 0600); err != nil {
+				t.Fatalf("simulate concurrent writer: %v", err)
+			}
+		},
+	})
+
+	root.SetArgs([]string{"drive", "+external-backup", "--file-token", "file_1", "--output", "file.bin", "--as", "user"})
+	_, err := root.ExecuteC()
+	var validation *errs.ValidationError
+	if !errors.As(err, &validation) || validation.Subtype != errs.SubtypeFailedPrecondition {
+		t.Fatalf("download error = %#v, want a failed-precondition refusal", err)
+	}
+	content, readErr := vfs.ReadFile("file.bin")
+	if readErr != nil || string(content) != "concurrent" {
+		t.Fatalf("concurrently created file = %q (readErr=%v), want it preserved", content, readErr)
+	}
+}

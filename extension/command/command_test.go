@@ -64,7 +64,7 @@ func TestHostHooksRejectMismatchedErasedValues(t *testing.T) {
 			Execute: func(context.Context, CommandContext, *contractArgs) (Result[contractData], error) {
 				return Success(contractData{}), nil
 			},
-			Renderers: map[string]Renderer[contractData]{"pretty": func(io.Writer, contractData) error { return nil }},
+			PrettyRenderer: func(io.Writer, contractData) error { return nil },
 		},
 	})
 	host := InspectCommand(declaration)

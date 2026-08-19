@@ -20,11 +20,6 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-var reservedRootNames = map[string]struct{}{
-	"api": {}, "auth": {}, "completion": {}, "config": {}, "doctor": {}, "event": {},
-	"help": {}, "profile": {}, "schema": {}, "skills": {}, "update": {}, "whoami": {},
-}
-
 // CompileSets validates and compiles a complete external contribution without registration.
 func CompileSets(sets []command.Set) ([]common.Shortcut, error) {
 	sets = command.CloneSets(sets)
@@ -70,6 +65,28 @@ func CompileSets(sets []command.Set) ([]common.Shortcut, error) {
 	return compiled, nil
 }
 
+// ValidateDeclaration compiles one declaration through the production compiler
+// and discards the result. A business test harness calls it so a wrong tag,
+// Shape or relation fails in the unit test rather than at CLI startup: executing
+// hooks directly exercises none of the compiler's contract checks, which is the
+// gap that let a green test ship a command that cannot mount.
+//
+// Domain existence and path collisions are deliberately not checked here. Those
+// are properties of a whole contribution and belong to CompileSets, which runs
+// during build.
+func ValidateDeclaration(declaration command.Command) error {
+	_, err := CompileDeclaration(declaration)
+	return err
+}
+
+// CompileDeclaration compiles one declaration into a mountable shortcut without
+// the whole-contribution checks CompileSets performs. Host-side callers that
+// need a compiled command outside a command set use it so they exercise the
+// production compiler rather than a parallel construction path.
+func CompileDeclaration(declaration command.Command) (common.Shortcut, error) {
+	return compileCommand(command.InspectCommand(declaration))
+}
+
 // businessDomains reports the domains a command set may extend. It reads the
 // service registry rather than deriving domains from shortcuts.AllShortcuts:
 // approval, attendance and mindnotes ship only typed and raw API commands, and
@@ -87,15 +104,6 @@ func validateDomain(domain command.HostDomain, existing map[string]struct{}) err
 	name := strings.TrimSpace(domain.Name)
 	if name == "" || name != domain.Name {
 		return fmt.Errorf("domain name must be non-empty and trimmed")
-	}
-	if domain.IsNew {
-		if _, reserved := reservedRootNames[name]; reserved {
-			return fmt.Errorf("new domain %q conflicts with a reserved host namespace", name)
-		}
-		if _, occupied := existing[name]; occupied {
-			return fmt.Errorf("new domain %q conflicts with an existing domain", name)
-		}
-		return fmt.Errorf("NewDomain(%q) is not supported in V1", name)
 	}
 	if _, ok := existing[name]; !ok {
 		return fmt.Errorf("ExtendDomain target %q does not exist", name)
@@ -205,7 +213,7 @@ func convertOutput(output command.OutputDefinition) (common.OutputDefinition, er
 	}
 	converted := common.OutputDefinition{
 		Data: common.DataDefinition{Shape: dataShape, Overrides: dataOverrides},
-		Meta: common.ResultMetaDefinition{Count: output.Meta.Count, Pagination: output.Meta.Pagination},
+		Meta: common.ResultMetaDefinition{Pagination: output.Meta.Pagination},
 		Mode: common.OutputMode(output.Mode), DisableHTMLEscaping: output.DisableHTMLEscaping,
 	}
 	return converted, nil
@@ -323,7 +331,7 @@ func publicContext(host common.CommandContext) command.CommandContext {
 			}
 			pages := &commandPages{}
 			meta, err := common.CollectCommandPages(ctx, host, common.PageRequest{
-				Method: view.Method, Path: view.Path, Params: view.Query, Body: view.Body,
+				Method: view.Method, Path: view.Path, Params: projectedQuery(view.Query), Body: view.Body,
 			}, all, pages)
 			pagination := command.HostPagination{
 				Complete: meta.Complete, Pages: meta.Pages,
@@ -334,15 +342,43 @@ func publicContext(host common.CommandContext) command.CommandContext {
 	})
 }
 
-func queryParams(query map[string]any) larkcore.QueryParams {
-	params := make(larkcore.QueryParams, len(query))
+// canonicalQuery is the single projection from a business command's declared
+// query onto the wire. Every consumer derives from it -- the live single
+// request, the dry-run preview, downloads and the pagination walk -- so a
+// preview can never describe a request the runtime would not send. Declaring
+// it once is what keeps fmt.Sprint conversion and nil dropping from differing
+// between paths.
+func canonicalQuery(query map[string]any) map[string][]string {
+	canonical := make(map[string][]string, len(query))
 	for name, value := range query {
-		values := queryValues(value)
-		if len(values) > 0 {
-			params[name] = values
+		if values := queryValues(value); len(values) > 0 {
+			canonical[name] = values
 		}
 	}
-	return params
+	return canonical
+}
+
+func queryParams(query map[string]any) larkcore.QueryParams {
+	return larkcore.QueryParams(canonicalQuery(query))
+}
+
+// projectedQuery renders the canonical projection for consumers whose parameter
+// type is map[string]any. A single value stays scalar and repeated values stay a
+// list; both carry exactly the strings the live request sends.
+func projectedQuery(query map[string]any) map[string]any {
+	canonical := canonicalQuery(query)
+	if len(canonical) == 0 {
+		return nil
+	}
+	projected := make(map[string]any, len(canonical))
+	for name, values := range canonical {
+		if len(values) == 1 {
+			projected[name] = values[0]
+			continue
+		}
+		projected[name] = values
+	}
+	return projected
 }
 
 func queryValues(value any) []string {
@@ -403,8 +439,8 @@ func convertDryRun(preview *command.DryRun) (*common.DryRunAPI, error) {
 		case "DELETE":
 			converted.DELETE(request.Path)
 		}
-		if len(request.Query) > 0 {
-			converted.Params(request.Query)
+		if params := projectedQuery(request.Query); len(params) > 0 {
+			converted.Params(params)
 		}
 		if request.Body != nil {
 			converted.Body(request.Body)

@@ -48,7 +48,7 @@ func TestTypedFlagSchemaListsAndPrintsCompositeInputsBeforeExecution(t *testing.
 		called = true
 		return Success(compilerData{}), nil
 	}
-	shortcut := Define(definition)
+	shortcut := defineTypedShortcut(definition)
 
 	listing, err := runTypedFlagSchema(t, shortcut, "--print-schema")
 	if err != nil {
@@ -107,7 +107,7 @@ func TestIsCompositeValueShape(t *testing.T) {
 }
 
 func TestTypedFlagSchemaUnknownFlagIsTypedValidationError(t *testing.T) {
-	_, err := runTypedFlagSchema(t, Define(validCompilerDefinition()), "--print-schema", "--flag-name", "missing")
+	_, err := runTypedFlagSchema(t, defineTypedShortcut(validCompilerDefinition()), "--print-schema", "--flag-name", "missing")
 	var validation *errs.ValidationError
 	problem, ok := errs.ProblemOf(err)
 	if !ok || !errors.As(err, &validation) || problem.Subtype != errs.SubtypeInvalidArgument || validation.Param != "--flag-name" {
@@ -125,9 +125,9 @@ func TestTypedFlagSchemaNotRegisteredForScalarInputs(t *testing.T) {
 	type data struct {
 		OK bool `json:"ok" schema:"required" doc:"success state"`
 	}
-	shortcut := Define(Definition[args, data]{
+	shortcut := defineTypedShortcut(typedDefinition[args, data]{
 		Metadata: CommandMetadata{Service: "fixture", Command: "+scalar", Description: "scalar fixture", Risk: RiskRead, Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}}},
-		Hooks: Hooks[args, data]{Execute: func(context.Context, CommandContext, *args) (Result[data], error) {
+		Hooks: typedHooks[args, data]{Execute: func(context.Context, CommandContext, *args) (Result[data], error) {
 			return Success(data{OK: true}), nil
 		}},
 	})
@@ -148,7 +148,7 @@ func TestTypedFlagSchemaNotRegisteredForScalarInputs(t *testing.T) {
 }
 
 func TestTypedFlagSchemaAllowsCompatibilityOverride(t *testing.T) {
-	shortcut := Define(validCompilerDefinition())
+	shortcut := defineTypedShortcut(validCompilerDefinition())
 	shortcut.PrintFlagSchema = func(flagName string) ([]byte, error) {
 		return []byte(`{"source":"legacy","flag":"` + flagName + `"}`), nil
 	}

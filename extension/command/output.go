@@ -13,8 +13,12 @@ type OutputDefinition struct {
 }
 
 // ResultMetaDefinition declares standard metadata a command may return.
+//
+// Only Pagination is declarable here. A count field would be unproducible: the
+// opaque Result carries data, outcome and pagination, and exposes no way to set
+// a count, so declaring one would make schema advertise a field the runtime can
+// never emit.
 type ResultMetaDefinition struct {
-	Count      bool
 	Pagination bool
 }
 

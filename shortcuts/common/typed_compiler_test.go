@@ -47,8 +47,8 @@ type compilerData struct {
 	Next  *string        `json:"next,omitempty" schema:"optional;nullable" doc:"next page token"`
 }
 
-func validCompilerDefinition() Definition[compilerArgs, compilerData] {
-	return Definition[compilerArgs, compilerData]{
+func validCompilerDefinition() typedDefinition[compilerArgs, compilerData] {
+	return typedDefinition[compilerArgs, compilerData]{
 		Metadata: CommandMetadata{
 			Service: "fixture", Command: "+compile", Description: "Compile a fixture", Risk: RiskWrite,
 			Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{
@@ -69,16 +69,16 @@ func validCompilerDefinition() Definition[compilerArgs, compilerData] {
 			}},
 			Mode: OutputFixedJSON,
 		},
-		Hooks: Hooks[compilerArgs, compilerData]{Execute: func(context.Context, CommandContext, *compilerArgs) (Result[compilerData], error) {
+		Hooks: typedHooks[compilerArgs, compilerData]{Execute: func(context.Context, CommandContext, *compilerArgs) (Result[compilerData], error) {
 			return Success(compilerData{}), nil
 		}},
 	}
 }
 
 func TestDefineCompilesTypedContract(t *testing.T) {
-	shortcut := Define(validCompilerDefinition())
+	shortcut := defineTypedShortcut(validCompilerDefinition())
 	if shortcut.typed == nil {
-		t.Fatal("Define() did not attach compiled contract")
+		t.Fatal("defineTypedShortcut() did not attach compiled contract")
 	}
 	if shortcut.Service != "fixture" || shortcut.Command != "+compile" || shortcut.Risk != "write" {
 		t.Fatalf("Shortcut metadata = %#v", shortcut)
@@ -136,7 +136,7 @@ func TestValueShapeClosedSet(t *testing.T) {
 func TestDefineClonesTipsAndRejectsBlankTips(t *testing.T) {
 	definition := validCompilerDefinition()
 	definition.Metadata.Tips = []string{"first tip", " second tip "}
-	shortcut := Define(definition)
+	shortcut := defineTypedShortcut(definition)
 	definition.Metadata.Tips[0] = "mutated"
 	want := []string{"first tip", " second tip "}
 	if got := shortcut.Tips; !reflect.DeepEqual(got, want) {
@@ -156,7 +156,7 @@ func TestDefineClonesTipsAndRejectsBlankTips(t *testing.T) {
 func TestCompiledTypedSchemaContract(t *testing.T) {
 	definition := validCompilerDefinition()
 	definition.Output.Meta = ResultMetaDefinition{Count: true, Pagination: true}
-	contract := Define(definition).typed.contract
+	contract := defineTypedShortcut(definition).typed.contract
 	if contract.Name != "fixture +compile" || contract.InputSchema.Type != "object" || contract.OutputSchema.Type != "object" {
 		t.Fatalf("contract identity or root shapes = %#v", contract)
 	}
@@ -205,7 +205,7 @@ func TestCompiledTypedSchemaContract(t *testing.T) {
 func TestCompileOutputAcceptsResultLevelPartial(t *testing.T) {
 	definition := validCompilerDefinition()
 	definition.Output.Outcomes.PartialFailure.FailedItems = nil
-	shortcut := Define(definition)
+	shortcut := defineTypedShortcut(definition)
 	partial := shortcut.typed.contract.Meta.Outcomes.PartialFailure
 	if !partial.Supported || partial.ExitCode != 3 || partial.FailedItems != nil {
 		t.Fatalf("result-level partial contract = %#v", partial)
@@ -214,13 +214,13 @@ func TestCompileOutputAcceptsResultLevelPartial(t *testing.T) {
 
 func TestCompiledSchemaRecordsJSONHTMLEscapingPolicy(t *testing.T) {
 	definition := validCompilerDefinition()
-	contract := Define(definition).typed.contract
+	contract := defineTypedShortcut(definition).typed.contract
 	if got := contract.Meta.Formats[0].EscapeHTML; got == nil || !*got {
 		t.Fatalf("default JSON escape_html = %#v, want true", got)
 	}
 
 	definition.Output.DisableHTMLEscaping = true
-	contract = Define(definition).typed.contract
+	contract = defineTypedShortcut(definition).typed.contract
 	if got := contract.Meta.Formats[0].EscapeHTML; got == nil || *got {
 		t.Fatalf("unescaped JSON escape_html = %#v, want false", got)
 	}
@@ -229,7 +229,7 @@ func TestCompiledSchemaRecordsJSONHTMLEscapingPolicy(t *testing.T) {
 func TestCompileOutputDerivesExecutableGenericFormats(t *testing.T) {
 	definition := validCompilerDefinition()
 	definition.Output.Mode = OutputGeneric
-	definition.Hooks.Renderers = map[string]Renderer[compilerData]{"pretty": func(io.Writer, compilerData) error { return nil }}
+	definition.Hooks.Renderers = map[string]typedRenderer[compilerData]{"pretty": func(io.Writer, compilerData) error { return nil }}
 	command, err := compileDefinition(definition)
 	if err != nil {
 		t.Fatal(err)
@@ -248,14 +248,14 @@ func TestCompileOutputDerivesExecutableGenericFormats(t *testing.T) {
 }
 
 func TestCompileOutputRecordsCompatibilityFallbacks(t *testing.T) {
-	fixed := Define(validCompilerDefinition()).typed.contract.Meta.Formats
+	fixed := defineTypedShortcut(validCompilerDefinition()).typed.contract.Meta.Formats
 	if len(fixed) != 1 || fixed[0].Name != "json" || !reflect.DeepEqual(fixed[0].SelectedBy, []string{"json", "pretty", "table", "ndjson", "csv"}) {
 		t.Fatalf("fixed JSON formats = %#v", fixed)
 	}
 
 	definition := validCompilerDefinition()
 	definition.Output.Mode = OutputGeneric
-	generic := Define(definition).typed.contract.Meta.Formats
+	generic := defineTypedShortcut(definition).typed.contract.Meta.Formats
 	if len(generic) != 4 || generic[0].Name != "json" || !reflect.DeepEqual(generic[0].SelectedBy, []string{"json", "pretty"}) {
 		t.Fatalf("generic formats without pretty renderer = %#v", generic)
 	}
@@ -268,14 +268,14 @@ func TestDefinePreservesCollectionDefaultForCobraAndMapBinder(t *testing.T) {
 	type data struct {
 		OK bool `json:"ok" schema:"required" doc:"success state"`
 	}
-	definition := Definition[args, data]{
+	definition := typedDefinition[args, data]{
 		Metadata: CommandMetadata{Service: "fixture", Command: "+collection-default", Description: "collection default", Risk: RiskRead, Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}}},
 		Input:    InputDefinition{Fields: []InputField{{Name: "values", Default: InputDefault{Set: true, Value: []string{"a", "b"}}}}},
-		Hooks: Hooks[args, data]{Execute: func(context.Context, CommandContext, *args) (Result[data], error) {
+		Hooks: typedHooks[args, data]{Execute: func(context.Context, CommandContext, *args) (Result[data], error) {
 			return Success(data{OK: true}), nil
 		}},
 	}
-	shortcut := Define(definition)
+	shortcut := defineTypedShortcut(definition)
 	if got := shortcut.Flags[0].Default; got != `["a","b"]` {
 		t.Fatalf("legacy default = %q", got)
 	}
@@ -295,14 +295,14 @@ func TestDefinePanicIncludesCommandAndFieldContext(t *testing.T) {
 	type data struct {
 		OK bool `json:"ok" schema:"required" doc:"success state"`
 	}
-	definition := Definition[badArgs, data]{
+	definition := typedDefinition[badArgs, data]{
 		Metadata: validCompilerDefinition().Metadata,
-		Hooks:    Hooks[badArgs, data]{Execute: func(context.Context, CommandContext, *badArgs) (Result[data], error) { return Success(data{}), nil }},
+		Hooks:    typedHooks[badArgs, data]{Execute: func(context.Context, CommandContext, *badArgs) (Result[data], error) { return Success(data{}), nil }},
 	}
 	defer func() {
 		panicValue := recover()
 		if panicValue == nil {
-			t.Fatal("Define() did not panic")
+			t.Fatal("defineTypedShortcut() did not panic")
 		}
 		message := panicValue.(string)
 		for _, want := range []string{"typed shortcut fixture +compile", "Args field Token", "--token", "description is required"} {
@@ -311,72 +311,72 @@ func TestDefinePanicIncludesCommandAndFieldContext(t *testing.T) {
 			}
 		}
 	}()
-	_ = Define(definition)
+	_ = defineTypedShortcut(definition)
 }
 
 func TestCompileDefinitionRejectsInvalidContracts(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*Definition[compilerArgs, compilerData])
+		mutate func(*typedDefinition[compilerArgs, compilerData])
 		want   string
 	}{
-		{"missing service", func(d *Definition[compilerArgs, compilerData]) { d.Metadata.Service = "" }, "Metadata.Service is required"},
-		{"unknown risk", func(d *Definition[compilerArgs, compilerData]) { d.Metadata.Risk = Risk("delete") }, "Metadata.Risk"},
-		{"unknown relation param", func(d *Definition[compilerArgs, compilerData]) { d.Input.Relations[0].Params[1] = "missing" }, "unknown param --missing"},
-		{"unknown conditional param", func(d *Definition[compilerArgs, compilerData]) {
+		{"missing service", func(d *typedDefinition[compilerArgs, compilerData]) { d.Metadata.Service = "" }, "Metadata.Service is required"},
+		{"unknown risk", func(d *typedDefinition[compilerArgs, compilerData]) { d.Metadata.Risk = Risk("delete") }, "Metadata.Risk"},
+		{"unknown relation param", func(d *typedDefinition[compilerArgs, compilerData]) { d.Input.Relations[0].Params[1] = "missing" }, "unknown param --missing"},
+		{"unknown conditional param", func(d *typedDefinition[compilerArgs, compilerData]) {
 			auth := d.Metadata.Authorization.Identities[IdentityUser]
 			auth.ConditionalScopes[0].Params = []string{"missing"}
 			d.Metadata.Authorization.Identities[IdentityUser] = auth
 		}, "unknown param --missing"},
-		{"scope both required and conditional", func(d *Definition[compilerArgs, compilerData]) {
+		{"scope both required and conditional", func(d *typedDefinition[compilerArgs, compilerData]) {
 			auth := d.Metadata.Authorization.Identities[IdentityUser]
 			auth.ConditionalScopes[0].Scopes = []string{"fixture:write"}
 			d.Metadata.Authorization.Identities[IdentityUser] = auth
 		}, "already always required"},
-		{"invalid conditional requirement", func(d *Definition[compilerArgs, compilerData]) {
+		{"invalid conditional requirement", func(d *typedDefinition[compilerArgs, compilerData]) {
 			auth := d.Metadata.Authorization.Identities[IdentityUser]
 			auth.ConditionalScopes[0].Requirement = ScopeRequirement("sometimes")
 			d.Metadata.Authorization.Identities[IdentityUser] = auth
 		}, "Requirement \"sometimes\" is invalid"},
-		{"conditional params without when", func(d *Definition[compilerArgs, compilerData]) {
+		{"conditional params without when", func(d *typedDefinition[compilerArgs, compilerData]) {
 			auth := d.Metadata.Authorization.Identities[IdentityUser]
 			auth.ConditionalScopes[0].When = ""
 			d.Metadata.Authorization.Identities[IdentityUser] = auth
 		}, "Params requires agent-readable When text"},
-		{"hidden conditional param", func(d *Definition[compilerArgs, compilerData]) {
+		{"hidden conditional param", func(d *typedDefinition[compilerArgs, compilerData]) {
 			d.Input.Fields = append(d.Input.Fields, InputField{Name: "payload", CLI: CLIInput{Hidden: true}})
 		}, "references hidden param --payload"},
-		{"missing execute", func(d *Definition[compilerArgs, compilerData]) { d.Hooks.Execute = nil }, "Hooks.Execute is required"},
-		{"invalid partial path", func(d *Definition[compilerArgs, compilerData]) {
+		{"missing execute", func(d *typedDefinition[compilerArgs, compilerData]) { d.Hooks.Execute = nil }, "Hooks.Execute is required"},
+		{"invalid partial path", func(d *typedDefinition[compilerArgs, compilerData]) {
 			d.Output.Outcomes.PartialFailure.FailedItems.ItemsPath = "/missing"
 		}, "field \"missing\" does not exist"},
-		{"invalid pointer escaping", func(d *Definition[compilerArgs, compilerData]) {
+		{"invalid pointer escaping", func(d *typedDefinition[compilerArgs, compilerData]) {
 			d.Output.Outcomes.PartialFailure.FailedItems.ItemsPath = "/items/~2"
 		}, "invalid RFC 6901 escaping"},
-		{"all-items state conflict", func(d *Definition[compilerArgs, compilerData]) {
+		{"all-items state conflict", func(d *typedDefinition[compilerArgs, compilerData]) {
 			d.Output.Outcomes.PartialFailure.FailedItems.AllItems = true
 		}, "AllItems conflicts"},
-		{"missing failure discriminator", func(d *Definition[compilerArgs, compilerData]) {
+		{"missing failure discriminator", func(d *typedDefinition[compilerArgs, compilerData]) {
 			d.Output.Outcomes.PartialFailure.FailedItems.StatePath = ""
 			d.Output.Outcomes.PartialFailure.FailedItems.FailedValues = nil
 		}, "requires AllItems"},
-		{"failure discriminator outside state enum", func(d *Definition[compilerArgs, compilerData]) {
+		{"failure discriminator outside state enum", func(d *typedDefinition[compilerArgs, compilerData]) {
 			d.Output.Outcomes.PartialFailure.FailedItems.FailedValues = []JSONValue{"unknown"}
 		}, "must be one of: ok, failed"},
-		{"artifact path field required", func(d *Definition[compilerArgs, compilerData]) {
+		{"artifact path field required", func(d *typedDefinition[compilerArgs, compilerData]) {
 			d.Output.Artifacts = []ArtifactDefinition{{Name: "items", ItemsPath: "/items"}}
 		}, "PathField is required"},
-		{"nil renderer", func(d *Definition[compilerArgs, compilerData]) {
-			d.Hooks.Renderers = map[string]Renderer[compilerData]{"pretty": nil}
+		{"nil renderer", func(d *typedDefinition[compilerArgs, compilerData]) {
+			d.Hooks.Renderers = map[string]typedRenderer[compilerData]{"pretty": nil}
 		}, "Hooks.Renderers[\"pretty\"] is nil"},
-		{"table renderer", func(d *Definition[compilerArgs, compilerData]) {
+		{"table renderer", func(d *typedDefinition[compilerArgs, compilerData]) {
 			d.Output.Mode = OutputGeneric
-			d.Hooks.Renderers = map[string]Renderer[compilerData]{"table": func(io.Writer, compilerData) error { return nil }}
+			d.Hooks.Renderers = map[string]typedRenderer[compilerData]{"table": func(io.Writer, compilerData) error { return nil }}
 		}, "custom renderers are only supported for pretty"},
-		{"fixed JSON renderer", func(d *Definition[compilerArgs, compilerData]) {
-			d.Hooks.Renderers = map[string]Renderer[compilerData]{"pretty": func(io.Writer, compilerData) error { return nil }}
+		{"fixed JSON renderer", func(d *typedDefinition[compilerArgs, compilerData]) {
+			d.Hooks.Renderers = map[string]typedRenderer[compilerData]{"pretty": func(io.Writer, compilerData) error { return nil }}
 		}, "conflicts with Output.Mode \"fixed_json\""},
-		{"invalid output mode", func(d *Definition[compilerArgs, compilerData]) {
+		{"invalid output mode", func(d *typedDefinition[compilerArgs, compilerData]) {
 			d.Output.Mode = OutputMode("yaml")
 		}, "Output.Mode \"yaml\" is invalid"},
 	}
@@ -400,14 +400,14 @@ func TestCompileInputAcceptsExplicitShapeForCustomJSONType(t *testing.T) {
 		OK bool `json:"ok" schema:"required" doc:"success state"`
 	}
 	shape := ObjectShape{Fields: []ValueField{{Name: "value", Description: "custom value", Required: true, Shape: StringShape{}}}}
-	definition := Definition[args, data]{
+	definition := typedDefinition[args, data]{
 		Metadata: CommandMetadata{Service: "fixture", Command: "+custom-json", Description: "custom JSON input", Risk: RiskRead, Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}}},
 		Input:    InputDefinition{Fields: []InputField{{Name: "payload", Shape: shape}}},
-		Hooks: Hooks[args, data]{Execute: func(context.Context, CommandContext, *args) (Result[data], error) {
+		Hooks: typedHooks[args, data]{Execute: func(context.Context, CommandContext, *args) (Result[data], error) {
 			return Success(data{OK: true}), nil
 		}},
 	}
-	shortcut := Define(definition)
+	shortcut := defineTypedShortcut(definition)
 	bound, err := bindTypedMap(shortcut.typed, map[string]any{"payload": map[string]any{"value": "x"}})
 	if err != nil {
 		t.Fatal(err)

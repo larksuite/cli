@@ -21,9 +21,9 @@ func typedAuthorizationContext(t *testing.T, scopes string) typedCommandContext 
 	return typedAuthorizationContextFor(t, validCompilerDefinition(), core.AsUser, scopes)
 }
 
-func typedAuthorizationContextFor(t *testing.T, definition Definition[compilerArgs, compilerData], identity core.Identity, scopes string) typedCommandContext {
+func typedAuthorizationContextFor(t *testing.T, definition typedDefinition[compilerArgs, compilerData], identity core.Identity, scopes string) typedCommandContext {
 	t.Helper()
-	command := Define(definition).typed
+	command := defineTypedShortcut(definition).typed
 	factory := &cmdutil.Factory{Credential: credential.NewCredentialProvider(nil, nil, &scopeCheckTokenResolver{
 		result: &credential.TokenResult{Token: "token", Scopes: scopes},
 	}, nil)}
@@ -97,7 +97,7 @@ func TestTypedAuthorizationHelpUsesCompiledDiscoveryFacts(t *testing.T) {
 
 	factory, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{})
 	service := &cobra.Command{Use: "fixture"}
-	Define(definition).Mount(service, factory)
+	defineTypedShortcut(definition).Mount(service, factory)
 	command, _, err := service.Find([]string{"+compile"})
 	if err != nil {
 		t.Fatal(err)

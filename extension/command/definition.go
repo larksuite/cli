@@ -246,13 +246,21 @@ type Hooks[Args any, Data any] struct {
 	// the framework owns the envelope, format and exit code.
 	Execute func(context.Context, CommandContext, *Args) (Result[Data], error)
 
-	// Renderers customize --format pretty, keyed by format name. table, CSV and
-	// NDJSON are rendered by the framework and need no entry here.
-	Renderers map[string]Renderer[Data]
+	// PrettyRenderer customizes --format pretty. It is a single hook rather than
+	// a map keyed by format name because pretty is the only format a business
+	// command may render itself: JSON, table, CSV and NDJSON are produced by the
+	// framework formatters, and a map would let a command declare an entry the
+	// compiler can only reject.
+	PrettyRenderer Renderer[Data]
 }
 
 // Renderer renders one successful result in a supported custom format.
 type Renderer[Data any] func(io.Writer, Data) error
+
+// prettyFormatName is the only format a business command may render itself. The
+// host hook set is keyed by format name, so PrettyRenderer is projected under
+// this key.
+const prettyFormatName = "pretty"
 
 // Command is an immutable typed command declaration returned by Define.
 type Command struct {

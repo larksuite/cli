@@ -6,6 +6,7 @@ package commandhost
 import (
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -126,8 +127,10 @@ func TestCompileSetsRejectsUnsupportedAndUnknownDomains(t *testing.T) {
 		domain command.Domain
 		want   string
 	}{
-		{name: "reserved new domain", domain: command.NewDomain("auth", command.Title("en", "Auth")), want: "reserved"},
-		{name: "unsupported new domain", domain: command.NewDomain("business", command.Description("en", "Business commands")), want: "not supported in V1"},
+		// A reserved host namespace is not a business domain, so it fails the
+		// same way any other non-existent domain does: ExtendDomain is the only
+		// way to name a domain, and these are not extendable domains.
+		{name: "reserved host namespace", domain: command.ExtendDomain(command.DomainName("auth")), want: "does not exist"},
 		{name: "unknown extension", domain: command.ExtendDomain(command.DomainName("missing")), want: "does not exist"},
 	}
 	for _, test := range tests {
@@ -351,9 +354,6 @@ func TestExternalDryRunSurfacesValidateError(t *testing.T) {
 	}
 }
 
-// A Page[T] command's dry-run can only show the first request; the preview
-// must say the walk repeats instead of fabricating response-dependent
-// page tokens.
 // A paginated command's dry-run renders exactly what the hook described. The
 // framework appends no paging note of its own: built-in shortcuts that want one
 // write it themselves with dry.Desc, and external commands do the same.
@@ -395,5 +395,54 @@ func TestExternalPageDryRunRendersOnlyTheBusinessDescription(t *testing.T) {
 	}
 	if strings.Contains(output, "--page-all") || strings.Contains(output, "page_token") {
 		t.Fatalf("the framework added a paging note the hook did not write:\n%s", output)
+	}
+}
+
+// A Request is the single owner of the wire shape: the live call, the dry-run
+// preview and the pagination walk must all describe the same query. These are
+// the three values that previously diverged -- a map stringified for live but
+// emitted structurally in the preview, a nil element dropped for live but kept
+// in the preview, and a nil value omitted for live but rendered as null.
+func TestQueryProjectionIsSharedByLiveAndPreview(t *testing.T) {
+	var missing *string
+	query := map[string]any{
+		"filter": map[string]string{"a": "b"},
+		"items":  []any{"x", nil},
+		"absent": nil,
+		"typed":  missing,
+		"single": "one",
+	}
+
+	live := queryParams(query)
+	projected := projectedQuery(query)
+
+	if len(live) != len(projected) {
+		t.Fatalf("live keys = %v, preview keys = %v", live, projected)
+	}
+	for name, values := range live {
+		switch previewed := projected[name].(type) {
+		case string:
+			if len(values) != 1 || values[0] != previewed {
+				t.Errorf("%s: live = %v, preview = %q", name, values, previewed)
+			}
+		case []string:
+			if !reflect.DeepEqual(values, previewed) {
+				t.Errorf("%s: live = %v, preview = %v", name, values, previewed)
+			}
+		default:
+			t.Errorf("%s: preview carried %T, which the live request cannot send", name, projected[name])
+		}
+	}
+	if _, ok := projected["absent"]; ok {
+		t.Error("a nil value must be omitted from the preview because live omits it")
+	}
+	if _, ok := projected["typed"]; ok {
+		t.Error("a nil pointer must be omitted from the preview because live omits it")
+	}
+	if got := projected["filter"]; got != "map[a:b]" {
+		t.Errorf("filter preview = %#v, want the stringified form live sends", got)
+	}
+	if got := projected["items"]; got != "x" {
+		t.Errorf("items preview = %#v, want the nil element dropped as live drops it", got)
 	}
 }

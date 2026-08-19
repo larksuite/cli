@@ -34,7 +34,7 @@ func validateOutputHooks(definition OutputDefinition, renderers map[string]Rende
 // adapting Args/Data hooks or exposing the private compiled hook type.
 type RendererMarker struct{ isNil bool }
 
-func rendererMarkers[Data any](renderers map[string]Renderer[Data]) map[string]RendererMarker {
+func rendererMarkers[Data any](renderers map[string]typedRenderer[Data]) map[string]RendererMarker {
 	markers := make(map[string]RendererMarker, len(renderers))
 	for name, renderer := range renderers {
 		markers[name] = RendererMarker{isNil: renderer == nil}

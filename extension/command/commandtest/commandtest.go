@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/extension/command"
+	"github.com/larksuite/cli/internal/commandhost"
 	internalpagination "github.com/larksuite/cli/internal/pagination"
 	"github.com/spf13/pflag"
 )
@@ -158,9 +159,23 @@ type RecordedFile struct {
 }
 
 // Execute runs Normalize, Validate, and Execute with the restricted test runtime.
+// compileForTest runs the production compiler and returns the erased view every
+// entry point drives. Sharing it is what keeps a harness entry from silently
+// skipping the contract checks a real CLI mount performs.
+func compileForTest[Args any, Data any](definition command.Definition[Args, Data]) (command.HostDefinition, error) {
+	declaration := command.Define(definition)
+	if err := commandhost.ValidateDeclaration(declaration); err != nil {
+		return command.HostDefinition{}, err
+	}
+	return command.InspectCommand(declaration), nil
+}
+
 func Execute[Args any, Data any](ctx context.Context, recorder *Recorder, identity command.Identity, definition command.Definition[Args, Data], args *Args) (Execution[Data], error) {
 	var execution Execution[Data]
-	declaration := command.InspectCommand(command.Define(definition))
+	declaration, err := compileForTest(definition)
+	if err != nil {
+		return execution, err
+	}
 	commandContext := recorder.CommandContext(identity)
 	inputContext := recorder.InputStageContext(identity)
 	if declaration.Hooks.Normalize != nil {
@@ -199,7 +214,11 @@ func Execute[Args any, Data any](ctx context.Context, recorder *Recorder, identi
 
 // RunWithFlags executes a page-returning command with the framework's standard pagination flags.
 func RunWithFlags[Args any, Data any](ctx context.Context, recorder *Recorder, identity command.Identity, definition command.Definition[Args, Data], args *Args, flags ...string) (Execution[Data], error) {
-	if !command.InspectCommand(command.Define(definition)).PageOutput {
+	declaration, err := compileForTest(definition)
+	if err != nil {
+		return Execution[Data]{}, err
+	}
+	if !declaration.PageOutput {
 		return Execution[Data]{}, command.ValidationErrorf("framework pagination flags require a Page output")
 	}
 	options, err := parsePaginationFlags(flags)
@@ -232,7 +251,10 @@ func parsePaginationFlags(arguments []string) (command.PaginationOptions, error)
 
 // Preview runs Normalize, Validate, and DryRun with a network-free test context.
 func Preview[Args any, Data any](ctx context.Context, recorder *Recorder, identity command.Identity, definition command.Definition[Args, Data], args *Args) (*command.DryRun, error) {
-	declaration := command.InspectCommand(command.Define(definition))
+	declaration, err := compileForTest(definition)
+	if err != nil {
+		return nil, err
+	}
 	commandContext := recorder.DryRunContext(identity)
 	if declaration.Hooks.Normalize != nil {
 		if err := declaration.Hooks.Normalize(ctx, commandContext, args); err != nil {

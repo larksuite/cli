@@ -18,11 +18,11 @@ type JSONValue = any
 
 // Definition is the single source of truth for a Typed Shortcut.
 // See TYPED_SHORTCUTS.md for the framework contract and migration guide.
-type Definition[Args any, Data any] struct {
+type typedDefinition[Args any, Data any] struct {
 	Metadata CommandMetadata
 	Input    InputDefinition
 	Output   OutputDefinition
-	Hooks    Hooks[Args, Data]
+	Hooks    typedHooks[Args, Data]
 }
 
 type CommandMetadata struct {
@@ -164,16 +164,15 @@ const (
 	StageAfterPrepare RelationStage = "after_prepare"
 )
 
-type Hooks[Args any, Data any] struct {
+type typedHooks[Args any, Data any] struct {
 	Normalize func(context.Context, CommandContext, *Args) error
 	Validate  func(context.Context, CommandContext, *Args) error
 	DryRun    func(context.Context, CommandContext, *Args) *DryRunAPI
-	DryRunE   func(context.Context, CommandContext, *Args) (*DryRunAPI, error)
 	Execute   func(context.Context, CommandContext, *Args) (Result[Data], error)
-	Renderers map[string]Renderer[Data]
+	Renderers map[string]typedRenderer[Data]
 }
 
-type Renderer[Data any] func(io.Writer, Data) error
+type typedRenderer[Data any] func(io.Writer, Data) error
 
 // CommandContext exposes only runtime capabilities available to Typed hooks.
 type CommandContext interface {

@@ -11,22 +11,22 @@ import (
 )
 
 func TestBrandFilter_AppsExcludedOnLark(t *testing.T) {
-	feishuDomains := allKnownDomains(core.BrandFeishu)
+	feishuDomains := builtinResolver().allKnown(core.BrandFeishu)
 	if !feishuDomains["apps"] {
 		t.Errorf("expected apps domain to be known on Feishu brand")
 	}
 
-	larkDomains := allKnownDomains(core.BrandLark)
+	larkDomains := builtinResolver().allKnown(core.BrandLark)
 	if larkDomains["apps"] {
 		t.Errorf("expected apps domain to be EXCLUDED on Lark brand")
 	}
 
-	feishuScopes := collectScopesForDomains([]string{"apps"}, "user", core.BrandFeishu)
+	feishuScopes := builtinResolver().scopesFor([]string{"apps"}, "user", core.BrandFeishu)
 	if len(feishuScopes) == 0 {
 		t.Errorf("expected non-empty scopes for apps on Feishu brand, got %d", len(feishuScopes))
 	}
 
-	larkScopes := collectScopesForDomains([]string{"apps"}, "user", core.BrandLark)
+	larkScopes := builtinResolver().scopesFor([]string{"apps"}, "user", core.BrandLark)
 	if len(larkScopes) != 0 {
 		t.Errorf("expected empty scopes for apps on Lark brand, got %d: %v", len(larkScopes), larkScopes)
 	}
@@ -34,12 +34,12 @@ func TestBrandFilter_AppsExcludedOnLark(t *testing.T) {
 
 func TestInteractiveDomainMetadataUsesActiveBrand(t *testing.T) {
 	registered := shortcuts.AllShortcuts()
-	feishuDomains := getDomainMetadataWithShortcuts("en", core.BrandFeishu, registered)
+	feishuDomains := newDomainResolver(registered).metadata("en", core.BrandFeishu)
 	if !containsDomainMetadata(feishuDomains, "apps") {
 		t.Fatal("apps domain is missing for Feishu interactive login")
 	}
 
-	larkDomains := getDomainMetadataWithShortcuts("en", core.BrandLark, registered)
+	larkDomains := newDomainResolver(registered).metadata("en", core.BrandLark)
 	if containsDomainMetadata(larkDomains, "apps") {
 		t.Fatal("apps domain is present for Lark interactive login")
 	}

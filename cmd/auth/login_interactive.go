@@ -15,8 +15,6 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
-	"github.com/larksuite/cli/shortcuts"
-	"github.com/larksuite/cli/shortcuts/common"
 )
 
 // domainMeta describes a domain for the interactive selector.
@@ -32,14 +30,10 @@ type interactiveResult struct {
 	ScopeLevel string // "common" or "all"
 }
 
-// getDomainMetadata returns metadata for all known domains, sorted by name.
-func getDomainMetadata(lang string) []domainMeta {
-	return getDomainMetadataWithShortcuts(lang, "", shortcuts.AllShortcuts())
-}
-
-func getDomainMetadataWithShortcuts(lang string, brand core.LarkBrand, registered []common.Shortcut) []domainMeta {
-	known := allKnownDomainsWithShortcuts(brand, registered)
-	scopeless := scopelessShortcutOnlyDomains(registered)
+// metadata returns metadata for all known domains, sorted by name.
+func (r domainResolver) metadata(lang string, brand core.LarkBrand) []domainMeta {
+	known := r.allKnown(brand)
+	scopeless := r.scopeless()
 	domains := make([]domainMeta, 0, len(known))
 	for name := range known {
 		if scopeless[name] {
@@ -76,8 +70,8 @@ func buildDomainMeta(name, lang string) domainMeta {
 	return dm
 }
 
-func runInteractiveLoginWithShortcuts(ios *cmdutil.IOStreams, lang string, msg *loginMsg, brand core.LarkBrand, registered []common.Shortcut) (*interactiveResult, error) {
-	allDomains := getDomainMetadataWithShortcuts(lang, brand, registered)
+func runInteractiveLogin(ios *cmdutil.IOStreams, lang string, msg *loginMsg, brand core.LarkBrand, resolver domainResolver) (*interactiveResult, error) {
+	allDomains := resolver.metadata(lang, brand)
 
 	// Build multi-select options
 	options := make([]huh.Option[string], len(allDomains))
@@ -136,7 +130,7 @@ func runInteractiveLoginWithShortcuts(ios *cmdutil.IOStreams, lang string, msg *
 	}
 
 	// Compute scope summary
-	scopes := collectScopesForDomainsWithShortcuts(selectedDomains, "user", brand, registered)
+	scopes := resolver.scopesFor(selectedDomains, "user", brand)
 	if permLevel == "common" {
 		scopes = registry.FilterAutoApproveScopes(scopes)
 	}

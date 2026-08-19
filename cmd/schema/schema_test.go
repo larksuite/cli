@@ -13,8 +13,10 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/extension/command"
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/commandhost"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -38,6 +40,18 @@ func TestSchemaCmd_FlagParsing(t *testing.T) {
 	}
 }
 
+// mustCompileFixture compiles a business declaration through the production
+// compiler. Schema discovery only sees typed shortcuts, and going through the
+// host compiler keeps these fixtures on the same path a real distribution takes.
+func mustCompileFixture[Args any, Data any](t *testing.T, definition command.Definition[Args, Data]) common.Shortcut {
+	t.Helper()
+	shortcut, err := commandhost.CompileDeclaration(command.Define(definition))
+	if err != nil {
+		t.Fatalf("compile fixture: %v", err)
+	}
+	return shortcut
+}
+
 func TestHiddenShortcutIsExcludedFromSchemaDiscovery(t *testing.T) {
 	type args struct {
 		Value string `flag:"value" schema:"required" doc:"fixture value"`
@@ -45,13 +59,13 @@ func TestHiddenShortcutIsExcludedFromSchemaDiscovery(t *testing.T) {
 	type data struct {
 		OK bool `json:"ok" schema:"required" doc:"success state"`
 	}
-	hidden := common.Define(common.Definition[args, data]{
-		Metadata: common.CommandMetadata{
-			Service: "hidden-fixture", Command: "+hidden-schema", Description: "Hidden schema fixture", Risk: common.RiskRead,
-			Authorization: common.AuthorizationDefinition{Identities: map[common.Identity]common.IdentityAuthorization{common.IdentityUser: {}}},
+	hidden := mustCompileFixture(t, command.Definition[args, data]{
+		Metadata: command.CommandMetadata{
+			Service: "hidden-fixture", Command: "+hidden-schema", Description: "Hidden schema fixture", Risk: command.RiskRead,
+			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{command.IdentityUser: {}}},
 		},
-		Hooks: common.Hooks[args, data]{Execute: func(context.Context, common.CommandContext, *args) (common.Result[data], error) {
-			return common.Success(data{OK: true}), nil
+		Hooks: command.Hooks[args, data]{Execute: func(context.Context, command.CommandContext, *args) (command.Result[data], error) {
+			return command.Success(data{OK: true}), nil
 		}},
 	})
 	hidden.Hidden = true
@@ -72,13 +86,13 @@ func TestShortcutSchemaDiscoveryHonorsStrictMode(t *testing.T) {
 	type data struct {
 		OK bool `json:"ok" schema:"required" doc:"success state"`
 	}
-	userOnly := common.Define(common.Definition[args, data]{
-		Metadata: common.CommandMetadata{
-			Service: "strict-fixture", Command: "+user-schema", Description: "User schema fixture", Risk: common.RiskRead,
-			Authorization: common.AuthorizationDefinition{Identities: map[common.Identity]common.IdentityAuthorization{common.IdentityUser: {}}},
+	userOnly := mustCompileFixture(t, command.Definition[args, data]{
+		Metadata: command.CommandMetadata{
+			Service: "strict-fixture", Command: "+user-schema", Description: "User schema fixture", Risk: command.RiskRead,
+			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{command.IdentityUser: {}}},
 		},
-		Hooks: common.Hooks[args, data]{Execute: func(context.Context, common.CommandContext, *args) (common.Result[data], error) {
-			return common.Success(data{OK: true}), nil
+		Hooks: command.Hooks[args, data]{Execute: func(context.Context, command.CommandContext, *args) (command.Result[data], error) {
+			return command.Success(data{OK: true}), nil
 		}},
 	})
 	registered := []common.Shortcut{userOnly}

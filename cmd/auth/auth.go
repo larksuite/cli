@@ -59,7 +59,7 @@ func newCmdAuth(f *cmdutil.Factory, projector *recovery.Projector, registered []
 	}
 	cmdutil.DisableAuthCheck(cmd)
 
-	cmd.AddCommand(newCmdAuthLoginWithShortcuts(f, nil, registered))
+	cmd.AddCommand(newCmdAuthLogin(f, nil, registered))
 	cmd.AddCommand(NewCmdAuthLogout(f, nil))
 	cmd.AddCommand(newCmdAuthStatus(f, nil, projector))
 	cmd.AddCommand(NewCmdAuthScopes(f, nil))

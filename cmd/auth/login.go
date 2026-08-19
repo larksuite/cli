@@ -37,18 +37,22 @@ type LoginOptions struct {
 	Exclude    []string
 	NoWait     bool
 	DeviceCode string
-	shortcuts  []common.Shortcut
 }
 
 var pollDeviceToken = larkauth.PollDeviceToken
 
 // NewCmdAuthLogin creates the auth login subcommand.
 func NewCmdAuthLogin(f *cmdutil.Factory, runF func(*LoginOptions) error) *cobra.Command {
-	return newCmdAuthLoginWithShortcuts(f, runF, shortcuts.AllShortcuts())
+	return newCmdAuthLogin(f, runF, shortcuts.AllShortcuts())
 }
 
-func newCmdAuthLoginWithShortcuts(f *cmdutil.Factory, runF func(*LoginOptions) error, registered []common.Shortcut) *cobra.Command {
-	opts := &LoginOptions{Factory: f, shortcuts: registered}
+// newCmdAuthLogin resolves domains from one build's shortcut snapshot. The
+// snapshot stays a closure capture rather than a LoginOptions field: LoginOptions
+// is part of the exported runF signature, and an unexported field on it would
+// end positional literals for every caller outside this module.
+func newCmdAuthLogin(f *cmdutil.Factory, runF func(*LoginOptions) error, registered []common.Shortcut) *cobra.Command {
+	opts := &LoginOptions{Factory: f}
+	resolver := newDomainResolver(registered)
 
 	cmd := &cobra.Command{
 		Use:   "login",
@@ -70,7 +74,7 @@ to generate QR codes (supports ASCII and PNG formats).`,
 			if runF != nil {
 				return runF(opts)
 			}
-			return authLoginRun(opts)
+			return authLoginRun(opts, resolver)
 		},
 	}
 	cmdutil.SetSupportedIdentities(cmd, []string{"user"})
@@ -84,7 +88,7 @@ to generate QR codes (supports ASCII and PNG formats).`,
 			helpBrand = cfg.Brand
 		}
 	}
-	available := sortedKnownDomainsWithShortcuts(helpBrand, opts.shortcuts)
+	available := resolver.sorted(helpBrand)
 	cmd.Flags().StringSliceVar(&opts.Domains, "domain", nil,
 		fmt.Sprintf("domain (repeatable or comma-separated, e.g. --domain calendar,task)\navailable: %s, all", strings.Join(available, ", ")))
 	cmd.Flags().StringSliceVar(&opts.Exclude, "exclude", nil,
@@ -94,19 +98,15 @@ to generate QR codes (supports ASCII and PNG formats).`,
 	cmd.Flags().StringVar(&opts.DeviceCode, "device-code", "", "poll and complete authorization with a device code from a previous --no-wait call")
 
 	cmdutil.RegisterFlagCompletion(cmd, "domain", func(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return completeDomainWithShortcuts(toComplete, helpBrand, opts.shortcuts), cobra.ShellCompDirectiveNoFileComp
+		return resolver.complete(toComplete, helpBrand), cobra.ShellCompDirectiveNoFileComp
 	})
 
 	return cmd
 }
 
-// completeDomain returns completions for comma-separated domain values.
-func completeDomain(toComplete string) []string {
-	return completeDomainWithShortcuts(toComplete, "", shortcuts.AllShortcuts())
-}
-
-func completeDomainWithShortcuts(toComplete string, brand core.LarkBrand, registered []common.Shortcut) []string {
-	allDomains := sortedKnownDomainsWithShortcuts(brand, registered)
+// complete returns completions for comma-separated domain values.
+func (r domainResolver) complete(toComplete string, brand core.LarkBrand) []string {
+	allDomains := r.sorted(brand)
 	parts := strings.Split(toComplete, ",")
 	prefix := parts[len(parts)-1]
 	base := strings.Join(parts[:len(parts)-1], ",")
@@ -125,7 +125,7 @@ func completeDomainWithShortcuts(toComplete string, brand core.LarkBrand, regist
 }
 
 // authLoginRun executes the login command logic.
-func authLoginRun(opts *LoginOptions) error {
+func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	f := opts.Factory
 
 	config, err := f.Config()
@@ -160,14 +160,14 @@ func authLoginRun(opts *LoginOptions) error {
 	// Expand --domain all to all available domains (from_meta projects + shortcut services)
 	for _, d := range selectedDomains {
 		if strings.EqualFold(d, "all") {
-			selectedDomains = sortedKnownDomainsWithShortcuts(config.Brand, opts.shortcuts)
+			selectedDomains = resolver.sorted(config.Brand)
 			break
 		}
 	}
 
 	// Validate domain names and suggest corrections for unknown ones
 	if len(selectedDomains) > 0 {
-		knownDomains := allKnownDomainsWithShortcuts(config.Brand, opts.shortcuts)
+		knownDomains := resolver.allKnown(config.Brand)
 		for _, d := range selectedDomains {
 			if !knownDomains[d] {
 				if suggestion := suggestDomain(d, knownDomains); suggestion != "" {
@@ -191,7 +191,7 @@ func authLoginRun(opts *LoginOptions) error {
 
 	if !hasAnyOption {
 		if !opts.JSON && f.IOStreams.IsTerminal {
-			result, err := runInteractiveLoginWithShortcuts(f.IOStreams, lang.Base(), msg, config.Brand, opts.shortcuts)
+			result, err := runInteractiveLogin(f.IOStreams, lang.Base(), msg, config.Brand, resolver)
 			if err != nil {
 				return err
 			}
@@ -229,10 +229,10 @@ func authLoginRun(opts *LoginOptions) error {
 	if len(selectedDomains) > 0 || opts.Recommend {
 		var candidateScopes []string
 		if len(selectedDomains) > 0 {
-			candidateScopes = collectScopesForDomainsWithShortcuts(selectedDomains, "user", config.Brand, opts.shortcuts)
+			candidateScopes = resolver.scopesFor(selectedDomains, "user", config.Brand)
 		} else {
 			// --recommend without --domain: all domains
-			candidateScopes = collectScopesForDomainsWithShortcuts(sortedKnownDomainsWithShortcuts(config.Brand, opts.shortcuts), "user", config.Brand, opts.shortcuts)
+			candidateScopes = resolver.scopesFor(resolver.sorted(config.Brand), "user", config.Brand)
 		}
 
 		// Filter to auto-approve scopes if --recommend or interactive "common"
@@ -517,11 +517,25 @@ func findProfileByName(multi *core.MultiAppConfig, profileName string) *core.App
 // shortcut scopes for the given domain names.
 // Domains with auth_domain children are automatically expanded to include
 // their children's scopes.
-func collectScopesForDomains(domains []string, identity string, brand core.LarkBrand) []string {
-	return collectScopesForDomainsWithShortcuts(domains, identity, brand, shortcuts.AllShortcuts())
+// domainResolver answers auth domain and scope questions against one build's
+// shortcut snapshot. The snapshot is a build-local input rather than a constant:
+// a distribution assembled with cmd.WithCommandSets contributes business
+// commands whose declared scopes must participate in --domain resolution, so
+// every method here reads the snapshot it was constructed with instead of the
+// built-in set.
+type domainResolver struct {
+	registered []common.Shortcut
 }
 
-func collectScopesForDomainsWithShortcuts(domains []string, identity string, brand core.LarkBrand, registered []common.Shortcut) []string {
+func newDomainResolver(registered []common.Shortcut) domainResolver {
+	return domainResolver{registered: registered}
+}
+
+// scopesFor collects API scopes (from from_meta projects) and shortcut scopes
+// for the given domain names.
+// Domains with auth_domain children are automatically expanded to include
+// their children's scopes.
+func (r domainResolver) scopesFor(domains []string, identity string, brand core.LarkBrand) []string {
 	scopeSet := make(map[string]bool)
 
 	// 1. API scopes from from_meta projects
@@ -539,7 +553,7 @@ func collectScopesForDomainsWithShortcuts(domains []string, identity string, bra
 	}
 
 	// 3. Shortcut scopes matching by Service (only include shortcuts supporting the identity)
-	for _, sc := range registered {
+	for _, sc := range r.registered {
 		if !shortcuts.IsShortcutServiceAvailable(sc.Service, brand) {
 			continue
 		}
@@ -562,25 +576,21 @@ func collectScopesForDomainsWithShortcuts(domains []string, identity string, bra
 // allKnownDomains returns all valid auth domain names (from_meta projects +
 // shortcut services), excluding domains that have auth_domain set (they are
 // folded into their parent domain).
-func allKnownDomains(brand core.LarkBrand) map[string]bool {
-	return allKnownDomainsWithShortcuts(brand, shortcuts.AllShortcuts())
-}
-
-func allKnownDomainsWithShortcuts(brand core.LarkBrand, registered []common.Shortcut) map[string]bool {
+func (r domainResolver) allKnown(brand core.LarkBrand) map[string]bool {
 	domains := make(map[string]bool)
 	for _, p := range registry.ListFromMetaProjects() {
 		if !registry.HasAuthDomain(p) {
 			domains[p] = true
 		}
 	}
-	for _, sc := range registered {
+	for _, sc := range r.registered {
 		if !shortcuts.IsShortcutServiceAvailable(sc.Service, brand) {
 			continue
 		}
 		// No scope filter here: matching main, a scope-less domain (e.g.
 		// event) stays addressable via --domain and the --help list, and
 		// fails later with "no matching scopes found". Only the interactive
-		// selector hides it (see getDomainMetadataWithShortcuts).
+		// selector hides it (see domainResolver.metadata).
 		if !registry.HasAuthDomain(sc.Service) {
 			domains[sc.Service] = true
 		}
@@ -601,14 +611,14 @@ func shortcutHasDeclaredScopes(shortcut common.Shortcut) bool {
 // shortcuts declare any scope (e.g. event). The interactive selector hides
 // them — picking one can only end in "no matching scopes found" — while
 // --domain and the help list keep accepting them, matching main.
-func scopelessShortcutOnlyDomains(registered []common.Shortcut) map[string]bool {
+func (r domainResolver) scopeless() map[string]bool {
 	fromMeta := make(map[string]bool)
 	for _, p := range registry.ListFromMetaProjects() {
 		fromMeta[p] = true
 	}
 	hasScopes := make(map[string]bool)
 	seen := make(map[string]bool)
-	for _, sc := range registered {
+	for _, sc := range r.registered {
 		seen[sc.Service] = true
 		if shortcutHasDeclaredScopes(sc) {
 			hasScopes[sc.Service] = true
@@ -624,12 +634,8 @@ func scopelessShortcutOnlyDomains(registered []common.Shortcut) map[string]bool 
 }
 
 // sortedKnownDomains returns all valid domain names sorted alphabetically.
-func sortedKnownDomains(brand core.LarkBrand) []string {
-	return sortedKnownDomainsWithShortcuts(brand, shortcuts.AllShortcuts())
-}
-
-func sortedKnownDomainsWithShortcuts(brand core.LarkBrand, registered []common.Shortcut) []string {
-	m := allKnownDomainsWithShortcuts(brand, registered)
+func (r domainResolver) sorted(brand core.LarkBrand) []string {
+	m := r.allKnown(brand)
 	domains := make([]string, 0, len(m))
 	for d := range m {
 		domains = append(domains, d)

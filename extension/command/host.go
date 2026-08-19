@@ -50,8 +50,7 @@ type HostPagination struct {
 
 // HostDomain is the copied domain declaration consumed by lark-cli's host adapter.
 type HostDomain struct {
-	Name  string
-	IsNew bool
+	Name string
 }
 
 type hostDefinition struct {
@@ -88,7 +87,7 @@ func bindHooks[Args any, Data any](hooks Hooks[Args, Data]) HostHooks {
 		Validate:  bindArgsHook(hooks.Validate, "Validate"),
 		DryRun:    bindDryRunHook(hooks.DryRun),
 		Execute:   bindExecuteHook(hooks.Execute),
-		Renderers: bindRenderers(hooks.Renderers),
+		Renderers: bindPrettyRenderer(hooks.PrettyRenderer),
 	}
 }
 
@@ -132,22 +131,22 @@ func bindExecuteHook[Args any, Data any](hook func(context.Context, CommandConte
 	}
 }
 
-func bindRenderers[Data any](renderers map[string]Renderer[Data]) map[string]func(io.Writer, any) error {
-	if len(renderers) == 0 {
+// bindPrettyRenderer projects the single declarable renderer onto the host's
+// name-keyed shape, which the compiler and the format machinery already speak.
+func bindPrettyRenderer[Data any](renderer Renderer[Data]) map[string]func(io.Writer, any) error {
+	if renderer == nil {
 		return nil
 	}
-	bound := make(map[string]func(io.Writer, any) error, len(renderers))
-	for name, renderer := range renderers {
-		bound[name] = func(writer io.Writer, data any) error {
+	return map[string]func(io.Writer, any) error{
+		prettyFormatName: func(writer io.Writer, data any) error {
 			typed, ok := data.(Data)
 			if !ok {
 				var expected Data
 				return InternalErrorf("renderer received %T, expected %T", data, expected)
 			}
 			return renderer(writer, typed)
-		}
+		},
 	}
-	return bound
 }
 
 func hostResult[Data any](result Result[Data]) HostResult {
@@ -180,7 +179,7 @@ func InspectCommand(command Command) HostDefinition {
 
 // InspectDomain returns a copied declaration for lark-cli's host adapter.
 func InspectDomain(domain Domain) HostDomain {
-	return HostDomain{Name: domain.name, IsNew: domain.kind == domainNew}
+	return HostDomain{Name: domain.name}
 }
 
 // CloneSets copies set slices and immutable command declarations for BuildOption
@@ -188,14 +187,9 @@ func InspectDomain(domain Domain) HostDomain {
 func CloneSets(sets []Set) []Set {
 	cloned := make([]Set, len(sets))
 	for index, set := range sets {
-		cloned[index] = Set{Domain: cloneDomain(set.Domain), Commands: append([]Command(nil), set.Commands...)}
+		cloned[index] = Set{Domain: set.Domain, Commands: append([]Command(nil), set.Commands...)}
 	}
 	return cloned
-}
-
-func cloneDomain(domain Domain) Domain {
-	domain.options = append([]DomainOption(nil), domain.options...)
-	return domain
 }
 
 func cloneHostHooks(hooks HostHooks) HostHooks {

@@ -17,14 +17,14 @@ type cloneData struct {
 }
 
 func TestCloneShortcutCopiesCompiledContract(t *testing.T) {
-	original := Define(Definition[cloneArgs, cloneData]{
+	original := defineTypedShortcut(typedDefinition[cloneArgs, cloneData]{
 		Metadata: CommandMetadata{
 			Service: "im", Command: "+clone", Description: "Clone", Risk: RiskRead,
 			Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{
 				IdentityUser: {RequiredScopes: []string{"im:chat:read"}},
 			}},
 		},
-		Hooks: Hooks[cloneArgs, cloneData]{Execute: func(context.Context, CommandContext, *cloneArgs) (Result[cloneData], error) {
+		Hooks: typedHooks[cloneArgs, cloneData]{Execute: func(context.Context, CommandContext, *cloneArgs) (Result[cloneData], error) {
 			return Success(cloneData{}), nil
 		}},
 	})

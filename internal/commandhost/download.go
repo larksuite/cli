@@ -76,7 +76,22 @@ func downloadToFile(ctx context.Context, host common.CommandContext, transport d
 	if err != nil {
 		return command.Artifact{}, common.WrapSaveErrorTyped(err)
 	}
+	// The fail policy is enforced by the commit, not by a preceding existence
+	// check: the download happens between check and commit, so a target created
+	// in that window would be overwritten by a check-then-save sequence. A
+	// provider that cannot commit exclusively is refused here rather than served
+	// with a guarantee it does not implement.
+	var exclusive fileio.ExclusiveFileIO
 	if target.IfExists == command.IfExistsFail {
+		capable, ok := fileIO.(fileio.ExclusiveFileIO)
+		if !ok {
+			return command.Artifact{}, errs.NewValidationError(errs.SubtypeFailedPrecondition,
+				"the configured file provider cannot refuse an existing download target %q", target.Name).
+				WithHint("use the overwrite policy explicitly, or configure a provider that commits exclusively")
+		}
+		exclusive = capable
+		// Report the common case before spending the download: a target that
+		// already exists now will still exist at commit time.
 		if _, statErr := fileIO.Stat(target.Name); statErr == nil {
 			return command.Artifact{}, errs.NewValidationError(errs.SubtypeFailedPrecondition,
 				"download target %q already exists", target.Name).
@@ -104,9 +119,18 @@ func downloadToFile(ctx context.Context, host common.CommandContext, transport d
 	defer stream.Body.Close()
 
 	contentType := stream.Header.Get("Content-Type")
-	saved, err := fileIO.Save(target.Name, fileio.SaveOptions{
-		ContentType: contentType, ContentLength: stream.ContentLength,
-	}, stream.Body)
+	saveOptions := fileio.SaveOptions{ContentType: contentType, ContentLength: stream.ContentLength}
+	var saved fileio.SaveResult
+	if exclusive != nil {
+		saved, err = exclusive.SaveExclusive(target.Name, saveOptions, stream.Body)
+		if errors.Is(err, fs.ErrExist) {
+			return command.Artifact{}, errs.NewValidationError(errs.SubtypeFailedPrecondition,
+				"download target %q already exists", target.Name).
+				WithHint("choose another target or explicitly use the overwrite policy")
+		}
+	} else {
+		saved, err = fileIO.Save(target.Name, saveOptions, stream.Body)
+	}
 	if err != nil {
 		return command.Artifact{}, common.WrapSaveErrorTyped(err)
 	}
