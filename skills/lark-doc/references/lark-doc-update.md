@@ -77,8 +77,9 @@ lark-cli docs +update --doc "xx" --command block_delete --start-block-id blkFirs
 
 - 每次写操作后都按 block ID 已变化处理。新插入或复制的内容一定使用新 ID；替换、删除和覆盖会使旧 ID 失效；移动会改变章节与 range 语义。
 - 同一 block 有多处修改时，应合并为一次 `block_replace`，避免连续使用旧 ID。
-- `str_replace` 的 `--content` 即使在 `--doc-format xml` 下也按 Markdown 解析行内标记：`**x**`、`__x__` 转成加粗，`_x_` 转成斜体，`~~x~~` 转成删除线，`` `x` `` 转成行内代码，`[x](url)` 转成链接；`+create`、`append`、`block_insert_after`、`block_replace` 均按字面量写入。行内样式一律直接写 `<b>`、`<em>`、`<del>`、`<code>`、`<a>`，不要依赖 Markdown 写法。
-- 用 `str_replace` 写含 `*`、`_`、`~`、`` ` ``、`[]()` 的字面文本（正则、`kwargs`、shell 命令、代码标识符）时必须用 `\` 转义，否则会被静默转成富文本节点，且 `result` 仍为 `success`、`warnings` 为空。同理，`docs +fetch` 取回的字面 `**x**` 原样回写会变成加粗。
+- `str_replace` 的 `--content` 即使在 `--doc-format xml` 下也按 Markdown 解析行内标记：`**x**`、`__x__` 转加粗，`*x*`、`_x_` 转斜体，`~~x~~`、`~x~` 转删除线，`` `x` `` 转行内代码，`$x$` 转公式，`[x](url)` 转链接；`+create`、`append`、`block_insert_after`、`block_replace` 都按字面量写入。行内样式一律直接写 `<b>`、`<em>`、`<del>`、`<code>`、`<latex>`、`<a>`，不要依赖 Markdown 写法。
+- 含 `*`、`_`、`~`、`` ` ``、`$`、`[x](url)` 的字面文本（正则、`**kwargs`、shell 命令、代码标识符）用 `block_replace` 写入，不要用 `str_replace`：转换是静默的（`result` 仍为 `success`、`warnings` 为空），且相邻被转换片段之间的空格会丢失，`*a* _b_` 会合成一个斜体 `ab`。
+- `str_replace` 里的 `\` 转义不可靠：只有当同一 `--content` 里还含反引号时反斜杠才会被消耗，否则 `\_`、`\~` 会原样留在正文。`docs +fetch` 取回的字面 `**x**` 用 `str_replace` 回写会变成加粗，不是幂等操作。
 
 ## 返回值
 
