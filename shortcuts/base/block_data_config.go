@@ -25,6 +25,10 @@ var chartBlockTypes = []string{
 // ({"text": "..."}).
 var textBlockTypes = []string{"text"}
 
+// buttonBlockTypes are the button block types. Dashboard button components
+// trigger a workflow when clicked; their data_config carries the workflow_id.
+var buttonBlockTypes = []string{"button"}
+
 func matchesBlockType(blockType string, candidates []string) bool {
 	trimmed := strings.ToLower(strings.TrimSpace(blockType))
 	for _, candidate := range candidates {
@@ -36,6 +40,8 @@ func matchesBlockType(blockType string, candidates []string) bool {
 }
 
 func isTextBlockType(blockType string) bool { return matchesBlockType(blockType, textBlockTypes) }
+
+func isButtonBlockType(blockType string) bool { return matchesBlockType(blockType, buttonBlockTypes) }
 
 func isChartBlockType(blockType string) bool { return matchesBlockType(blockType, chartBlockTypes) }
 
@@ -111,13 +117,16 @@ func normalizeDataConfig(cfg map[string]interface{}) map[string]interface{} {
 }
 
 // validateBlockDataConfig validates data_config based on block type.
-// Text blocks only need a text field; everything else falls through to the
-// dashboard chart rules. BaseApp list validation lives in
-// app_list_block_data_config.go and never enters this dashboard path.
+// Text blocks only need a text field; button blocks need a workflow_id;
+// everything else falls through to the dashboard chart rules. BaseApp list
+// validation lives in app_list_block_data_config.go and never enters this
+// dashboard path.
 func validateBlockDataConfig(blockType string, cfg map[string]interface{}) []string {
 	switch {
 	case isTextBlockType(blockType):
 		return validateTextDataConfig(blockType, cfg)
+	case isButtonBlockType(blockType):
+		return validateButtonDataConfig(blockType, cfg)
 	default:
 		return validateChartDataConfig(cfg)
 	}
@@ -128,6 +137,18 @@ func validateTextDataConfig(blockType string, cfg map[string]interface{}) []stri
 	var problems []string
 	if txt, _ := cfg["text"].(string); strings.TrimSpace(txt) == "" {
 		problems = append(problems, fmt.Sprintf("%s 类型组件缺少必填字段 text", strings.TrimSpace(blockType)))
+	}
+	return problems
+}
+
+// validateButtonDataConfig validates the button data_config shape.
+// Button components trigger a workflow when clicked; data_config must carry
+// a non-empty workflow_id referencing an existing workflow.
+func validateButtonDataConfig(blockType string, cfg map[string]interface{}) []string {
+	var problems []string
+	wfID, _ := cfg["workflow_id"].(string)
+	if strings.TrimSpace(wfID) == "" {
+		problems = append(problems, fmt.Sprintf("%s 类型组件缺少必填字段 workflow_id；先用 +workflow-list 查看已有工作流，将 wkf 前缀的 ID 填入", strings.TrimSpace(blockType)))
 	}
 	return problems
 }

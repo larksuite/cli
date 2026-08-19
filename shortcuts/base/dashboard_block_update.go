@@ -50,7 +50,12 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 			return err
 		}
 		norm := normalizeDataConfig(cfg)
-		// update 时不做强类型校验（不传 type），让后端验证具体字段
+		// update 时若 data_config 含 workflow_id 字段，按 button 类型校验
+		if _, hasButton := norm["workflow_id"]; hasButton {
+			if problems := validateButtonDataConfig("button", norm); len(problems) > 0 {
+				return formatDataConfigErrors(problems)
+			}
+		}
 		b, _ := json.Marshal(norm)
 		_ = runtime.Cmd.Flags().Set("data-config", string(b))
 		return nil

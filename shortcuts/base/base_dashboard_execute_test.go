@@ -927,6 +927,181 @@ func TestBaseDashboardBlockExecuteUpdate_TextType(t *testing.T) {
 	})
 }
 
+// ── Button Block Tests ────────────────────────────────────────────────
+
+// TestBaseDashboardBlockExecuteCreate_ButtonType tests creating button blocks bound to a workflow.
+func TestBaseDashboardBlockExecuteCreate_ButtonType(t *testing.T) {
+	t.Run("valid button block", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"block_id": "blk_btn",
+					"name":     "同步按钮",
+					"type":     "button",
+					"data_config": map[string]interface{}{
+						"workflow_id": "wkf_abc123",
+					},
+				},
+			},
+		})
+		args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_001",
+			"--name", "同步按钮", "--type", "button",
+			"--data-config", `{"workflow_id":"wkf_abc123"}`,
+		}
+		if err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		if !strings.Contains(got, `"blk_btn"`) || !strings.Contains(got, `"created": true`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("button block missing workflow_id", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_001",
+			"--name", "Bad", "--type", "button",
+			"--data-config", `{}`,
+		}
+		err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout)
+		if err == nil {
+			t.Fatalf("expected validation error for missing workflow_id")
+		}
+		if got := err.Error(); !strings.Contains(got, "workflow_id") || !strings.Contains(got, "data_config 校验失败") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("button block missing data-config", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_001",
+			"--name", "NoConfig", "--type", "button",
+		}
+		err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout)
+		if err == nil {
+			t.Fatalf("expected validation error for missing data-config")
+		}
+		if got := err.Error(); !strings.Contains(got, "workflow_id") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("button block empty workflow_id", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_001",
+			"--name", "Empty", "--type", "button",
+			"--data-config", `{"workflow_id":""}`,
+		}
+		err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout)
+		if err == nil {
+			t.Fatalf("expected validation error for empty workflow_id")
+		}
+		if got := err.Error(); !strings.Contains(got, "workflow_id") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("button block no-validate skips check", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"block_id": "blk_btn2",
+					"name":     "NoValidate",
+					"type":     "button",
+				},
+			},
+		})
+		args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_001",
+			"--name", "NoValidate", "--type", "button",
+			"--data-config", `{}`,
+			"--no-validate",
+		}
+		err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		if !strings.Contains(got, `"created": true`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+}
+
+// TestBaseDashboardBlockExecuteUpdate_ButtonType tests updating button block workflow binding.
+func TestBaseDashboardBlockExecuteUpdate_ButtonType(t *testing.T) {
+	t.Run("update button workflow_id", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "PATCH",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks/blk_btn",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"block_id": "blk_btn",
+					"name":     "更新按钮",
+					"type":     "button",
+					"data_config": map[string]interface{}{
+						"workflow_id": "wkf_new456",
+					},
+				},
+			},
+		})
+		args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_001", "--block-id", "blk_btn",
+			"--name", "更新按钮",
+			"--data-config", `{"workflow_id":"wkf_new456"}`,
+		}
+		if err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		if !strings.Contains(got, `"updated": true`) || !strings.Contains(got, "wkf_new456") {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("update button with empty workflow_id fails", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_001", "--block-id", "blk_btn",
+			"--data-config", `{"workflow_id":""}`,
+		}
+		err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout)
+		if err == nil {
+			t.Fatalf("expected validation error for empty workflow_id")
+		}
+		if got := err.Error(); !strings.Contains(got, "workflow_id") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+// TestBaseDashboardDryRun_ButtonType tests the --dry-run output for button block create.
+func TestBaseDashboardDryRun_ButtonType(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_001",
+		"--name", "Sync", "--type", "button",
+		"--data-config", `{"workflow_id":"wkf_dry001"}`,
+		"--dry-run", "--format", "pretty",
+	}
+	if err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, "POST /open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks") {
+		t.Fatalf("stdout=%s", got)
+	}
+	if !strings.Contains(got, "wkf_dry001") {
+		t.Fatalf("stdout=%s", got)
+	}
+}
+
 // ── Dashboard Arrange ────────────────────────────────────────────────
 
 // TestBaseDashboardExecuteArrange tests the +dashboard-arrange command for auto-arranging dashboard blocks.

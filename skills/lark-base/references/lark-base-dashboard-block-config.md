@@ -19,6 +19,7 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档是 Dashboar
 | `radar` | 雷达图 |
 | `statistics` | 指标卡 |
 | `text` | 文本（支持 Markdown） |
+| `button` | 按钮（触发工作流） |
 
 ## 字段类型与操作符速查（AI 决策用）
 
@@ -55,6 +56,14 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `text` | string | **必填**。支持 Markdown 语法，详见下方说明 |
+
+### button 类型特殊结构
+
+`button` 类型组件用于在仪表盘上放置可点击按钮，点击后触发已绑定的自动化工作流（workflow）。**不需要数据源配置**（无 `table_name`、`series`、`group_by`、`filter`）。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `workflow_id` | string | **必填**。绑定的工作流 ID（`wkf_` 前缀）。先用 `+workflow-list` 查看已有工作流并获取 ID；如需新建工作流，使用 `+workflow-create` 创建后再绑定 |
 
 **支持的 Markdown 语法：**
 
@@ -381,6 +390,16 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 ```
 
 > **注意**：text 类型组件不需要 `table_name`、`series`、`group_by`、`filter` 等数据源相关字段。
+
+按钮组件（触发工作流）：
+
+```json
+{
+  "workflow_id": "wkf_xxx"
+}
+```
+
+> **注意**：button 类型组件只需要 `workflow_id` 字段，不需要 `table_name`、`series`、`group_by`、`filter` 等数据源相关字段。先用 `+workflow-list` 获取已有工作流 ID（`wkf_` 前缀），或用 `+workflow-create` 创建新工作流后再绑定。
 
 ## 常见错误与修复
 

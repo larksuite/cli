@@ -24,7 +24,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 		baseTokenFlag(true),
 		dashboardIDFlag(true),
 		{Name: "name", Desc: "block name", Required: true},
-		{Name: "type", Desc: "block type: column(柱状图)|bar(条形图)|line(折线图)|pie(饼图)|ring(环形图)|area(面积图)|combo(组合图)|scatter(散点图)|funnel(漏斗图)|wordCloud(词云)|radar(雷达图)|statistics(指标卡)|text(文本). Read lark-base-dashboard-block-config.md before creating.", Required: true},
+		{Name: "type", Desc: "block type: column(柱状图)|bar(条形图)|line(折线图)|pie(饼图)|ring(环形图)|area(面积图)|combo(组合图)|scatter(散点图)|funnel(漏斗图)|wordCloud(词云)|radar(雷达图)|statistics(指标卡)|text(文本)|button(按钮). Read lark-base-dashboard-block-config.md before creating.", Required: true},
 		{Name: "data-config", Desc: "data_config JSON object; read lark-base-dashboard-block-config.md for the SSOT"},
 		{Name: "user-id-type", Desc: "user ID type for user fields in filters: open_id / union_id / user_id"},
 		{Name: "no-validate", Type: "bool", Desc: "skip local data_config validation and normalization; send data_config as-is"},
@@ -32,6 +32,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 	Tips: []string{
 		`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Order Count" --type statistics --data-config '{"table_name":"Orders","count_all":true}'`,
 		`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Dashboard Note" --type text --data-config '{"text":"# Sales Dashboard"}'`,
+		`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Sync Button" --type button --data-config '{"workflow_id":"wkf_xxx"}'`,
 		"Before creating data-backed blocks, use +table-list and +field-list to confirm real table and field names.",
 		"data_config uses table and field names, not table_id or field_id.",
 		"Read lark-base-dashboard-block-config.md as the SSOT for chart templates, filters, metric rules, and type-specific fields; do not invent data_config from natural language.",
@@ -49,6 +50,9 @@ var BaseDashboardBlockCreate = common.Shortcut{
 			// text 类型必须提供 data-config（含 text 内容）
 			if strings.ToLower(runtime.Str("type")) == "text" {
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "text 类型组件必须提供 data-config，包含必填字段 text").WithParam("--data-config")
+			}
+			if strings.ToLower(runtime.Str("type")) == "button" {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "button 类型组件必须提供 data-config，包含必填字段 workflow_id").WithParam("--data-config")
 			}
 			return nil
 		}
