@@ -26,6 +26,7 @@ var BaseDashboardBlockGetData = common.Shortcut{
 		"lark-cli base +dashboard-block-get-data --base-token <base_token> --block-id <block_id>",
 		"This command does not need --dashboard-id.",
 		"Use +dashboard-block-get first when you need block metadata like name, type, or data_config.",
+		"Computed values do not prove the chart dimensions, filters, or series are configured as requested. Use +dashboard-block-get when the task requires configuration verification.",
 		"This command returns computed chart protocol JSON directly, not wrapped block metadata.",
 		"For a complete dashboard export, read text blocks with +dashboard-block-get; their content is in data_config.text.",
 		"If a chart type does not support computed data, inspect its data_config with +dashboard-block-get, then use +data-query with the same real table, dimensions, measures, and filters; do not omit the block or guess values.",

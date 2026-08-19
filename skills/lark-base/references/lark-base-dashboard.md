@@ -21,6 +21,24 @@ Dashboard 是 Base 中的数据可视化看板，可以把表格数据变成**�
 | 读取图表计算结果 | `+dashboard-block-get-data` | 返回图表最终数据协议；需要 block 元数据先用 `+dashboard-block-get` |
 | 智能重排组件布局 | `+dashboard-arrange` | 用户明确要求重排，或本次会话新建仪表盘的收尾整理；无法指定 `x/y/w/h`、精确位置或尺寸 |
 
+## 配置核验边界
+
+`+dashboard-list` 和 `+dashboard-block-list` 只证明 Dashboard 或组件存在，不返回完整统计口径；组件名称和 `+dashboard-block-get-data` 的计算结果也不能替代 `data_config`。
+
+- 用户要求创建、更新或验证图表/看板，或要求在 Base 中长期展示某项统计口径时，核验与该目标相关的组件。
+- 本轮会重命名、删除或改变 Table/Field 类型，并且既有 Dashboard 可能引用该对象时，核验受影响的组件；不要扫描无关 Dashboard 或 Base 资源。
+- 用户只要一次性统计时优先用 `+data-query`；只要已知 Block 的计算结果时直接用 `+dashboard-block-get-data`。这两类任务都不自动触发配置盘点。
+
+需要核验时：
+
+1. dashboard_id 未知时用 `+dashboard-list` 定位 Dashboard；已知 dashboard_id 时跳过；
+2. block_id 未知时用 `+dashboard-block-list --dashboard-id` 列出组件，并在 `has_more=true` 时携带 `page_token` 继续，直到 `has_more=false`；已知 block_id 时跳过；
+3. 对与用户目标或 schema 变更直接相关的组件调用 `+dashboard-block-get`，读取 `type` 和完整 `data_config`；
+4. 逐项比较 `type`、`table_name`、`group_by`、`filter`、`series`/`count_all`，再决定保留、更新或报告不匹配；
+5. 需要确认实际数值时再调用 `+dashboard-block-get-data`；它只返回计算结果，不能替代配置核验。
+
+没有读取 `data_config` 的相关组件只能标记为“未核验”，不能因名称相同、组件存在或结果看起来合理就宣称图表配置完成。
+
 ## 典型场景工作流
 
 ### 场景 1：从 0 到 1 创建仪表盘

@@ -27,6 +27,7 @@ var BaseDashboardBlockList = common.Shortcut{
 	Tips: []string{
 		"lark-cli base +dashboard-block-list --base-token <base_token> --dashboard-id <dashboard_id>",
 		"Use returned block_id and type values for +dashboard-block-get/update/delete/get-data.",
+		"Listing identifies candidate blocks only. Before claiming that a requested or schema-affected statistic is configured correctly, inspect each relevant block with +dashboard-block-get and read its data_config.",
 		"For a complete dashboard, use --page-size 100; while has_more=true, pass the returned page_token to --page-token and continue until has_more=false.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
