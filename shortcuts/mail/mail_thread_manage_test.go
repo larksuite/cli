@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -83,14 +84,23 @@ func TestThreadTrash_Metadata(t *testing.T) {
 func TestThreadManage_NormalizeThreadIDs(t *testing.T) {
 	id1 := threadManageID("1")
 	id2 := threadManageID("2")
-	got, err := normalizeThreadManageIDs([]string{" " + id1 + ", , " + id2 + " ", id1})
+	got, err := normalizeThreadManageIDs([]string{id1 + "," + id2, id1})
 	if err != nil {
 		t.Fatalf("normalizeThreadManageIDs returned error: %v", err)
 	}
 	if len(got) != 2 || got[0] != id1 || got[1] != id2 {
 		t.Fatalf("ids = %v, want [%s %s]", got, id1, id2)
 	}
-	for _, tc := range [][]string{{}, {""}, {" , "}} {
+	for _, tc := range [][]string{
+		{},
+		{""},
+		{" "},
+		{id1 + ","},
+		{" " + id1},
+		{id1 + "\n" + id2},
+		{"1234567890123456"},
+		{"thread_abcdefghijklmnop!"},
+	} {
 		_, err := normalizeThreadManageIDs(tc)
 		requireMessageManageValidationParam(t, err, "--thread-ids")
 	}
@@ -111,10 +121,69 @@ func TestThreadManage_NormalizeThreadIDs(t *testing.T) {
 	}
 }
 
+func TestThreadModify_LabelOnlyDoesNotRequireFolderReadScope(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	token := auth.GetStoredToken("test-app", "ou_testuser")
+	if token == nil {
+		t.Fatal("expected test token")
+	}
+	token.Scope = strings.ReplaceAll(token.Scope, " mail:user_mailbox.folder:read", "")
+	if err := auth.SetStoredToken(token); err != nil {
+		t.Fatalf("SetStoredToken() error = %v", err)
+	}
+
+	id := threadManageID("1")
+	post := stubThreadManagePost(reg, "batch_modify", map[string]interface{}{"code": 0, "data": map[string]interface{}{}})
+
+	err := runMountedMailShortcut(t, MailThreadModify, []string{
+		"+thread-modify",
+		"--thread-ids", id,
+		"--remove-label-ids", "UNREAD",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(post.CapturedBody, &body); err != nil {
+		t.Fatalf("unmarshal captured body: %v", err)
+	}
+	removeLabels := body["remove_label_ids"].([]interface{})
+	if len(removeLabels) != 1 || removeLabels[0] != "UNREAD" {
+		t.Fatalf("remove_label_ids = %#v, want [UNREAD]", removeLabels)
+	}
+}
+
+func TestThreadModify_CustomLabelFolderValidationAPIs(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	id := threadManageID("1")
+	reg.Register(&httpmock.Stub{Method: "GET", URL: "/user_mailboxes/me/labels/customA", Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"label_id": "customA"}}})
+	reg.Register(&httpmock.Stub{Method: "GET", URL: "/user_mailboxes/me/folders/folderA", Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"folder_id": "folderA"}}})
+	post := stubThreadManagePost(reg, "batch_modify", map[string]interface{}{"code": 0, "data": map[string]interface{}{}})
+
+	err := runMountedMailShortcut(t, MailThreadModify, []string{
+		"+thread-modify",
+		"--thread-ids", id,
+		"--add-label-ids", "unread,customA",
+		"--remove-label-ids", "FLAGGED",
+		"--add-folder", "folderA",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(post.CapturedBody, &body); err != nil {
+		t.Fatalf("unmarshal captured body: %v", err)
+	}
+	if got := body["add_folder"]; got != "folderA" {
+		t.Fatalf("add_folder = %v, want folderA", got)
+	}
+}
+
 func TestThreadModify_LabelFolderBodyAndOutputContract(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	id1 := threadManageID("1")
 	id2 := threadManageID("2")
+	reg.Register(&httpmock.Stub{Method: "GET", URL: "/user_mailboxes/me/labels/customA", Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"label_id": "customA"}}})
 	post := stubThreadManagePost(reg, "batch_modify", map[string]interface{}{"code": 0, "data": map[string]interface{}{}})
 
 	err := runMountedMailShortcut(t, MailThreadModify, []string{
@@ -283,6 +352,9 @@ func TestThreadModify_DryRunShowsPostURLAndBody(t *testing.T) {
 	out := stdout.String()
 	for _, want := range []string{
 		`/user_mailboxes/me/threads/batch_modify`,
+		`validation_api_plan`,
+		`/user_mailboxes/me/labels/customA`,
+		`/user_mailboxes/me/folders/folderA`,
 		`thread_ids`,
 		`add_label_ids`,
 		`add_folder`,
@@ -301,7 +373,7 @@ func TestThreadModify_APIFailurePreservesDiagnostic(t *testing.T) {
 	err := runMountedMailShortcut(t, MailThreadModify, []string{
 		"+thread-modify",
 		"--thread-ids", threadManageID("1"),
-		"--add-label-ids", "missing_label",
+		"--add-label-ids", "FLAGGED",
 	}, f, stdout)
 	if err == nil {
 		t.Fatal("expected API error, got nil")
