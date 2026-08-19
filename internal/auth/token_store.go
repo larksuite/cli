@@ -65,6 +65,12 @@ func GetStoredToken(appId, userOpenId string) (*StoredUAToken, error) {
 			"failed to decode stored token: %v", err).
 			WithCause(errors.Join(errStoredTokenCorrupt, err))
 	}
+	if token.AppId == "" || token.UserOpenId == "" ||
+		token.AppId != appId || token.UserOpenId != userOpenId {
+		return nil, errs.NewInternalError(errs.SubtypeStorage,
+			"stored token account identity is missing or does not match its storage key").
+			WithCause(errStoredTokenCorrupt)
+	}
 	return &token, nil
 }
 

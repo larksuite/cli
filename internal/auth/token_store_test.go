@@ -33,6 +33,22 @@ func mustGetStoredToken(t *testing.T, appID, userOpenID string) *StoredUAToken {
 	return token
 }
 
+func requireStoredTokenCorrupt(t *testing.T, err error, sensitiveValues ...string) {
+	t.Helper()
+	var storageErr *errs.InternalError
+	if !errors.As(err, &storageErr) || storageErr.Subtype != errs.SubtypeStorage {
+		t.Fatalf("error = %T %v, want internal/storage", err, err)
+	}
+	if !errors.Is(err, errStoredTokenCorrupt) {
+		t.Fatalf("error = %v, want corrupt-token cause", err)
+	}
+	for _, sensitive := range sensitiveValues {
+		if sensitive != "" && strings.Contains(err.Error(), sensitive) {
+			t.Fatalf("error leaked stored token content %q: %v", sensitive, err)
+		}
+	}
+}
+
 func TestGetStoredTokenDistinguishesMissingFromCorrupt(t *testing.T) {
 	setupStoredTokenTest(t)
 
@@ -50,15 +66,63 @@ func TestGetStoredTokenDistinguishesMissingFromCorrupt(t *testing.T) {
 	if stored != nil || err == nil {
 		t.Fatalf("corrupt token = (%#v, %v), want (nil, error)", stored, err)
 	}
-	var storageErr *errs.InternalError
-	if !errors.As(err, &storageErr) || storageErr.Subtype != errs.SubtypeStorage {
-		t.Fatalf("error = %T %v, want internal/storage", err, err)
+	requireStoredTokenCorrupt(t, err, sensitive)
+}
+
+func TestGetStoredTokenRejectsInvalidAccountIdentity(t *testing.T) {
+	setupStoredTokenTest(t)
+
+	tests := []struct {
+		name            string
+		appID           string
+		userOpenID      string
+		record          string
+		sensitiveValues []string
+	}{
+		{
+			name:            "missing app ID",
+			appID:           "cli_missing_app",
+			userOpenID:      "ou_missing_app",
+			record:          `{"userOpenId":"ou_missing_app","accessToken":"access-missing-app"}`,
+			sensitiveValues: []string{"access-missing-app"},
+		},
+		{
+			name:            "missing user open ID",
+			appID:           "cli_missing_user",
+			userOpenID:      "ou_missing_user",
+			record:          `{"appId":"cli_missing_user","refreshToken":"refresh-missing-user"}`,
+			sensitiveValues: []string{"refresh-missing-user"},
+		},
+		{
+			name:       "mismatched app ID",
+			appID:      "cli_expected_app",
+			userOpenID: "ou_expected_app",
+			record: `{"appId":"cli_stored_app","userOpenId":"ou_expected_app",` +
+				`"accessToken":"access-mismatched-app"}`,
+			sensitiveValues: []string{"cli_stored_app", "access-mismatched-app"},
+		},
+		{
+			name:       "mismatched user open ID",
+			appID:      "cli_expected_user",
+			userOpenID: "ou_expected_user",
+			record: `{"appId":"cli_expected_user","userOpenId":"ou_stored_user",` +
+				`"refreshToken":"refresh-mismatched-user"}`,
+			sensitiveValues: []string{"ou_stored_user", "refresh-mismatched-user"},
+		},
 	}
-	if !errors.Is(err, errStoredTokenCorrupt) {
-		t.Fatalf("error = %v, want corrupt-token cause", err)
-	}
-	if strings.Contains(err.Error(), sensitive) {
-		t.Fatalf("error leaked stored token content: %v", err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := keychain.Set(keychain.LarkCliService, accountKey(tt.appID, tt.userOpenID),
+				tt.record); err != nil {
+				t.Fatalf("keychain.Set() error = %v", err)
+			}
+			stored, err := GetStoredToken(tt.appID, tt.userOpenID)
+			if stored != nil || err == nil {
+				t.Fatalf("invalid identity token = (%#v, %v), want (nil, error)", stored, err)
+			}
+			requireStoredTokenCorrupt(t, err, tt.sensitiveValues...)
+		})
 	}
 }
 
