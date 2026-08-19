@@ -25,6 +25,11 @@ var chartBlockTypes = []string{
 // ({"text": "..."}).
 var textBlockTypes = []string{"text"}
 
+// buttonBlockTypes are the interactive button block types. A dashboard button
+// component is an interaction element, not a chart; its data_config carries
+// action and display configuration, not table_name/series/count_all.
+var buttonBlockTypes = []string{"button"}
+
 func matchesBlockType(blockType string, candidates []string) bool {
 	trimmed := strings.ToLower(strings.TrimSpace(blockType))
 	for _, candidate := range candidates {
@@ -36,6 +41,8 @@ func matchesBlockType(blockType string, candidates []string) bool {
 }
 
 func isTextBlockType(blockType string) bool { return matchesBlockType(blockType, textBlockTypes) }
+
+func isButtonBlockType(blockType string) bool { return matchesBlockType(blockType, buttonBlockTypes) }
 
 func isChartBlockType(blockType string) bool { return matchesBlockType(blockType, chartBlockTypes) }
 
@@ -111,16 +118,33 @@ func normalizeDataConfig(cfg map[string]interface{}) map[string]interface{} {
 }
 
 // validateBlockDataConfig validates data_config based on block type.
-// Text blocks only need a text field; everything else falls through to the
-// dashboard chart rules. BaseApp list validation lives in
-// app_list_block_data_config.go and never enters this dashboard path.
+// Text blocks only need a text field; button blocks are interaction components
+// whose data_config carries action/display configuration, not chart semantics;
+// everything else falls through to the dashboard chart rules. BaseApp list
+// validation lives in app_list_block_data_config.go and never enters this
+// dashboard path.
 func validateBlockDataConfig(blockType string, cfg map[string]interface{}) []string {
 	switch {
 	case isTextBlockType(blockType):
 		return validateTextDataConfig(blockType, cfg)
+	case isButtonBlockType(blockType):
+		return validateButtonDataConfig(cfg)
 	default:
 		return validateChartDataConfig(cfg)
 	}
+}
+
+// validateButtonDataConfig validates the button data_config shape.
+// A dashboard button is an interaction component, not a chart; its data_config
+// carries action and display fields whose exact names are current protocol facts
+// (see domain/dashboard/button.md). The CLI must not impose chart semantics
+// (table_name/series/count_all) on a button. Pass through any non-empty object
+// and let the backend validate button-specific action and appearance fields.
+func validateButtonDataConfig(cfg map[string]interface{}) []string {
+	if len(cfg) == 0 {
+		return []string{"button 类型组件必须提供非空 data_config，包含动作和展示配置"}
+	}
+	return nil
 }
 
 // validateTextDataConfig validates the text data_config shape.

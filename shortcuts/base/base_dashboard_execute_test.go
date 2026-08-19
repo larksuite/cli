@@ -927,6 +927,94 @@ func TestBaseDashboardBlockExecuteUpdate_TextType(t *testing.T) {
 	})
 }
 
+// ── Button Block Tests ──────────────────────────────────────────────
+
+// TestBaseDashboardBlockExecuteCreate_ButtonType tests creating button blocks.
+func TestBaseDashboardBlockExecuteCreate_ButtonType(t *testing.T) {
+	t.Run("create with data-config", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"block_id": "blk_btn",
+					"name":     "提交按钮",
+					"type":     "button",
+					"data_config": map[string]interface{}{
+						"action":  "submit_record",
+						"label":  "提交",
+					},
+				},
+			},
+		})
+		args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_001",
+			"--name", "提交按钮", "--type", "button",
+			"--data-config", `{"action":"submit_record","label":"提交"}`,
+		}
+		if err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		if !strings.Contains(got, `"blk_btn"`) || !strings.Contains(got, `"created": true`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+}
+
+// TestBaseDashboardBlockDryRun_Create_Button tests that button type does NOT trigger
+// chart validation (no table_name/series required) in dry-run mode.
+func TestBaseDashboardBlockDryRun_Create_Button(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1",
+		"--name", "操作按钮", "--type", "button",
+		"--data-config", `{"action":"submit_record","label":"提交"}`,
+		"--dry-run", "--format", "pretty"}
+	if err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, "POST /open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks") ||
+		!strings.Contains(got, `"button"`) || !strings.Contains(got, `submit_record`) {
+		t.Fatalf("stdout=%s", got)
+	}
+}
+
+// TestBaseDashboardBlockCreate_ButtonEmptyDataConfig tests that an empty data_config
+// for button type is rejected by validation.
+func TestBaseDashboardBlockCreate_ButtonEmptyDataConfig(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1",
+		"--name", "Bad", "--type", "button",
+		"--data-config", `{}`,
+	}
+	err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout)
+	if err == nil {
+		t.Fatalf("expected validation error for empty button data_config, got nil")
+	}
+	if !strings.Contains(err.Error(), "data_config") || !strings.Contains(err.Error(), "button") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestBaseDashboardBlockCreate_ButtonNoDataConfig tests that button type without
+// data-config is allowed (backend validates button-specific fields).
+func TestBaseDashboardBlockCreate_ButtonNoDataConfig(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1",
+		"--name", "按钮", "--type", "button",
+		"--dry-run", "--format", "pretty"}
+	if err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, "POST /open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks") ||
+		!strings.Contains(got, `"button"`) {
+		t.Fatalf("stdout=%s", got)
+	}
+}
+
 // ── Dashboard Arrange ────────────────────────────────────────────────
 
 // TestBaseDashboardExecuteArrange tests the +dashboard-arrange command for auto-arranging dashboard blocks.

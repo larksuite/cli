@@ -19,6 +19,7 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档是 Dashboar
 | `radar` | 雷达图 |
 | `statistics` | 指标卡 |
 | `text` | 文本（支持 Markdown） |
+| `button` | 按钮（交互组件） |
 
 ## 字段类型与操作符速查（AI 决策用）
 
@@ -70,6 +71,12 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 | 无序列表 | `- 项目` | - 项目 |
 
 > **注意**：以上未提及的 Markdown 语法（如链接、图片、代码块、表格等）均不支持。
+
+### button 类型特殊结构
+
+`button` 类型是交互组件，**不是图表**，不使用 `table_name`、`series`、`count_all`、`group_by`、`filter` 等数据源字段。其 `data_config` 携带动作和展示配置；具体字段名属于当前协议事实，参见 `domain/dashboard/button.md`。
+
+> **注意**：按钮组件与按钮字段、Workflow/Automation 内部按钮规则是三个不同事实面，名称相同不能共享配置。CLI 不对 button 的 `data_config` 施加图表语义校验，仅要求非空 JSON 对象，具体动作和外观字段由后端验证。
 
 ## group_by 详细说明
 
