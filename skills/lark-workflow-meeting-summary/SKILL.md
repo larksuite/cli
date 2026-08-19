@@ -80,8 +80,26 @@ lark-cli note +detail --note-id "note_id"
 ```
 - 根据上一步搜集到的 `meeting-id` 查询。
 - 单次最多查询 50 个，超过 50 个需分批调用。
-- 部分会议没有 `note_id` 或报错 `no notes available`，在最终输出中标注"无纪要"。
+- **`note_id` 缺失 ≠ 无纪要**：`vc +detail` 无 `note_id`（hint 常为 `note_id not found for this meeting`）只说明没有智能纪要产物，**不代表会议没有内容**。先检查返回的 `minute_token`，有值则走下方「备选路径：通过 `minute_token` 获取妙记产物」拉取转写，只有在 `minute_token` 也为空时才在最终输出中标注"无纪要"。
 - 记录每个纪要的 `note_id`（纪要 ID）、`note_display_type`（展示类型：`unknown` / `normal` / `unified`）、`note_doc_token`（纪要文档 Token）和 `verbatim_doc_token`（逐字稿文档 Token）。
+
+**备选路径：通过 `minute_token` 获取妙记产物**
+
+`vc +detail` 返回了 `minute_token` 但无 `note_id`，或用户明确要求妙记产物时，改用妙记链路（录制链路）：
+
+```bash
+lark-cli minutes +detail --minute-tokens '<minute_token1>,<minute_token2>' \
+  --transcript --overwrite --output-dir ./
+```
+
+- **产物 flag 必须显式指定**：`--summary` / `--todo` / `--chapter` / `--keyword` / `--transcript` 至少传一个，不传则只返回基础信息。
+- **`--output-dir` 只接受相对路径**（绝对路径报 "must be a relative path within the current directory"），转写落盘为 `<output-dir>/artifact-<标题>-<minute_token>/transcript.txt`。
+- **权限申请是非阻塞的**：报 `No read permission for minute <token>`（hint 会提示）时先申请，然后告知用户等 owner 在客户端批准：
+  ```bash
+  lark-cli minutes +apply-permission --minute-token <token> --perm view
+  ```
+  批准前读取会持续失败；批准后重试。`+apply-permission` 只支持 `view` / `edit` 两档，没有单独的"转写导出"权限申请。
+- **flag 坑**：拉转写的命令是 `+detail --minute-tokens`（复数），`+download` 的 flag 也是 `--minute-tokens`（复数）；`--minute-token` 单数会直接报 "did you mean --minute-tokens?"。
 
 > **逐字稿路由按 `note_display_type` 决定**（详见 [vc-domain-boundaries.md](../lark-vc/references/vc-domain-boundaries.md) 的 Note 域）：
 > - `normal`：逐字稿是独立文档，链接/正文走 `verbatim_doc_token`。
@@ -103,6 +121,15 @@ lark-cli drive metas batch_query --data '{"request_docs": [{"doc_type": "docx", 
 
 - **单日汇总**（"今天"/"昨天"）：用"今日会议概览"标题，逐会议列出会议时间、主题、纪要链接、逐字稿链接（`unified` 纪要无逐字稿链接，标注"unified 纪要，逐字稿需 `note +transcript` 拉取"）。
 - **多日/周报**（"这周"/"过去 7 天"等）：用"会议纪要周报"标题，含概览统计、逐会议详情。
+
+**内容提炼铁律**：用户要求"提炼/总结/整理/回顾"会议内容时，**总结必须基于逐字稿/文字记录独立分析**（见 [vc-domain-boundaries.md](../lark-vc/references/vc-domain-boundaries.md) 的会议总结流程），**禁止直接搬运 AI 产物的 summary 作为最终输出**——那只是对 AI 总结的重新排版。实操：
+
+1. 用 `minutes +detail --transcript` 或 `note +transcript` 落盘**完整逐字稿**
+2. **通读全文**（转写结构：`<meta 行>` + `Keywords:` 行 + 按"发言人 时间戳"分段，用 `re.split(r'\n(?=[\u4e00-\u9fffA-Za-z ()]+ \d{2}:\d{2}:\d{2}\.\d+)', 文本)` 切段）
+3. 从中独立提炼议题、各方结论、决策、行动项（负责人/截止日期不臆造，未明确标"未定"）
+4. 行动项建议用表格呈现：任务 | 优先级 | 负责人 | 截止 | 验收条件 | 引用
+
+只抓转写开头几句贴进文档 = 伪纪要（2026-08-18 实测被用户指出"根本没有纪要到"）。
 
 ### Step 5: 生成文档（可选，用户要求时）
 
