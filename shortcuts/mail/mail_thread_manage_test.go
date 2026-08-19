@@ -5,10 +5,12 @@ package mail
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -139,6 +141,10 @@ func TestThreadModify_LabelFolderBodyAndOutputContract(t *testing.T) {
 	addLabels := body["add_label_ids"].([]interface{})
 	if addLabels[0] != "UNREAD" || addLabels[1] != "customA" {
 		t.Fatalf("add_label_ids = %#v, want [UNREAD customA]", addLabels)
+	}
+	removeLabels := body["remove_label_ids"].([]interface{})
+	if len(removeLabels) != 1 || removeLabels[0] != "FLAGGED" {
+		t.Fatalf("remove_label_ids = %#v, want [FLAGGED]", removeLabels)
 	}
 
 	data := decodeShortcutEnvelopeData(t, stdout)
@@ -303,6 +309,8 @@ func TestThreadModify_APIFailurePreservesDiagnostic(t *testing.T) {
 	if !strings.Contains(err.Error(), "label not found") {
 		t.Fatalf("error = %v, want backend diagnostic", err)
 	}
+	requireThreadManageAPIError(t, err)
+	requireThreadManageDecoratorPreservesAPICause(t, "failed to modify threads")
 }
 
 func TestThreadTrash_RequiresYesAndOutputsSubmittedContract(t *testing.T) {
@@ -372,4 +380,31 @@ func TestThreadTrash_DryRunAndAPIFailure(t *testing.T) {
 	if !strings.Contains(err.Error(), "conflict") {
 		t.Fatalf("error = %v, want conflict diagnostic", err)
 	}
+	requireThreadManageAPIError(t, err)
+	requireThreadManageDecoratorPreservesAPICause(t, "failed to trash threads")
+}
+
+func requireThreadManageAPIError(t *testing.T, err error) {
+	t.Helper()
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed Problem, got %T", err)
+	}
+	if problem.Category != errs.CategoryAPI {
+		t.Fatalf("problem category = %s, want api", problem.Category)
+	}
+	if problem.Subtype == "" {
+		t.Fatalf("problem subtype is empty: %+v", problem)
+	}
+}
+
+func requireThreadManageDecoratorPreservesAPICause(t *testing.T, prefix string) {
+	t.Helper()
+	cause := errors.New("upstream API cause")
+	err := errs.NewAPIError(errs.SubtypeUnknown, "backend diagnostic").WithCause(cause)
+	decorated := mailDecorateProblemMessage(err, "%s", prefix)
+	if !errors.Is(decorated, cause) {
+		t.Fatalf("decorated API error lost cause %v: %v", cause, decorated)
+	}
+	requireThreadManageAPIError(t, decorated)
 }
