@@ -6,6 +6,7 @@ package core
 import (
 	"context"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/larksuite/cli/internal/envvars"
@@ -129,22 +130,40 @@ type Endpoints struct {
 // ResolveEndpoints resolves endpoint URLs for the brand, normalizing its
 // input so stored values with unusual casing still resolve correctly.
 func ResolveEndpoints(brand LarkBrand) Endpoints {
+	var endpoints Endpoints
 	switch ParseBrand(string(brand)) {
 	case BrandLark:
-		return Endpoints{
+		endpoints = Endpoints{
 			Open:     "https://open.larksuite.com",
 			Accounts: "https://accounts.larksuite.com",
 			MCP:      "https://mcp.larksuite.com",
 			AppLink:  "https://applink.larksuite.com",
 		}
 	default:
-		return Endpoints{
+		endpoints = Endpoints{
 			Open:     "https://open.feishu.cn",
 			Accounts: "https://accounts.feishu.cn",
 			MCP:      "https://mcp.feishu.cn",
 			AppLink:  "https://applink.feishu.cn",
 		}
 	}
+	if domain := endpointDomainOverride(); domain != "" {
+		endpoints.Open = "https://open." + domain
+		endpoints.Accounts = "https://accounts." + domain
+		endpoints.MCP = "https://mcp." + domain
+		endpoints.AppLink = "https://applink." + domain
+	}
+	return endpoints
+}
+
+func endpointDomainOverride() string {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv(envvars.CliEndpointDomain)))
+	if value == "" ||
+		strings.Contains(value, "://") ||
+		strings.ContainsAny(value, "/?#@") {
+		return ""
+	}
+	return strings.TrimRight(value, ".")
 }
 
 // ResolveOpenBaseURL returns the Open API base URL for the given brand.

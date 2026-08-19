@@ -131,3 +131,30 @@ func TestAgentTrace_AcceptsMaxLengthValue(t *testing.T) {
 		t.Fatalf("AgentTrace() = %q, want %d-byte value accepted", got, agentTraceMaxLen)
 	}
 }
+
+func TestExtraHeaders_ParsesSemicolonSeparatedHeaders(t *testing.T) {
+	t.Setenv(CliExtraHeaders, "X-TT-ENV: boe_bitable_bk; x-use-ppe:1")
+
+	headers := ExtraHeaders()
+	if got := headers.Get("X-TT-ENV"); got != "boe_bitable_bk" {
+		t.Fatalf("X-TT-ENV = %q, want boe_bitable_bk", got)
+	}
+	if got := headers.Get("x-use-ppe"); got != "1" {
+		t.Fatalf("x-use-ppe = %q, want 1", got)
+	}
+}
+
+func TestExtraHeaders_RejectsHeaderInjection(t *testing.T) {
+	t.Setenv(CliExtraHeaders, "X-Good: ok; Bad Header: nope; X-Evil: one\nTwo")
+
+	headers := ExtraHeaders()
+	if got := headers.Get("X-Good"); got != "ok" {
+		t.Fatalf("X-Good = %q, want ok", got)
+	}
+	if got := headers.Get("Bad Header"); got != "" {
+		t.Fatalf("Bad Header = %q, want rejected", got)
+	}
+	if got := headers.Get("X-Evil"); got != "" {
+		t.Fatalf("X-Evil = %q, want rejected", got)
+	}
+}
