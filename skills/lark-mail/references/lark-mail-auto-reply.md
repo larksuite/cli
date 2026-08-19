@@ -24,7 +24,7 @@ lark-cli mail +auto-reply-modify --as user \
 # 从文件读取正文
 lark-cli mail +auto-reply-modify --as user --content @auto-reply.html
 
-# 正文中的本地图片会自动内嵌
+# 正文中的本地图片会自动上传并改写为 cid 引用
 lark-cli mail +auto-reply-modify --as user --content '<p>休假中<img src="./logo.png"></p>'
 
 # 关闭自动回复
@@ -38,8 +38,8 @@ lark-cli mail +auto-reply-modify --as user --disable
 | `--mailbox <email>` | 两者 | 否 | 邮箱地址，默认 `me` |
 | `--enable` | modify | 否 | 开启自动回复；与 `--disable` 互斥 |
 | `--disable` | modify | 否 | 关闭自动回复；与 `--enable` 互斥 |
-| `--content <html>` | modify | 否 | 自动回复正文；支持直接传值、`@file` 和 `-` stdin；本地 `<img src="./file.png">` 会自动内嵌 |
-| `--content-file <path>` | modify | 否 | 从当前目录下的文件读取正文；与 `--content` 互斥；正文里的本地图片会自动内嵌 |
+| `--content <html>` | modify | 否 | 自动回复正文；支持直接传值、`@file` 和 `-` stdin；本地 `<img src="./file.png">` 会自动上传并改写为 `cid:` |
+| `--content-file <path>` | modify | 否 | 从当前目录下的文件读取正文；与 `--content` 互斥；正文里的本地图片会自动上传并改写为 `cid:` |
 | `--start <time>` | modify | 否 | 开始日期，支持 Unix timestamp 或 ISO 8601；按当天开始保存 |
 | `--end <time>` | modify | 否 | 结束日期，支持 Unix timestamp 或 ISO 8601；按当天结束保存 |
 | `--timezone <tz>` | modify | 否 | 时区，例如 `Asia/Shanghai` |
@@ -50,7 +50,8 @@ lark-cli mail +auto-reply-modify --as user --disable
 
 - `+auto-reply` 只调用读取接口，需要 `mail:user_mailbox.message:readonly`。
 - `+auto-reply-modify` 只更新用户提供的选项，未指定的配置会保留。
-- 修改正文时会自动生成正文摘要。
+- 修改正文时，本地图片上传后以 `cid:` 和 `images[]` 元信息保存，不会把 data URI 写入正文。
+- 读取时会自动下载 `images[]` 中的图片并在每项的 `data` 字段返回 base64；单张下载失败只在该项返回 `error`，不影响其他图片。
 - 修改需要 `mail:user_mailbox.message:readonly` 和 `mail:user_mailbox.message:modify`。
 - 写操作必须先向用户展示预览并取得明确确认。预览至少包含：`enabled`、时间范围、时区、收件范围和内容摘要。
 - 关闭自动回复也要确认，因为内容和时间配置可能仍会保留在设置中。
@@ -65,7 +66,7 @@ lark-cli mail +auto-reply-modify --as user --disable
   "data": {
     "auto_reply": {
       "enabled": true,
-      "content_html": "<p>我正在休假，回来后回复。</p>",
+      "content": "<p>我正在休假，回来后回复。</p>",
       "content_summary": "我正在休假，回来后回复。",
       "start_time": "1786723200000",
       "end_time": "1787068799999",
@@ -81,8 +82,9 @@ lark-cli mail +auto-reply-modify --as user --disable
 | 字段 | 说明 |
 |------|------|
 | `enabled` | 是否开启自动回复 |
-| `content_html` | 自动回复 HTML 正文 |
+| `content` | 自动回复 HTML 正文；后端 `content_html` 在 CLI 输出层适配为此字段 |
 | `content_summary` | 自动回复摘要 |
+| `images` | 内联图片列表；包含 `cid`、`image_name`、`file_size`、`content_type` 和 base64 `data`，失败项包含 `error` |
 | `start_time` | 毫秒级开始日期时间戳 |
 | `end_time` | 毫秒级结束日期时间戳 |
 | `time_zone` | 自动回复时间范围对应的时区 |

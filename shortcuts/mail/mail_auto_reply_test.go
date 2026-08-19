@@ -182,7 +182,7 @@ func TestMailAutoReplyContentFile(t *testing.T) {
 	assertAutoReplyPayloadAbsent(t, captured, "auto_reply")
 }
 
-func TestMailAutoReplyEmbedsLocalImages(t *testing.T) {
+func TestMailAutoReplyUploadsLocalImages(t *testing.T) {
 	chdirTemp(t)
 	png, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
 	if err != nil {
@@ -194,6 +194,14 @@ func TestMailAutoReplyEmbedsLocalImages(t *testing.T) {
 
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	var captured map[string]interface{}
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"file_token": "file_logo"},
+		},
+	})
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    mailboxPath("me", "settings", "auto_reply"),
@@ -233,13 +241,61 @@ func TestMailAutoReplyEmbedsLocalImages(t *testing.T) {
 	reg.Verify(t)
 
 	html, _ := captured["content_html"].(string)
-	if !strings.Contains(html, `src="data:image/png;base64,`) {
-		t.Fatalf("content_html should embed local image as data URI, got %q", html)
+	if !strings.Contains(html, `src="cid:`) {
+		t.Fatalf("content_html should reference an uploaded image CID, got %q", html)
 	}
 	if strings.Contains(html, `src="logo.png"`) {
 		t.Fatalf("local image path should have been replaced, got %q", html)
 	}
 	assertAutoReplyPayloadAbsent(t, captured, "content_summary")
+	images, ok := captured["images"].([]interface{})
+	if !ok || len(images) != 1 {
+		t.Fatalf("images = %#v, want one uploaded image", captured["images"])
+	}
+	image := images[0].(map[string]interface{})
+	if image["file_key"] != "file_logo" || image["image_name"] != "logo.png" {
+		t.Fatalf("image metadata = %#v", image)
+	}
+	if cid, _ := image["cid"].(string); cid == "" || !strings.Contains(html, "cid:"+cid) {
+		t.Fatalf("image cid = %q, html = %q", cid, html)
+	}
+}
+
+func TestMailAutoReplyHydratesImagesIndependently(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    mailboxPath("me", "settings", "auto_reply"),
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"auto_reply": map[string]interface{}{
+				"content_html": `<p>Hi<img src="cid:ok"><img src="cid:bad"></p>`,
+				"images": []interface{}{
+					map[string]interface{}{"cid": "ok", "image_name": "ok.png", "file_key": "file_ok", "file_size": 3},
+					map[string]interface{}{"cid": "bad", "image_name": "bad.png", "file_key": "file_bad", "file_size": 4},
+				},
+			}},
+		},
+	})
+	reg.Register(&httpmock.Stub{Method: "GET", URL: "/open-apis/drive/v1/medias/file_ok/download", RawBody: []byte("png"), ContentType: "image/png"})
+	reg.Register(&httpmock.Stub{Method: "GET", URL: "/open-apis/drive/v1/medias/file_bad/download", Status: 404, Body: "missing"})
+
+	if err := runMountedMailShortcut(t, MailAutoReply, []string{"+auto-reply", "--format", "json"}, f, stdout); err != nil {
+		t.Fatalf("runMountedMailShortcut() error = %v", err)
+	}
+	autoReply := decodeShortcutEnvelopeData(t, stdout)["auto_reply"].(map[string]interface{})
+	if autoReply["content"] == nil || autoReply["content_html"] != nil {
+		t.Fatalf("content projection = %#v", autoReply)
+	}
+	images := autoReply["images"].([]interface{})
+	first := images[0].(map[string]interface{})
+	second := images[1].(map[string]interface{})
+	if first["data"] != base64.StdEncoding.EncodeToString([]byte("png")) || first["file_key"] != nil {
+		t.Fatalf("first image = %#v", first)
+	}
+	if second["error"] == nil || second["file_key"] != nil {
+		t.Fatalf("second image = %#v", second)
+	}
 }
 
 func TestMailAutoReplyContentFileRequiresCurrentDirectory(t *testing.T) {
