@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"reflect"
 	"testing"
+
+	"github.com/larksuite/cli/internal/envvars"
 )
 
 func TestCredentialSourceContext(t *testing.T) {
@@ -63,6 +65,33 @@ func TestResolveEndpoints_EmptyDefaultsToFeishu(t *testing.T) {
 	// pin the default-brand host so a stray non-production domain revert is caught.
 	if ep.Accounts != "https://accounts.feishu.cn" {
 		t.Errorf("Accounts = %q, want accounts.feishu.cn for empty brand", ep.Accounts)
+	}
+}
+
+func TestResolveEndpoints_EndpointDomainOverride(t *testing.T) {
+	t.Setenv(envvars.CliEndpointDomain, "feishu-boe.cn")
+
+	ep := ResolveEndpoints(BrandFeishu)
+	if ep.Open != "https://open.feishu-boe.cn" {
+		t.Errorf("Open = %q, want BOE open endpoint", ep.Open)
+	}
+	if ep.Accounts != "https://accounts.feishu-boe.cn" {
+		t.Errorf("Accounts = %q, want BOE accounts endpoint", ep.Accounts)
+	}
+	if ep.MCP != "https://mcp.feishu-boe.cn" {
+		t.Errorf("MCP = %q, want BOE mcp endpoint", ep.MCP)
+	}
+	if ep.AppLink != "https://applink.feishu-boe.cn" {
+		t.Errorf("AppLink = %q, want BOE applink endpoint", ep.AppLink)
+	}
+}
+
+func TestResolveEndpoints_RejectsURLAsEndpointDomainOverride(t *testing.T) {
+	t.Setenv(envvars.CliEndpointDomain, "https://open.feishu-boe.cn")
+
+	ep := ResolveEndpoints(BrandFeishu)
+	if ep.Open != "https://open.feishu.cn" {
+		t.Errorf("Open = %q, want default endpoint for invalid override", ep.Open)
 	}
 }
 

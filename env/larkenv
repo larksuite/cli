@@ -1,0 +1,353 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 Lark Technologies Pte. Ltd.
+# SPDX-License-Identifier: MIT
+#
+# larkenv —— 一个脚本搞定 lark-cli 的 boe / pre / ppe / use-pre / online 环境切换。
+#
+#   ./env/larkenv setup          编译 + 安装 + 自动配 PATH（只需跑这一次）
+#   larkenv init boe <app-id>    一条龙：配 app（不弹选择）+ 固定 user 身份 + 登录
+#   larkenv init boe             同上，但走交互式选 app
+#   larkenv login boe            只补登录（app 已配好时用），自动出二维码
+#   larkenv qr <登录URL>          手动把某个 URL 转成终端二维码
+#   larkenv boe <任何 lark-cli 命令>
+#   larkenv pre  <任何 lark-cli 命令>
+#   larkenv ppe  <任何 lark-cli 命令>
+#   larkenv use-pre <任何 lark-cli 命令>
+#   larkenv online <任何 lark-cli 命令>
+#
+# 可选：
+#   LARK_LANE=<泳道> larkenv ...         指定泳道（use-pre 除外，注入 X-TT-ENV 头）
+#   LARK_CLI_SHOW_LOGID=1 larkenv ...    打印所有请求的 x-tt-logid（默认只在出错时打）
+#   LARK_CLI_SHOW_REQ_DETAIL=1 larkenv ... 打印每次请求/响应的完整 header 和 body（凭证已脱敏）
+#   LARK_CLI_DEBUG_HEADERS=1 larkenv ... 只打印出站 header，不打 body
+#
+# boe / pre / online 的配置和登录态隔离在 ~/.lark-cli-env/config/{boe,pre,online}。
+# ppe / use-pre 复用正式 CLI 的默认配置和用户登录态；业务 API 使用 pre
+# endpoint 和 pre_release header，ppe 额外注入 PPE/lane headers，auth/config
+# 控制面仍使用正式 endpoint。
+set -euo pipefail
+
+BIN_DIR="${LARK_CLI_ENV_BIN:-$HOME/.local/bin}"
+CONFIG_ROOT="$HOME/.lark-cli-env"
+BIN="$BIN_DIR/lark-cli-env"
+
+usage() {
+	# Print the header comment block (from the title line to the first
+	# non-comment line), stripped of its leading "# ".
+	awk 'NR<5{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"
+	exit "${1:-0}"
+}
+
+# ---------- setup：编译 + 安装 + 配 PATH ----------
+do_setup() {
+	local repo_root
+	repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+
+	echo "==> 编译 lark-cli ..."
+	(cd "$repo_root" && ./build.sh)
+
+	echo "==> 安装到 $BIN_DIR ..."
+	mkdir -p "$BIN_DIR" "$CONFIG_ROOT/config"
+	cp "$repo_root/lark-cli" "$BIN"
+	cp "$repo_root/env/larkenv" "$BIN_DIR/larkenv"
+	chmod +x "$BIN" "$BIN_DIR/larkenv"
+
+	# 幂等地把 BIN_DIR 加进 shell rc
+	local rc marker='# added by lark-cli env/larkenv'
+	case "${SHELL##*/}" in
+	zsh) rc="$HOME/.zshrc" ;;
+	bash) rc="$HOME/.bashrc" ;;
+	*) rc="" ;;
+	esac
+	if [ -n "$rc" ] && ! grep -qF "$marker" "$rc" 2>/dev/null; then
+		printf '\n%s\nexport PATH="%s:$PATH"\n' "$marker" "$BIN_DIR" >>"$rc"
+		echo "==> 已把 $BIN_DIR 写入 $rc"
+	fi
+
+	# NOTE: brace the expansions below — the surrounding full-width punctuation
+	# would otherwise be swallowed into the variable name by bash.
+	# Plain `[ … ] && x=y` would return non-zero on the else path and trip set -e.
+	local reload="新开一个终端"
+	if [ -n "$rc" ]; then
+		reload="新开一个终端（或 source ${rc}）"
+	fi
+
+	cat <<EOF
+
+安装完成。${reload}，然后：
+
+  larkenv init boe                     # 首次：配 app + 固定 user 身份 + 扫码登录
+  larkenv init pre <上面拿到的 app-id>   # 其他环境复用同一个 app，不用重配
+  larkenv login boe                    # 登录态失效时，只补登录
+
+  larkenv boe base +table-list --base-token <t>
+  larkenv pre  wiki +node-get --token <url>
+  larkenv ppe  drive +search --query xxx
+  larkenv use-pre drive +search --query xxx
+  larkenv online drive +search --query xxx
+
+EOF
+}
+
+append_extra_header() {
+	local header="$1"
+	case "; ${LARKSUITE_CLI_EXTRA_HEADERS:-};" in
+	*"; $header;"*) return ;;
+	esac
+	if [ -n "${LARKSUITE_CLI_EXTRA_HEADERS:-}" ]; then
+		export LARKSUITE_CLI_EXTRA_HEADERS="${LARKSUITE_CLI_EXTRA_HEADERS}; $header"
+	else
+		export LARKSUITE_CLI_EXTRA_HEADERS="$header"
+	fi
+}
+
+remove_extra_header() {
+	local target="$1"
+	local raw="${LARKSUITE_CLI_EXTRA_HEADERS:-}"
+	local item result=""
+	local IFS=';'
+
+	for item in $raw; do
+		item="${item#"${item%%[![:space:]]*}"}"
+		item="${item%"${item##*[![:space:]]}"}"
+		[ -n "$item" ] || continue
+		[ "$item" = "$target" ] && continue
+		if [ -n "$result" ]; then
+			result="$result; $item"
+		else
+			result="$item"
+		fi
+	done
+
+	if [ -n "$result" ]; then
+		export LARKSUITE_CLI_EXTRA_HEADERS="$result"
+	else
+		unset LARKSUITE_CLI_EXTRA_HEADERS
+	fi
+}
+
+remove_extra_header_name() {
+	local target_name="$1"
+	local raw="${LARKSUITE_CLI_EXTRA_HEADERS:-}"
+	local item result="" name
+	local IFS=';'
+
+	for item in $raw; do
+		item="${item#"${item%%[![:space:]]*}"}"
+		item="${item%"${item##*[![:space:]]}"}"
+		[ -n "$item" ] || continue
+		name="${item%%:*}"
+		name="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
+		[ "$name" = "$target_name" ] && continue
+		if [ -n "$result" ]; then
+			result="$result; $item"
+		else
+			result="$item"
+		fi
+	done
+
+	if [ -n "$result" ]; then
+		export LARKSUITE_CLI_EXTRA_HEADERS="$result"
+	else
+		unset LARKSUITE_CLI_EXTRA_HEADERS
+	fi
+}
+
+# PPE reuses the production app config and user token, so authentication and
+# configuration must stay on the production control plane. The launcher may
+# already have injected PPE routing into the parent environment; remove only
+# those routing values while preserving unrelated caller-supplied headers.
+apply_ppe_control_env() {
+	unset LARKSUITE_CLI_CONFIG_DIR
+	unset LARKSUITE_CLI_ENDPOINT_DOMAIN
+	unset LARK_CLI_NO_PROXY
+	remove_extra_header_name "x-use-ppe"
+	remove_extra_header "env:pre_release"
+	remove_extra_header_name "x-tt-env"
+	unset LARK_LANE
+}
+
+# ---------- 环境变量注入 ----------
+apply_env() {
+	# Normalize values that may have been inherited from a previously selected
+	# environment before applying the requested target.
+	unset LARKSUITE_CLI_ENDPOINT_DOMAIN
+	unset LARK_CLI_NO_PROXY
+	if [ "$1" = "ppe" ] || [ "$1" = "use-pre" ]; then
+		# PPE / use-pre 与正式环境使用同一套应用配置和用户登录态。
+		# 显式 unset，避免调用方继承的配置目录把它们再次隔离。
+		unset LARKSUITE_CLI_CONFIG_DIR
+	else
+		export LARKSUITE_CLI_CONFIG_DIR="$CONFIG_ROOT/config/$1"
+		remove_extra_header "x-use-ppe:1"
+		remove_extra_header "env:pre_release"
+	fi
+	case "$1" in
+	boe)
+		export LARKSUITE_CLI_ENDPOINT_DOMAIN="feishu-boe.cn"
+		# boe 是内网域名，必须绕开公司外部 relay 代理
+		export LARK_CLI_NO_PROXY=1
+		;;
+	pre)
+		export LARKSUITE_CLI_ENDPOINT_DOMAIN="feishu-pre.cn"
+		;;
+	ppe)
+		# PPE 复用正式登录态，但请求明确发往 pre 网关，并通过 headers
+		# 选择 pre_release 环境和目标泳道。
+		export LARKSUITE_CLI_ENDPOINT_DOMAIN="feishu-pre.cn"
+		append_extra_header "x-use-ppe:1"
+		append_extra_header "env:pre_release"
+		;;
+	use-pre)
+		# use-pre 与 PPE 一样复用正式登录态并访问 pre 网关，但不能带
+		# x-use-ppe 或泳道头。
+		export LARKSUITE_CLI_ENDPOINT_DOMAIN="feishu-pre.cn"
+		remove_extra_header_name "x-use-ppe"
+		remove_extra_header_name "x-tt-env"
+		unset LARK_LANE
+		append_extra_header "env:pre_release"
+		;;
+	online)
+		# endpoint 已清除，走开源默认 feishu.cn / larksuite.com；仅隔离配置目录
+		;;
+	esac
+	# Append rather than overwrite, so a caller-supplied LARKSUITE_CLI_EXTRA_HEADERS
+	# (e.g. "x-use-boe: 1") survives alongside LARK_LANE.
+	if [ -n "${LARK_LANE:-}" ]; then
+		append_extra_header "X-TT-ENV: $LARK_LANE"
+	fi
+	if [ -n "${LARKSUITE_CLI_CONFIG_DIR:-}" ]; then
+		mkdir -p "$LARKSUITE_CLI_CONFIG_DIR"
+	fi
+}
+
+apply_control_env() {
+	if [ "$1" = "ppe" ] || [ "$1" = "use-pre" ]; then
+		apply_ppe_control_env
+	else
+		apply_env "$1"
+	fi
+}
+
+# json_field extracts a top-level string field from a JSON object on stdin.
+json_field() {
+	if command -v jq >/dev/null 2>&1; then
+		jq -r --arg k "$1" '.[$k] // empty'
+	else
+		python3 -c 'import json,sys; print(json.load(sys.stdin).get(sys.argv[1],""))' "$1"
+	fi
+}
+
+# do_login runs the device flow but renders the verification URL as a terminal
+# QR code before polling. Scanning with your own Feishu app avoids authorizing
+# as whichever account the default browser happens to be signed in as — the
+# usual cause of "用户登录态无效 (20033)" on a shared machine.
+do_login() {
+	local json url code
+	json="$("$BIN" auth login --recommend --no-wait --json)"
+	url="$(printf '%s' "$json" | json_field verification_url)"
+	code="$(printf '%s' "$json" | json_field device_code)"
+
+	if [ -z "$url" ] || [ -z "$code" ]; then
+		echo "无法解析登录信息，原始输出：" >&2
+		printf '%s\n' "$json" >&2
+		return 1
+	fi
+
+	echo "" >&2
+	echo "用你自己的手机飞书扫下面的码（别用浏览器，容易串成别人的账号）：" >&2
+	echo "" >&2
+	"$BIN" auth qrcode --ascii "$url"
+	echo "" >&2
+	echo "扫不了的话再用链接：$url" >&2
+	echo "" >&2
+
+	"$BIN" auth login --device-code "$code"
+}
+
+require_bin() {
+	[ -x "$BIN" ] || {
+		echo "还没安装，先在仓库根目录跑一次：./env/larkenv setup" >&2
+		exit 1
+	}
+}
+
+# ---------- 入口 ----------
+[ $# -ge 1 ] || usage 1
+
+case "$1" in
+setup)
+	do_setup
+	;;
+qr)
+	# Renders the device-flow URL as a terminal QR code. The CLI never opens a
+	# browser itself, so scanning with your own Feishu app is the way to avoid
+	# authorizing as whichever account the default browser happens to hold.
+	[ $# -eq 2 ] || {
+		echo "用法: larkenv qr <登录URL>" >&2
+		exit 1
+	}
+	require_bin
+	exec "$BIN" auth qrcode --ascii "$2"
+	;;
+init)
+	# With an app id, config init runs fully non-interactively — no app-selection
+	# prompt at all. boe/pre can reuse the online app id, so there is usually no
+	# reason to register a separate app per environment.
+	case $# in
+	2 | 3) ;;
+	*)
+		echo "用法: larkenv init <boe|pre|ppe|use-pre|online> [app-id]" >&2
+		exit 1
+		;;
+	esac
+	require_bin
+	apply_control_env "$2"
+
+	if [ $# -eq 3 ]; then
+		printf 'App Secret (输入不回显): ' >&2
+		stty -echo 2>/dev/null || true
+		read -r secret
+		stty echo 2>/dev/null || true
+		printf '\n' >&2
+		# --app-secret-stdin keeps the secret out of the process list.
+		printf '%s' "$secret" | "$BIN" config init --app-id "$3" --app-secret-stdin
+		unset secret
+	else
+		echo "提示：已有 app 时可直接 'larkenv init $2 <app-id>' 跳过选择流程。" >&2
+		"$BIN" config init
+	fi
+
+	# 固定成 user 身份，之后所有命令都不用再带 --as user。
+	"$BIN" config default-as user
+	do_login
+	;;
+login)
+	# 单独补登录：app 配好了、只是授权失败或过期时用这个，不用重跑 init。
+	[ $# -eq 2 ] || {
+		echo "用法: larkenv login <boe|pre|ppe|use-pre|online>" >&2
+		exit 1
+	}
+	require_bin
+	apply_control_env "$2"
+	do_login
+	;;
+boe | pre | ppe | use-pre | online)
+	require_bin
+	env_name="$1"
+	shift
+	if { [ "$env_name" = "ppe" ] || [ "$env_name" = "use-pre" ]; } && { [ "${1:-}" = "auth" ] || [ "${1:-}" = "config" ]; }; then
+		apply_ppe_control_env
+	else
+		apply_env "$env_name"
+	fi
+	exec "$BIN" "$@"
+	;;
+-h | --help | help)
+	usage 0
+	;;
+*)
+	echo "未知命令 '$1'（可用: boe / pre / ppe / use-pre / online / setup / init / login / qr）" >&2
+	exit 1
+	;;
+esac
