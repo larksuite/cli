@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"path/filepath"
 	"strconv"
@@ -16,8 +17,10 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/larksuite/cli/shortcuts/mail/filecheck"
+	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"golang.org/x/net/html"
 )
 
@@ -44,7 +47,7 @@ var MailAutoReply = common.Shortcut{
 		if err != nil {
 			return mailDecorateProblemMessage(err, "get auto-reply failed")
 		}
-		return outputAutoReply(runtime, data, "")
+		return outputAutoReply(ctx, runtime, data, "")
 	},
 }
 
@@ -60,7 +63,7 @@ var MailAutoReplyModify = common.Shortcut{
 		{Name: "mailbox", Default: "me", Desc: "Mailbox address (default: me)."},
 		{Name: "enable", Type: "bool", Desc: "Turn auto-reply on."},
 		{Name: "disable", Type: "bool", Desc: "Turn auto-reply off."},
-		{Name: "content", Desc: "Auto-reply HTML content. Plain text is accepted and sent as-is. Supports @file and - stdin. Local <img src=\"./file.png\"> references are embedded as data:image URIs.", Input: []string{common.File, common.Stdin}},
+		{Name: "content", Desc: "Auto-reply HTML content. Plain text is accepted and sent as-is. Supports @file and - stdin. Local <img src=\"./file.png\"> references are uploaded and rewritten to cid: references.", Input: []string{common.File, common.Stdin}},
 		{Name: "content-file", Desc: "Read auto-reply content from a file in the current directory. Mutually exclusive with --content."},
 		{Name: "start", Desc: "Start date as Unix timestamp or ISO 8601. Stored as the day's 00:00:00.000."},
 		{Name: "end", Desc: "End date as Unix timestamp or ISO 8601. Stored as the day's 23:59:59.999."},
@@ -70,7 +73,7 @@ var MailAutoReplyModify = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		mailboxID := resolveAutoReplyMailboxID(runtime)
-		patch, _ := buildAutoReplyPatch(runtime, false)
+		patch, _ := buildAutoReplyPatch(ctx, runtime, false)
 		return common.NewDryRunAPI().
 			Desc("Modify mailbox auto-reply settings. Dry-run body shows only the options provided by flags because the live current value is unavailable.").
 			GET(autoReplyPath(mailboxID)).
@@ -102,12 +105,12 @@ var MailAutoReplyModify = common.Shortcut{
 		if !autoReplyHasModify(runtime) {
 			return mailValidationError("no auto-reply changes provided")
 		}
-		_, err := buildAutoReplyPatch(runtime, false)
+		_, err := buildAutoReplyPatch(ctx, runtime, false)
 		return err
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		mailboxID := resolveAutoReplyMailboxID(runtime)
-		patch, err := buildAutoReplyPatch(runtime, true)
+		patch, err := buildAutoReplyPatch(ctx, runtime, true)
 		if err != nil {
 			return err
 		}
@@ -120,7 +123,7 @@ var MailAutoReplyModify = common.Shortcut{
 		if err != nil {
 			return mailDecorateProblemMessage(err, "modify auto-reply failed")
 		}
-		return outputAutoReply(runtime, data, "Auto-reply modified.")
+		return outputAutoReply(ctx, runtime, data, "Auto-reply modified.")
 	},
 }
 
@@ -147,7 +150,7 @@ func autoReplyHasModify(runtime *common.RuntimeContext) bool {
 	return false
 }
 
-func buildAutoReplyPatch(runtime *common.RuntimeContext, embedLocalImages bool) (map[string]interface{}, error) {
+func buildAutoReplyPatch(ctx context.Context, runtime *common.RuntimeContext, uploadLocalImages bool) (map[string]interface{}, error) {
 	autoReply := map[string]interface{}{}
 	if runtime.Bool("enable") {
 		autoReply["enabled"] = true
@@ -162,19 +165,20 @@ func buildAutoReplyPatch(runtime *common.RuntimeContext, embedLocalImages bool) 
 	if err := validateAutoReplyContentHTML(runtime, content); err != nil {
 		return nil, err
 	}
-	hasLocalImages := false
-	if embedLocalImages && content != "" {
-		hasLocalImages = len(parseLocalImgs(content)) > 0
-		content, err = embedAutoReplyLocalImages(runtime, content)
+	if uploadLocalImages && content != "" {
+		var images []map[string]interface{}
+		content, images, err = uploadAutoReplyLocalImages(ctx, runtime, content)
 		if err != nil {
 			return nil, err
 		}
+		if len(images) > 0 {
+			autoReply["images"] = images
+		}
 	}
 	if content != "" {
-		if hasLocalImages && int64(len(content)) > maxTemplateContentBytes {
-			return nil, mailFailedPreconditionError("auto-reply content + images exceed %d MB (got %.1f MB)",
-				maxTemplateContentBytes/(1024*1024),
-				float64(len(content))/1024/1024)
+		if int64(len(content)) > maxTemplateContentBytes {
+			return nil, mailFailedPreconditionError("auto-reply content exceeds %d MB (got %.1f MB)",
+				maxTemplateContentBytes/(1024*1024), float64(len(content))/1024/1024)
 		}
 		autoReply["content_html"] = content
 	}
@@ -362,26 +366,43 @@ func validateAutoReplyContentFilePath(path string) error {
 	return nil
 }
 
-func embedAutoReplyLocalImages(runtime *common.RuntimeContext, content string) (string, error) {
+func uploadAutoReplyLocalImages(ctx context.Context, runtime *common.RuntimeContext, content string) (string, []map[string]interface{}, error) {
 	imgs := parseLocalImgs(content)
-	pathToDataURI := make(map[string]string, len(imgs))
+	type uploadedImage struct {
+		cid, fileKey, mimeType string
+		size                   int64
+	}
+	uploaded := make(map[string]uploadedImage, len(imgs))
+	images := make([]map[string]interface{}, 0, len(imgs))
 	for _, img := range imgs {
-		dataURI, ok := pathToDataURI[img.Path]
+		item, ok := uploaded[img.Path]
 		if !ok {
 			buf, err := readAutoReplyImage(runtime, img.Path)
 			if err != nil {
-				return "", err
+				return "", nil, err
 			}
 			mimeType, err := filecheck.CheckInlineImageFormat(filepath.Base(img.Path), buf)
 			if err != nil {
-				return "", mailValidationParamError("--content", "inline image %s: %v", img.Path, err).WithCause(err)
+				return "", nil, mailValidationParamError("--content", "inline image %s: %v", img.Path, err).WithCause(err)
 			}
-			dataURI = "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(buf)
-			pathToDataURI[img.Path] = dataURI
+			fileKey, size, err := uploadToDriveForTemplate(ctx, runtime, img.Path)
+			if err != nil {
+				return "", nil, err
+			}
+			cid, err := generateTemplateCID()
+			if err != nil {
+				return "", nil, err
+			}
+			item = uploadedImage{cid: cid, fileKey: fileKey, mimeType: mimeType, size: size}
+			uploaded[img.Path] = item
+			images = append(images, map[string]interface{}{
+				"cid": item.cid, "image_name": filepath.Base(img.Path), "file_key": item.fileKey,
+				"file_size": item.size, "content_type": item.mimeType,
+			})
 		}
-		content = replaceImgSrcOnce(content, img.RawSrc, dataURI)
+		content = replaceImgSrcOnce(content, img.RawSrc, "cid:"+item.cid)
 	}
-	return content, nil
+	return content, images, nil
 }
 
 func readAutoReplyImage(runtime *common.RuntimeContext, path string) ([]byte, error) {
@@ -527,12 +548,17 @@ func moveAutoReplyField(values map[string]interface{}, oldKey, newKey string) {
 	}
 }
 
-func outputAutoReply(runtime *common.RuntimeContext, data map[string]interface{}, message string) error {
+func outputAutoReply(ctx context.Context, runtime *common.RuntimeContext, data map[string]interface{}, message string) error {
 	autoReply := data
 	if nested, ok := data["auto_reply"].(map[string]interface{}); ok {
 		autoReply = nested
 	}
 	autoReply = normalizeAutoReplyFields(autoReply)
+	if content, ok := autoReply["content_html"]; ok {
+		autoReply["content"] = content
+		delete(autoReply, "content_html")
+	}
+	autoReply["images"] = hydrateAutoReplyImages(ctx, runtime, autoReply["images"])
 	runtime.OutFormat(
 		map[string]interface{}{"auto_reply": autoReply},
 		&output.Meta{Count: 1},
@@ -561,4 +587,50 @@ func outputAutoReply(runtime *common.RuntimeContext, data map[string]interface{}
 		},
 	)
 	return nil
+}
+
+func hydrateAutoReplyImages(ctx context.Context, runtime *common.RuntimeContext, raw interface{}) []interface{} {
+	items, _ := raw.([]interface{})
+	result := make([]interface{}, 0, len(items))
+	for _, rawItem := range items {
+		image, ok := rawItem.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		projected := make(map[string]interface{}, len(image)+1)
+		for key, value := range image {
+			if key != "file_key" && key != "download_url" {
+				projected[key] = value
+			}
+		}
+		fileKey, _ := image["file_key"].(string)
+		if fileKey == "" {
+			projected["error"] = "image file_key is missing"
+			result = append(result, projected)
+			continue
+		}
+		resp, err := runtime.DoAPIStream(ctx, &larkcore.ApiReq{
+			HttpMethod: http.MethodGet,
+			ApiPath:    fmt.Sprintf("/open-apis/drive/v1/medias/%s/download", validate.EncodePathSegment(fileKey)),
+		})
+		if err != nil {
+			projected["error"] = fmt.Sprintf("download image failed: %v", err)
+			result = append(result, projected)
+			continue
+		}
+		buf, readErr := io.ReadAll(io.LimitReader(resp.Body, int64(MaxAttachmentDownloadBytes)+1))
+		resp.Body.Close()
+		if readErr != nil {
+			projected["error"] = fmt.Sprintf("read image failed: %v", readErr)
+		} else if len(buf) > MaxAttachmentDownloadBytes {
+			projected["error"] = fmt.Sprintf("image exceeds %d MB download limit", MaxAttachmentDownloadBytes/1024/1024)
+		} else {
+			projected["data"] = base64.StdEncoding.EncodeToString(buf)
+			if _, ok := projected["content_type"]; !ok {
+				projected["content_type"] = resp.Header.Get("Content-Type")
+			}
+		}
+		result = append(result, projected)
+	}
+	return result
 }
