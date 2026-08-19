@@ -162,9 +162,6 @@ func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 
 	for time.Now().Before(deadline) && attempts < maxPollAttempts {
 		attempts++
-		if ctx.Err() != nil {
-			return &DeviceFlowResult{OK: false, Error: "expired_token", Message: "Polling was cancelled"}, nil
-		}
 
 		select {
 		case <-time.After(time.Duration(currentInterval) * time.Second):
