@@ -1,4 +1,4 @@
-# 生成和修改妙记
+# 生成和修改妙记、管理妙记权限
 
 生成妙记和修改妙记都是写操作，必须有用户明确意图。生成成功后保存 `minute_token`；修改前确认唯一 `minute_token` 和目标内容，提供 token 不等于授权修改。除 `minutes +apply-permission` 外，本场景的 Minutes 写命令仅支持用户身份；来源身份为 bot 时停止并说明限制，只有用户明确同意后，才以 `--as user` 重新开始修改流程。`minutes +apply-permission` 支持用户或应用身份，必须沿用触发权限错误时的身份。
 
@@ -77,7 +77,38 @@ lark-cli minutes +word-replace --minute-token <token> --replace-words '[{"source
 
 完整流程和参数见 [`lark-minutes-speaker-replace`](../references/lark-minutes-speaker-replace.md)。
 
-## 申请妙记权限
+## 查看妙记授权列表
+
+用户要查看妙记已授权给哪些成员，或查询某个成员当前的查看 / 编辑权限时，使用 Drive 协作者列表；这不是读取妙记内容，也不是为当前身份申请权限。先读取 [`lark-drive`](../../lark-drive/SKILL.md) 和 [`drive +member-list`](../../lark-drive/references/lark-drive-member-list.md)。
+
+```bash
+lark-cli drive +member-list --token "<minute_url>" --as <source_identity> --format json
+```
+
+完整妙记 URL 可自动推断资源类型为 `minutes`；裸 `minute_token` 必须显式传 `--type minutes`。需要核对指定成员时，按 `member_id` 精确匹配返回的 `items[]`，不要按姓名或列表顺序猜测。
+
+## 分配妙记权限
+
+用户要求“把妙记分享给某人”“让某人可以查看 / 编辑”或“给某人授予权限”时，修改的是目标妙记的协作者权限，使用 `drive +member-add`；禁止使用 `minutes +apply-permission`，后者只为当前调用身份向妙记所有者申请权限。
+
+先读取 [`lark-drive`](../../lark-drive/SKILL.md) 和 [`drive +member-add`](../../lark-drive/references/lark-drive-member-add.md)。目标成员只有展示名时，按 [`lark-contact`](../../lark-contact/SKILL.md) 将其唯一解析为对应 ID；存在多个候选时请用户选择，不得猜测。
+
+```bash
+lark-cli drive +member-add \
+  --token "<minute_url>" \
+  --member-id "<open_id>" \
+  --member-type openid \
+  --perm view \
+  --yes \
+  --as <source_identity> \
+  --format json
+```
+
+完整妙记 URL 可自动推断资源类型为 `minutes`；裸 `minute_token` 必须显式传 `--type minutes`。根据用户要求选择 `view` 或 `edit`；妙记不支持 `full_access`。只有妙记、目标成员和权限档位均已明确，且用户已明确要求执行授权时，才传 `--yes`。
+
+写入后使用 `drive +member-list` 按 `member_id` 回读验证。只有返回的目标成员权限与用户要求一致时，才能声明分配完成；若目标成员已有不同权限，不要仅根据 `member-add` 回执声称权限已被覆盖或降级。
+
+## 为当前身份申请妙记权限
 
 没有查看或编辑权限时，先说明权限事实。只有用户明确要求申请权限时才执行：
 
