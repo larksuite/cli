@@ -14,10 +14,13 @@ import (
 )
 
 type threadModifyInput struct {
-	ThreadIDs      []string
-	AddLabelIDs    []string
-	RemoveLabelIDs []string
-	FolderID       string
+	ThreadIDs          []string
+	AddLabelIDs        []string
+	RemoveLabelIDs     []string
+	FolderID           string
+	CustomLabelIDs     []string
+	CustomFolderID     string
+	ValidationAPIPlans []validationAPIPlan
 }
 
 const mailThreadManageMaxIDs = 20
@@ -94,6 +97,7 @@ func dryRunThreadModify(ctx context.Context, rt *common.RuntimeContext) *common.
 	input, _ := buildThreadModifyInput(rt)
 	return common.NewDryRunAPI().
 		Desc("Modify threads with one batch_modify request; submitted_count is request-side only and does not mean the server changed every thread").
+		Set("validation_api_plan", input.ValidationAPIPlans).
 		POST(mailboxPath(mailboxID, "threads", "batch_modify")).
 		Body(threadModifyBody(input))
 }
@@ -102,6 +106,12 @@ func executeThreadModify(ctx context.Context, rt *common.RuntimeContext) error {
 	mailboxID := resolveMailboxID(rt)
 	input, err := buildThreadModifyInput(rt)
 	if err != nil {
+		return err
+	}
+	if err := validateCustomMessageManageLabels(rt, mailboxID, input.CustomLabelIDs); err != nil {
+		return err
+	}
+	if err := validateCustomMessageManageFolder(rt, mailboxID, input.CustomFolderID); err != nil {
 		return err
 	}
 	if _, err := rt.CallAPITyped("POST", mailboxPath(mailboxID, "threads", "batch_modify"), nil, threadModifyBody(input)); err != nil {
@@ -156,11 +166,11 @@ func buildThreadModifyInput(rt *common.RuntimeContext) (threadModifyInput, error
 	if err != nil {
 		return threadModifyInput{}, err
 	}
-	addLabels, _, err := normalizeMessageManageLabels(rt.StrSlice("add-label-ids"), "--add-label-ids")
+	addLabels, customAddLabels, err := normalizeMessageManageLabels(rt.StrSlice("add-label-ids"), "--add-label-ids")
 	if err != nil {
 		return threadModifyInput{}, err
 	}
-	removeLabels, _, err := normalizeMessageManageLabels(rt.StrSlice("remove-label-ids"), "--remove-label-ids")
+	removeLabels, customRemoveLabels, err := normalizeMessageManageLabels(rt.StrSlice("remove-label-ids"), "--remove-label-ids")
 	if err != nil {
 		return threadModifyInput{}, err
 	}
@@ -174,11 +184,19 @@ func buildThreadModifyInput(rt *common.RuntimeContext) (threadModifyInput, error
 	if len(addLabels) == 0 && len(removeLabels) == 0 && folderID == "" {
 		return threadModifyInput{}, mailValidationParamError("--thread-modify", "provide at least one of --add-label-ids, --remove-label-ids, or --add-folder")
 	}
+	customLabels := append(customAddLabels, customRemoveLabels...)
+	customFolderID := ""
+	if isCustomMessageManageFolder(folderID) {
+		customFolderID = folderID
+	}
 	return threadModifyInput{
-		ThreadIDs:      threadIDs,
-		AddLabelIDs:    addLabels,
-		RemoveLabelIDs: removeLabels,
-		FolderID:       folderID,
+		ThreadIDs:          threadIDs,
+		AddLabelIDs:        addLabels,
+		RemoveLabelIDs:     removeLabels,
+		FolderID:           folderID,
+		CustomLabelIDs:     customLabels,
+		CustomFolderID:     customFolderID,
+		ValidationAPIPlans: messageManageValidationPlan(resolveMailboxID(rt), customLabels, customFolderID),
 	}, nil
 }
 
@@ -188,11 +206,25 @@ func normalizeThreadManageIDs(raw []string) ([]string, error) {
 	}
 	ids := make([]string, 0, len(raw))
 	seen := map[string]struct{}{}
-	for _, token := range raw {
-		for _, part := range strings.Split(token, ",") {
+	for tokenIndex, token := range raw {
+		for _, r := range token {
+			if r == '\n' || r == '\r' || r == '\t' {
+				return nil, mailValidationParamError("--thread-ids", "--thread-ids entry %d (%q): must not contain whitespace or control characters", tokenIndex+1, token)
+			}
+		}
+		for partIndex, part := range strings.Split(token, ",") {
+			if part == "" {
+				return nil, mailValidationParamError("--thread-ids", "--thread-ids contains empty value; remove extra commas or provide valid thread IDs")
+			}
 			id := strings.TrimSpace(part)
 			if id == "" {
-				continue
+				return nil, mailValidationParamError("--thread-ids", "--thread-ids contains empty value; remove extra commas or provide valid thread IDs")
+			}
+			if id != part {
+				return nil, mailValidationParamError("--thread-ids", "--thread-ids entry %d (%q): must not contain leading or trailing whitespace", partIndex+1, part)
+			}
+			if err := validateThreadManageID(id, partIndex); err != nil {
+				return nil, err
 			}
 			if _, ok := seen[id]; ok {
 				continue
@@ -210,6 +242,24 @@ func normalizeThreadManageIDs(raw []string) ([]string, error) {
 	return ids, nil
 }
 
+func validateThreadManageID(id string, index int) error {
+	if strings.Trim(id, "0123456789") == "" {
+		return mailValidationParamError("--thread-ids", "--thread-ids entry %d (%q): numeric primary IDs are not supported; pass the Open API thread_id from mail output", index+1, id)
+	}
+	for _, r := range id {
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			continue
+		}
+		switch r {
+		case '+', '/', '=', '_', '-':
+			continue
+		default:
+			return mailValidationParamError("--thread-ids", "--thread-ids entry %d (%q): contains characters outside the Open API thread_id character set", index+1, id)
+		}
+	}
+	return nil
+}
+
 func normalizeThreadManageFolder(raw string) (string, error) {
 	if raw == "" {
 		return "", nil
@@ -225,6 +275,14 @@ func normalizeThreadManageFolder(raw string) (string, error) {
 		return system, nil
 	}
 	return folder, nil
+}
+
+func isCustomMessageManageFolder(folderID string) bool {
+	if folderID == "" {
+		return false
+	}
+	_, ok := messageManageSystemFolders[strings.ToUpper(folderID)]
+	return !ok
 }
 
 func threadModifyBody(input threadModifyInput) map[string]interface{} {
