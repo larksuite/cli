@@ -54,4 +54,5 @@ app.log
 cover*.out
 
 lark-env.sh
+.agents/
 /automations/
