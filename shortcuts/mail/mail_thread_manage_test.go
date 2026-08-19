@@ -80,6 +80,18 @@ func TestThreadTrash_Metadata(t *testing.T) {
 	}
 }
 
+func TestThreadManage_ShortcutsRegistration(t *testing.T) {
+	commands := map[string]bool{}
+	for _, shortcut := range Shortcuts() {
+		commands[shortcut.Command] = true
+	}
+	for _, want := range []string{"+thread-modify", "+thread-trash"} {
+		if !commands[want] {
+			t.Fatalf("Shortcuts() missing %s", want)
+		}
+	}
+}
+
 func TestThreadManage_NormalizeThreadIDs(t *testing.T) {
 	id1 := threadManageID("1")
 	id2 := threadManageID("2")
