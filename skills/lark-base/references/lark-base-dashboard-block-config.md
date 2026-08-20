@@ -374,14 +374,14 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 
 ### statistics 指标卡数值格式 number_format（可选）
 
-仅 `type: statistics` 支持在 `data_config` 里加可选 `number_format`，控制数值展示格式与精度；不传时由后端按其默认格式展示（通常是千分位数字 `digital`，本仓库未核实）。其它组件类型不支持该字段：create 会被 CLI 直接拒绝（显式 `--no-validate` 可跳过），避免把后端严格 schema 错误延迟到请求阶段；update 不带 `--type`，由服务端结合组件现有类型裁决。
+仅 `type: statistics` 支持在 `data_config` 里加可选 `number_format`，控制数值展示格式与精度；不传时服务端会补 `{"formatName":"digital"}`，`precision` 保持省略。其它组件类型不支持该字段：create 会被 CLI 直接拒绝（显式 `--no-validate` 可跳过），避免把后端严格 schema 错误延迟到请求阶段；update 不带 `--type`，由服务端结合组件现有类型裁决。
 
 - `formatName`（string，可选）：必须精确匹配下表 5 个枚举之一，**区分大小写**（不同于 `series[].rollup` 会被自动转成大写，这里不做规范化，`DIGITAL` 会被拒绝）。
 - `precision`（integer，可选）：小数位数，`0` 到 `9` 的整数；`2.5` 这类非整数会被本地拒绝。
 
 | formatName | 含义 | 示例（precision=2） |
 |------------|------|--------------------|
-| `digital` | 千分位数字（不传 number_format 时后端多半按此展示，未核实） | `1,234.56` |
+| `digital` | 千分位数字（不传 `number_format` 时的服务端默认值） | `1,234.56` |
 | `digital_without_separator` | 无千分位数字 | `1234.56` |
 | `percentage_rounded` | 百分比 | `1,234.56%` |
 | `cyn_rounded` | 人民币金额 | `¥1,234.56` |
@@ -397,7 +397,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 }
 ```
 
-> **更新时按 `number_format` 整体替换来准备请求**：服务端是否对子字段做合并尚未在真实租户验证。为避免缺省字段回退到未知默认值，只想改精度时也应把当前 `formatName` 一并带回；其它顶层 key 的更新策略见 [lark-base-dashboard.md](lark-base-dashboard.md)。
+> **更新时 `number_format` 按子字段合并**：例如现有 `{"formatName":"digital","precision":2}` 时只传 `{"number_format":{"precision":0}}`，服务端会保留 `formatName:"digital"` 并把精度改为 `0`。其它顶层 key 的更新策略见 [lark-base-dashboard.md](lark-base-dashboard.md)。
 
 文本组件（Markdown 富文本）：
 

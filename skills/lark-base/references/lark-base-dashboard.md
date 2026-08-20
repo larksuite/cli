@@ -260,7 +260,7 @@ A:
 **data_config 更新策略（顶层 key merge）**：
 - 只传入需要修改的顶层字段（如 `series`、`filter`）
 - 未传的顶层字段（如 `group_by`）自动保留原值
-- 但每个传入的字段内部是**全量替换**（如传新 `filter` 会完整覆盖旧 `filter`）
+- 但每个传入的字段内部通常是**全量替换**（如传新 `filter` 会完整覆盖旧 `filter`）；`number_format` 例外，按子字段合并，见 [Dashboard Block 配置](lark-base-dashboard-block-config.md) 的 number_format 小节
 
 **Q: 查看已有组件有什么用？**
 A: 在「添加新组件」或「编辑组件」前查看已有组件可以：

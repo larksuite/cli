@@ -37,7 +37,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		"Read lark-base-dashboard-block-config.md as the SSOT for data_config templates, filters, metric rules, and type-specific fields; do not invent data_config from natural language.",
 		"Use +dashboard-block-get first to inspect the current data_config before replacing nested values.",
 		"Block type cannot be changed; delete and recreate the block to change chart type.",
-		"data_config update merges top-level keys, but each provided key is replaced as a whole.",
+		"data_config update merges top-level keys; each provided key is normally replaced as a whole, except number_format, whose subfields merge server-side.",
 		"--position is optional precise layout in a 12-col grid; omit it to leave the current layout unchanged. Coordinate values are not validated locally; the server auto-arranges out-of-range or overlapping positions. To re-tidy an existing dashboard use +dashboard-arrange instead.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {

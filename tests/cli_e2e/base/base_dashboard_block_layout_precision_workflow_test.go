@@ -14,9 +14,10 @@ import (
 )
 
 // TestBaseDashboardBlockLayoutPrecisionWorkflow exercises the changed fields
-// against the real API: create a statistics block with position and
-// number_format, update both fields, read it back, and clean up the temporary
-// dashboard/base. The test is skipped unless a tenant access token is present.
+// against the real API: create a statistics block with position and the server
+// default number_format, update both fields, verify a precision-only update
+// preserves formatName, and clean up the temporary dashboard/base. The test is
+// skipped unless a tenant access token is present.
 func TestBaseDashboardBlockLayoutPrecisionWorkflow(t *testing.T) {
 	clie2e.SkipWithoutTenantAccessToken(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
@@ -45,7 +46,7 @@ func TestBaseDashboardBlockLayoutPrecisionWorkflow(t *testing.T) {
 			Args:      []string{"base", "+dashboard-delete", "--base-token", baseToken, "--dashboard-id", dashboardID, "--yes"},
 			DefaultAs: "bot",
 		})
-		reportCleanupFailure(t, "delete dashboard "+dashboardID, result, cleanupErr)
+		clie2e.ReportCleanupFailure(t, "delete dashboard "+dashboardID, result, cleanupErr)
 	})
 
 	createBlock, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
@@ -55,7 +56,7 @@ func TestBaseDashboardBlockLayoutPrecisionWorkflow(t *testing.T) {
 			"--dashboard-id", dashboardID,
 			"--name", "Metric Precision",
 			"--type", "statistics",
-			"--data-config", `{"table_name":"` + tableName + `","count_all":true,"number_format":{"formatName":"digital","precision":2}}`,
+			"--data-config", `{"table_name":"` + tableName + `","count_all":true}`,
 			"--position", `{"x":0,"y":0,"w":6,"h":4}`,
 		},
 		DefaultAs: "bot",
@@ -75,20 +76,40 @@ func TestBaseDashboardBlockLayoutPrecisionWorkflow(t *testing.T) {
 			Args:      []string{"base", "+dashboard-block-delete", "--base-token", baseToken, "--dashboard-id", dashboardID, "--block-id", blockID, "--yes"},
 			DefaultAs: "bot",
 		})
-		reportCleanupFailure(t, "delete dashboard block "+blockID, result, cleanupErr)
+		clie2e.ReportCleanupFailure(t, "delete dashboard block "+blockID, result, cleanupErr)
 	})
 
-	// Update both fields to values distinct from the create call, so the
-	// read-back below proves the update landed rather than re-reading the
-	// created state. number_format is replaced as a whole (like every
-	// data_config top-level key), so formatName is carried back explicitly.
+	getNumberFormat := func(label string) gjson.Result {
+		t.Helper()
+		getBlock, getErr := clie2e.RunCmd(ctx, clie2e.Request{
+			Args:      []string{"base", "+dashboard-block-get", "--base-token", baseToken, "--dashboard-id", dashboardID, "--block-id", blockID},
+			DefaultAs: "bot",
+		})
+		require.NoError(t, getErr)
+		getBlock.AssertExitCode(t, 0)
+		getBlock.AssertStdoutStatus(t, true)
+
+		// Located by key rather than by a fixed path: the assertion is about
+		// number_format, not about where the response nests data_config.
+		numberFormats := gjson.Get(getBlock.Stdout, "@dig:number_format").Array()
+		require.NotEmpty(t, numberFormats, "%s number_format missing from block read-back:\n%s", label, getBlock.Stdout)
+		return numberFormats[0]
+	}
+
+	defaultFormat := getNumberFormat("default")
+	require.Equal(t, "digital", defaultFormat.Get("formatName").String())
+	require.False(t, defaultFormat.Get("precision").Exists())
+
+	// Set a non-default format together with the new position, then update only
+	// precision. The final read-back proves both the explicit format update and
+	// the server's number_format subfield merge behavior.
 	updateBlock, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"base", "+dashboard-block-update",
 			"--base-token", baseToken,
 			"--dashboard-id", dashboardID,
 			"--block-id", blockID,
-			"--data-config", `{"number_format":{"formatName":"dollar_rounded","precision":0}}`,
+			"--data-config", `{"number_format":{"formatName":"dollar_rounded","precision":2}}`,
 			"--position", `{"x":6,"y":0,"w":6,"h":4}`,
 		},
 		DefaultAs: "bot",
@@ -97,22 +118,22 @@ func TestBaseDashboardBlockLayoutPrecisionWorkflow(t *testing.T) {
 	updateBlock.AssertExitCode(t, 0)
 	updateBlock.AssertStdoutStatus(t, true)
 
-	getBlock, err := clie2e.RunCmd(ctx, clie2e.Request{
-		Args:      []string{"base", "+dashboard-block-get", "--base-token", baseToken, "--dashboard-id", dashboardID, "--block-id", blockID},
+	partialUpdate, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"base", "+dashboard-block-update",
+			"--base-token", baseToken,
+			"--dashboard-id", dashboardID,
+			"--block-id", blockID,
+			"--data-config", `{"number_format":{"precision":0}}`,
+		},
 		DefaultAs: "bot",
 	})
 	require.NoError(t, err)
-	getBlock.AssertExitCode(t, 0)
-	getBlock.AssertStdoutStatus(t, true)
+	partialUpdate.AssertExitCode(t, 0)
+	partialUpdate.AssertStdoutStatus(t, true)
 
-	// Located by key rather than by a fixed path: the assertion is about the
-	// updated values, not about where the response nests data_config.
-	// Coordinate read-back (x/y/w/h) is not asserted — the get response is not
-	// contracted to echo position in this iteration.
-	numberFormats := gjson.Get(getBlock.Stdout, "@dig:number_format").Array()
-	require.NotEmpty(t, numberFormats, "number_format missing from block read-back:\n%s", getBlock.Stdout)
-	updated := numberFormats[0]
-	require.Equal(t, "dollar_rounded", updated.Get("formatName").String(), "stdout:\n%s", getBlock.Stdout)
-	require.True(t, updated.Get("precision").Exists(), "precision missing from block read-back:\n%s", getBlock.Stdout)
-	require.Equal(t, int64(0), updated.Get("precision").Int(), "stdout:\n%s", getBlock.Stdout)
+	updated := getNumberFormat("updated")
+	require.Equal(t, "dollar_rounded", updated.Get("formatName").String())
+	require.True(t, updated.Get("precision").Exists())
+	require.Equal(t, int64(0), updated.Get("precision").Int())
 }
