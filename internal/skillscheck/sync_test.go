@@ -195,6 +195,7 @@ type fakeSkillsRunner struct {
 	globalJSON         string
 	installs           []string
 	removals           [][]string
+	removeError        error
 	localSuite         string
 	localSuiteChildren []string
 	stages             []string
@@ -280,7 +281,7 @@ func (f *fakeSkillsRunner) InstallLocalSuite(path string) *selfupdate.NpmResult 
 }
 func (f *fakeSkillsRunner) RemoveGlobalSkills(names []string) *selfupdate.NpmResult {
 	f.removals = append(f.removals, append([]string{}, names...))
-	return &selfupdate.NpmResult{}
+	return &selfupdate.NpmResult{Err: f.removeError}
 }
 
 const suiteFixture = `---
@@ -722,9 +723,12 @@ func TestSyncSkillsSwitchToSeparateRemovesSuite(t *testing.T) {
 		name        string
 		indexErrors map[string]error
 		wantInstall string
+		removeError error
+		wantError   bool
 	}{
 		{name: "official source", indexErrors: map[string]error{}, wantInstall: "primary:lark-calendar,lark-mail"},
 		{name: "GitHub fallback", indexErrors: map[string]error{"primary": fmt.Errorf("down")}, wantInstall: "larksuite/cli:lark-calendar,lark-mail"},
+		{name: "cleanup failure", indexErrors: map[string]error{}, removeError: fmt.Errorf("remove failed"), wantError: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
@@ -744,9 +748,16 @@ func TestSyncSkillsSwitchToSeparateRemovesSuite(t *testing.T) {
 				installErrors: map[string]error{},
 				stageErrors:   map[string]error{},
 				globalJSON:    fmt.Sprintf(`[{"name":"lark-suite","path":%q,"scope":"global"}]`, suite),
+				removeError:   test.removeError,
 			}
 
 			result := SyncSkills(SyncOptions{Version: "1.0.33", Layout: LayoutSeparate, Runner: runner, Now: time.Now})
+			if test.wantError {
+				if result.Err == nil {
+					t.Fatal("expected lark-suite cleanup failure")
+				}
+				return
+			}
 			if result.Err != nil {
 				t.Fatal(result.Err)
 			}
