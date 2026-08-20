@@ -110,7 +110,7 @@ Dashboard Block 是 Base Block 树中的仪表盘容器，负责承载页面主�
 2. **写入配置：** `+dashboard-block-create` / `+dashboard-block-update` / `+dashboard-block-delete` 管理组件，`data_config` 定义数据源、维度、指标、聚合或文本内容。
 3. **读取内容：** `+dashboard-block-get-data` 读取图表、指标卡等数据组件的计算结果。
 
-只有用户明确给出 `x/y/w/h`、具体行列/顺序、每个组件宽高或可直接换算的尺寸比例时，才在 create/update 使用 `--position` 精确布局。命令成功即视为写入成功，一般无需仅为读回 position 再调用 get/list；成功响应不代表最终渲染位置已经过读回验证。坐标只解析完整数值形状、不校验取值并原样透传；服务端如何处理越界或重叠坐标尚未验证。若 block 类型为 `unknown` 或接口返回 `unsupported block type unknown`，说明该组件不支持精确布局：不要用 `--no-validate` 重试或删除重建来硬凑坐标；泛化布局诉求可回退为一次 arrange，明确坐标诉求则告知该 block 当前不支持。`statistics` 的 `data_config.number_format` 支持 `formatName` 和 `precision`；create 会校验组件类型和子字段，update 只能校验子字段，组件类型由服务端按现有 block 裁决。具体规则和服务端未部署该字段时的处理策略读取 [Dashboard](references/lark-base-dashboard.md) 与 [Dashboard Block 配置](references/lark-base-dashboard-block-config.md)。
+用户给出组件级坐标、位置、顺序或尺寸时，使用 `+dashboard-block-create/update --position`；只要求整盘重排或美化、没有组件级约束时，使用 `+dashboard-arrange`。
 
 操作内部 Block 前先读 [Dashboard](references/lark-base-dashboard.md)，由该入口继续路由组件配置和结果协议。
 

@@ -28,10 +28,14 @@ create/update 可选 `--position`，用 12 列栅格坐标精确指定单个组�
 
 > [!IMPORTANT]
 > - **四个 key 必须齐全且都是数字**：`position` 按整体提交、不做逐字段合并，所以只传 `{"x":6}` 表达的不是"只挪位置不改大小"，而是一个缺了三项的位置。本地会拒绝残缺对象（含显式 `null`）。
-> - 坐标**取值不做本地校验**：越界、负值、重叠都原样发给服务端（服务端如何处置未经验证），需要不重叠布局时由调用方自行规划。
+> - 坐标**取值不做本地校验**：越界、负值或重叠坐标会原样发给服务端，由服务端自动重排。调用方仍应优先规划 12 列范围内且不重叠的坐标，避免自动重排改变预期落点。
 > - 不传 `--position`：create 由服务端自动装箱，update 保持当前布局不变。
 > - 只有用户明确给出 `x/y/w/h`、具体行列/顺序、每个组件宽高或可直接换算的尺寸比例时才用 `--position`。"调整布局""美化""撑满""铺满"本身不算精确约束，没有组件级坐标或尺寸时优先用 `+dashboard-arrange` 整盘编排。
 > - 命令成功即视为写入成功，一般无需仅为读回位置再调用 `+dashboard-block-get` / `+dashboard-block-list`；成功响应不代表最终渲染位置已经过读回验证。
+
+## statistics 指标卡数值格式
+
+`statistics` 组件可在 create/update 的 `data_config.number_format` 中设置 `formatName` 和 `precision`。create 会校验组件类型和子字段；update 不接收 `--type`，只校验 `number_format` 子字段，再由服务端结合现有 block 类型裁决。枚举、精度范围、更新语义和可复制模板读取 [Dashboard Block 配置](lark-base-dashboard-block-config.md)。
 
 ## 典型场景工作流
 
