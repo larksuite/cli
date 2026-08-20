@@ -404,9 +404,14 @@ func TestApiCmd_BinaryResponse_AutoSave(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("stdout is not JSON: %v\nstdout:\n%s", err, stdout.String())
 	}
-	savedPath, _ := got["saved_path"].(string)
+	// Save metadata rides the standard success envelope: {ok, identity, data:{...}}.
+	if got["ok"] != true || got["identity"] != "bot" {
+		t.Fatalf("unexpected envelope: %#v", got)
+	}
+	data, _ := got["data"].(map[string]interface{})
+	savedPath, _ := data["saved_path"].(string)
 	if savedPath == "" {
-		t.Fatalf("saved_path missing from output: %#v", got)
+		t.Fatalf("data.saved_path missing from output: %#v", got)
 	}
 	// The file must land inside the temporary cwd — this pins the isolation
 	// contract: rolling back TestChdir would leave download.bin in the repo.

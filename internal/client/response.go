@@ -119,7 +119,7 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 			if scanResult.Alert != nil {
 				output.WriteAlertWarning(opts.ErrOut, scanResult.Alert)
 			}
-			return saveAndPrint(opts.FileIO, resp, opts.OutputPath, opts.Out)
+			return saveAndPrint(opts, resp, identity)
 		}
 
 		if opts.JqExpr != "" || opts.Format == output.FormatJSON {
@@ -149,7 +149,7 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 			WithParam("--jq")
 	}
 	if opts.OutputPath != "" {
-		return saveAndPrint(opts.FileIO, resp, opts.OutputPath, opts.Out)
+		return saveAndPrint(opts, resp, identity)
 	}
 
 	// No --output: auto-save with derived filename.
@@ -158,17 +158,28 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 		return classifySaveErr(err)
 	}
 	fmt.Fprintf(opts.ErrOut, "binary response detected (Content-Type: %s), saved to file\n", ct)
-	output.PrintJson(opts.Out, meta)
-	return nil
+	return printSaveMeta(opts, meta, identity)
 }
 
-func saveAndPrint(fio fileio.FileIO, resp *larkcore.ApiResp, path string, w io.Writer) error {
-	meta, err := SaveResponse(fio, resp, path)
+func saveAndPrint(opts ResponseOptions, resp *larkcore.ApiResp, identity core.Identity) error {
+	meta, err := SaveResponse(opts.FileIO, resp, opts.OutputPath)
 	if err != nil {
 		return classifySaveErr(err)
 	}
-	output.PrintJson(w, meta)
-	return nil
+	return printSaveMeta(opts, meta, identity)
+}
+
+// printSaveMeta emits the save metadata through the standard success envelope
+// ({ok, identity, data:{saved_path,...}}) — the error contract promises one
+// stdout shape, and the file-save paths were the only success paths bypassing
+// it with a bare map.
+func printSaveMeta(opts ResponseOptions, meta map[string]interface{}, identity core.Identity) error {
+	return output.WriteSuccessEnvelope(meta, output.SuccessEnvelopeOptions{
+		CommandPath: opts.CommandPath,
+		Identity:    string(identity),
+		Out:         opts.Out,
+		ErrOut:      opts.ErrOut,
+	})
 }
 
 // classifySaveErr routes a SaveResponse error to the right typed shape.
