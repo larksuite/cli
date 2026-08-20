@@ -1,9 +1,9 @@
 # Slides CLI E2E Coverage
 
 ## Metrics
-- Denominator: 6 leaf commands
-- Covered: 5
-- Coverage: 83.3%
+- Denominator: 7 leaf commands
+- Covered: 6
+- Coverage: 85.7%
 
 ## Summary
 - TestSlides_CreateWorkflowAsUser: proves the user slides workflow through `create presentation with slide as user` and `get created presentation xml as user`; creates a fresh presentation, asserts returned IDs, then reads back the XML content to prove the title and slide body persisted.
@@ -15,6 +15,8 @@
 - TestSlides_HistoryWorkflow: opt-in live round-trip coverage for `+update-slide`; creates a presentation, updates its page in place, asserts the returned `slide_id`, the persisted marker, and that an element written back with its original id keeps that id, then reverts through slide history and self-cleans. It runs only when `LARK_SLIDES_HISTORY_E2E=1` and therefore does not yet exercise the default live lane.
 - TestSlidesReplaceSlideNormalizationDryRunE2E / TestSlidesReplaceSlideEmptyReplacementDryRunE2E / TestSlidesReplaceSlideDryRunE2E: dry-run coverage for `+replace-slide` through the built binary. The normalization case proves `replace` / `insert`, `target_id`, `content`, and `element` become a canonical request and that structured output records all conversions. The other cases preserve the strict boundary: an actually-empty canonical payload still fails, while a legitimate mixed `block_replace` + `block_insert` batch remains unchanged.
 - TestSlides_ReplaceSlideAliasWorkflowAsUser: live alias round trip on a throwaway presentation. It reads server-assigned block IDs, replaces one target through `replace` / `target_id` / `content`, inserts another through `insert` / `element`, reads the deck back to prove both writes persisted in the requested position while a control block survived, and deletes the presentation in cleanup.
+- TestSlidesScreenshotOverviewDryRunE2E / TestSlidesScreenshotRegionDryRunE2E: execute the compiled CLI without remote writes. The overview case pins XML enumeration followed by two dynamic screenshot-batch placeholders; the region case pins its single-slide screenshot request and local output routing.
+- TestSlidesScreenshotOverviewAndRegionLiveE2E: creates a two-page throwaway deck, verifies overview indexing, fixed four-column PNG geometry, slide-id mapping and output path, then verifies a pixel-region crop's audit metadata and decoded PNG dimensions before cleanup.
 - Blocked area: `slides +media-upload` is still uncovered because it needs a deterministic local image fixture plus XML follow-up proof that is separate from the base create/read workflow.
 
 ## Command Table
@@ -26,4 +28,5 @@
 | ✓ | slides +delete-slide | shortcut | slides_slide_add_delete_dryrun_test.go::TestSlidesDeleteSlideDryRunE2E, TestSlidesDeleteSlideWikiDryRunE2E; slides_slide_add_delete_workflow_test.go::TestSlides_SlideAddDeleteWorkflowAsUser | `--slide-id`; `--revision-id`; wiki URL | live delete runs on a throwaway deck; readback proves the neighbours survive |
 | ✓ | slides +update-slide | shortcut | slides_update_slide_dryrun_test.go::TestSlidesUpdateSlideDryRunE2E (+ alias / refusal cases); slides_update_slide_workflow_test.go::TestSlidesUpdateSlideLiveE2E; slides_history_workflow_test.go::TestSlides_HistoryWorkflow (opt-in history/revert) | `--presentation`; `--slide-id`; `--content "<slide ...>"`; `--revision-id` | default live CI proves a real in-place update and readback; opt-in workflow adds history/revert and element-id preservation |
 | ✓ | slides +replace-slide | shortcut | slides_replace_slide_dryrun_test.go::TestSlidesReplaceSlideNormalizationDryRunE2E, TestSlidesReplaceSlideEmptyReplacementDryRunE2E, TestSlidesReplaceSlideDryRunE2E; slides_replace_slide_workflow_test.go::TestSlides_ReplaceSlideAliasWorkflowAsUser | `--presentation`; `--slide-id`; canonical and compatibility `--parts` shapes | dry-run pins canonical request construction and validation; live workflow proves alias replace/insert persistence, target ID preservation, insertion ordering, control-block survival, and cleanup |
+| ✓ | slides +screenshot | shortcut | slides_screenshot_dryrun_test.go::TestSlidesScreenshotOverviewDryRunE2E, TestSlidesScreenshotRegionDryRunE2E; slides_screenshot_workflow_test.go::TestSlidesScreenshotOverviewAndRegionLiveE2E | `--overview`; `--overview-page`; `--region`; `--slide-id`; `--output` | dry-run pins XML-read and dynamic batch declaration for overview plus region request routing; live workflow verifies overview index/path/image contract and PNG region crop metadata |
 | ✕ | slides +media-upload | shortcut |  | none | needs a stable local image fixture plus follow-up slide XML proof |
