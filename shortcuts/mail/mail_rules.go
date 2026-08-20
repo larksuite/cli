@@ -17,7 +17,10 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-const mailRuleSpecVersion = "mail_rule/v1"
+const (
+	mailRuleSpecVersion  = "mail_rule/v1"
+	mailRuleListMaxPages = 200
+)
 
 type mailRuleSpec struct {
 	Version string `json:"version"`
@@ -599,7 +602,9 @@ func parseRuleConditionValue(rt *common.RuntimeContext, raw, flag string) ([]mai
 	}
 	if strings.HasPrefix(expanded, "{") || strings.HasPrefix(expanded, "[") {
 		var v any
-		if err := json.Unmarshal([]byte(expanded), &v); err != nil {
+		dec := json.NewDecoder(strings.NewReader(expanded))
+		dec.UseNumber()
+		if err := dec.Decode(&v); err != nil {
 			return nil, mailValidationParamError(flag, "invalid %s JSON: %v", flag, err).WithCause(err)
 		}
 		return parseRuleConditionJSON(v, flag)
@@ -663,7 +668,10 @@ func parseRuleConditionJSONObject(v any, flag string) (mailRuleCondition, error)
 	}
 	field, _ := m["field"].(string)
 	op, _ := m["operator"].(string)
-	value, _ := m["value"].(string)
+	value := ""
+	if raw, ok := m["value"]; ok && raw != nil {
+		value = fmt.Sprint(raw)
+	}
 	if op == "" {
 		op, _ = m["op"].(string)
 	}
@@ -896,7 +904,11 @@ func encodeRuleActions(actions []mailRuleAction) []map[string]any {
 func listMailRuleEnvelopes(rt *common.RuntimeContext, mailboxID string) ([]mailRuleEnvelope, error) {
 	var out []mailRuleEnvelope
 	pageToken := ""
-	for {
+	seenTokens := map[string]struct{}{}
+	for page := 0; ; page++ {
+		if page >= mailRuleListMaxPages {
+			return nil, mailFailedPreconditionError("mail rule list pagination exceeded %d pages", mailRuleListMaxPages)
+		}
 		params := map[string]interface{}{"page_size": 50}
 		if pageToken != "" {
 			params["page_token"] = pageToken
@@ -916,6 +928,13 @@ func listMailRuleEnvelopes(rt *common.RuntimeContext, mailboxID string) ([]mailR
 		if next == "" || !hasMore {
 			break
 		}
+		if next == pageToken {
+			return nil, mailFailedPreconditionError("mail rule list pagination repeated page_token %q", next)
+		}
+		if _, seen := seenTokens[next]; seen {
+			return nil, mailFailedPreconditionError("mail rule list pagination repeated page_token %q", next)
+		}
+		seenTokens[next] = struct{}{}
 		pageToken = next
 	}
 	return out, nil
@@ -1204,7 +1223,26 @@ func mergeRuleUpdate(rt *common.RuntimeContext, current mailRuleEnvelope) (*mail
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	return &target, raw, diff, nil
+	return &target, mergeRuleUpdateBody(rt, current, raw), diff, nil
+}
+
+func mergeRuleUpdateBody(rt *common.RuntimeContext, current mailRuleEnvelope, encoded map[string]any) map[string]any {
+	raw := copyMap(current.Raw)
+	if len(raw) == 0 {
+		raw = map[string]any{}
+	}
+	for _, key := range []string{"name", "is_enable", "ignore_the_rest_of_rules", "rule_id"} {
+		if v, ok := encoded[key]; ok {
+			raw[key] = v
+		}
+	}
+	if rt.Changed("match") || rt.Changed("condition") || rt.Changed("conditions") || raw["condition"] == nil {
+		raw["condition"] = encoded["condition"]
+	}
+	if rt.Changed("action") || rt.Changed("actions") || raw["action"] == nil {
+		raw["action"] = encoded["action"]
+	}
+	return raw
 }
 
 func diffEntry(field string, before, after any) map[string]any {

@@ -51,6 +51,19 @@ func TestMailRuleParserGrammarAndEncode(t *testing.T) {
 	}
 }
 
+func TestMailRuleConditionJSONCoercesNonStringValue(t *testing.T) {
+	conds, err := parseRuleConditionValue(nil, `{"field":"subject","operator":"contains","value":9007199254740993}`, "--condition")
+	if err != nil {
+		t.Fatalf("parseRuleConditionValue() error = %v", err)
+	}
+	if len(conds) != 1 {
+		t.Fatalf("conditions = %+v, want one", conds)
+	}
+	if conds[0].Value != "9007199254740993" {
+		t.Fatalf("condition value = %q", conds[0].Value)
+	}
+}
+
 func TestMailRuleParserRejectsUnknownAliasWithHint(t *testing.T) {
 	_, err := parseRuleConditionGrammar("subjct:contains:x", "--condition")
 	if err == nil {
@@ -157,6 +170,34 @@ func TestMailRuleListShortcutDecodesResponse(t *testing.T) {
 	}
 }
 
+func TestMailRuleListRejectsRepeatedPageToken(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	for i := 0; i < 2; i++ {
+		reg.Register(
+			&httpmock.Stub{
+				Method: "GET",
+				URL:    "open-apis/mail/v1/user_mailboxes/me/rules",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{
+						"rules":      []interface{}{},
+						"has_more":   true,
+						"page_token": "same_token",
+					},
+				},
+			},
+		)
+	}
+
+	err := runMountedMailShortcut(t, MailRuleList, []string{"+rule-list", "--format", "json"}, f, stdout)
+	if err == nil {
+		t.Fatal("expected repeated page token error")
+	}
+	if !strings.Contains(err.Error(), "repeated page_token") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestRuleReorderComputesMoveTarget(t *testing.T) {
 	current := []mailRuleEnvelope{{RuleID: "a"}, {RuleID: "b"}, {RuleID: "c"}}
 	f, _, _, _ := mailShortcutTestFactory(t)
@@ -193,6 +234,81 @@ func TestMailRuleUpdateRegistersNameFlag(t *testing.T) {
 	}
 	if !ruleID.Required {
 		t.Fatal("--rule-id must remain required")
+	}
+}
+
+func TestMailRuleUpdatePreservesRawFieldsAndUpdatesName(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	currentRule := map[string]interface{}{
+		"rule_id":                  "rule_1",
+		"name":                     "Alpha",
+		"is_enable":                true,
+		"ignore_the_rest_of_rules": false,
+		"vendor_top":               "keep",
+		"condition": map[string]interface{}{
+			"match_type": 1,
+			"items": []interface{}{
+				map[string]interface{}{"type": 6, "operator": 1, "input": "Alpha", "vendor_condition_extra": "keep"},
+			},
+		},
+		"action": map[string]interface{}{
+			"items": []interface{}{
+				map[string]interface{}{"type": 3, "vendor_action_extra": "keep"},
+			},
+		},
+	}
+	reg.Register(
+		&httpmock.Stub{
+			Method: "GET",
+			URL:    "open-apis/mail/v1/user_mailboxes/me/rules",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"rules": []interface{}{currentRule},
+				},
+			},
+		},
+	)
+	put := &httpmock.Stub{
+		Method: "PUT",
+		URL:    "open-apis/mail/v1/user_mailboxes/me/rules/rule_1",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"rule": map[string]interface{}{
+					"rule_id":   "rule_1",
+					"name":      "Beta",
+					"is_enable": true,
+				},
+			},
+		},
+	}
+	reg.Register(put)
+
+	err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--name", "Beta", "--format", "json"}, f, stdout)
+	if err != nil {
+		t.Fatalf("run +rule-update error = %v", err)
+	}
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(put.CapturedBody, &body); err != nil {
+		t.Fatalf("Unmarshal(PUT body) error = %v, body=%s", err, string(put.CapturedBody))
+	}
+	if body["name"] != "Beta" {
+		t.Fatalf("name = %v", body["name"])
+	}
+	if body["vendor_top"] != "keep" {
+		t.Fatalf("vendor_top = %v", body["vendor_top"])
+	}
+	condition := body["condition"].(map[string]interface{})
+	conditionItems := condition["items"].([]interface{})
+	if got := conditionItems[0].(map[string]interface{})["vendor_condition_extra"]; got != "keep" {
+		t.Fatalf("vendor_condition_extra = %v", got)
+	}
+	action := body["action"].(map[string]interface{})
+	actionItems := action["items"].([]interface{})
+	if got := actionItems[0].(map[string]interface{})["vendor_action_extra"]; got != "keep" {
+		t.Fatalf("vendor_action_extra = %v", got)
 	}
 }
 
