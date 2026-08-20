@@ -1,30 +1,44 @@
 # mail +thread-trash
 
-`mail +thread-trash` is the preferred shortcut for soft-deleting existing mail conversations when you have `thread_id` values.
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-Use it after obtaining real `thread_id` values from a conversation list, search, `+triage`, `+message`, or `+thread`, and after the user has confirmed the deletion preview. If the operation targets concrete `message_id` values rather than whole conversations, use [`mail +message-trash`](./lark-mail-message-trash.md).
+已有 `thread_id` 且要按会话维度软删除邮件时，优先使用 `mail +thread-trash`。执行前必须先拿到真实 `thread_id`，并让用户确认删除预览。
 
-## Common Commands
+如果操作对象是具体邮件 `message_id`，不是整个会话，使用 [`mail +message-trash`](./lark-mail-message-trash.md)。
+
+本 skill 对应 shortcut `lark-cli mail +thread-trash`，内部调用：
+
+- `POST /open-apis/mail/v1/user_mailboxes/{mailbox}/threads/batch_trash` — 按会话批量软删除
+
+## 命令
 
 ```bash
+# 软删除多个会话
 lark-cli mail +thread-trash --thread-ids <thread_id1>,<thread_id2> --yes
+
+# 指定公共邮箱或共享邮箱
 lark-cli mail +thread-trash --mailbox shared@example.com --thread-ids <thread_id> --yes
+
+# Dry Run：只预览请求，不执行
 lark-cli mail +thread-trash --thread-ids <thread_id1> --thread-ids <thread_id2> --dry-run
 ```
 
-## Flags
+## 参数
 
-| Flag | Required | Notes |
-| --- | --- | --- |
-| `--mailbox` | No | Mailbox that owns the threads. Defaults to `me`. |
-| `--thread-ids` | Yes | `string_array`; supports comma-separated values and repeated flags. Up to 20 IDs per command. |
-| `--yes` | Yes for execution | Required by the high-risk write confirmation framework. |
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `--mailbox <email>` | 否 | 会话所属邮箱，默认 `me` |
+| `--thread-ids <ids>` | 是 | 会话 ID 列表，支持逗号分隔和重复传参；每次最多提交 20 个去重后的 ID |
+| `--yes` | 执行时必填 | 高风险写操作确认。只有用户确认删除预览后才加 |
+| `--dry-run` | 否 | 只打印请求路径和请求体，不执行 |
 
-## Behavior
+## 行为细节
 
-- Thread IDs are locally trimmed, de-duplicated in first-seen order, and submitted in one request.
-- The raw API batch limit is 20 thread IDs; the shortcut validates this before sending.
-- JSON output is intentionally request-side only:
+- `thread_id` 必须来自 `+triage`、`+message`、`+thread`、会话列表或搜索等真实查询结果；不要用数字主键或占位符。
+- 软删除属于高风险写操作。先用真实查询结果展示删除预览，包括受影响会话数量和关键邮件摘要；用户确认后再执行并加 `--yes`。
+- 命令在本地解析逗号分隔和重复 flag，按首次出现顺序去重，再一次性提交。
+- 原生 API 每次最多接收 20 个 `thread_id`；shortcut 在发请求前做本地校验。
+- JSON 输出只表示 CLI 请求侧提交结果：
 
 ```json
 {
@@ -35,8 +49,17 @@ lark-cli mail +thread-trash --thread-ids <thread_id1> --thread-ids <thread_id2> 
 }
 ```
 
-`submitted_count` is the number of IDs submitted by the CLI. It does not mean every thread was trashed by the server. The shortcut does not output `trashed_count`, `failed_ids`, or per-thread results.
+`submitted_count` 是 CLI 提交的会话数量，不代表服务端逐条软删除成功。当前 shortcut 不输出 `trashed_count`、`failed_ids` 或每个会话的处理结果。
 
-## When Raw API Is Still Appropriate
+> 注意：使用 `--format json` 获取结构化输出。所有 JSON 输出统一包裹在 `{"ok": true, "data": ...}` 结构中。
 
-Use raw `mail user_mailbox.threads batch_trash` only when reproducing backend/API behavior exactly for diagnostics. For normal conversation soft deletion, prefer this shortcut because it handles validation, compact output, and `--yes` confirmation consistently.
+## 原生 API 适用场景
+
+只有在需要精确复现后端/API 行为做诊断时，才直接调用 `mail user_mailbox.threads batch_trash`。普通会话软删除优先使用本 shortcut，因为它内置了 ID 校验、紧凑输出、dry-run 预览和 `--yes` 确认。
+
+## 相关命令
+
+- `lark-cli mail +triage` — 浏览邮件摘要，获取 `thread_id`
+- `lark-cli mail +thread` — 读取完整会话
+- `lark-cli mail +message-trash` — 按 `message_id` 软删除具体邮件
+- `lark-cli mail +thread-modify` — 按 `thread_id` 修改会话标签或移动文件夹
