@@ -1264,8 +1264,13 @@ func handleShortcutDryRun(f *cmdutil.Factory, rctx *RuntimeContext, s *Shortcut)
 	}
 	dryResult := s.DryRun(rctx.ctx, rctx)
 	if dryResult != nil {
-		// Same data.context contract as the service/api dry-run paths.
-		dryResult.Context(rctx.Config.AppID, rctx.UserOpenId())
+		// Same data.context contract as the service/api dry-run paths:
+		// user_open_id only when the call would execute as that user.
+		userOpenID := ""
+		if rctx.As() == core.AsUser {
+			userOpenID = rctx.UserOpenId()
+		}
+		dryResult.Context(rctx.Config.AppID, userOpenID)
 	}
 	return cmdutil.WriteDryRun(dryResult, cmdutil.DryRunOutputOptions{
 		Format:      rctx.Format,

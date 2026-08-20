@@ -41,8 +41,11 @@ type DryRunAPICall struct {
 }
 
 // DryRunContext is the execution context shared by every dry-run preview:
-// which app would make the call and, when known, as which user. The identity
-// itself lives at the envelope top level, not here.
+// which app would make the call and, when the call would run as a user, as
+// which user. The identity itself lives at the envelope top level, not here.
+// user_open_id is recorded only for user-identity previews: a bot call uses
+// the tenant token and never acts as a user, so echoing a user_open_id there
+// would misreport what the real request carries.
 type DryRunContext struct {
 	AppID      string `json:"app_id,omitempty"`
 	UserOpenID string `json:"user_open_id,omitempty"`
@@ -246,20 +249,27 @@ func encodeParams(params map[string]interface{}) string {
 
 // buildDryRunPreview assembles the shared preview skeleton: HTTP method, URL,
 // query params, and the app/user context common to every dry-run.
-func buildDryRunPreview(request client.RawApiRequest, config *core.CliConfig) *DryRunAPI {
+// user_open_id is included only when identity is user; a bot-identity call
+// executes with the tenant token, so the preview must not claim a user
+// context the real request never carries.
+func buildDryRunPreview(request client.RawApiRequest, config *core.CliConfig, identity core.Identity) *DryRunAPI {
 	dr := NewDryRunAPI().call(request.Method, request.URL)
 	if len(request.Params) > 0 {
 		dr.Params(request.Params)
 	}
 	// Identity is reported at the envelope top level, not duplicated here.
-	dr.Context(config.AppID, config.UserOpenId)
+	userOpenID := ""
+	if identity == core.AsUser {
+		userOpenID = config.UserOpenId
+	}
+	dr.Context(config.AppID, userOpenID)
 	return dr
 }
 
 // PrintDryRunWithFile outputs a dry-run summary for file upload requests.
 // Instead of serializing the Formdata body, it shows file metadata.
 func PrintDryRunWithFile(request client.RawApiRequest, config *core.CliConfig, opts DryRunOutputOptions, file FileUploadMeta) error {
-	dr := buildDryRunPreview(request, config)
+	dr := buildDryRunPreview(request, config, opts.Identity)
 	filePathDisplay := file.FilePath
 	if filePathDisplay == "" {
 		filePathDisplay = "<stdin>"
@@ -278,7 +288,7 @@ func PrintDryRunWithFile(request client.RawApiRequest, config *core.CliConfig, o
 // PrintDryRun outputs a standardised dry-run summary using DryRunAPI.
 // When format is "pretty", outputs human-readable text; otherwise JSON.
 func PrintDryRun(request client.RawApiRequest, config *core.CliConfig, opts DryRunOutputOptions) error {
-	dr := buildDryRunPreview(request, config)
+	dr := buildDryRunPreview(request, config, opts.Identity)
 	if !util.IsNil(request.Data) {
 		dr.Body(request.Data)
 	}

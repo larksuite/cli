@@ -277,8 +277,11 @@ func TestPrintDryRunWithFile_JSONEnvelope(t *testing.T) {
 		t.Fatalf("file body = %#v", body)
 	}
 	dctx, ok := data["context"].(map[string]interface{})
-	if !ok || dctx["app_id"] != "app123" || dctx["user_open_id"] != "ou_tester" {
+	if !ok || dctx["app_id"] != "app123" {
 		t.Fatalf("unexpected data.context: %#v", data["context"])
+	}
+	if _, exists := dctx["user_open_id"]; exists {
+		t.Fatalf("bot-identity dry-run must not echo user_open_id (no user token is sent): %#v", data["context"])
 	}
 	for _, legacy := range []string{"as", "appId", "userOpenId"} {
 		if _, exists := data[legacy]; exists {
@@ -333,6 +336,62 @@ func TestPrintDryRun_EmptyConfigOmitsContext(t *testing.T) {
 	if _, exists := data["context"]; exists {
 		t.Fatalf("empty app/user context must be omitted entirely, got: %#v", data["context"])
 	}
+}
+
+// TestPrintDryRun_UserOpenIDFollowsIdentity is the contract test for
+// data.context.user_open_id: it appears only when the previewed call would
+// execute as that user. A bot-identity preview must not echo it, because the
+// real request uses the tenant token and never carries user identity.
+func TestPrintDryRun_UserOpenIDFollowsIdentity(t *testing.T) {
+	newOpts := func(identity core.Identity, buf *bytes.Buffer) DryRunOutputOptions {
+		return DryRunOutputOptions{Format: "json", Identity: identity, Out: buf, ErrOut: io.Discard}
+	}
+	readContext := func(t *testing.T, buf *bytes.Buffer) map[string]interface{} {
+		t.Helper()
+		var env map[string]interface{}
+		if err := json.Unmarshal(buf.Bytes(), &env); err != nil {
+			t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, buf.String())
+		}
+		dctx, ok := env["data"].(map[string]interface{})["context"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("expected data.context, got: %#v", env["data"])
+		}
+		return dctx
+	}
+
+	t.Run("user identity includes user_open_id", func(t *testing.T) {
+		var buf bytes.Buffer
+		err := PrintDryRun(client.RawApiRequest{
+			Method: "GET",
+			URL:    "/open-apis/test",
+			As:     "user",
+		}, &core.CliConfig{AppID: "app123", UserOpenId: "ou_tester"}, newOpts(core.AsUser, &buf))
+		if err != nil {
+			t.Fatalf("PrintDryRun failed: %v", err)
+		}
+		if got := readContext(t, &buf)["user_open_id"]; got != "ou_tester" {
+			t.Fatalf("user-identity dry-run must echo user_open_id, got: %#v", got)
+		}
+	})
+
+	t.Run("bot identity omits user_open_id", func(t *testing.T) {
+		var buf bytes.Buffer
+		err := PrintDryRun(client.RawApiRequest{
+			Method: "GET",
+			URL:    "/open-apis/test",
+			As:     "bot",
+		}, &core.CliConfig{AppID: "app123", UserOpenId: "ou_tester"}, newOpts(core.AsBot, &buf))
+		if err != nil {
+			t.Fatalf("PrintDryRun failed: %v", err)
+		}
+		dctx := readContext(t, &buf)
+		if dctx["app_id"] != "app123" {
+			t.Fatalf("app_id must still be echoed for bot identity, got: %#v", dctx)
+		}
+		if _, exists := dctx["user_open_id"]; exists {
+			t.Fatalf("bot-identity dry-run must not echo user_open_id, got: %#v", dctx)
+		}
+	})
 }
 
 func TestWriteDryRun_NilPreviewIsInternalError(t *testing.T) {
