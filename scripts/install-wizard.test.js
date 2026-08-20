@@ -16,7 +16,7 @@ function writeExecutable(file, content) {
   fs.writeFileSync(file, content, { mode: 0o755 });
 }
 
-function makeFixture(t, cliExitCode = 0) {
+function makeFixture(t, cliExitCode = 0, cliOutput = "") {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "install-wizard-"));
   const fakeBin = path.join(root, "fake-bin");
   const prefix = path.join(root, "npm-prefix");
@@ -27,7 +27,10 @@ function makeFixture(t, cliExitCode = 0) {
   fs.mkdirSync(path.join(prefix, "bin"), { recursive: true });
 
   fs.writeFileSync(promptsStub, `
-export const log = { info() {}, success() {}, warn() {}, error() {}, step() {} };
+export const log = {
+  info() {}, success() {}, error(message) { console.error(message); },
+  warn(message) { console.error(message); }, step() {},
+};
 export function spinner() { return { start() {}, stop(message) { console.error(message); } }; }
 export function cancel(message) { console.error(message); }
 export function isCancel() { return false; }
@@ -54,6 +57,7 @@ printf '%s\n' 'lark-existing'
 `);
   writeExecutable(path.join(prefix, "bin", "lark-cli"), `#!/bin/sh
 printf 'lark-cli:%s\n' "$*" >> "$COMMAND_TEST_LOG"
+printf '%s' "$LARK_CLI_OUTPUT"
 exit "$LARK_CLI_EXIT_CODE"
 `);
 
@@ -65,6 +69,7 @@ exit "$LARK_CLI_EXIT_CODE"
       PATH: `${fakeBin}${path.delimiter}${process.env.PATH}`,
       FAKE_NPM_PREFIX: prefix,
       LARK_CLI_EXIT_CODE: String(cliExitCode),
+      LARK_CLI_OUTPUT: cliOutput,
       COMMAND_TEST_LOG: commandLog,
       NO_COLOR: "1",
       NODE_OPTIONS: `--no-warnings --experimental-loader=${pathToFileURL(loader).href}`,
@@ -72,8 +77,8 @@ exit "$LARK_CLI_EXIT_CODE"
   };
 }
 
-function runInstall(args, env) {
-  return spawnSync(process.execPath, [runScript, "install", "--lang", "en", ...args], {
+function runInstall(args, env, lang = "en") {
+  return spawnSync(process.execPath, [runScript, "install", "--lang", lang, ...args], {
     cwd: path.join(__dirname, ".."),
     encoding: "utf8",
     env,
@@ -93,7 +98,7 @@ for (const [name, args, layout] of [
     const result = runInstall(args, fixture.env);
 
     assert.equal(result.status, 0, result.stdout + result.stderr);
-    assert.equal(readIfPresent(fixture.commandLog), `lark-cli:update --skills-layout ${layout}\n`);
+    assert.equal(readIfPresent(fixture.commandLog), `lark-cli:update --skills-layout ${layout} --json\n`);
   });
 }
 
@@ -107,11 +112,22 @@ test("install without a layout keeps the existing skills skip behavior", unixOnl
 
 test("install rejects an unsupported skills layout before changing skills", unixOnly, (t) => {
   const fixture = makeFixture(t);
-  const result = runInstall(["--skills-layout", "hybrid"], fixture.env);
+  const result = runInstall(["--skills-layout", "hybrid"], fixture.env, "zh");
 
   assert.equal(result.status, 1);
-  assert.match(result.stdout + result.stderr, /--skills-layout must be one of separate or suite/);
+  assert.match(result.stdout + result.stderr, /--skills-layout 必须是 separate 或 suite/);
+  assert.doesNotMatch(result.stdout + result.stderr, /Unexpected error/);
   assert.equal(readIfPresent(fixture.commandLog), "");
+});
+
+test("install surfaces a skills warning returned by update", unixOnly, (t) => {
+  const warning = "used the GitHub legacy fallback; installed Skill content may be incomplete";
+  const fixture = makeFixture(t, 0, JSON.stringify({ skills_warning: warning }));
+  const result = runInstall(["--skills-layout", "separate"], fixture.env);
+
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout + result.stderr, new RegExp(warning));
+  assert.equal(readIfPresent(fixture.commandLog), "lark-cli:update --skills-layout separate --json\n");
 });
 
 test("install reports the layout-specific retry command when synchronization fails", unixOnly, (t) => {
@@ -120,5 +136,5 @@ test("install reports the layout-specific retry command when synchronization fai
 
   assert.equal(result.status, 1);
   assert.match(result.stdout + result.stderr, /lark-cli update --skills-layout suite/);
-  assert.equal(readIfPresent(fixture.commandLog), "lark-cli:update --skills-layout suite\n");
+  assert.equal(readIfPresent(fixture.commandLog), "lark-cli:update --skills-layout suite --json\n");
 });

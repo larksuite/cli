@@ -36,6 +36,7 @@ const messages = {
     step2Done:      "Skills 已安装",
     step2Fail:      "Skills 安装失败。运行以下命令重试: npx skills add %s -y -g",
     step2LayoutFail: "Skills 安装失败。运行以下命令重试: lark-cli update --skills-layout %s",
+    layoutInvalid:  "--skills-layout 必须是 separate 或 suite",
     step3:          "正在配置应用...",
     step3NotFound:  "未找到 lark-cli，终止",
     step3Found:     "发现已配置应用 (App ID: %s)，继续使用？",
@@ -66,6 +67,7 @@ const messages = {
     step2Done:      "Skills installed",
     step2Fail:      "Failed to install skills. Run manually: npx skills add %s -y -g",
     step2LayoutFail: "Failed to install skills. Run manually: lark-cli update --skills-layout %s",
+    layoutInvalid:  "--skills-layout must be one of separate or suite",
     step3:          "Configuring app...",
     step3NotFound:  "lark-cli not found. Aborting",
     step3Found:     "Found existing app (App ID: %s). Use this app?",
@@ -300,10 +302,18 @@ async function stepInstallSkills(msg, requestedLayout) {
     if (requestedLayout) {
       const larkCli = whichLarkCli();
       if (!larkCli) throw new Error("lark-cli not found");
-      await runSilentAsync(larkCli, ["update", "--skills-layout", requestedLayout], {
+      const output = await runSilentAsync(larkCli, ["update", "--skills-layout", requestedLayout, "--json"], {
         timeout: 120000,
       });
       s.stop(msg.step2Done);
+      try {
+        const result = JSON.parse(output.toString());
+        if (typeof result.skills_warning === "string" && result.skills_warning) {
+          p.log.warn(result.skills_warning);
+        }
+      } catch (_) {
+        // A successful update with non-JSON output should not fail installation.
+      }
       return;
     }
     if (await skillsAlreadyInstalled()) {
@@ -397,7 +407,13 @@ async function main() {
   const isInteractive = !!process.stdin.isTTY;
   const lang = isInteractive ? await stepSelectLang() : (parseLangArg() || "en");
   const msg = messages[lang];
-  const skillsLayout = parseSkillsLayoutArg();
+  let skillsLayout;
+  try {
+    skillsLayout = parseSkillsLayoutArg();
+  } catch (_) {
+    p.log.error(msg.layoutInvalid);
+    process.exit(1);
+  }
 
   if (isInteractive) {
     p.intro(msg.setup);
