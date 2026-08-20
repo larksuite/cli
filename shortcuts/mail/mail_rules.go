@@ -110,12 +110,9 @@ var mailRuleActions = []mailRuleAlias{
 	{Canonical: "mark_read", Code: 3, Label: "标为已读", Aliases: []string{"read"}},
 	{Canonical: "move_spam", Code: 4, Label: "移入垃圾邮件", Aliases: []string{"spam"}},
 	{Canonical: "not_spam", Code: 5, Label: "永不视为垃圾邮件", Aliases: []string{"never_spam"}},
-	{Canonical: "add_user_label", Code: 8, Label: "添加用户标签", NeedsArg: true, Aliases: []string{"label", "add_label"}},
 	{Canonical: "star", Code: 9, Label: "加星标", Aliases: []string{"flag", "add_flag", "add_star"}},
 	{Canonical: "mute_notification", Code: 10, Label: "免打扰", Aliases: []string{"mute"}},
 	{Canonical: "move_folder", Code: 11, Label: "移动到文件夹", NeedsArg: true, Aliases: []string{"folder", "move_to"}},
-	{Canonical: "forward", Code: 12, Label: "转发邮件", NeedsArg: true, Aliases: []string{"auto_forward"}},
-	{Canonical: "share_to_chat", Code: 13, Label: "分享到会话", NeedsArg: true},
 }
 
 var (
@@ -294,13 +291,12 @@ var MailRuleDelete = common.Shortcut{
 	Service:     "mail",
 	Command:     "+rule-delete",
 	Description: "Delete one mailbox rule. Real deletion requires --yes; --dry-run shows the delete request only.",
-	Risk:        "delete",
+	Risk:        "high-risk-write",
 	Scopes:      []string{"mail:user_mailbox.rule:read", "mail:user_mailbox.rule:write"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: append([]common.Flag{}, append(mailRuleCommonFlags,
 		common.Flag{Name: "rule-id", Required: true, Desc: "Rule ID to delete."},
-		common.Flag{Name: "yes", Type: "bool", Desc: "Confirm real deletion. Required unless --dry-run is set."},
 	)...),
 	Validate: func(ctx context.Context, rt *common.RuntimeContext) error {
 		if !rt.Bool("dry-run") && !rt.Bool("yes") {
@@ -711,7 +707,7 @@ func parseRuleActionJSONObject(v any, flag string) (mailRuleAction, error) {
 			params[k] = fmt.Sprint(v)
 		}
 	}
-	for _, key := range []string{"folder_id", "folder_name", "label_id", "email", "chat_id"} {
+	for _, key := range []string{"folder_id", "folder_name", "input", "label_id", "email", "chat_id"} {
 		if v, ok := m[key]; ok {
 			params[key] = fmt.Sprint(v)
 		}
@@ -787,6 +783,11 @@ func validateRuleAction(action mailRuleAction, flag string) (mailRuleAction, err
 		return mailRuleAction{}, mailValidationParamError(flag, "%s", unknownRuleAliasMessage("action", action.Kind, "actions", mailRuleActions))
 	}
 	action.Kind = alias.Canonical
+	if action.Kind == "move_folder" && strings.TrimSpace(action.Params["folder_id"]) == "" {
+		if input := strings.TrimSpace(action.Params["input"]); input != "" {
+			action.Params["folder_id"] = input
+		}
+	}
 	needed := requiredActionParam(action.Kind)
 	if needed != "" && strings.TrimSpace(action.Params[needed]) == "" {
 		return mailRuleAction{}, mailValidationParamError(flag, "action %s requires %s (example: %s:%s=xxx)", action.Kind, needed, action.Kind, needed)
@@ -799,14 +800,8 @@ func validateRuleAction(action mailRuleAction, flag string) (mailRuleAction, err
 
 func requiredActionParam(kind string) string {
 	switch kind {
-	case "add_user_label":
-		return "label_id"
 	case "move_folder":
 		return "folder_id"
-	case "forward":
-		return "email"
-	case "share_to_chat":
-		return "chat_id"
 	default:
 		return ""
 	}
@@ -893,6 +888,10 @@ func encodeRuleActions(actions []mailRuleAction) []map[string]any {
 		item := map[string]any{"type": mailRuleActionByName[action.Kind].Code}
 		for k, v := range action.Params {
 			if strings.TrimSpace(v) != "" {
+				if action.Kind == "move_folder" && k == "folder_id" {
+					item["input"] = v
+					continue
+				}
 				item[k] = v
 			}
 		}
@@ -1085,9 +1084,19 @@ func decodeActionParams(kind string, m map[string]interface{}) map[string]string
 	if v := mailRuleFirstString(m, key); v != "" {
 		params[key] = v
 	}
+	if kind == "move_folder" {
+		if v := mailRuleFirstString(m, "input"); v != "" {
+			params[key] = v
+		}
+	}
 	if nested, ok := mapValue(m["params"]); ok {
 		if v := mailRuleFirstString(nested, key); v != "" {
 			params[key] = v
+		}
+		if kind == "move_folder" {
+			if v := mailRuleFirstString(nested, "input"); v != "" {
+				params[key] = v
+			}
 		}
 	}
 	if len(params) == 0 {

@@ -47,8 +47,11 @@ func TestMailRuleParserGrammarAndEncode(t *testing.T) {
 	if got := actionItems[0]["type"]; got != 11 {
 		t.Fatalf("action type = %v, want 11", got)
 	}
-	if got := actionItems[0]["folder_id"]; got != "fld_123" {
-		t.Fatalf("folder_id = %v", got)
+	if _, ok := actionItems[0]["folder_id"]; ok {
+		t.Fatalf("move_folder OAPI body must not send folder_id: %v", actionItems[0])
+	}
+	if got := actionItems[0]["input"]; got != "fld_123" {
+		t.Fatalf("input = %v, want fld_123", got)
 	}
 }
 
@@ -92,6 +95,16 @@ func TestMailRuleParserRejectsUnknownAliasWithHint(t *testing.T) {
 	_, err = parseRuleActionGrammar("move_folder", "--action")
 	if err == nil || !strings.Contains(err.Error(), "folder_id") {
 		t.Fatalf("expected missing folder_id error, got %v", err)
+	}
+	_, err = parseRuleActionGrammar("forward:email=dev@example.com", "--action")
+	if err == nil {
+		t.Fatal("expected unsupported forward action error")
+	}
+	accepted := acceptedAliasList(mailRuleActions)
+	for _, unsupported := range []string{"forward", "add_user_label", "share_to_chat"} {
+		if strings.Contains(accepted, unsupported) {
+			t.Fatalf("unsupported action %q should not be listed in accepted aliases: %s", unsupported, accepted)
+		}
 	}
 }
 
@@ -238,6 +251,17 @@ func TestMailRuleUpdateRegistersNameFlag(t *testing.T) {
 	}
 }
 
+func TestMailRuleDeleteUsesStandardHighRiskWrite(t *testing.T) {
+	if MailRuleDelete.Risk != "high-risk-write" {
+		t.Fatalf("MailRuleDelete.Risk = %q, want high-risk-write", MailRuleDelete.Risk)
+	}
+	for _, flag := range MailRuleDelete.Flags {
+		if flag.Name == "yes" {
+			t.Fatal("+rule-delete must rely on the standard high-risk-write --yes flag")
+		}
+	}
+}
+
 func TestMailRuleUpdatePreservesRawFieldsAndUpdatesName(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	currentRule := map[string]interface{}{
@@ -324,6 +348,7 @@ func TestMailRuleUpdatePreservesConditionItemExtrasWhenChangingMatch(t *testing.
 			"match_type": 1,
 			"items": []interface{}{
 				map[string]interface{}{"type": 6, "operator": 1, "input": "Alpha", "vendor_condition_extra": "keep"},
+				map[string]interface{}{"type": 999, "operator": 1, "input": "unknown"},
 			},
 			"vendor_condition_top": "keep-top",
 		},
@@ -378,8 +403,14 @@ func TestMailRuleUpdatePreservesConditionItemExtrasWhenChangingMatch(t *testing.
 		t.Fatalf("vendor_condition_top = %v", got)
 	}
 	conditionItems := condition["items"].([]interface{})
+	if len(conditionItems) != 2 {
+		t.Fatalf("condition items = %+v, want original 2 items preserved", conditionItems)
+	}
 	if got := conditionItems[0].(map[string]interface{})["vendor_condition_extra"]; got != "keep" {
 		t.Fatalf("vendor_condition_extra = %v", got)
+	}
+	if got := conditionItems[1].(map[string]interface{})["type"]; got != float64(999) {
+		t.Fatalf("unknown condition item type = %v, want preserved 999", got)
 	}
 }
 
@@ -422,7 +453,7 @@ func TestMailRuleCreateParsesJSONConditionsAndActions(t *testing.T) {
 		"--disable",
 		"--stop-after-match",
 		"--conditions", `[{"field":"subject","op":"contains","value":"Alpha"},{"field":"has_attachment"}]`,
-		"--actions", `[{"kind":"forward","email":"dev@example.com"},{"kind":"share_to_chat","params":{"chat_id":"oc_123"}}]`,
+		"--actions", `[{"kind":"mark_read"},{"kind":"move_folder","folder_id":"fld_json"}]`,
 		"--format", "json",
 	}, f, stdout)
 	if err != nil {
@@ -451,11 +482,11 @@ func TestMailRuleCreateParsesJSONConditionsAndActions(t *testing.T) {
 	if len(actionItems) != 2 {
 		t.Fatalf("action items = %+v, want 2", actionItems)
 	}
-	if got := actionItems[0].(map[string]interface{})["email"]; got != "dev@example.com" {
-		t.Fatalf("forward email = %v", got)
+	if got := actionItems[0].(map[string]interface{})["type"]; got != float64(3) {
+		t.Fatalf("mark_read type = %v, want 3", got)
 	}
-	if got := actionItems[1].(map[string]interface{})["chat_id"]; got != "oc_123" {
-		t.Fatalf("share_to_chat chat_id = %v", got)
+	if got := actionItems[1].(map[string]interface{})["input"]; got != "fld_json" {
+		t.Fatalf("move_folder input = %v", got)
 	}
 }
 
@@ -464,7 +495,7 @@ func TestMailRuleCreateReadsConditionsAndActionsFromFiles(t *testing.T) {
 	if err := os.WriteFile("conditions.json", []byte(`[{"field":"body","operator":"contains","value":"hello"}]`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile("actions.json", []byte(`[{"kind":"add_user_label","label_id":"lbl_1"}]`), 0o600); err != nil {
+	if err := os.WriteFile("actions.json", []byte(`[{"kind":"mark_read"}]`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -495,8 +526,8 @@ func TestMailRuleCreateReadsConditionsAndActionsFromFiles(t *testing.T) {
 		t.Fatalf("body condition type = %v, want 7", got)
 	}
 	actionItems := body["action"].(map[string]interface{})["items"].([]interface{})
-	if got := actionItems[0].(map[string]interface{})["label_id"]; got != "lbl_1" {
-		t.Fatalf("label_id = %v, want lbl_1", got)
+	if got := actionItems[0].(map[string]interface{})["type"]; got != float64(3) {
+		t.Fatalf("mark_read type = %v, want 3", got)
 	}
 }
 
@@ -657,7 +688,7 @@ func TestMailRuleParserErrorBranches(t *testing.T) {
 	if _, err := parseRuleActionJSON("bad", "--action"); err == nil {
 		t.Fatal("expected invalid action object error")
 	}
-	if _, err := parseRuleActionGrammar(`forward:json={`, "--action"); err == nil {
+	if _, err := parseRuleActionGrammar(`move_folder:json={`, "--action"); err == nil {
 		t.Fatal("expected invalid action params JSON error")
 	}
 	if _, err := parseRuleActionGrammar("forward:email", "--action"); err == nil {
@@ -669,20 +700,41 @@ func TestMailRuleParserErrorBranches(t *testing.T) {
 }
 
 func TestMailRuleActionValueParsesJSONObjectsAndGrammarJSONParams(t *testing.T) {
-	actions, err := parseRuleActionValue(nil, `{"kind":"add_user_label","params":{"label_id":"lbl_1"}}`, "--action")
+	actions, err := parseRuleActionValue(nil, `{"kind":"move_folder","params":{"input":"fld_1"}}`, "--action")
 	if err != nil {
 		t.Fatalf("parseRuleActionValue(object) error = %v", err)
 	}
-	if len(actions) != 1 || actions[0].Kind != "add_user_label" || actions[0].Params["label_id"] != "lbl_1" {
+	if len(actions) != 1 || actions[0].Kind != "move_folder" || actions[0].Params["folder_id"] != "fld_1" {
 		t.Fatalf("actions = %+v", actions)
 	}
 
-	actions, err = parseRuleActionValue(nil, `forward:json={"email":"dev@example.com"}`, "--action")
+	actions, err = parseRuleActionValue(nil, `move_folder:json={"folder_id":"fld_2"}`, "--action")
 	if err != nil {
 		t.Fatalf("parseRuleActionValue(grammar json) error = %v", err)
 	}
-	if len(actions) != 1 || actions[0].Kind != "forward" || actions[0].Params["email"] != "dev@example.com" {
+	if len(actions) != 1 || actions[0].Kind != "move_folder" || actions[0].Params["folder_id"] != "fld_2" {
 		t.Fatalf("actions = %+v", actions)
+	}
+}
+
+func TestMailRuleRejectsUnsupportedOAPIActions(t *testing.T) {
+	for _, raw := range []string{
+		`{"kind":"add_user_label","params":{"label_id":"lbl_1"}}`,
+		`{"kind":"forward","email":"dev@example.com"}`,
+		`{"kind":"share_to_chat","params":{"chat_id":"oc_123"}}`,
+	} {
+		t.Run(raw, func(t *testing.T) {
+			_, err := parseRuleActionValue(nil, raw, "--action")
+			if err == nil {
+				t.Fatal("expected unsupported action error")
+			}
+			accepted := acceptedAliasList(mailRuleActions)
+			for _, unsupported := range []string{"add_user_label", "forward", "share_to_chat"} {
+				if strings.Contains(accepted, unsupported) {
+					t.Fatalf("unsupported action %q should not be listed in accepted aliases: %s", unsupported, accepted)
+				}
+			}
+		})
 	}
 }
 
@@ -872,8 +924,11 @@ func TestMailRuleUpdateReplacesKnownConditionsAndActions(t *testing.T) {
 		t.Fatalf("condition input = %v, want Beta", got)
 	}
 	actionItems := body["action"].(map[string]interface{})["items"].([]interface{})
-	if got := actionItems[0].(map[string]interface{})["folder_id"]; got != "fld_2" {
-		t.Fatalf("folder_id = %v, want fld_2", got)
+	if _, ok := actionItems[0].(map[string]interface{})["folder_id"]; ok {
+		t.Fatalf("move_folder OAPI body must not send folder_id: %v", actionItems[0])
+	}
+	if got := actionItems[0].(map[string]interface{})["input"]; got != "fld_2" {
+		t.Fatalf("input = %v, want fld_2", got)
 	}
 }
 
@@ -896,7 +951,7 @@ func TestMailRuleDecodeHandlesMalformedRawItems(t *testing.T) {
 		"bad-action",
 		map[string]interface{}{},
 		map[string]interface{}{"type": 999},
-		map[string]interface{}{"type": 11, "params": map[string]interface{}{"folder_id": "nested_fld"}},
+		map[string]interface{}{"type": 11, "params": map[string]interface{}{"input": "nested_fld"}},
 	}, nil)
 	if len(actions) != 1 || actions[0].Kind != "move_folder" || actions[0].Params["folder_id"] != "nested_fld" {
 		t.Fatalf("actions = %+v", actions)
