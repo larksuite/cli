@@ -2,8 +2,8 @@
 
 ## Metrics
 - Denominator: 89 leaf commands
-- Covered: 36
-- Coverage: 40.4%
+- Covered: 37
+- Coverage: 41.6%
 
 ## Summary
 - TestBase_BasicWorkflow: proves `+base-create`, `+base-get`, `+table-create`, `+table-get`, and `+table-list`; key `t.Run(...)` proof points are `get base as bot`, `get table as bot`, and `list tables and find created table as bot`.
@@ -17,6 +17,7 @@
 - TestBaseDashboardBlockLayoutPrecisionWorkflow: creates a temporary Base/table/dashboard, creates a statistics block with `position` and `number_format`, updates both fields, asserts the updated `number_format` on read-back, and cleans up the block/dashboard/base. `+dashboard-create`, `+dashboard-delete`, `+dashboard-block-get` and `+dashboard-block-delete` have no dry-run coverage and rest on this test alone. The equivalent workflow was executed successfully against a live tenant on 2026-08-05 from PR #2118 HEAD `27855ded`.
 - TestBaseRecordBatchUpdatePerRecordDryRun: proves `+record-batch-update` preserves the per-record `update_records` request shape.
 - TestBaseRecordBatchUpdatePerRecordWorkflow: creates two records, updates different field types in one request, asserts the minimal response contract, reads both records back, verifies a missing record ID is not prevalidated, and cleans up the temporary Base.
+- TestBaseRecordHistoryListDryRunUsesExplicitRecordID / TestBaseRecordHistoryListDryRunRejectsNonPositiveMaxVersion: prove the history request keeps the explicit record ID and rejects explicitly non-positive cursors with a typed validation error.
 - TestBase_RoleWorkflow: proves `+advperm-enable`, `+role-create`, `+role-list`, `+role-get`, and `+role-update`; key `t.Run(...)` proof points are `list as bot`, `get as bot`, and `update as bot`.
 - TestBaseFormListDryRun_UsesBaseAndTableIdentifiers: proves `+form-list` dry-run request shape uses Base and table identifiers in the endpoint.
 - TestBaseFormQuestionsCreateVisibleRuleDryRun / TestBaseFormQuestionsUpdateVisibleRuleDryRun: prove `+form-questions-create` / `+form-questions-update` dry-run request shape and that the optional `visible_rule` display condition is transcribed verbatim into the request body.
@@ -73,7 +74,7 @@
 | ✓ | base +record-batch-update | shortcut | base_record_batch_update_dryrun_test.go::TestBaseRecordBatchUpdatePerRecordDryRun; base_record_batch_update_workflow_test.go::TestBaseRecordBatchUpdatePerRecordWorkflow | `--base-token`; `--table-id`; `--json.update_records`; dry-run + live | heterogeneous select/number update with write-back verification |
 | ✕ | base +record-delete | shortcut |  | none | record workflows not covered |
 | ✓ | base +record-get | shortcut | base_record_batch_update_workflow_test.go::TestBaseRecordBatchUpdatePerRecordWorkflow | `--record-id`; repeated `--field-id`; `--format json` | reads back select and number values after batch update |
-| ✕ | base +record-history-list | shortcut |  | none | record workflows not covered |
+| ✓ | base +record-history-list | shortcut | base_record_history_dryrun_test.go::TestBaseRecordHistoryListDryRunUsesExplicitRecordID; TestBaseRecordHistoryListDryRunRejectsNonPositiveMaxVersion | `--base-token`; `--table-id`; `--record-id`; `--page-size`; `--max-version`; dry-run | request shape and typed cursor validation |
 | ✕ | base +record-list | shortcut |  | none | record workflows not covered |
 | ✕ | base +record-search | shortcut |  | none | record workflows not covered |
 | ✕ | base +record-share-link-create | shortcut |  | none | record workflows not covered |

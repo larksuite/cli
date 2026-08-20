@@ -14,6 +14,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 func hasAuthType(authTypes []string, want string) bool {
@@ -82,5 +84,42 @@ func TestMinutesApplyPermissionHasReference(t *testing.T) {
 	skill := readSkillDoc(t, "skills/lark-minutes/SKILL.md")
 	if !strings.Contains(skill, "[`+apply-permission`](references/lark-minutes-apply-permission.md)") {
 		t.Error("skills/lark-minutes/SKILL.md Shortcuts table must link +apply-permission to its reference doc")
+	}
+}
+
+func hasFlag(flags []common.Flag, want string) bool {
+	for _, f := range flags {
+		if f.Name == want {
+			return true
+		}
+	}
+	return false
+}
+
+// TestMeetingSummaryWorkflowDocumentsMinuteTokenFallback pins the fallback that
+// issue #2379 found missing: the meeting-summary workflow used to tell the agent
+// to report "无纪要" whenever a meeting had no note_id, even though such meetings
+// often still carry a readable minute_token. It also pins the fallback commands
+// against the flag names the shortcuts actually declare, since +detail takes the
+// plural --minute-tokens while +apply-permission takes the singular form.
+func TestMeetingSummaryWorkflowDocumentsMinuteTokenFallback(t *testing.T) {
+	if !hasFlag(MinutesDetail.Flags, "minute-tokens") {
+		t.Fatalf("MinutesDetail flags = %v, want minute-tokens", MinutesDetail.Flags)
+	}
+	if !hasFlag(MinutesApplyPermission.Flags, "minute-token") {
+		t.Fatalf("MinutesApplyPermission flags = %v, want minute-token", MinutesApplyPermission.Flags)
+	}
+
+	workflow := readSkillDoc(t, "skills/lark-workflow-meeting-summary/SKILL.md")
+	for _, must := range []string{
+		"minutes +detail --minute-tokens",
+		"minutes +apply-permission --minute-token ",
+		"--transcript",
+		"--output-dir",
+		"No read permission",
+	} {
+		if !strings.Contains(workflow, must) {
+			t.Errorf("lark-workflow-meeting-summary/SKILL.md must cover %q so a missing note_id is not reported as 无纪要", must)
+		}
 	}
 }

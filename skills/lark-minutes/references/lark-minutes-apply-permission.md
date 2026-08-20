@@ -92,4 +92,4 @@ lark-cli minutes +apply-permission --minute-token obcnxxxxxxxxxxxxxxxxxxxx --per
 
 - [lark-minutes](../SKILL.md) — 妙记全部命令
 - [minutes +detail](lark-minutes-detail.md) — 妙记内容与产物查询
-- [lark-shared](../../lark-shared/SKILL.md) — 身份延续与权限恢复规则
+- [lark-shared](../../lark-shared/SKILL.md) — 身份延续与权限管理

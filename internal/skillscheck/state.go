@@ -22,12 +22,14 @@ const (
 var ErrUnreadableState = errors.New("skills state is unreadable")
 
 type SkillsState struct {
-	Version              string   `json:"version"`
-	OfficialSkills       []string `json:"official_skills"`
-	UpdatedSkills        []string `json:"updated_skills"`
-	AddedOfficialSkills  []string `json:"added_official_skills"`
-	SkippedDeletedSkills []string `json:"skipped_deleted_skills"`
-	UpdatedAt            string   `json:"updated_at"`
+	Version               string   `json:"version"`
+	Layout                Layout   `json:"layout,omitempty"`
+	OfficialSkills        []string `json:"official_skills"`
+	OfficialSkillsUnknown bool     `json:"official_skills_unknown,omitempty"`
+	UpdatedSkills         []string `json:"updated_skills"`
+	AddedOfficialSkills   []string `json:"added_official_skills"`
+	SkippedDeletedSkills  []string `json:"skipped_deleted_skills"`
+	UpdatedAt             string   `json:"updated_at"`
 }
 
 func statePath() string {

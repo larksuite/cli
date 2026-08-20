@@ -211,10 +211,15 @@ var SlidesCreate = common.Shortcut{
 
 		// Prefer the URL returned by presentation.create. Fall back to a local
 		// brand-standard URL only when the API omits it.
-		if url := common.GetString(data, "url"); url != "" {
-			result["url"] = url
-		} else if url := common.BuildResourceURL(runtime.Config.Brand, "slides", presentationID); url != "" {
-			result["url"] = url
+		presentationURL := common.GetString(data, "url")
+		if presentationURL == "" {
+			presentationURL = common.BuildResourceURL(runtime.Config.Brand, "slides", presentationID)
+		}
+		if presentationURL != "" {
+			result["url"] = presentationURL
+			if len(slides) == 0 {
+				result["message"] = fmt.Sprintf("成功创建空白幻灯片，url：%s，请给用户推送开工通知。", presentationURL)
+			}
 		}
 
 		if grant := common.AutoGrantCurrentUserDrivePermission(runtime, presentationID, "slides"); grant != nil {

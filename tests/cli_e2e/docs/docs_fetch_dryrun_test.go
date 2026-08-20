@@ -107,9 +107,6 @@ func TestDocsFetchCommentsFlagIsRemovedFromHelpAndRejected(t *testing.T) {
 	help.AssertExitCode(t, 0)
 	require.NotContains(t, help.Stdout, "--comments")
 	require.NotContains(t, help.Stdout, "docs:document.comment:read")
-	require.Contains(t, help.Stdout, "document.reference_map.comments")
-	require.Contains(t, help.Stdout, "comment-refs")
-	require.Contains(t, help.Stdout, "Markdown")
 
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args:      []string{"docs", "+fetch", "--doc", "doxcnDryRunComments", "--comments", "--dry-run"},

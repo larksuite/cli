@@ -29,6 +29,7 @@ metadata:
 ```bash
 lark-cli auth login --domain vc        # 基础（查询+纪要）
 lark-cli auth login --domain vc,drive   # 含读取纪要文档正文、生成文档
+lark-cli auth login --domain vc,drive,minutes  # 含无 note_id 时的妙记备选路径
 ```
 
 ## 工作流
@@ -80,8 +81,17 @@ lark-cli note +detail --note-id "note_id"
 ```
 - 根据上一步搜集到的 `meeting-id` 查询。
 - 单次最多查询 50 个，超过 50 个需分批调用。
-- 部分会议没有 `note_id` 或报错 `no notes available`，在最终输出中标注"无纪要"。
+- 部分会议没有 `note_id` 或报错 `no notes available`，**不要直接标注"无纪要"**：先看 `vc +detail` 是否返回了 `minute_token`，有则走下面的妙记备选路径；`note_id` 和 `minute_token` 都没有时才标注"无纪要"。
 - 记录每个纪要的 `note_id`（纪要 ID）、`note_display_type`（展示类型：`unknown` / `normal` / `unified`）、`note_doc_token`（纪要文档 Token）和 `verbatim_doc_token`（逐字稿文档 Token）。
+
+> **妙记备选路径（无 `note_id`、有 `minute_token` 时）**：智能纪要与妙记是两条独立产物链路，缺少智能纪要不代表这场会没有内容。
+>
+> ```bash
+> # --minute-tokens 是复数形式（+download 同）；--output-dir 只接受相对路径
+> lark-cli minutes +detail --minute-tokens "<minute_token>" --transcript --output-dir ./transcripts --as user
+> ```
+>
+> 逐字稿会落盘，供 Step 4 基于原始发言独立提炼（不要照搬 AI 总结）。若返回 `No read permission`（`2091005`），先把无权限事实告知用户，用户明确同意后再用单数 flag 申请：`lark-cli minutes +apply-permission --minute-token "<minute_token>" --perm view --as user`；申请需 owner 在客户端批准后才可重试。详见 [lark-minutes](../lark-minutes/SKILL.md)。
 
 > **逐字稿路由按 `note_display_type` 决定**（详见 [vc-domain-boundaries.md](../lark-vc/references/vc-domain-boundaries.md) 的 Note 域）：
 > - `normal`：逐字稿是独立文档，链接/正文走 `verbatim_doc_token`。
@@ -119,4 +129,5 @@ lark-cli docs +update --doc "<url_or_token>" --command append --doc-format markd
 - [lark-shared](../lark-shared/SKILL.md) — 认证、权限（必读）
 - [lark-vc](../lark-vc/SKILL.md) — `+search`、`+detail` 详细用法
 - [lark-note](../lark-note/SKILL.md) — `note +detail`、`note +transcript`（unified 纪要逐字稿）
+- [lark-minutes](../lark-minutes/SKILL.md) — `minutes +detail`、`+apply-permission`（无 `note_id` 时的妙记备选路径）
 - [lark-doc](../lark-doc/SKILL.md) — `+fetch`、`+create`、`+update` 详细用法

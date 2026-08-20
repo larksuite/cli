@@ -194,12 +194,16 @@ func composePendingNotice(plan *surface.Plan) map[string]interface{} {
 			}
 		}
 		if stale := skillscheck.GetPending(); stale != nil {
-			notice["skills"] = map[string]interface{}{
+			entry := map[string]interface{}{
 				"current": stale.Current,
 				"target":  stale.Target,
 				"message": stale.Message(),
 				"command": "lark-cli update",
 			}
+			if stale.OfficialUnknown {
+				entry["official_unknown"] = true
+			}
+			notice["skills"] = entry
 		}
 	}
 	if dep := deprecation.GetPending(); dep != nil {

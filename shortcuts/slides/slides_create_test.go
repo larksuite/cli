@@ -674,8 +674,9 @@ func TestSlidesCreateWithSlidesDryRun(t *testing.T) {
 	}
 }
 
-// TestSlidesCreateWithoutSlidesUnchanged verifies existing behavior when --slides is not passed.
-func TestSlidesCreateWithoutSlidesUnchanged(t *testing.T) {
+// TestSlidesCreateWithoutSlidesReturnsNotificationMessage verifies that an empty
+// presentation includes a user-facing kickoff-notification reminder.
+func TestSlidesCreateWithoutSlidesReturnsNotificationMessage(t *testing.T) {
 	t.Parallel()
 
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
@@ -707,6 +708,9 @@ func TestSlidesCreateWithoutSlidesUnchanged(t *testing.T) {
 	}
 	if data["title"] != "No Slides" {
 		t.Fatalf("title = %v, want No Slides", data["title"])
+	}
+	if data["message"] != "成功创建空白幻灯片，url：https://www.feishu.cn/slides/pres_no_slides，请给用户推送开工通知。" {
+		t.Fatalf("message = %v, want empty-presentation notification reminder", data["message"])
 	}
 	if _, ok := data["slide_ids"]; ok {
 		t.Fatalf("did not expect slide_ids when --slides not passed")

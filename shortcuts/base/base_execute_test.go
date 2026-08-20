@@ -1245,6 +1245,140 @@ func TestBaseHistoryExecute(t *testing.T) {
 	}
 }
 
+func TestBaseHistoryRecordFormatsUseStandardFormatter(t *testing.T) {
+	for _, format := range []string{"table", "csv", "ndjson"} {
+		t.Run(format, func(t *testing.T) {
+			factory, stdout, reg := newExecuteFactory(t)
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/base/v3/bases/app_x/record_history",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{
+						"items": []interface{}{map[string]interface{}{
+							"activity_type": "update",
+							"operator":      "Operator",
+						}},
+					},
+				},
+			})
+			if err := runShortcut(t, BaseRecordHistoryList, []string{
+				"+record-history-list", "--base-token", "app_x", "--table-id", "tbl_x",
+				"--record-id", "rec_x", "--format", format,
+			}, factory, stdout); err != nil {
+				t.Fatalf("err=%v", err)
+			}
+
+			got := stdout.String()
+			if strings.Contains(got, `"ok"`) || !strings.Contains(got, "activity_type") || !strings.Contains(got, "Operator") {
+				t.Fatalf("history %s output did not use the standard formatter:\n%s", format, got)
+			}
+		})
+	}
+}
+
+func TestBaseHistoryPrettyExecute(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/bases/app_x/record_history",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"has_more":         true,
+				"next_max_version": 7,
+				"items": []interface{}{
+					map[string]interface{}{
+						"activity_type": "update",
+						"create_time":   int64(1774196856),
+						"operator":      "Operator\nName",
+						"field_changes": []interface{}{map[string]interface{}{
+							"field_name": "Status",
+							"before":     "",
+							"after":      "done\nvalue",
+						}},
+					},
+					map[string]interface{}{
+						"activity_type": "create",
+						"create_time":   int64(1774196857),
+						"operator":      "Creator",
+						"field_changes": nil,
+					},
+				},
+			},
+		},
+	})
+	if err := runShortcut(t, BaseRecordHistoryList, []string{
+		"+record-history-list", "--base-token", "app_x", "--table-id", "tbl_x",
+		"--record-id", "rec_x", "--page-size", "2", "--format", "pretty",
+	}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+
+	wantTime := time.Unix(1774196856, 0).Local().Format("2006-01-02 15:04:05 -07:00")
+	got := stdout.String()
+	for _, want := range []string{
+		"1. " + wantTime + " — Operator Name — Status: - -> done value",
+		"2. ",
+		"— Creator — create",
+		"More history is available; continue with --max-version 7.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("pretty history output missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, `"create_time"`) || strings.Contains(got, `"ok"`) {
+		t.Fatalf("pretty history output leaked JSON envelope:\n%s", got)
+	}
+}
+
+func TestFormatRecordHistoryPrettyValidatesNextMaxVersion(t *testing.T) {
+	page := func(cursor interface{}, includeCursor bool) map[string]interface{} {
+		data := map[string]interface{}{
+			"has_more": true,
+			"items": []interface{}{map[string]interface{}{
+				"activity_type": "update",
+			}},
+		}
+		if includeCursor {
+			data["next_max_version"] = cursor
+		}
+		return data
+	}
+
+	got, err := formatRecordHistoryPretty(page(7, true), time.UTC)
+	if err != nil {
+		t.Fatalf("valid cursor: %v", err)
+	}
+	if !strings.Contains(got, "continue with --max-version 7.") {
+		t.Fatalf("valid cursor guidance missing:\n%s", got)
+	}
+
+	for _, test := range []struct {
+		name          string
+		cursor        interface{}
+		includeCursor bool
+	}{
+		{name: "missing"},
+		{name: "zero", cursor: 0, includeCursor: true},
+		{name: "negative", cursor: -1, includeCursor: true},
+		{name: "fractional", cursor: 1.5, includeCursor: true},
+		{name: "string", cursor: "7", includeCursor: true},
+		{name: "object", cursor: map[string]interface{}{"value": 7}, includeCursor: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := formatRecordHistoryPretty(page(test.cursor, test.includeCursor), time.UTC)
+			if err == nil {
+				t.Fatal("expected invalid-response error")
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeInvalidResponse {
+				t.Fatalf("expected internal invalid-response error, got %T %v", err, err)
+			}
+		})
+	}
+}
+
 func TestBaseFieldExecuteUpdate(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	reg.Register(&httpmock.Stub{

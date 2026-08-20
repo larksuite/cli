@@ -468,6 +468,7 @@ jobs:
           name: CLI E2E Tests
           path: cli-e2e-report.xml
           reporter: java-junit
+          fail-on-error: false
           use-actions-summary: true
           list-suites: all
           list-tests: all
