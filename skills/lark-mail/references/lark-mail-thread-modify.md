@@ -65,8 +65,6 @@ JSON 输出只表示 CLI 请求侧提交结果：
 
 `submitted_count` 是 CLI 提交的会话数量，不代表服务端逐条修改成功。当前 shortcut 不输出 `updated_count`、`failed_ids` 或每个会话的处理结果。
 
-> 注意：使用 `--format json` 获取结构化输出。所有 JSON 输出统一包裹在 `{"ok": true, "data": ...}` 结构中。
-
 ## 原生 API 适用场景
 
 只有在需要精确复现后端/API 行为做诊断，或需要 shortcut 未暴露的请求结构时，才直接调用 `mail user_mailbox.threads batch_modify`。普通会话整理优先使用本 shortcut，因为它内置了 ID 校验、文件夹规范化、紧凑输出和 dry-run 预览。

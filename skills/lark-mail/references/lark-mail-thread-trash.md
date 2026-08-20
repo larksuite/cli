@@ -53,8 +53,6 @@ JSON 输出只表示 CLI 请求侧提交结果：
 
 `submitted_count` 是 CLI 提交的会话数量，不代表服务端逐条软删除成功。当前 shortcut 不输出 `trashed_count`、`failed_ids` 或每个会话的处理结果。
 
-> 注意：使用 `--format json` 获取结构化输出。所有 JSON 输出统一包裹在 `{"ok": true, "data": ...}` 结构中。
-
 ## 原生 API 适用场景
 
 只有在需要精确复现后端/API 行为做诊断时，才直接调用 `mail user_mailbox.threads batch_trash`。普通会话软删除优先使用本 shortcut，因为它内置了 ID 校验、紧凑输出、dry-run 预览和 `--yes` 确认。
