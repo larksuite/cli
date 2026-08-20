@@ -18,6 +18,7 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档是 Dashboar
 | `wordCloud` | 词云 |
 | `radar` | 雷达图 |
 | `statistics` | 指标卡 |
+| `countdown` | 倒计时 |
 | `text` | 文本（支持 Markdown） |
 
 ## 字段类型与操作符速查（AI 决策用）
@@ -70,6 +71,56 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 | 无序列表 | `- 项目` | - 项目 |
 
 > **注意**：以上未提及的 Markdown 语法（如链接、图片、代码块、表格等）均不支持。
+
+### countdown 类型特殊结构
+
+`countdown` 是 Dashboard 专属图表类型，支持 `fixed` 和 `field` 两种互斥模式。两种模式统一通过 `extra_config.countdown` 描述，不复用通用图表的 `series` 指标协议。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `extra_config.countdown.use_fixed_time` | boolean | 必填。`true` 表示 fixed 模式，`false` 表示 field 模式 |
+| `extra_config.countdown.target` | string | fixed 模式必填。目标时间，格式 `YYYY-MM-DD HH:MM:SS` |
+| `extra_config.countdown.type` | `MIN` / `MAX` | field 模式必填。取筛选结果中日期字段的最早值或最晚值 |
+| `extra_config.countdown.units` | string[] | 可选。展示单位，支持 `day` / `hour` / `min` / `sec` |
+
+fixed 模式：
+
+- 只允许传 `extra_config.countdown.use_fixed_time=true` 和 `extra_config.countdown.target`
+- 不允许传 `table_name`、`series`、`count_all`、`group_by`、`filter`
+
+```json
+{
+  "extra_config": {
+    "countdown": {
+      "use_fixed_time": true,
+      "target": "2026-08-20 19:56:12",
+      "units": ["day", "hour", "min", "sec"]
+    }
+  }
+}
+```
+
+field 模式：
+
+- 必填：`table_name`、`count_all:true`、`group_by` 恰好 1 项、`extra_config.countdown.use_fixed_time=false`、`extra_config.countdown.type`
+- 不允许传 `series` 或 `extra_config.countdown.target`
+- `group_by[0]` 应填写日期类字段；CLI 只校验结构，字段类型由服务端最终裁定
+
+```json
+{
+  "table_name": "任务表",
+  "count_all": true,
+  "group_by": [{ "field_name": "截止时间", "mode": "integrated" }],
+  "filter": { "conjunction": "and", "conditions": [] },
+  "extra_config": {
+    "countdown": {
+      "use_fixed_time": false,
+      "type": "MIN",
+      "units": ["day", "hour", "min", "sec"]
+    }
+  }
+}
+```
 
 ## group_by 详细说明
 
@@ -202,9 +253,12 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
   - text 类型必填：`text`
   - 互斥：`series` 与 `count_all` 二选一，且至少提供其一（仅图表类型）
   - text 类型**不支持**：`series`、`count_all`、`group_by`、`filter`
+  - countdown fixed 模式**不支持**：`table_name`、`series`、`count_all`、`group_by`、`filter`
+  - countdown field 模式必填：`table_name`、`count_all:true`、`group_by` 恰好 1 项、`extra_config.countdown.type`
 - 长度/结构
   - `group_by` 最多 2 个；每项 `field_name` 必填
   - `group_by[].sort.type` 取值 `group|value|view`；`order` 取值 `asc|desc`
+  - `extra_config.countdown.units` 仅支持 `day|hour|min|sec`
 - 规范化（CLI 自动处理；`--no-validate` 时不生效，`data_config` 原样透传给后端）
   - `series[].rollup` 自动转成大写（如 `sum` → `SUM`）
   - `group_by[].sort.type/order` 自动转成小写

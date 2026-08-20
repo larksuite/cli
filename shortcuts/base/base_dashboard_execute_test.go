@@ -817,6 +817,64 @@ func TestNormalizeDataConfigSortOrder(t *testing.T) {
 	})
 }
 
+func TestBaseDashboardBlockCreate_CountdownValidation(t *testing.T) {
+	t.Run("fixed mode accepts target without table source", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"block_id": "blk_countdown_fixed",
+					"name":     "发布倒计时",
+					"type":     "countdown",
+				},
+			},
+		})
+		args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_001",
+			"--name", "发布倒计时", "--type", "countdown",
+			"--data-config", `{"extra_config":{"countdown":{"use_fixed_time":true,"target":"2026-08-20 19:56:12","units":["day","hour","min","sec"]}}}`,
+		}
+		if err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"blk_countdown_fixed"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("field mode requires count_all and one group", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_001",
+			"--name", "任务截止", "--type", "countdown",
+			"--data-config", `{"table_name":"任务表","group_by":[{"field_name":"截止时间","mode":"integrated"}],"extra_config":{"countdown":{"use_fixed_time":false,"type":"MIN"}}}`,
+		}
+		err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout)
+		if err == nil {
+			t.Fatalf("expected validation error for missing count_all")
+		}
+		if got := err.Error(); !strings.Contains(got, "count_all=true") || !strings.Contains(got, "data_config 校验失败") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("fixed mode rejects table source fields", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_001",
+			"--name", "发布倒计时", "--type", "countdown",
+			"--data-config", `{"table_name":"任务表","count_all":true,"extra_config":{"countdown":{"use_fixed_time":true,"target":"2026-08-20 19:56:12"}}}`,
+		}
+		err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout)
+		if err == nil {
+			t.Fatalf("expected validation error for fixed mode")
+		}
+		if got := err.Error(); !strings.Contains(got, "fixed 模式不允许配置 table_name") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
 // ── Text Block Tests ────────────────────────────────────────────────
 
 // TestBaseDashboardBlockExecuteCreate_TextType tests creating text blocks with markdown content.
