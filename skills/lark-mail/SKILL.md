@@ -116,7 +116,7 @@ metadata:
 ## 常用操作速查
 
 - 收件人地址搜索：搜索用户邮箱地址、群邮箱地址、邮件组地址，提供给用户确认。ref: [lark-mail-recipient-search](references/lark-mail-recipient-search.md)
-- 使用公共邮箱发信、使用邮箱别名发信：通过 `--mailbox` 指定邮箱归属，通过 `--from` 指定发件人地址。ref: [lark-mail-send-as](references/lark-mail-send-as.md)
+- 使用公共邮箱发信、使用邮箱别名发信：通过 `--mailbox` 指定邮箱归属；省略 `--from` 时使用默认发信地址，显式 `--from` 优先。ref: [lark-mail-send-as](references/lark-mail-send-as.md)
 - 查看发送邮件后的投递状态：发送成功后查看邮件投递状态；也覆盖发送拦截。ref: [lark-mail-send-status](references/lark-mail-send-status.md)
 - 使用邮件模板：区分个人模板和静态 HTML 模板，发信类 shortcut 用 `--template-id` 套用模板。ref: [lark-mail-template](references/lark-mail-template.md)
 - 撤回已发送邮件：撤回邮件并查询异步撤回状态。ref: [lark-mail-recall](references/lark-mail-recall.md)

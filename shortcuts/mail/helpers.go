@@ -353,19 +353,88 @@ func extractPrimaryEmail(data map[string]interface{}) string {
 	return ""
 }
 
+type composeSenderInfo struct {
+	Name  string
+	Email string
+}
+
 // resolveComposeSenderEmail determines the sender email for compose shortcuts.
-// Priority: --from > --mailbox > profile("me").
-// The profile API only supports "me", so when --mailbox is set to a non-"me"
-// address (e.g. a shared mailbox), its value is used directly as the sender.
+// Priority: --from > default send_as > --mailbox > profile("me").
 func resolveComposeSenderEmail(runtime *common.RuntimeContext) string {
-	if from := runtime.Str("from"); from != "" {
-		return from
+	return resolveComposeSenderInfo(runtime, resolveComposeMailboxID(runtime)).Email
+}
+
+func resolveComposeSenderInfo(runtime *common.RuntimeContext, mailboxID string) composeSenderInfo {
+	if from := strings.TrimSpace(runtime.Str("from")); from != "" {
+		return composeSenderInfo{Email: from}
 	}
-	if mb := runtime.Str("mailbox"); mb != "" && mb != "me" {
-		return mb
+	if sender, ok := resolveDefaultSendAs(runtime, mailboxID); ok {
+		return sender
+	}
+	if mb := strings.TrimSpace(runtime.Str("mailbox")); mb != "" && mb != "me" {
+		return composeSenderInfo{Email: mb}
 	}
 	email, _ := fetchMailboxPrimaryEmail(runtime, "me")
-	return email
+	return composeSenderInfo{Email: email}
+}
+
+func resolveDefaultSendAs(runtime *common.RuntimeContext, mailboxID string) (composeSenderInfo, bool) {
+	if runtime == nil || runtime.Factory == nil {
+		return composeSenderInfo{}, false
+	}
+	data, err := runtime.CallAPITyped("GET", mailboxPath(mailboxID, "settings", "send_as"), nil, nil)
+	if err != nil {
+		return composeSenderInfo{}, false
+	}
+	addrs, ok := data["sendable_addresses"].([]interface{})
+	if !ok {
+		if nested, nestedOK := data["data"].(map[string]interface{}); nestedOK {
+			addrs, ok = nested["sendable_addresses"].([]interface{})
+		}
+	}
+	if !ok || len(addrs) == 0 {
+		return composeSenderInfo{}, false
+	}
+	sender := pickSendAsAddress(addrs, "")
+	return sender, sender.Email != ""
+}
+
+func pickSendAsAddress(addrs []interface{}, fromEmail string) composeSenderInfo {
+	var first composeSenderInfo
+	for _, raw := range addrs {
+		m, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		email := strings.TrimSpace(asString(m["email_address"]))
+		if email == "" {
+			continue
+		}
+		sender := composeSenderInfo{
+			Name:  strings.TrimSpace(asString(m["name"])),
+			Email: email,
+		}
+		if first.Email == "" {
+			first = sender
+		}
+		if strings.TrimSpace(fromEmail) != "" && strings.EqualFold(email, strings.TrimSpace(fromEmail)) {
+			return sender
+		}
+		if strings.TrimSpace(fromEmail) == "" && asBool(m["is_default"]) {
+			return sender
+		}
+	}
+	return first
+}
+
+func asString(v interface{}) string {
+	s, _ := v.(string)
+	return s
+}
+
+func asBool(v interface{}) bool {
+	b, _ := v.(bool)
+	return b
 }
 
 // fetchSelfEmailSet returns a set of addresses to exclude as "self" in

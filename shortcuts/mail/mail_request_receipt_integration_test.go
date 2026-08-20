@@ -28,6 +28,19 @@ func stubMailboxProfile(reg *httpmock.Registry, primary string) {
 	})
 }
 
+func stubMailboxSendAs(reg *httpmock.Registry, addresses []interface{}) {
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/me/settings/send_as",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"sendable_addresses": addresses,
+			},
+		},
+	})
+}
+
 // stubGetMessageWithFormat registers a messages.get stub returning a minimal
 // message suitable for reply / reply-all / forward. Subject / body / headers
 // are fixed to deterministic values.
@@ -119,7 +132,10 @@ func decodeCapturedRawEML(t *testing.T, capturedBody []byte) string {
 // header addressed to the sender into the outgoing draft's EML.
 func TestMailSend_RequestReceiptAddsHeader_Integration(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
-	stubMailboxProfile(reg, "me@example.com")
+	stubMailboxSendAs(reg, []interface{}{
+		map[string]interface{}{"email_address": "primary@example.com", "name": "Primary"},
+		map[string]interface{}{"email_address": "default.alias@example.com", "name": "Default Alias", "is_default": true},
+	})
 	createStub := registerDraftCaptureStubs(reg)
 
 	if err := runMountedMailShortcut(t, MailSend, []string{
@@ -133,9 +149,10 @@ func TestMailSend_RequestReceiptAddsHeader_Integration(t *testing.T) {
 		t.Fatalf("send failed: %v", err)
 	}
 	raw := decodeCapturedRawEML(t, createStub.CapturedBody)
-	// Pin the full header value so the From: header's me@example.com doesn't
-	// satisfy a substring check even when DNT is broken.
-	if !strings.Contains(raw, "Disposition-Notification-To: <me@example.com>") {
+	if !strings.Contains(raw, "From: <default.alias@example.com>") {
+		t.Errorf("expected From header to use default send_as address; got EML:\n%s", raw)
+	}
+	if !strings.Contains(raw, "Disposition-Notification-To: <default.alias@example.com>") {
 		t.Errorf("expected DNT header addressed to sender; got EML:\n%s", raw)
 	}
 }
