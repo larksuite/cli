@@ -6,10 +6,6 @@
 
 如果操作对象是具体邮件 `message_id`，不是整个会话，使用 [`mail +message-trash`](./lark-mail-message-trash.md)。
 
-本 skill 对应 shortcut `lark-cli mail +thread-trash`，内部调用：
-
-- `POST /open-apis/mail/v1/user_mailboxes/{mailbox}/threads/batch_trash` — 按会话批量软删除
-
 ## 命令
 
 ```bash
