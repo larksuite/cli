@@ -19,6 +19,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/deprecation"
 	"github.com/larksuite/cli/internal/flagalias"
 	"github.com/larksuite/cli/internal/hook"
@@ -71,6 +72,12 @@ func executeWithOptions(opts []BuildOption) int {
 	if cfg.streams == nil {
 		WithIO(os.Stdin, os.Stdout, os.Stderr)(cfg)
 	}
+	// Workspace selection must precede every config read below
+	// (isSingleAppMode, ResolveStartupBrand): both load config.json from the
+	// workspace-scoped dir, and the workspace was previously only set inside
+	// NewDefault — after those reads. Detection is env-only and deterministic;
+	// NewDefault re-sets the same value when it runs.
+	core.SetCurrentWorkspace(core.DetectWorkspaceFromEnv(os.Getenv))
 	if !cfg.hideProfileSet {
 		HideProfile(isSingleAppMode())(cfg)
 	}
