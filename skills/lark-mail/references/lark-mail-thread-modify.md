@@ -4,10 +4,6 @@
 
 如果操作对象是具体邮件 `message_id`，不是整个会话，使用 [`mail +message-modify`](./lark-mail-message-modify.md)。
 
-本 skill 对应 shortcut `lark-cli mail +thread-modify`，内部调用：
-
-- `POST /open-apis/mail/v1/user_mailboxes/{mailbox}/threads/batch_modify` — 按会话批量修改标签或移动文件夹
-
 ## 命令
 
 ```bash
