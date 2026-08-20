@@ -5,6 +5,7 @@ package mail
 
 import (
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -392,5 +393,717 @@ func TestMailRuleUpdateHelpListsNameFlag(t *testing.T) {
 
 	if !strings.Contains(stdout.String(), "--name") {
 		t.Fatalf("rule-update help missing --name flag\n%s", stdout.String())
+	}
+}
+
+func TestMailRuleCreateParsesJSONConditionsAndActions(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	post := &httpmock.Stub{
+		Method: "POST",
+		URL:    "open-apis/mail/v1/user_mailboxes/user@example.com/rules",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"rule": map[string]interface{}{
+					"rule_id":   "rule_json",
+					"name":      "JSON Rule",
+					"is_enable": false,
+				},
+			},
+		},
+	}
+	reg.Register(post)
+
+	err := runMountedMailShortcut(t, MailRuleCreate, []string{
+		"+rule-create",
+		"--user-mailbox-id", "user@example.com",
+		"--name", "JSON Rule",
+		"--match", "any",
+		"--disable",
+		"--stop-after-match",
+		"--conditions", `[{"field":"subject","op":"contains","value":"Alpha"},{"field":"has_attachment"}]`,
+		"--actions", `[{"kind":"forward","email":"dev@example.com"},{"kind":"share_to_chat","params":{"chat_id":"oc_123"}}]`,
+		"--format", "json",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("run +rule-create error = %v", err)
+	}
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(post.CapturedBody, &body); err != nil {
+		t.Fatalf("Unmarshal(POST body) error = %v, body=%s", err, string(post.CapturedBody))
+	}
+	if body["name"] != "JSON Rule" || body["is_enable"] != false || body["ignore_the_rest_of_rules"] != true {
+		t.Fatalf("top-level body fields mismatch: %v", body)
+	}
+	condition := body["condition"].(map[string]interface{})
+	if got := condition["match_type"]; got != float64(2) {
+		t.Fatalf("match_type = %v, want 2", got)
+	}
+	conditionItems := condition["items"].([]interface{})
+	if len(conditionItems) != 2 {
+		t.Fatalf("condition items = %+v, want 2", conditionItems)
+	}
+	if got := conditionItems[1].(map[string]interface{})["type"]; got != float64(16) {
+		t.Fatalf("has_attachment type = %v, want 16", got)
+	}
+	actionItems := body["action"].(map[string]interface{})["items"].([]interface{})
+	if len(actionItems) != 2 {
+		t.Fatalf("action items = %+v, want 2", actionItems)
+	}
+	if got := actionItems[0].(map[string]interface{})["email"]; got != "dev@example.com" {
+		t.Fatalf("forward email = %v", got)
+	}
+	if got := actionItems[1].(map[string]interface{})["chat_id"]; got != "oc_123" {
+		t.Fatalf("share_to_chat chat_id = %v", got)
+	}
+}
+
+func TestMailRuleCreateReadsConditionsAndActionsFromFiles(t *testing.T) {
+	chdirTemp(t)
+	if err := os.WriteFile("conditions.json", []byte(`[{"field":"body","operator":"contains","value":"hello"}]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("actions.json", []byte(`[{"kind":"add_user_label","label_id":"lbl_1"}]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	post := &httpmock.Stub{
+		Method: "POST",
+		URL:    "open-apis/mail/v1/user_mailboxes/me/rules",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+	}
+	reg.Register(post)
+
+	err := runMountedMailShortcut(t, MailRuleCreate, []string{
+		"+rule-create",
+		"--name", "File Rule",
+		"--conditions", "@conditions.json",
+		"--actions", "@actions.json",
+		"--format", "json",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("run +rule-create from files error = %v", err)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(post.CapturedBody, &body); err != nil {
+		t.Fatalf("Unmarshal(POST body) error = %v, body=%s", err, string(post.CapturedBody))
+	}
+	conditionItems := body["condition"].(map[string]interface{})["items"].([]interface{})
+	if got := conditionItems[0].(map[string]interface{})["type"]; got != float64(7) {
+		t.Fatalf("body condition type = %v, want 7", got)
+	}
+	actionItems := body["action"].(map[string]interface{})["items"].([]interface{})
+	if got := actionItems[0].(map[string]interface{})["label_id"]; got != "lbl_1" {
+		t.Fatalf("label_id = %v, want lbl_1", got)
+	}
+}
+
+func TestMailRuleCreateValidationErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "missing name",
+			args: []string{"+rule-create", "--condition", "subject:contains:Alpha", "--action", "mark_read"},
+			want: "--name is required",
+		},
+		{
+			name: "missing condition",
+			args: []string{"+rule-create", "--name", "Alpha", "--action", "mark_read"},
+			want: "at least one --condition",
+		},
+		{
+			name: "missing action",
+			args: []string{"+rule-create", "--name", "Alpha", "--condition", "subject:contains:Alpha"},
+			want: "at least one --action",
+		},
+		{
+			name: "invalid match",
+			args: []string{"+rule-create", "--name", "Alpha", "--match", "maybe", "--condition", "subject:contains:Alpha", "--action", "mark_read"},
+			want: "allowed: all, any",
+		},
+		{
+			name: "conflicting enable flags",
+			args: []string{"+rule-create", "--name", "Alpha", "--enable", "--disable", "--condition", "subject:contains:Alpha", "--action", "mark_read"},
+			want: "mutually exclusive",
+		},
+		{
+			name: "conflicting stop flags",
+			args: []string{"+rule-create", "--name", "Alpha", "--stop-after-match", "--continue-after-match", "--condition", "subject:contains:Alpha", "--action", "mark_read"},
+			want: "mutually exclusive",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, stdout, _, _ := mailShortcutTestFactory(t)
+			err := runMountedMailShortcut(t, MailRuleCreate, tc.args, f, stdout)
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestMailRuleDryRunShortcuts(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		shortcut common.Shortcut
+		args     []string
+	}{
+		{
+			name:     "list",
+			shortcut: MailRuleList,
+			args:     []string{"+rule-list", "--dry-run"},
+		},
+		{
+			name:     "get",
+			shortcut: MailRuleGet,
+			args:     []string{"+rule-get", "--rule-id", "rule_1", "--dry-run"},
+		},
+		{
+			name:     "create",
+			shortcut: MailRuleCreate,
+			args:     []string{"+rule-create", "--name", "Alpha", "--condition", "subject:contains:Alpha", "--action", "mark_read", "--dry-run"},
+		},
+		{
+			name:     "update",
+			shortcut: MailRuleUpdate,
+			args:     []string{"+rule-update", "--rule-id", "rule_1", "--name", "Beta", "--dry-run"},
+		},
+		{
+			name:     "delete",
+			shortcut: MailRuleDelete,
+			args:     []string{"+rule-delete", "--rule-id", "rule_1", "--dry-run"},
+		},
+		{
+			name:     "enable",
+			shortcut: MailRuleEnable,
+			args:     []string{"+rule-enable", "--rule-id", "rule_1", "--dry-run"},
+		},
+		{
+			name:     "reorder",
+			shortcut: MailRuleReorder,
+			args:     []string{"+rule-reorder", "--rule-ids", "a,b", "--dry-run"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, stdout, _, _ := mailShortcutTestFactory(t)
+			if err := runMountedMailShortcut(t, tc.shortcut, tc.args, f, stdout); err != nil {
+				t.Fatalf("dry-run error = %v", err)
+			}
+		})
+	}
+}
+
+func TestMailRuleGetShortcutReturnsMatchAndMissingRule(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	reg.Register(mailRuleListStub(mailRuleTestRawRule("rule_1", "Alpha")))
+	if err := runMountedMailShortcut(t, MailRuleGet, []string{"+rule-get", "--rule-id", "rule_1", "--format", "json"}, f, stdout); err != nil {
+		t.Fatalf("run +rule-get error = %v", err)
+	}
+	data := decodeShortcutEnvelopeData(t, stdout)
+	if data["rule_id"] != "rule_1" {
+		t.Fatalf("rule = %+v", data)
+	}
+
+	reg.Register(mailRuleListStub(mailRuleTestRawRule("rule_2", "Beta")))
+	err := runMountedMailShortcut(t, MailRuleGet, []string{"+rule-get", "--rule-id", "rule_missing", "--format", "json"}, f, stdout)
+	if err == nil {
+		t.Fatal("expected missing rule error")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestMailRuleParserErrorBranches(t *testing.T) {
+	if conds, err := parseRuleConditionValue(nil, "", "--condition"); err != nil || conds != nil {
+		t.Fatalf("empty condition = %+v, %v", conds, err)
+	}
+	if _, err := parseRuleConditionValue(nil, `{`, "--condition"); err == nil {
+		t.Fatal("expected invalid condition JSON error")
+	}
+	if _, err := parseRuleConditionJSON([]any{"bad"}, "--condition"); err == nil {
+		t.Fatal("expected invalid condition array item error")
+	}
+	if _, err := parseRuleConditionJSON("bad", "--condition"); err == nil {
+		t.Fatal("expected invalid condition object error")
+	}
+	if _, err := parseRuleConditionValue(nil, "subject:contains:", "--condition"); err == nil {
+		t.Fatal("expected empty condition value error")
+	}
+	if _, err := parseRuleConditionValue(nil, "has_attachment:contains:x", "--condition"); err == nil {
+		t.Fatal("expected boolean condition value error")
+	}
+	if _, err := parseRuleConditionValue(nil, "subject:empty:x", "--condition"); err == nil {
+		t.Fatal("expected no-value operator error")
+	}
+
+	if actions, err := parseRuleActionValue(nil, "", "--action"); err != nil || actions != nil {
+		t.Fatalf("empty action = %+v, %v", actions, err)
+	}
+	if _, err := parseRuleActionValue(nil, `{`, "--action"); err == nil {
+		t.Fatal("expected invalid action JSON error")
+	}
+	if _, err := parseRuleActionJSON([]any{"bad"}, "--action"); err == nil {
+		t.Fatal("expected invalid action array item error")
+	}
+	if _, err := parseRuleActionJSON("bad", "--action"); err == nil {
+		t.Fatal("expected invalid action object error")
+	}
+	if _, err := parseRuleActionGrammar(`forward:json={`, "--action"); err == nil {
+		t.Fatal("expected invalid action params JSON error")
+	}
+	if _, err := parseRuleActionGrammar("forward:email", "--action"); err == nil {
+		t.Fatal("expected invalid action grammar error")
+	}
+	if _, err := parseRuleActionGrammar("mark_read:foo=bar", "--action"); err == nil {
+		t.Fatal("expected parameterless action error")
+	}
+}
+
+func TestMailRuleActionValueParsesJSONObjectsAndGrammarJSONParams(t *testing.T) {
+	actions, err := parseRuleActionValue(nil, `{"kind":"add_user_label","params":{"label_id":"lbl_1"}}`, "--action")
+	if err != nil {
+		t.Fatalf("parseRuleActionValue(object) error = %v", err)
+	}
+	if len(actions) != 1 || actions[0].Kind != "add_user_label" || actions[0].Params["label_id"] != "lbl_1" {
+		t.Fatalf("actions = %+v", actions)
+	}
+
+	actions, err = parseRuleActionValue(nil, `forward:json={"email":"dev@example.com"}`, "--action")
+	if err != nil {
+		t.Fatalf("parseRuleActionValue(grammar json) error = %v", err)
+	}
+	if len(actions) != 1 || actions[0].Kind != "forward" || actions[0].Params["email"] != "dev@example.com" {
+		t.Fatalf("actions = %+v", actions)
+	}
+}
+
+func TestMailRuleToggleAndDeleteShortcutsPreserveRawBody(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	currentRule := mailRuleTestRawRule("rule_1", "Alpha")
+	reg.Register(mailRuleListStub(currentRule))
+	put := &httpmock.Stub{
+		Method: "PUT",
+		URL:    "open-apis/mail/v1/user_mailboxes/me/rules/rule_1",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+	}
+	reg.Register(put)
+
+	if err := runMountedMailShortcut(t, MailRuleDisable, []string{"+rule-disable", "--rule-id", "rule_1", "--format", "json"}, f, stdout); err != nil {
+		t.Fatalf("run +rule-disable error = %v", err)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(put.CapturedBody, &body); err != nil {
+		t.Fatalf("Unmarshal(PUT body) error = %v, body=%s", err, string(put.CapturedBody))
+	}
+	if body["is_enable"] != false || body["vendor_top"] != "keep" {
+		t.Fatalf("toggle body did not preserve raw fields: %v", body)
+	}
+
+	reg.Register(mailRuleListStub(currentRule))
+	del := &httpmock.Stub{
+		Method: "DELETE",
+		URL:    "open-apis/mail/v1/user_mailboxes/me/rules/rule_1",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+	}
+	reg.Register(del)
+	if err := runMountedMailShortcut(t, MailRuleDelete, []string{"+rule-delete", "--rule-id", "rule_1", "--yes", "--format", "json"}, f, stdout); err != nil {
+		t.Fatalf("run +rule-delete error = %v", err)
+	}
+	data := decodeShortcutEnvelopeData(t, stdout)
+	if data["deleted"] != true {
+		t.Fatalf("deleted = %v, want true", data["deleted"])
+	}
+}
+
+func TestMailRuleListFilterUsesTextTable(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	reg.Register(mailRuleListStub(
+		mailRuleTestRawRule("rule_1", "Alpha"),
+		mailRuleTestRawRule("rule_2", "Beta"),
+	))
+
+	if err := runMountedMailShortcut(t, MailRuleList, []string{"+rule-list", "--name-contains", "beta"}, f, stdout); err != nil {
+		t.Fatalf("run +rule-list error = %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "Beta") {
+		t.Fatalf("filtered table should include Beta, got\n%s", out)
+	}
+	if strings.Contains(out, "Alpha") {
+		t.Fatalf("filtered table should exclude Alpha, got\n%s", out)
+	}
+}
+
+func TestMailRuleReorderShortcutPostsFullAndMoveOrders(t *testing.T) {
+	t.Run("full order", func(t *testing.T) {
+		f, stdout, _, reg := mailShortcutTestFactory(t)
+		reg.Register(mailRuleListStub(
+			mailRuleTestRawRule("a", "A"),
+			mailRuleTestRawRule("b", "B"),
+			mailRuleTestRawRule("c", "C"),
+		))
+		post := &httpmock.Stub{
+			Method: "POST",
+			URL:    "open-apis/mail/v1/user_mailboxes/me/rules/reorder",
+			Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+		}
+		reg.Register(post)
+
+		if err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--rule-ids", "c,b,a", "--format", "json"}, f, stdout); err != nil {
+			t.Fatalf("run +rule-reorder full error = %v", err)
+		}
+		assertRuleIDsBody(t, post.CapturedBody, "c,b,a")
+	})
+
+	t.Run("move to bottom", func(t *testing.T) {
+		f, stdout, _, reg := mailShortcutTestFactory(t)
+		reg.Register(mailRuleListStub(
+			mailRuleTestRawRule("a", "A"),
+			mailRuleTestRawRule("b", "B"),
+			mailRuleTestRawRule("c", "C"),
+		))
+		post := &httpmock.Stub{
+			Method: "POST",
+			URL:    "open-apis/mail/v1/user_mailboxes/me/rules/reorder",
+			Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+		}
+		reg.Register(post)
+
+		if err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--move-rule-id", "a", "--to-bottom", "--format", "json"}, f, stdout); err != nil {
+			t.Fatalf("run +rule-reorder move error = %v", err)
+		}
+		assertRuleIDsBody(t, post.CapturedBody, "b,c,a")
+	})
+
+	t.Run("move to top", func(t *testing.T) {
+		f, stdout, _, reg := mailShortcutTestFactory(t)
+		reg.Register(mailRuleListStub(
+			mailRuleTestRawRule("a", "A"),
+			mailRuleTestRawRule("b", "B"),
+			mailRuleTestRawRule("c", "C"),
+		))
+		post := &httpmock.Stub{
+			Method: "POST",
+			URL:    "open-apis/mail/v1/user_mailboxes/me/rules/reorder",
+			Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+		}
+		reg.Register(post)
+
+		if err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--move-rule-id", "c", "--to-top", "--format", "json"}, f, stdout); err != nil {
+			t.Fatalf("run +rule-reorder to-top error = %v", err)
+		}
+		assertRuleIDsBody(t, post.CapturedBody, "c,a,b")
+	})
+
+	t.Run("move after target", func(t *testing.T) {
+		f, stdout, _, reg := mailShortcutTestFactory(t)
+		reg.Register(mailRuleListStub(
+			mailRuleTestRawRule("a", "A"),
+			mailRuleTestRawRule("b", "B"),
+			mailRuleTestRawRule("c", "C"),
+		))
+		post := &httpmock.Stub{
+			Method: "POST",
+			URL:    "open-apis/mail/v1/user_mailboxes/me/rules/reorder",
+			Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+		}
+		reg.Register(post)
+
+		if err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--move-rule-id", "a", "--after-rule-id", "c", "--format", "json"}, f, stdout); err != nil {
+			t.Fatalf("run +rule-reorder after error = %v", err)
+		}
+		assertRuleIDsBody(t, post.CapturedBody, "b,c,a")
+	})
+}
+
+func TestMailRuleUpdateRejectsReplacingUnknownRawCollections(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	currentRule := mailRuleTestRawRule("rule_1", "Alpha")
+	currentRule["condition"].(map[string]interface{})["items"] = []interface{}{
+		map[string]interface{}{"type": 999, "operator": 1, "input": "unknown"},
+	}
+	reg.Register(mailRuleListStub(currentRule))
+
+	err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--condition", "subject:contains:Beta", "--format", "json"}, f, stdout)
+	if err == nil {
+		t.Fatal("expected unknown condition replacement error")
+	}
+	if !strings.Contains(err.Error(), "unknown condition raw") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestMailRuleUpdateReplacesKnownConditionsAndActions(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	currentRule := mailRuleTestRawRule("rule_1", "Alpha")
+	reg.Register(mailRuleListStub(currentRule))
+	put := &httpmock.Stub{
+		Method: "PUT",
+		URL:    "open-apis/mail/v1/user_mailboxes/me/rules/rule_1",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+	}
+	reg.Register(put)
+
+	err := runMountedMailShortcut(t, MailRuleUpdate, []string{
+		"+rule-update",
+		"--rule-id", "rule_1",
+		"--condition", "subject:contains:Beta",
+		"--action", "move_folder:folder_id=fld_2",
+		"--format", "json",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("run +rule-update error = %v", err)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(put.CapturedBody, &body); err != nil {
+		t.Fatalf("Unmarshal(PUT body) error = %v, body=%s", err, string(put.CapturedBody))
+	}
+	conditionItems := body["condition"].(map[string]interface{})["items"].([]interface{})
+	if got := conditionItems[0].(map[string]interface{})["input"]; got != "Beta" {
+		t.Fatalf("condition input = %v, want Beta", got)
+	}
+	actionItems := body["action"].(map[string]interface{})["items"].([]interface{})
+	if got := actionItems[0].(map[string]interface{})["folder_id"]; got != "fld_2" {
+		t.Fatalf("folder_id = %v, want fld_2", got)
+	}
+}
+
+func TestMailRuleDecodeHandlesMalformedRawItems(t *testing.T) {
+	conditions, unknowns := decodeRuleConditions([]interface{}{
+		"bad-condition",
+		map[string]interface{}{"operator": 1},
+		map[string]interface{}{"type": 6},
+		map[string]interface{}{"type": 6, "operator": 999},
+		map[string]interface{}{"type": 16},
+	}, nil)
+	if len(conditions) != 1 || conditions[0].Field != "has_attachment" {
+		t.Fatalf("conditions = %+v", conditions)
+	}
+	if len(unknowns) != 4 {
+		t.Fatalf("condition unknowns = %+v, want 4", unknowns)
+	}
+
+	actions, unknowns := decodeRuleActions([]interface{}{
+		"bad-action",
+		map[string]interface{}{},
+		map[string]interface{}{"type": 999},
+		map[string]interface{}{"type": 11, "params": map[string]interface{}{"folder_id": "nested_fld"}},
+	}, nil)
+	if len(actions) != 1 || actions[0].Kind != "move_folder" || actions[0].Params["folder_id"] != "nested_fld" {
+		t.Fatalf("actions = %+v", actions)
+	}
+	if len(unknowns) != 3 {
+		t.Fatalf("action unknowns = %+v, want 3", unknowns)
+	}
+}
+
+func TestMailRuleExtractAndRenderHelpers(t *testing.T) {
+	rule := mailRuleTestRawRule("rule_1", "Alpha")
+	if got := extractRuleItems(map[string]interface{}{"items": []interface{}{rule}}); len(got) != 1 {
+		t.Fatalf("items extraction = %+v", got)
+	}
+	if got := extractRuleItems(map[string]interface{}{"rule": rule}); len(got) != 1 {
+		t.Fatalf("rule extraction = %+v", got)
+	}
+	if got := firstRuleObject(map[string]interface{}{"name": "Direct"}); got["name"] != "Direct" {
+		t.Fatalf("firstRuleObject direct = %+v", got)
+	}
+	if got := firstRuleObject(map[string]interface{}{}); len(got) != 0 {
+		t.Fatalf("firstRuleObject empty = %+v", got)
+	}
+
+	envs := []mailRuleEnvelope{decodeMailRuleEnvelope(rule, "me")}
+	var out strings.Builder
+	printMailRuleTable(&out, envs)
+	if !strings.Contains(out.String(), "rule_1") || !strings.Contains(out.String(), "Alpha") {
+		t.Fatalf("table output missing rule data\n%s", out.String())
+	}
+
+	raw := map[string]any{
+		"id":                       123,
+		"rule_name":                "Fallback",
+		"enabled":                  "false",
+		"ignore_the_rest_of_rules": float64(1),
+		"sequence":                 9,
+		"condition": map[string]interface{}{
+			"match_type": 99,
+			"items":      []interface{}{},
+		},
+	}
+	env := decodeMailRuleEnvelope(raw, "me")
+	if env.RuleID != "123" || env.Name != "Fallback" || env.Enabled || !env.SemanticSpec.Rule.StopAfterMatch || env.Order != 9 {
+		t.Fatalf("fallback decode mismatch: %+v", env)
+	}
+	if len(env.Unknowns) != 1 || env.Unknowns[0].Path != "condition.match_type" {
+		t.Fatalf("unknown match type = %+v", env.Unknowns)
+	}
+}
+
+func TestMailRuleScalarHelpersCoverFallbacks(t *testing.T) {
+	for _, tc := range []struct {
+		raw  any
+		want int
+		ok   bool
+	}{
+		{int64(7), 7, true},
+		{json.Number("8"), 8, true},
+		{"9", 9, true},
+		{"bad", 0, false},
+		{true, 0, false},
+	} {
+		got, ok := intValue(tc.raw)
+		if got != tc.want || ok != tc.ok {
+			t.Fatalf("intValue(%v) = %d,%v want %d,%v", tc.raw, got, ok, tc.want, tc.ok)
+		}
+	}
+	if !boolValueDefault("true", false) {
+		t.Fatal("boolValueDefault should parse true string")
+	}
+	if boolValueDefault("not-bool", false) {
+		t.Fatal("boolValueDefault should use fallback for invalid string")
+	}
+	if !boolValueDefault(float64(1), false) {
+		t.Fatal("boolValueDefault should treat non-zero float as true")
+	}
+	if got := mailRuleFirstString(map[string]interface{}{"id": 123}, "missing", "id"); got != "123" {
+		t.Fatalf("mailRuleFirstString numeric = %q", got)
+	}
+	if firstPresent(map[string]any{}, "missing") != nil {
+		t.Fatal("firstPresent should return nil for missing keys")
+	}
+	if params := decodeActionParams("move_folder", map[string]interface{}{}); params != nil {
+		t.Fatalf("empty action params = %+v, want nil", params)
+	}
+	if got := describeConditions("any", []mailRuleCondition{{Field: "has_attachment"}, {Field: "subject", Operator: "contains"}}); !strings.Contains(got, "或") || !strings.Contains(got, "主题包含") {
+		t.Fatalf("describeConditions = %q", got)
+	}
+	if got := describeConditions("all", nil); got != "满足未知条件" {
+		t.Fatalf("empty conditions description = %q", got)
+	}
+	if got := describeActions(nil); got != "执行未知动作" {
+		t.Fatalf("empty actions description = %q", got)
+	}
+}
+
+func TestMailRuleOrderValidationErrors(t *testing.T) {
+	if err := validateFullRuleOrder([]string{"a"}, []string{"a", "b"}); err == nil {
+		t.Fatal("expected length mismatch error")
+	}
+	if err := validateFullRuleOrder([]string{"a", "a"}, []string{"a", "b"}); err == nil {
+		t.Fatal("expected duplicate mismatch error")
+	}
+	if _, err := insertRelative([]string{"a", "b"}, "c", "", true); err == nil {
+		t.Fatal("expected missing target error")
+	}
+	if _, err := insertRelative([]string{"a", "b"}, "c", "z", true); err == nil {
+		t.Fatal("expected unknown target error")
+	}
+
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "no mode",
+			args: []string{"+rule-reorder"},
+			want: "exactly one",
+		},
+		{
+			name: "full with target",
+			args: []string{"+rule-reorder", "--rule-ids", "a,b", "--before-rule-id", "a"},
+			want: "cannot be combined",
+		},
+		{
+			name: "move with no target",
+			args: []string{"+rule-reorder", "--move-rule-id", "a"},
+			want: "move mode requires exactly one",
+		},
+		{
+			name: "move missing rule",
+			args: []string{"+rule-reorder", "--move-rule-id", "z", "--to-top"},
+			want: "is not in current rule order",
+		},
+		{
+			name: "full mismatch",
+			args: []string{"+rule-reorder", "--rule-ids", "a,z"},
+			want: "mismatch",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, stdout, _, reg := mailShortcutTestFactory(t)
+			if strings.Contains(tc.want, "current rule order") || strings.Contains(tc.want, "mismatch") {
+				reg.Register(mailRuleListStub(mailRuleTestRawRule("a", "A"), mailRuleTestRawRule("b", "B")))
+			}
+			err := runMountedMailShortcut(t, MailRuleReorder, append(tc.args, "--format", "json"), f, stdout)
+			if err == nil {
+				t.Fatal("expected reorder error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func mailRuleTestRawRule(ruleID, name string) map[string]interface{} {
+	return map[string]interface{}{
+		"rule_id":                  ruleID,
+		"name":                     name,
+		"is_enable":                true,
+		"ignore_the_rest_of_rules": false,
+		"vendor_top":               "keep",
+		"condition": map[string]interface{}{
+			"match_type": 1,
+			"items": []interface{}{
+				map[string]interface{}{"type": 6, "operator": 1, "input": name},
+			},
+		},
+		"action": map[string]interface{}{
+			"items": []interface{}{
+				map[string]interface{}{"type": 3},
+			},
+		},
+	}
+}
+
+func mailRuleListStub(rules ...map[string]interface{}) *httpmock.Stub {
+	items := make([]interface{}, 0, len(rules))
+	for _, rule := range rules {
+		items = append(items, rule)
+	}
+	return &httpmock.Stub{
+		Method: "GET",
+		URL:    "open-apis/mail/v1/user_mailboxes/me/rules",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"rules": items,
+			},
+		},
+	}
+}
+
+func assertRuleIDsBody(t *testing.T, raw []byte, want string) {
+	t.Helper()
+	var body map[string]interface{}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatalf("Unmarshal(reorder body) error = %v, body=%s", err, string(raw))
+	}
+	var got []string
+	for _, item := range body["rule_ids"].([]interface{}) {
+		got = append(got, item.(string))
+	}
+	if strings.Join(got, ",") != want {
+		t.Fatalf("rule_ids = %v, want %s", got, want)
 	}
 }
