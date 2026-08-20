@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/selfupdate"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 func TestParseSkillsListIgnoresUnsupportedFormat(t *testing.T) {
@@ -687,7 +688,7 @@ func TestSyncSkillsPublishedSkillChangesReachOldLayoutInstallations(t *testing.T
 		}
 		oldSuite := t.TempDir()
 		for _, name := range []string{"lark-calendar", "lark-retired"} {
-			if err := os.MkdirAll(filepath.Join(oldSuite, "references", name), 0o755); err != nil {
+			if err := vfs.MkdirAll(filepath.Join(oldSuite, "references", name), 0o755); err != nil {
 				t.Fatal(err)
 			}
 		}

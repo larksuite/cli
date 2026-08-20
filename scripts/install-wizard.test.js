@@ -134,13 +134,23 @@ test("install rejects an unsupported skills layout before changing skills", unix
   assert.equal(readIfPresent(fixture.commandLog), "");
 });
 
+test("install rejects a missing skills layout value before changing skills", unixOnly, (t) => {
+  const fixture = makeFixture(t);
+  const result = runInstall(["--skills-layout"], fixture.env, "zh");
+
+  assert.equal(result.status, 1);
+  assert.match(result.stdout + result.stderr, /--skills-layout 必须是 separate 或 suite/);
+  assert.doesNotMatch(result.stdout + result.stderr, /Unexpected error/);
+  assert.equal(readIfPresent(fixture.commandLog), "");
+});
+
 test("install surfaces a skills warning returned by update", unixOnly, (t) => {
   const warning = "used the GitHub legacy fallback; installed Skill content may be incomplete";
   const fixture = makeFixture(t, 0, JSON.stringify({ skills_warning: warning }));
   const result = runInstall(["--skills-layout", "separate"], fixture.env);
 
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(result.stdout + result.stderr, new RegExp(warning));
+  assert.ok((result.stdout + result.stderr).includes(warning));
   assert.equal(readIfPresent(fixture.commandLog), "lark-cli:update --skills-layout separate --json\n");
 });
 
