@@ -1,6 +1,6 @@
 # minutes +apply-permission
 
-向妙记所有者发起查看或编辑权限申请。**写操作**，只在用户明确要求申请权限时才调用；调用后不代表立即获得权限，只是提交了一条申请。
+向妙记所有者发起查看或编辑权限申请。**高敏写操作（high-risk-write）**，会向妙记所有者推送申请通知，只在用户明确要求申请权限时才调用；调用后不代表立即获得权限，只是提交了一条申请。作为高敏操作，执行前需要用户明确确认。
 
 本 skill 对应 shortcut：`lark-cli minutes +apply-permission`（调用 `POST /open-apis/minutes/v1/minutes/{minute_token}/permissions/apply`）。支持 `--as user` / `--as bot`。
 

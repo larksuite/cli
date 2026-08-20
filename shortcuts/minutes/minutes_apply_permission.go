@@ -19,7 +19,7 @@ var MinutesApplyPermission = common.Shortcut{
 	Service:     "minutes",
 	Command:     "+apply-permission",
 	Description: "Apply for view or edit permission on a minute",
-	Risk:        "write",
+	Risk:        "high-risk-write",
 	Scopes:      []string{"minutes:permission:apply"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{

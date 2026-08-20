@@ -81,7 +81,7 @@ metadata:
 
 ### 3. 申请妙记权限
 
-遇到妙记没有查看或编辑权限时，引导用户申请对应权限；只有用户明确要申请时，才调用 `minutes +apply-permission`。使用前必读 [`+apply-permission` reference](references/lark-minutes-apply-permission.md)（write 操作，含 user/bot 身份与权限语义）。
+遇到妙记没有查看或编辑权限时，引导用户申请对应权限；只有用户明确要申请时，才调用 `minutes +apply-permission`。使用前必读 [`+apply-permission` reference](references/lark-minutes-apply-permission.md)（**高敏写操作**，含 user/bot 身份与权限语义）。
 
 只有当用户明确要求"申请查看权限"、"申请编辑权限"、"帮我申请这条妙记权限"时，才调用：
 

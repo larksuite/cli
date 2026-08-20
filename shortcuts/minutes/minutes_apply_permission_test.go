@@ -158,7 +158,7 @@ func TestMinutesApplyPermission_Execute(t *testing.T) {
 		"+apply-permission",
 		"--minute-token", minutesApplyPermissionTestToken,
 		"--perm", "edit",
-		"--format", "json", "--as", "user",
+		"--format", "json", "--as", "user", "--yes",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -188,5 +188,36 @@ func TestMinutesApplyPermission_Execute(t *testing.T) {
 	}
 	if envelope.Data.Perm != "edit" {
 		t.Errorf("data.perm = %q, want edit", envelope.Data.Perm)
+	}
+}
+
+// TestMinutesApplyPermission_RequiresConfirmation pins the high-risk-write
+// classification: without --yes the runner's confirmation gate must fire
+// before Execute runs, returning a typed confirmation_required error and
+// touching no API.
+func TestMinutesApplyPermission_RequiresConfirmation(t *testing.T) {
+	if MinutesApplyPermission.Risk != "high-risk-write" {
+		t.Fatalf("Risk=%q want high-risk-write", MinutesApplyPermission.Risk)
+	}
+
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	warmTokenCache(t)
+
+	err := mountAndRun(t, MinutesApplyPermission, []string{
+		"+apply-permission",
+		"--minute-token", minutesApplyPermissionTestToken,
+		"--perm", "view",
+		"--as", "user",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected confirmation_required error without --yes")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
+	}
+	if problem.Subtype != errs.SubtypeConfirmationRequired {
+		t.Fatalf("subtype=%q want %q", problem.Subtype, errs.SubtypeConfirmationRequired)
 	}
 }
