@@ -102,15 +102,13 @@ Form 依附于 Table，以 Field 作为题目，每次有效提交会创建一�
 
 ## Dashboard Block
 
-Dashboard Block 是 Base Block 树中的仪表盘容器，负责承载页面主题、布局和内部组件集合，本身不表示某一项图表数据。使用 `+dashboard-list` 定位容器，`+dashboard-get` 读取容器信息，`+dashboard-update` 修改主题。用户只要求调整布局、重排、美化、撑满或铺满，且没有给出组件级坐标或尺寸时，优先用 `+dashboard-arrange` 做整盘编排，而不是逐个 `--position` 更新；通常一次编排就够，不要仅为查看效果反复重排或逐个读回组件。对本次会话从零新建、且没有使用显式 `--position` 的仪表盘，收尾时用一次 arrange 即可。
+Dashboard Block 是 Base Block 树中的仪表盘容器，负责承载页面主题、布局和内部组件集合，本身不表示某一项图表数据。使用 `+dashboard-list` 定位容器，`+dashboard-get` 读取容器信息，`+dashboard-update` 修改主题，`+dashboard-arrange` 统一编排内部组件布局。
 
 容器内部的图表、指标卡和文本等组件在 Dashboard API 中也称为 Block，但不属于 Base Block 树。内部 Block 分为三条操作路径：
 
 1. **读取配置：** `+dashboard-block-list` / `+dashboard-block-get` 读取组件类型、布局和 `data_config`；文本组件的正文也属于配置。
 2. **写入配置：** `+dashboard-block-create` / `+dashboard-block-update` / `+dashboard-block-delete` 管理组件，`data_config` 定义数据源、维度、指标、聚合或文本内容。
 3. **读取内容：** `+dashboard-block-get-data` 读取图表、指标卡等数据组件的计算结果。
-
-用户给出组件级坐标、位置、顺序或尺寸时，使用 `+dashboard-block-create/update --position`；只要求整盘重排或美化、没有组件级约束时，使用 `+dashboard-arrange`。
 
 操作内部 Block 前先读 [Dashboard](references/lark-base-dashboard.md)，由该入口继续路由组件配置和结果协议。
 
