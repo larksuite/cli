@@ -61,3 +61,24 @@ lark-cli docs +fetch --api-version v2 --doc <note_doc_token> --doc-format markdo
 ```
 
 > `minute_token` 不要直接传给 `note +detail`：必须先用本命令拿到 `note_id` 再调用 `note +detail`。
+
+## 权限缺失 / 被禁用时的降级路径
+
+`+detail --transcript` 依赖 `minutes:minutes.artifacts:read`（以及 `minutes:minutes.basic:read`）。当命令报 `missing_scope` 时，先区分两种情形：
+
+| 情形 | 特征 | 处理 |
+|------|------|------|
+| 只是未授权 | 授权页能勾选并授予 scope，授权后 `lark-cli auth status` 中出现目标 scope | 按报错 hint 重新授权即可 |
+| **企业后台禁用 scope** | 重新授权 N 次仍被拒（每次报 missing_scope，授权后 scope 仍未生效） | 重授权无法解决，走下面的降级路径 |
+
+> 判定说明：`missing_scope` 可能表示「未授予」或「企业策略禁用」两种情况。仅凭报错无法区分——`lark-cli auth status` 能确认授权后 scope 是否实际生效，但**是否被管理员禁用需由企业管理员/IT 确认**（如通过开放平台后台的 scope 配置界面查看）。
+
+### 降级路径（按优先级）
+
+以下命令序列**必须全程沿用同一个 `--as` 身份**（与本文档上方「典型链路」的身份延续规则一致，详见 [lark-shared](../../lark-shared/SKILL.md) 的「身份延续」）：
+
+1. **优先路由到智能纪要（smart notes）**：妙记的媒体录制**不会自动授权给参会人**，但智能纪要和逐字稿（verbatim doc）**会后自动授权**。持有 `minute_token` 时：`minutes +detail --minute-tokens <token> --as <identity>` 返回 `note_id` → `note +detail --note-id <note_id> --as <identity>` 拿 `verbatim_doc_token` → `docs +fetch --api-version v2 --doc <verbatim_doc_token> --as <identity>` 读正文。
+2. **下载录音后本地转写**：`minutes +download --minute-token <token> --as <identity>` 的媒体下载（`minutes:minutes.media:export`）可能仍被允许，即使 transcript 导出 scope 被禁。下载录音后用本地 ASR（如 whisper）转写。
+3. **申请权限**：`minutes +apply-permission --minute-token <token> --as <identity>` 向妙记所有者申请 view/edit 权限，或联系企业管理员开通 scope。
+
+> 相关 issue：[#2368](https://github.com/larksuite/cli/issues/2368)（missing-scope 错误应提示降级路径）
