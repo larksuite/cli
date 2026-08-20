@@ -312,6 +312,76 @@ func TestMailRuleUpdatePreservesRawFieldsAndUpdatesName(t *testing.T) {
 	}
 }
 
+func TestMailRuleUpdatePreservesConditionItemExtrasWhenChangingMatch(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	currentRule := map[string]interface{}{
+		"rule_id":                  "rule_1",
+		"name":                     "Alpha",
+		"is_enable":                true,
+		"ignore_the_rest_of_rules": false,
+		"condition": map[string]interface{}{
+			"match_type": 1,
+			"items": []interface{}{
+				map[string]interface{}{"type": 6, "operator": 1, "input": "Alpha", "vendor_condition_extra": "keep"},
+			},
+			"vendor_condition_top": "keep-top",
+		},
+		"action": map[string]interface{}{
+			"items": []interface{}{
+				map[string]interface{}{"type": 3},
+			},
+		},
+	}
+	reg.Register(
+		&httpmock.Stub{
+			Method: "GET",
+			URL:    "open-apis/mail/v1/user_mailboxes/me/rules",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"rules": []interface{}{currentRule},
+				},
+			},
+		},
+	)
+	put := &httpmock.Stub{
+		Method: "PUT",
+		URL:    "open-apis/mail/v1/user_mailboxes/me/rules/rule_1",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"rule": map[string]interface{}{
+					"rule_id":   "rule_1",
+					"name":      "Alpha",
+					"is_enable": true,
+				},
+			},
+		},
+	}
+	reg.Register(put)
+
+	err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--match", "any", "--format", "json"}, f, stdout)
+	if err != nil {
+		t.Fatalf("run +rule-update error = %v", err)
+	}
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(put.CapturedBody, &body); err != nil {
+		t.Fatalf("Unmarshal(PUT body) error = %v, body=%s", err, string(put.CapturedBody))
+	}
+	condition := body["condition"].(map[string]interface{})
+	if got := condition["match_type"]; got != float64(2) {
+		t.Fatalf("match_type = %v, want 2", got)
+	}
+	if got := condition["vendor_condition_top"]; got != "keep-top" {
+		t.Fatalf("vendor_condition_top = %v", got)
+	}
+	conditionItems := condition["items"].([]interface{})
+	if got := conditionItems[0].(map[string]interface{})["vendor_condition_extra"]; got != "keep" {
+		t.Fatalf("vendor_condition_extra = %v", got)
+	}
+}
+
 func TestMailRuleUpdateHelpListsNameFlag(t *testing.T) {
 	f, stdout, _, _ := mailShortcutTestFactory(t)
 

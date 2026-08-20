@@ -758,7 +758,7 @@ func parseRuleActionGrammar(raw, flag string) (mailRuleAction, error) {
 func validateRuleCondition(cond mailRuleCondition, flag string) (mailRuleCondition, error) {
 	field, ok := mailRuleFieldByName[strings.TrimSpace(cond.Field)]
 	if !ok {
-		return mailRuleCondition{}, mailValidationParamError(flag, unknownRuleAliasMessage("condition field", cond.Field, "fields", mailRuleFields))
+		return mailRuleCondition{}, mailValidationParamError(flag, "%s", unknownRuleAliasMessage("condition field", cond.Field, "fields", mailRuleFields))
 	}
 	cond.Field = field.Canonical
 	if !field.NeedsArg {
@@ -769,7 +769,7 @@ func validateRuleCondition(cond mailRuleCondition, flag string) (mailRuleConditi
 	}
 	op, ok := mailRuleOpByName[strings.TrimSpace(cond.Operator)]
 	if !ok {
-		return mailRuleCondition{}, mailValidationParamError(flag, unknownRuleAliasMessage("condition operator", cond.Operator, "operators", mailRuleOperators))
+		return mailRuleCondition{}, mailValidationParamError(flag, "%s", unknownRuleAliasMessage("condition operator", cond.Operator, "operators", mailRuleOperators))
 	}
 	cond.Operator = op.Canonical
 	if op.NeedsArg && strings.TrimSpace(cond.Value) == "" {
@@ -784,7 +784,7 @@ func validateRuleCondition(cond mailRuleCondition, flag string) (mailRuleConditi
 func validateRuleAction(action mailRuleAction, flag string) (mailRuleAction, error) {
 	alias, ok := mailRuleActionByName[strings.TrimSpace(action.Kind)]
 	if !ok {
-		return mailRuleAction{}, mailValidationParamError(flag, unknownRuleAliasMessage("action", action.Kind, "actions", mailRuleActions))
+		return mailRuleAction{}, mailValidationParamError(flag, "%s", unknownRuleAliasMessage("action", action.Kind, "actions", mailRuleActions))
 	}
 	action.Kind = alias.Canonical
 	needed := requiredActionParam(action.Kind)
@@ -1236,8 +1236,19 @@ func mergeRuleUpdateBody(rt *common.RuntimeContext, current mailRuleEnvelope, en
 			raw[key] = v
 		}
 	}
-	if rt.Changed("match") || rt.Changed("condition") || rt.Changed("conditions") || raw["condition"] == nil {
+	conditionsChanged := rt.Changed("condition") || rt.Changed("conditions")
+	if conditionsChanged || raw["condition"] == nil {
 		raw["condition"] = encoded["condition"]
+	} else if rt.Changed("match") {
+		if currentCondition, ok := mapValue(raw["condition"]); ok {
+			merged := copyInterfaceMap(currentCondition)
+			if encodedCondition, ok := encoded["condition"].(map[string]any); ok {
+				merged["match_type"] = encodedCondition["match_type"]
+			}
+			raw["condition"] = merged
+		} else {
+			raw["condition"] = encoded["condition"]
+		}
 	}
 	if rt.Changed("action") || rt.Changed("actions") || raw["action"] == nil {
 		raw["action"] = encoded["action"]
