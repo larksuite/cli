@@ -15,6 +15,7 @@ const {
   assertAllowedHost,
   resolveMirrorUrls,
   resolveReleaseAsset,
+  downloadVerifiedArchive,
   isCurlVersionSupported,
 } = require("./install.js");
 
@@ -191,6 +192,28 @@ describe("verifyChecksum", () => {
   });
 });
 
+describe("downloadVerifiedArchive", () => {
+  it("continues to the next URL when a download fails checksum verification", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "download-test-"));
+    const archivePath = path.join(dir, "archive.tar.gz");
+    const validContent = Buffer.from("valid archive content");
+    const expectedHash = crypto.createHash("sha256").update(validContent).digest("hex");
+    const urls = ["https://first.example.com/archive", "https://second.example.com/archive"];
+    const attempts = [];
+
+    downloadVerifiedArchive(urls, archivePath, expectedHash, (url, destPath) => {
+      attempts.push(url);
+      fs.writeFileSync(
+        destPath,
+        url === urls[0] ? "<html>login page</html>" : validContent
+      );
+    });
+
+    assert.deepEqual(attempts, urls);
+    assert.deepEqual(fs.readFileSync(archivePath), validContent);
+  });
+});
+
 describe("assertAllowedHost", () => {
   it("accepts github.com", () => {
     assertAllowedHost("https://github.com/larksuite/cli/releases/download/v1.0.0/archive.tar.gz");
@@ -258,12 +281,13 @@ describe("resolveMirrorUrls", () => {
     // pre-PR "GitHub → npmmirror" behavior.
     assert.deepEqual(
       resolveMirrorUrls(
-        { npm_config_registry: "https://corp.example.com/repository/npm-public/" },
+        { npm_config_registry: "https://mirror.example.com/repository/npm-public/" },
         ARCHIVE,
         VERSION
       ),
       [
-        "https://corp.example.com/repository/npm-public/-/binary/lark-cli/v1.0.0/lark-cli-1.0.0-linux-amd64.tar.gz",
+        "https://mirror.example.com/repository/npm-public/-/binary/lark-cli/v1.0.0/lark-cli-1.0.0-linux-amd64.tar.gz",
+        "https://mirror.example.com/mirrors/lark-cli/v1.0.0/lark-cli-1.0.0-linux-amd64.tar.gz",
         DEFAULT,
       ]
     );
@@ -271,13 +295,14 @@ describe("resolveMirrorUrls", () => {
 
   it("derived URL appears before the default in the chain", () => {
     const urls = resolveMirrorUrls(
-      { npm_config_registry: "https://corp.example.com/" },
+      { npm_config_registry: "https://mirror.example.com/" },
       ARCHIVE,
       VERSION
     );
-    assert.equal(urls.length, 2);
-    assert.match(urls[0], /^https:\/\/corp\.example\.com\//);
-    assert.equal(urls[1], DEFAULT);
+    assert.equal(urls.length, 3);
+    assert.match(urls[0], /^https:\/\/mirror\.example\.com\//);
+    assert.match(urls[1], /^https:\/\/mirror\.example\.com\/mirrors\//);
+    assert.equal(urls[2], DEFAULT);
   });
 
   it("does not duplicate the default if the registry already points at it", () => {
@@ -296,12 +321,13 @@ describe("resolveMirrorUrls", () => {
   it("strips trailing slashes from the registry URL", () => {
     assert.deepEqual(
       resolveMirrorUrls(
-        { npm_config_registry: "https://corp.example.com///" },
+        { npm_config_registry: "https://mirror.example.com///" },
         ARCHIVE,
         VERSION
       ),
       [
-        "https://corp.example.com/-/binary/lark-cli/v1.0.0/lark-cli-1.0.0-linux-amd64.tar.gz",
+        "https://mirror.example.com/-/binary/lark-cli/v1.0.0/lark-cli-1.0.0-linux-amd64.tar.gz",
+        "https://mirror.example.com/mirrors/lark-cli/v1.0.0/lark-cli-1.0.0-linux-amd64.tar.gz",
         DEFAULT,
       ]
     );
