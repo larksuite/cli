@@ -25,7 +25,7 @@ func validMeetingNumber(s string) bool {
 var VCMeetingJoin = common.Shortcut{
 	Service:     "vc",
 	Command:     "+meeting-join",
-	Description: "Join a meeting by meeting number (bot join)",
+	Description: "Join a meeting by meeting number (bot join; code 10012/gray release means the VC Agent join capability is not enabled)",
 	Risk:        "write",
 	Scopes:      []string{"vc:meeting.bot.join:write"},
 	AuthTypes:   []string{"user", "bot"},
