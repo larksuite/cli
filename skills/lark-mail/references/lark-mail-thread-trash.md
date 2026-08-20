@@ -28,34 +28,32 @@ lark-cli mail +thread-trash --thread-ids <thread_id1> --thread-ids <thread_id2> 
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `--mailbox <email>` | 否 | 会话所属邮箱，默认 `me` |
-| `--thread-ids <ids>` | 是 | 会话 ID 列表，支持逗号分隔和重复传参；每次最多提交 20 个去重后的 ID |
+| `--thread-ids <ids>` | 是 | 会话 ID 列表，支持逗号分隔和重复传参；超过 20 个时自动分批提交 |
 | `--yes` | 执行时必填 | 高风险写操作确认。只有用户确认删除预览后才加 |
 
 ## 注意事项
 
 - `thread_id` 必须来自 `+triage`、`+message`、`+thread`、会话列表或搜索等真实查询结果；不要用数字主键或占位符。
 - 软删除属于高风险写操作。先用真实查询结果展示删除预览，包括受影响会话数量和关键邮件摘要；用户确认后再执行并加 `--yes`。
-- 命令在本地解析逗号分隔和重复 flag，按首次出现顺序去重，再一次性提交。
-- 原生 API 每次最多接收 20 个 `thread_id`；shortcut 在发请求前做本地校验。
+- 命令在本地解析逗号分隔和重复 flag，按首次出现顺序去重，并按 20 个一批提交。
+- 单个 batch 请求失败时，该批次的所有 `thread_id` 都记录为同一个失败原因；后续批次继续执行。
 
 ## 返回值
 
-JSON 输出只表示 CLI 请求侧提交结果：
+JSON 输出为紧凑的批量结果：
 
 ```json
 {
-  "operation": "thread_trash",
-  "mailbox": "me",
-  "submitted_thread_ids": ["thread_id1", "thread_id2"],
-  "submitted_count": 2
+  "success_thread_ids": ["thread_id1"],
+  "failed_thread_ids": [
+    {"thread_id": "thread_id2", "reason": "api error"}
+  ]
 }
 ```
 
-`submitted_count` 是 CLI 提交的会话数量，不代表服务端逐条软删除成功。当前 shortcut 不输出 `trashed_count`、`failed_ids` 或每个会话的处理结果。
-
 ## 原生 API 适用场景
 
-只有在需要精确复现后端/API 行为做诊断时，才直接调用 `mail user_mailbox.threads batch_trash`。普通会话软删除优先使用本 shortcut，因为它内置了 ID 校验、紧凑输出、dry-run 预览和 `--yes` 确认。
+只有在需要精确复现后端/API 行为做诊断时，才直接调用 `mail user_mailbox.threads batch_trash`。普通会话软删除优先使用本 shortcut，因为它内置了 ID 校验、分批、紧凑输出、dry-run 预览和 `--yes` 确认。
 
 ## 相关命令
 
