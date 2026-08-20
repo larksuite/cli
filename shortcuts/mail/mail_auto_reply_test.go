@@ -382,6 +382,43 @@ func TestMailAutoReplyRejectsUnsafeHTML(t *testing.T) {
 	}
 }
 
+func TestMailAutoReplyContentLimits(t *testing.T) {
+	t.Run("html length", func(t *testing.T) {
+		f, stdout, _, _ := mailShortcutTestFactory(t)
+		err := runMountedMailShortcut(t, MailAutoReplyModify, []string{"+auto-reply-modify", "--content", strings.Repeat("a", maxAutoReplyContentHTMLRunes+1)}, f, stdout)
+		if err == nil {
+			t.Fatal("expected content length validation error")
+		}
+		if !strings.Contains(err.Error(), "content_html exceeds 20000 characters") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("image count", func(t *testing.T) {
+		images := make([]map[string]interface{}, maxAutoReplyImageCount+1)
+		for i := range images {
+			images[i] = map[string]interface{}{"file_size": int64(1)}
+		}
+		err := validateAutoReplyContentLimits("<p>away</p>", images)
+		if err == nil {
+			t.Fatal("expected image count validation error")
+		}
+		if !strings.Contains(err.Error(), "images count exceeds 250") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("total size", func(t *testing.T) {
+		err := validateAutoReplyContentLimits("<p>away</p>", []map[string]interface{}{{"file_size": maxAutoReplyContentBytes}})
+		if err == nil {
+			t.Fatal("expected total size validation error")
+		}
+		if !strings.Contains(err.Error(), "content size exceeds 25 MB") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
 func TestMailAutoReplyRejectsConflictingFlags(t *testing.T) {
 	f, stdout, _, _ := mailShortcutTestFactory(t)
 	err := runMountedMailShortcut(t, MailAutoReplyModify, []string{"+auto-reply-modify", "--enable", "--disable"}, f, stdout)

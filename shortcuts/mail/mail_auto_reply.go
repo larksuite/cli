@@ -23,6 +23,12 @@ import (
 	"golang.org/x/net/html"
 )
 
+const (
+	maxAutoReplyContentHTMLRunes = 20000
+	maxAutoReplyImageCount       = 250
+	maxAutoReplyContentBytes     = 25 * 1024 * 1024
+)
+
 var MailAutoReply = common.Shortcut{
 	Service:     "mail",
 	Command:     "+auto-reply",
@@ -176,9 +182,8 @@ func buildAutoReplyPatch(ctx context.Context, runtime *common.RuntimeContext, up
 		}
 	}
 	if contentChanged {
-		if int64(len(content)) > maxTemplateContentBytes {
-			return nil, mailFailedPreconditionError("auto-reply content exceeds %d MB (got %.1f MB)",
-				maxTemplateContentBytes/(1024*1024), float64(len(content))/1024/1024)
+		if err := validateAutoReplyContentLimits(content, images); err != nil {
+			return nil, err
 		}
 		autoReply["content_html"] = content
 		autoReply["images"] = images
@@ -254,6 +259,9 @@ func validateAutoReplyContentHTML(runtime *common.RuntimeContext, contentHTML st
 	if strings.TrimSpace(contentHTML) == "" {
 		return nil
 	}
+	if len([]rune(contentHTML)) > maxAutoReplyContentHTMLRunes {
+		return mailFailedPreconditionError("auto-reply content_html exceeds %d characters", maxAutoReplyContentHTMLRunes)
+	}
 	param := "--content"
 	if runtime.Str("content") == "" && runtime.Str("content-file") != "" {
 		param = "--content-file"
@@ -279,6 +287,43 @@ func validateAutoReplyContentHTML(runtime *common.RuntimeContext, contentHTML st
 			}
 		}
 	}
+}
+
+func validateAutoReplyContentLimits(contentHTML string, images []map[string]interface{}) error {
+	totalBytes := int64(len([]byte(contentHTML)))
+	if len(images) > maxAutoReplyImageCount {
+		return mailFailedPreconditionError("auto-reply images count exceeds %d", maxAutoReplyImageCount)
+	}
+	for _, image := range images {
+		fileSize, err := autoReplyImageFileSize(image["file_size"])
+		if err != nil {
+			return err
+		}
+		totalBytes += fileSize
+	}
+	if totalBytes > maxAutoReplyContentBytes {
+		return mailFailedPreconditionError("auto-reply content size exceeds %d MB (got %.1f MB)",
+			maxAutoReplyContentBytes/(1024*1024), float64(totalBytes)/1024/1024)
+	}
+	return nil
+}
+
+func autoReplyImageFileSize(raw interface{}) (int64, error) {
+	var size int64
+	switch value := raw.(type) {
+	case int64:
+		size = value
+	case int:
+		size = int64(value)
+	case float64:
+		size = int64(value)
+	default:
+		return 0, mailFailedPreconditionError("auto-reply image file_size must be a number")
+	}
+	if size < 0 {
+		return 0, mailFailedPreconditionError("auto-reply image file_size must be non-negative")
+	}
+	return size, nil
 }
 
 func isUnsafeAutoReplyHTMLTag(tag string) bool {
