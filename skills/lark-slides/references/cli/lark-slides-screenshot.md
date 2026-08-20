@@ -29,13 +29,16 @@ lark-cli slides +screenshot --as user \
 
 | 参数 | 必需 | 说明 |
 |------|------|------|
-| `--presentation` | list 模式必需 | `xml_presentation_id`、`/slides/` URL，或解析后为 slides 的 `/wiki/` URL。传 `--content` 时不能使用 |
+| `--presentation` | list / overview 模式必需 | `xml_presentation_id`、`/slides/` URL，或解析后为 slides 的 `/wiki/` URL。传 `--content` 时不能使用 |
 | `--slide-id` | list 模式与 `--slide-number` 二选一 | 页面 short ID；不能与 `--slide-number` 同时使用；多页截图时重复传入，或用逗号分隔一次传多个（如 `--slide-id slide_1,slide_2`）；一次最多 10 个 ID |
 | `--slide-number` | list 模式与 `--slide-id` 二选一 | 页面页号；不能与 `--slide-id` 同时使用；多页截图时重复传入，或用逗号分隔一次传多个（如 `--slide-number 1,2,3`）；一次最多 10 个页码 |
 | `--content` | render 模式必需 | 要直接渲染的 `<slide>` XML 片段；支持直接传值、`@file`、`-` stdin。传入后不能同时传 `--slide-id` / `--slide-number` |
-| `--output` | 否 | 单张截图的期望相对输出路径，可不写扩展名，显式扩展名只支持 `.png`、`.jpg`、`.jpeg`。只能选择一页，不能与 `--output-dir` / `--output-name` 同时使用；最终路径以返回的 `output` 为准 |
+| `--output` | 否 | 单张截图或 overview 图片的期望相对输出路径，可不写扩展名。普通单张截图的显式扩展名支持 `.png`、`.jpg`、`.jpeg`；overview 的显式扩展名只能是 `.png`。只能选择一页或使用 `--overview`，不能与 `--output-dir` / `--output-name` 同时使用；最终路径以返回的 `output` 为准 |
 | `--output-dir` | 否 | 输出目录，默认 `.lark-slides/screenshots`；必须是当前目录内的相对路径 |
 | `--output-name` | 否 | 仅用于 `--content` render 模式设置输出文件名 stem。普通页面截图传入该参数会返回 `validation/invalid_argument`（`param: --output-name`）并提示改用 `--output` |
+| `--overview` | 否 | 输出当前演示文稿的一张索引总览 PNG。每个 overview 页最多包含 20 页幻灯片，按固定 4 列排列；不与 `--slide-id`、`--slide-number`、`--content`、`--region` 同时使用 |
+| `--overview-page` | 否，默认 `1` | 从 1 开始的 overview 页号，仅与 `--overview` 同时使用。返回值中的 `has_next`、`next_overview_page`、`has_previous`、`previous_overview_page` 表示分页状态 |
+| `--region` | 否 | 对一张已存在幻灯片的服务端截图按 `x,y,width,height` 像素矩形裁剪。`x`、`y` 为非负整数，`width`、`height` 为正整数，矩形必须在源截图范围内；需要且仅能使用一个 `--slide-id` 或 `--slide-number`，不与 `--content`、`--overview` 同时使用 |
 
 ## 示例
 
@@ -94,12 +97,24 @@ lark-cli slides +screenshot --as user \
         "slide_number": 1,
         "format": "jpeg",
         "path": "/abs/path/.lark-slides/screenshots/example-deck-task/page-01.jpg",
-        "size": 12345
+        "size": 12345,
+        "image_size": {"width": 1920, "height": 1080}
       }
     ]
   }
 }
 ```
+
+常规截图在本地可解析图像尺寸时，`screenshots[]` 包含 `image_size.width` 和 `image_size.height`。
+
+`--overview` 的 `data.overview` 包含：
+
+- `path`、`format`、`size`、`image_size`：合成 PNG 的本地路径、格式、字节数和像素尺寸。
+- `columns`（固定为 `4`）、`total_slides`、`overview_page`、`page_size`、`slide_range`：网格和分页信息。
+- `has_previous`、`previous_overview_page`、`has_next`、`next_overview_page`：存在时表示相邻 overview 页。
+- `slides[]`：当前 overview 页内每张幻灯片的 `index`、`label`、`slide_id`、`slide_number`、`row`、`column`、`tile` 和 `thumbnail`。后两者为 `{x,y,width,height}` 像素矩形。
+
+`--region` 的 `data.region` 包含 `requested_pixel_rect`、`source_image_size`、`output_image_size` 和 `format`（固定为 `png`）。裁剪后的图片仍通过 `data.output` 和 `data.screenshots[0]` 返回。
 
 ## 注意事项
 
