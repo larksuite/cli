@@ -305,15 +305,21 @@ async function stepInstallSkills(msg, requestedLayout) {
       const output = await runSilentAsync(larkCli, ["update", "--skills-layout", requestedLayout, "--json"], {
         timeout: 120000,
       });
-      s.stop(msg.step2Done);
+      let doneMessage = msg.step2Done;
+      let warning = "";
       try {
         const result = JSON.parse(output.toString());
+        if (result.skills_action === "in_sync") {
+          doneMessage = msg.step2Skip;
+        }
         if (typeof result.skills_warning === "string" && result.skills_warning) {
-          p.log.warn(result.skills_warning);
+          warning = result.skills_warning;
         }
       } catch (_) {
         // A successful update with non-JSON output should not fail installation.
       }
+      s.stop(doneMessage);
+      if (warning) p.log.warn(warning);
       return;
     }
     if (await skillsAlreadyInstalled()) {

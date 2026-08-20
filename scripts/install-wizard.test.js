@@ -94,13 +94,27 @@ for (const [name, args, layout] of [
   ["equals form for separate layout", ["--skills-layout=separate"], "separate"],
 ]) {
   test(`install applies ${name} even when skills already exist`, unixOnly, (t) => {
-    const fixture = makeFixture(t);
+    const fixture = makeFixture(t, 0, JSON.stringify({ skills_action: "synced" }));
     const result = runInstall(args, fixture.env);
 
     assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout + result.stderr, /Skills installed/);
     assert.equal(readIfPresent(fixture.commandLog), `lark-cli:update --skills-layout ${layout} --json\n`);
   });
 }
+
+test("install reports an unchanged explicit layout like the existing skills path", unixOnly, (t) => {
+  const fixture = makeFixture(t, 0, JSON.stringify({
+    action: "already_up_to_date",
+    skills_action: "in_sync",
+  }));
+  const result = runInstall(["--skills-layout", "suite"], fixture.env);
+
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout + result.stderr, /Already installed\. Skipped/);
+  assert.doesNotMatch(result.stdout + result.stderr, /Skills installed/);
+  assert.equal(readIfPresent(fixture.commandLog), "lark-cli:update --skills-layout suite --json\n");
+});
 
 test("install without a layout keeps the existing skills skip behavior", unixOnly, (t) => {
   const fixture = makeFixture(t);
