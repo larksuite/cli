@@ -60,8 +60,14 @@ function resolveReleaseAsset(version, platformName, archName) {
 // Build the ordered list of binary mirror URLs to try. Resolution rules:
 //   1. npm_config_registry     — when the user has set a non-default
 //                                registry (npmmirror clone, corp Verdaccio,
-//                                Artifactory, …), try its derived /-/binary
-//                                path and then its origin-level /mirrors path.
+//                                Artifactory, …), include its derived
+//                                /-/binary path first, then its origin-level
+//                                /mirrors path. Many of these proxies don't
+//                                actually host /-/binary, and not every custom
+//                                registry hosts /mirrors either, so we ALWAYS
+//                                append the public npmmirror as a final
+//                                fallback. This preserves the previous
+//                                "GitHub → npmmirror" behavior.
 //   2. registry.npmmirror.com  — public China mirror, always tried last.
 // The default public npmjs registry is skipped in step 1 because it does not
 // host binaries under /-/binary/...
