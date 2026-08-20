@@ -206,6 +206,7 @@ lark-cli minutes <resource> <method> [flags]
 
 ## 不在本 skill 范围
 
+- `/record/<token>` 是 Base 记录分享链接，不是 `minute_token`；切到 [`lark-base`](../lark-base/SKILL.md)，使用 `lark-cli base +url-resolve --url '<url>' --as user`。
 - 搜索历史会议记录、查参会人快照 → [lark-vc](../lark-vc/SKILL.md)
 - 未来日程 / 日历查询 → [lark-calendar](../lark-calendar/SKILL.md)
 - 已知 `note_id` 直接读纪要详情 → [lark-note](../lark-note/SKILL.md)
