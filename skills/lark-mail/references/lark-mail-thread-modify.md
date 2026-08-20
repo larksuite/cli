@@ -1,38 +1,57 @@
 # mail +thread-modify
 
-`mail +thread-modify` is the preferred shortcut for changing labels or folder placement on existing mail conversations when you have `thread_id` values.
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-Use it instead of raw `user_mailbox.threads batch_modify` for normal thread-level organization. If the operation targets concrete `message_id` values rather than conversations, use [`mail +message-modify`](./lark-mail-message-modify.md).
+已有 `thread_id` 且要按会话维度修改标签或移动文件夹时，优先使用 `mail +thread-modify`。普通会话整理不要直接调用原生 `user_mailbox.threads batch_modify`。
 
-## Common Commands
+如果操作对象是具体邮件 `message_id`，不是整个会话，使用 [`mail +message-modify`](./lark-mail-message-modify.md)。
+
+本 skill 对应 shortcut `lark-cli mail +thread-modify`，内部调用：
+
+- `POST /open-apis/mail/v1/user_mailboxes/{mailbox}/threads/batch_modify` — 按会话批量修改标签或移动文件夹
+
+## 命令
 
 ```bash
+# 给多个会话添加未读标签
 lark-cli mail +thread-modify --thread-ids <thread_id1>,<thread_id2> --add-label-ids unread
+
+# 移除星标标签
 lark-cli mail +thread-modify --thread-ids <thread_id> --remove-label-ids FLAGGED
+
+# 归档会话
 lark-cli mail +thread-modify --thread-ids <thread_id> --add-folder archive
+
+# 指定公共邮箱或共享邮箱
 lark-cli mail +thread-modify --mailbox shared@example.com --thread-ids <thread_id> --add-folder folder_xxx
+
+# Dry Run：只预览请求，不执行
 lark-cli mail +thread-modify --thread-ids <thread_id> --add-label-ids custom_label_id --dry-run
 ```
 
-## Flags
+## 参数
 
-| Flag | Required | Notes |
-| --- | --- | --- |
-| `--mailbox` | No | Mailbox that owns the threads. Defaults to `me`. |
-| `--thread-ids` | Yes | `string_array`; supports comma-separated values and repeated flags. Up to 20 IDs per command. |
-| `--add-label-ids` | No | Adds labels. System labels `unread`, `important`, `other`, `flagged`, and `read_receipt_request` normalize to upper case. |
-| `--remove-label-ids` | No | Removes labels. Cannot overlap with `--add-label-ids`. |
-| `--add-folder` | No | Moves to one folder. `inbox`, `sent`, `spam`, `archive`, and `archived` normalize to system folder IDs. |
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `--mailbox <email>` | 否 | 会话所属邮箱，默认 `me` |
+| `--thread-ids <ids>` | 是 | 会话 ID 列表，支持逗号分隔和重复传参；每次最多提交 20 个去重后的 ID |
+| `--add-label-ids <ids>` | 否 | 要添加的标签 ID。系统标签 `unread` / `important` / `other` / `flagged` / `read_receipt_request` 会规范化为大写 |
+| `--remove-label-ids <ids>` | 否 | 要移除的标签 ID。不能与 `--add-label-ids` 传入重复标签 |
+| `--add-folder <id>` | 否 | 要移动到的文件夹 ID。系统文件夹 `inbox` / `sent` / `spam` / `archive` / `archived` 会规范化为系统 ID |
+| `--folder-id <id>` | 否 | `--add-folder` 的别名 |
+| `--dry-run` | 否 | 只打印请求路径和请求体，不执行 |
 
-At least one of `--add-label-ids`, `--remove-label-ids`, or `--add-folder` is required.
+`--add-label-ids`、`--remove-label-ids`、`--add-folder` 至少传一个。
 
-`TRASH` is intentionally rejected by this shortcut. Use [`mail +thread-trash`](./lark-mail-thread-trash.md) with `--yes` for soft deletion.
+`TRASH` 不允许通过本 shortcut 作为目标文件夹传入。需要软删除会话时，使用 [`mail +thread-trash`](./lark-mail-thread-trash.md)，并在用户确认后加 `--yes` 执行。
 
-## Behavior
+## 行为细节
 
-- Thread IDs are locally trimmed, de-duplicated in first-seen order, and submitted in one request.
-- The raw API batch limit is 20 thread IDs; the shortcut validates this before sending.
-- JSON output is intentionally request-side only:
+- `thread_id` 必须来自 `+triage`、`+message`、`+thread`、会话列表或搜索等真实查询结果；不要用数字主键或占位符。
+- 命令在本地解析逗号分隔和重复 flag，按首次出现顺序去重，再一次性提交。
+- 原生 API 每次最多接收 20 个 `thread_id`；shortcut 在发请求前做本地校验。
+- 标签变更和移动文件夹属于可逆整理操作，通常不需要额外确认；如果用户意图或目标对象不明确，先展示将影响的会话数量和动作再执行。
+- JSON 输出只表示 CLI 请求侧提交结果：
 
 ```json
 {
@@ -46,8 +65,17 @@ At least one of `--add-label-ids`, `--remove-label-ids`, or `--add-folder` is re
 }
 ```
 
-`submitted_count` is the number of IDs submitted by the CLI. It does not mean every thread was changed by the server. The shortcut does not output `updated_count`, `failed_ids`, or per-thread results.
+`submitted_count` 是 CLI 提交的会话数量，不代表服务端逐条修改成功。当前 shortcut 不输出 `updated_count`、`failed_ids` 或每个会话的处理结果。
 
-## When Raw API Is Still Appropriate
+> 注意：使用 `--format json` 获取结构化输出。所有 JSON 输出统一包裹在 `{"ok": true, "data": ...}` 结构中。
 
-Use raw `mail user_mailbox.threads batch_modify` only when reproducing backend/API behavior exactly for diagnostics or when you need a request shape that the shortcut intentionally does not expose.
+## 原生 API 适用场景
+
+只有在需要精确复现后端/API 行为做诊断，或需要 shortcut 未暴露的请求结构时，才直接调用 `mail user_mailbox.threads batch_modify`。普通会话整理优先使用本 shortcut，因为它内置了 ID 校验、文件夹规范化、紧凑输出和 dry-run 预览。
+
+## 相关命令
+
+- `lark-cli mail +triage` — 浏览邮件摘要，获取 `thread_id`
+- `lark-cli mail +thread` — 读取完整会话
+- `lark-cli mail +message-modify` — 按 `message_id` 修改具体邮件
+- `lark-cli mail +thread-trash` — 按 `thread_id` 软删除会话
