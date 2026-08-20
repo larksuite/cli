@@ -7,21 +7,74 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// slidesMediaParentType is the only parent_type the slides backend accepts for
-// media uploaded against an xml_presentation. Verified empirically:
+// Drive media parent_type values for uploading an image into a presentation.
+//
+// Native (API-created) presentations use "slide_file", verified empirically:
 // `slide_image` returns 1061001 unknown error, `slides_image` / `slides_file`
 // return 1061002 params error, but `slide_file` returns a valid file_token
 // that can be used as <img src="..."> in slide XML.
 //
-// NOTE: `slide_file` is only accepted by the single-part upload_all endpoint.
-// The multipart upload_prepare endpoint rejects it (99992402 field validation
-// failed), so slides image uploads are capped at 20 MB.
-const slidesMediaParentType = "slide_file"
+// Imported "office" presentations carry either a legacy synthetic-token prefix
+// or a 28-character token whose interleaved product/region marker is "OFL0X",
+// and the drive backend requires "office_slide_file" for those — the
+// presentation counterpart of the office_sheet_file rule the sheets domain
+// already applies (shortcuts/sheets/helpers.go). The token shapes are the same
+// there: an imported office file is an imported office file whether it backs a
+// spreadsheet or a deck.
+//
+// NOTE: neither value is accepted by the multipart upload_prepare endpoint
+// (99992402 field validation failed), so slides image uploads stay capped at
+// 20 MB regardless of which one applies.
+const (
+	slideFileParentType       = "slide_file"
+	officeSlideFileParentType = "office_slide_file"
+	fakeOfficePrefix          = "fake_office_"
+	localOfficePrefix         = "local_office_"
+)
+
+// officePrefixes are the legacy synthetic token prefixes an imported "office"
+// presentation may carry.
+var officePrefixes = []string{fakeOfficePrefix, localOfficePrefix}
+
+func isOfficePresentation(presentationToken string) bool {
+	for _, prefix := range officePrefixes {
+		if strings.HasPrefix(presentationToken, prefix) {
+			return true
+		}
+	}
+	if len(presentationToken) != 28 {
+		return false
+	}
+	// The five-character marker occupies positions 5, 10, 15, 20, and 25
+	// (1-based) in the interleaved token.
+	marker := []byte{
+		presentationToken[4],
+		presentationToken[9],
+		presentationToken[14],
+		presentationToken[19],
+		presentationToken[24],
+	}
+	return string(marker) == "OFL0X"
+}
+
+// slidesMediaParentType returns the drive media parent_type to use when
+// uploading an image whose parent_node is presentationToken. It is the single
+// place that maps a presentation token to its parent_type so every image-upload
+// entry point (+media-upload, and the @path placeholder pipeline behind
+// +create / +add-slide / +update-slide) and its dry-run preview stay
+// consistent.
+func slidesMediaParentType(presentationToken string) string {
+	if isOfficePresentation(presentationToken) {
+		return officeSlideFileParentType
+	}
+	return slideFileParentType
+}
 
 // SlidesMediaUpload uploads a local image to drive media against a slides
 // presentation and returns the file_token. The token can be used as the value
@@ -117,11 +170,12 @@ var SlidesMediaUpload = common.Shortcut{
 }
 
 // uploadSlidesMedia is the shared upload helper used by both +media-upload and
-// the +create placeholder pipeline. Always uses parent_type=slide_file with the
-// presentation_id as parent_node — verified to be the only working combo.
+// the +create placeholder pipeline. The presentation_id is the parent_node and
+// picks the parent_type via slidesMediaParentType, so an imported office deck
+// gets office_slide_file rather than the native slide_file.
 //
 // Callers must ensure fileSize ≤ MaxDriveMediaUploadSinglePartSize (20 MB)
-// because the multipart upload API does not accept parent_type=slide_file.
+// because the multipart upload API accepts neither parent_type.
 func uploadSlidesMedia(runtime *common.RuntimeContext, filePath, fileName string, fileSize int64, presentationID string) (string, error) {
 	if fileSize > common.MaxDriveMediaUploadSinglePartSize {
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "file %s is %s, exceeds 20 MB limit for slides image upload",
@@ -132,18 +186,25 @@ func uploadSlidesMedia(runtime *common.RuntimeContext, filePath, fileName string
 		FilePath:   filePath,
 		FileName:   fileName,
 		FileSize:   fileSize,
-		ParentType: slidesMediaParentType,
+		ParentType: slidesMediaParentType(presentationID),
 		ParentNode: &parent,
 	})
 }
 
 // appendSlidesUploadDryRun renders the upload_all step for a single file.
+//
+// parentNode doubles as the parent_type source, so the preview shows the same
+// value Execute will send. One case cannot: when --presentation is a wiki URL
+// the caller passes a "<resolved_slides_token>" placeholder, because the real
+// token only exists after a get_node call the dry-run must not make. Such a
+// preview shows slide_file even if the resolved deck turns out to be an
+// imported office one.
 func appendSlidesUploadDryRun(d *common.DryRunAPI, filePath, parentNode string, step int) {
 	d.POST("/open-apis/drive/v1/medias/upload_all").
 		Desc(fmt.Sprintf("[%d] Upload local file (max 20 MB)", step)).
 		Body(map[string]interface{}{
 			"file_name":   filepath.Base(filePath),
-			"parent_type": slidesMediaParentType,
+			"parent_type": slidesMediaParentType(parentNode),
 			"parent_node": parentNode,
 			"size":        "<file_size>",
 			"file":        "@" + filePath,
