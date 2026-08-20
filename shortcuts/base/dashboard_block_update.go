@@ -31,6 +31,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 	Tips: []string{
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --name "Total Sales"`,
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --data-config '{"series":[{"field_name":"Amount","rollup":"SUM"}]}'`,
+		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <ranking_block_id> --data-config '{"limit_size":20}'`,
 		"Read lark-base-dashboard-block-config.md as the SSOT for data_config templates, filters, metric rules, and type-specific fields; do not invent data_config from natural language.",
 		"Use +dashboard-block-get first to inspect the current data_config before replacing nested values.",
 		"Block type cannot be changed; delete and recreate the block to change chart type.",

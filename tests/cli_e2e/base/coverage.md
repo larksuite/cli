@@ -2,8 +2,8 @@
 
 ## Metrics
 - Denominator: 89 leaf commands
-- Covered: 31
-- Coverage: 34.8%
+- Covered: 33
+- Coverage: 37.1%
 
 ## Summary
 - TestBase_BasicWorkflow: proves `+base-create`, `+base-get`, `+table-create`, `+table-get`, and `+table-list`; key `t.Run(...)` proof points are `get base as bot`, `get table as bot`, and `list tables and find created table as bot`.
@@ -13,6 +13,7 @@
 - TestBaseFormQuestionsCreateDryRun: proves `+form-questions-create` preserves its POST body and renders the existing-question guard in command help.
 - TestBaseFormDetailDryRun / TestBaseFormSubmitDryRun: prove shared-form detail and submission request shapes.
 - TestBaseDashboardBlockGetDataDryRun: proves dashboard block data request shapes and identifier handling.
+- TestBaseDashboardBlockRankingCreateDryRun / TestBaseDashboardBlockRankingUpdateDryRunPreservesPatch / TestBaseDashboardBlockRankingDryRunRejectsInvalidConfig: prove ranking create defaults, top-level patch preservation, and typed validation failures for unsupported fields and malformed filters.
 - TestBaseRecordBatchUpdatePerRecordDryRun: proves `+record-batch-update` preserves the per-record `update_records` request shape.
 - TestBaseRecordBatchUpdatePerRecordWorkflow: creates two records, updates different field types in one request, asserts the minimal response contract, reads both records back, verifies a missing record ID is not prevalidated, and cleans up the temporary Base.
 - TestBaseRecordHistoryListDryRunUsesExplicitRecordID / TestBaseRecordHistoryListDryRunRejectsNonPositiveMaxVersion: prove the history request keeps the explicit record ID and rejects explicitly non-positive cursors with a typed validation error.
@@ -22,7 +23,7 @@
 - TestBaseTableCopyDryRun: proves `+table-copy` and `+table-copy-status` request shapes, including the schema-safe default, table-name path escaping, explicit all+wait orchestration, Cobra duration parsing, and the opaque task ID body.
 - TestBaseTableCopyWorkflow: feature-gated by `LARK_CLI_E2E_BASE_TABLE_COPY_READY=1` until the OpenAPI is deployed; creates a source table and record, proves schema-only copy, all no-wait plus status, all wait, record inclusion, and cleanup.
 - Cleanup note: `+table-delete` and `+role-delete` only run in cleanup and are intentionally left uncovered.
-- Blocked area: table-copy live integration remains deployment-gated; dashboard, field, most record operations, most form operations, view, and workflow operations still lack deterministic create/read/update workflows in this suite.
+- Blocked area: table-copy live integration remains deployment-gated; remaining dashboard, field, most record operations, most form operations, view, and workflow operations still lack deterministic create/read/update workflows in this suite.
 
 ## Command Table
 
@@ -39,12 +40,12 @@
 | ✓ | base +base-block-move | shortcut | base_block_dryrun_test.go::TestBaseBlockDryRun/move root,move after | `--base-token`; `--block-id`; optional `--parent-id`; `--after-id`; dry-run only | request shape only |
 | ✓ | base +base-block-rename | shortcut | base_block_dryrun_test.go::TestBaseBlockDryRun/rename | `--base-token`; `--block-id`; `--name`; dry-run only | request shape only |
 | ✕ | base +dashboard-arrange | shortcut |  | none | dashboard workflows not covered |
-| ✕ | base +dashboard-block-create | shortcut |  | none | dashboard workflows not covered |
+| ✓ | base +dashboard-block-create | shortcut | base_dashboard_block_ranking_dryrun_test.go::TestBaseDashboardBlockRankingCreateDryRun; TestBaseDashboardBlockRankingDryRunRejectsInvalidConfig | ranking defaults; invalid child/top-level/filter fields; dry-run only | request shape and typed validation envelope |
 | ✕ | base +dashboard-block-delete | shortcut |  | none | dashboard workflows not covered |
 | ✕ | base +dashboard-block-get | shortcut |  | none | dashboard workflows not covered |
 | ✓ | base +dashboard-block-get-data | shortcut | base_dashboard_block_get_data_dryrun_test.go | `--base-token`; `--dashboard-id`; `--block-id`; dry-run only | request shape and identifier handling |
 | ✕ | base +dashboard-block-list | shortcut |  | none | dashboard workflows not covered |
-| ✕ | base +dashboard-block-update | shortcut |  | none | dashboard workflows not covered |
+| ✓ | base +dashboard-block-update | shortcut | base_dashboard_block_ranking_dryrun_test.go::TestBaseDashboardBlockRankingUpdateDryRunPreservesPatch | `--data-config` with `limit_size` only; dry-run only | top-level patch preservation |
 | ✕ | base +dashboard-create | shortcut |  | none | dashboard workflows not covered |
 | ✕ | base +dashboard-delete | shortcut |  | none | dashboard workflows not covered |
 | ✕ | base +dashboard-get | shortcut |  | none | dashboard workflows not covered |
