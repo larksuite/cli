@@ -62,6 +62,9 @@ func TestThreadModify_Metadata(t *testing.T) {
 	if len(MailThreadModify.Scopes) != 1 || MailThreadModify.Scopes[0] != "mail:user_mailbox.message:modify" {
 		t.Errorf("Scopes = %v, want [mail:user_mailbox.message:modify]", MailThreadModify.Scopes)
 	}
+	if len(MailThreadModify.ConditionalScopes) != 0 {
+		t.Errorf("ConditionalScopes = %v, want none", MailThreadModify.ConditionalScopes)
+	}
 	flags := map[string]common.Flag{}
 	for _, fl := range MailThreadModify.Flags {
 		flags[fl.Name] = fl
