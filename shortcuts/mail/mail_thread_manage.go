@@ -40,11 +40,8 @@ var MailThreadModify = common.Shortcut{
 	Description: "Modify existing mail threads by adding/removing label IDs or moving them to a folder. Batches thread IDs in groups of 20 and keeps output compact.",
 	Risk:        "write",
 	Scopes:      []string{"mail:user_mailbox.message:modify"},
-	ConditionalScopes: []string{
-		"mail:user_mailbox.folder:read",
-	},
-	AuthTypes: []string{"user"},
-	HasFormat: true,
+	AuthTypes:   []string{"user"},
+	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "mailbox", Default: "me", Desc: "Mailbox email address that owns the threads (default: me)."},
 		{Name: "thread-ids", Type: "string_array", Required: true, Desc: "Thread IDs to modify; comma-separated or repeat the flag."},
