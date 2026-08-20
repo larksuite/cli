@@ -152,12 +152,48 @@ func withAppsHint(err error, hint string) error {
 			p.Hint = appNoDatabaseHint
 			return err
 		}
-		if strings.TrimSpace(p.Hint) == "" {
+		if strings.TrimSpace(p.Hint) == "" && hintExplainsFailure(p) {
 			p.Hint = hint
 		}
 		return err
 	}
 	return err
+}
+
+// hintExplainsFailure reports whether the caller's hint can plausibly explain this
+// failure. Every hint passed to withAppsHint describes something to fix about the
+// REQUEST — "verify --app-id", "verify table/column names with +db-table-get", "if
+// the release_id is unknown, list releases". Those sentences are only true if the
+// request is what failed.
+//
+// SubtypeFailedPrecondition says the opposite by definition: "the request is valid
+// but the system/resource state is not in the state required to execute; caller
+// must change state (not retry)". Attaching request-shaped advice to it is wrong by
+// construction — that is how 221800 "miaoda UAT not activated", a tenant that never
+// enabled Miaoda, came back advised to "verify table/column names ... target the dev
+// database with --environment dev": advice that cannot help and sends an agent
+// looping over table lookups.
+//
+// Blast radius is two Spark codes, because that is all this subtype covers here:
+//   - 221800 — the case above; now withheld.
+//   - 400002655 "no running container" — only when it reaches a non-observability
+//     command; the observability pair rewrites it first (withObservabilityHint), and
+//     "verify --app-id" was never the fix for an undeployed app anyway.
+//
+// The other precondition codes never reach this line: 400002465 / 500002759
+// (no database) are intercepted by the isAppNoDatabaseError branch above, and
+// 400002479 (db-sync task state) is served by withDBSyncHint, which does not
+// delegate here.
+//
+// Deliberately one subtype. Gating on Category instead (deny authentication /
+// authorization / network / ...) contradicts contracts this package asserts on
+// purpose: an authentication failure on +role-list (99991663) is expected to keep
+// the app-access hint, and a 503 on credential issuance the developer-access hint.
+// Those hints are broad enough to survive a caller-standing failure; only the
+// precondition class is guaranteed to be misdescribed. Widen only with a failing
+// case proving the hint is wrong for the new class.
+func hintExplainsFailure(p *errs.Problem) bool {
+	return p.Subtype != errs.SubtypeFailedPrecondition
 }
 
 // appNoDatabaseMessageMarkers are lowercase substrings of the raw server message
