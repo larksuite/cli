@@ -32,7 +32,7 @@ lark-cli mail +thread-modify --thread-ids <thread_id> --add-label-ids custom_lab
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `--mailbox <email>` | 否 | 会话所属邮箱，默认 `me` |
-| `--thread-ids <ids>` | 是 | 会话 ID 列表，支持逗号分隔和重复传参；每次最多提交 20 个去重后的 ID |
+| `--thread-ids <ids>` | 是 | 会话 ID 列表，支持逗号分隔和重复传参；超过 20 个时自动分批提交 |
 | `--add-label-ids <ids>` | 否 | 要添加的标签 ID。系统标签可传 `unread` / `important` / `other` / `flagged` / `read_receipt_request` |
 | `--remove-label-ids <ids>` | 否 | 要移除的标签 ID。不能与 `--add-label-ids` 传入重复标签 |
 | `--add-folder <id>` | 否 | 要移动到的文件夹。系统文件夹可传 `inbox` / `sent` / `spam` / `archive` / `archived`；自定义文件夹传文件夹 ID |
@@ -44,30 +44,25 @@ lark-cli mail +thread-modify --thread-ids <thread_id> --add-label-ids custom_lab
 ## 注意事项
 
 - `thread_id` 必须来自 `+triage`、`+message`、`+thread`、会话列表或搜索等真实查询结果；不要用数字主键或占位符。
-- 命令在本地解析逗号分隔和重复 flag，按首次出现顺序去重，再一次性提交。
-- 原生 API 每次最多接收 20 个 `thread_id`；shortcut 在发请求前做本地校验。
+- 命令在本地解析逗号分隔和重复 flag，按首次出现顺序去重，并按 20 个一批提交。
+- 单个 batch 请求失败时，该批次的所有 `thread_id` 都记录为同一个失败原因；后续批次继续执行。
 
 ## 返回值
 
-JSON 输出只表示 CLI 请求侧提交结果：
+JSON 输出为紧凑的批量结果：
 
 ```json
 {
-  "operation": "thread_modify",
-  "mailbox": "me",
-  "submitted_thread_ids": ["thread_id1", "thread_id2"],
-  "submitted_count": 2,
-  "add_label_ids": ["UNREAD"],
-  "remove_label_ids": [],
-  "add_folder": "ARCHIVED"
+  "success_thread_ids": ["thread_id1"],
+  "failed_thread_ids": [
+    {"thread_id": "thread_id2", "reason": "api error"}
+  ]
 }
 ```
 
-`submitted_count` 是 CLI 提交的会话数量，不代表服务端逐条修改成功。当前 shortcut 不输出 `updated_count`、`failed_ids` 或每个会话的处理结果。
-
 ## 原生 API 适用场景
 
-只有在需要精确复现后端/API 行为做诊断，或需要 shortcut 未暴露的请求结构时，才直接调用 `mail user_mailbox.threads batch_modify`。普通会话整理优先使用本 shortcut，因为它内置了 ID 校验、文件夹规范化、紧凑输出和 dry-run 预览。
+只有在需要精确复现后端/API 行为做诊断，或需要 shortcut 未暴露的请求结构时，才直接调用 `mail user_mailbox.threads batch_modify`。普通会话整理优先使用本 shortcut，因为它内置了 ID 校验、分批、紧凑输出和 dry-run 预览。
 
 ## 相关命令
 
