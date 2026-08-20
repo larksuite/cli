@@ -79,7 +79,7 @@ func newMailSenderListShortcut(cfg senderListShortcutConfig) common.Shortcut {
 		},
 		Execute: func(ctx context.Context, rt *common.RuntimeContext) error {
 			mailboxID := resolveMailboxID(rt)
-			data, err := rt.CallAPITyped("GET", mailSenderListPath(mailboxID, cfg.resource), mailSenderListParams(rt), nil)
+			data, err := callMailSenderListSkippingEmptyPages(rt, mailSenderListPath(mailboxID, cfg.resource), mailSenderListParams(rt))
 			if err != nil {
 				return err
 			}
@@ -149,6 +149,45 @@ func newMailSenderListModifyShortcut(cfg senderListShortcutConfig) common.Shortc
 			return nil
 		},
 	}
+}
+
+func callMailSenderListSkippingEmptyPages(rt *common.RuntimeContext, path string, params map[string]interface{}) (map[string]interface{}, error) {
+	const maxEmptyPageRetries = 3
+
+	currentParams := cloneSenderListParams(params)
+	var data map[string]interface{}
+	var err error
+	for attempt := 0; attempt <= maxEmptyPageRetries; attempt++ {
+		data, err = rt.CallAPITyped("GET", path, currentParams, nil)
+		if err != nil {
+			return nil, err
+		}
+		if senderListHasItems(data) {
+			return data, nil
+		}
+		hasMore, pageToken := common.PaginationMeta(data)
+		if !hasMore || pageToken == "" || attempt == maxEmptyPageRetries {
+			return data, nil
+		}
+		currentParams = cloneSenderListParams(currentParams)
+		currentParams["page_token"] = pageToken
+	}
+	return data, nil
+}
+
+func cloneSenderListParams(params map[string]interface{}) map[string]interface{} {
+	cloned := make(map[string]interface{}, len(params))
+	for key, value := range params {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func senderListHasItems(data map[string]interface{}) bool {
+	if items, ok := data["items"].([]interface{}); ok {
+		return len(items) > 0
+	}
+	return false
 }
 
 func buildSenderListModifyInput(rt *common.RuntimeContext) (senderListModifyInput, error) {

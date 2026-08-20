@@ -89,6 +89,100 @@ func TestMailSenderListShortcut_ListsOrSearches(t *testing.T) {
 	reg.Verify(t)
 }
 
+func TestMailSenderListShortcut_SkipsEmptyPagesUntilItems(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/me/allow_senders?keyword=fixture&page_size=20",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"has_more":   true,
+				"items":      []interface{}{},
+				"page_token": "tok_2",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "page_token=tok_2",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"has_more":   true,
+				"items":      []interface{}{},
+				"page_token": "tok_3",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "page_token=tok_3",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"has_more":   true,
+				"page_token": "tok_4",
+				"items": []map[string]interface{}{
+					{"sender": "fixture.sender.test"},
+				},
+			},
+		},
+	})
+
+	err := runMountedMailShortcut(t, MailSenderAllowlist, []string{"+sender-allowlist", "--query", "fixture"}, f, stdout)
+	if err != nil {
+		t.Fatalf("execute shortcut: %v", err)
+	}
+	data := decodeShortcutEnvelopeData(t, stdout)
+	items, ok := data["items"].([]interface{})
+	if !ok || len(items) != 1 {
+		t.Fatalf("items = %#v, want 1 item from first non-empty page", data["items"])
+	}
+	if data["page_token"] != "tok_4" || data["has_more"] != true {
+		t.Fatalf("pagination data = %#v, want token tok_4 and has_more=true", data)
+	}
+	reg.Verify(t)
+}
+
+func TestMailSenderListShortcut_ReturnsEmptyAfterRetryLimit(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	tokens := []string{"", "tok_2", "tok_3", "tok_4"}
+	nextTokens := []string{"tok_2", "tok_3", "tok_4", "tok_5"}
+	for i, token := range tokens {
+		url := "/user_mailboxes/me/blocked_senders?page_size=20"
+		if token != "" {
+			url = "page_token=" + token
+		}
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    url,
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"has_more":   true,
+					"items":      []interface{}{},
+					"page_token": nextTokens[i],
+				},
+			},
+		})
+	}
+
+	err := runMountedMailShortcut(t, MailSenderBlocklist, []string{"+sender-blocklist"}, f, stdout)
+	if err != nil {
+		t.Fatalf("execute shortcut: %v", err)
+	}
+	data := decodeShortcutEnvelopeData(t, stdout)
+	items, ok := data["items"].([]interface{})
+	if !ok || len(items) != 0 {
+		t.Fatalf("items = %#v, want empty items after retry limit", data["items"])
+	}
+	if data["page_token"] != "tok_5" || data["has_more"] != true {
+		t.Fatalf("pagination data = %#v, want final empty page token tok_5 and has_more=true", data)
+	}
+	reg.Verify(t)
+}
+
 func TestMailSenderListShortcut_DryRunReadShowsPlan(t *testing.T) {
 	f, stdout, _, _ := mailShortcutTestFactory(t)
 	err := runMountedMailShortcut(t, MailSenderAllowlist, []string{
