@@ -817,6 +817,217 @@ func TestNormalizeDataConfigSortOrder(t *testing.T) {
 	})
 }
 
+func TestValidateNPSDataConfig(t *testing.T) {
+	valid := map[string]interface{}{
+		"table_name": "Survey",
+		"group_by": []interface{}{
+			map[string]interface{}{"field_name": "Score", "mode": "integrated"},
+		},
+		"category_range": []interface{}{float64(0), float64(6), float64(8), float64(10)},
+	}
+	if problems := validateBlockDataConfig("nps", valid); len(problems) != 0 {
+		t.Fatalf("valid nps config got problems: %v", problems)
+	}
+	if problems := validateBlockDataConfig(" NpS ", cloneMap(valid)); len(problems) != 0 {
+		t.Fatalf("normalized nps type got problems: %v", problems)
+	}
+
+	withoutCountAll := cloneMap(valid)
+	if problems := validateBlockDataConfig("nps", withoutCountAll); len(problems) != 0 {
+		t.Fatalf("nps should allow omitted count_all: %v", problems)
+	}
+
+	withCountAll := cloneMap(valid)
+	withCountAll["count_all"] = true
+	if problems := validateBlockDataConfig("nps", withCountAll); len(problems) != 0 {
+		t.Fatalf("nps should allow count_all true: %v", problems)
+	}
+
+	invalid := cloneMap(valid)
+	invalid["series"] = []interface{}{map[string]interface{}{"field_name": "Score", "rollup": "SUM"}}
+	invalid["count_all"] = false
+	invalid["group_by"] = []interface{}{
+		map[string]interface{}{"field_name": "Score", "mode": "enumerated", "sort": map[string]interface{}{"type": "group"}},
+	}
+	problems := validateBlockDataConfig("nps", invalid)
+	for _, want := range []string{"不支持 series", "只能为 true", "只能为 integrated", "不支持 sort"} {
+		if !containsProblem(problems, want) {
+			t.Fatalf("problems=%v, want containing %q", problems, want)
+		}
+	}
+
+	for _, tc := range []struct {
+		field string
+		value interface{}
+	}{
+		{field: "sort", value: map[string]interface{}{"type": "group", "order": "asc"}},
+		{field: "limit_size", value: float64(10)},
+		{field: "number_format", value: map[string]interface{}{"formatName": "digital"}},
+		{field: "text", value: "NPS"},
+	} {
+		t.Run("reject top-level "+tc.field, func(t *testing.T) {
+			cfg := cloneMap(valid)
+			cfg[tc.field] = tc.value
+			problems := validateBlockDataConfig("nps", cfg)
+			if !containsProblem(problems, "nps 不支持 "+tc.field) {
+				t.Fatalf("problems=%v, want containing %q", problems, "nps 不支持 "+tc.field)
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name string
+		mut  func(map[string]interface{})
+		want string
+	}{
+		{
+			name: "missing table_name",
+			mut: func(cfg map[string]interface{}) {
+				delete(cfg, "table_name")
+			},
+			want: "缺少必填字段 table_name",
+		},
+		{
+			name: "invalid group_by shape",
+			mut: func(cfg map[string]interface{}) {
+				cfg["group_by"] = map[string]interface{}{"field_name": "Score", "mode": "integrated"}
+			},
+			want: "nps.group_by 必须是长度为 1 的数组",
+		},
+		{
+			name: "missing group_by field_name",
+			mut: func(cfg map[string]interface{}) {
+				cfg["group_by"] = []interface{}{map[string]interface{}{"mode": "integrated"}}
+			},
+			want: "nps.group_by[0].field_name 不能为空",
+		},
+		{
+			name: "missing group_by mode",
+			mut: func(cfg map[string]interface{}) {
+				cfg["group_by"] = []interface{}{map[string]interface{}{"field_name": "Score"}}
+			},
+			want: "nps.group_by[0].mode 只能为 integrated",
+		},
+		{
+			name: "empty group_by mode",
+			mut: func(cfg map[string]interface{}) {
+				cfg["group_by"] = []interface{}{map[string]interface{}{"field_name": "Score", "mode": ""}}
+			},
+			want: "nps.group_by[0].mode 只能为 integrated",
+		},
+		{
+			name: "non-string group_by mode",
+			mut: func(cfg map[string]interface{}) {
+				cfg["group_by"] = []interface{}{map[string]interface{}{"field_name": "Score", "mode": true}}
+			},
+			want: "nps.group_by[0].mode 只能为 integrated",
+		},
+		{
+			name: "invalid category_range",
+			mut: func(cfg map[string]interface{}) {
+				cfg["category_range"] = []interface{}{float64(0), float64(6), float64(10)}
+			},
+			want: "nps.category_range 必须是长度为 4 的数组",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := cloneMap(valid)
+			tc.mut(cfg)
+			problems := validateBlockDataConfig("nps", cfg)
+			if !containsProblem(problems, tc.want) {
+				t.Fatalf("problems=%v, want containing %q", problems, tc.want)
+			}
+		})
+	}
+}
+
+func TestValidateNonNPSRejectsCategoryRange(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		blockType string
+		cfg       map[string]interface{}
+	}{
+		{
+			name:      "statistics",
+			blockType: "statistics",
+			cfg: map[string]interface{}{
+				"table_name":     "T",
+				"count_all":      true,
+				"category_range": []interface{}{float64(0), float64(6), float64(8), float64(10)},
+			},
+		},
+		{
+			name:      "ordinary chart",
+			blockType: "column",
+			cfg: map[string]interface{}{
+				"table_name":     "T",
+				"count_all":      true,
+				"group_by":       []interface{}{map[string]interface{}{"field_name": "Score"}},
+				"category_range": []interface{}{float64(0), float64(6), float64(8), float64(10)},
+			},
+		},
+		{
+			name:      "text",
+			blockType: "text",
+			cfg: map[string]interface{}{
+				"text":           "Summary",
+				"category_range": []interface{}{float64(0), float64(6), float64(8), float64(10)},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			problems := validateBlockDataConfig(tc.blockType, tc.cfg)
+			if !containsProblem(problems, "category_range 仅支持 nps 类型组件") {
+				t.Fatalf("problems=%v, want category_range rejection", problems)
+			}
+		})
+	}
+}
+
+func TestBaseDashboardBlockCreate_NPSRequiresDataConfig(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		blockType string
+	}{
+		{name: "nps", blockType: "nps"},
+		{name: "padded nps", blockType: " NpS "},
+		{name: "padded text", blockType: " text "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			factory, stdout, _ := newExecuteFactory(t)
+			err := runShortcut(t, BaseDashboardBlockCreate, []string{
+				"+dashboard-block-create",
+				"--base-token", "app_x",
+				"--dashboard-id", "dsh_1",
+				"--name", "Block",
+				"--type", tc.blockType,
+			}, factory, stdout)
+			if err == nil {
+				t.Fatalf("expected validation error for missing data_config, got nil (stdout=%s)", stdout.String())
+			}
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("expected *errs.ValidationError, got %T %v", err, err)
+			}
+			if ve.Category != errs.CategoryValidation || ve.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("category=%q subtype=%q, want validation/invalid_argument", ve.Category, ve.Subtype)
+			}
+			if ve.Param != "--data-config" {
+				t.Fatalf("param=%q, want --data-config", ve.Param)
+			}
+		})
+	}
+}
+
+func containsProblem(problems []string, want string) bool {
+	for _, p := range problems {
+		if strings.Contains(p, want) {
+			return true
+		}
+	}
+	return false
+}
+
 // ── Text Block Tests ────────────────────────────────────────────────
 
 // TestBaseDashboardBlockExecuteCreate_TextType tests creating text blocks with markdown content.
