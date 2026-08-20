@@ -24,6 +24,8 @@ var sparkCodeMeta = map[int]CodeMeta{
 	3344040: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},          // unsupported member type
 	3344041: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},          // invalid member ID
 
+	221800:    {Category: errs.CategoryValidation, Subtype: errs.SubtypeFailedPrecondition}, // Miaoda not activated for this tenant
+	400002484: {Category: errs.CategoryValidation, Subtype: errs.SubtypeInvalidArgument},    // app id does not identify an app (missing or malformed)
 	400002465: {Category: errs.CategoryValidation, Subtype: errs.SubtypeFailedPrecondition}, // app has no database yet
 	500002759: {Category: errs.CategoryValidation, Subtype: errs.SubtypeFailedPrecondition}, // app has no database yet, pre-4xx renumber
 	400002655: {Category: errs.CategoryValidation, Subtype: errs.SubtypeFailedPrecondition}, // app has no running container yet (online observability)
@@ -36,6 +38,11 @@ var sparkCodeMeta = map[int]CodeMeta{
 	400002481: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},         // db sync task ID is invalid
 	400002482: {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},                  // db sync source table does not exist
 	400002483: {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},                  // db sync target table does not exist
+
+	400000034: {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},                   // file not found or no access
+	500000034: {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},                   // file not found or no access, pre-4xx renumber
+	400002467: {Category: errs.CategoryAuthorization, Subtype: errs.SubtypePermissionDenied}, // app administrator or developer required
+	500002761: {Category: errs.CategoryAuthorization, Subtype: errs.SubtypePermissionDenied}, // app administrator or developer required, pre-4xx renumber
 }
 
 func init() { mergeCodeMeta(sparkCodeMeta, "spark") }

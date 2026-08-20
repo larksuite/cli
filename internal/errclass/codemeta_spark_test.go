@@ -31,10 +31,19 @@ func TestLookupCodeMetaSparkRoleCodes(t *testing.T) {
 		{3344039, errs.CategoryAPI, errs.SubtypeInvalidParameters},
 		{3344040, errs.CategoryAPI, errs.SubtypeInvalidParameters},
 		{3344041, errs.CategoryAPI, errs.SubtypeInvalidParameters},
+		{221800, errs.CategoryValidation, errs.SubtypeFailedPrecondition},
 		{400002465, errs.CategoryValidation, errs.SubtypeFailedPrecondition},
 		{500002759, errs.CategoryValidation, errs.SubtypeFailedPrecondition},
 		{400002655, errs.CategoryValidation, errs.SubtypeFailedPrecondition},
 		{400002469, errs.CategoryAPI, errs.SubtypeNotFound},
+		{400002484, errs.CategoryValidation, errs.SubtypeInvalidArgument},
+
+		// file storage: current + pre-4xx number for each failure, both live while
+		// the renumbering rolls out per lane.
+		{400000034, errs.CategoryAPI, errs.SubtypeNotFound},
+		{500000034, errs.CategoryAPI, errs.SubtypeNotFound},
+		{400002467, errs.CategoryAuthorization, errs.SubtypePermissionDenied},
+		{500002761, errs.CategoryAuthorization, errs.SubtypePermissionDenied},
 	}
 
 	for _, tt := range tests {

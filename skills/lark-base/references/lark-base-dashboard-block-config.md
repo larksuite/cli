@@ -211,7 +211,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
   - `group_by[].sort.type` 为 `group` 或 `view` 且缺少 `order` 时，自动补 `order:"asc"`；`value` 排序不会自动补方向
 - 本地校验（可通过 `--no-validate` 跳过）
   - `+dashboard-block-create` 默认对 `data_config` 做轻量校验；失败会聚合错误并给出修复建议
-  - `+dashboard-block-update` 不做强类型校验，由后端验证具体字段
+  - `+dashboard-block-update` 不带 `--type`，所以不做按组件类型的强校验，字段由后端验证；但 `number_format` 子字段与 create 一样本地拦截（见下方 number_format 小节）
   - 仅需传入合法 JSON；CLI 不会擅自改写你的业务含义
 
 ## 可复制模板
@@ -371,6 +371,33 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
   "count_all": true
 }
 ```
+
+### statistics 指标卡数值格式 number_format（可选）
+
+仅 `type: statistics` 支持在 `data_config` 里加可选 `number_format`，控制数值展示格式与精度；不传时服务端会补 `{"formatName":"digital"}`，`precision` 保持省略。其它组件类型不支持该字段：create 会被 CLI 直接拒绝（显式 `--no-validate` 可跳过），避免把后端严格 schema 错误延迟到请求阶段；update 不带 `--type`，由服务端结合组件现有类型裁决。
+
+- `formatName`（string，可选）：必须精确匹配下表 5 个枚举之一，**区分大小写**（不同于 `series[].rollup` 会被自动转成大写，这里不做规范化，`DIGITAL` 会被拒绝）。
+- `precision`（integer，可选）：小数位数，`0` 到 `9` 的整数；`2.5` 这类非整数会被本地拒绝。
+
+| formatName | 含义 | 示例（precision=2） |
+|------------|------|--------------------|
+| `digital` | 千分位数字（不传 `number_format` 时的服务端默认值） | `1,234.56` |
+| `digital_without_separator` | 无千分位数字 | `1234.56` |
+| `percentage_rounded` | 百分比 | `1,234.56%` |
+| `cyn_rounded` | 人民币金额 | `¥1,234.56` |
+| `dollar_rounded` | 美元金额 | `$1,234.56` |
+
+指标卡（金额，保留 2 位小数）：
+
+```json
+{
+  "table_name": "订单表",
+  "series": [{ "field_name": "金额", "rollup": "SUM" }],
+  "number_format": { "formatName": "dollar_rounded", "precision": 2 }
+}
+```
+
+> **更新时 `number_format` 按子字段合并**：例如现有 `{"formatName":"digital","precision":2}` 时只传 `{"number_format":{"precision":0}}`，服务端会保留 `formatName:"digital"` 并把精度改为 `0`。其它顶层 key 的更新策略见 [lark-base-dashboard.md](lark-base-dashboard.md)。
 
 文本组件（Markdown 富文本）：
 

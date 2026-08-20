@@ -17,9 +17,25 @@ Dashboard 是 Base 中的数据可视化看板，可以把表格数据变成**�
 | 创建/删除/改名称 | `+dashboard-create/delete/update` | 本页下方「仪表盘管理」 |
 | 在仪表盘里添加组件 | `+dashboard-block-create` | 先定位 dashboard、表和字段，再读 [Dashboard Block 配置](lark-base-dashboard-block-config.md) 构造 `data_config` |
 | 修改组件 | `+dashboard-block-update` | 先读 block 现状，再读 [Dashboard Block 配置](lark-base-dashboard-block-config.md) 决定替换哪些顶层 key |
+| 创建/更新时指定组件精确位置大小 | `+dashboard-block-create/update --position` | 本页下方「精确布局 --position vs +dashboard-arrange」 |
 | 查看仪表盘有哪些组件 | `+dashboard-get` 或 `+dashboard-block-list` | 本页下方「查看仪表盘」 |
 | 读取图表计算结果 | `+dashboard-block-get-data` | 返回图表最终数据协议；需要 block 元数据先用 `+dashboard-block-get` |
 | 智能重排组件布局 | `+dashboard-arrange` | 用户明确要求重排，或本次会话新建仪表盘的收尾整理；无法指定 `x/y/w/h`、精确位置或尺寸 |
+
+## 精确布局 --position vs +dashboard-arrange
+
+create/update 可选 `--position`，用 12 列栅格坐标精确指定单个组件的落点与大小：`{"x","y","w","h"}`，`x`/`y` 为左上角坐标（>=0），`w` 为宽度（1..12，且 `x+w<=12`），`h` 为高度（>=1）。它与 `name`/`type`/`data_config` 平级挂在请求体顶层。
+
+> [!IMPORTANT]
+> - **四个 key 必须齐全且都是数字**：`position` 按整体提交、不做逐字段合并，所以只传 `{"x":6}` 表达的不是"只挪位置不改大小"，而是一个缺了三项的位置。本地会拒绝残缺对象（含显式 `null`）。
+> - 坐标**取值不做本地校验**：越界、负值或重叠坐标会原样发给服务端，由服务端自动重排。调用方仍应优先规划 12 列范围内且不重叠的坐标，避免自动重排改变预期落点。
+> - 不传 `--position`：create 由服务端自动装箱，update 保持当前布局不变。
+> - 只有用户明确给出 `x/y/w/h`、具体行列/顺序、每个组件宽高或可直接换算的尺寸比例时才用 `--position`。"调整布局""美化""撑满""铺满"本身不算精确约束，没有组件级坐标或尺寸时优先用 `+dashboard-arrange` 整盘编排。
+> - 命令成功即视为写入成功，一般无需仅为读回位置再调用 `+dashboard-block-get` / `+dashboard-block-list`；成功响应不代表最终渲染位置已经过读回验证。
+
+## statistics 指标卡数值格式
+
+`statistics` 组件可在 create/update 的 `data_config.number_format` 中设置 `formatName` 和 `precision`。create 会校验组件类型和子字段；update 不接收 `--type`，只校验 `number_format` 子字段，再由服务端结合现有 block 类型裁决。枚举、精度范围、更新语义和可复制模板读取 [Dashboard Block 配置](lark-base-dashboard-block-config.md)。
 
 ## 典型场景工作流
 
@@ -30,7 +46,7 @@ Dashboard 是 Base 中的数据可视化看板，可以把表格数据变成**�
 - 聚合方式：创建指标卡或分布图时优先把聚合写进 `data_config`，只有 Top N、字段取值探索、复杂筛选校验或 helper 汇总表场景才先用 `+data-query`。
 - Dry-run 边界：已按模板构造的简单指标卡、分布图、趋势图不需要逐个 `--dry-run` 后再真实创建；只有在调试 JSON、检查请求体、复杂自造 `data_config` 或处理 API validation 错误时才 dry-run。
 - 验证方式：创建接口成功返回即表示写入成功。只有结果不确定时才用一次 `+dashboard-get` 或 `+dashboard-block-list` 确认仪表盘和组件存在；不要仅为确认创建而逐组件调用 `+dashboard-block-get-data`。
-- 布局方式：`+dashboard-arrange` 仅两种情况使用：① 用户明确要求美化/重排；② 本次会话中从零新建的仪表盘，建完组件后做一次性布局整理。不是创建成功的必要步骤。
+- 布局方式：用户没有给出组件级坐标或尺寸时，创建完成后用一次 `+dashboard-arrange` 整盘编排即可；只有用户明确给出可执行的精确布局约束时才在 create 中带 `--position`，此时通常不再需要 arrange。
 
 示例：搭建一个销售数据分析仪表盘
 
@@ -68,9 +84,10 @@ lark-cli base +dashboard-block-create \
 
 # 继续创建其他组件...
 
-# 第 5 步：组件创建完成后，使用 arrange 命令智能重排布局（可选但推荐）
+# 第 5 步：组件创建完成后，可按需使用 arrange 智能重排（未使用 --position 时可选）
 # 默认布局可能不够美观，arrange 会根据组件数量和类型自动优化布局
-# 若用户没有要求美化/重排，可先跳过此步骤；这不影响仪表盘和组件是否已创建成功
+# 若任一组件使用了显式 --position，跳过此步骤；除非用户明确同意放弃精确布局
+# 若用户没有要求美化/重排，也可跳过；这不影响仪表盘和组件是否已创建成功
 lark-cli base +dashboard-arrange \
   --base-token xxx \
   --dashboard-id blk_xxx
@@ -105,7 +122,7 @@ lark-cli base +dashboard-block-create \
 ### 场景 3：编辑已有组件
 
 > [!IMPORTANT]
-> `+dashboard-block-update` **不能修改组件的 `type`**（图表类型），只能更新 `name` 和 `data_config`。
+> `+dashboard-block-update` **不能修改组件的 `type`**（图表类型），只能更新 `name`、`data_config` 和可选的 `position`。
 > 如需更换组件类型，必须先删除再重新创建。
 
 ```bash
@@ -132,20 +149,21 @@ lark-cli base +dashboard-block-update \
   --base-token xxx \
   --dashboard-id blk_xxx \
   --block-id chtxxxxxxxx \
-  --data-config '{...}'
+  --data-config '{...}' \
+  --position '{...}'   # 可选，只在需要调整布局时传
 
 ```
 
 ### 场景 4：重排仪表盘布局
 
-当用户明确要求对已有仪表盘进行布局重排或美化时使用（对本次会话从零新建的仪表盘，可在建完组件后直接做一次性整理，见场景 1）。
+当用户要求调整布局、重排、美化、撑满或铺满，但没有给出组件级坐标或尺寸时使用。定位仪表盘后用一次 `+dashboard-arrange` 整盘编排即可（对本次会话从零新建的仪表盘，在建完组件后编排一次）。
 
 > [!CAUTION]
 > - 排列结果是**服务端智能推荐**，不一定完全符合用户预期
-> - Dashboard shortcut 无法指定 `x/y/w/h`、精确位置或尺寸（如"第一排放 A""图表撑满整行"），排列逻辑是**自适应**的
+> - `+dashboard-arrange` 无法指定 `x/y/w/h`、精确位置或尺寸，排列逻辑是**自适应**的；只有用户明确给出可执行的组件级坐标、行列或尺寸约束时才改用 `--position`
 > - **不建议**在已有仪表盘上自动调用，除非用户明确要求
-> - 用户只要求一般性重排/美化时，可执行一次 `+dashboard-arrange`；用户要求精确结果时，先说明限制并询问是否接受自适应布局，接受后才执行，不能静默替代或声称精确满足
-> - 执行一次 `+dashboard-arrange` 后即停止；不要继续探测 raw `lark-cli api`、源码或未公开布局参数
+> - 用户只要求一般性重排、美化、撑满或铺满时，用 `+dashboard-arrange` 整盘编排
+> - 编排结果不理想时，可结合用户反馈再调整；不要为了凑效果去探测 raw `lark-cli api`、源码或未公开布局参数
 
 ```bash
 # 第 1 步：列出仪表盘，定位到目标仪表盘
@@ -232,7 +250,7 @@ A: 常见原因：
 A: 不可以，必须串行执行。等上一个 `+dashboard-block-create` 完成后再执行下一个。
 
 **Q: 组件的 `type` 创建后能改吗？**
-A: 不能。`+dashboard-block-update` 只能修改 `name` 和 `data_config`，不能修改 `type`。
+A: 不能。`+dashboard-block-update` 只能修改 `name`、`data_config` 和 `position`，不能修改 `type`。
 
 **Q: 更新组件的命令和 data_config 怎么写？**
 A:
@@ -242,7 +260,7 @@ A:
 **data_config 更新策略（顶层 key merge）**：
 - 只传入需要修改的顶层字段（如 `series`、`filter`）
 - 未传的顶层字段（如 `group_by`）自动保留原值
-- 但每个传入的字段内部是**全量替换**（如传新 `filter` 会完整覆盖旧 `filter`）
+- 但每个传入的字段内部通常是**全量替换**（如传新 `filter` 会完整覆盖旧 `filter`）；`number_format` 例外，按子字段合并，见 [Dashboard Block 配置](lark-base-dashboard-block-config.md) 的 number_format 小节
 
 **Q: 查看已有组件有什么用？**
 A: 在「添加新组件」或「编辑组件」前查看已有组件可以：

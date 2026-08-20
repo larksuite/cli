@@ -25,6 +25,14 @@ var chartBlockTypes = []string{
 // ({"text": "..."}).
 var textBlockTypes = []string{"text"}
 
+var validNumberFormatNames = map[string]bool{
+	"digital":                   true,
+	"digital_without_separator": true,
+	"percentage_rounded":        true,
+	"cyn_rounded":               true,
+	"dollar_rounded":            true,
+}
+
 func matchesBlockType(blockType string, candidates []string) bool {
 	trimmed := strings.ToLower(strings.TrimSpace(blockType))
 	for _, candidate := range candidates {
@@ -115,11 +123,21 @@ func normalizeDataConfig(cfg map[string]interface{}) map[string]interface{} {
 // dashboard chart rules. BaseApp list validation lives in
 // app_list_block_data_config.go and never enters this dashboard path.
 func validateBlockDataConfig(blockType string, cfg map[string]interface{}) []string {
+	blockType = strings.ToLower(strings.TrimSpace(blockType))
+	if _, hasNumberFormat := cfg["number_format"]; hasNumberFormat && blockType != "statistics" {
+		return []string{"number_format 仅支持 statistics 类型组件"}
+	}
 	switch {
 	case isTextBlockType(blockType):
 		return validateTextDataConfig(blockType, cfg)
 	default:
-		return validateChartDataConfig(cfg)
+		problems := validateChartDataConfig(cfg)
+		if matchesBlockType(blockType, []string{"statistics"}) {
+			if rawNumberFormat, hasNumberFormat := cfg["number_format"]; hasNumberFormat {
+				problems = append(problems, validateNumberFormat(rawNumberFormat)...)
+			}
+		}
+		return problems
 	}
 }
 
@@ -212,6 +230,30 @@ func validateChartDataConfig(cfg map[string]interface{}) []string {
 	// filter 基本结构
 	errs = append(errs, validateBlockFilter(cfg, "filter", false)...)
 	return errs
+}
+
+func validateNumberFormat(raw interface{}) []string {
+	if raw == nil {
+		return []string{"number_format 必须是对象，例如 {\"formatName\":\"digital\",\"precision\":2}"}
+	}
+	nf, ok := raw.(map[string]interface{})
+	if !ok {
+		return []string{"number_format 必须是对象，例如 {\"formatName\":\"digital\",\"precision\":2}"}
+	}
+	var problems []string
+	if fnRaw, has := nf["formatName"]; has {
+		fn, isString := fnRaw.(string)
+		if !isString || !validNumberFormatNames[fn] {
+			problems = append(problems, "number_format.formatName 仅支持 digital|digital_without_separator|percentage_rounded|cyn_rounded|dollar_rounded")
+		}
+	}
+	if pRaw, has := nf["precision"]; has {
+		p, ok := toIntStrict(pRaw)
+		if !ok || p < 0 || p > 9 {
+			problems = append(problems, "number_format.precision 必须是 0 到 9 的整数")
+		}
+	}
+	return problems
 }
 
 // ── BaseApp chart data_config (multi-datasource) ─────────────────────

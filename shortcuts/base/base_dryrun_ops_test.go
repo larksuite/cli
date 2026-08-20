@@ -419,6 +419,45 @@ func TestDryRunDashboardOps(t *testing.T) {
 	assertDryRunContains(t, dryRunDashboardBlockDelete(ctx, rt), "DELETE /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks/blk_1")
 }
 
+// TestDryRunDashboardBlockPositionAndNumberFormat asserts the shared body
+// builder surfaces the optional top-level position and data_config.number_format
+// in the dry-run request body, and that the update preview never carries type
+// (which the API rejects). Preview-vs-executed body equality is proven end to
+// end by TestBaseDashboardBlockDryRunMatchesExecuteBody.
+func TestDryRunDashboardBlockPositionAndNumberFormat(t *testing.T) {
+	ctx := context.Background()
+
+	rt := newBaseTestRuntime(
+		map[string]string{
+			"base-token":   "app_x",
+			"dashboard-id": "dash_1",
+			"block-id":     "blk_1",
+			"name":         "Revenue",
+			"type":         "statistics",
+			"data-config":  `{"table_name":"Orders","count_all":true,"number_format":{"formatName":"dollar_rounded","precision":2}}`,
+			"position":     `{"x":0,"y":0,"w":6,"h":4}`,
+		},
+		nil,
+		nil,
+	)
+
+	assertDryRunContains(t, dryRunDashboardBlockCreate(ctx, rt),
+		"POST /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks",
+		`"position"`, `"w":6`, `"number_format"`, `"dollar_rounded"`)
+	assertDryRunContains(t, dryRunDashboardBlockUpdate(ctx, rt),
+		"PATCH /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks/blk_1",
+		`"position"`, `"w":6`)
+
+	pc := newParseCtx(rt)
+	updateBody, err := buildDashboardBlockBody(pc, rt, false)
+	if err != nil {
+		t.Fatalf("update body build err=%v", err)
+	}
+	if _, hasType := updateBody["type"]; hasType {
+		t.Fatalf("update body must not carry type: %v", updateBody)
+	}
+}
+
 func TestDryRunViewOps(t *testing.T) {
 	ctx := context.Background()
 
