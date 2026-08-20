@@ -40,7 +40,7 @@ lark-cli mail +thread-trash --thread-ids <thread_id1> --thread-ids <thread_id2> 
 
 ## 返回值
 
-JSON 输出为紧凑的批量结果：
+返回示例：
 
 ```json
 {
@@ -53,7 +53,7 @@ JSON 输出为紧凑的批量结果：
 
 ## 原生 API 适用场景
 
-只有在需要精确复现后端/API 行为做诊断时，才直接调用 `mail user_mailbox.threads batch_trash`。普通会话软删除优先使用本 shortcut，因为它内置了 ID 校验、分批、紧凑输出、dry-run 预览和 `--yes` 确认。
+只有在需要精确复现后端/API 行为做诊断时，才直接调用 `mail user_mailbox.threads batch_trash`。普通会话软删除优先使用本 shortcut，因为它内置了 ID 校验、分批、批量输出、dry-run 预览和 `--yes` 确认。
 
 ## 相关命令
 
