@@ -2,8 +2,6 @@
 
 > **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-已有 `thread_id` 且要按会话维度修改标签或移动文件夹时，优先使用 `mail +thread-modify`。普通会话整理不要直接调用原生 `user_mailbox.threads batch_modify`。
-
 如果操作对象是具体邮件 `message_id`，不是整个会话，使用 [`mail +message-modify`](./lark-mail-message-modify.md)。
 
 本 skill 对应 shortcut `lark-cli mail +thread-modify`，内部调用：
@@ -48,7 +46,6 @@ lark-cli mail +thread-modify --thread-ids <thread_id> --add-label-ids custom_lab
 - `thread_id` 必须来自 `+triage`、`+message`、`+thread`、会话列表或搜索等真实查询结果；不要用数字主键或占位符。
 - 命令在本地解析逗号分隔和重复 flag，按首次出现顺序去重，再一次性提交。
 - 原生 API 每次最多接收 20 个 `thread_id`；shortcut 在发请求前做本地校验。
-- 标签变更和移动文件夹属于可逆整理操作，通常不需要额外确认；如果用户意图或目标对象不明确，先展示将影响的会话数量和动作再执行。
 
 ## 返回值
 
