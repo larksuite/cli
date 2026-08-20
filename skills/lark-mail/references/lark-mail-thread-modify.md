@@ -35,23 +35,24 @@ lark-cli mail +thread-modify --thread-ids <thread_id> --add-label-ids custom_lab
 |------|------|------|
 | `--mailbox <email>` | 否 | 会话所属邮箱，默认 `me` |
 | `--thread-ids <ids>` | 是 | 会话 ID 列表，支持逗号分隔和重复传参；每次最多提交 20 个去重后的 ID |
-| `--add-label-ids <ids>` | 否 | 要添加的标签 ID。系统标签 `unread` / `important` / `other` / `flagged` / `read_receipt_request` 会规范化为大写 |
+| `--add-label-ids <ids>` | 否 | 要添加的标签 ID。系统标签可传 `unread` / `important` / `other` / `flagged` / `read_receipt_request` |
 | `--remove-label-ids <ids>` | 否 | 要移除的标签 ID。不能与 `--add-label-ids` 传入重复标签 |
-| `--add-folder <id>` | 否 | 要移动到的文件夹 ID。系统文件夹 `inbox` / `sent` / `spam` / `archive` / `archived` 会规范化为系统 ID |
-| `--folder-id <id>` | 否 | `--add-folder` 的别名 |
-| `--dry-run` | 否 | 只打印请求路径和请求体，不执行 |
+| `--add-folder <id>` | 否 | 要移动到的文件夹。系统文件夹可传 `inbox` / `sent` / `spam` / `archive` / `archived`；自定义文件夹传文件夹 ID |
 
 `--add-label-ids`、`--remove-label-ids`、`--add-folder` 至少传一个。
 
 `TRASH` 不允许通过本 shortcut 作为目标文件夹传入。需要软删除会话时，使用 [`mail +thread-trash`](./lark-mail-thread-trash.md)，并在用户确认后加 `--yes` 执行。
 
-## 行为细节
+## 注意事项
 
 - `thread_id` 必须来自 `+triage`、`+message`、`+thread`、会话列表或搜索等真实查询结果；不要用数字主键或占位符。
 - 命令在本地解析逗号分隔和重复 flag，按首次出现顺序去重，再一次性提交。
 - 原生 API 每次最多接收 20 个 `thread_id`；shortcut 在发请求前做本地校验。
 - 标签变更和移动文件夹属于可逆整理操作，通常不需要额外确认；如果用户意图或目标对象不明确，先展示将影响的会话数量和动作再执行。
-- JSON 输出只表示 CLI 请求侧提交结果：
+
+## 返回值
+
+JSON 输出只表示 CLI 请求侧提交结果：
 
 ```json
 {

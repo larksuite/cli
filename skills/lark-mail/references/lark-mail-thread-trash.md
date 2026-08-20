@@ -30,15 +30,17 @@ lark-cli mail +thread-trash --thread-ids <thread_id1> --thread-ids <thread_id2> 
 | `--mailbox <email>` | 否 | 会话所属邮箱，默认 `me` |
 | `--thread-ids <ids>` | 是 | 会话 ID 列表，支持逗号分隔和重复传参；每次最多提交 20 个去重后的 ID |
 | `--yes` | 执行时必填 | 高风险写操作确认。只有用户确认删除预览后才加 |
-| `--dry-run` | 否 | 只打印请求路径和请求体，不执行 |
 
-## 行为细节
+## 注意事项
 
 - `thread_id` 必须来自 `+triage`、`+message`、`+thread`、会话列表或搜索等真实查询结果；不要用数字主键或占位符。
 - 软删除属于高风险写操作。先用真实查询结果展示删除预览，包括受影响会话数量和关键邮件摘要；用户确认后再执行并加 `--yes`。
 - 命令在本地解析逗号分隔和重复 flag，按首次出现顺序去重，再一次性提交。
 - 原生 API 每次最多接收 20 个 `thread_id`；shortcut 在发请求前做本地校验。
-- JSON 输出只表示 CLI 请求侧提交结果：
+
+## 返回值
+
+JSON 输出只表示 CLI 请求侧提交结果：
 
 ```json
 {
