@@ -15,7 +15,7 @@
 
 `--page-size` 默认 20，允许范围是 1 到 100。
 
-搜索/列表底层按游标扫描，可能出现 `items=[]` 但 `has_more=true` 的空页；这不代表结果已结束，应继续使用返回的 `page_token` 翻页。`+sender-allowlist` / `+sender-blocklist` 会在遇到这种空页时自动向后重试最多 3 次，若仍为空则把空页和 `has_more=true` 原样返回。
+搜索/列表底层按游标扫描，可能出现 `items=[]` 但 `has_more=true` 的空页；这不代表结果已结束，应继续使用返回的 `page_token` 翻页。
 
 ```bash
 # 查询信任发件人
