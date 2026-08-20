@@ -164,8 +164,9 @@ func buildAutoReplyPatch(ctx context.Context, runtime *common.RuntimeContext, up
 	if err := validateAutoReplyContentHTML(runtime, content); err != nil {
 		return nil, err
 	}
-	if uploadLocalImages && content != "" {
-		var images []map[string]interface{}
+	contentChanged := runtime.Changed("content") || runtime.Changed("content-file")
+	images := []map[string]interface{}{}
+	if uploadLocalImages && contentChanged && content != "" {
 		content, images, err = uploadAutoReplyLocalImages(ctx, runtime, content)
 		if err != nil {
 			return nil, err
@@ -174,12 +175,13 @@ func buildAutoReplyPatch(ctx context.Context, runtime *common.RuntimeContext, up
 			autoReply["images"] = images
 		}
 	}
-	if content != "" {
+	if contentChanged {
 		if int64(len(content)) > maxTemplateContentBytes {
 			return nil, mailFailedPreconditionError("auto-reply content exceeds %d MB (got %.1f MB)",
 				maxTemplateContentBytes/(1024*1024), float64(len(content))/1024/1024)
 		}
 		autoReply["content_html"] = content
+		autoReply["images"] = images
 	}
 	timezone := strings.TrimSpace(runtime.Str("timezone"))
 	if err := validateAutoReplyTimezone(timezone); err != nil {

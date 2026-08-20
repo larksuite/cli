@@ -182,6 +182,54 @@ func TestMailAutoReplyContentFile(t *testing.T) {
 	assertAutoReplyPayloadAbsent(t, captured, "auto_reply")
 }
 
+func TestMailAutoReplyEmptyContentClearsBody(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	var captured map[string]interface{}
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    mailboxPath("me", "settings", "auto_reply"),
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"auto_reply": map[string]interface{}{
+					"enabled":             false,
+					"content_html":        "<p>Old</p>",
+					"content_summary":     "Old",
+					"start_time":          "1786723200000",
+					"end_time":            "1787068799999",
+					"time_zone":           "Asia/Shanghai",
+					"only_send_to_tenant": false,
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "PUT",
+		URL:    mailboxPath("me", "settings", "auto_reply"),
+		BodyFilter: func(body []byte) bool {
+			if err := json.Unmarshal(body, &captured); err != nil {
+				t.Fatalf("unmarshal request body: %v; body=%s", err, body)
+			}
+			return true
+		},
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{"auto_reply": map[string]interface{}{"content_summary": ""}},
+		},
+	})
+
+	if err := runMountedMailShortcut(t, MailAutoReplyModify, []string{"+auto-reply-modify", "--content", ""}, f, stdout); err != nil {
+		t.Fatalf("runMountedMailShortcut() error = %v", err)
+	}
+	reg.Verify(t)
+
+	assertAutoReplyPayloadValue(t, captured, "content_html", "")
+	assertAutoReplyPayloadEmptyImages(t, captured)
+	assertAutoReplyPayloadAbsent(t, captured, "content_summary")
+}
+
 func TestMailAutoReplyUploadsLocalImages(t *testing.T) {
 	chdirTemp(t)
 	png, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
@@ -394,5 +442,13 @@ func assertAutoReplyPayloadAbsent(t *testing.T, payload map[string]interface{}, 
 	t.Helper()
 	if _, ok := payload[key]; ok {
 		t.Fatalf("%s should be absent (payload=%#v)", key, payload)
+	}
+}
+
+func assertAutoReplyPayloadEmptyImages(t *testing.T, payload map[string]interface{}) {
+	t.Helper()
+	images, ok := payload["images"].([]interface{})
+	if !ok || len(images) != 0 {
+		t.Fatalf("images = %#v, want empty array (payload=%#v)", payload["images"], payload)
 	}
 }
