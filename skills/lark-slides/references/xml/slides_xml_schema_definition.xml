@@ -18,11 +18,11 @@
 
     <!-- ==================== 命名规范说明 ==================== -->
     <!--
-      元素名：小写, HTML 兼容优先（p, ul, span）
-      属性名：camelCase（textType, fontSize, textAlign）
-      类型名：PascalCase（TextType, FontFamilyType）
-      枚举值：kebab-case（sub-headline, left-right-arrow）
-    -->
+    元素名：小写, HTML 兼容优先（p, ul, span）
+    属性名：camelCase（textType, fontSize, textAlign）
+    类型名：PascalCase（TextType, FontFamilyType）
+    枚举值：kebab-case（sub-headline, left-right-arrow）
+  -->
 
     <!-- ==================== 基础类型定义 ==================== -->
     <!-- Color: 颜色类型 -->
@@ -157,7 +157,8 @@
                 寒蝉团圆体 圆体、寒蝉团圆体 黑体、荆南缘默体、寒蝉端黑宋、
                 资源圆体、钟齐流江毛草、寒蝉端黑体、站酷庆科黄油体、寒蝉云墨黑、
                 有字库龙藏体、寒蝉全圆体、思源黑体、钟齐志莽行书、抖音美好体、
-                马善政毛笔楷体、霞鹜 975 圆体
+                马善政毛笔楷体、霞鹜 975 圆体、阿里妈妈刀隶体、阿里妈妈东方大楷、
+                精品点阵体、站酷文艺体、寒蝉正楷体、朱雀仿宋
 
                 常用拉丁字体：
                 Francois One、Heebo、Lobster、Roboto Slab、Varela Round、
@@ -176,7 +177,7 @@
                 Archivo Narrow、Hind、Open Sans、Poiret One、Asap、Roboto、Nunito、
                 Bitter、Dosis、Oxygen、Prompt、Karla、Fjalla One、Fira Sans、
                 Crimson Text、Pacifico、Arimo、Maven Pro、Cairo、Montserrat、
-                Righteous、Lora
+                Righteous、Lora、ZCOOL Addict Italic
 
                 其他语言字体：
                 源ノ角ゴシック、본고딕、Nanum Gothic
@@ -674,6 +675,8 @@
             <xs:enumeration value="dash-dot"><xs:annotation><xs:documentation>短划线-点</xs:documentation></xs:annotation></xs:enumeration>
             <xs:enumeration value="long-dash-dot"><xs:annotation><xs:documentation>长划线-点</xs:documentation></xs:annotation></xs:enumeration>
             <xs:enumeration value="long-dash-dot-dot"><xs:annotation><xs:documentation>长划线-点-点</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="sys-dash-dot"><xs:annotation><xs:documentation>系统划线-点</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="sys-dash-dot-dot"><xs:annotation><xs:documentation>系统划线-点-点</xs:documentation></xs:annotation></xs:enumeration>
         </xs:restriction>
     </xs:simpleType>
 
@@ -820,7 +823,6 @@
         <xs:attribute name="lineJoin" type="sml:LineJoinType" use="optional" default="round"/>
         <xs:attribute name="miterLimit" type="xs:nonNegativeInteger" use="optional" default="8"/>
         <xs:attribute name="rotateWithShape" type="xs:boolean" use="optional" default="true"/>
-
     </xs:complexType>
 
     <!-- 起始箭头样式类型 -->
@@ -885,6 +887,7 @@
 
                 可选属性:
                 type: 裁剪形状, 默认 rect
+                path: 自定义裁剪路径, type="custom" 时生效, SVG path 字符串, 坐标系为裁剪框本地坐标系
                 anchor: 裁剪方位 (top/bottom/left/right), 参见 CropAnchorType
                 leftOffset / rightOffset / topOffset / bottomOffset: 四向偏移量 (px), 正值向内裁剪、负值向外扩展留白、0对齐边缘
                 presetHandlers: 控制点配置, 对应 ECMA 预设形状的控制点。单个或多个数字, 多个用逗号分隔。
@@ -912,6 +915,7 @@
             </xs:documentation>
         </xs:annotation>
         <xs:attribute name="type" type="sml:ShapeType" use="optional" default="rect"/>
+        <xs:attribute name="path" type="xs:string" use="optional"/>
         <xs:attribute name="anchor" type="sml:CropAnchorType" use="optional"/>
         <xs:attribute name="leftOffset" type="xs:double" use="optional"/>
         <xs:attribute name="rightOffset" type="xs:double" use="optional"/>
@@ -936,6 +940,17 @@
         <xs:attribute name="size" type="sml:RatioType" use="optional" default="0.3"/>
     </xs:complexType>
 
+    <!-- 柔化边缘效果类型 -->
+    <xs:complexType name="SoftEdgeType">
+        <xs:annotation>
+            <xs:documentation>
+                柔化边缘效果配置
+                - radius: 柔化边缘半径（像素）, 取值范围 [0, +∞)
+                注意: 无softEdge标签表示无柔化边缘效果, 空softEdge标签表示默认柔化边缘效果(radius=2)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="radius" type="sml:NonNegativeDouble" use="optional" default="2"/>
+    </xs:complexType>
 
     <!-- 阴影效果类型 -->
     <xs:complexType name="ShadowType">
@@ -976,10 +991,20 @@
                 属性:
                 - color: 轮廓颜色
                 - width: 轮廓宽度
+                - dashArray: 虚线样式
+                - compound: 复合边框样式
+                - lineCap: 线端样式
+                - lineJoin: 线连接样式
+                - miterLimit: 斜接限制
             </xs:documentation>
         </xs:annotation>
-        <xs:attribute name="color" type="sml:SolidColor" use="optional" default="rgba(0, 0, 0, 0.25)"/>
+        <xs:attribute name="color" type="sml:Color" use="optional" default="rgba(0, 0, 0, 0.25)"/>
         <xs:attribute name="width" type="sml:NonNegativeDouble" use="optional" default="2"/>
+        <xs:attribute name="dashArray" type="sml:DashArrayType" use="optional" default="solid"/>
+        <xs:attribute name="compound" type="sml:CompoundType" use="optional" default="single"/>
+        <xs:attribute name="lineCap" type="sml:LineCapType" use="optional" default="butt"/>
+        <xs:attribute name="lineJoin" type="sml:LineJoinType" use="optional" default="round"/>
+        <xs:attribute name="miterLimit" type="xs:nonNegativeInteger" use="optional" default="8"/>
     </xs:complexType>
 
     <!-- ==================== 主题相关类型 ==================== -->
@@ -1142,6 +1167,7 @@
         <xs:annotation>
             <xs:documentation>
                 文本内容根容器, 用于描述结构化文本
+
                 属性说明:
                 - textType: 控制整体文本样式 (title/headline/sub-headline/body/caption)
                 - verticalAlign: 内容在容器中的垂直对齐方式
@@ -1164,6 +1190,7 @@
                 - bulletSize: 列表符号大小, 可选, 百分比字符串（相对于文本字号, 取值范围 25%-400%）如 "100%", 或绝对像素值（取值范围 6-400）如 "14"
                 - autoStartAt: 有序列表起始编号, 可选, 取值范围 [1, 32767]; 作为后代段落的初始计数器, 子元素 &lt;p&gt;/&lt;ol&gt; 可通过自身 autoStartAt 重置
                 - bulletChar: 自定义列表符号字符, 可选, 如 "★", "→" 等, 设置后覆盖 listStyle 的符号
+                - tabStopPos/defaultTabSize: 后代段落的默认 Tab 停止位和步长, p 同名属性可覆盖
                 - anchorCenter: 控制文本对齐方式, 优先级高于 textAlign
                 - autoFit: 控制文本编辑溢出时处理策略
                 - baseline: 上标/下标, 相较于文本基线的偏移量
@@ -1218,6 +1245,8 @@
             <xs:attribute name="bulletSize" type="sml:BulletSizeType" use="optional"/>
             <xs:attribute name="autoStartAt" type="sml:AutoStartAtType" use="optional"/>
             <xs:attribute name="bulletChar" type="sml:BulletCharType" use="optional"/>
+            <xs:attribute name="tabStopPos" type="sml:TabStopPosType" use="optional"/>
+            <xs:attribute name="defaultTabSize" type="sml:TabSizeType" use="optional"/>
             <xs:attribute name="anchorCenter" type="xs:boolean" default="false" /> <!-- 控制竖排文字是否在垂直方向保持居中 -->
             <xs:attribute name="autoFit" type="sml:AutoFitType" default="no-auto-fit" />
             <xs:attribute name="wrap" type="xs:boolean" default="true" />
@@ -1229,7 +1258,7 @@
         <xs:annotation>
             <xs:documentation>
                 段落容器, 支持富文本内容
-                可包含纯文本和内联格式元素(br/strong/em/u/span/del/a/shadow/outline/formula/field)
+                可包含纯文本和内联格式元素(br/tab/strong/em/u/span/del/a/shadow/outline/formula/field)
                 内联元素嵌套：所有内联元素均可包含纯文本或其他内联元素，以实现复杂的格式组合
                 元素自嵌套：除a/formula元素外，其余内联元素支持自身嵌套，当shadow和outline自嵌套时，渲染效果遵循就近原则，以内层定义的样式为准
 
@@ -1240,10 +1269,11 @@
                 - 标签之间的空格和换行符会自动省略，换行请使用<br/>标签
 
                 制表符处理规则：
-                - 需要使用制表符时，请使用&#9;字符
+                - 需要使用制表符时，请使用 tab 元素
 
                 富文本元素说明：
                 - br: 换行
+                - tab: 制表符
                 - strong: 加粗
                 - em: 斜体
                 - u: 下划线
@@ -1268,11 +1298,13 @@
                 - bulletChar: 自定义列表符号字符, 可选
                 - marginLeft: 段落左侧缩进宽度
                 - indent: 首行缩进宽度
+                - tabStopPos/defaultTabSize: 段落级 Tab 配置, 覆盖 content 同名配置
             </xs:documentation>
         </xs:annotation>
         <xs:complexType mixed="true">
             <xs:choice minOccurs="0" maxOccurs="unbounded">
                 <xs:element ref="sml:br"/>
+                <xs:element ref="sml:tab"/>
                 <xs:element ref="sml:formula"/>
                 <xs:element ref="sml:strong"/>
                 <xs:element ref="sml:em"/>
@@ -1298,6 +1330,8 @@
             <xs:attribute name="bulletChar" type="sml:BulletCharType" use="optional"/>
             <xs:attribute name="marginLeft" type="xs:double" use="optional" />
             <xs:attribute name="indent" type="sml:NonNegativeDouble" use="optional"/>
+            <xs:attribute name="tabStopPos" type="sml:TabStopPosType" use="optional"/>
+            <xs:attribute name="defaultTabSize" type="sml:TabSizeType" use="optional"/>
         </xs:complexType>
     </xs:element>
 
@@ -1371,7 +1405,7 @@
                 未定义元素, 用于处理不支持的形状类型, 当导出时遇到不支持的type数据时, 使用此元素替代
                 属性说明:
                 - id: 元素唯一标识符(可选)
-                - type: 原始的不支持的类型名称, 包括 video(视频), audio(音频)
+                - type: 原始的不支持的类型名称, 包括 video(视频), audio(音频), whiteboard(画板）
             </xs:documentation>
         </xs:annotation>
         <xs:complexType>
@@ -1408,6 +1442,7 @@
                 - content: 图形内的文本内容, 可选, 富文本
                 - reflection: 倒影效果, 可选, 无reflection标签表示无倒影效果, 空reflection标签表示默认倒影效果
                 - shadow: 阴影效果, 可选, 无shadow标签表示无阴影效果, 空shadow标签表示默认阴影效果
+                - softEdge: 柔化边缘效果, 可选, 无softEdge标签表示无柔化边缘效果, 空softEdge标签表示默认柔化边缘效果(radius=2)
             </xs:documentation>
         </xs:annotation>
         <xs:complexType>
@@ -1416,6 +1451,7 @@
                 <xs:element name="border" type="sml:BorderType" minOccurs="0"/>
                 <xs:element name="reflection" type="sml:ReflectionType" minOccurs="0"/>
                 <xs:element name="shadow" type="sml:ShadowType" minOccurs="0"/>
+                <xs:element name="softEdge" type="sml:SoftEdgeType" minOccurs="0"/>
                 <xs:element ref="sml:content" minOccurs="0"/>
             </xs:all>
 
@@ -1459,6 +1495,7 @@
                 - endArrow: 终点箭头, 可选
                 - shadow: 阴影效果, 可选, 无shadow标签表示无阴影效果, 空shadow标签表示默认阴影效果
                 - reflection: 倒影效果, 可选, 无reflection标签表示无倒影效果, 空reflection标签表示默认倒影效果
+                - softEdge: 柔化边缘效果, 可选, 无softEdge标签表示无柔化边缘效果, 空softEdge标签表示默认柔化边缘效果(radius=2)
             </xs:documentation>
         </xs:annotation>
         <xs:complexType>
@@ -1468,6 +1505,7 @@
                 <xs:element name="endArrow" type="sml:EndArrowStyleType" minOccurs="0"/>
                 <xs:element name="shadow" type="sml:ShadowType" minOccurs="0"/>
                 <xs:element name="reflection" type="sml:ReflectionType" minOccurs="0" />
+                <xs:element name="softEdge" type="sml:SoftEdgeType" minOccurs="0"/>
             </xs:all>
             <xs:attribute name="type" type="sml:LineType" use="optional" default="straight-connector1"/>
             <xs:attribute name="id" type="xs:string" use="optional"/>
@@ -1505,6 +1543,7 @@
                 - endArrow: 终点箭头, 可选
                 - shadow: 阴影效果, 可选, 无shadow标签表示无阴影效果, 空shadow标签表示默认阴影效果
                 - reflection: 倒影效果, 可选, 无reflection标签表示无倒影效果, 空reflection标签表示默认倒影效果
+                - softEdge: 柔化边缘效果, 可选, 无softEdge标签表示无柔化边缘效果, 空softEdge标签表示默认柔化边缘效果(radius=2)
             </xs:documentation>
         </xs:annotation>
         <xs:complexType>
@@ -1514,6 +1553,7 @@
                 <xs:element name="endArrow" type="sml:EndArrowStyleType" minOccurs="0"/>
                 <xs:element name="shadow" type="sml:ShadowType" minOccurs="0"/>
                 <xs:element name="reflection" type="sml:ReflectionType" minOccurs="0"/>
+                <xs:element name="softEdge" type="sml:SoftEdgeType" minOccurs="0"/>
             </xs:all>
 
             <xs:attribute name="id" type="xs:string" use="optional"/>
@@ -1551,6 +1591,7 @@
                 crop: 裁剪。无标签 / 空标签 / 仅设 anchor 时按等比缩放后裁剪到 width×height; anchor 指定保留方位 (top/bottom/left/right), 不设 anchor 即居中裁剪; offset 用于精细控制
                 reflection: 倒影。无标签代表无倒影,空标签代表使用默认样式
                 shadow: 阴影。无标签代表无阴影,空标签代表使用默认样式
+                softEdge: 柔化边缘。无softEdge标签代表无柔化边缘, 空softEdge标签表示默认柔化边缘(radius=2)
                 border: 边框。无标签代表无边框,空标签代表使用默认样式(颜色: rgba(43, 47, 54, 1), 宽度: 2)
                 fill: 填充。无标签代表无填充,空标签代表使用默认样式(颜色: rgba(91, 155, 213, 1))
             </xs:documentation>
@@ -1561,6 +1602,7 @@
                 <xs:element name="border" type="sml:BorderType" minOccurs="0"/>
                 <xs:element name="reflection" type="sml:ReflectionType" minOccurs="0"/>
                 <xs:element name="shadow" type="sml:ShadowType" minOccurs="0"/>
+                <xs:element name="softEdge" type="sml:SoftEdgeType" minOccurs="0"/>
                 <xs:element name="fill" type="sml:FillType" minOccurs="0"/>
             </xs:all>
             <xs:attribute name="id" type="xs:string" use="optional"/>
@@ -1600,6 +1642,7 @@
                 - border: 边框样式, 无border标签代表无边框, 空border标签代表使用默认样式(默认实线边框, 颜色为rgba(51, 51, 51, 1), 宽度为3)
                 - reflection: 倒影样式, 无reflection标签代表无倒影, 空reflection标签代表使用默认样式
                 - shadow: 阴影样式, 无shadow标签代表无阴影, 空shadow标签代表使用默认样式
+                - softEdge: 柔化边缘样式, 无softEdge标签代表无柔化边缘, 空softEdge标签表示默认柔化边缘(radius=2)
             </xs:documentation>
         </xs:annotation>
         <xs:complexType>
@@ -1608,6 +1651,7 @@
                 <xs:element name="border" type="sml:BorderType" minOccurs="0"/>
                 <xs:element name="reflection" type="sml:ReflectionType" minOccurs="0"/>
                 <xs:element name="shadow" type="sml:ShadowType" minOccurs="0"/>
+                <xs:element name="softEdge" type="sml:SoftEdgeType" minOccurs="0"/>
             </xs:all>
 
             <xs:attribute name="id" type="xs:string" use="optional"/>
@@ -1645,6 +1689,7 @@
                 - svg: 标准 SVG 根元素, 仅描述嵌入内容, 不承载 Slides 布局属性
                 - reflection: 倒影样式, 无reflection标签代表无倒影, 空reflection标签代表使用默认样式
                 - shadow: 阴影样式, 无shadow标签代表无阴影, 空shadow标签代表使用默认样式
+                - softEdge: 柔化边缘样式, 无softEdge标签代表无柔化边缘, 空softEdge标签表示默认柔化边缘(radius=2)
             </xs:documentation>
         </xs:annotation>
         <xs:complexType>
@@ -1652,8 +1697,8 @@
                 <xs:any namespace="http://www.w3.org/2000/svg" processContents="lax" minOccurs="1" maxOccurs="1"/>
                 <xs:element name="reflection" type="sml:ReflectionType" minOccurs="0"/>
                 <xs:element name="shadow" type="sml:ShadowType" minOccurs="0"/>
+                <xs:element name="softEdge" type="sml:SoftEdgeType" minOccurs="0"/>
             </xs:sequence>
-
             <xs:attribute name="id" type="xs:string" use="optional"/>
             <xs:attribute name="topLeftX" type="sml:XType" use="required"/>
             <xs:attribute name="topLeftY" type="sml:YType" use="required"/>
@@ -1788,7 +1833,14 @@
         </xs:complexType>
     </xs:element>
 
-
+    <xs:element name="tab">
+        <xs:annotation>
+            <xs:documentation>
+                文本级制表符占位元素, 不携带属性
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexType/>
+    </xs:element>
 
     <xs:element name="formula">
         <xs:annotation>
@@ -1837,6 +1889,7 @@
         <xs:complexType mixed="true">
             <xs:choice minOccurs="0" maxOccurs="unbounded">
                 <xs:element ref="sml:br"/>
+                <xs:element ref="sml:tab"/>
                 <xs:element ref="sml:formula"/>
                 <xs:element ref="sml:strong"/>
                 <xs:element ref="sml:em"/>
@@ -1864,6 +1917,7 @@
                 <xs:extension base="sml:ShadowType">
                     <xs:choice minOccurs="0" maxOccurs="unbounded">
                         <xs:element ref="sml:br"/>
+                        <xs:element ref="sml:tab"/>
                         <xs:element ref="sml:formula"/>
                         <xs:element ref="sml:strong"/>
                         <xs:element ref="sml:em"/>
@@ -1893,6 +1947,7 @@
                 <xs:extension base="sml:OutlineType">
                     <xs:choice minOccurs="0" maxOccurs="unbounded">
                         <xs:element ref="sml:br"/>
+                        <xs:element ref="sml:tab"/>
                         <xs:element ref="sml:formula"/>
                         <xs:element ref="sml:strong"/>
                         <xs:element ref="sml:em"/>
@@ -1916,6 +1971,7 @@
         <xs:complexType mixed="true">
             <xs:choice minOccurs="0" maxOccurs="unbounded">
                 <xs:element ref="sml:br"/>
+                <xs:element ref="sml:tab"/>
                 <xs:element ref="sml:formula"/>
                 <xs:element ref="sml:strong"/>
                 <xs:element ref="sml:em"/>
@@ -1937,6 +1993,7 @@
         <xs:complexType mixed="true">
             <xs:choice minOccurs="0" maxOccurs="unbounded">
                 <xs:element ref="sml:br"/>
+                <xs:element ref="sml:tab"/>
                 <xs:element ref="sml:formula"/>
                 <xs:element ref="sml:strong"/>
                 <xs:element ref="sml:em"/>
@@ -1958,6 +2015,7 @@
         <xs:complexType mixed="true">
             <xs:choice minOccurs="0" maxOccurs="unbounded">
                 <xs:element ref="sml:br"/>
+                <xs:element ref="sml:tab"/>
                 <xs:element ref="sml:formula"/>
                 <xs:element ref="sml:strong"/>
                 <xs:element ref="sml:em"/>
@@ -1982,6 +2040,7 @@
         <xs:complexType mixed="true">
             <xs:choice minOccurs="0" maxOccurs="unbounded">
                 <xs:element ref="sml:br"/>
+                <xs:element ref="sml:tab"/>
                 <xs:element ref="sml:formula"/>
                 <xs:element ref="sml:strong"/>
                 <xs:element ref="sml:em"/>
@@ -2015,6 +2074,7 @@
         <xs:complexType mixed="true">
             <xs:choice minOccurs="0" maxOccurs="unbounded">
                 <xs:element ref="sml:br"/>
+                <xs:element ref="sml:tab"/>
                 <xs:element ref="sml:formula"/>
                 <xs:element ref="sml:strong"/>
                 <xs:element ref="sml:em"/>
@@ -2045,6 +2105,33 @@
         <xs:restriction base="xs:double">
             <xs:minInclusive value="-1000"/>
             <xs:maxInclusive value="1000"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- Tab 停止位字符串类型 -->
+    <xs:simpleType name="TabStopPosType">
+        <xs:annotation>
+            <xs:documentation>
+                Tab 停止位列表, 用于 content@tabStopPos 或 p@tabStopPos, p 优先级更高。
+                格式为 位置+对齐方式, 逗号分隔, 如 "100r,200l,300ctr"; 对齐方式支持 l/ctr/r/dec。
+                位置单位 px, 有限正数, 支持小数, 范围 (0,4031]; 列表长度 1-32。
+                消费方按位置升序处理; 同一生效配置内位置不重复, 由 Node 层校验。
+                遇到 tab 元素时, 使用第一个大于当前行内坐标的停止位; 不存在则按 defaultTabSize 步进。
+            </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:pattern value="(0\.\d*[1-9]\d*|([1-9]\d{0,2}|[1-3]\d{3}|40[0-2]\d|4030)(\.\d+)?|4031(\.0+)?)(l|ctr|r|dec)(,(0\.\d*[1-9]\d*|([1-9]\d{0,2}|[1-3]\d{3}|40[0-2]\d|4030)(\.\d+)?|4031(\.0+)?)(l|ctr|r|dec)){0,31}"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- Tab 默认间距类型 -->
+    <xs:simpleType name="TabSizeType">
+        <xs:annotation>
+            <xs:documentation>Tab 默认间距, 单位 px, 有限正数, 支持小数, 取值范围 (0,4031]</xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:decimal">
+            <xs:minExclusive value="0"/>
+            <xs:maxInclusive value="4031"/>
         </xs:restriction>
     </xs:simpleType>
 
