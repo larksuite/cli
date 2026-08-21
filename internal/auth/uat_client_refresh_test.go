@@ -320,7 +320,7 @@ func TestRefreshDoesNotOverwriteNewerGeneration(t *testing.T) {
 			newGeneration := *stored
 			newGeneration.AccessToken = "access-login-new"
 			newGeneration.RefreshToken = "refresh-login-new"
-			newGeneration.ExpiresAt = time.Now().Add(time.Hour).UnixMilli()
+			newGeneration.ExpiresAt = time.Now().Add(90 * time.Minute).UnixMilli()
 			newGeneration.RefreshExpiresAt = time.Now().Add(24 * time.Hour).UnixMilli()
 			var calls atomic.Int32
 			client := scriptedRefreshClient(t, []refreshHTTPTestStep{{
