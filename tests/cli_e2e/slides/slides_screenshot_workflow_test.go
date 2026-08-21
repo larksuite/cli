@@ -142,6 +142,79 @@ func TestSlidesScreenshotAliasesLiveE2E(t *testing.T) {
 	require.Equal(t, actualFormat, decodedFormat, fixedOutputResult.Stdout)
 }
 
+func TestSlidesScreenshotOverviewLiveE2E(t *testing.T) {
+	clie2e.SkipWithoutTenantAccessToken(t)
+
+	parentT := t
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+
+	suffix := clie2e.GenerateSuffix()
+	title := "slides-screenshot-overview-e2e-" + suffix
+	slideXML := func(marker string) string {
+		return `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data><shape type="text" topLeftX="80" topLeftY="80" width="800" height="120"><content textType="title"><p>` + marker + `</p></content></shape></data></slide>`
+	}
+	slidesJSON, err := json.Marshal([]string{slideXML(title + "-one"), slideXML(title + "-two")})
+	require.NoError(t, err)
+
+	createResult, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args:      []string{"slides", "+create", "--title", title, "--slides", string(slidesJSON)},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	createResult.AssertExitCode(t, 0)
+	createResult.AssertStdoutStatus(t, true)
+	presentationID := gjson.Get(createResult.Stdout, "data.xml_presentation_id").String()
+	require.NotEmpty(t, presentationID, createResult.Stdout)
+	parentT.Cleanup(func() {
+		cleanupCtx, cleanupCancel := clie2e.CleanupContext()
+		defer cleanupCancel()
+		deleteResult, deleteErr := clie2e.RunCmd(cleanupCtx, clie2e.Request{
+			Args:      []string{"drive", "+delete", "--file-token", presentationID, "--type", "slides", "--yes"},
+			DefaultAs: "bot",
+		})
+		clie2e.ReportCleanupFailure(parentT, "delete presentation "+presentationID, deleteResult, deleteErr)
+	})
+	slideIDs := gjson.Get(createResult.Stdout, "data.slide_ids").Array()
+	require.Len(t, slideIDs, 2, createResult.Stdout)
+
+	workDir := t.TempDir()
+	overviewResult, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args:      []string{"slides", "+screenshot", "--presentation", presentationID, "--overview", "--output", "overview.png"},
+		DefaultAs: "bot",
+		WorkDir:   workDir,
+	})
+	require.NoError(t, err)
+	overviewResult.AssertExitCode(t, 0)
+	overviewResult.AssertStdoutStatus(t, true)
+	overview := gjson.Get(overviewResult.Stdout, "data.overview")
+	require.Equal(t, int64(4), overview.Get("columns").Int(), overviewResult.Stdout)
+	require.Equal(t, int64(2), overview.Get("total_slides").Int(), overviewResult.Stdout)
+	require.Equal(t, int64(1), overview.Get("overview_page").Int(), overviewResult.Stdout)
+	slides := overview.Get("slides").Array()
+	require.Len(t, slides, 2, overviewResult.Stdout)
+	for i, slideID := range slideIDs {
+		require.Equal(t, int64(i+1), slides[i].Get("index").Int(), overviewResult.Stdout)
+		require.Equal(t, slideID.String(), slides[i].Get("slide_id").String(), overviewResult.Stdout)
+		require.Equal(t, int64(0), slides[i].Get("row").Int(), overviewResult.Stdout)
+		require.Equal(t, int64(i), slides[i].Get("column").Int(), overviewResult.Stdout)
+	}
+	overviewPath := overview.Get("path").String()
+	require.Equal(t, overviewPath, gjson.Get(overviewResult.Stdout, "data.output").String(), overviewResult.Stdout)
+	requireScreenshotPathUnderDir(t, overviewPath, workDir)
+	overviewFile, err := vfs.Open(overviewPath)
+	require.NoError(t, err)
+	defer overviewFile.Close()
+	overviewConfig, overviewFormat, err := image.DecodeConfig(overviewFile)
+	require.NoError(t, err)
+	require.Equal(t, "png", overviewFormat, overviewResult.Stdout)
+	require.Equal(t, 1360, overviewConfig.Width, overviewResult.Stdout)
+	require.Equal(t, 212, overviewConfig.Height, overviewResult.Stdout)
+	require.Equal(t, int64(1360), overview.Get("image_size.width").Int(), overviewResult.Stdout)
+	require.Equal(t, int64(212), overview.Get("image_size.height").Int(), overviewResult.Stdout)
+
+}
+
 func requireScreenshotPathUnderDir(t *testing.T, path, dir string) {
 	t.Helper()
 	canonicalPath, err := filepath.EvalSymlinks(path)

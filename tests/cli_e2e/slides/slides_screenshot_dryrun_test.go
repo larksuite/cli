@@ -286,3 +286,34 @@ func TestSlidesScreenshotEmptySlideIDDryRunE2E(t *testing.T) {
 	result.AssertExitCode(t, 0)
 	require.Equal(t, "/open-apis/slides_ai/v1/slide_image/render", gjson.Get(result.Stdout, "data.api.0.url").String(), result.Stdout)
 }
+
+func TestSlidesScreenshotOverviewDryRunE2E(t *testing.T) {
+	setSlidesDryRunEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"slides", "+screenshot",
+			"--presentation", "presScreenshotOverview",
+			"--overview",
+			"--overview-page", "2",
+			"--output", "overview-page-02",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	require.Equal(t, int64(2), gjson.Get(result.Stdout, "data.api.#").Int(), result.Stdout)
+	for index, wantStart := range map[string]int64{"0": 21, "1": 31} {
+		require.Equal(t, "POST", gjson.Get(result.Stdout, "data.api."+index+".method").String(), result.Stdout)
+		require.Equal(t, "/open-apis/slides_ai/v1/xml_presentations/presScreenshotOverview/slide_images", gjson.Get(result.Stdout, "data.api."+index+".url").String(), result.Stdout)
+		values := gjson.Get(result.Stdout, "data.api."+index+".body.slide_numbers").Array()
+		require.Len(t, values, 10, result.Stdout)
+		require.Equal(t, wantStart, values[0].Int(), result.Stdout)
+	}
+	require.Equal(t, "overview-page-02", gjson.Get(result.Stdout, "data.output").String(), result.Stdout)
+}

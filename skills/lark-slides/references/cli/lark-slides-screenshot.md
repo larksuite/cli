@@ -29,13 +29,15 @@ lark-cli slides +screenshot --as user \
 
 | 参数 | 必需 | 说明 |
 |------|------|------|
-| `--presentation` | list 模式必需 | `xml_presentation_id`、`/slides/` URL，或解析后为 slides 的 `/wiki/` URL。传 `--content` 时不能使用 |
+| `--presentation` | list / overview 模式必需 | `xml_presentation_id`、`/slides/` URL，或解析后为 slides 的 `/wiki/` URL。传 `--content` 时不能使用 |
 | `--slide-id` | list 模式与 `--slide-number` 二选一 | 页面 short ID；不能与 `--slide-number` 同时使用；多页截图时重复传入，或用逗号分隔一次传多个（如 `--slide-id slide_1,slide_2`）；一次最多 10 个 ID |
 | `--slide-number` | list 模式与 `--slide-id` 二选一 | 页面页号；不能与 `--slide-id` 同时使用；多页截图时重复传入，或用逗号分隔一次传多个（如 `--slide-number 1,2,3`）；一次最多 10 个页码 |
 | `--content` | render 模式必需 | 要直接渲染的 `<slide>` XML 片段；支持直接传值、`@file`、`-` stdin。传入后不能同时传 `--slide-id` / `--slide-number` |
-| `--output` | 否 | 单张截图的期望相对输出路径，可不写扩展名，显式扩展名只支持 `.png`、`.jpg`、`.jpeg`。只能选择一页，不能与 `--output-dir` / `--output-name` 同时使用；最终路径以返回的 `output` 为准 |
+| `--output` | 否 | 单张截图或 overview 图片的期望相对输出路径，可不写扩展名。普通单张截图的显式扩展名支持 `.png`、`.jpg`、`.jpeg`；overview 的显式扩展名只能是 `.png`。只能选择一页或使用 `--overview`，不能与 `--output-dir` / `--output-name` 同时使用；最终路径以返回的 `output` 为准 |
 | `--output-dir` | 否 | 输出目录，默认 `.lark-slides/screenshots`；必须是当前目录内的相对路径 |
 | `--output-name` | 否 | 仅用于 `--content` render 模式设置输出文件名 stem。普通页面截图传入该参数会返回 `validation/invalid_argument`（`param: --output-name`）并提示改用 `--output` |
+| `--overview` | 否 | 输出当前演示文稿的一张索引总览 PNG。每个 overview 页最多包含 20 页幻灯片，按固定 4 列排列；不与 `--slide-id`、`--slide-number`、`--content` 同时使用 |
+| `--overview-page` | 否，默认 `1` | 从 1 开始的 overview 页号，仅与 `--overview` 同时使用。返回值中的 `has_next`、`next_overview_page`、`has_previous`、`previous_overview_page` 表示分页状态 |
 
 ## 示例
 
