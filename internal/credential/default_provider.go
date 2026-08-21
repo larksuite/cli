@@ -147,7 +147,7 @@ func (p *DefaultTokenProvider) resolveUAT(ctx context.Context) (*TokenResult, er
 	if err != nil {
 		return nil, err
 	}
-	token, err := auth.GetValidAccessToken(httpClient, auth.NewUATCallOptions(acct.ToCliConfig(), p.errOut))
+	token, err := auth.GetValidAccessToken(ctx, httpClient, auth.NewUATCallOptions(acct.ToCliConfig(), p.errOut))
 	if err != nil {
 		return nil, err
 	}

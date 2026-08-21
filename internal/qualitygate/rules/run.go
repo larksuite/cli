@@ -100,6 +100,11 @@ func Run(ctx context.Context, opts Options) ([]report.Diagnostic, facts.Facts, e
 	if opts.ChangedFrom != "" {
 		diags = append(diags, errorDiags...)
 	}
+	transportDiags, err := CheckTransportRetryLoops(opts.Repo, changed, opts.ChangedFrom != "")
+	if err != nil {
+		return nil, facts.Facts{}, err
+	}
+	diags = append(diags, transportDiags...)
 	publicContent, err := publiccontent.Collect(ctx, publiccontent.Options{
 		Repo:         opts.Repo,
 		ChangedFrom:  opts.ChangedFrom,

@@ -361,12 +361,13 @@ func (ctx *RuntimeContext) ClassifyAPIResponse(resp *larkcore.ApiResp) (map[stri
 // shortcut (e.g. a cobra command holding only a factory) and supply their own
 // classification context.
 func ClassifyAPIResponseWith(resp *larkcore.ApiResp, cc errclass.ClassifyContext) (map[string]interface{}, error) {
+	cc.RetryAfterSeconds = errclass.RetryAfterSeconds(resp.Header)
 	logID, _ := logIDFromHeader(resp)["log_id"].(string)
 
 	result, parseErr := client.ParseJSONResponse(resp)
 	if parseErr != nil {
 		if resp.StatusCode >= 400 {
-			return nil, httpStatusError(resp.StatusCode, resp.RawBody, logID)
+			return nil, httpStatusError(resp.StatusCode, resp.RawBody, logID, cc)
 		}
 		return nil, client.WrapJSONResponseParseError(parseErr, resp.RawBody)
 	}
@@ -388,7 +389,7 @@ func ClassifyAPIResponseWith(resp *larkcore.ApiResp, cc errclass.ClassifyContext
 		return out, apiErr
 	}
 	if resp.StatusCode >= 400 {
-		return out, httpStatusError(resp.StatusCode, resp.RawBody, logID)
+		return out, httpStatusError(resp.StatusCode, resp.RawBody, logID, cc)
 	}
 	return out, nil
 }
@@ -396,8 +397,11 @@ func ClassifyAPIResponseWith(resp *larkcore.ApiResp, cc errclass.ClassifyContext
 // httpStatusError classifies an HTTP error status whose body is not a usable
 // API envelope: 5xx → retryable network/server_error, 404 → not_found, other
 // 4xx → api error. The x-tt-logid (when present) is attached for diagnosis.
-func httpStatusError(status int, rawBody []byte, logID string) error {
+func httpStatusError(status int, rawBody []byte, logID string, cc errclass.ClassifyContext) error {
 	body := TruncateStr(strings.TrimSpace(string(rawBody)), 500)
+	if status == http.StatusTooManyRequests {
+		return errclass.NewRateLimitError(status, fmt.Sprintf("HTTP %d: %s", status, body), logID, cc)
+	}
 	if status >= 500 {
 		e := errs.NewNetworkError(errs.SubtypeNetworkServer, "HTTP %d: %s", status, body).WithCode(status).WithRetryable()
 		if logID != "" {

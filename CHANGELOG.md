@@ -153,6 +153,7 @@ All notable changes to this project will be documented in this file.
 - **drive**: stop export polling on rate limits (#2192)
 - make agent recovery and concealment reliable (#2189)
 - surface retry metadata for TAT rate limits (#2200)
+- propagate request cancellation through UAT refresh and Shutdown hooks
 
 ### Documentation
 

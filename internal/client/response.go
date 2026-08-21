@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"net/http"
 	"strings"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -17,6 +18,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
 )
@@ -38,7 +40,7 @@ type ResponseOptions struct {
 	Identity core.Identity
 	// CheckError is called on parsed JSON results. Nil defaults to (*APIClient).CheckResponse
 	// with the Identity field (or AsUser when unset).
-	CheckError func(result interface{}, identity core.Identity) error
+	CheckError func(result interface{}, identity core.Identity, cc errclass.ClassifyContext) error
 }
 
 // httpStatusError classifies an HTTP error response by status when the body
@@ -46,8 +48,11 @@ type ResponseOptions struct {
 // APIError/not_found, any other 4xx → APIError/unknown. Used wherever a
 // status >= 400 must not be swallowed — a non-JSON body, an unparseable body,
 // or a JSON body whose business code is 0.
-func httpStatusError(status int, rawBody []byte) error {
+func httpStatusError(status int, rawBody []byte, cc errclass.ClassifyContext) error {
 	body := util.TruncateStrWithEllipsis(strings.TrimSpace(string(rawBody)), 500)
+	if status == http.StatusTooManyRequests {
+		return errclass.NewRateLimitError(status, fmt.Sprintf("HTTP %d: %s", status, body), "", cc)
+	}
 	if status >= 500 {
 		return errs.NewNetworkError(errs.SubtypeNetworkServer,
 			"HTTP %d: %s", status, body).
@@ -67,6 +72,7 @@ func httpStatusError(status int, rawBody []byte) error {
 //  3. If Content-Type is non-JSON and no --output, auto-save binary to file.
 func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 	ct := resp.Header.Get("Content-Type")
+	cc := errclass.ClassifyContext{RetryAfterSeconds: errclass.RetryAfterSeconds(resp.Header)}
 	identity := opts.Identity
 	if identity == "" {
 		identity = core.AsUser
@@ -77,15 +83,15 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 		// *errs.PermissionError / AuthenticationError / etc. A zero-value
 		// *APIClient is safe here because BuildAPIError gracefully degrades
 		// identity-aware fields (ConsoleURL etc.) when AppID is empty.
-		check = func(r interface{}, id core.Identity) error {
-			return (&APIClient{}).CheckResponse(r, id)
+		check = func(r interface{}, id core.Identity, cc errclass.ClassifyContext) error {
+			return (&APIClient{}).CheckResponseWithContext(r, id, cc)
 		}
 	}
 
 	// Non-JSON error responses (e.g. 404 text/plain from gateway): return error
 	// directly instead of falling through to the binary-save path.
 	if resp.StatusCode >= 400 && !IsJSONContentType(ct) && ct != "" {
-		return httpStatusError(resp.StatusCode, resp.RawBody)
+		return httpStatusError(resp.StatusCode, resp.RawBody, cc)
 	}
 
 	// JSON responses: always check for business errors before saving.
@@ -96,18 +102,18 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 			// missing Content-Type) must be classified by status, not reported
 			// as an internal decode failure, matching the non-JSON branch above.
 			if resp.StatusCode >= 400 {
-				return httpStatusError(resp.StatusCode, resp.RawBody)
+				return httpStatusError(resp.StatusCode, resp.RawBody, cc)
 			}
 			return WrapJSONResponseParseError(err, resp.RawBody)
 		}
-		if apiErr := check(result, identity); apiErr != nil {
+		if apiErr := check(result, identity, cc); apiErr != nil {
 			return apiErr
 		}
 		// CheckResponse treats business code 0 as success, so a 4xx/5xx whose
 		// JSON body omits a non-zero code would otherwise be served as a
 		// successful result. Classify by HTTP status so it is never swallowed.
 		if resp.StatusCode >= 400 {
-			return httpStatusError(resp.StatusCode, resp.RawBody)
+			return httpStatusError(resp.StatusCode, resp.RawBody, cc)
 		}
 		if opts.OutputPath != "" {
 			// File downloads keep the existing raw-response scan path because the

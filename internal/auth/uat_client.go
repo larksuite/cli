@@ -57,7 +57,7 @@ func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer) UATCallOptions {
 }
 
 // GetValidAccessToken obtains a valid access token for the given user.
-func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, error) {
+func GetValidAccessToken(ctx context.Context, httpClient *http.Client, opts UATCallOptions) (string, error) {
 	stored, err := readStoredToken(opts.AppId, opts.UserOpenId)
 	if errors.Is(err, errStoredTokenCorrupt) {
 		return "", newNeedUserAuthorizationError(opts.UserOpenId, err, recovery.UserAuthorization())
@@ -73,7 +73,7 @@ func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, 
 		return stored.AccessToken, nil
 	}
 
-	refreshed, err := refreshWithLock(httpClient, opts)
+	refreshed, err := refreshWithLock(ctx, httpClient, opts)
 	if err != nil {
 		return "", err
 	}
@@ -85,7 +85,7 @@ func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, 
 
 // refreshWithLock serializes the complete refresh transaction with every
 // stored-token writer and remover for this account.
-func refreshWithLock(httpClient *http.Client, opts UATCallOptions) (*StoredUAToken, error) {
+func refreshWithLock(ctx context.Context, httpClient *http.Client, opts UATCallOptions) (*StoredUAToken, error) {
 	var refreshed *StoredUAToken
 	err := withTokenStorageLock(opts.AppId, opts.UserOpenId, func() error {
 		freshStored, err := readStoredToken(opts.AppId, opts.UserOpenId)
@@ -130,7 +130,7 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions) (*StoredUATok
 			return err
 		}
 
-		refreshed, err = doRefreshToken(httpClient, opts, freshStored)
+		refreshed, err = doRefreshToken(ctx, httpClient, opts, freshStored)
 		return err
 	})
 	return refreshed, err
@@ -183,7 +183,7 @@ type refreshResult struct {
 
 // doRefreshToken performs the HTTP refresh and applies its storage result.
 // The caller must hold the account's token storage lock.
-func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *StoredUAToken) (*StoredUAToken, error) {
+func doRefreshToken(ctx context.Context, httpClient *http.Client, opts UATCallOptions, stored *StoredUAToken) (*StoredUAToken, error) {
 	errOut := opts.ErrOut
 	if errOut == nil {
 		errOut = os.Stderr
@@ -205,7 +205,7 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 	endpoint := ResolveOAuthEndpoints(opts.Domain).Token
 	uncertain := false
 	for attempt := 1; attempt <= refreshMaxAttempts; attempt++ {
-		result := refreshOnce(httpClient, endpoint, opts, stored)
+		result := refreshOnce(ctx, httpClient, endpoint, opts, stored)
 		if result.action == refreshSaveResponse {
 			return saveRefreshResponse(opts, stored, result.response)
 		}
@@ -274,7 +274,14 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 		"token refresh exhausted attempts without a result")
 }
 
-func refreshOnce(httpClient *http.Client, endpoint string, opts UATCallOptions, stored *StoredUAToken) refreshResult {
+func refreshOnce(
+	ctx context.Context,
+	httpClient *http.Client,
+	endpoint string,
+	opts UATCallOptions,
+	stored *StoredUAToken,
+) refreshResult {
+
 	payload, err := json.Marshal(refreshRequest{
 		GrantType:    "refresh_token",
 		RefreshToken: stored.RefreshToken,
@@ -296,8 +303,8 @@ func refreshOnce(httpClient *http.Client, endpoint string, opts UATCallOptions, 
 			wroteRequest.Store(true)
 		},
 	}
-	ctx := httptrace.WithClientTrace(context.Background(), trace)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	requestCtx := httptrace.WithClientTrace(ctx, trace)
+	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return refreshResult{
 			action: refreshStopAndPreserve,
@@ -310,6 +317,14 @@ func refreshOnce(httpClient *http.Client, endpoint string, opts UATCallOptions, 
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
+		if ctx.Err() != nil {
+			return refreshResult{
+				action: refreshStopAndPreserve,
+				err: errs.NewNetworkError(errs.SubtypeNetworkTransport,
+					"token refresh canceled: %v", err).
+					WithCause(err),
+			}
+		}
 		action := refreshRetryAndPreserve
 		problem, typed := errs.ProblemOf(err)
 		if typed && problem.Category == errs.CategoryPolicy {

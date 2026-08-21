@@ -6,12 +6,11 @@ package cmdutil
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
-	"time"
 
 	exttransport "github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/riskcontrol"
@@ -24,75 +23,27 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
-// ---------------------------------------------------------------------------
-// RetryTransport
-// ---------------------------------------------------------------------------
-
-func TestRetryTransport_NoRetry(t *testing.T) {
-	calls := 0
-	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		calls++
-		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("ok"))}, nil
-	})
-	rt := &RetryTransport{Base: base, MaxRetries: 0}
-	req, _ := http.NewRequest("GET", "http://example.com/test", nil)
-	resp, err := rt.RoundTrip(req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resp.StatusCode != 200 {
-		t.Errorf("expected 200, got %d", resp.StatusCode)
-	}
-	if calls != 1 {
-		t.Errorf("expected 1 call, got %d", calls)
-	}
-}
-
-func TestRetryTransport_RetryOn500(t *testing.T) {
-	calls := 0
-	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		calls++
-		if calls < 3 {
-			return &http.Response{StatusCode: 500, Body: io.NopCloser(strings.NewReader("error"))}, nil
-		}
-		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("ok"))}, nil
-	})
-	rt := &RetryTransport{Base: base, MaxRetries: 3, Delay: 1 * time.Millisecond}
-	req, _ := http.NewRequest("GET", "http://example.com/test", nil)
-	resp, err := rt.RoundTrip(req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resp.StatusCode != 200 {
-		t.Errorf("expected 200 after retries, got %d", resp.StatusCode)
-	}
-	if calls != 3 {
-		t.Errorf("expected 3 calls, got %d", calls)
-	}
-}
-
-func TestRetryTransport_DefaultNoRetry(t *testing.T) {
-	calls := 0
-	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		calls++
-		return &http.Response{StatusCode: 500, Body: io.NopCloser(strings.NewReader("error"))}, nil
-	})
-	rt := &RetryTransport{Base: base} // default MaxRetries=0
-	req, _ := http.NewRequest("GET", "http://example.com/test", nil)
-	resp, err := rt.RoundTrip(req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resp.StatusCode != 500 {
-		t.Errorf("expected 500 with no retries, got %d", resp.StatusCode)
-	}
-	if calls != 1 {
-		t.Errorf("expected 1 call with default config, got %d", calls)
-	}
-}
-
 // buildSDKTransport policy behavior
 // ---------------------------------------------------------------------------
+
+func TestBuildSDKTransportDoesNotRetryServerErrors(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(server.Close)
+
+	client := &http.Client{Transport: buildSDKTransport(nil)}
+	resp, err := client.Post(server.URL, "application/json", strings.NewReader(`{"write":true}`))
+	if err != nil {
+		t.Fatalf("POST failed: %v", err)
+	}
+	resp.Body.Close()
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("server received %d requests, want exactly 1", got)
+	}
+}
 
 func TestBuildSDKTransportAppliesSecurityHeadersToEveryRequestClass(t *testing.T) {
 	exttransport.Register(nil)
@@ -249,7 +200,6 @@ func TestExtensionInterceptor_ExecutionOrder(t *testing.T) {
 
 	// Use HTTP transport chain (has SecurityHeaderTransport)
 	var base http.RoundTripper = http.DefaultTransport
-	base = &RetryTransport{Base: base}
 	base = &SecurityHeaderTransport{Base: base}
 	transport := internaltransport.WrapWithExtension(base)
 	client := &http.Client{Transport: transport}
@@ -414,7 +364,6 @@ func TestBuildHeaderTransport_SDKChain_OverridesTamperedHeader(t *testing.T) {
 
 	// Replicate the SDK built-in chain inside buildSDKTransport.
 	var base http.RoundTripper = http.DefaultTransport
-	base = &RetryTransport{Base: base}
 	base = &UserAgentTransport{Base: base}
 	base = &BuildHeaderTransport{Base: base}
 	base = &SecurityHeaderTransport{Base: base}

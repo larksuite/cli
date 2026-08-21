@@ -526,6 +526,12 @@ func (c *APIClient) StreamPages(ctx context.Context, request RawApiRequest, onIt
 // ConsoleURL, etc.) for known Lark codes; unknown codes still surface as
 // *errs.APIError{Subtype: unknown}.
 func (c *APIClient) CheckResponse(result interface{}, identity core.Identity) error {
+	return c.CheckResponseWithContext(result, identity, errclass.ClassifyContext{})
+}
+
+// CheckResponseWithContext classifies a business response while preserving
+// response-level facts supplied by the caller, such as Retry-After.
+func (c *APIClient) CheckResponseWithContext(result interface{}, identity core.Identity, cc errclass.ClassifyContext) error {
 	resultMap, ok := result.(map[string]interface{})
 	if !ok || resultMap == nil {
 		return nil
@@ -533,7 +539,7 @@ func (c *APIClient) CheckResponse(result interface{}, identity core.Identity) er
 	if code, _ := util.ToFloat64(resultMap["code"]); code == 0 {
 		return nil
 	}
-	cc := errclass.ClassifyContext{Identity: string(identity)}
+	cc.Identity = string(identity)
 	if c != nil && c.Config != nil {
 		cc.Brand = string(c.Config.Brand)
 		cc.AppID = c.Config.AppID

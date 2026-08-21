@@ -337,7 +337,7 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	if err != nil {
 		return markVerifyFailed("create HTTP client: "+err.Error(), "", "")
 	}
-	token, err := larkauth.GetValidAccessToken(httpClient, larkauth.NewUATCallOptions(cfg, f.IOStreams.ErrOut))
+	token, err := larkauth.GetValidAccessToken(ctx, httpClient, larkauth.NewUATCallOptions(cfg, f.IOStreams.ErrOut))
 	if err != nil {
 		return markVerifyFailed("token unusable: "+err.Error(), "run: lark-cli auth login --help", recovery.TargetAuthLogin)
 	}

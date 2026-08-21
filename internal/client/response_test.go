@@ -364,6 +364,61 @@ func TestHandleResponse_JSONWithError(t *testing.T) {
 	}
 }
 
+func TestHandleResponse_RateLimitIncludesRetryAfterSeconds(t *testing.T) {
+	resp := newApiRespWithStatus(http.StatusTooManyRequests,
+		[]byte(`{"code":99991400,"msg":"rate limited"}`),
+		map[string]string{
+			"Content-Type": "application/json",
+			"Retry-After":  "2",
+		})
+
+	err := HandleResponse(resp, ResponseOptions{
+		Out:    io.Discard,
+		ErrOut: io.Discard,
+		FileIO: &localfileio.LocalFileIO{},
+	})
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("HandleResponse() error = %T %v, want *errs.APIError", err, err)
+	}
+	if apiErr.RetryAfterSeconds != 2 {
+		t.Fatalf("retry_after_seconds = %d, want 2", apiErr.RetryAfterSeconds)
+	}
+	var envelope bytes.Buffer
+	if ok := output.WriteTypedErrorEnvelope(&envelope, err, "user"); !ok {
+		t.Fatal("WriteTypedErrorEnvelope() returned false")
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(envelope.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode error envelope: %v", err)
+	}
+	errorObject, _ := decoded["error"].(map[string]any)
+	if got := errorObject["retry_after_seconds"]; got != float64(2) {
+		t.Fatalf("error.retry_after_seconds = %v, want 2; envelope=%s", got, envelope.String())
+	}
+}
+
+func TestHandleResponse_BareHTTPRateLimitIncludesRetryAfterSeconds(t *testing.T) {
+	resp := newApiRespWithStatus(http.StatusTooManyRequests, []byte("rate limited"),
+		map[string]string{
+			"Content-Type": "text/plain",
+			"Retry-After":  "3",
+		})
+
+	err := HandleResponse(resp, ResponseOptions{
+		Out:    io.Discard,
+		ErrOut: io.Discard,
+		FileIO: &localfileio.LocalFileIO{},
+	})
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("HandleResponse() error = %T %v, want *errs.APIError", err, err)
+	}
+	if apiErr.Subtype != errs.SubtypeRateLimit || !apiErr.Retryable || apiErr.RetryAfterSeconds != 3 {
+		t.Fatalf("rate-limit error = %+v, want retryable rate_limit with retry_after_seconds=3", apiErr)
+	}
+}
+
 func TestHandleResponse_BinaryAutoSave(t *testing.T) {
 	dir := t.TempDir()
 	origWd, _ := os.Getwd()

@@ -5,72 +5,15 @@ package cmdutil
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/larksuite/cli/internal/transport"
 )
 
 var (
-	_ transport.RoundTripperDecorator = (*RetryTransport)(nil)
 	_ transport.RoundTripperDecorator = (*UserAgentTransport)(nil)
 	_ transport.RoundTripperDecorator = (*BuildHeaderTransport)(nil)
 	_ transport.RoundTripperDecorator = (*SecurityHeaderTransport)(nil)
 )
-
-// RetryTransport is an http.RoundTripper that retries on 5xx responses
-// and network errors. MaxRetries defaults to 0 (no retries).
-type RetryTransport struct {
-	Base       http.RoundTripper
-	MaxRetries int
-	Delay      time.Duration // base delay for exponential backoff; defaults to 500ms
-}
-
-func (t *RetryTransport) base() http.RoundTripper {
-	if t.Base != nil {
-		return t.Base
-	}
-	return transport.Fallback()
-}
-
-func (t *RetryTransport) BaseRoundTripper() http.RoundTripper {
-	return t.base()
-}
-
-func (t *RetryTransport) WithBaseRoundTripper(base http.RoundTripper) http.RoundTripper {
-	cloned := *t
-	cloned.Base = base
-	return &cloned
-}
-
-func (t *RetryTransport) delay() time.Duration {
-	if t.Delay > 0 {
-		return t.Delay
-	}
-	return 500 * time.Millisecond
-}
-
-// RoundTrip implements http.RoundTripper.
-func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	resp, err := t.base().RoundTrip(req)
-	if t.MaxRetries <= 0 {
-		return resp, err
-	}
-
-	for attempt := 0; attempt < t.MaxRetries; attempt++ {
-		if err == nil && resp.StatusCode < 500 {
-			return resp, nil
-		}
-		// Clone request for retry
-		cloned := req.Clone(req.Context())
-		if req.Body != nil && req.GetBody != nil {
-			cloned.Body, _ = req.GetBody()
-		}
-		delay := t.delay() * (1 << uint(attempt))
-		time.Sleep(delay)
-		resp, err = t.base().RoundTrip(cloned)
-	}
-	return resp, err
-}
 
 // UserAgentTransport is an http.RoundTripper that sets the User-Agent header.
 // Used in the SDK transport chain to override the SDK's default User-Agent.

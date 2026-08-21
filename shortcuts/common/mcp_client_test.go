@@ -301,6 +301,48 @@ func TestDoMCPCallHTTPBusinessErrorKeepsBotIdentity(t *testing.T) {
 	}
 }
 
+func TestDoMCPCallRateLimitIncludesRetryAfterSeconds(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		statusCode int
+		status     string
+		body       string
+	}{
+		{
+			name:       "HTTP business error",
+			statusCode: http.StatusTooManyRequests,
+			status:     "429 Too Many Requests",
+			body:       `{"code":99991400,"msg":"rate limited"}`,
+		},
+		{
+			name:       "JSON-RPC payload error",
+			statusCode: http.StatusOK,
+			status:     "200 OK",
+			body:       `{"error":{"code":99991400,"message":"rate limited"}}`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: test.statusCode,
+					Status:     test.status,
+					Header:     http.Header{"Retry-After": []string{"2"}},
+					Body:       io.NopCloser(strings.NewReader(test.body)),
+				}, nil
+			})}
+
+			_, err := DoMCPCall(context.Background(), client, "fetch-doc", nil, "token", "https://example.com/mcp", false)
+			var apiErr *errs.APIError
+			if !errors.As(err, &apiErr) {
+				t.Fatalf("DoMCPCall() error = %T %v, want *errs.APIError", err, err)
+			}
+			if apiErr.Subtype != errs.SubtypeRateLimit || apiErr.RetryAfterSeconds != 2 {
+				t.Fatalf("rate-limit error = %+v, want retry_after_seconds=2", apiErr)
+			}
+		})
+	}
+}
+
 func TestDoMCPCallHTTPUnknownBusinessErrorPreservesFallback(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{

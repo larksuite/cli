@@ -11,11 +11,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/errclass"
 )
 
 type tatResponse struct {
@@ -89,7 +89,7 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 				WithCode(http.StatusTooManyRequests).
 				WithRetryable()
 		}
-		if retryAfter := tatRetryAfterSeconds(resp.Header); retryAfter > 0 {
+		if retryAfter := errclass.RetryAfterSeconds(resp.Header); retryAfter > 0 {
 			rateLimitErr.RetryAfterSeconds = retryAfter
 			rateLimitErr.Hint = fmt.Sprintf("wait at least %d seconds before retrying; if throttling continues, use exponential backoff with jitter", retryAfter)
 		} else {
@@ -134,14 +134,4 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 		desc = result.Msg
 	}
 	return "", classifyTATResponseCode(result.Code, result.Error, desc, string(brand), appID)
-}
-
-func tatRetryAfterSeconds(header http.Header) int {
-	for _, name := range []string{"X-Ogw-Ratelimit-Reset", "Retry-After"} {
-		seconds, err := strconv.Atoi(strings.TrimSpace(header.Get(name)))
-		if err == nil && seconds > 0 {
-			return seconds
-		}
-	}
-	return 0
 }

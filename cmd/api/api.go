@@ -303,7 +303,7 @@ func apiRun(opts *APIOptions) error {
 		// codes (typed PermissionError / AuthenticationError / ...). For
 		// unknown codes it falls back to *errs.APIError. The Brand+AppID on
 		// the client populate identity-aware fields (ConsoleURL etc.).
-		CheckError: ac.CheckResponse,
+		CheckError: ac.CheckResponseWithContext,
 	})
 	// MarkRaw: see comment above on the DoAPI path. Skips legacy
 	// *ExitError enrichment; typed errors flow through unchanged.

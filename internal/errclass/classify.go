@@ -20,10 +20,11 @@ import (
 // Brand through core.ParseBrand, so callers can pass a raw brand string without
 // coupling this contract to core's brand enum.
 type ClassifyContext struct {
-	Brand    string // "feishu" | "lark" — drives console_url host
-	AppID    string // placed in console_url
-	Identity string // "user" / "bot" / "" — caller converts core.Identity at the boundary
-	LarkCmd  string // e.g. "drive +delete" — used as Action fallback on CategoryConfirmation arm
+	Brand             string // "feishu" | "lark" — drives console_url host
+	AppID             string // placed in console_url
+	Identity          string // "user" / "bot" / "" — caller converts core.Identity at the boundary
+	LarkCmd           string // e.g. "drive +delete" — used as Action fallback on CategoryConfirmation arm
+	RetryAfterSeconds int    // positive server-provided delay; attached only to rate-limit errors
 }
 
 // BuildAPIError consumes a parsed Lark API response and returns a typed error.
@@ -149,7 +150,7 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 		if base.Hint == "" {
 			base.Hint = APIHint(base.Subtype) // "" for subtypes without a context-free default
 		}
-		return &errs.APIError{Problem: base}
+		return buildAPIError(base, cc)
 	default:
 		// Fail closed: an unrecognized Category routes to InternalError
 		// instead of emitting an empty Problem on the wire.

@@ -9,8 +9,11 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/signal"
 	"sort"
 	"strings"
+	"sync"
+	"syscall"
 
 	"github.com/larksuite/cli/cmd/service"
 	"github.com/larksuite/cli/errs"
@@ -79,7 +82,9 @@ func executeWithOptions(opts []BuildOption) int {
 	}
 	configureFlagCompletions(os.Args)
 
-	ctx := context.Background()
+	signals := newRootSignalContext()
+	defer signals.Stop()
+	ctx := signals.Context()
 	if deferProfileError {
 		cfg.deferStartup = true
 	}
@@ -114,13 +119,75 @@ func executeWithOptions(opts []BuildOption) int {
 	// errors (Emit's documented Shutdown contract), so it cannot block exit
 	// or alter the user-visible exit code.
 	if reg != nil && !isCompletionCommand(os.Args) {
-		_ = hook.Emit(ctx, reg, platform.Shutdown, runErr)
+		_ = hook.Emit(context.WithoutCancel(ctx), reg, platform.Shutdown, runErr)
+	}
+
+	if exitCode, interrupted := signals.ExitCode(); interrupted {
+		return exitCode
 	}
 
 	if runErr != nil {
 		return handleRootError(f, runErr, runtime.recovery)
 	}
 	return 0
+}
+
+type rootSignalContext struct {
+	ctx         context.Context
+	stopContext context.CancelFunc
+	signalCh    chan os.Signal
+	handledCh   chan os.Signal
+	done        chan struct{}
+	stopOnce    sync.Once
+}
+
+func newRootSignalContext() *rootSignalContext {
+	ctx, stopContext := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	state := &rootSignalContext{
+		ctx:         ctx,
+		stopContext: stopContext,
+		signalCh:    make(chan os.Signal, 1),
+		handledCh:   make(chan os.Signal, 1),
+		done:        make(chan struct{}),
+	}
+	signal.Notify(state.signalCh, syscall.SIGINT, syscall.SIGTERM)
+	go state.watch()
+	return state
+}
+
+func (s *rootSignalContext) Context() context.Context {
+	return s.ctx
+}
+
+func (s *rootSignalContext) watch() {
+	select {
+	case received := <-s.signalCh:
+		// Restoring the default disposition after the first signal lets a
+		// second SIGINT or SIGTERM terminate a blocked Shutdown hook.
+		s.stopContext()
+		signal.Stop(s.signalCh)
+		s.handledCh <- received
+	case <-s.done:
+	}
+}
+
+func (s *rootSignalContext) ExitCode() (int, bool) {
+	if s.ctx.Err() == nil {
+		return 0, false
+	}
+	received := <-s.handledCh
+	if received == syscall.SIGTERM {
+		return 128 + int(syscall.SIGTERM), true
+	}
+	return 128 + int(syscall.SIGINT), true
+}
+
+func (s *rootSignalContext) Stop() {
+	s.stopOnce.Do(func() {
+		close(s.done)
+		signal.Stop(s.signalCh)
+		s.stopContext()
+	})
 }
 
 // isDeferredBootstrapProfileError identifies the one bootstrap parse failure

@@ -202,7 +202,7 @@ func cachedHttpClientFunc(f *Factory, workspaceConfig workspaceConfigSource) fun
 }
 
 func buildDirectHTTPTransport(base http.RoundTripper, platform bool) http.RoundTripper {
-	var builtIn http.RoundTripper = &RetryTransport{Base: base}
+	var builtIn http.RoundTripper = base
 	builtIn = &SecurityHeaderTransport{Base: builtIn}
 	if platform {
 		builtIn = &auth.SecurityPolicyTransport{Base: builtIn}
@@ -262,7 +262,7 @@ func buildSDKTransportWithBase(
 }
 
 func buildSDKHTTPTransport(base http.RoundTripper, platform bool) http.RoundTripper {
-	var builtIn http.RoundTripper = &RetryTransport{Base: base}
+	var builtIn http.RoundTripper = base
 	builtIn = &UserAgentTransport{Base: builtIn}
 	builtIn = &BuildHeaderTransport{Base: builtIn}
 	builtIn = &SecurityHeaderTransport{Base: builtIn}

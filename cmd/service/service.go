@@ -449,7 +449,7 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 		FileIO:      f.ResolveFileIO(opts.Ctx),
 		CommandPath: opts.Cmd.CommandPath(),
 		Identity:    opts.As,
-		CheckError:  checkErr,
+		CheckError:  ac.CheckResponseWithContext,
 	})
 }
 
