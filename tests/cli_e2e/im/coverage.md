@@ -1,9 +1,9 @@
 # IM CLI E2E Coverage
 
 ## Metrics
-- Denominator: 30 leaf commands
-- Covered: 12
-- Coverage: 40.0%
+- Denominator: 32 leaf commands
+- Covered: 14
+- Coverage: 43.8%
 
 ## Summary
 - TestIM_ChatUpdateWorkflow: proves `im +chat-create`, `im +chat-update`, and `im chats get`; key `t.Run(...)` proof points are `update chat name as bot`, `update chat description as bot`, and `get updated chat as bot`.
@@ -16,6 +16,8 @@
 - TestIM_MessageResourceDownloadWorkflowAsBot: proves `im +messages-resources-download` end to end through `download file resource through the bounded first request` — a 320 KiB fixture is uploaded with `im +messages-send --file`, its `file_key` is read back off the message, and the downloaded bytes are compared byte for byte; the command always sends an initial Range request, but the output does not reveal whether the endpoint answered 206 or 200, so this proves the round trip rather than which path ran. Multi-part continuation is pinned by unit tests. Skips when the test app lacks the IM resource upload scope.
 - TestIM_MessagesSendAudioDryRunRejectsNonOpus: proves the `im +messages-send --audio` dry-run validation rejects non-Opus local audio before upload, with typed validation metadata and recovery guidance.
 - TestIM_MessageForwardWorkflowAsUser: proves UAT-backed API forwarding through `im messages forward` and `im threads forward` using a fresh message/thread fixture; skips the forward assertions when the current test app/UAT lacks IM forward permission.
+- TestIMMessagesReadStatusDryRun and TestIMMessagesReadStatusRejectsBotIdentity pin the batch read-status POST body and user-only identity contract without calling the API.
+- TestIMMessageReadUsersDryRunSupportsUserAndBot pins the read-users GET path, default query parameters, and user/bot identity contract without calling the API.
 - Blocked area: `im +chat-search` did not reliably return freshly created private chats in UAT, and `im +messages-search` did not reliably index freshly sent messages in time for a deterministic read-after-write assertion, so both remain uncovered.
 
 ## Command Table
@@ -26,7 +28,9 @@
 | ✓ | im +chat-messages-list | shortcut | im/chat_message_workflow_test.go::TestIM_ChatMessageWorkflowAsUser/list chat messages as user; im/message_reply_workflow_test.go::TestIM_MessageReplyWorkflowAsBot/list thread replies as bot | `--chat-id`; `--start`; `--end` | reads back created message and discovers thread ID |
 | ✕ | im +chat-search | shortcut |  | none | UAT did not reliably return freshly created private chats, so it is left uncovered |
 | ✓ | im +chat-update | shortcut | im/chat_workflow_test.go::TestIM_ChatUpdateWorkflow/update chat name as bot; im/chat_workflow_test.go::TestIM_ChatUpdateWorkflow/update chat description as bot | `--chat-id`; `--name`; `--description` | |
+| ✓ | im +message-read-users | shortcut | im/message_read_status_dryrun_test.go::TestIMMessageReadUsersDryRunSupportsUserAndBot | `--message-id`; `--user-id-type`; `--page-size` | dry-run covers user and bot request shape; live UAT is recorded separately |
 | ✓ | im +messages-mget | shortcut | im/message_get_workflow_test.go::TestIM_MessageGetWorkflowAsUser/batch get message as user | `--message-ids` | verifies sent message content by ID |
+| ✓ | im +messages-read-status | shortcut | im/message_read_status_dryrun_test.go::TestIMMessagesReadStatusDryRun; im/message_read_status_dryrun_test.go::TestIMMessagesReadStatusRejectsBotIdentity | `--message-ids` | dry-run pins POST body and rejects bot identity before API execution |
 | ✓ | im +messages-reply | shortcut | im/message_reply_workflow_test.go::TestIM_MessageReplyWorkflowAsBot/reply to message in thread as bot | `--message-id`; `--text`; `--reply-in-thread` | reply is read back via thread list |
 | ✓ | im +messages-resources-download | shortcut | im/messages_resources_download_dryrun_test.go::TestIM_MessagesResourcesDownloadDryRun; im/message_resource_download_workflow_test.go::TestIM_MessageResourceDownloadWorkflowAsBot/download file resource through the bounded first request | `--message-id`; `--file-key`; `--type`; `--output` | uploads a 320 KiB fixture via `+messages-send --file`, reads file_key back off the message, downloads it and compares bytes directly; the command sends an initial Range request, though the output cannot show whether the endpoint answered 206 or 200; multi-part continuation is covered by unit tests |
 | ✕ | im +messages-search | shortcut |  | none | freshly sent messages were not indexed deterministically in UAT time for a stable read-after-write proof |
