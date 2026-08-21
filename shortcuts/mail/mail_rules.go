@@ -298,12 +298,6 @@ var MailRuleDelete = common.Shortcut{
 	Flags: append([]common.Flag{}, append(mailRuleCommonFlags,
 		common.Flag{Name: "rule-id", Required: true, Desc: "Rule ID to delete."},
 	)...),
-	Validate: func(ctx context.Context, rt *common.RuntimeContext) error {
-		if !rt.Bool("dry-run") && !rt.Bool("yes") {
-			return mailValidationParamError("--yes", "mail +rule-delete requires --yes for real deletion; run --dry-run to preview")
-		}
-		return nil
-	},
 	DryRun: func(ctx context.Context, rt *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().Desc("Delete one mailbox rule; dry-run does not call the API").
 			DELETE(mailRuleItemPath(ruleMailboxID(rt), rt.Str("rule-id")))

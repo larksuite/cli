@@ -64,7 +64,7 @@ lark-cli mail +rule-reorder --as user --move-rule-id "<rule_id_3>" --before-rule
 --action kind:json={"key":"value"}
 ```
 
-常用动作：`archive`、`delete_mail`/`trash`、`mark_read`/`read`、`move_spam`/`spam`、`not_spam`/`never_spam`、`add_user_label:label_id=<id>`、`star`/`flag`、`mute_notification`/`mute`、`move_folder:folder_id=<id>`、`forward:email=<addr>`、`share_to_chat:chat_id=<id>`。
+常用动作：`archive`、`delete_mail`/`trash`、`mark_read`/`read`、`move_spam`/`spam`、`not_spam`/`never_spam`、`star`/`flag`、`mute_notification`/`mute`、`move_folder:folder_id=<id>`。
 
 `--conditions` / `--actions` 支持 JSON 或 `@file`。JSON 示例：
 
