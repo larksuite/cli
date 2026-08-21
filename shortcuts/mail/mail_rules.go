@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,8 +19,10 @@ import (
 )
 
 const (
-	mailRuleSpecVersion  = "mail_rule/v1"
-	mailRuleListMaxPages = 200
+	mailRuleSpecVersion       = "mail_rule/v1"
+	mailRuleListMaxPages      = 200
+	mailRuleInputFileMaxBytes = 1 << 20
+	mailRuleCollectionMax     = 100
 )
 
 type mailRuleSpec struct {
@@ -192,7 +195,7 @@ var MailRuleCreate = common.Shortcut{
 	Service:     "mail",
 	Command:     "+rule-create",
 	Description: "Create a mailbox rule from semantic condition/action aliases; use --dry-run to inspect the raw request.",
-	Risk:        "write",
+	Risk:        "high-risk-write",
 	Scopes:      []string{"mail:user_mailbox.rule:write"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
@@ -219,12 +222,12 @@ var MailRuleCreate = common.Shortcut{
 		if err != nil {
 			return mailDecorateProblemMessage(err, "create mail rule failed")
 		}
-		env := decodeMailRuleEnvelope(firstRuleObject(data), ruleMailboxID(rt))
-		if env.SemanticSpec == nil {
-			env.SemanticSpec = spec
-		}
-		if env.Description == "" {
-			env.Description = describeMailRule(spec.Rule, nil)
+		created := firstRuleObject(data)
+		var env mailRuleEnvelope
+		if isRecognizableRuleObject(created) {
+			env = decodeMailRuleEnvelope(created, ruleMailboxID(rt))
+		} else {
+			env = envelopeFromRuleSpec(spec, nil, raw)
 		}
 		out := map[string]any{"rule": env, "semantic_spec": spec}
 		rt.OutFormat(out, &output.Meta{Count: 1}, func(w io.Writer) {
@@ -238,7 +241,7 @@ var MailRuleUpdate = common.Shortcut{
 	Service:     "mail",
 	Command:     "+rule-update",
 	Description: "Update one mailbox rule by reading the current rule, preserving unspecified fields, and rejecting unsafe unknown collection replacement.",
-	Risk:        "write",
+	Risk:        "high-risk-write",
 	Scopes:      []string{"mail:user_mailbox.rule:read", "mail:user_mailbox.rule:write"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
@@ -250,16 +253,20 @@ var MailRuleUpdate = common.Shortcut{
 		if strings.TrimSpace(rt.Str("rule-id")) == "" {
 			return mailValidationParamError("--rule-id", "--rule-id is required")
 		}
+		if !hasRuleUpdateChange(rt) {
+			return mailValidationParamError("--rule-id", "at least one update field must be provided")
+		}
 		_, _, err := buildRuleSpecFromFlags(rt, false)
 		return err
 	},
 	DryRun: func(ctx context.Context, rt *common.RuntimeContext) *common.DryRunAPI {
-		partial, raw, _ := buildRuleSpecFromFlags(rt, false)
-		return common.NewDryRunAPI().Desc("Read current rule, merge changed fields, then PUT full rule body").
-			Set("partial_semantic_spec", partial).
-			Set("raw_request_patch", raw).
+		partial, _, _ := buildRuleSpecFromFlags(rt, false)
+		semanticPatch, rawPatch := buildRuleUpdateDryRunPatch(rt, partial)
+		return common.NewDryRunAPI().Desc("Read current rule, merge explicit changes, then PUT full rule body").
+			Set("semantic_patch", semanticPatch).
+			Set("raw_request_patch", rawPatch).
 			GET(mailRuleCollectionPath(ruleMailboxID(rt))).
-			PUT(mailRuleItemPath(ruleMailboxID(rt), rt.Str("rule-id"))).Body("<merged rule body>")
+			PUT(mailRuleItemPath(ruleMailboxID(rt), rt.Str("rule-id"))).Body("<merged rule body after reading current rule>")
 	},
 	Execute: func(ctx context.Context, rt *common.RuntimeContext) error {
 		env, err := getMailRuleEnvelope(rt, ruleMailboxID(rt), rt.Str("rule-id"))
@@ -270,14 +277,23 @@ var MailRuleUpdate = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		if len(diff) == 0 {
+			out := map[string]any{"before": env, "after": env, "diff": diff, "no_op": true}
+			rt.OutFormat(out, &output.Meta{Count: 0}, func(w io.Writer) {
+				fmt.Fprintf(w, "Rule %s already matches the requested state; no update sent.\n", rt.Str("rule-id"))
+			})
+			return nil
+		}
 		data, err := rt.CallAPITyped("PUT", mailRuleItemPath(ruleMailboxID(rt), rt.Str("rule-id")), nil, raw)
 		if err != nil {
 			return mailDecorateProblemMessage(err, "update mail rule failed")
 		}
-		after := decodeMailRuleEnvelope(firstRuleObject(data), ruleMailboxID(rt))
-		if after.SemanticSpec == nil {
-			after.SemanticSpec = target
-			after.Description = describeMailRule(target.Rule, nil)
+		updated := firstRuleObject(data)
+		var after mailRuleEnvelope
+		if isRecognizableRuleObject(updated) {
+			after = decodeMailRuleEnvelope(updated, ruleMailboxID(rt))
+		} else {
+			after = envelopeFromRuleSpec(target, env.Unknowns, raw)
 		}
 		out := map[string]any{"before": env, "after": after, "diff": diff, "raw_request": raw}
 		rt.OutFormat(out, &output.Meta{Count: 1}, func(w io.Writer) {
@@ -325,7 +341,7 @@ var MailRuleReorder = common.Shortcut{
 	Service:     "mail",
 	Command:     "+rule-reorder",
 	Description: "Reorder mailbox rules by full rule_id list or by moving one rule before/after/top/bottom.",
-	Risk:        "write",
+	Risk:        "high-risk-write",
 	Scopes:      []string{"mail:user_mailbox.rule:read", "mail:user_mailbox.rule:write"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
@@ -375,9 +391,9 @@ func mailRuleWriteFlags() []common.Flag {
 		common.Flag{Name: "stop-after-match", Type: "bool", Desc: "Stop evaluating later rules after this rule matches."},
 		common.Flag{Name: "continue-after-match", Type: "bool", Desc: "Continue evaluating later rules after this rule matches."},
 		common.Flag{Name: "condition", Type: "string_array", Desc: "Rule condition grammar. Repeat flag. Examples: subject:contains:Alpha, has_attachment, to_or_cc:contains_self."},
-		common.Flag{Name: "conditions", Input: []string{common.File}, Desc: "JSON array/object of conditions, or @file containing it."},
+		common.Flag{Name: "conditions", Desc: "JSON array/object of conditions, or @file containing it."},
 		common.Flag{Name: "action", Type: "string_array", Desc: "Rule action grammar. Repeat flag. Examples: mark_read, move_folder:folder_id=xxx."},
-		common.Flag{Name: "actions", Input: []string{common.File}, Desc: "JSON array/object of actions, or @file containing it."},
+		common.Flag{Name: "actions", Desc: "JSON array/object of actions, or @file containing it."},
 	)
 	return flags
 }
@@ -391,7 +407,7 @@ func makeRuleToggleShortcut(command string, enabled bool) common.Shortcut {
 		Service:     "mail",
 		Command:     command,
 		Description: desc,
-		Risk:        "write",
+		Risk:        "high-risk-write",
 		Scopes:      []string{"mail:user_mailbox.rule:read", "mail:user_mailbox.rule:write"},
 		AuthTypes:   []string{"user"},
 		HasFormat:   true,
@@ -407,6 +423,18 @@ func makeRuleToggleShortcut(command string, enabled bool) common.Shortcut {
 			env, err := getMailRuleEnvelope(rt, ruleMailboxID(rt), rt.Str("rule-id"))
 			if err != nil {
 				return err
+			}
+			if env.Enabled == enabled {
+				out := map[string]any{
+					"before": map[string]any{"enabled": env.Enabled},
+					"after":  env,
+					"diff":   []map[string]any{},
+					"no_op":  true,
+				}
+				rt.OutFormat(out, &output.Meta{Count: 0}, func(w io.Writer) {
+					fmt.Fprintf(w, "Rule %s already %s; no update sent.\n", rt.Str("rule-id"), mailRuleEnabledWord(enabled))
+				})
+				return nil
 			}
 			raw := copyMap(env.Raw)
 			raw["is_enable"] = enabled
@@ -430,6 +458,13 @@ func makeRuleToggleShortcut(command string, enabled bool) common.Shortcut {
 			return nil
 		},
 	}
+}
+
+func mailRuleEnabledWord(enabled bool) string {
+	if enabled {
+		return "enabled"
+	}
+	return "disabled"
 }
 
 func aliasByName(items []mailRuleAlias) map[string]mailRuleAlias {
@@ -501,8 +536,14 @@ func buildRuleSpecFromFlags(rt *common.RuntimeContext, requireCreateFields bool)
 	if err != nil {
 		return nil, nil, err
 	}
+	if err := validateRuleCollectionSize("--condition", "condition", len(conditions)); err != nil {
+		return nil, nil, err
+	}
 	actions, err := parseRuleActions(rt, rt.StrArray("action"), rt.Str("actions"))
 	if err != nil {
+		return nil, nil, err
+	}
+	if err := validateRuleCollectionSize("--action", "action", len(actions)); err != nil {
 		return nil, nil, err
 	}
 	spec.Rule.Conditions = conditions
@@ -565,17 +606,26 @@ func parseRuleActions(rt *common.RuntimeContext, grammar []string, bulk string) 
 }
 
 func expandRuleInput(rt *common.RuntimeContext, raw, flag string) (string, error) {
+	if len(raw) > mailRuleInputFileMaxBytes {
+		return "", mailValidationParamError(flag, "%s input exceeds %d bytes limit", flag, mailRuleInputFileMaxBytes)
+	}
 	raw = strings.TrimSpace(raw)
 	if strings.HasPrefix(raw, "@") {
+		if rt == nil {
+			return "", mailValidationParamError(flag, "file input is not available in this context")
+		}
 		path := strings.TrimPrefix(raw, "@")
 		f, err := rt.FileIO().Open(path)
 		if err != nil {
 			return "", mailValidationParamError(flag, "open %s %s: %v", flag, path, err).WithCause(mailInputStatError(err))
 		}
 		defer f.Close()
-		buf, err := io.ReadAll(f)
+		buf, err := io.ReadAll(io.LimitReader(f, mailRuleInputFileMaxBytes+1))
 		if err != nil {
 			return "", mailValidationParamError(flag, "read %s %s: %v", flag, path, err).WithCause(err)
+		}
+		if len(buf) > mailRuleInputFileMaxBytes {
+			return "", mailValidationParamError(flag, "%s file exceeds %d bytes limit", flag, mailRuleInputFileMaxBytes)
 		}
 		return strings.TrimSpace(string(buf)), nil
 	}
@@ -591,11 +641,9 @@ func parseRuleConditionValue(rt *common.RuntimeContext, raw, flag string) ([]mai
 		return nil, nil
 	}
 	if strings.HasPrefix(expanded, "{") || strings.HasPrefix(expanded, "[") {
-		var v any
-		dec := json.NewDecoder(strings.NewReader(expanded))
-		dec.UseNumber()
-		if err := dec.Decode(&v); err != nil {
-			return nil, mailValidationParamError(flag, "invalid %s JSON: %v", flag, err).WithCause(err)
+		v, err := decodeSingleRuleJSON(expanded, flag)
+		if err != nil {
+			return nil, err
 		}
 		return parseRuleConditionJSON(v, flag)
 	}
@@ -615,11 +663,9 @@ func parseRuleActionValue(rt *common.RuntimeContext, raw, flag string) ([]mailRu
 		return nil, nil
 	}
 	if strings.HasPrefix(expanded, "{") || strings.HasPrefix(expanded, "[") {
-		var v any
-		dec := json.NewDecoder(strings.NewReader(expanded))
-		dec.UseNumber()
-		if err := dec.Decode(&v); err != nil {
-			return nil, mailValidationParamError(flag, "invalid %s JSON: %v", flag, err).WithCause(err)
+		v, err := decodeSingleRuleJSON(expanded, flag)
+		if err != nil {
+			return nil, err
 		}
 		return parseRuleActionJSON(v, flag)
 	}
@@ -633,6 +679,9 @@ func parseRuleActionValue(rt *common.RuntimeContext, raw, flag string) ([]mailRu
 func parseRuleConditionJSON(v any, flag string) ([]mailRuleCondition, error) {
 	switch typed := v.(type) {
 	case []any:
+		if err := validateRuleCollectionSize(flag, "condition", len(typed)); err != nil {
+			return nil, err
+		}
 		out := make([]mailRuleCondition, 0, len(typed))
 		for i, item := range typed {
 			cond, err := parseRuleConditionJSONObject(item, fmt.Sprintf("%s[%d]", flag, i))
@@ -671,6 +720,9 @@ func parseRuleConditionJSONObject(v any, flag string) (mailRuleCondition, error)
 func parseRuleActionJSON(v any, flag string) ([]mailRuleAction, error) {
 	switch typed := v.(type) {
 	case []any:
+		if err := validateRuleCollectionSize(flag, "action", len(typed)); err != nil {
+			return nil, err
+		}
 		out := make([]mailRuleAction, 0, len(typed))
 		for i, item := range typed {
 			action, err := parseRuleActionJSONObject(item, fmt.Sprintf("%s[%d]", flag, i))
@@ -727,9 +779,13 @@ func parseRuleActionGrammar(raw, flag string) (mailRuleAction, error) {
 	if len(parts) == 2 {
 		tail := strings.TrimSpace(parts[1])
 		if strings.HasPrefix(tail, "json=") {
-			var params map[string]any
-			if err := json.Unmarshal([]byte(strings.TrimPrefix(tail, "json=")), &params); err != nil {
-				return mailRuleAction{}, mailValidationParamError(flag, "invalid action json params: %v", err).WithCause(err)
+			rawParams, err := decodeSingleRuleJSON(strings.TrimPrefix(tail, "json="), flag)
+			if err != nil {
+				return mailRuleAction{}, err
+			}
+			params, ok := rawParams.(map[string]any)
+			if !ok {
+				return mailRuleAction{}, mailValidationParamError(flag, "invalid action json params: expected object")
 			}
 			for k, v := range params {
 				action.Params[k] = fmt.Sprint(v)
@@ -743,6 +799,40 @@ func parseRuleActionGrammar(raw, flag string) (mailRuleAction, error) {
 		}
 	}
 	return validateRuleAction(action, flag)
+}
+
+func decodeSingleRuleJSON(raw, flag string) (any, error) {
+	var v any
+	dec := json.NewDecoder(strings.NewReader(raw))
+	dec.UseNumber()
+	if err := dec.Decode(&v); err != nil {
+		return nil, mailValidationParamError(flag, "invalid %s JSON: %v", flag, err).WithCause(err)
+	}
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return nil, mailValidationParamError(flag, "invalid %s JSON: multiple JSON values", flag)
+		}
+		return nil, mailValidationParamError(flag, "invalid %s JSON: trailing data after first value: %v", flag, err).WithCause(err)
+	}
+	return v, nil
+}
+
+func validateRuleCollectionSize(param, noun string, count int) error {
+	if count > mailRuleCollectionMax {
+		return mailValidationParamError(param, "rule %s count %d exceeds the limit of %d", noun, count, mailRuleCollectionMax)
+	}
+	return nil
+}
+
+func appendUnknownObjectFields(unknowns []mailRuleUnknown, path string, raw map[string]interface{}, allowed map[string]struct{}) []mailRuleUnknown {
+	for key, value := range raw {
+		if _, ok := allowed[key]; ok {
+			continue
+		}
+		unknowns = append(unknowns, mailRuleUnknown{Path: path + "." + key, Reason: "unknown field on known raw object", Raw: value})
+	}
+	return unknowns
 }
 
 func validateRuleCondition(cond mailRuleCondition, flag string) (mailRuleCondition, error) {
@@ -968,6 +1058,34 @@ func firstRuleObject(data map[string]interface{}) map[string]any {
 	return copyInterfaceMap(data)
 }
 
+func isRecognizableRuleObject(raw map[string]any) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	for _, key := range []string{"rule_id", "id", "name", "rule_name", "is_enable", "enabled", "condition", "action"} {
+		if _, ok := raw[key]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func envelopeFromRuleSpec(spec *mailRuleSpec, unknowns []mailRuleUnknown, raw map[string]any) mailRuleEnvelope {
+	if spec == nil {
+		return mailRuleEnvelope{Unknowns: unknowns, Raw: copyMap(raw)}
+	}
+	return mailRuleEnvelope{
+		RuleID:       spec.Rule.ID,
+		Name:         spec.Rule.Name,
+		Enabled:      spec.Rule.Enabled,
+		Order:        firstPresent(raw, "order", "sequence", "priority", "index"),
+		Description:  describeMailRule(spec.Rule, unknowns),
+		SemanticSpec: spec,
+		Unknowns:     unknowns,
+		Raw:          copyMap(raw),
+	}
+}
+
 func decodeMailRuleEnvelope(raw map[string]any, mailboxID string) mailRuleEnvelope {
 	spec := &mailRuleSpec{Version: mailRuleSpecVersion}
 	spec.Mailbox.UserMailboxID = mailboxID
@@ -1037,8 +1155,17 @@ func decodeRuleConditions(raw any, unknowns []mailRuleUnknown) ([]mailRuleCondit
 				unknowns = append(unknowns, mailRuleUnknown{Path: fmt.Sprintf("condition.items[%d].operator", i), Reason: "unknown condition operator enum", Raw: m})
 				continue
 			}
+			allowed := map[string]struct{}{"type": {}}
+			if field.NeedsArg {
+				allowed["operator"] = struct{}{}
+				allowed["input"] = struct{}{}
+				allowed["value"] = struct{}{}
+			}
+			unknowns = appendUnknownObjectFields(unknowns, fmt.Sprintf("condition.items[%d]", i), m, allowed)
 			cond.Operator = op.Canonical
 			cond.Value = mailRuleFirstString(m, "input", "value")
+		} else {
+			unknowns = appendUnknownObjectFields(unknowns, fmt.Sprintf("condition.items[%d]", i), m, map[string]struct{}{"type": {}})
 		}
 		out = append(out, cond)
 	}
@@ -1064,6 +1191,16 @@ func decodeRuleActions(raw any, unknowns []mailRuleUnknown) ([]mailRuleAction, [
 			unknowns = append(unknowns, mailRuleUnknown{Path: fmt.Sprintf("action.items[%d]", i), Reason: "unknown action type enum", Raw: m})
 			continue
 		}
+		allowed := map[string]struct{}{"type": {}}
+		if param := requiredActionParam(action.Canonical); param != "" {
+			allowed[param] = struct{}{}
+			allowed["input"] = struct{}{}
+			allowed["params"] = struct{}{}
+			if nested, ok := mapValue(m["params"]); ok {
+				unknowns = appendUnknownObjectFields(unknowns, fmt.Sprintf("action.items[%d].params", i), nested, map[string]struct{}{param: {}, "input": {}})
+			}
+		}
+		unknowns = appendUnknownObjectFields(unknowns, fmt.Sprintf("action.items[%d]", i), m, allowed)
 		out = append(out, mailRuleAction{Kind: action.Canonical, Params: decodeActionParams(action.Canonical, m)})
 	}
 	return out, unknowns
@@ -1181,7 +1318,55 @@ func getMailRuleEnvelope(rt *common.RuntimeContext, mailboxID, ruleID string) (m
 	return mailRuleEnvelope{}, mailFailedPreconditionError("rule_id %s not found after scanning %d rule(s)", ruleID, len(envelopes))
 }
 
+func hasRuleUpdateChange(rt *common.RuntimeContext) bool {
+	for _, flag := range []string{"name", "enable", "disable", "match", "stop-after-match", "continue-after-match", "condition", "conditions", "action", "actions"} {
+		if rt.Changed(flag) {
+			return true
+		}
+	}
+	return false
+}
+
+func buildRuleUpdateDryRunPatch(rt *common.RuntimeContext, partial *mailRuleSpec) (map[string]any, map[string]any) {
+	semanticPatch := map[string]any{}
+	rawPatch := map[string]any{}
+	if partial == nil {
+		return semanticPatch, rawPatch
+	}
+	if rt.Changed("name") {
+		semanticPatch["name"] = partial.Rule.Name
+		rawPatch["name"] = partial.Rule.Name
+	}
+	if rt.Changed("enable") || rt.Changed("disable") {
+		semanticPatch["enabled"] = partial.Rule.Enabled
+		rawPatch["is_enable"] = partial.Rule.Enabled
+	}
+	if rt.Changed("match") {
+		semanticPatch["match"] = partial.Rule.Match
+		rawPatch["condition"] = map[string]any{"match_type": encodeRuleMatch(partial.Rule.Match)}
+	}
+	if rt.Changed("stop-after-match") || rt.Changed("continue-after-match") {
+		semanticPatch["stop_after_match"] = partial.Rule.StopAfterMatch
+		rawPatch["ignore_the_rest_of_rules"] = partial.Rule.StopAfterMatch
+	}
+	if rt.Changed("condition") || rt.Changed("conditions") {
+		semanticPatch["conditions"] = partial.Rule.Conditions
+		rawPatch["condition"] = map[string]any{
+			"match_type": encodeRuleMatch(partial.Rule.Match),
+			"items":      encodeRuleConditions(partial.Rule.Conditions),
+		}
+	}
+	if rt.Changed("action") || rt.Changed("actions") {
+		semanticPatch["actions"] = partial.Rule.Actions
+		rawPatch["action"] = map[string]any{"items": encodeRuleActions(partial.Rule.Actions)}
+	}
+	return semanticPatch, rawPatch
+}
+
 func mergeRuleUpdate(rt *common.RuntimeContext, current mailRuleEnvelope) (*mailRuleSpec, map[string]any, []map[string]any, error) {
+	if !hasRuleUpdateChange(rt) {
+		return nil, nil, nil, mailValidationParamError("--rule-id", "at least one update field must be provided")
+	}
 	partial, _, err := buildRuleSpecFromFlags(rt, false)
 	if err != nil {
 		return nil, nil, nil, err
@@ -1193,33 +1378,33 @@ func mergeRuleUpdate(rt *common.RuntimeContext, current mailRuleEnvelope) (*mail
 	target.Rule.ID = current.RuleID
 	diff := []map[string]any{}
 	if rt.Changed("name") {
-		diff = append(diff, diffEntry("name", target.Rule.Name, partial.Rule.Name))
+		diff = appendDiffIfChanged(diff, "name", target.Rule.Name, partial.Rule.Name)
 		target.Rule.Name = partial.Rule.Name
 	}
 	if rt.Changed("enable") || rt.Changed("disable") {
-		diff = append(diff, diffEntry("enabled", target.Rule.Enabled, partial.Rule.Enabled))
+		diff = appendDiffIfChanged(diff, "enabled", target.Rule.Enabled, partial.Rule.Enabled)
 		target.Rule.Enabled = partial.Rule.Enabled
 	}
 	if rt.Changed("match") {
-		diff = append(diff, diffEntry("match", target.Rule.Match, partial.Rule.Match))
+		diff = appendDiffIfChanged(diff, "match", target.Rule.Match, partial.Rule.Match)
 		target.Rule.Match = partial.Rule.Match
 	}
 	if rt.Changed("stop-after-match") || rt.Changed("continue-after-match") {
-		diff = append(diff, diffEntry("stop_after_match", target.Rule.StopAfterMatch, partial.Rule.StopAfterMatch))
+		diff = appendDiffIfChanged(diff, "stop_after_match", target.Rule.StopAfterMatch, partial.Rule.StopAfterMatch)
 		target.Rule.StopAfterMatch = partial.Rule.StopAfterMatch
 	}
 	if rt.Changed("condition") || rt.Changed("conditions") {
 		if hasUnknownPrefix(current.Unknowns, "condition.") {
 			return nil, nil, nil, mailFailedPreconditionError("current rule has unknown condition raw; replacing conditions would drop unknowns. Use mail user_mailbox.rules update with raw body")
 		}
-		diff = append(diff, diffEntry("conditions", target.Rule.Conditions, partial.Rule.Conditions))
+		diff = appendDiffIfChanged(diff, "conditions", target.Rule.Conditions, partial.Rule.Conditions)
 		target.Rule.Conditions = partial.Rule.Conditions
 	}
 	if rt.Changed("action") || rt.Changed("actions") {
 		if hasUnknownPrefix(current.Unknowns, "action.") {
 			return nil, nil, nil, mailFailedPreconditionError("current rule has unknown action raw; replacing actions would drop unknowns. Use mail user_mailbox.rules update with raw body")
 		}
-		diff = append(diff, diffEntry("actions", target.Rule.Actions, partial.Rule.Actions))
+		diff = appendDiffIfChanged(diff, "actions", target.Rule.Actions, partial.Rule.Actions)
 		target.Rule.Actions = partial.Rule.Actions
 	}
 	raw, err := encodeRuleSpec(&target)
@@ -1261,6 +1446,13 @@ func mergeRuleUpdateBody(rt *common.RuntimeContext, current mailRuleEnvelope, en
 
 func diffEntry(field string, before, after any) map[string]any {
 	return map[string]any{"field": field, "before": before, "after": after}
+}
+
+func appendDiffIfChanged(diff []map[string]any, field string, before, after any) []map[string]any {
+	if reflect.DeepEqual(before, after) {
+		return diff
+	}
+	return append(diff, diffEntry(field, before, after))
 }
 
 func hasUnknownPrefix(unknowns []mailRuleUnknown, prefix string) bool {
