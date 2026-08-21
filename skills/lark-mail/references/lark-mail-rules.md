@@ -1,6 +1,6 @@
 # 收信规则 Shortcut
 
-管理自动处理收到邮件的规则。优先使用 `mail +rule-*` shortcut，通过稳定英文 alias 编写条件和动作；只有 shortcut 提示存在 unknown raw、无法安全替换集合，或需要当前 shortcut 尚未建模的服务端字段时，才回退到 `mail user_mailbox.rules` 原子 raw 命令。规则写操作需使用真实 `rule_id`，不要猜测 ID。写操作执行前需按 SKILL.md 的写操作确认规则获得用户确认。
+管理自动处理收到邮件的规则。优先使用 `mail +rule-*` shortcut，通过稳定英文 alias 编写条件和动作；只有 shortcut 提示存在 unknown raw、无法安全替换集合，或需要当前 shortcut 尚未建模的服务端字段时，才回退到 `mail user_mailbox.rules` 原子 raw 命令。规则写操作需使用真实 `rule_id`，不要猜测 ID。创建、更新、启停和排序是普通写操作；只有删除规则需要按 SKILL.md 的删除确认规则获得用户确认并传 `--yes`。
 
 ## 常用 shortcut
 
@@ -95,7 +95,8 @@ lark-cli mail user_mailbox.rules list --as user \
 
 # 3. 删除规则
 lark-cli mail user_mailbox.rules delete --as user \
-  --params '{"user_mailbox_id":"me","rule_id":"<rule_id>"}'
+  --params '{"user_mailbox_id":"me","rule_id":"<rule_id>"}' \
+  --yes
 ```
 
 Quick codes above: condition `type=6` = subject, `operator=1` = contains, action `type=3` = mark as read.

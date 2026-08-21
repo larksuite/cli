@@ -6,10 +6,12 @@ package mail
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -285,16 +287,41 @@ func TestMailRuleUpdateRegistersNameFlag(t *testing.T) {
 	}
 }
 
-func TestMailRuleWritesUseStandardHighRiskWrite(t *testing.T) {
-	for _, shortcut := range []common.Shortcut{MailRuleCreate, MailRuleUpdate, MailRuleDelete, MailRuleEnable, MailRuleDisable, MailRuleReorder} {
-		if shortcut.Risk != "high-risk-write" {
-			t.Fatalf("%s Risk = %q, want high-risk-write", shortcut.Command, shortcut.Risk)
+func TestMailRuleWriteRisks(t *testing.T) {
+	for _, tc := range []struct {
+		shortcut common.Shortcut
+		risk     string
+	}{
+		{MailRuleCreate, "write"},
+		{MailRuleUpdate, "write"},
+		{MailRuleEnable, "write"},
+		{MailRuleDisable, "write"},
+		{MailRuleReorder, "write"},
+		{MailRuleDelete, "high-risk-write"},
+	} {
+		if tc.shortcut.Risk != tc.risk {
+			t.Fatalf("%s Risk = %q, want %q", tc.shortcut.Command, tc.shortcut.Risk, tc.risk)
 		}
-		for _, flag := range shortcut.Flags {
+		for _, flag := range tc.shortcut.Flags {
 			if flag.Name == "yes" {
-				t.Fatalf("%s must rely on the standard high-risk-write --yes flag", shortcut.Command)
+				t.Fatalf("%s must rely on the standard risk framework instead of declaring a custom --yes flag", tc.shortcut.Command)
 			}
 		}
+	}
+}
+
+func TestMailRuleDeleteRequiresStandardYesConfirmation(t *testing.T) {
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	err := runMountedMailShortcut(t, MailRuleDelete, []string{"+rule-delete", "--rule-id", "rule_1", "--format", "json"}, f, stdout)
+	if err == nil {
+		t.Fatal("expected confirmation required error")
+	}
+	var confirmErr *errs.ConfirmationRequiredError
+	if !errors.As(err, &confirmErr) {
+		t.Fatalf("expected confirmation required error, got %T: %v", err, err)
+	}
+	if confirmErr.Action != "mail +rule-delete" {
+		t.Fatalf("confirmation action = %q, want mail +rule-delete", confirmErr.Action)
 	}
 }
 
@@ -346,7 +373,7 @@ func TestMailRuleUpdatePreservesRawFieldsAndUpdatesName(t *testing.T) {
 	}
 	reg.Register(put)
 
-	err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--name", "Beta", "--yes", "--format", "json"}, f, stdout)
+	err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--name", "Beta", "--format", "json"}, f, stdout)
 	if err != nil {
 		t.Fatalf("run +rule-update error = %v", err)
 	}
@@ -422,7 +449,7 @@ func TestMailRuleUpdatePreservesConditionItemExtrasWhenChangingMatch(t *testing.
 	}
 	reg.Register(put)
 
-	err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--match", "any", "--yes", "--format", "json"}, f, stdout)
+	err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--match", "any", "--format", "json"}, f, stdout)
 	if err != nil {
 		t.Fatalf("run +rule-update error = %v", err)
 	}
@@ -630,7 +657,7 @@ func TestMailRuleCreateValidationErrors(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f, stdout, _, _ := mailShortcutTestFactory(t)
-			err := runMountedMailShortcut(t, MailRuleCreate, append(tc.args, "--yes"), f, stdout)
+			err := runMountedMailShortcut(t, MailRuleCreate, tc.args, f, stdout)
 			if err == nil {
 				t.Fatal("expected validation error")
 			}
@@ -724,7 +751,7 @@ func TestMailRuleDryRunShortcuts(t *testing.T) {
 
 func TestMailRuleUpdateRejectsEmptyUpdate(t *testing.T) {
 	f, stdout, _, _ := mailShortcutTestFactory(t)
-	err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--yes", "--format", "json"}, f, stdout)
+	err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--format", "json"}, f, stdout)
 	if err == nil {
 		t.Fatal("expected empty update error")
 	}
@@ -744,7 +771,7 @@ func TestMailRuleUpdateNoopsWhenRequestedStateAlreadyMatches(t *testing.T) {
 	}
 	reg.Register(put)
 
-	if err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--name", "Alpha", "--yes", "--format", "json"}, f, stdout); err != nil {
+	if err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--name", "Alpha", "--format", "json"}, f, stdout); err != nil {
 		t.Fatalf("run +rule-update error = %v", err)
 	}
 	if len(put.CapturedBodies) != 0 {
@@ -873,7 +900,7 @@ func TestMailRuleToggleAndDeleteShortcutsPreserveRawBody(t *testing.T) {
 	}
 	reg.Register(put)
 
-	if err := runMountedMailShortcut(t, MailRuleDisable, []string{"+rule-disable", "--rule-id", "rule_1", "--yes", "--format", "json"}, f, stdout); err != nil {
+	if err := runMountedMailShortcut(t, MailRuleDisable, []string{"+rule-disable", "--rule-id", "rule_1", "--format", "json"}, f, stdout); err != nil {
 		t.Fatalf("run +rule-disable error = %v", err)
 	}
 	var body map[string]interface{}
@@ -911,7 +938,7 @@ func TestMailRuleToggleNoopsWhenAlreadyAtTargetState(t *testing.T) {
 	}
 	reg.Register(put)
 
-	if err := runMountedMailShortcut(t, MailRuleEnable, []string{"+rule-enable", "--rule-id", "rule_1", "--yes", "--format", "json"}, f, stdout); err != nil {
+	if err := runMountedMailShortcut(t, MailRuleEnable, []string{"+rule-enable", "--rule-id", "rule_1", "--format", "json"}, f, stdout); err != nil {
 		t.Fatalf("run +rule-enable error = %v", err)
 	}
 	if len(put.CapturedBodies) != 0 {
@@ -957,7 +984,7 @@ func TestMailRuleReorderShortcutPostsFullAndMoveOrders(t *testing.T) {
 		}
 		reg.Register(post)
 
-		if err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--rule-ids", "c,b,a", "--yes", "--format", "json"}, f, stdout); err != nil {
+		if err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--rule-ids", "c,b,a", "--format", "json"}, f, stdout); err != nil {
 			t.Fatalf("run +rule-reorder full error = %v", err)
 		}
 		assertRuleIDsBody(t, post.CapturedBody, "c,b,a")
@@ -977,7 +1004,7 @@ func TestMailRuleReorderShortcutPostsFullAndMoveOrders(t *testing.T) {
 		}
 		reg.Register(post)
 
-		if err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--move-rule-id", "a", "--to-bottom", "--yes", "--format", "json"}, f, stdout); err != nil {
+		if err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--move-rule-id", "a", "--to-bottom", "--format", "json"}, f, stdout); err != nil {
 			t.Fatalf("run +rule-reorder move error = %v", err)
 		}
 		assertRuleIDsBody(t, post.CapturedBody, "b,c,a")
@@ -997,7 +1024,7 @@ func TestMailRuleReorderShortcutPostsFullAndMoveOrders(t *testing.T) {
 		}
 		reg.Register(post)
 
-		if err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--move-rule-id", "c", "--to-top", "--yes", "--format", "json"}, f, stdout); err != nil {
+		if err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--move-rule-id", "c", "--to-top", "--format", "json"}, f, stdout); err != nil {
 			t.Fatalf("run +rule-reorder to-top error = %v", err)
 		}
 		assertRuleIDsBody(t, post.CapturedBody, "c,a,b")
@@ -1017,7 +1044,7 @@ func TestMailRuleReorderShortcutPostsFullAndMoveOrders(t *testing.T) {
 		}
 		reg.Register(post)
 
-		if err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--move-rule-id", "a", "--after-rule-id", "c", "--yes", "--format", "json"}, f, stdout); err != nil {
+		if err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--move-rule-id", "a", "--after-rule-id", "c", "--format", "json"}, f, stdout); err != nil {
 			t.Fatalf("run +rule-reorder after error = %v", err)
 		}
 		assertRuleIDsBody(t, post.CapturedBody, "b,c,a")
@@ -1032,7 +1059,7 @@ func TestMailRuleUpdateRejectsReplacingUnknownRawCollections(t *testing.T) {
 	}
 	reg.Register(mailRuleListStub(currentRule))
 
-	err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--condition", "subject:contains:Beta", "--yes", "--format", "json"}, f, stdout)
+	err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--condition", "subject:contains:Beta", "--format", "json"}, f, stdout)
 	if err == nil {
 		t.Fatal("expected unknown condition replacement error")
 	}
@@ -1057,7 +1084,6 @@ func TestMailRuleUpdateReplacesKnownConditionsAndActions(t *testing.T) {
 		"--rule-id", "rule_1",
 		"--condition", "subject:contains:Beta",
 		"--action", "move_folder:folder_id=fld_2",
-		"--yes",
 		"--format", "json",
 	}, f, stdout)
 	if err != nil {
@@ -1247,7 +1273,7 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 			if strings.Contains(tc.want, "current rule order") || strings.Contains(tc.want, "mismatch") {
 				reg.Register(mailRuleListStub(mailRuleTestRawRule("a", "A"), mailRuleTestRawRule("b", "B")))
 			}
-			err := runMountedMailShortcut(t, MailRuleReorder, append(tc.args, "--yes", "--format", "json"), f, stdout)
+			err := runMountedMailShortcut(t, MailRuleReorder, append(tc.args, "--format", "json"), f, stdout)
 			if err == nil {
 				t.Fatal("expected reorder error")
 			}
