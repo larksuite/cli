@@ -15,7 +15,7 @@
 | 已有信息 | 操作 |
 |---|---|
 | `meeting_id` | 直接查询会议或关联产物 |
-| `meeting_no` / 9 位会议号 | 用 `vc +search --query "<meeting_no>" --format json --as user` 搜索会议，从结果的 `id` 取得 `meeting_id` |
+| `meeting_no` / 9 位会议号 | 用 `vc +search --query "<meeting_no>" --format json --as <source_identity>` 搜索会议，从结果的 `id` 取得 `meeting_id` |
 | Calendar `event_id` | 用 `calendar +meeting` 获取 `meeting_id` 和用户绑定的 `meeting_note` |
 | `note_id` | 直接进入 [智能纪要场景](query-note-and-artifacts.md) |
 | `minute_token` / 妙记 URL | 直接进入 [妙记场景](query-minutes-and-artifacts.md)；URL 取路径最后一段并去掉 query 参数 |
@@ -23,7 +23,7 @@
 没有标识时，用 `vc +search` 搜索已经结束的会议：
 
 ```bash
-lark-cli vc +search --query <query> --start <start> --end <end> --format json
+lark-cli vc +search --query <query> --start <start> --end <end> --format json --as <source_identity>
 ```
 
 - 至少提供关键词、时间范围、组织者、参与者或会议室中的一个条件；不要把“总结”“回顾”“所有会议”等动作词当作 `--query`。
@@ -38,7 +38,7 @@ lark-cli vc +search --query <query> --start <start> --end <end> --format json
 
 ## 选择查询身份
 
-- `vc +search` 仅支持用户身份。`vc +detail`、`vc +recording`、`vc meeting get` 和 `note +detail` 支持用户或应用身份。
+- `vc +search`、`vc +detail`、`vc +recording`、`vc meeting get` 和 `note +detail` 均支持用户或应用身份。没有既有身份上下文时默认使用用户身份；用户明确要求应用视角或当前链路已经使用应用身份时，使用 `--as bot`。
 - 已有 `meeting_id`、`note_id` 或 `minute_token` 时，沿用其来源身份；后续 Minutes、Note、Doc 和 Drive 命令都显式传入同一个 `--as`。不要为查询参会人或绕过权限错误擅自切换身份。
 - `note +transcript` 仅支持用户身份。应用身份查到 unified Note 时，先说明限制，只有用户明确同意后才切换身份。
 

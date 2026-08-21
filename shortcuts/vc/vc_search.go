@@ -172,10 +172,10 @@ func meetingSearchDescription(item map[string]interface{}) string {
 var VCSearch = common.Shortcut{
 	Service:     "vc",
 	Command:     "+search",
-	Description: "Search meeting records by keyword, time range, participant, organizer, or meeting room (requires at least one filter)",
+	Description: "Search meeting records by keyword, time range, participant, organizer, or meeting room with user or bot identity (requires at least one filter)",
 	Risk:        "read",
 	Scopes:      []string{"vc:meeting.search:read"},
-	AuthTypes:   []string{"user"},
+	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "query", Desc: "search keyword"},
