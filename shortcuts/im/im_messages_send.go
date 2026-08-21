@@ -19,7 +19,7 @@ import (
 var ImMessagesSend = common.Shortcut{
 	Service:     "im",
 	Command:     "+messages-send",
-	Description: "Send a message to a chat or direct message; user/bot; sends to chat-id or user-id with text/markdown/post/media, supports idempotency key",
+	Description: "Send a message to a chat or direct message; user/bot; content inputs cover text, Markdown, structured post JSON, and media (image/file/video/audio); supports idempotency key",
 	Risk:        "write",
 	Scopes:      []string{"im:message:send_as_bot"},
 	UserScopes:  []string{"im:message.send_as_user", "im:message"},
@@ -32,6 +32,8 @@ var ImMessagesSend = common.Shortcut{
 		{Name: "content", Desc: "(one of --content/--text/--markdown/--image/--file/--video/--audio required) message content JSON"},
 		{Name: "text", Desc: "plain text message (auto-wrapped as JSON)"},
 		{Name: "markdown", Desc: "markdown text (auto-wrapped as post format with style optimization; image URLs auto-resolved)"},
+		{Name: "mention", Type: "string_slice", Desc: "user_id or open_id to mention (repeatable or comma-separated; values are sent unchanged)"},
+		{Name: "mention-all", Type: "bool", Desc: "mention all members using a structured at node"},
 		{Name: "idempotency-key", Desc: "idempotency key, max 50 characters (prevents duplicate sends)"},
 		{Name: "image", Desc: "image key (img_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected)"},
 		{Name: "file", Desc: "file key (file_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected)"},
@@ -39,6 +41,10 @@ var ImMessagesSend = common.Shortcut{
 		{Name: "video-cover", Desc: "video cover image key (img_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected); required when using --video"},
 		{Name: "audio", Desc: audioMessageInputDesc},
 	},
+	Tips: []string{
+		messageContentTip,
+	},
+	PostMount: installMessageFlagBehavior,
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		chatFlag := runtime.Str("chat-id")
 		userFlag := runtime.Str("user-id")
@@ -68,14 +74,13 @@ var ImMessagesSend = common.Shortcut{
 			receiveId = userFlag
 		}
 
-		if msgType == "text" || msgType == "post" {
-			content = normalizeAtMentions(content)
-		}
-
-		body := map[string]interface{}{"receive_id": receiveId, "msg_type": msgType, "content": content}
+		extra := map[string]interface{}{"receive_id": receiveId}
 		if idempotencyKey != "" {
-			body["uuid"] = idempotencyKey
+			extra["uuid"] = idempotencyKey
 		}
+		// Validate runs before DryRun in the shortcut pipeline, so request
+		// construction cannot fail here.
+		body, _ := buildMessageRequestBody(runtime, msgType, content, extra)
 
 		d := common.NewDryRunAPI()
 		if desc != "" {
@@ -146,6 +151,17 @@ var ImMessagesSend = common.Shortcut{
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, msg).WithParam("--msg-type")
 		}
 
+		previewType, previewContent := msgType, content
+		if markdown != "" {
+			previewType = "post"
+			previewContent, _ = wrapMarkdownAsPostForDryRun(markdown)
+		} else if mt, c, _ := buildMediaContentFromKey(text, imageKey, fileKey, videoKey, videoCoverKey, audioKey); mt != "" {
+			previewType, previewContent = mt, c
+		}
+		if _, err := buildMessageRequestBody(runtime, previewType, previewContent, nil); err != nil {
+			return err
+		}
+
 		return nil
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -172,7 +188,11 @@ var ImMessagesSend = common.Shortcut{
 		}
 		// Resolve content type
 		if markdown != "" {
-			msgType, content = "post", resolveMarkdownAsPost(ctx, runtime, markdown)
+			post, err := resolveMarkdownAsPost(ctx, runtime, markdown)
+			if err != nil {
+				return err
+			}
+			msgType, content = "post", post
 		} else if mt, c, err := resolveMediaContent(ctx, runtime, text, imageVal, fileVal, videoVal, videoCoverVal, audioVal); err != nil {
 			return err
 		} else if mt != "" {
@@ -186,31 +206,30 @@ var ImMessagesSend = common.Shortcut{
 			receiveId = userFlag
 		}
 
-		normalizedContent := content
-		if msgType == "text" || msgType == "post" {
-			normalizedContent = normalizeAtMentions(content)
-		}
-
-		data := map[string]interface{}{
-			"receive_id": receiveId,
-			"msg_type":   msgType,
-			"content":    normalizedContent,
-		}
+		extra := map[string]interface{}{"receive_id": receiveId}
 		if idempotencyKey != "" {
-			data["uuid"] = idempotencyKey
+			extra["uuid"] = idempotencyKey
+		}
+		data, err := buildMessageRequestBody(runtime, msgType, content, extra)
+		if err != nil {
+			return err
 		}
 
-		resData, err := runtime.DoAPIJSONTyped(http.MethodPost, "/open-apis/im/v1/messages",
+		resData, err := runtime.DoWriteAPIJSONTyped(http.MethodPost, "/open-apis/im/v1/messages",
 			larkcore.QueryParams{"receive_id_type": []string{receiveIdType}}, data)
 		if err != nil {
 			return err
 		}
 
-		runtime.Out(map[string]interface{}{
+		result := map[string]interface{}{
 			"message_id":  resData["message_id"],
 			"chat_id":     resData["chat_id"],
 			"create_time": common.FormatTimeWithSeconds(resData["create_time"]),
-		}, nil)
+		}
+		if err := addMessageMentionResult(runtime, resData, result); err != nil {
+			return err
+		}
+		runtime.Out(result, nil)
 		return nil
 	},
 }

@@ -5,13 +5,10 @@ package common
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
-	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -42,118 +39,70 @@ type PageAccumulator[T any] interface {
 // the wait is context-aware and never occurs before page 1 or after the final
 // page.
 //
-// The returned metadata describes the fetch stage. Callers that apply global
-// filters or enrichment should set Items to the final emitted record count.
+// The returned metadata and neutral status describe the fetch stage. Callers
+// that apply global filters or enrichment should set Items to the final emitted
+// record count. When err is non-nil and status.PagesFetched > 0, dst and status
+// retain the successful prefix so a domain contract can emit an honest partial
+// result instead of discarding it.
 // Keeping the typed-page boundary here also keeps shortcut call sites stable
 // when the transport supplies a response-native decode method.
-func PaginateInto[T any](runtime *RuntimeContext, request PageRequest, dst PageAccumulator[T]) (*output.PaginationMeta, error) {
-	return paginateInto(runtime, request, dst, waitPageDelay)
+func PaginateInto[T any](runtime *RuntimeContext, request PageRequest, dst PageAccumulator[T], policy PageAllPolicy) (*output.PaginationMeta, client.PaginationStatus, error) {
+	return paginateInto(runtime, request, dst, policy, waitPageDelay)
 }
 
-type pageDelayWaiter func(context.Context, time.Duration) error
-
-func paginateInto[T any](runtime *RuntimeContext, request PageRequest, dst PageAccumulator[T], wait pageDelayWaiter) (*output.PaginationMeta, error) {
+func paginateInto[T any](runtime *RuntimeContext, request PageRequest, dst PageAccumulator[T], policy PageAllPolicy, wait pageDelayWaiter) (*output.PaginationMeta, client.PaginationStatus, error) {
 	meta := &output.PaginationMeta{}
-	policy, err := resolvePaginationPolicy(runtime)
+	walkOptions, err := resolvePaginationPolicy(runtime, policy)
 	if err != nil {
-		return meta, err
+		return meta, client.PaginationStatus{}, err
 	}
+	walkOptions.StartPageToken = pageTokenParam(request.Params)
 
-	pageToken := pageTokenParam(request.Params)
-	seen := make(map[string]struct{})
-	if pageToken != "" {
-		seen[pageToken] = struct{}{}
-	}
-
-	// maxPages is always in [1, pageLimitMaximum]. Keeping the bound in the
-	// loop statement makes finite execution a structural invariant, independent
-	// of cursor quality and of any future exit-condition changes below.
-	for pageNumber := 1; pageNumber <= policy.maxPages; pageNumber++ {
+	status, walkErr := walkPages(runtime, walkOptions, func(pageToken string) (map[string]any, error) {
 		params := clonePageParams(request.Params)
 		if pageToken != "" {
 			params["page_token"] = pageToken
 		}
-		if policy.showProgress {
-			fmt.Fprintf(runtime.IO().ErrOut, "[page %d] fetching...\n", pageNumber)
-		}
-
-		data, err := runtime.CallAPITyped(request.Method, request.Path, params, request.Body)
-		if err != nil {
-			meta.NextToken = pageToken
-			return meta, err
-		}
+		return runtime.CallAPITyped(request.Method, request.Path, params, request.Body)
+	}, func(data map[string]any, pageNumber int) error {
 		page, err := decodePageData[T](data, pageNumber)
 		if err != nil {
-			meta.NextToken = pageToken
-			return meta, err
+			return err
 		}
 		if err := dst.AddPage(page); err != nil {
-			meta.NextToken = pageToken
 			if _, ok := errs.ProblemOf(err); ok {
-				return meta, err
+				return err
 			}
-			return meta, errs.NewInternalError(errs.SubtypeUnknown,
+			return errs.NewInternalError(errs.SubtypeUnknown,
 				"accumulate pagination page %d: %v", pageNumber, err).
 				WithCause(err)
 		}
-		meta.Pages++
-
-		hasMore, nextPageToken := PaginationMeta(data)
-		if !hasMore {
-			meta.Complete = true
-			meta.NextToken = ""
-			return meta, nil
-		}
-		if nextPageToken == "" {
-			return meta, invalidPageCursor("response reports more pages but returned no page token")
-		}
-		if _, repeated := seen[nextPageToken]; repeated {
-			return meta, invalidPageCursor("response repeated page token %q, which would paginate forever", nextPageToken)
-		}
-
-		meta.NextToken = nextPageToken
-		if pageNumber == policy.maxPages {
-			return meta, nil
-		}
-
-		seen[nextPageToken] = struct{}{}
-		pageToken = nextPageToken
-		if policy.pageDelay > 0 {
-			ctx := runtime.Ctx()
-			if ctx == nil {
-				ctx = context.Background()
-			}
-			if err := wait(ctx, policy.pageDelay); err != nil {
-				return meta, paginationWaitError(err)
-			}
-		}
+		return nil
+	}, wait)
+	meta.Pages = status.PagesFetched
+	meta.NextToken = status.NextPageToken
+	meta.Complete = status.StopReason == client.StopReasonExhausted ||
+		status.StopReason == client.StopReasonStartPageToken
+	if walkErr != nil {
+		return meta, status, walkErr
 	}
-
-	return meta, errs.NewInternalError(errs.SubtypeUnknown,
-		"pagination exhausted its page budget without producing a terminal result")
-}
-
-type paginationPolicy struct {
-	maxPages     int
-	pageDelay    time.Duration
-	showProgress bool
+	return meta, status, nil
 }
 
 // resolvePaginationPolicy resolves the framework's standard list semantics.
 // Even a one-page call is a pagination run; --page-all only changes its page
 // budget and progress presentation.
-func resolvePaginationPolicy(runtime *RuntimeContext) (paginationPolicy, error) {
-	config, err := pageAllValues(runtime)
+func resolvePaginationPolicy(runtime *RuntimeContext, policy PageAllPolicy) (PageWalkOptions, error) {
+	config, err := pageAllValues(runtime, policy)
 	if err != nil {
-		return paginationPolicy{}, err
+		return PageWalkOptions{}, err
 	}
-	if !config.enabled {
-		return paginationPolicy{maxPages: 1}, nil
-	}
-	return paginationPolicy{
-		maxPages:     config.maxPages,
-		pageDelay:    config.delay,
-		showProgress: paginationProgressEnabled(runtime),
+	return PageWalkOptions{
+		AutoPaginate:   config.enabled,
+		PageLimit:      config.maxPages,
+		AllowUnlimited: policy.AllowUnlimited,
+		PageDelay:      config.delay,
+		ShowProgress:   config.enabled && paginationProgressEnabled(runtime),
 	}, nil
 }
 
@@ -171,33 +120,6 @@ func paginationProgressEnabled(runtime *RuntimeContext) bool {
 	}
 	format, known := output.ParseFormat(runtime.Format)
 	return !known || (format != output.FormatCSV && format != output.FormatNDJSON)
-}
-
-func waitPageDelay(ctx context.Context, delay time.Duration) error {
-	if delay <= 0 {
-		return nil
-	}
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
-}
-
-func paginationWaitError(err error) error {
-	if _, ok := errs.ProblemOf(err); ok {
-		return err
-	}
-	subtype := errs.SubtypeNetworkTransport
-	if errors.Is(err, context.DeadlineExceeded) {
-		subtype = errs.SubtypeNetworkTimeout
-	}
-	return errs.NewNetworkError(subtype,
-		"pagination interrupted while waiting between pages: %v", err).
-		WithCause(err)
 }
 
 // decodePageData isolates the current map-returning RuntimeContext boundary.
@@ -249,9 +171,4 @@ func pageTokenParam(params map[string]interface{}) string {
 		}
 	}
 	return ""
-}
-
-func invalidPageCursor(format string, args ...interface{}) error {
-	return errs.NewInternalError(errs.SubtypeInvalidResponse, format, args...).
-		WithHint("re-run without --page-all, or report the endpoint: its pagination cursor is inconsistent")
 }

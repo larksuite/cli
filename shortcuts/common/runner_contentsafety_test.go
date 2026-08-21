@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -16,6 +18,7 @@ import (
 	extcs "github.com/larksuite/cli/extension/contentsafety"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/imcontract"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -91,6 +94,59 @@ func TestOut_ContentSafetyBlock(t *testing.T) {
 	}
 	if got := output.ExitCodeOf(rctx.outputErr); got != output.ExitContentSafety {
 		t.Fatalf("block mode exit code = %d, want %d", got, output.ExitContentSafety)
+	}
+}
+
+func TestIMContractWriteContentSafetyBlockKeepsAllowlistedCompletion(t *testing.T) {
+	const secret = "SECRET_MARKER"
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "block")
+
+	alert := &extcs.Alert{Provider: "test", MatchedRules: []string{secret}}
+	extcs.Register(&csTestProvider{alert: alert})
+	defer extcs.Register(nil)
+
+	rctx, stdout, stderr := newCSTestContext(t)
+	rctx.Format = "pretty"
+	contract, _ := imcontract.Lookup("im chat.moderation update")
+	rctx.contractSession = imcontract.NewSession(contract)
+	prettyCalled := false
+
+	rctx.OutFormat(map[string]any{"subject": secret}, nil, func(io.Writer) {
+		prettyCalled = true
+	})
+
+	if prettyCalled {
+		t.Fatal("blocked pretty presentation ran after the write completed")
+	}
+	if output.ExitCodeOf(rctx.outputErr) != output.ExitContentSafety {
+		t.Fatalf("output error = %T %v", rctx.outputErr, rctx.outputErr)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+	if bytes.Contains(stdout.Bytes(), []byte(secret)) || strings.Contains(rctx.outputErr.Error(), secret) {
+		t.Fatalf("blocked payload or scanner detail leaked: stdout=%q err=%v", stdout.String(), rctx.outputErr)
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("fallback is not JSON: %v\n%s", err, stdout.String())
+	}
+	if len(env) != 3 || env["ok"] != false {
+		t.Fatalf("fallback = %#v", env)
+	}
+	data, _ := env["data"].(map[string]any)
+	completion, _ := data["completion"].(map[string]any)
+	if len(data) != 1 || completion["status"] != "accepted_unverified" ||
+		completion["final_state_verified"] != false || completion["retry_scope"] != "none" {
+		t.Fatalf("completion = %#v", completion)
+	}
+	problem, _ := env["error"].(map[string]any)
+	if problem["type"] != "policy" || problem["subtype"] != "content_safety" ||
+		problem["message"] != "Output blocked after the IM write completed" {
+		t.Fatalf("error = %#v", problem)
+	}
+	if _, exists := env["presentation"]; exists {
+		t.Fatalf("fallback introduced presentation: %#v", env)
 	}
 }
 

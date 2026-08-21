@@ -46,10 +46,13 @@ type EmitterConfig struct {
 type EmitOptions struct {
 	Raw             bool
 	Meta            *Meta
+	Error           interface{}
+	Hint            string
 	Format          string
 	JQ              string
 	DryRun          bool
 	Pretty          PrettyRenderer
+	HintToStderr    bool
 	JQSafetyWarning bool
 }
 
@@ -102,27 +105,32 @@ func (e *Emitter) Success(data interface{}, opts EmitOptions) error {
 		return err
 	}
 
+	var err error
 	if opts.JQ != "" {
-		return e.emitEnvelope(data, true, opts)
+		err = e.emitEnvelope(data, true, opts)
+	} else if opts.Format == "pretty" {
+		err = e.emitPretty(data, opts)
+	} else {
+		format, known := ParseFormat(opts.Format)
+		if !known {
+			fmt.Fprintf(e.errOut, "warning: unknown format %q, falling back to json\n", opts.Format)
+			err = e.emitEnvelope(data, true, opts)
+		} else {
+			switch format {
+			case FormatJSON:
+				err = e.emitEnvelope(data, true, opts)
+			case FormatTable, FormatCSV, FormatNDJSON:
+				err = e.emitFormatted(data, format, opts.Meta)
+			default:
+				err = errs.NewInternalError(errs.SubtypeUnknown,
+					"unsupported output format %q", format)
+			}
+		}
 	}
-	if opts.Format == "pretty" {
-		return e.emitPretty(data, opts)
+	if err != nil {
+		return err
 	}
-
-	format, known := ParseFormat(opts.Format)
-	if !known {
-		fmt.Fprintf(e.errOut, "warning: unknown format %q, falling back to json\n", opts.Format)
-		return e.emitEnvelope(data, true, opts)
-	}
-	switch format {
-	case FormatJSON:
-		return e.emitEnvelope(data, true, opts)
-	case FormatTable, FormatCSV, FormatNDJSON:
-		return e.emitFormatted(data, format, opts.Meta)
-	default:
-		return errs.NewInternalError(errs.SubtypeUnknown,
-			"unsupported output format %q", format)
-	}
+	return e.emitHint(opts)
 }
 
 // PartialFailure emits a multi-status result whose envelope honestly reports
@@ -135,7 +143,10 @@ func (e *Emitter) PartialFailure(data interface{}, opts EmitOptions) error {
 	if err := e.requireOutput(); err != nil {
 		return err
 	}
-	return e.emitEnvelope(data, false, opts)
+	if err := e.emitEnvelope(data, false, opts); err != nil {
+		return err
+	}
+	return e.emitHint(opts)
 }
 
 // StreamPage scans and emits one page while retaining table/csv columns from
@@ -188,6 +199,25 @@ func (e *Emitter) StreamPage(data interface{}, opts StreamOptions) error {
 	})
 }
 
+// Hint writes recovery guidance to stderr through the same command-scoped
+// output owner used for result emission.
+func (e *Emitter) Hint(hint string) error {
+	return e.emitHint(EmitOptions{Hint: hint, HintToStderr: true})
+}
+
+// RedactedFallback atomically emits an already allowlisted fallback envelope.
+// It deliberately skips safety scanning and jq: callers use it only after
+// presentation failed, and must construct the envelope from fixed public
+// fields rather than from the blocked payload.
+func (e *Emitter) RedactedFallback(env Envelope) error {
+	if err := e.requireOutput(); err != nil {
+		return err
+	}
+	return e.emit(func(w io.Writer) error {
+		return WriteJSON(w, env)
+	})
+}
+
 func (e *Emitter) emitEnvelope(data interface{}, ok bool, opts EmitOptions) error {
 	scanResult := ScanForSafety(e.commandPath, data, e.errOut)
 	if scanResult.Blocked {
@@ -200,6 +230,8 @@ func (e *Emitter) emitEnvelope(data interface{}, ok bool, opts EmitOptions) erro
 		DryRun:   opts.DryRun,
 		Data:     data,
 		Meta:     opts.Meta,
+		Error:    opts.Error,
+		Hint:     opts.Hint,
 		Notice:   e.notice(),
 	}
 	if scanResult.Alert != nil {
@@ -340,6 +372,16 @@ func (e *Emitter) emit(render func(io.Writer) error) error {
 
 func wrapOutputError(op string, err error) error {
 	return errs.NewInternalError(errs.SubtypeUnknown, "failed to %s command output", op).WithCause(err)
+}
+
+func (e *Emitter) emitHint(opts EmitOptions) error {
+	if !opts.HintToStderr || opts.Hint == "" {
+		return nil
+	}
+	if _, err := fmt.Fprintf(e.errOut, "hint: %s\n", opts.Hint); err != nil {
+		return wrapOutputError("write", err)
+	}
+	return nil
 }
 
 func (e *Emitter) notice() map[string]interface{} {

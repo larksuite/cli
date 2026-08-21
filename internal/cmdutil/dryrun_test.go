@@ -14,6 +14,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/output"
 )
 
 func TestDryRunAPI_SingleGET(t *testing.T) {
@@ -190,6 +191,33 @@ func TestPrintDryRun_JSON(t *testing.T) {
 	call, ok := api[0].(map[string]interface{})
 	if !ok || call["url"] != "/open-apis/test" {
 		t.Fatalf("api[0] = %#v", api[0])
+	}
+}
+
+func TestPrintDryRun_JSONUsesCommandScopedNoticeProvider(t *testing.T) {
+	var buf bytes.Buffer
+	err := PrintDryRun(client.RawApiRequest{
+		Method: "POST",
+		URL:    "/open-apis/test",
+		As:     "bot",
+	}, &core.CliConfig{AppID: "app123"}, DryRunOutputOptions{
+		Format:   "json",
+		Identity: core.AsBot,
+		Out:      &buf,
+		ErrOut:   io.Discard,
+		NoticeProvider: func() map[string]interface{} {
+			return map[string]interface{}{"identity_defaulted": map[string]interface{}{"resolved": "bot"}}
+		},
+	})
+	if err != nil {
+		t.Fatalf("PrintDryRun failed: %v", err)
+	}
+	var env output.Envelope
+	if err := json.Unmarshal(buf.Bytes(), &env); err != nil {
+		t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, buf.String())
+	}
+	if got := env.Notice["identity_defaulted"].(map[string]interface{})["resolved"]; got != "bot" {
+		t.Fatalf("identity_defaulted.resolved = %#v", got)
 	}
 }
 

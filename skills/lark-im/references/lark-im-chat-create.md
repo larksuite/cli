@@ -1,8 +1,10 @@
 # im +chat-create
 
-> **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
+> **Prerequisite:** Before executing this command, ensure [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) has been read once in the current task for authentication, global parameters, and safety rules. Do not reread it if already loaded.
 
 Create a group chat. Supports both user identity (`--as user`) and bot identity (`--as bot`). You can specify the group name, description, members (users/bots), owner, chat type (private/public), and group mode. Set `--chat-mode topic` to create a topic chat.
+
+Every create call requires a caller-owned `--idempotency-key` (max 50 characters). Follow the caller-owned idempotency-key protocol in [`lark-shared`](../../lark-shared/SKILL.md#调用方持有的幂等键), then copy the generated literal into `<generated_uuid>` below. For this command, reuse it for the same logical chat creation for up to 10 hours; a new logical chat must use a new key.
 
 This skill maps to the shortcut: `lark-cli im +chat-create` (internally calls `POST /open-apis/im/v1/chats`).
 
@@ -13,40 +15,40 @@ This skill maps to the shortcut: `lark-cli im +chat-create` (internally calls `P
 
 ```bash
 # Create a private group (default)
-lark-cli im +chat-create --name "My Group"
+lark-cli im +chat-create --name "My Group" --idempotency-key <generated_uuid>
 
 # Create a public group (name is required and must be at least 2 characters)
-lark-cli im +chat-create --name "Public Group" --type public
+lark-cli im +chat-create --name "Public Group" --type public --idempotency-key <generated_uuid>
 
 # Create a topic chat
-lark-cli im +chat-create --name "Topic Group" --chat-mode topic
+lark-cli im +chat-create --name "Topic Group" --chat-mode topic --idempotency-key <generated_uuid>
 
 # Specify the group owner
-lark-cli im +chat-create --name "My Group" --owner ou_xxx
+lark-cli im +chat-create --name "My Group" --owner ou_xxx --idempotency-key <generated_uuid>
 
 # Invite user members (comma-separated open_ids, up to 50)
-lark-cli im +chat-create --name "My Group" --users "ou_aaa,ou_bbb"
+lark-cli im +chat-create --name "My Group" --users "ou_aaa,ou_bbb" --idempotency-key <generated_uuid>
 
 # Invite bot members (comma-separated app IDs, up to 5)
-lark-cli im +chat-create --name "My Group" --bots "cli_aaa,cli_bbb"
+lark-cli im +chat-create --name "My Group" --bots "cli_aaa,cli_bbb" --idempotency-key <generated_uuid>
 
 # Invite both users and bots
-lark-cli im +chat-create --name "My Group" --users "ou_aaa" --bots "cli_aaa"
+lark-cli im +chat-create --name "My Group" --users "ou_aaa" --bots "cli_aaa" --idempotency-key <generated_uuid>
 
 # Make the creating bot a group manager (bot identity only)
-lark-cli im +chat-create --name "My Group" --set-bot-manager --as bot
+lark-cli im +chat-create --name "My Group" --set-bot-manager --idempotency-key <generated_uuid> --as bot
 
 # JSON output
-lark-cli im +chat-create --name "My Group" --format json
+lark-cli im +chat-create --name "My Group" --idempotency-key <generated_uuid> --format json
 
 # Create a group with bot identity
-lark-cli im +chat-create --name "My Group" --users "ou_aaa" --as bot
+lark-cli im +chat-create --name "My Group" --users "ou_aaa" --idempotency-key <generated_uuid> --as bot
 
 # Create a group with user identity
-lark-cli im +chat-create --name "My Group" --users "ou_aaa,ou_bbb" --as user
+lark-cli im +chat-create --name "My Group" --users "ou_aaa,ou_bbb" --idempotency-key <generated_uuid> --as user
 
 # Preview the request without creating anything
-lark-cli im +chat-create --name "My Group" --dry-run
+lark-cli im +chat-create --name "My Group" --idempotency-key <generated_uuid> --dry-run
 ```
 
 ## Parameters
@@ -61,6 +63,7 @@ lark-cli im +chat-create --name "My Group" --dry-run
 | `--type <type>` | No | `private` (default) or `public` | Group type. Default to `private`; pass `public` only when the user explicitly asks for a discoverable/public group. |
 | `--chat-mode <mode>` | No | `group` (default) or `topic` | Group mode; `topic` creates a topic chat (not the same as `group_message_type=thread`). When the user asks for a topic chat, pass `topic` explicitly — do not rely on the default. |
 | `--set-bot-manager` | No | - | Set the creating bot as a group manager (only effective with `--as bot`) |
+| `--idempotency-key <key>` | Yes | Max 50 characters | Caller-owned stable key. Generate a UUID with a library or tool, pass its literal value, and reuse that literal for retries of the same logical creation within 10 hours. |
 | `--format json` | No | - | Output as JSON |
 | `--as <identity>` | No | `bot` or `user` | Identity type |
 | `--dry-run` | No | - | Preview the request without executing it |
@@ -78,6 +81,7 @@ Bot may fail to invite users who are mutually invisible to it during group creat
 
    ```bash
    lark-cli im +chat-create --name "<group name>" \
+     --idempotency-key <generated_uuid> \
      --users "<current user open_id>" --as bot
    ```
 
@@ -101,7 +105,7 @@ Bot may fail to invite users who are mutually invisible to it during group creat
 User identity does not have the bot visibility limitation, so you can create the group and invite members in one step:
 
 ```bash
-lark-cli im +chat-create --name "<group name>" --users "ou_aaa,ou_bbb" --as user
+lark-cli im +chat-create --name "<group name>" --users "ou_aaa,ou_bbb" --idempotency-key <generated_uuid> --as user
 ```
 
 The authorized user is automatically the group creator and member.
@@ -122,13 +126,14 @@ The authorized user is automatically the group creator and member.
 ### Scenario 1: Create a group and specify the owner
 
 ```bash
-lark-cli im +chat-create --name "Project Discussion Group" --owner ou_xxx
+lark-cli im +chat-create --name "Project Discussion Group" --owner ou_xxx --idempotency-key <generated_uuid>
 ```
 
 ### Scenario 2: Create a group and invite users and a bot
 
 ```bash
 lark-cli im +chat-create --name "Project Discussion Group" \
+  --idempotency-key <generated_uuid> \
   --owner ou_xxx \
   --users "ou_aaa,ou_bbb" \
   --bots "cli_aaa"
@@ -137,8 +142,8 @@ lark-cli im +chat-create --name "Project Discussion Group" \
 ### Scenario 3: Create a group and send a welcome message
 
 ```bash
-CHAT_ID=$(lark-cli im +chat-create --name "New Group" --format json | jq -r '.data.chat_id')
-lark-cli im +messages-send --chat-id "$CHAT_ID" --text "Welcome, everyone!"
+CHAT_ID=$(lark-cli im +chat-create --name "New Group" --idempotency-key <generated_uuid> --format json | jq -r '.data.chat_id')
+lark-cli im +messages-send --chat-id "$CHAT_ID" --text "Welcome, everyone!" --as bot
 ```
 
 ## Common Errors and Troubleshooting
@@ -149,6 +154,7 @@ lark-cli im +messages-send --chat-id "$CHAT_ID" --text "Welcome, everyone!"
 | `--name is required for public groups and must be at least 2 characters` | A public group was created without a name or with a name shorter than 2 characters | Provide a name with at least 2 characters |
 | `--name exceeds the maximum of 60 characters` | The group name is too long | Shorten the name to 60 characters or fewer |
 | `--description exceeds the maximum of 100 characters` | The group description is too long | Shorten the description to 100 characters or fewer |
+| `--idempotency-key is required` | The caller did not supply replay protection | Generate one UUID with a library or tool, pass its literal value, and reuse it unchanged for retries of this same logical creation |
 | `--users exceeds the maximum of 50` | Too many user members were provided | Split the operation into batches and add more members later |
 | `--bots exceeds the maximum of 5` | Too many bot members were provided | Invite at most 5 bots at once |
 | `invalid user id: expected open_id (ou_xxx)` | Invalid user ID format | Use the `ou_xxx` format for users |

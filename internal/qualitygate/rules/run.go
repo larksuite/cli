@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	imcatalog "github.com/larksuite/cli/internal/imcontract/catalog"
 	qdiff "github.com/larksuite/cli/internal/qualitygate/diff"
 	manifestexamples "github.com/larksuite/cli/internal/qualitygate/examples"
 	"github.com/larksuite/cli/internal/qualitygate/facts"
@@ -43,6 +44,7 @@ func Run(ctx context.Context, opts Options) ([]report.Diagnostic, facts.Facts, e
 	if err := validateCommandIndexCoversManifest(m, commandIndex); err != nil {
 		return nil, facts.Facts{}, err
 	}
+	imContractDiags := CheckIMContractCoverage(commandIndex, imcatalog.All())
 	changed, err := qdiff.ChangedFiles(ctx, opts.Repo, opts.ChangedFrom)
 	if err != nil {
 		return nil, facts.Facts{}, err
@@ -110,6 +112,7 @@ func Run(ctx context.Context, opts Options) ([]report.Diagnostic, facts.Facts, e
 	}
 	diags = append(diags, publicContentDiagnostics(publicContent)...)
 	diags = filterPRDiagnostics(opts.Repo, opts.ChangedFrom, scope, m, diags)
+	diags = append(diags, imContractDiags...)
 
 	builtFacts := facts.BuildWithCommandLookup(m, commandIndex, skillFacts, skillQualityFacts, errorFacts, exampleFacts, outputFacts, diags, scope.Files)
 	return diags, facts.WithPublicContent(builtFacts, publicContentFacts(publicContent)), nil
@@ -212,6 +215,10 @@ func filterPRDiagnostics(repo, changedFrom string, scope qdiff.Scope, m manifest
 	commandScope := diagnosticCommandScopeFromFiles(scope.Files)
 	var out []report.Diagnostic
 	for _, diag := range diags {
+		if diag.Rule == imContractCoverageRule {
+			out = append(out, diag)
+			continue
+		}
 		if prDiagnosticRelevant(repo, scope.Files, commandScope, m, diag) {
 			out = append(out, diag)
 		}

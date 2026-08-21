@@ -5,6 +5,7 @@ package im
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -469,5 +470,89 @@ func TestFetchMuteStatus_Empty(t *testing.T) {
 	}
 	if len(muted) != 0 || len(unknown) != 0 {
 		t.Fatalf("expected empty results, got muted=%v unknown=%v", muted, unknown)
+	}
+}
+
+func TestFetchMuteStatusBatchesUsesDynamicBatchCount(t *testing.T) {
+	tests := []int{
+		MaxMuteStatusBatchSize - 1,
+		MaxMuteStatusBatchSize,
+		MaxMuteStatusBatchSize + 1,
+		2*MaxMuteStatusBatchSize + 1,
+		4*MaxMuteStatusBatchSize + 1,
+	}
+	for _, count := range tests {
+		t.Run(fmt.Sprintf("count_%d", count), func(t *testing.T) {
+			ids := make([]string, count)
+			for i := range ids {
+				ids[i] = fmt.Sprintf("oc_%d", i)
+			}
+			calls := 0
+			muted, unknown, err := fetchMuteStatusBatches(ids, func(batch []string) (map[string]bool, []string, error) {
+				calls++
+				if len(batch) == 0 || len(batch) > MaxMuteStatusBatchSize {
+					t.Fatalf("batch size = %d", len(batch))
+				}
+				out := make(map[string]bool, len(batch))
+				for _, id := range batch {
+					out[id] = false
+				}
+				return out, nil, nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantCalls := (count + MaxMuteStatusBatchSize - 1) / MaxMuteStatusBatchSize
+			if calls != wantCalls {
+				t.Fatalf("calls = %d, want %d", calls, wantCalls)
+			}
+			if len(muted) != count || len(unknown) != 0 {
+				t.Fatalf("merged result = %d/%d, want %d/0", len(muted), len(unknown), count)
+			}
+		})
+	}
+}
+
+func TestFetchMuteStatusBatchesDeduplicatesAndPreservesUnknownOrder(t *testing.T) {
+	input := []string{"oc_a", "oc_b", "oc_a", "", "oc_c", "oc_b"}
+	var gotBatch []string
+	muted, unknown, err := fetchMuteStatusBatches(input, func(batch []string) (map[string]bool, []string, error) {
+		gotBatch = append(gotBatch, batch...)
+		return map[string]bool{"oc_a": true}, []string{"oc_b", "oc_c"}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(gotBatch, []string{"oc_a", "oc_b", "oc_c"}) {
+		t.Fatalf("batch = %#v", gotBatch)
+	}
+	if !reflect.DeepEqual(muted, map[string]bool{"oc_a": true}) ||
+		!reflect.DeepEqual(unknown, []string{"oc_b", "oc_c"}) {
+		t.Fatalf("result = %#v/%#v", muted, unknown)
+	}
+}
+
+func TestFetchMuteStatusBatchesFailsClosedOnAnyBatchError(t *testing.T) {
+	ids := make([]string, 2*MaxMuteStatusBatchSize+1)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("oc_%d", i)
+	}
+	wantErr := errors.New("middle batch failed")
+	calls := 0
+	muted, unknown, err := fetchMuteStatusBatches(ids, func(batch []string) (map[string]bool, []string, error) {
+		calls++
+		if calls == 2 {
+			return nil, nil, wantErr
+		}
+		return map[string]bool{batch[0]: false}, nil, nil
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("error = %v, want %v", err, wantErr)
+	}
+	if muted != nil || unknown != nil {
+		t.Fatalf("partial result escaped: %#v/%#v", muted, unknown)
+	}
+	if calls != 2 {
+		t.Fatalf("calls = %d, want stop at failing batch", calls)
 	}
 }

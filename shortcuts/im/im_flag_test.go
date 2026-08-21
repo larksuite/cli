@@ -17,6 +17,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/imcontract"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -264,6 +265,20 @@ func newFlagScopeTestCmd(t *testing.T) *cobra.Command {
 	cmd.Flags().String("message-id", "", "")
 	cmd.Flags().String("item-type", "", "")
 	cmd.Flags().String("flag-type", "", "")
+	if err := cmd.ParseFlags(nil); err != nil {
+		t.Fatalf("ParseFlags() error = %v", err)
+	}
+	return cmd
+}
+
+func newFlagListTestCmd(t *testing.T) *cobra.Command {
+	t.Helper()
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().Int("page-size", 50, "")
+	cmd.Flags().String("page-token", "", "")
+	cmd.Flags().Bool("enrich-feed-thread", false, "")
+	cmd.Flags().Bool("page-all", false, "")
+	cmd.Flags().Int("page-limit", imReadDefaultPageLimit, "")
 	if err := cmd.ParseFlags(nil); err != nil {
 		t.Fatalf("ParseFlags() error = %v", err)
 	}
@@ -538,6 +553,155 @@ func TestFlagShortcutStaticScopesIncludeLookupRequirements(t *testing.T) {
 	}
 }
 
+func TestImFlagListFormatsPreserveBothBucketsAndReadContract(t *testing.T) {
+	tests := []struct {
+		name       string
+		format     string
+		jq         string
+		wantOutput []string
+	}{
+		{
+			name:       "pretty",
+			format:     "pretty",
+			wantOutput: []string{"om_active", "om_deleted", "1 active bookmark(s), 1 deleted bookmark(s)"},
+		},
+		{
+			name:       "table",
+			format:     "table",
+			wantOutput: []string{"list_state", "om_active", "om_deleted", "active", "deleted"},
+		},
+		{
+			name:       "csv",
+			format:     "csv",
+			wantOutput: []string{"list_state", "om_active", "om_deleted", "active", "deleted"},
+		},
+		{
+			name:       "ndjson",
+			format:     "ndjson",
+			wantOutput: []string{`"item_id":"om_active"`, `"item_id":"om_deleted"`, `"list_state":"active"`, `"list_state":"deleted"`},
+		},
+		{
+			name:       "jq",
+			format:     "json",
+			jq:         ".data.flag_items[0].item_id",
+			wantOutput: []string{"om_active"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rt := newUserShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if !strings.Contains(req.URL.Path, "/open-apis/im/v1/flags") {
+					return nil, fmt.Errorf("unexpected request: %s", req.URL.Path)
+				}
+				return shortcutJSONResponse(200, map[string]any{
+					"code": 0,
+					"data": map[string]any{
+						"flag_items": []any{
+							map[string]any{"item_id": "om_active", "item_type": "0", "flag_type": "2"},
+						},
+						"delete_flag_items": []any{
+							map[string]any{"item_id": "om_deleted", "item_type": "0", "flag_type": "2"},
+						},
+						"messages":   []any{},
+						"has_more":   true,
+						"page_token": "next",
+					},
+				}), nil
+			}))
+			cmd := newFlagListTestCmd(t)
+			setRuntimeField(t, rt, "Cmd", cmd)
+			rt.Format = tt.format
+			rt.JqExpr = tt.jq
+			contract, ok := imcontract.Lookup("im +flag-list")
+			if !ok {
+				t.Fatal("read contract not found")
+			}
+			session, err := imcontract.NewReadSession(contract, imcontract.ReadOptions{})
+			if err != nil {
+				t.Fatalf("NewReadSession() error = %v", err)
+			}
+			setRuntimeField(t, rt, "readSession", session)
+
+			if err := ImFlagList.Execute(context.Background(), rt); err != nil {
+				t.Fatalf("Execute() error = %v", err)
+			}
+			out := rt.Factory.IOStreams.Out.(*bytes.Buffer).String()
+			for _, want := range tt.wantOutput {
+				if !strings.Contains(out, want) {
+					t.Fatalf("stdout = %q, want %q", out, want)
+				}
+			}
+			errOut := rt.Factory.IOStreams.ErrOut.(*bytes.Buffer).String()
+			if !strings.Contains(errOut, "hint: Result is incomplete.") {
+				t.Fatalf("stderr = %q, want incomplete-read hint", errOut)
+			}
+		})
+	}
+}
+
+func TestImFlagListJSONIncludesCompletenessEnvelopeAndBothBuckets(t *testing.T) {
+	rt := newUserShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return shortcutJSONResponse(200, map[string]any{
+			"code": 0,
+			"data": map[string]any{
+				"flag_items":        []any{map[string]any{"item_id": "om_active"}},
+				"delete_flag_items": []any{map[string]any{"item_id": "om_deleted"}},
+				"messages":          []any{},
+				"has_more":          true,
+				"page_token":        "next",
+			},
+		}), nil
+	}))
+	cmd := newFlagListTestCmd(t)
+	setRuntimeField(t, rt, "Cmd", cmd)
+	rt.Format = "json"
+	contract, ok := imcontract.Lookup("im +flag-list")
+	if !ok {
+		t.Fatal("read contract not found")
+	}
+	session, err := imcontract.NewReadSession(contract, imcontract.ReadOptions{})
+	if err != nil {
+		t.Fatalf("NewReadSession() error = %v", err)
+	}
+	setRuntimeField(t, rt, "readSession", session)
+
+	if err := ImFlagList.Execute(context.Background(), rt); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	var envelope struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Active  []map[string]any `json:"flag_items"`
+			Deleted []map[string]any `json:"delete_flag_items"`
+		} `json:"data"`
+		Meta   *output.Meta           `json:"meta"`
+		Hint   string                 `json:"hint"`
+		Notice map[string]interface{} `json:"_notice"`
+	}
+	out := rt.Factory.IOStreams.Out.(*bytes.Buffer).Bytes()
+	if err := json.Unmarshal(out, &envelope); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, out)
+	}
+	if !envelope.OK || len(envelope.Data.Active) != 1 || len(envelope.Data.Deleted) != 1 ||
+		envelope.Data.Active[0]["item_id"] != "om_active" ||
+		envelope.Data.Deleted[0]["item_id"] != "om_deleted" {
+		t.Fatalf("envelope data = %#v, ok = %v", envelope.Data, envelope.OK)
+	}
+	readNotice, _ := envelope.Notice["im_read"].(map[string]interface{})
+	if envelope.Meta == nil || envelope.Meta.Pagination == nil || envelope.Meta.Pagination.Complete ||
+		envelope.Meta.Pagination.Pages != 1 || envelope.Meta.Pagination.NextToken != "next" ||
+		readNotice["stop_reason"] != "single_page" {
+		t.Fatalf("meta = %#v, want incomplete single_page", envelope.Meta)
+	}
+	if !strings.Contains(envelope.Hint, "Result is incomplete.") {
+		t.Fatalf("hint = %q, want incomplete-read hint", envelope.Hint)
+	}
+	if errOut := rt.Factory.IOStreams.ErrOut.(*bytes.Buffer).String(); errOut != "" {
+		t.Fatalf("stderr = %q, want JSON hint in envelope only", errOut)
+	}
+}
+
 func TestFlagCreateExplicitFeedTypeDoesNotRequireLookupScopes(t *testing.T) {
 	var calls int
 	rt := newUserShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -583,6 +747,68 @@ func TestFlagCreateAutoDetectReliesOnDeclaredLookupScopes(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("buildCreateItem() made %d lookup call(s), want 1", calls)
+	}
+}
+
+func TestFlagCreateFeedPreflightFailurePreservesRecoveryHint(t *testing.T) {
+	rt := newUserShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if !strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_123") {
+			t.Fatalf("unexpected request: %s", req.URL.Path)
+		}
+		return nil, errors.New("message lookup unavailable")
+	}))
+	cmd := newFlagScopeTestCmd(t)
+	setFlag(t, cmd, "message-id", "om_123")
+	setFlag(t, cmd, "flag-type", "feed")
+	setRuntimeField(t, rt, "Cmd", cmd)
+	contract, _ := imcontract.Lookup("im +flag-create")
+	session := imcontract.NewSession(contract)
+	setRuntimeField(t, rt, "contractSession", session)
+
+	err := ImFlagCreate.Execute(context.Background(), rt)
+	if err == nil {
+		t.Fatal("preflight failure was swallowed")
+	}
+	err = session.FinalizeError(err)
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error = %T %v, want typed problem", err, err)
+	}
+	if !strings.Contains(problem.Hint, "specify --item-type explicitly") ||
+		strings.Contains(problem.Hint, "write result is unknown") ||
+		strings.Contains(strings.ToLower(problem.Hint), "replay") {
+		t.Fatalf("preflight hint was rewritten: %#v", problem)
+	}
+}
+
+func TestFlagCreateTargetWriteFailureUsesReplayForbidden(t *testing.T) {
+	rt := newUserShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.Method != http.MethodPost || req.URL.Path != "/open-apis/im/v1/flags" {
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.Path)
+		}
+		return nil, errors.New("flag write unavailable")
+	}))
+	cmd := newFlagScopeTestCmd(t)
+	setFlag(t, cmd, "message-id", "om_123")
+	setFlag(t, cmd, "flag-type", "feed")
+	setFlag(t, cmd, "item-type", "msg_thread")
+	setRuntimeField(t, rt, "Cmd", cmd)
+	contract, _ := imcontract.Lookup("im +flag-create")
+	session := imcontract.NewSession(contract)
+	setRuntimeField(t, rt, "contractSession", session)
+
+	err := ImFlagCreate.Execute(context.Background(), rt)
+	if err == nil {
+		t.Fatal("target write failure was swallowed")
+	}
+	err = session.FinalizeError(err)
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error = %T %v, want typed problem", err, err)
+	}
+	if problem.Retryable ||
+		problem.Hint != "The write result is unknown. Do not replay the original request." {
+		t.Fatalf("target write problem = %#v", problem)
 	}
 }
 
@@ -940,7 +1166,7 @@ func TestListQuery(t *testing.T) {
 	}
 }
 
-func TestFlagListRejectsInvalidPageLimit(t *testing.T) {
+func TestFlagListAcceptsUnlimitedPageLimit(t *testing.T) {
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().Int("page-size", 50, "")
 	cmd.Flags().String("page-token", "", "")
@@ -954,16 +1180,13 @@ func TestFlagListRejectsInvalidPageLimit(t *testing.T) {
 	}
 	runtime := &common.RuntimeContext{Cmd: cmd}
 
-	if err := ImFlagList.Validate(context.Background(), runtime); err == nil {
-		t.Fatalf("Validate() expected page-limit error, got nil")
+	if err := ImFlagList.Validate(context.Background(), runtime); err != nil {
+		t.Fatalf("Validate() error = %v, want --page-limit 0 to mean unlimited", err)
 	}
 
 	got := ImFlagList.DryRun(context.Background(), runtime).Format()
-	if !strings.Contains(got, "--page-limit") {
-		t.Fatalf("DryRun output = %q, want page-limit validation error", got)
-	}
-	if strings.Contains(got, "/open-apis/im/v1/flags") {
-		t.Fatalf("DryRun output = %q, should not include request for invalid input", got)
+	if !strings.Contains(got, "/open-apis/im/v1/flags") {
+		t.Fatalf("DryRun output = %q, want request preview for valid unlimited input", got)
 	}
 }
 
@@ -1333,6 +1556,8 @@ func TestFlagCancelExecuteSummarizesPartialFailure(t *testing.T) {
 	cmd := newFlagScopeTestCmd(t)
 	setFlag(t, cmd, "message-id", "om_123")
 	setRuntimeField(t, rt, "Cmd", cmd)
+	contract, _ := imcontract.Lookup("im +flag-cancel")
+	setRuntimeField(t, rt, "contractSession", imcontract.NewSession(contract))
 
 	err := ImFlagCancel.Execute(context.Background(), rt)
 	if err == nil {
@@ -1351,9 +1576,11 @@ func TestFlagCancelExecuteSummarizesPartialFailure(t *testing.T) {
 	}
 
 	var envelope struct {
-		OK   bool `json:"ok"`
+		OK   bool   `json:"ok"`
+		Hint string `json:"hint"`
 		Data struct {
-			Results []map[string]any `json:"results"`
+			Results    []map[string]any      `json:"results"`
+			Completion imcontract.Completion `json:"completion"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal([]byte(out), &envelope); err != nil {
@@ -1365,8 +1592,59 @@ func TestFlagCancelExecuteSummarizesPartialFailure(t *testing.T) {
 	if envelope.OK {
 		t.Fatalf("stdout ok = true, want false for partial failure")
 	}
+	if envelope.Data.Completion.RetryScope != "whole_request" ||
+		envelope.Data.Completion.FailedCount != 1 ||
+		envelope.Hint != "" {
+		t.Fatalf("completion = %#v, hint = %q", envelope.Data.Completion, envelope.Hint)
+	}
 	if errOut := rt.Factory.IOStreams.ErrOut.(*bytes.Buffer).String(); errOut != "" {
 		t.Fatalf("stderr = %q, want empty for partial failure result envelope", errOut)
+	}
+}
+
+func TestFlagCancelExecuteSkippedFeedLayerProducesPendingLedger(t *testing.T) {
+	rt := newUserShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_pending"):
+			return nil, fmt.Errorf("message lookup unavailable")
+		case strings.Contains(req.URL.Path, "/open-apis/im/v1/flags/cancel"):
+			return shortcutJSONResponse(200, map[string]any{
+				"code": 0,
+				"data": map[string]any{"request_id": "message-ok"},
+			}), nil
+		default:
+			return nil, fmt.Errorf("unexpected request: %s", req.URL.Path)
+		}
+	}))
+	cmd := newFlagScopeTestCmd(t)
+	setFlag(t, cmd, "message-id", "om_pending")
+	setRuntimeField(t, rt, "Cmd", cmd)
+	contract, _ := imcontract.Lookup("im +flag-cancel")
+	setRuntimeField(t, rt, "contractSession", imcontract.NewSession(contract))
+
+	if err := ImFlagCancel.Execute(context.Background(), rt); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	var envelope struct {
+		OK   bool   `json:"ok"`
+		Hint string `json:"hint"`
+		Data struct {
+			Completion imcontract.Completion `json:"completion"`
+		} `json:"data"`
+	}
+	out := rt.Factory.IOStreams.Out.(*bytes.Buffer).Bytes()
+	if err := json.Unmarshal(out, &envelope); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, out)
+	}
+	if envelope.OK || envelope.Data.Completion.PendingCount != 1 ||
+		len(envelope.Data.Completion.PendingItems) != 1 ||
+		envelope.Data.Completion.PendingItems[0] != "feed" ||
+		envelope.Data.Completion.RetryScope != "none" ||
+		envelope.Hint != "" {
+		t.Fatalf("pending completion = %#v", envelope.Data.Completion)
+	}
+	if errOut := rt.Factory.IOStreams.ErrOut.(*bytes.Buffer).String(); errOut != "" {
+		t.Fatalf("stderr = %q, want empty", errOut)
 	}
 }
 
@@ -1523,13 +1801,20 @@ func TestExecuteListAllPages(t *testing.T) {
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().Int("page-size", 50, "")
 	cmd.Flags().Int("page-limit", 10, "")
+	cmd.Flags().Bool("page-all", true, "")
 	cmd.Flags().Bool("enrich-feed-thread", false, "")
 	if err := cmd.ParseFlags(nil); err != nil {
 		t.Fatalf("ParseFlags() error = %v", err)
 	}
 	setRuntimeField(t, rt, "Cmd", cmd)
+	contract, _ := imcontract.Lookup("im +flag-list")
+	session, err := imcontract.NewReadSession(contract, imcontract.ReadOptions{FullRead: true})
+	if err != nil {
+		t.Fatalf("NewReadSession() error = %v", err)
+	}
+	setRuntimeField(t, rt, "readSession", session)
 
-	err := executeListAllPages(rt)
+	err = executeListAllPages(rt)
 	if err != nil {
 		t.Fatalf("executeListAllPages() error = %v", err)
 	}
@@ -1570,6 +1855,7 @@ func TestExecuteListAllPages_ContinuesFromPageToken(t *testing.T) {
 	cmd.Flags().Int("page-size", 50, "")
 	cmd.Flags().String("page-token", "", "")
 	cmd.Flags().Int("page-limit", 10, "")
+	cmd.Flags().Bool("page-all", true, "")
 	cmd.Flags().Bool("enrich-feed-thread", false, "")
 	if err := cmd.ParseFlags([]string{"--page-token", "resume"}); err != nil {
 		t.Fatalf("ParseFlags() error = %v", err)
@@ -1623,6 +1909,7 @@ func TestExecuteListAllPages_EnrichFeedThread(t *testing.T) {
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().Int("page-size", 50, "")
 	cmd.Flags().Int("page-limit", 10, "")
+	cmd.Flags().Bool("page-all", true, "")
 	cmd.Flags().Bool("enrich-feed-thread", true, "")
 	if err := cmd.ParseFlags(nil); err != nil {
 		t.Fatalf("ParseFlags() error = %v", err)
@@ -1657,13 +1944,20 @@ func TestExecuteListAllPages_PageLimit(t *testing.T) {
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().Int("page-size", 50, "")
 	cmd.Flags().Int("page-limit", 3, "") // limit to 3 pages
+	cmd.Flags().Bool("page-all", true, "")
 	cmd.Flags().Bool("enrich-feed-thread", false, "")
 	if err := cmd.ParseFlags(nil); err != nil {
 		t.Fatalf("ParseFlags() error = %v", err)
 	}
 	setRuntimeField(t, rt, "Cmd", cmd)
+	contract, _ := imcontract.Lookup("im +flag-list")
+	session, err := imcontract.NewReadSession(contract, imcontract.ReadOptions{FullRead: true})
+	if err != nil {
+		t.Fatalf("NewReadSession() error = %v", err)
+	}
+	setRuntimeField(t, rt, "readSession", session)
 
-	err := executeListAllPages(rt)
+	err = executeListAllPages(rt)
 	if err != nil {
 		t.Fatalf("executeListAllPages() error = %v", err)
 	}
@@ -1671,14 +1965,8 @@ func TestExecuteListAllPages_PageLimit(t *testing.T) {
 	if callCount != 3 {
 		t.Fatalf("expected 3 API calls (page limit), got %d", callCount)
 	}
-	stderr := rt.IO().ErrOut.(*bytes.Buffer).String()
-	for _, want := range []string{"reached page limit (3)", "has_more=true", "result is incomplete", "up to 1000", "page_token returned in stdout"} {
-		if !strings.Contains(stderr, want) {
-			t.Fatalf("stderr = %q, want %q", stderr, want)
-		}
-	}
-	if strings.Contains(stderr, "token_3") {
-		t.Fatalf("stderr must not expose the continuation token, got %q", stderr)
+	if stderr := rt.IO().ErrOut.(*bytes.Buffer).String(); stderr != "" {
+		t.Fatalf("stderr = %q, want structured recovery guidance in stdout", stderr)
 	}
 
 	var envelope map[string]any
@@ -1694,6 +1982,13 @@ func TestExecuteListAllPages_PageLimit(t *testing.T) {
 	}
 	if _, exists := data["truncated"]; exists {
 		t.Fatalf("output schema must remain unchanged; unexpected truncated field in %#v", data)
+	}
+	pagination, readNotice := requireIMReadEnvelopeMeta(t, envelope)
+	if pagination["complete"] != false || readNotice["stop_reason"] != "page_limit" {
+		t.Fatalf("envelope = %#v, want incomplete page-limit result", envelope)
+	}
+	if hint, _ := envelope["hint"].(string); !strings.Contains(hint, "--page-limit 0") {
+		t.Fatalf("hint = %q, want exhaustive-read recovery", hint)
 	}
 }
 
@@ -1719,24 +2014,35 @@ func TestExecuteListAllPages_RepeatedTokenDoesNotReportPageLimit(t *testing.T) {
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().Int("page-size", 50, "")
 	cmd.Flags().Int("page-limit", 10, "")
+	cmd.Flags().Bool("page-all", true, "")
 	cmd.Flags().Bool("enrich-feed-thread", false, "")
 	if err := cmd.ParseFlags(nil); err != nil {
 		t.Fatalf("ParseFlags() error = %v", err)
 	}
 	setRuntimeField(t, rt, "Cmd", cmd)
+	contract, _ := imcontract.Lookup("im +flag-list")
+	session, err := imcontract.NewReadSession(contract, imcontract.ReadOptions{FullRead: true})
+	if err != nil {
+		t.Fatalf("NewReadSession() error = %v", err)
+	}
+	setRuntimeField(t, rt, "readSession", session)
 
-	if err := executeListAllPages(rt); err != nil {
+	if err = executeListAllPages(rt); err != nil {
 		t.Fatalf("executeListAllPages() error = %v", err)
 	}
 	if callCount != 2 {
 		t.Fatalf("API calls = %d, want 2 before repeated-token stop", callCount)
 	}
-	stderr := rt.IO().ErrOut.(*bytes.Buffer).String()
-	if !strings.Contains(stderr, "page_token did not change") {
-		t.Fatalf("stderr = %q, want non-advancing token warning", stderr)
+	if stderr := rt.IO().ErrOut.(*bytes.Buffer).String(); stderr != "" {
+		t.Fatalf("stderr = %q, want structured repeated-token result in stdout", stderr)
 	}
-	if strings.Contains(stderr, "reached page limit") {
-		t.Fatalf("stderr = %q, repeated token must not be reported as a page-limit stop", stderr)
+	var envelope map[string]any
+	if err := json.Unmarshal(rt.IO().Out.(*bytes.Buffer).Bytes(), &envelope); err != nil {
+		t.Fatalf("decode stdout: %v", err)
+	}
+	pagination, readNotice := requireIMReadEnvelopeMeta(t, envelope)
+	if envelope["ok"] != false || pagination["complete"] != false || readNotice["stop_reason"] != "repeated_token" {
+		t.Fatalf("envelope = %#v, want attributed incomplete read", envelope)
 	}
 }
 
@@ -1748,6 +2054,7 @@ func TestExecuteListAllPages_APIError(t *testing.T) {
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().Int("page-size", 50, "")
 	cmd.Flags().Int("page-limit", 10, "")
+	cmd.Flags().Bool("page-all", true, "")
 	cmd.Flags().Bool("enrich-feed-thread", false, "")
 	if err := cmd.ParseFlags(nil); err != nil {
 		t.Fatalf("ParseFlags() error = %v", err)

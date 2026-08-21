@@ -11,7 +11,9 @@ import (
 	"strings"
 	"testing"
 
+	imcatalog "github.com/larksuite/cli/internal/imcontract/catalog"
 	"github.com/larksuite/cli/internal/qualitygate/manifest"
+	"github.com/larksuite/cli/internal/qualitygate/rules"
 )
 
 func TestManifestExportWritesManifestAndCommandIndex(t *testing.T) {
@@ -43,6 +45,16 @@ func TestManifestExportWritesManifestAndCommandIndex(t *testing.T) {
 	}
 	if !hasServiceCommand(idx) {
 		t.Fatal("command-index should include service commands")
+	}
+}
+
+func TestExportedCommandIndexMatchesIMContractCatalog(t *testing.T) {
+	index, err := collectCommandIndex(context.Background())
+	if err != nil {
+		t.Fatalf("collectCommandIndex() error = %v", err)
+	}
+	if diags := rules.CheckIMContractCoverage(index, imcatalog.All()); len(diags) != 0 {
+		t.Fatalf("exported IM contract diagnostics = %#v", diags)
 	}
 }
 

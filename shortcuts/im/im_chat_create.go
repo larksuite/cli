@@ -39,10 +39,14 @@ var ImChatCreate = common.Shortcut{
 		{Name: "type", Default: "private", Desc: "chat type", Enum: []string{"private", "public"}},
 		{Name: "chat-mode", Default: "group", Desc: "group mode (\"topic\" creates a topic chat; differs from a normal group in topic-message mode)", Enum: []string{"group", "topic"}},
 		{Name: "set-bot-manager", Type: "bool", Desc: "set the bot that creates this chat as manager (bot identity only)"},
+		{Name: "idempotency-key", Desc: "caller-owned key for safely retrying the same chat creation within 10 hours (max 50 chars)"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		body := buildCreateChatBody(runtime)
-		params := map[string]interface{}{"user_id_type": "open_id"}
+		params := map[string]interface{}{
+			"user_id_type": "open_id",
+			"uuid":         runtime.Str("idempotency-key"),
+		}
 		if runtime.Bool("set-bot-manager") && runtime.IsBot() {
 			params["set_bot_manager"] = true
 		}
@@ -52,6 +56,16 @@ var ImChatCreate = common.Shortcut{
 			Body(body)
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		idempotencyKey := runtime.Str("idempotency-key")
+		if strings.TrimSpace(idempotencyKey) == "" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--idempotency-key is required for idempotent retries that prevent duplicate groups").
+				WithParam("--idempotency-key").
+				WithHint("Generate one UUID with a library or tool (max 50 chars), then pass its literal value; reuse it with unchanged parameters for retries within 10 hours.")
+		}
+		if err := validateIdempotencyKey(idempotencyKey); err != nil {
+			return err
+		}
+
 		if runtime.Bool("set-bot-manager") && !runtime.IsBot() {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--set-bot-manager is only supported with bot identity (--as bot)").WithParam("--set-bot-manager")
 		}
@@ -109,11 +123,14 @@ var ImChatCreate = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		body := buildCreateChatBody(runtime)
 
-		qp := larkcore.QueryParams{"user_id_type": []string{"open_id"}}
+		qp := larkcore.QueryParams{
+			"user_id_type": []string{"open_id"},
+			"uuid":         []string{runtime.Str("idempotency-key")},
+		}
 		if runtime.Bool("set-bot-manager") {
 			qp["set_bot_manager"] = []string{"true"}
 		}
-		resData, err := runtime.DoAPIJSONTyped(http.MethodPost, "/open-apis/im/v1/chats", qp, body)
+		resData, err := runtime.DoWriteAPIJSONTyped(http.MethodPost, "/open-apis/im/v1/chats", qp, body)
 		if err != nil {
 			return err
 		}

@@ -13,9 +13,10 @@ import (
 
 // PaginationOptions contains pagination control options.
 type PaginationOptions struct {
-	PageLimit int           // max pages to fetch; 0 = unlimited (default: 10)
-	PageDelay int           // ms, default 200
-	Identity  core.Identity // identity passed to checkErr; defaults to AsUser when empty
+	PageLimit          int           // max pages to fetch; 0 = unlimited (default: 10)
+	PageDelay          int           // ms, default 200
+	Identity           core.Identity // identity passed to checkErr; defaults to AsUser when empty
+	NormalizeHTTPError func(status int, logID string, err error) error
 }
 
 func mergePagedResults(w io.Writer, results []interface{}) interface{} {

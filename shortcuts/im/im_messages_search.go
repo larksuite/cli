@@ -11,6 +11,8 @@ import (
 	"strconv"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/client"
+	"github.com/larksuite/cli/internal/imcontract"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
@@ -49,7 +51,7 @@ var ImMessagesSearch = common.Shortcut{
 		{Name: "page-size", Aliases: []string{"limit"}, Type: "int", Default: fmt.Sprintf("%d", messagesSearchDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", messagesSearchMaxPageSize)},
 		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate search results"},
-		{Name: "page-limit", Type: "int", Default: "20", Desc: "max search pages when auto-pagination is enabled (default 20, max 40)"},
+		{Name: "page-limit", Type: "int", Default: "20", Desc: "max search pages when auto-pagination is enabled (default 20, max 40; 0 = unlimited)"},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -97,7 +99,10 @@ var ImMessagesSearch = common.Shortcut{
 			return err
 		}
 
+		materialization := newMaterializationLedger(rawItems)
+		messageIds := materialization.requestedIDs()
 		if len(rawItems) == 0 {
+			runtime.RecordMaterialization(materialization.status())
 			outData := map[string]interface{}{
 				"messages":   []interface{}{},
 				"total":      0,
@@ -113,39 +118,9 @@ var ImMessagesSearch = common.Shortcut{
 			return nil
 		}
 
-		messageIds := make([]string, 0, len(rawItems))
-		for _, item := range rawItems {
-			if itemMap, ok := item.(map[string]interface{}); ok {
-				if metaData, ok := itemMap["meta_data"].(map[string]interface{}); ok {
-					if id, ok := metaData["message_id"].(string); ok && id != "" {
-						messageIds = append(messageIds, id)
-					}
-				}
-			}
-		}
-
 		// ── Step 2: Batch fetch message details (mget) ──
-		msgItems, err := batchMGetMessages(runtime, messageIds)
-		if err != nil {
-			// Fallback when mget fails: return ID list only
-			outData := map[string]interface{}{
-				"message_ids": messageIds,
-				"total":       len(messageIds),
-				"has_more":    hasMore,
-				"page_token":  nextPageToken,
-				"note":        "failed to fetch message details, returning ID list only",
-			}
-			if notice != "" {
-				outData["notice"] = notice
-			}
-			runtime.OutFormat(outData, nil, func(w io.Writer) {
-				fmt.Fprintf(w, "Found %d messages (failed to fetch details):\n", len(messageIds))
-				for _, id := range messageIds {
-					fmt.Fprintln(w, " ", id)
-				}
-			})
-			return nil
-		}
+		msgItems, materializationStatus := batchMGetMessages(runtime, materialization)
+		runtime.RecordMaterialization(materializationStatus)
 
 		// ── Step 3: Batch fetch chat info ──
 		chatIds := make([]string, 0, len(msgItems))
@@ -208,10 +183,11 @@ var ImMessagesSearch = common.Shortcut{
 		}
 
 		outData := map[string]interface{}{
-			"messages":   enriched,
-			"total":      len(enriched),
-			"has_more":   hasMore,
-			"page_token": nextPageToken,
+			"message_ids": messageIds,
+			"messages":    enriched,
+			"total":       len(enriched),
+			"has_more":    hasMore,
+			"page_token":  nextPageToken,
 		}
 		if notice != "" {
 			outData["notice"] = notice
@@ -278,8 +254,8 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 
 	if runtime.Cmd != nil && runtime.Cmd.Flags().Changed("page-limit") {
 		pageLimit := runtime.Int("page-limit")
-		if pageLimit < 1 || pageLimit > messagesSearchMaxPageLimit {
-			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-limit must be an integer between 1 and 40").WithParam("--page-limit")
+		if pageLimit < 0 || pageLimit > messagesSearchMaxPageLimit {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-limit must be between 0 and 40 (0 = unlimited)").WithParam("--page-limit")
 		}
 	}
 
@@ -386,15 +362,11 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 
 // messagesSearchPaginationConfig derives auto-pagination mode and page limit.
 func messagesSearchPaginationConfig(runtime *common.RuntimeContext) (autoPaginate bool, pageLimit int) {
-	autoPaginate = runtime.Bool("page-all")
-	if runtime.Cmd != nil && runtime.Cmd.Flags().Changed("page-limit") {
-		autoPaginate = true
-	}
-
-	pageLimit = messagesSearchDefaultPageLimit
-	if runtime.Cmd != nil && runtime.Cmd.Flags().Changed("page-limit") {
-		pageLimit = min(runtime.Int("page-limit"), messagesSearchMaxPageLimit)
-	} else if runtime.Bool("page-all") {
+	pageAll := runtime.Bool("page-all")
+	limitChanged := runtime.Cmd != nil && runtime.Cmd.Flags().Changed("page-limit")
+	autoPaginate = pageAll || limitChanged
+	pageLimit = runtime.Int("page-limit")
+	if pageAll && !limitChanged {
 		pageLimit = messagesSearchMaxPageLimit
 	}
 	return autoPaginate, pageLimit
@@ -403,72 +375,48 @@ func messagesSearchPaginationConfig(runtime *common.RuntimeContext) (autoPaginat
 // searchMessages fetches message search pages and returns the first server notice.
 func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) ([]interface{}, bool, string, bool, int, string, error) {
 	autoPaginate, pageLimit := messagesSearchPaginationConfig(runtime)
-	pageToken := ""
-	if tokens := req.params["page_token"]; len(tokens) > 0 {
-		pageToken = tokens[0]
-	}
-
-	pageSize := strconv.Itoa(messagesSearchDefaultPageSize)
-	if sizes := req.params["page_size"]; len(sizes) > 0 {
-		pageSize = sizes[0]
-	}
-
-	var (
-		allItems         []interface{}
-		lastHasMore      bool
-		lastPageToken    string
-		truncatedByLimit bool
-		pageCount        int
-		notice           string
-	)
-
-	for {
-		pageCount++
-		params := larkcore.QueryParams{
-			"page_size": []string{pageSize},
-		}
+	pages, status, pageErr := collectIMPages(runtime, autoPaginate, func(pageToken string) (map[string]any, error) {
+		params := cloneQueryParams(req.params)
 		if pageToken != "" {
 			params["page_token"] = []string{pageToken}
+		} else {
+			delete(params, "page_token")
 		}
-
-		searchData, err := runtime.DoAPIJSONTyped(http.MethodPost, "/open-apis/im/v1/messages/search", params, req.body)
-		if err != nil {
-			return nil, false, "", false, pageLimit, "", err
-		}
-
-		if notice == "" {
-			notice, _ = searchData["notice"].(string)
-		}
-		items, _ := searchData["items"].([]interface{})
-		allItems = append(allItems, items...)
-		lastHasMore, lastPageToken = common.PaginationMeta(searchData)
-
-		if !autoPaginate || !lastHasMore || lastPageToken == "" {
-			break
-		}
-		if pageCount >= pageLimit {
-			truncatedByLimit = true
-			break
-		}
-
-		pageToken = lastPageToken
+		return runtime.DoAPIJSONTyped(http.MethodPost, "/open-apis/im/v1/messages/search", params, req.body)
+	})
+	if len(pages) == 0 {
+		return nil, false, "", false, pageLimit, "", pageErr
 	}
+	runtime.RecordPagination(status)
+	merged := mergeIMPageArrays(pages, "items")
+	allItems, _ := merged["items"].([]interface{})
+	notice, _ := merged["notice"].(string)
 
-	return allItems, lastHasMore, lastPageToken, truncatedByLimit, pageLimit, notice, nil
+	return allItems,
+		status.HasMore,
+		status.NextPageToken,
+		status.StopReason == client.StopReasonPageLimit,
+		pageLimit,
+		notice,
+		nil
 }
 
 // batchMGetMessages fetches message details in API-sized batches.
-func batchMGetMessages(runtime *common.RuntimeContext, messageIds []string) ([]interface{}, error) {
+func batchMGetMessages(
+	runtime *common.RuntimeContext,
+	ledger *materializationLedger,
+) ([]interface{}, imcontract.MaterializationStatus) {
 	var items []interface{}
-	for _, batch := range chunkStrings(messageIds, messagesSearchMGetBatchSize) {
+	for _, batch := range chunkStrings(ledger.requestedIDs(), messagesSearchMGetBatchSize) {
 		mgetData, err := runtime.DoAPIJSONTyped(http.MethodGet, buildMGetURL(batch), nil, nil)
 		if err != nil {
-			return nil, err
+			ledger.recordCause(err)
+			break
 		}
 		batchItems, _ := mgetData["items"].([]interface{})
-		items = append(items, batchItems...)
+		items = append(items, reconcileMessageMaterialization(ledger, batch, batchItems)...)
 	}
-	return items, nil
+	return items, ledger.status()
 }
 
 // batchQueryChatContexts fetches chat metadata best-effort for message rows.

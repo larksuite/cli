@@ -228,41 +228,25 @@ func TestFeedGroupListDryRunValidationError(t *testing.T) {
 	}
 }
 
-// TestFeedGroupListPageAllStopsOnRepeatedToken locks the infinite-loop guard:
-// when the server keeps returning the same page_token with has_more=true,
-// pagination must stop after the repeat and warn on stderr. Also exercises the
-// defensive page-limit clamping (Execute is called directly, bypassing Validate).
+// TestFeedGroupListPageAllStopsOnRepeatedToken locks the infinite-loop guard
+// even when the caller requests an unlimited page budget.
 func TestFeedGroupListPageAllStopsOnRepeatedToken(t *testing.T) {
-	for _, tc := range []struct {
-		name      string
-		pageLimit string
-	}{
-		{"limit clamped up from 0", "0"},
-		{"limit clamped down from 1001", "1001"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			var reqs []recordedFGRequest
-			runtime := newFGRuntime(t, ImFeedGroupList, map[string]string{
-				"page-all": "true", "page-limit": tc.pageLimit, "start-time": "100", "end-time": "200",
-			}, &reqs, func(_ string, _ int) (int, interface{}) {
-				return 200, wrapData(map[string]interface{}{
-					"groups":         []interface{}{fgGroup("g1")},
-					"deleted_groups": []interface{}{},
-					"page_token":     "SAME", "has_more": true,
-				})
-			})
-			runtime.Format = "pretty" // exercise the page-all table-render path too
-			if err := ImFeedGroupList.Execute(context.Background(), runtime); err != nil {
-				t.Fatalf("Execute: %v", err)
-			}
-			if got := countFGRequests(reqs, "/groups"); got != 2 {
-				t.Errorf("expected 2 requests (stop on repeated token), got %d", got)
-			}
-			errOut, _ := runtime.Factory.IOStreams.ErrOut.(*bytes.Buffer)
-			if !strings.Contains(errOut.String(), "page_token did not change") {
-				t.Errorf("stderr missing loop warning; got:\n%s", errOut.String())
-			}
+	var reqs []recordedFGRequest
+	runtime := newFGRuntime(t, ImFeedGroupList, map[string]string{
+		"page-all": "true", "page-limit": "0", "start-time": "100", "end-time": "200",
+	}, &reqs, func(_ string, _ int) (int, interface{}) {
+		return 200, wrapData(map[string]interface{}{
+			"groups":         []interface{}{fgGroup("g1")},
+			"deleted_groups": []interface{}{},
+			"page_token":     "SAME", "has_more": true,
 		})
+	})
+	runtime.Format = "pretty" // exercise the page-all table-render path too
+	if err := ImFeedGroupList.Execute(context.Background(), runtime); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if got := countFGRequests(reqs, "/groups"); got != 2 {
+		t.Errorf("expected 2 requests (stop on repeated token), got %d", got)
 	}
 }
 

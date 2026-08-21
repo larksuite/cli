@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/internal/imcontract"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -39,7 +41,7 @@ func newMessagesSearchRuntime(t *testing.T, stringFlags map[string]string, boolF
 	}
 	cmd.Flags().Int("page-size", 20, "")
 	cmd.Flags().Int("page-limit", 20, "")
-	boolFlagNames := []string{"page-all"}
+	boolFlagNames := []string{"page-all", "no-reactions"}
 	for _, name := range boolFlagNames {
 		cmd.Flags().Bool(name, false, "")
 	}
@@ -159,13 +161,86 @@ func TestImMessagesSearchExecuteAutoPaginationBatches(t *testing.T) {
 	}
 }
 
-func TestImMessagesSearchExecuteExplicitPageLimitWithoutPageAll(t *testing.T) {
+func TestImMessagesSearchExplicitPageLimitAutoPaginatesAndReportsLimit(t *testing.T) {
+	var pageTokens []string
+	runtime := newMessagesSearchRuntime(t, map[string]string{
+		"query":      "incident",
+		"page-limit": "2",
+	}, nil, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if !strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/search") {
+			return nil, fmt.Errorf("unexpected request: %s", req.URL.Path)
+		}
+		token := req.URL.Query().Get("page_token")
+		pageTokens = append(pageTokens, token)
+		switch token {
+		case "":
+			return shortcutJSONResponse(200, map[string]any{
+				"code": 0,
+				"data": map[string]any{
+					"items":      []any{},
+					"has_more":   true,
+					"page_token": "tok_p2",
+				},
+			}), nil
+		case "tok_p2":
+			return shortcutJSONResponse(200, map[string]any{
+				"code": 0,
+				"data": map[string]any{
+					"items":      []any{},
+					"has_more":   true,
+					"page_token": "tok_p3",
+				},
+			}), nil
+		default:
+			return nil, fmt.Errorf("unexpected page token: %q", token)
+		}
+	}))
+	runtime.Format = "json"
+	contract, ok := imcontract.Lookup("im +messages-search")
+	if !ok {
+		t.Fatal("read contract not found")
+	}
+	session, err := imcontract.NewReadSession(contract, imcontract.ReadOptions{FullRead: true})
+	if err != nil {
+		t.Fatalf("NewReadSession() error = %v", err)
+	}
+	setRuntimeField(t, runtime, "readSession", session)
+
+	if err := ImMessagesSearch.Execute(context.Background(), runtime); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if !reflect.DeepEqual(pageTokens, []string{"", "tok_p2"}) {
+		t.Fatalf("page tokens = %#v, want explicit --page-limit to fetch two pages", pageTokens)
+	}
+	var envelope struct {
+		OK     bool                   `json:"ok"`
+		Meta   *output.Meta           `json:"meta"`
+		Hint   string                 `json:"hint"`
+		Notice map[string]interface{} `json:"_notice"`
+	}
+	out := runtime.Factory.IOStreams.Out.(*bytes.Buffer).Bytes()
+	if err := json.Unmarshal(out, &envelope); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, out)
+	}
+	readNotice, _ := envelope.Notice["im_read"].(map[string]interface{})
+	if !envelope.OK || envelope.Meta == nil || envelope.Meta.Pagination == nil ||
+		envelope.Meta.Pagination.Complete || envelope.Meta.Pagination.Pages != 2 ||
+		envelope.Meta.Pagination.NextToken != "tok_p3" || readNotice["stop_reason"] != "page_limit" {
+		t.Fatalf("envelope = %#v, want incomplete page_limit result", envelope)
+	}
+	const wantHint = "Result is incomplete because --page-limit was reached. Use --page-limit 0 only when exhaustive output is required."
+	if envelope.Hint != wantHint {
+		t.Fatalf("hint = %q, want %q", envelope.Hint, wantHint)
+	}
+}
+
+func TestImMessagesSearchExecutePageAllWithExplicitLimit(t *testing.T) {
 	var searchCalls int
 
 	runtime := newMessagesSearchRuntime(t, map[string]string{
 		"query":      "incident",
 		"page-limit": "2",
-	}, nil, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+	}, map[string]bool{"page-all": true}, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
 		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/search"):
 			searchCalls++

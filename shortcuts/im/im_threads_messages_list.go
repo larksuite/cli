@@ -40,7 +40,7 @@ var ImThreadsMessagesList = common.Shortcut{
 		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
 		downloadResourcesFlag,
-	}, common.PageAllFlags()...),
+	}, common.PageAllFlags(imPageAllPolicy)...),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		threadFlag := runtime.Str("thread")
 		dir := runtime.Str("order")
@@ -88,7 +88,7 @@ var ImThreadsMessagesList = common.Shortcut{
 		if _, err := common.ValidatePageSizeTyped(runtime, "page-size", threadsMessagesListDefaultPageSize, 1, threadsMessagesListMaxPageSize); err != nil {
 			return err
 		}
-		return common.ValidatePageAllFlags(runtime)
+		return common.ValidatePageAllFlags(runtime, imPageAllPolicy)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		pageSize, err := common.ValidatePageSizeTyped(runtime, "page-size", threadsMessagesListDefaultPageSize, 1, threadsMessagesListMaxPageSize)
@@ -108,14 +108,15 @@ var ImThreadsMessagesList = common.Shortcut{
 		// Fetch: one page and all pages share the common paginator; the
 		// thread command owns only its request and the shared IM page shape.
 		result := &imMapListResult{}
-		pagination, err := common.PaginateInto(runtime, common.PageRequest{
+		pagination, paginationStatus, pageErr := common.PaginateInto(runtime, common.PageRequest{
 			Method: http.MethodGet,
 			Path:   imMessagesListPath,
 			Params: messageListPageParams(params),
-		}, result)
-		if err != nil {
-			return err
+		}, result, imPageAllPolicy)
+		if pageErr != nil && paginationStatus.PagesFetched == 0 {
+			return pageErr
 		}
+		runtime.RecordPagination(paginationStatus)
 		rawItems := result.interfaceItems()
 		hasMore := result.hasMore
 		nextPageToken := result.pageToken

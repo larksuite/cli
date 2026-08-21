@@ -820,8 +820,8 @@ func installTipsHelpFunc(
 			}
 		}
 		// Domain and method commands compose their agent guidance into Long lazily
-		// here (shortcuts attach after service registration); both skip the generic
-		// bottom-of-help append below.
+		// here and own their complete layout. Shortcuts compose only affordance and
+		// contract guidance; Risk/Tips still use the common tail below.
 		var refs *skillref.Resolver
 		if skillReferences != nil {
 			refs = skillReferences()
@@ -839,22 +839,27 @@ func installTipsHelpFunc(
 		}
 		if service.PrepareShortcutHelpWithReferences(cmd, content, refs) {
 			defaultHelp(cmd, args)
+			appendRiskTipsHelp(cmd)
 			return
 		}
 		defaultHelp(cmd, args)
-		out := cmd.OutOrStdout()
-		if level, ok := cmdutil.GetRisk(cmd); ok {
-			fmt.Fprintln(out)
-			fmt.Fprintln(out, "Risk:", level)
-		}
-		tips := cmdutil.GetTips(cmd)
-		if len(tips) == 0 {
-			return
-		}
-		fmt.Fprintln(out)
-		fmt.Fprintln(out, "Tips:")
-		for _, tip := range tips {
-			fmt.Fprintf(out, "    • %s\n", tip)
-		}
+		appendRiskTipsHelp(cmd)
 	})
+}
+
+func appendRiskTipsHelp(cmd *cobra.Command) {
+	out := cmd.OutOrStdout()
+	if level, ok := cmdutil.GetRisk(cmd); ok {
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, cmdutil.RiskHelpText(level))
+	}
+	tips := cmdutil.GetTips(cmd)
+	if len(tips) == 0 {
+		return
+	}
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Tips:")
+	for _, tip := range tips {
+		fmt.Fprintf(out, "    • %s\n", tip)
+	}
 }

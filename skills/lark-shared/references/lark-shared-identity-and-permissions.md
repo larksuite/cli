@@ -33,6 +33,17 @@ LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1 LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1 lark-cli a
 
 输出的 `[identity: bot/user]` 代表当前身份。bot 与 user 表现差异很大，需确认身份符合目标需求：
 
+### 身份决策协议
+
+- **显式 actor**：用户明确指定 user 或 bot 时，actor 是业务意图的一部分，必须原样保留。
+- **命令硬约束**：leaf command 的 `AuthTypes` 和 flag-specific 身份限制必须满足。若与显式 actor 冲突，停止并说明，禁止静默换身份。
+- **当前 authority**：当写权限取决于现有 sender、owner、admin 或 member 状态时，必须先读取对应的当前服务端状态。若显式 actor 不具备权限，在写请求前停止；禁止换 actor，也禁止先试写。
+- **读取身份连续性**：连续发现步骤保持同一读取身份。可见资源不证明 owner、admin 或 sender 权限，discovery identity 不能自动成为 write actor。
+- **未指定 actor**：先应用 command 和 current authority 的硬约束；若 user/bot 仍都可用，省略 `--as`，让配置的 `default-as` 或 CLI 自动探测解析身份，不要从示例里补一个身份。
+- **禁止猜测切换**：示例、已有凭据、空结果和权限错误都不能授权切换身份。
+
+### 身份差异
+
 - **Bot 看不到用户资源**：无法访问用户的日历、云空间（云盘/云存储）文档、邮箱等个人资源。例如 `--as bot` 查日程返回 bot 自己的（空）日历
 - **Bot 无法代表用户操作**：发消息以应用名义发送，创建文档归属 bot
 - **Bot 权限**：只需在飞书开发者后台开通 scope，无需 `auth login`

@@ -65,7 +65,7 @@ var ImChatUpdate = common.Shortcut{
 		chatID := runtime.Str("chat-id")
 		body := buildUpdateChatBody(runtime)
 
-		_, err := runtime.DoAPIJSONTyped(http.MethodPut,
+		_, err := runtime.DoWriteAPIJSONTyped(http.MethodPut,
 			fmt.Sprintf("/open-apis/im/v1/chats/%s", validate.EncodePathSegment(chatID)),
 			larkcore.QueryParams{"user_id_type": []string{"open_id"}},
 			body,

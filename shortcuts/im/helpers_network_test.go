@@ -26,6 +26,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/imcontract"
 	internaltransport "github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -134,6 +135,78 @@ func newUserShortcutRuntime(t *testing.T, rt http.RoundTripper) *common.RuntimeC
 	runtime := newBotShortcutRuntime(t, rt)
 	setRuntimeField(t, runtime, "resolvedAs", core.AsUser)
 	return runtime
+}
+
+func TestMediaHelperMarksSendAndReplyPreuploadAsNonReplayable(t *testing.T) {
+	tmp := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmp, "image.png"), []byte("image-bytes"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cmdutil.TestChdir(t, tmp)
+
+	for _, key := range []imcontract.ContractKey{"im +messages-send", "im +messages-reply"} {
+		t.Run(string(key), func(t *testing.T) {
+			runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if strings.Contains(req.URL.Path, "/open-apis/im/v1/images") {
+					return shortcutJSONResponse(200, map[string]any{
+						"code": 0,
+						"data": map[string]any{"image_key": "img_uploaded"},
+					}), nil
+				}
+				return nil, fmt.Errorf("unexpected request: %s", req.URL.Path)
+			}))
+			contract, _ := imcontract.Lookup(key)
+			session := imcontract.NewSession(contract)
+			setRuntimeField(t, runtime, "contractSession", session)
+
+			got, err := resolveOneMedia(context.Background(), runtime, mediaSpec{
+				value: "image.png", flagName: "--image", mediaType: "image",
+				msgType: "image", kind: mediaKindImage, maxSize: maxImageUploadSize, resultKey: "image_key",
+			})
+			if err != nil || got != "img_uploaded" {
+				t.Fatalf("resolveOneMedia() = (%q, %v)", got, err)
+			}
+			session.ObserveRequest(map[string]any{"uuid": "stable-key"})
+			session.RecordFact(imcontract.Fact{Kind: imcontract.FactWriteAttempted})
+			unknown := errs.NewNetworkError(errs.SubtypeNetworkTransport, "send result unknown").WithRetryable()
+			problem, _ := errs.ProblemOf(session.FinalizeError(unknown))
+			if problem.Retryable ||
+				problem.Hint != "The write result is unknown. Do not replay the original request." {
+				t.Fatalf("problem = %#v", problem)
+			}
+		})
+	}
+}
+
+func TestIMContractJSON5xxUsesHTTPStatusForReplayPolicy(t *testing.T) {
+	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return shortcutJSONResponse(http.StatusServiceUnavailable, map[string]any{
+			"code": 123456,
+			"msg":  "unclassified business error",
+		}), nil
+	}))
+	contract, _ := imcontract.Lookup("im +messages-send")
+	session := imcontract.NewSession(contract)
+	setRuntimeField(t, runtime, "contractSession", session)
+
+	_, err := runtime.DoWriteAPIJSONTyped(
+		http.MethodPost,
+		"/open-apis/im/v1/messages",
+		nil,
+		map[string]any{"uuid": "stable-key"},
+	)
+	if err == nil {
+		t.Fatal("expected HTTP 503 error")
+	}
+	got := session.FinalizeError(err)
+	problem, ok := errs.ProblemOf(got)
+	if !ok || problem.Category != errs.CategoryNetwork ||
+		problem.Subtype != errs.SubtypeNetworkServer ||
+		problem.Code != http.StatusServiceUnavailable ||
+		!problem.Retryable ||
+		problem.Hint != "The write result is unknown. Retry only with the same idempotency key." {
+		t.Fatalf("problem = %#v, err=%T %v", problem, got, got)
+	}
 }
 
 func TestResolveP2PChatID(t *testing.T) {

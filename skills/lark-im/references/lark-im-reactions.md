@@ -1,6 +1,6 @@
 # im reactions
 
-> **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
+> **Prerequisite:** Before executing this command, ensure [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) has been read once in the current task for authentication, global parameters, and safety rules. Do not reread it if already loaded.
 
 > **Heads-up — don't reach for `batch_query` by default.** The four message-pulling shortcuts (`+messages-mget`, `+chat-messages-list`, `+messages-search`, `+threads-messages-list`) already call `im.reactions.batch_query` automatically and attach the result as a `reactions` block on each message (replies inside `thread_replies` included). Use those shortcuts for any "read reactions of messages I'm already pulling" task. Reach for the raw `batch_query` API only when you have a standalone `message_id` outside that pull flow. See the main [message enrichment](lark-im-message-enrichment.md) for the contract.
 
@@ -176,6 +176,8 @@ The response shape is similar to `create`, and usually echoes:
 ## batch_query
 
 Query reactions for multiple messages in one request.
+
+`batch_query` covers only the reaction fragments returned for each query. When complete reactions for one message are required, use `im reactions list` and exhaust its pagination instead of treating an empty or partial batch fragment as complete.
 
 ```bash
 lark-cli im reactions batch_query \

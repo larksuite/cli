@@ -72,12 +72,34 @@ func TestChatMembersTipsMovedToAffordance(t *testing.T) {
 		t.Fatal("+chat-members-list affordance did not parse")
 	}
 	want := []string{
+		dualIdentityTip,
 		"Default fetches a single page; pass --page-all to walk every page.",
 		"With --page-all and no explicit --page-size, the max page size is used to minimize round-trips.",
 		"truncations[] in the result means the server capped a bucket due to security config — the member list is incomplete.",
 	}
 	if strings.Join(parsed.Tips, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("migrated tips = %v, want %v", parsed.Tips, want)
+	}
+}
+
+func TestChatCreateAffordanceUsesRequiredIdempotencyKey(t *testing.T) {
+	affordance.SetSource(os.DirFS("../../affordance"))
+	t.Cleanup(func() { affordance.SetSource(nil) })
+
+	raw, ok := affordance.For("im", "+chat-create")
+	if !ok {
+		t.Fatal("missing +chat-create affordance")
+	}
+	parsed, ok := (meta.Method{Affordance: raw}).ParsedAffordance()
+	if !ok || len(parsed.Examples) != 1 {
+		t.Fatalf("+chat-create examples = %#v, want exactly one", parsed.Examples)
+	}
+	example := parsed.Examples[0].Command
+	if !strings.Contains(example, "--idempotency-key <generated_uuid>") {
+		t.Fatalf("+chat-create example omits generated UUID placeholder: %s", example)
+	}
+	if strings.Contains(example, "python3 -c") || strings.Contains(example, "uuidgen") {
+		t.Fatalf("+chat-create example duplicates UUID generation instructions: %s", example)
 	}
 }
 

@@ -41,7 +41,7 @@ var ImFeedGroupList = common.Shortcut{
 		{Name: "page-size", Type: "int", Default: fmt.Sprintf("%d", feedGroupListDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", feedGroupListMaxPageSize)},
 		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate through all pages"},
-		{Name: "page-limit", Type: "int", Default: "20", Desc: "max pages when auto-pagination is enabled (default 20, max 1000)"},
+		{Name: "page-limit", Type: "int", Default: "20", Desc: fmt.Sprintf("max pages when auto-pagination is enabled (default 20, max %d; 0 = unlimited)", imReadMaxPageLimit)},
 		{Name: "start-time", Desc: "update-time window start (Unix milliseconds as a decimal string)"},
 		{Name: "end-time", Desc: "update-time window end (Unix milliseconds as a decimal string)"},
 	},
@@ -57,29 +57,13 @@ var ImFeedGroupList = common.Shortcut{
 			Params(feedGroupListGroupsDryRunParams(runtime))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if runtime.Bool("page-all") {
-			return executeFeedGroupListGroupsAllPages(runtime)
-		}
-
-		data, err := runtime.DoAPIJSONTyped("GET", feedGroupListPath, feedGroupListGroupsQuery(runtime), nil)
-		if err != nil {
-			return err
-		}
-
-		hasMore, _ := data["has_more"].(bool)
-		runtime.OutFormat(data, nil, func(w io.Writer) {
-			renderFeedGroupsTable(w, data, hasMore)
-		})
-		return nil
+		return executeFeedGroupListGroupsAllPages(runtime)
 	},
 }
 
 func validateFeedGroupListPageOptions(rt *common.RuntimeContext) error {
 	if _, err := common.ValidatePageSizeTyped(rt, "page-size", feedGroupListDefaultPageSize, 1, feedGroupListMaxPageSize); err != nil {
 		return err
-	}
-	if n := rt.Int("page-limit"); n < 1 || n > 1000 {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-limit must be an integer between 1 and 1000").WithParam("--page-limit")
 	}
 	if v := rt.Str("start-time"); v != "" {
 		if _, err := strconv.ParseInt(v, 10, 64); err != nil {
@@ -91,27 +75,10 @@ func validateFeedGroupListPageOptions(rt *common.RuntimeContext) error {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--end-time must be Unix milliseconds (a decimal integer string)").WithParam("--end-time")
 		}
 	}
-	return nil
+	return validateIMPagination(rt)
 }
 
-// feedGroupListGroupsQuery builds the query parameters. page_token is always
-// sent (empty string = first page) because the groups endpoint rejects requests
-// that omit it (HTTP 400 "Missing required parameter: page_token").
-func feedGroupListGroupsQuery(rt *common.RuntimeContext) larkcore.QueryParams {
-	params := larkcore.QueryParams{
-		"page_size":  []string{strconv.Itoa(rt.Int("page-size"))},
-		"page_token": []string{rt.Str("page-token")},
-	}
-	if start := rt.Str("start-time"); start != "" {
-		params["start_time"] = []string{start}
-	}
-	if end := rt.Str("end-time"); end != "" {
-		params["end_time"] = []string{end}
-	}
-	return params
-}
-
-// feedGroupListGroupsDryRunParams mirrors feedGroupListGroupsQuery for dry-run display.
+// feedGroupListGroupsDryRunParams builds query parameters for dry-run display.
 func feedGroupListGroupsDryRunParams(rt *common.RuntimeContext) map[string]any {
 	params := map[string]any{
 		"page_size":  strconv.Itoa(rt.Int("page-size")),
@@ -130,27 +97,10 @@ func feedGroupListGroupsDryRunParams(rt *common.RuntimeContext) map[string]any {
 // (groups) and soft-deleted (deleted_groups) lists into a single response. It
 // merges each array independently so neither list loses its later pages.
 func executeFeedGroupListGroupsAllPages(rt *common.RuntimeContext) error {
-	maxPages := rt.Int("page-limit")
-	if maxPages < 1 {
-		maxPages = 20
-	}
-	if maxPages > 1000 {
-		maxPages = 1000
-	}
-
-	// Use make([]any, 0) so empty arrays serialize as [] not null.
-	allGroups := make([]any, 0)
-	allDeletedGroups := make([]any, 0)
-	var lastHasMore bool
-	lastPageToken := rt.Str("page-token")
-	prevPageToken := lastPageToken
-
-	for page := 0; page < maxPages; page++ {
-		// page_token is always sent (empty on the first page) — the groups
-		// endpoint rejects requests that omit it.
+	pages, status, pageErr := collectIMPages(rt, rt.Bool("page-all"), func(pageToken string) (map[string]any, error) {
 		params := larkcore.QueryParams{
 			"page_size":  []string{strconv.Itoa(rt.Int("page-size"))},
-			"page_token": []string{lastPageToken},
+			"page_token": []string{pageToken},
 		}
 		if start := rt.Str("start-time"); start != "" {
 			params["start_time"] = []string{start}
@@ -159,41 +109,15 @@ func executeFeedGroupListGroupsAllPages(rt *common.RuntimeContext) error {
 			params["end_time"] = []string{end}
 		}
 
-		data, err := rt.DoAPIJSONTyped("GET", feedGroupListPath, params, nil)
-		if err != nil {
-			return err
-		}
-
-		if v, ok := data["groups"].([]any); ok {
-			allGroups = append(allGroups, v...)
-		}
-		if v, ok := data["deleted_groups"].([]any); ok {
-			allDeletedGroups = append(allDeletedGroups, v...)
-		}
-
-		lastHasMore, _ = data["has_more"].(bool)
-		lastPageToken, _ = data["page_token"].(string)
-
-		fmt.Fprintf(rt.IO().ErrOut, "page %d: %d groups, %d deleted\n",
-			page+1, len(allGroups), len(allDeletedGroups))
-
-		if !lastHasMore || lastPageToken == "" {
-			break
-		}
-		if lastPageToken == prevPageToken {
-			fmt.Fprintf(rt.IO().ErrOut, "warning: page_token did not change, stopping pagination to avoid infinite loop\n")
-			break
-		}
-		prevPageToken = lastPageToken
+		return rt.DoAPIJSONTyped("GET", feedGroupListPath, params, nil)
+	})
+	if len(pages) == 0 {
+		return pageErr
 	}
 
-	merged := map[string]any{
-		"groups":         allGroups,
-		"deleted_groups": allDeletedGroups,
-		"has_more":       lastHasMore,
-		"page_token":     lastPageToken,
-	}
-
+	rt.RecordPagination(status)
+	merged := mergeIMPageArrays(pages, "groups", "deleted_groups")
+	lastHasMore, _ := merged["has_more"].(bool)
 	rt.OutFormat(merged, nil, func(w io.Writer) {
 		renderFeedGroupsTable(w, merged, lastHasMore)
 	})

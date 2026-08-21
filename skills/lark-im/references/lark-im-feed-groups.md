@@ -1,6 +1,6 @@
 # im feed.groups
 
-> **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
+> **Prerequisite:** Before executing this command, ensure [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) has been read once in the current task for authentication, global parameters, and safety rules. Do not reread it if already loaded.
 
 This reference is the shared annotation target for the IM feed-group (tag) APIs: it documents what each method does, the `--params` / `--data` request and response shapes, and the enum surface used in payloads. The full method list is in [Command Overview](#command-overview) below.
 
@@ -30,7 +30,7 @@ Three typed `+` shortcuts cover the feed-group read paths. All are user-only.
 
 | Shortcut | Purpose | Notes |
 |---|---|---|
-| [`+feed-group-list`](lark-im-feed-group-list.md) | List your feed groups | Its `--page-all` correctly merges the live and soft-deleted lists. No enrichment |
+| [`+feed-group-list`](lark-im-feed-group-list.md) | List your feed groups | Preserves and merges both the live and soft-deleted lists. No enrichment |
 | [`+feed-group-list-item`](lark-im-feed-group-list-item.md) | List the feed cards inside a group | Enriches each card with `chat_name` |
 | [`+feed-group-query-item`](lark-im-feed-group-query-item.md) | Look up feed cards in a group by ID | Enriches each card with `chat_name` |
 
@@ -242,7 +242,7 @@ Each element carries `group_id`, `type`, `name`, and (when defined) `rules`.
 
 ## list
 
-Shortcut-only: [`+feed-group-list`](lark-im-feed-group-list.md). Lists the caller's feed groups, optionally filtered by an update-time window. Its `--page-all` correctly merges the live (`groups`) and soft-deleted (`deleted_groups`) lists across pages. There is no raw command — flags and response shape are in the linked shortcut doc.
+Shortcut-only: [`+feed-group-list`](lark-im-feed-group-list.md). Lists the caller's feed groups, optionally filtered by an update-time window, and correctly merges the live (`groups`) and soft-deleted (`deleted_groups`) lists across pages. There is no raw command — flags and response shape are in the linked shortcut doc.
 
 ## batch_add_item
 
@@ -326,7 +326,7 @@ Shortcut-only: [`+feed-group-query-item`](lark-im-feed-group-query-item.md). Loo
 
 ## list_item
 
-Shortcut-only: [`+feed-group-list-item`](lark-im-feed-group-list-item.md). Lists the feed cards inside a group (paginated, `--page-all` supported) and enriches each with `chat_name`. There is no raw command — flags and response shape are in the linked shortcut doc.
+Shortcut-only: [`+feed-group-list-item`](lark-im-feed-group-list-item.md). Lists the feed cards inside a group and enriches each with `chat_name`. There is no raw command — flags and response shape are in the linked shortcut doc.
 
 ## Enums
 

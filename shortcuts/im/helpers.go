@@ -23,6 +23,7 @@ import (
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/imcontract"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -30,8 +31,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// normalizeAtMentions fixes common AI mistakes in @mention tags.
-var mentionFixRe = regexp.MustCompile(`<at\s+(id|open_id|user_id)=("?)([^"\s/>]+)"?\s*/?>`)
 var threadIDRe = regexp.MustCompile(`^omt_`)
 var messageIDRe = regexp.MustCompile(`^om_`)
 
@@ -45,10 +44,6 @@ func flagMessageID(rt *common.RuntimeContext) (string, error) {
 			"invalid message ID %q: omt_ prefix is a thread ID, not a message ID; flag operations require om_ message IDs", id).WithParam("--message-id")
 	}
 	return validateMessageID(id)
-}
-
-func normalizeAtMentions(content string) string {
-	return mentionFixRe.ReplaceAllString(content, `<at user_id="$3">`)
 }
 
 // buildMGetURL constructs the mget query URL for batch-fetching messages.
@@ -334,10 +329,19 @@ func resolveOneMedia(ctx context.Context, runtime *common.RuntimeContext, s medi
 		return s.value, nil
 	}
 
+	var (
+		key string
+		err error
+	)
 	if isURL(s.value) {
-		return resolveURLMedia(ctx, runtime, s)
+		key, err = resolveURLMedia(ctx, runtime, s)
+	} else {
+		key, err = resolveLocalMedia(ctx, runtime, s)
 	}
-	return resolveLocalMedia(ctx, runtime, s)
+	if err == nil {
+		runtime.RecordContractFact(imcontract.Fact{Kind: imcontract.FactMediaPreuploadPerformed})
+	}
+	return key, err
 }
 
 // resolveURLMedia downloads a URL and uploads it.
@@ -408,14 +412,29 @@ func resolveVideoContent(ctx context.Context, runtime *common.RuntimeContext, vi
 	return "media", string(jsonBytes), nil
 }
 
-// mediaFallbackOrError returns a text fallback for URL inputs when upload fails,
-// or a hard error for local file inputs.
+// mediaUploadFallbackHint is the recovery path for a failed URL-media upload.
+// The CLI must never rewrite approved content on its own, so the degraded
+// form (a plain text link) is only reachable through explicit re-approval.
+const mediaUploadFallbackHint = "nothing was sent — to fall back to sending the link as plain text, show the user the degraded content and, after their approval, re-send it explicitly with --text"
+
+// mediaFallbackOrError returns a hard error when a media upload fails.
+// A failed URL upload used to downgrade to a "[... upload failed, sending
+// link]" text message, which sent the recipient wording the user never saw
+// or approved. Now nothing is sent; for URL inputs the hint points at the
+// explicit re-approval path. An already-typed cause keeps its classification
+// (and its own hint, when it has one).
 func mediaFallbackOrError(originalValue, mediaType string, uploadErr error) (string, string, error) {
 	if isURL(originalValue) {
-		// Fallback: send URL as text link instead of failing.
-		fallbackText := fmt.Sprintf("[%s upload failed, sending link] %s", mediaType, originalValue)
-		jsonBytes, _ := json.Marshal(map[string]string{"text": fallbackText})
-		return "text", string(jsonBytes), nil
+		if p, ok := errs.ProblemOf(uploadErr); ok {
+			if p.Hint == "" {
+				p.Hint = mediaUploadFallbackHint
+			}
+			return "", "", uploadErr
+		}
+		return "", "", errs.NewNetworkError(errs.SubtypeNetworkTransport,
+			"%s upload failed for %s; nothing was sent", mediaType, sanitizeURLForDisplay(originalValue)).
+			WithCause(uploadErr).
+			WithHint("%s", mediaUploadFallbackHint)
 	}
 	return "", "", wrapIMNetworkErr(uploadErr, "%s upload failed", mediaType)
 }
@@ -841,16 +860,12 @@ func readMp4Duration(f fileio.File, fileSize int64) int64 {
 //
 // Steps:
 //  1. Extract code blocks with placeholders to protect them
-//  2. Downgrade headings: H1 → H4, H2~H6 → H5 (only when H1~H3 present)
-//  3. Normalize spacing between consecutive headings and tables with blank lines
-//  4. Restore code blocks
-//  5. Compress excess blank lines
-//  6. Strip invalid image references (keep only img_xxx keys)
+//  2. Normalize spacing between consecutive H1-H6 headings and tables with blank lines
+//  3. Restore code blocks
+//  4. Compress excess blank lines
+//  5. Strip invalid image references (keep only img_xxx keys)
 var (
-	reH2toH6     = regexp.MustCompile(`(?m)^#{2,6} (.+)$`)
-	reH1         = regexp.MustCompile(`(?m)^# (.+)$`)
-	reHasH1toH3  = regexp.MustCompile(`(?m)^#{1,3} `)
-	reConsecH    = regexp.MustCompile(`(?m)^(#{4,5} .+)\n{1,2}(#{4,5} )`)
+	reConsecH    = regexp.MustCompile(`(?m)^(#{1,6} .+)\n(#{1,6} )`)
 	reTableNoGap = regexp.MustCompile(`(?m)^([^|\n].*)\n(\|.+\|)`)
 	reTableAfter = regexp.MustCompile(`(?m)((?:^\|.+\|[^\S\n]*\n?)+)`)
 	reExcessNL   = regexp.MustCompile(`\n{3,}`)
@@ -867,13 +882,13 @@ func optimizeMarkdownStyle(text string) string {
 		return fmt.Sprintf("%s%d___", mark, idx)
 	})
 
-	// Only downgrade when original text has H1~H3; order matters (H2~H6 first).
-	if reHasH1toH3.MatchString(text) {
-		r = reH2toH6.ReplaceAllString(r, "##### $1")
-		r = reH1.ReplaceAllString(r, "#### $1")
+	for {
+		spaced := reConsecH.ReplaceAllString(r, "$1\n\n$2")
+		if spaced == r {
+			break
+		}
+		r = spaced
 	}
-
-	r = reConsecH.ReplaceAllString(r, "$1\n\n$2")
 
 	r = reTableNoGap.ReplaceAllString(r, "$1\n\n$2")
 	r = reTableAfter.ReplaceAllString(r, "$1\n")
@@ -937,20 +952,29 @@ func wrapMarkdownAsPostForDryRun(markdown string) (content, desc string) {
 
 // resolveMarkdownAsPost resolves image URLs in markdown, applies style optimization,
 // and wraps as post format JSON. Used by Execute (makes network calls).
-func resolveMarkdownAsPost(ctx context.Context, runtime *common.RuntimeContext, markdown string) string {
-	resolved := resolveMarkdownImageURLs(ctx, runtime, markdown)
+func resolveMarkdownAsPost(ctx context.Context, runtime *common.RuntimeContext, markdown string) (string, error) {
+	resolved, err := resolveMarkdownImageURLs(ctx, runtime, markdown)
+	if err != nil {
+		return "", err
+	}
 	optimized := optimizeMarkdownStyle(resolved)
 	inner, _ := json.Marshal(optimized)
-	return `{"zh_cn":{"content":[[{"tag":"md","text":` + string(inner) + `}]]}}`
+	return `{"zh_cn":{"content":[[{"tag":"md","text":` + string(inner) + `}]]}}`, nil
 }
 
 // resolveMarkdownImageURLs finds ![alt](https://...) in markdown, downloads each URL,
-// uploads as image, and replaces with ![alt](img_xxx). Failed uploads are stripped.
-func resolveMarkdownImageURLs(ctx context.Context, runtime *common.RuntimeContext, markdown string) string {
+// uploads as image, and replaces with ![alt](img_xxx). A failed download or
+// upload aborts the send: silently stripping the image would deliver content
+// the user never approved (the message they saw included that image).
+func resolveMarkdownImageURLs(ctx context.Context, runtime *common.RuntimeContext, markdown string) (string, error) {
 	if !strings.Contains(markdown, "![") {
-		return markdown
+		return markdown, nil
 	}
-	return reMarkdownImage.ReplaceAllStringFunc(markdown, func(m string) string {
+	var resolveErr error
+	resolved := reMarkdownImage.ReplaceAllStringFunc(markdown, func(m string) string {
+		if resolveErr != nil {
+			return m
+		}
 		sub := reMarkdownImage.FindStringSubmatch(m)
 		if len(sub) < 2 {
 			return m
@@ -959,17 +983,18 @@ func resolveMarkdownImageURLs(ctx context.Context, runtime *common.RuntimeContex
 
 		rc, _, err := downloadURLToReader(ctx, runtime, imgURL, maxImageUploadSize, "--markdown")
 		if err != nil {
-			fmt.Fprintf(runtime.IO().ErrOut, "warning: failed to download image %s: %v\n", sanitizeURLForDisplay(imgURL), err)
-			return ""
+			resolveErr = markdownImageError(imgURL, "download", err)
+			return m
 		}
 		defer rc.Close()
 
 		fmt.Fprintf(runtime.IO().ErrOut, "uploading image from URL: %s\n", sanitizeURLForDisplay(imgURL))
 		imgKey, err := uploadImageFromReader(ctx, runtime, rc, "message")
 		if err != nil {
-			fmt.Fprintf(runtime.IO().ErrOut, "warning: failed to upload image %s: %v\n", sanitizeURLForDisplay(imgURL), err)
-			return ""
+			resolveErr = markdownImageError(imgURL, "upload", err)
+			return m
 		}
+		runtime.RecordContractFact(imcontract.Fact{Kind: imcontract.FactMediaPreuploadPerformed})
 
 		// Reconstruct ![alt](img_xxx)
 		altStart := strings.Index(m, "[")
@@ -980,6 +1005,33 @@ func resolveMarkdownImageURLs(ctx context.Context, runtime *common.RuntimeContex
 		}
 		return fmt.Sprintf("![%s](%s)", alt, imgKey)
 	})
+	if resolveErr != nil {
+		return "", resolveErr
+	}
+	return resolved, nil
+}
+
+// markdownImageFallbackHint is the recovery path for a markdown image that
+// could not be resolved: revise the draft explicitly instead of letting the
+// CLI strip the image behind the user's back.
+const markdownImageFallbackHint = "nothing was sent — remove the failing image from the markdown or replace it with a plain link, show the user the revised draft, and re-send after their approval"
+
+// markdownImageError builds the hard error for a markdown image that could
+// not be resolved. Stripping the image and sending the rest is forbidden —
+// that would deliver content differing from what the user approved. An
+// already-typed cause keeps its classification (and its own hint, when it
+// has one).
+func markdownImageError(imgURL, stage string, cause error) error {
+	if p, ok := errs.ProblemOf(cause); ok {
+		if p.Hint == "" {
+			p.Hint = markdownImageFallbackHint
+		}
+		return cause
+	}
+	return errs.NewNetworkError(errs.SubtypeNetworkTransport,
+		"markdown image %s failed for %s; nothing was sent", stage, sanitizeURLForDisplay(imgURL)).
+		WithCause(cause).
+		WithHint("%s", markdownImageFallbackHint)
 }
 
 // validateContentFlags checks mutual exclusion between content flags (text/markdown/content)
@@ -1489,7 +1541,7 @@ type shortcutItem struct {
 func collectChatIDs(rt *common.RuntimeContext) ([]string, error) {
 	raw := rt.StrSlice("chat-id")
 	if len(raw) == 0 {
-		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--chat-id is required (oc_xxx); repeat the flag or pass comma-separated values").WithParam("--chat-id")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--chat-id is required (oc_xxx); repeat the flag or pass comma-separated values").WithParam("--chat-id").WithHint("get the open_chat_id from im +chat-search (by name) or im +chat-list (my chats)")
 	}
 
 	seen := make(map[string]struct{}, len(raw))
@@ -1501,7 +1553,7 @@ func collectChatIDs(rt *common.RuntimeContext) ([]string, error) {
 		}
 		if !strings.HasPrefix(v, "oc_") {
 			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"invalid --chat-id %q: must be an open_chat_id starting with oc_", v).WithParam("--chat-id")
+				"invalid --chat-id %q: must be an open_chat_id starting with oc_", v).WithParam("--chat-id").WithHint("get the open_chat_id from im +chat-search (by name) or im +chat-list (my chats)")
 		}
 		if _, ok := seen[v]; ok {
 			continue
@@ -1510,7 +1562,7 @@ func collectChatIDs(rt *common.RuntimeContext) ([]string, error) {
 		out = append(out, v)
 	}
 	if len(out) == 0 {
-		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--chat-id is required (oc_xxx)").WithParam("--chat-id")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--chat-id is required (oc_xxx)").WithParam("--chat-id").WithHint("get the open_chat_id from im +chat-search (by name) or im +chat-list (my chats)")
 	}
 	if len(out) > feedShortcutBatchLimit {
 		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
@@ -1527,6 +1579,17 @@ func buildShortcutItems(ids []string) []shortcutItem {
 		items = append(items, shortcutItem{FeedCardID: id, Type: int(ShortcutTypeChat)})
 	}
 	return items
+}
+
+func shortcutItemsBody(items []shortcutItem) []any {
+	body := make([]any, 0, len(items))
+	for _, item := range items {
+		body = append(body, map[string]any{
+			"feed_card_id": item.FeedCardID,
+			"type":         item.Type,
+		})
+	}
+	return body
 }
 
 // shortcutFailedReasonString converts the numeric failed-reason enum returned

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -26,6 +27,8 @@ type paginateIntoTestPage struct {
 	HasMore   bool     `json:"has_more"`
 	PageToken string   `json:"page_token"`
 }
+
+var testUnlimitedPagePolicy = PageAllPolicy{AllowUnlimited: true}
 
 type paginateIntoTestResult struct {
 	items     []string
@@ -60,14 +63,15 @@ func newPaginateIntoTestRuntime(t *testing.T, flags map[string]string) (*Runtime
 }
 
 func TestPageAllFlagsContract(t *testing.T) {
-	flags := PageAllFlags()
+	flags := PageAllFlags(testUnlimitedPagePolicy)
 	if len(flags) != 3 {
 		t.Fatalf("PageAllFlags() returned %d flags, want 3", len(flags))
 	}
 	if got := flags[0]; got.Name != PageAllFlagName || got.Type != "bool" || got.Default != "" {
 		t.Fatalf("page-all flag = %#v", got)
 	}
-	if got := flags[1]; got.Name != pageLimitFlagName || got.Type != "int" || got.Default != strconv.Itoa(pageLimitDefault) || !strings.Contains(got.Desc, strconv.Itoa(pageLimitMaximum)) {
+	if got := flags[1]; got.Name != pageLimitFlagName || got.Type != "int" || got.Default != strconv.Itoa(pageLimitDefault) ||
+		!strings.Contains(got.Desc, strconv.Itoa(pageLimitMaximum)) || !strings.Contains(got.Desc, "0 = unlimited") {
 		t.Fatalf("page-limit flag = %#v", got)
 	}
 	if got := flags[2]; got.Name != pageDelayFlagName || got.Type != "int" || got.Default != strconv.Itoa(pageDelayDefault) || !strings.Contains(got.Desc, strconv.Itoa(pageDelayMaximum)) {
@@ -75,8 +79,28 @@ func TestPageAllFlagsContract(t *testing.T) {
 	}
 
 	flags[0].Desc = "mutated"
-	if PageAllFlags()[0].Desc == "mutated" {
+	if PageAllFlags(testUnlimitedPagePolicy)[0].Desc == "mutated" {
 		t.Fatal("PageAllFlags() reused mutable definitions")
+	}
+}
+
+func TestPageAllFlagsRequireExplicitUnlimitedPolicy(t *testing.T) {
+	bounded := PageAllFlags(PageAllPolicy{})
+	if strings.Contains(bounded[1].Desc, "0 = unlimited") {
+		t.Fatalf("bounded page-limit help unexpectedly advertises unlimited mode: %q", bounded[1].Desc)
+	}
+
+	runtime, _, _ := newPaginateIntoTestRuntime(t, map[string]string{
+		PageAllFlagName:   "true",
+		pageLimitFlagName: "0",
+	})
+	_, _, err := PaginateInto(runtime, PageRequest{
+		Method: http.MethodGet,
+		Path:   "/open-apis/test/v1/items",
+	}, &paginateIntoTestResult{}, PageAllPolicy{})
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("bounded page-limit 0 error = %#v, %v; want validation/invalid_argument", problem, ok)
 	}
 }
 
@@ -100,11 +124,11 @@ func TestPaginateIntoDecodesAndAccumulatesPages(t *testing.T) {
 
 	params := map[string]interface{}{"page_size": 20}
 	result := &paginateIntoTestResult{}
-	meta, err := PaginateInto(runtime, PageRequest{
+	meta, _, err := PaginateInto(runtime, PageRequest{
 		Method: http.MethodGet,
 		Path:   "/open-apis/test/v1/items",
 		Params: params,
-	}, result)
+	}, result, testUnlimitedPagePolicy)
 	if err != nil {
 		t.Fatalf("PaginateInto() error = %v", err)
 	}
@@ -152,12 +176,12 @@ func TestPaginationProgressContract(t *testing.T) {
 			runtime.Format = test.format
 			runtime.JqExpr = test.jq
 			runtime.IO().StderrIsTerminal = test.terminal
-			policy, err := resolvePaginationPolicy(runtime)
+			policy, err := resolvePaginationPolicy(runtime, testUnlimitedPagePolicy)
 			if err != nil {
 				t.Fatalf("resolvePaginationPolicy() error = %v", err)
 			}
-			if policy.showProgress != test.want {
-				t.Fatalf("showProgress = %v, want %v", policy.showProgress, test.want)
+			if policy.ShowProgress != test.want {
+				t.Fatalf("showProgress = %v, want %v", policy.ShowProgress, test.want)
 			}
 		})
 	}
@@ -177,10 +201,10 @@ func TestPaginateIntoWaitsOnlyBetweenPages(t *testing.T) {
 	}
 
 	var waits []time.Duration
-	meta, err := paginateInto(runtime, PageRequest{
+	meta, _, err := paginateInto(runtime, PageRequest{
 		Method: http.MethodGet,
 		Path:   "/open-apis/test/v1/items",
-	}, &paginateIntoTestResult{}, func(_ context.Context, delay time.Duration) error {
+	}, &paginateIntoTestResult{}, testUnlimitedPagePolicy, func(_ context.Context, delay time.Duration) error {
 		waits = append(waits, delay)
 		return nil
 	})
@@ -210,10 +234,10 @@ func TestPaginateIntoDelayCancellationIsTypedAndResumable(t *testing.T) {
 		},
 	})
 
-	meta, err := paginateInto(runtime, PageRequest{
+	meta, status, err := paginateInto(runtime, PageRequest{
 		Method: http.MethodGet,
 		Path:   "/open-apis/test/v1/items",
-	}, &paginateIntoTestResult{}, func(_ context.Context, _ time.Duration) error {
+	}, &paginateIntoTestResult{}, testUnlimitedPagePolicy, func(_ context.Context, _ time.Duration) error {
 		return context.Canceled
 	})
 	if !errors.Is(err, context.Canceled) {
@@ -225,6 +249,36 @@ func TestPaginateIntoDelayCancellationIsTypedAndResumable(t *testing.T) {
 	}
 	if meta.Pages != 1 || meta.Complete || meta.NextToken != "resume" {
 		t.Fatalf("pagination meta = %+v, want resumable first page", meta)
+	}
+	if status.PagesFetched != 1 || status.NextPageToken != "resume" || status.StopReason != client.StopReasonTransportError || status.Cause == nil {
+		t.Fatalf("pagination status = %#v, want resumable transport error after one page", status)
+	}
+}
+
+func TestPaginateIntoFirstFailurePreservesStartingCursor(t *testing.T) {
+	runtime, _, registry := newPaginateIntoTestRuntime(t, map[string]string{
+		"page-all": "true",
+	})
+	wantErr := errors.New("request timed out")
+	registry.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/test/v1/items",
+		Error:  wantErr,
+	})
+
+	meta, status, err := PaginateInto(runtime, PageRequest{
+		Method: http.MethodGet,
+		Path:   "/open-apis/test/v1/items",
+		Params: map[string]interface{}{"page_token": "resume"},
+	}, &paginateIntoTestResult{}, testUnlimitedPagePolicy)
+	if err == nil {
+		t.Fatal("PaginateInto() error = nil, want first-page transport failure")
+	}
+	if meta.Pages != 0 || meta.Complete || meta.NextToken != "resume" {
+		t.Fatalf("pagination meta = %+v, want zero-page failure resumable at supplied cursor", meta)
+	}
+	if status.PagesFetched != 0 || !status.HasMore || status.NextPageToken != "resume" || status.StopReason != client.StopReasonTransportError || status.Cause == nil {
+		t.Fatalf("pagination status = %#v, want first-page transport error resumable at supplied cursor", status)
 	}
 }
 
@@ -252,10 +306,10 @@ func TestPaginateIntoUsesOnePagePolicyByDefault(t *testing.T) {
 	})
 
 	result := &paginateIntoTestResult{}
-	meta, err := PaginateInto(runtime, PageRequest{
+	meta, _, err := PaginateInto(runtime, PageRequest{
 		Method: http.MethodGet,
 		Path:   "/open-apis/test/v1/items",
-	}, result)
+	}, result, testUnlimitedPagePolicy)
 	if err != nil {
 		t.Fatalf("PaginateInto() error = %v", err)
 	}
@@ -292,11 +346,11 @@ func TestPaginateIntoStopsAtConfiguredPageLimit(t *testing.T) {
 	}
 
 	result := &paginateIntoTestResult{}
-	meta, err := PaginateInto(runtime, PageRequest{
+	meta, _, err := PaginateInto(runtime, PageRequest{
 		Method: http.MethodGet,
 		Path:   "/open-apis/test/v1/items",
 		Params: map[string]interface{}{"page_token": []string{"resume"}},
-	}, result)
+	}, result, testUnlimitedPagePolicy)
 	if err != nil {
 		t.Fatalf("PaginateInto() error = %v", err)
 	}
@@ -327,14 +381,14 @@ func TestPaginateIntoContinuesFromExplicitCursorWithPageAll(t *testing.T) {
 	}
 
 	result := &paginateIntoTestResult{}
-	meta, err := PaginateInto(runtime, PageRequest{
+	meta, _, err := PaginateInto(runtime, PageRequest{
 		Method: http.MethodGet,
 		Path:   "/open-apis/test/v1/items",
 		// SDK request builders represent query values as []string. Pin that
 		// representation here so an explicit resume cursor remains compatible
 		// with both SDK-built and raw map requests.
 		Params: map[string]interface{}{"page_token": []string{"resume"}},
-	}, result)
+	}, result, testUnlimitedPagePolicy)
 	if err != nil {
 		t.Fatalf("PaginateInto() error = %v", err)
 	}
@@ -366,11 +420,11 @@ func TestPaginateIntoRejectsStartingCursorRepeatedByServer(t *testing.T) {
 		},
 	})
 
-	_, err := PaginateInto(runtime, PageRequest{
+	_, _, err := PaginateInto(runtime, PageRequest{
 		Method: http.MethodGet,
 		Path:   "/open-apis/test/v1/items",
 		Params: map[string]interface{}{"page_token": "resume"},
-	}, &paginateIntoTestResult{})
+	}, &paginateIntoTestResult{}, testUnlimitedPagePolicy)
 	problem, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("PaginateInto() error = %v, want typed error", err)
@@ -398,10 +452,10 @@ func TestPaginateIntoRejectsPageOutsideTypedContract(t *testing.T) {
 		},
 	})
 
-	_, err := PaginateInto(runtime, PageRequest{
+	_, _, err := PaginateInto(runtime, PageRequest{
 		Method: http.MethodGet,
 		Path:   "/open-apis/test/v1/items",
-	}, &paginateIntoTestResult{})
+	}, &paginateIntoTestResult{}, testUnlimitedPagePolicy)
 	problem, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("PaginateInto() error = %v, want typed error", err)
@@ -416,23 +470,55 @@ func TestPaginateIntoRejectsPageOutsideTypedContract(t *testing.T) {
 }
 
 func TestPaginateIntoRejectsPageLimitOutsideSharedBounds(t *testing.T) {
-	for _, limit := range []string{"-1", "0", strconv.Itoa(pageLimitMaximum + 1)} {
+	for _, limit := range []string{"-1", strconv.Itoa(pageLimitMaximum + 1)} {
 		t.Run(limit, func(t *testing.T) {
 			runtime, _, _ := newPaginateIntoTestRuntime(t, map[string]string{
 				PageAllFlagName:   "true",
 				pageLimitFlagName: limit,
 			})
 
-			_, err := PaginateInto(runtime, PageRequest{
+			_, _, err := PaginateInto(runtime, PageRequest{
 				Method: http.MethodGet,
 				Path:   "/open-apis/test/v1/items",
-			}, &paginateIntoTestResult{})
+			}, &paginateIntoTestResult{}, testUnlimitedPagePolicy)
 			problem, ok := errs.ProblemOf(err)
 			var validationErr *errs.ValidationError
 			if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument || !errors.As(err, &validationErr) || validationErr.Param != "--page-limit" {
 				t.Fatalf("PaginateInto() problem = %#v, %v; want invalid --page-limit", problem, ok)
 			}
 		})
+	}
+}
+
+func TestPaginateIntoPageLimitZeroReadsToExhaustion(t *testing.T) {
+	runtime, _, registry := newPaginateIntoTestRuntime(t, map[string]string{
+		PageAllFlagName:   "true",
+		pageLimitFlagName: "0",
+		pageDelayFlagName: "0",
+	})
+	var tokens []string
+	for _, data := range []map[string]interface{}{
+		{"items": []string{"first"}, "has_more": true, "page_token": "next"},
+		{"items": []string{"second"}, "has_more": false},
+	} {
+		registry.Register(&httpmock.Stub{
+			Method: http.MethodGet,
+			URL:    "/open-apis/test/v1/items",
+			Body:   map[string]interface{}{"code": 0, "data": data},
+			OnMatch: func(request *http.Request) {
+				tokens = append(tokens, request.URL.Query().Get("page_token"))
+			},
+		})
+	}
+	meta, _, err := PaginateInto(runtime, PageRequest{
+		Method: http.MethodGet,
+		Path:   "/open-apis/test/v1/items",
+	}, &paginateIntoTestResult{}, testUnlimitedPagePolicy)
+	if err != nil {
+		t.Fatalf("PaginateInto() error = %v", err)
+	}
+	if !meta.Complete || meta.Pages != 2 || !reflect.DeepEqual(tokens, []string{"", "next"}) {
+		t.Fatalf("meta/tokens = %+v/%#v, want exhausted two-page read", meta, tokens)
 	}
 }
 
@@ -443,10 +529,10 @@ func TestPaginateIntoRejectsPageDelayOutsideSharedBounds(t *testing.T) {
 				pageDelayFlagName: delay,
 			})
 
-			_, err := PaginateInto(runtime, PageRequest{
+			_, _, err := PaginateInto(runtime, PageRequest{
 				Method: http.MethodGet,
 				Path:   "/open-apis/test/v1/items",
-			}, &paginateIntoTestResult{})
+			}, &paginateIntoTestResult{}, testUnlimitedPagePolicy)
 			problem, ok := errs.ProblemOf(err)
 			var validationErr *errs.ValidationError
 			if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument || !errors.As(err, &validationErr) || validationErr.Param != "--page-delay" {

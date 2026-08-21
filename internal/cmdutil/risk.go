@@ -4,6 +4,8 @@
 package cmdutil
 
 import (
+	"fmt"
+
 	"github.com/larksuite/cli/internal/core"
 	"github.com/spf13/cobra"
 )
@@ -42,4 +44,16 @@ func GetRisk(cmd *cobra.Command) (level string, ok bool) {
 	}
 	level, ok = cmd.Annotations[riskLevelAnnotationKey]
 	return level, ok && level != ""
+}
+
+// RiskHelpText returns the canonical help line for a risk level. High-risk
+// writes retain the confirmation boundary wherever the line is rendered.
+func RiskHelpText(level string) string {
+	if level == RiskHighRiskWrite {
+		return fmt.Sprintf(
+			"Risk: %s (requires explicit user confirmation to execute; the agent must NOT add --yes on its own — only pass --yes after the user has confirmed)",
+			level,
+		)
+	}
+	return fmt.Sprintf("Risk: %s", level)
 }

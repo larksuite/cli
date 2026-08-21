@@ -41,8 +41,9 @@ const BatchGetMuteStatusPath = "/open-apis/im/v1/chat_user_setting/batch_get_mut
 
 // SkipReason constants — written to filter.skip_reason when Skipped=true.
 const (
-	SkipReasonBotIdentity  = "bot_identity_no_mute_data"
-	SkipReasonAllNonMember = "all_non_member_search_types"
+	SkipReasonBotIdentity    = "bot_identity_no_mute_data"
+	SkipReasonAllNonMember   = "all_non_member_search_types"
+	SkipReasonIncompleteRead = "pagination_incomplete"
 )
 
 // BuildMuteFilterHint composes the user/AI-facing English hint for a finished
@@ -58,6 +59,8 @@ func BuildMuteFilterHint(meta MuteFilterMeta, hasMore bool) string {
 				return "All fetched results are non-member public groups; mute filter does not apply. Use --page-token to fetch more."
 			}
 			return "All fetched results are non-member public groups; mute filter does not apply. No more pages."
+		case SkipReasonIncompleteRead:
+			return "Mute filtering was skipped because pagination failed; returned partial results are unfiltered."
 		}
 		return ""
 	}
@@ -76,6 +79,21 @@ func BuildMuteFilterHint(meta MuteFilterMeta, hasMore bool) string {
 	}
 	return fmt.Sprintf("Filtered out %d muted chat(s) from the fetched result (%d remaining); %s",
 		meta.FilteredCount, meta.ReturnedCount, tail)
+}
+
+// skippedMuteFilterForIncompleteRead avoids hiding an already-observed
+// pagination failure behind a secondary mute-status request. The partial rows
+// remain available, and the output states explicitly that they are unfiltered.
+func skippedMuteFilterForIncompleteRead(chats []map[string]interface{}) MuteFilterOutput {
+	meta := MuteFilterMeta{
+		Applied:       "exclude_muted",
+		Skipped:       true,
+		SkipReason:    SkipReasonIncompleteRead,
+		FetchedCount:  len(chats),
+		ReturnedCount: len(chats),
+	}
+	meta.Hint = BuildMuteFilterHint(meta, true)
+	return MuteFilterOutput{Chats: chats, Meta: meta}
 }
 
 // BuildBatchGetMuteStatusBody constructs the request body for
@@ -276,6 +294,38 @@ func FetchMuteStatus(runtime *common.RuntimeContext, chatIDs []string) (map[stri
 	return muted, unknown, nil
 }
 
+type muteStatusBatchFetcher func([]string) (map[string]bool, []string, error)
+
+func fetchMuteStatusBatches(chatIDs []string, fetch muteStatusBatchFetcher) (map[string]bool, []string, error) {
+	unique := make([]string, 0, len(chatIDs))
+	seen := make(map[string]struct{}, len(chatIDs))
+	for _, id := range chatIDs {
+		if id == "" {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+
+	muted := make(map[string]bool, len(unique))
+	unknown := make([]string, 0)
+	for start := 0; start < len(unique); start += MaxMuteStatusBatchSize {
+		end := min(start+MaxMuteStatusBatchSize, len(unique))
+		batchMuted, batchUnknown, err := fetch(unique[start:end])
+		if err != nil {
+			return nil, nil, err
+		}
+		for id, isMuted := range batchMuted {
+			muted[id] = isMuted
+		}
+		unknown = append(unknown, batchUnknown...)
+	}
+	return muted, unknown, nil
+}
+
 // MuteFilterInput captures everything the orchestrator needs from the calling shortcut.
 type MuteFilterInput struct {
 	ExcludeMuted  bool                     // value of --exclude-muted
@@ -326,7 +376,9 @@ func MaybeApplyMuteFilter(runtime *common.RuntimeContext, in MuteFilterInput) (M
 		// counts already zero; Skipped stays false
 	default:
 		ids := ExtractChatIDs(in.Chats, in.ChatIDKey)
-		muted, unknown, err := FetchMuteStatus(runtime, ids)
+		muted, unknown, err := fetchMuteStatusBatches(ids, func(batch []string) (map[string]bool, []string, error) {
+			return FetchMuteStatus(runtime, batch)
+		})
 		if err != nil {
 			return MuteFilterOutput{}, err
 		}

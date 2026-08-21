@@ -19,6 +19,7 @@ import (
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/imcontract"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -169,6 +170,69 @@ func TestRunShortcut_OutRawWriteErrorPropagates(t *testing.T) {
 	}
 	if got := output.ExitCodeOf(err); got != output.ExitInternal {
 		t.Fatalf("runShortcut() exit code = %d, want %d", got, output.ExitInternal)
+	}
+}
+
+func TestIMContractWriteJQRuntimeFailureUsesBufferedCompletionFallback(t *testing.T) {
+	const secret = "SECRET_MARKER"
+	rctx, stdout, stderr := newJqTestContext(
+		`.data.items[] | if . == "SECRET_MARKER" then error("SECRET_MARKER") else . end`,
+		"",
+	)
+	contract, _ := imcontract.Lookup("im +messages-send")
+	rctx.contractSession = imcontract.NewSession(contract)
+
+	rctx.Out(map[string]any{
+		"message_id": "om_x",
+		"items":      []any{"safe-prefix", secret},
+	}, nil)
+
+	if output.ExitCodeOf(rctx.outputErr) != output.ExitAPI {
+		t.Fatalf("output error = %T %v", rctx.outputErr, rctx.outputErr)
+	}
+	if !strings.Contains(stderr.String(), "error: jq projection failed after the IM write completed; inspect --jq") {
+		t.Fatalf("stderr did not identify the jq failure: %q", stderr.String())
+	}
+	if strings.Contains(stdout.String(), "safe-prefix") || strings.Contains(stdout.String(), secret) ||
+		strings.Contains(stderr.String(), secret) || strings.Contains(rctx.outputErr.Error(), secret) {
+		t.Fatalf("jq output leaked before failure: stdout=%q stderr=%q err=%v", stdout.String(), stderr.String(), rctx.outputErr)
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("fallback is not one JSON envelope: %v\n%s", err, stdout.String())
+	}
+	if len(env) != 3 || env["ok"] != false {
+		t.Fatalf("fallback = %#v", env)
+	}
+	data, _ := env["data"].(map[string]any)
+	completion, _ := data["completion"].(map[string]any)
+	if len(data) != 1 || completion["status"] != "complete" || completion["retry_scope"] != "none" {
+		t.Fatalf("completion = %#v", completion)
+	}
+	problem, _ := env["error"].(map[string]any)
+	if problem["type"] != "api" || problem["subtype"] != "unknown" ||
+		problem["message"] != "Output failed after the IM write completed" {
+		t.Fatalf("error = %#v", problem)
+	}
+	if _, exists := env["presentation"]; exists {
+		t.Fatalf("fallback introduced presentation: %#v", env)
+	}
+}
+
+func TestNonIMJQRuntimeFailureKeepsEmitterAtomicOutput(t *testing.T) {
+	const secret = "SECRET_MARKER"
+	rctx, stdout, stderr := newJqTestContext(
+		`.data.items[] | if . == "SECRET_MARKER" then error("SECRET_MARKER") else . end`,
+		"",
+	)
+
+	rctx.Out(map[string]any{"items": []any{"safe-prefix", secret}}, nil)
+
+	if stdout.Len() != 0 {
+		t.Fatalf("non-IM jq emitted partial output: %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "error:") {
+		t.Fatalf("non-IM jq error reporting changed: %q", stderr.String())
 	}
 }
 
@@ -336,6 +400,203 @@ func TestRunShortcut_DryRunJSONUsesEnvelope(t *testing.T) {
 	dctx, ok := data["context"].(map[string]interface{})
 	if !ok || dctx["app_id"] != "test" {
 		t.Fatalf("runner must inject data.context like the service/api paths, got: %#v", data["context"])
+	}
+}
+
+func TestRunShortcut_IMWriteDryRunReportsDefaultedIdentity(t *testing.T) {
+	s := &Shortcut{
+		Service:   "im",
+		Command:   "+messages-send",
+		Risk:      "write",
+		AuthTypes: []string{"user", "bot"},
+		DryRun: func(context.Context, *RuntimeContext) *cmdutil.DryRunAPI {
+			return cmdutil.NewDryRunAPI().POST("/open-apis/im/v1/messages")
+		},
+		Execute: func(context.Context, *RuntimeContext) error {
+			t.Fatal("Execute should not run in dry-run")
+			return nil
+		},
+	}
+	f := newTestFactory()
+	cmd := newTestShortcutCmd(s, f)
+	if err := cmd.Flags().Set("dry-run", "true"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runShortcut(cmd, f, s, false); err != nil {
+		t.Fatalf("runShortcut() error = %v", err)
+	}
+	stdout := f.IOStreams.Out.(*bytes.Buffer)
+	stderr := f.IOStreams.ErrOut.(*bytes.Buffer)
+	var env output.Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, stdout.String())
+	}
+	notice, ok := env.Notice[imcontract.IdentityDefaultedNoticeKey].(map[string]interface{})
+	if !ok || notice["resolved"] != "bot" {
+		t.Fatalf("identity notice = %#v", env.Notice)
+	}
+	if got := stderr.String(); !strings.Contains(got, "warning: identity_defaulted:") {
+		t.Fatalf("stderr = %q, want identity_defaulted warning", got)
+	}
+}
+
+func TestRunShortcut_IMWriteDryRunExplicitIdentityHasNoDefaultNotice(t *testing.T) {
+	for _, explicit := range []string{"bot", "auto"} {
+		t.Run(explicit, func(t *testing.T) {
+			s := &Shortcut{
+				Service:   "im",
+				Command:   "+messages-send",
+				Risk:      "write",
+				AuthTypes: []string{"user", "bot"},
+				DryRun: func(context.Context, *RuntimeContext) *cmdutil.DryRunAPI {
+					return cmdutil.NewDryRunAPI().POST("/open-apis/im/v1/messages")
+				},
+				Execute: func(context.Context, *RuntimeContext) error { return nil },
+			}
+			f := newTestFactory()
+			cmd := newTestShortcutCmd(s, f)
+			_ = cmd.Flags().Set("dry-run", "true")
+			_ = cmd.Flags().Set("as", explicit)
+
+			if err := runShortcut(cmd, f, s, false); err != nil {
+				t.Fatalf("runShortcut() error = %v", err)
+			}
+			stdout := f.IOStreams.Out.(*bytes.Buffer)
+			stderr := f.IOStreams.ErrOut.(*bytes.Buffer)
+			var env output.Envelope
+			if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+				t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, stdout.String())
+			}
+			if _, ok := env.Notice[imcontract.IdentityDefaultedNoticeKey]; ok {
+				t.Fatalf("explicit identity unexpectedly produced notice: %#v", env.Notice)
+			}
+			if strings.Contains(stderr.String(), "identity_defaulted") {
+				t.Fatalf("explicit identity unexpectedly produced warning: %q", stderr.String())
+			}
+		})
+	}
+}
+
+func TestRunShortcut_IMWriteSuccessReportsDefaultedIdentity(t *testing.T) {
+	s := &Shortcut{
+		Service:   "im",
+		Command:   "+messages-send",
+		Risk:      "write",
+		AuthTypes: []string{"user", "bot"},
+		Execute: func(_ context.Context, rctx *RuntimeContext) error {
+			rctx.Out(map[string]interface{}{"message_id": "om_test"}, nil)
+			return nil
+		},
+	}
+	f := newTestFactory()
+	cmd := newTestShortcutCmd(s, f)
+
+	if err := runShortcut(cmd, f, s, false); err != nil {
+		t.Fatalf("runShortcut() error = %v", err)
+	}
+	stdout := f.IOStreams.Out.(*bytes.Buffer)
+	stderr := f.IOStreams.ErrOut.(*bytes.Buffer)
+	var env output.Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout.String())
+	}
+	notice, ok := env.Notice[imcontract.IdentityDefaultedNoticeKey].(map[string]interface{})
+	if !ok || notice["resolved"] != "bot" {
+		t.Fatalf("identity notice = %#v", env.Notice)
+	}
+	if got := strings.Count(stderr.String(), "warning: identity_defaulted:"); got != 1 {
+		t.Fatalf("identity warning count = %d, stderr=%q", got, stderr.String())
+	}
+}
+
+func TestRunShortcut_IdentityDefaultNoticeExcludesOutOfScopeCommands(t *testing.T) {
+	tests := []struct {
+		name   string
+		config *core.CliConfig
+		s      *Shortcut
+	}{
+		{
+			name: "read",
+			s: &Shortcut{
+				Service:   "im",
+				Command:   "+chat-list",
+				Risk:      "read",
+				AuthTypes: []string{"user", "bot"},
+			},
+		},
+		{
+			name: "single identity",
+			s: &Shortcut{
+				Service:   "im",
+				Command:   "+messages-send",
+				Risk:      "write",
+				AuthTypes: []string{"bot"},
+			},
+		},
+		{
+			name: "non IM",
+			s: &Shortcut{
+				Service:   "test",
+				Command:   "test-shortcut",
+				Risk:      "write",
+				AuthTypes: []string{"user", "bot"},
+			},
+		},
+		{
+			name: "configured default identity",
+			config: &core.CliConfig{
+				AppID: "test", AppSecret: "test", Brand: core.BrandFeishu,
+				DefaultAs: core.AsUser,
+			},
+			s: &Shortcut{
+				Service:   "im",
+				Command:   "+messages-send",
+				Risk:      "write",
+				AuthTypes: []string{"user", "bot"},
+			},
+		},
+		{
+			name:   "strict mode",
+			config: &core.CliConfig{AppID: "test", AppSecret: "test", Brand: core.BrandFeishu, SupportedIdentities: 2},
+			s: &Shortcut{
+				Service:   "im",
+				Command:   "+messages-send",
+				Risk:      "write",
+				AuthTypes: []string{"user", "bot"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.config == nil {
+				tt.config = &core.CliConfig{AppID: "test", AppSecret: "test", Brand: core.BrandFeishu}
+			}
+			tt.s.DryRun = func(context.Context, *RuntimeContext) *cmdutil.DryRunAPI {
+				return cmdutil.NewDryRunAPI().GET("/open-apis/im/v1/test")
+			}
+			tt.s.Execute = func(context.Context, *RuntimeContext) error { return nil }
+			f, stdout, stderr, _ := cmdutil.TestFactory(t, tt.config)
+			cmd := newTestShortcutCmd(tt.s, f)
+			_ = cmd.Flags().Set("dry-run", "true")
+
+			if err := runShortcut(cmd, f, tt.s, false); err != nil {
+				t.Fatalf("runShortcut() error = %v", err)
+			}
+			var env output.Envelope
+			if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+				t.Fatalf("stdout is not JSON: %v\n%s", err, stdout.String())
+			}
+			if tt.name == "configured default identity" && env.Identity != string(core.AsUser) {
+				t.Fatalf("identity = %q, want configured default %q", env.Identity, core.AsUser)
+			}
+			if _, ok := env.Notice[imcontract.IdentityDefaultedNoticeKey]; ok {
+				t.Fatalf("unexpected identity notice: %#v", env.Notice)
+			}
+			if strings.Contains(stderr.String(), "identity_defaulted") {
+				t.Fatalf("unexpected identity warning: %q", stderr.String())
+			}
+		})
 	}
 }
 

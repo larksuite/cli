@@ -10,6 +10,7 @@ import (
 	"errors"
 	"mime"
 	"mime/multipart"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,10 +18,14 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	extcs "github.com/larksuite/cli/extension/contentsafety"
+	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/imcontract"
 	"github.com/larksuite/cli/internal/meta"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -28,6 +33,18 @@ import (
 
 var testConfig = &core.CliConfig{
 	AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+}
+
+type panicCredentialProvider struct{}
+
+func (panicCredentialProvider) Name() string { return "panic-if-called" }
+
+func (panicCredentialProvider) ResolveAccount(context.Context) (*extcred.Account, error) {
+	panic("credential resolution must not run")
+}
+
+func (panicCredentialProvider) ResolveToken(context.Context, extcred.TokenSpec) (*extcred.Token, error) {
+	panic("credential resolution must not run")
 }
 
 func driveSpec() meta.Service {
@@ -281,6 +298,237 @@ func TestServiceMethod_DryRunWithJq(t *testing.T) {
 	}
 }
 
+func TestServiceMethod_IMWriteDryRunReportsDefaultedIdentity(t *testing.T) {
+	f, stdout, stderr, _ := cmdutil.TestFactory(t, testConfig)
+	method := meta.FromMap(map[string]interface{}{
+		"id":           "chats.create",
+		"path":         "chats",
+		"httpMethod":   "POST",
+		"risk":         "write",
+		"accessTokens": []interface{}{"user", "tenant"},
+	})
+	cmd := NewCmdServiceMethod(f, imSpec(), method, "create", "chats", nil)
+	cmd.SetArgs([]string{"--data", `{}`, "--dry-run"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var env output.Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, stdout.String())
+	}
+	notice, ok := env.Notice[imcontract.IdentityDefaultedNoticeKey].(map[string]interface{})
+	if !ok || notice["resolved"] != "bot" {
+		t.Fatalf("identity notice = %#v", env.Notice)
+	}
+	if got := stderr.String(); !strings.Contains(got, "warning: identity_defaulted:") {
+		t.Fatalf("stderr = %q, want identity_defaulted warning", got)
+	}
+}
+
+func TestServiceMethod_UnrestrictedIMWriteDryRunReportsDefaultedIdentity(t *testing.T) {
+	f, stdout, stderr, _ := cmdutil.TestFactory(t, testConfig)
+	method := meta.FromMap(map[string]interface{}{
+		"id":         "chats.create",
+		"path":       "chats",
+		"httpMethod": "POST",
+		"risk":       "write",
+	})
+	cmd := NewCmdServiceMethod(f, imSpec(), method, "create", "chats", nil)
+	cmd.SetArgs([]string{"--data", `{}`, "--dry-run"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var env output.Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, stdout.String())
+	}
+	notice, ok := env.Notice[imcontract.IdentityDefaultedNoticeKey].(map[string]interface{})
+	if !ok || notice["resolved"] != "bot" {
+		t.Fatalf("unrestricted IM write identity notice = %#v", env.Notice)
+	}
+	if !strings.Contains(stderr.String(), "warning: identity_defaulted:") {
+		t.Fatalf("stderr = %q, want identity_defaulted warning", stderr.String())
+	}
+}
+
+func TestServiceMethod_IMWriteDryRunIdentityNoticeBoundaries(t *testing.T) {
+	tests := []struct {
+		name         string
+		config       *core.CliConfig
+		service      meta.Service
+		accessTokens []interface{}
+		args         []string
+		wantIdentity core.Identity
+	}{
+		{
+			name:         "explicit identity",
+			service:      imSpec(),
+			accessTokens: []interface{}{"user", "tenant"},
+			args:         []string{"--as", "bot", "--data", `{}`, "--dry-run"},
+		},
+		{
+			name:         "explicit auto",
+			service:      imSpec(),
+			accessTokens: []interface{}{"user", "tenant"},
+			args:         []string{"--as", "auto", "--data", `{}`, "--dry-run"},
+		},
+		{
+			name:         "single identity",
+			service:      imSpec(),
+			accessTokens: []interface{}{"tenant"},
+			args:         []string{"--data", `{}`, "--dry-run"},
+		},
+		{
+			name: "configured default identity",
+			config: &core.CliConfig{
+				AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+				DefaultAs: core.AsUser,
+			},
+			service:      imSpec(),
+			accessTokens: []interface{}{"user", "tenant"},
+			args:         []string{"--data", `{}`, "--dry-run"},
+			wantIdentity: core.AsUser,
+		},
+		{
+			name:         "non IM",
+			service:      meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"}),
+			accessTokens: []interface{}{"user", "tenant"},
+			args:         []string{"--data", `{}`, "--dry-run"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := tt.config
+			if config == nil {
+				config = testConfig
+			}
+			f, stdout, stderr, _ := cmdutil.TestFactory(t, config)
+			method := meta.FromMap(map[string]interface{}{
+				"id":           "chats.create",
+				"path":         "chats",
+				"httpMethod":   "POST",
+				"risk":         "write",
+				"accessTokens": tt.accessTokens,
+			})
+			cmd := NewCmdServiceMethod(f, tt.service, method, "create", "chats", nil)
+			cmd.SetArgs(tt.args)
+
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			var env output.Envelope
+			if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+				t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, stdout.String())
+			}
+			if tt.wantIdentity != "" && env.Identity != string(tt.wantIdentity) {
+				t.Fatalf("identity = %q, want configured default %q", env.Identity, tt.wantIdentity)
+			}
+			if _, ok := env.Notice[imcontract.IdentityDefaultedNoticeKey]; ok {
+				t.Fatalf("unexpected identity notice: %#v", env.Notice)
+			}
+			if strings.Contains(stderr.String(), "identity_defaulted") {
+				t.Fatalf("unexpected identity warning: %q", stderr.String())
+			}
+		})
+	}
+}
+
+func TestServiceMethod_IMWriteSuccessReportsDefaultedIdentity(t *testing.T) {
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, testConfig)
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/im/v1/chats",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"chat_id": "oc_test"},
+		},
+	})
+	method := meta.FromMap(map[string]interface{}{
+		"id":           "chats.create",
+		"path":         "chats",
+		"httpMethod":   "POST",
+		"risk":         "write",
+		"accessTokens": []interface{}{"user", "tenant"},
+	})
+	cmd := NewCmdServiceMethod(f, imSpec(), method, "create", "chats", nil)
+	cmd.SetArgs([]string{"--data", `{}`})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var env output.Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout.String())
+	}
+	notice, ok := env.Notice[imcontract.IdentityDefaultedNoticeKey].(map[string]interface{})
+	if !ok || notice["resolved"] != "bot" {
+		t.Fatalf("identity notice = %#v", env.Notice)
+	}
+	if got := strings.Count(stderr.String(), "warning: identity_defaulted:"); got != 1 {
+		t.Fatalf("identity warning count = %d, stderr=%q", got, stderr.String())
+	}
+}
+
+func TestServiceMethod_IMIdentityDefaultNoticeExcludesOutOfScopeCommands(t *testing.T) {
+	tests := []struct {
+		name   string
+		config *core.CliConfig
+		id     string
+		method string
+		risk   string
+	}{
+		{
+			name:   "read",
+			config: testConfig,
+			id:     "chats.get",
+			method: "GET",
+			risk:   "read",
+		},
+		{
+			name: "strict mode",
+			config: &core.CliConfig{
+				AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu, SupportedIdentities: 2,
+			},
+			id:     "chats.create",
+			method: "POST",
+			risk:   "write",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, stderr, _ := cmdutil.TestFactory(t, tt.config)
+			method := meta.FromMap(map[string]interface{}{
+				"id":           tt.id,
+				"path":         "chats",
+				"httpMethod":   tt.method,
+				"risk":         tt.risk,
+				"accessTokens": []interface{}{"user", "tenant"},
+			})
+			cmd := NewCmdServiceMethod(f, imSpec(), method, strings.TrimPrefix(tt.id, "chats."), "chats", nil)
+			args := []string{"--dry-run"}
+			if tt.method == "POST" {
+				args = append(args, "--data", `{}`)
+			}
+			cmd.SetArgs(args)
+
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			var env output.Envelope
+			if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+				t.Fatalf("stdout is not JSON: %v\n%s", err, stdout.String())
+			}
+			if _, ok := env.Notice[imcontract.IdentityDefaultedNoticeKey]; ok {
+				t.Fatalf("unexpected identity notice: %#v", env.Notice)
+			}
+			if strings.Contains(stderr.String(), "identity_defaulted") {
+				t.Fatalf("unexpected identity warning: %q", stderr.String())
+			}
+		})
+	}
+}
+
 func TestServiceMethod_PathParamRejectsTraversal(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -479,6 +727,12 @@ func TestServiceMethod_BotMode_Success(t *testing.T) {
 	}
 	if _, hasCode := got["code"]; hasCode {
 		t.Fatalf("success envelope leaked outer code: %s", stdout.String())
+	}
+	if _, hasMeta := got["meta"]; hasMeta {
+		t.Fatalf("non-IM response unexpectedly gained completeness metadata: %s", stdout.String())
+	}
+	if _, hasHint := got["hint"]; hasHint {
+		t.Fatalf("non-IM response unexpectedly gained an IM recovery hint: %s", stdout.String())
 	}
 	data, ok := got["data"].(map[string]interface{})
 	if !ok || data["result"] != "success" {
@@ -1077,6 +1331,825 @@ func imSpec() meta.Service {
 		"name":        "im",
 		"servicePath": "/open-apis/im/v1",
 	})
+}
+
+func TestGeneratedIMRequiredResultRejectsFalseSuccess(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, testConfig)
+	reg.Register(&httpmock.Stub{
+		URL:  "/open-apis/im/v1/chats",
+		Body: map[string]any{"code": 0, "msg": "ok", "data": map[string]any{}},
+	})
+	method := meta.FromMap(map[string]any{
+		"id": "chats.create", "path": "chats", "httpMethod": "POST",
+		"risk": "write", "accessTokens": []any{"tenant"},
+	})
+	cmd := NewCmdServiceMethod(f, imSpec(), method, "create", "chats", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--data", `{}`})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected invalid response")
+	}
+	requireProblem(t, err, errs.CategoryInternal, errs.SubtypeInvalidResponse, 0)
+	if stdout.Len() != 0 {
+		t.Fatalf("false success reached stdout: %s", stdout.String())
+	}
+}
+
+func TestIMContractManagedResponsesRequireValidJSON(t *testing.T) {
+	const secret = "SECRET_MARKER"
+	cases := []struct {
+		name        string
+		contentType string
+		body        []byte
+	}{
+		{name: "empty", contentType: "application/json", body: []byte{}},
+		{name: "plain", contentType: "text/plain", body: []byte(secret)},
+		{name: "html", contentType: "text/html", body: []byte("<html>" + secret + "</html>")},
+		{name: "malformed", contentType: "application/json", body: []byte(`{"secret":"` + secret + `"`)},
+	}
+	commands := []struct {
+		name   string
+		verb   string
+		method meta.Method
+		args   []string
+	}{
+		{
+			name: "read",
+			verb: "get",
+			method: meta.FromMap(map[string]any{
+				"id": "chats.get", "path": "chats/{chat_id}", "httpMethod": "GET",
+				"risk": "read", "accessTokens": []any{"tenant"},
+				"parameters": map[string]any{
+					"chat_id": map[string]any{"type": "string", "location": "path", "required": true},
+				},
+			}),
+			args: []string{"--as", "bot", "--params", `{"chat_id":"oc_x"}`},
+		},
+		{
+			name: "write",
+			verb: "create",
+			method: meta.FromMap(map[string]any{
+				"id": "chats.create", "path": "chats", "httpMethod": "POST",
+				"risk": "write", "accessTokens": []any{"tenant"},
+			}),
+			args: []string{"--as", "bot", "--data", `{}`},
+		},
+	}
+
+	for _, command := range commands {
+		for _, tc := range cases {
+			t.Run(command.name+"/"+tc.name, func(t *testing.T) {
+				cmdutil.TestChdir(t, t.TempDir())
+				f, stdout, stderr, reg := cmdutil.TestFactory(t, testConfig)
+				reg.Register(&httpmock.Stub{
+					URL:         "/open-apis/im/v1/chats",
+					RawBody:     tc.body,
+					ContentType: tc.contentType,
+				})
+				cmd := NewCmdServiceMethod(f, imSpec(), command.method, command.verb, "chats", nil)
+				cmd.SetArgs(command.args)
+
+				err := cmd.Execute()
+				if err == nil {
+					t.Fatal("expected invalid response")
+				}
+				problem, ok := errs.ProblemOf(err)
+				if !ok || problem.Category != errs.CategoryInternal ||
+					problem.Subtype != errs.SubtypeInvalidResponse ||
+					problem.Message != "IM contract response must be valid JSON" {
+					t.Fatalf("problem = %#v, err=%T %v", problem, err, err)
+				}
+				if output.ExitCodeOf(err) != output.ExitInternal {
+					t.Fatalf("exit = %d, want %d", output.ExitCodeOf(err), output.ExitInternal)
+				}
+				if stdout.Len() != 0 || stderr.Len() != 0 {
+					t.Fatalf("unexpected output: stdout=%q stderr=%q", stdout.String(), stderr.String())
+				}
+				if strings.Contains(err.Error(), secret) ||
+					strings.Contains(problem.Message, secret) ||
+					strings.Contains(problem.Hint, secret) ||
+					strings.Contains(problem.LogID, secret) ||
+					errors.Unwrap(err) != nil {
+					t.Fatalf("response body or parse cause leaked: problem=%#v err=%#v", problem, err)
+				}
+			})
+		}
+	}
+}
+
+func TestIMContractManagedReadDirectTransportErrorIsRetryable(t *testing.T) {
+	// No stub is registered, so the request fails at the direct transport call.
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	method := meta.FromMap(map[string]any{
+		"id": "chats.get", "path": "chats/{chat_id}", "httpMethod": "GET",
+		"risk": "read", "accessTokens": []any{"tenant"},
+		"parameters": map[string]any{
+			"chat_id": map[string]any{"type": "string", "location": "path", "required": true},
+		},
+	})
+	cmd := NewCmdServiceMethod(f, imSpec(), method, "get", "chats", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--params", `{"chat_id":"oc_x"}`})
+
+	err := cmd.Execute()
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T %v", err, err)
+	}
+	if problem.Category != errs.CategoryNetwork || !problem.Retryable {
+		t.Fatalf("problem = %#v", problem)
+	}
+}
+
+func TestNonIMBinaryResponseStillDownloads(t *testing.T) {
+	tmp := t.TempDir()
+	cmdutil.TestChdir(t, tmp)
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, testConfig)
+	reg.Register(&httpmock.Stub{
+		URL:         "/open-apis/svc/v1/items",
+		RawBody:     []byte("binary-payload"),
+		ContentType: "application/octet-stream",
+		Headers: http.Header{
+			"Content-Type":        []string{"application/octet-stream"},
+			"Content-Disposition": []string{`attachment; filename="kept.bin"`},
+		},
+	})
+	spec := meta.ServiceFromMap(map[string]any{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]any{
+		"id": "items.get", "path": "items", "httpMethod": "GET",
+		"risk": "read", "accessTokens": []any{"tenant"},
+	})
+	cmd := NewCmdServiceMethod(f, spec, method, "get", "items", nil)
+	cmd.SetArgs([]string{"--as", "bot"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stderr.String(), "binary response detected") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+	var downloaded map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &downloaded); err != nil {
+		t.Fatalf("download metadata is not JSON: %v\n%s", err, stdout.String())
+	}
+	path, _ := downloaded["saved_path"].(string)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != "binary-payload" {
+		t.Fatalf("downloaded = %q", raw)
+	}
+}
+
+func TestIMContractManagedWriteJQFailureUsesCompletionFallback(t *testing.T) {
+	const secret = "SECRET_MARKER"
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, testConfig)
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/im/v1/chats",
+		Body: map[string]any{"code": 0, "data": map[string]any{
+			"chat_id": "oc_x",
+			"items":   []any{"safe-prefix", secret},
+		}},
+	})
+	method := meta.FromMap(map[string]any{
+		"id": "chats.create", "path": "chats", "httpMethod": "POST",
+		"risk": "write", "accessTokens": []any{"tenant"},
+	})
+	cmd := NewCmdServiceMethod(f, imSpec(), method, "create", "chats", nil)
+	cmd.SetArgs([]string{
+		"--as", "bot", "--data", `{}`,
+		"--jq", `.data.items[] | if . == "SECRET_MARKER" then error("SECRET_MARKER") else . end`,
+	})
+
+	err := cmd.Execute()
+	assertIMPresentationFallback(t, stdout, stderr, err, output.ExitAPI, "api", "unknown",
+		"Output failed after the IM write completed", "complete", secret, true)
+}
+
+func TestIMContractManagedWriteContentSafetyUsesCompletionFallback(t *testing.T) {
+	const secret = "SECRET_MARKER"
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "block")
+	provider := &serviceContentSafetyProvider{match: secret}
+	extcs.Register(provider)
+	t.Cleanup(func() { extcs.Register(nil) })
+
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, testConfig)
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/im/v1/chats",
+		Body: map[string]any{"code": 0, "data": map[string]any{
+			"chat_id": "oc_x",
+			"subject": secret,
+		}},
+	})
+	method := meta.FromMap(map[string]any{
+		"id": "chats.create", "path": "chats", "httpMethod": "POST",
+		"risk": "write", "accessTokens": []any{"tenant"},
+	})
+	cmd := NewCmdServiceMethod(f, imSpec(), method, "create", "chats", nil)
+	root := &cobra.Command{Use: "lark-cli"}
+	root.AddCommand(cmd)
+	root.SetArgs([]string{"create", "--as", "bot", "--data", `{}`})
+
+	err := root.Execute()
+	assertIMPresentationFallback(t, stdout, stderr, err, output.ExitContentSafety, "policy", "content_safety",
+		"Output blocked after the IM write completed", "complete", secret, false)
+}
+
+func assertIMPresentationFallback(
+	t *testing.T,
+	stdout, stderr *bytes.Buffer,
+	err error,
+	exit int,
+	category, subtype, message, status, secret string,
+	wantJQError bool,
+) {
+	t.Helper()
+	if err == nil || output.ExitCodeOf(err) != exit {
+		t.Fatalf("error = %T %v, exit=%d want %d", err, err, output.ExitCodeOf(err), exit)
+	}
+	if wantJQError && !strings.Contains(stderr.String(),
+		"error: jq projection failed after the IM write completed; inspect --jq") {
+		t.Fatalf("stderr did not identify the jq failure: %q", stderr.String())
+	}
+	if !wantJQError && stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+	if strings.Contains(stdout.String(), secret) || strings.Contains(stderr.String(), secret) ||
+		strings.Contains(err.Error(), secret) {
+		t.Fatalf("presentation detail leaked: stdout=%q stderr=%q err=%v", stdout.String(), stderr.String(), err)
+	}
+	var env map[string]any
+	if jsonErr := json.Unmarshal(stdout.Bytes(), &env); jsonErr != nil {
+		t.Fatalf("fallback is not one JSON envelope: %v\n%s", jsonErr, stdout.String())
+	}
+	if len(env) != 3 || env["ok"] != false {
+		t.Fatalf("fallback top-level fields = %#v", env)
+	}
+	data, _ := env["data"].(map[string]any)
+	if len(data) != 1 {
+		t.Fatalf("fallback data = %#v", data)
+	}
+	completion, _ := data["completion"].(map[string]any)
+	if completion["status"] != status || completion["retry_scope"] != "none" {
+		t.Fatalf("completion = %#v", completion)
+	}
+	problem, _ := env["error"].(map[string]any)
+	if problem["type"] != category || problem["subtype"] != subtype || problem["message"] != message {
+		t.Fatalf("error = %#v", problem)
+	}
+	if _, exists := env["presentation"]; exists {
+		t.Fatalf("fallback introduced presentation: %#v", env)
+	}
+}
+
+func TestGeneratedIMBatchPartialWritesCompletion(t *testing.T) {
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, testConfig)
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/im/v1/messages/om_x/urgent_app",
+		Body: map[string]any{
+			"code": 0, "msg": "ok",
+			"data": map[string]any{"invalid_user_id_list": []any{"ou_b"}},
+		},
+	})
+	method := meta.FromMap(map[string]any{
+		"id": "messages.urgent_app", "path": "messages/{message_id}/urgent_app", "httpMethod": "PATCH",
+		"risk": "write", "accessTokens": []any{"tenant"},
+		"parameters": map[string]any{
+			"message_id": map[string]any{"type": "string", "location": "path", "required": true},
+		},
+	})
+	cmd := NewCmdServiceMethod(f, imSpec(), method, "urgent_app", "messages", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--params", `{"message_id":"om_x"}`, "--data", `{"user_id_list":["ou_a","ou_b"]}`})
+
+	err := cmd.Execute()
+	var partial *output.PartialFailureError
+	if !errors.As(err, &partial) {
+		t.Fatalf("error = %T %v", err, err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr must stay empty: %s", stderr.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if env["ok"] != false || env["hint"] == "" {
+		t.Fatalf("unexpected envelope: %#v", env)
+	}
+}
+
+func TestGeneratedIMBatchRejectsUnsupportedRequestBeforeAPI(t *testing.T) {
+	// No HTTP stub is registered. A validation error therefore also proves the
+	// malformed request evidence was rejected before transport.
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	method := meta.FromMap(map[string]any{
+		"id": "messages.urgent_app", "path": "messages/{message_id}/urgent_app", "httpMethod": "PATCH",
+		"risk": "write", "accessTokens": []any{"tenant"},
+		"parameters": map[string]any{
+			"message_id": map[string]any{"type": "string", "location": "path", "required": true},
+		},
+	})
+	cmd := NewCmdServiceMethod(f, imSpec(), method, "urgent_app", "messages", nil)
+	cmd.SetArgs([]string{
+		"--as", "bot",
+		"--params", `{"message_id":"om_x"}`,
+		"--data", `{"user_id_list":{"not":"a list"}}`,
+	})
+
+	err := cmd.Execute()
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryValidation ||
+		problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("error = %T %#v", err, problem)
+	}
+}
+
+func TestGeneratedIMTransientWriteRequiresSameKey(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		contentType string
+		body        any
+	}{
+		{name: "plain body", contentType: "text/plain", body: "unavailable"},
+		{name: "JSON body with unclassified code", contentType: "application/json", body: map[string]any{
+			"code": 123456,
+			"msg":  "unclassified business error",
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _, _, reg := cmdutil.TestFactory(t, testConfig)
+			reg.Register(&httpmock.Stub{
+				URL:         "/open-apis/im/v1/chats",
+				Status:      503,
+				Body:        tc.body,
+				ContentType: tc.contentType,
+			})
+			method := meta.FromMap(map[string]any{
+				"id": "chats.create", "path": "chats", "httpMethod": "POST",
+				"risk": "write", "accessTokens": []any{"tenant"},
+				"parameters": map[string]any{
+					"uuid": map[string]any{"type": "string", "location": "query"},
+				},
+			})
+			cmd := NewCmdServiceMethod(f, imSpec(), method, "create", "chats", nil)
+			cmd.SetArgs([]string{"--as", "bot", "--params", `{"uuid":"stable-key"}`, "--data", `{}`})
+
+			err := cmd.Execute()
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed error, got %T %v", err, err)
+			}
+			if p.Category != errs.CategoryNetwork ||
+				p.Subtype != errs.SubtypeNetworkServer ||
+				p.Code != http.StatusServiceUnavailable ||
+				!p.Retryable ||
+				p.Hint != "The write result is unknown. Retry only with the same idempotency key." {
+				t.Fatalf("problem = %#v", p)
+			}
+		})
+	}
+}
+
+func TestGeneratedIMModerationAlwaysReportsAcceptedUnverified(t *testing.T) {
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, testConfig)
+	reg.Register(&httpmock.Stub{
+		URL:  "/open-apis/im/v1/chats/oc_x/moderation",
+		Body: map[string]any{"code": 0, "msg": "ok", "data": nil},
+	})
+	method := meta.FromMap(map[string]any{
+		"id": "chat.moderation.update", "path": "chats/{chat_id}/moderation", "httpMethod": "PUT",
+		"risk": "write", "accessTokens": []any{"tenant"},
+		"parameters": map[string]any{
+			"chat_id": map[string]any{"type": "string", "location": "path", "required": true},
+		},
+	})
+	cmd := NewCmdServiceMethod(f, imSpec(), method, "update", "chat.moderation", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--params", `{"chat_id":"oc_x"}`, "--data", `{}`})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %s", stderr.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	completion := env["data"].(map[string]any)["completion"].(map[string]any)
+	if completion["status"] != "accepted_unverified" || completion["final_state_verified"] != false ||
+		env["hint"] != imcontract.HelpAcceptanceOnly.Text() {
+		t.Fatalf("unexpected envelope: %#v", env)
+	}
+}
+
+func TestGeneratedIMWriteRejectsPageAll(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	method := meta.FromMap(map[string]any{
+		"id": "chats.create", "path": "chats", "httpMethod": "POST",
+		"risk": "write", "accessTokens": []any{"tenant"},
+	})
+	cmd := NewCmdServiceMethod(f, imSpec(), method, "create", "chats", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--data", `{}`, "--page-all"})
+
+	err := cmd.Execute()
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Category != errs.CategoryValidation || p.Message != "--page-all is not valid for an IM write command" {
+		t.Fatalf("error = %T %#v", err, p)
+	}
+}
+
+func TestGeneratedIMEntityReadRejectsPageAllBeforeAPI(t *testing.T) {
+	// No HTTP stub is registered. The validation result therefore also proves
+	// the hidden pagination flag is rejected before any API request is sent.
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	method := meta.FromMap(map[string]any{
+		"id": "chats.get", "path": "chats/{chat_id}", "httpMethod": "GET",
+		"risk": "read", "accessTokens": []any{"tenant"},
+		"parameters": map[string]any{
+			"chat_id": map[string]any{"type": "string", "location": "path", "required": true},
+		},
+	})
+	cmd := NewCmdServiceMethod(f, imSpec(), method, "get", "chats", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--params", `{"chat_id":"oc_x"}`, "--page-all"})
+
+	err := cmd.Execute()
+	p, ok := errs.ProblemOf(err)
+	var validation *errs.ValidationError
+	if !ok || p.Category != errs.CategoryValidation ||
+		p.Message != "--page-all is not valid for this IM read command" ||
+		!errors.As(err, &validation) || validation.Param != "--page-all" {
+		t.Fatalf("error = %T %#v", err, p)
+	}
+}
+
+func TestIMNonPaginatedReadRejectsPageAllBeforeIdentityResolution(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	f.Credential = credential.NewCredentialProvider(
+		[]extcred.Provider{panicCredentialProvider{}},
+		nil,
+		nil,
+		nil,
+	)
+	f.Config = func() (*core.CliConfig, error) {
+		t.Fatal("config resolution must not run")
+		return nil, nil
+	}
+
+	for _, key := range []imcontract.ContractKey{
+		"im chats get",
+		"im +messages-resources-download",
+	} {
+		t.Run(string(key), func(t *testing.T) {
+			err := serviceMethodRun(&ServiceMethodOptions{
+				Factory:     f,
+				Ctx:         context.Background(),
+				ContractKey: key,
+				PageAll:     true,
+			})
+			p, ok := errs.ProblemOf(err)
+			var validation *errs.ValidationError
+			if !ok || p.Category != errs.CategoryValidation ||
+				p.Message != "--page-all is not valid for this IM read command" ||
+				!errors.As(err, &validation) || validation.Param != "--page-all" {
+				t.Fatalf("error = %T %#v", err, p)
+			}
+		})
+	}
+}
+
+func TestGeneratedIMWriteRejectsOutputBeforeAPI(t *testing.T) {
+	// No HTTP stub is registered. Reaching the transport would therefore
+	// produce a different error, so the typed validation result also proves
+	// the API was not called.
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	method := meta.FromMap(map[string]any{
+		"id": "chats.create", "path": "chats", "httpMethod": "POST",
+		"risk": "write", "accessTokens": []any{"tenant"},
+	})
+	cmd := NewCmdServiceMethod(f, imSpec(), method, "create", "chats", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--data", `{}`, "--output", "result.json"})
+
+	err := cmd.Execute()
+	p, ok := errs.ProblemOf(err)
+	var validation *errs.ValidationError
+	if !ok || p.Category != errs.CategoryValidation || !errors.As(err, &validation) || validation.Param != "--output" {
+		t.Fatalf("error = %T %#v", err, p)
+	}
+	if !strings.Contains(p.Hint, "completion result from stdout") {
+		t.Fatalf("hint = %q", p.Hint)
+	}
+}
+
+func imReadPagination(t *testing.T, env map[string]any) map[string]any {
+	t.Helper()
+	meta, ok := env["meta"].(map[string]any)
+	if !ok {
+		t.Fatalf("meta = %#v, want object", env["meta"])
+	}
+	pagination, ok := meta["pagination"].(map[string]any)
+	if !ok {
+		t.Fatalf("meta.pagination = %#v, want object", meta["pagination"])
+	}
+	return pagination
+}
+
+func imReadStopReason(t *testing.T, env map[string]any) string {
+	t.Helper()
+	notice, ok := env["_notice"].(map[string]any)
+	if !ok {
+		t.Fatalf("_notice = %#v, want object", env["_notice"])
+	}
+	readNotice, ok := notice["im_read"].(map[string]any)
+	if !ok {
+		t.Fatalf("_notice.im_read = %#v, want object", notice["im_read"])
+	}
+	reason, _ := readNotice["stop_reason"].(string)
+	return reason
+}
+
+func TestGeneratedIMCollectionSinglePageReportsIncomplete(t *testing.T) {
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, testConfig)
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/im/v1/messages/om_x/read_users",
+		Body: map[string]any{"code": 0, "data": map[string]any{
+			"items": []any{map[string]any{"user_id": "ou_a"}}, "has_more": true, "page_token": "next",
+		}},
+	})
+	method := generatedIMReadUsersMethod()
+	cmd := NewCmdServiceMethod(f, imSpec(), method, "read_users", "messages", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--params", `{"message_id":"om_x"}`})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %s", stderr.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	pagination := imReadPagination(t, env)
+	if env["ok"] != true || pagination["complete"] != false || imReadStopReason(t, env) != "single_page" {
+		t.Fatalf("unexpected envelope: %#v", env)
+	}
+	if _, exists := env["error"]; exists {
+		t.Fatalf("successful IM read emitted error field: %#v", env)
+	}
+	if !strings.Contains(env["hint"].(string), "--page-all --page-limit 0") {
+		t.Fatalf("missing recovery hint: %#v", env)
+	}
+}
+
+func TestGeneratedIMCollectionPageAllExhausted(t *testing.T) {
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, testConfig)
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/im/v1/messages/om_x/read_users",
+		Body: map[string]any{"code": 0, "data": map[string]any{
+			"items": []any{map[string]any{"user_id": "ou_a"}}, "has_more": true, "page_token": "next",
+		}},
+	})
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/im/v1/messages/om_x/read_users",
+		Body: map[string]any{"code": 0, "data": map[string]any{
+			"items": []any{map[string]any{"user_id": "ou_b"}}, "has_more": false,
+		}},
+	})
+	cmd := NewCmdServiceMethod(f, imSpec(), generatedIMReadUsersMethod(), "read_users", "messages", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--params", `{"message_id":"om_x"}`, "--page-all", "--page-limit", "0", "--page-delay", "-1"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %s", stderr.String())
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	pagination := imReadPagination(t, env)
+	items := env["data"].(map[string]any)["items"].([]any)
+	if len(items) != 2 || pagination["complete"] != true || imReadStopReason(t, env) != "exhausted" {
+		t.Fatalf("unexpected envelope: %#v", env)
+	}
+}
+
+func TestGeneratedIMCollectionPageAllLateErrorKeepsPartialJSON(t *testing.T) {
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, testConfig)
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/im/v1/messages/om_x/read_users",
+		Body: map[string]any{"code": 0, "data": map[string]any{
+			"items": []any{map[string]any{"user_id": "ou_a"}}, "has_more": true, "page_token": "next",
+		}},
+	})
+	reg.Register(&httpmock.Stub{
+		URL:  "/open-apis/im/v1/messages/om_x/read_users",
+		Body: map[string]any{"code": 230027, "msg": "not authorized"},
+	})
+	cmd := NewCmdServiceMethod(f, imSpec(), generatedIMReadUsersMethod(), "read_users", "messages", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--params", `{"message_id":"om_x"}`, "--page-all", "--page-limit", "0", "--page-delay", "-1"})
+
+	err := cmd.Execute()
+	var partial *output.PartialFailureError
+	if !errors.As(err, &partial) || partial.Code != output.ExitAuth {
+		t.Fatalf("error = %T %v", err, err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %s", stderr.String())
+	}
+	var env map[string]any
+	if jsonErr := json.Unmarshal(stdout.Bytes(), &env); jsonErr != nil {
+		t.Fatal(jsonErr)
+	}
+	items := env["data"].(map[string]any)["items"].([]any)
+	pagination := imReadPagination(t, env)
+	rawProblem, exists := env["error"]
+	if !exists {
+		t.Fatalf("late failure omitted structured error: %#v", env)
+	}
+	problem, ok := rawProblem.(map[string]any)
+	if !ok {
+		t.Fatalf("late failure error = %T, want object: %#v", rawProblem, env)
+	}
+	if len(items) != 1 || env["ok"] != false || pagination["complete"] != false ||
+		imReadStopReason(t, env) != "api_error" || problem["type"] != "authorization" {
+		t.Fatalf("unexpected envelope: %#v", env)
+	}
+}
+
+func TestGeneratedIMModerationPageAllLateErrorKeepsPartialJSON(t *testing.T) {
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, testConfig)
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/im/v1/chats/oc_x/moderation",
+		Body: map[string]any{"code": 0, "data": map[string]any{
+			"moderation_setting": "moderator_list",
+			"items":              []any{map[string]any{"user_id": "ou_a"}},
+			"has_more":           true,
+			"page_token":         "next",
+		}},
+	})
+	reg.Register(&httpmock.Stub{
+		URL:  "/open-apis/im/v1/chats/oc_x/moderation",
+		Body: map[string]any{"code": 230027, "msg": "not authorized"},
+	})
+	cmd := NewCmdServiceMethod(f, imSpec(), generatedIMModerationGetMethod(), "get", "chat.moderation", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--params", `{"chat_id":"oc_x"}`, "--page-all", "--page-limit", "0", "--page-delay", "-1"})
+
+	err := cmd.Execute()
+	var partial *output.PartialFailureError
+	if !errors.As(err, &partial) || partial.Code != output.ExitAuth {
+		t.Fatalf("error = %T %v", err, err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %s", stderr.String())
+	}
+	var env map[string]any
+	if jsonErr := json.Unmarshal(stdout.Bytes(), &env); jsonErr != nil {
+		t.Fatal(jsonErr)
+	}
+	items := env["data"].(map[string]any)["items"].([]any)
+	pagination := imReadPagination(t, env)
+	problem := env["error"].(map[string]any)
+	if len(items) != 1 || env["ok"] != false ||
+		pagination["complete"] != false || imReadStopReason(t, env) != "api_error" ||
+		problem["type"] != "authorization" {
+		t.Fatalf("unexpected envelope: %#v", env)
+	}
+}
+
+func TestGeneratedIMCollectionPageAllJSON5xxUsesHTTPStatus(t *testing.T) {
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, testConfig)
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/im/v1/messages/om_x/read_users",
+		Body: map[string]any{"code": 0, "data": map[string]any{
+			"items": []any{map[string]any{"user_id": "ou_a"}}, "has_more": true, "page_token": "next",
+		}},
+	})
+	reg.Register(&httpmock.Stub{
+		URL:    "/open-apis/im/v1/messages/om_x/read_users",
+		Status: http.StatusServiceUnavailable,
+		Body:   map[string]any{"code": 123456, "msg": "unclassified server failure"},
+		Headers: http.Header{
+			"Content-Type":                        []string{"application/json"},
+			http.CanonicalHeaderKey("x-tt-logid"): []string{"log-page-503"},
+		},
+	})
+	cmd := NewCmdServiceMethod(f, imSpec(), generatedIMReadUsersMethod(), "read_users", "messages", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--params", `{"message_id":"om_x"}`, "--page-all", "--page-limit", "0", "--page-delay", "-1"})
+
+	err := cmd.Execute()
+	var partial *output.PartialFailureError
+	if !errors.As(err, &partial) || partial.Code != output.ExitNetwork {
+		t.Fatalf("error = %T %v", err, err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %s", stderr.String())
+	}
+	var env map[string]any
+	if jsonErr := json.Unmarshal(stdout.Bytes(), &env); jsonErr != nil {
+		t.Fatal(jsonErr)
+	}
+	problem, _ := env["error"].(map[string]any)
+	pagination := imReadPagination(t, env)
+	items := env["data"].(map[string]any)["items"].([]any)
+	if len(items) != 1 || env["ok"] != false ||
+		pagination["complete"] != false || imReadStopReason(t, env) != "api_error" ||
+		problem["type"] != "network" || problem["subtype"] != "server_error" ||
+		problem["code"] != float64(http.StatusServiceUnavailable) ||
+		problem["log_id"] != "log-page-503" || problem["retryable"] != true {
+		t.Fatalf("unexpected envelope: %#v", env)
+	}
+}
+
+func TestGeneratedIMCollectionStartTokenNeverClaimsComplete(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, testConfig)
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/im/v1/messages/om_x/read_users",
+		Body: map[string]any{"code": 0, "data": map[string]any{
+			"items": []any{}, "has_more": false,
+		}},
+	})
+	cmd := NewCmdServiceMethod(f, imSpec(), generatedIMReadUsersMethod(), "read_users", "messages", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--params", `{"message_id":"om_x","page_token":"middle"}`})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var env map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	pagination := imReadPagination(t, env)
+	if pagination["complete"] != false || imReadStopReason(t, env) != "start_page_token" {
+		t.Fatalf("unexpected envelope: %#v", env)
+	}
+	data := env["data"].(map[string]any)
+	for _, field := range []string{"has_more", "page_token", "next_page_token"} {
+		if _, exists := data[field]; exists {
+			t.Fatalf("start-token result exposes page-relative %s alongside operation completeness: %#v", field, env)
+		}
+	}
+}
+
+func generatedIMReadUsersMethod() meta.Method {
+	return meta.FromMap(map[string]any{
+		"id": "messages.read_users", "path": "messages/{message_id}/read_users", "httpMethod": "GET",
+		"risk": "read", "accessTokens": []any{"tenant"},
+		"parameters": map[string]any{
+			"message_id": map[string]any{"type": "string", "location": "path", "required": true},
+			"page_token": map[string]any{"type": "string", "location": "query"},
+		},
+	})
+}
+
+func generatedIMModerationGetMethod() meta.Method {
+	return meta.FromMap(map[string]any{
+		"id": "chat.moderation.get", "path": "chats/{chat_id}/moderation", "httpMethod": "GET",
+		"risk": "read", "accessTokens": []any{"tenant"},
+		"parameters": map[string]any{
+			"chat_id":    map[string]any{"type": "string", "location": "path", "required": true},
+			"page_token": map[string]any{"type": "string", "location": "query"},
+		},
+	})
+}
+
+func TestNonIMWriteOutputKeepsExistingFilePath(t *testing.T) {
+	tmp := t.TempDir()
+	cmdutil.TestChdir(t, tmp)
+	f, _, _, reg := cmdutil.TestFactory(t, testConfig)
+	calls := 0
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/svc/v1/items",
+		OnMatch: func(*http.Request) {
+			calls++
+		},
+		Body: map[string]any{"code": 0, "data": map[string]any{"id": "item_x"}},
+	})
+	spec := meta.ServiceFromMap(map[string]any{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]any{
+		"id": "items.create", "path": "items", "httpMethod": "POST", "risk": "write",
+		"accessTokens": []any{"tenant"},
+	})
+	outputPath := "response.json"
+	cmd := NewCmdServiceMethod(f, spec, method, "create", "items", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--data", `{}`, "--output", outputPath})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("API calls = %d, want 1", calls)
+	}
+	raw, err := os.ReadFile(filepath.Join(tmp, outputPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"item_x"`) {
+		t.Fatalf("saved response = %s", raw)
+	}
 }
 
 func TestServiceMethod_FileFlagRegistered(t *testing.T) {

@@ -10,7 +10,7 @@ A message can have flags on both layers simultaneously:
 - Message layer: `(default, message)`
 - Feed layer: `(thread, feed)` or `(msg_thread, feed)` depending on chat type
 
-**When no `--flag-type` is specified, the shortcut performs best-effort double-cancel**: the message-layer flag is always removed; the feed-layer flag is also removed when the chat type can be determined (otherwise a warning is printed on stderr and the feed layer is skipped). The server handles cancel requests for non-existent flags idempotently, so this is safe.
+**When no `--flag-type` is specified, the shortcut performs best-effort double-cancel**: it attempts the message-layer cancellation and also cancels the feed layer when the chat type can be determined. If the feed layer cannot be resolved, that layer remains unresolved in the per-layer result. Cancelling a non-existent flag is idempotent.
 
 **Feed layer item_type is determined by chat_mode**:
 - Topic-style chat (`chat_mode=topic`) → `item_type=thread`
@@ -63,5 +63,7 @@ If you have message content but not the message ID:
 
 ```bash
 # Search by message content to find message_id
-lark-cli im +messages-search --as user --query "message content here" -q '.data.items[0].message_id'
+lark-cli im +messages-search --as user --query "message content here"
 ```
+
+Read the chosen result's `message_id` from the structured output before cancelling it.

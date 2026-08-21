@@ -7,6 +7,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/uuid"
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -23,10 +24,12 @@ func createChat(t *testing.T, parentT *testing.T, ctx context.Context, name stri
 func createChatAs(t *testing.T, parentT *testing.T, ctx context.Context, name string, defaultAs string) string {
 	t.Helper()
 
+	idempotencyKey := uuid.NewString()
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{"im", "+chat-create",
 			"--name", name,
 			"--type", "private",
+			"--idempotency-key", idempotencyKey,
 		},
 		DefaultAs: defaultAs,
 	})

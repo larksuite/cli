@@ -6,11 +6,13 @@ package rules
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	imcatalog "github.com/larksuite/cli/internal/imcontract/catalog"
 	qdiff "github.com/larksuite/cli/internal/qualitygate/diff"
 	"github.com/larksuite/cli/internal/qualitygate/manifest"
 	"github.com/larksuite/cli/internal/qualitygate/report"
@@ -103,6 +105,55 @@ func TestRunRequiresCommandIndexToCoverManifest(t *testing.T) {
 	}
 }
 
+func TestRunReportsMissingIMDomain(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test User")
+	if err := vfs.WriteFile(filepath.Join(repo, "README.md"), []byte("# test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "README.md")
+	runGit(t, repo, "commit", "-m", "base")
+	if err := vfs.MkdirAll(filepath.Join(repo, "skills"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	manifestPath := filepath.Join(repo, "command-manifest.json")
+	indexPath := filepath.Join(repo, "command-index.json")
+	m := manifest.Manifest{SchemaVersion: 1, Commands: []manifest.Command{{
+		Path: "docs +fetch", Domain: "docs", Source: manifest.SourceShortcut,
+	}}}
+	index := manifest.Manifest{SchemaVersion: 1, Commands: []manifest.Command{
+		{
+			Path: "docs +fetch", Domain: "docs", Source: manifest.SourceShortcut, Runnable: true,
+		},
+		{
+			Path: "drive files get", Domain: "drive", Source: manifest.SourceService, Generated: true, Runnable: true,
+		},
+	}}
+	if err := manifest.WriteFile(manifestPath, manifest.KindCommandManifest, m); err != nil {
+		t.Fatal(err)
+	}
+	if err := manifest.WriteFile(indexPath, manifest.KindCommandIndex, index); err != nil {
+		t.Fatal(err)
+	}
+
+	diags, _, err := Run(context.Background(), Options{
+		Repo:             repo,
+		CLIBin:           "./lark-cli",
+		ChangedFrom:      "HEAD",
+		ManifestPath:     manifestPath,
+		CommandIndexPath: indexPath,
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !hasIMContractDiagnostic(diags, "", fmt.Sprintf("IM leaf command count is 0, want %d", expectedIMLeafCommands)) {
+		t.Fatalf("Run() missing-domain diagnostic absent: %#v", diags)
+	}
+}
+
 func TestRunReadsManifestFilesAndAcceptsServiceReferences(t *testing.T) {
 	repo := t.TempDir()
 	runGit(t, repo, "init")
@@ -160,6 +211,15 @@ description: Manage Drive comments with service command references.
 			},
 		},
 	}}
+	for _, contract := range imcatalog.All() {
+		risk := "read"
+		if contract.Strategy.Kind.IsWrite() {
+			risk = "write"
+		}
+		idx.Commands = append(idx.Commands, manifest.Command{
+			Path: string(contract.Key), Domain: "im", Source: manifest.SourceBuiltin, Runnable: true, Risk: risk,
+		})
+	}
 	if err := manifest.WriteFile(manifestPath, manifest.KindCommandManifest, m); err != nil {
 		t.Fatal(err)
 	}

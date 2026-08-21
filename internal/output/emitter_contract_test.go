@@ -184,6 +184,37 @@ func TestEmitterPaginationMetadataByFormat(t *testing.T) {
 	}
 }
 
+func TestEmitterRedactedFallbackSkipsBlockedPresentationScan(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "block")
+	extcs.Register(&contractSafetyProvider{alert: &extcs.Alert{
+		Provider:     "emitter-contract",
+		MatchedRules: []string{"blocked-presentation"},
+	}})
+	t.Cleanup(func() { extcs.Register(nil) })
+	stdout := &bytes.Buffer{}
+	emitter := output.NewEmitter(output.EmitterConfig{
+		Out:         stdout,
+		ErrOut:      io.Discard,
+		CommandPath: "lark-cli im fixture",
+	})
+
+	err := emitter.RedactedFallback(output.Envelope{
+		OK:    false,
+		Data:  map[string]interface{}{"completion": map[string]interface{}{"status": "complete"}},
+		Error: errs.NewAPIError(errs.SubtypeUnknown, "Output failed after the IM write completed"),
+	})
+	if err != nil {
+		t.Fatalf("Emitter.RedactedFallback() error = %v", err)
+	}
+	var env output.Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("decode fallback: %v", err)
+	}
+	if env.OK || env.Error == nil {
+		t.Fatalf("fallback = %#v, want redacted failure envelope", env)
+	}
+}
+
 func TestEmitterMarshalFailureReturnsTypedErrorWithoutOutput(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "off")
 	stdout := &bytes.Buffer{}

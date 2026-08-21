@@ -10,6 +10,8 @@ type Envelope struct {
 	DryRun             bool                   `json:"dry_run,omitempty"`
 	Data               interface{}            `json:"data,omitempty"`
 	Meta               *Meta                  `json:"meta,omitempty"`
+	Error              interface{}            `json:"error,omitempty"`
+	Hint               string                 `json:"hint,omitempty"`
 	ContentSafetyAlert interface{}            `json:"_content_safety_alert,omitempty"`
 	Notice             map[string]interface{} `json:"_notice,omitempty"`
 }

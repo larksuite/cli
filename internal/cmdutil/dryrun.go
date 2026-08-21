@@ -29,6 +29,9 @@ type DryRunOutputOptions struct {
 	Identity    core.Identity
 	Out         io.Writer
 	ErrOut      io.Writer
+	// NoticeProvider is optional. Nil preserves the process-wide notice source;
+	// command-specific callers can merge invocation facts without mutating it.
+	NoticeProvider output.NoticeProvider
 }
 
 // DryRunAPICall describes a single API call in dry-run output.
@@ -306,12 +309,20 @@ func WriteDryRun(dr *DryRunAPI, opts DryRunOutputOptions) error {
 		fmt.Fprint(opts.Out, dr.Format())
 		return nil
 	}
-	return output.WriteSuccessEnvelope(dr, output.SuccessEnvelopeOptions{
-		CommandPath: opts.CommandPath,
-		Identity:    string(opts.Identity),
-		DryRun:      true,
-		JqExpr:      opts.JqExpr,
-		Out:         opts.Out,
-		ErrOut:      opts.ErrOut,
+	noticeProvider := opts.NoticeProvider
+	if noticeProvider == nil {
+		noticeProvider = output.GetNotice
+	}
+	return output.NewEmitter(output.EmitterConfig{
+		Out:            opts.Out,
+		ErrOut:         opts.ErrOut,
+		CommandPath:    opts.CommandPath,
+		Identity:       string(opts.Identity),
+		NoticeProvider: noticeProvider,
+	}).Success(dr, output.EmitOptions{
+		Format:          "",
+		JQ:              opts.JqExpr,
+		DryRun:          true,
+		JQSafetyWarning: true,
 	})
 }

@@ -89,7 +89,7 @@ var ImChatSearch = common.Shortcut{
 		{Name: "page-size", Type: "int", Default: fmt.Sprintf("%d", chatSearchDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", chatSearchMaxPageSize)},
 		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "exclude-muted", Type: "bool", Desc: "(user identity only) drop chats the current user has muted (do-not-disturb); bot identity returns all chats unfiltered"},
-	}, common.PageAllFlags()...),
+	}, common.PageAllFlags(imPageAllPolicy)...),
 	Normalize: normalizeChatSearchSortCompatibility,
 	// DryRun previews the POST /open-apis/im/v2/chats/search request without executing.
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -146,7 +146,7 @@ var ImChatSearch = common.Shortcut{
 		if _, err := common.ValidatePageSizeTyped(runtime, "page-size", chatSearchDefaultPageSize, 1, chatSearchMaxPageSize); err != nil {
 			return err
 		}
-		return common.ValidatePageAllFlags(runtime)
+		return common.ValidatePageAllFlags(runtime, imPageAllPolicy)
 	},
 	// Execute fetches one or more pages, extracts per-item meta_data, optionally applies
 	// the --exclude-muted client-side filter (with a PreSkipReason when
@@ -159,15 +159,16 @@ var ImChatSearch = common.Shortcut{
 		// Fetch + project: every page is decoded into the endpoint's typed
 		// wrapper, then its meta_data records are merged in page order.
 		result := &chatSearchResult{}
-		pagination, err := common.PaginateInto(runtime, common.PageRequest{
+		pagination, paginationStatus, pageErr := common.PaginateInto(runtime, common.PageRequest{
 			Method: http.MethodPost,
 			Path:   imChatSearchPath,
 			Params: params,
 			Body:   body,
-		}, result)
-		if err != nil {
-			return err
+		}, result, imPageAllPolicy)
+		if pageErr != nil && paginationStatus.PagesFetched == 0 {
+			return pageErr
 		}
+		runtime.RecordPagination(paginationStatus)
 
 		// Transform: the mute filter is global to the fetched result and may
 		// batch internally; API page boundaries are irrelevant here.
@@ -179,16 +180,22 @@ var ImChatSearch = common.Shortcut{
 		if runtime.Bool("exclude-muted") {
 			preSkipReason = detectAllNonMemberPreSkip(runtime.Str("search-types"))
 		}
-		mfOut, err := MaybeApplyMuteFilter(runtime, MuteFilterInput{
-			ExcludeMuted:  runtime.Bool("exclude-muted"),
-			IsBot:         runtime.IsBot(),
-			PreSkipReason: preSkipReason,
-			Chats:         items,
-			ChatIDKey:     "chat_id",
-			HasMore:       hasMore,
-		})
-		if err != nil {
-			return err
+		mfOut := MuteFilterOutput{Chats: items}
+		if runtime.Bool("exclude-muted") && pageErr != nil {
+			mfOut = skippedMuteFilterForIncompleteRead(items)
+		} else {
+			var err error
+			mfOut, err = MaybeApplyMuteFilter(runtime, MuteFilterInput{
+				ExcludeMuted:  runtime.Bool("exclude-muted"),
+				IsBot:         runtime.IsBot(),
+				PreSkipReason: preSkipReason,
+				Chats:         items,
+				ChatIDKey:     "chat_id",
+				HasMore:       hasMore,
+			})
+			if err != nil {
+				return err
+			}
 		}
 		items = mfOut.Chats
 		pagination.Items = len(items)

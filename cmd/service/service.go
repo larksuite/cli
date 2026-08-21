@@ -19,6 +19,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/errclass"
+	"github.com/larksuite/cli/internal/imcontract"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
@@ -131,6 +132,7 @@ type ServiceMethodOptions struct {
 	ServicePath string
 	Method      meta.Method
 	SchemaPath  string
+	ContractKey imcontract.ContractKey
 
 	// Flags
 	Params     string
@@ -145,6 +147,9 @@ type ServiceMethodOptions struct {
 	DryRun     bool
 	File       string   // --file flag value
 	FileFields []string // auto-detected file field names from metadata
+
+	identityDefaulted   bool
+	identityWarningSent bool
 
 	// binder owns the generated typed param flags — registration and the
 	// --params overlay — replacing the raw paramFlags side-channel.
@@ -204,6 +209,7 @@ type methodCommandSpec struct {
 	declaresBody bool
 	paginates    bool   // method accepts a page_token param (so --page-all is meaningful)
 	serviceName  string // owning service name (e.g. "approval"), for the lazy affordance lookup
+	contractKey  imcontract.ContractKey
 }
 
 // methodPaginates reports whether a method takes a page_token param, the signal
@@ -219,7 +225,7 @@ func methodPaginates(m meta.Method) bool {
 
 func newMethodCommandSpec(ref apicatalog.MethodRef) methodCommandSpec {
 	m := ref.Method
-	return methodCommandSpec{
+	spec := methodCommandSpec{
 		method:       m,
 		schemaPath:   ref.SchemaPath(),
 		servicePath:  ref.Service.ServicePath,
@@ -233,6 +239,19 @@ func newMethodCommandSpec(ref apicatalog.MethodRef) methodCommandSpec {
 		declaresBody: len(m.Data()) > 0 || len(m.Files()) > 0,
 		paginates:    methodPaginates(m),
 	}
+	spec.contractKey = generatedContractKey(ref.Service.Name, m.ID)
+	return spec
+}
+
+func generatedContractKey(serviceName, methodID string) imcontract.ContractKey {
+	if serviceName != "im" || methodID == "" {
+		return ""
+	}
+	i := strings.LastIndex(methodID, ".")
+	if i < 0 {
+		return ""
+	}
+	return imcontract.ContractKey(serviceName + " " + methodID[:i] + " " + methodID[i+1:])
 }
 
 // methodTakesBody reports whether the HTTP method allows a request body, i.e.
@@ -256,6 +275,7 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 		ServicePath: spec.servicePath,
 		Method:      m,
 		SchemaPath:  spec.schemaPath,
+		ContractKey: spec.contractKey,
 		FileFields:  spec.fileFields,
 	}
 	var asStr string
@@ -322,6 +342,7 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 	paramsOnly := opts.binder.paramsOnlyHelp()
 	cmd.Long = methodLong(m.Description, spec.schemaPath, paramsOnly)
 	setMethodHelpData(cmd, spec.serviceName, m.ID, spec.schemaPath, paramsOnly)
+	imcontract.AnnotateHelpContract(cmd, spec.contractKey)
 
 	// Group flags for the grouped --help renderer (typed param flags are grouped
 	// as API Parameters by the binder). tagFlagGroup is a no-op for flags not
@@ -365,6 +386,15 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 
 func serviceMethodRun(opts *ServiceMethodOptions) error {
 	f := opts.Factory
+	contract, contractFound := imcontract.Lookup(opts.ContractKey)
+	contractManagedWrite := contractFound && contract.Strategy.Kind.IsWrite()
+	contractManagedRead := contractFound && contract.Strategy.Kind.IsRead()
+	if contractManagedRead && opts.PageAll &&
+		contract.Strategy.Kind != imcontract.CollectionReadKind &&
+		contract.Strategy.Kind != imcontract.SearchReadKind {
+		return newIMReadPageAllValidationError()
+	}
+
 	opts.As = f.ResolveAs(opts.Ctx, opts.Cmd, opts.As)
 
 	if err := f.CheckStrictMode(opts.Ctx, opts.As); err != nil {
@@ -377,12 +407,23 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 			return err
 		}
 	}
+	opts.identityDefaulted = contractManagedWrite &&
+		serviceMethodSupportsUserAndBot(opts.Method) &&
+		!serviceIdentityFlagChanged(opts.Cmd) &&
+		f.IdentityAutoDetected &&
+		!f.ResolveStrictMode(opts.Ctx).IsActive()
 
 	if opts.PageAll && opts.Output != "" {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output and --page-all are mutually exclusive").WithParam("--output")
 	}
 	if err := output.ValidateJqFlags(opts.JqExpr, opts.Output, opts.Format); err != nil {
 		return err
+	}
+	if contractManagedWrite && opts.Output != "" {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--output is not supported for contract-managed IM write commands").
+			WithParam("--output").
+			WithHint("remove --output; read the completion result from stdout")
 	}
 
 	config, err := f.Config()
@@ -401,8 +442,8 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	if err != nil {
 		return err
 	}
-
 	if opts.DryRun {
+		warnServiceIdentityDefaulted(opts)
 		if fileMeta != nil {
 			return cmdutil.PrintDryRunWithFile(request, config, serviceDryRunOutputOptions(f, opts), *fileMeta)
 		}
@@ -430,15 +471,60 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	// errclass.BuildAPIError via ac.CheckResponse, producing *errs.PermissionError
 	// with MissingScopes / Identity / ConsoleURL populated from the response.
 	checkErr := ac.CheckResponse
+	var contractSession *imcontract.Session
+	if contractManagedWrite {
+		contractSession = imcontract.NewSession(contract)
+		requestBody, _ := request.Data.(map[string]any)
+		if uuid, ok := request.Params["uuid"].(string); ok && uuid != "" {
+			cloned := make(map[string]any, len(requestBody)+1)
+			for key, value := range requestBody {
+				cloned[key] = value
+			}
+			cloned["uuid"] = uuid
+			requestBody = cloned
+		}
+		if err := contractSession.ObserveRequest(requestBody); err != nil {
+			return err
+		}
+	}
+	var readSession *imcontract.ReadSession
+	if contractManagedRead {
+		readSession, err = imcontract.NewReadSession(contract, imcontract.ReadOptions{FullRead: opts.PageAll})
+		if err != nil {
+			return err
+		}
+	}
 
 	if opts.PageAll {
+		if contractSession != nil {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--page-all is not valid for an IM write command").WithParam("--page-all")
+		}
+		if readSession != nil {
+			return servicePaginateIMRead(opts, ac, &request, format, readSession)
+		}
 		return servicePaginate(opts.Ctx, ac, request, format, opts.JqExpr, out, f.IOStreams.ErrOut, opts.Cmd.CommandPath(),
 			client.PaginationOptions{PageLimit: opts.PageLimit, PageDelay: opts.PageDelay}, checkErr)
 	}
 
+	if contractSession != nil {
+		contractSession.RecordFact(imcontract.Fact{Kind: imcontract.FactWriteAttempted})
+	}
 	resp, err := ac.DoAPI(opts.Ctx, request)
 	if err != nil {
+		if contractSession != nil {
+			return contractSession.FinalizeError(normalizeIMContractJSONError(err))
+		}
+		if readSession != nil {
+			return readSession.FinalizeError(normalizeIMContractJSONError(err))
+		}
 		return err
+	}
+	if contractSession != nil {
+		return handleIMWriteContractResponse(opts, resp, format, checkErr, contractSession)
+	}
+	if readSession != nil {
+		return handleIMReadContractResponse(opts, resp, format, checkErr, readSession, request)
 	}
 	return client.HandleResponse(resp, client.ResponseOptions{
 		OutputPath:  opts.Output,
@@ -451,6 +537,422 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 		Identity:    opts.As,
 		CheckError:  checkErr,
 	})
+}
+
+func handleIMReadContractResponse(
+	opts *ServiceMethodOptions,
+	resp *larkcore.ApiResp,
+	format output.Format,
+	checkErr func(interface{}, core.Identity) error,
+	session *imcontract.ReadSession,
+	request client.RawApiRequest,
+) error {
+	responseOpts := client.ResponseOptions{
+		OutputPath:  opts.Output,
+		Format:      format,
+		JqExpr:      opts.JqExpr,
+		Out:         opts.Factory.IOStreams.Out,
+		ErrOut:      opts.Factory.IOStreams.ErrOut,
+		FileIO:      opts.Factory.ResolveFileIO(opts.Ctx),
+		CommandPath: opts.Cmd.CommandPath(),
+		Identity:    opts.As,
+		CheckError:  checkErr,
+	}
+	if resp.StatusCode >= 400 {
+		responseErr := client.HandleResponse(resp, responseOpts)
+		responseErr = imcontract.NormalizeHTTPError(
+			resp.StatusCode,
+			resp.Header.Get("x-tt-logid"),
+			responseErr,
+		)
+		return session.FinalizeError(responseErr)
+	}
+	parsed, err := parseIMContractJSONResponse(resp)
+	if err != nil {
+		return session.FinalizeError(err)
+	}
+	if apiErr := checkErr(parsed, opts.As); apiErr != nil {
+		return session.FinalizeError(apiErr)
+	}
+	data := output.SuccessEnvelopeData(parsed)
+	if session.RequiresPagination() {
+		status, _ := client.InspectPaginationPage(parsed, requestStringParam(request.Params, "page_token"))
+		session.ObservePagination(status)
+	}
+	result, err := session.Finalize(data)
+	if err != nil {
+		return err
+	}
+	return writeIMReadResult(opts, format, result, parsed)
+}
+
+func servicePaginateIMRead(
+	opts *ServiceMethodOptions,
+	ac *client.APIClient,
+	request *client.RawApiRequest,
+	format output.Format,
+	session *imcontract.ReadSession,
+) error {
+	if session == nil {
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "IM paginated read requires a read session")
+	}
+	if !session.RequiresPagination() {
+		return newIMReadPageAllValidationError()
+	}
+	pagOpts := client.PaginationOptions{
+		PageLimit:          opts.PageLimit,
+		PageDelay:          opts.PageDelay,
+		Identity:           opts.As,
+		NormalizeHTTPError: imcontract.NormalizeHTTPError,
+	}
+	if opts.JqExpr == "" && (format == output.FormatNDJSON || format == output.FormatTable || format == output.FormatCSV) {
+		return streamIMReadPages(opts, ac, request, format, session, pagOpts)
+	}
+
+	merged, status, _ := ac.PaginateAllWithStatus(opts.Ctx, request, pagOpts)
+	session.ObservePagination(status)
+	data := output.SuccessEnvelopeData(merged)
+	result, err := session.Finalize(data)
+	if err != nil {
+		return err
+	}
+	return writeIMReadResult(opts, format, result, merged)
+}
+
+func newIMReadPageAllValidationError() error {
+	return errs.NewValidationError(
+		errs.SubtypeInvalidArgument,
+		"--page-all is not valid for this IM read command",
+	).WithParam("--page-all")
+}
+
+func streamIMReadPages(
+	opts *ServiceMethodOptions,
+	ac *client.APIClient,
+	request *client.RawApiRequest,
+	format output.Format,
+	session *imcontract.ReadSession,
+	pagOpts client.PaginationOptions,
+) error {
+	errOut := opts.Factory.IOStreams.ErrOut
+	emitter := newIMServiceEmitter(opts, nil)
+	var firstPage map[string]interface{}
+	hasItems := false
+	status, pageErr := ac.StreamPagesWithStatus(opts.Ctx, request, pagOpts, func(page map[string]interface{}) error {
+		if firstPage == nil {
+			firstPage = page
+		}
+		data, _ := page["data"].(map[string]interface{})
+		arrayField := output.FindArrayField(data)
+		if arrayField == "" {
+			return nil
+		}
+		items, _ := data[arrayField].([]interface{})
+		hasItems = true
+		return emitter.StreamPage(items, output.StreamOptions{Format: format.String()})
+	})
+	if pageErr != nil && status.StopReason == "" {
+		return session.FinalizeError(pageErr)
+	}
+	session.ObservePagination(status)
+	result, err := session.Finalize(map[string]interface{}{})
+	if err != nil {
+		return err
+	}
+	if !hasItems && firstPage != nil {
+		fmt.Fprintf(errOut, "warning: this API does not return a list, format %q is not supported, falling back to json\n", format)
+		if writeErr := emitIMServiceResult(
+			opts,
+			output.FormatJSON,
+			output.SuccessEnvelopeData(firstPage),
+			result.OK,
+			result.Meta,
+			result.Error,
+			result.Hint,
+			result.Notice,
+			false,
+		); writeErr != nil {
+			return writeErr
+		}
+	} else if err := emitter.Hint(result.Hint); err != nil {
+		return err
+	}
+	return readResultExit(result)
+}
+
+func writeIMReadResult(
+	opts *ServiceMethodOptions,
+	format output.Format,
+	result imcontract.ReadResult,
+	presentation interface{},
+) error {
+	if opts.JqExpr != "" || format == output.FormatJSON {
+		if err := emitIMServiceResult(
+			opts,
+			format,
+			result.Data,
+			result.OK,
+			result.Meta,
+			result.Error,
+			result.Hint,
+			result.Notice,
+			true,
+		); err != nil {
+			return err
+		}
+		return readResultExitForProjection(result, opts.JqExpr != "")
+	}
+
+	if err := emitIMServiceResult(
+		opts,
+		format,
+		presentation,
+		result.OK,
+		result.Meta,
+		result.Error,
+		result.Hint,
+		result.Notice,
+		false,
+	); err != nil {
+		return err
+	}
+	return readResultExitForProjection(result, true)
+}
+
+func newIMServiceEmitter(opts *ServiceMethodOptions, readNotice map[string]interface{}) *output.Emitter {
+	return output.NewEmitter(output.EmitterConfig{
+		Out:         opts.Factory.IOStreams.Out,
+		ErrOut:      opts.Factory.IOStreams.ErrOut,
+		CommandPath: opts.Cmd.CommandPath(),
+		Identity:    string(opts.As),
+		NoticeProvider: func() map[string]interface{} {
+			base := output.GetNotice()
+			if opts.identityDefaulted {
+				base = imcontract.WithIdentityDefaultedNotice(base, string(opts.As))
+			}
+			return mergeIMServiceNotices(base, readNotice)
+		},
+	})
+}
+
+func mergeIMServiceNotices(base, extra map[string]interface{}) map[string]interface{} {
+	if len(base) == 0 && len(extra) == 0 {
+		return nil
+	}
+	merged := make(map[string]interface{}, len(base)+len(extra))
+	for key, value := range base {
+		merged[key] = value
+	}
+	for key, value := range extra {
+		merged[key] = value
+	}
+	return merged
+}
+
+func emitIMServiceResult(
+	opts *ServiceMethodOptions,
+	format output.Format,
+	data interface{},
+	ok bool,
+	meta *output.Meta,
+	resultError *errs.Problem,
+	hint string,
+	readNotice map[string]interface{},
+	projectedRead bool,
+) error {
+	warnServiceIdentityDefaulted(opts)
+	var errorValue interface{}
+	if resultError != nil {
+		errorValue = resultError
+	}
+	emitOpts := output.EmitOptions{
+		Format: format.String(),
+		JQ:     opts.JqExpr,
+		Meta:   meta,
+		Error:  errorValue,
+		Hint:   hint,
+		HintToStderr: hint != "" &&
+			((projectedRead && opts.JqExpr != "") ||
+				(opts.JqExpr == "" && format != output.FormatJSON)),
+	}
+	emitter := newIMServiceEmitter(opts, readNotice)
+	if !ok && (opts.JqExpr != "" || format == output.FormatJSON) {
+		return emitter.PartialFailure(data, emitOpts)
+	}
+	return emitter.Success(data, emitOpts)
+}
+
+func serviceMethodSupportsUserAndBot(method meta.Method) bool {
+	return method.SupportsToken(meta.TokenUser) && method.SupportsToken(meta.TokenTenant)
+}
+
+func serviceIdentityFlagChanged(cmd *cobra.Command) bool {
+	return cmd != nil && cmd.Flags().Changed("as")
+}
+
+func warnServiceIdentityDefaulted(opts *ServiceMethodOptions) {
+	if opts == nil || !opts.identityDefaulted || opts.identityWarningSent {
+		return
+	}
+	opts.identityWarningSent = true
+	fmt.Fprintf(opts.Factory.IOStreams.ErrOut, "warning: %s: %s\n",
+		imcontract.IdentityDefaultedNoticeKey,
+		imcontract.IdentityDefaultedMessage(string(opts.As)))
+}
+
+func readResultExit(result imcontract.ReadResult) error {
+	if result.ExitCode == 0 {
+		return nil
+	}
+	if result.Cause != nil {
+		return result.Cause
+	}
+	return output.PartialFailure(result.ExitCode)
+}
+
+func readResultExitForProjection(result imcontract.ReadResult, projected bool) error {
+	if result.ExitCode == 0 {
+		return nil
+	}
+	if projected && result.Cause != nil {
+		return result.Cause
+	}
+	return output.PartialFailure(result.ExitCode)
+}
+
+func requestStringParam(params map[string]interface{}, name string) string {
+	value, _ := params[name].(string)
+	return value
+}
+
+func handleIMWriteContractResponse(
+	opts *ServiceMethodOptions,
+	resp *larkcore.ApiResp,
+	format output.Format,
+	checkErr func(interface{}, core.Identity) error,
+	session *imcontract.Session,
+) error {
+	responseOpts := client.ResponseOptions{
+		OutputPath:  opts.Output,
+		Format:      format,
+		JqExpr:      opts.JqExpr,
+		Out:         opts.Factory.IOStreams.Out,
+		ErrOut:      opts.Factory.IOStreams.ErrOut,
+		FileIO:      opts.Factory.ResolveFileIO(opts.Ctx),
+		CommandPath: opts.Cmd.CommandPath(),
+		Identity:    opts.As,
+		CheckError:  checkErr,
+	}
+	if resp.StatusCode >= 400 {
+		responseErr := client.HandleResponse(resp, responseOpts)
+		responseErr = imcontract.NormalizeHTTPError(
+			resp.StatusCode,
+			resp.Header.Get("x-tt-logid"),
+			responseErr,
+		)
+		return session.FinalizeError(responseErr)
+	}
+	parsed, err := parseIMContractJSONResponse(resp)
+	if err != nil {
+		return session.FinalizeError(err)
+	}
+	if apiErr := checkErr(parsed, opts.As); apiErr != nil {
+		return session.FinalizeError(apiErr)
+	}
+	data := output.SuccessEnvelopeData(parsed)
+	if m, ok := data.(map[string]any); ok {
+		session.ObserveResponse(m)
+	}
+	result, err := session.FinalizeSuccess(data)
+	if err != nil {
+		return err
+	}
+
+	emitErr := emitIMServiceResult(
+		opts,
+		format,
+		result.Data,
+		result.OK,
+		nil,
+		nil,
+		result.Hint,
+		nil,
+		false,
+	)
+	if emitErr != nil {
+		if errs.IsContentSafety(emitErr) {
+			return writeIMContentSafetyFallback(opts, result)
+		}
+		if opts.JqExpr != "" {
+			writeIMJQDiagnostic(opts.Factory.IOStreams.ErrOut)
+			return writeIMJQFallback(opts, result)
+		}
+		return emitErr
+	}
+	if result.ExitCode != 0 {
+		return output.PartialFailure(result.ExitCode)
+	}
+	return nil
+}
+
+func parseIMContractJSONResponse(resp *larkcore.ApiResp) (interface{}, error) {
+	if resp == nil {
+		return nil, newIMContractJSONResponseError(resp)
+	}
+	parsed, err := client.ParseJSONResponse(resp)
+	if err != nil {
+		return nil, newIMContractJSONResponseError(resp)
+	}
+	return parsed, nil
+}
+
+func newIMContractJSONResponseError(resp *larkcore.ApiResp) *errs.InternalError {
+	contractErr := errs.NewInternalError(
+		errs.SubtypeInvalidResponse,
+		"IM contract response must be valid JSON",
+	)
+	if resp == nil {
+		return contractErr
+	}
+	if logID := resp.Header.Get("x-tt-logid"); logID != "" {
+		contractErr.WithLogID(logID)
+	}
+	return contractErr
+}
+
+func normalizeIMContractJSONError(err error) error {
+	problem, ok := errs.ProblemOf(err)
+	if ok && problem.Subtype == errs.SubtypeInvalidResponse {
+		normalized := newIMContractJSONResponseError(nil)
+		if problem.Code != 0 {
+			normalized.WithCode(problem.Code)
+		}
+		if problem.LogID != "" {
+			normalized.WithLogID(problem.LogID)
+		}
+		return normalized
+	}
+	return err
+}
+
+func writeIMJQFallback(opts *ServiceMethodOptions, result imcontract.Result) error {
+	env, signal := imcontract.BuildJQOutputFallback(result)
+	if err := newIMServiceEmitter(opts, nil).RedactedFallback(env); err != nil {
+		return err
+	}
+	return signal
+}
+
+func writeIMJQDiagnostic(errOut io.Writer) {
+	fmt.Fprintln(errOut, "error: jq projection failed after the IM write completed; inspect --jq")
+}
+
+func writeIMContentSafetyFallback(opts *ServiceMethodOptions, result imcontract.Result) error {
+	env, signal := imcontract.BuildContentSafetyOutputFallback(result)
+	if err := newIMServiceEmitter(opts, nil).RedactedFallback(env); err != nil {
+		return err
+	}
+	return signal
 }
 
 // checkServiceScopes pre-checks user scopes before making the API call.
@@ -686,6 +1188,13 @@ func serviceDryRunOutputOptions(f *cmdutil.Factory, opts *ServiceMethodOptions) 
 		Identity:    opts.As,
 		Out:         f.IOStreams.Out,
 		ErrOut:      f.IOStreams.ErrOut,
+		NoticeProvider: func() map[string]interface{} {
+			base := output.GetNotice()
+			if !opts.identityDefaulted {
+				return base
+			}
+			return imcontract.WithIdentityDefaultedNotice(base, string(opts.As))
+		},
 	}
 }
 

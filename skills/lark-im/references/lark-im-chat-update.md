@@ -1,6 +1,6 @@
 # im +chat-update
 
-> **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
+> **Prerequisite:** Before executing this command, ensure [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) has been read once in the current task for authentication, global parameters, and safety rules. Do not reread it if already loaded.
 
 Update a group's name or description. Supports both **TAT (bot)** and **UAT (user)** identity.
 
@@ -65,8 +65,8 @@ lark-cli im +chat-update --chat-id oc_xxx \
 | `--description exceeds the maximum of 100 characters` | Group description too long | Shorten the description to 100 characters or fewer |
 | `at least one field must be specified to update` | No update field was provided | Specify at least one field to update |
 | Permission denied (99991679) | Missing `im:chat:update` permission | Run `lark-cli auth login --scope "im:chat:update"` |
-| Non-owner/admin cannot update (232016/232002/232017) | Current identity is not the owner/admin | Try switching identity with `--as bot` or `--as user` |
-| Not in the group (232011) | The current user is not a member of the group | Use a member identity (`--as bot`) or join the group first |
+| Non-owner/admin cannot update (232016/232002/232017) | Current identity is not the owner/admin | Read the current owner/admin state. If the requested actor lacks authority, stop before writing; do not switch actor or try the write first |
+| Not in the group (232011) | The requested actor is not a member of the group | Read current membership. If that actor is not a member, stop or ask the user to add it; do not retry as another actor |
 
 ## AI Usage Guidance
 
@@ -74,9 +74,9 @@ lark-cli im +chat-update --chat-id oc_xxx \
 
 `+chat-update` supports both user and bot identity (`--as user` / `--as bot`).
 
-Infer the group owner from context whenever possible (for example, if a bot just created the group, the owner is the bot) and use the matching identity directly. If ownership is unclear, query the group first and confirm `owner_id`.
+Read the current group state and confirm `owner_id` or admin authority before writing. Creation history may guide discovery, but it does not override current state or a user-requested actor.
 
-Identity choice should follow [Group Chat Identity Rules](lark-im-chat-identity.md): if the user explicitly specifies an identity, use it directly; otherwise infer the owner identity from context.
+Identity choice follows [Group Chat Identity Rules](lark-im-chat-identity.md): preserve an explicit actor; if current authority proves that actor cannot perform the update, stop before the write instead of switching identities.
 
 ## References
 

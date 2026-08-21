@@ -48,3 +48,41 @@ func WriteSuccessEnvelope(data interface{}, opts SuccessEnvelopeOptions) error {
 		JQSafetyWarning: true,
 	})
 }
+
+// WriteEnvelope emits a complete result envelope. It is used when a result
+// needs to carry business data and a machine-readable completion/error state
+// in one stdout document.
+func WriteEnvelope(env Envelope, opts SuccessEnvelopeOptions) error {
+	identity := env.Identity
+	if identity == "" {
+		identity = opts.Identity
+	}
+	noticeProvider := GetNotice
+	if env.Notice != nil {
+		notice := env.Notice
+		noticeProvider = func() map[string]interface{} {
+			return notice
+		}
+	}
+	emitter := NewEmitter(EmitterConfig{
+		Out:            opts.Out,
+		ErrOut:         opts.ErrOut,
+		CommandPath:    opts.CommandPath,
+		Identity:       identity,
+		NoticeProvider: noticeProvider,
+	})
+	emitOpts := EmitOptions{
+		Format:          "",
+		Raw:             false,
+		JQ:              opts.JqExpr,
+		DryRun:          env.DryRun || opts.DryRun,
+		Meta:            env.Meta,
+		Error:           env.Error,
+		Hint:            env.Hint,
+		JQSafetyWarning: true,
+	}
+	if env.OK {
+		return emitter.Success(env.Data, emitOpts)
+	}
+	return emitter.PartialFailure(env.Data, emitOpts)
+}

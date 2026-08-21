@@ -212,3 +212,37 @@ func TestWriteSuccessEnvelope_BlockModeReturnsTypedErrorWithoutStdout(t *testing
 		t.Fatalf("stdout should stay empty on block, got: %s", out.String())
 	}
 }
+
+func TestEnvelopeCompleteSerializesFalse(t *testing.T) {
+	raw, err := json.Marshal(Envelope{OK: true, Meta: &Meta{Pagination: &PaginationMeta{Complete: false}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"complete":false`) {
+		t.Fatalf("false completeness was omitted: %s", raw)
+	}
+}
+
+func TestWriteEnvelopeCarriesPartialResultAndTypedError(t *testing.T) {
+	var out strings.Builder
+	apiErr := errs.NewAPIError(errs.SubtypeUnknown, "one item failed")
+	err := WriteEnvelope(Envelope{
+		OK:    false,
+		Data:  map[string]any{"completion": map[string]any{"status": "partial"}},
+		Error: apiErr,
+		Hint:  "retry only failed items",
+	}, SuccessEnvelopeOptions{Identity: "bot", Out: &out})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var env map[string]any
+	if err := json.Unmarshal([]byte(out.String()), &env); err != nil {
+		t.Fatal(err)
+	}
+	if env["ok"] != false || env["hint"] != "retry only failed items" {
+		t.Fatalf("unexpected envelope: %#v", env)
+	}
+	if env["error"].(map[string]any)["type"] != "api" {
+		t.Fatalf("typed error missing: %#v", env)
+	}
+}

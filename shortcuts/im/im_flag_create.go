@@ -57,7 +57,7 @@ var ImFlagCreate = common.Shortcut{
 				errs.InvalidParam{Name: "--item-type", Reason: "unsupported with the given --flag-type"},
 				errs.InvalidParam{Name: "--flag-type", Reason: "unsupported with the given --item-type"})
 		}
-		data, err := runtime.DoAPIJSONTyped("POST", "/open-apis/im/v1/flags", nil,
+		data, err := runtime.DoWriteAPIJSONTyped("POST", "/open-apis/im/v1/flags", nil,
 			map[string]any{"flag_items": []flagItem{item}})
 		if err != nil {
 			return err

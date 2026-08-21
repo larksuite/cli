@@ -8,8 +8,31 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/imcontract"
 	"github.com/spf13/cobra"
 )
+
+func TestShortcutMountStoresOnlyLazyIMContractHelpKey(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	parent := &cobra.Command{Use: "im"}
+	shortcut := Shortcut{
+		Service:     "im",
+		Command:     "+chat-list",
+		Description: "List chats",
+		Execute:     func(context.Context, *RuntimeContext) error { return nil },
+	}
+	shortcut.Mount(parent, f)
+	cmd, _, err := parent.Find([]string{"+chat-list"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cmd.Long != "" || cmd.Short != "List chats" {
+		t.Fatalf("mount changed visible help fields: Short=%q Long=%q", cmd.Short, cmd.Long)
+	}
+	if got := imcontract.HelpText(cmd); got != imcontract.HelpCompleteness.Text() {
+		t.Fatalf("lazy contract help = %q", got)
+	}
+}
 
 // TestShortcutMount_FlagCompletionsRegistered exercises the two
 // cmdutil.RegisterFlagCompletion call sites in registerShortcutFlagsWithContext:

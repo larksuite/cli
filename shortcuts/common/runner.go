@@ -30,6 +30,7 @@ import (
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/fileevent"
 	"github.com/larksuite/cli/internal/i18n"
+	"github.com/larksuite/cli/internal/imcontract"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -37,24 +38,29 @@ import (
 
 // RuntimeContext provides helpers for shortcut execution.
 type RuntimeContext struct {
-	ctx            context.Context // from cmd.Context(), propagated through the call chain
-	Config         *core.CliConfig
-	Cmd            *cobra.Command
-	Format         string
-	JqExpr         string                            // --jq expression; empty = no filter
-	outputErrOnce  sync.Once                         // guards first-error capture in Out()/OutFormat()
-	outputErr      error                             // deferred error from jq filtering; written at most once
-	botOnly        bool                              // set by framework for bot-only shortcuts
-	resolvedAs     core.Identity                     // effective identity resolved by framework
-	declaredScopes []string                          // shortcut-declared scopes for the resolved identity
-	reportOnce     sync.Once                         // lazily initializes the command-scoped upload report budget
-	reportBudget   *fileevent.Budget                 // shared by every upload report in this command
-	Factory        *cmdutil.Factory                  // injected by framework
-	apiClientFunc  func() (*client.APIClient, error) // sync.OnceValues; initialized in newRuntimeContext
-	botInfoFunc    func() (*BotInfo, error)          // sync.OnceValues; lazy bot identity from /bot/v3/info
-	larkSDK        *lark.Client                      // eagerly initialized in mountDeclarative
-	stdinConsumed  bool                              // set when an Input flag has consumed stdin (`-`); guards against a second flag also using `-` within the same call
-	inputResolved  map[string]bool                   // flags whose value was replaced by @file / stdin content in resolveInputFlags; see InputResolvedFromSource
+	ctx               context.Context // from cmd.Context(), propagated through the call chain
+	Config            *core.CliConfig
+	Cmd               *cobra.Command
+	Format            string
+	JqExpr            string                            // --jq expression; empty = no filter
+	outputErrOnce     sync.Once                         // guards first-error capture in Out()/OutFormat()
+	outputErr         error                             // deferred error from jq filtering; written at most once
+	botOnly           bool                              // set by framework for bot-only shortcuts
+	resolvedAs        core.Identity                     // effective identity resolved by framework
+	declaredScopes    []string                          // shortcut-declared scopes for the resolved identity
+	reportOnce        sync.Once                         // lazily initializes the command-scoped upload report budget
+	reportBudget      *fileevent.Budget                 // shared by every upload report in this command
+	Factory           *cmdutil.Factory                  // injected by framework
+	apiClientFunc     func() (*client.APIClient, error) // sync.OnceValues; initialized in newRuntimeContext
+	botInfoFunc       func() (*BotInfo, error)          // sync.OnceValues; lazy bot identity from /bot/v3/info
+	larkSDK           *lark.Client                      // eagerly initialized in mountDeclarative
+	stdinConsumed     bool                              // set when an Input flag has consumed stdin (`-`); guards against a second flag also using `-` within the same call
+	inputResolved     map[string]bool                   // flags whose value was replaced by @file / stdin content in resolveInputFlags; see InputResolvedFromSource
+	contractSession   *imcontract.Session
+	readSession       *imcontract.ReadSession
+	identityWarnOnce  sync.Once // emits the defaulted-identity warning at most once
+	identityDefaulted bool      // dual-identity IM write ran without explicit --as
+	readNotice        map[string]interface{}
 }
 
 // ── Identity ──
@@ -564,6 +570,20 @@ func (ctx *RuntimeContext) DoAPIStream(callCtx context.Context, req *larkcore.Ap
 // auth error from the client boundary is already typed and passes through
 // unchanged; a non-zero API code is classified with subtype / code / log_id.
 func (ctx *RuntimeContext) DoAPIJSONTyped(method, apiPath string, query larkcore.QueryParams, body any) (map[string]any, error) {
+	if ctx.contractSession != nil {
+		requestBody, _ := body.(map[string]any)
+		if values := query["uuid"]; len(values) > 0 {
+			cloned := make(map[string]any, len(requestBody)+1)
+			for key, value := range requestBody {
+				cloned[key] = value
+			}
+			cloned["uuid"] = values[0]
+			requestBody = cloned
+		}
+		if err := ctx.contractSession.ObserveRequest(requestBody); err != nil {
+			return nil, err
+		}
+	}
 	req := &larkcore.ApiReq{
 		HttpMethod:  method,
 		ApiPath:     apiPath,
@@ -576,7 +596,48 @@ func (ctx *RuntimeContext) DoAPIJSONTyped(method, apiPath string, query larkcore
 	if err != nil {
 		return nil, typedOrInternal(err)
 	}
-	return ctx.ClassifyAPIResponse(resp)
+	data, err := ctx.ClassifyAPIResponse(resp)
+	if ctx.contractSession != nil || ctx.readSession != nil {
+		logID, _ := logIDFromHeader(resp)["log_id"].(string)
+		err = imcontract.NormalizeHTTPError(resp.StatusCode, logID, err)
+	}
+	if ctx.contractSession != nil && err == nil {
+		ctx.contractSession.ObserveResponse(data)
+	}
+	return data, err
+}
+
+// DoWriteAPIJSONTyped marks the narrow point at which a contract-managed
+// shortcut starts its target business write, then delegates to the typed JSON
+// transport. Preflight and enrichment calls must use DoAPIJSONTyped instead.
+func (ctx *RuntimeContext) DoWriteAPIJSONTyped(method, apiPath string, query larkcore.QueryParams, body any) (map[string]any, error) {
+	ctx.RecordContractFact(imcontract.Fact{Kind: imcontract.FactWriteAttempted})
+	return ctx.DoAPIJSONTyped(method, apiPath, query, body)
+}
+
+// RecordContractFact records one of the small, fixed execution facts that
+// cannot be inferred from an API request or response.
+func (ctx *RuntimeContext) RecordContractFact(f imcontract.Fact) {
+	if ctx.contractSession != nil {
+		ctx.contractSession.RecordFact(f)
+	}
+}
+
+// RecordPagination gives the IM read contract the neutral reason why paging
+// stopped. The shortcut does not interpret this status as complete or
+// incomplete; that decision belongs to internal/imcontract.
+func (ctx *RuntimeContext) RecordPagination(status client.PaginationStatus) {
+	if ctx.readSession != nil {
+		ctx.readSession.ObservePagination(status)
+	}
+}
+
+// RecordMaterialization gives the IM read contract the evidence collected
+// while resolving search hits into directly consumable message records.
+func (ctx *RuntimeContext) RecordMaterialization(status imcontract.MaterializationStatus) {
+	if ctx.readSession != nil {
+		ctx.readSession.ObserveMaterialization(status)
+	}
 }
 
 // logIDFromHeader extracts x-tt-logid from response headers and returns it as a detail map.
@@ -749,7 +810,40 @@ func (ctx *RuntimeContext) newEmitter() *output.Emitter {
 		CommandPath:    ctx.Cmd.CommandPath(),
 		Identity:       string(ctx.As()),
 		ColorEnabled:   streams.OutIsTerminal,
-		NoticeProvider: output.GetNotice,
+		NoticeProvider: ctx.notice,
+	})
+}
+
+func (ctx *RuntimeContext) notice() map[string]interface{} {
+	base := output.GetNotice()
+	if ctx.identityDefaulted {
+		base = imcontract.WithIdentityDefaultedNotice(base, string(ctx.As()))
+	}
+	return mergeNoticeMaps(base, ctx.readNotice)
+}
+
+func mergeNoticeMaps(base, extra map[string]interface{}) map[string]interface{} {
+	if len(base) == 0 && len(extra) == 0 {
+		return nil
+	}
+	merged := make(map[string]interface{}, len(base)+len(extra))
+	for key, value := range base {
+		merged[key] = value
+	}
+	for key, value := range extra {
+		merged[key] = value
+	}
+	return merged
+}
+
+func (ctx *RuntimeContext) warnIdentityDefaulted() {
+	if !ctx.identityDefaulted {
+		return
+	}
+	ctx.identityWarnOnce.Do(func() {
+		fmt.Fprintf(ctx.IO().ErrOut, "warning: %s: %s\n",
+			imcontract.IdentityDefaultedNoticeKey,
+			imcontract.IdentityDefaultedMessage(string(ctx.As())))
 	})
 }
 
@@ -785,24 +879,14 @@ func wrapLegacyPrettyRenderer(prettyFn func(w io.Writer)) output.PrettyRenderer 
 
 // Out prints a success JSON envelope to stdout.
 func (ctx *RuntimeContext) Out(data interface{}, meta *output.Meta) {
-	ctx.handleEmitterError(ctx.newEmitter().Success(data, output.EmitOptions{
-		Format: "",
-		Raw:    false,
-		JQ:     ctx.JqExpr,
-		Meta:   meta,
-	}))
+	ctx.emitFinalized(data, meta, false, true, "", nil)
 }
 
 // OutRaw prints a success JSON envelope to stdout with HTML escaping disabled.
 // Use this instead of Out when the data contains XML/HTML content (e.g. document bodies)
 // that should be preserved as-is in JSON output.
 func (ctx *RuntimeContext) OutRaw(data interface{}, meta *output.Meta) {
-	ctx.handleEmitterError(ctx.newEmitter().Success(data, output.EmitOptions{
-		Format: "",
-		Raw:    true,
-		JQ:     ctx.JqExpr,
-		Meta:   meta,
-	}))
+	ctx.emitFinalized(data, meta, true, true, "", nil)
 }
 
 // OutPartialFailure writes an ok:false multi-status result envelope to stdout
@@ -816,16 +900,131 @@ func (ctx *RuntimeContext) OutRaw(data interface{}, meta *output.Meta) {
 // ok:true, and the exit signal is distinct from ErrBare (the
 // stdout-carries-the-answer silent-exit signal).
 func (ctx *RuntimeContext) OutPartialFailure(data interface{}, meta *output.Meta) error {
-	ctx.handleEmitterError(ctx.newEmitter().PartialFailure(data, output.EmitOptions{
-		Format: "",
-		Raw:    false,
-		JQ:     ctx.JqExpr,
-		Meta:   meta,
-	}))
+	ctx.emitFinalized(data, meta, false, false, "", nil)
 	if ctx.outputErr != nil {
 		return ctx.outputErr
 	}
 	return output.PartialFailure(output.ExitAPI)
+}
+
+// emitFinalized lets an IM contract determine the business result before the
+// command-scoped Emitter performs all safety checks, projection, formatting,
+// buffering, and stdout/stderr writes. Non-IM commands pass through unchanged.
+func (ctx *RuntimeContext) emitFinalized(
+	data interface{},
+	meta *output.Meta,
+	raw bool,
+	ok bool,
+	format string,
+	pretty output.PrettyRenderer,
+) {
+	hint := ""
+	var resultExit int
+	var resultError interface{}
+	var resultCause error
+	var contractResult imcontract.Result
+	hasContractResult := false
+	if ctx.contractSession != nil {
+		result, err := ctx.contractSession.FinalizeSuccess(data)
+		if err != nil {
+			ctx.outputErrOnce.Do(func() { ctx.outputErr = err })
+			return
+		}
+		contractResult = result
+		hasContractResult = true
+		data = result.Data
+		ok = result.OK
+		hint = result.Hint
+		resultExit = result.ExitCode
+	}
+	if ctx.readSession != nil {
+		// Only paginated read contracts carry pagination facts. Entity and
+		// materialize reads answer by ID or fetch a single resource, so they
+		// legitimately emit no pagination metadata — demanding it from them
+		// rejects a correct response and drops the whole envelope. The
+		// generated service path gates the same observation on the contract
+		// kind before finalizing.
+		if ctx.readSession.RequiresPagination() {
+			var pagination *output.PaginationMeta
+			if meta != nil {
+				pagination = meta.Pagination
+			}
+			if err := ctx.readSession.ObserveOutputPagination(pagination, ctx.paginationStartedFromToken()); err != nil {
+				ctx.outputErrOnce.Do(func() { ctx.outputErr = err })
+				return
+			}
+		}
+		result, err := ctx.readSession.Finalize(data)
+		if err != nil {
+			ctx.outputErrOnce.Do(func() { ctx.outputErr = err })
+			return
+		}
+		data = result.Data
+		ok = result.OK
+		meta = mergeIMReadMeta(meta, result.Meta)
+		ctx.readNotice = result.Notice
+		hint = result.Hint
+		resultExit = result.ExitCode
+		if result.Error != nil {
+			resultError = result.Error
+		}
+		resultCause = result.Cause
+	}
+	ctx.warnIdentityDefaulted()
+
+	// Legacy OutFormat falls back to the JSON envelope when a command does not
+	// provide a pretty renderer. Preserve that behavior without re-finalizing
+	// the contract or introducing another output path.
+	if format == "pretty" && pretty == nil {
+		format = ""
+	}
+
+	emitOpts := output.EmitOptions{
+		Format: format,
+		Raw:    raw,
+		JQ:     ctx.JqExpr,
+		Meta:   meta,
+		Error:  resultError,
+		Hint:   hint,
+		Pretty: pretty,
+		// Structured JSON carries the hint in-band. Projected reads and naked
+		// formats need the recovery guidance on stderr so it is not discarded.
+		HintToStderr: hint != "" &&
+			((ctx.readSession != nil && ctx.JqExpr != "") ||
+				(ctx.JqExpr == "" && format != "" && format != "json")),
+	}
+	emitter := ctx.newEmitter()
+	var emitErr error
+	if !ok && (ctx.JqExpr != "" || format == "" || format == "json") {
+		emitErr = emitter.PartialFailure(data, emitOpts)
+	} else {
+		emitErr = emitter.Success(data, emitOpts)
+	}
+	if emitErr != nil {
+		if hasContractResult {
+			if errs.IsContentSafety(emitErr) {
+				ctx.writeIMContentSafetyFallback(contractResult)
+				return
+			}
+			if ctx.JqExpr != "" {
+				fmt.Fprintln(ctx.IO().ErrOut, "error: jq projection failed after the IM write completed; inspect --jq")
+				ctx.writeIMJQFallback(contractResult)
+				return
+			}
+		}
+		ctx.handleEmitterError(emitErr)
+		return
+	}
+	if resultExit != 0 {
+		ctx.outputErrOnce.Do(func() {
+			if resultCause != nil &&
+				(ctx.JqExpr != "" || (format != "" && format != "json")) {
+				ctx.outputErr = resultCause
+				return
+			}
+			ctx.outputErr = output.PartialFailure(resultExit)
+		})
+	}
 }
 
 // OutFormat prints output based on --format flag.
@@ -833,25 +1032,31 @@ func (ctx *RuntimeContext) OutPartialFailure(data interface{}, meta *output.Meta
 // When JqExpr is set, envelope filtering takes precedence over format.
 // The Emitter handles content safety scanning for every format.
 func (ctx *RuntimeContext) OutFormat(data interface{}, meta *output.Meta, prettyFn func(w io.Writer)) {
-	ctx.handleEmitterError(ctx.newEmitter().Success(data, output.EmitOptions{
-		Format: ctx.Format,
-		Raw:    false,
-		JQ:     ctx.JqExpr,
-		Meta:   meta,
-		Pretty: wrapLegacyPrettyRenderer(prettyFn),
-	}))
+	ctx.emitFinalized(data, meta, false, true, ctx.Format, wrapLegacyPrettyRenderer(prettyFn))
 }
 
 // OutFormatRaw is like OutFormat but with HTML escaping disabled in JSON output.
 // Use this when the data contains XML/HTML content that should be preserved as-is.
 func (ctx *RuntimeContext) OutFormatRaw(data interface{}, meta *output.Meta, prettyFn func(w io.Writer)) {
-	ctx.handleEmitterError(ctx.newEmitter().Success(data, output.EmitOptions{
-		Format: ctx.Format,
-		Raw:    true,
-		JQ:     ctx.JqExpr,
-		Meta:   meta,
-		Pretty: wrapLegacyPrettyRenderer(prettyFn),
-	}))
+	ctx.emitFinalized(data, meta, true, true, ctx.Format, wrapLegacyPrettyRenderer(prettyFn))
+}
+
+func (ctx *RuntimeContext) writeIMJQFallback(result imcontract.Result) {
+	env, signal := imcontract.BuildJQOutputFallback(result)
+	if err := ctx.newEmitter().RedactedFallback(env); err != nil {
+		ctx.handleEmitterError(err)
+		return
+	}
+	ctx.outputErrOnce.Do(func() { ctx.outputErr = signal })
+}
+
+func (ctx *RuntimeContext) writeIMContentSafetyFallback(result imcontract.Result) {
+	env, signal := imcontract.BuildContentSafetyOutputFallback(result)
+	if err := ctx.newEmitter().RedactedFallback(env); err != nil {
+		ctx.handleEmitterError(err)
+		return
+	}
+	ctx.outputErrOnce.Do(func() { ctx.outputErr = signal })
 }
 
 // ── Scope pre-check ──
@@ -953,6 +1158,10 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 	}
 	cmdmeta.SetSource(cmd, cmdmeta.SourceShortcut, false)
 	cmdmeta.SetAffordanceRef(cmd, shortcut.Service, shortcut.Command)
+	contractKey := imcontract.ContractKey(shortcut.Service + " " + shortcut.Command)
+	if _, ok := imcontract.Lookup(contractKey); ok {
+		imcontract.AnnotateHelpContract(cmd, contractKey)
+	}
 	cmdutil.SetSupportedIdentities(cmd, shortcut.AuthTypes)
 	registerShortcutFlagsWithContext(ctx, cmd, f, &shortcut)
 	cmdutil.SetTips(cmd, shortcut.Tips)
@@ -1049,7 +1258,14 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 	}
 
 	if err := s.Execute(rctx.ctx, rctx); err != nil {
-		return attributeAliasValidationError(rctx, err)
+		err = attributeAliasValidationError(rctx, err)
+		if rctx.contractSession != nil {
+			return rctx.contractSession.FinalizeError(err)
+		}
+		if rctx.readSession != nil {
+			return rctx.readSession.FinalizeError(err)
+		}
+		return err
 	}
 	return rctx.outputErr
 }
@@ -1102,6 +1318,21 @@ func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, conf
 		Factory:    f,
 	}
 	rctx.declaredScopes = s.DeclaredScopesForIdentity(string(rctx.As()))
+	if contract, ok := imcontract.Lookup(imcontract.ContractKey(s.Service + " " + s.Command)); ok {
+		switch {
+		case contract.Strategy.Kind.IsWrite():
+			rctx.contractSession = imcontract.NewSession(contract)
+			rctx.identityDefaulted = shortcutIdentityWasDefaulted(cmd, f, s)
+		case contract.Strategy.Kind.IsRead():
+			readSession, readErr := imcontract.NewReadSession(contract, imcontract.ReadOptions{
+				FullRead: imContractFullRead(cmd, contract.Key),
+			})
+			if readErr != nil {
+				return nil, readErr
+			}
+			rctx.readSession = readSession
+		}
+	}
 	rctx.apiClientFunc = sync.OnceValues(func() (*client.APIClient, error) {
 		return f.NewAPIClientWithConfig(config)
 	})
@@ -1117,6 +1348,66 @@ func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, conf
 	rctx.Format = rctx.Str("format")
 	rctx.JqExpr, _ = cmd.Flags().GetString("jq")
 	return rctx, nil
+}
+
+func shortcutIdentityWasDefaulted(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) bool {
+	if cmd == nil || f == nil || s == nil || cmd.Flags().Changed("as") ||
+		!f.IdentityAutoDetected || f.ResolveStrictMode(cmd.Context()).IsActive() {
+		return false
+	}
+	return slices.Contains(s.AuthTypes, string(core.AsUser)) &&
+		slices.Contains(s.AuthTypes, string(core.AsBot))
+}
+
+func shortcutBoolFlag(cmd *cobra.Command, name string) bool {
+	if cmd == nil || cmd.Flags().Lookup(name) == nil {
+		return false
+	}
+	value, _ := cmd.Flags().GetBool(name)
+	return value
+}
+
+func imContractFullRead(cmd *cobra.Command, key imcontract.ContractKey) bool {
+	if shortcutBoolFlag(cmd, "page-all") {
+		return true
+	}
+	if key != "im +messages-search" || cmd == nil {
+		return false
+	}
+	flag := cmd.Flags().Lookup("page-limit")
+	if flag == nil || !flag.Changed {
+		return false
+	}
+	limit, err := cmd.Flags().GetInt("page-limit")
+	return err == nil && limit == 0
+}
+
+func (ctx *RuntimeContext) paginationStartedFromToken() bool {
+	if ctx == nil || ctx.Cmd == nil || ctx.Cmd.Flags().Lookup("page-token") == nil {
+		return false
+	}
+	return strings.TrimSpace(ctx.Str("page-token")) != ""
+}
+
+func mergeIMReadMeta(base, contract *output.Meta) *output.Meta {
+	if base == nil && contract == nil {
+		return nil
+	}
+	merged := output.Meta{}
+	if base != nil {
+		merged = *base
+	}
+	if contract != nil {
+		merged.Pagination = contract.Pagination
+		if merged.Pagination != nil {
+			pagination := *merged.Pagination
+			if base != nil && base.Pagination != nil {
+				pagination.Items = base.Pagination.Items
+			}
+			merged.Pagination = &pagination
+		}
+	}
+	return &merged
 }
 
 // StripUTF8BOM removes a leading UTF-8 byte-order mark from content read from a
@@ -1267,13 +1558,15 @@ func handleShortcutDryRun(f *cmdutil.Factory, rctx *RuntimeContext, s *Shortcut)
 		// Same data.context contract as the service/api dry-run paths.
 		dryResult.Context(rctx.Config.AppID, rctx.UserOpenId())
 	}
+	rctx.warnIdentityDefaulted()
 	return cmdutil.WriteDryRun(dryResult, cmdutil.DryRunOutputOptions{
-		Format:      rctx.Format,
-		JqExpr:      rctx.JqExpr,
-		CommandPath: rctx.Cmd.CommandPath(),
-		Identity:    rctx.As(),
-		Out:         f.IOStreams.Out,
-		ErrOut:      f.IOStreams.ErrOut,
+		Format:         rctx.Format,
+		JqExpr:         rctx.JqExpr,
+		CommandPath:    rctx.Cmd.CommandPath(),
+		Identity:       rctx.As(),
+		Out:            f.IOStreams.Out,
+		ErrOut:         f.IOStreams.ErrOut,
+		NoticeProvider: rctx.notice,
 	})
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/larksuite/cli/internal/affordance"
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/imcontract"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/skillref"
@@ -180,10 +181,75 @@ func TestPrepareMethodHelpProjectsConcealedSchemaPointer(t *testing.T) {
 	}
 }
 
-// PrepareShortcutHelp composes a shortcut's Long from its overlay with the same
-// top layout as method help (no schema pointer), folding declarative tips when
-// the overlay declares none, and leaves shortcuts without an overlay entry (and
-// non-shortcut commands) for the default help path.
+func TestPrepareMethodHelpPreservesAffordanceAndAddsContractOnce(t *testing.T) {
+	orig := affordanceLookup
+	t.Cleanup(func() { affordanceLookup = orig })
+	affordanceLookup = func(_, _ string) (json.RawMessage, bool) {
+		return json.RawMessage(`{
+			"use_when":["forward one message"],
+			"avoid_when":["a new send is required"],
+			"prerequisites":["source message is visible"],
+			"examples":[{"description":"forward","command":"lark-cli im messages forward ..."}],
+			"skills":["lark-im"]
+		}`), true
+	}
+	skillFS := fstest.MapFS{"lark-im/SKILL.md": {Data: []byte("# IM")}}
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	m := map[string]interface{}{
+		"id": "chat.moderation.update", "path": "chats/{chat_id}/moderation", "httpMethod": "PUT", "description": "Update moderation",
+	}
+	cmd := NewCmdServiceMethod(f, imSpec(), meta.FromMap(m), "update", "chat.moderation", nil)
+	if strings.Contains(cmd.Long, imcontract.HelpAcceptanceOnly.Text()) {
+		t.Fatalf("contract help must stay lazy at build time:\n%s", cmd.Long)
+	}
+
+	for range 2 {
+		if !PrepareMethodHelp(cmd, skillFS) {
+			t.Fatal("PrepareMethodHelp returned false")
+		}
+	}
+	for _, want := range []string{
+		"When to use:", "Avoid when:", "Prerequisites:", "Examples:",
+		"Related skills", "Full parameter schema:",
+		imcontract.HelpAcceptanceOnly.Text(),
+	} {
+		if n := strings.Count(cmd.Long, want); n != 1 {
+			t.Fatalf("%q appears %d times, want once:\n%s", want, n, cmd.Long)
+		}
+	}
+	contractAt := strings.Index(cmd.Long, imcontract.HelpAcceptanceOnly.Text())
+	schemaAt := strings.Index(cmd.Long, "Full parameter schema:")
+	if contractAt < 0 || schemaAt < 0 || contractAt > schemaAt {
+		t.Fatalf("contract help must precede schema pointer:\n%s", cmd.Long)
+	}
+}
+
+func TestModerationGetHelpAdvertisesPaginationCompleteness(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	m := map[string]interface{}{
+		"id": "chat.moderation.get", "path": "chats/{chat_id}/moderation", "httpMethod": "GET",
+		"description": "Get moderation", "risk": "read",
+		"parameters": map[string]interface{}{
+			"chat_id":    map[string]interface{}{"type": "string", "location": "path", "required": true},
+			"page_token": map[string]interface{}{"type": "string", "location": "query"},
+		},
+	}
+	cmd := NewCmdServiceMethod(f, imSpec(), meta.FromMap(m), "get", "chat.moderation", nil)
+	if flag := cmd.Flags().Lookup("page-all"); flag == nil || flag.Hidden {
+		t.Fatalf("moderation get must expose --page-all: %#v", flag)
+	}
+	if !PrepareMethodHelp(cmd, nil) {
+		t.Fatal("PrepareMethodHelp returned false")
+	}
+	if !strings.Contains(cmd.Long, imcontract.HelpCompleteness.Text()) {
+		t.Fatalf("moderation get help omitted completeness contract:\n%s", cmd.Long)
+	}
+}
+
+// PrepareShortcutHelp composes a shortcut's Long from its overlay (without a
+// schema pointer), preserves the selected tips on the command for the root help
+// renderer, and leaves shortcuts without an overlay entry (and non-shortcut
+// commands) for the default help path.
 func TestPrepareShortcutHelp(t *testing.T) {
 	orig := affordanceLookup
 	t.Cleanup(func() { affordanceLookup = orig })
@@ -203,10 +269,18 @@ func TestPrepareShortcutHelp(t *testing.T) {
 	if !PrepareShortcutHelp(sc, nil) {
 		t.Fatal("PrepareShortcutHelp returned false for a shortcut with an overlay")
 	}
-	for _, want := range []string{"Create an event", "Risk: write", "When to use:", "高层创建日程", "Tips:", "start/end 收 ISO 8601"} {
+	for _, want := range []string{"Create an event", "When to use:", "高层创建日程"} {
 		if !strings.Contains(sc.Long, want) {
 			t.Errorf("shortcut Long missing %q:\n%s", want, sc.Long)
 		}
+	}
+	for _, unwanted := range []string{"Risk: write", "Tips:", "start/end 收 ISO 8601"} {
+		if strings.Contains(sc.Long, unwanted) {
+			t.Errorf("shortcut Long must leave %q for the root tail renderer:\n%s", unwanted, sc.Long)
+		}
+	}
+	if got := cmdutil.GetTips(sc); len(got) != 1 || got[0] != "start/end 收 ISO 8601" {
+		t.Fatalf("shortcut tips = %#v, want the declarative tip preserved for tail rendering", got)
 	}
 	if strings.Contains(sc.Long, "Full parameter schema:") {
 		t.Errorf("shortcut Long must not carry a schema pointer:\n%s", sc.Long)
@@ -225,6 +299,54 @@ func TestPrepareShortcutHelp(t *testing.T) {
 	cmdmeta.SetAffordanceRef(notSc, "calendar", "+create")
 	if PrepareShortcutHelp(notSc, nil) {
 		t.Error("PrepareShortcutHelp should return false for a non-shortcut command")
+	}
+}
+
+func TestPrepareShortcutHelpStoresOverlayTipsForTailOnce(t *testing.T) {
+	orig := affordanceLookup
+	t.Cleanup(func() { affordanceLookup = orig })
+	affordanceLookup = func(_, _ string) (json.RawMessage, bool) {
+		return json.RawMessage(`{"use_when":["create"],"tips":["overlay tip"]}`), true
+	}
+
+	sc := &cobra.Command{Use: "+create", Short: "Create"}
+	cmdmeta.SetSource(sc, cmdmeta.SourceShortcut, false)
+	cmdmeta.SetAffordanceRef(sc, "calendar", "+create")
+	cmdutil.SetTips(sc, []string{"declarative tip"})
+
+	for range 2 {
+		if !PrepareShortcutHelp(sc, nil) {
+			t.Fatal("PrepareShortcutHelp returned false")
+		}
+	}
+	if strings.Contains(sc.Long, "overlay tip") || strings.Contains(sc.Long, "Tips:") {
+		t.Fatalf("overlay tips must be left for the common tail renderer:\n%s", sc.Long)
+	}
+	if got := cmdutil.GetTips(sc); len(got) != 1 || got[0] != "overlay tip" {
+		t.Fatalf("tips = %#v, want overlay tip once", got)
+	}
+}
+
+func TestPrepareShortcutHelpAddsContractWithoutAffordance(t *testing.T) {
+	sc := &cobra.Command{
+		Use: "+chat-list", Short: "List chats",
+		Run: func(*cobra.Command, []string) {},
+	}
+	cmdmeta.SetSource(sc, cmdmeta.SourceShortcut, false)
+	cmdmeta.SetAffordanceRef(sc, "im", "+chat-list")
+	cmdutil.SetRisk(sc, "read")
+	imcontract.AnnotateHelpContract(sc, "im +chat-list")
+
+	for range 2 {
+		if !PrepareShortcutHelp(sc, nil) {
+			t.Fatal("PrepareShortcutHelp returned false for contract-bearing shortcut")
+		}
+	}
+	if n := strings.Count(sc.Long, imcontract.HelpCompleteness.Text()); n != 1 {
+		t.Fatalf("contract help appears %d times, want once:\n%s", n, sc.Long)
+	}
+	if sc.Short != "List chats" || !strings.HasPrefix(sc.Long, "List chats") {
+		t.Fatalf("visible description changed: Short=%q Long=%q", sc.Short, sc.Long)
 	}
 }
 

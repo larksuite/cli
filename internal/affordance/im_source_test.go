@@ -23,17 +23,17 @@ type imAffordanceExample struct {
 }
 
 var imAffordanceExamples = []imAffordanceExample{
-	{method: "+chat-create", command: `lark-cli im +chat-create --name "My Group"`, source: "lark-im/references/lark-im-chat-create.md"},
+	{method: "+chat-create", command: `lark-cli im +chat-create --name "My Group" --idempotency-key <generated_uuid>`, source: "lark-im/references/lark-im-chat-create.md"},
 	{method: "+chat-list", command: "lark-cli im +chat-list", source: "lark-im/references/lark-im-chat-list.md"},
 	{method: "+chat-members-list", command: "lark-cli im +chat-members-list --chat-id oc_xxx", source: "lark-im/references/lark-im-chat-members-list.md"},
 	{method: "+chat-messages-list", command: "lark-cli im +chat-messages-list --chat-id oc_xxx", source: "lark-im/references/lark-im-chat-messages-list.md"},
 	{method: "+chat-search", command: `lark-cli im +chat-search --query "project"`, source: "lark-im/references/lark-im-chat-search.md"},
 	{method: "+chat-update", command: `lark-cli im +chat-update --chat-id oc_xxx --name "New Group Name"`, source: "lark-im/references/lark-im-chat-update.md"},
 	{method: "+messages-mget", command: "lark-cli im +messages-mget --message-ids om_xxx", source: "lark-im/references/lark-im-messages-mget.md"},
-	{method: "+messages-reply", command: `lark-cli im +messages-reply --message-id om_xxx --text "Received"`, source: "lark-im/references/lark-im-messages-reply.md"},
+	{method: "+messages-reply", command: `lark-cli im +messages-reply --message-id om_xxx --text "Please review" --mention ou_xxx`, source: "lark-im/references/lark-im-messages-reply.md"},
 	{method: "+messages-resources-download", command: "lark-cli im +messages-resources-download --message-id om_xxx --file-key img_v3_xxx --type image", source: "lark-im/references/lark-im-messages-resources-download.md"},
 	{method: "+messages-search", command: `lark-cli im +messages-search --query "project progress"`, source: "lark-im/references/lark-im-messages-search.md"},
-	{method: "+messages-send", command: `lark-cli im +messages-send --chat-id oc_xxx --text "Hello"`, source: "lark-im/references/lark-im-messages-send.md"},
+	{method: "+messages-send", command: `lark-cli im +messages-send --chat-id oc_xxx --text "Please review" --mention ou_xxx`, source: "lark-im/references/lark-im-messages-send.md"},
 	{method: "+threads-messages-list", command: "lark-cli im +threads-messages-list --thread omt_xxx", source: "lark-im/references/lark-im-threads-messages-list.md"},
 	{method: "+flag-create", command: "lark-cli im +flag-create --as user --message-id om_xxx", source: "lark-im/references/lark-im-flag-create.md"},
 	{method: "+flag-cancel", command: "lark-cli im +flag-cancel --as user --message-id om_xxx", source: "lark-im/references/lark-im-flag-cancel.md"},
@@ -68,6 +68,26 @@ var imAffordanceExamples = []imAffordanceExample{
 		sourceCommand: `lark-cli im reactions batch_query --params '{"user_id_type":"open_id"}' --data '{"queries":[{"message_id":"om_xxx"},{"message_id":"om_yyy","page_token":"<PAGE_TOKEN>"}],"page_size_per_message":10,"reaction_type":"LAUGH"}'`,
 		derivation:    "first-page",
 	},
+	{method: "chat.members.delete", command: `lark-cli im chat.members delete --chat-id <chat_id> --data '{"id_list":["<open_id>"]}'`, source: "lark-im/references/lark-im-raw-capabilities.md"},
+	{method: "chat.members.get", command: `lark-cli im chat.members get --chat-id <chat_id>`, source: "lark-im/references/lark-im-raw-capabilities.md"},
+	{method: "chat.members.bots", command: `lark-cli im chat.members bots --chat-id <chat_id> --as bot`, source: "lark-im/references/lark-im-raw-capabilities.md"},
+	{method: "messages.forward", command: `lark-cli im messages forward --message-id <message_id> --receive-id-type chat_id --data '{"receive_id":"<chat_id>"}' --as bot`, source: "lark-im/references/lark-im-raw-capabilities.md"},
+	{method: "messages.delete", command: `lark-cli im messages delete --message-id <message_id>`, source: "lark-im/references/lark-im-raw-capabilities.md"},
+	{method: "messages.merge_forward", command: `lark-cli im messages merge_forward --receive-id-type chat_id --data '{"receive_id":"<chat_id>","message_id_list":["<message_id1>","<message_id2>"]}' --as bot`, source: "lark-im/references/lark-im-raw-capabilities.md"},
+	{method: "messages.read_users", command: `lark-cli im messages read_users --message-id <message_id> --user-id-type open_id`, source: "lark-im/references/lark-im-raw-capabilities.md"},
+	{method: "messages.urgent_app", command: `lark-cli im messages urgent_app --message-id <message_id> --user-id-type open_id --data '{"user_id_list":["<open_id>"]}' --as bot`, source: "lark-im/references/lark-im-raw-capabilities.md"},
+	{method: "messages.urgent_phone", command: `lark-cli im messages urgent_phone --message-id <message_id> --user-id-type open_id --data '{"user_id_list":["<open_id>"]}' --as bot`, source: "lark-im/references/lark-im-raw-capabilities.md"},
+	{method: "messages.urgent_sms", command: `lark-cli im messages urgent_sms --message-id <message_id> --user-id-type open_id --data '{"user_id_list":["<open_id>"]}' --as bot`, source: "lark-im/references/lark-im-raw-capabilities.md"},
+	{method: "interactive.card.delayed.update", command: "lark-cli api POST /open-apis/interactive/v1/card/update --as bot \\\n  --data '{\"token\":\"<token>\",\"card\":{\"type\":\"template\",\"data\":{\"template_id\":\"<template_id>\"}}}'", source: "lark-im/references/lark-im-raw-capabilities.md"},
+	{method: "chat.top.notice.put", command: "lark-cli api POST /open-apis/im/v1/chats/<chat_id>/top_notice/put_top_notice --as bot \\\n  --data '{\"chat_top_notice\":{\"type\":\"message\",\"message_id\":\"<message_id>\"}}'", source: "lark-im/references/lark-im-raw-capabilities.md"},
+	{method: "pins.create", command: `lark-cli im pins create --data '{"message_id":"<message_id>"}'`, source: "lark-im/references/lark-im-raw-capabilities.md"},
+	{method: "pins.delete", command: `lark-cli im pins delete --message-id <message_id>`, source: "lark-im/references/lark-im-raw-capabilities.md"},
+	{method: "pins.list", command: `lark-cli im pins list --chat-id <chat_id>`, source: "lark-im/references/lark-im-raw-capabilities.md"},
+	{method: "threads.forward", command: `lark-cli im threads forward --thread-id <thread_id> --receive-id-type chat_id --data '{"receive_id":"<chat_id>"}' --as bot`, source: "lark-im/references/lark-im-raw-capabilities.md"},
+	{method: "chats.get", command: `lark-cli im chats get --chat-id <chat_id>`, source: "lark-im/references/lark-im-raw-capabilities.md"},
+	{method: "chats.update", command: `lark-cli im chats update --chat-id <chat_id> --data '{"join_message_visibility":"only_owner"}'`, source: "lark-im/references/lark-im-raw-capabilities.md"},
+	{method: "chats.create", command: `lark-cli im chats create --data '{"name":"project chat"}'`, source: "lark-im/references/lark-im-raw-capabilities.md"},
+	{method: "chats.link", command: `lark-cli im chats link --chat-id <chat_id> --data '{"validity_period":"week"}'`, source: "lark-im/references/lark-im-raw-capabilities.md"},
 }
 
 func TestIMAffordanceExamplesTraceToCurrentSkill(t *testing.T) {
@@ -78,7 +98,7 @@ func TestIMAffordanceExamplesTraceToCurrentSkill(t *testing.T) {
 	if got, ok := DomainSkill("im"); !ok || got != "lark-im" {
 		t.Fatalf("DomainSkill(im) = (%q, %v), want (lark-im, true)", got, ok)
 	}
-	if got, want := len(imAffordanceExamples), 33; got != want {
+	if got, want := len(imAffordanceExamples), 53; got != want {
 		t.Fatalf("audited IM example count = %d, want %d", got, want)
 	}
 	affordanceSource, err := os.ReadFile("../../affordance/im.md")
@@ -97,8 +117,8 @@ func TestIMAffordanceExamplesTraceToCurrentSkill(t *testing.T) {
 			shortcutCount++
 		}
 	}
-	if shortcutCount != 21 || len(imAffordanceExamples)-shortcutCount != 12 {
-		t.Fatalf("audited split = %d shortcuts / %d raw, want 21 / 12", shortcutCount, len(imAffordanceExamples)-shortcutCount)
+	if shortcutCount != 21 || len(imAffordanceExamples)-shortcutCount != 32 {
+		t.Fatalf("audited split = %d shortcuts / %d raw, want 21 / 32", shortcutCount, len(imAffordanceExamples)-shortcutCount)
 	}
 	for method := range parsedDomain.methods {
 		if !audited[method] {

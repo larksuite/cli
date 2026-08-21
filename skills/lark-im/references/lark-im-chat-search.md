@@ -1,6 +1,6 @@
 # im +chat-search
 
-> **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
+> **Prerequisite:** Before executing this command, ensure [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) has been read once in the current task for authentication, global parameters, and safety rules. Do not reread it if already loaded.
 
 Search the list of group chats visible to a user or bot, including chats the user or bot belongs to and public chats visible to them. Supports keyword matching on chat names and member names, including pinyin and prefix fuzzy search.
 
@@ -119,7 +119,7 @@ lark-cli im +chat-messages-list --chat-id "$CHAT_ID"
 
 ```bash
 CHAT_ID=$(lark-cli im +chat-search --query "daily report" --format json | jq -r '.data.chats[0].chat_id')
-lark-cli im +messages-send --chat-id "$CHAT_ID" --text "Today's progress update"
+lark-cli im +messages-send --chat-id "$CHAT_ID" --text "Today's progress update" --as bot
 ```
 
 ## Common Errors and Troubleshooting

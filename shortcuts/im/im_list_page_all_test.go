@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/imcontract"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -166,6 +168,19 @@ func listPageAllOutputEnvelope(t *testing.T, runtime *common.RuntimeContext) map
 	return envelope
 }
 
+func attachFullIMReadSession(t *testing.T, runtime *common.RuntimeContext, command string) {
+	t.Helper()
+	contract, ok := imcontract.Lookup(imcontract.ContractKey("im " + command))
+	if !ok {
+		t.Fatalf("missing IM contract for %s", command)
+	}
+	session, err := imcontract.NewReadSession(contract, imcontract.ReadOptions{FullRead: true})
+	if err != nil {
+		t.Fatalf("NewReadSession() error = %v", err)
+	}
+	setRuntimeField(t, runtime, "readSession", session)
+}
+
 func assertListPaginationMeta(t *testing.T, runtime *common.RuntimeContext, complete bool, pages, items int, nextToken string) {
 	t.Helper()
 	envelope := listPageAllOutputEnvelope(t, runtime)
@@ -244,23 +259,62 @@ func TestIMListPageAllMergesPagesAndUsesFinalPaginationMeta(t *testing.T) {
 	}
 }
 
+func TestIMListPageLimitZeroReadsToExhaustion(t *testing.T) {
+	for _, tc := range listPageAllCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			runtime, calls := newListPageAllRuntime(t, tc, map[string]string{
+				"page-all":   "true",
+				"page-limit": "0",
+			}, func(_ *http.Request, call int) map[string]interface{} {
+				if call == 1 {
+					return map[string]interface{}{
+						"items": []interface{}{tc.makeRawItem("first")}, "has_more": true, "page_token": "next",
+					}
+				}
+				return map[string]interface{}{
+					"items": []interface{}{tc.makeRawItem("second")}, "has_more": false,
+				}
+			})
+			if err := tc.shortcut.Validate(context.Background(), runtime); err != nil {
+				t.Fatalf("Validate() error = %v", err)
+			}
+			if err := tc.shortcut.Execute(context.Background(), runtime); err != nil {
+				t.Fatalf("Execute() error = %v", err)
+			}
+			if *calls != 2 {
+				t.Fatalf("API calls = %d, want 2", *calls)
+			}
+			assertListPageAllOrder(t, listPageAllOutputData(t, runtime), tc, "first", "second")
+			assertListPaginationMeta(t, runtime, true, 2, 2, "")
+		})
+	}
+}
+
 func TestIMListPageAllRejectsRepeatedToken(t *testing.T) {
 	for _, tc := range listPageAllCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			runtime, calls := newListPageAllRuntime(t, tc, map[string]string{"page-all": "true"}, func(_ *http.Request, call int) map[string]interface{} {
 				return map[string]interface{}{"items": []interface{}{tc.makeRawItem(fmt.Sprintf("item-%d", call))}, "has_more": true, "page_token": "same", "total": 10}
 			})
-			err := tc.shortcut.Execute(context.Background(), runtime)
-			problem, ok := errs.ProblemOf(err)
-			if !ok {
-				t.Fatalf("Execute() error = %v, want typed error", err)
+			attachFullIMReadSession(t, runtime, tc.shortcut.Command)
+			if err := tc.shortcut.Execute(context.Background(), runtime); err != nil {
+				t.Fatalf("Execute() error = %v, want partial result emitted through contract", err)
 			}
-			if problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeInvalidResponse {
-				t.Fatalf("Execute() problem = (%q, %q), want (%q, %q)",
-					problem.Category, problem.Subtype, errs.CategoryInternal, errs.SubtypeInvalidResponse)
+			envelope := listPageAllOutputEnvelope(t, runtime)
+			if ok, _ := envelope["ok"].(bool); ok {
+				t.Fatalf("ok = true, want repeated-token partial failure: %#v", envelope)
 			}
-			if !strings.Contains(problem.Message, "repeated page token") {
-				t.Fatalf("Execute() message = %q, want repeated-token diagnosis", problem.Message)
+			notice, _ := envelope["_notice"].(map[string]interface{})
+			readNotice, _ := notice["im_read"].(map[string]interface{})
+			if readNotice["stop_reason"] != "repeated_token" {
+				t.Fatalf("stop_reason = %#v, want repeated_token", readNotice["stop_reason"])
+			}
+			problem, _ := envelope["error"].(map[string]interface{})
+			if problem["type"] != string(errs.CategoryInternal) || problem["subtype"] != string(errs.SubtypeInvalidResponse) {
+				t.Fatalf("error = %#v, want internal/invalid_response", problem)
+			}
+			if message, _ := problem["message"].(string); !strings.Contains(message, "repeated page token") {
+				t.Fatalf("error message = %q, want repeated-token diagnosis", message)
 			}
 			if *calls != 2 {
 				t.Fatalf("API calls = %d, want 2", *calls)
@@ -307,6 +361,73 @@ func TestIMListPageAllReportsIncompleteResultOnPageLimit(t *testing.T) {
 				if strings.Contains(stdout, forbidden) {
 					t.Fatalf("stdout contains pagination notice %q: %s", forbidden, stdout)
 				}
+			}
+		})
+	}
+}
+
+func TestIMListPageAllLateFailurePreservesPartialData(t *testing.T) {
+	for _, tc := range listPageAllCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			transport := shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.Method != tc.method || req.URL.Path != tc.path {
+					t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+				}
+				calls++
+				if calls == 1 {
+					return shortcutJSONResponse(http.StatusOK, map[string]interface{}{
+						"code": 0,
+						"data": map[string]interface{}{
+							"items":      []interface{}{tc.makeRawItem("first")},
+							"has_more":   true,
+							"page_token": "resume-next",
+						},
+					}), nil
+				}
+				return nil, errors.New("late page transport failure")
+			})
+
+			flags := mergeListPageAllFlags(tc.baseFlags, map[string]string{
+				"page-all":   "true",
+				"page-delay": "0",
+			})
+			if tc.name == "chat-list" || tc.name == "chat-search" {
+				flags["exclude-muted"] = "true"
+			}
+			runtime := newUserShortcutRuntime(t, transport)
+			runtime.Cmd = newListPageAllCommand(t, tc.shortcut, flags)
+			runtime.Format = "json"
+			attachFullIMReadSession(t, runtime, tc.shortcut.Command)
+
+			if err := tc.shortcut.Execute(context.Background(), runtime); err != nil {
+				t.Fatalf("Execute() error = %v, want partial result emitted through contract", err)
+			}
+			if calls != 2 {
+				t.Fatalf("API calls = %d, want 2", calls)
+			}
+
+			envelope := listPageAllOutputEnvelope(t, runtime)
+			if ok, _ := envelope["ok"].(bool); ok {
+				t.Fatalf("ok = true, want partial failure: %#v", envelope)
+			}
+			data, _ := envelope["data"].(map[string]interface{})
+			assertListPageAllOrder(t, data, tc, "first")
+			if tc.name == "chat-list" || tc.name == "chat-search" {
+				filter, _ := data["filter"].(map[string]interface{})
+				if hint, _ := filter["hint"].(string); !strings.Contains(hint, "partial results are unfiltered") {
+					t.Fatalf("filter = %#v, want explicit incomplete-read skip hint", filter)
+				}
+			}
+			assertListPaginationMeta(t, runtime, false, 1, 1, "resume-next")
+			notice, _ := envelope["_notice"].(map[string]interface{})
+			readNotice, _ := notice["im_read"].(map[string]interface{})
+			if readNotice["stop_reason"] != "transport_error" {
+				t.Fatalf("stop_reason = %#v, want transport_error", readNotice["stop_reason"])
+			}
+			problem, _ := envelope["error"].(map[string]interface{})
+			if problem["type"] != string(errs.CategoryNetwork) {
+				t.Fatalf("error = %#v, want network problem", problem)
 			}
 		})
 	}
@@ -454,7 +575,7 @@ func TestChatListRecordFormatsKeepStdoutPureAndReportPagination(t *testing.T) {
 
 func TestIMListPageLimitValidation(t *testing.T) {
 	for _, tc := range listPageAllCases() {
-		for _, limit := range []string{"0", "1001"} {
+		for _, limit := range []string{"-1", strconv.Itoa(imReadMaxPageLimit + 1)} {
 			t.Run(tc.name+"/"+limit, func(t *testing.T) {
 				runtime, _ := newListPageAllRuntime(t, tc, map[string]string{"page-limit": limit}, func(_ *http.Request, _ int) map[string]interface{} {
 					t.Fatal("validation must fail before an API request")
@@ -502,7 +623,7 @@ func TestIMListPageAllDryRunAndFlagSurface(t *testing.T) {
 			for _, flag := range tc.shortcut.Flags {
 				flags[flag.Name] = flag
 			}
-			if flag := flags[common.PageAllFlagName]; flag.Type != "bool" || flag.Desc != common.PageAllFlags()[0].Desc {
+			if flag := flags[common.PageAllFlagName]; flag.Type != "bool" || flag.Desc != common.PageAllFlags(imPageAllPolicy)[0].Desc {
 				t.Fatalf("page-all flag = %#v", flag)
 			}
 			if flag := flags["page-limit"]; flag.Type != "int" || flag.Default != "10" || !strings.Contains(flag.Desc, "1-1000") {

@@ -4,7 +4,6 @@
 package im
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -133,6 +132,28 @@ func TestChatMembersValidate(t *testing.T) {
 		if err != nil {
 			t.Errorf("%s: unexpected error %v", c.name, err)
 		}
+	}
+}
+
+func TestChatMembersValidateRejectsPaginationValuesAboveSharedBounds(t *testing.T) {
+	noop := shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		t.Fatal("validation must fail before an API request")
+		return nil, nil
+	})
+	for _, tc := range []struct {
+		name  string
+		flag  string
+		value int
+	}{
+		{name: "page limit", flag: "page-limit", value: imReadMaxPageLimit + 1},
+		{name: "page delay", flag: "page-delay", value: imReadMaxPageDelay + 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runtime := newChatMembersTestRuntime(t, noop,
+				map[string]string{"chat-id": "oc_test"}, nil, map[string]int{tc.flag: tc.value})
+			err := ImChatMembersList.Validate(context.Background(), runtime)
+			assertValidationError(t, tc.name, err, "--"+tc.flag)
+		})
 	}
 }
 
@@ -350,9 +371,5 @@ func TestFetchChatMembers_PageLimitStops(t *testing.T) {
 	}
 	if !res.hasMore {
 		t.Error("has_more: want true (loop cut short by page-limit)")
-	}
-	errOut := runtime.IO().ErrOut.(*bytes.Buffer)
-	if !strings.Contains(errOut.String(), "reached page limit (3)") {
-		t.Errorf("want page-limit notice on stderr, got: %s", errOut.String())
 	}
 }

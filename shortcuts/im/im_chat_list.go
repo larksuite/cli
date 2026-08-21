@@ -60,7 +60,7 @@ var ImChatList = common.Shortcut{
 		{Name: "page-size", Type: "int", Default: fmt.Sprintf("%d", chatListDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", chatListMaxPageSize)},
 		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "exclude-muted", Type: "bool", Desc: "(user identity only) drop chats the current user has muted (do-not-disturb); bot identity returns all chats unfiltered"},
-	}, common.PageAllFlags()...),
+	}, common.PageAllFlags(imPageAllPolicy)...),
 	Normalize: normalizeChatListSortCompatibility,
 	// DryRun previews the GET /open-apis/im/v1/chats request without executing.
 	// When bot identity strips p2p from --types, emits the same stderr warning
@@ -86,7 +86,7 @@ var ImChatList = common.Shortcut{
 		if _, err := common.ValidatePageSizeTyped(runtime, "page-size", chatListDefaultPageSize, 1, chatListMaxPageSize); err != nil {
 			return err
 		}
-		if err := common.ValidatePageAllFlags(runtime); err != nil {
+		if err := common.ValidatePageAllFlags(runtime, imPageAllPolicy); err != nil {
 			return err
 		}
 		parts, err := normalizeTypes(runtime.StrSlice("types"))
@@ -115,14 +115,15 @@ var ImChatList = common.Shortcut{
 		// Fetch stage: one page and --page-all share the same paginator.
 		// The accumulator owns only the endpoint-specific page shape.
 		result := &imMapListResult{}
-		pagination, err := common.PaginateInto(runtime, common.PageRequest{
+		pagination, paginationStatus, pageErr := common.PaginateInto(runtime, common.PageRequest{
 			Method: http.MethodGet,
 			Path:   imChatListPath,
 			Params: params,
-		}, result)
-		if err != nil {
-			return err
+		}, result, imPageAllPolicy)
+		if pageErr != nil && paginationStatus.PagesFetched == 0 {
+			return pageErr
 		}
+		runtime.RecordPagination(paginationStatus)
 
 		// Transform stage: filters run once against the complete fetched set, so
 		// their outcome is independent of API page boundaries.
@@ -130,15 +131,21 @@ var ImChatList = common.Shortcut{
 		hasMore := result.hasMore
 		pageToken := result.pageToken
 
-		mfOut, err := MaybeApplyMuteFilter(runtime, MuteFilterInput{
-			ExcludeMuted: runtime.Bool("exclude-muted"),
-			IsBot:        runtime.IsBot(),
-			Chats:        items,
-			ChatIDKey:    "chat_id",
-			HasMore:      hasMore,
-		})
-		if err != nil {
-			return err
+		mfOut := MuteFilterOutput{Chats: items}
+		if runtime.Bool("exclude-muted") && pageErr != nil {
+			mfOut = skippedMuteFilterForIncompleteRead(items)
+		} else {
+			var err error
+			mfOut, err = MaybeApplyMuteFilter(runtime, MuteFilterInput{
+				ExcludeMuted: runtime.Bool("exclude-muted"),
+				IsBot:        runtime.IsBot(),
+				Chats:        items,
+				ChatIDKey:    "chat_id",
+				HasMore:      hasMore,
+			})
+			if err != nil {
+				return err
+			}
 		}
 		items = mfOut.Chats
 		pagination.Items = len(items)

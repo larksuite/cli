@@ -16,6 +16,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/imcontract"
 )
 
 func newCallAPITypedRuntime(t *testing.T) (*RuntimeContext, *httpmock.Registry) {
@@ -159,6 +160,19 @@ func TestDoAPIJSONTyped_HTTPErrorWithZeroBodyCodeNotSwallowed(t *testing.T) {
 	}
 	if p.Code != 400 {
 		t.Errorf("code = %d, want 400 (HTTP status used as code when body code is 0)", p.Code)
+	}
+}
+
+func TestDoAPIJSONTypedRejectsUnsupportedIMRequestBeforeAPI(t *testing.T) {
+	rt, _ := newCallAPITypedRuntime(t)
+	contract, _ := imcontract.Lookup("im messages urgent_app")
+	rt.contractSession = imcontract.NewSession(contract)
+
+	_, err := rt.DoAPIJSONTyped("PATCH", "/open-apis/im/v1/messages/om_x/urgent_app", nil, []any{"not", "an", "object"})
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryValidation ||
+		problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("error = %T %#v", err, problem)
 	}
 }
 

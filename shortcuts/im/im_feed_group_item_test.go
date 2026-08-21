@@ -434,7 +434,7 @@ func TestFeedGroupValidationErrors(t *testing.T) {
 	}{
 		{"list missing feed-group-id", ImFeedGroupListItem, map[string]string{}, "--feed-group-id is required"},
 		{"list bad page-size", ImFeedGroupListItem, map[string]string{"feed-group-id": "ofg_x", "page-size": "0"}, "invalid --page-size 0: must be between 1 and 50"},
-		{"list bad page-limit", ImFeedGroupListItem, map[string]string{"feed-group-id": "ofg_x", "page-limit": "2000"}, "--page-limit must be an integer between 1 and 1000"},
+		{"list bad page-limit", ImFeedGroupListItem, map[string]string{"feed-group-id": "ofg_x", "page-limit": strconv.Itoa(imReadMaxPageLimit + 1)}, "--page-limit must be an integer between 0 and " + strconv.Itoa(imReadMaxPageLimit)},
 		{"list bad start-time", ImFeedGroupListItem, map[string]string{"feed-group-id": "ofg_x", "start-time": "notnum"}, "--start-time must be Unix milliseconds"},
 		{"list bad end-time", ImFeedGroupListItem, map[string]string{"feed-group-id": "ofg_x", "end-time": "notnum"}, "--end-time must be Unix milliseconds"},
 		{"query missing feed-group-id", ImFeedGroupQueryItem, map[string]string{"feed-id": "oc_a"}, "--feed-group-id is required"},
@@ -559,43 +559,29 @@ func TestFeedGroupListItemTimeWindowQueryParams(t *testing.T) {
 	}
 }
 
-// ── list-item: infinite-loop guard + defensive page-limit clamping ──
+// ── list-item: infinite-loop guard with an unlimited page budget ──
 
 func TestFeedGroupListItemPageAllStopsOnRepeatedToken(t *testing.T) {
-	for _, tc := range []struct {
-		name      string
-		pageLimit string
-	}{
-		{"limit clamped up from 0", "0"},
-		{"limit clamped down from 1001", "1001"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			var reqs []recordedFGRequest
-			runtime := newFGRuntime(t, ImFeedGroupListItem, map[string]string{
-				"feed-group-id": "ofg_x", "page-all": "true", "page-limit": tc.pageLimit,
-				"start-time": "100", "end-time": "200",
-			}, &reqs, func(path string, _ int) (int, interface{}) {
-				if strings.HasSuffix(path, "/list_item") {
-					return 200, wrapData(map[string]interface{}{
-						"items":         []interface{}{map[string]interface{}{"feed_id": "oc_a", "feed_type": "chat", "update_time": "1"}},
-						"deleted_items": []interface{}{},
-						"page_token":    "SAME", "has_more": true,
-					})
-				}
-				return 200, wrapData(map[string]interface{}{})
+	var reqs []recordedFGRequest
+	runtime := newFGRuntime(t, ImFeedGroupListItem, map[string]string{
+		"feed-group-id": "ofg_x", "page-all": "true", "page-limit": "0",
+		"start-time": "100", "end-time": "200",
+	}, &reqs, func(path string, _ int) (int, interface{}) {
+		if strings.HasSuffix(path, "/list_item") {
+			return 200, wrapData(map[string]interface{}{
+				"items":         []interface{}{map[string]interface{}{"feed_id": "oc_a", "feed_type": "chat", "update_time": "1"}},
+				"deleted_items": []interface{}{},
+				"page_token":    "SAME", "has_more": true,
 			})
-			runtime.Format = "pretty" // exercise the page-all table-render path too
-			if err := ImFeedGroupListItem.Execute(context.Background(), runtime); err != nil {
-				t.Fatalf("Execute error: %v", err)
-			}
-			if got := countFGRequests(reqs, "/list_item"); got != 2 {
-				t.Errorf("expected 2 list_item requests (stop on repeated token), got %d", got)
-			}
-			errOut, _ := runtime.Factory.IOStreams.ErrOut.(*bytes.Buffer)
-			if !strings.Contains(errOut.String(), "page_token did not change") {
-				t.Errorf("stderr missing loop warning; got:\n%s", errOut.String())
-			}
-		})
+		}
+		return 200, wrapData(map[string]interface{}{})
+	})
+	runtime.Format = "pretty" // exercise the page-all table-render path too
+	if err := ImFeedGroupListItem.Execute(context.Background(), runtime); err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+	if got := countFGRequests(reqs, "/list_item"); got != 2 {
+		t.Errorf("expected 2 list_item requests (stop on repeated token), got %d", got)
 	}
 }
 

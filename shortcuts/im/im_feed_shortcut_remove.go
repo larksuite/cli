@@ -39,7 +39,7 @@ var ImFeedShortcutRemove = common.Shortcut{
 		}
 		return common.NewDryRunAPI().
 			POST("/open-apis/im/v2/feed_shortcuts/remove").
-			Body(map[string]any{"shortcuts": buildShortcutItems(ids)})
+			Body(map[string]any{"shortcuts": shortcutItemsBody(buildShortcutItems(ids))})
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		ids, err := collectChatIDs(runtime)
@@ -47,8 +47,8 @@ var ImFeedShortcutRemove = common.Shortcut{
 			return err
 		}
 		items := buildShortcutItems(ids)
-		data, err := runtime.DoAPIJSONTyped("POST", "/open-apis/im/v2/feed_shortcuts/remove", nil,
-			map[string]any{"shortcuts": items})
+		data, err := runtime.DoWriteAPIJSONTyped("POST", "/open-apis/im/v2/feed_shortcuts/remove", nil,
+			map[string]any{"shortcuts": shortcutItemsBody(items)})
 		if err != nil {
 			return err
 		}

@@ -7,9 +7,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strconv"
 
-	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
@@ -34,7 +35,7 @@ var ImFlagList = common.Shortcut{
 		{Name: "page-size", Type: "int", Default: fmt.Sprintf("%d", flagListDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", flagListMaxPageSize)},
 		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate, capped by --page-limit"},
-		{Name: "page-limit", Type: "int", Default: "20", Desc: "max pages with --page-all (default 20; configurable range 1-1000)"},
+		{Name: "page-limit", Type: "int", Default: "20", Desc: fmt.Sprintf("max pages with --page-all (default 20, max %d; 0 = unlimited)", imReadMaxPageLimit)},
 		{Name: "enrich-feed-thread", Type: "bool", Default: "true", Desc: "fetch message content for feed-type thread entries (default true; may call messages/mget and require im:message.group_msg:get_as_user/im:message.p2p_msg:get_as_user; use --enrich-feed-thread=false to avoid extra scopes)"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -56,21 +57,7 @@ var ImFlagList = common.Shortcut{
 		return d
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if runtime.Bool("page-all") {
-			return executeListAllPages(runtime)
-		}
-
-		data, err := runtime.DoAPIJSONTyped("GET", "/open-apis/im/v1/flags", listQuery(runtime), nil)
-		if err != nil {
-			return err
-		}
-		if runtime.Bool("enrich-feed-thread") {
-			if err := enrichFeedThreadItems(runtime, data); err != nil {
-				fmt.Fprintf(runtime.IO().ErrOut, "warning: feed-thread enrichment failed: %v\n", err)
-			}
-		}
-		runtime.Out(data, nil)
-		return nil
+		return executeListAllPages(runtime)
 	},
 }
 
@@ -78,10 +65,7 @@ func validateListOptions(rt *common.RuntimeContext) error {
 	if _, err := common.ValidatePageSizeTyped(rt, "page-size", flagListDefaultPageSize, 1, flagListMaxPageSize); err != nil {
 		return err
 	}
-	if n := rt.Int("page-limit"); n < 1 || n > 1000 {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-limit must be an integer between 1 and 1000").WithParam("--page-limit")
-	}
-	return nil
+	return validateIMPagination(rt)
 }
 
 // listQuery builds the query parameters for the flag list API call.
@@ -227,79 +211,65 @@ func asString(v any) string {
 // The flag list API returns items sorted by update_time ascending, so the last page
 // contains the newest items.
 func executeListAllPages(rt *common.RuntimeContext) error {
-	maxPages := rt.Int("page-limit")
-	if maxPages < 1 {
-		maxPages = 20
-	}
-	if maxPages > 1000 {
-		maxPages = 1000
-	}
-
-	// Use make([]any, 0) to ensure empty arrays serialize as [] not null
-	allFlagItems := make([]any, 0)
-	allDeleteFlagItems := make([]any, 0)
-	allMessages := make([]any, 0)
-	var lastHasMore bool
-	lastPageToken := rt.Str("page-token")
-	prevPageToken := lastPageToken
-
-	for page := 0; page < maxPages; page++ {
-		token := lastPageToken
-		data, err := rt.DoAPIJSONTyped("GET", "/open-apis/im/v1/flags",
+	pages, status, pageErr := collectIMPages(rt, rt.Bool("page-all"), func(pageToken string) (map[string]any, error) {
+		return rt.DoAPIJSONTyped("GET", "/open-apis/im/v1/flags",
 			larkcore.QueryParams{
 				"page_size":  []string{strconv.Itoa(rt.Int("page-size"))},
-				"page_token": []string{token},
+				"page_token": []string{pageToken},
 			}, nil)
-		if err != nil {
-			return err
-		}
-
-		if v, ok := data["flag_items"].([]any); ok {
-			allFlagItems = append(allFlagItems, v...)
-		}
-		if v, ok := data["delete_flag_items"].([]any); ok {
-			allDeleteFlagItems = append(allDeleteFlagItems, v...)
-		}
-		if v, ok := data["messages"].([]any); ok {
-			allMessages = append(allMessages, v...)
-		}
-
-		lastHasMore, _ = data["has_more"].(bool)
-		lastPageToken, _ = data["page_token"].(string)
-
-		// Progress output to stderr
-		fmt.Fprintf(rt.IO().ErrOut, "page %d: %d flags, %d deleted\n",
-			page+1, len(allFlagItems), len(allDeleteFlagItems))
-
-		if !lastHasMore || lastPageToken == "" {
-			break
-		}
-		// Detect server anomaly: same token returned twice means infinite loop
-		if lastPageToken == prevPageToken {
-			fmt.Fprintf(rt.IO().ErrOut, "warning: page_token did not change, stopping pagination to avoid infinite loop\n")
-			break
-		}
-		if page+1 >= maxPages {
-			fmt.Fprintf(rt.IO().ErrOut, "[pagination] reached page limit (%d) while has_more=true; result is incomplete. Increase --page-limit up to 1000 or resume with the page_token returned in stdout.\n", maxPages)
-			break
-		}
-		prevPageToken = lastPageToken
+	})
+	if len(pages) == 0 {
+		return pageErr
 	}
 
-	merged := map[string]any{
-		"flag_items":        allFlagItems,
-		"delete_flag_items": allDeleteFlagItems,
-		"messages":          allMessages,
-		"has_more":          lastHasMore,
-		"page_token":        lastPageToken,
-	}
-
+	rt.RecordPagination(status)
+	merged := mergeIMPageArrays(pages, "flag_items", "delete_flag_items", "messages")
 	if rt.Bool("enrich-feed-thread") {
 		if err := enrichFeedThreadItems(rt, merged); err != nil {
 			fmt.Fprintf(rt.IO().ErrOut, "warning: feed-thread enrichment failed: %v\n", err)
 		}
 	}
 
-	rt.Out(merged, nil)
+	presentation := any(merged)
+	if rt.JqExpr == "" && rt.Format != "" && rt.Format != "json" && rt.Format != "pretty" {
+		presentation = flagListFormatRows(merged)
+	}
+	rt.OutFormat(presentation, nil, func(w io.Writer) {
+		renderFlagListPretty(w, merged)
+	})
 	return nil
+}
+
+func flagListFormatRows(data map[string]any) []any {
+	rows := make([]any, 0)
+	appendRows := func(raw any, state string) {
+		items, _ := raw.([]any)
+		for _, item := range items {
+			source, _ := item.(map[string]any)
+			if source == nil {
+				continue
+			}
+			row := make(map[string]any, len(source)+1)
+			for key, value := range source {
+				row[key] = value
+			}
+			row["list_state"] = state
+			rows = append(rows, row)
+		}
+	}
+	appendRows(data["flag_items"], "active")
+	appendRows(data["delete_flag_items"], "deleted")
+	return rows
+}
+
+func renderFlagListPretty(w io.Writer, data map[string]any) {
+	rows := flagListFormatRows(data)
+	if len(rows) == 0 {
+		fmt.Fprintln(w, "No bookmarks found.")
+		return
+	}
+	output.FormatValue(w, rows, output.FormatTable)
+	active, _ := data["flag_items"].([]any)
+	deleted, _ := data["delete_flag_items"].([]any)
+	fmt.Fprintf(w, "\n%d active bookmark(s), %d deleted bookmark(s)\n", len(active), len(deleted))
 }

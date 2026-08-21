@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/imcontract"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -40,7 +41,7 @@ var ImFlagCancel = common.Shortcut{
 			POST("/open-apis/im/v1/flags/cancel").
 			Body(map[string]any{"flag_items": items})
 		if len(items) > 1 {
-			d.Desc("double-cancel: tries both message and feed layers (best-effort); feed-layer skipped if chat_type undeterminable")
+			d.Desc("double-cancel: tries both message and feed layers; an unresolved feed layer is reported as pending")
 		}
 		return d
 	},
@@ -52,7 +53,7 @@ var ImFlagCancel = common.Shortcut{
 
 		// Make separate API calls for each item so they are independent.
 		// If one fails, the other can still succeed.
-		results := make([]map[string]any, 0, len(items))
+		results := make([]any, 0, len(items))
 		var lastErr error
 		for _, item := range items {
 			itemType := itemTypeString(parseItemTypeFromRaw(item.ItemType))
@@ -62,7 +63,7 @@ var ImFlagCancel = common.Shortcut{
 				"item_type": itemType,
 				"flag_type": flagType,
 			}
-			data, err := runtime.DoAPIJSONTyped("POST", "/open-apis/im/v1/flags/cancel", nil,
+			data, err := runtime.DoWriteAPIJSONTyped("POST", "/open-apis/im/v1/flags/cancel", nil,
 				map[string]any{"flag_items": []flagItem{item}})
 			if err != nil {
 				result["status"] = "failed"
@@ -124,7 +125,7 @@ func buildCancelItemsForPreview(rt *common.RuntimeContext) ([]any, bool, error) 
 //  1. If --flag-type is explicitly provided, do a single targeted delete.
 //  2. Otherwise, perform double-cancel: remove both message layer and feed layer.
 //     - Message layer is always included (uses known message_id with ItemTypeDefault)
-//     - Feed layer is best-effort: if chat_type cannot be determined, skip with warning
+//     - Feed layer is best-effort: if chat_type cannot be determined, record it as pending
 //     - Each layer is independent; failure to cancel one doesn't block the other
 func buildCancelItems(rt *common.RuntimeContext) ([]flagItem, error) {
 	id, err := flagMessageID(rt)
@@ -152,15 +153,13 @@ func buildCancelItems(rt *common.RuntimeContext) ([]flagItem, error) {
 	// Most messages only have one layer flagged, so this is best-effort cleanup.
 	chatID, err := getMessageChatID(rt, id)
 	if err != nil {
-		// Can't get chat_id, warn and skip feed layer
-		fmt.Fprintf(rt.IO().ErrOut, "warning: cannot determine feed-layer item_type: %v; skipping feed-layer cancel\n", err)
+		rt.RecordContractFact(imcontract.Fact{Kind: imcontract.FactFlagFeedLayerPending})
 		return items, nil
 	}
 
 	feedIT, err := resolveThreadFeedItemType(rt, chatID)
 	if err != nil {
-		// Can't determine chat_type, warn and skip feed layer
-		fmt.Fprintf(rt.IO().ErrOut, "warning: cannot determine feed-layer item_type: %v; skipping feed-layer cancel\n", err)
+		rt.RecordContractFact(imcontract.Fact{Kind: imcontract.FactFlagFeedLayerPending})
 		return items, nil
 	}
 

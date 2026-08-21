@@ -22,12 +22,23 @@ const (
 	pageDelayMaximum  = 60_000
 )
 
+// PageAllPolicy makes potentially unbounded pagination an explicit caller
+// decision. The zero value keeps --page-limit bounded; domains that can safely
+// drain an endpoint must opt in to accepting 0 as "until exhaustion".
+type PageAllPolicy struct {
+	AllowUnlimited bool
+}
+
 // PageAllFlags returns the shared pagination control definitions. The caller's
 // page token, when present, selects the starting cursor; --page-all controls
 // whether pagination continues from that cursor until exhaustion or
 // --page-limit. Each call returns a fresh slice so shortcuts cannot mutate each
 // other.
-func PageAllFlags() []Flag {
+func PageAllFlags(policy PageAllPolicy) []Flag {
+	limitDesc := fmt.Sprintf("maximum pages fetched by --page-all (1-%d)", pageLimitMaximum)
+	if policy.AllowUnlimited {
+		limitDesc = fmt.Sprintf("maximum pages fetched by --page-all (0 = unlimited; otherwise 1-%d)", pageLimitMaximum)
+	}
 	return []Flag{
 		{
 			Name: PageAllFlagName,
@@ -38,7 +49,7 @@ func PageAllFlags() []Flag {
 			Name:    pageLimitFlagName,
 			Type:    "int",
 			Default: fmt.Sprintf("%d", pageLimitDefault),
-			Desc:    fmt.Sprintf("maximum pages fetched by --page-all (%d-%d)", 1, pageLimitMaximum),
+			Desc:    limitDesc,
 		},
 		{
 			Name:    pageDelayFlagName,
@@ -53,8 +64,8 @@ func PageAllFlags() []Flag {
 // ValidatePageAllFlags validates the shared page budget and inter-page delay.
 // PaginateInto repeats this check defensively for callers that invoke Execute
 // directly in tests.
-func ValidatePageAllFlags(runtime *RuntimeContext) error {
-	_, err := pageAllValues(runtime)
+func ValidatePageAllFlags(runtime *RuntimeContext, policy PageAllPolicy) error {
+	_, err := pageAllValues(runtime, policy)
 	return err
 }
 
@@ -64,7 +75,7 @@ type pageAllConfig struct {
 	delay    time.Duration
 }
 
-func pageAllValues(runtime *RuntimeContext) (pageAllConfig, error) {
+func pageAllValues(runtime *RuntimeContext, policy PageAllPolicy) (pageAllConfig, error) {
 	if runtime == nil || runtime.Cmd == nil {
 		return pageAllConfig{}, errs.NewInternalError(errs.SubtypeUnknown,
 			"pagination requires a mounted shortcut command")
@@ -84,10 +95,20 @@ func pageAllValues(runtime *RuntimeContext) (pageAllConfig, error) {
 		return pageAllConfig{}, errs.NewInternalError(errs.SubtypeUnknown,
 			"read pagination flag --%s: %v", pageLimitFlagName, err).WithCause(err)
 	}
-	if limit < 1 || limit > pageLimitMaximum {
+	minimum := 1
+	if policy.AllowUnlimited {
+		minimum = 0
+	}
+	if limit < minimum || limit > pageLimitMaximum {
 		return pageAllConfig{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"--%s must be an integer between 1 and %d", pageLimitFlagName, pageLimitMaximum).
+			"--%s must be an integer between %d and %d", pageLimitFlagName, minimum, pageLimitMaximum).
 			WithParam("--" + pageLimitFlagName)
+	}
+	maxPages := limit
+	if limit == 0 {
+		// The caller explicitly opted into "read to exhaustion". The shared
+		// walker still fails closed on a non-advancing server token.
+		maxPages = int(^uint(0) >> 1)
 	}
 	delayMillis, err := flags.GetInt(pageDelayFlagName)
 	if err != nil {
@@ -101,7 +122,7 @@ func pageAllValues(runtime *RuntimeContext) (pageAllConfig, error) {
 	}
 	return pageAllConfig{
 		enabled:  enabled,
-		maxPages: limit,
+		maxPages: maxPages,
 		delay:    time.Duration(delayMillis) * time.Millisecond,
 	}, nil
 }

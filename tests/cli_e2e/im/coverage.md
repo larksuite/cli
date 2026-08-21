@@ -16,28 +16,32 @@
 - TestIM_MessageResourceDownloadWorkflowAsBot: proves `im +messages-resources-download` end to end through `download file resource through the bounded first request` — a 320 KiB fixture is uploaded with `im +messages-send --file`, its `file_key` is read back off the message, and the downloaded bytes are compared byte for byte; the command always sends an initial Range request, but the output does not reveal whether the endpoint answered 206 or 200, so this proves the round trip rather than which path ran. Multi-part continuation is pinned by unit tests. Skips when the test app lacks the IM resource upload scope.
 - TestIM_MessagesSendAudioDryRunRejectsNonOpus: proves the `im +messages-send --audio` dry-run validation rejects non-Opus local audio before upload, with typed validation metadata and recovery guidance.
 - TestIM_MessageForwardWorkflowAsUser: proves UAT-backed API forwarding through `im messages forward` and `im threads forward` using a fresh message/thread fixture; skips the forward assertions when the current test app/UAT lacks IM forward permission.
-- Blocked area: `im +chat-search` did not reliably return freshly created private chats in UAT, and `im +messages-search` did not reliably index freshly sent messages in time for a deterministic read-after-write assertion, so both remain uncovered.
+- Coverage prerequisite (structured):
+  - blocked_case: im.search.stable_fixture_required
+  - affected_commands: `im +chat-search`, `im +messages-search`
+  - coverage_rule: deterministic search assertions must use stable pre-existing fixtures
+  - next_fixture_requirement: stable historical chat/message fixtures
 
 ## Command Table
 
 | Status | Cmd | Type | Testcase | Key parameter shapes | Notes / uncovered reason |
 | --- | --- | --- | --- | --- | --- |
 | ✓ | im +chat-create | shortcut | im/chat_message_workflow_test.go::TestIM_ChatMessageWorkflowAsUser/create chat as user; im/chat_workflow_test.go::TestIM_ChatUpdateWorkflow; im/chat_workflow_test.go::TestIM_ChatsGetWorkflow; im/chat_workflow_test.go::TestIM_ChatsLinkWorkflow; im/message_get_workflow_test.go::TestIM_MessageGetWorkflowAsUser; im/message_reply_workflow_test.go::TestIM_MessageReplyWorkflowAsBot | `--name`; `--type private` | covered via workflow setup with created chat IDs asserted |
-| ✓ | im +chat-messages-list | shortcut | im/chat_message_workflow_test.go::TestIM_ChatMessageWorkflowAsUser/list chat messages as user; im/message_reply_workflow_test.go::TestIM_MessageReplyWorkflowAsBot/list thread replies as bot | `--chat-id`; `--start`; `--end` | reads back created message and discovers thread ID |
-| ✕ | im +chat-search | shortcut |  | none | UAT did not reliably return freshly created private chats, so it is left uncovered |
+| ✓ | im +chat-messages-list | shortcut | im/chat_message_workflow_test.go::TestIM_ChatMessageWorkflowAsUser/list chat messages as user; im/message_reply_workflow_test.go::TestIM_MessageReplyWorkflowAsBot/list thread replies as bot; im/tips_examples_dryrun_test.go::TestIMTipsFirstExampleDryRunChatMessagesList | `--chat-id`; `--start`; `--end` | reads back created message and discovers thread ID |
+| ✕ | im +chat-search | shortcut |  | none | deterministic coverage requires a stable pre-existing chat fixture |
 | ✓ | im +chat-update | shortcut | im/chat_workflow_test.go::TestIM_ChatUpdateWorkflow/update chat name as bot; im/chat_workflow_test.go::TestIM_ChatUpdateWorkflow/update chat description as bot | `--chat-id`; `--name`; `--description` | |
 | ✓ | im +messages-mget | shortcut | im/message_get_workflow_test.go::TestIM_MessageGetWorkflowAsUser/batch get message as user | `--message-ids` | verifies sent message content by ID |
 | ✓ | im +messages-reply | shortcut | im/message_reply_workflow_test.go::TestIM_MessageReplyWorkflowAsBot/reply to message in thread as bot | `--message-id`; `--text`; `--reply-in-thread` | reply is read back via thread list |
-| ✓ | im +messages-resources-download | shortcut | im/messages_resources_download_dryrun_test.go::TestIM_MessagesResourcesDownloadDryRun; im/message_resource_download_workflow_test.go::TestIM_MessageResourceDownloadWorkflowAsBot/download file resource through the bounded first request | `--message-id`; `--file-key`; `--type`; `--output` | uploads a 320 KiB fixture via `+messages-send --file`, reads file_key back off the message, downloads it and compares bytes directly; the command sends an initial Range request, though the output cannot show whether the endpoint answered 206 or 200; multi-part continuation is covered by unit tests |
+| ✓ | im +messages-resources-download | shortcut | im/messages_resources_download_dryrun_test.go::TestIM_MessagesResourcesDownloadDryRun; im/message_resource_download_workflow_test.go::TestIM_MessageResourceDownloadWorkflowAsBot/download file resource through the bounded first request; im/tips_examples_dryrun_test.go::TestIMTipsFirstExampleDryRunResourcesDownload | `--message-id`; `--file-key`; `--type`; `--output` | uploads a 320 KiB fixture via `+messages-send --file`, reads file_key back off the message, downloads it and compares bytes directly; the command sends an initial Range request, though the output cannot show whether the endpoint answered 206 or 200; multi-part continuation is covered by unit tests |
 | ✕ | im +messages-search | shortcut |  | none | freshly sent messages were not indexed deterministically in UAT time for a stable read-after-write proof |
-| ✓ | im +messages-send | shortcut | im/chat_message_workflow_test.go::TestIM_ChatMessageWorkflowAsUser/send message as user; im/message_get_workflow_test.go::TestIM_MessageGetWorkflowAsUser; im/message_reply_workflow_test.go::TestIM_MessageReplyWorkflowAsBot; im/message_audio_dryrun_test.go::TestIM_MessagesSendAudioDryRunRejectsNonOpus | `--chat-id`; `--text`; `--audio ./voice.mp3 --dry-run` | live text sends feed follow-up reads; dry-run pins non-Opus audio validation before upload |
+| ✓ | im +messages-send | shortcut | im/chat_message_workflow_test.go::TestIM_ChatMessageWorkflowAsUser/send message as user; im/message_get_workflow_test.go::TestIM_MessageGetWorkflowAsUser; im/message_reply_workflow_test.go::TestIM_MessageReplyWorkflowAsBot; im/message_audio_dryrun_test.go::TestIM_MessagesSendAudioDryRunRejectsNonOpus; im/tips_examples_dryrun_test.go::TestIMTipsFirstExampleDryRunMessagesSend | `--chat-id`; `--text`; `--audio ./voice.mp3 --dry-run` | live text sends feed follow-up reads; dry-run pins non-Opus audio validation before upload |
 | ✓ | im +threads-messages-list | shortcut | im/message_reply_workflow_test.go::TestIM_MessageReplyWorkflowAsBot/list thread replies as bot | `--thread` | proves threaded reply is persisted |
 | ✕ | im chat.members create | api |  | none | no member mutation workflow yet |
 | ✕ | im chat.members get | api |  | none | no member get workflow yet |
 | ✕ | im chats create | api |  | none | only covered indirectly through `+chat-create` |
 | ✓ | im chats get | api | im/chat_workflow_test.go::TestIM_ChatUpdateWorkflow/get updated chat as bot; im/chat_workflow_test.go::TestIM_ChatsGetWorkflow/get chat info as bot | `chat_id` in `--params` | |
 | ✓ | im chats link | api | im/chat_workflow_test.go::TestIM_ChatsLinkWorkflow/get chat share link as bot | `chat_id` in `--params`; `validity_period` in `--data` | |
-| ✕ | im chats list | api |  | none | no chats list workflow yet |
+| ✕ | im chats list | api |  | none | command absent from current command surface; kept for historical tracking |
 | ✕ | im chats update | api |  | none | only covered indirectly through `+chat-update` |
 | ✕ | im images create | api |  | none | no image upload workflow yet |
 | ✕ | im messages delete | api |  | none | no recall workflow yet |

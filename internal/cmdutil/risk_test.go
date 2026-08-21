@@ -4,10 +4,23 @@
 package cmdutil
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 )
+
+func TestRiskHelpTextPreservesHighRiskConfirmationGuard(t *testing.T) {
+	if got := RiskHelpText(RiskWrite); got != "Risk: write" {
+		t.Fatalf("RiskHelpText(write) = %q", got)
+	}
+	got := RiskHelpText(RiskHighRiskWrite)
+	for _, want := range []string{"Risk: high-risk-write", "requires explicit user confirmation", "agent must NOT add --yes"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("RiskHelpText(high-risk-write) missing %q: %q", want, got)
+		}
+	}
+}
 
 func TestSetRisk_EmptyLevelShortCircuits(t *testing.T) {
 	cmd := &cobra.Command{Use: "test"}
