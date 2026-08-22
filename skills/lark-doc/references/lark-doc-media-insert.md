@@ -117,7 +117,7 @@ lark-cli docs +media-insert --doc doxcnXXX --from-clipboard --width 800 --height
 > 在试图将含有本地图片的 Markdown 内容写入一个已存在的飞书文档时，若通过 `drive +import` 临时生成一个新文档（借此自动上传图片获取 Token），然后再提取该临时文档的 XML 覆盖到最终目标文档，**会导致目标文档中的图片无法加载（裂图）**。原因是目标文档无权跨 Domain 读取临时文档域内的媒体 Token。
 >
 > ✅ **正确做法**：
-> 媒体资源必须直接在最终目标文档域内上传：调用 `lark-cli docs +media-insert --doc <目标文档token> --file <本地图片路径>` 获取专属合法 Token 后，再将带有合法 Token 的 `<img src="token"/>` 写入目标文档。
+> 媒体资源必须直接在最终目标文档域内上传：调用 `lark-cli docs +media-insert --doc <目标文档ID> --file <本地图片路径>` 获取专属合法 Token 后，再将带有合法 Token 的 `<img src="token"/>` 写入目标文档。
 
 ## 参考
 
