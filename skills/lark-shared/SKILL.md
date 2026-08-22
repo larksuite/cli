@@ -39,13 +39,13 @@ metadata:
 
 ### 1. 分离式 OAuth 授权恢复闭环（AI Agent 子进程必读）
 在无浏览器 GUI 或 Agent 作为非交互式子进程运行的场景下，遇到 Token 过期或缺少 scopes 时，**绝不能**因无法自动弹窗而直接中断任务，须按以下标准 3 步闭环恢复：
-1. **获取授权链接与设备码**：执行 `lark-cli auth login --domain all --no-wait --json`（或指定缺少的 scopes），从 JSON 响应中提取 `verification_url` 与 `device_code`；
+1. **获取授权链接与设备码**：执行 `lark-cli auth login --domain all --no-wait --json`（或指定缺少的 scopes）；先验证响应中 `ok == true`，再从中提取 `verification_url` 与 `device_code`（若失败则按错误信封处理，避免带空值进入下一步）；
 2. **生成并展示二维码**：执行 `lark-cli auth qrcode <verification_url>` 生成二维码，在交互中将 URL 链接与二维码一并展示给用户，并提示用户扫码授权；
 3. **完成授权校验闭环**：收到用户授权完成的反馈后，由 Agent 执行 `lark-cli auth login --device-code <device_code>` 完成最终校验，无缝恢复原本被阻塞的任务。
 
 ### 2. Windows 平台子进程 stdin UTF-8 字节流传输规范
 在 Windows 平台通过子进程管道（stdin）向 `lark-cli` 推送文档文本（如 `docs +update --content -`）时：
-- **陷阱**：若依赖系统默认代码页（GBK/CP936），管道传输的中文会被 CLI（按 UTF-8 解码）解析为乱码（）。
+- **陷阱**：若依赖系统默认代码页（GBK/CP936），管道传输的中文会被 CLI（按 UTF-8 解码）解析为乱码（如出现替代字符 ）。
 - **规范**：必须显式使用 UTF-8 字节流模式推送输入（例如 Python 中使用 `proc.communicate(input=text.encode('utf-8'))`），切勿使用 `text=True` 默认平台编码。
 
 ## Reference 强触发索引
