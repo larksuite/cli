@@ -122,10 +122,10 @@ lark-cli docs +fetch --doc Z1Fj...tnAc --scope section --start-block-id blkTitle
 > [!IMPORTANT]
 > **JSON 结构解析路径与避坑说明**：
 > 使用 `docs +fetch --doc-format xml --format json` 导出正文时，XML 内容位于 `.data.document.content` 字段。
-> ❌ **常见错误**：误用 `.data.content` 会提取出 `null`，若直接将提取结果用于后续 `docs +update` 覆盖，会导致整个文档被意外覆写为字符串 `"null"`。
+> ❌ **常见错误**：误用 `.data.content` 会提取出 `null`，若直接将提取结果用于后续 `docs +update` 覆盖，会导致整个文档被意外覆写为字符串 `"null"`。在脚本中推入 update 之前，建议加入防御性断言（如 `jq -er '.data.document.content // error("empty content")'`），非空校验通过后再行写入。
 >
 > **文档更新后的机检断言闭环 (Verification Loop)**：
-> 在执行大篇幅文档覆盖更新后，建议调用 `docs +fetch` 反查云端正文，对文档内的表格（`<table>`）、画板（`<whiteboard>`）、代码块（`<pre>`）、图片（`<img>`）等关键容器数量进行结构化比对断言，确保云端渲染 100% 达成预期。
+> 在执行大篇幅文档覆盖更新后，建议调用 `docs +fetch` 反查云端正文，对文档内的表格（`<table>`）、画板（`<whiteboard>`）、代码块（`<pre>`）、高亮框（`<callout>`）、图片（`<img>`）等关键容器数量与结构进行自动化核验断言，确保云端渲染达到预期。
 
 ## 处理文档内嵌资源
 
