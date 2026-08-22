@@ -23,9 +23,33 @@
 
 ## 表格
 
-- `<table><thead><tr><th><p>表头</p></th></tr></thead><tbody><tr><td><p>内容</p></td></tr></tbody></table>`
+飞书云文档支持两种表格形态，在生成与转译时须智能识别：
+
+### 1. 原生普通文档表格 (`<table>`) — 默认推荐
+适用于说明对照表、规则清单、时刻表、行程安排等静态图文数据展示。
+- **推荐结构与配色**：
+  ```xml
+  <table>
+    <thead>
+      <tr>
+        <th background-color="light-gray"><b>表头 1</b></th>
+        <th background-color="light-gray"><b>表头 2</b></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>单元格内容 (支持 &lt;br/&gt;、&lt;b&gt; 等行内富文本)</td>
+        <td>数据项</td>
+      </tr>
+    </tbody>
+  </table>
+  ```
 - `<colgroup><col /></colgroup>` 紧跟 `<table>` 定义列宽；`width` 表示列宽，可选 `span` 表示连续作用的列数。
-- `<th>` / `<td>` 支持 `background-color`、`vertical-align`、`colspan`、`rowspan`；`vertical-align`：`top | middle | bottom`；`background-color` 支持基础色相、`light-{色相}`、`medium-gray`，表头优先使用 `light-gray` 或 `medium-gray`，彩色单元格仅用于表达状态或分类。被合并的单元格不再写入。
+- `<th>` / `<td>` 支持 `background-color`、`vertical-align`、`colspan`、`rowspan`；表头统一推荐使用 `light-gray`，保持页面清爽通透。
+
+### 2. 嵌入式电子表格 / 计算表格 (`<sheet>`)
+- 仅当表格包含单元格公式计算需求（如以 `=` 开头的 `=SUM(...)`、`=AVERAGE(...)` 等）或需要多工作表联动时使用。
+- 静态数据展示严禁无脑转为带坐标轴的 `<sheet>`，避免破坏文档图文排版。
 
 ## 扩展标签
 
