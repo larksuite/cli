@@ -18,6 +18,16 @@
 ### Skills
 - lark-meeting/references/lark-vc-recording.md
 
+## +recording-start
+
+### Skills
+- lark-meeting/references/lark-vc-recording-control.md
+
+## +recording-stop
+
+### Skills
+- lark-meeting/references/lark-vc-recording-control.md
+
 ## +meeting-list-active
 
 ### Skills
