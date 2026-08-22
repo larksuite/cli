@@ -108,6 +108,17 @@ lark-cli docs +media-insert --doc doxcnXXX --from-clipboard --width 800 --height
 > [!CAUTION]
 > 这是**写入操作**（会修改文档内容）—— 执行前必须确认用户意图。
 
+## 媒体 Token 与宿主文档 Domain 绑定生命周期
+
+> [!WARNING]
+> **媒体 Token 强绑定鉴权**：通过 `docs +media-insert` 上传获取的媒体 Token（返回的 `file_token`，在 XML 中表现为 `<img src="file_token">`）是与**它最初被上传时所挂载的那个文档强绑定的**。
+>
+> ❌ **常见错误场景（跨文档复制裂图）**：
+> 在试图将含有本地图片的 Markdown 内容写入一个已存在的飞书文档时，若通过 `drive +import` 临时生成一个新文档（借此自动上传图片获取 Token），然后再提取该临时文档的 XML 覆盖到最终目标文档，**会导致目标文档中的图片无法加载（裂图）**。原因是目标文档无权跨 Domain 读取临时文档域内的媒体 Token。
+>
+> ✅ **正确做法**：
+> 媒体资源必须直接在最终目标文档域内上传：调用 `lark-cli docs +media-insert --doc <目标文档token> --file <本地图片路径>` 获取专属合法 Token 后，再将带有合法 Token 的 `<img src="token"/>` 写入目标文档。
+
 ## 参考
 
 - [lark-doc-fetch](lark-doc-fetch.md) — 获取文档内容（可用于确认插入后的结果、以及提取媒体 token）
