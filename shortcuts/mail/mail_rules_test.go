@@ -11,7 +11,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -149,12 +152,14 @@ func TestDecodeMailRuleEnvelopeMarksKnownItemExtraFieldsUnknown(t *testing.T) {
 		"name":      "Alpha",
 		"is_enable": true,
 		"condition": map[string]any{
-			"match_type": 1,
+			"match_type":             1,
+			"tenant_condition_extra": "keep",
 			"items": []interface{}{
 				map[string]interface{}{"type": float64(6), "operator": float64(1), "input": "Alpha", "case_sensitive": true},
 			},
 		},
 		"action": map[string]any{
+			"tenant_action_extra": "keep",
 			"items": []interface{}{
 				map[string]interface{}{"type": float64(11), "input": "fld_1", "params": map[string]interface{}{"input": "fld_1", "vendor": "keep"}, "vendor_action_extra": "keep"},
 			},
@@ -166,7 +171,9 @@ func TestDecodeMailRuleEnvelopeMarksKnownItemExtraFieldsUnknown(t *testing.T) {
 		unknownPaths[item.Path] = true
 	}
 	for _, want := range []string{
+		"condition.tenant_condition_extra",
 		"condition.items[0].case_sensitive",
+		"action.tenant_action_extra",
 		"action.items[0].params.vendor",
 		"action.items[0].vendor_action_extra",
 	} {
@@ -310,8 +317,52 @@ func TestMailRuleWriteRisks(t *testing.T) {
 	}
 }
 
+func TestMailRuleShortcutsAllowBotButRequireExplicitMailbox(t *testing.T) {
+	for _, shortcut := range []common.Shortcut{MailRuleList, MailRuleGet, MailRuleCreate, MailRuleUpdate, MailRuleDelete, MailRuleEnable, MailRuleDisable, MailRuleReorder} {
+		hasBot := false
+		for _, authType := range shortcut.AuthTypes {
+			if authType == "bot" {
+				hasBot = true
+			}
+		}
+		if !hasBot {
+			t.Fatalf("%s AuthTypes = %v, want bot support", shortcut.Command, shortcut.AuthTypes)
+		}
+	}
+
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("user-mailbox-id", "me", "")
+	botDefault := common.TestNewRuntimeContextWithIdentity(cmd, mailTestConfig(), core.AsBot)
+	if err := validateMailRuleMailbox(nil, botDefault); err == nil {
+		t.Fatal("expected bot default mailbox validation error")
+	}
+
+	cmd = &cobra.Command{Use: "test"}
+	cmd.Flags().String("user-mailbox-id", "me", "")
+	if err := cmd.Flags().Set("user-mailbox-id", "user@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	botExplicit := common.TestNewRuntimeContextWithIdentity(cmd, mailTestConfig(), core.AsBot)
+	if err := validateMailRuleMailbox(nil, botExplicit); err != nil {
+		t.Fatalf("bot explicit mailbox validation error = %v", err)
+	}
+
+	userDefault := common.TestNewRuntimeContextWithIdentity(cmd, mailTestConfig(), core.AsUser)
+	if err := validateMailRuleMailbox(nil, userDefault); err != nil {
+		t.Fatalf("user mailbox validation error = %v", err)
+	}
+}
+
 func TestMailRuleDeleteRequiresStandardYesConfirmation(t *testing.T) {
-	f, stdout, _, _ := mailShortcutTestFactory(t)
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	reg.Register(mailRuleListStub(mailRuleTestRawRule("rule_1", "Alpha")))
+	del := &httpmock.Stub{
+		Method:   "DELETE",
+		URL:      "open-apis/mail/v1/user_mailboxes/me/rules/rule_1",
+		Optional: true,
+		Body:     map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+	}
+	reg.Register(del)
 	err := runMountedMailShortcut(t, MailRuleDelete, []string{"+rule-delete", "--rule-id", "rule_1", "--format", "json"}, f, stdout)
 	if err == nil {
 		t.Fatal("expected confirmation required error")
@@ -320,15 +371,19 @@ func TestMailRuleDeleteRequiresStandardYesConfirmation(t *testing.T) {
 	if !errors.As(err, &confirmErr) {
 		t.Fatalf("expected confirmation required error, got %T: %v", err, err)
 	}
-	if confirmErr.Action != "mail +rule-delete" {
-		t.Fatalf("confirmation action = %q, want mail +rule-delete", confirmErr.Action)
+	if !strings.Contains(confirmErr.Action, "mail +rule-delete") || !strings.Contains(confirmErr.Action, "Alpha") {
+		t.Fatalf("confirmation action should include target summary, got %q", confirmErr.Action)
+	}
+	if len(del.CapturedBodies) != 0 {
+		t.Fatalf("DELETE should not be sent before --yes, captured %d request(s)", len(del.CapturedBodies))
 	}
 }
 
-func TestMailRuleUpdatePreservesRawFieldsAndUpdatesName(t *testing.T) {
+func TestMailRuleUpdateUsesRequestBodyWhitelistAndUpdatesName(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	currentRule := map[string]interface{}{
 		"rule_id":                  "rule_1",
+		"id":                       "response_id",
 		"name":                     "Alpha",
 		"is_enable":                true,
 		"ignore_the_rest_of_rules": false,
@@ -385,8 +440,10 @@ func TestMailRuleUpdatePreservesRawFieldsAndUpdatesName(t *testing.T) {
 	if body["name"] != "Beta" {
 		t.Fatalf("name = %v", body["name"])
 	}
-	if body["vendor_top"] != "keep" {
-		t.Fatalf("vendor_top = %v", body["vendor_top"])
+	for _, forbidden := range []string{"vendor_top", "rule_id", "id"} {
+		if _, ok := body[forbidden]; ok {
+			t.Fatalf("PUT body must not include %s: %v", forbidden, body)
+		}
 	}
 	condition := body["condition"].(map[string]interface{})
 	conditionItems := condition["items"].([]interface{})
@@ -695,6 +752,22 @@ func TestMailRuleParserRejectsOversizedCollections(t *testing.T) {
 	}
 }
 
+func TestMailRuleParserRejectsAggregateInputLimits(t *testing.T) {
+	largeValue := strings.Repeat("a", mailRuleInputFileMaxBytes/2+1)
+	largeCondition := `[{"field":"subject","operator":"contains","value":"` + largeValue + `"}]`
+	if _, err := parseRuleConditions(nil, []string{largeCondition, largeCondition}, ""); err == nil {
+		t.Fatal("expected aggregate condition byte limit error")
+	}
+
+	repeated := make([]string, mailRuleCollectionMax+1)
+	for i := range repeated {
+		repeated[i] = "subject:contains:Alpha"
+	}
+	if _, err := parseRuleConditions(nil, repeated, ""); err == nil {
+		t.Fatal("expected aggregate condition count limit error")
+	}
+}
+
 func TestMailRuleDryRunShortcuts(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -848,7 +921,7 @@ func TestMailRuleParserErrorBranches(t *testing.T) {
 }
 
 func TestMailRuleActionValueParsesJSONObjectsAndGrammarJSONParams(t *testing.T) {
-	actions, err := parseRuleActionValue(nil, `{"kind":"move_folder","params":{"input":"fld_1"}}`, "--action")
+	actions, err := parseRuleActionValue(nil, `{"kind":"move_folder","params":{"folder_id":"fld_1"}}`, "--action")
 	if err != nil {
 		t.Fatalf("parseRuleActionValue(object) error = %v", err)
 	}
@@ -862,6 +935,21 @@ func TestMailRuleActionValueParsesJSONObjectsAndGrammarJSONParams(t *testing.T) 
 	}
 	if len(actions) != 1 || actions[0].Kind != "move_folder" || actions[0].Params["folder_id"] != "fld_2" {
 		t.Fatalf("actions = %+v", actions)
+	}
+}
+
+func TestMailRuleActionParamsCannotOverrideControlledFields(t *testing.T) {
+	for _, raw := range []string{
+		`move_folder:json={"folder_id":"fld_1","input":"hidden"}`,
+		`move_folder:json={"folder_id":"fld_1","type":2}`,
+		`{"kind":"move_folder","folder_id":"fld_1","input":"hidden"}`,
+		`{"kind":"move_folder","params":{"folder_id":"fld_1","type":2}}`,
+	} {
+		t.Run(raw, func(t *testing.T) {
+			if _, err := parseRuleActionValue(nil, raw, "--action"); err == nil {
+				t.Fatal("expected controlled field validation error")
+			}
+		})
 	}
 }
 
@@ -904,8 +992,19 @@ func TestMailRuleToggleAndDeleteShortcutsPreserveRawBody(t *testing.T) {
 	if err := json.Unmarshal(put.CapturedBody, &body); err != nil {
 		t.Fatalf("Unmarshal(PUT body) error = %v, body=%s", err, string(put.CapturedBody))
 	}
-	if body["is_enable"] != false || body["vendor_top"] != "keep" {
-		t.Fatalf("toggle body did not preserve raw fields: %v", body)
+	if body["is_enable"] != false {
+		t.Fatalf("toggle body is_enable = %v, want false", body["is_enable"])
+	}
+	for _, forbidden := range []string{"vendor_top", "rule_id", "id"} {
+		if _, ok := body[forbidden]; ok {
+			t.Fatalf("toggle PUT body must not include %s: %v", forbidden, body)
+		}
+	}
+	data := decodeShortcutEnvelopeData(t, stdout)
+	after := data["after"].(map[string]interface{})
+	afterRaw := after["raw"].(map[string]interface{})
+	if afterRaw["is_enable"] != false {
+		t.Fatalf("after.raw is_enable = %v, want false", afterRaw["is_enable"])
 	}
 
 	reg.Register(mailRuleListStub(currentRule))
@@ -918,7 +1017,7 @@ func TestMailRuleToggleAndDeleteShortcutsPreserveRawBody(t *testing.T) {
 	if err := runMountedMailShortcut(t, MailRuleDelete, []string{"+rule-delete", "--rule-id", "rule_1", "--yes", "--format", "json"}, f, stdout); err != nil {
 		t.Fatalf("run +rule-delete error = %v", err)
 	}
-	data := decodeShortcutEnvelopeData(t, stdout)
+	data = decodeShortcutEnvelopeData(t, stdout)
 	if data["deleted"] != true {
 		t.Fatalf("deleted = %v, want true", data["deleted"])
 	}
@@ -1065,6 +1164,43 @@ func TestMailRuleUpdateRejectsReplacingUnknownRawCollections(t *testing.T) {
 	}
 }
 
+func TestMailRuleUpdateRejectsReplacingContainerUnknownRawCollections(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	currentRule := mailRuleTestRawRule("rule_1", "Alpha")
+	currentRule["condition"].(map[string]interface{})["tenant_condition_extra"] = "keep"
+	reg.Register(mailRuleListStub(currentRule))
+
+	err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--condition", "subject:contains:Beta", "--format", "json"}, f, stdout)
+	if err == nil {
+		t.Fatal("expected unknown condition replacement error")
+	}
+	if !strings.Contains(err.Error(), "unknown condition raw") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestMailRuleUpdateRejectsExplicitEmptyCollections(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "empty conditions", args: []string{"+rule-update", "--rule-id", "rule_1", "--conditions", "[]", "--format", "json"}, want: "at least one --condition"},
+		{name: "empty actions", args: []string{"+rule-update", "--rule-id", "rule_1", "--actions", "[]", "--format", "json"}, want: "at least one --action"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, stdout, _, _ := mailShortcutTestFactory(t)
+			err := runMountedMailShortcut(t, MailRuleUpdate, tc.args, f, stdout)
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestMailRuleUpdateReplacesKnownConditionsAndActions(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	currentRule := mailRuleTestRawRule("rule_1", "Alpha")
@@ -1168,6 +1304,9 @@ func TestMailRuleExtractAndRenderHelpers(t *testing.T) {
 	env := decodeMailRuleEnvelope(raw, "me")
 	if env.RuleID != "123" || env.Name != "Fallback" || env.Enabled || !env.SemanticSpec.Rule.StopAfterMatch || env.Order != 9 {
 		t.Fatalf("fallback decode mismatch: %+v", env)
+	}
+	if env.SemanticSpec.Rule.Match != "" {
+		t.Fatalf("unknown match type should not decode as comparable match, got %q", env.SemanticSpec.Rule.Match)
 	}
 	if len(env.Unknowns) != 1 || env.Unknowns[0].Path != "condition.match_type" {
 		t.Fatalf("unknown match type = %+v", env.Unknowns)

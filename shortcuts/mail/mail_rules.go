@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/output"
 	internalsuggest "github.com/larksuite/cli/internal/suggest"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -131,17 +132,20 @@ var mailRuleCommonFlags = []common.Flag{
 	{Name: "user-mailbox-id", Default: "me", Desc: "User mailbox ID or address that owns the rules (default: me)."},
 }
 
+var mailRuleAuthTypes = []string{"user", "bot"}
+
 var MailRuleList = common.Shortcut{
 	Service:     "mail",
 	Command:     "+rule-list",
 	Description: "List mailbox rules with semantic aliases, Chinese descriptions, and unknown raw warnings.",
 	Risk:        "read",
 	Scopes:      []string{"mail:user_mailbox.rule:read"},
-	AuthTypes:   []string{"user"},
+	AuthTypes:   mailRuleAuthTypes,
 	HasFormat:   true,
 	Flags: append([]common.Flag{}, append(mailRuleCommonFlags,
 		common.Flag{Name: "name-contains", Desc: "Optional local filter on rule name."},
 	)...),
+	Validate: validateMailRuleMailbox,
 	DryRun: func(ctx context.Context, rt *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().Desc("List mailbox rules and decode known condition/action enums").
 			GET(mailRuleCollectionPath(ruleMailboxID(rt))).
@@ -170,11 +174,12 @@ var MailRuleGet = common.Shortcut{
 	Description: "Get one mailbox rule by rule_id by scanning the rules collection when no atomic get is exposed.",
 	Risk:        "read",
 	Scopes:      []string{"mail:user_mailbox.rule:read"},
-	AuthTypes:   []string{"user"},
+	AuthTypes:   mailRuleAuthTypes,
 	HasFormat:   true,
 	Flags: append([]common.Flag{}, append(mailRuleCommonFlags,
 		common.Flag{Name: "rule-id", Required: true, Desc: "Rule ID to fetch."},
 	)...),
+	Validate: validateMailRuleMailbox,
 	DryRun: func(ctx context.Context, rt *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().Desc("List rules and return the matching rule_id locally").
 			GET(mailRuleCollectionPath(ruleMailboxID(rt))).Params(map[string]any{"page_size": 50})
@@ -197,12 +202,15 @@ var MailRuleCreate = common.Shortcut{
 	Description: "Create a mailbox rule from semantic condition/action aliases; use --dry-run to inspect the raw request.",
 	Risk:        "write",
 	Scopes:      []string{"mail:user_mailbox.rule:write"},
-	AuthTypes:   []string{"user"},
+	AuthTypes:   mailRuleAuthTypes,
 	HasFormat:   true,
 	Flags: append([]common.Flag{}, append(mailRuleWriteFlags(),
 		common.Flag{Name: "name", Desc: "Required. Rule name."},
 	)...),
 	Validate: func(ctx context.Context, rt *common.RuntimeContext) error {
+		if err := validateMailRuleMailbox(ctx, rt); err != nil {
+			return err
+		}
 		_, _, err := buildRuleSpecFromFlags(rt, true)
 		return err
 	},
@@ -243,13 +251,16 @@ var MailRuleUpdate = common.Shortcut{
 	Description: "Update one mailbox rule by reading the current rule, preserving unspecified fields, and rejecting unsafe unknown collection replacement.",
 	Risk:        "write",
 	Scopes:      []string{"mail:user_mailbox.rule:read", "mail:user_mailbox.rule:write"},
-	AuthTypes:   []string{"user"},
+	AuthTypes:   mailRuleAuthTypes,
 	HasFormat:   true,
 	Flags: append(mailRuleWriteFlags(),
 		common.Flag{Name: "name", Desc: "Optional new rule name."},
 		common.Flag{Name: "rule-id", Required: true, Desc: "Rule ID to update."},
 	),
 	Validate: func(ctx context.Context, rt *common.RuntimeContext) error {
+		if err := validateMailRuleMailbox(ctx, rt); err != nil {
+			return err
+		}
 		if strings.TrimSpace(rt.Str("rule-id")) == "" {
 			return mailValidationParamError("--rule-id", "--rule-id is required")
 		}
@@ -306,16 +317,29 @@ var MailRuleUpdate = common.Shortcut{
 var MailRuleDelete = common.Shortcut{
 	Service:     "mail",
 	Command:     "+rule-delete",
-	Description: "Delete one mailbox rule. Real deletion requires --yes; --dry-run shows the delete request only.",
+	Description: "Delete one mailbox rule. Without --yes, the shortcut fetches the target and returns a confirmation summary without deleting.",
 	Risk:        "high-risk-write",
 	Scopes:      []string{"mail:user_mailbox.rule:read", "mail:user_mailbox.rule:write"},
-	AuthTypes:   []string{"user"},
+	AuthTypes:   mailRuleAuthTypes,
 	HasFormat:   true,
 	Flags: append([]common.Flag{}, append(mailRuleCommonFlags,
 		common.Flag{Name: "rule-id", Required: true, Desc: "Rule ID to delete."},
 	)...),
+	Validate: func(ctx context.Context, rt *common.RuntimeContext) error {
+		if err := validateMailRuleMailbox(ctx, rt); err != nil {
+			return err
+		}
+		if rt.Bool("dry-run") || rt.Bool("yes") {
+			return nil
+		}
+		env, err := getMailRuleEnvelope(rt, ruleMailboxID(rt), rt.Str("rule-id"))
+		if err != nil {
+			return err
+		}
+		return cmdutil.RequireConfirmation(fmt.Sprintf("mail +rule-delete rule_id=%s: %s", env.RuleID, env.Description))
+	},
 	DryRun: func(ctx context.Context, rt *common.RuntimeContext) *common.DryRunAPI {
-		return common.NewDryRunAPI().Desc("Delete one mailbox rule; dry-run does not call the API").
+		return common.NewDryRunAPI().Desc("Delete one mailbox rule; dry-run does not call the API. Run without --yes to fetch a confirmation summary.").
 			DELETE(mailRuleItemPath(ruleMailboxID(rt), rt.Str("rule-id")))
 	},
 	Execute: func(ctx context.Context, rt *common.RuntimeContext) error {
@@ -343,7 +367,7 @@ var MailRuleReorder = common.Shortcut{
 	Description: "Reorder mailbox rules by full rule_id list or by moving one rule before/after/top/bottom.",
 	Risk:        "write",
 	Scopes:      []string{"mail:user_mailbox.rule:read", "mail:user_mailbox.rule:write"},
-	AuthTypes:   []string{"user"},
+	AuthTypes:   mailRuleAuthTypes,
 	HasFormat:   true,
 	Flags: append([]common.Flag{}, append(mailRuleCommonFlags,
 		common.Flag{Name: "rule-ids", Type: "string_slice", Desc: "Full target rule ID order. Must contain every current rule exactly once."},
@@ -354,6 +378,9 @@ var MailRuleReorder = common.Shortcut{
 		common.Flag{Name: "to-bottom", Type: "bool", Desc: "Move --move-rule-id to the bottom."},
 	)...),
 	Validate: func(ctx context.Context, rt *common.RuntimeContext) error {
+		if err := validateMailRuleMailbox(ctx, rt); err != nil {
+			return err
+		}
 		return validateRuleReorderFlags(rt)
 	},
 	DryRun: func(ctx context.Context, rt *common.RuntimeContext) *common.DryRunAPI {
@@ -409,15 +436,17 @@ func makeRuleToggleShortcut(command string, enabled bool) common.Shortcut {
 		Description: desc,
 		Risk:        "write",
 		Scopes:      []string{"mail:user_mailbox.rule:read", "mail:user_mailbox.rule:write"},
-		AuthTypes:   []string{"user"},
+		AuthTypes:   mailRuleAuthTypes,
 		HasFormat:   true,
 		Flags: append([]common.Flag{}, append(mailRuleCommonFlags,
 			common.Flag{Name: "rule-id", Required: true, Desc: "Rule ID to update."},
 		)...),
+		Validate: validateMailRuleMailbox,
 		DryRun: func(ctx context.Context, rt *common.RuntimeContext) *common.DryRunAPI {
-			return common.NewDryRunAPI().Desc("Read current rule and update only is_enable").
+			return common.NewDryRunAPI().Desc("Read current rule, merge is_enable into the full request body, then PUT").
+				Set("raw_request_patch", map[string]any{"is_enable": enabled}).
 				GET(mailRuleCollectionPath(ruleMailboxID(rt))).
-				PUT(mailRuleItemPath(ruleMailboxID(rt), rt.Str("rule-id"))).Body(map[string]any{"is_enable": enabled})
+				PUT(mailRuleItemPath(ruleMailboxID(rt), rt.Str("rule-id"))).Body("<merged rule body after reading current rule>")
 		},
 		Execute: func(ctx context.Context, rt *common.RuntimeContext) error {
 			env, err := getMailRuleEnvelope(rt, ruleMailboxID(rt), rt.Str("rule-id"))
@@ -436,21 +465,23 @@ func makeRuleToggleShortcut(command string, enabled bool) common.Shortcut {
 				})
 				return nil
 			}
-			raw := copyMap(env.Raw)
+			raw := ruleRequestBodyFromEnvelope(env)
 			raw["is_enable"] = enabled
 			if _, err := rt.CallAPITyped("PUT", mailRuleItemPath(ruleMailboxID(rt), rt.Str("rule-id")), nil, raw); err != nil {
 				return mailDecorateProblemMessage(err, "toggle mail rule failed")
 			}
 			after := env
 			after.Enabled = enabled
+			after.Raw = copyMap(raw)
 			if after.SemanticSpec != nil {
 				after.SemanticSpec.Rule.Enabled = enabled
 				after.Description = describeMailRule(after.SemanticSpec.Rule, after.Unknowns)
 			}
 			out := map[string]any{
-				"before": map[string]any{"enabled": env.Enabled},
-				"after":  after,
-				"diff":   []map[string]any{{"field": "enabled", "before": env.Enabled, "after": enabled}},
+				"before":      map[string]any{"enabled": env.Enabled},
+				"after":       after,
+				"diff":        []map[string]any{{"field": "enabled", "before": env.Enabled, "after": enabled}},
+				"raw_request": raw,
 			}
 			rt.OutFormat(out, &output.Meta{Count: 1}, func(w io.Writer) {
 				fmt.Fprintln(w, after.Description)
@@ -491,6 +522,17 @@ func ruleMailboxID(rt *common.RuntimeContext) string {
 		return v
 	}
 	return "me"
+}
+
+func validateMailRuleMailbox(ctx context.Context, rt *common.RuntimeContext) error {
+	if rt == nil || !rt.IsBot() {
+		return nil
+	}
+	mailboxID := strings.TrimSpace(rt.Str("user-mailbox-id"))
+	if mailboxID == "" || mailboxID == "me" {
+		return mailValidationParamError("--user-mailbox-id", "--as bot requires an explicit mailbox ID or address; the default me mailbox is only valid for user identity")
+	}
+	return nil
 }
 
 func mailRuleCollectionPath(mailboxID string) string {
@@ -549,13 +591,17 @@ func buildRuleSpecFromFlags(rt *common.RuntimeContext, requireCreateFields bool)
 	spec.Rule.Conditions = conditions
 	spec.Rule.Actions = actions
 
-	if requireCreateFields {
+	if requireCreateFields || rt.Changed("condition") || rt.Changed("conditions") {
 		if spec.Rule.Name == "" {
-			return nil, nil, mailValidationParamError("--name", "--name is required")
+			if requireCreateFields {
+				return nil, nil, mailValidationParamError("--name", "--name is required")
+			}
 		}
 		if len(spec.Rule.Conditions) == 0 {
 			return nil, nil, mailValidationParamError("--condition", "at least one --condition or --conditions entry is required")
 		}
+	}
+	if requireCreateFields || rt.Changed("action") || rt.Changed("actions") {
 		if len(spec.Rule.Actions) == 0 {
 			return nil, nil, mailValidationParamError("--action", "at least one --action or --actions entry is required")
 		}
@@ -569,16 +615,23 @@ func buildRuleSpecFromFlags(rt *common.RuntimeContext, requireCreateFields bool)
 
 func parseRuleConditions(rt *common.RuntimeContext, grammar []string, bulk string) ([]mailRuleCondition, error) {
 	var out []mailRuleCondition
+	totalBytes := 0
 	for _, raw := range grammar {
-		items, err := parseRuleConditionValue(rt, raw, "--condition")
+		items, err := parseRuleConditionValueWithBudget(rt, raw, "--condition", "condition", &totalBytes)
 		if err != nil {
+			return nil, err
+		}
+		if err := validateRuleCollectionAppend("--condition", "condition", len(out), len(items)); err != nil {
 			return nil, err
 		}
 		out = append(out, items...)
 	}
 	if strings.TrimSpace(bulk) != "" {
-		items, err := parseRuleConditionValue(rt, bulk, "--conditions")
+		items, err := parseRuleConditionValueWithBudget(rt, bulk, "--conditions", "condition", &totalBytes)
 		if err != nil {
+			return nil, err
+		}
+		if err := validateRuleCollectionAppend("--conditions", "condition", len(out), len(items)); err != nil {
 			return nil, err
 		}
 		out = append(out, items...)
@@ -588,16 +641,23 @@ func parseRuleConditions(rt *common.RuntimeContext, grammar []string, bulk strin
 
 func parseRuleActions(rt *common.RuntimeContext, grammar []string, bulk string) ([]mailRuleAction, error) {
 	var out []mailRuleAction
+	totalBytes := 0
 	for _, raw := range grammar {
-		items, err := parseRuleActionValue(rt, raw, "--action")
+		items, err := parseRuleActionValueWithBudget(rt, raw, "--action", "action", &totalBytes)
 		if err != nil {
+			return nil, err
+		}
+		if err := validateRuleCollectionAppend("--action", "action", len(out), len(items)); err != nil {
 			return nil, err
 		}
 		out = append(out, items...)
 	}
 	if strings.TrimSpace(bulk) != "" {
-		items, err := parseRuleActionValue(rt, bulk, "--actions")
+		items, err := parseRuleActionValueWithBudget(rt, bulk, "--actions", "action", &totalBytes)
 		if err != nil {
+			return nil, err
+		}
+		if err := validateRuleCollectionAppend("--actions", "action", len(out), len(items)); err != nil {
 			return nil, err
 		}
 		out = append(out, items...)
@@ -637,6 +697,21 @@ func parseRuleConditionValue(rt *common.RuntimeContext, raw, flag string) ([]mai
 	if err != nil {
 		return nil, err
 	}
+	return parseRuleConditionExpanded(expanded, flag)
+}
+
+func parseRuleConditionValueWithBudget(rt *common.RuntimeContext, raw, flag, noun string, totalBytes *int) ([]mailRuleCondition, error) {
+	expanded, err := expandRuleInput(rt, raw, flag)
+	if err != nil {
+		return nil, err
+	}
+	if err := trackRuleAggregateInputBytes(flag, noun, totalBytes, expanded); err != nil {
+		return nil, err
+	}
+	return parseRuleConditionExpanded(expanded, flag)
+}
+
+func parseRuleConditionExpanded(expanded, flag string) ([]mailRuleCondition, error) {
 	if expanded == "" {
 		return nil, nil
 	}
@@ -659,6 +734,21 @@ func parseRuleActionValue(rt *common.RuntimeContext, raw, flag string) ([]mailRu
 	if err != nil {
 		return nil, err
 	}
+	return parseRuleActionExpanded(expanded, flag)
+}
+
+func parseRuleActionValueWithBudget(rt *common.RuntimeContext, raw, flag, noun string, totalBytes *int) ([]mailRuleAction, error) {
+	expanded, err := expandRuleInput(rt, raw, flag)
+	if err != nil {
+		return nil, err
+	}
+	if err := trackRuleAggregateInputBytes(flag, noun, totalBytes, expanded); err != nil {
+		return nil, err
+	}
+	return parseRuleActionExpanded(expanded, flag)
+}
+
+func parseRuleActionExpanded(expanded, flag string) ([]mailRuleAction, error) {
 	if expanded == "" {
 		return nil, nil
 	}
@@ -747,30 +837,33 @@ func parseRuleActionJSONObject(v any, flag string) (mailRuleAction, error) {
 		return mailRuleAction{}, mailValidationParamError(flag, "invalid action: expected object")
 	}
 	kind, _ := m["kind"].(string)
+	alias, err := canonicalRuleActionAlias(kind, flag)
+	if err != nil {
+		return mailRuleAction{}, err
+	}
 	params := map[string]string{}
-	if pm, ok := m["params"].(map[string]any); ok {
+	if rawParams, exists := m["params"]; exists {
+		pm, ok := rawParams.(map[string]any)
+		if !ok {
+			return mailRuleAction{}, mailValidationParamError(flag, "invalid action params: expected object")
+		}
 		for k, v := range pm {
 			params[k] = fmt.Sprint(v)
 		}
 	}
-	for _, key := range []string{"folder_id", "folder_name", "input", "label_id", "email", "chat_id"} {
-		if v, ok := m[key]; ok {
-			params[key] = fmt.Sprint(v)
+	allowed := map[string]struct{}{"kind": {}, "params": {}}
+	if param := requiredActionParam(alias.Canonical); param != "" {
+		allowed[param] = struct{}{}
+		if v, ok := m[param]; ok {
+			params[param] = fmt.Sprint(v)
 		}
 	}
-	return validateRuleAction(mailRuleAction{Kind: kind, Params: params}, flag)
-}
-
-func parseRuleConditionGrammar(raw, flag string) (mailRuleCondition, error) {
-	parts := strings.SplitN(raw, ":", 3)
-	cond := mailRuleCondition{Field: parts[0]}
-	if len(parts) >= 2 {
-		cond.Operator = parts[1]
+	for key := range m {
+		if _, ok := allowed[key]; !ok {
+			return mailRuleAction{}, mailValidationParamError(flag, "action %s does not accept field %q", alias.Canonical, key)
+		}
 	}
-	if len(parts) == 3 {
-		cond.Value = parts[2]
-	}
-	return validateRuleCondition(cond, flag)
+	return validateRuleAction(mailRuleAction{Kind: alias.Canonical, Params: params}, flag)
 }
 
 func parseRuleActionGrammar(raw, flag string) (mailRuleAction, error) {
@@ -801,6 +894,67 @@ func parseRuleActionGrammar(raw, flag string) (mailRuleAction, error) {
 	return validateRuleAction(action, flag)
 }
 
+func canonicalRuleActionAlias(kind, flag string) (mailRuleAlias, error) {
+	alias, ok := mailRuleActionByName[strings.TrimSpace(kind)]
+	if !ok {
+		return mailRuleAlias{}, mailValidationParamError(flag, "%s", unknownRuleAliasMessage("action", kind, "actions", mailRuleActions))
+	}
+	return alias, nil
+}
+
+func validateRuleAction(action mailRuleAction, flag string) (mailRuleAction, error) {
+	alias, err := canonicalRuleActionAlias(action.Kind, flag)
+	if err != nil {
+		return mailRuleAction{}, err
+	}
+	action.Kind = alias.Canonical
+	needed := requiredActionParam(action.Kind)
+	normalized := map[string]string{}
+	for key, value := range action.Params {
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if needed == "" {
+			return mailRuleAction{}, mailValidationParamError(flag, "action %s accepts no parameters", action.Kind)
+		}
+		if key != needed {
+			return mailRuleAction{}, mailValidationParamError(flag, "action %s only accepts %s", action.Kind, needed)
+		}
+		normalized[needed] = value
+	}
+	if needed != "" && normalized[needed] == "" {
+		return mailRuleAction{}, mailValidationParamError(flag, "action %s requires %s (example: %s:%s=xxx)", action.Kind, needed, action.Kind, needed)
+	}
+	if len(normalized) == 0 {
+		normalized = nil
+	}
+	action.Params = normalized
+	return action, nil
+}
+
+func requiredActionParam(kind string) string {
+	switch kind {
+	case "move_folder":
+		return "folder_id"
+	default:
+		return ""
+	}
+}
+
+func parseRuleConditionGrammar(raw, flag string) (mailRuleCondition, error) {
+	parts := strings.SplitN(raw, ":", 3)
+	cond := mailRuleCondition{Field: parts[0]}
+	if len(parts) >= 2 {
+		cond.Operator = parts[1]
+	}
+	if len(parts) == 3 {
+		cond.Value = parts[2]
+	}
+	return validateRuleCondition(cond, flag)
+}
+
 func decodeSingleRuleJSON(raw, flag string) (any, error) {
 	var v any
 	dec := json.NewDecoder(strings.NewReader(raw))
@@ -821,6 +975,21 @@ func decodeSingleRuleJSON(raw, flag string) (any, error) {
 func validateRuleCollectionSize(param, noun string, count int) error {
 	if count > mailRuleCollectionMax {
 		return mailValidationParamError(param, "rule %s count %d exceeds the limit of %d", noun, count, mailRuleCollectionMax)
+	}
+	return nil
+}
+
+func validateRuleCollectionAppend(param, noun string, current, added int) error {
+	return validateRuleCollectionSize(param, noun, current+added)
+}
+
+func trackRuleAggregateInputBytes(param, noun string, total *int, expanded string) error {
+	if total == nil || expanded == "" {
+		return nil
+	}
+	*total += len(expanded)
+	if *total > mailRuleInputFileMaxBytes {
+		return mailValidationParamError(param, "aggregate rule %s input exceeds %d bytes limit", noun, mailRuleInputFileMaxBytes)
 	}
 	return nil
 }
@@ -859,36 +1028,6 @@ func validateRuleCondition(cond mailRuleCondition, flag string) (mailRuleConditi
 		return mailRuleCondition{}, mailValidationParamError(flag, "condition operator %s accepts no value", cond.Operator)
 	}
 	return cond, nil
-}
-
-func validateRuleAction(action mailRuleAction, flag string) (mailRuleAction, error) {
-	alias, ok := mailRuleActionByName[strings.TrimSpace(action.Kind)]
-	if !ok {
-		return mailRuleAction{}, mailValidationParamError(flag, "%s", unknownRuleAliasMessage("action", action.Kind, "actions", mailRuleActions))
-	}
-	action.Kind = alias.Canonical
-	if action.Kind == "move_folder" && strings.TrimSpace(action.Params["folder_id"]) == "" {
-		if input := strings.TrimSpace(action.Params["input"]); input != "" {
-			action.Params["folder_id"] = input
-		}
-	}
-	needed := requiredActionParam(action.Kind)
-	if needed != "" && strings.TrimSpace(action.Params[needed]) == "" {
-		return mailRuleAction{}, mailValidationParamError(flag, "action %s requires %s (example: %s:%s=xxx)", action.Kind, needed, action.Kind, needed)
-	}
-	if needed == "" && len(action.Params) > 0 {
-		return mailRuleAction{}, mailValidationParamError(flag, "action %s accepts no parameters", action.Kind)
-	}
-	return action, nil
-}
-
-func requiredActionParam(kind string) string {
-	switch kind {
-	case "move_folder":
-		return "folder_id"
-	default:
-		return ""
-	}
 }
 
 func acceptedAliasList(items []mailRuleAlias) string {
@@ -1096,6 +1235,7 @@ func decodeMailRuleEnvelope(raw map[string]any, mailboxID string) mailRuleEnvelo
 	spec.Rule.Match = "all"
 	var unknowns []mailRuleUnknown
 	if condition, ok := mapValue(raw["condition"]); ok {
+		unknowns = appendUnknownObjectFields(unknowns, "condition", condition, map[string]struct{}{"match_type": {}, "items": {}})
 		if mt, ok := intValue(condition["match_type"]); ok {
 			switch mt {
 			case 1:
@@ -1103,12 +1243,14 @@ func decodeMailRuleEnvelope(raw map[string]any, mailboxID string) mailRuleEnvelo
 			case 2:
 				spec.Rule.Match = "any"
 			default:
+				spec.Rule.Match = ""
 				unknowns = append(unknowns, mailRuleUnknown{Path: "condition.match_type", Reason: "unknown match_type enum", Raw: condition["match_type"]})
 			}
 		}
 		spec.Rule.Conditions, unknowns = decodeRuleConditions(condition["items"], unknowns)
 	}
 	if action, ok := mapValue(raw["action"]); ok {
+		unknowns = appendUnknownObjectFields(unknowns, "action", action, map[string]struct{}{"items": {}})
 		spec.Rule.Actions, unknowns = decodeRuleActions(action["items"], unknowns)
 	}
 	env := mailRuleEnvelope{
@@ -1415,11 +1557,8 @@ func mergeRuleUpdate(rt *common.RuntimeContext, current mailRuleEnvelope) (*mail
 }
 
 func mergeRuleUpdateBody(rt *common.RuntimeContext, current mailRuleEnvelope, encoded map[string]any) map[string]any {
-	raw := copyMap(current.Raw)
-	if len(raw) == 0 {
-		raw = map[string]any{}
-	}
-	for _, key := range []string{"name", "is_enable", "ignore_the_rest_of_rules", "rule_id"} {
+	raw := ruleRequestBodyFromEnvelope(current)
+	for _, key := range []string{"name", "is_enable", "ignore_the_rest_of_rules"} {
 		if v, ok := encoded[key]; ok {
 			raw[key] = v
 		}
@@ -1440,6 +1579,35 @@ func mergeRuleUpdateBody(rt *common.RuntimeContext, current mailRuleEnvelope, en
 	}
 	if rt.Changed("action") || rt.Changed("actions") || raw["action"] == nil {
 		raw["action"] = encoded["action"]
+	}
+	return raw
+}
+
+func ruleRequestBodyFromEnvelope(env mailRuleEnvelope) map[string]any {
+	raw := map[string]any{}
+	encoded := map[string]any{}
+	if env.SemanticSpec != nil {
+		if v, err := encodeRuleSpec(env.SemanticSpec); err == nil {
+			encoded = v
+		}
+	}
+	for _, key := range []string{"name", "is_enable", "ignore_the_rest_of_rules"} {
+		if v, ok := env.Raw[key]; ok {
+			raw[key] = v
+			continue
+		}
+		if v, ok := encoded[key]; ok {
+			raw[key] = v
+		}
+	}
+	for _, key := range []string{"condition", "action"} {
+		if v, ok := env.Raw[key]; ok {
+			raw[key] = v
+			continue
+		}
+		if v, ok := encoded[key]; ok {
+			raw[key] = v
+		}
 	}
 	return raw
 }
