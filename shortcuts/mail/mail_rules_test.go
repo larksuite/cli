@@ -517,7 +517,6 @@ func TestMailRuleCreateParsesJSONConditionsAndActions(t *testing.T) {
 		"--stop-after-match",
 		"--conditions", `[{"field":"subject","op":"contains","value":"Alpha"},{"field":"has_attachment"}]`,
 		"--actions", `[{"kind":"mark_read"},{"kind":"move_folder","folder_id":"fld_json"}]`,
-		"--yes",
 		"--format", "json",
 	}, f, stdout)
 	if err != nil {
@@ -576,7 +575,6 @@ func TestMailRuleCreateReadsConditionsAndActionsFromFiles(t *testing.T) {
 		"--name", "File Rule",
 		"--conditions", "@conditions.json",
 		"--actions", "@actions.json",
-		"--yes",
 		"--format", "json",
 	}, f, stdout)
 	if err != nil {
@@ -608,7 +606,6 @@ func TestMailRuleCreateRejectsOversizedRuleInputFile(t *testing.T) {
 		"--name", "Oversized",
 		"--conditions", "@conditions.json",
 		"--action", "mark_read",
-		"--yes",
 	}, f, stdout)
 	if err == nil {
 		t.Fatal("expected oversized file error")
