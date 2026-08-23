@@ -44,9 +44,7 @@ metadata:
 3. **完成授权校验闭环**：收到用户授权完成的反馈后，由 Agent 执行 `lark-cli auth login --device-code <device_code>` 完成最终校验，无缝恢复原本被阻塞的任务。
 
 ### 2. Windows 平台子进程 stdin UTF-8 字节流传输规范
-在 Windows 平台通过子进程管道（stdin）向 `lark-cli` 推送文档文本（如 `docs +update --content -`）时：
-- **陷阱**：若依赖系统默认代码页（GBK/CP936），管道传输的中文会被 CLI（按 UTF-8 解码）解析为乱码（如出现替代字符 ）。
-- **规范**：必须显式使用 UTF-8 字节流模式推送输入（例如 Python 中使用 `proc.communicate(input=text.encode('utf-8'))`），切勿使用 `text=True` 默认平台编码。
+在 Windows 平台通过子进程管道向 `lark-cli` 推送中文时，必须使用显式 UTF-8 字节流推送，避免 GBK/CP936 代码页乱码。详见 [`references/lark-shared-windows-stdin.md`](references/lark-shared-windows-stdin.md)。
 
 ## Reference 强触发索引
 
