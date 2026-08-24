@@ -371,8 +371,11 @@ func updateSlideContent(runtime *common.RuntimeContext, slideID string) (string,
 	return stamped, nil
 }
 
-// slideNoteIDRe matches the id attribute on a <note> element's open tag.
-var slideNoteIDRe = regexp.MustCompile(`(<note\b[^>]*?)\s+id="[^"]*"`)
+// slideNoteIDRe matches the id attribute on a <note> element's open tag. It
+// accepts both quote styles and whitespace around '=' (id="x", id='x',
+// id = "x") — all are valid XML, and the backend accepts single-quoted markup,
+// so a stale id in any of these forms must be stripped too.
+var slideNoteIDRe = regexp.MustCompile(`(<note\b[^>]*?)\s+id\s*=\s*("[^"]*"|'[^']*')`)
 
 // stripSlideNoteID drops the id from the page's <note> (speaker notes) element.
 //

@@ -69,3 +69,42 @@ func TestStripSlideNoteIDAttrOrder(t *testing.T) {
 		}
 	}
 }
+
+// The id is stripped across the quote styles and spacing valid XML allows and
+// the backend accepts — single quotes and whitespace around '='. A verified
+// gap: a single-quoted stale note id used to slip through and reproduce the
+// "block is not NoteBlock" crash this strip prevents.
+func TestStripSlideNoteIDQuoteVariants(t *testing.T) {
+	cases := []struct {
+		name string
+		note string
+	}{
+		{"single-quote", `<note id='blw'><content><p>n</p></content></note>`},
+		{"space-around-eq", `<note id = "blw"><content><p>n</p></content></note>`},
+		{"single-quote-space", `<note id =  'blw'><content><p>n</p></content></note>`},
+		{"single-quote-attr-order", `<note foo='bar' id='blw'><content><p>n</p></content></note>`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			out := stripSlideNoteID(`<slide id="p1"><data/>` + c.note + `</slide>`)
+			if strings.Contains(out, "blw") {
+				t.Errorf("expected note id to be stripped, got: %s", out)
+			}
+			if !strings.Contains(out, "<note") || !strings.Contains(out, "<p>n</p>") {
+				t.Errorf("expected note element and content to survive, got: %s", out)
+			}
+		})
+	}
+}
+
+// A single-quoted id on a visible element is left alone — only <note> is touched.
+func TestStripSlideNoteIDLeavesSingleQuotedShape(t *testing.T) {
+	in := `<slide id="p1"><data><shape id='bKZ' type='text'><content><p>x</p></content></shape></data><note id='blw'><content><p>n</p></content></note></slide>`
+	out := stripSlideNoteID(in)
+	if strings.Contains(out, `id='blw'`) {
+		t.Errorf("expected note id to be stripped, got: %s", out)
+	}
+	if !strings.Contains(out, `id='bKZ'`) {
+		t.Errorf("expected shape id to be preserved, got: %s", out)
+	}
+}
