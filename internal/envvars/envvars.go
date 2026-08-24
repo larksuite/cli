@@ -4,14 +4,15 @@
 package envvars
 
 const (
-	CliAppID             = "LARKSUITE_CLI_APP_ID"
-	CliAppSecret         = "LARKSUITE_CLI_APP_SECRET"
-	CliBrand             = "LARKSUITE_CLI_BRAND"
-	CliUserAccessToken   = "LARKSUITE_CLI_USER_ACCESS_TOKEN"
-	CliTenantAccessToken = "LARKSUITE_CLI_TENANT_ACCESS_TOKEN"
-	CliDefaultAs         = "LARKSUITE_CLI_DEFAULT_AS"
-	CliProfile           = "LARKSUITE_CLI_PROFILE"
-	CliStrictMode        = "LARKSUITE_CLI_STRICT_MODE"
+	CliAppID                   = "LARKSUITE_CLI_APP_ID"
+	CliAppSecret               = "LARKSUITE_CLI_APP_SECRET"
+	CliBrand                   = "LARKSUITE_CLI_BRAND"
+	CliUserAccessToken         = "LARKSUITE_CLI_USER_ACCESS_TOKEN"
+	CliTenantAccessToken       = "LARKSUITE_CLI_TENANT_ACCESS_TOKEN"
+	CliTenantAccessTokenSource = "LARKSUITE_CLI_TENANT_ACCESS_TOKEN_SOURCE"
+	CliDefaultAs               = "LARKSUITE_CLI_DEFAULT_AS"
+	CliProfile                 = "LARKSUITE_CLI_PROFILE"
+	CliStrictMode              = "LARKSUITE_CLI_STRICT_MODE"
 
 	// Sidecar proxy (auth proxy mode)
 	CliAuthProxy = "LARKSUITE_CLI_AUTH_PROXY" // sidecar HTTP address, e.g. "http://127.0.0.1:16384"
