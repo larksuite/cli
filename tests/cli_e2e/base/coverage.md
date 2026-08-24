@@ -58,7 +58,7 @@
 | ✕ | base +dashboard-get | shortcut |  | none | dashboard workflows not covered |
 | ✕ | base +dashboard-list | shortcut |  | none | dashboard workflows not covered |
 | ✓ | base +dashboard-share-get | shortcut | base_share_dryrun_test.go::TestBaseShareDryRun/dashboard get; base_share_workflow_test.go::TestBaseShareWorkflow/dashboard share update and get | `--base-token`; `--dashboard-id`; dry-run + deployment-gated live | live requires `LARK_CLI_E2E_BASE_SHARE_READY=1` |
-| ✓ | base +dashboard-share-update | shortcut | base_share_dryrun_test.go::TestBaseShareDryRun/dashboard partial update; base_share_workflow_test.go::TestBaseShareWorkflow/dashboard share update and get | one of `--enabled`; `--access-scope=invite`; `--show-source`; `--enable-auto-analysis` per request | single-field updates, explicit false, invite-only scope, and live read-back covered |
+| ✓ | base +dashboard-share-update | shortcut | base_share_dryrun_test.go::TestBaseShareDryRun/dashboard partial update, dashboard auto analysis is not exposed; base_share_workflow_test.go::TestBaseShareWorkflow/dashboard share update and get | one of `--enabled`; `--access-scope=invite`; `--show-source` per request; unsupported auto-analysis flag | single-field updates, explicit false, invite-only scope, live read-back, and backend-gated setting exclusion covered |
 | ✕ | base +dashboard-update | shortcut |  | none | dashboard workflows not covered |
 | ✕ | base +data-query | shortcut |  | none | no data-query assertions yet |
 | ✓ | base +field-create | shortcut | base_field_dryrun_test.go::TestBaseFieldCreateDryRunArrayCompat | `--base-token`; `--table-id`; `--json`; dry-run only | request shape only |

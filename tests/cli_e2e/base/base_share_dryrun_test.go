@@ -34,6 +34,17 @@ func TestBaseShareDryRun(t *testing.T) {
 		assert.NotContains(t, result.Stdout, `"enable_auto_analysis":`)
 	})
 
+	t.Run("dashboard auto analysis is not exposed", func(t *testing.T) {
+		result := runBaseDryRun(t, 2,
+			"base", "+dashboard-share-update",
+			"--base-token", "app_x",
+			"--dashboard-id", "dsh_1",
+			"--enable-auto-analysis=true",
+		)
+		assert.Contains(t, result.Stderr, "unknown flag")
+		assert.Contains(t, result.Stderr, "--enable-auto-analysis")
+	})
+
 	t.Run("form get", func(t *testing.T) {
 		result := runBaseDryRun(t, 0,
 			"base", "+form-share-get",
