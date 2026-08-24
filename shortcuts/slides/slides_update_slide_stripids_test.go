@@ -4,9 +4,25 @@
 package slides
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
+
+// noteOpenTagRe grabs the <note> opening tag; noteIDInTagRe finds an id
+// attribute (any quote style, any spacing) inside it.
+var (
+	noteOpenTagRe = regexp.MustCompile(`<note\b[^>]*>`)
+	noteIDInTagRe = regexp.MustCompile(`(?:^|\s)id\s*=`)
+)
+
+// noteTagHasID reports whether the <note> opening tag in s still carries an id
+// attribute. Asserting on the attribute itself — rather than on a specific id
+// value disappearing — catches an implementation that swaps the id for another
+// value instead of removing it.
+func noteTagHasID(s string) bool {
+	return noteIDInTagRe.MatchString(noteOpenTagRe.FindString(s))
+}
 
 func TestStripSlideNoteID(t *testing.T) {
 	in := `<slide id="p1"><style><fill id="f1"><fillColor color="rgba(1,2,3,1)"/></fill></style><data>` +
@@ -17,9 +33,9 @@ func TestStripSlideNoteID(t *testing.T) {
 		`</data><note id="blw"><content><p>n</p></content></note></slide>`
 	out := stripSlideNoteID(in)
 
-	// Only the <note> id is stripped.
-	if strings.Contains(out, `id="blw"`) {
-		t.Errorf("expected note id to be stripped, got: %s", out)
+	// The <note> tag no longer carries an id attribute at all.
+	if noteTagHasID(out) {
+		t.Errorf("expected note id attribute to be removed, got: %s", out)
 	}
 	// The note element itself and its content survive.
 	for _, kept := range []string{`<note`, `<p>n</p>`} {
@@ -60,8 +76,8 @@ func TestStripSlideNoteIDNoNote(t *testing.T) {
 func TestStripSlideNoteIDAttrOrder(t *testing.T) {
 	in := `<slide id="p1"><data/><note foo="bar" id="blw" baz="qux"><content><p>n</p></content></note></slide>`
 	out := stripSlideNoteID(in)
-	if strings.Contains(out, `id="blw"`) {
-		t.Errorf("expected note id to be stripped, got: %s", out)
+	if noteTagHasID(out) {
+		t.Errorf("expected note id attribute to be removed, got: %s", out)
 	}
 	for _, kept := range []string{`foo="bar"`, `baz="qux"`} {
 		if !strings.Contains(out, kept) {
@@ -87,8 +103,8 @@ func TestStripSlideNoteIDQuoteVariants(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			out := stripSlideNoteID(`<slide id="p1"><data/>` + c.note + `</slide>`)
-			if strings.Contains(out, "blw") {
-				t.Errorf("expected note id to be stripped, got: %s", out)
+			if noteTagHasID(out) {
+				t.Errorf("expected note id attribute to be removed, got: %s", out)
 			}
 			if !strings.Contains(out, "<note") || !strings.Contains(out, "<p>n</p>") {
 				t.Errorf("expected note element and content to survive, got: %s", out)
@@ -101,8 +117,8 @@ func TestStripSlideNoteIDQuoteVariants(t *testing.T) {
 func TestStripSlideNoteIDLeavesSingleQuotedShape(t *testing.T) {
 	in := `<slide id="p1"><data><shape id='bKZ' type='text'><content><p>x</p></content></shape></data><note id='blw'><content><p>n</p></content></note></slide>`
 	out := stripSlideNoteID(in)
-	if strings.Contains(out, `id='blw'`) {
-		t.Errorf("expected note id to be stripped, got: %s", out)
+	if noteTagHasID(out) {
+		t.Errorf("expected note id attribute to be removed, got: %s", out)
 	}
 	if !strings.Contains(out, `id='bKZ'`) {
 		t.Errorf("expected shape id to be preserved, got: %s", out)
