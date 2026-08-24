@@ -182,6 +182,68 @@ func TestUnknownSubcommandRunE_ValidFlagWithoutSubcommandIsStructured(t *testing
 	}
 }
 
+func TestUnknownSubcommandRunE_SensitiveFlagValueIsRedacted(t *testing.T) {
+	for _, rawFlag := range []string{
+		"--secret=synthetic-secret-marker",
+		"-s=synthetic-secret-marker",
+	} {
+		_, drive, _ := newGroupTree()
+		var search *cobra.Command
+		for _, child := range drive.Commands() {
+			if child.Name() == "+search" {
+				search = child
+				break
+			}
+		}
+		if search == nil {
+			t.Fatal("+search command not found")
+		}
+		search.Flags().BoolP("secret", "s", false, "")
+		cmdutil.MarkSensitiveFlag(search, "secret")
+		installUnknownSubcommandGuard(drive.Root())
+
+		rawInvocationArgs = []string{"drive", rawFlag}
+		err := drive.RunE(drive, nil)
+		rawInvocationArgs = nil
+		if err == nil {
+			t.Fatalf("RunE(%q) error = nil, want missing-subcommand validation", rawFlag)
+		}
+		if strings.Contains(err.Error(), "synthetic-secret-marker") {
+			t.Fatalf("RunE(%q) leaked sensitive value: %v", rawFlag, err)
+		}
+		var validationErr *errs.ValidationError
+		if !errors.As(err, &validationErr) || validationErr.Subtype != errs.SubtypeInvalidArgument || len(validationErr.Params) != 1 || validationErr.Params[0].Name != "--secret" {
+			t.Fatalf("RunE(%q) error = %T %v, want redacted --secret param", rawFlag, err, err)
+		}
+	}
+}
+
+func TestUnknownSubcommandRunE_NestedSensitiveFlagValueIsRedactedAtRoot(t *testing.T) {
+	root := &cobra.Command{Use: "lark-cli"}
+	auth := &cobra.Command{Use: "auth"}
+	importToken := &cobra.Command{Use: "import-tenant-token", RunE: func(*cobra.Command, []string) error { return nil }}
+	importToken.Flags().Bool("token-stdin", false, "")
+	cmdutil.MarkSensitiveFlag(importToken, "token-stdin")
+	auth.AddCommand(importToken)
+	root.AddCommand(auth)
+	installUnknownSubcommandGuard(root)
+
+	rawInvocationArgs = []string{"--token-stdin=synthetic-secret-marker"}
+	t.Cleanup(func() { rawInvocationArgs = nil })
+	err := root.RunE(root, nil)
+	if err == nil {
+		t.Fatal("RunE() error = nil, want missing-subcommand validation")
+	}
+	if strings.Contains(err.Error(), "synthetic-secret-marker") {
+		t.Fatalf("RunE() leaked nested sensitive value: %v", err)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) || validationErr.Subtype != errs.SubtypeInvalidArgument ||
+		len(validationErr.Params) != 1 || validationErr.Params[0].Name != "--token-stdin" {
+		t.Fatalf("RunE() error = %T %v, want redacted --token-stdin param", err, err)
+	}
+}
+
 // A bare group carrying only a group-valid global flag (e.g. the inherited
 // --profile) is not missing a subcommand — those flags do not belong to a
 // subcommand — so it must print help, not fail with missing_subcommand.

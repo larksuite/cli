@@ -9,17 +9,77 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	extcred "github.com/larksuite/cli/extension/credential"
 	_ "github.com/larksuite/cli/extension/credential/env"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/envvars"
+	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
 type countingFileIOProvider struct {
 	resolveCalls int
 }
+
+type fallbackConfigurableProvider struct {
+	name       string
+	configured bool
+}
+
+func (p *fallbackConfigurableProvider) Name() string { return p.name }
+func (p *fallbackConfigurableProvider) ResolveAccount(context.Context) (*extcred.Account, error) {
+	return nil, nil
+}
+func (p *fallbackConfigurableProvider) ResolveToken(context.Context, extcred.TokenSpec) (*extcred.Token, error) {
+	return nil, nil
+}
+func (p *fallbackConfigurableProvider) WithTokenFallback(extcred.Provider) extcred.Provider {
+	clone := *p
+	clone.configured = true
+	return &clone
+}
+
+type inertCredentialProvider struct{ name string }
+
+func (p *inertCredentialProvider) Name() string { return p.name }
+func (p *inertCredentialProvider) ResolveAccount(context.Context) (*extcred.Account, error) {
+	return nil, nil
+}
+func (p *inertCredentialProvider) ResolveToken(context.Context, extcred.TokenSpec) (*extcred.Token, error) {
+	return nil, nil
+}
+
+func TestWithInjectedTATFallback_ConfiguresOnlyEnvProvider(t *testing.T) {
+	envProvider := &fallbackConfigurableProvider{name: "env"}
+	thirdParty := &fallbackConfigurableProvider{name: "third-party"}
+	fallback := &inertCredentialProvider{name: "injected-tat"}
+
+	got := withInjectedTATFallback([]extcred.Provider{envProvider, thirdParty}, fallback)
+	if configured, ok := got[0].(*fallbackConfigurableProvider); !ok || !configured.configured {
+		t.Fatalf("env provider = %#v, want configured copy", got[0])
+	}
+	if got[1] != thirdParty || thirdParty.configured {
+		t.Fatalf("third-party provider = %#v, want original unconfigured provider", got[1])
+	}
+}
+
+type factoryInjectedTATKeychain struct {
+	value    string
+	getCalls int
+}
+
+func (k *factoryInjectedTATKeychain) Get(service, account string) (string, error) {
+	k.getCalls++
+	if service == keychain.LarkCliService && account == "tat:env-app" {
+		return k.value, nil
+	}
+	return "", nil
+}
+
+func (k *factoryInjectedTATKeychain) Set(string, string, string) error { return nil }
+func (k *factoryInjectedTATKeychain) Remove(string, string) error      { return nil }
 
 func (p *countingFileIOProvider) Name() string { return "counting" }
 
@@ -189,6 +249,47 @@ func TestNewDefault_ConfigUsesRuntimePlaceholderForTokenOnlyEnvAccount(t *testin
 	}
 	if credential.HasRealAppSecret(cfg.AppSecret) {
 		t.Fatalf("Config().AppSecret = %q, want token-only no-secret marker", cfg.AppSecret)
+	}
+}
+
+func TestNewDefault_EnvAppIDUsesInjectedTATFromFactoryKeychain(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "env-app")
+	t.Setenv(envvars.CliAppSecret, "")
+	t.Setenv(envvars.CliDefaultAs, "")
+	t.Setenv(envvars.CliUserAccessToken, "")
+	t.Setenv(envvars.CliTenantAccessToken, "")
+	t.Setenv(envvars.CliStrictMode, "")
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f := NewDefault(nil, InvocationContext{})
+	kc := &factoryInjectedTATKeychain{value: "stored-tenant-token"}
+	f.Keychain = kc
+
+	acct, err := f.Credential.ResolveAccount(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveAccount() error = %v", err)
+	}
+	if acct.AppID != "env-app" || acct.DefaultAs != core.AsBot {
+		t.Fatalf("account = %#v, want env-app with bot default", acct)
+	}
+	if got := f.ResolveStrictMode(context.Background()); got != core.StrictModeBot {
+		t.Fatalf("ResolveStrictMode() = %q, want bot", got)
+	}
+	result, err := f.Credential.ResolveToken(context.Background(), credential.TokenSpec{
+		Type:  credential.TokenTypeTAT,
+		AppID: "env-app",
+	})
+	if err != nil {
+		t.Fatalf("ResolveToken() error = %v", err)
+	}
+	if result == nil || result.Token != "stored-tenant-token" {
+		t.Fatalf("ResolveToken() = %#v, want stored token", result)
+	}
+	if result.Source != core.CredentialSourceEnv {
+		t.Fatalf("credential source = %q, want env provider context", result.Source)
+	}
+	if kc.getCalls != 1 {
+		t.Fatalf("Keychain Get calls = %d, want one shared cached lookup", kc.getCalls)
 	}
 }
 

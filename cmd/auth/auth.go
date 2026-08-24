@@ -50,6 +50,7 @@ func newCmdAuth(f *cmdutil.Factory, projector *recovery.Projector) *cobra.Comman
 	cmdutil.DisableAuthCheck(cmd)
 
 	cmd.AddCommand(NewCmdAuthLogin(f, nil))
+	cmd.AddCommand(NewCmdAuthImportTenantToken(f, nil))
 	cmd.AddCommand(NewCmdAuthLogout(f, nil))
 	cmd.AddCommand(newCmdAuthStatus(f, nil, projector))
 	cmd.AddCommand(NewCmdAuthScopes(f, nil))

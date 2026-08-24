@@ -14,7 +14,20 @@ import (
 )
 
 // Provider resolves credentials from environment variables.
-type Provider struct{}
+type Provider struct {
+	tokenFallback credential.Provider
+}
+
+// WithTokenFallback returns an invocation-scoped copy that consults fallback
+// only when the requested token is absent from the environment. It is a public
+// compatibility hook for built-in CLI wiring; third-party providers are not
+// configured through it. The registered zero-value Provider remains
+// environment-only for compatibility.
+func (p *Provider) WithTokenFallback(fallback credential.Provider) credential.Provider {
+	clone := *p
+	clone.tokenFallback = fallback
+	return &clone
+}
 
 func (p *Provider) Name() string { return "env" }
 
@@ -23,6 +36,13 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 	appSecret := os.Getenv(envvars.CliAppSecret)
 	hasUAT := os.Getenv(envvars.CliUserAccessToken) != ""
 	hasTAT := os.Getenv(envvars.CliTenantAccessToken) != ""
+	if appID != "" && appSecret == "" && !hasUAT && !hasTAT {
+		tok, err := p.resolveTokenFallback(ctx, credential.TokenSpec{Type: credential.TokenTypeTAT, AppID: appID})
+		if err != nil {
+			return nil, err
+		}
+		hasTAT = tok != nil && tok.Value != ""
+	}
 	if appID == "" && appSecret == "" {
 		switch {
 		case hasUAT:
@@ -103,10 +123,28 @@ func (p *Provider) ResolveToken(ctx context.Context, req credential.TokenSpec) (
 		return nil, nil
 	}
 	token := os.Getenv(envKey)
-	if token == "" {
+	if token != "" {
+		return &credential.Token{Value: token, Source: "env:" + envKey}, nil
+	}
+	return p.resolveTokenFallback(ctx, req)
+}
+
+func (p *Provider) resolveTokenFallback(ctx context.Context, req credential.TokenSpec) (*credential.Token, error) {
+	if p.tokenFallback == nil || req.Type != credential.TokenTypeTAT || req.AppID == "" {
 		return nil, nil
 	}
-	return &credential.Token{Value: token, Source: "env:" + envKey}, nil
+	if req.AppID != os.Getenv(envvars.CliAppID) {
+		return nil, nil
+	}
+	// Injected TATs are a fallback for APP_ID-only token contexts. Existing
+	// app-secret and user-token accounts keep their pre-existing behavior and
+	// must not become dependent on local injected-token storage.
+	if os.Getenv(envvars.CliAppSecret) != "" || os.Getenv(envvars.CliUserAccessToken) != "" {
+		return nil, nil
+	}
+	// Storage errors intentionally propagate so an APP_ID-only environment
+	// fails closed instead of silently selecting another credential source.
+	return p.tokenFallback.ResolveToken(ctx, req)
 }
 
 func init() {

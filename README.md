@@ -165,12 +165,13 @@ lark-cli auth status
 
 | Command       | Description                                                    |
 | ------------- | -------------------------------------------------------------- |
-| `auth login`  | OAuth login with interactive selection or CLI flags for scopes |
-| `auth logout` | Sign out and remove stored credentials                         |
-| `auth status` | Show current login status and granted scopes                   |
-| `auth check`  | Verify a specific scope (exit 0 = ok, 1 = missing)            |
-| `auth scopes` | List all available scopes for the app                          |
-| `auth list`   | List all authenticated users                                   |
+| `auth login`               | OAuth login with interactive selection or CLI flags for scopes |
+| `auth import-tenant-token` | Import a caller-supplied TAT into secure local storage          |
+| `auth logout`              | Sign out and remove stored user credentials                    |
+| `auth status`              | Show current login status and granted scopes                   |
+| `auth check`               | Verify a specific scope (exit 0 = ok, 1 = missing)             |
+| `auth scopes`              | List all available scopes for the app                           |
+| `auth list`                | List all authenticated users                                    |
 
 ```bash
 # Interactive login (TUI guides domain and permission level selection)
@@ -190,10 +191,36 @@ lark-cli auth login --domain calendar --no-wait
 # Resume polling later
 lark-cli auth login --device-code <DEVICE_CODE>
 
+# Import a bot tenant token without putting it in argv or a temporary file
+some-token-provider | lark-cli auth import-tenant-token \
+  --app-id cli_xxx --token-stdin
+
 # Identity switching: execute commands as user or bot
 lark-cli calendar +agenda --as user
 lark-cli im +messages-send --as bot --chat-id "oc_xxx" --text "Hello"
 ```
+
+The imported app ID must use only lowercase letters, digits, `.`, `_`, and `-`;
+this prevents key collisions on case-insensitive secure-storage backends.
+
+For an environment-selected token-only account, set `LARKSUITE_CLI_APP_ID` and
+omit `LARKSUITE_CLI_TENANT_ACCESS_TOKEN` to use the imported token. A non-empty
+`LARKSUITE_CLI_TENANT_ACCESS_TOKEN` remains the per-process override. If neither
+source is available, credential resolution fails closed; it does not switch to
+another profile or credential provider. App-secret profiles keep using the
+existing token-endpoint flow.
+
+Imported TAT lookups are cached for one CLI invocation. A new process reads the
+latest stored value. Re-importing the same app ID overwrites the value; this
+version does not provide a command to remove an imported TAT. Tenant access
+tokens are short-lived and lark-cli does not refresh an imported value. When it
+expires, obtain a new TAT from the upstream credential source and run the import
+command again; subsequent CLI processes will read the replacement.
+
+When `LARKSUITE_CLI_APP_ID` selects the environment credential provider, the
+existing external-provider policy still disables the other `auth` management
+commands. Use `lark-cli whoami` or an actual bot API call to verify the imported
+credential; `auth import-tenant-token` is the only management exception.
 
 ## Three-Layer Command System
 

@@ -9,6 +9,7 @@
 | 指定单个 scope 授权 | `lark-cli auth login --scope "<scope>" --no-wait --json` |
 | 检查当前登录态、是谁登录、token 是否有效 | `lark-cli auth status --json --verify`；回答时引用 `identity`、`verified`、`identities.user.status`、`identities.user.userName`、`identities.user.openId`（用户 open id）、`identities.user.tokenStatus`、`identities.user.scope` |
 | 快速查看当前身份状态 | `lark-cli whoami`；实际生效的那一个身份 |
+| 从外部凭据源安全注入 bot TAT | 见下方“注入 bot TAT”；禁止把 token 放进 argv |
 | 退出当前机器的用户登录态 | `lark-cli auth logout --json`；`loggedOut:true` 表示注销成功 |
 | bot 缺少权限 | 不要执行 `auth login`；引导用户在开发者后台开通 bot scope，优先复用错误里的 `console_url` |
 | 取消用户对应用的全部服务端授权 | `auth logout` 只清本机登录态；服务端授权需用户在飞书授权管理页取消 |
@@ -28,6 +29,31 @@ LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1 LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1 lark-cli a
 |------|------|---------|---------|
 | user 用户身份 | `--as user` | `lark-cli auth login` 等 | 访问用户自己的资源（日历、云空间/云盘/云存储等） |
 | bot 应用身份 | `--as bot` | 自动，只需 appId + appSecret | 应用级操作,访问bot自己的资源 |
+
+### 注入 bot TAT
+
+`auth import-tenant-token` 接受任意上游凭据源通过 stdin 提供的 TAT，并按
+app ID 写入 lark-cli 的跨平台安全存储。命令只接收 stdin，不接受明文 token
+flag；不要在日志或回复中展示 token。app ID 只允许小写字母、数字、`.`、`_`
+和 `-`，避免在大小写不敏感的安全存储后端发生键冲突。
+
+使用注入 TAT 的 token-only 环境需要设置 `LARKSUITE_CLI_APP_ID`。读取顺序为：
+
+1. 非空的 `LARKSUITE_CLI_TENANT_ACCESS_TOKEN`；
+2. 当前 app ID 对应的本地注入 TAT；
+3. 两者都缺失时失败，不切换其他 profile/provider。
+
+默认 AppSecret profile 是独立链路，继续通过 Token Endpoint 换取 TAT。
+sidecar 和第三方 credential provider 继续使用各自 token source。注入值在
+同一次 CLI 调用内缓存，新进程会重新读取；重复导入同一 app ID 会覆盖旧值。
+当前版本没有删除注入 TAT 的命令。TAT 是短期凭据，CLI 不会自动刷新注入值；
+过期后需要从上游凭据源获取新 TAT 并重新执行导入命令，后续 CLI 进程会读取
+覆盖后的值。
+
+`LARKSUITE_CLI_APP_ID` 激活 env credential provider 后，除
+`auth import-tenant-token` 外的 `auth` 管理命令仍按既有 external-provider
+策略不可用。验证注入结果时使用 `lark-cli whoami` 或实际 bot API 调用，
+不要用 `auth status`。
 
 ## 身份选择原则
 

@@ -281,7 +281,8 @@ type credentialDeps struct {
 }
 
 func buildCredentialProvider(deps credentialDeps) *credential.CredentialProvider {
-	providers := extcred.Providers()
+	injectedTAT := credential.NewInjectedTenantTokenProvider(deps.Keychain)
+	providers := withInjectedTATFallback(extcred.Providers(), injectedTAT)
 	defaultAcct := credential.NewDefaultAccountProvider(deps.Keychain, deps.Profile, deps.ProfileSource)
 	defaultToken := credential.NewDefaultTokenProvider(defaultAcct, deps.HttpClient, deps.ErrOut)
 	// NOTE: Do not pass deps.ErrOut as warnOut. Credential resolution
@@ -291,4 +292,22 @@ func buildCredentialProvider(deps credentialDeps) *credential.CredentialProvider
 	// provider clears unverified identity fields), so silencing the
 	// warning is safe.
 	return credential.NewCredentialProvider(providers, defaultAcct, defaultToken, deps.HttpClient)
+}
+
+func withInjectedTATFallback(providers []extcred.Provider, injectedTAT extcred.Provider) []extcred.Provider {
+	for i, provider := range providers {
+		// Injected tenant tokens extend only the built-in environment provider.
+		// A third-party provider may expose a method with the same shape for its
+		// own purposes and must not be configured implicitly.
+		if provider.Name() != "env" {
+			continue
+		}
+		configurer, ok := provider.(interface {
+			WithTokenFallback(extcred.Provider) extcred.Provider
+		})
+		if ok {
+			providers[i] = configurer.WithTokenFallback(injectedTAT)
+		}
+	}
+	return providers
 }

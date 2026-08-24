@@ -167,6 +167,7 @@ lark-cli auth status
 | 命令          | 说明                                             |
 | --------------- | -------------------------------------------------- |
 | `auth login`  | OAuth 登录，支持交互式选择或命令行参数指定 scope |
+| `auth import-tenant-token` | 将外部提供的 TAT 导入本地安全存储             |
 | `auth logout` | 登出并删除已存储的凭证                           |
 | `auth status` | 查看当前登录状态和已授权的 scope                 |
 | `auth check`  | 校验指定 scope（exit 0 = 有权限，1 = 缺失）      |
@@ -191,10 +192,32 @@ lark-cli auth login --domain calendar --no-wait
 # 稍后恢复轮询
 lark-cli auth login --device-code <DEVICE_CODE>
 
+# 从 stdin 导入 bot tenant token，避免 token 出现在 argv 或临时文件中
+some-token-provider | lark-cli auth import-tenant-token \
+  --app-id cli_xxx --token-stdin
+
 # 身份切换：以用户或机器人身份执行命令
 lark-cli calendar +agenda --as user
 lark-cli im +messages-send --as bot --chat-id "oc_xxx" --text "Hello"
 ```
+
+导入时的 app ID 只允许小写字母、数字、`.`、`_` 和 `-`，避免在大小写不敏感的
+安全存储后端发生键冲突。
+
+对于由环境变量选中的 token-only 账号，设置
+`LARKSUITE_CLI_APP_ID`，并省略 `LARKSUITE_CLI_TENANT_ACCESS_TOKEN`，
+即可使用已导入的 TAT。非空的 `LARKSUITE_CLI_TENANT_ACCESS_TOKEN` 仍是
+当前进程的最高优先级覆盖；两者都不存在时，凭据解析会失败，不会切换到其他
+profile 或 credential provider。AppSecret profile 继续使用原有 Token Endpoint
+链路。
+
+导入的 TAT 在单次 CLI 调用内缓存，新进程会读取最新存储值。重复导入同一 app ID
+会覆盖旧值；当前版本不提供删除命令。TAT 是短期凭据，lark-cli 不会刷新导入值。
+过期后需从上游凭据源获取新的 TAT，再次执行导入命令，后续 CLI 进程会读取新值。
+
+当 `LARKSUITE_CLI_APP_ID` 激活 env credential provider 后，除
+`auth import-tenant-token` 外的 `auth` 管理命令仍遵循既有 external-provider
+策略。请使用 `lark-cli whoami` 或实际 bot API 调用验证导入结果。
 
 ## 三层命令调用
 

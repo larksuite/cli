@@ -7,6 +7,7 @@ package keychain
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -109,8 +110,11 @@ func freeDataBlob(b *windows.DataBlob) {
 
 // platformGet retrieves a value from the Windows registry.
 func platformGet(service, account string) (string, error) {
-	v, ok := registryGet(service, account)
-	if !ok {
+	v, found, err := registryGet(service, account)
+	if err != nil {
+		return "", err
+	}
+	if !found {
 		return "", nil
 	}
 	return v, nil
@@ -132,28 +136,37 @@ func platformRemove(service, account string) error {
 }
 
 // registryGet retrieves a string value from the registry under the given service and account.
-func registryGet(service, account string) (string, bool) {
+func registryGet(service, account string) (string, bool, error) {
 	keyPath := registryPathForService(service)
 	k, err := registry.OpenKey(registry.CURRENT_USER, keyPath, registry.QUERY_VALUE)
 	if err != nil {
-		return "", false
+		if errors.Is(err, registry.ErrNotExist) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("registry open failed: %w", err)
 	}
 	defer k.Close()
 
 	b64, _, err := k.GetStringValue(valueNameForAccount(account))
-	if err != nil || b64 == "" {
-		return "", false
+	if err != nil {
+		if errors.Is(err, registry.ErrNotExist) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("registry read failed: %w", err)
+	}
+	if b64 == "" {
+		return "", false, errors.New("registry value is empty")
 	}
 	blob, err := base64.StdEncoding.DecodeString(b64)
 	if err != nil {
-		return "", false
+		return "", false, fmt.Errorf("registry value decode failed: %w", err)
 	}
 	entropy := dpapiEntropy(service, account)
 	plain, err := dpapiUnprotect(blob, entropy)
 	if err != nil {
-		return "", false
+		return "", false, fmt.Errorf("dpapi unprotect failed: %w", err)
 	}
-	return string(plain), true
+	return string(plain), true, nil
 }
 
 // registrySet stores a string value in the registry under the given service and account.

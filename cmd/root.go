@@ -523,14 +523,37 @@ func subcommandOnlyFlagTokens(cmd *cobra.Command, rawArgs []string) []string {
 			continue
 		}
 		if flagDefinedInTree(cmd, name) {
-			misplaced = append(misplaced, a)
+			if canonical, sensitive := sensitiveFlagInSubcommands(cmd, name); sensitive {
+				misplaced = append(misplaced, "--"+canonical)
+			} else {
+				misplaced = append(misplaced, a)
+			}
 		}
 	}
 	return misplaced
 }
 
+func sensitiveFlagInSubcommands(cmd *cobra.Command, name string) (string, bool) {
+	short := len(name) == 1
+	for _, child := range cmd.Commands() {
+		var flag *pflag.Flag
+		if short {
+			flag = child.Flags().ShorthandLookup(name)
+		} else {
+			flag = child.Flags().Lookup(name)
+		}
+		if flag != nil && cmdutil.IsSensitiveFlag(child, flag.Name) {
+			return flag.Name, true
+		}
+		if canonical, sensitive := sensitiveFlagInSubcommands(child, name); sensitive {
+			return canonical, true
+		}
+	}
+	return "", false
+}
+
 // flagDefinedInTree reports whether name is defined on cmd, its inherited
-// (persistent) flags, or any direct subcommand. The subcommand case covers a
+// (persistent) flags, or any descendant subcommand. The subcommand case covers a
 // user who merely omitted the subcommand — e.g. `sheets --format json`, where
 // --format is injected on every leaf shortcut, not on the group — so only a
 // genuinely unknown flag like `sheets --badflag` is reported.
@@ -549,8 +572,8 @@ func flagDefinedInTree(cmd *cobra.Command, name string) bool {
 	if known(cmd, false) || known(cmd, true) {
 		return true
 	}
-	for _, c := range cmd.Commands() {
-		if known(c, false) {
+	for _, child := range cmd.Commands() {
+		if known(child, false) || flagDefinedInTree(child, name) {
 			return true
 		}
 	}
@@ -669,6 +692,12 @@ func isLarkDomain(c *cobra.Command) bool {
 func flagDidYouMean(c *cobra.Command, ferr error) error {
 	name, isUnknown := unknownFlagName(ferr)
 	if !isUnknown {
+		if sensitive, ok := cmdutil.SensitiveFlagFromParseError(c, ferr); ok {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"invalid value for sensitive flag %q", "--"+sensitive).
+				WithParam("--"+sensitive).
+				WithHint("run `%s --help` for valid usage", c.CommandPath())
+		}
 		// A policy-gated flag invoked bare ("flag needs an argument")
 		// never reaches its rejecting Value; it still presents as
 		// unregistered, exactly like a set one.

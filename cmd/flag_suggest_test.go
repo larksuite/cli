@@ -8,7 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/cmd/auth"
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/flagalias"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
@@ -157,5 +159,50 @@ func TestFlagDidYouMean_InvalidNonAliasValueStaysGeneric(t *testing.T) {
 	}
 	if validationErr.Param != "" || len(validationErr.Params) != 0 {
 		t.Fatalf("Param=%q Params=%v, want ordinary pflag behavior unchanged", validationErr.Param, validationErr.Params)
+	}
+}
+
+func TestFlagDidYouMean_SensitiveValueDoesNotLeak(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	root := &cobra.Command{Use: "lark-cli"}
+	root.SetFlagErrorFunc(flagDidYouMean)
+	root.AddCommand(auth.NewCmdAuth(f))
+	root.SetArgs([]string{"auth", "import-tenant-token", "--app-id", "cli_test", "--token-stdin=synthetic-secret-marker"})
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want sensitive flag rejection")
+	}
+	if strings.Contains(err.Error(), "synthetic-secret-marker") {
+		t.Fatalf("error leaked sensitive flag value: %v", err)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) || validationErr.Subtype != errs.SubtypeInvalidArgument || validationErr.Param != "--token-stdin" {
+		t.Fatalf("error = %T %v, want validation error for --token-stdin", err, err)
+	}
+}
+
+func TestFlagDidYouMean_SensitiveShorthandValueDoesNotLeak(t *testing.T) {
+	for _, args := range [][]string{
+		{"--secret=synthetic-secret-marker"},
+		{"-s=synthetic-secret-marker"},
+	} {
+		c := &cobra.Command{Use: "demo"}
+		c.Flags().BoolP("secret", "s", false, "")
+		cmdutil.MarkSensitiveFlag(c, "secret")
+		parseErr := c.ParseFlags(args)
+		if parseErr == nil {
+			t.Fatalf("ParseFlags(%v) succeeded, want invalid boolean error", args)
+		}
+
+		err := flagDidYouMean(c, parseErr)
+		if strings.Contains(err.Error(), "synthetic-secret-marker") {
+			t.Fatalf("error leaked sensitive flag value for %v: %v", args, err)
+		}
+		var validationErr *errs.ValidationError
+		if !errors.As(err, &validationErr) || validationErr.Subtype != errs.SubtypeInvalidArgument || validationErr.Param != "--secret" {
+			t.Fatalf("error = %T %v, want validation error for --secret", err, err)
+		}
 	}
 }
