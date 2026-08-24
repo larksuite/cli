@@ -1,6 +1,6 @@
 # 收信规则 Shortcut
 
-管理自动处理收到邮件的规则。优先使用 `mail +rule-*` shortcut，通过稳定英文 alias 编写条件和动作；只有 shortcut 提示存在 unknown raw、无法安全替换集合，或需要当前 shortcut 尚未建模的服务端字段时，才回退到 `mail user_mailbox.rules` 原子 raw 命令。规则写操作需使用真实 `rule_id`，不要猜测 ID。创建、更新、启停和排序是普通写操作；只有删除规则需要按 SKILL.md 的删除确认规则获得用户确认并传 `--yes`。
+管理自动处理收到邮件的规则。优先使用 `mail +rule-*` shortcut，通过稳定英文 alias 编写条件和动作；只有需要当前 shortcut 尚未建模的服务端字段时，才回退到 `mail user_mailbox.rules` 原子 raw 命令。规则写操作需使用真实 `rule_id`，不要猜测 ID。创建、更新、删除规则需要按 SKILL.md 的高风险写规则获得用户确认并传 `--yes`；启停和排序是普通写操作，免 `--yes`。
 
 ## 常用 shortcut
 
@@ -21,13 +21,15 @@ lark-cli mail +rule-create --as user --dry-run \
 lark-cli mail +rule-create --as user \
   --name "Alpha通知已读" \
   --condition "subject:contains:Alpha" \
-  --action "mark_read"
+  --action "mark_read" \
+  --yes
 
 # 更新规则：未传字段会先读当前规则并保留；传 --condition/--action 会替换对应完整集合
 lark-cli mail +rule-update --as user \
   --rule-id "<rule_id>" \
   --name "Alpha通知归档" \
-  --action "archive"
+  --action "archive" \
+  --yes
 
 # 启停规则
 lark-cli mail +rule-disable --as user --rule-id "<rule_id>"
@@ -78,8 +80,9 @@ lark-cli mail +rule-reorder --as user --move-rule-id "<rule_id_3>" --before-rule
 ## Unknown raw 策略
 
 - 读路径宽容：`+rule-list` / `+rule-get` 遇到未知枚举或扩展字段仍输出规则，`unknowns[]` 会说明无法识别的 raw 片段，`raw` 会保留原始规则。
-- 安全更新：`+rule-update` 只改名称、启停、match 或 stop-after-match 时会保留 unknown raw；如果你传入新的 `--condition(s)` 或 `--action(s)`，而旧集合含 unknown，shortcut 会拒绝，避免丢失后端扩展字段。
-- raw fallback：遇到 unknown 且必须替换完整集合时，先读取 `raw`，人工修改后使用原子 `user_mailbox.rules update`。
+- 更新规则：`+rule-update` 是“传什么改什么”。只改名称、启停、match 或 stop-after-match 时保留未触碰的 raw；传入新的 `--condition(s)` 时替换 condition items，未传 `--match` 就保留当前 match_type；传入新的 `--action(s)` 时替换 action items。
+- 输入校验：用户输入 alias/语义字符串时必须能映射到当前 shortcut 支持的枚举，否则报错；用户直接输入当前 shortcut 不认识的枚举数字，也报错。
+- raw fallback：需要写入当前 shortcut 尚未建模的服务端字段时，读取 `raw` 后使用原子 `user_mailbox.rules` 命令。
 
 ## 原子 raw fallback：主题包含文本 → 标记为已读
 

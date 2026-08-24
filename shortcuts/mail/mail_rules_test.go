@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -227,31 +229,35 @@ func TestMailRuleListShortcutDecodesResponse(t *testing.T) {
 	}
 }
 
-func TestMailRuleListRejectsRepeatedPageToken(t *testing.T) {
+func TestMailRuleListIgnoresPaginationFields(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
-	for i := 0; i < 2; i++ {
-		reg.Register(
-			&httpmock.Stub{
-				Method: "GET",
-				URL:    "open-apis/mail/v1/user_mailboxes/me/rules",
-				Body: map[string]interface{}{
-					"code": 0,
-					"data": map[string]interface{}{
-						"rules":      []interface{}{},
-						"has_more":   true,
-						"page_token": "same_token",
-					},
+	list := &httpmock.Stub{
+		Method: "GET",
+		URL:    "open-apis/mail/v1/user_mailboxes/me/rules",
+		OnMatch: func(req *http.Request) {
+			if req.URL.RawQuery != "" {
+				t.Fatalf("list request query = %q, want empty", req.URL.RawQuery)
+			}
+		},
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"rules": []interface{}{
+					mailRuleTestRawRule("rule_1", "Alpha"),
 				},
+				"has_more":   true,
+				"page_token": "ignored",
 			},
-		)
+		},
 	}
+	reg.Register(list)
 
-	err := runMountedMailShortcut(t, MailRuleList, []string{"+rule-list", "--format", "json"}, f, stdout)
-	if err == nil {
-		t.Fatal("expected repeated page token error")
+	if err := runMountedMailShortcut(t, MailRuleList, []string{"+rule-list", "--format", "json"}, f, stdout); err != nil {
+		t.Fatalf("run +rule-list error = %v", err)
 	}
-	if !strings.Contains(err.Error(), "repeated page_token") {
-		t.Fatalf("error = %v", err)
+	data := decodeShortcutEnvelopeData(t, stdout)
+	if data["total"] != float64(1) {
+		t.Fatalf("total = %v, want 1", data["total"])
 	}
 }
 
@@ -299,8 +305,8 @@ func TestMailRuleWriteRisks(t *testing.T) {
 		shortcut common.Shortcut
 		risk     string
 	}{
-		{MailRuleCreate, "write"},
-		{MailRuleUpdate, "write"},
+		{MailRuleCreate, "high-risk-write"},
+		{MailRuleUpdate, "high-risk-write"},
 		{MailRuleEnable, "write"},
 		{MailRuleDisable, "write"},
 		{MailRuleReorder, "write"},
@@ -315,6 +321,71 @@ func TestMailRuleWriteRisks(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestMailRuleScopes(t *testing.T) {
+	for _, tc := range []struct {
+		shortcut common.Shortcut
+		scopes   []string
+	}{
+		{MailRuleList, []string{"mail:user_mailbox.rule:read"}},
+		{MailRuleGet, []string{"mail:user_mailbox.rule:read"}},
+		{MailRuleCreate, []string{"mail:user_mailbox.rule:write"}},
+		{MailRuleUpdate, []string{"mail:user_mailbox.rule:write"}},
+		{MailRuleDelete, []string{"mail:user_mailbox.rule:write"}},
+		{MailRuleEnable, []string{"mail:user_mailbox.rule:write"}},
+		{MailRuleDisable, []string{"mail:user_mailbox.rule:write"}},
+		{MailRuleReorder, []string{"mail:user_mailbox.rule:write"}},
+	} {
+		if !reflect.DeepEqual(tc.shortcut.Scopes, tc.scopes) {
+			t.Fatalf("%s Scopes = %v, want %v", tc.shortcut.Command, tc.shortcut.Scopes, tc.scopes)
+		}
+	}
+}
+
+func TestMailRuleCreateAndUpdateRequireStandardYesConfirmation(t *testing.T) {
+	t.Run("create", func(t *testing.T) {
+		f, stdout, _, reg := mailShortcutTestFactory(t)
+		post := &httpmock.Stub{
+			Method:   "POST",
+			URL:      "open-apis/mail/v1/user_mailboxes/me/rules",
+			Optional: true,
+			Body:     map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+		}
+		reg.Register(post)
+
+		err := runMountedMailShortcut(t, MailRuleCreate, []string{"+rule-create", "--name", "Alpha", "--condition", "subject:contains:Alpha", "--action", "mark_read", "--format", "json"}, f, stdout)
+		var confirmErr *errs.ConfirmationRequiredError
+		if !errors.As(err, &confirmErr) {
+			t.Fatalf("expected confirmation required error, got %T: %v", err, err)
+		}
+		if len(post.CapturedBodies) != 0 {
+			t.Fatalf("POST should not be sent before --yes, captured %d request(s)", len(post.CapturedBodies))
+		}
+	})
+
+	t.Run("update", func(t *testing.T) {
+		f, stdout, _, reg := mailShortcutTestFactory(t)
+		list := mailRuleListStub(mailRuleTestRawRule("rule_1", "Alpha"))
+		list.Optional = true
+		reg.Register(list)
+		put := &httpmock.Stub{
+			Method:   "PUT",
+			URL:      "open-apis/mail/v1/user_mailboxes/me/rules/rule_1",
+			Optional: true,
+			Body:     map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+		}
+		reg.Register(put)
+
+		err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--name", "Beta", "--format", "json"}, f, stdout)
+		var confirmErr *errs.ConfirmationRequiredError
+		if !errors.As(err, &confirmErr) {
+			t.Fatalf("expected confirmation required error, got %T: %v", err, err)
+		}
+		if len(list.CapturedBodies) != 0 || len(put.CapturedBodies) != 0 {
+			t.Fatalf("GET/PUT should not be sent before --yes, captured GET=%d PUT=%d", len(list.CapturedBodies), len(put.CapturedBodies))
+		}
+	})
 }
 
 func TestMailRuleShortcutsAllowBotButRequireExplicitMailbox(t *testing.T) {
@@ -427,8 +498,11 @@ func TestMailRuleUpdateUsesRequestBodyWhitelistAndUpdatesName(t *testing.T) {
 		},
 	}
 	reg.Register(put)
+	updatedRule := cloneMailRuleRawMap(t, currentRule)
+	updatedRule["name"] = "Beta"
+	reg.Register(mailRuleListStub(updatedRule))
 
-	err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--name", "Beta", "--format", "json"}, f, stdout)
+	err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--name", "Beta", "--yes", "--format", "json"}, f, stdout)
 	if err != nil {
 		t.Fatalf("run +rule-update error = %v", err)
 	}
@@ -505,8 +579,11 @@ func TestMailRuleUpdatePreservesConditionItemExtrasWhenChangingMatch(t *testing.
 		},
 	}
 	reg.Register(put)
+	updatedRule := cloneMailRuleRawMap(t, currentRule)
+	updatedRule["condition"].(map[string]interface{})["match_type"] = 2
+	reg.Register(mailRuleListStub(updatedRule))
 
-	err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--match", "any", "--format", "json"}, f, stdout)
+	err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--match", "any", "--yes", "--format", "json"}, f, stdout)
 	if err != nil {
 		t.Fatalf("run +rule-update error = %v", err)
 	}
@@ -574,6 +651,7 @@ func TestMailRuleCreateParsesJSONConditionsAndActions(t *testing.T) {
 		"--stop-after-match",
 		"--conditions", `[{"field":"subject","op":"contains","value":"Alpha"},{"field":"has_attachment"}]`,
 		"--actions", `[{"kind":"mark_read"},{"kind":"move_folder","folder_id":"fld_json"}]`,
+		"--yes",
 		"--format", "json",
 	}, f, stdout)
 	if err != nil {
@@ -632,6 +710,7 @@ func TestMailRuleCreateReadsConditionsAndActionsFromFiles(t *testing.T) {
 		"--name", "File Rule",
 		"--conditions", "@conditions.json",
 		"--actions", "@actions.json",
+		"--yes",
 		"--format", "json",
 	}, f, stdout)
 	if err != nil {
@@ -841,7 +920,7 @@ func TestMailRuleUpdateNoopsWhenRequestedStateAlreadyMatches(t *testing.T) {
 	}
 	reg.Register(put)
 
-	if err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--name", "Alpha", "--format", "json"}, f, stdout); err != nil {
+	if err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--name", "Alpha", "--yes", "--format", "json"}, f, stdout); err != nil {
 		t.Fatalf("run +rule-update error = %v", err)
 	}
 	if len(put.CapturedBodies) != 0 {
@@ -1147,35 +1226,75 @@ func TestMailRuleReorderShortcutPostsFullAndMoveOrders(t *testing.T) {
 	})
 }
 
-func TestMailRuleUpdateRejectsReplacingUnknownRawCollections(t *testing.T) {
+func TestMailRuleUpdateReplacesUnknownConditionCollection(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	currentRule := mailRuleTestRawRule("rule_1", "Alpha")
 	currentRule["condition"].(map[string]interface{})["items"] = []interface{}{
 		map[string]interface{}{"type": 999, "operator": 1, "input": "unknown"},
 	}
 	reg.Register(mailRuleListStub(currentRule))
-
-	err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--condition", "subject:contains:Beta", "--format", "json"}, f, stdout)
-	if err == nil {
-		t.Fatal("expected unknown condition replacement error")
+	put := &httpmock.Stub{
+		Method: "PUT",
+		URL:    "open-apis/mail/v1/user_mailboxes/me/rules/rule_1",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
 	}
-	if !strings.Contains(err.Error(), "unknown condition raw") {
-		t.Fatalf("error = %v", err)
+	reg.Register(put)
+	updatedRule := cloneMailRuleRawMap(t, currentRule)
+	updatedRule["condition"].(map[string]interface{})["items"] = []interface{}{
+		map[string]interface{}{"type": 6, "operator": 1, "input": "Beta"},
+	}
+	reg.Register(mailRuleListStub(updatedRule))
+
+	err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--condition", "subject:contains:Beta", "--yes", "--format", "json"}, f, stdout)
+	if err != nil {
+		t.Fatalf("run +rule-update error = %v", err)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(put.CapturedBody, &body); err != nil {
+		t.Fatalf("Unmarshal(PUT body) error = %v, body=%s", err, string(put.CapturedBody))
+	}
+	items := body["condition"].(map[string]interface{})["items"].([]interface{})
+	if len(items) != 1 {
+		t.Fatalf("condition items = %+v, want replacement", items)
+	}
+	item := items[0].(map[string]interface{})
+	if item["type"] != float64(6) || item["input"] != "Beta" {
+		t.Fatalf("condition replacement item = %+v", item)
 	}
 }
 
-func TestMailRuleUpdateRejectsReplacingContainerUnknownRawCollections(t *testing.T) {
+func TestMailRuleUpdateReplacesConditionItemsAndPreservesMatchType(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	currentRule := mailRuleTestRawRule("rule_1", "Alpha")
+	currentRule["condition"].(map[string]interface{})["match_type"] = 2
 	currentRule["condition"].(map[string]interface{})["tenant_condition_extra"] = "keep"
 	reg.Register(mailRuleListStub(currentRule))
-
-	err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--condition", "subject:contains:Beta", "--format", "json"}, f, stdout)
-	if err == nil {
-		t.Fatal("expected unknown condition replacement error")
+	put := &httpmock.Stub{
+		Method: "PUT",
+		URL:    "open-apis/mail/v1/user_mailboxes/me/rules/rule_1",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
 	}
-	if !strings.Contains(err.Error(), "unknown condition raw") {
-		t.Fatalf("error = %v", err)
+	reg.Register(put)
+	updatedRule := cloneMailRuleRawMap(t, currentRule)
+	updatedRule["condition"].(map[string]interface{})["items"] = []interface{}{
+		map[string]interface{}{"type": 6, "operator": 1, "input": "Beta"},
+	}
+	reg.Register(mailRuleListStub(updatedRule))
+
+	err := runMountedMailShortcut(t, MailRuleUpdate, []string{"+rule-update", "--rule-id", "rule_1", "--condition", "subject:contains:Beta", "--yes", "--format", "json"}, f, stdout)
+	if err != nil {
+		t.Fatalf("run +rule-update error = %v", err)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(put.CapturedBody, &body); err != nil {
+		t.Fatalf("Unmarshal(PUT body) error = %v, body=%s", err, string(put.CapturedBody))
+	}
+	condition := body["condition"].(map[string]interface{})
+	if condition["match_type"] != float64(2) {
+		t.Fatalf("match_type = %v, want preserved 2", condition["match_type"])
+	}
+	if condition["tenant_condition_extra"] != "keep" {
+		t.Fatalf("tenant_condition_extra = %v, want preserved", condition["tenant_condition_extra"])
 	}
 }
 
@@ -1211,12 +1330,21 @@ func TestMailRuleUpdateReplacesKnownConditionsAndActions(t *testing.T) {
 		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
 	}
 	reg.Register(put)
+	updatedRule := cloneMailRuleRawMap(t, currentRule)
+	updatedRule["condition"].(map[string]interface{})["items"] = []interface{}{
+		map[string]interface{}{"type": 6, "operator": 1, "input": "Beta"},
+	}
+	updatedRule["action"].(map[string]interface{})["items"] = []interface{}{
+		map[string]interface{}{"type": 11, "input": "fld_2"},
+	}
+	reg.Register(mailRuleListStub(updatedRule))
 
 	err := runMountedMailShortcut(t, MailRuleUpdate, []string{
 		"+rule-update",
 		"--rule-id", "rule_1",
 		"--condition", "subject:contains:Beta",
 		"--action", "move_folder:folder_id=fld_2",
+		"--yes",
 		"--format", "json",
 	}, f, stdout)
 	if err != nil {
@@ -1439,6 +1567,19 @@ func mailRuleTestRawRule(ruleID, name string) map[string]interface{} {
 			},
 		},
 	}
+}
+
+func cloneMailRuleRawMap(t testing.TB, in map[string]interface{}) map[string]interface{} {
+	t.Helper()
+	b, err := json.Marshal(in)
+	if err != nil {
+		t.Fatalf("Marshal(rule) error = %v", err)
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(b, &out); err != nil {
+		t.Fatalf("Unmarshal(rule) error = %v", err)
+	}
+	return out
 }
 
 func mailRuleListStub(rules ...map[string]interface{}) *httpmock.Stub {
