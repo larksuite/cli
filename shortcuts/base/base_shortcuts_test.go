@@ -170,6 +170,7 @@ func TestShortcutsCatalog(t *testing.T) {
 		"+base-block-list", "+base-block-create", "+base-block-move", "+base-block-rename", "+base-block-delete",
 		"+table-list", "+table-get", "+table-create", "+table-update", "+table-delete", "+table-copy", "+table-copy-status",
 		"+field-list", "+field-get", "+field-create", "+field-update", "+field-delete", "+field-search-options",
+		"+field-extension-get", "+field-extension-update", "+field-extension-update-cells",
 		"+view-list", "+view-get", "+view-create", "+view-delete", "+view-get-filter", "+view-set-filter", "+view-get-visible-fields", "+view-set-visible-fields", "+view-get-group", "+view-set-group", "+view-get-sort", "+view-set-sort", "+view-get-timebar", "+view-set-timebar", "+view-get-card", "+view-set-card", "+view-rename",
 		"+record-list", "+record-search", "+record-get", "+record-upsert", "+record-batch-create", "+record-batch-update", "+record-share-link-create", "+record-upload-attachment", "+record-download-attachment", "+record-remove-attachment", "+record-delete",
 		"+record-history-list",
@@ -354,6 +355,62 @@ func TestTemplateCenterShortcutContract(t *testing.T) {
 
 	err := BaseTemplateSearch.Validate(ctx, newBaseTestRuntime(map[string]string{"keyword": "   "}, nil, map[string]int{"limit": 10}))
 	assertInvalidArgumentValidation(t, err, "--keyword", nil, "must not be blank")
+}
+
+func TestFieldExtensionShortcutContract(t *testing.T) {
+	ctx := context.Background()
+
+	if BaseFieldExtensionGet.Risk != "read" {
+		t.Fatalf("get risk=%q, want read", BaseFieldExtensionGet.Risk)
+	}
+	if !reflect.DeepEqual(BaseFieldExtensionGet.Scopes, []string{fieldExtensionReadScope}) {
+		t.Fatalf("get scopes=%v, want [%s]", BaseFieldExtensionGet.Scopes, fieldExtensionReadScope)
+	}
+	for _, shortcut := range []common.Shortcut{BaseFieldExtensionUpdate, BaseFieldExtensionUpdateCells} {
+		if shortcut.Risk != "high-risk-write" {
+			t.Fatalf("%s risk=%q, want high-risk-write", shortcut.Command, shortcut.Risk)
+		}
+		if !reflect.DeepEqual(shortcut.AuthTypes, authTypes()) {
+			t.Fatalf("%s authTypes=%v, want %v", shortcut.Command, shortcut.AuthTypes, authTypes())
+		}
+	}
+	if !reflect.DeepEqual(BaseFieldExtensionUpdate.Scopes, []string{fieldExtensionUpdateScope}) {
+		t.Fatalf("update scopes=%v, want [%s]", BaseFieldExtensionUpdate.Scopes, fieldExtensionUpdateScope)
+	}
+	if !reflect.DeepEqual(BaseFieldExtensionUpdateCells.Scopes, []string{fieldExtensionUpdateCellsScope}) {
+		t.Fatalf("update-cells scopes=%v, want [%s]", BaseFieldExtensionUpdateCells.Scopes, fieldExtensionUpdateCellsScope)
+	}
+
+	clearRT := newBaseTestRuntime(map[string]string{"json": `{}`}, nil, nil)
+	if err := BaseFieldExtensionUpdate.Validate(ctx, clearRT); err != nil {
+		t.Fatalf("clear validation err=%v", err)
+	}
+
+	updateRT := newBaseTestRuntime(map[string]string{"json": `{"extension_id":"builtin_llm_completion","inputs":{"prompt":[{"type":"text","text":"Summarize"},{"type":"field_ref","field":"Description"}]}}`}, nil, nil)
+	if err := BaseFieldExtensionUpdate.Validate(ctx, updateRT); err != nil {
+		t.Fatalf("update validation err=%v", err)
+	}
+
+	unsupportedExtension := newBaseTestRuntime(map[string]string{"json": `{"extension_id":"builtin_summary","inputs":{"prompt":[]}}`}, nil, nil)
+	err := BaseFieldExtensionUpdate.Validate(ctx, unsupportedExtension)
+	assertInvalidArgumentValidation(t, err, "--json", nil, "builtin_llm_completion")
+
+	missingPrompt := newBaseTestRuntime(map[string]string{"json": `{"extension_id":"builtin_llm_completion","inputs":{}}`}, nil, nil)
+	err = BaseFieldExtensionUpdate.Validate(ctx, missingPrompt)
+	assertInvalidArgumentValidation(t, err, "--json", nil, "inputs.prompt")
+
+	rowWithoutRecords := newBaseTestRuntime(map[string]string{"type": "row"}, nil, nil)
+	err = BaseFieldExtensionUpdateCells.Validate(ctx, rowWithoutRecords)
+	assertInvalidArgumentValidation(t, err, "--record-id", nil, "--record-id is required")
+
+	columnWithRecords := newBaseTestRuntimeWithArrays(
+		map[string]string{"type": "column"},
+		map[string][]string{"record-id": {"rec_1"}},
+		nil,
+		nil,
+	)
+	err = BaseFieldExtensionUpdateCells.Validate(ctx, columnWithRecords)
+	assertInvalidArgumentValidation(t, err, "--record-id", nil, "--record-id is only valid")
 }
 
 func TestBaseFieldCreateHelpHidesReadGuideFlag(t *testing.T) {

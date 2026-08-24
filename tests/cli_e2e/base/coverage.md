@@ -1,9 +1,9 @@
 # Base CLI E2E Coverage
 
 ## Metrics
-- Denominator: 93 leaf commands
-- Covered: 41
-- Coverage: 44.1%
+- Denominator: 96 leaf commands
+- Covered: 44
+- Coverage: 45.8%
 
 ## Summary
 - TestBase_BasicWorkflow: proves `+base-create`, `+base-get`, `+table-create`, `+table-get`, and `+table-list`; key `t.Run(...)` proof points are `get base as bot`, `get table as bot`, and `list tables and find created table as bot`.
@@ -11,6 +11,7 @@
 - TestBaseAppWorkflow: live user workflow in an isolated fixture Workspace covering Workspace entity listing, BaseApp create/get, Page create/list/get/update/delete, text Block create/list/get/update, and App cleanup through Drive delete (`type=bitable`). Set `LARK_CLI_E2E_BASEAPP_WORKSPACE_TOKEN` to enable it.
 - TestBaseDashboardBlockCreateDryRun_PositionAndNumberFormat / TestBaseDashboardBlockUpdateDryRun_Position: prove `+dashboard-block-create` / `+dashboard-block-update` dry-run request shape carries the optional top-level `position` sibling and statistics `data_config.number_format`; TestBaseDashboardBlockCreateDryRun_InvalidNumberFormat proves the number_format enum validation rejects a bad formatName before any request.
 - TestBaseFieldCreateDryRunArrayCompat: proves `+field-create` dry-run request shape for the internal JSON-array compatibility path.
+- TestBaseFieldExtensionDryRun: proves `+field-extension-get`, `+field-extension-update`, and `+field-extension-update-cells` request shapes, including row-vs-column update bodies; TestBaseFieldExtensionUpdateCellsDryRunRejectsRowWithoutRecordID proves row updates require an explicit record.
 - TestBaseFormQuestionsCreateDryRun: proves `+form-questions-create` preserves its POST body and renders the existing-question guard in command help.
 - TestBaseFormDetailDryRun / TestBaseFormSubmitDryRun: prove shared-form detail and submission request shapes.
 - TestBaseDashboardBlockGetDataDryRun: proves dashboard block data request shapes and identifier handling.
@@ -63,6 +64,9 @@
 | ✕ | base +data-query | shortcut |  | none | no data-query assertions yet |
 | ✓ | base +field-create | shortcut | base_field_dryrun_test.go::TestBaseFieldCreateDryRunArrayCompat | `--base-token`; `--table-id`; `--json`; dry-run only | request shape only |
 | ✕ | base +field-delete | shortcut |  | none | field workflows not covered |
+| ✓ | base +field-extension-get | shortcut | base_field_extension_dryrun_test.go::TestBaseFieldExtensionDryRun/get | `--base-token`; `--table-id`; `--field-id`; dry-run only | request shape only |
+| ✓ | base +field-extension-update | shortcut | base_field_extension_dryrun_test.go::TestBaseFieldExtensionDryRun/update | `--json.extension_id`; `--json.inputs.prompt`; `--yes`; dry-run only | request shape only |
+| ✓ | base +field-extension-update-cells | shortcut | base_field_extension_dryrun_test.go::TestBaseFieldExtensionDryRun/update cells row,update cells column; TestBaseFieldExtensionUpdateCellsDryRunRejectsRowWithoutRecordID | `--type=row` + repeated `--record-id`; `--type=column` + optional `--view-id`; `--yes`; dry-run only | request shape and row validation |
 | ✕ | base +field-get | shortcut |  | none | field workflows not covered |
 | ✕ | base +field-list | shortcut |  | none | field workflows not covered |
 | ✕ | base +field-search-options | shortcut |  | none | field workflows not covered |
