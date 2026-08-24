@@ -1421,6 +1421,10 @@ func TestFilterBatchExcludedScopes_OnImDomainSet(t *testing.T) {
 }
 
 func TestAuthLoginRun_BatchExcludesSendAsUser(t *testing.T) {
+	// Isolate the requested-scope cache: --no-wait persists scopes under the
+	// config dir, so pin it to a temp dir to avoid touching the real one.
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
 	extractScope := func(body []byte) string {
 		v, _ := url.ParseQuery(string(body))
 		return v.Get("scope")
