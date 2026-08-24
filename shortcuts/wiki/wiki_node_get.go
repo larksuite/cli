@@ -14,7 +14,6 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/citation"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -54,13 +53,14 @@ var wikiNodeGetObjTypeEnum = []string{
 // creator / updated_at) and is intended as the "what am I about to
 // touch?" step before +move / +node-copy / +delete-space.
 var WikiNodeGet = common.Shortcut{
-	Service:     "wiki",
-	Command:     "+node-get",
-	Description: "Get wiki node details by node_token, obj_token, or Lark URL",
-	Risk:        "read",
-	Scopes:      []string{"wiki:node:retrieve"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	Service:           "wiki",
+	Command:           "+node-get",
+	Description:       "Get wiki node details by node_token, obj_token, or Lark URL",
+	Risk:              "read",
+	Scopes:            []string{"wiki:node:retrieve"},
+	ConditionalScopes: []string{wikiCitationMetadataScope},
+	AuthTypes:         []string{"user", "bot"},
+	HasFormat:         true,
 	Flags: []common.Flag{
 		// --node-token is the canonical flag, matching sibling wiki commands
 		// (+node-delete / +node-copy / +move). --token is the original name
@@ -92,7 +92,7 @@ var WikiNodeGet = common.Shortcut{
 		if err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
 		}
-		return buildWikiNodeGetDryRun(spec)
+		return appendWikiCitationDryRun(runtime, buildWikiNodeGetDryRun(spec), "<resolved_node_token>")
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		spec, err := readWikiNodeGetSpec(runtime)
@@ -128,7 +128,11 @@ var WikiNodeGet = common.Shortcut{
 		}
 
 		out := wikiNodeGetOutput(node, raw)
-		runtime.OutFormat(out, nil, func(w io.Writer) {
+		var outputData any = out
+		if wikiCitationEnvelopeRequested(runtime) {
+			outputData = wikiOutputWithCitationURLs(runtime, out, []string{node.NodeToken})
+		}
+		runtime.OutFormat(outputData, nil, func(w io.Writer) {
 			renderWikiNodeGetPretty(w, out)
 		})
 		return nil
@@ -347,11 +351,9 @@ func buildWikiNodeGetDryRun(spec wikiNodeGetSpec) *common.DryRunAPI {
 // timestamps) that callers can pipe into +move / +node-copy without rerunning
 // get_node.
 //
-// No synthesized `url` is emitted: get_node returns none, and a
-// BuildResourceURL fallback (www.feishu.cn/wiki/<node_token>) is a
-// non-canonical link that misleads in a read/confirm command. Sibling read
-// shortcuts (+node-list, +node-copy) likewise omit it; node_token/obj_token
-// are the precise identifiers.
+// No synthesized `url` is emitted: get_node returns none, and the native URL
+// needed by citations is carried only in wikiCitationPayload and excluded from
+// JSON data.
 func wikiNodeGetOutput(node *wikiNodeRecord, raw map[string]interface{}) map[string]interface{} {
 	out := map[string]interface{}{
 		"space_id":          node.SpaceID,
@@ -381,49 +383,35 @@ func wikiNodeGetOutput(node *wikiNodeRecord, raw map[string]interface{}) map[str
 	return out
 }
 
-// wikiNodeCitation builds the node's citation entry for the envelope-level
-// citations array. The URL uses the brand's applink deep link
-// (applink.<brand>/client/wiki/open?wikiToken=<token>), not the
-// www.feishu.cn/wiki/<token> web link that wikiNodeGetOutput's doc comment
-// above deliberately omits from `data`: that web form is a non-canonical
-// redirect and would mislead in a read/confirm command's structured output.
-// The applink form doesn't carry that problem — it is the documented
-// client-side deep-link contract, gated behind LARKSUITE_CLI_CITATION (off by
-// default) and surfaced only in the top-level citations array, never in
-// `data`. So the two decisions coexist: `data` still emits no url; citations
-// may carry an applink url. An empty nodeToken yields an empty URL and the
-// framework drops the entry (citation.Normalize).
-func wikiNodeCitation(brand core.LarkBrand, spaceID, nodeToken, title, objEditTime string) []citation.Citation {
+// wikiNodeCitation builds one pure citation projection. nativeURL is the
+// tenant URL already fetched by Execute; this function performs no I/O.
+// ResourceID remains the globally unique Wiki node token rather than a
+// space/token composite. Empty URLs are silently removed by citation.Normalize.
+func wikiNodeCitation(nodeToken, title, objEditTime, nativeURL string) []citation.Citation {
 	entry := citation.Citation{
 		SourceType:  citation.SourceWiki,
 		Title:       title,
 		PublishTime: citation.Time(objEditTime),
 	}
 	if nodeToken != "" {
-		entry.URL = core.ResolveEndpoints(brand).AppLink + "/client/wiki/open?wikiToken=" + url.QueryEscape(nodeToken)
-		if spaceID != "" {
-			entry.ResourceID = spaceID + "/" + nodeToken
-		}
+		entry.URL = nativeURL
+		entry.ResourceID = nodeToken
 	}
 	return []citation.Citation{entry}
 }
 
 // wikiNodeGetCitations adapts the final output payload to the node's citation
 // entry. It returns nil on any unexpected shape instead of failing the command.
-func wikiNodeGetCitations(rt *common.RuntimeContext, data any) []citation.Citation {
-	out, ok := data.(map[string]interface{})
+func wikiNodeGetCitations(_ *common.RuntimeContext, data any) []citation.Citation {
+	publicData, urls := wikiPayloadParts(data)
+	out, ok := publicData.(map[string]interface{})
 	if !ok {
 		return nil
 	}
-	brand := core.BrandFeishu
-	if rt != nil && rt.Config != nil {
-		brand = rt.Config.Brand
-	}
-	spaceID, _ := out["space_id"].(string)
 	nodeToken, _ := out["node_token"].(string)
 	title, _ := out["title"].(string)
 	objEditTime, _ := out["obj_edit_time"].(string)
-	return wikiNodeCitation(brand, spaceID, nodeToken, title, objEditTime)
+	return wikiNodeCitation(nodeToken, title, objEditTime, urls[nodeToken])
 }
 
 // formatWikiTimestamp turns a Lark unix-seconds string (the format used by

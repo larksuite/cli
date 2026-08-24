@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -30,9 +31,10 @@ var WikiNodeList = common.Shortcut{
 	// Same exact-match-scope reasoning as +space-list: declare the
 	// narrowest scope the upstream API accepts so we don't false-reject
 	// tokens that only carry wiki:node:retrieve.
-	Scopes:    []string{"wiki:node:retrieve"},
-	AuthTypes: []string{"user", "bot"},
-	HasFormat: true,
+	Scopes:            []string{"wiki:node:retrieve"},
+	ConditionalScopes: []string{wikiCitationMetadataScope},
+	AuthTypes:         []string{"user", "bot"},
+	HasFormat:         true,
 	Flags: []common.Flag{
 		{Name: "space-id", Desc: "wiki space ID; use my_library for the personal document library, or +space-list to discover other space IDs", Required: true},
 		{Name: "parent-node-token", Desc: "parent node token; if omitted, lists the root-level nodes of the space"},
@@ -73,7 +75,7 @@ var WikiNodeList = common.Shortcut{
 		// to the real per-user space_id before listing nodes, mirroring the
 		// two-step orchestration used by +node-create.
 		if spec.SpaceID == wikiMyLibrarySpaceID {
-			return d.
+			d = d.
 				Desc("2-step orchestration: resolve my_library -> list nodes").
 				GET("/open-apis/wiki/v2/spaces/my_library").
 				Desc("[1] Resolve my_library space ID").
@@ -81,11 +83,13 @@ var WikiNodeList = common.Shortcut{
 				Desc("[2] List nodes").
 				Params(params).
 				Set("space_id", "<resolved_space_id>")
+			return appendWikiCitationDryRun(runtime, d, "<node_token_from_list_result>")
 		}
-		return d.
+		d = d.
 			GET(fmt.Sprintf("/open-apis/wiki/v2/spaces/%s/nodes", validate.EncodePathSegment(spec.SpaceID))).
 			Params(params).
 			Set("space_id", spec.SpaceID)
+		return appendWikiCitationDryRun(runtime, d, "<node_token_from_list_result>")
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		warnIfConflictingPagingFlags(runtime)
@@ -116,10 +120,22 @@ var WikiNodeList = common.Shortcut{
 			"has_more":   hasMore,
 			"page_token": nextToken,
 		}
-		runtime.OutFormat(outData, &output.Meta{Count: len(nodes)}, func(w io.Writer) {
+		var outputData any = outData
+		if wikiCitationEnvelopeRequested(runtime) {
+			nodeTokens := make([]string, 0, len(nodes))
+			for _, node := range nodes {
+				nodeTokens = append(nodeTokens, common.GetString(node, "node_token"))
+			}
+			outputData = wikiOutputWithCitationURLs(runtime, outData, nodeTokens)
+		}
+		runtime.OutFormat(outputData, &output.Meta{Count: len(nodes)}, func(w io.Writer) {
 			renderWikiNodesPretty(w, nodes, hasMore, nextToken)
 		})
 		return nil
+	},
+	Citation: &common.CitationDefinition{
+		SourceTypes: []citation.SourceType{citation.SourceWiki},
+		Build:       wikiNodeListCitations,
 	},
 }
 
@@ -300,6 +316,33 @@ func wikiNodeListItem(m map[string]interface{}) map[string]interface{} {
 		"title":             common.GetString(m, "title"),
 		"has_child":         common.GetBool(m, "has_child"),
 	}
+}
+
+// wikiNodeListCitations builds one citation per node in the final output
+// payload. It deliberately reads the projected nodes rather than the raw API
+// response, so citations cover exactly what the command returned to the model.
+func wikiNodeListCitations(_ *common.RuntimeContext, data any) []citation.Citation {
+	publicData, urls := wikiPayloadParts(data)
+	out, ok := publicData.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	nodes, ok := out["nodes"].([]map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	items := make([]citation.Citation, 0, len(nodes))
+	for _, node := range nodes {
+		nodeToken := common.GetString(node, "node_token")
+		items = append(items, wikiNodeCitation(
+			nodeToken,
+			common.GetString(node, "title"),
+			"",
+			urls[nodeToken],
+		)...)
+	}
+	return items
 }
 
 func renderWikiNodesPretty(w io.Writer, nodes []map[string]interface{}, hasMore bool, pageToken string) {
