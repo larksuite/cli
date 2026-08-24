@@ -76,6 +76,32 @@ func slidesMediaParentType(presentationToken string) string {
 	return slideFileParentType
 }
 
+// unresolvedSlidesTokenPlaceholder is what a dry-run shows in place of a
+// presentation token it cannot know: the caller passed a wiki reference, and
+// resolving it needs the get_node call a preview must not make.
+const unresolvedSlidesTokenPlaceholder = "<resolved_slides_token>"
+
+// slidesDryRunParentType returns the parent_type a dry-run should preview for
+// ref, without resolving anything.
+//
+// It exists so the placeholder token never reaches slidesMediaParentType. Doing
+// that happens to yield the right answer — a placeholder matches no office token
+// shape, so it falls through to slideFileParentType — but by accident rather
+// than on purpose, which makes the preview hostage to the placeholder's spelling
+// and to every future rule added to isOfficePresentation.
+//
+// A wiki ref is native by construction, not by default: resolvePresentationID
+// rejects any wiki node whose obj_type is not "slides" (helpers.go), and an
+// imported office deck sits in drive as a "file" node, so it never survives that
+// gate to reach an upload. That is why this can assert slideFileParentType for a
+// token it has not seen.
+func slidesDryRunParentType(ref presentationRef) string {
+	if ref.Kind == "wiki" {
+		return slideFileParentType
+	}
+	return slidesMediaParentType(ref.Token)
+}
+
 // SlidesMediaUpload uploads a local image to drive media against a slides
 // presentation and returns the file_token. The token can be used as the value
 // of <img src="..."> in slide XML.
@@ -111,10 +137,10 @@ var SlidesMediaUpload = common.Shortcut{
 		}
 
 		dry := common.NewDryRunAPI()
-		parentNode := ref.Token
+		uploadNode := ref.Token
 		stepBase := 1
 		if ref.Kind == "wiki" {
-			parentNode = "<resolved_slides_token>"
+			uploadNode = unresolvedSlidesTokenPlaceholder
 			stepBase = 2
 			dry.Desc("2-step orchestration: resolve wiki → upload media").
 				GET("/open-apis/wiki/v2/spaces/get_node").
@@ -123,7 +149,7 @@ var SlidesMediaUpload = common.Shortcut{
 		} else {
 			dry.Desc("Upload local file to slides presentation")
 		}
-		appendSlidesUploadDryRun(dry, filePath, parentNode, stepBase)
+		appendSlidesUploadDryRun(dry, filePath, uploadNode, slidesDryRunParentType(ref), stepBase)
 		return dry.Set("presentation_id", ref.Token)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -191,20 +217,15 @@ func uploadSlidesMedia(runtime *common.RuntimeContext, filePath, fileName string
 	})
 }
 
-// appendSlidesUploadDryRun renders the upload_all step for a single file.
-//
-// parentNode doubles as the parent_type source, so the preview shows the same
-// value Execute will send. One case cannot: when --presentation is a wiki URL
-// the caller passes a "<resolved_slides_token>" placeholder, because the real
-// token only exists after a get_node call the dry-run must not make. Such a
-// preview shows slide_file even if the resolved deck turns out to be an
-// imported office one.
-func appendSlidesUploadDryRun(d *common.DryRunAPI, filePath, parentNode string, step int) {
+// appendSlidesUploadDryRun renders the upload_all step for a single file. It is
+// pure rendering: parentType is passed in rather than derived from parentNode,
+// because parentNode may be a placeholder and a placeholder cannot be classified.
+func appendSlidesUploadDryRun(d *common.DryRunAPI, filePath, parentNode, parentType string, step int) {
 	d.POST("/open-apis/drive/v1/medias/upload_all").
 		Desc(fmt.Sprintf("[%d] Upload local file (max 20 MB)", step)).
 		Body(map[string]interface{}{
 			"file_name":   filepath.Base(filePath),
-			"parent_type": slidesMediaParentType(parentNode),
+			"parent_type": parentType,
 			"parent_node": parentNode,
 			"size":        "<file_size>",
 			"file":        "@" + filePath,
