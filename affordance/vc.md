@@ -38,6 +38,16 @@
 ### Skills
 - lark-meeting/references/lark-vc-agent-meeting-join.md
 
+## +meeting-invite
+
+### Skills
+- lark-meeting/references/lark-vc-agent-meeting-invite.md
+
+## +meeting-end
+
+### Skills
+- lark-meeting/references/lark-vc-agent-meeting-end.md
+
 ## +meeting-leave
 
 ### Skills
