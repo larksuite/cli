@@ -79,7 +79,7 @@ func TestVCMeetingScreenshot_Validation(t *testing.T) {
 
 }
 
-func TestVCMeetingScreenshot_SavesJPEG(t *testing.T) {
+func TestVCMeetingScreenshot_SavesJPEGWithoutLogID(t *testing.T) {
 	chdirForTest(t)
 	image := encodedMeetingScreenshotJPEG(t)
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
@@ -111,7 +111,10 @@ func TestVCMeetingScreenshot_SavesJPEG(t *testing.T) {
 	if request["meeting_id"] != "9876543210123" {
 		t.Fatalf("meeting_id = %q", request["meeting_id"])
 	}
-	if !strings.Contains(stdout.String(), "log-screenshot") || !strings.Contains(stdout.String(), "shot.jpg") {
+	if strings.Contains(stdout.String(), "log-screenshot") || strings.Contains(stdout.String(), `"log_id"`) {
+		t.Fatalf("success output contains log_id: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "shot.jpg") {
 		t.Fatalf("output = %s", stdout.String())
 	}
 	digest := sha256.Sum256(image)
