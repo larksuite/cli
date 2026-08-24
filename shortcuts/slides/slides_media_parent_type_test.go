@@ -188,7 +188,7 @@ func TestSlidesDryRunParentType(t *testing.T) {
 // to isOfficePresentation, so these cases pin the value while the production code
 // asserts it directly instead of deriving it.
 func TestSlidesDryRunPlaceholderNodeParentType(t *testing.T) {
-	const wikiURL = "https://bytedance.larkoffice.com/wiki/wikcnDryRunProbe123"
+	const wikiURL = "https://example.feishu.cn/wiki/wikcnDryRunProbe123"
 	slideXML := `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data>` +
 		`<img src="@./chart.png" topLeftX="10" topLeftY="10" width="100" height="100"/>` +
 		`</data></slide>`

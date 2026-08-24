@@ -47,7 +47,7 @@ func TestSlides_ImageUploadDryRunParentType(t *testing.T) {
 	const (
 		nativeToken = "presDryRunNative"
 		officeToken = "aaaaOaaaaFaaaaLaaaa0aaaaXaaa"
-		wikiURL     = "https://bytedance.larkoffice.com/wiki/wikcnDryRunProbe123"
+		wikiURL     = "https://example.feishu.cn/wiki/wikcnDryRunProbe123"
 		// What a preview shows in place of a token it must not resolve.
 		unresolvedNode = "<resolved_slides_token>"
 		slideXML       = `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data>` +
