@@ -14,16 +14,37 @@ import (
 // stubMailboxProfile registers a profile API stub that returns the given
 // primary email address (or an empty response when primary is empty).
 func stubMailboxProfile(reg *httpmock.Registry, primary string) {
+	stubMailboxProfileFor(reg, "me", primary)
+}
+
+func stubMailboxProfileFor(reg *httpmock.Registry, mailboxID, primary string) {
 	data := map[string]interface{}{}
 	if primary != "" {
 		data["primary_email_address"] = primary
 	}
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/user_mailboxes/me/profile",
+		URL:    mailboxPath(mailboxID, "profile"),
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": data,
+		},
+	})
+}
+
+func stubMailboxSendAs(reg *httpmock.Registry, addresses []interface{}) {
+	stubMailboxSendAsFor(reg, "me", addresses)
+}
+
+func stubMailboxSendAsFor(reg *httpmock.Registry, mailboxID string, addresses []interface{}) {
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    mailboxPath(mailboxID, "settings", "send_as"),
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"sendable_addresses": addresses,
+			},
 		},
 	})
 }
@@ -32,6 +53,13 @@ func stubMailboxProfile(reg *httpmock.Registry, primary string) {
 // message suitable for reply / reply-all / forward. Subject / body / headers
 // are fixed to deterministic values.
 func stubGetMessageWithFormat(reg *httpmock.Registry, messageID string) {
+	stubGetMessageWithRecipients(reg, messageID,
+		[]interface{}{map[string]interface{}{"mail_address": "alice@example.com", "name": "Alice"}},
+		nil,
+	)
+}
+
+func stubGetMessageWithRecipients(reg *httpmock.Registry, messageID string, to, cc []interface{}) {
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/user_mailboxes/me/messages/" + messageID,
@@ -47,9 +75,8 @@ func stubGetMessageWithFormat(reg *httpmock.Registry, messageID string) {
 						"mail_address": "bob@example.com",
 						"name":         "Bob",
 					},
-					"to": []interface{}{
-						map[string]interface{}{"mail_address": "alice@example.com", "name": "Alice"},
-					},
+					"to":              to,
+					"cc":              cc,
 					"internal_date":   "1700000000000",
 					"body_plain_text": base64.RawURLEncoding.EncodeToString([]byte("original body")),
 				},
@@ -64,9 +91,13 @@ func stubGetMessageWithFormat(reg *httpmock.Registry, messageID string) {
 // JSON body of the drafts.create request; decodeCapturedRawEML extracts the
 // base64url-decoded EML from it.
 func registerDraftCaptureStubs(reg *httpmock.Registry) *httpmock.Stub {
+	return registerDraftCaptureStubsFor(reg, "me")
+}
+
+func registerDraftCaptureStubsFor(reg *httpmock.Registry, mailboxID string) *httpmock.Stub {
 	createStub := &httpmock.Stub{
 		Method: "POST",
-		URL:    "/user_mailboxes/me/drafts",
+		URL:    mailboxPath(mailboxID, "drafts"),
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{"draft_id": "draft_001"},
@@ -75,7 +106,7 @@ func registerDraftCaptureStubs(reg *httpmock.Registry) *httpmock.Stub {
 	reg.Register(createStub)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
-		URL:    "/user_mailboxes/me/drafts/draft_001/send",
+		URL:    mailboxPath(mailboxID, "drafts", "draft_001", "send"),
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -85,6 +116,32 @@ func registerDraftCaptureStubs(reg *httpmock.Registry) *httpmock.Stub {
 		},
 	})
 	return createStub
+}
+
+func stubGetMessageWithRecipientsFor(reg *httpmock.Registry, mailboxID, messageID string, to, cc []interface{}) {
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    mailboxPath(mailboxID, "messages", messageID),
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"message": map[string]interface{}{
+					"message_id":      messageID,
+					"thread_id":       "thread_abc",
+					"smtp_message_id": "<orig@smtp.example.com>",
+					"subject":         "original subject",
+					"head_from": map[string]interface{}{
+						"mail_address": "bob@example.com",
+						"name":         "Bob",
+					},
+					"to":              to,
+					"cc":              cc,
+					"internal_date":   "1700000000000",
+					"body_plain_text": base64.RawURLEncoding.EncodeToString([]byte("original body")),
+				},
+			},
+		},
+	})
 }
 
 // decodeCapturedRawEML extracts and base64url-decodes the "raw" field from
@@ -119,7 +176,10 @@ func decodeCapturedRawEML(t *testing.T, capturedBody []byte) string {
 // header addressed to the sender into the outgoing draft's EML.
 func TestMailSend_RequestReceiptAddsHeader_Integration(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
-	stubMailboxProfile(reg, "me@example.com")
+	stubMailboxSendAs(reg, []interface{}{
+		map[string]interface{}{"email_address": "primary@example.com", "name": "Primary"},
+		map[string]interface{}{"email_address": "default.alias@example.com", "name": "Default Alias", "is_default": true},
+	})
 	createStub := registerDraftCaptureStubs(reg)
 
 	if err := runMountedMailShortcut(t, MailSend, []string{
@@ -133,10 +193,68 @@ func TestMailSend_RequestReceiptAddsHeader_Integration(t *testing.T) {
 		t.Fatalf("send failed: %v", err)
 	}
 	raw := decodeCapturedRawEML(t, createStub.CapturedBody)
-	// Pin the full header value so the From: header's me@example.com doesn't
-	// satisfy a substring check even when DNT is broken.
-	if !strings.Contains(raw, "Disposition-Notification-To: <me@example.com>") {
-		t.Errorf("expected DNT header addressed to sender; got EML:\n%s", raw)
+	if !strings.Contains(raw, `From: "Default Alias" <default.alias@example.com>`) {
+		t.Errorf("expected From header to use default send_as address and name; got EML:\n%s", raw)
+	}
+	if !strings.Contains(raw, `Disposition-Notification-To: "Default Alias" <default.alias@example.com>`) {
+		t.Errorf("expected DNT header addressed to sender name/address; got EML:\n%s", raw)
+	}
+}
+
+func TestMailSend_RequestReceiptMailboxWinsBeforeDefault(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
+	const mailboxID = "shared@example.com"
+	stubMailboxSendAsFor(reg, mailboxID, []interface{}{
+		map[string]interface{}{"email_address": "default.alias@example.com", "name": "Default Alias", "is_default": true},
+		map[string]interface{}{"email_address": mailboxID, "name": "Shared Mailbox"},
+	})
+	createStub := registerDraftCaptureStubsFor(reg, mailboxID)
+
+	if err := runMountedMailShortcut(t, MailSend, []string{
+		"+send",
+		"--mailbox", mailboxID,
+		"--to", "bob@example.com",
+		"--subject", "hi",
+		"--body", "please confirm",
+		"--request-receipt",
+		"--confirm-send",
+	}, f, stdout); err != nil {
+		t.Fatalf("send failed: %v", err)
+	}
+	raw := decodeCapturedRawEML(t, createStub.CapturedBody)
+	if !strings.Contains(raw, `From: "Shared Mailbox" <shared@example.com>`) {
+		t.Errorf("expected From header to use explicit mailbox sender before default; got EML:\n%s", raw)
+	}
+	if !strings.Contains(raw, `Disposition-Notification-To: "Shared Mailbox" <shared@example.com>`) {
+		t.Errorf("expected DNT header to use explicit mailbox sender before default; got EML:\n%s", raw)
+	}
+}
+
+func TestMailSend_RequestReceiptOldSendAsFallsBackToPrimary(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
+	stubMailboxSendAs(reg, []interface{}{
+		map[string]interface{}{"email_address": "first@example.com", "name": "First"},
+		map[string]interface{}{"email_address": "second@example.com", "name": "Second"},
+	})
+	stubMailboxProfile(reg, "primary@example.com")
+	createStub := registerDraftCaptureStubs(reg)
+
+	if err := runMountedMailShortcut(t, MailSend, []string{
+		"+send",
+		"--to", "bob@example.com",
+		"--subject", "hi",
+		"--body", "please confirm",
+		"--request-receipt",
+		"--confirm-send",
+	}, f, stdout); err != nil {
+		t.Fatalf("send failed: %v", err)
+	}
+	raw := decodeCapturedRawEML(t, createStub.CapturedBody)
+	if !strings.Contains(raw, `From: <primary@example.com>`) {
+		t.Errorf("expected From header to fall back to primary instead of first send_as; got EML:\n%s", raw)
+	}
+	if strings.Contains(raw, "first@example.com") || strings.Contains(raw, "second@example.com") {
+		t.Errorf("old send_as entries must not be used as fallback sender; got EML:\n%s", raw)
 	}
 }
 
@@ -168,7 +286,10 @@ func TestMailSend_RequestReceiptNoSender_FailsValidation(t *testing.T) {
 // for +reply: verifies DNT ends up in the reply draft's EML.
 func TestMailReply_RequestReceiptAddsHeader_Integration(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
-	stubMailboxProfile(reg, "me@example.com")
+	stubMailboxSendAs(reg, []interface{}{
+		map[string]interface{}{"email_address": "me@example.com", "name": "Me"},
+		map[string]interface{}{"email_address": "default.alias@example.com", "name": "Default Alias", "is_default": true},
+	})
 	stubGetMessageWithFormat(reg, "msg_orig")
 	createStub := registerDraftCaptureStubs(reg)
 
@@ -182,8 +303,98 @@ func TestMailReply_RequestReceiptAddsHeader_Integration(t *testing.T) {
 		t.Fatalf("reply failed: %v", err)
 	}
 	raw := decodeCapturedRawEML(t, createStub.CapturedBody)
-	if !strings.Contains(raw, "Disposition-Notification-To: <me@example.com>") {
-		t.Errorf("expected DNT header addressed to sender in reply EML; got:\n%s", raw)
+	if !strings.Contains(raw, `From: "Default Alias" <default.alias@example.com>`) {
+		t.Errorf("expected reply From header to use default send_as address and name; got:\n%s", raw)
+	}
+	if !strings.Contains(raw, `Disposition-Notification-To: "Default Alias" <default.alias@example.com>`) {
+		t.Errorf("expected DNT header addressed to sender name/address in reply EML; got:\n%s", raw)
+	}
+}
+
+func TestMailReply_PrefersOriginalRecipientSendAsAddress(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
+	stubMailboxSendAs(reg, []interface{}{
+		map[string]interface{}{"email_address": "default.alias@example.com", "name": "Default Alias", "is_default": true},
+		map[string]interface{}{"email_address": "to.alias@example.com", "name": "To Alias"},
+	})
+	stubGetMessageWithRecipients(reg, "msg_orig",
+		[]interface{}{map[string]interface{}{"mail_address": "TO.ALIAS@example.com", "name": "Recipient Alias"}},
+		nil,
+	)
+	createStub := registerDraftCaptureStubs(reg)
+
+	if err := runMountedMailShortcut(t, MailReply, []string{
+		"+reply",
+		"--message-id", "msg_orig",
+		"--body", "got it",
+		"--request-receipt",
+		"--confirm-send",
+	}, f, stdout); err != nil {
+		t.Fatalf("reply failed: %v", err)
+	}
+	raw := decodeCapturedRawEML(t, createStub.CapturedBody)
+	if !strings.Contains(raw, `From: "To Alias" <to.alias@example.com>`) {
+		t.Errorf("expected reply From header to use original To recipient send_as name/address; got:\n%s", raw)
+	}
+	if !strings.Contains(raw, `Disposition-Notification-To: "To Alias" <to.alias@example.com>`) {
+		t.Errorf("expected DNT header to use original To recipient send_as name/address; got:\n%s", raw)
+	}
+}
+
+func TestMailReply_MailboxWinsBeforeOriginalRecipientAndDefault(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
+	const mailboxID = "shared@example.com"
+	stubMailboxSendAsFor(reg, mailboxID, []interface{}{
+		map[string]interface{}{"email_address": "default.alias@example.com", "name": "Default Alias", "is_default": true},
+		map[string]interface{}{"email_address": "to.alias@example.com", "name": "To Alias"},
+		map[string]interface{}{"email_address": mailboxID, "name": "Shared Mailbox"},
+	})
+	stubGetMessageWithRecipientsFor(reg, mailboxID, "msg_orig",
+		[]interface{}{map[string]interface{}{"mail_address": "to.alias@example.com", "name": "Recipient Alias"}},
+		nil,
+	)
+	createStub := registerDraftCaptureStubsFor(reg, mailboxID)
+
+	if err := runMountedMailShortcut(t, MailReply, []string{
+		"+reply",
+		"--mailbox", mailboxID,
+		"--message-id", "msg_orig",
+		"--body", "got it",
+		"--request-receipt",
+		"--confirm-send",
+	}, f, stdout); err != nil {
+		t.Fatalf("reply failed: %v", err)
+	}
+	raw := decodeCapturedRawEML(t, createStub.CapturedBody)
+	if !strings.Contains(raw, `From: "Shared Mailbox" <shared@example.com>`) {
+		t.Errorf("expected reply From header to use explicit mailbox before original recipient/default; got:\n%s", raw)
+	}
+	if !strings.Contains(raw, `Disposition-Notification-To: "Shared Mailbox" <shared@example.com>`) {
+		t.Errorf("expected DNT header to use explicit mailbox before original recipient/default; got:\n%s", raw)
+	}
+}
+
+func TestMailReply_SendAsFailureFallsBackToPrimary(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
+	stubMailboxProfile(reg, "primary@example.com")
+	stubGetMessageWithFormat(reg, "msg_orig")
+	createStub := registerDraftCaptureStubs(reg)
+
+	if err := runMountedMailShortcut(t, MailReply, []string{
+		"+reply",
+		"--message-id", "msg_orig",
+		"--body", "got it",
+		"--request-receipt",
+		"--confirm-send",
+	}, f, stdout); err != nil {
+		t.Fatalf("reply failed: %v", err)
+	}
+	raw := decodeCapturedRawEML(t, createStub.CapturedBody)
+	if !strings.Contains(raw, `From: <primary@example.com>`) {
+		t.Errorf("expected reply From header to fall back to primary when send_as fails; got:\n%s", raw)
+	}
+	if !strings.Contains(raw, `Disposition-Notification-To: <primary@example.com>`) {
+		t.Errorf("expected DNT header to fall back to primary when send_as fails; got:\n%s", raw)
 	}
 }
 
@@ -194,6 +405,10 @@ func TestMailReply_RequestReceiptAddsHeader_Integration(t *testing.T) {
 // receipt only resolves against an explicitly configured sender.
 func TestMailReplyAll_RequestReceiptAddsHeader_Integration(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
+	stubMailboxSendAs(reg, []interface{}{
+		map[string]interface{}{"email_address": "me@example.com", "name": "Me"},
+		map[string]interface{}{"email_address": "default.alias@example.com", "name": "Default Alias", "is_default": true},
+	})
 	stubMailboxProfile(reg, "me@example.com")
 	stubGetMessageWithFormat(reg, "msg_orig")
 	createStub := registerDraftCaptureStubs(reg)
@@ -208,8 +423,43 @@ func TestMailReplyAll_RequestReceiptAddsHeader_Integration(t *testing.T) {
 		t.Fatalf("reply-all failed: %v", err)
 	}
 	raw := decodeCapturedRawEML(t, createStub.CapturedBody)
-	if !strings.Contains(raw, "Disposition-Notification-To: <me@example.com>") {
-		t.Errorf("expected DNT header addressed to sender in reply-all EML; got:\n%s", raw)
+	if !strings.Contains(raw, `From: "Default Alias" <default.alias@example.com>`) {
+		t.Errorf("expected reply-all From header to use default send_as address and name; got:\n%s", raw)
+	}
+	if !strings.Contains(raw, `Disposition-Notification-To: "Default Alias" <default.alias@example.com>`) {
+		t.Errorf("expected DNT header addressed to sender name/address in reply-all EML; got:\n%s", raw)
+	}
+}
+
+func TestMailReplyAll_PrefersOriginalToBeforeCcSendAsAddress(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
+	stubMailboxSendAs(reg, []interface{}{
+		map[string]interface{}{"email_address": "cc.alias@example.com", "name": "CC Alias"},
+		map[string]interface{}{"email_address": "to.alias@example.com", "name": "To Alias"},
+		map[string]interface{}{"email_address": "default.alias@example.com", "name": "Default Alias", "is_default": true},
+	})
+	stubMailboxProfile(reg, "me@example.com")
+	stubGetMessageWithRecipients(reg, "msg_orig",
+		[]interface{}{map[string]interface{}{"mail_address": "to.alias@example.com", "name": "Recipient To"}},
+		[]interface{}{map[string]interface{}{"mail_address": "cc.alias@example.com", "name": "Recipient Cc"}},
+	)
+	createStub := registerDraftCaptureStubs(reg)
+
+	if err := runMountedMailShortcut(t, MailReplyAll, []string{
+		"+reply-all",
+		"--message-id", "msg_orig",
+		"--body", "ack",
+		"--request-receipt",
+		"--confirm-send",
+	}, f, stdout); err != nil {
+		t.Fatalf("reply-all failed: %v", err)
+	}
+	raw := decodeCapturedRawEML(t, createStub.CapturedBody)
+	if !strings.Contains(raw, `From: "To Alias" <to.alias@example.com>`) {
+		t.Errorf("expected reply-all From header to prefer original To name/address before Cc; got:\n%s", raw)
+	}
+	if !strings.Contains(raw, `Disposition-Notification-To: "To Alias" <to.alias@example.com>`) {
+		t.Errorf("expected DNT header to prefer original To name/address before Cc; got:\n%s", raw)
 	}
 }
 
@@ -317,11 +567,59 @@ func TestMailDeclineReceipt_AlreadyCleared_Integration(t *testing.T) {
 	}
 }
 
+func TestMailSendReceipt_PrefersOriginalRecipientSendAsAddress(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
+	stubMailboxSendAs(reg, []interface{}{
+		map[string]interface{}{"email_address": "default.alias@example.com", "name": "Default Alias", "is_default": true},
+		map[string]interface{}{"email_address": "receipt.alias@example.com", "name": "Receipt Alias"},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/me/messages/msg_receipt",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"message": map[string]interface{}{
+					"message_id":      "msg_receipt",
+					"thread_id":       "thread_receipt",
+					"smtp_message_id": "<receipt-orig@example.com>",
+					"subject":         "receipt subject",
+					"head_from":       map[string]interface{}{"mail_address": "sender@example.com", "name": "Sender"},
+					"to":              []interface{}{map[string]interface{}{"mail_address": "receipt.alias@example.com", "name": "Receipt Recipient"}},
+					"cc":              []interface{}{},
+					"label_ids":       []interface{}{"READ_RECEIPT_REQUEST"},
+					"internal_date":   "1700000000000",
+					"body_plain_text": base64.RawURLEncoding.EncodeToString([]byte("original body")),
+				},
+			},
+		},
+	})
+	createStub := registerDraftCaptureStubs(reg)
+
+	if err := runMountedMailShortcut(t, MailSendReceipt, []string{
+		"+send-receipt",
+		"--message-id", "msg_receipt",
+		"--yes",
+	}, f, stdout); err != nil {
+		t.Fatalf("send-receipt failed: %v", err)
+	}
+	raw := decodeCapturedRawEML(t, createStub.CapturedBody)
+	if !strings.Contains(raw, `From: "Receipt Alias" <receipt.alias@example.com>`) {
+		t.Errorf("expected receipt From header to use original recipient send_as name/address; got:\n%s", raw)
+	}
+	if strings.Contains(raw, "default.alias@example.com") {
+		t.Errorf("receipt should prefer original recipient over default send_as; got:\n%s", raw)
+	}
+}
+
 // TestMailForward_RequestReceiptAddsHeader_Integration covers the same path
 // on +forward.
 func TestMailForward_RequestReceiptAddsHeader_Integration(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
-	stubMailboxProfile(reg, "me@example.com")
+	stubMailboxSendAs(reg, []interface{}{
+		map[string]interface{}{"email_address": "me@example.com", "name": "Me"},
+		map[string]interface{}{"email_address": "default.alias@example.com", "name": "Default Alias", "is_default": true},
+	})
 	stubGetMessageWithFormat(reg, "msg_orig")
 	createStub := registerDraftCaptureStubs(reg)
 
@@ -336,8 +634,42 @@ func TestMailForward_RequestReceiptAddsHeader_Integration(t *testing.T) {
 		t.Fatalf("forward failed: %v", err)
 	}
 	raw := decodeCapturedRawEML(t, createStub.CapturedBody)
-	if !strings.Contains(raw, "Disposition-Notification-To: <me@example.com>") {
-		t.Errorf("expected DNT header addressed to sender in forward EML; got:\n%s", raw)
+	if !strings.Contains(raw, `From: "Default Alias" <default.alias@example.com>`) {
+		t.Errorf("expected forward From header to use default send_as address and name; got:\n%s", raw)
+	}
+	if !strings.Contains(raw, `Disposition-Notification-To: "Default Alias" <default.alias@example.com>`) {
+		t.Errorf("expected DNT header addressed to sender name/address in forward EML; got:\n%s", raw)
+	}
+}
+
+func TestMailForward_PrefersOriginalCcSendAsAddressWhenToNotMatched(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
+	stubMailboxSendAs(reg, []interface{}{
+		map[string]interface{}{"email_address": "cc.alias@example.com", "name": "CC Alias"},
+		map[string]interface{}{"email_address": "default.alias@example.com", "name": "Default Alias", "is_default": true},
+	})
+	stubGetMessageWithRecipients(reg, "msg_orig",
+		[]interface{}{map[string]interface{}{"mail_address": "someone@example.com", "name": "Someone"}},
+		[]interface{}{map[string]interface{}{"mail_address": "cc.alias@example.com", "name": "Recipient Cc"}},
+	)
+	createStub := registerDraftCaptureStubs(reg)
+
+	if err := runMountedMailShortcut(t, MailForward, []string{
+		"+forward",
+		"--message-id", "msg_orig",
+		"--to", "eve@example.com",
+		"--body", "fyi",
+		"--request-receipt",
+		"--confirm-send",
+	}, f, stdout); err != nil {
+		t.Fatalf("forward failed: %v", err)
+	}
+	raw := decodeCapturedRawEML(t, createStub.CapturedBody)
+	if !strings.Contains(raw, `From: "CC Alias" <cc.alias@example.com>`) {
+		t.Errorf("expected forward From header to use original Cc recipient send_as name/address; got:\n%s", raw)
+	}
+	if !strings.Contains(raw, `Disposition-Notification-To: "CC Alias" <cc.alias@example.com>`) {
+		t.Errorf("expected DNT header to use original Cc recipient send_as name/address; got:\n%s", raw)
 	}
 }
 

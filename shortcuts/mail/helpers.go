@@ -99,12 +99,9 @@ func shellQuoteForHint(s string) string {
 // believing a receipt was requested when it wasn't. Intended to be called
 // from a shortcut's Execute right after the sender address has been resolved.
 //
-// The error wording is deliberately generic about recovery: compose shortcuts
-// (+send, +reply, +reply-all, +forward, +draft-create) can accept --from to
-// set the sender, but +draft-edit's --from names the mailbox that owns the
-// draft, not the DNT address — for that case the recovery is to make sure
-// the draft already has a valid From header. Pointing at --from unconditionally
-// would send +draft-edit users to the wrong flag.
+// The error wording is deliberately generic about recovery because some
+// shortcuts infer a sender from mailbox settings, while draft-edit may depend
+// on the existing draft's From header unless --from is explicitly supplied.
 func requireSenderForRequestReceipt(runtime *common.RuntimeContext, senderEmail string) error {
 	if !runtime.Bool("request-receipt") {
 		return nil
@@ -290,15 +287,11 @@ func resolveMailboxID(runtime *common.RuntimeContext) string {
 }
 
 // resolveComposeMailboxID returns the mailbox ID for compose shortcuts.
-// Priority: --mailbox > --from > "me".
-// When sending via an alias (send_as), use --mailbox for the owning mailbox
-// and --from for the alias sender address.
+// Priority: --mailbox > "me". When sending via an alias (send_as), use
+// --mailbox for the owning mailbox and --from for the alias sender address.
 func resolveComposeMailboxID(runtime *common.RuntimeContext) string {
 	if mb := runtime.Str("mailbox"); mb != "" {
 		return mb
-	}
-	if from := runtime.Str("from"); from != "" {
-		return from
 	}
 	return "me"
 }
@@ -353,19 +346,169 @@ func extractPrimaryEmail(data map[string]interface{}) string {
 	return ""
 }
 
-// resolveComposeSenderEmail determines the sender email for compose shortcuts.
-// Priority: --from > --mailbox > profile("me").
-// The profile API only supports "me", so when --mailbox is set to a non-"me"
-// address (e.g. a shared mailbox), its value is used directly as the sender.
+type composeSenderInfo struct {
+	Name  string
+	Email string
+}
+
+// resolveComposeSenderEmail determines the sender email for new compose
+// shortcuts. Priority: --from > --mailbox != me > default send_as >
+// profile("me").
 func resolveComposeSenderEmail(runtime *common.RuntimeContext) string {
-	if from := runtime.Str("from"); from != "" {
-		return from
+	return resolveComposeSenderInfo(runtime, resolveComposeMailboxID(runtime)).Email
+}
+
+func resolveComposeSenderInfo(runtime *common.RuntimeContext, mailboxID string) composeSenderInfo {
+	if from := strings.TrimSpace(runtime.Str("from")); from != "" {
+		return composeSenderInfo{Email: from}
 	}
-	if mb := runtime.Str("mailbox"); mb != "" && mb != "me" {
-		return mb
+	explicitMailbox := strings.TrimSpace(runtime.Str("mailbox"))
+	if addrs, ok := fetchSendAsAddresses(runtime, mailboxID); ok {
+		if sender := pickSendAsAddress(addrs, "", explicitMailbox); sender.Email != "" {
+			return sender
+		}
+	}
+	return resolvePrimarySenderInfo(runtime, explicitMailbox)
+}
+
+// resolveReplySenderInfo determines the sender for reply-like shortcuts
+// (+reply / +reply-all / +forward / +send-receipt). Unlike new compose, old
+// send_as responses without is_default must not make the first address look
+// like a deliberate reply identity.
+func resolveReplySenderInfo(runtime *common.RuntimeContext, mailboxID string, orig originalMessage) composeSenderInfo {
+	if from := strings.TrimSpace(runtime.Str("from")); from != "" {
+		return composeSenderInfo{Email: from}
+	}
+	explicitMailbox := strings.TrimSpace(runtime.Str("mailbox"))
+	if addrs, ok := fetchSendAsAddresses(runtime, mailboxID); ok {
+		if isExplicitMailboxSender(explicitMailbox) {
+			if sender := pickSendAsAddress(addrs, "", explicitMailbox); sender.Email != "" {
+				return sender
+			}
+		}
+		if sender := pickMyAddressFromOriginalMessage(addrs, orig.toAddressesFull, orig.ccAddressesFull); sender.Email != "" {
+			return sender
+		}
+		if sender := pickSendAsAddress(addrs, "", ""); sender.Email != "" {
+			return sender
+		}
+	}
+	return resolvePrimarySenderInfo(runtime, explicitMailbox)
+}
+
+func resolvePrimarySenderInfo(runtime *common.RuntimeContext, explicitMailbox string) composeSenderInfo {
+	if mailbox := strings.TrimSpace(explicitMailbox); isExplicitMailboxSender(mailbox) {
+		return composeSenderInfo{Email: mailbox}
 	}
 	email, _ := fetchMailboxPrimaryEmail(runtime, "me")
-	return email
+	return composeSenderInfo{Email: email}
+}
+
+func resolveDefaultSendAs(runtime *common.RuntimeContext, mailboxID string) (composeSenderInfo, bool) {
+	addrs, ok := fetchSendAsAddresses(runtime, mailboxID)
+	if !ok {
+		return composeSenderInfo{}, false
+	}
+	sender := pickSendAsAddress(addrs, "", "")
+	return sender, sender.Email != ""
+}
+
+func fetchSendAsAddresses(runtime *common.RuntimeContext, mailboxID string) ([]interface{}, bool) {
+	if runtime == nil || runtime.Factory == nil {
+		return nil, false
+	}
+	data, err := runtime.CallAPITyped("GET", mailboxPath(mailboxID, "settings", "send_as"), nil, nil)
+	if err != nil {
+		return nil, false
+	}
+	addrs, ok := data["sendable_addresses"].([]interface{})
+	if !ok {
+		if nested, nestedOK := data["data"].(map[string]interface{}); nestedOK {
+			addrs, ok = nested["sendable_addresses"].([]interface{})
+		}
+	}
+	if !ok || len(addrs) == 0 {
+		return nil, false
+	}
+	return addrs, true
+}
+
+func pickSendAsAddress(addrs []interface{}, fromEmail, mailboxID string) composeSenderInfo {
+	trimmedFrom := strings.TrimSpace(fromEmail)
+	trimmedMailbox := strings.TrimSpace(mailboxID)
+	var defaultSender composeSenderInfo
+	for _, raw := range addrs {
+		m, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		email := strings.TrimSpace(asString(m["email_address"]))
+		if email == "" {
+			continue
+		}
+		sender := composeSenderInfo{
+			Name:  strings.TrimSpace(asString(m["name"])),
+			Email: email,
+		}
+		if trimmedFrom != "" && strings.EqualFold(email, trimmedFrom) {
+			return sender
+		}
+		if trimmedFrom == "" && isExplicitMailboxSender(trimmedMailbox) && strings.EqualFold(email, trimmedMailbox) {
+			return sender
+		}
+		if trimmedFrom == "" && defaultSender.Email == "" && asBool(m["is_default"]) {
+			defaultSender = sender
+		}
+	}
+	if trimmedFrom == "" && isExplicitMailboxSender(trimmedMailbox) {
+		return composeSenderInfo{Email: trimmedMailbox}
+	}
+	return defaultSender
+}
+
+func isExplicitMailboxSender(mailboxID string) bool {
+	return mailboxID != "" && !strings.EqualFold(mailboxID, "me")
+}
+
+func pickMyAddressFromOriginalMessage(addrs []interface{}, originalTo, originalCc []mailAddressPair) composeSenderInfo {
+	sendable := make(map[string]composeSenderInfo, len(addrs))
+	for _, raw := range addrs {
+		m, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		email := strings.TrimSpace(asString(m["email_address"]))
+		if email == "" {
+			continue
+		}
+		sendable[strings.ToLower(email)] = composeSenderInfo{
+			Name:  strings.TrimSpace(asString(m["name"])),
+			Email: email,
+		}
+	}
+	for _, group := range [][]mailAddressPair{originalTo, originalCc} {
+		for _, recipient := range group {
+			sender, ok := sendable[strings.ToLower(strings.TrimSpace(recipient.Email))]
+			if !ok {
+				continue
+			}
+			if sender.Name == "" {
+				sender.Name = strings.TrimSpace(recipient.Name)
+			}
+			return sender
+		}
+	}
+	return composeSenderInfo{}
+}
+
+func asString(v interface{}) string {
+	s, _ := v.(string)
+	return s
+}
+
+func asBool(v interface{}) bool {
+	b, _ := v.(bool)
+	return b
 }
 
 // fetchSelfEmailSet returns a set of addresses to exclude as "self" in

@@ -64,8 +64,8 @@ lark-cli mail +forward --message-id <邮件ID> --to alice@example.com --dry-run
 | `--to <emails>` | 是 | 收件人邮箱，多个用逗号分隔 |
 | `--body <text>` | 否 | 转发时附加的说明文字。推荐使用 HTML 获得富文本排版；也支持纯文本。根据转发正文和原邮件正文自动检测 HTML。使用 `--plain-text` 可强制纯文本模式。支持 `<img src="./local.png" />` 相对路径自动解析为内嵌图片（仅支持相对路径，不支持绝对路径）。与 `--body-file` 互斥 |
 | `--body-file <path>` | 否 | 从文件读取转发说明 HTML（相对路径，仅限 cwd 子树）。与 `--body` 互斥。文件大小上限 32 MB |
-| `--from <email>` | 否 | 发件人邮箱地址（EML From 头）。使用别名（send_as）发信时，设为别名地址并配合 `--mailbox` 指定所属邮箱。默认读取邮箱主地址 |
-| `--mailbox <email>` | 否 | 邮箱地址，指定草稿所属的邮箱（默认回退到 `--from`，再回退到 `me`）。当发件人（`--from`）与邮箱不同时使用。可通过 `accessible_mailboxes` 查询可用邮箱 |
+| `--from <email>` | 否 | 发件人邮箱地址（EML From 头）。使用别名（send_as）发信时，设为别名地址并配合 `--mailbox` 指定所属邮箱。省略时按 `--mailbox != me`、原邮件 To/Cc 中命中的我的可发信地址、邮箱默认发信地址、主邮箱地址的顺序选择 |
+| `--mailbox <email>` | 否 | 邮箱地址，指定草稿所属的邮箱（默认 `me`）。省略 `--from` 且该值不是 `me` 时，也优先作为发件身份。可通过 `accessible_mailboxes` 查询可用邮箱 |
 | `--cc <emails>` | 否 | 抄送邮箱，多个用逗号分隔 |
 | `--bcc <emails>` | 否 | 密送邮箱，多个用逗号分隔。与 `--event-*` 不兼容（见 `+send` 日程邀请约束） |
 | `--plain-text` | 否 | 强制纯文本模式，忽略所有 HTML 自动检测。不可与 `--inline` 同时使用。纯文本模式下也会自动追加纯文本签名（HTML 签名经 `PlainTextFromHTML` 转换，内联图片丢弃） |

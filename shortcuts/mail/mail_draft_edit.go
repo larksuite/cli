@@ -27,8 +27,8 @@ var MailDraftEdit = common.Shortcut{
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "from", Default: "me", Desc: "Mailbox email address containing the draft (default: me). Prefer --mailbox for clarity; --from is kept for backward compatibility."},
-		{Name: "mailbox", Desc: "Mailbox email address that owns the draft (default: falls back to --from, then me). Takes priority over --from when both are set."},
+		{Name: "from", Desc: "Sender email address for the draft's From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox."},
+		{Name: "mailbox", Desc: "Mailbox email address that owns the draft (default: me)."},
 		{Name: "draft-id", Desc: "Target draft ID. Required for real edits. It can be omitted only when using the --print-patch-template flag by itself."},
 		{Name: "set-subject", Desc: "Replace the subject with this final value. Use this for full subject replacement, not for appending a fragment to the existing subject."},
 		{Name: "set-to", Desc: "Replace the entire To recipient list with the addresses provided here. Separate multiple addresses with commas. Display-name format is supported."},
@@ -106,20 +106,15 @@ var MailDraftEdit = common.Shortcut{
 			return mailFailedPreconditionError("parse draft raw EML failed: %v", err).WithCause(err)
 		}
 		// Pre-process ops that need snapshot context: resolve signature using
-		// the draft's From address, and build ICS for set_calendar using the
-		// draft's From/To/Cc so organizer and attendee addresses are correct.
-		var draftFromEmail string
-		if len(snapshot.From) > 0 {
-			draftFromEmail = snapshot.From[0].Address
-		}
+		// the effective From address, and build ICS for set_calendar using the
+		// effective From/To/Cc so organizer and attendee addresses are correct.
+		draftFromEmail := effectiveDraftFromEmail(snapshot, patch.Ops)
 		if err := requireSenderForRequestReceipt(runtime, draftFromEmail); err != nil {
 			return err
 		}
 		if runtime.Bool("request-receipt") {
-			// draftFromEmail comes from the existing draft's From header,
-			// which could have been authored via a raw-EML path (IMAP APPEND,
-			// OpenAPI drafts raw) and contain CR/LF or dangerous Unicode.
-			// Going straight into PatchOp.Value would bypass emlbuilder's
+			// draftFromEmail may come from the existing draft's From header or
+			// a patch-file set_header op. Either path can bypass emlbuilder's
 			// validateHeaderValue gate, so repeat the check here explicitly.
 			if err := validateHeaderAddress(draftFromEmail); err != nil {
 				return mailFailedPreconditionError(
@@ -345,8 +340,43 @@ func prettyDraftAddresses(addrs []draftpkg.Address) string {
 	return strings.Join(parts, ", ")
 }
 
+func draftEditFromHeader(raw string) (draftpkg.PatchOp, string, error) {
+	addrs := parseNetAddrs(raw)
+	if len(addrs) != 1 {
+		return draftpkg.PatchOp{}, "", mailValidationParamError("--from", "--from must contain exactly one sender address")
+	}
+	addr := draftpkg.Address{Name: addrs[0].Name, Address: addrs[0].Address}
+	value := addr.String()
+	if err := validateHeaderAddress(value); err != nil {
+		return draftpkg.PatchOp{}, "", mailValidationParamError("--from", "invalid --from address: %v", err)
+	}
+	return draftpkg.PatchOp{Op: "set_header", Name: "From", Value: value}, addr.Address, nil
+}
+
+func effectiveDraftFromEmail(snapshot *draftpkg.DraftSnapshot, ops []draftpkg.PatchOp) string {
+	var email string
+	if len(snapshot.From) > 0 {
+		email = snapshot.From[0].Address
+	}
+	for _, op := range ops {
+		if !strings.EqualFold(strings.TrimSpace(op.Name), "From") {
+			continue
+		}
+		switch op.Op {
+		case "set_header":
+			addrs := parseNetAddrs(op.Value)
+			if len(addrs) > 0 {
+				email = addrs[0].Address
+			}
+		case "remove_header":
+			email = ""
+		}
+	}
+	return email
+}
+
 // buildDraftEditPatch assembles a draftpkg.Patch from the runtime flags:
-// direct flags (--set-subject / --set-to / --set-cc / --set-bcc /
+// direct flags (--from / --set-subject / --set-to / --set-cc / --set-bcc /
 // --set-priority) become Ops, and --patch-file is loaded and merged.
 // Returns ErrValidation when neither direct flags nor --patch-file produce
 // any operations.
@@ -392,6 +422,13 @@ func buildDraftEditPatch(runtime *common.RuntimeContext) (draftpkg.Patch, error)
 		})
 	}
 
+	if runtime.Changed("from") {
+		op, _, err := draftEditFromHeader(runtime.Str("from"))
+		if err != nil {
+			return patch, err
+		}
+		patch.Ops = append(patch.Ops, op)
+	}
 	if value := strings.TrimSpace(runtime.Str("set-subject")); value != "" {
 		patch.Ops = append(patch.Ops, draftpkg.PatchOp{Op: "set_subject", Value: value})
 	}

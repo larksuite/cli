@@ -20,7 +20,7 @@ func newDraftEditRuntime(flags map[string]string) *common.RuntimeContext {
 	cmd := &cobra.Command{Use: "test"}
 	for _, name := range []string{
 		"set-subject", "set-to", "set-cc", "set-bcc",
-		"set-priority", "patch-file",
+		"from", "set-priority", "patch-file",
 		"set-event-summary", "set-event-start", "set-event-end", "set-event-location",
 	} {
 		cmd.Flags().String(name, "", "")
@@ -131,6 +131,31 @@ func TestBuildDraftEditPatch_NoPriority(t *testing.T) {
 	// Only the set_subject op should be present; no priority op injected.
 	if len(patch.Ops) != 1 || patch.Ops[0].Op != "set_subject" {
 		t.Errorf("expected single set_subject op, got %+v", patch.Ops)
+	}
+}
+
+func TestBuildDraftEditPatch_SetFromHeader(t *testing.T) {
+	rt := newDraftEditRuntime(map[string]string{"from": "Alias <alias@example.com>"})
+	patch, err := buildDraftEditPatch(rt)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(patch.Ops) != 1 {
+		t.Fatalf("expected 1 op, got %d: %+v", len(patch.Ops), patch.Ops)
+	}
+	op := patch.Ops[0]
+	if op.Op != "set_header" || op.Name != "From" {
+		t.Fatalf("expected set_header From, got %+v", op)
+	}
+	if op.Value != `"Alias" <alias@example.com>` {
+		t.Fatalf("Value = %q, want %q", op.Value, `"Alias" <alias@example.com>`)
+	}
+}
+
+func TestBuildDraftEditPatch_SetFromRejectsMultiple(t *testing.T) {
+	rt := newDraftEditRuntime(map[string]string{"from": "a@example.com,b@example.com"})
+	if _, err := buildDraftEditPatch(rt); err == nil {
+		t.Fatal("expected error for multiple --from addresses")
 	}
 }
 

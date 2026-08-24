@@ -48,8 +48,8 @@ lark-cli mail +draft-create --to alice@example.com --subject '测试' --body 'te
 | `--subject <text>` | 是 | 草稿主题 |
 | `--body <text>` | 二选一 | 邮件正文。推荐使用 HTML 获得富文本排版；也支持纯文本（自动检测）。使用 `--plain-text` 可强制纯文本模式。支持 `<img src="./local.png" />` 相对路径自动解析为内嵌图片（仅支持相对路径，不支持绝对路径）。与 `--body-file` 互斥 |
 | `--body-file <path>` | 二选一 | 从文件读取邮件正文 HTML（相对路径，仅限 cwd 子树）。与 `--body` 互斥。文件大小上限 32 MB |
-| `--from <email>` | 否 | 发件人邮箱地址（EML From 头）。使用别名（send_as）发信时，设为别名地址并配合 `--mailbox` 指定所属邮箱。省略时使用邮箱主地址 |
-| `--mailbox <email>` | 否 | 邮箱地址，指定草稿所属的邮箱（默认回退到 `--from`，再回退到 `me`）。当发件人（`--from`）与邮箱不同时使用，如通过别名或 send_as 地址发信。可通过 `accessible_mailboxes` 查询可用邮箱 |
+| `--from <email>` | 否 | 发件人邮箱地址（EML From 头）。使用别名（send_as）发信时，设为别名地址并配合 `--mailbox` 指定所属邮箱。省略时按 `--mailbox != me`、邮箱默认发信地址、主邮箱地址的顺序选择；旧服务端无默认标记或接口失败时回退到主邮箱地址 |
+| `--mailbox <email>` | 否 | 邮箱地址，指定草稿所属的邮箱（默认 `me`）。省略 `--from` 且该值不是 `me` 时，也优先作为发件身份。可通过 `accessible_mailboxes` 查询可用邮箱 |
 | `--cc <emails>` | 否 | 完整抄送列表，多个用逗号分隔 |
 | `--bcc <emails>` | 否 | 完整密送列表，多个用逗号分隔。与 `--event-*` 不兼容（见 `+send` 日程邀请约束） |
 | `--plain-text` | 否 | 强制纯文本模式，忽略 HTML 自动检测。不可与 `--inline` 同时使用。纯文本模式下也会自动追加纯文本签名（HTML 签名经 `PlainTextFromHTML` 转换，内联图片丢弃） |

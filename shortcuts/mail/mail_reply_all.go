@@ -28,8 +28,8 @@ var MailReplyAll = common.Shortcut{
 		{Name: "message-id", Desc: "Required. Message ID to reply to all recipients", Required: true},
 		{Name: "body", Desc: "Reply body. Prefer HTML for rich formatting; plain text is also supported. Body type is auto-detected from the reply body and the original message. Use --plain-text to force plain-text mode. Mutually exclusive with --body-file. Required unless --template-id supplies a non-empty body."},
 		bodyFileFlag,
-		{Name: "from", Desc: "Sender email address for the From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox. Defaults to the mailbox's primary address."},
-		{Name: "mailbox", Desc: "Mailbox email address that owns the draft (default: falls back to --from, then me). Use this when the sender (--from) differs from the mailbox, e.g. sending via an alias or send_as address."},
+		{Name: "from", Desc: "Sender email address for the From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox. Defaults to --mailbox when it is not me, then a send_as address that matches the original To/Cc, then the mailbox default send_as address."},
+		{Name: "mailbox", Desc: "Mailbox email address that owns the draft (default: me). When --from is omitted and this is not me, it is also used as the sender identity."},
 		{Name: "to", Desc: "Additional To address(es), comma-separated (appended to original recipients)"},
 		{Name: "cc", Desc: "Additional CC email address(es), comma-separated"},
 		{Name: "bcc", Desc: "BCC email address(es), comma-separated"},
@@ -51,9 +51,9 @@ var MailReplyAll = common.Shortcut{
 		messageId := runtime.Str("message-id")
 		confirmSend := runtime.Bool("confirm-send")
 		mailboxID := resolveComposeMailboxID(runtime)
-		desc := "Reply-all: fetch original message (with recipients) → resolve sender address → save as draft"
+		desc := "Reply-all: fetch original message (with recipients) → resolve sender from --mailbox, original recipients, or default send_as → save as draft"
 		if confirmSend {
-			desc = "Reply-all (--confirm-send): fetch original message (with recipients) → resolve sender address → create draft → send draft"
+			desc = "Reply-all (--confirm-send): fetch original message (with recipients) → resolve sender from --mailbox, original recipients, or default send_as → create draft → send draft"
 		}
 		api := common.NewDryRunAPI().Desc(desc)
 		if tid := runtime.Str("template-id"); tid != "" {
@@ -61,6 +61,7 @@ var MailReplyAll = common.Shortcut{
 				Desc("Fetch template to merge with reply-all-derived recipients / body.")
 		}
 		api = api.GET(mailboxPath(mailboxID, "messages", messageId)).
+			GET(mailboxPath(mailboxID, "settings", "send_as")).
 			GET(mailboxPath(mailboxID, "profile")).
 			POST(mailboxPath(mailboxID, "drafts")).
 			Body(map[string]interface{}{"raw": "<base64url-EML>"})
@@ -140,7 +141,8 @@ var MailReplyAll = common.Shortcut{
 		orig := sourceMsg.Original
 		stripLargeAttachmentCard(&orig)
 
-		resolvedSender := resolveComposeSenderEmail(runtime)
+		resolvedSenderInfo := resolveReplySenderInfo(runtime, mailboxID, orig)
+		resolvedSender := resolvedSenderInfo.Email
 		// Check --request-receipt BEFORE the orig.headTo fallback below:
 		// the receipt's Disposition-Notification-To must point to an address
 		// the caller explicitly controls, not to a fallback picked from the
@@ -149,9 +151,11 @@ var MailReplyAll = common.Shortcut{
 		if err := requireSenderForRequestReceipt(runtime, resolvedSender); err != nil {
 			return err
 		}
+		senderName := resolvedSenderInfo.Name
 		senderEmail := resolvedSender
 		if senderEmail == "" {
 			senderEmail = orig.headTo
+			senderName = ""
 		}
 
 		// Signature ID is resolved here (after senderEmail is finalised) so DefaultReplyID
@@ -259,13 +263,13 @@ var MailReplyAll = common.Shortcut{
 			Subject(subjectLine).
 			ToAddrs(parseNetAddrs(toList))
 		if senderEmail != "" {
-			bld = bld.From("", senderEmail)
+			bld = bld.From(senderName, senderEmail)
 		}
 		// Note: requireSenderForRequestReceipt already ran above against
 		// resolvedSender (pre-fallback). When --request-receipt is set we
 		// are guaranteed resolvedSender != "", so senderEmail == resolvedSender.
 		if runtime.Bool("request-receipt") {
-			bld = bld.DispositionNotificationTo("", senderEmail)
+			bld = bld.DispositionNotificationTo(senderName, senderEmail)
 		}
 		if ccList != "" {
 			bld = bld.CCAddrs(parseNetAddrs(ccList))

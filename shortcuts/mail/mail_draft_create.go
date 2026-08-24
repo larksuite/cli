@@ -46,8 +46,8 @@ var MailDraftCreate = common.Shortcut{
 		{Name: "subject", Desc: "Final draft subject. Pass the full subject you want to appear in the draft. Required unless --template-id supplies a non-empty subject."},
 		{Name: "body", Desc: "Full email body. Prefer HTML for rich formatting (bold, lists, links); plain text is also supported. Body type is auto-detected. Use --plain-text to force plain-text mode. Mutually exclusive with --body-file. Required unless --template-id supplies a non-empty body."},
 		bodyFileFlag,
-		{Name: "from", Desc: "Optional. Sender email address for the From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox. If omitted, the mailbox's primary address is used."},
-		{Name: "mailbox", Desc: "Optional. Mailbox email address that owns the draft (default: falls back to --from, then me). Use this when the sender (--from) differs from the mailbox, e.g. sending via an alias or send_as address."},
+		{Name: "from", Desc: "Optional. Sender email address for the From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox. If omitted, uses --mailbox when it is not me, then the mailbox's default send_as address, then the primary address fallback."},
+		{Name: "mailbox", Desc: "Optional. Mailbox email address that owns the draft (default: me). When --from is omitted and this is not me, it is also used as the sender identity."},
 		{Name: "cc", Desc: "Optional. Full Cc recipient list. Separate multiple addresses with commas. Display-name format is supported."},
 		{Name: "bcc", Desc: "Optional. Full Bcc recipient list. Separate multiple addresses with commas. Display-name format is supported."},
 		{Name: "plain-text", Type: "bool", Desc: "Force plain-text mode, ignoring HTML auto-detection. Cannot be used with --inline."},
@@ -64,12 +64,13 @@ var MailDraftCreate = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		mailboxID := resolveComposeMailboxID(runtime)
 		api := common.NewDryRunAPI().
-			Desc("Create a new empty draft without sending it. The command resolves the sender address (from --from, --mailbox, or mailbox profile), builds a complete EML from `to/subject/body` plus any optional cc/bcc/attachment/inline inputs, and finally calls drafts.create. `--body` content type is auto-detected (HTML or plain text); use `--plain-text` to force plain-text mode. For inline images, CIDs can be any unique strings, e.g. random hex. Use the dedicated reply or forward shortcuts for reply-style drafts instead of adding reply-thread headers here.")
+			Desc("Create a new empty draft without sending it. The command resolves the sender address (from --from, --mailbox when not me, mailbox default send_as, or mailbox profile), builds a complete EML from `to/subject/body` plus any optional cc/bcc/attachment/inline inputs, and finally calls drafts.create. `--body` content type is auto-detected (HTML or plain text); use `--plain-text` to force plain-text mode. For inline images, CIDs can be any unique strings, e.g. random hex. Use the dedicated reply or forward shortcuts for reply-style drafts instead of adding reply-thread headers here.")
 		if tid := runtime.Str("template-id"); tid != "" {
 			api = api.GET(templateMailboxPath(mailboxID, tid)).
 				Desc("Fetch template to merge with compose flags (subject/body/to/cc/bcc/attachments).")
 		}
-		api = api.GET(mailboxPath(mailboxID, "profile")).
+		api = api.GET(mailboxPath(mailboxID, "settings", "send_as")).
+			GET(mailboxPath(mailboxID, "profile")).
 			POST(mailboxPath(mailboxID, "drafts")).
 			Body(map[string]interface{}{
 				"raw": "<base64url-EML>",
@@ -183,7 +184,8 @@ var MailDraftCreate = common.Shortcut{
 		}
 		signatureID := runtime.Str("signature-id")
 		noSignature := runtime.Bool("no-signature")
-		senderEmail := resolveComposeSenderEmail(runtime)
+		senderInfo := resolveComposeSenderInfo(runtime, mailboxID)
+		senderEmail := senderInfo.Email
 		// Auto-resolve default signature when neither --no-signature nor --signature-id is set.
 		if noSignature {
 			signatureID = ""
@@ -196,7 +198,7 @@ var MailDraftCreate = common.Shortcut{
 			return err
 		}
 		rawEML, lintApplied, lintBlocked, err := buildRawEMLForDraftCreate(ctx, runtime, input, sigResult, priority,
-			templateLargeAttachmentIDs, mailboxID, templateID, templateInlineAttachments, templateSmallAttachments, senderEmail)
+			templateLargeAttachmentIDs, mailboxID, templateID, templateInlineAttachments, templateSmallAttachments, senderInfo)
 		if err != nil {
 			return err
 		}
@@ -252,7 +254,7 @@ func buildRawEMLForDraftCreate(
 	mailboxID, templateID string,
 	templateInlineAttachments []templateInlineRef,
 	templateSmallAttachments []templateAttachmentRef,
-	senderEmailHint string,
+	senderInfoHint composeSenderInfo,
 ) (rawEMLOut string, lintApplied, lintBlocked []lint.Finding, err error) {
 	// Initialise lint findings as empty (non-nil) slices so callers can
 	// surface them through the envelope unconditionally even on the
@@ -261,10 +263,11 @@ func buildRawEMLForDraftCreate(
 
 	// Use the pre-resolved senderEmail when available (avoids a duplicate
 	// profile API call when Execute already fetched it for auto-resolve).
-	senderEmail := senderEmailHint
-	if senderEmail == "" {
-		senderEmail = resolveComposeSenderEmail(runtime)
+	senderInfo := senderInfoHint
+	if senderInfo.Email == "" {
+		senderInfo = resolveComposeSenderInfo(runtime, resolveComposeMailboxID(runtime))
 	}
+	senderEmail := senderInfo.Email
 	if senderEmail == "" {
 		return "", lintApplied, lintBlocked, mailValidationParamError("--from", "unable to determine sender email; please specify --from explicitly")
 	}
@@ -280,7 +283,7 @@ func buildRawEMLForDraftCreate(
 		bld = bld.ToAddrs(parseNetAddrs(input.To))
 	}
 	if senderEmail != "" {
-		bld = bld.From("", senderEmail)
+		bld = bld.From(senderInfo.Name, senderEmail)
 	}
 	// senderEmail non-emptiness is already enforced above (L140); the flag-
 	// driven guard here only exists to make the relationship explicit to
@@ -291,7 +294,7 @@ func buildRawEMLForDraftCreate(
 		return "", lintApplied, lintBlocked, err
 	}
 	if runtime.Bool("request-receipt") {
-		bld = bld.DispositionNotificationTo("", senderEmail)
+		bld = bld.DispositionNotificationTo(senderInfo.Name, senderEmail)
 	}
 	if input.CC != "" {
 		bld = bld.CCAddrs(parseNetAddrs(input.CC))
