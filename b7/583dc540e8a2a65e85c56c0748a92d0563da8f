@@ -1,0 +1,23 @@
+tests/cli_e2e/slides/coverage.md
+  s_6646fc08d952c8::t_97271900331811 32
+  s_6646fc08d952c8::t_fa4cef4b2fe333 31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b7583dc540e8a2a65e85c56c0748a92d0563da8f",
+  "prompts": {},
+  "sessions": {
+    "s_6646fc08d952c8": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8bfcd0da38ac2ced23ff3c",
+        "model": "Doubao-Seed-2.1-Pro__dev",
+        "display_model_name": "Seed-2.1-Pro"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
