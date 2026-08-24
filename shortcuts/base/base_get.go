@@ -6,6 +6,7 @@ package base
 import (
 	"context"
 
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -24,4 +25,27 @@ var BaseBaseGet = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeBaseGet(runtime)
 	},
+	Citation: &common.CitationDefinition{
+		SourceTypes: []citation.SourceType{citation.SourceBase},
+		Build:       baseGetCitations,
+	},
+}
+
+// baseGetCitations builds a citation only from the final +base-get payload.
+// The Base API supplies the tenant-correct native URL; when it does not, the
+// framework drops the empty-URL entry instead of guessing a web host.
+func baseGetCitations(_ *common.RuntimeContext, data any) []citation.Citation {
+	out, ok := data.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	base := common.GetMap(out, "base")
+	if base == nil {
+		return nil
+	}
+	return []citation.Citation{{
+		SourceType: citation.SourceBase,
+		URL:        common.GetString(base, "url"),
+		Title:      common.GetString(base, "name"),
+	}}
 }
