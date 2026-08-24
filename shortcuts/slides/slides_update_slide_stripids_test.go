@@ -1,0 +1,71 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
+package slides
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestStripSlideNoteID(t *testing.T) {
+	in := `<slide id="p1"><style><fill id="f1"><fillColor color="rgba(1,2,3,1)"/></fill></style><data>` +
+		`<shape type="text" id="bKZ" topLeftX="80"><content textType="title"><p>x</p></content></shape>` +
+		// embed carries an SVG with an internal gradient referenced by url(#id):
+		`<embed id="bmU" width="35"><svg xmlns="http://www.w3.org/2000/svg" id="svgroot">` +
+		`<defs><linearGradient id="grad"/></defs><path id="pp" d="M0 0" fill="url(#grad)"/><use href="#pp"/></svg></embed>` +
+		`</data><note id="blw"><content><p>n</p></content></note></slide>`
+	out := stripSlideNoteID(in)
+
+	// Only the <note> id is stripped.
+	if strings.Contains(out, `id="blw"`) {
+		t.Errorf("expected note id to be stripped, got: %s", out)
+	}
+	// The note element itself and its content survive.
+	for _, kept := range []string{`<note`, `<p>n</p>`} {
+		if !strings.Contains(out, kept) {
+			t.Errorf("expected %s to survive, got: %s", kept, out)
+		}
+	}
+
+	// Every visible element keeps its id (updated in place, not rebuilt).
+	for _, kept := range []string{`id="p1"`, `id="f1"`, `id="bKZ"`, `id="bmU"`} {
+		if !strings.Contains(out, kept) {
+			t.Errorf("expected %s to be preserved, got: %s", kept, out)
+		}
+	}
+	// SVG-subtree ids and their references are untouched.
+	for _, kept := range []string{`id="svgroot"`, `id="grad"`, `id="pp"`, `fill="url(#grad)"`, `href="#pp"`} {
+		if !strings.Contains(out, kept) {
+			t.Errorf("expected %s to be preserved, got: %s", kept, out)
+		}
+	}
+	// Non-id attributes and content survive.
+	for _, kept := range []string{`type="text"`, `topLeftX="80"`, `width="35"`, `<p>x</p>`} {
+		if !strings.Contains(out, kept) {
+			t.Errorf("expected %s to survive, got: %s", kept, out)
+		}
+	}
+}
+
+// A page with no <note> is passed through unchanged.
+func TestStripSlideNoteIDNoNote(t *testing.T) {
+	in := `<slide id="p1"><data><shape type="text" id="bKZ"><content><p>x</p></content></shape></data></slide>`
+	if out := stripSlideNoteID(in); out != in {
+		t.Errorf("expected unchanged output, got: %s", out)
+	}
+}
+
+// The note id is stripped regardless of attribute order on the <note> tag.
+func TestStripSlideNoteIDAttrOrder(t *testing.T) {
+	in := `<slide id="p1"><data/><note foo="bar" id="blw" baz="qux"><content><p>n</p></content></note></slide>`
+	out := stripSlideNoteID(in)
+	if strings.Contains(out, `id="blw"`) {
+		t.Errorf("expected note id to be stripped, got: %s", out)
+	}
+	for _, kept := range []string{`foo="bar"`, `baz="qux"`} {
+		if !strings.Contains(out, kept) {
+			t.Errorf("expected %s to survive, got: %s", kept, out)
+		}
+	}
+}

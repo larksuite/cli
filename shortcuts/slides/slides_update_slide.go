@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -333,8 +334,8 @@ func slideReplaceAPIPath(presentationID string) string {
 }
 
 // updateSlideContent validates --content and returns it with the root id set to
-// slideID. The caller's own bytes are preserved apart from that one attribute:
-// their formatting ends up in the page.
+// slideID, and with a stale <note> id dropped. The caller's bytes are otherwise
+// preserved, so their formatting lands in the page.
 func updateSlideContent(runtime *common.RuntimeContext, slideID string) (string, error) {
 	content := strings.TrimSpace(runtime.Str("content"))
 	if content == "" {
@@ -352,6 +353,12 @@ func updateSlideContent(runtime *common.RuntimeContext, slideID string) (string,
 			"--content root is <slide id=%q> but --slide-id is %q; pass the page you mean to replace, or drop the id",
 			rootID, slideID)
 	}
+	// Drop a carried <note id="..."> so the backend targets the page's own note
+	// block. A stale note id (XML copied from another page, or written over a
+	// re-created page) otherwise makes RewriteSlideBySXSD reject the whole page
+	// with "block is not NoteBlock". Only the note id is touched; visible elements
+	// keep their ids and are updated in place.
+	content = stripSlideNoteID(content)
 	stamped, err := ensureXMLRootID(content, slideID)
 	if err != nil {
 		// checkSlideRoot already proved there is a single <slide> root, so the only
@@ -362,6 +369,24 @@ func updateSlideContent(runtime *common.RuntimeContext, slideID string) (string,
 			" with a default xmlns if you need one").WithCause(err)
 	}
 	return stamped, nil
+}
+
+// slideNoteIDRe matches the id attribute on a <note> element's open tag.
+var slideNoteIDRe = regexp.MustCompile(`(<note\b[^>]*?)\s+id="[^"]*"`)
+
+// stripSlideNoteID drops the id from the page's <note> (speaker notes) element.
+//
+// A +update-slide carrying a <note id="..."> that is not the page's current note
+// block makes the backend reject the whole page with "block is not NoteBlock" —
+// e.g. XML copied from another page, or written over a page that was re-created
+// (add-slide reassigns ids, so the note block's id no longer matches). With no
+// id the backend targets the page's own note block and the write succeeds.
+//
+// Only <note> is touched, so nothing rendered on the slide changes: notes are
+// speaker notes, not shown on the page, and every visible element keeps its id
+// (so it is updated in place rather than rebuilt, preserving text layout).
+func stripSlideNoteID(content string) string {
+	return slideNoteIDRe.ReplaceAllString(content, "$1")
 }
 
 // checkSlideRoot walks the tokens of content and returns the root element's id
