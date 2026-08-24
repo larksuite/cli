@@ -14,6 +14,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/internal/suggest"
 	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -46,6 +47,10 @@ var WorkbookInfo = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+workbook-info"),
+	Citation: &common.CitationDefinition{
+		SourceTypes: []citation.SourceType{citation.SourceSheet},
+		Build:       workbookInfoCitations,
+	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		_, err := resolveSpreadsheetToken(runtime)
 		return err
@@ -2475,6 +2480,34 @@ func sniffWorkbookContainer(fio fileio.FileIO, filePath string) (string, bool) {
 		return "xls", true
 	}
 	return "", true
+}
+
+// workbookInfoCitations builds the citation entry for +workbook-info.
+// The spreadsheet token is resolved from the runtime; title, token and
+// modified_time are taken from the output payload when available
+// (get_workbook_structure may or may not include them). URL prefers the
+// user-supplied --url flag; when the user passed --spreadsheet-token
+// instead, the URL is left empty and the framework drops the entry
+// (citation.Normalize).
+func workbookInfoCitations(rt *common.RuntimeContext, data any) []citation.Citation {
+	token, _ := resolveSpreadsheetToken(rt)
+	if token == "" {
+		return nil
+	}
+	entry := citation.Citation{
+		SourceType: citation.SourceSheet,
+		URL:        strings.TrimSpace(rt.Str("url")),
+	}
+	out, ok := data.(map[string]interface{})
+	if ok {
+		entry.Title, _ = out["title"].(string)
+		// Prefer native url from the API response over the user-supplied flag.
+		if apiURL, _ := out["url"].(string); apiURL != "" {
+			entry.URL = apiURL
+		}
+		entry.PublishTime = citation.Time(out["modified_time"])
+	}
+	return []citation.Citation{entry}
 }
 
 // workbookImportMislabelNote returns a user-facing note when content sniffing
