@@ -23,11 +23,19 @@ func SuccessEnvelopeData(result interface{}) interface{} {
 	if !ok {
 		return map[string]interface{}{}
 	}
-	data, ok := m["data"]
-	if !ok || data == nil {
-		return map[string]interface{}{}
+	if data, ok := m["data"]; ok && data != nil {
+		return data
 	}
-	return data
+	// Fallback: return envelope minus transport fields (code, msg, data)
+	// for APIs that use non-data keys (e.g., /bot/v3/info uses "bot").
+	fallback := make(map[string]interface{}, len(m))
+	for k, v := range m {
+		if k == "code" || k == "msg" || k == "data" {
+			continue
+		}
+		fallback[k] = v
+	}
+	return fallback
 }
 
 // WriteSuccessEnvelope emits the standard success envelope used by shortcuts.

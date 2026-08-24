@@ -55,6 +55,41 @@ func TestSuccessEnvelopeData_NilDataUsesEmptyObject(t *testing.T) {
 	}
 }
 
+func TestSuccessEnvelopeData_NonDataPayloadKeyPreserved(t *testing.T) {
+	// /bot/v3/info returns payload under "bot" key, not "data"
+	result := map[string]interface{}{
+		"code": float64(0),
+		"msg":  "ok",
+		"bot": map[string]interface{}{
+			"activate_status": 2,
+			"app_name":       "TestBot",
+			"open_id":        "ou_123",
+		},
+	}
+
+	got := SuccessEnvelopeData(result)
+	m, ok := got.(map[string]interface{})
+	if !ok {
+		t.Fatalf("business data type = %T, want map", got)
+	}
+	if _, ok := m["code"]; ok {
+		t.Fatal("business data must not contain outer code")
+	}
+	if _, ok := m["msg"]; ok {
+		t.Fatal("business data must not contain outer msg")
+	}
+	bot, ok := m["bot"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("business data.bot type = %T, want map", m["bot"])
+	}
+	if bot["activate_status"] != 2 {
+		t.Fatalf("bot.activate_status = %v, want 2", bot["activate_status"])
+	}
+	if bot["app_name"] != "TestBot" {
+		t.Fatalf("bot.app_name = %v, want TestBot", bot["app_name"])
+	}
+}
+
 func TestWriteSuccessEnvelope_PrintsShortcutCompatibleEnvelope(t *testing.T) {
 	var out strings.Builder
 
