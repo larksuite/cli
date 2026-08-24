@@ -1,0 +1,33 @@
+internal/event/platform/lark/gateway.go
+  s_96ff5defdc0fdd::t_adc9d9a1f80b02 16,19-26,52-54,56-57,82,87,107,128,138,158,223,247
+internal/event/platform/lark/subscription.go
+  s_96ff5defdc0fdd::t_11bcf5fb33e503 13,15-18
+internal/event/subscription/controller.go
+  s_96ff5defdc0fdd::t_1f84138a9875fa 14-16,217
+internal/event/subscription/doc.go
+  s_96ff5defdc0fdd::t_2afdac7223deb5 11-14,22-25,34-38
+internal/event/subscription/gateway.go
+  s_96ff5defdc0fdd::t_96fb5bcb2f0b7c 1-75
+internal/event/subscription/observe.go
+  s_96ff5defdc0fdd::t_9a5469a4272264 59-60,62,89
+internal/event/subscription/plan.go
+  s_96ff5defdc0fdd::t_114781ed64b2f0 53-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "416ec2902591a027f1dd628dfe23dca737a1de09",
+  "prompts": {},
+  "sessions": {
+    "s_96ff5defdc0fdd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ab8686ab7c481bfa3",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

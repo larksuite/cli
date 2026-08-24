@@ -1,0 +1,30 @@
+internal/event/bus/lifecycle/reducer.go
+  s_64b96e7105a948::t_3cab92b311c904 1-210
+internal/event/bus/lifecycle/tombstone.go
+  s_64b96e7105a948::t_7d57b2119a520c 11-18,21-25,28-36,39-47,50-52,55-60,62-64,66,68-70,72
+internal/event/dedup.go
+  s_64b96e7105a948::t_62b61927773587 65-107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "df085de029cf7e1c93af432fc82c9932f3241f26",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_64b96e7105a948": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ade7f96867e234dbb",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

@@ -1,0 +1,27 @@
+internal/event/bus/lifecycle/executor.go
+  s_c58f1adfdd183a::t_91ba19d6f72b97 19-20,23-28,44-45,73-83,87,103,146-150,156-166,168,171-172,176-178,180,186-187,210-214,236,239-243,248-252,255-256,278-280,282,284-304,329-333
+internal/event/bus/lifecycle/reducer.go
+  s_c58f1adfdd183a::t_fe412286bc187d 188-194
+internal/event/bus/lifecycle_reducer_test.go
+  s_c58f1adfdd183a::t_5a2e4902d953c3 10,125-136,138-151,153-155,157-158
+internal/event/bus/lifecycle_test.go
+  s_c58f1adfdd183a::t_a5b4ef420d13b0 192-197,205,209-210,213,217-218,220-223,225-228
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "4b00e3b866d8db7fc2d3f359d49eb3894f585c61",
+  "prompts": {},
+  "sessions": {
+    "s_c58f1adfdd183a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a40e9e4115c32acbd",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

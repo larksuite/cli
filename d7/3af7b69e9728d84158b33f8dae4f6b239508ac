@@ -1,0 +1,23 @@
+internal/event/resolve.go
+  s_cc06e9b2e239de::t_7aff3608038859 46-51
+internal/event/resolve_test.go
+  s_cc06e9b2e239de::t_bb2a0fc97dc86f 61-63,76-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d73af7b69e9728d84158b33f8dae4f6b239508ac",
+  "prompts": {},
+  "sessions": {
+    "s_cc06e9b2e239de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a2ba23e4ae477bee0",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

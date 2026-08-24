@@ -1,0 +1,25 @@
+internal/event/consume/canonical_conflict.go
+  s_5ed4643b7ed0ce::t_eccea67a148b82 30-34,36-38,45-46,68,74-76
+internal/event/consume/capability_gate_test.go
+  s_5ed4643b7ed0ce::t_b34df7e7347b60 12,18,29,36-57,62,69,74,84,90-132,134-144
+internal/event/consume/legacy_metadata_test.go
+  s_5ed4643b7ed0ce::t_5369833dbfbda6 1-213
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "efb633c262040050908b0a4c6bf2b73f0f687175",
+  "prompts": {},
+  "sessions": {
+    "s_5ed4643b7ed0ce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d2575c3b-b939-4af2-95f9-229f8a0dcd25",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

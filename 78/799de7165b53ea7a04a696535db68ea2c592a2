@@ -1,0 +1,37 @@
+cmd/event/subscription/delete.go
+  s_fb35589a0d51e0::t_ef574c6686ed3b 1-215
+cmd/event/subscription/delete_test.go
+  s_fb35589a0d51e0::t_538a1867e44beb 1-286
+cmd/event/subscription/reactivate.go
+  s_fb35589a0d51e0::t_58e82db04ec224 1-161
+cmd/event/subscription/reactivate_test.go
+  s_fb35589a0d51e0::t_036a4e181b75e2 1-244
+cmd/event/subscription/renew.go
+  s_fb35589a0d51e0::t_9ce686798a7727 1-159
+cmd/event/subscription/renew_test.go
+  s_fb35589a0d51e0::t_d45c144b3bac68 1-229
+cmd/event/subscription/subscription.go
+  s_fb35589a0d51e0::t_f3396e96f46d18 20,35-37,47-52,59-62,289-412
+cmd/event/subscription/update.go
+  s_fb35589a0d51e0::t_f56a25323b2d15 1-271
+cmd/event/subscription/update_test.go
+  s_fb35589a0d51e0::t_d21b41ba5c4600 1-423
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "78799de7165b53ea7a04a696535db68ea2c592a2",
+  "prompts": {},
+  "sessions": {
+    "s_fb35589a0d51e0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-acd59ba1d9f6586e2",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

@@ -1,0 +1,25 @@
+internal/event/bus/hub.go
+  s_93ed8ad92b2e2d::t_c9b863c882906f 10,419-431
+internal/event/consume/loop.go
+  s_93ed8ad92b2e2d::t_ca0fe65daf400e 14,201-216,220-230,235
+internal/event/protocol/messages.go
+  s_93ed8ad92b2e2d::t_52d51467a9b8e3 232-252
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d0d062d894f31063fa7ed549b5b3cdcedf701f79",
+  "prompts": {},
+  "sessions": {
+    "s_93ed8ad92b2e2d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f8e662c8-75c2-41f2-9275-23506be32fd9",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

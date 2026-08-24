@@ -1,0 +1,23 @@
+cmd/event/subscription/update.go
+  s_df60c64303abeb::t_8a90705c2ba07e 81-85,106,127-131,133,237-259
+cmd/event/subscription/update_test.go
+  s_df60c64303abeb::t_41e62f96a9e9f1 324-333,351-370
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "6db9deeeca220407f292b45dfc9802e3b304c2ec",
+  "prompts": {},
+  "sessions": {
+    "s_df60c64303abeb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a28bbd99c2ff76d32",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

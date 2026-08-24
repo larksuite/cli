@@ -1,0 +1,25 @@
+events/legacy_bus_replay_test.go
+  s_5ed4643b7ed0ce::t_1fc88ac96f5d28 1-168
+internal/event/consume/capability_gate_test.go
+  s_5ed4643b7ed0ce::t_e09f4879f7b059 66-73,78
+internal/event/consume/legacy_metadata_test.go
+  s_5ed4643b7ed0ce::t_6f0be8a91fac16 141-146,178-181,194,199,203-212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2de1fc4065e444122a672c80b308f559966a9db0",
+  "prompts": {},
+  "sessions": {
+    "s_5ed4643b7ed0ce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d2575c3b-b939-4af2-95f9-229f8a0dcd25",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

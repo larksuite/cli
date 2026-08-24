@@ -1,0 +1,23 @@
+cmd/event/subscription/reactivate.go
+  s_93ed8ad92b2e2d::t_0109baddf6fc0f 15,126-127,138,143,183
+cmd/event/subscription/renew.go
+  s_93ed8ad92b2e2d::t_5d9c5f4c9d50d2 15,126-127,137,141,160
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "bff1f6f768b0144601fbaf89601df07535e156b3",
+  "prompts": {},
+  "sessions": {
+    "s_93ed8ad92b2e2d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f8e662c8-75c2-41f2-9275-23506be32fd9",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

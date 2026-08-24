@@ -1,0 +1,26 @@
+internal/event/filter_meta.go
+  s_9e45c1aeeedfa2::t_ddcff1839b2ffe 1-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e3a38c690e5492bd56ee8dc663abbb9e44c064ef",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_9e45c1aeeedfa2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a435fd67fbb5fb6cf",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

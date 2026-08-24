@@ -1,0 +1,21 @@
+events/refined/catalog_test.go
+  s_b166d2c538751c::t_3b1d32ca40f0f5 3-6,8-12,16-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "4168563700a3dd6ebb9306ae16280cad41732558",
+  "prompts": {},
+  "sessions": {
+    "s_b166d2c538751c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a911ba37f099db76f",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

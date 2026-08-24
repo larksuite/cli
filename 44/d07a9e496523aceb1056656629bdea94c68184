@@ -1,0 +1,23 @@
+cmd/event/consume.go
+  s_88ca962e89bbfe::t_cd7effaad4b65e 406-428
+cmd/event/consume_test.go
+  s_88ca962e89bbfe::t_1de40d86a00907 212-234,356-435
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "44d07a9e496523aceb1056656629bdea94c68184",
+  "prompts": {},
+  "sessions": {
+    "s_88ca962e89bbfe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a0e6ebc44c30a7b33",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

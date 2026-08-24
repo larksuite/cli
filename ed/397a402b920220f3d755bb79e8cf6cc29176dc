@@ -1,0 +1,28 @@
+cmd/event/status.go
+  s_8ec1a705bdba4b::t_4039ede01aa422 216,219-221,400,409-414,521-527,534,538,555-558,560,573,578,594,615-637,639-649,651-654,656
+cmd/event/status_refined_test.go
+  s_8ec1a705bdba4b::t_01212e36429dd7 24,42-47,56,58-60,64-66,620-712,775-804
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ed397a402b920220f3d755bb79e8cf6cc29176dc",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_8ec1a705bdba4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aaa118e16382f7c3d",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

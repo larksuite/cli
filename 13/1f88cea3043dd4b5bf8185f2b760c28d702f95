@@ -1,0 +1,56 @@
+internal/event/bus/bus.go
+  s_05d26971b617e2::t_e121f7d909ef44 24,62,65,70-71,73,94-95,107,114-115,140,165
+internal/event/bus/bus_lifecycle_test.go
+  s_05d26971b617e2::t_b5f0e3acc811f0 15,46,73,76,94,97,113,130,133
+internal/event/bus/conn.go
+  s_05d26971b617e2::t_920b80648ab1fa 88,98-101,414,421
+internal/event/bus/conn_test.go
+  s_05d26971b617e2::t_39c67a5330591d 16,296,494-496,500,510,515,558-559
+internal/event/bus/decrypt_test.go
+  s_05d26971b617e2::t_557d61ab719257 10,22-23,25,33-34,40-41,57
+internal/event/bus/encrypt_key.go
+  s_05d26971b617e2::t_79382c12a045c1 40
+internal/event/bus/hub_lifecycle_test.go
+  s_05d26971b617e2::t_93bf427a165b9c 9-10,149,166-167
+internal/event/bus/lifecycle/action.go
+  s_05d26971b617e2::t_6f42b4d1d15fa0 1-309
+internal/event/bus/lifecycle/action_handlers.go
+  s_05d26971b617e2::t_138cd2efe379b1 4,15-16,28,37-38,46-51,62-63,69-70,80-87,105-108,117-118,128-129,136,139-140,143,150-155,168-169,179-180,185,192-197,199-200,205-210,212-215,220-221,228-237,246,257,277,280-281,283-284
+internal/event/bus/lifecycle/event.go
+  s_05d26971b617e2::t_f177112c89b9a0 1-92
+internal/event/bus/lifecycle/executor.go
+  s_05d26971b617e2::t_8e6d387b03feee 1-298
+internal/event/bus/lifecycle/ports.go
+  s_05d26971b617e2::t_69da5908ca9947 1-92
+internal/event/bus/lifecycle/tombstone.go
+  s_05d26971b617e2::t_691d6072ed7298 1-61
+internal/event/bus/lifecycle_dispatch_test.go
+  s_05d26971b617e2::t_2b9f8405343915 17,24,127,159-161,179,219,246,280,303,332,340-341,365-367,372,389-390,405,429,437-438,440-441,451,466,484,489-490,492-493,512,516-517,534,539-540,542-543,557,569,583-585,590,599,625,652,660-661,678,686-687,706,728,732-733,747,765,780,804-805,807,839,855,858,876,891,912,914,916,939,941
+internal/event/bus/lifecycle_ports.go
+  s_05d26971b617e2::t_302c52ad80bd2a 1-58
+internal/event/bus/lifecycle_test.go
+  s_05d26971b617e2::t_738db54bcf5349 14-15,40,42-43,47,50,76,79,84,88,122,125-126,137,140,157,160,179,182-183,202,205,210,214,236,239-240,252,259,263-264,268,272-273,283,293-294,299-300,312,314,348,351-352,356,360,381-382,386,388-389,398-400,408,420,423,438,455-456,474-475,488-489
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "131f88cea3043dd4b5bf8185f2b760c28d702f95",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_05d26971b617e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a4753ddf366871e92",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

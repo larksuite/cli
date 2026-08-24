@@ -1,0 +1,27 @@
+cmd/event/consume.go
+  s_df60c64303abeb::t_e14e332cacad44 42-49,106-118,143,176-181,480-494
+cmd/event/consume_test.go
+  s_df60c64303abeb::t_4fade33432391d 491-496,511-519,524,526-527,529-530,532-533,535-537
+internal/event/consume/refined.go
+  s_df60c64303abeb::t_4ac3dabd8a386f 43-48,78-85,109-116,145-155,162-168,304-316,374,391-407,424-502
+internal/event/consume/refined_test.go
+  s_df60c64303abeb::t_ea342a43f30b47 18,375-381,399-403,408,423,440,452-542,942-1081
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1484cdc24a77290076f71bd126dd97776496a678",
+  "prompts": {},
+  "sessions": {
+    "s_df60c64303abeb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a28bbd99c2ff76d32",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

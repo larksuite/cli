@@ -1,0 +1,23 @@
+internal/event/bus/lifecycle/action.go
+  s_c58f1adfdd183a::t_625049f110176b 223,227,230-239,241,253-255,260-268
+internal/event/bus/lifecycle_reducer_test.go
+  s_c58f1adfdd183a::t_ad70e3c837a2b4 64-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1fb9da4bbe4980a5eed592443f466b467df08acf",
+  "prompts": {},
+  "sessions": {
+    "s_c58f1adfdd183a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a40e9e4115c32acbd",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

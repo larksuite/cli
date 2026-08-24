@@ -1,0 +1,23 @@
+cmd/event/consume_risk.go
+  s_93ed8ad92b2e2d::t_fe99bf22a3d929 84-93,98,109
+cmd/event/consume_risk_test.go
+  s_93ed8ad92b2e2d::t_ad9ee064509846 44-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "84cd4382c555ca6312f7c7daa89d3212266ebd95",
+  "prompts": {},
+  "sessions": {
+    "s_93ed8ad92b2e2d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f8e662c8-75c2-41f2-9275-23506be32fd9",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

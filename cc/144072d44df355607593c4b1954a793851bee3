@@ -1,0 +1,30 @@
+internal/event/bus/bus.go
+  s_030627b40677b7::t_93ad115f529406 507-519
+internal/event/bus/handle_hello_test.go
+  s_030627b40677b7::t_9c732cf7bdeeac 740-913
+internal/event/bus/identity.go
+  s_030627b40677b7::t_1cec74575db1d4 136-152
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "cc144072d44df355607593c4b1954a793851bee3",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_030627b40677b7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-abe701c71fd001b66",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

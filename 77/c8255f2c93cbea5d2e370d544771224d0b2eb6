@@ -1,0 +1,65 @@
+events/application/menu_test.go
+  s_b80526ac3a305e::t_7186b9e190972e 14,56-61,63-64
+events/approval/register_test.go
+  s_b80526ac3a305e::t_1f58ad27c1e426 17,641-646,649-650
+events/catalog_helper_test.go
+  s_b80526ac3a305e::t_77a6f2d64fa00d 1-26
+events/compile_test.go
+  s_5ed4643b7ed0ce::t_7cea5eb873018f 1-93
+events/expected_keys_test.go
+  s_b80526ac3a305e::t_fb20fca4a9ac4b 42
+events/im/card_action_test.go
+  s_b80526ac3a305e::t_9ec1d2a11b02f1 17
+events/im/catalog_helper_test.go
+  s_b80526ac3a305e::t_290c062704b6ad 1-29
+events/im/message_receive_test.go
+  s_b80526ac3a305e::t_3112431d25c190 17,49
+events/lint_test.go
+  s_b80526ac3a305e::t_b0eac151b7fb23 12,17-24
+events/minutes/catalog_helper_test.go
+  s_b80526ac3a305e::t_4435343912cc4d 1-29
+events/minutes/minute_generated_test.go
+  s_b80526ac3a305e::t_643e9148b88cea 41,270
+events/output_baseline_test.go
+  s_b80526ac3a305e::t_92a32c2050edc4 314
+events/schema_closure_test.go
+  s_b80526ac3a305e::t_851e0af0ebb61c 36
+events/task/register_test.go
+  s_b80526ac3a305e::t_ad2367ac39f20b 11,86-94
+events/vc/catalog_helper_test.go
+  s_b80526ac3a305e::t_c480559ae9886b 1-29
+events/vc/note_generated_test.go
+  s_b80526ac3a305e::t_dca2533a691437 19,117
+events/vc/participant_meeting_ended_test.go
+  s_b80526ac3a305e::t_4fb55d3aec78a6 19,137
+events/vc/participant_meeting_lifecycle_test.go
+  s_b80526ac3a305e::t_6c085e63517c08 28,212
+events/vc/recording_test.go
+  s_b80526ac3a305e::t_f2eecacf7bdbdd 29,395
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "77c8255f2c93cbea5d2e370d544771224d0b2eb6",
+  "prompts": {},
+  "sessions": {
+    "s_5ed4643b7ed0ce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d2575c3b-b939-4af2-95f9-229f8a0dcd25",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    },
+    "s_b80526ac3a305e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a2486068c903ca61a",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

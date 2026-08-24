@@ -1,0 +1,39 @@
+internal/event/bus/bus.go
+  s_2fa077ad7f6b6f::t_b606c8601d4a28 56-62,68,74,79-80,176-178,209
+internal/event/bus/bus_lifecycle_test.go
+  s_2fa077ad7f6b6f::t_36f45ce294a26b 1-52
+internal/event/bus/conn.go
+  s_2fa077ad7f6b6f::t_683ede6260dd64 71-83,225-266
+internal/event/bus/conn_test.go
+  s_2fa077ad7f6b6f::t_49f86d27701ca1 297-385
+internal/event/bus/hub.go
+  s_2fa077ad7f6b6f::t_3fb9130e55e457 156-181,573-577
+internal/event/bus/hub_lifecycle_test.go
+  s_2fa077ad7f6b6f::t_875f2d8867961f 1-130
+internal/event/bus/lifecycle.go
+  s_2fa077ad7f6b6f::t_674e2b60c3243c 1-331
+internal/event/bus/lifecycle_test.go
+  s_2fa077ad7f6b6f::t_8960aae0a80d59 1-488
+internal/event/source/feishu.go
+  s_2fa077ad7f6b6f::t_a6e35156de440b 18-22,45-54,57-70,72-78,80-84,86-106,150-364
+internal/event/source/feishu_test.go
+  s_2fa077ad7f6b6f::t_6fab004c56e322 8,247-509
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d17b88ede2ce8e648c129733a9aeeed0d0da3b59",
+  "prompts": {},
+  "sessions": {
+    "s_2fa077ad7f6b6f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a9b51e2f99022327f",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

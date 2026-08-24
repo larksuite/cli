@@ -1,0 +1,21 @@
+events/refined/catalog.go
+  s_7e31c5476643fb::t_6de987e9326055 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "812c548e0c7d6318945f45dba4c56da81a9dc952",
+  "prompts": {},
+  "sessions": {
+    "s_7e31c5476643fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-afa71a2f4621b1d53",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

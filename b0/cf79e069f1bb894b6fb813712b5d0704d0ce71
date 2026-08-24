@@ -1,0 +1,26 @@
+cmd/event/subscription/create.go
+  s_2939604c6d03d0::t_51eb8529ceb84e 8,19,49,201-233,241,244,248-270,272-273,317-323,334,336-343,345,358-359,362,382-383,385-386,395-415,420,444-445,461-477,480,482-483,486-488,512,514-520,522-524,541-549,552-553
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b0cf79e069f1bb894b6fb813712b5d0704d0ce71",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_2939604c6d03d0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-abf4109ded0bb79a8",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

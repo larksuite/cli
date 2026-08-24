@@ -1,0 +1,58 @@
+internal/event/bus/bus.go
+  s_9c5aeaa40ce410::t_0d02ccc471c28f 409-411
+internal/event/subscription_client.go
+  h_a6070985e8bc1b 23,25-26,45-46,55,151-154
+internal/event/consume/refined.go
+  s_9c5aeaa40ce410::t_546181287585c0 289-290
+  s_9c5aeaa40ce410::t_18ae5f68ee5fba 178,470-471,501-504,513-516
+  s_9c5aeaa40ce410::t_7f27a9134a249c 517-518
+internal/event/protocol/messages.go
+  s_9c5aeaa40ce410::t_cbcbebbe518429 86-87
+cmd/event/subscription/create.go
+  s_9c5aeaa40ce410::t_b8a6ee69b7a78f 321-322,486-490
+internal/event/encrypt_key.go
+  s_9c5aeaa40ce410::t_addac9c8ffd990 14-18
+internal/event/bus/hub.go
+  h_a6070985e8bc1b 101-102
+internal/event/types.go
+  h_a6070985e8bc1b 37-40,202-203
+cmd/event/subscription/update.go
+  h_a6070985e8bc1b 44-47,66-68,196,228,271,324
+cmd/event/status.go
+  s_9c5aeaa40ce410::t_27a1770ddc2425 540-544
+  s_9c5aeaa40ce410::t_a587c3c550caa2 395-398,405-408,585-588,603-608
+  s_9c5aeaa40ce410::t_b0b87064af3f5b 409-411
+  s_9c5aeaa40ce410::t_7b757674975c56 545
+  s_9c5aeaa40ce410::t_592270a3101c2f 609-610
+internal/event/bus/lifecycle.go
+  s_9c5aeaa40ce410::t_0b34b12db07dec 518-521
+internal/event/source/feishu.go
+  s_9c5aeaa40ce410::t_1e6ac82a5ed6a9 18,403-406,505,548-553,592-593
+cmd/event/subscription/subscription.go
+  s_9c5aeaa40ce410::t_1426eca185dac8 5
+internal/event/bus/encrypt_key.go
+  h_a6070985e8bc1b 216-218
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "28b407dceabef03e77aa69f574178882ae24351b",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_9c5aeaa40ce410": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a545aab2373377a390b2dc8",
+        "model": "gpt-5.5__max"
+      },
+      "human_author": null
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

@@ -1,0 +1,21 @@
+internal/event/types.go
+  s_7a761561add367::t_edd1b597c588bd 15,22-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3c40239ebf10070d5255098b9e0dd78d0d85bf99",
+  "prompts": {},
+  "sessions": {
+    "s_7a761561add367": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bb5ceddd-7996-4e8a-b011-8055f0dcb6f1",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

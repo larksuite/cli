@@ -1,0 +1,28 @@
+internal/event/filter.go
+  s_6646a30464034e::t_8c8bf3fb8ae5b6 54-61,72-138
+internal/event/filter_canonical_test.go
+  s_6646a30464034e::t_531d4ab381f47f 1-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d5e3f44d930eda6b5b3672d17cfb4626964f1f4e",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_6646a30464034e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a1da7ac5f5a3892b9",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

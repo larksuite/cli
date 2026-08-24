@@ -1,0 +1,34 @@
+internal/event/filter_example.go
+  s_6646a30464034e::t_12a3fb823dca94 1-44
+internal/event/platform/lark/filter_canonical_test.go
+  s_6646a30464034e::t_9855f638365306 4,10-11,18-19,22-23,25-26,28-32,35-36,41-46
+internal/event/platform/lark/filter_sdk.go
+  s_6646a30464034e::t_774e9830da67af 4,8-9,21-26,33,50,55,70,72,74,77,81,95-96
+internal/event/platform/lark/filter_sdk_test.go
+  s_6646a30464034e::t_375c4ecbf629f6 4,10-11,15-21,60,68,95
+internal/event/platform/lark/subscription.go
+  s_6646a30464034e::t_343b52347a95f8 46,73,80,117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "242119d5e71e2d944ba57d45493cfa55200631b2",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_6646a30464034e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a1da7ac5f5a3892b9",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

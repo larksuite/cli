@@ -1,0 +1,25 @@
+cmd/event/consume.go
+  s_df60c64303abeb::t_afe271400edf30 332-338
+skills/lark-event/SKILL.md
+  s_df60c64303abeb::t_ced30f47667b35 76,171
+skills/lark-event/references/refined-subscription.md
+  s_df60c64303abeb::t_a1cd0db39b4ff7 107,109,111,113-134,141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "653b49e16fa7f3e119d0c9db9ff710586382b6e9",
+  "prompts": {},
+  "sessions": {
+    "s_df60c64303abeb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a28bbd99c2ff76d32",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

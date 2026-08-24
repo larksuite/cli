@@ -1,0 +1,25 @@
+internal/event/source/feishu.go
+  s_b6c2fa66c24e9c::t_cb75eb2873c774 86-101,127-134,140-164
+internal/event/source/feishu_test.go
+  s_b6c2fa66c24e9c::t_7397be762b28aa 7,10-12,118-245
+internal/event/types.go
+  s_b6c2fa66c24e9c::t_a22be224a38ec7 28-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "43e64a0abccfd85f3774874820b668bee6520acf",
+  "prompts": {},
+  "sessions": {
+    "s_b6c2fa66c24e9c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a99c92e28d607f632",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

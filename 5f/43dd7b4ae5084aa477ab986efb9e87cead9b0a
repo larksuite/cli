@@ -1,0 +1,21 @@
+events/arch_test.go
+  s_e4ea96cdf06a6a::t_e76a64dd2d4647 1-371
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5f43dd7b4ae5084aa477ab986efb9e87cead9b0a",
+  "prompts": {},
+  "sessions": {
+    "s_e4ea96cdf06a6a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a015bbd97a93e79c5",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

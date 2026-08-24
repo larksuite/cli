@@ -1,0 +1,28 @@
+internal/event/bus/bus.go
+  s_92478d10cff6b1::t_08709994f26a84 493-525
+internal/event/protocol/messages.go
+  s_92478d10cff6b1::t_6bcad17babb3c8 66-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9a2a36f49c426f00f0043e802576788b3b4172c3",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_92478d10cff6b1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a1f6a6d9462602191",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

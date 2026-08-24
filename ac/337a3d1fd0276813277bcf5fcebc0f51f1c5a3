@@ -1,0 +1,23 @@
+cmd/event/list.go
+  s_657a4bd50143a7::t_100a9f52491945 108-114,117-119,127-132
+cmd/event/list_test.go
+  s_657a4bd50143a7::t_9968f8fa083868 107-241
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ac337a3d1fd0276813277bcf5fcebc0f51f1c5a3",
+  "prompts": {},
+  "sessions": {
+    "s_657a4bd50143a7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-adda53cfe5fb2bb1c",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

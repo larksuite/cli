@@ -1,0 +1,32 @@
+events/refined/filter_meta.go
+  s_f628c81bcb0b39::t_1e5aafd6bde3ef 1-34
+internal/event/filter_meta.go
+  s_f628c81bcb0b39::t_54f8b80baf0e23 48-59,63,66
+internal/event/filter_meta_test.go
+  s_f628c81bcb0b39::t_45298fa5126711 9-12,14-31,34,37
+internal/event/filter_validate_test.go
+  s_f628c81bcb0b39::t_320fca3e4bf50f 15-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "740b50fefdc9a8094a1601ae16abe8bbe022e85c",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_f628c81bcb0b39": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a59e8401b45f187ab",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

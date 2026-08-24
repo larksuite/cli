@@ -1,0 +1,21 @@
+cmd/event/subscription/create_test.go
+  s_3b9c8e789294a9::t_30b69b88c81e68 165,397-402,423-425,763-784,915-993
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "35bf809035e9d59a1848b16f4218f218120ca035",
+  "prompts": {},
+  "sessions": {
+    "s_3b9c8e789294a9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a731121f0e5ba8190",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

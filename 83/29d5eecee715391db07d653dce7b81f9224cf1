@@ -1,0 +1,34 @@
+internal/event/consume/refined.go
+  s_030627b40677b7::t_9c80052e94cb1b 40-45,80-81,140-145,149
+internal/event/consume/refined_test.go
+  s_030627b40677b7::t_29f975adcd3a59 58-76,661-692
+internal/event/reconcile.go
+  s_030627b40677b7::t_3a767f3463ddda 77-81,83-84,89-91,98-110,150-156,210-228,230
+internal/event/reconcile_test.go
+  s_030627b40677b7::t_e6457ee561b78c 412-433
+skills/lark-event/references/refined-subscription.md
+  s_030627b40677b7::t_bff4316b9b3f43 119,126,128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8329d5eecee715391db07d653dce7b81f9224cf1",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_030627b40677b7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-abe701c71fd001b66",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

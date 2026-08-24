@@ -1,0 +1,21 @@
+internal/event/bus/encrypt_key_test.go
+  s_93ed8ad92b2e2d::t_0724f110db99d6 120,152,192,226,249,264,274,285,298,313,329,368,383,385-389
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "eaa1fb059b5055a8328a47758c6d68b5a0fc26cc",
+  "prompts": {},
+  "sessions": {
+    "s_93ed8ad92b2e2d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f8e662c8-75c2-41f2-9275-23506be32fd9",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

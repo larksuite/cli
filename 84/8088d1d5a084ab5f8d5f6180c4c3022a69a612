@@ -1,0 +1,23 @@
+internal/event/protocol/messages.go
+  s_e94ab5e1dae933::t_9e07b7fa7283cc 43-85,104-131,168-189
+internal/event/protocol/messages_test.go
+  s_e94ab5e1dae933::t_ba2791b16a184c 14,131-354
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "848088d1d5a084ab5f8d5f6180c4c3022a69a612",
+  "prompts": {},
+  "sessions": {
+    "s_e94ab5e1dae933": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a1625d11efa3b6408",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
