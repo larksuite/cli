@@ -76,7 +76,7 @@ func TestMeetingParticipantAudioShortcutContracts(t *testing.T) {
 			wantFlags := []common.Flag{
 				{Name: "meeting-id", Required: true, Desc: "meeting ID"},
 				{Name: "target-user-id", Required: true, Desc: "target participant user ID"},
-				{Name: "user-id-type", Default: "open_id", Desc: "target user ID type"},
+				{Name: "user-id-type", Default: "open_id", Desc: "target user ID type", Enum: []string{"open_id", "union_id", "user_id"}},
 			}
 			if !reflect.DeepEqual(tt.shortcut.Flags, wantFlags) {
 				t.Errorf("Flags = %#v, want %#v", tt.shortcut.Flags, wantFlags)
