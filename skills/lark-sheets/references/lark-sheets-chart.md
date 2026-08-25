@@ -62,7 +62,7 @@
 
 **范围与系列前置校验（创建前必做）**：清单中同时记录每张图的表头范围、纳入维度、明确排除维度、数据方向和预期系列数。当前每张图**最多 50 个数值系列**；按列组织时通常为“所选数值列数”，按行组织时通常为“所选数值行数”。创建时就用 `+chart-create-basic --dim1-index ... --dim2-indexes ...` 显式选择类别与不超过 50 个数值系列；如果业务要求展示超过 50 个系列，应先建立紧凑汇总表或 Top-N，而不是反复删除重建。创建前根据实际表头确认索引和边界，不凭字母猜范围；创建后范围、方向或系列数不符时，使用 `+chart-data-update` 修正，CLI 会读取当前快照、重建 `refs` / `dim1` / `dim2.series` 并只提交 data patch，不要删除后重建。
 
-**坐标轴语义与范围**：所有带坐标轴的图表都要在清单中记录每条轴对应的字段语义、类别轴 / 连续轴类型、单位、边界、刻度间隔以及主副轴归属，不能只核对轴标题。多图对比时，先判断“范围 / 尺度一致”指绝对边界相同，还是跨度和刻度可比；用户未明确要求所有图共用相同最小值和最大值时，不要默认使用各数据子集的并集边界。按连续区间分图时，各图使用自己的区间边界并保持跨度和刻度可比；对比同一指标时保持值轴口径一致，不同单位或量级的指标不强行共用边界。
+**坐标轴语义与范围**：所有带坐标轴的图表都要在清单中记录每条轴对应的字段语义、类别轴 / 连续轴类型、单位以及主副轴归属，不能只核对轴标题。Y 轴显示范围默认交给图表引擎；用户未明确要求固定范围时，不传 `--y-axis-min` / `--y-axis-max`，重点只处理确有必要收紧的连续数值 X 轴。堆积图的峰值来自同一类别内系列累加，瀑布图来自逐项累计，组合图还要按左右轴分别计算；不得直接把数据源单列的最小值 / 最大值当成 Y 轴边界。只有用户明确要求或视觉验收证明自动范围不可读时，才按图表类型的实际绘制值计算并设置 Y 轴范围。多图对比时，先判断“范围 / 尺度一致”指绝对边界相同，还是跨度和刻度可比；对比同一指标时保持值轴口径一致，不同单位或量级的指标不强行共用边界。
 
 **横向类别行配方**：当日期/月份等类别横向排列在一行、目标数值在另一行时，把“类别行 + 数值行”一起放进 `--data-range` 并传 `--data-direction row`，例如 `--data-range "'Sheet1'!A1:M1,'Sheet1'!A3:M3" --data-direction row`。此时类别行属于数据映射，**不要**传给 `--header-range`。`--header-range` 仅表示与纯数据分离的“维度/系列名称”：column 方向必须是一行，row 方向必须是一列。row 方向却传入多列表头，通常说明把类别行误当成了分离表头。
 
@@ -96,6 +96,8 @@
 - **数据源必须是数值 / 日期型**：图表只渲染数值型单元格。用 `+cells-set` 构造数据源时，给数字 / 日期单元格设 `cell_styles.number_format`，不要留成纯文本，否则该系列渲染为空。
 - **数值 / 日期显示异常**：坐标轴沿用源单元格格式。日期显示成序列号、大数值显示成科学计数法时，修正源数据的 `cell_styles.number_format`，不要给图表轴构造未定义的 format 字段。
 - **轴口径错误**：用户要"占比 / 比例"时，用饼图或 `--stack percent`，并核对数据源与标签确实表达百分比，不要交付仍以原始计数为纵轴的图。
+- **组合图系列被压扁**：创建前比较各系列的单位和典型值 / 峰值量级；单位不同、相差约一个数量级以上，或折线贴近 X 轴时，不得把所有系列都放左轴。用 `--series-y-axes` 将会被压扁的系列（常见为百分比、比率或小量级折线）放到右轴，并用左右轴标题明确各自单位；`--series-types` / `--series-y-axes` 必须与 `--dim2-indexes` 逐项对齐。
+- **饼图标签截断**：饼图默认传 `--legend-position bottom`，并使用比普通单图更宽的画布；创建时同时传 `--width` / `--height`，类别名称较长或较多时继续适量增加 width，不能用截断标签交付。
 - **对象语义验证**：基础单图先核对返回的完整 `snapshot`；批量创建、响应不完整、后续又更新或结果存疑时，再按受影响的 sheet 调一次 `+chart-list`。这里只核对数量、数据源、方向、系列和配置，不能代替交付前的布局检查。
 
 > **⚠️ 硬性规则：当用户通过列标题名称（而非列索引）指定横轴/纵轴系列时，必须先读取表格首行（表头）来确定列名与列索引的对应关系，再设置普通图表的 `--dim1-index` / `--dim2-indexes` 或气泡图的角色索引。**
@@ -176,12 +178,12 @@ _公共四件套 · 系统：`--dry-run`_
 | `--x-axis-numbers-as` | string | optional | 横轴数字的解释方式；text 将数字视为等间距文本类别，values 按连续数值及真实间距绘制（可选值：`text` / `values`）（默认 `text`） |
 | `--x-axis-min` | float64 | optional | 连续数值 X 轴的显示范围下界；需同时使用 --x-axis-numbers-as values |
 | `--x-axis-max` | float64 | optional | 连续数值 X 轴的显示范围上界；需同时使用 --x-axis-numbers-as values |
-| `--y-axis-min` | float64 | optional | 左 Y 轴的显示范围下界；必须小于 --y-axis-max |
-| `--y-axis-max` | float64 | optional | 左 Y 轴的显示范围上界；必须大于 --y-axis-min |
+| `--y-axis-min` | float64 | optional | 左 Y 轴的显示范围下界；默认省略，仅在用户明确要求固定范围时传；不得直接使用数据源单列最小值，且必须小于 --y-axis-max |
+| `--y-axis-max` | float64 | optional | 左 Y 轴的显示范围上界；默认省略，仅在用户明确要求固定范围时传；须按图表实际绘制值计算，且必须大于 --y-axis-min |
 | `--dim1-index` | int | optional | 类别/X 轴维度在数据范围中的 1-based 索引；默认 1 |
 | `--dim2-indexes` | string | optional | 值/Y 轴系列的 1-based 索引列表，逗号分隔；不能包含 dim1，最多 50 个。气泡图旧调用按 `x,y[,group][,size]` 顺序传 2–4 个，新调用优先使用角色索引；饼图和排列图只传 1 个 |
 | `--series-types` | string | optional | 仅组合图；按 --dim2-indexes 顺序指定系列类型，逗号分隔，可选 column、line、area，数量必须与数值系列一致 |
-| `--series-y-axes` | string | optional | 仅组合图；按 --dim2-indexes 顺序指定系列使用 left 或 right Y 轴，逗号分隔，数量必须与数值系列一致 |
+| `--series-y-axes` | string | optional | 仅组合图；先比较系列单位和量级，将会被压扁的系列放到 right 轴；按 --dim2-indexes 顺序传 left 或 right，数量必须与数值系列一致 |
 | `--key-index` | int | optional | 仅气泡图：标识/名称维度的 1-based 索引；与 dim1/dim2 索引互斥，默认 1 |
 | `--x-index` | int | optional | 仅气泡图：X 值维度的 1-based 索引；须与 --y-index 一起提供 |
 | `--y-index` | int | optional | 仅气泡图：Y 值维度的 1-based 索引；须与 --x-index 一起提供 |
@@ -189,7 +191,7 @@ _公共四件套 · 系统：`--dry-run`_
 | `--size-index` | int | optional | 仅气泡图：可选气泡大小维度的 1-based 索引 |
 | `--title` | string | optional | 图表标题 |
 | `--subtitle` | string | optional | 图表副标题 |
-| `--legend-position` | string | optional | 图例位置；hidden 隐藏图例（可选值：`top` / `bottom` / `left` / `right` / `hidden`） |
+| `--legend-position` | string | optional | 图例位置；饼图 / 环形图默认 bottom，hidden 隐藏图例（可选值：`top` / `bottom` / `left` / `right` / `hidden`） |
 | `--x-axis-title` | string | optional | X 轴标题 |
 | `--y-axis-title` | string | optional | 左 Y 轴标题 |
 | `--secondary-y-axis-title` | string | optional | 右 Y 轴标题 |
@@ -203,7 +205,7 @@ _公共四件套 · 系统：`--dry-run`_
 | `--color-palette` | string | optional | 预设整图配色主题；与 --colors 互斥（可选值：`brandColorSeries@v2` / `rainbowColorSeries@v2` / `complementaryColorSeries@v2` / `converseColorSeries@v2` / `primaryColorSeries@v2` / `singleColorSeries-B-@v2` / `singleColorSeries-W-@v2` / `singleColorSeries-G-@v2` / `singleColorSeries-Y-@v2` / `singleColorSeries-O-@v2` / `singleColorSeries-R-@v2` / `singleColorSeries-D-@v2`） |
 | `--colors` | string_slice | optional | 自定义整图系列颜色，逗号分隔且至少 2 个十六进制色值；与 --color-palette 互斥 |
 | `--anchor-cell` | string | optional | 可选图表锚点单元格，如 F2；省略时放到数据范围右侧 |
-| `--width` | int | optional | 可选图表宽度；必须与 --height 同时传 |
+| `--width` | int | optional | 可选图表宽度；必须与 --height 同时传；饼图 / 环形图及长类别标签场景应适量加宽以避免截断 |
 | `--height` | int | optional | 可选图表高度；必须与 --width 同时传 |
 
 ### `+chart-config-update`
@@ -223,8 +225,8 @@ _公共四件套 · 系统：`--dry-run`_
 | `--y-axis-label-angle` | int | optional | 左 Y 轴标签旋转角度（可选值：`-90` / `-45` / `0` / `45` / `90`） |
 | `--x-axis-min` | float64 | optional | 连续数值 X 轴的显示范围下界；必须小于 --x-axis-max |
 | `--x-axis-max` | float64 | optional | 连续数值 X 轴的显示范围上界；必须大于 --x-axis-min |
-| `--y-axis-min` | float64 | optional | 左 Y 轴的显示范围下界；必须小于 --y-axis-max |
-| `--y-axis-max` | float64 | optional | 左 Y 轴的显示范围上界；必须大于 --y-axis-min |
+| `--y-axis-min` | float64 | optional | 左 Y 轴的显示范围下界；默认省略，仅在用户明确要求固定范围时传；不得直接使用数据源单列最小值，且必须小于 --y-axis-max |
+| `--y-axis-max` | float64 | optional | 左 Y 轴的显示范围上界；默认省略，仅在用户明确要求固定范围时传；须按图表实际绘制值计算，且必须大于 --y-axis-min |
 | `--data-labels` | string | optional | 数据标签内容；value、category、percentage 可按 value_category_percentage 顺序组成任意非空组合；series 显示系列名称，none 隐藏标签（可选值：`none` / `value` / `category` / `percentage` / `value_category` / `value_percentage` / `category_percentage` / `value_category_percentage` / `series`） |
 | `--data-label-position` | string | optional | 仅当用户明确指定时传入；只调整已有数据标签的位置，不会单独开启标签；省略时按图表类型自动优化数据标签位置（可选值：`auto` / `top` / `bottom` / `left` / `right` / `center` / `inside` / `outside`） |
 | `--last-point-label` | bool | optional | 仅折线图、面积图、雷达图及组合图中的线性系列；true 开启每个系列最后一个数据点的数值标签，false 关闭这些单点标签 |
@@ -303,7 +305,7 @@ _创建/更新的图表属性_
 
 ### `+chart-create-basic`
 
-默认使用第 1 个维度作为类别/X 轴，其余维度作为数值系列；普通图表可用 1-based 的 `--dim1-index` 和逗号分隔的 `--dim2-indexes` 精确选择。组合图默认首个数值系列为左轴柱、其余为右轴折线；需要其它组合时，用 `--series-types` 和 `--series-y-axes` 按 `--dim2-indexes` 的顺序逐项指定系列类型与左右轴，两组参数的数量都必须与最终数值系列数一致。横轴数字默认按等间距文本类别处理；只有数字之间的真实间距需要影响图形位置时，才传 `--x-axis-numbers-as values` 使用连续数轴。气泡图改用 `--key-index`、`--x-index`、`--y-index` 和可选的 `--group-index` / `--size-index`，其中 x/y 必须同时提供，key 默认 1；角色索引不能与 dim1/dim2 索引混用。旧气泡图的 dim1/dim2 位置调用仍兼容。饼图和排列图只允许一个数值系列；组合图至少需要两个数值系列；所有图表最多选择 50 个数值系列。默认让 `--data-range` 包含真实表头；只有“维度/系列名称”与纯数据分离时，才让 `--data-range` 只传纯数据，并用 `--header-range` 传对应的一行（column）或一列（row）表头。类别维度与数值维度不连续时，范围参数可传逗号分隔的多范围，也支持来自多个子表；沿数据点轴对齐的跨子表范围会保留独立引用，同一子表内错行、错列或重叠时合并为最小包围矩形，跨子表范围无法对齐时会报错。单独调用成功后返回完整 `snapshot`，可直接检查创建结果并继续修改。参数名使用 `--anchor-cell` 和 `--data-labels`。兼容调用中，`--type` / `--range` 会分别按 `--chart-type` / `--data-range` 处理，`--x-axis` / `--y-axis` 会按轴标题处理；新调用仍优先使用规范参数名。
+默认使用第 1 个维度作为类别/X 轴，其余维度作为数值系列；普通图表可用 1-based 的 `--dim1-index` 和逗号分隔的 `--dim2-indexes` 精确选择。组合图默认首个数值系列为左轴柱、其余为右轴折线；创建前仍要比较各系列单位和量级，避免折线或小量级系列因共用左轴而贴近 X 轴。需要其它组合时，用 `--series-types` 和 `--series-y-axes` 按 `--dim2-indexes` 的顺序逐项指定系列类型与左右轴，两组参数的数量都必须与最终数值系列数一致。横轴数字默认按等间距文本类别处理；只有数字之间的真实间距需要影响图形位置时，才传 `--x-axis-numbers-as values` 使用连续数轴。气泡图改用 `--key-index`、`--x-index`、`--y-index` 和可选的 `--group-index` / `--size-index`，其中 x/y 必须同时提供，key 默认 1；角色索引不能与 dim1/dim2 索引混用。旧气泡图的 dim1/dim2 位置调用仍兼容。饼图和排列图只允许一个数值系列；组合图至少需要两个数值系列；所有图表最多选择 50 个数值系列。饼图默认将图例放在底部，并根据类别标签长度适量增加 `--width`（同时传 `--height`）。默认让 `--data-range` 包含真实表头；只有“维度/系列名称”与纯数据分离时，才让 `--data-range` 只传纯数据，并用 `--header-range` 传对应的一行（column）或一列（row）表头。类别维度与数值维度不连续时，范围参数可传逗号分隔的多范围，也支持来自多个子表；沿数据点轴对齐的跨子表范围会保留独立引用，同一子表内错行、错列或重叠时合并为最小包围矩形，跨子表范围无法对齐时会报错。单独调用成功后返回完整 `snapshot`，可直接检查创建结果并继续修改。参数名使用 `--anchor-cell` 和 `--data-labels`。兼容调用中，`--type` / `--range` 会分别按 `--chart-type` / `--data-range` 处理，`--x-axis` / `--y-axis` 会按轴标题处理；新调用仍优先使用规范参数名。
 
 **连续数值 X 轴的可读性**：`--x-axis-numbers-as values` 会保留数字的真实间距，但未指定范围时可能自动包含 0。如果数据集中在远离 0 的窄区间，数据点会挤在图表一侧；此时应保留 `values`，创建时用 `--x-axis-min` / `--x-axis-max` 收紧范围，已有图表用 `+chart-config-update` 修正，不要改成 `text` 掩盖问题。两个边界可单独设置；同时设置时 min 必须小于 max。
 
