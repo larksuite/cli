@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -211,7 +210,7 @@ var ChartConfigUpdate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		if runtime.Changed("series-data-labels") {
+		if runtime.Changed("last-point-label") {
 			updatedSnapshot, readErr := fetchChartSnapshot(
 				ctx, runtime, token, sheetID, sheetName, runtime.Str("chart-id"),
 			)
@@ -480,13 +479,6 @@ func chartCreateBasicInput(rt flagView, token, sheetID, sheetName string) (map[s
 		return nil, err
 	}
 	addChartSemanticConfig(rt, basic)
-	if rt.Changed("series-data-labels") {
-		seriesDataLabels, err := requireJSONArray(rt, "series-data-labels")
-		if err != nil {
-			return nil, err
-		}
-		basic["series_data_labels"] = seriesDataLabels
-	}
 
 	if rt.Changed("anchor-cell") {
 		anchor := strings.TrimSpace(rt.Str("anchor-cell"))
@@ -545,7 +537,7 @@ func chartConfigUpdateInput(rt flagView, token, sheetID, sheetName string) (map[
 		return nil, err
 	}
 	addChartSemanticConfig(rt, updates)
-	if len(updates) == 0 && !rt.Changed("series-data-labels") {
+	if len(updates) == 0 && !rt.Changed("last-point-label") {
 		return nil, common.ValidationErrorf("at least one chart configuration flag is required")
 	}
 	patch, _ := applyChartConfigPatch(map[string]interface{}{}, updates)
@@ -557,12 +549,8 @@ func chartConfigUpdateInput(rt flagView, token, sheetID, sheetName string) (map[
 			"snapshot": patch,
 		},
 	}
-	if rt.Changed("series-data-labels") {
-		seriesDataLabels, err := requireJSONArray(rt, "series-data-labels")
-		if err != nil {
-			return nil, err
-		}
-		input["properties"].(map[string]interface{})["series_data_labels"] = seriesDataLabels
+	if rt.Changed("last-point-label") {
+		input["properties"].(map[string]interface{})["last_point_label"] = rt.Bool("last-point-label")
 	}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
 	if err := validateInputAgainstSchema(rt, input); err != nil {
@@ -690,12 +678,8 @@ func chartConfigUpdateInputFromSnapshot(
 			"snapshot": patch,
 		},
 	}
-	if rt.Changed("series-data-labels") {
-		seriesDataLabels, err := requireJSONArray(rt, "series-data-labels")
-		if err != nil {
-			return nil, nil, err
-		}
-		input["properties"].(map[string]interface{})["series_data_labels"] = seriesDataLabels
+	if rt.Changed("last-point-label") {
+		input["properties"].(map[string]interface{})["last_point_label"] = rt.Bool("last-point-label")
 	}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
 	if err := validateInputAgainstSchema(rt, input); err != nil {
@@ -1670,26 +1654,6 @@ func validateChartSemanticEnums(rt flagView) error {
 			sheetsInvalidParam("stack", "cannot be used with --stacked"),
 			sheetsInvalidParam("stacked", "cannot be used with --stack"),
 		)
-	}
-	if rt.Changed("series-data-labels") {
-		conflictingFlags := make([]string, 0, 2)
-		for _, flag := range []string{"data-labels", "data-label-position"} {
-			if rt.Changed(flag) {
-				conflictingFlags = append(conflictingFlags, flag)
-			}
-		}
-		if len(conflictingFlags) > 0 {
-			params := []errs.InvalidParam{
-				sheetsInvalidParam("series-data-labels", "cannot be combined with global data-label flags"),
-			}
-			for _, flag := range conflictingFlags {
-				params = append(params, sheetsInvalidParam(flag, "cannot be used with --series-data-labels"))
-			}
-			return common.ValidationErrorf(
-				"--series-data-labels is mutually exclusive with --%s",
-				strings.Join(conflictingFlags, ", --"),
-			).WithParams(params...)
-		}
 	}
 	return nil
 }
