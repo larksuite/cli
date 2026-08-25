@@ -12,6 +12,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 // TestExecute_WorkbookInfo_Happy stubs the invoke_read endpoint and
@@ -581,6 +582,31 @@ func TestExecute_BatchChartUpdate_PreflightsSnapshots(t *testing.T) {
 	snapshot := chartDryRunSnapshot(t, chartInput)
 	if snapshot["title"].(map[string]interface{})["text"] != "New" {
 		t.Fatalf("batch partial title = %#v", snapshot["title"])
+	}
+}
+
+func TestExecute_ChartBatches_RejectDuplicateTargetByIDAndName(t *testing.T) {
+	t.Parallel()
+	operations := `[
+			{"shortcut":"+chart-config-update","input":{"sheet_id":"shtSubA","chart_id":"chart-1","title":"New"}},
+			{"shortcut":"+chart-data-update","input":{"sheet_name":"Data","chart_id":"chart-1","data_range":"A1:C10"}}
+		]`
+	for _, tc := range []struct {
+		name     string
+		shortcut common.Shortcut
+		extra    []string
+	}{
+		{name: "dedicated chart batch", shortcut: BatchChartUpdate},
+		{name: "general batch", shortcut: BatchUpdate, extra: []string{"--yes"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			structure := toolOutputStub(testToken, "read", `{
+				"sheets":[{"sheet_id":"shtSubA","title":"Data","index":0}]
+			}`)
+			args := []string{"--url", testURL, "--operations", operations}
+			_, err := runShortcutWithStubs(t, tc.shortcut, append(args, tc.extra...), structure)
+			requireValidation(t, err, "both target chart \"chart-1\"")
+		})
 	}
 }
 

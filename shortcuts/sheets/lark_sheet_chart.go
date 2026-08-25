@@ -1463,6 +1463,7 @@ func validateChartDim2Indexes(indexes []int) ([]int, error) {
 
 type chartDataRange struct {
 	sheet              string
+	qualifier          string
 	row, col           int
 	rowCount, colCount int
 }
@@ -1523,8 +1524,8 @@ func normalizeBasicChartDataRanges(dataRange, direction string) (normalized stri
 			)
 		}
 		prefix := ""
-		if first.sheet != "" {
-			prefix = first.sheet + "!"
+		if first.qualifier != "" {
+			prefix = first.qualifier
 		}
 		normalized = prefix + columnIndexToLetter(minCol) + strconv.Itoa(minRow+1) + ":" + columnIndexToLetter(maxCol-1) + strconv.Itoa(maxRow)
 		dimensionCount = maxCol - minCol
@@ -1572,9 +1573,10 @@ func splitChartDataRanges(value string) ([]string, error) {
 func parseChartDataRange(value string) (chartDataRange, error) {
 	item := chartDataRange{}
 	ref := strings.TrimSpace(value)
-	if bang := strings.LastIndex(ref, "!"); bang >= 0 {
-		item.sheet = strings.TrimSpace(ref[:bang])
-		ref = strings.TrimSpace(ref[bang+1:])
+	if sheet, end, ok := scanSheetQualifier(ref); ok {
+		item.sheet = sheet
+		item.qualifier = strings.TrimSpace(ref[:end])
+		ref = strings.TrimSpace(ref[end:])
 	}
 	parts := strings.SplitN(ref, ":", 2)
 	if len(parts) != 2 {

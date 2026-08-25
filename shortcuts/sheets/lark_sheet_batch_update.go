@@ -321,7 +321,7 @@ func buildChartBatchPlan(
 		localFailures:        localFailures,
 		total:                len(rawOps),
 	}
-	if err := rejectDuplicateBatchChartTargets(plan); err != nil {
+	if err := rejectDuplicateBatchChartTargets(plan, nil); err != nil {
 		return nil, err
 	}
 	return plan, nil
@@ -380,6 +380,15 @@ func prepareBatchChartUpdates(
 	token string,
 	plan *batchUpdatePlan,
 ) error {
+	if batchChartTargetsNeedSheetLookup(plan) {
+		sheetIDsByName, _, err := listSheetIDsByName(ctx, runtime, token)
+		if err != nil {
+			return err
+		}
+		if err := rejectDuplicateBatchChartTargets(plan, sheetIDsByName); err != nil {
+			return err
+		}
+	}
 	translated, _ := plan.input["operations"].([]interface{})
 	continueOnError, _ := plan.input["continue_on_error"].(bool)
 	prepared := make([]interface{}, 0, len(translated))
@@ -550,13 +559,13 @@ func buildBatchUpdatePlan(runtime *common.RuntimeContext, token string) (*batchU
 		localFailures:        localFailures,
 		total:                len(rawOps),
 	}
-	if err := rejectDuplicateBatchChartTargets(plan); err != nil {
+	if err := rejectDuplicateBatchChartTargets(plan, nil); err != nil {
 		return nil, err
 	}
 	return plan, nil
 }
 
-func rejectDuplicateBatchChartTargets(plan *batchUpdatePlan) error {
+func rejectDuplicateBatchChartTargets(plan *batchUpdatePlan, sheetIDsByName map[string]string) error {
 	type seenTarget struct {
 		index int
 		label string
@@ -578,6 +587,9 @@ func rejectDuplicateBatchChartTargets(plan *batchUpdatePlan) error {
 		if sheetID == "" {
 			selectorKey = "name:" + sheetName
 			selectorLabel = "sheet-name " + strconv.Quote(sheetName)
+			if resolvedID := sheetIDsByName[sheetName]; resolvedID != "" {
+				selectorKey = "id:" + resolvedID
+			}
 		}
 		key := selectorKey + "\x00" + chartID
 		originalIndex := plan.originalIndexes[remoteIndex]
@@ -594,6 +606,29 @@ func rejectDuplicateBatchChartTargets(plan *batchUpdatePlan) error {
 		seen[key] = seenTarget{index: originalIndex, label: selectorLabel}
 	}
 	return nil
+}
+
+func batchChartTargetsNeedSheetLookup(plan *batchUpdatePlan) bool {
+	selectorKinds := make(map[string]uint8)
+	for _, operation := range plan.normalizedOperations {
+		if operation.shortcut != "+chart-config-update" && operation.shortcut != "+chart-data-update" {
+			continue
+		}
+		fv := newMapFlagViewForCommand(operation.shortcut, operation.input)
+		chartID := strings.TrimSpace(fv.Str("chart-id"))
+		if chartID == "" {
+			continue
+		}
+		if strings.TrimSpace(fv.Str("sheet-id")) != "" {
+			selectorKinds[chartID] |= 1
+		} else if strings.TrimSpace(fv.Str("sheet-name")) != "" {
+			selectorKinds[chartID] |= 2
+		}
+		if selectorKinds[chartID] == 3 {
+			return true
+		}
+	}
+	return false
 }
 
 func batchContinueOnError(runtime *common.RuntimeContext) bool {

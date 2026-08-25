@@ -215,6 +215,7 @@ func TestChartCreateBasic_MergesMisalignedOrOverlappingRanges(t *testing.T) {
 	}{
 		{name: "separated rows", input: "'Sheet1'!A1:M1,'Sheet1'!A3:M3", expected: "'Sheet1'!A1:M3"},
 		{name: "overlapping columns", input: "A1:B10,B1:C10", expected: "A1:C10"},
+		{name: "mixed qualifier spelling", input: "Data!A1:B10,'Data'!B1:C10", expected: "Data!A1:C10"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
