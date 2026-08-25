@@ -143,6 +143,21 @@ func TestStripSlideNoteIDPreservesEverythingElse(t *testing.T) {
 			in:      `<slide id="p1"><data/><note id='blw'><content><p>n</p></content></note></slide>`,
 			removed: ` id='blw'`,
 		},
+		{
+			// &#32; (a numeric char ref) decodes to a space, but InputOffset is
+			// an input-byte offset, so the note span must not drift even with
+			// several of them ahead of the note. The refs stay verbatim.
+			name: "numeric char refs before the note",
+			in: `<slide id="p1"><data><shape type="text"><content><p>a&#32;b&#32;c</p></content></shape></data>` +
+				`<note id="blw"><content><p>n</p></content></note></slide>`,
+			removed: ` id="blw"`,
+		},
+		{
+			// A char ref inside the id value itself: the whole attribute goes.
+			name:    "char ref inside note id value",
+			in:      `<slide id="p1"><data/><note id="a&#32;b"><content><p>n</p></content></note></slide>`,
+			removed: ` id="a&#32;b"`,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
