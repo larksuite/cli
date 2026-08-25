@@ -15,6 +15,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -302,8 +305,7 @@ func validateAutoReplyContentLimits(contentHTML string, images []map[string]inte
 		totalBytes += fileSize
 	}
 	if totalBytes > maxAutoReplyContentBytes {
-		return mailFailedPreconditionError("auto-reply content size exceeds %d MB (got %.1f MB)",
-			maxAutoReplyContentBytes/(1024*1024), float64(totalBytes)/1024/1024)
+		return mailFailedPreconditionError("auto-reply content size exceeds %d MB limit", maxAutoReplyContentBytes/(1024*1024))
 	}
 	return nil
 }
@@ -431,11 +433,11 @@ func uploadAutoReplyLocalImages(ctx context.Context, runtime *common.RuntimeCont
 			if err != nil {
 				return "", nil, mailValidationParamError("--content", "inline image %s: %v", img.Path, err).WithCause(err)
 			}
-			fileKey, size, err := uploadToDriveForTemplate(ctx, runtime, img.Path)
+			fileKey, size, err := uploadAutoReplyImageToDrive(runtime, img.Path)
 			if err != nil {
 				return "", nil, err
 			}
-			cid, err := generateTemplateCID()
+			cid, err := generateAutoReplyCID()
 			if err != nil {
 				return "", nil, err
 			}
@@ -449,6 +451,55 @@ func uploadAutoReplyLocalImages(ctx context.Context, runtime *common.RuntimeCont
 		content = replaceImgSrcOnce(content, img.RawSrc, "cid:"+item.cid)
 	}
 	return content, images, nil
+}
+
+func generateAutoReplyCID() (string, error) {
+	id, err := uuid.NewRandom()
+	if err != nil {
+		return "", errs.NewInternalError(errs.SubtypeSDKError, "failed to generate CID: %v", err).WithCause(err)
+	}
+	return id.String(), nil
+}
+
+func uploadAutoReplyImageToDrive(runtime *common.RuntimeContext, path string) (fileKey string, size int64, err error) {
+	info, err := runtime.FileIO().Stat(path)
+	if err != nil {
+		return "", 0, mailInputStatError(err)
+	}
+	size = info.Size()
+	if size > MaxLargeAttachmentSize {
+		return "", size, mailFailedPreconditionError("auto-reply image %s (%.1f GB) exceeds the %.0f GB single file limit",
+			filepath.Base(path), float64(size)/1024/1024/1024, float64(MaxLargeAttachmentSize)/1024/1024/1024)
+	}
+	name := filepath.Base(path)
+	if err := filecheck.CheckBlockedExtension(name); err != nil {
+		return "", size, mailValidationError("%v", err).WithCause(err)
+	}
+	userOpenId := runtime.UserOpenId()
+	if userOpenId == "" {
+		return "", size, mailFailedPreconditionError("auto-reply image upload requires user identity (--as user)")
+	}
+	if size <= common.MaxDriveMediaUploadSinglePartSize {
+		fileKey, err = common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
+			FilePath:   path,
+			FileName:   name,
+			FileSize:   size,
+			ParentType: "email",
+			ParentNode: &userOpenId,
+		})
+	} else {
+		fileKey, err = common.UploadDriveMediaMultipartTyped(runtime, common.DriveMediaMultipartUploadConfig{
+			FilePath:   path,
+			FileName:   name,
+			FileSize:   size,
+			ParentType: "email",
+			ParentNode: userOpenId,
+		})
+	}
+	if err != nil {
+		return "", size, mailDecorateProblemMessage(err, "upload auto-reply image %s to Drive failed", name)
+	}
+	return fileKey, size, nil
 }
 
 func readAutoReplyImage(runtime *common.RuntimeContext, path string) ([]byte, error) {
