@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.89] - 2026-08-21
+
+### Features
+
+- add minutes transcript degradation logic (#2404)
+- **base**: add --position and statistics number_format to dashboard-block create/update (#2118)
+- **base**: add dashboard and form share shortcuts (#2282)
+- **skills**: unify meeting related skills (#2387)
+- **base**: support button workflow bindings (#2437)
+- **base**: add template discovery and form question field reuse (#2340)
+- **skills**: extend slides XML schema (#2442)
+- **slides**: use office_slide_file parent_type for imported office presentations (#2441)
+- add IM read status shortcuts (#2318)
+
+### Bug Fixes
+
+- honor recovered E2E retries (#2400)
+- **apps**: make cache-clear ask first, and make apps failures classifiable (#2415)
+
+### Tests
+
+- **drive**: retry transient async cleanup contention (#2397)
+
+### Refactoring
+
+- **shortcuts**: remove MCP text location paths (#2439)
+
 ## [v1.0.88] - 2026-08-18
 
 ### Features
@@ -1956,6 +1983,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.89]: https://github.com/larksuite/cli/releases/tag/v1.0.89
 [v1.0.88]: https://github.com/larksuite/cli/releases/tag/v1.0.88
 [v1.0.87]: https://github.com/larksuite/cli/releases/tag/v1.0.87
 [v1.0.86]: https://github.com/larksuite/cli/releases/tag/v1.0.86

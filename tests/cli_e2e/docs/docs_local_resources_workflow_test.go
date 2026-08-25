@@ -48,6 +48,7 @@ func testDocsLocalResourcesWorkflow(t *testing.T, defaultAs string) {
 	replacedSource := []byte("block replaced source fixture\n")
 	overwrittenSource := []byte("overwritten source fixture\n")
 	writeLocalResourceFixture(t, workDir, "created.png", hundredByEightyPNG)
+	writeLocalResourceFixture(t, workDir, "positioned.png", onePixelPNG)
 	writeLocalResourceFixture(t, workDir, "created.txt", createdSource)
 	writeLocalResourceFixture(t, workDir, "appended.png", onePixelPNG)
 	writeLocalResourceFixture(t, workDir, "replaced.png", onePixelPNG)
@@ -102,6 +103,42 @@ func testDocsLocalResourcesWorkflow(t *testing.T, defaultAs string) {
 			deleteResult, deleteErr := drive.DeleteDriveResourceAndVerify(cleanupCtx, docToken, "docx", cleanupAs)
 			clie2e.ReportCleanupFailure(parentT, "delete doc "+docToken, deleteResult, deleteErr)
 		})
+	})
+
+	t.Run("insert local image after fetched block id", func(t *testing.T) {
+		require.NotEmpty(t, docToken, "document token should be created before update")
+		initialXML, err := fetchDocsContent(ctx, docToken, "xml", "with-ids", defaultAs)
+		require.NoError(t, err)
+		anchorBlockID, err := docBlockIDByExactText(initialXML, "created resources")
+		require.NoError(t, err)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"docs", "+update",
+				"--doc", docToken,
+				"--command", "block_insert_after",
+				"--block-id", anchorBlockID,
+				"--content", `<img path="@positioned.png" caption="positioned image"/>`,
+			},
+			DefaultAs: defaultAs,
+			WorkDir:   workDir,
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		result.AssertStdoutStatus(t, true)
+		assertBoundLocalResourceBlocks(t, result.Stdout, 1, 0)
+
+		var positionedXML string
+		require.Eventually(t, func() bool {
+			positionedXML, err = fetchDocsContent(ctx, docToken, "xml", "with-ids", defaultAs)
+			if err != nil {
+				return false
+			}
+			anchorIndex := strings.Index(positionedXML, "created resources")
+			positionedIndex := strings.Index(positionedXML, "positioned image")
+			followingIndex := strings.Index(positionedXML, "created image")
+			return anchorIndex >= 0 && positionedIndex > anchorIndex && followingIndex > positionedIndex
+		}, 20*time.Second, 500*time.Millisecond, "positioned image was not persisted directly between the anchor and following block; XML:\n%s", positionedXML)
 	})
 
 	t.Run("append image and source", func(t *testing.T) {
@@ -204,6 +241,7 @@ func testDocsLocalResourcesWorkflow(t *testing.T, defaultAs string) {
 		content := gjson.Get(result.Stdout, "data.document.content").String()
 		for _, want := range []string{
 			"created image",
+			"positioned image",
 			"block replaced image",
 			"created-report.txt",
 			"block-replaced-report.txt",

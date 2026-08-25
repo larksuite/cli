@@ -1,7 +1,7 @@
 ---
 name: lark-calendar
 version: 1.0.0
-description: "飞书日历：管理日历日程和会议室。查看/搜索日程、创建/更新日程、管理参会人、查询忙闲和推荐时段、预定会议室。当用户需要查看日程安排、创建/修改会议、查询/预定会议室时使用。不负责：查询过去的视频会议记录（走 lark-vc）、待办任务（走 lark-task）。"
+description: "飞书日历：管理日历日程和会议室。查看/搜索日程、创建/更新日程、管理参会人、查询忙闲和推荐时段、预定会议室。当用户需要查看日程安排、创建/修改会议、查询/预定会议室时使用。不负责：查询过去的视频会议记录（走 lark-meeting）、待办任务（走 lark-task）。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -42,6 +42,7 @@ lark-cli calendar +agenda --as bot
 | [`+room-find`](references/lark-calendar-room-find.md) | 针对一个或多个**明确的**时间块查找可用会议室（无明确时间时禁止直接调用，需先走 +suggestion） |
 | [`+rsvp`](references/lark-calendar-rsvp.md) | 回复日程（接受/拒绝/待定） |
 | [`+suggestion`](references/lark-calendar-suggestion.md) | 根据非明确时间或一段时间范围，推荐多个可用时间块方案 |
+| [`+transfer`](references/lark-calendar-transfer.md) | 把日程组织者转让给另一个用户或机器人；不可逆，需 `--yes` |
 
 ### `+get` — 单日程详情
 
@@ -127,14 +128,16 @@ lark-cli calendar +freebusy --start 2026-03-11 --end 2026-03-12 --user-id ou_xxx
 
 | 用户意图 | 路由到 |
 |----------|--------|
-| 查询过去的会议（"昨天的会议""上周的会"） | [`../lark-vc/SKILL.md`](../lark-vc/SKILL.md)（会议数据含即时会议，仅查日程会遗漏） |
+| 查询过去的会议（"昨天的会议""上周的会"） | [`../lark-meeting/SKILL.md`](../lark-meeting/SKILL.md)（会议数据含即时会议，仅查日程会遗漏） |
+| 今天有哪些会议| 需要合并两部分内容：[`../lark-meeting/SKILL.md`](../lark-meeting/SKILL.md) 中的 `vc +search` 查询今天已结束的会议， `calendar +agenda` 查询进行中或未开始的日程。|
 | 查询日历/日程或未来时间的会议 | 本 skill |
 | 按关键词搜索日程 | 本 skill（`+search-event`） |
 | 从日程获取关联的视频会议 ID 或用户绑定的会议纪要文档 | 本 skill（`+meeting`） |
-| 从日程进一步拿 AI 智能纪要 / 逐字稿 / 妙记产物 | 先 `+meeting` 取 `meeting_id`，再 [`vc +detail`](../lark-vc/references/lark-vc-detail.md) → [`note +detail`](../lark-note/references/lark-note-detail.md) / [`minutes +detail`](../lark-minutes/references/lark-minutes-detail.md) |
+| 从日程进一步拿 AI 智能纪要 / 逐字稿 / 妙记产物 | 先 `+meeting` 取 `meeting_id`，再进入 [`lark-meeting`](../lark-meeting/SKILL.md)：[`vc +detail`](../lark-meeting/references/lark-vc-detail.md) → [`note +detail`](../lark-meeting/references/lark-note-detail.md) / [`minutes +detail`](../lark-meeting/references/lark-minutes-detail.md) |
 | 预约/改约日程、调整时间、添加/更换会议室、查会议室 | 先判断新建 vs 编辑，再进入 [schedule-meeting 工作流](references/lark-calendar-schedule-meeting.md) |
 | 仅编辑日程字段（标题/描述）或增删参会人（不涉及时间和会议室） | 先定位 `event_id`，再读 [+update](references/lark-calendar-update.md) 执行变更 |
 | 编辑/删除重复性日程（「改这个重复日程」「删掉后面的」「全部取消」等） | 先读 [重复性日程操作规范](references/lark-calendar-recurring.md)，确认操作范围后执行 |
+| 转让日程组织者（「把这个日程交给 XX」「组织者改成 XX」「这个会转给我」「bot 建完还给我」） | 读 [+transfer](references/lark-calendar-transfer.md)；`--as` 用**当前组织者**身份，`--to-user-id` 传接收人，用户和机器人任意互转 |
 
 ## 任务类型分流
 
@@ -165,8 +168,8 @@ lark-cli calendar <resource> <method> [flags]
 # 查询用户主日历
 lark-cli calendar calendars primary
 
-# 获取日程分享链接
-lark-cli calendar events share_info --calendar-id <calendar_id> --event-id <event_id>
+# 获取日程详情及 app_link
+lark-cli calendar events get --calendar-id <calendar_id> --event-id <event_id>
 
 # 删除日程
 lark-cli calendar events delete --calendar-id <calendar_id> --event-id <event_id>
@@ -196,7 +199,7 @@ lark-cli im +chat-search --query <query> --as user
 
 ## 不在本 skill 范围
 
-- 查询过去的视频会议记录 → [lark-vc](../lark-vc/SKILL.md)
+- 查询过去的视频会议记录 → [lark-meeting](../lark-meeting/SKILL.md)
 - 待办任务管理 → [lark-task](../lark-task/SKILL.md)
 - 通讯录 → [lark-contact](../lark-contact/SKILL.md)
 - 即时通讯 → [lark-im](../lark-im/SKILL.md)

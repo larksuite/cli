@@ -1066,6 +1066,101 @@ func decodeCapturedJSONBody(t *testing.T, stub *httpmock.Stub) map[string]interf
 	return body
 }
 
+func TestTemplateCenterExecuteShortcuts(t *testing.T) {
+	t.Run("categories", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/templates/category",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"categories": []interface{}{
+						map[string]interface{}{"key": "office", "name": "办公通用"},
+					},
+				},
+			},
+		})
+
+		if err := runShortcut(t, BaseTemplateCategories, []string{"+template-categories"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+
+		data := decodeBaseEnvelope(t, stdout)
+		categories, _ := data["categories"].([]interface{})
+		if len(categories) != 1 {
+			t.Fatalf("categories=%#v, want one category", data["categories"])
+		}
+		first, _ := categories[0].(map[string]interface{})
+		if first["key"] != "office" {
+			t.Fatalf("category key=%#v, want office", first["key"])
+		}
+	})
+
+	t.Run("list", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/templates?category_key=office&limit=20&offset=cursor_1",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"templates": []interface{}{
+						map[string]interface{}{"token": "tpl_token", "name": "工作汇报"},
+					},
+					"has_more": true,
+					"offset":   "cursor_2",
+				},
+			},
+		})
+
+		err := runShortcut(t, BaseTemplateList, []string{"+template-list", "--category-key", "office", "--limit", "20", "--offset", "cursor_1"}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+
+		data := decodeBaseEnvelope(t, stdout)
+		if data["has_more"] != true || data["offset"] != "cursor_2" {
+			t.Fatalf("unexpected pagination output: %#v", data)
+		}
+		templates, _ := data["templates"].([]interface{})
+		first, _ := templates[0].(map[string]interface{})
+		if first["token"] != "tpl_token" {
+			t.Fatalf("template token=%#v, want tpl_token", first["token"])
+		}
+	})
+
+	t.Run("search", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/templates/search?keyword=AI&limit=10",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"templates": []interface{}{
+						map[string]interface{}{"token": "ai_tpl", "name": "AI 任务管理"},
+					},
+					"has_more": false,
+					"offset":   "",
+				},
+			},
+		})
+
+		if err := runShortcut(t, BaseTemplateSearch, []string{"+template-search", "--keyword", " AI "}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+
+		data := decodeBaseEnvelope(t, stdout)
+		templates, _ := data["templates"].([]interface{})
+		first, _ := templates[0].(map[string]interface{})
+		if first["token"] != "ai_tpl" || first["name"] != "AI 任务管理" {
+			t.Fatalf("unexpected template output: %#v", first)
+		}
+	})
+
+}
+
 func TestBaseBlockExecuteShortcuts(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	listStub := &httpmock.Stub{

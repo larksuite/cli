@@ -31,6 +31,7 @@ func imPageSizeValidationCases() []imPageSizeValidationCase {
 		{shortcut: ImChatSearch, flags: map[string]string{"query": "test"}, defaultSize: chatSearchDefaultPageSize, maxSize: chatSearchMaxPageSize},
 		{shortcut: ImChatList, defaultSize: chatListDefaultPageSize, maxSize: chatListMaxPageSize},
 		{shortcut: ImChatMembersList, flags: map[string]string{"chat-id": "oc_test"}, defaultSize: chatMembersListDefaultPageSize, maxSize: chatMembersListMaxPageSize},
+		{shortcut: ImMessageReadUsers, flags: map[string]string{"message-id": "om_test"}, defaultSize: messageReadUsersDefaultPageSize, maxSize: messageReadUsersMaxPageSize},
 	}
 }
 

@@ -93,9 +93,7 @@ func TestBaseShareWorkflow(t *testing.T) {
 		runUpdate("--enabled=true")
 		runUpdate("--access-scope", "invite")
 		runUpdate("--show-source=true")
-		runUpdate("--enable-auto-analysis=true")
 		runUpdate("--show-source=false")
-		runUpdate("--enable-auto-analysis=false")
 
 		get, runErr := clie2e.RunCmd(ctx, clie2e.Request{
 			Args:      []string{"base", "+dashboard-share-get", "--base-token", baseToken, "--dashboard-id", dashboardID},
@@ -109,9 +107,6 @@ func TestBaseShareWorkflow(t *testing.T) {
 		showSource := gjson.Get(get.Stdout, "data.settings.show_source")
 		require.True(t, showSource.Exists(), get.Stdout)
 		require.False(t, showSource.Bool(), get.Stdout)
-		autoAnalysis := gjson.Get(get.Stdout, "data.settings.enable_auto_analysis")
-		require.True(t, autoAnalysis.Exists(), get.Stdout)
-		require.False(t, autoAnalysis.Bool(), get.Stdout)
 	})
 
 	t.Run("form share update and get", func(t *testing.T) {

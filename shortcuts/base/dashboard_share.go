@@ -13,7 +13,11 @@ var dashboardShareUpdateFlagNames = []string{
 	"enabled",
 	"access-scope",
 	"show-source",
-	"enable-auto-analysis",
+}
+
+type dashboardShareResponse struct {
+	data     map[string]interface{}
+	settings map[string]interface{}
 }
 
 var BaseDashboardShareGet = common.Shortcut{
@@ -40,7 +44,7 @@ var BaseDashboardShareGet = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		runtime.Out(data, nil)
+		runtime.Out(publicDashboardShareData(data), nil)
 		return nil
 	},
 }
@@ -58,10 +62,9 @@ var BaseDashboardShareUpdate = common.Shortcut{
 		{Name: "enabled", Type: "bool", Desc: "enable or disable dashboard sharing"},
 		{Name: "access-scope", Desc: "share access scope", Enum: shareAccessScopeEnums},
 		{Name: "show-source", Type: "bool", Desc: "show the entry back to the source Base"},
-		{Name: "enable-auto-analysis", Type: "bool", Desc: "enable intelligent analysis on the shared dashboard"},
 	},
 	Tips: []string{
-		"Boolean settings use PATCH semantics: pass --show-source=false or --enable-auto-analysis=false to explicitly turn them off.",
+		"Boolean settings use PATCH semantics: pass --show-source=false to explicitly turn it off.",
 		"Update exactly one field per invocation; run separate commands to change multiple share fields.",
 	},
 	Validate: func(_ context.Context, runtime *common.RuntimeContext) error {
@@ -81,7 +84,7 @@ var BaseDashboardShareUpdate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		runtime.Out(data, nil)
+		runtime.Out(publicDashboardShareData(data), nil)
 		return nil
 	},
 }
@@ -94,11 +97,18 @@ func buildDashboardShareUpdateBody(runtime *common.RuntimeContext) map[string]in
 	if runtime.Changed("show-source") {
 		settings["show_source"] = runtime.Bool("show-source")
 	}
-	if runtime.Changed("enable-auto-analysis") {
-		settings["enable_auto_analysis"] = runtime.Bool("enable-auto-analysis")
-	}
 	if len(settings) > 0 {
 		body["settings"] = settings
 	}
 	return body
+}
+
+func publicDashboardShareData(data map[string]interface{}) map[string]interface{} {
+	response := dashboardShareResponse{data: data}
+	response.settings, _ = data["settings"].(map[string]interface{})
+
+	// Intelligent analysis remains backend-gated, so the CLI must not expose it
+	// while preserving every other dashboard share field returned by the API.
+	delete(response.settings, "enable_auto_analysis")
+	return response.data
 }

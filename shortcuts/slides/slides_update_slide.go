@@ -160,7 +160,7 @@ func updateSlideDryRun(_ context.Context, runtime *common.RuntimeContext) *commo
 	}
 
 	if ref.Kind == "wiki" {
-		presentationID = "<resolved_slides_token>"
+		presentationID = unresolvedSlidesTokenPlaceholder
 		dry.Desc(fmt.Sprintf("%d-step orchestration: resolve wiki → replace slide", total)).
 			GET("/open-apis/wiki/v2/spaces/get_node").
 			Desc(fmt.Sprintf("[%d/%d] Resolve wiki node to slides presentation", step, total)).
@@ -175,7 +175,7 @@ func updateSlideDryRun(_ context.Context, runtime *common.RuntimeContext) *commo
 	// Uploads run against the target presentation, so a wiki ref resolves to a
 	// real id first; the placeholder tokens are unknown until then.
 	for _, path := range placeholders {
-		appendSlidesUploadDryRun(dry, path, presentationID, step)
+		appendSlidesUploadDryRun(dry, path, presentationID, slidesDryRunParentType(ref), step)
 		step++
 	}
 

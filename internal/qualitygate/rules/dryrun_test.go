@@ -165,6 +165,36 @@ func TestRunDryRunsMaterializesTypedPlaceholderFlagValues(t *testing.T) {
 	}
 }
 
+func TestRunDryRunsMaterializesValidMinuteTokenPlaceholder(t *testing.T) {
+	cliBin, argsPath := fakeDryRunCLI(t, `{"api":[{"method":"GET","url":"/open-apis/minutes/v1/minutes/obcntest123"}]}`)
+	m := manifest.Manifest{Commands: []manifest.Command{{
+		Path:     "minutes +detail",
+		Runnable: true,
+		Flags: []manifest.Flag{
+			{Name: "minute-tokens", TakesValue: true},
+			{Name: "dry-run"},
+		},
+	}}}
+	ex := skillscan.Example{
+		Raw:            "lark-cli minutes +detail --minute-tokens <minute_token>",
+		SourceFile:     "skills/lark-meeting/scenes/create-and-edit-minutes.md",
+		Line:           28,
+		HasPlaceholder: true,
+	}
+
+	diags, facts := RunDryRuns(context.Background(), cliBin, m, []skillscan.Example{ex})
+	if len(diags) != 0 {
+		t.Fatalf("RunDryRuns() diagnostics = %#v", diags)
+	}
+	if len(facts) != 1 || !facts[0].Executable || facts[0].SkipReason != "" {
+		t.Fatalf("placeholder example should be executable after materialization: %#v", facts)
+	}
+	wantArgs := []string{"minutes", "+detail", "--minute-tokens", "obcntest123", "--dry-run"}
+	if gotArgs := readArgs(t, argsPath); !reflect.DeepEqual(gotArgs, wantArgs) {
+		t.Fatalf("fake CLI args = %#v, want %#v", gotArgs, wantArgs)
+	}
+}
+
 func TestRunDryRunsIgnoresTrailingShellComment(t *testing.T) {
 	cliBin, argsPath := fakeDryRunCLI(t, `{"api":[{"method":"GET","url":"/open-apis/docx/v1/documents/doccnxxxx"}]}`)
 	m := manifest.Manifest{Commands: []manifest.Command{{

@@ -29,7 +29,14 @@ var imAffordanceExamples = []imAffordanceExample{
 	{method: "+chat-messages-list", command: "lark-cli im +chat-messages-list --chat-id oc_xxx", source: "lark-im/references/lark-im-chat-messages-list.md"},
 	{method: "+chat-search", command: `lark-cli im +chat-search --query "project"`, source: "lark-im/references/lark-im-chat-search.md"},
 	{method: "+chat-update", command: `lark-cli im +chat-update --chat-id oc_xxx --name "New Group Name"`, source: "lark-im/references/lark-im-chat-update.md"},
+	{method: "+message-read-users", command: "lark-cli im +message-read-users --message-id om_xxx", source: "lark-im/references/lark-im-message-read-status.md"},
 	{method: "+messages-mget", command: "lark-cli im +messages-mget --message-ids om_xxx", source: "lark-im/references/lark-im-messages-mget.md"},
+	{
+		method:        "+messages-read-status",
+		command:       "lark-cli im +messages-read-status --as user --message-ids om_xxx,om_yyy",
+		source:        "lark-im/references/lark-im-message-read-status.md",
+		sourceCommand: "lark-cli im +messages-read-status --message-ids om_xxx,om_yyy --as user --json",
+	},
 	{method: "+messages-reply", command: `lark-cli im +messages-reply --message-id om_xxx --text "Received"`, source: "lark-im/references/lark-im-messages-reply.md"},
 	{method: "+messages-resources-download", command: "lark-cli im +messages-resources-download --message-id om_xxx --file-key img_v3_xxx --type image", source: "lark-im/references/lark-im-messages-resources-download.md"},
 	{method: "+messages-search", command: `lark-cli im +messages-search --query "project progress"`, source: "lark-im/references/lark-im-messages-search.md"},
@@ -78,7 +85,7 @@ func TestIMAffordanceExamplesTraceToCurrentSkill(t *testing.T) {
 	if got, ok := DomainSkill("im"); !ok || got != "lark-im" {
 		t.Fatalf("DomainSkill(im) = (%q, %v), want (lark-im, true)", got, ok)
 	}
-	if got, want := len(imAffordanceExamples), 33; got != want {
+	if got, want := len(imAffordanceExamples), 35; got != want {
 		t.Fatalf("audited IM example count = %d, want %d", got, want)
 	}
 	affordanceSource, err := os.ReadFile("../../affordance/im.md")
@@ -97,8 +104,8 @@ func TestIMAffordanceExamplesTraceToCurrentSkill(t *testing.T) {
 			shortcutCount++
 		}
 	}
-	if shortcutCount != 21 || len(imAffordanceExamples)-shortcutCount != 12 {
-		t.Fatalf("audited split = %d shortcuts / %d raw, want 21 / 12", shortcutCount, len(imAffordanceExamples)-shortcutCount)
+	if shortcutCount != 23 || len(imAffordanceExamples)-shortcutCount != 12 {
+		t.Fatalf("audited split = %d shortcuts / %d raw, want 23 / 12", shortcutCount, len(imAffordanceExamples)-shortcutCount)
 	}
 	for method := range parsedDomain.methods {
 		if !audited[method] {

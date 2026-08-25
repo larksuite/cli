@@ -22,6 +22,10 @@ func TestDashboardShareGetCallsResourceEndpoint(t *testing.T) {
 			"data": map[string]interface{}{
 				"enabled":      true,
 				"access_scope": "tenant",
+				"settings": map[string]interface{}{
+					"show_source":          true,
+					"enable_auto_analysis": true,
+				},
 			},
 		},
 	})
@@ -37,6 +41,12 @@ func TestDashboardShareGetCallsResourceEndpoint(t *testing.T) {
 	if got := stdout.String(); !strings.Contains(got, `"access_scope": "tenant"`) {
 		t.Fatalf("stdout=%s", got)
 	}
+	if got := stdout.String(); !strings.Contains(got, `"show_source": true`) {
+		t.Fatalf("stdout=%s", got)
+	}
+	if got := stdout.String(); strings.Contains(got, `enable_auto_analysis`) {
+		t.Fatalf("stdout exposes backend-gated auto analysis setting: %s", got)
+	}
 }
 
 func TestDashboardShareUpdatePreservesExplicitFalse(t *testing.T) {
@@ -49,11 +59,6 @@ func TestDashboardShareUpdatePreservesExplicitFalse(t *testing.T) {
 			name: "show source",
 			flag: "--show-source=false",
 			want: map[string]interface{}{"settings": map[string]interface{}{"show_source": false}},
-		},
-		{
-			name: "auto analysis",
-			flag: "--enable-auto-analysis=false",
-			want: map[string]interface{}{"settings": map[string]interface{}{"enable_auto_analysis": false}},
 		},
 	}
 
@@ -83,6 +88,49 @@ func TestDashboardShareUpdatePreservesExplicitFalse(t *testing.T) {
 				t.Fatalf("request body=%#v, want %#v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestDashboardShareUpdateHidesAutoAnalysisFromResponse(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	stub := &httpmock.Stub{
+		Method: "PATCH",
+		URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_1/share",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"enabled": true,
+				"settings": map[string]interface{}{
+					"show_source":          false,
+					"enable_auto_analysis": true,
+				},
+			},
+		},
+	}
+	reg.Register(stub)
+
+	err := runShortcut(t, BaseDashboardShareUpdate, []string{
+		"+dashboard-share-update",
+		"--base-token", "app_x",
+		"--dashboard-id", "dsh_1",
+		"--show-source=false",
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("run shortcut: %v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, `"show_source": false`) {
+		t.Fatalf("stdout=%s", got)
+	}
+	if got := stdout.String(); strings.Contains(got, `enable_auto_analysis`) {
+		t.Fatalf("stdout exposes backend-gated auto analysis setting: %s", got)
+	}
+}
+
+func TestDashboardShareUpdateDoesNotExposeAutoAnalysisFlag(t *testing.T) {
+	for _, flag := range BaseDashboardShareUpdate.Flags {
+		if flag.Name == "enable-auto-analysis" {
+			t.Fatal("dashboard share update exposes backend-gated --enable-auto-analysis")
+		}
 	}
 }
 

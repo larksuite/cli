@@ -4,7 +4,7 @@
 package mail
 
 import (
-	"encoding/base64"
+	"mime"
 	"strings"
 )
 
@@ -58,7 +58,33 @@ func (m Mailbox) String() string {
 	if m.Name == "" {
 		return m.Email
 	}
-	return encodeHeader(m.Name) + " <" + m.Email + ">"
+	return formatDisplayName(m.Name) + " <" + m.Email + ">"
+}
+
+// rawString formats a mailbox for intermediate CLI normalization. It preserves
+// the original display-name text; RFC 2047 encoding belongs to final header
+// rendering in String().
+func (m Mailbox) rawString() string {
+	if m.Name == "" {
+		return m.Email
+	}
+	return quoteDisplayNameIfNeeded(m.Name) + " <" + m.Email + ">"
+}
+
+func formatDisplayName(name string) string {
+	encoded := encodeHeader(name)
+	if encoded != name {
+		return encoded
+	}
+	return quoteDisplayNameIfNeeded(name)
+}
+
+func quoteDisplayNameIfNeeded(name string) string {
+	if !strings.ContainsAny(name, "\",;<>@()[]:\\") {
+		return name
+	}
+	escaped := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(name)
+	return `"` + escaped + `"`
 }
 
 // sanitizeControlChars strips ASCII control characters (0x00–0x1F, 0x7F)
@@ -82,7 +108,7 @@ func sanitizeControlChars(s string) string {
 func encodeHeader(val string) string {
 	for _, r := range val {
 		if r > 127 {
-			return "=?UTF-8?B?" + base64.StdEncoding.EncodeToString([]byte(val)) + "?="
+			return mime.BEncoding.Encode("UTF-8", val)
 		}
 	}
 	return val

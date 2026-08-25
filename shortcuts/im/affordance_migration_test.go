@@ -25,7 +25,7 @@ func TestAllIMShortcutsUseAffordanceExamples(t *testing.T) {
 	t.Cleanup(func() { affordance.SetSource(nil) })
 
 	shortcuts := Shortcuts()
-	if got, want := len(shortcuts), 21; got != want {
+	if got, want := len(shortcuts), 23; got != want {
 		t.Fatalf("registered IM shortcuts = %d, want audited count %d", got, want)
 	}
 

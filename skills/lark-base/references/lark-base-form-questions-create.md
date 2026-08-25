@@ -2,7 +2,7 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-向多维表格表单/问卷中批量添加问题。
+向多维表格表单/问卷中批量添加问题。可以新建字段并作为题目，也可以把已有字段加到表单中作为题目而不新建字段。
 
 ## 命令
 
@@ -54,6 +54,13 @@ lark-cli base +form-questions-create \
   --table-id <table_id> \
   --form-id <form_id> \
   --questions '[{"type":"select","title":"是否需要发票","required":true,"options":[{"name":"是","hue":"Blue"},{"name":"否","hue":"Gray"}]},{"type":"text","title":"发票抬头","visible_rule":{"logic":"and","conditions":[["是否需要发票","==","是"]]}}]'
+
+# 把已有字段作为题目加到表单中，不新建字段
+lark-cli base +form-questions-create \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --form-id <form_id> \
+  --questions '[{"use_existing_field":true,"field_id":"fldEmail","title":"你的邮箱","description":"用于接收回执","required":true}]'
 ```
 
 ## 参数
@@ -70,7 +77,14 @@ lark-cli base +form-questions-create \
 
 ## `--questions` 格式
 
-每个问题对象支持以下字段：
+`--questions` 是 1~10 个问题对象的数组。每个对象二选一：
+
+- 新建字段题目：创建一个新字段，并把该字段作为表单题目。
+- 已有字段题目：把一个已存在字段加入表单，只改变该字段在表单中的可见性，不创建字段。
+
+### 形态 A：新建字段题目
+
+新建字段题目会在数据表中创建新字段，返回的 question `id` 就是新字段的 `field_id`。CLI 当前要求每个新建字段题目显式传 `title` 和 `type`。
 
 | 字段                    | 必填 | 说明 |
 |-----------------------|------|------|
@@ -83,6 +97,22 @@ lark-cli base +form-questions-create \
 | `options`             | 否 | 选项列表（仅 `select` 有效）：`[{"name":"选项1","hue":"Blue"}]`，hue 可选：`Red`/`Orange`/`Yellow`/`Green`/`Blue`/`Purple`/`Gray` |
 | `style`               | 否 | 字段样式配置（见下方说明） |
 | `visible_rule`        | 否 | 题目显隐条件（见下方「`visible_rule` 显隐条件」） |
+
+### 形态 B：已有字段题目
+
+已有字段题目只把一个已存在字段加入表单，不新建字段，也不改变已有记录数据。适合把之前用 `+form-questions-delete --keep-field` 移出表单的题目重新加回，或把表里已有字段补充为表单题目。
+
+| 字段                    | 必填 | 说明 |
+|-----------------------|------|------|
+| `use_existing_field`  | **是** | 固定传 `true`，表示使用已有字段 |
+| `field_id`            | **是** | 已有字段的 ID 或字段名；推荐字段 ID，避免同名字段歧义。引用长度 1~100，较长字段名请改用字段 ID |
+| `title`               | 否 | 题目标题；省略时使用字段名 |
+| `description`         | 否 | 问题描述（纯文本或 Markdown 链接，如 `[文本](https://example.com)`） |
+| `required`            | 否 | 是否必填（true/false），默认 false |
+| `option_display_mode` | 否 | 选项展示方式（仅已有字段为 `select` 时有效）：`0`=下拉，`1`=纵向（默认），`2`=横向 |
+| `visible_rule`        | 否 | 题目显隐条件（见下方「`visible_rule` 显隐条件」） |
+
+已有字段题目不要携带字段定义属性，例如 `type`、`style`、`options`、`multiple`、`name`。服务端使用 strict schema，误传不属于该形态的字段会被拒绝。
 
 ### `style` 字段说明
 
@@ -139,10 +169,11 @@ lark-cli base +form-questions-create \
 
 1. 先确定表单所属的真实 `table_id`，并在整个表单管理工作流中复用它；仅在 ID 缺失或归属不明确时调用 `+table-list`。
 2. 用 `+form-questions-list` 查看现有问题。问题 `id` 是承载该问题的 `field_id`，不是独立于数据表的临时 ID。
-3. 除非用户明确要求同名的独立问题，否则目标标题已经存在时用 `+form-questions-update` 更新必填状态、标题或描述；不要创建同名问题后再删除旧问题。
-4. 创建确实不存在的问题，或用户明确要求的同名独立问题，并报告新建的问题 ID。
+3. 需要把表里已有字段加进表单时，先用 `+field-list` 确认真实字段 ID 和字段类型，再用 `use_existing_field:true` + `field_id`；字段已经是可见题目时不要重复创建，改用 `+form-questions-update`。
+4. 除非用户明确要求同名的独立问题，否则目标标题已经存在时用 `+form-questions-update` 更新必填状态、标题或描述；不要创建同名问题后再删除旧问题。
+5. 创建确实不存在的问题，或用户明确要求的同名独立问题，并报告新建的问题 ID。
 
-`+form-questions-delete` 会删除承载问题的数据表字段，不能删除主字段问题。不要通过“新建重复问题再删除旧问题”来替换主字段。
+`+form-questions-delete` 默认会删除承载问题的数据表字段及记录数据；如果只是想把题目移出表单并保留字段，必须用 `+form-questions-delete --keep-field`。移出后可用本文的已有字段题目形态加回。
 
 ## 参考
 
