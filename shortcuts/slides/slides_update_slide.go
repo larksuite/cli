@@ -371,13 +371,15 @@ func updateSlideContent(runtime *common.RuntimeContext, slideID string) (string,
 	return stamped, nil
 }
 
-// slideNoteIDRe matches the id attribute on a <note> element's open tag. It
-// accepts both quote styles and whitespace around '=' (id="x", id='x',
-// id = "x") — all are valid XML, and the backend accepts single-quoted markup,
-// so a stale id in any of these forms must be stripped too.
-var slideNoteIDRe = regexp.MustCompile(`(<note\b[^>]*?)\s+id\s*=\s*("[^"]*"|'[^']*')`)
+// noteIDAttrRe matches an id attribute — either quote style, whitespace around
+// '=' — together with its leading whitespace, so deleting the match leaves a
+// well-formed tag. It runs only against a single <note> start tag already
+// located by the XML tokenizer, never against the whole document, so it cannot
+// scan across a tag boundary or into another element.
+var noteIDAttrRe = regexp.MustCompile(`\s+id\s*=\s*(?:"[^"]*"|'[^']*')`)
 
-// stripSlideNoteID drops the id from the page's <note> (speaker notes) element.
+// stripSlideNoteID drops the id from the page's speaker-note element: the <note>
+// that is a direct child of the root <slide>.
 //
 // A +update-slide carrying a <note id="..."> that is not the page's current note
 // block makes the backend reject the whole page with "block is not NoteBlock" —
@@ -385,11 +387,51 @@ var slideNoteIDRe = regexp.MustCompile(`(<note\b[^>]*?)\s+id\s*=\s*("[^"]*"|'[^'
 // (add-slide reassigns ids, so the note block's id no longer matches). With no
 // id the backend targets the page's own note block and the write succeeds.
 //
-// Only <note> is touched, so nothing rendered on the slide changes: notes are
-// speaker notes, not shown on the page, and every visible element keeps its id
-// (so it is updated in place rather than rebuilt, preserving text layout).
+// The <note> start tag is found with the XML tokenizer rather than a raw scan,
+// so: note-like text inside comments or CDATA is never touched; only the real
+// slide-level <note> is affected (a nested <note> elsewhere, if one ever
+// existed, is left alone); and attribute values containing '>' are handled
+// correctly. The id is then removed by editing that one tag's bytes — nothing is
+// re-serialized, so quote style, attribute order, whitespace, and every other
+// element (including inline <svg> namespaces) survive untouched. Notes are not
+// rendered and visible elements keep their ids, so the page updates in place
+// with no text reflow.
 func stripSlideNoteID(content string) string {
-	return slideNoteIDRe.ReplaceAllString(content, "$1")
+	dec := xml.NewDecoder(strings.NewReader(content))
+	var stack []string      // element local-name path to the current token
+	var prev int64          // byte offset where the current token began
+	var spans [][2]int64    // byte ranges of slide-level <note> start tags
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			// EOF, or a malformed document checkSlideRoot already rejects.
+			// Apply whatever was located and leave the rest untouched.
+			break
+		}
+		cur := dec.InputOffset() // end of tok / start of the next token
+		switch t := tok.(type) {
+		case xml.StartElement:
+			if t.Name.Local == "note" && len(stack) > 0 && stack[len(stack)-1] == "slide" {
+				spans = append(spans, [2]int64{prev, cur})
+			}
+			stack = append(stack, t.Name.Local)
+		case xml.EndElement:
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+		}
+		prev = cur
+	}
+	if len(spans) == 0 {
+		return content
+	}
+	// Rewrite from the last span backwards so earlier offsets stay valid.
+	out := content
+	for i := len(spans) - 1; i >= 0; i-- {
+		s, e := spans[i][0], spans[i][1]
+		out = out[:s] + noteIDAttrRe.ReplaceAllString(out[s:e], "") + out[e:]
+	}
+	return out
 }
 
 // checkSlideRoot walks the tokens of content and returns the root element's id

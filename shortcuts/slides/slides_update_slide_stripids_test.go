@@ -113,6 +113,57 @@ func TestStripSlideNoteIDQuoteVariants(t *testing.T) {
 	}
 }
 
+// Locating the <note> tag with the XML tokenizer (rather than a raw scan) means
+// note-like text in comments/CDATA, a nested <note>, and '>' inside an attribute
+// value are all handled correctly.
+func TestStripSlideNoteIDXMLAware(t *testing.T) {
+	t.Run("attr value contains >", func(t *testing.T) {
+		in := `<slide id="p1"><data/><note data=">" id="blw"><content><p>n</p></content></note></slide>`
+		out := stripSlideNoteID(in)
+		if strings.Contains(out, `id="blw"`) {
+			t.Errorf("expected note id to be stripped, got: %s", out)
+		}
+		if !strings.Contains(out, `data=">"`) {
+			t.Errorf("expected the '>'-bearing attribute to survive, got: %s", out)
+		}
+	})
+
+	t.Run("note-like text in CDATA is untouched", func(t *testing.T) {
+		in := `<slide id="p1"><data><shape type="text"><content>` +
+			`<![CDATA[see <note id="fake"> here]]>` +
+			`</content></shape></data><note id="real"><content><p>n</p></content></note></slide>`
+		out := stripSlideNoteID(in)
+		if !strings.Contains(out, `id="fake"`) {
+			t.Errorf("expected CDATA text to be preserved verbatim, got: %s", out)
+		}
+		if strings.Contains(out, `id="real"`) {
+			t.Errorf("expected the real slide-level note id to be stripped, got: %s", out)
+		}
+	})
+
+	t.Run("note-like text in a comment is untouched", func(t *testing.T) {
+		in := `<slide id="p1"><!-- <note id="cmt"> --><data/><note id="real"><content><p>n</p></content></note></slide>`
+		out := stripSlideNoteID(in)
+		if !strings.Contains(out, `id="cmt"`) {
+			t.Errorf("expected comment text to be preserved, got: %s", out)
+		}
+		if strings.Contains(out, `id="real"`) {
+			t.Errorf("expected the real note id to be stripped, got: %s", out)
+		}
+	})
+
+	t.Run("only a slide-level note is touched", func(t *testing.T) {
+		in := `<slide id="p1"><data><group><note id="deep"/></group></data><note id="top"><content><p>n</p></content></note></slide>`
+		out := stripSlideNoteID(in)
+		if !strings.Contains(out, `id="deep"`) {
+			t.Errorf("expected a non-slide-level note id to be preserved, got: %s", out)
+		}
+		if strings.Contains(out, `id="top"`) {
+			t.Errorf("expected the slide-level note id to be stripped, got: %s", out)
+		}
+	})
+}
+
 // A single-quoted id on a visible element is left alone — only <note> is touched.
 func TestStripSlideNoteIDLeavesSingleQuotedShape(t *testing.T) {
 	in := `<slide id="p1"><data><shape id='bKZ' type='text'><content><p>x</p></content></shape></data><note id='blw'><content><p>n</p></content></note></slide>`
