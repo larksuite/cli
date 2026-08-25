@@ -737,7 +737,6 @@ func outputAutoReply(ctx context.Context, runtime *common.RuntimeContext, data m
 		autoReply["content"] = content
 		delete(autoReply, "content_html")
 	}
-	autoReply["images"] = hydrateAutoReplyImages(ctx, runtime, autoReply["images"])
 	runtime.OutFormat(
 		map[string]interface{}{"auto_reply": autoReply},
 		&output.Meta{Count: 1},
@@ -766,102 +765,4 @@ func outputAutoReply(ctx context.Context, runtime *common.RuntimeContext, data m
 		},
 	)
 	return nil
-}
-
-func hydrateAutoReplyImages(ctx context.Context, runtime *common.RuntimeContext, raw interface{}) []interface{} {
-	items, _ := raw.([]interface{})
-	result := make([]interface{}, 0, len(items))
-	fileKeys := make([]string, 0, len(items))
-	for _, rawItem := range items {
-		image, ok := rawItem.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if fileKey, _ := image["file_key"].(string); fileKey != "" {
-			fileKeys = append(fileKeys, fileKey)
-		}
-	}
-	urls, urlErr := fetchAutoReplyImageDownloadURLs(runtime, resolveAutoReplyMailboxID(runtime), fileKeys)
-	for _, rawItem := range items {
-		image, ok := rawItem.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		projected := make(map[string]interface{}, len(image)+1)
-		for key, value := range image {
-			if key != "file_key" && key != "download_url" {
-				projected[key] = value
-			}
-		}
-		fileKey, _ := image["file_key"].(string)
-		if fileKey == "" {
-			projected["error"] = "image file_key is missing"
-			result = append(result, projected)
-			continue
-		}
-		if urlErr != nil {
-			projected["error"] = fmt.Sprintf("get image download url failed: %v", urlErr)
-			result = append(result, projected)
-			continue
-		}
-		downloadURL := urls[fileKey]
-		if downloadURL == "" {
-			projected["error"] = "image download url not returned by server"
-			result = append(result, projected)
-			continue
-		}
-		buf, err := downloadAttachmentContent(runtime, downloadURL)
-		if err != nil {
-			projected["error"] = fmt.Sprintf("download image failed: %v", err)
-		} else {
-			projected["data"] = base64.StdEncoding.EncodeToString(buf)
-		}
-		result = append(result, projected)
-	}
-	return result
-}
-
-func fetchAutoReplyImageDownloadURLs(runtime *common.RuntimeContext, mailboxID string, fileKeys []string) (map[string]string, error) {
-	if len(fileKeys) == 0 {
-		return nil, nil
-	}
-	urlMap := make(map[string]string, len(fileKeys))
-	const batchSize = 20
-	for i := 0; i < len(fileKeys); i += batchSize {
-		end := i + batchSize
-		if end > len(fileKeys) {
-			end = len(fileKeys)
-		}
-		batch := fileKeys[i:end]
-		parts := make([]string, 0, len(batch))
-		for _, fileKey := range batch {
-			fileKey = strings.TrimSpace(fileKey)
-			if fileKey == "" {
-				continue
-			}
-			parts = append(parts, "file_keys="+url.QueryEscape(fileKey))
-		}
-		if len(parts) == 0 {
-			continue
-		}
-		apiURL := mailboxPath(mailboxID, "settings", "auto_reply", "images", "download_url") + "?" + strings.Join(parts, "&")
-		data, err := runtime.CallAPITyped("GET", apiURL, nil, nil)
-		if err != nil {
-			return urlMap, mailDecorateProblemMessage(err, "auto-reply images/download_url")
-		}
-		if urls, ok := data["download_urls"].([]interface{}); ok {
-			for _, item := range urls {
-				m, ok := item.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				fileKey := strVal(m["attachment_id"])
-				downloadURL := strVal(m["download_url"])
-				if fileKey != "" && downloadURL != "" {
-					urlMap[fileKey] = downloadURL
-				}
-			}
-		}
-	}
-	return urlMap, nil
 }

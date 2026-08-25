@@ -377,7 +377,7 @@ func TestMailAutoReplyUploadsDataURIImages(t *testing.T) {
 	}
 }
 
-func TestMailAutoReplyHydratesImagesIndependently(t *testing.T) {
+func TestMailAutoReplyReturnsImageMetadataWithoutDownloading(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
@@ -393,21 +393,6 @@ func TestMailAutoReplyHydratesImagesIndependently(t *testing.T) {
 			}},
 		},
 	})
-	reg.Register(&httpmock.Stub{
-		Method: "GET",
-		URL:    mailboxPath("me", "settings", "auto_reply", "images", "download_url") + "?file_keys=file_ok&file_keys=file_bad",
-		Body: map[string]interface{}{
-			"code": 0,
-			"data": map[string]interface{}{
-				"download_urls": []interface{}{
-					map[string]interface{}{"attachment_id": "file_ok", "download_url": "https://storage.example.com/file_ok"},
-					map[string]interface{}{"attachment_id": "file_bad", "download_url": "https://storage.example.com/file_bad"},
-				},
-			},
-		},
-	})
-	reg.Register(&httpmock.Stub{Method: "GET", URL: "https://storage.example.com/file_ok", RawBody: []byte("png"), ContentType: "image/png"})
-	reg.Register(&httpmock.Stub{Method: "GET", URL: "https://storage.example.com/file_bad", Status: 404, Body: "missing"})
 
 	if err := runMountedMailShortcut(t, MailAutoReply, []string{"+auto-reply", "--format", "json"}, f, stdout); err != nil {
 		t.Fatalf("runMountedMailShortcut() error = %v", err)
@@ -419,10 +404,10 @@ func TestMailAutoReplyHydratesImagesIndependently(t *testing.T) {
 	images := autoReply["images"].([]interface{})
 	first := images[0].(map[string]interface{})
 	second := images[1].(map[string]interface{})
-	if first["data"] != base64.StdEncoding.EncodeToString([]byte("png")) || first["file_key"] != nil {
+	if first["data"] != nil || first["file_key"] != "file_ok" {
 		t.Fatalf("first image = %#v", first)
 	}
-	if second["error"] == nil || second["file_key"] != nil {
+	if second["error"] != nil || second["file_key"] != "file_bad" {
 		t.Fatalf("second image = %#v", second)
 	}
 }
