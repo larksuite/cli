@@ -55,6 +55,7 @@ type RuntimeContext struct {
 	larkSDK        *lark.Client                      // eagerly initialized in mountDeclarative
 	stdinConsumed  bool                              // set when an Input flag has consumed stdin (`-`); guards against a second flag also using `-` within the same call
 	inputResolved  map[string]bool                   // flags whose value was replaced by @file / stdin content in resolveInputFlags; see InputResolvedFromSource
+	offline        bool                              // dry-run context: API and credential-backed scope checks are disabled
 }
 
 // ── Identity ──
@@ -145,6 +146,9 @@ type BotInfo struct {
 // Unlike UserOpenId() (which reads from config), this requires a network call and may fail.
 // Thread-safe via sync.OnceValues; the API is called at most once per RuntimeContext.
 func (ctx *RuntimeContext) BotInfo() (*BotInfo, error) {
+	if ctx.offline {
+		return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "BotInfo is unavailable during dry-run")
+	}
 	if ctx.botInfoFunc == nil {
 		return nil, fmt.Errorf("BotInfo not available (runtime context not fully initialized)")
 	}
@@ -195,6 +199,9 @@ func (ctx *RuntimeContext) Ctx() context.Context { return ctx.ctx }
 // Thread-safe via sync.OnceValues (initialized in newRuntimeContext).
 // Falls back to direct construction for test contexts that bypass newRuntimeContext.
 func (ctx *RuntimeContext) getAPIClient() (*client.APIClient, error) {
+	if ctx.offline {
+		return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "OpenAPI requests are unavailable during dry-run")
+	}
 	if ctx.apiClientFunc != nil {
 		return ctx.apiClientFunc()
 	}
@@ -246,6 +253,9 @@ func (ctx *RuntimeContext) LarkSDK() *lark.Client {
 // resolver doesn't expose scope metadata, this is a silent no-op — the
 // downstream API call still surfaces missing_scope at runtime.
 func (ctx *RuntimeContext) EnsureScopes(scopes []string) error {
+	if ctx.offline {
+		return nil
+	}
 	return checkShortcutScopes(ctx.Factory, ctx.ctx, ctx.As(), ctx.Config, scopes)
 }
 
@@ -906,7 +916,7 @@ func (s Shortcut) Mount(parent *cobra.Command, f *cmdutil.Factory) {
 
 // MountWithContext registers a shortcut while preserving the caller-provided context.
 func (s Shortcut) MountWithContext(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
-	if s.Execute != nil {
+	if s.Execute != nil || s.typed != nil {
 		s.mountDeclarative(ctx, parent, f)
 	}
 }
@@ -914,6 +924,11 @@ func (s Shortcut) MountWithContext(ctx context.Context, parent *cobra.Command, f
 // mountDeclarative builds and registers the Cobra command described by a Shortcut.
 func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
 	shortcut := s
+	if shortcut.typed != nil {
+		if err := validateTypedFlagMountPlan(shortcut.typed, shortcut.PrintFlagSchema != nil, typedRisk(shortcut.Risk)); err != nil {
+			panic(fmt.Sprintf("typed shortcut %s %s: %v", shortcut.Service, shortcut.Command, err))
+		}
+	}
 	if len(shortcut.AuthTypes) == 0 {
 		shortcut.AuthTypes = []string{"user"}
 	}
@@ -925,6 +940,12 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 		Hidden: shortcut.Hidden,
 		Args:   rejectPositionalArgs(),
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if handled, err := runShortcutFlagSchema(cmd, f, &shortcut); handled {
+				return err
+			}
+			if shortcut.typed != nil {
+				return runTypedMountedShortcut(cmd, f, &shortcut, botOnly)
+			}
 			return runShortcut(cmd, f, &shortcut, botOnly)
 		},
 	}
@@ -944,7 +965,13 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 			if relaxRequiredForSchema {
 				if want, _ := c.Flags().GetBool("print-schema"); want {
 					c.Flags().VisitAll(func(fl *pflag.Flag) {
+						// Schema inspection is a local metadata operation. Bypass both
+						// individual required flags and Cobra groups so business inputs
+						// are never needed merely to inspect a complex field.
 						delete(fl.Annotations, cobra.BashCompOneRequiredFlag)
+						delete(fl.Annotations, "cobra_annotation_one_required")
+						delete(fl.Annotations, "cobra_annotation_mutually_exclusive")
+						delete(fl.Annotations, "cobra_annotation_required_if_others_set")
 					})
 				}
 			}
@@ -953,45 +980,133 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 	}
 	cmdmeta.SetSource(cmd, cmdmeta.SourceShortcut, false)
 	cmdmeta.SetAffordanceRef(cmd, shortcut.Service, shortcut.Command)
+	cmdmeta.SetDeclaredScopes(cmd, map[string][]string{
+		"user": shortcut.DeclaredScopesForIdentity("user"),
+		"bot":  shortcut.DeclaredScopesForIdentity("bot"),
+	})
 	cmdutil.SetSupportedIdentities(cmd, shortcut.AuthTypes)
 	registerShortcutFlagsWithContext(ctx, cmd, f, &shortcut)
 	cmdutil.SetTips(cmd, shortcut.Tips)
 	cmdutil.SetRisk(cmd, shortcut.Risk)
 	parent.AddCommand(cmd)
 	if shortcut.PostMount != nil {
+		var typedSnapshot typedMountSnapshot
+		if shortcut.typed != nil {
+			typedSnapshot = captureTypedMountSnapshot(cmd)
+		}
 		shortcut.PostMount(cmd)
+		if shortcut.typed != nil {
+			if err := validateTypedPostMount(cmd, typedSnapshot); err != nil {
+				panic(fmt.Sprintf("typed shortcut %s %s: %v", shortcut.Service, shortcut.Command, err))
+			}
+		}
 	}
 	installFlagAliases(cmd, shortcut.Flags)
+	if shortcut.typed != nil {
+		installTypedAnnotations(cmd, shortcut.typed)
+		installTypedHelp(cmd, shortcut.typed)
+	}
+}
+
+func runTypedMountedShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bool) error {
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	if dryRun {
+		as, err := resolveShortcutIdentity(cmd, f, s)
+		if err != nil {
+			return err
+		}
+		config, err := f.Config()
+		if err != nil {
+			return err
+		}
+		rctx := newDryRunRuntimeContext(cmd, f, s, config, as, botOnly)
+		if err := output.ValidateJqFlags(rctx.JqExpr, "", rctx.Format); err != nil {
+			return err
+		}
+		return runTypedShortcut(f, rctx, s)
+	}
+	as, err := resolveShortcutIdentity(cmd, f, s)
+	if err != nil {
+		return err
+	}
+	config, err := f.Config()
+	if err != nil {
+		return err
+	}
+	if err := checkShortcutScopes(f, cmd.Context(), as, config, s.ScopesForIdentity(string(as))); err != nil {
+		return err
+	}
+	rctx, err := newRuntimeContext(cmd, f, s, config, as, botOnly)
+	if err != nil {
+		return err
+	}
+	if err := output.ValidateJqFlags(rctx.JqExpr, "", rctx.Format); err != nil {
+		return err
+	}
+	return runTypedShortcut(f, rctx, s)
+}
+func installTypedAnnotations(cmd *cobra.Command, command *compiledCommand) {
+	for _, field := range command.fields {
+		if field.cli.Deprecated != "" {
+			_ = cmd.Flags().MarkDeprecated(field.name, field.cli.Deprecated)
+		}
+		for _, alias := range field.cli.Aliases {
+			if alias.Mode != typedAliasIndependent || !alias.Deprecated {
+				continue
+			}
+			_ = cmd.Flags().MarkDeprecated(alias.Name, "use --"+field.name+" instead")
+		}
+	}
+	for _, relation := range command.relations {
+		if relation.stage != typedStageSourcePreRun || relation.presence != typedPresenceExplicit {
+			continue
+		}
+		names := make([]string, 0, len(relation.fields))
+		for _, index := range relation.fields {
+			names = append(names, command.fields[index].name)
+		}
+		switch relation.kind {
+		case typedRelationExactlyOne:
+			cmd.MarkFlagsOneRequired(names...)
+			cmd.MarkFlagsMutuallyExclusive(names...)
+		case typedRelationAtLeastOne:
+			cmd.MarkFlagsOneRequired(names...)
+		case typedRelationCoOccur:
+			cmd.MarkFlagsRequiredTogether(names...)
+		case typedRelationConflicts:
+			cmd.MarkFlagsMutuallyExclusive(names...)
+		}
+	}
+}
+
+func runShortcutFlagSchema(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) (bool, error) {
+	if s.PrintFlagSchema == nil {
+		return false, nil
+	}
+	want, _ := cmd.Flags().GetBool("print-schema")
+	if !want {
+		return false, nil
+	}
+	flagName, _ := cmd.Flags().GetString("flag-name")
+	out, err := s.PrintFlagSchema(strings.TrimSpace(flagName))
+	if err != nil {
+		// PrintFlagSchema implementations may return bare errors; wrap those so
+		// this agent-facing local introspection path stays machine-readable.
+		if !errs.IsTyped(err) {
+			err = errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err.Error()).WithCause(err)
+		}
+		return true, err
+	}
+	if len(out) > 0 {
+		fmt.Fprintln(f.IOStreams.Out, string(out))
+	}
+	return true, nil
 }
 
 // runShortcut is the execution pipeline for a declarative shortcut.
 // Each step is a clear phase: identity → config → scopes → runtime →
 // canonical validation → execute.
 func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bool) error {
-	// --print-schema short-circuits everything below: it's pure local
-	// introspection, no identity / scope / network needed. The flag is
-	// only registered when the shortcut opts in via PrintFlagSchema.
-	if s.PrintFlagSchema != nil {
-		if want, _ := cmd.Flags().GetBool("print-schema"); want {
-			flagName, _ := cmd.Flags().GetString("flag-name")
-			out, err := s.PrintFlagSchema(strings.TrimSpace(flagName))
-			if err != nil {
-				// PrintFlagSchema implementations return bare errors; wrap as a
-				// typed validation error so --print-schema (an agent-facing
-				// introspection path) yields a parseable envelope, not a plain
-				// string.
-				if !errs.IsTyped(err) {
-					err = errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err.Error()).WithCause(err)
-				}
-				return err
-			}
-			if len(out) == 0 {
-				return nil
-			}
-			fmt.Fprintln(f.IOStreams.Out, string(out))
-			return nil
-		}
-	}
 	as, err := resolveShortcutIdentity(cmd, f, s)
 	if err != nil {
 		return err
@@ -1091,6 +1206,27 @@ func checkShortcutScopes(f *cmdutil.Factory, ctx context.Context, as core.Identi
 
 // newRuntimeContext assembles the dependencies and resolved identity for one shortcut execution.
 func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, config *core.CliConfig, as core.Identity, botOnly bool) (*RuntimeContext, error) {
+	rctx := newRuntimeContextBase(cmd, f, s, config, as, botOnly)
+	rctx.apiClientFunc = sync.OnceValues(func() (*client.APIClient, error) {
+		return f.NewAPIClientWithConfig(config)
+	})
+	rctx.botInfoFunc = sync.OnceValues(rctx.fetchBotInfo)
+
+	sdk, err := f.LarkClient()
+	if err != nil {
+		return nil, err
+	}
+	rctx.larkSDK = sdk
+	return rctx, nil
+}
+
+func newDryRunRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, config *core.CliConfig, as core.Identity, botOnly bool) *RuntimeContext {
+	rctx := newRuntimeContextBase(cmd, f, s, config, as, botOnly)
+	rctx.offline = true
+	return rctx
+}
+
+func newRuntimeContextBase(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, config *core.CliConfig, as core.Identity, botOnly bool) *RuntimeContext {
 	ctx := cmd.Context()
 	ctx = cmdutil.ContextWithShortcut(ctx, s.Service+":"+s.Command, uuid.New().String())
 	rctx := &RuntimeContext{
@@ -1102,21 +1238,10 @@ func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, conf
 		Factory:    f,
 	}
 	rctx.declaredScopes = s.DeclaredScopesForIdentity(string(rctx.As()))
-	rctx.apiClientFunc = sync.OnceValues(func() (*client.APIClient, error) {
-		return f.NewAPIClientWithConfig(config)
-	})
-	rctx.botInfoFunc = sync.OnceValues(rctx.fetchBotInfo)
-
-	sdk, err := f.LarkClient()
-	if err != nil {
-		return nil, err
-	}
-	rctx.larkSDK = sdk
-
 	applyJSONShorthand(cmd, s)
 	rctx.Format = rctx.Str("format")
 	rctx.JqExpr, _ = cmd.Flags().GetString("jq")
-	return rctx, nil
+	return rctx
 }
 
 // StripUTF8BOM removes a leading UTF-8 byte-order mark from content read from a
@@ -1400,11 +1525,23 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 			fmt.Sscanf(fl.Default, "%g", &d)
 			cmd.Flags().Float64(fl.Name, d, desc)
 		case "int_array":
-			cmd.Flags().IntSlice(fl.Name, nil, desc)
+			var values []int
+			if fl.Default != "" {
+				_ = json.Unmarshal([]byte(fl.Default), &values)
+			}
+			cmd.Flags().IntSlice(fl.Name, values, desc)
 		case "string_array":
-			cmd.Flags().StringArray(fl.Name, nil, desc)
+			var values []string
+			if fl.Default != "" {
+				_ = json.Unmarshal([]byte(fl.Default), &values)
+			}
+			cmd.Flags().StringArray(fl.Name, values, desc)
 		case "string_slice":
-			cmd.Flags().StringSlice(fl.Name, nil, desc)
+			var values []string
+			if fl.Default != "" {
+				_ = json.Unmarshal([]byte(fl.Default), &values)
+			}
+			cmd.Flags().StringSlice(fl.Name, values, desc)
 		default:
 			cmd.Flags().String(fl.Name, fl.Default, desc)
 		}

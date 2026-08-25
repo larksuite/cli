@@ -65,6 +65,26 @@ func TestChartExampleTemplates_ValidateAgainstSchema(t *testing.T) {
 	}
 }
 
+func TestChartExampleTemplates_SpecialChartContracts(t *testing.T) {
+	t.Parallel()
+	tests := map[string][]string{
+		"bubble":    {`"role": "x"`, `"role": "y"`, `"role": "group"`, `"role": "size"`},
+		"waterfall": {`"firstValueAsTotal"`, `"lastValueAsSubtotal"`, `"connectorLine"`},
+		"pareto":    {`"aggregateType": "sum"`, `"index": 1`, `"index": 2`, `"percentage": true`},
+	}
+	for typ, markers := range tests {
+		tmpl, ok := chartExampleTemplates[typ]
+		if !ok {
+			t.Fatalf("missing %s template", typ)
+		}
+		for _, marker := range markers {
+			if !strings.Contains(tmpl, marker) {
+				t.Errorf("%s template missing %s", typ, marker)
+			}
+		}
+	}
+}
+
 // TestNormalizeChartHexColors_Arrays pins color normalization inside arrays:
 // the chart schema uses colorTheme / colorScale / highlight_colors, whose
 // values are LISTS of bare hex strings. Recursing without the key context

@@ -11,7 +11,7 @@
 ```bash
 # 直接传 xml_presentation_id
 lark-cli slides +delete-slide --as user \
-  --presentation "$PID" \
+  --presentation "$PRES_ID" \
   --slide-id "$SID"
 
 # slides URL / wiki URL 都可以（wiki 会自动解析并校验 obj_type=slides）
@@ -20,7 +20,7 @@ lark-cli slides +delete-slide --as user \
   --slide-id "$SID"
 
 # 删之前先确认打到哪份 PPT、哪一页
-lark-cli slides +delete-slide --presentation "$PID" --slide-id "$SID" --dry-run
+lark-cli slides +delete-slide --presentation "$PRES_ID" --slide-id "$SID" --dry-run
 ```
 
 ## 参数
@@ -48,7 +48,7 @@ lark-cli slides +delete-slide --presentation "$PID" --slide-id "$SID" --dry-run
 `slide_id` 是服务端短 ID，**不能从 XML 里推导**。两个来源：
 
 1. `+create` / `+add-slide` 的返回值里存下来；
-2. 事后回读：`slides +xml-get --presentation "$PID" --output .lark-slides/plan/<deck>/readback.xml`。
+2. 事后回读：`slides +xml-get --presentation "$PRES_ID" --output .lark-slides/plan/<deck>/readback.xml`。
 
 删错页的代价高于多跑一次回读 —— 不确定就先回读 + `+screenshot` 看一眼再删。
 

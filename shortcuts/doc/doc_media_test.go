@@ -688,6 +688,60 @@ func TestDocMediaDownloadDeclaresConditionalPermissionMemberAuthScope(t *testing
 	}
 }
 
+func TestDocMediaDownloadPermissionAuthScopeErrorsWarnAndContinue(t *testing.T) {
+	tests := []struct {
+		name string
+		code int
+		msg  string
+	}{
+		{name: "app_scope_not_applied", code: 99991672, msg: "app scope not applied"},
+		{name: "token_scope_insufficient", code: 99991676, msg: "token scope insufficient"},
+		{name: "missing_scope", code: 99991679, msg: "missing scope"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, _, stderr, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-download-"+tt.name+"-app"))
+			f.Credential = credential.NewCredentialProvider(nil, nil, &docMediaScopedTokenResolver{scopes: "docs:document.media:download"}, nil)
+			token := "media_" + tt.name
+			reg.Register(&httpmock.Stub{
+				Method: http.MethodGet,
+				URL:    "/open-apis/drive/v1/permissions/" + token + "/members/auth",
+				Body: map[string]interface{}{
+					"code": tt.code,
+					"msg":  tt.msg,
+				},
+			})
+			reg.Register(&httpmock.Stub{
+				Method:  http.MethodGet,
+				URL:     "/open-apis/drive/v1/medias/" + token + "/download",
+				Status:  http.StatusOK,
+				RawBody: []byte("downloaded without permission auth scope"),
+				Headers: http.Header{"Content-Type": []string{"application/octet-stream"}},
+			})
+
+			tmpDir := t.TempDir()
+			withDocsWorkingDir(t, tmpDir)
+			err := mountAndRunDocs(t, DocMediaDownload, []string{
+				"+media-download",
+				"--token", token,
+				"--output", "downloaded.bin",
+				"--as", "bot",
+			}, f, nil)
+			if err != nil {
+				t.Fatalf("media download error = %v, want permission auth scope error %d to be non-blocking", err, tt.code)
+			}
+			if !strings.Contains(stderr.String(), "warning: export permission check failed; continuing with download:") {
+				t.Fatalf("stderr=%q, want permission scope warning", stderr.String())
+			}
+			data, readErr := os.ReadFile(filepath.Join(tmpDir, "downloaded.bin"))
+			if readErr != nil || string(data) != "downloaded without permission auth scope" {
+				t.Fatalf("downloaded content = %q, err=%v", string(data), readErr)
+			}
+		})
+	}
+}
+
 func TestDocWhiteboardDownloadHTTP403DoesNotSuggestMediaPreview(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-whiteboard-403-app"))
 	reg.Register(&httpmock.Stub{

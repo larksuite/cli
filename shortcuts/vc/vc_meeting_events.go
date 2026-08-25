@@ -347,6 +347,8 @@ func eventActors(eventType string, payload map[string]interface{}, selfIdentity 
 		addFromItems("magic_share_ended_items", "operator")
 	case "document_context_changed":
 		addFromItems("document_context_changed_items", "operator")
+	case "countdown_changed":
+		addFromItems("countdown_items", "operator")
 	}
 	return actors
 }
@@ -904,9 +906,132 @@ func buildTimelineEntriesForEventWithSpeakerLabels(event map[string]interface{},
 		return magicShareEndedEntries(payload, eventTime, eventTimeOK, sequence)
 	case "document_context_changed":
 		return documentContextEntries(payload, eventTime, eventTimeOK, sequence)
+	case "countdown_changed":
+		return countdownChangedEntries(payload, eventTime, eventTimeOK, sequence)
 	default:
 		return []meetingTimelineEntry{newTimelineEntry(eventTime, eventTimeOK, sequence, meetingEventUserDisplayName(nil), meetingEventSummary(event), nil)}
 	}
+}
+
+func countdownChangedEntries(payload map[string]interface{}, fallbackTime time.Time, fallbackOK bool, sequence *int) []meetingTimelineEntry {
+	items := common.GetSlice(payload, "countdown_items")
+	if len(items) == 0 {
+		return []meetingTimelineEntry{newTimelineActionEntry(fallbackTime, fallbackOK, sequence, "倒计时", "已更新", nil)}
+	}
+	entries := make([]meetingTimelineEntry, 0, len(items))
+	for _, raw := range items {
+		item, _ := raw.(map[string]interface{})
+		if item == nil {
+			continue
+		}
+		when, ok := parseFlexibleTime(common.GetString(item, "event_time"))
+		if !ok {
+			when, ok = fallbackTime, fallbackOK
+		}
+		subject := countdownTimelineSubject(item)
+		description := countdownActionDescription(common.GetString(item, "action"))
+		entries = append(entries, newTimelineActionEntry(when, ok, sequence, subject, description, countdownDetails(item)))
+	}
+	return entries
+}
+
+func countdownTimelineSubject(item map[string]interface{}) string {
+	switch countdownAction(common.GetString(item, "action")) {
+	case "ENDED", "REMIND":
+		// 自然结束与临近提醒由系统触发，无操作人，subject 留空，语义由 description 承载
+		return ""
+	default:
+		if subject := meetingEventUserWithID(common.GetMap(item, "operator")); subject != "" {
+			return subject
+		}
+		return "未知用户"
+	}
+}
+
+func countdownActionDescription(action string) string {
+	switch countdownAction(action) {
+	case "SET":
+		return "设置了倒计时"
+	case "PROLONG":
+		return "延长了倒计时"
+	case "END_IN_ADVANCE":
+		return "提前结束了倒计时"
+	case "CLOSE_WINDOW":
+		return "关闭了倒计时窗口"
+	case "ENDED":
+		return "倒计时已结束"
+	case "REMIND":
+		return "倒计时结束前提醒"
+	default:
+		return "更新了倒计时"
+	}
+}
+
+func countdownDetails(item map[string]interface{}) []string {
+	var details []string
+	if remain := countdownRemainDetail(item); remain != "" {
+		details = append(details, remain)
+	}
+	if duration := countdownDurationDetail(item); duration != "" {
+		details = append(details, duration)
+	}
+	if end := countdownEndTimeDetail(item); end != "" {
+		details = append(details, end)
+	}
+	if seqID := strings.TrimSpace(fieldValueString(item, "seq_id")); seqID != "" {
+		details = append(details, "seq_id："+seqID)
+	}
+	return details
+}
+
+func countdownRemainDetail(item map[string]interface{}) string {
+	remain := strings.TrimSpace(fieldValueString(item, "remain_minutes"))
+	if remain == "" {
+		return ""
+	}
+	return "剩余：" + remain + "分钟"
+}
+
+func countdownDurationDetail(item map[string]interface{}) string {
+	start, startOK := parseFlexibleTime(fieldValueString(item, "countdown_set_time"))
+	end, endOK := parseFlexibleTime(fieldValueString(item, "end_time"))
+	if !startOK || !endOK || !end.After(start) {
+		return ""
+	}
+	return "时长：" + formatCountdownDuration(end.Sub(start))
+}
+
+func countdownEndTimeDetail(item map[string]interface{}) string {
+	end, ok := parseFlexibleTime(fieldValueString(item, "end_time"))
+	if !ok || end.IsZero() {
+		return ""
+	}
+	return "结束时间：" + end.In(meetingDisplayLocation).Format("2006-01-02 15:04:05")
+}
+
+func formatCountdownDuration(duration time.Duration) string {
+	if duration < 0 {
+		duration = 0
+	}
+	totalSeconds := int64(duration.Round(time.Second).Seconds())
+	hours := totalSeconds / 3600
+	minutes := (totalSeconds % 3600) / 60
+	seconds := totalSeconds % 60
+	parts := make([]string, 0, 3)
+	if hours > 0 {
+		parts = append(parts, fmt.Sprintf("%d小时", hours))
+	}
+	if minutes > 0 {
+		parts = append(parts, fmt.Sprintf("%d分钟", minutes))
+	}
+	if seconds > 0 || len(parts) == 0 {
+		parts = append(parts, fmt.Sprintf("%d秒", seconds))
+	}
+	return strings.Join(parts, "")
+}
+
+func countdownAction(action string) string {
+	return strings.ToUpper(strings.TrimSpace(action))
 }
 
 func documentContextEntries(payload map[string]interface{}, fallbackTime time.Time, fallbackOK bool, sequence *int) []meetingTimelineEntry {
@@ -1391,6 +1516,8 @@ func meetingEventSummary(event map[string]interface{}) string {
 		return magicShareStartedSummary(payload)
 	case "magic_share_ended":
 		return magicShareEndedSummary(payload)
+	case "countdown_changed":
+		return countdownChangedSummary(payload)
 	default:
 		return fallbackMeetingEventSummary(payload, eventType)
 	}
@@ -1510,6 +1637,83 @@ func magicShareEndedSummary(payload map[string]interface{}) string {
 		return fmt.Sprintf("share %s ended", shareID)
 	}
 	return "share ended"
+}
+
+func countdownChangedSummary(payload map[string]interface{}) string {
+	items := common.GetSlice(payload, "countdown_items")
+	if len(items) > 1 {
+		return countdownChangedMultiSummary(items)
+	}
+	item := firstSliceMap(payload, "countdown_items")
+	action := countdownAction(common.GetString(item, "action"))
+	operator := meetingEventUserDisplayName(common.GetMap(item, "operator"))
+	switch action {
+	case "SET":
+		if operator != "" {
+			return fmt.Sprintf("countdown set by %s", operator)
+		}
+		return "countdown set"
+	case "PROLONG":
+		if operator != "" {
+			return fmt.Sprintf("countdown prolonged by %s", operator)
+		}
+		return "countdown prolonged"
+	case "END_IN_ADVANCE":
+		if operator != "" {
+			return fmt.Sprintf("countdown ended in advance by %s", operator)
+		}
+		return "countdown ended in advance"
+	case "CLOSE_WINDOW":
+		if operator != "" {
+			return fmt.Sprintf("countdown window closed by %s", operator)
+		}
+		return "countdown window closed"
+	case "ENDED":
+		return "countdown ended"
+	case "REMIND":
+		return "countdown reminder"
+	default:
+		return "countdown changed"
+	}
+}
+
+func countdownChangedMultiSummary(items []interface{}) string {
+	actions := make([]string, 0, len(items))
+	seen := make(map[string]bool, len(items))
+	for _, raw := range items {
+		item, _ := raw.(map[string]interface{})
+		if item == nil {
+			continue
+		}
+		action := countdownActionSummaryLabel(common.GetString(item, "action"))
+		if !seen[action] {
+			actions = append(actions, action)
+			seen[action] = true
+		}
+	}
+	if len(actions) == 0 {
+		return fmt.Sprintf("%d countdown changes", len(items))
+	}
+	return fmt.Sprintf("%d countdown changes: %s", len(items), strings.Join(actions, ", "))
+}
+
+func countdownActionSummaryLabel(action string) string {
+	switch countdownAction(action) {
+	case "SET":
+		return "set"
+	case "PROLONG":
+		return "prolonged"
+	case "END_IN_ADVANCE":
+		return "ended in advance"
+	case "CLOSE_WINDOW":
+		return "window closed"
+	case "ENDED":
+		return "ended"
+	case "REMIND":
+		return "reminder"
+	default:
+		return "changed"
+	}
 }
 
 func fallbackMeetingEventSummary(payload map[string]interface{}, eventType string) string {

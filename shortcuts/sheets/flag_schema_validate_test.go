@@ -1026,6 +1026,73 @@ func TestValidateInputAgainstSchema_RealMinimum(t *testing.T) {
 	}
 }
 
+// TestValidateInputAgainstSchema_ChartUpdateRecursivePartial verifies that
+// update accepts a deeply nested patch while create remains strict and update
+// still validates the fields that are present.
+func TestValidateInputAgainstSchema_ChartUpdateRecursivePartial(t *testing.T) {
+	t.Parallel()
+	plot := map[string]interface{}{
+		"type":   "column",
+		"labels": map[string]interface{}{"value": true, "position": "top"},
+	}
+	patch := map[string]interface{}{
+		"properties": map[string]interface{}{
+			"snapshot": map[string]interface{}{
+				"plotArea": map[string]interface{}{
+					"plot": plot,
+				},
+			},
+		},
+	}
+
+	if err := validateInputAgainstSchema(mapFlagView{command: "+chart-create"}, patch); err != nil {
+		t.Fatalf("complete chart-create payload rejected: %v", err)
+	}
+	delete(plot, "type")
+	if err := validateInputAgainstSchema(mapFlagView{command: "+chart-update"}, patch); err != nil {
+		t.Fatalf("nested chart update patch rejected: %v", err)
+	}
+	createErr := validateInputAgainstSchema(mapFlagView{command: "+chart-create"}, patch)
+	ve := requireValidation(t, createErr, `required property "type" is missing`)
+	if ve.Param != "--properties" {
+		t.Errorf("param = %q, want --properties", ve.Param)
+	}
+	if ve.Cause == nil {
+		t.Error("chart-create schema error must preserve its underlying cause")
+	}
+
+	invalid := map[string]interface{}{
+		"properties": map[string]interface{}{
+			"snapshot": map[string]interface{}{
+				"plotArea": map[string]interface{}{
+					"plot": map[string]interface{}{
+						"labels": map[string]interface{}{"position": "diagonal"},
+					},
+				},
+			},
+		},
+	}
+	err := validateInputAgainstSchema(mapFlagView{command: "+chart-update"}, invalid)
+	invalidVE := requireValidation(t, err, "position")
+	if !strings.Contains(invalidVE.Message, "not in enum") {
+		t.Errorf("error = %q, want enum validation", invalidVE.Message)
+	}
+
+	invalidSeries := map[string]interface{}{
+		"properties": map[string]interface{}{
+			"snapshot": map[string]interface{}{
+				"data": map[string]interface{}{
+					"dim2": map[string]interface{}{
+						"series": []interface{}{map[string]interface{}{"nameRef": "A1"}},
+					},
+				},
+			},
+		},
+	}
+	seriesErr := validateInputAgainstSchema(mapFlagView{command: "+chart-update"}, invalidSeries)
+	requireValidation(t, seriesErr, `required property "index" is missing`)
+}
+
 // TestValidateInputAgainstSchema_RealAdditionalProperties pins the
 // additionalProperties: <schema> form against the real embedded
 // schema. +pivot-create properties.collapse is declared as a dynamic

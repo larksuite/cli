@@ -7,33 +7,37 @@ import (
 	"net/http"
 )
 
-type representationContract uint8
+// Representation declares whether repeated range requests are guaranteed to
+// address the same bytes.
+type Representation string
 
 const (
-	representationUnspecified representationContract = iota
-	immutableRepresentation
-	mutableRepresentation
+	// Mutable requires a strong ETag before Open combines multiple responses.
+	Mutable Representation = "mutable"
+	// Immutable permits multipart reads without an ETag because the caller
+	// guarantees that the source identifier pins one representation.
+	Immutable Representation = "immutable"
 )
 
 // Source binds a transport to its representation stability.
 type Source struct {
 	transport      Transport
-	representation representationContract
+	representation Representation
 }
 
 // ImmutableSource allows multipart reads without a validator.
 func ImmutableSource(transport Transport) Source {
-	return Source{transport: transport, representation: immutableRepresentation}
+	return Source{transport: transport, representation: Immutable}
 }
 
 // MutableSource requires a strong ETag before combining responses.
 func MutableSource(transport Transport) Source {
-	return Source{transport: transport, representation: mutableRepresentation}
+	return Source{transport: transport, representation: Mutable}
 }
 
 type representationSession struct {
 	transport    Transport
-	contract     representationContract
+	contract     Representation
 	totalSize    int64
 	validator    string
 	hasValidator bool
@@ -51,7 +55,7 @@ func newRepresentationSession(source Source, first contentRange, header http.Hea
 }
 
 func (s *representationSession) multipartAllowed() bool {
-	return s.contract == immutableRepresentation || s.hasValidator
+	return s.contract == Immutable || s.hasValidator
 }
 
 func (s *representationSession) request(byteRange ByteRange) Request {

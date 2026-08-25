@@ -15,6 +15,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -105,17 +106,33 @@ func driveDownloadShouldFailOnMetadataTitleError(ctx context.Context, err error)
 	return false
 }
 
+func driveDownloadIsPermissionAuthScopeError(err error) bool {
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryAuthorization {
+		return false
+	}
+	switch problem.Code {
+	case output.LarkErrAppScopeNotEnabled,
+		output.LarkErrTokenNoPermission,
+		output.LarkErrUserScopeInsufficient:
+		return true
+	default:
+		return false
+	}
+}
+
 var DriveDownload = common.Shortcut{
 	Service:     "drive",
 	Command:     "+download",
 	Description: "Download a file from Drive to local",
 	Risk:        "read",
-	Scopes:      []string{"drive:file:download", common.DrivePermissionMemberAuthScope},
+	Scopes:      []string{"drive:file:download"},
 	// Metadata is only required when --output is omitted and the CLI needs the
 	// remote title as the pre-download fallback filename. The wiki scope is only
 	// required when the caller passes a wiki node (--wiki-token or a /wiki/ URL)
-	// that must be resolved to the underlying file token.
-	ConditionalScopes: []string{driveMetadataReadScope, driveWikiNodeRetrieveScope},
+	// that must be resolved to the underlying file token. Permission auth scope
+	// failures are non-blocking so they do not prevent the download API call.
+	ConditionalScopes: []string{common.DrivePermissionMemberAuthScope, driveMetadataReadScope, driveWikiNodeRetrieveScope},
 	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "file-token", Desc: "Drive file token"},
@@ -226,9 +243,12 @@ var DriveDownload = common.Shortcut{
 
 		allowed, err := common.CheckDriveFileExportPermission(runtime, fileToken)
 		if err != nil {
-			return withDriveDownloadRecoveryHint(err, fileToken)
-		}
-		if !allowed {
+			if driveDownloadIsPermissionAuthScopeError(err) {
+				fmt.Fprintf(runtime.IO().ErrOut, "warning: export permission check failed; continuing with download: %v\n", err)
+			} else {
+				return withDriveDownloadRecoveryHint(err, fileToken)
+			}
+		} else if !allowed {
 			return driveDownloadPermissionDeniedError()
 		}
 

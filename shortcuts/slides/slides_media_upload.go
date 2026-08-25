@@ -177,8 +177,6 @@ var SlidesMediaUpload = common.Shortcut{
 		}
 
 		fileName := filepath.Base(filePath)
-		fmt.Fprintf(runtime.IO().ErrOut, "Uploading: %s (%s) -> presentation %s\n",
-			fileName, common.FormatSize(stat.Size()), common.MaskToken(presentationID))
 
 		fileToken, err := uploadSlidesMedia(runtime, filePath, fileName, stat.Size(), presentationID)
 		if err != nil {

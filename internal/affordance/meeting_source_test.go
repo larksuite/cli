@@ -6,6 +6,8 @@ package affordance
 import (
 	"os"
 	"testing"
+
+	"github.com/larksuite/cli/internal/meta"
 )
 
 func TestMeetingDomainsDeclareUnifiedSkill(t *testing.T) {
@@ -23,4 +25,26 @@ func TestMeetingDomainsDeclareUnifiedSkill(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMeetingScreenshotRoutesToItsReference(t *testing.T) {
+	previousSource := mdSource
+	t.Cleanup(func() { SetSource(previousSource) })
+	SetSource(os.DirFS("../../affordance"))
+
+	raw, ok := For("vc", "+meeting-screenshot")
+	if !ok {
+		t.Fatal("For(vc, +meeting-screenshot) ok=false")
+	}
+	guidance, ok := (meta.Method{Affordance: raw}).ParsedAffordance()
+	if !ok {
+		t.Fatal("meeting screenshot affordance did not parse")
+	}
+	want := "lark-meeting/references/lark-vc-meeting-screenshot.md"
+	for _, skill := range guidance.Skills {
+		if skill == want {
+			return
+		}
+	}
+	t.Fatalf("meeting screenshot skills = %v, want %q", guidance.Skills, want)
 }

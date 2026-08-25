@@ -95,6 +95,10 @@ type Shortcut struct {
 	// has attached it to the parent. Use it to install custom help functions or
 	// tweak the command; cmd.Parent() is available at this point.
 	PostMount func(cmd *cobra.Command)
+
+	// typed is the private executable contract produced by the internal command
+	// host from extension/command. It never forms a second authoring surface.
+	typed *compiledCommand
 }
 
 // ScopesForIdentity returns the scopes applicable for the given identity.

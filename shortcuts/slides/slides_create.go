@@ -380,8 +380,6 @@ func uploadSlidesPlaceholders(runtime *common.RuntimeContext, presentationID str
 			return tokens, i, errs.NewValidationError(errs.SubtypeInvalidArgument, "@%s: must be a regular file", path).WithParam(param)
 		}
 		fileName := filepath.Base(path)
-		fmt.Fprintf(runtime.IO().ErrOut, "Uploading image %d/%d: %s (%s)\n",
-			i+1, len(paths), fileName, common.FormatSize(stat.Size()))
 
 		token, err := uploadSlidesMedia(runtime, path, fileName, stat.Size(), presentationID)
 		if err != nil {

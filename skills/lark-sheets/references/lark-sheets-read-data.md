@@ -22,7 +22,7 @@
 | 读取目的 | 用这个 shortcut | 数据去向 | 说明 |
 |---------|----------------|---------|------|
 | 快速查看纯值数据、批量处理 | `+csv-get` | 对话上下文 | 返回 CSV 文本（每行带 `[row=N]` 前缀）；大表请按 `--range` 行窗口分批读（截断时看 `has_more`） |
-| 按列类型结构化读出（喂 DataFrame / round-trip 回 `+table-put`） | `+table-get` | 对话上下文 | 返回 typed 协议（`columns:[列名]` + `data` + `dtypes`/`formats` + `range`），输出形状对齐 pandas split；可一行 `pd.DataFrame(sheet["data"], columns=sheet["columns"]).astype(sheet["dtypes"])` 还原 DataFrame，或直接 round-trip 回 `+table-put`。不带 `--range` 时读**完整 used range**（跨过表中部空行 / 空列），每个子表回传实际读取范围 `range` 供完整性校验；被 `max_chars` 裁掉时该子表还会带 `truncated: true` 与 `truncation_warning`，**先看这两个字段再用数据**。注意这与下文 `current_region` "遇表中部空行截断"不矛盾：`+table-get` 读的是子表物理 used range（飞书记录的已用矩形，含中间空行），`current_region` 是从锚点连通扩展、遇整行空行就断 |
+| 按列类型结构化读出（喂 DataFrame / round-trip 回 `+table-put`） | `+table-get` | 对话上下文 | 返回 typed 协议（`columns:[列名]` + `data` + `dtypes`/`formats` + `range`），输出形状对齐 pandas split；可一行 `pd.DataFrame(sheet["data"], columns=sheet["columns"]).astype(sheet["dtypes"])` 还原 DataFrame，或直接 round-trip 回 `+table-put`。不带 `--range` 时读**完整 used range**（跨过表中部空行 / 空列），每个子表回传读取范围 `range`；被 `max_chars` 裁掉时**该子表**带 `truncated: true` 与 `truncation_warning`，预算耗尽导致后续整表未读时**顶层**也带同组字段，`--output-path` 落盘模式另看 stdout 回执的 `complete` / `truncated`——**先看截断字段再用数据；三层都没报也不等于逻辑读全**，仍要用返回数据实际行数、关键末行与源数据交叉核对（详见下文）。注意这与下文 `current_region` "遇表中部空行截断"不矛盾：`+table-get` 读的是子表物理 used range（飞书记录的已用矩形，含中间空行），`current_region` 是从锚点连通扩展、遇整行空行就断 |
 | 查看公式、样式、批注、数据验证 | `+cells-get` | 对话上下文 | 返回单元格完整信息，token 开销较大 |
 | 查看某区域的下拉框（数据验证）选项 | `+dropdown-get` | 对话上下文 | 返回该 A1 范围已配置的下拉列表选项 |
 
@@ -228,8 +228,9 @@ lark-cli sheets +csv-get --spreadsheet-token shtXXX --sheet-name "销售明细"
 - `annotated_csv` — 含 `[row=N]` 前缀的 CSV 主入口
 - `col_indices` / `row_indices` — 列字母 / 行号映射数组
 - `current_region` — 从锚点扩展到被空行空列包围的连续区域的 A1 范围。⚠️ **它不是整表真实边界**：遇表中部整行空行 / 整列空列会截断、可能小于真实数据范围；表尾的汇总 / 签名 / 脚注又可能让它大于纯数据范围。判断整表是否读全须拿 `+workbook-info` 的物理 `row_count` 当上界交叉核对（见上方「`row_count` 与 `current_region` 都不能单独定末行」）
+- `actual_range` — **本次实际读到的 A1 范围**。续读 / 校验覆盖度一律以它为准：`actual_range` 小于请求范围时，哪怕 `has_more=false` 也说明只拿到部分窗口，不能把 `row_count` 当成"已读全"
 - `row_count` / `col_count` — **本次返回的行 / 列数**（= `actual_range` 的尺寸，随 `--range` 变），**不是整表物理总行列数**；整表物理尺寸取 `+workbook-info`
-- `has_more` — 当前 `--range` 是否因 `--max-chars` 被截断（截断后续读接着用 `--range`）；它**只反映本次 range 内是否读完**，`has_more=false` **不代表整表已读全**（range 之外的数据不在判断内）
+- `has_more` — 当前 `--range` 是否因 `--max-chars` 被截断（截断后续读接着用 `--range`）；它**只反映本次 range 内是否还有后续页**，`has_more=false` **不代表整表或该窗口已读全**——仍要结合 `actual_range` 看实际覆盖到哪里
 
 > 要按列类型结构化读出（喂 DataFrame、或 round-trip 回 `+table-put`）用 `+table-get`（见下）；`+csv-get` 给的是带 `[row=N]` 前缀的纯值快照，下游需要行号/列坐标时直接从前缀与 `col_indices` 取。
 
@@ -249,7 +250,7 @@ lark-cli sheets +cells-get --url "https://example.feishu.cn/sheets/shtXXX" --she
 
 `+table-put`（写入侧，见 write-cells reference）的镜像：把表格读回与 `--sheets` 完全同构的 typed 协议（`sheets[]` + `columns:[列名]` + `data:[[行]]` + `dtypes:{列名:pandas_dtype}` + `formats?:{列名:number_format}` + `range`），可直接喂回 `+table-put` 或一行还原 DataFrame。
 
-**默认（不带 `--range`）读取整张子表的完整 used range**：会跨过表中部的整行空行 / 整列空列，覆盖到真实数据边界。每个子表都回传实际读取的 `range`（如 `A1:F10`）——`+table-get` 不返回分页 / 截断标志，这个 `range` 是判断是否读全的唯一信号：拿它和源 xlsx 行列数、关键末行 / 末日期交叉核对，确认读取完整。仍要精确控制范围时显式传 `--range`。
+**默认（不带 `--range`）读取整张子表的完整 used range**：会跨过表中部的整行空行 / 整列空列，覆盖到真实数据边界。每个子表都回传实际读取的 `range`（如 `A1:F10`）。**截断信号分三层**：① 子表数据被 `max_chars` 裁掉时，该子表带 `truncated: true` + `truncation_warning`；② 字符预算耗尽导致后续整表一行未读时，**顶层**也带同组字段（按提示改用 `--sheet-name` 单表重跑或提高 `--max-chars`）；③ `--output-path` 落盘模式以 stdout 回执的 `complete`（命中上限时另有 `truncated`）判断文件完整。**任何一层都没报截断，也不等于逻辑读全**——used range 探测在特殊布局（大段整空行 / 空列）下可能偏窄：拿 `range` 连同返回 `data` 的实际行数、关键末行 / 末日期，与源数据行列数（`+workbook-info` / 源 xlsx）交叉核对，确认覆盖真实边界。仍要精确控制范围时显式传 `--range`；分段续读时配 `--no-header`，表头行与各段 dtypes 需自行拼接对齐。
 
 列类型从每列 `number_format` 推断（日期格式→`date`/`datetime64[ns]`、数值→`number`/`float64`、bool→`bool`），`date` 列的序列号转回 ISO `yyyy-mm-dd`——日期、数字往返不丢类型。**列类型只在该列所有非空值一致时才定（`number` / `date` / `bool`）；一列混了类型（如数字列混入「暂无」、日期列混入裸数字）会降为 `string`（dtypes 输出 `object`），让 `dtypes` 与 `data` 里每个值自洽——能 round-trip 回 `+table-put`、不让 pandas `astype` 崩。降级是无损的（脏值原样保留为文本）；若要把零星脏值转成数值列，交给调用方在 pandas 侧做（`to_numeric(errors='coerce')`），那里原始值仍在、可追溯。** 默认读所有子表、第一行当表头（`--no-header` 把首行当数据、列名取 `col1` / `col2` …）。
 
@@ -262,9 +263,10 @@ lark-cli sheets +table-get --url "<表URL>" --sheet-name "销售"
 
 #### 输出 → DataFrame（用 `sheet_to_df` helper）
 
-输出形状对齐 pandas split：`columns` 是列名数组、`data` 是二维数据、`dtypes` 是 `{列名: pandas_dtype_str}` 映射。直接喂给 `pd.DataFrame(...).astype(...)` 就能一次性还原所有列类型（不必逐列 `to_datetime` / `to_numeric`）。本 skill 把这段 2 行 helper 打包成可 import 的 [`scripts/sheets_df.py`](../scripts/sheets_df.py)（含 `df_to_sheet` 和 `sheet_to_df`，写入 / 读回成对）：
+输出形状对齐 pandas split：`columns` 是列名数组、`data` 是二维数据、`dtypes` 是 `{列名: pandas_dtype_str}` 映射。直接喂给 `pd.DataFrame(...).astype(...)` 就能一次性还原所有列类型（不必逐列 `to_datetime` / `to_numeric`）。本 skill 把这段 2 行 helper 打包成可 import 的 [`scripts/sheets_df.py`](../scripts/sheets_df.py)（含 `df_to_sheet` 和 `sheet_to_df`，写入 / 读回成对；它在本 skill 的 `scripts/` 目录下，运行目录不在该目录时先把它加入 `sys.path` 再 import）：
 
 ```python
+import sys; sys.path.insert(0, "scripts")  # helper 在 skill 根的 scripts/ 下；cwd 不在 skill 根时填该目录的实际路径
 from sheets_df import sheet_to_df
 
 # 单 sheet
@@ -283,6 +285,7 @@ df_sales = sheets["销售"]
 
 ```python
 import json, subprocess
+import sys; sys.path.insert(0, "scripts")  # 同上：sheets_df 在 skill 的 scripts/ 目录
 from sheets_df import df_to_sheet, sheet_to_df
 
 # 1. 读

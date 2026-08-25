@@ -1,6 +1,6 @@
 ---
 name: lark-base
-version: 1.2.20
+version: 1.2.21
 description: "飞书多维表格（Base）操作：建表、字段、记录、视图、统计、公式/lookup、表单、仪表盘、应用模式（BaseApp/AppMode 页面与组件）、Workspace 目录、workflow、角色权限、模板中心（多维表格模板分类/列表/搜索）；遇到 Base/多维表格/bitable、BaseApp/AppMode、/base/ 或 /app/ 链接时使用。BaseApp 不走 lark-apps；文件导入/导出转 lark-drive，认证/授权转 lark-shared。"
 metadata:
   requires:
@@ -119,7 +119,7 @@ Form 依附于 Table，以 Field 作为题目，每次有效提交会创建一�
 
 Dashboard Block 是 Base Block 树中的仪表盘容器，负责承载页面主题、布局和内部组件集合，本身不表示某一项图表数据。使用 `+dashboard-list` 定位容器，`+dashboard-get` 读取容器信息，`+dashboard-update` 修改主题，`+dashboard-arrange` 统一编排内部组件布局。
 
-**管理 Dashboard 分享：** 使用 `+dashboard-share-get` / `+dashboard-share-update` 管理启停、访问范围、返回源 Base 入口和智能分析；更新前先读取现状，每次只修改一个字段，显式 `false` 会被保留。
+**管理 Dashboard 分享：** 使用 `+dashboard-share-get` / `+dashboard-share-update` 管理启停、访问范围和返回源 Base 入口；更新前先读取现状，每次只修改一个字段，显式 `false` 会被保留。
 
 容器内部的图表、指标卡和文本等组件在 Dashboard API 中也称为 Block，但不属于 Base Block 树。内部 Block 分为三条操作路径：
 

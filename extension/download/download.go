@@ -1,7 +1,11 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-// Package download provides validated full and ranged streams.
+// Package download provides validated full and ranged streams for extensions
+// and built-in commands. It owns transfer bounds, retries, representation
+// consistency, progress timeouts, and response-length checks; callers supply a
+// Transport that owns authentication and source/URL policy, and they choose the
+// destination that consumes Stream.Body.
 package download
 
 import (
@@ -36,6 +40,8 @@ const (
 type ByteRange struct {
 	Start int64
 	End   int64
+
+	_ struct{}
 }
 
 // HeaderValue returns the value for an HTTP Range header.
@@ -47,6 +53,8 @@ func (r ByteRange) HeaderValue() string {
 type Request struct {
 	Range   *ByteRange
 	IfRange string
+
+	_ struct{}
 }
 
 // Headers keeps byte offsets tied to the transferred representation.
@@ -69,7 +77,11 @@ type Transport func(context.Context, Request) (*http.Response, error)
 
 // Options controls multipart behavior. Zero values select production defaults.
 type Options struct {
-	PartSize     int64
+	// PartSize is the maximum byte count requested per range. Zero selects
+	// DefaultPartSize.
+	PartSize int64
+	// MaxResponses bounds the total responses in one logical stream. Zero derives
+	// a bound from the declared object size and PartSize.
 	MaxResponses int
 	// MaxPartRetries bounds retries per range. Zero selects the default.
 	MaxPartRetries int
@@ -82,13 +94,20 @@ type Options struct {
 	IdleTimeout time.Duration
 	// DisableMultipart forces one full response.
 	DisableMultipart bool
+
+	_ struct{}
 }
 
 // Stream is one logical full or multipart response.
 type Stream struct {
-	Body          io.ReadCloser
-	Header        http.Header
+	// Body joins all validated parts and must be closed by the caller.
+	Body io.ReadCloser
+	// Header is a copy of the first successful response headers.
+	Header http.Header
+	// ContentLength is the validated total size, or -1 when unknown.
 	ContentLength int64
+
+	_ struct{}
 }
 
 // Open probes range support and returns one validated stream.
@@ -273,7 +292,7 @@ func validateOptions(source Source, opts Options) error {
 	if source.transport == nil {
 		return errs.NewInternalError(errs.SubtypeUnknown, "download requires a configured transport")
 	}
-	if source.representation != immutableRepresentation && source.representation != mutableRepresentation {
+	if source.representation != Immutable && source.representation != Mutable {
 		return errs.NewInternalError(errs.SubtypeUnknown, "download requires an explicit representation contract")
 	}
 	if opts.PartSize <= 0 {

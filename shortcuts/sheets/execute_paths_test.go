@@ -12,6 +12,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 // TestExecute_WorkbookInfo_Happy stubs the invoke_read endpoint and
@@ -493,6 +494,200 @@ func TestExecute_BatchUpdate_Translated(t *testing.T) {
 	}
 }
 
+func TestExecute_BatchChartCreate_ContinueOnErrorKeepsLocallyValidOperations(t *testing.T) {
+	t.Parallel()
+	stub := toolOutputStub(testToken, "write", `{
+		"total":1,
+		"succeeded":1,
+		"failed":0,
+		"results":[{"index":0,"tool_name":"manage_chart_object","success":true}]
+	}`)
+	out, err := runShortcutWithStubs(t, BatchChartCreate, []string{
+		"--url", testURL,
+		"--operations", `[
+			{"sheet-id":"sh1","chart-type":"donut","data-range":"A1:C10"},
+			{"sheet-id":"sh1","chart-type":"line","data-range":"E1:G10","title":"Trend"}
+		]`,
+		"--continue-on-error",
+	}, stub)
+	if err != nil {
+		t.Fatalf("execute failed: %v\nout=%s", err, out)
+	}
+
+	input := decodeToolInput(t, decodeRawEnvelopeBody(t, stub.CapturedBody), "batch_update")
+	ops, _ := input["operations"].([]interface{})
+	if len(ops) != 1 {
+		t.Fatalf("server should receive only the locally valid operation, got %d", len(ops))
+	}
+	for _, want := range []string{
+		`"total": 2`,
+		`"succeeded": 1`,
+		`"failed": 1`,
+		`"index": 0`,
+		`"index": 1`,
+		`"stage": "cli_validation"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("merged partial result should contain %q, got:\n%s", want, out)
+		}
+	}
+}
+
+func TestExecute_BatchChartCreate_StrictModeRejectsBeforeWrite(t *testing.T) {
+	t.Parallel()
+	_, _, err := runShortcutCapturingErr(t, BatchChartCreate, []string{
+		"--url", testURL,
+		"--operations", `[
+			{"sheet-id":"sh1","chart-type":"donut","data-range":"A1:C10"},
+			{"sheet-id":"sh1","chart-type":"line","data-range":"E1:G10","title":"Trend"}
+		]`,
+		"--continue-on-error=false",
+	})
+	requireValidation(t, err, "invalid value \"donut\" for --chart-type")
+}
+
+func TestExecute_BatchChartUpdate_PreflightsSnapshots(t *testing.T) {
+	t.Parallel()
+	read := toolOutputStub(testToken, "read", `{
+		"sheets":[{
+			"sheet_id":"shtSubA",
+			"charts":[{
+				"chart_id":"chart-1",
+				"details":{"snapshot":{
+					"title":{"text":"Old"},
+					"plotArea":{"plot":{"type":"line"}}
+				}}
+			}]
+		}]
+	}`)
+	write := toolOutputStub(testToken, "write", `{
+		"total":1,
+		"succeeded":1,
+		"failed":0,
+		"results":[{"index":0,"tool_name":"manage_chart_object","success":true}]
+	}`)
+	out, err := runShortcutWithStubs(t, BatchChartUpdate, []string{
+		"--url", testURL,
+		"--operations", `[{
+			"shortcut":"+chart-config-update",
+			"input":{"sheetId":"shtSubA","chartId":"chart-1","title":"New"}
+		}]`,
+	}, read, write)
+	if err != nil {
+		t.Fatalf("execute failed: %v\nout=%s", err, out)
+	}
+	input := decodeToolInput(t, decodeRawEnvelopeBody(t, write.CapturedBody), "batch_update")
+	ops := input["operations"].([]interface{})
+	chartInput := ops[0].(map[string]interface{})["input"].(map[string]interface{})
+	snapshot := chartDryRunSnapshot(t, chartInput)
+	if snapshot["title"].(map[string]interface{})["text"] != "New" {
+		t.Fatalf("batch partial title = %#v", snapshot["title"])
+	}
+}
+
+func TestExecute_ChartBatches_RejectDuplicateTargetByIDAndName(t *testing.T) {
+	t.Parallel()
+	operations := `[
+			{"shortcut":"+chart-config-update","input":{"sheet_id":"shtSubA","chart_id":"chart-1","title":"New"}},
+			{"shortcut":"+chart-data-update","input":{"sheet_name":"Data","chart_id":"chart-1","data_range":"A1:C10"}}
+		]`
+	for _, tc := range []struct {
+		name     string
+		shortcut common.Shortcut
+		extra    []string
+	}{
+		{name: "dedicated chart batch", shortcut: BatchChartUpdate},
+		{name: "general batch", shortcut: BatchUpdate, extra: []string{"--yes"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			structure := toolOutputStub(testToken, "read", `{
+				"sheets":[{"sheet_id":"shtSubA","title":"Data","index":0}]
+			}`)
+			args := []string{"--url", testURL, "--operations", operations}
+			_, err := runShortcutWithStubs(t, tc.shortcut, append(args, tc.extra...), structure)
+			requireValidation(t, err, "both target chart \"chart-1\"")
+		})
+	}
+}
+
+func TestExecute_BatchUpdate_MixesCellsAndSemanticChartUpdate(t *testing.T) {
+	t.Parallel()
+	read := toolOutputStub(testToken, "read", `{
+		"sheets":[{
+			"sheet_id":"shtSubA",
+			"charts":[{
+				"chart_id":"chart-1",
+				"details":{"snapshot":{
+					"title":{"text":"Old"},
+					"plotArea":{"plot":{"type":"line"}}
+				}}
+			}]
+		}]
+	}`)
+	write := toolOutputStub(testToken, "write", `{
+		"total":2,
+		"succeeded":2,
+		"failed":0,
+		"results":[
+			{"index":0,"tool_name":"set_cell_range","success":true},
+			{"index":1,"tool_name":"manage_chart_object","success":true}
+		]
+	}`)
+	out, err := runShortcutWithStubs(t, BatchUpdate, []string{
+		"--url", testURL,
+		"--operations", `[
+			{"shortcut":"+cells-set","input":{"sheet-id":"shtSubA","range":"A1","cells":[[{"value":1}]]}},
+			{"shortcut":"+chart-config-update","input":{"sheetId":"shtSubA","chartId":"chart-1","title":"New"}}
+		]`,
+		"--yes",
+	}, read, write)
+	if err != nil {
+		t.Fatalf("execute failed: %v\nout=%s", err, out)
+	}
+	input := decodeToolInput(t, decodeRawEnvelopeBody(t, write.CapturedBody), "batch_update")
+	ops := input["operations"].([]interface{})
+	if len(ops) != 2 || ops[0].(map[string]interface{})["tool_name"] != "set_cell_range" {
+		t.Fatalf("mixed operations = %#v", ops)
+	}
+	chartInput := ops[1].(map[string]interface{})["input"].(map[string]interface{})
+	snapshot := chartDryRunSnapshot(t, chartInput)
+	if snapshot["title"].(map[string]interface{})["text"] != "New" {
+		t.Fatalf("generic batch partial title = %#v", snapshot["title"])
+	}
+}
+
+func TestExecute_BatchUpdate_CompactsChartCreateSnapshot(t *testing.T) {
+	t.Parallel()
+	write := toolOutputStub(testToken, "write", `{
+		"total":1,
+		"succeeded":1,
+		"failed":0,
+		"results":[{
+			"index":0,
+			"tool_name":"manage_chart_object",
+			"success":true,
+			"data":{"chart_id":"chart-1","snapshot":{"title":{"text":"Large"}}}
+		}]
+	}`)
+	out, err := runShortcutWithStubs(t, BatchUpdate, []string{
+		"--url", testURL,
+		"--operations", `[{
+			"shortcut":"+chart-create-basic",
+			"input":{"sheet-id":"shtSubA","chart-type":"line","data-range":"A1:C10"}
+		}]`,
+		"--yes",
+	}, write)
+	if err != nil {
+		t.Fatalf("execute failed: %v\nout=%s", err, out)
+	}
+	if strings.Contains(out, `"snapshot"`) {
+		t.Fatalf("generic batch create must omit the full chart snapshot: %s", out)
+	}
+	if !strings.Contains(out, `"chart_id": "chart-1"`) {
+		t.Fatalf("generic batch create must retain chart_id: %s", out)
+	}
+}
+
 // TestExecute_BatchUpdate_ContinueOnErrorPrecedence locks the flag-vs-envelope
 // precedence: an explicit --continue-on-error=false must keep the strict
 // transaction even when the --operations envelope carries continue_on_error:true,
@@ -730,6 +925,140 @@ func TestExecute_ChartCreate(t *testing.T) {
 	data := decodeEnvelopeData(t, out)
 	if data["chart_id"] != "chartNEW" {
 		t.Errorf("chart_id = %v", data["chart_id"])
+	}
+}
+
+func TestExecute_ChartConfigUpdate_ReadsSnapshotAndWritesPartialPatch(t *testing.T) {
+	t.Parallel()
+	readBefore := toolOutputStub(testToken, "read", `{
+		"sheets":[{
+			"sheet_id":"shtSubA",
+			"charts":[{
+				"chart_id":"chart-1",
+				"details":{"snapshot":{
+					"title":{"text":"Old"},
+					"plotArea":{
+						"axes":[
+							{"type":"x","position":"bottom","title":{"text":"Month"}},
+							{"type":"y","position":"left","title":{"text":"Amount"}}
+						],
+						"plot":{"type":"line","extra":{"smooth":false}}
+					},
+					"data":{"direction":"column"}
+				}}
+			}]
+		}]
+	}`)
+	write := toolOutputStub(testToken, "write", `{"chart_id":"chart-1"}`)
+	readAfter := toolOutputStub(testToken, "read", `{
+		"sheets":[{
+			"sheet_id":"shtSubA",
+			"charts":[{
+				"chart_id":"chart-1",
+				"details":{"snapshot":{
+					"title":{"text":"New"},
+					"plotArea":{
+						"axes":[
+							{"type":"x","position":"bottom","title":{"text":"Month"}},
+							{"type":"y","position":"left","title":{"text":"Revenue"}}
+						],
+						"plot":{"type":"line","series":[{"index":1,"points":{"point":[{"index":4,"labels":{"value":true}}]}}]}
+					},
+					"data":{"direction":"column"}
+				}}
+			}]
+		}]
+	}`)
+	out, err := runShortcutWithStubs(t, ChartConfigUpdate, []string{
+		"--url", testURL,
+		"--sheet-id", testSheetID,
+		"--chart-id", "chart-1",
+		"--title", "New",
+		"--y-axis-title", "Revenue",
+		"--last-point-label=true",
+	}, readBefore, write, readAfter)
+	if err != nil {
+		t.Fatalf("execute failed: %v\nout=%s", err, out)
+	}
+
+	readInput := decodeToolInput(t, decodeRawEnvelopeBody(t, readBefore.CapturedBody), "get_chart_objects")
+	if readInput["chart_id"] != "chart-1" {
+		t.Fatalf("read chart_id = %#v", readInput["chart_id"])
+	}
+	writeInput := decodeToolInput(t, decodeRawEnvelopeBody(t, write.CapturedBody), "manage_chart_object")
+	if _, ok := writeInput["last_point_label"]; ok {
+		t.Fatalf("last_point_label must not be written at the tool input root: %#v", writeInput)
+	}
+	writeProperties := writeInput["properties"].(map[string]interface{})
+	if writeProperties["last_point_label"] != true {
+		t.Fatalf("last_point_label = %#v, want true", writeProperties["last_point_label"])
+	}
+	snapshot := chartDryRunSnapshot(t, writeInput)
+	if snapshot["title"].(map[string]interface{})["text"] != "New" {
+		t.Fatalf("partial title = %#v", snapshot["title"])
+	}
+	axes := snapshot["plotArea"].(map[string]interface{})["axes"].([]interface{})
+	if len(axes) != 2 || axes[0].(map[string]interface{})["title"].(map[string]interface{})["text"] != "Month" ||
+		axes[1].(map[string]interface{})["title"].(map[string]interface{})["text"] != "Revenue" {
+		t.Fatalf("partial axes = %#v", axes)
+	}
+	data := decodeEnvelopeData(t, out)
+	viewModel := data["viewModel"].(map[string]interface{})
+	if _, ok := viewModel["data"]; ok {
+		t.Fatal("config shortcut output viewModel must not include data")
+	}
+	plot := viewModel["plotArea"].(map[string]interface{})["plot"].(map[string]interface{})
+	series := plot["series"].([]interface{})
+	point := series[0].(map[string]interface{})["points"].(map[string]interface{})["point"].([]interface{})[0].(map[string]interface{})
+	if point["labels"].(map[string]interface{})["value"] != true {
+		t.Fatalf("viewModel must come from the post-update readback: %#v", viewModel)
+	}
+}
+
+func TestExecute_ChartDataUpdate_ReadsSnapshotAndReturnsData(t *testing.T) {
+	t.Parallel()
+	read := toolOutputStub(testToken, "read", `{
+		"sheets":[{
+			"sheet_id":"shtSubA",
+			"charts":[{
+				"chart_id":"chart-1",
+				"details":{"snapshot":{
+					"plotArea":{"plot":{"type":"line"}},
+					"data":{
+						"isStaticData":false,
+						"direction":"column",
+						"refs":[{"value":"A1:C10"}],
+						"dim1":{"serie":{"index":1}},
+						"dim2":{"series":[{"index":2},{"index":3}]}
+					}
+				}}
+			}]
+		}]
+	}`)
+	write := toolOutputStub(testToken, "write", `{"chart_id":"chart-1"}`)
+	out, err := runShortcutWithStubs(t, ChartDataUpdate, []string{
+		"--url", testURL,
+		"--sheet-id", testSheetID,
+		"--chart-id", "chart-1",
+		"--data-range", "A1:D10",
+		"--dim1-index", "1",
+		"--dim2-indexes", "2,4",
+	}, read, write)
+	if err != nil {
+		t.Fatalf("execute failed: %v\nout=%s", err, out)
+	}
+
+	writeInput := decodeToolInput(t, decodeRawEnvelopeBody(t, write.CapturedBody), "manage_chart_object")
+	patchData := chartDryRunSnapshot(t, writeInput)["data"].(map[string]interface{})
+	series := patchData["dim2"].(map[string]interface{})["series"].([]interface{})
+	if len(series) != 2 || series[0].(map[string]interface{})["index"] != float64(2) ||
+		series[1].(map[string]interface{})["index"] != float64(4) {
+		t.Fatalf("partial data series = %#v", series)
+	}
+	data := decodeEnvelopeData(t, out)
+	returned := data["data"].(map[string]interface{})
+	if returned["direction"] != "column" {
+		t.Fatalf("returned data = %#v", returned)
 	}
 }
 

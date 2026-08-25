@@ -131,6 +131,7 @@ func shortcutList() []common.Shortcut {
 
 		// Object CRUD (3 per skill)
 		ChartCreate, ChartUpdate, ChartDelete,
+		ChartCreateBasic, ChartConfigUpdate, ChartDataUpdate,
 		PivotCreate, PivotUpdate, PivotDelete,
 		CondFormatCreate, CondFormatUpdate, CondFormatDelete,
 		FilterCreate, FilterUpdate, FilterDelete,
@@ -143,6 +144,8 @@ func shortcutList() []common.Shortcut {
 
 		// lark_sheet_batch_update
 		BatchUpdate,
+		BatchChartCreate,
+		BatchChartUpdate,
 		CellsBatchSetStyle,
 		CellsBatchClear,
 		DropdownUpdate,
