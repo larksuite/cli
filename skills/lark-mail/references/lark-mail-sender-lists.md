@@ -62,4 +62,4 @@ lark-cli mail +sender-blocklist-modify --remove spam@example.com,bad.example
 
 ## 返回值
 
-查询返回 `items`、`page_token`、`has_more` 等分页信息。添加返回 `failed_items`，删除返回 `deleted_count`；必须原样反馈失败项和删除结果。
+查询返回 `items`、`page_token`、`has_more` 等分页信息。添加和删除返回 `failed_items`，必须原样反馈失败项。

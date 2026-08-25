@@ -316,7 +316,7 @@ func TestMailSenderListModifyShortcut_RemoveAliasesBuildSendersBody(t *testing.T
 				URL:    "/user_mailboxes/me/allow_senders/batch_remove",
 				Body: map[string]interface{}{
 					"code": 0,
-					"data": map[string]interface{}{"deleted_count": 2},
+					"data": map[string]interface{}{},
 				},
 			}
 			reg.Register(stub)
