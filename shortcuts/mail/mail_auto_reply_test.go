@@ -4,6 +4,7 @@
 package mail
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"os"
@@ -101,6 +102,7 @@ func TestMailAutoReplyModifyBuildsFriendlyPayload(t *testing.T) {
 
 	err := runMountedMailShortcut(t, MailAutoReplyModify, []string{
 		"+auto-reply-modify",
+		"--yes",
 		"--mailbox", "user@example.com",
 		"--enable",
 		"--content", "<p>Out today</p>",
@@ -170,7 +172,7 @@ func TestMailAutoReplyContentFile(t *testing.T) {
 		},
 	})
 
-	if err := runMountedMailShortcut(t, MailAutoReplyModify, []string{"+auto-reply-modify", "--content-file", "auto_reply.html"}, f, stdout); err != nil {
+	if err := runMountedMailShortcut(t, MailAutoReplyModify, []string{"+auto-reply-modify", "--yes", "--content-file", "auto_reply.html"}, f, stdout); err != nil {
 		t.Fatalf("runMountedMailShortcut() error = %v", err)
 	}
 	reg.Verify(t)
@@ -220,7 +222,7 @@ func TestMailAutoReplyEmptyContentClearsBody(t *testing.T) {
 		},
 	})
 
-	if err := runMountedMailShortcut(t, MailAutoReplyModify, []string{"+auto-reply-modify", "--content", ""}, f, stdout); err != nil {
+	if err := runMountedMailShortcut(t, MailAutoReplyModify, []string{"+auto-reply-modify", "--yes", "--content", ""}, f, stdout); err != nil {
 		t.Fatalf("runMountedMailShortcut() error = %v", err)
 	}
 	reg.Verify(t)
@@ -283,7 +285,7 @@ func TestMailAutoReplyUploadsLocalImages(t *testing.T) {
 		},
 	})
 
-	if err := runMountedMailShortcut(t, MailAutoReplyModify, []string{"+auto-reply-modify", "--content", `<p>Hi<img src="logo.png"></p>`}, f, stdout); err != nil {
+	if err := runMountedMailShortcut(t, MailAutoReplyModify, []string{"+auto-reply-modify", "--yes", "--content", `<p>Hi<img src="logo.png"></p>`}, f, stdout); err != nil {
 		t.Fatalf("runMountedMailShortcut() error = %v", err)
 	}
 	reg.Verify(t)
@@ -306,6 +308,69 @@ func TestMailAutoReplyUploadsLocalImages(t *testing.T) {
 	}
 	if cid, _ := image["cid"].(string); cid == "" || !strings.Contains(html, "cid:"+cid) {
 		t.Fatalf("image cid = %q, html = %q", cid, html)
+	}
+}
+
+func TestMailAutoReplyUploadsDataURIImages(t *testing.T) {
+	png, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := append([]byte{}, png...)
+	payload = append(payload, bytes.Repeat([]byte{0}, maxAutoReplyContentHTMLRunes)...)
+	dataURI := "data:image/png;base64," + base64.StdEncoding.EncodeToString(payload)
+
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	var captured map[string]interface{}
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"file_token": "file_data_uri"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    mailboxPath("me", "settings", "auto_reply"),
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{"auto_reply": map[string]interface{}{"enabled": true}},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "PUT",
+		URL:    mailboxPath("me", "settings", "auto_reply"),
+		BodyFilter: func(body []byte) bool {
+			if err := json.Unmarshal(body, &captured); err != nil {
+				t.Fatalf("unmarshal request body: %v; body=%s", err, body)
+			}
+			return true
+		},
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{"auto_reply": map[string]interface{}{"content_summary": "With data image"}},
+		},
+	})
+
+	if err := runMountedMailShortcut(t, MailAutoReplyModify, []string{"+auto-reply-modify", "--yes", "--content", `<p>Hi<img src="` + dataURI + `"></p>`}, f, stdout); err != nil {
+		t.Fatalf("runMountedMailShortcut() error = %v", err)
+	}
+	reg.Verify(t)
+
+	html, _ := captured["content_html"].(string)
+	if strings.Contains(html, "data:image") || !strings.Contains(html, `src="cid:`) {
+		t.Fatalf("content_html should rewrite data URI to CID, got %q", html)
+	}
+	images, ok := captured["images"].([]interface{})
+	if !ok || len(images) != 1 {
+		t.Fatalf("images = %#v, want one uploaded image", captured["images"])
+	}
+	image := images[0].(map[string]interface{})
+	if image["file_key"] != "file_data_uri" || image["image_name"] != "auto-reply-image-1.png" || image["content_type"] != "image/png" {
+		t.Fatalf("image metadata = %#v", image)
 	}
 }
 
@@ -426,6 +491,17 @@ func TestMailAutoReplyRejectsConflictingFlags(t *testing.T) {
 		t.Fatal("expected conflict error")
 	}
 	if !strings.Contains(err.Error(), "--enable and --disable are mutually exclusive") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestMailAutoReplyModifyRequiresConfirmation(t *testing.T) {
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	err := runMountedMailShortcut(t, MailAutoReplyModify, []string{"+auto-reply-modify", "--enable"}, f, stdout)
+	if err == nil {
+		t.Fatal("expected confirmation error")
+	}
+	if !strings.Contains(err.Error(), "requires confirmation") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

@@ -4,6 +4,7 @@
 package mail
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"io"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +33,8 @@ const (
 	maxAutoReplyImageCount       = 250
 	maxAutoReplyContentBytes     = 25 * 1024 * 1024
 )
+
+var autoReplyDataImageRegexp = regexp.MustCompile(`(?i)<img\s(?:[^>]*?\s)?src\s*=\s*["'](data:image/[^"']+)["']`)
 
 var MailAutoReply = common.Shortcut{
 	Service:     "mail",
@@ -63,7 +67,7 @@ var MailAutoReplyModify = common.Shortcut{
 	Service:     "mail",
 	Command:     "+auto-reply-modify",
 	Description: "Modify mailbox auto-reply settings by merging friendly flags into the current setting.",
-	Risk:        "write",
+	Risk:        "high-risk-write",
 	Scopes:      []string{"mail:user_mailbox.message:readonly", "mail:user_mailbox.message:modify"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
@@ -71,8 +75,8 @@ var MailAutoReplyModify = common.Shortcut{
 		{Name: "mailbox", Default: "me", Desc: "Mailbox address (default: me)."},
 		{Name: "enable", Type: "bool", Desc: "Turn auto-reply on."},
 		{Name: "disable", Type: "bool", Desc: "Turn auto-reply off."},
-		{Name: "content", Desc: "Auto-reply HTML content. Plain text is accepted and sent as-is. Supports @file and - stdin. Local <img src=\"./file.png\"> references are uploaded and rewritten to cid: references.", Input: []string{common.File, common.Stdin}},
-		{Name: "content-file", Desc: "Read auto-reply content from a file in the current directory. Mutually exclusive with --content."},
+		{Name: "content", Desc: "Auto-reply HTML content. Plain text is accepted and sent as-is. Supports @file and - stdin. Local <img src=\"./file.png\"> and data URI image references are uploaded and rewritten to cid: references.", Input: []string{common.File, common.Stdin}},
+		{Name: "content-file", Desc: "Read auto-reply content from a file in the current directory. Local and data URI images are uploaded and rewritten to cid: references. Mutually exclusive with --content."},
 		{Name: "start", Desc: "Start date as Unix timestamp or ISO 8601. Stored as the day's 00:00:00.000."},
 		{Name: "end", Desc: "End date as Unix timestamp or ISO 8601. Stored as the day's 23:59:59.999."},
 		{Name: "timezone", Desc: "Time zone for the auto-reply range, e.g. Asia/Shanghai. Defaults to the start time zone when it can be inferred."},
@@ -185,8 +189,10 @@ func buildAutoReplyPatch(ctx context.Context, runtime *common.RuntimeContext, up
 		}
 	}
 	if contentChanged {
-		if err := validateAutoReplyContentLimits(content, images); err != nil {
-			return nil, err
+		if uploadLocalImages || !autoReplyHasDataURIImage(content) {
+			if err := validateAutoReplyContentLimits(content, images); err != nil {
+				return nil, err
+			}
 		}
 		autoReply["content_html"] = content
 		autoReply["images"] = images
@@ -262,9 +268,6 @@ func validateAutoReplyContentHTML(runtime *common.RuntimeContext, contentHTML st
 	if strings.TrimSpace(contentHTML) == "" {
 		return nil
 	}
-	if len([]rune(contentHTML)) > maxAutoReplyContentHTMLRunes {
-		return mailFailedPreconditionError("auto-reply content_html exceeds %d characters", maxAutoReplyContentHTMLRunes)
-	}
 	param := "--content"
 	if runtime.Str("content") == "" && runtime.Str("content-file") != "" {
 		param = "--content-file"
@@ -293,6 +296,9 @@ func validateAutoReplyContentHTML(runtime *common.RuntimeContext, contentHTML st
 }
 
 func validateAutoReplyContentLimits(contentHTML string, images []map[string]interface{}) error {
+	if len([]rune(contentHTML)) > maxAutoReplyContentHTMLRunes {
+		return mailFailedPreconditionError("auto-reply content_html exceeds %d characters", maxAutoReplyContentHTMLRunes)
+	}
 	totalBytes := int64(len([]byte(contentHTML)))
 	if len(images) > maxAutoReplyImageCount {
 		return mailFailedPreconditionError("auto-reply images count exceeds %d", maxAutoReplyImageCount)
@@ -414,6 +420,10 @@ func validateAutoReplyContentFilePath(path string) error {
 	return nil
 }
 
+func autoReplyHasDataURIImage(content string) bool {
+	return autoReplyDataImageRegexp.MatchString(content)
+}
+
 func uploadAutoReplyLocalImages(ctx context.Context, runtime *common.RuntimeContext, content string) (string, []map[string]interface{}, error) {
 	imgs := parseLocalImgs(content)
 	type uploadedImage struct {
@@ -449,6 +459,47 @@ func uploadAutoReplyLocalImages(ctx context.Context, runtime *common.RuntimeCont
 			})
 		}
 		content = replaceImgSrcOnce(content, img.RawSrc, "cid:"+item.cid)
+	}
+	return uploadAutoReplyDataImages(runtime, content, images)
+}
+
+func uploadAutoReplyDataImages(runtime *common.RuntimeContext, content string, images []map[string]interface{}) (string, []map[string]interface{}, error) {
+	for i, m := range autoReplyDataImageRegexp.FindAllStringSubmatch(content, -1) {
+		rawSrc := m[1]
+		head, payload, ok := strings.Cut(rawSrc, ",")
+		if !ok || !strings.Contains(strings.ToLower(head), ";base64") {
+			return "", nil, mailValidationParamError("--content", "inline data image must be a base64 data URI")
+		}
+		mediaType := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.Split(head, ";")[0], "data:")))
+		ext, ok := map[string]string{"image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp"}[mediaType]
+		if !ok {
+			return "", nil, mailValidationParamError("--content", "inline data image media type %q is not supported", mediaType)
+		}
+		buf, err := base64.StdEncoding.DecodeString(strings.Join(strings.Fields(payload), ""))
+		if err != nil {
+			return "", nil, mailValidationParamError("--content", "inline data image contains invalid base64").WithCause(err)
+		}
+		name := fmt.Sprintf("auto-reply-image-%d.%s", i+1, ext)
+		mimeType, err := filecheck.CheckInlineImageFormat(name, buf)
+		if err != nil {
+			return "", nil, mailValidationParamError("--content", "inline data image: %v", err).WithCause(err)
+		}
+		if mimeType != mediaType {
+			return "", nil, mailValidationParamError("--content", "inline data image declares %s but content is %s", mediaType, mimeType)
+		}
+		fileKey, size, err := uploadAutoReplyImageBytes(runtime, name, buf)
+		if err != nil {
+			return "", nil, err
+		}
+		cid, err := generateAutoReplyCID()
+		if err != nil {
+			return "", nil, err
+		}
+		content = replaceImgSrcOnce(content, rawSrc, "cid:"+cid)
+		images = append(images, map[string]interface{}{
+			"cid": cid, "image_name": name, "file_key": fileKey,
+			"file_size": size, "content_type": mimeType,
+		})
 	}
 	return content, images, nil
 }
@@ -494,6 +545,39 @@ func uploadAutoReplyImageToDrive(runtime *common.RuntimeContext, path string) (f
 			FileSize:   size,
 			ParentType: "email",
 			ParentNode: userOpenId,
+		})
+	}
+	if err != nil {
+		return "", size, mailDecorateProblemMessage(err, "upload auto-reply image %s to Drive failed", name)
+	}
+	return fileKey, size, nil
+}
+
+func uploadAutoReplyImageBytes(runtime *common.RuntimeContext, name string, buf []byte) (fileKey string, size int64, err error) {
+	size = int64(len(buf))
+	if size > MaxLargeAttachmentSize {
+		return "", size, mailFailedPreconditionError("auto-reply image %s (%.1f GB) exceeds the %.0f GB single file limit",
+			name, float64(size)/1024/1024/1024, float64(MaxLargeAttachmentSize)/1024/1024/1024)
+	}
+	userOpenId := runtime.UserOpenId()
+	if userOpenId == "" {
+		return "", size, mailFailedPreconditionError("auto-reply image upload requires user identity (--as user)")
+	}
+	if size <= common.MaxDriveMediaUploadSinglePartSize {
+		fileKey, err = common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
+			FileName:   name,
+			FileSize:   size,
+			ParentType: "email",
+			ParentNode: &userOpenId,
+			Reader:     bytes.NewReader(buf),
+		})
+	} else {
+		fileKey, err = common.UploadDriveMediaMultipartTyped(runtime, common.DriveMediaMultipartUploadConfig{
+			FileName:   name,
+			FileSize:   size,
+			ParentType: "email",
+			ParentNode: userOpenId,
+			Reader:     bytes.NewReader(buf),
 		})
 	}
 	if err != nil {
