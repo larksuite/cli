@@ -1038,7 +1038,7 @@ func TestExecute_ChartConfigUpdate_ReadsSnapshotAndWritesPartialPatch(t *testing
 		"--title", "New",
 		"--x-axis-min", "2",
 		"--y-axis-title", "Revenue",
-		"--series-data-labels", `[{"series_position":1,"scope":"last","content":"value"}]`,
+		"--last-point-label=true",
 	}, readBefore, write, readAfter)
 	if err != nil {
 		t.Fatalf("execute failed: %v\nout=%s", err, out)
@@ -1049,10 +1049,12 @@ func TestExecute_ChartConfigUpdate_ReadsSnapshotAndWritesPartialPatch(t *testing
 		t.Fatalf("read chart_id = %#v", readInput["chart_id"])
 	}
 	writeInput := decodeToolInput(t, decodeRawEnvelopeBody(t, write.CapturedBody), "manage_chart_object")
+	if _, ok := writeInput["last_point_label"]; ok {
+		t.Fatalf("last_point_label must not be written at the tool input root: %#v", writeInput)
+	}
 	writeProperties := writeInput["properties"].(map[string]interface{})
-	seriesLabels := writeProperties["series_data_labels"].([]interface{})
-	if len(seriesLabels) != 1 || seriesLabels[0].(map[string]interface{})["scope"] != "last" {
-		t.Fatalf("series_data_labels = %#v, want one last-point config", seriesLabels)
+	if writeProperties["last_point_label"] != true {
+		t.Fatalf("last_point_label = %#v, want true", writeProperties["last_point_label"])
 	}
 	snapshot := chartDryRunSnapshot(t, writeInput)
 	if snapshot["title"].(map[string]interface{})["text"] != "New" {

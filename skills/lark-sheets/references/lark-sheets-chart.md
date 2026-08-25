@@ -87,7 +87,7 @@
 
 **常见配置错误（必须注意）**：
 - **图表类型选择错误**：用户说"堆积柱形图 / 百分比堆积"时，用 `+chart-create-basic --stack normal|percent` 或 `+chart-config-update --stack normal|percent`；用户说"占比 / 比例"时，优先考虑饼图或百分比堆积图。注意 `column` 是纵向柱形图、`bar` 是横向条形图，"对比 / 各 XX" 类纵向柱默认用 `column`；面积图原生支持 `snapshot.plotArea.plot.type="area"`，别因速查表没列就判"不支持"。
-- **数据标签开关**：普通基础图默认开启数值标签，创建时传 `--data-labels value`；数据点较多、系列较多或标签容易重叠时，可根据可读性省略 `--data-labels`。已有图用 `+chart-config-update --data-labels`；用户明确关闭时传 `none`，不要为常用标签配置构造原始 `labels` 对象。`--data-labels` 作用于整图；当多个系列的标签内容、位置或展示范围不一致时，禁止传 `--data-labels` / `--data-label-position`，改用 `--series-data-labels` 逐系列声明 `scope=none|all|last`。高级配置中 `plotArea.plot.labels` 对象的存在性即开关；关闭标签时应省略整个 `labels` 字段，不能用全部字段置为 `false` 代替。用常量或重复值系列表示基准、目标、阈值或上下限时，默认关闭该系列标签；不得用全系列重复标签模拟单点或末点标签；若当前能力不支持单点标签，改用包含名称和值的系列名、图例或标题。
+- **数据标签开关**：普通基础图默认开启数值标签，创建时传 `--data-labels value`；数据点较多、系列较多或标签容易重叠时，可根据可读性省略 `--data-labels`。已有图用 `+chart-config-update --data-labels`；用户明确关闭时传 `none`，不要为常用标签配置构造原始 `labels` 对象。高级配置中 `plotArea.plot.labels` 对象的存在性即开关；关闭标签时应省略整个 `labels` 字段，不能用全部字段置为 `false` 代替。用常量或重复值系列表示基准、目标、阈值或上下限时，默认关闭该系列标签；不支持单点标签时，不得用全系列重复标签代替，改用包含名称和值的系列名、图例或标题。
 - **数据标签位置**：只有用户明确要求且已有标签时才传 `--data-label-position`；它只调整已有标签的位置，不会单独开启标签。需要同时显示标签时一并传 `--data-labels`；未明确位置时省略，让图表按类型自动选择。标签位置只控制摆放方式，不能实现仅显示末点或关键点。
 - **数据源范围与系列名来源要对齐**：
   - 默认让 `--data-range` 包含真正的表头行 / 列；表头上方的合并大标题必须跳过。
@@ -199,7 +199,6 @@ _公共四件套 · 系统：`--dry-run`_
 | `--y-axis-label-angle` | int | optional | 左 Y 轴标签旋转角度（可选值：`-90` / `-45` / `0` / `45` / `90`） |
 | `--data-labels` | string | optional | 数据标签内容；普通基础图默认传 value，数据点较多、系列较多或标签容易重叠时可省略；value、category、percentage 可按 value_category_percentage 顺序组成任意非空组合；series 显示系列名称，none 隐藏标签（可选值：`none` / `value` / `category` / `percentage` / `value_category` / `value_percentage` / `category_percentage` / `value_category_percentage` / `series`） |
 | `--data-label-position` | string | optional | 仅当用户明确指定时传入；只调整已有数据标签的位置，不会单独开启标签；省略时按图表类型自动优化数据标签位置（可选值：`auto` / `top` / `bottom` / `left` / `right` / `center` / `inside` / `outside`） |
-| `--series-data-labels` | string | optional | 按 1-based 数值系列顺序分别配置标签；每项包含 series_position、scope（none/all/last）及可选 content/position；与全局标签参数互斥 |
 | `--stack` | string | optional | 堆叠模式（可选值：`none` / `normal` / `percent`） |
 | `--stacked` | bool | optional | 兼容别名；等价于 --stack normal（隐藏 flag：不在 `--help` 列出，但可正常传入） |
 | `--smooth` | bool | optional | 是否使用平滑曲线；支持 --smooth=false 和 --smooth false |
@@ -230,7 +229,7 @@ _公共四件套 · 系统：`--dry-run`_
 | `--y-axis-max` | float64 | optional | 左 Y 轴的显示范围上界；默认省略，仅在用户明确要求固定范围时传；须按图表实际绘制值计算，且必须大于 --y-axis-min |
 | `--data-labels` | string | optional | 数据标签内容；value、category、percentage 可按 value_category_percentage 顺序组成任意非空组合；series 显示系列名称，none 隐藏标签（可选值：`none` / `value` / `category` / `percentage` / `value_category` / `value_percentage` / `category_percentage` / `value_category_percentage` / `series`） |
 | `--data-label-position` | string | optional | 仅当用户明确指定时传入；只调整已有数据标签的位置，不会单独开启标签；省略时按图表类型自动优化数据标签位置（可选值：`auto` / `top` / `bottom` / `left` / `right` / `center` / `inside` / `outside`） |
-| `--series-data-labels` | string | optional | 按 1-based 数值系列顺序分别配置标签；每项包含 series_position、scope（none/all/last）及可选 content/position；与全局标签参数互斥 |
+| `--last-point-label` | bool | optional | 仅折线图、面积图、雷达图及组合图中的线性系列；true 开启每个系列最后一个数据点的数值标签，false 关闭这些单点标签 |
 | `--stack` | string | optional | 堆叠模式（可选值：`none` / `normal` / `percent`） |
 | `--stacked` | bool | optional | 兼容别名；等价于 --stack normal（隐藏 flag：不在 `--help` 列出，但可正常传入） |
 | `--smooth` | bool | optional | 是否使用平滑曲线；支持 --smooth=false 和 --smooth false |
@@ -285,26 +284,6 @@ _公共四件套 · 系统：`--yes`、`--dry-run`_
 
 > 复合 JSON flag 字段速查（只列顶层 + 一层嵌套）。深层结构看下方 `## Examples`，或用 `--print-schema` 读完整 JSON Schema（用法见 SKILL.md「公共 flag 速查」与「Agent 使用提示」）。
 
-### `+chart-create-basic` `--series-data-labels`
-
-_按 1-based 数值系列顺序分别配置数据标签；与全局 data_labels/data_label_position 互斥_
-
-**数组项**（类型 object）：
-- `series_position` (integer) — 数值系列在图表中的 1-based 顺序，与 dim2_indexes 的顺序一致
-- `scope` (enum) — none 隐藏该系列标签；all 显示全部数据点；last 仅显示最后一个数据点 [none / all / last]
-- `content` (enum?) — 标签内容，省略时为 value；scope=none 时不得设置 [value / category / percentage / value_category / value_percentage / category_percentage / value_category_percentage / series]
-- `position` (enum?) — 标签位置；scope=none 时不得设置 [auto / top / bottom / left / right / center / inside / outside]
-
-### `+chart-config-update` `--series-data-labels`
-
-_按 1-based 数值系列顺序分别配置数据标签；与全局 data_labels/data_label_position 互斥_
-
-**数组项**（类型 object）：
-- `series_position` (integer) — 数值系列在图表中的 1-based 顺序，与 dim2_indexes 的顺序一致
-- `scope` (enum) — none 隐藏该系列标签；all 显示全部数据点；last 仅显示最后一个数据点 [none / all / last]
-- `content` (enum?) — 标签内容，省略时为 value；scope=none 时不得设置 [value / category / percentage / value_category / value_percentage / category_percentage / value_category_percentage / series]
-- `position` (enum?) — 标签位置；scope=none 时不得设置 [auto / top / bottom / left / right / center / inside / outside]
-
 ### `+chart-create` `--properties` / `+chart-update` `--properties`
 
 _创建/更新的图表属性_
@@ -313,7 +292,7 @@ _创建/更新的图表属性_
 - `position` (object?) — 必填 { row: number, col: string }
 - `offset` (object?) — 可选 { row_offset?: number, col_offset?: number }
 - `size` (object?) — 必填 { width: number, height: number }
-- `series_data_labels` (array<object>?) — 按 1-based 数值系列顺序分别配置数据标签；与全局 data_labels/data_label_position 互斥 each: { series_position: integer, scope: enum, content?: enum, position?: enum }
+- `last_point_label` (boolean?) — update 使用
 - `snapshot` (oneOf?) — 图表快照配置
 
 ## Examples
@@ -422,7 +401,7 @@ lark-cli sheets +chart-data-update --url "..." --sheet-id "$SID" --chart-id "chr
 
 ### `+chart-config-update`
 
-只传需要改的字段，成功后返回更新后的 `viewModel`。`--data-labels` 支持 `value`、`category`、`percentage` 的任意非空组合，组合值按 `value_category_percentage` 顺序拼接；另可用 `series` 显示系列名称、用 `none` 删除数据标签。所有系列要求一致时使用全局参数；要求不同时用 `--series-data-labels`，按 1-based `series_position` 分别设置 `scope=none|all|last`、可选 `content` 和 `position`。`--series-data-labels` 与 `--data-labels`、`--data-label-position` 互斥。`--legend-position hidden` 隐藏图例；`--smooth=false` 和 `--smooth false` 都可显式关闭平滑曲线。为减少参数重试，`--stacked` 自动按 `--stack normal` 处理，`percentage,value` 或 `value,percentage` 自动按 `value_percentage` 处理，`--x-axis` / `--y-axis` 自动按 `--x-axis-title` / `--y-axis-title` 处理；新调用仍优先使用规范参数。
+只传需要改的字段，成功后返回更新后的 `viewModel`。`--data-labels` 支持 `value`、`category`、`percentage` 的任意非空组合，组合值按 `value_category_percentage` 顺序拼接；另可用 `series` 显示系列名称、用 `none` 删除数据标签。折线图、面积图、雷达图及组合图中的线性系列可用 `--last-point-label=true` 只开启每个系列最后一个数据点的数值标签，传 `false` 关闭这些单点标签。`--legend-position hidden` 隐藏图例；`--smooth=false` 和 `--smooth false` 都可显式关闭平滑曲线。为减少参数重试，`--stacked` 自动按 `--stack normal` 处理，`percentage,value` 或 `value,percentage` 自动按 `value_percentage` 处理，`--x-axis` / `--y-axis` 自动按 `--x-axis-title` / `--y-axis-title` 处理；新调用仍优先使用规范参数。
 
 ```bash
 lark-cli sheets +chart-config-update --url "..." --sheet-id "$SID" --chart-id "chrXXX" \
@@ -431,9 +410,8 @@ lark-cli sheets +chart-config-update --url "..." --sheet-id "$SID" --chart-id "c
 lark-cli sheets +chart-config-update --url "..." --sheet-id "$SID" --chart-id "chrXXX" \
   --data-labels value_percentage --stack percent
 
-# 四系列组合图：前两条显示全点数值，后两条参考线只显示尾点数值
 lark-cli sheets +chart-config-update --url "..." --sheet-id "$SID" --chart-id "chrXXX" \
-  --series-data-labels '[{"series_position":1,"scope":"all","content":"value","position":"outside"},{"series_position":2,"scope":"all","content":"value","position":"top"},{"series_position":3,"scope":"last","content":"value","position":"right"},{"series_position":4,"scope":"last","content":"value","position":"right"}]'
+  --last-point-label=true
 ```
 
 ### `+chart-create`
