@@ -3708,7 +3708,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Data label content; combine value, category, and percentage in value_category_percentage order for any non-empty combination; series shows series names and none removes labels",
+        "desc": "Data label content; pass value by default for a basic chart, but omit it when many data points or series would make labels crowded; combine value, category, and percentage in value_category_percentage order for any non-empty combination; series shows series names and none removes labels",
         "enum": [
           "none",
           "value",

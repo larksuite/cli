@@ -1192,7 +1192,13 @@ func findChartAxisMap(plotArea map[string]interface{}, axisType, position string
 	axes, _ := plotArea["axes"].([]interface{})
 	for _, raw := range axes {
 		axis, _ := raw.(map[string]interface{})
-		if axis["type"] == axisType && axis["position"] == position {
+		axisPosition, hasPosition := axis["position"]
+		positionMatches := axisPosition == position
+		// Chart readback omits position for the canonical bottom X axis.
+		if !hasPosition && axisType == "x" && position == "bottom" {
+			positionMatches = true
+		}
+		if axis["type"] == axisType && positionMatches {
 			return axis
 		}
 	}

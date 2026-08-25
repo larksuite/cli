@@ -1001,7 +1001,7 @@ func TestExecute_ChartConfigUpdate_ReadsSnapshotAndWritesPartialPatch(t *testing
 					"title":{"text":"Old"},
 					"plotArea":{
 						"axes":[
-							{"type":"x","position":"bottom","title":{"text":"Month"}},
+							{"type":"x","valueType":"linear","axisLine":true,"label":{},"title":{"text":"Month"}},
 							{"type":"y","position":"left","title":{"text":"Amount"}}
 						],
 						"plot":{"type":"line","extra":{"smooth":false}}
@@ -1021,7 +1021,7 @@ func TestExecute_ChartConfigUpdate_ReadsSnapshotAndWritesPartialPatch(t *testing
 					"title":{"text":"New"},
 					"plotArea":{
 						"axes":[
-							{"type":"x","position":"bottom","title":{"text":"Month"}},
+							{"type":"x","valueType":"linear","axisLine":true,"label":{},"title":{"text":"Month"},"min":2},
 							{"type":"y","position":"left","title":{"text":"Revenue"}}
 						],
 						"plot":{"type":"line","series":[{"index":1,"points":{"point":[{"index":4,"labels":{"value":true}}]}}]}
@@ -1036,6 +1036,7 @@ func TestExecute_ChartConfigUpdate_ReadsSnapshotAndWritesPartialPatch(t *testing
 		"--sheet-id", testSheetID,
 		"--chart-id", "chart-1",
 		"--title", "New",
+		"--x-axis-min", "2",
 		"--y-axis-title", "Revenue",
 		"--last-point-label=true",
 	}, readBefore, write, readAfter)
@@ -1060,7 +1061,12 @@ func TestExecute_ChartConfigUpdate_ReadsSnapshotAndWritesPartialPatch(t *testing
 		t.Fatalf("partial title = %#v", snapshot["title"])
 	}
 	axes := snapshot["plotArea"].(map[string]interface{})["axes"].([]interface{})
-	if len(axes) != 2 || axes[0].(map[string]interface{})["title"].(map[string]interface{})["text"] != "Month" ||
+	if len(axes) != 2 {
+		t.Fatalf("partial axes = %#v, want existing axes without a duplicate X axis", axes)
+	}
+	xAxis := axes[0].(map[string]interface{})
+	if xAxis["min"] != float64(2) || xAxis["axisLine"] != true ||
+		xAxis["title"].(map[string]interface{})["text"] != "Month" ||
 		axes[1].(map[string]interface{})["title"].(map[string]interface{})["text"] != "Revenue" {
 		t.Fatalf("partial axes = %#v", axes)
 	}
