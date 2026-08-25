@@ -393,8 +393,21 @@ func TestMailAutoReplyHydratesImagesIndependently(t *testing.T) {
 			}},
 		},
 	})
-	reg.Register(&httpmock.Stub{Method: "GET", URL: "/open-apis/drive/v1/medias/file_ok/download", RawBody: []byte("png"), ContentType: "image/png"})
-	reg.Register(&httpmock.Stub{Method: "GET", URL: "/open-apis/drive/v1/medias/file_bad/download", Status: 404, Body: "missing"})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    mailboxPath("me", "settings", "auto_reply", "images", "download_url") + "?file_keys=file_ok&file_keys=file_bad",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"download_urls": []interface{}{
+					map[string]interface{}{"attachment_id": "file_ok", "download_url": "https://storage.example.com/file_ok"},
+					map[string]interface{}{"attachment_id": "file_bad", "download_url": "https://storage.example.com/file_bad"},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{Method: "GET", URL: "https://storage.example.com/file_ok", RawBody: []byte("png"), ContentType: "image/png"})
+	reg.Register(&httpmock.Stub{Method: "GET", URL: "https://storage.example.com/file_bad", Status: 404, Body: "missing"})
 
 	if err := runMountedMailShortcut(t, MailAutoReply, []string{"+auto-reply", "--format", "json"}, f, stdout); err != nil {
 		t.Fatalf("runMountedMailShortcut() error = %v", err)
