@@ -10,14 +10,14 @@ import (
 )
 
 type compiledCommand struct {
-	metadata    CommandMetadata
+	metadata    typedCommandMetadata
 	argsType    reflect.Type
 	dataType    reflect.Type
 	fields      []compiledInputField
 	fieldByName map[string]int
 	relations   []compiledRelation
-	dataShape   ValueShape
-	output      OutputDefinition
+	dataShape   typedValueShape
+	output      typedOutputDefinition
 	contract    typedSchemaContract
 	hooks       compiledHooks
 	pageOutput  bool
@@ -33,30 +33,30 @@ type compiledInputField struct {
 	required      bool
 	nullable      *bool
 	description   string
-	shape         ValueShape
+	shape         typedValueShape
 	shapeExplicit bool
-	defaultValue  InputDefault
-	cli           CLIInput
+	defaultValue  typedInputDefault
+	cli           typedCLIInput
 }
 
 type compiledRelation struct {
-	kind     RelationKind
+	kind     typedRelationKind
 	fields   []int
-	presence PresenceMode
-	stage    RelationStage
+	presence typedPresenceMode
+	stage    typedRelationStage
 }
 
 type compiledResult struct {
 	data    any
-	outcome OutcomeKind
-	meta    *ResultMeta
+	outcome typedOutcomeKind
+	meta    *typedResultMeta
 }
 
 type compiledHooks struct {
 	newArgs   func() any
-	normalize func(context.Context, CommandContext, any) error
-	validate  func(context.Context, CommandContext, any) error
-	dryRun    func(context.Context, CommandContext, any) (*DryRunAPI, error)
-	execute   func(context.Context, CommandContext, any) (compiledResult, error)
+	normalize func(context.Context, typedRuntimeContext, any) error
+	validate  func(context.Context, typedRuntimeContext, any) error
+	dryRun    func(context.Context, typedRuntimeContext, any) (*DryRunAPI, error)
+	execute   func(context.Context, typedRuntimeContext, any) (compiledResult, error)
 	renderers map[string]func(io.Writer, any) error
 }

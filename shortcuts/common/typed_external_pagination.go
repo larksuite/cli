@@ -8,11 +8,12 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/commandbridge"
 	"github.com/larksuite/cli/internal/output"
 	internalpagination "github.com/larksuite/cli/internal/pagination"
 )
 
-// CollectCommandPages is PaginateInto for an externally declared command. Such
+// CollectHostedPages is PaginateInto for an externally declared command. Such
 // a command compiles in the business module and so reaches the CLI through the
 // CommandContext interface rather than a *RuntimeContext; the policy and the
 // call arrive through that interface, and the context is a parameter because
@@ -24,7 +25,7 @@ import (
 // exhaustion under a hard page bound rather than obey --page-all and
 // --page-limit. Built-in shortcuts have no equivalent, which is why it is a
 // parameter here and not in PaginateInto.
-func CollectCommandPages[T any](ctx context.Context, command CommandContext, request PageRequest, all bool, dst PageAccumulator[T]) (*output.PaginationMeta, error) {
+func CollectHostedPages[T any](ctx context.Context, command typedRuntimeContext, request PageRequest, all bool, dst PageAccumulator[T], _ commandbridge.Access) (*output.PaginationMeta, error) {
 	meta := &output.PaginationMeta{}
 	policy, err := commandPagePolicy(command, all)
 	if err != nil {
@@ -34,7 +35,7 @@ func CollectCommandPages[T any](ctx context.Context, command CommandContext, req
 		policy:  policy,
 		request: request,
 		fetch: func(ctx context.Context, page PageRequest) (map[string]interface{}, error) {
-			return CallTypedAPI(ctx, command, page.Method, page.Path, page.Params, page.Body)
+			return CallHostedAPI(ctx, command, page.Method, page.Path, page.Params, page.Body, commandbridge.Access{})
 		},
 		accumulate: func(data map[string]interface{}, pageNumber int) error {
 			return addDecodedPage(data, pageNumber, dst)
@@ -46,7 +47,7 @@ func CollectCommandPages[T any](ctx context.Context, command CommandContext, req
 	return meta, walkErr
 }
 
-func commandPagePolicy(command CommandContext, all bool) (paginationPolicy, error) {
+func commandPagePolicy(command typedRuntimeContext, all bool) (paginationPolicy, error) {
 	if all {
 		return paginationPolicy{maxPages: internalpagination.CollectAllHardPageBound}, nil
 	}

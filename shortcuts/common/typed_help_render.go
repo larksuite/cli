@@ -70,7 +70,7 @@ type typedConditionalScopeHelpFact struct {
 	Scopes      []string
 	When        string
 	Params      []string
-	Requirement ScopeRequirement
+	Requirement typedScopeRequirement
 }
 
 // typedHelpFlagRef selects a registered Cobra flag for a system section.
@@ -302,7 +302,7 @@ func writeTypedAuthorizationHelp(b *strings.Builder, identities []typedAuthoriza
 				fmt.Fprintf(b, "      %s\n", scope)
 			}
 		}
-		for _, requirement := range []ScopeRequirement{ScopeRequired, ScopeBestEffort} {
+		for _, requirement := range []typedScopeRequirement{typedScopeRequired, typedScopeBestEffort} {
 			var conditional []typedConditionalScopeHelpFact
 			for _, scope := range identity.ConditionalScopes {
 				if scope.Requirement == requirement {
@@ -313,7 +313,7 @@ func writeTypedAuthorizationHelp(b *strings.Builder, identities []typedAuthoriza
 				continue
 			}
 			heading := "Conditionally required:"
-			if requirement == ScopeBestEffort {
+			if requirement == typedScopeBestEffort {
 				heading = "Optional capability:"
 			}
 			fmt.Fprintf(b, "    %s\n", heading)
@@ -427,14 +427,14 @@ func typedHelpConstraintText(fact typedConstraintHelpFact) string {
 		}
 	case "conflicts":
 		text = "conflicting parameters: " + joined
-	case string(RelationCoOccur):
+	case string(typedRelationCoOccur):
 		text = "all or none of: " + joined
 	case "same_value":
 		text = "must have the same value: " + joined
 	default:
 		text = strings.ReplaceAll(fact.Kind, "_", " ") + ": " + joined
 	}
-	if fact.Presence == string(PresenceNonZero) {
+	if fact.Presence == string(typedPresenceNonZero) {
 		text += " (using non-zero values)"
 	}
 	return text

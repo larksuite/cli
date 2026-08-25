@@ -1,65 +1,24 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-//nolint:forbidigo // Compiler diagnostics are registration-time programmer errors converted to contextual Define panics, not command-facing failures.
+//nolint:forbidigo // Compiler diagnostics are build-time declaration errors wrapped by the command-set startup guard.
 package common
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"reflect"
 	"strings"
 )
 
-// Define compiles a Typed Shortcut definition. Invalid definitions are
-// programmer errors and panic during registration; no partial legacy fallback
-// is returned.
-func defineTypedShortcut[Args any, Data any](definition typedDefinition[Args, Data]) Shortcut {
-	compiled, err := compileDefinition(definition)
-	if err != nil {
-		service := strings.TrimSpace(definition.Metadata.Service)
-		command := strings.TrimSpace(definition.Metadata.Command)
-		if service == "" {
-			service = "<missing-service>"
-		}
-		if command == "" {
-			command = "<missing-command>"
-		}
-		panic(fmt.Sprintf("typed shortcut %s %s: %v", service, command, err))
-	}
-	shortcut := shortcutFromCompiled(compiled)
-	if err := validateTypedFlagMountPlan(compiled, shortcut.PrintFlagSchema != nil, Risk(shortcut.Risk)); err != nil {
-		panic(fmt.Sprintf("typed shortcut %s %s: %v", compiled.metadata.Service, compiled.metadata.Command, err))
-	}
-	return shortcut
-}
-
-func compileDefinition[Args any, Data any](definition typedDefinition[Args, Data]) (*compiledCommand, error) {
-	if definition.Hooks.Execute == nil {
-		return nil, fmt.Errorf("Hooks.Execute is required")
-	}
-	return compileDefinitionParts(
-		definition.Metadata,
-		definition.Input,
-		definition.Output,
-		reflect.TypeFor[Args](),
-		reflect.TypeFor[Data](),
-		adaptHooks(definition.Hooks),
-		rendererMarkers(definition.Hooks.Renderers),
-		false,
-	)
-}
-
 func compileDefinitionParts(
-	metadata CommandMetadata,
-	input InputDefinition,
-	output OutputDefinition,
+	metadata typedCommandMetadata,
+	input typedInputDefinition,
+	output typedOutputDefinition,
 	argsType reflect.Type,
 	dataType reflect.Type,
 	hooks compiledHooks,
-	renderers map[string]RendererMarker,
+	renderers map[string]rendererMarker,
 	pageOutput bool,
 ) (*compiledCommand, error) {
 	metadata = normalizeCommandMetadata(metadata)
@@ -106,33 +65,32 @@ func compileDefinitionParts(
 	return command, nil
 }
 
-func normalizeCommandMetadata(metadata CommandMetadata) CommandMetadata {
-	identities := make(map[Identity]IdentityAuthorization, len(metadata.Authorization.Identities))
+func normalizeCommandMetadata(metadata typedCommandMetadata) typedCommandMetadata {
+	identities := make(map[typedIdentity]typedIdentityAuthorization, len(metadata.Authorization.Identities))
 	for identity, authorization := range metadata.Authorization.Identities {
 		authorization.RequiredScopes = append([]string(nil), authorization.RequiredScopes...)
-		authorization.ConditionalScopes = append([]ConditionalScope(nil), authorization.ConditionalScopes...)
+		authorization.ConditionalScopes = append([]typedConditionalScope(nil), authorization.ConditionalScopes...)
 		for i := range authorization.ConditionalScopes {
 			conditional := &authorization.ConditionalScopes[i]
 			conditional.Scopes = append([]string(nil), conditional.Scopes...)
 			conditional.Params = append([]string(nil), conditional.Params...)
 			if conditional.Requirement == "" {
-				conditional.Requirement = ScopeRequired
+				conditional.Requirement = typedScopeRequired
 			}
 		}
 		identities[identity] = authorization
 	}
 	metadata.Authorization.Identities = identities
-	metadata.Authorization.IdentityOrder = append([]Identity(nil), metadata.Authorization.IdentityOrder...)
-	metadata.Tips = append([]string(nil), metadata.Tips...)
+	metadata.Authorization.IdentityOrder = append([]typedIdentity(nil), metadata.Authorization.IdentityOrder...)
 	return metadata
 }
 
-func validateCommandMetadata(metadata CommandMetadata) error {
-	service := strings.TrimSpace(metadata.Service)
+func validateCommandMetadata(metadata typedCommandMetadata) error {
+	service := strings.TrimSpace(string(metadata.Service))
 	if service == "" {
 		return fmt.Errorf("Metadata.Service is required")
 	}
-	if service != metadata.Service || strings.ContainsAny(service, " \t\r\n/") {
+	if service != string(metadata.Service) || strings.ContainsAny(service, " \t\r\n/") {
 		return fmt.Errorf("Metadata.Service %q must be one trimmed command segment", metadata.Service)
 	}
 	command := strings.TrimSpace(metadata.Command)
@@ -151,13 +109,8 @@ func validateCommandMetadata(metadata CommandMetadata) error {
 	if strings.TrimSpace(metadata.Description) == "" {
 		return fmt.Errorf("Metadata.Description is required")
 	}
-	for i, tip := range metadata.Tips {
-		if strings.TrimSpace(tip) == "" {
-			return fmt.Errorf("Metadata.Tips[%d] must not be blank", i)
-		}
-	}
 	switch metadata.Risk {
-	case RiskRead, RiskWrite, RiskHighRiskWrite:
+	case typedRiskRead, typedRiskWrite, typedRiskHighRiskWrite:
 	default:
 		return fmt.Errorf("Metadata.Risk %q is invalid", metadata.Risk)
 	}
@@ -165,7 +118,7 @@ func validateCommandMetadata(metadata CommandMetadata) error {
 		return fmt.Errorf("Metadata.Authorization.Identities must declare at least one identity")
 	}
 	for identity, auth := range metadata.Authorization.Identities {
-		if identity != IdentityUser && identity != IdentityBot {
+		if identity != typedIdentityUser && identity != typedIdentityBot {
 			return fmt.Errorf("Metadata.Authorization identity %q is invalid", identity)
 		}
 		if err := validateScopeList(auth.RequiredScopes, fmt.Sprintf("Authorization.%s.RequiredScopes", identity)); err != nil {
@@ -192,7 +145,7 @@ func validateCommandMetadata(metadata CommandMetadata) error {
 				return fmt.Errorf("%s.When must be trimmed", path)
 			}
 			switch conditional.Requirement {
-			case ScopeRequired, ScopeBestEffort:
+			case typedScopeRequired, typedScopeBestEffort:
 			default:
 				return fmt.Errorf("%s.Requirement %q is invalid", path, conditional.Requirement)
 			}
@@ -202,7 +155,7 @@ func validateCommandMetadata(metadata CommandMetadata) error {
 		if len(metadata.Authorization.IdentityOrder) != len(metadata.Authorization.Identities) {
 			return fmt.Errorf("Metadata.Authorization.IdentityOrder must contain each declared identity exactly once")
 		}
-		seen := make(map[Identity]struct{}, len(metadata.Authorization.IdentityOrder))
+		seen := make(map[typedIdentity]struct{}, len(metadata.Authorization.IdentityOrder))
 		for _, identity := range metadata.Authorization.IdentityOrder {
 			if _, ok := metadata.Authorization.Identities[identity]; !ok {
 				return fmt.Errorf("Metadata.Authorization.IdentityOrder contains undeclared identity %q", identity)
@@ -230,52 +183,20 @@ func validateScopeList(scopes []string, path string) error {
 	return nil
 }
 
-func adaptHooks[Args any, Data any](hooks typedHooks[Args, Data]) compiledHooks {
-	adapted := compiledHooks{newArgs: func() any { return new(Args) }}
-	if hooks.Normalize != nil {
-		adapted.normalize = func(ctx context.Context, cc CommandContext, args any) error {
-			return hooks.Normalize(ctx, cc, args.(*Args))
-		}
-	}
-	if hooks.Validate != nil {
-		adapted.validate = func(ctx context.Context, cc CommandContext, args any) error {
-			return hooks.Validate(ctx, cc, args.(*Args))
-		}
-	}
-	if hooks.DryRun != nil {
-		adapted.dryRun = func(ctx context.Context, cc CommandContext, args any) (*DryRunAPI, error) {
-			return hooks.DryRun(ctx, cc, args.(*Args)), nil
-		}
-	}
-	adapted.execute = func(ctx context.Context, cc CommandContext, args any) (compiledResult, error) {
-		result, err := hooks.Execute(ctx, cc, args.(*Args))
-		return compiledResult{data: result.Data, outcome: result.Outcome, meta: result.Meta}, err
-	}
-	if len(hooks.Renderers) > 0 {
-		adapted.renderers = make(map[string]func(io.Writer, any) error, len(hooks.Renderers))
-		for name, renderer := range hooks.Renderers {
-			r := renderer
-			adapted.renderers[name] = func(w io.Writer, data any) error { return r(w, data.(Data)) }
-		}
-	}
-	return adapted
-}
-
 func shortcutFromCompiled(compiled *compiledCommand) Shortcut {
 	metadata := compiled.metadata
 	shortcut := Shortcut{
-		Service:     metadata.Service,
+		Service:     string(metadata.Service),
 		Command:     metadata.Command,
 		Description: metadata.Description,
 		Risk:        string(metadata.Risk),
 		Hidden:      metadata.Hidden,
-		Tips:        append([]string(nil), metadata.Tips...),
 		typed:       compiled,
 	}
 	identities := make([]string, 0, len(metadata.Authorization.Identities))
 	identityOrder := metadata.Authorization.IdentityOrder
 	if len(identityOrder) == 0 {
-		identityOrder = []Identity{IdentityUser, IdentityBot}
+		identityOrder = []typedIdentity{typedIdentityUser, typedIdentityBot}
 	}
 	for _, identity := range identityOrder {
 		if auth, ok := metadata.Authorization.Identities[identity]; ok {
@@ -283,10 +204,10 @@ func shortcutFromCompiled(compiled *compiledCommand) Shortcut {
 			scopes := append([]string(nil), auth.RequiredScopes...)
 			conditional := flattenConditionalScopes(auth.ConditionalScopes)
 			switch identity {
-			case IdentityUser:
+			case typedIdentityUser:
 				shortcut.UserScopes = scopes
 				shortcut.ConditionalUserScopes = conditional
-			case IdentityBot:
+			case typedIdentityBot:
 				shortcut.BotScopes = scopes
 				shortcut.ConditionalBotScopes = conditional
 			}
@@ -298,7 +219,7 @@ func shortcutFromCompiled(compiled *compiledCommand) Shortcut {
 	return shortcut
 }
 
-func flattenConditionalScopes(definitions []ConditionalScope) []string {
+func flattenConditionalScopes(definitions []typedConditionalScope) []string {
 	seen := make(map[string]struct{})
 	var result []string
 	for _, definition := range definitions {
@@ -332,11 +253,11 @@ func legacyFlagsFromCompiled(fields []compiledInputField) []Flag {
 			}
 		}
 		for _, alias := range field.cli.Aliases {
-			if alias.Mode == AliasNormalize {
+			if alias.Mode == typedAliasNormalize {
 				flag.Aliases = append(flag.Aliases, alias.Name)
 			}
 		}
-		if stringShape, ok := field.shape.(StringShape); ok {
+		if stringShape, ok := field.shape.(typedStringShape); ok {
 			flag.Enum = append([]string(nil), stringShape.Enum...)
 		}
 		if hasIndependentAlias(field.cli.Aliases) {
@@ -344,7 +265,7 @@ func legacyFlagsFromCompiled(fields []compiledInputField) []Flag {
 		}
 		flags = append(flags, flag)
 		for _, alias := range field.cli.Aliases {
-			if alias.Mode != AliasIndependent {
+			if alias.Mode != typedAliasIndependent {
 				continue
 			}
 			aliasFlag := flag
@@ -360,9 +281,9 @@ func legacyFlagsFromCompiled(fields []compiledInputField) []Flag {
 	return flags
 }
 
-func hasIndependentAlias(aliases []FlagAlias) bool {
+func hasIndependentAlias(aliases []typedFlagAlias) bool {
 	for _, alias := range aliases {
-		if alias.Mode == AliasIndependent {
+		if alias.Mode == typedAliasIndependent {
 			return true
 		}
 	}
@@ -383,11 +304,11 @@ func legacyFlagType(field compiledInputField) string {
 		return "float64"
 	case reflect.Slice, reflect.Array:
 		switch field.cli.Encoding {
-		case EncodingRepeated:
+		case typedEncodingRepeated:
 			if t.Elem().Kind() == reflect.String {
 				return "string_array"
 			}
-		case EncodingCommaOrRepeated:
+		case typedEncodingCommaOrRepeated:
 			if isIntegerKind(t.Elem().Kind()) {
 				return "int_array"
 			}
@@ -397,13 +318,13 @@ func legacyFlagType(field compiledInputField) string {
 	return "string"
 }
 
-func legacyInputSources(sources []ValueSource) []string {
+func legacyInputSources(sources []typedValueSource) []string {
 	var result []string
 	for _, source := range sources {
 		switch source {
-		case SourceFile:
+		case typedSourceFile:
 			result = append(result, File)
-		case SourceStdin:
+		case typedSourceStdin:
 			result = append(result, Stdin)
 		}
 	}

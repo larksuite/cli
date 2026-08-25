@@ -10,7 +10,7 @@ import "fmt"
 // will add for this command. It does not create a new reserved namespace: names
 // such as --json, --format, and non-high-risk --yes retain their established
 // business meanings when declared as real flags.
-func validateTypedFlagMountPlan(command *compiledCommand, hasFlagSchema bool, mountedRisk Risk) error {
+func validateTypedFlagMountPlan(command *compiledCommand, hasFlagSchema bool, mountedRisk typedRisk) error {
 	flags := legacyFlagsFromCompiled(command.fields)
 	view := Shortcut{Flags: flags}
 
@@ -21,7 +21,7 @@ func validateTypedFlagMountPlan(command *compiledCommand, hasFlagSchema bool, mo
 		"jq":      "framework output filtering",
 		"profile": "inherited profile selection",
 	}
-	if mountedRisk == RiskHighRiskWrite {
+	if mountedRisk == typedRiskHighRiskWrite {
 		primaryConflicts["yes"] = "framework high-risk confirmation"
 	}
 	if hasFlagSchema {
@@ -43,7 +43,7 @@ func validateTypedFlagMountPlan(command *compiledCommand, hasFlagSchema bool, mo
 	if !shortcutDeclaresJSONFlag(&view) && shortcutFormatSupportsJSON(&view) {
 		aliasConflicts["json"] = "framework JSON output shorthand"
 	}
-	if mountedRisk == RiskHighRiskWrite {
+	if mountedRisk == typedRiskHighRiskWrite {
 		aliasConflicts["yes"] = "framework high-risk confirmation"
 	}
 	if hasFlagSchema {
@@ -58,7 +58,7 @@ func validateTypedFlagMountPlan(command *compiledCommand, hasFlagSchema bool, mo
 		for _, alias := range field.cli.Aliases {
 			conflicts := primaryConflicts
 			kind := "independent alias"
-			if alias.Mode == AliasNormalize {
+			if alias.Mode == typedAliasNormalize {
 				conflicts = aliasConflicts
 				kind = "normalize alias"
 			}

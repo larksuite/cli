@@ -15,6 +15,7 @@ import (
 
 	"github.com/larksuite/cli/extension/command"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/commandbridge"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -112,116 +113,22 @@ func validateDomain(domain command.HostDomain, existing map[string]struct{}) err
 }
 
 func compileCommand(definition command.HostDefinition) (common.Shortcut, error) {
-	metadata := convertMetadata(definition.Metadata)
-	input, err := convertInput(definition.Input)
-	if err != nil {
-		return common.Shortcut{}, err
-	}
-	output, err := convertOutput(definition.Output)
-	if err != nil {
-		return common.Shortcut{}, err
-	}
 	hooks := convertHooks(definition)
 	hooks.NewArgs = definition.NewArgs
-	return common.CompileErasedDefinition(common.ErasedDefinition{
-		Metadata:   metadata,
-		Input:      input,
-		Output:     output,
+	return common.CompileCommandDefinition(commandbridge.Definition{
+		Metadata:   definition.Metadata,
+		Input:      definition.Input,
+		Output:     definition.Output,
 		ArgsType:   definition.ArgsType,
 		DataType:   definition.DataType,
 		Hooks:      hooks,
 		PageOutput: definition.PageOutput,
-	})
+	}, commandbridge.Access{})
 }
 
-func convertMetadata(metadata command.CommandMetadata) common.CommandMetadata {
-	identities := make(map[common.Identity]common.IdentityAuthorization, len(metadata.Authorization.Identities))
-	for identity, authorization := range metadata.Authorization.Identities {
-		conditional := make([]common.ConditionalScope, len(authorization.ConditionalScopes))
-		for index, scope := range authorization.ConditionalScopes {
-			conditional[index] = common.ConditionalScope{
-				Scopes:      append([]string(nil), scope.Scopes...),
-				When:        scope.When,
-				Params:      append([]string(nil), scope.Params...),
-				Requirement: common.ScopeRequirement(scope.Requirement),
-			}
-		}
-		identities[common.Identity(identity)] = common.IdentityAuthorization{
-			RequiredScopes:    append([]string(nil), authorization.RequiredScopes...),
-			ConditionalScopes: conditional,
-		}
-	}
-	identityOrder := make([]common.Identity, len(metadata.Authorization.IdentityOrder))
-	for index, identity := range metadata.Authorization.IdentityOrder {
-		identityOrder[index] = common.Identity(identity)
-	}
-	return common.CommandMetadata{
-		Service: string(metadata.Service), Command: metadata.Command, Description: metadata.Description,
-		Risk: common.Risk(metadata.Risk), Hidden: metadata.Hidden,
-		Authorization: common.AuthorizationDefinition{Identities: identities, IdentityOrder: identityOrder},
-	}
-}
-
-func convertInput(input command.InputDefinition) (common.InputDefinition, error) {
-	converted := common.InputDefinition{Fields: make([]common.InputField, len(input.Fields)), Relations: make([]common.Relation, len(input.Relations))}
-	for index, field := range input.Fields {
-		shape, err := convertShape(field.Shape)
-		if err != nil {
-			return common.InputDefinition{}, fmt.Errorf("Input.Fields[%d].Shape: %w", index, err)
-		}
-		aliases := make([]common.FlagAlias, len(field.CLI.Aliases))
-		for aliasIndex, alias := range field.CLI.Aliases {
-			aliases[aliasIndex] = common.FlagAlias{
-				Name: alias.Name, Mode: common.FlagAliasMode(alias.Mode), Conflict: common.AliasConflictPolicy(alias.Conflict),
-				Hidden: alias.Hidden, Deprecated: alias.Deprecated,
-			}
-		}
-		sources := make([]common.ValueSource, len(field.CLI.ValueSources))
-		for sourceIndex, source := range field.CLI.ValueSources {
-			if source != command.SourceFlag && source != command.SourceFile && source != command.SourceStdin {
-				return common.InputDefinition{}, fmt.Errorf("Input.Fields[%d].CLI.ValueSources[%d]: source %q is not supported in V1", index, sourceIndex, source)
-			}
-			sources[sourceIndex] = common.ValueSource(source)
-		}
-		converted.Fields[index] = common.InputField{
-			Name: field.Name, Description: field.Description, Shape: shape,
-			Default: common.InputDefault{Set: field.Default.Set, Value: field.Default.Value},
-			CLI:     common.CLIInput{Aliases: aliases, ValueSources: sources, Encoding: common.CLIEncoding(field.CLI.Encoding), Hidden: field.CLI.Hidden, Deprecated: field.CLI.Deprecated},
-		}
-	}
-	for index, relation := range input.Relations {
-		converted.Relations[index] = common.Relation{
-			Kind: common.RelationKind(relation.Kind), Params: append([]string(nil), relation.Params...),
-			Presence: common.PresenceMode(relation.Presence), Stage: common.RelationStage(relation.Stage),
-		}
-	}
-	return converted, nil
-}
-
-func convertOutput(output command.OutputDefinition) (common.OutputDefinition, error) {
-	dataShape, err := convertShape(output.Data.Shape)
-	if err != nil {
-		return common.OutputDefinition{}, fmt.Errorf("Output.Data.Shape: %w", err)
-	}
-	dataOverrides := make([]common.DataField, len(output.Data.Overrides))
-	for index, override := range output.Data.Overrides {
-		shape, shapeErr := convertShape(override.Shape)
-		if shapeErr != nil {
-			return common.OutputDefinition{}, fmt.Errorf("Output.Data.Overrides[%d].Shape: %w", index, shapeErr)
-		}
-		dataOverrides[index] = common.DataField{Path: override.Path, Description: override.Description, Shape: shape}
-	}
-	converted := common.OutputDefinition{
-		Data: common.DataDefinition{Shape: dataShape, Overrides: dataOverrides},
-		Meta: common.ResultMetaDefinition{Pagination: output.Meta.Pagination},
-		Mode: common.OutputMode(output.Mode), DisableHTMLEscaping: output.DisableHTMLEscaping,
-	}
-	return converted, nil
-}
-
-func convertHooks(definition command.HostDefinition) common.ErasedHooks {
+func convertHooks(definition command.HostDefinition) commandbridge.Hooks {
 	hooks := definition.Hooks
-	return common.ErasedHooks{
+	return commandbridge.Hooks{
 		Normalize: adaptHook(hooks.Normalize),
 		Validate:  adaptHook(hooks.Validate),
 		DryRun:    adaptDryRunHook(hooks.DryRun),
@@ -230,48 +137,40 @@ func convertHooks(definition command.HostDefinition) common.ErasedHooks {
 	}
 }
 
-func adaptHook(hook func(context.Context, command.CommandContext, any) error) func(context.Context, common.CommandContext, any) error {
+func adaptHook(hook func(context.Context, command.CommandContext, any) error) func(context.Context, commandbridge.RuntimeContext, any) error {
 	if hook == nil {
 		return nil
 	}
-	return func(ctx context.Context, host common.CommandContext, args any) error {
+	return func(ctx context.Context, host commandbridge.RuntimeContext, args any) error {
 		return hook(ctx, inputStageContext(host), args)
 	}
 }
 
-func adaptDryRunHook(hook func(context.Context, command.CommandContext, any) *command.DryRun) func(context.Context, common.CommandContext, any) (*common.DryRunAPI, error) {
+func adaptDryRunHook(hook func(context.Context, command.CommandContext, any) *command.DryRun) func(context.Context, commandbridge.RuntimeContext, any) (any, error) {
 	if hook == nil {
 		return nil
 	}
-	return func(ctx context.Context, host common.CommandContext, args any) (*common.DryRunAPI, error) {
-		preview := hook(ctx, publicContext(host), args)
-		return convertDryRun(preview)
+	return func(ctx context.Context, host commandbridge.RuntimeContext, args any) (any, error) {
+		return convertDryRun(hook(ctx, publicContext(host), args))
 	}
 }
 
-func adaptExecuteHook(definition command.HostDefinition) func(context.Context, common.CommandContext, any) (common.ErasedResult, error) {
+func adaptExecuteHook(definition command.HostDefinition) func(context.Context, commandbridge.RuntimeContext, any) (commandbridge.Result, error) {
 	hook := definition.Hooks.Execute
 	if hook == nil {
 		return nil
 	}
-	return func(ctx context.Context, host common.CommandContext, args any) (common.ErasedResult, error) {
+	return func(ctx context.Context, host commandbridge.RuntimeContext, args any) (commandbridge.Result, error) {
 		result, err := hook(ctx, publicContext(host), args)
 		// Check the extension-facing protocol at the extension boundary, where
 		// the diagnostic can name the public constructor. commandtest runs the
 		// same check, so the two surfaces cannot drift apart.
 		if err == nil {
 			if invalid := command.ValidateHostResult(definition, result); invalid != nil {
-				return common.ErasedResult{}, invalid
+				return commandbridge.Result{}, invalid
 			}
 		}
-		converted := common.ErasedResult{Data: result.Data, Outcome: common.OutcomeKind(result.Outcome)}
-		if result.Pagination != nil {
-			converted.Meta = &common.ResultMeta{Pagination: &common.ResultPaginationMeta{
-				Complete: result.Pagination.Complete, Pages: result.Pagination.Pages,
-				Items: result.Pagination.Items, NextToken: result.Pagination.NextToken,
-			}}
-		}
-		return converted, err
+		return commandbridge.Result{Data: result.Data, Outcome: result.Outcome, Pagination: result.Pagination}, err
 	}
 }
 
@@ -290,9 +189,9 @@ func cloneRenderers(renderers map[string]func(io.Writer, any) error) map[string]
 // high-risk confirmation gate, so they get the same context minus the network:
 // otherwise a high-risk command could reach the API from Validate and leave
 // remote side effects behind before the user was ever asked to confirm.
-func inputStageContext(host common.CommandContext) command.CommandContext {
+func inputStageContext(host commandbridge.RuntimeContext) command.CommandContext {
 	return command.NewCommandContext(command.ContextOptions{
-		Identity:        command.Identity(host.Identity()),
+		Identity:        host.Identity(),
 		DryRun:          host.IsDryRun(),
 		InputStage:      true,
 		PreflightScopes: host.RequireConditionalScopes,
@@ -309,13 +208,13 @@ func (c *commandPages) AddPage(page map[string]any) error {
 	return nil
 }
 
-func publicContext(host common.CommandContext) command.CommandContext {
+func publicContext(host commandbridge.RuntimeContext) command.CommandContext {
 	return command.NewCommandContext(command.ContextOptions{
-		Identity: command.Identity(host.Identity()),
+		Identity: host.Identity(),
 		DryRun:   host.IsDryRun(),
 		CallJSON: func(ctx context.Context, request command.Request) (map[string]any, error) {
 			view := command.InspectRequest(request)
-			return common.DoTypedAPIJSON(ctx, host, view.Method, view.Path, queryParams(view.Query), view.Body)
+			return common.DoHostedAPIJSON(ctx, host, view.Method, view.Path, queryParams(view.Query), view.Body, commandbridge.Access{})
 		},
 		Download: func(ctx context.Context, request command.Request, target command.FileTarget, options command.DownloadOptions) (command.Artifact, error) {
 			return downloadCommand(ctx, host, request, target, options)
@@ -330,9 +229,9 @@ func publicContext(host common.CommandContext) command.CommandContext {
 				return nil, command.HostPagination{}, err
 			}
 			pages := &commandPages{}
-			meta, err := common.CollectCommandPages(ctx, host, common.PageRequest{
+			meta, err := common.CollectHostedPages(ctx, host, common.PageRequest{
 				Method: view.Method, Path: view.Path, Params: projectedQuery(view.Query), Body: view.Body,
-			}, all, pages)
+			}, all, pages, commandbridge.Access{})
 			pagination := command.HostPagination{
 				Complete: meta.Complete, Pages: meta.Pages,
 				NextToken: meta.NextToken,
@@ -463,55 +362,4 @@ func convertDryRun(preview *command.DryRun) (*common.DryRunAPI, error) {
 		converted.File(cmdutil.DryRunFileIntent{Name: file.Name, IfExists: string(policy), Content: file.Content})
 	}
 	return converted, nil
-}
-
-func convertShape(shape command.ValueShape) (common.ValueShape, error) {
-	switch typed := shape.(type) {
-	case nil:
-		return nil, nil
-	case command.StringShape:
-		return common.StringShape{Enum: append([]string(nil), typed.Enum...), Format: typed.Format, MinLength: typed.MinLength, MaxLength: typed.MaxLength}, nil
-	case command.BooleanShape:
-		return common.BooleanShape{Enum: append([]bool(nil), typed.Enum...)}, nil
-	case command.IntegerShape:
-		return common.IntegerShape{Enum: append([]int64(nil), typed.Enum...), Minimum: typed.Minimum, Maximum: typed.Maximum}, nil
-	case command.NumberShape:
-		return common.NumberShape{Enum: append([]float64(nil), typed.Enum...), Minimum: typed.Minimum, Maximum: typed.Maximum}, nil
-	case command.NullShape:
-		return common.NullShape{}, nil
-	case command.ConstShape:
-		return common.ConstShape{Value: typed.Value}, nil
-	case command.ArrayShape:
-		items, err := convertShape(typed.Items)
-		if err != nil {
-			return nil, err
-		}
-		return common.ArrayShape{Items: items, MinItems: typed.MinItems, MaxItems: typed.MaxItems}, nil
-	case command.ObjectShape:
-		fields := make([]common.ValueField, len(typed.Fields))
-		for index, field := range typed.Fields {
-			fieldShape, err := convertShape(field.Shape)
-			if err != nil {
-				return nil, fmt.Errorf("field %q: %w", field.Name, err)
-			}
-			fields[index] = common.ValueField{Name: field.Name, Description: field.Description, Required: field.Required, Shape: fieldShape}
-		}
-		additional, err := convertShape(typed.AdditionalPropertiesShape)
-		if err != nil {
-			return nil, err
-		}
-		return common.ObjectShape{Fields: fields, AdditionalProperties: typed.AdditionalProperties, AdditionalPropertiesShape: additional}, nil
-	case command.OneOfShape:
-		variants := make([]common.ValueShape, len(typed.Variants))
-		for index, variant := range typed.Variants {
-			converted, err := convertShape(variant)
-			if err != nil {
-				return nil, fmt.Errorf("variant %d: %w", index, err)
-			}
-			variants[index] = converted
-		}
-		return common.OneOfShape{Variants: variants}, nil
-	default:
-		return nil, fmt.Errorf("unsupported public shape %T", shape)
-	}
 }

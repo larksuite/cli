@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/larksuite/cli/internal/commandbridge"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/spf13/cobra"
@@ -31,7 +32,7 @@ func TestTypedClassifyContextPreservesCommandPath(t *testing.T) {
 	}
 }
 
-func TestDoTypedAPIJSONPreservesSuccessData(t *testing.T) {
+func TestDoHostedAPIJSONPreservesSuccessData(t *testing.T) {
 	runtime, registry := newCallAPITypedRuntime(t)
 	registry.Register(&httpmock.Stub{
 		Method: "GET",
@@ -46,7 +47,7 @@ func TestDoTypedAPIJSONPreservesSuccessData(t *testing.T) {
 		},
 	})
 
-	data, err := DoTypedAPIJSON(context.Background(), typedCommandContext{runtime: runtime}, "GET", "/open-apis/x/y", nil, nil)
+	data, err := DoHostedAPIJSON(context.Background(), typedCommandContext{runtime: runtime}, "GET", "/open-apis/x/y", nil, nil, commandbridge.Access{})
 	if err != nil {
 		t.Fatal(err)
 	}

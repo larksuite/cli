@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-//nolint:forbidigo // Compiler diagnostics are registration-time programmer errors consumed by Define's panic boundary, not command-facing failures.
+//nolint:forbidigo // Compiler diagnostics are build-time declaration errors wrapped by the command-set startup guard.
 package common
 
 import (
@@ -20,15 +20,19 @@ var (
 	textMarshalerType  = reflect.TypeFor[encoding.TextMarshaler]()
 )
 
-func compileData(dataType reflect.Type, definition DataDefinition) (ValueShape, error) {
+func compileData(dataType reflect.Type, definition typedDataDefinition) (typedValueShape, error) {
 	if definition.Shape != nil && len(definition.Overrides) > 0 {
 		return nil, fmt.Errorf("Output.Data.Shape and Output.Data.Overrides are mutually exclusive")
 	}
 	if definition.Shape != nil {
-		if err := validateShape(definition.Shape, "Output.Data.Shape"); err != nil {
+		shape, err := lowerAuthoringShape(definition.Shape)
+		if err != nil {
 			return nil, err
 		}
-		return definition.Shape, nil
+		if err := validateShape(shape, "Output.Data.Shape"); err != nil {
+			return nil, err
+		}
+		return shape, nil
 	}
 	if dataType.Kind() == reflect.Interface && dataType.NumMethod() == 0 {
 		if len(definition.Overrides) > 0 {
@@ -60,21 +64,21 @@ func compileData(dataType reflect.Type, definition DataDefinition) (ValueShape, 
 // shapeForType derives the ValueShape of one Go type. active carries the struct
 // types on the current recursion path so a self-referential type is rejected
 // with a compile error; see compileStructShape.
-func shapeForType(t reflect.Type, schema schemaTag, input bool, active map[reflect.Type]struct{}) (ValueShape, error) {
+func shapeForType(t reflect.Type, schema schemaTag, input bool, active map[reflect.Type]struct{}) (typedValueShape, error) {
 	baseType := t
 	for baseType.Kind() == reflect.Pointer {
 		baseType = baseType.Elem()
 	}
-	var shape ValueShape
+	var shape typedValueShape
 	switch baseType.Kind() {
 	case reflect.String:
-		stringShape := StringShape{Format: schema.format, MinLength: schema.minLength, MaxLength: schema.maxLength}
+		stringShape := typedStringShape{Format: schema.format, MinLength: schema.minLength, MaxLength: schema.maxLength}
 		for _, raw := range schema.enum {
 			stringShape.Enum = append(stringShape.Enum, raw)
 		}
 		shape = stringShape
 	case reflect.Bool:
-		booleanShape := BooleanShape{}
+		booleanShape := typedBooleanShape{}
 		for _, raw := range schema.enum {
 			v, err := parseBool(raw)
 			if err != nil {
@@ -90,7 +94,7 @@ func shapeForType(t reflect.Type, schema schemaTag, input bool, active map[refle
 		if input && baseType.Kind() >= reflect.Uint && baseType.Kind() <= reflect.Uint64 {
 			return nil, fmt.Errorf("unsigned integer CLI input %s is not supported; use int or an explicit JSON encoding", baseType)
 		}
-		integerShape := IntegerShape{}
+		integerShape := typedIntegerShape{}
 		if schema.minimum != nil {
 			v := int64(*schema.minimum)
 			if float64(v) != *schema.minimum {
@@ -117,7 +121,7 @@ func shapeForType(t reflect.Type, schema schemaTag, input bool, active map[refle
 		}
 		shape = integerShape
 	case reflect.Float32, reflect.Float64:
-		numberShape := NumberShape{Minimum: schema.minimum, Maximum: schema.maximum}
+		numberShape := typedNumberShape{Minimum: schema.minimum, Maximum: schema.maximum}
 		for _, raw := range schema.enum {
 			v, err := parseFiniteFloatBits(raw, baseType.Bits())
 			if err != nil {
@@ -144,7 +148,7 @@ func shapeForType(t reflect.Type, schema schemaTag, input bool, active map[refle
 		if err != nil {
 			return nil, fmt.Errorf("array item: %w", err)
 		}
-		shape = ArrayShape{Items: elementShape, MinItems: schema.minItems, MaxItems: schema.maxItems}
+		shape = typedArrayShape{Items: elementShape, MinItems: schema.minItems, MaxItems: schema.maxItems}
 	case reflect.Struct:
 		if implementsCustomEncoding(baseType) {
 			return nil, fmt.Errorf("custom JSON type %s requires an explicit Shape", baseType)
@@ -165,7 +169,7 @@ func shapeForType(t reflect.Type, schema schemaTag, input bool, active map[refle
 		return nil, fmt.Errorf("Go type %s cannot be mapped to a ValueShape", t)
 	}
 	if schema.nullable != nil && *schema.nullable {
-		shape = OneOfShape{Variants: []ValueShape{shape, NullShape{}}}
+		shape = typedOneOfShape{Variants: []typedValueShape{shape, typedNullShape{}}}
 	}
 	return shape, nil
 }
@@ -180,14 +184,14 @@ func shapeForType(t reflect.Type, schema schemaTag, input bool, active map[refle
 // Membership is scoped to the path rather than the whole walk: a type is
 // removed once its fields are compiled, so the same type appearing twice as a
 // sibling stays legal.
-func compileStructShape(t reflect.Type, input bool, path string, active map[reflect.Type]struct{}) (ObjectShape, error) {
+func compileStructShape(t reflect.Type, input bool, path string, active map[reflect.Type]struct{}) (typedObjectShape, error) {
 	if _, cyclic := active[t]; cyclic {
-		return ObjectShape{}, fmt.Errorf("recursive type %s requires an explicit Shape", t)
+		return typedObjectShape{}, fmt.Errorf("recursive type %s requires an explicit Shape", t)
 	}
 	active[t] = struct{}{}
 	defer delete(active, t)
 
-	shape := ObjectShape{}
+	shape := typedObjectShape{}
 	seen := make(map[string]string)
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
@@ -196,7 +200,7 @@ func compileStructShape(t reflect.Type, input bool, path string, active map[refl
 		}
 		rawJSON, ok := field.Tag.Lookup("json")
 		if !ok {
-			return ObjectShape{}, fmt.Errorf("%s field %s must declare json tag", path, field.Name)
+			return typedObjectShape{}, fmt.Errorf("%s field %s must declare json tag", path, field.Name)
 		}
 		parts := strings.Split(rawJSON, ",")
 		name := parts[0]
@@ -204,7 +208,7 @@ func compileStructShape(t reflect.Type, input bool, path string, active map[refl
 			continue
 		}
 		if name == "" {
-			return ObjectShape{}, fmt.Errorf("%s field %s json tag must explicitly name the field", path, field.Name)
+			return typedObjectShape{}, fmt.Errorf("%s field %s json tag must explicitly name the field", path, field.Name)
 		}
 		omitempty := false
 		for _, option := range parts[1:] {
@@ -213,61 +217,61 @@ func compileStructShape(t reflect.Type, input bool, path string, active map[refl
 				omitempty = true
 			case "":
 			default:
-				return ObjectShape{}, fmt.Errorf("%s field %s has unsupported json option %q", path, field.Name, option)
+				return typedObjectShape{}, fmt.Errorf("%s field %s has unsupported json option %q", path, field.Name, option)
 			}
 		}
 		if previous, exists := seen[name]; exists {
-			return ObjectShape{}, fmt.Errorf("%s field %s JSON name %q duplicates field %s", path, field.Name, name, previous)
+			return typedObjectShape{}, fmt.Errorf("%s field %s JSON name %q duplicates field %s", path, field.Name, name, previous)
 		}
 		seen[name] = field.Name
 		schema, err := parseSchemaTag(field.Tag.Get("schema"), field.Type, input)
 		if err != nil {
-			return ObjectShape{}, fmt.Errorf("%s field %s (%s): %w", path, field.Name, name, err)
+			return typedObjectShape{}, fmt.Errorf("%s field %s (%s): %w", path, field.Name, name, err)
 		}
 		if !input && schema.defaultValue.Set {
-			return ObjectShape{}, fmt.Errorf("%s field %s (%s): Data field cannot declare default", path, field.Name, name)
+			return typedObjectShape{}, fmt.Errorf("%s field %s (%s): Data field cannot declare default", path, field.Name, name)
 		}
 		if schema.required && omitempty {
-			return ObjectShape{}, fmt.Errorf("%s field %s (%s): required Data field cannot use omitempty", path, field.Name, name)
+			return typedObjectShape{}, fmt.Errorf("%s field %s (%s): required Data field cannot use omitempty", path, field.Name, name)
 		}
 		if schema.optional && !omitempty {
-			return ObjectShape{}, fmt.Errorf("%s field %s (%s): optional Data field must use omitempty", path, field.Name, name)
+			return typedObjectShape{}, fmt.Errorf("%s field %s (%s): optional Data field must use omitempty", path, field.Name, name)
 		}
 		if isNilCapable(field.Type) && schema.nullable == nil {
-			return ObjectShape{}, fmt.Errorf("%s field %s (%s): nil-capable field must declare nullable or nonnullable", path, field.Name, name)
+			return typedObjectShape{}, fmt.Errorf("%s field %s (%s): nil-capable field must declare nullable or nonnullable", path, field.Name, name)
 		}
 		description := strings.TrimSpace(field.Tag.Get("doc"))
 		if input && description == "" {
-			return ObjectShape{}, fmt.Errorf("%s field %s (%s): description is required via doc", path, field.Name, name)
+			return typedObjectShape{}, fmt.Errorf("%s field %s (%s): description is required via doc", path, field.Name, name)
 		}
 		fieldShape, err := shapeForType(field.Type, schema, input, active)
 		if err != nil {
-			return ObjectShape{}, fmt.Errorf("%s field %s (%s): %w", path, field.Name, name, err)
+			return typedObjectShape{}, fmt.Errorf("%s field %s (%s): %w", path, field.Name, name, err)
 		}
-		shape.Fields = append(shape.Fields, ValueField{Name: name, Description: description, Required: schema.required, Shape: fieldShape})
+		shape.Fields = append(shape.Fields, typedValueField{Name: name, Description: description, Required: schema.required, Shape: fieldShape})
 	}
 	return shape, nil
 }
 
-func validateShape(shape ValueShape, path string) error {
+func validateShape(shape typedValueShape, path string) error {
 	if shape == nil {
 		return fmt.Errorf("%s is nil", path)
 	}
 	switch value := shape.(type) {
 	case anyJSONShape:
-	case StringShape:
+	case typedStringShape:
 		if value.MinLength != nil && *value.MinLength < 0 || value.MaxLength != nil && *value.MaxLength < 0 {
 			return fmt.Errorf("%s string lengths must be nonnegative", path)
 		}
 		if value.MinLength != nil && value.MaxLength != nil && *value.MinLength > *value.MaxLength {
 			return fmt.Errorf("%s minLength exceeds maxLength", path)
 		}
-	case BooleanShape:
-	case IntegerShape:
+	case typedBooleanShape:
+	case typedIntegerShape:
 		if value.Minimum != nil && value.Maximum != nil && *value.Minimum > *value.Maximum {
 			return fmt.Errorf("%s minimum exceeds maximum", path)
 		}
-	case NumberShape:
+	case typedNumberShape:
 		for _, number := range append(append([]float64{}, value.Enum...), pointerFloats(value.Minimum, value.Maximum)...) {
 			if math.IsNaN(number) || math.IsInf(number, 0) {
 				return fmt.Errorf("%s number constraints must be finite", path)
@@ -276,12 +280,12 @@ func validateShape(shape ValueShape, path string) error {
 		if value.Minimum != nil && value.Maximum != nil && *value.Minimum > *value.Maximum {
 			return fmt.Errorf("%s minimum exceeds maximum", path)
 		}
-	case NullShape:
-	case ConstShape:
+	case typedNullShape:
+	case typedConstShape:
 		if _, err := json.Marshal(value.Value); err != nil {
 			return fmt.Errorf("%s const is not JSON-encodable: %w", path, err)
 		}
-	case ArrayShape:
+	case typedArrayShape:
 		if value.Items == nil {
 			return fmt.Errorf("%s.Items is required", path)
 		}
@@ -292,7 +296,7 @@ func validateShape(shape ValueShape, path string) error {
 			return fmt.Errorf("%s minItems exceeds maxItems", path)
 		}
 		return validateShape(value.Items, path+".Items")
-	case ObjectShape:
+	case typedObjectShape:
 		seen := make(map[string]struct{})
 		for i := range value.Fields {
 			field := &value.Fields[i]
@@ -316,7 +320,7 @@ func validateShape(shape ValueShape, path string) error {
 		if value.AdditionalPropertiesShape != nil {
 			return validateShape(value.AdditionalPropertiesShape, path+".AdditionalPropertiesShape")
 		}
-	case OneOfShape:
+	case typedOneOfShape:
 		if len(value.Variants) < 2 {
 			return fmt.Errorf("%s oneOf requires at least two variants", path)
 		}
@@ -331,7 +335,7 @@ func validateShape(shape ValueShape, path string) error {
 	return nil
 }
 
-func applyDataOverride(root *ObjectShape, override DataField) error {
+func applyDataOverride(root *typedObjectShape, override typedDataField) error {
 	encodedParts := strings.Split(strings.TrimPrefix(override.Path, "/"), "/")
 	if len(encodedParts) == 0 || encodedParts[0] == "" {
 		return fmt.Errorf("pointer must identify a field")
@@ -344,7 +348,7 @@ func applyDataOverride(root *ObjectShape, override DataField) error {
 		}
 		parts[i] = decoded
 	}
-	return mutateObjectField(root, parts, func(field *ValueField) error {
+	return mutateObjectField(root, parts, func(field *typedValueField) error {
 		if override.Description != "" {
 			if field.Description != "" {
 				return fmt.Errorf("description is declared by both doc and DataField.Description")
@@ -355,16 +359,20 @@ func applyDataOverride(root *ObjectShape, override DataField) error {
 			if shapeHasConstraints(field.Shape) {
 				return fmt.Errorf("Shape conflicts with schema constraints")
 			}
-			if err := validateShape(override.Shape, "DataField.Shape"); err != nil {
+			shape, err := lowerAuthoringShape(override.Shape)
+			if err != nil {
 				return err
 			}
-			field.Shape = override.Shape
+			if err := validateShape(shape, "DataField.Shape"); err != nil {
+				return err
+			}
+			field.Shape = shape
 		}
 		return nil
 	})
 }
 
-func mutateObjectField(object *ObjectShape, parts []string, mutate func(*ValueField) error) error {
+func mutateObjectField(object *typedObjectShape, parts []string, mutate func(*typedValueField) error) error {
 	name := parts[0]
 	for i := range object.Fields {
 		field := &object.Fields[i]
@@ -375,13 +383,13 @@ func mutateObjectField(object *ObjectShape, parts []string, mutate func(*ValueFi
 			return mutate(field)
 		}
 		switch nested := field.Shape.(type) {
-		case ObjectShape:
+		case typedObjectShape:
 			err := mutateObjectField(&nested, parts[1:], mutate)
 			field.Shape = nested
 			return err
-		case OneOfShape:
+		case typedOneOfShape:
 			for variantIndex, variant := range nested.Variants {
-				if nestedObject, ok := variant.(ObjectShape); ok {
+				if nestedObject, ok := variant.(typedObjectShape); ok {
 					err := mutateObjectField(&nestedObject, parts[1:], mutate)
 					nested.Variants[variantIndex] = nestedObject
 					field.Shape = nested
@@ -404,31 +412,31 @@ func pointerFloats(values ...*float64) []float64 {
 	return result
 }
 
-func shapeHasConstraints(shape ValueShape) bool {
+func shapeHasConstraints(shape typedValueShape) bool {
 	switch value := shape.(type) {
-	case StringShape:
+	case typedStringShape:
 		return len(value.Enum) > 0 || value.Format != "" || value.MinLength != nil || value.MaxLength != nil
-	case BooleanShape:
+	case typedBooleanShape:
 		return len(value.Enum) > 0
-	case IntegerShape:
+	case typedIntegerShape:
 		return len(value.Enum) > 0 || value.Minimum != nil || value.Maximum != nil
-	case NumberShape:
+	case typedNumberShape:
 		return len(value.Enum) > 0 || value.Minimum != nil || value.Maximum != nil
-	case ArrayShape:
+	case typedArrayShape:
 		return value.MinItems != nil || value.MaxItems != nil
-	case OneOfShape:
+	case typedOneOfShape:
 		return true
 	default:
 		return false
 	}
 }
-func shapeExplicitlyNullable(shape ValueShape) bool {
-	one, ok := shape.(OneOfShape)
+func shapeExplicitlyNullable(shape typedValueShape) bool {
+	one, ok := shape.(typedOneOfShape)
 	if !ok {
 		return false
 	}
 	for _, variant := range one.Variants {
-		if _, ok := variant.(NullShape); ok {
+		if _, ok := variant.(typedNullShape); ok {
 			return true
 		}
 	}

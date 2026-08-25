@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-//nolint:forbidigo // External definition diagnostics are intermediate build errors wrapped by the command-set startup guard.
+//nolint:forbidigo // Definition diagnostics are build-time errors wrapped by the command-set startup guard.
 package common
 
 import (
@@ -9,38 +9,15 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+
+	"github.com/larksuite/cli/internal/commandbridge"
 )
 
-// ErasedDefinition is the internal host form used to compile an external typed command.
-type ErasedDefinition struct {
-	Metadata   CommandMetadata
-	Input      InputDefinition
-	Output     OutputDefinition
-	ArgsType   reflect.Type
-	DataType   reflect.Type
-	Hooks      ErasedHooks
-	PageOutput bool
-}
-
-// ErasedHooks adapts public generic hooks without exposing RuntimeContext.
-type ErasedHooks struct {
-	NewArgs   func() any
-	Normalize func(context.Context, CommandContext, any) error
-	Validate  func(context.Context, CommandContext, any) error
-	DryRun    func(context.Context, CommandContext, any) (*DryRunAPI, error)
-	Execute   func(context.Context, CommandContext, any) (ErasedResult, error)
-	Renderers map[string]func(io.Writer, any) error
-}
-
-// ErasedResult is the internal non-generic result used by the host adapter.
-type ErasedResult struct {
-	Data    any
-	Outcome OutcomeKind
-	Meta    *ResultMeta
-}
-
-// CompileErasedDefinition compiles one public command declaration without panic.
-func CompileErasedDefinition(definition ErasedDefinition) (Shortcut, error) {
+// CompileCommandDefinition is the single sealed entry from commandhost into
+// the existing shortcut compiler. All authoring fields retain
+// extension/command as their owner; the internal token prevents this function
+// from becoming a second public compiler API.
+func CompileCommandDefinition(definition commandbridge.Definition, _ commandbridge.Access) (Shortcut, error) {
 	if definition.ArgsType == nil || definition.DataType == nil {
 		return Shortcut{}, fmt.Errorf("ArgsType and DataType are required")
 	}
@@ -65,8 +42,8 @@ func CompileErasedDefinition(definition ErasedDefinition) (Shortcut, error) {
 		output,
 		definition.ArgsType,
 		definition.DataType,
-		adaptErasedHooks(definition.Hooks),
-		erasedRendererMarkers(definition.Hooks.Renderers),
+		adaptBridgeHooks(definition.Hooks),
+		bridgeRendererMarkers(definition.Hooks.Renderers),
 		definition.PageOutput,
 	)
 	if err != nil {
@@ -79,7 +56,7 @@ func CompileErasedDefinition(definition ErasedDefinition) (Shortcut, error) {
 	if definition.PageOutput {
 		shortcut.Flags = append(shortcut.Flags, PageAllFlags()...)
 	}
-	if err := validateTypedFlagMountPlan(compiled, shortcut.PrintFlagSchema != nil, Risk(shortcut.Risk)); err != nil {
+	if err := validateTypedFlagMountPlan(compiled, shortcut.PrintFlagSchema != nil, typedRisk(shortcut.Risk)); err != nil {
 		return Shortcut{}, err
 	}
 	return shortcut, nil
@@ -95,27 +72,47 @@ func probeNewArgs(newArgs func() any) (result any, err error) {
 	return newArgs(), nil
 }
 
-func adaptErasedHooks(hooks ErasedHooks) compiledHooks {
+func adaptBridgeHooks(hooks commandbridge.Hooks) compiledHooks {
 	adapted := compiledHooks{
 		newArgs:   hooks.NewArgs,
 		normalize: hooks.Normalize,
 		validate:  hooks.Validate,
-		dryRun:    hooks.DryRun,
 		renderers: hooks.Renderers,
 	}
+	if hooks.DryRun != nil {
+		adapted.dryRun = func(ctx context.Context, runtime typedRuntimeContext, args any) (*DryRunAPI, error) {
+			value, err := hooks.DryRun(ctx, runtime, args)
+			if err != nil || value == nil {
+				return nil, err
+			}
+			preview, ok := value.(*DryRunAPI)
+			if !ok {
+				return nil, fmt.Errorf("bridged DryRun returned %T, expected *common.DryRunAPI", value)
+			}
+			return preview, nil
+		}
+	}
 	if hooks.Execute != nil {
-		adapted.execute = func(ctx context.Context, command CommandContext, args any) (compiledResult, error) {
-			result, err := hooks.Execute(ctx, command, args)
-			return compiledResult{data: result.Data, outcome: result.Outcome, meta: result.Meta}, err
+		adapted.execute = func(ctx context.Context, runtime typedRuntimeContext, args any) (compiledResult, error) {
+			result, err := hooks.Execute(ctx, runtime, args)
+			converted := compiledResult{data: result.Data, outcome: typedOutcomeKind(result.Outcome)}
+			if result.Pagination != nil {
+				converted.meta = &typedResultMeta{Pagination: &typedResultPaginationMeta{
+					Complete: result.Pagination.Complete,
+					Pages:    result.Pagination.Pages, Items: result.Pagination.Items,
+					NextToken: result.Pagination.NextToken,
+				}}
+			}
+			return converted, err
 		}
 	}
 	return adapted
 }
 
-func erasedRendererMarkers(renderers map[string]func(io.Writer, any) error) map[string]RendererMarker {
-	markers := make(map[string]RendererMarker, len(renderers))
+func bridgeRendererMarkers(renderers map[string]func(io.Writer, any) error) map[string]rendererMarker {
+	markers := make(map[string]rendererMarker, len(renderers))
 	for name, renderer := range renderers {
-		markers[name] = RendererMarker{isNil: renderer == nil}
+		markers[name] = rendererMarker{isNil: renderer == nil}
 	}
 	return markers
 }

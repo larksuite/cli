@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-//nolint:forbidigo // Compiler diagnostics are registration-time programmer errors consumed by Define's panic boundary, not command-facing failures.
+//nolint:forbidigo // Compiler diagnostics are build-time declaration errors wrapped by the command-set startup guard.
 package common
 
 import (
@@ -19,15 +19,13 @@ var (
 	aliasNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 )
 
-var providedPkgPath = reflect.TypeFor[Provided[any]]().PkgPath()
-
 const extensionCommandPkgPath = "github.com/larksuite/cli/extension/command"
 
-func compileInput(argsType reflect.Type, definition InputDefinition) ([]compiledInputField, map[string]int, error) {
+func compileInput(argsType reflect.Type, definition typedInputDefinition) ([]compiledInputField, map[string]int, error) {
 	if argsType.Kind() != reflect.Struct {
 		return nil, nil, fmt.Errorf("Args must be a non-pointer struct, got %s", argsType)
 	}
-	supplements := make(map[string]InputField, len(definition.Fields))
+	supplements := make(map[string]typedInputField, len(definition.Fields))
 	for i, supplement := range definition.Fields {
 		if !flagNamePattern.MatchString(supplement.Name) {
 			return nil, nil, fmt.Errorf("Input.Fields[%d].Name %q is not a canonical flag name", i, supplement.Name)
@@ -79,7 +77,7 @@ func compileInput(argsType reflect.Type, definition InputDefinition) ([]compiled
 	return fields, fieldByName, nil
 }
 
-func collectArgFields(t reflect.Type, parentIndex []int, insideInline bool, out *[]compiledInputField, seenGo map[string]struct{}, supplements map[string]InputField) error {
+func collectArgFields(t reflect.Type, parentIndex []int, insideInline bool, out *[]compiledInputField, seenGo map[string]struct{}, supplements map[string]typedInputField) error {
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 		if !field.IsExported() {
@@ -147,7 +145,7 @@ func collectArgFields(t reflect.Type, parentIndex []int, insideInline bool, out 
 		if err != nil {
 			return fmt.Errorf("Args field %s (--%s): %w", field.Name, flagName, err)
 		}
-		var shape ValueShape
+		var shape typedValueShape
 		supplement, hasSupplement := supplements[flagName]
 		if hasSupplement && supplement.Shape != nil {
 			if schema.nullable != nil || schemaHasShapeConstraints(schema) {
@@ -187,7 +185,8 @@ func hasAnyTag(field reflect.StructField, names ...string) bool {
 }
 
 func unwrapProvided(t reflect.Type) (reflect.Type, []int, bool, error) {
-	if t.Kind() != reflect.Struct || (t.PkgPath() != providedPkgPath && t.PkgPath() != extensionCommandPkgPath) || !strings.HasPrefix(t.Name(), "Provided[") {
+	publicProvided := t.PkgPath() == extensionCommandPkgPath && strings.HasPrefix(t.Name(), "Provided[")
+	if t.Kind() != reflect.Struct || !publicProvided {
 		return t, nil, false, nil
 	}
 	value, ok := t.FieldByName("Value")
@@ -201,7 +200,7 @@ func unwrapProvided(t reflect.Type) (reflect.Type, []int, bool, error) {
 	return value.Type, value.Index, true, nil
 }
 
-func mergeInputSupplement(field *compiledInputField, supplement InputField) error {
+func mergeInputSupplement(field *compiledInputField, supplement typedInputField) error {
 	if supplement.Description != "" {
 		if field.description != "" {
 			return fmt.Errorf("description is declared by both doc and InputField.Description")
@@ -212,13 +211,17 @@ func mergeInputSupplement(field *compiledInputField, supplement InputField) erro
 		if shapeHasConstraints(field.shape) || field.nullable != nil {
 			return fmt.Errorf("Shape conflicts with schema constraints or nullable declaration")
 		}
-		if err := validateShape(supplement.Shape, "InputField.Shape"); err != nil {
+		shape, err := lowerAuthoringShape(supplement.Shape)
+		if err != nil {
 			return err
 		}
-		if !shapeCompatibleWithType(supplement.Shape, field.valueType) {
+		if err := validateShape(shape, "InputField.Shape"); err != nil {
+			return err
+		}
+		if !shapeCompatibleWithType(shape, field.valueType) {
 			return fmt.Errorf("InputField.Shape %T is incompatible with Go type %s", supplement.Shape, field.valueType)
 		}
-		field.shape = supplement.Shape
+		field.shape = shape
 		field.shapeExplicit = true
 	}
 	if supplement.Default.Set {
@@ -234,13 +237,13 @@ func mergeInputSupplement(field *compiledInputField, supplement InputField) erro
 		if len(field.cli.Aliases) > 0 {
 			return fmt.Errorf("CLI.Aliases is declared by both cli tag and InputField.CLI")
 		}
-		field.cli.Aliases = append([]FlagAlias(nil), supplement.CLI.Aliases...)
+		field.cli.Aliases = append([]typedFlagAlias(nil), supplement.CLI.Aliases...)
 	}
 	if len(supplement.CLI.ValueSources) > 0 {
 		if len(field.cli.ValueSources) > 0 {
 			return fmt.Errorf("CLI.ValueSources is declared by both cli tag and InputField.CLI")
 		}
-		field.cli.ValueSources = append([]ValueSource(nil), supplement.CLI.ValueSources...)
+		field.cli.ValueSources = append([]typedValueSource(nil), supplement.CLI.ValueSources...)
 	}
 	if supplement.CLI.Encoding != "" {
 		if field.cli.Encoding != "" {
@@ -275,9 +278,9 @@ func validateInputCLI(field *compiledInputField) error {
 			return fmt.Errorf("default: %w", err)
 		}
 	}
-	seenSources := make(map[ValueSource]struct{})
+	seenSources := make(map[typedValueSource]struct{})
 	for _, source := range field.cli.ValueSources {
-		if source != SourceFlag && source != SourceFile && source != SourceStdin {
+		if source != typedSourceFlag && source != typedSourceFile && source != typedSourceStdin {
 			return fmt.Errorf("unknown value source %q", source)
 		}
 		if _, duplicate := seenSources[source]; duplicate {
@@ -286,10 +289,10 @@ func validateInputCLI(field *compiledInputField) error {
 		seenSources[source] = struct{}{}
 	}
 	if len(field.cli.ValueSources) > 0 {
-		if _, ok := seenSources[SourceFlag]; !ok {
+		if _, ok := seenSources[typedSourceFlag]; !ok {
 			return fmt.Errorf("ValueSources must include flag")
 		}
-		if (len(seenSources) > 1) && indirectKind(field.valueType) != reflect.String && field.cli.Encoding != EncodingJSON {
+		if (len(seenSources) > 1) && indirectKind(field.valueType) != reflect.String && field.cli.Encoding != typedEncodingJSON {
 			return fmt.Errorf("file/stdin sources require string input or encoding=json")
 		}
 	}
@@ -304,7 +307,7 @@ func validateInputCLI(field *compiledInputField) error {
 		if kind == reflect.Slice || kind == reflect.Array || kind == reflect.Struct || kind == reflect.Map || kind == reflect.Interface {
 			return fmt.Errorf("complex input requires encoding")
 		}
-	case EncodingRepeated:
+	case typedEncodingRepeated:
 		if kind != reflect.Slice && kind != reflect.Array {
 			return fmt.Errorf("encoding repeated requires an array or slice")
 		}
@@ -314,7 +317,7 @@ func validateInputCLI(field *compiledInputField) error {
 		if field.nullable != nil {
 			return fmt.Errorf("encoding repeated does not allow nullable/nonnullable")
 		}
-	case EncodingCommaOrRepeated:
+	case typedEncodingCommaOrRepeated:
 		if kind != reflect.Slice && kind != reflect.Array {
 			return fmt.Errorf("encoding comma_or_repeated requires an array or slice")
 		}
@@ -325,7 +328,7 @@ func validateInputCLI(field *compiledInputField) error {
 		if field.nullable != nil {
 			return fmt.Errorf("encoding comma_or_repeated does not allow nullable/nonnullable")
 		}
-	case EncodingJSON:
+	case typedEncodingJSON:
 		if kind != reflect.Slice && kind != reflect.Array && kind != reflect.Struct && kind != reflect.Map && kind != reflect.Interface {
 			return fmt.Errorf("encoding json requires array, object, oneOf, or custom JSON input")
 		}
@@ -348,17 +351,17 @@ func validateInputCLI(field *compiledInputField) error {
 		}
 		seenAliases[alias.Name] = struct{}{}
 		switch alias.Mode {
-		case AliasNormalize:
+		case typedAliasNormalize:
 			if alias.Conflict != "" {
 				return fmt.Errorf("normalize alias --%s cannot declare Conflict", alias.Name)
 			}
 			if alias.Deprecated {
 				return fmt.Errorf("deprecated alias --%s must use independent mode so Cobra can emit its warning", alias.Name)
 			}
-		case AliasIndependent:
+		case typedAliasIndependent:
 			switch alias.Conflict {
-			case AliasCanonicalWins, AliasErrorIfBoth:
-			case AliasTrimmedEqualOrError:
+			case typedAliasCanonicalWins, typedAliasErrorIfBoth:
+			case typedAliasTrimmedEqualOrError:
 				if indirectKind(field.valueType) != reflect.String {
 					return fmt.Errorf("trimmed_equal_or_error alias --%s requires string input", alias.Name)
 				}
@@ -376,7 +379,7 @@ type schemaTag struct {
 	required     bool
 	optional     bool
 	nullable     *bool
-	defaultValue InputDefault
+	defaultValue typedInputDefault
 	enum         []string
 	format       string
 	minLength    *int
@@ -437,7 +440,7 @@ func parseSchemaTag(raw string, valueType reflect.Type, input bool) (schemaTag, 
 			if err := json.Unmarshal([]byte(value), &decoded); err != nil {
 				return result, fmt.Errorf("schema default is not valid JSON: %w", err)
 			}
-			result.defaultValue = InputDefault{Set: true, Value: decoded}
+			result.defaultValue = typedInputDefault{Set: true, Value: decoded}
 		case "enum":
 			if !hasValue || value == "" {
 				return result, fmt.Errorf("schema enum requires at least one value")
@@ -509,8 +512,8 @@ func parseSchemaTag(raw string, valueType reflect.Type, input bool) (schemaTag, 
 	return result, nil
 }
 
-func parseCLITag(raw string) (CLIInput, error) {
-	var result CLIInput
+func parseCLITag(raw string) (typedCLIInput, error) {
+	var result typedCLIInput
 	if raw == "" {
 		return result, nil
 	}
@@ -527,10 +530,10 @@ func parseCLITag(raw string) (CLIInput, error) {
 		switch key {
 		case "sources":
 			for _, source := range strings.Split(value, "|") {
-				result.ValueSources = append(result.ValueSources, ValueSource(source))
+				result.ValueSources = append(result.ValueSources, typedValueSource(source))
 			}
 		case "encoding":
-			result.Encoding = CLIEncoding(value)
+			result.Encoding = typedCLIEncoding(value)
 		default:
 			return result, fmt.Errorf("unknown cli token %q", key)
 		}
@@ -579,7 +582,7 @@ func isNilCapable(t reflect.Type) bool {
 		return false
 	}
 }
-func shapeCompatibleWithType(shape ValueShape, target reflect.Type) bool {
+func shapeCompatibleWithType(shape typedValueShape, target reflect.Type) bool {
 	base := indirectType(target)
 	if base == jsonRawMessageType || base.Kind() == reflect.Interface {
 		return true
@@ -587,28 +590,28 @@ func shapeCompatibleWithType(shape ValueShape, target reflect.Type) bool {
 	switch value := shape.(type) {
 	case anyJSONShape:
 		return true
-	case OneOfShape:
+	case typedOneOfShape:
 		for _, variant := range value.Variants {
 			if !shapeCompatibleWithType(variant, target) {
 				return false
 			}
 		}
 		return true
-	case NullShape:
+	case typedNullShape:
 		return isNilCapable(target)
-	case ConstShape:
+	case typedConstShape:
 		return valueAssignableTo(value.Value, target) == nil
-	case StringShape:
+	case typedStringShape:
 		return base.Kind() == reflect.String
-	case BooleanShape:
+	case typedBooleanShape:
 		return base.Kind() == reflect.Bool
-	case IntegerShape:
+	case typedIntegerShape:
 		return isIntegerKind(base.Kind())
-	case NumberShape:
+	case typedNumberShape:
 		return base.Kind() == reflect.Float32 || base.Kind() == reflect.Float64
-	case ArrayShape:
+	case typedArrayShape:
 		return base.Kind() == reflect.Slice || base.Kind() == reflect.Array
-	case ObjectShape:
+	case typedObjectShape:
 		return base.Kind() == reflect.Struct || base.Kind() == reflect.Map || base.Kind() == reflect.Interface
 	default:
 		return false

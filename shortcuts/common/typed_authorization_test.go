@@ -73,8 +73,8 @@ func TestRequireConditionalScopesDefersWhenTokenMetadataUnavailable(t *testing.T
 
 func TestRequireConditionalScopesUsesSelectedIdentityContract(t *testing.T) {
 	definition := validCompilerDefinition()
-	definition.Metadata.Authorization.Identities[IdentityBot] = IdentityAuthorization{
-		ConditionalScopes: []ConditionalScope{{Scopes: []string{"fixture:bot-read"}, When: "the bot lookup path runs"}},
+	definition.Metadata.Authorization.Identities[typedIdentityBot] = typedIdentityAuthorization{
+		ConditionalScopes: []typedConditionalScope{{Scopes: []string{"fixture:bot-read"}, When: "the bot lookup path runs"}},
 	}
 	command := typedAuthorizationContextFor(t, definition, core.AsBot, "fixture:read")
 	if err := command.RequireConditionalScopes("fixture:read"); err == nil || !strings.Contains(err.Error(), "undeclared conditional scope") {
@@ -89,11 +89,11 @@ func TestRequireConditionalScopesUsesSelectedIdentityContract(t *testing.T) {
 
 func TestTypedAuthorizationHelpUsesCompiledDiscoveryFacts(t *testing.T) {
 	definition := validCompilerDefinition()
-	authorization := definition.Metadata.Authorization.Identities[IdentityUser]
-	authorization.ConditionalScopes = append(authorization.ConditionalScopes, ConditionalScope{
-		Scopes: []string{"fixture:enrich"}, When: "optional detail enrichment runs", Requirement: ScopeBestEffort,
+	authorization := definition.Metadata.Authorization.Identities[typedIdentityUser]
+	authorization.ConditionalScopes = append(authorization.ConditionalScopes, typedConditionalScope{
+		Scopes: []string{"fixture:enrich"}, When: "optional detail enrichment runs", Requirement: typedScopeBestEffort,
 	})
-	definition.Metadata.Authorization.Identities[IdentityUser] = authorization
+	definition.Metadata.Authorization.Identities[typedIdentityUser] = authorization
 
 	factory, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{})
 	service := &cobra.Command{Use: "fixture"}

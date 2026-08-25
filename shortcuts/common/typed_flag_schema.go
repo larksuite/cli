@@ -16,7 +16,7 @@ import (
 func typedFlagSchemaPrinter(command *compiledCommand) func(string) ([]byte, error) {
 	schemas := make(map[string]typedSchemaNode)
 	for _, field := range command.fields {
-		if field.cli.Hidden || field.cli.Encoding != EncodingJSON || !isCompositeValueShape(field.shape) {
+		if field.cli.Hidden || field.cli.Encoding != typedEncodingJSON || !isCompositeValueShape(field.shape) {
 			continue
 		}
 		node := schemaNodeFromShape(field.shape)
@@ -55,11 +55,11 @@ func typedFlagSchemaPrinter(command *compiledCommand) func(string) ([]byte, erro
 	}
 }
 
-func isCompositeValueShape(shape ValueShape) bool {
+func isCompositeValueShape(shape typedValueShape) bool {
 	switch value := shape.(type) {
-	case ObjectShape, ArrayShape:
+	case typedObjectShape, typedArrayShape:
 		return true
-	case OneOfShape:
+	case typedOneOfShape:
 		for _, variant := range value.Variants {
 			if isCompositeValueShape(variant) {
 				return true

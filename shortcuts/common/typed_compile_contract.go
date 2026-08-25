@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-//nolint:forbidigo // Compiler diagnostics are registration-time programmer errors consumed by Define's panic boundary, not command-facing failures.
+//nolint:forbidigo // Compiler diagnostics are build-time declaration errors wrapped by the command-set startup guard.
 package common
 
 import (
@@ -10,15 +10,15 @@ import (
 	"strings"
 )
 
-func compileRelations(definitions []Relation, fieldByName map[string]int) ([]compiledRelation, error) {
+func compileRelations(definitions []typedRelation, fieldByName map[string]int) ([]compiledRelation, error) {
 	result := make([]compiledRelation, 0, len(definitions))
 	seen := make(map[string]struct{})
 	for i, definition := range definitions {
 		minimum := 2
 		exact := 0
 		switch definition.Kind {
-		case RelationExactlyOne, RelationAtLeastOne, RelationCoOccur, RelationConflicts:
-		case RelationRequires:
+		case typedRelationExactlyOne, typedRelationAtLeastOne, typedRelationCoOccur, typedRelationConflicts:
+		case typedRelationRequires:
 			exact = 2
 		default:
 			return nil, fmt.Errorf("Input.Relations[%d].Kind %q is invalid", i, definition.Kind)
@@ -26,10 +26,10 @@ func compileRelations(definitions []Relation, fieldByName map[string]int) ([]com
 		if exact > 0 && len(definition.Params) != exact || exact == 0 && len(definition.Params) < minimum {
 			return nil, fmt.Errorf("Input.Relations[%d] kind %s has invalid param count %d", i, definition.Kind, len(definition.Params))
 		}
-		if definition.Presence != PresenceExplicit && definition.Presence != PresenceNonZero {
+		if definition.Presence != typedPresenceExplicit && definition.Presence != typedPresenceNonZero {
 			return nil, fmt.Errorf("Input.Relations[%d].Presence %q is invalid", i, definition.Presence)
 		}
-		if definition.Stage != StageSourcePreRun && definition.Stage != StageAfterPrepare {
+		if definition.Stage != typedStageSourcePreRun && definition.Stage != typedStageAfterPrepare {
 			return nil, fmt.Errorf("Input.Relations[%d].Stage %q is invalid", i, definition.Stage)
 		}
 		compiled := compiledRelation{kind: definition.Kind, presence: definition.Presence, stage: definition.Stage}
@@ -56,7 +56,7 @@ func compileRelations(definitions []Relation, fieldByName map[string]int) ([]com
 	return result, nil
 }
 
-func compileAuthorization(definition AuthorizationDefinition, fields []compiledInputField, fieldByName map[string]int) error {
+func compileAuthorization(definition typedAuthorizationDefinition, fields []compiledInputField, fieldByName map[string]int) error {
 	for identity, authorization := range definition.Identities {
 		for i, conditional := range authorization.ConditionalScopes {
 			path := fmt.Sprintf("Authorization.%s.ConditionalScopes[%d]", identity, i)
@@ -85,95 +85,39 @@ func compileAuthorization(definition AuthorizationDefinition, fields []compiledI
 	return nil
 }
 
-func validateOutput(definition OutputDefinition, dataShape ValueShape) error {
+func validateOutput(definition typedOutputDefinition, dataShape typedValueShape) error {
 	switch definition.Mode {
-	case OutputGeneric, OutputFixedJSON:
+	case typedOutputGeneric, typedOutputFixedJSON:
 	default:
 		return fmt.Errorf("Output.Mode %q is invalid", definition.Mode)
-	}
-	partial := definition.Outcomes.PartialFailure
-	if partial != nil {
-		if partial.ExitCode <= 0 {
-			return fmt.Errorf("Output.Outcomes.PartialFailure.ExitCode must be non-zero")
-		}
-		if failed := partial.FailedItems; failed != nil {
-			itemsShape, err := resolveShapePointer(dataShape, failed.ItemsPath)
-			if err != nil {
-				return fmt.Errorf("Output partial failed items path %q: %w", failed.ItemsPath, err)
-			}
-			array, ok := unwrapArray(itemsShape)
-			if !ok {
-				return fmt.Errorf("Output partial failed items path %q must identify an array", failed.ItemsPath)
-			}
-			for _, path := range failed.IdentityPaths {
-				if _, err := resolveShapePointer(array.Items, path); err != nil {
-					return fmt.Errorf("Output partial identity path %q: %w", path, err)
-				}
-			}
-			if failed.AllItems {
-				if failed.StatePath != "" || len(failed.FailedValues) > 0 {
-					return fmt.Errorf("Output partial FailedItems.AllItems conflicts with StatePath/FailedValues")
-				}
-			} else {
-				if failed.StatePath == "" || len(failed.FailedValues) == 0 {
-					return fmt.Errorf("Output partial FailedItems requires AllItems or StatePath with FailedValues")
-				}
-				stateShape, err := resolveShapePointer(array.Items, failed.StatePath)
-				if err != nil {
-					return fmt.Errorf("Output partial state path %q: %w", failed.StatePath, err)
-				}
-				for i, value := range failed.FailedValues {
-					if err := valueCompatibleWithShape(value, stateShape); err != nil {
-						return fmt.Errorf("Output partial FailedValues[%d]: %w", i, err)
-					}
-				}
-			}
-		}
-	}
-	artifactNames := make(map[string]struct{})
-	for i, artifact := range definition.Artifacts {
-		if strings.TrimSpace(artifact.Name) == "" {
-			return fmt.Errorf("Output.Artifacts[%d].Name is required", i)
-		}
-		if _, duplicate := artifactNames[artifact.Name]; duplicate {
-			return fmt.Errorf("Output.Artifacts contains duplicate name %q", artifact.Name)
-		}
-		artifactNames[artifact.Name] = struct{}{}
-		if artifact.PathField == "" {
-			return fmt.Errorf("Output.Artifacts[%d].PathField is required", i)
-		}
-		items, err := resolveShapePointer(dataShape, artifact.ItemsPath)
-		if err != nil {
-			return fmt.Errorf("Output.Artifacts[%d].ItemsPath %q: %w", i, artifact.ItemsPath, err)
-		}
-		itemShape := items
-		if array, ok := unwrapArray(items); ok {
-			itemShape = array.Items
-		}
-		for label, path := range map[string]string{"PathField": artifact.PathField, "MediaTypeField": artifact.MediaTypeField, "SizeField": artifact.SizeField} {
-			if path == "" {
-				continue
-			}
-			resolved, err := resolveShapePointer(itemShape, path)
-			if err != nil {
-				return fmt.Errorf("Output.Artifacts[%d].%s %q: %w", i, label, path, err)
-			}
-			switch label {
-			case "PathField", "MediaTypeField":
-				if !shapeHasType(resolved, "string") {
-					return fmt.Errorf("Output.Artifacts[%d].%s %q must identify a string", i, label, path)
-				}
-			case "SizeField":
-				if !shapeHasType(resolved, "integer") {
-					return fmt.Errorf("Output.Artifacts[%d].SizeField %q must identify an integer", i, path)
-				}
-			}
-		}
 	}
 	return nil
 }
 
-func resolveShapePointer(shape ValueShape, pointer string) (ValueShape, error) {
+func decodeJSONPointerSegment(segment string) (string, bool) {
+	var builder strings.Builder
+	for index := 0; index < len(segment); index++ {
+		if segment[index] != '~' {
+			builder.WriteByte(segment[index])
+			continue
+		}
+		if index+1 >= len(segment) {
+			return "", false
+		}
+		index++
+		switch segment[index] {
+		case '0':
+			builder.WriteByte('~')
+		case '1':
+			builder.WriteByte('/')
+		default:
+			return "", false
+		}
+	}
+	return builder.String(), true
+}
+
+func resolveShapePointer(shape typedValueShape, pointer string) (typedValueShape, error) {
 	if pointer == "" {
 		return shape, nil
 	}
@@ -195,19 +139,19 @@ func resolveShapePointer(shape ValueShape, pointer string) (ValueShape, error) {
 	return current, nil
 }
 
-func resolveShapeField(shape ValueShape, name string) (ValueShape, error) {
+func resolveShapeField(shape typedValueShape, name string) (typedValueShape, error) {
 	switch value := shape.(type) {
-	case ObjectShape:
+	case typedObjectShape:
 		for _, field := range value.Fields {
 			if field.Name == name {
 				return field.Shape, nil
 			}
 		}
 		return nil, fmt.Errorf("field %q does not exist", name)
-	case OneOfShape:
-		var resolved []ValueShape
+	case typedOneOfShape:
+		var resolved []typedValueShape
 		for _, variant := range value.Variants {
-			if _, null := variant.(NullShape); null {
+			if _, null := variant.(typedNullShape); null {
 				continue
 			}
 			field, err := resolveShapeField(variant, name)
@@ -222,31 +166,31 @@ func resolveShapeField(shape ValueShape, name string) (ValueShape, error) {
 	}
 }
 
-func combineResolvedShapes(shapes []ValueShape) (ValueShape, error) {
+func combineResolvedShapes(shapes []typedValueShape) (typedValueShape, error) {
 	switch len(shapes) {
 	case 0:
 		return nil, fmt.Errorf("shape has no applicable variant")
 	case 1:
 		return shapes[0], nil
 	default:
-		return OneOfShape{Variants: shapes}, nil
+		return typedOneOfShape{Variants: shapes}, nil
 	}
 }
 
-func shapeAsObject(shape ValueShape) (ObjectShape, bool) {
-	if object, ok := shape.(ObjectShape); ok {
+func shapeAsObject(shape typedValueShape) (typedObjectShape, bool) {
+	if object, ok := shape.(typedObjectShape); ok {
 		return object, true
 	}
-	if one, ok := shape.(OneOfShape); ok {
-		var combined ObjectShape
+	if one, ok := shape.(typedOneOfShape); ok {
+		var combined typedObjectShape
 		found := false
 		for _, variant := range one.Variants {
-			if _, null := variant.(NullShape); null {
+			if _, null := variant.(typedNullShape); null {
 				continue
 			}
 			object, ok := shapeAsObject(variant)
 			if !ok {
-				return ObjectShape{}, false
+				return typedObjectShape{}, false
 			}
 			if !found {
 				combined = object
@@ -257,69 +201,9 @@ func shapeAsObject(shape ValueShape) (ObjectShape, bool) {
 		}
 		return combined, found
 	}
-	return ObjectShape{}, false
+	return typedObjectShape{}, false
 }
-func unwrapArray(shape ValueShape) (ArrayShape, bool) {
-	if array, ok := shape.(ArrayShape); ok {
-		return array, true
-	}
-	if one, ok := shape.(OneOfShape); ok {
-		var combined ArrayShape
-		var items []ValueShape
-		found := false
-		for _, variant := range one.Variants {
-			if _, null := variant.(NullShape); null {
-				continue
-			}
-			array, ok := unwrapArray(variant)
-			if !ok {
-				return ArrayShape{}, false
-			}
-			if !found {
-				combined = array
-				found = true
-			}
-			items = append(items, array.Items)
-		}
-		if !found {
-			return ArrayShape{}, false
-		}
-		combined.Items, _ = combineResolvedShapes(items)
-		return combined, true
-	}
-	return ArrayShape{}, false
-}
-func shapeHasType(shape ValueShape, want string) bool {
-	switch value := shape.(type) {
-	case StringShape:
-		return want == "string"
-	case IntegerShape:
-		return want == "integer"
-	case NumberShape:
-		return want == "number"
-	case BooleanShape:
-		return want == "boolean"
-	case ArrayShape:
-		return want == "array"
-	case ObjectShape:
-		return want == "object"
-	case OneOfShape:
-		found := false
-		for _, variant := range value.Variants {
-			if _, null := variant.(NullShape); null {
-				continue
-			}
-			found = true
-			if !shapeHasType(variant, want) {
-				return false
-			}
-		}
-		return found
-	}
-	return false
-}
-
-func valueCompatibleWithShape(value any, shape ValueShape) error {
+func valueCompatibleWithShape(value any, shape typedValueShape) error {
 	encoded, err := json.Marshal(value)
 	if err != nil {
 		return fmt.Errorf("value is not JSON-encodable: %w", err)

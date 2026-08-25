@@ -925,7 +925,7 @@ func (s Shortcut) MountWithContext(ctx context.Context, parent *cobra.Command, f
 func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
 	shortcut := s
 	if shortcut.typed != nil {
-		if err := validateTypedFlagMountPlan(shortcut.typed, shortcut.PrintFlagSchema != nil, Risk(shortcut.Risk)); err != nil {
+		if err := validateTypedFlagMountPlan(shortcut.typed, shortcut.PrintFlagSchema != nil, typedRisk(shortcut.Risk)); err != nil {
 			panic(fmt.Sprintf("typed shortcut %s %s: %v", shortcut.Service, shortcut.Command, err))
 		}
 	}
@@ -1051,14 +1051,14 @@ func installTypedAnnotations(cmd *cobra.Command, command *compiledCommand) {
 			_ = cmd.Flags().MarkDeprecated(field.name, field.cli.Deprecated)
 		}
 		for _, alias := range field.cli.Aliases {
-			if alias.Mode != AliasIndependent || !alias.Deprecated {
+			if alias.Mode != typedAliasIndependent || !alias.Deprecated {
 				continue
 			}
 			_ = cmd.Flags().MarkDeprecated(alias.Name, "use --"+field.name+" instead")
 		}
 	}
 	for _, relation := range command.relations {
-		if relation.stage != StageSourcePreRun || relation.presence != PresenceExplicit {
+		if relation.stage != typedStageSourcePreRun || relation.presence != typedPresenceExplicit {
 			continue
 		}
 		names := make([]string, 0, len(relation.fields))
@@ -1066,14 +1066,14 @@ func installTypedAnnotations(cmd *cobra.Command, command *compiledCommand) {
 			names = append(names, command.fields[index].name)
 		}
 		switch relation.kind {
-		case RelationExactlyOne:
+		case typedRelationExactlyOne:
 			cmd.MarkFlagsOneRequired(names...)
 			cmd.MarkFlagsMutuallyExclusive(names...)
-		case RelationAtLeastOne:
+		case typedRelationAtLeastOne:
 			cmd.MarkFlagsOneRequired(names...)
-		case RelationCoOccur:
+		case typedRelationCoOccur:
 			cmd.MarkFlagsRequiredTogether(names...)
-		case RelationConflicts:
+		case typedRelationConflicts:
 			cmd.MarkFlagsMutuallyExclusive(names...)
 		}
 	}

@@ -18,6 +18,7 @@ import (
 	exttransport "github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/commandbridge"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/downloadtransport"
 	internaltransport "github.com/larksuite/cli/internal/transport"
@@ -29,7 +30,7 @@ import (
 // FileIO. MutableSource is the safe default: multipart transfer is used only
 // when a strong validator binds every response to the same representation;
 // immutable endpoints can gain an explicit fast path after a real need appears.
-func downloadCommand(ctx context.Context, host common.CommandContext, request command.Request, target command.FileTarget, options command.DownloadOptions) (command.Artifact, error) {
+func downloadCommand(ctx context.Context, host commandbridge.RuntimeContext, request command.Request, target command.FileTarget, options command.DownloadOptions) (command.Artifact, error) {
 	view := command.InspectRequest(request)
 	if err := command.ValidateRequestView(view); err != nil {
 		return command.Artifact{}, err
@@ -50,7 +51,7 @@ func downloadCommand(ctx context.Context, host common.CommandContext, request co
 	return downloadToFile(ctx, host, transport, target, options)
 }
 
-func downloadURLCommand(ctx context.Context, host common.CommandContext, rawURL string, target command.FileTarget, options command.DownloadOptions) (command.Artifact, error) {
+func downloadURLCommand(ctx context.Context, host commandbridge.RuntimeContext, rawURL string, target command.FileTarget, options command.DownloadOptions) (command.Artifact, error) {
 	if err := validate.ValidateDownloadSourceURL(ctx, rawURL); err != nil {
 		return command.Artifact{}, errs.NewSecurityPolicyError(errs.SubtypeAccessDenied,
 			"blocked download URL: %v", err).WithCause(err)
@@ -67,7 +68,7 @@ func downloadURLCommand(ctx context.Context, host common.CommandContext, rawURL 
 	return downloadToFile(ctx, host, downloadtransport.URL(safeClient, rawURL), target, options)
 }
 
-func downloadToFile(ctx context.Context, host common.CommandContext, transport download.Transport, target command.FileTarget, options command.DownloadOptions) (command.Artifact, error) {
+func downloadToFile(ctx context.Context, host commandbridge.RuntimeContext, transport download.Transport, target command.FileTarget, options command.DownloadOptions) (command.Artifact, error) {
 	fileIO := host.FileIO()
 	if fileIO == nil {
 		return command.Artifact{}, errs.NewInternalError(errs.SubtypeFileIO, "command host has no file I/O provider")
@@ -143,7 +144,7 @@ func downloadToFile(ctx context.Context, host common.CommandContext, transport d
 	}, nil
 }
 
-func doCommandAPIStream(ctx context.Context, host common.CommandContext, request *larkcore.ApiReq, options ...client.Option) (*http.Response, error) {
+func doCommandAPIStream(ctx context.Context, host commandbridge.RuntimeContext, request *larkcore.ApiReq, options ...client.Option) (*http.Response, error) {
 	apiClient, err := commandAPIClient(host)
 	if err != nil {
 		return nil, err
@@ -155,7 +156,7 @@ func doCommandAPIStream(ctx context.Context, host common.CommandContext, request
 	return apiClient.DoStream(ctx, request, core.Identity(host.Identity()), append(base, options...)...)
 }
 
-func commandAPIClient(host common.CommandContext) (*client.APIClient, error) {
+func commandAPIClient(host commandbridge.RuntimeContext) (*client.APIClient, error) {
 	apiClient, err := host.APIClient()
 	if err != nil {
 		if _, typed := errs.ProblemOf(err); typed {

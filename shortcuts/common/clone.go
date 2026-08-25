@@ -6,11 +6,14 @@ package common
 import (
 	"io"
 	"reflect"
+
+	"github.com/larksuite/cli/extension/command"
+	"github.com/larksuite/cli/internal/commandbridge"
 )
 
-// CloneShortcut copies mutable declaration and compiled-contract data.
+// cloneShortcut copies mutable declaration and compiled-contract data.
 // Function values and values captured by business closures remain shared.
-func CloneShortcut(shortcut Shortcut) Shortcut {
+func cloneShortcut(shortcut Shortcut) Shortcut {
 	cloned := shortcut
 	cloned.Scopes = append([]string(nil), shortcut.Scopes...)
 	cloned.UserScopes = append([]string(nil), shortcut.UserScopes...)
@@ -34,11 +37,11 @@ func CloneShortcut(shortcut Shortcut) Shortcut {
 	return cloned
 }
 
-// CloneShortcuts copies a shortcut slice and each mutable declaration.
-func CloneShortcuts(shortcuts []Shortcut) []Shortcut {
+// CloneHostedShortcuts copies a shortcut slice for the internal registry.
+func CloneHostedShortcuts(shortcuts []Shortcut, _ commandbridge.Access) []Shortcut {
 	cloned := make([]Shortcut, len(shortcuts))
 	for index, shortcut := range shortcuts {
-		cloned[index] = CloneShortcut(shortcut)
+		cloned[index] = cloneShortcut(shortcut)
 	}
 	return cloned
 }
@@ -56,8 +59,8 @@ func cloneCompiledCommand(command *compiledCommand) *compiledCommand {
 		cloned.fields[index].valueIndex = append([]int(nil), field.valueIndex...)
 		cloned.fields[index].shape = cloneCommonShape(field.shape)
 		cloned.fields[index].defaultValue.Value = cloneJSONValue(field.defaultValue.Value)
-		cloned.fields[index].cli.Aliases = append([]FlagAlias(nil), field.cli.Aliases...)
-		cloned.fields[index].cli.ValueSources = append([]ValueSource(nil), field.cli.ValueSources...)
+		cloned.fields[index].cli.Aliases = append([]typedFlagAlias(nil), field.cli.Aliases...)
+		cloned.fields[index].cli.ValueSources = append([]typedValueSource(nil), field.cli.ValueSources...)
 	}
 	cloned.fieldByName = make(map[string]int, len(command.fieldByName))
 	for name, index := range command.fieldByName {
@@ -81,70 +84,63 @@ func cloneCompiledCommand(command *compiledCommand) *compiledCommand {
 	return &cloned
 }
 
-func cloneCommonOutput(output OutputDefinition) OutputDefinition {
-	output.Data.Shape = cloneCommonShape(output.Data.Shape)
-	output.Data.Overrides = append([]DataField(nil), output.Data.Overrides...)
+func cloneCommonOutput(output typedOutputDefinition) typedOutputDefinition {
+	output.Data.Shape = cloneAuthoringShape(output.Data.Shape)
+	output.Data.Overrides = append([]typedDataField(nil), output.Data.Overrides...)
 	for index := range output.Data.Overrides {
-		output.Data.Overrides[index].Shape = cloneCommonShape(output.Data.Overrides[index].Shape)
-	}
-	output.Artifacts = append([]ArtifactDefinition(nil), output.Artifacts...)
-	if output.Outcomes.PartialFailure != nil {
-		partial := *output.Outcomes.PartialFailure
-		if partial.FailedItems != nil {
-			failed := *partial.FailedItems
-			failed.IdentityPaths = append([]string(nil), failed.IdentityPaths...)
-			failed.FailedValues = append([]JSONValue(nil), failed.FailedValues...)
-			for index := range failed.FailedValues {
-				failed.FailedValues[index] = cloneJSONValue(failed.FailedValues[index])
-			}
-			partial.FailedItems = &failed
-		}
-		output.Outcomes.PartialFailure = &partial
+		output.Data.Overrides[index].Shape = cloneAuthoringShape(output.Data.Overrides[index].Shape)
 	}
 	return output
 }
 
-func cloneCommonShape(shape ValueShape) ValueShape {
+func cloneAuthoringShape(shape command.ValueShape) command.ValueShape {
+	if shape == nil {
+		return nil
+	}
+	return cloneJSONValue(shape).(command.ValueShape)
+}
+
+func cloneCommonShape(shape typedValueShape) typedValueShape {
 	switch typed := shape.(type) {
 	case nil:
 		return nil
-	case StringShape:
+	case typedStringShape:
 		typed.Enum = append([]string(nil), typed.Enum...)
 		typed.MinLength = cloneScalarPointer(typed.MinLength)
 		typed.MaxLength = cloneScalarPointer(typed.MaxLength)
 		return typed
-	case BooleanShape:
+	case typedBooleanShape:
 		typed.Enum = append([]bool(nil), typed.Enum...)
 		return typed
-	case IntegerShape:
+	case typedIntegerShape:
 		typed.Enum = append([]int64(nil), typed.Enum...)
 		typed.Minimum = cloneScalarPointer(typed.Minimum)
 		typed.Maximum = cloneScalarPointer(typed.Maximum)
 		return typed
-	case NumberShape:
+	case typedNumberShape:
 		typed.Enum = append([]float64(nil), typed.Enum...)
 		typed.Minimum = cloneScalarPointer(typed.Minimum)
 		typed.Maximum = cloneScalarPointer(typed.Maximum)
 		return typed
-	case NullShape, anyJSONShape:
+	case typedNullShape, anyJSONShape:
 		return typed
-	case ConstShape:
+	case typedConstShape:
 		typed.Value = cloneJSONValue(typed.Value)
 		return typed
-	case ArrayShape:
+	case typedArrayShape:
 		typed.Items = cloneCommonShape(typed.Items)
 		typed.MinItems = cloneScalarPointer(typed.MinItems)
 		typed.MaxItems = cloneScalarPointer(typed.MaxItems)
 		return typed
-	case ObjectShape:
-		typed.Fields = append([]ValueField(nil), typed.Fields...)
+	case typedObjectShape:
+		typed.Fields = append([]typedValueField(nil), typed.Fields...)
 		for index := range typed.Fields {
 			typed.Fields[index].Shape = cloneCommonShape(typed.Fields[index].Shape)
 		}
 		typed.AdditionalPropertiesShape = cloneCommonShape(typed.AdditionalPropertiesShape)
 		return typed
-	case OneOfShape:
-		typed.Variants = append([]ValueShape(nil), typed.Variants...)
+	case typedOneOfShape:
+		typed.Variants = append([]typedValueShape(nil), typed.Variants...)
 		for index := range typed.Variants {
 			typed.Variants[index] = cloneCommonShape(typed.Variants[index])
 		}

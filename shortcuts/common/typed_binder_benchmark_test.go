@@ -6,10 +6,12 @@ package common
 import (
 	"reflect"
 	"testing"
+
+	"github.com/larksuite/cli/extension/command"
 )
 
 type binderBenchmarkArgs struct {
-	Value Provided[int]
+	Value command.Provided[int]
 }
 
 func BenchmarkTypedBinderIndexedAssignment(b *testing.B) {
@@ -27,7 +29,7 @@ func BenchmarkTypedBinderDirectAssignment(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		args := binderBenchmarkArgs{}
-		args.Value = Provided[int]{Value: 42, Set: true}
+		args.Value = command.Provided[int]{Value: 42, Set: true}
 		_ = args
 	}
 }

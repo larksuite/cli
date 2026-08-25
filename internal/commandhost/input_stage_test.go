@@ -9,17 +9,17 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/extension/command"
-	"github.com/larksuite/cli/shortcuts/common"
+	"github.com/larksuite/cli/internal/commandbridge"
 )
 
 // stubHost embeds the interface so only the methods inputStageContext actually
 // reads need an implementation; anything else it reached for would panic and
 // name itself in the failure.
 type stubHost struct {
-	common.CommandContext
+	commandbridge.RuntimeContext
 }
 
-func (stubHost) Identity() common.Identity                { return common.Identity("user") }
+func (stubHost) Identity() command.Identity               { return command.IdentityUser }
 func (stubHost) IsDryRun() bool                           { return false }
 func (stubHost) RequireConditionalScopes(...string) error { return nil }
 

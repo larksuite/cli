@@ -32,21 +32,21 @@ func runTypedFlagSchema(t *testing.T, shortcut Shortcut, args ...string) (string
 
 func TestTypedFlagSchemaListsAndPrintsCompositeInputsBeforeExecution(t *testing.T) {
 	definition := validCompilerDefinition()
-	definition.Input.Relations = append(definition.Input.Relations, Relation{
-		Kind: RelationExactlyOne, Params: []string{"token", "labels"}, Presence: PresenceExplicit, Stage: StageSourcePreRun,
+	definition.Input.Relations = append(definition.Input.Relations, typedRelation{
+		Kind: typedRelationExactlyOne, Params: []string{"token", "labels"}, Presence: typedPresenceExplicit, Stage: typedStageSourcePreRun,
 	})
 	called := false
-	definition.Hooks.Normalize = func(context.Context, CommandContext, *compilerArgs) error {
+	definition.Hooks.Normalize = func(context.Context, typedRuntimeContext, *compilerArgs) error {
 		called = true
 		return nil
 	}
-	definition.Hooks.Validate = func(context.Context, CommandContext, *compilerArgs) error {
+	definition.Hooks.Validate = func(context.Context, typedRuntimeContext, *compilerArgs) error {
 		called = true
 		return nil
 	}
-	definition.Hooks.Execute = func(context.Context, CommandContext, *compilerArgs) (Result[compilerData], error) {
+	definition.Hooks.Execute = func(context.Context, typedRuntimeContext, *compilerArgs) (typedResult[compilerData], error) {
 		called = true
-		return Success(compilerData{}), nil
+		return typedSuccess(compilerData{}), nil
 	}
 	shortcut := defineTypedShortcut(definition)
 
@@ -89,14 +89,14 @@ func TestTypedFlagSchemaListsAndPrintsCompositeInputsBeforeExecution(t *testing.
 func TestIsCompositeValueShape(t *testing.T) {
 	for _, test := range []struct {
 		name  string
-		shape ValueShape
+		shape typedValueShape
 		want  bool
 	}{
-		{name: "object", shape: ObjectShape{}, want: true},
-		{name: "array", shape: ArrayShape{Items: StringShape{}}, want: true},
-		{name: "nullable object", shape: OneOfShape{Variants: []ValueShape{NullShape{}, ObjectShape{}}}, want: true},
-		{name: "scalar one-of", shape: OneOfShape{Variants: []ValueShape{StringShape{}, NullShape{}}}, want: false},
-		{name: "string", shape: StringShape{}, want: false},
+		{name: "object", shape: typedObjectShape{}, want: true},
+		{name: "array", shape: typedArrayShape{Items: typedStringShape{}}, want: true},
+		{name: "nullable object", shape: typedOneOfShape{Variants: []typedValueShape{typedNullShape{}, typedObjectShape{}}}, want: true},
+		{name: "scalar one-of", shape: typedOneOfShape{Variants: []typedValueShape{typedStringShape{}, typedNullShape{}}}, want: false},
+		{name: "string", shape: typedStringShape{}, want: false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if got := isCompositeValueShape(test.shape); got != test.want {
@@ -126,9 +126,9 @@ func TestTypedFlagSchemaNotRegisteredForScalarInputs(t *testing.T) {
 		OK bool `json:"ok" schema:"required" doc:"success state"`
 	}
 	shortcut := defineTypedShortcut(typedDefinition[args, data]{
-		Metadata: CommandMetadata{Service: "fixture", Command: "+scalar", Description: "scalar fixture", Risk: RiskRead, Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}}},
-		Hooks: typedHooks[args, data]{Execute: func(context.Context, CommandContext, *args) (Result[data], error) {
-			return Success(data{OK: true}), nil
+		Metadata: typedCommandMetadata{Service: "fixture", Command: "+scalar", Description: "scalar fixture", Risk: typedRiskRead, Authorization: typedAuthorizationDefinition{Identities: map[typedIdentity]typedIdentityAuthorization{typedIdentityUser: {}}}},
+		Hooks: typedHooks[args, data]{Execute: func(context.Context, typedRuntimeContext, *args) (typedResult[data], error) {
+			return typedSuccess(data{OK: true}), nil
 		}},
 	})
 	if shortcut.PrintFlagSchema != nil {

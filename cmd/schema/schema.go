@@ -14,6 +14,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/commandbridge"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/output"
@@ -193,7 +194,7 @@ func resolveShortcutSchemaFrom(
 		if !shortcutSchemaVisible(shortcut, visibility, mode) {
 			return nil, false
 		}
-		return common.ShortcutSchema(shortcut)
+		return common.ShortcutSchema(shortcut, commandbridge.Access{})
 	}
 	return nil, false
 }
@@ -215,7 +216,7 @@ func shortcutSchemaCompletionsFrom(
 			if !strings.HasPrefix(shortcut.Service, toComplete) || !shortcutSchemaVisible(shortcut, visibility, mode) {
 				continue
 			}
-			if _, ok := common.ShortcutSchema(shortcut); ok {
+			if _, ok := common.ShortcutSchema(shortcut, commandbridge.Access{}); ok {
 				services[shortcut.Service] = struct{}{}
 			}
 		}
@@ -245,7 +246,7 @@ func shortcutCommandCompletions(
 		if shortcut.Service != service || !strings.HasPrefix(shortcut.Command, prefix) || !shortcutSchemaVisible(shortcut, visibility, mode) {
 			continue
 		}
-		if _, ok := common.ShortcutSchema(shortcut); ok {
+		if _, ok := common.ShortcutSchema(shortcut, commandbridge.Access{}); ok {
 			result = append(result, outputPrefix+shortcut.Command+"\t"+shortcut.Description)
 		}
 	}

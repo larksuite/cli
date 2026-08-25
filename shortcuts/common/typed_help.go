@@ -34,7 +34,7 @@ func typedHelpFacts(command *compiledCommand) typedCommandHelpFacts {
 		}
 		for _, source := range field.cli.ValueSources {
 			fact.Sources = append(fact.Sources, string(source))
-			if source == SourceStdin {
+			if source == typedSourceStdin {
 				stdinParameters++
 			}
 		}
@@ -59,27 +59,18 @@ func typedHelpFacts(command *compiledCommand) typedCommandHelpFacts {
 			params = append(params, command.fields[index].name)
 		}
 		if len(visibleFields) != len(relation.fields) {
-			if len(visibleFields) == 1 && (relation.kind == RelationExactlyOne || relation.kind == RelationAtLeastOne) {
+			if len(visibleFields) == 1 && (relation.kind == typedRelationExactlyOne || relation.kind == typedRelationAtLeastOne) {
 				parameter := &facts.Parameters[parameterIndex[visibleFields[0]]]
 				parameter.Required = true
-				parameter.Explicit = relation.presence == PresenceExplicit
+				parameter.Explicit = relation.presence == typedPresenceExplicit
 			}
 			continue
 		}
 		facts.Constraints = append(facts.Constraints, typedConstraintHelpFact{Kind: string(relation.kind), Params: params, Presence: string(relation.presence)})
 	}
-	if command.output.Artifacts != nil {
-		facts.Output = append(facts.Output, typedOutputHelpFact{Text: "writes local artifacts described in the JSON result"})
-	}
-	if command.output.Outcomes.PartialFailure != nil {
-		facts.Output = append(facts.Output, typedOutputHelpFact{Text: "may return a partial-failure result with per-item failures"})
-	}
-	if command.output.Meta.Count {
-		facts.Output = append(facts.Output, typedOutputHelpFact{Text: "JSON and jq envelopes may include meta.count"})
-	}
 	if command.output.Meta.Pagination {
 		text := "pagination metadata reports completion, pages, items, and a resume token when incomplete"
-		if command.output.Mode != OutputFixedJSON {
+		if command.output.Mode != typedOutputFixedJSON {
 			summaryFormats := "table"
 			if command.hooks.renderers["pretty"] != nil {
 				summaryFormats = "pretty/table"
@@ -90,7 +81,7 @@ func typedHelpFacts(command *compiledCommand) typedCommandHelpFacts {
 	}
 	identityOrder := command.metadata.Authorization.IdentityOrder
 	if len(identityOrder) == 0 {
-		identityOrder = []Identity{IdentityUser, IdentityBot}
+		identityOrder = []typedIdentity{typedIdentityUser, typedIdentityBot}
 	}
 	for _, identity := range identityOrder {
 		authorization, ok := command.metadata.Authorization.Identities[identity]
@@ -109,21 +100,21 @@ func typedHelpFacts(command *compiledCommand) typedCommandHelpFacts {
 	return facts
 }
 
-func helpType(shape ValueShape, encoding CLIEncoding) string {
-	if encoding == EncodingJSON {
+func helpType(shape typedValueShape, encoding typedCLIEncoding) string {
+	if encoding == typedEncodingJSON {
 		return "json"
 	}
 	shape = nonNullableShape(shape)
 	switch value := shape.(type) {
-	case BooleanShape:
+	case typedBooleanShape:
 		return "boolean"
-	case IntegerShape:
+	case typedIntegerShape:
 		return "integer"
-	case NumberShape:
+	case typedNumberShape:
 		return "number"
-	case StringShape:
+	case typedStringShape:
 		return "string"
-	case ArrayShape:
+	case typedArrayShape:
 		item := helpType(value.Items, "")
 		if item == "boolean" {
 			item = "bool"
@@ -132,9 +123,9 @@ func helpType(shape ValueShape, encoding CLIEncoding) string {
 			return "array"
 		}
 		return item + "[]"
-	case ObjectShape, OneOfShape:
+	case typedObjectShape, typedOneOfShape:
 		return "json"
-	case ConstShape:
+	case typedConstShape:
 		switch value.Value.(type) {
 		case bool:
 			return "boolean"
@@ -143,42 +134,42 @@ func helpType(shape ValueShape, encoding CLIEncoding) string {
 		default:
 			return "value"
 		}
-	case NullShape:
+	case typedNullShape:
 		return "null"
 	default:
 		return "value"
 	}
 }
 
-func nonNullableShape(shape ValueShape) ValueShape {
-	if oneOf, ok := shape.(OneOfShape); ok && len(oneOf.Variants) == 2 {
-		if _, null := oneOf.Variants[0].(NullShape); null {
+func nonNullableShape(shape typedValueShape) typedValueShape {
+	if oneOf, ok := shape.(typedOneOfShape); ok && len(oneOf.Variants) == 2 {
+		if _, null := oneOf.Variants[0].(typedNullShape); null {
 			return oneOf.Variants[1]
 		}
-		if _, null := oneOf.Variants[1].(NullShape); null {
+		if _, null := oneOf.Variants[1].(typedNullShape); null {
 			return oneOf.Variants[0]
 		}
 	}
 	return shape
 }
 
-func applyShapeToHelpFact(fact *typedParameterHelpFact, shape ValueShape) {
+func applyShapeToHelpFact(fact *typedParameterHelpFact, shape typedValueShape) {
 	shape = nonNullableShape(shape)
 	switch value := shape.(type) {
-	case StringShape:
+	case typedStringShape:
 		fact.Enum = append([]string{}, value.Enum...)
 		fact.Format, fact.MinLength, fact.MaxLength = value.Format, cloneInt(value.MinLength), cloneInt(value.MaxLength)
-	case IntegerShape:
+	case typedIntegerShape:
 		for _, item := range value.Enum {
 			fact.Enum = append(fact.Enum, fmt.Sprint(item))
 		}
 		fact.Minimum, fact.Maximum = int64AsFloat(value.Minimum), int64AsFloat(value.Maximum)
-	case NumberShape:
+	case typedNumberShape:
 		for _, item := range value.Enum {
 			fact.Enum = append(fact.Enum, fmt.Sprintf("%g", item))
 		}
 		fact.Minimum, fact.Maximum = cloneFloat(value.Minimum), cloneFloat(value.Maximum)
-	case ArrayShape:
+	case typedArrayShape:
 		fact.MinItems, fact.MaxItems = cloneInt(value.MinItems), cloneInt(value.MaxItems)
 	}
 }

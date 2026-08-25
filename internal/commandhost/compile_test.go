@@ -5,6 +5,7 @@ package commandhost
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"slices"
@@ -15,6 +16,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/command"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/commandbridge"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -61,6 +63,58 @@ func TestCompileSetsCompilesTypedShortcut(t *testing.T) {
 	}
 	if len(compiled[0].AuthTypes) != 1 || compiled[0].AuthTypes[0] != "user" {
 		t.Fatalf("auth types = %#v", compiled[0].AuthTypes)
+	}
+}
+
+func TestCompileDeclarationConsumesPublicContractDirectly(t *testing.T) {
+	declaration := command.Define(command.Definition[fixtureArgs, fixtureData]{
+		Metadata: command.CommandMetadata{
+			Service: command.DomainIm, Command: "+contract-projection", Description: "Contract projection", Risk: command.RiskRead, Hidden: true,
+			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{
+				command.IdentityUser: {RequiredScopes: []string{"im:chat:read"}},
+			}},
+		},
+		Input: command.InputDefinition{Fields: []command.InputField{{
+			Name: "id", CLI: command.CLIInput{
+				Aliases:      []command.FlagAlias{{Name: "legacy-id", Mode: command.AliasNormalize}},
+				ValueSources: []command.ValueSource{command.SourceFlag, command.SourceFile, command.SourceStdin},
+			},
+		}}},
+		Output: command.OutputDefinition{Mode: command.OutputFixedJSON, DisableHTMLEscaping: true},
+		Hooks: command.Hooks[fixtureArgs, fixtureData]{
+			Execute: func(_ context.Context, _ command.CommandContext, args *fixtureArgs) (command.Result[fixtureData], error) {
+				return command.Success(fixtureData{ID: args.ID}), nil
+			},
+		},
+	})
+	compiled, err := CompileDeclaration(declaration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !compiled.Hidden || len(compiled.Flags) != 1 || !slices.Equal(compiled.Flags[0].Aliases, []string{"legacy-id"}) || !slices.Equal(compiled.Flags[0].Input, []string{common.File, common.Stdin}) {
+		t.Fatalf("compiled shortcut = %#v", compiled)
+	}
+	contract, ok := common.ShortcutSchema(compiled, commandbridge.Access{})
+	if !ok {
+		t.Fatal("compiled command has no schema contract")
+	}
+	encoded, err := json.Marshal(contract)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema struct {
+		Meta struct {
+			Formats []struct {
+				SelectedBy []string `json:"selected_by"`
+				EscapeHTML *bool    `json:"escape_html"`
+			} `json:"formats"`
+		} `json:"_meta"`
+	}
+	if err := json.Unmarshal(encoded, &schema); err != nil {
+		t.Fatal(err)
+	}
+	if len(schema.Meta.Formats) != 1 || !slices.Equal(schema.Meta.Formats[0].SelectedBy, []string{"json", "pretty", "table", "ndjson", "csv"}) || schema.Meta.Formats[0].EscapeHTML == nil || *schema.Meta.Formats[0].EscapeHTML {
+		t.Fatalf("schema formats = %#v", schema.Meta.Formats)
 	}
 }
 
@@ -205,7 +259,7 @@ func TestCompileSetsCarriesFileInputSource(t *testing.T) {
 func TestCompileSetsRejectsUnknownInputSource(t *testing.T) {
 	declaration := inputSourceDeclaration("+external-unknown-input", command.SourceFlag, command.ValueSource("clipboard"))
 	_, err := CompileSets([]command.Set{{Domain: command.ExtendDomain(command.DomainIm), Commands: []command.Command{declaration}}})
-	if err == nil || !strings.Contains(err.Error(), "source \"clipboard\" is not supported in V1") {
+	if err == nil || !strings.Contains(err.Error(), "unknown value source \"clipboard\"") {
 		t.Fatalf("CompileSets() error = %v", err)
 	}
 }

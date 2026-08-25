@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/extension/command"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
@@ -23,12 +24,12 @@ type typedRunnerPayload struct {
 	Name string `json:"name" schema:"required" doc:"payload name"`
 }
 type typedRunnerArgs struct {
-	Token    string              `flag:"token" schema:"required;minLength=1" doc:"target token"`
-	Count    Provided[int]       `flag:"count" schema:"optional;default=7;minimum=0" doc:"item count"`
-	Enabled  Provided[bool]      `flag:"enabled" schema:"optional;default=true" doc:"enabled state"`
-	Payload  *typedRunnerPayload `flag:"payload" schema:"optional;nullable" cli:"sources=flag|stdin;encoding=json" doc:"JSON payload"`
-	Template *typedRunnerPayload `flag:"template" schema:"optional;nullable" cli:"sources=flag|stdin;encoding=json" doc:"JSON template"`
-	Prepared string              `arg:"local"`
+	Token    string                 `flag:"token" schema:"required;minLength=1" doc:"target token"`
+	Count    command.Provided[int]  `flag:"count" schema:"optional;default=7;minimum=0" doc:"item count"`
+	Enabled  command.Provided[bool] `flag:"enabled" schema:"optional;default=true" doc:"enabled state"`
+	Payload  *typedRunnerPayload    `flag:"payload" schema:"optional;nullable" cli:"sources=flag|stdin;encoding=json" doc:"JSON payload"`
+	Template *typedRunnerPayload    `flag:"template" schema:"optional;nullable" cli:"sources=flag|stdin;encoding=json" doc:"JSON template"`
+	Prepared string                 `arg:"local"`
 }
 type typedRunnerItem struct {
 	State string `json:"state" schema:"required" doc:"item state"`
@@ -44,28 +45,21 @@ type typedRunnerData struct {
 }
 
 func typedRunnerDefinition(capture func(*typedRunnerArgs), partial bool) typedDefinition[typedRunnerArgs, typedRunnerData] {
-	outputDefinition := OutputDefinition{}
-	if partial {
-		outputDefinition.Outcomes.PartialFailure = &PartialFailureDefinition{ExitCode: 9, FailedItems: &FailedItemDefinition{ItemsPath: "/items", StatePath: "/state", FailedValues: []JSONValue{"failed"}}}
-	}
+	_ = partial // retained in fixture call sites while unreachable partial tests are removed
 	return typedDefinition[typedRunnerArgs, typedRunnerData]{
-		Metadata: CommandMetadata{Service: "fixture", Command: "+typed", Description: "Run typed fixture", Risk: RiskRead, Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}}},
-		Input:    InputDefinition{Fields: []InputField{{Name: "token", CLI: CLIInput{Aliases: []FlagAlias{{Name: "legacy-token", Mode: AliasIndependent, Conflict: AliasTrimmedEqualOrError, Hidden: true, Deprecated: true}}}}}},
-		Output:   outputDefinition,
+		Metadata: typedCommandMetadata{Service: "fixture", Command: "+typed", Description: "Run typed fixture", Risk: typedRiskRead, Authorization: typedAuthorizationDefinition{Identities: map[typedIdentity]typedIdentityAuthorization{typedIdentityUser: {}}}},
+		Input:    typedInputDefinition{Fields: []typedInputField{{Name: "token", CLI: typedCLIInput{Aliases: []typedFlagAlias{{Name: "legacy-token", Mode: typedAliasIndependent, Conflict: typedAliasTrimmedEqualOrError, Hidden: true, Deprecated: true}}}}}},
 		Hooks: typedHooks[typedRunnerArgs, typedRunnerData]{
-			Normalize: func(_ context.Context, _ CommandContext, args *typedRunnerArgs) error {
+			Normalize: func(_ context.Context, _ typedRuntimeContext, args *typedRunnerArgs) error {
 				args.Prepared = strings.ToUpper(args.Token)
 				return nil
 			},
-			Execute: func(_ context.Context, _ CommandContext, args *typedRunnerArgs) (Result[typedRunnerData], error) {
+			Execute: func(_ context.Context, _ typedRuntimeContext, args *typedRunnerArgs) (typedResult[typedRunnerData], error) {
 				if capture != nil {
 					capture(args)
 				}
 				data := typedRunnerData{Token: args.Token, Count: args.Count.Value, CountSet: args.Count.Set, Enabled: args.Enabled.Value, Prepared: args.Prepared, Items: []typedRunnerItem{{State: "failed"}}}
-				if partial {
-					return Partial(data), nil
-				}
-				return Success(data), nil
+				return typedSuccess(data), nil
 			},
 		},
 	}
@@ -91,12 +85,12 @@ func TestTypedHelpSummarizesDeepJSONWithoutExpandingShape(t *testing.T) {
 	type data struct {
 		OK bool `json:"ok" schema:"required" doc:"success state"`
 	}
-	deepShape := ObjectShape{Fields: []ValueField{{Name: "level_one", Description: "level one", Required: true, Shape: ObjectShape{Fields: []ValueField{{Name: "secret_depth_field", Description: "deep field", Required: true, Shape: StringShape{}}}}}}}
+	deepShape := command.ObjectShape{Fields: []command.ValueField{{Name: "level_one", Description: "level one", Required: true, Shape: command.ObjectShape{Fields: []command.ValueField{{Name: "secret_depth_field", Description: "deep field", Required: true, Shape: command.StringShape{}}}}}}}
 	definition := typedDefinition[args, data]{
-		Metadata: CommandMetadata{Service: "fixture", Command: "+deep-json", Description: "deep JSON fixture", Risk: RiskRead, Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}}},
-		Input:    InputDefinition{Fields: []InputField{{Name: "properties", Shape: deepShape}}},
-		Hooks: typedHooks[args, data]{Execute: func(context.Context, CommandContext, *args) (Result[data], error) {
-			return Success(data{OK: true}), nil
+		Metadata: typedCommandMetadata{Service: "fixture", Command: "+deep-json", Description: "deep JSON fixture", Risk: typedRiskRead, Authorization: typedAuthorizationDefinition{Identities: map[typedIdentity]typedIdentityAuthorization{typedIdentityUser: {}}}},
+		Input:    typedInputDefinition{Fields: []typedInputField{{Name: "properties", Shape: deepShape}}},
+		Hooks: typedHooks[args, data]{Execute: func(context.Context, typedRuntimeContext, *args) (typedResult[data], error) {
+			return typedSuccess(data{OK: true}), nil
 		}},
 	}
 	factory, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{})
@@ -131,9 +125,9 @@ func TestTypedHelpSupportsCommandWithoutBusinessParameters(t *testing.T) {
 		OK bool `json:"ok" schema:"required" doc:"success state"`
 	}
 	definition := typedDefinition[args, data]{
-		Metadata: CommandMetadata{Service: "fixture", Command: "+no-input", Description: "no input fixture", Risk: RiskRead, Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}}},
-		Hooks: typedHooks[args, data]{Execute: func(context.Context, CommandContext, *args) (Result[data], error) {
-			return Success(data{OK: true}), nil
+		Metadata: typedCommandMetadata{Service: "fixture", Command: "+no-input", Description: "no input fixture", Risk: typedRiskRead, Authorization: typedAuthorizationDefinition{Identities: map[typedIdentity]typedIdentityAuthorization{typedIdentityUser: {}}}},
+		Hooks: typedHooks[args, data]{Execute: func(context.Context, typedRuntimeContext, *args) (typedResult[data], error) {
+			return typedSuccess(data{OK: true}), nil
 		}},
 	}
 	factory, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{})
@@ -201,8 +195,8 @@ func TestTypedRunnerInstallsGroupedHelpFromCompiledFacts(t *testing.T) {
 	root := &cobra.Command{Use: "lark-cli"}
 	service := &cobra.Command{Use: "fixture"}
 	root.AddCommand(service)
-	definition := typedRunnerDefinition(nil, true)
-	definition.Output.Meta = ResultMetaDefinition{Count: true, Pagination: true}
+	definition := typedRunnerDefinition(nil, false)
+	definition.Output.Meta = typedResultMetaDefinition{Pagination: true}
 	defineTypedShortcut(definition).Mount(service, factory)
 	cmd, _, err := root.Find([]string{"fixture", "+typed"})
 	if err != nil {
@@ -221,8 +215,7 @@ func TestTypedRunnerInstallsGroupedHelpFromCompiledFacts(t *testing.T) {
 		"default: 7", "minimum: 0", "accepts inline JSON or stdin with -",
 		"Constraints:\n  at most one parameter may read stdin in one invocation",
 		"Execution:\n  --as <string>", "--dry-run",
-		"Output:\n  --format <string>", "partial-failure result",
-		"JSON and jq envelopes may include meta.count", "pagination metadata reports completion, pages, items",
+		"Output:\n  --format <string>", "pagination metadata reports completion, pages, items",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("help missing %q:\n%s", want, got)
@@ -236,14 +229,14 @@ func TestTypedRunnerInstallsGroupedHelpFromCompiledFacts(t *testing.T) {
 func TestTypedHelpPaginationSummaryMatchesExecutableOutputPaths(t *testing.T) {
 	tests := []struct {
 		name         string
-		mode         OutputMode
+		mode         typedOutputMode
 		pretty       bool
 		want         string
 		mustNotMatch string
 	}{
 		{name: "generic table only", want: "pagination metadata reports completion, pages, items, and a resume token when incomplete; successful table output appends a pagination summary", mustNotMatch: "pretty/table"},
 		{name: "generic pretty and table", pretty: true, want: "pagination metadata reports completion, pages, items, and a resume token when incomplete; successful pretty/table output appends a pagination summary"},
-		{name: "fixed JSON", mode: OutputFixedJSON, want: "pagination metadata reports completion, pages, items, and a resume token when incomplete", mustNotMatch: "appends a pagination summary"},
+		{name: "fixed JSON", mode: typedOutputFixedJSON, want: "pagination metadata reports completion, pages, items, and a resume token when incomplete", mustNotMatch: "appends a pagination summary"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -316,7 +309,7 @@ func TestTypedRunnerBindsDefaultsPresenceAliasAndNormalize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if defaults.Count != (Provided[int]{Value: 7, Set: false}) || defaults.Enabled != (Provided[bool]{Value: true, Set: false}) {
+	if defaults.Count != (command.Provided[int]{Value: 7, Set: false}) || defaults.Enabled != (command.Provided[bool]{Value: true, Set: false}) {
 		t.Fatalf("defaults = count %#v enabled %#v", defaults.Count, defaults.Enabled)
 	}
 }
@@ -364,7 +357,7 @@ func TestTypedRunnerAliasConflictAndRequiredStructuralError(t *testing.T) {
 
 	definition := typedRunnerDefinition(nil, false)
 	definition.Input.Fields[0].CLI.Aliases = append(definition.Input.Fields[0].CLI.Aliases,
-		FlagAlias{Name: "older-token", Mode: AliasIndependent, Conflict: AliasErrorIfBoth},
+		typedFlagAlias{Name: "older-token", Mode: typedAliasIndependent, Conflict: typedAliasErrorIfBoth},
 	)
 	_, _, err = runTypedFixture(t, definition, "", "--legacy-token", "a", "--older-token", "b")
 	problem, ok = errs.ProblemOf(err)
@@ -375,9 +368,9 @@ func TestTypedRunnerAliasConflictAndRequiredStructuralError(t *testing.T) {
 
 func TestTypedRunnerDryRunUsesProductionStrictIdentity(t *testing.T) {
 	definition := typedRunnerDefinition(nil, false)
-	definition.Metadata.Authorization.Identities[IdentityBot] = IdentityAuthorization{}
-	var identity Identity
-	definition.Hooks.DryRun = func(_ context.Context, command CommandContext, _ *typedRunnerArgs) *DryRunAPI {
+	definition.Metadata.Authorization.Identities[typedIdentityBot] = typedIdentityAuthorization{}
+	var identity typedIdentity
+	definition.Hooks.DryRun = func(_ context.Context, command typedRuntimeContext, _ *typedRunnerArgs) *DryRunAPI {
 		identity = command.Identity()
 		return NewDryRunAPI()
 	}
@@ -392,81 +385,17 @@ func TestTypedRunnerDryRunUsesProductionStrictIdentity(t *testing.T) {
 	if _, err := root.ExecuteC(); err != nil {
 		t.Fatal(err)
 	}
-	if identity != IdentityUser {
-		t.Fatalf("dry-run identity = %q, want %q", identity, IdentityUser)
-	}
-}
-
-func TestTypedRunnerEmitsResultLevelPartialWithoutFailedItems(t *testing.T) {
-	definition := typedRunnerDefinition(nil, true)
-	definition.Output.Outcomes.PartialFailure.FailedItems = nil
-	definition.Hooks.Execute = func(_ context.Context, _ CommandContext, args *typedRunnerArgs) (Result[typedRunnerData], error) {
-		return Partial(typedRunnerData{Token: args.Token, Prepared: "follow-up write failed"}), nil
-	}
-	definition.Hooks.Renderers = map[string]typedRenderer[typedRunnerData]{"pretty": func(w io.Writer, _ typedRunnerData) error {
-		_, err := io.WriteString(w, "partial pretty must not run")
-		return err
-	}}
-	stdout, stderr, err := runTypedFixture(t, definition, "", "--token", "resource-1", "--format", "pretty")
-	if output.ExitCodeOf(err) != 9 || stderr != "" {
-		t.Fatalf("error = %v, exit = %d, stderr = %q", err, output.ExitCodeOf(err), stderr)
-	}
-	var envelope struct {
-		OK   bool            `json:"ok"`
-		Data typedRunnerData `json:"data"`
-	}
-	if unmarshalErr := json.Unmarshal([]byte(stdout), &envelope); unmarshalErr != nil {
-		t.Fatalf("stdout = %q: %v", stdout, unmarshalErr)
-	}
-	if strings.Contains(stdout, "partial pretty must not run") {
-		t.Fatalf("partial result used a pretty renderer: %q", stdout)
-	}
-	if envelope.OK || envelope.Data.Token != "resource-1" || envelope.Data.Prepared != "follow-up write failed" {
-		t.Fatalf("envelope = %#v", envelope)
-	}
-}
-
-func TestTypedRunnerRejectsInvalidPartialReceiptBeforeWritingStdout(t *testing.T) {
-	definition := typedRunnerDefinition(nil, true)
-	definition.Hooks.Execute = func(_ context.Context, _ CommandContext, args *typedRunnerArgs) (Result[typedRunnerData], error) {
-		return Partial(typedRunnerData{Token: args.Token, Items: []typedRunnerItem{}}), nil
-	}
-	stdout, _, err := runTypedFixture(t, definition, "", "--token", "x")
-	problem, ok := errs.ProblemOf(err)
-	if !ok || problem.Category != errs.CategoryInternal || stdout != "" {
-		t.Fatalf("stdout = %q, error = %#v, problem = %#v", stdout, err, problem)
-	}
-}
-
-func TestTypedRunnerEmitsCountMetaForSuccessJSONAndJQ(t *testing.T) {
-	definition := typedRunnerDefinition(nil, false)
-	definition.Output.Meta.Count = true
-	definition.Hooks.Execute = func(_ context.Context, _ CommandContext, args *typedRunnerArgs) (Result[typedRunnerData], error) {
-		return Success(typedRunnerData{Token: args.Token, Items: []typedRunnerItem{}}).WithMeta(CountMeta(3)), nil
-	}
-	stdout, stderr, err := runTypedFixture(t, definition, "", "--token", "x")
-	if err != nil || stderr != "" {
-		t.Fatalf("stdout = %q, stderr = %q, error = %v", stdout, stderr, err)
-	}
-	var envelope struct {
-		Meta output.Meta `json:"meta"`
-	}
-	if err := json.Unmarshal([]byte(stdout), &envelope); err != nil || envelope.Meta.Count != 3 {
-		t.Fatalf("stdout = %q, envelope = %#v, error = %v", stdout, envelope, err)
-	}
-
-	stdout, stderr, err = runTypedFixture(t, definition, "", "--token", "x", "--jq", ".meta.count")
-	if err != nil || stderr != "" || strings.TrimSpace(stdout) != "3" {
-		t.Fatalf("jq stdout = %q, stderr = %q, error = %v", stdout, stderr, err)
+	if identity != typedIdentityUser {
+		t.Fatalf("dry-run identity = %q, want %q", identity, typedIdentityUser)
 	}
 }
 
 func TestTypedRunnerEmitsPaginationMetaForSuccessPretty(t *testing.T) {
 	definition := typedRunnerDefinition(nil, false)
 	definition.Output.Meta.Pagination = true
-	definition.Hooks.Execute = func(_ context.Context, _ CommandContext, args *typedRunnerArgs) (Result[typedRunnerData], error) {
-		pagination := &ResultPaginationMeta{Complete: false, Pages: 2, Items: 1, NextToken: "resume-token"}
-		return Success(typedRunnerData{Token: args.Token, Items: []typedRunnerItem{{State: "failed"}}}).WithMeta(PaginationResultMeta(pagination)), nil
+	definition.Hooks.Execute = func(_ context.Context, _ typedRuntimeContext, args *typedRunnerArgs) (typedResult[typedRunnerData], error) {
+		pagination := &typedResultPaginationMeta{Complete: false, Pages: 2, Items: 1, NextToken: "resume-token"}
+		return typedSuccess(typedRunnerData{Token: args.Token, Items: []typedRunnerItem{{State: "failed"}}}).WithMeta(typedPaginationResultMeta(pagination)), nil
 	}
 	definition.Hooks.Renderers = map[string]typedRenderer[typedRunnerData]{"pretty": func(w io.Writer, data typedRunnerData) error {
 		_, err := fmt.Fprintf(w, "token=%s\n", data.Token)
@@ -485,32 +414,6 @@ func TestTypedRunnerEmitsPaginationMetaForSuccessPretty(t *testing.T) {
 	stdout, stderr, err = runTypedFixture(t, definition, "", "--token", "x", "--format", "table")
 	if err != nil || stderr != "" || !strings.Contains(stdout, "Pagination: incomplete") || !strings.Contains(stdout, `resume token: "resume-token"`) {
 		t.Fatalf("table stdout = %q, stderr = %q, error = %v", stdout, stderr, err)
-	}
-}
-
-func TestTypedRunnerEmitsPaginationMetaForPartialJSONAndJQ(t *testing.T) {
-	definition := typedRunnerDefinition(nil, true)
-	definition.Output.Meta.Pagination = true
-	definition.Hooks.Execute = func(_ context.Context, _ CommandContext, args *typedRunnerArgs) (Result[typedRunnerData], error) {
-		pagination := &ResultPaginationMeta{Complete: false, Pages: 1, Items: 1, NextToken: "partial-token"}
-		data := typedRunnerData{Token: args.Token, Items: []typedRunnerItem{{State: "failed"}}}
-		return Partial(data).WithMeta(PaginationResultMeta(pagination)), nil
-	}
-	stdout, stderr, err := runTypedFixture(t, definition, "", "--token", "x")
-	if output.ExitCodeOf(err) != 9 || stderr != "" {
-		t.Fatalf("stdout = %q, stderr = %q, error = %v", stdout, stderr, err)
-	}
-	var envelope struct {
-		OK   bool        `json:"ok"`
-		Meta output.Meta `json:"meta"`
-	}
-	if decodeErr := json.Unmarshal([]byte(stdout), &envelope); decodeErr != nil || envelope.OK || envelope.Meta.Pagination == nil || envelope.Meta.Pagination.NextToken != "partial-token" {
-		t.Fatalf("stdout = %q, envelope = %#v, decode error = %v", stdout, envelope, decodeErr)
-	}
-
-	stdout, stderr, err = runTypedFixture(t, definition, "", "--token", "x", "--jq", ".meta.pagination.next_token")
-	if output.ExitCodeOf(err) != 9 || stderr != "" || strings.TrimSpace(stdout) != "partial-token" {
-		t.Fatalf("jq stdout = %q, stderr = %q, error = %v", stdout, stderr, err)
 	}
 }
 
@@ -546,7 +449,7 @@ func TestTypedRunnerGenericPrettyCompatibilityAndOptIn(t *testing.T) {
 
 func TestTypedRunnerFixedJSONPreservesIgnoredFormatFlags(t *testing.T) {
 	definition := typedRunnerDefinition(nil, false)
-	definition.Output.Mode = OutputFixedJSON
+	definition.Output.Mode = typedOutputFixedJSON
 	for _, format := range []string{"json", "pretty", "table", "ndjson", "csv"} {
 		t.Run(format, func(t *testing.T) {
 			stdout, stderr, err := runTypedFixture(t, definition, "", "--token", "x", "--format", format)
@@ -590,50 +493,11 @@ func TestTypedRunnerJSONHTMLEscapingPolicy(t *testing.T) {
 	}
 }
 
-func TestTypedRunnerPartialUsesUnescapedJSONPolicy(t *testing.T) {
-	const markup = "<b>A&B</b>"
-	definition := typedRunnerDefinition(nil, true)
-	definition.Output.DisableHTMLEscaping = true
-	stdout, _, err := runTypedFixture(t, definition, "", "--token", markup)
-	if output.ExitCodeOf(err) != 9 {
-		t.Fatalf("error = %v, exit = %d", err, output.ExitCodeOf(err))
-	}
-	if !strings.Contains(stdout, markup) || strings.Contains(stdout, `\u003c`) {
-		t.Fatalf("partial JSON did not preserve markup: %q", stdout)
-	}
-	if !json.Valid([]byte(stdout)) {
-		t.Fatalf("partial output is not valid JSON: %q", stdout)
-	}
-}
-
-func TestTypedRunnerPartialUsesDeclaredExitCodeAndSingleEnvelope(t *testing.T) {
-	stdout, stderr, err := runTypedFixture(t, typedRunnerDefinition(nil, true), "", "--token", "x")
-	if output.ExitCodeOf(err) != 9 {
-		t.Fatalf("error = %v, exit = %d", err, output.ExitCodeOf(err))
-	}
-	if stderr != "" {
-		t.Fatalf("stderr = %q", stderr)
-	}
-	var envelope struct {
-		OK   bool            `json:"ok"`
-		Data typedRunnerData `json:"data"`
-	}
-	if unmarshalErr := json.Unmarshal([]byte(stdout), &envelope); unmarshalErr != nil {
-		t.Fatalf("stdout = %q: %v", stdout, unmarshalErr)
-	}
-	if envelope.OK || len(envelope.Data.Items) != 1 {
-		t.Fatalf("envelope = %#v", envelope)
-	}
-	if strings.Count(strings.TrimSpace(stdout), "\n{\"") > 0 {
-		t.Fatalf("stdout contains more than one envelope: %q", stdout)
-	}
-}
-
 func TestTypedRunnerRejectsResultAndErrorTogether(t *testing.T) {
 	definition := typedRunnerDefinition(nil, false)
 	sentinel := errs.NewValidationError(errs.SubtypeFailedPrecondition, "fixture unavailable")
-	definition.Hooks.Execute = func(context.Context, CommandContext, *typedRunnerArgs) (Result[typedRunnerData], error) {
-		return Success(typedRunnerData{}), sentinel
+	definition.Hooks.Execute = func(context.Context, typedRuntimeContext, *typedRunnerArgs) (typedResult[typedRunnerData], error) {
+		return typedSuccess(typedRunnerData{}), sentinel
 	}
 	_, _, err := runTypedFixture(t, definition, "", "--token", "x")
 	problem, ok := errs.ProblemOf(err)
@@ -645,8 +509,8 @@ func TestTypedRunnerRejectsResultAndErrorTogether(t *testing.T) {
 func TestTypedRunnerExecuteErrorPassesThrough(t *testing.T) {
 	definition := typedRunnerDefinition(nil, false)
 	sentinel := errs.NewValidationError(errs.SubtypeFailedPrecondition, "fixture unavailable")
-	definition.Hooks.Execute = func(context.Context, CommandContext, *typedRunnerArgs) (Result[typedRunnerData], error) {
-		return Result[typedRunnerData]{}, sentinel
+	definition.Hooks.Execute = func(context.Context, typedRuntimeContext, *typedRunnerArgs) (typedResult[typedRunnerData], error) {
+		return typedResult[typedRunnerData]{}, sentinel
 	}
 	_, _, err := runTypedFixture(t, definition, "", "--token", "x")
 	if err != sentinel {

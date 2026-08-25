@@ -66,15 +66,15 @@ type collisionPrintOnlyArgs struct {
 	PrintSchema bool `flag:"print-schema" schema:"optional" doc:"business schema switch"`
 }
 
-func collisionDefinition[Args any](risk Risk, input InputDefinition) typedDefinition[Args, collisionData] {
+func collisionDefinition[Args any](risk typedRisk, input typedInputDefinition) typedDefinition[Args, collisionData] {
 	return typedDefinition[Args, collisionData]{
-		Metadata: CommandMetadata{
+		Metadata: typedCommandMetadata{
 			Service: "fixture", Command: "+collision", Description: "collision fixture", Risk: risk,
-			Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{IdentityUser: {}}},
+			Authorization: typedAuthorizationDefinition{Identities: map[typedIdentity]typedIdentityAuthorization{typedIdentityUser: {}}},
 		},
 		Input: input,
-		Hooks: typedHooks[Args, collisionData]{Execute: func(context.Context, CommandContext, *Args) (Result[collisionData], error) {
-			return Success(collisionData{OK: true}), nil
+		Hooks: typedHooks[Args, collisionData]{Execute: func(context.Context, typedRuntimeContext, *Args) (typedResult[collisionData], error) {
+			return typedSuccess(collisionData{OK: true}), nil
 		}},
 	}
 }
@@ -105,21 +105,29 @@ func TestDefineRejectsActiveFrameworkFlagCollisions(t *testing.T) {
 		run  func()
 		want string
 	}{
-		{name: "dry-run", run: func() { _ = defineTypedShortcut(collisionDefinition[collisionDryRunArgs](RiskRead, InputDefinition{})) }, want: "framework dry-run execution"},
-		{name: "as", run: func() { _ = defineTypedShortcut(collisionDefinition[collisionAsArgs](RiskRead, InputDefinition{})) }, want: "framework identity selection"},
-		{name: "jq", run: func() { _ = defineTypedShortcut(collisionDefinition[collisionJQArgs](RiskRead, InputDefinition{})) }, want: "framework output filtering"},
+		{name: "dry-run", run: func() {
+			_ = defineTypedShortcut(collisionDefinition[collisionDryRunArgs](typedRiskRead, typedInputDefinition{}))
+		}, want: "framework dry-run execution"},
+		{name: "as", run: func() {
+			_ = defineTypedShortcut(collisionDefinition[collisionAsArgs](typedRiskRead, typedInputDefinition{}))
+		}, want: "framework identity selection"},
+		{name: "jq", run: func() {
+			_ = defineTypedShortcut(collisionDefinition[collisionJQArgs](typedRiskRead, typedInputDefinition{}))
+		}, want: "framework output filtering"},
 		{name: "profile", run: func() {
-			_ = defineTypedShortcut(collisionDefinition[collisionProfileArgs](RiskRead, InputDefinition{}))
+			_ = defineTypedShortcut(collisionDefinition[collisionProfileArgs](typedRiskRead, typedInputDefinition{}))
 		}, want: "inherited profile selection"},
-		{name: "help", run: func() { _ = defineTypedShortcut(collisionDefinition[collisionHelpArgs](RiskRead, InputDefinition{})) }, want: "Cobra help"},
+		{name: "help", run: func() {
+			_ = defineTypedShortcut(collisionDefinition[collisionHelpArgs](typedRiskRead, typedInputDefinition{}))
+		}, want: "Cobra help"},
 		{name: "high-risk yes", run: func() {
-			_ = defineTypedShortcut(collisionDefinition[collisionYesArgs](RiskHighRiskWrite, InputDefinition{}))
+			_ = defineTypedShortcut(collisionDefinition[collisionYesArgs](typedRiskHighRiskWrite, typedInputDefinition{}))
 		}, want: "framework high-risk confirmation"},
 		{name: "print-schema when introspection is active", run: func() {
-			_ = defineTypedShortcut(collisionDefinition[collisionPrintSchemaArgs](RiskRead, InputDefinition{}))
+			_ = defineTypedShortcut(collisionDefinition[collisionPrintSchemaArgs](typedRiskRead, typedInputDefinition{}))
 		}, want: "framework complex-input introspection"},
 		{name: "flag-name when introspection is active", run: func() {
-			_ = defineTypedShortcut(collisionDefinition[collisionFlagNameArgs](RiskRead, InputDefinition{}))
+			_ = defineTypedShortcut(collisionDefinition[collisionFlagNameArgs](typedRiskRead, typedInputDefinition{}))
 		}, want: "framework complex-input introspection"},
 	}
 	for _, test := range tests {
@@ -130,7 +138,7 @@ func TestDefineRejectsActiveFrameworkFlagCollisions(t *testing.T) {
 }
 
 func TestDefinePreservesExistingBusinessFlagMeanings(t *testing.T) {
-	shortcut := defineTypedShortcut(collisionDefinition[collisionAllowedArgs](RiskWrite, InputDefinition{}))
+	shortcut := defineTypedShortcut(collisionDefinition[collisionAllowedArgs](typedRiskWrite, typedInputDefinition{}))
 	for _, name := range []string{"json", "format", "yes", "version"} {
 		found := false
 		for _, flag := range shortcut.Flags {
@@ -167,14 +175,14 @@ func TestDefinePreservesExistingBusinessFlagMeanings(t *testing.T) {
 }
 
 func TestDefineRejectsNormalizeAliasThatWouldCollideAfterMount(t *testing.T) {
-	definition := collisionDefinition[collisionAliasArgs](RiskRead, InputDefinition{Fields: []InputField{{
-		Name: "value", CLI: CLIInput{Aliases: []FlagAlias{{Name: "format", Mode: AliasNormalize}}},
+	definition := collisionDefinition[collisionAliasArgs](typedRiskRead, typedInputDefinition{Fields: []typedInputField{{
+		Name: "value", CLI: typedCLIInput{Aliases: []typedFlagAlias{{Name: "format", Mode: typedAliasNormalize}}},
 	}}})
 	requireTypedCollisionPanic(t, func() { _ = defineTypedShortcut(definition) }, "Args field Value", "normalize alias --format", "output format")
 }
 
 func TestMountRejectsSchemaCollisionAddedAfterDefine(t *testing.T) {
-	shortcut := defineTypedShortcut(collisionDefinition[collisionPrintOnlyArgs](RiskRead, InputDefinition{}))
+	shortcut := defineTypedShortcut(collisionDefinition[collisionPrintOnlyArgs](typedRiskRead, typedInputDefinition{}))
 	shortcut.PrintFlagSchema = func(string) ([]byte, error) { return []byte(`{}`), nil }
 	factory, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{})
 	parent := &cobra.Command{Use: "fixture"}

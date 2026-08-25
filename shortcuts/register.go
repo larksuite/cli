@@ -14,6 +14,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/commandbridge"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/deprecation"
 	"github.com/larksuite/cli/internal/registry"
@@ -107,13 +108,13 @@ func init() {
 //
 //go:noinline
 func AllShortcuts() []common.Shortcut {
-	return common.CloneShortcuts(allShortcuts)
+	return common.CloneHostedShortcuts(allShortcuts, commandbridge.Access{})
 }
 
 // AllShortcutsWithExternal returns one isolated shortcut snapshot after validating external path collisions.
 func AllShortcutsWithExternal(commands []common.Shortcut) ([]common.Shortcut, error) {
 	registered := AllShortcuts()
-	external := common.CloneShortcuts(commands)
+	external := common.CloneHostedShortcuts(commands, commandbridge.Access{})
 	paths := make(map[string]struct{}, len(registered)+len(external))
 	for _, shortcut := range registered {
 		paths[shortcut.Service+" "+shortcut.Command] = struct{}{}

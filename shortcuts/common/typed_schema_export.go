@@ -3,8 +3,11 @@
 
 package common
 
-// ShortcutSchema returns the immutable schema contract of a Typed Shortcut.
-func ShortcutSchema(shortcut Shortcut) (any, bool) {
+import "github.com/larksuite/cli/internal/commandbridge"
+
+// ShortcutSchema returns the immutable schema contract of a hosted command.
+// The internal token keeps schema inspection out of common's public surface.
+func ShortcutSchema(shortcut Shortcut, _ commandbridge.Access) (any, bool) {
 	if shortcut.typed == nil {
 		return nil, false
 	}

@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/internal/commandbridge"
 )
 
 // recursiveSlice refers back to itself through a slice field.
@@ -59,7 +61,7 @@ func TestCompileDataRejectsRecursiveTypes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := compileData(tt.typ, DataDefinition{})
+			_, err := compileData(tt.typ, typedDataDefinition{})
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("error = %v, want containing %q", err, tt.want)
 			}
@@ -80,7 +82,7 @@ func TestCompileDataAllowsRepeatedNonRecursiveTypes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := compileData(tt.typ, DataDefinition{}); err != nil {
+			if _, err := compileData(tt.typ, typedDataDefinition{}); err != nil {
 				t.Fatalf("compileData() error = %v, want nil", err)
 			}
 		})
@@ -91,41 +93,41 @@ func TestCompileInputRejectsRecursiveJSONTypes(t *testing.T) {
 	args := reflect.TypeFor[struct {
 		Tree recursiveSlice `flag:"tree" schema:"required" cli:"encoding=json" doc:"tree payload"`
 	}]()
-	_, _, err := compileInput(args, InputDefinition{})
+	_, _, err := compileInput(args, typedInputDefinition{})
 	if err == nil || !strings.Contains(err.Error(), "recursive type common.recursiveSlice") {
 		t.Fatalf("error = %v, want containing recursive type diagnostic", err)
 	}
 }
 
-// TestCompileErasedDefinitionRejectsRecursiveDataWithoutCrashing pins the
+// TestCompileCommandDefinitionRejectsRecursiveDataWithoutCrashing pins the
 // public contract: a recursive type is a returned error, not a stack overflow
 // that takes the whole process down during command registration.
-func TestCompileErasedDefinitionRejectsRecursiveDataWithoutCrashing(t *testing.T) {
+func TestCompileCommandDefinitionRejectsRecursiveDataWithoutCrashing(t *testing.T) {
 	type recursionArgs struct {
 		Name string `flag:"name" schema:"optional" doc:"a name"`
 	}
-	_, err := CompileErasedDefinition(ErasedDefinition{
-		Metadata: CommandMetadata{
+	_, err := CompileCommandDefinition(commandbridge.Definition{
+		Metadata: typedCommandMetadata{
 			Service:     "probe",
 			Command:     "+tree",
 			Description: "probe",
-			Risk:        RiskRead,
-			Authorization: AuthorizationDefinition{
-				Identities: map[Identity]IdentityAuthorization{
-					IdentityUser: {RequiredScopes: []string{"probe:read"}},
+			Risk:        typedRiskRead,
+			Authorization: typedAuthorizationDefinition{
+				Identities: map[typedIdentity]typedIdentityAuthorization{
+					typedIdentityUser: {RequiredScopes: []string{"probe:read"}},
 				},
 			},
 		},
 		ArgsType: reflect.TypeFor[recursionArgs](),
 		DataType: reflect.TypeFor[recursiveSlice](),
-		Hooks: ErasedHooks{
+		Hooks: commandbridge.Hooks{
 			NewArgs: func() any { return &recursionArgs{} },
-			Execute: func(context.Context, CommandContext, any) (ErasedResult, error) {
-				return ErasedResult{Data: recursiveSlice{}}, nil
+			Execute: func(context.Context, typedRuntimeContext, any) (commandbridge.Result, error) {
+				return commandbridge.Result{Data: recursiveSlice{}, Outcome: string(typedOutcomeSuccess)}, nil
 			},
 		},
-	})
+	}, commandbridge.Access{})
 	if err == nil || !strings.Contains(err.Error(), "recursive type common.recursiveSlice") {
-		t.Fatalf("CompileErasedDefinition() error = %v, want containing recursive type diagnostic", err)
+		t.Fatalf("CompileCommandDefinition() error = %v, want containing recursive type diagnostic", err)
 	}
 }

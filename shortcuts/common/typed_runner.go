@@ -36,7 +36,7 @@ func runTypedShortcut(cmdFactory *cmdutil.Factory, runtime *RuntimeContext, shor
 			return attributeAliasValidationError(runtime, err)
 		}
 	}
-	if err := validateCompiledRelations(command, bound.value, bound.provided, StageAfterPrepare); err != nil {
+	if err := validateCompiledRelations(command, bound.value, bound.provided, typedStageAfterPrepare); err != nil {
 		return err
 	}
 	if command.hooks.validate != nil {
@@ -57,7 +57,7 @@ func runTypedShortcut(cmdFactory *cmdutil.Factory, runtime *RuntimeContext, shor
 		}
 		return cmdutil.WriteDryRun(preview, cmdutil.DryRunOutputOptions{Format: runtime.Format, JqExpr: runtime.JqExpr, CommandPath: runtime.Cmd.CommandPath(), Identity: runtime.As(), Out: cmdFactory.IOStreams.Out, ErrOut: cmdFactory.IOStreams.ErrOut})
 	}
-	if shortcut.Risk == string(RiskHighRiskWrite) && !runtime.Bool("yes") {
+	if shortcut.Risk == string(typedRiskHighRiskWrite) && !runtime.Bool("yes") {
 		return cmdutil.RequireConfirmation(shortcut.Service + " " + shortcut.Command)
 	}
 	result, err := command.hooks.execute(runtime.ctx, commandContext, bound.value)
@@ -78,7 +78,7 @@ func validateTypedStdinInputs(runtime *RuntimeContext, command *compiledCommand)
 	for _, field := range command.fields {
 		supportsStdin := false
 		for _, source := range field.cli.ValueSources {
-			if source == SourceStdin {
+			if source == typedSourceStdin {
 				supportsStdin = true
 				break
 			}
@@ -122,39 +122,26 @@ func emitTypedResult(runtime *RuntimeContext, command *compiledCommand, result c
 		}
 	}
 	format := runtime.Format
-	if command.output.Mode == OutputFixedJSON {
+	if command.output.Mode == typedOutputFixedJSON {
 		// Compatibility for Legacy hooks that used RuntimeContext.Out: the
 		// injected --format flag existed but output was always JSON.
 		format = ""
 	}
 	options := output.EmitOptions{Format: format, Raw: command.output.DisableHTMLEscaping, JQ: runtime.JqExpr, Pretty: pretty, Meta: outputMetaFromTyped(result.meta)}
 	switch result.outcome {
-	case OutcomeSuccess:
+	case typedOutcomeSuccess:
 		runtime.handleEmitterError(runtime.newEmitter().Success(result.data, options))
 		return runtime.outputErr
-	case OutcomePartial:
-		partial := command.output.Outcomes.PartialFailure
-		if partial == nil {
-			return errs.NewInternalError(errs.SubtypeUnknown, "typed Execute returned Partial but Output does not declare partial failure")
-		}
-		runtime.handleEmitterError(runtime.newEmitter().PartialFailure(result.data, options))
-		if runtime.outputErr != nil {
-			return runtime.outputErr
-		}
-		return output.PartialFailure(partial.ExitCode)
 	default:
 		return errs.NewInternalError(errs.SubtypeUnknown, "typed Execute returned invalid Outcome %q", result.outcome)
 	}
 }
 
-func outputMetaFromTyped(meta *ResultMeta) *output.Meta {
+func outputMetaFromTyped(meta *typedResultMeta) *output.Meta {
 	if meta == nil {
 		return nil
 	}
 	converted := &output.Meta{}
-	if meta.Count != nil {
-		converted.Count = *meta.Count
-	}
 	if meta.Pagination != nil {
 		pagination := *meta.Pagination
 		converted.Pagination = &pagination
@@ -167,7 +154,7 @@ type typedCommandContext struct {
 	command *compiledCommand
 }
 
-func (c typedCommandContext) Identity() Identity                    { return Identity(c.runtime.As()) }
+func (c typedCommandContext) Identity() typedIdentity               { return typedIdentity(c.runtime.As()) }
 func (c typedCommandContext) Config() core.CliConfig                { return *c.runtime.Config }
 func (c typedCommandContext) APIClient() (*client.APIClient, error) { return c.runtime.getAPIClient() }
 func (c typedCommandContext) FileIO() fileio.FileIO                 { return c.runtime.FileIO() }
@@ -180,7 +167,7 @@ func (c typedCommandContext) InputResolvedFromSource(param string) bool {
 		return false
 	}
 	for _, alias := range c.command.fields[fieldIndex].cli.Aliases {
-		if alias.Mode == AliasIndependent && c.runtime.InputResolvedFromSource(alias.Name) {
+		if alias.Mode == typedAliasIndependent && c.runtime.InputResolvedFromSource(alias.Name) {
 			return true
 		}
 	}
@@ -196,12 +183,12 @@ func (c typedCommandContext) StartSpinner(label string) func() {
 }
 func (c typedCommandContext) PresentError(err error) error { return c.runtime.PresentError(err) }
 func (c typedCommandContext) IsDryRun() bool               { return c.runtime != nil && c.runtime.Bool("dry-run") }
-func (c typedCommandContext) PaginationOptions() (PaginationOptions, error) {
+func (c typedCommandContext) PaginationOptions() (typedPaginationOptions, error) {
 	values, err := pageAllValues(c.runtime)
 	if err != nil {
-		return PaginationOptions{}, err
+		return typedPaginationOptions{}, err
 	}
-	return PaginationOptions{All: values.enabled, MaxPages: values.maxPages, Delay: values.delay}, nil
+	return typedPaginationOptions{All: values.enabled, MaxPages: values.maxPages, Delay: values.delay}, nil
 }
 func (c typedCommandContext) typedCommandPath() string {
 	if c.runtime == nil || c.runtime.Cmd == nil {
@@ -236,4 +223,4 @@ func (c typedCommandContext) RequireConditionalScopes(scopes ...string) error {
 	return c.runtime.EnsureScopes(requested)
 }
 
-var _ CommandContext = typedCommandContext{}
+var _ typedRuntimeContext = typedCommandContext{}

@@ -29,8 +29,8 @@ func TestInstallTypedGroupedUsage(t *testing.T) {
 		},
 		Constraints: []typedConstraintHelpFact{{Kind: "exactly_one", Params: []string{"token", "labels"}, Presence: "provided"}},
 		Authorization: []typedAuthorizationHelpFact{{Identity: "user", RequiredScopes: []string{"fixture:write"}, ConditionalScopes: []typedConditionalScopeHelpFact{
-			{Scopes: []string{"fixture:read"}, When: "--labels requests lookup", Params: []string{"labels"}, Requirement: ScopeRequired},
-			{Scopes: []string{"fixture:enrich"}, When: "detail enrichment is available", Requirement: ScopeBestEffort},
+			{Scopes: []string{"fixture:read"}, When: "--labels requests lookup", Params: []string{"labels"}, Requirement: typedScopeRequired},
+			{Scopes: []string{"fixture:enrich"}, When: "detail enrichment is available", Requirement: typedScopeBestEffort},
 		}}},
 		Execution:   []typedHelpFlagRef{{Name: "dry-run"}},
 		OutputFlags: []typedHelpFlagRef{{Name: "format"}},
@@ -74,18 +74,18 @@ func TestInstallTypedGroupedUsage(t *testing.T) {
 
 func TestConstraintTextKinds(t *testing.T) {
 	tests := map[string]string{
-		string(RelationExactlyOne): "exactly one of: --a, --b",
-		string(RelationAtLeastOne): "at least one of: --a, --b",
-		string(RelationRequires):   "--a requires --b",
-		string(RelationConflicts):  "conflicting parameters: --a, --b",
-		string(RelationCoOccur):    "all or none of: --a, --b",
+		string(typedRelationExactlyOne): "exactly one of: --a, --b",
+		string(typedRelationAtLeastOne): "at least one of: --a, --b",
+		string(typedRelationRequires):   "--a requires --b",
+		string(typedRelationConflicts):  "conflicting parameters: --a, --b",
+		string(typedRelationCoOccur):    "all or none of: --a, --b",
 	}
 	for kind, want := range tests {
 		if got := typedHelpConstraintText(typedConstraintHelpFact{Kind: kind, Params: []string{"a", "b"}}); got != want {
 			t.Errorf("%s = %q, want %q", kind, got, want)
 		}
 	}
-	if got := typedHelpConstraintText(typedConstraintHelpFact{Kind: string(RelationExactlyOne), Params: []string{"a", "b"}, Presence: string(PresenceNonZero)}); !strings.Contains(got, "using non-zero values") {
+	if got := typedHelpConstraintText(typedConstraintHelpFact{Kind: string(typedRelationExactlyOne), Params: []string{"a", "b"}, Presence: string(typedPresenceNonZero)}); !strings.Contains(got, "using non-zero values") {
 		t.Errorf("nonzero = %q", got)
 	}
 }

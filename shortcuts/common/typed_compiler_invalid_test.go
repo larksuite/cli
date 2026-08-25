@@ -4,22 +4,28 @@
 package common
 
 import (
+	"context"
 	"math"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/extension/command"
+	"github.com/larksuite/cli/internal/commandbridge"
 )
 
-func TestCompileErasedDefinitionConvertsNewArgsPanicToError(t *testing.T) {
-	_, err := CompileErasedDefinition(ErasedDefinition{
+func TestCompileCommandDefinitionConvertsNewArgsPanicToError(t *testing.T) {
+	_, err := CompileCommandDefinition(commandbridge.Definition{
 		ArgsType: reflect.TypeFor[compilerArgs](),
 		DataType: reflect.TypeFor[compilerData](),
-		Hooks: ErasedHooks{NewArgs: func() any {
+		Hooks: commandbridge.Hooks{NewArgs: func() any {
 			panic("constructor failure")
+		}, Execute: func(context.Context, typedRuntimeContext, any) (commandbridge.Result, error) {
+			return commandbridge.Result{}, nil
 		}},
-	})
+	}, commandbridge.Access{})
 	if err == nil || !strings.Contains(err.Error(), "Hooks.NewArgs panicked: constructor failure") {
-		t.Fatalf("CompileErasedDefinition() error = %v", err)
+		t.Fatalf("CompileCommandDefinition() error = %v", err)
 	}
 }
 
@@ -66,7 +72,7 @@ func TestCompileDefinitionRejectsInvalidCommandSegments(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			definition := validCompilerDefinition()
-			definition.Metadata.Service = test.service
+			definition.Metadata.Service = command.DomainName(test.service)
 			definition.Metadata.Command = test.command
 			if _, err := compileDefinition(definition); err == nil {
 				t.Fatalf("Metadata.Service=%q Metadata.Command=%q was accepted", test.service, test.command)
@@ -117,56 +123,56 @@ func TestCompileInputRejectsInvalidFieldContracts(t *testing.T) {
 	tests := []struct {
 		name  string
 		typ   reflect.Type
-		input InputDefinition
+		input typedInputDefinition
 		want  string
 	}{
-		{"not struct", reflect.TypeFor[string](), InputDefinition{}, "Args must"},
-		{"missing marker", reflect.TypeFor[struct{ Value string }](), InputDefinition{}, "exactly one"},
+		{"not struct", reflect.TypeFor[string](), typedInputDefinition{}, "Args must"},
+		{"missing marker", reflect.TypeFor[struct{ Value string }](), typedInputDefinition{}, "exactly one"},
 		{"tagged unexported field", reflect.TypeFor[struct {
 			value string `flag:"value" schema:"optional" doc:"value"`
-		}](), InputDefinition{}, "unexported"},
+		}](), typedInputDefinition{}, "unexported"},
 		{"both markers", reflect.TypeFor[struct {
 			Value string `flag:"value" arg:"local"`
-		}](), InputDefinition{}, "exactly one"},
+		}](), typedInputDefinition{}, "exactly one"},
 		{"unknown arg", reflect.TypeFor[struct {
 			Value string `arg:"derived"`
-		}](), InputDefinition{}, "unknown arg mode"},
+		}](), typedInputDefinition{}, "unknown arg mode"},
 		{"complex missing encoding", reflect.TypeFor[struct {
 			Values []string `flag:"values" schema:"optional" doc:"values"`
-		}](), InputDefinition{}, "explicitly declare CLI encoding"},
+		}](), typedInputDefinition{}, "explicitly declare CLI encoding"},
 		{"fixed array default length", reflect.TypeFor[struct {
 			Values [2]string `flag:"values" schema:"optional;default=[\"one\",\"two\",\"three\"]" cli:"encoding=repeated" doc:"values"`
-		}](), InputDefinition{}, "requires exactly 2 items"},
+		}](), typedInputDefinition{}, "requires exactly 2 items"},
 		{"json nil unspecified", reflect.TypeFor[struct {
 			Values []string `flag:"values" schema:"optional" cli:"encoding=json" doc:"values"`
-		}](), InputDefinition{}, "must declare nullable"},
+		}](), typedInputDefinition{}, "must declare nullable"},
 		{"file on int", reflect.TypeFor[struct {
 			Value int `flag:"value" schema:"optional" cli:"sources=flag|file" doc:"value"`
-		}](), InputDefinition{}, "file/stdin"},
+		}](), typedInputDefinition{}, "file/stdin"},
 		{"unknown supplement", reflect.TypeFor[struct {
 			Value string `flag:"value" schema:"optional" doc:"value"`
-		}](), InputDefinition{Fields: []InputField{{Name: "other"}}}, "unknown flag"},
+		}](), typedInputDefinition{Fields: []typedInputField{{Name: "other"}}}, "unknown flag"},
 		{"description conflict", reflect.TypeFor[struct {
 			Value string `flag:"value" schema:"optional" doc:"value"`
-		}](), InputDefinition{Fields: []InputField{{Name: "value", Description: "again"}}}, "both doc"},
+		}](), typedInputDefinition{Fields: []typedInputField{{Name: "value", Description: "again"}}}, "both doc"},
 		{"oneOf includes unrepresentable variant", reflect.TypeFor[struct {
 			Value string `flag:"value" schema:"optional" doc:"value"`
-		}](), InputDefinition{Fields: []InputField{{Name: "value", Shape: OneOfShape{Variants: []ValueShape{StringShape{}, IntegerShape{}}}}}}, "incompatible with Go type"},
+		}](), typedInputDefinition{Fields: []typedInputField{{Name: "value", Shape: command.OneOfShape{Variants: []command.ValueShape{command.StringShape{}, command.IntegerShape{}}}}}}, "incompatible with Go type"},
 		{"explicit shape with schema constraints", reflect.TypeFor[struct {
 			Value string `flag:"value" schema:"optional;minLength=1" doc:"value"`
-		}](), InputDefinition{Fields: []InputField{{Name: "value", Shape: StringShape{}}}}, "conflicts with schema constraints"},
+		}](), typedInputDefinition{Fields: []typedInputField{{Name: "value", Shape: command.StringShape{}}}}, "conflicts with schema constraints"},
 		{"repeated non-string elements", reflect.TypeFor[struct {
 			Values []int `flag:"values" schema:"optional" cli:"encoding=repeated" doc:"values"`
-		}](), InputDefinition{}, "only supports string arrays"},
+		}](), typedInputDefinition{}, "only supports string arrays"},
 		{"byte slice inference", reflect.TypeFor[struct {
 			Value []byte `flag:"value" schema:"optional;nonnullable" cli:"encoding=json" doc:"value"`
-		}](), InputDefinition{}, "requires an explicit Shape"},
+		}](), typedInputDefinition{}, "requires an explicit Shape"},
 		{"alias missing conflict", reflect.TypeFor[struct {
 			Value string `flag:"value" schema:"optional" doc:"value"`
-		}](), InputDefinition{Fields: []InputField{{Name: "value", CLI: CLIInput{Aliases: []FlagAlias{{Name: "old", Mode: AliasIndependent}}}}}}, "must declare"},
+		}](), typedInputDefinition{Fields: []typedInputField{{Name: "value", CLI: typedCLIInput{Aliases: []typedFlagAlias{{Name: "old", Mode: typedAliasIndependent}}}}}}, "must declare"},
 		{"deprecated normalize alias", reflect.TypeFor[struct {
 			Value string `flag:"value" schema:"optional" doc:"value"`
-		}](), InputDefinition{Fields: []InputField{{Name: "value", CLI: CLIInput{Aliases: []FlagAlias{{Name: "old", Mode: AliasNormalize, Deprecated: true}}}}}}, "must use independent mode"},
+		}](), typedInputDefinition{Fields: []typedInputField{{Name: "value", CLI: typedCLIInput{Aliases: []typedFlagAlias{{Name: "old", Mode: typedAliasNormalize, Deprecated: true}}}}}}, "must use independent mode"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -202,7 +208,7 @@ func TestCompileDataRejectsJSONContractDrift(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := compileData(tt.typ, DataDefinition{})
+			_, err := compileData(tt.typ, typedDataDefinition{})
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("error = %v, want containing %q", err, tt.want)
 			}
@@ -212,56 +218,17 @@ func TestCompileDataRejectsJSONContractDrift(t *testing.T) {
 
 func TestValidateShapeRejectsMalformedExplicitShapes(t *testing.T) {
 	for _, tt := range []struct {
-		shape ValueShape
+		shape typedValueShape
 		want  string
 	}{
-		{OneOfShape{Variants: []ValueShape{StringShape{}}}, "at least two"},
-		{ArrayShape{}, "Items is required"},
-		{ObjectShape{Fields: []ValueField{{Name: "x", Shape: StringShape{}}}}, "Description is required"},
-		{ObjectShape{AdditionalPropertiesShape: StringShape{}}, "requires AdditionalProperties"},
-		{NumberShape{Enum: []float64{math.Inf(1)}}, "must be finite"},
+		{typedOneOfShape{Variants: []typedValueShape{typedStringShape{}}}, "at least two"},
+		{typedArrayShape{}, "Items is required"},
+		{typedObjectShape{Fields: []typedValueField{{Name: "x", Shape: typedStringShape{}}}}, "Description is required"},
+		{typedObjectShape{AdditionalPropertiesShape: typedStringShape{}}, "requires AdditionalProperties"},
+		{typedNumberShape{Enum: []float64{math.Inf(1)}}, "must be finite"},
 	} {
 		if err := validateShape(tt.shape, "shape"); err == nil || !strings.Contains(err.Error(), tt.want) {
 			t.Fatalf("shape %T error = %v, want %q", tt.shape, err, tt.want)
 		}
 	}
-}
-
-func TestValidateOutputChecksEveryOneOfVariant(t *testing.T) {
-	itemWithStringPath := ObjectShape{Fields: []ValueField{{Name: "path", Description: "artifact path", Required: true, Shape: StringShape{}}}}
-	itemWithIntegerPath := ObjectShape{Fields: []ValueField{{Name: "path", Description: "artifact path", Required: true, Shape: IntegerShape{}}}}
-	items := func(item ValueShape) ValueField {
-		return ValueField{Name: "items", Description: "items", Required: true, Shape: ArrayShape{Items: item}}
-	}
-
-	t.Run("missing path in variant", func(t *testing.T) {
-		valid := ObjectShape{Fields: []ValueField{items(itemWithStringPath)}}
-		invalid := ObjectShape{Fields: []ValueField{{Name: "other", Description: "other", Required: true, Shape: StringShape{}}}}
-		for _, variants := range [][]ValueShape{{valid, invalid}, {invalid, valid}} {
-			shape := OneOfShape{Variants: variants}
-			output := OutputDefinition{Outcomes: OutcomeDefinition{PartialFailure: &PartialFailureDefinition{
-				ExitCode: 1,
-				FailedItems: &FailedItemDefinition{
-					ItemsPath:    "/items",
-					StatePath:    "/path",
-					FailedValues: []JSONValue{"failed"},
-				},
-			}}}
-			if err := validateOutput(output, shape); err == nil || !strings.Contains(err.Error(), "does not exist") {
-				t.Fatalf("variants %T/%T error = %v", variants[0], variants[1], err)
-			}
-		}
-	})
-
-	t.Run("incompatible path type in variant", func(t *testing.T) {
-		valid := ObjectShape{Fields: []ValueField{items(itemWithStringPath)}}
-		invalid := ObjectShape{Fields: []ValueField{items(itemWithIntegerPath)}}
-		for _, variants := range [][]ValueShape{{valid, invalid}, {invalid, valid}} {
-			shape := OneOfShape{Variants: variants}
-			output := OutputDefinition{Artifacts: []ArtifactDefinition{{Name: "artifact", ItemsPath: "/items", PathField: "/path"}}}
-			if err := validateOutput(output, shape); err == nil || !strings.Contains(err.Error(), "must identify a string") {
-				t.Fatalf("variants %T/%T error = %v", variants[0], variants[1], err)
-			}
-		}
-	})
 }

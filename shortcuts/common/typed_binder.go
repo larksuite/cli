@@ -58,7 +58,7 @@ func bindTypedArgs(runtime *RuntimeContext, command *compiledCommand) (*boundArg
 			return nil, errs.NewInternalError(errs.SubtypeUnknown, "failed to bind --%s into Args.%s: %v", field.name, field.goName, err).WithCause(err)
 		}
 	}
-	if err := validateCompiledRelations(command, args, provided, StageSourcePreRun); err != nil {
+	if err := validateCompiledRelations(command, args, provided, typedStageSourcePreRun); err != nil {
 		return nil, err
 	}
 	return &boundArgs{value: args, provided: provided}, nil
@@ -78,7 +78,7 @@ func readCompiledField(runtime *RuntimeContext, field compiledInputField) (any, 
 	sourceName := field.name
 	sourceSet := canonicalSet
 	for _, alias := range field.cli.Aliases {
-		if alias.Mode != AliasIndependent {
+		if alias.Mode != typedAliasIndependent {
 			continue
 		}
 		aliasFlag := runtime.Cmd.Flags().Lookup(alias.Name)
@@ -93,20 +93,20 @@ func readCompiledField(runtime *RuntimeContext, field compiledInputField) (any, 
 			return nil, false, err
 		}
 		switch alias.Conflict {
-		case AliasCanonicalWins:
+		case typedAliasCanonicalWins:
 			if !sourceSet {
 				value = aliasRaw
 				set = true
 				sourceName, sourceSet = alias.Name, true
 			}
-		case AliasErrorIfBoth:
+		case typedAliasErrorIfBoth:
 			if sourceSet {
 				return nil, false, errs.NewValidationError(errs.SubtypeInvalidArgument,
 					"--%s cannot be used together with --%s", sourceName, alias.Name).WithParam("--" + alias.Name)
 			}
 			value, set = aliasRaw, true
 			sourceName, sourceSet = alias.Name, true
-		case AliasTrimmedEqualOrError:
+		case typedAliasTrimmedEqualOrError:
 			if sourceSet {
 				if strings.TrimSpace(fmt.Sprint(value)) != strings.TrimSpace(fmt.Sprint(aliasRaw)) {
 					if alias.Deprecated {
@@ -130,7 +130,7 @@ func readCompiledField(runtime *RuntimeContext, field compiledInputField) (any, 
 
 func readPFlagValue(runtime *RuntimeContext, name string, field compiledInputField) (any, error) {
 	t := indirectType(field.valueType)
-	if field.cli.Encoding == EncodingJSON {
+	if field.cli.Encoding == typedEncodingJSON {
 		return runtime.Str(name), nil
 	}
 	switch t.Kind() {
@@ -144,9 +144,9 @@ func readPFlagValue(runtime *RuntimeContext, name string, field compiledInputFie
 		return runtime.Cmd.Flags().GetFloat64(name)
 	case reflect.Slice, reflect.Array:
 		switch field.cli.Encoding {
-		case EncodingRepeated:
+		case typedEncodingRepeated:
 			return runtime.Cmd.Flags().GetStringArray(name)
-		case EncodingCommaOrRepeated:
+		case typedEncodingCommaOrRepeated:
 			if isIntegerKind(t.Elem().Kind()) {
 				return runtime.Cmd.Flags().GetIntSlice(name)
 			}
@@ -157,7 +157,7 @@ func readPFlagValue(runtime *RuntimeContext, name string, field compiledInputFie
 }
 
 func decodeCompiledValue(raw any, field compiledInputField) (any, error) {
-	if field.cli.Encoding == EncodingJSON {
+	if field.cli.Encoding == typedEncodingJSON {
 		text, ok := raw.(string)
 		if !ok {
 			encoded, err := json.Marshal(raw)
@@ -300,16 +300,16 @@ func validateCompiledValue(value any, field compiledInputField) error {
 		return nil
 	}
 	shape := field.shape
-	if one, ok := shape.(OneOfShape); ok {
+	if one, ok := shape.(typedOneOfShape); ok {
 		for _, variant := range one.Variants {
-			if _, null := variant.(NullShape); !null {
+			if _, null := variant.(typedNullShape); !null {
 				shape = variant
 				break
 			}
 		}
 	}
 	switch constraint := shape.(type) {
-	case StringShape:
+	case typedStringShape:
 		text := reflect.ValueOf(value)
 		for text.Kind() == reflect.Pointer {
 			text = text.Elem()
@@ -327,7 +327,7 @@ func validateCompiledValue(value any, field compiledInputField) error {
 		if len(constraint.Enum) > 0 && !slices.Contains(constraint.Enum, text.String()) {
 			return typedFieldValidation(field, "must be one of: %s", strings.Join(constraint.Enum, ", "))
 		}
-	case IntegerShape:
+	case typedIntegerShape:
 		number, err := numericFloat(value)
 		if err != nil {
 			break
@@ -338,7 +338,7 @@ func validateCompiledValue(value any, field compiledInputField) error {
 		if constraint.Maximum != nil && number > float64(*constraint.Maximum) {
 			return typedFieldValidation(field, "must be at most %d", *constraint.Maximum)
 		}
-	case NumberShape:
+	case typedNumberShape:
 		number, err := numericFloat(value)
 		if err != nil {
 			break
@@ -349,7 +349,7 @@ func validateCompiledValue(value any, field compiledInputField) error {
 		if constraint.Maximum != nil && number > *constraint.Maximum {
 			return typedFieldValidation(field, "must be at most %v", *constraint.Maximum)
 		}
-	case ArrayShape:
+	case typedArrayShape:
 		v := reflect.ValueOf(value)
 		for v.Kind() == reflect.Pointer {
 			if v.IsNil() {
@@ -381,23 +381,23 @@ func validateCompiledValue(value any, field compiledInputField) error {
 	return nil
 }
 
-func validateJSONValueAgainstShape(value any, shape ValueShape, path string) error {
+func validateJSONValueAgainstShape(value any, shape typedValueShape, path string) error {
 	switch constraint := shape.(type) {
 	case anyJSONShape:
 		return nil
-	case OneOfShape:
+	case typedOneOfShape:
 		for _, variant := range constraint.Variants {
 			if err := validateJSONValueAgainstShape(value, variant, path); err == nil {
 				return nil
 			}
 		}
 		return fmt.Errorf("%s does not match any allowed shape", path)
-	case NullShape:
+	case typedNullShape:
 		if value != nil {
 			return fmt.Errorf("%s must be null", path)
 		}
 		return nil
-	case ConstShape:
+	case typedConstShape:
 		expectedJSON, err := json.Marshal(constraint.Value)
 		if err != nil {
 			return fmt.Errorf("%s has invalid const: %w", path, err)
@@ -410,7 +410,7 @@ func validateJSONValueAgainstShape(value any, shape ValueShape, path string) err
 			return fmt.Errorf("%s must equal %v", path, constraint.Value)
 		}
 		return nil
-	case StringShape:
+	case typedStringShape:
 		text, ok := value.(string)
 		if !ok {
 			return fmt.Errorf("%s must be a string", path)
@@ -426,7 +426,7 @@ func validateJSONValueAgainstShape(value any, shape ValueShape, path string) err
 			return fmt.Errorf("%s must be one of: %s", path, strings.Join(constraint.Enum, ", "))
 		}
 		return nil
-	case BooleanShape:
+	case typedBooleanShape:
 		boolean, ok := value.(bool)
 		if !ok {
 			return fmt.Errorf("%s must be a boolean", path)
@@ -435,7 +435,7 @@ func validateJSONValueAgainstShape(value any, shape ValueShape, path string) err
 			return fmt.Errorf("%s has an unsupported boolean value", path)
 		}
 		return nil
-	case IntegerShape:
+	case typedIntegerShape:
 		number, ok := validationInteger(value)
 		if !ok {
 			return fmt.Errorf("%s must be an integer", path)
@@ -450,7 +450,7 @@ func validateJSONValueAgainstShape(value any, shape ValueShape, path string) err
 			return fmt.Errorf("%s has an unsupported integer value", path)
 		}
 		return nil
-	case NumberShape:
+	case typedNumberShape:
 		number, ok := validationNumber(value)
 		if !ok {
 			return fmt.Errorf("%s must be a number", path)
@@ -465,7 +465,7 @@ func validateJSONValueAgainstShape(value any, shape ValueShape, path string) err
 			return fmt.Errorf("%s must be at most %v", path, *constraint.Maximum)
 		}
 		return nil
-	case ArrayShape:
+	case typedArrayShape:
 		items, ok := value.([]any)
 		if !ok {
 			return fmt.Errorf("%s must be an array", path)
@@ -482,12 +482,12 @@ func validateJSONValueAgainstShape(value any, shape ValueShape, path string) err
 			}
 		}
 		return nil
-	case ObjectShape:
+	case typedObjectShape:
 		object, ok := value.(map[string]any)
 		if !ok {
 			return fmt.Errorf("%s must be an object", path)
 		}
-		fields := make(map[string]ValueField, len(constraint.Fields))
+		fields := make(map[string]typedValueField, len(constraint.Fields))
 		for _, field := range constraint.Fields {
 			fields[field.Name] = field
 			if field.Required {
@@ -556,7 +556,7 @@ func validationNumber(value any) (float64, bool) {
 	}
 }
 
-func validateCompiledRelations(command *compiledCommand, args any, provided []bool, stage RelationStage) error {
+func validateCompiledRelations(command *compiledCommand, args any, provided []bool, stage typedRelationStage) error {
 	root := reflect.ValueOf(args).Elem()
 	for _, relation := range command.relations {
 		if relation.stage != stage {
@@ -567,7 +567,7 @@ func validateCompiledRelations(command *compiledCommand, args any, provided []bo
 		for i, fieldIndex := range relation.fields {
 			field := command.fields[fieldIndex]
 			names[i] = "--" + field.name
-			if relation.presence == PresenceExplicit {
+			if relation.presence == typedPresenceExplicit {
 				present[i] = provided[fieldIndex]
 			} else {
 				present[i] = compiledFieldIsNonZero(root, field)
@@ -581,29 +581,29 @@ func validateCompiledRelations(command *compiledCommand, args any, provided []bo
 		}
 		var invalid bool
 		switch relation.kind {
-		case RelationExactlyOne:
+		case typedRelationExactlyOne:
 			invalid = count != 1
-		case RelationAtLeastOne:
+		case typedRelationAtLeastOne:
 			invalid = count == 0
-		case RelationCoOccur:
+		case typedRelationCoOccur:
 			invalid = count != 0 && count != len(present)
-		case RelationRequires:
+		case typedRelationRequires:
 			invalid = present[0] && !present[1]
-		case RelationConflicts:
+		case typedRelationConflicts:
 			invalid = count > 1
 		}
 		if invalid {
 			param := names[0]
 			switch relation.kind {
-			case RelationExactlyOne:
+			case typedRelationExactlyOne:
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "provide exactly one of %s", strings.Join(names, " or ")).WithParam(param)
-			case RelationAtLeastOne:
+			case typedRelationAtLeastOne:
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "provide at least one of %s", strings.Join(names, " or ")).WithParam(param)
-			case RelationCoOccur:
+			case typedRelationCoOccur:
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s must be provided together", strings.Join(names, " and ")).WithParam(param)
-			case RelationRequires:
+			case typedRelationRequires:
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s requires %s", names[0], names[1]).WithParam(param)
-			case RelationConflicts:
+			case typedRelationConflicts:
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s cannot be used together", strings.Join(names, " and ")).WithParam(param)
 			}
 		}

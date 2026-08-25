@@ -13,7 +13,7 @@ import (
 // writes run, so its bound is a host resource decision — deliberately tighter
 // than the user-facing --page-limit maximum.
 func TestCollectAllPolicyUsesWorkflowHardBound(t *testing.T) {
-	policy, err := commandPagePolicy(CommandContext(nil), true)
+	policy, err := commandPagePolicy(typedRuntimeContext(nil), true)
 	if err != nil {
 		t.Fatal(err)
 	}

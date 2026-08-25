@@ -5,9 +5,8 @@ package common
 
 import "fmt"
 
-// typedSchemaContract is intentionally private during migration. Compiler and
-// snapshot tests consume it now; public cmd/schema registration happens only
-// after all shortcuts are migrated.
+// typedSchemaContract is the private machine contract derived from the single
+// public extension/command declaration.
 type typedSchemaContract struct {
 	Name         string          `json:"name"`
 	Description  string          `json:"description"`
@@ -23,9 +22,9 @@ type typedSchemaNode struct {
 	Hidden               bool                       `json:"hidden,omitempty"`
 	Deprecated           string                     `json:"deprecated,omitempty"`
 	Aliases              *[]typedSchemaAlias        `json:"aliases,omitempty"`
-	ValueSources         []ValueSource              `json:"value_sources,omitempty"`
-	Enum                 []JSONValue                `json:"enum,omitempty"`
-	Default              *JSONValue                 `json:"default,omitempty"`
+	ValueSources         []typedValueSource         `json:"value_sources,omitempty"`
+	Enum                 []typedJSONValue           `json:"enum,omitempty"`
+	Default              *typedJSONValue            `json:"default,omitempty"`
 	Format               string                     `json:"format,omitempty"`
 	Minimum              *float64                   `json:"minimum,omitempty"`
 	Maximum              *float64                   `json:"maximum,omitempty"`
@@ -37,49 +36,49 @@ type typedSchemaNode struct {
 	Properties           map[string]typedSchemaNode `json:"properties,omitempty"`
 	Items                *typedSchemaNode           `json:"items,omitempty"`
 	OneOf                []typedSchemaNode          `json:"oneOf,omitempty"`
-	Const                *JSONValue                 `json:"const,omitempty"`
-	AdditionalProperties *JSONValue                 `json:"additionalProperties,omitempty"`
+	Const                *typedJSONValue            `json:"const,omitempty"`
+	AdditionalProperties *typedJSONValue            `json:"additionalProperties,omitempty"`
 }
 
 type typedSchemaAlias struct {
-	Name       string              `json:"name"`
-	Flag       string              `json:"flag"`
-	Mode       FlagAliasMode       `json:"mode"`
-	Conflict   AliasConflictPolicy `json:"conflict,omitempty"`
-	Hidden     bool                `json:"hidden,omitempty"`
-	Deprecated bool                `json:"deprecated,omitempty"`
+	Name       string                   `json:"name"`
+	Flag       string                   `json:"flag"`
+	Mode       typedFlagAliasMode       `json:"mode"`
+	Conflict   typedAliasConflictPolicy `json:"conflict,omitempty"`
+	Hidden     bool                     `json:"hidden,omitempty"`
+	Deprecated bool                     `json:"deprecated,omitempty"`
 }
 
 type typedSchemaMeta struct {
 	EnvelopeVersion string                   `json:"envelope_version"`
 	AccessTokens    []string                 `json:"access_tokens"`
 	Danger          bool                     `json:"danger"`
-	Risk            Risk                     `json:"risk"`
+	Risk            typedRisk                `json:"risk"`
 	Authorization   typedSchemaAuthorization `json:"authorization"`
 	CLI             typedSchemaCLI           `json:"cli"`
-	Relations       []Relation               `json:"relations"`
+	Relations       []typedRelation          `json:"relations"`
 	Formats         []typedSchemaFormat      `json:"formats"`
 	Outcomes        typedSchemaOutcomes      `json:"outcomes"`
 	ResultMeta      *typedSchemaNode         `json:"result_meta,omitempty"`
-	Artifacts       []ArtifactDefinition     `json:"artifacts"`
+	Artifacts       []any                    `json:"artifacts"`
 }
 
 type typedSchemaAuthorization struct {
-	Identities map[Identity]IdentityAuthorization `json:"identities"`
+	Identities map[typedIdentity]typedIdentityAuthorization `json:"identities"`
 }
 type typedSchemaCLI struct {
 	Flags       map[string]typedSchemaSystemFlag `json:"flags"`
 	Constraints []typedSchemaCLIConstraint       `json:"constraints"`
 }
 type typedSchemaSystemFlag struct {
-	Flag     string     `json:"flag"`
-	Short    string     `json:"short,omitempty"`
-	Role     string     `json:"role"`
-	Type     string     `json:"type"`
-	Default  *JSONValue `json:"default,omitempty"`
-	Enum     []string   `json:"enum,omitempty"`
-	AliasFor string     `json:"alias_for,omitempty"`
-	Omitted  string     `json:"omitted,omitempty"`
+	Flag     string          `json:"flag"`
+	Short    string          `json:"short,omitempty"`
+	Role     string          `json:"role"`
+	Type     string          `json:"type"`
+	Default  *typedJSONValue `json:"default,omitempty"`
+	Enum     []string        `json:"enum,omitempty"`
+	AliasFor string          `json:"alias_for,omitempty"`
+	Omitted  string          `json:"omitted,omitempty"`
 }
 type typedSchemaCLIConstraint struct {
 	Kind          string   `json:"kind"`
@@ -101,17 +100,17 @@ type typedSchemaOutcomes struct {
 	PartialFailure typedSchemaOutcome `json:"partial_failure"`
 }
 type typedSchemaOutcome struct {
-	Supported   bool                  `json:"supported"`
-	EnvelopeOK  bool                  `json:"envelope_ok"`
-	ExitCode    int                   `json:"exit_code"`
-	Stdout      string                `json:"stdout,omitempty"`
-	FailedItems *FailedItemDefinition `json:"failed_items,omitempty"`
+	Supported   bool   `json:"supported"`
+	EnvelopeOK  bool   `json:"envelope_ok"`
+	ExitCode    int    `json:"exit_code"`
+	Stdout      string `json:"stdout,omitempty"`
+	FailedItems any    `json:"failed_items,omitempty"`
 }
 
 func buildTypedSchemaContract(command *compiledCommand) typedSchemaContract {
 	required := []string{}
 	input := typedSchemaNode{Type: "object", Required: &required, Properties: make(map[string]typedSchemaNode)}
-	closed := JSONValue(false)
+	closed := typedJSONValue(false)
 	input.AdditionalProperties = &closed
 	for _, field := range command.fields {
 		node := schemaNodeFromShape(field.shape)
@@ -124,9 +123,9 @@ func buildTypedSchemaContract(command *compiledCommand) typedSchemaContract {
 		for _, alias := range field.cli.Aliases {
 			*node.Aliases = append(*node.Aliases, typedSchemaAlias{Name: alias.Name, Flag: "--" + alias.Name, Mode: alias.Mode, Conflict: alias.Conflict, Hidden: alias.Hidden, Deprecated: alias.Deprecated})
 		}
-		node.ValueSources = append([]ValueSource(nil), field.cli.ValueSources...)
+		node.ValueSources = append([]typedValueSource(nil), field.cli.ValueSources...)
 		if len(node.ValueSources) == 0 {
-			node.ValueSources = []ValueSource{SourceFlag}
+			node.ValueSources = []typedValueSource{typedSourceFlag}
 		}
 		if field.defaultValue.Set {
 			value := field.defaultValue.Value
@@ -138,49 +137,41 @@ func buildTypedSchemaContract(command *compiledCommand) typedSchemaContract {
 		}
 	}
 	schemaFormats := typedOutputFormats(command)
-	authorizationIdentities := make(map[Identity]IdentityAuthorization, len(command.metadata.Authorization.Identities))
+	authorizationIdentities := make(map[typedIdentity]typedIdentityAuthorization, len(command.metadata.Authorization.Identities))
 	for identity, authorization := range command.metadata.Authorization.Identities {
 		authorization.RequiredScopes = append([]string{}, authorization.RequiredScopes...)
-		authorization.ConditionalScopes = append([]ConditionalScope{}, authorization.ConditionalScopes...)
+		authorization.ConditionalScopes = append([]typedConditionalScope{}, authorization.ConditionalScopes...)
 		authorizationIdentities[identity] = authorization
 	}
 	accessTokens := make([]string, 0, len(command.metadata.Authorization.Identities))
-	for _, identity := range []Identity{IdentityBot, IdentityUser} {
+	for _, identity := range []typedIdentity{typedIdentityBot, typedIdentityUser} {
 		if _, ok := command.metadata.Authorization.Identities[identity]; ok {
 			accessTokens = append(accessTokens, string(identity))
 		}
 	}
 	businessFlags := legacyFlagsFromCompiled(command.fields)
-	partial := typedSchemaOutcome{Supported: false}
-	if definition := command.output.Outcomes.PartialFailure; definition != nil {
-		partial = typedSchemaOutcome{Supported: true, EnvelopeOK: false, ExitCode: definition.ExitCode, Stdout: "result_envelope", FailedItems: definition.FailedItems}
-	}
 	return typedSchemaContract{
-		Name:         command.metadata.Service + " " + command.metadata.Command,
+		Name:         string(command.metadata.Service) + " " + command.metadata.Command,
 		Description:  command.metadata.Description,
 		InputSchema:  input,
 		OutputSchema: schemaNodeFromShape(command.dataShape),
 		Meta: typedSchemaMeta{
-			EnvelopeVersion: "1.0", AccessTokens: accessTokens, Danger: command.metadata.Risk == RiskHighRiskWrite, Risk: command.metadata.Risk,
+			EnvelopeVersion: "1.0", AccessTokens: accessTokens, Danger: command.metadata.Risk == typedRiskHighRiskWrite, Risk: command.metadata.Risk,
 			Authorization: typedSchemaAuthorization{Identities: authorizationIdentities},
-			CLI:           defaultTypedCLI(accessTokens, businessFlags), Relations: append([]Relation{}, commandInputRelations(command)...), Formats: schemaFormats,
-			Outcomes:   typedSchemaOutcomes{Success: typedSchemaOutcome{Supported: true, EnvelopeOK: true, ExitCode: 0, Stdout: "result_envelope"}, PartialFailure: partial},
+			CLI:           defaultTypedCLI(accessTokens, businessFlags), Relations: append([]typedRelation{}, commandInputRelations(command)...), Formats: schemaFormats,
+			Outcomes:   typedSchemaOutcomes{Success: typedSchemaOutcome{Supported: true, EnvelopeOK: true, ExitCode: 0, Stdout: "result_envelope"}, PartialFailure: typedSchemaOutcome{Supported: false}},
 			ResultMeta: typedResultMetaSchema(command.output.Meta),
-			Artifacts:  append([]ArtifactDefinition{}, command.output.Artifacts...),
+			Artifacts:  []any{},
 		},
 	}
 }
 
-func typedResultMetaSchema(definition ResultMetaDefinition) *typedSchemaNode {
-	if !definition.Count && !definition.Pagination {
+func typedResultMetaSchema(definition typedResultMetaDefinition) *typedSchemaNode {
+	if !definition.Pagination {
 		return nil
 	}
-	additional := JSONValue(false)
+	additional := typedJSONValue(false)
 	result := &typedSchemaNode{Type: "object", Properties: make(map[string]typedSchemaNode), AdditionalProperties: &additional}
-	if definition.Count {
-		zero := float64(0)
-		result.Properties["count"] = typedSchemaNode{Type: "integer", Minimum: &zero, Description: "number of returned business records"}
-	}
 	if definition.Pagination {
 		zero, one := float64(0), float64(1)
 		required := []string{"complete", "pages", "items"}
@@ -195,35 +186,35 @@ func typedResultMetaSchema(definition ResultMetaDefinition) *typedSchemaNode {
 	return result
 }
 
-func commandInputRelations(command *compiledCommand) []Relation {
-	result := make([]Relation, 0, len(command.relations))
+func commandInputRelations(command *compiledCommand) []typedRelation {
+	result := make([]typedRelation, 0, len(command.relations))
 	for _, relation := range command.relations {
 		params := make([]string, 0, len(relation.fields))
 		for _, index := range relation.fields {
 			params = append(params, command.fields[index].name)
 		}
-		result = append(result, Relation{Kind: relation.kind, Params: params, Presence: relation.presence, Stage: relation.stage})
+		result = append(result, typedRelation{Kind: relation.kind, Params: params, Presence: relation.presence, Stage: relation.stage})
 	}
 	return result
 }
 
-func schemaNodeFromShape(shape ValueShape) typedSchemaNode {
+func schemaNodeFromShape(shape typedValueShape) typedSchemaNode {
 	switch value := shape.(type) {
 	case anyJSONShape:
 		return typedSchemaNode{}
-	case StringShape:
+	case typedStringShape:
 		node := typedSchemaNode{Type: "string", Format: value.Format, MinLength: value.MinLength, MaxLength: value.MaxLength}
 		for _, item := range value.Enum {
 			node.Enum = append(node.Enum, item)
 		}
 		return node
-	case BooleanShape:
+	case typedBooleanShape:
 		node := typedSchemaNode{Type: "boolean"}
 		for _, item := range value.Enum {
 			node.Enum = append(node.Enum, item)
 		}
 		return node
-	case IntegerShape:
+	case typedIntegerShape:
 		node := typedSchemaNode{Type: "integer"}
 		if value.Minimum != nil {
 			v := float64(*value.Minimum)
@@ -237,22 +228,22 @@ func schemaNodeFromShape(shape ValueShape) typedSchemaNode {
 			node.Enum = append(node.Enum, item)
 		}
 		return node
-	case NumberShape:
+	case typedNumberShape:
 		node := typedSchemaNode{Type: "number", Minimum: value.Minimum, Maximum: value.Maximum}
 		for _, item := range value.Enum {
 			node.Enum = append(node.Enum, item)
 		}
 		return node
-	case NullShape:
+	case typedNullShape:
 		return typedSchemaNode{Type: "null"}
-	case ConstShape:
+	case typedConstShape:
 		item := value.Value
 		return typedSchemaNode{Const: &item}
-	case ArrayShape:
+	case typedArrayShape:
 		item := schemaNodeFromShape(value.Items)
 		return typedSchemaNode{Type: "array", Items: &item, MinItems: value.MinItems, MaxItems: value.MaxItems}
-	case ObjectShape:
-		additional := JSONValue(value.AdditionalProperties)
+	case typedObjectShape:
+		additional := typedJSONValue(value.AdditionalProperties)
 		if value.AdditionalPropertiesShape != nil {
 			additional = schemaNodeFromShape(value.AdditionalPropertiesShape)
 		}
@@ -267,7 +258,7 @@ func schemaNodeFromShape(shape ValueShape) typedSchemaNode {
 			}
 		}
 		return node
-	case OneOfShape:
+	case typedOneOfShape:
 		node := typedSchemaNode{}
 		for _, variant := range value.Variants {
 			node.OneOf = append(node.OneOf, schemaNodeFromShape(variant))
@@ -280,7 +271,7 @@ func schemaNodeFromShape(shape ValueShape) typedSchemaNode {
 
 func typedOutputFormats(command *compiledCommand) []typedSchemaFormat {
 	jsonSelectors := []string{"json"}
-	if command.output.Mode == OutputFixedJSON {
+	if command.output.Mode == typedOutputFixedJSON {
 		jsonSelectors = []string{"json", "pretty", "table", "ndjson", "csv"}
 	} else if command.hooks.renderers["pretty"] == nil {
 		// Legacy OutFormat accepts --format pretty without a renderer and falls
@@ -290,7 +281,7 @@ func typedOutputFormats(command *compiledCommand) []typedSchemaFormat {
 	}
 	escapeHTML := !command.output.DisableHTMLEscaping
 	formats := []typedSchemaFormat{{Name: "json", Default: true, MediaType: "application/json", SelectedBy: jsonSelectors, EscapeHTML: &escapeHTML}}
-	if command.output.Mode == OutputFixedJSON {
+	if command.output.Mode == typedOutputFixedJSON {
 		return formats
 	}
 	if command.hooks.renderers["pretty"] != nil {
@@ -304,13 +295,13 @@ func typedOutputFormats(command *compiledCommand) []typedSchemaFormat {
 }
 
 func defaultTypedCLI(identities []string, businessFlags []Flag) typedSchemaCLI {
-	falseValue, jsonValue := JSONValue(false), JSONValue("json")
+	falseValue, jsonValue := typedJSONValue(false), typedJSONValue("json")
 	format := typedSchemaSystemFlag{Flag: "--format", Role: "output", Type: "string", Default: &jsonValue, Enum: []string{"json", "pretty", "table", "ndjson", "csv"}}
 	for _, flag := range businessFlags {
 		if flag.Name != "format" {
 			continue
 		}
-		value := JSONValue(flag.Default)
+		value := typedJSONValue(flag.Default)
 		format.Default = &value
 		format.Enum = append([]string(nil), flag.Enum...)
 		break

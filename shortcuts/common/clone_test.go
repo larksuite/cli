@@ -18,36 +18,28 @@ type cloneData struct {
 
 func TestCloneShortcutCopiesCompiledContract(t *testing.T) {
 	original := defineTypedShortcut(typedDefinition[cloneArgs, cloneData]{
-		Metadata: CommandMetadata{
-			Service: "im", Command: "+clone", Description: "Clone", Risk: RiskRead,
-			Authorization: AuthorizationDefinition{Identities: map[Identity]IdentityAuthorization{
-				IdentityUser: {RequiredScopes: []string{"im:chat:read"}},
+		Metadata: typedCommandMetadata{
+			Service: "im", Command: "+clone", Description: "Clone", Risk: typedRiskRead,
+			Authorization: typedAuthorizationDefinition{Identities: map[typedIdentity]typedIdentityAuthorization{
+				typedIdentityUser: {RequiredScopes: []string{"im:chat:read"}},
 			}},
 		},
-		Hooks: typedHooks[cloneArgs, cloneData]{Execute: func(context.Context, CommandContext, *cloneArgs) (Result[cloneData], error) {
-			return Success(cloneData{}), nil
+		Hooks: typedHooks[cloneArgs, cloneData]{Execute: func(context.Context, typedRuntimeContext, *cloneArgs) (typedResult[cloneData], error) {
+			return typedSuccess(cloneData{}), nil
 		}},
 	})
 	minLength := 1
-	shape := original.typed.fields[0].shape.(StringShape)
+	shape := original.typed.fields[0].shape.(typedStringShape)
 	shape.MinLength = &minLength
 	original.typed.fields[0].shape = shape
-	failedValues := map[string][]string{"ids": {"original"}}
-	original.typed.output.Outcomes.PartialFailure = &PartialFailureDefinition{
-		ExitCode: 2,
-		FailedItems: &FailedItemDefinition{
-			ItemsPath: "/items", IdentityPaths: []string{"/id"}, FailedValues: []JSONValue{failedValues},
-		},
-	}
-	cloned := CloneShortcut(original)
+	cloned := cloneShortcut(original)
 
 	original.UserScopes[0] = "mutated"
 	original.Flags[0].Enum[0] = "mutated"
-	original.typed.metadata.Authorization.Identities[IdentityUser] = IdentityAuthorization{RequiredScopes: []string{"mutated"}}
-	originalShape := original.typed.fields[0].shape.(StringShape)
+	original.typed.metadata.Authorization.Identities[typedIdentityUser] = typedIdentityAuthorization{RequiredScopes: []string{"mutated"}}
+	originalShape := original.typed.fields[0].shape.(typedStringShape)
 	originalShape.Enum[0] = "mutated"
 	*originalShape.MinLength = 2
-	failedValues["ids"][0] = "mutated"
 
 	if got := cloned.UserScopes[0]; got != "im:chat:read" {
 		t.Fatalf("cloned user scope = %q", got)
@@ -55,18 +47,14 @@ func TestCloneShortcutCopiesCompiledContract(t *testing.T) {
 	if got := cloned.Flags[0].Enum[0]; got != "one" {
 		t.Fatalf("cloned flag enum = %q", got)
 	}
-	if got := cloned.typed.metadata.Authorization.Identities[IdentityUser].RequiredScopes[0]; got != "im:chat:read" {
+	if got := cloned.typed.metadata.Authorization.Identities[typedIdentityUser].RequiredScopes[0]; got != "im:chat:read" {
 		t.Fatalf("cloned typed scope = %q", got)
 	}
-	if got := cloned.typed.fields[0].shape.(StringShape).Enum[0]; got != "one" {
+	if got := cloned.typed.fields[0].shape.(typedStringShape).Enum[0]; got != "one" {
 		t.Fatalf("cloned typed enum = %q", got)
 	}
-	if got := *cloned.typed.fields[0].shape.(StringShape).MinLength; got != 1 {
+	if got := *cloned.typed.fields[0].shape.(typedStringShape).MinLength; got != 1 {
 		t.Fatalf("cloned minimum length = %d", got)
-	}
-	failed := cloned.typed.output.Outcomes.PartialFailure.FailedItems.FailedValues[0].(map[string][]string)
-	if got := failed["ids"][0]; got != "original" {
-		t.Fatalf("cloned failed value = %q", got)
 	}
 }
 

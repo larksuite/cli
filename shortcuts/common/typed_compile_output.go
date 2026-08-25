@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-//nolint:forbidigo // Registration-time compiler diagnostics are programmer errors surfaced through Define's panic boundary.
+//nolint:forbidigo // Compiler diagnostics are build-time declaration errors wrapped by the command-set startup guard.
 package common
 
 import (
@@ -9,7 +9,7 @@ import (
 	"sort"
 )
 
-func validateOutputHooks(definition OutputDefinition, renderers map[string]RendererMarker) error {
+func validateOutputHooks(definition typedOutputDefinition, renderers map[string]rendererMarker) error {
 	rendererNames := make([]string, 0, len(renderers))
 	for name := range renderers {
 		rendererNames = append(rendererNames, name)
@@ -23,21 +23,13 @@ func validateOutputHooks(definition OutputDefinition, renderers map[string]Rende
 		if name != "pretty" {
 			return fmt.Errorf("Hooks.Renderers[%q] is invalid: custom renderers are only supported for pretty; table, csv, and ndjson use framework formatters", name)
 		}
-		if definition.Mode == OutputFixedJSON {
+		if definition.Mode == typedOutputFixedJSON {
 			return fmt.Errorf("Hooks.Renderers[%q] conflicts with Output.Mode %q: fixed JSON output does not execute custom renderers", name, definition.Mode)
 		}
 	}
 	return nil
 }
 
-// RendererMarker lets the generic compiler inspect nil renderer values without
-// adapting Args/Data hooks or exposing the private compiled hook type.
-type RendererMarker struct{ isNil bool }
-
-func rendererMarkers[Data any](renderers map[string]typedRenderer[Data]) map[string]RendererMarker {
-	markers := make(map[string]RendererMarker, len(renderers))
-	for name, renderer := range renderers {
-		markers[name] = RendererMarker{isNil: renderer == nil}
-	}
-	return markers
-}
+// rendererMarker lets the bridge compiler inspect nil renderer values without
+// exposing the private compiled hook type.
+type rendererMarker struct{ isNil bool }
