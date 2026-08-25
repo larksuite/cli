@@ -398,9 +398,9 @@ var noteIDAttrRe = regexp.MustCompile(`\s+id\s*=\s*(?:"[^"]*"|'[^']*')`)
 // with no text reflow.
 func stripSlideNoteID(content string) string {
 	dec := xml.NewDecoder(strings.NewReader(content))
-	var stack []string      // element local-name path to the current token
-	var prev int64          // byte offset where the current token began
-	var spans [][2]int64    // byte ranges of slide-level <note> start tags
+	var stack []string   // element local-name path to the current token
+	var prev int64       // byte offset where the current token began
+	var spans [][2]int64 // byte ranges of slide-level <note> start tags
 	for {
 		tok, err := dec.Token()
 		if err != nil {
