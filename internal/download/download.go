@@ -358,9 +358,20 @@ func openPartial(ctx context.Context, source Source, opts Options, retryWait *re
 	}
 	return &Stream{
 		Body:          newExactLengthReader(body, first.total),
-		Header:        resp.Header.Clone(),
+		Header:        assembledHeader(resp.Header, first.total),
 		ContentLength: first.total,
 	}, nil
+}
+
+// assembledHeader describes the whole stream rather than the first response it
+// was built from. Leaving the first part's framing in place would advertise a
+// Content-Length shorter than the bytes callers actually receive, and a
+// Content-Range covering only the opening slice.
+func assembledHeader(first http.Header, totalSize int64) http.Header {
+	header := first.Clone()
+	header.Set("Content-Length", strconv.FormatInt(totalSize, 10))
+	header.Del("Content-Range")
+	return header
 }
 
 type sequentialPartReader struct {

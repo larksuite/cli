@@ -385,6 +385,38 @@ func TestOpenImmutableWithoutValidatorUsesExactRanges(t *testing.T) {
 	}
 }
 
+// Callers read Content-Type and Content-Disposition off the assembled stream,
+// so those must survive, while the first part's framing must not leak out as a
+// length shorter than the bytes actually delivered.
+func TestOpenReportsAssembledStreamHeaders(t *testing.T) {
+	full := []byte("abcdefgh")
+	stream, err := openTest(context.Background(), func(_ context.Context, req Request) (*http.Response, error) {
+		start := req.Range.Start
+		end := min(req.Range.End, int64(len(full))-1)
+		resp := testPartial(full[start:end+1], start, end, int64(len(full)), "")
+		resp.Header.Set("Content-Length", fmt.Sprint(end-start+1))
+		resp.Header.Set("Content-Type", "video/mp4")
+		return resp, nil
+	}, testOptions())
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer stream.Body.Close()
+
+	if stream.ContentLength != int64(len(full)) {
+		t.Fatalf("ContentLength = %d, want %d", stream.ContentLength, len(full))
+	}
+	if got, want := stream.Header.Get("Content-Length"), fmt.Sprint(len(full)); got != want {
+		t.Errorf("Content-Length header = %q, want %q (the whole stream, not the first part)", got, want)
+	}
+	if got := stream.Header.Get("Content-Range"); got != "" {
+		t.Errorf("Content-Range header = %q, want it dropped from the assembled stream", got)
+	}
+	if got := stream.Header.Get("Content-Type"); got != "video/mp4" {
+		t.Errorf("Content-Type header = %q, want it preserved", got)
+	}
+}
+
 func TestOpenMutableWithoutValidatorFallsBackBeforeDelivery(t *testing.T) {
 	payload := []byte("abcdefgh")
 	var requests []Request

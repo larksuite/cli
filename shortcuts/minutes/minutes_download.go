@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"mime"
 	"net/http"
@@ -19,19 +18,20 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/download"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
 const (
-	// disableClientTimeout removes the global 30s client timeout for large media downloads.
-	// The download is bounded by the caller's context (e.g. Ctrl+C). A fixed timeout
-	// would cut off legitimate large file transfers.
+	// Keep the whole transfer unbounded; download.Open enforces idle timeouts.
 	disableClientTimeout = 0
 
 	maxBatchSize         = 50
 	maxDownloadRedirects = 5
+
+	minutesDownloadPartSize = 128 * 1024 * 1024
 )
 
 // validMinuteToken matches minute tokens: lowercase alphanumeric characters only.
@@ -307,29 +307,21 @@ func downloadMediaFile(ctx context.Context, client *http.Client, downloadURL, mi
 		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "blocked download URL: %s", err).WithCause(err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	transport := download.URL(client, downloadURL)
+	// A minute token identifies finalized recording bytes.
+	source := download.ImmutableSource(transport)
+	stream, err := download.Open(ctx, source, download.Options{
+		PartSize: minutesDownloadPartSize,
+	})
 	if err != nil {
-		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "invalid download URL: %s", err).WithCause(err)
+		return nil, err
 	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "download failed: %s", err).WithCause(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		if len(body) > 0 {
-			return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "download failed: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-		}
-		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "download failed: HTTP %d", resp.StatusCode)
-	}
+	defer stream.Body.Close()
 
 	// resolve output path
 	outputPath := opts.outputPath
 	if outputPath == "" {
-		filename := resolveFilenameFromResponse(resp, minuteToken)
+		filename := resolveFilenameFromResponse(stream.Header, minuteToken)
 		// Deduplicate filenames in batch mode: prefix with token on collision.
 		if opts.usedNames != nil {
 			if opts.usedNames[filename] {
@@ -347,9 +339,9 @@ func downloadMediaFile(ctx context.Context, client *http.Client, downloadURL, mi
 	}
 
 	result, err := opts.fio.Save(outputPath, fileio.SaveOptions{
-		ContentType:   resp.Header.Get("Content-Type"),
-		ContentLength: resp.ContentLength,
-	}, resp.Body)
+		ContentType:   stream.Header.Get("Content-Type"),
+		ContentLength: stream.ContentLength,
+	}, stream.Body)
 	if err != nil {
 		return nil, common.WrapSaveErrorTyped(err)
 	}
@@ -362,15 +354,15 @@ func downloadMediaFile(ctx context.Context, client *http.Client, downloadURL, mi
 
 // resolveFilenameFromResponse derives the filename from HTTP response headers.
 // Priority: Content-Disposition filename > Content-Type extension > <token>.media.
-func resolveFilenameFromResponse(resp *http.Response, minuteToken string) string {
-	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
+func resolveFilenameFromResponse(header http.Header, minuteToken string) string {
+	if cd := header.Get("Content-Disposition"); cd != "" {
 		if _, params, err := mime.ParseMediaType(cd); err == nil {
 			if filename := sanitizeServerFilename(params["filename"]); filename != "" {
 				return filename
 			}
 		}
 	}
-	if ext := extFromContentType(resp.Header.Get("Content-Type")); ext != "" {
+	if ext := extFromContentType(header.Get("Content-Type")); ext != "" {
 		return minuteToken + ext
 	}
 	return minuteToken + ".media"
@@ -398,10 +390,6 @@ var preferredExt = map[string]string{
 	"audio/mpeg": ".mp3",
 }
 
-// newDownloadClient wraps the base HTTP client with SSRF protection
-// (redirect safety + transport-level IP validation). When the base transport
-// is not *http.Transport (e.g. test mocks), it falls back to cloning
-// http.DefaultTransport via NewDownloadHTTPClient.
 // extFromContentType returns a file extension for the given Content-Type, or "" if unknown.
 func extFromContentType(contentType string) string {
 	if contentType == "" {

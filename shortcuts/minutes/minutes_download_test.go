@@ -20,6 +20,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/download"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 	internaltransport "github.com/larksuite/cli/internal/transport"
@@ -128,7 +129,7 @@ func TestResolveFilenameFromResponse_ContentDisposition(t *testing.T) {
 			"Content-Type":        []string{"video/mp4"},
 		},
 	}
-	got := resolveFilenameFromResponse(resp, "tok001")
+	got := resolveFilenameFromResponse(resp.Header, "tok001")
 	if got != "meeting_recording.mp4" {
 		t.Errorf("expected Content-Disposition filename, got %q", got)
 	}
@@ -140,7 +141,7 @@ func TestResolveFilenameFromResponse_ContentType(t *testing.T) {
 			"Content-Type": []string{"video/mp4"},
 		},
 	}
-	got := resolveFilenameFromResponse(resp, "tok001")
+	got := resolveFilenameFromResponse(resp.Header, "tok001")
 	if !strings.HasPrefix(got, "tok001") {
 		t.Errorf("expected token prefix, got %q", got)
 	}
@@ -151,7 +152,7 @@ func TestResolveFilenameFromResponse_ContentType(t *testing.T) {
 
 func TestResolveFilenameFromResponse_Fallback(t *testing.T) {
 	resp := &http.Response{Header: http.Header{}}
-	got := resolveFilenameFromResponse(resp, "tok001")
+	got := resolveFilenameFromResponse(resp.Header, "tok001")
 	if got != "tok001.media" {
 		t.Errorf("expected fallback %q, got %q", "tok001.media", got)
 	}
@@ -164,7 +165,7 @@ func TestResolveFilenameFromResponse_InvalidContentDisposition(t *testing.T) {
 			"Content-Type":        []string{"audio/mpeg"},
 		},
 	}
-	got := resolveFilenameFromResponse(resp, "tok001")
+	got := resolveFilenameFromResponse(resp.Header, "tok001")
 	if !strings.HasPrefix(got, "tok001") {
 		t.Errorf("expected token prefix from Content-Type fallback, got %q", got)
 	}
@@ -187,7 +188,7 @@ func TestResolveFilenameFromResponse_RejectsTraversalInDisposition(t *testing.T)
 				"Content-Disposition": []string{tt.disposition},
 			},
 		}
-		got := resolveFilenameFromResponse(resp, "tok001")
+		got := resolveFilenameFromResponse(resp.Header, "tok001")
 		if got != tt.wantBase {
 			t.Errorf("disposition=%q: got %q, want %q", tt.disposition, got, tt.wantBase)
 		}
@@ -239,11 +240,17 @@ func TestDownloadUsesExternalRequestClass(t *testing.T) {
 			Request:    req,
 		}, nil
 	})
+	var rangeHeader, encodingHeader string
 	external := minutesRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		payload := []byte("media")
+		rangeHeader = req.Header.Get("Range")
+		encodingHeader = req.Header.Get("Accept-Encoding")
 		return &http.Response{
-			StatusCode:    http.StatusOK,
-			Header:        http.Header{"Content-Type": []string{"video/mp4"}},
+			StatusCode: http.StatusPartialContent,
+			Header: http.Header{
+				"Content-Type":  []string{"video/mp4"},
+				"Content-Range": []string{"bytes 0-4/5"},
+			},
 			Body:          io.NopCloser(bytes.NewReader(payload)),
 			ContentLength: int64(len(payload)),
 			Request:       req,
@@ -268,6 +275,61 @@ func TestDownloadUsesExternalRequestClass(t *testing.T) {
 	if got := string(data); got != "media" {
 		t.Fatalf("downloaded content = %q, want external payload", got)
 	}
+	if rangeHeader != "bytes=0-134217727" || encodingHeader != "identity" {
+		t.Fatalf("download headers = Range %q, Accept-Encoding %q", rangeHeader, encodingHeader)
+	}
+}
+
+func TestDownloadRejectsInvalidResponseBodies(t *testing.T) {
+	tests := []struct {
+		name    string
+		header  http.Header
+		body    string
+		subtype errs.Subtype
+	}{
+		{
+			name:    "truncated",
+			header:  http.Header{"Content-Length": []string{"10"}},
+			body:    "short",
+			subtype: errs.SubtypeNetworkProtocol,
+		},
+		{
+			name:    "encoded",
+			header:  http.Header{"Content-Encoding": []string{"gzip"}},
+			body:    "compressed",
+			subtype: errs.SubtypeNetworkProtocol,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			chdir(t, t.TempDir())
+			f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+			reg.Register(mediaStub("tok001", "https://example.com/media"))
+			f.HttpClient = func() (*http.Client, error) {
+				return &http.Client{Transport: minutesRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode:    http.StatusOK,
+						Header:        tt.header,
+						Body:          io.NopCloser(strings.NewReader(tt.body)),
+						ContentLength: 10,
+						Request:       req,
+					}, nil
+				})}, nil
+			}
+
+			err := mountAndRun(t, MinutesDownload, []string{
+				"+download", "--minute-tokens", "tok001", "--output", "out.media", "--as", "bot",
+			}, f, nil)
+			var networkErr *errs.NetworkError
+			if !errors.As(err, &networkErr) || networkErr.Subtype != tt.subtype {
+				t.Fatalf("error = %T %v, want network/%s", err, err, tt.subtype)
+			}
+			if _, statErr := os.Stat("out.media"); !errors.Is(statErr, os.ErrNotExist) {
+				t.Fatalf("partial output should not exist: %v", statErr)
+			}
+		})
+	}
 }
 
 func TestResolveFilenameFromResponse_EmptyDispositionFilename(t *testing.T) {
@@ -277,7 +339,7 @@ func TestResolveFilenameFromResponse_EmptyDispositionFilename(t *testing.T) {
 			"Content-Type":        []string{"video/mp4"},
 		},
 	}
-	got := resolveFilenameFromResponse(resp, "tok001")
+	got := resolveFilenameFromResponse(resp.Header, "tok001")
 	if got == "" {
 		t.Error("expected non-empty filename")
 	}
@@ -780,14 +842,12 @@ func TestDownload_TypedErr_ValidationInvalidArgument(t *testing.T) {
 	}
 }
 
-// TestDownload_TypedErr_NetworkTransport_HttpError verifies that a non-2xx
-// download response from downloadMediaFile returns a *errs.NetworkError with
-// SubtypeNetworkTransport.
+// TestDownload_TypedErr_NetworkServer_HttpError verifies server error typing.
 //
 // In the end-to-end single-token Execute path the typed error is now passed
 // through directly via r.err (single-mode passthrough).  We call downloadMediaFile
 // directly via a probe shortcut to assert the typed shape at the source.
-func TestDownload_TypedErr_NetworkTransport_HttpError(t *testing.T) {
+func TestDownload_TypedErr_NetworkServer_HttpError(t *testing.T) {
 	chdir(t, t.TempDir())
 
 	var capturedErr error
@@ -808,11 +868,13 @@ func TestDownload_TypedErr_NetworkTransport_HttpError(t *testing.T) {
 	}
 
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
-	reg.Register(&httpmock.Stub{
-		URL:     "example.com/presigned/download",
-		Status:  503,
-		RawBody: []byte("Service Unavailable"),
-	})
+	for range download.DefaultPartRetries + 1 {
+		reg.Register(&httpmock.Stub{
+			URL:     "example.com/presigned/download",
+			Status:  503,
+			RawBody: []byte("Service Unavailable"),
+		})
+	}
 
 	if err := mountAndRun(t, probe, []string{"+probe-dl", "--as", "bot"}, f, nil); err != nil {
 		t.Fatalf("probe shortcut should not error: %v", err)
@@ -824,8 +886,11 @@ func TestDownload_TypedErr_NetworkTransport_HttpError(t *testing.T) {
 	if !errors.As(capturedErr, &ne) {
 		t.Fatalf("expected *errs.NetworkError, got %T: %v", capturedErr, capturedErr)
 	}
-	if ne.Subtype != errs.SubtypeNetworkTransport {
-		t.Errorf("Subtype = %q, want %q", ne.Subtype, errs.SubtypeNetworkTransport)
+	if ne.Subtype != errs.SubtypeNetworkServer {
+		t.Errorf("Subtype = %q, want %q", ne.Subtype, errs.SubtypeNetworkServer)
+	}
+	if !errs.IsRetryable(capturedErr) {
+		t.Errorf("503 error should remain retryable: %v", capturedErr)
 	}
 	if !strings.Contains(ne.Error(), "503") {
 		t.Errorf("error message should contain status code 503, got: %v", ne)
