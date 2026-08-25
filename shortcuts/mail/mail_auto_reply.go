@@ -439,7 +439,7 @@ func uploadAutoReplyLocalImages(ctx context.Context, runtime *common.RuntimeCont
 			if err != nil {
 				return "", nil, err
 			}
-			_, err := filecheck.CheckInlineImageFormat(filepath.Base(img.Path), buf)
+			_, err = filecheck.CheckInlineImageFormat(filepath.Base(img.Path), buf)
 			if err != nil {
 				return "", nil, mailValidationParamError("--content", "inline image %s: %v", img.Path, err).WithCause(err)
 			}
