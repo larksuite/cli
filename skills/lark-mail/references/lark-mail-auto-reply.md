@@ -52,7 +52,7 @@ lark-cli mail +auto-reply-modify --as user --yes --disable
 - `+auto-reply` 只调用读取接口，需要 `mail:user_mailbox.message:readonly`。
 - `+auto-reply-modify` 只更新用户提供的选项，未指定的配置会保留。
 - 修改正文时支持本地图片和 data URI 图片；CLI 会按邮箱接口要求处理图片内容。
-- 读取时返回 `images[]` 图片元数据；需要下载图片时使用自动回复图片下载接口获取临时下载 URL。
+- 如需图片文件，可使用对应的图片下载 URL 接口。
 - 修改需要 `mail:user_mailbox.message:readonly` 和 `mail:user_mailbox.message:modify`。
 - `+auto-reply-modify` 是 `high-risk-write` 写操作。执行前必须先向用户展示预览并取得明确确认；用户确认且目标设置无误后，再带 `--yes` 运行。不要在未获用户明确同意时静默追加 `--yes`。预览至少包含：`enabled`、时间范围、时区、收件范围和内容摘要。
 - 关闭自动回复也要确认，因为内容和时间配置可能仍会保留在设置中。
