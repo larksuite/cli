@@ -113,6 +113,50 @@ func TestStripSlideNoteIDQuoteVariants(t *testing.T) {
 	}
 }
 
+// Everything except the one note id must survive byte-for-byte: no
+// re-serialization, so svg subtrees, quote styles, attribute order, whitespace,
+// CDATA, and every other element are untouched. Asserting exact equality against
+// "the input with only that id removed" proves nothing else moved.
+func TestStripSlideNoteIDPreservesEverythingElse(t *testing.T) {
+	cases := []struct {
+		name    string
+		in      string
+		removed string // the exact substring that must be the only change
+	}{
+		{
+			name: "full slide with inline svg",
+			in: `<slide id="p1"><style><fill id="f1"><fillColor color="rgba(1,2,3,1)"/></fill></style>` +
+				`<data><shape type="text" id="bKZ"><content textType="title"><p>x</p></content></shape>` +
+				`<embed id="bmU"><svg xmlns="http://www.w3.org/2000/svg" id="svgroot">` +
+				`<defs><linearGradient id="grad"/></defs><path id="pp" d="M0 0" fill="url(#grad)"/><use href="#pp"/></svg></embed>` +
+				`</data><note id="blw"><content><p>n</p></content></note></slide>`,
+			removed: ` id="blw"`,
+		},
+		{
+			name: "cdata and > attribute stay verbatim",
+			in: `<slide id="p1"><data><shape type="text"><content><![CDATA[<note id="fake">]]></content></shape></data>` +
+				`<note data=">" id="blw"><content><p>n</p></content></note></slide>`,
+			removed: ` id="blw"`,
+		},
+		{
+			name:    "single quotes",
+			in:      `<slide id="p1"><data/><note id='blw'><content><p>n</p></content></note></slide>`,
+			removed: ` id='blw'`,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if strings.Count(c.in, c.removed) != 1 {
+				t.Fatalf("test setup: %q must appear exactly once in input", c.removed)
+			}
+			want := strings.Replace(c.in, c.removed, "", 1)
+			if got := stripSlideNoteID(c.in); got != want {
+				t.Errorf("only the note id should change.\n got: %s\nwant: %s", got, want)
+			}
+		})
+	}
+}
+
 // Locating the <note> tag with the XML tokenizer (rather than a raw scan) means
 // note-like text in comments/CDATA, a nested <note>, and '>' inside an attribute
 // value are all handled correctly.
