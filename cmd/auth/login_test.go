@@ -1503,11 +1503,15 @@ func TestAuthLoginRun_DomainExcludeSendAsUser(t *testing.T) {
 	}
 	v, _ := url.ParseQuery(string(stub.CapturedBody))
 	scope := v.Get("scope")
-	if strings.Contains(scope, "im:message.send_as_user") {
+	scopeSet := make(map[string]bool)
+	for _, s := range strings.Fields(scope) {
+		scopeSet[s] = true
+	}
+	if scopeSet["im:message.send_as_user"] {
 		t.Errorf("excluded scope leaked into wire request; scope=%q", scope)
 	}
-	if !strings.Contains(scope, "im:message") {
-		t.Errorf("--domain im missing im:message; scope=%q", scope)
+	if !scopeSet["im:message"] {
+		t.Errorf("--domain im missing exact im:message; scope=%q", scope)
 	}
 }
 
