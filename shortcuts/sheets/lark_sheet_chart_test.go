@@ -524,7 +524,13 @@ func TestChartConfigUpdate_XAxisBoundsRequireContinuousExistingAxis(t *testing.T
 	linear := map[string]interface{}{
 		"plotArea": map[string]interface{}{
 			"axes": []interface{}{
-				map[string]interface{}{"type": "x", "position": "bottom", "valueType": "linear"},
+				map[string]interface{}{
+					"type":      "x",
+					"valueType": "linear",
+					"axisLine":  true,
+					"label":     map[string]interface{}{"angle": 15},
+				},
+				map[string]interface{}{"type": "y", "position": "left", "valueType": "linear"},
 			},
 		},
 	}
@@ -532,9 +538,14 @@ func TestChartConfigUpdate_XAxisBoundsRequireContinuousExistingAxis(t *testing.T
 	if err != nil {
 		t.Fatalf("linear X axis rejected: %v", err)
 	}
-	xAxis := chartDryRunSnapshot(t, input)["plotArea"].(map[string]interface{})["axes"].([]interface{})[0].(map[string]interface{})
-	if xAxis["min"] != float64(237) {
-		t.Fatalf("x axis = %#v, want min=237", xAxis)
+	axes := chartDryRunSnapshot(t, input)["plotArea"].(map[string]interface{})["axes"].([]interface{})
+	if len(axes) != 2 {
+		t.Fatalf("axes = %#v, want existing axes without a duplicate X axis", axes)
+	}
+	xAxis := axes[0].(map[string]interface{})
+	label := xAxis["label"].(map[string]interface{})
+	if xAxis["min"] != float64(237) || xAxis["axisLine"] != true || label["angle"] != float64(15) {
+		t.Fatalf("x axis = %#v, want min=237 with existing axis properties preserved", xAxis)
 	}
 }
 
