@@ -7,21 +7,16 @@ import (
 	"context"
 	"errors"
 	"io"
-	"slices"
-	"sort"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/commandbridge"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/schema"
-	"github.com/larksuite/cli/shortcuts"
-	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
 
@@ -49,22 +44,16 @@ type SchemaOptions struct {
 
 // NewCmdSchema creates the schema command. If runF is non-nil it is called instead of the default runner (test hook).
 func NewCmdSchema(f *cmdutil.Factory, runF func(*SchemaOptions) error) *cobra.Command {
-	return NewCmdSchemaWithVisibilityAndShortcuts(f, nil, shortcuts.AllShortcuts(), runF)
+	return NewCmdSchemaWithVisibility(f, nil, runF)
 }
 
 // NewCmdSchemaWithVisibility creates the schema command projected through one
-// visibility predicate, resolving shortcuts from the registered set. Retained at
-// its established signature: CommandVisibility is an ordinary exported function
-// type, so callers outside this module can and do construct one.
-func NewCmdSchemaWithVisibility(f *cmdutil.Factory, visibility CommandVisibility, runF func(*SchemaOptions) error) *cobra.Command {
-	return NewCmdSchemaWithVisibilityAndShortcuts(f, visibility, shortcuts.AllShortcuts(), runF)
-}
-
-// NewCmdSchemaWithVisibilityAndShortcuts creates schema commands from one build-local shortcut snapshot.
-func NewCmdSchemaWithVisibilityAndShortcuts(
+// build-local command surface. Existing callers should use NewCmdSchema; the
+// root builder uses this form so schema execution and completion share the
+// exact presentation plan captured by that Cobra tree.
+func NewCmdSchemaWithVisibility(
 	f *cmdutil.Factory,
 	visibility CommandVisibility,
-	registered []common.Shortcut,
 	runF func(*SchemaOptions) error,
 ) *cobra.Command {
 	opts := &SchemaOptions{Factory: f}
@@ -79,7 +68,7 @@ func NewCmdSchemaWithVisibilityAndShortcuts(
 			if runF != nil {
 				return runF(opts)
 			}
-			return schemaRunWithVisibilityAndShortcuts(opts, visibility, registered)
+			return schemaRunWithVisibility(opts, visibility)
 		},
 	}
 	cmdutil.DisableAuthCheck(cmd)
@@ -94,7 +83,7 @@ func NewCmdSchemaWithVisibilityAndShortcuts(
 	_ = cmd.Flags().MarkHidden("json")
 	_ = cmd.Flags().MarkHidden("as")
 
-	cmd.ValidArgsFunction = completeSchemaPath(f, visibility, registered)
+	cmd.ValidArgsFunction = completeSchemaPath(f, visibility)
 	cmdutil.SetRisk(cmd, cmdutil.RiskRead)
 
 	return cmd
@@ -106,13 +95,11 @@ func NewCmdSchemaWithVisibilityAndShortcuts(
 func completeSchemaPath(
 	f *cmdutil.Factory,
 	visibility CommandVisibility,
-	registered []common.Shortcut,
 ) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		mode := f.ResolveStrictMode(cmd.Context())
 		catalog := projectSchemaCatalog(registry.SchemaCatalog(), visibility)
 		completions, noSpace := catalog.Complete(args, toComplete, registry.FilterForStrictMode(mode))
-		completions = mergeSchemaCompletions(completions, shortcutSchemaCompletionsFrom(registered, args, toComplete, visibility, mode))
 		directive := cobra.ShellCompDirectiveNoFileComp
 		if noSpace {
 			directive |= cobra.ShellCompDirectiveNoSpace
@@ -121,10 +108,24 @@ func completeSchemaPath(
 	}
 }
 
-func schemaRunWithVisibilityAndShortcuts(opts *SchemaOptions, visibility CommandVisibility, registered []common.Shortcut) error {
+func schemaRunWithVisibility(opts *SchemaOptions, visibility CommandVisibility) error {
 	out := opts.Factory.IOStreams.Out
 	mode := opts.Factory.ResolveStrictMode(opts.Ctx)
-	return runSchemaCatalogWithShortcuts(out, apicatalog.ParsePath(opts.Args), mode, registry.SchemaCatalog(), visibility, registered)
+	return runSchemaWithVisibility(out, apicatalog.ParsePath(opts.Args), mode, visibility)
+}
+
+// runSchemaWithVisibility resolves the path through the schema catalog and renders the
+// matching envelope(s). The catalog owns navigation (Resolve + MethodRefs) and
+// schema owns rendering (Envelope/Envelopes); this adapter only chooses the
+// output shape — a single resolved method renders as one envelope object,
+// anything broader as an array — and maps resolve failures to hints.
+func runSchemaWithVisibility(
+	out io.Writer,
+	parts []string,
+	mode core.StrictMode,
+	visibility CommandVisibility,
+) error {
+	return runSchemaCatalog(out, parts, mode, registry.SchemaCatalog(), visibility)
 }
 
 func runSchemaCatalog(
@@ -134,21 +135,6 @@ func runSchemaCatalog(
 	catalog apicatalog.Catalog,
 	visibility CommandVisibility,
 ) error {
-	return runSchemaCatalogWithShortcuts(out, parts, mode, catalog, visibility, shortcuts.AllShortcuts())
-}
-
-func runSchemaCatalogWithShortcuts(
-	out io.Writer,
-	parts []string,
-	mode core.StrictMode,
-	catalog apicatalog.Catalog,
-	visibility CommandVisibility,
-	registered []common.Shortcut,
-) error {
-	if contract, ok := resolveShortcutSchemaFrom(registered, parts, visibility, mode); ok {
-		output.PrintJson(out, contract)
-		return nil
-	}
 	// Test the source catalog before presentation projection. A distribution
 	// that intentionally conceals every generated method still has metadata;
 	// bare `schema` should render an empty list rather than claim metadata is
@@ -176,113 +162,6 @@ func runSchemaCatalogWithShortcuts(
 	}
 	output.PrintJson(out, schema.Envelopes(refs))
 	return nil
-}
-
-func resolveShortcutSchemaFrom(
-	registered []common.Shortcut,
-	parts []string,
-	visibility CommandVisibility,
-	mode core.StrictMode,
-) (any, bool) {
-	if len(parts) != 2 || !strings.HasPrefix(parts[1], "+") {
-		return nil, false
-	}
-	for _, shortcut := range registered {
-		if shortcut.Service != parts[0] || shortcut.Command != parts[1] {
-			continue
-		}
-		if !shortcutSchemaVisible(shortcut, visibility, mode) {
-			return nil, false
-		}
-		return common.ShortcutSchema(shortcut, commandbridge.Access{})
-	}
-	return nil, false
-}
-
-func shortcutSchemaCompletionsFrom(
-	registered []common.Shortcut,
-	args []string,
-	toComplete string,
-	visibility CommandVisibility,
-	mode core.StrictMode,
-) []string {
-	if len(args) == 0 && strings.Contains(toComplete, ".") {
-		parts := strings.SplitN(toComplete, ".", 2)
-		return shortcutCommandCompletions(registered, parts[0], parts[1], parts[0]+".", visibility, mode)
-	}
-	if len(args) == 0 {
-		services := make(map[string]struct{})
-		for _, shortcut := range registered {
-			if !strings.HasPrefix(shortcut.Service, toComplete) || !shortcutSchemaVisible(shortcut, visibility, mode) {
-				continue
-			}
-			if _, ok := common.ShortcutSchema(shortcut, commandbridge.Access{}); ok {
-				services[shortcut.Service] = struct{}{}
-			}
-		}
-		result := make([]string, 0, len(services))
-		for service := range services {
-			result = append(result, service)
-		}
-		sort.Strings(result)
-		return result
-	}
-	if len(args) == 1 {
-		return shortcutCommandCompletions(registered, args[0], toComplete, "", visibility, mode)
-	}
-	return nil
-}
-
-func shortcutCommandCompletions(
-	registered []common.Shortcut,
-	service string,
-	prefix string,
-	outputPrefix string,
-	visibility CommandVisibility,
-	mode core.StrictMode,
-) []string {
-	var result []string
-	for _, shortcut := range registered {
-		if shortcut.Service != service || !strings.HasPrefix(shortcut.Command, prefix) || !shortcutSchemaVisible(shortcut, visibility, mode) {
-			continue
-		}
-		if _, ok := common.ShortcutSchema(shortcut, commandbridge.Access{}); ok {
-			result = append(result, outputPrefix+shortcut.Command+"\t"+shortcut.Description)
-		}
-	}
-	sort.Strings(result)
-	return result
-}
-
-func shortcutSchemaVisible(shortcut common.Shortcut, visibility CommandVisibility, mode core.StrictMode) bool {
-	if shortcut.Hidden || (visibility != nil && !visibility([]string{shortcut.Service, shortcut.Command})) {
-		return false
-	}
-	if !mode.IsActive() {
-		return true
-	}
-	identities := shortcut.AuthTypes
-	if len(identities) == 0 {
-		identities = []string{string(core.AsUser)}
-	}
-	return slices.Contains(identities, string(mode.ForcedIdentity()))
-}
-
-func mergeSchemaCompletions(groups ...[]string) []string {
-	seen := make(map[string]struct{})
-	var result []string
-	for _, group := range groups {
-		for _, candidate := range group {
-			name := strings.SplitN(candidate, "\t", 2)[0]
-			if _, ok := seen[name]; ok {
-				continue
-			}
-			seen[name] = struct{}{}
-			result = append(result, candidate)
-		}
-	}
-	sort.Strings(result)
-	return result
 }
 
 // projectSchemaCatalog produces the metadata view corresponding to one final

@@ -5,7 +5,6 @@ package schema
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -13,13 +12,10 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/extension/command"
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/commandhost"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/meta"
-	"github.com/larksuite/cli/shortcuts/common"
 )
 
 func TestSchemaCmd_FlagParsing(t *testing.T) {
@@ -37,78 +33,6 @@ func TestSchemaCmd_FlagParsing(t *testing.T) {
 	}
 	if len(gotOpts.Args) != 1 || gotOpts.Args[0] != "calendar.events.list" {
 		t.Errorf("expected args [calendar.events.list], got %v", gotOpts.Args)
-	}
-}
-
-// mustCompileFixture compiles a business declaration through the production
-// compiler. Schema discovery only sees typed shortcuts, and going through the
-// host compiler keeps these fixtures on the same path a real distribution takes.
-func mustCompileFixture[Args any, Data any](t *testing.T, definition command.Definition[Args, Data]) common.Shortcut {
-	t.Helper()
-	shortcut, err := commandhost.CompileDeclaration(command.Define(definition))
-	if err != nil {
-		t.Fatalf("compile fixture: %v", err)
-	}
-	return shortcut
-}
-
-func TestHiddenShortcutIsExcludedFromSchemaDiscovery(t *testing.T) {
-	type args struct {
-		Value string `flag:"value" schema:"required" doc:"fixture value"`
-	}
-	type data struct {
-		OK bool `json:"ok" schema:"required" doc:"success state"`
-	}
-	hidden := mustCompileFixture(t, command.Definition[args, data]{
-		Metadata: command.CommandMetadata{
-			Service: "hidden-fixture", Command: "+hidden-schema", Description: "Hidden schema fixture", Risk: command.RiskRead,
-			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{command.IdentityUser: {}}},
-		},
-		Hooks: command.Hooks[args, data]{Execute: func(context.Context, command.CommandContext, *args) (command.Result[data], error) {
-			return command.Success(data{OK: true}), nil
-		}},
-	})
-	hidden.Hidden = true
-	registered := []common.Shortcut{hidden}
-
-	if schema, ok := resolveShortcutSchemaFrom(registered, []string{hidden.Service, hidden.Command}, nil, core.StrictModeOff); ok || schema != nil {
-		t.Fatalf("hidden shortcut schema = %#v, visible = %v", schema, ok)
-	}
-	if completions := shortcutSchemaCompletionsFrom(registered, []string{hidden.Service}, "+hidden", nil, core.StrictModeOff); len(completions) != 0 {
-		t.Fatalf("hidden shortcut completions = %#v", completions)
-	}
-}
-
-func TestShortcutSchemaDiscoveryHonorsStrictMode(t *testing.T) {
-	type args struct {
-		Value string `flag:"value" schema:"required" doc:"fixture value"`
-	}
-	type data struct {
-		OK bool `json:"ok" schema:"required" doc:"success state"`
-	}
-	userOnly := mustCompileFixture(t, command.Definition[args, data]{
-		Metadata: command.CommandMetadata{
-			Service: "strict-fixture", Command: "+user-schema", Description: "User schema fixture", Risk: command.RiskRead,
-			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{command.IdentityUser: {}}},
-		},
-		Hooks: command.Hooks[args, data]{Execute: func(context.Context, command.CommandContext, *args) (command.Result[data], error) {
-			return command.Success(data{OK: true}), nil
-		}},
-	})
-	registered := []common.Shortcut{userOnly}
-	path := []string{userOnly.Service, userOnly.Command}
-
-	if schema, ok := resolveShortcutSchemaFrom(registered, path, nil, core.StrictModeBot); ok || schema != nil {
-		t.Fatalf("bot strict mode schema = %#v, visible = %v", schema, ok)
-	}
-	if completions := shortcutSchemaCompletionsFrom(registered, []string{userOnly.Service}, "+user", nil, core.StrictModeBot); len(completions) != 0 {
-		t.Fatalf("bot strict mode completions = %#v", completions)
-	}
-	if schema, ok := resolveShortcutSchemaFrom(registered, path, nil, core.StrictModeUser); !ok || schema == nil {
-		t.Fatalf("user strict mode schema = %#v, visible = %v", schema, ok)
-	}
-	if completions := shortcutSchemaCompletionsFrom(registered, []string{userOnly.Service}, "+user", nil, core.StrictModeUser); len(completions) != 1 {
-		t.Fatalf("user strict mode completions = %#v", completions)
 	}
 }
 

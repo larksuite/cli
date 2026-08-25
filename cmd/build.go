@@ -303,9 +303,9 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 	rootCmd.AddCommand(doctor.NewCmdDoctorWithRecovery(f, runtime.recovery))
 	rootCmd.AddCommand(whoami.NewCmdWhoamiWithRecovery(f, runtime.recovery))
 	rootCmd.AddCommand(api.NewCmdApiWithContext(ctx, f, nil))
-	rootCmd.AddCommand(schema.NewCmdSchemaWithVisibilityAndShortcuts(f, func(path []string) bool {
+	rootCmd.AddCommand(schema.NewCmdSchemaWithVisibility(f, func(path []string) bool {
 		return runtime.surface.CanReference(surface.CommandID(strings.Join(path, "/")))
-	}, registeredShortcuts, nil))
+	}, nil))
 	rootCmd.AddCommand(completion.NewCmdCompletion(f))
 	rootCmd.AddCommand(cmdupdate.NewCmdUpdate(f))
 	rootCmd.AddCommand(cmdevent.NewCmdEvents(f))

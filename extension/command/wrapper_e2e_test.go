@@ -97,10 +97,6 @@ func TestExternalWrapperCommandSurface(t *testing.T) {
 		t.Fatalf("wrapper note help = %s", noteHelp)
 	}
 
-	schema := run("schema", "im", "+wrapper-read")
-	if !strings.Contains(schema, `"name": "im +wrapper-read"`) || !strings.Contains(schema, `"outputSchema"`) {
-		t.Fatalf("wrapper schema = %s", schema)
-	}
 	completion := run("__complete", "im", "+wrap")
 	if !strings.Contains(completion, "+wrapper-read") {
 		t.Fatalf("wrapper completion = %s", completion)

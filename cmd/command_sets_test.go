@@ -6,7 +6,6 @@ package cmd
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -181,32 +180,25 @@ func TestCommandSetSubprocess(t *testing.T) {
 		if !strings.Contains(stdout.String(), "+business-surface") {
 			t.Fatalf("external command is missing from shell completion: %s", stdout.String())
 		}
+		// The schema command serves the generated API catalog only; mounted
+		// shortcuts (external commands included) must stay invisible to it.
 		stdout.Reset()
 		stderr.Reset()
 		root.SetArgs([]string{"__complete", "schema", "im", "+business-"})
 		if _, err := root.ExecuteC(); err != nil {
-			t.Fatalf("complete external schema: %v\nstderr: %s", err, stderr.String())
+			t.Fatalf("complete schema path: %v\nstderr: %s", err, stderr.String())
 		}
-		if !strings.Contains(stdout.String(), "+business-surface") {
-			t.Fatalf("external schema is missing from shell completion: %s", stdout.String())
+		if strings.Contains(stdout.String(), "+business-surface") {
+			t.Fatalf("schema completion leaked an external command: %s", stdout.String())
 		}
 		stdout.Reset()
 		stderr.Reset()
 		root.SetArgs([]string{"schema", "im", "+business-surface"})
-		if _, err := root.ExecuteC(); err != nil {
-			t.Fatalf("schema external command: %v\nstderr: %s", err, stderr.String())
+		if _, err := root.ExecuteC(); err == nil {
+			t.Fatalf("schema resolved an external command: %s", stdout.String())
 		}
-		var schema struct {
-			Name         string          `json:"name"`
-			InputSchema  json.RawMessage `json:"inputSchema"`
-			OutputSchema json.RawMessage `json:"outputSchema"`
-		}
-		if err := json.Unmarshal(stdout.Bytes(), &schema); err != nil {
-			t.Fatalf("decode external schema: %v\n%s", err, stdout.String())
-		}
-		if schema.Name != "im +business-surface" || len(schema.InputSchema) == 0 || len(schema.OutputSchema) == 0 ||
-			string(schema.InputSchema) == "null" || string(schema.OutputSchema) == "null" {
-			t.Fatalf("external schema = %s", stdout.String())
+		if strings.Contains(stdout.String(), "inputSchema") {
+			t.Fatalf("schema rendered an external command contract: %s", stdout.String())
 		}
 	default:
 		t.Fatalf("unknown scenario %q", scenario)
