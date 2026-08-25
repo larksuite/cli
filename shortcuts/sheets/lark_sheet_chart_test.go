@@ -695,30 +695,62 @@ func TestChartConfigUpdate_DataLabelPositionDoesNotEnableLabels(t *testing.T) {
 	}
 }
 
-func TestChartSemanticShortcuts_LastPointLabel(t *testing.T) {
+func TestChartSemanticShortcuts_SeriesDataLabels(t *testing.T) {
 	t.Parallel()
-	chartConfigUpdate := shortcutFromRegistry(t, "+chart-config-update")
-	for _, tc := range []struct {
-		arg  string
-		want bool
-	}{
-		{arg: "true", want: true},
-		{arg: "false", want: false},
-	} {
-		body := parseDryRunBody(t, chartConfigUpdate, []string{
-			"--url", testURL,
-			"--sheet-id", testSheetID,
-			"--chart-id", "chart-1",
-			"--last-point-label=" + tc.arg,
-		})
-		input := decodeToolInput(t, body, "manage_chart_object")
-		if _, ok := input["last_point_label"]; ok {
-			t.Fatalf("--last-point-label=%s must not be written at the tool input root: %#v", tc.arg, input)
-		}
-		properties := input["properties"].(map[string]interface{})
-		if properties["last_point_label"] != tc.want {
-			t.Fatalf("--last-point-label=%s input = %#v, want %t", tc.arg, input, tc.want)
-		}
+	const labels = `[{"series_position":1,"scope":"all","content":"value","position":"outside"},{"series_position":2,"scope":"all","content":"value","position":"top"},{"series_position":3,"scope":"last","content":"value","position":"right"},{"series_position":4,"scope":"last","content":"value","position":"right"}]`
+
+	createBody := parseDryRunBody(t, ChartCreateBasic, []string{
+		"--url", testURL,
+		"--sheet-id", testSheetID,
+		"--chart-type", "combo",
+		"--data-range", "A1:E5",
+		"--series-data-labels", labels,
+	})
+	createInput := decodeToolInput(t, createBody, "manage_chart_object")
+	createLabels := createInput["basic_chart"].(map[string]interface{})["series_data_labels"]
+
+	update := shortcutFromRegistry(t, "+chart-config-update")
+	updateBody := parseDryRunBody(t, update, []string{
+		"--url", testURL,
+		"--sheet-id", testSheetID,
+		"--chart-id", "chart-1",
+		"--series-data-labels", labels,
+	})
+	updateInput := decodeToolInput(t, updateBody, "manage_chart_object")
+	updateLabels := updateInput["properties"].(map[string]interface{})["series_data_labels"]
+	if !reflect.DeepEqual(createLabels, updateLabels) {
+		t.Fatalf("create labels = %#v, update labels = %#v", createLabels, updateLabels)
+	}
+	if got := len(updateLabels.([]interface{})); got != 4 {
+		t.Fatalf("series_data_labels length = %d, want 4", got)
+	}
+}
+
+func TestChartSemanticShortcuts_SeriesDataLabelsMutuallyExclusive(t *testing.T) {
+	t.Parallel()
+	_, err := chartConfigUpdateInput(newMapFlagViewForCommand("+chart-config-update", map[string]interface{}{
+		"sheet-id":           testSheetID,
+		"chart-id":           "chart-1",
+		"data-labels":        "value",
+		"series-data-labels": `[{"series_position":1,"scope":"last"}]`,
+	}), "token", testSheetID, "")
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("error = %v, want per-series/global label validation", err)
+	}
+}
+
+func TestChartSemanticShortcuts_SeriesDataLabelsInBatch(t *testing.T) {
+	t.Parallel()
+	body := parseDryRunBody(t, BatchChartUpdate, []string{
+		"--url", testURL,
+		"--operations", `[{"shortcut":"+chart-config-update","input":{"sheet_id":"sh1","chart_id":"chart-1","series_data_labels":[{"series_position":1,"scope":"all","content":"value"},{"series_position":2,"scope":"last","content":"value"}]}}]`,
+	})
+	input := decodeToolInput(t, body, "batch_update")
+	ops := input["operations"].([]interface{})
+	chartInput := ops[0].(map[string]interface{})["input"].(map[string]interface{})
+	labels := chartInput["properties"].(map[string]interface{})["series_data_labels"].([]interface{})
+	if len(labels) != 2 {
+		t.Fatalf("batch series_data_labels = %#v, want 2 items", labels)
 	}
 }
 
