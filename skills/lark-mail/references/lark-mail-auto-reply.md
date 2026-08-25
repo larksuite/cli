@@ -25,7 +25,7 @@ lark-cli mail +auto-reply-modify --as user \
 # 从文件读取正文
 lark-cli mail +auto-reply-modify --as user --yes --content @auto-reply.html
 
-# 正文中的本地图片会自动上传并改写为 cid 引用
+# 正文中可以包含本地图片
 lark-cli mail +auto-reply-modify --as user --yes --content '<p>休假中<img src="./logo.png"></p>'
 
 # 关闭自动回复
@@ -39,8 +39,8 @@ lark-cli mail +auto-reply-modify --as user --yes --disable
 | `--mailbox <email>` | 两者 | 否 | 邮箱地址，默认 `me` |
 | `--enable` | modify | 否 | 开启自动回复；与 `--disable` 互斥 |
 | `--disable` | modify | 否 | 关闭自动回复；与 `--enable` 互斥 |
-| `--content <text-or-html>` | modify | 否 | 自动回复正文，支持纯文本或 HTML；支持直接传值、`@file` 和 `-` stdin；本地 `<img src="./file.png">` 和 data URI 图片会自动上传并改写为 `cid:` |
-| `--content-file <path>` | modify | 否 | 从当前目录下的文件读取正文，支持纯文本或 HTML；与 `--content` 互斥；正文里的本地图片和 data URI 图片会自动上传并改写为 `cid:` |
+| `--content <text-or-html>` | modify | 否 | 自动回复正文，支持纯文本或 HTML；支持直接传值、`@file`、`-` stdin、本地图片和 data URI 图片 |
+| `--content-file <path>` | modify | 否 | 从当前目录下的文件读取正文，支持纯文本或 HTML；与 `--content` 互斥；正文里可包含本地图片和 data URI 图片 |
 | `--start <time>` | modify | 否 | 开始日期，支持 Unix timestamp 或 ISO 8601；按当天开始保存 |
 | `--end <time>` | modify | 否 | 结束日期，支持 Unix timestamp 或 ISO 8601；按当天结束保存 |
 | `--timezone <tz>` | modify | 否 | 时区，例如 `Asia/Shanghai` |
@@ -51,7 +51,7 @@ lark-cli mail +auto-reply-modify --as user --yes --disable
 
 - `+auto-reply` 只调用读取接口，需要 `mail:user_mailbox.message:readonly`。
 - `+auto-reply-modify` 只更新用户提供的选项，未指定的配置会保留。
-- 修改正文时，本地图片和 data URI 图片上传后以 `cid:` 和 `images[]` 元信息保存，不会把 data URI 写入正文。
+- 修改正文时支持本地图片和 data URI 图片；CLI 会按邮箱接口要求处理图片内容。
 - 读取时会自动下载 `images[]` 中的图片并在每项的 `data` 字段返回 base64；单张下载失败只在该项返回 `error`，不影响其他图片。
 - 修改需要 `mail:user_mailbox.message:readonly` 和 `mail:user_mailbox.message:modify`。
 - `+auto-reply-modify` 是 `high-risk-write` 级 shortcut；agent/调用方执行前必须先向用户展示预览并取得明确确认，确认后带 `--yes` 执行。预览至少包含：`enabled`、时间范围、时区、收件范围和内容摘要。
