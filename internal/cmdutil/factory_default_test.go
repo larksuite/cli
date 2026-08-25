@@ -68,7 +68,7 @@ func TestNewDefaultStoredTATReadsKeychainOnlyDuringBotTokenResolution(t *testing
 	t.Setenv(envvars.CliAppSecret, "")
 	t.Setenv(envvars.CliUserAccessToken, "")
 	t.Setenv(envvars.CliTenantAccessToken, "")
-	t.Setenv(envvars.CliTenantAccessTokenSource, "keychain")
+	t.Setenv(envvars.CliTenantAccessTokenSource, "credential-store")
 	t.Setenv(envvars.CliDefaultAs, "")
 	t.Setenv(envvars.CliStrictMode, "")
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())

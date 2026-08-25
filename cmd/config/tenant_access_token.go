@@ -39,7 +39,7 @@ func newCmdConfigTenantAccessTokenSet(f *cmdutil.Factory) *cobra.Command {
 		Short: "Store a tenant access token read from stdin",
 		Long: "Store a tenant access token for an App ID in secure local storage.\n" +
 			"The token is always read from stdin and is never accepted as an argument or flag.\n" +
-			"Set LARKSUITE_CLI_TENANT_ACCESS_TOKEN_SOURCE=keychain to select the stored token\n" +
+			"Set LARKSUITE_CLI_TENANT_ACCESS_TOKEN_SOURCE=credential-store to select the stored token\n" +
 			"for bot requests in an env-selected account.",
 		Args: rejectTenantTokenPositionals,
 		RunE: func(_ *cobra.Command, _ []string) error {

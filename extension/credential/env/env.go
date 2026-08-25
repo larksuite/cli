@@ -14,7 +14,7 @@ import (
 	"github.com/larksuite/cli/internal/envvars"
 )
 
-const tenantAccessTokenSourceKeychain = "keychain"
+const tenantAccessTokenSourceCredentialStore = "credential-store"
 
 // Provider resolves account selection from environment variables. A configured
 // TAT lookup is consulted only when the dedicated source variable selects it.
@@ -42,11 +42,11 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 	if err != nil {
 		return nil, err
 	}
-	storedTATSelected := tatSource == tenantAccessTokenSourceKeychain
+	storedTATSelected := tatSource == tenantAccessTokenSourceCredentialStore
 	if storedTATSelected && appID == "" {
 		return nil, &credential.BlockError{
 			Provider: "env",
-			Reason:   envvars.CliTenantAccessTokenSource + "=keychain requires " + envvars.CliAppID,
+			Reason:   envvars.CliTenantAccessTokenSource + "=credential-store requires " + envvars.CliAppID,
 		}
 	}
 	if appID == "" && appSecret == "" {
@@ -133,14 +133,14 @@ func (p *Provider) ResolveToken(ctx context.Context, req credential.TokenSpec) (
 		if err != nil {
 			return nil, err
 		}
-		if tatSource == tenantAccessTokenSourceKeychain {
+		if tatSource == tenantAccessTokenSourceCredentialStore {
 			if req.AppID == "" || req.AppID != os.Getenv(envvars.CliAppID) {
 				return nil, nil
 			}
 			if p.tenantAccessTokenLookup == nil {
 				return nil, &credential.BlockError{
 					Provider: "env",
-					Reason:   "keychain tenant access token source is unavailable in this CLI distribution",
+					Reason:   "credential-store tenant access token source is unavailable in this CLI distribution",
 				}
 			}
 			return p.tenantAccessTokenLookup(ctx, req.AppID)
@@ -159,12 +159,12 @@ func (p *Provider) ResolveToken(ctx context.Context, req credential.TokenSpec) (
 func tenantAccessTokenSource() (string, error) {
 	source := strings.ToLower(strings.TrimSpace(os.Getenv(envvars.CliTenantAccessTokenSource)))
 	switch source {
-	case "", tenantAccessTokenSourceKeychain:
+	case "", tenantAccessTokenSourceCredentialStore:
 		return source, nil
 	default:
 		return "", &credential.BlockError{
 			Provider: "env",
-			Reason: fmt.Sprintf("invalid %s %q (want keychain or empty)",
+			Reason: fmt.Sprintf("invalid %s %q (want credential-store or empty)",
 				envvars.CliTenantAccessTokenSource, source),
 		}
 	}

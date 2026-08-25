@@ -302,7 +302,7 @@ func (l *storedTATLookup) resolve(_ context.Context, appID string) (*credential.
 
 func TestStoredTATSourceIsExplicitAndAccountResolutionDoesNotLookup(t *testing.T) {
 	t.Setenv(envvars.CliAppID, "cli_test")
-	t.Setenv(envvars.CliTenantAccessTokenSource, tenantAccessTokenSourceKeychain)
+	t.Setenv(envvars.CliTenantAccessTokenSource, tenantAccessTokenSourceCredentialStore)
 	lookup := &storedTATLookup{token: &credential.Token{Value: "stored-tat"}}
 	p := (&Provider{}).WithTenantAccessTokenLookup(lookup.resolve)
 
@@ -344,7 +344,7 @@ func TestStoredTATSourceUnsetNeverUsesLookup(t *testing.T) {
 func TestStoredTATSourceLeavesUserLaneIndependent(t *testing.T) {
 	t.Setenv(envvars.CliAppID, "cli_test")
 	t.Setenv(envvars.CliUserAccessToken, "env-uat")
-	t.Setenv(envvars.CliTenantAccessTokenSource, tenantAccessTokenSourceKeychain)
+	t.Setenv(envvars.CliTenantAccessTokenSource, tenantAccessTokenSourceCredentialStore)
 	t.Setenv(envvars.CliDefaultAs, "user")
 	lookup := &storedTATLookup{token: &credential.Token{Value: "stored-tat"}}
 	p := (&Provider{}).WithTenantAccessTokenLookup(lookup.resolve)
@@ -377,7 +377,7 @@ func TestStoredTATSourceLeavesUserLaneIndependent(t *testing.T) {
 func TestStoredTATSourceStrictUserDoesNotReadStoreDuringAccountResolution(t *testing.T) {
 	t.Setenv(envvars.CliAppID, "cli_test")
 	t.Setenv(envvars.CliStrictMode, "user")
-	t.Setenv(envvars.CliTenantAccessTokenSource, tenantAccessTokenSourceKeychain)
+	t.Setenv(envvars.CliTenantAccessTokenSource, tenantAccessTokenSourceCredentialStore)
 	lookup := &storedTATLookup{token: &credential.Token{Value: "stored-tat"}}
 	p := (&Provider{}).WithTenantAccessTokenLookup(lookup.resolve)
 
@@ -402,7 +402,7 @@ func TestStoredTATSourceStrictUserDoesNotReadStoreDuringAccountResolution(t *tes
 func TestStoredTATSourcePreservesExplicitUserDefault(t *testing.T) {
 	t.Setenv(envvars.CliAppID, "cli_test")
 	t.Setenv(envvars.CliDefaultAs, "user")
-	t.Setenv(envvars.CliTenantAccessTokenSource, tenantAccessTokenSourceKeychain)
+	t.Setenv(envvars.CliTenantAccessTokenSource, tenantAccessTokenSourceCredentialStore)
 	lookup := &storedTATLookup{token: &credential.Token{Value: "stored-tat"}}
 	p := (&Provider{}).WithTenantAccessTokenLookup(lookup.resolve)
 
@@ -418,20 +418,20 @@ func TestStoredTATSourcePreservesExplicitUserDefault(t *testing.T) {
 func TestStoredTATSourceOverridesLiteralBotTokenLane(t *testing.T) {
 	t.Setenv(envvars.CliAppID, "cli_test")
 	t.Setenv(envvars.CliTenantAccessToken, "env-tat")
-	t.Setenv(envvars.CliTenantAccessTokenSource, tenantAccessTokenSourceKeychain)
+	t.Setenv(envvars.CliTenantAccessTokenSource, tenantAccessTokenSourceCredentialStore)
 	lookup := &storedTATLookup{token: &credential.Token{Value: "stored-tat"}}
 	p := (&Provider{}).WithTenantAccessTokenLookup(lookup.resolve)
 
 	tok, err := p.ResolveToken(context.Background(), credential.TokenSpec{Type: credential.TokenTypeTAT, AppID: "cli_test"})
 	if err != nil || tok == nil || tok.Value != "stored-tat" {
-		t.Fatalf("ResolveToken(TAT) = (%#v, %v), want explicit keychain source", tok, err)
+		t.Fatalf("ResolveToken(TAT) = (%#v, %v), want explicit credential-store source", tok, err)
 	}
 }
 
 func TestStoredTATSourceValidatesSelectorAndAppID(t *testing.T) {
 	t.Run("invalid source", func(t *testing.T) {
 		t.Setenv(envvars.CliAppID, "cli_test")
-		t.Setenv(envvars.CliTenantAccessTokenSource, "vault")
+		t.Setenv(envvars.CliTenantAccessTokenSource, "keychain")
 		_, err := (&Provider{}).ResolveAccount(context.Background())
 		var blockErr *credential.BlockError
 		if !errors.As(err, &blockErr) || !strings.Contains(err.Error(), envvars.CliTenantAccessTokenSource) {
@@ -440,7 +440,7 @@ func TestStoredTATSourceValidatesSelectorAndAppID(t *testing.T) {
 	})
 
 	t.Run("missing app ID", func(t *testing.T) {
-		t.Setenv(envvars.CliTenantAccessTokenSource, tenantAccessTokenSourceKeychain)
+		t.Setenv(envvars.CliTenantAccessTokenSource, tenantAccessTokenSourceCredentialStore)
 		_, err := (&Provider{}).ResolveAccount(context.Background())
 		var blockErr *credential.BlockError
 		if !errors.As(err, &blockErr) || !strings.Contains(err.Error(), envvars.CliAppID) {
