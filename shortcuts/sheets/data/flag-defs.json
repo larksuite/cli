@@ -3554,14 +3554,14 @@
         "kind": "own",
         "type": "float64",
         "required": "optional",
-        "desc": "Lower display bound for the left Y-axis; must be less than --y-axis-max"
+        "desc": "Lower display bound for the left Y-axis; omit by default and pass only when the user explicitly requests fixed bounds; do not copy a raw source-column minimum, and keep it below --y-axis-max"
       },
       {
         "name": "y-axis-max",
         "kind": "own",
         "type": "float64",
         "required": "optional",
-        "desc": "Upper display bound for the left Y-axis; must be greater than --y-axis-min"
+        "desc": "Upper display bound for the left Y-axis; omit by default and pass only when the user explicitly requests fixed bounds; calculate it from rendered chart semantics, and keep it above --y-axis-min"
       },
       {
         "name": "dim1-index",
@@ -3589,7 +3589,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Combo charts only; comma-separated left or right Y-axis assignments aligned with --dim2-indexes; provide one value per selected series"
+        "desc": "Combo charts only; compare series units and magnitudes first and place a series that would be flattened on the right axis; pass left or right aligned with --dim2-indexes, one value per selected series"
       },
       {
         "name": "key-index",
@@ -3645,7 +3645,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Legend position; hidden removes the legend",
+        "desc": "Legend position; use bottom by default for pie and doughnut charts; hidden removes the legend",
         "enum": [
           "top",
           "bottom",
@@ -3805,7 +3805,7 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Optional chart width; must be paired with --height"
+        "desc": "Optional chart width; must be paired with --height; widen pie or doughnut charts and charts with long category labels to avoid truncation"
       },
       {
         "name": "height",
@@ -3957,14 +3957,14 @@
         "kind": "own",
         "type": "float64",
         "required": "optional",
-        "desc": "Lower display bound for the left Y-axis; must be less than --y-axis-max"
+        "desc": "Lower display bound for the left Y-axis; omit by default and pass only when the user explicitly requests fixed bounds; do not copy a raw source-column minimum, and keep it below --y-axis-max"
       },
       {
         "name": "y-axis-max",
         "kind": "own",
         "type": "float64",
         "required": "optional",
-        "desc": "Upper display bound for the left Y-axis; must be greater than --y-axis-min"
+        "desc": "Upper display bound for the left Y-axis; omit by default and pass only when the user explicitly requests fixed bounds; calculate it from rendered chart semantics, and keep it above --y-axis-min"
       },
       {
         "name": "data-labels",
