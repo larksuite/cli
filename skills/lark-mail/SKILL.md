@@ -66,7 +66,7 @@ metadata:
 | 软删除 | `*.trash`、`*.batch_trash` | ✅ 必须 |
 | 取消定时 | `*.cancel_scheduled_send` | ✅ 必须 |
 | 修改收信规则 | `rules.create` / `update` / `delete` | ✅ 必须 |
-| 修改自动回复 | `+auto-reply-modify` | ✅ 必须；高风险写操作 |
+| 修改自动回复 | `+auto-reply-modify` | ✅ 必须 |
 | 标签变更 | `*.add_label`、`*.remove_label` | ❌ 可逆，免确认 |
 | 已读状态 | `*.mark_read` / `mark_unread` | ❌ 可逆，免确认 |
 | 移动文件夹 | `*.move` | ❌ 可逆，免确认 |
