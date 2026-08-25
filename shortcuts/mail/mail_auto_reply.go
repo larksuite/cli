@@ -427,8 +427,8 @@ func autoReplyHasDataURIImage(content string) bool {
 func uploadAutoReplyLocalImages(ctx context.Context, runtime *common.RuntimeContext, content string) (string, []map[string]interface{}, error) {
 	imgs := parseLocalImgs(content)
 	type uploadedImage struct {
-		cid, fileKey, mimeType string
-		size                   int64
+		cid, fileKey string
+		size         int64
 	}
 	uploaded := make(map[string]uploadedImage, len(imgs))
 	images := make([]map[string]interface{}, 0, len(imgs))
@@ -439,7 +439,7 @@ func uploadAutoReplyLocalImages(ctx context.Context, runtime *common.RuntimeCont
 			if err != nil {
 				return "", nil, err
 			}
-			mimeType, err := filecheck.CheckInlineImageFormat(filepath.Base(img.Path), buf)
+			_, err := filecheck.CheckInlineImageFormat(filepath.Base(img.Path), buf)
 			if err != nil {
 				return "", nil, mailValidationParamError("--content", "inline image %s: %v", img.Path, err).WithCause(err)
 			}
@@ -451,11 +451,11 @@ func uploadAutoReplyLocalImages(ctx context.Context, runtime *common.RuntimeCont
 			if err != nil {
 				return "", nil, err
 			}
-			item = uploadedImage{cid: cid, fileKey: fileKey, mimeType: mimeType, size: size}
+			item = uploadedImage{cid: cid, fileKey: fileKey, size: size}
 			uploaded[img.Path] = item
 			images = append(images, map[string]interface{}{
 				"cid": item.cid, "image_name": filepath.Base(img.Path), "file_key": item.fileKey,
-				"file_size": item.size, "content_type": item.mimeType,
+				"file_size": item.size,
 			})
 		}
 		content = replaceImgSrcOnce(content, img.RawSrc, "cid:"+item.cid)
@@ -498,7 +498,7 @@ func uploadAutoReplyDataImages(runtime *common.RuntimeContext, content string, i
 		content = replaceImgSrcOnce(content, rawSrc, "cid:"+cid)
 		images = append(images, map[string]interface{}{
 			"cid": cid, "image_name": name, "file_key": fileKey,
-			"file_size": size, "content_type": mimeType,
+			"file_size": size,
 		})
 	}
 	return content, images, nil
@@ -807,9 +807,6 @@ func hydrateAutoReplyImages(ctx context.Context, runtime *common.RuntimeContext,
 			projected["error"] = fmt.Sprintf("image exceeds %d MB download limit", MaxAttachmentDownloadBytes/1024/1024)
 		} else {
 			projected["data"] = base64.StdEncoding.EncodeToString(buf)
-			if _, ok := projected["content_type"]; !ok {
-				projected["content_type"] = resp.Header.Get("Content-Type")
-			}
 		}
 		result = append(result, projected)
 	}
