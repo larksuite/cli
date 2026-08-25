@@ -66,14 +66,14 @@ metadata:
 | 软删除 | `*.trash`、`*.batch_trash` | ✅ 必须 |
 | 取消定时 | `*.cancel_scheduled_send` | ✅ 必须 |
 | 修改收信规则 | `rules.create` / `update` / `delete` | ✅ 必须 |
-| 修改自动回复 | `+auto-reply-modify` | ✅ 必须；确认后带 `--yes` 执行 |
+| 修改自动回复 | `+auto-reply-modify` | ✅ 必须；高风险写操作 |
 | 标签变更 | `*.add_label`、`*.remove_label` | ❌ 可逆，免确认 |
 | 已读状态 | `*.mark_read` / `mark_unread` | ❌ 可逆，免确认 |
 | 移动文件夹 | `*.move` | ❌ 可逆，免确认 |
 
 **批量操作**（`batch_*`）的预览必须包含**受影响数量**，例如"将删除 234 封邮件，确认？"。
 
-**已授权判定**：当且仅当用户在最近一轮对话**同时**明确了 (a) 目标对象 和 (b) 动作时（例如"删掉刚才那封 spam"），视为已授权，无需再确认。仅说"删了它"但目标对象只来自历史上下文且未在本轮复述时，仍需展示预览。`+auto-reply-modify` 是高风险写操作，执行前必须向用户确认将要生效的设置，确认后带 `--yes` 执行。
+**已授权判定**：当且仅当用户在最近一轮对话**同时**明确了 (a) 目标对象 和 (b) 动作时（例如"删掉刚才那封 spam"），视为已授权，无需再确认。仅说"删了它"但目标对象只来自历史上下文且未在本轮复述时，仍需展示预览。`+auto-reply-modify` 是高风险写操作，执行前必须向用户确认将要生效的设置。
 
 ### 正确流程示例
 
@@ -105,7 +105,7 @@ metadata:
 8. **HTML body 预检（可选）** — 复杂 HTML body 提交前可先跑 `+lint-html` 看 lint 会改 / 删什么；写信路径（`+send` / `+draft-create` / `+reply` / `+reply-all` / `+forward` / `+draft-edit` body op）已内置 autofix，普通正文不必先跑。详见 [references/lark-mail-html.md](references/lark-mail-html.md) 中的「写入路径内置 HTML lint」章节
 9. **确认投递** — 立即发送后用 `send_status` 查询投递状态，定时发送后在预定时间后再查询；取消定时发送用 `cancel_scheduled_send`
 10. **编辑草稿** — `+draft-edit` 修改已有草稿。正文编辑通过 `--patch-file`：回复/转发草稿用 `set_reply_body` op 保留引用区，普通草稿用 `set_body` op
-11. **自动回复设置** — 查看或修改外出回复使用 `+auto-reply` / `+auto-reply-modify`；修改前先预览并取得用户确认，确认后带 `--yes` 执行。详见 [references/lark-mail-auto-reply.md](references/lark-mail-auto-reply.md)。
+11. **自动回复设置** — 查看或修改外出回复使用 `+auto-reply` / `+auto-reply-modify`；修改前先预览并取得用户确认。详见 [references/lark-mail-auto-reply.md](references/lark-mail-auto-reply.md)。
 12. **已读回执** —
    - **请求回执（写信侧）**：`--request-receipt` 仅在**用户显式要求**时添加，**不要从 subject / body 内容推断意图**。
    - **响应回执（拉信侧）**：拉信看到 `label_ids` 含 `READ_RECEIPT_REQUEST`（或 `-607`）时，**必须先问用户**是否回执（不要自动回执，涉及隐私）。用户同意 → `+send-receipt` 响应；用户不同意但想消掉提示 → `+decline-receipt` 只清本地标签、不发邮件。
