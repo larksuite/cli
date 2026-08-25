@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.90] - 2026-08-25
+
+### Features
+
+- event organizer transfer bot to user (#2448)
+- **base**: document app default page reuse (#2436)
+- **slides**: un-deprecate +replace-pages shortcut (#2470)
+- **slides**: add media download shortcut (#2446)
+- **vc**: add agent meeting control shortcuts (#2466)
+- **slides**: add marginRight attribute to <p> element schema (#2493)
+- words replace and minutes fix (#2490)
+- **sheets**: combine chart workflows and special chart types (#2374)
+- **extension**: add business command extension v1 (#2308)
+- **drive**: support appid in member-remove (#2499)
+- **config**: support keychain-backed tenant access tokens (#2488)
+
+### Bug Fixes
+
+- **apps**: classify the online DDL ban and the file storage quota failure (#2460)
+- **base**: hide dashboard auto analysis setting (#2465)
+- **slides**: strip stale <note> id in +update-slide to avoid backend crash (#2475)
+- **drive**: continue downloads on permission scope errors (#2494)
+- **wiki**: keep node-get stderr machine-readable (#2449)
+- **slides**: avoid PID variable in examples (#2496)
+- **docs**: continue media downloads on permission scope errors (#2498)
+- **skills**: scope markdown routing to Lark resources (#2497)
+- **auth**: exclude im:message.send_as_user from batch scope sets (#2471)
+
+### Refactoring
+
+- **slides**: assert dry-run parent_type instead of deriving it from a placeholder (#2461)
+
+### Misc
+
+- Support repeated mail compose flags (#2271)
+
 ## [v1.0.89] - 2026-08-21
 
 ### Features
@@ -1983,6 +2019,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.90]: https://github.com/larksuite/cli/releases/tag/v1.0.90
 [v1.0.89]: https://github.com/larksuite/cli/releases/tag/v1.0.89
 [v1.0.88]: https://github.com/larksuite/cli/releases/tag/v1.0.88
 [v1.0.87]: https://github.com/larksuite/cli/releases/tag/v1.0.87
