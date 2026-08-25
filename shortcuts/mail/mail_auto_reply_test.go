@@ -369,8 +369,11 @@ func TestMailAutoReplyUploadsDataURIImages(t *testing.T) {
 		t.Fatalf("images = %#v, want one uploaded image", captured["images"])
 	}
 	image := images[0].(map[string]interface{})
-	if image["file_key"] != "file_data_uri" || image["image_name"] != "auto-reply-image-1.png" || image["content_type"] != "image/png" {
+	if image["file_key"] != "file_data_uri" || image["image_name"] != "auto-reply-image-1.png" {
 		t.Fatalf("image metadata = %#v", image)
+	}
+	if _, ok := image["content_type"]; ok {
+		t.Fatalf("image metadata should not include content_type: %#v", image)
 	}
 }
 
