@@ -47,6 +47,12 @@ type Shortcut struct {
 	ConditionalUserScopes []string // optional: user-identity conditional scopes
 	ConditionalBotScopes  []string // optional: bot-identity conditional scopes
 
+	// ConfirmationBeforeNetwork opts a shortcut into an offline-preflight path:
+	// Normalize/Validate/--dry-run/high-risk confirmation run before any
+	// identity auto-detection, config load, scope probe, or API client setup.
+	// Use only when those pre-execution stages are guaranteed to stay local.
+	ConfirmationBeforeNetwork bool
+
 	// Declarative fields (new framework).
 	AuthTypes []string // supported identities: "user", "bot" (default: ["user"])
 	Flags     []Flag   // flag definitions; --dry-run is auto-injected

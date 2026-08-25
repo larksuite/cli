@@ -56,15 +56,26 @@ func PartialFailure(code int) *PartialFailureError {
 // Returns false only when err carries no Problem (the dispatcher then handles
 // it via its signal / usage-error branches) or when JSON encoding itself failed.
 func WriteTypedErrorEnvelope(w io.Writer, err error, identity string) bool {
+	return WriteTypedErrorEnvelopeWithNoticeProvider(w, err, identity, GetNotice)
+}
+
+// WriteTypedErrorEnvelopeWithNoticeProvider writes a typed error envelope
+// using the invocation-scoped notice provider. A nil provider deliberately
+// suppresses notices; WriteTypedErrorEnvelope retains the legacy global hook.
+func WriteTypedErrorEnvelopeWithNoticeProvider(w io.Writer, err error, identity string, noticeProvider NoticeProvider) bool {
 	typed, ok := errs.UnwrapTypedError(err)
 	if !ok {
 		return false
+	}
+	var notice map[string]interface{}
+	if noticeProvider != nil {
+		notice = noticeProvider()
 	}
 	env := typedEnvelope{
 		OK:       false,
 		Identity: identity,
 		Error:    typed,
-		Notice:   GetNotice(),
+		Notice:   notice,
 	}
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)

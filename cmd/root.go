@@ -41,6 +41,12 @@ import (
 // explicit args — correct, since those don't exercise the whitelist path.
 var rawInvocationArgs []string
 
+var (
+	singleAppModeForInvocation       = isSingleAppMode
+	resolveStartupBrandForInvocation = ResolveStartupBrand
+	buildFullInvocation              = buildInternalWithConfig
+)
+
 func Execute() int {
 	return executeWithOptions(nil)
 }
@@ -71,11 +77,16 @@ func executeWithOptions(opts []BuildOption) int {
 	if cfg.streams == nil {
 		WithIO(os.Stdin, os.Stdout, os.Stderr)(cfg)
 	}
+	if terminal, code := runOfflineMeetingManagementPreflight(
+		context.Background(), inv, cfg.presentation, cfg.streams, os.Args[1:],
+	); terminal {
+		return code
+	}
 	if !cfg.hideProfileSet {
-		HideProfile(isSingleAppMode())(cfg)
+		HideProfile(singleAppModeForInvocation())(cfg)
 	}
 	if !cfg.startupBrandSet {
-		WithStartupBrand(ResolveStartupBrand(inv.Profile))(cfg)
+		WithStartupBrand(resolveStartupBrandForInvocation(inv.Profile))(cfg)
 	}
 	configureFlagCompletions(os.Args)
 
@@ -83,7 +94,7 @@ func executeWithOptions(opts []BuildOption) int {
 	if deferProfileError {
 		cfg.deferStartup = true
 	}
-	runtime, rootCmd, reg := buildInternalWithConfig(ctx, inv, cfg)
+	runtime, rootCmd, reg := buildFullInvocation(ctx, inv, cfg)
 	f := runtime.Factory
 
 	if deferProfileError {
@@ -296,7 +307,7 @@ func handleRootError(
 	// WriteTypedErrorEnvelope still returns false when err carries no
 	// Problem; in that case we fall through to the signal / plain-text paths.
 	typedExit := output.ExitCodeOf(err)
-	if output.WriteTypedErrorEnvelope(errOut, renderedErr, string(f.ResolvedIdentity)) {
+	if output.WriteTypedErrorEnvelopeWithNoticeProvider(errOut, renderedErr, string(f.ResolvedIdentity), f.NoticeProvider) {
 		return typedExit
 	}
 
@@ -331,7 +342,7 @@ func handleRootError(
 	} else {
 		fallback = errs.NewInternalError(errs.SubtypeUnknown, "%s", err.Error()).WithCause(err)
 	}
-	output.WriteTypedErrorEnvelope(errOut, fallback, string(f.ResolvedIdentity))
+	output.WriteTypedErrorEnvelopeWithNoticeProvider(errOut, fallback, string(f.ResolvedIdentity), f.NoticeProvider)
 	return output.ExitCodeOf(fallback)
 }
 

@@ -88,6 +88,32 @@ func TestWriteSuccessEnvelope_PrintsShortcutCompatibleEnvelope(t *testing.T) {
 	}
 }
 
+func TestWriteSuccessEnvelopeWithNoticeProvider_NilDoesNotReadGlobal(t *testing.T) {
+	original := PendingNotice
+	called := false
+	PendingNotice = func() map[string]interface{} {
+		called = true
+		return map[string]interface{}{"source": "global"}
+	}
+	t.Cleanup(func() { PendingNotice = original })
+
+	var out strings.Builder
+	err := WriteSuccessEnvelopeWithNoticeProvider(
+		map[string]interface{}{"id": "1"},
+		SuccessEnvelopeOptions{Out: &out},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("WriteSuccessEnvelopeWithNoticeProvider() error = %v", err)
+	}
+	if called {
+		t.Fatal("nil invocation provider consulted PendingNotice")
+	}
+	if strings.Contains(out.String(), "_notice") {
+		t.Fatalf("nil invocation provider emitted notice: %s", out.String())
+	}
+}
+
 func TestWriteSuccessEnvelope_JqUsesEnvelope(t *testing.T) {
 	var out strings.Builder
 

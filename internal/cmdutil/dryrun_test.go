@@ -14,6 +14,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/output"
 )
 
 func TestDryRunAPI_SingleGET(t *testing.T) {
@@ -343,6 +344,32 @@ func TestWriteDryRun_NilPreviewIsInternalError(t *testing.T) {
 	var internal *errs.InternalError
 	if !errors.As(err, &internal) {
 		t.Fatalf("expected *errs.InternalError, got %T: %v", err, err)
+	}
+}
+
+func TestWriteDryRunWithNoticeProvider_NilDoesNotReadGlobal(t *testing.T) {
+	original := output.PendingNotice
+	called := false
+	output.PendingNotice = func() map[string]interface{} {
+		called = true
+		return map[string]interface{}{"source": "global"}
+	}
+	t.Cleanup(func() { output.PendingNotice = original })
+
+	var out bytes.Buffer
+	err := WriteDryRunWithNoticeProvider(
+		NewDryRunAPI().GET("/open-apis/test"),
+		DryRunOutputOptions{Format: "json", Out: &out, ErrOut: io.Discard},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("WriteDryRunWithNoticeProvider() error = %v", err)
+	}
+	if called {
+		t.Fatal("nil invocation provider consulted output.PendingNotice")
+	}
+	if strings.Contains(out.String(), "_notice") {
+		t.Fatalf("nil invocation provider emitted notice: %s", out.String())
 	}
 }
 

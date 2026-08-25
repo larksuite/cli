@@ -50,6 +50,16 @@ func TestMeetingSkillIsEmbeddedInBuiltCLI(t *testing.T) {
 			args: []string{"skills", "read", "lark-meeting", "references/lark-vc-detail.md"},
 			want: "# vc +detail",
 		},
+		{
+			name: "new end reference",
+			args: []string{"skills", "read", "lark-meeting", "references/lark-vc-meeting-end.md"},
+			want: "# vc +meeting-end",
+		},
+		{
+			name: "new kickout reference",
+			args: []string{"skills", "read", "lark-meeting", "references/lark-vc-meeting-participant-kickout.md"},
+			want: "# vc +meeting-participant-kickout",
+		},
 	}
 
 	for _, tt := range tests {

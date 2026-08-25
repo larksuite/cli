@@ -21,6 +21,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/skillref"
 	"github.com/larksuite/cli/internal/transport"
@@ -39,10 +40,11 @@ type InvocationContext struct {
 // All function fields are lazily initialized and cached after first call.
 // In tests, replace any field to stub out external dependencies.
 type Factory struct {
-	Config     func() (*core.CliConfig, error) // lazily loads app config from Credential
-	HttpClient func() (*http.Client, error)    // policy-routed HTTP client for direct requests
-	LarkClient func() (*lark.Client, error)    // Lark SDK client for all Open API calls
-	IOStreams  *IOStreams                      // stdin/stdout/stderr streams
+	Config         func() (*core.CliConfig, error) // lazily loads app config from Credential
+	HttpClient     func() (*http.Client, error)    // policy-routed HTTP client for direct requests
+	LarkClient     func() (*lark.Client, error)    // Lark SDK client for all Open API calls
+	IOStreams      *IOStreams                      // stdin/stdout/stderr streams
+	NoticeProvider output.NoticeProvider           // captured per invocation; nil suppresses notices
 
 	Invocation           InvocationContext       // Immutable call context; do not mutate after Factory construction.
 	Keychain             keychain.KeychainAccess // secret storage (real keychain in prod, mock in tests)

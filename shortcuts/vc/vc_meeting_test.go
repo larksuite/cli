@@ -1593,13 +1593,20 @@ func TestValidateMeetingIDFlag(t *testing.T) {
 }
 
 func TestMeetingEndValidateRejectsInvalidMeetingID(t *testing.T) {
-	cmd := &cobra.Command{Use: "test"}
-	cmd.Flags().String("meeting-id", "", "")
-	_ = cmd.Flags().Set("meeting-id", "invalid")
-	runtime := common.TestNewRuntimeContext(cmd, defaultConfig())
-
-	if err := VCMeetingEnd.Validate(context.Background(), runtime); err == nil || !strings.Contains(err.Error(), "--meeting-id must be a positive integer") {
-		t.Fatalf("validate error = %v", err)
+	for _, tt := range []struct {
+		identity core.Identity
+		want     string
+	}{
+		{identity: core.AsUser, want: "--meeting-id must be a positive base-10 int64"},
+		{identity: core.AsBot, want: "--meeting-id must be a positive integer"},
+	} {
+		cmd := &cobra.Command{Use: "test"}
+		cmd.Flags().String("meeting-id", "", "")
+		_ = cmd.Flags().Set("meeting-id", "invalid")
+		runtime := common.TestNewRuntimeContextWithIdentity(cmd, defaultConfig(), tt.identity)
+		if err := VCMeetingEnd.Validate(context.Background(), runtime); err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Fatalf("identity %s validate error = %v, want %q", tt.identity, err, tt.want)
+		}
 	}
 }
 
@@ -1706,8 +1713,14 @@ func TestMeetingEnd_ExecuteHandlesAPIErrorAndEmptyData(t *testing.T) {
 	})
 }
 
-func TestVCMeetingEndUsesManageScope(t *testing.T) {
-	if !reflect.DeepEqual(VCMeetingEnd.Scopes, []string{"vc:meeting.bot.manage:write"}) {
-		t.Fatalf("VCMeetingEnd.Scopes = %v", VCMeetingEnd.Scopes)
+func TestVCMeetingEndUsesIdentitySpecificScopes(t *testing.T) {
+	if !reflect.DeepEqual(VCMeetingEnd.AuthTypes, []string{"user", "bot"}) {
+		t.Fatalf("VCMeetingEnd.AuthTypes = %v, want [user bot]", VCMeetingEnd.AuthTypes)
+	}
+	if !reflect.DeepEqual(VCMeetingEnd.DeclaredScopesForIdentity("user"), []string{"vc:meeting"}) {
+		t.Fatalf("user scopes = %v", VCMeetingEnd.DeclaredScopesForIdentity("user"))
+	}
+	if !reflect.DeepEqual(VCMeetingEnd.DeclaredScopesForIdentity("bot"), []string{"vc:meeting.bot.manage:write"}) {
+		t.Fatalf("bot scopes = %v", VCMeetingEnd.DeclaredScopesForIdentity("bot"))
 	}
 }

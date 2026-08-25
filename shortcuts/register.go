@@ -107,6 +107,47 @@ func RegisterShortcuts(program *cobra.Command, f *cmdutil.Factory) {
 	RegisterShortcutsWithContext(context.Background(), program, f)
 }
 
+var offlineMeetingManagementCommands = map[string]struct{}{
+	"+meeting-end":                 {},
+	"+meeting-participant-kickout": {},
+}
+
+// RegisterOfflineMeetingManagementPreflight mounts the two destructive VC
+// meeting-management commands into a deliberately minimal, dependency-free
+// command tree. Keep this list closed: these definitions are safe to execute
+// twice because their local preflight has no Normalize, input-file/stdin, or
+// OnInvoke side effects. The normal tree is rebuilt only after explicit
+// confirmation.
+func RegisterOfflineMeetingManagementPreflight(ctx context.Context, program *cobra.Command, f *cmdutil.Factory) error {
+	vcGroup := &cobra.Command{Use: "vc", Short: "video conference operations"}
+	cmdmeta.SetDomain(vcGroup, "vc")
+	program.AddCommand(vcGroup)
+
+	found := make(map[string]struct{}, len(offlineMeetingManagementCommands))
+	for _, shortcut := range allShortcuts {
+		if shortcut.Service != "vc" {
+			continue
+		}
+		if _, ok := offlineMeetingManagementCommands[shortcut.Command]; !ok {
+			continue
+		}
+		if !shortcut.ConfirmationBeforeNetwork || shortcut.Normalize != nil || shortcut.OnInvoke != nil {
+			return errs.NewInternalError(errs.SubtypeUnknown, "offline preflight invariant failed for vc %s", shortcut.Command)
+		}
+		for _, flag := range shortcut.Flags {
+			if len(flag.Input) != 0 {
+				return errs.NewInternalError(errs.SubtypeUnknown, "offline preflight input invariant failed for vc %s --%s", shortcut.Command, flag.Name)
+			}
+		}
+		shortcut.MountOfflinePreflightWithContext(ctx, vcGroup, f)
+		found[shortcut.Command] = struct{}{}
+	}
+	if len(found) != len(offlineMeetingManagementCommands) {
+		return errs.NewInternalError(errs.SubtypeUnknown, "offline meeting-management preflight registry is incomplete")
+	}
+	return nil
+}
+
 func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f *cmdutil.Factory) {
 	// Factory.Config may be nil in tests that pass a zero-value factory.
 	var brand core.LarkBrand

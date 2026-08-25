@@ -1,7 +1,7 @@
 ---
 name: lark-meeting
 version: 1.0.0
-description: "飞书视频会议：查询会议记录与会议产物(纪要/逐字稿/妙记)、妙记搜索/上传/下载/编辑、机器人参与会议；查询进行中的会议、实时会议内容(发言/聊天/共享文档)问答(会上/会里)、发送会中聊天/表情；基于 meeting_id、meeting_no、event_id、note_id、minute_token、vc-node-id 或妙记 URL 查询相关信息。预约会议、忙闲和会议室管理走 lark-calendar。"
+description: "飞书视频会议：查询会议记录与会议产物(纪要/逐字稿/妙记)、妙记搜索/上传/下载/编辑、机器人参与会议；查询进行中的会议、实时会议内容(发言/聊天/共享文档)问答(会上/会里)、发送会中聊天/表情，以及主持人结束会议或移出参会人；基于 meeting_id、meeting_no、event_id、note_id、minute_token、vc-node-id 或妙记 URL 查询相关信息。预约会议、忙闲和会议室管理走 lark-calendar。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -27,6 +27,8 @@ metadata:
 - 支持：显式传入并继续执行。
 - 不支持：说明限制并停止；不要为了让命令成功而替换身份。
 - 只有用户明确同意切换身份后，才以新身份重新开始一条工作流。
+
+`vc +meeting-end` 是一个支持双身份的 shortcut：`--as user` 调用用户端 PATCH 接口，`--as bot` 调用应用机器人端 POST 接口。`vc +meeting-participant-kickout` 仅支持用户身份。两者都是高风险写操作；dry-run 必须显式传入受支持的 `--as user` 或 `--as bot`，不得为了执行成功静默切换身份，也不得替用户补做确认。
 
 ## 领域模型与概念
 
@@ -77,6 +79,9 @@ Calendar 日程 ──meeting_note────────────► Doc（
 - Note 与 Minutes 分别来自 AI 总结和录制两条独立链路。一场会议可能同时有两类产物、只有其中一类，也可能都没有；不能根据 `note_id` 推断必然存在 `minute_token`，反之亦然。
 - Minutes 可以由本地音视频直接生成，因此不一定关联 `meeting_id` 或 Calendar `event_id`。
 - Calendar `meeting_note`、Note `note_id`、Minutes `minute_token` 和各类 Doc token 标识不同对象，不能互换、代入其他域的命令或从一者反推另一者。
+- `vc +meeting-end` 无论使用用户身份还是应用身份，都会结束所有参会人的整场会议，不等于 `vc +meeting-leave` 让应用机器人自行离会；只移出指定参会人时使用仅支持用户身份的 `vc +meeting-participant-kickout`。
+- 移出参会人的 `participant ID + user_type` 必须来自目标会议的参会人快照，不得根据 open_id 或其他标识猜测 `user_type`。
+- 结束会议和移出参会人都必须先确认用户的明确目标；预览使用 `--dry-run` 并显式传入对应身份，真实执行只有在确认后才传 `--yes`。
 
 ## 快速行动
 
@@ -106,7 +111,7 @@ lark-cli vc +meeting-events --as <source_identity> --meeting-id <meeting_id> --p
 - [生成和修改妙记、管理妙记权限](scenes/create-and-edit-minutes.md)：将本地音视频生成妙记、逐字稿、总结、待办或章节；修改妙记标题、总结、待办、关键词或说话人；申请妙记权限，或查看、分配妙记协作者权限。
 - [查询智能纪要及关联产物](scenes/query-note-and-artifacts.md)：已有 `note_id`、智能纪要 Docx URL/token，或需要查询纪要正文、逐字稿、妙记和共享文档等关联产物。
 - [应用机器人参会与会中互动](scenes/live-meeting-attend.md)：完整编排应用机器人的活跃会议发现、发起或加入、邀请、事件拉取、会议截图、文本/表情/倒计时互动、结束会议和明确授权后的离会。
-- [会中事件与会中互动](scenes/live-meeting-interact.md)：在不触发新的入会/离会操作时，使用用户身份或已在会中的应用身份查询活跃会议、查看发言/聊天/共享内容、按需读取当前会议画面，或发送文本/表情、操作倒计时。
+- [会中事件、互动与主持管理](scenes/live-meeting-interact.md)：在不触发新的入会/离会操作时，使用用户身份或已在会中的应用身份查询活跃会议、查看发言/聊天/共享内容、按需读取当前会议画面，或发送文本/表情、操作倒计时；用户明确要求结束会议或移出参会人时，也从这里路由到对应的高风险命令。
 
 ## 命令参考
 
@@ -121,9 +126,10 @@ lark-cli vc +meeting-events --as <source_identity> --meeting-id <meeting_id> --p
 | `vc +meeting-message-send` | 发送会中文本消息或表情 | [lark-vc-meeting-message-send](references/lark-vc-meeting-message-send.md) |
 | `vc +meeting-screenshot` | 获取视频会议截图 | [lark-vc-meeting-screenshot](references/lark-vc-meeting-screenshot.md) |
 | `vc +meeting-countdown` | 设置、延长、提前结束或关闭会中倒计时 | [lark-vc-meeting-countdown](references/lark-vc-meeting-countdown.md) |
+| `vc +meeting-end` | 以用户身份或当前 Host 应用机器人结束整场进行中的会议 | [用户身份](references/lark-vc-meeting-end.md) / [应用身份](references/lark-vc-agent-meeting-end.md) |
+| `vc +meeting-participant-kickout` | 以用户身份移出一至十个指定参会人 | [lark-vc-meeting-participant-kickout](references/lark-vc-meeting-participant-kickout.md) |
 | `vc +meeting-join` | 让应用机器人加入会议 | [lark-vc-agent-meeting-join](references/lark-vc-agent-meeting-join.md) |
 | `vc +meeting-invite` | 以应用机器人邀请指定用户或全部合格日程参会人 | [lark-vc-agent-meeting-invite](references/lark-vc-agent-meeting-invite.md) |
-| `vc +meeting-end` | 让当前 Host 应用机器人结束会议 | [lark-vc-agent-meeting-end](references/lark-vc-agent-meeting-end.md) |
 | `vc +meeting-leave` | 让应用机器人离开会议 | [lark-vc-agent-meeting-leave](references/lark-vc-agent-meeting-leave.md) |
 | `minutes +search` | 搜索妙记 | [lark-minutes-search](references/lark-minutes-search.md) |
 | `minutes minutes get` | 查询妙记基础信息 | `lark-cli minutes minutes get --help` |

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"slices"
@@ -34,6 +35,13 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
+
+// ErrOfflinePreflightPassed tells the process entrypoint that a deliberately
+// minimal command tree completed all local checks and observed an explicit
+// --yes. The caller must now rebuild the normal command tree so config, strict
+// mode, plugin policy, scopes, and the real API execution keep their existing
+// behavior.
+var ErrOfflinePreflightPassed = errors.New("offline shortcut preflight passed") //nolint:forbidigo // internal control-flow sentinel; consumed by errors.Is before error presentation
 
 // RuntimeContext provides helpers for shortcut execution.
 type RuntimeContext struct {
@@ -749,7 +757,7 @@ func (ctx *RuntimeContext) newEmitter() *output.Emitter {
 		CommandPath:    ctx.Cmd.CommandPath(),
 		Identity:       string(ctx.As()),
 		ColorEnabled:   streams.OutIsTerminal,
-		NoticeProvider: output.GetNotice,
+		NoticeProvider: ctx.Factory.NoticeProvider,
 	})
 }
 
@@ -907,12 +915,22 @@ func (s Shortcut) Mount(parent *cobra.Command, f *cmdutil.Factory) {
 // MountWithContext registers a shortcut while preserving the caller-provided context.
 func (s Shortcut) MountWithContext(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
 	if s.Execute != nil {
-		s.mountDeclarative(ctx, parent, f)
+		s.mountDeclarative(ctx, parent, f, false)
+	}
+}
+
+// MountOfflinePreflightWithContext mounts only the local half of a shortcut
+// that opted into ConfirmationBeforeNetwork. It is used by the process-level
+// two-stage dispatcher; successful confirmation returns
+// ErrOfflinePreflightPassed instead of touching runtime dependencies.
+func (s Shortcut) MountOfflinePreflightWithContext(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
+	if s.Execute != nil {
+		s.mountDeclarative(ctx, parent, f, true)
 	}
 }
 
 // mountDeclarative builds and registers the Cobra command described by a Shortcut.
-func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
+func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory, offlinePreflightOnly bool) {
 	shortcut := s
 	if len(shortcut.AuthTypes) == 0 {
 		shortcut.AuthTypes = []string{"user"}
@@ -925,6 +943,9 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 		Hidden: shortcut.Hidden,
 		Args:   rejectPositionalArgs(),
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if offlinePreflightOnly {
+				return runShortcutConfirmationBeforeNetwork(cmd, f, &shortcut, botOnly, true)
+			}
 			return runShortcut(cmd, f, &shortcut, botOnly)
 		},
 	}
@@ -965,8 +986,10 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 }
 
 // runShortcut is the execution pipeline for a declarative shortcut.
-// Each step is a clear phase: identity → config → scopes → runtime →
-// canonical validation → execute.
+// Each step is a clear phase: local preflight → identity/config/scopes/runtime
+// → execute. Most shortcuts use the full eager path; a small opt-in subset can
+// delay identity/config/network setup until after local validation, dry-run,
+// and high-risk confirmation.
 func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bool) error {
 	// --print-schema short-circuits everything below: it's pure local
 	// introspection, no identity / scope / network needed. The flag is
@@ -991,6 +1014,9 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 			fmt.Fprintln(f.IOStreams.Out, string(out))
 			return nil
 		}
+	}
+	if s.ConfirmationBeforeNetwork {
+		return runShortcutConfirmationBeforeNetwork(cmd, f, s, botOnly, false)
 	}
 	as, err := resolveShortcutIdentity(cmd, f, s)
 	if err != nil {
@@ -1054,6 +1080,68 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 	return rctx.outputErr
 }
 
+func runShortcutConfirmationBeforeNetwork(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bool, offlinePreflightOnly bool) error {
+	offlineAs, err := resolveShortcutIdentityOffline(cmd, s, botOnly)
+	if err != nil {
+		return err
+	}
+	f.ResolvedIdentity = offlineAs
+	rctx, err := newOfflineRuntimeContext(cmd, f, s, offlineAs, botOnly)
+	if err != nil {
+		return err
+	}
+	if err := runShortcutLocalPreflight(rctx, s); err != nil {
+		return err
+	}
+	if rctx.Bool("dry-run") {
+		// The dependency-free phase cannot observe strict mode, default-as, or
+		// credential-based auto detection. For a user-only destructive command,
+		// require the caller to make that identity explicit before rendering a
+		// plan; otherwise the dry-run envelope could claim user while the same
+		// invocation resolves to bot after confirmation.
+		if offlineAs == core.AsAuto && len(s.AuthTypes) == 1 && s.AuthTypes[0] == string(core.AsUser) {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--dry-run requires explicit --as user because offline preflight cannot resolve default or automatic identity").
+				WithParam("--as")
+		}
+		return handleShortcutDryRun(f, rctx, s)
+	}
+	if s.Risk == "high-risk-write" && !rctx.Bool("yes") {
+		return cmdutil.RequireConfirmation(s.Service + " " + s.Command)
+	}
+	if offlinePreflightOnly {
+		return ErrOfflinePreflightPassed
+	}
+
+	// Confirmation only authorizes continuing into the established runtime
+	// path. Resolve identity again here because the dependency-free preflight
+	// deliberately cannot observe strict mode, default-as, or credential-based
+	// auto detection. In particular, a user-only destructive shortcut must
+	// reject an implicit/auto bot identity instead of silently rewriting it to
+	// user after --yes.
+	as, err := resolveShortcutIdentity(cmd, f, s)
+	if err != nil {
+		return err
+	}
+	config, err := f.Config()
+	if err != nil {
+		return err
+	}
+	if err := checkShortcutScopes(f, cmd.Context(), as, config, s.ScopesForIdentity(string(as))); err != nil {
+		return err
+	}
+	liveRctx, err := newRuntimeContext(cmd, f, s, config, as, botOnly)
+	if err != nil {
+		return err
+	}
+	liveRctx.stdinConsumed = rctx.stdinConsumed
+	liveRctx.inputResolved = maps.Clone(rctx.inputResolved)
+	if err := s.Execute(liveRctx.ctx, liveRctx); err != nil {
+		return attributeAliasValidationError(liveRctx, err)
+	}
+	return liveRctx.outputErr
+}
+
 // resolveShortcutIdentity selects the effective identity for a shortcut invocation.
 func resolveShortcutIdentity(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) (core.Identity, error) {
 	// Step 1: determine identity (--as > default-as > auto-detect).
@@ -1069,6 +1157,35 @@ func resolveShortcutIdentity(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut
 		return "", err
 	}
 	return as, nil
+}
+
+func resolveShortcutIdentityOffline(cmd *cobra.Command, s *Shortcut, botOnly bool) (core.Identity, error) {
+	asFlag, _ := cmd.Flags().GetString("as")
+	if botOnly {
+		if asFlag != "" && asFlag != string(core.AsBot) {
+			return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--as %s is not supported, this command only supports: bot", asFlag).
+				WithParam("--as")
+		}
+		return core.AsBot, nil
+	}
+	if asFlag == "" || asFlag == string(core.AsAuto) {
+		// Keep unresolved identity unresolved in the dependency-free phase.
+		// The full path resolves it from strict mode, default-as, and credentials
+		// after confirmation; projecting it to user here would make dry-run and
+		// execution describe different identities.
+		return core.AsAuto, nil
+	}
+	as := core.Identity(asFlag)
+	for _, supported := range s.AuthTypes {
+		if supported == asFlag {
+			return as, nil
+		}
+	}
+	list := strings.Join(s.AuthTypes, ", ")
+	return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
+		"--as %s is not supported, this command only supports: %s", as, list).
+		WithParam("--as")
 }
 
 // checkShortcutScopes verifies that the selected identity satisfies the shortcut scope contract.
@@ -1117,6 +1234,53 @@ func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, conf
 	rctx.Format = rctx.Str("format")
 	rctx.JqExpr, _ = cmd.Flags().GetString("jq")
 	return rctx, nil
+}
+
+func newOfflineRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, as core.Identity, botOnly bool) (*RuntimeContext, error) {
+	ctx := cmd.Context()
+	ctx = cmdutil.ContextWithShortcut(ctx, s.Service+":"+s.Command, uuid.New().String())
+	rctx := &RuntimeContext{
+		ctx:        ctx,
+		Config:     &core.CliConfig{},
+		Cmd:        cmd,
+		botOnly:    botOnly,
+		resolvedAs: as,
+		Factory:    f,
+	}
+	rctx.declaredScopes = s.DeclaredScopesForIdentity(string(rctx.As()))
+	applyJSONShorthand(cmd, s)
+	rctx.Format = rctx.Str("format")
+	rctx.JqExpr, _ = cmd.Flags().GetString("jq")
+	return rctx, nil
+}
+
+func runShortcutLocalPreflight(rctx *RuntimeContext, s *Shortcut) error {
+	if s.Normalize != nil {
+		if err := resolveInputFlags(rctx, s.Flags); err != nil {
+			return attributeAliasValidationError(rctx, err)
+		}
+		flagContext := rctx.FlagContext()
+		if err := s.Normalize(rctx.ctx, flagContext); err != nil {
+			return attributeAliasValidationError(rctx, err)
+		}
+	}
+	if err := validateEnumFlags(rctx, s.Flags); err != nil {
+		return attributeAliasValidationError(rctx, err)
+	}
+	if s.Normalize == nil {
+		if err := resolveInputFlags(rctx, s.Flags); err != nil {
+			return attributeAliasValidationError(rctx, err)
+		}
+	}
+	if err := output.ValidateJqFlags(rctx.JqExpr, "", rctx.Format); err != nil {
+		return err
+	}
+	if s.Validate != nil {
+		if err := s.Validate(rctx.ctx, rctx); err != nil {
+			return attributeAliasValidationError(rctx, err)
+		}
+	}
+	return nil
 }
 
 // StripUTF8BOM removes a leading UTF-8 byte-order mark from content read from a
@@ -1267,14 +1431,14 @@ func handleShortcutDryRun(f *cmdutil.Factory, rctx *RuntimeContext, s *Shortcut)
 		// Same data.context contract as the service/api dry-run paths.
 		dryResult.Context(rctx.Config.AppID, rctx.UserOpenId())
 	}
-	return cmdutil.WriteDryRun(dryResult, cmdutil.DryRunOutputOptions{
+	return cmdutil.WriteDryRunWithNoticeProvider(dryResult, cmdutil.DryRunOutputOptions{
 		Format:      rctx.Format,
 		JqExpr:      rctx.JqExpr,
 		CommandPath: rctx.Cmd.CommandPath(),
 		Identity:    rctx.As(),
 		Out:         f.IOStreams.Out,
 		ErrOut:      f.IOStreams.ErrOut,
-	})
+	}, f.NoticeProvider)
 }
 
 // rejectPositionalArgs returns a cobra.PositionalArgs that rejects any
@@ -1445,5 +1609,9 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 		}
 	}
 	cmd.Flags().StringP("jq", "q", "", "jq expression to filter JSON output")
-	cmdutil.AddShortcutIdentityFlag(ctx, cmd, f, s.AuthTypes)
+	if s.ConfirmationBeforeNetwork {
+		cmdutil.AddOfflineShortcutIdentityFlag(cmd, s.AuthTypes)
+	} else {
+		cmdutil.AddShortcutIdentityFlag(ctx, cmd, f, s.AuthTypes)
+	}
 }

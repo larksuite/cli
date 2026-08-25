@@ -23,6 +23,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/riskcontrol"
 	_ "github.com/larksuite/cli/internal/security/contentsafety" // register content safety provider
@@ -46,9 +47,10 @@ func init() {
 func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 	streams = normalizeStreams(streams)
 	f := &Factory{
-		Keychain:   keychain.Default(),
-		Invocation: inv,
-		IOStreams:  streams,
+		Keychain:       keychain.Default(),
+		Invocation:     inv,
+		IOStreams:      streams,
+		NoticeProvider: output.GetNotice,
 	}
 
 	// Workspace detection: determines which config subtree to use.

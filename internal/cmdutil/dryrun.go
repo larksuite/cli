@@ -288,6 +288,13 @@ func PrintDryRun(request client.RawApiRequest, config *core.CliConfig, opts DryR
 // WriteDryRun emits a DryRunAPI using the shared dry-run output contract.
 // Identity may be empty; the envelope omits it rather than guessing.
 func WriteDryRun(dr *DryRunAPI, opts DryRunOutputOptions) error {
+	return WriteDryRunWithNoticeProvider(dr, opts, output.GetNotice)
+}
+
+// WriteDryRunWithNoticeProvider emits a dry-run using the invocation-scoped
+// notice provider. A nil provider deliberately suppresses notices; WriteDryRun
+// retains the legacy process-global behavior.
+func WriteDryRunWithNoticeProvider(dr *DryRunAPI, opts DryRunOutputOptions, noticeProvider output.NoticeProvider) error {
 	if dr == nil {
 		return errs.NewInternalError(errs.SubtypeUnknown, "dry-run produced no request preview")
 	}
@@ -306,12 +313,12 @@ func WriteDryRun(dr *DryRunAPI, opts DryRunOutputOptions) error {
 		fmt.Fprint(opts.Out, dr.Format())
 		return nil
 	}
-	return output.WriteSuccessEnvelope(dr, output.SuccessEnvelopeOptions{
+	return output.WriteSuccessEnvelopeWithNoticeProvider(dr, output.SuccessEnvelopeOptions{
 		CommandPath: opts.CommandPath,
 		Identity:    string(opts.Identity),
 		DryRun:      true,
 		JqExpr:      opts.JqExpr,
 		Out:         opts.Out,
 		ErrOut:      opts.ErrOut,
-	})
+	}, noticeProvider)
 }

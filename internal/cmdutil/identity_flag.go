@@ -32,6 +32,21 @@ func AddShortcutIdentityFlag(ctx context.Context, cmd *cobra.Command, f *Factory
 	})
 }
 
+// AddOfflineShortcutIdentityFlag registers --as without consulting credentials
+// or strict-mode state. It is reserved for commands that must complete local
+// validation, dry-run, and high-risk confirmation before credential resolution.
+// The execution path must call CheckStrictMode after confirmation and before
+// any scope or API operation.
+func AddOfflineShortcutIdentityFlag(cmd *cobra.Command, authTypes []string) {
+	if len(authTypes) == 0 {
+		authTypes = []string{"user"}
+	}
+	registerIdentityFlag(cmd, nil, "", "identity type: "+strings.Join(authTypes, " | "))
+	RegisterFlagCompletion(cmd, "as", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return authTypes, cobra.ShellCompDirectiveNoFileComp
+	})
+}
+
 type identityFlagConfig struct {
 	defaultValue     string
 	usage            string

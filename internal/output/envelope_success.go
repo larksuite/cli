@@ -34,12 +34,20 @@ func SuccessEnvelopeData(result interface{}) interface{} {
 // JSON output carries content-safety alerts inside the envelope. When jq is
 // applied, the alert may be filtered away, so warn mode also writes stderr.
 func WriteSuccessEnvelope(data interface{}, opts SuccessEnvelopeOptions) error {
+	return WriteSuccessEnvelopeWithNoticeProvider(data, opts, GetNotice)
+}
+
+// WriteSuccessEnvelopeWithNoticeProvider emits a success envelope using the
+// invocation-scoped notice provider. A nil provider deliberately suppresses
+// notices; callers that need the legacy process-global hook should use
+// WriteSuccessEnvelope.
+func WriteSuccessEnvelopeWithNoticeProvider(data interface{}, opts SuccessEnvelopeOptions, noticeProvider NoticeProvider) error {
 	return NewEmitter(EmitterConfig{
 		Out:            opts.Out,
 		ErrOut:         opts.ErrOut,
 		CommandPath:    opts.CommandPath,
 		Identity:       opts.Identity,
-		NoticeProvider: GetNotice,
+		NoticeProvider: noticeProvider,
 	}).Success(data, EmitOptions{
 		Format:          "",
 		Raw:             false,

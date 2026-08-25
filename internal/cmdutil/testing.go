@@ -17,6 +17,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -69,6 +70,7 @@ func TestFactory(t *testing.T, config *core.CliConfig) (*Factory, *bytes.Buffer,
 		HttpClient:     func() (*http.Client, error) { return mockClient, nil },
 		LarkClient:     func() (*lark.Client, error) { return testLarkClient, nil },
 		IOStreams:      &IOStreams{In: nil, Out: stdoutBuf, ErrOut: stderrBuf},
+		NoticeProvider: output.GetNotice,
 		Keychain:       &noopKeychain{},
 		Credential:     testCred,
 		FileIOProvider: fileio.GetProvider(),

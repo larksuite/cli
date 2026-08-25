@@ -393,7 +393,10 @@ func runRuntimeContextOracle(t *testing.T, data interface{}, opts runtimeOracleO
 	parent.AddCommand(cmd)
 	cmd.AddCommand(leaf)
 
-	factory := &cmdutil.Factory{IOStreams: &cmdutil.IOStreams{Out: stdout, ErrOut: stderr}}
+	factory := &cmdutil.Factory{
+		IOStreams:      &cmdutil.IOStreams{Out: stdout, ErrOut: stderr},
+		NoticeProvider: output.GetNotice,
+	}
 	runtime := common.TestNewRuntimeContextForAPI(
 		context.Background(), leaf, &core.CliConfig{Brand: core.BrandFeishu}, factory, core.AsBot,
 	)
