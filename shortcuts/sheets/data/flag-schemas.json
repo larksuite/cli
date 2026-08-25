@@ -982,6 +982,66 @@
         }
       }
     },
+    "+chart-config-update": {
+      "series-data-labels": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 50,
+        "description": "按 1-based 数值系列顺序分别配置数据标签；与全局 data_labels/data_label_position 互斥。",
+        "items": {
+          "type": "object",
+          "required": [
+            "series_position",
+            "scope"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "series_position": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "数值系列在图表中的 1-based 顺序，与 dim2_indexes 的顺序一致"
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "none",
+                "all",
+                "last"
+              ],
+              "description": "none 隐藏该系列标签；all 显示全部数据点；last 仅显示最后一个数据点"
+            },
+            "content": {
+              "type": "string",
+              "enum": [
+                "value",
+                "category",
+                "percentage",
+                "value_category",
+                "value_percentage",
+                "category_percentage",
+                "value_category_percentage",
+                "series"
+              ],
+              "description": "标签内容，省略时为 value；scope=none 时不得设置"
+            },
+            "position": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "top",
+                "bottom",
+                "left",
+                "right",
+                "center",
+                "inside",
+                "outside"
+              ],
+              "description": "标签位置；scope=none 时不得设置"
+            }
+          }
+        }
+      }
+    },
     "+chart-create": {
       "properties": {
         "description": "创建/更新的图表属性。",
@@ -1040,9 +1100,63 @@
               "height"
             ]
           },
-          "last_point_label": {
-            "type": "boolean",
-            "description": "update 使用。true 为折线图、面积图、雷达图及组合图中的线性系列开启最后一个数据点的数值标签；false 关闭这些单点标签。"
+          "series_data_labels": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 50,
+            "description": "按 1-based 数值系列顺序分别配置数据标签；与全局 data_labels/data_label_position 互斥。",
+            "items": {
+              "type": "object",
+              "required": [
+                "series_position",
+                "scope"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "series_position": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "数值系列在图表中的 1-based 顺序，与 dim2_indexes 的顺序一致"
+                },
+                "scope": {
+                  "type": "string",
+                  "enum": [
+                    "none",
+                    "all",
+                    "last"
+                  ],
+                  "description": "none 隐藏该系列标签；all 显示全部数据点；last 仅显示最后一个数据点"
+                },
+                "content": {
+                  "type": "string",
+                  "enum": [
+                    "value",
+                    "category",
+                    "percentage",
+                    "value_category",
+                    "value_percentage",
+                    "category_percentage",
+                    "value_category_percentage",
+                    "series"
+                  ],
+                  "description": "标签内容，省略时为 value；scope=none 时不得设置"
+                },
+                "position": {
+                  "type": "string",
+                  "enum": [
+                    "auto",
+                    "top",
+                    "bottom",
+                    "left",
+                    "right",
+                    "center",
+                    "inside",
+                    "outside"
+                  ],
+                  "description": "标签位置；scope=none 时不得设置"
+                }
+              }
+            }
           },
           "snapshot": {
             "description": "图表快照配置。create 需要完整配置；update 可只提供需要变更的字段，对象字段递归合并，数组整段替换，未提供的字段保持现状。",
@@ -3282,6 +3396,66 @@
         }
       }
     },
+    "+chart-create-basic": {
+      "series-data-labels": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 50,
+        "description": "按 1-based 数值系列顺序分别配置数据标签；与全局 data_labels/data_label_position 互斥。",
+        "items": {
+          "type": "object",
+          "required": [
+            "series_position",
+            "scope"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "series_position": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "数值系列在图表中的 1-based 顺序，与 dim2_indexes 的顺序一致"
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "none",
+                "all",
+                "last"
+              ],
+              "description": "none 隐藏该系列标签；all 显示全部数据点；last 仅显示最后一个数据点"
+            },
+            "content": {
+              "type": "string",
+              "enum": [
+                "value",
+                "category",
+                "percentage",
+                "value_category",
+                "value_percentage",
+                "category_percentage",
+                "value_category_percentage",
+                "series"
+              ],
+              "description": "标签内容，省略时为 value；scope=none 时不得设置"
+            },
+            "position": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "top",
+                "bottom",
+                "left",
+                "right",
+                "center",
+                "inside",
+                "outside"
+              ],
+              "description": "标签位置；scope=none 时不得设置"
+            }
+          }
+        }
+      }
+    },
     "+chart-update": {
       "properties": {
         "description": "创建/更新的图表属性。",
@@ -3340,9 +3514,63 @@
               "height"
             ]
           },
-          "last_point_label": {
-            "type": "boolean",
-            "description": "update 使用。true 为折线图、面积图、雷达图及组合图中的线性系列开启最后一个数据点的数值标签；false 关闭这些单点标签。"
+          "series_data_labels": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 50,
+            "description": "按 1-based 数值系列顺序分别配置数据标签；与全局 data_labels/data_label_position 互斥。",
+            "items": {
+              "type": "object",
+              "required": [
+                "series_position",
+                "scope"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "series_position": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "数值系列在图表中的 1-based 顺序，与 dim2_indexes 的顺序一致"
+                },
+                "scope": {
+                  "type": "string",
+                  "enum": [
+                    "none",
+                    "all",
+                    "last"
+                  ],
+                  "description": "none 隐藏该系列标签；all 显示全部数据点；last 仅显示最后一个数据点"
+                },
+                "content": {
+                  "type": "string",
+                  "enum": [
+                    "value",
+                    "category",
+                    "percentage",
+                    "value_category",
+                    "value_percentage",
+                    "category_percentage",
+                    "value_category_percentage",
+                    "series"
+                  ],
+                  "description": "标签内容，省略时为 value；scope=none 时不得设置"
+                },
+                "position": {
+                  "type": "string",
+                  "enum": [
+                    "auto",
+                    "top",
+                    "bottom",
+                    "left",
+                    "right",
+                    "center",
+                    "inside",
+                    "outside"
+                  ],
+                  "description": "标签位置；scope=none 时不得设置"
+                }
+              }
+            }
           },
           "snapshot": {
             "description": "图表快照配置。create 需要完整配置；update 可只提供需要变更的字段，对象字段递归合并，数组整段替换，未提供的字段保持现状。",
