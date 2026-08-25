@@ -85,7 +85,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 
 fixed 模式：
 
-- 只允许传 `extra_config.countdown.use_fixed_time=true` 和 `extra_config.countdown.target`
+- 只允许传 `extra_config.countdown.use_fixed_time=true`、`extra_config.countdown.target`，以及可选的 `extra_config.countdown.units`
 - 不允许传 `table_name`、`series`、`count_all`、`group_by`、`filter`
 
 ```json
@@ -93,7 +93,7 @@ fixed 模式：
   "extra_config": {
     "countdown": {
       "use_fixed_time": true,
-      "target": "2026-08-20 19:56:12",
+      "target": "2099-12-31 23:59:59",
       "units": ["day", "hour", "min", "sec"]
     }
   }

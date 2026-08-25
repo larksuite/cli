@@ -33,7 +33,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 	Tips: []string{
 		`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Order Count" --type statistics --data-config '{"table_name":"Orders","count_all":true}'`,
 		`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Revenue" --type statistics --data-config '{"table_name":"Orders","series":[{"field_name":"Amount","rollup":"SUM"}],"number_format":{"formatName":"dollar_rounded","precision":2}}'`,
-		`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Launch Countdown" --type countdown --data-config '{"extra_config":{"countdown":{"use_fixed_time":true,"target":"2026-08-20 19:56:12","units":["day","hour","min","sec"]}}}'`,
+		`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Launch Countdown" --type countdown --data-config '{"extra_config":{"countdown":{"use_fixed_time":true,"target":"2099-12-31 23:59:59","units":["day","hour","min","sec"]}}}'`,
 		`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Dashboard Note" --type text --data-config '{"text":"# Sales Dashboard"}'`,
 		`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Order Count" --type statistics --data-config '{"table_name":"Orders","count_all":true}' --position '{"x":0,"y":0,"w":6,"h":4}'`,
 		"Before creating data-backed blocks, use +table-list and +field-list to confirm real table and field names.",

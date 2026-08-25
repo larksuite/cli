@@ -6,6 +6,7 @@ package base
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -21,6 +22,8 @@ var chartBlockTypes = []string{
 }
 
 var dashboardOnlyChartBlockTypes = []string{"countdown"}
+
+var countdownTargetTimePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
 
 // textBlockTypes are the text-ish block types. Dashboard blocks and BaseApp
 // page blocks share the same spelling "text" and the same data_config shape
@@ -212,8 +215,13 @@ func validateCountdownDataConfig(cfg map[string]interface{}) []string {
 	}
 
 	if useFixedTime {
-		if target, _ := countdown["target"].(string); strings.TrimSpace(target) == "" {
+		target, ok := countdown["target"].(string)
+		target = strings.TrimSpace(target)
+		switch {
+		case !ok || target == "":
 			errs = append(errs, "fixed 模式缺少必填字段 extra_config.countdown.target")
+		case !countdownTargetTimePattern.MatchString(target):
+			errs = append(errs, "extra_config.countdown.target 必须匹配 YYYY-MM-DD HH:MM:SS")
 		}
 		if _, exists := countdown["type"]; exists {
 			errs = append(errs, "fixed 模式不允许配置 extra_config.countdown.type")
@@ -262,11 +270,16 @@ func validateCountdownDataConfig(cfg map[string]interface{}) []string {
 			if fieldName, _ := group["field_name"].(string); strings.TrimSpace(fieldName) == "" {
 				errs = append(errs, "group_by[0].field_name 不能为空")
 			}
-			if modeRaw, exists := group["mode"]; exists {
-				mode, _ := modeRaw.(string)
-				if mode != "enumerated" && mode != "integrated" {
-					errs = append(errs, "group_by[0].mode 仅支持 enumerated|integrated")
-				}
+			modeRaw, exists := group["mode"]
+			mode, ok := modeRaw.(string)
+			mode = strings.TrimSpace(mode)
+			switch {
+			case !exists:
+				errs = append(errs, "group_by[0].mode 缺失")
+			case !ok || mode == "":
+				errs = append(errs, "group_by[0].mode 必须是非空字符串")
+			case mode != "enumerated" && mode != "integrated":
+				errs = append(errs, "group_by[0].mode 仅支持 enumerated|integrated")
 			}
 			if sortRaw, exists := group["sort"]; exists {
 				sort, ok := sortRaw.(map[string]interface{})

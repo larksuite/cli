@@ -854,8 +854,21 @@ func TestBaseDashboardBlockCreate_CountdownValidation(t *testing.T) {
 		if err == nil {
 			t.Fatalf("expected validation error for missing count_all")
 		}
-		if got := err.Error(); !strings.Contains(got, "count_all=true") || !strings.Contains(got, "data_config 校验失败") {
-			t.Fatalf("unexpected error: %v", err)
+		var validationErr *errs.ValidationError
+		if !errors.As(err, &validationErr) {
+			t.Fatalf("expected *errs.ValidationError, got %T (%v)", err, err)
+		}
+		if validationErr.Subtype != errs.SubtypeInvalidArgument {
+			t.Fatalf("Subtype = %q, want %q", validationErr.Subtype, errs.SubtypeInvalidArgument)
+		}
+		if validationErr.Param != "--data-config" {
+			t.Fatalf("Param = %q, want %q", validationErr.Param, "--data-config")
+		}
+		if validationErr.Unwrap() != nil {
+			t.Fatalf("Cause = %v, want nil", validationErr.Unwrap())
+		}
+		if got := validationErr.Message; !strings.Contains(got, "count_all=true") || !strings.Contains(got, "data_config 校验失败") {
+			t.Fatalf("unexpected validation message: %s", got)
 		}
 	})
 
@@ -869,8 +882,59 @@ func TestBaseDashboardBlockCreate_CountdownValidation(t *testing.T) {
 		if err == nil {
 			t.Fatalf("expected validation error for fixed mode")
 		}
-		if got := err.Error(); !strings.Contains(got, "fixed 模式不允许配置 table_name") {
-			t.Fatalf("unexpected error: %v", err)
+		var validationErr *errs.ValidationError
+		if !errors.As(err, &validationErr) {
+			t.Fatalf("expected *errs.ValidationError, got %T (%v)", err, err)
+		}
+		if validationErr.Subtype != errs.SubtypeInvalidArgument {
+			t.Fatalf("Subtype = %q, want %q", validationErr.Subtype, errs.SubtypeInvalidArgument)
+		}
+		if validationErr.Param != "--data-config" {
+			t.Fatalf("Param = %q, want %q", validationErr.Param, "--data-config")
+		}
+		if validationErr.Unwrap() != nil {
+			t.Fatalf("Cause = %v, want nil", validationErr.Unwrap())
+		}
+		if got := validationErr.Message; !strings.Contains(got, "fixed 模式不允许配置 table_name") {
+			t.Fatalf("unexpected validation message: %s", got)
+		}
+	})
+
+	t.Run("fixed mode rejects invalid target timestamp", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_001",
+			"--name", "发布倒计时", "--type", "countdown",
+			"--data-config", `{"extra_config":{"countdown":{"use_fixed_time":true,"target":"tomorrow"}}}`,
+		}
+		err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout)
+		if err == nil {
+			t.Fatalf("expected validation error for invalid target")
+		}
+		var validationErr *errs.ValidationError
+		if !errors.As(err, &validationErr) {
+			t.Fatalf("expected *errs.ValidationError, got %T (%v)", err, err)
+		}
+		if got := validationErr.Message; !strings.Contains(got, "extra_config.countdown.target 必须匹配 YYYY-MM-DD HH:MM:SS") {
+			t.Fatalf("unexpected validation message: %s", got)
+		}
+	})
+
+	t.Run("field mode requires group mode", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_001",
+			"--name", "任务截止", "--type", "countdown",
+			"--data-config", `{"table_name":"任务表","count_all":true,"group_by":[{"field_name":"截止时间"}],"extra_config":{"countdown":{"use_fixed_time":false,"type":"MIN"}}}`,
+		}
+		err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout)
+		if err == nil {
+			t.Fatalf("expected validation error for missing group mode")
+		}
+		var validationErr *errs.ValidationError
+		if !errors.As(err, &validationErr) {
+			t.Fatalf("expected *errs.ValidationError, got %T (%v)", err, err)
+		}
+		if got := validationErr.Message; !strings.Contains(got, "group_by[0].mode 缺失") {
+			t.Fatalf("unexpected validation message: %s", got)
 		}
 	})
 }
