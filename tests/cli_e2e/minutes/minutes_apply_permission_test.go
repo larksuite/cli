@@ -60,7 +60,7 @@ func TestMinutesApplyPermission_DryRun_BotIdentity(t *testing.T) {
 	assert.True(t, strings.Contains(output, `"perm": "view"`) || strings.Contains(output, `"perm":"view"`), "dry-run should contain perm body, got: %s", output)
 }
 
-func TestMinutesApplyPermission_InvalidPerm(t *testing.T) {
+func TestMinutesApplyPermission_InvalidPermDryRun(t *testing.T) {
 	setDryRunConfigEnv(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)

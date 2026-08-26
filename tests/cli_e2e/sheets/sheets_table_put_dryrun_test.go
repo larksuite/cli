@@ -60,7 +60,7 @@ func TestSheets_TablePutStylesDryRun(t *testing.T) {
 // TestSheets_TablePutStylesNameMismatchRejected confirms a --styles item whose
 // name does not match the --sheets payload sheet is rejected up front (no write
 // lands), so a typo surfaces as a validation error rather than a silent skip.
-func TestSheets_TablePutStylesNameMismatchRejected(t *testing.T) {
+func TestSheets_TablePutStylesNameMismatchRejectedDryRun(t *testing.T) {
 	setSheetsDryRunEnv(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

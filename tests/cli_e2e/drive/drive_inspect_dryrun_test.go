@@ -133,7 +133,7 @@ func TestDriveInspectDryRun_BareTokenWithType(t *testing.T) {
 
 // --- Validation errors ---
 
-func TestDriveInspectValidation_EmptyURL(t *testing.T) {
+func TestDriveInspectValidation_EmptyURLDryRun(t *testing.T) {
 	setDriveInspectE2EEnv(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -153,7 +153,7 @@ func TestDriveInspectValidation_EmptyURL(t *testing.T) {
 		"expected empty URL validation error, stderr:\n%s", result.Stderr)
 }
 
-func TestDriveInspectValidation_UnsupportedURL(t *testing.T) {
+func TestDriveInspectValidation_UnsupportedURLDryRun(t *testing.T) {
 	setDriveInspectE2EEnv(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -173,7 +173,7 @@ func TestDriveInspectValidation_UnsupportedURL(t *testing.T) {
 		"expected unsupported URL validation error, stderr:\n%s", result.Stderr)
 }
 
-func TestDriveInspectValidation_BareTokenWithoutType(t *testing.T) {
+func TestDriveInspectValidation_BareTokenWithoutTypeDryRun(t *testing.T) {
 	setDriveInspectE2EEnv(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -193,7 +193,7 @@ func TestDriveInspectValidation_BareTokenWithoutType(t *testing.T) {
 		"expected bare-token-without-type validation error, stderr:\n%s", result.Stderr)
 }
 
-func TestDriveInspectValidation_InvalidType(t *testing.T) {
+func TestDriveInspectValidation_InvalidTypeDryRun(t *testing.T) {
 	setDriveInspectE2EEnv(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

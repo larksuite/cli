@@ -292,7 +292,7 @@ func TestDocsScriptFileNameFlagIsRemoved(t *testing.T) {
 	require.Equal(t, "unknown flag", gjson.Get(result.Stderr, "error.params.0.reason").String())
 }
 
-func TestDocsScriptMarkdownToXMLIsRemoved(t *testing.T) {
+func TestDocsScriptMarkdownToXMLIsRemovedDryRun(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
@@ -311,7 +311,7 @@ func TestDocsScriptMarkdownToXMLIsRemoved(t *testing.T) {
 	require.Contains(t, gjson.Get(result.Stderr, "error.message").String(), `invalid value "markdown-to-xml"`)
 }
 
-func TestDocsScriptCreateTempXMLIsRemoved(t *testing.T) {
+func TestDocsScriptCreateTempXMLIsRemovedDryRun(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
@@ -516,7 +516,7 @@ func TestDocsScriptInitDraftDryRunDoesNotWrite(t *testing.T) {
 	require.Empty(t, entries)
 }
 
-func TestDocsScriptInitDraftRejectsNullWordCountWithOmitGuidance(t *testing.T) {
+func TestDocsScriptInitDraftRejectsNullWordCountWithOmitGuidanceDryRun(t *testing.T) {
 	workDir := t.TempDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)

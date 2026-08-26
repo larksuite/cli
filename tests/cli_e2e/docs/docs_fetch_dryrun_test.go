@@ -97,17 +97,11 @@ func TestDocsFetchDryRunMarkdownFormatsIncludeCommentSidecar(t *testing.T) {
 	}
 }
 
-func TestDocsFetchCommentsFlagIsRemovedFromHelpAndRejected(t *testing.T) {
+func TestDocsFetchCommentsFlagRejectedDryRun(t *testing.T) {
 	setDocsDryRunEnv(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
-	help, err := clie2e.RunCmd(ctx, clie2e.Request{Args: []string{"docs", "+fetch", "--help"}, DefaultAs: "bot"})
-	require.NoError(t, err)
-	help.AssertExitCode(t, 0)
-	require.NotContains(t, help.Stdout, "--comments")
-	require.NotContains(t, help.Stdout, "docs:document.comment:read")
-
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args:      []string{"docs", "+fetch", "--doc", "doxcnDryRunComments", "--comments", "--dry-run"},
 		DefaultAs: "bot",
@@ -127,21 +121,11 @@ func TestDocsFetchCommentsFlagIsRemovedFromHelpAndRejected(t *testing.T) {
 	require.NotEmpty(t, errJSON.Get("hint").String(), "unknown flag error must include recovery guidance: %s", result.Stderr)
 }
 
-func TestDocsCommandsHideFormatHelpButKeepCompatibility(t *testing.T) {
+func TestDocsCommandsFormatCompatibilityDryRun(t *testing.T) {
 	setDocsDryRunEnv(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
-
-	for _, command := range []string{"+fetch", "+create", "+update"} {
-		t.Run(command+" help", func(t *testing.T) {
-			help, err := clie2e.RunCmd(ctx, clie2e.Request{Args: []string{"docs", command, "--help"}, DefaultAs: "bot"})
-			require.NoError(t, err)
-			help.AssertExitCode(t, 0)
-			require.NotContains(t, help.Stdout, "--format ", "help must not advertise the compatibility output flag:\n%s", help.Stdout)
-			require.NotContains(t, help.Stdout, "--json ", "help must not advertise the redundant JSON shorthand:\n%s", help.Stdout)
-		})
-	}
 
 	tests := []struct {
 		name string

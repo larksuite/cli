@@ -298,7 +298,7 @@ func TestDocsUpdateDryRunLegacyFlagReturnsCurrentEmbeddedGuidance(t *testing.T) 
 	)
 }
 
-func TestDocs_CreateEmptyContentFileReportsActionableError(t *testing.T) {
+func TestDocs_CreateEmptyContentFileReportsActionableErrorDryRun(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_APP_ID", "app")
 	t.Setenv("LARKSUITE_CLI_APP_SECRET", "secret")
 	t.Setenv("LARKSUITE_CLI_BRAND", "feishu")
