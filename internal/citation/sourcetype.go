@@ -13,19 +13,23 @@ type SourceType int
 const (
 	SourceUnset SourceType = 0
 
-	SourceWiki        SourceType = 1 // wiki nodes and spaces
-	SourceDoc         SourceType = 2 // cloud documents
-	SourceMessage     SourceType = 3 // IM messages and chats
-	SourceMinute      SourceType = 4 // minutes recordings
-	SourceBase        SourceType = 5 // bitable (Base) tables and records
-	SourceSheet       SourceType = 6 // spreadsheets
-	SourceMeeting     SourceType = 7 // meetings
-	SourceMeetingNote SourceType = 8 // meeting notes
+	SourceWiki        SourceType = 1  // wiki nodes and spaces
+	SourceDoc         SourceType = 2  // cloud documents
+	SourceMessage     SourceType = 3  // IM messages and chats
+	SourceMinute      SourceType = 4  // minutes recordings
+	SourceBase        SourceType = 5  // bitable (Base) tables and records
+	SourceSheet       SourceType = 6  // spreadsheets
+	SourceMeeting     SourceType = 7  // meetings
+	SourceMeetingNote SourceType = 8  // meeting notes
+	SourceMindnote    SourceType = 9  // mindnotes
+	SourceSlides      SourceType = 10 // slides presentations
+	SourceFile        SourceType = 11 // drive files
 )
 
 var allocated = map[SourceType]struct{}{
 	SourceWiki: {}, SourceDoc: {}, SourceMessage: {}, SourceMinute: {},
 	SourceBase: {}, SourceSheet: {}, SourceMeeting: {}, SourceMeetingNote: {},
+	SourceMindnote: {}, SourceSlides: {}, SourceFile: {},
 }
 
 // IsAllocated reports whether st is an assigned business scene. SourceUnset
