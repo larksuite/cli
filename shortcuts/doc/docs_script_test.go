@@ -411,34 +411,53 @@ func TestDocsScriptInitDraftNormalizesWindowsCommandShimQuotes(t *testing.T) {
 }
 
 func TestDocsScriptInitDraftRecoversPowerShellDequotedDecisionFromSchema(t *testing.T) {
-	workDir := t.TempDir()
-	withDocsWorkingDir(t, workDir)
-	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-init-draft-dequoted-json"))
-	dequoted := `{audience:a,reader_task:b,genre_contract:null,adapter:null,presentation_mode:normal,word_count:{min:10,max:null},visual_plan:{reason:c,blocks:[{type:img,min_count:1,purpose:d}]}}`
-	wantNormalized := `{"audience":"a","reader_task":"b","genre_contract":null,"adapter":null,"presentation_mode":"normal","word_count":{"min":10,"max":null},"visual_plan":{"reason":"c","blocks":[{"type":"img","min_count":1,"purpose":"d"}]}}`
-
-	err := mountAndRunDocs(t, DocsScript, []string{
-		"+script",
-		"--command", docsScriptInitDraft,
-		"--presentation-decision", dequoted,
-		"--as", "bot",
-	}, f, stdout)
-	if err != nil {
-		t.Fatalf("initialize draft with PowerShell-dequoted JSON: %v", err)
+	tests := []struct {
+		name           string
+		dequoted       string
+		wantNormalized string
+	}{
+		{
+			name:           "keys and values",
+			dequoted:       `{audience:a,reader_task:b,genre_contract:null,adapter:null,presentation_mode:normal,word_count:{min:10,max:null},visual_plan:{reason:c,blocks:[{type:img,min_count:1,purpose:d}]}}`,
+			wantNormalized: `{"audience":"a","reader_task":"b","genre_contract":null,"adapter":null,"presentation_mode":"normal","word_count":{"min":10,"max":null},"visual_plan":{"reason":"c","blocks":[{"type":"img","min_count":1,"purpose":"d"}]}}`,
+		},
+		{
+			name:           "values only",
+			dequoted:       `{"audience":a,"reader_task":b,"genre_contract":null,"adapter":null,"presentation_mode":normal,"visual_plan":{"reason":c,"blocks":[]}}`,
+			wantNormalized: `{"audience":"a","reader_task":"b","genre_contract":null,"adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"c","blocks":[]}}`,
+		},
 	}
 
-	var initialized struct {
-		Data docsScriptDraftResult `json:"data"`
-	}
-	if err := json.Unmarshal(stdout.Bytes(), &initialized); err != nil {
-		t.Fatalf("decode init output: %v\n%s", err, stdout)
-	}
-	savedDecision, err := os.ReadFile(filepath.Join(initialized.Data.Workspace, docsScriptDecisionFile))
-	if err != nil {
-		t.Fatalf("read saved decision: %v", err)
-	}
-	if got := string(savedDecision); got != wantNormalized {
-		t.Fatalf("saved decision = %q, want schema-normalized JSON %q", got, wantNormalized)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			workDir := t.TempDir()
+			withDocsWorkingDir(t, workDir)
+			f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-init-draft-dequoted-json"))
+
+			err := mountAndRunDocs(t, DocsScript, []string{
+				"+script",
+				"--command", docsScriptInitDraft,
+				"--presentation-decision", test.dequoted,
+				"--as", "bot",
+			}, f, stdout)
+			if err != nil {
+				t.Fatalf("initialize draft with PowerShell-dequoted JSON: %v", err)
+			}
+
+			var initialized struct {
+				Data docsScriptDraftResult `json:"data"`
+			}
+			if err := json.Unmarshal(stdout.Bytes(), &initialized); err != nil {
+				t.Fatalf("decode init output: %v\n%s", err, stdout)
+			}
+			savedDecision, err := os.ReadFile(filepath.Join(initialized.Data.Workspace, docsScriptDecisionFile))
+			if err != nil {
+				t.Fatalf("read saved decision: %v", err)
+			}
+			if got := string(savedDecision); got != test.wantNormalized {
+				t.Fatalf("saved decision = %q, want schema-normalized JSON %q", got, test.wantNormalized)
+			}
+		})
 	}
 }
 

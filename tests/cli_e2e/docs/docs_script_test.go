@@ -542,23 +542,28 @@ func TestDocsScriptInitDraftAcceptsWindowsCommandShimQuotes(t *testing.T) {
 }
 
 func TestDocsScriptRecoversPowerShellDequotedPresentationDecision(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	t.Cleanup(cancel)
-	result, err := clie2e.RunCmd(ctx, clie2e.Request{
-		Args: []string{
-			"docs", "+script",
-			"--command", "init-draft",
-			"--presentation-decision", `{audience:a,reader_task:b,genre_contract:null,adapter:null,presentation_mode:normal,visual_plan:{reason:c,blocks:[]}}`,
-			"--dry-run",
-		},
-		DefaultAs: "bot",
-		WorkDir:   t.TempDir(),
-		Env:       docsScriptE2EEnv(t),
-	})
-	require.NoError(t, err)
-	result.AssertExitCode(t, 0)
-	require.Equal(t, "init-draft", gjson.Get(result.Stdout, "data.command").String())
-	require.True(t, gjson.Get(result.Stdout, "data.presentation_decision").Bool())
+	for _, decision := range []string{
+		`{audience:a,reader_task:b,genre_contract:null,adapter:null,presentation_mode:normal,visual_plan:{reason:c,blocks:[]}}`,
+		`{"audience":a,"reader_task":b,"genre_contract":null,"adapter":null,"presentation_mode":normal,"visual_plan":{"reason":c,"blocks":[]}}`,
+	} {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"docs", "+script",
+				"--command", "init-draft",
+				"--presentation-decision", decision,
+				"--dry-run",
+			},
+			DefaultAs: "bot",
+			WorkDir:   t.TempDir(),
+			Env:       docsScriptE2EEnv(t),
+		})
+		cancel()
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		require.Equal(t, "init-draft", gjson.Get(result.Stdout, "data.command").String())
+		require.True(t, gjson.Get(result.Stdout, "data.presentation_decision").Bool())
+	}
 }
 
 func TestDocsScriptAmbiguousMangledPresentationDecisionSuggestsFileInput(t *testing.T) {
@@ -577,6 +582,10 @@ func TestDocsScriptAmbiguousMangledPresentationDecisionSuggestsFileInput(t *test
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 2)
+	require.Empty(t, result.Stdout)
+	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String())
+	require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String())
+	require.Contains(t, gjson.Get(result.Stderr, "error.message").String(), "--presentation-decision must be a valid Presentation Decision JSON object")
 	require.Equal(t, "--presentation-decision", gjson.Get(result.Stderr, "error.param").String())
 	require.Equal(t, "restore the original JSON quotes; if shell quote loss made a string ambiguous, save the original JSON as UTF-8 and pass --presentation-decision \"@./decision.json\"", gjson.Get(result.Stderr, "error.hint").String())
 }

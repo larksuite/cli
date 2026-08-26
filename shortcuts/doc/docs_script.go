@@ -697,7 +697,18 @@ func docsScriptPresentationDecisionLooksShellMangled(raw string) bool {
 		return false
 	}
 	body := strings.TrimSpace(raw[1:])
-	return body != "" && body[0] != '"' && body[0] != '}'
+	if body == "" || body[0] == '}' {
+		return false
+	}
+	if body[0] != '"' {
+		return true
+	}
+
+	// PowerShell can preserve object-key quotes while removing quotes from
+	// scalar values. Only classify that shape as recoverable when the schema
+	// parser can rebuild it without guessing.
+	normalized, err := recoverDocsScriptPresentationDecisionJSON(raw)
+	return err == nil && normalized != raw
 }
 
 func normalizeDocsScriptOptionalRoute(field string, value *string) (*string, error) {
