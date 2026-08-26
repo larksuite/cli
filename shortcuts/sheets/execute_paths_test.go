@@ -1012,25 +1012,6 @@ func TestExecute_ChartConfigUpdate_ReadsSnapshotAndWritesPartialPatch(t *testing
 		}]
 	}`)
 	write := toolOutputStub(testToken, "write", `{"chart_id":"chart-1"}`)
-	readAfter := toolOutputStub(testToken, "read", `{
-		"sheets":[{
-			"sheet_id":"shtSubA",
-			"charts":[{
-				"chart_id":"chart-1",
-				"details":{"snapshot":{
-					"title":{"text":"New"},
-					"plotArea":{
-						"axes":[
-							{"type":"x","valueType":"linear","axisLine":true,"label":{},"title":{"text":"Month"},"min":2},
-							{"type":"y","position":"left","title":{"text":"Revenue"}}
-						],
-						"plot":{"type":"line","series":[{"index":1,"points":{"point":[{"index":4,"labels":{"value":true}}]}}]}
-					},
-					"data":{"direction":"column"}
-				}}
-			}]
-		}]
-	}`)
 	out, err := runShortcutWithStubs(t, ChartConfigUpdate, []string{
 		"--url", testURL,
 		"--sheet-id", testSheetID,
@@ -1038,8 +1019,7 @@ func TestExecute_ChartConfigUpdate_ReadsSnapshotAndWritesPartialPatch(t *testing
 		"--title", "New",
 		"--x-axis-min", "2",
 		"--y-axis-title", "Revenue",
-		"--last-point-label=true",
-	}, readBefore, write, readAfter)
+	}, readBefore, write)
 	if err != nil {
 		t.Fatalf("execute failed: %v\nout=%s", err, out)
 	}
@@ -1049,13 +1029,6 @@ func TestExecute_ChartConfigUpdate_ReadsSnapshotAndWritesPartialPatch(t *testing
 		t.Fatalf("read chart_id = %#v", readInput["chart_id"])
 	}
 	writeInput := decodeToolInput(t, decodeRawEnvelopeBody(t, write.CapturedBody), "manage_chart_object")
-	if _, ok := writeInput["last_point_label"]; ok {
-		t.Fatalf("last_point_label must not be written at the tool input root: %#v", writeInput)
-	}
-	writeProperties := writeInput["properties"].(map[string]interface{})
-	if writeProperties["last_point_label"] != true {
-		t.Fatalf("last_point_label = %#v, want true", writeProperties["last_point_label"])
-	}
 	snapshot := chartDryRunSnapshot(t, writeInput)
 	if snapshot["title"].(map[string]interface{})["text"] != "New" {
 		t.Fatalf("partial title = %#v", snapshot["title"])
@@ -1074,12 +1047,6 @@ func TestExecute_ChartConfigUpdate_ReadsSnapshotAndWritesPartialPatch(t *testing
 	viewModel := data["viewModel"].(map[string]interface{})
 	if _, ok := viewModel["data"]; ok {
 		t.Fatal("config shortcut output viewModel must not include data")
-	}
-	plot := viewModel["plotArea"].(map[string]interface{})["plot"].(map[string]interface{})
-	series := plot["series"].([]interface{})
-	point := series[0].(map[string]interface{})["points"].(map[string]interface{})["point"].([]interface{})[0].(map[string]interface{})
-	if point["labels"].(map[string]interface{})["value"] != true {
-		t.Fatalf("viewModel must come from the post-update readback: %#v", viewModel)
 	}
 }
 

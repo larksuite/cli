@@ -3582,7 +3582,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Combo charts only; comma-separated series types aligned with --dim2-indexes; use column, line, or area and provide one value per selected series"
+        "desc": "Combo charts only; comma-separated series types aligned with --dim2-indexes; use column, line, area, or scatter and provide one value per selected series"
       },
       {
         "name": "series-y-axes",
@@ -4000,13 +4000,6 @@
           "inside",
           "outside"
         ]
-      },
-      {
-        "name": "last-point-label",
-        "kind": "own",
-        "type": "bool",
-        "required": "optional",
-        "desc": "For line, area, radar, and linear combo series only; true shows a value label on the last data point of every series, while false removes those point labels"
       },
       {
         "name": "stack",

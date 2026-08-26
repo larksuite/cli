@@ -210,15 +210,6 @@ var ChartConfigUpdate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		if runtime.Changed("last-point-label") {
-			updatedSnapshot, readErr := fetchChartSnapshot(
-				ctx, runtime, token, sheetID, sheetName, runtime.Str("chart-id"),
-			)
-			if readErr != nil {
-				return readErr
-			}
-			viewModel = chartViewModel(updatedSnapshot)
-		}
 		runtime.Out(withChartShortcutResult(out, "viewModel", viewModel), nil)
 		return nil
 	},
@@ -380,7 +371,7 @@ func chartCreateBasicInput(rt flagView, token, sheetID, sheetName string) (map[s
 	}
 	var seriesTypes []string
 	if rt.Changed("series-types") {
-		seriesTypes, err = parseChartEnumList(rt.Str("series-types"), "series-types", []string{"column", "line", "area"})
+		seriesTypes, err = parseChartEnumList(rt.Str("series-types"), "series-types", []string{"column", "line", "area", "scatter"})
 		if err != nil {
 			return nil, err
 		}
@@ -537,7 +528,7 @@ func chartConfigUpdateInput(rt flagView, token, sheetID, sheetName string) (map[
 		return nil, err
 	}
 	addChartSemanticConfig(rt, updates)
-	if len(updates) == 0 && !rt.Changed("last-point-label") {
+	if len(updates) == 0 {
 		return nil, common.ValidationErrorf("at least one chart configuration flag is required")
 	}
 	patch, _ := applyChartConfigPatch(map[string]interface{}{}, updates)
@@ -548,9 +539,6 @@ func chartConfigUpdateInput(rt flagView, token, sheetID, sheetName string) (map[
 		"properties": map[string]interface{}{
 			"snapshot": patch,
 		},
-	}
-	if rt.Changed("last-point-label") {
-		input["properties"].(map[string]interface{})["last_point_label"] = rt.Bool("last-point-label")
 	}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
 	if err := validateInputAgainstSchema(rt, input); err != nil {
@@ -677,9 +665,6 @@ func chartConfigUpdateInputFromSnapshot(
 		"properties": map[string]interface{}{
 			"snapshot": patch,
 		},
-	}
-	if rt.Changed("last-point-label") {
-		input["properties"].(map[string]interface{})["last_point_label"] = rt.Bool("last-point-label")
 	}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
 	if err := validateInputAgainstSchema(rt, input); err != nil {

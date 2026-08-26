@@ -1040,10 +1040,6 @@
               "height"
             ]
           },
-          "last_point_label": {
-            "type": "boolean",
-            "description": "update 使用。true 为折线图、面积图、雷达图及组合图中的线性系列开启最后一个数据点的数值标签；false 关闭这些单点标签。"
-          },
           "snapshot": {
             "description": "图表快照配置。create 需要完整配置；update 可只提供需要变更的字段，对象字段递归合并，数组整段替换，未提供的字段保持现状。",
             "anyOf": [
@@ -1316,7 +1312,8 @@
                             "enum": [
                               "column",
                               "line",
-                              "area"
+                              "area",
+                              "scatter"
                             ]
                           },
                           "yAxisPosition": {
@@ -1873,70 +1870,6 @@
                                     "size": {
                                       "type": "number",
                                       "description": "大小"
-                                    },
-                                    "labels": {
-                                      "type": "object",
-                                      "description": "单点数据标签配置，仅折线图、面积图、雷达图及组合图中的线性系列生效。labels 对象的存在性即开关；显示最后一点的值时传 {\"value\": true}。",
-                                      "properties": {
-                                        "position": {
-                                          "type": "string",
-                                          "description": "标签位置",
-                                          "enum": [
-                                            "auto",
-                                            "top",
-                                            "bottom",
-                                            "left",
-                                            "right",
-                                            "center",
-                                            "inside",
-                                            "outside"
-                                          ]
-                                        },
-                                        "series": {
-                                          "type": "boolean",
-                                          "description": "是否显示系列名"
-                                        },
-                                        "category": {
-                                          "type": "boolean",
-                                          "description": "是否显示类别名"
-                                        },
-                                        "value": {
-                                          "type": "boolean",
-                                          "description": "是否显示值"
-                                        },
-                                        "percentage": {
-                                          "type": "boolean",
-                                          "description": "是否显示百分比"
-                                        },
-                                        "format": {
-                                          "type": "string",
-                                          "description": "标签数字格式"
-                                        },
-                                        "fontSize": {
-                                          "type": "number",
-                                          "description": "字体大小"
-                                        },
-                                        "bold": {
-                                          "type": "boolean",
-                                          "description": "是否加粗"
-                                        },
-                                        "italic": {
-                                          "type": "boolean",
-                                          "description": "是否斜体"
-                                        },
-                                        "underline": {
-                                          "type": "boolean",
-                                          "description": "是否下划线"
-                                        },
-                                        "strikethrough": {
-                                          "type": "boolean",
-                                          "description": "是否删除线"
-                                        },
-                                        "color": {
-                                          "type": "string",
-                                          "description": "字体颜色"
-                                        }
-                                      }
                                     },
                                     "fillGradient": {
                                       "type": "object",
@@ -2568,7 +2501,8 @@
                                   "enum": [
                                     "column",
                                     "line",
-                                    "area"
+                                    "area",
+                                    "scatter"
                                   ]
                                 },
                                 "yAxisPosition": {
@@ -3340,10 +3274,6 @@
               "height"
             ]
           },
-          "last_point_label": {
-            "type": "boolean",
-            "description": "update 使用。true 为折线图、面积图、雷达图及组合图中的线性系列开启最后一个数据点的数值标签；false 关闭这些单点标签。"
-          },
           "snapshot": {
             "description": "图表快照配置。create 需要完整配置；update 可只提供需要变更的字段，对象字段递归合并，数组整段替换，未提供的字段保持现状。",
             "anyOf": [
@@ -3616,7 +3546,8 @@
                             "enum": [
                               "column",
                               "line",
-                              "area"
+                              "area",
+                              "scatter"
                             ]
                           },
                           "yAxisPosition": {
@@ -4173,70 +4104,6 @@
                                     "size": {
                                       "type": "number",
                                       "description": "大小"
-                                    },
-                                    "labels": {
-                                      "type": "object",
-                                      "description": "单点数据标签配置，仅折线图、面积图、雷达图及组合图中的线性系列生效。labels 对象的存在性即开关；显示最后一点的值时传 {\"value\": true}。",
-                                      "properties": {
-                                        "position": {
-                                          "type": "string",
-                                          "description": "标签位置",
-                                          "enum": [
-                                            "auto",
-                                            "top",
-                                            "bottom",
-                                            "left",
-                                            "right",
-                                            "center",
-                                            "inside",
-                                            "outside"
-                                          ]
-                                        },
-                                        "series": {
-                                          "type": "boolean",
-                                          "description": "是否显示系列名"
-                                        },
-                                        "category": {
-                                          "type": "boolean",
-                                          "description": "是否显示类别名"
-                                        },
-                                        "value": {
-                                          "type": "boolean",
-                                          "description": "是否显示值"
-                                        },
-                                        "percentage": {
-                                          "type": "boolean",
-                                          "description": "是否显示百分比"
-                                        },
-                                        "format": {
-                                          "type": "string",
-                                          "description": "标签数字格式"
-                                        },
-                                        "fontSize": {
-                                          "type": "number",
-                                          "description": "字体大小"
-                                        },
-                                        "bold": {
-                                          "type": "boolean",
-                                          "description": "是否加粗"
-                                        },
-                                        "italic": {
-                                          "type": "boolean",
-                                          "description": "是否斜体"
-                                        },
-                                        "underline": {
-                                          "type": "boolean",
-                                          "description": "是否下划线"
-                                        },
-                                        "strikethrough": {
-                                          "type": "boolean",
-                                          "description": "是否删除线"
-                                        },
-                                        "color": {
-                                          "type": "string",
-                                          "description": "字体颜色"
-                                        }
-                                      }
                                     },
                                     "fillGradient": {
                                       "type": "object",
@@ -4868,7 +4735,8 @@
                                   "enum": [
                                     "column",
                                     "line",
-                                    "area"
+                                    "area",
+                                    "scatter"
                                   ]
                                 },
                                 "yAxisPosition": {
