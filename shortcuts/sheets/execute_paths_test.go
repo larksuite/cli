@@ -144,6 +144,38 @@ func TestExecute_WikiURLResolvesToSheet(t *testing.T) {
 
 // TestExecute_RevisionGet_WikiURL guards RevisionGet's custom Execute hook:
 // the wiki node token must be resolved before get_workbook_structure runs.
+// TestExecute_CondFormatResultGet_WikiURL guards the condition-format result
+// reader's custom Execute hook: wiki URLs must be resolved to the backing
+// spreadsheet token before get_cell_ranges runs.
+func TestExecute_CondFormatResultGet_WikiURL(t *testing.T) {
+	t.Parallel()
+	getNode := &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "success",
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{
+					"obj_type":  "sheet",
+					"obj_token": testToken,
+				},
+			},
+		},
+	}
+	tool := toolOutputStub(testToken, "read", `{"has_more":false,"ranges":[{"range":"A1:A1","actual_range":"A1:A1","row_indices":[1],"col_indices":["A"],"cells":[[{"value":"x","cell_styles":{"background_color":"#FF0000"}}]]}]}`)
+	out, err := runShortcutWithStubs(t, CondFormatResultGet,
+		[]string{"--url", "https://example.feishu.cn/wiki/wikTestNODE", "--sheet-id", testSheetID, "--range", "A1:A1", "--include", "style"}, getNode, tool)
+	if err != nil {
+		t.Fatalf("execute failed: %v\nout=%s", err, out)
+	}
+	data := decodeEnvelopeData(t, out)
+	ranges, _ := data["ranges"].([]interface{})
+	if len(ranges) != 1 {
+		t.Fatalf("ranges len = %d, want 1; out=%s", len(ranges), out)
+	}
+}
+
 func TestExecute_RevisionGet_WikiURL(t *testing.T) {
 	t.Parallel()
 	getNode := &httpmock.Stub{

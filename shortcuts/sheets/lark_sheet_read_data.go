@@ -83,6 +83,9 @@ func cellsGetInput(runtime *common.RuntimeContext, token, sheetID, sheetName str
 	if runtime.Bool("skip-hidden") {
 		input["skip_hidden"] = true
 	}
+	if runtime.Bool("conditional-format") {
+		input["include_conditional_format_style"] = true
+	}
 	// --cell-limit was removed from the CLI surface; --max-chars is the single
 	// read cap. Pin cell_limit very high so the tool's own default never binds
 	// before max_chars.
@@ -304,5 +307,70 @@ func dropdownGetInput(runtime *common.RuntimeContext, token, sheetID, sheetName 
 		"value_render_option": "formatted_value",
 	}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
+	return input
+}
+
+// CondFormatResultGet wraps get_cell_ranges with include_conditional_format_style
+// hardcoded to true, so cell_styles always include the calculated conditional
+// format results (colorScale / aboveAverage / etc.). Use --include style to
+// see the computed styles in the output.
+var CondFormatResultGet = common.Shortcut{
+	Service:     "sheets",
+	Command:     "+cond-format-result-get",
+	Description: "Read cell ranges with conditional format results (colorScale / aboveAverage / etc.) merged into cell_styles.",
+	Risk:        "read",
+	Scopes:      []string{"sheets:spreadsheet:read"},
+	AuthTypes:   []string{"user", "bot"},
+	HasFormat:   true,
+	Flags:       flagsFor("+cond-format-result-get"),
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if _, err := resolveSpreadsheetToken(runtime); err != nil {
+			return err
+		}
+		if _, _, err := resolveSheetSelector(runtime); err != nil {
+			return err
+		}
+		if strings.TrimSpace(runtime.Str("range")) == "" {
+			return sheetsValidationForFlag("range", "--range is required")
+		}
+		return nil
+	},
+	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+		token, _ := resolveSpreadsheetToken(runtime)
+		sheetID, sheetName, _ := resolveSheetSelector(runtime)
+		return invokeToolDryRun(token, ToolKindRead, "get_cell_ranges",
+			condFormatResultGetInput(runtime, token, sheetID, sheetName))
+	},
+	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		token, err := resolveSpreadsheetTokenExec(runtime)
+		if err != nil {
+			return err
+		}
+		sheetID, sheetName, err := resolveSheetSelector(runtime)
+		if err != nil {
+			return err
+		}
+		out, err := callTool(ctx, runtime, token, ToolKindRead, "get_cell_ranges",
+			condFormatResultGetInput(runtime, token, sheetID, sheetName))
+		if err != nil {
+			return err
+		}
+		runtime.Out(out, nil)
+		return nil
+	},
+}
+
+func condFormatResultGetInput(runtime *common.RuntimeContext, token, sheetID, sheetName string) map[string]interface{} {
+	input := map[string]interface{}{
+		"excel_id":                         token,
+		"ranges":                           []string{strings.TrimSpace(runtime.Str("range"))},
+		"include_conditional_format_style": true,
+	}
+	sheetSelectorForToolInput(input, sheetID, sheetName)
+	applyIncludeToCellsGet(input, runtime.StrSlice("include"))
+	input["cell_limit"] = unboundedReadLimit
+	if n, ok := maxCharsInput(runtime); ok {
+		input["max_chars"] = n
+	}
 	return input
 }

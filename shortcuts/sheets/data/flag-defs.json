@@ -1368,6 +1368,13 @@
         "desc": "Skip hidden rows and columns; default `false`"
       },
       {
+        "name": "conditional-format",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Merge conditional format (colorScale/aboveAverage etc.) results into cell_styles (default: false). Requires --include style to be effective"
+      },
+      {
         "name": "dry-run",
         "kind": "system",
         "type": "bool",
@@ -1413,6 +1420,75 @@
         "type": "string",
         "required": "required",
         "desc": "Target range in A1 notation, e.g. `A2:A100` (no sheet prefix — use `--sheet-id` / `--sheet-name` to select the sheet)"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+cond-format-result-get": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "A1 range, e.g. `A1:F10` (no sheet prefix — use `--sheet-id` / `--sheet-name` to select the sheet)"
+      },
+      {
+        "name": "include",
+        "kind": "own",
+        "type": "string_slice",
+        "required": "optional",
+        "desc": "Comma-separated info categories to include. Must include `style` to see conditional format results",
+        "enum": [
+          "value",
+          "formula",
+          "style",
+          "comment",
+          "data_validation"
+        ]
+      },
+      {
+        "name": "max-chars",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Max output chars per call; default 500000 (safety cap)",
+        "default": "500000"
       },
       {
         "name": "dry-run",
