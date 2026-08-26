@@ -163,16 +163,46 @@ func TestExecute_CondFormatResultGet_WikiURL(t *testing.T) {
 			},
 		},
 	}
-	tool := toolOutputStub(testToken, "read", `{"has_more":false,"ranges":[{"range":"A1:A1","actual_range":"A1:A1","row_indices":[1],"col_indices":["A"],"cells":[[{"value":"x","cell_styles":{"background_color":"#FF0000"}}]]}]}`)
+	tool := toolOutputStub(testToken, "read", `{"warning_message":"use row_indices and col_indices","has_more":false,"returned_cell_count":1,"approx_char_count":120,"server_debug":"drop me","ranges":[{"range":"A1:A1","actual_range":"A1:A1","row_indices":[1],"col_indices":["A"],"truncated":false,"range_debug":"drop me","cells":[[{"value":"x","formula":"=1","note":"drop me","data_validation":{"type":"list"},"border_styles":{"top":{"style":"solid"}},"cell_styles":{"background_color":"#FF0000"}}]]}]}`)
 	out, err := runShortcutWithStubs(t, CondFormatResultGet,
-		[]string{"--url", "https://example.feishu.cn/wiki/wikTestNODE", "--sheet-id", testSheetID, "--range", "A1:A1", "--include", "style"}, getNode, tool)
+		[]string{"--url", "https://example.feishu.cn/wiki/wikTestNODE", "--sheet-id", testSheetID, "--range", "A1:A1"}, getNode, tool)
 	if err != nil {
 		t.Fatalf("execute failed: %v\nout=%s", err, out)
 	}
 	data := decodeEnvelopeData(t, out)
+	if _, exists := data["server_debug"]; exists {
+		t.Fatalf("top-level unrelated data was retained; out=%s", out)
+	}
+	for _, key := range []string{"warning_message", "has_more", "returned_cell_count"} {
+		if _, exists := data[key]; !exists {
+			t.Fatalf("position/pagination metadata %q missing; out=%s", key, out)
+		}
+	}
+	if _, exists := data["approx_char_count"]; exists {
+		t.Fatalf("raw response size metadata was retained; out=%s", out)
+	}
 	ranges, _ := data["ranges"].([]interface{})
 	if len(ranges) != 1 {
 		t.Fatalf("ranges len = %d, want 1; out=%s", len(ranges), out)
+	}
+	rangeData := ranges[0].(map[string]interface{})
+	if _, exists := rangeData["range_debug"]; exists {
+		t.Fatalf("range-level unrelated data was retained; out=%s", out)
+	}
+	rows := rangeData["cells"].([]interface{})
+	cells := rows[0].([]interface{})
+	cell := cells[0].(map[string]interface{})
+	if len(cell) != 1 {
+		t.Fatalf("cell keys = %#v, want only cell_styles; out=%s", cell, out)
+	}
+	style := cell["cell_styles"].(map[string]interface{})
+	if style["background_color"] != "#FF0000" {
+		t.Fatalf("background_color = %#v, want #FF0000; out=%s", style["background_color"], out)
+	}
+	for _, key := range []string{"value", "formula", "note", "data_validation", "border_styles"} {
+		if _, exists := cell[key]; exists {
+			t.Fatalf("cell unexpectedly retained %q; out=%s", key, out)
+		}
 	}
 }
 

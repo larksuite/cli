@@ -313,14 +313,13 @@ func dropdownGetInput(runtime *common.RuntimeContext, token, sheetID, sheetName 
 	return input
 }
 
-// CondFormatResultGet wraps get_cell_ranges with include_conditional_format_style
-// hardcoded to true, so cell_styles always include the calculated conditional
-// format results (colorScale / aboveAverage / etc.). Use --include style to
-// see the computed styles in the output.
+// CondFormatResultGet wraps get_cell_ranges with style and conditional-format
+// style output hardcoded on, so cell_styles always include the calculated
+// results (colorScale / aboveAverage / etc.).
 var CondFormatResultGet = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+cond-format-result-get",
-	Description: "Read cell ranges with conditional format results (colorScale / aboveAverage / etc.) merged into cell_styles.",
+	Description: "Read conditional format results as range coordinates and cell_styles only.",
 	Risk:        "read",
 	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
@@ -358,19 +357,79 @@ var CondFormatResultGet = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		runtime.Out(out, nil)
+		runtime.Out(condFormatResultOnly(out), nil)
 		return nil
 	},
+}
+
+// condFormatResultOnly removes cell content and unrelated metadata from the
+// generic get_cell_ranges response. Range coordinates and truncation metadata
+// stay intact so callers can map every retained cell_styles object back to the
+// real sheet position and detect incomplete reads.
+func condFormatResultOnly(out interface{}) interface{} {
+	data, ok := out.(map[string]interface{})
+	if !ok {
+		return map[string]interface{}{}
+	}
+
+	result := make(map[string]interface{})
+	for _, key := range []string{"warning_message", "has_more", "returned_cell_count"} {
+		if value, exists := data[key]; exists {
+			result[key] = value
+		}
+	}
+
+	rawRanges, ok := data["ranges"].([]interface{})
+	if !ok {
+		return result
+	}
+	ranges := make([]interface{}, 0, len(rawRanges))
+	for _, rawRange := range rawRanges {
+		rangeData, ok := rawRange.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		filteredRange := make(map[string]interface{})
+		for _, key := range []string{"range", "actual_range", "row_indices", "col_indices", "truncated"} {
+			if value, exists := rangeData[key]; exists {
+				filteredRange[key] = value
+			}
+		}
+		if rawRows, ok := rangeData["cells"].([]interface{}); ok {
+			rows := make([]interface{}, 0, len(rawRows))
+			for _, rawRow := range rawRows {
+				rawCells, ok := rawRow.([]interface{})
+				if !ok {
+					continue
+				}
+				cells := make([]interface{}, 0, len(rawCells))
+				for _, rawCell := range rawCells {
+					cell := make(map[string]interface{})
+					if cellData, ok := rawCell.(map[string]interface{}); ok {
+						if styles, exists := cellData["cell_styles"]; exists {
+							cell["cell_styles"] = styles
+						}
+					}
+					cells = append(cells, cell)
+				}
+				rows = append(rows, cells)
+			}
+			filteredRange["cells"] = rows
+		}
+		ranges = append(ranges, filteredRange)
+	}
+	result["ranges"] = ranges
+	return result
 }
 
 func condFormatResultGetInput(runtime *common.RuntimeContext, token, sheetID, sheetName string) map[string]interface{} {
 	input := map[string]interface{}{
 		"excel_id":                         token,
 		"ranges":                           []string{strings.TrimSpace(runtime.Str("range"))},
+		"include_styles":                   true,
 		"include_conditional_format_style": true,
 	}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
-	applyIncludeToCellsGet(input, runtime.StrSlice("include"))
 	input["cell_limit"] = unboundedReadLimit
 	if n, ok := maxCharsInput(runtime); ok {
 		input["max_chars"] = n

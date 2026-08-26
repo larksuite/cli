@@ -1335,7 +1335,7 @@
         "kind": "own",
         "type": "string_slice",
         "required": "optional",
-        "desc": "Comma-separated info categories to include. `conditional_format` merges calculated conditional-format styles into `cell_styles`; `truncation` additionally estimates whether each cell's content is clipped (by row height / col width / font size / wrap) and returns `isRowTruncated` / `isColTruncated` (extra compute; enable only for layout checks or before adjusting row heights / column widths)",
+        "desc": "Comma-separated info categories to include. `truncation` additionally estimates whether each cell's content is clipped (by row height / col width / font size / wrap) and returns `isRowTruncated` / `isColTruncated` (extra compute; enable only for layout checks or before adjusting row heights / column widths)",
         "enum": [
           "value",
           "formula",
@@ -4679,20 +4679,6 @@
         "type": "string",
         "required": "required",
         "desc": "A1 range, e.g. `A1:F10` (no sheet prefix — use `--sheet-id` / `--sheet-name` to select the sheet)"
-      },
-      {
-        "name": "include",
-        "kind": "own",
-        "type": "string_slice",
-        "required": "optional",
-        "desc": "Comma-separated info categories to include. Must include `style` to see conditional format results",
-        "enum": [
-          "value",
-          "formula",
-          "style",
-          "comment",
-          "data_validation"
-        ]
       },
       {
         "name": "max-chars",
