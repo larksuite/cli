@@ -87,7 +87,8 @@
 
 **常见配置错误（必须注意）**：
 - **图表类型选择错误**：用户说"堆积柱形图 / 百分比堆积"时，用 `+chart-create-basic --stack normal|percent` 或 `+chart-config-update --stack normal|percent`；用户说"占比 / 比例"时，优先考虑饼图或百分比堆积图。注意 `column` 是纵向柱形图、`bar` 是横向条形图，"对比 / 各 XX" 类纵向柱默认用 `column`；面积图原生支持 `snapshot.plotArea.plot.type="area"`，别因速查表没列就判"不支持"。
-- **数据标签开关**：普通基础图默认开启数值标签，创建时传 `--data-labels value`；数据点较多、系列较多或标签容易重叠时，可根据可读性省略 `--data-labels`。已有图用 `+chart-config-update --data-labels`；用户明确关闭时传 `none`，不要为常用标签配置构造原始 `labels` 对象。高级配置中 `plotArea.plot.labels` 对象的存在性即开关；关闭标签时应省略整个 `labels` 字段，不能用全部字段置为 `false` 代替。用常量或重复值系列表示基准、目标、阈值或上下限时，默认关闭该系列标签；不支持单点标签时，不得用全系列重复标签代替，改用包含名称和值的系列名、图例或标题。
+- **数据标签开关**：普通基础图默认开启数值标签，创建时传 `--data-labels value`；数据点较多、系列较多或标签容易重叠时，可根据可读性省略 `--data-labels`。已有图用 `+chart-config-update --data-labels`；用户明确关闭时传 `none`，不要为常用标签配置构造原始 `labels` 对象。高级配置中 `plotArea.plot.labels` 对象的存在性即开关；关闭标签时应省略整个 `labels` 字段，不能用全部字段置为 `false` 代替。多个系列的数据标签展示要求不同时，禁止传全局 `--data-labels`，应在创建后读取完整 `plotArea.plot.series`，仅给需要标签的系列设置 `labels`，再用 `+chart-update --properties` 整段回写该数组。
+- **辅助线与单点标签**：用户要求基准线、目标线、阈值线、平均线或上下限时，先在源数据旁新增一列重复目标值作为辅助线；如果只需要在线尾或某个关键位置显示一个标签，再新增一列稀疏标点数据，仅在目标行写入同一数值，其余单元格保持真正空白。数据准备完成后创建组合图：辅助值列用 `line`，稀疏标点列用 `scatter`，并省略全局 `--data-labels`。随后读取完整系列数组，只给稀疏标点系列设置数值标签，辅助线系列必须省略 `labels`；原数据系列是否设置标签按用户要求决定。不得用重复值辅助线的全系列标签模拟单点标签，也不得用 0 代替空白标点。
 - **数据标签位置**：只有用户明确要求且已有标签时才传 `--data-label-position`；它只调整已有标签的位置，不会单独开启标签。需要同时显示标签时一并传 `--data-labels`；未明确位置时省略，让图表按类型自动选择。标签位置只控制摆放方式，不能实现仅显示末点或关键点。
 - **数据源范围与系列名来源要对齐**：
   - 默认让 `--data-range` 包含真正的表头行 / 列；表头上方的合并大标题必须跳过。
@@ -182,7 +183,7 @@ _公共四件套 · 系统：`--dry-run`_
 | `--y-axis-max` | float64 | optional | 左 Y 轴的显示范围上界；默认省略，仅在用户明确要求固定范围时传；须按图表实际绘制值计算，且必须大于 --y-axis-min |
 | `--dim1-index` | int | optional | 类别/X 轴维度在数据范围中的 1-based 索引；默认 1 |
 | `--dim2-indexes` | string | optional | 值/Y 轴系列的 1-based 索引列表，逗号分隔；不能包含 dim1，最多 50 个。气泡图旧调用按 `x,y[,group][,size]` 顺序传 2–4 个，新调用优先使用角色索引；饼图和排列图只传 1 个 |
-| `--series-types` | string | optional | 仅组合图；按 --dim2-indexes 顺序指定系列类型，逗号分隔，可选 column、line、area，数量必须与数值系列一致 |
+| `--series-types` | string | optional | 仅组合图；按 --dim2-indexes 顺序指定系列类型，逗号分隔，可选 column、line、area、scatter，数量必须与数值系列一致 |
 | `--series-y-axes` | string | optional | 仅组合图；先比较系列单位和量级，将会被压扁的系列放到 right 轴；按 --dim2-indexes 顺序传 left 或 right，数量必须与数值系列一致 |
 | `--key-index` | int | optional | 仅气泡图：标识/名称维度的 1-based 索引；与 dim1/dim2 索引互斥，默认 1 |
 | `--x-index` | int | optional | 仅气泡图：X 值维度的 1-based 索引；须与 --y-index 一起提供 |
@@ -229,7 +230,6 @@ _公共四件套 · 系统：`--dry-run`_
 | `--y-axis-max` | float64 | optional | 左 Y 轴的显示范围上界；默认省略，仅在用户明确要求固定范围时传；须按图表实际绘制值计算，且必须大于 --y-axis-min |
 | `--data-labels` | string | optional | 数据标签内容；value、category、percentage 可按 value_category_percentage 顺序组成任意非空组合；series 显示系列名称，none 隐藏标签（可选值：`none` / `value` / `category` / `percentage` / `value_category` / `value_percentage` / `category_percentage` / `value_category_percentage` / `series`） |
 | `--data-label-position` | string | optional | 仅当用户明确指定时传入；只调整已有数据标签的位置，不会单独开启标签；省略时按图表类型自动优化数据标签位置（可选值：`auto` / `top` / `bottom` / `left` / `right` / `center` / `inside` / `outside`） |
-| `--last-point-label` | bool | optional | 仅折线图、面积图、雷达图及组合图中的线性系列；true 开启每个系列最后一个数据点的数值标签，false 关闭这些单点标签 |
 | `--stack` | string | optional | 堆叠模式（可选值：`none` / `normal` / `percent`） |
 | `--stacked` | bool | optional | 兼容别名；等价于 --stack normal（隐藏 flag：不在 `--help` 列出，但可正常传入） |
 | `--smooth` | bool | optional | 是否使用平滑曲线；支持 --smooth=false 和 --smooth false |
@@ -292,7 +292,6 @@ _创建/更新的图表属性_
 - `position` (object?) — 必填 { row: number, col: string }
 - `offset` (object?) — 可选 { row_offset?: number, col_offset?: number }
 - `size` (object?) — 必填 { width: number, height: number }
-- `last_point_label` (boolean?) — update 使用
 - `snapshot` (oneOf?) — 图表快照配置
 
 ## Examples
@@ -305,7 +304,7 @@ _创建/更新的图表属性_
 
 ### `+chart-create-basic`
 
-默认使用第 1 个维度作为类别/X 轴，其余维度作为数值系列；普通图表可用 1-based 的 `--dim1-index` 和逗号分隔的 `--dim2-indexes` 精确选择。组合图默认首个数值系列为左轴柱、其余为右轴折线；创建前仍要比较各系列单位和量级，避免折线或小量级系列因共用左轴而贴近 X 轴。需要其它组合时，用 `--series-types` 和 `--series-y-axes` 按 `--dim2-indexes` 的顺序逐项指定系列类型与左右轴，两组参数的数量都必须与最终数值系列数一致。横轴数字默认按等间距文本类别处理；只有数字之间的真实间距需要影响图形位置时，才传 `--x-axis-numbers-as values` 使用连续数轴。气泡图改用 `--key-index`、`--x-index`、`--y-index` 和可选的 `--group-index` / `--size-index`，其中 x/y 必须同时提供，key 默认 1；角色索引不能与 dim1/dim2 索引混用。旧气泡图的 dim1/dim2 位置调用仍兼容。饼图和排列图只允许一个数值系列；组合图至少需要两个数值系列；所有图表最多选择 50 个数值系列。饼图默认将图例放在底部，并根据类别标签长度适量增加 `--width`（同时传 `--height`）。默认让 `--data-range` 包含真实表头；只有“维度/系列名称”与纯数据分离时，才让 `--data-range` 只传纯数据，并用 `--header-range` 传对应的一行（column）或一列（row）表头。类别维度与数值维度不连续时，范围参数可传逗号分隔的多范围，也支持来自多个子表；沿数据点轴对齐的跨子表范围会保留独立引用，同一子表内错行、错列或重叠时合并为最小包围矩形，跨子表范围无法对齐时会报错。单独调用成功后返回完整 `snapshot`，可直接检查创建结果并继续修改。参数名使用 `--anchor-cell` 和 `--data-labels`。兼容调用中，`--type` / `--range` 会分别按 `--chart-type` / `--data-range` 处理，`--x-axis` / `--y-axis` 会按轴标题处理；新调用仍优先使用规范参数名。
+默认使用第 1 个维度作为类别/X 轴，其余维度作为数值系列；普通图表可用 1-based 的 `--dim1-index` 和逗号分隔的 `--dim2-indexes` 精确选择。组合图默认首个数值系列为左轴柱、其余为右轴折线；创建前仍要比较各系列单位和量级，避免折线或小量级系列因共用左轴而贴近 X 轴。需要其它组合时，用 `--series-types` 和 `--series-y-axes` 按 `--dim2-indexes` 的顺序逐项指定系列类型与左右轴；系列类型可选 `column`、`line`、`area`、`scatter`，两组参数的数量都必须与最终数值系列数一致。横轴数字默认按等间距文本类别处理；只有数字之间的真实间距需要影响图形位置时，才传 `--x-axis-numbers-as values` 使用连续数轴。气泡图改用 `--key-index`、`--x-index`、`--y-index` 和可选的 `--group-index` / `--size-index`，其中 x/y 必须同时提供，key 默认 1；角色索引不能与 dim1/dim2 索引混用。旧气泡图的 dim1/dim2 位置调用仍兼容。饼图和排列图只允许一个数值系列；组合图至少需要两个数值系列；所有图表最多选择 50 个数值系列。饼图默认将图例放在底部，并根据类别标签长度适量增加 `--width`（同时传 `--height`）。默认让 `--data-range` 包含真实表头；只有“维度/系列名称”与纯数据分离时，才让 `--data-range` 只传纯数据，并用 `--header-range` 传对应的一行（column）或一列（row）表头。类别维度与数值维度不连续时，范围参数可传逗号分隔的多范围，也支持来自多个子表；沿数据点轴对齐的跨子表范围会保留独立引用，同一子表内错行、错列或重叠时合并为最小包围矩形，跨子表范围无法对齐时会报错。单独调用成功后返回完整 `snapshot`，可直接检查创建结果并继续修改。参数名使用 `--anchor-cell` 和 `--data-labels`。兼容调用中，`--type` / `--range` 会分别按 `--chart-type` / `--data-range` 处理，`--x-axis` / `--y-axis` 会按轴标题处理；新调用仍优先使用规范参数名。
 
 **连续数值 X 轴的可读性**：`--x-axis-numbers-as values` 会保留数字的真实间距，但未指定范围时可能自动包含 0。如果数据集中在远离 0 的窄区间，数据点会挤在图表一侧；此时应保留 `values`，创建时用 `--x-axis-min` / `--x-axis-max` 收紧范围，已有图表用 `+chart-config-update` 修正，不要改成 `text` 掩盖问题。两个边界可单独设置；同时设置时 min 必须小于 max。
 
@@ -323,6 +322,17 @@ lark-cli sheets +chart-create-basic --url "..." --sheet-name "Sheet1" \
   --series-types column,column,line --series-y-axes left,left,right \
   --title "价格与效率" --y-axis-title "价格" --secondary-y-axis-title "效率" \
   --anchor-cell F2 --width 700 --height 400
+
+# 辅助线只显示一个标签：C 列为重复目标值，D 列仅目标位置有值、其余单元格为空
+lark-cli sheets +chart-create-basic --url "..." --sheet-name "Sheet1" \
+  --chart-type combo --data-range "'Sheet1'!A1:D7" \
+  --dim1-index 1 --dim2-indexes 2,3,4 \
+  --series-types line,line,scatter --series-y-axes left,left,left \
+  --title "趋势与目标线" --anchor-cell F2 --width 700 --height 400
+
+# 先从创建结果或 +chart-list 取得完整 series 数组，再整段回写；辅助线系列不设置 labels
+lark-cli sheets +chart-update --url "..." --sheet-id "$SID" --chart-id "chrXXX" \
+  --properties '{"snapshot":{"plotArea":{"plot":{"series":[{"index":2,"comboType":"line","labels":{"value":true}},{"index":3,"comboType":"line"},{"index":4,"comboType":"scatter","labels":{"value":true}}]}}}}'
 
 # 气泡图：x、y 必填，group、size 可选
 lark-cli sheets +chart-create-basic --url "..." --sheet-name "Sheet1" \
@@ -401,7 +411,7 @@ lark-cli sheets +chart-data-update --url "..." --sheet-id "$SID" --chart-id "chr
 
 ### `+chart-config-update`
 
-只传需要改的字段，成功后返回更新后的 `viewModel`。`--data-labels` 支持 `value`、`category`、`percentage` 的任意非空组合，组合值按 `value_category_percentage` 顺序拼接；另可用 `series` 显示系列名称、用 `none` 删除数据标签。折线图、面积图、雷达图及组合图中的线性系列可用 `--last-point-label=true` 只开启每个系列最后一个数据点的数值标签，传 `false` 关闭这些单点标签。`--legend-position hidden` 隐藏图例；`--smooth=false` 和 `--smooth false` 都可显式关闭平滑曲线。为减少参数重试，`--stacked` 自动按 `--stack normal` 处理，`percentage,value` 或 `value,percentage` 自动按 `value_percentage` 处理，`--x-axis` / `--y-axis` 自动按 `--x-axis-title` / `--y-axis-title` 处理；新调用仍优先使用规范参数。
+只传需要改的字段，成功后返回更新后的 `viewModel`。`--data-labels` 支持 `value`、`category`、`percentage` 的任意非空组合，组合值按 `value_category_percentage` 顺序拼接；另可用 `series` 显示系列名称、用 `none` 删除数据标签。多个系列需要不同标签策略时不要使用这个全局参数，按上文的辅助列与高级系列配置流程处理。`--legend-position hidden` 隐藏图例；`--smooth=false` 和 `--smooth false` 都可显式关闭平滑曲线。为减少参数重试，`--stacked` 自动按 `--stack normal` 处理，`percentage,value` 或 `value,percentage` 自动按 `value_percentage` 处理，`--x-axis` / `--y-axis` 自动按 `--x-axis-title` / `--y-axis-title` 处理；新调用仍优先使用规范参数。
 
 ```bash
 lark-cli sheets +chart-config-update --url "..." --sheet-id "$SID" --chart-id "chrXXX" \
@@ -410,8 +420,6 @@ lark-cli sheets +chart-config-update --url "..." --sheet-id "$SID" --chart-id "c
 lark-cli sheets +chart-config-update --url "..." --sheet-id "$SID" --chart-id "chrXXX" \
   --data-labels value_percentage --stack percent
 
-lark-cli sheets +chart-config-update --url "..." --sheet-id "$SID" --chart-id "chrXXX" \
-  --last-point-label=true
 ```
 
 ### `+chart-create`
