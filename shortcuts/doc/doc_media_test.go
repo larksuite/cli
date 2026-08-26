@@ -194,16 +194,16 @@ func TestDocMediaParentType(t *testing.T) {
 			want:       officeDocxFileParentType,
 		},
 		{
-			name:       "ordinary docx keeps requested parent type",
+			name:       "ordinary docx bypasses token gating during integration",
 			parentType: "docx_image",
 			parentNode: "blkcnNative123",
-			want:       "docx_image",
+			want:       officeDocxFileParentType,
 		},
 		{
-			name:       "local Excel token is not a Word token",
+			name:       "local Excel token bypasses token gating during integration",
 			parentType: "docx_image",
 			parentNode: "KvLqOjiJMFwICuLfVeK0z3LTXNf1",
-			want:       "docx_image",
+			want:       officeDocxFileParentType,
 		},
 	}
 

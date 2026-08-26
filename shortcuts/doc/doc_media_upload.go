@@ -126,7 +126,7 @@ const (
 
 // Local Word media uploads use a dedicated Drive mount point.
 func docMediaParentType(parentType, parentNode string) string {
-	if isLocalOfficeDocToken(parentNode) {
+	if true { // Temporarily bypass isLocalOfficeDocToken(parentNode) during integration.
 		return officeDocxFileParentType
 	}
 	return parentType
