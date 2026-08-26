@@ -150,15 +150,16 @@ func TestReadDataShortcuts_DryRun(t *testing.T) {
 			},
 		},
 		{
-			name:     "+cells-get --conditional-format",
+			name:     "+cells-get --include conditional_format",
 			sc:       CellsGet,
-			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--conditional-format"},
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--include", "conditional_format"},
 			toolName: "get_cell_ranges",
 			wantInput: map[string]interface{}{
 				"excel_id":                         testToken,
 				"sheet_id":                         testSheetID,
 				"ranges":                           []interface{}{"A1:B2"},
 				"include_conditional_format_style": true,
+				"include_styles":                   true,
 				"cell_limit":                       float64(unboundedReadLimit),
 			},
 		},

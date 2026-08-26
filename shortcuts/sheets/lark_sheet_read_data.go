@@ -83,9 +83,6 @@ func cellsGetInput(runtime *common.RuntimeContext, token, sheetID, sheetName str
 	if runtime.Bool("skip-hidden") {
 		input["skip_hidden"] = true
 	}
-	if runtime.Bool("conditional-format") {
-		input["include_conditional_format_style"] = true
-	}
 	// --cell-limit was removed from the CLI surface; --max-chars is the single
 	// read cap. Pin cell_limit very high so the tool's own default never binds
 	// before max_chars.
@@ -103,6 +100,9 @@ func cellsGetInput(runtime *common.RuntimeContext, token, sheetID, sheetName str
 //   - value_render_option (enum) — "formula" → formula; otherwise omitted
 //   - include_truncation_info (bool) — toggled by "truncation" presence; makes
 //     the tool estimate and return per-cell isRowTruncated / isColTruncated
+//   - include_conditional_format_style (bool) — toggled by "conditional_format"
+//     presence; also enables include_styles because the calculated result is
+//     returned through cell_styles
 //
 // "value", "comment", and "data_validation" are always returned by the tool
 // per the schema; they have no dedicated knob today but are accepted in
@@ -115,10 +115,13 @@ func applyIncludeToCellsGet(input map[string]interface{}, include []string) {
 	for _, v := range include {
 		want[v] = true
 	}
-	if want["style"] {
+	if want["style"] || want["conditional_format"] {
 		input["include_styles"] = true
 	} else {
 		input["include_styles"] = false
+	}
+	if want["conditional_format"] {
+		input["include_conditional_format_style"] = true
 	}
 	if want["formula"] {
 		input["value_render_option"] = "formula"

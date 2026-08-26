@@ -23,9 +23,9 @@
 | 操作需求 | 使用工具 | 说明 |
 |---------|---------|------|
 | 查看已有条件格式规则 | `+cond-format-list` | 获取规则类型、范围和样式配置；用于确认规则对象已存在 |
-| 创建/更新/删除条件格式规则 | `+cond-format-{create|update|delete}` | 对条件格式规则执行写入操作 |
+| 创建/更新/删除条件格式规则 | `+cond-format-create` / `+cond-format-update` / `+cond-format-delete` | 对条件格式规则执行写入操作 |
 | 验证条件格式计算结果 | `+cond-format-result-get --include style` | 读取命中后的 `cell_styles`，确认条件格式是否真的作用到哨兵单元格 |
-| 常规读数时临时带上条件格式 | `+cells-get --conditional-format --include style` | 与 `+cond-format-result-get` 等价地合并条件格式样式，但仍归属普通单元格读取入口 |
+| 常规读数时临时带上条件格式 | `+cells-get --include conditional_format` | 与 `+cond-format-result-get` 等价地合并条件格式样式，但仍归属普通单元格读取入口 |
 
 典型工作流：先读取现有条件格式了解配置 → 执行创建/更新/删除 → **必须先用 `+cond-format-list` 验证规则对象，再用 `+cond-format-result-get --include style` 抽查计算结果**。
 
@@ -81,6 +81,7 @@ Step 2: 基于辅助列值做条件格式（用 cellIs 或引用辅助列的 exp
 | Shortcut | Risk | 分组 |
 | --- | --- | --- |
 | `+cond-format-list` | read | 对象 |
+| `+cond-format-result-get` | read | 对象 |
 | `+cond-format-create` | write | 对象 |
 | `+cond-format-update` | write | 对象 |
 | `+cond-format-delete` | high-risk-write | 对象 |
@@ -94,6 +95,16 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--rule-id` | string | optional | 按规则 id 过滤 |
+
+### `+cond-format-result-get`
+
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--range` | string | required | A1 范围，如 `A1:F10`（不带 sheet 前缀；用 `--sheet-id` / `--sheet-name` 指定 sheet） |
+| `--include` | string_slice | optional | 要返回的信息类别，逗号分隔多个。至少应包含 `style` 才能看到条件格式计算出的样式（可选值：`value` / `formula` / `style` / `comment` / `data_validation`） |
+| `--max-chars` | int | optional | 单次返回字符上限，默认 500000（兜底防爆） |
 
 ### `+cond-format-create`
 
@@ -182,9 +193,9 @@ lark-cli sheets +cond-format-result-get --url "..." --sheet-id "$SID" \
 lark-cli sheets +cond-format-result-get --url "..." --sheet-id "$SID" \
   --range "B2:B10" --include style
 
-# 如果只想在普通读取里临时合并条件格式，也可用 +cells-get --conditional-format
+# 如果只想在普通读取里临时合并条件格式，也可用 +cells-get --include conditional_format
 lark-cli sheets +cells-get --url "..." --sheet-id "$SID" \
-  --range "B2:B10" --include style --conditional-format
+  --range "B2:B10" --include conditional_format
 ```
 
 ### `+cond-format-update`
