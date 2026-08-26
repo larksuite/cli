@@ -152,6 +152,16 @@ func TestPrepareLocalDocResourcesRejectsUnsupportedXMLImageSrc(t *testing.T) {
 	if err == nil {
 		t.Fatal("prepareLocalDocResources() error = nil")
 	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("prepareLocalDocResources() error type = %T, want *errs.ValidationError", err)
+	}
+	if validationErr.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("validation subtype = %q, want %q", validationErr.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if validationErr.Param != "img" {
+		t.Fatalf("validation param = %q, want img", validationErr.Param)
+	}
 	if !strings.Contains(err.Error(), "<img> src is not supported for document writes") {
 		t.Fatalf("prepareLocalDocResources() error = %v", err)
 	}
