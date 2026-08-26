@@ -15,6 +15,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -553,7 +554,7 @@ func TestAddFetchDetailDowngradeWarningNoops(t *testing.T) {
 }
 
 func TestBuildFetchBodyIncludesFetchExtraParamByDefault(t *testing.T) {
-	t.Parallel()
+	t.Setenv(envvars.CliCitation, "")
 
 	runtime := newFetchBodyTestRuntime(context.Background())
 
