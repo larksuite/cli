@@ -46,8 +46,11 @@ func TestSheetMediaParentType(t *testing.T) {
 		{"interleaved shtcn native token", "abcdsefghhijkltmnopcqrstnuv", sheetImageParentType},
 		{"interleaved pptcn token", "abcdpefghpijkltmnopcqrstnuv", sheetImageParentType},
 		{"interleaved wodcn token", "abcdwefghoijkldmnopcqrstnuv", sheetImageParentType},
-		{"interleaved OFL0X marker with short length", "aaaaOaaaaFaaaaLaaaa0aaaaXaa", sheetImageParentType},
-		{"interleaved OFL0X marker with long length", "aaaaOaaaaFaaaaLaaaa0aaaaXaaaa", sheetImageParentType},
+		{"interleaved OFL0X marker with short length (25 char, at boundary)", "aaaaOaaaaFaaaaLaaaa0aaaaXaa", officeSheetFileParentType},
+		{"interleaved OFL0X marker with long length (29 char)", "aaaaOaaaaFaaaaLaaaa0aaaaXaaaa", officeSheetFileParentType},
+		{"new 27-char OFL0X excel token", "bbbbObbbbFbbbbLbbbb0bbbbXbbE", officeSheetFileParentType},
+		{"new 27-char OFL0X ppt token", "ccccOccccFccccLcccc0ccccXccP", officeSheetFileParentType},
+		{"new 27-char OFL0X word token", "ddddOddddFddddLdddd0ddddXddW", officeSheetFileParentType},
 		{"fake_office prefix mid-string is not matched", "shtfake_office_abc", sheetImageParentType},
 		{"local_office prefix mid-string is not matched", "shtlocal_office_abc", sheetImageParentType},
 	}
