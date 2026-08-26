@@ -96,12 +96,12 @@ func TestIsAllocated(t *testing.T) {
 	if IsAllocated(SourceUnset) {
 		t.Error("IsAllocated(SourceUnset) = true")
 	}
-	for _, st := range []SourceType{SourceWiki, SourceDoc, SourceMessage, SourceMinute, SourceBase, SourceSheet, SourceMeeting, SourceMeetingNote} {
+	for _, st := range []SourceType{SourceWiki, SourceDoc, SourceMessage, SourceMinute, SourceBase, SourceSheet, SourceMeeting, SourceMeetingNote, SourceMindnote, SourceSlides, SourceFile} {
 		if !IsAllocated(st) {
 			t.Errorf("IsAllocated(%d) = false", st)
 		}
 	}
-	if IsAllocated(SourceType(9)) || IsAllocated(SourceType(99)) {
+	if IsAllocated(SourceType(12)) || IsAllocated(SourceType(99)) {
 		t.Error("IsAllocated(unallocated int) = true")
 	}
 }
