@@ -29,7 +29,7 @@ func findVCShortcut(t *testing.T, command string) common.Shortcut {
 }
 
 func TestRecordingControlContract(t *testing.T) {
-	for _, command := range []string{"+recording-start", "+recording-stop"} {
+	for _, command := range []string{"+meeting-recording-start", "+meeting-recording-stop"} {
 		t.Run(command, func(t *testing.T) {
 			shortcut := findVCShortcut(t, command)
 			if shortcut.Risk != "write" {
@@ -46,10 +46,10 @@ func TestRecordingControlContract(t *testing.T) {
 }
 
 func TestRecordingControlRejectsMissingMeetingID(t *testing.T) {
-	shortcut := findVCShortcut(t, "+recording-start")
+	shortcut := findVCShortcut(t, "+meeting-recording-start")
 	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
 	err := mountAndRun(t, shortcut, []string{
-		"+recording-start", "--meeting-id", " ", "--as", "user",
+		"+meeting-recording-start", "--meeting-id", " ", "--as", "user",
 	}, f, nil)
 	if err == nil {
 		t.Fatal("expected missing --meeting-id error")
@@ -64,10 +64,10 @@ func TestRecordingControlRejectsMissingMeetingID(t *testing.T) {
 }
 
 func TestRecordingControlRejectsMeetingNumber(t *testing.T) {
-	shortcut := findVCShortcut(t, "+recording-stop")
+	shortcut := findVCShortcut(t, "+meeting-recording-stop")
 	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
 	err := mountAndRun(t, shortcut, []string{
-		"+recording-stop", "--meeting-id", "123456789", "--as", "user",
+		"+meeting-recording-stop", "--meeting-id", "123456789", "--as", "user",
 	}, f, nil)
 	if err == nil || !strings.Contains(err.Error(), "9-digit meeting number") {
 		t.Fatalf("error = %v, want 9-digit meeting number hint", err)
@@ -79,8 +79,8 @@ func TestRecordingControlUsesCorrectAPIsWithoutRequestBody(t *testing.T) {
 		command string
 		path    string
 	}{
-		{command: "+recording-start", path: "/open-apis/vc/v1/meetings/" + recordingControlTestMeetingID + "/recording/start"},
-		{command: "+recording-stop", path: "/open-apis/vc/v1/meetings/" + recordingControlTestMeetingID + "/recording/stop"},
+		{command: "+meeting-recording-start", path: "/open-apis/vc/v1/meetings/" + recordingControlTestMeetingID + "/recording/start"},
+		{command: "+meeting-recording-stop", path: "/open-apis/vc/v1/meetings/" + recordingControlTestMeetingID + "/recording/stop"},
 	}
 
 	for _, tt := range tests {
@@ -116,7 +116,7 @@ func TestRecordingControlUsesCorrectAPIsWithoutRequestBody(t *testing.T) {
 }
 
 func TestRecordingControlPropagatesOpenAPIError(t *testing.T) {
-	shortcut := findVCShortcut(t, "+recording-start")
+	shortcut := findVCShortcut(t, "+meeting-recording-start")
 	path := "/open-apis/vc/v1/meetings/" + recordingControlTestMeetingID + "/recording/start"
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(&httpmock.Stub{
@@ -126,7 +126,7 @@ func TestRecordingControlPropagatesOpenAPIError(t *testing.T) {
 	})
 
 	err := mountAndRun(t, shortcut, []string{
-		"+recording-start", "--meeting-id", recordingControlTestMeetingID, "--as", "user",
+		"+meeting-recording-start", "--meeting-id", recordingControlTestMeetingID, "--as", "user",
 	}, f, nil)
 	if err == nil {
 		t.Fatal("expected OpenAPI error")

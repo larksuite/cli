@@ -57,7 +57,7 @@ func TestVCRecordingControlAffordanceMatchesSkillReference(t *testing.T) {
 	SetSource(os.DirFS("../../affordance"))
 
 	const reference = "lark-meeting/references/lark-vc-recording-control.md"
-	for _, command := range []string{"+recording-start", "+recording-stop"} {
+	for _, command := range []string{"+meeting-recording-start", "+meeting-recording-stop"} {
 		raw, ok := For("vc", command)
 		if !ok {
 			t.Fatalf("For(vc, %s) returned no affordance", command)
@@ -76,8 +76,8 @@ func TestVCRecordingControlAffordanceMatchesSkillReference(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, required := range []string{
-		"lark-cli vc +recording-start",
-		"lark-cli vc +recording-stop",
+		"lark-cli vc +meeting-recording-start",
+		"lark-cli vc +meeting-recording-stop",
 		"仅支持 `--as user`",
 		"不发送可选的 `timezone`",
 	} {

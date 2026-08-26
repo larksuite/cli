@@ -16,17 +16,17 @@ import (
 
 const recordingControlScope = "vc:record"
 
-// VCRecordingStart starts recording an active meeting.
-var VCRecordingStart = newRecordingControlShortcut(
-	"+recording-start",
+// VCMeetingRecordingStart starts recording an active meeting.
+var VCMeetingRecordingStart = newRecordingControlShortcut(
+	"+meeting-recording-start",
 	"Start recording an active meeting",
 	"start",
 	"started",
 )
 
-// VCRecordingStop stops recording an active meeting.
-var VCRecordingStop = newRecordingControlShortcut(
-	"+recording-stop",
+// VCMeetingRecordingStop stops recording an active meeting.
+var VCMeetingRecordingStop = newRecordingControlShortcut(
+	"+meeting-recording-stop",
 	"Stop recording an active meeting",
 	"stop",
 	"stopped",

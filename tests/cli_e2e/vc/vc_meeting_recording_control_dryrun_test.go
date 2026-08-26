@@ -19,8 +19,8 @@ func TestVCRecordingControlDryRun(t *testing.T) {
 		command string
 		path    string
 	}{
-		{command: "+recording-start", path: "/open-apis/vc/v1/meetings/7651377260537433044/recording/start"},
-		{command: "+recording-stop", path: "/open-apis/vc/v1/meetings/7651377260537433044/recording/stop"},
+		{command: "+meeting-recording-start", path: "/open-apis/vc/v1/meetings/7651377260537433044/recording/start"},
+		{command: "+meeting-recording-stop", path: "/open-apis/vc/v1/meetings/7651377260537433044/recording/stop"},
 	}
 
 	for _, tt := range tests {
