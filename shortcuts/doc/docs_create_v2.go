@@ -19,7 +19,7 @@ func v2CreateFlags() []common.Flag {
 		{Name: "title", Desc: "document title; when provided, the CLI prepends it to --content as <title>...</title> so the title wins over later content titles"},
 		{Name: "content", Desc: docsCreateContentFlagBase, Input: []string{common.File, common.Stdin}},
 		{Name: "reference-map", Desc: docsReferenceMapFlagDesc, Input: []string{common.File, common.Stdin}},
-		{Name: "doc-format", Desc: "content format; xml is default and supports richer DocxXML blocks, markdown imports plain Markdown", Default: "xml", Enum: []string{"xml", "markdown"}},
+		{Name: "doc-format", Desc: "content format; xml is default and supports richer DocxXML blocks; large XML and Markdown inputs are automatically split at safe top-level boundaries", Default: "xml", Enum: []string{"xml", "markdown"}},
 		{Name: "parent-token", Desc: "parent folder token or wiki node token; mutually exclusive with --parent-position"},
 		{Name: "parent-position", Desc: "parent position such as my_library; mutually exclusive with --parent-token"},
 	}
@@ -74,7 +74,7 @@ func validateCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 }
 
 func dryRunCreateV2(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	body, resources, err := buildCreateBodyWithPreparedInput(runtime)
+	plan, resources, err := buildCreateWritePlan(runtime)
 	if err != nil {
 		return common.NewDryRunAPI().Set("error", err.Error())
 	}
@@ -85,13 +85,14 @@ func dryRunCreateV2(_ context.Context, runtime *common.RuntimeContext) *common.D
 	dry := common.NewDryRunAPI().
 		POST("/open-apis/docs_ai/v1/documents").
 		Desc(desc).
-		Body(body)
+		Body(plan.CreateBody)
+	dry = appendCreateBatchDryRuns(dry, plan)
 	dry = appendRemoteDocImageDownloadsDryRun(dry, resources)
 	return appendLocalDocResourcesDryRun(dry, "<created_document_id>", resources)
 }
 
 func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
-	body, resources, err := buildCreateBodyWithPreparedInput(runtime)
+	plan, resources, err := buildCreateWritePlan(runtime)
 	if err != nil {
 		return err
 	}
@@ -99,7 +100,7 @@ func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 		return err
 	}
 
-	data, err := doDocAPI(runtime, "POST", "/open-apis/docs_ai/v1/documents", body)
+	data, err := doDocAPI(runtime, "POST", "/open-apis/docs_ai/v1/documents", plan.CreateBody)
 	if err != nil {
 		return err
 	}
@@ -109,6 +110,9 @@ func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 
 	augmentDocsCreatePermission(runtime, data)
 	fallbackDocsCreateURLV2(runtime, data)
+	if err := executeCreateAppendBatches(runtime, plan, data, resources); err != nil {
+		return err
+	}
 	if len(resources) > 0 {
 		doc, _ := data["document"].(map[string]interface{})
 		if err := finalizeLocalDocResources(runtime, strings.TrimSpace(common.GetString(doc, "document_id")), data, resources); err != nil {

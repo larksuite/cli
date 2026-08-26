@@ -39,6 +39,10 @@
 **写入时必须转义：**
 使用 `docs +create` 或 `docs +update` 的 `--doc-format markdown` 写入内容时，字面文本中的特殊字符同样必须转义。`--pattern` 参数中也必须使用转义形式才能正确匹配。
 
+`docs +create` 的大文档分批与 DocxXML SDK 的 create 写入路径使用同一套 Markdown 解析契约：Goldmark/GFM、Definition List、数学公式、下划线 XML 标签、DocxXML 容器/XML parser 与 create 路径的块级预处理规则保持一致。普通顶层段落可分到不同 append 批次；列表、引用、GFM 表格、fenced code 和 Markdown 中的 DocxXML 容器保持原子性，不从内部切开。单个原子单元超过 5,000 个物化 Block 时，先手工拆成多个同级单元再创建。
+
+SDK 会从 create 全量内容中分析文档标题：leading `<title>` 优先；否则唯一、可靠的顶层 ATX H1 会被提升为标题，多个 H1 保持正文并使用默认标题。CLI 会保证参与该分析的 H1 留在 create 批次；如果 5,000 Block 边界使保持该语义成为不可能，会在写入前报错，不会把标题 H1 当普通正文 append。
+
 **导出 → 更新 工作流示例：**
 
 1. `docs +fetch` 导出得到 `C:\\Users\\test\[1\]`
