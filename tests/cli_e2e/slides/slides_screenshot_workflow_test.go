@@ -16,6 +16,7 @@ import (
 
 	"github.com/larksuite/cli/internal/vfs"
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
+	drivee2e "github.com/larksuite/cli/tests/cli_e2e/drive"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -51,15 +52,7 @@ func TestSlidesScreenshotAliasesLiveE2E(t *testing.T) {
 		cleanupCtx, cleanupCancel := clie2e.CleanupContext()
 		defer cleanupCancel()
 
-		deleteResult, deleteErr := clie2e.RunCmd(cleanupCtx, clie2e.Request{
-			Args: []string{
-				"drive", "+delete",
-				"--file-token", presentationID,
-				"--type", "slides",
-				"--yes",
-			},
-			DefaultAs: "bot",
-		})
+		deleteResult, deleteErr := drivee2e.DeleteDriveResourceAndVerify(cleanupCtx, presentationID, "slides", "bot")
 		clie2e.ReportCleanupFailure(parentT, "delete presentation "+presentationID, deleteResult, deleteErr)
 	})
 	slideID := gjson.Get(createResult.Stdout, "data.slide_ids.0").String()

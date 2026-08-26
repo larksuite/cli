@@ -50,7 +50,7 @@ const (
 
 var (
 	skillsIndexFetchTimeout = 10 * time.Second
-	// officialSkillsIndexURL overrides the brand-derived skills index URL in
+	// officialSkillsIndexURL overrides the source-derived skills index URL in
 	// tests; empty in production.
 	officialSkillsIndexURL = ""
 )
@@ -107,13 +107,14 @@ type Updater struct {
 	// Brand selects the skills index/source endpoints (zero value = feishu).
 	Brand core.LarkBrand
 
-	DetectOverride           func() DetectResult
-	NpmInstallOverride       func(version string) *NpmResult
-	PnpmInstallOverride      func(version string) *NpmResult
-	SkillsIndexFetchOverride func() *NpmResult
-	SkillsCommandOverride    func(args ...string) *NpmResult
-	VerifyOverride           func(expectedVersion string) error
-	RestoreAvailableOverride func() bool
+	DetectOverride             func() DetectResult
+	NpmInstallOverride         func(version string) *NpmResult
+	PnpmInstallOverride        func(version string) *NpmResult
+	SkillsIndexFetchOverride   func() *NpmResult
+	SkillsCommandOverride      func(args ...string) *NpmResult
+	SkillsCommandInDirOverride func(dir string, args ...string) *NpmResult
+	VerifyOverride             func(expectedVersion string) error
+	RestoreAvailableOverride   func() bool
 
 	// backupCreated is set to true by PrepareSelfReplace (Windows) when the
 	// running binary is successfully renamed to .old. Used by
@@ -135,17 +136,26 @@ type Updater struct {
 // New creates an Updater with default (real) behavior.
 func New() *Updater { return &Updater{} }
 
-// skillsIndexURL returns the brand's well-known skills index URL.
-func (u *Updater) skillsIndexURL() string {
+// skillsIndexURL returns the Agent Skills v0.2 index under source.
+func skillsIndexURL(source string) string {
 	if officialSkillsIndexURL != "" {
 		return officialSkillsIndexURL
 	}
-	return core.ResolveEndpoints(u.Brand).Open + "/.well-known/skills/index.json"
+	return strings.TrimRight(source, "/") + "/.well-known/agent-skills/index.json"
 }
 
-// skillsSource returns the brand's skills source host for `npx skills add`.
-func (u *Updater) skillsSource() string {
-	return core.ResolveEndpoints(u.Brand).Open
+// SkillsSources returns the brand-specific v0.2 source first, followed by the
+// other brand's source. Falling back must not change the configured brand.
+func (u *Updater) SkillsSources() []string {
+	primary := core.ParseBrand(string(u.Brand))
+	secondary := core.BrandLark
+	if primary == core.BrandLark {
+		secondary = core.BrandFeishu
+	}
+	return []string{
+		core.ResolveEndpoints(primary).Open + "/lark-cli/skills/regular",
+		core.ResolveEndpoints(secondary).Open + "/lark-cli/skills/regular",
+	}
 }
 
 // DetectInstallMethod determines how the CLI was installed and whether the
@@ -268,7 +278,7 @@ func (u *Updater) RunPnpmInstall(version string) *NpmResult {
 	return r
 }
 
-func (u *Updater) ListOfficialSkillsIndex() *NpmResult {
+func (u *Updater) FetchSkillsIndex(source string) *NpmResult {
 	if u.SkillsIndexFetchOverride != nil {
 		return u.SkillsIndexFetchOverride()
 	}
@@ -277,7 +287,7 @@ func (u *Updater) ListOfficialSkillsIndex() *NpmResult {
 	ctx, cancel := context.WithTimeout(context.Background(), skillsIndexFetchTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.skillsIndexURL(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, skillsIndexURL(source), nil)
 	if err != nil {
 		r.Err = err
 		return r
@@ -315,14 +325,6 @@ func (u *Updater) ListOfficialSkillsIndex() *NpmResult {
 	return r
 }
 
-func (u *Updater) ListOfficialSkills() *NpmResult {
-	r := u.runSkillsListOfficial(u.skillsSource())
-	if r.Err != nil {
-		r = u.runSkillsListOfficial("larksuite/cli")
-	}
-	return r
-}
-
 func (u *Updater) ListGlobalSkills() *NpmResult {
 	return u.runSkillsListGlobal()
 }
@@ -331,28 +333,32 @@ func (u *Updater) ListGlobalSkillsJSON() *NpmResult {
 	return u.runSkillsCommand("-y", "skills", "ls", "-g", "--json")
 }
 
-func (u *Updater) InstallSkill(nameList []string) *NpmResult {
-	r := u.runSkillsInstall(u.skillsSource(), nameList)
-	if r.Err != nil {
-		r = u.runSkillsInstall("larksuite/cli", nameList)
-	}
-	return r
+func (u *Updater) InstallSkills(source string, nameList []string) *NpmResult {
+	return u.runSkillsInstall(source, nameList)
 }
 
-func (u *Updater) InstallAllSkills() *NpmResult {
-	r := u.runSkillsAdd(u.skillsSource())
-	if r.Err != nil {
-		r = u.runSkillsAdd("larksuite/cli")
-	}
-	return r
+func (u *Updater) InstallAllSkills(source string) *NpmResult {
+	return u.runSkillsAdd(source)
+}
+
+func (u *Updater) StageSuite(source, dir string) *NpmResult {
+	suiteSource := strings.TrimSuffix(strings.TrimRight(source, "/"), "/regular") + "/isolated"
+	return u.runSkillsCommandInDir(dir, "-y", "skills", "add", suiteSource, "-s", "lark-suite", "-y")
+}
+
+func (u *Updater) InstallLocalSuite(path string) *NpmResult {
+	return u.runSkillsCommand("-y", "skills", "add", path, "-s", "lark-suite", "-g", "-y")
+}
+
+func (u *Updater) RemoveGlobalSkills(names []string) *NpmResult {
+	args := []string{"-y", "skills", "remove", "-g", "-s"}
+	args = append(args, names...)
+	args = append(args, "-y")
+	return u.runSkillsCommand(args...)
 }
 
 func (u *Updater) runSkillsAdd(source string) *NpmResult {
 	return u.runSkillsCommand("-y", "skills", "add", source, "-g", "-y")
-}
-
-func (u *Updater) runSkillsListOfficial(source string) *NpmResult {
-	return u.runSkillsCommand("-y", "skills", "add", source, "--list")
 }
 
 func (u *Updater) runSkillsListGlobal() *NpmResult {
@@ -386,6 +392,13 @@ func skillsInvocation(method InstallMethod, pnpmAvailable bool, args []string) (
 }
 
 func (u *Updater) runSkillsCommand(args ...string) *NpmResult {
+	return u.runSkillsCommandInDir("", args...)
+}
+
+func (u *Updater) runSkillsCommandInDir(dir string, args ...string) *NpmResult {
+	if u.SkillsCommandInDirOverride != nil {
+		return u.SkillsCommandInDirOverride(dir, args...)
+	}
 	if u.SkillsCommandOverride != nil {
 		return u.SkillsCommandOverride(args...)
 	}
@@ -400,6 +413,7 @@ func (u *Updater) runSkillsCommand(args ...string) *NpmResult {
 	ctx, cancel := context.WithTimeout(context.Background(), skillsUpdateTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binPath, cmdArgs...)
+	cmd.Dir = dir
 	cmd.Stdout = &r.Stdout
 	cmd.Stderr = &r.Stderr
 	r.Err = cmd.Run()

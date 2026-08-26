@@ -16,30 +16,13 @@ import (
 
 const replacePagesInitialRevisionID = -1
 
-// replacePagesDeprecationNote is surfaced in every +replace-pages output —
-// dry-run, validate-only and real runs — so callers that never read --help
-// still see the deprecation and the replacement.
-const replacePagesDeprecationNote = "+replace-pages is deprecated: it recreates each page, changing slide_id and every element id, and the old-page delete is irreversible. Use `slides +update-slide` once per page instead — it rewrites the page in place, keeping slide_id and page order; elements written back in --content with their original ids keep those ids"
-
 // SlidesReplacePages rebuilds multiple pages inside an existing presentation.
 // It deliberately creates the new page before deleting the old one so a create
 // failure cannot remove existing user content. The operation is not atomic.
-//
-// Deprecated: use `slides +update-slide` once per page instead — it rewrites
-// the page in place, keeping slide_id and page order; elements carried over in
-// --content with their original ids keep them (omitted elements are deleted,
-// id-less ones are inserted fresh). Going through create+delete here changes
-// slide_id and regenerates all element ids, which breaks comments and deep
-// links anchored to them, and the delete is not reversible. The lark-slides skill no longer routes here; the command
-// itself stays for a deprecation window so existing callers keep working —
-// every run says so in --help, in its description and in the output envelope.
-// Delete the file once the window closes; the shared XML/revision helpers
-// already live in slides_shared.go so +add-slide / +delete-slide survive that
-// removal.
 var SlidesReplacePages = common.Shortcut{
 	Service:     "slides",
 	Command:     "+replace-pages",
-	Description: "Deprecated — use +update-slide once per page (in place: keeps slide_id and page order; elements written back with their original ids keep them). This rebuild changes slide_id and every element id; not atomic",
+	Description: "Rebuild multiple pages in a presentation: create each new page before old page, then delete old page (not atomic; changes slide_id and element ids)",
 	Risk:        "write",
 	Scopes:      []string{"slides:presentation:update", "slides:presentation:write_only"},
 	// wiki:node:read is required only when --presentation is a wiki URL.
@@ -78,8 +61,7 @@ var SlidesReplacePages = common.Shortcut{
 			Set("xml_presentation_id", resolved.PresentationID).
 			Set("pages_count", len(resolved.Plan)).
 			Set("plan", replacePagesPlanOutput(resolved.Plan)).
-			Set("note", "dry-run built a create/delete plan from slide_id inputs; no Slides presentation get/create/delete calls were executed").
-			Set("deprecated", replacePagesDeprecationNote)
+			Set("note", "dry-run built a create/delete plan from slide_id inputs; no Slides presentation get/create/delete calls were executed")
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		resolved, err := prepareReplacePages(runtime)
@@ -93,7 +75,6 @@ var SlidesReplacePages = common.Shortcut{
 				"plan":                replacePagesPlanOutput(resolved.Plan),
 				"status":              "validated",
 				"note":                "validate-only checked input and built the create/delete plan; no Slides presentation get/create/delete calls were executed",
-				"deprecated":          replacePagesDeprecationNote,
 			}, nil)
 			return nil
 		}
@@ -121,7 +102,6 @@ var SlidesReplacePages = common.Shortcut{
 			"status":              "completed",
 			"summary":             replacePagesSummaryOutput(results),
 			"note":                "batch replace is not atomic; each page was created before its old page was deleted",
-			"deprecated":          replacePagesDeprecationNote,
 		}
 		if revisionID != replacePagesInitialRevisionID {
 			out["revision_id"] = revisionID
@@ -244,8 +224,8 @@ func validateReplacePagesInput(pages []replacePageInput) error {
 }
 
 // validateCompleteSlideXML, invalidSlideXMLStructureError and revisionFromData
-// live in slides_shared.go: +add-slide and +delete-slide use them too, and they
-// must survive this file's eventual removal.
+// live in slides_shared.go: shared helpers used by +add-slide, +delete-slide,
+// and +replace-pages.
 
 func buildReplacePagesPlan(pages []replacePageInput) ([]replacePagePlanItem, error) {
 	plan := make([]replacePagePlanItem, 0, len(pages))

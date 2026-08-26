@@ -1386,8 +1386,8 @@ func TestSlidesCreateWithPlaceholdersDryRun(t *testing.T) {
 	if strings.Count(out, "upload_all") != 2 {
 		t.Fatalf("dry-run should contain 2 upload_all calls, got: %s", out)
 	}
-	if !strings.Contains(out, slidesMediaParentType) {
-		t.Fatalf("dry-run missing parent_type %q, got: %s", slidesMediaParentType, out)
+	if !strings.Contains(out, slideFileParentType) {
+		t.Fatalf("dry-run missing parent_type %q, got: %s", slideFileParentType, out)
 	}
 	if !strings.Contains(out, "Create presentation + upload 2 image(s)") {
 		t.Fatalf("dry-run header should describe upload count, got: %s", out)

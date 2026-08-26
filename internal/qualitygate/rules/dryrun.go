@@ -382,7 +382,7 @@ func fakeValueFromPlaceholderName(name string) (string, bool) {
 	case hasPlaceholderToken(tokens, "meeting"):
 		return "meeting_test123", true
 	case hasPlaceholderToken(tokens, "minute"):
-		return "obcn_test123", true
+		return "obcntest123", true
 	case hasPlaceholderToken(tokens, "task"):
 		return "task_test123", true
 	case hasPlaceholderToken(tokens, "item"):

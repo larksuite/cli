@@ -35,7 +35,8 @@ var MailTemplateUpdate = common.Shortcut{
 		{Name: "set-to", Desc: "Replace the To recipient list. Separate multiple addresses with commas. Pass --set-to=\"\" to clear the list."},
 		{Name: "set-cc", Desc: "Replace the Cc recipient list. Pass --set-cc=\"\" to clear the list."},
 		{Name: "set-bcc", Desc: "Replace the Bcc recipient list. Pass --set-bcc=\"\" to clear the list."},
-		{Name: "attach", Desc: "Additional non-inline attachment file path(s), comma-separated. Each file is uploaded to Drive and appended to the template's attachments[] in the exact flag order."},
+		{Name: "attach", Type: "string_array", Desc: "Additional non-inline attachment file path. Repeat --attach once per file; each file is uploaded to Drive and appended in flag order."},
+		{Name: "inline", Type: "string_array", Desc: "Additional inline image as one JSON object. Repeat --inline once per image; quote each value. Example value: '{\"cid\":\"<unique-id>\",\"file_path\":\"<relative-path>\"}'. file_path must be relative. Reference it from HTML as <img src=\"cid:<unique-id>\">. CID must be unique, e.g. a random hex string."},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		if runtime.Bool("print-patch-template") {
@@ -60,7 +61,10 @@ var MailTemplateUpdate = common.Shortcut{
 		for _, img := range parseLocalImgs(content) {
 			addTemplateUploadSteps(runtime, api, img.Path)
 		}
-		for _, p := range splitByComma(runtime.Str("attach")) {
+		for _, spec := range inlineSpecsFromFlagValuesForLog(runtime.StrArray("inline")) {
+			addTemplateUploadSteps(runtime, api, spec.FilePath)
+		}
+		for _, p := range normalizeCommaListFlagValues(runtime.StrArray("attach")) {
 			addTemplateUploadSteps(runtime, api, p)
 		}
 		api = api.PUT(templateMailboxPath(mailboxID, tid)).
@@ -73,8 +77,8 @@ var MailTemplateUpdate = common.Shortcut{
 			"template_id":        tid,
 			"is_plain_text_mode": runtime.Bool("set-plain-text"),
 			"name_len":           len([]rune(runtime.Str("set-name"))),
-			"attachments_total":  len(splitByComma(runtime.Str("attach"))) + len(parseLocalImgs(content)),
-			"inline_count":       len(parseLocalImgs(content)),
+			"attachments_total":  len(normalizeCommaListFlagValues(runtime.StrArray("attach"))) + len(parseLocalImgs(content)) + countInlineSpecsForLog(runtime.StrArray("inline")),
+			"inline_count":       len(parseLocalImgs(content)) + countInlineSpecsForLog(runtime.StrArray("inline")),
 			"tos_count":          countAddresses(runtime.Str("set-to")),
 			"ccs_count":          countAddresses(runtime.Str("set-cc")),
 			"bccs_count":         countAddresses(runtime.Str("set-bcc")),
@@ -103,6 +107,9 @@ var MailTemplateUpdate = common.Shortcut{
 		}
 		if name := runtime.Str("set-name"); name != "" && len([]rune(name)) > 100 {
 			return mailValidationParamError("--set-name", "--set-name must be at most 100 characters")
+		}
+		if _, err := normalizeInlineFlagValues(runtime.StrArray("inline")); err != nil {
+			return err
 		}
 		return nil
 	},
@@ -167,6 +174,14 @@ var MailTemplateUpdate = common.Shortcut{
 		if runtime.Changed("set-bcc") {
 			tpl.Bccs = renderTemplateAddresses(runtime.Str("set-bcc"))
 		}
+		inlineFlag, err := normalizeInlineFlagValues(runtime.StrArray("inline"))
+		if err != nil {
+			return err
+		}
+		inlineSpecs, err := parseInlineSpecs(inlineFlag)
+		if err != nil {
+			return err
+		}
 
 		// Apply JSON patch file (simple shallow merge). This is a convenience
 		// for agents that want to assemble updates off-line; the CLI simply
@@ -190,6 +205,9 @@ var MailTemplateUpdate = common.Shortcut{
 			}
 			applyTemplatePatchFile(tpl, &patch)
 		}
+		if err := validateInlineWithPlainTextTemplate(inlineFlag, tpl.IsPlainTextMode, "--set-plain-text"); err != nil {
+			return err
+		}
 
 		// Apply plain-text → HTML line-break upgrade to newly supplied content
 		// so template preview renders line breaks the same way a draft composed
@@ -205,35 +223,23 @@ var MailTemplateUpdate = common.Shortcut{
 				maxTemplateContentBytes/(1024*1024),
 				float64(len(tpl.TemplateContent))/1024/1024)
 		}
+		retainedAttachments := templateAttachmentsForFinalContent(tpl.TemplateContent, tpl.Attachments, contentChanged)
+		if err := validateTemplateInlineUpdate(tpl.TemplateContent, retainedAttachments, inlineSpecs, contentChanged); err != nil {
+			return err
+		}
 
 		// Re-resolve <img> references against the (possibly updated) content.
 		rewritten, newAtts, err := buildTemplatePayloadFromFlags(
 			ctx, runtime, tpl.Name, tpl.Subject, tpl.TemplateContent,
 			tpl.Tos, tpl.Ccs, tpl.Bccs,
-			splitByComma(runtime.Str("attach")),
+			normalizeCommaListFlagValues(runtime.StrArray("attach")),
+			inlineSpecs,
 		)
 		if err != nil {
 			return err
 		}
 		tpl.TemplateContent = rewritten
-		// When the body changed, drop existing inline attachments whose CID
-		// is no longer referenced in the new template_content. Otherwise
-		// every <img> replace/delete leaves an orphan Drive-backed row
-		// behind and the template eventually trips TemplateTotalSizeLimit.
-		// Non-inline attachments are kept regardless because they aren't
-		// addressed via cid: refs. Skipped when the body wasn't touched —
-		// the existing cid: refs in the stored content still reference all
-		// existing inline rows, so removing any would break the template.
-		if contentChanged {
-			kept := tpl.Attachments[:0]
-			for _, a := range tpl.Attachments {
-				if a.IsInline && a.CID != "" && !strings.Contains(tpl.TemplateContent, "cid:"+a.CID) {
-					continue
-				}
-				kept = append(kept, a)
-			}
-			tpl.Attachments = kept
-		}
+		tpl.Attachments = retainedAttachments
 		// Merge: keep existing template attachments (already uploaded, have
 		// file_keys), append newly uploaded ones. The EML-size/LARGE switch
 		// applies independently per call because this is a full-replace PUT.
@@ -264,7 +270,6 @@ var MailTemplateUpdate = common.Shortcut{
 				tpl.Attachments[i].Body = tpl.Attachments[i].ID
 			}
 		}
-
 		inlineCount, largeCount := countAttachmentsByType(tpl.Attachments)
 		logTemplateInfo(runtime, "update.execute", map[string]interface{}{
 			"mailbox_id":         mailboxID,

@@ -73,7 +73,7 @@ func isOfficeSpreadsheet(spreadsheetToken string) bool {
 			return true
 		}
 	}
-	if len(spreadsheetToken) != 28 {
+	if len(spreadsheetToken) < 25 {
 		return false
 	}
 	// The five-character marker occupies positions 5, 10, 15, 20, and 25

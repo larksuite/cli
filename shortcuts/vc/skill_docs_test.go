@@ -35,18 +35,18 @@ func readSkillDoc(t *testing.T, relPath string) string {
 }
 
 // TestVCSearchIdentityDocsMatchAuthTypes pins that `+search` stays user-only
-// in both code and docs. If AuthTypes ever gains "bot", this test forces a
-// deliberate update to the SKILL.md/reference wording below instead of
+// in both code and the reference owned by lark-meeting. If AuthTypes ever
+// gains "bot", this test forces a deliberate documentation update instead of
 // letting the docs silently fall out of sync.
 func TestVCSearchIdentityDocsMatchAuthTypes(t *testing.T) {
-	skill := readSkillDoc(t, "skills/lark-vc/SKILL.md")
-	reference := readSkillDoc(t, "skills/lark-vc/references/lark-vc-search.md")
+	skill := readSkillDoc(t, "skills/lark-meeting/SKILL.md")
+	reference := readSkillDoc(t, "skills/lark-meeting/references/lark-vc-search.md")
 
 	if hasAuthType(VCSearch.AuthTypes, "bot") {
-		t.Fatalf("VCSearch.AuthTypes = %v now includes bot; update skills/lark-vc/SKILL.md and lark-vc-search.md wording (and this test) to reflect the new support instead of leaving the user-only claims below", VCSearch.AuthTypes)
+		t.Fatalf("VCSearch.AuthTypes = %v now includes bot; update skills/lark-meeting/references/lark-vc-search.md wording (and this test) to reflect the new support instead of leaving the user-only claim below", VCSearch.AuthTypes)
 	}
-	if !strings.Contains(skill, "`+search` 仅支持 `--as user`") {
-		t.Error("skills/lark-vc/SKILL.md must state that `+search` only supports --as user (matches VCSearch.AuthTypes)")
+	if !strings.Contains(skill, "references/lark-vc-search.md") {
+		t.Error("skills/lark-meeting/SKILL.md must link to the vc +search reference")
 	}
 	if !strings.Contains(reference, "仅支持 `user` 身份") && !strings.Contains(reference, "仅 `--as user`") {
 		t.Error("lark-vc-search.md must state that +search only supports user identity (matches VCSearch.AuthTypes)")
@@ -54,28 +54,53 @@ func TestVCSearchIdentityDocsMatchAuthTypes(t *testing.T) {
 }
 
 // TestVCBotShortcutsIdentityDocsMatchAuthTypes pins that the VC shortcuts this
-// PR opened to bot (`+detail`, `+recording`) are both declared bot-capable in
-// code and documented as such in the main SKILL.md identity line.
+// PR opened to bot (`+detail`, `+recording`, `+meeting-countdown`) are all declared bot-capable in
+// code and documented as such in their lark-meeting references.
 func TestVCBotShortcutsIdentityDocsMatchAuthTypes(t *testing.T) {
-	skill := readSkillDoc(t, "skills/lark-vc/SKILL.md")
+	skill := readSkillDoc(t, "skills/lark-meeting/SKILL.md")
 
 	for _, cmd := range []struct {
 		name      string
 		authTypes []string
+		reference string
 	}{
-		{"+detail", VCDetail.AuthTypes},
-		{"+recording", VCRecording.AuthTypes},
+		{"+detail", VCDetail.AuthTypes, "lark-vc-detail.md"},
+		{"+recording", VCRecording.AuthTypes, "lark-vc-recording.md"},
+		{"+meeting-countdown", VCMeetingCountdown.AuthTypes, "lark-vc-meeting-countdown.md"},
 	} {
 		if !hasAuthType(cmd.authTypes, "bot") {
 			t.Errorf("%s AuthTypes = %v, want bot included (this PR's contract)", cmd.name, cmd.authTypes)
 			continue
 		}
-		token := "`" + cmd.name + "`"
-		if !strings.Contains(skill, token) {
-			t.Errorf("skills/lark-vc/SKILL.md identity section must mention %s alongside its bot support", token)
+		if !strings.Contains(skill, "references/"+cmd.reference) {
+			t.Errorf("skills/lark-meeting/SKILL.md must link %s to %s", cmd.name, cmd.reference)
+		}
+		reference := readSkillDoc(t, "skills/lark-meeting/references/"+cmd.reference)
+		for _, identity := range []string{"--as user", "--as bot"} {
+			if !strings.Contains(reference, identity) {
+				t.Errorf("%s must document %s support for %s", cmd.reference, identity, cmd.name)
+			}
 		}
 	}
-	if !strings.Contains(skill, "也支持 `--as bot`") {
-		t.Error("skills/lark-vc/SKILL.md identity section must state which commands also support --as bot")
+}
+
+func TestMeetingArtifactSceneDelegatesToDomainOwners(t *testing.T) {
+	scene := readSkillDoc(t, "skills/lark-meeting/scenes/query-meeting-and-artifacts.md")
+	for _, target := range []string{
+		"query-note-and-artifacts.md",
+		"query-minutes-and-artifacts.md",
+	} {
+		if !strings.Contains(scene, target) {
+			t.Errorf("query-meeting-and-artifacts.md must delegate to %s", target)
+		}
+	}
+
+	for _, duplicatedCommand := range []string{
+		"lark-cli note +detail",
+		"lark-cli minutes +detail",
+	} {
+		if strings.Contains(scene, duplicatedCommand) {
+			t.Errorf("query-meeting-and-artifacts.md must not duplicate downstream command %q", duplicatedCommand)
+		}
 	}
 }

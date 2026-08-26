@@ -103,6 +103,30 @@ func TestBuildRawEMLForDraftCreate_NoLocalImages(t *testing.T) {
 	}
 }
 
+func TestBuildRawEMLForDraftCreate_UnicodeRecipientDisplayNameEncodedOnlyAtHeaderSink(t *testing.T) {
+	input := draftCreateInput{
+		From:    "sender@example.com",
+		To:      normalizeRecipientFlagValues([]string{`测试用户 <unicode@example.com>`}),
+		Subject: "unicode recipient",
+		Body:    `<p>Hello</p>`,
+	}
+
+	rawEML, _, _, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil, "")
+	if err != nil {
+		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
+	}
+	eml := decodeBase64URL(rawEML)
+	if !strings.Contains(strings.ToLower(eml), "=?utf-8?") {
+		t.Fatalf("final EML header should RFC2047-encode the unicode display name, got:\n%s", eml)
+	}
+	if strings.Contains(strings.ToLower(eml), `"=?utf-8?`) {
+		t.Fatalf("normalized recipient must not be saved then re-rendered as an encoded-word literal, got:\n%s", eml)
+	}
+	if !strings.Contains(eml, "<unicode@example.com>") {
+		t.Fatalf("final EML should retain recipient address, got:\n%s", eml)
+	}
+}
+
 // TestBuildRawEMLForDraftCreate_AutoResolveCountedInSizeLimit verifies build raw EML for draft create auto resolve counted in size limit.
 func TestBuildRawEMLForDraftCreate_AutoResolveCountedInSizeLimit(t *testing.T) {
 	chdirTemp(t)

@@ -14,6 +14,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 func hasAuthType(authTypes []string, want string) bool {
@@ -35,31 +37,34 @@ func readSkillDoc(t *testing.T, relPath string) string {
 }
 
 // TestMinutesBotShortcutsIdentityDocsMatchAuthTypes pins that every minutes
-// shortcut declared bot-capable in code is documented as such in the main
-// SKILL.md identity line, so the two sources can't silently diverge again.
+// shortcut declared bot-capable in code is documented as such in the
+// lark-meeting reference that owns the command guidance.
 func TestMinutesBotShortcutsIdentityDocsMatchAuthTypes(t *testing.T) {
-	skill := readSkillDoc(t, "skills/lark-minutes/SKILL.md")
+	skill := readSkillDoc(t, "skills/lark-meeting/SKILL.md")
 
 	for _, cmd := range []struct {
 		name      string
 		authTypes []string
+		reference string
 	}{
-		{"+search", MinutesSearch.AuthTypes},
-		{"+detail", MinutesDetail.AuthTypes},
-		{"+download", MinutesDownload.AuthTypes},
-		{"+apply-permission", MinutesApplyPermission.AuthTypes},
+		{"+search", MinutesSearch.AuthTypes, "lark-minutes-search.md"},
+		{"+detail", MinutesDetail.AuthTypes, "lark-minutes-detail.md"},
+		{"+download", MinutesDownload.AuthTypes, "lark-minutes-download.md"},
+		{"+apply-permission", MinutesApplyPermission.AuthTypes, "lark-minutes-apply-permission.md"},
 	} {
 		if !hasAuthType(cmd.authTypes, "bot") {
 			t.Errorf("%s AuthTypes = %v, want bot included", cmd.name, cmd.authTypes)
 			continue
 		}
-		token := "`" + cmd.name + "`"
-		if !strings.Contains(skill, token) {
-			t.Errorf("skills/lark-minutes/SKILL.md identity section must mention %s alongside its bot support", token)
+		if !strings.Contains(skill, "references/"+cmd.reference) {
+			t.Errorf("skills/lark-meeting/SKILL.md must link %s to %s", cmd.name, cmd.reference)
 		}
-	}
-	if !strings.Contains(skill, "也支持 `--as bot`") {
-		t.Error("skills/lark-minutes/SKILL.md identity section must state which commands also support --as bot")
+		reference := readSkillDoc(t, "skills/lark-meeting/references/"+cmd.reference)
+		for _, identity := range []string{"--as user", "--as bot"} {
+			if !strings.Contains(reference, identity) {
+				t.Errorf("%s must document %s support for %s", cmd.reference, identity, cmd.name)
+			}
+		}
 	}
 }
 
@@ -72,15 +77,64 @@ func TestMinutesApplyPermissionHasReference(t *testing.T) {
 		t.Fatalf("MinutesApplyPermission.AuthTypes = %v, want bot included (this PR's contract)", MinutesApplyPermission.AuthTypes)
 	}
 
-	reference := readSkillDoc(t, "skills/lark-minutes/references/lark-minutes-apply-permission.md")
+	reference := readSkillDoc(t, "skills/lark-meeting/references/lark-minutes-apply-permission.md")
 	for _, must := range []string{"--as bot", "--as user", "身份", "missing scope"} {
 		if !strings.Contains(reference, must) {
 			t.Errorf("lark-minutes-apply-permission.md must cover %q (user/bot identity + scope-vs-ACL guidance)", must)
 		}
 	}
 
+	skill := readSkillDoc(t, "skills/lark-meeting/SKILL.md")
+	if !strings.Contains(skill, "references/lark-minutes-apply-permission.md") {
+		t.Error("skills/lark-meeting/SKILL.md command table must link +apply-permission to its reference doc")
+	}
+}
+
+func TestLegacyMinutesSkillRoutesToMeetingSkill(t *testing.T) {
 	skill := readSkillDoc(t, "skills/lark-minutes/SKILL.md")
-	if !strings.Contains(skill, "[`+apply-permission`](references/lark-minutes-apply-permission.md)") {
-		t.Error("skills/lark-minutes/SKILL.md Shortcuts table must link +apply-permission to its reference doc")
+	for _, must := range []string{
+		"本技能只用于兼容旧名称，不直接处理业务。",
+		"../lark-meeting/SKILL.md",
+	} {
+		if !strings.Contains(skill, must) {
+			t.Errorf("skills/lark-minutes/SKILL.md must preserve compatibility routing %q", must)
+		}
+	}
+}
+
+func hasFlag(flags []common.Flag, want string) bool {
+	for _, f := range flags {
+		if f.Name == want {
+			return true
+		}
+	}
+	return false
+}
+
+// TestMeetingSummaryWorkflowDocumentsMinuteTokenFallback pins the fallback that
+// issue #2379 found missing: the meeting-summary workflow used to tell the agent
+// to report "无纪要" whenever a meeting had no note_id, even though such meetings
+// often still carry a readable minute_token. It also pins the fallback commands
+// against the flag names the shortcuts actually declare, since +detail takes the
+// plural --minute-tokens while +apply-permission takes the singular form.
+func TestMeetingSummaryWorkflowDocumentsMinuteTokenFallback(t *testing.T) {
+	if !hasFlag(MinutesDetail.Flags, "minute-tokens") {
+		t.Fatalf("MinutesDetail flags = %v, want minute-tokens", MinutesDetail.Flags)
+	}
+	if !hasFlag(MinutesApplyPermission.Flags, "minute-token") {
+		t.Fatalf("MinutesApplyPermission flags = %v, want minute-token", MinutesApplyPermission.Flags)
+	}
+
+	workflow := readSkillDoc(t, "skills/lark-workflow-meeting-summary/SKILL.md")
+	for _, must := range []string{
+		"minutes +detail --minute-tokens",
+		"minutes +apply-permission --minute-token ",
+		"--transcript",
+		"--output-dir",
+		"No read permission",
+	} {
+		if !strings.Contains(workflow, must) {
+			t.Errorf("lark-workflow-meeting-summary/SKILL.md must cover %q so a missing note_id is not reported as 无纪要", must)
+		}
 	}
 }

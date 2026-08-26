@@ -11,13 +11,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/extension/command"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/commandhost"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
@@ -32,6 +36,21 @@ type failWriter struct{}
 
 func (failWriter) Write([]byte) (int, error) {
 	return 0, errors.New("write failed")
+}
+
+// builtinResolver resolves domains from the built-in shortcut set. Tests that
+// are not specifically about external command sets assert against exactly what
+// a distribution built without cmd.WithCommandSets sees.
+func builtinResolver() domainResolver {
+	return newDomainResolver(shortcuts.AllShortcuts())
+}
+
+type businessArgs struct {
+	ChatID string `flag:"chat-id" schema:"required;minLength=1" doc:"chat identifier"`
+}
+
+type businessData struct {
+	ChatID string `json:"chat_id" schema:"required" doc:"chat identifier"`
 }
 
 func TestSuggestDomain_PrefixMatch(t *testing.T) {
@@ -136,23 +155,25 @@ func TestShortcutSupportsIdentity_BotOnly(t *testing.T) {
 }
 
 func TestCompleteDomain(t *testing.T) {
-	projects := registry.ListFromMetaProjects()
-	if len(projects) == 0 {
+	want := builtinResolver().sorted("")
+	if len(want) == 0 {
 		t.Skip("no from_meta data available")
 	}
 
 	// Complete from empty prefix
-	completions := completeDomain("")
+	completions := builtinResolver().complete("", "")
 	if len(completions) == 0 {
 		t.Fatal("expected completions for empty prefix")
 	}
-	// All completions should match from_meta projects
-	if len(completions) != len(projects) {
-		t.Errorf("expected %d completions, got %d", len(projects), len(completions))
+	if !reflect.DeepEqual(completions, want) {
+		t.Errorf("complete() = %v, want %v", completions, want)
+	}
+	if !slices.Contains(builtinResolver().complete("not", ""), "note") {
+		t.Error("complete() omitted shortcut-only note domain")
 	}
 
 	// Complete with partial prefix
-	completions = completeDomain("cal")
+	completions = builtinResolver().complete("cal", "")
 	for _, c := range completions {
 		if c != "calendar" && c[:3] != "cal" {
 			t.Errorf("unexpected completion %q for prefix 'cal'", c)
@@ -167,7 +188,7 @@ func TestCompleteDomain_CommaSeparated(t *testing.T) {
 	}
 
 	// After a comma, should complete the next segment
-	completions := completeDomain("calendar,")
+	completions := builtinResolver().complete("calendar,", "")
 	for _, c := range completions {
 		if c[:9] != "calendar," {
 			t.Errorf("expected 'calendar,' prefix, got %q", c)
@@ -176,7 +197,7 @@ func TestCompleteDomain_CommaSeparated(t *testing.T) {
 }
 
 func TestAllKnownDomains(t *testing.T) {
-	domains := allKnownDomains("")
+	domains := builtinResolver().allKnown("")
 	if len(domains) == 0 {
 		t.Fatal("expected non-empty known domains")
 	}
@@ -190,7 +211,7 @@ func TestAllKnownDomains(t *testing.T) {
 }
 
 func TestSortedKnownDomains(t *testing.T) {
-	sorted := sortedKnownDomains("")
+	sorted := builtinResolver().sorted("")
 	if len(sorted) == 0 {
 		t.Fatal("expected non-empty sorted domains")
 	}
@@ -200,19 +221,37 @@ func TestSortedKnownDomains(t *testing.T) {
 	}
 
 	// Should match allKnownDomains
-	known := allKnownDomains("")
+	known := builtinResolver().allKnown("")
 	if len(sorted) != len(known) {
 		t.Errorf("sorted (%d) and known (%d) length mismatch", len(sorted), len(known))
 	}
 }
 
+func TestShortcutDomainsHaveDescriptions(t *testing.T) {
+	seen := make(map[string]struct{})
+	for _, shortcut := range shortcuts.AllShortcuts() {
+		name := shortcut.Service
+		if _, duplicate := seen[name]; duplicate {
+			continue
+		}
+		seen[name] = struct{}{}
+		zhDesc := registry.GetServiceDescription(name, "zh")
+		enDesc := registry.GetServiceDescription(name, "en")
+		if zhDesc == "" {
+			t.Errorf("missing zh description for shortcut-only domain %q", name)
+		}
+		if enDesc == "" {
+			t.Errorf("missing en description for shortcut-only domain %q", name)
+		}
+	}
+}
 func TestCollectScopesForDomains(t *testing.T) {
 	projects := registry.ListFromMetaProjects()
 	if len(projects) == 0 {
 		t.Skip("no from_meta data available")
 	}
 
-	scopes := collectScopesForDomains([]string{"calendar"}, "user", "")
+	scopes := builtinResolver().scopesFor([]string{"calendar"}, "user", "")
 	if len(scopes) == 0 {
 		t.Fatal("expected non-empty scopes for calendar domain")
 	}
@@ -239,66 +278,138 @@ func TestCollectScopesForDomains(t *testing.T) {
 }
 
 func TestCollectScopesForDomains_NonexistentDomain(t *testing.T) {
-	scopes := collectScopesForDomains([]string{"nonexistent_domain_xyz"}, "user", "")
+	scopes := builtinResolver().scopesFor([]string{"nonexistent_domain_xyz"}, "user", "")
 	if len(scopes) != 0 {
 		t.Errorf("expected empty scopes for nonexistent domain, got %d", len(scopes))
 	}
 }
-
-func TestResolveScopesForDomains_RemoteUsed(t *testing.T) {
-	remote := map[string][]string{
-		"im":   {"im:message:send", "im:chat:read"},
-		"docs": {"docs:doc:read"},
+func TestExternalShortcutScopesParticipateInAuthDomainResolution(t *testing.T) {
+	registered := []common.Shortcut{{
+		Service: "im", Command: "+business-auth", AuthTypes: []string{"user"},
+		UserScopes: []string{"im:business.scope:read"},
+	}}
+	domains := newDomainResolver(registered).allKnown("")
+	if !domains["im"] {
+		t.Fatal("external shortcut domain is missing from auth domains")
 	}
-	got := resolveScopesForDomains([]string{"im"}, remote, true, core.BrandFeishu)
-	want := []string{"im:chat:read", "im:message:send"} // deduped, ascending by sort.Strings
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("got %v, want %v", got, want)
-	}
-}
-
-func TestResolveScopesForDomains_UnionAcrossDomains(t *testing.T) {
-	remote := map[string][]string{
-		"im":   {"im:message:send"},
-		"docs": {"docs:doc:read"},
-	}
-	got := resolveScopesForDomains([]string{"im", "docs"}, remote, true, core.BrandFeishu)
-	want := []string{"docs:doc:read", "im:message:send"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("got %v, want %v", got, want)
+	scopes := newDomainResolver(registered).scopesFor([]string{"im"}, "user", "")
+	if !slices.Contains(scopes, "im:business.scope:read") {
+		t.Fatalf("external shortcut scope is missing: %v", scopes)
 	}
 }
 
-func TestResolveScopesForDomains_FallbackToLocal(t *testing.T) {
-	// remoteOK=false -> falls back to local collectScopesForDomains; im must yield non-empty local scopes
-	got := resolveScopesForDomains([]string{"im"}, nil, false, core.BrandFeishu)
-	if len(got) == 0 {
-		t.Fatal("fallback should return non-empty local scopes for im")
+// A distribution's business command must have its declared scopes reach
+// auth login --domain. This walks the chain a real wrapper walks --
+// command.Define, commandhost.CompileSets, shortcuts.AllShortcutsWithExternal --
+// so dropping the snapshot anywhere along it fails here instead of shipping a
+// login that cannot request the distribution's own scopes. The assertion goes
+// through the login command's observable behaviour rather than an internal
+// field, because the snapshot is deliberately not part of LoginOptions.
+func TestCompiledBusinessScopesReachLoginDomainResolution(t *testing.T) {
+	const businessScope = "im:business.compiled:read"
+
+	declaration := command.Define(command.Definition[businessArgs, businessData]{
+		Metadata: command.CommandMetadata{
+			Service: "im", Command: "+business-compiled", Description: "Business command", Risk: command.RiskRead,
+			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{
+				command.IdentityUser: {RequiredScopes: []string{businessScope}},
+			}},
+		},
+		Hooks: command.Hooks[businessArgs, businessData]{
+			Execute: func(_ context.Context, _ command.CommandContext, args *businessArgs) (command.Result[businessData], error) {
+				return command.Success(businessData{ChatID: args.ChatID}), nil
+			},
+		},
+	})
+	compiled, err := commandhost.CompileSets([]command.Set{{
+		Domain:   command.ExtendDomain(command.DomainIm),
+		Commands: []command.Command{declaration},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registered, err := shortcuts.AllShortcutsWithExternal(compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Guard against a false positive: the scope must be absent from the
+	// built-in set, or this test would pass without the snapshot arriving.
+	if builtin := builtinResolver().scopesFor([]string{"im"}, "user", ""); slices.Contains(builtin, businessScope) {
+		t.Fatalf("%q is a built-in im scope, so it cannot prove the snapshot arrived", businessScope)
+	}
+	if scopes := newDomainResolver(registered).scopesFor([]string{"im"}, "user", ""); !slices.Contains(scopes, businessScope) {
+		t.Fatalf("compiled business scope %q never reached domain resolution: %v", businessScope, scopes)
 	}
 }
 
-func TestLegalDomainsFor_RemoteUsed(t *testing.T) {
-	// includes "newbiz", a domain unknown to this CLI build, verifying a remote-listed domain is still legal
-	remote := map[string][]string{
-		"im":     {"im:message:send"},
-		"docs":   {"docs:doc:read"},
-		"newbiz": {"newbiz:thing:read"},
+// One process can build several command trees, and each tree's login must
+// resolve against the snapshot it was handed. A distribution's business scopes
+// belong to that distribution alone, so a later build without command sets
+// cannot inherit them -- the reason the snapshot is a constructor argument
+// rather than package-level state.
+func TestEachLoginBuildResolvesAgainstItsOwnSnapshot(t *testing.T) {
+	const businessScope = "im:business.isolated:read"
+	withBusiness := append(shortcuts.AllShortcuts(), common.Shortcut{
+		Service: "im", Command: "+business-isolated", AuthTypes: []string{"user"},
+		UserScopes: []string{businessScope},
+	})
+
+	first := newDomainResolver(withBusiness)
+	second := newDomainResolver(shortcuts.AllShortcuts())
+
+	if scopes := first.scopesFor([]string{"im"}, "user", core.BrandFeishu); !slices.Contains(scopes, businessScope) {
+		t.Fatalf("first build lost its own business scope %q: %v", businessScope, scopes)
 	}
-	set, sorted := legalDomainsFor(remote, true, core.BrandFeishu)
-	wantSorted := []string{"docs", "im", "newbiz"} // remote keys, ascending by sort.Strings
-	if !reflect.DeepEqual(sorted, wantSorted) {
-		t.Fatalf("sorted = %v, want %v", sorted, wantSorted)
+	if scopes := second.scopesFor([]string{"im"}, "user", core.BrandFeishu); slices.Contains(scopes, businessScope) {
+		t.Fatalf("second build inherited the first build's business scope %q", businessScope)
 	}
-	if len(set) != len(wantSorted) {
-		t.Fatalf("set size = %d, want %d", len(set), len(wantSorted))
-	}
-	for _, d := range wantSorted {
-		if !set[d] {
-			t.Errorf("set missing domain %q", d)
+}
+
+// The login command must resolve --domain against the snapshot it was
+// constructed with. The help text is the observable projection of that snapshot,
+// so a business command's domain has to survive into it.
+func TestLoginHelpListsDomainsFromTheGivenSnapshot(t *testing.T) {
+	registered := append(shortcuts.AllShortcuts(), common.Shortcut{
+		Service: "im", Command: "+business-help", AuthTypes: []string{"user"},
+		UserScopes: []string{"im:business.help:read"},
+	})
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	usage := newCmdAuthLogin(f, nil, registered).Flag("domain").Usage
+	for _, want := range newDomainResolver(registered).sorted(core.BrandFeishu) {
+		if !strings.Contains(usage, want) {
+			t.Fatalf("--domain usage omits %q resolved from the snapshot:\n%s", want, usage)
 		}
 	}
-	if !set["newbiz"] {
-		t.Error("remote-listed domain unknown to this build should still be legal")
+}
+
+// A scope-less domain stays addressable via --domain (main behavior): it
+// passes domain validation and fails later on scope resolution, not with
+// "unknown domain".
+func TestScopelessDomainStaysAddressableViaDomainFlag(t *testing.T) {
+	known := builtinResolver().allKnown("")
+	if !known["event"] {
+		t.Fatal("event must remain in allKnownDomains to match main behavior")
+	}
+	if scopes := builtinResolver().scopesFor([]string{"event"}, "user", ""); len(scopes) != 0 {
+		t.Fatalf("event scopes = %v, want none", scopes)
+	}
+}
+
+func TestAuthLoginHelpMatchesKnownDomains(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	factory, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{})
+	login := NewCmdAuthLogin(factory, nil)
+	domainFlag := login.Flags().Lookup("domain")
+	if domainFlag == nil {
+		t.Fatal("auth login --domain flag is missing")
+	}
+	names := builtinResolver().sorted("")
+	want := "available: " + strings.Join(names, ", ") + ", all"
+	if !strings.Contains(domainFlag.Usage, want) {
+		t.Fatalf("domain help = %q, want %q", domainFlag.Usage, want)
 	}
 }
 
@@ -349,77 +460,6 @@ func TestEveryRegisteredDomain_HasBilingualDescription(t *testing.T) {
 		}
 	}
 }
-
-func TestLegalDomainsFor_FallbackToLocal(t *testing.T) {
-	// remoteOK=false -> falls back to local allKnownDomains/sortedKnownDomains
-	set, sorted := legalDomainsFor(nil, false, core.BrandFeishu)
-	if len(sorted) == 0 {
-		t.Fatal("fallback should return non-empty local domain slice")
-	}
-	// set and sorted are two views of the same local domain set and must correspond
-	if len(set) != len(sorted) {
-		t.Fatalf("set size %d != sorted size %d", len(set), len(sorted))
-	}
-	for _, d := range sorted {
-		if !set[d] {
-			t.Errorf("set missing local domain %q", d)
-		}
-	}
-	// fallback adopts the local sort order directly, which must equal sortedKnownDomains
-	if want := sortedKnownDomains(core.BrandFeishu); !reflect.DeepEqual(sorted, want) {
-		t.Fatalf("sorted = %v, want sortedKnownDomains %v", sorted, want)
-	}
-}
-
-func TestAuthLoginRun_NonTerminal_NoFlags_ProceedsAndSurfacesAgentHint(t *testing.T) {
-	// Bare `auth login` no longer rejects in a non-terminal. The interactive
-	// picker is gone and bare login now spans the full legal domain set
-	// (--recommend ≡ --domain all), so instead of erroring out asking for
-	// explicit scopes it proceeds to device authorization and surfaces the
-	// agent hint on stderr.
-	f, _, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
-		ProfileName: "default",
-		AppID:       "cli_test",
-		AppSecret:   "secret",
-		Brand:       core.BrandFeishu,
-	})
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    larkauth.PathDeviceAuthorization,
-		Body: map[string]interface{}{
-			"device_code":               "device-code",
-			"user_code":                 "user-code",
-			"verification_uri":          "https://example.com/verify",
-			"verification_uri_complete": "https://example.com/verify?code=123",
-			"expires_in":                240,
-			"interval":                  5,
-		},
-	})
-
-	// Cancel the context so token polling returns promptly after the device
-	// authorization step, which is where the stderr hint is printed.
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	// TestFactory has IsTerminal=false by default and no scope/domain/recommend
-	// flags are set, so this is the bare non-terminal path.
-	err := authLoginRun(&LoginOptions{Factory: f, Ctx: ctx})
-	if err == nil {
-		t.Fatal("expected error from cancelled poll after device authorization")
-	}
-	// Reaching device authorization (verification URL on stderr) proves the
-	// old "please specify the scopes" early-reject is gone.
-	stderrStr := stderr.String()
-	if !strings.Contains(stderrStr, "https://example.com/verify?code=123") {
-		t.Fatalf("expected device authorization to be reached (verification URL on stderr), got: %s", stderrStr)
-	}
-	// The agent hint must still be surfaced on the non-terminal path.
-	for _, want := range []string{"--no-wait --json", "--device-code", "lark-cli auth qrcode"} {
-		if !strings.Contains(stderrStr, want) {
-			t.Errorf("expected stderr agent hint to mention %q, got: %s", want, stderrStr)
-		}
-	}
-}
-
 func TestGenericUserAuthorizationStartCommandPassesLoginValidation(t *testing.T) {
 	const startCommand = "lark-cli auth login --recommend --no-wait --json"
 	if hint := recovery.UserAuthorization().String(); !strings.Contains(hint, startCommand) {
@@ -451,7 +491,7 @@ func TestGenericUserAuthorizationStartCommandPassesLoginValidation(t *testing.T)
 		Recommend: true,
 		NoWait:    true,
 		JSON:      true,
-	})
+	}, builtinResolver())
 	if err != nil {
 		t.Fatalf("generic recovery start command failed before returning a verification URL: %v", err)
 	}
@@ -475,659 +515,6 @@ func TestGenericUserAuthorizationStartCommandPassesLoginValidation(t *testing.T)
 		}
 	}
 	reg.Verify(t)
-}
-
-func TestEnsureRequestedScopesGranted(t *testing.T) {
-	issue := ensureRequestedScopesGranted("im:message:send im:message:reply", "im:message:reply", getLoginMsg("en"), nil)
-	if issue == nil {
-		t.Fatal("expected missing scope issue")
-	}
-	if !strings.Contains(issue.Message, "im:message:send") {
-		t.Fatalf("message %q missing requested scope", issue.Message)
-	}
-	for _, want := range []string{"Do not retry continuously", "scope being disabled", "lark-cli auth status"} {
-		if !strings.Contains(issue.Hint, want) {
-			t.Fatalf("hint %q missing %q", issue.Hint, want)
-		}
-	}
-	if got := strings.Join(issue.Summary.Missing, " "); got != "im:message:send" {
-		t.Fatalf("Missing = %q", got)
-	}
-}
-
-func TestBuildLoginScopeSummary(t *testing.T) {
-	summary := buildLoginScopeSummary("im:message:send im:message:reply im:message:send", "im:message:reply", "im:message:send im:message:reply im:chat:read")
-	if got := strings.Join(summary.Requested, " "); got != "im:message:send im:message:reply" {
-		t.Fatalf("Requested = %q", got)
-	}
-	if got := strings.Join(summary.NewlyGranted, " "); got != "im:message:send" {
-		t.Fatalf("NewlyGranted = %q", got)
-	}
-	if got := strings.Join(summary.AlreadyGranted, " "); got != "im:message:reply" {
-		t.Fatalf("AlreadyGranted = %q", got)
-	}
-	if len(summary.Missing) != 0 {
-		t.Fatalf("Missing = %v, want empty", summary.Missing)
-	}
-	if got := strings.Join(summary.Granted, " "); got != "im:message:send im:message:reply im:chat:read" {
-		t.Fatalf("Granted = %q", got)
-	}
-}
-
-func TestWriteLoginSuccess_JSONIncludesScopeDiff(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
-
-	summary := &loginScopeSummary{
-		Requested:      []string{"im:message:send", "im:message:reply"},
-		NewlyGranted:   []string{"im:message:send"},
-		AlreadyGranted: []string{"im:message:reply"},
-		Granted:        []string{"im:message:send", "im:message:reply"},
-		StatusMessage: "[用户跳过，可重试] 用户未勾选：calendar:calendar:update\n" +
-			"应用身份\n[待审核，通过后自动生效] 以下权限正在等待管理员审核：im:message",
-	}
-	writeLoginSuccess(&LoginOptions{JSON: true}, getLoginMsg("en"), f, "ou_user", "tester", summary)
-
-	var data map[string]interface{}
-	if err := json.Unmarshal(stdout.Bytes(), &data); err != nil {
-		t.Fatalf("Unmarshal(stdout) error = %v, stdout=%s", err, stdout.String())
-	}
-	if data["event"] != "authorization_complete" {
-		t.Fatalf("event = %v", data["event"])
-	}
-	if data["scope"] != "im:message:send im:message:reply" {
-		t.Fatalf("scope = %v", data["scope"])
-	}
-	if len(data["newly_granted"].([]interface{})) != 1 {
-		t.Fatalf("newly_granted = %#v", data["newly_granted"])
-	}
-	if len(data["already_granted"].([]interface{})) != 1 {
-		t.Fatalf("already_granted = %#v", data["already_granted"])
-	}
-	if _, ok := data["status_message"]; ok {
-		t.Fatalf("status_message should not be exposed at the top level: %#v", data)
-	}
-}
-
-func TestHandleLoginScopeIssue_NonJSONAlignsWithLoginSuccess(t *testing.T) {
-	f, _, stderr, _ := cmdutil.TestFactory(t, nil)
-	issue := &loginScopeIssue{
-		Message: "授权结果异常: 以下请求 scopes 未被授予: im:message:send",
-		Hint:    "以上结果是本次授权请求用户最终确认后的结果，请勿持续重试；Scopes 未授予的原因是多样的，如 scope 被禁用；具体原因已通过授权页提示用户。可执行 `lark-cli auth status` 查看账号当前已授予的全部 scopes；",
-		Summary: &loginScopeSummary{
-			Requested: []string{"im:message:send", "im:message:reply"},
-			Missing:   []string{"im:message:send"},
-			Granted:   []string{"im:message:reply", "base:app:copy"},
-			StatusMessage: "[用户跳过，可重试] 用户未勾选：calendar:calendar:update\n" +
-				"应用身份\n[待审核，通过后自动生效] 以下权限正在等待管理员审核：im:message",
-		},
-	}
-	err := handleLoginScopeIssue(&LoginOptions{}, getLoginMsg("zh"), f, issue, "ou_user", "tester")
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitAuth {
-		t.Fatalf("exit code = %d, want %d", gotCode, output.ExitAuth)
-	}
-	got := stderr.String()
-	for _, want := range []string{
-		"OK: 登录成功! 用户: tester (ou_user)",
-		"OK: 登录成功! 用户: tester (ou_user)\n\n" +
-			"本次已成功授权：\n" +
-			"  im:message:reply\n\n" +
-			"以下是本次未授予的权限：\n" +
-			"  [用户跳过，可重试] 用户未勾选：calendar:calendar:update\n" +
-			"  应用身份\n" +
-			"  [待审核，通过后自动生效] 以下权限正在等待管理员审核：im:message",
-	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("stderr missing %q, got:\n%s", want, got)
-		}
-	}
-	successPos := strings.Index(got, "OK: 登录成功! 用户: tester (ou_user)")
-	scopePos := strings.Index(got, "本次已成功授权：\n  im:message:reply")
-	missingPos := strings.Index(got, "以下是本次未授予的权限：")
-	statusPos := strings.Index(got, "  [用户跳过，可重试]")
-	if successPos < 0 || scopePos <= successPos || missingPos <= scopePos || statusPos <= missingPos {
-		t.Fatalf("login result placement is wrong, got:\n%s", got)
-	}
-	for _, unwanted := range []string{
-		issue.Message,
-		"本次请求 scopes:",
-		"本次新授予 scopes:",
-		issue.Hint,
-		"当前授权账号:",
-	} {
-		if strings.Contains(got, unwanted) {
-			t.Fatalf("stderr should not contain %q, got:\n%s", unwanted, got)
-		}
-	}
-}
-
-func TestHandleLoginScopeIssue_JSONAlignsWithLoginSuccess(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
-	issue := &loginScopeIssue{
-		Message: "authorization result is abnormal: these requested scopes were not granted: im:message:send",
-		Hint:    "Granted scopes: base:app:copy. Check app scopes.",
-		Summary: &loginScopeSummary{
-			Requested: []string{"im:message:send"},
-			Missing:   []string{"im:message:send"},
-			Granted:   []string{"base:app:copy"},
-			StatusMessage: "[用户跳过，可重试] 用户未勾选：calendar:calendar:update\n" +
-				"应用身份\n[待审核，通过后自动生效] 以下权限正在等待管理员审核：im:message",
-		},
-	}
-	err := handleLoginScopeIssue(&LoginOptions{JSON: true}, getLoginMsg("en"), f, issue, "ou_user", "tester")
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitAuth {
-		t.Fatalf("exit code = %d, want %d", gotCode, output.ExitAuth)
-	}
-
-	var data map[string]interface{}
-	if err := json.Unmarshal(stdout.Bytes(), &data); err != nil {
-		t.Fatalf("Unmarshal(stdout) error = %v, stdout=%s", err, stdout.String())
-	}
-	if data["event"] != "authorization_complete" {
-		t.Fatalf("event = %v", data["event"])
-	}
-	if data["user_open_id"] != "ou_user" {
-		t.Fatalf("user_open_id = %v", data["user_open_id"])
-	}
-	warning, ok := data["warning"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("warning = %#v", data["warning"])
-	}
-	if warning["type"] != "missing_scope" {
-		t.Fatalf("warning.type = %v", warning["type"])
-	}
-	if _, ok := warning["message"]; ok {
-		t.Fatalf("warning.message should not be exposed: %#v", warning)
-	}
-	if warning["hint"] != issue.Summary.StatusMessage {
-		t.Fatalf("warning.hint = %v, want %q", warning["hint"], issue.Summary.StatusMessage)
-	}
-	if _, ok := data["status_message"]; ok {
-		t.Fatalf("status_message should not be exposed at the top level: %#v", data)
-	}
-}
-
-func TestAuthorizationCompletePayload_EmptyStatusMessageFallsBackToIssueMessage(t *testing.T) {
-	issue := &loginScopeIssue{
-		Message: "authorization result is abnormal: these requested scopes were not granted: im:message:send",
-		Summary: &loginScopeSummary{
-			Missing: []string{"im:message:send"},
-		},
-	}
-
-	payload := authorizationCompletePayload("ou_user", "tester", issue.Summary, issue)
-	warning, ok := payload["warning"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("warning = %#v", payload["warning"])
-	}
-	if warning["hint"] != issue.Message {
-		t.Fatalf("warning.hint = %v, want %q", warning["hint"], issue.Message)
-	}
-	if _, ok := warning["message"]; ok {
-		t.Fatalf("warning.message should not be exposed: %#v", warning)
-	}
-}
-
-func TestWriteLoginSuccess_JSONEmptySlicesNotNull(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
-
-	writeLoginSuccess(&LoginOptions{JSON: true}, getLoginMsg("en"), f, "ou_user", "tester", &loginScopeSummary{
-		Granted: []string{"offline_access"},
-	})
-
-	var data map[string]interface{}
-	if err := json.Unmarshal(stdout.Bytes(), &data); err != nil {
-		t.Fatalf("Unmarshal(stdout) error = %v, stdout=%s", err, stdout.String())
-	}
-	for _, k := range []string{"requested", "newly_granted", "already_granted", "missing", "granted"} {
-		v, ok := data[k]
-		if !ok {
-			t.Fatalf("missing key %q in payload: %v", k, data)
-		}
-		if _, ok := v.([]interface{}); !ok {
-			t.Fatalf("%s = %#v, want JSON array", k, v)
-		}
-	}
-	if _, ok := data["status_message"]; ok {
-		t.Fatalf("status_message should not be exposed at the top level: %#v", data)
-	}
-}
-
-func TestWriteLoginSuccess_TextStatusMessageWithoutMissingScopesUsesDetailsHeading(t *testing.T) {
-	f, _, stderr, _ := cmdutil.TestFactory(t, nil)
-	statusMessage := "[用户跳过，可重试] 用户未勾选：calendar:calendar:update\n" +
-		"应用身份\n[待审核，通过后自动生效] 以下权限正在等待管理员审核：im:message"
-
-	writeLoginSuccess(&LoginOptions{}, getLoginMsg("zh"), f, "ou_user", "tester", &loginScopeSummary{
-		Requested:     []string{"im:message:send"},
-		NewlyGranted:  []string{"im:message:send"},
-		Granted:       []string{"im:message:send"},
-		StatusMessage: statusMessage,
-	})
-
-	got := stderr.String()
-	wantBlock := "本次已成功授权：\n" +
-		"  im:message:send\n\n" +
-		"本次授权结果详情：\n" +
-		"  [用户跳过，可重试] 用户未勾选：calendar:calendar:update\n" +
-		"  应用身份\n" +
-		"  [待审核，通过后自动生效] 以下权限正在等待管理员审核：im:message"
-	if !strings.Contains(got, wantBlock) {
-		t.Fatalf("stderr missing formatted authorization block %q, got:\n%s", wantBlock, got)
-	}
-	scopePos := strings.Index(got, "本次已成功授权：\n  im:message:send")
-	detailsPos := strings.Index(got, "本次授权结果详情：")
-	statusPos := strings.Index(got, "  [用户跳过，可重试]")
-	if scopePos < 0 || detailsPos <= scopePos || statusPos <= detailsPos {
-		t.Fatalf("status_message placement is wrong, got:\n%s", got)
-	}
-	if strings.Contains(got, "以下是本次未授予的权限：") {
-		t.Fatalf("stderr should not label status_message as not granted when no scopes are missing, got:\n%s", got)
-	}
-	if strings.Contains(got, "可执行 `lark-cli auth status`") {
-		t.Fatalf("stderr should not contain the hidden status hint, got:\n%s", got)
-	}
-}
-
-func TestWriteLoginSuccess_TextStatusMessageWithoutMissingScopesUsesEnglishDetailsHeading(t *testing.T) {
-	f, _, stderr, _ := cmdutil.TestFactory(t, nil)
-
-	writeLoginSuccess(&LoginOptions{}, getLoginMsg("en"), f, "ou_user", "tester", &loginScopeSummary{
-		Requested:     []string{"im:message:send"},
-		Granted:       []string{"im:message:send"},
-		StatusMessage: "Authorization status details",
-	})
-
-	got := stderr.String()
-	if !strings.Contains(got, "- Authorization details:\n  Authorization status details") {
-		t.Fatalf("stderr missing neutral authorization details heading, got:\n%s", got)
-	}
-	if strings.Contains(got, "- Scopes not granted in this request:") {
-		t.Fatalf("stderr should not label status_message as not granted when no scopes are missing, got:\n%s", got)
-	}
-}
-
-func TestWriteLoginSuccess_TextOutputScenarios(t *testing.T) {
-	tests := []struct {
-		name            string
-		summary         *loginScopeSummary
-		expectedPresent []string
-		expectedAbsent  []string
-	}{
-		{
-			name: "mixed newly granted and already granted",
-			summary: &loginScopeSummary{
-				Requested:      []string{"im:message:send", "im:message:reply"},
-				NewlyGranted:   []string{"im:message:send"},
-				AlreadyGranted: []string{"im:message:reply"},
-				Granted:        []string{"im:message:send", "im:message:reply"},
-			},
-			expectedPresent: []string{
-				"登录成功! 用户: tester (ou_user)",
-				"登录成功! 用户: tester (ou_user)\n\n本次已成功授权：\n  im:message:send、im:message:reply",
-			},
-			expectedAbsent: []string{
-				"以下是本次未授予的权限",
-				"本次请求 scopes:",
-				"本次新授予 scopes:",
-				"lark-cli auth status",
-			},
-		},
-		{
-			name: "all already granted",
-			summary: &loginScopeSummary{
-				Requested:      []string{"im:message:send"},
-				AlreadyGranted: []string{"im:message:send"},
-				Granted:        []string{"im:message:send", "contact:user.base:readonly"},
-			},
-			expectedPresent: []string{
-				"本次已成功授权：\n  im:message:send",
-			},
-			expectedAbsent: []string{
-				"以下是本次未授予的权限",
-				"本次请求 scopes:",
-				"本次新授予 scopes:",
-				"lark-cli auth status",
-			},
-		},
-		{
-			name: "missing scopes are shown",
-			summary: &loginScopeSummary{
-				Requested: []string{"im:message:send", "im:message:reply"},
-				Missing:   []string{"im:message:send"},
-				Granted:   []string{"im:message:reply"},
-			},
-			expectedPresent: []string{
-				"本次已成功授权：\n  im:message:reply\n\n以下是本次未授予的权限：\n  im:message:send",
-			},
-			expectedAbsent: []string{
-				"本次请求 scopes:",
-				"本次新授予 scopes:",
-				"lark-cli auth status",
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			f, _, stderr, _ := cmdutil.TestFactory(t, nil)
-			writeLoginSuccess(&LoginOptions{}, getLoginMsg("zh"), f, "ou_user", "tester", tt.summary)
-
-			got := stderr.String()
-			for _, want := range tt.expectedPresent {
-				if !strings.Contains(got, want) {
-					t.Fatalf("stderr missing %q, got:\n%s", want, got)
-				}
-			}
-			for _, unwanted := range tt.expectedAbsent {
-				if strings.Contains(got, unwanted) {
-					t.Fatalf("stderr should not contain %q, got:\n%s", unwanted, got)
-				}
-			}
-		})
-	}
-}
-
-func TestBuildLoginScopeSummary_WithMissingScopes(t *testing.T) {
-	summary := buildLoginScopeSummary("im:message:send im:message:reply", "im:message:reply", "im:message:reply")
-	if got := strings.Join(summary.NewlyGranted, " "); got != "" {
-		t.Fatalf("NewlyGranted = %q, want empty", got)
-	}
-	if got := strings.Join(summary.AlreadyGranted, " "); got != "im:message:reply" {
-		t.Fatalf("AlreadyGranted = %q", got)
-	}
-	if got := strings.Join(summary.Missing, " "); got != "im:message:send" {
-		t.Fatalf("Missing = %q", got)
-	}
-}
-
-func TestAuthLoginRun_MissingRequestedScopeAlignsWithLoginSuccess(t *testing.T) {
-	keyring.MockInit()
-	setupLoginConfigDir(t)
-	t.Setenv("HOME", t.TempDir())
-	const statusMessage = "[待审核，通过后用户需重新授权] 以下权限正在等待管理员审核：offline_access"
-
-	multi := &core.MultiAppConfig{
-		CurrentApp: "default",
-		Apps: []core.AppConfig{
-			{Name: "default", AppId: "cli_test"},
-		},
-	}
-	if err := core.SaveMultiAppConfig(multi); err != nil {
-		t.Fatalf("SaveMultiAppConfig() error = %v", err)
-	}
-
-	f, _, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
-		ProfileName: "default",
-		AppID:       "cli_test",
-		AppSecret:   "secret",
-		Brand:       core.BrandFeishu,
-	})
-
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    larkauth.PathDeviceAuthorization,
-		Body: map[string]interface{}{
-			"device_code":               "device-code",
-			"user_code":                 "user-code",
-			"verification_uri":          "https://example.com/verify",
-			"verification_uri_complete": "https://example.com/verify?code=123",
-			"expires_in":                240,
-			"interval":                  0,
-		},
-	})
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    larkauth.PathOAuthTokenV2,
-		Body: map[string]interface{}{
-			"access_token":             "user-access-token",
-			"refresh_token":            "refresh-token",
-			"expires_in":               7200,
-			"refresh_token_expires_in": 604800,
-			"scope":                    "offline_access",
-			"status_message":           statusMessage,
-		},
-	})
-	reg.Register(&httpmock.Stub{
-		Method: "GET",
-		URL:    larkauth.PathUserInfoV1,
-		Body: map[string]interface{}{
-			"code": 0,
-			"msg":  "ok",
-			"data": map[string]interface{}{
-				"open_id": "ou_user",
-				"name":    "tester",
-			},
-		},
-	})
-
-	err := authLoginRun(&LoginOptions{
-		Factory: f,
-		Ctx:     context.Background(),
-		Scope:   "im:message:send",
-	})
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitAuth {
-		t.Fatalf("exit code = %d, want %d", gotCode, output.ExitAuth)
-	}
-	got := stderr.String()
-	for _, want := range []string{
-		"OK: 登录成功! 用户: tester (ou_user)",
-		"本次已成功授权：\n  （空）\n\n以下是本次未授予的权限：\n  " + statusMessage,
-	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("stderr missing %q, got:\n%s", want, got)
-		}
-	}
-	for _, unwanted := range []string{
-		"授权结果异常:",
-		"本次请求 scopes:",
-		"本次新授予 scopes:",
-		"以上结果是本次授权请求用户最终确认后的结果",
-		"lark-cli auth status",
-		"当前授权账号:",
-	} {
-		if strings.Contains(got, unwanted) {
-			t.Fatalf("stderr should not contain %q, got:\n%s", unwanted, got)
-		}
-	}
-	if strings.Contains(got, "ERROR:") {
-		t.Fatalf("stderr should not contain error prefix, got:\n%s", got)
-	}
-	stored := larkauth.GetStoredToken("cli_test", "ou_user")
-	if stored == nil {
-		t.Fatal("expected token to be stored when authorization succeeds with missing scopes")
-	}
-	if stored.Scope != "offline_access" {
-		t.Fatalf("stored scope = %q", stored.Scope)
-	}
-	cfg, err := core.LoadMultiAppConfig()
-	if err != nil {
-		t.Fatalf("LoadMultiAppConfig() error = %v", err)
-	}
-	if len(cfg.Apps) != 1 || len(cfg.Apps[0].Users) != 1 {
-		t.Fatalf("unexpected users in config: %#v", cfg.Apps)
-	}
-	if cfg.Apps[0].Users[0].UserOpenId != "ou_user" {
-		t.Fatalf("stored user open id = %q", cfg.Apps[0].Users[0].UserOpenId)
-	}
-	if cfg.Apps[0].Users[0].UserName != "tester" {
-		t.Fatalf("stored user name = %q", cfg.Apps[0].Users[0].UserName)
-	}
-}
-
-func TestAuthLoginRun_DeviceCodeUsesCachedRequestedScopes(t *testing.T) {
-	keyring.MockInit()
-	setupLoginConfigDir(t)
-	t.Setenv("HOME", t.TempDir())
-	const statusMessage = "[待审核，通过后用户需重新授权] 以下权限正在等待管理员审核：offline_access"
-
-	multi := &core.MultiAppConfig{
-		CurrentApp: "default",
-		Apps: []core.AppConfig{
-			{Name: "default", AppId: "cli_test"},
-		},
-	}
-	if err := core.SaveMultiAppConfig(multi); err != nil {
-		t.Fatalf("SaveMultiAppConfig() error = %v", err)
-	}
-
-	f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
-		ProfileName: "default",
-		AppID:       "cli_test",
-		AppSecret:   "secret",
-		Brand:       core.BrandFeishu,
-	})
-
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    larkauth.PathDeviceAuthorization,
-		Body: map[string]interface{}{
-			"device_code":               "device-code",
-			"user_code":                 "user-code",
-			"verification_uri":          "https://example.com/verify",
-			"verification_uri_complete": "https://example.com/verify?code=123",
-			"expires_in":                240,
-			"interval":                  0,
-		},
-	})
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    larkauth.PathOAuthTokenV2,
-		Body: map[string]interface{}{
-			"access_token":             "user-access-token",
-			"refresh_token":            "refresh-token",
-			"expires_in":               7200,
-			"refresh_token_expires_in": 604800,
-			"scope":                    "im:message:send offline_access",
-			"status_message":           statusMessage,
-		},
-	})
-	reg.Register(&httpmock.Stub{
-		Method: "GET",
-		URL:    larkauth.PathUserInfoV1,
-		Body: map[string]interface{}{
-			"code": 0,
-			"msg":  "ok",
-			"data": map[string]interface{}{
-				"open_id": "ou_user",
-				"name":    "tester",
-			},
-		},
-	})
-
-	err := authLoginRun(&LoginOptions{
-		Factory: f,
-		Ctx:     context.Background(),
-		Scope:   "im:message:send",
-		NoWait:  true,
-	})
-	if err != nil {
-		t.Fatalf("no-wait authLoginRun() error = %v", err)
-	}
-	if got, err := loadLoginRequestedScope("device-code"); err != nil || got != "im:message:send" {
-		t.Fatalf("loadLoginRequestedScope() = (%q, %v), want requested scope", got, err)
-	}
-
-	stdout.Reset()
-	stderr.Reset()
-
-	err = authLoginRun(&LoginOptions{
-		Factory:    f,
-		Ctx:        context.Background(),
-		DeviceCode: "device-code",
-	})
-	if err != nil {
-		t.Fatalf("device-code authLoginRun() error = %v", err)
-	}
-	got := stderr.String()
-	for _, want := range []string{
-		"OK: 登录成功! 用户: tester (ou_user)",
-		"本次已成功授权：\n  im:message:send\n\n本次授权结果详情：\n  " + statusMessage,
-	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("stderr missing %q, got:\n%s", want, got)
-		}
-	}
-	for _, unwanted := range []string{"本次请求 scopes:", "本次新授予 scopes:", "lark-cli auth status"} {
-		if strings.Contains(got, unwanted) {
-			t.Fatalf("stderr should not contain %q, got:\n%s", unwanted, got)
-		}
-	}
-	if got, err := loadLoginRequestedScope("device-code"); err != nil || got != "" {
-		t.Fatalf("loadLoginRequestedScope() after cleanup = (%q, %v), want empty", got, err)
-	}
-}
-
-func TestWriteLoginSuccess_TextOutputEnglishUsesCompactScopeSummary(t *testing.T) {
-	f, _, stderr, _ := cmdutil.TestFactory(t, nil)
-
-	writeLoginSuccess(&LoginOptions{}, getLoginMsg("en"), f, "ou_user", "tester", &loginScopeSummary{
-		Requested:    []string{"im:message:send"},
-		NewlyGranted: []string{"im:message:send"},
-		Granted:      []string{"im:message:send"},
-	})
-
-	got := stderr.String()
-	for _, want := range []string{
-		"Authorization successful! User: tester (ou_user)",
-		"Authorization successful! User: tester (ou_user)\n\n" +
-			"- Successfully authorized in this request:\n" +
-			"  im:message:send",
-	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("stderr missing %q, got:\n%s", want, got)
-		}
-	}
-	for _, unwanted := range []string{"Scopes not granted in this request", "Requested scopes:", "Newly granted scopes:", "lark-cli auth status"} {
-		if strings.Contains(got, unwanted) {
-			t.Fatalf("stderr should not contain %q, got:\n%s", unwanted, got)
-		}
-	}
-}
-
-func TestAuthLoginRun_DeviceCodeTokenNilCleansScopeCache(t *testing.T) {
-	keyring.MockInit()
-	setupLoginConfigDir(t)
-
-	if err := saveLoginRequestedScope("device-code", "im:message:send"); err != nil {
-		t.Fatalf("saveLoginRequestedScope() error = %v", err)
-	}
-
-	original := pollDeviceToken
-	t.Cleanup(func() { pollDeviceToken = original })
-	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
-		return &larkauth.DeviceFlowResult{OK: true, Token: nil}
-	}
-
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		ProfileName: "default",
-		AppID:       "cli_test",
-		AppSecret:   "secret",
-		Brand:       core.BrandFeishu,
-	})
-
-	err := authLoginRun(&LoginOptions{
-		Factory:    f,
-		Ctx:        context.Background(),
-		DeviceCode: "device-code",
-	})
-	if err == nil {
-		t.Fatal("expected error for nil token")
-	}
-	if !strings.Contains(err.Error(), "authorization succeeded but no token returned") {
-		t.Fatalf("error = %v, want nil token error", err)
-	}
-	if got, err := loadLoginRequestedScope("device-code"); err != nil || got != "" {
-		t.Fatalf("loadLoginRequestedScope() after nil token = (%q, %v), want empty", got, err)
-	}
 }
 
 // TestAuthLoginRun_JSONAbort_StdoutEventOnly_StderrEmpty pins the
@@ -1171,7 +558,7 @@ func TestAuthLoginRun_JSONAbort_StdoutEventOnly_StderrEmpty(t *testing.T) {
 		Ctx:     context.Background(),
 		Scope:   "im:message:send",
 		JSON:    true,
-	})
+	}, builtinResolver())
 	if err == nil {
 		t.Fatal("expected error for aborted authorization")
 	}
@@ -1239,7 +626,7 @@ func TestAuthLoginRun_JSONWriteFailure_NoWaitReturnsWriterError(t *testing.T) {
 		Scope:   "im:message:send",
 		NoWait:  true,
 		JSON:    true,
-	})
+	}, builtinResolver())
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -1274,7 +661,7 @@ func TestAuthLoginRun_NoWaitJSONHintIncludesRawURLGuidance(t *testing.T) {
 		Ctx:     context.Background(),
 		Scope:   "im:message:send",
 		NoWait:  true,
-	})
+	}, builtinResolver())
 	if err != nil {
 		t.Fatalf("authLoginRun() error = %v", err)
 	}
@@ -1360,7 +747,7 @@ func TestAuthLoginRun_NoWaitJSONHintPreservesExplicitProfile(t *testing.T) {
 		Scope:   "im:message:send",
 		NoWait:  true,
 		JSON:    true,
-	}); err != nil {
+	}, builtinResolver()); err != nil {
 		t.Fatalf("authLoginRun() error = %v", err)
 	}
 
@@ -1416,7 +803,7 @@ func TestAuthLoginRun_JSONWriteFailure_DeviceAuthorizationReturnsWriterError(t *
 		Ctx:     ctx,
 		Scope:   "im:message:send",
 		JSON:    true,
-	})
+	}, builtinResolver())
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -1453,7 +840,7 @@ func TestAuthLoginRun_JSONDeviceAuthorizationAgentHintIncludesRawURLGuidance(t *
 		Ctx:     ctx,
 		Scope:   "im:message:send",
 		JSON:    true,
-	})
+	}, builtinResolver())
 	if err == nil {
 		t.Fatal("expected error from cancelled context")
 	}
@@ -1487,9 +874,8 @@ func TestAuthLoginRun_JSONDeviceAuthorizationAgentHintIncludesRawURLGuidance(t *
 		}
 	}
 }
-
 func TestAllKnownDomains_ExcludesAuthDomainChildren(t *testing.T) {
-	domains := allKnownDomains("")
+	domains := builtinResolver().allKnown("")
 	if domains["whiteboard"] {
 		t.Error("whiteboard should not appear in known auth domains (it has auth_domain=docs)")
 	}
@@ -1499,7 +885,7 @@ func TestAllKnownDomains_ExcludesAuthDomainChildren(t *testing.T) {
 }
 
 func TestCollectScopesForDomains_ExpandsAuthDomainChildren(t *testing.T) {
-	scopes := collectScopesForDomains([]string{"docs"}, "user", "")
+	scopes := builtinResolver().scopesFor([]string{"docs"}, "user", "")
 	// docs domain should include whiteboard shortcut scopes (board:whiteboard:*)
 	found := false
 	for _, s := range scopes {
@@ -1509,6 +895,163 @@ func TestCollectScopesForDomains_ExpandsAuthDomainChildren(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("collectScopesForDomains([docs]) should include whiteboard scopes (board:whiteboard:*)")
+		t.Error("builtinResolver().scopesFor([docs]) should include whiteboard scopes (board:whiteboard:*)")
+	}
+}
+func TestFilterBatchExcludedScopes(t *testing.T) {
+	got := filterBatchExcludedScopes([]string{"im:message", "im:message.send_as_user", "im:message:readonly"})
+	want := []string{"im:message", "im:message:readonly"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+	clean := []string{"im:message", "calendar:calendar:read"}
+	if got := filterBatchExcludedScopes(clean); !slices.Equal(got, clean) {
+		t.Errorf("clean input changed: got %v, want %v", got, clean)
+	}
+	if got := filterBatchExcludedScopes(nil); len(got) != 0 {
+		t.Errorf("nil input: got %v, want empty", got)
+	}
+}
+
+func TestBatchExcludedScopes_ContainsSendAsUser(t *testing.T) {
+	if !batchExcludedScopes["im:message.send_as_user"] {
+		t.Fatal("batchExcludedScopes must contain im:message.send_as_user")
+	}
+}
+
+func TestFilterBatchExcludedScopes_OnImDomainSet(t *testing.T) {
+	raw := builtinResolver().scopesFor([]string{"im"}, "user", "")
+	if !slices.Contains(raw, "im:message.send_as_user") {
+		t.Fatal("precondition: im domain set must contain im:message.send_as_user (on-demand grant source intact)")
+	}
+	filtered := filterBatchExcludedScopes(raw)
+	if slices.Contains(filtered, "im:message.send_as_user") {
+		t.Error("filtered set must not contain im:message.send_as_user")
+	}
+	if !slices.Contains(filtered, "im:message") {
+		t.Error("filtered set should still contain im:message")
+	}
+}
+
+func TestAuthLoginRun_BatchExcludesSendAsUser(t *testing.T) {
+	// Isolate the requested-scope cache: --no-wait persists scopes under the
+	// config dir, so pin it to a temp dir to avoid touching the real one.
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	extractScope := func(body []byte) string {
+		v, _ := url.ParseQuery(string(body))
+		return v.Get("scope")
+	}
+	stubBody := map[string]interface{}{
+		"device_code": "dc", "user_code": "uc",
+		"verification_uri": "https://example.com/v", "verification_uri_complete": "https://example.com/v?c=1",
+		"expires_in": 240, "interval": 5,
+	}
+
+	// (a) --domain im must NOT request send_as_user in the batch set
+	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		ProfileName: "default", AppID: "cli_test", AppSecret: "secret", Brand: core.BrandFeishu,
+	})
+	stub := &httpmock.Stub{Method: "POST", URL: larkauth.PathDeviceAuthorization, Body: stubBody}
+	reg.Register(stub)
+	if err := authLoginRun(&LoginOptions{
+		Factory: f, Ctx: context.Background(),
+		Domains: []string{"im"}, NoWait: true, JSON: true,
+	}, builtinResolver()); err != nil {
+		t.Fatalf("authLoginRun --domain im: %v", err)
+	}
+	scope := extractScope(stub.CapturedBody)
+	if strings.Contains(scope, "im:message.send_as_user") {
+		t.Errorf("--domain im requested send_as_user; scope=%q", scope)
+	}
+	if !strings.Contains(scope, "im:message") {
+		t.Errorf("--domain im missing im:message; scope=%q", scope)
+	}
+
+	// (b) explicit --scope re-adds it
+	f2, _, _, reg2 := cmdutil.TestFactory(t, &core.CliConfig{
+		ProfileName: "default", AppID: "cli_test", AppSecret: "secret", Brand: core.BrandFeishu,
+	})
+	stub2 := &httpmock.Stub{Method: "POST", URL: larkauth.PathDeviceAuthorization, Body: stubBody}
+	reg2.Register(stub2)
+	if err := authLoginRun(&LoginOptions{
+		Factory: f2, Ctx: context.Background(),
+		Domains: []string{"im"}, Scope: "im:message.send_as_user", NoWait: true, JSON: true,
+	}, builtinResolver()); err != nil {
+		t.Fatalf("authLoginRun --domain im --scope send_as_user: %v", err)
+	}
+	if scope2 := extractScope(stub2.CapturedBody); !strings.Contains(scope2, "im:message.send_as_user") {
+		t.Errorf("explicit --scope did not re-add send_as_user; scope=%q", scope2)
+	}
+}
+
+func TestAuthLoginRun_DomainExcludeSendAsUser(t *testing.T) {
+	// Regression (P1): `--domain im --exclude im:message.send_as_user` must keep
+	// succeeding as it did before the batch-exclusion filter existed. The batch
+	// filter drops send_as_user from the effective (wire) set, but --exclude is
+	// validated against the pre-filter selected universe, so naming it stays a
+	// valid no-op instead of an invalid_argument error. Automations relied on
+	// this exact form to dodge the send-as-user approval; do not break them.
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	stubBody := map[string]interface{}{
+		"device_code": "dc", "user_code": "uc",
+		"verification_uri": "https://example.com/v", "verification_uri_complete": "https://example.com/v?c=1",
+		"expires_in": 240, "interval": 5,
+	}
+	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		ProfileName: "default", AppID: "cli_test", AppSecret: "secret", Brand: core.BrandFeishu,
+	})
+	stub := &httpmock.Stub{Method: "POST", URL: larkauth.PathDeviceAuthorization, Body: stubBody}
+	reg.Register(stub)
+	if err := authLoginRun(&LoginOptions{
+		Factory: f, Ctx: context.Background(),
+		Domains: []string{"im"}, Exclude: []string{"im:message.send_as_user"},
+		NoWait: true, JSON: true,
+	}, builtinResolver()); err != nil {
+		t.Fatalf("authLoginRun --domain im --exclude send_as_user: %v", err)
+	}
+	if stub.CapturedBody == nil {
+		t.Fatal("no device authorization request was sent (command errored before the wire call)")
+	}
+	v, _ := url.ParseQuery(string(stub.CapturedBody))
+	scope := v.Get("scope")
+	scopeSet := make(map[string]bool)
+	for _, s := range strings.Fields(scope) {
+		scopeSet[s] = true
+	}
+	if scopeSet["im:message.send_as_user"] {
+		t.Errorf("excluded scope leaked into wire request; scope=%q", scope)
+	}
+	if !scopeSet["im:message"] {
+		t.Errorf("--domain im missing exact im:message; scope=%q", scope)
+	}
+}
+
+func TestApplyExcludeScopes_ValidatesAgainstUniverse(t *testing.T) {
+	// Universe is a superset of the effective (requested) set: it carries a
+	// batch-withheld scope that is not on the wire.
+	universe := map[string]bool{"im:message": true, "im:message.send_as_user": true}
+
+	// (a) excluding a universe member absent from requested is a valid no-op.
+	got, unknown := applyExcludeScopes("im:message", []string{"im:message.send_as_user"}, universe)
+	if len(unknown) != 0 {
+		t.Fatalf("unexpected unknown: %v", unknown)
+	}
+	if got != "im:message" {
+		t.Errorf("requested changed: got %q, want %q", got, "im:message")
+	}
+
+	// (b) a scope outside the universe is still unknown (no typo widening).
+	if _, unknown := applyExcludeScopes("im:message", []string{"im:typo"}, universe); len(unknown) != 1 || unknown[0] != "im:typo" {
+		t.Errorf("expected unknown [im:typo], got %v", unknown)
+	}
+
+	// (c) nil universe validates against requested (pure --scope path unchanged).
+	if _, unknown := applyExcludeScopes("im:message", []string{"im:message.send_as_user"}, nil); len(unknown) != 1 || unknown[0] != "im:message.send_as_user" {
+		t.Errorf("nil universe should validate against requested; got unknown %v", unknown)
+	}
+	if kept, unknown := applyExcludeScopes("im:message calendar:calendar:read", []string{"im:message"}, nil); len(unknown) != 0 || kept != "calendar:calendar:read" {
+		t.Errorf("nil universe removal: kept=%q unknown=%v", kept, unknown)
 	}
 }

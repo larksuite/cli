@@ -34,7 +34,7 @@ func TestDriveMemberRemoveMetadata(t *testing.T) {
 	}
 	wantIDTypes := []string{
 		"email", "openid", "openchat", "opendepartmentid",
-		"userid", "unionid", "groupid", "wikispaceid",
+		"userid", "unionid", "groupid", "appid", "wikispaceid",
 	}
 	if !reflect.DeepEqual(driveMemberRemoveIDTypes, wantIDTypes) {
 		t.Fatalf("member types = %#v, want %#v", driveMemberRemoveIDTypes, wantIDTypes)
@@ -240,12 +240,6 @@ func TestDriveMemberRemoveValidation(t *testing.T) {
 			wantText:  "implies --member-type openchat",
 		},
 		{
-			name:      "rejects app ID",
-			args:      []string{"--token", "doxTok", "--type", "docx", "--member-id", "cli_app", "--member-type", "appid"},
-			wantParam: "--member-type",
-			wantText:  `invalid value "appid"`,
-		},
-		{
 			name:      "rejects wiki-space ID outside wiki",
 			args:      []string{"--token", "doxTok", "--type", "docx", "--member-id", "space_x", "--member-type", "wikispaceid", "--member-kind", "wiki_space_member"},
 			wantParam: "--member-type",
@@ -358,6 +352,45 @@ func TestDriveMemberRemoveAcceptsUserID(t *testing.T) {
 	}
 	if got.Data.API[0].Body["type"] != "user" {
 		t.Fatalf("body = %#v", got.Data.API[0].Body)
+	}
+}
+
+func TestDriveMemberRemoveAcceptsAppID(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+	err := mountAndRunDrive(t, DriveMemberRemove, []string{
+		"+member-remove",
+		"--token", "doxTok",
+		"--type", "docx",
+		"--member-id", "cli_app_123",
+		"--member-type", "appid",
+		"--dry-run",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var got struct {
+		Data struct {
+			API []struct {
+				Params map[string]interface{} `json:"params"`
+				Body   map[string]interface{} `json:"body"`
+			} `json:"api"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("decode dry-run output: %v\n%s", err, stdout.String())
+	}
+	if len(got.Data.API) != 1 {
+		t.Fatalf("api count = %d, want 1", len(got.Data.API))
+	}
+	if got.Data.API[0].Params["member_type"] != "appid" {
+		t.Fatalf("params = %#v", got.Data.API[0].Params)
+	}
+	if _, ok := got.Data.API[0].Body["type"]; ok {
+		t.Fatalf("body = %#v, want type omitted for appid", got.Data.API[0].Body)
 	}
 }
 

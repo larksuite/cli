@@ -51,6 +51,23 @@ func TestInit_NormalizedVersion_NoNotice(t *testing.T) {
 	}
 }
 
+func TestInit_OfficialSkillsUnknown_NoticeAtSameVersion(t *testing.T) {
+	clearSkillsSkipEnv(t)
+	resetPending(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := WriteState(SkillsState{Version: "1.0.21", OfficialSkillsUnknown: true}); err != nil {
+		t.Fatal(err)
+	}
+	Init("1.0.21")
+	got := GetPending()
+	if got == nil {
+		t.Fatal("GetPending() = nil, want notice for unknown official Skill set")
+	}
+	if got.Current != "1.0.21" || got.Target != "1.0.21" || !got.OfficialUnknown {
+		t.Errorf("notice = %+v, want same-version official_unknown notice", got)
+	}
+}
+
 func TestInit_Drift_NoticeWithStateVersion(t *testing.T) {
 	clearSkillsSkipEnv(t)
 	resetPending(t)

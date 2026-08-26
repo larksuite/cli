@@ -1,18 +1,22 @@
 # Base CLI E2E Coverage
 
 ## Metrics
-- Denominator: 89 leaf commands
-- Covered: 31
-- Coverage: 34.8%
+- Denominator: 93 leaf commands
+- Covered: 41
+- Coverage: 44.1%
 
 ## Summary
 - TestBase_BasicWorkflow: proves `+base-create`, `+base-get`, `+table-create`, `+table-get`, and `+table-list`; key `t.Run(...)` proof points are `get base as bot`, `get table as bot`, and `list tables and find created table as bot`.
 - TestBaseBlockDryRun: proves the five `+base-block-*` shortcuts request shapes without touching live data.
 - TestBaseAppWorkflow: live user workflow in an isolated fixture Workspace covering Workspace entity listing, BaseApp create/get, Page create/list/get/update/delete, text Block create/list/get/update, and App cleanup through Drive delete (`type=bitable`). Set `LARK_CLI_E2E_BASEAPP_WORKSPACE_TOKEN` to enable it.
+- TestBaseDashboardBlockCreateDryRun_PositionAndNumberFormat / TestBaseDashboardBlockUpdateDryRun_Position: prove `+dashboard-block-create` / `+dashboard-block-update` dry-run request shape carries the optional top-level `position` sibling and statistics `data_config.number_format`; TestBaseDashboardBlockCreateDryRun_InvalidNumberFormat proves the number_format enum validation rejects a bad formatName before any request.
 - TestBaseFieldCreateDryRunArrayCompat: proves `+field-create` dry-run request shape for the internal JSON-array compatibility path.
 - TestBaseFormQuestionsCreateDryRun: proves `+form-questions-create` preserves its POST body and renders the existing-question guard in command help.
 - TestBaseFormDetailDryRun / TestBaseFormSubmitDryRun: prove shared-form detail and submission request shapes.
 - TestBaseDashboardBlockGetDataDryRun: proves dashboard block data request shapes and identifier handling.
+- TestBaseDashboardBlockLayoutPrecisionWorkflow: creates a temporary Base/table/dashboard, creates a statistics block with `position` and omitted `number_format`, asserts the server default, updates to a custom format, then verifies a precision-only update preserves `formatName`, and cleans up the block/dashboard/base. `+dashboard-create`, `+dashboard-delete`, `+dashboard-block-get` and `+dashboard-block-delete` have no dry-run coverage and rest on this test alone. This workflow was executed successfully against a live tenant on 2026-08-20 while validating PR #2118.
+- TestBaseShareDryRun: proves dashboard/form share GET and PATCH routes, one-field update requests, explicit false preservation, and nested form settings without touching live data.
+- TestBaseShareWorkflow: deployment-gated by `LARK_CLI_E2E_BASE_SHARE_READY=1`; creates a Base, table, form, and dashboard, updates each share field in a separate request, verifies get round trips for both resources, disables sharing, and cleans up the Base.
 - TestBaseRecordBatchUpdatePerRecordDryRun: proves `+record-batch-update` preserves the per-record `update_records` request shape.
 - TestBaseRecordBatchUpdatePerRecordWorkflow: creates two records, updates different field types in one request, asserts the minimal response contract, reads both records back, verifies a missing record ID is not prevalidated, and cleans up the temporary Base.
 - TestBaseRecordHistoryListDryRunUsesExplicitRecordID / TestBaseRecordHistoryListDryRunRejectsNonPositiveMaxVersion: prove the history request keeps the explicit record ID and rejects explicitly non-positive cursors with a typed validation error.
@@ -21,6 +25,7 @@
 - TestBaseFormQuestionsCreateVisibleRuleDryRun / TestBaseFormQuestionsUpdateVisibleRuleDryRun: prove `+form-questions-create` / `+form-questions-update` dry-run request shape and that the optional `visible_rule` display condition is transcribed verbatim into the request body.
 - TestBaseTableCopyDryRun: proves `+table-copy` and `+table-copy-status` request shapes, including the schema-safe default, table-name path escaping, explicit all+wait orchestration, Cobra duration parsing, and the opaque task ID body.
 - TestBaseTableCopyWorkflow: feature-gated by `LARK_CLI_E2E_BASE_TABLE_COPY_READY=1` until the OpenAPI is deployed; creates a source table and record, proves schema-only copy, all no-wait plus status, all wait, record inclusion, and cleanup.
+- TestBaseTemplateCenterDryRun: proves `+template-categories`, `+template-list`, and `+template-search` request shapes; the list case covers category, limit, and offset parameters.
 - Cleanup note: `+table-delete` and `+role-delete` only run in cleanup and are intentionally left uncovered.
 - Blocked area: table-copy live integration remains deployment-gated; dashboard, field, most record operations, most form operations, view, and workflow operations still lack deterministic create/read/update workflows in this suite.
 
@@ -38,17 +43,22 @@
 | ✓ | base +base-block-list | shortcut | base_block_dryrun_test.go::TestBaseBlockDryRun/list all,list folder | `--base-token`; optional `--parent-id`; optional `--type`; dry-run only | request shape only |
 | ✓ | base +base-block-move | shortcut | base_block_dryrun_test.go::TestBaseBlockDryRun/move root,move after | `--base-token`; `--block-id`; optional `--parent-id`; `--after-id`; dry-run only | request shape only |
 | ✓ | base +base-block-rename | shortcut | base_block_dryrun_test.go::TestBaseBlockDryRun/rename | `--base-token`; `--block-id`; `--name`; dry-run only | request shape only |
+| ✓ | base +template-categories | shortcut | base_template_center_dryrun_test.go::TestBaseTemplateCenterDryRun/categories | dry-run only | request shape only |
+| ✓ | base +template-list | shortcut | base_template_center_dryrun_test.go::TestBaseTemplateCenterDryRun/list | `--category-key`; `--limit`/`--page-size`; `--offset`; dry-run only | request shape only |
+| ✓ | base +template-search | shortcut | base_template_center_dryrun_test.go::TestBaseTemplateCenterDryRun/search | `--keyword`; `--limit`; dry-run only | request shape only; blank keyword validation covered |
 | ✕ | base +dashboard-arrange | shortcut |  | none | dashboard workflows not covered |
-| ✕ | base +dashboard-block-create | shortcut |  | none | dashboard workflows not covered |
-| ✕ | base +dashboard-block-delete | shortcut |  | none | dashboard workflows not covered |
-| ✕ | base +dashboard-block-get | shortcut |  | none | dashboard workflows not covered |
+| ✓ | base +dashboard-block-create | shortcut | base_dashboard_block_layout_precision_dryrun_test.go::TestBaseDashboardBlockCreateDryRun_PositionAndNumberFormat; base_dashboard_block_layout_precision_workflow_test.go::TestBaseDashboardBlockLayoutPrecisionWorkflow | `--position` top-level; `--data-config.number_format`; dry-run + live | request shape plus live statistics block creation |
+| ✓ | base +dashboard-block-delete | shortcut | base_dashboard_block_layout_precision_workflow_test.go::TestBaseDashboardBlockLayoutPrecisionWorkflow (cleanup) | `--base-token`; `--dashboard-id`; `--block-id`; `--yes`; live cleanup | deletes the temporary block |
+| ✓ | base +dashboard-block-get | shortcut | base_dashboard_block_layout_precision_workflow_test.go::TestBaseDashboardBlockLayoutPrecisionWorkflow | `--base-token`; `--dashboard-id`; `--block-id`; live | reads back number_format; coordinates are not asserted (get is not contracted to echo position this iteration) |
 | ✓ | base +dashboard-block-get-data | shortcut | base_dashboard_block_get_data_dryrun_test.go | `--base-token`; `--dashboard-id`; `--block-id`; dry-run only | request shape and identifier handling |
 | ✕ | base +dashboard-block-list | shortcut |  | none | dashboard workflows not covered |
-| ✕ | base +dashboard-block-update | shortcut |  | none | dashboard workflows not covered |
-| ✕ | base +dashboard-create | shortcut |  | none | dashboard workflows not covered |
-| ✕ | base +dashboard-delete | shortcut |  | none | dashboard workflows not covered |
+| ✓ | base +dashboard-block-update | shortcut | base_dashboard_block_layout_precision_dryrun_test.go::TestBaseDashboardBlockUpdateDryRun_Position; base_dashboard_block_layout_precision_workflow_test.go::TestBaseDashboardBlockLayoutPrecisionWorkflow | `--position` top-level dry-run; `--data-config.number_format` live | request shape for position; live workflow verifies number_format update and read-back, while position read-back remains unverified |
+| ✓ | base +dashboard-create | shortcut | base_dashboard_block_layout_precision_workflow_test.go::TestBaseDashboardBlockLayoutPrecisionWorkflow | `--base-token`; `--name`; live | creates the temporary dashboard |
+| ✓ | base +dashboard-delete | shortcut | base_dashboard_block_layout_precision_workflow_test.go::TestBaseDashboardBlockLayoutPrecisionWorkflow (cleanup) | `--base-token`; `--dashboard-id`; `--yes`; live cleanup | deletes the temporary dashboard |
 | ✕ | base +dashboard-get | shortcut |  | none | dashboard workflows not covered |
 | ✕ | base +dashboard-list | shortcut |  | none | dashboard workflows not covered |
+| ✓ | base +dashboard-share-get | shortcut | base_share_dryrun_test.go::TestBaseShareDryRun/dashboard get; base_share_workflow_test.go::TestBaseShareWorkflow/dashboard share update and get | `--base-token`; `--dashboard-id`; dry-run + deployment-gated live | live requires `LARK_CLI_E2E_BASE_SHARE_READY=1` |
+| ✓ | base +dashboard-share-update | shortcut | base_share_dryrun_test.go::TestBaseShareDryRun/dashboard partial update, dashboard auto analysis is not exposed; base_share_workflow_test.go::TestBaseShareWorkflow/dashboard share update and get | one of `--enabled`; `--access-scope=invite`; `--show-source` per request; unsupported auto-analysis flag | single-field updates, explicit false, invite-only scope, live read-back, and backend-gated setting exclusion covered |
 | ✕ | base +dashboard-update | shortcut |  | none | dashboard workflows not covered |
 | ✕ | base +data-query | shortcut |  | none | no data-query assertions yet |
 | ✓ | base +field-create | shortcut | base_field_dryrun_test.go::TestBaseFieldCreateDryRunArrayCompat | `--base-token`; `--table-id`; `--json`; dry-run only | request shape only |
@@ -62,6 +72,8 @@
 | ✓ | base +form-detail | shortcut | base_form_detail_dryrun_test.go::TestBaseFormDetailDryRun | `--share-token`; dry-run only | shared-form request shape |
 | ✕ | base +form-get | shortcut |  | none | form workflows not covered |
 | ✓ | base +form-list | shortcut | base_form_detail_dryrun_test.go::TestBaseFormListDryRun_UsesBaseAndTableIdentifiers | `--base-token`; `--table-id`; dry-run only | request shape only |
+| ✓ | base +form-share-get | shortcut | base_share_dryrun_test.go::TestBaseShareDryRun/form get; base_share_workflow_test.go::TestBaseShareWorkflow/form share update and get | `--base-token`; `--table-id`; `--form-id`; dry-run + deployment-gated live | live requires `LARK_CLI_E2E_BASE_SHARE_READY=1` |
+| ✓ | base +form-share-update | shortcut | base_share_dryrun_test.go::TestBaseShareDryRun/form settings update; base_share_workflow_test.go::TestBaseShareWorkflow/form share update and get | one of share enablement; `access-scope=invite`; anonymous/login settings per request | single-field updates, login-plus-anonymous across separate requests, explicit false, and live read-back covered |
 | ✓ | base +form-questions-create | shortcut | TestBaseFormQuestionsCreateVisibleRuleDryRun; base_form_questions_create_dryrun_test.go | questions[].visible_rule; dry-run | request body, visible_rule passthrough, and help guard covered |
 | ✕ | base +form-questions-delete | shortcut |  | none | form workflows not covered |
 | ✕ | base +form-questions-list | shortcut |  | none | form workflows not covered |

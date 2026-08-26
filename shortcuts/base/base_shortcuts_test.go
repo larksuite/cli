@@ -70,12 +70,19 @@ func assertBasePaginationValidation(t *testing.T, err error, param string) {
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if problem.Category != errs.CategoryValidation {
+		t.Fatalf("category=%q, want %q", problem.Category, errs.CategoryValidation)
+	}
+	if problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype=%q, want %q", problem.Subtype, errs.SubtypeInvalidArgument)
+	}
 	var validationErr *errs.ValidationError
 	if !errors.As(err, &validationErr) {
 		t.Fatalf("expected validation error, got %T: %v", err, err)
-	}
-	if validationErr.Subtype != errs.SubtypeInvalidArgument {
-		t.Fatalf("subtype=%q, want %q", validationErr.Subtype, errs.SubtypeInvalidArgument)
 	}
 	if validationErr.Param != param {
 		t.Fatalf("param=%q, want %s", validationErr.Param, param)
@@ -167,13 +174,15 @@ func TestShortcutsCatalog(t *testing.T) {
 		"+record-list", "+record-search", "+record-get", "+record-upsert", "+record-batch-create", "+record-batch-update", "+record-share-link-create", "+record-upload-attachment", "+record-download-attachment", "+record-remove-attachment", "+record-delete",
 		"+record-history-list",
 		"+base-get", "+base-copy", "+base-create",
+		"+template-categories", "+template-list", "+template-search",
 		"+role-create", "+role-delete", "+role-update", "+role-list", "+role-get", "+advperm-enable", "+advperm-disable",
 		"+workflow-list", "+workflow-get", "+workflow-create", "+workflow-update", "+workflow-enable", "+workflow-disable",
+		"+button-rule-bind", "+button-rule-get", "+button-rule-unbind",
 		"+data-query",
 		"+form-create", "+form-delete", "+form-list", "+form-update", "+form-get", "+form-detail",
 		"+form-questions-create", "+form-questions-delete", "+form-questions-update", "+form-questions-list",
-		"+form-submit",
-		"+dashboard-list", "+dashboard-get", "+dashboard-create", "+dashboard-update", "+dashboard-delete", "+dashboard-arrange",
+		"+form-submit", "+form-share-get", "+form-share-update",
+		"+dashboard-list", "+dashboard-get", "+dashboard-share-get", "+dashboard-share-update", "+dashboard-create", "+dashboard-update", "+dashboard-delete", "+dashboard-arrange",
 		"+dashboard-block-list", "+dashboard-block-get", "+dashboard-block-get-data", "+dashboard-block-create", "+dashboard-block-update", "+dashboard-block-delete",
 		"+workspace-create", "+workspace-entity-list", "+workspace-move-in",
 		"+app-create", "+app-get",
@@ -187,6 +196,43 @@ func TestShortcutsCatalog(t *testing.T) {
 		if shortcuts[index].Command != command {
 			t.Fatalf("command[%d]=%q want=%q", index, shortcuts[index].Command, command)
 		}
+	}
+}
+
+func TestShareManagementShortcutScopes(t *testing.T) {
+	tests := []struct {
+		name   string
+		scopes []string
+		want   []string
+	}{
+		{
+			name:   "dashboard get requires update scope",
+			scopes: BaseDashboardShareGet.Scopes,
+			want:   []string{"base:dashboard:update"},
+		},
+		{
+			name:   "dashboard update requires update scope",
+			scopes: BaseDashboardShareUpdate.Scopes,
+			want:   []string{"base:dashboard:update"},
+		},
+		{
+			name:   "form get requires update scope",
+			scopes: BaseFormShareGet.Scopes,
+			want:   []string{"base:form:update"},
+		},
+		{
+			name:   "form update requires update scope",
+			scopes: BaseFormShareUpdate.Scopes,
+			want:   []string{"base:form:update"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !reflect.DeepEqual(tt.scopes, tt.want) {
+				t.Fatalf("Scopes=%v want=%v", tt.scopes, tt.want)
+			}
+		})
 	}
 }
 
@@ -291,7 +337,26 @@ func TestBaseFieldCreateTipsGuideTypeSelectionByStoredValue(t *testing.T) {
 	}
 }
 
-func TestBaseFieldCreateHelpDocumentsBatchAndHidesReadGuideFlag(t *testing.T) {
+func TestTemplateCenterShortcutContract(t *testing.T) {
+	ctx := context.Background()
+
+	for _, shortcut := range []common.Shortcut{BaseTemplateCategories, BaseTemplateList, BaseTemplateSearch} {
+		if shortcut.Risk != "read" {
+			t.Fatalf("%s risk=%q, want read", shortcut.Command, shortcut.Risk)
+		}
+		if !reflect.DeepEqual(shortcut.Scopes, []string{templateReadScope}) {
+			t.Fatalf("%s scopes=%v, want [%s]", shortcut.Command, shortcut.Scopes, templateReadScope)
+		}
+		if !reflect.DeepEqual(shortcut.AuthTypes, authTypes()) {
+			t.Fatalf("%s authTypes=%v, want %v", shortcut.Command, shortcut.AuthTypes, authTypes())
+		}
+	}
+
+	err := BaseTemplateSearch.Validate(ctx, newBaseTestRuntime(map[string]string{"keyword": "   "}, nil, map[string]int{"limit": 10}))
+	assertInvalidArgumentValidation(t, err, "--keyword", nil, "must not be blank")
+}
+
+func TestBaseFieldCreateHelpHidesReadGuideFlag(t *testing.T) {
 	parent := &cobra.Command{Use: "base"}
 	BaseFieldCreate.Mount(parent, &cmdutil.Factory{})
 	cmd := parent.Commands()[0]
@@ -499,6 +564,8 @@ func TestBasePaginationHelpShowsDefaults(t *testing.T) {
 		help       string
 	}{
 		{name: "table list", shortcut: BaseTableList, flag: "limit", defaultVal: "50", help: "pagination size, range 1-100"},
+		{name: "template list", shortcut: BaseTemplateList, flag: "limit", defaultVal: "10", help: "pagination size, range 1-100"},
+		{name: "template search", shortcut: BaseTemplateSearch, flag: "limit", defaultVal: "10", help: "pagination size, range 1-100"},
 		{name: "field list", shortcut: BaseFieldList, flag: "limit", defaultVal: "100", help: "pagination size, range 1-200"},
 		{name: "field search options", shortcut: BaseFieldSearchOptions, flag: "limit", defaultVal: "30", help: "pagination size, range 1-200"},
 		{name: "record list", shortcut: BaseRecordList, flag: "limit", defaultVal: "100", help: "maximum records to return; range 1-200, or 1-2000 for ndjson"},
@@ -558,6 +625,8 @@ func TestBaseLimitDeclaresPageSizeAlias(t *testing.T) {
 		shortcut common.Shortcut
 	}{
 		{name: "table list", shortcut: BaseTableList},
+		{name: "template list", shortcut: BaseTemplateList},
+		{name: "template search", shortcut: BaseTemplateSearch},
 		{name: "field list", shortcut: BaseFieldList},
 		{name: "field search options", shortcut: BaseFieldSearchOptions},
 		{name: "record list", shortcut: BaseRecordList},
@@ -842,6 +911,34 @@ func TestBaseWorkflowHelpGuidesAgents(t *testing.T) {
 				"does not delete the workflow or its steps",
 			},
 		},
+		{
+			name:     "button rule bind",
+			shortcut: BaseButtonRuleBind,
+			wantTips: []string{
+				"Use this after +workflow-create and +field-create",
+				"do not put workflow_id in the field JSON",
+				"public wkf ID",
+				"retry this command instead of recreating them",
+			},
+		},
+		{
+			name:     "button rule get",
+			shortcut: BaseButtonRuleGet,
+			wantTips: []string{
+				"bound=false",
+				"public wkf ID",
+				"Use this after +button-rule-bind",
+			},
+		},
+		{
+			name:     "button rule unbind",
+			shortcut: BaseButtonRuleUnbind,
+			wantTips: []string{
+				"does not delete the field or workflow",
+				"Repeat unbind is safe",
+				"+button-rule-get after unbind",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -928,7 +1025,9 @@ func TestBaseJSONExamplesLiveInFlagDescriptions(t *testing.T) {
 			name:     "form question delete",
 			shortcut: BaseFormQuestionsDelete,
 			wantHelp: []string{
-				`JSON array of question IDs to delete, max 10 items, e.g. '["q_001","q_002"]'`,
+				`JSON array of question IDs (field IDs) to remove from the form`,
+				`Default behavior also deletes the underlying fields and their record data`,
+				`use_existing_field=true and field_id`,
 			},
 		},
 		{
@@ -936,6 +1035,7 @@ func TestBaseJSONExamplesLiveInFlagDescriptions(t *testing.T) {
 			shortcut: BaseFormQuestionsCreate,
 			wantHelp: []string{
 				`"visible_rule"(display condition; same shape as view filter`,
+				`"use_existing_field":true`,
 			},
 		},
 		{
@@ -1574,6 +1674,18 @@ func TestBasePaginationValidationRejectsOutOfRange(t *testing.T) {
 			name:     "table list",
 			shortcut: BaseTableList,
 			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b"}, nil, map[string]int{"limit": 101}),
+			param:    "--limit",
+		},
+		{
+			name:     "template list",
+			shortcut: BaseTemplateList,
+			runtime:  newBaseTestRuntime(map[string]string{"category-key": "office"}, nil, map[string]int{"limit": 101}),
+			param:    "--limit",
+		},
+		{
+			name:     "template search",
+			shortcut: BaseTemplateSearch,
+			runtime:  newBaseTestRuntime(map[string]string{"keyword": "project"}, nil, map[string]int{"limit": 101}),
 			param:    "--limit",
 		},
 		{

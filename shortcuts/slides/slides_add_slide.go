@@ -112,7 +112,7 @@ var SlidesAddSlide = common.Shortcut{
 		}
 
 		if ref.Kind == "wiki" {
-			presentationID = "<resolved_slides_token>"
+			presentationID = unresolvedSlidesTokenPlaceholder
 			dry.Desc(fmt.Sprintf("%d-step orchestration: resolve wiki → add page", total)).
 				GET("/open-apis/wiki/v2/spaces/get_node").
 				Desc(fmt.Sprintf("[%d/%d] Resolve wiki node to slides presentation", step, total)).
@@ -125,7 +125,7 @@ var SlidesAddSlide = common.Shortcut{
 		}
 
 		for _, path := range placeholders {
-			appendSlidesUploadDryRun(dry, path, presentationID, step)
+			appendSlidesUploadDryRun(dry, path, presentationID, slidesDryRunParentType(ref), step)
 			step++
 		}
 

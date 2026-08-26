@@ -53,7 +53,12 @@ func TestDocsScriptPresentationDecisionFlagAcceptsFileAndStdin(t *testing.T) {
 		if len(flag.Input) != 2 || flag.Input[0] != common.File || flag.Input[1] != common.Stdin {
 			t.Fatalf("presentation-decision Input = %#v, want file and stdin", flag.Input)
 		}
-		for _, want := range []string{"genre_contract and adapter", `"none"`, "or null"} {
+		for _, want := range []string{
+			"genre_contract and adapter",
+			`"none"`,
+			"or null",
+			"unambiguous schema fields",
+		} {
 			if !strings.Contains(flag.Desc, want) {
 				t.Fatalf("presentation-decision help = %q, want it to contain %q", flag.Desc, want)
 			}
@@ -374,6 +379,176 @@ func TestDocsScriptInitDraftPersistsDecisionForAutomaticParse(t *testing.T) {
 	}
 }
 
+func TestDocsScriptInitDraftNormalizesWindowsCommandShimQuotes(t *testing.T) {
+	workDir := t.TempDir()
+	withDocsWorkingDir(t, workDir)
+	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-init-draft-shell-quotes"))
+	decision := `{"audience":"普通读者","reader_task":"复现实验","genre_contract":null,"adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"复现实验","blocks":[]}}`
+
+	err := mountAndRunDocs(t, DocsScript, []string{
+		"+script",
+		"--command", docsScriptInitDraft,
+		"--presentation-decision", "'" + decision + "'",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("initialize draft with Windows command-shim quotes: %v", err)
+	}
+
+	var initialized struct {
+		Data docsScriptDraftResult `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &initialized); err != nil {
+		t.Fatalf("decode init output: %v\n%s", err, stdout)
+	}
+	savedDecision, err := os.ReadFile(filepath.Join(initialized.Data.Workspace, docsScriptDecisionFile))
+	if err != nil {
+		t.Fatalf("read saved decision: %v", err)
+	}
+	if got := string(savedDecision); got != decision {
+		t.Fatalf("saved decision = %q, want normalized JSON %q", got, decision)
+	}
+}
+
+func TestDocsScriptInitDraftRecoversPowerShellDequotedDecisionFromSchema(t *testing.T) {
+	tests := []struct {
+		name           string
+		dequoted       string
+		wantNormalized string
+	}{
+		{
+			name:           "keys and values",
+			dequoted:       `{audience:a,reader_task:b,genre_contract:null,adapter:null,presentation_mode:normal,word_count:{min:10,max:null},visual_plan:{reason:c,blocks:[{type:img,min_count:1,purpose:d}]}}`,
+			wantNormalized: `{"audience":"a","reader_task":"b","genre_contract":null,"adapter":null,"presentation_mode":"normal","word_count":{"min":10,"max":null},"visual_plan":{"reason":"c","blocks":[{"type":"img","min_count":1,"purpose":"d"}]}}`,
+		},
+		{
+			name:           "values only",
+			dequoted:       `{"audience":a,"reader_task":b,"genre_contract":null,"adapter":null,"presentation_mode":normal,"visual_plan":{"reason":c,"blocks":[]}}`,
+			wantNormalized: `{"audience":"a","reader_task":"b","genre_contract":null,"adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"c","blocks":[]}}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			workDir := t.TempDir()
+			withDocsWorkingDir(t, workDir)
+			f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-init-draft-dequoted-json"))
+
+			err := mountAndRunDocs(t, DocsScript, []string{
+				"+script",
+				"--command", docsScriptInitDraft,
+				"--presentation-decision", test.dequoted,
+				"--as", "bot",
+			}, f, stdout)
+			if err != nil {
+				t.Fatalf("initialize draft with PowerShell-dequoted JSON: %v", err)
+			}
+
+			var initialized struct {
+				Data docsScriptDraftResult `json:"data"`
+			}
+			if err := json.Unmarshal(stdout.Bytes(), &initialized); err != nil {
+				t.Fatalf("decode init output: %v\n%s", err, stdout)
+			}
+			savedDecision, err := os.ReadFile(filepath.Join(initialized.Data.Workspace, docsScriptDecisionFile))
+			if err != nil {
+				t.Fatalf("read saved decision: %v", err)
+			}
+			if got := string(savedDecision); got != test.wantNormalized {
+				t.Fatalf("saved decision = %q, want schema-normalized JSON %q", got, test.wantNormalized)
+			}
+		})
+	}
+}
+
+func TestDocsScriptPowerShellDequotedRecoveryUsesOriginalValidation(t *testing.T) {
+	workDir := t.TempDir()
+	withDocsWorkingDir(t, workDir)
+	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-dequoted-original-validation"))
+	dequoted := `{audience:a,reader_task:b,genre_contract:null,adapter:null,presentation_mode:decorative,visual_plan:{reason:c,blocks:[]}}`
+
+	err := mountAndRunDocs(t, DocsScript, []string{
+		"+script",
+		"--command", docsScriptInitDraft,
+		"--presentation-decision", dequoted,
+		"--as", "bot",
+	}, f, nil)
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--presentation-decision")
+	if !strings.Contains(err.Error(), "presentation_mode must be formal, normal, or rich") {
+		t.Fatalf("error = %v, want original Presentation Decision validation", err)
+	}
+}
+
+func TestDocsScriptPresentationDecisionQuoteRecoveryUsesOriginalSchema(t *testing.T) {
+	workDir := t.TempDir()
+	withDocsWorkingDir(t, workDir)
+	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-presentation-quote-schema"))
+	decision := `{"audience":"reader","reader_task":"understand","genre_contract":null,"adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]},"unexpected":true}`
+
+	err := mountAndRunDocs(t, DocsScript, []string{
+		"+script",
+		"--command", docsScriptInitDraft,
+		"--presentation-decision", "'" + decision + "'",
+		"--as", "bot",
+	}, f, nil)
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--presentation-decision")
+	if !strings.Contains(err.Error(), `json: unknown field "unexpected"`) {
+		t.Fatalf("error = %v, want recovered JSON to use the original strict schema", err)
+	}
+	entries, readErr := os.ReadDir(workDir)
+	if readErr != nil {
+		t.Fatalf("read work directory: %v", readErr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("failed quote recovery created files: %#v", entries)
+	}
+}
+
+func TestDocsScriptPresentationDecisionFileRemainsStrictJSON(t *testing.T) {
+	workDir := t.TempDir()
+	withDocsWorkingDir(t, workDir)
+	if err := os.WriteFile("decision.json", []byte(`{audience:reader,reader_task:understand}`), 0o600); err != nil {
+		t.Fatalf("write decision: %v", err)
+	}
+	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-decision-file-strict-json"))
+
+	err := mountAndRunDocs(t, DocsScript, []string{
+		"+script",
+		"--command", docsScriptInitDraft,
+		"--presentation-decision", "@./decision.json",
+		"--as", "bot",
+	}, f, nil)
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--presentation-decision")
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error does not expose a typed problem: %v", err)
+	}
+	if problem.Hint != "" {
+		t.Fatalf("hint = %q, want no shell-mangling guidance for strict @file JSON", problem.Hint)
+	}
+}
+
+func TestDocsScriptPresentationDecisionFileAcceptsUTF8BOM(t *testing.T) {
+	workDir := t.TempDir()
+	withDocsWorkingDir(t, workDir)
+	decision := `{"audience":"普通读者","reader_task":"复现实验","genre_contract":null,"adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"复现实验","blocks":[]}}`
+	if err := os.WriteFile("decision.json", []byte("\uFEFF"+decision), 0o600); err != nil {
+		t.Fatalf("write decision: %v", err)
+	}
+	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-decision-file-bom"))
+
+	err := mountAndRunDocs(t, DocsScript, []string{
+		"+script",
+		"--command", docsScriptInitDraft,
+		"--presentation-decision", "@./decision.json",
+		"--dry-run",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("dry-run init with BOM-prefixed decision file: %v", err)
+	}
+}
+
 func TestDocsScriptInitDraftRequiresPresentationDecision(t *testing.T) {
 	workDir := t.TempDir()
 	withDocsWorkingDir(t, workDir)
@@ -575,6 +750,30 @@ func TestDocsScriptRejectsInvalidPresentationDecision(t *testing.T) {
 			}, f, nil)
 			assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--presentation-decision")
 		})
+	}
+}
+
+func TestDocsScriptPresentationDecisionMangledInlineJSONSuggestsFileInput(t *testing.T) {
+	workDir := t.TempDir()
+	withDocsWorkingDir(t, workDir)
+	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-presentation-shell-mangled"))
+	err := mountAndRunDocs(t, DocsScript, []string{
+		"+script",
+		"--command", docsScriptInitDraft,
+		"--presentation-decision", `{audience:reader,reviewer,reader_task:understand}`,
+		"--as", "bot",
+	}, f, nil)
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--presentation-decision")
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error does not expose a typed problem: %v", err)
+	}
+	if got := problem.Hint; got != docsScriptDecisionShellHint {
+		t.Fatalf("hint = %q, want %q", got, docsScriptDecisionShellHint)
+	}
+	var syntaxErr *json.SyntaxError
+	if !errors.As(err, &syntaxErr) {
+		t.Fatalf("error = %T (%v), want preserved *json.SyntaxError cause", err, err)
 	}
 }
 

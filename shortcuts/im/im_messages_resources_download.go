@@ -11,8 +11,9 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/extension/download"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/download"
+	"github.com/larksuite/cli/internal/downloadtransport"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -231,12 +232,12 @@ func parseContentDispositionFilename(header string) string {
 }
 
 func imResourceDownloadSource(runtime *common.RuntimeContext, messageID, fileKey, fileType string) download.Source {
-	oapi := download.NewOAPI(runtime.DoAPIStream)
+	oapi := downloadtransport.NewOAPI(runtime.DoAPIStream)
 	transport := oapi.Get(
 		"/open-apis/im/v1/messages/:message_id/resources/:file_key",
-		download.PathParam("message_id", messageID),
-		download.PathParam("file_key", fileKey),
-		download.Query("type", fileType),
+		downloadtransport.PathParam("message_id", messageID),
+		downloadtransport.PathParam("file_key", fileKey),
+		downloadtransport.Query("type", fileType),
 	)
 	// A message resource key pins the attachment bytes.
 	return download.ImmutableSource(transport)

@@ -19,20 +19,30 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/shortcuts"
+	shortcutcommon "github.com/larksuite/cli/shortcuts/common"
 )
 
 // NewCmdAuth creates the auth command with subcommands.
 func NewCmdAuth(f *cmdutil.Factory) *cobra.Command {
-	return newCmdAuth(f, nil)
+	return newCmdAuth(f, nil, shortcuts.AllShortcuts())
 }
 
 // NewCmdAuthWithRecovery creates the auth command with a build-local recovery
-// presenter while preserving NewCmdAuth's established function signature.
+// presenter, resolving domains from the registered shortcut set. Retained at its
+// established signature: callers outside this module cannot name
+// *recovery.Projector, but they can pass nil for it, so dropping this would
+// break them at compile time.
 func NewCmdAuthWithRecovery(f *cmdutil.Factory, projector *recovery.Projector) *cobra.Command {
-	return newCmdAuth(f, projector)
+	return NewCmdAuthWithRecoveryAndShortcuts(f, projector, shortcuts.AllShortcuts())
 }
 
-func newCmdAuth(f *cmdutil.Factory, projector *recovery.Projector) *cobra.Command {
+// NewCmdAuthWithRecoveryAndShortcuts creates auth commands from one build-local shortcut snapshot.
+func NewCmdAuthWithRecoveryAndShortcuts(f *cmdutil.Factory, projector *recovery.Projector, registered []shortcutcommon.Shortcut) *cobra.Command {
+	return newCmdAuth(f, projector, registered)
+}
+
+func newCmdAuth(f *cmdutil.Factory, projector *recovery.Projector, registered []shortcutcommon.Shortcut) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "auth",
 		Short: "OAuth credentials and authorization management",
@@ -49,7 +59,7 @@ func newCmdAuth(f *cmdutil.Factory, projector *recovery.Projector) *cobra.Comman
 	}
 	cmdutil.DisableAuthCheck(cmd)
 
-	cmd.AddCommand(NewCmdAuthLogin(f, nil))
+	cmd.AddCommand(newCmdAuthLogin(f, nil, registered))
 	cmd.AddCommand(NewCmdAuthLogout(f, nil))
 	cmd.AddCommand(newCmdAuthStatus(f, nil, projector))
 	cmd.AddCommand(NewCmdAuthScopes(f, nil))

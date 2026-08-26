@@ -9,10 +9,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
+	internalpagination "github.com/larksuite/cli/internal/pagination"
 )
 
 // PageRequest describes one paginated API walk. Pagination controls are not
@@ -58,79 +60,114 @@ func paginateInto[T any](runtime *RuntimeContext, request PageRequest, dst PageA
 	if err != nil {
 		return meta, err
 	}
-
-	pageToken := pageTokenParam(request.Params)
-	seen := make(map[string]struct{})
-	if pageToken != "" {
-		seen[pageToken] = struct{}{}
+	ctx := runtime.Ctx()
+	if ctx == nil {
+		ctx = context.Background()
 	}
-
-	// maxPages is always in [1, pageLimitMaximum]. Keeping the bound in the
-	// loop statement makes finite execution a structural invariant, independent
-	// of cursor quality and of any future exit-condition changes below.
-	for pageNumber := 1; pageNumber <= policy.maxPages; pageNumber++ {
-		params := clonePageParams(request.Params)
-		if pageToken != "" {
-			params["page_token"] = pageToken
-		}
-		if policy.showProgress {
-			fmt.Fprintf(runtime.IO().ErrOut, "[page %d] fetching...\n", pageNumber)
-		}
-
-		data, err := runtime.CallAPITyped(request.Method, request.Path, params, request.Body)
-		if err != nil {
-			meta.NextToken = pageToken
-			return meta, err
-		}
-		page, err := decodePageData[T](data, pageNumber)
-		if err != nil {
-			meta.NextToken = pageToken
-			return meta, err
-		}
-		if err := dst.AddPage(page); err != nil {
-			meta.NextToken = pageToken
-			if _, ok := errs.ProblemOf(err); ok {
-				return meta, err
-			}
-			return meta, errs.NewInternalError(errs.SubtypeUnknown,
-				"accumulate pagination page %d: %v", pageNumber, err).
-				WithCause(err)
-		}
-		meta.Pages++
-
-		hasMore, nextPageToken := PaginationMeta(data)
-		if !hasMore {
-			meta.Complete = true
-			meta.NextToken = ""
-			return meta, nil
-		}
-		if nextPageToken == "" {
-			return meta, invalidPageCursor("response reports more pages but returned no page token")
-		}
-		if _, repeated := seen[nextPageToken]; repeated {
-			return meta, invalidPageCursor("response repeated page token %q, which would paginate forever", nextPageToken)
-		}
-
-		meta.NextToken = nextPageToken
-		if pageNumber == policy.maxPages {
-			return meta, nil
-		}
-
-		seen[nextPageToken] = struct{}{}
-		pageToken = nextPageToken
-		if policy.pageDelay > 0 {
-			ctx := runtime.Ctx()
-			if ctx == nil {
-				ctx = context.Background()
-			}
-			if err := wait(ctx, policy.pageDelay); err != nil {
-				return meta, paginationWaitError(err)
-			}
-		}
+	walk := pageWalk{
+		policy:  policy,
+		request: request,
+		wait:    wait,
+		// The runtime carries its own context, so this fetch ignores the
+		// walker's -- unlike the externally declared commands, whose context
+		// arrives with the call.
+		fetch: func(_ context.Context, page PageRequest) (map[string]interface{}, error) {
+			return runtime.CallAPITyped(page.Method, page.Path, page.Params, page.Body)
+		},
+		accumulate: func(data map[string]interface{}, pageNumber int) error {
+			return addDecodedPage(data, pageNumber, dst)
+		},
 	}
+	if policy.showProgress {
+		walk.progress = runtime.IO().ErrOut
+	}
+	state, walkErr := walk.run(ctx)
+	meta.Complete = state.Complete
+	meta.Pages = state.Pages
+	meta.NextToken = state.NextToken
+	return meta, walkErr
+}
 
-	return meta, errs.NewInternalError(errs.SubtypeUnknown,
-		"pagination exhausted its page budget without producing a terminal result")
+// pageWalk is one pagination run. Built-in shortcuts and externally declared
+// commands differ only in where the policy comes from, how a page is fetched
+// and what accumulates it; the cursor walk, the inter-page delay and the error
+// mapping are the same and live here.
+type pageWalk struct {
+	policy     paginationPolicy
+	request    PageRequest
+	fetch      func(context.Context, PageRequest) (map[string]interface{}, error)
+	accumulate func(data map[string]interface{}, pageNumber int) error
+	wait       pageDelayWaiter
+	progress   io.Writer // nil when the run reports no per-page progress
+}
+
+func (w pageWalk) run(ctx context.Context) (internalpagination.State, error) {
+	state, walkErr := internalpagination.Walk(ctx, internalpagination.Options{
+		InitialToken: pageTokenParam(w.request.Params),
+		MaxPages:     w.policy.maxPages,
+		Delay:        w.policy.pageDelay,
+		Wait:         w.wait,
+		Fetch: func(ctx context.Context, pageNumber int, pageToken string) (bool, string, error) {
+			page := w.request
+			page.Params = clonePageParams(w.request.Params)
+			if pageToken != "" {
+				page.Params["page_token"] = pageToken
+			}
+			if w.progress != nil {
+				fmt.Fprintf(w.progress, "[page %d] fetching...\n", pageNumber)
+			}
+
+			data, err := w.fetch(ctx, page)
+			if err != nil {
+				return false, "", err
+			}
+			if err := w.accumulate(data, pageNumber); err != nil {
+				return false, "", err
+			}
+			hasMore, nextPageToken := PaginationMeta(data)
+			return hasMore, nextPageToken, nil
+		},
+	})
+	if walkErr != nil {
+		return state, paginationWalkError(walkErr)
+	}
+	return state, nil
+}
+
+// addDecodedPage keeps the typed-accumulator half of the walk out of pageWalk,
+// which stays generic-free so both entry points can share one struct.
+func addDecodedPage[T any](data map[string]interface{}, pageNumber int, dst PageAccumulator[T]) error {
+	page, err := decodePageData[T](data, pageNumber)
+	if err != nil {
+		return err
+	}
+	if err := dst.AddPage(page); err != nil {
+		if _, ok := errs.ProblemOf(err); ok {
+			return err
+		}
+		return errs.NewInternalError(errs.SubtypeUnknown,
+			"accumulate pagination page %d: %v", pageNumber, err).
+			WithCause(err)
+	}
+	return nil
+}
+
+func paginationWalkError(walkErr error) error {
+	var cursorErr *internalpagination.CursorError
+	if errors.As(walkErr, &cursorErr) {
+		if cursorErr.Kind == internalpagination.CursorMissing {
+			return invalidPageCursor("response reports more pages but returned no page token")
+		}
+		return invalidPageCursor("response repeated page token %q, which would paginate forever", cursorErr.Token)
+	}
+	var waitErr *internalpagination.WaitError
+	if errors.As(walkErr, &waitErr) {
+		return paginationWaitError(waitErr.Err)
+	}
+	if _, ok := errs.ProblemOf(walkErr); ok {
+		return walkErr
+	}
+	return errs.NewInternalError(errs.SubtypeUnknown, "paginate: %v", walkErr).WithCause(walkErr)
 }
 
 type paginationPolicy struct {
@@ -174,17 +211,7 @@ func paginationProgressEnabled(runtime *RuntimeContext) bool {
 }
 
 func waitPageDelay(ctx context.Context, delay time.Duration) error {
-	if delay <= 0 {
-		return nil
-	}
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
+	return internalpagination.WaitContext(ctx, delay)
 }
 
 func paginationWaitError(err error) error {

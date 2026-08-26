@@ -87,7 +87,7 @@
       }
     ]
   },
-  "+revision-get": {
+  "+sheet-list": {
     "risk": "read",
     "flags": [
       {
@@ -113,7 +113,7 @@
       }
     ]
   },
-  "+sheet-list": {
+  "+revision-get": {
     "risk": "read",
     "flags": [
       {
@@ -926,7 +926,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Multiple row/column ranges to delete as a JSON array (up to 100 items, e.g. `[\"5:5\",\"8:8\",\"11:13\"]` or `[\"C:C\",\"F:G\"]`); rows and columns cannot be mixed, ranges must not overlap; XOR with `--range`. CLI sorts positions in DESCENDING order into one batched delete (fail-fast, no rollback) — ascending deletion would shift later indexes as earlier rows/columns disappear; the CLI handles the ordering",
+        "desc": "Multiple row/column ranges to delete as a JSON array (up to 100 items, e.g. `[\"5:5\",\"8:8\",\"11:13\"]` or `[\"C:C\",\"F:G\"]`); rows and columns cannot be mixed, ranges must not overlap; XOR with `--range`. CLI sorts positions in DESCENDING order into one batched delete (fail-fast; read back before resending) — ascending deletion would shift later indexes as earlier rows/columns disappear; the CLI handles the ordering",
         "input": [
           "file",
           "stdin"
@@ -1811,7 +1811,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Multi-region write as a JSON array (up to 100 items), each `{sheet_name|sheet_id, range, cells}` — the sheet selector LIVES IN EACH ITEM (same convention as +batch-update sub-ops and +styles-put items; the top-level --sheet-name is rejected). cells has the same shape as `--cells` (2D array; per-cell cell_styles/border_styles allowed). The whole array goes out as ONE batched request (fail-fast, no rollback), cross-sheet supported; typical use: fixing formulas scattered across ranges/sheets — do not assemble a +batch-update operations array for this. XOR with `--range`+`--cells`; range-level uniform styling stays with +styles-put afterwards",
+        "desc": "Multi-region write as a JSON array (up to 100 items), each `{sheet_name|sheet_id, range, cells}` — the sheet selector LIVES IN EACH ITEM (same convention as +batch-update sub-ops and +styles-put items; the top-level --sheet-name is rejected). cells has the same shape as `--cells` (2D array; per-cell cell_styles/border_styles allowed). The whole array goes out as ONE batched request (fail-fast; read back to confirm what applied before resending), cross-sheet supported; typical use: fixing formulas scattered across ranges/sheets — do not assemble a +batch-update operations array for this. XOR with `--range`+`--cells`; range-level uniform styling stays with +styles-put afterwards",
         "input": [
           "file",
           "stdin"
@@ -2505,7 +2505,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Per-row height map — set different heights for many rows in one batched call (fail-fast, no rollback). Keys: single row (`\"1\"`) or closed range (`\"2:20\"`); values: pixel height (e.g. 30 / 50), `\"auto\"` (fit content) or `\"standard\"` (reset to default). Units are pixels, NOT points. Mutually exclusive with `--range` / `--height` / `--type`",
+        "desc": "Per-row height map — set different heights for many rows in one batched call (fail-fast; read back before resending). Keys: single row (`\"1\"`) or closed range (`\"2:20\"`); values: pixel height (e.g. 30 / 50), `\"auto\"` (fit content) or `\"standard\"` (reset to default). Units are pixels, NOT points. Mutually exclusive with `--range` / `--height` / `--type`",
         "input": [
           "file",
           "stdin"
@@ -2583,7 +2583,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Per-column width map — set different widths for many columns in one batched call (fail-fast, no rollback). Keys: single column (`\"A\"`) or closed range (`\"C:E\"`); values: pixel width (e.g. 80 / 120 / 200) or `\"standard\"` (reset to default). Units are pixels, NOT Excel character units (px ≈ chars × 8 + 16). Mutually exclusive with `--range` / `--width` / `--type`",
+        "desc": "Per-column width map — set different widths for many columns in one batched call (fail-fast; read back before resending). Keys: single column (`\"A\"`) or closed range (`\"C:E\"`); values: pixel width (e.g. 80 / 120 / 200) or `\"standard\"` (reset to default). Units are pixels, NOT Excel character units (px ≈ chars × 8 + 16). Mutually exclusive with `--range` / `--width` / `--type`",
         "input": [
           "file",
           "stdin"
@@ -2908,7 +2908,7 @@
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "Visual spec JSON applied to an EXISTING spreadsheet: top-level `{styles:[...]}`, one item per target sheet (`name` is the real sheet name), each giving at least one of `cell_styles` / `cell_merges` / `row_sizes` / `col_sizes` / `freeze`. The vocabulary is identical to `--styles` on `+workbook-create` / `+table-put` (cell_styles = A1 range + flat style fields, borders via the `border` shorthand {style,weight,color} applied to all four sides — border_styles only for per-side differences; row/col sizes = row/column range + size in px — type only for standard/auto; merges = cell range; freeze = `{rows:N, cols:N}`). The whole spec expands into one batched request (fail-fast, no rollback: applied sub-operations stay); ranges may target any region of the sheet",
+        "desc": "Visual spec JSON applied to an EXISTING spreadsheet: top-level `{styles:[...]}`, one item per target sheet (`name` is the real sheet name), each giving at least one of `cell_styles` / `cell_merges` / `row_sizes` / `col_sizes` / `freeze`. The vocabulary is identical to `--styles` on `+workbook-create` / `+table-put` (cell_styles = A1 range + flat style fields, borders via the `border` shorthand {style,weight,color} applied to all four sides — border_styles only for per-side differences; row/col sizes = row/column range + size in px — type only for standard/auto; merges = cell range; freeze = `{rows:N, cols:N}`). The whole spec expands into one batched request (fail-fast: do not assume what applied — read back to confirm before resending); ranges may target any region of the sheet",
         "input": [
           "file",
           "stdin"
@@ -2945,7 +2945,7 @@
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "JSON array: [{\"shortcut\":\"+xxx-yyy\",\"input\":{...}}, ...]. shortcut uses CLI names; input is that shortcut's flag set — it includes the per-operation sheet locator (sheet_id or sheet_name) but not the spreadsheet token/url (pass that once at the top level via --url/--spreadsheet-token; +batch-update has no top-level --sheet-id). input keys are the shortcut's flags flattened into JSON (e.g. \"range\":\"A11:B12\"), not another nested layer. For basic flags use lark-cli sheets <shortcut> --help; for composite JSON flags use --print-schema --flag-name <flag>. Do not pass an explicit operation field. Fail-fast by default: the first failure aborts the remaining operations and already-applied sub-operations are NOT rolled back (on \"N succeeded, M failed\" resend only the failed tail, not the whole batch); pass --continue-on-error to keep going past failures; no nesting; executed serially.",
+        "desc": "JSON array: [{\"shortcut\":\"+xxx-yyy\",\"input\":{...}}, ...]. shortcut uses CLI names; input is that shortcut's flag set — it includes the per-operation sheet locator (sheet_id or sheet_name) but not the spreadsheet token/url (pass that once at the top level via --url/--spreadsheet-token; +batch-update has no top-level --sheet-id). input keys are the shortcut's flags flattened into JSON (e.g. \"range\":\"A11:B12\"), not another nested layer. For basic flags use lark-cli sheets <shortcut> --help; for composite JSON flags use --print-schema --flag-name <flag>. Do not pass an explicit operation field. Fail-fast by default: the first failure aborts the remaining operations. Whether earlier sub-operations persisted is NOT uniform: pure cell/structure writes are only buffered and are dropped on failure (effective rollback), while chart/pivot-type sub-operations flush the buffered writes to disk before creating the object and cannot be rolled back. After a failure, assume neither full-rollback nor full-persist — check results, read back the current state (dims / target cells / object lists) to determine what actually applied, then resend only the unapplied part. Pass --continue-on-error to keep going past failures with successes preserved; no nesting; executed serially.",
         "input": [
           "file",
           "stdin"
@@ -2971,6 +2971,96 @@
         "type": "bool",
         "required": "optional",
         "desc": "Print the request template for each sub-operation; no network side effects"
+      }
+    ]
+  },
+  "+batch-chart-create": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "operations",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Chart creation operations as JSON; put each target sheet selector and `+chart-create-basic` flag directly on the item, without `shortcut` or `input`. The CLI dispatches every item through `+chart-create-basic` internally. Partial failure is enabled by default: successful charts stay applied and only failed items should be retried",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "continue-on-error",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Continue after an individual chart fails; default true",
+        "default": "true"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Print the internal MCP request template with no network side effects; tool_name / operation / basic_chart in the output are for inspection only and must not be copied back into --operations"
+      }
+    ]
+  },
+  "+batch-chart-update": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "operations",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Chart update operations as JSON; every item uses `+chart-config-update` or `+chart-data-update`, with that command's flags and target sheet selector in input. The CLI reads each current chart snapshot before building partial properties; partial failure is enabled by default",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "continue-on-error",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Continue after an individual chart fails; default true",
+        "default": "true"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Print the batch update request template and snapshot preflight note with no network side effects"
       }
     ]
   },
@@ -3355,6 +3445,753 @@
       }
     ]
   },
+  "+chart-create-basic": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "chart-type",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Chart type",
+        "enum": [
+          "column",
+          "bar",
+          "line",
+          "area",
+          "pie",
+          "scatter",
+          "combo",
+          "radar",
+          "bubble",
+          "waterfall",
+          "pareto"
+        ]
+      },
+      {
+        "name": "data-range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Data range; include headers unless --header-range is set, in which case pass data only; accepts comma-separated ranges across one or more sheets"
+      },
+      {
+        "name": "header-range",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Optional detached header range; use one row for column direction or one column for row direction, with one header per data dimension"
+      },
+      {
+        "name": "data-direction",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Data series direction; column uses the first column as categories, row uses the first row",
+        "default": "column",
+        "enum": [
+          "column",
+          "row"
+        ]
+      },
+      {
+        "name": "x-axis-numbers-as",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "How to interpret numeric X-axis values; text treats numbers as evenly spaced text categories, while values uses a continuous numeric scale and preserves true spacing",
+        "default": "text",
+        "enum": [
+          "text",
+          "values"
+        ]
+      },
+      {
+        "name": "x-axis-min",
+        "kind": "own",
+        "type": "float64",
+        "required": "optional",
+        "desc": "Lower display bound for a continuous numeric X-axis; requires --x-axis-numbers-as values"
+      },
+      {
+        "name": "x-axis-max",
+        "kind": "own",
+        "type": "float64",
+        "required": "optional",
+        "desc": "Upper display bound for a continuous numeric X-axis; requires --x-axis-numbers-as values"
+      },
+      {
+        "name": "y-axis-min",
+        "kind": "own",
+        "type": "float64",
+        "required": "optional",
+        "desc": "Lower display bound for the left Y-axis; must be less than --y-axis-max"
+      },
+      {
+        "name": "y-axis-max",
+        "kind": "own",
+        "type": "float64",
+        "required": "optional",
+        "desc": "Upper display bound for the left Y-axis; must be greater than --y-axis-min"
+      },
+      {
+        "name": "dim1-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "1-based category/X-axis dimension index within the data range; defaults to 1"
+      },
+      {
+        "name": "dim2-indexes",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Comma-separated 1-based value/Y-axis dimension indexes; must exclude dim1, at most 50. Legacy bubble calls accept 2–4 indexes in `x,y[,group][,size]` order; new calls should use role-specific indexes. Pie and pareto charts accept exactly one"
+      },
+      {
+        "name": "series-types",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Combo charts only; comma-separated series types aligned with --dim2-indexes; use column, line, or area and provide one value per selected series"
+      },
+      {
+        "name": "series-y-axes",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Combo charts only; comma-separated left or right Y-axis assignments aligned with --dim2-indexes; provide one value per selected series"
+      },
+      {
+        "name": "key-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Bubble only: 1-based key/name dimension index; mutually exclusive with dim1/dim2 indexes; defaults to 1"
+      },
+      {
+        "name": "x-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Bubble only: 1-based X-value dimension index; must be provided with --y-index"
+      },
+      {
+        "name": "y-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Bubble only: 1-based Y-value dimension index; must be provided with --x-index"
+      },
+      {
+        "name": "group-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Bubble only: optional 1-based group dimension index"
+      },
+      {
+        "name": "size-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Bubble only: optional 1-based bubble-size dimension index"
+      },
+      {
+        "name": "title",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Chart title"
+      },
+      {
+        "name": "subtitle",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Chart subtitle"
+      },
+      {
+        "name": "legend-position",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Legend position; hidden removes the legend",
+        "enum": [
+          "top",
+          "bottom",
+          "left",
+          "right",
+          "hidden"
+        ]
+      },
+      {
+        "name": "x-axis-title",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "X-axis title"
+      },
+      {
+        "name": "y-axis-title",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Left Y-axis title"
+      },
+      {
+        "name": "secondary-y-axis-title",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Right Y-axis title"
+      },
+      {
+        "name": "x-axis-label-angle",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "X-axis label angle",
+        "enum": [
+          "-90",
+          "-45",
+          "0",
+          "45",
+          "90"
+        ]
+      },
+      {
+        "name": "y-axis-label-angle",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Left Y-axis label angle",
+        "enum": [
+          "-90",
+          "-45",
+          "0",
+          "45",
+          "90"
+        ]
+      },
+      {
+        "name": "data-labels",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Data label content; combine value, category, and percentage in value_category_percentage order for any non-empty combination; series shows series names and none removes labels",
+        "enum": [
+          "none",
+          "value",
+          "category",
+          "percentage",
+          "value_category",
+          "value_percentage",
+          "category_percentage",
+          "value_category_percentage",
+          "series"
+        ]
+      },
+      {
+        "name": "data-label-position",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Pass only when the user explicitly requests a position; it only repositions existing data labels and does not enable labels by itself; omit it for chart-type-aware placement",
+        "enum": [
+          "auto",
+          "top",
+          "bottom",
+          "left",
+          "right",
+          "center",
+          "inside",
+          "outside"
+        ]
+      },
+      {
+        "name": "stack",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Stacking mode",
+        "enum": [
+          "none",
+          "normal",
+          "percent"
+        ]
+      },
+      {
+        "name": "stacked",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Compatibility alias for --stack normal",
+        "hidden": true
+      },
+      {
+        "name": "smooth",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Use smooth curves; accepts both --smooth=false and --smooth false"
+      },
+      {
+        "name": "color-palette",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Preset chart-level color palette; mutually exclusive with --colors",
+        "enum": [
+          "brandColorSeries@v2",
+          "rainbowColorSeries@v2",
+          "complementaryColorSeries@v2",
+          "converseColorSeries@v2",
+          "primaryColorSeries@v2",
+          "singleColorSeries-B-@v2",
+          "singleColorSeries-W-@v2",
+          "singleColorSeries-G-@v2",
+          "singleColorSeries-Y-@v2",
+          "singleColorSeries-O-@v2",
+          "singleColorSeries-R-@v2",
+          "singleColorSeries-D-@v2"
+        ]
+      },
+      {
+        "name": "colors",
+        "kind": "own",
+        "type": "string_slice",
+        "required": "optional",
+        "desc": "Custom chart-level series colors as a comma-separated list of at least two hex colors; mutually exclusive with --color-palette"
+      },
+      {
+        "name": "anchor-cell",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Optional chart anchor cell such as F2; defaults to the right of the data range"
+      },
+      {
+        "name": "width",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Optional chart width; must be paired with --height"
+      },
+      {
+        "name": "height",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Optional chart height; must be paired with --width"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Print the request template; no side effects"
+      }
+    ]
+  },
+  "+chart-config-update": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "chart-id",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target chart reference_id"
+      },
+      {
+        "name": "title",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Chart title"
+      },
+      {
+        "name": "subtitle",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Chart subtitle"
+      },
+      {
+        "name": "legend-position",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Legend position; hidden removes the legend",
+        "enum": [
+          "top",
+          "bottom",
+          "left",
+          "right",
+          "hidden"
+        ]
+      },
+      {
+        "name": "x-axis-title",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "X-axis title"
+      },
+      {
+        "name": "y-axis-title",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Left Y-axis title"
+      },
+      {
+        "name": "secondary-y-axis-title",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Right Y-axis title"
+      },
+      {
+        "name": "x-axis-label-angle",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "X-axis label angle",
+        "enum": [
+          "-90",
+          "-45",
+          "0",
+          "45",
+          "90"
+        ]
+      },
+      {
+        "name": "y-axis-label-angle",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Left Y-axis label angle",
+        "enum": [
+          "-90",
+          "-45",
+          "0",
+          "45",
+          "90"
+        ]
+      },
+      {
+        "name": "x-axis-min",
+        "kind": "own",
+        "type": "float64",
+        "required": "optional",
+        "desc": "Lower display bound for a continuous numeric X-axis; must be less than --x-axis-max"
+      },
+      {
+        "name": "x-axis-max",
+        "kind": "own",
+        "type": "float64",
+        "required": "optional",
+        "desc": "Upper display bound for a continuous numeric X-axis; must be greater than --x-axis-min"
+      },
+      {
+        "name": "y-axis-min",
+        "kind": "own",
+        "type": "float64",
+        "required": "optional",
+        "desc": "Lower display bound for the left Y-axis; must be less than --y-axis-max"
+      },
+      {
+        "name": "y-axis-max",
+        "kind": "own",
+        "type": "float64",
+        "required": "optional",
+        "desc": "Upper display bound for the left Y-axis; must be greater than --y-axis-min"
+      },
+      {
+        "name": "data-labels",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Data label content; combine value, category, and percentage in value_category_percentage order for any non-empty combination; series shows series names and none removes labels",
+        "enum": [
+          "none",
+          "value",
+          "category",
+          "percentage",
+          "value_category",
+          "value_percentage",
+          "category_percentage",
+          "value_category_percentage",
+          "series"
+        ]
+      },
+      {
+        "name": "data-label-position",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Pass only when the user explicitly requests a position; it only repositions existing data labels and does not enable labels by itself; omit it for chart-type-aware placement",
+        "enum": [
+          "auto",
+          "top",
+          "bottom",
+          "left",
+          "right",
+          "center",
+          "inside",
+          "outside"
+        ]
+      },
+      {
+        "name": "last-point-label",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "For line, area, radar, and linear combo series only; true shows a value label on the last data point of every series, while false removes those point labels"
+      },
+      {
+        "name": "stack",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Stacking mode",
+        "enum": [
+          "none",
+          "normal",
+          "percent"
+        ]
+      },
+      {
+        "name": "stacked",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Compatibility alias for --stack normal",
+        "hidden": true
+      },
+      {
+        "name": "smooth",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Use smooth curves; accepts both --smooth=false and --smooth false"
+      },
+      {
+        "name": "color-palette",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Preset chart-level color palette; mutually exclusive with --colors",
+        "enum": [
+          "brandColorSeries@v2",
+          "rainbowColorSeries@v2",
+          "complementaryColorSeries@v2",
+          "converseColorSeries@v2",
+          "primaryColorSeries@v2",
+          "singleColorSeries-B-@v2",
+          "singleColorSeries-W-@v2",
+          "singleColorSeries-G-@v2",
+          "singleColorSeries-Y-@v2",
+          "singleColorSeries-O-@v2",
+          "singleColorSeries-R-@v2",
+          "singleColorSeries-D-@v2"
+        ]
+      },
+      {
+        "name": "colors",
+        "kind": "own",
+        "type": "string_slice",
+        "required": "optional",
+        "desc": "Custom chart-level series colors as a comma-separated list of at least two hex colors; mutually exclusive with --color-palette"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Print the request template; no side effects"
+      }
+    ]
+  },
+  "+chart-data-update": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "chart-id",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target chart reference_id"
+      },
+      {
+        "name": "data-range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "New data range; include headers unless --header-range is set or the chart already uses detached headers; accepts comma-separated ranges across one or more sheets"
+      },
+      {
+        "name": "header-range",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Optional detached header range; enables detached header mapping, while omission preserves an existing detached mapping"
+      },
+      {
+        "name": "data-direction",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Data series direction; defaults to the existing chart direction when omitted",
+        "enum": [
+          "column",
+          "row"
+        ]
+      },
+      {
+        "name": "dim1-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "1-based category/X-axis dimension index within the data range; defaults to the first dimension"
+      },
+      {
+        "name": "dim2-indexes",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Comma-separated 1-based value/Y-axis series indexes within the data range; defaults to all dimensions except dim1"
+      },
+      {
+        "name": "key-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Bubble only: 1-based key/name dimension index; mutually exclusive with dim1/dim2 indexes; defaults to 1"
+      },
+      {
+        "name": "x-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Bubble only: 1-based X-value dimension index; must be provided with --y-index"
+      },
+      {
+        "name": "y-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Bubble only: 1-based Y-value dimension index; must be provided with --x-index"
+      },
+      {
+        "name": "group-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Bubble only: optional 1-based group dimension index"
+      },
+      {
+        "name": "size-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Bubble only: optional 1-based bubble-size dimension index"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Print the request template; no side effects"
+      }
+    ]
+  },
   "+chart-create": {
     "risk": "write",
     "flags": [
@@ -3402,7 +4239,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Print a minimal ready-to-edit --properties template for a chart type (area|bar|column|combo|line|pie|radar|scatter) and exit. Purely local: no locator flags, no network; an unknown type lists the available ones"
+        "desc": "Print a minimal ready-to-edit --properties template for a chart type (area|bar|bubble|column|combo|line|pareto|pie|radar|scatter|waterfall) and exit. Purely local: no locator flags, no network; an unknown type lists the available ones"
       },
       {
         "name": "dry-run",
@@ -3456,7 +4293,7 @@
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "Full or sufficiently complete chart config JSON (read back with `+chart-list` first, then patch)",
+        "desc": "Chart config patch JSON; send changed fields only by default; omitted fields are preserved, objects merge recursively, and arrays replace as a whole",
         "input": [
           "file",
           "stdin"
