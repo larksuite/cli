@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -24,7 +25,7 @@ var driveInspectAfter = time.After
 var DriveInspect = common.Shortcut{
 	Service:           "drive",
 	Command:           "+inspect",
-	Description:       "Inspect a Lark document URL to get its type, title, and canonical token (with wiki unwrapping)",
+	Description:       "Inspect a Lark document URL to get its type, title, URL, create time, and canonical token (with wiki unwrapping)",
 	Risk:              "read",
 	Scopes:            []string{"drive:drive.metadata:readonly"},
 	ConditionalScopes: []string{"wiki:node:retrieve"},
@@ -62,11 +63,12 @@ var DriveInspect = common.Shortcut{
 				Desc("[1] Inspect wiki node to get underlying document").
 				Params(map[string]interface{}{"token": ref.Token})
 			dry.POST("/open-apis/drive/v1/metas/batch_query").
-				Desc("[2] Batch query document metadata (title)").
+				Desc("[2] Batch query document metadata (title, URL, and create time)").
 				Body(map[string]interface{}{
 					"request_docs": []map[string]interface{}{
 						{"doc_token": "<obj_token from step 1>", "doc_type": "<obj_type from step 1>"},
 					},
+					"with_url": true,
 				})
 			return dry
 		}
@@ -77,6 +79,7 @@ var DriveInspect = common.Shortcut{
 				"request_docs": []map[string]interface{}{
 					{"doc_token": ref.Token, "doc_type": ref.Type},
 				},
+				"with_url": true,
 			})
 		return dry
 	},
@@ -134,22 +137,28 @@ var DriveInspect = common.Shortcut{
 			fmt.Fprintf(runtime.IO().ErrOut, "Wiki unwrapped to %s: %s\n", docType, common.MaskToken(docToken))
 		}
 
-		// Step 3: Call batch_query to verify and get title.
-		title, err := driveInspectFetchMetaTitle(ctx, runtime, docToken, docType)
+		// Step 3: Call batch_query to verify and get metadata used by output and citations.
+		meta, err := driveInspectFetchMeta(ctx, runtime, docToken, docType)
 		if err != nil {
 			return driveInspectAnnotateError("query_meta", err)
 		}
 
-		// Step 4: Build the resolved URL.
-		resolvedURL := common.BuildResourceURL(runtime.Config.Brand, docType, docToken)
+		// Step 4: Prefer the tenant-native URL returned by batch_query. Keep the
+		// previous synthesized URL as a compatibility fallback for incomplete
+		// metadata responses.
+		resolvedURL := meta.URL
+		if resolvedURL == "" {
+			resolvedURL = common.BuildResourceURL(runtime.Config.Brand, docType, docToken)
+		}
 
 		// Step 5: Build output.
 		result := map[string]interface{}{
-			"input_url": inputURL,
-			"type":      docType,
-			"title":     title,
-			"token":     docToken,
-			"url":       resolvedURL,
+			"input_url":   inputURL,
+			"type":        docType,
+			"title":       meta.Title,
+			"token":       docToken,
+			"url":         resolvedURL,
+			"create_time": meta.CreateTime,
 		}
 		if wikiNode != nil {
 			result["wiki_node"] = wikiNode
@@ -157,18 +166,32 @@ var DriveInspect = common.Shortcut{
 
 		runtime.OutFormat(result, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "Type:  %s\n", docType)
-			if title != "" {
-				fmt.Fprintf(w, "Title: %s\n", title)
+			if meta.Title != "" {
+				fmt.Fprintf(w, "Title: %s\n", meta.Title)
 			}
 			fmt.Fprintf(w, "Token: %s\n", docToken)
 			if resolvedURL != "" {
 				fmt.Fprintf(w, "URL:   %s\n", resolvedURL)
+			}
+			if meta.CreateTime != "" {
+				fmt.Fprintf(w, "Create time: %s\n", meta.CreateTime)
 			}
 			if wikiNode != nil {
 				fmt.Fprintf(w, "Wiki:  space_id=%s, node_token=%s\n", wikiNode["space_id"], wikiNode["node_token"])
 			}
 		})
 		return nil
+	},
+	Citation: &common.CitationDefinition{
+		SourceTypes: []citation.SourceType{
+			citation.SourceDoc,
+			citation.SourceBase,
+			citation.SourceSheet,
+			citation.SourceMindnote,
+			citation.SourceSlides,
+			citation.SourceFile,
+		},
+		Build: driveInspectCitations,
 	},
 }
 
@@ -204,20 +227,46 @@ func driveInspectResolveRef(runtime *common.RuntimeContext) (common.ResourceRef,
 	return common.ResourceRef{Type: inputType, Token: raw}, nil
 }
 
-func driveInspectFetchMetaTitle(ctx context.Context, runtime *common.RuntimeContext, token, docType string) (string, error) {
-	var title string
+type driveInspectMeta struct {
+	Title      string
+	URL        string
+	CreateTime string
+}
+
+func driveInspectFetchMeta(ctx context.Context, runtime *common.RuntimeContext, token, docType string) (driveInspectMeta, error) {
+	var meta driveInspectMeta
 	_, err := driveInspectCallWithRetry(ctx, func() (map[string]interface{}, error) {
-		got, callErr := common.FetchDriveMeta(runtime, token, docType, false)
+		data, callErr := runtime.CallAPITyped(
+			"POST",
+			"/open-apis/drive/v1/metas/batch_query",
+			nil,
+			map[string]interface{}{
+				"request_docs": []map[string]interface{}{{
+					"doc_token": token,
+					"doc_type":  docType,
+				}},
+				"with_url": true,
+			},
+		)
 		if callErr != nil {
 			return nil, callErr
 		}
-		title = got.Title
-		return map[string]interface{}{"title": got.Title}, nil
+		metas := common.GetSlice(data, "metas")
+		if len(metas) == 0 {
+			return data, nil
+		}
+		raw, _ := metas[0].(map[string]interface{})
+		meta = driveInspectMeta{
+			Title:      common.GetString(raw, "title"),
+			URL:        strings.TrimSpace(common.GetString(raw, "url")),
+			CreateTime: common.GetStringLoose(raw, "create_time"),
+		}
+		return data, nil
 	})
 	if err != nil {
-		return "", err
+		return driveInspectMeta{}, err
 	}
-	return title, nil
+	return meta, nil
 }
 
 func driveInspectCallWithRetry(ctx context.Context, call func() (map[string]interface{}, error)) (map[string]interface{}, error) {
