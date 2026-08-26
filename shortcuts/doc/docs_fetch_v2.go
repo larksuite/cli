@@ -11,12 +11,14 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
 const (
-	docsFetchExtraParam         = `{"enable_user_cite_reference_map":true,"return_html5_block_data":true}`
-	docsFetchCommentsExtraParam = `{"enable_user_cite_reference_map":true,"include_comments":true,"return_html5_block_data":true}`
+	docsFetchExtraParam                 = `{"enable_user_cite_reference_map":true,"return_html5_block_data":true}`
+	docsFetchCommentsExtraParam         = `{"enable_user_cite_reference_map":true,"include_comments":true,"return_html5_block_data":true}`
+	docsFetchCommentsCitationExtraParam = `{"enable_user_cite_reference_map":true,"include_comments":true,"return_html5_block_data":true,"return_url":true}`
 )
 
 // v2FetchFlags returns the flag definitions for the v2 (OpenAPI) fetch path.
@@ -95,9 +97,13 @@ func executeFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 }
 
 func buildFetchBody(runtime *common.RuntimeContext) map[string]interface{} {
+	extraParam := docsFetchCommentsExtraParam
+	if citation.Enabled() {
+		extraParam = docsFetchCommentsCitationExtraParam
+	}
 	body := map[string]interface{}{
 		"format":      effectiveFetchFormat(runtime),
-		"extra_param": docsFetchCommentsExtraParam,
+		"extra_param": extraParam,
 	}
 	if v := runtime.Int("revision-id"); v > 0 {
 		body["revision_id"] = v
