@@ -33,6 +33,7 @@ func init() {
 type LocalFileIO struct{}
 
 var _ fileio.WorkspaceFileIO = (*LocalFileIO)(nil)
+var _ fileio.WorkspaceTreeFileIO = (*LocalFileIO)(nil)
 
 // Open opens a local file for reading after validating the path.
 func (l *LocalFileIO) Open(name string) (fileio.File, error) {
@@ -113,4 +114,29 @@ func (l *LocalFileIO) RemoveWorkspaceEntry(path string) error {
 		return &fileio.PathValidationError{Err: err}
 	}
 	return vfs.Remove(safePath)
+}
+
+// RemoveWorkspaceTree recursively removes one validated workspace directory.
+// The root is addressed lexically after validation so a symlink swap is
+// removed as a link rather than followed into another tree.
+func (l *LocalFileIO) RemoveWorkspaceTree(path string) error {
+	if _, err := SafeOutputPath(path); err != nil {
+		return &fileio.PathValidationError{Err: err}
+	}
+	cwd, err := vfs.Getwd()
+	if err != nil {
+		return err
+	}
+	root := filepath.Join(cwd, filepath.Clean(path))
+	info, err := vfs.Lstat(root)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.Mode()&fs.ModeSymlink != 0 {
+		return &fileio.PathValidationError{Err: errors.New("workspace root must not be a symlink")}
+	}
+	return vfs.RemoveAll(root)
 }

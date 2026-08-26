@@ -139,7 +139,7 @@ func TestDocsScriptInitializedDraftAutomaticallyValidatesPresentationDecision(t 
 	require.NotEmpty(t, draftPath)
 	require.Equal(t, filepath.Dir(draftPath), workspace)
 	require.False(t, gjson.Get(initialized.Stdout, "data.draft_file_created").Exists())
-	require.Equal(t, "The workspace directory has been created successfully. draft_path points to a new XML file that does not exist yet. Create and write the file directly without reading it first.", gjson.Get(initialized.Stdout, "data.tip").String())
+	require.Equal(t, "The workspace directory has been created successfully. draft_path points to a new XML file that does not exist yet. Create and write that UTF-8 file relative to the same working directory used for init-draft, and run parse and create from that same working directory. Do not pipe document text through a shell text command.", gjson.Get(initialized.Stdout, "data.tip").String())
 	require.Len(t, gjson.Get(initialized.Stdout, "data").Map(), 3)
 	_, statErr := os.Stat(filepath.Join(workDir, draftPath))
 	require.True(t, os.IsNotExist(statErr), "reserved draft XML already exists: %v", statErr)
@@ -198,7 +198,7 @@ func TestDocsScriptInitializedDraftPreflightsBlockedRemoteImage(t *testing.T) {
 	require.NotEmpty(t, draftPath)
 	require.Equal(t, filepath.Dir(draftPath), workspace)
 	require.False(t, gjson.Get(initialized.Stdout, "data.draft_file_created").Exists())
-	require.Equal(t, "The workspace directory has been created successfully. draft_path points to a new XML file that does not exist yet. Create and write the file directly without reading it first.", gjson.Get(initialized.Stdout, "data.tip").String())
+	require.Equal(t, "The workspace directory has been created successfully. draft_path points to a new XML file that does not exist yet. Create and write that UTF-8 file relative to the same working directory used for init-draft, and run parse and create from that same working directory. Do not pipe document text through a shell text command.", gjson.Get(initialized.Stdout, "data.tip").String())
 	_, statErr := os.Stat(filepath.Join(workDir, draftPath))
 	require.True(t, os.IsNotExist(statErr), "reserved draft XML already exists: %v", statErr)
 	require.NoError(t, os.WriteFile(
@@ -445,7 +445,7 @@ func TestDocsScriptInitDraftCreatesUniqueWorkspacesWithoutXML(t *testing.T) {
 		randomPart := strings.TrimSuffix(strings.TrimPrefix(directory, "draft_"), "_folder")
 		require.Equal(t, directory, workspace)
 		require.False(t, gjson.Get(outcome.result.Stdout, "data.draft_file_created").Exists())
-		require.Equal(t, "The workspace directory has been created successfully. draft_path points to a new XML file that does not exist yet. Create and write the file directly without reading it first.", gjson.Get(outcome.result.Stdout, "data.tip").String())
+		require.Equal(t, "The workspace directory has been created successfully. draft_path points to a new XML file that does not exist yet. Create and write that UTF-8 file relative to the same working directory used for init-draft, and run parse and create from that same working directory. Do not pipe document text through a shell text command.", gjson.Get(outcome.result.Stdout, "data.tip").String())
 		require.Equal(t, "draft.xml", filepath.Base(path))
 		require.Equal(t, filepath.Base(directory), directory)
 		require.True(t, strings.HasPrefix(directory, "draft_"), "path: %q", path)
@@ -461,6 +461,85 @@ func TestDocsScriptInitDraftCreatesUniqueWorkspacesWithoutXML(t *testing.T) {
 		require.Equal(t, decision, string(savedDecision))
 	}
 	require.Len(t, seen, count)
+}
+
+func TestDocsScriptCleanupDraftRemovesInitializedWorkspace(t *testing.T) {
+	workDir := t.TempDir()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+	decision := `{"audience":"reader","reader_task":"understand the topic","genre_contract":"none","adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`
+	initialized, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"docs", "+script",
+			"--command", "init-draft",
+			"--presentation-decision", decision,
+		},
+		DefaultAs: "bot",
+		WorkDir:   workDir,
+		Env:       docsScriptE2EEnv(t),
+	})
+	require.NoError(t, err)
+	initialized.AssertExitCode(t, 0)
+	initialized.AssertStdoutStatus(t, true)
+	workspace := gjson.Get(initialized.Stdout, "data.workspace").String()
+	draftPath := gjson.Get(initialized.Stdout, "data.draft_path").String()
+	require.NotEmpty(t, workspace)
+	require.NoError(t, os.WriteFile(filepath.Join(workDir, draftPath), []byte(`<p>draft</p>`), 0o600))
+	assetPath := filepath.Join(workDir, workspace, "assets", "image.png")
+	require.NoError(t, os.MkdirAll(filepath.Dir(assetPath), 0o700))
+	require.NoError(t, os.WriteFile(assetPath, []byte("image"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(workDir, "keep.txt"), []byte("keep"), 0o600))
+
+	cleaned, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"docs", "+script",
+			"--command", "cleanup-draft",
+			"--workspace", workspace,
+		},
+		DefaultAs: "bot",
+		WorkDir:   workDir,
+		Env:       docsScriptE2EEnv(t),
+	})
+	require.NoError(t, err)
+	cleaned.AssertExitCode(t, 0)
+	cleaned.AssertStdoutStatus(t, true)
+	require.Equal(t, workspace, gjson.Get(cleaned.Stdout, "data.workspace").String())
+	require.True(t, gjson.Get(cleaned.Stdout, "data.removed").Bool())
+	_, statErr := os.Stat(filepath.Join(workDir, workspace))
+	require.True(t, os.IsNotExist(statErr), "workspace still exists: %v", statErr)
+	_, statErr = os.Stat(filepath.Join(workDir, "keep.txt"))
+	require.NoError(t, statErr)
+}
+
+func TestDocsScriptCleanupDraftDryRunDoesNotRemove(t *testing.T) {
+	workDir := t.TempDir()
+	workspace := "draft_a1b2c3d4_folder"
+	require.NoError(t, os.Mkdir(filepath.Join(workDir, workspace), 0o700))
+	markerPath := filepath.Join(workDir, workspace, ".presentation-decision.json")
+	require.NoError(t, os.WriteFile(markerPath, []byte("{}"), 0o600))
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"docs", "+script",
+			"--command", "cleanup-draft",
+			"--workspace", workspace,
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+		WorkDir:   workDir,
+		Env:       docsScriptE2EEnv(t),
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+	result.AssertStdoutStatus(t, true)
+	require.Equal(t, "cleanup-draft", gjson.Get(result.Stdout, "data.command").String())
+	require.Equal(t, workspace, gjson.Get(result.Stdout, "data.workspace").String())
+	require.True(t, gjson.Get(result.Stdout, "data.recursive").Bool())
+	require.False(t, gjson.Get(result.Stdout, "data.network").Bool())
+	_, statErr := os.Stat(markerPath)
+	require.NoError(t, statErr)
 }
 
 func TestDocsScriptDryRunIsLocal(t *testing.T) {

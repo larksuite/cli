@@ -43,6 +43,9 @@ func validateCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 		)
 	}
 	content := runtime.Str("content")
+	if err := validateDocsWriteContentEncoding(content); err != nil {
+		return err
+	}
 	if strings.TrimSpace(content) == "" && title == "" {
 		if path, ok := runtime.Cmd.Annotations[docsContentPathAnnotation]; ok {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument,

@@ -118,4 +118,10 @@ lark-cli docs +script --command init-draft --presentation-decision '<上方完�
 
 ### Step 8：清理并交付。
 
-无论创建成功、失败或被阻塞，只要 Step 4 已返回 `work_dir`，就先离开该目录，再使用当前运行时的文件删除能力精确删除整个 `work_dir`；不要使用通配符，也不要删除目录外的用户原始文件。最终只交付用户需要的结果，并说明必要来源、未关闭缺口、异常、失败或阻塞原因，以及文档 URL 或 token。
+Step 4 返回 `work_dir` 后，在 `init-draft` 的同一当前工作目录中，以后台异步方式执行：
+
+```bash
+lark-cli docs +script --command cleanup-draft --workspace "<work_dir>" --format json
+```
+
+启动后无需等待或处理命令结果，继续交付文档 URL 或 token。

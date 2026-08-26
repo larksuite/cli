@@ -6,8 +6,8 @@ package doc
 import "github.com/larksuite/cli/shortcuts/common"
 
 const (
-	docsCreateContentFlagBase = "document body; XML by default or Markdown when --doc-format markdown."
-	docsUpdateContentFlagBase = "replacement or inserted content; XML by default or Markdown when --doc-format markdown; empty with str_replace deletes match."
+	docsCreateContentFlagBase = "UTF-8 document body; XML by default or Markdown when --doc-format markdown."
+	docsUpdateContentFlagBase = "UTF-8 replacement or inserted content; XML by default or Markdown when --doc-format markdown; empty with str_replace deletes match."
 )
 
 // Shortcuts returns all docs shortcuts.

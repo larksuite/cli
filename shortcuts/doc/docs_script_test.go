@@ -27,6 +27,8 @@ import (
 
 func TestDocsScriptDoesNotExposeRemovedCommandsOrFlags(t *testing.T) {
 	foundCommand := false
+	foundCleanup := false
+	foundWorkspace := false
 	for _, flag := range DocsScript.Flags {
 		switch flag.Name {
 		case "strict", "output", "overwrite", "file-name":
@@ -34,14 +36,47 @@ func TestDocsScriptDoesNotExposeRemovedCommandsOrFlags(t *testing.T) {
 		case "command":
 			foundCommand = true
 			for _, value := range flag.Enum {
+				if value == docsScriptCleanupDraft {
+					foundCleanup = true
+				}
 				if value == "markdown-to-xml" || value == "create-temp-xml" {
 					t.Fatalf("docs +script still exposes removed %s command", value)
 				}
 			}
+		case "workspace":
+			foundWorkspace = true
 		}
 	}
 	if !foundCommand {
 		t.Fatal("docs +script does not expose --command")
+	}
+	if !foundCleanup || !foundWorkspace {
+		t.Fatalf("docs +script cleanup surface: command=%v workspace=%v", foundCleanup, foundWorkspace)
+	}
+	if DocsScript.Risk != "write" {
+		t.Fatalf("DocsScript.Risk = %q, want write for local workspace mutations", DocsScript.Risk)
+	}
+}
+
+func TestDocsCreateWorkflowStartsDraftCleanupInBackground(t *testing.T) {
+	workflow, err := os.ReadFile("../../skills/lark-doc/references/lark-doc-create-workflow.md")
+	if err != nil {
+		t.Fatalf("read create workflow: %v", err)
+	}
+	text := string(workflow)
+	for _, want := range []string{
+		`lark-cli docs +script --command cleanup-draft --workspace "<work_dir>" --format json`,
+		"以后台异步方式执行",
+		"启动后无需等待或处理命令结果",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("create workflow missing background cleanup contract %q", want)
+		}
+	}
+	for _, forbidden := range []string{"rm -rf", "使用当前运行时的文件删除能力精确删除整个 `work_dir`", "询问用户是否清理"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("create workflow still instructs generic workspace deletion %q", forbidden)
+		}
 	}
 }
 
@@ -53,7 +88,13 @@ func TestDocsScriptPresentationDecisionFlagAcceptsFileAndStdin(t *testing.T) {
 		if len(flag.Input) != 2 || flag.Input[0] != common.File || flag.Input[1] != common.Stdin {
 			t.Fatalf("presentation-decision Input = %#v, want file and stdin", flag.Input)
 		}
-		for _, want := range []string{"genre_contract and adapter", `"none"`, "or null"} {
+		for _, want := range []string{
+			"genre_contract and adapter",
+			`"none"`,
+			"or null",
+			"must be valid UTF-8",
+			"@relative-file is recommended for agent workflows",
+		} {
 			if !strings.Contains(flag.Desc, want) {
 				t.Fatalf("presentation-decision help = %q, want it to contain %q", flag.Desc, want)
 			}
@@ -847,6 +888,154 @@ func TestDocsScriptInitDraftCreatesUniqueWorkspacesWithoutXML(t *testing.T) {
 	}
 }
 
+func TestDocsScriptCleanupDraftRemovesOnlyInitializedWorkspace(t *testing.T) {
+	workDir := t.TempDir()
+	withDocsWorkingDir(t, workDir)
+	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-cleanup-draft"))
+	decision := `{"audience":"reader","reader_task":"read the draft","genre_contract":"none","adapter":null,"presentation_mode":"normal","visual_plan":{"reason":"plain text is sufficient","blocks":[]}}`
+
+	err := mountAndRunDocs(t, DocsScript, []string{
+		"+script",
+		"--command", docsScriptInitDraft,
+		"--presentation-decision", decision,
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("initialize draft workspace: %v", err)
+	}
+	var initialized struct {
+		Data docsScriptDraftResult `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &initialized); err != nil {
+		t.Fatalf("decode init result: %v\n%s", err, stdout)
+	}
+	workspace := initialized.Data.Workspace
+	if err := os.WriteFile(initialized.Data.DraftPath, []byte(`<p>draft</p>`), 0o600); err != nil {
+		t.Fatalf("write draft: %v", err)
+	}
+	assetPath := filepath.Join(workspace, "assets", "image.png")
+	if err := os.MkdirAll(filepath.Dir(assetPath), 0o700); err != nil {
+		t.Fatalf("create asset directory: %v", err)
+	}
+	if err := os.WriteFile(assetPath, []byte("image"), 0o600); err != nil {
+		t.Fatalf("write asset: %v", err)
+	}
+	if err := os.WriteFile("keep.txt", []byte("keep"), 0o600); err != nil {
+		t.Fatalf("write sibling: %v", err)
+	}
+
+	stdout.Reset()
+	err = mountAndRunDocs(t, DocsScript, []string{
+		"+script",
+		"--command", docsScriptCleanupDraft,
+		"--workspace", workspace,
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("clean up draft workspace: %v", err)
+	}
+	var cleaned struct {
+		OK   bool                    `json:"ok"`
+		Data docsScriptCleanupResult `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &cleaned); err != nil {
+		t.Fatalf("decode cleanup result: %v\n%s", err, stdout)
+	}
+	if !cleaned.OK || !cleaned.Data.Removed || cleaned.Data.Workspace != workspace {
+		t.Fatalf("cleanup result = %+v", cleaned)
+	}
+	if _, err := os.Stat(workspace); !os.IsNotExist(err) {
+		t.Fatalf("workspace still exists or stat failed unexpectedly: %v", err)
+	}
+	if _, err := os.Stat("keep.txt"); err != nil {
+		t.Fatalf("cleanup removed sibling: %v", err)
+	}
+
+	stdout.Reset()
+	err = mountAndRunDocs(t, DocsScript, []string{
+		"+script",
+		"--command", docsScriptCleanupDraft,
+		"--workspace", workspace,
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("repeat cleanup: %v", err)
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &cleaned); err != nil {
+		t.Fatalf("decode repeated cleanup result: %v\n%s", err, stdout)
+	}
+	if cleaned.Data.Removed {
+		t.Fatalf("repeated cleanup result = %+v, want removed=false", cleaned.Data)
+	}
+}
+
+func TestDocsScriptCleanupDraftRejectsUnownedWorkspace(t *testing.T) {
+	workDir := t.TempDir()
+	withDocsWorkingDir(t, workDir)
+	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-cleanup-unowned"))
+
+	err := mountAndRunDocs(t, DocsScript, []string{
+		"+script",
+		"--command", docsScriptCleanupDraft,
+		"--workspace", "unrelated_folder",
+	}, f, nil)
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--workspace")
+
+	workspace := "draft_a1b2c3d4_folder"
+	if err := os.Mkdir(workspace, 0o700); err != nil {
+		t.Fatalf("create matching unowned directory: %v", err)
+	}
+	keepPath := filepath.Join(workspace, "keep.txt")
+	if err := os.WriteFile(keepPath, []byte("keep"), 0o600); err != nil {
+		t.Fatalf("write unowned file: %v", err)
+	}
+	err = mountAndRunDocs(t, DocsScript, []string{
+		"+script",
+		"--command", docsScriptCleanupDraft,
+		"--workspace", workspace,
+	}, f, nil)
+	assertValidationContract(t, err, errs.SubtypeFailedPrecondition, "--workspace")
+	if _, err := os.Stat(keepPath); err != nil {
+		t.Fatalf("unowned workspace was modified: %v", err)
+	}
+}
+
+func TestDocsScriptCleanupDraftDryRunDoesNotRemove(t *testing.T) {
+	workDir := t.TempDir()
+	withDocsWorkingDir(t, workDir)
+	workspace := "draft_a1b2c3d4_folder"
+	if err := os.Mkdir(workspace, 0o700); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, docsScriptDecisionFile), []byte("{}"), 0o600); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-cleanup-dry-run"))
+
+	err := mountAndRunDocs(t, DocsScript, []string{
+		"+script",
+		"--command", docsScriptCleanupDraft,
+		"--workspace", workspace,
+		"--dry-run",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("dry-run cleanup: %v", err)
+	}
+	var got struct {
+		Command   string `json:"command"`
+		Workspace string `json:"workspace"`
+		Recursive bool   `json:"recursive"`
+		Network   bool   `json:"network"`
+	}
+	decodeDocsScriptDryRun(t, stdout, &got)
+	if got.Command != docsScriptCleanupDraft || got.Workspace != workspace || !got.Recursive || got.Network {
+		t.Fatalf("dry-run output = %+v", got)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, docsScriptDecisionFile)); err != nil {
+		t.Fatalf("dry-run removed workspace: %v", err)
+	}
+}
+
 type docsScriptFailingFileIO struct {
 	fileio.WorkspaceFileIO
 	failSaveAt  int
@@ -968,6 +1157,10 @@ type docsScriptBasicFileIO struct {
 	fileio.FileIO
 }
 
+type docsScriptEntryOnlyFileIO struct {
+	fileio.WorkspaceFileIO
+}
+
 func TestDocsScriptInitDraftRequiresWorkspaceFileIO(t *testing.T) {
 	workDir := t.TempDir()
 	withDocsWorkingDir(t, workDir)
@@ -992,6 +1185,27 @@ func TestDocsScriptInitDraftRequiresWorkspaceFileIO(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("unsupported FileIO created workspace entries: %+v", entries)
+	}
+}
+
+func TestDocsScriptCleanupDraftRequiresWorkspaceTreeFileIO(t *testing.T) {
+	workDir := t.TempDir()
+	withDocsWorkingDir(t, workDir)
+	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-workspace-tree-fileio"))
+	baseFileIO, ok := f.ResolveFileIO(context.Background()).(fileio.WorkspaceFileIO)
+	if !ok {
+		t.Fatalf("default FileIO does not implement fileio.WorkspaceFileIO")
+	}
+	f.FileIOProvider = docsScriptFileIOProvider{fileIO: docsScriptEntryOnlyFileIO{WorkspaceFileIO: baseFileIO}}
+
+	err := mountAndRunDocs(t, DocsScript, []string{
+		"+script",
+		"--command", docsScriptCleanupDraft,
+		"--workspace", "draft_a1b2c3d4_folder",
+	}, f, nil)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeFailedPrecondition {
+		t.Fatalf("problem = %+v, ok=%v, want validation/failed_precondition", problem, ok)
 	}
 }
 
@@ -1297,7 +1511,7 @@ func TestDocsScriptHelpExamplesAreCrossShellSafe(t *testing.T) {
 	if strings.Contains(cmd.Example, "--content @") {
 		t.Fatalf("help examples contain an unquoted @file argument: %q", cmd.Example)
 	}
-	for _, want := range []string{`--command init-draft --presentation-decision`, `--content "@./draft.xml"`} {
+	for _, want := range []string{`--presentation-decision "@./presentation-decision.json"`, `--content "@./draft.xml"`} {
 		if !strings.Contains(cmd.Example, want) {
 			t.Errorf("help examples missing %q: %q", want, cmd.Example)
 		}

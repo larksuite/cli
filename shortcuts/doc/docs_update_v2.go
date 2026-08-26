@@ -69,6 +69,9 @@ func validateUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --command %q, valid: str_replace | block_delete | block_insert_after | block_copy_insert_after | block_replace | block_move_after | overwrite | append", cmd).WithParam("--command")
 	}
 	content := runtime.Str("content")
+	if err := validateDocsWriteContentEncoding(content); err != nil {
+		return err
+	}
 	if err := validateUpdateReferenceMap(runtime, cmd, content); err != nil {
 		return err
 	}

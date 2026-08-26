@@ -214,7 +214,7 @@ func TestRegisterShortcutsDocsShortcutSurfaceIsV2Only(t *testing.T) {
 			hiddenFlags:  []string{"api-version", "markdown", "folder-token", "wiki-node", "wiki-space"},
 			contentHelp: []string{
 				"--title",
-				"document body; XML by default or Markdown when --doc-format markdown",
+				"UTF-8 document body; XML by default or Markdown when --doc-format markdown",
 			},
 			unwanted: []string{"--api-version", "--markdown", "--folder-token", "--wiki-node", "--wiki-space"},
 		},
@@ -233,7 +233,7 @@ func TestRegisterShortcutsDocsShortcutSurfaceIsV2Only(t *testing.T) {
 			visibleFlag:  "--command",
 			hiddenFlags:  []string{"api-version", "mode", "markdown", "selection-with-ellipsis", "selection-by-title", "new-title"},
 			contentHelp: []string{
-				"replacement or inserted content; XML by default or Markdown when --doc-format markdown",
+				"UTF-8 replacement or inserted content; XML by default or Markdown when --doc-format markdown",
 			},
 			unwanted: []string{"--api-version", "--mode", "--markdown", "--selection-with-ellipsis", "--selection-by-title", "--new-title"},
 		},

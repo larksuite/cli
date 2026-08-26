@@ -251,6 +251,54 @@ func TestLocalFileIO_RemoveWorkspaceEntry_IsValidatedAndNonRecursive(t *testing.
 	}
 }
 
+func TestLocalFileIO_RemoveWorkspaceTree_IsValidatedRecursiveAndDoesNotFollowRootSymlink(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
+
+	fio := &LocalFileIO{}
+	workspace := "draft_workspace"
+	nestedPath := filepath.Join(workspace, "assets", "image.png")
+	if _, err := fio.Save(nestedPath, fileio.SaveOptions{}, strings.NewReader("image")); err != nil {
+		t.Fatalf("Save nested workspace file: %v", err)
+	}
+	if err := os.WriteFile("keep.txt", []byte("keep"), 0o600); err != nil {
+		t.Fatalf("write sibling: %v", err)
+	}
+
+	if err := fio.RemoveWorkspaceTree(workspace); err != nil {
+		t.Fatalf("RemoveWorkspaceTree: %v", err)
+	}
+	if _, err := os.Stat(workspace); !os.IsNotExist(err) {
+		t.Fatalf("workspace still exists or stat failed unexpectedly: %v", err)
+	}
+	if _, err := os.Stat("keep.txt"); err != nil {
+		t.Fatalf("workspace removal deleted sibling: %v", err)
+	}
+	if err := fio.RemoveWorkspaceTree(workspace); err != nil {
+		t.Fatalf("idempotent RemoveWorkspaceTree: %v", err)
+	}
+	if err := fio.RemoveWorkspaceTree("../outside"); !errors.Is(err, fileio.ErrPathValidation) {
+		t.Fatalf("traversal error = %v, want fileio.ErrPathValidation", err)
+	}
+
+	target := "target"
+	if err := os.Mkdir(target, 0o700); err != nil {
+		t.Fatalf("create symlink target: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "keep.txt"), []byte("keep"), 0o600); err != nil {
+		t.Fatalf("write symlink target file: %v", err)
+	}
+	if err := os.Symlink(target, workspace); err != nil {
+		t.Skipf("create symlink: %v", err)
+	}
+	if err := fio.RemoveWorkspaceTree(workspace); !errors.Is(err, fileio.ErrPathValidation) {
+		t.Fatalf("symlink-root error = %v, want fileio.ErrPathValidation", err)
+	}
+	if _, err := os.Stat(filepath.Join(target, "keep.txt")); err != nil {
+		t.Fatalf("symlink-root cleanup touched target: %v", err)
+	}
+}
+
 // ── ResolvePath ──
 
 func TestLocalFileIO_ResolvePath_ReturnsAbsolute(t *testing.T) {

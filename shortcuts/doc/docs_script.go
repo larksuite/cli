@@ -27,13 +27,14 @@ import (
 const (
 	docsScriptParse                 = "parse"
 	docsScriptInitDraft             = "init-draft"
+	docsScriptCleanupDraft          = "cleanup-draft"
 	docsScriptDraftDirectoryPattern = "draft_*_folder"
 	docsScriptDraftDirectoryPrefix  = "draft_"
 	docsScriptDraftDirectorySuffix  = "_folder"
 	docsScriptDraftXMLFileName      = "draft.xml"
 	docsScriptDraftRandomHexLength  = 8
 	docsScriptDecisionFile          = ".presentation-decision.json"
-	docsScriptDraftTip              = "The workspace directory has been created successfully. draft_path points to a new XML file that does not exist yet. Create and write the file directly without reading it first."
+	docsScriptDraftTip              = "The workspace directory has been created successfully. draft_path points to a new XML file that does not exist yet. Create and write that UTF-8 file relative to the same working directory used for init-draft, and run parse and create from that same working directory. Do not pipe document text through a shell text command."
 	docsScriptListBlockType         = "list"
 	docsScriptAssessmentPassed      = "passed"
 	docsScriptAssessmentFailed      = "failed"
@@ -51,8 +52,8 @@ const (
 var DocsScript = common.Shortcut{
 	Service:     "docs",
 	Command:     "+script",
-	Description: "Initialize a document draft workspace, or parse, preflight, and profile documents",
-	Risk:        "read",
+	Description: "Initialize or clean up a document draft workspace, or parse, preflight, and profile documents",
+	Risk:        "write",
 	AuthTypes:   []string{"user", "bot"},
 	Scopes:      []string{},
 	ConditionalScopes: []string{
@@ -63,11 +64,15 @@ var DocsScript = common.Shortcut{
 			Name:     "command",
 			Desc:     "local document operation",
 			Required: true,
-			Enum:     []string{docsScriptInitDraft, docsScriptParse},
+			Enum:     []string{docsScriptInitDraft, docsScriptCleanupDraft, docsScriptParse},
+		},
+		{
+			Name: "workspace",
+			Desc: "draft workspace returned by init-draft; required by cleanup-draft",
 		},
 		{
 			Name:  "content",
-			Desc:  "local XML content for parse; use @relative-file or - for stdin; mutually exclusive with --doc",
+			Desc:  "local XML content for parse; must be valid UTF-8; @relative-file under the command working directory is recommended for agent workflows; - reads stdin; mutually exclusive with --doc",
 			Input: []string{common.File, common.Stdin},
 		},
 		{
@@ -76,7 +81,7 @@ var DocsScript = common.Shortcut{
 		},
 		{
 			Name:  "presentation-decision",
-			Desc:  "Presentation Decision JSON required by init-draft and saved as the draft profile baseline; genre_contract and adapter accept a short name, \"none\", or null; accepts inline JSON (recommended for init-draft), @relative-file, or - for stdin",
+			Desc:  "Presentation Decision JSON required by init-draft and saved as the draft profile baseline; genre_contract and adapter accept a short name, \"none\", or null; must be valid UTF-8; @relative-file is recommended for agent workflows; also accepts inline JSON or - for stdin",
 			Input: []string{common.File, common.Stdin},
 		},
 	},
@@ -159,6 +164,11 @@ type docsScriptDraftResult struct {
 	Tip       string `json:"tip"`
 }
 
+type docsScriptCleanupResult struct {
+	Workspace string `json:"workspace"`
+	Removed   bool   `json:"removed"`
+}
+
 type docsScriptWorkspace struct {
 	path   string
 	fileIO fileio.WorkspaceFileIO
@@ -185,7 +195,8 @@ type docsScriptFetchResponse struct {
 
 func installDocsScriptHelp(cmd *cobra.Command) {
 	installDocsContentPathCapture(cmd)
-	cmd.Example = `  lark-cli docs +script --command init-draft --presentation-decision '<JSON>'
+	cmd.Example = `  lark-cli docs +script --command init-draft --presentation-decision "@./presentation-decision.json"
+  lark-cli docs +script --command cleanup-draft --workspace "draft_a1b2c3d4_folder"
   lark-cli docs +script --command parse --content "@./draft.xml"
   lark-cli docs +script --command parse --doc "https://example.larksuite.com/docx/doxcn..."`
 }
@@ -195,6 +206,32 @@ func validateDocsScript(_ context.Context, runtime *common.RuntimeContext) error
 	content := strings.TrimSpace(runtime.Str("content"))
 	doc := strings.TrimSpace(runtime.Str("doc"))
 	presentationDecision := strings.TrimSpace(runtime.Str("presentation-decision"))
+	workspace := strings.TrimSpace(runtime.Str("workspace"))
+	if command == docsScriptCleanupDraft {
+		switch {
+		case content != "":
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--content is not supported with --command %s", command).WithParam("--content")
+		case doc != "":
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--doc is not supported with --command %s", command).WithParam("--doc")
+		case presentationDecision != "":
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--presentation-decision is not supported with --command %s", command).WithParam("--presentation-decision")
+		case workspace == "":
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--workspace is required with --command %s", command).WithParam("--workspace")
+		case !isDocsScriptWorkspaceDirectory(workspace):
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--workspace must be the draft_<8 hex characters>_folder path returned by init-draft").
+				WithParam("--workspace")
+		}
+		return nil
+	}
+	if workspace != "" {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--workspace is only supported with --command %s", docsScriptCleanupDraft).WithParam("--workspace")
+	}
 	if presentationDecision != "" {
 		if command != docsScriptParse && command != docsScriptInitDraft {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument,
@@ -217,6 +254,10 @@ func validateDocsScript(_ context.Context, runtime *common.RuntimeContext) error
 				"--presentation-decision is required with --command init-draft").WithParam("--presentation-decision")
 		}
 		return nil
+	}
+	if command != docsScriptParse {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"unsupported --command %q", command).WithParam("--command")
 	}
 	if content == "" && doc == "" {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "one of --content or --doc is required").WithParams(
@@ -251,6 +292,14 @@ func validateDocsScript(_ context.Context, runtime *common.RuntimeContext) error
 }
 
 func dryRunDocsScript(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	if runtime.Str("command") == docsScriptCleanupDraft {
+		return common.NewDryRunAPI().
+			Desc("Remove one CLI-owned document draft workspace recursively; no API call is made").
+			Set("command", docsScriptCleanupDraft).
+			Set("workspace", strings.TrimSpace(runtime.Str("workspace"))).
+			Set("recursive", true).
+			Set("network", false)
+	}
 	if runtime.Str("command") == docsScriptInitDraft {
 		dry := common.NewDryRunAPI().
 			Desc("Create a unique draft workspace, preserve its Presentation Decision, and reserve a new XML path without creating the XML; no API call is made").
@@ -299,6 +348,8 @@ func executeDocsScript(_ context.Context, runtime *common.RuntimeContext) error 
 	switch command {
 	case docsScriptInitDraft:
 		return initDocsScriptDraft(runtime)
+	case docsScriptCleanupDraft:
+		return cleanupDocsScriptDraft(runtime)
 	case docsScriptParse:
 		inputParam := "--content"
 		inputLabel := "--content"
@@ -751,6 +802,64 @@ func initDocsScriptDraft(runtime *common.RuntimeContext) error {
 	return nil
 }
 
+func cleanupDocsScriptDraft(runtime *common.RuntimeContext) error {
+	workspace := strings.TrimSpace(runtime.Str("workspace"))
+	resolvedFileIO := runtime.FileIO()
+	if resolvedFileIO == nil {
+		return errs.NewInternalError(errs.SubtypeFileIO,
+			"resolve draft workspace %s: no file I/O provider registered", workspace)
+	}
+	treeFileIO, ok := resolvedFileIO.(fileio.WorkspaceTreeFileIO)
+	if !ok {
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+			"configured file I/O provider does not support recursive draft workspace cleanup")
+	}
+
+	workspaceInfo, err := resolvedFileIO.Stat(workspace)
+	if errors.Is(err, fs.ErrNotExist) {
+		runtime.Out(docsScriptCleanupResult{Workspace: workspace, Removed: false}, nil)
+		return runtime.OutputError()
+	}
+	if err != nil {
+		return docsScriptCleanupFileError("inspect draft workspace", "--workspace", err)
+	}
+	if !workspaceInfo.IsDir() {
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+			"refusing to remove draft workspace %s because it is not a directory", workspace).
+			WithParam("--workspace")
+	}
+	decisionPath := filepath.Join(workspace, docsScriptDecisionFile)
+	decisionInfo, err := resolvedFileIO.Stat(decisionPath)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+				"refusing to remove draft workspace %s because its CLI-owned marker is missing", workspace).
+				WithParam("--workspace").
+				WithHint("pass the exact data.workspace value returned by docs +script --command init-draft")
+		}
+		return docsScriptCleanupFileError("inspect draft workspace marker", "--workspace", err)
+	}
+	if decisionInfo.IsDir() {
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+			"refusing to remove draft workspace %s because its CLI-owned marker is not a file", workspace).
+			WithParam("--workspace")
+	}
+	if err := treeFileIO.RemoveWorkspaceTree(workspace); err != nil {
+		return docsScriptCleanupFileError("remove draft workspace", "--workspace", err)
+	}
+	runtime.Out(docsScriptCleanupResult{Workspace: workspace, Removed: true}, nil)
+	return runtime.OutputError()
+}
+
+func docsScriptCleanupFileError(action, param string, err error) error {
+	if errors.Is(err, fileio.ErrPathValidation) {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"%s: %s", action, err).WithParam(param).WithCause(err)
+	}
+	return errs.NewInternalError(errs.SubtypeFileIO,
+		"%s: %s", action, err).WithCause(err)
+}
+
 func newDocsScriptWorkspace(runtime *common.RuntimeContext) (docsScriptWorkspace, error) {
 	path, err := newDocsScriptWorkspacePath()
 	if err != nil {
@@ -831,6 +940,12 @@ func isDocsScriptWorkspacePath(path string) bool {
 		filepath.Base(path) == docsScriptDraftXMLFileName &&
 		strings.HasPrefix(directoryName, docsScriptDraftDirectoryPrefix) && strings.HasSuffix(directoryName, docsScriptDraftDirectorySuffix) &&
 		len(randomPart) == docsScriptDraftRandomHexLength && randomErr == nil
+}
+
+func isDocsScriptWorkspaceDirectory(path string) bool {
+	directory := filepath.Clean(path)
+	return filepath.Dir(directory) == "." &&
+		isDocsScriptWorkspacePath(filepath.Join(directory, docsScriptDraftXMLFileName))
 }
 
 func newDocsScriptWorkspacePath() (string, error) {

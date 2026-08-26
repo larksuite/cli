@@ -69,6 +69,17 @@ type WorkspaceFileIO interface {
 	RemoveWorkspaceEntry(path string) error
 }
 
+// WorkspaceTreeFileIO is an optional extension for commands that own an
+// entire temporary workspace. RemoveWorkspaceTree may recursively remove the
+// exact workspace tree named by path, but must validate the path using the
+// same storage boundary as the embedded FileIO methods and must not follow a
+// workspace-root symlink. Callers remain responsible for proving that the
+// path identifies a workspace owned by their command before invoking it.
+type WorkspaceTreeFileIO interface {
+	FileIO
+	RemoveWorkspaceTree(path string) error
+}
+
 // FileInfo is a minimal subset of os.FileInfo covering actual CLI usage.
 // os.FileInfo satisfies this interface.
 type FileInfo interface {

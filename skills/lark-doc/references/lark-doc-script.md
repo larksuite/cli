@@ -5,6 +5,7 @@
 | `--command` | 用途 |
 |-|-|
 | `init-draft` | 创建带 Presentation Decision 基线的独占工作区，并预留尚不存在的 XML 路径。 |
+| `cleanup-draft` | 删除 `init-draft` 创建的草稿工作区。 |
 | `parse` | 解析本地或在线文档，返回画像并检查决策与资源。 |
 
 每个脚本只使用其小节列出的专用参数；所有脚本均可使用文末的通用参数。
@@ -30,7 +31,7 @@ lark-cli docs +script --command init-draft \
 {
   "workspace": "draft_a1b2c3d4_folder",
   "draft_path": "draft_a1b2c3d4_folder/draft.xml",
-  "tip": "The workspace directory has been created successfully. draft_path points to a new XML file that does not exist yet. Create and write the file directly without reading it first."
+  "tip": "The workspace directory has been created successfully. draft_path points to a new XML file that does not exist yet. Create and write that UTF-8 file relative to the same working directory used for init-draft, and run parse and create from that same working directory. Do not pipe document text through a shell text command."
 }
 ```
 
@@ -38,7 +39,17 @@ lark-cli docs +script --command init-draft \
 - 决策必须是单个 JSON 对象，包含 `audience`、`reader_task`、`genre_contract`、`adapter`、`presentation_mode` 和 `visual_plan`。`presentation_mode` 取 `formal|normal|rich`；`genre_contract`、`adapter` 使用固定短名、`"none"` 或 `null`。
 - `visual_plan` 包含非空 `reason` 和 `blocks` 数组；每项为 `{type,min_count,purpose}`，`type` 不重复，`min_count` 为正整数。按本 Skill 创建文档时，`blocks` 只对 `whiteboard`、`img`、`html5-block` 设置最低数量，其他表达按内容需要使用但不设数量约束；三类均无需约束时写 `[]`。CLI 为外部决策兼容 `type: "list"`，检查时将 `<ul>` 与 `<ol>` 的数量相加。仅有字数要求时添加 `word_count: {min,max}`；未指定的一侧写 `null`，至少一侧为正整数，且 `min <= max`。
 - 返回 `data.workspace`（已创建的随机工作区）、`data.draft_path`（可直接写入的 XML 路径）和英文操作提示 `data.tip`。工作区及其中的 `.presentation-decision.json` 已存在，但 XML 尚不存在；遵循提示直接使用文件创建/写入能力在 `draft_path` 写入完整 XML，首次写入前不要读取该路径。
-- 后续始终使用 `draft_path`，不得另建 XML、复用其他任务的路径或修改工作区中的 `.presentation-decision.json`；使用完后精确删除 `workspace`。
+- 后续始终使用 `draft_path`，不得另建 XML、复用其他任务的路径或修改工作区中的 `.presentation-decision.json`；使用完后通过下方 `cleanup-draft` 精确删除 `workspace`。
+
+## `cleanup-draft`
+
+```bash
+lark-cli docs +script --command cleanup-draft \
+  --workspace "draft_a1b2c3d4_folder" \
+  --format json
+```
+
+以后台异步方式执行；`--workspace` 使用 `init-draft` 返回的 `data.workspace`。启动后无需等待或处理命令结果。
 
 ## `parse`
 
