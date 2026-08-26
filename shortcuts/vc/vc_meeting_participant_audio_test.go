@@ -5,7 +5,9 @@ package vc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
 	"reflect"
 	"strings"
 	"testing"
@@ -13,6 +15,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -33,22 +37,19 @@ func mustSetMeetingParticipantAudioFlag(t *testing.T, runtime *common.RuntimeCon
 
 func TestMeetingParticipantAudioShortcutContracts(t *testing.T) {
 	tests := []struct {
-		name      string
-		shortcut  common.Shortcut
-		command   string
-		sdkMethod string
+		name     string
+		shortcut common.Shortcut
+		command  string
 	}{
 		{
-			name:      "mute",
-			shortcut:  VCMeetingParticipantMute,
-			command:   "+meeting-participant-mute",
-			sdkMethod: "BotMeetingParticipantMute",
+			name:     "mute",
+			shortcut: VCMeetingParticipantMute,
+			command:  "+meeting-participant-mute",
 		},
 		{
-			name:      "request unmute",
-			shortcut:  VCMeetingParticipantUnmute,
-			command:   "+meeting-participant-unmute",
-			sdkMethod: "BotMeetingParticipantUnmute",
+			name:     "request unmute",
+			shortcut: VCMeetingParticipantUnmute,
+			command:  "+meeting-participant-unmute",
 		},
 	}
 
@@ -72,6 +73,12 @@ func TestMeetingParticipantAudioShortcutContracts(t *testing.T) {
 			if tt.shortcut.Execute == nil {
 				t.Fatal("Execute must be set so the shortcut is mounted")
 			}
+			if tt.shortcut.DryRun == nil {
+				t.Fatal("DryRun must be set")
+			}
+			if !tt.shortcut.HasFormat {
+				t.Fatal("HasFormat must be true")
+			}
 
 			wantFlags := []common.Flag{
 				{Name: "meeting-id", Required: true, Desc: "meeting ID"},
@@ -92,18 +99,147 @@ func TestMeetingParticipantAudioShortcutContracts(t *testing.T) {
 				t.Errorf("user-id-type default = %q, want open_id", got)
 			}
 
-			err := tt.shortcut.Execute(context.Background(), runtime)
-			problem, ok := errs.ProblemOf(err)
-			if !ok {
-				t.Fatalf("Execute() error = %T %v, want typed SDK blocker", err, err)
+		})
+	}
+}
+
+func TestMeetingParticipantAudioDryRunUsesPublishedContract(t *testing.T) {
+	tests := []struct {
+		command  string
+		shortcut common.Shortcut
+		path     string
+	}{
+		{command: "+meeting-participant-mute", shortcut: VCMeetingParticipantMute, path: meetingParticipantMutePath},
+		{command: "+meeting-participant-unmute", shortcut: VCMeetingParticipantUnmute, path: meetingParticipantUnmutePath},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.command, func(t *testing.T) {
+			runtime := newMeetingParticipantAudioRuntime()
+			mustSetMeetingParticipantAudioFlag(t, runtime, "meeting-id", "7651377260537433044")
+			mustSetMeetingParticipantAudioFlag(t, runtime, "target-user-id", "ou_target")
+			mustSetMeetingParticipantAudioFlag(t, runtime, "user-id-type", "union_id")
+
+			raw, err := json.Marshal(tt.shortcut.DryRun(context.Background(), runtime))
+			if err != nil {
+				t.Fatalf("marshal dry-run: %v", err)
 			}
-			if problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeSDKError {
-				t.Errorf("Execute() problem = %s/%s, want internal/sdk_error", problem.Category, problem.Subtype)
+			var payload struct {
+				API []struct {
+					Method string                 `json:"method"`
+					URL    string                 `json:"url"`
+					Params map[string]interface{} `json:"params"`
+					Body   map[string]interface{} `json:"body"`
+				} `json:"api"`
 			}
-			if !strings.Contains(problem.Message, tt.sdkMethod) {
-				t.Errorf("Execute() message = %q, want SDK method %q", problem.Message, tt.sdkMethod)
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				t.Fatalf("decode dry-run: %v", err)
+			}
+			if len(payload.API) != 1 {
+				t.Fatalf("dry-run API count = %d, want 1", len(payload.API))
+			}
+			call := payload.API[0]
+			if call.Method != http.MethodPost || call.URL != tt.path {
+				t.Fatalf("dry-run endpoint = %s %s, want POST %s", call.Method, call.URL, tt.path)
+			}
+			if call.Params["user_id_type"] != "union_id" {
+				t.Fatalf("dry-run params = %#v", call.Params)
+			}
+			wantBody := map[string]interface{}{
+				"meeting_id":     "7651377260537433044",
+				"target_user_id": "ou_target",
+			}
+			if !reflect.DeepEqual(call.Body, wantBody) {
+				t.Fatalf("dry-run body = %#v, want %#v", call.Body, wantBody)
 			}
 		})
+	}
+}
+
+func TestMeetingParticipantAudioExecuteUsesPublishedContract(t *testing.T) {
+	tests := []struct {
+		command      string
+		shortcut     common.Shortcut
+		path         string
+		wantOutput   string
+		forbidOutput string
+	}{
+		{command: "+meeting-participant-mute", shortcut: VCMeetingParticipantMute, path: meetingParticipantMutePath, wantOutput: "Participant muted."},
+		{command: "+meeting-participant-unmute", shortcut: VCMeetingParticipantUnmute, path: meetingParticipantUnmutePath, wantOutput: "Unmute request sent.", forbidOutput: "Participant unmuted."},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.command, func(t *testing.T) {
+			f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+			var gotUserIDType string
+			stub := &httpmock.Stub{
+				Method: http.MethodPost,
+				URL:    tt.path,
+				OnMatch: func(req *http.Request) {
+					gotUserIDType = req.URL.Query().Get("user_id_type")
+				},
+				Body: map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
+			}
+			reg.Register(stub)
+
+			err := mountAndRun(t, tt.shortcut, []string{
+				tt.command,
+				"--meeting-id", "7651377260537433044",
+				"--target-user-id", "ou_target",
+				"--format", "pretty",
+				"--as", "bot",
+			}, f, stdout)
+			if err != nil {
+				t.Fatalf("Execute() error = %v", err)
+			}
+			reg.Verify(t)
+			if gotUserIDType != "open_id" {
+				t.Fatalf("user_id_type = %q, want open_id", gotUserIDType)
+			}
+			var body map[string]interface{}
+			if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+				t.Fatalf("decode captured body: %v", err)
+			}
+			wantBody := map[string]interface{}{
+				"meeting_id":     "7651377260537433044",
+				"target_user_id": "ou_target",
+			}
+			if !reflect.DeepEqual(body, wantBody) {
+				t.Fatalf("request body = %#v, want %#v", body, wantBody)
+			}
+			if !strings.Contains(stdout.String(), tt.wantOutput) {
+				t.Fatalf("stdout missing %q: %s", tt.wantOutput, stdout.String())
+			}
+			if tt.forbidOutput != "" && strings.Contains(stdout.String(), tt.forbidOutput) {
+				t.Fatalf("stdout must not contain %q: %s", tt.forbidOutput, stdout.String())
+			}
+		})
+	}
+}
+
+func TestMeetingParticipantAudioPropagatesOpenAPIError(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodPost,
+		URL:    meetingParticipantMutePath,
+		Body:   map[string]interface{}{"code": 2001, "msg": "meeting status unexpected"},
+	})
+
+	err := mountAndRun(t, VCMeetingParticipantMute, []string{
+		"+meeting-participant-mute",
+		"--meeting-id", "7651377260537433044",
+		"--target-user-id", "ou_target",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected OpenAPI error")
+	}
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("error = %T %v, want *errs.APIError", err, err)
+	}
+	if apiErr.Code != 2001 {
+		t.Fatalf("Code = %d, want 2001", apiErr.Code)
 	}
 }
 
