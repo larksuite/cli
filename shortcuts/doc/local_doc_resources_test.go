@@ -146,6 +146,17 @@ func TestPrepareLocalDocResourcesXMLRemoteImageDoesNotRelaxOtherAttributes(t *te
 	}
 }
 
+func TestPrepareLocalDocResourcesRejectsUnsupportedXMLImageSrc(t *testing.T) {
+	runtime := newLocalDocResourceTestRuntime(t, nil)
+	_, _, err := prepareLocalDocResources(runtime, "xml", `<p>before</p><img src="file_token"/><p>after</p>`)
+	if err == nil {
+		t.Fatal("prepareLocalDocResources() error = nil")
+	}
+	if !strings.Contains(err.Error(), "<img> src is not supported for document writes") {
+		t.Fatalf("prepareLocalDocResources() error = %v", err)
+	}
+}
+
 func TestPrepareLocalDocResourcesRemoteImageRejectsConflicts(t *testing.T) {
 	runtime := newLocalDocResourceTestRuntime(t, nil)
 	for _, content := range []string{
