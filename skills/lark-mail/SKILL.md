@@ -244,9 +244,13 @@ lark-cli mail <resource> <method> --params '{...}' [--data '{...}']
 **GET — 只有 `--params`**（`parameters` 中有 path + query，无 `requestBody`）：
 
 ```bash
-# schema 中：user_mailbox_id (path, required), page_size (query, required), folder_id (query, optional)
-lark-cli mail user_mailbox.messages list \
+# schema 中：user_mailbox_id (path, required), page_size (query, required)
+# user_mailbox.threads.list 要求 folder_id / label_id 必须且只能提供一个
+lark-cli mail user_mailbox.threads list \
   --params '{"user_mailbox_id":"me","page_size":20,"folder_id":"INBOX"}'
+
+lark-cli mail user_mailbox.threads list \
+  --params '{"user_mailbox_id":"me","page_size":20,"label_id":"FLAGGED"}'
 ```
 
 **POST — `--params` + `--data`**（`parameters` 中有 path，`requestBody` 有 body 字段）：
