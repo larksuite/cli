@@ -50,6 +50,13 @@ func TestMinutesApplyPermissionSupportsUserAndBotIdentity(t *testing.T) {
 	}
 }
 
+func TestMinutesSharePermissionSupportsUserAndBotIdentity(t *testing.T) {
+	want := []string{"user", "bot"}
+	if !reflect.DeepEqual(MinutesSharePermission.AuthTypes, want) {
+		t.Fatalf("MinutesSharePermission.AuthTypes = %v, want %v", MinutesSharePermission.AuthTypes, want)
+	}
+}
+
 func TestApplyPermission_DryRun_BotIdentity(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
 	err := mountAndRun(t, MinutesApplyPermission, []string{
@@ -64,5 +71,22 @@ func TestApplyPermission_DryRun_BotIdentity(t *testing.T) {
 	}
 	if !strings.Contains(out, `"perm": "view"`) && !strings.Contains(out, `"perm":"view"`) {
 		t.Errorf("dry-run should show perm body, got: %s", out)
+	}
+}
+
+func TestSharePermission_DryRun_BotIdentity(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, MinutesSharePermission, []string{
+		"+share-permission", "--minute-token", "obcnexampleminute", "--dry-run", "--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error under --as bot: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "/open-apis/minutes/v1/minutes/obcnexampleminute/permissions/share") {
+		t.Errorf("dry-run should show share-permission API path, got: %s", out)
+	}
+	if strings.Contains(out, `"perm"`) {
+		t.Errorf("share-permission dry-run should not show perm body, got: %s", out)
 	}
 }

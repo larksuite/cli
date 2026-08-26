@@ -13,6 +13,7 @@ func Shortcuts() []common.Shortcut {
 		MinutesUpload,
 		MinutesUpdate,
 		MinutesApplyPermission,
+		MinutesSharePermission,
 		MinutesSummary,
 		MinutesTodo,
 		MinutesSpeakerReplace,

@@ -141,6 +141,7 @@ lark-cli vc +meeting-events --as <source_identity> --meeting-id <meeting_id> --p
 | `minutes +summary` | 替换妙记 AI 总结 | [lark-minutes-summary](references/lark-minutes-summary.md) |
 | `minutes +todo` | 增删改妙记 AI 待办 | [lark-minutes-todo](references/lark-minutes-todo.md) |
 | `minutes +apply-permission` | 申请妙记查看或编辑权限 | [lark-minutes-apply-permission](references/lark-minutes-apply-permission.md) |
+| `minutes +share-permission` | 将妙记权限一键分享给会议参会人 | [lark-minutes-share-permission](references/lark-minutes-share-permission.md) |
 | `drive +member-list` | 查看妙记协作者及其权限 | [lark-drive-member-list](../lark-drive/references/lark-drive-member-list.md) |
 | `drive +member-add` | 给指定成员分配妙记查看或编辑权限 | [lark-drive-member-add](../lark-drive/references/lark-drive-member-add.md) |
 | `minutes +word-replace` | 批量替换妙记逐字稿关键词 | `lark-cli minutes +word-replace --help` |

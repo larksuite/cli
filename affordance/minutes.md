@@ -49,3 +49,8 @@
 
 ### Skills
 - lark-meeting/references/lark-minutes-apply-permission.md
+
+## +share-permission
+
+### Skills
+- lark-meeting/references/lark-minutes-share-permission.md

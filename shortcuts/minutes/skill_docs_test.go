@@ -51,6 +51,7 @@ func TestMinutesBotShortcutsIdentityDocsMatchAuthTypes(t *testing.T) {
 		{"+detail", MinutesDetail.AuthTypes, "lark-minutes-detail.md"},
 		{"+download", MinutesDownload.AuthTypes, "lark-minutes-download.md"},
 		{"+apply-permission", MinutesApplyPermission.AuthTypes, "lark-minutes-apply-permission.md"},
+		{"+share-permission", MinutesSharePermission.AuthTypes, "lark-minutes-share-permission.md"},
 	} {
 		if !hasAuthType(cmd.authTypes, "bot") {
 			t.Errorf("%s AuthTypes = %v, want bot included", cmd.name, cmd.authTypes)
@@ -87,6 +88,27 @@ func TestMinutesApplyPermissionHasReference(t *testing.T) {
 	skill := readSkillDoc(t, "skills/lark-meeting/SKILL.md")
 	if !strings.Contains(skill, "references/lark-minutes-apply-permission.md") {
 		t.Error("skills/lark-meeting/SKILL.md command table must link +apply-permission to its reference doc")
+	}
+}
+
+func TestMinutesSharePermissionHasReference(t *testing.T) {
+	if !hasAuthType(MinutesSharePermission.AuthTypes, "bot") {
+		t.Fatalf("MinutesSharePermission.AuthTypes = %v, want bot included", MinutesSharePermission.AuthTypes)
+	}
+	if !hasFlag(MinutesSharePermission.Flags, "minute-token") {
+		t.Fatalf("MinutesSharePermission flags = %v, want minute-token", MinutesSharePermission.Flags)
+	}
+
+	reference := readSkillDoc(t, "skills/lark-meeting/references/lark-minutes-share-permission.md")
+	for _, must := range []string{"--as bot", "--as user", "minutes:minutes", "permissions/share", "参会人"} {
+		if !strings.Contains(reference, must) {
+			t.Errorf("lark-minutes-share-permission.md must cover %q", must)
+		}
+	}
+
+	skill := readSkillDoc(t, "skills/lark-meeting/SKILL.md")
+	if !strings.Contains(skill, "references/lark-minutes-share-permission.md") {
+		t.Error("skills/lark-meeting/SKILL.md command table must link +share-permission to its reference doc")
 	}
 }
 
