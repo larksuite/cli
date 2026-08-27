@@ -288,6 +288,23 @@ var DocMediaInsert = common.Shortcut{
 			fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warning)
 			return opErr
 		}
+		withBindRollbackRecovery := func(opErr error, fileToken string) error {
+			rollbackErr := rollback()
+			rollbackStatus := "succeeded"
+			if rollbackErr != nil {
+				rollbackStatus = "failed"
+			}
+			hint := fmt.Sprintf(
+				"Document media upload succeeded but binding failed: phase=bind_media, document_id=%s, upload_succeeded=true, file_token=%s, block_id=%s, replace_block_id=%s, rollback=%s.",
+				documentID, fileToken, blockId, replaceBlockID, rollbackStatus,
+			)
+			if rollbackErr != nil {
+				hint += fmt.Sprintf(" rollback_error=%q. Do not blindly retry the upload; inspect or repair the existing block first.", rollbackErr.Error())
+			} else {
+				hint += " The placeholder block was removed; retry the original command if the operation is still needed."
+			}
+			return withDocRecoveryHint(opErr, hint)
+		}
 
 		// Step 3: Upload media file.
 		// Only materialize Content when clipboard bytes exist, so the `io.Reader`
@@ -355,7 +372,7 @@ var DocMediaInsert = common.Shortcut{
 		if _, err := runtime.CallAPITyped("PATCH",
 			fmt.Sprintf("/open-apis/docx/v1/documents/%s/blocks/batch_update", validate.EncodePathSegment(documentID)),
 			nil, buildBatchUpdateData(replaceBlockID, mediaType, fileToken, alignStr, caption, finalWidth, finalHeight)); err != nil {
-			return withRollbackWarning(err)
+			return withBindRollbackRecovery(err, fileToken)
 		}
 
 		outData := map[string]interface{}{

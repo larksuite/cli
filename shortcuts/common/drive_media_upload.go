@@ -60,9 +60,9 @@ type DriveMediaMultipartUploadConfig struct {
 	Extra      string
 	// Reader mirrors DriveMediaUploadAllConfig.Reader for chunked uploads.
 	Reader io.Reader
-	// Quiet suppresses the progress narration on ErrOut that the multipart
-	// path writes unconditionally. Callers whose success contract forbids
-	// non-empty stderr (e.g. sheets shortcuts) set this to true.
+	// Quiet is retained for source compatibility. This helper no longer emits
+	// multipart progress on stderr, so the field has no runtime effect.
+	// Deprecated: multipart uploads are silent by default.
 	Quiet bool
 }
 

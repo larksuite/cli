@@ -114,7 +114,7 @@ var DriveDelete = common.Shortcut{
 			out["deleted"] = true
 		}
 		if !ready {
-			nextCommand := driveTaskCheckResultCommand(taskID, string(runtime.As()))
+			nextCommand := driveTaskCheckResultCommand(runtime, taskID)
 			out["timed_out"] = true
 			out["next_command"] = nextCommand
 		}

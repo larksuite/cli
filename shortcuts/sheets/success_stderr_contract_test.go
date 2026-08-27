@@ -35,9 +35,8 @@ import (
 //     duplicates its permission_grant result on stderr when the grant is
 //     skipped or fails
 //
-// The +media-upload over 20MB gap was closed by the Quiet flag on
-// DriveMediaMultipartUploadConfig; sheets shortcuts pass Quiet: true so the
-// chunk narration stays silent on success.
+// Multipart progress now uses the shared TTY-only spinner, so captured sheets
+// output stays silent without command-specific suppression flags.
 
 // runCapturingStderr runs a shortcut against stubs and returns stdout, stderr
 // and the error, so a test can assert on the reporting channel and not just

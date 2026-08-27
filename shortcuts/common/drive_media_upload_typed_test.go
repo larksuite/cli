@@ -534,9 +534,10 @@ func TestUploadDriveMediaMultipartTypedReportsFileEventOnPrepareError(t *testing
 	}
 }
 
-// TestUploadDriveMediaMultipartTypedReportsFileEventOnSuccess verifies reporting after a multipart upload succeeds.
-func TestUploadDriveMediaMultipartTypedReportsFileEventOnSuccess(t *testing.T) {
+// TestUploadDriveMediaMultipartTypedReportsFileEventAndHonorsQuietOnSuccess verifies reporting and the published Quiet contract.
+func TestUploadDriveMediaMultipartTypedReportsFileEventAndHonorsQuietOnSuccess(t *testing.T) {
 	runtime, reg := newDriveMediaUploadTestRuntime(t)
+	runtime.IO().StderrIsTerminal = true
 	withDriveMediaUploadWorkingDir(t, t.TempDir())
 	reportStub := registerDriveMediaReportStub(t, reg)
 
@@ -576,6 +577,7 @@ func TestUploadDriveMediaMultipartTypedReportsFileEventOnSuccess(t *testing.T) {
 		FileSize:   size,
 		ParentType: "docx_image",
 		ParentNode: "",
+		Quiet:      true,
 	})
 	if err != nil {
 		t.Fatalf("UploadDriveMediaMultipartTyped() error: %v", err)

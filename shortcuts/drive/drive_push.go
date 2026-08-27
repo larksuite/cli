@@ -920,7 +920,6 @@ func drivePushUploadMultipart(_ context.Context, runtime *common.RuntimeContext,
 			"upload_prepare returned invalid data: upload_id=%q, block_size=%d, block_num=%d",
 			uploadID, blockSize, blockNum)
 	}
-
 	// Open the local file ONCE for the whole multipart loop. fileio.File
 	// implements io.ReaderAt, so each block is a fresh
 	// io.NewSectionReader over a shared fd — no need to reopen N times

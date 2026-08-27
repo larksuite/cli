@@ -227,7 +227,11 @@ var DocResourceUpdate = common.Shortcut{
 			nil,
 			map[string]interface{}{"update_cover": map[string]interface{}{"cover": coverBody}},
 		); err != nil {
-			return err
+			hint := fmt.Sprintf(
+				"Document cover upload succeeded but update failed: phase=update_cover, document_id=%s, upload_succeeded=true, file_token=%s. Reuse the uploaded file_token for the remaining update instead of uploading the source again.",
+				documentID, fileToken,
+			)
+			return withDocRecoveryHint(err, hint)
 		}
 
 		runtime.Out(map[string]interface{}{

@@ -474,6 +474,127 @@ func TestDocMediaInsertExecuteClipboardReadError(t *testing.T) {
 	}
 }
 
+func TestDocMediaInsertBindFailureReportsUploadedStateAndRollback(t *testing.T) {
+	tests := []struct {
+		name             string
+		rollbackBody     map[string]interface{}
+		wantRollback     string
+		wantRollbackText string
+	}{
+		{
+			name:         "rollback succeeds",
+			rollbackBody: map[string]interface{}{"code": 0, "msg": "ok"},
+			wantRollback: "rollback=succeeded",
+		},
+		{
+			name: "rollback fails",
+			rollbackBody: map[string]interface{}{
+				"code": 1777001,
+				"msg":  "rollback backend failure",
+			},
+			wantRollback:     "rollback=failed",
+			wantRollbackText: "rollback backend failure",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, stderr, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-bind-recovery-app"))
+			documentID := "doxcnBindRecovery1"
+			blockID := "blk_bind_recovery"
+			fileToken := "file_bind_recovery_token"
+
+			tmpDir := t.TempDir()
+			withDocsWorkingDir(t, tmpDir)
+			if err := os.WriteFile("image.png", []byte("png-data"), 0644); err != nil {
+				t.Fatalf("WriteFile() error: %v", err)
+			}
+
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/docx/v1/documents/" + documentID + "/blocks/" + documentID,
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{
+						"block": map[string]interface{}{
+							"block_id": documentID,
+							"children": []interface{}{},
+						},
+					},
+				},
+			})
+			reg.Register(&httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/docx/v1/documents/" + documentID + "/blocks/" + documentID + "/children",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{
+						"children": []interface{}{map[string]interface{}{"block_id": blockID}},
+					},
+				},
+			})
+			reg.Register(&httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/drive/v1/medias/upload_all",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{"file_token": fileToken},
+				},
+			})
+			reg.Register(&httpmock.Stub{
+				Method: "PATCH",
+				URL:    "/open-apis/docx/v1/documents/" + documentID + "/blocks/batch_update",
+				Body:   map[string]interface{}{"code": 1777000, "msg": "bind backend failure"},
+			})
+			reg.Register(&httpmock.Stub{
+				Method: "DELETE",
+				URL:    "/open-apis/docx/v1/documents/" + documentID + "/blocks/" + documentID + "/children/batch_delete",
+				Body:   tt.rollbackBody,
+			})
+
+			err := mountAndRunDocs(t, DocMediaInsert, []string{
+				"+media-insert",
+				"--doc", documentID,
+				"--file", "image.png",
+				"--width", "100",
+				"--height", "80",
+				"--as", "bot",
+			}, f, stdout)
+			if err == nil {
+				t.Fatal("expected bind failure, got nil")
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("stdout = %q, want empty on bind failure", stdout.String())
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("stderr = %q, want recovery in typed error only", stderr.String())
+			}
+
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed error, got %T: %v", err, err)
+			}
+			if problem.Code != 1777000 {
+				t.Fatalf("code = %d, want preserved bind error code 1777000", problem.Code)
+			}
+			for _, want := range []string{
+				"phase=bind_media",
+				"document_id=" + documentID,
+				"upload_succeeded=true",
+				"file_token=" + fileToken,
+				"block_id=" + blockID,
+				"replace_block_id=" + blockID,
+				tt.wantRollback,
+				tt.wantRollbackText,
+			} {
+				if want != "" && !strings.Contains(problem.Hint, want) {
+					t.Fatalf("hint = %q, want %q", problem.Hint, want)
+				}
+			}
+		})
+	}
+}
+
 func TestDocMediaInsertExecuteResolvesWikiBeforeFileCheck(t *testing.T) {
 	f, _, stderr, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-insert-exec-app"))
 	reg.Register(&httpmock.Stub{

@@ -208,7 +208,6 @@ func uploadSheetMediaFile(runtime *common.RuntimeContext, filePath, fileName str
 		FileSize:   fileSize,
 		ParentType: parentType,
 		ParentNode: parentNode,
-		Quiet:      true,
 	})
 }
 

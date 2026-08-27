@@ -627,8 +627,12 @@ func TestWikiNodeCreateMountedExecuteWithExplicitSpaceID(t *testing.T) {
 	if captured["title"] != "Wiki Node" {
 		t.Fatalf("captured title = %#v, want %q", captured["title"], "Wiki Node")
 	}
-	if stderr.Len() != 0 {
-		t.Fatalf("stderr = %q, want no completed creation message", stderr.String())
+	gotStderr := stderr.String()
+	if strings.Contains(gotStderr, "Creating wiki node") || strings.Contains(gotStderr, "Created wiki node") {
+		t.Fatalf("stderr = %q, want no creation progress", gotStderr)
+	}
+	if !strings.Contains(gotStderr, "auto-grant was skipped") {
+		t.Fatalf("stderr = %q, want actionable auto-grant warning", gotStderr)
 	}
 }
 
