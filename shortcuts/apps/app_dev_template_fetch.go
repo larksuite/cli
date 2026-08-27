@@ -64,14 +64,20 @@ type npmPackageMeta struct {
 }
 
 // fetchAppDevTemplate resolves and downloads the template package, trying
-// each registry in appDevRegistries until one succeeds. requested pins a
-// specific version or dist-tag ("" = latest). onFallback is called with a
-// human-readable note before each retry (nil to skip).
-func fetchAppDevTemplate(ctx context.Context, pkg, requested string, onFallback func(note string)) (version string, tgz []byte, err error) {
+// each registry in registries until one succeeds (nil/empty = the built-in
+// appDevRegistries fallback chain; an explicit --registry passes a single
+// entry, so a failure is deterministic instead of silently shifting to
+// another source). requested pins a specific version or dist-tag ("" =
+// latest). onFallback is called with a human-readable note before each retry
+// (nil to skip).
+func fetchAppDevTemplate(ctx context.Context, pkg, requested string, registries []string, onFallback func(note string)) (version string, tgz []byte, err error) {
+	if len(registries) == 0 {
+		registries = appDevRegistries
+	}
 	var lastErr error
-	for i, base := range appDevRegistries {
+	for i, base := range registries {
 		if i > 0 && onFallback != nil {
-			onFallback(strings.TrimRight(appDevRegistries[i-1], "/") + " failed, falling back to " + strings.TrimRight(base, "/"))
+			onFallback(strings.TrimRight(registries[i-1], "/") + " failed, falling back to " + strings.TrimRight(base, "/"))
 		}
 		v, tarballURL, err := fetchAppDevTemplateMeta(ctx, base, pkg, requested)
 		if err != nil {
@@ -87,7 +93,7 @@ func fetchAppDevTemplate(ctx context.Context, pkg, requested string, onFallback 
 		return v, body, nil
 	}
 	if p, ok := errs.ProblemOf(lastErr); ok && strings.TrimSpace(p.Hint) == "" {
-		p.Hint = "all registries failed (" + strings.Join(appDevRegistries, ", ") + "); check network access and whether the template package is published"
+		p.Hint = "all registries failed (" + strings.Join(registries, ", ") + "); check network access and whether the template package is published"
 	}
 	return "", nil, lastErr
 }
