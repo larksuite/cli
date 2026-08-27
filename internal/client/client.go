@@ -405,11 +405,14 @@ func (c *APIClient) paginateLoop(ctx context.Context, request RawApiRequest, opt
 			ExtraOpts: request.ExtraOpts,
 		})
 		if err != nil {
-			if page == 1 {
-				return nil, err
+			// Page 1 has nothing accumulated yet, so both paths return the same
+			// (nil, err); only the progress line differs. A later page must not
+			// fall through to the loop's `return allResults, nil` — that is what
+			// turned a mid-pagination failure into a successful partial result.
+			if page > 1 {
+				fmt.Fprintf(c.ErrOut, "[page %d] error, stopping pagination\n", page)
 			}
-			fmt.Fprintf(c.ErrOut, "[page %d] error, stopping pagination\n", page)
-			break
+			return allResults, err
 		}
 
 		if resultMap, ok := result.(map[string]interface{}); ok {
