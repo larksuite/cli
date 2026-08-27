@@ -39,8 +39,13 @@ func firstPageHasMore() (*http.Response, error) {
 	}), nil
 }
 
+// errSimulatedTransport is a stable sentinel so the tests can assert the
+// transport error is carried through the pagination loop rather than merely
+// classified as a network failure — the loop must not swallow the cause.
+var errSimulatedTransport = errors.New("simulated transport failure")
+
 func transportFailure() (*http.Response, error) {
-	return nil, errors.New("simulated transport failure")
+	return nil, errSimulatedTransport
 }
 
 func TestPaginateAll_LaterPageTransportErrorPropagates(t *testing.T) {
@@ -57,6 +62,9 @@ func TestPaginateAll_LaterPageTransportErrorPropagates(t *testing.T) {
 	}
 	if got := errs.CategoryOf(err); got != errs.CategoryNetwork {
 		t.Errorf("errs.CategoryOf(err) = %q, want %q", got, errs.CategoryNetwork)
+	}
+	if !errors.Is(err, errSimulatedTransport) {
+		t.Errorf("errors.Is(err, errSimulatedTransport) = false; cause was not preserved; err = %v", err)
 	}
 }
 
@@ -75,6 +83,9 @@ func TestStreamPages_LaterPageTransportErrorPropagates(t *testing.T) {
 	}
 	if got := errs.CategoryOf(err); got != errs.CategoryNetwork {
 		t.Errorf("errs.CategoryOf(err) = %q, want %q", got, errs.CategoryNetwork)
+	}
+	if !errors.Is(err, errSimulatedTransport) {
+		t.Errorf("errors.Is(err, errSimulatedTransport) = false; cause was not preserved; err = %v", err)
 	}
 }
 
