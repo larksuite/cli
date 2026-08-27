@@ -168,9 +168,12 @@ func withFakeRegistry(t *testing.T, pkg string, tgz []byte) *httptest.Server {
 	var srv *httptest.Server
 	mux.HandleFunc("/"+pkg, func(w http.ResponseWriter, _ *http.Request) {
 		meta := map[string]interface{}{
-			"dist-tags": map[string]string{"latest": "1.2.3"},
+			"dist-tags": map[string]string{"latest": "1.2.3", "alpha": "2.0.0-alpha.1"},
 			"versions": map[string]interface{}{
 				"1.2.3": map[string]interface{}{
+					"dist": map[string]string{"tarball": srv.URL + "/tarball.tgz"},
+				},
+				"2.0.0-alpha.1": map[string]interface{}{
 					"dist": map[string]string{"tarball": srv.URL + "/tarball.tgz"},
 				},
 			},
@@ -187,6 +190,26 @@ func withFakeRegistry(t *testing.T, pkg string, tgz []byte) *httptest.Server {
 	appDevNewTransferClient = func() *http.Client { return srv.Client() }
 	t.Cleanup(func() { appDevRegistries, appDevNewTransferClient = origRegs, origClient })
 	return srv
+}
+
+func TestFetchAppDevTemplate_PinnedVersionAndTag(t *testing.T) {
+	pkg := "@lark-apaas/coding-template-react-standard-webapp"
+	withFakeRegistry(t, pkg, buildTemplateTgz(t, defaultTemplateEntries()))
+	// dist-tag resolution.
+	v, _, err := fetchAppDevTemplate(context.Background(), pkg, "alpha", nil)
+	if err != nil || v != "2.0.0-alpha.1" {
+		t.Errorf("dist-tag pin: v=%q err=%v", v, err)
+	}
+	// Exact version resolution.
+	v, _, err = fetchAppDevTemplate(context.Background(), pkg, "1.2.3", nil)
+	if err != nil || v != "1.2.3" {
+		t.Errorf("exact pin: v=%q err=%v", v, err)
+	}
+	// Unknown version: actionable error listing dist-tags.
+	_, _, err = fetchAppDevTemplate(context.Background(), pkg, "9.9.9", nil)
+	if err == nil || !strings.Contains(err.Error(), `no version or dist-tag "9.9.9"`) {
+		t.Errorf("unknown pin: err=%v", err)
+	}
 }
 
 // --- render tests ---
@@ -336,7 +359,7 @@ func TestFetchAppDevTemplateMeta_RejectsNonHTTPSTarball(t *testing.T) {
 	appDevNewTransferClient = func() *http.Client { return srv.Client() }
 	t.Cleanup(func() { appDevRegistries, appDevNewTransferClient = origRegs, origClient })
 
-	_, _, err := fetchAppDevTemplateMeta(context.Background(), srv.URL, pkg)
+	_, _, err := fetchAppDevTemplateMeta(context.Background(), srv.URL, pkg, "")
 	if err == nil || !strings.Contains(err.Error(), "not https") {
 		t.Errorf("non-https tarball must be rejected, got %v", err)
 	}
@@ -355,7 +378,7 @@ func TestFetchAppDevTemplateMeta_RejectsCrossHostTarball(t *testing.T) {
 	appDevNewTransferClient = func() *http.Client { return srv.Client() }
 	t.Cleanup(func() { appDevRegistries, appDevNewTransferClient = origRegs, origClient })
 
-	_, _, err := fetchAppDevTemplateMeta(context.Background(), srv.URL, pkg)
+	_, _, err := fetchAppDevTemplateMeta(context.Background(), srv.URL, pkg, "")
 	if err == nil || !strings.Contains(err.Error(), "differs from registry host") {
 		t.Errorf("cross-host tarball must be rejected, got %v", err)
 	}
@@ -378,7 +401,7 @@ func TestFetchAppDevTemplateMeta_404(t *testing.T) {
 	appDevNewTransferClient = func() *http.Client { return srv.Client() }
 	t.Cleanup(func() { appDevRegistries, appDevNewTransferClient = origRegs, origClient })
 
-	_, _, err := fetchAppDevTemplateMeta(context.Background(), srv.URL, "@lark-apaas/coding-template-x")
+	_, _, err := fetchAppDevTemplateMeta(context.Background(), srv.URL, "@lark-apaas/coding-template-x", "")
 	p := requireAppsProblem(t, err, errs.CategoryNetwork)
 	if !strings.Contains(p.Hint, "not be published") {
 		t.Errorf("404 hint = %q", p.Hint)
@@ -422,7 +445,7 @@ func TestFetchAppDevTemplate_FallbackOn5xx(t *testing.T) {
 	pkg := "@lark-apaas/coding-template-react-standard-webapp"
 	newFailingThenOKRegistries(t, pkg, buildTemplateTgz(t, defaultTemplateEntries()), 503)
 	var notes []string
-	version, tgz, err := fetchAppDevTemplate(context.Background(), pkg, func(n string) { notes = append(notes, n) })
+	version, tgz, err := fetchAppDevTemplate(context.Background(), pkg, "", func(n string) { notes = append(notes, n) })
 	if err != nil {
 		t.Fatalf("fallback should succeed: %v", err)
 	}
@@ -439,7 +462,7 @@ func TestFetchAppDevTemplate_FallbackOn404(t *testing.T) {
 	// 404 on the primary must also fall through to the official registry.
 	pkg := "@lark-apaas/coding-template-react-standard-webapp"
 	newFailingThenOKRegistries(t, pkg, buildTemplateTgz(t, defaultTemplateEntries()), 404)
-	version, _, err := fetchAppDevTemplate(context.Background(), pkg, nil)
+	version, _, err := fetchAppDevTemplate(context.Background(), pkg, "", nil)
 	if err != nil || version != "1.2.3" {
 		t.Errorf("404 fallback: version=%q err=%v", version, err)
 	}
@@ -453,7 +476,7 @@ func TestFetchAppDevTemplate_AllRegistriesFail(t *testing.T) {
 	appDevNewTransferClient = func() *http.Client { return srv.Client() }
 	t.Cleanup(func() { appDevRegistries, appDevNewTransferClient = origRegs, origClient })
 
-	_, _, err := fetchAppDevTemplate(context.Background(), "@lark-apaas/coding-template-x", nil)
+	_, _, err := fetchAppDevTemplate(context.Background(), "@lark-apaas/coding-template-x", "", nil)
 	if err == nil {
 		t.Fatal("all-fail must error")
 	}
@@ -509,6 +532,7 @@ func testRuntimeAppDevInitTpl(t *testing.T, appType, template, dir string) *comm
 	cmd := &cobra.Command{Use: "+app-dev-init-template"}
 	cmd.Flags().String("type", appType, "")
 	cmd.Flags().String("template", template, "")
+	cmd.Flags().String("template-version", "", "")
 	cmd.Flags().String("dir", dir, "")
 	return common.TestNewRuntimeContext(cmd, nil)
 }
