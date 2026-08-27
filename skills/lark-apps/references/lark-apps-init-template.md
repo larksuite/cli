@@ -1,6 +1,6 @@
-# apps +app-dev-init-template
+# apps +init-template
 
-在本地初始化一个产物托管形态的 Web 应用项目（代码留在本地，构建产物后续发布到妙搭）。运行时命令事实以 `lark-cli apps +app-dev-init-template --help` 为准。
+在本地初始化一个产物托管形态的 Web 应用项目（代码留在本地，构建产物后续发布到妙搭）。运行时命令事实以 `lark-cli apps +init-template --help` 为准。
 
 ## 何时用
 
@@ -17,11 +17,11 @@
 ## 示例
 
 ```bash
-lark-cli apps +app-dev-init-template --type frontend --dir ./my-app
-lark-cli apps +app-dev-init-template --type html --dir ./page
-lark-cli apps +app-dev-init-template --template vite-react --dir ./demo
-lark-cli apps +app-dev-init-template --type frontend --registry https://registry.npmjs.org --dir ./my-app   # 用户指定源
-lark-cli apps +app-dev-init-template --type full_stack --dry-run
+lark-cli apps +init-template --type frontend --dir ./my-app
+lark-cli apps +init-template --type html --dir ./page
+lark-cli apps +init-template --template vite-react --dir ./demo
+lark-cli apps +init-template --type frontend --registry https://registry.npmjs.org --dir ./my-app   # 用户指定源
+lark-cli apps +init-template --type full_stack --dry-run
 ```
 
 ## 输出契约
@@ -30,7 +30,7 @@ lark-cli apps +app-dev-init-template --type full_stack --dry-run
 
 1. `cd <dir> && npm install && npm run dev` 本地开发预览（dev 命令声明见项目根 `miaoda.json`）；
 2. 需要发布时先 `lark-cli apps +create --name <name>` 创建妙搭应用；
-3. 在项目根运行 `lark-cli apps +app-dev-publish --app-id <返回的 app_id>` 构建并发布（成功后 app id 写入 miaoda.json，后续免传；见 [lark-apps-app-dev-publish.md](lark-apps-app-dev-publish.md)）。
+3. 在项目根运行 `lark-cli apps +deploy --app-id <返回的 app_id>` 构建并发布（成功后 app id 写入 miaoda.json，后续免传；见 [lark-apps-deploy.md](lark-apps-deploy.md)）。
 
 ## 常见失败
 

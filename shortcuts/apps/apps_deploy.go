@@ -275,13 +275,13 @@ func resolveAppDevPublishTarget(rctx *common.RuntimeContext) (cfg *appDevProject
 	if !found {
 		return nil, "", false, appsFailedPreconditionError(
 			"current directory is not a Miaoda app project (miaoda.json not found)").
-			WithHint("run this command from the project root; scaffold a project with +app-dev-init-template first")
+			WithHint("run this command from the project root; scaffold a project with +init-template first")
 	}
 	recorded := cfg.AppID
 	switch {
 	case flagID == "" && recorded == "":
 		return nil, "", false, appsFailedPreconditionError("no publish target: %s has no app id and --app-id was not given", cfg.Source).
-			WithHint("create the app first with `lark-cli apps +create --name <name>`, then publish with `lark-cli apps +app-dev-publish --app-id <returned app_id>` (the id is saved into miaoda.json on success)")
+			WithHint("create the app first with `lark-cli apps +create --name <name>`, then publish with `lark-cli apps +deploy --app-id <returned app_id>` (the id is saved into miaoda.json on success)")
 	case flagID != "" && recorded != "" && flagID != recorded:
 		return nil, "", false, appsFailedPreconditionParamError("--app-id",
 			"%s already records app id %s but --app-id is %s; refusing to silently switch the publish target", cfg.Source, recorded, flagID).
@@ -324,7 +324,7 @@ func (execEnvCommandRunner) RunEnv(ctx context.Context, dir string, extraEnv []s
 	return stdout.String(), stderr.String(), err
 }
 
-// appDevRunner is the envCommandRunner used by +app-dev-publish's build step.
+// appDevRunner is the envCommandRunner used by +deploy's build step.
 // Package-level so unit tests can swap in a fake.
 var appDevRunner envCommandRunner = execEnvCommandRunner{}
 
@@ -420,16 +420,16 @@ func awaitAppDevRelease(ctx context.Context, rctx *common.RuntimeContext, appID,
 	}
 }
 
-// AppsAppDevPublish builds and publishes a local web app project to its
+// AppsDeploy builds and publishes a local web app project to its
 // Miaoda app. Run from the project root containing miaoda.json.
-var AppsAppDevPublish = common.Shortcut{
+var AppsDeploy = common.Shortcut{
 	Service:     appsService,
-	Command:     "+app-dev-publish",
+	Command:     "+deploy",
 	Description: "Build and publish a local web app project to its Miaoda app (run from the project root containing miaoda.json)",
 	Risk:        "write",
 	Tips: []string{
-		"Example: lark-cli apps +app-dev-publish   (run from the project root)",
-		"Example: lark-cli apps +app-dev-publish --skip-build   (reuse the existing build.output directory)",
+		"Example: lark-cli apps +deploy   (run from the project root)",
+		"Example: lark-cli apps +deploy --skip-build   (reuse the existing build.output directory)",
 		"Prerequisite: an app id in miaoda.json or via --app-id (create the app with +create first)",
 	},
 	Scopes:    []string{"spark:app:write", "spark:app:read"},

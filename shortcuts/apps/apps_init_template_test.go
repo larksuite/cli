@@ -505,20 +505,20 @@ func TestRenderAppDevTemplate_SkippedEntryBombCap(t *testing.T) {
 
 // --- declaration & validate tests ---
 
-func TestAppsAppDevInitTemplate_Declaration(t *testing.T) {
-	if AppsAppDevInitTemplate.Command != "+app-dev-init-template" {
-		t.Errorf("Command = %q", AppsAppDevInitTemplate.Command)
+func TestAppsInitTemplate_Declaration(t *testing.T) {
+	if AppsInitTemplate.Command != "+init-template" {
+		t.Errorf("Command = %q", AppsInitTemplate.Command)
 	}
-	if AppsAppDevInitTemplate.Service != appsService {
-		t.Errorf("Service = %q", AppsAppDevInitTemplate.Service)
+	if AppsInitTemplate.Service != appsService {
+		t.Errorf("Service = %q", AppsInitTemplate.Service)
 	}
-	if AppsAppDevInitTemplate.Risk != "write" {
-		t.Errorf("Risk = %q, want write", AppsAppDevInitTemplate.Risk)
+	if AppsInitTemplate.Risk != "write" {
+		t.Errorf("Risk = %q, want write", AppsInitTemplate.Risk)
 	}
-	if !AppsAppDevInitTemplate.HasFormat {
+	if !AppsInitTemplate.HasFormat {
 		t.Error("HasFormat = false, want true")
 	}
-	if AppsAppDevInitTemplate.Scopes == nil {
+	if AppsInitTemplate.Scopes == nil {
 		t.Error("Scopes must be non-nil (no Lark API => empty slice)")
 	}
 }
@@ -530,7 +530,7 @@ func testRuntimeAppDevInit(t *testing.T, appType, dir string) *common.RuntimeCon
 
 func testRuntimeAppDevInitTpl(t *testing.T, appType, template, dir string) *common.RuntimeContext {
 	t.Helper()
-	cmd := &cobra.Command{Use: "+app-dev-init-template"}
+	cmd := &cobra.Command{Use: "+init-template"}
 	cmd.Flags().String("type", appType, "")
 	cmd.Flags().String("template", template, "")
 	cmd.Flags().String("template-version", "", "")
@@ -541,7 +541,7 @@ func testRuntimeAppDevInitTpl(t *testing.T, appType, template, dir string) *comm
 
 func TestResolveAppDevRegistries(t *testing.T) {
 	rctxWith := func(registry string) *common.RuntimeContext {
-		cmd := &cobra.Command{Use: "+app-dev-init-template"}
+		cmd := &cobra.Command{Use: "+init-template"}
 		cmd.Flags().String("registry", registry, "")
 		return common.TestNewRuntimeContext(cmd, nil)
 	}
@@ -594,7 +594,7 @@ func TestAppDevInitTemplateValidate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := AppsAppDevInitTemplate.Validate(context.Background(), testRuntimeAppDevInit(t, tt.appType, tt.dir))
+			err := AppsInitTemplate.Validate(context.Background(), testRuntimeAppDevInit(t, tt.appType, tt.dir))
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("err = %v, want containing %q", err, tt.wantErr)
 			}
@@ -637,8 +637,8 @@ func TestAppDevInitTemplateExecute_RendersFromRegistry(t *testing.T) {
 	withFakeRegistry(t, pkg, buildTemplateTgz(t, defaultTemplateEntries()))
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	dir := relAppDevDir(t)
-	if err := runAppsShortcut(t, AppsAppDevInitTemplate,
-		[]string{"+app-dev-init-template", "--type", "frontend", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
+	if err := runAppsShortcut(t, AppsInitTemplate,
+		[]string{"+init-template", "--type", "frontend", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
 	data := parseEnvelopeData(t, stdout)
@@ -677,8 +677,8 @@ func TestAppDevInitTemplateExecute_FullStackPackage(t *testing.T) {
 	}))
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	dir := relAppDevDir(t)
-	if err := runAppsShortcut(t, AppsAppDevInitTemplate,
-		[]string{"+app-dev-init-template", "--type", "full_stack", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
+	if err := runAppsShortcut(t, AppsInitTemplate,
+		[]string{"+init-template", "--type", "full_stack", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
 	data := parseEnvelopeData(t, stdout)
@@ -695,8 +695,8 @@ func TestAppDevInitTemplateExecute_ExplicitTemplate(t *testing.T) {
 	}))
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	dir := relAppDevDir(t)
-	if err := runAppsShortcut(t, AppsAppDevInitTemplate,
-		[]string{"+app-dev-init-template", "--template", "vite-react", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
+	if err := runAppsShortcut(t, AppsInitTemplate,
+		[]string{"+init-template", "--template", "vite-react", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
 	data := parseEnvelopeData(t, stdout)
@@ -718,8 +718,8 @@ func TestAppDevInitTemplateExecute_RegistryDown(t *testing.T) {
 
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	dir := relAppDevDir(t)
-	err := runAppsShortcut(t, AppsAppDevInitTemplate,
-		[]string{"+app-dev-init-template", "--type", "frontend", "--dir", dir, "--as", "user"}, factory, stdout)
+	err := runAppsShortcut(t, AppsInitTemplate,
+		[]string{"+init-template", "--type", "frontend", "--dir", dir, "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryNetwork)
 	if !p.Retryable {
 		t.Error("registry 5xx must be retryable")
@@ -738,8 +738,8 @@ func TestAppDevInitTemplateExecute_DirNotEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	err := runAppsShortcut(t, AppsAppDevInitTemplate,
-		[]string{"+app-dev-init-template", "--type", "frontend", "--dir", dir, "--as", "user"}, factory, stdout)
+	err := runAppsShortcut(t, AppsInitTemplate,
+		[]string{"+init-template", "--type", "frontend", "--dir", dir, "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
 	if p.Subtype != errs.SubtypeFailedPrecondition {
 		t.Errorf("subtype = %q", p.Subtype)
@@ -748,8 +748,8 @@ func TestAppDevInitTemplateExecute_DirNotEmpty(t *testing.T) {
 
 func TestAppDevInitTemplateDryRun(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	if err := runAppsShortcut(t, AppsAppDevInitTemplate,
-		[]string{"+app-dev-init-template", "--type", "frontend", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
+	if err := runAppsShortcut(t, AppsInitTemplate,
+		[]string{"+init-template", "--type", "frontend", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
 	data, err := decodeDryRunDataMap(stdout.Bytes())
@@ -782,8 +782,8 @@ func TestAppDevInitTemplateDryRun_DirNotEmptySurfaced(t *testing.T) {
 		t.Fatal(err)
 	}
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	if err := runAppsShortcut(t, AppsAppDevInitTemplate,
-		[]string{"+app-dev-init-template", "--type", "frontend", "--dir", dir, "--as", "user", "--dry-run"}, factory, stdout); err != nil {
+	if err := runAppsShortcut(t, AppsInitTemplate,
+		[]string{"+init-template", "--type", "frontend", "--dir", dir, "--as", "user", "--dry-run"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
 	data, err := decodeDryRunDataMap(stdout.Bytes())

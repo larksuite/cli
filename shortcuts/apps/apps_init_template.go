@@ -28,10 +28,10 @@ const (
 )
 
 // appDevLookPath is swappable in tests to simulate a missing binary
-// (+app-dev-publish uses it for its npm precondition check).
+// (+deploy uses it for its npm precondition check).
 var appDevLookPath = exec.LookPath
 
-// appDevTemplateForType maps the +app-dev-init-template --type value to its
+// appDevTemplateForType maps the +init-template --type value to its
 // template short name. Unknown types return "".
 func appDevTemplateForType(appType string) string {
 	switch appType {
@@ -159,19 +159,19 @@ func ensureAppDevDirUsable(dir string) error {
 	return nil
 }
 
-// AppsAppDevInitTemplate scaffolds a local web app project from an npm
+// AppsInitTemplate scaffolds a local web app project from an npm
 // template package (artifact-hosting mode: code stays local, no git, no
 // sandbox, no Node required for this step).
-var AppsAppDevInitTemplate = common.Shortcut{
+var AppsInitTemplate = common.Shortcut{
 	Service:     appsService,
-	Command:     "+app-dev-init-template",
+	Command:     "+init-template",
 	Description: "Scaffold a local web app project from an npm template package (artifact-hosting mode, no git/sandbox/Node, no Lark API)",
 	Risk:        "write",
 	Tips: []string{
-		"Example: lark-cli apps +app-dev-init-template --type frontend --dir ./my-app",
-		"Example: lark-cli apps +app-dev-init-template --type full_stack --dry-run",
-		"Example: lark-cli apps +app-dev-init-template --template vite-react --dir ./demo   (use a specific template package directly)",
-		"The scaffold is local-only: create the Miaoda app later with +create and deploy with +app-dev-publish",
+		"Example: lark-cli apps +init-template --type frontend --dir ./my-app",
+		"Example: lark-cli apps +init-template --type full_stack --dry-run",
+		"Example: lark-cli apps +init-template --template vite-react --dir ./demo   (use a specific template package directly)",
+		"The scaffold is local-only: create the Miaoda app later with +create and deploy with +deploy",
 	},
 	// No Lark OAPI is called; explicit []string{} per the convention
 	// enforced by TestAllShortcutsScopesNotNil.
@@ -267,7 +267,7 @@ var AppsAppDevInitTemplate = common.Shortcut{
 		nextSteps := []string{
 			devPrefix + "npm install && npm run dev",
 			"lark-cli apps +create --name <name> to create the Miaoda app",
-			"run lark-cli apps +app-dev-publish --app-id <returned app_id> from the project root (saved into miaoda.json on success; later runs need no flag)",
+			"run lark-cli apps +deploy --app-id <returned app_id> from the project root (saved into miaoda.json on success; later runs need no flag)",
 		}
 		data := map[string]interface{}{
 			"dir":        dir,
