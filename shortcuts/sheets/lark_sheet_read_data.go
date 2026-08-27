@@ -412,7 +412,7 @@ func condFormatResultOnly(out interface{}) interface{} {
 					}
 					cells = append(cells, cell)
 				}
-				rows = append(rows, cells)
+				rows = append(rows, any(cells))
 			}
 			filteredRange["cells"] = rows
 		}
