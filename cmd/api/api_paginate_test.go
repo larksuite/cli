@@ -451,10 +451,10 @@ func TestAPIPaginate_LaterPageBusinessErrorEmitsNoStdout(t *testing.T) {
 	if err == nil {
 		t.Fatal("apiPaginate() error = nil, want business error from page 2")
 	}
-	if got := out.String(); got != "" {
-		t.Fatalf("stdout bytes = %q, want empty on a failed pagination run", got)
-	}
 	if bytes.Contains(out.Bytes(), []byte(`"ok": true`)) {
 		t.Fatalf("failed pagination stdout contains a success envelope:\n%s", out.Bytes())
+	}
+	if got := out.String(); got != "" {
+		t.Fatalf("stdout bytes = %q, want empty on a failed pagination run", got)
 	}
 }

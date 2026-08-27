@@ -274,7 +274,7 @@ same as zero records, and in a pipeline the exit code is discarded unless you se
 `set -o pipefail`.
 
 Nothing is written to stdout for a failed run, with one exception: `lark-cli api`
-and the generated service commands emit each page as it arrives under the streaming
+and the generated API Commands emit each page as it arrives under the streaming
 formats (`ndjson`/`table`/`csv`), so rows written before the failure remain. Their
 **first**-page behaviour is unchanged: under the JSON and `--jq` formats a business
 error still writes the raw response to stdout; a transport failure — and any failure

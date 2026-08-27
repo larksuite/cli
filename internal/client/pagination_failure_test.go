@@ -104,6 +104,14 @@ func TestPaginateAll_LaterPageUnknownBusinessCodePropagates(t *testing.T) {
 	if got := errs.CategoryOf(err); got != errs.CategoryAPI {
 		t.Errorf("errs.CategoryOf(err) = %q, want %q", got, errs.CategoryAPI)
 	}
+
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("errs.ProblemOf(err) = _, false; want a typed problem; err = %T: %v", err, err)
+	}
+	if p.Subtype != errs.SubtypeUnknown {
+		t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypeUnknown)
+	}
 }
 
 // 230027 is in the codemeta table, so it classifies as authorization. This case
@@ -124,6 +132,14 @@ func TestPaginateAll_LaterPageKnownBusinessCodeMatchesPageOneClassification(t *t
 	}
 	if got := errs.CategoryOf(err); got != errs.CategoryAuthorization {
 		t.Errorf("errs.CategoryOf(err) = %q, want %q", got, errs.CategoryAuthorization)
+	}
+
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("errs.ProblemOf(err) = _, false; want a typed problem; err = %T: %v", err, err)
+	}
+	if p.Subtype != errs.SubtypeUserUnauthorized {
+		t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypeUserUnauthorized)
 	}
 }
 
