@@ -49,6 +49,14 @@ var CellsGet = common.Shortcut{
 		if strings.TrimSpace(runtime.Str("range")) == "" {
 			return sheetsValidationForFlag("range", "--range is required")
 		}
+		wantFormula, wantRawValue := false, false
+		for _, value := range runtime.StrSlice("include") {
+			wantFormula = wantFormula || value == "formula"
+			wantRawValue = wantRawValue || value == "raw_value"
+		}
+		if wantFormula && wantRawValue {
+			return sheetsValidationForFlag("include", "--include formula and raw_value are mutually exclusive")
+		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -97,7 +105,8 @@ func cellsGetInput(runtime *common.RuntimeContext, token, sheetID, sheetName str
 // tool's switches:
 //
 //   - include_styles (bool) — toggled by "style" presence
-//   - value_render_option (enum) — "formula" → formula; otherwise omitted
+//   - value_render_option (enum) — "formula" → formula; "raw_value" →
+//     raw_value; otherwise omitted
 //   - include_truncation_info (bool) — toggled by "truncation" presence; makes
 //     the tool estimate and return per-cell isRowTruncated / isColTruncated
 //   - include_conditional_format_style (bool) — toggled by "conditional_format"
@@ -123,7 +132,9 @@ func applyIncludeToCellsGet(input map[string]interface{}, include []string) {
 	if want["conditional_format"] {
 		input["include_conditional_format_style"] = true
 	}
-	if want["formula"] {
+	if want["raw_value"] {
+		input["value_render_option"] = "raw_value"
+	} else if want["formula"] {
 		input["value_render_option"] = "formula"
 	}
 	if want["truncation"] {

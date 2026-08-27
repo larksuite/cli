@@ -573,7 +573,7 @@ def _numeric_source_issues(
             sheet_id=owner_sheet_id if same_sheet else None,
             sheet_name=None if same_sheet else source_sheet,
             cell_range=checked_range,
-            include="value,style",
+            include="value,style,raw_value",
             timeout=timeout,
         )
         truncated = _cells_truncated(cells_data)
@@ -606,7 +606,7 @@ def _numeric_source_issues(
             uses_text_format = str(number_format or "").strip() == "@"
             if isinstance(value, (int, float)) and not isinstance(value, bool) and uses_text_format:
                 reason = "numeric_value_uses_text_format"
-            elif isinstance(value, str) and _looks_numeric(value) and uses_text_format:
+            elif isinstance(value, str) and _looks_numeric(value):
                 reason = "numeric_value_stored_as_text"
             if not reason:
                 continue
