@@ -137,3 +137,36 @@ func TestWorkbookExport_CreateRateLimitKeepsCallerRecovery(t *testing.T) {
 		t.Fatalf("workbook-export hint must not redirect users to drive +export: %q", problem.Hint)
 	}
 }
+
+// TestWorkbookExport_LocalOfficeTokenRejected pins the up-front refusal for a
+// locally opened Office file: drive export can never serve those tokens, so the
+// command must fail with a typed failed_precondition telling the caller the
+// file is already local — before any export_tasks round trip (no stubs are
+// registered, so any HTTP call would fail the run with a different error).
+func TestWorkbookExport_LocalOfficeTokenRejected(t *testing.T) {
+	for _, token := range []string{
+		"local_office_" + strings.Repeat("a", 12),
+		"fake_office_" + strings.Repeat("b", 12),
+		"aaaaOaaaaFaaaaLaaaa0aaaaXaaa", // interleaved OFL0X marker
+	} {
+		t.Run(token, func(t *testing.T) {
+			_, err := runShortcutWithStubs(t, WorkbookExport, []string{
+				"--spreadsheet-token", token, "--as", "user",
+			})
+			problem := requireProblem(t, err, errs.CategoryValidation, errs.SubtypeFailedPrecondition, "cannot be exported")
+			if !strings.Contains(problem.Hint, "no export needed") {
+				t.Errorf("hint should say the file is already local: %q", problem.Hint)
+			}
+		})
+	}
+}
+
+// TestWorkbookExport_LocalOfficeTokenRejectedInDryRun keeps --dry-run honest:
+// the guard lives in Validate, which runs before the dry-run preview, so a
+// local-office token must not render a plan that could never work.
+func TestWorkbookExport_LocalOfficeTokenRejectedInDryRun(t *testing.T) {
+	_, err := runShortcutWithStubs(t, WorkbookExport, []string{
+		"--spreadsheet-token", "local_office_abcdefghijkl", "--dry-run", "--as", "user",
+	})
+	requireProblem(t, err, errs.CategoryValidation, errs.SubtypeFailedPrecondition, "cannot be exported")
+}

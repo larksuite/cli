@@ -2180,7 +2180,11 @@ var WorkbookExport = common.Shortcut{
 	HasFormat:   true,
 	Flags:       flagsFor("+workbook-export"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if _, err := resolveSpreadsheetToken(runtime); err != nil {
+		token, err := resolveSpreadsheetToken(runtime)
+		if err != nil {
+			return err
+		}
+		if err := errLocalOfficeExportUnsupported(token); err != nil {
 			return err
 		}
 		ext := runtime.Str("file-extension")
@@ -2208,12 +2212,32 @@ var WorkbookExport = common.Shortcut{
 		if p.Token, err = resolveSpreadsheetTokenExec(runtime); err != nil {
 			return err
 		}
+		// Re-check after the wiki hop: Validate only saw the node_token.
+		if err := errLocalOfficeExportUnsupported(p.Token); err != nil {
+			return err
+		}
 		applyWorkbookOutputPath(&p, runtime.FileIO(), runtime.Str("output-path"))
 		return drive.RunExport(ctx, runtime, p)
 	},
 	Tips: []string{
 		"Polls for a bounded window; if the export is still running it returns a resume reference instead of blocking. Pass --output-path to download the file once ready (omit it to only create the export task and get the file token back).",
 	},
+}
+
+// errLocalOfficeExportUnsupported rejects an export whose target is a locally
+// opened Office spreadsheet (isOfficeSpreadsheet: a "local_office_"/"fake_office_"
+// token, or an interleaved OFL0X one). Such a token names a local file the Lark
+// client is showing, not a cloud document, so the drive export task can only
+// fail on the backend — and it fails late, after the create + poll round trips,
+// with an opaque message. Refuse up front and say why instead.
+func errLocalOfficeExportUnsupported(token string) error {
+	if !isOfficeSpreadsheet(token) {
+		return nil
+	}
+	return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+		"%s is a locally opened Office file, not a Lark cloud spreadsheet — it cannot be exported", token).
+		WithHint("This workbook already exists as a file on disk: use that file directly, no export needed. " +
+			"To get a cloud spreadsheet you can export later, upload it first with `lark-cli sheets +workbook-import --file <path>`.")
 }
 
 // workbookExportParams builds the shared drive export request for
