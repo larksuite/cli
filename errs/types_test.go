@@ -265,6 +265,7 @@ func TestWithChain_ReturnsConcretePointer(t *testing.T) {
 		WithCode(42).
 		WithRetryable().
 		WithParam("--start").
+		WithLimitViolation("DOC_TABLE_CELL_LIMIT", "create", 2001, 2000).
 		WithCause(errors.New("boom"))
 
 	if got.Hint != "hint text" {
@@ -281,6 +282,9 @@ func TestWithChain_ReturnsConcretePointer(t *testing.T) {
 	}
 	if got.Param != "--start" {
 		t.Errorf("Param = %q, want %q", got.Param, "--start")
+	}
+	if got.LimitCode != "DOC_TABLE_CELL_LIMIT" || got.Operation != "create" || got.Actual != 2001 || got.Limit != 2000 {
+		t.Errorf("limit violation = %q/%q %d/%d", got.LimitCode, got.Operation, got.Actual, got.Limit)
 	}
 	if got.Cause == nil || got.Cause.Error() != "boom" {
 		t.Errorf("Cause = %v, want error 'boom'", got.Cause)

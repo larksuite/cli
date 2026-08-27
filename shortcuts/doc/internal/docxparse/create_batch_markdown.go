@@ -16,6 +16,7 @@ func PlanCreateMarkdownBatches(source string, batchLimit, totalLimit int) (Creat
 		TargetBlocks:    batchLimit,
 		OperationBlocks: batchLimit,
 		TotalBlocks:     totalLimit,
+		Content:         DefaultContentLimits(),
 	})
 }
 
@@ -35,6 +36,7 @@ func PlanCreateMarkdownBatchesWithLimits(source string, limits CreateBatchLimits
 	}
 
 	units := make([]createBatchUnit, len(nodes))
+	statistics := ContentStatistics{}
 	for i, node := range nodes {
 		end := len(source)
 		if i+1 < len(starts) {
@@ -42,11 +44,16 @@ func PlanCreateMarkdownBatchesWithLimits(source string, limits CreateBatchLimits
 		}
 		raw := source[starts[i]:end]
 		tag, _ := markdownUnitTag(node, raw)
+		unitStatistics := markdownMaterializedSourceStatistics(raw)
+		statistics = statistics.merge(unitStatistics)
 		units[i] = createBatchUnit{
 			start:  starts[i],
 			tag:    tag,
-			blocks: markdownMaterializedSourceCount(raw),
+			blocks: unitStatistics.Blocks,
 		}
+	}
+	if err := validateContentStatistics(statistics, limits.Content); err != nil {
+		return CreateBatchPlan{}, err
 	}
 	hasTitle := applySDKMarkdownCreateTitleSemantics(source, nodes, starts, units)
 	return packCreateUnits(source, units, hasTitle, limits)
@@ -328,7 +335,17 @@ func markdownUnitTag(node gast.Node, raw string) (string, bool) {
 }
 
 func markdownMaterializedSourceCount(raw string) int {
+	return markdownMaterializedSourceStatistics(raw).Blocks
+}
+
+func markdownMaterializedSourceStatistics(raw string) ContentStatistics {
 	source, document := parseSDKMarkdown(raw, true)
+	statistics := markdownDocumentContentStatistics(document, source)
+	statistics.Blocks = markdownMaterializedDocumentCount(document, source)
+	return statistics
+}
+
+func markdownMaterializedDocumentCount(document gast.Node, source []byte) int {
 	count := 0
 	inlineRun := false
 	flushInlineRun := func() {
@@ -399,16 +416,6 @@ func markdownMaterializedBlockCount(node gast.Node, source []byte, raw string) i
 		}
 		return saturatedAdd(count, childBlocks)
 	}
-	if looksLikeMarkdownXML(raw) {
-		if elements, err := parseXML(strings.TrimSpace(raw)); err == nil && len(elements) > 0 {
-			count := 0
-			for _, element := range elements {
-				count = saturatedAdd(count, materializedBlockCount(element))
-			}
-			return count
-		}
-	}
-
 	switch node.Kind() {
 	case gast.KindParagraph, gast.KindHeading, gast.KindFencedCodeBlock,
 		gast.KindCodeBlock, gast.KindThematicBreak:

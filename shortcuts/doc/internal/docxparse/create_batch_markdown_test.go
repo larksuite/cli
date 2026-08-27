@@ -148,6 +148,7 @@ func TestPlanCreateMarkdownBatchesAllowsListAtHardOperationLimit(t *testing.T) {
 		TargetBlocks:    2_000,
 		OperationBlocks: 5_000,
 		TotalBlocks:     40_000,
+		Content:         DefaultContentLimits(),
 	})
 	if err != nil {
 		t.Fatalf("PlanCreateMarkdownBatchesWithLimits() error: %v", err)

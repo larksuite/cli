@@ -25,6 +25,7 @@ func createBatchLimits() docxparse.CreateBatchLimits {
 		TargetBlocks:    docsCreateBatchTarget,
 		OperationBlocks: docsCreateOperationBlockLimit,
 		TotalBlocks:     docsCreateTotalBlockLimit,
+		Content:         docxparse.DefaultContentLimits(),
 	}
 }
 
@@ -41,30 +42,15 @@ func buildCreateWritePlan(runtime *common.RuntimeContext) (docsCreateWritePlan, 
 	}
 	plan := docsCreateWritePlan{CreateBody: body}
 	content, _ := body["content"].(string)
-	var batchPlan docxparse.CreateBatchPlan
 	format := strings.TrimSpace(runtime.Str("doc-format"))
-	switch format {
-	case "markdown":
-		batchPlan, err = docxparse.PlanCreateMarkdownBatchesWithLimits(content, createBatchLimits())
-	default:
-		batchPlan, err = docxparse.PlanCreateBatchesWithLimits(content, createBatchLimits())
-	}
+	batchPlan, err := planCreateContentBatches(format, content)
 	if err != nil {
-		var planErr *docxparse.CreateBatchPlanError
-		if !errors.As(err, &planErr) {
-			if format == "markdown" {
-				return docsCreateWritePlan{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
-					"--content cannot be safely partitioned with the DocxXML SDK Markdown parser: %v", err).
-					WithParam("--content").
-					WithHint("fix the malformed Markdown or split it into smaller files before retrying").
-					WithCause(err)
-			}
-			// Preserve the existing create contract for compatibility-tolerant XML.
-			// The service remains the semantic parser when strict local planning is
-			// unavailable.
-			return plan, resources, nil
+		if validationErr := docsCreatePlanningValidationError(format, content, err); validationErr != nil {
+			return docsCreateWritePlan{}, nil, validationErr
 		}
-		return docsCreateWritePlan{}, nil, docsCreateBatchValidationError(planErr)
+		// Preserve the existing single-create contract for compatibility-tolerant
+		// XML when strict source-preserving batch boundaries are unavailable.
+		return plan, resources, nil
 	}
 	plan.TotalBlocks = batchPlan.TotalBlocks
 	if len(batchPlan.Batches) <= 1 {
@@ -75,6 +61,83 @@ func buildCreateWritePlan(runtime *common.RuntimeContext) (docsCreateWritePlan, 
 		plan.AppendBodies = append(plan.AppendBodies, buildCreateAppendBody(body, contentBatch))
 	}
 	return plan, resources, nil
+}
+
+func planCreateContentBatches(format, content string) (docxparse.CreateBatchPlan, error) {
+	if strings.TrimSpace(format) == "markdown" {
+		return docxparse.PlanCreateMarkdownBatchesWithLimits(content, createBatchLimits())
+	}
+	return docxparse.PlanCreateBatchesWithLimits(content, createBatchLimits())
+}
+
+// validateCreateContentPreflight runs before local resource rewriting so a
+// rejected create request cannot read/convert resource payloads or write a
+// partial document. buildCreateWritePlan repeats the same planner after safe
+// rewrites because those rewritten bytes are the ones that must be partitioned.
+func validateCreateContentPreflight(runtime *common.RuntimeContext) error {
+	format := strings.TrimSpace(runtime.Str("doc-format"))
+	content := buildCreateContent(runtime)
+	_, err := planCreateContentBatches(format, content)
+	if err == nil {
+		return nil
+	}
+	return docsCreatePlanningValidationError(format, content, err)
+}
+
+func docsCreatePlanningValidationError(format, content string, planningErr error) error {
+	var contentErr *docxparse.ContentLimitError
+	if errors.As(planningErr, &contentErr) {
+		return docsCreateContentLimitValidationError(contentErr)
+	}
+	var planErr *docxparse.CreateBatchPlanError
+	if errors.As(planningErr, &planErr) {
+		return docsCreateBatchValidationError(planErr)
+	}
+	if format == "markdown" {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--content cannot be safely partitioned with the DocxXML SDK Markdown parser: %v", planningErr).
+			WithParam("--content").
+			WithHint("fix the malformed Markdown or split it into smaller files before retrying").
+			WithCause(planningErr)
+	}
+
+	// Strict XML planning can reject legacy shapes that the SDK intentionally
+	// repairs. Run the same content statistics over the compatibility DOM before
+	// preserving the old unbatched service-owned parse behavior.
+	compatibleErr := docxparse.ValidateCompatibleXMLContentLimits(content, createBatchLimits().Content)
+	if errors.As(compatibleErr, &contentErr) {
+		return docsCreateContentLimitValidationError(contentErr)
+	}
+	return nil
+}
+
+func docsCreateContentLimitValidationError(limitErr *docxparse.ContentLimitError) error {
+	if limitErr == nil {
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "create content analyzer returned an empty limit error")
+	}
+	const operation = "create"
+	switch limitErr.Kind {
+	case docxparse.ContentLimitBlockCharacters:
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--content contains a block with %d UTF-16 code units, exceeding the limit %d", limitErr.Actual, limitErr.Limit).
+			WithParam("--content").
+			WithLimitViolation("DOC_BLOCK_CHAR_LIMIT", operation, limitErr.Actual, limitErr.Limit).
+			WithHint("split the long text into multiple sibling blocks before retrying")
+	case docxparse.ContentLimitTableCells:
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--content contains a table with %d effective cells, exceeding the limit %d", limitErr.Actual, limitErr.Limit).
+			WithParam("--content").
+			WithLimitViolation("DOC_TABLE_CELL_LIMIT", operation, limitErr.Actual, limitErr.Limit).
+			WithHint("reduce the table size or split it into multiple sibling tables before retrying")
+	case docxparse.ContentLimitTableColumns:
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--content contains a table with %d columns, exceeding the limit %d", limitErr.Actual, limitErr.Limit).
+			WithParam("--content").
+			WithLimitViolation("DOC_TABLE_COLUMN_LIMIT", operation, limitErr.Actual, limitErr.Limit).
+			WithHint("reduce the number of table columns or split the table before retrying")
+	default:
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "unknown create content limit %q", limitErr.Kind)
+	}
 }
 
 func docsCreateBatchValidationError(planErr *docxparse.CreateBatchPlanError) error {

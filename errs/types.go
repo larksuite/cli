@@ -61,9 +61,13 @@ type TypedError interface {
 // it is intentionally not serialized.
 type ValidationError struct {
 	Problem
-	Param  string         `json:"param,omitempty"`
-	Params []InvalidParam `json:"params,omitempty"`
-	Cause  error          `json:"-"`
+	Param     string         `json:"param,omitempty"`
+	Params    []InvalidParam `json:"params,omitempty"`
+	LimitCode string         `json:"limit_code,omitempty"`
+	Operation string         `json:"operation,omitempty"`
+	Actual    int            `json:"actual,omitempty"`
+	Limit     int            `json:"limit,omitempty"`
+	Cause     error          `json:"-"`
 }
 
 // InvalidParam is one structured validation diagnostic: the parameter that
@@ -142,6 +146,17 @@ func (e *ValidationError) WithParam(param string) *ValidationError {
 
 func (e *ValidationError) WithParams(params ...InvalidParam) *ValidationError {
 	e.Params = append(e.Params, params...)
+	return e
+}
+
+// WithLimitViolation adds machine-readable fields for a bounded input
+// violation. limitCode is a domain-stable identifier; Problem.Code remains
+// reserved for an upstream numeric API code.
+func (e *ValidationError) WithLimitViolation(limitCode, operation string, actual, limit int) *ValidationError {
+	e.LimitCode = limitCode
+	e.Operation = operation
+	e.Actual = actual
+	e.Limit = limit
 	return e
 }
 

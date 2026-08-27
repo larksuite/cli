@@ -79,8 +79,12 @@ func TestPermissionError_RequestedGrantedMarshal(t *testing.T) {
 
 func TestValidationError_MarshalJSON(t *testing.T) {
 	ve := &ValidationError{
-		Problem: Problem{Category: CategoryValidation, Subtype: SubtypeInvalidArgument, Message: "bad"},
-		Param:   "--scope",
+		Problem:   Problem{Category: CategoryValidation, Subtype: SubtypeInvalidArgument, Message: "bad"},
+		Param:     "--scope",
+		LimitCode: "DOC_TABLE_CELL_LIMIT",
+		Operation: "create",
+		Actual:    2001,
+		Limit:     2000,
 	}
 	b, _ := json.Marshal(ve)
 	s := string(b)
@@ -89,6 +93,10 @@ func TestValidationError_MarshalJSON(t *testing.T) {
 		`"subtype":"invalid_argument"`,
 		`"message":"bad"`,
 		`"param":"--scope"`,
+		`"limit_code":"DOC_TABLE_CELL_LIMIT"`,
+		`"operation":"create"`,
+		`"actual":2001`,
+		`"limit":2000`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q in %s", want, s)

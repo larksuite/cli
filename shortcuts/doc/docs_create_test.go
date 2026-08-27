@@ -502,6 +502,140 @@ func TestDocsCreateV2RejectsTotalBlockLimitBeforeCreate(t *testing.T) {
 	}
 }
 
+func TestDocsCreateV2RejectsContentLimitsBeforeCreate(t *testing.T) {
+	tests := []struct {
+		name      string
+		format    string
+		content   string
+		limitCode string
+		actual    int
+		limit     int
+	}{
+		{
+			name:      "xml block characters",
+			format:    "xml",
+			content:   `<title>Limit</title><p>` + strings.Repeat("x", 100_001) + `</p>`,
+			limitCode: "DOC_BLOCK_CHAR_LIMIT",
+			actual:    100_001,
+			limit:     100_000,
+		},
+		{
+			name:      "markdown block characters",
+			format:    "markdown",
+			content:   "# Limit\n\n" + strings.Repeat("x", 100_001),
+			limitCode: "DOC_BLOCK_CHAR_LIMIT",
+			actual:    100_001,
+			limit:     100_000,
+		},
+		{
+			name:      "xml late block characters",
+			format:    "xml",
+			content:   `<title>Limit</title>` + strings.Repeat(`<p>prefix</p>`, 1_999) + `<p>` + strings.Repeat("x", 100_001) + `</p>`,
+			limitCode: "DOC_BLOCK_CHAR_LIMIT",
+			actual:    100_001,
+			limit:     100_000,
+		},
+		{
+			name:      "xml table cells",
+			format:    "xml",
+			content:   `<title>Limit</title>` + docsCreateXMLTable(2_001, 1),
+			limitCode: "DOC_TABLE_CELL_LIMIT",
+			actual:    2_001,
+			limit:     2_000,
+		},
+		{
+			name:      "xml table columns",
+			format:    "xml",
+			content:   `<title>Limit</title>` + docsCreateXMLTable(1, 101),
+			limitCode: "DOC_TABLE_COLUMN_LIMIT",
+			actual:    101,
+			limit:     100,
+		},
+		{
+			name:      "xml late table columns",
+			format:    "xml",
+			content:   `<title>Limit</title>` + strings.Repeat(`<p>prefix</p>`, 1_899) + docsCreateXMLTable(1, 101),
+			limitCode: "DOC_TABLE_COLUMN_LIMIT",
+			actual:    101,
+			limit:     100,
+		},
+		{
+			name:      "markdown gfm table columns",
+			format:    "markdown",
+			content:   docsCreateMarkdownTable(2, 101),
+			limitCode: "DOC_TABLE_COLUMN_LIMIT",
+			actual:    101,
+			limit:     100,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+			createStub := &httpmock.Stub{
+				Method: "POST", URL: "/open-apis/docs_ai/v1/documents", Optional: true,
+				Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+			}
+			reg.Register(createStub)
+
+			err := runDocsCreateShortcut(t, f, stdout, []string{
+				"+create", "--doc-format", tt.format, "--content", tt.content, "--as", "user",
+			})
+			assertDocsCreateLimitError(t, err, tt.limitCode, tt.actual, tt.limit)
+			if len(createStub.CapturedBodies) != 0 {
+				t.Fatalf("create API was called for %s", tt.name)
+			}
+		})
+	}
+}
+
+func TestDocsCreateV2ContentLimitRunsBeforeLocalResourcePreparation(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	createStub := &httpmock.Stub{
+		Method: "POST", URL: "/open-apis/docs_ai/v1/documents", Optional: true,
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+	}
+	reg.Register(createStub)
+	content := `<p>` + strings.Repeat("x", 100_001) + `</p><img path="@missing.png"/>`
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create", "--content", content, "--as", "user",
+	})
+
+	assertDocsCreateLimitError(t, err, "DOC_BLOCK_CHAR_LIMIT", 100_001, 100_000)
+	if len(createStub.CapturedBodies) != 0 {
+		t.Fatal("create API was called before content/resource preflight")
+	}
+}
+
+func TestDocsCreateV2ContentLimitAcceptsExactBoundaries(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{name: "block characters", content: `<title>Limit</title><p>` + strings.Repeat("x", 100_000) + `</p>`},
+		{name: "table columns", content: `<title>Limit</title>` + docsCreateXMLTable(1, 100)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+			createStub := registerDocsAIStub(reg, "POST", "/open-apis/docs_ai/v1/documents", map[string]interface{}{
+				"document": map[string]interface{}{"document_id": "doxcn_boundary", "revision_id": 1},
+			})
+
+			err := runDocsCreateShortcut(t, f, stdout, []string{
+				"+create", "--content", tt.content, "--as", "user",
+			})
+			if err != nil {
+				t.Fatalf("exact boundary rejected: %v", err)
+			}
+			if len(createStub.CapturedBodies) != 1 {
+				t.Fatalf("create requests = %d, want 1", len(createStub.CapturedBodies))
+			}
+		})
+	}
+}
+
 func TestDocsCreateV2RejectsUnsplittableFirstContainerBeforeCreate(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
 	createStub := &httpmock.Stub{
@@ -687,4 +821,50 @@ func decodeDocsCreateEnvelope(t *testing.T, stdout *bytes.Buffer) map[string]int
 		t.Fatalf("missing data in output envelope: %#v", envelope)
 	}
 	return data
+}
+
+func assertDocsCreateLimitError(t *testing.T, err error, limitCode string, actual, limit int) {
+	t.Helper()
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--content")
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %T %v, want *errs.ValidationError", err, err)
+	}
+	if validationErr.LimitCode != limitCode || validationErr.Operation != "create" ||
+		validationErr.Actual != actual || validationErr.Limit != limit {
+		t.Fatalf("limit error = %q/%q %d/%d, want %q/create %d/%d",
+			validationErr.LimitCode, validationErr.Operation, validationErr.Actual, validationErr.Limit,
+			limitCode, actual, limit)
+	}
+}
+
+func docsCreateXMLTable(rows, columns int) string {
+	var content strings.Builder
+	content.WriteString("<table>")
+	for row := 0; row < rows; row++ {
+		content.WriteString("<tr>")
+		for column := 0; column < columns; column++ {
+			content.WriteString("<td><p>x</p></td>")
+		}
+		content.WriteString("</tr>")
+	}
+	content.WriteString("</table>")
+	return content.String()
+}
+
+func docsCreateMarkdownTable(rows, columns int) string {
+	var content strings.Builder
+	writeRow := func(value string) {
+		content.WriteByte('|')
+		for column := 0; column < columns; column++ {
+			content.WriteString(" " + value + " |")
+		}
+		content.WriteByte('\n')
+	}
+	writeRow("h")
+	writeRow("---")
+	for row := 1; row < rows; row++ {
+		writeRow("x")
+	}
+	return content.String()
 }

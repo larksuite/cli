@@ -19,6 +19,7 @@ type CreateBatchLimits struct {
 	TargetBlocks    int
 	OperationBlocks int
 	TotalBlocks     int
+	Content         ContentLimits
 }
 
 type CreateBatchPlanErrorKind string
@@ -52,6 +53,7 @@ func PlanCreateBatches(source string, batchLimit, totalLimit int) (CreateBatchPl
 		TargetBlocks:    batchLimit,
 		OperationBlocks: batchLimit,
 		TotalBlocks:     totalLimit,
+		Content:         DefaultContentLimits(),
 	})
 }
 
@@ -74,16 +76,22 @@ func PlanCreateBatchesWithLimits(source string, limits CreateBatchLimits) (Creat
 
 	hasTitle := false
 	units := make([]createBatchUnit, len(elements))
+	statistics := ContentStatistics{}
 	for i, node := range elements {
 		if node.tag == "title" {
 			hasTitle = true
 		}
+		unitStatistics := collectXMLContentStatistics([]*Node{node})
+		statistics = statistics.merge(unitStatistics)
 		units[i] = createBatchUnit{
 			start:          spans[i].start,
 			tag:            node.tag,
-			blocks:         materializedBlockCount(node),
+			blocks:         unitStatistics.Blocks,
 			requiresCreate: node.tag == "title",
 		}
+	}
+	if err := validateContentStatistics(statistics, limits.Content); err != nil {
+		return CreateBatchPlan{}, err
 	}
 	return packCreateUnits(source, units, hasTitle, limits)
 }
@@ -95,7 +103,7 @@ func validateCreateBatchLimits(limits CreateBatchLimits) error {
 	if limits.TargetBlocks > limits.OperationBlocks {
 		return newParseError("create batch target %d exceeds operation limit %d", limits.TargetBlocks, limits.OperationBlocks)
 	}
-	return nil
+	return validateContentLimits(limits.Content)
 }
 
 type createBatchUnit struct {
@@ -238,23 +246,7 @@ func topLevelElementSpans(source string) ([]sourceSpan, error) {
 }
 
 func materializedBlockCount(node *Node) int {
-	if node == nil || node.typ != nodeElement {
-		return 0
-	}
-	if node.tag == "table" {
-		return materializedTableBlockCount(node)
-	}
-	count := 0
-	if isMaterializedBlock(node) {
-		count = 1
-		if node.tag == "source" && !isFigureParent(node.parent) && !isInlineFileContainer(node.parent) {
-			count++ // standalone source lowers to view + file
-		}
-	}
-	for _, child := range node.children {
-		count = saturatedAdd(count, materializedBlockCount(child))
-	}
-	return count
+	return collectXMLContentStatistics([]*Node{node}).Blocks
 }
 
 func isMaterializedBlock(node *Node) bool {
@@ -273,33 +265,6 @@ func isMaterializedBlock(node *Node) bool {
 	default:
 		return layoutOf(node.tag) == layoutBlock && !isOKRRichTextShell(node)
 	}
-}
-
-func materializedTableBlockCount(table *Node) int {
-	rows := tableRowsForBatch(table)
-	rowCount, columnCount, visibleCells := tableDimensionsForBatch(rows)
-	rowCount = maxInt(rowCount, 1)
-	columnCount = maxInt(columnCount, 1)
-	physicalCells := saturatedMultiply(rowCount, columnCount)
-	count := saturatedAdd(1, physicalCells) // table + cells
-	placeholderCells := physicalCells - len(visibleCells)
-	if placeholderCells > 0 {
-		count = saturatedAdd(count, placeholderCells)
-	}
-	for _, cell := range visibleCells {
-		childBlocks := 0
-		for _, child := range cell.children {
-			childBlocks = saturatedAdd(childBlocks, materializedBlockCount(child))
-		}
-		segments := tableCellInlineSegmentCount(cell)
-		if segments > 0 {
-			childBlocks = saturatedAdd(childBlocks, segments)
-		} else if childBlocks == 0 {
-			childBlocks = 1
-		}
-		count = saturatedAdd(count, childBlocks)
-	}
-	return count
 }
 
 func tableRowsForBatch(table *Node) []*Node {
@@ -363,28 +328,6 @@ func isBatchTablePositionOccupied(occupied map[tablePosition]struct{}, row, colu
 	return ok
 }
 
-func tableCellInlineSegmentCount(cell *Node) int {
-	segments := 0
-	active := false
-	flush := func() {
-		if active {
-			segments++
-			active = false
-		}
-	}
-	for _, child := range cell.children {
-		if isTableCellDispatchedBlock(child) {
-			flush()
-			continue
-		}
-		if inlineNodeMeaningful(child) {
-			active = true
-		}
-	}
-	flush()
-	return segments
-}
-
 func isTableCellDispatchedBlock(node *Node) bool {
 	if node == nil || node.typ != nodeElement {
 		return false
@@ -395,31 +338,6 @@ func isTableCellDispatchedBlock(node *Node) bool {
 	default:
 		return isMaterializedBlock(node)
 	}
-}
-
-func inlineNodeMeaningful(node *Node) bool {
-	if node == nil {
-		return false
-	}
-	if node.typ == nodeText {
-		return node.text != ""
-	}
-	switch node.tag {
-	case "br", "cite", "time", "mention-date", "inline-file", "button":
-		return true
-	case "source":
-		return isInlineFileContainer(node.parent)
-	case "a":
-		if node.attrs["type"] == "url-preview" {
-			return true
-		}
-	}
-	for _, child := range node.children {
-		if inlineNodeMeaningful(child) {
-			return true
-		}
-	}
-	return false
 }
 
 func isRichTextContainer(node *Node) bool {

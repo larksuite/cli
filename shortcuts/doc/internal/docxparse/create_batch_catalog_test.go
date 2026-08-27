@@ -18,9 +18,8 @@ func TestCreateBatchPlannerCoversEveryRegisteredContentTag(t *testing.T) {
 	}
 	sort.Strings(tags)
 
-	limits := CreateBatchLimits{TargetBlocks: 10_000, OperationBlocks: 10_000, TotalBlocks: 20_000}
+	limits := CreateBatchLimits{TargetBlocks: 10_000, OperationBlocks: 10_000, TotalBlocks: 20_000, Content: DefaultContentLimits()}
 	for _, tag := range tags {
-		tag := tag
 		source := representativeCatalogTagXML(tag)
 		t.Run("xml/"+tag, func(t *testing.T) {
 			nodes, err := parseXML(source)

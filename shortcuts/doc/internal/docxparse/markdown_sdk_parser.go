@@ -44,14 +44,75 @@ func parseSDKMarkdown(source string, preprocess bool) ([]byte, gast.Node) {
 	return data, sdkMarkdownParser.Parse(text.NewReader(data))
 }
 
-// preprocessSDKMarkdownBlocks follows the SDK preprocessing order for passes
-// that can affect the block AST. preprocessAdjacentInlineMarkup is deliberately
-// absent: it only rehydrates inline emphasis into equivalent inline XML and
-// cannot change the materialized block count used by create batching.
+// preprocessSDKMarkdownBlocks follows the SDK preprocessing order. Inline
+// markup normalization is required now that the same AST also owns per-block
+// character statistics; omitting it would count repaired Markdown delimiters
+// as visible DocX text.
 func preprocessSDKMarkdownBlocks(source string) string {
 	source = preprocessSDKPreCodeLineBreaks(source)
+	source = normalizeSDKListIndent(source)
+	source = preprocessSDKAdjacentInlineMarkup(source)
 	source = preprocessSDKAdjacentContainerTags(source)
 	return source
+}
+
+func normalizeSDKListIndent(source string) string {
+	lines := strings.Split(source, "\n")
+	type stackEntry struct{ originalIndent int }
+	var stack []stackEntry
+	inCodeFence := false
+	changed := false
+	lastOriginalIndent := 0
+	lastNewIndent := 0
+	for i, line := range lines {
+		trimmed := strings.TrimLeft(line, " ")
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			inCodeFence = !inCodeFence
+			continue
+		}
+		if inCodeFence || trimmed == "" {
+			continue
+		}
+		indent := len(line) - len(trimmed)
+		if sdkListMarkerLength(trimmed) > 0 {
+			for len(stack) > 0 && indent <= stack[len(stack)-1].originalIndent {
+				stack = stack[:len(stack)-1]
+			}
+			newIndent := len(stack) * 4
+			stack = append(stack, stackEntry{originalIndent: indent})
+			lastOriginalIndent = indent
+			lastNewIndent = newIndent
+			if newIndent != indent {
+				lines[i] = strings.Repeat(" ", newIndent) + trimmed
+				changed = true
+			}
+		} else if len(stack) > 0 && indent > lastOriginalIndent {
+			delta := lastNewIndent - lastOriginalIndent
+			if delta != 0 {
+				newIndent := maxInt(indent+delta, 0)
+				lines[i] = strings.Repeat(" ", newIndent) + trimmed
+				changed = true
+			}
+		}
+	}
+	if !changed {
+		return source
+	}
+	return strings.Join(lines, "\n")
+}
+
+func sdkListMarkerLength(value string) int {
+	if len(value) >= 2 && (value[0] == '-' || value[0] == '*' || value[0] == '+') && value[1] == ' ' {
+		return 2
+	}
+	position := 0
+	for position < len(value) && value[position] >= '0' && value[position] <= '9' {
+		position++
+	}
+	if position > 0 && position+1 < len(value) && (value[position] == '.' || value[position] == ')') && value[position+1] == ' ' {
+		return position + 2
+	}
+	return 0
 }
 
 var sdkAdjacentContainerTagPatterns = []*regexp.Regexp{
@@ -272,6 +333,7 @@ type sdkMarkdownBlock struct {
 	gast.BaseBlock
 	TagName       string
 	RawTagName    string
+	Attrs         map[string]string
 	SourceStart   int
 	SourceStop    int
 	IsSelfClosing bool
@@ -311,7 +373,10 @@ func (p *sdkContainerBlockParser) Open(_ gast.Node, reader text.Reader, _ parser
 		return nil, parser.NoChildren
 	}
 	reader.Advance(leading + openEnd + 1)
-	return &sdkMarkdownBlock{TagName: tag, RawTagName: tag, SourceStart: segment.Start + leading}, parser.HasChildren
+	return &sdkMarkdownBlock{
+		TagName: tag, RawTagName: tag, Attrs: parseSDKMarkdownTagAttributes(trimmed[:openEnd+1]),
+		SourceStart: segment.Start + leading,
+	}, parser.HasChildren
 }
 
 func (p *sdkContainerBlockParser) Continue(node gast.Node, reader text.Reader, _ parser.Context) parser.State {
@@ -369,13 +434,17 @@ func (p *sdkXMLBlockParser) Open(_ gast.Node, reader text.Reader, _ parser.Conte
 			if canonical != rawTag {
 				rawLen := openEnd + 1 + closeAt + sdkXMLCloseTagLen(rawTag)
 				reader.Advance(leading + rawLen)
-				return &sdkMarkdownBlock{TagName: canonical, RawTagName: rawTag, SourceStart: segment.Start + leading, SourceStop: segment.Start + leading + rawLen}, parser.NoChildren
+				return &sdkMarkdownBlock{
+					TagName: canonical, RawTagName: rawTag, Attrs: parseSDKMarkdownTagAttributes(trimmed[:openEnd+1]),
+					SourceStart: segment.Start + leading, SourceStop: segment.Start + leading + rawLen,
+				}, parser.NoChildren
 			}
 			return nil, parser.NoChildren
 		}
 	}
 	block := &sdkMarkdownBlock{
 		TagName: canonical, RawTagName: rawTag, SourceStart: segment.Start + leading,
+		Attrs:         parseSDKMarkdownTagAttributes(trimmed[:openEnd+1]),
 		IsSelfClosing: isSelfClosing, IsVoid: isVoid, PreserveText: canonical == "whiteboard" || canonical == "code",
 	}
 	if isSelfClosing || isVoid {
@@ -449,8 +518,12 @@ var kindSDKXMLInline = gast.NewNodeKind("SDKXMLInline")
 
 type sdkXMLInline struct {
 	gast.BaseInline
-	TagName string
-	Content []byte
+	TagName       string
+	RawTagName    string
+	Attrs         map[string]string
+	Content       []byte
+	IsSelfClosing bool
+	IsVoid        bool
 }
 
 func (n *sdkXMLInline) Kind() gast.NodeKind { return kindSDKXMLInline }
@@ -486,9 +559,15 @@ func (p *sdkXMLInlineParser) Parse(_ gast.Node, reader text.Reader, _ parser.Con
 		return nil
 	}
 	canonical := normalizeSDKTag(rawTag)
-	if openEnd >= 1 && line[openEnd-1] == '/' || isVoidTag(canonical) {
+	isSelfClosing := openEnd >= 1 && line[openEnd-1] == '/'
+	isVoid := isVoidTag(canonical)
+	attrs := parseSDKMarkdownTagAttributes(line[:openEnd+1])
+	if isSelfClosing || isVoid {
 		reader.Advance(openEnd + 1)
-		return &sdkXMLInline{TagName: canonical}
+		return &sdkXMLInline{
+			TagName: canonical, RawTagName: rawTag, Attrs: attrs,
+			IsSelfClosing: isSelfClosing, IsVoid: isVoid,
+		}
 	}
 	closeAt := findSDKXMLCloseTag(line[openEnd+1:], rawTag)
 	if closeAt < 0 {
@@ -497,7 +576,26 @@ func (p *sdkXMLInlineParser) Parse(_ gast.Node, reader text.Reader, _ parser.Con
 	advance := openEnd + 1 + closeAt + sdkXMLCloseTagLen(rawTag)
 	content := append([]byte(nil), line[openEnd+1:openEnd+1+closeAt]...)
 	reader.Advance(advance)
-	return &sdkXMLInline{TagName: canonical, Content: content}
+	return &sdkXMLInline{TagName: canonical, RawTagName: rawTag, Attrs: attrs, Content: content}
+}
+
+// parseSDKMarkdownTagAttributes mirrors the SDK's permissive XML attribute
+// parser for Markdown-owned DocxXML tags. Attribute values are unescaped by
+// parseAttributes, matching the DOM seen by document-limit statistics.
+func parseSDKMarkdownTagAttributes(openTag []byte) map[string]string {
+	value := strings.TrimSpace(string(openTag))
+	value = strings.TrimPrefix(value, "<")
+	value = strings.TrimSuffix(value, ">")
+	value = strings.TrimSuffix(value, "/")
+	value = strings.TrimSpace(value)
+	position := 0
+	for position < len(value) && isTagNamePart(value[position]) {
+		position++
+	}
+	if position >= len(value) {
+		return nil
+	}
+	return parseAttributes(value[position:])
 }
 
 var (

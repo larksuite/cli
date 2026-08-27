@@ -61,6 +61,9 @@ func validateCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 			WithParam("--content").
 			WithHint("provide XML or Markdown directly, use --content \"@relative/path\", or pass --title to create a title-only document")
 	}
+	if err := validateCreateContentPreflight(runtime); err != nil {
+		return err
+	}
 	if content != "" {
 		input, err := resolveDocsV2ContentReferenceMap(runtime)
 		if err != nil {

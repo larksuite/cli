@@ -34,6 +34,7 @@ func TestPlanCreateBatchesWithLimitsUsesReliableTarget(t *testing.T) {
 		TargetBlocks:    3_000,
 		OperationBlocks: 5_000,
 		TotalBlocks:     40_000,
+		Content:         DefaultContentLimits(),
 	})
 	if err != nil {
 		t.Fatalf("PlanCreateBatchesWithLimits() error: %v", err)
@@ -62,6 +63,7 @@ func TestPlanCreateBatchesWithLimitsTargetBoundary(t *testing.T) {
 				TargetBlocks:    2_000,
 				OperationBlocks: 5_000,
 				TotalBlocks:     40_000,
+				Content:         DefaultContentLimits(),
 			})
 			if err != nil {
 				t.Fatalf("PlanCreateBatchesWithLimits() error: %v", err)
@@ -85,6 +87,7 @@ func TestPlanCreateBatchesWithLimitsAllowsAtomicUnitAboveTarget(t *testing.T) {
 		TargetBlocks:    3_000,
 		OperationBlocks: 5_000,
 		TotalBlocks:     40_000,
+		Content:         DefaultContentLimits(),
 	})
 	if err != nil {
 		t.Fatalf("PlanCreateBatchesWithLimits() error: %v", err)
@@ -95,7 +98,7 @@ func TestPlanCreateBatchesWithLimitsAllowsAtomicUnitAboveTarget(t *testing.T) {
 }
 
 func TestPlanCreateBatchesWithLimitsHardOperationBoundary(t *testing.T) {
-	limits := CreateBatchLimits{TargetBlocks: 2_000, OperationBlocks: 5_000, TotalBlocks: 40_000}
+	limits := CreateBatchLimits{TargetBlocks: 2_000, OperationBlocks: 5_000, TotalBlocks: 40_000, Content: DefaultContentLimits()}
 	t.Run("at hard limit", func(t *testing.T) {
 		source := "<title>Doc</title><p>prefix</p><callout>" + strings.Repeat("<p>x</p>", 4_999) + "</callout>"
 		plan, err := PlanCreateBatchesWithLimits(source, limits)
@@ -142,7 +145,7 @@ func TestPlanCreateBatchesRejectsTitleAfterFirstBatch(t *testing.T) {
 	}
 }
 
-func TestPlanCreateBatchesRejectsOversizedTopLevelSubtree(t *testing.T) {
+func TestPlanCreateBatchesChecksTableContentLimitBeforeSubtreeLimit(t *testing.T) {
 	var table strings.Builder
 	table.WriteString("<table><tbody><tr>")
 	for i := 0; i < 2_500; i++ {
@@ -152,10 +155,7 @@ func TestPlanCreateBatchesRejectsOversizedTopLevelSubtree(t *testing.T) {
 
 	_, err := PlanCreateBatches(table.String(), 5_000, 40_000)
 
-	var planErr *CreateBatchPlanError
-	if !errors.As(err, &planErr) || planErr.Kind != CreateBatchSubtreeLimit || planErr.Tag != "table" || planErr.Blocks <= 5_000 {
-		t.Fatalf("error = %#v, want oversized table subtree", planErr)
-	}
+	assertContentLimit(t, err, ContentLimitTableCells, 2_500, 2_000)
 }
 
 func TestPlanCreateBatchesRejectsFirstSubtreeThatLeavesNoRoomForImplicitPage(t *testing.T) {

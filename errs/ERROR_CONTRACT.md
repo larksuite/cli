@@ -65,6 +65,7 @@ Typed errors render to **stderr** as one JSON object per process exit:
 | `error.retry_after_seconds` | per-Subtype-stable | upstream-provided minimum delay before retry; emitted when available for retryable `api/rate_limit` and HTTP-backed `network` errors |
 | `error.param` | per-Subtype-stable | single offending parameter (`ValidationError`); see **Validation parameters** |
 | `error.params` | per-Subtype-stable | per-parameter validation detail array (`ValidationError`); see **Validation parameters** |
+| `error.limit_code` / `operation` / `actual` / `limit` | producer-stable when present | structured bounded-input violation on `ValidationError`; `limit_code` carries the domain identifier because `code` remains numeric-upstream-only |
 | per-Subtype extension fields | per-Subtype-stable | e.g. `missing_scopes`, `console_url`, `challenge_url`; `console_url` is emitted for developer/admin recovery such as `app_scope_not_applied`, not user `missing_scope` |
 
 For retryable `type=api, subtype=rate_limit`, and for a retryable HTTP-backed
@@ -441,6 +442,13 @@ qualifier would be redundant on the wire.
 single representation. Use `Param` for the common single-parameter error;
 use `Params` when one failure spans several parameters or needs a
 per-parameter reason. Set with `.WithParam("--flag")` / `.WithParams(...)`.
+
+For a bounded input violation, `.WithLimitViolation(limitCode, operation,
+actual, limit)` adds four flat machine-readable fields. `limit_code` is the
+stable domain identifier (for example `DOC_TABLE_CELL_LIMIT`); `operation`
+preserves the user-visible operation even when the implementation internally
+plans several requests. The shared `error.code` field is not reused because it
+is reserved for numeric upstream API codes.
 
 A `params` wire example (multiple parameters each carrying a reason):
 
