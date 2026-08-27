@@ -122,20 +122,20 @@ func TestReadMetaStack(t *testing.T) {
 
 // --- declaration & validate tests ---
 
-func TestAppsAppDevInitApp_Declaration(t *testing.T) {
-	if AppsAppDevInitApp.Command != "+app-dev-init-app" {
-		t.Errorf("Command = %q", AppsAppDevInitApp.Command)
+func TestAppsAppDevInitTemplate_Declaration(t *testing.T) {
+	if AppsAppDevInitTemplate.Command != "+app-dev-init-template" {
+		t.Errorf("Command = %q", AppsAppDevInitTemplate.Command)
 	}
-	if AppsAppDevInitApp.Service != appsService {
-		t.Errorf("Service = %q", AppsAppDevInitApp.Service)
+	if AppsAppDevInitTemplate.Service != appsService {
+		t.Errorf("Service = %q", AppsAppDevInitTemplate.Service)
 	}
-	if AppsAppDevInitApp.Risk != "write" {
-		t.Errorf("Risk = %q, want write", AppsAppDevInitApp.Risk)
+	if AppsAppDevInitTemplate.Risk != "write" {
+		t.Errorf("Risk = %q, want write", AppsAppDevInitTemplate.Risk)
 	}
-	if !AppsAppDevInitApp.HasFormat {
+	if !AppsAppDevInitTemplate.HasFormat {
 		t.Error("HasFormat = false, want true")
 	}
-	if AppsAppDevInitApp.Scopes == nil {
+	if AppsAppDevInitTemplate.Scopes == nil {
 		t.Error("Scopes must be non-nil (no remote API => empty slice)")
 	}
 }
@@ -144,7 +144,7 @@ func TestAppsAppDevInitApp_Declaration(t *testing.T) {
 // registered, mirroring how the shortcut reads them via rctx.Str.
 func testRuntimeAppDevInit(t *testing.T, appType, dir string) *common.RuntimeContext {
 	t.Helper()
-	cmd := &cobra.Command{Use: "+app-dev-init-app"}
+	cmd := &cobra.Command{Use: "+app-dev-init-template"}
 	cmd.Flags().String("type", appType, "")
 	cmd.Flags().String("dir", dir, "")
 	return common.TestNewRuntimeContext(cmd, nil)
@@ -160,7 +160,7 @@ func TestAppDevInitAppValidate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := AppsAppDevInitApp.Validate(context.Background(), testRuntimeAppDevInit(t, tt.appType, tt.dir))
+			err := AppsAppDevInitTemplate.Validate(context.Background(), testRuntimeAppDevInit(t, tt.appType, tt.dir))
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("err = %v, want containing %q", err, tt.wantErr)
 			}
@@ -172,7 +172,7 @@ func TestAppDevInitAppValidate_NpxMissing(t *testing.T) {
 	orig := appDevLookPath
 	appDevLookPath = func(string) (string, error) { return "", errors.New("not found") }
 	t.Cleanup(func() { appDevLookPath = orig })
-	err := AppsAppDevInitApp.Validate(context.Background(), testRuntimeAppDevInit(t, "frontend", ""))
+	err := AppsAppDevInitTemplate.Validate(context.Background(), testRuntimeAppDevInit(t, "frontend", ""))
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
 	if p.Subtype != errs.SubtypeFailedPrecondition {
 		t.Errorf("subtype = %q, want failed_precondition", p.Subtype)
@@ -198,8 +198,8 @@ func TestAppDevInitAppExecute_DelegatesNpx(t *testing.T) {
 	withFakeRunner(t, f)
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	dir := relAppDevDir(t)
-	if err := runAppsShortcut(t, AppsAppDevInitApp,
-		[]string{"+app-dev-init-app", "--type", "frontend", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
+	if err := runAppsShortcut(t, AppsAppDevInitTemplate,
+		[]string{"+app-dev-init-template", "--type", "frontend", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
 	c := findCall(f.calls, "npx", "-y")
@@ -234,8 +234,8 @@ func TestAppDevInitAppExecute_FullStackTemplate(t *testing.T) {
 	withFakeRunner(t, f)
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	dir := relAppDevDir(t)
-	if err := runAppsShortcut(t, AppsAppDevInitApp,
-		[]string{"+app-dev-init-app", "--type", "full_stack", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
+	if err := runAppsShortcut(t, AppsAppDevInitTemplate,
+		[]string{"+app-dev-init-template", "--type", "full_stack", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
 	if c := findCall(f.calls, "npx", "-y"); c == nil || !containsAll(c, "--template", "react-express-standard-fullstack") {
@@ -255,8 +255,8 @@ func TestAppDevInitAppExecute_MetaStackEcho(t *testing.T) {
 	// dir must stay empty for ensureAppDevDirUsable, so use a wrapper runner.
 	wrapped := &metaWritingRunner{inner: f, dir: dir, stack: "custom-stack"}
 	initRunner = wrapped
-	if err := runAppsShortcut(t, AppsAppDevInitApp,
-		[]string{"+app-dev-init-app", "--type", "frontend", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
+	if err := runAppsShortcut(t, AppsAppDevInitTemplate,
+		[]string{"+app-dev-init-template", "--type", "frontend", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
 	data := parseEnvelopeData(t, stdout)
@@ -290,8 +290,8 @@ func TestAppDevInitAppExecute_NpxFails(t *testing.T) {
 	withFakeRunner(t, f)
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	dir := relAppDevDir(t)
-	err := runAppsShortcut(t, AppsAppDevInitApp,
-		[]string{"+app-dev-init-app", "--type", "frontend", "--dir", dir, "--as", "user"}, factory, stdout)
+	err := runAppsShortcut(t, AppsAppDevInitTemplate,
+		[]string{"+app-dev-init-template", "--type", "frontend", "--dir", dir, "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryInternal)
 	if !strings.Contains(p.Message, "npx app init failed") || !strings.Contains(p.Message, "boom") {
 		t.Errorf("message = %q", p.Message)
@@ -309,8 +309,8 @@ func TestAppDevInitAppExecute_DirNotEmpty(t *testing.T) {
 	f := &fakeCommandRunner{}
 	withFakeRunner(t, f)
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	err := runAppsShortcut(t, AppsAppDevInitApp,
-		[]string{"+app-dev-init-app", "--type", "frontend", "--dir", dir, "--as", "user"}, factory, stdout)
+	err := runAppsShortcut(t, AppsAppDevInitTemplate,
+		[]string{"+app-dev-init-template", "--type", "frontend", "--dir", dir, "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
 	if p.Subtype != errs.SubtypeFailedPrecondition {
 		t.Errorf("subtype = %q", p.Subtype)
@@ -322,8 +322,8 @@ func TestAppDevInitAppExecute_DirNotEmpty(t *testing.T) {
 
 func TestAppDevInitAppDryRun(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	if err := runAppsShortcut(t, AppsAppDevInitApp,
-		[]string{"+app-dev-init-app", "--type", "frontend", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
+	if err := runAppsShortcut(t, AppsAppDevInitTemplate,
+		[]string{"+app-dev-init-template", "--type", "frontend", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
 	data, err := decodeDryRunDataMap(stdout.Bytes())
@@ -354,8 +354,8 @@ func TestAppDevInitAppDryRun_DirNotEmptySurfaced(t *testing.T) {
 		t.Fatal(err)
 	}
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	if err := runAppsShortcut(t, AppsAppDevInitApp,
-		[]string{"+app-dev-init-app", "--type", "frontend", "--dir", dir, "--as", "user", "--dry-run"}, factory, stdout); err != nil {
+	if err := runAppsShortcut(t, AppsAppDevInitTemplate,
+		[]string{"+app-dev-init-template", "--type", "frontend", "--dir", dir, "--as", "user", "--dry-run"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
 	data, err := decodeDryRunDataMap(stdout.Bytes())

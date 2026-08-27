@@ -27,7 +27,7 @@ const (
 // appDevLookPath is swappable in tests to simulate a missing npx/npm binary.
 var appDevLookPath = exec.LookPath
 
-// appDevTemplateForType maps the +app-dev-init-app --type value to its
+// appDevTemplateForType maps the +app-dev-init-template --type value to its
 // miaoda-cli template name. Unknown types return "".
 func appDevTemplateForType(appType string) string {
 	switch appType {
@@ -115,16 +115,16 @@ func readMetaStack(dir string) (string, bool, error) {
 	return s, true, nil
 }
 
-// AppsAppDevInitApp scaffolds a local web app project via miaoda-cli
+// AppsAppDevInitTemplate scaffolds a local web app project via miaoda-cli
 // templates (artifact-hosting mode: code stays local, no git, no sandbox).
-var AppsAppDevInitApp = common.Shortcut{
+var AppsAppDevInitTemplate = common.Shortcut{
 	Service:     appsService,
-	Command:     "+app-dev-init-app",
+	Command:     "+app-dev-init-template",
 	Description: "Scaffold a local web app project via miaoda-cli templates (artifact-hosting mode, no git/sandbox, no remote API)",
 	Risk:        "write",
 	Tips: []string{
-		"Example: lark-cli apps +app-dev-init-app --type frontend --dir ./my-app",
-		"Example: lark-cli apps +app-dev-init-app --type full_stack --dry-run",
+		"Example: lark-cli apps +app-dev-init-template --type frontend --dir ./my-app",
+		"Example: lark-cli apps +app-dev-init-template --type full_stack --dry-run",
 		"The scaffold is local-only: create the Miaoda app later with +create and deploy with +app-dev-publish",
 	},
 	// No remote OAPI is called; explicit []string{} per the convention
