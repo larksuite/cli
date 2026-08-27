@@ -308,10 +308,10 @@ func TestRenderAppDevTemplate_FileCountCap(t *testing.T) {
 func TestWriteMiaodaScaffoldFields(t *testing.T) {
 	dir := t.TempDir()
 	// Fresh project: stack + version stamped.
-	if err := writeMiaodaScaffoldFields(dir, "react-standard-webapp", "1.2.3"); err != nil {
+	if err := writeSparkScaffoldFields(dir, "react-standard-webapp", "1.2.3"); err != nil {
 		t.Fatal(err)
 	}
-	b, err := os.ReadFile(filepath.Join(dir, miaodaJSONRelPath))
+	b, err := os.ReadFile(filepath.Join(dir, sparkJSONRelPath))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,13 +325,13 @@ func TestWriteMiaodaScaffoldFields(t *testing.T) {
 	// Seed-shipped declarations are preserved; seed stack wins; version is
 	// re-stamped with the rendered package version.
 	seed := `{"stack":"seed-stack","version":"0.0.1","build":{"command":["make","dist"],"output":"out"},"dev":{"port":5173}}`
-	if err := os.WriteFile(filepath.Join(dir, miaodaJSONRelPath), []byte(seed), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, sparkJSONRelPath), []byte(seed), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeMiaodaScaffoldFields(dir, "react-standard-webapp", "2.0.0"); err != nil {
+	if err := writeSparkScaffoldFields(dir, "react-standard-webapp", "2.0.0"); err != nil {
 		t.Fatal(err)
 	}
-	b, _ = os.ReadFile(filepath.Join(dir, miaodaJSONRelPath))
+	b, _ = os.ReadFile(filepath.Join(dir, sparkJSONRelPath))
 	doc = map[string]interface{}{}
 	_ = json.Unmarshal(b, &doc)
 	if doc["stack"] != "seed-stack" {
@@ -653,15 +653,15 @@ func TestAppDevInitTemplateExecute_RendersFromRegistry(t *testing.T) {
 	if err != nil || !strings.Contains(string(b), dir) {
 		t.Errorf("index.html placeholder = %q err=%v (projectName is dir basename)", b, err)
 	}
-	// miaoda.json written by lark-cli (protocol §3).
-	mb, err := os.ReadFile(filepath.Join(dir, miaodaJSONRelPath))
+	// spark.json written by lark-cli (protocol §3).
+	mb, err := os.ReadFile(filepath.Join(dir, sparkJSONRelPath))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var doc map[string]interface{}
 	_ = json.Unmarshal(mb, &doc)
 	if doc["stack"] != "react-standard-webapp" || doc["version"] != "1.2.3" {
-		t.Errorf("miaoda.json = %v", doc)
+		t.Errorf("spark.json = %v", doc)
 	}
 	steps, _ := data["next_steps"].([]interface{})
 	if len(steps) != 3 {
