@@ -12,7 +12,7 @@
 - `--app-id` 可选：首次发布传它指定目标（成功后自动写入 `miaoda.json` 的 app 段，后续免传）；已记录 app id 时可省略；**两者都有且不一致会被拒绝**（防误发错目标），确要切换先更新 miaoda.json。
 - 可选：`--skip-build`（跳过 `npm run build`，直接发布已有 `./dist`）、`--allow-sensitive`（跳过凭据文件扫描）。
 - 内部流程：读 miaoda.json → `pre_release` 获取上传地址与 `MIAODA_*` 构建环境变量 → 执行 `build.command`（缺省 `npm run build`，argv 直接执行不走 shell，自动注入变量）→ 校验产物协议 → zip 上传 → 触发发布。
-- 产物协议（详见《妙搭产物托管协议规范》）：`output/` 必须含 ≥1 个 `.html`（SPA 入口须名 `index.html`）与合法的 `routes.json`（`{"version":1,"type":"<stack>","fallback":"index.html"}`）；`output_resource/`、`output_capabilities/` 可选；顶层不允许其他条目。包体限制：zip ≤ 50MB、未压缩总量 ≤ 200MB。
+- 产物协议（详见《妙搭产物托管协议规范》）：`output/` 必须含 ≥1 个 `.html`（SPA 入口须名 `index.html`）与合法的 `routes.json`（`{"version":1,"type":"<stack>","fallback":"index.html"}`）；`output_resource/`、`output_capabilities/` 可选；顶层其他条目**自动忽略不上传**（stderr 会列出跳过项）。包体限制：zip ≤ 50MB、未压缩总量 ≤ 200MB。
 
 ## 示例
 
