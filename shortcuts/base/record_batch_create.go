@@ -19,7 +19,7 @@ var BaseRecordBatchCreate = common.Shortcut{
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
-		{Name: "json", Desc: `batch create JSON object; create_records contains one field map per record, e.g. {"create_records":[{"Name":"Task A","Status":["Todo"]},{"Name":"Task B","Score":20}]}`, Required: true},
+		{Name: "json", Desc: `batch create JSON object; create_records contains one field map per record, e.g. {"create_records":[{"Name":"Task A","Status":["Todo"]},{"Name":"Task B","Score":20}]}; do not wrap a record in fields`, Required: true},
 	},
 	Tips: append([]string{
 		"Happy path field: create_records is an array of independent record field maps.",

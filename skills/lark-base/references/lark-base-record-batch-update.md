@@ -49,6 +49,7 @@ lark-cli base +record-batch-update --base-token <base_token> --table-id <table_i
 - `1254045` 表示字段不存在，重新 `+field-list` 后使用真实字段名或 `field_id`。
 - `1254015` 表示 CellValue 类型不匹配，按真实 Field schema 和 CellValue 规范修正。
 - 命令不会自动做字段/行映射转换，传什么就发什么。
+- 每个 record ID 直接映射到字段对象，**不要再包一层 `fields`**：`{"update_records":{"recA":{"fields":{"标题":"任务 A"}}}}` 会返回 `800010701 Cell value does not match any supported shape`（错误路径 `update_records.recA.fields`）。
 - 如果字段映射包含只读字段，返回里可能出现 `ignored_fields` / `READONLY`；移除 Formula、Lookup、系统字段和自动编号等只读字段。
 - 同一 Table 连续批量写入使用串行执行；`1254291` 表示并发写冲突，短暂等待后重试当前批次。
 
