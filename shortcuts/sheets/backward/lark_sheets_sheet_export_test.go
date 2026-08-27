@@ -155,3 +155,66 @@ func TestSheetExportExecuteWithoutOutputPathReturnsMetadataOnly(t *testing.T) {
 		t.Fatalf("stdout should not include saved_path when --output-path is omitted: %s", got)
 	}
 }
+
+// TestSheetExportExecuteWithOutputPathKeepsExportIdentifiers pins that the
+// download path reports the export identifiers too. They used to reach the
+// caller only through a stderr line ("Export complete: file_token=…"); without
+// them in the payload, a caller who downloaded once cannot re-download or
+// resume without running a whole new export.
+func TestSheetExportExecuteWithOutputPathKeepsExportIdentifiers(t *testing.T) {
+	dir := t.TempDir()
+	withSheetsTestWorkingDir(t, dir)
+
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, sheetsTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/export_tasks",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{"ticket": "tk_123"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/export_tasks/tk_123",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{
+				"result": map[string]interface{}{"file_token": "box_123"},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/export_tasks/file/box_123/download",
+		Status:  200,
+		RawBody: []byte("xlsx-bytes"),
+	})
+
+	err := mountAndRunSheets(t, SheetExport, []string{
+		"+export",
+		"--spreadsheet-token", "shtTOKEN",
+		"--file-extension", "xlsx",
+		"--output-path", "report.xlsx",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := stderr.String(); got != "" {
+		t.Errorf("a successful export must leave stderr empty, got: %q", got)
+	}
+
+	got := stdout.String()
+	for field, want := range map[string]string{
+		"data.file_token": "box_123",
+		"data.ticket":     "tk_123",
+	} {
+		if gjson.Get(got, field).String() != want {
+			t.Errorf("%s = %q, want %q\nstdout: %s", field, gjson.Get(got, field).String(), want, got)
+		}
+	}
+	if gjson.Get(got, "data.saved_path").String() == "" || gjson.Get(got, "data.size_bytes").Int() != int64(len("xlsx-bytes")) {
+		t.Errorf("download result should still report where the file landed and its size: %s", got)
+	}
+}

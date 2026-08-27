@@ -283,8 +283,6 @@ var SheetExport = common.Shortcut{
 			return errs.NewNetworkError(errs.SubtypeNetworkTimeout, "export task timed out").WithRetryable()
 		}
 
-		// ticket + file_token are already the result on every terminal path, so
-		// the stderr copy only risked making a successful export look failed.
 		if outputPath == "" {
 			runtime.Out(map[string]interface{}{
 				"file_token": fileToken,
@@ -314,9 +312,14 @@ var SheetExport = common.Shortcut{
 		if savedPath == "" {
 			savedPath = outputPath
 		}
+		// file_token and ticket ride along on the download path too: they are
+		// what a caller needs to re-download or resume without re-exporting,
+		// and this branch used to leak the token through a stderr line only.
 		runtime.Out(map[string]interface{}{
 			"saved_path": savedPath,
 			"size_bytes": result.Size(),
+			"file_token": fileToken,
+			"ticket":     ticket,
 		}, nil)
 		return nil
 	},
