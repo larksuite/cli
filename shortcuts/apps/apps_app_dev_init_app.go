@@ -159,6 +159,13 @@ var AppsAppDevInitApp = common.Shortcut{
 		dry.Set("command", "npx "+strings.Join(appDevInitArgs(template), " "))
 		dry.Set("target_dir", dir)
 		dry.Set("template", template)
+		// Surface the same precondition the real run enforces, so a dry-run
+		// on a non-empty target does not read as "would succeed".
+		if err := ensureAppDevDirUsable(dir); err != nil {
+			dry.Set("target_dir_state", "not usable (real run would fail): "+err.Error())
+		} else {
+			dry.Set("target_dir_state", "ok (absent or empty)")
+		}
 		dry.Set("remote_side_effects", "none (local scaffold via npx)")
 		return dry
 	},
