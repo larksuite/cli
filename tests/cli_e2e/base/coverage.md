@@ -18,7 +18,8 @@
 - TestBaseShareDryRun: proves dashboard/form share GET and PATCH routes, one-field update requests, explicit false preservation, and nested form settings without touching live data.
 - TestBaseShareWorkflow: deployment-gated by `LARK_CLI_E2E_BASE_SHARE_READY=1`; creates a Base, table, form, and dashboard, updates each share field in a separate request, verifies get round trips for both resources, disables sharing, and cleans up the Base.
 - TestBaseRecordBatchUpdatePerRecordDryRun: proves `+record-batch-update` preserves the per-record `update_records` request shape.
-- TestBaseRecordBatchUpdatePerRecordWorkflow: creates two records, updates different field types in one request, asserts the minimal response contract, reads both records back, verifies a missing record ID is not prevalidated, and cleans up the temporary Base.
+- TestBaseRecordBatchUpdatePerRecordWorkflow: creates two records, generates their share links using mixed `--record-id` / `--record-ids` input, updates different field types in one request, asserts the minimal response contract, reads both records back, verifies a missing record ID is not prevalidated, and cleans up the temporary Base.
+- TestBaseRecordShareLinkCreateDryRunAcceptsSingularAndPluralRecordIDFlags: proves singular and plural record ID flags compose into one deduplicated share-link request.
 - TestBaseRecordHistoryListDryRunUsesExplicitRecordID / TestBaseRecordHistoryListDryRunRejectsNonPositiveMaxVersion: prove the history request keeps the explicit record ID and rejects explicitly non-positive cursors with a typed validation error.
 - TestBase_RoleWorkflow: proves `+advperm-enable`, `+role-create`, `+role-list`, `+role-get`, and `+role-update`; key `t.Run(...)` proof points are `list as bot`, `get as bot`, and `update as bot`.
 - TestBaseFormListDryRun_UsesBaseAndTableIdentifiers: proves `+form-list` dry-run request shape uses Base and table identifiers in the endpoint.
@@ -87,7 +88,7 @@
 | ✓ | base +record-history-list | shortcut | base_record_history_dryrun_test.go::TestBaseRecordHistoryListDryRunUsesExplicitRecordID; TestBaseRecordHistoryListDryRunRejectsNonPositiveMaxVersion | `--base-token`; `--table-id`; `--record-id`; `--page-size`; `--max-version`; dry-run | request shape and typed cursor validation |
 | ✕ | base +record-list | shortcut |  | none | record workflows not covered |
 | ✕ | base +record-search | shortcut |  | none | record workflows not covered |
-| ✕ | base +record-share-link-create | shortcut |  | none | record workflows not covered |
+| ✓ | base +record-share-link-create | shortcut | base_record_share_link_dryrun_test.go::TestBaseRecordShareLinkCreateDryRunAcceptsSingularAndPluralRecordIDFlags; base_record_batch_update_workflow_test.go::TestBaseRecordBatchUpdatePerRecordWorkflow | canonical `--record-id`; hidden compatibility alias `--record-ids`; dry-run + live | singular and plural flags compose into one request |
 | ✓ | base +record-upload-attachment | shortcut | base_attachment_dryrun_test.go::TestBase_AttachmentDryRun/upload | dry-run only | request shape only |
 | ✓ | base +record-download-attachment | shortcut | base_attachment_dryrun_test.go::TestBase_AttachmentDryRun/download | dry-run only | request shape only |
 | ✓ | base +record-remove-attachment | shortcut | base_attachment_dryrun_test.go::TestBase_AttachmentDryRun/remove | dry-run only | request shape only |
