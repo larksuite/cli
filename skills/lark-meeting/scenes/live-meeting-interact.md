@@ -103,16 +103,16 @@ lark-cli vc +meeting-end --as user --meeting-id <meeting_id> --dry-run
 # 以当前 Host 应用机器人结束整场会议：先 dry-run，确认后再补 --yes
 lark-cli vc +meeting-end --as bot --meeting-id <meeting_id> --dry-run
 
-# 移出参会人：participant tuple 必须来自 meeting get 快照
+# 移出参会人：默认用 open_id，user_type 必须来自 meeting get 快照
 lark-cli vc +meeting-participant-kickout --as user --meeting-id <meeting_id> \
-  --participant '<participant_id>=<user_type>' --dry-run
+  --participant '<open_id>=<user_type>' --dry-run
 ```
 
 - `vc +meeting-end` 是一个命令：`--as user` 调用用户端 PATCH 接口并要求 `vc:meeting`，`--as bot` 调用应用机器人端 POST 接口并要求 `vc:meeting.bot.manage:write`；应用机器人必须是当前 Host。
 - `vc +meeting-participant-kickout` 仅支持 `--as user`，不提供应用身份端点。不要为了执行成功静默切换身份，也不要在未确认前直接补 `--yes`。
 - 以用户身份结束会议或移出参会人前，先用 `vc meeting get --params '{"meeting_id":"<meeting_id>","with_participants":true}' --as user` 核对会议与参会人快照；以应用身份结束会议时，沿用应用身份发现或入会得到的 `meeting_id` 并确认机器人是当前 Host。
-- 所有 dry-run 都必须显式传入 `--as user` 或 `--as bot`。`vc +meeting-end` 的 dry-run 只预览所选身份的请求路径；`vc +meeting-participant-kickout` 的 dry-run 会回显按输入顺序提交的 `kickout_users`。如果回显与用户意图不完全一致，停止并修正参数，不要继续执行。
-- `--participant '<id>=<user_type>'` 每次调用接受 1 到 10 个重复 flag；ID 必须来自快照且首尾不能有空白。不要根据 open_id、昵称或设备信息猜 `user_type`，也不要把多个目标塞进 CSV/JSON。
+- 所有 dry-run 都必须显式传入 `--as user` 或 `--as bot`。`vc +meeting-end` 的 dry-run 只预览所选身份的请求路径；`vc +meeting-participant-kickout` 的 dry-run 会回显 `user_id_type` 和按输入顺序提交的 `kickout_users`。如果回显与用户意图不完全一致，停止并修正参数，不要继续执行。
+- `--participant '<id>=<user_type>'` 每次调用接受 1 到 10 个重复 flag；ID 默认按 open_id 解释，可用 `--user-id-type union_id|user_id` 切换，且首尾不能有空白。不要根据昵称或设备信息猜 `user_type`，也不要把多个目标塞进 CSV/JSON。
 - 结束会议的用户身份与应用身份参考分别见 [`lark-vc-meeting-end`](../references/lark-vc-meeting-end.md) 和 [`lark-vc-agent-meeting-end`](../references/lark-vc-agent-meeting-end.md)；移出参会人见 [`lark-vc-meeting-participant-kickout`](../references/lark-vc-meeting-participant-kickout.md)。
 
 ## 处理未发现会议或权限错误

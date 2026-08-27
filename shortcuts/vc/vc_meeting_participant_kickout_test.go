@@ -37,23 +37,35 @@ func TestMeetingParticipantKickoutContract(t *testing.T) {
 	if !reflect.DeepEqual(VCMeetingParticipantKickout.AuthTypes, []string{"user"}) {
 		t.Fatalf("AuthTypes = %v, want [user]", VCMeetingParticipantKickout.AuthTypes)
 	}
+	var sawParticipant, sawUserIDType bool
 	for _, flag := range VCMeetingParticipantKickout.Flags {
-		if flag.Name == "participant" {
+		switch flag.Name {
+		case "participant":
+			sawParticipant = true
 			if flag.Type != "string_array" || !flag.Required {
 				t.Fatalf("participant flag = %#v, want required string_array", flag)
 			}
-			return
+		case "user-id-type":
+			sawUserIDType = true
+			if flag.Default != "open_id" || !reflect.DeepEqual(flag.Enum, []string{"open_id", "union_id", "user_id"}) {
+				t.Fatalf("user-id-type flag = %#v, want default open_id and expected enum", flag)
+			}
 		}
 	}
-	t.Fatal("participant flag is not declared")
+	if !sawParticipant {
+		t.Fatal("participant flag is not declared")
+	}
+	if !sawUserIDType {
+		t.Fatal("user-id-type flag is not declared")
+	}
 }
 
 func TestParseMeetingParticipantKickoutUsersPreservesOrderDuplicatesAndStringIDs(t *testing.T) {
-	input := []string{"000123=1", "000123=2", "000123=1"}
+	input := []string{"ou_123=1", "ou_123=2", "ou_123=1"}
 	want := []meetingParticipantKickoutUser{
-		{ID: "000123", UserType: 1},
-		{ID: "000123", UserType: 2},
-		{ID: "000123", UserType: 1},
+		{ID: "ou_123", UserType: 1},
+		{ID: "ou_123", UserType: 2},
+		{ID: "ou_123", UserType: 1},
 	}
 
 	got, err := parseMeetingParticipantKickoutUsers(input)
@@ -66,7 +78,7 @@ func TestParseMeetingParticipantKickoutUsersPreservesOrderDuplicatesAndStringIDs
 }
 
 func TestParseMeetingParticipantKickoutUsersValidation(t *testing.T) {
-	validTen := []string{"1=1", "2=2", "3=3", "4=4", "5=5", "6=6", "7=7", "8=1", "9=2", "10=3"}
+	validTen := []string{"ou_1=1", "ou_2=2", "ou_3=3", "ou_4=4", "ou_5=5", "ou_6=6", "ou_7=7", "ou_8=1", "ou_9=2", "ou_10=3"}
 	tests := []struct {
 		name   string
 		values []string
@@ -76,12 +88,8 @@ func TestParseMeetingParticipantKickoutUsersValidation(t *testing.T) {
 		{name: "missing equals", values: []string{"123"}},
 		{name: "multiple equals", values: []string{"123=1=2"}},
 		{name: "empty id", values: []string{" =1"}},
-		{name: "id has leading whitespace", values: []string{" 000123=1"}},
-		{name: "id has trailing whitespace", values: []string{"000123 =1"}},
-		{name: "id zero", values: []string{"0=1"}},
-		{name: "id negative", values: []string{"-1=1"}},
-		{name: "id non decimal", values: []string{"12a=1"}},
-		{name: "id overflow", values: []string{"9223372036854775808=1"}},
+		{name: "id has leading whitespace", values: []string{" ou_123=1"}},
+		{name: "id has trailing whitespace", values: []string{"ou_123 =1"}},
 		{name: "empty user type", values: []string{"123="}},
 		{name: "non integer user type", values: []string{"123=user"}},
 		{name: "user type below range", values: []string{"123=0"}},
@@ -122,9 +130,9 @@ func TestMeetingParticipantKickoutDryRunPreservesTuplesWithoutAPICall(t *testing
 	err := mountAndRun(t, VCMeetingParticipantKickout, []string{
 		"+meeting-participant-kickout",
 		"--meeting-id", "7651377260537433044",
-		"--participant", "000123=1",
-		"--participant", "000123=2",
-		"--participant", "000123=1",
+		"--participant", "ou_123=1",
+		"--participant", "ou_123=2",
+		"--participant", "ou_123=1",
 		"--dry-run", "--as", "user",
 	}, f, stdout)
 	if err != nil {
@@ -145,6 +153,7 @@ func TestMeetingParticipantKickoutDryRunPreservesTuplesWithoutAPICall(t *testing
 			API []struct {
 				Method string                        `json:"method"`
 				URL    string                        `json:"url"`
+				Params map[string]interface{}        `json:"params"`
 				Body   meetingParticipantKickoutBody `json:"body"`
 			} `json:"api"`
 		} `json:"data"`
@@ -159,10 +168,13 @@ func TestMeetingParticipantKickoutDryRunPreservesTuplesWithoutAPICall(t *testing
 	if call.Method != "POST" || call.URL != "/open-apis/vc/v1/meetings/7651377260537433044/kickout" {
 		t.Fatalf("dry-run call = %#v", call)
 	}
+	if call.Params["user_id_type"] != "open_id" {
+		t.Fatalf("dry-run params = %#v, want user_id_type=open_id", call.Params)
+	}
 	wantUsers := []meetingParticipantKickoutUser{
-		{ID: "000123", UserType: 1},
-		{ID: "000123", UserType: 2},
-		{ID: "000123", UserType: 1},
+		{ID: "ou_123", UserType: 1},
+		{ID: "ou_123", UserType: 2},
+		{ID: "ou_123", UserType: 1},
 	}
 	if !reflect.DeepEqual(call.Body.KickoutUsers, wantUsers) {
 		t.Fatalf("kickout_users = %#v, want %#v", call.Body.KickoutUsers, wantUsers)
@@ -180,16 +192,16 @@ func TestMeetingParticipantKickoutValidationStopsBeforeAnyAPICall(t *testing.T) 
 			args: []string{
 				"+meeting-participant-kickout",
 				"--meeting-id", "7651377260537433044",
-				"--participant", " 000123=1",
+				"--participant", " ou_123=1",
 				"--yes", "--as", "user",
 			},
 		},
 		{
-			name: "participant id must be positive base-10 int64",
+			name: "participant user_type must be in documented range",
 			args: []string{
 				"+meeting-participant-kickout",
 				"--meeting-id", "7651377260537433044",
-				"--participant", "0=1",
+				"--participant", "ou_123=0",
 				"--yes", "--as", "user",
 			},
 		},
@@ -207,17 +219,17 @@ func TestMeetingParticipantKickoutValidationStopsBeforeAnyAPICall(t *testing.T) 
 			args: []string{
 				"+meeting-participant-kickout",
 				"--meeting-id", "7651377260537433044",
-				"--participant", "1=1",
-				"--participant", "2=1",
-				"--participant", "3=1",
-				"--participant", "4=1",
-				"--participant", "5=1",
-				"--participant", "6=1",
-				"--participant", "7=1",
-				"--participant", "8=1",
-				"--participant", "9=1",
-				"--participant", "10=1",
-				"--participant", "11=1",
+				"--participant", "ou_1=1",
+				"--participant", "ou_2=1",
+				"--participant", "ou_3=1",
+				"--participant", "ou_4=1",
+				"--participant", "ou_5=1",
+				"--participant", "ou_6=1",
+				"--participant", "ou_7=1",
+				"--participant", "ou_8=1",
+				"--participant", "ou_9=1",
+				"--participant", "ou_10=1",
+				"--participant", "ou_11=1",
 				"--yes", "--as", "user",
 			},
 		},
@@ -278,7 +290,7 @@ func TestMeetingParticipantKickoutRequiresConfirmationWithoutAPICall(t *testing.
 	err := mountAndRun(t, VCMeetingParticipantKickout, []string{
 		"+meeting-participant-kickout",
 		"--meeting-id", "7651377260537433044",
-		"--participant", "000123=1",
+		"--participant", "ou_123=1",
 		"--as", "user",
 	}, f, stdout)
 	var confirmationErr *errs.ConfirmationRequiredError
@@ -318,7 +330,7 @@ func TestMeetingParticipantKickoutExecuteScopePreflightRunsBeforeAPI(t *testing.
 	err := mountAndRun(t, VCMeetingParticipantKickout, []string{
 		"+meeting-participant-kickout",
 		"--meeting-id", "7651377260537433044",
-		"--participant", "000123=1",
+		"--participant", "ou_123=1",
 		"--yes", "--as", "user",
 	}, f, stdout)
 	var permissionErr *errs.PermissionError
@@ -352,6 +364,11 @@ func TestMeetingParticipantKickoutExecutePreservesRequestAndServerResults(t *tes
 			stub := &httpmock.Stub{
 				Method: "POST",
 				URL:    "/open-apis/vc/v1/meetings/7651377260537433044/kickout",
+				OnMatch: func(req *http.Request) {
+					if got := req.URL.Query().Get("user_id_type"); got != "open_id" {
+						t.Fatalf("user_id_type = %q, want open_id", got)
+					}
+				},
 				Body: map[string]interface{}{
 					"code":         0,
 					"msg":          "ok",
@@ -360,8 +377,8 @@ func TestMeetingParticipantKickoutExecutePreservesRequestAndServerResults(t *tes
 					"data": map[string]interface{}{
 						"server_page": "preserved",
 						"kickout_results": []interface{}{
-							map[string]interface{}{"id": "000456", "user_type": 2, "result": map[string]interface{}{"future_code": 9}, "server_detail": "second-first"},
-							map[string]interface{}{"id": "000123", "user_type": 1, "result": "future-result", "server_detail": "first-second"},
+							map[string]interface{}{"id": "ou_456", "user_type": 2, "result": map[string]interface{}{"future_code": 9}, "server_detail": "second-first"},
+							map[string]interface{}{"id": "ou_123", "user_type": 1, "result": "future-result", "server_detail": "first-second"},
 						},
 					},
 				},
@@ -371,9 +388,9 @@ func TestMeetingParticipantKickoutExecutePreservesRequestAndServerResults(t *tes
 			err := mountAndRun(t, VCMeetingParticipantKickout, []string{
 				"+meeting-participant-kickout",
 				"--meeting-id", "7651377260537433044",
-				"--participant", "000123=1",
-				"--participant", "000456=2",
-				"--participant", "000123=1",
+				"--participant", "ou_123=1",
+				"--participant", "ou_456=2",
+				"--participant", "ou_123=1",
 				"--yes", "--format", format, "--as", "user",
 			}, f, stdout)
 			if err != nil {
@@ -385,9 +402,9 @@ func TestMeetingParticipantKickoutExecutePreservesRequestAndServerResults(t *tes
 				t.Fatalf("decode request: %v\n%s", err, stub.CapturedBody)
 			}
 			wantUsers := []meetingParticipantKickoutUser{
-				{ID: "000123", UserType: 1},
-				{ID: "000456", UserType: 2},
-				{ID: "000123", UserType: 1},
+				{ID: "ou_123", UserType: 1},
+				{ID: "ou_456", UserType: 2},
+				{ID: "ou_123", UserType: 1},
 			}
 			if !reflect.DeepEqual(request.KickoutUsers, wantUsers) {
 				t.Fatalf("request kickout_users = %#v, want %#v", request.KickoutUsers, wantUsers)
@@ -420,12 +437,45 @@ func TestMeetingParticipantKickoutExecutePreservesRequestAndServerResults(t *tes
 				t.Fatalf("envelope = %#v, want complete server envelope and data", outputEnvelope)
 			}
 			results := outputEnvelope.Data.Data.KickoutResults
-			if results[0].ID != "000456" || results[0].UserType != 2 || results[0].ServerDetail != "second-first" ||
+			if results[0].ID != "ou_456" || results[0].UserType != 2 || results[0].ServerDetail != "second-first" ||
 				!reflect.DeepEqual(results[0].Result, map[string]interface{}{"future_code": float64(9)}) ||
-				results[1].ID != "000123" || results[1].UserType != 1 || results[1].Result != "future-result" || results[1].ServerDetail != "first-second" {
+				results[1].ID != "ou_123" || results[1].UserType != 1 || results[1].Result != "future-result" || results[1].ServerDetail != "first-second" {
 				t.Fatalf("kickout_results = %#v, want server order and opaque result values preserved after request deduplication", results)
 			}
 		})
+	}
+}
+
+func TestMeetingParticipantKickoutExecuteSendsUserIDTypeQuery(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/vc/v1/meetings/7651377260537433044/kickout",
+		OnMatch: func(req *http.Request) {
+			if got := req.URL.Query().Get("user_id_type"); got != "union_id" {
+				t.Fatalf("user_id_type = %q, want union_id", got)
+			}
+		},
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"kickout_results": []interface{}{
+					map[string]interface{}{"id": "on_123", "user_type": 1, "result": 1},
+				},
+			},
+		},
+	})
+
+	err := mountAndRun(t, VCMeetingParticipantKickout, []string{
+		"+meeting-participant-kickout",
+		"--meeting-id", "7651377260537433044",
+		"--user-id-type", "union_id",
+		"--participant", "on_123=1",
+		"--yes", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("run: %v", err)
 	}
 }
 
@@ -521,7 +571,7 @@ func TestMeetingParticipantKickoutExecuteReturnsTypedAPIError(t *testing.T) {
 	err := mountAndRun(t, VCMeetingParticipantKickout, []string{
 		"+meeting-participant-kickout",
 		"--meeting-id", "7651377260537433044",
-		"--participant", "000123=1",
+		"--participant", "ou_123=1",
 		"--yes", "--as", "user",
 	}, f, stdout)
 	problem, ok := errs.ProblemOf(err)
@@ -538,9 +588,9 @@ func TestMeetingParticipantKickoutExecuteRejectsMalformedSuccessData(t *testing.
 		{name: "missing data", data: nil},
 		{name: "missing results", data: map[string]interface{}{}},
 		{name: "empty results", data: map[string]interface{}{"kickout_results": []interface{}{}}},
-		{name: "missing tuple field", data: map[string]interface{}{"kickout_results": []interface{}{map[string]interface{}{"id": "000123", "result": 1}}}},
-		{name: "missing result field", data: map[string]interface{}{"kickout_results": []interface{}{map[string]interface{}{"id": "000123", "user_type": 1}}}},
-		{name: "unrequested tuple", data: map[string]interface{}{"kickout_results": []interface{}{map[string]interface{}{"id": "999", "user_type": 1, "result": 1}}}},
+		{name: "missing tuple field", data: map[string]interface{}{"kickout_results": []interface{}{map[string]interface{}{"id": "ou_123", "result": 1}}}},
+		{name: "missing result field", data: map[string]interface{}{"kickout_results": []interface{}{map[string]interface{}{"id": "ou_123", "user_type": 1}}}},
+		{name: "unrequested tuple", data: map[string]interface{}{"kickout_results": []interface{}{map[string]interface{}{"id": "ou_999", "user_type": 1, "result": 1}}}},
 	}
 
 	for _, tt := range tests {
@@ -559,7 +609,7 @@ func TestMeetingParticipantKickoutExecuteRejectsMalformedSuccessData(t *testing.
 			err := mountAndRun(t, VCMeetingParticipantKickout, []string{
 				"+meeting-participant-kickout",
 				"--meeting-id", "7651377260537433044",
-				"--participant", "000123=1",
+				"--participant", "ou_123=1",
 				"--yes", "--as", "user",
 			}, f, stdout)
 			problem, ok := errs.ProblemOf(err)
@@ -573,7 +623,7 @@ func TestMeetingParticipantKickoutExecuteRejectsMalformedSuccessData(t *testing.
 	}
 }
 
-func TestMeetingParticipantKickoutExecuteCorrelatesCanonicalServerIDWithoutRewritingEnvelope(t *testing.T) {
+func TestMeetingParticipantKickoutExecuteAcceptsNumericServerIDWithoutRewritingEnvelope(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -592,7 +642,7 @@ func TestMeetingParticipantKickoutExecuteCorrelatesCanonicalServerIDWithoutRewri
 	err := mountAndRun(t, VCMeetingParticipantKickout, []string{
 		"+meeting-participant-kickout",
 		"--meeting-id", "7651377260537433044",
-		"--participant", "000123=1",
+		"--participant", "123=1",
 		"--yes", "--as", "user",
 	}, f, stdout)
 	if err != nil {

@@ -18,11 +18,14 @@ import (
 
 const (
 	vcMeetingParticipantKickoutPathFormat = "/open-apis/vc/v1/meetings/%s/kickout"
+	defaultMeetingKickoutUserIDType       = "open_id"
 	minMeetingKickoutParticipants         = 1
 	maxMeetingKickoutParticipants         = 10
 	minMeetingKickoutUserType             = 1
 	maxMeetingKickoutUserType             = 7
 )
+
+var meetingKickoutUserIDTypes = []string{"open_id", "union_id", "user_id"}
 
 type meetingParticipantKickoutUser struct {
 	ID       string `json:"id"`
@@ -46,7 +49,8 @@ var VCMeetingParticipantKickout = common.Shortcut{
 	HasFormat:                 true,
 	Flags: []common.Flag{
 		{Name: "meeting-id", Required: true, Desc: "positive integer meeting ID"},
-		{Name: "participant", Type: "string_array", Required: true, Desc: "participant tuple <id>=<user_type>; repeat 1 to 10 times"},
+		{Name: "user-id-type", Default: defaultMeetingKickoutUserIDType, Desc: "user ID type for kickout_users.id", Enum: meetingKickoutUserIDTypes},
+		{Name: "participant", Type: "string_array", Required: true, Desc: "kickout user tuple <user_id>=<user_type>; repeat 1 to 10 times"},
 	},
 	Validate: func(_ context.Context, runtime *common.RuntimeContext) error {
 		if err := validateMeetingManagementID(runtime.Str("meeting-id")); err != nil {
@@ -62,6 +66,7 @@ var VCMeetingParticipantKickout = common.Shortcut{
 		}
 		return common.NewDryRunAPI().
 			POST(buildMeetingParticipantKickoutPath(runtime.Str("meeting-id"))).
+			Params(buildMeetingParticipantKickoutParams(runtime)).
 			Body(body)
 	},
 	Execute: func(_ context.Context, runtime *common.RuntimeContext) error {
@@ -76,6 +81,7 @@ var VCMeetingParticipantKickout = common.Shortcut{
 			runtime,
 			http.MethodPost,
 			buildMeetingParticipantKickoutPath(runtime.Str("meeting-id")),
+			buildMeetingParticipantKickoutParams(runtime),
 			body,
 		)
 		if err != nil {
@@ -155,9 +161,6 @@ func validateMeetingParticipantKickoutResponse(data map[string]interface{}, requ
 	return nil
 }
 
-// meetingParticipantResponseTupleKey accepts the response's canonical i64 JSON
-// number and the historical string representation. It normalizes only the
-// private correlation key; the original server envelope remains untouched.
 func meetingParticipantResponseTupleKey(rawID json.RawMessage, userType int) (string, bool) {
 	if len(rawID) == 0 || string(rawID) == "null" {
 		return "", false
@@ -167,16 +170,20 @@ func meetingParticipantResponseTupleKey(rawID json.RawMessage, userType int) (st
 		if err := json.Unmarshal(rawID, &id); err != nil {
 			return "", false
 		}
+	} else if rawID[0] == '{' || rawID[0] == '[' {
+		return "", false
 	}
 	return meetingParticipantTupleKey(id, userType)
 }
 
 func meetingParticipantTupleKey(id string, userType int) (string, bool) {
-	idValue, err := strconv.ParseInt(id, 10, 64)
-	if err != nil || idValue <= 0 {
+	if id == "" || strings.TrimSpace(id) != id {
 		return "", false
 	}
-	return fmt.Sprintf("%d/%d", idValue, userType), true
+	if userType < minMeetingKickoutUserType || userType > maxMeetingKickoutUserType {
+		return "", false
+	}
+	return fmt.Sprintf("%s/%d", id, userType), true
 }
 
 func buildMeetingParticipantKickoutPath(meetingID string) string {
@@ -189,6 +196,14 @@ func buildMeetingParticipantKickoutBody(runtime *common.RuntimeContext) (meeting
 		return meetingParticipantKickoutBody{}, err
 	}
 	return meetingParticipantKickoutBody{KickoutUsers: users}, nil
+}
+
+func buildMeetingParticipantKickoutParams(runtime *common.RuntimeContext) map[string]interface{} {
+	userIDType := strings.TrimSpace(runtime.Str("user-id-type"))
+	if userIDType == "" {
+		userIDType = defaultMeetingKickoutUserIDType
+	}
+	return map[string]interface{}{"user_id_type": userIDType}
 }
 
 func parseMeetingParticipantKickoutUsers(values []string) ([]meetingParticipantKickoutUser, error) {
@@ -212,10 +227,6 @@ func parseMeetingParticipantKickoutUsers(values []string) ([]meetingParticipantK
 		}
 		if strings.TrimSpace(parts[0]) != parts[0] {
 			return nil, invalidMeetingParticipantTuple(index, "id must not have surrounding whitespace")
-		}
-		idValue, err := strconv.ParseInt(parts[0], 10, 64)
-		if err != nil || idValue <= 0 {
-			return nil, invalidMeetingParticipantTuple(index, "id must be a positive base-10 int64")
 		}
 		userType, err := strconv.Atoi(parts[1])
 		if err != nil || userType < minMeetingKickoutUserType || userType > maxMeetingKickoutUserType {

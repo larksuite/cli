@@ -85,7 +85,7 @@ Use this only when the user explicitly asks a host or cohost to remove specific 
 
 **Preview removing one participant without making the API call**
 ```bash
-lark-cli vc +meeting-participant-kickout --as user --meeting-id <meeting_id> --participant '<participant_id>=<user_type>' --dry-run
+lark-cli vc +meeting-participant-kickout --as user --meeting-id <meeting_id> --participant '<open_id>=<user_type>' --dry-run
 ```
 
 ### Skills

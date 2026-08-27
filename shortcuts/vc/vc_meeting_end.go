@@ -100,7 +100,7 @@ func executeUserMeetingEnd(runtime *common.RuntimeContext, meetingID string) err
 	if err := runtime.EnsureScopes([]string{"vc:meeting"}); err != nil {
 		return err
 	}
-	envelope, _, err := callMeetingManagementAPIEnvelope(runtime, http.MethodPatch, buildMeetingEndPath(meetingID), nil)
+	envelope, _, err := callMeetingManagementAPIEnvelope(runtime, http.MethodPatch, buildMeetingEndPath(meetingID), nil, nil)
 	if err != nil {
 		return err
 	}

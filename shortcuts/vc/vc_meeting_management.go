@@ -4,6 +4,8 @@
 package vc
 
 import (
+	"fmt"
+
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/errs"
@@ -15,10 +17,11 @@ import (
 // the meeting-management commands while reusing the shared typed response
 // classifier. Most shortcuts intentionally expose only the server's data field;
 // these commands also expose code, msg, log_id, and future top-level fields.
-func callMeetingManagementAPIEnvelope(runtime *common.RuntimeContext, method, path string, body any) (map[string]any, map[string]any, error) {
+func callMeetingManagementAPIEnvelope(runtime *common.RuntimeContext, method, path string, params map[string]interface{}, body any) (map[string]any, map[string]any, error) {
 	req := &larkcore.ApiReq{
-		HttpMethod: method,
-		ApiPath:    path,
+		HttpMethod:  method,
+		ApiPath:     path,
+		QueryParams: meetingManagementQueryParams(params),
 	}
 	if body != nil {
 		req.Body = body
@@ -53,4 +56,23 @@ func callMeetingManagementAPIEnvelope(runtime *common.RuntimeContext, method, pa
 		}
 	}
 	return envelope, data, nil
+}
+
+func meetingManagementQueryParams(params map[string]interface{}) larkcore.QueryParams {
+	queryParams := make(larkcore.QueryParams)
+	for key, value := range params {
+		switch typed := value.(type) {
+		case []string:
+			for _, item := range typed {
+				queryParams.Add(key, item)
+			}
+		case []interface{}:
+			for _, item := range typed {
+				queryParams.Add(key, fmt.Sprintf("%v", item))
+			}
+		default:
+			queryParams.Set(key, fmt.Sprintf("%v", value))
+		}
+	}
+	return queryParams
 }

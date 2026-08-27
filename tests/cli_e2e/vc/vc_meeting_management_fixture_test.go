@@ -858,10 +858,6 @@ func validateVCParticipantTuple(t *testing.T, field string, tuple vcParticipantT
 	if tuple.ID == "" || strings.TrimSpace(tuple.ID) != tuple.ID {
 		t.Fatalf("invalid VC fixture %s.id %q: must be non-empty and have no surrounding whitespace", field, tuple.ID)
 	}
-	parsedID, err := strconv.ParseInt(tuple.ID, 10, 64)
-	if err != nil || parsedID <= 0 {
-		t.Fatalf("invalid VC fixture %s.id %q: want positive base-10 int64", field, tuple.ID)
-	}
 	if tuple.UserType < 1 || tuple.UserType > 7 {
 		t.Fatalf("invalid VC fixture %s.user_type %d: want 1..7", field, tuple.UserType)
 	}

@@ -59,6 +59,7 @@ func TestCallMeetingManagementAPIEnvelopePreservesTypedDoAPIErrors(t *testing.T)
 				http.MethodPatch,
 				"/open-apis/vc/v1/meetings/7651377260537433044/end",
 				nil,
+				nil,
 			)
 			if gotErr != tt.err {
 				t.Fatalf("error = %T %v, want original %T %v", gotErr, gotErr, tt.err, tt.err)
@@ -102,6 +103,7 @@ func TestCallMeetingManagementAPIEnvelopeInjectsHeaderLogIDWithoutDroppingServer
 		runtime,
 		http.MethodPatch,
 		"/open-apis/vc/v1/meetings/7651377260537433044/end",
+		nil,
 		nil,
 	)
 	if err != nil {

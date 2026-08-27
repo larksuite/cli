@@ -57,9 +57,9 @@ func TestVCMeetingParticipantKickoutDryRunE2E(t *testing.T) {
 		Args: []string{
 			"vc", "+meeting-participant-kickout",
 			"--meeting-id", "7651377260537433044",
-			"--participant", "000123=1",
-			"--participant", "000123=2",
-			"--participant", "000123=1",
+			"--participant", "ou_123=1",
+			"--participant", "ou_123=2",
+			"--participant", "ou_123=1",
 			"--dry-run",
 		},
 		DefaultAs: "user",
@@ -69,10 +69,11 @@ func TestVCMeetingParticipantKickoutDryRunE2E(t *testing.T) {
 	require.True(t, gjson.Get(result.Stdout, "dry_run").Bool(), "stdout:\n%s", result.Stdout)
 	require.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String(), "stdout:\n%s", result.Stdout)
 	require.Equal(t, "/open-apis/vc/v1/meetings/7651377260537433044/kickout", clie2e.DryRunGet(result.Stdout, "api.0.url").String(), "stdout:\n%s", result.Stdout)
+	require.Equal(t, "open_id", clie2e.DryRunGet(result.Stdout, "api.0.params.user_id_type").String(), "stdout:\n%s", result.Stdout)
 
 	users := clie2e.DryRunGet(result.Stdout, "api.0.body.kickout_users").Array()
 	require.Len(t, users, 3, "stdout:\n%s", result.Stdout)
-	wantIDs := []string{"000123", "000123", "000123"}
+	wantIDs := []string{"ou_123", "ou_123", "ou_123"}
 	wantTypes := []int64{1, 2, 1}
 	for index := range users {
 		require.Equal(t, wantIDs[index], users[index].Get("id").String(), "stdout:\n%s", result.Stdout)
@@ -83,7 +84,7 @@ func TestVCMeetingParticipantKickoutDryRunE2E(t *testing.T) {
 		Args: []string{
 			"vc", "+meeting-participant-kickout",
 			"--meeting-id", "7651377260537433044",
-			"--participant", "000123=1",
+			"--participant", "ou_123=1",
 		},
 		DefaultAs: "user",
 	})
@@ -98,7 +99,7 @@ func TestVCMeetingParticipantKickoutDryRunE2E(t *testing.T) {
 		Args: []string{
 			"vc", "+meeting-participant-kickout",
 			"--meeting-id", "7651377260537433044",
-			"--participant", "0=1",
+			"--participant", "ou_123=0",
 			"--dry-run",
 		},
 		DefaultAs: "user",
@@ -114,7 +115,7 @@ func TestVCMeetingParticipantKickoutDryRunE2E(t *testing.T) {
 		Args: []string{
 			"vc", "+meeting-participant-kickout",
 			"--meeting-id", "7651377260537433044",
-			"--participant", "000123=1",
+			"--participant", "ou_123=1",
 			"--dry-run",
 		},
 		DefaultAs: "bot",

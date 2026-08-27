@@ -11,15 +11,16 @@
 lark-cli vc +meeting-participant-kickout \
   --as user \
   --meeting-id <meeting_id> \
-  --participant '<participant_id>=<user_type>' \
+  --participant '<open_id>=<user_type>' \
   --dry-run
 
 # 用户明确确认后，可按输入顺序提交多个目标
 lark-cli vc +meeting-participant-kickout \
   --as user \
   --meeting-id <meeting_id> \
-  --participant '<participant_id_1>=<user_type_1>' \
-  --participant '<participant_id_2>=<user_type_2>' \
+  --user-id-type open_id \
+  --participant '<open_id_1>=<user_type_1>' \
+  --participant '<open_id_2>=<user_type_2>' \
   --yes
 ```
 
@@ -28,33 +29,41 @@ lark-cli vc +meeting-participant-kickout \
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `--meeting-id <id>` | 是 | 正十进制且大于 0 的 int64 会议 ID；会先去除首尾空白 |
-| `--participant '<id>=<user_type>'` | 是 | 可重复 1 至 10 次；每项必须恰好包含一个 `=`，ID 必须是正十进制且大于 0 的 int64 且首尾不能有空白，`user_type` 必须是 1 至 7 的整数 |
+| `--user-id-type <type>` | 否 | `kickout_users[].id` 的用户 ID 类型；可选 `open_id`、`union_id`、`user_id`，默认 `open_id` |
+| `--participant '<id>=<user_type>'` | 是 | 可重复 1 至 10 次；每项必须恰好包含一个 `=`，ID 是 `--user-id-type` 指定类型的用户 ID，首尾不能有空白，`user_type` 必须是 1 至 7 的整数 |
 | `--dry-run` | 否 | 只预览 POST 路径和请求体，不发送 API 请求，也不移出参会人 |
 | `--yes` | 真实执行必需 | 确认高风险写操作；只有用户明确确认会议和目标参会人后才能传入 |
 
 - 仅支持 `user` 身份，必须显式使用 `--as user`；没有应用身份端点，不要改用应用身份重试。
 - 需要 `vc:meeting` scope。
 - 执行者必须是目标会议的主持人或具备相应权限的联席主持人；权限拒绝时不得静默更换用户身份。
+- 本命令按用户身份（UAT）调用，不走应用身份（TAT）封装。
 
 ## participant tuple 规则
 
-1. 从目标会议的参会人快照读取精确的 participant ID 和 `user_type`。可使用：
+1. 从目标会议的参会人快照读取目标用户 ID 和 `user_type`。默认使用 `open_id`；如果输入的是 `union_id` 或 `user_id`，必须显式传 `--user-id-type`。
 
    ```bash
    lark-cli vc meeting get --params '{"meeting_id":"<meeting_id>","with_participants":true}' --as user
    ```
 
-2. 不要仅凭 open_id、设备 ID 或显示名猜测 `user_type`。
+2. 不要仅凭设备 ID 或显示名猜测 `user_type`。
 3. CLI 将 ID 当作字符串原样发送，因此前导零会保留；如果 tuple 里的 ID 含首尾空白，CLI 会直接报错，不会帮你 trim 后继续执行。
 4. CLI 不去重、不排序，也不替请求做冲突消解；重复 tuple、同一 ID 的不同类型都会按输入顺序发送。先确认这正是用户意图。
 5. 不接受 JSON `--kickout-users`、CSV 或分离的 ID/type 数组；只使用可重复的 `--participant '<id>=<user_type>'`。
+
+请求 query 默认为：
+
+```json
+{"user_id_type": "open_id"}
+```
 
 请求体形状为：
 
 ```json
 {
   "kickout_users": [
-    {"id": "<participant_id>", "user_type": 1}
+    {"id": "<open_id>", "user_type": 1}
   ]
 }
 ```
