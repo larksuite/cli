@@ -75,11 +75,22 @@ func TestEnsureMetaOnlineURL(t *testing.T) {
 	}
 }
 
-// --- dist layout validation ---
+// --- artifact layout validation ---
+
+// testAppDevCfg builds a resolved project config for validation tests.
+// buildless mirrors a miaoda.json without build.command.
+func testAppDevCfg(output, cdn string, buildless bool) *appDevProjectConfig {
+	cfg := &appDevProjectConfig{BuildOutput: output, BuildOutputCDN: cdn}
+	if !buildless {
+		cfg.BuildCommand = []string{"npm", "run", "build"}
+	}
+	return cfg
+}
 
 // writeDistFiles creates files (relative to base) with parent dirs. A file
-// named routes.json gets valid v1 schema content so protocol validation
-// passes by default; tests that need a broken one overwrite it afterwards.
+// named routes.json gets valid route-enumeration content so protocol
+// validation passes by default; tests that need a broken one overwrite it
+// afterwards.
 func writeDistFiles(t *testing.T, base string, files []string) {
 	t.Helper()
 	for _, f := range files {
@@ -97,75 +108,121 @@ func writeDistFiles(t *testing.T, base string, files []string) {
 	}
 }
 
-func TestValidateAppDevDist(t *testing.T) {
+func TestValidateAppDevOutputs(t *testing.T) {
 	tests := []struct {
-		name    string
-		files   []string
-		wantErr string // "" = valid
+		name      string
+		files     []string
+		buildless bool
+		wantErr   string // "" = valid
 	}{
-		{"ok full", []string{"output/index.html", "output/routes.json", "output_resource/index.js"}, ""},
-		{"ok no resource", []string{"output/index.html", "output/routes.json"}, ""},
-		{"ok non-index html", []string{"output/page.html", "output/routes.json"}, ""},
-		{"ok capabilities dir", []string{"output/index.html", "output/routes.json", "output_capabilities/cap.json"}, ""},
-		{"ok extra top-level dir ignored", []string{"output/index.html", "output/routes.json", "client/x.js"}, ""},
-		{"ok extra top-level file ignored", []string{"output/index.html", "output/routes.json", "notes.md"}, ""},
-		{"only strays, no output dir", []string{"stray.txt"}, "missing the output/ directory"},
-		{"no html", []string{"output/routes.json"}, "no .html file"},
-		{"no routes", []string{"output/index.html"}, "routes.json"},
+		{"ok minimal", []string{"index.html", "routes.json"}, false, ""},
+		{"ok non-index html", []string{"page.html", "routes.json"}, false, ""},
+		{"ok extra files ride along", []string{"index.html", "routes.json", "assets/logo.png", "manifest.json"}, false, ""},
+		{"ok buildless with routes", []string{"index.html", "routes.json"}, true, ""},
+		{"ok buildless generates routes", []string{"index.html"}, true, ""},
+		{"no html", []string{"routes.json"}, false, "no .html file"},
+		{"no routes with build command", []string{"index.html"}, false, "routes.json is missing"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dist := filepath.Join(t.TempDir(), "dist")
-			writeDistFiles(t, dist, tt.files)
-			_, _, err := validateAppDevDist(permissiveFIO{}, dist, false)
-			if tt.wantErr == "" {
-				if err != nil {
-					t.Errorf("want valid, got %v", err)
+			out := filepath.Join(t.TempDir(), "dist", "output")
+			writeDistFiles(t, out, tt.files)
+			entries, gen, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, "", tt.buildless), false)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("err = %v, want containing %q", err, tt.wantErr)
 				}
 				return
 			}
-			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-				t.Errorf("err = %v, want containing %q", err, tt.wantErr)
+			if err != nil {
+				t.Fatalf("want valid, got %v", err)
+			}
+			// Everything in the artifact directory is uploaded, normalized
+			// under the fixed zip prefix.
+			hasRoutes := false
+			for _, e := range entries {
+				if !strings.HasPrefix(e.ZipPath, "output/") {
+					t.Errorf("zip path %q must be normalized under output/", e.ZipPath)
+				}
+				if e.ZipPath == "output/routes.json" {
+					hasRoutes = true
+				}
+			}
+			if len(entries) < len(tt.files) {
+				t.Errorf("entries = %d, want at least %d (all files upload)", len(entries), len(tt.files))
+			}
+			if !hasRoutes {
+				t.Error("payload must always carry output/routes.json (shipped or generated)")
+			}
+			wantGen := tt.buildless && !strings.Contains(strings.Join(tt.files, " "), "routes.json")
+			if (gen >= 0) != wantGen {
+				t.Errorf("generatedRoutes = %d, wantGenerated=%v", gen, wantGen)
 			}
 		})
 	}
 }
 
-func TestValidateAppDevDist_IgnoresExtrasAndExcludesFromPack(t *testing.T) {
-	dist := filepath.Join(t.TempDir(), "dist")
-	writeDistFiles(t, dist, []string{
-		"output/index.html", "output/routes.json",
-		"client/bundle.js", "server/main.js", "stats.json",
-	})
-	candidates, ignored, err := validateAppDevDist(permissiveFIO{}, dist, false)
+func TestValidateAppDevOutputs_CDNSplit(t *testing.T) {
+	root := t.TempDir()
+	out := filepath.Join(root, "dist", "output")
+	cdn := filepath.Join(root, "dist", "output_resource")
+	writeDistFiles(t, out, []string{"index.html", "routes.json"})
+	writeDistFiles(t, cdn, []string{"static/a.js"})
+	entries, _, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, cdn, false), false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ignored) != 3 {
-		t.Errorf("ignored = %v, want client/server/stats.json tops", ignored)
+	got := map[string]bool{}
+	for _, e := range entries {
+		got[e.ZipPath] = true
 	}
-	for _, c := range candidates {
-		if !strings.HasPrefix(c.RelPath, "output/") {
-			t.Errorf("candidate outside protocol dirs must not be packed: %s", c.RelPath)
+	for _, want := range []string{"output/index.html", "output/routes.json", "output_resource/static/a.js"} {
+		if !got[want] {
+			t.Errorf("missing normalized entry %q in %v", want, got)
 		}
 	}
-	// Sensitive files in ignored dirs are not shipped, hence not scanned.
-	writeDistFiles(t, dist, []string{"client/.env"})
-	if _, _, err := validateAppDevDist(permissiveFIO{}, dist, false); err != nil {
-		t.Errorf("sensitive file in an ignored dir must not block: %v", err)
+	// A declared but missing CDN directory is a hard error, not silence.
+	_, _, err = validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, filepath.Join(root, "nope"), false), false)
+	if err == nil || !strings.Contains(err.Error(), "CDN artifact directory") {
+		t.Errorf("missing declared cdn dir must fail, got %v", err)
 	}
 }
 
-func TestValidateAppDevDist_RoutesSchema(t *testing.T) {
-	dist := filepath.Join(t.TempDir(), "dist")
-	writeDistFiles(t, dist, []string{"output/index.html", "output/routes.json"})
+func TestGenerateAppDevRoutes(t *testing.T) {
+	b, n, err := generateAppDevRoutes([]string{"index.html", "foo/index.html", "bar.html", "dup.html", "dup/index.html"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 4 {
+		t.Errorf("count = %d, want 4 (dup path deduped)", n)
+	}
+	var routes []map[string]string
+	if err := json.Unmarshal(b, &routes); err != nil {
+		t.Fatalf("generated routes.json not valid JSON: %v", err)
+	}
+	got := map[string]string{}
+	for _, r := range routes {
+		got[r["path"]] = r["file"]
+	}
+	if got["/"] != "index.html" || got["/foo"] != "foo/index.html" || got["/bar"] != "bar.html" {
+		t.Errorf("routes = %v", got)
+	}
+	// The generated payload must pass the same schema check shipped files do.
+	if err := validateAppDevRoutesJSON(b); err != nil {
+		t.Errorf("generated routes.json fails schema: %v", err)
+	}
+}
+
+func TestValidateAppDevOutputs_RoutesSchema(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "dist", "output")
+	writeDistFiles(t, out, []string{"index.html", "routes.json"})
 	set := func(body string) {
-		os.WriteFile(filepath.Join(dist, "output", "routes.json"), []byte(body), 0o644)
+		os.WriteFile(filepath.Join(out, "routes.json"), []byte(body), 0o644)
 	}
 	check := func(body, wantErr string) {
 		t.Helper()
 		set(body)
-		_, _, err := validateAppDevDist(permissiveFIO{}, dist, false)
+		_, _, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, "", false), false)
 		if wantErr == "" {
 			if err != nil {
 				t.Errorf("routes %q should be valid: %v", body, err)
@@ -187,8 +244,9 @@ func TestValidateAppDevDist_RoutesSchema(t *testing.T) {
 	check(`[{"path":"/","file":"index.html","name":"首页","future":1}]`, "") // 未识别字段忽略
 }
 
-func TestValidateAppDevDist_Missing(t *testing.T) {
-	_, _, err := validateAppDevDist(permissiveFIO{}, filepath.Join(t.TempDir(), "dist"), false)
+func TestValidateAppDevOutputs_Missing(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "dist", "output")
+	_, _, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(missing, "", false), false)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
 	if p.Subtype != errs.SubtypeFailedPrecondition {
 		t.Errorf("subtype = %q, want failed_precondition", p.Subtype)
@@ -196,16 +254,22 @@ func TestValidateAppDevDist_Missing(t *testing.T) {
 	if !strings.Contains(p.Hint, "--skip-build") {
 		t.Errorf("hint = %q", p.Hint)
 	}
+	// Buildless projects get buildless-specific guidance, not a build hint.
+	_, _, err = validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(missing, "", true), false)
+	p = requireAppsProblem(t, err, errs.CategoryValidation)
+	if !strings.Contains(p.Hint, "no build.command") {
+		t.Errorf("buildless hint = %q", p.Hint)
+	}
 }
 
-func TestValidateAppDevDist_Sensitive(t *testing.T) {
-	dist := filepath.Join(t.TempDir(), "dist")
-	writeDistFiles(t, dist, []string{"output/index.html", "output/routes.json", "output/.env"})
-	_, _, err := validateAppDevDist(permissiveFIO{}, dist, false)
+func TestValidateAppDevOutputs_Sensitive(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "dist", "output")
+	writeDistFiles(t, out, []string{"index.html", "routes.json", ".env"})
+	_, _, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, "", false), false)
 	if err == nil || !strings.Contains(err.Error(), "credential file") {
 		t.Errorf("sensitive file must be rejected, got %v", err)
 	}
-	if _, _, err := validateAppDevDist(permissiveFIO{}, dist, true); err != nil {
+	if _, _, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, "", false), true); err != nil {
 		t.Errorf("allow-sensitive must waive the scan: %v", err)
 	}
 }
@@ -213,13 +277,15 @@ func TestValidateAppDevDist_Sensitive(t *testing.T) {
 // --- zip packing ---
 
 func TestBuildAppDevZip(t *testing.T) {
-	dist := filepath.Join(t.TempDir(), "dist")
-	writeDistFiles(t, dist, []string{"output/index.html", "output/routes.json", "output_resource/a.js"})
-	candidates, _, err := validateAppDevDist(permissiveFIO{}, dist, false)
+	root := t.TempDir()
+	out, cdn := filepath.Join(root, "dist", "output"), filepath.Join(root, "dist", "output_resource")
+	writeDistFiles(t, out, []string{"index.html", "routes.json"})
+	writeDistFiles(t, cdn, []string{"a.js"})
+	entries, _, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, cdn, false), false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	zipball, err := buildAppDevZip(permissiveFIO{}, candidates)
+	zipball, err := buildAppDevZip(permissiveFIO{}, entries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,8 +299,34 @@ func TestBuildAppDevZip(t *testing.T) {
 	}
 	for _, n := range names {
 		if !want[n] {
-			t.Errorf("unexpected zip entry %q (dist prefix must be stripped)", n)
+			t.Errorf("unexpected zip entry %q (project dir names must be normalized away)", n)
 		}
+	}
+}
+
+func TestBuildAppDevZip_InlineGeneratedRoutes(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "dist", "output")
+	writeDistFiles(t, out, []string{"index.html"})
+	entries, gen, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, "", true), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gen != 1 {
+		t.Fatalf("generatedRoutes = %d, want 1", gen)
+	}
+	zipball, err := buildAppDevZip(permissiveFIO{}, entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := zipEntryNames(t, zipball.Body)
+	found := false
+	for _, n := range names {
+		if n == "output/routes.json" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("generated routes.json missing from zip: %v", names)
 	}
 }
 
@@ -242,13 +334,13 @@ func TestBuildAppDevZip_RawSizeCap(t *testing.T) {
 	orig := maxAppDevPublishRawBytes
 	maxAppDevPublishRawBytes = 1
 	t.Cleanup(func() { maxAppDevPublishRawBytes = orig })
-	dist := filepath.Join(t.TempDir(), "dist")
-	writeDistFiles(t, dist, []string{"output/index.html", "output/routes.json"})
-	candidates, _, err := validateAppDevDist(permissiveFIO{}, dist, false)
+	out := filepath.Join(t.TempDir(), "dist", "output")
+	writeDistFiles(t, out, []string{"index.html", "routes.json"})
+	entries, _, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, "", false), false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := buildAppDevZip(permissiveFIO{}, candidates); err == nil || !strings.Contains(err.Error(), "exceeds") {
+	if _, err := buildAppDevZip(permissiveFIO{}, entries); err == nil || !strings.Contains(err.Error(), "exceeds") {
 		t.Errorf("raw cap must reject, got %v", err)
 	}
 }
@@ -257,18 +349,18 @@ func TestBuildAppDevZip_ZipSizeCap(t *testing.T) {
 	orig := maxAppDevPublishZipBytes
 	maxAppDevPublishZipBytes = 1
 	t.Cleanup(func() { maxAppDevPublishZipBytes = orig })
-	dist := filepath.Join(t.TempDir(), "dist")
-	writeDistFiles(t, dist, []string{"output/index.html", "output/routes.json"})
-	candidates, _, err := validateAppDevDist(permissiveFIO{}, dist, false)
+	out := filepath.Join(t.TempDir(), "dist", "output")
+	writeDistFiles(t, out, []string{"index.html", "routes.json"})
+	entries, _, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, "", false), false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = buildAppDevZip(permissiveFIO{}, candidates)
+	_, err = buildAppDevZip(permissiveFIO{}, entries)
 	if err == nil || !strings.Contains(err.Error(), "packed zip size") {
 		t.Errorf("zip cap must reject, got %v", err)
 	}
 	p, _ := errs.ProblemOf(err)
-	if p == nil || !strings.Contains(p.Hint, "reduce dist contents") {
+	if p == nil || !strings.Contains(p.Hint, "reduce the artifact directory contents") {
 		t.Errorf("hint = %v", p)
 	}
 }
@@ -434,7 +526,7 @@ func TestAppDevPublishValidate_AppIDMismatch(t *testing.T) {
 
 func TestAppDevPublishExecute_FlagAppIDBackfill(t *testing.T) {
 	root := chdirProjectRoot(t, `{"stack":"react-standard-webapp"}`) // no app_id
-	writeDistFiles(t, filepath.Join(root, appDevDistDir), []string{"output/index.html", "output/routes.json"})
+	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stubPreRelease(reg, "app_flag1", srv.URL, nil)
@@ -454,7 +546,7 @@ func TestAppDevPublishExecute_FlagAppIDBackfill(t *testing.T) {
 
 func TestAppDevPublishExecute_FlagMatchesMeta(t *testing.T) {
 	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
-	writeDistFiles(t, filepath.Join(root, appDevDistDir), []string{"output/index.html", "output/routes.json"})
+	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stubPreRelease(reg, "app_x", srv.URL, nil)
@@ -484,15 +576,15 @@ func TestAppDevPublishValidate_BadAppID(t *testing.T) {
 
 func TestAppDevPublishValidate_SensitiveGatesDryRun(t *testing.T) {
 	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
-	writeDistFiles(t, filepath.Join(root, appDevDistDir),
-		[]string{"output/index.html", "output/routes.json", "output_resource/.env"})
+	writeDistFiles(t, filepath.Join(root, "dist"),
+		[]string{"output/index.html", "output/routes.json", "output/.env"})
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	// Sensitive hits are the one exception to dry-run's exit-0 convention:
 	// Validate rejects before the DryRun branch runs.
 	err := runAppsShortcut(t, AppsAppDevPublish,
 		[]string{"+app-dev-publish", "--skip-build", "--as", "user", "--dry-run"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
-	if !strings.Contains(p.Message, "dist contains") || !strings.Contains(p.Message, "credential file") {
+	if !strings.Contains(p.Message, "publish payload contains") || !strings.Contains(p.Message, "credential file") {
 		t.Errorf("message = %q", p.Message)
 	}
 	// This command has no --path flag; the error must not mention one.
@@ -507,17 +599,36 @@ func TestAppDevPublishValidate_SensitiveGatesDryRun(t *testing.T) {
 }
 
 func TestAppDevPublishValidate_SkipBuildNoDist(t *testing.T) {
-	chdirProjectRoot(t, `{"app_id":"app_x"}`)
+	chdirMiaodaProjectRoot(t, `{"app":{"id":"app_x"},"build":{"command":["npm","run","build"]}}`)
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--skip-build", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
-	if p.Subtype != errs.SubtypeFailedPrecondition || !strings.Contains(p.Message, "build output directory dist does not exist") {
+	if p.Subtype != errs.SubtypeFailedPrecondition || !strings.Contains(p.Message, "--skip-build is set but the artifact directory dist/output does not exist") {
 		t.Errorf("got %v", p)
 	}
 }
 
+func TestAppDevPublishValidate_BuildlessNoDist(t *testing.T) {
+	// No build.command declared (legacy .spark fallback resolves to buildless):
+	// the artifact directory must already exist.
+	chdirProjectRoot(t, `{"app_id":"app_x"}`)
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--as", "user"}, factory, stdout)
+	p := requireAppsProblem(t, err, errs.CategoryValidation)
+	if p.Subtype != errs.SubtypeFailedPrecondition || !strings.Contains(p.Message, "artifact directory dist/output does not exist") {
+		t.Errorf("got %v", p)
+	}
+	if !strings.Contains(p.Hint, "no build.command") {
+		t.Errorf("hint = %q", p.Hint)
+	}
+}
+
 func TestAppDevPublishExecute_SyncSuccess(t *testing.T) {
-	root := chdirProjectRoot(t, `{"app_id":"app_x","stack":"react-standard-webapp"}`)
+	root := chdirMiaodaProjectRoot(t, `{
+  "stack": "react-standard-webapp",
+  "build": { "command": ["npm", "run", "build"], "output": "dist/output" },
+  "app": { "id": "app_x" }
+}`)
 	var uploaded []byte
 	var contentType string
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -528,7 +639,7 @@ func TestAppDevPublishExecute_SyncSuccess(t *testing.T) {
 		w.WriteHeader(200)
 	})
 	f := &fakeEnvRunner{sideEffect: func() {
-		writeDistFiles(t, filepath.Join(root, appDevDistDir), []string{"output/index.html", "output/routes.json", "output_resource/a.js"})
+		writeDistFiles(t, filepath.Join(root, "dist", "output"), []string{"index.html", "routes.json", "a.js"})
 	}}
 	withFakeEnvRunner(t, f)
 	factory, stdout, reg := newAppsExecuteFactory(t)
@@ -568,18 +679,51 @@ func TestAppDevPublishExecute_SyncSuccess(t *testing.T) {
 	if _, hasPoll := data["poll_hint"]; hasPoll {
 		t.Error("sync success must not carry poll_hint")
 	}
-	// meta.json backfill.
+	// miaoda.json app-section writeback.
+	b, _ := os.ReadFile(filepath.Join(root, miaodaJSONRelPath))
+	var doc map[string]interface{}
+	_ = json.Unmarshal(b, &doc)
+	app, _ := doc["app"].(map[string]interface{})
+	if app == nil || app["id"] != "app_x" || app["url"] != "https://x.feishuapp.cn/app/app_x" {
+		t.Errorf("app section after publish = %v", doc["app"])
+	}
+}
+
+func TestAppDevPublishExecute_BuildlessSparkSync(t *testing.T) {
+	// Legacy .spark project without a declaration: buildless per protocol —
+	// no build runs, dist/output is packed as-is, online_url is backfilled.
+	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
+	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
+	f := &fakeEnvRunner{}
+	withFakeEnvRunner(t, f)
+	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubPreRelease(reg, "app_x", srv.URL, nil)
+	stubReleases(reg, "app_x", map[string]interface{}{
+		"release_id": "rel_30", "status": "finished",
+		"online_url": "https://x/app/app_x",
+	})
+	if err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	if f.called {
+		t.Error("buildless project must never invoke a build command")
+	}
+	data := parseEnvelopeData(t, stdout)
+	if data["built"] != false {
+		t.Errorf("built = %v, want false for buildless", data["built"])
+	}
 	b, _ := os.ReadFile(filepath.Join(root, metaRelPath))
 	var meta map[string]interface{}
 	_ = json.Unmarshal(b, &meta)
-	if meta["online_url"] != "https://x.feishuapp.cn/app/app_x" || meta["app_id"] != "app_x" {
+	if meta["online_url"] != "https://x/app/app_x" {
 		t.Errorf("meta after publish = %v", meta)
 	}
 }
 
 func TestAppDevPublishExecute_AsyncSuccess(t *testing.T) {
 	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
-	writeDistFiles(t, filepath.Join(root, appDevDistDir), []string{"output/index.html", "output/routes.json"})
+	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stubPreRelease(reg, "app_x", srv.URL, nil)
@@ -606,7 +750,7 @@ func TestAppDevPublishExecute_AsyncSuccess(t *testing.T) {
 }
 
 func TestAppDevPublishExecute_BuildFails(t *testing.T) {
-	chdirProjectRoot(t, `{"app_id":"app_x"}`)
+	chdirMiaodaProjectRoot(t, `{"app":{"id":"app_x"},"build":{"command":["npm","run","build"]}}`)
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	f := &fakeEnvRunner{stderr: "TS2304: boom", err: errors.New("exit 1")}
 	withFakeEnvRunner(t, f)
@@ -624,7 +768,7 @@ func TestAppDevPublishExecute_BuildFails(t *testing.T) {
 
 func TestAppDevPublishExecute_PreReleaseMissingKVs(t *testing.T) {
 	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
-	writeDistFiles(t, filepath.Join(root, appDevDistDir), []string{"output/index.html", "output/routes.json"})
+	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
@@ -643,7 +787,7 @@ func TestAppDevPublishExecute_PreReleaseMissingKVs(t *testing.T) {
 
 func TestAppDevPublishExecute_NonHTTPSUploadURL(t *testing.T) {
 	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
-	writeDistFiles(t, filepath.Join(root, appDevDistDir), []string{"output/index.html", "output/routes.json"})
+	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stubPreRelease(reg, "app_x", "http://insecure.example/put", nil)
 	err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--skip-build", "--as", "user"}, factory, stdout)
@@ -655,7 +799,7 @@ func TestAppDevPublishExecute_NonHTTPSUploadURL(t *testing.T) {
 
 func TestAppDevPublishExecute_TOS5xx(t *testing.T) {
 	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
-	writeDistFiles(t, filepath.Join(root, appDevDistDir), []string{"output/index.html", "output/routes.json"})
+	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(503) })
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stubPreRelease(reg, "app_x", srv.URL, nil)
@@ -667,8 +811,8 @@ func TestAppDevPublishExecute_TOS5xx(t *testing.T) {
 }
 
 func TestAppDevPublishDryRun(t *testing.T) {
-	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
-	writeDistFiles(t, filepath.Join(root, appDevDistDir), []string{"output/index.html"})
+	root := chdirMiaodaProjectRoot(t, `{"app":{"id":"app_x"},"build":{"command":["npm","run","build"],"output":"dist/output"}}`)
+	writeDistFiles(t, filepath.Join(root, "dist", "output"), []string{"index.html"})
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--skip-build", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
@@ -680,12 +824,43 @@ func TestAppDevPublishDryRun(t *testing.T) {
 	if data["app_id"] != "app_x" {
 		t.Errorf("app_id = %v", data["app_id"])
 	}
-	if verr, _ := data["dist_validation_error"].(string); !strings.Contains(verr, "routes.json") {
-		t.Errorf("dist_validation_error = %v (routes.json missing should surface)", data["dist_validation_error"])
+	// A declared build.command is expected to produce routes.json — its
+	// absence surfaces as a validation error (never CLI-generated here).
+	if verr, _ := data["output_validation_error"].(string); !strings.Contains(verr, "routes.json") {
+		t.Errorf("output_validation_error = %v (routes.json missing should surface)", data["output_validation_error"])
 	}
 	buildCmd, _ := data["build_command"].(string)
 	if !strings.Contains(buildCmd, "MIAODA_*") {
 		t.Errorf("build_command = %q", buildCmd)
+	}
+}
+
+func TestAppDevPublishDryRun_Buildless(t *testing.T) {
+	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
+	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html"})
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+	data, err := decodeDryRunDataMap(stdout.Bytes())
+	if err != nil {
+		t.Fatalf("decode dry-run: %v (raw=%q)", err, stdout.String())
+	}
+	buildCmd, _ := data["build_command"].(string)
+	if !strings.Contains(buildCmd, "buildless") {
+		t.Errorf("build_command = %q, want buildless note", buildCmd)
+	}
+	// Missing routes.json is fine for buildless — the CLI generates it.
+	if verr, has := data["output_validation_error"]; has {
+		t.Errorf("output_validation_error = %v, want none", verr)
+	}
+	routes, _ := data["routes_json"].(string)
+	if !strings.Contains(routes, "generated") {
+		t.Errorf("routes_json = %q, want generation note", routes)
+	}
+	cdn, _ := data["build_output_cdn"].(string)
+	if !strings.Contains(cdn, "not declared") {
+		t.Errorf("build_output_cdn = %q", cdn)
 	}
 }
 
@@ -698,10 +873,9 @@ func TestAppDevPublishExecute_MiaodaProtocol(t *testing.T) {
   "app": { "id": "app_x" }
 }`)
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	// build.output points straight at the same-origin artifact directory.
 	f := &fakeEnvRunner{sideEffect: func() {
-		writeDistFiles(t, filepath.Join(root, "public"), []string{"output/index.html", "output/routes.json"})
-		routes := `[{"path":"/","file":"index.html"}]`
-		os.WriteFile(filepath.Join(root, "public", "output", "routes.json"), []byte(routes), 0o644)
+		writeDistFiles(t, filepath.Join(root, "public"), []string{"index.html", "routes.json"})
 	}}
 	withFakeEnvRunner(t, f)
 	factory, stdout, reg := newAppsExecuteFactory(t)
@@ -734,7 +908,7 @@ func TestAppDevPublishExecute_MiaodaFlagBackfill(t *testing.T) {
 	// No recorded app id in miaoda.json: --app-id publishes and the app
 	// section is written on success (async: no url yet).
 	root := chdirMiaodaProjectRoot(t, `{"stack":"react-standard-webapp"}`)
-	writeDistFiles(t, filepath.Join(root, appDevDefaultBuildOutput), []string{"output/index.html", "output/routes.json"})
+	writeDistFiles(t, filepath.Join(root, appDevDefaultBuildOutput), []string{"index.html", "routes.json"})
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stubPreRelease(reg, "app_new1", srv.URL, nil)

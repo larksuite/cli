@@ -25,10 +25,6 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// appDevDistDir is the fixed build output directory of the artifact-hosting
-// layout; +app-dev-publish always publishes ./dist from the project root.
-const appDevDistDir = "dist"
-
 // appDevUploadURLKey is the pre_release kv carrying the presigned TOS upload
 // URL for the artifact-hosting chain (upload path is the server-side
 // convention <app_id>/artifact.zip, so no separate tos_path is handed down).
@@ -90,84 +86,126 @@ func ensureMetaOnlineURL(dir, onlineURL string) error {
 	return nil
 }
 
-// validateAppDevDist walks the dist directory and enforces the
-// artifact-hosting layout on what the protocol consumes: output/ must hold at
-// least one .html plus a valid routes.json; output_resource/ and
-// output_capabilities/ ride along. Anything else at the top level is ignored
-// (build tools commonly emit extra artifacts next to the protocol dirs) and
-// reported via ignored for the caller to surface. Only the returned
-// candidates are packed and scanned. allowSensitive skips the
-// credential-file scan.
-func validateAppDevDist(fio fileio.FileIO, distPath string, allowSensitive bool) (candidates []htmlPublishCandidate, ignored []string, err error) {
-	all, err := walkHTMLPublishCandidates(fio, distPath)
+// validateAppDevOutputs walks the declared artifact directories and builds
+// the normalized upload payload: every file under build.output lands at
+// output/ inside the zip and every file under build.output_cdn (when
+// declared) at output_resource/ — the hosting pipeline consumes this fixed
+// layout and never sees the project's directory names. build.output must
+// hold at least one .html; routes.json is schema-checked when present,
+// generated from the .html tree for buildless projects when absent (never
+// overwriting a project-provided one), and required from the build
+// otherwise. generatedRoutes is the generated route count, or -1 when the
+// project shipped its own routes.json. allowSensitive skips the
+// credential-file scan (every listed file is uploaded, so all are scanned).
+func validateAppDevOutputs(fio fileio.FileIO, cfg *appDevProjectConfig, allowSensitive bool) (entries []appDevPackEntry, generatedRoutes int, err error) {
+	generatedRoutes = -1
+	outFiles, err := walkHTMLPublishCandidates(fio, cfg.BuildOutput)
 	if err != nil {
-		// A missing dist directory means "build first", not a bad flag value.
+		// A missing artifact directory means "build first", not a bad flag value.
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, nil, appsFailedPreconditionError(
-				"dist directory not found; the artifact-hosting layout expects ./dist").
-				WithHint("run npm run build first, or drop --skip-build to let the command build")
-		}
-		return nil, nil, err
-	}
-	var hasHTML, hasRoutes, hasOutput bool
-	seenIgnored := map[string]bool{}
-	for _, c := range all {
-		top := c.RelPath
-		if i := strings.IndexByte(top, '/'); i >= 0 {
-			top = top[:i]
-		}
-		switch top {
-		case "output":
-			hasOutput = true
-			if strings.HasSuffix(c.RelPath, ".html") {
-				hasHTML = true
+			hint := "run the build first, or drop --skip-build to let the command build (build.output is declared in miaoda.json)"
+			if cfg.Buildless() {
+				hint = "this project declares no build.command, so the directory is packed as-is; create it, or point miaoda.json build.output at the right directory"
 			}
-			if c.RelPath == "output/routes.json" {
-				hasRoutes = true
+			return nil, -1, appsFailedPreconditionError(
+				"artifact directory %s not found (miaoda.json build.output, default dist/output)", cfg.BuildOutput).
+				WithHint(hint)
+		}
+		return nil, -1, err
+	}
+	var htmlRels []string
+	var sensitive []string
+	hasRoutes := false
+	for _, c := range outFiles {
+		if strings.HasSuffix(c.RelPath, ".html") {
+			htmlRels = append(htmlRels, c.RelPath)
+		}
+		if c.RelPath == "routes.json" {
+			hasRoutes = true
+		}
+		if !allowSensitive && isSensitiveCandidate(cfg.BuildOutput, c) {
+			sensitive = append(sensitive, filepath.ToSlash(filepath.Join(cfg.BuildOutput, c.RelPath)))
+		}
+		entries = append(entries, appDevPackEntry{ZipPath: "output/" + c.RelPath, AbsPath: c.AbsPath, Size: c.Size})
+	}
+	if cfg.BuildOutputCDN != "" {
+		cdnFiles, err := walkHTMLPublishCandidates(fio, cfg.BuildOutputCDN)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil, -1, appsFailedPreconditionError(
+					"CDN artifact directory %s not found (declared in miaoda.json build.output_cdn)", cfg.BuildOutputCDN).
+					WithHint("make the build produce it, or drop build.output_cdn to publish without the CDN split")
 			}
-			candidates = append(candidates, c)
-		case "output_resource", "output_capabilities":
-			// output_resource ships to CDN; output_capabilities is the
-			// platform-capability placeholder — both ride along in the zip.
-			candidates = append(candidates, c)
-		default:
-			// Extra build artifacts next to the protocol dirs are none of the
-			// CLI's business — pick what the protocol needs, skip the rest.
-			if !seenIgnored[top] {
-				seenIgnored[top] = true
-				ignored = append(ignored, top)
+			return nil, -1, err
+		}
+		for _, c := range cdnFiles {
+			if !allowSensitive && isSensitiveCandidate(cfg.BuildOutputCDN, c) {
+				sensitive = append(sensitive, filepath.ToSlash(filepath.Join(cfg.BuildOutputCDN, c.RelPath)))
 			}
+			entries = append(entries, appDevPackEntry{ZipPath: "output_resource/" + c.RelPath, AbsPath: c.AbsPath, Size: c.Size})
 		}
 	}
-	sort.Strings(ignored)
-	if !hasOutput {
-		return nil, ignored, appsFailedPreconditionError(
-			"the build output is missing the output/ directory required by the artifact-hosting layout").
-			WithHint("run the build first; expected layout: <build.output>/output/{*.html,routes.json} + output_resource/")
+	if len(sensitive) > 0 {
+		return nil, -1, appDevSensitiveCandidatesError(sensitive)
 	}
-	if !hasHTML {
-		return nil, ignored, appsFailedPreconditionError("output/ has no .html file; the protocol requires at least one (an SPA entry must be named index.html)").
-			WithHint("check the build config: HTML entries belong in output/, hashed assets in output_resource/")
+	if len(htmlRels) == 0 {
+		return nil, -1, appsFailedPreconditionError(
+			"%s has no .html file; the protocol requires at least one (an SPA entry must be named index.html)", cfg.BuildOutput).
+			WithHint("check the build config: same-origin pages belong in build.output, CDN assets in build.output_cdn")
 	}
-	if !hasRoutes {
-		return nil, ignored, appsFailedPreconditionError("output/routes.json is missing").
-			WithHint("routes.json is required for content review routing; official templates generate it during the build")
-	}
-	if err := validateAppDevRoutesJSON(distPath); err != nil {
-		return nil, ignored, err
-	}
-	if !allowSensitive {
-		var hits []string
-		for _, c := range candidates {
-			if isSensitiveCandidate(distPath, c) {
-				hits = append(hits, c.RelPath)
-			}
+	switch {
+	case hasRoutes:
+		b, err := os.ReadFile(filepath.Join(cfg.BuildOutput, "routes.json")) //nolint:forbidigo // path is under the walked build output.
+		if err != nil {
+			return nil, -1, appsFileIOError(err, "read %s/routes.json failed: %v", cfg.BuildOutput, err)
 		}
-		if len(hits) > 0 {
-			return nil, ignored, appDevSensitiveCandidatesError(hits)
+		if err := validateAppDevRoutesJSON(b); err != nil {
+			return nil, -1, err
 		}
+	case cfg.Buildless():
+		// Buildless projects get their route enumeration scanned out of the
+		// .html tree by the CLI; a project-provided routes.json always wins.
+		b, n, err := generateAppDevRoutes(htmlRels)
+		if err != nil {
+			return nil, -1, err
+		}
+		generatedRoutes = n
+		entries = append(entries, appDevPackEntry{ZipPath: "output/routes.json", Content: b, Size: int64(len(b))})
+	default:
+		return nil, -1, appsFailedPreconditionError("%s/routes.json is missing", cfg.BuildOutput).
+			WithHint("routes.json is required for content review routing; a declared build.command is expected to produce it (official templates generate it during the build)")
 	}
-	return candidates, ignored, nil
+	return entries, generatedRoutes, nil
+}
+
+// generateAppDevRoutes derives the route enumeration from the .html file
+// tree of a buildless project: any index.html maps to its directory's path
+// ("/" at the root, foo/index.html to /foo) and any other page.html maps to
+// /page. Entries are sorted by path for a stable payload.
+func generateAppDevRoutes(htmlRels []string) (data []byte, count int, err error) {
+	type route struct {
+		Path string `json:"path"`
+		File string `json:"file"`
+	}
+	seen := map[string]bool{}
+	routes := []route{}
+	for _, rel := range htmlRels {
+		p := "/" + strings.TrimSuffix(rel, ".html")
+		if strings.HasSuffix(rel, "index.html") && (rel == "index.html" || strings.HasSuffix(rel, "/index.html")) {
+			p = "/" + strings.TrimSuffix(strings.TrimSuffix(rel, "index.html"), "/")
+		}
+		if seen[p] {
+			continue
+		}
+		seen[p] = true
+		routes = append(routes, route{Path: p, File: rel})
+	}
+	sort.Slice(routes, func(i, j int) bool { return routes[i].Path < routes[j].Path })
+	b, err := json.Marshal(routes)
+	if err != nil {
+		return nil, 0, appsFileIOError(err, "marshal generated routes.json failed: %v", err)
+	}
+	return b, len(routes), nil
 }
 
 // appDevRoute is one entry of the routes.json route enumeration consumed by
@@ -181,29 +219,25 @@ type appDevRoute struct {
 // appDevRoutesHint is the actionable schema reminder for routes.json errors.
 const appDevRoutesHint = `routes.json must be a route enumeration array, e.g. [{"path":"/","file":"index.html"}] (empty [] is allowed for a static site); it feeds security scanning, so it must match the real routes`
 
-// validateAppDevRoutesJSON light-checks output/routes.json against the
+// validateAppDevRoutesJSON light-checks a routes.json payload against the
 // route-enumeration schema so problems fail at publish time instead of
 // bouncing off the TNS scan later: top level must be an array, every entry
 // needs a /-prefixed path, and paths must be unique.
-func validateAppDevRoutesJSON(distPath string) error {
-	b, err := os.ReadFile(filepath.Join(distPath, "output", "routes.json")) //nolint:forbidigo // path is under the walked build output.
-	if err != nil {
-		return appsFileIOError(err, "read output/routes.json failed: %v", err)
-	}
+func validateAppDevRoutesJSON(b []byte) error {
 	var routes []appDevRoute
 	if err := json.Unmarshal(b, &routes); err != nil {
-		return appsFailedPreconditionError("output/routes.json is not a valid route enumeration array: %v", err).
+		return appsFailedPreconditionError("routes.json is not a valid route enumeration array: %v", err).
 			WithHint(appDevRoutesHint)
 	}
 	seen := make(map[string]bool, len(routes))
 	for i, r := range routes {
 		path := strings.TrimSpace(r.Path)
 		if path == "" || !strings.HasPrefix(path, "/") {
-			return appsFailedPreconditionError("output/routes.json entry %d has an invalid path %q (required, must start with /, no base prefix)", i, r.Path).
+			return appsFailedPreconditionError("routes.json entry %d has an invalid path %q (required, must start with /, no base prefix)", i, r.Path).
 				WithHint(appDevRoutesHint)
 		}
 		if seen[path] {
-			return appsFailedPreconditionError("output/routes.json has duplicate path %q (paths must be unique)", path).
+			return appsFailedPreconditionError("routes.json has duplicate path %q (paths must be unique)", path).
 				WithHint(appDevRoutesHint)
 		}
 		seen[path] = true
@@ -212,13 +246,14 @@ func validateAppDevRoutesJSON(distPath string) error {
 }
 
 // appDevSensitiveCandidatesError mirrors sensitiveCandidatesError with
-// publish-specific wording: this command has no --path flag and the payload
-// is always ./dist, so the html-publish message would misdirect the user.
+// publish-specific wording: this command has no --path flag — the payload is
+// the declared artifact directories — so the html-publish message would
+// misdirect the user.
 func appDevSensitiveCandidatesError(hits []string) error {
 	return appsValidationError(
-		"dist contains %d credential file(s) that should not be published: %s",
+		"the publish payload contains %d credential file(s) that should not be published: %s",
 		len(hits), truncatedJoin(hits, maxSensitiveListInError)).
-		WithHint("remove these files from the build output, OR pass --allow-sensitive if shipping them is intentional (e.g. a docs site demoing credential-file formats)")
+		WithHint("remove these files from the artifact directories, OR pass --allow-sensitive if shipping them is intentional (e.g. a docs site demoing credential-file formats)")
 }
 
 // resolveAppDevPublishTarget loads the project declaration (miaoda.json
@@ -298,23 +333,23 @@ var appDevRunner envCommandRunner = execEnvCommandRunner{}
 var appDevNewTransferClient = newFileTransferClient
 
 // AppsAppDevPublish builds and publishes a local web app project to its
-// Miaoda app. Run from the project root containing .spark/meta.json.
+// Miaoda app. Run from the project root containing miaoda.json.
 var AppsAppDevPublish = common.Shortcut{
 	Service:     appsService,
 	Command:     "+app-dev-publish",
-	Description: "Build and publish a local web app project to its Miaoda app (run from the project root containing .spark/meta.json)",
+	Description: "Build and publish a local web app project to its Miaoda app (run from the project root containing miaoda.json)",
 	Risk:        "write",
 	Tips: []string{
 		"Example: lark-cli apps +app-dev-publish   (run from the project root)",
-		"Example: lark-cli apps +app-dev-publish --skip-build   (reuse an existing ./dist)",
-		"Prerequisite: .spark/meta.json must contain app_id (create the app with +create first)",
+		"Example: lark-cli apps +app-dev-publish --skip-build   (reuse the existing build.output directory)",
+		"Prerequisite: an app id in miaoda.json or via --app-id (create the app with +create first)",
 	},
 	Scopes:    []string{"spark:app:write", "spark:app:read"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "publish target app ID (app_ prefix); optional when miaoda.json already records one — on a successful publish it is saved back into miaoda.json, and a value conflicting with the recorded one is rejected"},
-		{Name: "skip-build", Type: "bool", Desc: "skip the build.command declared in miaoda.json (default npm run build) and publish the existing build.output directory as-is"},
+		{Name: "skip-build", Type: "bool", Desc: "skip the build.command declared in miaoda.json and publish the existing build.output directory as-is (no effect on buildless projects, which never build)"},
 		{Name: "allow-sensitive", Type: "bool", Desc: "skip the credential-file scan (allow .env / .npmrc / etc. in the publish payload)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
@@ -324,37 +359,44 @@ var AppsAppDevPublish = common.Shortcut{
 		}
 		// Sensitive-file scan lives in Validate so that --dry-run exits
 		// non-zero on a hit — the one deliberate exception to dry-run's
-		// exit-0 convention (mirrors +html-publish). Walk errors (e.g. dist
-		// missing) are not fatal here; DryRun/Execute surface them with
-		// richer context.
+		// exit-0 convention (mirrors +html-publish). Every file under the
+		// declared artifact directories is uploaded, so all are scanned.
+		// Walk errors (e.g. directory missing) are not fatal here;
+		// DryRun/Execute surface them with richer context.
 		if !rctx.Bool("allow-sensitive") {
-			if candidates, err := walkHTMLPublishCandidates(rctx.FileIO(), cfg.BuildOutput); err == nil {
-				var hits []string
-				for _, c := range candidates {
-					top := c.RelPath
-					if i := strings.IndexByte(top, '/'); i >= 0 {
-						top = top[:i]
-					}
-					if top != "output" && top != "output_resource" && top != "output_capabilities" {
-						continue // not uploaded, not scanned
-					}
-					if isSensitiveCandidate(cfg.BuildOutput, c) {
-						hits = append(hits, c.RelPath)
+			var hits []string
+			for _, dir := range []string{cfg.BuildOutput, cfg.BuildOutputCDN} {
+				if dir == "" {
+					continue
+				}
+				if candidates, err := walkHTMLPublishCandidates(rctx.FileIO(), dir); err == nil {
+					for _, c := range candidates {
+						if isSensitiveCandidate(dir, c) {
+							hits = append(hits, filepath.ToSlash(filepath.Join(dir, c.RelPath)))
+						}
 					}
 				}
-				if len(hits) > 0 {
-					return appDevSensitiveCandidatesError(hits)
-				}
+			}
+			if len(hits) > 0 {
+				return appDevSensitiveCandidatesError(hits)
 			}
 		}
-		if rctx.Bool("skip-build") {
+		switch {
+		case cfg.Buildless():
 			if _, err := rctx.FileIO().Stat(cfg.BuildOutput); err != nil {
-				return appsFailedPreconditionError("--skip-build is set but the build output directory %s does not exist", cfg.BuildOutput).
+				return appsFailedPreconditionError("artifact directory %s does not exist (miaoda.json build.output, default dist/output)", cfg.BuildOutput).
+					WithHint("this project declares no build.command, so the directory is packed as-is; create it, or declare build.command in miaoda.json")
+			}
+		case rctx.Bool("skip-build"):
+			if _, err := rctx.FileIO().Stat(cfg.BuildOutput); err != nil {
+				return appsFailedPreconditionError("--skip-build is set but the artifact directory %s does not exist", cfg.BuildOutput).
 					WithHint("run the build first, or drop --skip-build to let the command build")
 			}
-		} else if _, err := appDevLookPath(cfg.BuildCommand[0]); err != nil {
-			return appsFailedPreconditionError("build command executable %q not found on PATH", cfg.BuildCommand[0]).
-				WithHint("install it (default build.command is npm run build, provided by Node.js), or build manually and retry with --skip-build")
+		default:
+			if _, err := appDevLookPath(cfg.BuildCommand[0]); err != nil {
+				return appsFailedPreconditionError("build command executable %q not found on PATH", cfg.BuildCommand[0]).
+					WithHint("install it (build.command is declared in miaoda.json), or build manually and retry with --skip-build")
+			}
 		}
 		return nil
 	},
@@ -381,16 +423,23 @@ var AppsAppDevPublish = common.Shortcut{
 				POST(fmt.Sprintf(releaseCreatePath, validate.EncodePathSegment(appID))).
 				Body(map[string]string{})
 		}
-		dry.Set("build_command", strings.Join(cfg.BuildCommand, " ")+" (from miaoda.json build.command, default npm run build; env allowlist: MIAODA_* keys from pre_release; skipped with --skip-build)")
-		dry.Set("build_output", cfg.BuildOutput)
-		if candidates, err := walkHTMLPublishCandidates(rctx.FileIO(), cfg.BuildOutput); err != nil {
-			dry.Set("dist_state", "missing or unreadable: "+err.Error())
+		if cfg.Buildless() {
+			dry.Set("build_command", "(buildless: miaoda.json declares no build.command; the artifact directories are packed as-is)")
 		} else {
-			dry.Set("dist_file_count", len(candidates))
-			if _, dryIgnored, verr := validateAppDevDist(rctx.FileIO(), cfg.BuildOutput, rctx.Bool("allow-sensitive")); verr != nil {
-				dry.Set("dist_validation_error", verr.Error())
-			} else if len(dryIgnored) > 0 {
-				dry.Set("dist_ignored_entries", strings.Join(dryIgnored, ", "))
+			dry.Set("build_command", strings.Join(cfg.BuildCommand, " ")+" (from miaoda.json build.command; env allowlist: MIAODA_* keys from pre_release; skipped with --skip-build)")
+		}
+		dry.Set("build_output", cfg.BuildOutput+" -> zip output/ (same-origin artifacts)")
+		if cfg.BuildOutputCDN != "" {
+			dry.Set("build_output_cdn", cfg.BuildOutputCDN+" -> zip output_resource/ (CDN artifacts)")
+		} else {
+			dry.Set("build_output_cdn", "(not declared: no CDN split, all assets served same-origin)")
+		}
+		if entries, gen, verr := validateAppDevOutputs(rctx.FileIO(), cfg, rctx.Bool("allow-sensitive")); verr != nil {
+			dry.Set("output_validation_error", verr.Error())
+		} else {
+			dry.Set("upload_file_count", len(entries))
+			if gen >= 0 {
+				dry.Set("routes_json", fmt.Sprintf("absent; will be generated from the .html tree (%d route(s))", gen))
 			}
 		}
 		return dry
@@ -426,7 +475,12 @@ var AppsAppDevPublish = common.Shortcut{
 		}
 
 		built := false
-		if !rctx.Bool("skip-build") {
+		switch {
+		case cfg.Buildless():
+			fmt.Fprintf(rctx.IO().ErrOut, "no build.command declared; packing %s as-is (buildless)\n", cfg.BuildOutput)
+		case rctx.Bool("skip-build"):
+			// The user built already; publish the existing artifacts.
+		default:
 			env, keys := appDevBuildEnv(kvm)
 			if len(keys) > 0 {
 				fmt.Fprintf(rctx.IO().ErrOut, "injecting build env: %s\n", strings.Join(keys, ", "))
@@ -440,15 +494,14 @@ var AppsAppDevPublish = common.Shortcut{
 			built = true
 		}
 
-		candidates, ignoredEntries, err := validateAppDevDist(rctx.FileIO(), cfg.BuildOutput, rctx.Bool("allow-sensitive"))
+		entries, generatedRoutes, err := validateAppDevOutputs(rctx.FileIO(), cfg, rctx.Bool("allow-sensitive"))
 		if err != nil {
 			return err
 		}
-		if len(ignoredEntries) > 0 {
-			fmt.Fprintf(rctx.IO().ErrOut, "skipping %d top-level entr(ies) outside the protocol layout: %s\n",
-				len(ignoredEntries), strings.Join(ignoredEntries, ", "))
+		if generatedRoutes >= 0 {
+			fmt.Fprintf(rctx.IO().ErrOut, "routes.json not found; generated %d route(s) from the .html tree\n", generatedRoutes)
 		}
-		zipball, err := buildAppDevZip(rctx.FileIO(), candidates)
+		zipball, err := buildAppDevZip(rctx.FileIO(), entries)
 		if err != nil {
 			return err
 		}
