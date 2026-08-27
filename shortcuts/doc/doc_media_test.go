@@ -190,7 +190,7 @@ func TestDocMediaParentType(t *testing.T) {
 		{
 			name:       "local Word token uses office mount point",
 			parentType: "docx_image",
-			parentNode: "KvLqOjiJMFwICuLfVeK0z3LTXNf3",
+			parentNode: "aaaaOaaaaFaaaaLaaaa0aaaaXaW",
 			want:       officeDocxFileParentType,
 		},
 		{
@@ -202,7 +202,7 @@ func TestDocMediaParentType(t *testing.T) {
 		{
 			name:       "local Excel token bypasses token gating during integration",
 			parentType: "docx_image",
-			parentNode: "KvLqOjiJMFwICuLfVeK0z3LTXNf1",
+			parentNode: "aaaaOaaaaFaaaaLaaaa0aaaaXaE",
 			want:       officeDocxFileParentType,
 		},
 	}
@@ -212,6 +212,34 @@ func TestDocMediaParentType(t *testing.T) {
 			t.Parallel()
 			if got := docMediaParentType(tt.parentType, tt.parentNode); got != tt.want {
 				t.Fatalf("docMediaParentType(%q, %q) = %q, want %q", tt.parentType, tt.parentNode, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsLocalOfficeDocToken(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		token string
+		want  bool
+	}{
+		{name: "27 character word token", token: "aaaaOaaaaFaaaaLaaaa0aaaaXaW", want: true},
+		{name: "28 character word token", token: "aaaaOaaaaFaaaaLaaaa0aaaaXaaW", want: true},
+		{name: "excel token", token: "aaaaOaaaaFaaaaLaaaa0aaaaXaE"},
+		{name: "ppt token", token: "aaaaOaaaaFaaaaLaaaa0aaaaXaP"},
+		{name: "legacy numeric word type", token: "aaaaOaaaaFaaaaLaaaa0aaaaXa3"},
+		{name: "wrong marker", token: "aaaaOaaaaFaaaaLaaaa0aaaaYaW"},
+		{name: "short token", token: "aaaaOaaaaFaaaaLaaaa0aaa"},
+		{name: "legacy prefix", token: "fake_office_document"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := isLocalOfficeDocToken(tt.token); got != tt.want {
+				t.Fatalf("isLocalOfficeDocToken(%q) = %v, want %v", tt.token, got, tt.want)
 			}
 		})
 	}
@@ -229,7 +257,7 @@ func TestDocMediaUploadDryRunUsesOfficeParentTypeForLocalWord(t *testing.T) {
 	if err := cmd.Flags().Set("parent-type", "docx_image"); err != nil {
 		t.Fatalf("set --parent-type: %v", err)
 	}
-	const localToken = "KvLqOjiJMFwICuLfVeK0z3LTXNf3"
+	const localToken = "aaaaOaaaaFaaaaLaaaa0aaaaXaW"
 	if err := cmd.Flags().Set("parent-node", localToken); err != nil {
 		t.Fatalf("set --parent-node: %v", err)
 	}

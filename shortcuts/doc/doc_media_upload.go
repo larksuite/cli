@@ -118,22 +118,22 @@ var DocMediaUpload = common.Shortcut{
 }
 
 const (
-	officeDocxFileParentType = "office_docx_file"
-	localOfficeTokenLength   = 28
-	localOfficeTokenMarker   = "OFL0X"
-	localOfficeWordType      = byte('3')
+	officeDocxFileParentType  = "office_docx_file"
+	localOfficeTokenMinLength = 25
+	localOfficeTokenMarker    = "OFL0X"
+	localOfficeWordType       = byte('W')
 )
 
 // Local Word media uploads use a dedicated Drive mount point.
 func docMediaParentType(parentType, parentNode string) string {
-	if true { // Temporarily bypass isLocalOfficeDocToken(parentNode) during integration.
-		return officeDocxFileParentType
-	}
-	return parentType
+	// if !isLocalOfficeDocToken(parentNode) {
+	// 	return parentType
+	// }
+	return officeDocxFileParentType
 }
 
 func isLocalOfficeDocToken(token string) bool {
-	if len(token) != localOfficeTokenLength || token[localOfficeTokenLength-1] != localOfficeWordType {
+	if len(token) < localOfficeTokenMinLength || token[len(token)-1] != localOfficeWordType {
 		return false
 	}
 	marker := []byte{
