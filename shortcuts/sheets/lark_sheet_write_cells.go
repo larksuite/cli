@@ -1228,7 +1228,8 @@ var CellsSetImage = common.Shortcut{
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		token, _ := resolveSpreadsheetToken(runtime)
+		ref, _ := parseSpreadsheetRef(runtime)
+		token := ref.Token
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		imgPath := strings.TrimSpace(runtime.Str("image"))
 		fileName := strings.TrimSpace(runtime.Str("name"))
@@ -1249,12 +1250,13 @@ var CellsSetImage = common.Shortcut{
 				}},
 			}}},
 		})
+		parentType := sheetsDryRunParentType(ref)
 		return common.NewDryRunAPI().
 			POST("/open-apis/drive/v1/medias/upload_all").
-			Desc("upload local image to drive (parent_type=" + sheetMediaParentType(token) + ")").
+			Desc("upload local image to drive (parent_type=" + parentType + ")").
 			Body(map[string]interface{}{
 				"file_name":   fileName,
-				"parent_type": sheetMediaParentType(token),
+				"parent_type": parentType,
 				"parent_node": token,
 				"size":        "<file_size>",
 				"file":        "@" + imgPath,

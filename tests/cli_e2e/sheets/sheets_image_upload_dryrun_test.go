@@ -21,6 +21,13 @@ import (
 // "office_sheet_file". The covered entries — sheets +media-upload (backward),
 // sheets +cells-set-image, and sheets +float-image-create — are every
 // image-upload surface that the office/native split fans out to.
+//
+// The wiki rows carry an office-shaped node_token on purpose. A preview cannot
+// know what a wiki node resolves to — that needs the get_node call a dry-run
+// must not make — so it must not read the office/native split out of the
+// node_token it happens to be holding. Those rows show the same token as a
+// /wiki/ URL and as a raw spreadsheet token and expect different answers, which
+// only holds if the preview reads the ref's kind.
 func TestSheets_ImageUploadDryRunParentType(t *testing.T) {
 	setSheetsDryRunEnv(t)
 
@@ -81,6 +88,39 @@ func TestSheets_ImageUploadDryRunParentType(t *testing.T) {
 			},
 			token:          "aaaaOaaaaFaaaaLaaaa0aaaaXaaa",
 			wantParentType: "office_sheet_file",
+		},
+		{
+			name: "cells-set-image wiki ref stays native",
+			args: []string{
+				"sheets", "+cells-set-image",
+				"--url", "https://example.feishu.cn/wiki/aaaaOaaaaFaaaaLaaaa0aaaaXaaa",
+				"--sheet-id", "sheet1",
+				"--range", "A1",
+				"--image", "img.png",
+				"--dry-run",
+			},
+			// parent_node previews the still-unresolved node_token: sheets
+			// dry-runs show the input token as given. parent_type is the field
+			// that must not be derived from it.
+			token:          "aaaaOaaaaFaaaaLaaaa0aaaaXaaa",
+			wantParentType: "sheet_image",
+		},
+		{
+			name: "float-image-create wiki ref stays native",
+			args: []string{
+				"sheets", "+float-image-create",
+				"--url", "https://example.feishu.cn/wiki/aaaaOaaaaFaaaaLaaaa0aaaaXaaa",
+				"--sheet-id", "sheet1",
+				"--image-name", "img.png",
+				"--image", "img.png",
+				"--position-row", "0",
+				"--position-col", "A",
+				"--size-width", "100",
+				"--size-height", "100",
+				"--dry-run",
+			},
+			token:          "aaaaOaaaaFaaaaLaaaa0aaaaXaaa",
+			wantParentType: "sheet_image",
 		},
 		{
 			name: "float-image-create office",

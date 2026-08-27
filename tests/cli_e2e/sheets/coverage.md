@@ -12,6 +12,7 @@
 - TestSheets_FilterWorkflow: proves `spreadsheet.sheet.filters create`, `get`, `update`, and `delete`, with supporting sheet setup through `+create`, `+info`, and `+write`.
 - TestSheets_SheetShortcutsDryRun: proves request shapes for `+create-sheet`, `+copy-sheet`, `+delete-sheet`, and `+update-sheet` without hitting live APIs.
 - TestSheets_SheetShortcutsWorkflow: proves live `+create-sheet`, `+copy-sheet`, `+update-sheet`, and `+delete-sheet` flows against a real spreadsheet, with verification through `+info`.
+- TestSheets_ImageUploadDryRunParentType: dry-run coverage for the drive `parent_type` an image upload carries, across every surface a local file enters through — `+media-upload`, `+cells-set-image`, and `+float-image-create`. A native spreadsheet must upload as `sheet_image` and one backed by an imported office file as `office_sheet_file`; a `/wiki/` ref must stay native, because a preview cannot resolve the node and so must not read the split out of the node_token. The negative half matters most: the backend does not validate `parent_node` against `parent_type`, so a wrong value uploads successfully and only surfaces later as an image that will not render.
 - Cleanup note: workflow-created spreadsheets are cleaned up via `drive +delete --type sheet`; those cleanup-only executions are not counted as command coverage because no testcase asserts delete behavior as the primary proof surface.
 
 ## Command Table

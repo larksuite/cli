@@ -220,3 +220,93 @@ func decodeSheetMediaMultipartBody(t *testing.T, stub *httpmock.Stub) sheetMedia
 	}
 	return body
 }
+
+// officeShapedWikiNodeToken is a wiki node_token deliberately shaped like an
+// imported office token. No real wiki node looks like this — that is the point.
+// A dry-run that derives its parent_type from the unresolved wiki token instead
+// of from the ref's kind previews office_sheet_file for it, which is the bug
+// these cases pin shut.
+const officeShapedWikiNodeToken = "aaaaOaaaaFaaaaLaaaa0aaaaXaa"
+
+// TestSheetsDryRunParentType pins the parent_type a preview shows for each ref
+// kind. A sheet ref derives it from the token it already holds; a wiki ref
+// cannot, because the token it holds is the node_token, not the spreadsheet one
+// Execute will upload against.
+//
+// The wiki rows are the ones with teeth: they carry office-shaped node tokens,
+// so a helper that forwarded ref.Token to sheetMediaParentType would answer
+// office_sheet_file and fail here.
+func TestSheetsDryRunParentType(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		ref  spreadsheetRef
+		want string
+	}{
+		{"native sheet ref", spreadsheetRef{Kind: spreadsheetRefSheet, Token: "shtcnABC123"}, sheetImageParentType},
+		{"office sheet ref", spreadsheetRef{Kind: spreadsheetRefSheet, Token: "fake_office_abc123"}, officeSheetFileParentType},
+		{"office-marker sheet ref", spreadsheetRef{Kind: spreadsheetRefSheet, Token: officeShapedWikiNodeToken}, officeSheetFileParentType},
+		{"wiki ref", spreadsheetRef{Kind: spreadsheetRefWiki, Token: "wikcnABC123"}, sheetImageParentType},
+		{"wiki ref, office-shaped node token", spreadsheetRef{Kind: spreadsheetRefWiki, Token: officeShapedWikiNodeToken}, sheetImageParentType},
+		{"wiki ref, office-prefixed node token", spreadsheetRef{Kind: spreadsheetRefWiki, Token: "fake_office_abc123"}, sheetImageParentType},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := sheetsDryRunParentType(tc.ref); got != tc.want {
+				t.Fatalf("sheetsDryRunParentType(%+v) = %q, want %q", tc.ref, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestImageUploadDryRun_WikiRefStaysNative walks the same rule through both
+// shortcuts that preview an upload_all, using the public flags rather than a
+// hand-built ref. Each is checked against a /sheets/ URL carrying the identical
+// office-shaped token, so the two rows differ only in the ref's kind — which is
+// what proves the preview reads the kind and not the token's shape.
+func TestImageUploadDryRun_WikiRefStaysNative(t *testing.T) {
+	t.Parallel()
+	shortcuts := []struct {
+		name string
+		sc   common.Shortcut
+		args func(urlFlag string) []string
+	}{
+		{"cells-set-image", CellsSetImage, func(u string) []string {
+			return []string{"--url", u, "--sheet-id", testSheetID, "--range", "A1", "--image", "./README.md"}
+		}},
+		{"float-image-create", FloatImageCreate, func(u string) []string {
+			return []string{
+				"--url", u, "--sheet-id", testSheetID,
+				"--image", "./README.md", "--image-name", "logo.png",
+				"--position-row", "0", "--position-col", "A",
+				"--size-width", "100", "--size-height", "50",
+			}
+		}},
+	}
+	for _, sc := range shortcuts {
+		t.Run(sc.name, func(t *testing.T) {
+			t.Parallel()
+			for _, tc := range []struct {
+				kind string
+				url  string
+				want string
+			}{
+				{"wiki", "https://example.feishu.cn/wiki/" + officeShapedWikiNodeToken, sheetImageParentType},
+				{"sheets", "https://example.feishu.cn/sheets/" + officeShapedWikiNodeToken, officeSheetFileParentType},
+			} {
+				t.Run(tc.kind, func(t *testing.T) {
+					calls := parseDryRunAPI(t, sc.sc, sc.args(tc.url))
+					upload, _ := calls[0].(map[string]interface{})
+					if upload["url"] != "/open-apis/drive/v1/medias/upload_all" {
+						t.Fatalf("first call = %v, want upload_all", upload["url"])
+					}
+					body, _ := upload["body"].(map[string]interface{})
+					if body["parent_type"] != tc.want {
+						t.Fatalf("parent_type = %v, want %q", body["parent_type"], tc.want)
+					}
+				})
+			}
+		})
+	}
+}

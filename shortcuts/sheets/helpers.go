@@ -75,6 +75,36 @@ func sheetMediaParentType(spreadsheetToken string) string {
 	return sheetImageParentType
 }
 
+// sheetsDryRunParentType returns the parent_type a dry-run should preview for
+// ref, without resolving anything.
+//
+// It exists so a wiki node_token never reaches sheetMediaParentType. Feeding it
+// one happens to yield the right answer — a wiki node_token carries its own
+// interleaved marker, not the office one, so it falls through to
+// sheetImageParentType — but by accident rather than on purpose. That leaves the
+// preview hostage to the shape of a token it is not even previewing, and to
+// every future rule added to common.IsLocalOfficeToken.
+//
+// A wiki ref is native by construction, not by default:
+// resolveWikiNodeToSpreadsheetToken rejects any node whose obj_type is not
+// "sheet", and a spreadsheet backed by an imported office file sits in drive as
+// a "file" node, so it never survives that gate to reach an upload. That gate is
+// where this assumption has to be revisited if it ever changes; Execute is
+// unaffected either way, since it derives the parent_type from the resolved
+// token.
+//
+// Callers are DryRun hooks, which swallow the parse error to build a
+// best-effort preview; the zero spreadsheetRef they pass on that path is neither
+// a wiki ref nor an office token, so it previews the native value.
+//
+// This mirrors slidesDryRunParentType (shortcuts/slides/slides_media_upload.go).
+func sheetsDryRunParentType(ref spreadsheetRef) string {
+	if ref.Kind == spreadsheetRefWiki {
+		return sheetImageParentType
+	}
+	return sheetMediaParentType(ref.Token)
+}
+
 // uploadSheetImage uploads a local image file as a spreadsheet media asset and
 // returns its file_token. It funnels every sheets image upload through one
 // place so the parent_type selection (see sheetMediaParentType) is never
