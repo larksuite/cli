@@ -47,7 +47,7 @@ lark-cli mail +sender-allowlist-modify --remove alice@example.com --remove examp
 lark-cli mail +sender-blocklist-modify --remove spam@example.com,bad.example
 ```
 
-写操作前必须先向用户确认目标名单和发件人数量。`--add` / `--remove` 可重复，也支持逗号分隔。CLI 会自动识别邮箱地址和域名：包含 `@` 的值按邮箱地址写入，否则按域名写入。
+写操作前必须先向用户确认目标名单和发件人数量。`--add` / `--remove` 可重复，也支持逗号分隔。CLI 会自动识别邮箱地址和域名：包含 `@` 的值按邮箱地址写入，否则按域名写入。邮箱地址和域名不区分大小写；大小写不同但内容相同的输入会按同一项处理。
 
 ## 参数
 
