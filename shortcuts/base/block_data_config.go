@@ -19,7 +19,7 @@ import (
 // blocks and BaseApp page blocks.
 var chartBlockTypes = []string{
 	"column", "bar", "line", "pie", "ring", "scatter",
-	"funnel", "wordCloud", "area", "combo", "radar", "ranking", "statistics",
+	"funnel", "wordCloud", "area", "combo", "radar", "statistics",
 }
 
 // textBlockTypes are the text-ish block types. Dashboard blocks and BaseApp
@@ -366,7 +366,21 @@ func validateRankingDataConfig(cfg map[string]interface{}) []string {
 	if !ok || limit != math.Trunc(limit) || limit < 1 || limit > 500 {
 		problems = append(problems, "ranking.limit_size 必须是 1..500 的整数")
 	}
-	problems = append(problems, validateBlockFilter(cfg, "filter", false)...)
+	if filter, ok := cfg["filter"].(map[string]interface{}); ok {
+		for _, field := range unexpectedObjectFields(filter, "conjunction", "conditions") {
+			problems = append(problems, fmt.Sprintf("ranking.filter 不支持字段 %s", field))
+		}
+		if conditions, ok := filter["conditions"].([]interface{}); ok {
+			for i, rawCondition := range conditions {
+				if condition, ok := rawCondition.(map[string]interface{}); ok {
+					for _, field := range unexpectedObjectFields(condition, "field_name", "operator", "value") {
+						problems = append(problems, fmt.Sprintf("ranking.filter.conditions[%d] 不支持字段 %s", i, field))
+					}
+				}
+			}
+		}
+	}
+	problems = append(problems, validateProtocolFilter(cfg, "filter")...)
 	return problems
 }
 
@@ -697,13 +711,9 @@ func validProtocolFilterValue(value interface{}) bool {
 // allowFieldID lets list blocks reference a field by ID; chart blocks keep the
 // dashboard rule of field_name only.
 func validateBlockFilter(cfg map[string]interface{}, key string, allowFieldID bool) []string {
-	raw, exists := cfg[key]
-	if !exists {
-		return nil
-	}
-	f, ok := raw.(map[string]interface{})
+	f, ok := cfg[key].(map[string]interface{})
 	if !ok {
-		return []string{key + " 必须是对象"}
+		return nil
 	}
 	var problems []string
 	conj := strings.ToLower(strings.TrimSpace(fmt.Sprintf("%v", f["conjunction"])))
