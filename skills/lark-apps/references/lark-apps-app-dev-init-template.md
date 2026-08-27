@@ -10,7 +10,7 @@
 
 - 必填：`--type`，取值 `frontend`（映射模板 react-standard-webapp）或 `full_stack`（映射 react-express-standard-fullstack）。
 - 可选：`--dir`，相对路径，默认 `./<模板名>`；目录已存在且非空会被拒绝。
-- 前置：已完成 `lark-cli config init`（框架级要求，纯本地命令也需要）；本步骤**不需要 Node.js**。内部从 npm registry（registry.npmmirror.com）只读下载模板包 `@lark-apaas/coding-template-<模板名>` 并本地渲染，不执行任何远程脚本、不装依赖（秒级返回）。
+- 前置：已完成 `lark-cli config init`（框架级要求，纯本地命令也需要）；本步骤**不需要 Node.js**。内部从 npm registry 只读下载模板包（主源 registry.npmmirror.com，失败自动降级 registry.npmjs.org 官方源） `@lark-apaas/coding-template-<模板名>` 并本地渲染，不执行任何远程脚本、不装依赖（秒级返回）。
 
 ## 示例
 
@@ -30,5 +30,5 @@ lark-cli apps +app-dev-init-template --type full_stack --dry-run
 ## 常见失败
 
 - `target directory ... already exists and is not empty`：换 `--dir` 或让用户清空目录；不要擅自删除已有内容。
-- `npm registry returned 404`：模板包可能未发布，转述 hint（联系产物侧或检查网络/registry 可达性）。
+- `npm registry returned 404`：主源与官方源都取不到时报出，模板包可能未发布，转述 hint（联系产物侧或检查网络/registry 可达性）。
 - registry 5xx / 网络失败：错误带 retryable，可稍后重试。
