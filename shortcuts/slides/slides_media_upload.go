@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -20,13 +19,12 @@ import (
 // return 1061002 params error, but `slide_file` returns a valid file_token
 // that can be used as <img src="..."> in slide XML.
 //
-// Imported "office" presentations carry either a legacy synthetic-token prefix
-// or a token whose interleaved product/region marker is "OFL0X",
-// and the drive backend requires "office_slide_file" for those — the
-// presentation counterpart of the office_sheet_file rule the sheets domain
-// already applies (shortcuts/sheets/helpers.go). The token shapes are the same
-// there: an imported office file is an imported office file whether it backs a
-// spreadsheet or a deck.
+// Imported "office" presentations must upload as "office_slide_file" instead —
+// the presentation counterpart of the office_sheet_file rule the sheets domain
+// already applies. Recognising one is common.IsLocalOfficeToken's job, not
+// this package's: the token shape is a drive-level property shared by every
+// imported office file, while the parent_type it selects is what differs per
+// domain, so only the mapping below lives here.
 //
 // NOTE: neither value is accepted by the multipart upload_prepare endpoint
 // (99992402 field validation failed), so slides image uploads stay capped at
@@ -34,39 +32,7 @@ import (
 const (
 	slideFileParentType       = "slide_file"
 	officeSlideFileParentType = "office_slide_file"
-	fakeOfficePrefix          = "fake_office_"
-	localOfficePrefix         = "local_office_"
 )
-
-// officePrefixes are the legacy synthetic token prefixes an imported "office"
-// presentation may carry.
-var officePrefixes = []string{fakeOfficePrefix, localOfficePrefix}
-
-func isOfficePresentation(presentationToken string) bool {
-	for _, prefix := range officePrefixes {
-		if strings.HasPrefix(presentationToken, prefix) {
-			return true
-		}
-	}
-	// The token only has to be long enough to hold the marker. The length is
-	// deliberately not pinned to one value: the local-office format has already
-	// moved off 28 characters (per #2509, "OFL0X + 21 random + 1 office type
-	// enum"), and sheets relaxed the identical guard for that reason. Pinning it
-	// again would silently reclassify every future length as native.
-	if len(presentationToken) < 25 {
-		return false
-	}
-	// The five-character marker occupies positions 5, 10, 15, 20, and 25
-	// (1-based) in the interleaved token.
-	marker := []byte{
-		presentationToken[4],
-		presentationToken[9],
-		presentationToken[14],
-		presentationToken[19],
-		presentationToken[24],
-	}
-	return string(marker) == "OFL0X"
-}
 
 // slidesMediaParentType returns the drive media parent_type to use when
 // uploading an image whose parent_node is presentationToken. It is the single
@@ -75,7 +41,7 @@ func isOfficePresentation(presentationToken string) bool {
 // +create / +add-slide / +update-slide) and its dry-run preview stay
 // consistent.
 func slidesMediaParentType(presentationToken string) string {
-	if isOfficePresentation(presentationToken) {
+	if common.IsLocalOfficeToken(presentationToken) {
 		return officeSlideFileParentType
 	}
 	return slideFileParentType
@@ -93,7 +59,7 @@ const unresolvedSlidesTokenPlaceholder = "<resolved_slides_token>"
 // that happens to yield the right answer — a placeholder matches no office token
 // shape, so it falls through to slideFileParentType — but by accident rather
 // than on purpose, which makes the preview hostage to the placeholder's spelling
-// and to every future rule added to isOfficePresentation.
+// and to every future rule added to common.IsLocalOfficeToken.
 //
 // A wiki ref is native by construction, not by default: resolvePresentationID
 // rejects any wiki node whose obj_type is not "slides" (helpers.go), and an
