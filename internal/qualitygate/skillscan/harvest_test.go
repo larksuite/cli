@@ -113,3 +113,31 @@ func TestHasOpenQuote(t *testing.T) {
 		}
 	}
 }
+
+func TestHarvestStopsQuotedContinuationAtClosingFence(t *testing.T) {
+	// An example whose quote never closes is a real defect and should still be
+	// reported as unparsable, but following the quote past the fence would
+	// swallow every later command in the file and silently drop them from
+	// validation.
+	got, err := Harvest(filepath.Join("testdata", "unterminated"))
+	if err != nil {
+		t.Fatalf("Harvest() error = %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("got %d examples, want 3: %#v", len(got), got)
+	}
+
+	if strings.Contains(got[0].Raw, "```") || strings.Contains(got[0].Raw, "Prose") {
+		t.Errorf("broken example absorbed the fence or the prose after it: %q", got[0].Raw)
+	}
+	if !hasOpenQuote(got[0].Raw) {
+		t.Errorf("a genuinely unterminated quote should stay unterminated: %q", got[0].Raw)
+	}
+
+	if !strings.Contains(got[1].Raw, "+chat-list") {
+		t.Errorf("command after the broken fence was dropped: %#v", got)
+	}
+	if !strings.Contains(got[2].Raw, "A3Ijlater") {
+		t.Errorf("last command in the file was dropped: %#v", got)
+	}
+}

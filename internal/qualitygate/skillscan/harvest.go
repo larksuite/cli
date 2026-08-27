@@ -85,7 +85,7 @@ func harvestFile(path string) ([]Example, error) {
 	inFence := false
 	for i := 0; i < len(lines); i++ {
 		line := strings.TrimSpace(lines[i])
-		if strings.HasPrefix(line, "```") {
+		if isFence(line) {
 			inFence = !inFence
 			continue
 		}
@@ -95,7 +95,9 @@ func harvestFile(path string) ([]Example, error) {
 
 		startLine := i + 1
 		raw := trimContinuation(line)
-		for i+1 < len(lines) && (continues(line) || hasOpenQuote(raw)) {
+		// The fence bounds the example. A genuinely unterminated quote must not
+		// swallow the closing fence and every later command in the file.
+		for i+1 < len(lines) && !isFence(lines[i+1]) && (continues(line) || hasOpenQuote(raw)) {
 			i++
 			line = strings.TrimSpace(lines[i])
 			raw += " " + trimContinuation(line)
@@ -109,6 +111,10 @@ func harvestFile(path string) ([]Example, error) {
 		})
 	}
 	return out, nil
+}
+
+func isFence(line string) bool {
+	return strings.HasPrefix(strings.TrimSpace(line), "```")
 }
 
 func continues(line string) bool {
