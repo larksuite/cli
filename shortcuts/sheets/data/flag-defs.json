@@ -1335,10 +1335,11 @@
         "kind": "own",
         "type": "string_slice",
         "required": "optional",
-        "desc": "Comma-separated info categories to include. `truncation` additionally estimates whether each cell's content is clipped (by row height / col width / font size / wrap) and returns `isRowTruncated` / `isColTruncated` (extra compute; enable only for layout checks or before adjusting row heights / column widths)",
+        "desc": "Comma-separated info categories to include. `raw_value` returns the original cell value or raw formula result, preserving number / string types, and is mutually exclusive with `formula`. `truncation` additionally estimates whether each cell's content is clipped (by row height / col width / font size / wrap) and returns `isRowTruncated` / `isColTruncated` (extra compute; enable only for layout checks or before adjusting row heights / column widths)",
         "enum": [
           "value",
           "formula",
+          "raw_value",
           "style",
           "comment",
           "data_validation",
