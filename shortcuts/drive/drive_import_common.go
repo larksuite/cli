@@ -140,6 +140,9 @@ func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, s
 		return "", err
 	}
 
+	// TTY-only liveness; see pollDriveImportTask.
+	defer runtime.StartSpinner(fmt.Sprintf("Uploading %s", fileName))()
+
 	if fileSize <= common.MaxDriveMediaUploadSinglePartSize {
 		// upload_all for import works without parent_node; omitting it preserves
 		// the existing root-level import staging behavior.
@@ -457,6 +460,12 @@ func (s driveImportPollSummary) attach(out map[string]interface{}) {
 // pollDriveImportTask waits for the import to finish within a bounded window
 // and returns the last observed status for resume-on-timeout flows.
 func pollDriveImportTask(runtime *common.RuntimeContext, ticket string) (driveImportStatus, bool, driveImportPollSummary, error) {
+	// Interactive liveness only: StartSpinner is gated on StderrIsTerminal and
+	// is a strict no-op for pipes, CI and captured output, so a bounded poll
+	// stops looking like a hang at a human terminal without putting a byte on
+	// a machine caller's stderr.
+	defer runtime.StartSpinner("Importing")()
+
 	lastStatus := driveImportStatus{Ticket: ticket}
 	var lastErr error
 	hadSuccessfulPoll := false

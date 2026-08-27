@@ -166,7 +166,13 @@ func RunImport(ctx context.Context, runtime *common.RuntimeContext, p ImportPara
 	// Step 3: Poll task
 	status, ready, pollSummary, err := pollDriveImportTask(runtime, ticket)
 	if err != nil {
-		return err
+		// The import is already running server-side, so the ticket is the only
+		// handle back to it. It used to be visible because polling narrated
+		// itself on stderr; now it rides on the typed error, which is the one
+		// artifact a caller still gets on this path.
+		return appendDriveExportRecoveryHint(err, fmt.Sprintf(
+			"the import task was already created (ticket=%s)\ncheck its result with: %s",
+			ticket, driveImportTaskResultCommand(ticket)))
 	}
 
 	// Some intermediate responses omit the final type, so fall back to the

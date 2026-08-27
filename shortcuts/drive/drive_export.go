@@ -285,6 +285,14 @@ func RunExport(ctx context.Context, runtime *common.RuntimeContext, p ExportPara
 	spec = resolvedSpec
 	wikiResolution = resolution
 
+	// Interactive liveness only: StartSpinner is gated on StderrIsTerminal and
+	// is a strict no-op for pipes, CI and captured output, so the bounded poll
+	// window stops looking like a hang at a human terminal without putting a
+	// byte on a machine caller's stderr. stop() is idempotent and is called
+	// before every result write below so the cleared line never interleaves.
+	stopSpinner := runtime.StartSpinner("Exporting")
+	defer stopSpinner()
+
 	var lastStatus driveExportStatus
 	var lastPollErr error
 	hasObservedStatus := false
@@ -340,10 +348,12 @@ func RunExport(ctx context.Context, runtime *common.RuntimeContext, p ExportPara
 					"downloaded":     false,
 				}
 				attachDriveExportPollSummary(readyOut, pollAttempts, pollFailures, lastPollErr)
+				stopSpinner()
 				runtime.Out(annotateDriveExportWikiOutput(readyOut, wikiResolution), nil)
 				return nil
 			}
 
+			stopSpinner()
 			fileName := preferredFileName
 			if fileName == "" {
 				fileName = status.FileName
@@ -369,6 +379,7 @@ func RunExport(ctx context.Context, runtime *common.RuntimeContext, p ExportPara
 		}
 
 		if status.Failed() {
+			stopSpinner()
 			msg := strings.TrimSpace(status.JobErrorMsg)
 			if msg == "" {
 				msg = status.StatusLabel()
@@ -377,6 +388,7 @@ func RunExport(ctx context.Context, runtime *common.RuntimeContext, p ExportPara
 		}
 	}
 
+	stopSpinner()
 	nextCommand := driveExportTaskResultCommand(ticket, spec.Token)
 	if !hasObservedStatus && lastPollErr != nil {
 		hint := fmt.Sprintf(

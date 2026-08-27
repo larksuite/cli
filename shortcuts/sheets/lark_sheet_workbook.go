@@ -2224,20 +2224,50 @@ var WorkbookExport = common.Shortcut{
 	},
 }
 
-// errLocalOfficeExportUnsupported rejects an export whose target is a locally
-// opened Office spreadsheet (isOfficeSpreadsheet: a "local_office_"/"fake_office_"
-// token, or an interleaved OFL0X one). Such a token names a local file the Lark
-// client is showing, not a cloud document, so the drive export task can only
-// fail on the backend — and it fails late, after the create + poll round trips,
-// with an opaque message. Refuse up front and say why instead.
+// errLocalOfficeExportUnsupported rejects an export whose target is an Office
+// workbook rather than a Lark spreadsheet (isOfficeSpreadsheet). Drive's export
+// task only produces artifacts for native Lark documents, so these tokens fail
+// on the backend — late, after the create + poll round trips, with an opaque
+// message. Refuse up front and say why instead.
+//
+// The two token classes need different recovery, and conflating them hands the
+// caller an action they cannot take:
+//
+//   - a "local_office_" / "fake_office_" prefix is a synthetic token the client
+//     mints for a file opened from the user's own disk — the workbook is
+//     already a local file, so there is nothing to fetch;
+//   - an interleaved OFL0X token is an Office file stored in Lark (uploaded or
+//     imported, and possibly only shared with the caller). There may be no
+//     local copy at all, so the recovery is to download the stored file, or to
+//     convert it into a real Lark spreadsheet that export does support.
 func errLocalOfficeExportUnsupported(token string) error {
 	if !isOfficeSpreadsheet(token) {
 		return nil
 	}
+	if isLocallyOpenedOfficeToken(token) {
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+			"%s is a locally opened Office file, not a Lark spreadsheet — it cannot be exported", token).
+			WithHint("This workbook is already a file on your own disk: use that file directly, no export needed. " +
+				"To get a Lark spreadsheet you can export later, upload it first with `lark-cli sheets +workbook-import --file <path>`.")
+	}
 	return errs.NewValidationError(errs.SubtypeFailedPrecondition,
-		"%s is a locally opened Office file, not a Lark cloud spreadsheet — it cannot be exported", token).
-		WithHint("This workbook already exists as a file on disk: use that file directly, no export needed. " +
-			"To get a cloud spreadsheet you can export later, upload it first with `lark-cli sheets +workbook-import --file <path>`.")
+		"%s is an Office file stored in Lark, not a Lark spreadsheet — export only produces artifacts for native Lark documents", token).
+		WithHint(fmt.Sprintf("Download the stored file as-is with `lark-cli drive +download --file-token %s`. "+
+			"If you need a Lark spreadsheet (to export it, or to edit it with the sheets commands), convert it first: "+
+			"download it, then `lark-cli sheets +workbook-import --file <path>`.", token))
+}
+
+// isLocallyOpenedOfficeToken reports whether the token is one of the synthetic
+// prefixes the client mints for a workbook opened from local disk, as opposed
+// to an Office file that lives in Lark. Both are "office spreadsheets" to
+// isOfficeSpreadsheet; only this class implies the caller holds the file.
+func isLocallyOpenedOfficeToken(token string) bool {
+	for _, prefix := range officePrefixes {
+		if strings.HasPrefix(token, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // workbookExportParams builds the shared drive export request for

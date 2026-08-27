@@ -96,17 +96,20 @@ var BatchUpdate = common.Shortcut{
 		if err := prepareBatchChartUpdates(ctx, runtime, token, plan); err != nil {
 			return err
 		}
+		// Ignored sub-op locators and emulated / colliding semantics decide
+		// whether a caller can safely retry, so they travel with the result
+		// instead of on stderr, where a success-path write reads as a failure —
+		// and, since a fail-fast batch leaves earlier sub-ops applied, they must
+		// survive the failure path too.
+		warnings := batchWarnings(runtime)
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "batch_update", plan.input)
 		if err != nil {
-			return err
+			return attachSheetsWarningsToError(err, warnings)
 		}
 		if len(plan.localFailures) > 0 {
 			out = mergeBatchUpdatePartialOutput(out, plan)
 		}
-		// Ignored sub-op locators and emulated / colliding semantics decide
-		// whether a caller can safely retry, so they travel with the result
-		// instead of on stderr, where a success-path write reads as a failure.
-		out = appendSheetsWarnings(compactBatchChartCreateOutput(out), batchWarnings(runtime))
+		out = appendSheetsWarnings(compactBatchChartCreateOutput(out), warnings)
 		runtime.Out(out, nil)
 		return nil
 	},
@@ -170,15 +173,15 @@ var BatchChartCreate = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		warnings := batchIgnoredLocatorNotes(runtime, "+batch-chart-create")
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "batch_update", plan.input)
 		if err != nil {
-			return err
+			return attachSheetsWarningsToError(err, warnings)
 		}
 		if len(plan.localFailures) > 0 {
 			out = mergeBatchUpdatePartialOutput(out, plan)
 		}
-		out = appendSheetsWarnings(compactBatchChartCreateOutput(out),
-			batchIgnoredLocatorNotes(runtime, "+batch-chart-create"))
+		out = appendSheetsWarnings(compactBatchChartCreateOutput(out), warnings)
 		runtime.Out(out, nil)
 		return nil
 	},
@@ -226,14 +229,15 @@ var BatchChartUpdate = common.Shortcut{
 		if err := prepareBatchChartUpdates(ctx, runtime, token, plan); err != nil {
 			return err
 		}
+		warnings := batchIgnoredLocatorNotes(runtime, "+batch-chart-update")
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "batch_update", plan.input)
 		if err != nil {
-			return err
+			return attachSheetsWarningsToError(err, warnings)
 		}
 		if len(plan.localFailures) > 0 {
 			out = mergeBatchUpdatePartialOutput(out, plan)
 		}
-		out = appendSheetsWarnings(out, batchIgnoredLocatorNotes(runtime, "+batch-chart-update"))
+		out = appendSheetsWarnings(out, warnings)
 		runtime.Out(out, nil)
 		return nil
 	},

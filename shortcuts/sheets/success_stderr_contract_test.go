@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -302,6 +303,14 @@ func TestAppendSheetsWarningsMergesAndSkips(t *testing.T) {
 		t.Errorf("warnings should accumulate, got %#v", mergedMap["warnings"])
 	}
 
+	// A payload decoded from JSON carries []interface{}, not []string; that
+	// branch merges too, and losing it would silently drop prior warnings.
+	decoded := appendSheetsWarnings(map[string]interface{}{"warnings": []interface{}{"first"}}, []string{"second"})
+	decodedMap, _ := decoded.(map[string]interface{})
+	if got, _ := decodedMap["warnings"].([]interface{}); len(got) != 2 || got[0] != "first" || got[1] != "second" {
+		t.Errorf("decoded warnings should accumulate in order, got %#v", decodedMap["warnings"])
+	}
+
 	untouched := appendSheetsWarnings(map[string]interface{}{"success": true}, nil)
 	untouchedMap, _ := untouched.(map[string]interface{})
 	if _, present := untouchedMap["warnings"]; present {
@@ -355,5 +364,50 @@ func TestDimInsertReportsEmulatedAnchorInPayload(t *testing.T) {
 	}
 	if _, present := decodeEnvelopeData(t, stdout)["effective_operation"]; present {
 		t.Errorf("--inherit-style after anchors where the caller asked; no effective_operation expected: %s", stdout)
+	}
+}
+
+// TestBatchUpdateKeepsAdvisoriesOnFailure pins the failure half of the warning
+// contract. batch_update is fail-fast and does not roll back, so a partial
+// failure is exactly when a caller needs to know which locators were ignored:
+// it decides which target was really written and which sub-ops are safe to
+// resend. The advisories used to be printed before the request, so they
+// survived the failure; moving them to the success payload alone would have
+// dropped them from the path that needs them most.
+func TestBatchUpdateKeepsAdvisoriesOnFailure(t *testing.T) {
+	t.Parallel()
+
+	failing := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_write",
+		Body: map[string]interface{}{
+			"code": 1310213,
+			"msg":  "batch_update: 1 succeeded, 1 failed",
+		},
+	}
+
+	stdout, stderr, err := runCapturingStderr(t, BatchUpdate, []string{
+		"--url", testURL,
+		"--operations", `[
+		  {"shortcut":"+cells-clear","input":{"sheet_name":"S1","range":"A1:B2","excel_id":"shtIGNORED"}},
+		  {"shortcut":"+cells-clear","input":{"sheet_name":"S1","range":"C1:D2"}}
+		]`,
+		"--yes",
+	}, failing)
+	if err == nil {
+		t.Fatalf("expected the tool failure to surface, got nil\nstdout=%s\nstderr=%s", stdout, stderr)
+	}
+
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected a typed error, got %T: %v", err, err)
+	}
+	for _, want := range []string{"operations[0] (+cells-clear)", "excel_id", "safe retry set"} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Errorf("failure hint should carry the ignored-locator advisory (%q), got: %q", want, problem.Hint)
+		}
+	}
+	if problem.Message == "" || !strings.Contains(problem.Message, "failed") {
+		t.Errorf("the tool's own failure must stay the message, got: %q", problem.Message)
 	}
 }

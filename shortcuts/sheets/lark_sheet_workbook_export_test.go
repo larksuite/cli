@@ -144,18 +144,52 @@ func TestWorkbookExport_CreateRateLimitKeepsCallerRecovery(t *testing.T) {
 // file is already local — before any export_tasks round trip (no stubs are
 // registered, so any HTTP call would fail the run with a different error).
 func TestWorkbookExport_LocalOfficeTokenRejected(t *testing.T) {
-	for _, token := range []string{
-		"local_office_" + strings.Repeat("a", 12),
-		"fake_office_" + strings.Repeat("b", 12),
-		"aaaaOaaaaFaaaaLaaaa0aaaaXaaa", // interleaved OFL0X marker
-	} {
-		t.Run(token, func(t *testing.T) {
+	// The two token classes are both unexportable, but they imply different
+	// recovery: a synthetic prefix means the caller already holds the file on
+	// disk, while an OFL0X token names a file stored in Lark that the caller
+	// may have never downloaded. Telling the second class to "use the local
+	// file" hands them an action they cannot take.
+	cases := []struct {
+		name        string
+		token       string
+		wantMessage string
+		wantHint    []string
+		denyHint    string
+	}{
+		{
+			name:        "local_office_ prefix is a file on the caller's disk",
+			token:       "local_office_" + strings.Repeat("a", 12),
+			wantMessage: "locally opened Office file",
+			wantHint:    []string{"already a file on your own disk", "no export needed"},
+		},
+		{
+			name:        "fake_office_ prefix is the same class",
+			token:       "fake_office_" + strings.Repeat("b", 12),
+			wantMessage: "locally opened Office file",
+			wantHint:    []string{"already a file on your own disk"},
+		},
+		{
+			name:        "interleaved OFL0X token is stored in Lark",
+			token:       "aaaaOaaaaFaaaaLaaaa0aaaaXaaa",
+			wantMessage: "Office file stored in Lark",
+			wantHint:    []string{"drive +download --file-token aaaaOaaaaFaaaaLaaaa0aaaaXaaa", "+workbook-import"},
+			denyHint:    "on your own disk",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
 			_, err := runShortcutWithStubs(t, WorkbookExport, []string{
-				"--spreadsheet-token", token, "--as", "user",
+				"--spreadsheet-token", tc.token, "--as", "user",
 			})
-			problem := requireProblem(t, err, errs.CategoryValidation, errs.SubtypeFailedPrecondition, "cannot be exported")
-			if !strings.Contains(problem.Hint, "no export needed") {
-				t.Errorf("hint should say the file is already local: %q", problem.Hint)
+			problem := requireProblem(t, err, errs.CategoryValidation, errs.SubtypeFailedPrecondition, tc.wantMessage)
+			for _, want := range tc.wantHint {
+				if !strings.Contains(problem.Hint, want) {
+					t.Errorf("hint should contain %q, got: %q", want, problem.Hint)
+				}
+			}
+			if tc.denyHint != "" && strings.Contains(problem.Hint, tc.denyHint) {
+				t.Errorf("hint must not assume a local copy exists (%q): %q", tc.denyHint, problem.Hint)
 			}
 		})
 	}

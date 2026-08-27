@@ -19,6 +19,12 @@ package sheets
 // than the resource, so it gets its own `deprecation` key instead of being
 // mixed into `warnings` (see annotateSheetsDeprecation).
 
+import (
+	"strings"
+
+	"github.com/larksuite/cli/errs"
+)
+
 // annotateSheetsResult attaches key/value to a tool result on its way to
 // stdout.
 //
@@ -68,6 +74,32 @@ func appendSheetsWarnings(out interface{}, warnings []string) interface{} {
 		}
 	}
 	return annotateSheetsResult(out, "warnings", warnings)
+}
+
+// attachSheetsWarningsToError carries advisories out on the failure path.
+//
+// Warnings like "this sub-op's locator was ignored" or "these two freezes
+// overwrite each other" describe the REQUEST, not its outcome: they say which
+// spreadsheet was actually targeted and which sub-ops are safe to resend. That
+// is most valuable exactly when the call failed part-way, so they cannot live
+// only on the success payload. They ride on the typed error's hint, which
+// keeps the failure a single JSON envelope on stderr.
+//
+// The error's category / subtype / code / log_id are untouched, per the error
+// contract's "propagate typed errors unchanged".
+func attachSheetsWarningsToError(err error, warnings []string) error {
+	if err == nil || len(warnings) == 0 {
+		return err
+	}
+	note := "advisories for this request (they decide the safe retry set):\n" + strings.Join(warnings, "\n")
+	if p, ok := errs.ProblemOf(err); ok {
+		if strings.TrimSpace(p.Hint) != "" {
+			p.Hint = p.Hint + "\n" + note
+		} else {
+			p.Hint = note
+		}
+	}
+	return err
 }
 
 // annotateSheetsDeprecation attaches a steer off a superseded command or flag
