@@ -36,10 +36,11 @@ type EmitterConfig struct {
 //
 // The format contract is explicit: JSON (including the empty default) uses an
 // Envelope. Pretty and table render business data plus a human pagination
-// summary when supplied; csv and ndjson keep stdout as naked records and put
-// pagination metadata on the diagnostics stream. JQ takes precedence over
-// Format and filters the JSON Envelope. Raw affects only JSON envelope encoding
-// and jq's complex-value encoding.
+// summary when supplied; a command-owned concise renderer includes its own
+// domain summary; csv and ndjson keep stdout as naked records and put pagination
+// metadata on the diagnostics stream. JQ takes precedence over Format and
+// filters the JSON Envelope. Raw affects only JSON envelope encoding and jq's
+// complex-value encoding.
 //
 // JQSafetyWarning preserves the legacy difference between RuntimeContext.emit
 // (false) and WriteSuccessEnvelope (true) until their callers are migrated.
@@ -50,6 +51,7 @@ type EmitOptions struct {
 	JQ              string
 	DryRun          bool
 	Pretty          PrettyRenderer
+	Concise         PrettyRenderer
 	JQSafetyWarning bool
 }
 
@@ -107,6 +109,9 @@ func (e *Emitter) Success(data interface{}, opts EmitOptions) error {
 	}
 	if opts.Format == "pretty" {
 		return e.emitPretty(data, opts)
+	}
+	if opts.Format == "concise" && opts.Concise != nil {
+		return e.emitConcise(data, opts)
 	}
 
 	format, known := ParseFormat(opts.Format)
@@ -266,6 +271,21 @@ func (e *Emitter) emitPretty(data interface{}, opts EmitOptions) error {
 	// renderer is supplied. Keep that second scan visible in the leaf contract
 	// until production callers are migrated and the legacy behavior is removed.
 	return e.emitEnvelope(data, true, opts)
+}
+
+func (e *Emitter) emitConcise(data interface{}, opts EmitOptions) error {
+	scanResult := ScanForSafety(e.commandPath, data, e.errOut)
+	if scanResult.Blocked {
+		return scanResult.BlockErr
+	}
+	if scanResult.Alert != nil {
+		if err := WriteAlertWarning(e.errOut, scanResult.Alert); err != nil {
+			return wrapOutputError("write", err)
+		}
+	}
+	return e.emit(func(w io.Writer) error {
+		return opts.Concise(w, false)
+	})
 }
 
 // emitFormatted handles only non-envelope formats. JSON, jq, and unknown-format

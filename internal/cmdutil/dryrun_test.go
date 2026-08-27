@@ -252,6 +252,28 @@ func TestPrintDryRun_Pretty(t *testing.T) {
 	}
 }
 
+func TestPrintDryRun_ConciseUsesHumanReadablePreview(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := PrintDryRun(client.RawApiRequest{
+		Method: "GET",
+		URL:    "/open-apis/im/v1/messages",
+	}, &core.CliConfig{}, DryRunOutputOptions{
+		Format: "concise",
+		Out:    &stdout,
+		ErrOut: &stderr,
+	})
+	if err != nil {
+		t.Fatalf("PrintDryRun failed: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "GET /open-apis/im/v1/messages") {
+		t.Fatalf("concise dry-run stdout = %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "=== Dry Run ===") {
+		t.Fatalf("concise dry-run stderr = %q", stderr.String())
+	}
+}
+
 func TestPrintDryRun_WithJqUsesEnvelope(t *testing.T) {
 	var buf bytes.Buffer
 	err := PrintDryRun(client.RawApiRequest{

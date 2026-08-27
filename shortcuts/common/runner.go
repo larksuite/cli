@@ -852,6 +852,31 @@ func (ctx *RuntimeContext) OutFormat(data interface{}, meta *output.Meta, pretty
 	}))
 }
 
+// OutFormatWithConcise extends OutFormat with one command-owned concise renderer.
+// The command must declare "concise" in its format flag enum; other shortcuts
+// continue to expose only the standard output formats.
+func (ctx *RuntimeContext) OutFormatWithConcise(
+	data interface{},
+	meta *output.Meta,
+	prettyFn func(w io.Writer),
+	conciseFn func(w io.Writer) error,
+) {
+	var concise output.PrettyRenderer
+	if conciseFn != nil {
+		concise = func(w io.Writer, _ bool) error {
+			return conciseFn(w)
+		}
+	}
+	ctx.handleEmitterError(ctx.newEmitter().Success(data, output.EmitOptions{
+		Format:  ctx.Format,
+		Raw:     false,
+		JQ:      ctx.JqExpr,
+		Meta:    meta,
+		Pretty:  wrapLegacyPrettyRenderer(prettyFn),
+		Concise: concise,
+	}))
+}
+
 // OutFormatRaw is like OutFormat but with HTML escaping disabled in JSON output.
 // Use this when the data contains XML/HTML content that should be preserved as-is.
 func (ctx *RuntimeContext) OutFormatRaw(data interface{}, meta *output.Meta, prettyFn func(w io.Writer)) {

@@ -257,6 +257,38 @@ func TestEmitterPrettyRendererFailurePreservesCause(t *testing.T) {
 	}
 }
 
+func TestEmitterConciseUsesCommandRendererWithoutGenericPagination(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "off")
+	stdout := &bytes.Buffer{}
+	emitter := output.NewEmitter(output.EmitterConfig{
+		Out:         stdout,
+		ErrOut:      io.Discard,
+		CommandPath: "lark-cli im +chat-messages-list",
+	})
+	err := emitter.Success(map[string]interface{}{"messages": []interface{}{}}, output.EmitOptions{
+		Format: "concise",
+		Meta: &output.Meta{Pagination: &output.PaginationMeta{
+			Complete:  false,
+			Pages:     1,
+			Items:     20,
+			NextToken: "next",
+		}},
+		Concise: func(w io.Writer, _ bool) error {
+			_, writeErr := io.WriteString(w, "# Messages\n\n- has_more: true\n- next_token: `next`\n")
+			return writeErr
+		},
+	})
+	if err != nil {
+		t.Fatalf("Emitter.Success() error = %v", err)
+	}
+	if got := stdout.String(); got != "# Messages\n\n- has_more: true\n- next_token: `next`\n" {
+		t.Fatalf("concise stdout = %q", got)
+	}
+	if strings.Contains(stdout.String(), "Pagination:") {
+		t.Fatalf("concise stdout contains duplicate generic pagination: %q", stdout.String())
+	}
+}
+
 func TestEmitterAlertWarningFailurePreservesCause(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "warn")
 	extcs.Register(&contractSafetyProvider{alert: &extcs.Alert{

@@ -42,6 +42,7 @@ var ImChatMessageList = common.Shortcut{
 		{Name: "page-size", Aliases: []string{"limit"}, Default: fmt.Sprintf("%d", chatMessagesListDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", chatMessagesListMaxPageSize)},
 		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
+		messageListFormatFlag(),
 		downloadResourcesFlag,
 	}, common.PageAllFlags()...),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -183,7 +184,7 @@ var ImChatMessageList = common.Shortcut{
 			"has_more":   hasMore,
 			"page_token": nextPageToken,
 		}
-		runtime.OutFormat(outData, &output.Meta{
+		runtime.OutFormatWithConcise(outData, &output.Meta{
 			Pagination: pagination,
 		}, func(w io.Writer) {
 			if len(messages) == 0 {
@@ -208,6 +209,14 @@ var ImChatMessageList = common.Shortcut{
 			}
 			output.PrintTable(w, rows)
 			fmt.Fprintf(w, "\n%d message(s)\ntip: use --format json to view full message content\n", len(messages))
+		}, func(w io.Writer) error {
+			return renderMessagesConcise(w, conciseMessageView{
+				Title:     "Chat messages",
+				ChatID:    chatId,
+				Messages:  messages,
+				HasMore:   hasMore,
+				NextToken: nextPageToken,
+			})
 		})
 		return nil
 	},
