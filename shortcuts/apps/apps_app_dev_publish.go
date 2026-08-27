@@ -29,6 +29,13 @@ import (
 // layout; +app-dev-publish always publishes ./dist from the project root.
 const appDevDistDir = "dist"
 
+// appDevUploadURLKey is the pre_release kv carrying the presigned TOS upload
+// URL for the artifact-hosting chain (upload path is the server-side
+// convention <app_id>/artifact.zip, so no separate tos_path is handed down).
+// The INNER_ prefix keeps it outside the MIAODA_ build-env allowlist — an
+// upload credential must never reach the build subprocess.
+const appDevUploadURLKey = "INNER_MIAODA_UPLOAD_URL"
+
 // appDevEnvPrefix is the allowlist prefix for build env vars handed down by
 // pre_release. Only exact, case-sensitive MIAODA_* keys are injected into the
 // build subprocess — this is the security boundary that keeps a compromised
@@ -332,7 +339,7 @@ var AppsAppDevPublish = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		dry := common.NewDryRunAPI().
-			Desc("Read .spark/meta.json app_id -> GET pre_release (upload_url/tos_path + MIAODA_* build env) -> npm run build -> validate dist layout -> zip -> PUT to TOS -> POST releases; returns online_url (sync) or release_id (async)")
+			Desc("Resolve app id (miaoda.json / --app-id) -> GET pre_release (presigned upload URL + MIAODA_* build env) -> run build.command -> validate output layout -> zip -> PUT to TOS -> POST releases; returns online_url (sync) or release_id (async)")
 		cfg, appID, fromFlag, err := resolveAppDevPublishTarget(rctx)
 		if cfg == nil {
 			cfg = &appDevProjectConfig{Source: miaodaJSONRelPath}
@@ -349,9 +356,9 @@ var AppsAppDevPublish = common.Shortcut{
 				dry.Set("app_id_source", cfg.Source)
 			}
 			dry.GET(fmt.Sprintf("%s/apps/%s/pre_release", apiBasePath, validate.EncodePathSegment(appID))).
-				PUT("<presigned_upload_url> (https only, from pre_release kvs)").
+				PUT("<presigned upload URL from pre_release kvs " + appDevUploadURLKey + "> (https only)").
 				POST(fmt.Sprintf(releaseCreatePath, validate.EncodePathSegment(appID))).
-				Body(map[string]string{"tos_path": "<from pre_release kvs>"})
+				Body(map[string]string{})
 		}
 		dry.Set("build_command", strings.Join(cfg.BuildCommand, " ")+" (from miaoda.json build.command, default npm run build; env allowlist: MIAODA_* keys from pre_release; skipped with --skip-build)")
 		dry.Set("build_output", cfg.BuildOutput)
@@ -387,9 +394,9 @@ var AppsAppDevPublish = common.Shortcut{
 			return withAppsHint(err, appIDListHint)
 		}
 		kvm := parsePreReleaseKVs(preData)
-		uploadURL, tosPath := kvm["upload_url"], kvm["tos_path"]
-		if uploadURL == "" || tosPath == "" {
-			return appsSubprocessEnvelopeError("pre_release kvs missing upload_url or tos_path")
+		uploadURL := kvm[appDevUploadURLKey]
+		if uploadURL == "" {
+			return appsSubprocessEnvelopeError("pre_release kvs missing %s", appDevUploadURLKey)
 		}
 		if u, perr := url.Parse(uploadURL); perr != nil || u.Scheme != "https" {
 			return appsSubprocessEnvelopeError("pre_release upload_url is not https; refusing to upload")
@@ -438,8 +445,10 @@ var AppsAppDevPublish = common.Shortcut{
 			return errs.NewNetworkError(errs.SubtypeNetworkTransport, "TOS upload failed: HTTP %d", resp.StatusCode)
 		}
 
+		// The artifact-hosting release needs no body: the artifact location is
+		// the server-side convention behind the presigned upload URL.
 		releasePath := fmt.Sprintf(releaseCreatePath, validate.EncodePathSegment(appID))
-		releaseData, err := rctx.CallAPITyped("POST", releasePath, nil, map[string]interface{}{"tos_path": tosPath})
+		releaseData, err := rctx.CallAPITyped("POST", releasePath, nil, map[string]interface{}{})
 		if err != nil {
 			return withAppsHint(err, "verify the app supports artifact-hosting publish; list your apps with `lark-cli apps +list`")
 		}
