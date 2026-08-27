@@ -52,7 +52,7 @@ Risk / Structure: `R2` / `S2`
 
 1. 按 `Execution State Machine` 的顺序执行，并维护 `Runtime State` 字段。
 2. 执行某个状态前，先加载 `Progressive Load Map` 中该状态要求的引用文档；不要预加载全部文档。
-3. 在 `WRITE_CONFIRM` 之前，绝不执行任何节点写入。
+3. 在 `WRITE_CONFIRM` 之前，绝不执行文档正文写入（`docs +update`）。唯一例外是 `OUTLINE_PROPOSE`：仅在用户单独确认大纲后，才可执行 `wiki +node-create` 新建大纲节点；除此之外任何状态都不得新建、修改节点。
 4. 只执行 `Command Map` 允许的 command family；命令语法、scope 要求、参数规则以被引用 skill / reference 为准。
 5. 用户可见说明、字段说明和表格文案使用中文；状态名、字段名、枚举值、命令名保留英文稳定标识。
 6. 内部枚举值在用户可见输出中转为自然语言中文标签。
@@ -66,7 +66,7 @@ Risk / Structure: `R2` / `S2`
 | Field | Meaning |
 |-------|---------|
 | `current_state` | `Execution State Machine` 中的当前状态 |
-| `target_space` | 解析出的 `space_id`、根节点 token 和用户原始输入 URL |
+| `target_space` | 解析出的 `space_id`、根层节点集合（顶层节点 token 列表）和用户原始输入 URL。空间本身即知识库根，`wiki +node-list --space-id` 省略 parent 时返回的顶层节点即根层节点 |
 | `identity` | 执行身份，默认 `user`；节点解析与写入必须使用同一身份 |
 | `node_inventory` | 全部节点的归一化列表：`node_token`、`obj_token`、`title`、`obj_type`、`node_type`、父子层级 |
 | `node_class` | 每个节点的分诊结果：`writable_docx` / `non_docx_entity` / `shortcut` |
@@ -83,12 +83,12 @@ Risk / Structure: `R2` / `S2`
 
 | State | Protocol Step | Entry Condition | Agent MUST Do | User-Facing Output | wait_for_user | Next State |
 |-------|---------------|-----------------|---------------|--------------------|---------------|------------|
-| `PARSE_TARGET` | `route` / `scope` | Workflow 触发 | 加载 wiki skill；解析知识库链接为 `space_id` + 根节点；确认目标就是该知识库 | 目标知识库确认或澄清问题 | `true` | `READ_STRUCTURE` |
+| `PARSE_TARGET` | `route` / `scope` | Workflow 触发 | 加载 wiki skill；把目标解析为 `space_id`：给定 wiki 节点 / 文档 URL 时用 `wiki +node-get` 取 `space_id`，给定空间时用 `wiki +space-list` 取 `space_id`；再用 `wiki +node-list --space-id`（省略 parent）确认根层节点存在；确认目标就是该知识库 | 目标知识库确认或澄清问题 | `true` | `READ_STRUCTURE` |
 | `READ_STRUCTURE` | `read` | 目标已确认 | 递归读取节点树填充 `node_inventory`；对 docx 节点读取现有内容填充 `draft_map`；判定结构是否过简（无子节点或子节点不足以承载分类） | 结构概览：节点数、层级、草稿 / 占位分布 | 除非读取被阻断，否则为 `false` | `OUTLINE_PROPOSE` or `TYPE_TRIAGE` |
 | `OUTLINE_PROPOSE` | `assess` / `plan` / `confirm` | 结构过简 | 加载 outputs 文档；基于知识库主题、根节点标题和已有草稿提议子节点大纲填充 `outline_proposal`；请用户确认后用 `wiki +node-create --obj-type docx` 新建拟定子节点，并回读并入 `node_inventory` | 大纲提议表 + 新建确认请求；确认后报告新建结果 | `true` | `TYPE_TRIAGE` |
 | `TYPE_TRIAGE` | `assess` / `plan` | 结构已读（含新建节点） | 按 `obj_type` / `node_type` 将每个节点分诊为 `writable_docx` / `non_docx_entity` / `shortcut`，填充 `node_class` | 分诊表：可写正文节点、需特殊处理节点及原因 | 存在 `non_docx_entity` / `shortcut` 时为 `true`，否则为 `false` | `GEN_STANDARD` |
 | `GEN_STANDARD` | `assess` / `plan` | 分诊完成 | 加载 outputs 文档；为可写范围生成 `standard_plan`：根节点通用规范 + 各子节点专属维护要求；子节点收录范围优先从草稿归纳，缺失再据业务常识补全 | 维护规范草案预览 | 除非用户直接进入确认，否则为 `false` | `WRITE_CONFIRM` |
-| `WRITE_CONFIRM` | `confirm` | 规范草案就绪 | 生成逐节点写入计划：写哪些节点、写入内容、`overwrite` / `append` / `new_docx` / `skip`，并说明非 docx / shortcut 的处置 | 写入计划表 + 覆盖 / 追加说明 + 跳过清单及原因 | `true` | `WRITE` or `DONE` |
+| `WRITE_CONFIRM` | `confirm` | 规范草案就绪 | 生成逐节点写入计划：目标节点 `node_token`（区分重名节点）、命令族、`overwrite` / `append` / `new_docx` / `skip`，以及将写入的精确正文或 diff，并说明非 docx / shortcut 的处置 | 写入计划表（含 node_token + 命令族）+ 逐节点精确内容 / diff + 跳过清单及原因 | `true` | `WRITE` or `DONE` |
 | `WRITE` | `execute` | 用户已确认写入范围 | 加载 doc-update reference；按 `write_mode_map` 逐节点写入（根节点与子节点可并行）；非 docx 节点仅在用户选择 `new_docx` 时新建 docx 规范页 | 写入进度报告 | 除非被阻断，否则为 `false` | `VERIFY` |
 | `VERIFY` | `verify` | 写入完成 | 对每个已写节点执行 fresh read 校验内容落地；汇总 `unsupported_checks` | 验证表和最终汇总 | `false` | `DONE` |
 | `DONE` | `done` | 无更多动作 | 停止 | 最终回复：已更新节点数、跳过节点及原因、知识库链接 | `false` | End |
@@ -115,10 +115,12 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 | 分类 | 判定条件 | 处理方式 |
 |------|----------|----------|
 | `writable_docx` | `obj_type=docx` 且 `node_type=origin` | 主路径：用 `docs +update` 写入维护规范正文 |
-| `non_docx_entity` | `obj_type ∈ {sheet, bitable, mindnote, slides}` 且 `node_type=origin` | 默认 `skip` 并记入 `unsupported_checks`。仅当用户在 `WRITE_CONFIRM` 明确要求时，走 `new_docx`：在该节点同级或子级新建 docx 节点承载其维护规范，原对象不改动 |
+| `non_docx_entity` | `node_type=origin` 且 `obj_type != docx`（含 `sheet`、`bitable`、`mindnote`、`slides`、`file` 及任何其他非 docx 类型） | 默认 `skip` 并记入 `unsupported_checks`。仅当用户在 `WRITE_CONFIRM` 明确要求时，走 `new_docx`：在该节点同级或子级新建 docx 节点承载其维护规范，原对象不改动 |
 | `shortcut` | `node_type=shortcut`（任意 `obj_type`） | 一律 `skip` 并记入 `unsupported_checks`；快捷方式无自有正文，写入无意义 |
 
 默认策略：`non_docx_entity` 默认 `skip` + 报告；`new_docx` 是用户显式选择后的可选动作。任何 `skip` 都必须在最终汇总列出节点类型和原因。
+
+完备性要求：`node_inventory` 中每个节点都必须落入以上三类之一。三类判定按 `shortcut`（`node_type=shortcut`）→ `writable_docx`（`node_type=origin` 且 `obj_type=docx`）→ `non_docx_entity`（其余 `node_type=origin`）的顺序穷尽划分；未识别的新 `obj_type` 归入 `non_docx_entity`，不得让任何节点无分类地漏过。
 
 ## Write Mode Selection
 
@@ -136,7 +138,7 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 
 | State | Allowed Command Families | Purpose |
 |-------|--------------------------|---------|
-| `PARSE_TARGET` | `wiki +node-get`、`wiki +space-list` | 解析链接为 `space_id` 和根节点 |
+| `PARSE_TARGET` | `wiki +node-get`、`wiki +space-list`、`wiki +node-list` | 把 URL / 空间解析为 `space_id` 并确认根层节点 |
 | `READ_STRUCTURE` | `wiki +node-list`、`docs +fetch` | 递归读取节点树和读取节点草稿内容 |
 | `OUTLINE_PROPOSE` | `wiki +node-create --obj-type docx`（仅用户确认大纲后）、`wiki +node-list` | 新建确认后的大纲子节点并回读 |
 | `TYPE_TRIAGE` | 无写命令 | 仅对已读结构做分类 |
