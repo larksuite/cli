@@ -1090,6 +1090,46 @@
                       "color": {
                         "type": "string",
                         "description": "字体颜色，格式为 #RRGGBB"
+                      },
+                      "overlay": {
+                        "type": "boolean",
+                        "description": "是否允许标题覆盖图表绘图区"
+                      },
+                      "layout": {
+                        "type": "object",
+                        "description": "标题在图表区内的手动布局，坐标为 0-1 归一化比例",
+                        "properties": {
+                          "xMode": {
+                            "type": "string",
+                            "enum": [
+                              "edge"
+                            ],
+                            "description": "横向布局模式"
+                          },
+                          "x": {
+                            "type": "number",
+                            "description": "横向位置，取值 0-1"
+                          },
+                          "yMode": {
+                            "type": "string",
+                            "enum": [
+                              "edge"
+                            ],
+                            "description": "纵向布局模式"
+                          },
+                          "y": {
+                            "type": "number",
+                            "description": "纵向位置，取值 0-1"
+                          }
+                        }
+                      },
+                      "background": {
+                        "type": "string",
+                        "description": "标题背景颜色"
+                      },
+                      "border": {
+                        "type": "object",
+                        "description": "标题边框配置，支持 color、width、style、dash、gradient 和 radius，字段含义同 style.border"
                       }
                     },
                     "required": [
@@ -1156,6 +1196,10 @@
                           }
                         }
                       },
+                      "backgroundGradient": {
+                        "type": "object",
+                        "description": "图表区背景渐变，包含 type、归一化坐标、gradientMethod 和至少两个 stops"
+                      },
                       "font": {
                         "type": "object",
                         "description": "字体配置",
@@ -1191,9 +1235,38 @@
                               "dotted"
                             ]
                           },
+                          "dash": {
+                            "type": "array",
+                            "description": "OOXML 原始虚线图案数组",
+                            "items": {
+                              "type": "number"
+                            }
+                          },
+                          "gradient": {
+                            "type": "object",
+                            "description": "边框渐变，包含 type、归一化坐标、gradientMethod 和至少两个 stops"
+                          },
                           "radius": {
                             "type": "number",
                             "description": "边框圆角"
+                          }
+                        }
+                      },
+                      "region": {
+                        "type": "object",
+                        "description": "完整绘图区样式",
+                        "properties": {
+                          "background": {
+                            "type": "string",
+                            "description": "绘图区背景颜色"
+                          },
+                          "backgroundGradient": {
+                            "type": "object",
+                            "description": "绘图区背景渐变，结构同 style.backgroundGradient"
+                          },
+                          "border": {
+                            "type": "object",
+                            "description": "绘图区边框配置，字段含义同 style.border"
                           }
                         }
                       },
@@ -1908,6 +1981,18 @@
                                           "type": "boolean",
                                           "description": "是否显示百分比"
                                         },
+                                        "separator": {
+                                          "type": "string",
+                                          "description": "单点标签中多个内容项之间的分隔符"
+                                        },
+                                        "legendKey": {
+                                          "type": "boolean",
+                                          "description": "是否在单点标签前显示图例项标示"
+                                        },
+                                        "showGuidLine": {
+                                          "type": "boolean",
+                                          "description": "是否显示单点标签引导线"
+                                        },
                                         "format": {
                                           "type": "string",
                                           "description": "标签数字格式"
@@ -2237,6 +2322,14 @@
                                 "type": "number",
                                 "description": "柱子间距比例，0-1之间"
                               },
+                              "overlap": {
+                                "type": "number",
+                                "description": "同一类别内系列柱的重叠比例，取值 -100 到 100"
+                              },
+                              "gapWidth": {
+                                "type": "number",
+                                "description": "相邻类别柱组间距，取值 0 到 500"
+                              },
                               "backgroundColor": {
                                 "type": "string",
                                 "description": "背景颜色"
@@ -2525,6 +2618,25 @@
                                 "type": "boolean",
                                 "description": "是否显示百分比"
                               },
+                              "separator": {
+                                "type": "string",
+                                "description": "标签中多个内容项之间的分隔符"
+                              },
+                              "legendKey": {
+                                "type": "boolean",
+                                "description": "是否在标签前显示图例项标示"
+                              },
+                              "showGuidLine": {
+                                "type": "boolean",
+                                "description": "是否显示标签引导线"
+                              },
+                              "anchorMode": {
+                                "type": "string",
+                                "enum": [
+                                  "ooxml"
+                                ],
+                                "description": "饼图外侧标签使用 OOXML 八向贴靠布局"
+                              },
                               "fontSize": {
                                 "type": "number",
                                 "description": "字体大小"
@@ -2597,7 +2709,11 @@
                                 },
                                 "labels": {
                                   "type": "object",
-                                  "description": "数据标签配置（覆盖单系列，配置项同 plotArea.plot.labels）。不覆盖该系列数据标签时省略整个 labels 字段；一旦传入 labels（即便显示开关全部置为 false），该系列仍会显示数据标签。"
+                                  "description": "数据标签配置（覆盖单系列，配置项同 plotArea.plot.labels，包括 separator、legendKey 和 showGuidLine）。不覆盖该系列数据标签时省略整个 labels 字段；一旦传入 labels（即便显示开关全部置为 false），该系列仍会显示数据标签。"
+                                },
+                                "invertIfNegative": {
+                                  "type": "string",
+                                  "description": "负值数据点使用的反色填充颜色"
                                 },
                                 "waterfall": {
                                   "type": "object",
@@ -2970,6 +3086,41 @@
                                 "linear"
                               ]
                             },
+                            "orientation": {
+                              "type": "string",
+                              "description": "坐标轴方向，minMax 为未逆序，maxMin 为逆序",
+                              "enum": [
+                                "minMax",
+                                "maxMin"
+                              ]
+                            },
+                            "domainGradient": {
+                              "type": "object",
+                              "description": "轴线渐变，包含 type、归一化坐标、gradientMethod 和至少两个 stops"
+                            },
+                            "domainColor": {
+                              "type": "string",
+                              "description": "轴线颜色"
+                            },
+                            "domainWidth": {
+                              "type": "number",
+                              "description": "轴线宽度"
+                            },
+                            "domainDash": {
+                              "type": "array",
+                              "description": "轴线虚线图案数组",
+                              "items": {
+                                "type": "number"
+                              }
+                            },
+                            "domainArrow": {
+                              "type": "string",
+                              "description": "轴线末端箭头",
+                              "enum": [
+                                "none",
+                                "triangle"
+                              ]
+                            },
                             "title": {
                               "type": "object",
                               "description": "坐标轴标题配置",
@@ -3058,12 +3209,48 @@
                                     "color": {
                                       "type": "string",
                                       "description": "网格线颜色"
+                                    },
+                                    "dash": {
+                                      "type": "array",
+                                      "description": "网格线虚线图案数组",
+                                      "items": {
+                                        "type": "number"
+                                      }
                                     }
                                   }
                                 },
                                 {
                                   "type": "boolean",
                                   "description": "false 表示隐藏网格线"
+                                }
+                              ]
+                            },
+                            "minorGridLine": {
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "description": "次网格线配置",
+                                  "properties": {
+                                    "width": {
+                                      "type": "number",
+                                      "description": "次网格线宽度"
+                                    },
+                                    "color": {
+                                      "type": "string",
+                                      "description": "次网格线颜色"
+                                    },
+                                    "dash": {
+                                      "type": "array",
+                                      "description": "次网格线虚线图案数组",
+                                      "items": {
+                                        "type": "number"
+                                      }
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "boolean",
+                                  "description": "false 表示隐藏次网格线"
                                 }
                               ]
                             }
@@ -3390,6 +3577,46 @@
                       "color": {
                         "type": "string",
                         "description": "字体颜色，格式为 #RRGGBB"
+                      },
+                      "overlay": {
+                        "type": "boolean",
+                        "description": "是否允许标题覆盖图表绘图区"
+                      },
+                      "layout": {
+                        "type": "object",
+                        "description": "标题在图表区内的手动布局，坐标为 0-1 归一化比例",
+                        "properties": {
+                          "xMode": {
+                            "type": "string",
+                            "enum": [
+                              "edge"
+                            ],
+                            "description": "横向布局模式"
+                          },
+                          "x": {
+                            "type": "number",
+                            "description": "横向位置，取值 0-1"
+                          },
+                          "yMode": {
+                            "type": "string",
+                            "enum": [
+                              "edge"
+                            ],
+                            "description": "纵向布局模式"
+                          },
+                          "y": {
+                            "type": "number",
+                            "description": "纵向位置，取值 0-1"
+                          }
+                        }
+                      },
+                      "background": {
+                        "type": "string",
+                        "description": "标题背景颜色"
+                      },
+                      "border": {
+                        "type": "object",
+                        "description": "标题边框配置，支持 color、width、style、dash、gradient 和 radius，字段含义同 style.border"
                       }
                     },
                     "required": [
@@ -3456,6 +3683,10 @@
                           }
                         }
                       },
+                      "backgroundGradient": {
+                        "type": "object",
+                        "description": "图表区背景渐变，包含 type、归一化坐标、gradientMethod 和至少两个 stops"
+                      },
                       "font": {
                         "type": "object",
                         "description": "字体配置",
@@ -3491,9 +3722,38 @@
                               "dotted"
                             ]
                           },
+                          "dash": {
+                            "type": "array",
+                            "description": "OOXML 原始虚线图案数组",
+                            "items": {
+                              "type": "number"
+                            }
+                          },
+                          "gradient": {
+                            "type": "object",
+                            "description": "边框渐变，包含 type、归一化坐标、gradientMethod 和至少两个 stops"
+                          },
                           "radius": {
                             "type": "number",
                             "description": "边框圆角"
+                          }
+                        }
+                      },
+                      "region": {
+                        "type": "object",
+                        "description": "完整绘图区样式",
+                        "properties": {
+                          "background": {
+                            "type": "string",
+                            "description": "绘图区背景颜色"
+                          },
+                          "backgroundGradient": {
+                            "type": "object",
+                            "description": "绘图区背景渐变，结构同 style.backgroundGradient"
+                          },
+                          "border": {
+                            "type": "object",
+                            "description": "绘图区边框配置，字段含义同 style.border"
                           }
                         }
                       },
@@ -4208,6 +4468,18 @@
                                           "type": "boolean",
                                           "description": "是否显示百分比"
                                         },
+                                        "separator": {
+                                          "type": "string",
+                                          "description": "单点标签中多个内容项之间的分隔符"
+                                        },
+                                        "legendKey": {
+                                          "type": "boolean",
+                                          "description": "是否在单点标签前显示图例项标示"
+                                        },
+                                        "showGuidLine": {
+                                          "type": "boolean",
+                                          "description": "是否显示单点标签引导线"
+                                        },
                                         "format": {
                                           "type": "string",
                                           "description": "标签数字格式"
@@ -4537,6 +4809,14 @@
                                 "type": "number",
                                 "description": "柱子间距比例，0-1之间"
                               },
+                              "overlap": {
+                                "type": "number",
+                                "description": "同一类别内系列柱的重叠比例，取值 -100 到 100"
+                              },
+                              "gapWidth": {
+                                "type": "number",
+                                "description": "相邻类别柱组间距，取值 0 到 500"
+                              },
                               "backgroundColor": {
                                 "type": "string",
                                 "description": "背景颜色"
@@ -4825,6 +5105,25 @@
                                 "type": "boolean",
                                 "description": "是否显示百分比"
                               },
+                              "separator": {
+                                "type": "string",
+                                "description": "标签中多个内容项之间的分隔符"
+                              },
+                              "legendKey": {
+                                "type": "boolean",
+                                "description": "是否在标签前显示图例项标示"
+                              },
+                              "showGuidLine": {
+                                "type": "boolean",
+                                "description": "是否显示标签引导线"
+                              },
+                              "anchorMode": {
+                                "type": "string",
+                                "enum": [
+                                  "ooxml"
+                                ],
+                                "description": "饼图外侧标签使用 OOXML 八向贴靠布局"
+                              },
                               "fontSize": {
                                 "type": "number",
                                 "description": "字体大小"
@@ -4897,7 +5196,11 @@
                                 },
                                 "labels": {
                                   "type": "object",
-                                  "description": "数据标签配置（覆盖单系列，配置项同 plotArea.plot.labels）。不覆盖该系列数据标签时省略整个 labels 字段；一旦传入 labels（即便显示开关全部置为 false），该系列仍会显示数据标签。"
+                                  "description": "数据标签配置（覆盖单系列，配置项同 plotArea.plot.labels，包括 separator、legendKey 和 showGuidLine）。不覆盖该系列数据标签时省略整个 labels 字段；一旦传入 labels（即便显示开关全部置为 false），该系列仍会显示数据标签。"
+                                },
+                                "invertIfNegative": {
+                                  "type": "string",
+                                  "description": "负值数据点使用的反色填充颜色"
                                 },
                                 "waterfall": {
                                   "type": "object",
@@ -5270,6 +5573,41 @@
                                 "linear"
                               ]
                             },
+                            "orientation": {
+                              "type": "string",
+                              "description": "坐标轴方向，minMax 为未逆序，maxMin 为逆序",
+                              "enum": [
+                                "minMax",
+                                "maxMin"
+                              ]
+                            },
+                            "domainGradient": {
+                              "type": "object",
+                              "description": "轴线渐变，包含 type、归一化坐标、gradientMethod 和至少两个 stops"
+                            },
+                            "domainColor": {
+                              "type": "string",
+                              "description": "轴线颜色"
+                            },
+                            "domainWidth": {
+                              "type": "number",
+                              "description": "轴线宽度"
+                            },
+                            "domainDash": {
+                              "type": "array",
+                              "description": "轴线虚线图案数组",
+                              "items": {
+                                "type": "number"
+                              }
+                            },
+                            "domainArrow": {
+                              "type": "string",
+                              "description": "轴线末端箭头",
+                              "enum": [
+                                "none",
+                                "triangle"
+                              ]
+                            },
                             "title": {
                               "type": "object",
                               "description": "坐标轴标题配置",
@@ -5358,12 +5696,48 @@
                                     "color": {
                                       "type": "string",
                                       "description": "网格线颜色"
+                                    },
+                                    "dash": {
+                                      "type": "array",
+                                      "description": "网格线虚线图案数组",
+                                      "items": {
+                                        "type": "number"
+                                      }
                                     }
                                   }
                                 },
                                 {
                                   "type": "boolean",
                                   "description": "false 表示隐藏网格线"
+                                }
+                              ]
+                            },
+                            "minorGridLine": {
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "description": "次网格线配置",
+                                  "properties": {
+                                    "width": {
+                                      "type": "number",
+                                      "description": "次网格线宽度"
+                                    },
+                                    "color": {
+                                      "type": "string",
+                                      "description": "次网格线颜色"
+                                    },
+                                    "dash": {
+                                      "type": "array",
+                                      "description": "次网格线虚线图案数组",
+                                      "items": {
+                                        "type": "number"
+                                      }
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "boolean",
+                                  "description": "false 表示隐藏次网格线"
                                 }
                               ]
                             }
