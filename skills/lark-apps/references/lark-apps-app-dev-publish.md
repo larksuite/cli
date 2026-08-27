@@ -1,0 +1,45 @@
+# apps +app-dev-publish
+
+把本地 Web 应用项目一键构建并发布到它的妙搭应用（产物托管形态）。运行时命令事实以 `lark-cli apps +app-dev-publish --help` 为准。
+
+## 何时用
+
+用 `+app-dev-init-app` 初始化（或按产物协议改造）的本地项目要部署/更新到妙搭时使用。它不适用于 html 应用（走 `+html-publish`）或源码托管应用（走 `+release-create`）。
+
+## 命令骨架
+
+- **必须在项目根目录执行**：项目根须有 `.spark/meta.json` 且含 `app_id`。命令不接受 `--app-id` / `--path` 参数；产物目录固定为 `./dist`。
+- 可选：`--skip-build`（跳过 `npm run build`，直接发布已有 `./dist`）、`--allow-sensitive`（跳过凭据文件扫描）。
+- 内部流程：读 meta.json → `pre_release` 获取上传地址与 `MIAODA_*` 构建环境变量 → `npm run build`（自动注入这些变量）→ 校验 dist 产物协议 → zip 上传 → 触发发布。
+- 产物协议：`dist/output/` 必须含 `index.html` 与 `routes.json`；`dist/output_resource/` 可选；dist 顶层不允许其他条目。包体限制：zip ≤ 50MB、未压缩总量 ≤ 200MB。
+
+## 示例
+
+```bash
+lark-cli apps +app-dev-publish
+lark-cli apps +app-dev-publish --skip-build
+lark-cli apps +app-dev-publish --dry-run
+```
+
+## 输出契约
+
+- 同步完成：`data.online_url` 直接可访问，同时回填进 `.spark/meta.json`。
+- 异步发布：返回 `data.release_id` 和 `data.poll_hint`；用 `+release-get --app-id <app_id> --release-id <release_id>` 轮询到 `finished` 后读取 `online_url`。
+- 业务失败通常带 `error.hint`，优先转述 hint；网络/服务端 5xx 失败带 `retryable`，可稍后重试。
+
+## 前置引导
+
+- meta.json 缺 `app_id` 时：先 `lark-cli apps +create --name <name>` 创建应用，把返回的 `app_id` 写入 `.spark/meta.json` 再发布；应用名可从项目主题生成，不要让用户手动提供 app_id。
+- **`app_id` 不是本会话写入的**（来自历史文件或他人仓库）时，发布前先把目标 `app_id` 告知用户并确认——发布会覆盖该应用的线上内容。
+
+## 安全规则
+
+- 敏感文件扫描命中（`.env`、`.npmrc` 等）时，**不要自动加 `--allow-sensitive` 重试**；把命中的文件列表转述给用户，由用户决定移除还是明确豁免。
+- 构建环境变量只注入 `pre_release` 下发的 `MIAODA_*` 白名单键；命令会在 stderr 回显实际注入的键名。
+
+## 常见失败
+
+- `current directory is not a Miaoda app project`：不在项目根执行；`cd` 到含 `.spark/meta.json` 的目录。
+- `dist/output is missing routes.json`：模板构建脚本负责生成；让用户检查是否改动了构建配置，不要手工伪造 routes.json。
+- `npm run build failed`：转述 stderr 摘要让用户修构建错误；用户已手动构建时可用 `--skip-build`。
+- `--skip-build is set but ./dist does not exist`：先构建或去掉 `--skip-build`。
