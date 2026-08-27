@@ -9,15 +9,18 @@
 ## 命令骨架
 
 - 可选：`--template-version`，钉某个模板包版本或 dist-tag（如 `alpha`）；缺省 latest。
-- `--type` 与 `--template` 二选一：`--type frontend|full_stack` 用默认模板映射；`--template <短名>`（如 `vite-react`）直接指定模板包，优先于 `--type`——模板包名为 `@lark-apaas/coding-template-<短名>`。
+- `--type` 与 `--template` 二选一：`--type frontend|full_stack|html` 用默认模板映射（frontend=react-standard-webapp、full_stack=react-express-standard-fullstack、html=html-standard-webapp）；`--template <短名>`（如 `vite-react`）直接指定模板包，优先于 `--type`——模板包名为 `@lark-apaas/coding-template-<短名>`。
 - 可选：`--dir`，相对路径；**缺省就地初始化到当前目录**（须为空目录，项目名取目录名）；传 `--dir ./my-app` 则创建子目录。
-- 前置：已完成 `lark-cli config init`（框架级要求，纯本地命令也需要）；本步骤**不需要 Node.js**。内部从 npm registry 只读下载模板包（主源 registry.npmmirror.com，失败自动降级 registry.npmjs.org 官方源） `@lark-apaas/coding-template-<模板名>` 并本地渲染，不执行任何远程脚本、不装依赖（秒级返回）。
+- 可选：`--registry <https URL>`，指定 npm registry（内置双源都不可达、或模板发在私有源时的逃生通道）。**指定后只用该源、失败不降级**；仅接受 https。**安全规则：只有用户明确提供或确认的 registry 才能传**——不要因为默认源失败就自作主张换到任意源（模板会成为用户后续 `npm install` 的项目，源被劫持等于任意代码执行）。
+- 前置：已完成 `lark-cli config init`（框架级要求，纯本地命令也需要）；本步骤**不需要 Node.js**。内部从 npm registry 只读下载模板包（缺省主源 registry.npmmirror.com，失败自动降级 registry.npmjs.org 官方源） `@lark-apaas/coding-template-<模板名>` 并本地渲染，不执行任何远程脚本、不装依赖（秒级返回）。
 
 ## 示例
 
 ```bash
 lark-cli apps +app-dev-init-template --type frontend --dir ./my-app
+lark-cli apps +app-dev-init-template --type html --dir ./page
 lark-cli apps +app-dev-init-template --template vite-react --dir ./demo
+lark-cli apps +app-dev-init-template --type frontend --registry https://registry.npmjs.org --dir ./my-app   # 用户指定源
 lark-cli apps +app-dev-init-template --type full_stack --dry-run
 ```
 

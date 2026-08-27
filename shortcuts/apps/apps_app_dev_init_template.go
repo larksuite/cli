@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,6 +24,7 @@ import (
 const (
 	appDevTemplateFrontend  = "react-standard-webapp"
 	appDevTemplateFullstack = "react-express-standard-fullstack"
+	appDevTemplateHTML      = "html-standard-webapp"
 )
 
 // appDevLookPath is swappable in tests to simulate a missing binary
@@ -37,6 +39,8 @@ func appDevTemplateForType(appType string) string {
 		return appDevTemplateFrontend
 	case "full_stack":
 		return appDevTemplateFullstack
+	case "html":
+		return appDevTemplateHTML
 	}
 	return ""
 }
@@ -66,6 +70,26 @@ func resolveAppDevTemplate(rctx *common.RuntimeContext) (string, error) {
 			WithHint("pass --type frontend|full_stack for the default templates, or --template <name> to use a specific template package")
 	}
 	return appDevTemplateForType(appType), nil
+}
+
+// resolveAppDevRegistries turns --registry into the registry list handed to
+// the fetch: nil (flag unset) selects the built-in fallback chain, an
+// explicit value is used exclusively — the escape hatch for mirror outages
+// or a private registry must never silently shift to another source. Only
+// https base URLs are accepted (the tarball same-origin assertion then binds
+// to this host).
+func resolveAppDevRegistries(rctx *common.RuntimeContext) ([]string, error) {
+	raw := strings.TrimSpace(rctx.Str("registry"))
+	if raw == "" {
+		return nil, nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		return nil, appsValidationParamError("--registry",
+			"--registry must be an https npm registry base URL, got %q", raw).
+			WithHint("e.g. --registry https://registry.npmjs.org (http and bare hosts are rejected); omit the flag to use the built-in registries")
+	}
+	return []string{strings.TrimRight(raw, "/")}, nil
 }
 
 // resolveAppDevDir returns the scaffold target directory: --dir when set,
@@ -155,13 +179,17 @@ var AppsAppDevInitTemplate = common.Shortcut{
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "type", Desc: "app type; maps to a template package (frontend=react-standard-webapp, full_stack=react-express-standard-fullstack); ignored when --template is set", Enum: []string{"frontend", "full_stack"}},
+		{Name: "type", Desc: "app type; maps to a template package (frontend=react-standard-webapp, full_stack=react-express-standard-fullstack, html=html-standard-webapp); ignored when --template is set", Enum: []string{"frontend", "full_stack", "html"}},
 		{Name: "template", Desc: "template short name to use directly (resolves to @lark-apaas/coding-template-<name>); takes precedence over --type"},
 		{Name: "template-version", Desc: "template package version or dist-tag to pin (e.g. 0.1.0-alpha.20260827082008 or alpha); default: latest"},
+		{Name: "registry", Desc: "npm registry base URL to fetch the template from (https only); used exclusively when set — no fallback to the built-in registries. Escape hatch for mirror outages or private registries; only pass a registry the user explicitly provided or confirmed"},
 		{Name: "dir", Desc: "target directory, relative path (default: current directory, scaffolding in place); must be empty or new"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := resolveAppDevTemplate(rctx); err != nil {
+			return err
+		}
+		if _, err := resolveAppDevRegistries(rctx); err != nil {
 			return err
 		}
 		return validateAppDevDir(rctx.Str("dir"))
@@ -173,9 +201,16 @@ var AppsAppDevInitTemplate = common.Shortcut{
 		dry := common.NewDryRunAPI().
 			Desc("Scaffold a local web app project by downloading an npm template package (read-only registry fetch, no Lark API)")
 		dry.Set("template_package", pkg)
-		dry.Set("registry_url", strings.TrimRight(appDevRegistries[0], "/")+"/"+pkg)
-		if len(appDevRegistries) > 1 {
-			dry.Set("registry_fallback", strings.Join(appDevRegistries[1:], ", "))
+		registries, _ := resolveAppDevRegistries(rctx) // Validate already rejected invalid input
+		if registries != nil {
+			dry.Set("registry_source", "--registry flag (used exclusively, no fallback)")
+		} else {
+			registries = appDevRegistries
+			dry.Set("registry_source", "built-in fallback chain")
+		}
+		dry.Set("registry_url", strings.TrimRight(registries[0], "/")+"/"+pkg)
+		if len(registries) > 1 {
+			dry.Set("registry_fallback", strings.Join(registries[1:], ", "))
 		}
 		dry.Set("target_dir", dir)
 		dry.Set("template", template)
@@ -203,9 +238,13 @@ var AppsAppDevInitTemplate = common.Shortcut{
 		if err := ensureAppDevDirUsable(dir); err != nil {
 			return err
 		}
+		registries, err := resolveAppDevRegistries(rctx)
+		if err != nil {
+			return err
+		}
 		pkg := appDevTemplatePackageName(template)
 		fmt.Fprintf(rctx.IO().ErrOut, "fetching template package %s...\n", pkg)
-		version, tgz, err := fetchAppDevTemplate(ctx, pkg, strings.TrimSpace(rctx.Str("template-version")), func(note string) {
+		version, tgz, err := fetchAppDevTemplate(ctx, pkg, strings.TrimSpace(rctx.Str("template-version")), registries, func(note string) {
 			fmt.Fprintf(rctx.IO().ErrOut, "registry %s\n", note)
 		})
 		if err != nil {

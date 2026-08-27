@@ -30,7 +30,8 @@ func TestAppDevTemplateForType(t *testing.T) {
 	}{
 		{"frontend", "frontend", "react-standard-webapp"},
 		{"full_stack", "full_stack", "react-express-standard-fullstack"},
-		{"unknown", "html", ""},
+		{"html", "html", "html-standard-webapp"},
+		{"unknown", "vue", ""},
 		{"empty", "", ""},
 	}
 	for _, tt := range tests {
@@ -196,17 +197,17 @@ func TestFetchAppDevTemplate_PinnedVersionAndTag(t *testing.T) {
 	pkg := "@lark-apaas/coding-template-react-standard-webapp"
 	withFakeRegistry(t, pkg, buildTemplateTgz(t, defaultTemplateEntries()))
 	// dist-tag resolution.
-	v, _, err := fetchAppDevTemplate(context.Background(), pkg, "alpha", nil)
+	v, _, err := fetchAppDevTemplate(context.Background(), pkg, "alpha", nil, nil)
 	if err != nil || v != "2.0.0-alpha.1" {
 		t.Errorf("dist-tag pin: v=%q err=%v", v, err)
 	}
 	// Exact version resolution.
-	v, _, err = fetchAppDevTemplate(context.Background(), pkg, "1.2.3", nil)
+	v, _, err = fetchAppDevTemplate(context.Background(), pkg, "1.2.3", nil, nil)
 	if err != nil || v != "1.2.3" {
 		t.Errorf("exact pin: v=%q err=%v", v, err)
 	}
 	// Unknown version: actionable error listing dist-tags.
-	_, _, err = fetchAppDevTemplate(context.Background(), pkg, "9.9.9", nil)
+	_, _, err = fetchAppDevTemplate(context.Background(), pkg, "9.9.9", nil, nil)
 	if err == nil || !strings.Contains(err.Error(), `no version or dist-tag "9.9.9"`) {
 		t.Errorf("unknown pin: err=%v", err)
 	}
@@ -445,7 +446,7 @@ func TestFetchAppDevTemplate_FallbackOn5xx(t *testing.T) {
 	pkg := "@lark-apaas/coding-template-react-standard-webapp"
 	newFailingThenOKRegistries(t, pkg, buildTemplateTgz(t, defaultTemplateEntries()), 503)
 	var notes []string
-	version, tgz, err := fetchAppDevTemplate(context.Background(), pkg, "", func(n string) { notes = append(notes, n) })
+	version, tgz, err := fetchAppDevTemplate(context.Background(), pkg, "", nil, func(n string) { notes = append(notes, n) })
 	if err != nil {
 		t.Fatalf("fallback should succeed: %v", err)
 	}
@@ -462,7 +463,7 @@ func TestFetchAppDevTemplate_FallbackOn404(t *testing.T) {
 	// 404 on the primary must also fall through to the official registry.
 	pkg := "@lark-apaas/coding-template-react-standard-webapp"
 	newFailingThenOKRegistries(t, pkg, buildTemplateTgz(t, defaultTemplateEntries()), 404)
-	version, _, err := fetchAppDevTemplate(context.Background(), pkg, "", nil)
+	version, _, err := fetchAppDevTemplate(context.Background(), pkg, "", nil, nil)
 	if err != nil || version != "1.2.3" {
 		t.Errorf("404 fallback: version=%q err=%v", version, err)
 	}
@@ -476,7 +477,7 @@ func TestFetchAppDevTemplate_AllRegistriesFail(t *testing.T) {
 	appDevNewTransferClient = func() *http.Client { return srv.Client() }
 	t.Cleanup(func() { appDevRegistries, appDevNewTransferClient = origRegs, origClient })
 
-	_, _, err := fetchAppDevTemplate(context.Background(), "@lark-apaas/coding-template-x", "", nil)
+	_, _, err := fetchAppDevTemplate(context.Background(), "@lark-apaas/coding-template-x", "", nil, nil)
 	if err == nil {
 		t.Fatal("all-fail must error")
 	}
@@ -533,8 +534,54 @@ func testRuntimeAppDevInitTpl(t *testing.T, appType, template, dir string) *comm
 	cmd.Flags().String("type", appType, "")
 	cmd.Flags().String("template", template, "")
 	cmd.Flags().String("template-version", "", "")
+	cmd.Flags().String("registry", "", "")
 	cmd.Flags().String("dir", dir, "")
 	return common.TestNewRuntimeContext(cmd, nil)
+}
+
+func TestResolveAppDevRegistries(t *testing.T) {
+	rctxWith := func(registry string) *common.RuntimeContext {
+		cmd := &cobra.Command{Use: "+app-dev-init-template"}
+		cmd.Flags().String("registry", registry, "")
+		return common.TestNewRuntimeContext(cmd, nil)
+	}
+	// Unset: nil selects the built-in fallback chain.
+	regs, err := resolveAppDevRegistries(rctxWith(""))
+	if err != nil || regs != nil {
+		t.Errorf("unset = (%v, %v), want (nil, nil)", regs, err)
+	}
+	// Explicit https URL: single entry, trailing slash trimmed.
+	regs, err = resolveAppDevRegistries(rctxWith("https://bnpm.example.com/"))
+	if err != nil || len(regs) != 1 || regs[0] != "https://bnpm.example.com" {
+		t.Errorf("explicit = (%v, %v)", regs, err)
+	}
+	// http and bare hosts are rejected.
+	for _, bad := range []string{"http://registry.npmjs.org", "registry.npmjs.org", "ftp://x"} {
+		if _, err := resolveAppDevRegistries(rctxWith(bad)); err == nil || !strings.Contains(err.Error(), "https") {
+			t.Errorf("registry %q must be rejected with an https hint, got %v", bad, err)
+		}
+	}
+}
+
+func TestFetchAppDevTemplate_ExplicitRegistry(t *testing.T) {
+	pkg := "@lark-apaas/coding-template-react-standard-webapp"
+	srv := withFakeRegistry(t, pkg, buildTemplateTgz(t, defaultTemplateEntries()))
+	// An explicit registry pointing at the fake server works.
+	v, _, err := fetchAppDevTemplate(context.Background(), pkg, "", []string{srv.URL}, nil)
+	if err != nil || v != "1.2.3" {
+		t.Errorf("explicit registry fetch = (%q, %v)", v, err)
+	}
+	// An explicit dead registry must fail deterministically — never fall
+	// back to the built-in chain (which points at the working fake here).
+	var notes []string
+	_, _, err = fetchAppDevTemplate(context.Background(), pkg, "", []string{"https://127.0.0.1:1"},
+		func(n string) { notes = append(notes, n) })
+	if err == nil {
+		t.Fatal("dead explicit registry must fail, not fall back")
+	}
+	if len(notes) != 0 {
+		t.Errorf("no fallback notes expected for a single explicit registry, got %v", notes)
+	}
 }
 
 func TestAppDevInitTemplateValidate(t *testing.T) {
