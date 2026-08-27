@@ -16,6 +16,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -63,15 +64,16 @@ type npmPackageMeta struct {
 }
 
 // fetchAppDevTemplate resolves and downloads the template package, trying
-// each registry in appDevRegistries until one succeeds. onFallback is called
-// with a human-readable note before each retry (nil to skip).
-func fetchAppDevTemplate(ctx context.Context, pkg string, onFallback func(note string)) (version string, tgz []byte, err error) {
+// each registry in appDevRegistries until one succeeds. requested pins a
+// specific version or dist-tag ("" = latest). onFallback is called with a
+// human-readable note before each retry (nil to skip).
+func fetchAppDevTemplate(ctx context.Context, pkg, requested string, onFallback func(note string)) (version string, tgz []byte, err error) {
 	var lastErr error
 	for i, base := range appDevRegistries {
 		if i > 0 && onFallback != nil {
 			onFallback(strings.TrimRight(appDevRegistries[i-1], "/") + " failed, falling back to " + strings.TrimRight(base, "/"))
 		}
-		v, tarballURL, err := fetchAppDevTemplateMeta(ctx, base, pkg)
+		v, tarballURL, err := fetchAppDevTemplateMeta(ctx, base, pkg, requested)
 		if err != nil {
 			lastErr = err
 			continue
@@ -90,10 +92,11 @@ func fetchAppDevTemplate(ctx context.Context, pkg string, onFallback func(note s
 	return "", nil, lastErr
 }
 
-// fetchAppDevTemplateMeta resolves the template package's latest version and
-// tarball URL from one npm registry. Only https tarball URLs on the same
-// registry host are accepted.
-func fetchAppDevTemplateMeta(ctx context.Context, registryBase, pkg string) (version, tarballURL string, err error) {
+// fetchAppDevTemplateMeta resolves the template package's version and
+// tarball URL from one npm registry. requested may be a dist-tag (checked
+// first) or an exact version; "" means the latest dist-tag. Only https
+// tarball URLs on the same registry host are accepted.
+func fetchAppDevTemplateMeta(ctx context.Context, registryBase, pkg, requested string) (version, tarballURL string, err error) {
 	metaURL := strings.TrimRight(registryBase, "/") + "/" + pkg
 	body, err := appDevHTTPGet(ctx, metaURL, appDevMaxTemplateTgzBytes,
 		"the template package may not be published yet; ask the artifact team, or check network/registry access")
@@ -104,17 +107,31 @@ func fetchAppDevTemplateMeta(ctx context.Context, registryBase, pkg string) (ver
 	if err := json.Unmarshal(body, &meta); err != nil {
 		return "", "", appsSubprocessEnvelopeError("npm registry metadata for %s is not valid JSON", pkg)
 	}
-	latest := meta.DistTags["latest"]
-	if latest == "" {
-		return "", "", appsSubprocessEnvelopeError("npm registry metadata for %s has no latest dist-tag", pkg)
+	resolved := strings.TrimSpace(requested)
+	if resolved == "" {
+		resolved = "latest"
 	}
-	v, ok := meta.Versions[latest]
-	if !ok || v.Dist.Tarball == "" {
-		return "", "", appsSubprocessEnvelopeError("npm registry metadata for %s@%s has no tarball URL", pkg, latest)
+	// A dist-tag wins over a literal version of the same name (mirrors npm).
+	if tagged := meta.DistTags[resolved]; tagged != "" {
+		resolved = tagged
+	}
+	v, ok := meta.Versions[resolved]
+	if !ok {
+		tags := make([]string, 0, len(meta.DistTags))
+		for t := range meta.DistTags {
+			tags = append(tags, t)
+		}
+		sort.Strings(tags)
+		return "", "", errs.NewNetworkError(errs.SubtypeNetworkTransport,
+			"npm registry has no version or dist-tag %q for %s", requested, pkg).
+			WithHint("pass an exact published version or a dist-tag with --template-version; available dist-tags: " + strings.Join(tags, ", "))
+	}
+	if v.Dist.Tarball == "" {
+		return "", "", appsSubprocessEnvelopeError("npm registry metadata for %s@%s has no tarball URL", pkg, resolved)
 	}
 	u, perr := url.Parse(v.Dist.Tarball)
 	if perr != nil || u.Scheme != "https" {
-		return "", "", appsSubprocessEnvelopeError("npm registry tarball URL for %s@%s is not https; refusing to download", pkg, latest)
+		return "", "", appsSubprocessEnvelopeError("npm registry tarball URL for %s@%s is not https; refusing to download", pkg, resolved)
 	}
 	// Same-origin constraint: npm registries serve tarballs from the registry
 	// host itself, so a cross-host URL in the metadata is a red flag (metadata
@@ -122,7 +139,7 @@ func fetchAppDevTemplateMeta(ctx context.Context, registryBase, pkg string) (ver
 	if reg, rerr := url.Parse(registryBase); rerr != nil || u.Host != reg.Host {
 		return "", "", appsSubprocessEnvelopeError("npm registry tarball URL host %q differs from registry host; refusing to download", u.Host)
 	}
-	return latest, v.Dist.Tarball, nil
+	return resolved, v.Dist.Tarball, nil
 }
 
 // appDevHTTPGet fetches a URL with a hard size cap. notFoundHint decorates the

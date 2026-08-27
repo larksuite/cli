@@ -157,6 +157,7 @@ var AppsAppDevInitTemplate = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "type", Desc: "app type; maps to a template package (frontend=react-standard-webapp, full_stack=react-express-standard-fullstack); ignored when --template is set", Enum: []string{"frontend", "full_stack"}},
 		{Name: "template", Desc: "template short name to use directly (resolves to @lark-apaas/coding-template-<name>); takes precedence over --type"},
+		{Name: "template-version", Desc: "template package version or dist-tag to pin (e.g. 0.1.0-alpha.20260827082008 or alpha); default: latest"},
 		{Name: "dir", Desc: "target directory, relative path (default: current directory, scaffolding in place); must be empty or new"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
@@ -178,6 +179,11 @@ var AppsAppDevInitTemplate = common.Shortcut{
 		}
 		dry.Set("target_dir", dir)
 		dry.Set("template", template)
+		if tv := strings.TrimSpace(rctx.Str("template-version")); tv != "" {
+			dry.Set("template_version", tv)
+		} else {
+			dry.Set("template_version", "latest")
+		}
 		// Surface the same precondition the real run enforces, so a dry-run
 		// on a non-empty target does not read as "would succeed".
 		if err := ensureAppDevDirUsable(dir); err != nil {
@@ -199,7 +205,7 @@ var AppsAppDevInitTemplate = common.Shortcut{
 		}
 		pkg := appDevTemplatePackageName(template)
 		fmt.Fprintf(rctx.IO().ErrOut, "fetching template package %s...\n", pkg)
-		version, tgz, err := fetchAppDevTemplate(ctx, pkg, func(note string) {
+		version, tgz, err := fetchAppDevTemplate(ctx, pkg, strings.TrimSpace(rctx.Str("template-version")), func(note string) {
 			fmt.Fprintf(rctx.IO().ErrOut, "registry %s\n", note)
 		})
 		if err != nil {
