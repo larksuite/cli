@@ -4,11 +4,15 @@
 package apps
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
-	"errors"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -38,14 +42,9 @@ func TestAppDevTemplateForType(t *testing.T) {
 	}
 }
 
-func TestAppDevInitArgs(t *testing.T) {
-	got := appDevInitArgs("react-standard-webapp")
-	want := []string{
-		"-y", "--prefer-online", "--registry", npmRegistry, miaodaCLIPkg,
-		"app", "init", "--template", "react-standard-webapp", "--skip-install",
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("appDevInitArgs = %v, want %v", got, want)
+func TestAppDevTemplatePackageName(t *testing.T) {
+	if got := appDevTemplatePackageName("react-standard-webapp"); got != "@lark-apaas/coding-template-react-standard-webapp" {
+		t.Errorf("package name = %q", got)
 	}
 }
 
@@ -98,25 +97,262 @@ func TestEnsureAppDevDirUsable(t *testing.T) {
 	if !ok || p.Subtype != errs.SubtypeFailedPrecondition {
 		t.Errorf("want failed_precondition, got %v", err)
 	}
-	if !strings.Contains(p.Message, "already exists and is not empty") {
-		t.Errorf("message = %q", p.Message)
+}
+
+// --- template tgz test fixture ---
+
+type tgzEntry struct {
+	name     string
+	body     string
+	typeflag byte
+	linkname string
+}
+
+// buildTemplateTgz assembles an npm-style template tarball in memory.
+func buildTemplateTgz(t *testing.T, entries []tgzEntry) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for _, e := range entries {
+		tf := e.typeflag
+		if tf == 0 {
+			tf = tar.TypeReg
+		}
+		hdr := &tar.Header{Name: e.name, Mode: 0o644, Size: int64(len(e.body)), Typeflag: tf, Linkname: e.linkname}
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatal(err)
+		}
+		if tf == tar.TypeReg {
+			if _, err := tw.Write([]byte(e.body)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func defaultTemplateEntries() []tgzEntry {
+	return []tgzEntry{
+		{name: "package/package.json", body: `{"name":"@lark-apaas/coding-template-react-standard-webapp","version":"1.2.3","miaodaTemplate":{"archType":2}}`},
+		{name: "package/template/index.html", body: "<title>{{projectName}}</title>"},
+		{name: "package/template/README.md", body: "# {{projectName}}"},
+		{name: "package/template/src/App.tsx", body: "export default 1"},
+		{name: "package/template/_gitignore", body: "node_modules\n"},
+		{name: "package/template/_npmrc", body: "registry=x\n"},
+		{name: "package/README.md", body: "pkg readme, not extracted"},
 	}
 }
 
-func TestReadMetaStack(t *testing.T) {
+// withFakeRegistry starts a TLS registry server that serves metadata + tarball
+// for pkg, and points appDevRegistryBase / appDevNewTransferClient at it.
+func withFakeRegistry(t *testing.T, pkg string, tgz []byte) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	var srv *httptest.Server
+	mux.HandleFunc("/"+pkg, func(w http.ResponseWriter, _ *http.Request) {
+		meta := map[string]interface{}{
+			"dist-tags": map[string]string{"latest": "1.2.3"},
+			"versions": map[string]interface{}{
+				"1.2.3": map[string]interface{}{
+					"dist": map[string]string{"tarball": srv.URL + "/tarball.tgz"},
+				},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(meta)
+	})
+	mux.HandleFunc("/tarball.tgz", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(tgz)
+	})
+	srv = httptest.NewTLSServer(mux)
+	t.Cleanup(srv.Close)
+	origBase, origClient := appDevRegistryBase, appDevNewTransferClient
+	appDevRegistryBase = srv.URL
+	appDevNewTransferClient = func() *http.Client { return srv.Client() }
+	t.Cleanup(func() { appDevRegistryBase, appDevNewTransferClient = origBase, origClient })
+	return srv
+}
+
+// --- render tests ---
+
+func TestRenderAppDevTemplate(t *testing.T) {
 	dir := t.TempDir()
-	if s, ok, err := readMetaStack(dir); s != "" || ok || err != nil {
-		t.Errorf("missing meta: got (%q,%v,%v)", s, ok, err)
-	}
-	if err := os.MkdirAll(filepath.Join(dir, ".spark"), 0o755); err != nil {
+	rendered, err := renderAppDevTemplate(dir, "my-app", buildTemplateTgz(t, defaultTemplateEntries()))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, metaRelPath), []byte(`{"stack":"react-standard-webapp","version":"1.0.0"}`), 0o644); err != nil {
+	if rendered.Files != 5 {
+		t.Errorf("Files = %d, want 5 (template subtree only)", rendered.Files)
+	}
+	if rendered.ArchType != float64(2) {
+		t.Errorf("ArchType = %v (%T), want 2", rendered.ArchType, rendered.ArchType)
+	}
+	// Placeholder replaced.
+	b, _ := os.ReadFile(filepath.Join(dir, "index.html"))
+	if string(b) != "<title>my-app</title>" {
+		t.Errorf("index.html = %q", b)
+	}
+	// Renames applied.
+	if _, err := os.Stat(filepath.Join(dir, ".gitignore")); err != nil {
+		t.Error("_gitignore must be renamed to .gitignore")
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".npmrc")); err != nil {
+		t.Error("_npmrc must be renamed to .npmrc")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "_gitignore")); !os.IsNotExist(err) {
+		t.Error("_gitignore placeholder must not remain")
+	}
+	// Non-template pkg files not extracted.
+	if _, err := os.Stat(filepath.Join(dir, "package")); !os.IsNotExist(err) {
+		t.Error("files outside package/template/ must not be extracted")
+	}
+	// Nested file extracted.
+	if _, err := os.Stat(filepath.Join(dir, "src", "App.tsx")); err != nil {
+		t.Error("nested template file missing")
+	}
+}
+
+func TestRenderAppDevTemplate_RejectsTraversal(t *testing.T) {
+	dir := t.TempDir()
+	tgz := buildTemplateTgz(t, []tgzEntry{
+		{name: "package/template/../../evil.txt", body: "x"},
+	})
+	if _, err := renderAppDevTemplate(dir, "p", tgz); err == nil || !strings.Contains(err.Error(), "escapes") {
+		t.Errorf("traversal entry must be rejected, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(dir), "evil.txt")); !os.IsNotExist(err) {
+		t.Error("traversal file must not be written")
+	}
+}
+
+func TestRenderAppDevTemplate_SkipsSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	tgz := buildTemplateTgz(t, []tgzEntry{
+		{name: "package/template/link", typeflag: tar.TypeSymlink, linkname: "/etc/passwd"},
+		{name: "package/template/index.html", body: "ok"},
+	})
+	rendered, err := renderAppDevTemplate(dir, "p", tgz)
+	if err != nil {
 		t.Fatal(err)
 	}
-	s, ok, err := readMetaStack(dir)
-	if err != nil || !ok || s != "react-standard-webapp" {
-		t.Errorf("got (%q,%v,%v)", s, ok, err)
+	if rendered.Files != 1 {
+		t.Errorf("Files = %d, want 1 (symlink skipped)", rendered.Files)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "link")); !os.IsNotExist(err) {
+		t.Error("symlink must not be materialized")
+	}
+}
+
+func TestRenderAppDevTemplate_ExtractCap(t *testing.T) {
+	orig := appDevMaxTemplateExtractBytes
+	appDevMaxTemplateExtractBytes = 4
+	t.Cleanup(func() { appDevMaxTemplateExtractBytes = orig })
+	tgz := buildTemplateTgz(t, []tgzEntry{
+		{name: "package/template/big.txt", body: "0123456789"},
+	})
+	if _, err := renderAppDevTemplate(t.TempDir(), "p", tgz); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Errorf("extract cap must reject, got %v", err)
+	}
+}
+
+func TestRenderAppDevTemplate_FileCountCap(t *testing.T) {
+	orig := appDevMaxTemplateFiles
+	appDevMaxTemplateFiles = 1
+	t.Cleanup(func() { appDevMaxTemplateFiles = orig })
+	tgz := buildTemplateTgz(t, []tgzEntry{
+		{name: "package/template/a.txt", body: "a"},
+		{name: "package/template/b.txt", body: "b"},
+	})
+	if _, err := renderAppDevTemplate(t.TempDir(), "p", tgz); err == nil || !strings.Contains(err.Error(), "more than") {
+		t.Errorf("file count cap must reject, got %v", err)
+	}
+}
+
+func TestWriteAppDevSparkMeta(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeAppDevSparkMeta(dir, "react-standard-webapp", "1.2.3", float64(2)); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, metaRelPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var meta map[string]interface{}
+	if err := json.Unmarshal(b, &meta); err != nil {
+		t.Fatal(err)
+	}
+	if meta["stack"] != "react-standard-webapp" || meta["version"] != "1.2.3" || meta["archType"] != float64(2) {
+		t.Errorf("meta = %v", meta)
+	}
+}
+
+// --- fetch tests ---
+
+func TestFetchAppDevTemplateMeta_RejectsNonHTTPSTarball(t *testing.T) {
+	pkg := "@lark-apaas/coding-template-react-standard-webapp"
+	mux := http.NewServeMux()
+	mux.HandleFunc("/"+pkg, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"dist-tags":{"latest":"1.0.0"},"versions":{"1.0.0":{"dist":{"tarball":"http://insecure.example/t.tgz"}}}}`))
+	})
+	srv := httptest.NewTLSServer(mux)
+	t.Cleanup(srv.Close)
+	origBase, origClient := appDevRegistryBase, appDevNewTransferClient
+	appDevRegistryBase = srv.URL
+	appDevNewTransferClient = func() *http.Client { return srv.Client() }
+	t.Cleanup(func() { appDevRegistryBase, appDevNewTransferClient = origBase, origClient })
+
+	_, _, err := fetchAppDevTemplateMeta(context.Background(), pkg)
+	if err == nil || !strings.Contains(err.Error(), "not https") {
+		t.Errorf("non-https tarball must be rejected, got %v", err)
+	}
+}
+
+func TestFetchAppDevTemplateMeta_RejectsCrossHostTarball(t *testing.T) {
+	pkg := "@lark-apaas/coding-template-react-standard-webapp"
+	mux := http.NewServeMux()
+	mux.HandleFunc("/"+pkg, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"dist-tags":{"latest":"1.0.0"},"versions":{"1.0.0":{"dist":{"tarball":"https://evil.example/t.tgz"}}}}`))
+	})
+	srv := httptest.NewTLSServer(mux)
+	t.Cleanup(srv.Close)
+	origBase, origClient := appDevRegistryBase, appDevNewTransferClient
+	appDevRegistryBase = srv.URL
+	appDevNewTransferClient = func() *http.Client { return srv.Client() }
+	t.Cleanup(func() { appDevRegistryBase, appDevNewTransferClient = origBase, origClient })
+
+	_, _, err := fetchAppDevTemplateMeta(context.Background(), pkg)
+	if err == nil || !strings.Contains(err.Error(), "differs from registry host") {
+		t.Errorf("cross-host tarball must be rejected, got %v", err)
+	}
+}
+
+func TestRenderAppDevTemplate_RejectsBackslashEntry(t *testing.T) {
+	tgz := buildTemplateTgz(t, []tgzEntry{
+		{name: `package/template/..\evil.txt`, body: "x"},
+	})
+	if _, err := renderAppDevTemplate(t.TempDir(), "p", tgz); err == nil || !strings.Contains(err.Error(), "escapes") {
+		t.Errorf("backslash entry must be rejected, got %v", err)
+	}
+}
+
+func TestFetchAppDevTemplateMeta_404(t *testing.T) {
+	srv := httptest.NewTLSServer(http.NotFoundHandler())
+	t.Cleanup(srv.Close)
+	origBase, origClient := appDevRegistryBase, appDevNewTransferClient
+	appDevRegistryBase = srv.URL
+	appDevNewTransferClient = func() *http.Client { return srv.Client() }
+	t.Cleanup(func() { appDevRegistryBase, appDevNewTransferClient = origBase, origClient })
+
+	_, _, err := fetchAppDevTemplateMeta(context.Background(), "@lark-apaas/coding-template-x")
+	p := requireAppsProblem(t, err, errs.CategoryNetwork)
+	if !strings.Contains(p.Hint, "not be published") {
+		t.Errorf("404 hint = %q", p.Hint)
 	}
 }
 
@@ -136,12 +372,10 @@ func TestAppsAppDevInitTemplate_Declaration(t *testing.T) {
 		t.Error("HasFormat = false, want true")
 	}
 	if AppsAppDevInitTemplate.Scopes == nil {
-		t.Error("Scopes must be non-nil (no remote API => empty slice)")
+		t.Error("Scopes must be non-nil (no Lark API => empty slice)")
 	}
 }
 
-// testRuntimeAppDevInit builds a RuntimeContext with the type/dir flags
-// registered, mirroring how the shortcut reads them via rctx.Str.
 func testRuntimeAppDevInit(t *testing.T, appType, dir string) *common.RuntimeContext {
 	t.Helper()
 	cmd := &cobra.Command{Use: "+app-dev-init-template"}
@@ -150,7 +384,7 @@ func testRuntimeAppDevInit(t *testing.T, appType, dir string) *common.RuntimeCon
 	return common.TestNewRuntimeContext(cmd, nil)
 }
 
-func TestAppDevInitAppValidate(t *testing.T) {
+func TestAppDevInitTemplateValidate(t *testing.T) {
 	tests := []struct {
 		name, appType, dir, wantErr string
 	}{
@@ -168,21 +402,7 @@ func TestAppDevInitAppValidate(t *testing.T) {
 	}
 }
 
-func TestAppDevInitAppValidate_NpxMissing(t *testing.T) {
-	orig := appDevLookPath
-	appDevLookPath = func(string) (string, error) { return "", errors.New("not found") }
-	t.Cleanup(func() { appDevLookPath = orig })
-	err := AppsAppDevInitTemplate.Validate(context.Background(), testRuntimeAppDevInit(t, "frontend", ""))
-	p := requireAppsProblem(t, err, errs.CategoryValidation)
-	if p.Subtype != errs.SubtypeFailedPrecondition {
-		t.Errorf("subtype = %q, want failed_precondition", p.Subtype)
-	}
-	if !strings.Contains(p.Hint, "Node.js") {
-		t.Errorf("hint = %q, want Node.js install guidance", p.Hint)
-	}
-}
-
-// --- execute tests (framework runner + fake commandRunner) ---
+// --- execute tests (framework runner + fake registry) ---
 
 // relAppDevDir returns a relative, cwd-contained, not-yet-existing directory
 // suitable for --dir (mirrors relCloneDir).
@@ -193,112 +413,86 @@ func relAppDevDir(t *testing.T) string {
 	return rel
 }
 
-func TestAppDevInitAppExecute_DelegatesNpx(t *testing.T) {
-	f := &fakeCommandRunner{}
-	withFakeRunner(t, f)
+func TestAppDevInitTemplateExecute_RendersFromRegistry(t *testing.T) {
+	pkg := "@lark-apaas/coding-template-react-standard-webapp"
+	withFakeRegistry(t, pkg, buildTemplateTgz(t, defaultTemplateEntries()))
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	dir := relAppDevDir(t)
 	if err := runAppsShortcut(t, AppsAppDevInitTemplate,
 		[]string{"+app-dev-init-template", "--type", "frontend", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
-	c := findCall(f.calls, "npx", "-y")
-	if c == nil {
-		t.Fatalf("npx not invoked: %v", f.calls)
-	}
-	if !containsAll(c, "-y", "--prefer-online", "--registry", npmRegistry, miaodaCLIPkg,
-		"app", "init", "--template", "react-standard-webapp", "--skip-install") {
-		t.Errorf("npx args = %v", c)
-	}
-	if containsAll(c, "--app-id") {
-		t.Errorf("app init must NOT carry --app-id in artifact-hosting mode: %v", c)
-	}
-	if c[0] != dir {
-		t.Errorf("npx cwd = %q, want %q", c[0], dir)
-	}
 	data := parseEnvelopeData(t, stdout)
-	if data["dir"] != dir || data["template"] != "react-standard-webapp" {
+	if data["dir"] != dir || data["template"] != "react-standard-webapp" || data["version"] != "1.2.3" {
 		t.Errorf("data = %v", data)
 	}
-	if data["stack"] != "react-standard-webapp" {
-		t.Errorf("stack fallback = %v, want template name", data["stack"])
+	if data["files"] != float64(5) {
+		t.Errorf("files = %v", data["files"])
+	}
+	// Rendered content on disk.
+	b, err := os.ReadFile(filepath.Join(dir, "index.html"))
+	if err != nil || !strings.Contains(string(b), dir) {
+		t.Errorf("index.html placeholder = %q err=%v (projectName is dir basename)", b, err)
+	}
+	// meta.json written by lark-cli.
+	mb, err := os.ReadFile(filepath.Join(dir, metaRelPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var meta map[string]interface{}
+	_ = json.Unmarshal(mb, &meta)
+	if meta["stack"] != "react-standard-webapp" || meta["version"] != "1.2.3" || meta["archType"] != float64(2) {
+		t.Errorf("meta = %v", meta)
 	}
 	steps, _ := data["next_steps"].([]interface{})
 	if len(steps) != 3 {
-		t.Errorf("next_steps = %v, want 3 entries", data["next_steps"])
+		t.Errorf("next_steps = %v", data["next_steps"])
 	}
 }
 
-func TestAppDevInitAppExecute_FullStackTemplate(t *testing.T) {
-	f := &fakeCommandRunner{}
-	withFakeRunner(t, f)
+func TestAppDevInitTemplateExecute_FullStackPackage(t *testing.T) {
+	pkg := "@lark-apaas/coding-template-react-express-standard-fullstack"
+	withFakeRegistry(t, pkg, buildTemplateTgz(t, []tgzEntry{
+		{name: "package/package.json", body: `{"miaodaTemplate":{"archType":1}}`},
+		{name: "package/template/index.html", body: "fs"},
+	}))
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	dir := relAppDevDir(t)
 	if err := runAppsShortcut(t, AppsAppDevInitTemplate,
 		[]string{"+app-dev-init-template", "--type", "full_stack", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
-	if c := findCall(f.calls, "npx", "-y"); c == nil || !containsAll(c, "--template", "react-express-standard-fullstack") {
-		t.Errorf("full_stack template not passed: %v", f.calls)
-	}
-}
-
-func TestAppDevInitAppExecute_MetaStackEcho(t *testing.T) {
-	dir := relAppDevDir(t)
-	f := &fakeCommandRunner{results: map[string]fakeCallResult{}}
-	// Simulate the template producing .spark/meta.json during scaffold.
-	f.results["npx -y"] = fakeCallResult{}
-	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
-	// Pre-create meta.json via a side channel: the fake runner records but
-	// does not write files, so write it before Execute reads it back — the
-	// dir must stay empty for ensureAppDevDirUsable, so use a wrapper runner.
-	wrapped := &metaWritingRunner{inner: f, dir: dir, stack: "custom-stack"}
-	initRunner = wrapped
-	if err := runAppsShortcut(t, AppsAppDevInitTemplate,
-		[]string{"+app-dev-init-template", "--type", "frontend", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
-		t.Fatalf("unexpected: %v", err)
-	}
 	data := parseEnvelopeData(t, stdout)
-	if data["stack"] != "custom-stack" {
-		t.Errorf("stack = %v, want custom-stack (from meta.json)", data["stack"])
+	if data["template"] != "react-express-standard-fullstack" {
+		t.Errorf("template = %v", data["template"])
 	}
 }
 
-// metaWritingRunner simulates miaoda-cli writing .spark/meta.json into the
-// scaffold dir as a side effect of app init.
-type metaWritingRunner struct {
-	inner *fakeCommandRunner
-	dir   string
-	stack string
-}
+func TestAppDevInitTemplateExecute_RegistryDown(t *testing.T) {
+	pkg := "@lark-apaas/coding-template-react-standard-webapp"
+	mux := http.NewServeMux()
+	mux.HandleFunc("/"+pkg, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(503) })
+	srv := httptest.NewTLSServer(mux)
+	t.Cleanup(srv.Close)
+	origBase, origClient := appDevRegistryBase, appDevNewTransferClient
+	appDevRegistryBase = srv.URL
+	appDevNewTransferClient = func() *http.Client { return srv.Client() }
+	t.Cleanup(func() { appDevRegistryBase, appDevNewTransferClient = origBase, origClient })
 
-func (m *metaWritingRunner) Run(ctx context.Context, dir, name string, args ...string) (string, string, error) {
-	if err := os.MkdirAll(filepath.Join(m.dir, ".spark"), 0o755); err != nil {
-		return "", "", err
-	}
-	if err := os.WriteFile(filepath.Join(m.dir, metaRelPath), []byte(`{"stack":"`+m.stack+`"}`), 0o644); err != nil {
-		return "", "", err
-	}
-	return m.inner.Run(ctx, dir, name, args...)
-}
-
-func TestAppDevInitAppExecute_NpxFails(t *testing.T) {
-	f := &fakeCommandRunner{results: map[string]fakeCallResult{
-		"npx -y": {stderr: "boom", err: errors.New("exit 1")},
-	}}
-	withFakeRunner(t, f)
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	dir := relAppDevDir(t)
 	err := runAppsShortcut(t, AppsAppDevInitTemplate,
 		[]string{"+app-dev-init-template", "--type", "frontend", "--dir", dir, "--as", "user"}, factory, stdout)
-	p := requireAppsProblem(t, err, errs.CategoryInternal)
-	if !strings.Contains(p.Message, "npx app init failed") || !strings.Contains(p.Message, "boom") {
-		t.Errorf("message = %q", p.Message)
+	p := requireAppsProblem(t, err, errs.CategoryNetwork)
+	if !p.Retryable {
+		t.Error("registry 5xx must be retryable")
+	}
+	if _, statErr := os.Stat(dir); !os.IsNotExist(statErr) {
+		t.Error("target dir must not be created when the fetch fails")
 	}
 }
 
-func TestAppDevInitAppExecute_DirNotEmpty(t *testing.T) {
+func TestAppDevInitTemplateExecute_DirNotEmpty(t *testing.T) {
 	dir := relAppDevDir(t)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -306,8 +500,6 @@ func TestAppDevInitAppExecute_DirNotEmpty(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "x.txt"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	f := &fakeCommandRunner{}
-	withFakeRunner(t, f)
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	err := runAppsShortcut(t, AppsAppDevInitTemplate,
 		[]string{"+app-dev-init-template", "--type", "frontend", "--dir", dir, "--as", "user"}, factory, stdout)
@@ -315,12 +507,9 @@ func TestAppDevInitAppExecute_DirNotEmpty(t *testing.T) {
 	if p.Subtype != errs.SubtypeFailedPrecondition {
 		t.Errorf("subtype = %q", p.Subtype)
 	}
-	if len(f.calls) != 0 {
-		t.Errorf("npx must not run when dir is not empty: %v", f.calls)
-	}
 }
 
-func TestAppDevInitAppDryRun(t *testing.T) {
+func TestAppDevInitTemplateDryRun(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsAppDevInitTemplate,
 		[]string{"+app-dev-init-template", "--type", "frontend", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
@@ -330,22 +519,18 @@ func TestAppDevInitAppDryRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode dry-run: %v (raw=%q)", err, stdout.String())
 	}
-	cmdLine, _ := data["command"].(string)
-	if !strings.Contains(cmdLine, "app init --template react-standard-webapp --skip-install") {
-		t.Errorf("command = %q", cmdLine)
+	if data["template_package"] != "@lark-apaas/coding-template-react-standard-webapp" {
+		t.Errorf("template_package = %v", data["template_package"])
 	}
-	if data["remote_side_effects"] != "none (local scaffold via npx)" {
+	if data["remote_side_effects"] != "read-only npm registry download, no Lark API" {
 		t.Errorf("remote_side_effects = %v", data["remote_side_effects"])
-	}
-	if data["target_dir"] != filepath.Join(".", "react-standard-webapp") {
-		t.Errorf("target_dir = %v", data["target_dir"])
 	}
 	if data["target_dir_state"] != "ok (absent or empty)" {
 		t.Errorf("target_dir_state = %v", data["target_dir_state"])
 	}
 }
 
-func TestAppDevInitAppDryRun_DirNotEmptySurfaced(t *testing.T) {
+func TestAppDevInitTemplateDryRun_DirNotEmptySurfaced(t *testing.T) {
 	dir := relAppDevDir(t)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
