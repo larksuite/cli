@@ -267,6 +267,17 @@ To check whether a command succeeded, test `ok == true` (or the exit code) — *
 --page-delay 500            # 500ms between page requests
 ```
 
+If any page **after the first** fails, `--page-all` stops and exits non-zero — a
+transport failure exits `4`, a business error exits by its error category. The
+JSON output writes nothing to stdout in that case; streaming formats keep the
+rows already written. **Check the exit code to decide whether a result is
+complete** — an empty stdout is not the same as zero records, and in a pipeline
+the exit code is discarded unless you set `set -o pipefail`.
+
+When the **first** page fails the long-standing behaviour is unchanged: a
+business error still writes the raw response to stdout, a transport failure
+writes nothing.
+
 ### Dry Run
 
 For commands that may have side effects, preview the request with --dry-run first:

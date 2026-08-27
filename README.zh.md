@@ -268,6 +268,13 @@ lark-cli api POST /open-apis/im/v1/messages --params '{"receive_id_type":"chat_i
 --page-delay 500            # 每页请求间隔 500ms
 ```
 
+**首页之后**任一页失败时，`--page-all` 会停止翻页并以非零码退出——传输失败退出 `4`，
+业务错误按其错误类别退出。此时 JSON 输出不向 stdout 写入任何内容，流式格式已写出的行保留。
+**判断结果是否完整请检查退出码**——stdout 为空不等于零条记录；接管道时退出码会被丢弃，
+除非设置 `set -o pipefail`。
+
+**首页**即失败时行为保持不变：业务错误仍把原始响应写入 stdout，传输失败则不写入。
+
 ### Dry Run
 
 对可能产生副作用的命令，建议先用 --dry-run 预览请求：
