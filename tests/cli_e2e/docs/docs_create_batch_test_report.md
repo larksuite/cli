@@ -9,7 +9,7 @@
 | PR | [larksuite/cli#2518](https://github.com/larksuite/cli/pull/2518) |
 | 测试日期 | 2026-08-27 |
 | 测试身份 | Bot（已验证可用） |
-| 测试环境 | 远端开发机 + 真实飞书租户 |
+| 测试环境 | 远端开发机 + 真实飞书租户（生产基线；PPE 复测见 10.3） |
 | 内容格式 | DocxXML、Markdown |
 | 可靠目标批量 | 2,000 Block |
 | 单次硬上限 | 5,000 Block |
@@ -313,6 +313,29 @@ message="append batch 2 returned result=failed"
 
 内容限制探针使用精确 document token 串行调用 `drive +delete --yes`；本轮没有再做搜索索引级残留审计。5,001 Block Live E2E 使用 `DeleteDriveResourceAndVerify` 轮询验证不可见，清理证据更强。
 
+### 10.3 `ppe_sun_ai_test` 复测
+
+2026-08-27 使用本机 `lark-cli` Control Room 的 PPE 切流规则，将验证机上的当前分支二进制经同一 Whistle 代理路由到 `ppe_sun_ai_test`。每次 Docs AI 响应均显示 `env_psm=lark.apigw.apigw_pre_release`；Cell 2,000 的下游 warning 进一步明确调用链为 `creation.platform.ai_edit_pre_release -> creation.docx.engine_pre_release`。
+
+| Case | PPE 结果 | LogID | 结论 |
+| --- | --- | --- | --- |
+| Block 100,000 字符 | 创建成功，约 6 秒；删除成功 | `20260827155849F8FB745AC839837E5DCB` | PASS |
+| Block 100,001 字符 | 首次 create 拒绝，无 document token；`12320003` / `DOC_BLOCK_CHAR_LIMIT`，`operation=create, actual=100001, limit=100000` | `2026082715585943C0342B13454E24422C` | PASS |
+| Table 100 Column | 创建成功，约 6 秒；删除成功 | `20260827155906EA127E246F3FDE1C43FC` | PASS |
+| Table 101 Column | 首次 create 拒绝，无 document token；`12320005` / `DOC_TABLE_COLUMN_LIMIT`，`operation=create, actual=101, limit=100` | `202608271559172FDF13C5CAF814764A70` | PASS |
+| Table 2,000 Cell（20 × 100） | 未触发 Cell 限制；首批创建后第二批 append 调用 engine 超时，返回 partial document；删除成功 | create `202608271559234B446F8C0F6FC495457A`；append `202608271559274B446F8C0F6FC49547F2` | **ENV BLOCKED**：`engine_pre_release` 10 秒超时，不能据此验收成功边界 |
+| Table 2,001 Cell（2,001 × 1） | 首批创建后第二批 append 拒绝；`12320004` / `DOC_TABLE_CELL_LIMIT`，`operation=append, actual=2001, limit=2000`；partial document 删除成功 | create `202608271600443AD6F71862C9AE0A111B`；append `2026082716004869129D3420B2CC3DAA71` | **FAIL**：限制已生效，但 create 未在任何写入前完成整份内容预检 |
+
+补充探针 `20 × 100 + 1` 在 SDK 中按 21 行、100 列的有效矩形统计为 2,100 Cell，因此不能作为精确 2,001 边界；该请求同样在第二批 append 返回 `DOC_TABLE_CELL_LIMIT(actual=2100)`，partial document 已删除。精确边界改用 `2,001 × 1` 后，actual 为 2,001。
+
+PPE 复测结论：
+
+- 字符数与 Column 两项下游限制已部署，未复现生产基线中的“超限仍创建成功”。
+- Cell 专用错误码已部署，不再退化为单纯的 `api/unknown`。
+- CLI 的 create 自动分批会先写入 title，再把原子 Table 放入 append；因此 Cell 超限仍会产生 partial document，且错误 operation 变为 `append`。这仍违反“创建请求在任何下游写入前拒绝”的原始要求。
+- Cell 2,000 成功边界受 PPE `creation.docx.engine_pre_release` 超时阻断；测试时该 PPE 资源无可用 Pod，需要环境恢复后补测。
+- 本轮所有返回 document token 的探针均已通过 `drive +delete --yes` 删除。
+
 ## 11. 真实租户大文档测试
 
 ### 11.1 可靠批量探测
@@ -390,3 +413,5 @@ message="append batch 2 returned result=failed"
 如果本次发布范围仅为“lark-cli create 自动分批”，结论为：**可进入评审，主链路通过。**
 
 如果本次发布范围包含最初计划中的全部内容限制，结论为：**不可发布，需先解决字符、Table Cell、Table Column 三项阻断问题及错误码。**
+
+PPE 复测后可进一步收敛为：字符与 Column 下游拦截已就绪；当前 create 分批发布阻断点主要是 **整份内容预检缺失导致的 Table Cell partial write**，以及 PPE engine 不可用导致的 2,000 Cell 成功边界待补测。
