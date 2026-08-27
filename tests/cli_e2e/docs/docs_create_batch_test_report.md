@@ -9,7 +9,7 @@
 | PR | [larksuite/cli#2518](https://github.com/larksuite/cli/pull/2518) |
 | 测试日期 | 2026-08-27 |
 | 测试身份 | Bot（已验证可用） |
-| 测试环境 | 远端开发机 + 真实飞书租户（生产基线；PPE 复测见 10.3） |
+| 测试环境 | 远端开发机 + 真实飞书租户（生产基线与 `ppe_sun_ai_test`） |
 | 内容格式 | DocxXML、Markdown |
 | 可靠目标批量 | 2,000 Block |
 | 单次硬上限 | 5,000 Block |
@@ -19,7 +19,7 @@
 
 ### 2.1 总体结论
 
-**分批创建主链路通过；若以最初完整限制计划作为发布验收，当前结论为不通过。**
+**lark-cli create 分批与 create 内容限制均通过；最初计划中的独立 Append / Block Replace 限制仍不在本 PR 范围。**
 
 通过项：
 
@@ -28,13 +28,13 @@
 - XML、Markdown 的 5,001 Block 真实租户工作流均完成 create、2 次 append、fetch 首尾校验和清理。
 - 82 个已注册内容标签全部完成 XML 与 Markdown 双格式目录测试，共 164 个子用例。
 - Markdown parser、标题提升/去重、GFM Table、List、Task List、Definition List、公式、DocxXML 容器和资源标签均有专项覆盖。
+- XML、Markdown 在任何资源转换和下游写入前统一检查单 Block 字符、Table Cell 与 Column。
+- 100,001 字符、101 Column、2,001 Cell 六个双格式 PPE 超限请求均在本地返回结构化错误，观测到的 Docs AI 请求数为 0。
 - Append 失败采用 fail-fast，返回 partial result，保留已完成批次、失败批次和上游 typed error 信息。
 
-阻断项：
+环境待补项：
 
-1. 单 Block 100,001 字符未在 CLI 预检拦截，真实下游也接受创建。
-2. Table 101 Column 未在 CLI 预检拦截，真实下游也接受创建。
-3. Table 2,001 Cell 未在 CLI 预检拦截；下游在第二批 append 返回失败，但首批文档已创建，不符合“任何写入前拒绝”，且错误仅为 `api/unknown`。
+- `ppe_sun_ai_test` 的 `creation.docx.engine_pre_release` 在复测时为 0 Pod，2,000 Cell 双格式均在 append 阶段超时。CLI 已正确放行且真实请求进入 PPE；产品成功边界需在 engine 恢复后补跑。
 
 ### 2.2 需求验收表
 
@@ -44,11 +44,11 @@
 | Create 自动分批 | 大内容 create 后串行 append | XML/Markdown 真实 5,001 均成功 | PASS |
 | 单次操作硬上限 | `<= 5,000` | 原子单元 5,000 接受；5,001 拒绝 | PASS |
 | 可靠批量 | 避免真实服务 timeout | 5,000 与 XML 3,000 timeout；2,000 双格式成功 | PASS（目标设为 2,000） |
-| 单 Block 字符数 | `<= 100,000` | 100,001 被真实创建 | **FAIL** |
-| Table Cell | `<= 2,000` | 2,001 未预检；首批写入后 append failed | **FAIL** |
-| Table Column | `<= 100` | 101 被真实创建 | **FAIL** |
-| 校验失败时零写入 | 内容限制失败不得调用下游 | 2,001 Cell 已产生 partial 文档 | **FAIL** |
-| 专用错误码 | `DOC_*_LIMIT` | 当前主要为 `validation/invalid_argument` 或 `api/unknown` | **FAIL** |
+| 单 Block 字符数 | `<= 100,000` | XML/Markdown 100,000 接受；100,001 在本地拒绝 | PASS |
+| Table Cell | `<= 2,000` | XML/Markdown 2,001 在本地拒绝；2,000 CLI 放行，PPE engine 成功态待补 | PASS（预检）/ ENV BLOCKED（PPE 成功态） |
+| Table Column | `<= 100` | XML/Markdown 100 接受；101 在本地拒绝 | PASS |
+| 校验失败时零写入 | 内容限制失败不得调用下游 | 六个双格式超限请求 `route_count=0`，无 document token | PASS |
+| 专用错误码 | `DOC_*_LIMIT` | `validation/invalid_argument` 携带 `limit_code`、`operation`、`actual`、`limit` | PASS |
 | Append/Replace 独立入口限制 | 按原计划覆盖 | 本 PR 只改造 create 编排 | NOT IN SCOPE |
 
 ## 3. 测试方法与证据等级
@@ -282,15 +282,15 @@ strings.Join(plan.Batches, "") == originalSource
 | Case | Planner 结果 | API 计划 |
 | --- | --- | --- |
 | Block 100,000 字符 | 接受 | 1 |
-| Block 100,001 字符 | 接受 | 1 |
+| Block 100,001 字符 | `DOC_BLOCK_CHAR_LIMIT` | 0 |
 | Table 100 Column | 接受 | 1 |
-| Table 101 Column | 接受 | 1 |
+| Table 101 Column | `DOC_TABLE_COLUMN_LIMIT` | 0 |
 | Table 2,000 Cell | 接受 | 2，规划总 Block 4,002 |
-| Table 2,001 Cell | 接受 | 2，规划总 Block 4,004 |
+| Table 2,001 Cell | `DOC_TABLE_CELL_LIMIT` | 0 |
 
-结论：当前 create planner 只统计物化 Block，没有实现字符/Cell/Column 专用预检。
+XML 与 Markdown 均执行上述矩阵。超限错误为 `validation/invalid_argument`，并携带 `limit_code`、`operation=create`、`actual` 与 `limit`；dry-run stdout 不产生 API plan。
 
-### 10.2 真实下游结果
+### 10.2 修复前生产基线
 
 | Case | 真实结果 | 是否符合需求 |
 | --- | --- | --- |
@@ -311,9 +311,9 @@ message="append batch 2 returned result=failed"
 
 没有返回预期的 `DOC_TABLE_CELL_LIMIT`、actual 或 limit。
 
-内容限制探针使用精确 document token 串行调用 `drive +delete --yes`；本轮没有再做搜索索引级残留审计。5,001 Block Live E2E 使用 `DeleteDriveResourceAndVerify` 轮询验证不可见，清理证据更强。
+以上为修复前基线，用于证明回归测试确实覆盖原问题。内容限制探针使用精确 document token 串行调用 `drive +delete --yes`；5,001 Block Live E2E 使用 `DeleteDriveResourceAndVerify` 轮询验证不可见，清理证据更强。
 
-### 10.3 `ppe_sun_ai_test` 复测
+### 10.3 修复前 `ppe_sun_ai_test` 复测
 
 2026-08-27 使用本机 `lark-cli` Control Room 的 PPE 切流规则，将验证机上的当前分支二进制经同一 Whistle 代理路由到 `ppe_sun_ai_test`。每次 Docs AI 响应均显示 `env_psm=lark.apigw.apigw_pre_release`；Cell 2,000 的下游 warning 进一步明确调用链为 `creation.platform.ai_edit_pre_release -> creation.docx.engine_pre_release`。
 
@@ -328,13 +328,63 @@ message="append batch 2 returned result=failed"
 
 补充探针 `20 × 100 + 1` 在 SDK 中按 21 行、100 列的有效矩形统计为 2,100 Cell，因此不能作为精确 2,001 边界；该请求同样在第二批 append 返回 `DOC_TABLE_CELL_LIMIT(actual=2100)`，partial document 已删除。精确边界改用 `2,001 × 1` 后，actual 为 2,001。
 
-PPE 复测结论：
+修复前 PPE 复测结论：
 
 - 字符数与 Column 两项下游限制已部署，未复现生产基线中的“超限仍创建成功”。
 - Cell 专用错误码已部署，不再退化为单纯的 `api/unknown`。
 - CLI 的 create 自动分批会先写入 title，再把原子 Table 放入 append；因此 Cell 超限仍会产生 partial document，且错误 operation 变为 `append`。这仍违反“创建请求在任何下游写入前拒绝”的原始要求。
 - Cell 2,000 成功边界受 PPE `creation.docx.engine_pre_release` 超时阻断；测试时该 PPE 资源无可用 Pod，需要环境恢复后补测。
 - 本轮所有返回 document token 的探针均已通过 `drive +delete --yes` 删除。
+
+### 10.4 修复后 `ppe_sun_ai_test` 复测
+
+复测使用提交 `1533f474f` 的当前分支二进制。验证机通过本机 `lark-cli` Control Room 的 Whistle 规则进入 `ppe_sun_ai_test`；临时 transport observer 只记录 Docs AI 请求，不注入 PPE Header。正向请求响应均显示 `env_psm=lark.apigw.apigw_pre_release`。
+
+控制面基线（2026-08-27 18:40 +08:00）：
+
+- `creation.platform.ai_edit_pre_release`：LF / HL 各 1 个 Running Pod，共 2 个。
+- `creation.docx.engine_pre_release`：0 Pod。
+- 两个 PSM 的 running / pending deployment 均为 0。
+
+#### 超限零写入矩阵
+
+| 格式 | Case | CLI 结果 | Docs AI 请求 | document token | 结论 |
+| --- | --- | --- | --- | --- | --- |
+| XML | Block 100,001 字符 | exit 2；`DOC_BLOCK_CHAR_LIMIT`，`actual=100001` | 0 | 无 | PASS |
+| Markdown | Block 100,001 字符 | exit 2；`DOC_BLOCK_CHAR_LIMIT`，`actual=100001` | 0 | 无 | PASS |
+| XML | Table 101 Column | exit 2；`DOC_TABLE_COLUMN_LIMIT`，`actual=101` | 0 | 无 | PASS |
+| Markdown | GFM Table 101 Column | exit 2；`DOC_TABLE_COLUMN_LIMIT`，`actual=101` | 0 | 无 | PASS |
+| XML | Table 2,001 Cell（2,001 × 1） | exit 2；`DOC_TABLE_CELL_LIMIT`，`actual=2001` | 0 | 无 | PASS |
+| Markdown | GFM Table 2,001 Cell（2,001 × 1） | exit 2；`DOC_TABLE_CELL_LIMIT`，`actual=2001` | 0 | 无 | PASS |
+
+六个请求均在约 0–1 秒内失败，错误统一携带：
+
+```json
+{
+  "type": "validation",
+  "subtype": "invalid_argument",
+  "param": "--content",
+  "limit_code": "DOC_TABLE_CELL_LIMIT",
+  "operation": "create",
+  "actual": 2001,
+  "limit": 2000
+}
+```
+
+CLI 的通用错误契约保留 `error.code` 给上游数值码，因此领域字符串使用 `limit_code`，不再把 JSON detail 塞进 `api/unknown` message。
+
+#### 正向控制
+
+| 格式 | Case | 结果 | LogID | 清理 |
+| --- | --- | --- | --- | --- |
+| XML | Block 100,000 字符 | 创建成功，约 6 秒 | `202608271843261B02D49E9BF30A7E46B8` | PASS |
+| Markdown | Block 100,000 字符 | 创建成功，约 7 秒 | `20260827184339419930F417C9795B942E` | PASS |
+| XML | Table 100 Column | 创建成功，约 5 秒 | `202608271843514F0F972A4494A6913000` | PASS |
+| Markdown | GFM Table 100 Column | 创建成功，约 6 秒 | `20260827184400FA2C520D765317384484` | PASS |
+| XML | Table 2,000 Cell（2,000 × 1） | CLI 放行；create 成功后 append 调用 engine 超时 | create `20260827184444C745FFB56D3C1C2B135F`；append `20260827184449C745FFB56D3C1C2B14F4` | partial 文档删除成功 |
+| Markdown | GFM Table 2,000 Cell（2,000 × 1） | CLI 放行；create 成功后 append 调用 engine 超时 | create `2026082718450608C5EA51C4635834A456`；append `202608271845092395BB2EA3CA96178E52` | partial 文档删除成功 |
+
+两个 2,000 Cell 请求均未出现 `limit_code`，证明边界没有被本地误拦；失败 warning 明确为 `creation.docx.engine_pre_release ConvertXMLToOps`、`error_code=1204`、10 秒 request timeout，与控制面 0 Pod 一致。所有产生 token 的正向/partial 文档均已通过 `drive +delete --yes` 删除。
 
 ## 11. 真实租户大文档测试
 
@@ -375,25 +425,14 @@ PPE 复测结论：
 
 ## 13. 已知缺口与建议
 
-### P0：补统一新增内容限制器
+### 已完成：统一 create 内容限制器
 
-在任何资源处理、转换和下游写入前，对 XML/Markdown 的解析结果统一校验：
+- XML 统计直接镜像 SDK `document_limit/statistics.go` 的物化 Block、UTF-16 字符、有效矩形 Cell、Column、rowspan/colspan、caption 与 inline placeholder 语义。
+- Markdown 使用与 SDK 相同的 Goldmark extension、parser priority、预处理顺序、title semantics 和连续 Text/CJK emphasis 修复，再把统计结果交给同一限制策略。
+- 完整内容在资源 path/data 转换前预检；prepared content 生成后复用同一 planner 做安全分批。
+- 错误稳定输出 `limit_code`、`operation=create`、`actual`、`limit`，超限时不生成 API 计划、不调用下游。
 
-- 单 Block 字符数 `<= 100,000`
-- 单 Table Cell 数 `<= 2,000`
-- 单 Table Column 数 `<= 100`
-
-该限制器应复用 SDK 语义或由 SDK 提供统计结果，避免 CLI 与 SDK 再次漂移。
-
-### P0：错误码与阶段
-
-内容限制必须在首个 create 前失败，并返回稳定的领域错误：
-
-- `DOC_BLOCK_CHAR_LIMIT`
-- `DOC_TABLE_CELL_LIMIT`
-- `DOC_TABLE_COLUMN_LIMIT`
-
-错误至少携带 operation、actual、limit。2,001 Cell 当前的 partial write + `api/unknown` 不可作为最终验收结果。
+后续 SDK Markdown parser 或 `document_limit/statistics.go` 发生语义变化时，需要同步更新 CLI 的兼容边界和 parity 用例；长期可考虑由可公开复用的 SDK 模块承载该契约，减少跨仓镜像维护。
 
 ### P1：补真实资源 Block fixture
 
@@ -410,8 +449,8 @@ PPE 复测结论：
 
 ## 14. 发布判定
 
-如果本次发布范围仅为“lark-cli create 自动分批”，结论为：**可进入评审，主链路通过。**
+如果本次发布范围为“lark-cli create 自动分批 + create 新增内容限制”，结论为：**可合并；代码、dry-run、真实 PPE 超限零写入和正向字符/Column 边界均通过。**
 
-如果本次发布范围包含最初计划中的全部内容限制，结论为：**不可发布，需先解决字符、Table Cell、Table Column 三项阻断问题及错误码。**
+2,000 Cell 的 PPE 产品成功态仍需在 `creation.docx.engine_pre_release` 恢复 Pod 后补测；当前证据已确认 CLI 正确放行并真实路由到 PPE，超时来自 engine 运行态，不是本地限制器。
 
-PPE 复测后可进一步收敛为：字符与 Column 下游拦截已就绪；当前 create 分批发布阻断点主要是 **整份内容预检缺失导致的 Table Cell partial write**，以及 PPE engine 不可用导致的 2,000 Cell 成功边界待补测。
+如果发布范围扩大到最初计划中的独立 Append / Block Replace 总量公式和新增内容限制，结论仍为：**不在本 PR 验收范围，需要对应 SDK/服务改动和单独报告。**
