@@ -483,7 +483,7 @@ var AppsAppDevPublish = common.Shortcut{
 				}
 			}
 		}
-		rctx.OutFormat(data, nil, func(w io.Writer) {
+		rctx.OutFormatRaw(data, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "app_id: %s\nrelease_id: %s\nstatus: %s\n", appID, releaseID, status)
 			if onlineURL != "" {
 				fmt.Fprintf(w, "online_url: %s\n", onlineURL)
