@@ -6,6 +6,7 @@ package sheets
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"io/fs"
@@ -306,6 +307,143 @@ func TestImageUploadDryRun_WikiRefStaysNative(t *testing.T) {
 						t.Fatalf("parent_type = %v, want %q", body["parent_type"], tc.want)
 					}
 				})
+			}
+		})
+	}
+}
+
+// largeImageSize is one byte past the single-part ceiling: the smallest input
+// that must take the chunked branch, so the test pins the boundary rather than
+// some comfortably large number that would still pass a wrong comparison.
+const largeImageSize = common.MaxDriveMediaUploadSinglePartSize + 1
+
+// writeSparseImage creates a file of exactly size bytes without writing them.
+// A real 20 MB fixture would cost the same in the repo and in every CI run for
+// no extra signal — only the stat'd size matters to the branch under test.
+func writeSparseImage(t *testing.T, name string, size int64) {
+	t.Helper()
+	f, err := os.Create(name)
+	if err != nil {
+		t.Fatalf("create %s: %v", name, err)
+	}
+	defer f.Close()
+	if err := f.Truncate(size); err != nil {
+		t.Fatalf("truncate %s: %v", name, err)
+	}
+}
+
+// TestUploadSheetImage_LargeFileUsesMultipart proves an image past the 20 MB
+// ceiling takes the chunked endpoints instead of failing on upload_all, and
+// that the parent_type it carries there is still the office/native answer.
+//
+// upload_all is deliberately left unstubbed: the registry answers an unstubbed
+// call with a transport error, so a regression that sent the oversized file
+// single-part fails here rather than silently uploading. That is the shape the
+// backend used to punish with a bare 1061002 "params error" naming neither the
+// size nor the limit.
+func TestUploadSheetImage_LargeFileUsesMultipart(t *testing.T) {
+	cases := []struct {
+		name           string
+		token          string
+		wantParentType string
+	}{
+		{"native spreadsheet", "shtcnTOK123", sheetImageParentType},
+		{"imported office spreadsheet", "aaaaOaaaaFaaaaLaaaa0aaaaXaaa", officeSheetFileParentType},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			runtime, reg := newSheetMediaTestRuntime(t)
+			cmdutil.TestChdir(t, t.TempDir())
+			writeSparseImage(t, "big.png", largeImageSize)
+
+			prepare := &httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/drive/v1/medias/upload_prepare",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{
+						"upload_id":  "up_123",
+						"block_size": float64(common.MaxDriveMediaUploadSinglePartSize),
+						"block_num":  float64(2),
+					},
+				},
+			}
+			reg.Register(prepare)
+			reg.Register(&httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/drive/v1/medias/upload_part",
+				Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+				// block_num=2 above, so the part endpoint is hit twice.
+				Reusable: true,
+			})
+			reg.Register(&httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/drive/v1/medias/upload_finish",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{"file_token": "boxBIG123"},
+				},
+			})
+
+			fileToken, err := uploadSheetImage(runtime, tc.token, "big.png", "big.png", largeImageSize)
+			if err != nil {
+				t.Fatalf("uploadSheetImage() error: %v", err)
+			}
+			if fileToken != "boxBIG123" {
+				t.Fatalf("file_token = %q, want boxBIG123", fileToken)
+			}
+
+			var prepareBody map[string]interface{}
+			if err := json.Unmarshal(prepare.CapturedBody, &prepareBody); err != nil {
+				t.Fatalf("decode upload_prepare body: %v", err)
+			}
+			if got := prepareBody["parent_type"]; got != tc.wantParentType {
+				t.Fatalf("prepare parent_type = %v, want %q", got, tc.wantParentType)
+			}
+			if got := prepareBody["parent_node"]; got != tc.token {
+				t.Fatalf("prepare parent_node = %v, want %q", got, tc.token)
+			}
+		})
+	}
+}
+
+// TestImageUploadDryRun_LargeFilePreviewsChunks pins that the preview follows
+// the same size branch Execute takes. A preview that promised one upload_all
+// for a file the CLI will send in chunks is a preview of a different request —
+// the failure mode this domain has been closing everywhere else.
+func TestImageUploadDryRun_LargeFilePreviewsChunks(t *testing.T) {
+	cases := []struct {
+		name      string
+		size      int64
+		wantSteps []string
+	}{
+		{"at the ceiling stays single-part", common.MaxDriveMediaUploadSinglePartSize, []string{
+			"/open-apis/drive/v1/medias/upload_all",
+		}},
+		{"one byte past it goes chunked", largeImageSize, []string{
+			"/open-apis/drive/v1/medias/upload_prepare",
+			"/open-apis/drive/v1/medias/upload_part",
+			"/open-apis/drive/v1/medias/upload_finish",
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmdutil.TestChdir(t, t.TempDir())
+			writeSparseImage(t, "img.png", tc.size)
+
+			calls := parseDryRunAPI(t, CellsSetImage, []string{
+				"--spreadsheet-token", testToken, "--sheet-id", testSheetID,
+				"--range", "A1", "--image", "./img.png",
+			})
+			// The upload steps, then the set_cell_range tool call.
+			if len(calls) != len(tc.wantSteps)+1 {
+				t.Fatalf("api calls = %d, want %d", len(calls), len(tc.wantSteps)+1)
+			}
+			for i, want := range tc.wantSteps {
+				call, _ := calls[i].(map[string]interface{})
+				if call["url"] != want {
+					t.Fatalf("call %d url = %v, want %q", i, call["url"], want)
+				}
 			}
 		})
 	}

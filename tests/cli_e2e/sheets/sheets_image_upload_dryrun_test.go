@@ -5,6 +5,7 @@ package sheets
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -162,6 +163,82 @@ func TestSheets_ImageUploadDryRunParentType(t *testing.T) {
 				"parent_type for token %q must be %q; stdout:\n%s", tt.token, tt.wantParentType, out)
 			require.Equal(t, tt.token, clie2e.DryRunGet(out, "api.0.body.parent_node").String(),
 				"parent_node must equal the spreadsheet token; stdout:\n%s", out)
+		})
+	}
+}
+
+// TestSheets_ImageUploadDryRunChunked pins that the preview follows the same
+// 20 MB branch Execute takes. Under the ceiling the CLI previews one
+// upload_all; past it, the upload_prepare / upload_part / upload_finish trio.
+// A preview that promised a single-part upload for a file the CLI will send in
+// chunks is a preview of a different request.
+//
+// The oversized fixture is sparse: only its stat'd size decides the branch, so
+// writing 20 MB of real bytes would cost every CI run the same for no extra
+// signal.
+func TestSheets_ImageUploadDryRunChunked(t *testing.T) {
+	setSheetsDryRunEnv(t)
+
+	const singlePartCeiling = 20 * 1024 * 1024
+
+	workDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(workDir, "small.png"), []byte("png-bytes"), 0o600))
+	big, err := os.Create(filepath.Join(workDir, "big.png"))
+	require.NoError(t, err)
+	require.NoError(t, big.Truncate(singlePartCeiling+1))
+	require.NoError(t, big.Close())
+
+	tests := []struct {
+		name      string
+		file      string
+		wantSteps []string
+	}{
+		{
+			name:      "at the ceiling stays single-part",
+			file:      "small.png",
+			wantSteps: []string{"/open-apis/drive/v1/medias/upload_all"},
+		},
+		{
+			name: "one byte past it goes chunked",
+			file: "big.png",
+			wantSteps: []string{
+				"/open-apis/drive/v1/medias/upload_prepare",
+				"/open-apis/drive/v1/medias/upload_part",
+				"/open-apis/drive/v1/medias/upload_finish",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			t.Cleanup(cancel)
+
+			result, err := clie2e.RunCmd(ctx, clie2e.Request{
+				Args: []string{
+					"sheets", "+cells-set-image",
+					"--spreadsheet-token", "shtDryRunNative",
+					"--sheet-id", "sheet1",
+					"--range", "A1",
+					"--image", tt.file,
+					"--dry-run",
+				},
+				DefaultAs: "user",
+				WorkDir:   workDir,
+			})
+			require.NoError(t, err)
+			result.AssertExitCode(t, 0)
+
+			out := result.Stdout
+			for i, want := range tt.wantSteps {
+				require.Equal(t, want, clie2e.DryRunGet(out, fmt.Sprintf("api.%d.url", i)).String(),
+					"step %d; stdout:\n%s", i, out)
+			}
+			// The tool call follows the upload steps and nothing else does.
+			require.Equal(t, "/open-apis/sheet_ai/v2/spreadsheets/shtDryRunNative/tools/invoke_write",
+				clie2e.DryRunGet(out, fmt.Sprintf("api.%d.url", len(tt.wantSteps))).String(), "stdout:\n%s", out)
+			require.False(t, clie2e.DryRunGet(out, fmt.Sprintf("api.%d", len(tt.wantSteps)+1)).Exists(),
+				"no step should follow the tool call; stdout:\n%s", out)
 		})
 	}
 }

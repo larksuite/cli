@@ -1250,17 +1250,9 @@ var CellsSetImage = common.Shortcut{
 				}},
 			}}},
 		})
-		parentType := sheetsDryRunParentType(ref)
-		return common.NewDryRunAPI().
-			POST("/open-apis/drive/v1/medias/upload_all").
-			Desc("upload local image to drive (parent_type=" + parentType + ")").
-			Body(map[string]interface{}{
-				"file_name":   fileName,
-				"parent_type": parentType,
-				"parent_node": token,
-				"size":        "<file_size>",
-				"file":        "@" + imgPath,
-			}).
+		d := common.NewDryRunAPI()
+		appendSheetImageUploadDryRun(d, runtime, ref, imgPath, fileName)
+		return d.
 			POST(toolInvokePath(token, ToolKindWrite)).
 			Desc("embed file_token into the cell via set_cell_range").
 			Body(setCellBody)

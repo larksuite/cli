@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -110,14 +111,92 @@ func sheetsDryRunParentType(ref spreadsheetRef) string {
 // place so the parent_type selection (see sheetMediaParentType) is never
 // duplicated or forgotten at a call site. Callers are expected to have already
 // resolved spreadsheetToken (the upload's parent_node) and stat'd the file.
+//
+// Files over 20 MB go through the chunked endpoint rather than failing.
+// upload_all answers an oversized file with a bare 1061002 "upload media
+// failed: params error" that names neither the size nor the limit, so there is
+// nothing for the caller to act on. The deprecated sheets +media-upload has
+// always dispatched by size (backward.uploadSheetMediaFile), which left the same
+// image succeeding through the old shortcut and failing through the ones meant
+// to replace it.
 func uploadSheetImage(runtime *common.RuntimeContext, spreadsheetToken, filePath, fileName string, fileSize int64) (string, error) {
-	return common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
+	parentType := sheetMediaParentType(spreadsheetToken)
+	if fileSize <= common.MaxDriveMediaUploadSinglePartSize {
+		return common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
+			FilePath:   filePath,
+			FileName:   fileName,
+			FileSize:   fileSize,
+			ParentType: parentType,
+			ParentNode: &spreadsheetToken,
+		})
+	}
+	return common.UploadDriveMediaMultipartTyped(runtime, common.DriveMediaMultipartUploadConfig{
 		FilePath:   filePath,
 		FileName:   fileName,
 		FileSize:   fileSize,
-		ParentType: sheetMediaParentType(spreadsheetToken),
-		ParentNode: &spreadsheetToken,
+		ParentType: parentType,
+		ParentNode: spreadsheetToken,
 	})
+}
+
+// sheetImageShouldUseMultipart is the dry-run's planning hint for which branch
+// of uploadSheetImage a file will take. It is best-effort by design: a preview
+// may name a path that does not exist yet, and a stat failure plans the
+// single-part step rather than refusing to render. Execute re-stats and decides
+// for itself.
+func sheetImageShouldUseMultipart(fio fileio.FileIO, filePath string) bool {
+	info, err := fio.Stat(filePath)
+	if err != nil {
+		return false
+	}
+	return info.Mode().IsRegular() && info.Size() > common.MaxDriveMediaUploadSinglePartSize
+}
+
+// appendSheetImageUploadDryRun renders the upload step or steps that precede an
+// image write's tool call, so a preview shows the endpoints Execute will
+// actually hit: one upload_all under 20 MB, and the
+// upload_prepare / upload_part / upload_finish trio above it.
+//
+// parentNode is previewed verbatim — sheets dry-runs show the token as given,
+// including an unresolved wiki node_token — while parentType comes from the
+// ref's kind via sheetsDryRunParentType, which is the one value that must not be
+// read out of that token.
+func appendSheetImageUploadDryRun(d *common.DryRunAPI, runtime *common.RuntimeContext, ref spreadsheetRef, filePath, fileName string) {
+	parentType := sheetsDryRunParentType(ref)
+	if sheetImageShouldUseMultipart(runtime.FileIO(), filePath) {
+		d.POST("/open-apis/drive/v1/medias/upload_prepare").
+			Desc("upload local image to drive in chunks, files > 20 MB (parent_type=" + parentType + ")").
+			Body(map[string]interface{}{
+				"file_name":   fileName,
+				"parent_type": parentType,
+				"parent_node": ref.Token,
+				"size":        "<file_size>",
+			}).
+			POST("/open-apis/drive/v1/medias/upload_part").
+			Desc("upload each chunk, repeated <block_num> times").
+			Body(map[string]interface{}{
+				"upload_id": "<upload_id>",
+				"seq":       "<chunk_index>",
+				"size":      "<chunk_size>",
+				"file":      "<chunk_binary>",
+			}).
+			POST("/open-apis/drive/v1/medias/upload_finish").
+			Desc("finish the chunked upload and return the file_token").
+			Body(map[string]interface{}{
+				"upload_id": "<upload_id>",
+				"block_num": "<block_num>",
+			})
+		return
+	}
+	d.POST("/open-apis/drive/v1/medias/upload_all").
+		Desc("upload local image to drive (parent_type=" + parentType + ")").
+		Body(map[string]interface{}{
+			"file_name":   fileName,
+			"parent_type": parentType,
+			"parent_node": ref.Token,
+			"size":        "<file_size>",
+			"file":        "@" + filePath,
+		})
 }
 
 // spreadsheetRef classification: a --url / --spreadsheet-token input names a
