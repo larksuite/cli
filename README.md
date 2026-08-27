@@ -268,15 +268,17 @@ To check whether a command succeeded, test `ok == true` (or the exit code) — *
 ```
 
 If any page **after the first** fails, `--page-all` stops and exits non-zero — a
-transport failure exits `4`, a business error exits by its error category. The
-JSON output writes nothing to stdout in that case; streaming formats keep the
-rows already written. **Check the exit code to decide whether a result is
-complete** — an empty stdout is not the same as zero records, and in a pipeline
-the exit code is discarded unless you set `set -o pipefail`.
+transport failure exits `4`, a business error exits by its error category. **Check
+the exit code to decide whether a result is complete** — an empty stdout is not the
+same as zero records, and in a pipeline the exit code is discarded unless you set
+`set -o pipefail`.
 
-When the **first** page fails the long-standing behaviour is unchanged: a
-business error still writes the raw response to stdout, a transport failure
-writes nothing.
+Nothing is written to stdout for a failed run, with one exception: `lark-cli api`
+and the generated service commands emit each page as it arrives under the streaming
+formats (`ndjson`/`table`/`csv`), so rows written before the failure remain. Their
+**first**-page behaviour is unchanged: under the JSON and `--jq` formats a business
+error still writes the raw response to stdout; a transport failure — and any failure
+under a streaming format — writes nothing.
 
 ### Dry Run
 
