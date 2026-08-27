@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -468,6 +469,26 @@ func stubPreRelease(reg *httpmock.Registry, appID, uploadURL string, extraKVs ma
 	})
 }
 
+// withFastAppDevPoll shrinks the async-release wait knobs so tests never
+// sleep for real.
+func withFastAppDevPoll(t *testing.T, timeout, interval time.Duration) {
+	t.Helper()
+	origT, origI := appDevReleaseWaitTimeout, appDevReleasePollInterval
+	appDevReleaseWaitTimeout, appDevReleasePollInterval = timeout, interval
+	t.Cleanup(func() { appDevReleaseWaitTimeout, appDevReleasePollInterval = origT, origI })
+}
+
+func stubReleaseGet(reg *httpmock.Registry, appID, releaseID string, respData map[string]interface{}) {
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps/" + appID + "/releases/" + releaseID,
+		Body: map[string]interface{}{
+			"code": float64(0),
+			"data": respData,
+		},
+	})
+}
+
 func stubReleases(reg *httpmock.Registry, appID string, respData map[string]interface{}) {
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -728,6 +749,10 @@ func TestAppDevPublishExecute_AsyncSuccess(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stubPreRelease(reg, "app_x", srv.URL, nil)
 	stubReleases(reg, "app_x", map[string]interface{}{"release_id": "rel_2", "status": "pending"})
+	// The bounded wait keeps polling "pending" until the (shrunk) timeout,
+	// then degrades to the poll-hint output.
+	stubReleaseGet(reg, "app_x", "rel_2", map[string]interface{}{"release_id": "rel_2", "status": "pending"})
+	withFastAppDevPoll(t, 20*time.Millisecond, time.Millisecond)
 	if err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--skip-build", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
@@ -746,6 +771,79 @@ func TestAppDevPublishExecute_AsyncSuccess(t *testing.T) {
 	b, _ := os.ReadFile(filepath.Join(root, metaRelPath))
 	if strings.Contains(string(b), "online_url") {
 		t.Errorf("meta must not gain online_url on async publish: %s", b)
+	}
+}
+
+func TestAppDevPublishExecute_AwaitFinished(t *testing.T) {
+	// Async acceptance followed by a finished poll: online_url comes back in
+	// one command and lands in miaoda.json's app section.
+	root := chdirMiaodaProjectRoot(t, `{"stack":"s","app":{"id":"app_x"}}`)
+	writeDistFiles(t, filepath.Join(root, appDevDefaultBuildOutput), []string{"index.html", "routes.json"})
+	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubPreRelease(reg, "app_x", srv.URL, nil)
+	stubReleases(reg, "app_x", map[string]interface{}{"release_id": "rel_40", "status": "publishing"})
+	stubReleaseGet(reg, "app_x", "rel_40", map[string]interface{}{
+		"release_id": "rel_40", "status": "finished",
+		"online_url": "https://x/app/app_x",
+	})
+	withFastAppDevPoll(t, time.Second, time.Millisecond)
+	if err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	data := parseEnvelopeData(t, stdout)
+	if data["online_url"] != "https://x/app/app_x" || data["status"] != "finished" {
+		t.Errorf("data = %v", data)
+	}
+	if _, has := data["poll_hint"]; has {
+		t.Error("finished await must not carry poll_hint")
+	}
+	b, _ := os.ReadFile(filepath.Join(root, miaodaJSONRelPath))
+	var doc map[string]interface{}
+	_ = json.Unmarshal(b, &doc)
+	app, _ := doc["app"].(map[string]interface{})
+	if app == nil || app["url"] != "https://x/app/app_x" {
+		t.Errorf("app.url must be written after the awaited finish, got %v", doc["app"])
+	}
+}
+
+func TestAppDevPublishExecute_AwaitFailed(t *testing.T) {
+	// A failed pipeline is a failed publish: exit non-zero with the
+	// error_logs summarized and an actionable hint.
+	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
+	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
+	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubPreRelease(reg, "app_x", srv.URL, nil)
+	stubReleases(reg, "app_x", map[string]interface{}{"release_id": "rel_41", "status": "publishing"})
+	stubReleaseGet(reg, "app_x", "rel_41", map[string]interface{}{
+		"release_id": "rel_41", "status": "failed",
+		"error_logs": []interface{}{
+			map[string]interface{}{"step": "build", "error_log": "formula output is empty"},
+		},
+	})
+	withFastAppDevPoll(t, time.Second, time.Millisecond)
+	err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--skip-build", "--as", "user"}, factory, stdout)
+	p := requireAppsProblem(t, err, errs.CategoryInternal)
+	if !strings.Contains(p.Message, "release rel_41 failed") || !strings.Contains(p.Message, "[build] formula output is empty") {
+		t.Errorf("message = %q", p.Message)
+	}
+	if !strings.Contains(p.Hint, "+release-get --app-id app_x --release-id rel_41") {
+		t.Errorf("hint = %q", p.Hint)
+	}
+}
+
+func TestSummarizeReleaseErrorLogs(t *testing.T) {
+	if got := summarizeReleaseErrorLogs(nil); got != "" {
+		t.Errorf("nil logs = %q", got)
+	}
+	logs := []interface{}{
+		map[string]interface{}{"step": "build", "error_log": "a"},
+		map[string]interface{}{"error_log": "b"},
+		"garbage",
+	}
+	if got := summarizeReleaseErrorLogs(logs); got != "[build] a; b" {
+		t.Errorf("summary = %q", got)
 	}
 }
 

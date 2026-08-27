@@ -25,8 +25,9 @@ lark-cli apps +app-dev-publish --dry-run
 
 ## 输出契约
 
-- 同步完成：`data.online_url` 直接可访问，同时随 app 段回写进 `miaoda.json`。
-- 异步发布：返回 `data.release_id` 和 `data.poll_hint`；用 `+release-get --app-id <app_id> --release-id <release_id>` 轮询到 `finished` 后读取 `online_url`。
+- 异步受理后命令会**原地等待最多 60s**（每 3s 轮询发布单）：等到 `finished` 则直接返回 `data.online_url`（并随 app 段回写进 `miaoda.json`），一条命令闭环。
+- 超过 60s 仍在发布中：返回 `data.release_id` 和 `data.poll_hint`（不算失败）；用 `+release-get --app-id <app_id> --release-id <release_id>` 继续轮询到 `finished` 后读取 `online_url`。
+- **流水线失败 = 发布失败**：exit 非 0，message 含各 step 的 error_logs 摘要，hint 给出复查命令；产物已上传，修复后重新 publish 即可。
 - 业务失败通常带 `error.hint`，优先转述 hint；网络/服务端 5xx 失败带 `retryable`，可稍后重试。
 
 ## 前置引导
