@@ -69,13 +69,24 @@ func resolveAppDevTemplate(rctx *common.RuntimeContext) (string, error) {
 }
 
 // resolveAppDevDir returns the scaffold target directory: --dir when set,
-// otherwise ./<template-name>.
-func resolveAppDevDir(dir, template string) string {
+// otherwise the current directory (in-place init, matching miaoda-cli's
+// app init which scaffolds into process.cwd()).
+func resolveAppDevDir(dir string) string {
 	d := strings.TrimSpace(dir)
 	if d == "" {
-		return filepath.Join(".", template)
+		return "."
 	}
 	return d
+}
+
+// appDevProjectName derives the {{projectName}} placeholder value from the
+// target directory: its base name, resolved to the real directory name when
+// scaffolding in place (base of "." is ".").
+func appDevProjectName(dir string) string {
+	if abs, err := filepath.Abs(dir); err == nil {
+		return filepath.Base(abs)
+	}
+	return filepath.Base(dir)
 }
 
 // validateAppDevDir rejects absolute paths and .. traversal in --dir, keeping
@@ -109,6 +120,11 @@ func ensureAppDevDirUsable(dir string) error {
 		return appsFileIOError(err, "read target directory %s failed: %v", dir, err)
 	}
 	if len(entries) > 0 {
+		if dir == "." {
+			return appsFailedPreconditionParamError("--dir",
+				"the current directory is not empty; scaffolding in place needs an empty directory").
+				WithHint("run from an empty project directory, or pass --dir <new-dir> to scaffold into a subdirectory")
+		}
 		return appsFailedPreconditionParamError("--dir",
 			"target directory %s already exists and is not empty", dir).
 			WithHint("choose an empty or new directory with --dir, or remove the existing contents first")
@@ -138,7 +154,7 @@ var AppsAppDevInitTemplate = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "type", Desc: "app type; maps to a template package (frontend=react-standard-webapp, full_stack=react-express-standard-fullstack); ignored when --template is set", Enum: []string{"frontend", "full_stack"}},
 		{Name: "template", Desc: "template short name to use directly (resolves to @lark-apaas/coding-template-<name>); takes precedence over --type"},
-		{Name: "dir", Desc: "target directory, relative path (default ./<template-name>); must be new or empty"},
+		{Name: "dir", Desc: "target directory, relative path (default: current directory, scaffolding in place); must be empty or new"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := resolveAppDevTemplate(rctx); err != nil {
@@ -148,7 +164,7 @@ var AppsAppDevInitTemplate = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		template, _ := resolveAppDevTemplate(rctx) // Validate already rejected invalid input
-		dir := resolveAppDevDir(rctx.Str("dir"), template)
+		dir := resolveAppDevDir(rctx.Str("dir"))
 		pkg := appDevTemplatePackageName(template)
 		dry := common.NewDryRunAPI().
 			Desc("Scaffold a local web app project by downloading an npm template package (read-only registry fetch, no Lark API)")
@@ -174,7 +190,7 @@ var AppsAppDevInitTemplate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		dir := resolveAppDevDir(rctx.Str("dir"), template)
+		dir := resolveAppDevDir(rctx.Str("dir"))
 		if err := ensureAppDevDirUsable(dir); err != nil {
 			return err
 		}
@@ -189,15 +205,19 @@ var AppsAppDevInitTemplate = common.Shortcut{
 		if err := os.MkdirAll(dir, 0o755); err != nil { //nolint:forbidigo // see ensureAppDevDirUsable
 			return appsFileIOError(err, "create target directory %s failed: %v", dir, err)
 		}
-		rendered, err := renderAppDevTemplate(dir, filepath.Base(dir), tgz)
+		rendered, err := renderAppDevTemplate(dir, appDevProjectName(dir), tgz)
 		if err != nil {
 			return err
 		}
 		if err := writeMiaodaScaffoldFields(dir, template, version); err != nil {
 			return err
 		}
+		devPrefix := ""
+		if dir != "." {
+			devPrefix = "cd " + dir + " && "
+		}
 		nextSteps := []string{
-			fmt.Sprintf("cd %s && npm install && npm run dev", dir),
+			devPrefix + "npm install && npm run dev",
 			"lark-cli apps +create --name <name> to create the Miaoda app",
 			"run lark-cli apps +app-dev-publish --app-id <returned app_id> from the project root (saved into miaoda.json on success; later runs need no flag)",
 		}
