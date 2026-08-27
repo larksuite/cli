@@ -88,7 +88,7 @@ Field 定义列 schema。`field_id` 是稳定列标识，`name` 是可修改的�
 
 Record 是 Table 中的一行数据，包含该记录在各个 Field 下的 CellValue。系统 `record_id` 是表内稳定、非空且唯一的主键，Table 的主字段只是展示字段。
 
-**读取 Record：** 记录预览、筛选、匹配、统计、聚合、TopN、多表或语义分析，以及写前定位记录和写后验收，都必须先完整读取 [Record 查询与分析 SOP](references/lark-base-record-query-and-analysis-sop.md)，并由该 SOP 选择具体命令。**写入 Record：** 优先使用 [batch create](references/lark-base-record-batch-create.md) / [batch update](references/lark-base-record-batch-update.md) 创建或更新一条或多条记录，按其文档中的 CellValue 协议提交字段值。
+**读取 Record：** 记录预览、筛选、匹配、统计、聚合、TopN、多表或语义分析，以及写前定位记录和写后验收，都必须先完整读取 [Record 查询与分析 SOP](references/lark-base-record-query-and-analysis-sop.md)，并由该 SOP 选择具体命令。当分析存在会实质改变结论的多个候选口径时，先固定主计算合同；最终结论只从已验收的主结果派生，补充口径不得改写。**写入 Record：** 优先使用 [batch create](references/lark-base-record-batch-create.md) / [batch update](references/lark-base-record-batch-update.md) 创建或更新一条或多条记录，按其文档中的 CellValue 协议提交字段值。
 
 **Record 生命周期：** `+record-delete` 删除记录；`+record-share-link-create` 创建记录分享链接；`+record-history-list` 查询单条记录的变更事件，读取 [历史记录协议](references/lark-base-record-history-list.md)。附件使用 `+record-upload-attachment` / `+record-download-attachment` / `+record-remove-attachment` 操作。
 
