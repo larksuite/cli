@@ -89,7 +89,7 @@ func writeDistFiles(t *testing.T, base string, files []string) {
 		}
 		body := "x"
 		if strings.HasSuffix(f, "routes.json") {
-			body = `{"version":1,"type":"test-stack","fallback":"index.html"}`
+			body = `[{"path":"/","file":"index.html"}]`
 		}
 		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
@@ -159,21 +159,32 @@ func TestValidateAppDevDist_IgnoresExtrasAndExcludesFromPack(t *testing.T) {
 func TestValidateAppDevDist_RoutesSchema(t *testing.T) {
 	dist := filepath.Join(t.TempDir(), "dist")
 	writeDistFiles(t, dist, []string{"output/index.html", "output/routes.json"})
-	// Broken JSON.
-	os.WriteFile(filepath.Join(dist, "output", "routes.json"), []byte("not-json"), 0o644)
-	if _, _, err := validateAppDevDist(permissiveFIO{}, dist, false); err == nil || !strings.Contains(err.Error(), "not valid JSON") {
-		t.Errorf("broken routes.json must be rejected, got %v", err)
+	set := func(body string) {
+		os.WriteFile(filepath.Join(dist, "output", "routes.json"), []byte(body), 0o644)
 	}
-	// Missing required fields.
-	os.WriteFile(filepath.Join(dist, "output", "routes.json"), []byte(`{"version":1}`), 0o644)
-	if _, _, err := validateAppDevDist(permissiveFIO{}, dist, false); err == nil || !strings.Contains(err.Error(), "missing required fields") {
-		t.Errorf("incomplete routes.json must be rejected, got %v", err)
+	check := func(body, wantErr string) {
+		t.Helper()
+		set(body)
+		_, _, err := validateAppDevDist(permissiveFIO{}, dist, false)
+		if wantErr == "" {
+			if err != nil {
+				t.Errorf("routes %q should be valid: %v", body, err)
+			}
+			return
+		}
+		if err == nil || !strings.Contains(err.Error(), wantErr) {
+			t.Errorf("routes %q: err = %v, want containing %q", body, err, wantErr)
+		}
 	}
-	// Unknown fields ignored (forward compatible).
-	os.WriteFile(filepath.Join(dist, "output", "routes.json"), []byte(`{"version":1,"type":"t","fallback":"index.html","future":true}`), 0o644)
-	if _, _, err := validateAppDevDist(permissiveFIO{}, dist, false); err != nil {
-		t.Errorf("unknown fields must be ignored: %v", err)
-	}
+	check("not-json", "not a valid route enumeration array")
+	// Old fallback-only object form is no longer the schema.
+	check(`{"version":1,"type":"t","fallback":"index.html"}`, "not a valid route enumeration array")
+	check(`[{"path":""}]`, "invalid path")
+	check(`[{"path":"orders"}]`, "invalid path")
+	check(`[{"path":"/"},{"path":"/"}]`, "duplicate path")
+	check(`[]`, "")                                                        // 纯静态站可为空数组
+	check(`[{"path":"/orders/:id"}]`, "")                                  // 动态段合法
+	check(`[{"path":"/","file":"index.html","name":"首页","future":1}]`, "") // 未识别字段忽略
 }
 
 func TestValidateAppDevDist_Missing(t *testing.T) {
@@ -689,7 +700,7 @@ func TestAppDevPublishExecute_MiaodaProtocol(t *testing.T) {
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	f := &fakeEnvRunner{sideEffect: func() {
 		writeDistFiles(t, filepath.Join(root, "public"), []string{"output/index.html", "output/routes.json"})
-		routes := `{"version":1,"type":"custom-webapp","fallback":"index.html"}`
+		routes := `[{"path":"/","file":"index.html"}]`
 		os.WriteFile(filepath.Join(root, "public", "output", "routes.json"), []byte(routes), 0o644)
 	}}
 	withFakeEnvRunner(t, f)
