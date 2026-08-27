@@ -98,7 +98,7 @@ func validateAppDevDist(fio fileio.FileIO, distPath string, allowSensitive bool)
 		}
 		return nil, err
 	}
-	var hasIndex, hasRoutes, hasOutput bool
+	var hasHTML, hasRoutes, hasOutput bool
 	var extras []string
 	seenExtras := map[string]bool{}
 	for _, c := range candidates {
@@ -109,13 +109,15 @@ func validateAppDevDist(fio fileio.FileIO, distPath string, allowSensitive bool)
 		switch top {
 		case "output":
 			hasOutput = true
-			switch c.RelPath {
-			case "output/index.html":
-				hasIndex = true
-			case "output/routes.json":
+			if strings.HasSuffix(c.RelPath, ".html") {
+				hasHTML = true
+			}
+			if c.RelPath == "output/routes.json" {
 				hasRoutes = true
 			}
-		case "output_resource":
+		case "output_resource", "output_capabilities":
+			// output_resource ships to CDN; output_capabilities is the
+			// platform-capability placeholder — both ride along in the zip.
 		default:
 			if !seenExtras[top] {
 				seenExtras[top] = true
@@ -126,22 +128,25 @@ func validateAppDevDist(fio fileio.FileIO, distPath string, allowSensitive bool)
 	if len(extras) > 0 {
 		sort.Strings(extras)
 		return nil, appsValidationError(
-			"dist contains %d top-level entr(ies) outside the artifact-hosting layout: %s",
+			"the build output contains %d top-level entr(ies) outside the artifact-hosting layout: %s",
 			len(extras), truncatedJoin(extras, maxSensitiveListInError)).
-			WithHint("only output/ and output_resource/ are uploaded; adjust the build output")
+			WithHint("only output/, output_resource/ and output_capabilities/ are uploaded; adjust the build output")
 	}
 	if !hasOutput {
 		return nil, appsFailedPreconditionError(
-			"dist is missing the output/ directory required by the artifact-hosting layout").
-			WithHint("build first (npm run build); expected layout: dist/output/{index.html,routes.json} + dist/output_resource/")
+			"the build output is missing the output/ directory required by the artifact-hosting layout").
+			WithHint("run the build first; expected layout: <build.output>/output/{*.html,routes.json} + output_resource/")
 	}
-	if !hasIndex {
-		return nil, appsFailedPreconditionError("dist/output is missing index.html").
-			WithHint("output/index.html is the app entrypoint; check the template's build config")
+	if !hasHTML {
+		return nil, appsFailedPreconditionError("output/ has no .html file; the protocol requires at least one (an SPA entry must be named index.html)").
+			WithHint("check the build config: HTML entries belong in output/, hashed assets in output_resource/")
 	}
 	if !hasRoutes {
-		return nil, appsFailedPreconditionError("dist/output is missing routes.json").
-			WithHint("routes.json is required for content review routing; miaoda-cli templates generate it during npm run build")
+		return nil, appsFailedPreconditionError("output/routes.json is missing").
+			WithHint("routes.json is required for content review routing; official templates generate it during the build")
+	}
+	if err := validateAppDevRoutesJSON(distPath); err != nil {
+		return nil, err
 	}
 	if !allowSensitive {
 		var hits []string
@@ -155,6 +160,34 @@ func validateAppDevDist(fio fileio.FileIO, distPath string, allowSensitive bool)
 		}
 	}
 	return candidates, nil
+}
+
+// appDevRoutesJSON is the routes.json v1 schema (fallback-only object). All
+// three fields are MUST per the artifact-hosting protocol; unknown fields are
+// ignored for forward compatibility.
+type appDevRoutesJSON struct {
+	Version  int    `json:"version"`
+	Type     string `json:"type"`
+	Fallback string `json:"fallback"`
+}
+
+// validateAppDevRoutesJSON light-checks output/routes.json so schema problems
+// fail at publish time instead of bouncing off content review later.
+func validateAppDevRoutesJSON(distPath string) error {
+	b, err := os.ReadFile(filepath.Join(distPath, "output", "routes.json")) //nolint:forbidigo // path is under the walked build output.
+	if err != nil {
+		return appsFileIOError(err, "read output/routes.json failed: %v", err)
+	}
+	var r appDevRoutesJSON
+	if err := json.Unmarshal(b, &r); err != nil {
+		return appsFailedPreconditionError("output/routes.json is not valid JSON: %v", err).
+			WithHint(`expected schema: {"version":1,"type":"<stack>","fallback":"index.html"}`)
+	}
+	if r.Version == 0 || strings.TrimSpace(r.Type) == "" || strings.TrimSpace(r.Fallback) == "" {
+		return appsFailedPreconditionError("output/routes.json is missing required fields (version/type/fallback are all required)").
+			WithHint(`expected schema: {"version":1,"type":"<stack>","fallback":"index.html"}`)
+	}
+	return nil
 }
 
 // appDevSensitiveCandidatesError mirrors sensitiveCandidatesError with

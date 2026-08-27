@@ -77,7 +77,9 @@ func TestEnsureMetaOnlineURL(t *testing.T) {
 
 // --- dist layout validation ---
 
-// writeDistFiles creates files (relative to base) with parent dirs.
+// writeDistFiles creates files (relative to base) with parent dirs. A file
+// named routes.json gets valid v1 schema content so protocol validation
+// passes by default; tests that need a broken one overwrite it afterwards.
 func writeDistFiles(t *testing.T, base string, files []string) {
 	t.Helper()
 	for _, f := range files {
@@ -85,7 +87,11 @@ func writeDistFiles(t *testing.T, base string, files []string) {
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+		body := "x"
+		if strings.HasSuffix(f, "routes.json") {
+			body = `{"version":1,"type":"test-stack","fallback":"index.html"}`
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -99,8 +105,10 @@ func TestValidateAppDevDist(t *testing.T) {
 	}{
 		{"ok full", []string{"output/index.html", "output/routes.json", "output_resource/index.js"}, ""},
 		{"ok no resource", []string{"output/index.html", "output/routes.json"}, ""},
+		{"ok non-index html", []string{"output/page.html", "output/routes.json"}, ""},
+		{"ok capabilities dir", []string{"output/index.html", "output/routes.json", "output_capabilities/cap.json"}, ""},
 		{"no output dir", []string{"stray.txt"}, "top-level entr"},
-		{"no index", []string{"output/routes.json"}, "index.html"},
+		{"no html", []string{"output/routes.json"}, "no .html file"},
 		{"no routes", []string{"output/index.html"}, "routes.json"},
 		{"extra top-level dir", []string{"output/index.html", "output/routes.json", "extra/x.js"}, "outside the artifact-hosting layout"},
 		{"extra top-level file", []string{"output/index.html", "output/routes.json", "notes.md"}, "outside the artifact-hosting layout"},
@@ -120,6 +128,26 @@ func TestValidateAppDevDist(t *testing.T) {
 				t.Errorf("err = %v, want containing %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestValidateAppDevDist_RoutesSchema(t *testing.T) {
+	dist := filepath.Join(t.TempDir(), "dist")
+	writeDistFiles(t, dist, []string{"output/index.html", "output/routes.json"})
+	// Broken JSON.
+	os.WriteFile(filepath.Join(dist, "output", "routes.json"), []byte("not-json"), 0o644)
+	if _, err := validateAppDevDist(permissiveFIO{}, dist, false); err == nil || !strings.Contains(err.Error(), "not valid JSON") {
+		t.Errorf("broken routes.json must be rejected, got %v", err)
+	}
+	// Missing required fields.
+	os.WriteFile(filepath.Join(dist, "output", "routes.json"), []byte(`{"version":1}`), 0o644)
+	if _, err := validateAppDevDist(permissiveFIO{}, dist, false); err == nil || !strings.Contains(err.Error(), "missing required fields") {
+		t.Errorf("incomplete routes.json must be rejected, got %v", err)
+	}
+	// Unknown fields ignored (forward compatible).
+	os.WriteFile(filepath.Join(dist, "output", "routes.json"), []byte(`{"version":1,"type":"t","fallback":"index.html","future":true}`), 0o644)
+	if _, err := validateAppDevDist(permissiveFIO{}, dist, false); err != nil {
+		t.Errorf("unknown fields must be ignored: %v", err)
 	}
 }
 
