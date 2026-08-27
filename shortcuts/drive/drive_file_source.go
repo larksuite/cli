@@ -5,7 +5,6 @@ package drive
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -150,7 +149,6 @@ func resolveDriveFileWikiSource(ctx context.Context, runtime *common.RuntimeCont
 		param = "--wiki-token"
 	}
 
-	fmt.Fprintf(runtime.IO().ErrOut, "Resolving wiki node: %s\n", common.MaskToken(wikiToken))
 	data, err := driveInspectCallWithRetry(ctx, func() (map[string]interface{}, error) {
 		return runtime.CallAPITyped(
 			"GET",
@@ -184,7 +182,6 @@ func resolveDriveFileWikiSource(ctx context.Context, runtime *common.RuntimeCont
 			WithHint("for doc/docx/sheet/bitable/slides documents, use drive +export instead")
 	}
 
-	fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to file: %s\n", common.MaskToken(objToken))
 	return objToken, driveFileWikiResolution{
 		Resolved:  true,
 		WikiToken: wikiToken,

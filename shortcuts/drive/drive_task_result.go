@@ -138,8 +138,6 @@ var DriveTaskResult = common.Shortcut{
 		taskID := runtime.Str("task-id")
 		fileToken := runtime.Str("file-token")
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Querying %s task result...\n", scenario)
-
 		var result map[string]interface{}
 		var err error
 

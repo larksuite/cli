@@ -157,10 +157,6 @@ func UploadDriveMediaMultipartTyped(runtime *RuntimeContext, cfg DriveMediaMulti
 	if err != nil {
 		return "", fileevent.ReportUploadError(runtime, err, meta)
 	}
-	if !cfg.Quiet {
-		fmt.Fprintf(runtime.IO().ErrOut, "Multipart upload initialized: %d chunks x %s\n", session.BlockNum, FormatSize(session.BlockSize))
-	}
-
 	meta.APIPath = driveMediaUploadPartPath
 	if err = uploadDriveMediaMultipartPartsTyped(runtime, cfg, session); err != nil {
 		return "", fileevent.ReportUploadError(runtime, err, meta)
@@ -258,9 +254,6 @@ func uploadDriveMediaMultipartPartsTyped(runtime *RuntimeContext, cfg DriveMedia
 
 		if err := uploadDriveMediaMultipartPartTyped(runtime, session.UploadID, seq, buffer[:n]); err != nil {
 			return err
-		}
-		if !cfg.Quiet {
-			fmt.Fprintf(runtime.IO().ErrOut, "  Block %d/%d uploaded (%s)\n", seq+1, session.BlockNum, FormatSize(int64(n)))
 		}
 		remaining -= int64(n)
 	}

@@ -118,7 +118,6 @@ func newDriveCommentSolvedShortcut(cfg driveCommentSolvedConfig) common.Shortcut
 				return err
 			}
 
-			fmt.Fprintf(runtime.IO().ErrOut, "%s comment %s in %s...\n", cfg.Verb, spec.CommentID, common.MaskToken(target.FileToken))
 			path := fmt.Sprintf(
 				"/open-apis/drive/v1/files/%s/comments/%s",
 				validate.EncodePathSegment(target.FileToken),

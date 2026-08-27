@@ -627,8 +627,8 @@ func TestWikiNodeCreateMountedExecuteWithExplicitSpaceID(t *testing.T) {
 	if captured["title"] != "Wiki Node" {
 		t.Fatalf("captured title = %#v, want %q", captured["title"], "Wiki Node")
 	}
-	if got := stderr.String(); !strings.Contains(got, "Created wiki node in space space_123 via explicit_space_id.") {
-		t.Fatalf("stderr = %q, want completed creation message", got)
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no completed creation message", stderr.String())
 	}
 }
 
@@ -934,14 +934,8 @@ func TestRunWikiNodeCreateRetriesOnLockContention(t *testing.T) {
 	if execution.Node.NodeToken != "wik_created" {
 		t.Fatalf("node token = %q, want %q", execution.Node.NodeToken, "wik_created")
 	}
-	if !strings.Contains(stderr.String(), "lock contention") {
-		t.Fatalf("stderr = %q, want lock contention log", stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "retrying (attempt 1/") {
-		t.Fatalf("stderr = %q, want attempt 1 log", stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "retrying (attempt 2/") {
-		t.Fatalf("stderr = %q, want attempt 2 log", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no retry progress", stderr.String())
 	}
 }
 
@@ -1103,11 +1097,8 @@ func TestRunWikiNodeCreateRetriesOnFirstLockThenSucceeds(t *testing.T) {
 	if execution.Node.NodeToken != "wik_created" {
 		t.Fatalf("node token = %q, want %q", execution.Node.NodeToken, "wik_created")
 	}
-	if !strings.Contains(stderr.String(), "retrying (attempt 1/") {
-		t.Fatalf("stderr = %q, want attempt 1 log", stderr.String())
-	}
-	if strings.Contains(stderr.String(), "retrying (attempt 2/") {
-		t.Fatalf("stderr = %q, should not contain attempt 2 log", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no retry progress", stderr.String())
 	}
 }
 

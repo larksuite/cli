@@ -171,11 +171,8 @@ var DriveUpload = common.Shortcut{
 		}
 		fileSize := info.Size()
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Uploading: %s (%s) -> %s\n", fileName, common.FormatSize(fileSize), target.Label())
-
 		var uploadResult driveUploadResult
 		if fileSize > common.MaxDriveMediaUploadSinglePartSize {
-			fmt.Fprintf(runtime.IO().ErrOut, "File exceeds 20MB, using multipart upload\n")
 			uploadResult, err = uploadFileMultipart(ctx, runtime, spec.FilePath, fileName, target, fileSize, spec.FileToken)
 		} else {
 			uploadResult, err = uploadFileToDrive(ctx, runtime, spec.FilePath, fileName, target, fileSize, spec.FileToken)
@@ -347,9 +344,6 @@ func uploadFileMultipart(_ context.Context, runtime *common.RuntimeContext, file
 			uploadID, blockSize, blockNum), meta)
 	}
 
-	fmt.Fprintf(runtime.IO().ErrOut, "Multipart upload: %s, block size %s, %d block(s)\n",
-		common.FormatSize(fileSize), common.FormatSize(blockSize), blockNum)
-
 	// Step 2: Upload parts
 	meta.APIPath = driveUploadPartPath
 	for seq := 0; seq < blockNum; seq++ {
@@ -387,7 +381,6 @@ func uploadFileMultipart(_ context.Context, runtime *common.RuntimeContext, file
 			return driveUploadResult{}, fileevent.ReportUploadError(runtime, err, meta)
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "  Block %d/%d uploaded (%s)\n", seq+1, blockNum, common.FormatSize(partSize))
 	}
 
 	// Step 3: Finish

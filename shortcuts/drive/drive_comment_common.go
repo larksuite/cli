@@ -177,7 +177,6 @@ func resolveDriveCommentTarget(ctx context.Context, runtime *common.RuntimeConte
 		return driveCommentTarget{FileToken: ref.Token, FileType: ref.Type}, nil
 	}
 
-	fmt.Fprintf(runtime.IO().ErrOut, "Resolving wiki node: %s\n", common.MaskToken(ref.Token))
 	data, err := runtime.CallAPITyped(
 		"GET",
 		"/open-apis/wiki/v2/spaces/get_node",
@@ -203,7 +202,6 @@ func resolveDriveCommentTarget(ctx context.Context, runtime *common.RuntimeConte
 			op.targetTypeList(),
 		).WithParam(ref.SourceFlag)
 	}
-	fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
 	return driveCommentTarget{FileToken: objToken, FileType: objType, WikiToken: ref.Token}, nil
 }
 

@@ -151,7 +151,6 @@ func pollDriveTaskCheck(runtime *common.RuntimeContext, taskID string) (driveTas
 		status, err := getDriveTaskCheckStatus(runtime, taskID)
 		if err != nil {
 			lastErr = err
-			fmt.Fprintf(runtime.IO().ErrOut, "Error polling task %s: %s\n", taskID, err)
 			continue
 		}
 		seenStatus = true
@@ -159,7 +158,6 @@ func pollDriveTaskCheck(runtime *common.RuntimeContext, taskID string) (driveTas
 		// Success and failure are terminal backend states. Any other value is kept
 		// as pending so the caller can decide whether to continue or resume later.
 		if status.Ready() {
-			fmt.Fprintf(runtime.IO().ErrOut, "Drive task completed successfully.\n")
 			return status, true, nil
 		}
 		if status.Failed() {

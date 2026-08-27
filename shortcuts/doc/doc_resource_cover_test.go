@@ -224,8 +224,8 @@ func TestDocResourceUpdateCoverUploadsFileAndReturnsFullTokenOnlyOnStdout(t *tes
 		}
 	}
 
-	if strings.Contains(stderr.String(), fileToken) {
-		t.Fatalf("stderr leaked full file_token: %s", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no cover upload progress", stderr.String())
 	}
 	data := decodeDocResourceOutput(t, stdout).Data
 	if data["file_token"] != fileToken {

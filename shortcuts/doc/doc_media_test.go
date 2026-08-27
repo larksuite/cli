@@ -437,12 +437,8 @@ func TestDocMediaInsertExecuteFromClipboard(t *testing.T) {
 		t.Fatalf("unexpected error: %v — stderr: %s", err, stderr.String())
 	}
 
-	// stderr should show clipboard read + file name "clipboard.png"
-	if !strings.Contains(stderr.String(), "Reading image from clipboard") {
-		t.Errorf("stderr missing clipboard-read log: %s", stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "clipboard.png") {
-		t.Errorf("stderr missing clipboard.png file name: %s", stderr.String())
+	if stderr.Len() != 0 {
+		t.Errorf("stderr = %q, want no clipboard progress", stderr.String())
 	}
 	// stdout should include the file_token
 	if !strings.Contains(stdout.String(), "file_clip_abc") {
@@ -509,8 +505,8 @@ func TestDocMediaInsertExecuteResolvesWikiBeforeFileCheck(t *testing.T) {
 	if !strings.Contains(err.Error(), "file not found") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(stderr.String(), "Resolved wiki to docx") {
-		t.Fatalf("stderr missing wiki resolution log: %s", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no wiki resolution progress", stderr.String())
 	}
 }
 
@@ -1091,7 +1087,7 @@ func TestDocMediaPreviewRejectsHTTPErrorBeforeWrite(t *testing.T) {
 }
 
 func TestDocMediaPreviewAppendsExtensionFromRFC5987Filename(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-preview-disposition-app"))
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-preview-disposition-app"))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/drive/v1/medias/tok_123/preview_download?preview_type=" + PreviewType_SOURCE_FILE,
@@ -1120,6 +1116,9 @@ func TestDocMediaPreviewAppendsExtensionFromRFC5987Filename(t *testing.T) {
 	wantPath := mustDocSafeOutputPath(t, "preview.csv")
 	if got.Data.SavedPath != wantPath {
 		t.Fatalf("saved_path = %q, want %q", got.Data.SavedPath, wantPath)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no preview progress", stderr.String())
 	}
 	if _, err := os.Stat(wantPath); err != nil {
 		t.Fatalf("expected preview file at %q: %v", wantPath, err)

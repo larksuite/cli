@@ -91,11 +91,6 @@ var DocMediaUpload = common.Shortcut{
 		}
 
 		fileName := filepath.Base(filePath)
-		fmt.Fprintf(runtime.IO().ErrOut, "Uploading: %s (%d bytes)\n", fileName, stat.Size())
-		if stat.Size() > common.MaxDriveMediaUploadSinglePartSize {
-			fmt.Fprintf(runtime.IO().ErrOut, "File exceeds 20MB, using multipart upload\n")
-		}
-
 		fileToken, err := uploadDocMediaFile(runtime, UploadDocMediaFileConfig{
 			FilePath:   filePath,
 			FileName:   fileName,

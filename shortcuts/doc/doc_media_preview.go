@@ -52,8 +52,6 @@ var DocMediaPreview = common.Shortcut{
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", err).WithParam("--output").WithCause(err)
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Previewing: media %s\n", common.MaskToken(token))
-
 		encodedToken := validate.EncodePathSegment(token)
 		apiPath := fmt.Sprintf("/open-apis/drive/v1/medias/%s/preview_download", encodedToken)
 

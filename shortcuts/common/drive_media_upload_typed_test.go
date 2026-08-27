@@ -583,6 +583,13 @@ func TestUploadDriveMediaMultipartTypedReportsFileEventOnSuccess(t *testing.T) {
 	if fileToken != "file_multi_ok" {
 		t.Fatalf("fileToken = %q, want file_multi_ok", fileToken)
 	}
+	stderr, ok := runtime.IO().ErrOut.(*bytes.Buffer)
+	if !ok {
+		t.Fatalf("stderr writer = %T, want *bytes.Buffer", runtime.IO().ErrOut)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no multipart progress", stderr.String())
+	}
 
 	tags := assertSingleReport(t, reportStub, fileevent.StatusSuccess)
 	if _, ok := tags["upload_mode"]; ok {
