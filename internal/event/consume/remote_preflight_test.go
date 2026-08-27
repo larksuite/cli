@@ -5,6 +5,7 @@ package consume
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -61,6 +62,10 @@ func TestCheckRemoteConnections_MalformedJSONTruncationPreservesUTF8(t *testing.
 	_, err := CheckRemoteConnections(context.Background(), c)
 	if err == nil {
 		t.Fatal("expected decode error")
+	}
+	var syntaxErr *json.SyntaxError
+	if !errors.As(err, &syntaxErr) {
+		t.Fatalf("error does not preserve JSON decode cause: %v", err)
 	}
 	if !utf8.ValidString(err.Error()) {
 		t.Fatalf("truncated error is not valid UTF-8: %q", err)
