@@ -394,3 +394,67 @@ func TestAPIPaginate_StreamBusinessErrorIsMarkedRaw(t *testing.T) {
 		t.Fatalf("stderr bytes = %q, want empty", got)
 	}
 }
+
+// firstPageHasMoreStub registers a successful page 1 that advertises a next
+// page, so the loop is guaranteed to attempt page 2.
+func firstPageHasMoreStub(reg *httpmock.Registry) {
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/test/v1/items",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":      []interface{}{map[string]interface{}{"id": "first"}},
+				"has_more":   true,
+				"page_token": "next-1",
+			},
+		},
+	})
+}
+
+// apiPaginate's return value is what determines the process exit code, so a
+// nil here means the CLI would exit 0 on a partial result.
+func TestAPIPaginate_LaterPageTransportErrorEmitsNoStdout(t *testing.T) {
+	ac, out, errOut, reg := newAPIPaginateTestHarness(t)
+	firstPageHasMoreStub(reg)
+	reg.Register(&httpmock.Stub{
+		URL:   "/open-apis/test/v1/items",
+		Error: errors.New("simulated transport failure"),
+	})
+
+	err := apiPaginate(context.Background(), ac, apiPaginateRequest(),
+		output.FormatJSON, "", out, errOut, "lark-cli api GET",
+		client.PaginationOptions{PageLimit: 0, PageDelay: -1})
+
+	if err == nil {
+		t.Fatal("apiPaginate() error = nil, want transport error from page 2")
+	}
+	if got := out.String(); got != "" {
+		t.Fatalf("stdout bytes = %q, want empty on a failed pagination run", got)
+	}
+	if got := errOut.String(); got != "" {
+		t.Fatalf("stderr bytes = %q, want empty", got)
+	}
+}
+
+func TestAPIPaginate_LaterPageBusinessErrorEmitsNoStdout(t *testing.T) {
+	ac, out, errOut, reg := newAPIPaginateTestHarness(t)
+	firstPageHasMoreStub(reg)
+	reg.Register(&httpmock.Stub{
+		URL:  "/open-apis/test/v1/items",
+		Body: map[string]interface{}{"code": 230027, "msg": "user not authorized"},
+	})
+
+	err := apiPaginate(context.Background(), ac, apiPaginateRequest(),
+		output.FormatJSON, "", out, errOut, "lark-cli api GET",
+		client.PaginationOptions{PageLimit: 0, PageDelay: -1})
+
+	if err == nil {
+		t.Fatal("apiPaginate() error = nil, want business error from page 2")
+	}
+	if got := out.String(); got != "" {
+		t.Fatalf("stdout bytes = %q, want empty on a failed pagination run", got)
+	}
+	if bytes.Contains(out.Bytes(), []byte(`"ok": true`)) {
+		t.Fatalf("failed pagination stdout contains a success envelope:\n%s", out.Bytes())
+	}
+}
