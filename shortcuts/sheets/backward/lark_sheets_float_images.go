@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
@@ -17,46 +16,20 @@ import (
 )
 
 // Drive media parent_type values for uploading an image into a spreadsheet.
-// Native spreadsheets use "sheet_image"; imported "office" spreadsheets use a
-// legacy synthetic-token prefix or a 28-character token whose interleaved
-// product/region marker is "OFL0X". The backend requires
-// "office_sheet_file" for those imported spreadsheets.
+// Native spreadsheets use "sheet_image"; the backend requires
+// "office_sheet_file" for a spreadsheet backed by an imported office file.
+// Recognising one is common.IsLocalOfficeToken's job — see the equivalent note
+// in shortcuts/sheets/helpers.go, whose mapping this deliberately mirrors for
+// the deprecated surface.
 const (
 	sheetImageParentType      = "sheet_image"
 	officeSheetFileParentType = "office_sheet_file"
-	fakeOfficePrefix          = "fake_office_"
-	localOfficePrefix         = "local_office_"
 )
-
-// officePrefixes are the legacy synthetic token prefixes an imported "office"
-// spreadsheet may carry.
-var officePrefixes = []string{fakeOfficePrefix, localOfficePrefix}
-
-func isOfficeSpreadsheet(spreadsheetToken string) bool {
-	for _, prefix := range officePrefixes {
-		if strings.HasPrefix(spreadsheetToken, prefix) {
-			return true
-		}
-	}
-	if len(spreadsheetToken) < 25 {
-		return false
-	}
-	// The five-character marker occupies positions 5, 10, 15, 20, and 25
-	// (1-based) in the interleaved token.
-	marker := []byte{
-		spreadsheetToken[4],
-		spreadsheetToken[9],
-		spreadsheetToken[14],
-		spreadsheetToken[19],
-		spreadsheetToken[24],
-	}
-	return string(marker) == "OFL0X"
-}
 
 // sheetMediaParentType returns the drive media parent_type to use when
 // uploading an image whose parent_node is spreadsheetToken.
 func sheetMediaParentType(spreadsheetToken string) string {
-	if isOfficeSpreadsheet(spreadsheetToken) {
+	if common.IsLocalOfficeToken(spreadsheetToken) {
 		return officeSheetFileParentType
 	}
 	return sheetImageParentType

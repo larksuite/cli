@@ -25,9 +25,21 @@ import (
 
 // TestSheetMediaParentType pins the token→parent_type mapping that every
 // sheets image-upload entry point funnels through. Native spreadsheet tokens
-// use "sheet_image"; imported "office" spreadsheets use either a legacy
-// prefix or the interleaved "OFL0X" marker and must upload with
-// "office_sheet_file".
+// use "sheet_image"; a spreadsheet backed by an imported office file must upload
+// with "office_sheet_file".
+//
+// The token shape itself is common.IsLocalOfficeToken's contract and is pinned
+// exhaustively in TestIsLocalOfficeToken. What this test owns is the sheets
+// half: that the shared answer selects office_sheet_file and nothing else does.
+// The shape cases are kept here anyway, deliberately duplicated, because they
+// are what would catch the mapping being wired to a different predicate — or to
+// none — and a table holding only native tokens could not tell a working mapping
+// from a hardcoded sheetImageParentType.
+//
+// Four labels here used to be wrong: the row called "25 char, at boundary" held
+// a 27-character token and the three "new 27-char" rows held 28-character ones,
+// so the length floor the labels claimed to cover was never actually tested. The
+// 25/24 rows below are the real boundary.
 func TestSheetMediaParentType(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -38,19 +50,21 @@ func TestSheetMediaParentType(t *testing.T) {
 		{"native spreadsheet token", "shtcnABC123", sheetImageParentType},
 		{"empty token", "", sheetImageParentType},
 		{"fake_office imported token", "fake_office_abc123", officeSheetFileParentType},
-		{"fake_office token, only the prefix", fakeOfficePrefix, officeSheetFileParentType},
+		{"fake_office token, only the prefix", common.FakeOfficeTokenPrefix, officeSheetFileParentType},
 		{"local_office imported token", "local_office_abc123", officeSheetFileParentType},
-		{"local_office token, only the prefix", localOfficePrefix, officeSheetFileParentType},
+		{"local_office token, only the prefix", common.LocalOfficeTokenPrefix, officeSheetFileParentType},
 		{"interleaved OFL0X office token", "aaaaOaaaaFaaaaLaaaa0aaaaXaaa", officeSheetFileParentType},
 		{"interleaved exlcn token", "abcdeefghxijkllmnopcqrstnuv", sheetImageParentType},
 		{"interleaved shtcn native token", "abcdsefghhijkltmnopcqrstnuv", sheetImageParentType},
 		{"interleaved pptcn token", "abcdpefghpijkltmnopcqrstnuv", sheetImageParentType},
 		{"interleaved wodcn token", "abcdwefghoijkldmnopcqrstnuv", sheetImageParentType},
-		{"interleaved OFL0X marker with short length (25 char, at boundary)", "aaaaOaaaaFaaaaLaaaa0aaaaXaa", officeSheetFileParentType},
-		{"interleaved OFL0X marker with long length (29 char)", "aaaaOaaaaFaaaaLaaaa0aaaaXaaaa", officeSheetFileParentType},
-		{"new 27-char OFL0X excel token", "bbbbObbbbFbbbbLbbbb0bbbbXbbE", officeSheetFileParentType},
-		{"new 27-char OFL0X ppt token", "ccccOccccFccccLcccc0ccccXccP", officeSheetFileParentType},
-		{"new 27-char OFL0X word token", "ddddOddddFddddLdddd0ddddXddW", officeSheetFileParentType},
+		{"interleaved OFL0X, 25 chars (marker exactly fills the token)", "aaaaOaaaaFaaaaLaaaa0aaaaX", officeSheetFileParentType},
+		{"interleaved OFL0X, 24 chars (one short of holding the marker)", "aaaaOaaaaFaaaaLaaaa0aaaa", sheetImageParentType},
+		{"interleaved OFL0X, 27 chars (current local-office format)", "aaaaOaaaaFaaaaLaaaa0aaaaXaa", officeSheetFileParentType},
+		{"interleaved OFL0X, 29 chars (longer than any known format)", "aaaaOaaaaFaaaaLaaaa0aaaaXaaaa", officeSheetFileParentType},
+		{"interleaved OFL0X, 28 chars with xlsx office-type enum", "bbbbObbbbFbbbbLbbbb0bbbbXbbE", officeSheetFileParentType},
+		{"interleaved OFL0X, 28 chars with ppt office-type enum", "ccccOccccFccccLcccc0ccccXccP", officeSheetFileParentType},
+		{"interleaved OFL0X, 28 chars with word office-type enum", "ddddOddddFddddLdddd0ddddXddW", officeSheetFileParentType},
 		{"fake_office prefix mid-string is not matched", "shtfake_office_abc", sheetImageParentType},
 		{"local_office prefix mid-string is not matched", "shtlocal_office_abc", sheetImageParentType},
 	}
