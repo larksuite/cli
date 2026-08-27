@@ -419,11 +419,15 @@ func (c *APIClient) paginateLoop(ctx context.Context, request RawApiRequest, opt
 			code, _ := util.ToFloat64(resultMap["code"])
 			if code != 0 {
 				allResults = append(allResults, result)
+				// Page 1 deliberately returns a nil error: the command layer's
+				// CheckResponse owns that case and dumps the raw response to
+				// stdout, a long-standing output contract. Do not collapse this
+				// branch into the one below — the two are not equivalent.
 				if page == 1 {
 					return allResults, nil
 				}
 				fmt.Fprintf(c.ErrOut, "[page %d] API error (code=%.0f), stopping pagination\n", page, code)
-				break
+				return allResults, c.CheckResponse(result, opts.Identity)
 			}
 		}
 
