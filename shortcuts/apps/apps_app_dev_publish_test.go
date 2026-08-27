@@ -331,8 +331,39 @@ func TestAppDevPublishValidate_BadAppID(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
-	if !strings.Contains(p.Message, "app_") {
-		t.Errorf("got %v", p)
+	if !strings.Contains(p.Message, ".spark/meta.json app_id") {
+		t.Errorf("message should point at meta.json, got %q", p.Message)
+	}
+	// This command has no --app-id flag; the error must not mention one.
+	if strings.Contains(p.Message, "--app-id") || strings.Contains(p.Hint, "--app-id") {
+		t.Errorf("error must not reference a nonexistent --app-id flag: %v", p)
+	}
+	if !strings.Contains(p.Hint, "+list") {
+		t.Errorf("hint = %q", p.Hint)
+	}
+}
+
+func TestAppDevPublishValidate_SensitiveGatesDryRun(t *testing.T) {
+	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
+	writeDistFiles(t, filepath.Join(root, appDevDistDir),
+		[]string{"output/index.html", "output/routes.json", "output_resource/.env"})
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	// Sensitive hits are the one exception to dry-run's exit-0 convention:
+	// Validate rejects before the DryRun branch runs.
+	err := runAppsShortcut(t, AppsAppDevPublish,
+		[]string{"+app-dev-publish", "--skip-build", "--as", "user", "--dry-run"}, factory, stdout)
+	p := requireAppsProblem(t, err, errs.CategoryValidation)
+	if !strings.Contains(p.Message, "dist contains") || !strings.Contains(p.Message, "credential file") {
+		t.Errorf("message = %q", p.Message)
+	}
+	// This command has no --path flag; the error must not mention one.
+	if strings.Contains(p.Message, "--path") {
+		t.Errorf("error must not reference a nonexistent --path flag: %q", p.Message)
+	}
+	// --allow-sensitive waives the gate and dry-run goes back to exit 0.
+	if err := runAppsShortcut(t, AppsAppDevPublish,
+		[]string{"+app-dev-publish", "--skip-build", "--allow-sensitive", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
+		t.Errorf("allow-sensitive dry-run should pass: %v", err)
 	}
 }
 

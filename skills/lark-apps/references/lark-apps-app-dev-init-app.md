@@ -10,7 +10,7 @@
 
 - 必填：`--type`，取值 `frontend`（映射模板 react-standard-webapp）或 `full_stack`（映射 react-express-standard-fullstack）。
 - 可选：`--dir`，相对路径，默认 `./<模板名>`；目录已存在且非空会被拒绝。
-- 前置：本机需有 Node.js（提供 npx）。内部执行 `npx @lark-apaas/miaoda-cli app init --template <模板名> --skip-install` 完成 scaffold，默认不装依赖（秒级返回）。
+- 前置：已完成 `lark-cli config init`（框架级要求，纯本地命令也需要）；本机需有 Node.js（提供 npx）。内部执行 `npx @lark-apaas/miaoda-cli app init --template <模板名> --skip-install` 完成 scaffold，默认不装依赖（秒级返回）。
 
 ## 示例
 

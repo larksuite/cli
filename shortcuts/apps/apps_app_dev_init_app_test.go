@@ -340,4 +340,30 @@ func TestAppDevInitAppDryRun(t *testing.T) {
 	if data["target_dir"] != filepath.Join(".", "react-standard-webapp") {
 		t.Errorf("target_dir = %v", data["target_dir"])
 	}
+	if data["target_dir_state"] != "ok (absent or empty)" {
+		t.Errorf("target_dir_state = %v", data["target_dir_state"])
+	}
+}
+
+func TestAppDevInitAppDryRun_DirNotEmptySurfaced(t *testing.T) {
+	dir := relAppDevDir(t)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "x.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsAppDevInitApp,
+		[]string{"+app-dev-init-app", "--type", "frontend", "--dir", dir, "--as", "user", "--dry-run"}, factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+	data, err := decodeDryRunDataMap(stdout.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, _ := data["target_dir_state"].(string)
+	if !strings.Contains(state, "not usable") {
+		t.Errorf("target_dir_state = %q, want non-empty dir surfaced", state)
+	}
 }

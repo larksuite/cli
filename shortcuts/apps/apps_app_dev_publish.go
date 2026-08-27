@@ -151,10 +151,20 @@ func validateAppDevDist(fio fileio.FileIO, distPath string, allowSensitive bool)
 			}
 		}
 		if len(hits) > 0 {
-			return nil, sensitiveCandidatesError(hits)
+			return nil, appDevSensitiveCandidatesError(hits)
 		}
 	}
 	return candidates, nil
+}
+
+// appDevSensitiveCandidatesError mirrors sensitiveCandidatesError with
+// publish-specific wording: this command has no --path flag and the payload
+// is always ./dist, so the html-publish message would misdirect the user.
+func appDevSensitiveCandidatesError(hits []string) error {
+	return appsValidationError(
+		"dist contains %d credential file(s) that should not be published: %s",
+		len(hits), truncatedJoin(hits, maxSensitiveListInError)).
+		WithHint("remove these files from the build output, OR pass --allow-sensitive if shipping them is intentional (e.g. a docs site demoing credential-file formats)")
 }
 
 // envCommandRunner runs a subprocess with extra environment variables
@@ -222,8 +232,31 @@ var AppsAppDevPublish = common.Shortcut{
 			return appsFailedPreconditionError(".spark/meta.json has no app_id").
 				WithHint("create the app with `lark-cli apps +create --name <name>`, then write the returned app_id into .spark/meta.json")
 		}
-		if err := validateRealAppID(appID); err != nil {
-			return err
+		// The app id comes from meta.json, not a flag — a bespoke error here
+		// instead of validateRealAppID, whose --app-id wording would point the
+		// user at a flag this command does not have.
+		if !strings.HasPrefix(appID, "app_") {
+			return appsFailedPreconditionError(
+				`.spark/meta.json app_id %q is invalid (must start with "app_")`, appID).
+				WithHint("fix app_id in .spark/meta.json: find the right id with `lark-cli apps +list`, or create the app with `lark-cli apps +create --name <name>`")
+		}
+		// Sensitive-file scan lives in Validate so that --dry-run exits
+		// non-zero on a hit — the one deliberate exception to dry-run's
+		// exit-0 convention (mirrors +html-publish). Walk errors (e.g. dist
+		// missing) are not fatal here; DryRun/Execute surface them with
+		// richer context.
+		if !rctx.Bool("allow-sensitive") {
+			if candidates, err := walkHTMLPublishCandidates(rctx.FileIO(), appDevDistDir); err == nil {
+				var hits []string
+				for _, c := range candidates {
+					if isSensitiveCandidate(appDevDistDir, c) {
+						hits = append(hits, c.RelPath)
+					}
+				}
+				if len(hits) > 0 {
+					return appDevSensitiveCandidatesError(hits)
+				}
+			}
 		}
 		if rctx.Bool("skip-build") {
 			if _, err := rctx.FileIO().Stat(appDevDistDir); err != nil {
