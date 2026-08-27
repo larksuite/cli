@@ -2417,17 +2417,10 @@ var WorkbookImport = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		// KNOWN GAP (sheets-scoped change): the corrected extension belongs in
-		// the result — the backend built a .xlsx from a file the caller called
-		// .xls — but drive.RunImport owns the whole output envelope and has no
-		// slot for a caller-supplied correction. Structuring it means adding
-		// one to the shared drive import core, which is out of scope here, so
-		// the note stays on stderr for now. This is the one success-path stderr
-		// write left in the sheets domain (see the allowlist in
-		// TestNoDirectStderrWritesInSheetsPackages).
-		if note := workbookImportMislabelNote(params); note != "" {
-			fmt.Fprintln(runtime.IO().ErrOut, note)
-		}
+		// The corrected extension changes what the backend was asked to build,
+		// so it rides out in the result as input_corrections rather than on
+		// stderr, where a successful import looked like a failed one.
+		params.InputCorrections = workbookImportCorrections(params)
 		return drive.RunImport(ctx, runtime, params)
 	},
 }
@@ -2511,6 +2504,23 @@ func sniffWorkbookContainer(fio fileio.FileIO, filePath string) (string, bool) {
 
 // workbookImportMislabelNote returns a user-facing note when content sniffing
 // overrode the declared extension, or "" when no correction was applied.
+// workbookImportCorrections is the machine-readable form of
+// workbookImportMislabelNote, for the executed import's result. The prose note
+// stays for the dry-run preview, which is human-facing.
+func workbookImportCorrections(params drive.ImportParams) []drive.ImportInputCorrection {
+	declared := strings.TrimPrefix(strings.ToLower(filepath.Ext(params.File)), ".")
+	if params.FileExtension == "" || params.FileExtension == declared {
+		return nil
+	}
+	return []drive.ImportInputCorrection{{
+		Field:    "file_extension",
+		Declared: declared,
+		Actual:   params.FileExtension,
+		Reason: fmt.Sprintf("%s is named .%s but its content is a .%s workbook; imported as .%s",
+			filepath.Base(params.File), declared, params.FileExtension, params.FileExtension),
+	}}
+}
+
 func workbookImportMislabelNote(params drive.ImportParams) string {
 	declared := strings.TrimPrefix(strings.ToLower(filepath.Ext(params.File)), ".")
 	if params.FileExtension == "" || params.FileExtension == declared {

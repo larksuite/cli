@@ -15,32 +15,29 @@ import (
 
 // The sheets success contract, and the exact reach of what is proven here:
 //
-//	code OWNED by the sheets packages writes its whole answer to stdout and
-//	nothing to stderr on a successful run.
+//	a successful JSON run writes its whole answer to stdout and nothing to
+//	stderr.
 //
 // Advisories the domain used to print on the success path (ignored sub-op
 // locators, emulated semantics, deprecated spellings, the dropdown
-// option-error steer) now travel in the payload. That matters because
-// PowerShell's native-command handling and most agent harnesses treat
-// non-empty stderr as failure: a warning printed there turned a working call
-// into a reported error.
+// option-error steer, a corrected file extension) now travel in the payload.
+// That matters because PowerShell's native-command handling and most agent
+// harnesses treat non-empty stderr as failure: a warning printed there turned
+// a working call into a reported error.
 //
-// NOT proven here, and deliberately still noisy — these shortcuts reach shared
-// implementations outside the sheets packages, whose cleanup belongs to the
-// domain that owns them:
+// The coverage below includes the two commands that delegate to the shared
+// drive export / import cores, since those cores were cleaned up as part of
+// this change. Two paths a sheets caller can still reach are NOT covered,
+// because their output comes from shared helpers this change does not touch:
 //
-//   - +workbook-export      → drive.RunExport narrates task creation, each
-//     poll, and completion
-//   - +workbook-import      → drive.RunImport narrates upload, task creation
-//     and completion; the sheets-owned extension-correction note is the one
-//     allowlisted write below
-//   - +media-upload (>20MB) → common.UploadDriveMediaMultipartTyped narrates
-//     the chunk plan and every block
+//   - +media-upload over 20MB → common.UploadDriveMediaMultipartTyped narrates
+//     the chunk plan and every uploaded block
+//   - any bot-identity create/import → common.AutoGrantCurrentUserDrivePermission
+//     duplicates its permission_grant result on stderr when the grant is
+//     skipped or fails
 //
-// Do not read TestSheetsSuccessPathsLeaveStderrEmpty as a domain-wide
-// guarantee: it covers the paths this change actually fixed. When the shared
-// paths are cleaned up, add those three commands here and delete the
-// allowlist in TestNoDirectStderrWritesInSheetsPackages.
+// Both are documented gaps, not oversights; the tests below run as user
+// identity and under the single-part threshold accordingly.
 
 // runCapturingStderr runs a shortcut against stubs and returns stdout, stderr
 // and the error, so a test can assert on the reporting channel and not just
@@ -112,38 +109,15 @@ func TestSheetsSuccessPathsLeaveStderrEmpty(t *testing.T) {
 	}
 }
 
-// allowedSheetsStderrWrite is the single tolerated direct stderr write in the
-// sheets packages, matched exactly rather than by file: +workbook-import's
-// extension-correction note has nowhere else to go, because drive.RunImport
-// owns the whole output envelope and has no slot for a caller-supplied
-// correction. Giving it one is a change to the shared drive import core, which
-// this sheets-scoped pass deliberately leaves alone.
-//
-// Keyed by file and matched on the exact statement, so any OTHER write in the
-// same file is still caught.
-var allowedSheetsStderrWrite = struct {
-	file string
-	line string
-}{
-	file: "lark_sheet_workbook.go",
-	line: "fmt.Fprintln(runtime.IO().ErrOut, note)",
-}
-
 // TestNoDirectStderrWritesInSheetsPackages is the anti-regression guard the
-// audit asks for: sheets code must not write to ErrOut, with exactly one
-// documented exception. Typed errors already reach stderr through the emitter,
-// and everything else belongs in the result. If a future path genuinely needs
-// a human-facing channel, it has to be an explicitly subscribed one, not a
-// bare Fprintf here.
-//
-// The exception is asserted to still exist, not merely permitted: when the
-// shared import core can carry input corrections and that write goes away,
-// this test fails and forces the allowlist (and the contract comment at the
-// top of this file) to be updated with it.
+// audit asks for: sheets code must not write to ErrOut at all — there is no
+// allowlist. Typed errors already reach stderr through the emitter, and
+// everything else belongs in the result. If a future path genuinely needs a
+// human-facing channel, it has to be an explicitly subscribed one, not a bare
+// Fprintf here.
 func TestNoDirectStderrWritesInSheetsPackages(t *testing.T) {
 	t.Parallel()
 
-	allowedHits := 0
 	for _, dir := range []string{".", "backward"} {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
@@ -164,21 +138,11 @@ func TestNoDirectStderrWritesInSheetsPackages(t *testing.T) {
 				if !strings.Contains(line, "ErrOut") || strings.HasPrefix(line, "//") {
 					continue
 				}
-				if name == allowedSheetsStderrWrite.file && line == allowedSheetsStderrWrite.line {
-					allowedHits++
-					continue
-				}
 				t.Errorf("%s:%d writes to stderr on a shortcut path: %s\n"+
 					"put the information in the success payload (warnings / effective_operation / "+
 					"deprecation) instead", path, i+1, line)
 			}
 		}
-	}
-
-	if allowedHits != 1 {
-		t.Errorf("expected exactly 1 allowlisted stderr write (%s in %s), found %d — "+
-			"if it was removed, delete the allowlist and extend the contract comment at the top of this file",
-			allowedSheetsStderrWrite.line, allowedSheetsStderrWrite.file, allowedHits)
 	}
 }
 
@@ -286,61 +250,5 @@ func TestBatchUpdateSurfacesIgnoredLocatorsInPayload(t *testing.T) {
 	}
 	if warning, _ := warnings[0].(string); !strings.Contains(warning, "excel_id") {
 		t.Errorf("warning should name the ignored key, got %q", warnings[0])
-	}
-}
-
-// TestKnownGap_SharedCoresStillWriteStderr makes the scope boundary executable
-// instead of leaving it as prose. +workbook-export and +workbook-import
-// delegate to drive.RunExport / drive.RunImport, which narrate task creation,
-// polling and completion; that code is shared with the drive domain and is not
-// this change's to touch.
-//
-// The assertion is deliberately inverted: it pins that the noise is STILL
-// there. When the shared cores stop writing, this test fails and points at the
-// contract test that should then cover these two commands — so the gap cannot
-// quietly outlive its fix, and nobody can read the suite as claiming the whole
-// domain is already silent.
-//
-// (+media-upload over 20MB has the same shape through
-// common.UploadDriveMediaMultipartTyped, but pinning it would mean staging a
-// >20MB fixture on every run, so it is documented at the top of this file
-// rather than asserted.)
-func TestKnownGap_SharedCoresStillWriteStderr(t *testing.T) {
-	t.Parallel()
-
-	stdout, stderr, err := runCapturingStderr(t, WorkbookExport,
-		[]string{"--url", testURL, "--file-extension", "xlsx", "--as", "user"},
-		&httpmock.Stub{
-			Method: "POST",
-			URL:    "/open-apis/drive/v1/export_tasks",
-			Body: map[string]interface{}{
-				"code": 0, "msg": "ok",
-				"data": map[string]interface{}{"ticket": "tk_export"},
-			},
-		},
-		&httpmock.Stub{
-			Method: "GET",
-			URL:    "/open-apis/drive/v1/export_tasks/tk_export",
-			Body: map[string]interface{}{
-				"code": 0, "msg": "ok",
-				"data": map[string]interface{}{"result": map[string]interface{}{
-					"job_status": float64(0),
-					"file_token": "ftk_xlsx",
-					"file_name":  "report.xlsx",
-					"file_size":  float64(2048),
-				}},
-			},
-		})
-	if err != nil {
-		t.Fatalf("export execute failed: %v\nstdout=%s\nstderr=%s", err, stdout, stderr)
-	}
-
-	for _, want := range []string{"Created export task", "Export task completed"} {
-		if !strings.Contains(stderr, want) {
-			t.Errorf("expected the shared drive export core to still print %q on stderr, got: %q\n"+
-				"if the shared core was cleaned up, delete this test and add +workbook-export to "+
-				"TestSheetsSuccessPathsLeaveStderrEmpty and to the contract comment at the top of this file",
-				want, stderr)
-		}
 	}
 }

@@ -170,3 +170,49 @@ func TestWorkbookExport_LocalOfficeTokenRejectedInDryRun(t *testing.T) {
 	})
 	requireProblem(t, err, errs.CategoryValidation, errs.SubtypeFailedPrecondition, "cannot be exported")
 }
+
+// TestWorkbookExport_SuccessLeavesStderrEmpty covers the shared drive export
+// core this shortcut delegates to: creating the task, polling it and finishing
+// used to be narrated on stderr, which made a completed export read as a
+// failure to runners that key on stderr. Every one of those facts (ticket,
+// ready, file_token) is in the payload.
+func TestWorkbookExport_SuccessLeavesStderrEmpty(t *testing.T) {
+	stubs := []*httpmock.Stub{
+		{
+			Method: "POST",
+			URL:    "/open-apis/drive/v1/export_tasks",
+			Body: map[string]interface{}{
+				"code": 0, "msg": "ok",
+				"data": map[string]interface{}{"ticket": "tk_export"},
+			},
+		},
+		{
+			Method: "GET",
+			URL:    "/open-apis/drive/v1/export_tasks/tk_export",
+			Body: map[string]interface{}{
+				"code": 0, "msg": "ok",
+				"data": map[string]interface{}{"result": map[string]interface{}{
+					"job_status": float64(0),
+					"file_token": "ftk_xlsx",
+					"file_name":  "report.xlsx",
+					"file_size":  float64(2048),
+				}},
+			},
+		},
+	}
+
+	parent, stdout, stderr, reg := newTestRig(t, WorkbookExport)
+	for _, s := range stubs {
+		reg.Register(s)
+	}
+	parent.SetArgs([]string{"+workbook-export", "--url", testURL, "--file-extension", "xlsx", "--as", "user"})
+	if err := parent.Execute(); err != nil {
+		t.Fatalf("export execute failed: %v\n%s", err, stdout.String())
+	}
+	if got := stderr.String(); got != "" {
+		t.Errorf("a successful export must leave stderr empty, got: %q", got)
+	}
+	if !strings.Contains(stdout.String(), `"ticket": "tk_export"`) {
+		t.Errorf("the ticket must still be reported on stdout, got: %s", stdout.String())
+	}
+}
