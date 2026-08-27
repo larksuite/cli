@@ -60,33 +60,6 @@ func appDevBuildEnv(kvm map[string]string) (env []string, keys []string) {
 	return env, keys
 }
 
-// ensureMetaOnlineURL merge-writes online_url into <dir>/.spark/meta.json,
-// preserving existing fields. A missing file is not an error — the backfill
-// is best-effort.
-func ensureMetaOnlineURL(dir, onlineURL string) error {
-	path := filepath.Join(dir, metaRelPath)
-	b, err := os.ReadFile(path) //nolint:forbidigo // same rationale as readMetaAppID
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return appsFileIOError(err, "read %s failed: %v", metaRelPath, err)
-	}
-	var meta map[string]interface{}
-	if err := json.Unmarshal(b, &meta); err != nil {
-		return appsFileIOError(err, "parse %s failed: %v", metaRelPath, err)
-	}
-	meta["online_url"] = onlineURL
-	out, err := json.MarshalIndent(meta, "", "  ")
-	if err != nil {
-		return appsFileIOError(err, "marshal %s failed: %v", metaRelPath, err)
-	}
-	if err := os.WriteFile(path, append(out, '\n'), 0o644); err != nil { //nolint:forbidigo // same rationale
-		return appsFileIOError(err, "write %s failed: %v", metaRelPath, err)
-	}
-	return nil
-}
-
 // validateAppDevOutputs walks the declared artifact directories and builds
 // the normalized upload payload: every file under build.output lands at
 // output/ inside the zip and every file under build.output_cdn (when
@@ -104,12 +77,12 @@ func validateAppDevOutputs(fio fileio.FileIO, cfg *appDevProjectConfig, allowSen
 	if err != nil {
 		// A missing artifact directory means "build first", not a bad flag value.
 		if errors.Is(err, fs.ErrNotExist) {
-			hint := "run the build first, or drop --skip-build to let the command build (build.output is declared in miaoda.json)"
+			hint := "run the build first, or drop --skip-build to let the command build (build.output is declared in spark.json)"
 			if cfg.Buildless() {
-				hint = "this project declares no build.command, so the directory is packed as-is; create it, or point miaoda.json build.output at the right directory"
+				hint = "this project declares no build.command, so the directory is packed as-is; create it, or point spark.json build.output at the right directory"
 			}
 			return nil, -1, appsFailedPreconditionError(
-				"artifact directory %s not found (miaoda.json build.output, default dist/output)", cfg.BuildOutput).
+				"artifact directory %s not found (spark.json build.output, default dist/output)", cfg.BuildOutput).
 				WithHint(hint)
 		}
 		return nil, -1, err
@@ -134,7 +107,7 @@ func validateAppDevOutputs(fio fileio.FileIO, cfg *appDevProjectConfig, allowSen
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
 				return nil, -1, appsFailedPreconditionError(
-					"CDN artifact directory %s not found (declared in miaoda.json build.output_cdn)", cfg.BuildOutputCDN).
+					"CDN artifact directory %s not found (declared in spark.json build.output_cdn)", cfg.BuildOutputCDN).
 					WithHint("make the build produce it, or drop build.output_cdn to publish without the CDN split")
 			}
 			return nil, -1, err
@@ -257,7 +230,7 @@ func appDevSensitiveCandidatesError(hits []string) error {
 		WithHint("remove these files from the artifact directories, OR pass --allow-sensitive if shipping them is intentional (e.g. a docs site demoing credential-file formats)")
 }
 
-// resolveAppDevPublishTarget loads the project declaration (miaoda.json
+// resolveAppDevPublishTarget loads the project declaration (spark.json
 // first, legacy .spark/meta.json fallback) and resolves the publish target
 // from --app-id and the recorded app id:
 //   - flag only            -> use it (written back after a successful publish)
@@ -274,17 +247,17 @@ func resolveAppDevPublishTarget(rctx *common.RuntimeContext) (cfg *appDevProject
 	}
 	if !found {
 		return nil, "", false, appsFailedPreconditionError(
-			"current directory is not a Miaoda app project (miaoda.json not found)").
+			"current directory is not a Miaoda app project (spark.json not found)").
 			WithHint("run this command from the project root; scaffold a project with +init-template first")
 	}
 	recorded := cfg.AppID
 	switch {
 	case flagID == "" && recorded == "":
-		return nil, "", false, appsFailedPreconditionError("no publish target: %s has no app id and --app-id was not given", cfg.Source).
-			WithHint("create the app first with `lark-cli apps +create --name <name>`, then publish with `lark-cli apps +deploy --app-id <returned app_id>` (the id is saved into miaoda.json on success)")
+		return nil, "", false, appsFailedPreconditionError("no publish target: %s has no app id and --app-id was not given", sparkJSONRelPath).
+			WithHint("create the app first with `lark-cli apps +create --name <name>`, then publish with `lark-cli apps +deploy --app-id <returned app_id>` (the id is saved into spark.json on success)")
 	case flagID != "" && recorded != "" && flagID != recorded:
 		return nil, "", false, appsFailedPreconditionParamError("--app-id",
-			"%s already records app id %s but --app-id is %s; refusing to silently switch the publish target", cfg.Source, recorded, flagID).
+			"%s already records app id %s but --app-id is %s; refusing to silently switch the publish target", sparkJSONRelPath, recorded, flagID).
 			WithHint("drop --app-id to publish to the recorded app, or update the recorded app id first if you really mean to switch")
 	case flagID != "":
 		if err := validateRealAppID(flagID); err != nil {
@@ -294,7 +267,7 @@ func resolveAppDevPublishTarget(rctx *common.RuntimeContext) (cfg *appDevProject
 	default:
 		if !strings.HasPrefix(recorded, "app_") {
 			return nil, "", false, appsFailedPreconditionError(
-				`%s app id %q is invalid (must start with "app_")`, cfg.Source, recorded).
+				`%s app id %q is invalid (must start with "app_")`, sparkJSONRelPath, recorded).
 				WithHint("fix the recorded app id: find the right one with `lark-cli apps +list`, or create the app with `lark-cli apps +create --name <name>`")
 		}
 		return cfg, recorded, false, nil
@@ -421,23 +394,23 @@ func awaitAppDevRelease(ctx context.Context, rctx *common.RuntimeContext, appID,
 }
 
 // AppsDeploy builds and publishes a local web app project to its
-// Miaoda app. Run from the project root containing miaoda.json.
+// Miaoda app. Run from the project root containing spark.json.
 var AppsDeploy = common.Shortcut{
 	Service:     appsService,
 	Command:     "+deploy",
-	Description: "Build and publish a local web app project to its Miaoda app (run from the project root containing miaoda.json)",
+	Description: "Build and publish a local web app project to its Miaoda app (run from the project root containing spark.json)",
 	Risk:        "write",
 	Tips: []string{
 		"Example: lark-cli apps +deploy   (run from the project root)",
 		"Example: lark-cli apps +deploy --skip-build   (reuse the existing build.output directory)",
-		"Prerequisite: an app id in miaoda.json or via --app-id (create the app with +create first)",
+		"Prerequisite: an app id in spark.json or via --app-id (create the app with +create first)",
 	},
 	Scopes:    []string{"spark:app:write", "spark:app:read"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "app-id", Desc: "publish target app ID (app_ prefix); optional when miaoda.json already records one — on a successful publish it is saved back into miaoda.json, and a value conflicting with the recorded one is rejected"},
-		{Name: "skip-build", Type: "bool", Desc: "skip the build.command declared in miaoda.json and publish the existing build.output directory as-is (no effect on buildless projects, which never build)"},
+		{Name: "app-id", Desc: "publish target app ID (app_ prefix); optional when spark.json already records one — on a successful publish it is saved back into spark.json, and a value conflicting with the recorded one is rejected"},
+		{Name: "skip-build", Type: "bool", Desc: "skip the build.command declared in spark.json and publish the existing build.output directory as-is (no effect on buildless projects, which never build)"},
 		{Name: "allow-sensitive", Type: "bool", Desc: "skip the credential-file scan (allow .env / .npmrc / etc. in the publish payload)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
@@ -472,8 +445,8 @@ var AppsDeploy = common.Shortcut{
 		switch {
 		case cfg.Buildless():
 			if _, err := rctx.FileIO().Stat(cfg.BuildOutput); err != nil {
-				return appsFailedPreconditionError("artifact directory %s does not exist (miaoda.json build.output, default dist/output)", cfg.BuildOutput).
-					WithHint("this project declares no build.command, so the directory is packed as-is; create it, or declare build.command in miaoda.json")
+				return appsFailedPreconditionError("artifact directory %s does not exist (spark.json build.output, default dist/output)", cfg.BuildOutput).
+					WithHint("this project declares no build.command, so the directory is packed as-is; create it, or declare build.command in spark.json")
 			}
 		case rctx.Bool("skip-build"):
 			if _, err := rctx.FileIO().Stat(cfg.BuildOutput); err != nil {
@@ -483,17 +456,17 @@ var AppsDeploy = common.Shortcut{
 		default:
 			if _, err := appDevLookPath(cfg.BuildCommand[0]); err != nil {
 				return appsFailedPreconditionError("build command executable %q not found on PATH", cfg.BuildCommand[0]).
-					WithHint("install it (build.command is declared in miaoda.json), or build manually and retry with --skip-build")
+					WithHint("install it (build.command is declared in spark.json), or build manually and retry with --skip-build")
 			}
 		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		dry := common.NewDryRunAPI().
-			Desc("Resolve app id (miaoda.json / --app-id) -> GET pre_release (presigned upload URL + MIAODA_* build env) -> run build.command -> validate output layout -> zip -> PUT to TOS -> POST releases -> wait up to 60s for the async release; returns online_url, or release_id + poll hint when still publishing")
+			Desc("Resolve app id (spark.json / --app-id) -> GET pre_release (presigned upload URL + MIAODA_* build env) -> run build.command -> validate output layout -> zip -> PUT to TOS -> POST releases -> wait up to 60s for the async release; returns online_url, or release_id + poll hint when still publishing")
 		cfg, appID, fromFlag, err := resolveAppDevPublishTarget(rctx)
 		if cfg == nil {
-			cfg = &appDevProjectConfig{Source: miaodaJSONRelPath}
+			cfg = &appDevProjectConfig{}
 			applyAppDevConfigDefaults(cfg)
 		}
 		switch {
@@ -502,9 +475,9 @@ var AppsDeploy = common.Shortcut{
 		default:
 			dry.Set("app_id", appID)
 			if fromFlag {
-				dry.Set("app_id_source", "--app-id flag (will be saved into miaoda.json on success)")
+				dry.Set("app_id_source", "--app-id flag (will be saved into spark.json on success)")
 			} else {
-				dry.Set("app_id_source", cfg.Source)
+				dry.Set("app_id_source", sparkJSONRelPath)
 			}
 			dry.GET(fmt.Sprintf("%s/apps/%s/pre_release", apiBasePath, validate.EncodePathSegment(appID))).
 				PUT("<presigned upload URL from pre_release kvs " + appDevUploadURLKey + "> (https only)").
@@ -512,9 +485,9 @@ var AppsDeploy = common.Shortcut{
 				Body(map[string]string{})
 		}
 		if cfg.Buildless() {
-			dry.Set("build_command", "(buildless: miaoda.json declares no build.command; the artifact directories are packed as-is)")
+			dry.Set("build_command", "(buildless: spark.json declares no build.command; the artifact directories are packed as-is)")
 		} else {
-			dry.Set("build_command", strings.Join(cfg.BuildCommand, " ")+" (from miaoda.json build.command; env allowlist: MIAODA_* keys from pre_release; skipped with --skip-build)")
+			dry.Set("build_command", strings.Join(cfg.BuildCommand, " ")+" (from spark.json build.command; env allowlist: MIAODA_* keys from pre_release; skipped with --skip-build)")
 		}
 		dry.Set("build_output", cfg.BuildOutput+" -> zip output/ (same-origin artifacts)")
 		if cfg.BuildOutputCDN != "" {
@@ -540,7 +513,7 @@ var AppsDeploy = common.Shortcut{
 		// The server-side owner check is the only authorization line — echo
 		// the target loudly so a wrong app_id is visible before anything
 		// ships, naming where the id came from.
-		source := cfg.Source
+		source := sparkJSONRelPath
 		if fromFlag {
 			source = "--app-id"
 		}
@@ -577,7 +550,7 @@ var AppsDeploy = common.Shortcut{
 			fmt.Fprintf(rctx.IO().ErrOut, "running build: %s\n", strings.Join(buildCmd, " "))
 			if _, stderr, err := appDevRunner.RunEnv(ctx, "", env, buildCmd[0], buildCmd[1:]...); err != nil {
 				return appsExternalToolError(err, "build command %q failed: %s", strings.Join(buildCmd, " "), gitErr(stderr, err)).
-					WithHint("fix the build errors and retry; or build manually and retry with --skip-build (build.command is declared in miaoda.json)")
+					WithHint("fix the build errors and retry; or build manually and retry with --skip-build (build.command is declared in spark.json)")
 			}
 			built = true
 		}
@@ -660,25 +633,10 @@ var AppsDeploy = common.Shortcut{
 			data["poll_hint"] = pollHint
 		}
 		// The release was accepted — write the app state back per protocol
-		// (§3): miaoda.json gets the app section replaced wholesale; the
-		// legacy .spark/meta.json fallback keeps its old field names and is
-		// only ever filled, never rewritten. Best-effort: a write failure
-		// must not fail the publish.
-		if cfg.Source == miaodaJSONRelPath {
-			if err := writeMiaodaAppSection(".", appID, onlineURL); err != nil {
-				fmt.Fprintf(rctx.IO().ErrOut, "warning: failed to write app state into %s: %v\n", miaodaJSONRelPath, err)
-			}
-		} else {
-			if fromFlag {
-				if err := ensureMetaAppID(".", appID); err != nil {
-					fmt.Fprintf(rctx.IO().ErrOut, "warning: failed to save app_id into %s: %v\n", metaRelPath, err)
-				}
-			}
-			if onlineURL != "" {
-				if err := ensureMetaOnlineURL(".", onlineURL); err != nil {
-					fmt.Fprintf(rctx.IO().ErrOut, "warning: failed to backfill online_url into %s: %v\n", metaRelPath, err)
-				}
-			}
+		// (§3): spark.json gets the app section replaced wholesale.
+		// Best-effort: a write failure must not fail the publish.
+		if err := writeSparkAppSection(".", appID, onlineURL); err != nil {
+			fmt.Fprintf(rctx.IO().ErrOut, "warning: failed to write app state into %s: %v\n", sparkJSONRelPath, err)
 		}
 		rctx.OutFormatRaw(data, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "app_id: %s\nrelease_id: %s\nstatus: %s\n", appID, releaseID, status)

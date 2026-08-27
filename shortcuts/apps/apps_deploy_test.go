@@ -48,38 +48,10 @@ func TestAppDevBuildEnv(t *testing.T) {
 	}
 }
 
-func TestEnsureMetaOnlineURL(t *testing.T) {
-	dir := t.TempDir()
-	// Missing meta.json: best-effort no-op.
-	if err := ensureMetaOnlineURL(dir, "https://x/app/app_x"); err != nil {
-		t.Errorf("missing meta must not error: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(dir, ".spark"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, metaRelPath), []byte(`{"app_id":"app_x","stack":"s"}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := ensureMetaOnlineURL(dir, "https://x/app/app_x"); err != nil {
-		t.Fatal(err)
-	}
-	b, err := os.ReadFile(filepath.Join(dir, metaRelPath))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var meta map[string]interface{}
-	if err := json.Unmarshal(b, &meta); err != nil {
-		t.Fatal(err)
-	}
-	if meta["online_url"] != "https://x/app/app_x" || meta["app_id"] != "app_x" || meta["stack"] != "s" {
-		t.Errorf("meta after backfill = %v", meta)
-	}
-}
-
 // --- artifact layout validation ---
 
 // testAppDevCfg builds a resolved project config for validation tests.
-// buildless mirrors a miaoda.json without build.command.
+// buildless mirrors a spark.json without build.command.
 func testAppDevCfg(output, cdn string, buildless bool) *appDevProjectConfig {
 	cfg := &appDevProjectConfig{BuildOutput: output, BuildOutputCDN: cdn}
 	if !buildless {
@@ -395,37 +367,13 @@ func withFakeEnvRunner(t *testing.T, f *fakeEnvRunner) {
 	t.Cleanup(func() { appDevRunner = orig })
 }
 
-// chdirMiaodaProjectRoot creates a temp project root with miaoda.json and
+// chdirSparkProjectRoot creates a temp project root with spark.json and
 // chdirs into it (the protocol-first path).
-func chdirMiaodaProjectRoot(t *testing.T, miaodaJSON string) string {
+func chdirSparkProjectRoot(t *testing.T, miaodaJSON string) string {
 	t.Helper()
 	root := t.TempDir()
 	if miaodaJSON != "" {
-		if err := os.WriteFile(filepath.Join(root, miaodaJSONRelPath), []byte(miaodaJSON), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	old, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(root); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.Chdir(old) })
-	return root
-}
-
-// chdirProjectRoot creates a temp project root with .spark/meta.json and
-// chdirs into it for the test (legacy fallback path).
-func chdirProjectRoot(t *testing.T, metaJSON string) string {
-	t.Helper()
-	root := t.TempDir()
-	if metaJSON != "" {
-		if err := os.MkdirAll(filepath.Join(root, ".spark"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(root, metaRelPath), []byte(metaJSON), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(root, sparkJSONRelPath), []byte(miaodaJSON), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -501,15 +449,15 @@ func stubReleases(reg *httpmock.Registry, appID string, respData map[string]inte
 }
 
 func TestAppDevPublishValidate_NoMeta(t *testing.T) {
-	chdirProjectRoot(t, "")
+	chdirSparkProjectRoot(t, "")
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
 	if p.Subtype != errs.SubtypeFailedPrecondition || !strings.Contains(p.Message, "not a Miaoda app project") {
 		t.Errorf("got %v", p)
 	}
-	if !strings.Contains(p.Message, "miaoda.json") {
-		t.Errorf("message should name miaoda.json, got %q", p.Message)
+	if !strings.Contains(p.Message, "spark.json") {
+		t.Errorf("message should name spark.json, got %q", p.Message)
 	}
 	if !strings.Contains(p.Hint, "+init-template") {
 		t.Errorf("hint = %q", p.Hint)
@@ -517,7 +465,7 @@ func TestAppDevPublishValidate_NoMeta(t *testing.T) {
 }
 
 func TestAppDevPublishValidate_NoAppID(t *testing.T) {
-	chdirProjectRoot(t, `{"stack":"react-standard-webapp"}`)
+	chdirSparkProjectRoot(t, `{"stack":"react-standard-webapp"}`)
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
@@ -532,7 +480,7 @@ func TestAppDevPublishValidate_NoAppID(t *testing.T) {
 }
 
 func TestAppDevPublishValidate_AppIDMismatch(t *testing.T) {
-	chdirProjectRoot(t, `{"app_id":"app_recorded"}`)
+	chdirSparkProjectRoot(t, `{"app":{"id":"app_recorded"}}`)
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	err := runAppsShortcut(t, AppsDeploy,
 		[]string{"+deploy", "--app-id", "app_other", "--as", "user"}, factory, stdout)
@@ -545,28 +493,8 @@ func TestAppDevPublishValidate_AppIDMismatch(t *testing.T) {
 	}
 }
 
-func TestAppDevPublishExecute_FlagAppIDBackfill(t *testing.T) {
-	root := chdirProjectRoot(t, `{"stack":"react-standard-webapp"}`) // no app_id
-	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
-	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
-	factory, stdout, reg := newAppsExecuteFactory(t)
-	stubPreRelease(reg, "app_flag1", srv.URL, nil)
-	stubReleases(reg, "app_flag1", map[string]interface{}{"release_id": "rel_9", "status": "pending"})
-	if err := runAppsShortcut(t, AppsDeploy,
-		[]string{"+deploy", "--app-id", "app_flag1", "--skip-build", "--as", "user"}, factory, stdout); err != nil {
-		t.Fatalf("unexpected: %v", err)
-	}
-	// app_id persisted on success, other fields preserved.
-	b, _ := os.ReadFile(filepath.Join(root, metaRelPath))
-	var meta map[string]interface{}
-	_ = json.Unmarshal(b, &meta)
-	if meta["app_id"] != "app_flag1" || meta["stack"] != "react-standard-webapp" {
-		t.Errorf("meta after publish = %v", meta)
-	}
-}
-
 func TestAppDevPublishExecute_FlagMatchesMeta(t *testing.T) {
-	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
+	root := chdirSparkProjectRoot(t, `{"app":{"id":"app_x"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	factory, stdout, reg := newAppsExecuteFactory(t)
@@ -579,11 +507,11 @@ func TestAppDevPublishExecute_FlagMatchesMeta(t *testing.T) {
 }
 
 func TestAppDevPublishValidate_BadAppID(t *testing.T) {
-	chdirProjectRoot(t, `{"app_id":"meta_token_x"}`)
+	chdirSparkProjectRoot(t, `{"app":{"id":"meta_token_x"}}`)
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
-	if !strings.Contains(p.Message, ".spark/meta.json app id") {
+	if !strings.Contains(p.Message, "spark.json app id") {
 		t.Errorf("message should point at the config source, got %q", p.Message)
 	}
 	// This command has no --app-id flag; the error must not mention one.
@@ -596,7 +524,7 @@ func TestAppDevPublishValidate_BadAppID(t *testing.T) {
 }
 
 func TestAppDevPublishValidate_SensitiveGatesDryRun(t *testing.T) {
-	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
+	root := chdirSparkProjectRoot(t, `{"app":{"id":"app_x"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist"),
 		[]string{"output/index.html", "output/routes.json", "output/.env"})
 	factory, stdout, _ := newAppsExecuteFactory(t)
@@ -620,7 +548,7 @@ func TestAppDevPublishValidate_SensitiveGatesDryRun(t *testing.T) {
 }
 
 func TestAppDevPublishValidate_SkipBuildNoDist(t *testing.T) {
-	chdirMiaodaProjectRoot(t, `{"app":{"id":"app_x"},"build":{"command":["npm","run","build"]}}`)
+	chdirSparkProjectRoot(t, `{"app":{"id":"app_x"},"build":{"command":["npm","run","build"]}}`)
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--skip-build", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
@@ -630,9 +558,9 @@ func TestAppDevPublishValidate_SkipBuildNoDist(t *testing.T) {
 }
 
 func TestAppDevPublishValidate_BuildlessNoDist(t *testing.T) {
-	// No build.command declared (legacy .spark fallback resolves to buildless):
-	// the artifact directory must already exist.
-	chdirProjectRoot(t, `{"app_id":"app_x"}`)
+	// No build.command declared in spark.json (buildless): the artifact
+	// directory must already exist.
+	chdirSparkProjectRoot(t, `{"app":{"id":"app_x"}}`)
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
@@ -645,7 +573,7 @@ func TestAppDevPublishValidate_BuildlessNoDist(t *testing.T) {
 }
 
 func TestAppDevPublishExecute_SyncSuccess(t *testing.T) {
-	root := chdirMiaodaProjectRoot(t, `{
+	root := chdirSparkProjectRoot(t, `{
   "stack": "react-standard-webapp",
   "build": { "command": ["npm", "run", "build"], "output": "dist/output" },
   "app": { "id": "app_x" }
@@ -700,8 +628,8 @@ func TestAppDevPublishExecute_SyncSuccess(t *testing.T) {
 	if _, hasPoll := data["poll_hint"]; hasPoll {
 		t.Error("sync success must not carry poll_hint")
 	}
-	// miaoda.json app-section writeback.
-	b, _ := os.ReadFile(filepath.Join(root, miaodaJSONRelPath))
+	// spark.json app-section writeback.
+	b, _ := os.ReadFile(filepath.Join(root, sparkJSONRelPath))
 	var doc map[string]interface{}
 	_ = json.Unmarshal(b, &doc)
 	app, _ := doc["app"].(map[string]interface{})
@@ -710,10 +638,10 @@ func TestAppDevPublishExecute_SyncSuccess(t *testing.T) {
 	}
 }
 
-func TestAppDevPublishExecute_BuildlessSparkSync(t *testing.T) {
-	// Legacy .spark project without a declaration: buildless per protocol —
-	// no build runs, dist/output is packed as-is, online_url is backfilled.
-	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
+func TestAppDevPublishExecute_BuildlessSync(t *testing.T) {
+	// spark.json without build.command: buildless — no build runs,
+	// dist/output is packed as-is, the app section gains the url.
+	root := chdirSparkProjectRoot(t, `{"app":{"id":"app_x"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	f := &fakeEnvRunner{}
 	withFakeEnvRunner(t, f)
@@ -734,16 +662,17 @@ func TestAppDevPublishExecute_BuildlessSparkSync(t *testing.T) {
 	if data["built"] != false {
 		t.Errorf("built = %v, want false for buildless", data["built"])
 	}
-	b, _ := os.ReadFile(filepath.Join(root, metaRelPath))
-	var meta map[string]interface{}
-	_ = json.Unmarshal(b, &meta)
-	if meta["online_url"] != "https://x/app/app_x" {
-		t.Errorf("meta after publish = %v", meta)
+	b, _ := os.ReadFile(filepath.Join(root, sparkJSONRelPath))
+	var doc map[string]interface{}
+	_ = json.Unmarshal(b, &doc)
+	app, _ := doc["app"].(map[string]interface{})
+	if app == nil || app["url"] != "https://x/app/app_x" {
+		t.Errorf("app section after publish = %v", doc["app"])
 	}
 }
 
 func TestAppDevPublishExecute_AsyncSuccess(t *testing.T) {
-	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
+	root := chdirSparkProjectRoot(t, `{"app":{"id":"app_x"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	factory, stdout, reg := newAppsExecuteFactory(t)
@@ -767,17 +696,17 @@ func TestAppDevPublishExecute_AsyncSuccess(t *testing.T) {
 	if _, has := data["online_url"]; has {
 		t.Error("async must not carry online_url")
 	}
-	// No online_url -> no backfill.
-	b, _ := os.ReadFile(filepath.Join(root, metaRelPath))
-	if strings.Contains(string(b), "online_url") {
-		t.Errorf("meta must not gain online_url on async publish: %s", b)
+	// No online_url -> the app section carries no url key.
+	b, _ := os.ReadFile(filepath.Join(root, sparkJSONRelPath))
+	if strings.Contains(string(b), "\"url\"") {
+		t.Errorf("spark.json must not gain app.url on a still-publishing release: %s", b)
 	}
 }
 
 func TestAppDevPublishExecute_AwaitFinished(t *testing.T) {
 	// Async acceptance followed by a finished poll: online_url comes back in
-	// one command and lands in miaoda.json's app section.
-	root := chdirMiaodaProjectRoot(t, `{"stack":"s","app":{"id":"app_x"}}`)
+	// one command and lands in spark.json's app section.
+	root := chdirSparkProjectRoot(t, `{"stack":"s","app":{"id":"app_x"}}`)
 	writeDistFiles(t, filepath.Join(root, appDevDefaultBuildOutput), []string{"index.html", "routes.json"})
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	factory, stdout, reg := newAppsExecuteFactory(t)
@@ -798,7 +727,7 @@ func TestAppDevPublishExecute_AwaitFinished(t *testing.T) {
 	if _, has := data["poll_hint"]; has {
 		t.Error("finished await must not carry poll_hint")
 	}
-	b, _ := os.ReadFile(filepath.Join(root, miaodaJSONRelPath))
+	b, _ := os.ReadFile(filepath.Join(root, sparkJSONRelPath))
 	var doc map[string]interface{}
 	_ = json.Unmarshal(b, &doc)
 	app, _ := doc["app"].(map[string]interface{})
@@ -810,7 +739,7 @@ func TestAppDevPublishExecute_AwaitFinished(t *testing.T) {
 func TestAppDevPublishExecute_AwaitFailed(t *testing.T) {
 	// A failed pipeline is a failed publish: exit non-zero with the
 	// error_logs summarized and an actionable hint.
-	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
+	root := chdirSparkProjectRoot(t, `{"app":{"id":"app_x"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	factory, stdout, reg := newAppsExecuteFactory(t)
@@ -848,7 +777,7 @@ func TestSummarizeReleaseErrorLogs(t *testing.T) {
 }
 
 func TestAppDevPublishExecute_BuildFails(t *testing.T) {
-	chdirMiaodaProjectRoot(t, `{"app":{"id":"app_x"},"build":{"command":["npm","run","build"]}}`)
+	chdirSparkProjectRoot(t, `{"app":{"id":"app_x"},"build":{"command":["npm","run","build"]}}`)
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	f := &fakeEnvRunner{stderr: "TS2304: boom", err: errors.New("exit 1")}
 	withFakeEnvRunner(t, f)
@@ -865,7 +794,7 @@ func TestAppDevPublishExecute_BuildFails(t *testing.T) {
 }
 
 func TestAppDevPublishExecute_PreReleaseMissingKVs(t *testing.T) {
-	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
+	root := chdirSparkProjectRoot(t, `{"app":{"id":"app_x"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
@@ -884,7 +813,7 @@ func TestAppDevPublishExecute_PreReleaseMissingKVs(t *testing.T) {
 }
 
 func TestAppDevPublishExecute_NonHTTPSUploadURL(t *testing.T) {
-	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
+	root := chdirSparkProjectRoot(t, `{"app":{"id":"app_x"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stubPreRelease(reg, "app_x", "http://insecure.example/put", nil)
@@ -896,7 +825,7 @@ func TestAppDevPublishExecute_NonHTTPSUploadURL(t *testing.T) {
 }
 
 func TestAppDevPublishExecute_TOS5xx(t *testing.T) {
-	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
+	root := chdirSparkProjectRoot(t, `{"app":{"id":"app_x"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(503) })
 	factory, stdout, reg := newAppsExecuteFactory(t)
@@ -909,7 +838,7 @@ func TestAppDevPublishExecute_TOS5xx(t *testing.T) {
 }
 
 func TestAppDevPublishDryRun(t *testing.T) {
-	root := chdirMiaodaProjectRoot(t, `{"app":{"id":"app_x"},"build":{"command":["npm","run","build"],"output":"dist/output"}}`)
+	root := chdirSparkProjectRoot(t, `{"app":{"id":"app_x"},"build":{"command":["npm","run","build"],"output":"dist/output"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist", "output"), []string{"index.html"})
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--skip-build", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
@@ -934,7 +863,7 @@ func TestAppDevPublishDryRun(t *testing.T) {
 }
 
 func TestAppDevPublishDryRun_Buildless(t *testing.T) {
-	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
+	root := chdirSparkProjectRoot(t, `{"app":{"id":"app_x"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html"})
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
@@ -963,9 +892,9 @@ func TestAppDevPublishDryRun_Buildless(t *testing.T) {
 }
 
 func TestAppDevPublishExecute_MiaodaProtocol(t *testing.T) {
-	// miaoda.json declares a custom build command and output dir; the app
+	// spark.json declares a custom build command and output dir; the app
 	// section is replaced wholesale on success.
-	root := chdirMiaodaProjectRoot(t, `{
+	root := chdirSparkProjectRoot(t, `{
   "stack": "custom-webapp",
   "build": { "command": ["make", "site"], "output": "public" },
   "app": { "id": "app_x" }
@@ -990,7 +919,7 @@ func TestAppDevPublishExecute_MiaodaProtocol(t *testing.T) {
 		t.Errorf("build call = %v %v, want make site", f.name, f.args)
 	}
 	// App section replaced wholesale with id+url; declarations preserved.
-	b, _ := os.ReadFile(filepath.Join(root, miaodaJSONRelPath))
+	b, _ := os.ReadFile(filepath.Join(root, sparkJSONRelPath))
 	var doc map[string]interface{}
 	_ = json.Unmarshal(b, &doc)
 	app, _ := doc["app"].(map[string]interface{})
@@ -1003,9 +932,9 @@ func TestAppDevPublishExecute_MiaodaProtocol(t *testing.T) {
 }
 
 func TestAppDevPublishExecute_MiaodaFlagBackfill(t *testing.T) {
-	// No recorded app id in miaoda.json: --app-id publishes and the app
+	// No recorded app id in spark.json: --app-id publishes and the app
 	// section is written on success (async: no url yet).
-	root := chdirMiaodaProjectRoot(t, `{"stack":"react-standard-webapp"}`)
+	root := chdirSparkProjectRoot(t, `{"stack":"react-standard-webapp"}`)
 	writeDistFiles(t, filepath.Join(root, appDevDefaultBuildOutput), []string{"index.html", "routes.json"})
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	factory, stdout, reg := newAppsExecuteFactory(t)
@@ -1015,7 +944,7 @@ func TestAppDevPublishExecute_MiaodaFlagBackfill(t *testing.T) {
 		[]string{"+deploy", "--app-id", "app_new1", "--skip-build", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
-	b, _ := os.ReadFile(filepath.Join(root, miaodaJSONRelPath))
+	b, _ := os.ReadFile(filepath.Join(root, sparkJSONRelPath))
 	var doc map[string]interface{}
 	_ = json.Unmarshal(b, &doc)
 	app, _ := doc["app"].(map[string]interface{})
@@ -1028,12 +957,12 @@ func TestAppDevPublishExecute_MiaodaFlagBackfill(t *testing.T) {
 }
 
 func TestAppDevPublishValidate_MiaodaMismatch(t *testing.T) {
-	chdirMiaodaProjectRoot(t, `{"app": {"id": "app_recorded"}}`)
+	chdirSparkProjectRoot(t, `{"app": {"id": "app_recorded"}}`)
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	err := runAppsShortcut(t, AppsDeploy,
 		[]string{"+deploy", "--app-id", "app_other", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
-	if !strings.Contains(p.Message, "miaoda.json") || !strings.Contains(p.Message, "app_recorded") {
+	if !strings.Contains(p.Message, "spark.json") || !strings.Contains(p.Message, "app_recorded") {
 		t.Errorf("message = %q", p.Message)
 	}
 }
