@@ -2417,6 +2417,14 @@ var WorkbookImport = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		// KNOWN GAP (sheets-scoped change): the corrected extension belongs in
+		// the result — the backend built a .xlsx from a file the caller called
+		// .xls — but drive.RunImport owns the whole output envelope and has no
+		// slot for a caller-supplied correction. Structuring it means adding
+		// one to the shared drive import core, which is out of scope here, so
+		// the note stays on stderr for now. This is the one success-path stderr
+		// write left in the sheets domain (see the allowlist in
+		// TestNoDirectStderrWritesInSheetsPackages).
 		if note := workbookImportMislabelNote(params); note != "" {
 			fmt.Fprintln(runtime.IO().ErrOut, note)
 		}

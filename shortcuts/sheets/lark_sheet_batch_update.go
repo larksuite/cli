@@ -96,9 +96,6 @@ var BatchUpdate = common.Shortcut{
 		if err := prepareBatchChartUpdates(ctx, runtime, token, plan); err != nil {
 			return err
 		}
-		for _, w := range batchWarnings(runtime) {
-			fmt.Fprintln(runtime.IO().ErrOut, w)
-		}
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "batch_update", plan.input)
 		if err != nil {
 			return err
@@ -106,7 +103,11 @@ var BatchUpdate = common.Shortcut{
 		if len(plan.localFailures) > 0 {
 			out = mergeBatchUpdatePartialOutput(out, plan)
 		}
-		runtime.Out(compactBatchChartCreateOutput(out), nil)
+		// Ignored sub-op locators and emulated / colliding semantics decide
+		// whether a caller can safely retry, so they travel with the result
+		// instead of on stderr, where a success-path write reads as a failure.
+		out = appendSheetsWarnings(compactBatchChartCreateOutput(out), batchWarnings(runtime))
+		runtime.Out(out, nil)
 		return nil
 	},
 	Tips: []string{
@@ -169,9 +170,6 @@ var BatchChartCreate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		for _, warning := range batchIgnoredLocatorNotes(runtime, "+batch-chart-create") {
-			fmt.Fprintln(runtime.IO().ErrOut, warning)
-		}
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "batch_update", plan.input)
 		if err != nil {
 			return err
@@ -179,7 +177,9 @@ var BatchChartCreate = common.Shortcut{
 		if len(plan.localFailures) > 0 {
 			out = mergeBatchUpdatePartialOutput(out, plan)
 		}
-		runtime.Out(compactBatchChartCreateOutput(out), nil)
+		out = appendSheetsWarnings(compactBatchChartCreateOutput(out),
+			batchIgnoredLocatorNotes(runtime, "+batch-chart-create"))
+		runtime.Out(out, nil)
 		return nil
 	},
 }
@@ -226,9 +226,6 @@ var BatchChartUpdate = common.Shortcut{
 		if err := prepareBatchChartUpdates(ctx, runtime, token, plan); err != nil {
 			return err
 		}
-		for _, warning := range batchIgnoredLocatorNotes(runtime, "+batch-chart-update") {
-			fmt.Fprintln(runtime.IO().ErrOut, warning)
-		}
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "batch_update", plan.input)
 		if err != nil {
 			return err
@@ -236,6 +233,7 @@ var BatchChartUpdate = common.Shortcut{
 		if len(plan.localFailures) > 0 {
 			out = mergeBatchUpdatePartialOutput(out, plan)
 		}
+		out = appendSheetsWarnings(out, batchIgnoredLocatorNotes(runtime, "+batch-chart-update"))
 		runtime.Out(out, nil)
 		return nil
 	},
@@ -1011,22 +1009,25 @@ var CellsBatchSetStyle = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		// DEPRECATED(phase-2): +cells-batch-set-style — replaced by +styles-put.
-		// Phase 1 (here): the command keeps working and is already retired from
-		// the skill docs via bundle.json doc_hidden_shortcuts in
-		// sheet-skill-spec; steer new usage to the superset in-band.
-		// Phase 2 removal: drop the shortcut from spec-tables + its
-		// doc_hidden_shortcuts entry, then this command and its input builder.
-		fmt.Fprintln(runtime.IO().ErrOut,
-			"note: +cells-batch-set-style is superseded by +styles-put (one spec covers styles + merges + row/col sizes + freeze); prefer +styles-put for new work")
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "batch_update", input)
 		if err != nil {
 			return err
 		}
-		runtime.Out(out, nil)
+		// DEPRECATED(phase-2): +cells-batch-set-style — replaced by +styles-put.
+		// Phase 1 (here): the command keeps working and is already retired from
+		// the skill docs via bundle.json doc_hidden_shortcuts in
+		// sheet-skill-spec; steer new usage to the superset in-band. The steer
+		// rides in the result under its own `deprecation` key instead of on
+		// stderr, which must stay empty on success.
+		// Phase 2 removal: drop the shortcut from spec-tables + its
+		// doc_hidden_shortcuts entry, then this command and its input builder.
+		runtime.Out(annotateSheetsDeprecation(out, cellsBatchSetStyleDeprecationNote), nil)
 		return nil
 	},
 }
+
+// cellsBatchSetStyleDeprecationNote steers callers to the superset command.
+const cellsBatchSetStyleDeprecationNote = "+cells-batch-set-style is superseded by +styles-put (one spec covers styles + merges + row/col sizes + freeze); prefer +styles-put for new work"
 
 func cellsBatchSetStyleInput(runtime *common.RuntimeContext, token string) (map[string]interface{}, error) {
 	ranges, err := validateDropdownRanges(runtime)
@@ -1180,13 +1181,16 @@ var DropdownUpdate = common.Shortcut{
 		if _, err := validateDropdownSourceOrOptions(runtime); err != nil {
 			return err
 		}
-		warnDropdownSourceRangeHighlight(runtime)
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		input, _ := dropdownBatchInput(runtime, token, false)
-		return invokeToolDryRun(token, ToolKindWrite, "batch_update", input)
+		dry := invokeToolDryRun(token, ToolKindWrite, "batch_update", input)
+		if warning := dropdownSourceRangeHighlightWarning(runtime); warning != "" {
+			dry.Set("warning_message", warning)
+		}
+		return dry
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -1201,7 +1205,7 @@ var DropdownUpdate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		runtime.Out(out, nil)
+		runtime.Out(appendSheetsWarnings(out, dropdownHighlightWarnings(runtime)), nil)
 		return nil
 	},
 }

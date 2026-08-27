@@ -166,12 +166,22 @@ var DimInsert = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		if dimInsertNeedsBeforeStyleWarning(runtime) {
-			fmt.Fprintln(runtime.IO().ErrOut, dimInsertBeforeStyleWarning)
-		}
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "modify_sheet_structure", input)
 		if err != nil {
 			return err
+		}
+		// --inherit-style before is emulated by anchoring one row/column earlier
+		// and inserting after it (see dimInsertInput). The dry-run explains that
+		// shift; the executed call has to as well, or a caller diffing the
+		// request against what they typed reads it as an off-by-one.
+		if dimInsertAnchorShifted(runtime, input) {
+			out = annotateSheetsResult(out, "effective_operation", map[string]interface{}{
+				"requested_position": strings.TrimSpace(runtime.Str("position")),
+				"anchor_position":    input["position"],
+				"side":               input["side"],
+				"inherit_style":      "before",
+				"note":               "--inherit-style before is emulated: the request anchors one row/column earlier and inserts after it, which lands the new row/column at requested_position while copying the PRECEDING style.",
+			})
 		}
 		runtime.Out(out, nil)
 		return nil
@@ -506,14 +516,21 @@ var DimFreeze = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		if note := dimFreezeLegacyNote(runtime); note != "" {
-			fmt.Fprintln(runtime.IO().ErrOut, note)
-		}
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "modify_sheet_structure", input)
 		if err != nil {
 			return err
 		}
-		runtime.Out(out, nil)
+		// Freezing replaces the whole state rather than adding to it, so the
+		// (rows, cols) this call actually leaves behind is the one fact a caller
+		// most often gets wrong — especially through the legacy
+		// --dimension/--count spelling, which can only name one axis.
+		rows, cols, _ := dimFreezeAxes(runtime)
+		out = annotateSheetsResult(out, "effective_operation", map[string]interface{}{
+			"frozen_rows": rows,
+			"frozen_cols": cols,
+			"spelling":    dimFreezeSpelling(rows, cols),
+		})
+		runtime.Out(annotateSheetsDeprecation(out, dimFreezeLegacyNote(runtime)), nil)
 		return nil
 	},
 }

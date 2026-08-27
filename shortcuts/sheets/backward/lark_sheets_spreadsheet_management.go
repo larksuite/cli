@@ -260,7 +260,6 @@ var SheetExport = common.Shortcut{
 		}
 		ticket, _ := data["ticket"].(string)
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Waiting for export task to complete...\n")
 		var fileToken string
 		for i := 0; i < 50; i++ {
 			time.Sleep(600 * time.Millisecond)
@@ -284,8 +283,8 @@ var SheetExport = common.Shortcut{
 			return errs.NewNetworkError(errs.SubtypeNetworkTimeout, "export task timed out").WithRetryable()
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Export complete: file_token=%s\n", fileToken)
-
+		// ticket + file_token are already the result on every terminal path, so
+		// the stderr copy only risked making a successful export look failed.
 		if outputPath == "" {
 			runtime.Out(map[string]interface{}{
 				"file_token": fileToken,
