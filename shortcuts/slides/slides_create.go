@@ -90,7 +90,7 @@ var SlidesCreate = common.Shortcut{
 			// Upload steps come right after creation so they can use the new
 			// presentation_id as parent_node.
 			for i, path := range placeholders {
-				appendSlidesUploadDryRun(dry, path, "<xml_presentation_id>", i+2)
+				appendSlidesUploadDryRun(dry, path, "<xml_presentation_id>", slideFileParentType, i+2)
 			}
 
 			slideStepStart := 2 + len(placeholders)

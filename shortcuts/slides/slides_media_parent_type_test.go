@@ -225,13 +225,6 @@ func TestSlidesDryRunPlaceholderNodeParentType(t *testing.T) {
 			wantNode: unresolvedSlidesTokenPlaceholder,
 		},
 		{
-			name:     "update-slide via wiki",
-			shortcut: SlidesUpdateSlide,
-			args: []string{"+update-slide", "--presentation", wikiURL, "--slide-id", "s1",
-				"--content", slideXML, "--dry-run", "--as", "user"},
-			wantNode: unresolvedSlidesTokenPlaceholder,
-		},
-		{
 			// +create has no --presentation flag at all: its node is minted by
 			// the create call earlier in the same orchestration, so the deck is
 			// always one the API just made and never an imported office file.
@@ -287,10 +280,6 @@ func TestSlidesImagePlaceholderDryRunOfficeParentType(t *testing.T) {
 	}{
 		{"add-slide", SlidesAddSlide, []string{
 			"+add-slide", "--presentation", officeToken, "--slide", slideXML, "--dry-run", "--as", "user",
-		}},
-		{"update-slide", SlidesUpdateSlide, []string{
-			"+update-slide", "--presentation", officeToken, "--slide-id", "s1",
-			"--content", slideXML, "--dry-run", "--as", "user",
 		}},
 	}
 

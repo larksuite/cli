@@ -67,8 +67,8 @@ func TestSlidesMediaUploadBasic(t *testing.T) {
 	}
 
 	body := decodeMultipartBody(t, uploadStub)
-	if got := body.Fields["parent_type"]; got != slidesMediaParentType {
-		t.Fatalf("parent_type = %q, want %q", got, slidesMediaParentType)
+	if got := body.Fields["parent_type"]; got != slideFileParentType {
+		t.Fatalf("parent_type = %q, want %q", got, slideFileParentType)
 	}
 	if got := body.Fields["parent_node"]; got != "pres_abc" {
 		t.Fatalf("parent_node = %q, want pres_abc", got)
@@ -269,8 +269,8 @@ func TestSlidesMediaUploadDryRun(t *testing.T) {
 	if !strings.Contains(out, "/open-apis/drive/v1/medias/upload_all") {
 		t.Fatalf("dry-run should mention upload_all, got: %s", out)
 	}
-	if !strings.Contains(out, slidesMediaParentType) {
-		t.Fatalf("dry-run should mention parent_type %q, got: %s", slidesMediaParentType, out)
+	if !strings.Contains(out, slideFileParentType) {
+		t.Fatalf("dry-run should mention parent_type %q, got: %s", slideFileParentType, out)
 	}
 }
 

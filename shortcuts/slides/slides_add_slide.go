@@ -125,7 +125,7 @@ var SlidesAddSlide = common.Shortcut{
 		}
 
 		for _, path := range placeholders {
-			appendSlidesUploadDryRun(dry, path, presentationID, step)
+			appendSlidesUploadDryRun(dry, path, presentationID, slidesDryRunParentType(ref), step)
 			step++
 		}
 
