@@ -15,22 +15,29 @@ import (
 // section written back by the deploy chain.
 const miaodaJSONRelPath = "miaoda.json"
 
-// Protocol defaults (§3 缺省行为): convention first, configuration override.
-var (
-	appDevDefaultBuildCommand = []string{"npm", "run", "build"}
-	appDevDefaultBuildOutput  = "dist"
-)
+// appDevDefaultBuildOutput is the protocol default for build.output (the
+// same-origin artifact directory). Since protocol v0.3 there is no default
+// build command: a missing build.command means buildless (pack the output
+// directory as-is).
+const appDevDefaultBuildOutput = "dist/output"
 
 // appDevProjectConfig is the resolved view of the project declaration that
 // +app-dev-publish consumes. Fields are filled with protocol defaults when
 // the declaration omits them.
 type appDevProjectConfig struct {
-	Stack        string
-	Version      string
+	Stack   string
+	Version string
+	// BuildCommand is nil for buildless projects (no build.command declared):
+	// the output directory is packed as-is.
 	BuildCommand []string
-	BuildOutput  string
-	AppID        string
-	AppURL       string
+	// BuildOutput is the same-origin artifact directory (protocol default
+	// dist/output).
+	BuildOutput string
+	// BuildOutputCDN is the CDN artifact directory; empty means Level 1
+	// (no CDN split).
+	BuildOutputCDN string
+	AppID          string
+	AppURL         string
 	// Source is the file the config came from: miaodaJSONRelPath or
 	// metaRelPath (legacy fallback). It decides where the app state is
 	// written back after a successful publish.
@@ -44,8 +51,9 @@ type miaodaJSONDoc struct {
 	Stack   string `json:"stack"`
 	Version string `json:"version"`
 	Build   struct {
-		Command []string `json:"command"`
-		Output  string   `json:"output"`
+		Command   []string `json:"command"`
+		Output    string   `json:"output"`
+		OutputCDN string   `json:"output_cdn"`
 	} `json:"build"`
 	App struct {
 		ID  string `json:"id"`
@@ -65,13 +73,14 @@ func readAppDevProjectConfig(dir string) (cfg *appDevProjectConfig, found bool, 
 			return nil, true, appsFileIOError(jerr, "parse %s failed: %v", miaodaJSONRelPath, jerr)
 		}
 		cfg := &appDevProjectConfig{
-			Stack:        doc.Stack,
-			Version:      doc.Version,
-			BuildCommand: doc.Build.Command,
-			BuildOutput:  strings.TrimSpace(doc.Build.Output),
-			AppID:        strings.TrimSpace(doc.App.ID),
-			AppURL:       strings.TrimSpace(doc.App.URL),
-			Source:       miaodaJSONRelPath,
+			Stack:          doc.Stack,
+			Version:        doc.Version,
+			BuildCommand:   doc.Build.Command,
+			BuildOutput:    strings.TrimSpace(doc.Build.Output),
+			BuildOutputCDN: strings.TrimSpace(doc.Build.OutputCDN),
+			AppID:          strings.TrimSpace(doc.App.ID),
+			AppURL:         strings.TrimSpace(doc.App.URL),
+			Source:         miaodaJSONRelPath,
 		}
 		applyAppDevConfigDefaults(cfg)
 		return cfg, true, nil
@@ -95,16 +104,18 @@ func readAppDevProjectConfig(dir string) (cfg *appDevProjectConfig, found bool, 
 	return cfg, true, nil
 }
 
-// applyAppDevConfigDefaults fills protocol defaults (§3): build.command →
-// npm run build, build.output → dist.
+// applyAppDevConfigDefaults fills protocol defaults (§3): build.output →
+// dist/output. build.command deliberately has no default — missing means
+// buildless (§4), and build.output_cdn stays empty for Level 1.
 func applyAppDevConfigDefaults(cfg *appDevProjectConfig) {
-	if len(cfg.BuildCommand) == 0 {
-		cfg.BuildCommand = append([]string(nil), appDevDefaultBuildCommand...)
-	}
 	if cfg.BuildOutput == "" {
 		cfg.BuildOutput = appDevDefaultBuildOutput
 	}
 }
+
+// Buildless reports whether the project declared no build command: packing
+// uses the output directories as-is.
+func (c *appDevProjectConfig) Buildless() bool { return len(c.BuildCommand) == 0 }
 
 // writeMiaodaAppSection replaces the app state section of <dir>/miaoda.json
 // with {id, url} after a successful publish (§3: the app section is owned by

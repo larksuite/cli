@@ -29,35 +29,53 @@ type appDevZipball struct {
 	FileCount int
 }
 
-// buildAppDevZip packs candidates (paths relative to the dist dir, e.g.
-// "output/index.html") into an in-memory zip. Entry names keep the
-// output/... layout and never include the dist directory itself.
-func buildAppDevZip(fio fileio.FileIO, candidates []htmlPublishCandidate) (*appDevZipball, error) {
+// appDevPackEntry is one file of the normalized upload payload. ZipPath is
+// the fixed protocol layout inside the zip (output/... for same-origin
+// artifacts, output_resource/... for CDN artifacts) regardless of the
+// project's directory names. Data comes from AbsPath, or from Content for
+// CLI-generated files (a buildless routes.json).
+type appDevPackEntry struct {
+	ZipPath string
+	AbsPath string
+	Content []byte
+	Size    int64
+}
+
+// buildAppDevZip packs the normalized entries into an in-memory zip: entry
+// names are the fixed output/... and output_resource/... layout the hosting
+// pipeline expects.
+func buildAppDevZip(fio fileio.FileIO, entries []appDevPackEntry) (*appDevZipball, error) {
 	var rawTotal int64
-	for _, c := range candidates {
-		rawTotal += c.Size
+	for _, e := range entries {
+		rawTotal += e.Size
 	}
 	if rawTotal > maxAppDevPublishRawBytes {
 		return nil, appsValidationError(
-			"dist total raw bytes %d exceeds %d bytes limit (uncompressed pre-pack cap)",
+			"publish payload total raw bytes %d exceeds %d bytes limit (uncompressed pre-pack cap)",
 			rawTotal, maxAppDevPublishRawBytes).
-			WithHint("reduce dist contents before publishing")
+			WithHint("reduce the artifact directory contents before publishing")
 	}
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
-	for _, c := range candidates {
-		w, err := zw.Create(c.RelPath)
+	for _, e := range entries {
+		w, err := zw.Create(e.ZipPath)
 		if err != nil {
-			return nil, appsFileIOError(err, "zip create %s failed: %v", c.RelPath, err)
+			return nil, appsFileIOError(err, "zip create %s failed: %v", e.ZipPath, err)
 		}
-		f, err := fio.Open(c.AbsPath)
+		if e.AbsPath == "" {
+			if _, err := w.Write(e.Content); err != nil {
+				return nil, appsFileIOError(err, "zip write %s failed: %v", e.ZipPath, err)
+			}
+			continue
+		}
+		f, err := fio.Open(e.AbsPath)
 		if err != nil {
-			return nil, appsInputPathEntryError(c.AbsPath, err)
+			return nil, appsInputPathEntryError(e.AbsPath, err)
 		}
 		_, err = io.Copy(w, f)
 		f.Close()
 		if err != nil {
-			return nil, appsFileIOError(err, "zip write %s failed: %v", c.RelPath, err)
+			return nil, appsFileIOError(err, "zip write %s failed: %v", e.ZipPath, err)
 		}
 	}
 	if err := zw.Close(); err != nil {
@@ -67,7 +85,7 @@ func buildAppDevZip(fio fileio.FileIO, candidates []htmlPublishCandidate) (*appD
 	if size > maxAppDevPublishZipBytes {
 		return nil, appsValidationError(
 			"packed zip size %d bytes exceeds %d bytes limit", size, maxAppDevPublishZipBytes).
-			WithHint("reduce dist contents; large media should be served from external storage")
+			WithHint("reduce the artifact directory contents; large media should be served from external storage")
 	}
-	return &appDevZipball{Body: buf.Bytes(), Size: size, FileCount: len(candidates)}, nil
+	return &appDevZipball{Body: buf.Bytes(), Size: size, FileCount: len(entries)}, nil
 }
