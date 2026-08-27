@@ -91,24 +91,27 @@ func ensureMetaOnlineURL(dir, onlineURL string) error {
 }
 
 // validateAppDevDist walks the dist directory and enforces the
-// artifact-hosting layout: output/{index.html,routes.json} required,
-// output_resource/ optional, nothing else at the top level. Returns the
-// candidates for zip packing. allowSensitive skips the credential-file scan.
-func validateAppDevDist(fio fileio.FileIO, distPath string, allowSensitive bool) ([]htmlPublishCandidate, error) {
-	candidates, err := walkHTMLPublishCandidates(fio, distPath)
+// artifact-hosting layout on what the protocol consumes: output/ must hold at
+// least one .html plus a valid routes.json; output_resource/ and
+// output_capabilities/ ride along. Anything else at the top level is ignored
+// (build tools commonly emit extra artifacts next to the protocol dirs) and
+// reported via ignored for the caller to surface. Only the returned
+// candidates are packed and scanned. allowSensitive skips the
+// credential-file scan.
+func validateAppDevDist(fio fileio.FileIO, distPath string, allowSensitive bool) (candidates []htmlPublishCandidate, ignored []string, err error) {
+	all, err := walkHTMLPublishCandidates(fio, distPath)
 	if err != nil {
 		// A missing dist directory means "build first", not a bad flag value.
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, appsFailedPreconditionError(
+			return nil, nil, appsFailedPreconditionError(
 				"dist directory not found; the artifact-hosting layout expects ./dist").
 				WithHint("run npm run build first, or drop --skip-build to let the command build")
 		}
-		return nil, err
+		return nil, nil, err
 	}
 	var hasHTML, hasRoutes, hasOutput bool
-	var extras []string
-	seenExtras := map[string]bool{}
-	for _, c := range candidates {
+	seenIgnored := map[string]bool{}
+	for _, c := range all {
 		top := c.RelPath
 		if i := strings.IndexByte(top, '/'); i >= 0 {
 			top = top[:i]
@@ -122,38 +125,36 @@ func validateAppDevDist(fio fileio.FileIO, distPath string, allowSensitive bool)
 			if c.RelPath == "output/routes.json" {
 				hasRoutes = true
 			}
+			candidates = append(candidates, c)
 		case "output_resource", "output_capabilities":
 			// output_resource ships to CDN; output_capabilities is the
 			// platform-capability placeholder — both ride along in the zip.
+			candidates = append(candidates, c)
 		default:
-			if !seenExtras[top] {
-				seenExtras[top] = true
-				extras = append(extras, top)
+			// Extra build artifacts next to the protocol dirs are none of the
+			// CLI's business — pick what the protocol needs, skip the rest.
+			if !seenIgnored[top] {
+				seenIgnored[top] = true
+				ignored = append(ignored, top)
 			}
 		}
 	}
-	if len(extras) > 0 {
-		sort.Strings(extras)
-		return nil, appsValidationError(
-			"the build output contains %d top-level entr(ies) outside the artifact-hosting layout: %s",
-			len(extras), truncatedJoin(extras, maxSensitiveListInError)).
-			WithHint("only output/, output_resource/ and output_capabilities/ are uploaded; adjust the build output")
-	}
+	sort.Strings(ignored)
 	if !hasOutput {
-		return nil, appsFailedPreconditionError(
+		return nil, ignored, appsFailedPreconditionError(
 			"the build output is missing the output/ directory required by the artifact-hosting layout").
 			WithHint("run the build first; expected layout: <build.output>/output/{*.html,routes.json} + output_resource/")
 	}
 	if !hasHTML {
-		return nil, appsFailedPreconditionError("output/ has no .html file; the protocol requires at least one (an SPA entry must be named index.html)").
+		return nil, ignored, appsFailedPreconditionError("output/ has no .html file; the protocol requires at least one (an SPA entry must be named index.html)").
 			WithHint("check the build config: HTML entries belong in output/, hashed assets in output_resource/")
 	}
 	if !hasRoutes {
-		return nil, appsFailedPreconditionError("output/routes.json is missing").
+		return nil, ignored, appsFailedPreconditionError("output/routes.json is missing").
 			WithHint("routes.json is required for content review routing; official templates generate it during the build")
 	}
 	if err := validateAppDevRoutesJSON(distPath); err != nil {
-		return nil, err
+		return nil, ignored, err
 	}
 	if !allowSensitive {
 		var hits []string
@@ -163,10 +164,10 @@ func validateAppDevDist(fio fileio.FileIO, distPath string, allowSensitive bool)
 			}
 		}
 		if len(hits) > 0 {
-			return nil, appDevSensitiveCandidatesError(hits)
+			return nil, ignored, appDevSensitiveCandidatesError(hits)
 		}
 	}
-	return candidates, nil
+	return candidates, ignored, nil
 }
 
 // appDevRoutesJSON is the routes.json v1 schema (fallback-only object). All
@@ -314,10 +315,17 @@ var AppsAppDevPublish = common.Shortcut{
 		// missing) are not fatal here; DryRun/Execute surface them with
 		// richer context.
 		if !rctx.Bool("allow-sensitive") {
-			if candidates, err := walkHTMLPublishCandidates(rctx.FileIO(), appDevDistDir); err == nil {
+			if candidates, err := walkHTMLPublishCandidates(rctx.FileIO(), cfg.BuildOutput); err == nil {
 				var hits []string
 				for _, c := range candidates {
-					if isSensitiveCandidate(appDevDistDir, c) {
+					top := c.RelPath
+					if i := strings.IndexByte(top, '/'); i >= 0 {
+						top = top[:i]
+					}
+					if top != "output" && top != "output_resource" && top != "output_capabilities" {
+						continue // not uploaded, not scanned
+					}
+					if isSensitiveCandidate(cfg.BuildOutput, c) {
 						hits = append(hits, c.RelPath)
 					}
 				}
@@ -366,8 +374,10 @@ var AppsAppDevPublish = common.Shortcut{
 			dry.Set("dist_state", "missing or unreadable: "+err.Error())
 		} else {
 			dry.Set("dist_file_count", len(candidates))
-			if _, verr := validateAppDevDist(rctx.FileIO(), cfg.BuildOutput, rctx.Bool("allow-sensitive")); verr != nil {
+			if _, dryIgnored, verr := validateAppDevDist(rctx.FileIO(), cfg.BuildOutput, rctx.Bool("allow-sensitive")); verr != nil {
 				dry.Set("dist_validation_error", verr.Error())
+			} else if len(dryIgnored) > 0 {
+				dry.Set("dist_ignored_entries", strings.Join(dryIgnored, ", "))
 			}
 		}
 		return dry
@@ -417,9 +427,13 @@ var AppsAppDevPublish = common.Shortcut{
 			built = true
 		}
 
-		candidates, err := validateAppDevDist(rctx.FileIO(), cfg.BuildOutput, rctx.Bool("allow-sensitive"))
+		candidates, ignoredEntries, err := validateAppDevDist(rctx.FileIO(), cfg.BuildOutput, rctx.Bool("allow-sensitive"))
 		if err != nil {
 			return err
+		}
+		if len(ignoredEntries) > 0 {
+			fmt.Fprintf(rctx.IO().ErrOut, "skipping %d top-level entr(ies) outside the protocol layout: %s\n",
+				len(ignoredEntries), strings.Join(ignoredEntries, ", "))
 		}
 		zipball, err := buildAppDevZip(rctx.FileIO(), candidates)
 		if err != nil {
