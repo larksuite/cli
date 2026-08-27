@@ -95,7 +95,7 @@ func harvestFile(path string) ([]Example, error) {
 
 		startLine := i + 1
 		raw := trimContinuation(line)
-		for continues(line) && i+1 < len(lines) {
+		for i+1 < len(lines) && (continues(line) || hasOpenQuote(raw)) {
 			i++
 			line = strings.TrimSpace(lines[i])
 			raw += " " + trimContinuation(line)
@@ -113,6 +113,34 @@ func harvestFile(path string) ([]Example, error) {
 
 func continues(line string) bool {
 	return strings.HasSuffix(strings.TrimRight(line, " \t"), "\\")
+}
+
+// hasOpenQuote reports whether raw ends inside a quoted word. A quoted argument
+// carries a shell word across newlines without a trailing backslash, which is
+// how the skills spell multi-line JSON flags, so harvesting has to keep reading
+// until the quote closes or the fence ends.
+func hasOpenQuote(raw string) bool {
+	var quote rune
+	escaped := false
+	for _, r := range raw {
+		switch {
+		case escaped:
+			escaped = false
+		case quote == '\'':
+			if r == quote {
+				quote = 0
+			}
+		case r == '\\':
+			escaped = true
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			}
+		case r == '\'' || r == '"':
+			quote = r
+		}
+	}
+	return quote != 0
 }
 
 func trimContinuation(line string) string {
