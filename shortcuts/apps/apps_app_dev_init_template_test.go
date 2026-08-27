@@ -472,8 +472,14 @@ func TestAppsAppDevInitTemplate_Declaration(t *testing.T) {
 
 func testRuntimeAppDevInit(t *testing.T, appType, dir string) *common.RuntimeContext {
 	t.Helper()
+	return testRuntimeAppDevInitTpl(t, appType, "", dir)
+}
+
+func testRuntimeAppDevInitTpl(t *testing.T, appType, template, dir string) *common.RuntimeContext {
+	t.Helper()
 	cmd := &cobra.Command{Use: "+app-dev-init-template"}
 	cmd.Flags().String("type", appType, "")
+	cmd.Flags().String("template", template, "")
 	cmd.Flags().String("dir", dir, "")
 	return common.TestNewRuntimeContext(cmd, nil)
 }
@@ -482,7 +488,7 @@ func TestAppDevInitTemplateValidate(t *testing.T) {
 	tests := []struct {
 		name, appType, dir, wantErr string
 	}{
-		{"missing type", "", "", "--type is required"},
+		{"missing type and template", "", "", "--type or --template is required"},
 		{"abs dir", "frontend", "/abs", "--dir"},
 		{"dotdot dir", "frontend", "../x", "--dir"},
 	}
@@ -493,6 +499,25 @@ func TestAppDevInitTemplateValidate(t *testing.T) {
 				t.Errorf("err = %v, want containing %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestResolveAppDevTemplate(t *testing.T) {
+	// template-first: explicit --template wins over --type.
+	tpl, err := resolveAppDevTemplate(testRuntimeAppDevInitTpl(t, "frontend", "vite-react", ""))
+	if err != nil || tpl != "vite-react" {
+		t.Errorf("template-first: got (%q, %v)", tpl, err)
+	}
+	// --type mapping still works without --template.
+	tpl, err = resolveAppDevTemplate(testRuntimeAppDevInitTpl(t, "full_stack", "", ""))
+	if err != nil || tpl != "react-express-standard-fullstack" {
+		t.Errorf("type mapping: got (%q, %v)", tpl, err)
+	}
+	// Unsafe template names are rejected (they splice into URL/package name).
+	for _, bad := range []string{"../evil", "a/b", "@scope/x", "UPPER", "-lead", "x y"} {
+		if _, err := resolveAppDevTemplate(testRuntimeAppDevInitTpl(t, "", bad, "")); err == nil {
+			t.Errorf("template %q should be rejected", bad)
+		}
 	}
 }
 
@@ -559,6 +584,24 @@ func TestAppDevInitTemplateExecute_FullStackPackage(t *testing.T) {
 	data := parseEnvelopeData(t, stdout)
 	if data["template"] != "react-express-standard-fullstack" {
 		t.Errorf("template = %v", data["template"])
+	}
+}
+
+func TestAppDevInitTemplateExecute_ExplicitTemplate(t *testing.T) {
+	pkg := "@lark-apaas/coding-template-vite-react"
+	withFakeRegistry(t, pkg, buildTemplateTgz(t, []tgzEntry{
+		{name: "package/package.json", body: `{"miaodaTemplate":{"archType":2}}`},
+		{name: "package/template/index.html", body: "tpl"},
+	}))
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	dir := relAppDevDir(t)
+	if err := runAppsShortcut(t, AppsAppDevInitTemplate,
+		[]string{"+app-dev-init-template", "--template", "vite-react", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	data := parseEnvelopeData(t, stdout)
+	if data["template"] != "vite-react" || data["stack"] != "vite-react" {
+		t.Errorf("data = %v", data)
 	}
 }
 

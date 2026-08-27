@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -38,6 +39,33 @@ func appDevTemplateForType(appType string) string {
 		return appDevTemplateFullstack
 	}
 	return ""
+}
+
+// appDevTemplateNameRe constrains an explicit --template short name to the
+// npm package-name-segment charset. The value is spliced into the registry
+// URL and the package name, so anything looser (slashes, "..", "@") would
+// change the URL/package semantics.
+var appDevTemplateNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,99}$`)
+
+// resolveAppDevTemplate picks the template short name: an explicit --template
+// wins (template-first, mirroring miaoda-cli's resolveStack), otherwise
+// --type is mapped through appDevTemplateForType. There is deliberately no
+// allowlist for --template — new template packages ship without CLI changes.
+func resolveAppDevTemplate(rctx *common.RuntimeContext) (string, error) {
+	if tpl := strings.TrimSpace(rctx.Str("template")); tpl != "" {
+		if !appDevTemplateNameRe.MatchString(tpl) {
+			return "", appsValidationParamError("--template",
+				"--template must be an npm package name segment (lowercase letters, digits, '.', '_', '-'), got %q", tpl).
+				WithHint("pass the template short name, e.g. react-standard-webapp; it resolves to " + appDevTemplatePkgPrefix + "<name>")
+		}
+		return tpl, nil
+	}
+	appType := strings.TrimSpace(rctx.Str("type"))
+	if appType == "" {
+		return "", appsValidationParamError("--type", "--type or --template is required").
+			WithHint("pass --type frontend|full_stack for the default templates, or --template <name> to use a specific template package")
+	}
+	return appDevTemplateForType(appType), nil
 }
 
 // resolveAppDevDir returns the scaffold target directory: --dir when set,
@@ -99,6 +127,7 @@ var AppsAppDevInitTemplate = common.Shortcut{
 	Tips: []string{
 		"Example: lark-cli apps +app-dev-init-template --type frontend --dir ./my-app",
 		"Example: lark-cli apps +app-dev-init-template --type full_stack --dry-run",
+		"Example: lark-cli apps +app-dev-init-template --template vite-react --dir ./demo   (use a specific template package directly)",
 		"The scaffold is local-only: create the Miaoda app later with +create and deploy with +app-dev-publish",
 	},
 	// No Lark OAPI is called; explicit []string{} per the convention
@@ -107,19 +136,18 @@ var AppsAppDevInitTemplate = common.Shortcut{
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "type", Desc: "app type; maps to a template package (frontend=react-standard-webapp, full_stack=react-express-standard-fullstack)", Enum: []string{"frontend", "full_stack"}},
+		{Name: "type", Desc: "app type; maps to a template package (frontend=react-standard-webapp, full_stack=react-express-standard-fullstack); ignored when --template is set", Enum: []string{"frontend", "full_stack"}},
+		{Name: "template", Desc: "template short name to use directly (resolves to @lark-apaas/coding-template-<name>); takes precedence over --type"},
 		{Name: "dir", Desc: "target directory, relative path (default ./<template-name>); must be new or empty"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		appType := strings.TrimSpace(rctx.Str("type"))
-		if appType == "" {
-			return appsValidationParamError("--type", "--type is required").
-				WithHint("valid values: frontend | full_stack")
+		if _, err := resolveAppDevTemplate(rctx); err != nil {
+			return err
 		}
 		return validateAppDevDir(rctx.Str("dir"))
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
-		template := appDevTemplateForType(strings.TrimSpace(rctx.Str("type")))
+		template, _ := resolveAppDevTemplate(rctx) // Validate already rejected invalid input
 		dir := resolveAppDevDir(rctx.Str("dir"), template)
 		pkg := appDevTemplatePackageName(template)
 		dry := common.NewDryRunAPI().
@@ -142,7 +170,10 @@ var AppsAppDevInitTemplate = common.Shortcut{
 		return dry
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		template := appDevTemplateForType(strings.TrimSpace(rctx.Str("type")))
+		template, err := resolveAppDevTemplate(rctx)
+		if err != nil {
+			return err
+		}
 		dir := resolveAppDevDir(rctx.Str("dir"), template)
 		if err := ensureAppDevDirUsable(dir); err != nil {
 			return err
