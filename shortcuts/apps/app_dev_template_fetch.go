@@ -162,16 +162,7 @@ func appDevHTTPGet(ctx context.Context, rawURL string, maxBytes int64, notFoundH
 
 // renderedTemplate reports what renderAppDevTemplate materialized.
 type renderedTemplate struct {
-	ArchType interface{}
-	Files    int
-}
-
-// templatePkgJSON is the subset of the template package's own package.json
-// the renderer reads (archType rides on miaodaTemplate, set by the template).
-type templatePkgJSON struct {
-	MiaodaTemplate struct {
-		ArchType interface{} `json:"archType"`
-	} `json:"miaodaTemplate"`
+	Files int
 }
 
 // renamedTemplateFiles maps placeholder names shipped in the tarball to their
@@ -202,7 +193,6 @@ func renderAppDevTemplate(targetDir, projectName string, tgz []byte) (*renderedT
 	// cap — the tar reader "skips" by reading through this counter.
 	counted := &countingReader{r: gz}
 	tr := tar.NewReader(counted)
-	var pkgJSONRaw []byte
 	files := 0
 	for {
 		hdr, err := tr.Next()
@@ -230,14 +220,6 @@ func renderAppDevTemplate(targetDir, projectName string, tgz []byte) (*renderedT
 			continue
 		}
 		if hdr.Typeflag != tar.TypeReg {
-			continue
-		}
-		if name == "package/package.json" {
-			raw, err := io.ReadAll(io.LimitReader(tr, 1<<20))
-			if err != nil {
-				return nil, appsSubprocessEnvelopeError("read template package.json: %v", err)
-			}
-			pkgJSONRaw = raw
 			continue
 		}
 		if !strings.HasPrefix(name, appDevTemplateEntryPrefix) {
@@ -301,14 +283,7 @@ func renderAppDevTemplate(targetDir, projectName string, tgz []byte) (*renderedT
 		}
 	}
 
-	rendered := &renderedTemplate{Files: files}
-	if len(pkgJSONRaw) > 0 {
-		var pkg templatePkgJSON
-		if err := json.Unmarshal(pkgJSONRaw, &pkg); err == nil {
-			rendered.ArchType = pkg.MiaodaTemplate.ArchType
-		}
-	}
-	return rendered, nil
+	return &renderedTemplate{Files: files}, nil
 }
 
 // countingReader counts bytes read through it (decompressed tar stream).
@@ -323,10 +298,10 @@ func (c *countingReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// writeAppDevSparkMeta merge-writes {stack, version, archType} into
+// writeAppDevSparkMeta merge-writes {stack, version} into
 // <dir>/.spark/meta.json, creating the directory as needed. Field names align
 // with miaoda-cli's SparkMeta so downstream tooling reads one format.
-func writeAppDevSparkMeta(dir, stack, version string, archType interface{}) error {
+func writeAppDevSparkMeta(dir, stack, version string) error {
 	sparkDir := filepath.Join(dir, ".spark")
 	if err := os.MkdirAll(sparkDir, 0o755); err != nil { //nolint:forbidigo // see renderAppDevTemplate.
 		return appsFileIOError(err, "create .spark directory failed: %v", err)
@@ -338,9 +313,6 @@ func writeAppDevSparkMeta(dir, stack, version string, archType interface{}) erro
 	}
 	meta["stack"] = stack
 	meta["version"] = version
-	if archType != nil {
-		meta["archType"] = archType
-	}
 	out, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return appsFileIOError(err, "marshal %s failed: %v", metaRelPath, err)

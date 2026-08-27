@@ -321,8 +321,60 @@ func TestAppDevPublishValidate_NoAppID(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
-	if !strings.Contains(p.Message, "no app_id") || !strings.Contains(p.Hint, "+create") {
-		t.Errorf("got %v", p)
+	if !strings.Contains(p.Message, "no publish target") {
+		t.Errorf("message = %q", p.Message)
+	}
+	// The guidance must lead to +create and the new --app-id flow (no manual
+	// JSON editing).
+	if !strings.Contains(p.Hint, "+create") || !strings.Contains(p.Hint, "+app-dev-publish --app-id") {
+		t.Errorf("hint = %q", p.Hint)
+	}
+}
+
+func TestAppDevPublishValidate_AppIDMismatch(t *testing.T) {
+	chdirProjectRoot(t, `{"app_id":"app_recorded"}`)
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsAppDevPublish,
+		[]string{"+app-dev-publish", "--app-id", "app_other", "--as", "user"}, factory, stdout)
+	p := requireAppsProblem(t, err, errs.CategoryValidation)
+	if !strings.Contains(p.Message, "app_recorded") || !strings.Contains(p.Message, "app_other") {
+		t.Errorf("message must name both ids, got %q", p.Message)
+	}
+	if !strings.Contains(p.Hint, "drop --app-id") {
+		t.Errorf("hint = %q", p.Hint)
+	}
+}
+
+func TestAppDevPublishExecute_FlagAppIDBackfill(t *testing.T) {
+	root := chdirProjectRoot(t, `{"stack":"react-standard-webapp"}`) // no app_id
+	writeDistFiles(t, filepath.Join(root, appDevDistDir), []string{"output/index.html", "output/routes.json"})
+	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubPreRelease(reg, "app_flag1", srv.URL, nil)
+	stubReleases(reg, "app_flag1", map[string]interface{}{"release_id": "rel_9", "status": "pending"})
+	if err := runAppsShortcut(t, AppsAppDevPublish,
+		[]string{"+app-dev-publish", "--app-id", "app_flag1", "--skip-build", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	// app_id persisted on success, other fields preserved.
+	b, _ := os.ReadFile(filepath.Join(root, metaRelPath))
+	var meta map[string]interface{}
+	_ = json.Unmarshal(b, &meta)
+	if meta["app_id"] != "app_flag1" || meta["stack"] != "react-standard-webapp" {
+		t.Errorf("meta after publish = %v", meta)
+	}
+}
+
+func TestAppDevPublishExecute_FlagMatchesMeta(t *testing.T) {
+	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
+	writeDistFiles(t, filepath.Join(root, appDevDistDir), []string{"output/index.html", "output/routes.json"})
+	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubPreRelease(reg, "app_x", srv.URL, nil)
+	stubReleases(reg, "app_x", map[string]interface{}{"release_id": "rel_10", "status": "pending"})
+	if err := runAppsShortcut(t, AppsAppDevPublish,
+		[]string{"+app-dev-publish", "--app-id", "app_x", "--skip-build", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("matching --app-id must publish fine: %v", err)
 	}
 }
 

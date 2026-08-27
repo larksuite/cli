@@ -8,7 +8,8 @@
 
 ## 命令骨架
 
-- **必须在项目根目录执行**：项目根须有 `.spark/meta.json` 且含 `app_id`。命令不接受 `--app-id` / `--path` 参数；产物目录固定为 `./dist`。
+- **必须在项目根目录执行**（项目根须有 `.spark/meta.json`）；产物目录固定为 `./dist`，无 `--path` 参数。
+- `--app-id` 可选：首次发布传它指定目标（成功后自动写入 `.spark/meta.json`，后续免传）；meta.json 已有 app_id 时可省略；**两者都有且不一致会被拒绝**（防误发错目标），确要切换先更新 meta.json。
 - 可选：`--skip-build`（跳过 `npm run build`，直接发布已有 `./dist`）、`--allow-sensitive`（跳过凭据文件扫描）。
 - 内部流程：读 meta.json → `pre_release` 获取上传地址与 `MIAODA_*` 构建环境变量 → `npm run build`（自动注入这些变量）→ 校验 dist 产物协议 → zip 上传 → 触发发布。
 - 产物协议：`dist/output/` 必须含 `index.html` 与 `routes.json`；`dist/output_resource/` 可选；dist 顶层不允许其他条目。包体限制：zip ≤ 50MB、未压缩总量 ≤ 200MB。
@@ -16,7 +17,8 @@
 ## 示例
 
 ```bash
-lark-cli apps +app-dev-publish
+lark-cli apps +app-dev-publish --app-id app_xxx     # 首次发布：指定目标，成功后写入 meta.json
+lark-cli apps +app-dev-publish                      # 迭代重发：读 meta.json，零参数
 lark-cli apps +app-dev-publish --skip-build
 lark-cli apps +app-dev-publish --dry-run
 ```
@@ -29,7 +31,7 @@ lark-cli apps +app-dev-publish --dry-run
 
 ## 前置引导
 
-- meta.json 缺 `app_id` 时：先 `lark-cli apps +create --name <name>` 创建应用，把返回的 `app_id` 写入 `.spark/meta.json` 再发布；应用名可从项目主题生成，不要让用户手动提供 app_id。
+- meta.json 缺 `app_id` 时：先 `lark-cli apps +create --name <name>` 创建应用，然后 `lark-cli apps +app-dev-publish --app-id <返回的 app_id>` 发布（成功后 app_id 自动写入 meta.json，无需手工编辑文件）；应用名可从项目主题生成，不要让用户手动提供 app_id。
 - **`app_id` 不是本会话写入的**（来自历史文件或他人仓库）时，发布前先把目标 `app_id` 告知用户并确认——发布会覆盖该应用的线上内容。
 
 ## 安全规则
