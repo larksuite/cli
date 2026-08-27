@@ -273,10 +273,10 @@ lark-cli api POST /open-apis/im/v1/messages --params '{"receive_id_type":"chat_i
 按其错误类别退出。**判断结果是否完整请检查退出码**——stdout 为空不等于零条记录；
 接管道时退出码会被丢弃，除非设置 `set -o pipefail`。
 
-失败运行原则上不向 stdout 写入任何内容，但有一个例外：`lark-cli api` 与生成的 API 命令
-在流式格式（`ndjson`/`table`/`csv`）下会按到达顺序输出每页，故失败前已写出的行会保留。
-**首页**的行为保持不变：JSON 和 `--jq` 格式下业务错误仍把原始响应写入 stdout；传输失败及
-流式格式下的任何失败则都不写 stdout。
+失败运行原则上不向 stdout 写入任何内容，但有两个例外，且都只限于 `lark-cli api` 与生成
+的 API 命令：其一，它们在流式格式（`ndjson`/`table`/`csv`）下会按到达顺序输出每页，故
+失败前已写出的行会保留；其二，**首页**的行为保持不变——JSON 和 `--jq` 格式下业务错误
+仍把原始响应写入 stdout。传输失败及流式格式下的任何失败则都不写 stdout。
 
 ### Dry Run
 

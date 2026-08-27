@@ -274,12 +274,12 @@ and a business error exits by its error category. **Check the exit code to decid
 whether a result is complete** — an empty stdout is not the same as zero records,
 and in a pipeline the exit code is discarded unless you set `set -o pipefail`.
 
-Nothing is written to stdout for a failed run, with one exception: `lark-cli api`
-and the generated API Commands emit each page as it arrives under the streaming
-formats (`ndjson`/`table`/`csv`), so rows written before the failure remain. Their
-**first**-page behaviour is unchanged: under the JSON and `--jq` formats a business
-error still writes the raw response to stdout; a transport failure — and any failure
-under a streaming format — writes nothing.
+Nothing is written to stdout for a failed run, with two exceptions, both limited to
+`lark-cli api` and the generated API Commands: (a) they emit each page as it arrives
+under the streaming formats (`ndjson`/`table`/`csv`), so rows written before the
+failure remain; and (b) their **first**-page behaviour is unchanged — under the JSON
+and `--jq` formats a business error still writes the raw response to stdout. A
+transport failure — and any failure under a streaming format — writes nothing.
 
 ### Dry Run
 
