@@ -12,15 +12,6 @@ lark-cli docs +create --doc-format xml --content "@<XML 文件相对路径>"
 lark-cli docs +create --doc-format markdown --content "@./draft.md"
 ```
 
-## 大文档自动分批
-
-- 较大的 XML 与 Markdown 内容会自动先执行 create，再按原始顺序串行 append。CLI 使用 2,000 Block 的可靠目标批量；不可拆分的单个顶层单元最多可占 5,000 Block，整篇文档最多 40,000 Block。
-- 只在安全的顶层边界切分。单个顶层列表、表格、引用、代码块或 DocxXML 容器不会被从内部拆开；若它自身超过单批限制，命令会在创建前返回 `validation/invalid_argument`，需要先把该容器改写成多个同级单元。
-- Markdown 使用与 DocxXML SDK 相同的解析和 create 标题分析规则。唯一顶层 ATX H1 的提升、多个 H1 的歧义保留、leading `<title>` 及重复 H1 删除都必须在首个 create 批次完成；若无法在 5,000 Block 内保持该语义，CLI 会在任何网络写入前拒绝请求。
-- 分批写入是 fail-fast、非事务流程：后续 append 失败时，已经成功的 create/append 不回滚。CLI 返回 `ok:false` 的 partial result，并在 `data.create_batches` 中给出 `total_batches`、`completed_batches`、`failed_batch` 和错误详情；不要重发已经完成的批次。
-- `document.new_blocks` 会聚合所有成功批次，供本地图片/附件占位符继续使用原有上传、绑定和清理流程。
-- 长内容必须优先使用相对 `@file` 或 `--content -`；不要把数万个 Block 直接作为命令行参数传递。
-
 ## 返回值
 
 ```json
