@@ -238,8 +238,29 @@ func withFakeEnvRunner(t *testing.T, f *fakeEnvRunner) {
 	t.Cleanup(func() { appDevRunner = orig })
 }
 
+// chdirMiaodaProjectRoot creates a temp project root with miaoda.json and
+// chdirs into it (the protocol-first path).
+func chdirMiaodaProjectRoot(t *testing.T, miaodaJSON string) string {
+	t.Helper()
+	root := t.TempDir()
+	if miaodaJSON != "" {
+		if err := os.WriteFile(filepath.Join(root, miaodaJSONRelPath), []byte(miaodaJSON), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(old) })
+	return root
+}
+
 // chdirProjectRoot creates a temp project root with .spark/meta.json and
-// chdirs into it for the test (the shortcut reads meta.json from cwd).
+// chdirs into it for the test (legacy fallback path).
 func chdirProjectRoot(t *testing.T, metaJSON string) string {
 	t.Helper()
 	root := t.TempDir()
@@ -310,6 +331,9 @@ func TestAppDevPublishValidate_NoMeta(t *testing.T) {
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
 	if p.Subtype != errs.SubtypeFailedPrecondition || !strings.Contains(p.Message, "not a Miaoda app project") {
 		t.Errorf("got %v", p)
+	}
+	if !strings.Contains(p.Message, "miaoda.json") {
+		t.Errorf("message should name miaoda.json, got %q", p.Message)
 	}
 	if !strings.Contains(p.Hint, "+app-dev-init-template") {
 		t.Errorf("hint = %q", p.Hint)
@@ -383,8 +407,8 @@ func TestAppDevPublishValidate_BadAppID(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
-	if !strings.Contains(p.Message, ".spark/meta.json app_id") {
-		t.Errorf("message should point at meta.json, got %q", p.Message)
+	if !strings.Contains(p.Message, ".spark/meta.json app id") {
+		t.Errorf("message should point at the config source, got %q", p.Message)
 	}
 	// This command has no --app-id flag; the error must not mention one.
 	if strings.Contains(p.Message, "--app-id") || strings.Contains(p.Hint, "--app-id") {
@@ -424,7 +448,7 @@ func TestAppDevPublishValidate_SkipBuildNoDist(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--skip-build", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
-	if p.Subtype != errs.SubtypeFailedPrecondition || !strings.Contains(p.Message, "./dist does not exist") {
+	if p.Subtype != errs.SubtypeFailedPrecondition || !strings.Contains(p.Message, "build output directory dist does not exist") {
 		t.Errorf("got %v", p)
 	}
 }
@@ -527,7 +551,7 @@ func TestAppDevPublishExecute_BuildFails(t *testing.T) {
 	stubPreRelease(reg, "app_x", srv.URL, nil)
 	err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryInternal)
-	if !strings.Contains(p.Message, "npm run build failed") || !strings.Contains(p.Message, "TS2304") {
+	if !strings.Contains(p.Message, `build command "npm run build" failed`) || !strings.Contains(p.Message, "TS2304") {
 		t.Errorf("message = %q", p.Message)
 	}
 	if !strings.Contains(p.Hint, "--skip-build") {
@@ -599,6 +623,83 @@ func TestAppDevPublishDryRun(t *testing.T) {
 	buildCmd, _ := data["build_command"].(string)
 	if !strings.Contains(buildCmd, "MIAODA_*") {
 		t.Errorf("build_command = %q", buildCmd)
+	}
+}
+
+func TestAppDevPublishExecute_MiaodaProtocol(t *testing.T) {
+	// miaoda.json declares a custom build command and output dir; the app
+	// section is replaced wholesale on success.
+	root := chdirMiaodaProjectRoot(t, `{
+  "stack": "custom-webapp",
+  "build": { "command": ["make", "site"], "output": "public" },
+  "app": { "id": "app_x" }
+}`)
+	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	f := &fakeEnvRunner{sideEffect: func() {
+		writeDistFiles(t, filepath.Join(root, "public"), []string{"output/index.html", "output/routes.json"})
+		routes := `{"version":1,"type":"custom-webapp","fallback":"index.html"}`
+		os.WriteFile(filepath.Join(root, "public", "output", "routes.json"), []byte(routes), 0o644)
+	}}
+	withFakeEnvRunner(t, f)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubPreRelease(reg, "app_x", srv.URL, nil)
+	stubReleases(reg, "app_x", map[string]interface{}{
+		"release_id": "rel_20", "status": "finished",
+		"online_url": "https://x/app/app_x",
+	})
+	if err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	// Declared build command executed (not npm run build).
+	if f.name != "make" || len(f.args) != 1 || f.args[0] != "site" {
+		t.Errorf("build call = %v %v, want make site", f.name, f.args)
+	}
+	// App section replaced wholesale with id+url; declarations preserved.
+	b, _ := os.ReadFile(filepath.Join(root, miaodaJSONRelPath))
+	var doc map[string]interface{}
+	_ = json.Unmarshal(b, &doc)
+	app, _ := doc["app"].(map[string]interface{})
+	if app == nil || app["id"] != "app_x" || app["url"] != "https://x/app/app_x" {
+		t.Errorf("app section = %v", doc["app"])
+	}
+	if doc["stack"] != "custom-webapp" || doc["build"] == nil {
+		t.Errorf("declaration fields must be preserved: %v", doc)
+	}
+}
+
+func TestAppDevPublishExecute_MiaodaFlagBackfill(t *testing.T) {
+	// No recorded app id in miaoda.json: --app-id publishes and the app
+	// section is written on success (async: no url yet).
+	root := chdirMiaodaProjectRoot(t, `{"stack":"react-standard-webapp"}`)
+	writeDistFiles(t, filepath.Join(root, appDevDefaultBuildOutput), []string{"output/index.html", "output/routes.json"})
+	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubPreRelease(reg, "app_new1", srv.URL, nil)
+	stubReleases(reg, "app_new1", map[string]interface{}{"release_id": "rel_21", "status": "pending"})
+	if err := runAppsShortcut(t, AppsAppDevPublish,
+		[]string{"+app-dev-publish", "--app-id", "app_new1", "--skip-build", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	b, _ := os.ReadFile(filepath.Join(root, miaodaJSONRelPath))
+	var doc map[string]interface{}
+	_ = json.Unmarshal(b, &doc)
+	app, _ := doc["app"].(map[string]interface{})
+	if app == nil || app["id"] != "app_new1" {
+		t.Errorf("app section = %v", doc["app"])
+	}
+	if _, has := app["url"]; has {
+		t.Error("async publish must not write app.url")
+	}
+}
+
+func TestAppDevPublishValidate_MiaodaMismatch(t *testing.T) {
+	chdirMiaodaProjectRoot(t, `{"app": {"id": "app_recorded"}}`)
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsAppDevPublish,
+		[]string{"+app-dev-publish", "--app-id", "app_other", "--as", "user"}, factory, stdout)
+	p := requireAppsProblem(t, err, errs.CategoryValidation)
+	if !strings.Contains(p.Message, "miaoda.json") || !strings.Contains(p.Message, "app_recorded") {
+		t.Errorf("message = %q", p.Message)
 	}
 }
 

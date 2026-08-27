@@ -167,49 +167,47 @@ func appDevSensitiveCandidatesError(hits []string) error {
 		WithHint("remove these files from the build output, OR pass --allow-sensitive if shipping them is intentional (e.g. a docs site demoing credential-file formats)")
 }
 
-// resolveAppDevPublishAppID resolves the publish target from --app-id and
-// .spark/meta.json:
-//   - flag only            -> use it (backfilled into meta.json after a
-//     successful publish, so retries and later runs need no flag)
-//   - meta only            -> use it (the zero-flag iteration path)
+// resolveAppDevPublishTarget loads the project declaration (miaoda.json
+// first, legacy .spark/meta.json fallback) and resolves the publish target
+// from --app-id and the recorded app id:
+//   - flag only            -> use it (written back after a successful publish)
+//   - recorded only        -> use it (the zero-flag iteration path)
 //   - both, equal          -> fine
 //   - both, different      -> refuse: silently overwriting the recorded
 //     target could ship the build to the wrong app
 //   - neither              -> guide the user to +create first
-//
-// fromFlag reports whether the value came from --app-id (drives backfill).
-func resolveAppDevPublishAppID(rctx *common.RuntimeContext) (appID string, fromFlag bool, err error) {
+func resolveAppDevPublishTarget(rctx *common.RuntimeContext) (cfg *appDevProjectConfig, appID string, fromFlag bool, err error) {
 	flagID := strings.TrimSpace(rctx.Str("app-id"))
-	metaID, isSpark, err := readMetaAppID(".")
+	cfg, found, err := readAppDevProjectConfig(".")
 	if err != nil {
-		return "", false, err
+		return nil, "", false, err
 	}
-	if !isSpark {
-		return "", false, appsFailedPreconditionError(
-			"current directory is not a Miaoda app project (.spark/meta.json not found)").
+	if !found {
+		return nil, "", false, appsFailedPreconditionError(
+			"current directory is not a Miaoda app project (miaoda.json not found)").
 			WithHint("run this command from the project root; scaffold a project with +app-dev-init-template first")
 	}
-	metaID = strings.TrimSpace(metaID)
+	recorded := cfg.AppID
 	switch {
-	case flagID == "" && metaID == "":
-		return "", false, appsFailedPreconditionError("no publish target: .spark/meta.json has no app_id and --app-id was not given").
-			WithHint("create the app first with `lark-cli apps +create --name <name>`, then publish with `lark-cli apps +app-dev-publish --app-id <returned app_id>` (the id is saved into .spark/meta.json on success)")
-	case flagID != "" && metaID != "" && flagID != metaID:
-		return "", false, appsFailedPreconditionParamError("--app-id",
-			".spark/meta.json already records app_id %s but --app-id is %s; refusing to silently switch the publish target", metaID, flagID).
-			WithHint("drop --app-id to publish to the recorded app, or update app_id in .spark/meta.json first if you really mean to switch")
+	case flagID == "" && recorded == "":
+		return nil, "", false, appsFailedPreconditionError("no publish target: %s has no app id and --app-id was not given", cfg.Source).
+			WithHint("create the app first with `lark-cli apps +create --name <name>`, then publish with `lark-cli apps +app-dev-publish --app-id <returned app_id>` (the id is saved into miaoda.json on success)")
+	case flagID != "" && recorded != "" && flagID != recorded:
+		return nil, "", false, appsFailedPreconditionParamError("--app-id",
+			"%s already records app id %s but --app-id is %s; refusing to silently switch the publish target", cfg.Source, recorded, flagID).
+			WithHint("drop --app-id to publish to the recorded app, or update the recorded app id first if you really mean to switch")
 	case flagID != "":
 		if err := validateRealAppID(flagID); err != nil {
-			return "", false, err
+			return nil, "", false, err
 		}
-		return flagID, metaID == "", nil
+		return cfg, flagID, recorded == "", nil
 	default:
-		if !strings.HasPrefix(metaID, "app_") {
-			return "", false, appsFailedPreconditionError(
-				`.spark/meta.json app_id %q is invalid (must start with "app_")`, metaID).
-				WithHint("fix app_id in .spark/meta.json: find the right id with `lark-cli apps +list`, or create the app with `lark-cli apps +create --name <name>`")
+		if !strings.HasPrefix(recorded, "app_") {
+			return nil, "", false, appsFailedPreconditionError(
+				`%s app id %q is invalid (must start with "app_")`, cfg.Source, recorded).
+				WithHint("fix the recorded app id: find the right one with `lark-cli apps +list`, or create the app with `lark-cli apps +create --name <name>`")
 		}
-		return metaID, false, nil
+		return cfg, recorded, false, nil
 	}
 }
 
@@ -261,12 +259,13 @@ var AppsAppDevPublish = common.Shortcut{
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "app-id", Desc: "publish target app ID (app_ prefix); optional when .spark/meta.json already records one — on a successful publish it is saved into .spark/meta.json, and a value conflicting with the recorded one is rejected"},
-		{Name: "skip-build", Type: "bool", Desc: "skip npm run build and publish the existing ./dist as-is"},
+		{Name: "app-id", Desc: "publish target app ID (app_ prefix); optional when miaoda.json already records one — on a successful publish it is saved back into miaoda.json, and a value conflicting with the recorded one is rejected"},
+		{Name: "skip-build", Type: "bool", Desc: "skip the build.command declared in miaoda.json (default npm run build) and publish the existing build.output directory as-is"},
 		{Name: "allow-sensitive", Type: "bool", Desc: "skip the credential-file scan (allow .env / .npmrc / etc. in the publish payload)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		if _, _, err := resolveAppDevPublishAppID(rctx); err != nil {
+		cfg, _, _, err := resolveAppDevPublishTarget(rctx)
+		if err != nil {
 			return err
 		}
 		// Sensitive-file scan lives in Validate so that --dry-run exits
@@ -288,55 +287,60 @@ var AppsAppDevPublish = common.Shortcut{
 			}
 		}
 		if rctx.Bool("skip-build") {
-			if _, err := rctx.FileIO().Stat(appDevDistDir); err != nil {
-				return appsFailedPreconditionError("--skip-build is set but ./dist does not exist").
-					WithHint("run npm run build first, or drop --skip-build to let the command build")
+			if _, err := rctx.FileIO().Stat(cfg.BuildOutput); err != nil {
+				return appsFailedPreconditionError("--skip-build is set but the build output directory %s does not exist", cfg.BuildOutput).
+					WithHint("run the build first, or drop --skip-build to let the command build")
 			}
-		} else if _, err := appDevLookPath("npm"); err != nil {
-			return appsFailedPreconditionError("npm executable not found on PATH").
-				WithHint("install Node.js (which provides npm), or build manually and retry with --skip-build")
+		} else if _, err := appDevLookPath(cfg.BuildCommand[0]); err != nil {
+			return appsFailedPreconditionError("build command executable %q not found on PATH", cfg.BuildCommand[0]).
+				WithHint("install it (default build.command is npm run build, provided by Node.js), or build manually and retry with --skip-build")
 		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		dry := common.NewDryRunAPI().
 			Desc("Read .spark/meta.json app_id -> GET pre_release (upload_url/tos_path + MIAODA_* build env) -> npm run build -> validate dist layout -> zip -> PUT to TOS -> POST releases; returns online_url (sync) or release_id (async)")
-		appID, fromFlag, err := resolveAppDevPublishAppID(rctx)
+		cfg, appID, fromFlag, err := resolveAppDevPublishTarget(rctx)
+		if cfg == nil {
+			cfg = &appDevProjectConfig{Source: miaodaJSONRelPath}
+			applyAppDevConfigDefaults(cfg)
+		}
 		switch {
 		case err != nil:
 			dry.Set("meta_error", err.Error())
 		default:
 			dry.Set("app_id", appID)
 			if fromFlag {
-				dry.Set("app_id_source", "--app-id flag (will be saved into .spark/meta.json on success)")
+				dry.Set("app_id_source", "--app-id flag (will be saved into miaoda.json on success)")
 			} else {
-				dry.Set("app_id_source", ".spark/meta.json")
+				dry.Set("app_id_source", cfg.Source)
 			}
 			dry.GET(fmt.Sprintf("%s/apps/%s/pre_release", apiBasePath, validate.EncodePathSegment(appID))).
 				PUT("<presigned_upload_url> (https only, from pre_release kvs)").
 				POST(fmt.Sprintf(releaseCreatePath, validate.EncodePathSegment(appID))).
 				Body(map[string]string{"tos_path": "<from pre_release kvs>"})
 		}
-		dry.Set("build_command", "npm run build (env allowlist: MIAODA_* keys from pre_release; skipped with --skip-build)")
-		if candidates, err := walkHTMLPublishCandidates(rctx.FileIO(), appDevDistDir); err != nil {
+		dry.Set("build_command", strings.Join(cfg.BuildCommand, " ")+" (from miaoda.json build.command, default npm run build; env allowlist: MIAODA_* keys from pre_release; skipped with --skip-build)")
+		dry.Set("build_output", cfg.BuildOutput)
+		if candidates, err := walkHTMLPublishCandidates(rctx.FileIO(), cfg.BuildOutput); err != nil {
 			dry.Set("dist_state", "missing or unreadable: "+err.Error())
 		} else {
 			dry.Set("dist_file_count", len(candidates))
-			if _, verr := validateAppDevDist(rctx.FileIO(), appDevDistDir, rctx.Bool("allow-sensitive")); verr != nil {
+			if _, verr := validateAppDevDist(rctx.FileIO(), cfg.BuildOutput, rctx.Bool("allow-sensitive")); verr != nil {
 				dry.Set("dist_validation_error", verr.Error())
 			}
 		}
 		return dry
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		appID, fromFlag, err := resolveAppDevPublishAppID(rctx)
+		cfg, appID, fromFlag, err := resolveAppDevPublishTarget(rctx)
 		if err != nil {
 			return err
 		}
 		// The server-side owner check is the only authorization line — echo
 		// the target loudly so a wrong app_id is visible before anything
 		// ships, naming where the id came from.
-		source := metaRelPath
+		source := cfg.Source
 		if fromFlag {
 			source = "--app-id"
 		}
@@ -364,15 +368,16 @@ var AppsAppDevPublish = common.Shortcut{
 			if len(keys) > 0 {
 				fmt.Fprintf(rctx.IO().ErrOut, "injecting build env: %s\n", strings.Join(keys, ", "))
 			}
-			fmt.Fprintln(rctx.IO().ErrOut, "running npm run build...")
-			if _, stderr, err := appDevRunner.RunEnv(ctx, "", env, "npm", "run", "build"); err != nil {
-				return appsExternalToolError(err, "npm run build failed: %s", gitErr(stderr, err)).
-					WithHint("fix the build errors and retry; or build manually and retry with --skip-build")
+			buildCmd := cfg.BuildCommand
+			fmt.Fprintf(rctx.IO().ErrOut, "running build: %s\n", strings.Join(buildCmd, " "))
+			if _, stderr, err := appDevRunner.RunEnv(ctx, "", env, buildCmd[0], buildCmd[1:]...); err != nil {
+				return appsExternalToolError(err, "build command %q failed: %s", strings.Join(buildCmd, " "), gitErr(stderr, err)).
+					WithHint("fix the build errors and retry; or build manually and retry with --skip-build (build.command is declared in miaoda.json)")
 			}
 			built = true
 		}
 
-		candidates, err := validateAppDevDist(rctx.FileIO(), appDevDistDir, rctx.Bool("allow-sensitive"))
+		candidates, err := validateAppDevDist(rctx.FileIO(), cfg.BuildOutput, rctx.Bool("allow-sensitive"))
 		if err != nil {
 			return err
 		}
@@ -406,15 +411,6 @@ var AppsAppDevPublish = common.Shortcut{
 			return withAppsHint(err, "verify the app supports artifact-hosting publish; list your apps with `lark-cli apps +list`")
 		}
 
-		// The release was accepted — persist a flag-provided app_id so later
-		// runs need no flag ("deploy-time fill-in" per the design doc). Only
-		// fills a missing app_id; never overwrites (mismatch was rejected in
-		// Validate). Best-effort: a write failure must not fail the publish.
-		if fromFlag {
-			if err := ensureMetaAppID(".", appID); err != nil {
-				fmt.Fprintf(rctx.IO().ErrOut, "warning: failed to save app_id into %s: %v\n", metaRelPath, err)
-			}
-		}
 		releaseID := common.GetString(releaseData, "release_id")
 		status := common.GetString(releaseData, "status")
 		onlineURL := common.GetString(releaseData, "online_url")
@@ -429,12 +425,30 @@ var AppsAppDevPublish = common.Shortcut{
 		pollHint := ""
 		if onlineURL != "" {
 			data["online_url"] = onlineURL
-			if err := ensureMetaOnlineURL(".", onlineURL); err != nil {
-				fmt.Fprintf(rctx.IO().ErrOut, "warning: failed to backfill online_url into %s: %v\n", metaRelPath, err)
-			}
 		} else {
 			pollHint = fmt.Sprintf("lark-cli apps +release-get --app-id %s --release-id %s", appID, releaseID)
 			data["poll_hint"] = pollHint
+		}
+		// The release was accepted — write the app state back per protocol
+		// (§3): miaoda.json gets the app section replaced wholesale; the
+		// legacy .spark/meta.json fallback keeps its old field names and is
+		// only ever filled, never rewritten. Best-effort: a write failure
+		// must not fail the publish.
+		if cfg.Source == miaodaJSONRelPath {
+			if err := writeMiaodaAppSection(".", appID, onlineURL); err != nil {
+				fmt.Fprintf(rctx.IO().ErrOut, "warning: failed to write app state into %s: %v\n", miaodaJSONRelPath, err)
+			}
+		} else {
+			if fromFlag {
+				if err := ensureMetaAppID(".", appID); err != nil {
+					fmt.Fprintf(rctx.IO().ErrOut, "warning: failed to save app_id into %s: %v\n", metaRelPath, err)
+				}
+			}
+			if onlineURL != "" {
+				if err := ensureMetaOnlineURL(".", onlineURL); err != nil {
+					fmt.Fprintf(rctx.IO().ErrOut, "warning: failed to backfill online_url into %s: %v\n", metaRelPath, err)
+				}
+			}
 		}
 		rctx.OutFormat(data, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "app_id: %s\nrelease_id: %s\nstatus: %s\n", appID, releaseID, status)

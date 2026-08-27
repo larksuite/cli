@@ -193,13 +193,13 @@ var AppsAppDevInitTemplate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		if err := writeAppDevSparkMeta(dir, template, version); err != nil {
+		if err := writeMiaodaScaffoldFields(dir, template, version); err != nil {
 			return err
 		}
 		nextSteps := []string{
 			fmt.Sprintf("cd %s && npm install && npm run dev", dir),
-			"lark-cli apps +create --name <name>, then write the returned app_id into .spark/meta.json",
-			"run lark-cli apps +app-dev-publish from the project root to build and deploy",
+			"lark-cli apps +create --name <name> to create the Miaoda app",
+			"run lark-cli apps +app-dev-publish --app-id <returned app_id> from the project root (saved into miaoda.json on success; later runs need no flag)",
 		}
 		data := map[string]interface{}{
 			"dir":        dir,

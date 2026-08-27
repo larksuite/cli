@@ -297,28 +297,3 @@ func (c *countingReader) Read(p []byte) (int, error) {
 	c.n += int64(n)
 	return n, err
 }
-
-// writeAppDevSparkMeta merge-writes {stack, version} into
-// <dir>/.spark/meta.json, creating the directory as needed. Field names align
-// with miaoda-cli's SparkMeta so downstream tooling reads one format.
-func writeAppDevSparkMeta(dir, stack, version string) error {
-	sparkDir := filepath.Join(dir, ".spark")
-	if err := os.MkdirAll(sparkDir, 0o755); err != nil { //nolint:forbidigo // see renderAppDevTemplate.
-		return appsFileIOError(err, "create .spark directory failed: %v", err)
-	}
-	metaPath := filepath.Join(dir, metaRelPath)
-	meta := map[string]interface{}{}
-	if b, err := os.ReadFile(metaPath); err == nil { //nolint:forbidigo // see above.
-		_ = json.Unmarshal(b, &meta)
-	}
-	meta["stack"] = stack
-	meta["version"] = version
-	out, err := json.MarshalIndent(meta, "", "  ")
-	if err != nil {
-		return appsFileIOError(err, "marshal %s failed: %v", metaRelPath, err)
-	}
-	if err := os.WriteFile(metaPath, append(out, '\n'), 0o644); err != nil { //nolint:forbidigo // see above.
-		return appsFileIOError(err, "write %s failed: %v", metaRelPath, err)
-	}
-	return nil
-}

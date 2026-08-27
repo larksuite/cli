@@ -271,24 +271,43 @@ func TestRenderAppDevTemplate_FileCountCap(t *testing.T) {
 	}
 }
 
-func TestWriteAppDevSparkMeta(t *testing.T) {
+func TestWriteMiaodaScaffoldFields(t *testing.T) {
 	dir := t.TempDir()
-	if err := writeAppDevSparkMeta(dir, "react-standard-webapp", "1.2.3"); err != nil {
+	// Fresh project: stack + version stamped.
+	if err := writeMiaodaScaffoldFields(dir, "react-standard-webapp", "1.2.3"); err != nil {
 		t.Fatal(err)
 	}
-	b, err := os.ReadFile(filepath.Join(dir, metaRelPath))
+	b, err := os.ReadFile(filepath.Join(dir, miaodaJSONRelPath))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var meta map[string]interface{}
-	if err := json.Unmarshal(b, &meta); err != nil {
+	var doc map[string]interface{}
+	if err := json.Unmarshal(b, &doc); err != nil {
 		t.Fatal(err)
 	}
-	if meta["stack"] != "react-standard-webapp" || meta["version"] != "1.2.3" {
-		t.Errorf("meta = %v", meta)
+	if doc["stack"] != "react-standard-webapp" || doc["version"] != "1.2.3" {
+		t.Errorf("doc = %v", doc)
 	}
-	if _, has := meta["archType"]; has {
-		t.Error("meta.json must not carry archType (not part of the contract)")
+	// Seed-shipped declarations are preserved; seed stack wins; version is
+	// re-stamped with the rendered package version.
+	seed := `{"stack":"seed-stack","version":"0.0.1","build":{"command":["make","dist"],"output":"out"},"dev":{"port":5173}}`
+	if err := os.WriteFile(filepath.Join(dir, miaodaJSONRelPath), []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeMiaodaScaffoldFields(dir, "react-standard-webapp", "2.0.0"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(filepath.Join(dir, miaodaJSONRelPath))
+	doc = map[string]interface{}{}
+	_ = json.Unmarshal(b, &doc)
+	if doc["stack"] != "seed-stack" {
+		t.Errorf("seed stack must not be overwritten, got %v", doc["stack"])
+	}
+	if doc["version"] != "2.0.0" {
+		t.Errorf("version must be re-stamped, got %v", doc["version"])
+	}
+	if doc["build"] == nil || doc["dev"] == nil {
+		t.Errorf("seed declarations must be preserved: %v", doc)
 	}
 }
 
@@ -553,15 +572,15 @@ func TestAppDevInitTemplateExecute_RendersFromRegistry(t *testing.T) {
 	if err != nil || !strings.Contains(string(b), dir) {
 		t.Errorf("index.html placeholder = %q err=%v (projectName is dir basename)", b, err)
 	}
-	// meta.json written by lark-cli.
-	mb, err := os.ReadFile(filepath.Join(dir, metaRelPath))
+	// miaoda.json written by lark-cli (protocol §3).
+	mb, err := os.ReadFile(filepath.Join(dir, miaodaJSONRelPath))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var meta map[string]interface{}
-	_ = json.Unmarshal(mb, &meta)
-	if meta["stack"] != "react-standard-webapp" || meta["version"] != "1.2.3" {
-		t.Errorf("meta = %v", meta)
+	var doc map[string]interface{}
+	_ = json.Unmarshal(mb, &doc)
+	if doc["stack"] != "react-standard-webapp" || doc["version"] != "1.2.3" {
+		t.Errorf("miaoda.json = %v", doc)
 	}
 	steps, _ := data["next_steps"].([]interface{})
 	if len(steps) != 3 {
