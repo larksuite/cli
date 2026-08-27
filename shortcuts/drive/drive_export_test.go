@@ -2014,6 +2014,9 @@ func TestDriveExportSuccessIsSilentAndReportsRetriedPolls(t *testing.T) {
 	if poll == nil {
 		t.Fatalf("expected a poll summary after a retried poll, got %#v", envelope.Data)
 	}
+	if poll["attempts"] != float64(2) {
+		t.Errorf("poll.attempts = %v, want 2 (one failure, then the ready status)", poll["attempts"])
+	}
 	if poll["transient_failures"] != float64(1) {
 		t.Errorf("poll.transient_failures = %v, want 1", poll["transient_failures"])
 	}

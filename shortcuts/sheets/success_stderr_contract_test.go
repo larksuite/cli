@@ -252,3 +252,108 @@ func TestBatchUpdateSurfacesIgnoredLocatorsInPayload(t *testing.T) {
 		t.Errorf("warning should name the ignored key, got %q", warnings[0])
 	}
 }
+
+// TestAnnotateSheetsResultShapes pins the three payload shapes callTool can
+// hand back. The array case is the one that matters: an annotation must not be
+// dropped just because the tool answered with something other than an object,
+// so the tool's own answer survives under `result`. A nil result stays nil-free
+// — inventing "result": null would name a result the tool never returned.
+func TestAnnotateSheetsResultShapes(t *testing.T) {
+	t.Parallel()
+
+	object := annotateSheetsResult(map[string]interface{}{"success": true}, "warnings", []string{"w"})
+	objectMap, _ := object.(map[string]interface{})
+	if objectMap["success"] != true || objectMap["warnings"] == nil {
+		t.Errorf("an object result must be annotated in place, got %#v", object)
+	}
+	if _, wrapped := objectMap["result"]; wrapped {
+		t.Errorf("an object result must not be wrapped, got %#v", object)
+	}
+
+	array := annotateSheetsResult([]interface{}{1, 2}, "warnings", []string{"w"})
+	arrayMap, _ := array.(map[string]interface{})
+	inner, _ := arrayMap["result"].([]interface{})
+	if len(inner) != 2 {
+		t.Errorf("a non-object result must survive under result, got %#v", array)
+	}
+	if arrayMap["warnings"] == nil {
+		t.Errorf("the annotation must survive alongside it, got %#v", array)
+	}
+
+	empty := annotateSheetsResult(nil, "warnings", []string{"w"})
+	emptyMap, _ := empty.(map[string]interface{})
+	if emptyMap["warnings"] == nil {
+		t.Errorf("an annotation on an empty result must still be reported, got %#v", empty)
+	}
+	if _, invented := emptyMap["result"]; invented {
+		t.Errorf("no result key may be invented when the tool returned nothing, got %#v", empty)
+	}
+}
+
+// TestAppendSheetsWarningsMergesAndSkips pins that warnings accumulate instead
+// of overwriting each other, and that an empty warning list leaves the payload
+// byte-identical — the property that keeps clean calls' output shape unchanged.
+func TestAppendSheetsWarningsMergesAndSkips(t *testing.T) {
+	t.Parallel()
+
+	merged := appendSheetsWarnings(map[string]interface{}{"warnings": []string{"first"}}, []string{"second"})
+	mergedMap, _ := merged.(map[string]interface{})
+	if got, _ := mergedMap["warnings"].([]string); len(got) != 2 || got[0] != "first" || got[1] != "second" {
+		t.Errorf("warnings should accumulate, got %#v", mergedMap["warnings"])
+	}
+
+	untouched := appendSheetsWarnings(map[string]interface{}{"success": true}, nil)
+	untouchedMap, _ := untouched.(map[string]interface{})
+	if _, present := untouchedMap["warnings"]; present {
+		t.Errorf("no warnings means no warnings field, got %#v", untouched)
+	}
+}
+
+// TestDimInsertReportsEmulatedAnchorInPayload pins the +dim-insert half of the
+// effective_operation contract. --inherit-style before is emulated by anchoring
+// one row/column earlier and inserting after it, so the request body carries a
+// position the caller never typed; without this block in the result, a caller
+// diffing the request against what they asked for reads it as an off-by-one.
+func TestDimInsertReportsEmulatedAnchorInPayload(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr, err := runCapturingStderr(t, DimInsert, []string{
+		"--url", testURL, "--sheet-id", "sh1",
+		"--position", "C", "--count", "1",
+		"--inherit-style", "before",
+	}, toolOutputStub(testToken, "write", `{"success":true}`))
+	if err != nil {
+		t.Fatalf("execute failed: %v\nstdout=%s\nstderr=%s", err, stdout, stderr)
+	}
+	if stderr != "" {
+		t.Errorf("a successful insert must leave stderr empty, got: %q", stderr)
+	}
+
+	effective, _ := decodeEnvelopeData(t, stdout)["effective_operation"].(map[string]interface{})
+	if effective == nil {
+		t.Fatalf("expected data.effective_operation for an emulated --inherit-style before: %s", stdout)
+	}
+	for field, want := range map[string]interface{}{
+		"requested_position": "C",
+		"anchor_position":    "B", // one column earlier: insert-after-B == insert-before-C
+		"side":               "after",
+		"inherit_style":      "before",
+	} {
+		if effective[field] != want {
+			t.Errorf("effective_operation[%q] = %#v, want %#v", field, effective[field], want)
+		}
+	}
+
+	// The non-emulated spelling must not gain the block: nothing was rewritten.
+	stdout, _, err = runCapturingStderr(t, DimInsert, []string{
+		"--url", testURL, "--sheet-id", "sh1",
+		"--position", "C", "--count", "1",
+		"--inherit-style", "after",
+	}, toolOutputStub(testToken, "write", `{"success":true}`))
+	if err != nil {
+		t.Fatalf("execute failed: %v\nstdout=%s", err, stdout)
+	}
+	if _, present := decodeEnvelopeData(t, stdout)["effective_operation"]; present {
+		t.Errorf("--inherit-style after anchors where the caller asked; no effective_operation expected: %s", stdout)
+	}
+}

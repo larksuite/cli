@@ -23,11 +23,17 @@ package sheets
 // stdout.
 //
 // callTool returns whatever JSON the tool emitted: usually an object, but
-// possibly null (empty output) or — for a tool that answers with an array or a
-// scalar — a non-object. An annotation must never be silently dropped just
-// because of the payload's shape, so a non-object result is wrapped as
-// {"result": <original>, <key>: <value>} rather than discarded. Object results,
-// which is every case in practice, are annotated in place and keep their shape.
+// possibly nothing at all (empty output, returned as nil) or — for a tool that
+// answers with an array or a scalar — a non-object. An annotation must never be
+// silently dropped just because of the payload's shape:
+//
+//   - object   annotated in place, keeping its shape (every case in practice)
+//   - array /
+//     scalar   wrapped as {"result": <original>, <key>: <value>}, so the tool's
+//     own answer survives alongside the annotation
+//   - nil      the tool returned no result, so there is nothing to preserve and
+//     the payload is just {<key>: <value>}. Emitting "result": null
+//     would invent a field naming a result that does not exist.
 func annotateSheetsResult(out interface{}, key string, value interface{}) interface{} {
 	switch typed := out.(type) {
 	case map[string]interface{}:

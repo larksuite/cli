@@ -216,3 +216,43 @@ func TestWorkbookExport_SuccessLeavesStderrEmpty(t *testing.T) {
 		t.Errorf("the ticket must still be reported on stdout, got: %s", stdout.String())
 	}
 }
+
+// TestWorkbookExport_LocalOfficeBehindWikiNodeRejected covers the second guard
+// call site: a /wiki/ URL carries a node_token that Validate cannot classify,
+// so a wiki node backed by a locally opened Office file only reveals itself
+// after get_node runs in Execute. The export must be refused there, before any
+// export_tasks request goes out — the create stub is registered so an
+// unexpected call would surface as a passing export instead of a rejection.
+func TestWorkbookExport_LocalOfficeBehindWikiNodeRejected(t *testing.T) {
+	getNode := &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{
+					"obj_type":  "sheet",
+					"obj_token": "local_office_abcdefghijkl",
+				},
+			},
+		},
+	}
+	createTask := &httpmock.Stub{
+		Method:   "POST",
+		URL:      "/open-apis/drive/v1/export_tasks",
+		Optional: true,
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"ticket": "tk_should_not_happen"},
+		},
+	}
+
+	_, err := runShortcutWithStubs(t, WorkbookExport, []string{
+		"--url", "https://example.feishu.cn/wiki/wikTestNODE", "--as", "user",
+	}, getNode, createTask)
+
+	requireProblem(t, err, errs.CategoryValidation, errs.SubtypeFailedPrecondition, "cannot be exported")
+	if len(createTask.CapturedBodies) != 0 {
+		t.Errorf("no export task may be created for a local Office file, got %d request(s)", len(createTask.CapturedBodies))
+	}
+}
