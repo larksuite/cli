@@ -9,6 +9,7 @@ Create a new Lark document from DocxXML or Markdown, optionally in a folder or W
 - Before authoring `--content`, read the matching XML or Markdown guide under Related skills when available, unless already read. For XML, use only documented DocxXML tags.
 - For multiline `--content`, prefer `@file` or `-` (stdin) to avoid shell-escaping damage.
 - Large XML and Markdown inputs are automatically written as one create followed by serial append batches. The reliable target is 2,000 blocks per batch, the hard operation limit is 5,000, and the document limit is 40,000; one top-level list, table, quote, code fence, or DocxXML container is never split internally. Markdown batching mirrors the DocxXML SDK parser and create-title analysis, including unique/ambiguous top-level ATX H1 behavior.
+- Before resource conversion or any API call, create rejects a materialized block over 100,000 UTF-16 code units, a table over 2,000 effective cells, or a table over 100 columns; the structured limit error leaves no partial document.
 - Batched create is fail-fast and is not transactional: successful batches remain when a later append fails. Read `data.create_batches` from the `ok:false` partial result and do not resend completed batches.
 
 ### Skills
