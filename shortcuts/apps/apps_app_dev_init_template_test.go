@@ -172,10 +172,10 @@ func withFakeRegistry(t *testing.T, pkg string, tgz []byte) *httptest.Server {
 	})
 	srv = httptest.NewTLSServer(mux)
 	t.Cleanup(srv.Close)
-	origBase, origClient := appDevRegistryBase, appDevNewTransferClient
-	appDevRegistryBase = srv.URL
+	origRegs, origClient := appDevRegistries, appDevNewTransferClient
+	appDevRegistries = []string{srv.URL}
 	appDevNewTransferClient = func() *http.Client { return srv.Client() }
-	t.Cleanup(func() { appDevRegistryBase, appDevNewTransferClient = origBase, origClient })
+	t.Cleanup(func() { appDevRegistries, appDevNewTransferClient = origRegs, origClient })
 	return srv
 }
 
@@ -302,12 +302,12 @@ func TestFetchAppDevTemplateMeta_RejectsNonHTTPSTarball(t *testing.T) {
 	})
 	srv := httptest.NewTLSServer(mux)
 	t.Cleanup(srv.Close)
-	origBase, origClient := appDevRegistryBase, appDevNewTransferClient
-	appDevRegistryBase = srv.URL
+	origRegs, origClient := appDevRegistries, appDevNewTransferClient
+	appDevRegistries = []string{srv.URL}
 	appDevNewTransferClient = func() *http.Client { return srv.Client() }
-	t.Cleanup(func() { appDevRegistryBase, appDevNewTransferClient = origBase, origClient })
+	t.Cleanup(func() { appDevRegistries, appDevNewTransferClient = origRegs, origClient })
 
-	_, _, err := fetchAppDevTemplateMeta(context.Background(), pkg)
+	_, _, err := fetchAppDevTemplateMeta(context.Background(), srv.URL, pkg)
 	if err == nil || !strings.Contains(err.Error(), "not https") {
 		t.Errorf("non-https tarball must be rejected, got %v", err)
 	}
@@ -321,12 +321,12 @@ func TestFetchAppDevTemplateMeta_RejectsCrossHostTarball(t *testing.T) {
 	})
 	srv := httptest.NewTLSServer(mux)
 	t.Cleanup(srv.Close)
-	origBase, origClient := appDevRegistryBase, appDevNewTransferClient
-	appDevRegistryBase = srv.URL
+	origRegs, origClient := appDevRegistries, appDevNewTransferClient
+	appDevRegistries = []string{srv.URL}
 	appDevNewTransferClient = func() *http.Client { return srv.Client() }
-	t.Cleanup(func() { appDevRegistryBase, appDevNewTransferClient = origBase, origClient })
+	t.Cleanup(func() { appDevRegistries, appDevNewTransferClient = origRegs, origClient })
 
-	_, _, err := fetchAppDevTemplateMeta(context.Background(), pkg)
+	_, _, err := fetchAppDevTemplateMeta(context.Background(), srv.URL, pkg)
 	if err == nil || !strings.Contains(err.Error(), "differs from registry host") {
 		t.Errorf("cross-host tarball must be rejected, got %v", err)
 	}
@@ -344,15 +344,109 @@ func TestRenderAppDevTemplate_RejectsBackslashEntry(t *testing.T) {
 func TestFetchAppDevTemplateMeta_404(t *testing.T) {
 	srv := httptest.NewTLSServer(http.NotFoundHandler())
 	t.Cleanup(srv.Close)
-	origBase, origClient := appDevRegistryBase, appDevNewTransferClient
-	appDevRegistryBase = srv.URL
+	origRegs, origClient := appDevRegistries, appDevNewTransferClient
+	appDevRegistries = []string{srv.URL}
 	appDevNewTransferClient = func() *http.Client { return srv.Client() }
-	t.Cleanup(func() { appDevRegistryBase, appDevNewTransferClient = origBase, origClient })
+	t.Cleanup(func() { appDevRegistries, appDevNewTransferClient = origRegs, origClient })
 
-	_, _, err := fetchAppDevTemplateMeta(context.Background(), "@lark-apaas/coding-template-x")
+	_, _, err := fetchAppDevTemplateMeta(context.Background(), srv.URL, "@lark-apaas/coding-template-x")
 	p := requireAppsProblem(t, err, errs.CategoryNetwork)
 	if !strings.Contains(p.Hint, "not be published") {
 		t.Errorf("404 hint = %q", p.Hint)
+	}
+}
+
+// --- registry fallback tests ---
+
+// newFailingThenOKRegistries starts two TLS servers: the first responds with
+// failStatus for everything, the second serves pkg + tarball normally, and
+// wires appDevRegistries = [failing, ok].
+func newFailingThenOKRegistries(t *testing.T, pkg string, tgz []byte, failStatus int) {
+	t.Helper()
+	failing := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(failStatus)
+	}))
+	t.Cleanup(failing.Close)
+	mux := http.NewServeMux()
+	var okSrv *httptest.Server
+	mux.HandleFunc("/"+pkg, func(w http.ResponseWriter, _ *http.Request) {
+		meta := map[string]interface{}{
+			"dist-tags": map[string]string{"latest": "1.2.3"},
+			"versions": map[string]interface{}{
+				"1.2.3": map[string]interface{}{
+					"dist": map[string]string{"tarball": okSrv.URL + "/tarball.tgz"},
+				},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(meta)
+	})
+	mux.HandleFunc("/tarball.tgz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(tgz) })
+	okSrv = httptest.NewTLSServer(mux)
+	t.Cleanup(okSrv.Close)
+	origRegs, origClient := appDevRegistries, appDevNewTransferClient
+	appDevRegistries = []string{failing.URL, okSrv.URL}
+	appDevNewTransferClient = func() *http.Client { return okSrv.Client() }
+	t.Cleanup(func() { appDevRegistries, appDevNewTransferClient = origRegs, origClient })
+}
+
+func TestFetchAppDevTemplate_FallbackOn5xx(t *testing.T) {
+	pkg := "@lark-apaas/coding-template-react-standard-webapp"
+	newFailingThenOKRegistries(t, pkg, buildTemplateTgz(t, defaultTemplateEntries()), 503)
+	var notes []string
+	version, tgz, err := fetchAppDevTemplate(context.Background(), pkg, func(n string) { notes = append(notes, n) })
+	if err != nil {
+		t.Fatalf("fallback should succeed: %v", err)
+	}
+	if version != "1.2.3" || len(tgz) == 0 {
+		t.Errorf("version=%q len=%d", version, len(tgz))
+	}
+	if len(notes) != 1 || !strings.Contains(notes[0], "falling back to") {
+		t.Errorf("fallback note = %v", notes)
+	}
+}
+
+func TestFetchAppDevTemplate_FallbackOn404(t *testing.T) {
+	// A freshly published package may not have synced to the mirror yet —
+	// 404 on the primary must also fall through to the official registry.
+	pkg := "@lark-apaas/coding-template-react-standard-webapp"
+	newFailingThenOKRegistries(t, pkg, buildTemplateTgz(t, defaultTemplateEntries()), 404)
+	version, _, err := fetchAppDevTemplate(context.Background(), pkg, nil)
+	if err != nil || version != "1.2.3" {
+		t.Errorf("404 fallback: version=%q err=%v", version, err)
+	}
+}
+
+func TestFetchAppDevTemplate_AllRegistriesFail(t *testing.T) {
+	srv := httptest.NewTLSServer(http.NotFoundHandler())
+	t.Cleanup(srv.Close)
+	origRegs, origClient := appDevRegistries, appDevNewTransferClient
+	appDevRegistries = []string{srv.URL, srv.URL}
+	appDevNewTransferClient = func() *http.Client { return srv.Client() }
+	t.Cleanup(func() { appDevRegistries, appDevNewTransferClient = origRegs, origClient })
+
+	_, _, err := fetchAppDevTemplate(context.Background(), "@lark-apaas/coding-template-x", nil)
+	if err == nil {
+		t.Fatal("all-fail must error")
+	}
+	p, _ := errs.ProblemOf(err)
+	if p == nil || !strings.Contains(p.Hint, "not be published") {
+		t.Errorf("hint = %v", p)
+	}
+}
+
+func TestRenderAppDevTemplate_SkippedEntryBombCap(t *testing.T) {
+	// A huge entry OUTSIDE package/template/ is skipped by the walk, but its
+	// decompressed bytes still stream through the counter and must trip the
+	// cap (gzip-bomb defense for skipped entries).
+	orig := appDevMaxTemplateExtractBytes
+	appDevMaxTemplateExtractBytes = 64
+	t.Cleanup(func() { appDevMaxTemplateExtractBytes = orig })
+	tgz := buildTemplateTgz(t, []tgzEntry{
+		{name: "package/ignored-bomb.bin", body: strings.Repeat("0", 4096)},
+		{name: "package/template/index.html", body: "ok"},
+	})
+	if _, err := renderAppDevTemplate(t.TempDir(), "p", tgz); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Errorf("skipped-entry bomb must trip the cap, got %v", err)
 	}
 }
 
@@ -474,10 +568,10 @@ func TestAppDevInitTemplateExecute_RegistryDown(t *testing.T) {
 	mux.HandleFunc("/"+pkg, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(503) })
 	srv := httptest.NewTLSServer(mux)
 	t.Cleanup(srv.Close)
-	origBase, origClient := appDevRegistryBase, appDevNewTransferClient
-	appDevRegistryBase = srv.URL
+	origRegs, origClient := appDevRegistries, appDevNewTransferClient
+	appDevRegistries = []string{srv.URL}
 	appDevNewTransferClient = func() *http.Client { return srv.Client() }
-	t.Cleanup(func() { appDevRegistryBase, appDevNewTransferClient = origBase, origClient })
+	t.Cleanup(func() { appDevRegistries, appDevNewTransferClient = origRegs, origClient })
 
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	dir := relAppDevDir(t)

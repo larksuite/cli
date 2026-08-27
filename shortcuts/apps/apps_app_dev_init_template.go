@@ -125,7 +125,10 @@ var AppsAppDevInitTemplate = common.Shortcut{
 		dry := common.NewDryRunAPI().
 			Desc("Scaffold a local web app project by downloading an npm template package (read-only registry fetch, no Lark API)")
 		dry.Set("template_package", pkg)
-		dry.Set("registry_url", strings.TrimRight(appDevRegistryBase, "/")+"/"+pkg)
+		dry.Set("registry_url", strings.TrimRight(appDevRegistries[0], "/")+"/"+pkg)
+		if len(appDevRegistries) > 1 {
+			dry.Set("registry_fallback", strings.Join(appDevRegistries[1:], ", "))
+		}
 		dry.Set("target_dir", dir)
 		dry.Set("template", template)
 		// Surface the same precondition the real run enforces, so a dry-run
@@ -146,12 +149,9 @@ var AppsAppDevInitTemplate = common.Shortcut{
 		}
 		pkg := appDevTemplatePackageName(template)
 		fmt.Fprintf(rctx.IO().ErrOut, "fetching template package %s...\n", pkg)
-		version, tarballURL, err := fetchAppDevTemplateMeta(ctx, pkg)
-		if err != nil {
-			return err
-		}
-		tgz, err := appDevHTTPGet(ctx, tarballURL, appDevMaxTemplateTgzBytes,
-			"the template tarball is missing on the registry; contact the artifact team")
+		version, tgz, err := fetchAppDevTemplate(ctx, pkg, func(note string) {
+			fmt.Fprintf(rctx.IO().ErrOut, "registry %s\n", note)
+		})
 		if err != nil {
 			return err
 		}
