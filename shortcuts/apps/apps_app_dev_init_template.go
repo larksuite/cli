@@ -193,10 +193,7 @@ var AppsAppDevInitTemplate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		if rendered.ArchType == nil {
-			fmt.Fprintf(rctx.IO().ErrOut, "warning: template package %s@%s has no miaodaTemplate.archType; the template should declare it\n", pkg, version)
-		}
-		if err := writeAppDevSparkMeta(dir, template, version, rendered.ArchType); err != nil {
+		if err := writeAppDevSparkMeta(dir, template, version); err != nil {
 			return err
 		}
 		nextSteps := []string{

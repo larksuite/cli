@@ -190,9 +190,6 @@ func TestRenderAppDevTemplate(t *testing.T) {
 	if rendered.Files != 5 {
 		t.Errorf("Files = %d, want 5 (template subtree only)", rendered.Files)
 	}
-	if rendered.ArchType != float64(2) {
-		t.Errorf("ArchType = %v (%T), want 2", rendered.ArchType, rendered.ArchType)
-	}
 	// Placeholder replaced.
 	b, _ := os.ReadFile(filepath.Join(dir, "index.html"))
 	if string(b) != "<title>my-app</title>" {
@@ -276,7 +273,7 @@ func TestRenderAppDevTemplate_FileCountCap(t *testing.T) {
 
 func TestWriteAppDevSparkMeta(t *testing.T) {
 	dir := t.TempDir()
-	if err := writeAppDevSparkMeta(dir, "react-standard-webapp", "1.2.3", float64(2)); err != nil {
+	if err := writeAppDevSparkMeta(dir, "react-standard-webapp", "1.2.3"); err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(filepath.Join(dir, metaRelPath))
@@ -287,8 +284,11 @@ func TestWriteAppDevSparkMeta(t *testing.T) {
 	if err := json.Unmarshal(b, &meta); err != nil {
 		t.Fatal(err)
 	}
-	if meta["stack"] != "react-standard-webapp" || meta["version"] != "1.2.3" || meta["archType"] != float64(2) {
+	if meta["stack"] != "react-standard-webapp" || meta["version"] != "1.2.3" {
 		t.Errorf("meta = %v", meta)
+	}
+	if _, has := meta["archType"]; has {
+		t.Error("meta.json must not carry archType (not part of the contract)")
 	}
 }
 
@@ -560,7 +560,7 @@ func TestAppDevInitTemplateExecute_RendersFromRegistry(t *testing.T) {
 	}
 	var meta map[string]interface{}
 	_ = json.Unmarshal(mb, &meta)
-	if meta["stack"] != "react-standard-webapp" || meta["version"] != "1.2.3" || meta["archType"] != float64(2) {
+	if meta["stack"] != "react-standard-webapp" || meta["version"] != "1.2.3" {
 		t.Errorf("meta = %v", meta)
 	}
 	steps, _ := data["next_steps"].([]interface{})
