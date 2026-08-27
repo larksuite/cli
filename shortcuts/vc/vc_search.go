@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -21,6 +22,7 @@ const (
 	defaultVCSearchPageSize = 15
 	maxVCSearchPageSize     = 30
 	maxVCSearchQueryLen     = 50
+	searchLogPrefix         = "[vc +search]"
 )
 
 // toRFC3339 parses a time string via ParseTime (unix timestamp) and formats it as RFC3339.
@@ -177,6 +179,10 @@ var VCSearch = common.Shortcut{
 	Scopes:      []string{"vc:meeting.search:read"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
+	Citation: &common.CitationDefinition{
+		SourceTypes: []citation.SourceType{citation.SourceMeeting},
+		Build:       vcSearchCitations,
+	},
 	Flags: []common.Flag{
 		{Name: "query", Desc: "search keyword"},
 		{Name: "start", Desc: "start time (ISO 8601 or YYYY-MM-DD, e.g. 2026-03-24T00:00+08:00)"},
@@ -246,8 +252,12 @@ var VCSearch = common.Shortcut{
 		if notice, _ := data["notice"].(string); notice != "" {
 			outData["notice"] = notice
 		}
+		var outputData any = outData
+		if vcSearchCitationEnvelopeRequested(runtime) {
+			outputData = vcSearchPayload{Data: outData, Topics: searchCitationTopics(ctx, runtime, items)}
+		}
 		hasMore, _ := data["has_more"].(bool)
-		runtime.OutFormat(outData, &output.Meta{Count: len(items)}, func(w io.Writer) {
+		runtime.OutFormat(outputData, &output.Meta{Count: len(items)}, func(w io.Writer) {
 			if len(items) == 0 {
 				fmt.Fprintln(w, "No meetings.")
 				return

@@ -18,6 +18,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -42,6 +43,7 @@ type minuteDetailItem struct {
 	MinuteToken string         `json:"minute_token"`
 	Status      string         `json:"status,omitempty"`
 	Title       string         `json:"title"`
+	URL         string         `json:"-"`
 	NoteID      string         `json:"note_id"`
 	Artifacts   map[string]any `json:"artifacts,omitempty"`
 	Retryable   bool           `json:"retryable,omitempty"`
@@ -80,6 +82,9 @@ func fetchMinuteDetail(ctx context.Context, runtime *common.RuntimeContext, minu
 	result := &minuteDetailItem{MinuteToken: minuteToken}
 	if v, ok := minute["title"].(string); ok && v != "" {
 		result.Title = v
+	}
+	if v, ok := minute["url"].(string); ok && v != "" {
+		result.URL = v
 	}
 	if v, ok := minute["note_id"].(string); ok && v != "" {
 		result.NoteID = v
@@ -273,6 +278,29 @@ func sanitizeDetailDirName(title, minuteToken string) string {
 	return fmt.Sprintf("artifact-%s-%s", safe, minuteToken)
 }
 
+func minutesDetailCitations(_ *common.RuntimeContext, data any) []citation.Citation {
+	out, ok := data.(map[string]any)
+	if !ok {
+		return nil
+	}
+	minutes, ok := out["minutes"].([]*minuteDetailItem)
+	if !ok {
+		return nil
+	}
+	citations := make([]citation.Citation, 0, len(minutes))
+	for _, minute := range minutes {
+		if minute == nil || minute.URL == "" {
+			continue
+		}
+		citations = append(citations, citation.Citation{
+			SourceType: citation.SourceMinute,
+			URL:        minute.URL,
+			Title:      minute.Title,
+		})
+	}
+	return citations
+}
+
 // MinutesDetail queries minute details with selective artifact flags.
 var MinutesDetail = common.Shortcut{
 	Service:           "minutes",
@@ -283,6 +311,10 @@ var MinutesDetail = common.Shortcut{
 	ConditionalScopes: []string{minutesDetailArtifactsScope},
 	AuthTypes:         []string{"user", "bot"},
 	HasFormat:         true,
+	Citation: &common.CitationDefinition{
+		SourceTypes: []citation.SourceType{citation.SourceMinute},
+		Build:       minutesDetailCitations,
+	},
 	Flags: []common.Flag{
 		{Name: "minute-tokens", Desc: "minute tokens, comma-separated for batch", Required: true},
 		{Name: "summary", Type: "bool", Desc: "include summary"},

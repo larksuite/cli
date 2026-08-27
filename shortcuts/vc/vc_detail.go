@@ -15,6 +15,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
@@ -33,6 +34,7 @@ type meetingDetailItem struct {
 	MeetingID   string `json:"meeting_id"`
 	MeetingNo   string `json:"meeting_no,omitempty"`
 	Topic       string `json:"topic"`
+	URL         string `json:"-"`
 	StartTime   string `json:"start_time,omitempty"`
 	EndTime     string `json:"end_time,omitempty"`
 	NoteID      string `json:"note_id,omitempty"`
@@ -68,6 +70,9 @@ func fetchMeetingDetail(ctx context.Context, runtime *common.RuntimeContext, mee
 	}
 	if v, ok := meeting["topic"].(string); ok {
 		result.Topic = v
+	}
+	if v, ok := meeting["app_link"].(string); ok && v != "" {
+		result.URL = v
 	}
 	if v := common.FormatTime(meeting["start_time"]); v != "" {
 		result.StartTime = v
@@ -166,6 +171,10 @@ var VCDetail = common.Shortcut{
 	Scopes:      []string{"vc:meeting.meetingevent:read", "vc:record:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
+	Citation: &common.CitationDefinition{
+		SourceTypes: []citation.SourceType{citation.SourceMeeting},
+		Build:       vcDetailCitations,
+	},
 	Flags: []common.Flag{
 		{Name: "meeting-ids", Desc: "meeting IDs, comma-separated for batch", Required: true},
 	},
