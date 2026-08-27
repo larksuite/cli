@@ -83,10 +83,13 @@ func resolveAppDevDir(dir string) string {
 // target directory: its base name, resolved to the real directory name when
 // scaffolding in place (base of "." is ".").
 func appDevProjectName(dir string) string {
-	if abs, err := filepath.Abs(dir); err == nil {
-		return filepath.Base(abs)
+	base := filepath.Base(dir)
+	if base == "." || base == string(filepath.Separator) {
+		if cwd, err := os.Getwd(); err == nil { //nolint:forbidigo // shortcuts cannot import internal/vfs (depguard); read-only cwd lookup for the display-only project name.
+			return filepath.Base(cwd)
+		}
 	}
-	return filepath.Base(dir)
+	return base
 }
 
 // validateAppDevDir rejects absolute paths and .. traversal in --dir, keeping
