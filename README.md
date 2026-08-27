@@ -267,11 +267,12 @@ To check whether a command succeeded, test `ok == true` (or the exit code) — *
 --page-delay 500            # 500ms between page requests
 ```
 
-If any page **after the first** fails, `--page-all` stops and exits non-zero — a
-transport failure exits `4`, a business error exits by its error category. **Check
-the exit code to decide whether a result is complete** — an empty stdout is not the
-same as zero records, and in a pipeline the exit code is discarded unless you set
-`set -o pipefail`.
+If a page **after the first** fails — a transport failure, a response that isn't
+valid JSON, or a response carrying a non-zero business `code` — `--page-all` stops
+and exits non-zero: a transport failure exits `4`, an invalid response exits `5`,
+and a business error exits by its error category. **Check the exit code to decide
+whether a result is complete** — an empty stdout is not the same as zero records,
+and in a pipeline the exit code is discarded unless you set `set -o pipefail`.
 
 Nothing is written to stdout for a failed run, with one exception: `lark-cli api`
 and the generated API Commands emit each page as it arrives under the streaming
