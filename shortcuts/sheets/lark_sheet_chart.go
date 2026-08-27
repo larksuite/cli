@@ -998,6 +998,20 @@ func applyChartConfigPatch(
 	next := cloneChartMap(current)
 	patch := map[string]interface{}{}
 	plotChanged := false
+	if value, ok := updates["aggregate_categories"].(bool); ok {
+		data := chartMap(next["data"])
+		dim1 := chartMap(data["dim1"])
+		serie := chartMap(dim1["serie"])
+		serie["aggregate"] = value
+		dim1["serie"] = serie
+		data["dim1"] = dim1
+		next["data"] = data
+		patch["data"] = map[string]interface{}{
+			"dim1": map[string]interface{}{
+				"serie": map[string]interface{}{"aggregate": value},
+			},
+		}
+	}
 
 	if value, ok := updates["title"].(string); ok {
 		title := chartMap(next["title"])
@@ -1627,6 +1641,9 @@ func addChartSemanticConfig(rt flagView, out map[string]interface{}) {
 	}
 	if rt.Changed("smooth") {
 		out["smooth"] = rt.Bool("smooth")
+	}
+	if rt.Changed("aggregate-categories") {
+		out["aggregate_categories"] = rt.Bool("aggregate-categories")
 	}
 	if rt.Changed("colors") {
 		out["colors"] = normalizedChartColors(rt)

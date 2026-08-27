@@ -3525,6 +3525,13 @@
         ]
       },
       {
+        "name": "aggregate-categories",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Whether to aggregate duplicate categories; pass false for sparse markers or row-level data points, and omit it to use the chart default"
+      },
+      {
         "name": "x-axis-numbers-as",
         "kind": "own",
         "type": "string",
@@ -4001,6 +4008,13 @@
           "inside",
           "outside"
         ]
+      },
+      {
+        "name": "aggregate-categories",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Whether to aggregate duplicate categories; pass false for sparse markers or row-level data points, and omit it to preserve the current setting"
       },
       {
         "name": "stack",

@@ -799,6 +799,57 @@ func TestChartCreateBasic_SelectsDimensionsAtCreation(t *testing.T) {
 	}
 }
 
+func TestChartAggregateCategoriesFlags(t *testing.T) {
+	t.Parallel()
+
+	createBody := parseDryRunBody(t, ChartCreateBasic, []string{
+		"--url", testURL,
+		"--sheet-id", testSheetID,
+		"--chart-type", "line",
+		"--data-range", "A1:C7",
+		"--aggregate-categories=false",
+	})
+	basic := decodeToolInput(t, createBody, "manage_chart_object")["basic_chart"].(map[string]interface{})
+	if basic["aggregate_categories"] != false {
+		t.Fatalf("basic_chart.aggregate_categories = %#v, want false", basic["aggregate_categories"])
+	}
+
+	batchCreateBody := parseDryRunBody(t, BatchChartCreate, []string{
+		"--url", testURL,
+		"--operations", `[{"sheet_id":"sh1","chart_type":"line","data_range":"A1:C7","aggregate_categories":false}]`,
+	})
+	batchCreateInput := decodeToolInput(t, batchCreateBody, "batch_update")
+	batchCreateOperation := batchCreateInput["operations"].([]interface{})[0].(map[string]interface{})
+	batchCreateBasic := batchCreateOperation["input"].(map[string]interface{})["basic_chart"].(map[string]interface{})
+	if batchCreateBasic["aggregate_categories"] != false {
+		t.Fatalf("batch basic_chart.aggregate_categories = %#v, want false", batchCreateBasic["aggregate_categories"])
+	}
+
+	updateBody := parseDryRunBody(t, ChartConfigUpdate, []string{
+		"--url", testURL,
+		"--sheet-id", testSheetID,
+		"--chart-id", "chart-1",
+		"--aggregate-categories=false",
+	})
+	data := chartDryRunSnapshot(t, decodeToolInput(t, updateBody, "manage_chart_object"))["data"].(map[string]interface{})
+	serie := data["dim1"].(map[string]interface{})["serie"].(map[string]interface{})
+	if serie["aggregate"] != false {
+		t.Fatalf("snapshot.data.dim1.serie.aggregate = %#v, want false", serie["aggregate"])
+	}
+
+	batchBody := parseDryRunBody(t, BatchChartUpdate, []string{
+		"--url", testURL,
+		"--operations", `[{"shortcut":"+chart-config-update","input":{"sheet_id":"sh1","chart_id":"chart-1","aggregate_categories":false}}]`,
+	})
+	batchInput := decodeToolInput(t, batchBody, "batch_update")
+	operation := batchInput["operations"].([]interface{})[0].(map[string]interface{})
+	data = chartDryRunSnapshot(t, operation["input"].(map[string]interface{}))["data"].(map[string]interface{})
+	serie = data["dim1"].(map[string]interface{})["serie"].(map[string]interface{})
+	if serie["aggregate"] != false {
+		t.Fatalf("batch snapshot.data.dim1.serie.aggregate = %#v, want false", serie["aggregate"])
+	}
+}
+
 func TestChartCreateBasic_ConfiguresComboSeriesSemantically(t *testing.T) {
 	t.Parallel()
 	body := parseDryRunBody(t, ChartCreateBasic, []string{
