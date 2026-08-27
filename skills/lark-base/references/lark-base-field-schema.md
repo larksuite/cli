@@ -40,7 +40,8 @@
 | `formula` | `type` `name` `expression` | 无 |
 | `lookup` | `type` `name` `from` `select` `where` | `aggregate` |
 | `auto_number` | `type` `name` | `style.rules` |
-| `attachment` / `location` / `checkbox` | `type` `name` | 无 |
+| `attachment` | `type` `name` | `style.type`（`plain` / `signature`） |
+| `location` / `checkbox` | `type` `name` | 无 |
 | `button` | `type` `name` `button_config.title` | 无 |
 
 所有类型都可额外传 `description`；上表的“常见补充字段”只列类型特有配置。
@@ -417,6 +418,14 @@
 ```json
 { "type": "attachment", "name": "附件" }
 ```
+
+签字字段是附件的 `style.type` 变体，没有 `"type":"signature"` 这个顶层类型（不传 `style` 按 `plain`）：
+
+```json
+{ "type": "attachment", "name": "店长确认签字", "style": { "type": "signature" } }
+```
+
+签字单元格**只读**：写入、替换、清空都不生效，签名只能由用户在飞书客户端完成。记录接口和 `+record-upload-attachment` / `+record-remove-attachment` 都不报错，只把该字段放进返回的 `ignored_fields`（`SIGNATURE_READONLY`），别当成成功。读取和下载与普通附件一致。
 
 ```json
 { "type": "location", "name": "位置" }
