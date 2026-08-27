@@ -35,6 +35,8 @@ func Shortcuts() []common.Shortcut {
 		AppsHTMLPublish,
 		AppsInit,
 		AppsExport,
+		AppsAppDevInitApp,
+		AppsAppDevPublish,
 		AppsReleaseCreate,
 		AppsReleaseList,
 		AppsReleaseGet,
