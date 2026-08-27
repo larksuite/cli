@@ -170,30 +170,43 @@ func validateAppDevDist(fio fileio.FileIO, distPath string, allowSensitive bool)
 	return candidates, ignored, nil
 }
 
-// appDevRoutesJSON is the routes.json v1 schema (fallback-only object). All
-// three fields are MUST per the artifact-hosting protocol; unknown fields are
-// ignored for forward compatibility.
-type appDevRoutesJSON struct {
-	Version  int    `json:"version"`
-	Type     string `json:"type"`
-	Fallback string `json:"fallback"`
+// appDevRoute is one entry of the routes.json route enumeration consumed by
+// TNS security scanning: path is required (leading /, no base prefix, may
+// hold :param segments); file/name are optional; unknown fields are ignored
+// for forward compatibility.
+type appDevRoute struct {
+	Path string `json:"path"`
 }
 
-// validateAppDevRoutesJSON light-checks output/routes.json so schema problems
-// fail at publish time instead of bouncing off content review later.
+// appDevRoutesHint is the actionable schema reminder for routes.json errors.
+const appDevRoutesHint = `routes.json must be a route enumeration array, e.g. [{"path":"/","file":"index.html"}] (empty [] is allowed for a static site); it feeds security scanning, so it must match the real routes`
+
+// validateAppDevRoutesJSON light-checks output/routes.json against the
+// route-enumeration schema so problems fail at publish time instead of
+// bouncing off the TNS scan later: top level must be an array, every entry
+// needs a /-prefixed path, and paths must be unique.
 func validateAppDevRoutesJSON(distPath string) error {
 	b, err := os.ReadFile(filepath.Join(distPath, "output", "routes.json")) //nolint:forbidigo // path is under the walked build output.
 	if err != nil {
 		return appsFileIOError(err, "read output/routes.json failed: %v", err)
 	}
-	var r appDevRoutesJSON
-	if err := json.Unmarshal(b, &r); err != nil {
-		return appsFailedPreconditionError("output/routes.json is not valid JSON: %v", err).
-			WithHint(`expected schema: {"version":1,"type":"<stack>","fallback":"index.html"}`)
+	var routes []appDevRoute
+	if err := json.Unmarshal(b, &routes); err != nil {
+		return appsFailedPreconditionError("output/routes.json is not a valid route enumeration array: %v", err).
+			WithHint(appDevRoutesHint)
 	}
-	if r.Version == 0 || strings.TrimSpace(r.Type) == "" || strings.TrimSpace(r.Fallback) == "" {
-		return appsFailedPreconditionError("output/routes.json is missing required fields (version/type/fallback are all required)").
-			WithHint(`expected schema: {"version":1,"type":"<stack>","fallback":"index.html"}`)
+	seen := make(map[string]bool, len(routes))
+	for i, r := range routes {
+		path := strings.TrimSpace(r.Path)
+		if path == "" || !strings.HasPrefix(path, "/") {
+			return appsFailedPreconditionError("output/routes.json entry %d has an invalid path %q (required, must start with /, no base prefix)", i, r.Path).
+				WithHint(appDevRoutesHint)
+		}
+		if seen[path] {
+			return appsFailedPreconditionError("output/routes.json has duplicate path %q (paths must be unique)", path).
+				WithHint(appDevRoutesHint)
+		}
+		seen[path] = true
 	}
 	return nil
 }
