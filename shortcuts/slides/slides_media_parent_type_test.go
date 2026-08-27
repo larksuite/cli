@@ -20,19 +20,19 @@ import (
 // prefix or the interleaved "OFL0X" marker and must upload with
 // "office_slide_file".
 //
+// The token shape itself is common.IsLocalOfficeToken's contract and is
+// pinned exhaustively in TestIsLocalOfficeToken. What this test owns is the
+// slides half: that the shared answer selects office_slide_file and nothing else
+// does. The shape cases are kept here anyway, deliberately duplicated, because
+// they are what would catch the mapping being wired to a different predicate —
+// or to none — and a table that only held native tokens could not tell a working
+// mapping from a hardcoded slideFileParentType.
+//
 // The negative cases matter as much as the positive ones. A false positive —
 // a native token read as office — still uploads successfully, because the drive
 // backend does not validate that parent_node actually names an office file; the
 // damage only shows up later as an image that will not render, far from its
-// cause. So the marker is still read at exact positions rather than by a looser
-// "contains OFL0X" test.
-//
-// What is no longer pinned is the total length: it is a floor (>= 25, just
-// enough to hold the marker) rather than one exact value, because the
-// local-office format has already moved off 28 characters and sheets relaxed the
-// identical guard in #2509. The interleaved native tokens below are what keeps
-// that floor honest — they are long enough to be read but carry a different
-// marker, so widening the length window must not pull them in.
+// cause.
 func TestSlidesMediaParentType(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -43,9 +43,9 @@ func TestSlidesMediaParentType(t *testing.T) {
 		{"native presentation token", "pptcnABC123", slideFileParentType},
 		{"empty token", "", slideFileParentType},
 		{"fake_office imported token", "fake_office_abc123", officeSlideFileParentType},
-		{"fake_office token, only the prefix", fakeOfficePrefix, officeSlideFileParentType},
+		{"fake_office token, only the prefix", common.FakeOfficeTokenPrefix, officeSlideFileParentType},
 		{"local_office imported token", "local_office_abc123", officeSlideFileParentType},
-		{"local_office token, only the prefix", localOfficePrefix, officeSlideFileParentType},
+		{"local_office token, only the prefix", common.LocalOfficeTokenPrefix, officeSlideFileParentType},
 		{"interleaved OFL0X office token", "aaaaOaaaaFaaaaLaaaa0aaaaXaaa", officeSlideFileParentType},
 		{"interleaved pptcn native token", "abcdpefghpijkltmnopcqrstnuv", slideFileParentType},
 		{"interleaved shtcn token", "abcdsefghhijkltmnopcqrstnuv", slideFileParentType},
@@ -195,7 +195,8 @@ func TestSlidesDryRunParentType(t *testing.T) {
 // slidesMediaParentType yields slide_file, which is the right answer here — but
 // by accident, because a placeholder matches no office token shape. That leaves
 // the preview hostage to the placeholder's spelling and to every rule later added
-// to isOfficePresentation, so these cases pin the value while the production code
+// to common.IsLocalOfficeToken, so these cases pin the value while the
+// production code
 // asserts it directly instead of deriving it.
 func TestSlidesDryRunPlaceholderNodeParentType(t *testing.T) {
 	const wikiURL = "https://example.feishu.cn/wiki/wikcnDryRunProbe123"
