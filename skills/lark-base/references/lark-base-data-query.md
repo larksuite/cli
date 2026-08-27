@@ -316,6 +316,8 @@ value 使用预定义关键字机制，第一个元素为字符串常量名称�
 > - **ExactDate 时区行为**：毫秒时间戳在实际筛选时会被转为**文档时区当天零点**，跨时区场景需注意日期可能偏移一天。
 > - **范围型关键字**（`CurrentWeek`、`LastWeek`、`CurrentMonth`、`LastMonth`、`TheLastWeek`、`TheNextWeek`、`TheLastMonth`、`TheNextMonth`）仅支持 `is` 运算符。
 > - **关键字大小写敏感**：`ExactDate`、`Today`、`CurrentWeek` 等首字母大写，写错大小写会导致校验失败。
+>
+> **本地日历范围边界**：`+data-query` 的 datetime 范围只有严格的 `isGreater` / `isLess`，不得把下界向前移动一天来模拟“包含起始日”，否则会把前一天的记录带入总体。对于可按日期重组的指标，可以移除有歧义的范围 filter，改为按日期字段作为 dimension、返回组成该指标且可合并的 measures，并显式设置 `pagination.limit=5000`；只有结果少于 5000 行时，才在本地按返回的日期值筛选并汇总到 `[start, next_start)`。结果达到上限或指标不能从日期维度结果准确重组时，返回统一 SOP 改走可完整导出的 NDJSON 路径，否则报告证据缺口。
 
 *`attachment`*
 
