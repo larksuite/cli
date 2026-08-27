@@ -316,8 +316,7 @@ func PrintDryRunWithFile(request client.RawApiRequest, config *core.CliConfig, o
 }
 
 // PrintDryRun outputs a standardised dry-run summary using DryRunAPI.
-// Human-readable result formats use the same plain-text request preview;
-// otherwise dry-run output uses the JSON envelope.
+// When format is "pretty", outputs human-readable text; otherwise JSON.
 func PrintDryRun(request client.RawApiRequest, config *core.CliConfig, opts DryRunOutputOptions) error {
 	dr := buildDryRunPreview(request, config)
 	if !util.IsNil(request.Data) {
@@ -333,8 +332,8 @@ func WriteDryRun(dr *DryRunAPI, opts DryRunOutputOptions) error {
 		return errs.NewInternalError(errs.SubtypeUnknown, "dry-run produced no request preview")
 	}
 	// The JqExpr guard is defensive: every entry point already rejects --jq
-	// combined with a non-JSON format via output.ValidateJqFlags.
-	if (opts.Format == "pretty" || opts.Format == "concise") && opts.JqExpr == "" {
+	// combined with --format pretty via output.ValidateJqFlags.
+	if opts.Format == "pretty" && opts.JqExpr == "" {
 		// A nil ErrOut only skips the banner decoration (mirroring
 		// WriteSuccessEnvelope's warning path); the payload write to Out
 		// must fail loudly rather than be silently discarded.

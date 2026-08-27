@@ -25,7 +25,10 @@ type Flag struct {
 	Hidden   bool     // hidden from --help, still readable at runtime
 	Required bool
 	Enum     []string // allowed values (e.g. ["asc", "desc"]); empty means no constraint
-	Input    []string // extra input sources: File (@path), Stdin (-); empty = flag value only
+	// AllowUnknown preserves legacy pass-through behavior for flags whose
+	// downstream owner handles unknown values (for example format fallback).
+	AllowUnknown bool
+	Input        []string // extra input sources: File (@path), Stdin (-); empty = flag value only
 }
 
 // Shortcut represents a high-level CLI command.

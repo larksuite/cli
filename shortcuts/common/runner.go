@@ -1398,7 +1398,7 @@ func validateEnumFlags(rctx *RuntimeContext, flags []Flag) error {
 				break
 			}
 		}
-		if !valid {
+		if !valid && !fl.AllowUnknown {
 			return ValidationErrorf("invalid value %q for --%s, allowed: %s", val, fl.Name, strings.Join(fl.Enum, ", ")).
 				WithParam("--" + fl.Name)
 		}

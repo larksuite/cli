@@ -252,25 +252,25 @@ func TestPrintDryRun_Pretty(t *testing.T) {
 	}
 }
 
-func TestPrintDryRun_ConciseUsesHumanReadablePreview(t *testing.T) {
+func TestPrintDryRun_UnknownFormatKeepsJSONFallback(t *testing.T) {
 	var stdout bytes.Buffer
-	var stderr bytes.Buffer
 	err := PrintDryRun(client.RawApiRequest{
 		Method: "GET",
-		URL:    "/open-apis/im/v1/messages",
+		URL:    "/open-apis/test",
 	}, &core.CliConfig{}, DryRunOutputOptions{
 		Format: "concise",
 		Out:    &stdout,
-		ErrOut: &stderr,
+		ErrOut: io.Discard,
 	})
 	if err != nil {
 		t.Fatalf("PrintDryRun failed: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "GET /open-apis/im/v1/messages") {
-		t.Fatalf("concise dry-run stdout = %q", stdout.String())
+	var envelope map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("unknown dry-run format changed from JSON fallback: %v\n%s", err, stdout.String())
 	}
-	if !strings.Contains(stderr.String(), "=== Dry Run ===") {
-		t.Fatalf("concise dry-run stderr = %q", stderr.String())
+	if envelope["dry_run"] != true {
+		t.Fatalf("dry_run = %#v, want true", envelope["dry_run"])
 	}
 }
 

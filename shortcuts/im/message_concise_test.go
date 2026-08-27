@@ -16,11 +16,12 @@ func TestRenderMessagesConciseChatConversation(t *testing.T) {
 	longContent := strings.Repeat("full message content ", 8)
 	messages := []map[string]interface{}{
 		{
-			"message_id":  "om_root",
-			"thread_id":   "omt_thread",
-			"msg_type":    "text",
-			"create_time": "2026-08-26 06:17",
-			"content":     longContent,
+			"message_id":       "om_root",
+			"thread_id":        "omt_thread",
+			"msg_type":         "text",
+			"create_time":      "2026-08-26 06:17",
+			"content":          longContent,
+			"message_app_link": "https://applink.feishu.cn/client/thread/open?open_thread_id=omt_thread",
 			"sender": map[string]interface{}{
 				"id":          "ou_sender",
 				"name":        "Alice",
@@ -78,6 +79,7 @@ func TestRenderMessagesConciseChatConversation(t *testing.T) {
 		longContent,
 		"message_id: `om_root`",
 		"thread_id: `omt_thread`",
+		"app_link: <https://applink.feishu.cn/client/thread/open?open_thread_id=omt_thread>",
 		"**Reply**",
 		"message_id: `om_reply`",
 		"> reply line one",

@@ -44,10 +44,11 @@ type conciseMessageStats struct {
 
 func messageListFormatFlag() common.Flag {
 	return common.Flag{
-		Name:    "format",
-		Default: "json",
-		Desc:    "output format",
-		Enum:    []string{"json", "pretty", "concise", "table", "ndjson", "csv"},
+		Name:         "format",
+		Default:      "json",
+		Desc:         "output format",
+		Enum:         []string{"json", "pretty", "concise", "table", "ndjson", "csv"},
+		AllowUnknown: true,
 	}
 }
 
@@ -138,6 +139,9 @@ func renderConciseMessage(
 		parts = append(parts, "deleted")
 	}
 	fmt.Fprintf(b, "%s- %s\n", indent, strings.Join(parts, " · "))
+	if appLink := conciseString(message["message_app_link"]); appLink != "" {
+		fmt.Fprintf(b, "%s  app_link: <%s>\n", indent, validate.SanitizeForTerminal(appLink))
+	}
 
 	content := conciseString(message["content"])
 	if conciseBool(message["deleted"]) {

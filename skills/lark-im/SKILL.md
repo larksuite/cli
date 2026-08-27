@@ -58,7 +58,7 @@ The raw `sender_name` is not duplicated in output (its value is in `name`); the 
 
 The four message-pulling shortcuts (`+messages-mget`, `+chat-messages-list`, `+messages-search`, `+threads-messages-list`) automatically attach a `reactions` block and (for edited messages) `update_time` to each returned message — no separate `im.reactions.batch_query` call is needed. Pass `--no-reactions` to opt out. For the full contract (output shape, the `im:message.reactions:read` scope requirement, and the "missing field ≠ fetch failure" data rules), read [`references/lark-im-message-enrichment.md`](references/lark-im-message-enrichment.md).
 
-For Agent-readable conversation context, `+chat-messages-list` and `+threads-messages-list` support `--format concise`: complete converted message bodies, stable IDs, sender names, inline thread replies, reaction counts, and pagination state in Markdown. Use JSON when field-level metadata is required. `+chat-messages-list` already expands thread replies; call `+threads-messages-list` only for a known thread directly or when `thread_has_more=true` / `thread_replies_error=true`.
+For Agent-readable conversation context, `+chat-messages-list` and `+threads-messages-list` support `--format concise`: complete converted message bodies, stable IDs and AppLinks, sender names, inline thread replies, reaction counts, and pagination state in Markdown. Use JSON when field-level metadata is required. `+chat-messages-list` already expands thread replies; call `+threads-messages-list` only for a known thread directly or when `thread_has_more=true` / `thread_replies_error=true`.
 
 ### Opt-in resource auto-download (`--download-resources`)
 
