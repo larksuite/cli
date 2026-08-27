@@ -232,7 +232,7 @@ var AppsAppDevInitTemplate = common.Shortcut{
 			"files":      rendered.Files,
 			"next_steps": nextSteps,
 		}
-		rctx.OutFormat(data, nil, func(w io.Writer) {
+		rctx.OutFormatRaw(data, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "dir: %s\ntemplate: %s@%s\nfiles: %d\nnext steps:\n", dir, template, version, rendered.Files)
 			for _, s := range nextSteps {
 				fmt.Fprintf(w, "  - %s\n", s)
