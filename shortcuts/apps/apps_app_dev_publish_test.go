@@ -107,17 +107,17 @@ func TestValidateAppDevDist(t *testing.T) {
 		{"ok no resource", []string{"output/index.html", "output/routes.json"}, ""},
 		{"ok non-index html", []string{"output/page.html", "output/routes.json"}, ""},
 		{"ok capabilities dir", []string{"output/index.html", "output/routes.json", "output_capabilities/cap.json"}, ""},
-		{"no output dir", []string{"stray.txt"}, "top-level entr"},
+		{"ok extra top-level dir ignored", []string{"output/index.html", "output/routes.json", "client/x.js"}, ""},
+		{"ok extra top-level file ignored", []string{"output/index.html", "output/routes.json", "notes.md"}, ""},
+		{"only strays, no output dir", []string{"stray.txt"}, "missing the output/ directory"},
 		{"no html", []string{"output/routes.json"}, "no .html file"},
 		{"no routes", []string{"output/index.html"}, "routes.json"},
-		{"extra top-level dir", []string{"output/index.html", "output/routes.json", "extra/x.js"}, "outside the artifact-hosting layout"},
-		{"extra top-level file", []string{"output/index.html", "output/routes.json", "notes.md"}, "outside the artifact-hosting layout"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dist := filepath.Join(t.TempDir(), "dist")
 			writeDistFiles(t, dist, tt.files)
-			_, err := validateAppDevDist(permissiveFIO{}, dist, false)
+			_, _, err := validateAppDevDist(permissiveFIO{}, dist, false)
 			if tt.wantErr == "" {
 				if err != nil {
 					t.Errorf("want valid, got %v", err)
@@ -131,28 +131,53 @@ func TestValidateAppDevDist(t *testing.T) {
 	}
 }
 
+func TestValidateAppDevDist_IgnoresExtrasAndExcludesFromPack(t *testing.T) {
+	dist := filepath.Join(t.TempDir(), "dist")
+	writeDistFiles(t, dist, []string{
+		"output/index.html", "output/routes.json",
+		"client/bundle.js", "server/main.js", "stats.json",
+	})
+	candidates, ignored, err := validateAppDevDist(permissiveFIO{}, dist, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ignored) != 3 {
+		t.Errorf("ignored = %v, want client/server/stats.json tops", ignored)
+	}
+	for _, c := range candidates {
+		if !strings.HasPrefix(c.RelPath, "output/") {
+			t.Errorf("candidate outside protocol dirs must not be packed: %s", c.RelPath)
+		}
+	}
+	// Sensitive files in ignored dirs are not shipped, hence not scanned.
+	writeDistFiles(t, dist, []string{"client/.env"})
+	if _, _, err := validateAppDevDist(permissiveFIO{}, dist, false); err != nil {
+		t.Errorf("sensitive file in an ignored dir must not block: %v", err)
+	}
+}
+
 func TestValidateAppDevDist_RoutesSchema(t *testing.T) {
 	dist := filepath.Join(t.TempDir(), "dist")
 	writeDistFiles(t, dist, []string{"output/index.html", "output/routes.json"})
 	// Broken JSON.
 	os.WriteFile(filepath.Join(dist, "output", "routes.json"), []byte("not-json"), 0o644)
-	if _, err := validateAppDevDist(permissiveFIO{}, dist, false); err == nil || !strings.Contains(err.Error(), "not valid JSON") {
+	if _, _, err := validateAppDevDist(permissiveFIO{}, dist, false); err == nil || !strings.Contains(err.Error(), "not valid JSON") {
 		t.Errorf("broken routes.json must be rejected, got %v", err)
 	}
 	// Missing required fields.
 	os.WriteFile(filepath.Join(dist, "output", "routes.json"), []byte(`{"version":1}`), 0o644)
-	if _, err := validateAppDevDist(permissiveFIO{}, dist, false); err == nil || !strings.Contains(err.Error(), "missing required fields") {
+	if _, _, err := validateAppDevDist(permissiveFIO{}, dist, false); err == nil || !strings.Contains(err.Error(), "missing required fields") {
 		t.Errorf("incomplete routes.json must be rejected, got %v", err)
 	}
 	// Unknown fields ignored (forward compatible).
 	os.WriteFile(filepath.Join(dist, "output", "routes.json"), []byte(`{"version":1,"type":"t","fallback":"index.html","future":true}`), 0o644)
-	if _, err := validateAppDevDist(permissiveFIO{}, dist, false); err != nil {
+	if _, _, err := validateAppDevDist(permissiveFIO{}, dist, false); err != nil {
 		t.Errorf("unknown fields must be ignored: %v", err)
 	}
 }
 
 func TestValidateAppDevDist_Missing(t *testing.T) {
-	_, err := validateAppDevDist(permissiveFIO{}, filepath.Join(t.TempDir(), "dist"), false)
+	_, _, err := validateAppDevDist(permissiveFIO{}, filepath.Join(t.TempDir(), "dist"), false)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
 	if p.Subtype != errs.SubtypeFailedPrecondition {
 		t.Errorf("subtype = %q, want failed_precondition", p.Subtype)
@@ -165,11 +190,11 @@ func TestValidateAppDevDist_Missing(t *testing.T) {
 func TestValidateAppDevDist_Sensitive(t *testing.T) {
 	dist := filepath.Join(t.TempDir(), "dist")
 	writeDistFiles(t, dist, []string{"output/index.html", "output/routes.json", "output/.env"})
-	_, err := validateAppDevDist(permissiveFIO{}, dist, false)
+	_, _, err := validateAppDevDist(permissiveFIO{}, dist, false)
 	if err == nil || !strings.Contains(err.Error(), "credential file") {
 		t.Errorf("sensitive file must be rejected, got %v", err)
 	}
-	if _, err := validateAppDevDist(permissiveFIO{}, dist, true); err != nil {
+	if _, _, err := validateAppDevDist(permissiveFIO{}, dist, true); err != nil {
 		t.Errorf("allow-sensitive must waive the scan: %v", err)
 	}
 }
@@ -179,7 +204,7 @@ func TestValidateAppDevDist_Sensitive(t *testing.T) {
 func TestBuildAppDevZip(t *testing.T) {
 	dist := filepath.Join(t.TempDir(), "dist")
 	writeDistFiles(t, dist, []string{"output/index.html", "output/routes.json", "output_resource/a.js"})
-	candidates, err := validateAppDevDist(permissiveFIO{}, dist, false)
+	candidates, _, err := validateAppDevDist(permissiveFIO{}, dist, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +233,7 @@ func TestBuildAppDevZip_RawSizeCap(t *testing.T) {
 	t.Cleanup(func() { maxAppDevPublishRawBytes = orig })
 	dist := filepath.Join(t.TempDir(), "dist")
 	writeDistFiles(t, dist, []string{"output/index.html", "output/routes.json"})
-	candidates, err := validateAppDevDist(permissiveFIO{}, dist, false)
+	candidates, _, err := validateAppDevDist(permissiveFIO{}, dist, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +248,7 @@ func TestBuildAppDevZip_ZipSizeCap(t *testing.T) {
 	t.Cleanup(func() { maxAppDevPublishZipBytes = orig })
 	dist := filepath.Join(t.TempDir(), "dist")
 	writeDistFiles(t, dist, []string{"output/index.html", "output/routes.json"})
-	candidates, err := validateAppDevDist(permissiveFIO{}, dist, false)
+	candidates, _, err := validateAppDevDist(permissiveFIO{}, dist, false)
 	if err != nil {
 		t.Fatal(err)
 	}
