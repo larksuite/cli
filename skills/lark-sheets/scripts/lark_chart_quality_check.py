@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Lark Technologies Pte. Ltd.
 # SPDX-License-Identifier: MIT
-"""Check Lark Sheet chart placement and numeric source-data issues.
+"""Check Lark Sheet chart quality, placement, and numeric source-data issues.
 
 The single required argument is a spreadsheet URL or spreadsheet token. By
 default every worksheet is checked; pass --worksheet-id to restrict the check
@@ -10,7 +10,7 @@ to one worksheet reference_id.
 Exit codes:
   0: check completed and no issue was found
   1: the check could not be completed (CLI/read/response error)
-  2: check completed and at least one layout or source-data issue was found
+  2: check completed and at least one chart-quality issue was found
 """
 
 from __future__ import annotations
@@ -29,8 +29,9 @@ from lark_sheet_read_cli import (
     sheet_identifier,
     sheet_title,
 )
+from lark_chart_size_rules import dense_data_labels, minimum_chart_size
 
-ACTION = "chart_layout_check"
+ACTION = "chart_quality_check"
 DEFAULT_COLUMN_WIDTH = 105.0
 DEFAULT_ROW_HEIGHT = 27.0
 MAX_CELL_READ_SIZE = 2_000
@@ -40,6 +41,7 @@ MAX_ZERO_SCAN_CELLS = 10_000
 
 CellBounds = tuple[int, int, int, int]
 CellCache = dict[tuple[str, str, str], dict[str, Any]]
+SeriesProfile = dict[str, Any]
 
 
 def _parse_a1_bounds(cell_range: str) -> CellBounds:
@@ -378,6 +380,157 @@ def _chart_type(snapshot: dict[str, Any]) -> str:
     return str(plot.get("type") or "").lower() if isinstance(plot, dict) else ""
 
 
+def _plot(snapshot: dict[str, Any]) -> dict[str, Any]:
+    plot_area = snapshot.get("plotArea")
+    plot = plot_area.get("plot") if isinstance(plot_area, dict) else None
+    return plot if isinstance(plot, dict) else {}
+
+
+def _static_series_profiles(snapshot: dict[str, Any]) -> list[SeriesProfile]:
+    data = snapshot.get("data")
+    dim2 = data.get("dim2") if isinstance(data, dict) else None
+    fields = dim2.get("fields") if isinstance(dim2, dict) else None
+    if not isinstance(fields, list):
+        return []
+    profiles: list[SeriesProfile] = []
+    for offset, field in enumerate(fields, start=1):
+        if not isinstance(field, dict):
+            continue
+        values = []
+        for value in field.get("parsedValues") or []:
+            numeric = (
+                float(value)
+                if isinstance(value, (int, float)) and not isinstance(value, bool)
+                else _numeric_text_value(value) if isinstance(value, str) else None
+            )
+            if numeric is not None:
+                values.append(numeric)
+        profiles.append(
+            {
+                "dimension_index": offset,
+                "series_name": str(field.get("name") or f"Series {offset}"),
+                "point_count": len(field.get("parsedValues") or []),
+                "numeric_value_count": len(values),
+                "unique_numeric_values": list(dict.fromkeys(values))[:2],
+                "source_sheet": "",
+                "source_range": "",
+                "series_range": "",
+            }
+        )
+    return profiles
+
+
+def _labeled_series_indexes(
+    snapshot: dict[str, Any], profiles: list[SeriesProfile]
+) -> set[int]:
+    plot = _plot(snapshot)
+    available = {
+        int(profile["dimension_index"])
+        for profile in profiles
+        if profile.get("dimension_index") is not None
+    }
+    labeled = set(available) if isinstance(plot.get("labels"), dict) else set()
+    series = plot.get("series")
+    if isinstance(series, list):
+        labeled.update(
+            int(item["index"])
+            for item in series
+            if isinstance(item, dict)
+            and item.get("index") is not None
+            and isinstance(item.get("labels"), dict)
+        )
+    return labeled & available
+
+
+def _constant_labeled_series(
+    chart: dict[str, Any], profiles: list[SeriesProfile]
+) -> list[dict[str, Any]]:
+    chart_id = str(chart.get("chart_id") or chart.get("id") or "")
+    snapshot = _chart_snapshot(chart)
+    labeled = _labeled_series_indexes(snapshot, profiles)
+    return [
+        {
+            "chart_id": chart_id,
+            "dimension_index": profile["dimension_index"],
+            "series_name": profile["series_name"],
+            "source_sheet": profile["source_sheet"],
+            "source_range": profile["source_range"],
+            "series_range": profile["series_range"],
+            "reason": "constant_labeled_series",
+            "data_point_count": profile["point_count"],
+            "constant_value": profile["unique_numeric_values"][0],
+            "suggested_fix": "remove_series_labels_or_use_one_sparse_marker",
+        }
+        for profile in profiles
+        if int(profile.get("dimension_index", -1)) in labeled
+        and int(profile.get("numeric_value_count", 0)) >= 2
+        and len(profile.get("unique_numeric_values") or []) == 1
+    ]
+
+
+def _category_count(snapshot: dict[str, Any], profiles: list[SeriesProfile]) -> int:
+    data = snapshot.get("data")
+    dim1 = data.get("dim1") if isinstance(data, dict) else None
+    field = dim1.get("field") if isinstance(dim1, dict) else None
+    values = field.get("parsedValues") if isinstance(field, dict) else None
+    if isinstance(values, list):
+        return len(values)
+    return max((int(profile.get("point_count", 0)) for profile in profiles), default=0)
+
+
+def _dense_data_label_issue(
+    chart: dict[str, Any], profiles: list[SeriesProfile]
+) -> dict[str, Any] | None:
+    details = chart.get("details") if isinstance(chart.get("details"), dict) else chart
+    snapshot = _chart_snapshot(chart)
+    size = details.get("size") if isinstance(details.get("size"), dict) else {}
+    labeled = _labeled_series_indexes(snapshot, profiles)
+    density = dense_data_labels(
+        chart_type=_chart_type(snapshot),
+        category_count=_category_count(snapshot, profiles),
+        labeled_series_count=len(labeled),
+        width=float(size.get("width") or 0),
+        height=float(size.get("height") or 0),
+    )
+    if not density:
+        return None
+    return {
+        "chart_id": str(chart.get("chart_id") or chart.get("id") or ""),
+        "reason": "dense_data_labels",
+        "chart_type": _chart_type(snapshot),
+        "category_count": _category_count(snapshot, profiles),
+        "labeled_series_count": len(labeled),
+        "size": {
+            "width": float(size.get("width") or 0),
+            "height": float(size.get("height") or 0),
+        },
+        **density,
+        "suggested_fix": "increase_size_or_omit_global_labels_or_label_only_key_points",
+    }
+
+
+def _undersized_chart(chart: dict[str, Any]) -> dict[str, Any] | None:
+    details = chart.get("details") if isinstance(chart.get("details"), dict) else chart
+    snapshot = _chart_snapshot(chart)
+    chart_type = _chart_type(snapshot)
+    size = details.get("size") if isinstance(details.get("size"), dict) else {}
+    actual = {
+        "width": float(size.get("width") or 0),
+        "height": float(size.get("height") or 0),
+    }
+    minimum = minimum_chart_size(chart_type)
+    if actual["width"] >= minimum["width"] and actual["height"] >= minimum["height"]:
+        return None
+    return {
+        "chart_id": str(chart.get("chart_id") or chart.get("id") or ""),
+        "reason": "chart_below_minimum_size",
+        "chart_type": chart_type,
+        "actual_size": actual,
+        "minimum_size": minimum,
+        "suggested_fix": "run_lark_chart_size_advisor_before_resizing",
+    }
+
+
 def _numeric_dimensions(snapshot: dict[str, Any]) -> list[tuple[int, str]]:
     data = snapshot.get("data")
     if not isinstance(data, dict):
@@ -457,6 +610,20 @@ def _zero_state(value: Any) -> str:
     return "nonzero"
 
 
+def _update_series_state(state: dict[str, Any], value: Any) -> None:
+    state[_zero_state(value)] = True
+    numeric = (
+        float(value)
+        if isinstance(value, (int, float)) and not isinstance(value, bool)
+        else _numeric_text_value(value) if isinstance(value, str) else None
+    )
+    if numeric is None:
+        return
+    state["numeric_value_count"] += 1
+    if len(state["unique_numeric_values"]) < 2:
+        state["unique_numeric_values"].add(numeric)
+
+
 def _cells_truncated(data: dict[str, Any]) -> bool:
     ranges = data.get("ranges")
     return bool(data.get("has_more")) or any(
@@ -474,20 +641,25 @@ def _numeric_source_issues(
     locator: dict[str, str],
     timeout: int,
     sample_limit: int,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, str]]]:
+) -> tuple[
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[dict[str, str]],
+    list[SeriesProfile],
+]:
     chart_id = str(chart.get("chart_id") or chart.get("id") or "")
     snapshot = _chart_snapshot(chart)
     data = snapshot.get("data")
     if not isinstance(data, dict):
-        return [], [], [{"chart_id": chart_id, "reason": "chart snapshot.data is missing"}]
+        return [], [], [{"chart_id": chart_id, "reason": "chart snapshot.data is missing"}], []
     if data.get("isStaticData") is True:
-        return [], [], []
+        return [], [], [], _static_series_profiles(snapshot)
     dimensions = _numeric_dimensions(snapshot)
     if not dimensions:
-        return [], [], []
+        return [], [], [], []
     refs = data.get("refs")
     if not isinstance(refs, list) or not refs:
-        return [], [], [{"chart_id": chart_id, "reason": "chart data.refs is missing"}]
+        return [], [], [{"chart_id": chart_id, "reason": "chart data.refs is missing"}], []
 
     parsed_refs: list[tuple[str, str, CellBounds]] = []
     unverifiable: list[dict[str, str]] = []
@@ -497,7 +669,7 @@ def _numeric_source_issues(
             parsed_refs.append(_parse_chart_ref(str(raw_ref), owner_sheet_name))
         except (TypeError, ValueError) as exc:
             unverifiable.append({"chart_id": chart_id, "reason": str(exc)})
-            return [], [], unverifiable
+            return [], [], unverifiable, []
 
     direction = str(data.get("direction") or "column").lower()
     mapped: list[tuple[int, str, int, str, str, CellBounds]] = []
@@ -540,6 +712,7 @@ def _numeric_source_issues(
     issue_groups: dict[tuple[int, str, str, str, str, str], list[str]] = {}
     issue_counts: dict[tuple[int, str, str, str, str, str], int] = {}
     degenerate_series: list[dict[str, Any]] = []
+    series_profiles: list[SeriesProfile] = []
     for (source_sheet, source_range, bounds), ref_dimensions in mapped_by_ref.items():
         if direction == "column":
             selected = {
@@ -582,7 +755,13 @@ def _numeric_source_issues(
                 {"chart_id": chart_id, "reason": f"cells-get truncated for {source_sheet}!{checked_range}"}
             )
         states = {
-            coordinate: {"zero": False, "empty": False, "nonzero": False}
+            coordinate: {
+                "zero": False,
+                "empty": False,
+                "nonzero": False,
+                "numeric_value_count": 0,
+                "unique_numeric_values": set(),
+            }
             for coordinate in selected
         }
         for row_number, column_index, cell in _iter_cells(cells_data):
@@ -596,7 +775,7 @@ def _numeric_source_issues(
             ):
                 continue
             value = cell.get("value") if isinstance(cell, dict) else None
-            states[coordinate][_zero_state(value)] = True
+            _update_series_state(states[coordinate], value)
             number_format = (
                 cell.get("cell_styles", {}).get("number_format")
                 if isinstance(cell, dict) and isinstance(cell.get("cell_styles"), dict)
@@ -617,9 +796,15 @@ def _numeric_source_issues(
             if len(samples) < sample_limit:
                 samples.append(f"{index_to_column(column_index)}{row_number}")
 
-        candidates = {
+        zero_candidates = {
             coordinate for coordinate, state in states.items() if not state["nonzero"]
         }
+        constant_candidates = {
+            coordinate
+            for coordinate, state in states.items()
+            if len(state["unique_numeric_values"]) <= 1
+        }
+        candidates = zero_candidates | constant_candidates
         if not truncated and candidates:
             cursor = checked_bounds[1] + 1 if direction == "column" else checked_bounds[3] + 1
             end = bounds[1] if direction == "column" else bounds[3]
@@ -656,17 +841,23 @@ def _numeric_source_issues(
                     if coordinate not in candidates:
                         continue
                     value = cell.get("value") if isinstance(cell, dict) else None
-                    states[coordinate][_zero_state(value)] = True
+                    _update_series_state(states[coordinate], value)
                 candidates = {
-                    coordinate for coordinate in candidates if not states[coordinate]["nonzero"]
+                    coordinate
+                    for coordinate in candidates
+                    if not states[coordinate]["nonzero"]
+                    or len(states[coordinate]["unique_numeric_values"]) <= 1
                 }
                 cursor = window_end + 1
 
         if truncated:
             continue
+        zero_candidates = {
+            coordinate for coordinate, state in states.items() if not state["nonzero"]
+        }
         data_start = bounds[0] + (0 if detached else 1)
         data_column = bounds[2] + (0 if detached else 1)
-        for coordinate in candidates:
+        for coordinate, state in states.items():
             dimension_index, role = selected[coordinate]
             if direction == "column":
                 point_total = max(0, bounds[1] - data_start + 1)
@@ -684,6 +875,34 @@ def _numeric_source_issues(
                     if point_total
                     else ""
                 )
+            source_series = next(
+                (
+                    item
+                    for item in (data.get("dim2", {}).get("series") or [])
+                    if isinstance(item, dict)
+                    and item.get("index") is not None
+                    and int(item["index"]) == dimension_index
+                ),
+                {},
+            )
+            series_profiles.append(
+                {
+                    "dimension_index": dimension_index,
+                    "series_name": str(
+                        source_series.get("name")
+                        or source_series.get("nameRef")
+                        or f"Series {dimension_index}"
+                    ),
+                    "point_count": point_total,
+                    "numeric_value_count": state["numeric_value_count"],
+                    "unique_numeric_values": list(state["unique_numeric_values"]),
+                    "source_sheet": source_sheet,
+                    "source_range": source_range,
+                    "series_range": series_range,
+                }
+            )
+            if coordinate not in zero_candidates:
+                continue
             degenerate_series.append(
                 {
                     "chart_id": chart_id,
@@ -720,7 +939,7 @@ def _numeric_source_issues(
         }
         for key, samples in issue_groups.items()
     ]
-    return issues, degenerate_series, unverifiable
+    return issues, degenerate_series, unverifiable, series_profiles
 
 
 def _locator(target: str) -> dict[str, str]:
@@ -775,6 +994,9 @@ def check_sheet(
             "cell_content_overlaps": [],
             "numeric_source_format_issues": [],
             "degenerate_numeric_series": [],
+            "constant_labeled_series": [],
+            "dense_data_labels": [],
+            "undersized_charts": [],
             "out_of_visible_range": [],
             "unverifiable_charts": unverifiable,
             "issue_count": 0,
@@ -873,8 +1095,11 @@ def check_sheet(
 
     numeric_source_issues: list[dict[str, Any]] = []
     degenerate_numeric_series: list[dict[str, Any]] = []
+    constant_series_issues: list[dict[str, Any]] = []
+    dense_label_issues: list[dict[str, Any]] = []
+    undersized_charts: list[dict[str, Any]] = []
     for chart in charts:
-        issues, degenerate, source_unverifiable = _numeric_source_issues(
+        issues, degenerate, source_unverifiable, profiles = _numeric_source_issues(
             chart,
             owner_sheet_id=sheet_id,
             owner_sheet_name=title,
@@ -886,6 +1111,13 @@ def check_sheet(
         numeric_source_issues.extend(issues)
         degenerate_numeric_series.extend(degenerate)
         unverifiable.extend(source_unverifiable)
+        constant_series_issues.extend(_constant_labeled_series(chart, profiles))
+        dense_issue = _dense_data_label_issue(chart, profiles)
+        if dense_issue:
+            dense_label_issues.append(dense_issue)
+        undersized = _undersized_chart(chart)
+        if undersized:
+            undersized_charts.append(undersized)
 
     issue_count = (
         len(overlaps)
@@ -893,6 +1125,9 @@ def check_sheet(
         + len(content_overlaps)
         + len(numeric_source_issues)
         + len(degenerate_numeric_series)
+        + len(constant_series_issues)
+        + len(dense_label_issues)
+        + len(undersized_charts)
     )
     return {
         "sheet_id": sheet_id,
@@ -903,6 +1138,9 @@ def check_sheet(
         "cell_content_overlaps": content_overlaps,
         "numeric_source_format_issues": numeric_source_issues,
         "degenerate_numeric_series": degenerate_numeric_series,
+        "constant_labeled_series": constant_series_issues,
+        "dense_data_labels": dense_label_issues,
+        "undersized_charts": undersized_charts,
         "out_of_visible_range": out_of_bounds,
         "unverifiable_charts": unverifiable,
         "issue_count": issue_count,
@@ -915,7 +1153,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Check chart overlap, covered cell content, worksheet boundary overflow, "
-            "numeric source-cell formats, and all-zero/empty numeric series."
+            "minimum size, label density, constant labeled series, numeric source-cell "
+            "formats, and all-zero/empty numeric series."
         )
     )
     parser.add_argument("sheet_id", help="Spreadsheet URL or spreadsheet token")
@@ -942,7 +1181,8 @@ def success_envelope(results: list[dict[str, Any]]) -> dict[str, Any]:
             "scope_note": (
                 "out_of_visible_range checks worksheet drawable bounds, not a device-specific browser viewport; "
                 "numeric source checks sample at most the first 50 data points of each chart value dimension "
-                "for formats and scan the full series for all-zero/empty values"
+                "for formats and scan candidate series fully for all-zero/empty and constant-value checks; "
+                "label-density checks are deterministic heuristics, not renderer collision detection"
             ),
             "summary": {
                 "worksheet_count": len(results),
