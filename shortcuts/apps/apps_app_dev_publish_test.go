@@ -311,7 +311,7 @@ func TestAppDevPublishValidate_NoMeta(t *testing.T) {
 	if p.Subtype != errs.SubtypeFailedPrecondition || !strings.Contains(p.Message, "not a Miaoda app project") {
 		t.Errorf("got %v", p)
 	}
-	if !strings.Contains(p.Hint, "+app-dev-init-app") {
+	if !strings.Contains(p.Hint, "+app-dev-init-template") {
 		t.Errorf("hint = %q", p.Hint)
 	}
 }

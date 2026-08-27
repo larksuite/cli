@@ -226,7 +226,7 @@ var AppsAppDevPublish = common.Shortcut{
 		if !isSpark {
 			return appsFailedPreconditionError(
 				"current directory is not a Miaoda app project (.spark/meta.json not found)").
-				WithHint("run this command from the project root; scaffold a project with +app-dev-init-app first")
+				WithHint("run this command from the project root; scaffold a project with +app-dev-init-template first")
 		}
 		if strings.TrimSpace(appID) == "" {
 			return appsFailedPreconditionError(".spark/meta.json has no app_id").

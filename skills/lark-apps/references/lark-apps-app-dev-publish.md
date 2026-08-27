@@ -4,7 +4,7 @@
 
 ## 何时用
 
-用 `+app-dev-init-app` 初始化（或按产物协议改造）的本地项目要部署/更新到妙搭时使用。它不适用于 html 应用（走 `+html-publish`）或源码托管应用（走 `+release-create`）。
+用 `+app-dev-init-template` 初始化（或按产物协议改造）的本地项目要部署/更新到妙搭时使用。它不适用于 html 应用（走 `+html-publish`）或源码托管应用（走 `+release-create`）。
 
 ## 命令骨架
 

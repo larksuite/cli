@@ -1,6 +1,6 @@
-# apps +app-dev-init-app
+# apps +app-dev-init-template
 
-在本地初始化一个产物托管形态的 Web 应用项目（代码留在本地，构建产物后续发布到妙搭）。运行时命令事实以 `lark-cli apps +app-dev-init-app --help` 为准。
+在本地初始化一个产物托管形态的 Web 应用项目（代码留在本地，构建产物后续发布到妙搭）。运行时命令事实以 `lark-cli apps +app-dev-init-template --help` 为准。
 
 ## 何时用
 
@@ -15,8 +15,8 @@
 ## 示例
 
 ```bash
-lark-cli apps +app-dev-init-app --type frontend --dir ./my-app
-lark-cli apps +app-dev-init-app --type full_stack --dry-run
+lark-cli apps +app-dev-init-template --type frontend --dir ./my-app
+lark-cli apps +app-dev-init-template --type full_stack --dry-run
 ```
 
 ## 输出契约
