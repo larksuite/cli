@@ -6,6 +6,7 @@ package drive
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/xml"
 	"testing"
 
 	"github.com/larksuite/cli/internal/citation"
@@ -16,7 +17,27 @@ import (
 
 type driveCitationEnvelope struct {
 	Data      map[string]interface{} `json:"data"`
-	Citations []citation.Citation    `json:"citations"`
+	Citations []string               `json:"citations"`
+}
+
+// driveCitationDoc decodes one XML <document> citation string back into a
+// struct so per-field assertions stay readable.
+type driveCitationDoc struct {
+	ReferenceID string              `xml:"reference_id,attr"`
+	Title       string              `xml:"title"`
+	SourceType  citation.SourceType `xml:"source_type"`
+	Snippet     string              `xml:"snippet"`
+	URL         string              `xml:"url"`
+	PublishTime string              `xml:"publish_time"`
+}
+
+func decodeDriveCitationDoc(t *testing.T, s string) driveCitationDoc {
+	t.Helper()
+	var d driveCitationDoc
+	if err := xml.Unmarshal([]byte(s), &d); err != nil {
+		t.Fatalf("xml.Unmarshal(%q) error = %v", s, err)
+	}
+	return d
 }
 
 func decodeDriveCitationEnvelope(t *testing.T, stdout *bytes.Buffer) driveCitationEnvelope {
@@ -144,11 +165,11 @@ func TestDriveSearchCitationEnvelopeUsesRealResourceTypes(t *testing.T) {
 		citation.SourceDoc,
 	}
 	for i, want := range wantTypes {
-		if got := envelope.Citations[i].SourceType; got != want {
+		if got := decodeDriveCitationDoc(t, envelope.Citations[i]).SourceType; got != want {
 			t.Errorf("citations[%d].source_type = %d, want %d", i, got, want)
 		}
 	}
-	if got := envelope.Citations[1].Title; got != `A full & "quoted" sheet #1` {
+	if got := decodeDriveCitationDoc(t, envelope.Citations[1]).Title; got != `A full & "quoted" sheet #1` {
 		t.Errorf("highlighted citation title = %q, want decoded plain title", got)
 	}
 	results, ok := envelope.Data["results"].([]interface{})
@@ -162,10 +183,7 @@ func TestDriveSearchCitationEnvelopeUsesRealResourceTypes(t *testing.T) {
 	if got := secondResult["title_highlighted"]; got != "A <h>full &amp; &quot;quoted&quot;</h> sheet &#35;1" {
 		t.Errorf("data title_highlighted = %q, want original API value", got)
 	}
-	if got := envelope.Citations[1].ResourceID; got != "shtcnTwo" {
-		t.Errorf("resource_id = %q, want shtcnTwo", got)
-	}
-	if got := envelope.Citations[0].PublishTime; got != citation.Time("1721996760") {
+	if got := decodeDriveCitationDoc(t, envelope.Citations[0]).PublishTime; got != citation.Time("1721996760") {
 		t.Errorf("publish_time = %q, want %q", got, citation.Time("1721996760"))
 	}
 }
@@ -229,15 +247,18 @@ func TestDriveInspectWikiCitationUsesUnderlyingTypeAndMetadata(t *testing.T) {
 	if len(envelope.Citations) != 1 {
 		t.Fatalf("citations count = %d, want 1: %#v", len(envelope.Citations), envelope.Citations)
 	}
-	got := envelope.Citations[0]
+	got := decodeDriveCitationDoc(t, envelope.Citations[0])
 	if got.SourceType != citation.SourceSheet {
 		t.Errorf("citation source_type = %d, want %d", got.SourceType, citation.SourceSheet)
 	}
 	if got.URL != "https://tenant.feishu.cn/sheets/shtcnUnderlying" {
 		t.Errorf("citation url = %q", got.URL)
 	}
-	if got.Title != "Underlying sheet" || got.ResourceID != "shtcnUnderlying" {
-		t.Errorf("citation title/resource_id = %q/%q", got.Title, got.ResourceID)
+	if got.ReferenceID != got.URL {
+		t.Errorf("reference_id = %q, want the url %q", got.ReferenceID, got.URL)
+	}
+	if got.Title != "Underlying sheet" {
+		t.Errorf("citation title = %q", got.Title)
 	}
 	if got.PublishTime != citation.Time("1721996760") {
 		t.Errorf("citation publish_time = %q, want %q", got.PublishTime, citation.Time("1721996760"))

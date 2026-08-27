@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -115,7 +114,7 @@ func TestWikiCitationMetaLookupDeduplicatesAndCorrelatesWikiTokens(t *testing.T)
 	}
 
 	var envelope struct {
-		Citations []citation.Citation `json:"citations"`
+		Citations []string `json:"citations"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode stdout: %v\nstdout=%s", err, stdout.String())
@@ -124,8 +123,8 @@ func TestWikiCitationMetaLookupDeduplicatesAndCorrelatesWikiTokens(t *testing.T)
 		t.Fatalf("citations = %#v, want both returned nodes", envelope.Citations)
 	}
 	for _, got := range envelope.Citations {
-		if got.ResourceID != "wik_node_1" || got.URL != "https://tenant.example.com/docx/docx_1" {
-			t.Fatalf("citation = %#v", got)
+		if !strings.Contains(got, "<url>https://tenant.example.com/docx/docx_1</url>") {
+			t.Fatalf("citation = %q, want the native url", got)
 		}
 	}
 }
@@ -211,7 +210,7 @@ func TestWikiCitationMetaLookupChunksAndKeepsPartialResults(t *testing.T) {
 		Data struct {
 			Nodes []map[string]interface{} `json:"nodes"`
 		} `json:"data"`
-		Citations []citation.Citation `json:"citations"`
+		Citations []string `json:"citations"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode stdout: %v\nstdout=%s", err, stdout.String())
@@ -219,7 +218,7 @@ func TestWikiCitationMetaLookupChunksAndKeepsPartialResults(t *testing.T) {
 	if len(envelope.Data.Nodes) != wikiCitationMetaBatchMaxRequests+1 {
 		t.Fatalf("data nodes = %d, want command data preserved", len(envelope.Data.Nodes))
 	}
-	if len(envelope.Citations) != 1 || envelope.Citations[0].ResourceID != "wik_200" {
+	if len(envelope.Citations) != 1 {
 		t.Fatalf("partial citations = %#v", envelope.Citations)
 	}
 	if !strings.Contains(stderr.String(), "citation URL lookup failed") {

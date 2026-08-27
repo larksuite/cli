@@ -5,6 +5,7 @@ package wiki
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -88,8 +89,8 @@ func TestWikiNodeCitation(t *testing.T) {
 	if c.URL != "https://tenant.example.com/docx/docxTok" {
 		t.Errorf("url = %q", c.URL)
 	}
-	if c.Title != "标题" || c.ResourceID != "wikcnTok" {
-		t.Errorf("title/resource_id = %q %q", c.Title, c.ResourceID)
+	if c.Title != "标题" {
+		t.Errorf("title = %q", c.Title)
 	}
 	if c.PublishTime != citation.Time("1721996760") {
 		t.Errorf("publish_time = %q", c.PublishTime)
@@ -176,7 +177,7 @@ func TestWikiNodeGetMountedExecuteEmitsCitation(t *testing.T) {
 	var envelope struct {
 		OK        bool                   `json:"ok"`
 		Data      map[string]interface{} `json:"data"`
-		Citations []citation.Citation    `json:"citations"`
+		Citations []string               `json:"citations"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
 		t.Fatalf("unmarshal wiki envelope: %v\nstdout=%s", err, stdout.String())
@@ -192,20 +193,19 @@ func TestWikiNodeGetMountedExecuteEmitsCitation(t *testing.T) {
 	}
 
 	got := envelope.Citations[0]
-	if got.SourceType != citation.SourceWiki {
-		t.Errorf("source_type = %d, want %d", got.SourceType, citation.SourceWiki)
+	wantURL := "https://tenant.example.com/docx/docxXYZ"
+	if !strings.HasPrefix(got, `<document reference_id="`+wantURL+`">`) {
+		t.Errorf("citation = %q, want a <document> element keyed by the native url", got)
 	}
-	if got.URL != "https://tenant.example.com/docx/docxXYZ" {
-		t.Errorf("url = %q", got.URL)
-	}
-	if got.Title != "Design Spec" {
-		t.Errorf("title = %q", got.Title)
-	}
-	if got.ResourceID != "wikcnABC" {
-		t.Errorf("resource_id = %q, want node_token alone", got.ResourceID)
-	}
-	if got.PublishTime != citation.Time("1700000000") {
-		t.Errorf("publish_time = %q", got.PublishTime)
+	for _, frag := range []string{
+		"<title>Design Spec</title>",
+		fmt.Sprintf("<source_type>%d</source_type>", citation.SourceWiki),
+		"<url>" + wantURL + "</url>",
+		"<publish_time>" + citation.Time("1700000000") + "</publish_time>",
+	} {
+		if !strings.Contains(got, frag) {
+			t.Errorf("citation %q missing %q", got, frag)
+		}
 	}
 }
 
@@ -294,9 +294,9 @@ func TestWikiNodeGetCitationLookupFailureDoesNotFailCommand(t *testing.T) {
 		t.Fatalf("mountAndRunWiki() error = %v", err)
 	}
 	var envelope struct {
-		OK        bool                `json:"ok"`
-		Data      map[string]any      `json:"data"`
-		Citations []citation.Citation `json:"citations"`
+		OK        bool           `json:"ok"`
+		Data      map[string]any `json:"data"`
+		Citations []string       `json:"citations"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
 		t.Fatalf("unmarshal wiki envelope: %v\nstdout=%s", err, stdout.String())

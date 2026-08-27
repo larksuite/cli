@@ -211,7 +211,7 @@ func (e *Emitter) emitEnvelope(data interface{}, ok bool, opts EmitOptions) erro
 		Notice:   e.notice(),
 	}
 	if opts.Citations != nil {
-		env.Citations = opts.Citations()
+		env.Citations = citation.EncodeXML(opts.Citations())
 	}
 	if scanResult.Alert != nil {
 		env.ContentSafetyAlert = scanResult.Alert

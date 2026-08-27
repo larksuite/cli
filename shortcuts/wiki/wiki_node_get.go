@@ -385,8 +385,7 @@ func wikiNodeGetOutput(node *wikiNodeRecord, raw map[string]interface{}) map[str
 
 // wikiNodeCitation builds one pure citation projection. nativeURL is the
 // tenant URL already fetched by Execute; this function performs no I/O.
-// ResourceID remains the globally unique Wiki node token rather than a
-// space/token composite. Empty URLs are silently removed by citation.Normalize.
+// Empty URLs are silently removed by citation.Normalize.
 func wikiNodeCitation(nodeToken, title, objEditTime, nativeURL string) []citation.Citation {
 	entry := citation.Citation{
 		SourceType:  citation.SourceWiki,
@@ -395,7 +394,6 @@ func wikiNodeCitation(nodeToken, title, objEditTime, nativeURL string) []citatio
 	}
 	if nodeToken != "" {
 		entry.URL = nativeURL
-		entry.ResourceID = nodeToken
 	}
 	return []citation.Citation{entry}
 }

@@ -146,7 +146,6 @@ func messageCitation(brand core.LarkBrand, msg map[string]interface{}, fallbackC
 	// from a JSON response, so a missing or differently-typed key must yield
 	// the zero value rather than panic.
 	text, _ := msg["content"].(string)
-	messageID, _ := msg["message_id"].(string)
 	createTime, _ := msg["create_time"].(string)
 	chatID, _ := msg["chat_id"].(string)
 	if chatID == "" {
@@ -173,13 +172,6 @@ func messageCitation(brand core.LarkBrand, msg map[string]interface{}, fallbackC
 	if entry.URL == "" {
 		entry.URL = chatOpenURL(brand, chatID)
 	}
-	// resource_id is the protocol's reference_id: the cited object's own
-	// identifier, used downstream for deduplication. Messages carry message_id
-	// and chats carry chat_id (see chatCitation). Locating the object is the
-	// URL's job — the applink already embeds chat_id and the message position
-	// — so a composite id would buy nothing. An empty value is dropped by
-	// omitempty.
-	entry.ResourceID = messageID
 	return entry, true
 }
 
@@ -210,7 +202,6 @@ func chatCitation(brand core.LarkBrand, chat map[string]interface{}) citation.Ci
 		URL:         chatOpenURL(brand, chatID),
 		Title:       name,
 		Snippet:     description,
-		ResourceID:  chatID,
 		PublishTime: citation.Time(createTime),
 	}
 }

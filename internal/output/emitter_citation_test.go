@@ -36,9 +36,13 @@ func TestEmitEnvelopeInjectsCitations(t *testing.T) {
 	if !ok {
 		t.Fatalf("citations key missing: %s", out.String())
 	}
-	var items []citation.Citation
-	if err := json.Unmarshal(raw, &items); err != nil || len(items) != 1 || items[0].SourceType != citation.SourceWiki {
+	var items []string
+	if err := json.Unmarshal(raw, &items); err != nil || len(items) != 1 {
 		t.Fatalf("citations = %s", raw)
+	}
+	want := `<document reference_id="https://docs.example.com/wiki/tok"><title>t</title><source_type>1</source_type><url>https://docs.example.com/wiki/tok</url></document>`
+	if items[0] != want {
+		t.Fatalf("citations[0] = %q, want %q", items[0], want)
 	}
 }
 

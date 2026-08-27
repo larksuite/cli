@@ -41,9 +41,6 @@ func TestMessageCitationPrefersMessageAppLink(t *testing.T) {
 	if c.Snippet != "" {
 		t.Errorf("snippet = %q, want empty for messages", c.Snippet)
 	}
-	if c.ResourceID != "om_1" {
-		t.Errorf("resource_id = %q, want the message id alone", c.ResourceID)
-	}
 	if c.PublishTime != citation.Time("2026-07-27 21:26") {
 		t.Errorf("publish_time = %q", c.PublishTime)
 	}
@@ -74,21 +71,14 @@ func TestMessageCitationUsesFallbackChatID(t *testing.T) {
 	if c.URL != "https://applink.feishu.cn/client/chat/open?openChatId=oc_outer" {
 		t.Errorf("url = %q, want the fallback chat id", c.URL)
 	}
-	if c.ResourceID != "om_1" {
-		t.Errorf("resource_id = %q, want the message id alone", c.ResourceID)
-	}
 }
 
-func TestMessageCitationWithoutMessageIDHasNoResourceID(t *testing.T) {
-	// omitempty drops the key entirely rather than emitting an empty string.
+func TestMessageCitationWithoutMessageID(t *testing.T) {
 	msg := textMessage()
 	delete(msg, "message_id")
 	c, ok := messageCitation(core.BrandFeishu, msg, "")
 	if !ok {
 		t.Fatal("a missing message_id must not make the message uncitable")
-	}
-	if c.ResourceID != "" {
-		t.Errorf("resource_id = %q, want empty", c.ResourceID)
 	}
 	if c.URL == "" {
 		t.Error("URL must still be present")
@@ -139,9 +129,6 @@ func TestChatCitation(t *testing.T) {
 	if c.Snippet != "对齐 citation 协议" {
 		t.Errorf("snippet = %q, want the group description", c.Snippet)
 	}
-	if c.ResourceID != "oc_2" {
-		t.Errorf("resource_id = %q", c.ResourceID)
-	}
 	if c.PublishTime != citation.Time("1753622760") {
 		t.Errorf("publish_time = %q", c.PublishTime)
 	}
@@ -178,8 +165,8 @@ func TestChatMessagesListCitationsBuilder(t *testing.T) {
 	if got[0].URL != testMessageAppLink {
 		t.Errorf("first url = %q", got[0].URL)
 	}
-	if got[1].ResourceID != "om_3" {
-		t.Errorf("second resource_id = %q", got[1].ResourceID)
+	if got[1].Title != "no chat id" {
+		t.Errorf("second title = %q", got[1].Title)
 	}
 }
 
@@ -194,8 +181,8 @@ func TestMessagesSearchCitationsBuilder(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("builder = %#v, want 1 entry (file skipped)", got)
 	}
-	if got[0].ResourceID != "om_1" {
-		t.Errorf("resource_id = %q, want the message id alone", got[0].ResourceID)
+	if got[0].Title != "hello world" {
+		t.Errorf("title = %q, want the message text", got[0].Title)
 	}
 }
 

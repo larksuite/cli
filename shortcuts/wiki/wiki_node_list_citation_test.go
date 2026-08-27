@@ -30,8 +30,8 @@ func TestWikiNodeListCitations(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("wikiNodeListCitations() = %#v, want 2 entries", got)
 	}
-	if got[0].SourceType != citation.SourceWiki || got[0].ResourceID != "wik_node_1" {
-		t.Errorf("first source_type/resource_id = %d %q", got[0].SourceType, got[0].ResourceID)
+	if got[0].SourceType != citation.SourceWiki || got[0].Title != "Getting Started" {
+		t.Errorf("first source_type/title = %d %q", got[0].SourceType, got[0].Title)
 	}
 	if got[0].URL != "https://tenant.example.com/docx/docx_1" {
 		t.Errorf("first url = %q", got[0].URL)
@@ -167,7 +167,7 @@ func TestWikiNodeListMountedExecuteEmitsCitations(t *testing.T) {
 		Meta struct {
 			Count int `json:"count"`
 		} `json:"meta"`
-		Citations []citation.Citation `json:"citations"`
+		Citations []string `json:"citations"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
 		t.Fatalf("unmarshal wiki envelope: %v\nstdout=%s", err, stdout.String())
@@ -184,13 +184,11 @@ func TestWikiNodeListMountedExecuteEmitsCitations(t *testing.T) {
 	if len(envelope.Citations) != 2 {
 		t.Fatalf("citations = %#v, want 2 entries (missing token/URL dropped)", envelope.Citations)
 	}
-	if envelope.Citations[0].ResourceID != "wik_node_1" || envelope.Citations[1].ResourceID != "wik_node_2" {
-		t.Errorf("citation order/resource_ids = %q, %q", envelope.Citations[0].ResourceID, envelope.Citations[1].ResourceID)
+	if !strings.Contains(envelope.Citations[0], "<url>https://tenant.example.com/docx/docx_1</url>") ||
+		!strings.Contains(envelope.Citations[1], "<url>https://tenant.example.com/docx/docx_2</url>") {
+		t.Errorf("citation order/urls = %q, %q", envelope.Citations[0], envelope.Citations[1])
 	}
-	if envelope.Citations[0].URL != "https://tenant.example.com/docx/docx_1" || envelope.Citations[1].URL != "https://tenant.example.com/docx/docx_2" {
-		t.Errorf("citation order/urls = %q, %q", envelope.Citations[0].URL, envelope.Citations[1].URL)
-	}
-	if strings.Contains(stdout.String(), `"publish_time"`) {
+	if strings.Contains(stdout.String(), "<publish_time>") {
 		t.Fatalf("node-list citation must omit publish_time: %s", stdout.String())
 	}
 }

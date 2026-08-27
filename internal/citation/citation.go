@@ -15,17 +15,16 @@ import (
 	"github.com/larksuite/cli/internal/envvars"
 )
 
-// Citation is one wire entry of the envelope-level citations array.
-// SourceType, URL and Title carry no omitempty: they are required on the wire
-// (entries without a URL are dropped by Normalize before serialization, and
-// an int omitempty would silently drop a required zero).
+// Citation is one structured citation entry as builders produce it. It is not
+// serialized directly: the envelope carries each entry as an XML <document>
+// string (see EncodeXML). SourceType, URL and Title are required on the wire;
+// entries without a URL are dropped by Normalize before serialization.
 type Citation struct {
-	SourceType  SourceType `json:"source_type"`
-	URL         string     `json:"url"`
-	Title       string     `json:"title"`
-	Snippet     string     `json:"snippet,omitempty"`
-	ResourceID  string     `json:"resource_id,omitempty"`
-	PublishTime string     `json:"publish_time,omitempty"`
+	SourceType  SourceType
+	URL         string
+	Title       string
+	Snippet     string
+	PublishTime string
 }
 
 // Enabled reports whether citation output is on. Only the exact value "1"

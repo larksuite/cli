@@ -82,7 +82,6 @@ func driveSearchCitations(_ *common.RuntimeContext, data any) []citation.Citatio
 			SourceType:  driveSearchCitationSource(item),
 			URL:         item.URL,
 			Title:       item.Title,
-			ResourceID:  item.Token,
 			PublishTime: citation.Time(item.CreateTime),
 		})
 	}
@@ -135,7 +134,6 @@ func driveInspectCitations(_ *common.RuntimeContext, data any) []citation.Citati
 		SourceType:  driveInspectCitationSource(item.DocType),
 		URL:         item.URL,
 		Title:       item.Title,
-		ResourceID:  item.Token,
 		PublishTime: citation.Time(item.CreateTime),
 	}}
 }
