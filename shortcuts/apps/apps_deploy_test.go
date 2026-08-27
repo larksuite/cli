@@ -503,7 +503,7 @@ func stubReleases(reg *httpmock.Registry, appID string, respData map[string]inte
 func TestAppDevPublishValidate_NoMeta(t *testing.T) {
 	chdirProjectRoot(t, "")
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--as", "user"}, factory, stdout)
+	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
 	if p.Subtype != errs.SubtypeFailedPrecondition || !strings.Contains(p.Message, "not a Miaoda app project") {
 		t.Errorf("got %v", p)
@@ -511,7 +511,7 @@ func TestAppDevPublishValidate_NoMeta(t *testing.T) {
 	if !strings.Contains(p.Message, "miaoda.json") {
 		t.Errorf("message should name miaoda.json, got %q", p.Message)
 	}
-	if !strings.Contains(p.Hint, "+app-dev-init-template") {
+	if !strings.Contains(p.Hint, "+init-template") {
 		t.Errorf("hint = %q", p.Hint)
 	}
 }
@@ -519,14 +519,14 @@ func TestAppDevPublishValidate_NoMeta(t *testing.T) {
 func TestAppDevPublishValidate_NoAppID(t *testing.T) {
 	chdirProjectRoot(t, `{"stack":"react-standard-webapp"}`)
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--as", "user"}, factory, stdout)
+	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
 	if !strings.Contains(p.Message, "no publish target") {
 		t.Errorf("message = %q", p.Message)
 	}
 	// The guidance must lead to +create and the new --app-id flow (no manual
 	// JSON editing).
-	if !strings.Contains(p.Hint, "+create") || !strings.Contains(p.Hint, "+app-dev-publish --app-id") {
+	if !strings.Contains(p.Hint, "+create") || !strings.Contains(p.Hint, "+deploy --app-id") {
 		t.Errorf("hint = %q", p.Hint)
 	}
 }
@@ -534,8 +534,8 @@ func TestAppDevPublishValidate_NoAppID(t *testing.T) {
 func TestAppDevPublishValidate_AppIDMismatch(t *testing.T) {
 	chdirProjectRoot(t, `{"app_id":"app_recorded"}`)
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	err := runAppsShortcut(t, AppsAppDevPublish,
-		[]string{"+app-dev-publish", "--app-id", "app_other", "--as", "user"}, factory, stdout)
+	err := runAppsShortcut(t, AppsDeploy,
+		[]string{"+deploy", "--app-id", "app_other", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
 	if !strings.Contains(p.Message, "app_recorded") || !strings.Contains(p.Message, "app_other") {
 		t.Errorf("message must name both ids, got %q", p.Message)
@@ -552,8 +552,8 @@ func TestAppDevPublishExecute_FlagAppIDBackfill(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stubPreRelease(reg, "app_flag1", srv.URL, nil)
 	stubReleases(reg, "app_flag1", map[string]interface{}{"release_id": "rel_9", "status": "pending"})
-	if err := runAppsShortcut(t, AppsAppDevPublish,
-		[]string{"+app-dev-publish", "--app-id", "app_flag1", "--skip-build", "--as", "user"}, factory, stdout); err != nil {
+	if err := runAppsShortcut(t, AppsDeploy,
+		[]string{"+deploy", "--app-id", "app_flag1", "--skip-build", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
 	// app_id persisted on success, other fields preserved.
@@ -572,8 +572,8 @@ func TestAppDevPublishExecute_FlagMatchesMeta(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stubPreRelease(reg, "app_x", srv.URL, nil)
 	stubReleases(reg, "app_x", map[string]interface{}{"release_id": "rel_10", "status": "pending"})
-	if err := runAppsShortcut(t, AppsAppDevPublish,
-		[]string{"+app-dev-publish", "--app-id", "app_x", "--skip-build", "--as", "user"}, factory, stdout); err != nil {
+	if err := runAppsShortcut(t, AppsDeploy,
+		[]string{"+deploy", "--app-id", "app_x", "--skip-build", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("matching --app-id must publish fine: %v", err)
 	}
 }
@@ -581,7 +581,7 @@ func TestAppDevPublishExecute_FlagMatchesMeta(t *testing.T) {
 func TestAppDevPublishValidate_BadAppID(t *testing.T) {
 	chdirProjectRoot(t, `{"app_id":"meta_token_x"}`)
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--as", "user"}, factory, stdout)
+	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
 	if !strings.Contains(p.Message, ".spark/meta.json app id") {
 		t.Errorf("message should point at the config source, got %q", p.Message)
@@ -602,8 +602,8 @@ func TestAppDevPublishValidate_SensitiveGatesDryRun(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	// Sensitive hits are the one exception to dry-run's exit-0 convention:
 	// Validate rejects before the DryRun branch runs.
-	err := runAppsShortcut(t, AppsAppDevPublish,
-		[]string{"+app-dev-publish", "--skip-build", "--as", "user", "--dry-run"}, factory, stdout)
+	err := runAppsShortcut(t, AppsDeploy,
+		[]string{"+deploy", "--skip-build", "--as", "user", "--dry-run"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
 	if !strings.Contains(p.Message, "publish payload contains") || !strings.Contains(p.Message, "credential file") {
 		t.Errorf("message = %q", p.Message)
@@ -613,8 +613,8 @@ func TestAppDevPublishValidate_SensitiveGatesDryRun(t *testing.T) {
 		t.Errorf("error must not reference a nonexistent --path flag: %q", p.Message)
 	}
 	// --allow-sensitive waives the gate and dry-run goes back to exit 0.
-	if err := runAppsShortcut(t, AppsAppDevPublish,
-		[]string{"+app-dev-publish", "--skip-build", "--allow-sensitive", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
+	if err := runAppsShortcut(t, AppsDeploy,
+		[]string{"+deploy", "--skip-build", "--allow-sensitive", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
 		t.Errorf("allow-sensitive dry-run should pass: %v", err)
 	}
 }
@@ -622,7 +622,7 @@ func TestAppDevPublishValidate_SensitiveGatesDryRun(t *testing.T) {
 func TestAppDevPublishValidate_SkipBuildNoDist(t *testing.T) {
 	chdirMiaodaProjectRoot(t, `{"app":{"id":"app_x"},"build":{"command":["npm","run","build"]}}`)
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--skip-build", "--as", "user"}, factory, stdout)
+	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--skip-build", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
 	if p.Subtype != errs.SubtypeFailedPrecondition || !strings.Contains(p.Message, "--skip-build is set but the artifact directory dist/output does not exist") {
 		t.Errorf("got %v", p)
@@ -634,7 +634,7 @@ func TestAppDevPublishValidate_BuildlessNoDist(t *testing.T) {
 	// the artifact directory must already exist.
 	chdirProjectRoot(t, `{"app_id":"app_x"}`)
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--as", "user"}, factory, stdout)
+	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
 	if p.Subtype != errs.SubtypeFailedPrecondition || !strings.Contains(p.Message, "artifact directory dist/output does not exist") {
 		t.Errorf("got %v", p)
@@ -672,7 +672,7 @@ func TestAppDevPublishExecute_SyncSuccess(t *testing.T) {
 		"release_id": "rel_1", "status": "finished",
 		"online_url": "https://x.feishuapp.cn/app/app_x",
 	})
-	if err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--as", "user"}, factory, stdout); err != nil {
+	if err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
 	// Build invocation contract.
@@ -724,7 +724,7 @@ func TestAppDevPublishExecute_BuildlessSparkSync(t *testing.T) {
 		"release_id": "rel_30", "status": "finished",
 		"online_url": "https://x/app/app_x",
 	})
-	if err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--as", "user"}, factory, stdout); err != nil {
+	if err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
 	if f.called {
@@ -753,7 +753,7 @@ func TestAppDevPublishExecute_AsyncSuccess(t *testing.T) {
 	// then degrades to the poll-hint output.
 	stubReleaseGet(reg, "app_x", "rel_2", map[string]interface{}{"release_id": "rel_2", "status": "pending"})
 	withFastAppDevPoll(t, 20*time.Millisecond, time.Millisecond)
-	if err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--skip-build", "--as", "user"}, factory, stdout); err != nil {
+	if err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--skip-build", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
 	data := parseEnvelopeData(t, stdout)
@@ -788,7 +788,7 @@ func TestAppDevPublishExecute_AwaitFinished(t *testing.T) {
 		"online_url": "https://x/app/app_x",
 	})
 	withFastAppDevPoll(t, time.Second, time.Millisecond)
-	if err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--as", "user"}, factory, stdout); err != nil {
+	if err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
 	data := parseEnvelopeData(t, stdout)
@@ -823,7 +823,7 @@ func TestAppDevPublishExecute_AwaitFailed(t *testing.T) {
 		},
 	})
 	withFastAppDevPoll(t, time.Second, time.Millisecond)
-	err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--skip-build", "--as", "user"}, factory, stdout)
+	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--skip-build", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryInternal)
 	if !strings.Contains(p.Message, "release rel_41 failed") || !strings.Contains(p.Message, "[build] formula output is empty") {
 		t.Errorf("message = %q", p.Message)
@@ -854,7 +854,7 @@ func TestAppDevPublishExecute_BuildFails(t *testing.T) {
 	withFakeEnvRunner(t, f)
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stubPreRelease(reg, "app_x", srv.URL, nil)
-	err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--as", "user"}, factory, stdout)
+	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryInternal)
 	if !strings.Contains(p.Message, `build command "npm run build" failed`) || !strings.Contains(p.Message, "TS2304") {
 		t.Errorf("message = %q", p.Message)
@@ -876,7 +876,7 @@ func TestAppDevPublishExecute_PreReleaseMissingKVs(t *testing.T) {
 			"data": map[string]interface{}{"kvs": []interface{}{}},
 		},
 	})
-	err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--skip-build", "--as", "user"}, factory, stdout)
+	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--skip-build", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryInternal)
 	if !strings.Contains(p.Message, "missing artifact_url") {
 		t.Errorf("message = %q", p.Message)
@@ -888,7 +888,7 @@ func TestAppDevPublishExecute_NonHTTPSUploadURL(t *testing.T) {
 	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stubPreRelease(reg, "app_x", "http://insecure.example/put", nil)
-	err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--skip-build", "--as", "user"}, factory, stdout)
+	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--skip-build", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryInternal)
 	if !strings.Contains(p.Message, "not https") {
 		t.Errorf("message = %q", p.Message)
@@ -901,7 +901,7 @@ func TestAppDevPublishExecute_TOS5xx(t *testing.T) {
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(503) })
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stubPreRelease(reg, "app_x", srv.URL, nil)
-	err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--skip-build", "--as", "user"}, factory, stdout)
+	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--skip-build", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryNetwork)
 	if !p.Retryable {
 		t.Error("5xx upload failure must be retryable")
@@ -912,7 +912,7 @@ func TestAppDevPublishDryRun(t *testing.T) {
 	root := chdirMiaodaProjectRoot(t, `{"app":{"id":"app_x"},"build":{"command":["npm","run","build"],"output":"dist/output"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist", "output"), []string{"index.html"})
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	if err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--skip-build", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
+	if err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--skip-build", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
 	data, err := decodeDryRunDataMap(stdout.Bytes())
@@ -937,7 +937,7 @@ func TestAppDevPublishDryRun_Buildless(t *testing.T) {
 	root := chdirProjectRoot(t, `{"app_id":"app_x"}`)
 	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html"})
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	if err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
+	if err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
 	data, err := decodeDryRunDataMap(stdout.Bytes())
@@ -982,7 +982,7 @@ func TestAppDevPublishExecute_MiaodaProtocol(t *testing.T) {
 		"release_id": "rel_20", "status": "finished",
 		"online_url": "https://x/app/app_x",
 	})
-	if err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--as", "user"}, factory, stdout); err != nil {
+	if err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
 	// Declared build command executed (not npm run build).
@@ -1011,8 +1011,8 @@ func TestAppDevPublishExecute_MiaodaFlagBackfill(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stubPreRelease(reg, "app_new1", srv.URL, nil)
 	stubReleases(reg, "app_new1", map[string]interface{}{"release_id": "rel_21", "status": "pending"})
-	if err := runAppsShortcut(t, AppsAppDevPublish,
-		[]string{"+app-dev-publish", "--app-id", "app_new1", "--skip-build", "--as", "user"}, factory, stdout); err != nil {
+	if err := runAppsShortcut(t, AppsDeploy,
+		[]string{"+deploy", "--app-id", "app_new1", "--skip-build", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
 	b, _ := os.ReadFile(filepath.Join(root, miaodaJSONRelPath))
@@ -1030,25 +1030,25 @@ func TestAppDevPublishExecute_MiaodaFlagBackfill(t *testing.T) {
 func TestAppDevPublishValidate_MiaodaMismatch(t *testing.T) {
 	chdirMiaodaProjectRoot(t, `{"app": {"id": "app_recorded"}}`)
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	err := runAppsShortcut(t, AppsAppDevPublish,
-		[]string{"+app-dev-publish", "--app-id", "app_other", "--as", "user"}, factory, stdout)
+	err := runAppsShortcut(t, AppsDeploy,
+		[]string{"+deploy", "--app-id", "app_other", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
 	if !strings.Contains(p.Message, "miaoda.json") || !strings.Contains(p.Message, "app_recorded") {
 		t.Errorf("message = %q", p.Message)
 	}
 }
 
-func TestAppsAppDevPublish_Declaration(t *testing.T) {
-	if AppsAppDevPublish.Command != "+app-dev-publish" {
-		t.Errorf("Command = %q", AppsAppDevPublish.Command)
+func TestAppsDeploy_Declaration(t *testing.T) {
+	if AppsDeploy.Command != "+deploy" {
+		t.Errorf("Command = %q", AppsDeploy.Command)
 	}
-	if AppsAppDevPublish.Risk != "write" {
-		t.Errorf("Risk = %q", AppsAppDevPublish.Risk)
+	if AppsDeploy.Risk != "write" {
+		t.Errorf("Risk = %q", AppsDeploy.Risk)
 	}
-	if !AppsAppDevPublish.HasFormat {
+	if !AppsDeploy.HasFormat {
 		t.Error("HasFormat = false")
 	}
-	if len(AppsAppDevPublish.Scopes) != 2 {
-		t.Errorf("Scopes = %v", AppsAppDevPublish.Scopes)
+	if len(AppsDeploy.Scopes) != 2 {
+		t.Errorf("Scopes = %v", AppsDeploy.Scopes)
 	}
 }

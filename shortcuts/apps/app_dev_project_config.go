@@ -22,7 +22,7 @@ const miaodaJSONRelPath = "miaoda.json"
 const appDevDefaultBuildOutput = "dist/output"
 
 // appDevProjectConfig is the resolved view of the project declaration that
-// +app-dev-publish consumes. Fields are filled with protocol defaults when
+// +deploy consumes. Fields are filled with protocol defaults when
 // the declaration omits them.
 type appDevProjectConfig struct {
 	Stack   string

@@ -1,10 +1,10 @@
-# apps +app-dev-publish
+# apps +deploy
 
-把本地 Web 应用项目一键构建并发布到它的妙搭应用（产物托管形态）。运行时命令事实以 `lark-cli apps +app-dev-publish --help` 为准。
+把本地 Web 应用项目一键构建并发布到它的妙搭应用（产物托管形态）。运行时命令事实以 `lark-cli apps +deploy --help` 为准。
 
 ## 何时用
 
-用 `+app-dev-init-template` 初始化（或按产物协议改造）的本地项目要部署/更新到妙搭时使用。它不适用于 html 应用（走 `+html-publish`）或源码托管应用（走 `+release-create`）。
+用 `+init-template` 初始化（或按产物协议改造）的本地项目要部署/更新到妙搭时使用。它不适用于 html 应用（走 `+html-publish`）或源码托管应用（走 `+release-create`）。
 
 ## 命令骨架
 
@@ -17,10 +17,10 @@
 ## 示例
 
 ```bash
-lark-cli apps +app-dev-publish --app-id app_xxx     # 首次发布：指定目标，成功后写入 miaoda.json
-lark-cli apps +app-dev-publish                      # 迭代重发：读 miaoda.json，零参数
-lark-cli apps +app-dev-publish --skip-build
-lark-cli apps +app-dev-publish --dry-run
+lark-cli apps +deploy --app-id app_xxx     # 首次发布：指定目标，成功后写入 miaoda.json
+lark-cli apps +deploy                      # 迭代重发：读 miaoda.json，零参数
+lark-cli apps +deploy --skip-build
+lark-cli apps +deploy --dry-run
 ```
 
 ## 输出契约
@@ -32,7 +32,7 @@ lark-cli apps +app-dev-publish --dry-run
 
 ## 前置引导
 
-- 未记录 app id 时：先 `lark-cli apps +create --name <name>` 创建应用，然后 `lark-cli apps +app-dev-publish --app-id <返回的 app_id>` 发布（成功后自动写入 miaoda.json，无需手工编辑文件）；应用名可从项目主题生成，不要让用户手动提供 app_id。
+- 未记录 app id 时：先 `lark-cli apps +create --name <name>` 创建应用，然后 `lark-cli apps +deploy --app-id <返回的 app_id>` 发布（成功后自动写入 miaoda.json，无需手工编辑文件）；应用名可从项目主题生成，不要让用户手动提供 app_id。
 - **记录的 app id 不是本会话写入的**（来自历史文件或他人仓库）时，发布前先把目标 app id 告知用户并确认——发布会覆盖该应用的线上内容。
 
 ## 安全规则
