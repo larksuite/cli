@@ -325,8 +325,7 @@ func newTOSTLSServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 
 func stubPreRelease(reg *httpmock.Registry, appID, uploadURL string, extraKVs map[string]string) {
 	kvs := []interface{}{
-		map[string]interface{}{"key": "upload_url", "value": uploadURL},
-		map[string]interface{}{"key": "tos_path", "value": "bucket/pkg.zip"},
+		map[string]interface{}{"key": "INNER_MIAODA_UPLOAD_URL", "value": uploadURL},
 	}
 	for k, v := range extraKVs {
 		kvs = append(kvs, map[string]interface{}{"key": k, "value": v})
@@ -601,7 +600,7 @@ func TestAppDevPublishExecute_PreReleaseMissingKVs(t *testing.T) {
 	})
 	err := runAppsShortcut(t, AppsAppDevPublish, []string{"+app-dev-publish", "--skip-build", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryInternal)
-	if !strings.Contains(p.Message, "missing upload_url or tos_path") {
+	if !strings.Contains(p.Message, "missing INNER_MIAODA_UPLOAD_URL") {
 		t.Errorf("message = %q", p.Message)
 	}
 }
