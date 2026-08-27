@@ -394,7 +394,7 @@ func awaitAppDevRelease(ctx context.Context, rctx *common.RuntimeContext, appID,
 			if msg == "" {
 				msg = "no error_logs reported"
 			}
-			return status, "", appsExternalToolError(errors.New("release pipeline failed"),
+			return status, "", errs.NewInternalError(errs.SubtypeExternalTool,
 				"release %s failed: %s", releaseID, msg).
 				WithHint(fmt.Sprintf("the artifact was uploaded but the deploy pipeline failed; inspect with `lark-cli apps +release-get --app-id %s --release-id %s`, fix the reported step, then publish again", appID, releaseID))
 		}
@@ -410,8 +410,9 @@ func awaitAppDevRelease(ctx context.Context, rctx *common.RuntimeContext, appID,
 		}
 		data, gerr := rctx.CallAPITyped("GET", path, nil, nil)
 		if gerr != nil {
-			// The release exists; a flaky poll must not fail the publish.
-			return status, "", nil
+			// The release was accepted; a flaky poll must not fail the
+			// publish — degrade to the poll-hint output.
+			return status, "", nil //nolint:nilerr // deliberate degradation, see above.
 		}
 		status = common.GetString(data, "status")
 		onlineURL = common.GetString(data, "online_url")
