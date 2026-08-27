@@ -24,8 +24,15 @@ import (
 // a native token read as office — still uploads successfully, because the drive
 // backend does not validate that parent_node actually names an office file; the
 // damage only shows up later as an image that will not render, far from its
-// cause. So the marker check is pinned at its exact length and position rather
-// than left to a looser "contains OFL0X" reading.
+// cause. So the marker is still read at exact positions rather than by a looser
+// "contains OFL0X" test.
+//
+// What is no longer pinned is the total length: it is a floor (>= 25, just
+// enough to hold the marker) rather than one exact value, because the
+// local-office format has already moved off 28 characters and sheets relaxed the
+// identical guard in #2509. The interleaved native tokens below are what keeps
+// that floor honest — they are long enough to be read but carry a different
+// marker, so widening the length window must not pull them in.
 func TestSlidesMediaParentType(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -42,8 +49,11 @@ func TestSlidesMediaParentType(t *testing.T) {
 		{"interleaved OFL0X office token", "aaaaOaaaaFaaaaLaaaa0aaaaXaaa", officeSlideFileParentType},
 		{"interleaved pptcn native token", "abcdpefghpijkltmnopcqrstnuv", slideFileParentType},
 		{"interleaved shtcn token", "abcdsefghhijkltmnopcqrstnuv", slideFileParentType},
-		{"interleaved OFL0X marker with short length", "aaaaOaaaaFaaaaLaaaa0aaaaXaa", slideFileParentType},
-		{"interleaved OFL0X marker with long length", "aaaaOaaaaFaaaaLaaaa0aaaaXaaaa", slideFileParentType},
+		{"interleaved OFL0X, 27 chars (current local-office format)", "aaaaOaaaaFaaaaLaaaa0aaaaXaa", officeSlideFileParentType},
+		{"interleaved OFL0X, 29 chars (longer than any known format)", "aaaaOaaaaFaaaaLaaaa0aaaaXaaaa", officeSlideFileParentType},
+		{"interleaved OFL0X, 25 chars (marker exactly fills the token)", "aaaaOaaaaFaaaaLaaaa0aaaaX", officeSlideFileParentType},
+		{"interleaved OFL0X, 24 chars (one short of holding the marker)", "aaaaOaaaaFaaaaLaaaa0aaaa", slideFileParentType},
+		{"interleaved OFL0X, 28 chars with ppt office-type enum", "ccccOccccFccccLcccc0ccccXccP", officeSlideFileParentType},
 		{"fake_office prefix mid-string is not matched", "pptfake_office_abc", slideFileParentType},
 		{"local_office prefix mid-string is not matched", "pptlocal_office_abc", slideFileParentType},
 	}

@@ -21,7 +21,7 @@ import (
 // that can be used as <img src="..."> in slide XML.
 //
 // Imported "office" presentations carry either a legacy synthetic-token prefix
-// or a 28-character token whose interleaved product/region marker is "OFL0X",
+// or a token whose interleaved product/region marker is "OFL0X",
 // and the drive backend requires "office_slide_file" for those — the
 // presentation counterpart of the office_sheet_file rule the sheets domain
 // already applies (shortcuts/sheets/helpers.go). The token shapes are the same
@@ -48,7 +48,12 @@ func isOfficePresentation(presentationToken string) bool {
 			return true
 		}
 	}
-	if len(presentationToken) != 28 {
+	// The token only has to be long enough to hold the marker. The length is
+	// deliberately not pinned to one value: the local-office format has already
+	// moved off 28 characters (per #2509, "OFL0X + 21 random + 1 office type
+	// enum"), and sheets relaxed the identical guard for that reason. Pinning it
+	// again would silently reclassify every future length as native.
+	if len(presentationToken) < 25 {
 		return false
 	}
 	// The five-character marker occupies positions 5, 10, 15, 20, and 25
