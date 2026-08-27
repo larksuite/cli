@@ -30,9 +30,12 @@ const appDevTemplatePkgPrefix = "@lark-apaas/coding-template-"
 // renderable template files (npm tarballs root at "package/").
 const appDevTemplateEntryPrefix = "package/template/"
 
-// appDevRegistryBase is the npm registry used to resolve template packages.
-// Package-level var so unit tests can point it at an httptest server.
-var appDevRegistryBase = npmRegistry
+// appDevRegistries are the npm registries used to resolve template packages,
+// tried in order: npmmirror first (fast inside CN), the official registry as
+// fallback — a freshly published package may not have synced to the mirror
+// yet, and mirror outages must not block scaffolding. Package-level var so
+// unit tests can point it at httptest servers.
+var appDevRegistries = []string{npmRegistry, "https://registry.npmjs.org"}
 
 // Decompression-bomb / runaway-template caps. Vars (not consts) so unit tests
 // can shrink them to cover the rejection paths; defaults are far above any
@@ -59,10 +62,39 @@ type npmPackageMeta struct {
 	} `json:"versions"`
 }
 
+// fetchAppDevTemplate resolves and downloads the template package, trying
+// each registry in appDevRegistries until one succeeds. onFallback is called
+// with a human-readable note before each retry (nil to skip).
+func fetchAppDevTemplate(ctx context.Context, pkg string, onFallback func(note string)) (version string, tgz []byte, err error) {
+	var lastErr error
+	for i, base := range appDevRegistries {
+		if i > 0 && onFallback != nil {
+			onFallback(strings.TrimRight(appDevRegistries[i-1], "/") + " failed, falling back to " + strings.TrimRight(base, "/"))
+		}
+		v, tarballURL, err := fetchAppDevTemplateMeta(ctx, base, pkg)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		body, err := appDevHTTPGet(ctx, tarballURL, appDevMaxTemplateTgzBytes,
+			"the template tarball is missing on the registry; contact the artifact team")
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		return v, body, nil
+	}
+	if p, ok := errs.ProblemOf(lastErr); ok && strings.TrimSpace(p.Hint) == "" {
+		p.Hint = "all registries failed (" + strings.Join(appDevRegistries, ", ") + "); check network access and whether the template package is published"
+	}
+	return "", nil, lastErr
+}
+
 // fetchAppDevTemplateMeta resolves the template package's latest version and
-// tarball URL from the npm registry. Only https tarball URLs are accepted.
-func fetchAppDevTemplateMeta(ctx context.Context, pkg string) (version, tarballURL string, err error) {
-	metaURL := strings.TrimRight(appDevRegistryBase, "/") + "/" + pkg
+// tarball URL from one npm registry. Only https tarball URLs on the same
+// registry host are accepted.
+func fetchAppDevTemplateMeta(ctx context.Context, registryBase, pkg string) (version, tarballURL string, err error) {
+	metaURL := strings.TrimRight(registryBase, "/") + "/" + pkg
 	body, err := appDevHTTPGet(ctx, metaURL, appDevMaxTemplateTgzBytes,
 		"the template package may not be published yet; ask the artifact team, or check network/registry access")
 	if err != nil {
@@ -87,7 +119,7 @@ func fetchAppDevTemplateMeta(ctx context.Context, pkg string) (version, tarballU
 	// Same-origin constraint: npm registries serve tarballs from the registry
 	// host itself, so a cross-host URL in the metadata is a red flag (metadata
 	// tampering / registry compromise) — refuse rather than follow it.
-	if reg, rerr := url.Parse(appDevRegistryBase); rerr != nil || u.Host != reg.Host {
+	if reg, rerr := url.Parse(registryBase); rerr != nil || u.Host != reg.Host {
 		return "", "", appsSubprocessEnvelopeError("npm registry tarball URL host %q differs from registry host; refusing to download", u.Host)
 	}
 	return latest, v.Dist.Tarball, nil
@@ -165,8 +197,11 @@ func renderAppDevTemplate(targetDir, projectName string, tgz []byte) (*renderedT
 		return nil, appsSubprocessEnvelopeError("template tarball is not gzip: %v", err)
 	}
 	defer gz.Close()
-	tr := tar.NewReader(gz)
-	var total int64
+	// Count EVERY decompressed byte (headers, skipped entries, extracted
+	// data) so a gzip bomb hiding in entries the walk skips still trips the
+	// cap — the tar reader "skips" by reading through this counter.
+	counted := &countingReader{r: gz}
+	tr := tar.NewReader(counted)
 	var pkgJSONRaw []byte
 	files := 0
 	for {
@@ -176,6 +211,10 @@ func renderAppDevTemplate(targetDir, projectName string, tgz []byte) (*renderedT
 		}
 		if err != nil {
 			return nil, appsSubprocessEnvelopeError("read template tarball: %v", err)
+		}
+		if counted.n > appDevMaxTemplateExtractBytes {
+			return nil, appsValidationError("template extraction exceeds %d bytes limit", appDevMaxTemplateExtractBytes).
+				WithHint("the template package looks malformed; contact the artifact team")
 		}
 		raw := strings.TrimPrefix(hdr.Name, "./")
 		// Fail closed on the RAW entry name before any cleaning: a template
@@ -221,18 +260,20 @@ func renderAppDevTemplate(targetDir, projectName string, tgz []byte) (*renderedT
 		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil { //nolint:forbidigo // shortcuts cannot import internal/vfs (depguard); targetDir is validated relative-only.
 			return nil, appsFileIOError(err, "create template directory for %s failed: %v", rel, err)
 		}
-		remaining := appDevMaxTemplateExtractBytes - total
+		remaining := appDevMaxTemplateExtractBytes - counted.n
+		if remaining < 0 {
+			remaining = 0
+		}
 		out, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644) //nolint:forbidigo // see above.
 		if err != nil {
 			return nil, appsFileIOError(err, "create template file %s failed: %v", rel, err)
 		}
-		n, err := io.Copy(out, io.LimitReader(tr, remaining+1))
+		_, err = io.Copy(out, io.LimitReader(tr, remaining+1))
 		out.Close()
 		if err != nil {
 			return nil, appsFileIOError(err, "write template file %s failed: %v", rel, err)
 		}
-		total += n
-		if total > appDevMaxTemplateExtractBytes {
+		if counted.n > appDevMaxTemplateExtractBytes {
 			return nil, appsValidationError("template extraction exceeds %d bytes limit", appDevMaxTemplateExtractBytes).
 				WithHint("the template package looks malformed; contact the artifact team")
 		}
@@ -268,6 +309,18 @@ func renderAppDevTemplate(targetDir, projectName string, tgz []byte) (*renderedT
 		}
 	}
 	return rendered, nil
+}
+
+// countingReader counts bytes read through it (decompressed tar stream).
+type countingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
 }
 
 // writeAppDevSparkMeta merge-writes {stack, version, archType} into
