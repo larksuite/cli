@@ -32,9 +32,9 @@ const appDevDistDir = "dist"
 // appDevUploadURLKey is the pre_release kv carrying the presigned TOS upload
 // URL for the artifact-hosting chain (upload path is the server-side
 // convention <app_id>/artifact.zip, so no separate tos_path is handed down).
-// The INNER_ prefix keeps it outside the MIAODA_ build-env allowlist — an
-// upload credential must never reach the build subprocess.
-const appDevUploadURLKey = "INNER_MIAODA_UPLOAD_URL"
+// The name stays outside the MIAODA_ build-env allowlist — an upload
+// credential must never reach the build subprocess.
+const appDevUploadURLKey = "artifact_url"
 
 // appDevEnvPrefix is the allowlist prefix for build env vars handed down by
 // pre_release. Only exact, case-sensitive MIAODA_* keys are injected into the
