@@ -24,9 +24,9 @@ lark-cli apps +app-dev-init-template --type full_stack --dry-run
 
 返回 `data.dir`（项目目录）、`data.template`、`data.stack` 和 `data.next_steps`（后续步骤清单）。按 next_steps 引导用户：
 
-1. `cd <dir> && npm install && npm run dev` 本地开发预览；
-2. 需要发布时先 `lark-cli apps +create --name <name>` 创建妙搭应用，把返回的 `app_id` 写入项目根的 `.spark/meta.json`；
-3. 在项目根运行 `lark-cli apps +app-dev-publish` 构建并发布（见 [lark-apps-app-dev-publish.md](lark-apps-app-dev-publish.md)）。
+1. `cd <dir> && npm install && npm run dev` 本地开发预览（dev 命令声明见项目根 `miaoda.json`）；
+2. 需要发布时先 `lark-cli apps +create --name <name>` 创建妙搭应用；
+3. 在项目根运行 `lark-cli apps +app-dev-publish --app-id <返回的 app_id>` 构建并发布（成功后 app id 写入 miaoda.json，后续免传；见 [lark-apps-app-dev-publish.md](lark-apps-app-dev-publish.md)）。
 
 ## 常见失败
 

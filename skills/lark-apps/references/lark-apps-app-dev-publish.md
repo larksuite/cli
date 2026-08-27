@@ -8,11 +8,11 @@
 
 ## 命令骨架
 
-- **必须在项目根目录执行**（项目根须有 `.spark/meta.json`）；产物目录固定为 `./dist`，无 `--path` 参数。
-- `--app-id` 可选：首次发布传它指定目标（成功后自动写入 `.spark/meta.json`，后续免传）；meta.json 已有 app_id 时可省略；**两者都有且不一致会被拒绝**（防误发错目标），确要切换先更新 meta.json。
+- **必须在项目根目录执行**（项目根须有 `miaoda.json`；旧项目回退读 `.spark/meta.json`）。产物目录取 miaoda.json 的 `build.output`（缺省 `dist`），无 `--path` 参数。
+- `--app-id` 可选：首次发布传它指定目标（成功后自动写入 `miaoda.json` 的 app 段，后续免传）；已记录 app id 时可省略；**两者都有且不一致会被拒绝**（防误发错目标），确要切换先更新 miaoda.json。
 - 可选：`--skip-build`（跳过 `npm run build`，直接发布已有 `./dist`）、`--allow-sensitive`（跳过凭据文件扫描）。
-- 内部流程：读 meta.json → `pre_release` 获取上传地址与 `MIAODA_*` 构建环境变量 → `npm run build`（自动注入这些变量）→ 校验 dist 产物协议 → zip 上传 → 触发发布。
-- 产物协议：`dist/output/` 必须含 `index.html` 与 `routes.json`；`dist/output_resource/` 可选；dist 顶层不允许其他条目。包体限制：zip ≤ 50MB、未压缩总量 ≤ 200MB。
+- 内部流程：读 miaoda.json → `pre_release` 获取上传地址与 `MIAODA_*` 构建环境变量 → 执行 `build.command`（缺省 `npm run build`，argv 直接执行不走 shell，自动注入变量）→ 校验产物协议 → zip 上传 → 触发发布。
+- 产物协议（详见《妙搭产物托管协议规范》）：`output/` 必须含 ≥1 个 `.html`（SPA 入口须名 `index.html`）与合法的 `routes.json`（`{"version":1,"type":"<stack>","fallback":"index.html"}`）；`output_resource/`、`output_capabilities/` 可选；顶层不允许其他条目。包体限制：zip ≤ 50MB、未压缩总量 ≤ 200MB。
 
 ## 示例
 
@@ -25,14 +25,14 @@ lark-cli apps +app-dev-publish --dry-run
 
 ## 输出契约
 
-- 同步完成：`data.online_url` 直接可访问，同时回填进 `.spark/meta.json`。
+- 同步完成：`data.online_url` 直接可访问，同时随 app 段回写进 `miaoda.json`。
 - 异步发布：返回 `data.release_id` 和 `data.poll_hint`；用 `+release-get --app-id <app_id> --release-id <release_id>` 轮询到 `finished` 后读取 `online_url`。
 - 业务失败通常带 `error.hint`，优先转述 hint；网络/服务端 5xx 失败带 `retryable`，可稍后重试。
 
 ## 前置引导
 
-- meta.json 缺 `app_id` 时：先 `lark-cli apps +create --name <name>` 创建应用，然后 `lark-cli apps +app-dev-publish --app-id <返回的 app_id>` 发布（成功后 app_id 自动写入 meta.json，无需手工编辑文件）；应用名可从项目主题生成，不要让用户手动提供 app_id。
-- **`app_id` 不是本会话写入的**（来自历史文件或他人仓库）时，发布前先把目标 `app_id` 告知用户并确认——发布会覆盖该应用的线上内容。
+- 未记录 app id 时：先 `lark-cli apps +create --name <name>` 创建应用，然后 `lark-cli apps +app-dev-publish --app-id <返回的 app_id>` 发布（成功后自动写入 miaoda.json，无需手工编辑文件）；应用名可从项目主题生成，不要让用户手动提供 app_id。
+- **记录的 app id 不是本会话写入的**（来自历史文件或他人仓库）时，发布前先把目标 app id 告知用户并确认——发布会覆盖该应用的线上内容。
 
 ## 安全规则
 
@@ -41,7 +41,7 @@ lark-cli apps +app-dev-publish --dry-run
 
 ## 常见失败
 
-- `current directory is not a Miaoda app project`：不在项目根执行；`cd` 到含 `.spark/meta.json` 的目录。
-- `dist/output is missing routes.json`：模板构建脚本负责生成；让用户检查是否改动了构建配置，不要手工伪造 routes.json。
-- `npm run build failed`：转述 stderr 摘要让用户修构建错误；用户已手动构建时可用 `--skip-build`。
+- `current directory is not a Miaoda app project`：不在项目根执行；`cd` 到含 `miaoda.json` 的目录。
+- `output/routes.json is missing` / schema 校验失败：模板构建脚本负责生成合法 routes.json；让用户检查构建配置，不要手工伪造。
+- `build command ... failed`：转述 stderr 摘要让用户修构建错误（构建命令来自 miaoda.json `build.command`）；用户已手动构建时可用 `--skip-build`。
 - `--skip-build is set but ./dist does not exist`：先构建或去掉 `--skip-build`。
