@@ -9,7 +9,7 @@
 ## 命令骨架
 
 - `--type` 与 `--template` 二选一：`--type frontend|full_stack` 用默认模板映射；`--template <短名>`（如 `vite-react`）直接指定模板包，优先于 `--type`——模板包名为 `@lark-apaas/coding-template-<短名>`。
-- 可选：`--dir`，相对路径，默认 `./<模板名>`；目录已存在且非空会被拒绝。
+- 可选：`--dir`，相对路径；**缺省就地初始化到当前目录**（须为空目录，项目名取目录名）；传 `--dir ./my-app` 则创建子目录。
 - 前置：已完成 `lark-cli config init`（框架级要求，纯本地命令也需要）；本步骤**不需要 Node.js**。内部从 npm registry 只读下载模板包（主源 registry.npmmirror.com，失败自动降级 registry.npmjs.org 官方源） `@lark-apaas/coding-template-<模板名>` 并本地渲染，不执行任何远程脚本、不装依赖（秒级返回）。
 
 ## 示例

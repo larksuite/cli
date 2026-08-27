@@ -49,11 +49,21 @@ func TestAppDevTemplatePackageName(t *testing.T) {
 }
 
 func TestResolveAppDevDir(t *testing.T) {
-	if got := resolveAppDevDir("", "react-standard-webapp"); got != filepath.Join(".", "react-standard-webapp") {
-		t.Errorf("default dir = %q", got)
+	if got := resolveAppDevDir(""); got != "." {
+		t.Errorf("default dir = %q, want . (in-place init)", got)
 	}
-	if got := resolveAppDevDir("./my-app", "react-standard-webapp"); got != "./my-app" {
+	if got := resolveAppDevDir("./my-app"); got != "./my-app" {
 		t.Errorf("explicit dir = %q", got)
+	}
+}
+
+func TestAppDevProjectName(t *testing.T) {
+	if got := appDevProjectName("./my-app"); got != "my-app" {
+		t.Errorf("subdir project name = %q", got)
+	}
+	// In-place: "." resolves to the real directory name, not ".".
+	if got := appDevProjectName("."); got == "." || got == "" {
+		t.Errorf("in-place project name = %q, want the cwd base name", got)
 	}
 }
 
@@ -681,8 +691,14 @@ func TestAppDevInitTemplateDryRun(t *testing.T) {
 	if data["remote_side_effects"] != "read-only npm registry download, no Lark API" {
 		t.Errorf("remote_side_effects = %v", data["remote_side_effects"])
 	}
-	if data["target_dir_state"] != "ok (absent or empty)" {
-		t.Errorf("target_dir_state = %v", data["target_dir_state"])
+	if data["target_dir"] != "." {
+		t.Errorf("target_dir = %v, want . (in-place default)", data["target_dir"])
+	}
+	// The test cwd (package dir) is non-empty, so the in-place default must
+	// surface as not usable in dry-run.
+	state, _ := data["target_dir_state"].(string)
+	if !strings.Contains(state, "not usable") || !strings.Contains(state, "current directory is not empty") {
+		t.Errorf("target_dir_state = %q", state)
 	}
 }
 
