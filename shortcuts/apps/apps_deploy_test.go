@@ -736,6 +736,33 @@ func TestAppDevPublishExecute_AwaitFinished(t *testing.T) {
 	}
 }
 
+func TestAppDevPublishExecute_FinishedWithoutURL(t *testing.T) {
+	// The create response may report finished without online_url; the
+	// command must fetch the release once to recover the url instead of
+	// returning an empty one with a misleading poll hint.
+	root := chdirSparkProjectRoot(t, `{"stack":"s","app":{"id":"app_x"}}`)
+	writeDistFiles(t, filepath.Join(root, appDevDefaultBuildOutput), []string{"index.html", "routes.json"})
+	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubPreRelease(reg, "app_x", srv.URL, nil)
+	stubReleases(reg, "app_x", map[string]interface{}{"release_id": "rel_51", "status": "finished"})
+	stubReleaseGet(reg, "app_x", "rel_51", map[string]interface{}{
+		"release_id": "rel_51", "status": "finished",
+		"online_url": "https://x/app/app_x",
+	})
+	withFastAppDevPoll(t, time.Second, time.Millisecond)
+	if err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	data := parseEnvelopeData(t, stdout)
+	if data["online_url"] != "https://x/app/app_x" {
+		t.Errorf("online_url must be recovered via release-get, got %v", data["online_url"])
+	}
+	if _, has := data["poll_hint"]; has {
+		t.Error("recovered finish must not carry poll_hint")
+	}
+}
+
 func TestAppDevPublishExecute_AwaitFailed(t *testing.T) {
 	// A failed pipeline is a failed publish: exit non-zero with the
 	// error_logs summarized and an actionable hint.
