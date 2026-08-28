@@ -217,7 +217,7 @@ func TestDocsFetchCitationPrettyOutputStaysContentOnly(t *testing.T) {
 
 func TestDocsFetchMountedExecuteOmitsCitationWhenDisabled(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	t.Setenv(envvars.CliCitation, "")
+	t.Setenv(envvars.CliCitation, "0")
 
 	const docToken = "doxcnCitationDisabled"
 	factory, stdout, _, registry := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-fetch-citation-disabled"))

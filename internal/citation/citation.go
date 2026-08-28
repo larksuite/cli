@@ -27,10 +27,15 @@ type Citation struct {
 	PublishTime string
 }
 
-// Enabled reports whether citation output is on. Only the exact value "1"
-// enables it; no second boolean grammar is introduced.
+// Enabled reports whether citation output is on.
+//
+// DEBUG DEFAULT-ON (joint-debugging branch only): citations are enabled
+// unless the gate is explicitly set to the exact value "0", so PPE runs are
+// not at the mercy of which env vars the agent platform injects. The
+// mainline contract remains opt-in ("1" enables, everything else is off);
+// restore that before merging to main.
 func Enabled() bool {
-	return os.Getenv(envvars.CliCitation) == "1"
+	return os.Getenv(envvars.CliCitation) != "0"
 }
 
 // Normalize drops entries without a URL and returns nil for an empty result

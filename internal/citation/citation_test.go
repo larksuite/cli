@@ -12,7 +12,8 @@ import (
 )
 
 func TestEnabledExactMatch(t *testing.T) {
-	cases := map[string]bool{"1": true, "true": false, "on": false, "": false, " 1": false, "01": false}
+	// Debug default-on: everything except the exact value "0" enables.
+	cases := map[string]bool{"1": true, "true": true, "on": true, "": true, " 1": true, "01": true, "0": false, " 0": true}
 	for value, want := range cases {
 		t.Setenv(envvars.CliCitation, value)
 		if got := Enabled(); got != want {
@@ -22,13 +23,13 @@ func TestEnabledExactMatch(t *testing.T) {
 }
 
 func TestEnabledUnset(t *testing.T) {
-	// t.Setenv 后手动删除，模拟未设置
+	// t.Setenv 后手动删除，模拟未设置——debug 默认开语义下未设置即开启
 	t.Setenv(envvars.CliCitation, "1")
 	if err := unsetenvForTest(t); err != nil {
 		t.Fatal(err)
 	}
-	if Enabled() {
-		t.Error("Enabled() with unset env = true, want false")
+	if !Enabled() {
+		t.Error("Enabled() with unset env = false, want true (debug default-on)")
 	}
 }
 
