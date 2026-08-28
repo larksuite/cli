@@ -10,7 +10,7 @@ import (
 )
 
 // 钉死域内 shortcut 数量。少一条（漏挂）或多一条（误加）都会被这个测试拦截。
-// 6 基础 + 1 init + 3 publish + 1 env-pull + 2 app-dev（init-app/publish）
+// 6 基础 + 1 init + 3 publish + 1 env-pull + 2 本地开发（init-template/deploy）
 //   - 6 observability（log-list/log-get/trace-list/trace-get/metric-list/analytics-list）
 //   - 3 env（list/set/delete）
 //   - 23 db（table-list/table-schema/sql/dev-init/data-import/data-export/sync create/list/get/enable/disable/update/delete/changelog-list/
