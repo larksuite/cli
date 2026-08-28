@@ -136,6 +136,7 @@ func uploadSheetImage(runtime *common.RuntimeContext, spreadsheetToken, filePath
 		FileSize:   fileSize,
 		ParentType: parentType,
 		ParentNode: spreadsheetToken,
+		Quiet:      true,
 	})
 }
 

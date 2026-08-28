@@ -28,17 +28,16 @@ import (
 //
 // The coverage below includes the two commands that delegate to the shared
 // drive export / import cores, since those cores were cleaned up as part of
-// this change. Two paths a sheets caller can still reach are NOT covered,
-// because their output comes from shared helpers this change does not touch:
+// this change. One path a sheets caller can still reach is NOT covered,
+// because its output comes from a shared helper this change does not touch:
 //
-//   - +media-upload over 20MB → common.UploadDriveMediaMultipartTyped narrates
-//     the chunk plan and every uploaded block
 //   - any bot-identity create/import → common.AutoGrantCurrentUserDrivePermission
 //     duplicates its permission_grant result on stderr when the grant is
 //     skipped or fails
 //
-// Both are documented gaps, not oversights; the tests below run as user
-// identity and under the single-part threshold accordingly.
+// The +media-upload over 20MB gap was closed by the Quiet flag on
+// DriveMediaMultipartUploadConfig; sheets shortcuts pass Quiet: true so the
+// chunk narration stays silent on success.
 
 // runCapturingStderr runs a shortcut against stubs and returns stdout, stderr
 // and the error, so a test can assert on the reporting channel and not just
