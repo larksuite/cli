@@ -322,6 +322,48 @@ func TestMailAutoReplyModifyRejectsEndBeforeMergedStart(t *testing.T) {
 	reg.Verify(t)
 }
 
+func TestMailAutoReplyModifyRejectsMissingEndForMergedStart(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    mailboxPath("me", "settings", "auto_reply"),
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"auto_reply": map[string]interface{}{
+					"enabled":             false,
+					"content_html":        "",
+					"start_time":          "1787846400000",
+					"end_time":            "0",
+					"time_zone":           "Asia/Shanghai",
+					"only_send_to_tenant": true,
+				},
+			},
+		},
+	})
+
+	err := runMountedMailShortcut(t, MailAutoReplyModify, []string{
+		"+auto-reply-modify",
+		"--yes",
+		"--disable",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected validation error, got %T: %v", err, err)
+	}
+	if validationErr.Param != "--end" {
+		t.Fatalf("param = %q, want --end", validationErr.Param)
+	}
+	if !strings.Contains(err.Error(), "end_time must be greater than start_time") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+}
+
 func TestMailAutoReplyModifyAllowsSameStartAndEndDate(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	var captured map[string]interface{}
