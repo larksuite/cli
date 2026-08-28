@@ -5,6 +5,7 @@ package im
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
@@ -65,6 +66,59 @@ func TestAppendIMRecoveryHint_RawBecomesInternal(t *testing.T) {
 
 func TestAppendIMRecoveryHint_Nil(t *testing.T) {
 	if appendIMRecoveryHint(nil, "hint") != nil {
+		t.Errorf("nil in -> nil out")
+	}
+}
+
+func TestEnrichBotNotInChatErr_AddsHintWithBotAppID(t *testing.T) {
+	apiErr := errs.NewAPIError(errs.SubtypeUnknown, "Bot/User can NOT be out of the chat.").WithCode(230002)
+	got := enrichBotNotInChatErr(apiErr, "oc_abc", "cli_app123")
+	p, ok := errs.ProblemOf(got)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T", got)
+	}
+	if p.Code != 230002 {
+		t.Errorf("code = %d, want 230002 (classification must be preserved)", p.Code)
+	}
+	for _, want := range []string{"oc_abc", "cli_app123", "chat.members create", "--as user", "member_id_type"} {
+		if !strings.Contains(p.Hint, want) {
+			t.Errorf("hint %q must contain %q", p.Hint, want)
+		}
+	}
+}
+
+func TestEnrichBotNotInChatErr_UsesPlaceholderWhenAppIDEmpty(t *testing.T) {
+	apiErr := errs.NewAPIError(errs.SubtypeUnknown, "Bot/User can NOT be out of the chat.").WithCode(230002)
+	got := enrichBotNotInChatErr(apiErr, "oc_abc", "")
+	p, ok := errs.ProblemOf(got)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T", got)
+	}
+	if !strings.Contains(p.Hint, "cli_") {
+		t.Errorf("hint %q must contain a cli_ app_id placeholder", p.Hint)
+	}
+}
+
+func TestEnrichBotNotInChatErr_PassthroughOnOtherCode(t *testing.T) {
+	apiErr := errs.NewAPIError(errs.SubtypeNotFound, "not found").WithCode(230001)
+	got := enrichBotNotInChatErr(apiErr, "oc_abc", "cli_app123")
+	p, _ := errs.ProblemOf(got)
+	if p.Hint != "" {
+		t.Errorf("non-230002 error must be unchanged, got hint %q", p.Hint)
+	}
+}
+
+func TestEnrichBotNotInChatErr_PassthroughOnEmptyChatID(t *testing.T) {
+	apiErr := errs.NewAPIError(errs.SubtypeUnknown, "Bot/User can NOT be out of the chat.").WithCode(230002)
+	got := enrichBotNotInChatErr(apiErr, "", "cli_app123")
+	p, _ := errs.ProblemOf(got)
+	if p.Hint != "" {
+		t.Errorf("empty chat-id (P2P) must be unchanged, got hint %q", p.Hint)
+	}
+}
+
+func TestEnrichBotNotInChatErr_Nil(t *testing.T) {
+	if enrichBotNotInChatErr(nil, "oc_abc", "cli_app123") != nil {
 		t.Errorf("nil in -> nil out")
 	}
 }
