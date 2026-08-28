@@ -212,13 +212,13 @@ func TestMailAutoReplyModifyAllowsSameStartAndEndDate(t *testing.T) {
 	assertAutoReplyPayloadValue(t, captured, "end_time", "1787932799999")
 }
 
-func TestMailAutoReplyModifyRejectsEqualStartAndEndTimestamp(t *testing.T) {
+func TestMailAutoReplyModifyRejectsEndBeforeStart(t *testing.T) {
 	f, stdout, _, _ := mailShortcutTestFactory(t)
 	err := runMountedMailShortcut(t, MailAutoReplyModify, []string{
 		"+auto-reply-modify",
 		"--yes",
-		"--start", "1787846400000",
-		"--end", "1787846400000",
+		"--start", "2026-08-29",
+		"--end", "2026-08-28",
 	}, f, stdout)
 	if err == nil {
 		t.Fatal("expected validation error")

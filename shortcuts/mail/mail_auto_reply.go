@@ -691,25 +691,6 @@ func inferAutoReplyTimezone(rawStart string) string {
 	return ""
 }
 
-func mergeAutoReply(current map[string]interface{}, patch map[string]interface{}) map[string]interface{} {
-	merged := map[string]interface{}{}
-	if nested, ok := current["auto_reply"].(map[string]interface{}); ok {
-		for k, v := range nested {
-			merged[k] = v
-		}
-	} else {
-		for k, v := range current {
-			merged[k] = v
-		}
-	}
-	merged = normalizeAutoReplyFields(merged)
-	for k, v := range patch {
-		merged[k] = v
-	}
-	delete(merged, "content_summary")
-	return merged
-}
-
 func normalizeAutoReplyFields(in map[string]interface{}) map[string]interface{} {
 	out := map[string]interface{}{}
 	for k, v := range in {
