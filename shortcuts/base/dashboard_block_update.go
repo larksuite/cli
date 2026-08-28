@@ -55,7 +55,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		}
 		effective := cfg
 		if !runtime.Bool("no-validate") {
-			effective = normalizeDataConfig(cfg)
+			effective = normalizePivotTableDataConfig(normalizeDataConfig(cfg), false)
 			// update 不传 type，其余字段交给后端按组件现有类型校验。
 			// number_format 是例外：它必须和 create 一样在本地拦截，否则同一份
 			// 非法取值在 create 报错、在 update 却要等一次网络往返才失败。这里
@@ -63,6 +63,11 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 			// ——后者会误报 table_name/series 缺失，破坏“只改 number_format”的用法。
 			if rawNumberFormat, hasNumberFormat := effective["number_format"]; hasNumberFormat {
 				if problems := validateNumberFormat(rawNumberFormat); len(problems) > 0 {
+					return formatDataConfigErrors(problems)
+				}
+			}
+			if isPivotTableDataConfig(effective) {
+				if problems := validatePivotTableDataConfig(effective, false); len(problems) > 0 {
 					return formatDataConfigErrors(problems)
 				}
 			}

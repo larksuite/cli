@@ -18,6 +18,7 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档是 Dashboar
 | `wordCloud` | 词云 |
 | `radar` | 雷达图 |
 | `statistics` | 指标卡 |
+| `pivotTable` | 透视表 |
 | `text` | 文本（支持 Markdown） |
 
 ## 字段类型与操作符速查（AI 决策用）
@@ -70,6 +71,31 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 | 无序列表 | `- 项目` | - 项目 |
 
 > **注意**：以上未提及的 Markdown 语法（如链接、图片、代码块、表格等）均不支持。
+
+### pivotTable 类型特殊结构
+
+透视表使用独立的行、列和值协议，不使用 `series` / `group_by` / `count_all`。Create 必须传 `table_name`；`rows`、`columns`、`values` 缺省为空数组。字段名必须来自真实表结构。
+
+```json
+{
+  "table_name": "订单",
+  "rows": [{"field_name":"地区","group_type":"RAW"}],
+  "columns": [{"field_name":"日期","group_type":"DATE_YEAR_MONTH"}],
+  "values": [{"field_name":"销售额","rollup":"SUM","name":"销售额合计"}],
+  "sort": {
+    "group_ref":{"area":"rows","index":0},
+    "sort_type":"VALUE",
+    "value_ref":{"area":"values","index":0},
+    "order":"desc"
+  }
+}
+```
+
+- `group_type` 支持 `RAW` 及 `DATE_YEAR`、`DATE_YEAR_QUARTER`、`DATE_YEAR_MONTH`、`DATE_YEAR_MONTH_DAY`、`DATE_YEAR_WEEK`、`DATE_MONTH_DAY`、`DATE_QUARTER`、`DATE_MONTH`、`DATE_WEEKDAY`。
+- `rollup` 支持 `SUM`、`COUNT`、`COUNT_DISTINCT`、`AVERAGE`、`MAX`、`MIN`、`MEDIAN`。
+- Create 禁止提交 `field_key`，排序用 `{area,index}` 引用本次请求中的数组项。Get 会返回稳定 `field_key`；Update 可用它引用现有字段，也可继续使用数组引用。
+- Update 顶层字段是局部更新，但显式传入的 `rows` / `columns` / `values` 各自整体替换。切换 `table_name` 时三组数组必须全部显式提供。
+- `view_name` 与 `filter` 互斥；传 `null` 可清除对应的数据源约束。
 
 ## group_by 详细说明
 
