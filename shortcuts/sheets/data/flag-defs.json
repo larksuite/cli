@@ -1342,6 +1342,7 @@
           "style",
           "comment",
           "data_validation",
+          "conditional_format",
           "truncation"
         ]
       },
@@ -4631,6 +4632,61 @@
         "type": "string",
         "required": "optional",
         "desc": "Filter by rule id"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+cond-format-result-get": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "A1 range, e.g. `A1:F10` (no sheet prefix — use `--sheet-id` / `--sheet-name` to select the sheet)"
+      },
+      {
+        "name": "max-chars",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Max output chars per call; default 500000 (safety cap)",
+        "default": "500000"
       },
       {
         "name": "dry-run",
