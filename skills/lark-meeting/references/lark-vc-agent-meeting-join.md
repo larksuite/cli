@@ -1,7 +1,7 @@
 
 # vc +meeting-join
 
-通过 9 位会议号让应用机器人加入一场正在进行的视频会议。这是一次**写操作**，会实际让应用机器人加入会议。
+通过 9 位会议号让应用机器人或 Agent Employee 加入一场正在进行的视频会议，也可以发起符合条件的 Calendar 会议。这是一次**写操作**，会实际让当前身份加入会议。
 
 本 skill 对应 shortcut：`lark-cli vc +meeting-join`（调用 `POST /open-apis/vc/v1/bots/join`）。
 
@@ -10,11 +10,17 @@
 ## 命令
 
 ```bash
-# 仅指定会议号（无密码）
+# 应用机器人加入正在进行的会议
 lark-cli vc +meeting-join --as bot --meeting-number 123456789
 
-# 发起日程会议（仅应用身份）
+# 应用机器人发起日程会议
 lark-cli vc +meeting-join --as bot --meeting-number 123456789 --action start
+
+# Agent Employee 使用 AAT 加入正在进行的会议
+lark-cli vc +meeting-join --as user --meeting-number 123456789
+
+# Agent Employee 使用 AAT 发起日程会议
+lark-cli vc +meeting-join --as user --meeting-number 123456789 --action start
 ```
 
 ## 参数
@@ -24,14 +30,16 @@ lark-cli vc +meeting-join --as bot --meeting-number 123456789 --action start
 | `--meeting-number <no>` | 是 | 会议号，必须为 **9 位纯数字** |
 | `--password <pw>` | 否 | 会议密码，仅在该会议设置了入会密码时传入 |
 | `--call-id <id>` | 否 | 从 `vc.bot.meeting_invited_v1` 邀请事件透传的 `call_id`，原样回传即可。Agent 主动入会或无邀请事件来源时不传 |
-| `--action join\|start` | 否 | 默认 `join`，保持普通入会链路；`start` 是日程发起专属参数，用同一 `bots/join` API 发起会议，且必须 `--as bot` |
+| `--action join\|start` | 否 | 默认 `join`，保持普通入会链路；`start` 是日程发起专属参数，应用机器人和 Agent Employee 均可使用 |
 | `--dry-run` | 否 | 预览 API 调用，不实际加入会议；会议号或身份不确定时先用它确认请求 |
 
 ## 核心约束
 
-### 1. 使用应用身份
+### 1. 沿用来源身份
 
-这是应用机器人入会能力，使用 `--as bot`。不要用当前登录用户身份尝试让应用机器人入会。
+- 应用机器人使用 `--as bot`。
+- Agent Employee 使用 AAT 时必须使用 `--as user`，不要切换为应用身份。
+- 普通用户 token 不等于 AAT；CLI 只负责沿用 user identity，具体身份能力由服务端校验。
 
 默认 `join` 不会向请求体写入 `action` 字段，也不进入日程发起筛选。`--action start` 才写入 `action: 2`，单独进入日程发起的筛选与校验。
 
@@ -60,7 +68,7 @@ lark-cli vc +meeting-join --as bot --meeting-number 123456789 --action start
 
 | 字段 | 说明 |
 |------|------|
-| `meeting.id` | 会议 ID（可后续传给 `+meeting-leave --as bot --meeting-id`） |
+| `meeting.id` | 会议 ID（可后续传给 `+meeting-leave`，并沿用本次入会的 `--as` 身份） |
 | `meeting.meeting_no` | 会议号（与入参一致） |
 | `meeting.topic` | 会议主题 |
 | `meeting.start_time` | 会议开始时间 |
@@ -84,12 +92,13 @@ lark-cli vc +meeting-join --as bot --meeting-number 123456789 --action start
 | 会议不存在 / 已结束 | 会议号错误或会议未进行中 | 确认会议正在进行中；启动日程会议时改用 `--action start` |
 | `HTTP 403: no permission` / `121003` | 入会前置条件不满足，通常不是单纯 scope 问题 | 依次确认：1）会议允许智能体加入；2）会议号正确；3）如有密码，已正确传入 `--password`；4）会议已开始；5）等候室 / 入会审批已放行；6）会议未禁止当前身份加入（如限制外部、限制应用机器人、仅特定成员可入会）；确认后重试 |
 | 应用身份权限不足 | 应用权限、租户安装或权限可访问的数据范围未配置完整 | 不要执行 `auth login`。以 CLI 返回的 metadata / error envelope 为准确认缺失权限；检查应用发布/安装，以及开放平台“权限可访问的数据范围”：选择“按条件筛选”，条件为“会议的归属者 包含 与应用的可用范围一致”；配置正确仍失败时，保留错误码和 `log_id`，按服务端权限异常排查 |
+| AAT 身份或能力不匹配 | `--as user` 当前 token 不是可用的 Agent Employee AAT，或目标会议不支持该操作 | 保留错误码和 `log_id`，检查当前 user credential，不要改用 `--as bot` 重试 |
 | 入会被拒绝 | 等候室 / 入会审批 / 限制外部入会 | 联系主持人放行或调整会议设置 |
 
 ## 提示
 
 - 仅在 Agent 需要**真实加入**会议（例如参会机器人、会中助手）时使用；只拉取会议数据不需要入会。
-- 入会会让机器人立即出现在参会列表；若用户要求退出 / 离开 / 结束参会，直接使用 `+meeting-leave --as bot --meeting-id <meeting.id>`。参数格式不确定时可选 `--dry-run` 预览，但不是必经步骤。
+- 入会会让当前身份立即出现在参会列表；若用户要求退出 / 离开 / 结束参会，使用 `+meeting-leave --as <source_identity> --meeting-id <meeting.id>`。参数格式不确定时可选 `--dry-run` 预览，但不是必经步骤。
 - 执行成功后，立即记录返回的 `meeting.id`，用于后续 `+meeting-leave` / `+meeting-events`。
 
 ## 相关场景

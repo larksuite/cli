@@ -155,6 +155,46 @@ func TestVCMeetingManagementDocsMatchAuthTypesAndContracts(t *testing.T) {
 	}
 }
 
+func TestVCAgentEmployeeLifecycleDocsMatchShortcutContracts(t *testing.T) {
+	skill := readSkillDoc(t, "skills/lark-meeting/SKILL.md")
+	scene := readSkillDoc(t, "skills/lark-meeting/scenes/live-meeting-attend.md")
+	joinReference := readSkillDoc(t, "skills/lark-meeting/references/lark-vc-agent-meeting-join.md")
+	inviteReference := readSkillDoc(t, "skills/lark-meeting/references/lark-vc-agent-meeting-invite.md")
+	leaveReference := readSkillDoc(t, "skills/lark-meeting/references/lark-vc-agent-meeting-leave.md")
+
+	for name, authTypes := range map[string][]string{
+		"+meeting-join":   VCMeetingJoin.AuthTypes,
+		"+meeting-invite": VCMeetingInvite.AuthTypes,
+		"+meeting-leave":  VCMeetingLeave.AuthTypes,
+	} {
+		if !hasAuthType(authTypes, "user") {
+			t.Fatalf("%s AuthTypes = %v, want user support for AAT/UAT", name, authTypes)
+		}
+	}
+
+	for name, content := range map[string]string{
+		"SKILL.md":                     skill,
+		"live-meeting-attend.md":       scene,
+		"lark-vc-agent-meeting-join":   joinReference,
+		"lark-vc-agent-meeting-invite": inviteReference,
+		"lark-vc-agent-meeting-leave":  leaveReference,
+	} {
+		for _, want := range []string{"Agent Employee", "AAT", "--as user"} {
+			if !strings.Contains(content, want) {
+				t.Errorf("%s must document %q", name, want)
+			}
+		}
+	}
+	if !strings.Contains(inviteReference, "SELECTED") ||
+		!strings.Contains(inviteReference, "ALL_SUGGESTED") ||
+		!strings.Contains(inviteReference, "不支持") {
+		t.Error("invite reference must document user SELECTED support and ALL_SUGGESTED rejection")
+	}
+	if !strings.Contains(skill, "AAT 不支持") || !strings.Contains(skill, "meeting-end") {
+		t.Error("SKILL.md must state that AAT does not support meeting-end")
+	}
+}
+
 func TestMeetingArtifactSceneDelegatesToDomainOwners(t *testing.T) {
 	scene := readSkillDoc(t, "skills/lark-meeting/scenes/query-meeting-and-artifacts.md")
 	for _, target := range []string{

@@ -28,6 +28,8 @@ metadata:
 - 不支持：说明限制并停止；不要为了让命令成功而替换身份。
 - 只有用户明确同意切换身份后，才以新身份重新开始一条工作流。
 
+Agent Employee 使用 AAT 时必须沿用用户身份并显式传入 `--as user`。AAT 可以通过 `vc +meeting-join` 加入进行中的会议或发起符合条件的 Calendar 会议，通过 `vc +meeting-invite --type SELECTED` 邀请指定用户，并通过 `vc +meeting-leave` 离会。AAT 不支持 `vc +meeting-invite --type ALL_SUGGESTED`，也不支持 `vc +meeting-end`；不要切换为 `--as bot` 绕过限制。
+
 `vc +meeting-end` 是一个支持双身份的 shortcut：`--as user` 调用用户端 PATCH 接口，`--as bot` 调用应用机器人端 POST 接口。`vc +meeting-participant-kickout` 仅支持用户身份。两者都是高风险写操作；dry-run 必须显式传入受支持的 `--as user` 或 `--as bot`，不得为了执行成功静默切换身份，也不得替用户补做确认。
 
 ## 领域模型与概念
@@ -110,7 +112,7 @@ lark-cli vc +meeting-events --as <source_identity> --meeting-id <meeting_id> --p
 - [查询妙记及其产物](scenes/query-minutes-and-artifacts.md)：已有妙记 URL / `minute_token`，或按标题、所有者、参与者搜索妙记；读取总结、待办、章节、关键词、逐字稿，下载原始音视频，或查询关联智能纪要。
 - [生成和修改妙记、管理妙记权限](scenes/create-and-edit-minutes.md)：将本地音视频生成妙记、逐字稿、总结、待办或章节；修改妙记标题、总结、待办、关键词或说话人；申请妙记权限，或查看、分配妙记协作者权限。
 - [查询智能纪要及关联产物](scenes/query-note-and-artifacts.md)：已有 `note_id`、智能纪要 Docx URL/token，或需要查询纪要正文、逐字稿、妙记和共享文档等关联产物。
-- [应用机器人参会与会中互动](scenes/live-meeting-attend.md)：完整编排应用机器人的活跃会议发现、发起或加入、邀请、事件拉取、会议截图、文本/表情/倒计时互动、结束会议和明确授权后的离会。
+- [应用机器人或 Agent Employee 参会](scenes/live-meeting-attend.md)：编排应用机器人的完整会中流程，以及 Agent Employee（AAT）使用 `--as user` 发起、加入、邀请和离会。
 - [会中事件、互动与主持管理](scenes/live-meeting-interact.md)：在不触发新的入会/离会操作时，使用用户身份或已在会中的应用身份查询活跃会议、查看发言/聊天/共享内容、按需读取当前会议画面，或发送文本/表情、操作倒计时；用户明确要求结束会议或移出参会人时，也从这里路由到对应的高风险命令。
 
 ## 命令参考
@@ -128,9 +130,9 @@ lark-cli vc +meeting-events --as <source_identity> --meeting-id <meeting_id> --p
 | `vc +meeting-countdown` | 设置、延长、提前结束或关闭会中倒计时 | [lark-vc-meeting-countdown](references/lark-vc-meeting-countdown.md) |
 | `vc +meeting-end` | 以用户身份或当前 Host 应用机器人结束整场进行中的会议 | [用户身份](references/lark-vc-meeting-end.md) / [应用身份](references/lark-vc-agent-meeting-end.md) |
 | `vc +meeting-participant-kickout` | 以用户身份移出一至十个指定参会人 | [lark-vc-meeting-participant-kickout](references/lark-vc-meeting-participant-kickout.md) |
-| `vc +meeting-join` | 让应用机器人加入会议 | [lark-vc-agent-meeting-join](references/lark-vc-agent-meeting-join.md) |
-| `vc +meeting-invite` | 以应用机器人邀请指定用户或全部合格日程参会人 | [lark-vc-agent-meeting-invite](references/lark-vc-agent-meeting-invite.md) |
-| `vc +meeting-leave` | 让应用机器人离开会议 | [lark-vc-agent-meeting-leave](references/lark-vc-agent-meeting-leave.md) |
+| `vc +meeting-join` | 让应用机器人或 Agent Employee 发起或加入会议 | [lark-vc-agent-meeting-join](references/lark-vc-agent-meeting-join.md) |
+| `vc +meeting-invite` | 以应用机器人、Agent Employee 或普通用户邀请参会人 | [lark-vc-agent-meeting-invite](references/lark-vc-agent-meeting-invite.md) |
+| `vc +meeting-leave` | 让应用机器人或 Agent Employee 离开会议 | [lark-vc-agent-meeting-leave](references/lark-vc-agent-meeting-leave.md) |
 | `minutes +search` | 搜索妙记 | [lark-minutes-search](references/lark-minutes-search.md) |
 | `minutes minutes get` | 查询妙记基础信息 | `lark-cli minutes minutes get --help` |
 | `minutes +detail` | 读取妙记信息和指定产物 | [lark-minutes-detail](references/lark-minutes-detail.md) |

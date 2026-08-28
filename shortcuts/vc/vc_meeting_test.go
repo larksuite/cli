@@ -266,18 +266,43 @@ func TestMeetingJoin_Validate_Valid(t *testing.T) {
 	}
 }
 
-func TestMeetingJoin_Validate_StartRequiresBot(t *testing.T) {
-	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+func TestMeetingJoin_StartAction_UserDryRun(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
 
 	err := mountAndRun(t, VCMeetingJoin, []string{
 		"+meeting-join", "--as", "user",
 		"--meeting-number", "123456789",
 		"--action", "start",
 		"--dry-run",
-	}, f, nil)
+	}, f, stdout)
 
-	if err == nil || !strings.Contains(err.Error(), "--action start requires --as bot") {
+	if err != nil {
 		t.Fatalf("start action error = %v", err)
+	}
+	for _, want := range []string{meetingBotJoinPath, `"action": 2`} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("dry-run output missing %q: %s", want, stdout.String())
+		}
+	}
+}
+
+func TestMeetingLifecycleScopesByIdentity(t *testing.T) {
+	for _, shortcut := range []struct {
+		name string
+		item common.Shortcut
+	}{
+		{name: "join", item: VCMeetingJoin},
+		{name: "leave", item: VCMeetingLeave},
+		{name: "invite", item: VCMeetingInvite},
+	} {
+		t.Run(shortcut.name, func(t *testing.T) {
+			if got := shortcut.item.ScopesForIdentity("user"); len(got) != 0 {
+				t.Fatalf("ScopesForIdentity(user) = %v, want no user preflight scopes", got)
+			}
+			if got := shortcut.item.ScopesForIdentity("bot"); !reflect.DeepEqual(got, []string{"vc:meeting.bot.join:write"}) {
+				t.Fatalf("ScopesForIdentity(bot) = %v, want [vc:meeting.bot.join:write]", got)
+			}
+		})
 	}
 }
 
@@ -1394,6 +1419,42 @@ func TestMeetingInvite_DryRun(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("dry-run output missing %q: %s", want, out)
 		}
+	}
+}
+
+func TestMeetingInvite_UserSelectedDryRun(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+
+	err := mountAndRun(t, VCMeetingInvite, []string{
+		"+meeting-invite",
+		"--meeting-id", "7628568141510692381",
+		"--type", "SELECTED",
+		"--open-ids", "ou_a",
+		"--dry-run",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("user SELECTED invite error = %v", err)
+	}
+	for _, want := range []string{meetingBotInvitePath, `"invite_type": 2`, `"id": "ou_a"`} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("dry-run output missing %q: %s", want, stdout.String())
+		}
+	}
+}
+
+func TestMeetingInvite_UserRejectsAllSuggested(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+
+	err := mountAndRun(t, VCMeetingInvite, []string{
+		"+meeting-invite",
+		"--meeting-id", "7628568141510692381",
+		"--type", "ALL_SUGGESTED",
+		"--dry-run",
+		"--as", "user",
+	}, f, nil)
+	if err == nil || !strings.Contains(err.Error(), "ALL_SUGGESTED is not supported for user identity") {
+		t.Fatalf("user ALL_SUGGESTED error = %v", err)
 	}
 }
 
