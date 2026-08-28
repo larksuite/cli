@@ -497,6 +497,7 @@ def _dense_data_label_issue(
     return {
         "chart_id": str(chart.get("chart_id") or chart.get("id") or ""),
         "reason": "dense_data_labels",
+        "severity": "warning",
         "chart_type": _chart_type(snapshot),
         "category_count": _category_count(snapshot, profiles),
         "labeled_series_count": len(labeled),
@@ -505,7 +506,7 @@ def _dense_data_label_issue(
             "height": float(size.get("height") or 0),
         },
         **density,
-        "suggested_fix": "increase_size_or_omit_global_labels_or_label_only_key_points",
+        "suggested_fix": "increase_size_or_label_only_key_points",
     }
 
 
@@ -1126,7 +1127,6 @@ def check_sheet(
         + len(numeric_source_issues)
         + len(degenerate_numeric_series)
         + len(constant_series_issues)
-        + len(dense_label_issues)
         + len(undersized_charts)
     )
     return {
@@ -1182,7 +1182,8 @@ def success_envelope(results: list[dict[str, Any]]) -> dict[str, Any]:
                 "out_of_visible_range checks worksheet drawable bounds, not a device-specific browser viewport; "
                 "numeric source checks sample at most the first 50 data points of each chart value dimension "
                 "for formats and scan candidate series fully for all-zero/empty and constant-value checks; "
-                "label-density checks are deterministic heuristics, not renderer collision detection"
+                "label-density checks are advisory deterministic heuristics, not renderer collision detection, "
+                "and are excluded from issue_count"
             ),
             "summary": {
                 "worksheet_count": len(results),
