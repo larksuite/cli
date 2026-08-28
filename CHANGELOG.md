@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.92] - 2026-08-28
+
+### Features
+
+- **sheets**: add +cond-format-result-get and --include conditional_format (#2502)
+- **im**: support rich-text message attachment zone in send/reply/mge… (#2515)
+
+### Bug Fixes
+
+- **slides**: relax office token length check from 28 to >=25 (#2531)
+- **sheets**: make image-upload previews match what Execute sends (#2537)
+- **sheets**: suppress multipart stderr noise and tighten e2e boundary test (#2550)
+
+### Refactoring
+
+- **sheets**: keep the success path off stderr (#2533)
+
 ## [v1.0.91] - 2026-08-27
 
 ### Features
@@ -2038,6 +2055,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.92]: https://github.com/larksuite/cli/releases/tag/v1.0.92
 [v1.0.91]: https://github.com/larksuite/cli/releases/tag/v1.0.91
 [v1.0.90]: https://github.com/larksuite/cli/releases/tag/v1.0.90
 [v1.0.89]: https://github.com/larksuite/cli/releases/tag/v1.0.89
