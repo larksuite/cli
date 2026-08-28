@@ -182,7 +182,10 @@ func TestSheets_ImageUploadDryRunChunked(t *testing.T) {
 	const singlePartCeiling = 20 * 1024 * 1024
 
 	workDir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(workDir, "small.png"), []byte("png-bytes"), 0o600))
+	small, err := os.Create(filepath.Join(workDir, "small.png"))
+	require.NoError(t, err)
+	require.NoError(t, small.Truncate(singlePartCeiling))
+	require.NoError(t, small.Close())
 	big, err := os.Create(filepath.Join(workDir, "big.png"))
 	require.NoError(t, err)
 	require.NoError(t, big.Truncate(singlePartCeiling+1))
