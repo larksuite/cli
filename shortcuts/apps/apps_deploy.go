@@ -355,7 +355,12 @@ func awaitAppDevRelease(ctx context.Context, rctx *common.RuntimeContext, appID,
 	for i := 0; ; i++ {
 		switch status {
 		case "finished":
-			return status, onlineURL, nil
+			// A finished report without online_url on the first look (the
+			// create response may omit it) gets one release-get below to
+			// recover the url before returning.
+			if onlineURL != "" || i > 0 {
+				return status, onlineURL, nil
+			}
 		case "failed":
 			if errorLogs == nil {
 				// The create call reported failed without details — fetch once.
@@ -371,7 +376,7 @@ func awaitAppDevRelease(ctx context.Context, rctx *common.RuntimeContext, appID,
 				"release %s failed: %s", releaseID, msg).
 				WithHint(fmt.Sprintf("the artifact was uploaded but the deploy pipeline failed; inspect with `lark-cli apps +release-get --app-id %s --release-id %s`, fix the reported step, then publish again", appID, releaseID))
 		}
-		if !time.Now().Before(deadline) {
+		if status != "finished" && !time.Now().Before(deadline) {
 			return status, "", nil
 		}
 		if i > 0 {
@@ -614,7 +619,11 @@ var AppsDeploy = common.Shortcut{
 			}
 			onlineURL = finalURL
 			if onlineURL == "" {
-				fmt.Fprintf(rctx.IO().ErrOut, "release still %s; continue polling manually\n", status)
+				if status == "finished" {
+					fmt.Fprintf(rctx.IO().ErrOut, "release finished but no online_url was returned; inspect it with `lark-cli apps +release-get`\n")
+				} else {
+					fmt.Fprintf(rctx.IO().ErrOut, "release still %s; continue polling manually\n", status)
+				}
 			}
 		}
 		data := map[string]interface{}{
@@ -628,7 +637,7 @@ var AppsDeploy = common.Shortcut{
 		pollHint := ""
 		if onlineURL != "" {
 			data["online_url"] = onlineURL
-		} else {
+		} else if releaseID != "" {
 			pollHint = fmt.Sprintf("lark-cli apps +release-get --app-id %s --release-id %s", appID, releaseID)
 			data["poll_hint"] = pollHint
 		}
@@ -642,7 +651,7 @@ var AppsDeploy = common.Shortcut{
 			fmt.Fprintf(w, "app_id: %s\nrelease_id: %s\nstatus: %s\n", appID, releaseID, status)
 			if onlineURL != "" {
 				fmt.Fprintf(w, "online_url: %s\n", onlineURL)
-			} else {
+			} else if pollHint != "" {
 				fmt.Fprintf(w, "async release; poll with: %s\n", pollHint)
 			}
 		})
