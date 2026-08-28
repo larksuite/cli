@@ -146,6 +146,12 @@ def recommend_chart_size(
         base_slot = 44 if chart_type in {"line", "area"} else 52
         text_slot = 20 + p75_units * 7 * 0.72
         slot = max(base_slot, min(180, text_slot))
+        if series_count == 1 and category_count >= 10:
+            # With many categories, Sheet rotates X-axis labels. Reserving each
+            # label's full horizontal text width makes single-series charts
+            # disproportionately wide; density checks below still expand when
+            # data labels would actually collide.
+            slot = min(slot, 68)
         if chart_type in {"column", "combo"} and series_count > 1:
             slot = max(slot, 20 + 22 * min(series_count, 5))
         if labels_enabled:

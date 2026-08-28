@@ -91,6 +91,39 @@ def _matrix(data: dict[str, Any]) -> list[list[Any]]:
     ]
 
 
+def _is_network_timeout(exc: LarkCliError) -> bool:
+    text = str(exc).strip()
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        payload = None
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict) and str(error.get("subtype") or "").lower() == "timeout":
+            return True
+    lowered = text.lower()
+    return "server time out" in lowered or "timed out" in lowered
+
+
+def _run_read(
+    shortcut: str,
+    *,
+    stage: str,
+    timeout: int,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    retried = False
+    while True:
+        try:
+            return run_sheets(shortcut, timeout=timeout, **kwargs)
+        except LarkCliError as exc:
+            if not retried and _is_network_timeout(exc):
+                retried = True
+                continue
+            suffix = " after one retry" if retried else ""
+            raise LarkCliError(f"{stage} failed{suffix}: {exc}", cmd=exc.cmd) from exc
+
+
 def _sheet_selector(
     sheets: list[dict[str, Any]],
     *,
@@ -99,22 +132,33 @@ def _sheet_selector(
     worksheet_name: str | None,
 ) -> dict[str, str]:
     if explicit_name:
-        matches = [sheet for sheet in sheets if sheet_title(sheet) == explicit_name]
-    elif worksheet_id:
-        matches = [sheet for sheet in sheets if sheet_identifier(sheet) == worksheet_id]
-    elif worksheet_name:
-        matches = [sheet for sheet in sheets if sheet_title(sheet) == worksheet_name]
-    elif len(sheets) == 1:
-        matches = sheets
-    else:
+        return {"sheet_name": explicit_name}
+    if worksheet_id:
+        return {"sheet_id": worksheet_id}
+    if worksheet_name:
+        return {"sheet_name": worksheet_name}
+    if len(sheets) != 1:
         raise LarkCliError("Unqualified data ranges require --worksheet-id or --worksheet-name")
-    if len(matches) != 1:
-        target = explicit_name or worksheet_id or worksheet_name or ""
-        raise LarkCliError(f"Worksheet not found or ambiguous: {target!r}")
-    sheet_id = sheet_identifier(matches[0])
+    sheet_id = sheet_identifier(sheets[0])
     if sheet_id:
         return {"sheet_id": sheet_id}
-    return {"sheet_name": sheet_title(matches[0])}
+    return {"sheet_name": sheet_title(sheets[0])}
+
+
+def _needs_workbook_metadata(
+    ranges: list[str | None],
+    *,
+    worksheet_id: str | None,
+    worksheet_name: str | None,
+) -> bool:
+    if worksheet_id or worksheet_name:
+        return False
+    return any(
+        _parse_ref(ref)[0] is None
+        for value in ranges
+        if value
+        for ref in _split_range_refs(value)
+    )
 
 
 def _read_ranges(
@@ -125,6 +169,7 @@ def _read_ranges(
     worksheet_id: str | None,
     worksheet_name: str | None,
     timeout: int,
+    stage_prefix: str = "data range",
 ) -> list[list[list[Any]]]:
     matrices: list[list[list[Any]]] = []
     for ref in _split_range_refs(value):
@@ -136,11 +181,12 @@ def _read_ranges(
             worksheet_name=worksheet_name,
         )
         data = envelope_data(
-            run_sheets(
+            _run_read(
                 "+cells-get",
+                stage=f"{stage_prefix} {ref}",
                 **locator,
                 **selector,
-                flags={"range": cell_range, "include": "value,raw_value,style"},
+                flags={"range": cell_range, "include": "value,raw_value"},
                 timeout=timeout,
             )
         )
@@ -266,8 +312,21 @@ def main() -> None:
     args = parse_args()
     locator = _locator(args.target)
     try:
-        workbook = envelope_data(run_sheets("+workbook-info", **locator, timeout=args.timeout))
-        sheets = extract_sheets(workbook)
+        sheets: list[dict[str, Any]] = []
+        if _needs_workbook_metadata(
+            [args.data_range, args.header_range],
+            worksheet_id=args.worksheet_id,
+            worksheet_name=args.worksheet_name,
+        ):
+            workbook = envelope_data(
+                _run_read(
+                    "+workbook-info",
+                    stage="workbook metadata",
+                    **locator,
+                    timeout=args.timeout,
+                )
+            )
+            sheets = extract_sheets(workbook)
         matrices = _read_ranges(
             locator,
             sheets,
@@ -285,6 +344,7 @@ def main() -> None:
                 worksheet_id=args.worksheet_id,
                 worksheet_name=args.worksheet_name,
                 timeout=args.timeout,
+                stage_prefix="header range",
             )
             headers = _header_values(header_matrices, args.data_direction)
         profile = profile_matrix(
