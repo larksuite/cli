@@ -124,15 +124,7 @@ var MailAutoReplyModify = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		current, err := runtime.CallAPITyped("GET", autoReplyPath(mailboxID), nil, nil)
-		if err != nil {
-			return mailDecorateProblemMessage(err, "get auto-reply failed")
-		}
-		merged := mergeAutoReply(current, patch)
-		if err := validateAutoReplyModifyResult(merged); err != nil {
-			return err
-		}
-		data, err := runtime.CallAPITyped("PUT", autoReplyPath(mailboxID), nil, merged)
+		data, err := runtime.CallAPITyped("PUT", autoReplyPath(mailboxID), nil, patch)
 		if err != nil {
 			return mailDecorateProblemMessage(err, "modify auto-reply failed")
 		}
@@ -240,64 +232,6 @@ func buildAutoReplyPatch(ctx context.Context, runtime *common.RuntimeContext, up
 		return nil, mailValidationError("no auto-reply changes provided")
 	}
 	return autoReply, nil
-}
-
-func validateAutoReplyModifyResult(autoReply map[string]interface{}) error {
-	startTS := autoReplyTimestamp(autoReply["start_time"])
-	endTS := autoReplyTimestamp(autoReply["end_time"])
-	if startTS > 0 && endTS <= startTS {
-		return mailValidationParamError("--end", "end_time must be greater than start_time")
-	}
-	if !autoReplyBool(autoReply["enabled"]) {
-		return nil
-	}
-	if strings.TrimSpace(autoReplyString(autoReply["content_html"])) == "" {
-		return mailValidationParamError("--content", "content_html is required when enabled=true")
-	}
-	if strings.TrimSpace(autoReplyString(autoReply["time_zone"])) == "" {
-		return mailValidationParamError("--timezone", "time_zone is required when enabled=true")
-	}
-	if startTS <= 0 {
-		return mailValidationParamError("--start", "start_time is required when enabled=true")
-	}
-	if endTS <= 0 {
-		return mailValidationParamError("--end", "end_time is required when enabled=true")
-	}
-	return nil
-}
-
-func autoReplyBool(raw interface{}) bool {
-	value, ok := raw.(bool)
-	return ok && value
-}
-
-func autoReplyString(raw interface{}) string {
-	switch value := raw.(type) {
-	case nil:
-		return ""
-	case string:
-		return value
-	case fmt.Stringer:
-		return value.String()
-	default:
-		return fmt.Sprintf("%v", raw)
-	}
-}
-
-func autoReplyTimestamp(raw interface{}) int64 {
-	switch value := raw.(type) {
-	case string:
-		ts, _ := strconv.ParseInt(value, 10, 64)
-		return ts
-	case int64:
-		return value
-	case int:
-		return int64(value)
-	case float64:
-		return int64(value)
-	default:
-		return 0
-	}
 }
 
 func resolveAutoReplyContent(runtime *common.RuntimeContext) (string, error) {
