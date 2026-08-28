@@ -82,18 +82,18 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
   "rows": [{"field_name":"地区","group_type":"RAW"}],
   "columns": [{"field_name":"日期","group_type":"DATE_YEAR_MONTH"}],
   "values": [{"field_name":"销售额","rollup":"SUM","name":"销售额合计"}],
-  "sort": {
+  "sort": [{
     "group_ref":{"area":"rows","index":0},
     "sort_type":"VALUE",
     "value_ref":{"area":"values","index":0},
     "order":"desc"
-  }
+  }]
 }
 ```
 
 - `group_type` 支持 `RAW` 及 `DATE_YEAR`、`DATE_YEAR_QUARTER`、`DATE_YEAR_MONTH`、`DATE_YEAR_MONTH_DAY`、`DATE_YEAR_WEEK`、`DATE_MONTH_DAY`、`DATE_QUARTER`、`DATE_MONTH`、`DATE_WEEKDAY`。
 - `rollup` 支持 `SUM`、`COUNT`、`COUNT_DISTINCT`、`AVERAGE`、`MAX`、`MIN`、`MEDIAN`。
-- Create 禁止提交 `field_key`，排序用 `{area,index}` 引用本次请求中的数组项。Get 会返回稳定 `field_key`；Update 可用它引用现有字段，也可继续使用数组引用。
+- `sort` 是排序数组，可同时声明多条字段或指标排序；传 `[]` 清空排序。Create 禁止提交 `field_key`，排序用 `{area,index}` 引用本次请求中的数组项。Get 会返回稳定 `field_key`；Update 可用它引用现有字段，也可继续使用数组引用。
 - Update 顶层字段是局部更新，但显式传入的 `rows` / `columns` / `values` 各自整体替换。切换 `table_name` 时三组数组必须全部显式提供。
 - `view_name` 与 `filter` 互斥；传 `null` 可清除对应的数据源约束。
 

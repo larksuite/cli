@@ -52,12 +52,16 @@ func normalizePivotTableDataConfig(cfg map[string]interface{}, create bool) map[
 			}
 		}
 	}
-	if sortConfig, ok := out["sort"].(map[string]interface{}); ok {
-		if sortType, ok := sortConfig["sort_type"].(string); ok {
-			sortConfig["sort_type"] = strings.ToUpper(strings.TrimSpace(sortType))
-		}
-		if order, ok := sortConfig["order"].(string); ok {
-			sortConfig["order"] = strings.ToLower(strings.TrimSpace(order))
+	if sortConfigs, ok := out["sort"].([]interface{}); ok {
+		for _, raw := range sortConfigs {
+			if sortConfig, ok := raw.(map[string]interface{}); ok {
+				if sortType, ok := sortConfig["sort_type"].(string); ok {
+					sortConfig["sort_type"] = strings.ToUpper(strings.TrimSpace(sortType))
+				}
+				if order, ok := sortConfig["order"].(string); ok {
+					sortConfig["order"] = strings.ToLower(strings.TrimSpace(order))
+				}
+			}
 		}
 	}
 	return out
@@ -69,9 +73,8 @@ func isPivotTableDataConfig(cfg map[string]interface{}) bool {
 			return true
 		}
 	}
-	if sortConfig, ok := cfg["sort"].(map[string]interface{}); ok {
-		_, hasSortType := sortConfig["sort_type"]
-		return hasSortType
+	if _, hasSort := cfg["sort"]; hasSort {
+		return true
 	}
 	return false
 }
@@ -168,18 +171,31 @@ func validatePivotSort(cfg map[string]interface{}, create bool) []string {
 	if !exists || raw == nil {
 		return nil
 	}
-	sortConfig, ok := raw.(map[string]interface{})
+	sortConfigs, ok := raw.([]interface{})
 	if !ok {
-		return []string{"sort 必须是对象"}
+		return []string{"sort 必须是数组"}
 	}
+	var problems []string
+	for i, rawSort := range sortConfigs {
+		sortConfig, ok := rawSort.(map[string]interface{})
+		if !ok {
+			problems = append(problems, fmt.Sprintf("sort[%d] 必须是对象", i))
+			continue
+		}
+		problems = append(problems, validatePivotSortItem(sortConfig, create, i)...)
+	}
+	return problems
+}
+
+func validatePivotSortItem(sortConfig map[string]interface{}, create bool, index int) []string {
 	var problems []string
 	sortType, _ := sortConfig["sort_type"].(string)
 	if sortType != "FIELD" && sortType != "VALUE" {
-		problems = append(problems, "sort.sort_type 仅支持 FIELD|VALUE")
+		problems = append(problems, fmt.Sprintf("sort[%d].sort_type 仅支持 FIELD|VALUE", index))
 	}
 	order, _ := sortConfig["order"].(string)
 	if order != "asc" && order != "desc" {
-		problems = append(problems, "sort.order 仅支持 asc|desc")
+		problems = append(problems, fmt.Sprintf("sort[%d].order 仅支持 asc|desc", index))
 	}
 	problems = append(problems, validatePivotSortReference(sortConfig, "group", create, []string{"rows", "columns"})...)
 	if sortType == "VALUE" {
