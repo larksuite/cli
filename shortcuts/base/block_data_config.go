@@ -47,6 +47,10 @@ func isTextBlockType(blockType string) bool { return matchesBlockType(blockType,
 
 func isChartBlockType(blockType string) bool { return matchesBlockType(blockType, chartBlockTypes) }
 
+func isPivotTableBlockType(blockType string) bool {
+	return matchesBlockType(blockType, []string{"pivotTable"})
+}
+
 // appBlockTypes are all block types accepted by the BaseApp page block
 // commands, in the order they appear in the protocol design.
 func appBlockTypes() []string {
@@ -130,6 +134,8 @@ func validateBlockDataConfig(blockType string, cfg map[string]interface{}) []str
 	switch {
 	case isTextBlockType(blockType):
 		return validateTextDataConfig(blockType, cfg)
+	case isPivotTableBlockType(blockType):
+		return validatePivotTableDataConfig(cfg, true)
 	default:
 		problems := validateChartDataConfig(cfg)
 		if matchesBlockType(blockType, []string{"statistics"}) {

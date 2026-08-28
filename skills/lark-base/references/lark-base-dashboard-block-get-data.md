@@ -135,6 +135,9 @@ CLI 成功输出使用标准 `{ok, identity, data}` 信封：
 | 二维图表 | `dimensions` / `measures` / `main_data` | 无 |
 | 词云 | `dimensions` / `measures` / `main_data` | 无 |
 | 指标卡 | `dimensions` / `measures` / `main_data` | `comparison_data` / `trend_data` |
+| 透视表 | `visualization` / `datasource` / `dimensions` / `measures` / `sort` / `result_structure` / `main_data` | 无 |
+
+透视表返回独立的二维聚合协议：`result_structure.rowAxis` 与 `columnAxis` 按顺序引用维度 alias，`sort` 引用同级维度/指标 alias，`main_data` 仅包含叶子格子（不混入行列小计）。透视表 alias 基于 Snapshot 的稳定 `field_key`，读取时仍应以 `dimensions` / `measures` 声明为准。
 
 ---
 
