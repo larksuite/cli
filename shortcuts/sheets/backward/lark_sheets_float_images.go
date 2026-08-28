@@ -172,6 +172,24 @@ func sheetMediaUploadSummary(fileSize int64) map[string]interface{} {
 	return map[string]interface{}{"mode": mode, "size_bytes": fileSize}
 }
 
+// uploadSheetMediaFile uploads filePath as spreadsheet media, picking the
+// single-part or multipart endpoint by size.
+//
+// Both parent_type values survive the multipart path, which is not obvious and
+// is worth recording: slides caps its image uploads at 20 MB because
+// upload_prepare rejects slide_file / office_slide_file outright
+// (see shortcuts/slides/slides_media_upload.go). Sheets has no such cap, so the
+// question is whether the office value is the one that breaks.
+//
+// It is not. Verified against the live API on 2026-08-27: upload_prepare accepts
+// both sheet_image and office_sheet_file, and a 20.6 MB file uploaded with
+// office_sheet_file completes prepare → 6 × upload_part → upload_finish and
+// returns a file_token that a float image then accepts. (A bogus parent_type
+// fails the same call with 99992402, so the endpoint really is validating the
+// field.) What that does not prove is rendering inside a genuinely imported
+// office spreadsheet: the backend does not check parent_node against
+// parent_type, so the probe ran with a native token, and no imported office
+// spreadsheet was reachable to test with.
 func uploadSheetMediaFile(runtime *common.RuntimeContext, filePath, fileName string, fileSize int64, parentNode string) (string, error) {
 	parentType := sheetMediaParentType(parentNode)
 	if fileSize <= common.MaxDriveMediaUploadSinglePartSize {

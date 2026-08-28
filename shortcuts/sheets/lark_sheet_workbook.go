@@ -2259,11 +2259,15 @@ func errLocalOfficeExportUnsupported(token string) error {
 
 // isLocallyOpenedOfficeToken reports whether the token is one of the synthetic
 // prefixes the client mints for a workbook opened from local disk, as opposed
-// to an Office file that lives in Lark. Both are "office spreadsheets" to
+// to an Office file that lives in Lark. Both are local-office tokens to
 // common.IsLocalOfficeToken; only this class implies the caller holds the file.
 func isLocallyOpenedOfficeToken(token string) bool {
-	return strings.HasPrefix(token, common.FakeOfficeTokenPrefix) ||
-		strings.HasPrefix(token, common.LocalOfficeTokenPrefix)
+	for _, prefix := range []string{common.FakeOfficeTokenPrefix, common.LocalOfficeTokenPrefix} {
+		if strings.HasPrefix(token, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // workbookExportParams builds the shared drive export request for
