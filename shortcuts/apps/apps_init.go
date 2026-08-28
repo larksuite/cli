@@ -17,6 +17,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/charcheck"
+	"github.com/larksuite/cli/internal/urlrewrite"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -408,12 +409,16 @@ func isEmptyRepo(ctx context.Context, dir string) (bool, error) {
 // Empty repo -> `app init`; non-empty -> `app sync` + meta app_id patch +
 // conditional `skills sync`. Returns "init" or "upgrade".
 func runScaffold(ctx context.Context, dir, appID, appType, sourcePath string) (string, error) {
+	registry, err := urlrewrite.Rewrite(ctx, npmRegistry)
+	if err != nil {
+		return "", err
+	}
 	empty, err := isEmptyRepo(ctx, dir)
 	if err != nil {
 		return "", err
 	}
 	if empty {
-		args := scaffoldInitArgs(appType, appID, sourcePath)
+		args := scaffoldInitArgsWithRegistry(registry, appType, appID, sourcePath)
 		if _, stderr, err := initRunner.Run(ctx, dir, "npx", args...); err != nil {
 			return "", appsExternalToolError(err, "npx app init failed: %s", gitErr(stderr, err))
 		}
@@ -421,7 +426,7 @@ func runScaffold(ctx context.Context, dir, appID, appType, sourcePath string) (s
 	}
 	policy := policyForAppType(appType)
 	if !policy.skipAppSync {
-		if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", "--registry", npmRegistry, miaodaCLIPkg, "app", "sync"); err != nil {
+		if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", "--registry", registry, miaodaCLIPkg, "app", "sync"); err != nil {
 			return "", appsExternalToolError(err, "npx app sync failed: %s", gitErr(stderr, err))
 		}
 	}
@@ -429,7 +434,7 @@ func runScaffold(ctx context.Context, dir, appID, appType, sourcePath string) (s
 		return "", err
 	}
 	if !policy.skipSkillsSync && !hasSteeringSkills(dir) {
-		if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", "--registry", npmRegistry, miaodaCLIPkg, "skills", "sync", "--local"); err != nil {
+		if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", "--registry", registry, miaodaCLIPkg, "skills", "sync", "--local"); err != nil {
 			return "", appsExternalToolError(err, "npx skills sync failed: %s", gitErr(stderr, err))
 		}
 	}
@@ -446,7 +451,11 @@ func runScaffold(ctx context.Context, dir, appID, appType, sourcePath string) (s
 // translate the app type; mapping the app type to a concrete tech stack is the
 // downstream tool's responsibility.
 func scaffoldInitArgs(appType, appID, sourcePath string) []string {
-	base := []string{"-y", "--prefer-online", "--registry", npmRegistry, miaodaCLIPkg, "app", "init"}
+	return scaffoldInitArgsWithRegistry(npmRegistry, appType, appID, sourcePath)
+}
+
+func scaffoldInitArgsWithRegistry(registry, appType, appID, sourcePath string) []string {
+	base := []string{"-y", "--prefer-online", "--registry", registry, miaodaCLIPkg, "app", "init"}
 	at := appType
 	if at == "" {
 		at = "full_stack"
