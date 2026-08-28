@@ -2596,17 +2596,17 @@ func TestResolveStartEnd_ExplicitValues(t *testing.T) {
 // Shortcuts() registration test
 // ---------------------------------------------------------------------------
 
-func TestShortcuts_Returns11(t *testing.T) {
+func TestShortcuts_Returns12(t *testing.T) {
 	shortcuts := Shortcuts()
-	if len(shortcuts) != 11 {
-		t.Fatalf("expected 11 shortcuts, got %d", len(shortcuts))
+	if len(shortcuts) != 12 {
+		t.Fatalf("expected 12 shortcuts, got %d", len(shortcuts))
 	}
 
 	names := map[string]bool{}
 	for _, s := range shortcuts {
 		names[s.Command] = true
 	}
-	for _, want := range []string{"+agenda", "+create", "+update", "+freebusy", "+room-find", "+rsvp", "+suggestion", "+get", "+transfer"} {
+	for _, want := range []string{"+agenda", "+create", "+update", "+freebusy", "+room-find", "+rsvp", "+suggestion", "+get", "+transfer", "+join-event"} {
 		if !names[want] {
 			t.Errorf("missing shortcut %s", want)
 		}
@@ -4673,5 +4673,171 @@ func TestUpdate_RoomCheck_RequisitionMissingBoundsStillCoherent(t *testing.T) {
 	}
 	if !strings.Contains(ve.Message, "pick a different time or a different room") {
 		t.Errorf("message should always include recovery hint, got: %q", ve.Message)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CalendarJoinEvent tests
+// ---------------------------------------------------------------------------
+
+func TestJoinEvent_Success(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/join_event",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	})
+
+	err := mountAndRun(t, CalendarJoinEvent, []string{
+		"+join-event",
+		"--token", "md5tok_abc",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"joined": true`) {
+		t.Errorf("stdout should confirm join, got: %s", stdout.String())
+	}
+}
+
+// The share_token is the only body field, and the endpoint carries no path
+// params — assert the request body so a regression to per-field joins fails.
+func TestJoinEvent_SendsShareTokenBody(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/join_event",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	}
+	reg.Register(stub)
+
+	err := mountAndRun(t, CalendarJoinEvent, []string{
+		"+join-event",
+		"--token", "  md5tok_trim  ",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var gotBody map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &gotBody); err != nil {
+		t.Fatalf("unmarshal request body: %v", err)
+	}
+	if got := gotBody["share_token"]; got != "md5tok_trim" {
+		t.Errorf("share_token=%v, want trimmed md5tok_trim", got)
+	}
+	if _, extra := gotBody["event_id"]; extra {
+		t.Error("body must not carry event_id; join is share-token only")
+	}
+}
+
+// Alias --share-token maps to the same canonical --token flag.
+func TestJoinEvent_ShareTokenAlias(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/join_event",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	})
+
+	err := mountAndRun(t, CalendarJoinEvent, []string{
+		"+join-event",
+		"--share-token", "enc_msgid_xyz",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error with --share-token alias: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"joined": true`) {
+		t.Errorf("stdout should confirm join, got: %s", stdout.String())
+	}
+}
+
+func TestJoinEvent_DryRun(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+
+	err := mountAndRun(t, CalendarJoinEvent, []string{
+		"+join-event",
+		"--token", "md5tok_dry",
+		"--dry-run",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{
+		"/open-apis/calendar/v4/calendars/join_event",
+		`"share_token": "md5tok_dry"`,
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("dry-run output should contain %q, got: %s", want, stdout.String())
+		}
+	}
+}
+
+func TestJoinEvent_EmptyToken_Typed(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+
+	err := mountAndRun(t, CalendarJoinEvent, []string{
+		"+join-event",
+		"--token", "   ",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected validation error for empty token, got nil")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype=%q, want invalid_argument", ve.Subtype)
+	}
+	if ve.Param != "--token" {
+		t.Errorf("param=%q, want --token", ve.Param)
+	}
+}
+
+func TestJoinEvent_RejectsDangerousChars(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+
+	err := mountAndRun(t, CalendarJoinEvent, []string{
+		"+join-event",
+		"--token", "md5tok\u202e",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected validation error for dangerous characters, got nil")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Param != "--token" {
+		t.Errorf("param=%q, want --token", ve.Param)
+	}
+}
+
+func TestJoinEvent_APIError(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/join_event",
+		Body:   map[string]interface{}{"code": 3201, "msg": "no permission to join event"},
+	})
+
+	err := mountAndRun(t, CalendarJoinEvent, []string{
+		"+join-event",
+		"--token", "md5tok_denied",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected error for API failure, got nil")
 	}
 }

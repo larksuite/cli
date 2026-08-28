@@ -385,16 +385,16 @@ const maxShareBatchSize = 100
 func validateRecordShareBatch(runtime *common.RuntimeContext) error {
 	recordIDs := deduplicateRecordIDs(runtime)
 	if len(recordIDs) == 0 {
-		return baseFlagErrorf("--record-ids is required and must not be empty")
+		return baseFlagErrorf("--record-id is required and must not be empty")
 	}
 	if len(recordIDs) > maxShareBatchSize {
-		return baseFlagErrorf("--record-ids exceeds maximum limit of %d (got %d)", maxShareBatchSize, len(recordIDs))
+		return baseFlagErrorf("--record-id exceeds maximum limit of %d (got %d)", maxShareBatchSize, len(recordIDs))
 	}
 	return nil
 }
 
 func deduplicateRecordIDs(runtime *common.RuntimeContext) []string {
-	raw := runtime.StrSlice("record-ids")
+	raw := runtime.StrSlice("record-id")
 	seen := make(map[string]bool, len(raw))
 	result := make([]string, 0, len(raw))
 	for _, id := range raw {

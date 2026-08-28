@@ -40,7 +40,34 @@ Filter 是一组「字段/操作符/值」条件的组合，用 `logic`（`and` 
 }
 ```
 
-## 2. operator
+## 2. 单表谓词下推常用 example
+
+`+record-list` / `+record-search` 的 `--filter-json '<filter-json>'` 也支持使用与视图相同的 tuple condition。以下示例用注释说明各条件的含义；实际传参时删除注释并使用标准 JSON：
+
+```jsonc
+{
+  "logic": "and", // 所有 conditions 同时成立；任意一个成立时使用 "or"
+  "conditions": [
+    ["标题", "==", "Launch plan"], // 文本全等
+    ["标题", "!=", "Archived plan"], // 文本不全等
+    ["标题", "intersects", "urgent"], // 文本包含目标片段
+    ["标题", "disjoint", "internal"], // 文本不包含目标片段
+    ["金额", ">=", 100], // 数字比较；支持 ==、!=、>、>=、<、<=
+    ["状态", "intersects", ["进行中", "暂停"]], // Select 集合相交：包含“进行中”或“暂停”任意一个选项
+    ["状态", "disjoint", ["已终止"]], // Select 集合无交集
+    ["已完成", "==", true], // Checkbox
+    ["负责人", "intersects", [{ "id": "ou_xxx" }]], // 负责人包含某个人；intersects 表示包含数组中任意一个人员
+    ["负责人", "disjoint", [{ "id": "ou_yyy" }]], // 负责人不包含指定人员中的任何一个
+    ["关联项目", "intersects", [{ "id": "recxxx" }]], // 关联项目包含某个 record_id；intersects 表示包含数组中任意一条关联
+    ["备注", "non_empty"], // 格子非空；判断格子为空改用 ["备注", "empty"]
+    ["业务日期", "==", "ExactDate(2026-08-07)"], // 具体一天：按 Base 时区匹配 2026-08-07 当天
+    ["发生时间", ">", "ExactDate(2024-01-31 23:59:59.999)"], // 日期不支持 >=；用 > 前一天最后一毫秒表达含当天的下界
+    ["发生时间", "<", "ExactDate(2024-03-01 00:00:00)"] // 2024 年 2 月范围上界：小于 3 月 1 日零点
+  ]
+}
+```
+
+## 3. operator
 
 可用 operator：
 - `==`
@@ -54,7 +81,7 @@ Filter 是一组「字段/操作符/值」条件的组合，用 `logic`（`and` 
 - `empty`
 - `non_empty`
 
-## 3. value 写法
+## 4. value 写法
 
 value 类型取决于条件引用对象（字段 / 题目）的类型。
 
@@ -119,7 +146,7 @@ location 筛选只按 `full_address` 字符串匹配，不能直接按经纬度�
 用记录 id 对象数组：
 
 ```json
-["关联任务", "intersects", [{ "id": "rec_xxx" }]]
+["关联任务", "intersects", [{ "id": "recxxx" }]]
 ```
 
 ### `checkbox`
@@ -155,7 +182,7 @@ location 筛选只按 `full_address` 字符串匹配，不能直接按经纬度�
 
 value schema 随计算结果类型变化；拿不准时先读取字段定义，或根据错误提示修正 value 和 operator。
 
-## 4. 易错点
+## 5. 易错点
 
 - 不要再写旧对象风格：`{"field_name":...,"operator":...}`。
 - `user` / `group_chat` / `link` 不要写成单个标量。
@@ -163,5 +190,5 @@ value schema 随计算结果类型变化；拿不准时先读取字段定义，�
 - 日期条件稳定写法用 `ExactDate(...)` 或 `Today` / `Yesterday` / `Tomorrow`。
 - `formula` / `lookup` 的 value schema 是动态的；拿不准 value 类型时先读字段定义，或根据错误提示修正类型。
 
-## 5. 参考
+## 6. 参考
 - [Lookup Field](lark-base-field-lookup.md)

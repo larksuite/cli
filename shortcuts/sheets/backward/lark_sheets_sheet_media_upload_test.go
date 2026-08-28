@@ -190,7 +190,7 @@ func TestSheetMediaUploadExecuteSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	f, stdout, _, reg := cmdutil.TestFactory(t, sheetsTestConfig())
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, sheetsTestConfig())
 	stub := &httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/medias/upload_all",
@@ -210,6 +210,11 @@ func TestSheetMediaUploadExecuteSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	// The upload used to narrate "Uploading: …" on stderr; the mode it took is
+	// now part of the result and stderr stays empty on success.
+	if got := stderr.String(); got != "" {
+		t.Fatalf("successful upload must leave stderr empty, got: %q", got)
+	}
 
 	var envelope map[string]interface{}
 	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
@@ -221,6 +226,13 @@ func TestSheetMediaUploadExecuteSuccess(t *testing.T) {
 	}
 	if data["spreadsheet_token"] != "shtSTUB" {
 		t.Fatalf("spreadsheet_token = %v, want shtSTUB", data["spreadsheet_token"])
+	}
+	upload, _ := data["upload"].(map[string]interface{})
+	if upload == nil {
+		t.Fatalf("expected an upload summary in the result, got %#v", data)
+	}
+	if upload["mode"] != "single" || upload["size_bytes"] != float64(9) {
+		t.Fatalf("upload summary = %#v, want single-part mode with size_bytes 9", upload)
 	}
 
 	body := decodeSheetsMultipartBody(t, stub)
