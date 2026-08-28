@@ -18,7 +18,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
@@ -306,15 +305,6 @@ var appDevRunner envCommandRunner = execEnvCommandRunner{}
 // (the command only accepts https upload URLs).
 var appDevNewTransferClient = newFileTransferClient
 
-// Bounded wait for an async release to finish. The html pipeline typically
-// completes within seconds; past the timeout the command degrades to the
-// release_id + poll hint output instead of failing. Vars so unit tests can
-// shrink them.
-var (
-	appDevReleaseWaitTimeout  = 60 * time.Second
-	appDevReleasePollInterval = 3 * time.Second
-)
-
 // summarizeReleaseErrorLogs flattens a release's error_logs (slice of
 // {step, error_log} objects) into one line for the failure message.
 func summarizeReleaseErrorLogs(v interface{}) string {
@@ -343,58 +333,36 @@ func summarizeReleaseErrorLogs(v interface{}) string {
 	return out
 }
 
-// awaitAppDevRelease polls the release until it reaches a terminal state or
-// the bounded wait elapses. finished returns the online_url; failed returns
-// a structured error carrying the pipeline error_logs; a timeout or a poll
-// request failure degrades gracefully — the release was accepted, so the
-// caller falls back to the release_id + poll hint output.
-func awaitAppDevRelease(ctx context.Context, rctx *common.RuntimeContext, appID, releaseID, status string) (finalStatus, onlineURL string, err error) {
+// resolveAppDevReleaseOutcome handles a terminal create-response without
+// blocking on an in-flight release (agent runtimes cannot sit in a long
+// foreground wait; polling is the caller's job via +release-get):
+//   - finished without online_url: fetch the release once to recover the url
+//   - failed: fetch the error_logs once and surface a structured error
+//   - anything else: return as-is — the caller gets release_id + poll hint
+func resolveAppDevReleaseOutcome(ctx context.Context, rctx *common.RuntimeContext, appID, releaseID, status string) (finalStatus, onlineURL string, err error) {
 	path := fmt.Sprintf(releaseGetPath, validate.EncodePathSegment(appID), validate.EncodePathSegment(releaseID))
-	deadline := time.Now().Add(appDevReleaseWaitTimeout)
-	var errorLogs interface{}
-	for i := 0; ; i++ {
-		switch status {
-		case "finished":
-			// A finished report without online_url on the first look (the
-			// create response may omit it) gets one release-get below to
-			// recover the url before returning.
-			if onlineURL != "" || i > 0 {
-				return status, onlineURL, nil
-			}
-		case "failed":
-			if errorLogs == nil {
-				// The create call reported failed without details — fetch once.
-				if data, gerr := rctx.CallAPITyped("GET", path, nil, nil); gerr == nil {
-					errorLogs = data["error_logs"]
-				}
-			}
-			msg := summarizeReleaseErrorLogs(errorLogs)
-			if msg == "" {
-				msg = "no error_logs reported"
-			}
-			return status, "", errs.NewInternalError(errs.SubtypeExternalTool,
-				"release %s failed: %s", releaseID, msg).
-				WithHint(fmt.Sprintf("the artifact was uploaded but the deploy pipeline failed; inspect with `lark-cli apps +release-get --app-id %s --release-id %s`, fix the reported step, then publish again", appID, releaseID))
+	switch status {
+	case "finished":
+		// The create response may omit online_url — recover it with one
+		// release-get; a flaky fetch degrades to the poll-hint output.
+		if data, gerr := rctx.CallAPITyped("GET", path, nil, nil); gerr == nil {
+			return status, common.GetString(data, "online_url"), nil
 		}
-		if status != "finished" && !time.Now().Before(deadline) {
-			return status, "", nil
+		return status, "", nil
+	case "failed":
+		var errorLogs interface{}
+		if data, gerr := rctx.CallAPITyped("GET", path, nil, nil); gerr == nil {
+			errorLogs = data["error_logs"]
 		}
-		if i > 0 {
-			select {
-			case <-ctx.Done():
-				return status, "", nil
-			case <-time.After(appDevReleasePollInterval):
-			}
+		msg := summarizeReleaseErrorLogs(errorLogs)
+		if msg == "" {
+			msg = "no error_logs reported"
 		}
-		data, gerr := rctx.CallAPITyped("GET", path, nil, nil)
-		if gerr != nil {
-			// The release was accepted; a flaky poll must not fail the
-			// publish — degrade to the poll-hint output.
-			return status, "", nil //nolint:nilerr // deliberate degradation, see above.
-		}
-		status = common.GetString(data, "status")
-		onlineURL = common.GetString(data, "online_url")
-		errorLogs = data["error_logs"]
+		return status, "", errs.NewInternalError(errs.SubtypeExternalTool,
+			"release %s failed: %s", releaseID, msg).
+			WithHint(fmt.Sprintf("the artifact was uploaded but the deploy pipeline failed; inspect with `lark-cli apps +release-get --app-id %s --release-id %s`, fix the reported step, then publish again", appID, releaseID))
+	default:
+		return status, "", nil
 	}
 }
 
@@ -468,7 +436,7 @@ var AppsDeploy = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		dry := common.NewDryRunAPI().
-			Desc("Resolve app id (spark.json / --app-id) -> GET pre_release (presigned upload URL + MIAODA_* build env) -> run build.command -> validate output layout -> zip -> PUT to TOS -> POST releases -> wait up to 60s for the async release; returns online_url, or release_id + poll hint when still publishing")
+			Desc("Resolve app id (spark.json / --app-id) -> GET pre_release (presigned upload URL + MIAODA_* build env) -> run build.command -> validate output layout -> zip -> PUT to TOS -> POST releases; returns online_url when the release finishes synchronously, or release_id + poll hint while it is still publishing")
 		cfg, appID, fromFlag, err := resolveAppDevPublishTarget(rctx)
 		if cfg == nil {
 			cfg = &appDevProjectConfig{}
@@ -602,15 +570,14 @@ var AppsDeploy = common.Shortcut{
 		releaseID := common.GetString(releaseData, "release_id")
 		status := common.GetString(releaseData, "status")
 		onlineURL := common.GetString(releaseData, "online_url")
-		// Async acceptance: wait briefly for the terminal state so the common
-		// case hands back online_url in one command (and app.url is written);
-		// past the bound, degrade to the poll-hint output. A failed pipeline
-		// is a failed publish — surfaced as an error, not a status field.
+		// The command returns as soon as the release is accepted — agent
+		// runtimes cannot sit in a long foreground wait, so polling an
+		// in-flight release is the caller's job (+release-get, see poll_hint).
+		// Terminal create-responses are still resolved: a failed pipeline is a
+		// failed publish, and a finished response missing online_url gets one
+		// recovery fetch.
 		if onlineURL == "" && releaseID != "" {
-			if status != "finished" && status != "failed" {
-				fmt.Fprintf(rctx.IO().ErrOut, "release %s accepted (status %s); waiting up to %s for completion...\n", releaseID, status, appDevReleaseWaitTimeout)
-			}
-			finalStatus, finalURL, werr := awaitAppDevRelease(ctx, rctx, appID, releaseID, status)
+			finalStatus, finalURL, werr := resolveAppDevReleaseOutcome(ctx, rctx, appID, releaseID, status)
 			if werr != nil {
 				return werr
 			}
@@ -622,7 +589,7 @@ var AppsDeploy = common.Shortcut{
 				if status == "finished" {
 					fmt.Fprintf(rctx.IO().ErrOut, "release finished but no online_url was returned; inspect it with `lark-cli apps +release-get`\n")
 				} else {
-					fmt.Fprintf(rctx.IO().ErrOut, "release still %s; continue polling manually\n", status)
+					fmt.Fprintf(rctx.IO().ErrOut, "release %s accepted (status %s); poll with `lark-cli apps +release-get`\n", releaseID, status)
 				}
 			}
 		}
