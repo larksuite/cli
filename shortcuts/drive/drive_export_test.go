@@ -1933,3 +1933,94 @@ func TestWrapExportContextErr(t *testing.T) {
 		t.Error("wrapExportContextErr should preserve context.DeadlineExceeded via errors.Is")
 	}
 }
+
+// TestDriveExportSuccessIsSilentAndReportsRetriedPolls pins the export core's
+// reporting contract, which sheets +workbook-export rides on as well: a
+// completed export writes nothing to stderr (its ticket, readiness and file
+// token are all in the payload), and a poll run that had to retry says so in
+// the result's `poll` block instead of in per-attempt stderr lines — a caller
+// otherwise cannot tell a clean export from one that limped to the finish.
+func TestDriveExportSuccessIsSilentAndReportsRetriedPolls(t *testing.T) {
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodPost,
+		URL:    "/open-apis/drive/v1/export_tasks",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"ticket": "tk_flaky"},
+		},
+	})
+	// First poll fails transiently (5xx), second returns the ready task.
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/drive/v1/export_tasks/tk_flaky",
+		Status: http.StatusInternalServerError,
+		Body:   map[string]interface{}{"code": 1, "msg": "backend hiccup"},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/drive/v1/export_tasks/tk_flaky",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"result": map[string]interface{}{
+				"job_status": float64(0),
+				"file_token": "ftk_pdf",
+				"file_name":  "doc.pdf",
+				"file_size":  float64(1024),
+			}},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  http.MethodGet,
+		URL:     "/open-apis/drive/v1/export_tasks/file/ftk_pdf/download",
+		Status:  http.StatusOK,
+		RawBody: []byte("pdf"),
+		Headers: http.Header{
+			"Content-Type":        []string{"application/pdf"},
+			"Content-Disposition": []string{`attachment; filename="doc.pdf"`},
+		},
+	})
+
+	prevAttempts, prevInterval := driveExportPollAttempts, driveExportPollInterval
+	driveExportPollAttempts, driveExportPollInterval = 3, 0
+	t.Cleanup(func() {
+		driveExportPollAttempts, driveExportPollInterval = prevAttempts, prevInterval
+	})
+	withDriveWorkingDir(t, t.TempDir())
+
+	if err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "docx123",
+		"--doc-type", "docx",
+		"--file-extension", "pdf",
+		"--as", "user",
+	}, f, stdout); err != nil {
+		t.Fatalf("export failed: %v\n%s", err, stdout.String())
+	}
+	if got := stderr.String(); got != "" {
+		t.Errorf("a successful export must leave stderr empty, got: %q", got)
+	}
+
+	var envelope struct {
+		Data map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v\nraw=%s", err, stdout.String())
+	}
+	if envelope.Data["ticket"] != "tk_flaky" || envelope.Data["file_token"] != "ftk_pdf" {
+		t.Fatalf("payload should report the finished export, got %#v", envelope.Data)
+	}
+	poll, _ := envelope.Data["poll"].(map[string]interface{})
+	if poll == nil {
+		t.Fatalf("expected a poll summary after a retried poll, got %#v", envelope.Data)
+	}
+	if poll["attempts"] != float64(2) {
+		t.Errorf("poll.attempts = %v, want 2 (one failure, then the ready status)", poll["attempts"])
+	}
+	if poll["transient_failures"] != float64(1) {
+		t.Errorf("poll.transient_failures = %v, want 1", poll["transient_failures"])
+	}
+	if last, _ := poll["last_error"].(string); last == "" {
+		t.Errorf("poll summary should carry the last transient error, got %#v", poll)
+	}
+}

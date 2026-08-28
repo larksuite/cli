@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/tidwall/gjson"
@@ -153,5 +154,126 @@ func TestSheetExportExecuteWithoutOutputPathReturnsMetadataOnly(t *testing.T) {
 	}
 	if strings.Contains(got, `"saved_path"`) {
 		t.Fatalf("stdout should not include saved_path when --output-path is omitted: %s", got)
+	}
+}
+
+// TestSheetExportExecuteWithOutputPathKeepsExportIdentifiers pins that the
+// download path reports the export identifiers too. They used to reach the
+// caller only through a stderr line ("Export complete: file_token=…"); without
+// them in the payload, a caller who downloaded once cannot re-download or
+// resume without running a whole new export.
+func TestSheetExportExecuteWithOutputPathKeepsExportIdentifiers(t *testing.T) {
+	dir := t.TempDir()
+	withSheetsTestWorkingDir(t, dir)
+
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, sheetsTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/export_tasks",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{"ticket": "tk_123"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/export_tasks/tk_123",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{
+				"result": map[string]interface{}{"file_token": "box_123"},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/export_tasks/file/box_123/download",
+		Status:  200,
+		RawBody: []byte("xlsx-bytes"),
+	})
+
+	err := mountAndRunSheets(t, SheetExport, []string{
+		"+export",
+		"--spreadsheet-token", "shtTOKEN",
+		"--file-extension", "xlsx",
+		"--output-path", "report.xlsx",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := stderr.String(); got != "" {
+		t.Errorf("a successful export must leave stderr empty, got: %q", got)
+	}
+
+	got := stdout.String()
+	for field, want := range map[string]string{
+		"data.file_token": "box_123",
+		"data.ticket":     "tk_123",
+	} {
+		if gjson.Get(got, field).String() != want {
+			t.Errorf("%s = %q, want %q\nstdout: %s", field, gjson.Get(got, field).String(), want, got)
+		}
+	}
+	if gjson.Get(got, "data.saved_path").String() == "" || gjson.Get(got, "data.size_bytes").Int() != int64(len("xlsx-bytes")) {
+		t.Errorf("download result should still report where the file landed and its size: %s", got)
+	}
+}
+
+// TestSheetExportDownloadFailureKeepsExportIdentifiers pins the recovery half
+// of the same contract: once the export artifact exists server-side, a
+// download or save failure must hand back the tokens that let a caller retry
+// the download alone instead of re-running the whole export. They used to be
+// visible only through the removed "Export complete: file_token=…" line.
+func TestSheetExportDownloadFailureKeepsExportIdentifiers(t *testing.T) {
+	dir := t.TempDir()
+	withSheetsTestWorkingDir(t, dir)
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, sheetsTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/export_tasks",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{"ticket": "tk_123"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/export_tasks/tk_123",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{
+				"result": map[string]interface{}{"file_token": "box_123"},
+			},
+		},
+	})
+	// The artifact is ready, but downloading it fails.
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/export_tasks/file/box_123/download",
+		Status: 500,
+		Body:   map[string]interface{}{"code": 1, "msg": "backend down"},
+	})
+
+	err := mountAndRunSheets(t, SheetExport, []string{
+		"+export",
+		"--spreadsheet-token", "shtTOKEN",
+		"--file-extension", "xlsx",
+		"--output-path", "report.xlsx",
+		"--as", "user",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected the download failure to surface")
+	}
+
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected a typed error, got %T: %v", err, err)
+	}
+	for _, want := range []string{"ticket=tk_123", "file_token=box_123", "drive +export-download"} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Errorf("recovery hint should contain %q, got: %q", want, problem.Hint)
+		}
 	}
 }

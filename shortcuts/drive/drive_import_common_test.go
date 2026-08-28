@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -565,5 +566,69 @@ func writeSizedDriveImportFile(t *testing.T, name string, size int64) {
 	}
 	if err := fh.Close(); err != nil {
 		t.Fatalf("Close(%q) error: %v", name, err)
+	}
+}
+
+// TestDriveImportPollFailureKeepsTicket pins the recovery contract on the
+// all-polls-fail path: once createDriveImportTask succeeds the import is
+// already running server-side, so the ticket is the only handle back to it.
+// It used to be visible because polling narrated itself on stderr; now it has
+// to ride on the typed error, which is all a caller gets on this path.
+func TestDriveImportPollFailureKeepsTicket(t *testing.T) {
+	dir := t.TempDir()
+	withDriveWorkingDir(t, dir)
+	if err := os.WriteFile("data.csv", []byte("a,b\n1,2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodPost,
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"file_token": "media_tok"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodPost,
+		URL:    "/open-apis/drive/v1/import_tasks",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"ticket": "tk_orphan"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:   http.MethodGet,
+		URL:      "/open-apis/drive/v1/import_tasks/tk_orphan",
+		Status:   http.StatusInternalServerError,
+		Reusable: true,
+		Body:     map[string]interface{}{"code": 1, "msg": "backend down"},
+	})
+
+	prevAttempts, prevInterval := driveImportPollAttempts, driveImportPollInterval
+	driveImportPollAttempts, driveImportPollInterval = 1, 0
+	t.Cleanup(func() {
+		driveImportPollAttempts, driveImportPollInterval = prevAttempts, prevInterval
+	})
+
+	err := mountAndRunDrive(t, DriveImport, []string{
+		"+import",
+		"--file", "data.csv",
+		"--type", "sheet",
+		"--as", "user",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected the poll failure to surface")
+	}
+
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected a typed error, got %T: %v", err, err)
+	}
+	for _, want := range []string{"ticket=tk_orphan", "drive +task_result --scenario import --ticket tk_orphan"} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Errorf("recovery hint should contain %q, got: %q", want, problem.Hint)
+		}
 	}
 }

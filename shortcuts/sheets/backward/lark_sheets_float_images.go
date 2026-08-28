@@ -110,12 +110,10 @@ var SheetMediaUpload = common.Shortcut{
 		}
 
 		fileName := filepath.Base(safePath)
-		fmt.Fprintf(runtime.IO().ErrOut, "Uploading: %s (%s) -> spreadsheet %s\n",
-			fileName, common.FormatSize(stat.Size()), common.MaskToken(parentNode))
-		if stat.Size() > common.MaxDriveMediaUploadSinglePartSize {
-			fmt.Fprintf(runtime.IO().ErrOut, "File exceeds 20MB, using multipart upload\n")
-		}
-
+		// Which path the upload took used to be narrated on stderr ("Uploading:
+		// …", "File exceeds 20MB, using multipart upload"). Its terminal form is
+		// in the result's upload summary instead, so a successful run says
+		// nothing on stderr.
 		fileToken, err := uploadSheetMediaFile(runtime, safePath, fileName, stat.Size(), parentNode)
 		if err != nil {
 			return err
@@ -126,6 +124,7 @@ var SheetMediaUpload = common.Shortcut{
 			"file_name":         fileName,
 			"size":              stat.Size(),
 			"spreadsheet_token": parentNode,
+			"upload":            sheetMediaUploadSummary(stat.Size()),
 		}, nil)
 		return nil
 	},
@@ -158,6 +157,19 @@ func resolveSheetMediaUploadParent(runtime *common.RuntimeContext) (string, erro
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --url or --spreadsheet-token").WithParams(errs.InvalidParam{Name: "--url", Reason: "required; specify one"}, errs.InvalidParam{Name: "--spreadsheet-token", Reason: "required; specify one"})
 	}
 	return token, nil
+}
+
+// sheetMediaUploadSummary reports how the upload was performed. The
+// server-planned chunk count is deliberately absent: it only exists inside the
+// shared multipart helper, and exposing it would mean changing that shared
+// contract. Mode and size are decided here, which is enough for a caller to
+// understand what the CLI did.
+func sheetMediaUploadSummary(fileSize int64) map[string]interface{} {
+	mode := "single"
+	if fileSize > common.MaxDriveMediaUploadSinglePartSize {
+		mode = "multipart"
+	}
+	return map[string]interface{}{"mode": mode, "size_bytes": fileSize}
 }
 
 func uploadSheetMediaFile(runtime *common.RuntimeContext, filePath, fileName string, fileSize int64, parentNode string) (string, error) {
