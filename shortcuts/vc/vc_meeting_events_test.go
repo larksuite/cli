@@ -292,6 +292,27 @@ func magicShareStartedEvent() map[string]interface{} {
 	}
 }
 
+func magicShareDetectedEvent() map[string]interface{} {
+	event := magicShareStartedEvent()
+	item := common.GetSlice(common.GetMap(event, "payload"), "magic_share_started_items")[0].(map[string]interface{})
+	item["share_id"] = "share-1"
+	item["start_reason"] = "share_detected"
+	return event
+}
+
+func magicShareBatchEvent(startReasons ...string) map[string]interface{} {
+	items := make([]interface{}, 0, len(startReasons))
+	for _, startReason := range startReasons {
+		items = append(items, map[string]interface{}{"start_reason": startReason})
+	}
+	return map[string]interface{}{
+		"event_type": "magic_share_started",
+		"payload": map[string]interface{}{
+			"magic_share_started_items": items,
+		},
+	}
+}
+
 func documentContextChangedEvent(items []interface{}) map[string]interface{} {
 	return map[string]interface{}{
 		"event_id":   "event-document-context",
@@ -1056,6 +1077,41 @@ func TestMeetingEvents_ExecuteJSON_PrunesEmptySlices(t *testing.T) {
 	}
 	if !strings.Contains(out, `"message_type": 1`) {
 		t.Fatalf("json output should keep numeric fields: %s", out)
+	}
+}
+
+func TestMeetingEvents_ExecuteJSON_PreservesShareStartReason(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(meetingEventsStub([]interface{}{magicShareDetectedEvent()}, false, ""))
+	reg.Register(botInfoStub())
+
+	err := mountAndRun(t, VCMeetingEvents, []string{
+		"+meeting-events",
+		"--meeting-id", "7628568141510692381",
+		"--format", "json",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+
+	var envelope map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("unmarshal stdout: %v: %s", err, stdout.String())
+	}
+	events := common.GetSlice(common.GetMap(envelope, "data"), "events")
+	if len(events) != 1 {
+		t.Fatalf("events len = %d, want 1: %s", len(events), stdout.String())
+	}
+	event, _ := events[0].(map[string]interface{})
+	items := common.GetSlice(common.GetMap(event, "payload"), "magic_share_started_items")
+	if len(items) != 1 {
+		t.Fatalf("magic_share_started_items len = %d, want 1: %s", len(items), stdout.String())
+	}
+	item, _ := items[0].(map[string]interface{})
+	if got := common.GetString(item, "start_reason"); got != "share_detected" {
+		t.Fatalf("start_reason = %q, want share_detected: %s", got, stdout.String())
 	}
 }
 
@@ -2013,6 +2069,21 @@ func TestMeetingEventSummary(t *testing.T) {
 		want  string
 	}{
 		{
+			name:  "current share detected",
+			event: magicShareDetectedEvent(),
+			want:  "share share-1 active: 共享文档",
+		},
+		{
+			name:  "multiple current shares detected",
+			event: magicShareBatchEvent("share_detected", "share_detected"),
+			want:  "2 active shares",
+		},
+		{
+			name:  "mixed started and detected shares",
+			event: magicShareBatchEvent("share_started", "share_detected"),
+			want:  "2 share events (1 started, 1 active)",
+		},
+		{
 			name: "participant joined count",
 			event: map[string]interface{}{
 				"event_type": "participant_joined",
@@ -2057,6 +2128,23 @@ func TestMeetingEventSummary(t *testing.T) {
 				t.Fatalf("meetingEventSummary() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestMagicShareDetectedEntries(t *testing.T) {
+	payload := common.GetMap(magicShareDetectedEvent(), "payload")
+	sequence := 0
+	entries := magicShareStartedEntries(payload, time.Time{}, false, &sequence)
+	if len(entries) != 1 {
+		t.Fatalf("entries len = %d, want 1", len(entries))
+	}
+	if got, want := entries[0].description, "正在共享「共享文档」"; got != want {
+		t.Fatalf("description = %q, want %q", got, want)
+	}
+
+	got := renderMeetingEventsPretty(meetingTimeline{entries: entries})
+	if want := "Bob(u2) 正在共享「共享文档」"; !strings.Contains(got, want) {
+		t.Fatalf("pretty output missing %q: %s", want, got)
 	}
 }
 
