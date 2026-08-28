@@ -2225,7 +2225,7 @@ var WorkbookExport = common.Shortcut{
 }
 
 // errLocalOfficeExportUnsupported rejects an export whose target is an Office
-// workbook rather than a Lark spreadsheet (isOfficeSpreadsheet). Drive's export
+// workbook rather than a Lark spreadsheet (common.IsLocalOfficeToken). Drive's export
 // task only produces artifacts for native Lark documents, so these tokens fail
 // on the backend — late, after the create + poll round trips, with an opaque
 // message. Refuse up front and say why instead.
@@ -2241,7 +2241,7 @@ var WorkbookExport = common.Shortcut{
 //     local copy at all, so the recovery is to download the stored file, or to
 //     convert it into a real Lark spreadsheet that export does support.
 func errLocalOfficeExportUnsupported(token string) error {
-	if !isOfficeSpreadsheet(token) {
+	if !common.IsLocalOfficeToken(token) {
 		return nil
 	}
 	if isLocallyOpenedOfficeToken(token) {
@@ -2259,10 +2259,10 @@ func errLocalOfficeExportUnsupported(token string) error {
 
 // isLocallyOpenedOfficeToken reports whether the token is one of the synthetic
 // prefixes the client mints for a workbook opened from local disk, as opposed
-// to an Office file that lives in Lark. Both are "office spreadsheets" to
-// isOfficeSpreadsheet; only this class implies the caller holds the file.
+// to an Office file that lives in Lark. Both are local-office tokens to
+// common.IsLocalOfficeToken; only this class implies the caller holds the file.
 func isLocallyOpenedOfficeToken(token string) bool {
-	for _, prefix := range officePrefixes {
+	for _, prefix := range []string{common.FakeOfficeTokenPrefix, common.LocalOfficeTokenPrefix} {
 		if strings.HasPrefix(token, prefix) {
 			return true
 		}
