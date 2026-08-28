@@ -123,6 +123,8 @@ lark-cli vc +meeting-events --as <source_identity> --meeting-id <meeting_id> --p
 | `vc +detail` | 查询会议信息及关联的 Note、Minutes 标识 | [lark-vc-detail](references/lark-vc-detail.md) |
 | `vc meeting get` | 查询会议基础信息和参会人快照 | `lark-cli vc meeting get --help` |
 | `vc +recording` | 从会议定位录制及妙记 | [lark-vc-recording](references/lark-vc-recording.md) |
+| `vc +meeting-recording-start` | 开始当前会议录制 | [lark-vc-recording-control](references/lark-vc-recording-control.md) |
+| `vc +meeting-recording-stop` | 停止当前会议录制 | [lark-vc-recording-control](references/lark-vc-recording-control.md) |
 | `vc +meeting-list-active` | 发现当前可见的进行中会议 | [lark-vc-meeting-list-active](references/lark-vc-meeting-list-active.md) |
 | `vc +meeting-events` | 读取会中事件和共享内容 | [lark-vc-meeting-events](references/lark-vc-meeting-events.md) |
 | `vc +meeting-message-send` | 发送会中文本消息或表情 | [lark-vc-meeting-message-send](references/lark-vc-meeting-message-send.md) |

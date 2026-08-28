@@ -4,7 +4,9 @@
 package affordance
 
 import (
+	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/meta"
@@ -47,4 +49,40 @@ func TestMeetingScreenshotRoutesToItsReference(t *testing.T) {
 		}
 	}
 	t.Fatalf("meeting screenshot skills = %v, want %q", guidance.Skills, want)
+}
+
+func TestVCRecordingControlAffordanceMatchesSkillReference(t *testing.T) {
+	previousSource := mdSource
+	t.Cleanup(func() { SetSource(previousSource) })
+	SetSource(os.DirFS("../../affordance"))
+
+	const reference = "lark-meeting/references/lark-vc-recording-control.md"
+	for _, command := range []string{"+meeting-recording-start", "+meeting-recording-stop"} {
+		raw, ok := For("vc", command)
+		if !ok {
+			t.Fatalf("For(vc, %s) returned no affordance", command)
+		}
+		var affordance meta.Affordance
+		if err := json.Unmarshal(raw, &affordance); err != nil {
+			t.Fatalf("decode %s affordance: %v", command, err)
+		}
+		if len(affordance.Skills) != 2 || affordance.Skills[0] != "lark-meeting" || affordance.Skills[1] != reference {
+			t.Fatalf("%s skills = %v, want [lark-meeting %s]", command, affordance.Skills, reference)
+		}
+	}
+
+	source, err := os.ReadFile("../../skills/lark-meeting/references/lark-vc-recording-control.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"lark-cli vc +meeting-recording-start",
+		"lark-cli vc +meeting-recording-stop",
+		"仅支持 `--as user`",
+		"不发送可选的 `timezone`",
+	} {
+		if !strings.Contains(string(source), required) {
+			t.Errorf("recording control reference must contain %q", required)
+		}
+	}
 }
