@@ -6,19 +6,25 @@ package im
 import (
 	"fmt"
 	"io"
+	"net/url"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/shortcuts/common"
 )
 
 var conciseInlineReplacer = strings.NewReplacer(
 	`\`, `\\`,
+	"`", `\`+"`",
 	`*`, `\*`,
 	`_`, `\_`,
 	`[`, `\[`,
 	`]`, `\]`,
+	`<`, `\<`,
+	`>`, `\>`,
+	`#`, `\#`,
+	`~`, `\~`,
 )
 
 type conciseMessageView struct {
@@ -42,40 +48,30 @@ type conciseMessageStats struct {
 	Threads map[string]struct{}
 }
 
-func messageListFormatFlag() common.Flag {
-	return common.Flag{
-		Name:         "format",
-		Default:      "json",
-		Desc:         "output format",
-		Enum:         []string{"json", "pretty", "concise", "table", "ndjson", "csv"},
-		AllowUnknown: true,
-	}
-}
-
 func renderMessagesConcise(w io.Writer, view conciseMessageView) error {
 	var b strings.Builder
 	title := view.Title
 	if title == "" {
 		title = "Messages"
 	}
-	fmt.Fprintf(&b, "# %s\n", title)
+	fmt.Fprintf(&b, "# %s\n", conciseInline(title))
 	if view.ChatID != "" {
-		fmt.Fprintf(&b, "\n- chat_id: `%s`\n", view.ChatID)
+		fmt.Fprintf(&b, "\n- chat_id: %s\n", conciseCode(view.ChatID))
 	}
 	if view.ThreadID != "" {
-		fmt.Fprintf(&b, "\n- thread_id: `%s`\n", view.ThreadID)
+		fmt.Fprintf(&b, "\n- thread_id: %s\n", conciseCode(view.ThreadID))
 	}
 
 	participants := collectConciseParticipants(view.Messages)
 	if len(participants) > 0 {
 		b.WriteString("\n## Participants\n")
 		for _, participant := range participants {
-			fmt.Fprintf(&b, "\n- %s (`%s`", conciseInline(participant.Name), participant.ID)
+			fmt.Fprintf(&b, "\n- %s (%s", conciseInline(participant.Name), conciseCode(participant.ID))
 			if participant.Type != "" {
 				fmt.Fprintf(&b, ", %s", conciseInline(participant.Type))
 			}
 			if participant.OpenBotID != "" {
-				fmt.Fprintf(&b, ", bot_open_id: `%s`", participant.OpenBotID)
+				fmt.Fprintf(&b, ", bot_open_id: %s", conciseCode(participant.OpenBotID))
 			}
 			b.WriteString(")\n")
 		}
@@ -100,7 +96,7 @@ func renderMessagesConcise(w io.Writer, view conciseMessageView) error {
 	}
 	fmt.Fprintf(&b, "- has_more: %t\n", view.HasMore)
 	if view.NextToken != "" {
-		fmt.Fprintf(&b, "- next_token: `%s`\n", view.NextToken)
+		fmt.Fprintf(&b, "- next_token: %s\n", conciseCode(view.NextToken))
 	}
 
 	_, err := io.WriteString(w, b.String())
@@ -119,17 +115,17 @@ func renderConciseMessage(
 		parts = append(parts, "**Reply**")
 	}
 	if created := conciseString(message["create_time"]); created != "" {
-		parts = append(parts, "`"+created+"`")
+		parts = append(parts, conciseCode(created))
 	}
 	parts = append(parts, "**"+conciseInline(conciseSenderName(message))+"**")
 	if msgType := conciseString(message["msg_type"]); msgType != "" {
-		parts = append(parts, "`"+msgType+"`")
+		parts = append(parts, conciseCode(msgType))
 	}
 	if messageID := conciseString(message["message_id"]); messageID != "" {
-		parts = append(parts, "message_id: `"+messageID+"`")
+		parts = append(parts, "message_id: "+conciseCode(messageID))
 	}
 	if threadID := conciseString(message["thread_id"]); threadID != "" {
-		parts = append(parts, "thread_id: `"+threadID+"`")
+		parts = append(parts, "thread_id: "+conciseCode(threadID))
 		stats.Threads[threadID] = struct{}{}
 	}
 	if conciseBool(message["updated"]) {
@@ -140,7 +136,7 @@ func renderConciseMessage(
 	}
 	fmt.Fprintf(b, "%s- %s\n", indent, strings.Join(parts, " · "))
 	if appLink := conciseString(message["message_app_link"]); appLink != "" {
-		fmt.Fprintf(b, "%s  app_link: <%s>\n", indent, validate.SanitizeForTerminal(appLink))
+		fmt.Fprintf(b, "%s  app_link: %s\n", indent, conciseLink(appLink))
 	}
 
 	content := conciseString(message["content"])
@@ -227,7 +223,7 @@ func conciseReactionSummary(message map[string]interface{}) []string {
 		if reactionType == "" {
 			continue
 		}
-		summary = append(summary, fmt.Sprintf("`%s x%v`", reactionType, count["count"]))
+		summary = append(summary, conciseCode(fmt.Sprintf("%s x%v", reactionType, count["count"])))
 	}
 	sort.Strings(summary)
 	return summary
@@ -277,9 +273,64 @@ func conciseSenderName(message map[string]interface{}) string {
 }
 
 func conciseInline(value string) string {
+	return conciseInlineReplacer.Replace(conciseSingleLine(value))
+}
+
+// conciseCode renders untrusted metadata as a single Markdown code span. The
+// fence is longer than any backtick run in the value, so opaque IDs and tokens
+// cannot terminate the span and inject new Markdown structure.
+func conciseCode(value string) string {
+	value = conciseSingleLine(value)
+	maxRun := 0
+	currentRun := 0
+	for _, r := range value {
+		if r == '`' {
+			currentRun++
+			maxRun = max(maxRun, currentRun)
+		} else {
+			currentRun = 0
+		}
+	}
+	fence := strings.Repeat("`", maxRun+1)
+	if value == "" {
+		return fence + " " + fence
+	}
+	if strings.HasPrefix(value, "`") || strings.HasSuffix(value, "`") {
+		return fence + " " + value + " " + fence
+	}
+	return fence + value + fence
+}
+
+// conciseLink keeps normal HTTP(S) app links clickable. Values containing
+// Markdown delimiters, whitespace, or an invalid/unsafe URL are shown as an
+// inert code span instead of being allowed to escape an autolink.
+func conciseLink(value string) string {
 	value = validate.SanitizeForTerminal(value)
-	value = strings.Join(strings.Fields(value), " ")
-	return conciseInlineReplacer.Replace(value)
+	if conciseSafeAutolink(value) {
+		return "<" + value + ">"
+	}
+	return conciseCode(value)
+}
+
+func conciseSafeAutolink(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if unicode.IsSpace(r) || r < 0x21 || r > 0x7e || strings.ContainsRune("<>`\\\"'", r) {
+			return false
+		}
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	return parsed.Scheme == "https" || parsed.Scheme == "http"
+}
+
+func conciseSingleLine(value string) string {
+	value = validate.SanitizeForTerminal(value)
+	return strings.Join(strings.Fields(value), " ")
 }
 
 func conciseString(value interface{}) string {

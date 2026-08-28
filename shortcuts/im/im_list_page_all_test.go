@@ -403,6 +403,47 @@ func TestMessageListConciseOutputUsesCommandRenderer(t *testing.T) {
 	}
 }
 
+func TestMessageListConcisePageAllUsesFinalPaginationState(t *testing.T) {
+	for _, tc := range listPageAllCases()[:2] {
+		t.Run(tc.name, func(t *testing.T) {
+			runtime, calls := newListPageAllRuntime(t, tc, map[string]string{
+				"page-all":   "true",
+				"page-limit": "2",
+			}, func(_ *http.Request, call int) map[string]interface{} {
+				return map[string]interface{}{
+					"items":      []interface{}{tc.makeRawItem(fmt.Sprintf("item-%d", call))},
+					"has_more":   true,
+					"page_token": fmt.Sprintf("token-%d", call),
+					"total":      10,
+				}
+			})
+			runtime.Format = "concise"
+
+			if err := tc.shortcut.Execute(context.Background(), runtime); err != nil {
+				t.Fatalf("Execute() error = %v", err)
+			}
+			if *calls != 2 {
+				t.Fatalf("API calls = %d, want 2", *calls)
+			}
+			stdout := runtime.IO().Out.(*bytes.Buffer).String()
+			for _, want := range []string{
+				"message_id: `item-1`",
+				"message_id: `item-2`",
+				"- messages: 2",
+				"- has_more: true",
+				"- next_token: `token-2`",
+			} {
+				if !strings.Contains(stdout, want) {
+					t.Fatalf("concise stdout missing %q:\n%s", want, stdout)
+				}
+			}
+			if strings.Contains(stdout, "Pagination:") || strings.Contains(stdout, `"meta"`) {
+				t.Fatalf("concise stdout contains a second pagination contract:\n%s", stdout)
+			}
+		})
+	}
+}
+
 func TestChatListRecordFormatsKeepStdoutPureAndReportPagination(t *testing.T) {
 	var tc listPageAllCase
 	for _, candidate := range listPageAllCases() {
