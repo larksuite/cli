@@ -176,18 +176,45 @@ func validatePivotSort(cfg map[string]interface{}, create bool) []string {
 		return []string{"sort 必须是数组"}
 	}
 	var problems []string
+	areas := projectPivotAreas(cfg)
 	for i, rawSort := range sortConfigs {
 		sortConfig, ok := rawSort.(map[string]interface{})
 		if !ok {
 			problems = append(problems, fmt.Sprintf("sort[%d] 必须是对象", i))
 			continue
 		}
-		problems = append(problems, validatePivotSortItem(sortConfig, create, i)...)
+		problems = append(problems, validatePivotSortItem(areas, sortConfig, create, i)...)
 	}
 	return problems
 }
 
-func validatePivotSortItem(sortConfig map[string]interface{}, create bool, index int) []string {
+type pivotAreas struct {
+	rows    []interface{}
+	columns []interface{}
+	values  []interface{}
+}
+
+func projectPivotAreas(dataConfig map[string]interface{}) pivotAreas {
+	rows, _ := dataConfig["rows"].([]interface{})
+	columns, _ := dataConfig["columns"].([]interface{})
+	values, _ := dataConfig["values"].([]interface{})
+	return pivotAreas{rows: rows, columns: columns, values: values}
+}
+
+func (p pivotAreas) length(area string) int {
+	switch area {
+	case "rows":
+		return len(p.rows)
+	case "columns":
+		return len(p.columns)
+	case "values":
+		return len(p.values)
+	default:
+		return 0
+	}
+}
+
+func validatePivotSortItem(dataConfig pivotAreas, sortConfig map[string]interface{}, create bool, index int) []string {
 	var problems []string
 	sortType, _ := sortConfig["sort_type"].(string)
 	if sortType != "FIELD" && sortType != "VALUE" {
@@ -197,14 +224,14 @@ func validatePivotSortItem(sortConfig map[string]interface{}, create bool, index
 	if order != "asc" && order != "desc" {
 		problems = append(problems, fmt.Sprintf("sort[%d].order 仅支持 asc|desc", index))
 	}
-	problems = append(problems, validatePivotSortReference(sortConfig, "group", create, []string{"rows", "columns"})...)
+	problems = append(problems, validatePivotSortReference(dataConfig, sortConfig, "group", create, []string{"rows", "columns"})...)
 	if sortType == "VALUE" {
-		problems = append(problems, validatePivotSortReference(sortConfig, "value", create, []string{"values"})...)
+		problems = append(problems, validatePivotSortReference(dataConfig, sortConfig, "value", create, []string{"values"})...)
 	}
 	return problems
 }
 
-func validatePivotSortReference(cfg map[string]interface{}, prefix string, create bool, allowedAreas []string) []string {
+func validatePivotSortReference(dataConfig pivotAreas, cfg map[string]interface{}, prefix string, create bool, allowedAreas []string) []string {
 	keyName, refName := prefix+"_field_key", prefix+"_ref"
 	key, _ := cfg[keyName].(string)
 	ref, hasRef := cfg[refName]
@@ -236,6 +263,10 @@ func validatePivotSortReference(cfg map[string]interface{}, prefix string, creat
 	}
 	if !validIndex || index < 0 {
 		problems = append(problems, refName+".index 必须是非负整数")
+	} else if create && validArea {
+		if index >= dataConfig.length(area) {
+			problems = append(problems, refName+".index 未引用 "+area+" 中的有效项")
+		}
 	}
 	return problems
 }
