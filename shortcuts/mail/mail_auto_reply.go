@@ -245,7 +245,7 @@ func buildAutoReplyPatch(ctx context.Context, runtime *common.RuntimeContext, up
 func validateAutoReplyModifyResult(autoReply map[string]interface{}) error {
 	startTS := autoReplyTimestamp(autoReply["start_time"])
 	endTS := autoReplyTimestamp(autoReply["end_time"])
-	if startTS > 0 && endTS > 0 && startTS >= endTS {
+	if startTS > 0 && endTS <= startTS {
 		return mailValidationParamError("--end", "end_time must be greater than start_time")
 	}
 	if !autoReplyBool(autoReply["enabled"]) {
