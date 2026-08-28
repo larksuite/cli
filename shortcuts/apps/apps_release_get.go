@@ -65,6 +65,14 @@ var AppsReleaseGet = common.Shortcut{
 				out["error_logs"] = el
 			}
 		}
+		// This poll is the async deploy chain's last step (+deploy returns on
+		// acceptance), so a finished release syncs the app state section of a
+		// matching project's spark.json. Skips silently in every other setting.
+		if status, _ := out["status"].(string); status == "finished" {
+			if url, _ := out["online_url"].(string); url != "" {
+				syncSparkAppURL(rctx, appID, url)
+			}
+		}
 		rctx.OutFormat(out, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "release_id: %v\nstatus: %v\ncreated_at: %v\nupdated_at: %v\n",
 				out["release_id"], out["status"], out["created_at"], out["updated_at"])
