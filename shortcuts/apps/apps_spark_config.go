@@ -5,9 +5,12 @@ package apps
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 // sparkJSONRelPath is the project declaration file of the artifact-hosting
@@ -126,6 +129,25 @@ func writeSparkAppSection(dir, appID, appURL string) error {
 		return appsFileIOError(err, "write %s failed: %v", sparkJSONRelPath, err)
 	}
 	return nil
+}
+
+// syncSparkAppURL writes online_url into the cwd's spark.json app section
+// when — and only when — it records exactly this app. The deploy chain owns
+// the app state section, and +deploy returns before an async release
+// finishes, so the poll step is the first to learn the final url. Narrowly
+// scoped and best-effort: no spark.json in the working directory, a
+// different recorded app id, or an already-synced url all skip silently; a
+// write failure only warns on stderr.
+func syncSparkAppURL(rctx *common.RuntimeContext, appID, onlineURL string) {
+	cfg, found, err := readAppDevProjectConfig(".")
+	if err != nil || !found || cfg.AppID != appID || cfg.AppURL == onlineURL {
+		return
+	}
+	if werr := writeSparkAppSection(".", appID, onlineURL); werr != nil {
+		fmt.Fprintf(rctx.IO().ErrOut, "warning: failed to sync app.url into %s: %v\n", sparkJSONRelPath, werr)
+		return
+	}
+	fmt.Fprintf(rctx.IO().ErrOut, "app.url synced into %s\n", sparkJSONRelPath)
 }
 
 // writeSparkScaffoldFields merge-writes the scaffold-owned fields into
