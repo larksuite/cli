@@ -75,8 +75,8 @@ func TestAppsReleaseGet_SyncsSparkAppURL(t *testing.T) {
 	var doc map[string]interface{}
 	_ = json.Unmarshal(b, &doc)
 	app, _ := doc["app"].(map[string]interface{})
-	if app == nil || app["url"] != "https://x/app/app_x" {
-		t.Errorf("app.url must be synced, got %v", doc["app"])
+	if app == nil || app["online_url"] != "https://x/app/app_x" {
+		t.Errorf("app.online_url must be synced, got %v", doc["app"])
 	}
 }
 

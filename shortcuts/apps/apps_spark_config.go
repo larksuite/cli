@@ -56,7 +56,7 @@ type sparkJSONDoc struct {
 	} `json:"build"`
 	App struct {
 		ID  string `json:"id"`
-		URL string `json:"url"`
+		URL string `json:"online_url"`
 	} `json:"app"`
 }
 
@@ -103,9 +103,9 @@ func applyAppDevConfigDefaults(cfg *appDevProjectConfig) {
 func (c *appDevProjectConfig) Buildless() bool { return len(c.BuildCommand) == 0 }
 
 // writeSparkAppSection replaces the app state section of <dir>/spark.json
-// with {id, url} after a successful publish (§3: the app section is owned by
+// with {id, online_url} after a successful publish (§3: the app section is owned by
 // the deploy chain and replaced wholesale; declaration fields are never
-// touched). Empty url omits the key. Creates the file if missing.
+// touched). Empty online_url omits the key. Creates the file if missing.
 func writeSparkAppSection(dir, appID, appURL string) error {
 	path := filepath.Join(dir, sparkJSONRelPath)
 	doc := map[string]interface{}{}
@@ -118,7 +118,7 @@ func writeSparkAppSection(dir, appID, appURL string) error {
 	}
 	app := map[string]interface{}{"id": appID}
 	if appURL != "" {
-		app["url"] = appURL
+		app["online_url"] = appURL
 	}
 	doc["app"] = app
 	out, err := json.MarshalIndent(doc, "", "  ")
@@ -144,10 +144,10 @@ func syncSparkAppURL(rctx *common.RuntimeContext, appID, onlineURL string) {
 		return
 	}
 	if werr := writeSparkAppSection(".", appID, onlineURL); werr != nil {
-		fmt.Fprintf(rctx.IO().ErrOut, "warning: failed to sync app.url into %s: %v\n", sparkJSONRelPath, werr)
+		fmt.Fprintf(rctx.IO().ErrOut, "warning: failed to sync app.online_url into %s: %v\n", sparkJSONRelPath, werr)
 		return
 	}
-	fmt.Fprintf(rctx.IO().ErrOut, "app.url synced into %s\n", sparkJSONRelPath)
+	fmt.Fprintf(rctx.IO().ErrOut, "app.online_url synced into %s\n", sparkJSONRelPath)
 }
 
 // writeSparkScaffoldFields merge-writes the scaffold-owned fields into

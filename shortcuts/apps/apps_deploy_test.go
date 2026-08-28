@@ -623,7 +623,7 @@ func TestAppDevPublishExecute_SyncSuccess(t *testing.T) {
 	var doc map[string]interface{}
 	_ = json.Unmarshal(b, &doc)
 	app, _ := doc["app"].(map[string]interface{})
-	if app == nil || app["id"] != "app_x" || app["url"] != "https://x.feishuapp.cn/app/app_x" {
+	if app == nil || app["id"] != "app_x" || app["online_url"] != "https://x.feishuapp.cn/app/app_x" {
 		t.Errorf("app section after publish = %v", doc["app"])
 	}
 }
@@ -656,7 +656,7 @@ func TestAppDevPublishExecute_BuildlessSync(t *testing.T) {
 	var doc map[string]interface{}
 	_ = json.Unmarshal(b, &doc)
 	app, _ := doc["app"].(map[string]interface{})
-	if app == nil || app["url"] != "https://x/app/app_x" {
+	if app == nil || app["online_url"] != "https://x/app/app_x" {
 		t.Errorf("app section after publish = %v", doc["app"])
 	}
 }
@@ -686,8 +686,8 @@ func TestAppDevPublishExecute_AsyncSuccess(t *testing.T) {
 	}
 	// No online_url -> the app section carries no url key.
 	b, _ := os.ReadFile(filepath.Join(root, sparkJSONRelPath))
-	if strings.Contains(string(b), "\"url\"") {
-		t.Errorf("spark.json must not gain app.url on a still-publishing release: %s", b)
+	if strings.Contains(string(b), "\"online_url\"") {
+		t.Errorf("spark.json must not gain app.online_url on a still-publishing release: %s", b)
 	}
 }
 
@@ -903,7 +903,7 @@ func TestAppDevPublishExecute_MiaodaProtocol(t *testing.T) {
 	var doc map[string]interface{}
 	_ = json.Unmarshal(b, &doc)
 	app, _ := doc["app"].(map[string]interface{})
-	if app == nil || app["id"] != "app_x" || app["url"] != "https://x/app/app_x" {
+	if app == nil || app["id"] != "app_x" || app["online_url"] != "https://x/app/app_x" {
 		t.Errorf("app section = %v", doc["app"])
 	}
 	if doc["stack"] != "custom-webapp" || doc["build"] == nil {
@@ -931,7 +931,7 @@ func TestAppDevPublishExecute_MiaodaFlagBackfill(t *testing.T) {
 	if app == nil || app["id"] != "app_new1" {
 		t.Errorf("app section = %v", doc["app"])
 	}
-	if _, has := app["url"]; has {
+	if _, has := app["online_url"]; has {
 		t.Error("async publish must not write app.url")
 	}
 }
