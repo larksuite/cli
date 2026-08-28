@@ -2426,7 +2426,8 @@
                           },
                           "labels": {
                             "type": "object",
-                            "description": "数据标签配置。labels 对象的存在性即开关：不显示数据标签时省略整个 labels 字段；一旦传入 labels（即便 value/category/series/percentage 全部置为 false），数据标签仍会显示，且默认兜底显示 value。",
+                            "nullable": true,
+                            "description": "数据标签配置。labels 对象的存在性即开关：创建时不显示数据标签应省略整个 labels 字段；更新时传 null 可删除已有全局标签。一旦传入 labels 对象（即便 value/category/series/percentage 全部置为 false），数据标签仍会显示，且默认兜底显示 value。",
                             "properties": {
                               "position": {
                                 "type": "string",
@@ -4660,7 +4661,8 @@
                           },
                           "labels": {
                             "type": "object",
-                            "description": "数据标签配置。labels 对象的存在性即开关：不显示数据标签时省略整个 labels 字段；一旦传入 labels（即便 value/category/series/percentage 全部置为 false），数据标签仍会显示，且默认兜底显示 value。",
+                            "nullable": true,
+                            "description": "数据标签配置。labels 对象的存在性即开关：创建时不显示数据标签应省略整个 labels 字段；更新时传 null 可删除已有全局标签。一旦传入 labels 对象（即便 value/category/series/percentage 全部置为 false），数据标签仍会显示，且默认兜底显示 value。",
                             "properties": {
                               "position": {
                                 "type": "string",

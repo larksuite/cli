@@ -75,15 +75,15 @@ def dense_data_labels(
     chart_type = str(chart_type).lower()
     label_count = category_count * labeled_series_count
     if chart_type in {"pie", "doughnut"}:
-        dense = category_count > 8 or (category_count >= 6 and (width < 720 or height < 440))
-        slot = width / max(1, category_count)
+        labels_per_side = max(1, math.ceil(category_count / 2))
+        slot = max(1.0, float(height) - 160) / labels_per_side
+        dense = slot < 24
     else:
         horizontal_reserve = 230 if chart_type == "combo" else 170
         plot_width = max(1.0, float(width) - horizontal_reserve)
         slot = plot_width / label_count
         dense = (
-            label_count > 24
-            or (category_count >= 8 and labeled_series_count >= 2 and slot < 42)
+            (category_count >= 8 and labeled_series_count >= 2 and slot < 42)
             or (category_count >= 15 and slot < 36)
         )
     if not dense:
@@ -120,9 +120,8 @@ def recommend_chart_size(
     advice: list[str] = []
 
     if chart_type in {"pie", "doughnut"}:
-        width = max(width, 420 + 2 * max(120, max_units * 7 + 40))
-        if category_count > 6:
-            width += (category_count - 6) * 40
+        label_reserve = max(150, min(360, max_units * 7 + 60))
+        width = max(width, 420 + 2 * label_reserve)
         if labels_enabled:
             reasons.append("outside_slice_labels")
         if values:
@@ -181,24 +180,35 @@ def recommend_chart_size(
         width=width,
         height=height,
     )
-    density_only_insufficient = False
+    if label_density and chart_type not in {"pie", "doughnut"}:
+        target_slot = 42 if category_count >= 8 and series_count >= 2 else 36
+        required_width = reserve + category_count * series_count * target_slot
+        width = min(1600, _round_up(max(width, required_width)))
+        label_density = dense_data_labels(
+            chart_type=chart_type,
+            category_count=category_count,
+            labeled_series_count=series_count if labels_enabled else 0,
+            width=width,
+            height=height,
+        )
+        if not label_density:
+            reasons.append("expanded_for_data_labels")
     if label_density:
-        height += 40
         reasons.append("dense_data_labels")
-        advice.append("omit_global_labels_or_label_only_key_points")
+        advice.append("label_only_key_points")
         if label_density["estimated_label_count"] > 40:
             size_alone_is_insufficient = True
-            density_only_insufficient = category_count <= 20 and p75_units <= 12
             advice.append("split_series_or_use_top_n")
     if title:
         reasons.append("chart_title")
 
     height = min(720, _round_up(height))
     if size_alone_is_insufficient:
-        if density_only_insufficient:
-            width = min(width, 1200)
-        width = max(width, 1200)
-        height = max(height, 520)
+        if chart_type in {"pie", "doughnut"}:
+            height = max(height, 520)
+        else:
+            width = max(width, 1200)
+            height = max(height, 520)
 
     return {
         "minimum_size": minimum,

@@ -656,6 +656,23 @@ func TestChartSemanticShortcuts_DataLabelCombinations(t *testing.T) {
 	}
 }
 
+func TestChartConfigUpdate_DataLabelsNoneSendsExplicitDeletion(t *testing.T) {
+	t.Parallel()
+	chartConfigUpdate := shortcutFromRegistry(t, "+chart-config-update")
+	body := parseDryRunBody(t, chartConfigUpdate, []string{
+		"--url", testURL,
+		"--sheet-id", testSheetID,
+		"--chart-id", "chart-1",
+		"--data-labels", "none",
+	})
+	snapshot := chartDryRunSnapshot(t, decodeToolInput(t, body, "manage_chart_object"))
+	plot := snapshot["plotArea"].(map[string]interface{})["plot"].(map[string]interface{})
+	labels, exists := plot["labels"]
+	if !exists || labels != nil {
+		t.Fatalf("labels = %#v (exists=%t), want explicit null deletion marker", labels, exists)
+	}
+}
+
 func TestChartConfigUpdate_DataLabelPositionDoesNotEnableLabels(t *testing.T) {
 	t.Parallel()
 	current := map[string]interface{}{

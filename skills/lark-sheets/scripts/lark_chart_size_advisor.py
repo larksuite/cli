@@ -242,7 +242,7 @@ def _header_values(matrices: list[list[list[Any]]], direction: str) -> list[Any]
     return [row[0] for row in matrix]
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Recommend chart width and height before +chart-create-basic")
     parser.add_argument("target", help="Spreadsheet URL or spreadsheet token")
     worksheet = parser.add_mutually_exclusive_group()
@@ -258,7 +258,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--legend-position", default="bottom")
     parser.add_argument("--title", default="")
     parser.add_argument("--timeout", type=int, default=60)
-    return parser.parse_args()
+    args, _ = parser.parse_known_args(argv)
+    return args
 
 
 def main() -> None:

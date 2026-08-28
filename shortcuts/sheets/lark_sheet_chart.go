@@ -1041,6 +1041,7 @@ func applyChartConfigPatch(
 	plot := chartMap(plotArea["plot"])
 	plotArea["plot"] = plot
 	next["plotArea"] = plotArea
+	removeGlobalLabels := false
 	for _, item := range []struct {
 		key      string
 		axisType string
@@ -1090,6 +1091,7 @@ func applyChartConfigPatch(
 	if value, ok := updates["data_labels"].(string); ok {
 		if value == "none" {
 			delete(plot, "labels")
+			removeGlobalLabels = true
 		} else {
 			labels := map[string]interface{}{
 				"series":     value == "series",
@@ -1149,7 +1151,13 @@ func applyChartConfigPatch(
 		patch["style"] = map[string]interface{}{"colorTheme": colorTheme}
 	}
 	if plotChanged {
-		patch["plotArea"] = plotArea
+		patchPlotArea := cloneChartMap(plotArea)
+		if removeGlobalLabels {
+			patchPlot := chartMap(patchPlotArea["plot"])
+			patchPlot["labels"] = nil
+			patchPlotArea["plot"] = patchPlot
+		}
+		patch["plotArea"] = patchPlotArea
 	}
 	return patch, chartViewModel(next)
 }
