@@ -35,6 +35,32 @@ func (p testProvider) ResolveInterceptor(context.Context) exttransport.Intercept
 	return p.interceptor
 }
 
+type rewriteTestProvider struct {
+	testProvider
+	rewriter     exttransport.URLRewriter
+	rewriteCalls *int
+}
+
+func (p rewriteTestProvider) ResolveURLRewriter(context.Context) exttransport.URLRewriter {
+	if p.rewriteCalls != nil {
+		*p.rewriteCalls++
+	}
+	return p.rewriter
+}
+
+type scopedRewriteTestProvider struct {
+	rewriteTestProvider
+	supported exttransport.RequestClass
+}
+
+func (p scopedRewriteTestProvider) SupportsRequestClass(class exttransport.RequestClass) bool {
+	return class == p.supported
+}
+
+type rewriteFunc func(string) string
+
+func (f rewriteFunc) RewriteURL(rawURL string) string { return f(rawURL) }
+
 type scopedTestProvider struct {
 	testProvider
 	supported exttransport.RequestClass
@@ -51,6 +77,15 @@ type testHeaderInterceptor struct {
 func (i *testHeaderInterceptor) PreRoundTrip(req *http.Request) func(*http.Response, error) {
 	i.calls++
 	req.Header.Set("X-Test-Platform", "routed")
+	return nil
+}
+
+type urlCapturingInterceptor struct {
+	url string
+}
+
+func (i *urlCapturingInterceptor) PreRoundTrip(req *http.Request) func(*http.Response, error) {
+	i.url = req.URL.String()
 	return nil
 }
 
@@ -167,6 +202,197 @@ func TestHTTPPolicyRouterResolvesProviderOnce(t *testing.T) {
 
 	if resolveCalls != 1 {
 		t.Fatalf("ResolveInterceptor() calls = %d, want 1 per router", resolveCalls)
+	}
+}
+
+func TestHTTPPolicyRouterRewriteOnlyProviderDoesNotMutateCaller(t *testing.T) {
+	previousProvider := exttransport.GetProvider()
+	exttransport.Register(rewriteTestProvider{
+		testProvider: testProvider{},
+		rewriter: rewriteFunc(func(rawURL string) string {
+			return strings.Replace(rawURL, "source.example.test", "mirror.example.test", 1)
+		}),
+	})
+	t.Cleanup(func() { exttransport.Register(previousProvider) })
+
+	var baseURL string
+	router := NewHTTPPolicyRouter(
+		roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			baseURL = req.URL.String()
+			return noContentResponse(req), nil
+		}),
+		roundTripFunc(func(*http.Request) (*http.Response, error) {
+			t.Fatal("external policy selected for explicit platform request")
+			return nil, nil
+		}),
+	)
+
+	const originalURL = "https://source.example.test/open-apis/test?x=1"
+	req, err := http.NewRequest(http.MethodGet, originalURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req = WithRequestClass(req, exttransport.RequestClassPlatform)
+	resp, err := router.RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	const rewrittenURL = "https://mirror.example.test/open-apis/test?x=1"
+	if baseURL != rewrittenURL {
+		t.Fatalf("base URL = %q, want %q", baseURL, rewrittenURL)
+	}
+	if got := req.URL.String(); got != originalURL {
+		t.Fatalf("caller request URL = %q, want %q", got, originalURL)
+	}
+}
+
+func TestHTTPPolicyRouterInterceptorObservesRewrittenURL(t *testing.T) {
+	previousProvider := exttransport.GetProvider()
+	interceptor := &urlCapturingInterceptor{}
+	exttransport.Register(rewriteTestProvider{
+		testProvider: testProvider{interceptor: interceptor},
+		rewriter: rewriteFunc(func(rawURL string) string {
+			return strings.Replace(rawURL, "source.example.test", "mirror.example.test", 1)
+		}),
+	})
+	t.Cleanup(func() { exttransport.Register(previousProvider) })
+
+	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return noContentResponse(req), nil
+	})
+	transport := WrapWithExtension(base)
+	req, err := http.NewRequest(http.MethodGet, "https://source.example.test/path", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := transport.RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	if interceptor.url != "https://mirror.example.test/path" {
+		t.Fatalf("interceptor URL = %q, want rewritten URL", interceptor.url)
+	}
+}
+
+func TestHTTPPolicyRouterClassifiesOriginalURLsAndScopesOnlyInterceptor(t *testing.T) {
+	previousProvider := exttransport.GetProvider()
+	interceptor := &testHeaderInterceptor{}
+	exttransport.Register(scopedRewriteTestProvider{
+		rewriteTestProvider: rewriteTestProvider{
+			testProvider: testProvider{interceptor: interceptor},
+			rewriter: rewriteFunc(func(rawURL string) string {
+				rawURL = strings.Replace(rawURL, "open.feishu.cn", "open.mirror.test", 1)
+				return strings.Replace(rawURL, ".example.test", ".mirror.test", 1)
+			}),
+		},
+		supported: exttransport.RequestClassPlatform,
+	})
+	t.Cleanup(func() { exttransport.Register(previousProvider) })
+
+	type receivedRequest struct {
+		url    string
+		header string
+	}
+	var platform, external receivedRequest
+	router := NewHTTPPolicyRouter(
+		roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			platform = receivedRequest{url: req.URL.String(), header: req.Header.Get("X-Test-Platform")}
+			return noContentResponse(req), nil
+		}),
+		roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			external = receivedRequest{url: req.URL.String(), header: req.Header.Get("X-Test-Platform")}
+			return noContentResponse(req), nil
+		}),
+	)
+
+	for _, rawURL := range []string{
+		"https://open.feishu.cn/open-apis/test",
+		"https://external.example.test/file",
+	} {
+		req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := router.RoundTrip(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+	}
+
+	if platform.url != "https://open.mirror.test/open-apis/test" {
+		t.Fatalf("platform URL = %q, want rewritten platform URL", platform.url)
+	}
+	if platform.header != "routed" {
+		t.Fatalf("platform interceptor header = %q, want routed", platform.header)
+	}
+	if external.url != "https://external.mirror.test/file" {
+		t.Fatalf("external URL = %q, want rewritten URL", external.url)
+	}
+	if external.header != "" {
+		t.Fatalf("external interceptor header = %q, want empty for scoped interceptor", external.header)
+	}
+	if interceptor.calls != 1 {
+		t.Fatalf("interceptor calls = %d, want platform only", interceptor.calls)
+	}
+}
+
+func TestHTTPPolicyRouterRejectsInvalidRewriteBeforeBase(t *testing.T) {
+	previousProvider := exttransport.GetProvider()
+	exttransport.Register(rewriteTestProvider{
+		testProvider: testProvider{},
+		rewriter:     rewriteFunc(func(string) string { return "/relative" }),
+	})
+	t.Cleanup(func() { exttransport.Register(previousProvider) })
+
+	baseCalls := 0
+	base := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		baseCalls++
+		return nil, nil
+	})
+	router := NewHTTPPolicyRouter(base, base)
+	req, err := http.NewRequest(http.MethodGet, "https://example.test/path", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := router.RoundTrip(req)
+	if resp != nil {
+		t.Fatalf("response = %v, want nil", resp)
+	}
+	var configErr *errs.ConfigError
+	if !errors.As(err, &configErr) {
+		t.Fatalf("RoundTrip() error = %T %v, want *errs.ConfigError", err, err)
+	}
+	if baseCalls != 0 {
+		t.Fatalf("base calls = %d, want 0", baseCalls)
+	}
+}
+
+func TestHTTPPolicyRouterResolvesURLRewriterOnce(t *testing.T) {
+	interceptorCalls := 0
+	rewriteCalls := 0
+	previousProvider := exttransport.GetProvider()
+	exttransport.Register(rewriteTestProvider{
+		testProvider: testProvider{resolveCalls: &interceptorCalls},
+		rewriter:     rewriteFunc(func(rawURL string) string { return rawURL }),
+		rewriteCalls: &rewriteCalls,
+	})
+	t.Cleanup(func() { exttransport.Register(previousProvider) })
+
+	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return noContentResponse(req), nil
+	})
+	_ = NewHTTPPolicyRouter(base, base)
+
+	if interceptorCalls != 1 {
+		t.Fatalf("ResolveInterceptor() calls = %d, want 1 per router", interceptorCalls)
+	}
+	if rewriteCalls != 1 {
+		t.Fatalf("ResolveURLRewriter() calls = %d, want 1 per router", rewriteCalls)
 	}
 }
 

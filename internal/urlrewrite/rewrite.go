@@ -24,7 +24,14 @@ type Resolver struct {
 // Providers that do not implement URLRewriterProvider, and providers that
 // return a nil rewriter, produce an identity resolver.
 func Resolve(ctx context.Context) *Resolver {
-	p, ok := exttransport.GetProvider().(exttransport.URLRewriterProvider)
+	return ResolveProvider(ctx, exttransport.GetProvider())
+}
+
+// ResolveProvider resolves the URL rewriter from p. Callers that have already
+// selected a provider should use this function so related extension hooks use
+// the same provider instance.
+func ResolveProvider(ctx context.Context, provider exttransport.Provider) *Resolver {
+	p, ok := provider.(exttransport.URLRewriterProvider)
 	if !ok {
 		return &Resolver{}
 	}

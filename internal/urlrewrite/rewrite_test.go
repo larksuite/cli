@@ -67,6 +67,23 @@ func TestRewriteIdentityWithoutURLRewriter(t *testing.T) {
 	}
 }
 
+func TestResolveProviderUsesCapturedProvider(t *testing.T) {
+	captured := testProvider{rewriter: rewriteFunc(func(string) string {
+		return "https://captured.example.test/path"
+	})}
+	withProvider(t, testProvider{rewriter: rewriteFunc(func(string) string {
+		return "https://registered.example.test/path"
+	})})
+
+	got, err := ResolveProvider(context.Background(), captured).Rewrite("https://source.example.test/path")
+	if err != nil {
+		t.Fatalf("Rewrite() error = %v", err)
+	}
+	if got != "https://captured.example.test/path" {
+		t.Fatalf("Rewrite() = %q, want URL from captured provider", got)
+	}
+}
+
 func TestRewriteIdentityPreservesRawURL(t *testing.T) {
 	raw := "not a valid URL %2F?x=1+2&x=3"
 	withProvider(t, testProvider{rewriter: rewriteFunc(func(string) string { return raw })})
