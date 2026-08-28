@@ -374,6 +374,10 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 	// mechanically unchanged.
 	var hasConcealedCommands bool
 	runtime.surface, hasConcealedCommands = applyDistributionPresentation(rootCmd, cfg.presentation, denied)
+	if err := applyRewrittenRootUsageTemplate(ctx, rootCmd, runtime.surface); err != nil {
+		installRootUsageRewriteErrorGuard(rootCmd, err)
+		return finalizeFailedBuild(runtime, rootCmd)
+	}
 
 	// Resolve skill assets and canonical references before installing hooks.
 	// A declared customization is a build-integrity boundary: failure must
@@ -417,6 +421,19 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 
 	recordInventory(installResult)
 	return runtime, rootCmd, hookRegistry
+}
+
+func applyRewrittenRootUsageTemplate(ctx context.Context, root *cobra.Command, plan *surface.Plan) error {
+	template, err := rewrittenRootUsageTemplate(ctx, plan)
+	if err != nil {
+		return err
+	}
+	root.SetUsageTemplate(template)
+	return nil
+}
+
+func installRootUsageRewriteErrorGuard(root *cobra.Command, err error) {
+	installFatalGuard(root, func() error { return err })
 }
 
 func finalizeFailedBuild(runtime *buildRuntime, root *cobra.Command) (*buildRuntime, *cobra.Command, *hook.Registry) {

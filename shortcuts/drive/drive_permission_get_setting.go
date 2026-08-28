@@ -13,6 +13,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/urlrewrite"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -163,11 +164,11 @@ func drivePermissionGetSettingTypeAllowed(docType string) bool {
 	return ok
 }
 
-func (s drivePermissionGetSettingSpec) url(runtime *common.RuntimeContext) string {
+func (s drivePermissionGetSettingSpec) url(runtime *common.RuntimeContext) (string, error) {
 	resourceKind, ok := findDrivePermissionGetSettingResourceKind(s.Type)
 	token := strings.TrimSpace(s.Token)
 	if !ok || token == "" {
-		return ""
+		return "", nil
 	}
 
 	brand := core.LarkBrand("")
@@ -178,7 +179,7 @@ func (s drivePermissionGetSettingSpec) url(runtime *common.RuntimeContext) strin
 	if brand == core.BrandLark {
 		host = "https://www.larksuite.com"
 	}
-	return host + resourceKind.CanonicalPath + url.PathEscape(token)
+	return urlrewrite.Rewrite(runtime.Ctx(), host+resourceKind.CanonicalPath+url.PathEscape(token))
 }
 
 func validateDrivePermissionGetSettingToken(token string) error {
@@ -277,12 +278,16 @@ var DrivePermissionGetSetting = common.Shortcut{
 			).WithCause(err)
 		}
 
+		displayURL, err := spec.url(runtime)
+		if err != nil {
+			return err
+		}
 		out := map[string]interface{}{"permission_public": permissionPublic}
 		runtime.OutFormat(out, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "Type:  %s\n", spec.Type)
 			fmt.Fprintf(w, "Token: %s\n", spec.Token)
-			if url := spec.url(runtime); url != "" {
-				fmt.Fprintf(w, "URL:   %s\n", url)
+			if displayURL != "" {
+				fmt.Fprintf(w, "URL:   %s\n", displayURL)
 			}
 			fmt.Fprintf(w, "Permission settings:\n%s\n", permissionPublicPretty)
 		})

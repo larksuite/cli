@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	exttransport "github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
@@ -25,6 +26,24 @@ import (
 )
 
 const runLiveSkillsTestsEnv = "LARKSUITE_CLI_RUN_LIVE_SKILLS_TESTS"
+
+type updateURLRewriteProvider struct{}
+
+func (updateURLRewriteProvider) Name() string { return "test-url-rewrite" }
+
+func (updateURLRewriteProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
+	return nil
+}
+
+func (updateURLRewriteProvider) ResolveURLRewriter(context.Context) exttransport.URLRewriter {
+	return updateURLRewriter{}
+}
+
+type updateURLRewriter struct{}
+
+func (updateURLRewriter) RewriteURL(rawURL string) string {
+	return strings.Replace(rawURL, "github.com", "mirror.example.test", 1)
+}
 
 // newTestFactory creates a test factory with minimal config.
 func newTestFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer) {
@@ -907,13 +926,41 @@ func TestReleaseURL(t *testing.T) {
 	}
 }
 
+func TestUpdateCheckRewritesPresentationURLs(t *testing.T) {
+	previous := exttransport.GetProvider()
+	exttransport.Register(updateURLRewriteProvider{})
+	t.Cleanup(func() { exttransport.Register(previous) })
+
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json", "--check"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	t.Cleanup(func() { fetchLatest = origFetch })
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	t.Cleanup(func() { currentVersion = origVersion })
+	mockDetect(t, selfupdate.DetectResult{Method: selfupdate.InstallNpm, NpmAvailable: true})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("update --check: %v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, "https://mirror.example.test/larksuite/cli/releases/tag/v2.0.0") || !strings.Contains(got, "https://mirror.example.test/larksuite/cli/blob/main/CHANGELOG.md") {
+		t.Fatalf("presentation URLs were not rewritten:\n%s", got)
+	}
+}
+
 func TestPermissionHint(t *testing.T) {
 	origOS := currentOS
 	defer func() { currentOS = origOS }()
 
 	// Linux + npm: EACCES should produce a hint with npm prefix guidance.
 	currentOS = "linux"
-	hint := permissionHint("EACCES: permission denied, access '/usr/local/lib'", "npm")
+	hint, err := permissionHint(context.Background(), "EACCES: permission denied, access '/usr/local/lib'", "npm")
+	if err != nil {
+		t.Fatalf("permissionHint() error = %v", err)
+	}
 	if !strings.Contains(hint, "npm global prefix") {
 		t.Errorf("expected npm prefix hint on linux, got: %s", hint)
 	}
@@ -922,7 +969,10 @@ func TestPermissionHint(t *testing.T) {
 	}
 
 	// Linux + pnpm: EACCES should point at pnpm setup, not npm prefix/sudo.
-	pnpmHint := permissionHint("EACCES: permission denied, access '/Users/x/Library/pnpm'", "pnpm")
+	pnpmHint, err := permissionHint(context.Background(), "EACCES: permission denied, access '/Users/x/Library/pnpm'", "pnpm")
+	if err != nil {
+		t.Fatalf("permissionHint() error = %v", err)
+	}
 	if !strings.Contains(pnpmHint, "pnpm setup") {
 		t.Errorf("expected pnpm setup hint, got: %s", pnpmHint)
 	}
@@ -932,14 +982,17 @@ func TestPermissionHint(t *testing.T) {
 
 	// Windows: EACCES hint is suppressed (no EACCES on Windows).
 	currentOS = "windows"
-	hint = permissionHint("EACCES: permission denied", "npm")
+	hint, err = permissionHint(context.Background(), "EACCES: permission denied", "npm")
+	if err != nil {
+		t.Fatalf("permissionHint() error = %v", err)
+	}
 	if hint != "" {
 		t.Errorf("expected empty hint on Windows, got: %s", hint)
 	}
 
 	// Non-EACCES error: always empty.
 	currentOS = "linux"
-	if got := permissionHint("some other error", "npm"); got != "" {
+	if got, err := permissionHint(context.Background(), "some other error", "npm"); err != nil || got != "" {
 		t.Errorf("expected empty hint for non-EACCES, got: %s", got)
 	}
 }

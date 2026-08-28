@@ -4,6 +4,7 @@
 package wiki
 
 import (
+	"context"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -18,14 +19,14 @@ import (
 //
 // Shared by +node-create and +node-copy, hence kept here rather than in either
 // command's file.
-func wikiNodeURL(brand core.LarkBrand, node *wikiNodeRecord) string {
+func wikiNodeURL(ctx context.Context, brand core.LarkBrand, node *wikiNodeRecord) (string, error) {
 	if node == nil {
-		return ""
+		return "", nil
 	}
 	if u := strings.TrimSpace(node.URL); u != "" {
-		return u
+		return u, nil
 	}
-	return common.BuildResourceURL(brand, "wiki", node.NodeToken)
+	return common.BuildResourceURL(ctx, brand, "wiki", node.NodeToken)
 }
 
 func appendWikiProblemHint(err error, hint string) error {

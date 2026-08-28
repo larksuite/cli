@@ -14,6 +14,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/urlrewrite"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -78,7 +79,11 @@ func parseCreateProgressRecordParams(runtime *common.RuntimeContext) (*createPro
 
 	sourceURL := runtime.Str("source-url")
 	if sourceURL == "" {
-		sourceURL = core.ResolveOpenBaseURL(runtime.Config.Brand) + "/app"
+		var err error
+		sourceURL, err = urlrewrite.Rewrite(runtime.Ctx(), core.ResolveOpenBaseURL(runtime.Config.Brand)+"/app")
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var progressRate *ProgressRateV1

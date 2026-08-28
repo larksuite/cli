@@ -4,12 +4,15 @@
 package doc
 
 import (
+	"context"
 	"fmt"
 	"html"
 	"net/url"
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/larksuite/cli/internal/urlrewrite"
 )
 
 type imMarkdownContext struct {
@@ -101,25 +104,36 @@ func isIMMarkdownFetch(runtime interface{ Str(string) string }) bool {
 	return strings.TrimSpace(runtime.Str("doc-format")) == "im-markdown"
 }
 
-func applyFetchIMMarkdown(data map[string]interface{}, docInput string) {
+func applyFetchIMMarkdown(ctx context.Context, data map[string]interface{}, docInput string) error {
 	doc, ok := data["document"].(map[string]interface{})
 	if !ok {
-		return
+		return nil
 	}
 	content, ok := doc["content"].(string)
 	if !ok {
-		return
+		return nil
 	}
-	doc["content"] = convertToIMMarkdown(content, newIMMarkdownContext(docInput))
+	imCtx, err := newIMMarkdownContext(ctx, docInput)
+	if err != nil {
+		return err
+	}
+	doc["content"] = convertToIMMarkdown(content, imCtx)
+	return nil
 }
 
-func newIMMarkdownContext(docInput string) imMarkdownContext {
+func newIMMarkdownContext(ctx context.Context, docInput string) (imMarkdownContext, error) {
 	base := "https://larkoffice.com"
 	raw := strings.TrimSpace(docInput)
 	if extracted, ok := imMarkdownBaseURLFromInput(raw); ok {
 		base = extracted
+	} else {
+		var err error
+		base, err = urlrewrite.Rewrite(ctx, base)
+		if err != nil {
+			return imMarkdownContext{}, err
+		}
 	}
-	return imMarkdownContext{baseURL: base}
+	return imMarkdownContext{baseURL: base}, nil
 }
 
 func (c imMarkdownContext) withBlockquote() imMarkdownContext {

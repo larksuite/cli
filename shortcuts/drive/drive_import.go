@@ -194,7 +194,9 @@ func RunImport(ctx context.Context, runtime *common.RuntimeContext, p ImportPara
 	if statusURL := strings.TrimSpace(status.URL); statusURL != "" {
 		out["url"] = statusURL
 	} else if status.Token != "" {
-		if u := common.BuildResourceURL(runtime.Config.Brand, normalizeDriveImportKindForURL(resultType, spec.DocType), status.Token); u != "" {
+		if u, err := common.BuildResourceURL(ctx, runtime.Config.Brand, normalizeDriveImportKindForURL(resultType, spec.DocType), status.Token); err != nil {
+			return err
+		} else if u != "" {
 			out["url"] = u
 		}
 	}

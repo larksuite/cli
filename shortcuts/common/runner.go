@@ -444,6 +444,7 @@ func (ctx *RuntimeContext) APIClassifyContext() errclass.ClassifyContext {
 		larkCmd = strings.TrimPrefix(ctx.Cmd.CommandPath(), "lark ")
 	}
 	return errclass.ClassifyContext{
+		Context:  ctx.Ctx(),
 		Brand:    string(ctx.Config.Brand),
 		AppID:    ctx.Config.AppID,
 		Identity: string(ctx.As()),

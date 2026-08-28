@@ -141,7 +141,10 @@ var DriveInspect = common.Shortcut{
 		}
 
 		// Step 4: Build the resolved URL.
-		resolvedURL := common.BuildResourceURL(runtime.Config.Brand, docType, docToken)
+		resolvedURL, err := common.BuildResourceURL(ctx, runtime.Config.Brand, docType, docToken)
+		if err != nil {
+			return err
+		}
 
 		// Step 5: Build output.
 		result := map[string]interface{}{

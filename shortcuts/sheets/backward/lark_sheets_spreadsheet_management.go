@@ -181,7 +181,9 @@ var SheetCreate = common.Shortcut{
 		url, _ := spreadsheet["url"].(string)
 		if url = strings.TrimSpace(url); url != "" {
 			out["url"] = url
-		} else if u := common.BuildResourceURL(runtime.Config.Brand, "sheet", token); u != "" {
+		} else if u, err := common.BuildResourceURL(ctx, runtime.Config.Brand, "sheet", token); err != nil {
+			return err
+		} else if u != "" {
 			out["url"] = u
 		}
 		if grant := common.AutoGrantCurrentUserDrivePermission(runtime, token, "sheet"); grant != nil {

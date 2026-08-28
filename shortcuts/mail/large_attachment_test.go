@@ -4,6 +4,7 @@
 package mail
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"os"
@@ -12,12 +13,38 @@ import (
 
 	"github.com/spf13/cobra"
 
+	exttransport "github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
 )
+
+type largeAttachmentRewriteProvider struct {
+	rewriter exttransport.URLRewriter
+}
+
+func (largeAttachmentRewriteProvider) Name() string { return "mail-url-rewrite" }
+
+func (largeAttachmentRewriteProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
+	return nil
+}
+
+func (p largeAttachmentRewriteProvider) ResolveURLRewriter(context.Context) exttransport.URLRewriter {
+	return p.rewriter
+}
+
+type largeAttachmentRewriteFunc func(string) string
+
+func (f largeAttachmentRewriteFunc) RewriteURL(rawURL string) string { return f(rawURL) }
+
+func withLargeAttachmentURLRewriter(t *testing.T, rewriter exttransport.URLRewriter) {
+	t.Helper()
+	previous := exttransport.GetProvider()
+	exttransport.Register(largeAttachmentRewriteProvider{rewriter: rewriter})
+	t.Cleanup(func() { exttransport.Register(previous) })
+}
 
 func TestEstimateBase64EMLSize(t *testing.T) {
 	// 3 bytes raw → 4 bytes base64 + ~200 overhead
@@ -117,6 +144,40 @@ func TestBuildLargeAttachmentPreviewURL(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("buildLargeAttachmentPreviewURL(%s, %s) = %q, want %q", tt.brand, tt.token, got, tt.want)
 		}
+	}
+}
+
+func TestBuildRewrittenLargeAttachmentContent(t *testing.T) {
+	withLargeAttachmentURLRewriter(t, largeAttachmentRewriteFunc(func(rawURL string) string {
+		return strings.Replace(rawURL, "https://", "https://mirror.example/", 1)
+	}))
+	results := []largeAttachmentResult{{FileName: "report.pdf", FileSize: 1024, FileToken: "token"}}
+
+	html, err := buildRewrittenLargeAttachmentHTML(context.Background(), core.BrandFeishu, "en_us", results)
+	if err != nil {
+		t.Fatalf("buildRewrittenLargeAttachmentHTML() error: %v", err)
+	}
+	if !strings.Contains(html, "https://mirror.example/www.feishu.cn/mail/page/attachment?token=token") {
+		t.Fatalf("HTML does not contain rewritten preview URL: %s", html)
+	}
+	if !strings.Contains(html, "https://mirror.example/lf-larkemail.bytetos.com/") {
+		t.Fatalf("HTML does not contain rewritten icon URL: %s", html)
+	}
+
+	text, err := buildRewrittenLargeAttachmentPlainText(context.Background(), core.BrandFeishu, "en_us", results)
+	if err != nil {
+		t.Fatalf("buildRewrittenLargeAttachmentPlainText() error: %v", err)
+	}
+	if !strings.Contains(text, "https://mirror.example/www.feishu.cn/mail/page/attachment?token=token") {
+		t.Fatalf("text does not contain rewritten preview URL: %s", text)
+	}
+}
+
+func TestBuildRewrittenLargeAttachmentContentRejectsInvalidURL(t *testing.T) {
+	withLargeAttachmentURLRewriter(t, largeAttachmentRewriteFunc(func(string) string { return "invalid" }))
+	results := []largeAttachmentResult{{FileName: "report.pdf", FileSize: 1024, FileToken: "token"}}
+	if _, err := buildRewrittenLargeAttachmentHTML(context.Background(), core.BrandFeishu, "en_us", results); err == nil {
+		t.Fatal("buildRewrittenLargeAttachmentHTML() error = nil, want invalid rewrite error")
 	}
 }
 

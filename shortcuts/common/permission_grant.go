@@ -212,7 +212,10 @@ func annotateGrantPermissionError(runtime *RuntimeContext, result map[string]int
 	if runtime.Config == nil || runtime.Config.AppID == "" {
 		return
 	}
-	consoleURL := registry.BuildConsoleScopeURL(runtime.Config.Brand, runtime.Config.AppID, recommended)
+	consoleURL, rewriteErr := registry.BuildConsoleScopeURL(runtime.Ctx(), runtime.Config.Brand, runtime.Config.AppID, recommended)
+	if rewriteErr != nil {
+		return
+	}
 	if consoleURL == "" {
 		return
 	}

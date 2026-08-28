@@ -6,12 +6,14 @@ package event
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
 	"github.com/larksuite/cli/internal/core"
 	eventlib "github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/urlrewrite"
 )
 
 // Landing-page contract for the scan-to-enable deep link, verified against the
@@ -67,28 +69,28 @@ func encodeAddons(a ManifestAddons) (string, error) {
 }
 
 // consoleAddonsURL builds the scan-to-enable deep link carrying incremental scopes/events/callbacks.
-func consoleAddonsURL(brand core.LarkBrand, appID string, a ManifestAddons) (string, error) {
+func consoleAddonsURL(ctx context.Context, brand core.LarkBrand, appID string, a ManifestAddons) (string, error) {
 	encoded, err := encodeAddons(a)
 	if err != nil {
 		return "", err
 	}
 	host := core.ResolveEndpoints(brand).Open
-	return fmt.Sprintf("%s%s?%s=%s&addons=%s", host, addonsLandingPath, addonsClientIDParam, appID, encoded), nil
+	return urlrewrite.Rewrite(ctx, fmt.Sprintf("%s%s?%s=%s&addons=%s", host, addonsLandingPath, addonsClientIDParam, appID, encoded))
 }
 
 // consoleLandingURL is the bare landing page (no addons) — fallback when encoding fails.
-func consoleLandingURL(brand core.LarkBrand, appID string) string {
+func consoleLandingURL(ctx context.Context, brand core.LarkBrand, appID string) (string, error) {
 	host := core.ResolveEndpoints(brand).Open
-	return fmt.Sprintf("%s%s?%s=%s", host, addonsLandingPath, addonsClientIDParam, appID)
+	return urlrewrite.Rewrite(ctx, fmt.Sprintf("%s%s?%s=%s", host, addonsLandingPath, addonsClientIDParam, appID))
 }
 
 // addonsHintURL returns the scan URL, degrading to the bare landing page on encode error.
-func addonsHintURL(brand core.LarkBrand, appID string, a ManifestAddons) string {
-	url, err := consoleAddonsURL(brand, appID, a)
+func addonsHintURL(ctx context.Context, brand core.LarkBrand, appID string, a ManifestAddons) (string, error) {
+	url, err := consoleAddonsURL(ctx, brand, appID, a)
 	if err != nil {
-		return consoleLandingURL(brand, appID)
+		return consoleLandingURL(ctx, brand, appID)
 	}
-	return url
+	return url, nil
 }
 
 // missingScopeAddons routes missing scopes into the identity-appropriate section.

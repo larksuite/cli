@@ -38,7 +38,10 @@ func normalizeMeetingQueryPermissionError(runtime *common.RuntimeContext, err er
 		permissionErr.WithHint("ask the app developer to enable scope %s", meetingQueryBotScope)
 		permissionErr.WithMissingScopes(meetingQueryBotScope).WithIdentity(string(core.AsBot))
 		if runtime.Config != nil {
-			consoleURL := registry.BuildConsoleScopeURL(runtime.Config.Brand, runtime.Config.AppID, meetingQueryBotScope)
+			consoleURL, rewriteErr := registry.BuildConsoleScopeURL(runtime.Ctx(), runtime.Config.Brand, runtime.Config.AppID, meetingQueryBotScope)
+			if rewriteErr != nil {
+				return rewriteErr
+			}
 			if consoleURL != "" {
 				permissionErr.WithConsoleURL(consoleURL)
 			}

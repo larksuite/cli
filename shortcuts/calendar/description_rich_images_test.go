@@ -5,6 +5,7 @@ package calendar
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"image"
@@ -71,7 +72,10 @@ func TestBuildCalendarImagePreviewURL(t *testing.T) {
 		{core.BrandFeishu, "feishu.cn"},
 		{core.BrandLark, "larksuite"},
 	} {
-		raw := buildCalendarImagePreviewURL(tc.brand, "boxcnTOKEN123", 416, 306, 142568)
+		raw, err := buildCalendarImagePreviewURL(context.Background(), tc.brand, "boxcnTOKEN123", 416, 306, 142568)
+		if err != nil {
+			t.Fatalf("buildCalendarImagePreviewURL() error = %v", err)
+		}
 		u, err := url.Parse(raw)
 		if err != nil {
 			t.Fatalf("built URL not parseable: %v", err)
@@ -90,7 +94,10 @@ func TestBuildCalendarImagePreviewURL(t *testing.T) {
 	}
 
 	// With unknown dimensions the helper params are omitted entirely.
-	raw := buildCalendarImagePreviewURL(core.BrandFeishu, "boxcnTOKEN123", 0, 0, 0)
+	raw, err := buildCalendarImagePreviewURL(context.Background(), core.BrandFeishu, "boxcnTOKEN123", 0, 0, 0)
+	if err != nil {
+		t.Fatalf("buildCalendarImagePreviewURL() error = %v", err)
+	}
 	if strings.Contains(raw, "im_w") || strings.Contains(raw, "im_size") {
 		t.Errorf("expected no dimension params for unknown size, got %q", raw)
 	}

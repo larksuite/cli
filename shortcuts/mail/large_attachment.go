@@ -17,6 +17,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/urlrewrite"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
@@ -282,6 +283,43 @@ func buildLargeAttachmentItems(brand core.LarkBrand, lang string, results []larg
 	return items.String()
 }
 
+// buildRewrittenLargeAttachmentItems applies the optional URL rewrite extension
+// to the generated attachment preview and icon URLs before putting them in the
+// message body.
+func buildRewrittenLargeAttachmentItems(ctx context.Context, brand core.LarkBrand, lang string, results []largeAttachmentResult) (string, error) {
+	if len(results) == 0 {
+		return "", nil
+	}
+	downloadText := "Download"
+	if strings.HasPrefix(lang, "zh") {
+		downloadText = "下载"
+	}
+	iconCDN := iconCDNCN
+	if brand == core.BrandLark {
+		iconCDN = iconCDNEN
+	}
+	var items strings.Builder
+	for _, att := range results {
+		iconURL, err := urlrewrite.Rewrite(ctx, iconCDN+fileTypeIcon(att.FileName))
+		if err != nil {
+			return "", err
+		}
+		previewURL, err := urlrewrite.Rewrite(ctx, buildLargeAttachmentPreviewURL(brand, att.FileToken))
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&items, largeAttItemTpl,
+			htmlEscape(iconURL),
+			htmlEscape(att.FileName),
+			htmlEscape(common.FormatSize(att.FileSize)),
+			htmlEscape(previewURL),
+			htmlEscape(att.FileToken),
+			downloadText,
+		)
+	}
+	return items.String(), nil
+}
+
 func buildLargeAttachmentHTML(brand core.LarkBrand, lang string, results []largeAttachmentResult) string {
 	if len(results) == 0 {
 		return ""
@@ -296,6 +334,26 @@ func buildLargeAttachmentHTML(brand core.LarkBrand, lang string, results []large
 		timestamp = timestamp[:9]
 	}
 	return fmt.Sprintf(largeAttContainerTpl, timestamp, title, buildLargeAttachmentItems(brand, lang, results))
+}
+
+func buildRewrittenLargeAttachmentHTML(ctx context.Context, brand core.LarkBrand, lang string, results []largeAttachmentResult) (string, error) {
+	if len(results) == 0 {
+		return "", nil
+	}
+	appName := brandDisplayName(brand, lang)
+	title := "Large file from " + appName + " Mail"
+	if strings.HasPrefix(lang, "zh") {
+		title = "来自" + appName + "邮箱的超大附件"
+	}
+	timestamp := fmt.Sprintf("%d", time.Now().UnixMilli())
+	if len(timestamp) > 9 {
+		timestamp = timestamp[:9]
+	}
+	items, err := buildRewrittenLargeAttachmentItems(ctx, brand, lang, results)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(largeAttContainerTpl, timestamp, title, items), nil
 }
 
 func buildLargeAttachmentPlainText(brand core.LarkBrand, lang string, results []largeAttachmentResult) string {
@@ -328,6 +386,42 @@ func buildLargeAttachmentPlainText(brand core.LarkBrand, lang string, results []
 		}
 	}
 	return sb.String()
+}
+
+func buildRewrittenLargeAttachmentPlainText(ctx context.Context, brand core.LarkBrand, lang string, results []largeAttachmentResult) (string, error) {
+	if len(results) == 0 {
+		return "", nil
+	}
+
+	appName := brandDisplayName(brand, lang)
+	title := "Large file from " + appName + " Mail"
+	downloadText := "Download"
+	if strings.HasPrefix(lang, "zh") {
+		title = "来自" + appName + "邮箱的超大附件"
+		downloadText = "下载"
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\n")
+	sb.WriteString(title)
+	sb.WriteString("\n")
+	for i, att := range results {
+		previewURL, err := urlrewrite.Rewrite(ctx, buildLargeAttachmentPreviewURL(brand, att.FileToken))
+		if err != nil {
+			return "", err
+		}
+		sb.WriteString(att.FileName)
+		sb.WriteString("\n")
+		sb.WriteString(common.FormatSize(att.FileSize))
+		sb.WriteString("\n")
+		sb.WriteString(downloadText + ": " + previewURL)
+		if i < len(results)-1 {
+			sb.WriteString("\n\n")
+		} else {
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String(), nil
 }
 
 // fileTypeIcon returns the CDN icon filename for a given attachment filename,
@@ -443,10 +537,16 @@ func processLargeAttachments(
 	}
 
 	if htmlBody != "" {
-		largeHTML := buildLargeAttachmentHTML(runtime.Config.Brand, resolveLang(runtime), results)
+		largeHTML, err := buildRewrittenLargeAttachmentHTML(ctx, runtime.Config.Brand, resolveLang(runtime), results)
+		if err != nil {
+			return bld, err
+		}
 		bld = bld.HTMLBody([]byte(draftpkg.InsertBeforeQuoteOrAppend(htmlBody, largeHTML)))
 	} else {
-		largeText := buildLargeAttachmentPlainText(runtime.Config.Brand, resolveLang(runtime), results)
+		largeText, err := buildRewrittenLargeAttachmentPlainText(ctx, runtime.Config.Brand, resolveLang(runtime), results)
+		if err != nil {
+			return bld, err
+		}
 		bld = bld.TextBody([]byte(textBody + largeText))
 	}
 
@@ -537,6 +637,61 @@ func ensureLargeAttachmentCards(runtime *common.RuntimeContext, snapshot *draftp
 	}
 }
 
+// ensureRewrittenLargeAttachmentCards is the command-path counterpart to
+// ensureLargeAttachmentCards. It preserves the legacy helper for snapshot-only
+// callers while ensuring newly generated links use the configured URL rewriter.
+func ensureRewrittenLargeAttachmentCards(ctx context.Context, runtime *common.RuntimeContext, snapshot *draftpkg.DraftSnapshot) error {
+	summaries := draftpkg.ParseLargeAttachmentSummariesFromHeader(snapshot.Headers)
+	if len(summaries) == 0 {
+		return nil
+	}
+
+	brand := core.BrandFeishu
+	if runtime.Config != nil {
+		brand = runtime.Config.Brand
+	}
+	lang := "zh_cn"
+	if runtime.Factory != nil {
+		lang = resolveLang(runtime)
+	}
+
+	htmlPart := draftpkg.FindHTMLBodyPart(snapshot.Body)
+	if htmlPart != nil {
+		existingCards := draftpkg.ParseLargeAttachmentItemsFromHTML(string(htmlPart.Body))
+		var missing []largeAttachmentResult
+		for _, s := range summaries {
+			if _, exists := existingCards[s.Token]; !exists {
+				missing = append(missing, largeAttachmentResult{FileName: s.FileName, FileSize: s.SizeBytes, FileToken: s.Token})
+			}
+		}
+		if len(missing) == 0 {
+			return nil
+		}
+		return injectRewrittenLargeAttachmentHTMLIntoSnapshot(ctx, snapshot, brand, lang, missing)
+	}
+
+	textPart := draftpkg.FindTextBodyPart(snapshot.Body)
+	if textPart == nil {
+		return nil
+	}
+	bodyText := string(textPart.Body)
+	var missing []largeAttachmentResult
+	for _, s := range summaries {
+		if !strings.Contains(bodyText, s.Token) {
+			missing = append(missing, largeAttachmentResult{FileName: s.FileName, FileSize: s.SizeBytes, FileToken: s.Token})
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	largeText, err := buildRewrittenLargeAttachmentPlainText(ctx, brand, lang, missing)
+	if err != nil {
+		return err
+	}
+	injectLargeAttachmentTextIntoSnapshot(snapshot, largeText)
+	return nil
+}
+
 // preprocessLargeAttachmentsForDraftEdit scans a draft-edit patch for
 // add_attachment ops, classifies the files (normal vs oversized based on
 // the snapshot's current EML size), uploads oversized files, injects the
@@ -551,7 +706,9 @@ func preprocessLargeAttachmentsForDraftEdit(
 	// Reconstruct missing large attachment HTML cards from the server-format
 	// header metadata. Must run before normalizeLargeAttachmentHeader which
 	// discards file_name/file_size.
-	ensureLargeAttachmentCards(runtime, snapshot)
+	if err := ensureRewrittenLargeAttachmentCards(ctx, runtime, snapshot); err != nil {
+		return patch, err
+	}
 
 	// Always normalize server-format headers to CLI format so every code
 	// path below (and every early return) sends the format the server
@@ -629,9 +786,14 @@ func preprocessLargeAttachmentsForDraftEdit(
 	}
 
 	if hasHTML {
-		injectLargeAttachmentHTMLIntoSnapshot(snapshot, runtime.Config.Brand, resolveLang(runtime), results)
+		if err := injectRewrittenLargeAttachmentHTMLIntoSnapshot(ctx, snapshot, runtime.Config.Brand, resolveLang(runtime), results); err != nil {
+			return patch, err
+		}
 	} else {
-		largeText := buildLargeAttachmentPlainText(runtime.Config.Brand, resolveLang(runtime), results)
+		largeText, err := buildRewrittenLargeAttachmentPlainText(ctx, runtime.Config.Brand, resolveLang(runtime), results)
+		if err != nil {
+			return patch, err
+		}
 		injectLargeAttachmentTextIntoSnapshot(snapshot, largeText)
 	}
 
@@ -763,6 +925,47 @@ func injectLargeAttachmentHTMLIntoSnapshot(snapshot *draftpkg.DraftSnapshot, bra
 		htmlPart.Body = []byte(draftpkg.InsertBeforeQuoteOrAppend(currentHTML, fullHTML))
 	}
 	htmlPart.Dirty = true
+}
+
+func injectRewrittenLargeAttachmentHTMLIntoSnapshot(ctx context.Context, snapshot *draftpkg.DraftSnapshot, brand core.LarkBrand, lang string, results []largeAttachmentResult) error {
+	if len(results) == 0 {
+		return nil
+	}
+	htmlPart := draftpkg.FindHTMLBodyPart(snapshot.Body)
+	if htmlPart == nil {
+		if snapshot.Body != nil {
+			return nil
+		}
+		html, err := buildRewrittenLargeAttachmentHTML(ctx, brand, lang, results)
+		if err != nil {
+			return err
+		}
+		snapshot.Body = &draftpkg.Part{
+			MediaType: "text/html",
+			Body:      []byte(html),
+			Dirty:     true,
+		}
+		return nil
+	}
+
+	currentHTML := string(htmlPart.Body)
+	if draftpkg.HTMLContainsLargeAttachment(currentHTML) {
+		itemsHTML, err := buildRewrittenLargeAttachmentItems(ctx, brand, lang, results)
+		if err != nil {
+			return err
+		}
+		before, card, after := draftpkg.SplitAtLargeAttachment(currentHTML)
+		merged := card[:len(card)-len("</div>")] + itemsHTML + "</div>"
+		htmlPart.Body = []byte(before + merged + after)
+	} else {
+		fullHTML, err := buildRewrittenLargeAttachmentHTML(ctx, brand, lang, results)
+		if err != nil {
+			return err
+		}
+		htmlPart.Body = []byte(draftpkg.InsertBeforeQuoteOrAppend(currentHTML, fullHTML))
+	}
+	htmlPart.Dirty = true
+	return nil
 }
 
 func injectLargeAttachmentTextIntoSnapshot(snapshot *draftpkg.DraftSnapshot, largeText string) {

@@ -4,10 +4,12 @@
 package common
 
 import (
+	"context"
 	"net/url"
 	"strings"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/urlrewrite"
 )
 
 // BuildResourceURL returns a brand-standard, user-facing URL for a freshly
@@ -22,10 +24,10 @@ import (
 // Returns "" when token is empty or kind is unrecognized — callers should
 // only set the field when the result is non-empty so that "" never overrides
 // a real URL the backend already returned.
-func BuildResourceURL(brand core.LarkBrand, kind, token string) string {
+func BuildResourceURL(ctx context.Context, brand core.LarkBrand, kind, token string) (string, error) {
 	token = strings.TrimSpace(token)
 	if token == "" {
-		return ""
+		return "", nil
 	}
 
 	host := "https://www.feishu.cn"
@@ -33,28 +35,30 @@ func BuildResourceURL(brand core.LarkBrand, kind, token string) string {
 		host = "https://www.larksuite.com"
 	}
 
+	var resourceURL string
 	switch strings.ToLower(strings.TrimSpace(kind)) {
 	case "docx":
-		return host + "/docx/" + token
+		resourceURL = host + "/docx/" + token
 	case "doc":
-		return host + "/doc/" + token
+		resourceURL = host + "/doc/" + token
 	case "sheet":
-		return host + "/sheets/" + token
+		resourceURL = host + "/sheets/" + token
 	case "bitable":
-		return host + "/base/" + token
+		resourceURL = host + "/base/" + token
 	case "wiki":
-		return host + "/wiki/" + token
+		resourceURL = host + "/wiki/" + token
 	case "file":
-		return host + "/file/" + token
+		resourceURL = host + "/file/" + token
 	case "folder":
-		return host + "/drive/folder/" + token
+		resourceURL = host + "/drive/folder/" + token
 	case "mindnote":
-		return host + "/mindnote/" + token
+		resourceURL = host + "/mindnote/" + token
 	case "slides":
-		return host + "/slides/" + token
+		resourceURL = host + "/slides/" + token
 	default:
-		return ""
+		return "", nil
 	}
+	return urlrewrite.Rewrite(ctx, resourceURL)
 }
 
 // ResourceRef holds the parsed type and token from a Lark resource URL.

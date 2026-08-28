@@ -4,6 +4,7 @@
 package errclass
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/urlrewrite"
 )
 
 // ClassifyContext is the contextual data BuildAPIError uses to populate
@@ -20,6 +22,7 @@ import (
 // Brand through core.ParseBrand, so callers can pass a raw brand string without
 // coupling this contract to core's brand enum.
 type ClassifyContext struct {
+	Context  context.Context
 	Brand    string // "feishu" | "lark" — drives console_url host
 	AppID    string // placed in console_url
 	Identity string // "user" / "bot" / "" — caller converts core.Identity at the boundary
@@ -300,14 +303,14 @@ func buildPermissionError(p errs.Problem, resp map[string]any, cc ClassifyContex
 // API classifier from locally verified scope facts. Generated service
 // preflight checks use this entrypoint so subtype-specific wire fields and
 // recovery cannot drift from BuildAPIError.
-func NewMissingScopeError(brand, appID, identity string, missing []string) error {
+func NewMissingScopeError(ctx context.Context, brand, appID, identity string, missing []string) error {
 	return buildPermissionErrorFromFacts(
 		errs.Problem{
 			Category: errs.CategoryAuthorization,
 			Subtype:  errs.SubtypeMissingScope,
 		},
 		missing,
-		ClassifyContext{Brand: brand, AppID: appID, Identity: identity},
+		ClassifyContext{Context: ctx, Brand: brand, AppID: appID, Identity: identity},
 	)
 }
 
@@ -317,7 +320,10 @@ func buildPermissionErrorFromFacts(p errs.Problem, missing []string, cc Classify
 	if identity == "" {
 		identity = "user"
 	}
-	consoleURL := ConsoleURL(cc.Brand, cc.AppID, missing)
+	consoleURL, err := ConsoleURL(cc.Context, cc.Brand, cc.AppID, missing)
+	if err != nil {
+		return err
+	}
 	p.Message = canonicalPermissionMessageForIdentity(p.Subtype, identity, cc.AppID, missing, p.Message)
 	// Permission categories have authoritative recovery guidance (scopes to
 	// grant, console URL), so the curated PermissionHint deliberately overrides
@@ -558,9 +564,9 @@ func extractMissingScopes(resp map[string]any) []string {
 // commas in the `scopes` query parameter so the console can pre-select them.
 //
 // brand is "feishu" or "lark"; unknown values default to feishu.
-func ConsoleURL(brand, appID string, scopes []string) string {
+func ConsoleURL(ctx context.Context, brand, appID string, scopes []string) (string, error) {
 	if appID == "" {
-		return ""
+		return "", nil
 	}
 	// QueryEscape both values — clientID and scopes both sit in the query
 	// string, and untrusted content must not be able to inject extra query
@@ -569,9 +575,9 @@ func ConsoleURL(brand, appID string, scopes []string) string {
 	base := fmt.Sprintf("%s/page/scope-apply?clientID=%s",
 		core.ResolveOpenBaseURL(core.ParseBrand(brand)), url.QueryEscape(appID))
 	if len(scopes) == 0 {
-		return base
+		return urlrewrite.Rewrite(ctx, base)
 	}
-	return base + "&scopes=" + url.QueryEscape(strings.Join(scopes, ","))
+	return urlrewrite.Rewrite(ctx, base+"&scopes="+url.QueryEscape(strings.Join(scopes, ",")))
 }
 
 func intFromAny(v any) int {

@@ -213,7 +213,10 @@ var SlidesCreate = common.Shortcut{
 		// brand-standard URL only when the API omits it.
 		presentationURL := common.GetString(data, "url")
 		if presentationURL == "" {
-			presentationURL = common.BuildResourceURL(runtime.Config.Brand, "slides", presentationID)
+			presentationURL, err = common.BuildResourceURL(ctx, runtime.Config.Brand, "slides", presentationID)
+			if err != nil {
+				return err
+			}
 		}
 		if presentationURL != "" {
 			result["url"] = presentationURL

@@ -123,7 +123,10 @@ var DriveCopy = common.Shortcut{
 		if copiedToken == "" {
 			return errs.NewInternalError(errs.SubtypeInvalidResponse, "drive copy succeeded but returned no file token (data.file.token)")
 		}
-		out := buildDriveCopyOutput(runtime, spec, folderToken, data)
+		out, err := buildDriveCopyOutput(ctx, runtime, spec, folderToken, data)
+		if err != nil {
+			return err
+		}
 		copiedType := common.GetString(data, "file", "type")
 		if copiedType == "" {
 			copiedType = spec.Ref.Type
@@ -421,7 +424,7 @@ func buildDriveCopyDryRun(spec driveCopySpec) *common.DryRunAPI {
 		Set("file_token", spec.Ref.Token)
 }
 
-func buildDriveCopyOutput(runtime *common.RuntimeContext, spec driveCopySpec, folderToken string, data map[string]interface{}) map[string]interface{} {
+func buildDriveCopyOutput(ctx context.Context, runtime *common.RuntimeContext, spec driveCopySpec, folderToken string, data map[string]interface{}) (map[string]interface{}, error) {
 	out := map[string]interface{}{
 		"copied":            true,
 		"source_file_token": spec.Ref.Token,
@@ -436,7 +439,9 @@ func buildDriveCopyOutput(runtime *common.RuntimeContext, spec driveCopySpec, fo
 		out["file_token"] = token
 		if url := common.GetString(file, "url"); url != "" {
 			out["url"] = url
-		} else if built := common.BuildResourceURL(runtime.Config.Brand, common.GetString(file, "type"), token); built != "" {
+		} else if built, err := common.BuildResourceURL(ctx, runtime.Config.Brand, common.GetString(file, "type"), token); err != nil {
+			return nil, err
+		} else if built != "" {
 			out["url"] = built
 		}
 	}
@@ -446,5 +451,5 @@ func buildDriveCopyOutput(runtime *common.RuntimeContext, spec driveCopySpec, fo
 	if name := common.GetString(file, "name"); name != "" {
 		out["name"] = name
 	}
-	return out
+	return out, nil
 }

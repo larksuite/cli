@@ -4,6 +4,7 @@
 package convertlib
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -13,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/urlrewrite"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -144,6 +146,12 @@ func FormatMessageItemWithMergePrefetch(m map[string]interface{}, runtime *commo
 	return formatMessageItem(m, runtime, nameCache, mergePrefetch, false)
 }
 
+// FormatMessageItemWithMergePrefetchE is the error-returning variant for
+// command execution paths that synthesize an app link.
+func FormatMessageItemWithMergePrefetchE(m map[string]interface{}, runtime *common.RuntimeContext, nameCache map[string]string, mergePrefetch map[string][]map[string]interface{}) (map[string]interface{}, error) {
+	return formatMessageItemE(m, runtime, nameCache, mergePrefetch, false)
+}
+
 // FormatMessageItemWithMergePrefetchOpts is FormatMessageItemWithMergePrefetch
 // with an explicit extractResources gate. When extractResources is true and
 // the message carries downloadable resources, a "resources" block (ref list
@@ -154,7 +162,18 @@ func FormatMessageItemWithMergePrefetchOpts(m map[string]interface{}, runtime *c
 	return formatMessageItem(m, runtime, nameCache, mergePrefetch, extractResources)
 }
 
+// FormatMessageItemWithMergePrefetchOptsE is the error-returning variant for
+// command execution paths that synthesize an app link.
+func FormatMessageItemWithMergePrefetchOptsE(m map[string]interface{}, runtime *common.RuntimeContext, nameCache map[string]string, mergePrefetch map[string][]map[string]interface{}, extractResources bool) (map[string]interface{}, error) {
+	return formatMessageItemE(m, runtime, nameCache, mergePrefetch, extractResources)
+}
+
 func formatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext, nameCache map[string]string, mergePrefetch map[string][]map[string]interface{}, extractResources bool) map[string]interface{} {
+	msg, _ := formatMessageItemE(m, runtime, nameCache, mergePrefetch, extractResources)
+	return msg
+}
+
+func formatMessageItemE(m map[string]interface{}, runtime *common.RuntimeContext, nameCache map[string]string, mergePrefetch map[string][]map[string]interface{}, extractResources bool) (map[string]interface{}, error) {
 	msgType, _ := m["msg_type"].(string)
 	messageId, _ := m["message_id"].(string)
 	mentions, _ := m["mentions"].([]interface{})
@@ -222,7 +241,11 @@ func formatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 	appLink, _ := m["message_app_link"].(string)
 	appLink = strings.TrimSpace(appLink)
 	if appLink == "" && runtime != nil && runtime.Config != nil {
-		appLink = assembleMessageAppLink(m, runtime.Config.Brand)
+		var err error
+		appLink, err = assembleMessageAppLink(runtime.Ctx(), m, runtime.Config.Brand)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if appLink != "" {
 		msg["message_app_link"] = appLink
@@ -257,13 +280,13 @@ func formatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 		}
 	}
 
-	return msg
+	return msg, nil
 }
 
-func assembleMessageAppLink(m map[string]interface{}, brand core.LarkBrand) string {
+func assembleMessageAppLink(ctx context.Context, m map[string]interface{}, brand core.LarkBrand) (string, error) {
 	domain := resolveAppLinkDomain(brand)
 	if domain == "" {
-		return ""
+		return "", nil
 	}
 
 	chatID, _ := m["chat_id"].(string)
@@ -283,7 +306,7 @@ func assembleMessageAppLink(m map[string]interface{}, brand core.LarkBrand) stri
 		q.Set("open_chat_id", chatID)
 		q.Set("thread_position", threadPos)
 		u.RawQuery = q.Encode()
-		return u.String()
+		return urlrewrite.Rewrite(ctx, u.String())
 	}
 	if chatID != "" && okMsgPos {
 		u := &url.URL{Scheme: "https", Host: domain, Path: "/client/chat/open"}
@@ -291,9 +314,9 @@ func assembleMessageAppLink(m map[string]interface{}, brand core.LarkBrand) stri
 		q.Set("openChatId", chatID)
 		q.Set("position", msgPos)
 		u.RawQuery = q.Encode()
-		return u.String()
+		return urlrewrite.Rewrite(ctx, u.String())
 	}
-	return ""
+	return "", nil
 }
 
 func normalizeMessagePosition(v interface{}) (string, bool) {

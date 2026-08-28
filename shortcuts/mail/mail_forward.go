@@ -472,10 +472,16 @@ var MailForward = common.Shortcut{
 			}
 
 			if composedHTMLBody != "" {
-				largeHTML := buildLargeAttachmentHTML(runtime.Config.Brand, resolveLang(runtime), uploadResults)
+				largeHTML, err := buildRewrittenLargeAttachmentHTML(ctx, runtime.Config.Brand, resolveLang(runtime), uploadResults)
+				if err != nil {
+					return err
+				}
 				bld = bld.HTMLBody([]byte(draftpkg.InsertBeforeQuoteOrAppend(composedHTMLBody, largeHTML)))
 			} else {
-				largeText := buildLargeAttachmentPlainText(runtime.Config.Brand, resolveLang(runtime), uploadResults)
+				largeText, err := buildRewrittenLargeAttachmentPlainText(ctx, runtime.Config.Brand, resolveLang(runtime), uploadResults)
+				if err != nil {
+					return err
+				}
 				bld = bld.TextBody([]byte(composedTextBody + largeText))
 			}
 

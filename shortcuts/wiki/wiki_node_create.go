@@ -95,7 +95,11 @@ var WikiNodeCreate = common.Shortcut{
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Created wiki node in space %s via %s.\n", execution.ResolvedSpace.SpaceID, execution.ResolvedSpace.ResolvedBy)
-		runtime.Out(augmentWikiNodeCreateOutput(runtime, execution), nil)
+		out, err := augmentWikiNodeCreateOutput(ctx, runtime, execution)
+		if err != nil {
+			return err
+		}
+		runtime.Out(out, nil)
 		return nil
 	},
 }
@@ -596,17 +600,19 @@ func wikiNodeCreateOutput(execution *wikiNodeCreateExecution) map[string]interfa
 	}
 }
 
-func augmentWikiNodeCreateOutput(runtime *common.RuntimeContext, execution *wikiNodeCreateExecution) map[string]interface{} {
+func augmentWikiNodeCreateOutput(ctx context.Context, runtime *common.RuntimeContext, execution *wikiNodeCreateExecution) (map[string]interface{}, error) {
 	if execution == nil || execution.Node == nil {
-		return map[string]interface{}{}
+		return map[string]interface{}{}, nil
 	}
 
 	out := wikiNodeCreateOutput(execution)
 	if grant := common.AutoGrantCurrentUserDrivePermission(runtime, execution.Node.NodeToken, "wiki"); grant != nil {
 		out["permission_grant"] = grant
 	}
-	if u := wikiNodeURL(runtime.Config.Brand, execution.Node); u != "" {
+	if u, err := wikiNodeURL(ctx, runtime.Config.Brand, execution.Node); err != nil {
+		return nil, err
+	} else if u != "" {
 		out["url"] = u
 	}
-	return out
+	return out, nil
 }

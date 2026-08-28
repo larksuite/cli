@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	cmdconfig "github.com/larksuite/cli/cmd/config"
 	"github.com/larksuite/cli/cmd/schema"
 	"github.com/larksuite/cli/errs"
+	exttransport "github.com/larksuite/cli/extension/transport"
 	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -87,6 +89,35 @@ func TestRootLong_AgentSkillsLinkTargetsReadmeSection(t *testing.T) {
 	}
 	if strings.Contains(rootUsageTemplate, "https://github.com/larksuite/cli#install-ai-agent-skills") {
 		t.Fatalf("root help should not reference the removed install-ai-agent-skills anchor, got:\n%s", rootUsageTemplate)
+	}
+}
+
+type rootURLRewriteProvider struct{}
+
+func (rootURLRewriteProvider) Name() string { return "test-url-rewrite" }
+
+func (rootURLRewriteProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
+	return nil
+}
+
+func (rootURLRewriteProvider) ResolveURLRewriter(context.Context) exttransport.URLRewriter {
+	return rootURLRewriter{}
+}
+
+type rootURLRewriter struct{}
+
+func (rootURLRewriter) RewriteURL(rawURL string) string {
+	return strings.Replace(rawURL, "github.com", "mirror.example.test", 1)
+}
+
+func TestBuildRewritesRootSkillsHelpURLAfterProviderRegistration(t *testing.T) {
+	previous := exttransport.GetProvider()
+	exttransport.Register(rootURLRewriteProvider{})
+	t.Cleanup(func() { exttransport.Register(previous) })
+
+	_, root, _ := buildInternal(context.Background(), buildInvocationForTest(t), WithoutPlugins())
+	if got := root.UsageTemplate(); !strings.Contains(got, "https://mirror.example.test/larksuite/cli#agent-skills") {
+		t.Fatalf("root help URL was not rewritten:\n%s", got)
 	}
 }
 

@@ -4,6 +4,7 @@
 package doc
 
 import (
+	"context"
 	"reflect"
 	"strings"
 	"testing"
@@ -62,7 +63,9 @@ func TestApplyFetchIMMarkdown(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			applyFetchIMMarkdown(tt.data, tt.docInput)
+			if err := applyFetchIMMarkdown(context.Background(), tt.data, tt.docInput); err != nil {
+				t.Fatalf("applyFetchIMMarkdown() error = %v", err)
+			}
 			if !reflect.DeepEqual(tt.data, tt.want) {
 				t.Fatalf("data = %#v, want %#v", tt.data, tt.want)
 			}
@@ -1076,7 +1079,11 @@ func TestNewIMMarkdownContextExtractsBaseURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := newIMMarkdownContext(tt.input).baseURL; got != tt.want {
+			imCtx, err := newIMMarkdownContext(context.Background(), tt.input)
+			if err != nil {
+				t.Fatalf("newIMMarkdownContext() error = %v", err)
+			}
+			if got := imCtx.baseURL; got != tt.want {
 				t.Fatalf("baseURL = %q, want %q", got, tt.want)
 			}
 		})

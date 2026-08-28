@@ -4,10 +4,12 @@
 package registry
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/urlrewrite"
 )
 
 // ExtractRequiredScopes pulls scope names out of the API error's
@@ -55,14 +57,14 @@ func SelectRecommendedScopeFromStrings(scopes []string, _ string) string {
 // BuildConsoleScopeURL returns the developer-console "apply scope" URL for the
 // given app and scope, branded for feishu / lark. Returns "" when appID or
 // scope is empty so callers can omit the field cleanly.
-func BuildConsoleScopeURL(brand core.LarkBrand, appID, scope string) string {
+func BuildConsoleScopeURL(ctx context.Context, brand core.LarkBrand, appID, scope string) (string, error) {
 	if appID == "" || scope == "" {
-		return ""
+		return "", nil
 	}
-	return fmt.Sprintf(
+	return urlrewrite.Rewrite(ctx, fmt.Sprintf(
 		"%s/page/scope-apply?clientID=%s&scopes=%s",
 		core.ResolveOpenBaseURL(brand),
 		url.QueryEscape(appID),
 		url.QueryEscape(scope),
-	)
+	))
 }

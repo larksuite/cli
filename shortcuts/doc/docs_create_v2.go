@@ -108,7 +108,9 @@ func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 	}
 
 	augmentDocsCreatePermission(runtime, data)
-	fallbackDocsCreateURLV2(runtime, data)
+	if err := fallbackDocsCreateURLV2(runtime, data); err != nil {
+		return err
+	}
 	if len(resources) > 0 {
 		doc, _ := data["document"].(map[string]interface{})
 		if err := finalizeLocalDocResources(runtime, strings.TrimSpace(common.GetString(doc, "document_id")), data, resources); err != nil {
@@ -176,19 +178,22 @@ func augmentDocsCreatePermission(runtime *common.RuntimeContext, data map[string
 // fallbackDocsCreateURLV2 fills data.document.url with a brand-standard URL
 // when the OpenAPI response did not include one. Backfills only when missing,
 // so any tenant-specific URL the backend returned is preserved.
-func fallbackDocsCreateURLV2(runtime *common.RuntimeContext, data map[string]interface{}) {
+func fallbackDocsCreateURLV2(runtime *common.RuntimeContext, data map[string]interface{}) error {
 	doc, _ := data["document"].(map[string]interface{})
 	if doc == nil {
-		return
+		return nil
 	}
 	if strings.TrimSpace(common.GetString(doc, "url")) != "" {
-		return
+		return nil
 	}
 	docID := strings.TrimSpace(common.GetString(doc, "document_id"))
 	if docID == "" {
-		return
+		return nil
 	}
-	if u := common.BuildResourceURL(runtime.Config.Brand, "docx", docID); u != "" {
+	if u, err := common.BuildResourceURL(runtime.Ctx(), runtime.Config.Brand, "docx", docID); err != nil {
+		return err
+	} else if u != "" {
 		doc["url"] = u
 	}
+	return nil
 }

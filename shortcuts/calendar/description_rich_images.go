@@ -4,6 +4,7 @@
 package calendar
 
 import (
+	"context"
 	"fmt"
 	"image"
 
@@ -19,6 +20,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/urlrewrite"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -108,7 +110,10 @@ func resolveLocalImage(runtime *common.RuntimeContext, calendarID, src, alt stri
 	}
 
 	width, height := decodeImageDimensions(runtime, localPath)
-	uploadedURL := buildCalendarImagePreviewURL(runtime.Config.Brand, fileToken, width, height, info.Size())
+	uploadedURL, err := buildCalendarImagePreviewURL(runtime.Ctx(), runtime.Config.Brand, fileToken, width, height, info.Size())
+	if err != nil {
+		return "", err
+	}
 	cache[localPath] = uploadedURL
 	return uploadedURL, nil
 }
@@ -156,7 +161,7 @@ func localImagePath(src string) string {
 	return s
 }
 
-func buildCalendarImagePreviewURL(brand core.LarkBrand, fileToken string, width, height int, size int64) string {
+func buildCalendarImagePreviewURL(ctx context.Context, brand core.LarkBrand, fileToken string, width, height int, size int64) (string, error) {
 	host := "internal-api-drive-stream.feishu.cn"
 	if brand == core.BrandLark {
 		host = "internal-api-drive-stream.larksuite.com"
@@ -168,5 +173,5 @@ func buildCalendarImagePreviewURL(brand core.LarkBrand, fileToken string, width,
 	if size > 0 {
 		u += fmt.Sprintf("&im_size=%d", size)
 	}
-	return u
+	return urlrewrite.Rewrite(ctx, u)
 }

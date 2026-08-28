@@ -4,6 +4,7 @@
 package event
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -35,7 +36,7 @@ func TestPreflightEventTypes_NilAppVer_SkipsCheck(t *testing.T) {
 		EventType:             "im.message.receive_v1",
 		RequiredConsoleEvents: []string{"im.message.receive_v1"},
 	}
-	if err := preflightEventTypes(newPreflightCtx("cli_x", "feishu", "", def, nil)); err != nil {
+	if err := preflightEventTypes(context.Background(), newPreflightCtx("cli_x", "feishu", "", def, nil)); err != nil {
 		t.Fatalf("nil appVer must be a weak-dependency skip, got err: %v", err)
 	}
 }
@@ -46,7 +47,7 @@ func TestPreflightEventTypes_EmptyRequired_SkipsEvenIfEventTypeSet(t *testing.T)
 		EventType: "im.message.message_read_v1",
 	}
 	appVer := &appmeta.AppVersion{EventTypes: []string{"im.message.receive_v1"}}
-	if err := preflightEventTypes(newPreflightCtx("cli_x", "feishu", "", def, appVer)); err != nil {
+	if err := preflightEventTypes(context.Background(), newPreflightCtx("cli_x", "feishu", "", def, appVer)); err != nil {
 		t.Fatalf("empty RequiredConsoleEvents must skip, got: %v", err)
 	}
 }
@@ -65,7 +66,7 @@ func TestPreflightEventTypes_AllSubscribed_Passes(t *testing.T) {
 		"im.message.reaction.deleted_v1",
 		"im.message.receive_v1",
 	}}
-	if err := preflightEventTypes(newPreflightCtx("cli_x", "feishu", "", def, appVer)); err != nil {
+	if err := preflightEventTypes(context.Background(), newPreflightCtx("cli_x", "feishu", "", def, appVer)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -82,7 +83,7 @@ func TestPreflightEventTypes_MissingBlocks(t *testing.T) {
 	appVer := &appmeta.AppVersion{EventTypes: []string{
 		"mail.user_mailbox.event.message_received_v1",
 	}}
-	err := preflightEventTypes(newPreflightCtx("cli_XXXXXXXXXXXXXXXX", "feishu", "", def, appVer))
+	err := preflightEventTypes(context.Background(), newPreflightCtx("cli_XXXXXXXXXXXXXXXX", "feishu", "", def, appVer))
 	if err == nil {
 		t.Fatal("expected error for missing subscription")
 	}
@@ -187,7 +188,7 @@ func TestPreflightEventTypes_CallbackMissing(t *testing.T) {
 			RequiredConsoleEvents: []string{"card.action.trigger"},
 		},
 	}
-	err := preflightEventTypes(pf)
+	err := preflightEventTypes(context.Background(), pf)
 	if err == nil {
 		t.Fatal("expected error for missing callback")
 	}
@@ -216,7 +217,7 @@ func TestPreflightEventTypes_CallbackSkippedWhenNil(t *testing.T) {
 			RequiredConsoleEvents: []string{"card.action.trigger"},
 		},
 	}
-	if err := preflightEventTypes(pf); err != nil {
+	if err := preflightEventTypes(context.Background(), pf); err != nil {
 		t.Errorf("expected skip (nil), got %v", err)
 	}
 }
@@ -237,7 +238,7 @@ func TestPreflightEventTypes_CallbackEmptyReportsMissing(t *testing.T) {
 			RequiredConsoleEvents: []string{"card.action.trigger"},
 		},
 	}
-	err := preflightEventTypes(pf)
+	err := preflightEventTypes(context.Background(), pf)
 	if err == nil {
 		t.Fatal("expected error for missing callback when none are subscribed")
 	}
@@ -259,13 +260,16 @@ func TestPreflightEventTypes_CallbackAllSubscribed_Passes(t *testing.T) {
 			RequiredConsoleEvents: []string{"card.action.trigger"},
 		},
 	}
-	if err := preflightEventTypes(pf); err != nil {
+	if err := preflightEventTypes(context.Background(), pf); err != nil {
 		t.Errorf("all callbacks subscribed, unexpected error: %v", err)
 	}
 }
 
 func TestBotScopeRemediationHintUsesScanLink(t *testing.T) {
-	bot := botScopeRemediationHint(core.BrandFeishu, "cli_x", []string{"im:message"})
+	bot, err := botScopeRemediationHint(context.Background(), core.BrandFeishu, "cli_x", []string{"im:message"})
+	if err != nil {
+		t.Fatalf("bot scope remediation hint: %v", err)
+	}
 	if !strings.Contains(bot, "/page/launcher?clientID=cli_x&addons=") {
 		t.Errorf("bot hint should give the scan link, got: %s", bot)
 	}
