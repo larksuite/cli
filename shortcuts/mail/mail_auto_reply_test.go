@@ -7,10 +7,12 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
@@ -230,6 +232,147 @@ func TestMailAutoReplyEmptyContentClearsBody(t *testing.T) {
 	assertAutoReplyPayloadValue(t, captured, "content_html", "")
 	assertAutoReplyPayloadEmptyImages(t, captured)
 	assertAutoReplyPayloadAbsent(t, captured, "content_summary")
+}
+
+func TestMailAutoReplyModifyRejectsEnabledEmptyContent(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    mailboxPath("me", "settings", "auto_reply"),
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"auto_reply": map[string]interface{}{
+					"enabled":             false,
+					"content_html":        "",
+					"start_time":          "1787846400000",
+					"end_time":            "1788105599999",
+					"time_zone":           "Asia/Shanghai",
+					"only_send_to_tenant": true,
+				},
+			},
+		},
+	})
+
+	err := runMountedMailShortcut(t, MailAutoReplyModify, []string{
+		"+auto-reply-modify",
+		"--yes",
+		"--enable",
+		"--start", "2026-08-28",
+		"--end", "2026-08-30",
+		"--timezone", "Asia/Shanghai",
+		"--internal-only",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected validation error, got %T: %v", err, err)
+	}
+	if validationErr.Param != "--content" {
+		t.Fatalf("param = %q, want --content", validationErr.Param)
+	}
+	if !strings.Contains(err.Error(), "content_html is required when enabled=true") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+}
+
+func TestMailAutoReplyModifyRejectsEndBeforeMergedStart(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    mailboxPath("me", "settings", "auto_reply"),
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"auto_reply": map[string]interface{}{
+					"enabled":             true,
+					"content_html":        "<p>OOO</p>",
+					"start_time":          "1787846400000",
+					"end_time":            "1788105599999",
+					"time_zone":           "Asia/Shanghai",
+					"only_send_to_tenant": true,
+				},
+			},
+		},
+	})
+
+	err := runMountedMailShortcut(t, MailAutoReplyModify, []string{
+		"+auto-reply-modify",
+		"--yes",
+		"--end", "2026-08-27",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected validation error, got %T: %v", err, err)
+	}
+	if validationErr.Param != "--end" {
+		t.Fatalf("param = %q, want --end", validationErr.Param)
+	}
+	if !strings.Contains(err.Error(), "end_time must be greater than start_time") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+}
+
+func TestMailAutoReplyModifyAllowsSameStartAndEndDate(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	var captured map[string]interface{}
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    mailboxPath("me", "settings", "auto_reply"),
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"auto_reply": map[string]interface{}{
+					"enabled":             false,
+					"content_html":        "",
+					"start_time":          "0",
+					"end_time":            "0",
+					"time_zone":           "",
+					"only_send_to_tenant": true,
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "PUT",
+		URL:    mailboxPath("me", "settings", "auto_reply"),
+		BodyFilter: func(body []byte) bool {
+			if err := json.Unmarshal(body, &captured); err != nil {
+				t.Fatalf("unmarshal request body: %v; body=%s", err, body)
+			}
+			return true
+		},
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{"auto_reply": map[string]interface{}{}},
+		},
+	})
+
+	err := runMountedMailShortcut(t, MailAutoReplyModify, []string{
+		"+auto-reply-modify",
+		"--yes",
+		"--start", "2026-08-28",
+		"--end", "2026-08-28",
+		"--timezone", "Asia/Shanghai",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("runMountedMailShortcut() error = %v", err)
+	}
+	reg.Verify(t)
+
+	assertAutoReplyPayloadValue(t, captured, "start_time", "1787846400000")
+	assertAutoReplyPayloadValue(t, captured, "end_time", "1787932799999")
 }
 
 func TestMailAutoReplyUploadsLocalImages(t *testing.T) {
