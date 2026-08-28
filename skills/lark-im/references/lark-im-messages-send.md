@@ -34,6 +34,7 @@ When using `--as user`, the message is sent as the authorized end user and requi
 | Send plain text exactly as written | `--text` | Preserves literal text; no Markdown conversion |
 | Precisely control the final payload | `--content` | You provide the exact JSON for `text` / `post` / `interactive` / `share_*` / media payloads |
 | Send image / file / video / audio | `--image` / `--file` / `--video` / `--audio` | Shortcut uploads URLs, or cwd-relative local files automatically |
+| Attach files/folders to a post message's attachment zone | `--attachment` | Repeatable, as bare `file_key` (`file_xxx`); merges into the post content's `files` array. Requires a post message (`--markdown` or `--msg-type post`). Name/metadata are filled by the server, not the client |
 
 ### `--text` vs `--markdown`
 
@@ -190,12 +191,13 @@ lark-cli im +messages-send --chat-id oc_xxx --msg-type interactive --content '<c
 | `--video <path\|url\|key>` | One content option | Cwd-relative local video path, URL, or `file_key` (`file_xxx`). Local paths and URLs are uploaded automatically. **Must be paired with `--video-cover`**                                      |
 | `--video-cover <path\|url\|key>` | **Required with `--video`** | Cwd-relative local cover image path, URL, or `image_key` (`img_xxx`). Local paths and URLs are uploaded automatically                                                                         |
 | `--audio <path\|url\|key>` | One content option | Voice-message audio key, URL, or cwd-relative local path. Local paths and URLs must be Opus (`.opus` or Ogg Opus `.ogg`) |
+| `--attachment <key>` | One content option | Repeatable bare file/folder key (`file_xxx`); merges into the post message's attachment zone. Requires a post message (`--markdown` or `--msg-type post`). Name/size/mime/is_folder are filled by the server from file service metadata, not taken from the client. Use this instead of `--file` when the file should render inside a rich-text message's attachment area |
 | `--msg-type <type>` | No | Message type (default `text`). If you use `--text` / `--markdown` / media flags, the effective type is inferred automatically. Explicitly setting a conflicting `--msg-type` fails validation |
 | `--idempotency-key <key>` | No | Idempotency key, max 50 characters; the same key sends only one message within 1 hour                                                                                                        |
 | `--as <identity>` | No | Identity type: `bot` or `user` (default `bot`)                                                                                                                                                |
 | `--dry-run` | No | Print the request only, do not execute it                                                                                                                                                     |
 
-> **Mutual exclusivity rule:** `--text`, `--markdown`, `--content`, and `--image`/`--file`/`--video`/`--audio` cannot be used together. Media flags are also mutually exclusive with each other.
+> **Mutual exclusivity rule:** `--text`, `--markdown`, `--content`, and `--image`/`--file`/`--video`/`--audio` cannot be used together. Media flags are also mutually exclusive with each other. `--attachment` cannot be combined with a `--content` that already contains a `files` array (the attachment zone is declared either via `--content` or via `--attachment`, not both).
 >
 > **Video cover rule:** `--video` **must** be accompanied by `--video-cover`. Omitting `--video-cover` when using `--video` will fail validation. `--video-cover` cannot be used without `--video`.
 
@@ -209,13 +211,15 @@ lark-cli im +messages-send --chat-id oc_xxx --msg-type interactive --content '<c
 - Using `--content` without making the JSON match the effective `--msg-type`.
 - Explicitly setting `--msg-type` to something that conflicts with `--text`, `--markdown`, or media flags.
 - Mixing `--text`, `--markdown`, or `--content` with media flags in one command.
+- Using `--attachment` with `--text` or a media flag. The attachment zone only exists on `post` messages — pair `--attachment` with `--markdown` or `--msg-type post`.
+- Using `--file` when the file should sit inside a rich-text message's attachment area. `--file` sends a standalone `file`-type message; use `--attachment` (with `--markdown` or post `--content`) to attach files/folders inside a post message.
 
 ## `content` Format Reference
 
 | `msg_type` | Example `content` |
 |----------|-------------|
 | `text` | `{"text":"Hello <at user_id=\"ou_xxx\">name</at>"}` |
-| `post` | `{"zh_cn":{"title":"Title","content":[[{"tag":"text","text":"Body"}]]}}` |
+| `post` | `{"zh_cn":{"title":"Title","content":[[{"tag":"text","text":"Body"}]]},"files":[{"key":"file_xxx"}]}` — the top-level `files` array is the attachment zone; each entry carries a file/folder `key` (name/metadata are backfilled by the server from file service metadata — a client-supplied `name` has no effect) |
 | `image` | `{"image_key":"img_xxx"}` |
 | `file` | `{"file_key":"file_xxx"}` |
 | `audio` | `{"file_key":"file_xxx"}` |

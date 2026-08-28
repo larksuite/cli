@@ -20,12 +20,13 @@ var imFrameworkFlags = map[string]bool{
 	"--as": true, "--dry-run": true, "--format": true, "--json": true, "--jq": true, "--yes": true,
 }
 
+// TestAllIMShortcutsUseAffordanceExamples verifies every IM shortcut has an affordance example.
 func TestAllIMShortcutsUseAffordanceExamples(t *testing.T) {
 	affordance.SetSource(os.DirFS("../../affordance"))
 	t.Cleanup(func() { affordance.SetSource(nil) })
 
 	shortcuts := Shortcuts()
-	if got, want := len(shortcuts), 23; got != want {
+	if got, want := len(shortcuts), 24; got != want {
 		t.Fatalf("registered IM shortcuts = %d, want audited count %d", got, want)
 	}
 

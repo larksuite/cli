@@ -114,6 +114,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli im +<verb> [flags]`）。
 | [`+chat-search`](references/lark-im-chat-search.md) | Search visible group chats by --query keyword and/or --member-ids; user/bot; e.g. look up chat_id by group name; supports type filters, sorting, auto-pagination, and --exclude-muted (user identity only) |
 | [`+chat-update`](references/lark-im-chat-update.md) | Update group chat name or description; user/bot; updates a chat's name or description |
 | [`+message-read-users`](references/lark-im-message-read-status.md) | List users who read one message; user/bot; identity-specific scopes; supports bounded auto-pagination |
+| [`+messages-edit`](references/lark-im-messages-edit.md) | Edit a message's content (text/post, including the attachment zone); bot-only (user identity is rejected by the server); PUT /open-apis/im/v1/messages/:message_id |
 | [`+messages-mget`](references/lark-im-messages-mget.md) | Batch get messages by IDs; user/bot; fetches up to 50 om_ message IDs, formats sender names, expands thread replies |
 | [`+messages-read-status`](references/lark-im-message-read-status.md) | Batch query whether the current user read 1–50 messages; user-only; returns readable items and invalid message IDs |
 | [`+messages-reply`](references/lark-im-messages-reply.md) | Reply to a message (supports thread replies); user/bot; supports text/markdown/post/media replies, reply-in-thread, idempotency key |
