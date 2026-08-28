@@ -212,7 +212,13 @@ func buildAutoReplyPatch(ctx context.Context, runtime *common.RuntimeContext, up
 		if end, ok := autoReply["end_time"].(string); ok {
 			startTS, _ := strconv.ParseInt(start, 10, 64)
 			endTS, _ := strconv.ParseInt(end, 10, 64)
-			if startTS >= endTS {
+			if (startTS == 0) != (endTS == 0) {
+				return nil, mailValidationParamError("--end", "--start and --end must both be 0 or both be non-zero")
+			}
+			if startTS == 0 && runtime.Bool("enable") {
+				return nil, mailValidationParamError("--start", "--enable requires non-zero --start and --end")
+			}
+			if startTS != 0 && startTS >= endTS {
 				return nil, mailValidationParamError("--end", "--end must be after --start")
 			}
 		}
@@ -594,6 +600,9 @@ func readAutoReplyImage(runtime *common.RuntimeContext, path string) ([]byte, er
 
 func parseAutoReplyDateMillis(flag, raw, timezone string, endOfDay bool) (string, error) {
 	if value, err := strconv.ParseInt(raw, 10, 64); err == nil {
+		if value == 0 {
+			return "0", nil
+		}
 		t := time.Unix(value, 0)
 		if value >= 1_000_000_000_000 {
 			t = time.UnixMilli(value)
