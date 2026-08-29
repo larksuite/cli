@@ -93,7 +93,7 @@ func (folderConverter) Convert(ctx *ConvertContext) string {
 // fetchFolderChildrenTree 调 openapi 展开文件夹一层，返回树形文本（含 children_count 深层提示）。
 // 失败时返回空串，由调用方降级为旧输出。
 func fetchFolderChildrenTree(runtime *common.RuntimeContext, folderKey, messageID string) string {
-	data, err := runtime.DoAPIJSONTyped(http.MethodGet, "/open-apis/im/v1/resources/"+folderKey+"/children",
+	data, err := runtime.DoAPIJSONTyped(http.MethodGet, "/open-apis/im/v1/resources/folder/"+folderKey+"/children",
 		larkcore.QueryParams{
 			"srctype":   []string{"message"},
 			"srcid":     []string{messageID},
