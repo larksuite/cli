@@ -1340,17 +1340,16 @@ func joinStyleValidationErrors(probs []error) error {
 		return verr
 	}
 	const maxShown = 8
-	shown := probs
-	if len(shown) > maxShown {
-		shown = shown[:maxShown]
-	}
-	msgs := make([]string, 0, len(shown))
-	for _, e := range shown {
-		msgs = append(msgs, aggregatedIssueText(e))
-	}
+	msgs := collapseAggregatedIssues(probs)
+	distinct := len(msgs)
 	suffix := ""
-	if len(probs) > maxShown {
-		suffix = fmt.Sprintf(" (+%d more)", len(probs)-maxShown)
+	if len(msgs) > maxShown {
+		suffix = fmt.Sprintf(" (+%d more)", len(msgs)-maxShown)
+		msgs = msgs[:maxShown]
+	}
+	if distinct < len(probs) {
+		return sheetsValidationForFlag("styles", "--styles has %d issues (%d distinct): %s%s", len(probs), distinct, strings.Join(msgs, " | "), suffix).
+			WithCause(probs[0])
 	}
 	return sheetsValidationForFlag("styles", "--styles has %d issues: %s%s", len(probs), strings.Join(msgs, " | "), suffix).
 		WithCause(probs[0])
@@ -1662,7 +1661,7 @@ func normalizeWorkbookCreateStyleObject(in map[string]interface{}, path string) 
 				// misleads worse than silence.
 				msg := fmt.Sprintf("%s.%s is not a supported style field", path, k)
 				lower := strings.ToLower(k)
-				if rx, ok := styleFieldPrescriptions[lower]; ok {
+				if rx := styleFieldPrescriptionFor(k); rx != "" {
 					msg += " — " + rx
 				} else if match := suggest.Closest(lower, workbookCreateCellStyleFieldList, 1); len(match) > 0 && suggest.Levenshtein(lower, match[0]) <= 2 {
 					msg += fmt.Sprintf(" — did you mean %q?", match[0])

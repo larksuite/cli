@@ -692,3 +692,63 @@ func TestShortcuts_IntuitiveFlagHints(t *testing.T) {
 		})
 	}
 }
+
+// TestShortcuts_RequiredFlagsMarkedInHelp pins the required marker on the
+// mounted commands. It is a sheets-local decoration (chainRequiredFlagHelp),
+// so the assertions live here rather than against the framework: cobra renders
+// no marker of its own, and the two commands that relax the annotation after
+// mounting must still be answered from flag-defs.
+func TestShortcuts_RequiredFlagsMarkedInHelp(t *testing.T) {
+	t.Parallel()
+
+	usageOf := func(t *testing.T, command, flag string) string {
+		t.Helper()
+		parent, _, _, _ := newTestRig(t, shortcutFromRegistry(t, command))
+		cmd, _, err := parent.Find([]string{command})
+		if err != nil {
+			t.Fatalf("Find(%q) error = %v", command, err)
+		}
+		fl := cmd.Flags().Lookup(flag)
+		if fl == nil {
+			t.Fatalf("%s has no --%s", command, flag)
+		}
+		return fl.Usage
+	}
+
+	t.Run("a required flag says so", func(t *testing.T) {
+		t.Parallel()
+		if got := usageOf(t, "+workbook-create", "title"); !strings.HasPrefix(got, "(required) ") {
+			t.Errorf("--title usage = %q, want the required marker", got)
+		}
+	})
+
+	t.Run("an optional flag is left alone", func(t *testing.T) {
+		t.Parallel()
+		if got := usageOf(t, "+workbook-create", "folder-token"); strings.Contains(got, "(required)") {
+			t.Errorf("--folder-token usage = %q, want no required marker", got)
+		}
+	})
+
+	t.Run("a relaxed-but-still-required flag says so", func(t *testing.T) {
+		t.Parallel()
+		// +chart-create clears the cobra annotation so --print-example can run
+		// without it; --properties is still required on every other path.
+		if got := usageOf(t, "+chart-create", "properties"); !strings.HasPrefix(got, "(required) ") {
+			t.Errorf("--properties usage = %q, want the required marker", got)
+		}
+	})
+
+	t.Run("a one-required pair marks neither member", func(t *testing.T) {
+		t.Parallel()
+		// +csv-put takes --start-cell OR its --range alias, so neither is
+		// individually required — saying otherwise would be a false statement.
+		for _, flag := range []string{"start-cell", "range"} {
+			if got := usageOf(t, "+csv-put", flag); strings.Contains(got, "(required)") {
+				t.Errorf("--%s usage = %q, want no required marker", flag, got)
+			}
+		}
+		if got := usageOf(t, "+csv-put", "csv"); !strings.HasPrefix(got, "(required) ") {
+			t.Errorf("--csv usage = %q, want the required marker", got)
+		}
+	})
+}

@@ -6,6 +6,7 @@ package sheets
 import (
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"image"
 	_ "image/gif"
@@ -17,6 +18,8 @@ import (
 	"unicode"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -224,14 +227,16 @@ func joinWritesValidationErrors(probs []error) error {
 		return verr
 	}
 	const maxShown = 8
-	msgs := make([]string, 0, len(probs))
-	for _, e := range probs {
-		msgs = append(msgs, aggregatedIssueText(e))
-	}
+	msgs := collapseAggregatedIssues(probs)
+	distinct := len(msgs)
 	suffix := ""
 	if len(msgs) > maxShown {
 		suffix = fmt.Sprintf(" (+%d more)", len(msgs)-maxShown)
 		msgs = msgs[:maxShown]
+	}
+	if distinct < len(probs) {
+		return sheetsValidationForFlag("writes", "--writes has %d issues (%d distinct): %s%s", len(probs), distinct, strings.Join(msgs, " | "), suffix).
+			WithCause(probs[0])
 	}
 	return sheetsValidationForFlag("writes", "--writes has %d issues: %s%s", len(probs), strings.Join(msgs, " | "), suffix).
 		WithCause(probs[0])
@@ -395,8 +400,16 @@ var CsvPut = common.Shortcut{
 		cmd.MarkFlagsMutuallyExclusive("start-cell", "range")
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if err := guardCSVValueIsNotFilePath(runtime); err != nil {
+		resolved, err := resolveCSVPathFromFileAlias(runtime)
+		if err != nil {
 			return err
+		}
+		// The guard asks "is this inline CSV actually a path?" — already
+		// answered when the value arrived under --file and was read as one.
+		if !resolved {
+			if err := guardCSVValueIsNotFilePath(runtime); err != nil {
+				return err
+			}
 		}
 		return validateViaInput(csvPutInput)(ctx, runtime)
 	},
@@ -473,6 +486,60 @@ func csvPutWriteRangeFromInput(input map[string]interface{}) (string, bool) {
 	endCol := columnIndexToLetter(col0 + cols - 1)
 	endRow := row0 + len(records) // row0 is 0-based; +len(records) is the 1-based bottom row
 	return fmt.Sprintf("%s:%s%d", anchor, endCol, endRow), true
+}
+
+// resolveCSVPathFromFileAlias reads the CSV file named by a value that arrived
+// under the --file alias, replacing the flag value with its contents exactly as
+// `--csv @<path>` would. It reports whether it did.
+//
+// --file is aliased onto --csv because agents habitually reach for it, but the
+// two names promise different things: --csv holds CSV text, --file holds a
+// path. Rewriting only the name left the path to be written into the sheet as
+// literal text, which the file-path guard then had to reject — so the alias
+// meant to save a round trip spent one instead, on an error naming a flag the
+// caller never typed (08-18..24 eval, 35 cases). A caller who writes --file
+// means a path in every vocabulary this alias was added for, so reading one is
+// the only reading; --csv keeps its guard, unchanged, for callers who type it.
+//
+// Values already resolved by the framework (--file @x / --file -) are left
+// alone: they are contents, not a path. The read goes through the same
+// cmdutil.ReadInputFile as @file, so the relative-path policy is identical —
+// an absolute path is rejected here exactly as it would be there, and stdin
+// stays the out-of-tree route.
+//
+// Only a value that names a readable file is claimed. A value that names
+// nothing falls through untouched — `--file` holding literal CSV text was
+// accepted before this rule existed and still is, judged by the same guard as
+// --csv rather than by this one's narrower reading.
+func resolveCSVPathFromFileAlias(runtime *common.RuntimeContext) (bool, error) {
+	if runtime == nil || !flagValueCameFromAlias(runtime.Cmd, "csv", "file") {
+		return false, nil
+	}
+	if runtime.InputResolvedFromSource("csv") {
+		return false, nil
+	}
+	raw := strings.TrimSpace(runtime.Str("csv"))
+	if raw == "" || strings.HasPrefix(raw, "@") {
+		return false, nil
+	}
+	data, err := cmdutil.ReadInputFile(runtime.FileIO(), raw)
+	if err != nil {
+		// A rejected PATH is reported: the caller named a real location the
+		// policy will not read (absolute, or outside the tree), and the fix is
+		// stdin. Any other failure — the usual one being "no such file" —
+		// leaves the value for the --csv guard, which decides between "you
+		// meant a path" and "this is one-cell CSV text" on the value's shape.
+		if !errors.Is(err, fileio.ErrPathValidation) {
+			return false, nil
+		}
+		return false, sheetsValidationForFlag("file", "--file %v", err).
+			WithCause(err).
+			WithHint("--file reads a path relative to the current directory; pipe a file outside it in via stdin instead (--csv - < <path>)")
+	}
+	if err := runtime.Cmd.Flags().Set("csv", common.StripUTF8BOM(string(data))); err != nil {
+		return false, sheetsValidationForFlag("file", "--file: %v", err).WithCause(err)
+	}
+	return true, nil
 }
 
 // guardCSVValueIsNotFilePath catches the common slip of passing a CSV file path

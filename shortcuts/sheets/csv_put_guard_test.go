@@ -132,3 +132,75 @@ func TestGuardCSVValueIsNotFilePath_PassesThrough(t *testing.T) {
 		}
 	}
 }
+
+// newCSVFileAliasRuntime is newCSVGuardRuntime plus the record chainFlagAliases
+// leaves when the value was typed as --file.
+func newCSVFileAliasRuntime(csvVal string) *common.RuntimeContext {
+	rctx := newCSVGuardRuntime(csvVal)
+	rctx.Cmd.Annotations = map[string]string{aliasSourceAnnotation("csv"): "file"}
+	return rctx
+}
+
+// TestResolveCSVPathFromFileAlias covers the value-side half of the file → csv
+// alias: --file names a path, so a value naming a readable file is read like
+// `--csv @<path>` instead of being written into the sheet as literal text.
+func TestResolveCSVPathFromFileAlias(t *testing.T) {
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+	if err := os.WriteFile("data.csv", []byte("a,b\n1,2\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("reads the named file", func(t *testing.T) {
+		rctx := newCSVFileAliasRuntime("./data.csv")
+		resolved, err := resolveCSVPathFromFileAlias(rctx)
+		if err != nil || !resolved {
+			t.Fatalf("resolved = %v, err = %v; want the file to be read", resolved, err)
+		}
+		if got, _ := rctx.Cmd.Flags().GetString("csv"); got != "a,b\n1,2\n" {
+			t.Errorf("--csv = %q, want the file contents", got)
+		}
+	})
+
+	t.Run("an out-of-tree path is rejected toward stdin", func(t *testing.T) {
+		_, err := resolveCSVPathFromFileAlias(newCSVFileAliasRuntime("/tmp/data.csv"))
+		ve := requireValidation(t, err, "relative path")
+		if ve.Param != "--file" {
+			t.Errorf("param = %q, want the flag the caller actually typed", ve.Param)
+		}
+		if !strings.Contains(ve.Hint, "--csv - <") {
+			t.Errorf("hint should offer stdin for a file outside the tree, got: %q", ve.Hint)
+		}
+	})
+
+	t.Run("inline CSV text still passes through", func(t *testing.T) {
+		// --file holding literal CSV was accepted before this rule existed;
+		// naming nothing readable, it stays the --csv guard's business.
+		rctx := newCSVFileAliasRuntime("a,b\n1,2")
+		resolved, err := resolveCSVPathFromFileAlias(rctx)
+		if err != nil || resolved {
+			t.Fatalf("resolved = %v, err = %v; want the value left alone", resolved, err)
+		}
+		if got, _ := rctx.Cmd.Flags().GetString("csv"); got != "a,b\n1,2" {
+			t.Errorf("--csv = %q, want the value untouched", got)
+		}
+	})
+
+	t.Run("a value typed as --csv is not re-read as a path", func(t *testing.T) {
+		// Without the alias record the rule must not fire: --csv promises text,
+		// and its own guard (not this one) answers a path passed to it.
+		resolved, err := resolveCSVPathFromFileAlias(newCSVGuardRuntime("./data.csv"))
+		if err != nil || resolved {
+			t.Fatalf("resolved = %v, err = %v; want --csv left to its guard", resolved, err)
+		}
+	})
+
+	t.Run("@file and stdin values are already contents", func(t *testing.T) {
+		rctx := newCSVFileAliasRuntime("./data.csv")
+		common.TestMarkInputResolved(rctx, "csv")
+		resolved, err := resolveCSVPathFromFileAlias(rctx)
+		if err != nil || resolved {
+			t.Fatalf("resolved = %v, err = %v; want a resolved value left alone", resolved, err)
+		}
+	})
+}

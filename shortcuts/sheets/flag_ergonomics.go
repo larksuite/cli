@@ -40,8 +40,57 @@ func withFlagErgonomics(prev func(cmd *cobra.Command)) func(cmd *cobra.Command) 
 		chainEnumNormalization(cmd)
 		chainFlagAliases(cmd)
 		chainRangeSheetPrefix(cmd)
+		chainRequiredFlagHelp(cmd)
 	}
 }
+
+// chainRequiredFlagHelp marks a required flag as required in --help. The
+// framework calls MarkFlagRequired, which only sets a completion annotation
+// cobra's help never renders, so a required flag was listed exactly like an
+// optional one and callers learned the difference by omitting it and reading
+// the failure (08-18..24 eval: 88 calls hit "required flag(s) \"title\" not
+// set" on +workbook-create, after a --help showing nothing but "Spreadsheet
+// title"). The marker is a domain decoration here rather than a framework one,
+// so no other domain's help shifts.
+//
+// flag-defs is the source of truth, not the cobra annotation: two commands
+// deliberately clear that annotation after mounting (+csv-put relaxes
+// --start-cell for its one-required pair, +chart-create relaxes --properties
+// for --print-example) while the flag stays required on the real path. The
+// exception is a flag cobra has since put in a one-required GROUP, where
+// neither member is individually required — those keep the plain description.
+func chainRequiredFlagHelp(cmd *cobra.Command) {
+	defs, err := loadFlagDefs()
+	if err != nil {
+		return
+	}
+	spec, ok := defs[cmd.Name()]
+	if !ok {
+		return
+	}
+	for _, df := range spec.Flags {
+		// "xor" flags (--url / --spreadsheet-token, --sheet-id / --sheet-name)
+		// are required as a pair, and their descriptions already say so.
+		if df.Kind == "system" || df.Required != "required" {
+			continue
+		}
+		fl := cmd.Flags().Lookup(df.Name)
+		if fl == nil || strings.HasPrefix(fl.Usage, requiredFlagHelpPrefix) {
+			continue
+		}
+		// Same literal cobra uses for MarkFlagsOneRequired (it exports no
+		// constant); runner.go's --print-schema relaxation reads it too.
+		if _, grouped := fl.Annotations["cobra_annotation_one_required"]; grouped {
+			continue
+		}
+		fl.Usage = requiredFlagHelpPrefix + fl.Usage
+	}
+}
+
+// requiredFlagHelpPrefix leads the description rather than trailing it: this
+// domain's payload flags carry paragraph-long descriptions that a terminal
+// wraps or truncates, and the marker has to survive that.
+const requiredFlagHelpPrefix = "(required) "
 
 // ─── intuitive flag names: silent aliases & prescriptions ───────────────
 //
@@ -56,9 +105,14 @@ func withFlagErgonomics(prev func(cmd *cobra.Command)) func(cmd *cobra.Command) 
 
 // commandFlagAliases maps, per command, habitual flag names onto the flag
 // actually registered. Only pairs with identical value semantics belong
-// here: the rewrite is invisible, so it must be safe to apply unread
-// (+csv-put --file with a path value still trips the file-path guard, which
-// prescribes @file / stdin).
+// here: the rewrite is invisible, so it must be safe to apply unread.
+//
+// +csv-put's file → csv is the one entry whose value semantics differ, and it
+// carries its own value-side rule to make them match: --file names a path by
+// definition, so the value is read as one (resolveCSVPathFromFileAlias) rather
+// than being written into the sheet as literal text. Without that, the alias
+// itself manufactured a failure — an agent that wrote `--file ./data.csv` got
+// "--csv value is an existing file", an error about a flag it never typed.
 var commandFlagAliases = map[string]map[string]string{
 	"+csv-put":      {"file": "csv"},
 	"+sheet-create": {"name": "title"},
@@ -170,15 +224,45 @@ func chainFlagAliases(cmd *cobra.Command) {
 			usable[alias] = target
 		}
 	}
+	flags := cmd.Flags()
 	flagalias.InstallNormalizer(cmd, func(name string) string {
 		if strings.Contains(name, "_") {
 			name = strings.ReplaceAll(name, "_", "-")
 		}
-		if target, ok := usable[name]; ok {
-			name = target
+		target, ok := usable[name]
+		if !ok {
+			return name
 		}
-		return name
+		// Remember the spelling for the one rule that needs it (a value read
+		// as a path only because the caller wrote --file). InstallNormalizer
+		// records nothing itself by design, and pflag also normalizes names
+		// outside parsing (AddFlag, Lookup, Set), so the record is gated on
+		// the parser actually walking argv — same guard flagalias.Bind uses
+		// for its own source tracking.
+		if flags.Parsed() {
+			if cmd.Annotations == nil {
+				cmd.Annotations = map[string]string{}
+			}
+			cmd.Annotations[aliasSourceAnnotation(target)] = name
+		}
+		return target
 	})
+}
+
+// aliasSourceAnnotation names the command annotation holding the alias
+// spelling that supplied a canonical flag's value, or is absent when the
+// canonical name was typed.
+func aliasSourceAnnotation(canonical string) string {
+	return "lark-cli/sheets-alias-source/" + canonical
+}
+
+// flagValueCameFromAlias reports whether canonical's value was supplied under
+// the given habitual spelling on this invocation.
+func flagValueCameFromAlias(cmd *cobra.Command, canonical, alias string) bool {
+	if cmd == nil {
+		return false
+	}
+	return cmd.Annotations[aliasSourceAnnotation(canonical)] == alias
 }
 
 // sheetsFlagErrorFunc overrides the root FlagErrorFunc for sheets commands.
