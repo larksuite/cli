@@ -558,37 +558,31 @@ func localEndpointServer(t *testing.T, body string, status int) int {
 }
 
 func TestVerifyLocalEndpointIdentity(t *testing.T) {
-	cfgWith := func(appID string, port int) *appDevProjectConfig {
-		return &appDevProjectConfig{AppID: appID, DevPort: port}
+	cfgWith := func(port int) *appDevProjectConfig {
+		return &appDevProjectConfig{DevPort: port}
 	}
 	t.Run("mismatch is rejected", func(t *testing.T) {
 		port := localEndpointServer(t, `{"stack":"custom-webapp","app":{"id":"app_other"}}`, 200)
-		err := verifyLocalEndpointIdentity(cfgWith("app_mine", port))
+		err := verifyLocalEndpointIdentity(cfgWith(port), "app_mine")
 		if err == nil || !strings.Contains(err.Error(), "app_other") || !strings.Contains(err.Error(), "app_mine") {
 			t.Errorf("mismatch must be rejected naming both ids, got %v", err)
 		}
 	})
 	t.Run("matching id passes", func(t *testing.T) {
 		port := localEndpointServer(t, `{"app":{"id":"app_mine"}}`, 200)
-		if err := verifyLocalEndpointIdentity(cfgWith("app_mine", port)); err != nil {
+		if err := verifyLocalEndpointIdentity(cfgWith(port), "app_mine"); err != nil {
 			t.Errorf("matching identity must pass: %v", err)
 		}
 	})
-	t.Run("both without app id pass", func(t *testing.T) {
+	t.Run("endpoint without app id passes (fresh project first deploy)", func(t *testing.T) {
 		port := localEndpointServer(t, `{"stack":"custom-webapp"}`, 200)
-		if err := verifyLocalEndpointIdentity(cfgWith("", port)); err != nil {
-			t.Errorf("fresh project on both sides must pass: %v", err)
-		}
-	})
-	t.Run("endpoint without app id but deploy dir with one is rejected", func(t *testing.T) {
-		port := localEndpointServer(t, `{"stack":"custom-webapp"}`, 200)
-		if err := verifyLocalEndpointIdentity(cfgWith("app_mine", port)); err == nil {
-			t.Error("one-sided app id must be rejected (served declaration disagrees with the deploy dir)")
+		if err := verifyLocalEndpointIdentity(cfgWith(port), "app_mine"); err != nil {
+			t.Errorf("an endpoint without an app id is a fresh project and must pass: %v", err)
 		}
 	})
 	t.Run("non-json endpoint is rejected", func(t *testing.T) {
 		port := localEndpointServer(t, "<html>not a spark project</html>", 200)
-		err := verifyLocalEndpointIdentity(cfgWith("app_mine", port))
+		err := verifyLocalEndpointIdentity(cfgWith(port), "app_mine")
 		if err == nil || !strings.Contains(err.Error(), "not valid JSON") {
 			t.Errorf("non-JSON endpoint must be rejected: %v", err)
 		}
@@ -603,7 +597,7 @@ func TestVerifyLocalEndpointIdentity(t *testing.T) {
 		orig := appDevProbeLocalEndpoint
 		appDevProbeLocalEndpoint = probeLocalSparkEndpoint
 		defer func() { appDevProbeLocalEndpoint = orig }()
-		gerr := verifyLocalEndpointIdentity(cfgWith("app_mine", port))
+		gerr := verifyLocalEndpointIdentity(cfgWith(port), "app_mine")
 		p, _ := errs.ProblemOf(gerr)
 		if p == nil || !strings.Contains(p.Message, "unavailable") || !strings.Contains(p.Hint, "start the dev server") {
 			t.Errorf("missing dev server must hard-fail with start guidance, got %v", gerr)
