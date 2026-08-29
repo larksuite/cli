@@ -39,8 +39,12 @@ type appDevProjectConfig struct {
 	// BuildOutputCDN is the CDN artifact directory; empty means Level 1
 	// (no CDN split).
 	BuildOutputCDN string
-	AppID          string
-	AppURL         string
+	// DevPort is the declared local dev-server port; 0 means undeclared.
+	// Hosted projects must declare it — the platform relies on the local
+	// self-description endpoint (GET localhost:<port>/spark.json).
+	DevPort int
+	AppID   string
+	AppURL  string
 }
 
 // sparkJSONDoc mirrors the spark.json schema (§3). Unknown fields are
@@ -49,7 +53,10 @@ type appDevProjectConfig struct {
 type sparkJSONDoc struct {
 	Stack   string `json:"stack"`
 	Version string `json:"version"`
-	Build   struct {
+	Dev     struct {
+		Port int `json:"port"`
+	} `json:"dev"`
+	Build struct {
 		Command   []string `json:"command"`
 		Output    string   `json:"output"`
 		OutputCDN string   `json:"output_cdn"`
@@ -77,8 +84,9 @@ func readAppDevProjectConfig(dir string) (cfg *appDevProjectConfig, found bool, 
 		return nil, true, appsFileIOError(jerr, "parse %s failed: %v", sparkJSONRelPath, jerr)
 	}
 	cfg = &appDevProjectConfig{
-		Stack:          doc.Stack,
+		Stack:          strings.TrimSpace(doc.Stack),
 		Version:        doc.Version,
+		DevPort:        doc.Dev.Port,
 		BuildCommand:   doc.Build.Command,
 		BuildOutput:    strings.TrimSpace(doc.Build.Output),
 		BuildOutputCDN: strings.TrimSpace(doc.Build.OutputCDN),
