@@ -69,9 +69,9 @@ func appDevBuildEnv(kvm map[string]string) (env []string, keys []string) {
 // generated from the .html tree for buildless projects when absent (never
 // overwriting a project-provided one), and required from the build
 // otherwise. generatedRoutes is the generated route count, or -1 when the
-// project shipped its own routes.json. allowSensitive skips the
-// credential-file scan (every listed file is uploaded, so all are scanned).
-func validateAppDevOutputs(fio fileio.FileIO, cfg *appDevProjectConfig, allowSensitive bool) (entries []appDevPackEntry, generatedRoutes int, err error) {
+// project shipped its own routes.json. A declared but missing CDN directory
+// is skipped (no CDN entries), not an error.
+func validateAppDevOutputs(fio fileio.FileIO, cfg *appDevProjectConfig) (entries []appDevPackEntry, generatedRoutes int, err error) {
 	generatedRoutes = -1
 	outFiles, err := walkHTMLPublishCandidates(fio, cfg.BuildOutput)
 	if err != nil {
@@ -88,7 +88,6 @@ func validateAppDevOutputs(fio fileio.FileIO, cfg *appDevProjectConfig, allowSen
 		return nil, -1, err
 	}
 	var htmlRels []string
-	var sensitive []string
 	hasRoutes := false
 	for _, c := range outFiles {
 		if strings.HasSuffix(c.RelPath, ".html") {
@@ -97,30 +96,21 @@ func validateAppDevOutputs(fio fileio.FileIO, cfg *appDevProjectConfig, allowSen
 		if c.RelPath == "routes.json" {
 			hasRoutes = true
 		}
-		if !allowSensitive && isSensitiveCandidate(cfg.BuildOutput, c) {
-			sensitive = append(sensitive, filepath.ToSlash(filepath.Join(cfg.BuildOutput, c.RelPath)))
-		}
 		entries = append(entries, appDevPackEntry{ZipPath: "output/" + c.RelPath, AbsPath: c.AbsPath, Size: c.Size})
 	}
 	if cfg.BuildOutputCDN != "" {
 		cdnFiles, err := walkHTMLPublishCandidates(fio, cfg.BuildOutputCDN)
-		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				return nil, -1, appsFailedPreconditionError(
-					"CDN artifact directory %s not found (declared in spark.json build.output_cdn)", cfg.BuildOutputCDN).
-					WithHint("make the build produce it, or drop build.output_cdn to publish without the CDN split")
+		switch {
+		case err == nil:
+			for _, c := range cdnFiles {
+				entries = append(entries, appDevPackEntry{ZipPath: "output_resource/" + c.RelPath, AbsPath: c.AbsPath, Size: c.Size})
 			}
+		case errors.Is(err, fs.ErrNotExist):
+			// A declared but not-yet-produced CDN directory just means no CDN
+			// entries this round.
+		default:
 			return nil, -1, err
 		}
-		for _, c := range cdnFiles {
-			if !allowSensitive && isSensitiveCandidate(cfg.BuildOutputCDN, c) {
-				sensitive = append(sensitive, filepath.ToSlash(filepath.Join(cfg.BuildOutputCDN, c.RelPath)))
-			}
-			entries = append(entries, appDevPackEntry{ZipPath: "output_resource/" + c.RelPath, AbsPath: c.AbsPath, Size: c.Size})
-		}
-	}
-	if len(sensitive) > 0 {
-		return nil, -1, appDevSensitiveCandidatesError(sensitive)
 	}
 	if len(htmlRels) == 0 {
 		return nil, -1, appsFailedPreconditionError(
@@ -219,34 +209,12 @@ func validateAppDevRoutesJSON(b []byte) error {
 	return nil
 }
 
-// appDevSensitiveCandidatesError mirrors sensitiveCandidatesError with
-// publish-specific wording: this command has no --path flag — the payload is
-// the declared artifact directories — so the html-publish message would
-// misdirect the user.
-func appDevSensitiveCandidatesError(hits []string) error {
-	return appsValidationError(
-		"the publish payload contains %d credential file(s) that should not be published: %s",
-		len(hits), truncatedJoin(hits, maxSensitiveListInError)).
-		WithHint("remove these files from the artifact directories, OR pass --allow-sensitive if shipping them is intentional (e.g. a docs site demoing credential-file formats)")
-}
-
-// validateSparkDeclaration enforces the protocol's declaration-side MUSTs
-// at the hosting entry: stack is required (identifies the tech-stack shape;
-// official template seeds write it, custom projects use custom-webapp /
-// custom-fullstack), and dev.port is required because the platform relies
-// on the project's local self-description endpoint
+// validateSparkDeclaration enforces the declaration-side gate at the
+// hosting entry: dev.port is required because the platform relies on the
+// project's local self-description endpoint
 // (GET localhost:<dev.port>/spark.json) after the app is hosted.
 func validateSparkDeclaration(cfg *appDevProjectConfig) error {
 	switch {
-	case cfg.Stack == "":
-		return appsFailedPreconditionError("spark.json is missing the required stack field").
-			WithHint(`declare the tech stack: official templates write it automatically; custom projects use "custom-webapp" or "custom-fullstack"`)
-	case !appDevTemplateNameRe.MatchString(cfg.Stack):
-		return appsFailedPreconditionError("spark.json stack %q is invalid (must start with a lowercase letter or digit; then lowercase letters, digits, '.', '_', '-')", cfg.Stack).
-			WithHint(`use the stack name written by the template seed, or "custom-webapp" / "custom-fullstack" for custom projects`)
-	case !strings.HasSuffix(cfg.Stack, "-webapp") && !strings.HasSuffix(cfg.Stack, "-fullstack"):
-		return appsFailedPreconditionError("spark.json stack %q does not name a supported hosting shape (must end with -webapp or -fullstack)", cfg.Stack).
-			WithHint(`custom projects use "custom-webapp" or "custom-fullstack"; official template stacks carry the suffix already`)
 	case cfg.DevPort == 0:
 		return appsFailedPreconditionError("spark.json is missing the required dev.port field").
 			WithHint(`declare the local dev-server port, e.g. {"dev": {"port": 5173}} — after hosting, platform capabilities rely on the local self-description endpoint (GET localhost:<dev.port>/spark.json)`)
@@ -490,7 +458,7 @@ var AppsDeploy = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "publish target app ID (app_ prefix); optional when spark.json already records one — on a successful publish it is saved back into spark.json, and a value conflicting with the recorded one is rejected"},
 		{Name: "skip-build", Type: "bool", Desc: "skip the build.command declared in spark.json and publish the existing build.output directory as-is (no effect on buildless projects, which never build)"},
-		{Name: "allow-sensitive", Type: "bool", Desc: "skip the credential-file scan (allow .env / .npmrc / etc. in the publish payload)"},
+		{Name: "no-verify", Type: "bool", Desc: "skip the local dev-server verification (GET 127.0.0.1:<dev.port>/spark.json availability and app-identity match); the dev.port declaration itself is still required"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		cfg, _, _, err := resolveAppDevPublishTarget(rctx)
@@ -500,31 +468,9 @@ var AppsDeploy = common.Shortcut{
 		if err := validateSparkDeclaration(cfg); err != nil {
 			return err
 		}
-		if err := verifyLocalEndpointIdentity(cfg); err != nil {
-			return err
-		}
-		// Sensitive-file scan lives in Validate so that --dry-run exits
-		// non-zero on a hit — the one deliberate exception to dry-run's
-		// exit-0 convention (mirrors +html-publish). Every file under the
-		// declared artifact directories is uploaded, so all are scanned.
-		// Walk errors (e.g. directory missing) are not fatal here;
-		// DryRun/Execute surface them with richer context.
-		if !rctx.Bool("allow-sensitive") {
-			var hits []string
-			for _, dir := range []string{cfg.BuildOutput, cfg.BuildOutputCDN} {
-				if dir == "" {
-					continue
-				}
-				if candidates, err := walkHTMLPublishCandidates(rctx.FileIO(), dir); err == nil {
-					for _, c := range candidates {
-						if isSensitiveCandidate(dir, c) {
-							hits = append(hits, filepath.ToSlash(filepath.Join(dir, c.RelPath)))
-						}
-					}
-				}
-			}
-			if len(hits) > 0 {
-				return appDevSensitiveCandidatesError(hits)
+		if !rctx.Bool("no-verify") {
+			if err := verifyLocalEndpointIdentity(cfg); err != nil {
+				return err
 			}
 		}
 		switch {
@@ -580,7 +526,7 @@ var AppsDeploy = common.Shortcut{
 		} else {
 			dry.Set("build_output_cdn", "(not declared: no CDN split, all assets served same-origin)")
 		}
-		if entries, gen, verr := validateAppDevOutputs(rctx.FileIO(), cfg, rctx.Bool("allow-sensitive")); verr != nil {
+		if entries, gen, verr := validateAppDevOutputs(rctx.FileIO(), cfg); verr != nil {
 			dry.Set("output_validation_error", verr.Error())
 		} else {
 			dry.Set("upload_file_count", len(entries))
@@ -643,7 +589,7 @@ var AppsDeploy = common.Shortcut{
 			built = true
 		}
 
-		entries, generatedRoutes, err := validateAppDevOutputs(rctx.FileIO(), cfg, rctx.Bool("allow-sensitive"))
+		entries, generatedRoutes, err := validateAppDevOutputs(rctx.FileIO(), cfg)
 		if err != nil {
 			return err
 		}

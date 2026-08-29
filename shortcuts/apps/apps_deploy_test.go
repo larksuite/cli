@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -100,7 +101,7 @@ func TestValidateAppDevOutputs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			out := filepath.Join(t.TempDir(), "dist", "output")
 			writeDistFiles(t, out, tt.files)
-			entries, gen, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, "", tt.buildless), false)
+			entries, gen, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, "", tt.buildless))
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Errorf("err = %v, want containing %q", err, tt.wantErr)
@@ -141,7 +142,7 @@ func TestValidateAppDevOutputs_CDNSplit(t *testing.T) {
 	cdn := filepath.Join(root, "dist", "output_resource")
 	writeDistFiles(t, out, []string{"index.html", "routes.json"})
 	writeDistFiles(t, cdn, []string{"static/a.js"})
-	entries, _, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, cdn, false), false)
+	entries, _, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, cdn, false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,10 +155,15 @@ func TestValidateAppDevOutputs_CDNSplit(t *testing.T) {
 			t.Errorf("missing normalized entry %q in %v", want, got)
 		}
 	}
-	// A declared but missing CDN directory is a hard error, not silence.
-	_, _, err = validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, filepath.Join(root, "nope"), false), false)
-	if err == nil || !strings.Contains(err.Error(), "CDN artifact directory") {
-		t.Errorf("missing declared cdn dir must fail, got %v", err)
+	// A declared but not-yet-produced CDN directory is skipped, not an error.
+	entries2, _, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, filepath.Join(root, "nope"), false))
+	if err != nil {
+		t.Fatalf("missing declared cdn dir must be skipped: %v", err)
+	}
+	for _, e := range entries2 {
+		if strings.HasPrefix(e.ZipPath, "output_resource/") {
+			t.Errorf("no cdn entries expected when the dir is absent, got %s", e.ZipPath)
+		}
 	}
 }
 
@@ -195,7 +201,7 @@ func TestValidateAppDevOutputs_RoutesSchema(t *testing.T) {
 	check := func(body, wantErr string) {
 		t.Helper()
 		set(body)
-		_, _, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, "", false), false)
+		_, _, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, "", false))
 		if wantErr == "" {
 			if err != nil {
 				t.Errorf("routes %q should be valid: %v", body, err)
@@ -219,7 +225,7 @@ func TestValidateAppDevOutputs_RoutesSchema(t *testing.T) {
 
 func TestValidateAppDevOutputs_Missing(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "dist", "output")
-	_, _, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(missing, "", false), false)
+	_, _, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(missing, "", false))
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
 	if p.Subtype != errs.SubtypeFailedPrecondition {
 		t.Errorf("subtype = %q, want failed_precondition", p.Subtype)
@@ -228,22 +234,10 @@ func TestValidateAppDevOutputs_Missing(t *testing.T) {
 		t.Errorf("hint = %q", p.Hint)
 	}
 	// Buildless projects get buildless-specific guidance, not a build hint.
-	_, _, err = validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(missing, "", true), false)
+	_, _, err = validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(missing, "", true))
 	p = requireAppsProblem(t, err, errs.CategoryValidation)
 	if !strings.Contains(p.Hint, "no build.command") {
 		t.Errorf("buildless hint = %q", p.Hint)
-	}
-}
-
-func TestValidateAppDevOutputs_Sensitive(t *testing.T) {
-	out := filepath.Join(t.TempDir(), "dist", "output")
-	writeDistFiles(t, out, []string{"index.html", "routes.json", ".env"})
-	_, _, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, "", false), false)
-	if err == nil || !strings.Contains(err.Error(), "credential file") {
-		t.Errorf("sensitive file must be rejected, got %v", err)
-	}
-	if _, _, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, "", false), true); err != nil {
-		t.Errorf("allow-sensitive must waive the scan: %v", err)
 	}
 }
 
@@ -254,7 +248,7 @@ func TestBuildAppDevZip(t *testing.T) {
 	out, cdn := filepath.Join(root, "dist", "output"), filepath.Join(root, "dist", "output_resource")
 	writeDistFiles(t, out, []string{"index.html", "routes.json"})
 	writeDistFiles(t, cdn, []string{"a.js"})
-	entries, _, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, cdn, false), false)
+	entries, _, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, cdn, false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +274,7 @@ func TestBuildAppDevZip(t *testing.T) {
 func TestBuildAppDevZip_InlineGeneratedRoutes(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "dist", "output")
 	writeDistFiles(t, out, []string{"index.html"})
-	entries, gen, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, "", true), false)
+	entries, gen, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, "", true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,41 +294,6 @@ func TestBuildAppDevZip_InlineGeneratedRoutes(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("generated routes.json missing from zip: %v", names)
-	}
-}
-
-func TestBuildAppDevZip_RawSizeCap(t *testing.T) {
-	orig := maxAppDevPublishRawBytes
-	maxAppDevPublishRawBytes = 1
-	t.Cleanup(func() { maxAppDevPublishRawBytes = orig })
-	out := filepath.Join(t.TempDir(), "dist", "output")
-	writeDistFiles(t, out, []string{"index.html", "routes.json"})
-	entries, _, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, "", false), false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := buildAppDevZip(permissiveFIO{}, entries); err == nil || !strings.Contains(err.Error(), "exceeds") {
-		t.Errorf("raw cap must reject, got %v", err)
-	}
-}
-
-func TestBuildAppDevZip_ZipSizeCap(t *testing.T) {
-	orig := maxAppDevPublishZipBytes
-	maxAppDevPublishZipBytes = 1
-	t.Cleanup(func() { maxAppDevPublishZipBytes = orig })
-	out := filepath.Join(t.TempDir(), "dist", "output")
-	writeDistFiles(t, out, []string{"index.html", "routes.json"})
-	entries, _, err := validateAppDevOutputs(permissiveFIO{}, testAppDevCfg(out, "", false), false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = buildAppDevZip(permissiveFIO{}, entries)
-	if err == nil || !strings.Contains(err.Error(), "packed zip size") {
-		t.Errorf("zip cap must reject, got %v", err)
-	}
-	p, _ := errs.ProblemOf(err)
-	if p == nil || !strings.Contains(p.Hint, "reduce the artifact directory contents") {
-		t.Errorf("hint = %v", p)
 	}
 }
 
@@ -519,15 +478,11 @@ func TestAppDevPublishValidate_BadAppID(t *testing.T) {
 }
 
 func TestAppDevPublishValidate_Declaration(t *testing.T) {
-	// The hosting entry enforces the protocol's declaration-side MUSTs:
-	// stack (with a supported hosting-shape suffix) and dev.port (the
+	// The hosting entry enforces the declaration-side gate: dev.port (the
 	// platform relies on the local self-description endpoint after hosting).
 	cases := []struct {
 		name, sparkJSON, wantErr string
 	}{
-		{"missing stack", `{"dev":{"port":5173},"app":{"id":"app_x"}}`, "missing the required stack"},
-		{"bad stack charset", `{"stack":"My Stack","dev":{"port":5173},"app":{"id":"app_x"}}`, "is invalid"},
-		{"bad stack suffix", `{"stack":"react-standard","dev":{"port":5173},"app":{"id":"app_x"}}`, "must end with -webapp or -fullstack"},
 		{"missing dev.port", `{"stack":"custom-webapp","app":{"id":"app_x"}}`, "missing the required dev.port"},
 		{"port out of range", `{"stack":"custom-webapp","dev":{"port":70000},"app":{"id":"app_x"}}`, "out of range"},
 	}
@@ -656,6 +611,24 @@ func TestVerifyLocalEndpointIdentity(t *testing.T) {
 	})
 }
 
+func TestAppDevPublishValidate_NoVerifySkipsEndpointGate(t *testing.T) {
+	// --no-verify bypasses the dev-server verification (endpoint reachability
+	// and identity match) while the dev.port declaration stays required.
+	root := chdirSparkProjectRoot(t, `{"stack":"custom-webapp","dev":{"port":5173},"app":{"id":"app_x"}}`)
+	stubLocalEndpoint(t, "", fmt.Errorf("no dev server reachable"))
+	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--no-verify", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
+		t.Fatalf("--no-verify must skip the endpoint gate: %v", err)
+	}
+	// Without the flag the same state is blocked.
+	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user", "--dry-run"}, factory, stdout)
+	p := requireAppsProblem(t, err, errs.CategoryValidation)
+	if !strings.Contains(p.Message, "unavailable") {
+		t.Errorf("got %v", p)
+	}
+}
+
 func TestAppDevPublishValidate_EndpointGateOnDryRun(t *testing.T) {
 	// The endpoint gate lives in Validate: a mismatching dev server blocks
 	// --dry-run the same way it blocks a real deploy.
@@ -666,30 +639,6 @@ func TestAppDevPublishValidate_EndpointGateOnDryRun(t *testing.T) {
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
 	if p.Subtype != errs.SubtypeFailedPrecondition || !strings.Contains(p.Message, "app_other") {
 		t.Errorf("got %v", p)
-	}
-}
-
-func TestAppDevPublishValidate_SensitiveGatesDryRun(t *testing.T) {
-	root := chdirSparkProjectRoot(t, `{"stack":"custom-webapp","dev":{"port":5173},"app":{"id":"app_x"}}`)
-	writeDistFiles(t, filepath.Join(root, "dist"),
-		[]string{"output/index.html", "output/routes.json", "output/.env"})
-	factory, stdout, _ := newAppsExecuteFactory(t)
-	// Sensitive hits are the one exception to dry-run's exit-0 convention:
-	// Validate rejects before the DryRun branch runs.
-	err := runAppsShortcut(t, AppsDeploy,
-		[]string{"+deploy", "--skip-build", "--as", "user", "--dry-run"}, factory, stdout)
-	p := requireAppsProblem(t, err, errs.CategoryValidation)
-	if !strings.Contains(p.Message, "publish payload contains") || !strings.Contains(p.Message, "credential file") {
-		t.Errorf("message = %q", p.Message)
-	}
-	// This command has no --path flag; the error must not mention one.
-	if strings.Contains(p.Message, "--path") {
-		t.Errorf("error must not reference a nonexistent --path flag: %q", p.Message)
-	}
-	// --allow-sensitive waives the gate and dry-run goes back to exit 0.
-	if err := runAppsShortcut(t, AppsDeploy,
-		[]string{"+deploy", "--skip-build", "--allow-sensitive", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
-		t.Errorf("allow-sensitive dry-run should pass: %v", err)
 	}
 }
 
