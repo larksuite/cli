@@ -241,7 +241,7 @@ func validateSparkDeclaration(cfg *appDevProjectConfig) error {
 		return appsFailedPreconditionError("spark.json is missing the required stack field").
 			WithHint(`declare the tech stack: official templates write it automatically; custom projects use "custom-webapp" or "custom-fullstack"`)
 	case !appDevTemplateNameRe.MatchString(cfg.Stack):
-		return appsFailedPreconditionError("spark.json stack %q is invalid (lowercase letters, digits, '.', '_', '-')", cfg.Stack).
+		return appsFailedPreconditionError("spark.json stack %q is invalid (must start with a lowercase letter or digit; then lowercase letters, digits, '.', '_', '-')", cfg.Stack).
 			WithHint(`use the stack name written by the template seed, or "custom-webapp" / "custom-fullstack" for custom projects`)
 	case !strings.HasSuffix(cfg.Stack, "-webapp") && !strings.HasSuffix(cfg.Stack, "-fullstack"):
 		return appsFailedPreconditionError("spark.json stack %q does not name a supported hosting shape (must end with -webapp or -fullstack)", cfg.Stack).
