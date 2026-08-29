@@ -267,26 +267,24 @@ var appDevProbeLocalEndpoint = probeLocalSparkEndpoint
 // verifyLocalEndpointIdentity is the hosting entry's enforcement of the
 // protocol's local self-description endpoint plus the cross-project deploy
 // guard: the dev server MUST be running and serving /spark.json, and when
-// either side declares an app id the two MUST match — a mismatch means the
+// the served declaration carries an app id it MUST match the resolved
+// deploy target (--app-id or the recorded one) — a mismatch means the
 // running project is not the one being deployed, which would ship this
-// payload onto another project's app. Only the "neither side has an app id
-// yet" case skips the comparison (first deploy of a fresh project).
-func verifyLocalEndpointIdentity(cfg *appDevProjectConfig) error {
+// payload onto another project's app. An endpoint without an app id passes:
+// that is the normal state of a fresh project's first deploy.
+func verifyLocalEndpointIdentity(cfg *appDevProjectConfig, targetAppID string) error {
 	endpointID, err := appDevProbeLocalEndpoint(cfg.DevPort)
 	if err != nil {
 		return appsFailedPreconditionError("the local self-description endpoint is unavailable: %v", err).
 			WithHint(fmt.Sprintf("start the dev server (spark.json dev.command, port %d) before deploying — the platform requires GET /spark.json to serve the project declaration (official templates ship this endpoint; custom projects must serve the project-root spark.json themselves)", cfg.DevPort))
 	}
-	if endpointID == "" && cfg.AppID == "" {
+	if endpointID == "" || endpointID == targetAppID {
 		return nil
 	}
-	if endpointID != cfg.AppID {
-		return appsFailedPreconditionError(
-			"the dev server on 127.0.0.1:%d declares app %q, but this directory deploys app %q — refusing to ship one project's payload onto another project's app",
-			cfg.DevPort, endpointID, cfg.AppID).
-			WithHint("you are likely deploying from the wrong directory (or the wrong dev server is running on this port); deploy from the project that owns the running dev server, or restart the right one")
-	}
-	return nil
+	return appsFailedPreconditionError(
+		"the dev server on 127.0.0.1:%d declares app %q, but this deploy targets app %q — refusing to ship one project's payload onto another project's app",
+		cfg.DevPort, endpointID, targetAppID).
+		WithHint("you are likely deploying from the wrong directory (or the wrong dev server is running on this port); deploy from the project that owns the running dev server, or restart the right one")
 }
 
 // warnMissingIndexHTML reports whether the same-origin payload lacks an
@@ -461,7 +459,7 @@ var AppsDeploy = common.Shortcut{
 		{Name: "no-verify", Type: "bool", Desc: "skip the local dev-server verification entirely (the dev.port declaration requirement, the GET 127.0.0.1:<dev.port>/spark.json availability check, and the app-identity match)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		cfg, _, _, err := resolveAppDevPublishTarget(rctx)
+		cfg, targetAppID, _, err := resolveAppDevPublishTarget(rctx)
 		if err != nil {
 			return err
 		}
@@ -469,7 +467,7 @@ var AppsDeploy = common.Shortcut{
 			if err := validateSparkDeclaration(cfg); err != nil {
 				return err
 			}
-			if err := verifyLocalEndpointIdentity(cfg); err != nil {
+			if err := verifyLocalEndpointIdentity(cfg, targetAppID); err != nil {
 				return err
 			}
 		}
