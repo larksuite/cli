@@ -5,8 +5,12 @@ package convertlib
 
 import (
 	"fmt"
+	"net/http"
 	"regexp"
 	"strings"
+
+	"github.com/larksuite/cli/shortcuts/common"
+	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
 type stickerConverter struct{}
@@ -72,10 +76,53 @@ func (folderConverter) Convert(ctx *ConvertContext) string {
 		return "[Folder]"
 	}
 	name, _ := parsed["file_name"].(string)
+
+	// 展开一层：调 openapi children（recursive=false），输出第一层 + children_count + 深层提示
+	// 需要 Runtime + MessageID（srctype=message&srcid=MessageID）；不可用时降级为旧输出
+	if ctx.Runtime != nil && ctx.MessageID != "" {
+		if tree := fetchFolderChildrenTree(ctx.Runtime, key, ctx.MessageID); tree != "" {
+			return tree
+		}
+	}
 	if name != "" {
 		return fmt.Sprintf(`<folder key="%s" name="%s"/>`, cardEscapeAttr(key), cardEscapeAttr(name))
 	}
 	return fmt.Sprintf(`<folder key="%s"/>`, cardEscapeAttr(key))
+}
+
+// fetchFolderChildrenTree 调 openapi 展开文件夹一层，返回树形文本（含 children_count 深层提示）。
+// 失败时返回空串，由调用方降级为旧输出。
+func fetchFolderChildrenTree(runtime *common.RuntimeContext, folderKey, messageID string) string {
+	data, err := runtime.DoAPIJSONTyped(http.MethodGet, "/open-apis/im/v1/resources/"+folderKey+"/children",
+		larkcore.QueryParams{
+			"srctype":   []string{"message"},
+			"srcid":     []string{messageID},
+			"recursive": []string{"false"},
+		}, nil)
+	if err != nil || data == nil {
+		return ""
+	}
+	rawItems, _ := data["items"].([]interface{})
+	if len(rawItems) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "<folder key=\"%s\" expanded>\n", cardEscapeAttr(folderKey))
+	for _, raw := range rawItems {
+		item, _ := raw.(map[string]interface{})
+		k, _ := item["file_key"].(string)
+		n, _ := item["name"].(string)
+		isFolder, _ := item["is_folder"].(bool)
+		if isFolder {
+			cc, _ := item["children_count"].(float64)
+			fmt.Fprintf(&b, "  - [dir] %s (%s) children_count=%d [可 recursive=true 展开更深层]\n",
+				cardEscapeAttr(n), cardEscapeAttr(k), int64(cc))
+		} else {
+			fmt.Fprintf(&b, "  - %s (%s)\n", cardEscapeAttr(n), cardEscapeAttr(k))
+		}
+	}
+	b.WriteString("</folder>")
+	return b.String()
 }
 
 type calendarEventConverter struct{}
