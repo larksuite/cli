@@ -612,19 +612,20 @@ func TestVerifyLocalEndpointIdentity(t *testing.T) {
 }
 
 func TestAppDevPublishValidate_NoVerifySkipsEndpointGate(t *testing.T) {
-	// --no-verify bypasses the dev-server verification (endpoint reachability
-	// and identity match) while the dev.port declaration stays required.
-	root := chdirSparkProjectRoot(t, `{"stack":"custom-webapp","dev":{"port":5173},"app":{"id":"app_x"}}`)
+	// --no-verify bypasses the whole dev-server verification: the dev.port
+	// declaration requirement, endpoint reachability, and identity match.
+	root := chdirSparkProjectRoot(t, `{"stack":"custom-webapp","app":{"id":"app_x"}}`)
 	stubLocalEndpoint(t, "", fmt.Errorf("no dev server reachable"))
 	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--no-verify", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
 		t.Fatalf("--no-verify must skip the endpoint gate: %v", err)
 	}
-	// Without the flag the same state is blocked.
+	// Without the flag the same state is blocked (here at the declaration
+	// layer already, since the fixture omits dev.port).
 	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user", "--dry-run"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
-	if !strings.Contains(p.Message, "unavailable") {
+	if !strings.Contains(p.Message, "dev.port") {
 		t.Errorf("got %v", p)
 	}
 }

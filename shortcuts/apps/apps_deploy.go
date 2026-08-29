@@ -458,17 +458,17 @@ var AppsDeploy = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "publish target app ID (app_ prefix); optional when spark.json already records one — on a successful publish it is saved back into spark.json, and a value conflicting with the recorded one is rejected"},
 		{Name: "skip-build", Type: "bool", Desc: "skip the build.command declared in spark.json and publish the existing build.output directory as-is (no effect on buildless projects, which never build)"},
-		{Name: "no-verify", Type: "bool", Desc: "skip the local dev-server verification (GET 127.0.0.1:<dev.port>/spark.json availability and app-identity match); the dev.port declaration itself is still required"},
+		{Name: "no-verify", Type: "bool", Desc: "skip the local dev-server verification entirely (the dev.port declaration requirement, the GET 127.0.0.1:<dev.port>/spark.json availability check, and the app-identity match)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		cfg, _, _, err := resolveAppDevPublishTarget(rctx)
 		if err != nil {
 			return err
 		}
-		if err := validateSparkDeclaration(cfg); err != nil {
-			return err
-		}
 		if !rctx.Bool("no-verify") {
+			if err := validateSparkDeclaration(cfg); err != nil {
+				return err
+			}
 			if err := verifyLocalEndpointIdentity(cfg); err != nil {
 				return err
 			}
