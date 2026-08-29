@@ -225,6 +225,7 @@ func chainFlagAliases(cmd *cobra.Command) {
 		}
 	}
 	trackers := installAliasProvenance(cmd)
+	flags := cmd.Flags()
 	flagalias.InstallNormalizer(cmd, func(name string) string {
 		if strings.Contains(name, "_") {
 			name = strings.ReplaceAll(name, "_", "-")
@@ -233,7 +234,11 @@ func chainFlagAliases(cmd *cobra.Command) {
 		if !ok {
 			return name
 		}
-		if tracker := trackers[target]; tracker != nil {
+		// Stage only while the parser is walking argv. pflag normalizes on
+		// Lookup too, and this function's own alias lookups run again if
+		// PostMount is composed twice — arming pending at mount time would let
+		// the next real --csv occurrence commit a spelling nobody typed.
+		if tracker := trackers[target]; tracker != nil && flags.Parsed() {
 			tracker.pending = name
 		}
 		return target

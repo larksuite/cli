@@ -802,3 +802,26 @@ func TestCsvPut_FileAliasProvenance(t *testing.T) {
 		}
 	})
 }
+
+// TestCsvPut_FileAliasProvenance_DoubleMount pins the staging guard. The
+// ergonomics chain looks its aliases up while installing, and pflag normalizes
+// a name on Lookup — so composing PostMount twice replays "file" through an
+// already-installed normalizer at mount time. Without the Parsed() guard that
+// arms the pending spelling before parsing starts, and the next real --csv
+// occurrence commits it: an explicit --csv path would be read from disk instead
+// of meeting its guard.
+func TestCsvPut_FileAliasProvenance_DoubleMount(t *testing.T) {
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+	if err := os.WriteFile("data.csv", []byte("a,b\n1,2\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	sc := shortcutFromRegistry(t, "+csv-put")
+	sc.PostMount = withFlagErgonomics(sc.PostMount) // a second, redundant pass
+	_, _, err := runShortcutCapturingErr(t, sc, []string{
+		"--url", testURL, "--sheet-name", "s", "--start-cell", "A1",
+		"--csv", "./data.csv", "--dry-run",
+	})
+	requireValidation(t, err, "is an existing file, not inline CSV")
+}

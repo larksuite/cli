@@ -233,3 +233,52 @@ func TestResolveCSVPathFromFileAlias(t *testing.T) {
 		}
 	})
 }
+
+// TestResolveCSVPathFromFileAlias_UnreadablePaths pins that every unreadable
+// path is answered under --file, the flag the caller typed. Handing these to
+// the --csv guard instead named the wrong flag and, for a file that exists but
+// cannot be opened, prescribed "pass it with @" — advice that routes through
+// this very reader and fails identically.
+func TestResolveCSVPathFromFileAlias_UnreadablePaths(t *testing.T) {
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+
+	t.Run("a path-shaped value that names nothing", func(t *testing.T) {
+		err := resolveCSVPathFromFileAlias(newCSVFileAliasRuntime("./typo.csv"))
+		ve := requireValidation(t, err, "names no file under the current directory")
+		if ve.Param != "--file" {
+			t.Errorf("param = %q, want --file", ve.Param)
+		}
+		if ve.Cause == nil {
+			t.Error("the underlying read error should be preserved as Cause")
+		}
+	})
+
+	t.Run("a file that exists but cannot be read", func(t *testing.T) {
+		if err := os.WriteFile("noread.csv", []byte("a,b\n"), 0o000); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.ReadFile("noread.csv"); err == nil {
+			t.Skip("running with rights that ignore file modes")
+		}
+		err := resolveCSVPathFromFileAlias(newCSVFileAliasRuntime("./noread.csv"))
+		ve := requireValidation(t, err, "cannot read file")
+		if ve.Param != "--file" {
+			t.Errorf("param = %q, want --file", ve.Param)
+		}
+		if strings.Contains(ve.Hint, "@") {
+			t.Errorf("@file shares this reader, so it cannot be the fix; hint was %q", ve.Hint)
+		}
+	})
+
+	t.Run("a directory", func(t *testing.T) {
+		if err := os.Mkdir("adir", 0o755); err != nil {
+			t.Fatal(err)
+		}
+		err := resolveCSVPathFromFileAlias(newCSVFileAliasRuntime("./adir"))
+		ve := requireValidation(t, err, "cannot read file")
+		if ve.Param != "--file" {
+			t.Errorf("param = %q, want --file", ve.Param)
+		}
+	})
+}

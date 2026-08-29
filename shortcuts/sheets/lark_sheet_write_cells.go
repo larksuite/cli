@@ -12,6 +12,7 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	"io/fs"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -505,10 +506,13 @@ func csvPutWriteRangeFromInput(input map[string]interface{}) (string, bool) {
 // an absolute path is rejected here exactly as it would be there, and stdin
 // stays the out-of-tree route.
 //
-// Only a value that names a readable file is claimed. A value that names
-// nothing falls through untouched — `--file` holding literal CSV text was
-// accepted before this rule existed and still is, judged by the same guard as
-// --csv rather than by this one's narrower reading.
+// Exactly one value falls through untouched: one that names nothing AND is not
+// path-shaped, i.e. literal CSV text, which `--file` accepted before this rule
+// existed and still does. Every other outcome is answered here, naming --file —
+// the flag the caller actually typed. Handing an unreadable path to the --csv
+// guard instead would answer with the wrong flag and, for a file that exists
+// but cannot be read, with advice that cannot work ("pass it with @", which
+// uses this very reader).
 func resolveCSVPathFromFileAlias(runtime *common.RuntimeContext) error {
 	if runtime == nil || !flagValueCameFromAlias(runtime.Cmd, "csv", "file") {
 		return nil
@@ -522,17 +526,29 @@ func resolveCSVPathFromFileAlias(runtime *common.RuntimeContext) error {
 	}
 	data, err := cmdutil.ReadInputFile(runtime.FileIO(), raw)
 	if err != nil {
-		// A rejected PATH is reported: the caller named a real location the
-		// policy will not read (absolute, or outside the tree), and the fix is
-		// stdin. Any other failure — the usual one being "no such file" —
-		// leaves the value for the --csv guard, which decides between "you
-		// meant a path" and "this is one-cell CSV text" on the value's shape.
-		if !errors.Is(err, fileio.ErrPathValidation) {
+		switch {
+		case errors.Is(err, fileio.ErrPathValidation):
+			// A real location the policy will not read (absolute, or outside
+			// the tree). The fix is stdin.
+			return sheetsValidationForFlag("file", "--file %v", err).
+				WithCause(err).
+				WithHint("--file reads a path relative to the current directory; pipe a file outside it in via stdin instead (--csv - < <path>)")
+		case errors.Is(err, fs.ErrNotExist) && !csvValueLooksLikePath(raw):
+			// Names nothing and does not look like a path: literal CSV text
+			// passed under --file. Leave it for the --csv guard, which judges
+			// inline values on their shape.
 			return nil
+		case errors.Is(err, fs.ErrNotExist):
+			return sheetsValidationForFlag("file", "--file %q names no file under the current directory", raw).
+				WithCause(err).
+				WithHint("--file takes a path relative to the current directory; for a file outside it, pipe the contents in instead (--csv - < <path>)")
+		default:
+			// Exists but cannot be read (permissions, a directory). @file
+			// shares this reader, so pointing there would be dead advice.
+			return sheetsValidationForFlag("file", "--file %v", err).
+				WithCause(err).
+				WithHint("--file reads the path itself; to pass contents this process cannot open, pipe them in instead (--csv - < <path>)")
 		}
-		return sheetsValidationForFlag("file", "--file %v", err).
-			WithCause(err).
-			WithHint("--file reads a path relative to the current directory; pipe a file outside it in via stdin instead (--csv - < <path>)")
 	}
 	if err := runtime.Cmd.Flags().Set("csv", common.StripUTF8BOM(string(data))); err != nil {
 		return sheetsValidationForFlag("file", "--file: %v", err).WithCause(err)
