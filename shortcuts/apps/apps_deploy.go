@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
@@ -255,6 +256,71 @@ func validateSparkDeclaration(cfg *appDevProjectConfig) error {
 	return nil
 }
 
+// appDevEndpointProbeTimeout bounds the local self-description probe; the
+// target is a loopback dev server, so a healthy endpoint answers in
+// milliseconds. Var so tests can shrink it.
+var appDevEndpointProbeTimeout = 2 * time.Second
+
+// probeLocalSparkEndpoint fetches the protocol's local self-description
+// endpoint (GET 127.0.0.1:<port>/spark.json) and returns the app id it
+// declares ("" when the served declaration carries none). Any failure to
+// reach a valid endpoint — no listener, non-200, unreadable body, invalid
+// JSON — comes back as an error naming the reason.
+func probeLocalSparkEndpoint(port int) (appID string, err error) {
+	client := &http.Client{Timeout: appDevEndpointProbeTimeout}                   //nolint:forbidigo // loopback probe of the project's own dev server; not a Lark API call.
+	resp, gerr := client.Get(fmt.Sprintf("http://127.0.0.1:%d/spark.json", port)) //nolint:forbidigo // loopback probe of the project's own dev server; not a Lark API call.
+	if gerr != nil {
+		return "", fmt.Errorf("no dev server reachable on 127.0.0.1:%d", port) //nolint:forbidigo // intermediate reason; wrapped into a typed error by the caller.
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GET 127.0.0.1:%d/spark.json returned HTTP %d", port, resp.StatusCode) //nolint:forbidigo // intermediate reason; wrapped into a typed error by the caller.
+	}
+	body, rerr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if rerr != nil {
+		return "", fmt.Errorf("reading 127.0.0.1:%d/spark.json failed: %w", port, rerr) //nolint:forbidigo // intermediate reason; wrapped into a typed error by the caller.
+	}
+	var doc struct {
+		App struct {
+			ID string `json:"id"`
+		} `json:"app"`
+	}
+	if json.Unmarshal(body, &doc) != nil {
+		return "", fmt.Errorf("127.0.0.1:%d/spark.json is not valid JSON", port) //nolint:forbidigo // intermediate reason; wrapped into a typed error by the caller.
+	}
+	return strings.TrimSpace(doc.App.ID), nil
+}
+
+// appDevProbeLocalEndpoint is the injectable seam for the local
+// self-description probe (unit tests stub it; the hard gate below must not
+// force every test through a live loopback server).
+var appDevProbeLocalEndpoint = probeLocalSparkEndpoint
+
+// verifyLocalEndpointIdentity is the hosting entry's enforcement of the
+// protocol's local self-description endpoint plus the cross-project deploy
+// guard: the dev server MUST be running and serving /spark.json, and when
+// either side declares an app id the two MUST match — a mismatch means the
+// running project is not the one being deployed, which would ship this
+// payload onto another project's app. Only the "neither side has an app id
+// yet" case skips the comparison (first deploy of a fresh project).
+func verifyLocalEndpointIdentity(cfg *appDevProjectConfig) error {
+	endpointID, err := appDevProbeLocalEndpoint(cfg.DevPort)
+	if err != nil {
+		return appsFailedPreconditionError("the local self-description endpoint is unavailable: %v", err).
+			WithHint(fmt.Sprintf("start the dev server (spark.json dev.command, port %d) before deploying — the platform requires GET /spark.json to serve the project declaration (official templates ship this endpoint; custom projects must serve the project-root spark.json themselves)", cfg.DevPort))
+	}
+	if endpointID == "" && cfg.AppID == "" {
+		return nil
+	}
+	if endpointID != cfg.AppID {
+		return appsFailedPreconditionError(
+			"the dev server on 127.0.0.1:%d declares app %q, but this directory deploys app %q — refusing to ship one project's payload onto another project's app",
+			cfg.DevPort, endpointID, cfg.AppID).
+			WithHint("you are likely deploying from the wrong directory (or the wrong dev server is running on this port); deploy from the project that owns the running dev server, or restart the right one")
+	}
+	return nil
+}
+
 // warnMissingIndexHTML reports whether the same-origin payload lacks an
 // output/index.html entry. The platform gateway's SPA fallback serves the
 // entry HTML for unmatched paths, so publishing without one is almost
@@ -432,6 +498,9 @@ var AppsDeploy = common.Shortcut{
 			return err
 		}
 		if err := validateSparkDeclaration(cfg); err != nil {
+			return err
+		}
+		if err := verifyLocalEndpointIdentity(cfg); err != nil {
 			return err
 		}
 		// Sensitive-file scan lives in Validate so that --dry-run exits

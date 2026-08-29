@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -370,6 +371,10 @@ func withFakeEnvRunner(t *testing.T, f *fakeEnvRunner) {
 // chdirs into it (the protocol-first path).
 func chdirSparkProjectRoot(t *testing.T, miaodaJSON string) string {
 	t.Helper()
+	// Default the local self-description probe to "endpoint agrees with the
+	// fixture" so the hard gate stays out of unrelated tests' way; gate tests
+	// install their own stub or a real loopback server.
+	stubLocalEndpoint(t, sparkAppIDOf(miaodaJSON), nil)
 	root := t.TempDir()
 	if miaodaJSON != "" {
 		if err := os.WriteFile(filepath.Join(root, sparkJSONRelPath), []byte(miaodaJSON), 0o644); err != nil {
@@ -553,6 +558,114 @@ func TestAppDevPublishExecute_MissingIndexHTMLWarns(t *testing.T) {
 	stubReleases(reg, "app_x", map[string]interface{}{"release_id": "rel_60", "status": "finished", "online_url": "https://x/app/app_x"})
 	if err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--skip-build", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("missing index.html must not block the deploy: %v", err)
+	}
+}
+
+// sparkAppIDOf extracts app.id from a fixture spark.json string ("" when
+// absent or unparsable).
+func sparkAppIDOf(miaodaJSON string) string {
+	var doc struct {
+		App struct {
+			ID string `json:"id"`
+		} `json:"app"`
+	}
+	if json.Unmarshal([]byte(miaodaJSON), &doc) != nil {
+		return ""
+	}
+	return strings.TrimSpace(doc.App.ID)
+}
+
+// stubLocalEndpoint swaps the local self-description probe for this test.
+func stubLocalEndpoint(t *testing.T, appID string, err error) {
+	t.Helper()
+	orig := appDevProbeLocalEndpoint
+	appDevProbeLocalEndpoint = func(int) (string, error) { return appID, err }
+	t.Cleanup(func() { appDevProbeLocalEndpoint = orig })
+}
+
+// localEndpointServer runs a plain-HTTP dev-server stand-in on a loopback
+// port serving /spark.json, restores the real probe, and returns the port.
+func localEndpointServer(t *testing.T, body string, status int) int {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/spark.json" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	orig := appDevProbeLocalEndpoint
+	appDevProbeLocalEndpoint = probeLocalSparkEndpoint
+	t.Cleanup(func() { appDevProbeLocalEndpoint = orig })
+	return srv.Listener.Addr().(*net.TCPAddr).Port
+}
+
+func TestVerifyLocalEndpointIdentity(t *testing.T) {
+	cfgWith := func(appID string, port int) *appDevProjectConfig {
+		return &appDevProjectConfig{AppID: appID, DevPort: port}
+	}
+	t.Run("mismatch is rejected", func(t *testing.T) {
+		port := localEndpointServer(t, `{"stack":"custom-webapp","app":{"id":"app_other"}}`, 200)
+		err := verifyLocalEndpointIdentity(cfgWith("app_mine", port))
+		if err == nil || !strings.Contains(err.Error(), "app_other") || !strings.Contains(err.Error(), "app_mine") {
+			t.Errorf("mismatch must be rejected naming both ids, got %v", err)
+		}
+	})
+	t.Run("matching id passes", func(t *testing.T) {
+		port := localEndpointServer(t, `{"app":{"id":"app_mine"}}`, 200)
+		if err := verifyLocalEndpointIdentity(cfgWith("app_mine", port)); err != nil {
+			t.Errorf("matching identity must pass: %v", err)
+		}
+	})
+	t.Run("both without app id pass", func(t *testing.T) {
+		port := localEndpointServer(t, `{"stack":"custom-webapp"}`, 200)
+		if err := verifyLocalEndpointIdentity(cfgWith("", port)); err != nil {
+			t.Errorf("fresh project on both sides must pass: %v", err)
+		}
+	})
+	t.Run("endpoint without app id but deploy dir with one is rejected", func(t *testing.T) {
+		port := localEndpointServer(t, `{"stack":"custom-webapp"}`, 200)
+		if err := verifyLocalEndpointIdentity(cfgWith("app_mine", port)); err == nil {
+			t.Error("one-sided app id must be rejected (served declaration disagrees with the deploy dir)")
+		}
+	})
+	t.Run("non-json endpoint is rejected", func(t *testing.T) {
+		port := localEndpointServer(t, "<html>not a spark project</html>", 200)
+		err := verifyLocalEndpointIdentity(cfgWith("app_mine", port))
+		if err == nil || !strings.Contains(err.Error(), "not valid JSON") {
+			t.Errorf("non-JSON endpoint must be rejected: %v", err)
+		}
+	})
+	t.Run("no dev server is rejected with guidance", func(t *testing.T) {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		port := l.Addr().(*net.TCPAddr).Port
+		l.Close()
+		orig := appDevProbeLocalEndpoint
+		appDevProbeLocalEndpoint = probeLocalSparkEndpoint
+		defer func() { appDevProbeLocalEndpoint = orig }()
+		gerr := verifyLocalEndpointIdentity(cfgWith("app_mine", port))
+		p, _ := errs.ProblemOf(gerr)
+		if p == nil || !strings.Contains(p.Message, "unavailable") || !strings.Contains(p.Hint, "start the dev server") {
+			t.Errorf("missing dev server must hard-fail with start guidance, got %v", gerr)
+		}
+	})
+}
+
+func TestAppDevPublishValidate_EndpointGateOnDryRun(t *testing.T) {
+	// The endpoint gate lives in Validate: a mismatching dev server blocks
+	// --dry-run the same way it blocks a real deploy.
+	chdirSparkProjectRoot(t, `{"stack":"custom-webapp","dev":{"port":5173},"app":{"id":"app_x"}}`)
+	stubLocalEndpoint(t, "app_other", nil)
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user", "--dry-run"}, factory, stdout)
+	p := requireAppsProblem(t, err, errs.CategoryValidation)
+	if p.Subtype != errs.SubtypeFailedPrecondition || !strings.Contains(p.Message, "app_other") {
+		t.Errorf("got %v", p)
 	}
 }
 
