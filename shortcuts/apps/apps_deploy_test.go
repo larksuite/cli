@@ -530,7 +530,9 @@ func TestAppDevPublishValidate_Declaration(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			chdirSparkProjectRoot(t, tc.sparkJSON)
 			factory, stdout, _ := newAppsExecuteFactory(t)
-			err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user"}, factory, stdout)
+			// The declaration gate lives in Validate, so --dry-run is blocked
+			// the same way a real run is (protocol gate, not a preview detail).
+			err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user", "--dry-run"}, factory, stdout)
 			p := requireAppsProblem(t, err, errs.CategoryValidation)
 			if p.Subtype != errs.SubtypeFailedPrecondition || !strings.Contains(p.Message, tc.wantErr) {
 				t.Errorf("got %v, want message containing %q", p, tc.wantErr)
