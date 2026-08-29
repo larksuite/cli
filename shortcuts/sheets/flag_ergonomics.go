@@ -224,7 +224,7 @@ func chainFlagAliases(cmd *cobra.Command) {
 			usable[alias] = target
 		}
 	}
-	flags := cmd.Flags()
+	trackers := installAliasProvenance(cmd)
 	flagalias.InstallNormalizer(cmd, func(name string) string {
 		if strings.Contains(name, "_") {
 			name = strings.ReplaceAll(name, "_", "-")
@@ -233,25 +233,93 @@ func chainFlagAliases(cmd *cobra.Command) {
 		if !ok {
 			return name
 		}
-		// Remember the spelling for the one rule that needs it (a value read
-		// as a path only because the caller wrote --file). InstallNormalizer
-		// records nothing itself by design, and pflag also normalizes names
-		// outside parsing (AddFlag, Lookup, Set), so the record is gated on
-		// the parser actually walking argv — same guard flagalias.Bind uses
-		// for its own source tracking.
-		if flags.Parsed() {
-			if cmd.Annotations == nil {
-				cmd.Annotations = map[string]string{}
-			}
-			cmd.Annotations[aliasSourceAnnotation(target)] = name
+		if tracker := trackers[target]; tracker != nil {
+			tracker.pending = name
 		}
 		return target
 	})
 }
 
+// ─── alias provenance ───────────────────────────────────────────────────
+//
+// One rule needs to know WHICH spelling supplied a value, not just that the
+// flag was set: +csv-put reads --file's value as a path (see
+// resolveCSVPathFromFileAlias) while --csv's is text. InstallNormalizer
+// records nothing by design, and the rewrite it performs cannot be observed
+// after the fact — so the spelling is captured as it parses.
+//
+// Recording it from the normalizer alone does not work: pflag normalizes a
+// name on Lookup and Set too, including once more with the canonical name
+// immediately after the rewrite, and again on every later Lookup (Str, the
+// framework's own resolveInputFlags). A record written or cleared there would
+// answer for calls that are not flag occurrences at all. So the normalizer
+// only stages a pending spelling and the flag's Value commits it: Value.Set
+// runs exactly once per real occurrence, so the last occurrence wins and
+// `--file a.csv --csv ./b.csv` correctly ends up with no alias attribution.
+//
+// Same shape as flagalias.Bind's own pendingSource/commit, which this cannot
+// reuse: Bind advertises its aliases on the flag and in the exported
+// manifest, and these rewrites are deliberately silent.
+
+// aliasProvenanceFlags names, per command, the canonical flags whose supplying
+// spelling must be tracked. Only +csv-put's --csv qualifies: it is the one
+// alias in commandFlagAliases whose value semantics differ from its target's.
+// Kept explicit rather than derived, so wrapping a flag's Value stays a
+// deliberate, reviewed act.
+var aliasProvenanceFlags = map[string][]string{
+	"+csv-put": {"csv"},
+}
+
+// aliasTrackingValue wraps a flag's pflag.Value to commit the staged spelling
+// on each real Set. Only string flags are tracked (see aliasProvenanceFlags),
+// so no richer pflag value interface is at stake.
+type aliasTrackingValue struct {
+	pflag.Value
+	cmd     *cobra.Command
+	key     string
+	pending string
+}
+
+func (v *aliasTrackingValue) Set(raw string) error {
+	if v.pending == "" {
+		delete(v.cmd.Annotations, v.key)
+	} else {
+		if v.cmd.Annotations == nil {
+			v.cmd.Annotations = map[string]string{}
+		}
+		v.cmd.Annotations[v.key] = v.pending
+		v.pending = ""
+	}
+	return v.Value.Set(raw)
+}
+
+// installAliasProvenance wraps the tracked flags' values and returns the
+// trackers by canonical flag name, for the normalizer to stage into.
+func installAliasProvenance(cmd *cobra.Command) map[string]*aliasTrackingValue {
+	names := aliasProvenanceFlags[cmd.Name()]
+	if len(names) == 0 {
+		return nil
+	}
+	out := make(map[string]*aliasTrackingValue, len(names))
+	for _, name := range names {
+		fl := cmd.Flags().Lookup(name)
+		if fl == nil {
+			continue
+		}
+		if tracked, ok := fl.Value.(*aliasTrackingValue); ok {
+			out[name] = tracked // already installed (PostMount composed twice)
+			continue
+		}
+		tracked := &aliasTrackingValue{Value: fl.Value, cmd: cmd, key: aliasSourceAnnotation(name)}
+		fl.Value = tracked
+		out[name] = tracked
+	}
+	return out
+}
+
 // aliasSourceAnnotation names the command annotation holding the alias
-// spelling that supplied a canonical flag's value, or is absent when the
-// canonical name was typed.
+// spelling that supplied a canonical flag's value, absent when the canonical
+// name supplied it.
 func aliasSourceAnnotation(canonical string) string {
 	return "lark-cli/sheets-alias-source/" + canonical
 }

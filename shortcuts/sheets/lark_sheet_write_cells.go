@@ -400,16 +400,14 @@ var CsvPut = common.Shortcut{
 		cmd.MarkFlagsMutuallyExclusive("start-cell", "range")
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		resolved, err := resolveCSVPathFromFileAlias(runtime)
-		if err != nil {
+		// Order matters: --file's value is resolved to contents first, so the
+		// guard below sees the same thing it would for --csv @<path> — that is,
+		// a resolved value it skips.
+		if err := resolveCSVPathFromFileAlias(runtime); err != nil {
 			return err
 		}
-		// The guard asks "is this inline CSV actually a path?" — already
-		// answered when the value arrived under --file and was read as one.
-		if !resolved {
-			if err := guardCSVValueIsNotFilePath(runtime); err != nil {
-				return err
-			}
+		if err := guardCSVValueIsNotFilePath(runtime); err != nil {
+			return err
 		}
 		return validateViaInput(csvPutInput)(ctx, runtime)
 	},
@@ -511,16 +509,16 @@ func csvPutWriteRangeFromInput(input map[string]interface{}) (string, bool) {
 // nothing falls through untouched — `--file` holding literal CSV text was
 // accepted before this rule existed and still is, judged by the same guard as
 // --csv rather than by this one's narrower reading.
-func resolveCSVPathFromFileAlias(runtime *common.RuntimeContext) (bool, error) {
+func resolveCSVPathFromFileAlias(runtime *common.RuntimeContext) error {
 	if runtime == nil || !flagValueCameFromAlias(runtime.Cmd, "csv", "file") {
-		return false, nil
+		return nil
 	}
 	if runtime.InputResolvedFromSource("csv") {
-		return false, nil
+		return nil
 	}
 	raw := strings.TrimSpace(runtime.Str("csv"))
 	if raw == "" || strings.HasPrefix(raw, "@") {
-		return false, nil
+		return nil
 	}
 	data, err := cmdutil.ReadInputFile(runtime.FileIO(), raw)
 	if err != nil {
@@ -530,16 +528,21 @@ func resolveCSVPathFromFileAlias(runtime *common.RuntimeContext) (bool, error) {
 		// leaves the value for the --csv guard, which decides between "you
 		// meant a path" and "this is one-cell CSV text" on the value's shape.
 		if !errors.Is(err, fileio.ErrPathValidation) {
-			return false, nil
+			return nil
 		}
-		return false, sheetsValidationForFlag("file", "--file %v", err).
+		return sheetsValidationForFlag("file", "--file %v", err).
 			WithCause(err).
 			WithHint("--file reads a path relative to the current directory; pipe a file outside it in via stdin instead (--csv - < <path>)")
 	}
 	if err := runtime.Cmd.Flags().Set("csv", common.StripUTF8BOM(string(data))); err != nil {
-		return false, sheetsValidationForFlag("file", "--file: %v", err).WithCause(err)
+		return sheetsValidationForFlag("file", "--file: %v", err).WithCause(err)
 	}
-	return true, nil
+	// The value is now file contents, so every downstream shape check has to
+	// treat it as such — the same bit @file and stdin get. Without it a file
+	// holding one path-shaped cell ("report.csv") reads back as a caller who
+	// forgot the @, and csvPutInput rejects a perfectly good CSV.
+	runtime.MarkInputResolved("csv")
+	return nil
 }
 
 // guardCSVValueIsNotFilePath catches the common slip of passing a CSV file path

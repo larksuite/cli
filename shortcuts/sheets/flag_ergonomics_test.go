@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -749,6 +751,54 @@ func TestShortcuts_RequiredFlagsMarkedInHelp(t *testing.T) {
 		}
 		if got := usageOf(t, "+csv-put", "csv"); !strings.HasPrefix(got, "(required) ") {
 			t.Errorf("--csv usage = %q, want the required marker", got)
+		}
+	})
+}
+
+// TestCsvPut_FileAliasProvenance pins which spelling a value is attributed to
+// when both are on one command line. The record is committed by the flag's
+// Value on each real occurrence, so the LAST occurrence wins — pflag also
+// normalizes names on Lookup and Set (the framework's own input resolution
+// looks --csv up before Validate runs), and attributing those would either
+// lose a legitimate --file or steal an explicit --csv.
+func TestCsvPut_FileAliasProvenance(t *testing.T) {
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+	if err := os.WriteFile("data.csv", []byte("a,b\n1,2\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	run := func(t *testing.T, extra ...string) (string, error) {
+		t.Helper()
+		args := append([]string{"--url", testURL, "--sheet-name", "s", "--start-cell", "A1"}, extra...)
+		stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+csv-put"), append(args, "--dry-run"))
+		return stdout, err
+	}
+
+	t.Run("--file alone reads the file", func(t *testing.T) {
+		stdout, err := run(t, "--file", "./data.csv")
+		if err != nil {
+			t.Fatalf("--file should read the path, got: %v", err)
+		}
+		if !strings.Contains(stdout, `a,b`) {
+			t.Errorf("dry-run body should carry the file contents, got %q", stdout)
+		}
+	})
+
+	t.Run("a later --csv occurrence keeps its own semantics", func(t *testing.T) {
+		// The last occurrence supplied the value and it was typed --csv, so the
+		// path must hit the --csv guard rather than being read as a file.
+		_, err := run(t, "--file", "./data.csv", "--csv", "./data.csv")
+		requireValidation(t, err, "is an existing file, not inline CSV")
+	})
+
+	t.Run("a later --file occurrence reads the file", func(t *testing.T) {
+		stdout, err := run(t, "--csv", "./data.csv", "--file", "./data.csv")
+		if err != nil {
+			t.Fatalf("the last occurrence was --file, so it should read the path, got: %v", err)
+		}
+		if !strings.Contains(stdout, `a,b`) {
+			t.Errorf("dry-run body should carry the file contents, got %q", stdout)
 		}
 	})
 }

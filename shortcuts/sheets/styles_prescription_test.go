@@ -606,5 +606,13 @@ func TestAggregatedIssuesKeepPrescriptions(t *testing.T) {
 		if !strings.Contains(ve.Message, "[same at 1 more: --writes[1]]") {
 			t.Errorf("the collapsed issue must name where else it occurred, got %q", ve.Message)
 		}
+		// Collapsing must not cost the fold's typed attribution: the flag to
+		// fix and the underlying error both still ride along.
+		if ve.Param != "--writes" {
+			t.Errorf("Param = %q, want --writes", ve.Param)
+		}
+		if ve.Cause == nil {
+			t.Error("the collapsed aggregate should keep the first issue as Cause")
+		}
 	})
 }

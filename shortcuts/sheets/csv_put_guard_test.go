@@ -153,20 +153,42 @@ func TestResolveCSVPathFromFileAlias(t *testing.T) {
 
 	t.Run("reads the named file", func(t *testing.T) {
 		rctx := newCSVFileAliasRuntime("./data.csv")
-		resolved, err := resolveCSVPathFromFileAlias(rctx)
-		if err != nil || !resolved {
-			t.Fatalf("resolved = %v, err = %v; want the file to be read", resolved, err)
+		if err := resolveCSVPathFromFileAlias(rctx); err != nil {
+			t.Fatalf("resolve: %v", err)
 		}
 		if got, _ := rctx.Cmd.Flags().GetString("csv"); got != "a,b\n1,2\n" {
 			t.Errorf("--csv = %q, want the file contents", got)
 		}
 	})
 
+	t.Run("the contents are marked source-resolved", func(t *testing.T) {
+		// Contents read from a file may legitimately look like anything,
+		// including a path — the shape guards downstream must see the same bit
+		// they would for --csv @<path>, or a one-cell CSV holding "report.csv"
+		// is rejected as a caller who forgot the @.
+		if err := os.WriteFile("pathshaped.csv", []byte("report.csv\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		rctx := newCSVFileAliasRuntime("./pathshaped.csv")
+		if err := resolveCSVPathFromFileAlias(rctx); err != nil {
+			t.Fatalf("resolve: %v", err)
+		}
+		if !rctx.InputResolvedFromSource("csv") {
+			t.Error("the rewritten value must be marked as read from a source")
+		}
+		if err := guardCSVValueIsNotFilePath(rctx); err != nil {
+			t.Errorf("path-shaped file contents must survive the guard, got: %v", err)
+		}
+	})
+
 	t.Run("an out-of-tree path is rejected toward stdin", func(t *testing.T) {
-		_, err := resolveCSVPathFromFileAlias(newCSVFileAliasRuntime("/tmp/data.csv"))
+		err := resolveCSVPathFromFileAlias(newCSVFileAliasRuntime("/tmp/data.csv"))
 		ve := requireValidation(t, err, "relative path")
 		if ve.Param != "--file" {
 			t.Errorf("param = %q, want the flag the caller actually typed", ve.Param)
+		}
+		if ve.Cause == nil {
+			t.Error("the underlying path error should be preserved as Cause")
 		}
 		if !strings.Contains(ve.Hint, "--csv - <") {
 			t.Errorf("hint should offer stdin for a file outside the tree, got: %q", ve.Hint)
@@ -177,30 +199,37 @@ func TestResolveCSVPathFromFileAlias(t *testing.T) {
 		// --file holding literal CSV was accepted before this rule existed;
 		// naming nothing readable, it stays the --csv guard's business.
 		rctx := newCSVFileAliasRuntime("a,b\n1,2")
-		resolved, err := resolveCSVPathFromFileAlias(rctx)
-		if err != nil || resolved {
-			t.Fatalf("resolved = %v, err = %v; want the value left alone", resolved, err)
+		if err := resolveCSVPathFromFileAlias(rctx); err != nil {
+			t.Fatalf("resolve: %v", err)
 		}
 		if got, _ := rctx.Cmd.Flags().GetString("csv"); got != "a,b\n1,2" {
 			t.Errorf("--csv = %q, want the value untouched", got)
+		}
+		if rctx.InputResolvedFromSource("csv") {
+			t.Error("a value that was not read from a file must not be marked resolved")
 		}
 	})
 
 	t.Run("a value typed as --csv is not re-read as a path", func(t *testing.T) {
 		// Without the alias record the rule must not fire: --csv promises text,
 		// and its own guard (not this one) answers a path passed to it.
-		resolved, err := resolveCSVPathFromFileAlias(newCSVGuardRuntime("./data.csv"))
-		if err != nil || resolved {
-			t.Fatalf("resolved = %v, err = %v; want --csv left to its guard", resolved, err)
+		rctx := newCSVGuardRuntime("./data.csv")
+		if err := resolveCSVPathFromFileAlias(rctx); err != nil {
+			t.Fatalf("resolve: %v", err)
+		}
+		if got, _ := rctx.Cmd.Flags().GetString("csv"); got != "./data.csv" {
+			t.Errorf("--csv = %q, want --csv left to its guard", got)
 		}
 	})
 
 	t.Run("@file and stdin values are already contents", func(t *testing.T) {
 		rctx := newCSVFileAliasRuntime("./data.csv")
 		common.TestMarkInputResolved(rctx, "csv")
-		resolved, err := resolveCSVPathFromFileAlias(rctx)
-		if err != nil || resolved {
-			t.Fatalf("resolved = %v, err = %v; want a resolved value left alone", resolved, err)
+		if err := resolveCSVPathFromFileAlias(rctx); err != nil {
+			t.Fatalf("resolve: %v", err)
+		}
+		if got, _ := rctx.Cmd.Flags().GetString("csv"); got != "./data.csv" {
+			t.Errorf("--csv = %q, want a resolved value left alone", got)
 		}
 	})
 }

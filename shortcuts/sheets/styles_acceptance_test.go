@@ -270,8 +270,15 @@ func TestStylesAcceptance_PriorCorpus(t *testing.T) {
 			t.Parallel()
 			proto, err := acceptStyleItem(t, tc.fields)
 			if tc.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-					t.Fatalf("want prescription containing %q, got err=%v", tc.wantErr, err)
+				// A prescription is only usable if it is also typed: an agent
+				// reads Param to know which flag to fix, and the message alone
+				// would keep passing if that attribution regressed.
+				ve := requireValidation(t, err, tc.wantErr)
+				if ve.Param != "--styles" {
+					t.Errorf("Param = %q, want --styles", ve.Param)
+				}
+				if ve.Cause == nil {
+					t.Error("the prescription should keep the underlying error as Cause")
 				}
 				return
 			}
