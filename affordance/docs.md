@@ -55,3 +55,20 @@ Apply targeted text or block edits, append content, or deliberately replace an e
 
 ### Skills
 - lark-doc/references/lark-doc-history.md
+
+## +render-word
+Choose this workflow when the original Word pagination must be preserved in a downloadable PDF and heading page locations are useful.
+
+### Tips
+- A wait timeout is recoverable: keep the returned `task_id` and continue with [[+render-word-status]].
+
+### Skills
+- lark-doc/references/lark-doc-render-word.md
+
+## +render-word-status
+
+### Prerequisites
+- `task_id` from [[+render-word]]
+
+### Skills
+- lark-doc/references/lark-doc-render-word.md

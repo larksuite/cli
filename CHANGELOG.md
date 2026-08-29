@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Features
+
+- **docs**: add asynchronous local DOCX-to-PDF rendering and resumable download shortcuts
+- **docs**: expose a blocked short-lived PDF target as structured `error.download_url` for manual recovery
+
 ## [v1.0.92] - 2026-08-28
 
 ### Features

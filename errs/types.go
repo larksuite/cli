@@ -521,6 +521,7 @@ func (e *APIError) WithCause(cause error) *APIError {
 type SecurityPolicyError struct {
 	Problem
 	ChallengeURL string `json:"challenge_url,omitempty"`
+	DownloadURL  string `json:"download_url,omitempty"`
 	Cause        error  `json:"-"`
 }
 
@@ -572,6 +573,14 @@ func (e *SecurityPolicyError) WithRetryable() *SecurityPolicyError {
 
 func (e *SecurityPolicyError) WithChallengeURL(url string) *SecurityPolicyError {
 	e.ChallengeURL = url
+	return e
+}
+
+// WithDownloadURL exposes a blocked, short-lived artifact URL so a caller can
+// inspect or retrieve it manually. Producers must not copy this value into
+// Message or Hint, where signed query parameters could leak into prose logs.
+func (e *SecurityPolicyError) WithDownloadURL(url string) *SecurityPolicyError {
+	e.DownloadURL = url
 	return e
 }
 

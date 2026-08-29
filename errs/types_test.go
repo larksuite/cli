@@ -501,9 +501,13 @@ func TestBuilder_WithRetryable_OmittedWhenFalse(t *testing.T) {
 func TestNewSecurityPolicyError_ChallengeURL(t *testing.T) {
 	got := errs.NewSecurityPolicyError(errs.SubtypeChallengeRequired, "verify your device").
 		WithCode(21000).
-		WithChallengeURL("https://applink.feishu.cn/T/xxxxx")
+		WithChallengeURL("https://applink.feishu.cn/T/xxxxx").
+		WithDownloadURL("https://download.example/file.pdf?signature=short-lived")
 	if got.ChallengeURL == "" {
 		t.Error("ChallengeURL not set")
+	}
+	if got.DownloadURL == "" {
+		t.Error("DownloadURL not set")
 	}
 	if got.Code != 21000 {
 		t.Errorf("Code = %d, want 21000", got.Code)

@@ -1,6 +1,6 @@
 ---
 name: lark-doc
-description: "飞书云文档（Docx / Wiki）内容操作：读取、创建、编辑文档，插入或下载图片附件，以及操作思维笔记。用户提供文档 URL/token（包括 doubao.com 的 /docx/、/wiki/）时使用；按 URL 路径/token 而非域名路由。文档内嵌资源按读取参考中的统一规则分流。独立评论操作走 lark-drive；随正文读取评论使用 docs +fetch。表格或 Base 内部数据操作不在本 skill。"
+description: "飞书云文档（Docx / Wiki）内容操作：读取、创建、编辑文档，插入或下载图片附件，把本地 DOCX 渲染为 PDF，以及操作思维笔记。用户提供文档 URL/token（包括 doubao.com 的 /docx/、/wiki/）或提出 DOCX 转 PDF 时使用；按 URL 路径/token 而非域名路由。文档内嵌资源按读取参考中的统一规则分流。独立评论操作走 lark-drive；随正文读取评论使用 docs +fetch。表格或 Base 内部数据操作不在本 skill。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -29,6 +29,7 @@ metadata:
 
 - **草稿初始化、解析与统计 — [`+script`](references/lark-doc-script.md)**：支持解析文档 URL / token 与本地 XML，统计字数并返回字符诊断；不支持 Markdown 输入。
 - **历史版本 — [`+history-list` / `+history-revert` / `+history-revert-status`](references/lark-doc-history.md)**：查询、回滚文档历史版本或检查回滚任务状态。
+- **本地 DOCX 渲染 — [`+render-word` / `+render-word-status`](references/lark-doc-render-word.md)**：把本地 `.docx` 异步渲染为 PDF；超时后凭 `task_id` 恢复查询和下载。
 
 ### 资源、画板与思维笔记
 

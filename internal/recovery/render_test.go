@@ -111,6 +111,7 @@ func TestRenderClonesEveryConcreteTypedErrorAndPreservesWireExtensions(t *testin
 			original: &errs.SecurityPolicyError{
 				Problem:      problem(errs.CategoryPolicy, errs.SubtypeChallengeRequired),
 				ChallengeURL: "https://example.test/challenge",
+				DownloadURL:  "https://example.test/download?signature=short-lived",
 				Cause:        sentinel,
 			},
 		},

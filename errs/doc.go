@@ -13,7 +13,7 @@
 // Every typed error embeds Problem so the JSON wire shape (`type`,
 // `subtype`, `code`, `message`, `hint`, `log_id`, `retryable`) is uniform
 // across categories. Typed extensions (PermissionError.MissingScopes,
-// SecurityPolicyError.ChallengeURL, etc.) appear at the top level of the
+// SecurityPolicyError.ChallengeURL, SecurityPolicyError.DownloadURL, etc.) appear at the top level of the
 // envelope alongside the shared fields, not nested under a `detail` key.
 //
 // # Working with typed errors
