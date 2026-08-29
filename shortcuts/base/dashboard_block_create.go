@@ -52,7 +52,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 		raw := strings.TrimSpace(runtime.Str("data-config"))
 		if raw == "" {
 			if !runtime.Bool("no-validate") {
-				blockType := strings.ToLower(strings.TrimSpace(runtime.Str("type")))
+				blockType := strings.ToLower(normalizeDashboardBlockType(runtime.Str("type")))
 				switch blockType {
 				case "text":
 					return errs.NewValidationError(errs.SubtypeInvalidArgument, "text 类型组件必须提供 data-config，包含必填字段 text").WithParam("--data-config")
@@ -68,7 +68,9 @@ var BaseDashboardBlockCreate = common.Shortcut{
 		}
 		effective := cfg
 		if !runtime.Bool("no-validate") {
-			effective = normalizeDataConfig(cfg)
+			if normalizeDashboardBlockType(runtime.Str("type")) != "nps" {
+				effective = normalizeDataConfig(cfg)
+			}
 			if errs := validateBlockDataConfig(runtime.Str("type"), effective); len(errs) > 0 {
 				return formatDataConfigErrors(errs)
 			}

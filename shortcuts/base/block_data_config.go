@@ -43,6 +43,14 @@ func matchesBlockType(blockType string, candidates []string) bool {
 	return false
 }
 
+func normalizeDashboardBlockType(blockType string) string {
+	trimmed := strings.TrimSpace(blockType)
+	if strings.EqualFold(trimmed, "nps") {
+		return "nps"
+	}
+	return trimmed
+}
+
 func isTextBlockType(blockType string) bool { return matchesBlockType(blockType, textBlockTypes) }
 
 func isChartBlockType(blockType string) bool { return matchesBlockType(blockType, chartBlockTypes) }
@@ -123,7 +131,7 @@ func normalizeDataConfig(cfg map[string]interface{}) map[string]interface{} {
 // dashboard chart rules. BaseApp list validation lives in
 // app_list_block_data_config.go and never enters this dashboard path.
 func validateBlockDataConfig(blockType string, cfg map[string]interface{}) []string {
-	blockType = strings.ToLower(strings.TrimSpace(blockType))
+	blockType = strings.ToLower(normalizeDashboardBlockType(blockType))
 	switch {
 	case isTextBlockType(blockType):
 		return append(validateNonNPSDataConfig(cfg), validateTextDataConfig(blockType, cfg)...)
@@ -296,9 +304,11 @@ func validateNPSDataConfig(cfg map[string]interface{}) []string {
 			if strings.TrimSpace(fn) == "" {
 				errs = append(errs, "nps.group_by[0].field_name 不能为空")
 			}
-			mode, modeOK := m["mode"].(string)
-			if !modeOK || strings.TrimSpace(mode) != "integrated" {
-				errs = append(errs, "nps.group_by[0].mode 只能为 integrated")
+			if rawMode, hasMode := m["mode"]; hasMode {
+				mode, modeOK := rawMode.(string)
+				if !modeOK || mode != "integrated" {
+					errs = append(errs, "nps.group_by[0].mode 只能为 integrated")
+				}
 			}
 			if _, hasSort := m["sort"]; hasSort {
 				errs = append(errs, "nps.group_by[0] 不支持 sort")

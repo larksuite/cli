@@ -598,6 +598,49 @@ func TestBaseDashboardBlockDryRun_Create(t *testing.T) {
 	}
 }
 
+func TestBaseDashboardBlockCreate_CanonicalizesNPSType(t *testing.T) {
+	dataConfig := `{"table_name":"Survey","group_by":[{"field_name":"Score"}]}`
+	for _, blockType := range []string{"nps", "NPS", "NpS", " nps", " NpS "} {
+		t.Run("dry-run "+blockType, func(t *testing.T) {
+			factory, stdout, _ := newExecuteFactory(t)
+			args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_001",
+				"--name", "NPS", "--type", blockType, "--data-config", dataConfig, "--dry-run"}
+			if err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout); err != nil {
+				t.Fatalf("err=%v", err)
+			}
+			if got := stdout.String(); !strings.Contains(got, `"type": "nps"`) {
+				t.Fatalf("dry-run body did not canonicalize type: %s", got)
+			}
+		})
+
+		t.Run("execute "+blockType, func(t *testing.T) {
+			factory, stdout, reg := newExecuteFactory(t)
+			stub := &httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{"block_id": "blk_nps", "type": "nps"},
+				},
+			}
+			reg.Register(stub)
+			args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_001",
+				"--name", "NPS", "--type", blockType, "--data-config", dataConfig}
+			if err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout); err != nil {
+				t.Fatalf("err=%v", err)
+			}
+			body := decodeCapturedJSONBody(t, stub)
+			if body["type"] != "nps" {
+				t.Fatalf("request type=%#v, want nps", body["type"])
+			}
+			group := body["data_config"].(map[string]interface{})["group_by"].([]interface{})[0].(map[string]interface{})
+			if _, hasMode := group["mode"]; hasMode {
+				t.Fatalf("CLI unexpectedly added group_by mode: %#v", group)
+			}
+		})
+	}
+}
+
 // TestBaseDashboardBlockDryRun_Update tests the +dashboard-block-update --dry-run flag.
 func TestBaseDashboardBlockDryRun_Update(t *testing.T) {
 	factory, stdout, _ := newExecuteFactory(t)
@@ -831,6 +874,11 @@ func TestValidateNPSDataConfig(t *testing.T) {
 	if problems := validateBlockDataConfig(" NpS ", cloneMap(valid)); len(problems) != 0 {
 		t.Fatalf("normalized nps type got problems: %v", problems)
 	}
+	withoutMode := cloneMap(valid)
+	withoutMode["group_by"] = []interface{}{map[string]interface{}{"field_name": "Score"}}
+	if problems := validateBlockDataConfig("nps", withoutMode); len(problems) != 0 {
+		t.Fatalf("nps should allow omitted group_by mode: %v", problems)
+	}
 
 	withoutCountAll := cloneMap(valid)
 	if problems := validateBlockDataConfig("nps", withoutCountAll); len(problems) != 0 {
@@ -902,16 +950,16 @@ func TestValidateNPSDataConfig(t *testing.T) {
 			want: "nps.group_by[0].field_name 不能为空",
 		},
 		{
-			name: "missing group_by mode",
+			name: "empty group_by mode",
 			mut: func(cfg map[string]interface{}) {
-				cfg["group_by"] = []interface{}{map[string]interface{}{"field_name": "Score"}}
+				cfg["group_by"] = []interface{}{map[string]interface{}{"field_name": "Score", "mode": ""}}
 			},
 			want: "nps.group_by[0].mode 只能为 integrated",
 		},
 		{
-			name: "empty group_by mode",
+			name: "padded group_by mode",
 			mut: func(cfg map[string]interface{}) {
-				cfg["group_by"] = []interface{}{map[string]interface{}{"field_name": "Score", "mode": ""}}
+				cfg["group_by"] = []interface{}{map[string]interface{}{"field_name": "Score", "mode": " integrated "}}
 			},
 			want: "nps.group_by[0].mode 只能为 integrated",
 		},
