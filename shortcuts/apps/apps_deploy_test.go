@@ -557,6 +557,31 @@ func localEndpointServer(t *testing.T, body string, status int) int {
 	return srv.Listener.Addr().(*net.TCPAddr).Port
 }
 
+func TestProbeLocalSparkEndpoint_IPv6OnlyBind(t *testing.T) {
+	// Vite's default localhost bind often lands on ::1 only (Node >= 17).
+	// Probing "localhost" must reach such a server via dual-stack dialing.
+	l, err := net.Listen("tcp6", "[::1]:0")
+	if err != nil {
+		t.Skipf("IPv6 loopback unavailable: %v", err)
+	}
+	srv := &httptest.Server{
+		Listener: l,
+		Config: &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"app":{"id":"app_v6"}}`))
+		})},
+	}
+	srv.Start()
+	t.Cleanup(srv.Close)
+	port := l.Addr().(*net.TCPAddr).Port
+	id, err := probeLocalSparkEndpoint(port)
+	if err != nil {
+		t.Fatalf("probe must reach an IPv6-only dev server via localhost: %v", err)
+	}
+	if id != "app_v6" {
+		t.Errorf("got app id %q, want app_v6", id)
+	}
+}
+
 func TestVerifyLocalEndpointIdentity(t *testing.T) {
 	cfgWith := func(port int) *appDevProjectConfig {
 		return &appDevProjectConfig{DevPort: port}
