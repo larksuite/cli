@@ -229,6 +229,46 @@ func appDevSensitiveCandidatesError(hits []string) error {
 		WithHint("remove these files from the artifact directories, OR pass --allow-sensitive if shipping them is intentional (e.g. a docs site demoing credential-file formats)")
 }
 
+// validateSparkDeclaration enforces the protocol's declaration-side MUSTs
+// at the hosting entry: stack is required (identifies the tech-stack shape;
+// official template seeds write it, custom projects use custom-webapp /
+// custom-fullstack), and dev.port is required because the platform relies
+// on the project's local self-description endpoint
+// (GET localhost:<dev.port>/spark.json) after the app is hosted.
+func validateSparkDeclaration(cfg *appDevProjectConfig) error {
+	switch {
+	case cfg.Stack == "":
+		return appsFailedPreconditionError("spark.json is missing the required stack field").
+			WithHint(`declare the tech stack: official templates write it automatically; custom projects use "custom-webapp" or "custom-fullstack"`)
+	case !appDevTemplateNameRe.MatchString(cfg.Stack):
+		return appsFailedPreconditionError("spark.json stack %q is invalid (lowercase letters, digits, '.', '_', '-')", cfg.Stack).
+			WithHint(`use the stack name written by the template seed, or "custom-webapp" / "custom-fullstack" for custom projects`)
+	case !strings.HasSuffix(cfg.Stack, "-webapp") && !strings.HasSuffix(cfg.Stack, "-fullstack"):
+		return appsFailedPreconditionError("spark.json stack %q does not name a supported hosting shape (must end with -webapp or -fullstack)", cfg.Stack).
+			WithHint(`custom projects use "custom-webapp" or "custom-fullstack"; official template stacks carry the suffix already`)
+	case cfg.DevPort == 0:
+		return appsFailedPreconditionError("spark.json is missing the required dev.port field").
+			WithHint(`declare the local dev-server port, e.g. {"dev": {"port": 5173}} — after hosting, platform capabilities rely on the local self-description endpoint (GET localhost:<dev.port>/spark.json)`)
+	case cfg.DevPort < 1 || cfg.DevPort > 65535:
+		return appsFailedPreconditionError("spark.json dev.port %d is out of range (1-65535)", cfg.DevPort)
+	}
+	return nil
+}
+
+// warnMissingIndexHTML reports whether the same-origin payload lacks an
+// output/index.html entry. The platform gateway's SPA fallback serves the
+// entry HTML for unmatched paths, so publishing without one is almost
+// always a broken build — kept as a warning (not a gate) per the protocol
+// owner's call.
+func warnMissingIndexHTML(entries []appDevPackEntry) bool {
+	for _, e := range entries {
+		if e.ZipPath == "output/index.html" {
+			return false
+		}
+	}
+	return true
+}
+
 // resolveAppDevPublishTarget loads the project declaration (spark.json
 // first, legacy .spark/meta.json fallback) and resolves the publish target
 // from --app-id and the recorded app id:
@@ -391,6 +431,9 @@ var AppsDeploy = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		if err := validateSparkDeclaration(cfg); err != nil {
+			return err
+		}
 		// Sensitive-file scan lives in Validate so that --dry-run exits
 		// non-zero on a hit — the one deliberate exception to dry-run's
 		// exit-0 convention (mirrors +html-publish). Every file under the
@@ -475,6 +518,9 @@ var AppsDeploy = common.Shortcut{
 			if gen >= 0 {
 				dry.Set("routes_json", fmt.Sprintf("absent; will be generated from the .html tree (%d route(s))", gen))
 			}
+			if warnMissingIndexHTML(entries) {
+				dry.Set("index_html_warning", "no index.html in the same-origin payload; the platform's SPA fallback depends on it")
+			}
 		}
 		return dry
 	},
@@ -534,6 +580,9 @@ var AppsDeploy = common.Shortcut{
 		}
 		if generatedRoutes >= 0 {
 			fmt.Fprintf(rctx.IO().ErrOut, "routes.json not found; generated %d route(s) from the .html tree\n", generatedRoutes)
+		}
+		if warnMissingIndexHTML(entries) {
+			fmt.Fprintf(rctx.IO().ErrOut, "warning: no index.html in %s — the platform's SPA fallback serves the entry HTML for unmatched paths, so this deploy will likely misbehave\n", cfg.BuildOutput)
 		}
 		zipball, err := buildAppDevZip(rctx.FileIO(), entries)
 		if err != nil {

@@ -44,6 +44,9 @@ lark-cli apps +deploy --dry-run
 ## 常见失败
 
 - `current directory is not a Miaoda app project`：不在项目根执行；`cd` 到含 `spark.json` 的目录。
+- `spark.json is missing the required stack field` / `stack ... must end with -webapp or -fullstack`：声明技术栈——官方模板自动写入；自定义项目填 `custom-webapp` / `custom-fullstack`。
+- `spark.json is missing the required dev.port field`：声明本地 dev 端口（如 `{"dev":{"port":5173}}`）——托管后平台能力依托本地自描述端点（`GET localhost:<dev.port>/spark.json`），必填。
+- `warning: no index.html ...`：不拦截但强烈建议修复——平台 SPA fallback 依赖入口 index.html，缺失时线上路由回退会异常。
 - `routes.json is missing` / schema 校验失败：声明了 `build.command` 的项目由构建脚本负责生成合法 routes.json；让用户检查构建配置，不要手工伪造（buildless 项目无此问题，CLI 会自动生成）。
 - `build command ... failed`：转述 stderr 摘要让用户修构建错误（构建命令来自 spark.json `build.command`）；用户已手动构建时可用 `--skip-build`。
 - `artifact directory ... does not exist`：声明了构建命令时先构建（或去掉 `--skip-build`）；buildless 项目需确认 `build.output` 指向的目录真实存在。

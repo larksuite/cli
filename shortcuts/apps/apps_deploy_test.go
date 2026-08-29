@@ -455,7 +455,7 @@ func TestAppDevPublishValidate_NoMeta(t *testing.T) {
 }
 
 func TestAppDevPublishValidate_NoAppID(t *testing.T) {
-	chdirSparkProjectRoot(t, `{"stack":"react-standard-webapp"}`)
+	chdirSparkProjectRoot(t, `{"stack":"react-standard-webapp","dev":{"port":5173}}`)
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
@@ -484,7 +484,7 @@ func TestAppDevPublishValidate_AppIDMismatch(t *testing.T) {
 }
 
 func TestAppDevPublishExecute_FlagMatchesMeta(t *testing.T) {
-	root := chdirSparkProjectRoot(t, `{"app":{"id":"app_x"}}`)
+	root := chdirSparkProjectRoot(t, `{"stack":"custom-webapp","dev":{"port":5173},"app":{"id":"app_x"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	factory, stdout, reg := newAppsExecuteFactory(t)
@@ -513,8 +513,49 @@ func TestAppDevPublishValidate_BadAppID(t *testing.T) {
 	}
 }
 
+func TestAppDevPublishValidate_Declaration(t *testing.T) {
+	// The hosting entry enforces the protocol's declaration-side MUSTs:
+	// stack (with a supported hosting-shape suffix) and dev.port (the
+	// platform relies on the local self-description endpoint after hosting).
+	cases := []struct {
+		name, sparkJSON, wantErr string
+	}{
+		{"missing stack", `{"dev":{"port":5173},"app":{"id":"app_x"}}`, "missing the required stack"},
+		{"bad stack charset", `{"stack":"My Stack","dev":{"port":5173},"app":{"id":"app_x"}}`, "is invalid"},
+		{"bad stack suffix", `{"stack":"react-standard","dev":{"port":5173},"app":{"id":"app_x"}}`, "must end with -webapp or -fullstack"},
+		{"missing dev.port", `{"stack":"custom-webapp","app":{"id":"app_x"}}`, "missing the required dev.port"},
+		{"port out of range", `{"stack":"custom-webapp","dev":{"port":70000},"app":{"id":"app_x"}}`, "out of range"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			chdirSparkProjectRoot(t, tc.sparkJSON)
+			factory, stdout, _ := newAppsExecuteFactory(t)
+			err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user"}, factory, stdout)
+			p := requireAppsProblem(t, err, errs.CategoryValidation)
+			if p.Subtype != errs.SubtypeFailedPrecondition || !strings.Contains(p.Message, tc.wantErr) {
+				t.Errorf("got %v, want message containing %q", p, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestAppDevPublishExecute_MissingIndexHTMLWarns(t *testing.T) {
+	// A payload without index.html publishes (warning only, per the protocol
+	// owner's call) — the platform's SPA fallback depends on it, so the
+	// warning must be loud but non-blocking.
+	root := chdirSparkProjectRoot(t, `{"stack":"custom-webapp","dev":{"port":5173},"app":{"id":"app_x"}}`)
+	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/page.html", "output/routes.json"})
+	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubPreRelease(reg, "app_x", srv.URL, nil)
+	stubReleases(reg, "app_x", map[string]interface{}{"release_id": "rel_60", "status": "finished", "online_url": "https://x/app/app_x"})
+	if err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--skip-build", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("missing index.html must not block the deploy: %v", err)
+	}
+}
+
 func TestAppDevPublishValidate_SensitiveGatesDryRun(t *testing.T) {
-	root := chdirSparkProjectRoot(t, `{"app":{"id":"app_x"}}`)
+	root := chdirSparkProjectRoot(t, `{"stack":"custom-webapp","dev":{"port":5173},"app":{"id":"app_x"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist"),
 		[]string{"output/index.html", "output/routes.json", "output/.env"})
 	factory, stdout, _ := newAppsExecuteFactory(t)
@@ -538,7 +579,7 @@ func TestAppDevPublishValidate_SensitiveGatesDryRun(t *testing.T) {
 }
 
 func TestAppDevPublishValidate_SkipBuildNoDist(t *testing.T) {
-	chdirSparkProjectRoot(t, `{"app":{"id":"app_x"},"build":{"command":["npm","run","build"]}}`)
+	chdirSparkProjectRoot(t, `{"stack":"custom-webapp","dev":{"port":5173},"app":{"id":"app_x"},"build":{"command":["npm","run","build"]}}`)
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--skip-build", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
@@ -550,7 +591,7 @@ func TestAppDevPublishValidate_SkipBuildNoDist(t *testing.T) {
 func TestAppDevPublishValidate_BuildlessNoDist(t *testing.T) {
 	// No build.command declared in spark.json (buildless): the artifact
 	// directory must already exist.
-	chdirSparkProjectRoot(t, `{"app":{"id":"app_x"}}`)
+	chdirSparkProjectRoot(t, `{"stack":"custom-webapp","dev":{"port":5173},"app":{"id":"app_x"}}`)
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user"}, factory, stdout)
 	p := requireAppsProblem(t, err, errs.CategoryValidation)
@@ -565,6 +606,7 @@ func TestAppDevPublishValidate_BuildlessNoDist(t *testing.T) {
 func TestAppDevPublishExecute_SyncSuccess(t *testing.T) {
 	root := chdirSparkProjectRoot(t, `{
   "stack": "react-standard-webapp",
+  "dev": { "port": 5173 },
   "build": { "command": ["npm", "run", "build"], "output": "dist/output" },
   "app": { "id": "app_x" }
 }`)
@@ -631,7 +673,7 @@ func TestAppDevPublishExecute_SyncSuccess(t *testing.T) {
 func TestAppDevPublishExecute_BuildlessSync(t *testing.T) {
 	// spark.json without build.command: buildless — no build runs,
 	// dist/output is packed as-is, the app section gains the url.
-	root := chdirSparkProjectRoot(t, `{"app":{"id":"app_x"}}`)
+	root := chdirSparkProjectRoot(t, `{"stack":"custom-webapp","dev":{"port":5173},"app":{"id":"app_x"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	f := &fakeEnvRunner{}
 	withFakeEnvRunner(t, f)
@@ -662,7 +704,7 @@ func TestAppDevPublishExecute_BuildlessSync(t *testing.T) {
 }
 
 func TestAppDevPublishExecute_AsyncSuccess(t *testing.T) {
-	root := chdirSparkProjectRoot(t, `{"app":{"id":"app_x"}}`)
+	root := chdirSparkProjectRoot(t, `{"stack":"custom-webapp","dev":{"port":5173},"app":{"id":"app_x"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	factory, stdout, reg := newAppsExecuteFactory(t)
@@ -695,7 +737,7 @@ func TestAppDevPublishExecute_FinishedWithoutURL(t *testing.T) {
 	// The create response may report finished without online_url; the
 	// command must fetch the release once to recover the url instead of
 	// returning an empty one with a misleading poll hint.
-	root := chdirSparkProjectRoot(t, `{"stack":"s","app":{"id":"app_x"}}`)
+	root := chdirSparkProjectRoot(t, `{"stack":"custom-webapp","dev":{"port":5173},"app":{"id":"app_x"}}`)
 	writeDistFiles(t, filepath.Join(root, appDevDefaultBuildOutput), []string{"index.html", "routes.json"})
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	factory, stdout, reg := newAppsExecuteFactory(t)
@@ -720,7 +762,7 @@ func TestAppDevPublishExecute_FinishedWithoutURL(t *testing.T) {
 func TestAppDevPublishExecute_CreateReportsFailed(t *testing.T) {
 	// A create response that already reports failed is a failed publish:
 	// exit non-zero with the error_logs (fetched once) summarized.
-	root := chdirSparkProjectRoot(t, `{"app":{"id":"app_x"}}`)
+	root := chdirSparkProjectRoot(t, `{"stack":"custom-webapp","dev":{"port":5173},"app":{"id":"app_x"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	factory, stdout, reg := newAppsExecuteFactory(t)
@@ -757,7 +799,7 @@ func TestSummarizeReleaseErrorLogs(t *testing.T) {
 }
 
 func TestAppDevPublishExecute_BuildFails(t *testing.T) {
-	chdirSparkProjectRoot(t, `{"app":{"id":"app_x"},"build":{"command":["npm","run","build"]}}`)
+	chdirSparkProjectRoot(t, `{"stack":"custom-webapp","dev":{"port":5173},"app":{"id":"app_x"},"build":{"command":["npm","run","build"]}}`)
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	f := &fakeEnvRunner{stderr: "TS2304: boom", err: errors.New("exit 1")}
 	withFakeEnvRunner(t, f)
@@ -774,7 +816,7 @@ func TestAppDevPublishExecute_BuildFails(t *testing.T) {
 }
 
 func TestAppDevPublishExecute_PreReleaseMissingKVs(t *testing.T) {
-	root := chdirSparkProjectRoot(t, `{"app":{"id":"app_x"}}`)
+	root := chdirSparkProjectRoot(t, `{"stack":"custom-webapp","dev":{"port":5173},"app":{"id":"app_x"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
@@ -793,7 +835,7 @@ func TestAppDevPublishExecute_PreReleaseMissingKVs(t *testing.T) {
 }
 
 func TestAppDevPublishExecute_NonHTTPSUploadURL(t *testing.T) {
-	root := chdirSparkProjectRoot(t, `{"app":{"id":"app_x"}}`)
+	root := chdirSparkProjectRoot(t, `{"stack":"custom-webapp","dev":{"port":5173},"app":{"id":"app_x"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stubPreRelease(reg, "app_x", "http://insecure.example/put", nil)
@@ -805,7 +847,7 @@ func TestAppDevPublishExecute_NonHTTPSUploadURL(t *testing.T) {
 }
 
 func TestAppDevPublishExecute_TOS5xx(t *testing.T) {
-	root := chdirSparkProjectRoot(t, `{"app":{"id":"app_x"}}`)
+	root := chdirSparkProjectRoot(t, `{"stack":"custom-webapp","dev":{"port":5173},"app":{"id":"app_x"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html", "output/routes.json"})
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(503) })
 	factory, stdout, reg := newAppsExecuteFactory(t)
@@ -818,7 +860,7 @@ func TestAppDevPublishExecute_TOS5xx(t *testing.T) {
 }
 
 func TestAppDevPublishDryRun(t *testing.T) {
-	root := chdirSparkProjectRoot(t, `{"app":{"id":"app_x"},"build":{"command":["npm","run","build"],"output":"dist/output"}}`)
+	root := chdirSparkProjectRoot(t, `{"stack":"custom-webapp","dev":{"port":5173},"app":{"id":"app_x"},"build":{"command":["npm","run","build"],"output":"dist/output"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist", "output"), []string{"index.html"})
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--skip-build", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
@@ -843,7 +885,7 @@ func TestAppDevPublishDryRun(t *testing.T) {
 }
 
 func TestAppDevPublishDryRun_Buildless(t *testing.T) {
-	root := chdirSparkProjectRoot(t, `{"app":{"id":"app_x"}}`)
+	root := chdirSparkProjectRoot(t, `{"stack":"custom-webapp","dev":{"port":5173},"app":{"id":"app_x"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/index.html"})
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
@@ -876,6 +918,7 @@ func TestAppDevPublishExecute_MiaodaProtocol(t *testing.T) {
 	// section is replaced wholesale on success.
 	root := chdirSparkProjectRoot(t, `{
   "stack": "custom-webapp",
+  "dev": { "port": 5173 },
   "build": { "command": ["make", "site"], "output": "public" },
   "app": { "id": "app_x" }
 }`)
@@ -914,7 +957,7 @@ func TestAppDevPublishExecute_MiaodaProtocol(t *testing.T) {
 func TestAppDevPublishExecute_MiaodaFlagBackfill(t *testing.T) {
 	// No recorded app id in spark.json: --app-id publishes and the app
 	// section is written on success (async: no url yet).
-	root := chdirSparkProjectRoot(t, `{"stack":"react-standard-webapp"}`)
+	root := chdirSparkProjectRoot(t, `{"stack":"react-standard-webapp","dev":{"port":5173}}`)
 	writeDistFiles(t, filepath.Join(root, appDevDefaultBuildOutput), []string{"index.html", "routes.json"})
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	factory, stdout, reg := newAppsExecuteFactory(t)
