@@ -852,6 +852,7 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 			shortcut: BaseDashboardBlockCreate,
 			wantTips: []string{
 				`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Order Count" --type statistics --data-config '{"table_name":"Orders","count_all":true}'`,
+				`--type countdown --data-config '{"extra_config":{"countdown":{"use_fixed_time":true,"target":"2099-12-31 23:59:59","units":["day","hour","min","sec"]}}}'`,
 				`--type text --data-config '{"text":"# Sales Dashboard"}'`,
 				"+table-list and +field-list",
 				"not table_id or field_id",

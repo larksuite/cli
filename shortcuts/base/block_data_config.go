@@ -6,6 +6,7 @@ package base
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -19,6 +20,10 @@ var chartBlockTypes = []string{
 	"column", "bar", "line", "pie", "ring", "scatter",
 	"funnel", "wordCloud", "area", "combo", "radar", "statistics",
 }
+
+var dashboardOnlyChartBlockTypes = []string{"countdown"}
+
+var countdownTargetTimePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$`)
 
 // textBlockTypes are the text-ish block types. Dashboard blocks and BaseApp
 // page blocks share the same spelling "text" and the same data_config shape
@@ -46,6 +51,10 @@ func matchesBlockType(blockType string, candidates []string) bool {
 func isTextBlockType(blockType string) bool { return matchesBlockType(blockType, textBlockTypes) }
 
 func isChartBlockType(blockType string) bool { return matchesBlockType(blockType, chartBlockTypes) }
+
+func isCountdownBlockType(blockType string) bool {
+	return matchesBlockType(blockType, dashboardOnlyChartBlockTypes)
+}
 
 // appBlockTypes are all block types accepted by the BaseApp page block
 // commands, in the order they appear in the protocol design.
@@ -130,6 +139,8 @@ func validateBlockDataConfig(blockType string, cfg map[string]interface{}) []str
 	switch {
 	case isTextBlockType(blockType):
 		return validateTextDataConfig(blockType, cfg)
+	case isCountdownBlockType(blockType):
+		return validateCountdownDataConfig(cfg)
 	default:
 		problems := validateChartDataConfig(cfg)
 		if matchesBlockType(blockType, []string{"statistics"}) {
@@ -148,6 +159,152 @@ func validateTextDataConfig(blockType string, cfg map[string]interface{}) []stri
 		problems = append(problems, fmt.Sprintf("%s 类型组件缺少必填字段 text", strings.TrimSpace(blockType)))
 	}
 	return problems
+}
+
+func validateCountdownDataConfig(cfg map[string]interface{}) []string {
+	var errs []string
+
+	for key := range cfg {
+		switch key {
+		case "table_name", "series", "count_all", "group_by", "filter", "extra_config":
+		default:
+			errs = append(errs, fmt.Sprintf("countdown 不支持字段 %s", key))
+		}
+	}
+
+	extraConfig, ok := cfg["extra_config"].(map[string]interface{})
+	if !ok {
+		return append(errs, "countdown 缺少必填字段 extra_config.countdown")
+	}
+	countdown, ok := extraConfig["countdown"].(map[string]interface{})
+	if !ok {
+		return append(errs, "countdown 缺少必填字段 extra_config.countdown")
+	}
+	for key := range extraConfig {
+		if key != "countdown" {
+			errs = append(errs, fmt.Sprintf("extra_config 不支持字段 %s", key))
+		}
+	}
+	for key := range countdown {
+		switch key {
+		case "use_fixed_time", "target", "type", "units":
+		default:
+			errs = append(errs, fmt.Sprintf("extra_config.countdown 不支持字段 %s", key))
+		}
+	}
+
+	useFixedTime, ok := countdown["use_fixed_time"].(bool)
+	if !ok {
+		return append(errs, "extra_config.countdown.use_fixed_time 必须为布尔值")
+	}
+
+	if unitsRaw, exists := countdown["units"]; exists {
+		units, ok := unitsRaw.([]interface{})
+		if !ok || len(units) == 0 {
+			errs = append(errs, "extra_config.countdown.units 必须是非空数组")
+		} else {
+			allowed := map[string]bool{"day": true, "hour": true, "min": true, "sec": true}
+			for i, unitRaw := range units {
+				unit, ok := unitRaw.(string)
+				unit = strings.TrimSpace(unit)
+				if !ok || !allowed[unit] {
+					errs = append(errs, fmt.Sprintf("extra_config.countdown.units[%d] 仅支持 day|hour|min|sec", i))
+				}
+			}
+		}
+	}
+
+	if useFixedTime {
+		target, ok := countdown["target"].(string)
+		target = strings.TrimSpace(target)
+		switch {
+		case !ok || target == "":
+			errs = append(errs, "fixed 模式缺少必填字段 extra_config.countdown.target")
+		case !countdownTargetTimePattern.MatchString(target):
+			errs = append(errs, "extra_config.countdown.target 必须匹配 YYYY-MM-DD HH:MM:SS")
+		}
+		if _, exists := countdown["type"]; exists {
+			errs = append(errs, "fixed 模式不允许配置 extra_config.countdown.type")
+		}
+		if _, exists := cfg["table_name"]; exists {
+			errs = append(errs, "fixed 模式不允许配置 table_name")
+		}
+		if _, exists := cfg["series"]; exists {
+			errs = append(errs, "fixed 模式不允许配置 series")
+		}
+		if _, exists := cfg["count_all"]; exists {
+			errs = append(errs, "fixed 模式不允许配置 count_all")
+		}
+		if _, exists := cfg["group_by"]; exists {
+			errs = append(errs, "fixed 模式不允许配置 group_by")
+		}
+		if _, exists := cfg["filter"]; exists {
+			errs = append(errs, "fixed 模式不允许配置 filter")
+		}
+		return errs
+	}
+
+	if tn, _ := cfg["table_name"].(string); strings.TrimSpace(tn) == "" {
+		errs = append(errs, "field 模式缺少必填字段 table_name")
+	}
+	if countAll, ok := cfg["count_all"].(bool); !ok || !countAll {
+		errs = append(errs, "field 模式要求 count_all=true")
+	}
+	if _, exists := cfg["series"]; exists {
+		errs = append(errs, "field 模式不允许配置 series")
+	}
+	if _, exists := countdown["target"]; exists {
+		errs = append(errs, "field 模式不允许配置 extra_config.countdown.target")
+	}
+	if compareType, _ := countdown["type"].(string); compareType != "MIN" && compareType != "MAX" {
+		errs = append(errs, "extra_config.countdown.type 仅支持 MIN|MAX")
+	}
+	groupBy, ok := cfg["group_by"].([]interface{})
+	if !ok || len(groupBy) != 1 {
+		errs = append(errs, "field 模式要求 group_by 恰好包含 1 个元素")
+	} else {
+		group, ok := groupBy[0].(map[string]interface{})
+		if !ok {
+			errs = append(errs, "group_by[0] 必须是对象")
+		} else {
+			if fieldName, _ := group["field_name"].(string); strings.TrimSpace(fieldName) == "" {
+				errs = append(errs, "group_by[0].field_name 不能为空")
+			}
+			modeRaw, exists := group["mode"]
+			mode, ok := modeRaw.(string)
+			mode = strings.TrimSpace(mode)
+			switch {
+			case !exists:
+				errs = append(errs, "group_by[0].mode 缺失")
+			case !ok || mode == "":
+				errs = append(errs, "group_by[0].mode 必须是非空字符串")
+			case mode != "enumerated" && mode != "integrated":
+				errs = append(errs, "group_by[0].mode 仅支持 enumerated|integrated")
+			}
+			if sortRaw, exists := group["sort"]; exists {
+				sort, ok := sortRaw.(map[string]interface{})
+				if !ok {
+					errs = append(errs, "group_by[0].sort 必须是对象")
+				} else {
+					sortType, _ := sort["type"].(string)
+					sortType = strings.ToLower(strings.TrimSpace(sortType))
+					if sortType != "group" && sortType != "value" && sortType != "view" {
+						errs = append(errs, "group_by[0].sort.type 仅支持 group|value|view")
+					}
+					if orderRaw, exists := sort["order"]; exists {
+						order, ok := orderRaw.(string)
+						order = strings.ToLower(strings.TrimSpace(order))
+						if !ok || (order != "asc" && order != "desc") {
+							errs = append(errs, "group_by[0].sort.order 仅支持 asc|desc")
+						}
+					}
+				}
+			}
+		}
+	}
+
+	errs = append(errs, validateBlockFilter(cfg, "filter", false)...)
+	return errs
 }
 
 // validateChartDataConfig validates the chart/statistics data_config shape.

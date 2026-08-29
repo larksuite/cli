@@ -24,7 +24,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 		baseTokenFlag(true),
 		dashboardIDFlag(true),
 		{Name: "name", Desc: "block name", Required: true},
-		{Name: "type", Desc: "block type: column(柱状图)|bar(条形图)|line(折线图)|pie(饼图)|ring(环形图)|area(面积图)|combo(组合图)|scatter(散点图)|funnel(漏斗图)|wordCloud(词云)|radar(雷达图)|statistics(指标卡)|text(文本). Read lark-base-dashboard-block-config.md before creating.", Required: true},
+		{Name: "type", Desc: "block type: column(柱状图)|bar(条形图)|line(折线图)|pie(饼图)|ring(环形图)|area(面积图)|combo(组合图)|scatter(散点图)|funnel(漏斗图)|wordCloud(词云)|radar(雷达图)|statistics(指标卡)|countdown(倒计时)|text(文本). Read lark-base-dashboard-block-config.md before creating.", Required: true},
 		{Name: "data-config", Desc: "data_config JSON object; read lark-base-dashboard-block-config.md for the SSOT"},
 		{Name: "position", Desc: `optional. component position+size in 12-col grid, JSON {"x","y","w","h"}; all four keys required and numeric (position is submitted whole, so a partial object cannot express a complete placement). Advisory bounds x/y>=0, 1<=w<=12 and x+w<=12, h>=1 — coordinate VALUES are not validated locally and pass through as given; the server auto-arranges out-of-range or overlapping positions. Omit for server auto-layout`},
 		{Name: "user-id-type", Desc: "user ID type for user fields in filters: open_id / union_id / user_id"},
@@ -33,6 +33,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 	Tips: []string{
 		`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Order Count" --type statistics --data-config '{"table_name":"Orders","count_all":true}'`,
 		`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Revenue" --type statistics --data-config '{"table_name":"Orders","series":[{"field_name":"Amount","rollup":"SUM"}],"number_format":{"formatName":"dollar_rounded","precision":2}}'`,
+		`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Launch Countdown" --type countdown --data-config '{"extra_config":{"countdown":{"use_fixed_time":true,"target":"2099-12-31 23:59:59","units":["day","hour","min","sec"]}}}'`,
 		`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Dashboard Note" --type text --data-config '{"text":"# Sales Dashboard"}'`,
 		`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Order Count" --type statistics --data-config '{"table_name":"Orders","count_all":true}' --position '{"x":0,"y":0,"w":6,"h":4}'`,
 		"Before creating data-backed blocks, use +table-list and +field-list to confirm real table and field names.",

@@ -43,6 +43,7 @@
 
 - 词云
 - 指标卡（statistics）
+- 倒计时（countdown）
 
 > [!CAUTION]
 > 文本组件虽然也属于 dashboard block，但它不产生可计算数据，因此不会返回本协议。
@@ -135,6 +136,37 @@ CLI 成功输出使用标准 `{ok, identity, data}` 信封：
 | 二维图表 | `dimensions` / `measures` / `main_data` | 无 |
 | 词云 | `dimensions` / `measures` / `main_data` | 无 |
 | 指标卡 | `dimensions` / `measures` / `main_data` | `comparison_data` / `trend_data` |
+| 倒计时 | `countdown` | 无 |
+
+### countdown 返回结构
+
+倒计时组件不返回二维图协议，而是返回一个专用对象：
+
+```json
+{
+  "countdown": {
+    "mode": "fixed",
+    "target_time": 1787255772000,
+    "title": "版本发布倒计时",
+    "units": ["day", "hour", "min", "sec"]
+  }
+}
+```
+
+field 模式会额外包含：
+
+```json
+{
+  "countdown": {
+    "mode": "field",
+    "target_time": 1787255772000,
+    "target_field_name": "截止时间",
+    "compare_type": "MIN",
+    "title": "任务截止倒计时",
+    "units": ["day", "hour", "min", "sec"]
+  }
+}
+```
 
 ---
 
