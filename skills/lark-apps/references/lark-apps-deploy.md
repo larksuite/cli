@@ -10,7 +10,8 @@
 
 - **必须在项目根目录执行**（项目根须有 `spark.json`，它是唯一的项目声明文件）。同源产物目录取 spark.json 的 `build.output`（缺省 `dist/output`），CDN 产物目录取可选的 `build.output_cdn`（不声明 = 无 CDN 分离），无 `--path` 参数。
 - `--app-id` 可选：首次发布传它指定目标（成功后自动写入 `spark.json` 的 app 段，后续免传）；已记录 app id 时可省略；**两者都有且不一致会被拒绝**（防误发错目标），确要切换先更新 spark.json。
-- 可选：`--skip-build`（跳过 `build.command`，直接发布已有产物目录）、`--allow-sensitive`（跳过凭据文件扫描）。
+- **发布前须启动本地 dev server**：`+deploy` 会验证 `GET 127.0.0.1:<dev.port>/spark.json` 可达且其 `app.id` 与本次部署目标一致（防止把 A 项目的产物发到 B 应用；端点尚未声明 app.id 时放行——首发项目的正常状态）。无头/CI 环境用 `--no-verify` 显式跳过该验证。
+- 可选：`--skip-build`（跳过 `build.command`，直接发布已有产物目录）、`--no-verify`（整体跳过本地 dev server 验证：dev.port 声明要求、端点可达性、app 身份比对）。
 - 内部流程：读 spark.json → `pre_release` 获取上传地址与 `MIAODA_*` 构建环境变量 → 执行 `build.command`（argv 直接执行不走 shell，自动注入变量；**spark.json 未声明 build.command = buildless，跳过构建直接打包**）→ 校验产物协议 → 归一化打包（`build.output` → zip 内 `output/`，`build.output_cdn` → zip 内 `output_resource/`，流水线不感知项目目录名）→ 上传 → 触发发布。
 - 产物协议（详见《妙搭产物托管协议规范》）：`build.output` 目录必须含 ≥1 个 `.html`（SPA 入口须名 `index.html`）与合法的 `routes.json`（**路由枚举数组**，如 `[{"path":"/","file":"index.html"}]`，纯静态站可为空数组；它是安全扫描的输入，必须与真实路由一致）；目录内其余静态文件全部随包上传。**buildless 项目缺 routes.json 时由 CLI 扫描 `.html` 文件树自动生成**（`foo/index.html` → `/foo`），工程自带的 routes.json 永不被覆盖。包体限制：zip ≤ 50MB、未压缩总量 ≤ 200MB。
 
@@ -38,14 +39,14 @@ lark-cli apps +deploy --dry-run
 
 ## 安全规则
 
-- 敏感文件扫描命中（`.env`、`.npmrc` 等）时，**不要自动加 `--allow-sensitive` 重试**；把命中的文件列表转述给用户，由用户决定移除还是明确豁免。
 - 构建环境变量只注入 `pre_release` 下发的 `MIAODA_*` 白名单键；命令会在 stderr 回显实际注入的键名。
 
 ## 常见失败
 
 - `current directory is not a Miaoda app project`：不在项目根执行；`cd` 到含 `spark.json` 的目录。
-- `spark.json is missing the required stack field` / `stack ... must end with -webapp or -fullstack`：声明技术栈——官方模板自动写入；自定义项目填 `custom-webapp` / `custom-fullstack`。
 - `spark.json is missing the required dev.port field`：声明本地 dev 端口（如 `{"dev":{"port":5173}}`）——托管后平台能力依托本地自描述端点（`GET localhost:<dev.port>/spark.json`），必填。
+- `the local self-description endpoint is unavailable`：先启动 dev server（官方模板已内置 /spark.json 端点；custom 项目须自己伺服项目根 spark.json）；无头/CI 环境用 `--no-verify`——**不要因为端点验证失败就自动加 `--no-verify` 重试**，先确认是环境问题而非发错目录。
+- `the dev server ... declares app X, but this directory deploys app Y`：**大概率发错目录**——停下核对当前目录与正在运行的 dev server 是否同一项目，把情况告知用户，不要用 `--no-verify` 绕过。
 - `warning: no index.html ...`：不拦截但强烈建议修复——平台 SPA fallback 依赖入口 index.html，缺失时线上路由回退会异常。
 - `routes.json is missing` / schema 校验失败：声明了 `build.command` 的项目由构建脚本负责生成合法 routes.json；让用户检查构建配置，不要手工伪造（buildless 项目无此问题，CLI 会自动生成）。
 - `build command ... failed`：转述 stderr 摘要让用户修构建错误（构建命令来自 spark.json `build.command`）；用户已手动构建时可用 `--skip-build`。
