@@ -21,6 +21,8 @@ metadata:
 
 4. **`--format json`（默认）下，判断成功用 `ok == true`（或进程退出码 0），不要用 `code == 0`**：成功信封没有顶层 `code` / `msg` 字段，`code` 只出现在错误信封的 `error` 内。按 OpenAPI 老格式 `{"code": 0, "msg": "ok"}`判断会把所有成功调用误判为失败——封装写入类命令时尤其危险。JSON 输出契约 → [`lark-shared-output-contract.md`](references/lark-shared-output-contract.md)。
 
+5. **同一 profile 可保存多个用户登录**：再次执行 `auth login` 会保留已有用户，并把本次扫码授权的用户设为当前用户。用 `lark-cli auth users list` 查看身份，用 `lark-cli auth users use <open_id|user_name>` 切换；只有用户明确要求退出某个身份时才执行 `lark-cli auth users logout <open_id|user_name>`。profile 仍表示应用凭据隔离，不要为同一 App ID 的不同用户重复创建 profile。
+
 
 ## 安全规则
 

@@ -95,10 +95,15 @@ func profileListRun(f *cmdutil.Factory) error {
 		}
 
 		if len(app.Users) > 0 {
-			item.User = app.Users[0].UserName
-			stored := larkauth.GetStoredToken(app.AppId, app.Users[0].UserOpenId)
-			if stored != nil {
-				item.TokenStatus = larkauth.TokenStatus(stored)
+			active, activeErr := app.ActiveUser()
+			if activeErr != nil {
+				fmt.Fprintf(f.IOStreams.ErrOut, "Warning: profile %q has an invalid active user: %v\n", name, activeErr)
+			} else if active != nil {
+				item.User = active.UserName
+				stored := larkauth.GetStoredToken(app.AppId, active.UserOpenId)
+				if stored != nil {
+					item.TokenStatus = larkauth.TokenStatus(stored)
+				}
 			}
 		}
 
