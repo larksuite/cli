@@ -230,23 +230,26 @@ func validateSparkDeclaration(cfg *appDevProjectConfig) error {
 var appDevEndpointProbeTimeout = 2 * time.Second
 
 // probeLocalSparkEndpoint fetches the protocol's local self-description
-// endpoint (GET 127.0.0.1:<port>/spark.json) and returns the app id it
-// declares ("" when the served declaration carries none). Any failure to
-// reach a valid endpoint — no listener, non-200, unreadable body, invalid
-// JSON — comes back as an error naming the reason.
+// endpoint (GET localhost:<port>/spark.json) and returns the app id it
+// declares ("" when the served declaration carries none). The host is
+// literally "localhost" so the dialer's dual-stack resolution reaches dev
+// servers bound to either 127.0.0.1 or ::1 (Vite's default localhost bind
+// often lands on ::1 only). Any failure to reach a valid endpoint — no
+// listener, non-200, unreadable body, invalid JSON — comes back as an
+// error naming the reason.
 func probeLocalSparkEndpoint(port int) (appID string, err error) {
 	client := &http.Client{Timeout: appDevEndpointProbeTimeout}                   //nolint:forbidigo // loopback probe of the project's own dev server; not a Lark API call.
-	resp, gerr := client.Get(fmt.Sprintf("http://127.0.0.1:%d/spark.json", port)) //nolint:forbidigo // loopback probe of the project's own dev server; not a Lark API call.
+	resp, gerr := client.Get(fmt.Sprintf("http://localhost:%d/spark.json", port)) //nolint:forbidigo // loopback probe of the project's own dev server; not a Lark API call.
 	if gerr != nil {
-		return "", fmt.Errorf("no dev server reachable on 127.0.0.1:%d", port) //nolint:forbidigo // intermediate reason; wrapped into a typed error by the caller.
+		return "", fmt.Errorf("no dev server reachable on localhost:%d", port) //nolint:forbidigo // intermediate reason; wrapped into a typed error by the caller.
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GET 127.0.0.1:%d/spark.json returned HTTP %d", port, resp.StatusCode) //nolint:forbidigo // intermediate reason; wrapped into a typed error by the caller.
+		return "", fmt.Errorf("GET localhost:%d/spark.json returned HTTP %d", port, resp.StatusCode) //nolint:forbidigo // intermediate reason; wrapped into a typed error by the caller.
 	}
 	body, rerr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if rerr != nil {
-		return "", fmt.Errorf("reading 127.0.0.1:%d/spark.json failed: %w", port, rerr) //nolint:forbidigo // intermediate reason; wrapped into a typed error by the caller.
+		return "", fmt.Errorf("reading localhost:%d/spark.json failed: %w", port, rerr) //nolint:forbidigo // intermediate reason; wrapped into a typed error by the caller.
 	}
 	var doc struct {
 		App struct {
@@ -254,7 +257,7 @@ func probeLocalSparkEndpoint(port int) (appID string, err error) {
 		} `json:"app"`
 	}
 	if json.Unmarshal(body, &doc) != nil {
-		return "", fmt.Errorf("127.0.0.1:%d/spark.json is not valid JSON", port) //nolint:forbidigo // intermediate reason; wrapped into a typed error by the caller.
+		return "", fmt.Errorf("localhost:%d/spark.json is not valid JSON", port) //nolint:forbidigo // intermediate reason; wrapped into a typed error by the caller.
 	}
 	return strings.TrimSpace(doc.App.ID), nil
 }
@@ -282,7 +285,7 @@ func verifyLocalEndpointIdentity(cfg *appDevProjectConfig, targetAppID string) e
 		return nil
 	}
 	return appsFailedPreconditionError(
-		"the dev server on 127.0.0.1:%d declares app %q, but this deploy targets app %q — refusing to ship one project's payload onto another project's app",
+		"the dev server on localhost:%d declares app %q, but this deploy targets app %q — refusing to ship one project's payload onto another project's app",
 		cfg.DevPort, endpointID, targetAppID).
 		WithHint("you are likely deploying from the wrong directory (or the wrong dev server is running on this port); deploy from the project that owns the running dev server, or restart the right one")
 }
@@ -456,7 +459,7 @@ var AppsDeploy = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "publish target app ID (app_ prefix); optional when spark.json already records one — on a successful publish it is saved back into spark.json, and a value conflicting with the recorded one is rejected"},
 		{Name: "skip-build", Type: "bool", Desc: "skip the build.command declared in spark.json and publish the existing build.output directory as-is (no effect on buildless projects, which never build)"},
-		{Name: "no-verify", Type: "bool", Desc: "skip the local dev-server verification entirely (the dev.port declaration requirement, the GET 127.0.0.1:<dev.port>/spark.json availability check, and the app-identity match)"},
+		{Name: "no-verify", Type: "bool", Desc: "skip the local dev-server verification entirely (the dev.port declaration requirement, the GET localhost:<dev.port>/spark.json availability check, and the app-identity match)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		cfg, targetAppID, _, err := resolveAppDevPublishTarget(rctx)
