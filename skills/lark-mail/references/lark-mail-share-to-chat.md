@@ -40,7 +40,7 @@ lark-cli mail +share-to-chat --message-id <邮件ID> --receive-id oc_xxx --dry-r
   "ok": true,
   "data": {
     "card_id": "550e8400-e29b-41d4-a716-446655440000",
-    "im_message_id": "om_dc13264520392913993dd051dba21dcf"
+    "im_message_id": "om_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
   }
 }
 ```
