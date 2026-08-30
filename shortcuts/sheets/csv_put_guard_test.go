@@ -266,6 +266,9 @@ func TestResolveCSVPathFromFileAlias_UnreadablePaths(t *testing.T) {
 		if ve.Param != "--file" {
 			t.Errorf("param = %q, want --file", ve.Param)
 		}
+		if ve.Cause == nil {
+			t.Error("the underlying read error should be preserved as Cause")
+		}
 		if strings.Contains(ve.Hint, "@") {
 			t.Errorf("@file shares this reader, so it cannot be the fix; hint was %q", ve.Hint)
 		}
@@ -279,6 +282,9 @@ func TestResolveCSVPathFromFileAlias_UnreadablePaths(t *testing.T) {
 		ve := requireValidation(t, err, "cannot read file")
 		if ve.Param != "--file" {
 			t.Errorf("param = %q, want --file", ve.Param)
+		}
+		if ve.Cause == nil {
+			t.Error("the underlying read error should be preserved as Cause")
 		}
 	})
 }

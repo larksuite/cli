@@ -817,11 +817,34 @@ func TestCsvPut_FileAliasProvenance_DoubleMount(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sc := shortcutFromRegistry(t, "+csv-put")
-	sc.PostMount = withFlagErgonomics(sc.PostMount) // a second, redundant pass
-	_, _, err := runShortcutCapturingErr(t, sc, []string{
-		"--url", testURL, "--sheet-name", "s", "--start-cell", "A1",
-		"--csv", "./data.csv", "--dry-run",
+	t.Run("mounted twice before parsing", func(t *testing.T) {
+		sc := shortcutFromRegistry(t, "+csv-put")
+		sc.PostMount = withFlagErgonomics(sc.PostMount) // a second, redundant pass
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL, "--sheet-name", "s", "--start-cell", "A1",
+			"--csv", "./data.csv", "--dry-run",
+		})
+		requireValidation(t, err, "is an existing file, not inline CSV")
 	})
-	requireValidation(t, err, "is an existing file, not inline CSV")
+
+	t.Run("remounted after a parse", func(t *testing.T) {
+		// Parsed() stays true once parsing has started, so a remount at that
+		// point can stage through the normalizer the first pass installed.
+		// Re-running the install resets staging, which is what keeps the next
+		// parse's --csv occurrence from inheriting it.
+		parent, _, _, _ := newTestRig(t, shortcutFromRegistry(t, "+csv-put"))
+		parent.SetArgs([]string{"+csv-put", "--url", testURL, "--sheet-name", "s",
+			"--start-cell", "A1", "--file", "./data.csv", "--dry-run"})
+		if err := parent.Execute(); err != nil {
+			t.Fatalf("first run: %v", err)
+		}
+		cmd, _, err := parent.Find([]string{"+csv-put"})
+		if err != nil {
+			t.Fatalf("Find: %v", err)
+		}
+		withFlagErgonomics(nil)(cmd)
+		parent.SetArgs([]string{"+csv-put", "--url", testURL, "--sheet-name", "s",
+			"--start-cell", "A1", "--csv", "./data.csv", "--dry-run"})
+		requireValidation(t, parent.Execute(), "is an existing file, not inline CSV")
+	})
 }

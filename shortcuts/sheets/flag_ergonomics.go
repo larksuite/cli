@@ -312,7 +312,13 @@ func installAliasProvenance(cmd *cobra.Command) map[string]*aliasTrackingValue {
 			continue
 		}
 		if tracked, ok := fl.Value.(*aliasTrackingValue); ok {
-			out[name] = tracked // already installed (PostMount composed twice)
+			// Already installed (PostMount composed twice). Reset staging: a
+			// remount's own alias lookups run through the normalizer installed
+			// by the first pass, and after parsing has started the Parsed()
+			// guard no longer stops them — a spelling left staged there would
+			// be committed by whichever occurrence sets the flag next.
+			tracked.pending = ""
+			out[name] = tracked
 			continue
 		}
 		tracked := &aliasTrackingValue{Value: fl.Value, cmd: cmd, key: aliasSourceAnnotation(name)}
