@@ -359,6 +359,13 @@ func buildFormNotificationsBody(runtime *common.RuntimeContext) (map[string]inte
 	default:
 		return nil, baseFlagErrorf("--type must be on-submission or scheduled")
 	}
+	if notificationType == "on-submission" {
+		for _, flag := range []string{"notify-time", "repeat-type", "timezone"} {
+			if runtime.Changed(flag) {
+				return nil, baseFlagErrorf("--%s cannot be used with --type on-submission", flag)
+			}
+		}
+	}
 
 	enabled := runtime.Bool("enabled")
 	body := map[string]interface{}{}
