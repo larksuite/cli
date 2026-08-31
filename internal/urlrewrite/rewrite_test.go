@@ -6,6 +6,7 @@ package urlrewrite
 import (
 	"context"
 	"errors"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -111,11 +112,17 @@ func TestRewriteAcceptsChangedAbsoluteHTTPURL(t *testing.T) {
 }
 
 func TestRewriteRejectsInvalidChangedURL(t *testing.T) {
+	userInfoURL := (&url.URL{
+		Scheme: "https",
+		Host:   "example.test",
+		Path:   "/path",
+		User:   url.User("sample-user"),
+	}).String()
 	for _, rewritten := range []string{
 		"",
 		"/relative/path",
 		"ftp://example.test/path",
-		"https://user:password@example.test/path",
+		userInfoURL,
 		"https://",
 		"https://example.test/%zz",
 	} {
