@@ -128,7 +128,7 @@ var MailAutoReplyModify = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		if err := validateAutoReplyFinal(mergeAutoReplySetting(current, preflightPatch)); err != nil {
+		if err := validateAutoReplyFinal(preflightPatch, mergeAutoReplySetting(current, preflightPatch)); err != nil {
 			return err
 		}
 		patch, err := buildAutoReplyPatch(ctx, runtime, true)
@@ -273,11 +273,12 @@ func mergeAutoReplySetting(current, patch map[string]interface{}) map[string]int
 	return normalizeAutoReplyFields(merged)
 }
 
-func validateAutoReplyFinal(autoReply map[string]interface{}) error {
-	if !autoReplyBool(autoReply["enabled"]) {
-		return nil
-	}
-	if strings.TrimSpace(autoReplyString(autoReply["content_html"])) == "" {
+func validateAutoReplyFinal(patch, autoReply map[string]interface{}) error {
+	startSet := autoReplyHasKey(patch, "start_time")
+	endSet := autoReplyHasKey(patch, "end_time")
+	enabled := autoReplyBool(autoReply["enabled"])
+
+	if enabled && strings.TrimSpace(autoReplyString(autoReply["content_html"])) == "" {
 		return mailValidationParamError("--content", "content_html is required when enabled=true")
 	}
 	startTS, err := autoReplyInt64(autoReply["start_time"])
@@ -288,19 +289,41 @@ func validateAutoReplyFinal(autoReply map[string]interface{}) error {
 	if err != nil {
 		return mailValidationParamError("--end", "end_time must be a Unix milliseconds timestamp")
 	}
-	if startTS <= 0 {
+	if enabled && startTS <= 0 {
 		return mailValidationParamError("--start", "start_time is required when enabled=true")
 	}
-	if endTS <= 0 {
+	if enabled && endTS <= 0 {
 		return mailValidationParamError("--end", "end_time is required when enabled=true")
 	}
-	if strings.TrimSpace(autoReplyString(autoReply["time_zone"])) == "" {
+	timezone := strings.TrimSpace(autoReplyString(autoReply["time_zone"]))
+	if enabled && timezone == "" {
 		return mailValidationParamError("--timezone", "time_zone is required when enabled=true")
 	}
-	if startTS >= endTS {
+	loc := time.Local
+	if timezone != "" {
+		loadedLoc, err := time.LoadLocation(timezone)
+		if err != nil {
+			return mailValidationParamError("--timezone", "invalid time_zone: %s", timezone)
+		}
+		loc = loadedLoc
+	}
+	now := time.Now().In(loc)
+	currentDateStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc).UnixMilli()
+	if startTS > 0 && (enabled || startSet) && startTS < currentDateStart {
+		return mailValidationParamError("--start", "start_time must be greater than or equal to current date")
+	}
+	if endTS > 0 && (enabled || endSet) && endTS < currentDateStart {
+		return mailValidationParamError("--end", "end_time must be greater than or equal to current date")
+	}
+	if startTS > 0 && endTS > 0 && (enabled || startSet || endSet) && startTS >= endTS {
 		return mailValidationParamError("--end", "end_time must be greater than start_time")
 	}
 	return nil
+}
+
+func autoReplyHasKey(values map[string]interface{}, key string) bool {
+	_, ok := values[key]
+	return ok
 }
 
 func autoReplyString(raw interface{}) string {
