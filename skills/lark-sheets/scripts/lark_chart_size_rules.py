@@ -94,6 +94,15 @@ def dense_data_labels(
     }
 
 
+def effective_category_labels(
+    categories: list[Any], *, aggregate_categories: bool = True
+) -> list[str]:
+    labels = [str(value if value is not None else "") for value in categories]
+    if aggregate_categories:
+        return list(dict.fromkeys(labels))
+    return labels
+
+
 def recommend_chart_size(
     *,
     chart_type: str,
@@ -103,9 +112,13 @@ def recommend_chart_size(
     legend_position: str = "bottom",
     title: str = "",
     values: list[float] | None = None,
+    aggregate_categories: bool = True,
 ) -> dict[str, Any]:
     chart_type = str(chart_type).lower()
-    category_text = [str(value if value is not None else "") for value in categories]
+    category_text = effective_category_labels(
+        categories,
+        aggregate_categories=aggregate_categories,
+    )
     category_count = len(category_text)
     series_count = max(1, len(series_names))
     label_units = [display_units(value) for value in category_text]
@@ -229,6 +242,7 @@ def recommend_chart_size(
             "max_category_line_count": max_lines,
             "legend_rows": legend_rows,
             "data_labels": data_labels,
+            "aggregate_categories": aggregate_categories,
         },
         "reasons": list(dict.fromkeys(reasons)),
         "layout_advice": list(dict.fromkeys(advice)),

@@ -29,7 +29,11 @@ from lark_sheet_read_cli import (
     sheet_identifier,
     sheet_title,
 )
-from lark_chart_size_rules import dense_data_labels, minimum_chart_size
+from lark_chart_size_rules import (
+    dense_data_labels,
+    effective_category_labels,
+    minimum_chart_size,
+)
 
 ACTION = "chart_quality_check"
 DEFAULT_COLUMN_WIDTH = 105.0
@@ -471,10 +475,18 @@ def _constant_labeled_series(
 def _category_count(snapshot: dict[str, Any], profiles: list[SeriesProfile]) -> int:
     data = snapshot.get("data")
     dim1 = data.get("dim1") if isinstance(data, dict) else None
+    serie = dim1.get("serie") if isinstance(dim1, dict) else None
+    aggregate = serie.get("aggregate") if isinstance(serie, dict) else None
+    aggregate_categories = aggregate if isinstance(aggregate, bool) else True
     field = dim1.get("field") if isinstance(dim1, dict) else None
     values = field.get("parsedValues") if isinstance(field, dict) else None
     if isinstance(values, list):
-        return len(values)
+        return len(
+            effective_category_labels(
+                values,
+                aggregate_categories=aggregate_categories,
+            )
+        )
     return max((int(profile.get("point_count", 0)) for profile in profiles), default=0)
 
 

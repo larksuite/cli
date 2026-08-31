@@ -288,6 +288,15 @@ def _header_values(matrices: list[list[list[Any]]], direction: str) -> list[Any]
     return [row[0] for row in matrix]
 
 
+def _boolean_argument(value: str) -> bool:
+    normalized = str(value).strip().lower()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    raise argparse.ArgumentTypeError("expected true or false")
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Recommend chart width and height before +chart-create-basic")
     parser.add_argument("target", help="Spreadsheet URL or spreadsheet token")
@@ -301,6 +310,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--dim1-index", type=int, default=1)
     parser.add_argument("--dim2-indexes")
     parser.add_argument("--data-labels", default="value")
+    parser.add_argument("--aggregate-categories", type=_boolean_argument, default=True)
     parser.add_argument("--legend-position", default="bottom")
     parser.add_argument("--title", default="")
     parser.add_argument("--timeout", type=int, default=60)
@@ -362,6 +372,7 @@ def main() -> None:
             legend_position=args.legend_position,
             title=args.title,
             values=profile["values"],
+            aggregate_categories=args.aggregate_categories,
         )
         result["data_profile"] = {
             "dim2_indexes": profile["dim2_indexes"],
