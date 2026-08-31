@@ -503,7 +503,7 @@ func TestAppDevPublishValidate_Declaration(t *testing.T) {
 
 func TestAppDevPublishExecute_MissingIndexHTMLWarns(t *testing.T) {
 	// A payload without index.html publishes (warning only, per the protocol
-	// owner's call) — the platform's SPA fallback depends on it, so the
+	// decision) — the platform's SPA fallback depends on it, so the
 	// warning must be loud but non-blocking.
 	root := chdirSparkProjectRoot(t, `{"stack":"custom-webapp","dev":{"port":5173},"app":{"id":"app_x"}}`)
 	writeDistFiles(t, filepath.Join(root, "dist"), []string{"output/page.html", "output/routes.json"})

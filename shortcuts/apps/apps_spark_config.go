@@ -19,7 +19,7 @@ import (
 const sparkJSONRelPath = "spark.json"
 
 // appDevDefaultBuildOutput is the protocol default for build.output (the
-// same-origin artifact directory). Since protocol v0.3 there is no default
+// same-origin artifact directory). The protocol defines no default
 // build command: a missing build.command means buildless (pack the output
 // directory as-is).
 const appDevDefaultBuildOutput = "dist/output"
@@ -47,7 +47,7 @@ type appDevProjectConfig struct {
 	AppURL  string
 }
 
-// sparkJSONDoc mirrors the spark.json schema (§3). Unknown fields are
+// sparkJSONDoc mirrors the spark.json declaration schema. Unknown fields are
 // ignored on read and preserved on write (the writer re-marshals the raw
 // map, not this struct).
 type sparkJSONDoc struct {
@@ -97,9 +97,9 @@ func readAppDevProjectConfig(dir string) (cfg *appDevProjectConfig, found bool, 
 	return cfg, true, nil
 }
 
-// applyAppDevConfigDefaults fills protocol defaults (§3): build.output →
+// applyAppDevConfigDefaults fills the protocol defaults: build.output →
 // dist/output. build.command deliberately has no default — missing means
-// buildless (§4), and build.output_cdn stays empty for Level 1.
+// buildless, and build.output_cdn stays empty when undeclared.
 func applyAppDevConfigDefaults(cfg *appDevProjectConfig) {
 	if cfg.BuildOutput == "" {
 		cfg.BuildOutput = appDevDefaultBuildOutput
@@ -111,7 +111,7 @@ func applyAppDevConfigDefaults(cfg *appDevProjectConfig) {
 func (c *appDevProjectConfig) Buildless() bool { return len(c.BuildCommand) == 0 }
 
 // writeSparkAppSection replaces the app state section of <dir>/spark.json
-// with {id, online_url} after a successful publish (§3: the app section is owned by
+// with {id, online_url} after a successful publish (the app section is owned by
 // the deploy chain and replaced wholesale; declaration fields are never
 // touched). Empty online_url omits the key. Creates the file if missing.
 func writeSparkAppSection(dir, appID, appURL string) error {
@@ -162,7 +162,8 @@ func syncSparkAppURL(rctx *common.RuntimeContext, appID, onlineURL string) {
 // <dir>/spark.json after template rendering: version is always stamped with
 // the rendered package version (authoritative), stack is only filled when the
 // template seed did not declare one, and every other field the seed shipped
-// (dev/build declarations, unknown fields) is preserved (§3 字段所有权).
+// (dev/build declarations, unknown fields) is preserved (field ownership
+// stays with the project).
 func writeSparkScaffoldFields(dir, stack, version string) error {
 	path := filepath.Join(dir, sparkJSONRelPath)
 	doc := map[string]interface{}{}
