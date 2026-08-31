@@ -320,7 +320,7 @@ func TestSafePath_DenyBeatsCwd(t *testing.T) {
 
 func TestLocalInputPath_DeniesProtectedDirs(t *testing.T) {
 	// GIVEN/WHEN: the relaxed tier validates a denylisted absolute path
-	_, err := LocalInputPath("/etc/passwd")
+	_, err := LocalInputPath(denylistedAbsolutePath(t))
 
 	// THEN: rejected — the denylist applies even without allowlist containment
 	if err == nil {

@@ -86,7 +86,7 @@ func TestLocalFileIO_Open_RejectsTraversal(t *testing.T) {
 
 func TestLocalFileIO_Open_RejectsDenylistedAbsolutePath(t *testing.T) {
 	fio := &LocalFileIO{}
-	_, err := fio.Open("/etc/passwd")
+	_, err := fio.Open(denylistedAbsolutePath(t))
 	if err == nil {
 		t.Error("expected error for denylisted absolute path")
 	}

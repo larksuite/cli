@@ -337,3 +337,21 @@ func TestPolicy_OutputTargetWithHardLinkIsRejected(t *testing.T) {
 		t.Errorf(`SafeOutputPath("fresh.png") error = %v, want nil`, err)
 	}
 }
+
+// denylistedAbsolutePath returns an absolute path inside a built-in deny root
+// for the platform running the test. A Unix path literal cannot serve both:
+// "/etc/passwd" is not absolute on Windows, so it would be read as a name
+// relative to the working directory and land nowhere near a deny root. The
+// credential directories under the account home are deny roots on every
+// platform, which makes them the portable choice.
+func denylistedAbsolutePath(t *testing.T) string {
+	t.Helper()
+	if runtime.GOOS != "windows" {
+		return "/etc/passwd"
+	}
+	home, err := trustedHome()
+	if err != nil {
+		t.Skipf("no trusted home to derive a deny root from: %v", err)
+	}
+	return filepath.Join(home, ".ssh", "id_rsa")
+}
