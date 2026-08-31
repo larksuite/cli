@@ -81,6 +81,7 @@ python scripts/lark_chart_size_advisor.py "<表格 URL 或 spreadsheet token>" \
 ```
 
 - 先运行建议器，再将 `data.create_flags.width` / `height` 原样用于创建命令（包括 `--dry-run`）；不得凭经验填写尺寸。
+- 建议器默认按“汇总相同类别”去重后计算标签数量；创建命令使用 `--aggregate-categories=false` 时，建议器也必须传同一参数，按逐行数据点计算。
 - `data.minimum_size` 只是硬下限，最终宽高不得低于建议器返回值。
 - `data.size_alone_is_insufficient=true` 时先执行 `data.layout_advice`：改横向条形图、Top-N、拆图或只保留关键点标签，禁止仅把宽度无限增大；配置变化后用新参数重跑建议器，再采用新的 `create_flags`。
 - 建议器根据类目数、系列数、中英文显示宽度、多行文本、标签密度、图例行数和饼图数值分布估算；饼图保持相对固定的饼区，主要按最长标签文本增加两侧留白，不随扇区数量线性增宽。它不模拟浏览器渲染，创建后仍须运行质量检查器。
