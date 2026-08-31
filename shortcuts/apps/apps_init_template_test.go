@@ -653,7 +653,7 @@ func TestAppDevInitTemplateExecute_RendersFromRegistry(t *testing.T) {
 	if err != nil || !strings.Contains(string(b), dir) {
 		t.Errorf("index.html placeholder = %q err=%v (projectName is dir basename)", b, err)
 	}
-	// spark.json written by lark-cli (protocol §3).
+	// spark.json written by lark-cli per the hosting protocol.
 	mb, err := os.ReadFile(filepath.Join(dir, sparkJSONRelPath))
 	if err != nil {
 		t.Fatal(err)
