@@ -215,10 +215,11 @@ func TestHTTPPolicyRouterRewriteOnlyProviderDoesNotMutateCaller(t *testing.T) {
 	})
 	t.Cleanup(func() { exttransport.Register(previousProvider) })
 
-	var baseURL string
+	var baseURL, baseHost string
 	router := NewHTTPPolicyRouter(
 		roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			baseURL = req.URL.String()
+			baseHost = req.Host
 			return noContentResponse(req), nil
 		}),
 		roundTripFunc(func(*http.Request) (*http.Response, error) {
@@ -243,8 +244,14 @@ func TestHTTPPolicyRouterRewriteOnlyProviderDoesNotMutateCaller(t *testing.T) {
 	if baseURL != rewrittenURL {
 		t.Fatalf("base URL = %q, want %q", baseURL, rewrittenURL)
 	}
+	if baseHost != "mirror.example.test" {
+		t.Fatalf("base Host = %q, want rewritten host", baseHost)
+	}
 	if got := req.URL.String(); got != originalURL {
 		t.Fatalf("caller request URL = %q, want %q", got, originalURL)
+	}
+	if got := req.Host; got != "source.example.test" {
+		t.Fatalf("caller request Host = %q, want original host", got)
 	}
 }
 

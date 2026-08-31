@@ -116,6 +116,7 @@ func (m *ExtensionMiddleware) RoundTrip(req *http.Request) (*http.Response, erro
 				)
 			}
 			req.URL = rewrittenURL
+			req.Host = rewrittenURL.Host
 		}
 	}
 
