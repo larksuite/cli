@@ -39,8 +39,11 @@ type calCitationDoc struct {
 
 func decodeCalCitationDoc(t *testing.T, s string) calCitationDoc {
 	t.Helper()
+	// URL fields are emitted raw (consumer matches by exact string); re-escape
+	// bare & so the document parses for assertions.
+	parseable := strings.ReplaceAll(s, "&", "&amp;")
 	var d calCitationDoc
-	if err := xml.Unmarshal([]byte(s), &d); err != nil {
+	if err := xml.Unmarshal([]byte(parseable), &d); err != nil {
 		t.Fatalf("xml.Unmarshal(%q) error = %v", s, err)
 	}
 	return d

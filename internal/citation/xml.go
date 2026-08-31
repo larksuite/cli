@@ -3,43 +3,59 @@
 
 package citation
 
-import "encoding/xml"
+import (
+	"encoding/xml"
+	"fmt"
+	"strings"
+)
 
-// xmlDocument is the wire form of one citation: an XML <document> element,
-// serialized to a string and carried in the envelope's citations array. The
-// reference_id attribute duplicates the entry's URL — the consumer keys
-// references by URL. Child order (title, source_type, snippet, url,
-// publish_time) follows the consumer's format; snippet and publish_time are
-// omitted when empty, title and source_type are always present.
-type xmlDocument struct {
-	XMLName     xml.Name   `xml:"document"`
-	ReferenceID string     `xml:"reference_id,attr"`
-	Title       string     `xml:"title"`
-	SourceType  SourceType `xml:"source_type"`
-	Snippet     string     `xml:"snippet,omitempty"`
-	URL         string     `xml:"url"`
-	PublishTime string     `xml:"publish_time,omitempty"`
-}
-
-// EncodeXML renders each citation as an XML <document> string with standard
-// XML escaping. It returns nil for an empty input so the envelope omits the
-// citations key entirely. Encoding failure for one entry drops that entry
-// rather than failing the caller: citations are strictly additive.
+// EncodeXML renders each citation as an XML <document> string and returns nil
+// for an empty input so the envelope omits the citations key entirely.
+//
+// Child order (title, source_type, snippet, url, publish_time) follows the
+// consumer's format; snippet and publish_time are omitted when empty, title
+// and source_type are always present. The reference_id attribute duplicates
+// the entry's URL — the consumer keys references by URL.
+//
+// URL fields (reference_id and <url>) are emitted RAW, without XML escaping.
+// The consumer's render pipeline matches the model's RichMediaRef url against
+// this text by exact string comparison without XML-unescaping first, so a
+// standards-escaped "&amp;" in a query string breaks the match and the
+// reference silently fails to render (2026-08-28 joint-debugging finding;
+// the same de-facto contract as the platform's existing search tools). Text
+// fields (title, snippet, publish_time) keep standard XML escaping.
 func EncodeXML(items []Citation) []string {
 	var encoded []string
 	for _, item := range items {
-		b, err := xml.Marshal(xmlDocument{
-			ReferenceID: item.URL,
-			Title:       item.Title,
-			SourceType:  item.SourceType,
-			Snippet:     item.Snippet,
-			URL:         item.URL,
-			PublishTime: item.PublishTime,
-		})
-		if err != nil {
-			continue
+		var b strings.Builder
+		b.WriteString(`<document reference_id="`)
+		b.WriteString(item.URL)
+		b.WriteString(`">`)
+		b.WriteString("<title>")
+		xmlEscape(&b, item.Title)
+		b.WriteString("</title>")
+		fmt.Fprintf(&b, "<source_type>%d</source_type>", item.SourceType)
+		if item.Snippet != "" {
+			b.WriteString("<snippet>")
+			xmlEscape(&b, item.Snippet)
+			b.WriteString("</snippet>")
 		}
-		encoded = append(encoded, string(b))
+		b.WriteString("<url>")
+		b.WriteString(item.URL)
+		b.WriteString("</url>")
+		if item.PublishTime != "" {
+			b.WriteString("<publish_time>")
+			xmlEscape(&b, item.PublishTime)
+			b.WriteString("</publish_time>")
+		}
+		b.WriteString("</document>")
+		encoded = append(encoded, b.String())
 	}
 	return encoded
+}
+
+// xmlEscape writes s with standard XML escaping. xml.EscapeText cannot fail
+// on a strings.Builder (its writer never errors), so the error is ignored.
+func xmlEscape(b *strings.Builder, s string) {
+	_ = xml.EscapeText(b, []byte(s))
 }

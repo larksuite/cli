@@ -37,8 +37,12 @@ type vcCitationDoc struct {
 
 func decodeVCCitationDoc(t *testing.T, s string) vcCitationDoc {
 	t.Helper()
+	// URL fields are emitted raw (consumer matches by exact string, no XML
+	// unescape), so a bare & in a query string is expected; re-escape it to
+	// make the document parseable for assertions.
+	parseable := strings.ReplaceAll(s, "&", "&amp;")
 	var d vcCitationDoc
-	if err := xml.Unmarshal([]byte(s), &d); err != nil {
+	if err := xml.Unmarshal([]byte(parseable), &d); err != nil {
 		t.Fatalf("xml.Unmarshal(%q) error = %v", s, err)
 	}
 	return d
