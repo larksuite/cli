@@ -68,38 +68,6 @@ def estimate_legend_rows(items: list[str], width: int) -> int:
     return rows
 
 
-def dense_data_labels(
-    *,
-    chart_type: str,
-    category_count: int,
-    labeled_series_count: int,
-    width: float,
-    height: float,
-) -> dict[str, Any] | None:
-    if category_count <= 0 or labeled_series_count <= 0:
-        return None
-    chart_type = str(chart_type).lower()
-    label_count = category_count * labeled_series_count
-    if chart_type in {"pie", "doughnut"}:
-        labels_per_side = max(1, math.ceil(category_count / 2))
-        slot = max(1.0, float(height) - 160) / labels_per_side
-        dense = slot < 24
-    else:
-        horizontal_reserve = 230 if chart_type == "combo" else 170
-        plot_width = max(1.0, float(width) - horizontal_reserve)
-        slot = plot_width / label_count
-        dense = (
-            (category_count >= 8 and labeled_series_count >= 2 and slot < 42)
-            or (category_count >= 15 and slot < 36)
-        )
-    if not dense:
-        return None
-    return {
-        "estimated_label_count": label_count,
-        "available_width_per_label_px": round(slot, 2),
-    }
-
-
 def effective_category_labels(
     categories: list[Any], *, aggregate_categories: bool = True
 ) -> list[str]:
@@ -234,32 +202,6 @@ def recommend_chart_size(
             height += (legend_rows - 1) * 32
             reasons.append("multi_row_legend")
 
-    label_density = dense_data_labels(
-        chart_type=chart_type,
-        category_count=category_count,
-        labeled_series_count=series_count if labels_enabled else 0,
-        width=width,
-        height=height,
-    )
-    if label_density and chart_type not in {"pie", "doughnut"}:
-        target_slot = 36 + min(24, 8 * max(0, series_count - 1))
-        required_width = reserve + category_count * target_slot
-        width = min(aspect_width_limit, _round_up(max(width, required_width)))
-        label_density = dense_data_labels(
-            chart_type=chart_type,
-            category_count=category_count,
-            labeled_series_count=series_count if labels_enabled else 0,
-            width=width,
-            height=height,
-        )
-        if not label_density:
-            reasons.append("expanded_for_data_labels")
-    if label_density:
-        reasons.append("dense_data_labels")
-        advice.append("label_only_key_points")
-        if label_density["estimated_label_count"] > 40:
-            size_alone_is_insufficient = True
-            advice.append("split_series_or_use_top_n")
     if title:
         reasons.append("chart_title")
 

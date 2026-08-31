@@ -29,11 +29,7 @@ from lark_sheet_read_cli import (
     sheet_identifier,
     sheet_title,
 )
-from lark_chart_size_rules import (
-    dense_data_labels,
-    effective_category_labels,
-    minimum_chart_size,
-)
+from lark_chart_size_rules import minimum_chart_size
 
 ACTION = "chart_quality_check"
 DEFAULT_COLUMN_WIDTH = 105.0
@@ -470,56 +466,6 @@ def _constant_labeled_series(
         and int(profile.get("numeric_value_count", 0)) >= 2
         and len(profile.get("unique_numeric_values") or []) == 1
     ]
-
-
-def _category_count(snapshot: dict[str, Any], profiles: list[SeriesProfile]) -> int:
-    data = snapshot.get("data")
-    dim1 = data.get("dim1") if isinstance(data, dict) else None
-    serie = dim1.get("serie") if isinstance(dim1, dict) else None
-    aggregate = serie.get("aggregate") if isinstance(serie, dict) else None
-    aggregate_categories = aggregate if isinstance(aggregate, bool) else True
-    field = dim1.get("field") if isinstance(dim1, dict) else None
-    values = field.get("parsedValues") if isinstance(field, dict) else None
-    if isinstance(values, list):
-        return len(
-            effective_category_labels(
-                values,
-                aggregate_categories=aggregate_categories,
-            )
-        )
-    return max((int(profile.get("point_count", 0)) for profile in profiles), default=0)
-
-
-def _dense_data_label_issue(
-    chart: dict[str, Any], profiles: list[SeriesProfile]
-) -> dict[str, Any] | None:
-    details = chart.get("details") if isinstance(chart.get("details"), dict) else chart
-    snapshot = _chart_snapshot(chart)
-    size = details.get("size") if isinstance(details.get("size"), dict) else {}
-    labeled = _labeled_series_indexes(snapshot, profiles)
-    density = dense_data_labels(
-        chart_type=_chart_type(snapshot),
-        category_count=_category_count(snapshot, profiles),
-        labeled_series_count=len(labeled),
-        width=float(size.get("width") or 0),
-        height=float(size.get("height") or 0),
-    )
-    if not density:
-        return None
-    return {
-        "chart_id": str(chart.get("chart_id") or chart.get("id") or ""),
-        "reason": "dense_data_labels",
-        "severity": "warning",
-        "chart_type": _chart_type(snapshot),
-        "category_count": _category_count(snapshot, profiles),
-        "labeled_series_count": len(labeled),
-        "size": {
-            "width": float(size.get("width") or 0),
-            "height": float(size.get("height") or 0),
-        },
-        **density,
-        "suggested_fix": "increase_size_or_label_only_key_points",
-    }
 
 
 def _undersized_chart(chart: dict[str, Any]) -> dict[str, Any] | None:
@@ -1008,7 +954,6 @@ def check_sheet(
             "numeric_source_format_issues": [],
             "degenerate_numeric_series": [],
             "constant_labeled_series": [],
-            "dense_data_labels": [],
             "undersized_charts": [],
             "out_of_visible_range": [],
             "unverifiable_charts": unverifiable,
@@ -1109,7 +1054,6 @@ def check_sheet(
     numeric_source_issues: list[dict[str, Any]] = []
     degenerate_numeric_series: list[dict[str, Any]] = []
     constant_series_issues: list[dict[str, Any]] = []
-    dense_label_issues: list[dict[str, Any]] = []
     undersized_charts: list[dict[str, Any]] = []
     for chart in charts:
         issues, degenerate, source_unverifiable, profiles = _numeric_source_issues(
@@ -1125,9 +1069,6 @@ def check_sheet(
         degenerate_numeric_series.extend(degenerate)
         unverifiable.extend(source_unverifiable)
         constant_series_issues.extend(_constant_labeled_series(chart, profiles))
-        dense_issue = _dense_data_label_issue(chart, profiles)
-        if dense_issue:
-            dense_label_issues.append(dense_issue)
         undersized = _undersized_chart(chart)
         if undersized:
             undersized_charts.append(undersized)
@@ -1151,7 +1092,6 @@ def check_sheet(
         "numeric_source_format_issues": numeric_source_issues,
         "degenerate_numeric_series": degenerate_numeric_series,
         "constant_labeled_series": constant_series_issues,
-        "dense_data_labels": dense_label_issues,
         "undersized_charts": undersized_charts,
         "out_of_visible_range": out_of_bounds,
         "unverifiable_charts": unverifiable,
@@ -1165,7 +1105,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Check chart overlap, covered cell content, worksheet boundary overflow, "
-            "minimum size, label density, constant labeled series, numeric source-cell "
+            "minimum size, constant labeled series, numeric source-cell "
             "formats, and all-zero/empty numeric series."
         )
     )
