@@ -107,7 +107,7 @@ python scripts/lark_chart_size_advisor.py "<表格 URL 或 spreadsheet token>" \
 
 **常见配置错误（必须注意）**：
 - **图表类型选择错误**：用户说"堆积柱形图 / 百分比堆积"时，用 `+chart-create-basic --stack normal|percent` 或 `+chart-config-update --stack normal|percent`；用户说"占比 / 比例"时，优先考虑饼图或百分比堆积图。注意 `column` 是纵向柱形图、`bar` 是横向条形图，"对比 / 各 XX" 类纵向柱默认用 `column`；面积图原生支持 `snapshot.plotArea.plot.type="area"`，别因速查表没列就判"不支持"。
-- **数据标签开关**：普通基础图默认开启数值标签，创建时传 `--data-labels value`；先采用尺寸建议器返回的宽高，若仍提示“数据标签过密”，不要关闭全部标签，改为只保留关键点、末值、异常值或用户明确要求的值。已有图用 `+chart-config-update --data-labels`；用户明确关闭时传 `none`，不要为常用标签配置构造原始 `labels` 对象。高级配置中 `plotArea.plot.labels` 对象的存在性即开关：创建时关闭标签应省略该字段，更新时删除已有全局标签传 `labels: null`，不能用全部字段置为 `false` 代替。多个系列的数据标签展示要求不同时，禁止传全局 `--data-labels`，应在创建后读取完整 `plotArea.plot.series`，仅给需要标签的系列设置 `labels`，再用 `+chart-update --properties` 整段回写该数组。
+- **数据标签开关**：普通基础图先按拟开启 `--data-labels value` 运行尺寸建议器，再用建议宽高创建；不要仅凭数据点或系列数预先传 `none`。若使用建议尺寸后仍过密，依次改为关键点 / 末值 / 异常值的稀疏标签、Top-N 或拆图；用户明确要求隐藏全部标签时才传 `none`。已有图用 `+chart-config-update --data-labels`，不要为常用标签配置构造原始 `labels` 对象。高级配置中 `plotArea.plot.labels` 对象的存在性即开关：创建时关闭标签应省略该字段，更新时删除已有全局标签传 `labels: null`，不能用全部字段置为 `false` 代替。多个系列的数据标签展示要求不同时，禁止传全局 `--data-labels`，应在创建后读取完整 `plotArea.plot.series`，仅给需要标签的系列设置 `labels`，再用 `+chart-update --properties` 整段回写该数组。
 - **辅助线与单点标签**：用户要求基准线、目标线、阈值线、平均线或上下限时，先在源数据旁新增一列重复目标值作为辅助线；如果只需要在线尾或某个关键位置显示一个标签，再新增一列稀疏标点数据，仅在目标行写入同一数值，其余单元格保持真正空白。数据准备完成后创建组合图：辅助值列用 `line`，稀疏标点列用 `scatter`，省略全局 `--data-labels`，并传 `--aggregate-categories=false` 关闭“汇总相同类别”；已有图用 `+chart-config-update --aggregate-categories=false`。随后读取完整系列数组，只给稀疏标点系列设置数值标签，辅助线系列必须省略 `labels`；原数据系列是否设置标签按用户要求决定。不得用重复值辅助线的全系列标签模拟单点标签，也不得用 0 代替空白标点，否则聚合会把空标点物化为每个类别的数据点，导致标签重复出现。
 - **常量系列标签**：目标线、阈值线和上下限等重复常量系列默认不显示逐点标签；名称和值放在系列名、图例、标题或单个稀疏标记中。创建后若质量检查器提示“常量系列重复标签”，移除该系列标签或改成只有一个非空点的稀疏标记。
 - **数据标签位置**：只有用户明确要求且已有标签时才传 `--data-label-position`；它只调整已有标签的位置，不会单独开启标签。需要同时显示标签时一并传 `--data-labels`；未明确位置时省略，让图表按类型自动选择。标签位置只控制摆放方式，不能实现仅显示末点或关键点。
@@ -162,7 +162,7 @@ python scripts/lark_chart_size_advisor.py "<表格 URL 或 spreadsheet token>" \
 完成本次所有图表创建或更新后，再逐图核对以下项；全部通过才算完成：
 
 1. **数量**：图表数 = 用户明确要求的数量（"每个 / 分别 / 逐一"等数量词已逐项展开为独立图，不用一张多系列图代替）。
-2. **文案与展示项**：回读图表标题、副标题和坐标轴标题，确认语义准确且无乱码、占位符或空括号；图例按用户要求展示或隐藏，普通基础图的数据标签默认展示，仅在数据点较多、系列较多或标签容易重叠时根据可读性关闭；辅助系列不得用全点重复标签模拟单点或末点。带坐标轴的图表还要回读每条轴的字段语义、类型、单位、最小值 / 最大值、刻度以及主副轴归属；多图对比时再核对边界、跨度和口径是否符合用户的可比性要求。
+2. **文案与展示项**：回读图表标题、副标题和坐标轴标题，确认语义准确且无乱码、占位符或空括号；图例按用户要求展示或隐藏，普通基础图的数据标签默认展示；密集时按“建议尺寸 → 稀疏标签 → Top-N / 拆图”处理。辅助系列不得用全点重复标签模拟单点或末点。带坐标轴的图表还要回读每条轴的字段语义、类型、单位、最小值 / 最大值、刻度以及主副轴归属；多图对比时再核对边界、跨度和口径是否符合用户的可比性要求。
 3. **图表质量**：图表创建、配置更新、数据更新或位置调整后，每个受影响子表运行一次 `python scripts/lark_chart_quality_check.py "<表格 URL 或 spreadsheet token>" --worksheet-id "<reference_id>"`，无需先用 `ls` 探测脚本。检查器覆盖几何重叠、遮挡内容、越界、最小尺寸、数值源格式、全零/空系列、常量系列重复标签和数据标签过密；`data.passed=true` 且退出码为 `0` 才可交付。`dense_data_labels` 只是启发式告警，不影响 `passed`；已采用尺寸建议时不得仅为消除该告警关闭全部标签，确需精简时只保留关键点标签。退出码 `2` 表示检查成功发现问题，按返回的修复建议调整后重跑；退出码 `1`、网络超时或无有效 JSON 时只重试一次，仍失败则明确报告质量检查未完成，禁止用人工估算代替。
 
 ## Shortcuts
@@ -220,7 +220,7 @@ _公共四件套 · 系统：`--dry-run`_
 | `--secondary-y-axis-title` | string | optional | 右 Y 轴标题 |
 | `--x-axis-label-angle` | int | optional | X 轴标签旋转角度（可选值：`-90` / `-45` / `0` / `45` / `90`） |
 | `--y-axis-label-angle` | int | optional | 左 Y 轴标签旋转角度（可选值：`-90` / `-45` / `0` / `45` / `90`） |
-| `--data-labels` | string | optional | 数据标签内容；普通基础图默认传 value，数据点较多、系列较多或标签容易重叠时可省略；value、category、percentage 可按 value_category_percentage 顺序组成任意非空组合；series 显示系列名称，none 隐藏标签（可选值：`none` / `value` / `category` / `percentage` / `value_category` / `value_percentage` / `category_percentage` / `value_category_percentage` / `series`） |
+| `--data-labels` | string | optional | 数据标签内容；普通基础图默认传 value，不要仅因数据点或系列较多而省略，仅用户明确要求隐藏全部标签时传 none；value、category、percentage 可按 value_category_percentage 顺序组成任意非空组合；series 显示系列名称（可选值：`none` / `value` / `category` / `percentage` / `value_category` / `value_percentage` / `category_percentage` / `value_category_percentage` / `series`） |
 | `--data-label-position` | string | optional | 仅当用户明确指定时传入；只调整已有数据标签的位置，不会单独开启标签；省略时按图表类型自动优化数据标签位置（可选值：`auto` / `top` / `bottom` / `left` / `right` / `center` / `inside` / `outside`） |
 | `--stack` | string | optional | 堆叠模式（可选值：`none` / `normal` / `percent`） |
 | `--stacked` | bool | optional | 兼容别名；等价于 --stack normal（隐藏 flag：不在 `--help` 列出，但可正常传入） |
