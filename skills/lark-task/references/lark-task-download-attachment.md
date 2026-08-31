@@ -59,10 +59,12 @@ lark-cli task +download-attachment \
 - Task download URLs are short-lived. The command uses one full response rather
   than multipart ranges. If a URL is rejected with HTTP 401/403, it fetches
   fresh metadata and retries once.
-- The URL is accepted only when it is HTTPS and contains no user information.
-  It is sent through the external HTTP policy path with no Lark Authorization
+- The URL is accepted only when it is HTTPS, contains no user information, and
+  resolves to public network addresses. Redirects are checked with the same
+  policy. The request uses the external HTTP path with no Lark Authorization
   header.
 - Output paths must be relative and remain inside the current workspace.
-  Writes are atomic; existing files require `--overwrite`.
+  Writes are atomic; without `--overwrite`, the FileIO provider must commit
+  exclusively so a file created during the download cannot be replaced.
 - Do not use `drive +download` for Task attachments. A Task attachment
   `file_token` does not replace the Task attachment authorization flow.

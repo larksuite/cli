@@ -4,17 +4,22 @@
 package affordance
 
 import (
-	"os"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/larksuite/cli/internal/meta"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 func TestTaskDownloadAttachmentAffordanceTracesToSkill(t *testing.T) {
 	prev := mdSource
 	t.Cleanup(func() { SetSource(prev) })
-	SetSource(os.DirFS("../../affordance"))
+	affordanceSource, err := vfs.ReadFile("../../affordance/task.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	SetSource(fstest.MapFS{"task.md": &fstest.MapFile{Data: affordanceSource}})
 
 	if got, ok := DomainSkill("task"); !ok || got != "lark-task" {
 		t.Fatalf("DomainSkill(task) = (%q, %v), want (lark-task, true)", got, ok)
@@ -36,7 +41,7 @@ func TestTaskDownloadAttachmentAffordanceTracesToSkill(t *testing.T) {
 			t.Fatalf("skills = %v, want %s", affordance.Skills, skill)
 		}
 	}
-	source, err := os.ReadFile("../../skills/lark-task/references/lark-task-download-attachment.md")
+	source, err := vfs.ReadFile("../../skills/lark-task/references/lark-task-download-attachment.md")
 	if err != nil {
 		t.Fatal(err)
 	}

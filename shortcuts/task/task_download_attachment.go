@@ -17,8 +17,9 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/extension/download"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/download"
+	"github.com/larksuite/cli/internal/downloadtransport"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -112,12 +113,9 @@ var DownloadAttachmentTask = common.Shortcut{
 			).WithRetryable().WithHint("retry the command to fetch fresh attachment metadata")
 		}
 
-		saved, err := runtime.FileIO().Save(targetPath, fileio.SaveOptions{
-			ContentType:   stream.Header.Get("Content-Type"),
-			ContentLength: stream.ContentLength,
-		}, stream.Body)
+		saved, err := saveTaskAttachment(runtime, targetPath, runtime.Bool("overwrite"), metadata.Size, stream)
 		if err != nil {
-			return common.WrapSaveErrorTypedForFlag(err, "--output")
+			return err
 		}
 
 		savedPath, resolveErr := runtime.ResolveSavePath(targetPath)
@@ -198,10 +196,14 @@ func taskAttachmentTargetPath(runtime *common.RuntimeContext, output, attachment
 			WithCause(err)
 	}
 	if !overwrite {
+		if _, ok := runtime.FileIO().(fileio.ExclusiveFileIO); !ok {
+			return "", errs.NewValidationError(
+				errs.SubtypeFailedPrecondition,
+				"the configured file provider cannot refuse an existing output file",
+			).WithParam("--output").WithHint("use --overwrite or configure a provider that supports exclusive saves")
+		}
 		if _, err := runtime.FileIO().Stat(targetPath); err == nil {
-			return "", errs.NewValidationError(errs.SubtypeAlreadyExists, "output file already exists: %s", targetPath).
-				WithParam("--output").
-				WithHint("use --overwrite to replace the existing file")
+			return "", taskAttachmentAlreadyExists(targetPath)
 		} else if !errors.Is(err, fs.ErrNotExist) {
 			return "", taskAttachmentStatError(err)
 		}
@@ -221,6 +223,110 @@ func taskAttachmentStatError(err error) error {
 	return errs.NewInternalError(errs.SubtypeFileIO, "cannot inspect output path: %s", err).WithCause(err)
 }
 
+func saveTaskAttachment(runtime *common.RuntimeContext, targetPath string, overwrite bool, metadataSize int64, stream *download.Stream) (fileio.SaveResult, error) {
+	contentLength := stream.ContentLength
+	body := io.Reader(stream.Body)
+	if metadataSize > 0 {
+		contentLength = metadataSize
+		if stream.ContentLength < 0 {
+			body = &taskAttachmentExactSizeReader{source: stream.Body, expected: metadataSize}
+		}
+	}
+	options := fileio.SaveOptions{
+		ContentType:   stream.Header.Get("Content-Type"),
+		ContentLength: contentLength,
+	}
+
+	fileIO := runtime.FileIO()
+	var (
+		saved fileio.SaveResult
+		err   error
+	)
+	if overwrite {
+		saved, err = fileIO.Save(targetPath, options, body)
+	} else {
+		exclusive, ok := fileIO.(fileio.ExclusiveFileIO)
+		if !ok {
+			return nil, errs.NewValidationError(
+				errs.SubtypeFailedPrecondition,
+				"the configured file provider cannot refuse an existing output file",
+			).WithParam("--output").WithHint("use --overwrite or configure a provider that supports exclusive saves")
+		}
+		saved, err = exclusive.SaveExclusive(targetPath, options, body)
+		if errors.Is(err, fs.ErrExist) {
+			return nil, taskAttachmentAlreadyExists(targetPath)
+		}
+	}
+	if err != nil {
+		return nil, common.WrapSaveErrorTypedForFlag(err, "--output")
+	}
+	if metadataSize > 0 && saved.Size() != metadataSize {
+		return nil, taskAttachmentSizeChanged(
+			"attachment download committed %d bytes, metadata reports %d",
+			saved.Size(),
+			metadataSize,
+		)
+	}
+	return saved, nil
+}
+
+func taskAttachmentAlreadyExists(targetPath string) error {
+	return errs.NewValidationError(errs.SubtypeAlreadyExists, "output file already exists: %s", targetPath).
+		WithParam("--output").
+		WithHint("use --overwrite to replace the existing file")
+}
+
+func taskAttachmentSizeChanged(format string, args ...any) error {
+	return errs.NewNetworkError(errs.SubtypeNetworkRepresentationChanged, format, args...).
+		WithRetryable().
+		WithHint("retry the command to fetch fresh attachment metadata")
+}
+
+type taskAttachmentExactSizeReader struct {
+	source    io.Reader
+	expected  int64
+	delivered int64
+	checked   bool
+}
+
+func (reader *taskAttachmentExactSizeReader) Read(buffer []byte) (int, error) {
+	if len(buffer) == 0 {
+		return 0, nil
+	}
+	remaining := reader.expected - reader.delivered
+	if remaining == 0 {
+		if reader.checked {
+			return 0, io.EOF
+		}
+		reader.checked = true
+		var probe [1]byte
+		count, err := reader.source.Read(probe[:])
+		if count > 0 {
+			return 0, taskAttachmentSizeChanged("attachment download exceeded metadata size of %d bytes", reader.expected)
+		}
+		if err == nil {
+			return 0, io.ErrNoProgress
+		}
+		return 0, err
+	}
+	if remaining < 0 {
+		return 0, taskAttachmentSizeChanged("attachment download exceeded metadata size of %d bytes", reader.expected)
+	}
+	if int64(len(buffer)) > remaining {
+		buffer = buffer[:remaining]
+	}
+	count, err := reader.source.Read(buffer)
+	reader.delivered += int64(count)
+	if err == io.EOF && reader.delivered < reader.expected {
+		return count, taskAttachmentSizeChanged(
+			"attachment download ended after %d of %d bytes",
+			reader.delivered,
+			reader.expected,
+		)
+	}
+	return count, err
+}
+
 func taskAttachmentFileName(name string) string {
 	name = strings.ReplaceAll(strings.TrimSpace(name), "\\", "/")
 	name = path.Base(name)
@@ -237,16 +343,20 @@ func openTaskAttachmentDownload(ctx context.Context, runtime *common.RuntimeCont
 	if err != nil {
 		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "attachment response contains an invalid download URL").WithCause(err)
 	}
-	if !strings.EqualFold(parsed.Scheme, "https") || parsed.Hostname() == "" || parsed.User != nil {
+	if rawURL != strings.TrimSpace(rawURL) || !strings.EqualFold(parsed.Scheme, "https") || parsed.Hostname() == "" || parsed.User != nil || parsed.Fragment != "" {
 		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "attachment download URL must be an HTTPS URL without user information")
+	}
+	if err := validate.ValidateDownloadSourceURL(ctx, rawURL); err != nil {
+		return nil, errs.NewSecurityPolicyError(errs.SubtypeAccessDenied, "blocked attachment download URL: %s", err).WithCause(err)
 	}
 	httpClient, err := runtime.Factory.ExternalHTTPClient()
 	if err != nil {
 		return nil, errs.NewInternalError(errs.SubtypeSDKError, "failed to get external HTTP client: %s", err).WithCause(err)
 	}
+	safeClient := validate.NewDownloadHTTPClient(httpClient, validate.DownloadHTTPClientOptions{})
 	return download.Open(
 		ctx,
-		download.ImmutableSource(download.OpaqueURL(httpClient, rawURL)),
+		download.ImmutableSource(downloadtransport.URL(safeClient, rawURL)),
 		download.Options{
 			DisableMultipart: true,
 			MaxPartRetries:   1,
