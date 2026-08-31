@@ -124,6 +124,28 @@ func TestSheets_CRUDE2EWorkflow(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
+
+		// Read the row back rather than trusting the ok envelope: an
+		// auto-expanding write that reported success without persisting is
+		// exactly the failure this subtest exists to catch, and the
+		// +cells-search below only looks at row 2.
+		readBack, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"sheets", "+cells-get",
+				"--spreadsheet-token", spreadsheetToken,
+				"--sheet-id", sheetID,
+				"--range", "A4:C4",
+			},
+			DefaultAs: "bot",
+		})
+		require.NoError(t, err)
+		readBack.AssertExitCode(t, 0)
+		readBack.AssertStdoutStatus(t, true)
+
+		got := scalarsIn(gjson.Get(readBack.Stdout, "data"))
+		for _, want := range []string{"Charlie", "Guangzhou"} {
+			require.Contains(t, got, want, "appended row lost %q; stdout:\n%s", want, readBack.Stdout)
+		}
 	})
 
 	t.Run("find cells with +cells-search as bot", func(t *testing.T) {

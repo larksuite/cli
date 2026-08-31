@@ -166,7 +166,6 @@ func TestSheets_SheetShortcutsDryRun(t *testing.T) {
 			wantURL: toolURL,
 			wantFn: func(t *testing.T, out string) {
 				require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
-				require.Equal(t, "modify_workbook_structure", clie2e.DryRunGet(out, "tool_name").String(), "stdout:\n%s", out)
 				require.Equal(t, "create", clie2e.DryRunGet(out, "tool_input.operation").String(), "stdout:\n%s", out)
 				require.Equal(t, "Data", clie2e.DryRunGet(out, "tool_input.sheet_name").String(), "stdout:\n%s", out)
 				require.Equal(t, int64(0), clie2e.DryRunGet(out, "tool_input.target_index").Int(), "stdout:\n%s", out)
@@ -189,6 +188,26 @@ func TestSheets_SheetShortcutsDryRun(t *testing.T) {
 				require.Equal(t, "sheet1", clie2e.DryRunGet(out, "tool_input.sheet_id").String(), "stdout:\n%s", out)
 				require.Equal(t, "Copy", clie2e.DryRunGet(out, "tool_input.new_name").String(), "stdout:\n%s", out)
 				require.Equal(t, int64(2), clie2e.DryRunGet(out, "tool_input.target_index").Int(), "stdout:\n%s", out)
+			},
+		},
+		{
+			// The omitted --title path TestSheets_SheetShortcutsDryRunRejectsEmptyTitle
+			// deliberately excludes: no --title means "let the server name the
+			// copy", so new_name must be absent from the payload rather than
+			// sent empty, and the call must not be rejected.
+			name: "sheet-copy without a title",
+			args: []string{
+				"sheets", "+sheet-copy",
+				"--spreadsheet-token", "shtDryRun",
+				"--sheet-id", "sheet1",
+				"--dry-run",
+			},
+			wantURL: toolURL,
+			wantFn: func(t *testing.T, out string) {
+				require.Equal(t, "duplicate", clie2e.DryRunGet(out, "tool_input.operation").String(), "stdout:\n%s", out)
+				require.Equal(t, "sheet1", clie2e.DryRunGet(out, "tool_input.sheet_id").String(), "stdout:\n%s", out)
+				require.False(t, clie2e.DryRunGet(out, "tool_input.new_name").Exists(),
+					"an omitted --title must leave new_name out of the payload, not send it empty; stdout:\n%s", out)
 			},
 		},
 		{
@@ -256,6 +275,10 @@ func TestSheets_SheetShortcutsDryRun(t *testing.T) {
 
 			out := result.Stdout
 			require.Equal(t, tt.wantURL, clie2e.DryRunGet(out, "api.0.url").String(), "stdout:\n%s", out)
+			// Asserted for every case, not just create: the operation and its
+			// fields alone would still match if a case started selecting a
+			// different tool on the same /tools/invoke_write endpoint.
+			require.Equal(t, "modify_workbook_structure", clie2e.DryRunGet(out, "tool_name").String(), "stdout:\n%s", out)
 			tt.wantFn(t, out)
 		})
 	}
