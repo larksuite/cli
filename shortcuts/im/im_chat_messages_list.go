@@ -296,7 +296,8 @@ func resolveChatIDForMessagesList(runtime *common.RuntimeContext, dryRun bool) (
 }
 
 // chatMessagesListCitations turns this command's output payload into one
-// citation per citable message.
+// citation per citable message, including text messages expanded under
+// thread_replies.
 //
 // `data` is the exact map Execute passed to runtime.OutFormat — the builder
 // runs after Execute has finished, on the finished payload. That is also why
@@ -305,8 +306,8 @@ func resolveChatIDForMessagesList(runtime *common.RuntimeContext, dryRun bool) (
 // so the payload exposes it once at the top level and the per-message entries
 // may omit it. Passing it as the fallback keeps the URL complete either way.
 //
-// Non-text messages are skipped this round, so len(citations) is normally
-// smaller than len(messages).
+// Non-text messages are skipped this round. A skipped parent does not suppress
+// citable replies nested under it.
 func chatMessagesListCitations(rt *common.RuntimeContext, data any) []citation.Citation {
 	items := citationItems(data, "messages")
 	if items == nil {
@@ -320,6 +321,11 @@ func chatMessagesListCitations(rt *common.RuntimeContext, data any) []citation.C
 	for _, msg := range items {
 		if entry, ok := messageCitation(brand, msg, chatID); ok {
 			citations = append(citations, entry)
+		}
+		for _, reply := range citationItems(msg, "thread_replies") {
+			if entry, ok := messageCitation(brand, reply, chatID); ok {
+				citations = append(citations, entry)
+			}
 		}
 	}
 	return citations

@@ -170,6 +170,57 @@ func TestChatMessagesListCitationsBuilder(t *testing.T) {
 	}
 }
 
+func TestChatMessagesListCitationsIncludesTextThreadReplies(t *testing.T) {
+	parent := textMessage()
+	parent["thread_replies"] = []map[string]interface{}{
+		{
+			"message_id":       "om_reply_1",
+			"msg_type":         "text",
+			"content":          "first reply",
+			"create_time":      "2026-08-31 19:31",
+			"message_app_link": "https://applink.feishu.cn/client/thread/open?thread_position=0",
+		},
+		{"message_id": "om_reply_image", "msg_type": "image", "content": "[image]"},
+	}
+	nonTextParent := map[string]interface{}{
+		"message_id": "om_parent_image",
+		"msg_type":   "image",
+		"content":    "[image]",
+		"thread_replies": []interface{}{
+			map[string]interface{}{
+				"message_id":       "om_reply_2",
+				"msg_type":         "text",
+				"content":          "second reply",
+				"create_time":      "2026-08-31 19:32",
+				"message_app_link": "https://applink.feishu.cn/client/thread/open?thread_position=1",
+			},
+		},
+	}
+
+	got := chatMessagesListCitations(nil, map[string]interface{}{
+		"chat_id":  "oc_outer",
+		"messages": []map[string]interface{}{parent, nonTextParent},
+	})
+	if len(got) != 3 {
+		t.Fatalf("builder = %#v, want parent and 2 text-reply citations", got)
+	}
+	if got[0].Title != "hello world" {
+		t.Errorf("first citation = %#v, want the parent message text", got[0])
+	}
+	if got[1].Title != "first reply" {
+		t.Errorf("first reply citation = %#v", got[1])
+	}
+	if got[1].URL != "https://applink.feishu.cn/client/thread/open?thread_position=0" {
+		t.Errorf("first reply url = %q", got[1].URL)
+	}
+	if got[1].PublishTime != citation.Time("2026-08-31 19:31") {
+		t.Errorf("first reply publish_time = %q", got[1].PublishTime)
+	}
+	if got[2].Title != "second reply" {
+		t.Errorf("second reply citation = %#v", got[2])
+	}
+}
+
 func TestMessagesSearchCitationsBuilder(t *testing.T) {
 	data := map[string]interface{}{
 		"messages": []interface{}{
