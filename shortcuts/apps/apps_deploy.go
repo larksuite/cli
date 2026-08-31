@@ -378,7 +378,22 @@ var appDevRunner envCommandRunner = execEnvCommandRunner{}
 // appDevNewTransferClient builds the HTTP client for the presigned TOS
 // upload. Package-level so unit tests can inject an httptest TLS client
 // (the command only accepts https upload URLs).
-var appDevNewTransferClient = newFileTransferClient
+var appDevNewTransferClient = newAppDevTransferClient
+
+// newAppDevTransferClient hardens the shared file-transfer client for the
+// app-dev chain: redirects may hop hosts (registry tarballs commonly live on
+// a CDN) but must stay on https — following a downgrade to http would leak
+// the request over cleartext.
+func newAppDevTransferClient() *http.Client { //nolint:forbidigo // presigned TOS upload and npm registry download bypass the Lark gateway; RuntimeContext.DoAPI does not apply.
+	c := newFileTransferClient()
+	c.CheckRedirect = func(req *http.Request, _ []*http.Request) error { //nolint:forbidigo // see above.
+		if req.URL.Scheme != "https" {
+			return fmt.Errorf("refusing to follow a non-https redirect to %s", req.URL) //nolint:forbidigo // redirect-policy signal consumed by net/http; the caller wraps the resulting error as typed.
+		}
+		return nil
+	}
+	return c
+}
 
 // summarizeReleaseErrorLogs flattens a release's error_logs (slice of
 // {step, error_log} objects) into one line for the failure message.

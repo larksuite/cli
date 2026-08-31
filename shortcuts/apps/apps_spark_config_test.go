@@ -228,3 +228,21 @@ func TestSyncSparkAppURL(t *testing.T) {
 		}
 	})
 }
+
+func TestSparkWritersTolerateNullRoot(t *testing.T) {
+	for name, write := range map[string]func(dir string) error{
+		"app section":     func(dir string) error { return writeSparkAppSection(dir, "app_x", "https://apps.example/x") },
+		"scaffold fields": func(dir string) error { return writeSparkScaffoldFields(dir, "s-webapp", "1.0.0") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "spark.json"), []byte("null"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := write(dir); err != nil {
+				t.Fatalf("a literal JSON null root must not fail the write: %v", err)
+			}
+			readJSONFile(t, filepath.Join(dir, "spark.json"))
+		})
+	}
+}

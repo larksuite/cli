@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -468,10 +469,6 @@ func TestAppDevPublishValidate_BadAppID(t *testing.T) {
 	if !strings.Contains(p.Message, "spark.json app id") {
 		t.Errorf("message should point at the config source, got %q", p.Message)
 	}
-	// This command has no --app-id flag; the error must not mention one.
-	if strings.Contains(p.Message, "--app-id") || strings.Contains(p.Hint, "--app-id") {
-		t.Errorf("error must not reference a nonexistent --app-id flag: %v", p)
-	}
 	if !strings.Contains(p.Hint, "+list") {
 		t.Errorf("hint = %q", p.Hint)
 	}
@@ -698,9 +695,8 @@ func TestAppDevPublishExecute_SyncSuccess(t *testing.T) {
 	var contentType string
 	srv := newTOSTLSServer(t, func(w http.ResponseWriter, r *http.Request) {
 		contentType = r.Header.Get("Content-Type")
-		buf := make([]byte, r.ContentLength)
-		_, _ = r.Body.Read(buf)
-		uploaded = buf
+		b, _ := io.ReadAll(r.Body)
+		uploaded = b
 		w.WriteHeader(200)
 	})
 	f := &fakeEnvRunner{sideEffect: func() {

@@ -422,3 +422,47 @@ func TestAppsReleaseGetJSONOnlineURLPassthrough(t *testing.T) {
 		t.Errorf("JSON must passthrough online_url, got: %v", env.Data["online_url"])
 	}
 }
+
+func TestReleaseGetDoesNotSyncBeforeFinish(t *testing.T) {
+	cases := []struct {
+		name string
+		body map[string]interface{}
+	}{
+		{"publishing release", map[string]interface{}{"release_id": "rel_1", "status": "publishing"}},
+		{"finished without url", map[string]interface{}{"release_id": "rel_1", "status": "finished"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			seed := `{"app":{"id":"app_x"}}`
+			if err := os.WriteFile(filepath.Join(dir, "spark.json"), []byte(seed), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			orig, err := os.Getwd()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chdir(dir); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chdir(orig) })
+
+			rctx, _, reg := newStatusRuntimeContext(t, "app_x", "rel_1")
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/spark/v1/apps/app_x/releases/rel_1",
+				Body: map[string]interface{}{
+					"code": 0, "msg": "",
+					"data": map[string]interface{}{"release": tc.body},
+				},
+			})
+			if err := AppsReleaseGet.Execute(context.Background(), rctx); err != nil {
+				t.Fatalf("unexpected: %v", err)
+			}
+			b, _ := os.ReadFile(filepath.Join(dir, "spark.json"))
+			if string(b) != seed {
+				t.Errorf("spark.json must stay untouched before a finished release with a url, got %s", b)
+			}
+		})
+	}
+}

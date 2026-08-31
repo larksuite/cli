@@ -274,7 +274,9 @@ func renderAppDevTemplate(targetDir, projectName string, tgz []byte) (*renderedT
 			return nil, appsFileIOError(err, "create template file %s failed: %v", rel, err)
 		}
 		_, err = io.Copy(out, io.LimitReader(tr, remaining+1))
-		out.Close()
+		if cerr := out.Close(); err == nil {
+			err = cerr
+		}
 		if err != nil {
 			return nil, appsFileIOError(err, "write template file %s failed: %v", rel, err)
 		}
