@@ -172,20 +172,20 @@ func generateAppDevRoutes(htmlRels []string) (data []byte, count int, err error)
 	return b, len(routes), nil
 }
 
-// appDevRoute is one entry of the routes.json route enumeration consumed by
-// TNS security scanning: path is required (leading /, no base prefix, may
-// hold :param segments); file/name are optional; unknown fields are ignored
-// for forward compatibility.
+// appDevRoute is one entry of the routes.json route enumeration the platform
+// consumes: path is required (leading /, no base prefix, may hold :param
+// segments); file/name are optional; unknown fields are ignored for forward
+// compatibility.
 type appDevRoute struct {
 	Path string `json:"path"`
 }
 
 // appDevRoutesHint is the actionable schema reminder for routes.json errors.
-const appDevRoutesHint = `routes.json must be a route enumeration array, e.g. [{"path":"/","file":"index.html"}] (empty [] is allowed for a static site); it feeds security scanning, so it must match the real routes`
+const appDevRoutesHint = `routes.json must be a route enumeration array, e.g. [{"path":"/","file":"index.html"}] (empty [] is allowed for a static site); it must enumerate the app's real routes`
 
 // validateAppDevRoutesJSON light-checks a routes.json payload against the
 // route-enumeration schema so problems fail at publish time instead of
-// bouncing off the TNS scan later: top level must be an array, every entry
+// being rejected server-side later: top level must be an array, every entry
 // needs a /-prefixed path, and paths must be unique.
 func validateAppDevRoutesJSON(b []byte) error {
 	var routes []appDevRoute

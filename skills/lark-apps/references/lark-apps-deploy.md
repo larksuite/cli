@@ -13,7 +13,7 @@
 - **发布前须启动本地 dev server**：`+deploy` 会验证 `GET localhost:<dev.port>/spark.json` 可达（localhost 双栈解析，dev server 绑 `127.0.0.1` 或 `::1` 均可）且其 `app.id` 与本次部署目标一致（防止把 A 项目的产物发到 B 应用；端点尚未声明 app.id 时放行——首发项目的正常状态）。无头/CI 环境用 `--no-verify` 显式跳过该验证。
 - 可选：`--skip-build`（跳过 `build.command`，直接发布已有产物目录）、`--no-verify`（整体跳过本地 dev server 验证：dev.port 声明要求、端点可达性、app 身份比对）。
 - 内部流程：读 spark.json → `pre_release` 获取上传地址与 `MIAODA_*` 构建环境变量 → 执行 `build.command`（argv 直接执行不走 shell，自动注入变量；**spark.json 未声明 build.command = buildless，跳过构建直接打包**）→ 校验产物协议 → 归一化打包（`build.output` → zip 内 `output/`，`build.output_cdn` → zip 内 `output_resource/`，流水线不感知项目目录名）→ 上传 → 触发发布。
-- 产物协议（详见《妙搭产物托管协议规范》）：`build.output` 目录必须含 ≥1 个 `.html`（SPA 入口须名 `index.html`）与合法的 `routes.json`（**路由枚举数组**，如 `[{"path":"/","file":"index.html"}]`，纯静态站可为空数组；它是安全扫描的输入，必须与真实路由一致）；目录内其余静态文件全部随包上传。**buildless 项目缺 routes.json 时由 CLI 扫描 `.html` 文件树自动生成**（`foo/index.html` → `/foo`），工程自带的 routes.json 永不被覆盖。包体限制：zip ≤ 50MB、未压缩总量 ≤ 200MB。
+- 产物协议：`build.output` 目录必须含 ≥1 个 `.html`（SPA 入口须名 `index.html`）与合法的 `routes.json`（**路由枚举数组**，如 `[{"path":"/","file":"index.html"}]`，纯静态站可为空数组；必须与应用真实路由一致）；目录内其余静态文件全部随包上传。**buildless 项目缺 routes.json 时由 CLI 扫描 `.html` 文件树自动生成**（`foo/index.html` → `/foo`），工程自带的 routes.json 永不被覆盖。包体限制：zip ≤ 50MB、未压缩总量 ≤ 200MB。
 
 ## 示例
 
