@@ -2129,7 +2129,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Per-option pill colors, RGB hex array (e.g. `[\"#1FB6C1\",\"#F006C2\"]`). Length may be shorter than the source (`--options` items / `--source-range` cells) — extras cycle through a 10-color palette — but never longer (CLI Validate rejects: `--colors length (N) must not exceed dropdown source size (M)`). **Applies on its own**; ignored when `--highlight=false`.",
+        "desc": "Per-option pill background colors as an RGB hex array. Omit by default to use the built-in 10-color palette; pass only when the user explicitly requests custom colors or options have clear color semantics. Pill text is black, so prefer light, low-saturation backgrounds. The array may be shorter than the source (`--options` items / `--source-range` cells) — extras use the built-in palette — but never longer (CLI Validate rejects: `--colors length (N) must not exceed dropdown source size (M)`). Applies on its own; ignored when `--highlight=false`.",
         "input": [
           "file",
           "stdin"
@@ -3262,7 +3262,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Per-option pill colors, RGB hex array (e.g. `[\"#1FB6C1\",\"#F006C2\"]`). Length may be shorter than the source (`--options` items / `--source-range` cells) — extras cycle through a 10-color palette — but never longer (CLI Validate rejects: `--colors length (N) must not exceed dropdown source size (M)`). **Applies on its own**; ignored when `--highlight=false`.",
+        "desc": "Per-option pill background colors as an RGB hex array. Omit by default to use the built-in 10-color palette; pass only when the user explicitly requests custom colors or options have clear color semantics. Pill text is black, so prefer light, low-saturation backgrounds. The array may be shorter than the source (`--options` items / `--source-range` cells) — extras use the built-in palette — but never longer (CLI Validate rejects: `--colors length (N) must not exceed dropdown source size (M)`). Applies on its own; ignored when `--highlight=false`.",
         "input": [
           "file",
           "stdin"

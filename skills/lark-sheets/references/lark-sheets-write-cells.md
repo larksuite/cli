@@ -214,14 +214,16 @@ lark-cli sheets +cells-set \
 
 `_multipleValues` 是 Sheet 内部存储字段，不是 CLI 入参；CLI / `set_cell_range` 对外使用 snake_case 的 `multiple_values`。
 
-### 配色：默认即上色，三种意图三条线
+### 配色：默认用内置色板，仅在明确需要时自定义
 
-下拉**默认带胶囊高亮**——什么 flag 都不传时，所有选项按内置 10 色色板循环上色，跟 UI 手动配下拉的默认行为对齐。三种意图：
+下拉**默认带胶囊高亮**——什么 flag 都不传时，所有选项按内置 10 色色板循环上色，跟 UI 手动配下拉的默认行为对齐。模型创建或更新下拉时，**默认不要传 `--colors`**；只有用户明确指定自定义颜色，或选项具有清晰的语义配色（如状态、风险、优先级，且颜色有助于理解）时才传。
+
+下拉胶囊文字默认是黑色。自定义颜色时应使用**浅色、低饱和度背景**，避免鲜艳或偏深的色值影响可读性。
 
 | 想要的效果 | 怎么传 |
 |---|---|
-| 默认色板循环上色 | 都不传 `--highlight` / `--colors` |
-| 按选项指定具体颜色 | 只传 `--colors '["#hex",...]'`（不需要再传 `--highlight`） |
+| 默认色板循环上色（默认选择） | 都不传 `--highlight` / `--colors` |
+| 用户明确要求或选项有语义配色 | 只传浅色、低饱和度的 `--colors '["#hex",...]'`（不需要再传 `--highlight`） |
 | 纯白下拉、不要高亮 | 传 `--highlight=false`（注意 `=false` 不能省，单写 `--highlight` 在 cobra 里等价于 true） |
 
 `--colors` 长度**可以短于**选项数（list 模式短于 `--options` 长度，listFromRange 模式短于 `--source-range` 的单元格数），未指定的选项按内置色板循环补色；但**不能长于**——CLI 在 Validate 阶段就会拦截，错误形如 `--colors length (4) must not exceed dropdown source size (3)`。
@@ -239,24 +241,13 @@ lark-cli sheets +dropdown-set \
   --options '["待开始","进行中","已完成","已取消"]'
 ```
 
-**`--options` 模式 — 指定颜色**（4 个选项配 3 个颜色，第 4 个按色板补）：
-
-```
-lark-cli sheets +dropdown-set \
-  --url https://... --sheet-id <id> \
-  --range A2:A100 \
-  --options '["待开始","进行中","已完成","已取消"]' \
-  --colors '["#bff7d9","#FFE699","#bacefd"]'
-```
-
 **`--source-range` 模式**（先在 `'Sheet1'!T1:T3` 维护「男/女/保密」三行，再让 `B2:B21` 引用它）：
 
 ```
 lark-cli sheets +dropdown-set \
   --url https://... --sheet-id <id> \
   --range B2:B21 \
-  --source-range ''\''Sheet1'\''!T1:T3' \
-  --colors '["#cce8ff","#ffd6e7","#e6e6e6"]'
+  --source-range ''\''Sheet1'\''!T1:T3'
 ```
 
 **纯白下拉**（明确告诉用户"不要彩色"时才用）：
@@ -339,7 +330,7 @@ _公共四件套 · 系统：`--dry-run`_
 | --- | --- | --- | --- |
 | `--range` | string | required | 目标范围（A1 格式，如 `A2:A100`） |
 | `--options` | string + File + Stdin（复合 JSON） | xor | 下拉选项 JSON 数组，例如 `["opt1","opt2"]`。服务端不限制选项数量，也不限制单个选项长度；含逗号的选项可以接受（写入时会自动转义）。大量选项建议改用 `--source-range`。 |
-| `--colors` | string + File + Stdin（简单 JSON） | optional | 下拉胶囊背景色，RGB hex 数组（如 `["#1FB6C1","#F006C2"]`）。长度可短不可长——超长 Validate 拦截（`--colors length (N) must not exceed dropdown source size (M)`），未指定项按内置 10 色色板循环补色。**单独传即生效**；`--highlight=false` 时被忽略。 |
+| `--colors` | string + File + Stdin（简单 JSON） | optional | 下拉胶囊背景色，RGB hex 数组。默认不要传：省略时使用内置 10 色色板；仅在用户明确要求或选项有清晰语义配色时传。胶囊文字默认黑色，应选浅色、低饱和度背景。长度可短不可长——超长 Validate 拦截（`--colors length (N) must not exceed dropdown source size (M)`），未指定项按内置色板循环补色。单独传即生效；`--highlight=false` 时被忽略。 |
 | `--multiple` | bool | optional | 启用多选；默认 `false`。本 flag 只设置验证规则，不会写入选中值；后续用 `+cells-set` 写值时必须传 `multiple_values` 数组，不要传逗号拼接的 `value` |
 | `--highlight` | bool | optional | 下拉胶囊背景色高亮开关。**不传 = 开**（按内置 10 色色板循环上色）；`--highlight=false` 关闭得到纯白下拉。配色用 `--colors` 覆盖。 |
 | `--source-range` | string | xor | listFromRange 模式的下拉源 range，A1 表示法 + sheet 前缀（如 `'Sheet1'!T1:T3`）。映射到 server `data_validation.range`，搭配 server `data_validation.type='listFromRange'` 自动生效。跟 `--options` 二选一：传 `--options` 走 inline 列表（type=list），传本 flag 走 range 引用（type=listFromRange）。`--colors` 长度规则不变（≤ 源 range 单元格数），`--highlight` / `--multiple` 行为相同。当 `--highlight` 开启且 source 覆盖单元格数超过 2000 时，服务端会将该下拉判为 option-error（这是不支持的组合）；CLI 会在返回结果的 `data.warnings` 中给出 warning。如需取消，传 `--highlight=false`。 |
