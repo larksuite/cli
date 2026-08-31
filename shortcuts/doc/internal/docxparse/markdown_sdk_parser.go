@@ -44,6 +44,11 @@ func parseSDKMarkdown(source string, preprocess bool) ([]byte, gast.Node) {
 	return data, sdkMarkdownParser.Parse(text.NewReader(data))
 }
 
+func parseSDKMarkdownBoundaries(source string) ([]byte, gast.Node, []int) {
+	data, insertedOffsets := preprocessSDKMarkdownBoundarySource(source)
+	return data, sdkMarkdownParser.Parse(text.NewReader(data)), insertedOffsets
+}
+
 // preprocessSDKMarkdownBlocks follows the SDK preprocessing order. Inline
 // markup normalization is required now that the same AST also owns per-block
 // character statistics; omitting it would count repaired Markdown delimiters

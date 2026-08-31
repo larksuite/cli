@@ -102,11 +102,14 @@ func docsCreatePlanningValidationError(format, content string, planningErr error
 	}
 
 	// Strict XML planning can reject legacy shapes that the SDK intentionally
-	// repairs. Run the same content statistics over the compatibility DOM before
-	// preserving the old unbatched service-owned parse behavior.
-	compatibleErr := docxparse.ValidateCompatibleXMLContentLimits(content, createBatchLimits().Content)
+	// repairs. Preserve the old unbatched service-owned parse behavior only when
+	// the compatibility DOM fits both content limits and one create request.
+	_, compatibleErr := docxparse.ValidateCompatibleXMLCreateLimits(content, createBatchLimits())
 	if errors.As(compatibleErr, &contentErr) {
 		return docsCreateContentLimitValidationError(contentErr)
+	}
+	if errors.As(compatibleErr, &planErr) {
+		return docsCreateBatchValidationError(planErr)
 	}
 	return nil
 }
@@ -115,25 +118,21 @@ func docsCreateContentLimitValidationError(limitErr *docxparse.ContentLimitError
 	if limitErr == nil {
 		return errs.NewInternalError(errs.SubtypeInvalidResponse, "create content analyzer returned an empty limit error")
 	}
-	const operation = "create"
 	switch limitErr.Kind {
 	case docxparse.ContentLimitBlockCharacters:
 		return errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"--content contains a block with %d UTF-16 code units, exceeding the limit %d", limitErr.Actual, limitErr.Limit).
 			WithParam("--content").
-			WithLimitViolation("DOC_BLOCK_CHAR_LIMIT", operation, limitErr.Actual, limitErr.Limit).
 			WithHint("split the long text into multiple sibling blocks before retrying")
 	case docxparse.ContentLimitTableCells:
 		return errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"--content contains a table with %d effective cells, exceeding the limit %d", limitErr.Actual, limitErr.Limit).
 			WithParam("--content").
-			WithLimitViolation("DOC_TABLE_CELL_LIMIT", operation, limitErr.Actual, limitErr.Limit).
 			WithHint("reduce the table size or split it into multiple sibling tables before retrying")
 	case docxparse.ContentLimitTableColumns:
 		return errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"--content contains a table with %d columns, exceeding the limit %d", limitErr.Actual, limitErr.Limit).
 			WithParam("--content").
-			WithLimitViolation("DOC_TABLE_COLUMN_LIMIT", operation, limitErr.Actual, limitErr.Limit).
 			WithHint("reduce the number of table columns or split the table before retrying")
 	default:
 		return errs.NewInternalError(errs.SubtypeInvalidResponse, "unknown create content limit %q", limitErr.Kind)

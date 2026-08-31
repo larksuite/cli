@@ -48,7 +48,7 @@
 | Table Cell | `<= 2,000` | XML/Markdown 2,001 在本地拒绝；2,000 CLI 放行，PPE engine 成功态待补 | PASS（预检）/ ENV BLOCKED（PPE 成功态） |
 | Table Column | `<= 100` | XML/Markdown 100 接受；101 在本地拒绝 | PASS |
 | 校验失败时零写入 | 内容限制失败不得调用下游 | 六个双格式超限请求 `route_count=0`，无 document token | PASS |
-| 专用错误码 | `DOC_*_LIMIT` | `validation/invalid_argument` 携带 `limit_code`、`operation`、`actual`、`limit` | PASS |
+| 稳定错误字符串 | 错误直接说明实际值与限制值 | `validation/invalid_argument` 的 `message` 包含具体超限原因 | PASS |
 | Append/Replace 独立入口限制 | 按原计划覆盖 | 本 PR 只改造 create 编排 | NOT IN SCOPE |
 
 ## 3. 测试方法与证据等级
@@ -282,13 +282,13 @@ strings.Join(plan.Batches, "") == originalSource
 | Case | Planner 结果 | API 计划 |
 | --- | --- | --- |
 | Block 100,000 字符 | 接受 | 1 |
-| Block 100,001 字符 | `DOC_BLOCK_CHAR_LIMIT` | 0 |
+| Block 100,001 字符 | 字符数超限错误 | 0 |
 | Table 100 Column | 接受 | 1 |
-| Table 101 Column | `DOC_TABLE_COLUMN_LIMIT` | 0 |
+| Table 101 Column | 列数超限错误 | 0 |
 | Table 2,000 Cell | 接受 | 2，规划总 Block 4,002 |
-| Table 2,001 Cell | `DOC_TABLE_CELL_LIMIT` | 0 |
+| Table 2,001 Cell | Cell 数超限错误 | 0 |
 
-XML 与 Markdown 均执行上述矩阵。超限错误为 `validation/invalid_argument`，并携带 `limit_code`、`operation=create`、`actual` 与 `limit`；dry-run stdout 不产生 API plan。
+XML 与 Markdown 均执行上述矩阵。超限错误为 `validation/invalid_argument`，错误字符串直接包含实际值与限制值；dry-run stdout 不产生 API plan。
 
 ### 10.2 修复前生产基线
 
@@ -350,28 +350,25 @@ message="append batch 2 returned result=failed"
 
 | 格式 | Case | CLI 结果 | Docs AI 请求 | document token | 结论 |
 | --- | --- | --- | --- | --- | --- |
-| XML | Block 100,001 字符 | exit 2；`DOC_BLOCK_CHAR_LIMIT`，`actual=100001` | 0 | 无 | PASS |
-| Markdown | Block 100,001 字符 | exit 2；`DOC_BLOCK_CHAR_LIMIT`，`actual=100001` | 0 | 无 | PASS |
-| XML | Table 101 Column | exit 2；`DOC_TABLE_COLUMN_LIMIT`，`actual=101` | 0 | 无 | PASS |
-| Markdown | GFM Table 101 Column | exit 2；`DOC_TABLE_COLUMN_LIMIT`，`actual=101` | 0 | 无 | PASS |
-| XML | Table 2,001 Cell（2,001 × 1） | exit 2；`DOC_TABLE_CELL_LIMIT`，`actual=2001` | 0 | 无 | PASS |
-| Markdown | GFM Table 2,001 Cell（2,001 × 1） | exit 2；`DOC_TABLE_CELL_LIMIT`，`actual=2001` | 0 | 无 | PASS |
+| XML | Block 100,001 字符 | exit 2；错误字符串包含实际值 100001 | 0 | 无 | PASS |
+| Markdown | Block 100,001 字符 | exit 2；错误字符串包含实际值 100001 | 0 | 无 | PASS |
+| XML | Table 101 Column | exit 2；错误字符串包含实际值 101 | 0 | 无 | PASS |
+| Markdown | GFM Table 101 Column | exit 2；错误字符串包含实际值 101 | 0 | 无 | PASS |
+| XML | Table 2,001 Cell（2,001 × 1） | exit 2；错误字符串包含实际值 2001 | 0 | 无 | PASS |
+| Markdown | GFM Table 2,001 Cell（2,001 × 1） | exit 2；错误字符串包含实际值 2001 | 0 | 无 | PASS |
 
-六个请求均在约 0–1 秒内失败，错误统一携带：
+六个请求均在约 0–1 秒内失败，错误统一包含：
 
 ```json
 {
   "type": "validation",
   "subtype": "invalid_argument",
   "param": "--content",
-  "limit_code": "DOC_TABLE_CELL_LIMIT",
-  "operation": "create",
-  "actual": 2001,
-  "limit": 2000
+  "message": "--content contains a table with 2001 effective cells, exceeding the limit 2000"
 }
 ```
 
-CLI 的通用错误契约保留 `error.code` 给上游数值码，因此领域字符串使用 `limit_code`，不再把 JSON detail 塞进 `api/unknown` message。
+CLI 不扩展通用错误结构，领域限制直接写入既有 `message` 字符串。
 
 #### 正向控制
 
@@ -384,7 +381,7 @@ CLI 的通用错误契约保留 `error.code` 给上游数值码，因此领域�
 | XML | Table 2,000 Cell（2,000 × 1） | CLI 放行；create 成功后 append 调用 engine 超时 | create `20260827184444C745FFB56D3C1C2B135F`；append `20260827184449C745FFB56D3C1C2B14F4` | partial 文档删除成功 |
 | Markdown | GFM Table 2,000 Cell（2,000 × 1） | CLI 放行；create 成功后 append 调用 engine 超时 | create `2026082718450608C5EA51C4635834A456`；append `202608271845092395BB2EA3CA96178E52` | partial 文档删除成功 |
 
-两个 2,000 Cell 请求均未出现 `limit_code`，证明边界没有被本地误拦；失败 warning 明确为 `creation.docx.engine_pre_release ConvertXMLToOps`、`error_code=1204`、10 秒 request timeout，与控制面 0 Pod 一致。所有产生 token 的正向/partial 文档均已通过 `drive +delete --yes` 删除。
+两个 2,000 Cell 请求均未触发本地内容限制错误，证明边界没有被本地误拦；失败 warning 明确为 `creation.docx.engine_pre_release ConvertXMLToOps`、`error_code=1204`、10 秒 request timeout，与控制面 0 Pod 一致。所有产生 token 的正向/partial 文档均已通过 `drive +delete --yes` 删除。
 
 ## 11. 真实租户大文档测试
 
@@ -430,7 +427,7 @@ CLI 的通用错误契约保留 `error.code` 给上游数值码，因此领域�
 - XML 统计直接镜像 SDK `document_limit/statistics.go` 的物化 Block、UTF-16 字符、有效矩形 Cell、Column、rowspan/colspan、caption 与 inline placeholder 语义。
 - Markdown 使用与 SDK 相同的 Goldmark extension、parser priority、预处理顺序、title semantics 和连续 Text/CJK emphasis 修复，再把统计结果交给同一限制策略。
 - 完整内容在资源 path/data 转换前预检；prepared content 生成后复用同一 planner 做安全分批。
-- 错误稳定输出 `limit_code`、`operation=create`、`actual`、`limit`，超限时不生成 API 计划、不调用下游。
+- 错误通过既有 `message` 字符串稳定说明实际值与限制值，超限时不生成 API 计划、不调用下游。
 
 后续 SDK Markdown parser 或 `document_limit/statistics.go` 发生语义变化时，需要同步更新 CLI 的兼容边界和 parity 用例；长期可考虑由可公开复用的 SDK 模块承载该契约，减少跨仓镜像维护。
 

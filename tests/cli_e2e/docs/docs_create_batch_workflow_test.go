@@ -42,7 +42,7 @@ func TestDocs_CreateBatchWorkflow(t *testing.T) {
 	if raw := strings.TrimSpace(os.Getenv("LARK_DOC_CREATE_BATCH_E2E_BODY_BLOCKS")); raw != "" {
 		parsed, err := strconv.Atoi(raw)
 		require.NoError(t, err, "parse LARK_DOC_CREATE_BATCH_E2E_BODY_BLOCKS")
-		require.GreaterOrEqual(t, parsed, 2, "LARK_DOC_CREATE_BATCH_E2E_BODY_BLOCKS")
+		require.GreaterOrEqual(t, parsed, 2_001, "LARK_DOC_CREATE_BATCH_E2E_BODY_BLOCKS")
 		bodyBlocks = parsed
 	}
 

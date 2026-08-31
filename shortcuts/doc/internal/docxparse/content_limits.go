@@ -87,27 +87,62 @@ func validateContentStatistics(stats ContentStatistics, limits ContentLimits) er
 	return nil
 }
 
-// ValidateCompatibleXMLContentLimits is the compatibility-path safety net for
-// XML that the strict batch planner cannot partition. It intentionally checks
-// only content limits; malformed-but-tolerated XML keeps the existing single
-// create request behavior.
-func ValidateCompatibleXMLContentLimits(source string, limits ContentLimits) error {
-	if err := validateContentLimits(limits); err != nil {
-		return err
+// ValidateCompatibleXMLCreateLimits is the compatibility-path safety net for
+// XML that the strict batch planner cannot partition. Malformed-but-tolerated
+// XML keeps the existing single-create behavior only when its full materialized
+// block count also fits one request.
+func ValidateCompatibleXMLCreateLimits(source string, limits CreateBatchLimits) (ContentStatistics, error) {
+	if err := validateCreateBatchLimits(limits); err != nil {
+		return ContentStatistics{}, err
 	}
 	nodes, err := parseXMLCompatible(source)
 	if err != nil {
-		return err
+		return ContentStatistics{}, err
 	}
-	return validateContentStatistics(collectXMLContentStatistics(nodes), limits)
+	statistics := collectXMLContentStatisticsWithLimits(nodes, limits.Content)
+	if err := validateContentStatistics(statistics, limits.Content); err != nil {
+		return statistics, err
+	}
+	hasTitle := false
+	for _, node := range topLevelElements(nodes) {
+		if node.tag == "title" {
+			hasTitle = true
+			break
+		}
+	}
+	totalBlocks := statistics.Blocks
+	if !hasTitle {
+		totalBlocks = saturatedAdd(totalBlocks, 1)
+	}
+	if totalBlocks > limits.TotalBlocks {
+		return statistics, &CreateBatchPlanError{
+			Kind:   CreateBatchTotalLimit,
+			Blocks: totalBlocks,
+			Limit:  limits.TotalBlocks,
+		}
+	}
+	if totalBlocks > limits.OperationBlocks {
+		return statistics, &CreateBatchPlanError{
+			Kind:   CreateBatchSubtreeLimit,
+			Tag:    "compatible XML",
+			Blocks: totalBlocks,
+			Limit:  limits.OperationBlocks,
+		}
+	}
+	return statistics, nil
 }
 
 type contentStatisticsCollector struct {
-	stats ContentStatistics
+	stats  ContentStatistics
+	limits ContentLimits
 }
 
 func collectXMLContentStatistics(nodes []*Node) ContentStatistics {
-	collector := contentStatisticsCollector{}
+	return collectXMLContentStatisticsWithLimits(nodes, DefaultContentLimits())
+}
+
+func collectXMLContentStatisticsWithLimits(nodes []*Node, limits ContentLimits) ContentStatistics {
+	collector := contentStatisticsCollector{limits: limits}
 	collector.collectNodes(nodes)
 	return collector.stats
 }
@@ -160,7 +195,17 @@ func (c *contentStatisticsCollector) observeTextBlock(node *Node) {
 
 func (c *contentStatisticsCollector) collectTable(table *Node) {
 	rows := tableRowsForBatch(table)
-	rowCount, columnCount, visibleCells := tableDimensionsForBatch(rows)
+	rowCount, columnCount, visibleCellCount, simple := simpleTableDimensionsForBatch(rows)
+	if !simple {
+		if visibleCellCount > c.limits.TableCells {
+			// Every visible cell occupies at least one physical position. Once
+			// that lower bound is over the limit, no occupancy expansion is needed.
+			rowCount = 1
+			columnCount = visibleCellCount
+		} else {
+			rowCount, columnCount = tableDimensionsForBatch(rows, c.limits)
+		}
+	}
 	rowCount = maxInt(rowCount, 1)
 	columnCount = maxInt(columnCount, 1)
 	physicalCells := saturatedMultiply(rowCount, columnCount)
@@ -173,22 +218,28 @@ func (c *contentStatisticsCollector) collectTable(table *Node) {
 		c.stats.MaxBlockCharacters = maxInt(c.stats.MaxBlockCharacters, characters)
 	}
 
+	for _, row := range rows {
+		for _, cell := range row.children {
+			if cell == nil || cell.typ != nodeElement || cell.tag != "td" && cell.tag != "th" {
+				continue
+			}
+			before := c.stats.Blocks
+			c.collectNodes(cell.children)
+			segments, maxCharacters := tableCellInlineSegments(cell)
+			if segments > 0 {
+				c.addBlocks(segments)
+				c.stats.MaxBlockCharacters = maxInt(c.stats.MaxBlockCharacters, maxCharacters)
+			} else if c.stats.Blocks == before {
+				c.addBlocks(1)
+			}
+		}
+	}
+
 	// Every physical cell starts with one empty text child. Explicit visible
 	// cells replace it; merged/missing placeholders retain the default child.
-	placeholderCells := physicalCells - len(visibleCells)
+	placeholderCells := physicalCells - visibleCellCount
 	if placeholderCells > 0 {
 		c.addBlocks(placeholderCells)
-	}
-	for _, cell := range visibleCells {
-		before := c.stats.Blocks
-		c.collectNodes(cell.children)
-		segments, maxCharacters := tableCellInlineSegments(cell)
-		if segments > 0 {
-			c.addBlocks(segments)
-			c.stats.MaxBlockCharacters = maxInt(c.stats.MaxBlockCharacters, maxCharacters)
-		} else if c.stats.Blocks == before {
-			c.addBlocks(1)
-		}
 	}
 }
 

@@ -79,32 +79,30 @@ func TestDocs_CreateContentLimitsFailBeforeDryRunAPIPlan(t *testing.T) {
 	t.Cleanup(cancel)
 
 	tests := []struct {
-		name      string
-		format    string
-		content   string
-		limitCode string
-		actual    int64
-		limit     int64
+		name    string
+		format  string
+		content string
+		message string
 	}{
 		{
 			name: "xml block characters", format: "xml",
-			content:   `<p>` + strings.Repeat("x", 100_001) + `</p>`,
-			limitCode: "DOC_BLOCK_CHAR_LIMIT", actual: 100_001, limit: 100_000,
+			content: `<p>` + strings.Repeat("x", 100_001) + `</p>`,
+			message: "--content contains a block with 100001 UTF-16 code units, exceeding the limit 100000",
 		},
 		{
 			name: "markdown block characters", format: "markdown",
-			content:   strings.Repeat("x", 100_001),
-			limitCode: "DOC_BLOCK_CHAR_LIMIT", actual: 100_001, limit: 100_000,
+			content: strings.Repeat("x", 100_001),
+			message: "--content contains a block with 100001 UTF-16 code units, exceeding the limit 100000",
 		},
 		{
 			name: "xml table cells", format: "xml",
-			content:   docsCreateLimitXMLTable(2_001, 1),
-			limitCode: "DOC_TABLE_CELL_LIMIT", actual: 2_001, limit: 2_000,
+			content: docsCreateLimitXMLTable(2_001, 1),
+			message: "--content contains a table with 2001 effective cells, exceeding the limit 2000",
 		},
 		{
 			name: "markdown table columns", format: "markdown",
-			content:   docsCreateLimitMarkdownTable(2, 101),
-			limitCode: "DOC_TABLE_COLUMN_LIMIT", actual: 101, limit: 100,
+			content: docsCreateLimitMarkdownTable(2, 101),
+			message: "--content contains a table with 101 columns, exceeding the limit 100",
 		},
 	}
 
@@ -125,10 +123,7 @@ func TestDocs_CreateContentLimitsFailBeforeDryRunAPIPlan(t *testing.T) {
 			require.Empty(t, strings.TrimSpace(result.Stdout), "stdout must not contain an API plan:\n%s", result.Stdout)
 			require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), "stderr:\n%s", result.Stderr)
 			require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), "stderr:\n%s", result.Stderr)
-			require.Equal(t, tt.limitCode, gjson.Get(result.Stderr, "error.limit_code").String(), "stderr:\n%s", result.Stderr)
-			require.Equal(t, "create", gjson.Get(result.Stderr, "error.operation").String(), "stderr:\n%s", result.Stderr)
-			require.Equal(t, tt.actual, gjson.Get(result.Stderr, "error.actual").Int(), "stderr:\n%s", result.Stderr)
-			require.Equal(t, tt.limit, gjson.Get(result.Stderr, "error.limit").Int(), "stderr:\n%s", result.Stderr)
+			require.Equal(t, tt.message, gjson.Get(result.Stderr, "error.message").String(), "stderr:\n%s", result.Stderr)
 		})
 	}
 }

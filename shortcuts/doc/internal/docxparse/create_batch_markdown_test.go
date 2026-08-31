@@ -5,6 +5,7 @@ package docxparse
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -320,5 +321,56 @@ func TestPlanCreateMarkdownBatchesUsesSDKPreprocessingWithoutChangingSource(t *t
 	}
 	if got := strings.Join(plan.Batches, ""); got != source {
 		t.Fatalf("joined batches changed source:\n got %q\nwant %q", got, source)
+	}
+}
+
+func TestMarkdownTopLevelBoundariesFindAllSameLineContainers(t *testing.T) {
+	const containers = 1_000
+	source := strings.Repeat("<callout>x</callout>", containers)
+
+	nodes, starts, err := markdownTopLevelBoundaries(source)
+	if err != nil {
+		t.Fatalf("markdownTopLevelBoundaries() error: %v", err)
+	}
+	if len(nodes) != containers || len(starts) != containers {
+		t.Fatalf("boundaries = nodes:%d starts:%d, want %d", len(nodes), len(starts), containers)
+	}
+	for index, start := range starts {
+		if want := index * len("<callout>x</callout>"); start != want {
+			t.Fatalf("starts[%d] = %d, want %d", index, start, want)
+		}
+	}
+}
+
+func TestPlanCreateMarkdownBatchesAllowsXMLDeclarationsInsideFencedCode(t *testing.T) {
+	source := "```html\n<!DOCTYPE html>\n<body>example</body>\n```\n"
+
+	plan, err := PlanCreateMarkdownBatches(source, 5_000, 40_000)
+	if err != nil {
+		t.Fatalf("PlanCreateMarkdownBatches() error: %v", err)
+	}
+	if got := strings.Join(plan.Batches, ""); got != source {
+		t.Fatalf("joined batches changed source:\n got %q\nwant %q", got, source)
+	}
+}
+
+func BenchmarkPlanCreateMarkdownSameLineContainers(b *testing.B) {
+	for _, containers := range []int{100, 500, 1_000} {
+		source := strings.Repeat("<callout>x</callout>", containers)
+		limits := CreateBatchLimits{
+			TargetBlocks:    5_000,
+			OperationBlocks: 5_000,
+			TotalBlocks:     40_000,
+			Content:         DefaultContentLimits(),
+		}
+		b.Run(fmt.Sprintf("containers=%d", containers), func(b *testing.B) {
+			b.ReportAllocs()
+			b.SetBytes(int64(len(source)))
+			for range b.N {
+				if _, err := PlanCreateMarkdownBatchesWithLimits(source, limits); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }

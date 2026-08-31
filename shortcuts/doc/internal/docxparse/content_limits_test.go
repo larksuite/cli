@@ -110,8 +110,39 @@ func TestContentLimitsRunBeforeOtherCreateLimits(t *testing.T) {
 }
 
 func TestCompatibleXMLContentLimitsStillPreflightLegacyShapes(t *testing.T) {
-	err := ValidateCompatibleXMLContentLimits(`<p>`+strings.Repeat("x", 100_001), DefaultContentLimits())
+	_, err := ValidateCompatibleXMLCreateLimits(`<p>`+strings.Repeat("x", 100_001), CreateBatchLimits{
+		TargetBlocks: 2_000, OperationBlocks: 5_000, TotalBlocks: 40_000, Content: DefaultContentLimits(),
+	})
 	assertContentLimit(t, err, ContentLimitBlockCharacters, 100_001, 100_000)
+}
+
+func TestCompatibleXMLCreateLimitsRejectUnpartitionableBlockCounts(t *testing.T) {
+	limits := CreateBatchLimits{
+		TargetBlocks: 2_000, OperationBlocks: 5_000, TotalBlocks: 40_000, Content: DefaultContentLimits(),
+	}
+	tests := []struct {
+		name         string
+		body         int
+		kind         CreateBatchPlanErrorKind
+		materialized int
+		total        int
+	}{
+		{name: "single request", body: 5_000, kind: CreateBatchSubtreeLimit, materialized: 5_001, total: 5_002},
+		{name: "document total", body: 40_000, kind: CreateBatchTotalLimit, materialized: 40_001, total: 40_002},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			statistics, err := ValidateCompatibleXMLCreateLimits(
+				"<callout>"+strings.Repeat("<p>x</p>", tt.body), limits)
+			var planErr *CreateBatchPlanError
+			if !errors.As(err, &planErr) || planErr.Kind != tt.kind || planErr.Blocks != tt.total {
+				t.Fatalf("error = %#v, statistics = %#v, want kind=%s total=%d", planErr, statistics, tt.kind, tt.total)
+			}
+			if statistics.Blocks != tt.materialized {
+				t.Fatalf("statistics.Blocks = %d, want %d", statistics.Blocks, tt.materialized)
+			}
+		})
+	}
 }
 
 func TestMarkdownContentLimitBoundaries(t *testing.T) {
@@ -219,6 +250,22 @@ func assertContentLimit(t *testing.T, err error, kind ContentLimitKind, actual, 
 	}
 	if limitErr.Kind != kind || limitErr.Actual != actual || limitErr.Limit != limit {
 		t.Fatalf("limit error = %#v, want kind=%s actual=%d limit=%d", limitErr, kind, actual, limit)
+	}
+}
+
+func BenchmarkPlanCreateXMLRejectsOversizedTableSpans(b *testing.B) {
+	for _, spanCells := range []int{1, 10, 100} {
+		source := "<table><tr>" + strings.Repeat(`<td rowspan="2001" colspan="101">x</td>`, spanCells) + "</tr></table>"
+		b.Run(fmt.Sprintf("cells=%d", spanCells), func(b *testing.B) {
+			b.ReportAllocs()
+			b.SetBytes(int64(len(source)))
+			for range b.N {
+				_, err := PlanCreateBatches(source, 5_000, 40_000)
+				if err == nil {
+					b.Fatal("PlanCreateBatches() succeeded, want table limit error")
+				}
+			}
+		})
 	}
 }
 

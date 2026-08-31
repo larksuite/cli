@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -502,70 +503,84 @@ func TestDocsCreateV2RejectsTotalBlockLimitBeforeCreate(t *testing.T) {
 	}
 }
 
+func TestDocsCreateV2RejectsCompatibleXMLTotalBlockLimitBeforeCreate(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	createStub := &httpmock.Stub{
+		Method:   "POST",
+		URL:      "/open-apis/docs_ai/v1/documents",
+		Optional: true,
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{},
+		},
+	}
+	reg.Register(createStub)
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create", "--content", "<callout>" + strings.Repeat("<p>x</p>", 40_000), "--as", "user",
+	})
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--content")
+	if len(createStub.CapturedBodies) != 0 {
+		t.Fatalf("create was called for oversized compatibility XML")
+	}
+}
+
 func TestDocsCreateV2RejectsContentLimitsBeforeCreate(t *testing.T) {
 	tests := []struct {
-		name      string
-		format    string
-		content   string
-		limitCode string
-		actual    int
-		limit     int
+		name    string
+		format  string
+		content string
+		actual  int
+		limit   int
 	}{
 		{
-			name:      "xml block characters",
-			format:    "xml",
-			content:   `<title>Limit</title><p>` + strings.Repeat("x", 100_001) + `</p>`,
-			limitCode: "DOC_BLOCK_CHAR_LIMIT",
-			actual:    100_001,
-			limit:     100_000,
+			name:    "xml block characters",
+			format:  "xml",
+			content: `<title>Limit</title><p>` + strings.Repeat("x", 100_001) + `</p>`,
+			actual:  100_001,
+			limit:   100_000,
 		},
 		{
-			name:      "markdown block characters",
-			format:    "markdown",
-			content:   "# Limit\n\n" + strings.Repeat("x", 100_001),
-			limitCode: "DOC_BLOCK_CHAR_LIMIT",
-			actual:    100_001,
-			limit:     100_000,
+			name:    "markdown block characters",
+			format:  "markdown",
+			content: "# Limit\n\n" + strings.Repeat("x", 100_001),
+			actual:  100_001,
+			limit:   100_000,
 		},
 		{
-			name:      "xml late block characters",
-			format:    "xml",
-			content:   `<title>Limit</title>` + strings.Repeat(`<p>prefix</p>`, 1_999) + `<p>` + strings.Repeat("x", 100_001) + `</p>`,
-			limitCode: "DOC_BLOCK_CHAR_LIMIT",
-			actual:    100_001,
-			limit:     100_000,
+			name:    "xml late block characters",
+			format:  "xml",
+			content: `<title>Limit</title>` + strings.Repeat(`<p>prefix</p>`, 1_999) + `<p>` + strings.Repeat("x", 100_001) + `</p>`,
+			actual:  100_001,
+			limit:   100_000,
 		},
 		{
-			name:      "xml table cells",
-			format:    "xml",
-			content:   `<title>Limit</title>` + docsCreateXMLTable(2_001, 1),
-			limitCode: "DOC_TABLE_CELL_LIMIT",
-			actual:    2_001,
-			limit:     2_000,
+			name:    "xml table cells",
+			format:  "xml",
+			content: `<title>Limit</title>` + docsCreateXMLTable(2_001, 1),
+			actual:  2_001,
+			limit:   2_000,
 		},
 		{
-			name:      "xml table columns",
-			format:    "xml",
-			content:   `<title>Limit</title>` + docsCreateXMLTable(1, 101),
-			limitCode: "DOC_TABLE_COLUMN_LIMIT",
-			actual:    101,
-			limit:     100,
+			name:    "xml table columns",
+			format:  "xml",
+			content: `<title>Limit</title>` + docsCreateXMLTable(1, 101),
+			actual:  101,
+			limit:   100,
 		},
 		{
-			name:      "xml late table columns",
-			format:    "xml",
-			content:   `<title>Limit</title>` + strings.Repeat(`<p>prefix</p>`, 1_899) + docsCreateXMLTable(1, 101),
-			limitCode: "DOC_TABLE_COLUMN_LIMIT",
-			actual:    101,
-			limit:     100,
+			name:    "xml late table columns",
+			format:  "xml",
+			content: `<title>Limit</title>` + strings.Repeat(`<p>prefix</p>`, 1_899) + docsCreateXMLTable(1, 101),
+			actual:  101,
+			limit:   100,
 		},
 		{
-			name:      "markdown gfm table columns",
-			format:    "markdown",
-			content:   docsCreateMarkdownTable(2, 101),
-			limitCode: "DOC_TABLE_COLUMN_LIMIT",
-			actual:    101,
-			limit:     100,
+			name:    "markdown gfm table columns",
+			format:  "markdown",
+			content: docsCreateMarkdownTable(2, 101),
+			actual:  101,
+			limit:   100,
 		},
 	}
 
@@ -581,7 +596,7 @@ func TestDocsCreateV2RejectsContentLimitsBeforeCreate(t *testing.T) {
 			err := runDocsCreateShortcut(t, f, stdout, []string{
 				"+create", "--doc-format", tt.format, "--content", tt.content, "--as", "user",
 			})
-			assertDocsCreateLimitError(t, err, tt.limitCode, tt.actual, tt.limit)
+			assertDocsCreateLimitError(t, err, tt.actual, tt.limit)
 			if len(createStub.CapturedBodies) != 0 {
 				t.Fatalf("create API was called for %s", tt.name)
 			}
@@ -602,7 +617,7 @@ func TestDocsCreateV2ContentLimitRunsBeforeLocalResourcePreparation(t *testing.T
 		"+create", "--content", content, "--as", "user",
 	})
 
-	assertDocsCreateLimitError(t, err, "DOC_BLOCK_CHAR_LIMIT", 100_001, 100_000)
+	assertDocsCreateLimitError(t, err, 100_001, 100_000)
 	if len(createStub.CapturedBodies) != 0 {
 		t.Fatal("create API was called before content/resource preflight")
 	}
@@ -823,18 +838,13 @@ func decodeDocsCreateEnvelope(t *testing.T, stdout *bytes.Buffer) map[string]int
 	return data
 }
 
-func assertDocsCreateLimitError(t *testing.T, err error, limitCode string, actual, limit int) {
+func assertDocsCreateLimitError(t *testing.T, err error, actual, limit int) {
 	t.Helper()
 	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--content")
-	var validationErr *errs.ValidationError
-	if !errors.As(err, &validationErr) {
-		t.Fatalf("error = %T %v, want *errs.ValidationError", err, err)
-	}
-	if validationErr.LimitCode != limitCode || validationErr.Operation != "create" ||
-		validationErr.Actual != actual || validationErr.Limit != limit {
-		t.Fatalf("limit error = %q/%q %d/%d, want %q/create %d/%d",
-			validationErr.LimitCode, validationErr.Operation, validationErr.Actual, validationErr.Limit,
-			limitCode, actual, limit)
+	want := fmt.Sprintf("%d", actual)
+	wantLimit := fmt.Sprintf("limit %d", limit)
+	if !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), wantLimit) {
+		t.Fatalf("limit error = %q, want actual %d and limit %d", err, actual, limit)
 	}
 }
 

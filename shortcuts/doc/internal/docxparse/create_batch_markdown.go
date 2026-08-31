@@ -24,7 +24,7 @@ func PlanCreateMarkdownBatchesWithLimits(source string, limits CreateBatchLimits
 	if err := validateCreateBatchLimits(limits); err != nil {
 		return CreateBatchPlan{}, err
 	}
-	if err := validateSource(source); err != nil {
+	if err := validateMarkdownSource(source); err != nil {
 		return CreateBatchPlan{}, err
 	}
 	nodes, starts, err := markdownTopLevelBoundaries(source)
@@ -59,12 +59,10 @@ func PlanCreateMarkdownBatchesWithLimits(source string, limits CreateBatchLimits
 	return packCreateUnits(source, units, hasTitle, limits)
 }
 
-// markdownTopLevelBoundaries parses the original bytes without applying the
-// SDK's source-mutating preprocessors. An SDK container that opens and closes
-// on one line intentionally remains open in the raw parser and can absorb the
-// remaining document; the SDK later repairs that shape by inserting newlines.
-// Recover only that lexical close boundary, then resume the same parser on the
-// untouched tail. Counting still runs on the fully preprocessed fragment.
+// markdownTopLevelBoundaries parses one offset-corrected boundary view of the
+// original bytes. It inserts only the container newlines needed to mirror the
+// SDK's later preprocessing, then translates node starts back to the untouched
+// source without reparsing suffixes. Counting runs on fully preprocessed units.
 func markdownTopLevelBoundaries(source string) ([]gast.Node, []int, error) {
 	var nodes []gast.Node
 	var starts []int
@@ -79,63 +77,123 @@ func markdownTopLevelBoundaries(source string) ([]gast.Node, []int, error) {
 		starts = append(starts, titleStart)
 		offset = titleStop
 	}
-	for offset < len(source) {
-		chunk := source[offset:]
-		sourceBytes, document := parseSDKMarkdown(chunk, false)
-		var chunkNodes []gast.Node
-		for node := document.FirstChild(); node != nil; node = node.NextSibling() {
-			chunkNodes = append(chunkNodes, node)
-		}
-		if len(chunkNodes) == 0 {
-			break
-		}
-
-		restarted := false
-		for i, node := range chunkNodes {
-			start, ok := markdownNodeStart(node, sourceBytes)
-			if !ok {
-				if heading, isHeading := node.(*gast.Heading); isHeading && heading.Level == 1 && sdkMarkdownHeadingStrictlyEmpty(heading, sourceBytes) {
-					searchFrom := 0
-					if len(starts) > 0 {
-						searchFrom = starts[len(starts)-1] - offset + 1
-					}
-					start, ok = nextSDKEmptyATXH1Start(sourceBytes, searchFrom)
-				}
-			}
-			if !ok && node.Kind() == gast.KindFencedCodeBlock {
+	if offset >= len(source) {
+		return nodes, starts, nil
+	}
+	sourceBytes, document, insertedOffsets := parseSDKMarkdownBoundaries(source[offset:])
+	lastTransformedStart := -1
+	insertionsBeforeStart := 0
+	for node := document.FirstChild(); node != nil; node = node.NextSibling() {
+		start, ok := markdownNodeStart(node, sourceBytes)
+		if !ok {
+			if heading, isHeading := node.(*gast.Heading); isHeading && heading.Level == 1 && sdkMarkdownHeadingStrictlyEmpty(heading, sourceBytes) {
 				searchFrom := 0
-				if i > 0 {
-					searchFrom = starts[len(starts)-1] - offset + 1
+				if lastTransformedStart >= 0 {
+					searchFrom = lastTransformedStart + 1
 				}
-				start, ok = nextMarkdownFenceStart(sourceBytes, searchFrom)
+				start, ok = nextSDKEmptyATXH1Start(sourceBytes, searchFrom)
 			}
-			absoluteStart := offset + start
-			if !ok || len(starts) > 0 && absoluteStart <= starts[len(starts)-1] {
-				return nil, nil, newParseError("cannot determine markdown block boundary at index %d", len(nodes))
-			}
-			nodes = append(nodes, node)
-			starts = append(starts, absoluteStart)
-
-			block, unfinishedContainer := node.(*sdkMarkdownBlock)
-			if !unfinishedContainer || block.SourceStop > block.SourceStart || !sdkContainerBlockParserTags[block.TagName] {
-				continue
-			}
-			closeAt := findSDKXMLCloseTag([]byte(source[absoluteStart:]), block.RawTagName)
-			if closeAt < 0 {
-				continue
-			}
-			nextOffset := absoluteStart + closeAt + sdkXMLCloseTagLen(block.RawTagName)
-			if nextOffset < len(source) {
-				offset = nextOffset
-				restarted = true
-			}
-			break
 		}
-		if !restarted {
-			break
+		if !ok && node.Kind() == gast.KindFencedCodeBlock {
+			searchFrom := 0
+			if lastTransformedStart >= 0 {
+				searchFrom = lastTransformedStart + 1
+			}
+			start, ok = nextMarkdownFenceStart(sourceBytes, searchFrom)
 		}
+		if !ok || start < 0 || start >= len(sourceBytes) {
+			return nil, nil, newParseError("cannot determine markdown block boundary at index %d", len(nodes))
+		}
+		lastTransformedStart = start
+		for insertionsBeforeStart < len(insertedOffsets) && insertedOffsets[insertionsBeforeStart] < start {
+			insertionsBeforeStart++
+		}
+		originalStart := start - insertionsBeforeStart
+		if originalStart < 0 || originalStart >= len(source)-offset {
+			return nil, nil, newParseError("cannot map markdown block boundary at index %d", len(nodes))
+		}
+		absoluteStart := offset + originalStart
+		if len(starts) > 0 && absoluteStart <= starts[len(starts)-1] {
+			return nil, nil, newParseError("cannot determine markdown block boundary at index %d", len(nodes))
+		}
+		nodes = append(nodes, node)
+		starts = append(starts, absoluteStart)
 	}
 	return nodes, starts, nil
+}
+
+func preprocessSDKMarkdownBoundarySource(source string) ([]byte, []int) {
+	result := make([]byte, 0, len(source))
+	var insertedOffsets []int
+	appendOriginal := func(start, stop int) {
+		result = append(result, source[start:stop]...)
+	}
+	appendNewline := func() {
+		insertedOffsets = append(insertedOffsets, len(result))
+		result = append(result, '\n')
+	}
+
+	inFence := false
+	var fenceMarker rune
+	fenceLength := 0
+	for lineStart := 0; lineStart < len(source); {
+		nextLine := len(source)
+		if relative := strings.IndexByte(source[lineStart:], '\n'); relative >= 0 {
+			nextLine = lineStart + relative + 1
+		}
+		lineStop := nextLine
+		if lineStop > lineStart && source[lineStop-1] == '\n' {
+			lineStop--
+		}
+		line := source[lineStart:lineStop]
+		trimmed := strings.TrimLeft(line, " \t")
+		marker, length, rest, isFence := parseSDKMarkdownFencePrefix(trimmed)
+		isFence = isFence && len(line)-len(trimmed) < 4
+		if isFence {
+			if !inFence {
+				inFence = true
+				fenceMarker = marker
+				fenceLength = length
+			} else if marker == fenceMarker && length >= fenceLength && strings.TrimSpace(rest) == "" {
+				inFence = false
+			}
+			appendOriginal(lineStart, nextLine)
+			lineStart = nextLine
+			continue
+		}
+		if inFence {
+			appendOriginal(lineStart, nextLine)
+			lineStart = nextLine
+			continue
+		}
+
+		cursor := lineStart
+		for cursor < lineStop {
+			relative := strings.IndexByte(source[cursor:lineStop], '<')
+			if relative < 0 {
+				break
+			}
+			tagStart := cursor + relative
+			token, tagStop, state := scanXMLToken(source, tagStart)
+			if state != tokenOK || tagStop > lineStop || !sdkContainerBlockParserTags[strings.ToLower(token.name)] || token.selfClosing {
+				appendOriginal(cursor, tagStart+1)
+				cursor = tagStart + 1
+				continue
+			}
+			appendOriginal(cursor, tagStart)
+			if token.closing && len(result) > 0 && result[len(result)-1] != '\n' {
+				appendNewline()
+			}
+			appendOriginal(tagStart, tagStop)
+			if tagStop < lineStop && result[len(result)-1] != '\n' {
+				appendNewline()
+			}
+			cursor = tagStop
+		}
+		appendOriginal(cursor, nextLine)
+		lineStart = nextLine
+	}
+	return result, insertedOffsets
 }
 
 // leadingSDKMarkdownTitleSpan mirrors the direct leading <title> carrier that

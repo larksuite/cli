@@ -52,12 +52,8 @@ func TestRenderClonesEveryConcreteTypedErrorAndPreservesWireExtensions(t *testin
 		{
 			name: "validation",
 			original: &errs.ValidationError{
-				Problem:   problem(errs.CategoryValidation, errs.SubtypeInvalidArgument),
-				Param:     "--name",
-				LimitCode: "DOC_TABLE_CELL_LIMIT",
-				Operation: "create",
-				Actual:    2001,
-				Limit:     2000,
+				Problem: problem(errs.CategoryValidation, errs.SubtypeInvalidArgument),
+				Param:   "--name",
 				Params: []errs.InvalidParam{{
 					Name:        "--name",
 					Reason:      "invalid",

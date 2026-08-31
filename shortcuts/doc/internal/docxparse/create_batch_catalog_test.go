@@ -42,9 +42,31 @@ func TestCreateBatchPlannerCoversEveryRegisteredContentTag(t *testing.T) {
 
 		t.Run("markdown/"+tag, func(t *testing.T) {
 			markdown := source + "\n"
+			markdownNodes, starts, err := markdownTopLevelBoundaries(markdown)
+			if err != nil {
+				t.Fatalf("markdownTopLevelBoundaries(%q): %v", markdown, err)
+			}
+			if len(markdownNodes) != 1 || len(starts) != 1 || starts[0] != 0 {
+				t.Fatalf("Markdown boundaries for <%s> = nodes:%d starts:%v, want one node at 0", tag, len(markdownNodes), starts)
+			}
+			if gotTag, _ := markdownUnitTag(markdownNodes[0], markdown); gotTag != tag {
+				t.Fatalf("Markdown node tag = %q, want %q", gotTag, tag)
+			}
+			parsedSource, document := parseSDKMarkdown(markdown, true)
+			if document.FirstChild() == nil {
+				t.Fatalf("SDK Markdown parser produced no node for <%s>", tag)
+			}
+			materialized := markdownMaterializedDocumentCount(document, parsedSource)
 			plan, err := PlanCreateMarkdownBatchesWithLimits(markdown, limits)
 			if err != nil {
 				t.Fatalf("PlanCreateMarkdownBatchesWithLimits(%q): %v", markdown, err)
+			}
+			wantTotal := materialized + 1 // implicit page/title block
+			if tag == "title" {
+				wantTotal = materialized
+			}
+			if plan.TotalBlocks != wantTotal {
+				t.Fatalf("Markdown total blocks for <%s> = %d, want %d", tag, plan.TotalBlocks, wantTotal)
 			}
 			if got := strings.Join(plan.Batches, ""); got != markdown {
 				t.Fatalf("Markdown batches changed source: got %q, want %q", got, markdown)

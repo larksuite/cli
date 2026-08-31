@@ -81,7 +81,7 @@ func PlanCreateBatchesWithLimits(source string, limits CreateBatchLimits) (Creat
 		if node.tag == "title" {
 			hasTitle = true
 		}
-		unitStatistics := collectXMLContentStatistics([]*Node{node})
+		unitStatistics := collectXMLContentStatisticsWithLimits([]*Node{node}, limits.Content)
 		statistics = statistics.merge(unitStatistics)
 		units[i] = createBatchUnit{
 			start:          spans[i].start,
@@ -292,10 +292,33 @@ type tablePosition struct {
 	col int
 }
 
-func tableDimensionsForBatch(rows []*Node) (rowCount, columnCount int, visibleCells []*Node) {
+func simpleTableDimensionsForBatch(rows []*Node) (rowCount, columnCount, visibleCellCount int, simple bool) {
+	simple = true
+	for rowIndex, row := range rows {
+		rowCount = maxInt(rowCount, rowIndex+1)
+		rowCells := 0
+		for _, cell := range row.children {
+			if cell == nil || cell.typ != nodeElement || cell.tag != "td" && cell.tag != "th" {
+				continue
+			}
+			visibleCellCount++
+			rowCells++
+			if positiveSpan(cell.attrs["rowspan"]) != 1 || positiveSpan(cell.attrs["colspan"]) != 1 {
+				simple = false
+			}
+		}
+		columnCount = maxInt(columnCount, rowCells)
+	}
+	return rowCount, columnCount, visibleCellCount, simple
+}
+
+func tableDimensionsForBatch(rows []*Node, limits ContentLimits) (rowCount, columnCount int) {
 	occupied := make(map[tablePosition]struct{})
 	for rowIndex, row := range rows {
 		rowCount = maxInt(rowCount, rowIndex+1)
+		if tableDimensionsExceedLimits(rowCount, columnCount, limits) {
+			return rowCount, columnCount
+		}
 		columnIndex := 0
 		for _, cell := range row.children {
 			if cell == nil || cell.typ != nodeElement || cell.tag != "td" && cell.tag != "th" {
@@ -306,21 +329,29 @@ func tableDimensionsForBatch(rows []*Node) (rowCount, columnCount int, visibleCe
 			}
 			rowspan := positiveSpan(cell.attrs["rowspan"])
 			colspan := positiveSpan(cell.attrs["colspan"])
-			visibleCells = append(visibleCells, cell)
-			for rowOffset := 0; rowOffset < minInt(rowspan, 2_001); rowOffset++ {
-				for columnOffset := 0; columnOffset < minInt(colspan, 101); columnOffset++ {
+			rowCount = maxInt(rowCount, saturatedAdd(rowIndex, rowspan))
+			columnCount = maxInt(columnCount, saturatedAdd(columnIndex, colspan))
+			if tableDimensionsExceedLimits(rowCount, columnCount, limits) {
+				return rowCount, columnCount
+			}
+			for rowOffset := 0; rowOffset < rowspan; rowOffset++ {
+				for columnOffset := 0; columnOffset < colspan; columnOffset++ {
 					occupied[tablePosition{
 						row: saturatedAdd(rowIndex, rowOffset),
 						col: saturatedAdd(columnIndex, columnOffset),
 					}] = struct{}{}
 				}
 			}
-			rowCount = maxInt(rowCount, saturatedAdd(rowIndex, rowspan))
-			columnCount = maxInt(columnCount, saturatedAdd(columnIndex, colspan))
 			columnIndex = saturatedAdd(columnIndex, colspan)
 		}
 	}
-	return rowCount, columnCount, visibleCells
+	return rowCount, columnCount
+}
+
+func tableDimensionsExceedLimits(rowCount, columnCount int, limits ContentLimits) bool {
+	rowCount = maxInt(rowCount, 1)
+	columnCount = maxInt(columnCount, 1)
+	return saturatedMultiply(rowCount, columnCount) > limits.TableCells || columnCount > limits.TableColumns
 }
 
 func isBatchTablePositionOccupied(occupied map[tablePosition]struct{}, row, column int) bool {
