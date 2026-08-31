@@ -317,7 +317,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--dim1-index", type=int, default=1)
     parser.add_argument("--dim2-indexes")
     parser.add_argument("--series-types", type=_comma_separated_values)
-    parser.add_argument("--data-labels", default="value")
+    parser.add_argument("--data-labels", default="none")
     parser.add_argument("--aggregate-categories", type=_boolean_argument, default=True)
     parser.add_argument("--legend-position", default="bottom")
     parser.add_argument("--title", default="")

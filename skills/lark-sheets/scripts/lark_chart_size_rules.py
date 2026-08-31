@@ -135,7 +135,7 @@ def recommend_chart_size(
     chart_type: str,
     categories: list[Any],
     series_names: list[str],
-    data_labels: str = "value",
+    data_labels: str = "none",
     legend_position: str = "bottom",
     title: str = "",
     values: list[float] | None = None,
