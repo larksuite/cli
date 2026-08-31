@@ -14,7 +14,7 @@ import (
 )
 
 // sparkJSONRelPath is the project declaration file of the artifact-hosting
-// protocol (妙搭产物托管协议规范 §3): how to dev/build, plus the app state
+// protocol declaration: how to dev/build, plus the app state
 // section written back by the deploy chain.
 const sparkJSONRelPath = "spark.json"
 
