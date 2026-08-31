@@ -20,6 +20,8 @@ MINIMUM_SIZES = {
     "doughnut": (720, 440),
 }
 DEFAULT_MINIMUM_SIZE = (640, 400)
+MAX_ASPECT_RATIO = 2.6
+COMBO_SERIES_TYPES = {"column", "line", "area", "scatter"}
 
 
 def display_units(value: Any) -> int:
@@ -33,6 +35,10 @@ def display_units(value: Any) -> int:
 
 def _round_up(value: float, step: int = 40) -> int:
     return int(math.ceil(value / step) * step)
+
+
+def _round_down(value: float, step: int = 40) -> int:
+    return int(math.floor(value / step) * step)
 
 
 def _percentile(values: list[int], ratio: float) -> int:
@@ -103,6 +109,27 @@ def effective_category_labels(
     return labels
 
 
+def effective_series_types(
+    chart_type: str,
+    series_count: int,
+    series_types: list[str] | None = None,
+) -> list[str]:
+    chart_type = str(chart_type).lower()
+    if chart_type != "combo":
+        if series_types:
+            raise ValueError("series_types is only valid for combo charts")
+        return [chart_type] * series_count
+    if series_types is None:
+        return ["column", *(["line"] * max(0, series_count - 1))]
+    normalized = [str(value).strip().lower() for value in series_types]
+    if len(normalized) != series_count:
+        raise ValueError("series_types length must match series_names")
+    invalid = [value for value in normalized if value not in COMBO_SERIES_TYPES]
+    if invalid:
+        raise ValueError(f"unsupported combo series type: {invalid[0]}")
+    return normalized
+
+
 def recommend_chart_size(
     *,
     chart_type: str,
@@ -113,6 +140,7 @@ def recommend_chart_size(
     title: str = "",
     values: list[float] | None = None,
     aggregate_categories: bool = True,
+    series_types: list[str] | None = None,
 ) -> dict[str, Any]:
     chart_type = str(chart_type).lower()
     category_text = effective_category_labels(
@@ -121,6 +149,13 @@ def recommend_chart_size(
     )
     category_count = len(category_text)
     series_count = max(1, len(series_names))
+    normalized_series_types = effective_series_types(
+        chart_type,
+        series_count,
+        series_types,
+    )
+    column_series_count = sum(value == "column" for value in normalized_series_types)
+    line_like_series_count = series_count - column_series_count
     label_units = [display_units(value) for value in category_text]
     max_units = max(label_units, default=0)
     p75_units = _percentile(label_units, 0.75)
@@ -156,17 +191,20 @@ def recommend_chart_size(
             advice.extend(["use_top_n", "split_chart"])
     else:
         reserve = 230 if chart_type == "combo" else 170
-        base_slot = 44 if chart_type in {"line", "area"} else 52
+        line_dominant_combo = chart_type == "combo" and column_series_count == 0
+        base_slot = 44 if chart_type in {"line", "area"} or line_dominant_combo else 52
         text_slot = 20 + p75_units * 7 * 0.72
         slot = max(base_slot, min(180, text_slot))
-        if series_count == 1 and category_count >= 10:
+        if column_series_count <= 1 and category_count >= 10:
             # With many categories, Sheet rotates X-axis labels. Reserving each
             # label's full horizontal text width makes single-series charts
             # disproportionately wide; density checks below still expand when
             # data labels would actually collide.
             slot = min(slot, 68)
-        if chart_type in {"column", "combo"} and series_count > 1:
-            slot = max(slot, 20 + 22 * min(series_count, 5))
+        if column_series_count > 1:
+            slot = max(slot, 44 + 12 * min(column_series_count - 1, 4))
+        if chart_type == "combo" and line_like_series_count > 1:
+            slot += min(12, 4 * (line_like_series_count - 1))
         if labels_enabled:
             slot += min(24, 4 * series_count)
         width = max(width, reserve + category_count * slot)
@@ -184,6 +222,10 @@ def recommend_chart_size(
             advice.extend(["prefer_bar_or_top_n", "split_chart"])
 
     width = min(1600, _round_up(width))
+    aspect_width_limit = max(minimum["width"], _round_down(height * MAX_ASPECT_RATIO))
+    if width > aspect_width_limit:
+        width = aspect_width_limit
+        reasons.append("aspect_ratio_limited")
     legend_items = category_text if chart_type in {"pie", "doughnut"} else series_names
     legend_rows = 0
     if str(legend_position).lower() != "hidden":
@@ -200,9 +242,9 @@ def recommend_chart_size(
         height=height,
     )
     if label_density and chart_type not in {"pie", "doughnut"}:
-        target_slot = 42 if category_count >= 8 and series_count >= 2 else 36
-        required_width = reserve + category_count * series_count * target_slot
-        width = min(1600, _round_up(max(width, required_width)))
+        target_slot = 36 + min(24, 8 * max(0, series_count - 1))
+        required_width = reserve + category_count * target_slot
+        width = min(aspect_width_limit, _round_up(max(width, required_width)))
         label_density = dense_data_labels(
             chart_type=chart_type,
             category_count=category_count,
@@ -237,12 +279,15 @@ def recommend_chart_size(
             "chart_type": chart_type,
             "category_count": category_count,
             "series_count": series_count,
+            "series_types": normalized_series_types,
+            "column_series_count": column_series_count,
             "max_category_display_units": max_units,
             "p75_category_display_units": p75_units,
             "max_category_line_count": max_lines,
             "legend_rows": legend_rows,
             "data_labels": data_labels,
             "aggregate_categories": aggregate_categories,
+            "recommended_aspect_ratio": round(width / height, 2),
         },
         "reasons": list(dict.fromkeys(reasons)),
         "layout_advice": list(dict.fromkeys(advice)),

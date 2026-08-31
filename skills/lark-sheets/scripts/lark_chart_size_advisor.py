@@ -297,6 +297,13 @@ def _boolean_argument(value: str) -> bool:
     raise argparse.ArgumentTypeError("expected true or false")
 
 
+def _comma_separated_values(value: str) -> list[str]:
+    values = [item.strip() for item in str(value).split(",")]
+    if not values or any(not item for item in values):
+        raise argparse.ArgumentTypeError("expected a comma-separated list")
+    return values
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Recommend chart width and height before +chart-create-basic")
     parser.add_argument("target", help="Spreadsheet URL or spreadsheet token")
@@ -309,6 +316,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--data-direction", choices=("column", "row"), default="column")
     parser.add_argument("--dim1-index", type=int, default=1)
     parser.add_argument("--dim2-indexes")
+    parser.add_argument("--series-types", type=_comma_separated_values)
     parser.add_argument("--data-labels", default="value")
     parser.add_argument("--aggregate-categories", type=_boolean_argument, default=True)
     parser.add_argument("--legend-position", default="bottom")
@@ -373,6 +381,7 @@ def main() -> None:
             title=args.title,
             values=profile["values"],
             aggregate_categories=args.aggregate_categories,
+            series_types=args.series_types,
         )
         result["data_profile"] = {
             "dim2_indexes": profile["dim2_indexes"],
