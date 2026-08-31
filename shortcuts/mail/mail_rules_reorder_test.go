@@ -72,15 +72,10 @@ func TestMailRulesReorderExecutesCompleteOrder(t *testing.T) {
 func TestMailRulesReorderRejectsUnknownWithoutWrite(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	list := &httpmock.Stub{Method: "GET", URL: "/user_mailboxes/me/rules", Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"items": []interface{}{map[string]interface{}{"rule_id": "a"}}, "has_more": false}}}
-	reorder := &httpmock.Stub{Method: "POST", URL: "/user_mailboxes/me/rules/reorder", Optional: true}
 	reg.Register(list)
-	reg.Register(reorder)
 	err := runMountedMailShortcut(t, MailRulesReorder, []string{"+rules-reorder", "--rule-ids", "missing"}, f, stdout)
 	if err == nil {
 		t.Fatal("expected unknown-ID error")
-	}
-	if len(reorder.CapturedBodies) != 0 {
-		t.Fatalf("reorder was called for unknown ID")
 	}
 	reg.Verify(t)
 }
@@ -88,14 +83,9 @@ func TestMailRulesReorderRejectsUnknownWithoutWrite(t *testing.T) {
 func TestMailRulesReorderListFailureDoesNotWrite(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	list := &httpmock.Stub{Method: "GET", URL: "/user_mailboxes/me/rules", Status: 500, Body: map[string]interface{}{"code": 99991663, "msg": "list failed"}}
-	reorder := &httpmock.Stub{Method: "POST", URL: "/user_mailboxes/me/rules/reorder", Optional: true}
 	reg.Register(list)
-	reg.Register(reorder)
 	if err := runMountedMailShortcut(t, MailRulesReorder, []string{"+rules-reorder", "--rule-ids", "a"}, f, stdout); err == nil {
 		t.Fatal("expected list failure")
-	}
-	if len(reorder.CapturedBodies) != 0 {
-		t.Fatal("reorder was called after list failure")
 	}
 	reg.Verify(t)
 }
@@ -114,15 +104,11 @@ func TestMailRulesReorderReturnsWriteFailure(t *testing.T) {
 
 func TestMailRulesReorderRejectsEmptyInputWithoutRead(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
-	list := &httpmock.Stub{Method: "GET", URL: "/user_mailboxes/me/rules", Optional: true}
-	reg.Register(list)
 	err := runMountedMailShortcut(t, MailRulesReorder, []string{"+rules-reorder"}, f, stdout)
 	if err == nil {
 		t.Fatal("expected empty-input error")
 	}
-	if len(list.CapturedBodies) != 0 {
-		t.Fatal("list was called for empty input")
-	}
+	reg.Verify(t)
 }
 
 func TestMailRulesReorderPaginatesBeforeWriting(t *testing.T) {
