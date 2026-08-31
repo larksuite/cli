@@ -6,12 +6,17 @@ package cmdupdate
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +25,7 @@ import (
 	exttransport "github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/distribution"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/selfupdate"
 	"github.com/larksuite/cli/internal/skillscheck"
@@ -37,6 +43,118 @@ func (updateURLRewriteProvider) ResolveInterceptor(context.Context) exttransport
 
 func (updateURLRewriteProvider) ResolveURLRewriter(context.Context) exttransport.URLRewriter {
 	return updateURLRewriter{}
+}
+
+type updateManifestProvider struct{ manifestURL string }
+
+func (p updateManifestProvider) Name() string { return "test-manifest" }
+func (p updateManifestProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
+	return nil
+}
+func (p updateManifestProvider) ResolveDistribution(context.Context) exttransport.DistributionConfig {
+	return exttransport.DistributionConfig{ManifestURL: p.manifestURL}
+}
+
+func TestManifestCheckAcceptsHTTPAndReportsOpaqueDowngradeTarget(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"schema":1,"version":"older-channel","artifacts":{"skills":{"url":"https://dist.example/skills","checksum":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},%q:{"url":"https://dist.example/binary","checksum":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}}`, runtime.GOOS+"-"+runtime.GOARCH)
+	}))
+	defer server.Close()
+	previousProvider := exttransport.GetProvider()
+	previousClient := distribution.DefaultClient
+	previousVersion := currentVersion
+	exttransport.Register(updateManifestProvider{manifestURL: server.URL})
+	distribution.DefaultClient = server.Client()
+	currentVersion = func() string { return "newer-channel" }
+	t.Cleanup(func() {
+		exttransport.Register(previousProvider)
+		distribution.DefaultClient = previousClient
+		currentVersion = previousVersion
+	})
+
+	factory, stdout, _ := newTestFactory(t)
+	err := updateRunWithContext(context.Background(), &UpdateOptions{Factory: factory, JSON: true, Check: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["action"] != "update_available" || got["target_version"] != "older-channel" || got["source"] != "manifest" {
+		t.Fatalf("output = %#v", got)
+	}
+	if _, exists := got["latest_version"]; exists {
+		t.Fatalf("manifest output must not label an arbitrary target as latest: %#v", got)
+	}
+}
+
+func TestClassifyDistributionError(t *testing.T) {
+	tests := []struct {
+		name      string
+		err       error
+		category  errs.Category
+		subtype   errs.Subtype
+		retryable bool
+	}{
+		{name: "timeout", err: context.DeadlineExceeded, category: errs.CategoryNetwork, subtype: errs.SubtypeNetworkTimeout, retryable: true},
+		{name: "dns", err: &net.DNSError{Err: "lookup failed", Name: "dist.example"}, category: errs.CategoryNetwork, subtype: errs.SubtypeNetworkDNS, retryable: true},
+		{name: "file IO", err: &os.PathError{Op: "mkdir", Path: "/tmp/config", Err: os.ErrPermission}, category: errs.CategoryInternal, subtype: errs.SubtypeFileIO},
+		{name: "bad archive", err: errors.New("unsupported archive format"), category: errs.CategoryNetwork, subtype: errs.SubtypeNetworkProtocol},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := classifyDistributionError("distribution failed", tt.err)
+			problem, ok := errs.ProblemOf(got)
+			if !ok || problem.Category != tt.category || problem.Subtype != tt.subtype || problem.Retryable != tt.retryable {
+				t.Fatalf("problem = %#v, want category=%q subtype=%q retryable=%v", problem, tt.category, tt.subtype, tt.retryable)
+			}
+			if !errors.Is(got, tt.err) {
+				t.Fatalf("cause %v was not preserved", tt.err)
+			}
+		})
+	}
+}
+
+func TestManifestArtifactProtocolFailureUsesNetworkTaxonomy(t *testing.T) {
+	payload := []byte("not an archive")
+	digest := fmt.Sprintf("sha256:%x", sha256.Sum256(payload))
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/manifest.json" {
+			_, _ = w.Write(payload)
+			return
+		}
+		artifactURL := server.URL + "/artifact"
+		fmt.Fprintf(w, `{"schema":1,"version":"target","artifacts":{"skills":{"url":%q,"checksum":%q},%q:{"url":%q,"checksum":%q}}}`,
+			artifactURL, digest, distribution.CurrentPlatformKey(), artifactURL, digest)
+	}))
+	defer server.Close()
+
+	previousProvider := exttransport.GetProvider()
+	previousClient := distribution.DefaultClient
+	previousVersion := currentVersion
+	exttransport.Register(updateManifestProvider{manifestURL: server.URL + "/manifest.json"})
+	distribution.DefaultClient = server.Client()
+	currentVersion = func() string { return "current" }
+	t.Cleanup(func() {
+		exttransport.Register(previousProvider)
+		distribution.DefaultClient = previousClient
+		currentVersion = previousVersion
+	})
+
+	factory, stdout, _ := newTestFactory(t)
+	if err := updateRunWithContext(context.Background(), &UpdateOptions{Factory: factory, JSON: true}); err == nil {
+		t.Fatal("update succeeded")
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	problem, _ := got["error"].(map[string]interface{})
+	if problem["type"] != "network" {
+		t.Fatalf("output = %#v", got)
+	}
 }
 
 type updateURLRewriter struct{}

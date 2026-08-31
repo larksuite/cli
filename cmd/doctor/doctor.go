@@ -241,7 +241,7 @@ func probeEndpoint(ctx context.Context, client *http.Client, url string) error {
 	return nil
 }
 
-// checkCLIUpdate actively queries the npm registry for the latest version.
+// checkCLIUpdate actively queries the configured source for its target version.
 // Unlike the root-level async check, this does a synchronous fetch with timeout
 // and works regardless of build version (dev builds included).
 func checkCLIUpdate() []checkResult {
@@ -250,7 +250,7 @@ func checkCLIUpdate() []checkResult {
 		return []checkResult{warn("cli_update", "check failed: "+err.Error(), "")}
 	}
 	current := build.Version
-	if update.IsNewer(latest, current) {
+	if update.IsUpdateAvailable(latest, current) {
 		return []checkResult{warn("cli_update",
 			fmt.Sprintf("%s → %s available", current, latest),
 			"run: lark-cli update")}

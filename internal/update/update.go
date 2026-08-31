@@ -4,6 +4,9 @@
 package update
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,6 +20,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/distribution"
 	"github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
@@ -35,6 +39,7 @@ const (
 type UpdateInfo struct {
 	Current string `json:"current"`
 	Latest  string `json:"latest"`
+	Source  string `json:"source,omitempty"`
 }
 
 // Message returns a concise update notification including the canonical
@@ -42,6 +47,9 @@ type UpdateInfo struct {
 // AI agents can parse a unified "run: lark-cli update" hint across
 // both notice types.
 func (u *UpdateInfo) Message() string {
+	if u.Source != "" {
+		return fmt.Sprintf("lark-cli target %s configured, current %s, run: lark-cli update", u.Latest, u.Current)
+	}
 	return fmt.Sprintf("lark-cli %s available, current %s, run: lark-cli update", u.Latest, u.Current)
 }
 
@@ -69,41 +77,88 @@ func httpClient() *http.Client {
 type updateState struct {
 	LatestVersion string `json:"latest_version"`
 	CheckedAt     int64  `json:"checked_at"`
+	Source        string `json:"source,omitempty"`
 }
 
 // CheckCached checks the local cache only (no network). Always fast.
 func CheckCached(currentVersion string) *UpdateInfo {
-	if shouldSkip(currentVersion) {
+	source, manifestMode, sourceErr := configuredSource()
+	if sourceErr != nil {
+		return nil
+	}
+	if shouldSkipForMode(currentVersion, manifestMode) {
 		return nil
 	}
 	state, _ := loadState()
 	if state == nil || state.LatestVersion == "" {
 		return nil
 	}
-	if !IsNewer(state.LatestVersion, currentVersion) {
+	if manifestMode {
+		if state.Source != manifestSourceKey(source.ManifestURL) || state.LatestVersion == currentVersion {
+			return nil
+		}
+		return &UpdateInfo{Current: currentVersion, Latest: state.LatestVersion, Source: "manifest"}
+	}
+	if state.Source != "" || !IsNewer(state.LatestVersion, currentVersion) {
 		return nil
 	}
 	return &UpdateInfo{Current: currentVersion, Latest: state.LatestVersion}
 }
 
-// RefreshCache fetches the latest version from npm and updates the local cache.
+// RefreshCache fetches the configured target and updates the local cache.
 // No-op if the cache is still fresh (< 24h). Safe to call from a goroutine.
 func RefreshCache(currentVersion string) {
-	if shouldSkip(currentVersion) {
+	source, manifestMode, sourceErr := configuredSource()
+	if sourceErr != nil {
+		return
+	}
+	if shouldSkipForMode(currentVersion, manifestMode) {
 		return
 	}
 	state, _ := loadState()
-	if state != nil && time.Since(time.Unix(state.CheckedAt, 0)) < cacheTTL {
+	identityMatches := !manifestMode && state != nil && state.Source == ""
+	if manifestMode {
+		identityMatches = state != nil && state.Source == manifestSourceKey(source.ManifestURL)
+	}
+	if identityMatches && time.Since(time.Unix(state.CheckedAt, 0)) < cacheTTL {
 		return // cache is fresh
 	}
-	latest, err := fetchLatestVersion()
+	latest, err := fetchLatestForMode(context.Background(), source, manifestMode)
 	if err != nil {
 		return
+	}
+	sourceKey := ""
+	if manifestMode {
+		sourceKey = manifestSourceKey(source.ManifestURL)
 	}
 	_ = saveState(&updateState{
 		LatestVersion: latest,
 		CheckedAt:     time.Now().Unix(),
+		Source:        sourceKey,
 	})
+}
+
+func manifestSourceKey(raw string) string {
+	sum := sha256.Sum256([]byte(raw))
+	return "manifest:" + hex.EncodeToString(sum[:])
+}
+
+func configuredSource() (distribution.Source, bool, error) {
+	source, ok, err := distribution.ResolveSource(context.Background())
+	if err != nil {
+		return distribution.Source{}, false, err
+	}
+	return source, ok, nil
+}
+
+func shouldSkipForMode(version string, manifestMode bool) bool {
+	if manifestMode {
+		if os.Getenv("LARKSUITE_CLI_NO_UPDATE_NOTIFIER") != "" || IsCIEnv() {
+			return true
+		}
+		return version == ""
+	}
+	return shouldSkip(version)
 }
 
 func shouldSkip(version string) bool {
@@ -187,10 +242,38 @@ func saveState(s *updateState) error {
 	return validate.AtomicWrite(statePath(), data, 0644)
 }
 
-// FetchLatest queries the npm registry and returns the latest published version.
-// This is a synchronous call with timeout, intended for diagnostic commands (doctor).
+// FetchLatest synchronously queries the active update source. It is intended
+// for diagnostic commands such as doctor.
 func FetchLatest() (string, error) {
+	source, ok, err := distribution.ResolveSource(context.Background())
+	if err != nil {
+		return "", err
+	}
+	return fetchLatestForMode(context.Background(), source, ok)
+}
+
+func fetchLatestForMode(ctx context.Context, source distribution.Source, manifestMode bool) (string, error) {
+	if manifestMode {
+		manifest, err := distribution.FetchManifest(ctx, source)
+		if err != nil {
+			return "", err
+		}
+		return manifest.Version, nil
+	}
 	return fetchLatestVersion()
+}
+
+// IsUpdateAvailable applies the active distribution's comparison rule.
+// Manifest versions are opaque targets, so any exact difference is actionable.
+func IsUpdateAvailable(target, current string) bool {
+	_, manifestMode, err := configuredSource()
+	if err != nil {
+		return false
+	}
+	if manifestMode {
+		return target != "" && target != current
+	}
+	return IsNewer(target, current)
 }
 
 // --- npm registry ---

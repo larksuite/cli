@@ -70,6 +70,32 @@ func WriteState(state SkillsState) error {
 	return validate.AtomicWrite(statePath(), append(data, '\n'), 0o644)
 }
 
+// SnapshotState captures the exact state file and returns a restore function.
+// Distribution installation uses it to roll back a state write together with
+// the managed Skills directories when a later binary replacement fails.
+func SnapshotState() (restore func() error, err error) {
+	path := statePath()
+	data, readErr := vfs.ReadFile(path)
+	if readErr != nil {
+		if !errors.Is(readErr, fs.ErrNotExist) {
+			return nil, readErr
+		}
+		return func() error {
+			removeErr := vfs.Remove(path)
+			if errors.Is(removeErr, fs.ErrNotExist) {
+				return nil
+			}
+			return removeErr
+		}, nil
+	}
+	return func() error {
+		if err := vfs.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return err
+		}
+		return validate.AtomicWrite(path, data, 0o644)
+	}, nil
+}
+
 func ReadSyncedVersion() (string, bool) {
 	state, ok, err := ReadState()
 	if err != nil || !ok || state.Version == "" {

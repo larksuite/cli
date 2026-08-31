@@ -29,6 +29,24 @@ type URLRewriterProvider interface {
 	ResolveURLRewriter(ctx context.Context) URLRewriter
 }
 
+// DistributionConfig selects a fixed distribution manifest. Manifest and
+// artifact URLs are final download addresses; the CLI does not pass them
+// through URL rewriting or the request interceptor. HTTP is supported for
+// trusted distribution networks; the provider is responsible for transport
+// integrity when it does not use HTTPS.
+type DistributionConfig struct {
+	ManifestURL string
+	_           struct{}
+}
+
+// DistributionProvider optionally supplies a distribution manifest in
+// addition to the existing request interceptor. Providers that do not
+// implement this interface retain the package-manager update flow.
+type DistributionProvider interface {
+	Provider
+	ResolveDistribution(ctx context.Context) DistributionConfig
+}
+
 // RequestClass describes the trust boundary of an outbound HTTP request.
 // Platform requests target endpoints owned by the CLI's endpoint resolver;
 // external requests target user-provided, pre-signed, CDN, registry, or other

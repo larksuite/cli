@@ -16,6 +16,7 @@ import (
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/distribution"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/selfupdate"
 	"github.com/larksuite/cli/internal/skillscheck"
@@ -103,10 +104,11 @@ func NewCmdUpdate(f *cmdutil.Factory) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "update",
-		Short: "Update lark-cli to the latest version",
-		Long: `Update lark-cli to the latest version.
+		Short: "Update lark-cli and its managed Skills",
+		Long: `Update lark-cli using the active update source.
 
 Detects the installation method automatically:
+  - configured distribution: installs checksum-verified CLI and Skills artifacts
   - npm install:  runs npm install -g @larksuite/cli@<version>
   - pnpm install: runs pnpm add -g @larksuite/cli@<version>
   - manual/other: shows GitHub Releases download URL
@@ -134,6 +136,9 @@ func updateRun(opts *UpdateOptions) error {
 }
 
 func updateRunWithContext(ctx context.Context, opts *UpdateOptions) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	io := opts.Factory.IOStreams
 	if _, err := skillscheck.ParseLayout(opts.SkillsLayout); err != nil {
 		return reportError(opts, io, "validation",
@@ -144,6 +149,20 @@ func updateRunWithContext(ctx context.Context, opts *UpdateOptions) error {
 			errs.NewValidationError(errs.SubtypeInvalidArgument, "--skills-layout cannot be used with --check").
 				WithParam("--skills-layout").
 				WithHint("Remove --skills-layout when using --check."))
+	}
+	source, manifestMode, err := distribution.ResolveSource(ctx)
+	if err != nil {
+		return reportError(opts, io, "configuration",
+			errs.NewConfigError(errs.SubtypeInvalidConfig, "invalid distribution configuration: %s", err).WithCause(err))
+	}
+	if manifestMode {
+		if strings.TrimSpace(opts.SkillsLayout) != "" {
+			return reportError(opts, io, "validation",
+				errs.NewValidationError(errs.SubtypeInvalidArgument, "--skills-layout is not supported by the configured distribution").
+					WithParam("--skills-layout"))
+		}
+		output.PendingNotice = nil
+		return runManifestUpdate(ctx, opts, source)
 	}
 	cur := currentVersion()
 	updater := newUpdater()

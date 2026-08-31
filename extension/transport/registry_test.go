@@ -35,6 +35,15 @@ type stubURLRewriter func(string) string
 
 func (f stubURLRewriter) RewriteURL(rawURL string) string { return f(rawURL) }
 
+type stubDistributionProvider struct {
+	stubProvider
+	config DistributionConfig
+}
+
+func (s *stubDistributionProvider) ResolveDistribution(context.Context) DistributionConfig {
+	return s.config
+}
+
 func TestGetProvider_NilByDefault(t *testing.T) {
 	mu.Lock()
 	provider = nil
@@ -106,5 +115,22 @@ func TestURLRewriterProviderIsOptional(t *testing.T) {
 	}
 	if got := rewriterProvider.ResolveURLRewriter(context.Background()).RewriteURL("https://source.example.test"); got != "https://mirror.example.test" {
 		t.Fatalf("RewriteURL() = %q", got)
+	}
+}
+
+func TestDistributionProviderIsOptional(t *testing.T) {
+	previous := GetProvider()
+	t.Cleanup(func() { Register(previous) })
+	p := &stubDistributionProvider{
+		stubProvider: stubProvider{name: "distribution"},
+		config:       DistributionConfig{ManifestURL: "https://dist.example/manifest.json"},
+	}
+	Register(p)
+	configured, ok := GetProvider().(DistributionProvider)
+	if !ok {
+		t.Fatal("registered provider does not implement DistributionProvider")
+	}
+	if got := configured.ResolveDistribution(context.Background()).ManifestURL; got != p.config.ManifestURL {
+		t.Fatalf("ManifestURL = %q", got)
 	}
 }

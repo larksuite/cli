@@ -14,12 +14,42 @@ import (
 	"github.com/spf13/cobra"
 
 	extcred "github.com/larksuite/cli/extension/credential"
+	exttransport "github.com/larksuite/cli/extension/transport"
+	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/surface"
 )
+
+type doctorManifestProvider struct{}
+
+func (doctorManifestProvider) Name() string { return "doctor-manifest-test" }
+func (doctorManifestProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
+	return nil
+}
+func (doctorManifestProvider) ResolveDistribution(context.Context) exttransport.DistributionConfig {
+	return exttransport.DistributionConfig{ManifestURL: "https://dist.example/manifest.json"}
+}
+
+func TestCheckCLIUpdateReportsDifferentOpaqueManifestTarget(t *testing.T) {
+	previousProvider := exttransport.GetProvider()
+	previousFetch := fetchLatestForDoctor
+	previousVersion := build.Version
+	exttransport.Register(doctorManifestProvider{})
+	fetchLatestForDoctor = func() (string, error) { return "older-channel", nil }
+	build.Version = "newer-channel"
+	t.Cleanup(func() {
+		exttransport.Register(previousProvider)
+		fetchLatestForDoctor = previousFetch
+		build.Version = previousVersion
+	})
+	checks := checkCLIUpdate()
+	if len(checks) != 1 || checks[0].Status != "warn" || !strings.Contains(checks[0].Message, "older-channel") {
+		t.Fatalf("checks = %#v", checks)
+	}
+}
 
 func TestNewCmdDoctor_FlagParsing(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{

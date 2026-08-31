@@ -6,15 +6,18 @@ package update
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	exttransport "github.com/larksuite/cli/extension/transport"
+	"github.com/larksuite/cli/internal/distribution"
 )
 
 // roundTripFunc adapts a function to http.RoundTripper.
@@ -24,12 +27,17 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { re
 
 type updateExternalProvider struct {
 	interceptor exttransport.Interceptor
+	manifestURL string
 }
 
 func (p updateExternalProvider) Name() string { return "update-external-test" }
 
 func (p updateExternalProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
 	return p.interceptor
+}
+
+func (p updateExternalProvider) ResolveDistribution(context.Context) exttransport.DistributionConfig {
+	return exttransport.DistributionConfig{ManifestURL: p.manifestURL}
 }
 
 func (updateExternalProvider) SupportsRequestClass(class exttransport.RequestClass) bool {
@@ -44,6 +52,39 @@ func (i *updateExternalInterceptor) PreRoundTrip(req *http.Request) func(*http.R
 	i.calls++
 	req.Header.Set("X-External-Route", "1")
 	return nil
+}
+
+func TestManifestCacheUsesExactTargetAndSourceIdentity(t *testing.T) {
+	clearSkipEnv(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-External-Route") != "" {
+			t.Fatal("manifest request passed through the request interceptor")
+		}
+		fmt.Fprintf(w, `{"schema":1,"version":"old-target","artifacts":{"skills":{"url":"https://dist.example/skills","checksum":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},%q:{"url":"https://dist.example/binary","checksum":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}}`, distribution.CurrentPlatformKey())
+	}))
+	defer server.Close()
+	previousProvider := exttransport.GetProvider()
+	previousClient := distribution.DefaultClient
+	distribution.DefaultClient = server.Client()
+	exttransport.Register(updateExternalProvider{interceptor: &updateExternalInterceptor{}, manifestURL: server.URL})
+	t.Cleanup(func() {
+		exttransport.Register(previousProvider)
+		distribution.DefaultClient = previousClient
+	})
+
+	RefreshCache("new-current")
+	stateBytes, err := os.ReadFile(statePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(stateBytes), server.URL) {
+		t.Fatal("update cache persisted the manifest URL")
+	}
+	info := CheckCached("new-current")
+	if info == nil || info.Latest != "old-target" || info.Source != "manifest" {
+		t.Fatalf("CheckCached = %#v", info)
+	}
 }
 
 // clearSkipEnv unsets all env vars that shouldSkip checks,
