@@ -125,6 +125,11 @@ var ImChatCreate = common.Shortcut{
 			"owner_id":  resData["owner_id"],
 			"external":  resData["external"],
 		}
+		if runtime.Config != nil {
+			if link := assembleChatAppLink(resData["chat_id"], runtime.Config.Brand); link != "" {
+				outData["chat_app_link"] = link
+			}
+		}
 
 		// Try to fetch the group share link without blocking on failure.
 		if chatID, ok := resData["chat_id"].(string); ok && chatID != "" {

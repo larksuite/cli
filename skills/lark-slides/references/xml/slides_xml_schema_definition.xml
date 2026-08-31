@@ -1297,6 +1297,7 @@
                 - autoStartAt: 有序列表起始编号, 可选, 取值范围 [1, 32767]; 显式指定时从当前段落起重置计数器, 未指定时沿用同一 content 内的前序计数器
                 - bulletChar: 自定义列表符号字符, 可选
                 - marginLeft: 段落左侧缩进宽度
+                - marginRight: 段落右侧缩进宽度
                 - indent: 首行缩进宽度
                 - tabStopPos/defaultTabSize: 段落级 Tab 配置, 覆盖 content 同名配置
             </xs:documentation>
@@ -1329,6 +1330,7 @@
             <xs:attribute name="autoStartAt" type="sml:AutoStartAtType" use="optional"/>
             <xs:attribute name="bulletChar" type="sml:BulletCharType" use="optional"/>
             <xs:attribute name="marginLeft" type="xs:double" use="optional" />
+            <xs:attribute name="marginRight" type="xs:double" use="optional" />
             <xs:attribute name="indent" type="sml:NonNegativeDouble" use="optional"/>
             <xs:attribute name="tabStopPos" type="sml:TabStopPosType" use="optional"/>
             <xs:attribute name="defaultTabSize" type="sml:TabSizeType" use="optional"/>

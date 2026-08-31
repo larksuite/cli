@@ -78,8 +78,7 @@ var SheetWriteImage = common.Shortcut{
 
 		imagePath := runtime.Str("image")
 		fio := runtime.FileIO()
-		stat, err := validateSheetWriteImageFile(fio, imagePath)
-		if err != nil {
+		if _, err := validateSheetWriteImageFile(fio, imagePath); err != nil {
 			return err
 		}
 
@@ -99,8 +98,9 @@ var SheetWriteImage = common.Shortcut{
 			imageName = filepath.Base(imagePath)
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Writing image: %s (%d bytes) → %s\n", imageName, stat.Size(), pointRange)
-
+		// No stage line on stderr: the API result already reports the written
+		// range (updateRange) and the write outcome, and a successful run must
+		// leave stderr empty.
 		data, err := runtime.CallAPITyped("POST", fmt.Sprintf("/open-apis/sheets/v2/spreadsheets/%s/values_image", validate.EncodePathSegment(token)), nil, map[string]interface{}{
 			"range": pointRange,
 			"image": imageBytes,

@@ -14,7 +14,7 @@
 |------|------|---------|
 | `--print-patch-template` | 打印 `--patch-file` 的 JSON 骨架 | 否（纯本地） |
 | `--inspect` | 返回当前模板完整 projection | 否（只 GET） |
-| `--set-*` / `--attach` | 扁平 flag 合并后 PUT | 是 |
+| `--set-*` / `--attach` / `--inline` | 扁平 flag 合并后 PUT | 是 |
 | `--patch-file` | 结构化 patch + 扁平 flag 合并后 PUT | 是 |
 
 ## 命令
@@ -67,10 +67,11 @@ lark-cli mail +template-update --as user --template-id 712345 \
 | `--set-template-content <html>` | 替换正文。支持 `<img src="./local.png" />` 相对路径自动上传并改写 |
 | `--set-template-content-file <path>` | 从文件加载替换正文；与 `--set-template-content` 互斥 |
 | `--set-plain-text` | 标为纯文本模式（置 true）。**不提供不会置 false**；要把 HTML 模板翻回 false，请用 `--patch-file` 的 `{"is_plain_text_mode": false}` |
-| `--set-to <emails>` | 替换默认收件人列表 |
-| `--set-cc <emails>` | 替换默认抄送 |
-| `--set-bcc <emails>` | 替换默认密送 |
-| `--attach <paths>` | 追加非 inline 附件（按书写顺序），不替换已有附件 |
+| `--set-to <emails>` | 用单次参数值替换默认收件人列表；多个地址仍在该值内用逗号分隔，传 `--set-to=""` 可清空 |
+| `--set-cc <emails>` | 用单次参数值替换默认抄送；多个地址仍在该值内用逗号分隔，传 `--set-cc=""` 可清空 |
+| `--set-bcc <emails>` | 用单次参数值替换默认密送；多个地址仍在该值内用逗号分隔，传 `--set-bcc=""` 可清空 |
+| `--attach '<path>'` | 追加非 inline 附件，不替换已有附件。多个附件请重复传 `--attach`，每次只放一个相对路径，参数值用单引号包住；按传入顺序上传 |
+| `--inline '<json>'` | 追加 inline 图片，不替换已有附件。多个 inline 图片请重复传 `--inline`，每次只放一个 JSON object，并用单引号包住：`'{"cid":"mycid","file_path":"./logo.png"}'`；`file_path` 必须是相对路径；CID 应唯一，例如随机十六进制字符串；在模板正文中用 `<img src="cid:mycid">` 引用；最终模板为纯文本模式时会被拒绝 |
 
 ### 结构化 patch
 
@@ -105,7 +106,7 @@ patch-file 字段（全部可选，未提供的字段保持当前模板原值）
 
 ## DryRun 行为
 
-- 默认：打印 `GET /user_mailboxes/:id/templates/:tid` + Drive 上传步骤（如有 `<img>` 或 `--attach`）+ `PUT` 步骤。
+- 默认：打印 `GET /user_mailboxes/:id/templates/:tid` + Drive 上传步骤（如有 `<img>`、`--attach` 或 `--inline`）+ `PUT` 步骤。
 - `--inspect`：只打印 `GET`。
 - `--print-patch-template`：打印骨架，不走任何 API。
 

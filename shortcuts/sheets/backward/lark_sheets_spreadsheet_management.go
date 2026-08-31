@@ -260,7 +260,13 @@ var SheetExport = common.Shortcut{
 		}
 		ticket, _ := data["ticket"].(string)
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Waiting for export task to complete...\n")
+		// TTY-only liveness: StartSpinner is gated on StderrIsTerminal, so this
+		// is a strict no-op for pipes, CI and captured output while a human at a
+		// terminal still sees the bounded wait is alive. stop() is idempotent
+		// and runs before every result write below.
+		stopSpinner := runtime.StartSpinner("Exporting")
+		defer stopSpinner()
+
 		var fileToken string
 		for i := 0; i < 50; i++ {
 			time.Sleep(600 * time.Millisecond)
@@ -280,11 +286,13 @@ var SheetExport = common.Shortcut{
 			}
 		}
 
+		stopSpinner()
 		if fileToken == "" {
-			return errs.NewNetworkError(errs.SubtypeNetworkTimeout, "export task timed out").WithRetryable()
+			return errs.NewNetworkError(errs.SubtypeNetworkTimeout, "export task timed out").
+				WithRetryable().
+				WithHint(fmt.Sprintf("the export task was created (ticket=%s); check it with: lark-cli drive +task_result --scenario export --ticket %s --file-token %s",
+					ticket, ticket, token))
 		}
-
-		fmt.Fprintf(runtime.IO().ErrOut, "Export complete: file_token=%s\n", fileToken)
 
 		if outputPath == "" {
 			runtime.Out(map[string]interface{}{
@@ -294,12 +302,21 @@ var SheetExport = common.Shortcut{
 			return nil
 		}
 
+		// Past this point the export artifact already exists server-side, so a
+		// download or save failure must hand back the tokens that let a caller
+		// retry the download alone instead of re-running the whole export. They
+		// used to be visible only through the removed "Export complete" stderr
+		// line.
+		downloadRecovery := fmt.Sprintf(
+			"the export artifact is ready (ticket=%s, file_token=%s)\nretry the download alone with: lark-cli drive +export-download --file-token %q",
+			ticket, fileToken, fileToken)
+
 		resp, err := runtime.DoAPIStream(ctx, &larkcore.ApiReq{
 			HttpMethod: http.MethodGet,
 			ApiPath:    fmt.Sprintf("/open-apis/drive/v1/export_tasks/file/%s/download", validate.EncodePathSegment(fileToken)),
 		})
 		if err != nil {
-			return wrapSheetsNetworkErr(err, "download failed: %s", err)
+			return appendSheetsExportRecoveryHint(wrapSheetsNetworkErr(err, "download failed: %s", err), downloadRecovery)
 		}
 		defer resp.Body.Close()
 
@@ -308,19 +325,41 @@ var SheetExport = common.Shortcut{
 			ContentLength: resp.ContentLength,
 		}, resp.Body)
 		if err != nil {
-			return common.WrapSaveErrorTyped(err)
+			return appendSheetsExportRecoveryHint(common.WrapSaveErrorTyped(err), downloadRecovery)
 		}
 
 		savedPath, _ := runtime.ResolveSavePath(outputPath)
 		if savedPath == "" {
 			savedPath = outputPath
 		}
+		// file_token and ticket ride along on the download path too: they are
+		// what a caller needs to re-download or resume without re-exporting,
+		// and this branch used to leak the token through a stderr line only.
 		runtime.Out(map[string]interface{}{
 			"saved_path": savedPath,
 			"size_bytes": result.Size(),
+			"file_token": fileToken,
+			"ticket":     ticket,
 		}, nil)
 		return nil
 	},
+}
+
+// appendSheetsExportRecoveryHint adds a recovery hint to an already-typed
+// error, leaving its category / subtype / code / log_id untouched (per the
+// error contract's "propagate typed errors unchanged").
+func appendSheetsExportRecoveryHint(err error, hint string) error {
+	if err == nil {
+		return nil
+	}
+	if p, ok := errs.ProblemOf(err); ok {
+		if strings.TrimSpace(p.Hint) != "" {
+			p.Hint = p.Hint + "\n" + hint
+		} else {
+			p.Hint = hint
+		}
+	}
+	return err
 }
 
 func validateSheetExportOutputPath(runtime *common.RuntimeContext) error {

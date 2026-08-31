@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -2084,16 +2085,68 @@ func TestDriveDownloadOmittedOutputRequiresMetadataScope(t *testing.T) {
 	}
 }
 
-func TestDriveDownloadDeclaresPermissionMemberAuthScope(t *testing.T) {
-	found := false
+func TestDriveDownloadTreatsPermissionMemberAuthScopeAsNonBlocking(t *testing.T) {
 	for _, scope := range DriveDownload.Scopes {
 		if scope == common.DrivePermissionMemberAuthScope {
-			found = true
-			break
+			t.Fatalf("DriveDownload.Scopes = %v, permission auth scope must not be an unconditional preflight", DriveDownload.Scopes)
 		}
 	}
-	if !found {
-		t.Fatalf("DriveDownload.Scopes = %v, want %q", DriveDownload.Scopes, common.DrivePermissionMemberAuthScope)
+	if !slices.Contains(DriveDownload.ConditionalScopes, common.DrivePermissionMemberAuthScope) {
+		t.Fatalf("DriveDownload.ConditionalScopes = %v, want best-effort scope %q", DriveDownload.ConditionalScopes, common.DrivePermissionMemberAuthScope)
+	}
+}
+
+func TestDriveDownloadPermissionAuthScopeErrorsWarnAndContinue(t *testing.T) {
+	tests := []struct {
+		name string
+		code int
+		msg  string
+	}{
+		{name: "app_scope_not_applied", code: 99991672, msg: "app scope not applied"},
+		{name: "token_scope_insufficient", code: 99991676, msg: "token scope insufficient"},
+		{name: "missing_scope", code: 99991679, msg: "missing scope"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, _, stderr, reg := cmdutil.TestFactory(t, driveTestConfig())
+			f.Credential = credential.NewCredentialProvider(nil, nil, &driveStatusScopedTokenResolver{scopes: "drive:file:download"}, nil)
+			fileToken := "file_" + tt.name
+			reg.Register(&httpmock.Stub{
+				Method: http.MethodGet,
+				URL:    "/open-apis/drive/v1/permissions/" + fileToken + "/members/auth",
+				Body: map[string]interface{}{
+					"code": tt.code,
+					"msg":  tt.msg,
+				},
+			})
+			reg.Register(&httpmock.Stub{
+				Method:  http.MethodGet,
+				URL:     "/open-apis/drive/v1/files/" + fileToken + "/download",
+				Status:  http.StatusOK,
+				RawBody: []byte("downloaded without permission auth scope"),
+				Headers: http.Header{"Content-Type": []string{"application/octet-stream"}},
+			})
+
+			tmpDir := t.TempDir()
+			withDriveWorkingDir(t, tmpDir)
+			err := mountAndRunDrive(t, DriveDownload, []string{
+				"+download",
+				"--file-token", fileToken,
+				"--output", "downloaded.bin",
+				"--as", "bot",
+			}, f, nil)
+			if err != nil {
+				t.Fatalf("download error = %v, want permission auth scope error %d to be non-blocking", err, tt.code)
+			}
+			if !strings.Contains(stderr.String(), "warning: export permission check failed; continuing with download:") {
+				t.Fatalf("stderr=%q, want permission scope warning", stderr.String())
+			}
+			data, readErr := os.ReadFile(filepath.Join(tmpDir, "downloaded.bin"))
+			if readErr != nil || string(data) != "downloaded without permission auth scope" {
+				t.Fatalf("downloaded content = %q, err=%v", string(data), readErr)
+			}
+		})
 	}
 }
 

@@ -60,7 +60,7 @@ lark-cli base +table-list --base-token xxx
 lark-cli base +field-list --base-token xxx --table-id <table_id>
 
 # 第 3 步：规划应该创建哪些组件（根据用户需求确定组件类型和数量）
-# 例如：总销售额（指标卡）、月度趋势（折线图）、品类占比（饼图）
+# 例如：总销售额（指标卡）、月度趋势（折线图）、负责人 Top N（排行榜）
 
 # 第 4 步：顺序创建每个组件（必须串行执行，不能并发）
 # 重要：创建组件前，先确定 dashboard_id、组件 name/type 和真实表字段
@@ -83,6 +83,14 @@ lark-cli base +dashboard-block-create \
   --data-config '{"table_name":"订单表","series":[{"field_name":"金额","rollup":"SUM"}],"group_by":[{"field_name":"月份","mode":"integrated"}]}'
 
 # 继续创建其他组件...
+
+# 排行榜组件：省略 limit_size 和 sort 时分别默认 10、value desc
+lark-cli base +dashboard-block-create \
+  --base-token xxx \
+  --dashboard-id blk_xxx \
+  --name "负责人销售额 Top 10" \
+  --type ranking \
+  --data-config '{"table_name":"订单表","series":[{"field_name":"金额","rollup":"SUM"}],"group_by":[{"field_name":"负责人"}]}'
 
 # 第 5 步：组件创建完成后，可按需使用 arrange 智能重排（未使用 --position 时可选）
 # 默认布局可能不够美观，arrange 会根据组件数量和类型自动优化布局
@@ -151,6 +159,13 @@ lark-cli base +dashboard-block-update \
   --block-id chtxxxxxxxx \
   --data-config '{...}' \
   --position '{...}'   # 可选，只在需要调整布局时传
+
+# 排行榜只修改 Top N；不会覆盖分组、指标、筛选或排序
+lark-cli base +dashboard-block-update \
+  --base-token xxx \
+  --dashboard-id blk_xxx \
+  --block-id chtxxxxxxxx \
+  --data-config '{"limit_size":20}'
 
 ```
 
@@ -225,6 +240,7 @@ lark-cli base +dashboard-block-get-data --base-token xxx --block-id chtxxxxxxxx
 | 类别比较（谁高谁低） | column | 柱状图组件 |
 | 占比分布（各部分比例） | pie | 饼图组件 |
 | 单个关键指标 | statistics | 指标卡组件 |
+| 单维度 Top N 排名 | ranking | 排行榜组件，单分组、单指标 |
 | 富文本说明/标题/注释 | text | 文本组件（支持 Markdown） |
 
 详细组件类型和 data_config 完整规则：[Dashboard Block 配置](lark-base-dashboard-block-config.md)

@@ -4,6 +4,7 @@
 package slides
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,12 +20,19 @@ import (
 // prefix or the interleaved "OFL0X" marker and must upload with
 // "office_slide_file".
 //
+// The token shape itself is common.IsLocalOfficeToken's contract and is
+// pinned exhaustively in TestIsLocalOfficeToken. What this test owns is the
+// slides half: that the shared answer selects office_slide_file and nothing else
+// does. The shape cases are kept here anyway, deliberately duplicated, because
+// they are what would catch the mapping being wired to a different predicate —
+// or to none — and a table that only held native tokens could not tell a working
+// mapping from a hardcoded slideFileParentType.
+//
 // The negative cases matter as much as the positive ones. A false positive —
 // a native token read as office — still uploads successfully, because the drive
 // backend does not validate that parent_node actually names an office file; the
 // damage only shows up later as an image that will not render, far from its
-// cause. So the marker check is pinned at its exact length and position rather
-// than left to a looser "contains OFL0X" reading.
+// cause.
 func TestSlidesMediaParentType(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -34,16 +42,18 @@ func TestSlidesMediaParentType(t *testing.T) {
 	}{
 		{"native presentation token", "pptcnABC123", slideFileParentType},
 		{"empty token", "", slideFileParentType},
-		{"dry-run wiki placeholder stays native", "<resolved_slides_token>", slideFileParentType},
 		{"fake_office imported token", "fake_office_abc123", officeSlideFileParentType},
-		{"fake_office token, only the prefix", fakeOfficePrefix, officeSlideFileParentType},
+		{"fake_office token, only the prefix", common.FakeOfficeTokenPrefix, officeSlideFileParentType},
 		{"local_office imported token", "local_office_abc123", officeSlideFileParentType},
-		{"local_office token, only the prefix", localOfficePrefix, officeSlideFileParentType},
+		{"local_office token, only the prefix", common.LocalOfficeTokenPrefix, officeSlideFileParentType},
 		{"interleaved OFL0X office token", "aaaaOaaaaFaaaaLaaaa0aaaaXaaa", officeSlideFileParentType},
 		{"interleaved pptcn native token", "abcdpefghpijkltmnopcqrstnuv", slideFileParentType},
 		{"interleaved shtcn token", "abcdsefghhijkltmnopcqrstnuv", slideFileParentType},
-		{"interleaved OFL0X marker with short length", "aaaaOaaaaFaaaaLaaaa0aaaaXaa", slideFileParentType},
-		{"interleaved OFL0X marker with long length", "aaaaOaaaaFaaaaLaaaa0aaaaXaaaa", slideFileParentType},
+		{"interleaved OFL0X, 27 chars (current local-office format)", "aaaaOaaaaFaaaaLaaaa0aaaaXaa", officeSlideFileParentType},
+		{"interleaved OFL0X, 29 chars (longer than any known format)", "aaaaOaaaaFaaaaLaaaa0aaaaXaaaa", officeSlideFileParentType},
+		{"interleaved OFL0X, 25 chars (marker exactly fills the token)", "aaaaOaaaaFaaaaLaaaa0aaaaX", officeSlideFileParentType},
+		{"interleaved OFL0X, 24 chars (one short of holding the marker)", "aaaaOaaaaFaaaaLaaaa0aaaa", slideFileParentType},
+		{"interleaved OFL0X, 28 chars with ppt office-type enum", "ccccOccccFccccLcccc0ccccXccP", officeSlideFileParentType},
 		{"fake_office prefix mid-string is not matched", "pptfake_office_abc", slideFileParentType},
 		{"local_office prefix mid-string is not matched", "pptlocal_office_abc", slideFileParentType},
 	}
@@ -107,6 +117,151 @@ func TestSlidesMediaUploadExecuteParentType(t *testing.T) {
 			// selects a namespace, it does not rewrite what is being pointed at.
 			if got := body.Fields["parent_node"]; got != tc.token {
 				t.Fatalf("parent_node = %q, want %q", got, tc.token)
+			}
+		})
+	}
+}
+
+// mustJSONArray renders XML pages as the JSON array --slides expects.
+func mustJSONArray(t *testing.T, pages ...string) string {
+	t.Helper()
+
+	encoded, err := json.Marshal(pages)
+	if err != nil {
+		t.Fatalf("marshal --slides: %v", err)
+	}
+	return string(encoded)
+}
+
+// uploadStepBody finds the planned upload_all call and returns its body. Wiki
+// refs put a get_node step first, so the upload is not at a fixed index.
+func uploadStepBody(t *testing.T, steps []map[string]interface{}) map[string]interface{} {
+	t.Helper()
+
+	for i, step := range steps {
+		if step["url"] == "/open-apis/drive/v1/medias/upload_all" {
+			body, ok := step["body"].(map[string]interface{})
+			if !ok {
+				t.Fatalf("api[%d].body = %#v, want an object", i, step["body"])
+			}
+			return body
+		}
+	}
+	t.Fatalf("no upload_all step planned: %#v", steps)
+	return nil
+}
+
+// TestSlidesDryRunParentType pins the preview-time mapping, which differs from
+// the Execute-time one in exactly one way: a wiki ref is native by construction.
+//
+// resolvePresentationID rejects any wiki node whose obj_type is not "slides"
+// (helpers.go), and an imported office deck sits in drive as a "file" node, so it
+// cannot survive that gate to reach an upload. A wiki preview may therefore say
+// slide_file about a token it has never seen.
+//
+// The load-bearing case is the last one. A wiki node token can itself be
+// office-shaped — it is a different token in a different namespace than the deck
+// it points at — so classifying ref.Token would be wrong for a wiki ref even
+// though it is right for every other kind. That is what stops a future
+// "simplification" to slidesMediaParentType(ref.Token).
+func TestSlidesDryRunParentType(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		ref  presentationRef
+		want string
+	}{
+		{"native token", presentationRef{Kind: "slides", Token: "pptcnABC123"}, slideFileParentType},
+		{"imported office token", presentationRef{Kind: "slides", Token: "aaaaOaaaaFaaaaLaaaa0aaaaXaaa"}, officeSlideFileParentType},
+		{"legacy office prefix", presentationRef{Kind: "slides", Token: "fake_office_abc123"}, officeSlideFileParentType},
+		{"wiki node token", presentationRef{Kind: "wiki", Token: "wikcnABC123"}, slideFileParentType},
+		{"office-shaped wiki node token", presentationRef{Kind: "wiki", Token: "aaaaOaaaaFaaaaLaaaa0aaaaXaaa"}, slideFileParentType},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := slidesDryRunParentType(tc.ref); got != tc.want {
+				t.Fatalf("slidesDryRunParentType(%+v) = %q, want %q", tc.ref, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestSlidesDryRunPlaceholderNodeParentType pins the end-to-end preview for every
+// surface whose parent_node is a placeholder, which is where the parent_type has
+// no token to be read off of.
+//
+// The placeholder must never be the thing that decides the type. Feeding it to
+// slidesMediaParentType yields slide_file, which is the right answer here — but
+// by accident, because a placeholder matches no office token shape. That leaves
+// the preview hostage to the placeholder's spelling and to every rule later added
+// to common.IsLocalOfficeToken, so these cases pin the value while the
+// production code
+// asserts it directly instead of deriving it.
+func TestSlidesDryRunPlaceholderNodeParentType(t *testing.T) {
+	const wikiURL = "https://example.feishu.cn/wiki/wikcnDryRunProbe123"
+	slideXML := `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data>` +
+		`<img src="@./chart.png" topLeftX="10" topLeftY="10" width="100" height="100"/>` +
+		`</data></slide>`
+
+	cases := []struct {
+		name     string
+		shortcut common.Shortcut
+		args     []string
+		wantNode string
+	}{
+		{
+			name:     "media-upload via wiki",
+			shortcut: SlidesMediaUpload,
+			args: []string{"+media-upload", "--presentation", wikiURL,
+				"--file", "chart.png", "--dry-run", "--as", "user"},
+			wantNode: unresolvedSlidesTokenPlaceholder,
+		},
+		{
+			name:     "add-slide via wiki",
+			shortcut: SlidesAddSlide,
+			args: []string{"+add-slide", "--presentation", wikiURL,
+				"--slide", slideXML, "--dry-run", "--as", "user"},
+			wantNode: unresolvedSlidesTokenPlaceholder,
+		},
+		{
+			name:     "update-slide via wiki",
+			shortcut: SlidesUpdateSlide,
+			args: []string{"+update-slide", "--presentation", wikiURL, "--slide-id", "s1",
+				"--content", slideXML, "--dry-run", "--as", "user"},
+			wantNode: unresolvedSlidesTokenPlaceholder,
+		},
+		{
+			// +create has no --presentation flag at all: its node is minted by
+			// the create call earlier in the same orchestration, so the deck is
+			// always one the API just made and never an imported office file.
+			name:     "create mints its own deck",
+			shortcut: SlidesCreate,
+			args: []string{"+create", "--title", "probe",
+				"--slides", mustJSONArray(t, slideXML), "--dry-run", "--as", "user"},
+			wantNode: "<xml_presentation_id>",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "chart.png"), []byte("png-bytes"), 0o600); err != nil {
+				t.Fatalf("write fixture: %v", err)
+			}
+			withSlidesTestWorkingDir(t, dir)
+
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			if err := runSlidesShortcut(t, f, stdout, tc.shortcut, tc.args); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			body := uploadStepBody(t, decodeShortcutDryRunAPI(t, stdout))
+			if body["parent_node"] != tc.wantNode {
+				t.Fatalf("parent_node = %v, want %q", body["parent_node"], tc.wantNode)
+			}
+			if body["parent_type"] != slideFileParentType {
+				t.Fatalf("parent_type = %v, want %q", body["parent_type"], slideFileParentType)
 			}
 		})
 	}

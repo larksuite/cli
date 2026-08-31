@@ -48,7 +48,7 @@ lark-cli minutes +detail --minute-tokens <minute_token> --wait-ready --transcrip
 
 ## 增删改 AI 待办
 
-妙记 AI 待办不是飞书任务。上下文包含妙记 URL / `minute_token` 并要求修改妙记待办时，禁止改走 `lark-task`。
+妙记 AI 待办不是飞书任务。上下文包含妙记 URL / `minute_token` 并要求修改妙记待办时，禁止改走 `lark-task`；用户同时指定了负责人（包括"负责人是我"）也不改变归属。
 
 ```bash
 lark-cli minutes +todo --minute-token <token> --operation add|update|delete ... --as user
@@ -58,6 +58,18 @@ lark-cli minutes +todo --minute-token <token> --operation add|update|delete ... 
 - 更新或删除前，先执行 `minutes +detail --minute-tokens <token> --todo --as user`，按内容匹配取得精确 `todo_id`；不要用列表顺序代替 ID。
 - 待办 ID、批量结构和部分成功语义见 [`lark-minutes-todo`](../references/lark-minutes-todo.md)。
 
+### 指定负责人
+
+妙记待办表示负责人的既定写法是把 `@姓名` 作为纯文本写进待办内容，不存在独立的负责人字段：
+
+- 用户直接给出姓名时不做任何查找，原文拼成 `@姓名`。
+- 用户说"负责人是我"时，先用 `lark-cli contact +get-user --as user` 取真实姓名再拼接；取不到就不写任何 `@` 提及，不要保留字面的 `@我`。
+- 姓名解析只影响追加的 `@` 文本，绝不能阻塞或取消待办创建；不要为处理负责人改走 `lark-task` 或做进一步通讯录搜索。
+- 不要用"以你的身份创建即归属于你"代替真正的 `@` 文本拼接；`--as` 身份和负责人是两件不相关的事。
+- 回复只陈述结果（妙记、待办内容、负责人、完成状态），不要解释接口字段限制，也不要建议改用 `lark-task` 来"明确负责人"。
+
+完整规则和示例见 [`lark-minutes-todo`](../references/lark-minutes-todo.md) 的「负责人 / `@` 提及」。
+
 ## 批量替换逐字稿关键词
 
 ```bash
@@ -66,7 +78,11 @@ lark-cli minutes +word-replace --minute-token <token> --replace-words '[{"source
 
 多组替换放在同一个 JSON 数组中。具体参数运行 `lark-cli minutes +word-replace --help`。
 
-返回 `not_found` 表示 `source_word` 没有命中，是参数问题而不是权限问题；先读取当前 Transcript，核对精确写法和大小写后再决定是否重试。
+用户给出原词和目标词后直接替换：不要为了核对写法先读取 Transcript，也不要在替换成功后回读 Transcript 验证。接口逐词返回结果，按结果回报即可。
+
+只要有一个关键词命中就是成功：`data.message` 列出 Succeeded 和 Failed 关键词。重试时只提交 Failed 的词，不要重复提交已成功的词，否则会把新词再替换一遍。
+
+全部关键词都没命中才是失败（`not_found`）。这是参数问题而不是权限问题；如实告知用户哪些词没命中，请用户确认精确写法、大小写和空格后再决定是否重试，不要靠读取 Transcript 自行猜词。
 
 ## 替换逐字稿说话人
 
@@ -120,6 +136,12 @@ lark-cli minutes +apply-permission --minute-token <token> --perm view --as <sour
 
 `permission_denied` 表示对该妙记没有编辑权，不等于 OAuth scope 缺失；请所有者授权，不要误走 `auth login --scope`。
 
+## ASR/AI 额度不足
+
+`minutes +upload`、`+summary`、`+todo` 和 `+word-replace` 都可能返回 `quota_exceeded`，表示 ASR/AI 额度已耗尽。`+upload` 是额度不足以转写这个音视频，妙记根本没有创建；其余三个是该妙记生成时额度就已用尽、AI 产物未完整生成，写操作无法落库。
+
+请用户去妙记详情页查看额度详细信息，不要重试：CLI 无法补充或提升额度，重试同样的请求不会成功。这不是权限问题，也不要误走 `+apply-permission` 或 `auth login --scope`。
+
 ## 确认修改结果
 
-修改前只读取目标相关字段，修改后用 `minutes +detail` 或对应读取接口回读。批量或多步修改逐项报告写前值、写后结果和失败原因；部分成功时不要回滚已成功项，除非命令明确承诺原子回滚。
+修改前只读取目标相关字段，修改后用 `minutes +detail` 或对应读取接口回读。命令自身已逐项返回写入结果时不再回读，例如 `minutes +word-replace` 的 Succeeded / Failed 关键词。批量或多步修改逐项报告写前值、写后结果和失败原因；部分成功时不要回滚已成功项，除非命令明确承诺原子回滚。

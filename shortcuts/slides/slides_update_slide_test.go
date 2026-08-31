@@ -105,8 +105,9 @@ func TestUpdateSlideSendsOnePagePart(t *testing.T) {
 	if part.BlockID != "pYw" {
 		t.Fatalf("block_id = %q, want the page id pYw", part.BlockID)
 	}
-	// The caller's bytes travel through untouched apart from the injected root id,
-	// so their formatting lands in the page.
+	// The root gets the page id stamped; the caller's bytes are otherwise preserved
+	// (only a stale <note> id would be dropped, and this fixture has no <note>), so
+	// their content, formatting and visible element ids all land in the page.
 	if !strings.HasPrefix(part.Replacement, `<slide id="pYw">`) {
 		t.Fatalf("replacement root not stamped with the page id: %s", part.Replacement)
 	}

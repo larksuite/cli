@@ -640,17 +640,17 @@ var DropdownSet = common.Shortcut{
 	HasFormat:   true,
 	Flags:       flagsFor("+dropdown-set"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if err := validateViaInput(dropdownSetInput)(ctx, runtime); err != nil {
-			return err
-		}
-		warnDropdownSourceRangeHighlight(runtime)
-		return nil
+		return validateViaInput(dropdownSetInput)(ctx, runtime)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := dropdownSetInput(runtime, token, sheetID, sheetName)
-		return invokeToolDryRun(token, ToolKindWrite, "set_cell_range", input)
+		dry := invokeToolDryRun(token, ToolKindWrite, "set_cell_range", input)
+		if warning := dropdownSourceRangeHighlightWarning(runtime); warning != "" {
+			dry.Set("warning_message", warning)
+		}
+		return dry
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -669,7 +669,7 @@ var DropdownSet = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		runtime.Out(out, nil)
+		runtime.Out(appendSheetsWarnings(out, dropdownHighlightWarnings(runtime)), nil)
 		return nil
 	},
 }
@@ -822,34 +822,48 @@ func validateDropdownSourceOrOptions(runtime flagView) (int, error) {
 // isOptionError=true (highlight + range > 2000 is an unsupported combo).
 const dropdownSourceRangeHighlightLimit = 2000
 
-// warnDropdownSourceRangeHighlight emits a soft stderr warning when the user
+// dropdownSourceRangeHighlightWarning returns a soft warning when the user
 // targets a --source-range larger than dropdownSourceRangeHighlightLimit while
-// highlight is on (the server-side default and the most common path).
-// Inline --options is not subject to this limit (server has no inline count
-// or per-item length cap; only the listFromRange + highlight combo is).
-// Validate phase only — never blocks the request. Caller must already have
+// highlight is on (the server-side default and the most common path), or ""
+// when the request is within limits. Inline --options is not subject to this
+// limit (server has no inline count or per-item length cap; only the
+// listFromRange + highlight combo is).
+//
+// It never blocks the request: the dropdown is still installed, just in the
+// server's option-error state. Because that state is a property of the RESULT
+// the caller now owns, the warning travels in the success payload's `warnings`
+// (and in the dry-run preview), not on stderr. Callers must already have
 // confirmed the source-or-options validation passed.
-func warnDropdownSourceRangeHighlight(runtime *common.RuntimeContext) {
+func dropdownSourceRangeHighlightWarning(runtime flagView) string {
 	sourceRange := strings.TrimSpace(runtime.Str("source-range"))
 	if sourceRange == "" {
-		return // inline --options mode — no server-side size cap applies
+		return "" // inline --options mode — no server-side size cap applies
 	}
 	// highlight is tri-state: omitted = ON (server default), --highlight=true
 	// = ON, --highlight=false = OFF. Only the OFF case avoids the warning.
 	if runtime.Changed("highlight") && !runtime.Bool("highlight") {
-		return
+		return ""
 	}
 	rows, cols, err := rangeDimensions(sourceRange)
 	if err != nil {
-		return // already errored upstream; don't double-report
+		return "" // already errored upstream; don't double-report
 	}
 	cellCount := rows * cols
 	if cellCount <= dropdownSourceRangeHighlightLimit {
-		return
+		return ""
 	}
-	fmt.Fprintf(runtime.IO().ErrOut,
-		"warning: --source-range covers %d cells; server marks the dropdown as option-error when highlight is on and the source exceeds %d cells. Pass --highlight=false to suppress this.\n",
+	return fmt.Sprintf(
+		"warning: --source-range covers %d cells; server marks the dropdown as option-error when highlight is on and the source exceeds %d cells. Pass --highlight=false to suppress this.",
 		cellCount, dropdownSourceRangeHighlightLimit)
+}
+
+// dropdownHighlightWarnings adapts dropdownSourceRangeHighlightWarning to the
+// []string shape appendSheetsWarnings takes.
+func dropdownHighlightWarnings(runtime flagView) []string {
+	if warning := dropdownSourceRangeHighlightWarning(runtime); warning != "" {
+		return []string{warning}
+	}
+	return nil
 }
 
 // ─── range parsing helpers ────────────────────────────────────────────
@@ -1214,7 +1228,8 @@ var CellsSetImage = common.Shortcut{
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		token, _ := resolveSpreadsheetToken(runtime)
+		ref, _ := parseSpreadsheetRef(runtime)
+		token := ref.Token
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		imgPath := strings.TrimSpace(runtime.Str("image"))
 		fileName := strings.TrimSpace(runtime.Str("name"))
@@ -1235,16 +1250,9 @@ var CellsSetImage = common.Shortcut{
 				}},
 			}}},
 		})
-		return common.NewDryRunAPI().
-			POST("/open-apis/drive/v1/medias/upload_all").
-			Desc("upload local image to drive (parent_type=" + sheetMediaParentType(token) + ")").
-			Body(map[string]interface{}{
-				"file_name":   fileName,
-				"parent_type": sheetMediaParentType(token),
-				"parent_node": token,
-				"size":        "<file_size>",
-				"file":        "@" + imgPath,
-			}).
+		d := common.NewDryRunAPI()
+		appendSheetImageUploadDryRun(d, runtime, ref, imgPath, fileName)
+		return d.
 			POST(toolInvokePath(token, ToolKindWrite)).
 			Desc("embed file_token into the cell via set_cell_range").
 			Body(setCellBody)

@@ -57,6 +57,20 @@ func TestDrive_MemberRemoveDryRun(t *testing.T) {
 			wantMemberKind:   "user",
 		},
 		{
+			name: "app ID is accepted",
+			args: []string{
+				"drive", "+member-remove",
+				"--token", "doxcnRemoveAppID",
+				"--type", "docx",
+				"--member-id", "cli_app_123",
+				"--member-type", "appid",
+				"--dry-run",
+			},
+			wantURL:          "/open-apis/drive/v1/permissions/doxcnRemoveAppID/members/cli_app_123",
+			wantResourceType: "docx",
+			wantMemberType:   "appid",
+		},
+		{
 			name: "ordinary wiki member defaults container scope",
 			args: []string{
 				"drive", "+member-remove",
@@ -204,11 +218,6 @@ func TestDrive_MemberRemoveDryRunRejectsInvalidInputs(t *testing.T) {
 			name:    "wiki-space ID requires member kind",
 			args:    []string{"drive", "+member-remove", "--token", "wikcnRemove", "--type", "wiki", "--member-id", "space_member", "--member-type", "wikispaceid", "--dry-run"},
 			wantErr: "--member-kind is required",
-		},
-		{
-			name:    "app ID is rejected",
-			args:    []string{"drive", "+member-remove", "--token", "doxcnRemove", "--type", "docx", "--member-id", "cli_app", "--member-type", "appid", "--dry-run"},
-			wantErr: "allowed: email, openid, openchat, opendepartmentid, userid, unionid, groupid, wikispaceid",
 		},
 		{
 			name:    "wiki-space ID is rejected outside wiki",

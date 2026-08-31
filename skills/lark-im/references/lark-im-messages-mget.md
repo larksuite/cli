@@ -51,6 +51,14 @@ Each message contains:
 | `sender` | Sender information (includes `name`) |
 | `content` | Message content |
 
+For `post` messages, the attachment zone (top-level `files` array) is rendered as trailing lines in `content`, one per attachment:
+
+- `<file key="file_xxx" name="report.pdf"/>` — a file with a display name (same tag style as a standalone `file` message)
+- `<file key="file_xxx"/>` — a file with an empty display name (the server always backfills names, so this branch is rare but valid on the wire)
+- `<folder key="file_xxx" name="assets"/>` — a folder (`is_folder: true`, same tag style as a standalone `folder` message)
+
+Use `--format json` to see the full content without table truncation — note the content is the rendered text (including the `<file>`/`<folder>` lines above), not the raw post JSON. Attachment file keys rendered in the tags are eligible for [`+messages-resources-download`](lark-im-messages-resources-download.md) via `--download-resources`.
+
 ## Usage Scenarios
 
 ### Scenario 1: Fetch the full content of a specific message

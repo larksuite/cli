@@ -35,6 +35,10 @@ Chat (oc_xxx)
 
 ## Important Notes
 
+### AppLink and Share Links
+
+Prefer CLI-returned links: use `chat_app_link` to open joined conversations, `message_app_link` to open messages, and `share_link` to invite others to groups. If manually building a joined-conversation AppLink, use `https://<applink_host>/client/chat/open?openChatId=<oc_xxx>`, never `chatId=<oc_xxx>` or `lark://...chat_id=<oc_xxx>`.
+
 ### Identity and Token Mapping
 
 - `--as user` means **user identity** and uses `user_access_token`. Calls run as the authorized end user, so permissions depend on both the app scopes and that user's own access to the target chat/message/resource.
@@ -60,7 +64,7 @@ The four message-pulling shortcuts (`+messages-mget`, `+chat-messages-list`, `+m
 
 ### Card Messages (Interactive)
 
-**Before sending or replying with any `interactive` card (`+messages-send` / `+messages-reply`), you MUST read [`references/card/lark-im-card-create.md`](references/card/lark-im-card-create.md) and follow its workflow.** The card JSON passed to `--msg-type interactive --content` must be the output of that workflow — never hand-write or copy a card payload.
+**Before sending, replying with, or updating any `interactive` card (`+messages-send` / `+messages-reply` / `messages.patch`), you MUST read [`references/card/lark-im-card-create.md`](references/card/lark-im-card-create.md) and follow its workflow.** The card JSON passed to `--msg-type interactive --content` (send/reply) or `messages.patch --data` (update) must be the output of that workflow — never hand-write or copy a card payload.
 
 Card messages (`interactive` type) are not yet supported for compact conversion in event subscriptions. The raw event data will be returned instead, with a hint printed to stderr.
 
@@ -110,6 +114,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli im +<verb> [flags]`）。
 | [`+chat-search`](references/lark-im-chat-search.md) | Search visible group chats by --query keyword and/or --member-ids; user/bot; e.g. look up chat_id by group name; supports type filters, sorting, auto-pagination, and --exclude-muted (user identity only) |
 | [`+chat-update`](references/lark-im-chat-update.md) | Update group chat name or description; user/bot; updates a chat's name or description |
 | [`+message-read-users`](references/lark-im-message-read-status.md) | List users who read one message; user/bot; identity-specific scopes; supports bounded auto-pagination |
+| [`+messages-edit`](references/lark-im-messages-edit.md) | Edit a message's content (text/post, including the attachment zone); bot-only (user identity is rejected by the server); PUT /open-apis/im/v1/messages/:message_id |
 | [`+messages-mget`](references/lark-im-messages-mget.md) | Batch get messages by IDs; user/bot; fetches up to 50 om_ message IDs, formats sender names, expands thread replies |
 | [`+messages-read-status`](references/lark-im-message-read-status.md) | Batch query whether the current user read 1–50 messages; user-only; returns readable items and invalid message IDs |
 | [`+messages-reply`](references/lark-im-messages-reply.md) | Reply to a message (supports thread replies); user/bot; supports text/markdown/post/media replies, reply-in-thread, idempotency key |
@@ -159,6 +164,11 @@ lark-cli im <resource> <method> [flags] # 调用 API
   - `update` — 设置自己的群昵称。Set or update your own nickname in the chat (self-only). Identity: `user` only (`user_access_token`); `nickname` must be a non-empty string (max 300 bytes). Use DELETE to clear it.
   - `delete` — 清空自己的群昵称。Clear your own nickname in the chat (self-only). Identity: `user` only (`user_access_token`).
 
+### chat.join_requests
+
+  - `list` — 列出群的待审批入群申请（仅群主/管理员，user_access_token）。List pending join requests for a chat. Identity: `user` only (`user_access_token`); the caller must be the chat owner or an admin. Paginated (`page_size` 1-100); stop on `has_more == false` — `page_token` is returned even on the last page, so paging while it is present never terminates.
+  - `handle` — 批量审批入群申请（approve/reject，仅群主/管理员，user_access_token）。Approve or reject pending join requests in bulk (1-50 items, processed in order). Identity: `user` only (`user_access_token`); the caller must be the chat owner or an admin. `results[]` mirrors `items[]` in count and order — check each `result` (`success` / `failed` / `already_handled`); exit 0 does not mean every item succeeded.
+
 ### chat.managers
 
   - `add_managers` — 指定群管理员。Identity: supports `user` and `bot`; only the group owner can add managers; max 10 managers per chat (20 for super-large chats), and at most 5 bots per request.
@@ -176,6 +186,7 @@ lark-cli im <resource> <method> [flags] # 调用 API
   - `forward` — 转发消息。Identity: supports `user` and `bot`.
   - `merge_forward` — 合并转发消息。Identity: `bot` only (`tenant_access_token`).
   - `read_users` — 查询消息已读信息。Identity: supports `user` and `bot`; the caller must still be in the chat. A user can query messages they sent within the last 7 days, while a bot can query only messages sent by that bot within the last 7 days.[Must-read](references/lark-im-message-read-status.md)
+  - `patch` — 更新已发送的消息卡片。Update an interactive message card sent by the app. Identity: supports `user` and `bot`; the message must have been sent within the last 14 days, and `content` must be a JSON-serialized string no larger than 30 KB.[Must-read](references/card/lark-im-card-create.md)
   - `urgent_app` — 发送应用内加急。Identity: `bot` only (`tenant_access_token`); the bot must be the message sender and must be in the conversation that contains the message.
   - `urgent_phone` — 发送电话加急。Identity: `bot` only (`tenant_access_token`); the bot must be the message sender and must be in the conversation that contains the message.
   - `urgent_sms` — 发送短信加急。Identity: `bot` only (`tenant_access_token`); the bot must be the message sender and must be in the conversation that contains the message.
@@ -232,6 +243,8 @@ lark-cli im <resource> <method> [flags] # 调用 API
 | `chat.managers.delete_managers` | `im:chat.managers:write_only` |
 | `chat.moderation.get` | `im:chat.moderation:read` |
 | `chat.moderation.update` | `im:chat:moderation:write_only` |
+| `chat.join_requests.list` | `im:chat.membership_application:read` |
+| `chat.join_requests.handle` | `im:chat.membership_application:write` |
 | `+messages-read-status` | user: `im:message:readonly` (recommended), `im:message`, or `im:message:get_as_user` |
 | `+message-read-users` | user: `im:message:readonly` (recommended), `im:message`, `im:message:basic`, or `im:message:get_as_user`; bot: `im:message:readonly` |
 | `messages.read_status` | `im:message:readonly` (recommended), `im:message`, or `im:message:get_as_user` |
@@ -239,6 +252,7 @@ lark-cli im <resource> <method> [flags] # 调用 API
 | `messages.forward` | `im:message` |
 | `messages.merge_forward` | `im:message` |
 | `messages.read_users` | user: `im:message:readonly` (recommended), `im:message`, `im:message:basic`, or `im:message:get_as_user`; bot: `im:message:readonly` |
+| `messages.patch` | `im:message:update` |
 | `messages.urgent_app` | `im:message.urgent` |
 | `messages.urgent_phone` | `im:message.urgent:phone` |
 | `messages.urgent_sms` | `im:message.urgent:sms` |
