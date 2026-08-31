@@ -5,18 +5,28 @@ package okr
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
+	lark "github.com/larksuite/oapi-sdk-go/v3"
+	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/spf13/cobra"
 )
+
+type commentTestRoundTripper func(*http.Request) (*http.Response, error)
+
+func (f commentTestRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
 
 func commentTestConfig(t *testing.T) *core.CliConfig {
 	t.Helper()
@@ -61,27 +71,44 @@ func commentItem(id, created string) map[string]interface{} {
 	}
 }
 
+func requireCommentValidationError(t *testing.T, err error, param string) *errs.ValidationError {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("error = %T (%v), want *errs.ValidationError", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if ve.Param != param {
+		t.Fatalf("Param = %q, want %q", ve.Param, param)
+	}
+	return ve
+}
+
 func TestCommentValidationBranches(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name string
-		args []string
-		want string
+		name, param string
+		args        []string
 	}{
-		{"missing target id", []string{"+comment-list", "--target-type", "cycle"}, "required"},
-		{"bad target type", []string{"+comment-list", "--target-id", "1", "--target-type", "bad"}, "target-type"},
-		{"bad target id", []string{"+comment-list", "--target-id", "0", "--target-type", "cycle"}, "positive int64"},
-		{"bad user id type", []string{"+comment-list", "--target-id", "1", "--target-type", "cycle", "--user-id-type", "bad"}, "user-id-type"},
-		{"bad style", []string{"+comment-list", "--target-id", "1", "--target-type", "cycle", "--style", "bad"}, "style"},
-		{"bad page size", []string{"+comment-list", "--target-id", "1", "--target-type", "cycle", "--page-size", "101"}, "page-size"},
+		{"bad target type", "--target-type", []string{"+comment-list", "--target-id", "1", "--target-type", "bad"}},
+		{"bad target id", "--target-id", []string{"+comment-list", "--target-id", "0", "--target-type", "cycle"}},
+		{"bad user id type", "--user-id-type", []string{"+comment-list", "--target-id", "1", "--target-type", "cycle", "--user-id-type", "bad"}},
+		{"bad style", "--style", []string{"+comment-list", "--target-id", "1", "--target-type", "cycle", "--style", "bad"}},
+		{"bad page size", "--page-size", []string{"+comment-list", "--target-id", "1", "--target-type", "cycle", "--page-size", "101"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			err, _ := runCommentShortcut(t, &OKRListComments, tc.args)
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("err = %v", err)
-			}
+			requireCommentValidationError(t, err, tc.param)
 		})
+	}
+	if err, _ := runCommentShortcut(t, &OKRListComments, []string{"+comment-list", "--target-type", "cycle"}); err == nil {
+		t.Fatalf("missing required target-id error = %v", err)
 	}
 	for _, target := range []string{"cycle", "progress", "objective", "key_result"} {
 		args := []string{"+comment-create", "--target-id", "1", "--target-type", target, "--content", "{\"text\":\"x\"}"}
@@ -111,12 +138,14 @@ func TestCommentValidationBranches(t *testing.T) {
 
 func TestCommentContentValidationBranches(t *testing.T) {
 	t.Parallel()
-	cases := []struct{ name, content, style, want string }{
-		{"missing", "", "simple", "required"},
-		{"bad simple json", "not-json", "simple", "semi-plain JSON"},
-		{"empty simple text", "{\"text\":\"  \"}", "simple", "cannot be empty"},
-		{"simple docs", "{\"text\":\"x\",\"docs\":[{\"url\":\"u\"}]}", "simple", "docs and images"},
-		{"bad richtext json", "not-json", "richtext", "ContentBlock JSON"},
+	cases := []struct {
+		name, content, style, param string
+		wantCause                   bool
+	}{
+		{"bad simple json", "not-json", "simple", "--content", true},
+		{"empty simple text", "{\"text\":\"  \"}", "simple", "--content", false},
+		{"simple docs", "{\"text\":\"x\",\"docs\":[{\"url\":\"u\"}]}", "simple", "--content", false},
+		{"bad richtext json", "not-json", "richtext", "--content", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -127,10 +156,17 @@ func TestCommentContentValidationBranches(t *testing.T) {
 				args = []string{"+comment-patch", "--comment-id", "1", "--style", tc.style}
 			}
 			err, _ := runCommentShortcut(t, shortcut, args)
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("err = %v", err)
+			ve := requireCommentValidationError(t, err, tc.param)
+			if tc.wantCause {
+				var syntaxErr *json.SyntaxError
+				if ve.Cause == nil || !errors.As(err, &syntaxErr) {
+					t.Fatal("expected the original JSON parse cause to be preserved through the error chain")
+				}
 			}
 		})
+	}
+	if err, _ := runCommentShortcut(t, &OKRPatchComment, []string{"+comment-patch", "--comment-id", "1", "--style", "simple"}); err == nil {
+		t.Fatalf("missing required content error = %v", err)
 	}
 }
 
@@ -225,6 +261,92 @@ func TestCommentResponseParsingErrors(t *testing.T) {
 	}
 	if _, err := commentResponse(map[string]interface{}{}); err == nil {
 		t.Fatal("commentResponse should reject a missing comment")
+	}
+}
+
+func TestDecodeCommentProgressPage(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		data      map[string]interface{}
+		wantItems int
+		wantError bool
+	}{
+		{name: "items", data: map[string]interface{}{"items": []interface{}{map[string]interface{}{"id": "p1"}}}, wantItems: 1},
+		{name: "empty items", data: map[string]interface{}{"items": []interface{}{}}, wantItems: 0},
+		{name: "missing items", data: map[string]interface{}{}, wantError: true},
+		{name: "wrong items shape", data: map[string]interface{}{"items": "not-an-array"}, wantError: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			items, err := decodeCommentProgressPage(tc.data)
+			if !tc.wantError {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if len(items) != tc.wantItems {
+					t.Fatalf("items = %#v, want %d items", items, tc.wantItems)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("expected invalid response error")
+			}
+			var internalErr *errs.InternalError
+			if !errors.As(err, &internalErr) {
+				t.Fatalf("error = %T (%v), want *errs.InternalError", err, err)
+			}
+			if internalErr.Subtype != errs.SubtypeInvalidResponse {
+				t.Fatalf("Subtype = %q, want %q", internalErr.Subtype, errs.SubtypeInvalidResponse)
+			}
+		})
+	}
+	if _, err := decodeCommentProgressPage(map[string]interface{}{"items": make(chan int)}); err == nil {
+		t.Fatal("expected marshal failure")
+	} else {
+		var internalErr *errs.InternalError
+		if !errors.As(err, &internalErr) || internalErr.Cause == nil {
+			t.Fatalf("marshal error = %T (%v), cause was not preserved", err, err)
+		}
+	}
+}
+
+func TestCommentAPIWithContextHonorsCancellation(t *testing.T) {
+	started := make(chan struct{})
+	cfg := commentTestConfig(t)
+	factory, _, _, _ := cmdutil.TestFactory(t, cfg)
+	factory.LarkClient = func() (*lark.Client, error) {
+		return lark.NewClient(cfg.AppID, cfg.AppSecret,
+			lark.WithEnableTokenCache(false),
+			lark.WithLogLevel(larkcore.LogLevelError),
+			lark.WithHttpClient(&http.Client{Transport: commentTestRoundTripper(func(req *http.Request) (*http.Response, error) {
+				close(started)
+				<-req.Context().Done()
+				return nil, req.Context().Err()
+			})}),
+		), nil
+	}
+	runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+comment-detail"}, cfg, factory, core.AsUser)
+	callCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := commentAPIWithContext(callCtx, runtime, "GET", "/open-apis/okr/v2/comments", nil)
+		done <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("request did not start")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("error = %T (%v), want context.Canceled cause", err, err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled request did not return promptly")
 	}
 }
 
@@ -325,8 +447,23 @@ func TestCommentDetailProgressPaginationAndFailure(t *testing.T) {
 func TestCommentValidationSelectionModes(t *testing.T) {
 	args := []string{"+comment-create", "--target-id", "1", "--target-type", "objective", "--content", "{\"text\":\"x\"}"}
 	err, _ := runCommentShortcut(t, &OKRCreateComment, args)
-	if err == nil || !strings.Contains(err.Error(), "exactly one") {
-		t.Fatalf("error = %v", err)
+	requireCommentValidationError(t, err, "--selected-text")
+}
+
+func TestCommentActionValidationUserIDType(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		shortcut *common.Shortcut
+		command  string
+	}{
+		{name: "solve", shortcut: &OKRSolveComment, command: "+comment-solve"},
+		{name: "reopen", shortcut: &OKRReopenComment, command: "+comment-reopen"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err, _ := runCommentShortcut(t, tc.shortcut, []string{tc.command, "--comment-id", "10", "--user-id-type", "invalid"})
+			requireCommentValidationError(t, err, "--user-id-type")
+		})
 	}
 }
 
@@ -394,6 +531,9 @@ func TestCommentReopenDryRunUsesReopenPath(t *testing.T) {
 	output := stdout.String()
 	if !strings.Contains(output, "/open-apis/okr/v2/comments/2/reopen") {
 		t.Fatalf("dry-run should use reopen endpoint, got: %s", output)
+	}
+	if !strings.Contains(output, `"user_id_type": "open_id"`) {
+		t.Fatalf("dry-run should include default user_id_type, got: %s", output)
 	}
 	if strings.Contains(output, "department_id_type") {
 		t.Fatalf("dry-run must omit department_id_type, got: %s", output)

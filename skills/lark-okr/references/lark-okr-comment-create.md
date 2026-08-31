@@ -54,8 +54,9 @@ lark-cli okr +comment-create --target-type progress --target-id 3456789012345678
    - objective/key_result：在 selected-text、select-all、ref-comment-id 中选择且只能选择一个。
 3. 准备 content：通常建议使用 simple 格式，需要精确控制 @用户的位置时，可以使用 richtext 格式，参考 [ContentBlock 格式](lark-okr-contentblock.md)
 4. 执行命令；真实写入前可以先使用 --dry-run 检查 URL、query 和 body。
-5. 创建(而非回复) Objective/KeyResult 划词评论是，使用 selected-text 时，若用户未指定评论的具体位置，通常可以使用 select-all
-   - 若需使用 selected-text 精确选择划词选区时，只可传入正文中真实存在的连续纯文本片段；不要包含或跨越 mention 占位符。若 selected-text 无匹配内容，会 fallback 至选择全文。
+5. 在创建(而非回复) Objective/KeyResult 划词评论时，若用户未指定评论的具体位置，通常可以使用 select-all 而非自行指定 selected-text，除非用户需求中明确了具体的段落。
+   - 若需使用 selected-text 精确选择划词选区时，只可传入正文中真实存在的连续纯文本片段；不要包含或跨越 mention 占位符，否则无法命中具体内容。
+   - selected-text 会选择对应文本的首个命中。若 selected-text 未匹配到内容，会 fallback 至选择全文。
 
 ## 输出
 

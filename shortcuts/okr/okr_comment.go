@@ -417,6 +417,9 @@ func commentAction(command, suffix string) common.Shortcut {
 			if err := validateCommentStyle(runtime); err != nil {
 				return err
 			}
+			if err := validateCommentUserIDType(runtime); err != nil {
+				return err
+			}
 			return validateCommentID("--comment-id", runtime.Str("comment-id"))
 		},
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {

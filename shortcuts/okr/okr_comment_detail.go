@@ -10,12 +10,49 @@ import (
 	"io"
 	"sort"
 
+	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
 const commentDetailConcurrency = 8
+
+func commentAPIWithContext(ctx context.Context, runtime *common.RuntimeContext, method, path string, params map[string]interface{}) (map[string]interface{}, error) {
+	query := make(larkcore.QueryParams, len(params))
+	for key, value := range params {
+		query.Set(key, fmt.Sprint(value))
+	}
+	resp, err := runtime.DoAPIWithContext(ctx, &larkcore.ApiReq{
+		HttpMethod:  method,
+		ApiPath:     path,
+		QueryParams: query,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return runtime.ClassifyAPIResponse(resp)
+}
+
+type commentProgressPage struct {
+	Items *[]Progress `json:"items"`
+}
+
+func decodeCommentProgressPage(data map[string]interface{}) ([]Progress, error) {
+	payload, err := json.Marshal(data)
+	if err != nil {
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "invalid progress response: marshal failed: %s", err).WithCause(err)
+	}
+	var page commentProgressPage
+	if err := json.Unmarshal(payload, &page); err != nil {
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "invalid progress response: unmarshal failed: %s", err).WithCause(err)
+	}
+	if page.Items == nil {
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "invalid progress response: missing progress response items")
+	}
+	return *page.Items, nil
+}
 
 func fetchComments(ctx context.Context, runtime *common.RuntimeContext, target CommentTarget) ([]Comment, error) {
 	params := map[string]interface{}{"target_type": target.TargetType, "target_id": target.TargetID, "page_size": 100}
@@ -24,7 +61,7 @@ func fetchComments(ctx context.Context, runtime *common.RuntimeContext, target C
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		data, err := runtime.CallAPITyped("GET", "/open-apis/okr/v2/comments", params, nil)
+		data, err := commentAPIWithContext(ctx, runtime, "GET", "/open-apis/okr/v2/comments", params)
 		if err != nil {
 			return nil, err
 		}
@@ -48,22 +85,15 @@ func fetchCommentProgresses(ctx context.Context, runtime *common.RuntimeContext,
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		data, err := runtime.CallAPITyped("GET", path, params, nil)
+		data, err := commentAPIWithContext(ctx, runtime, "GET", path, params)
 		if err != nil {
 			return nil, err
 		}
-		items, _ := data["items"].([]interface{})
-		for _, raw := range items {
-			b, err := json.Marshal(raw)
-			if err != nil {
-				return nil, err
-			}
-			var p Progress
-			if err := json.Unmarshal(b, &p); err != nil {
-				return nil, err
-			}
-			progresses = append(progresses, p)
+		items, err := decodeCommentProgressPage(data)
+		if err != nil {
+			return nil, err
 		}
+		progresses = append(progresses, items...)
 		hasMore, token := common.PaginationMeta(data)
 		if !hasMore || token == "" {
 			return progresses, nil
