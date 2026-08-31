@@ -53,6 +53,17 @@ func TestVCSearchIdentityDocsMatchAuthTypes(t *testing.T) {
 	}
 }
 
+func TestVCMeetingLeaveDocsMatchBotOnlyAuthTypes(t *testing.T) {
+	if len(VCMeetingLeave.AuthTypes) != 1 || VCMeetingLeave.AuthTypes[0] != "bot" {
+		t.Fatalf("VCMeetingLeave.AuthTypes = %v, want [bot]", VCMeetingLeave.AuthTypes)
+	}
+
+	reference := readSkillDoc(t, "skills/lark-meeting/references/lark-vc-agent-meeting-leave.md")
+	if !strings.Contains(reference, "仅支持 `bot` 身份") {
+		t.Error("lark-vc-agent-meeting-leave.md must state that +meeting-leave only supports bot identity")
+	}
+}
+
 // TestVCBotShortcutsIdentityDocsMatchAuthTypes pins that the VC shortcuts this
 // PR opened to bot (`+detail`, `+recording`, `+meeting-countdown`) are all declared bot-capable in
 // code and documented as such in their lark-meeting references.
