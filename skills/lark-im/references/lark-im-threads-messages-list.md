@@ -68,7 +68,30 @@ Thread messages do not support `start_time` / `end_time` filtering because of Fe
 
 Default is one page. With `--page-all`, `--page-token` sets the starting cursor; if `meta.pagination.complete=false`, resume from `meta.pagination.next_token` or raise `--page-limit`.
 
-### 4. Recommended expansion strategy
+### 4. Normalized JSON context
+
+JSON output emits `thread_id` once at the top level and stores repeated sender
+metadata in `participants`, keyed by sender ID. Each message normally carries a
+`sender_id` reference instead of a complete `sender` object. For example:
+
+```json
+{
+  "thread_id": "omt_xxx",
+  "participants": {
+    "ou_alice": {"name": "Alice", "sender_type": "user"}
+  },
+  "messages": [
+    {"message_id": "om_xxx", "sender_id": "ou_alice", "content": "Reply"}
+  ]
+}
+```
+
+Migration: resolve a sender name with
+`.data as $data | $data.messages[] as $message | ($message.sender.name // $data.participants[$message.sender_id].name)`.
+Sender data remains inline when it cannot be referenced without losing
+information.
+
+### 5. Recommended expansion strategy
 
 | Scenario | Recommended Parameters |
 |------|---------|

@@ -90,6 +90,8 @@ lark-cli im +threads-messages-list --thread omt_xxx
 
 | Field | Description |
 |------|------|
+| `chat_id` | Conversation ID shared by every returned message |
+| `participants` | Sender metadata keyed by sender ID; messages refer to entries through `sender_id` |
 | `messages` | Message array |
 | `total` | Number of messages in the current page |
 | `has_more` | Whether additional pages are available |
@@ -102,12 +104,35 @@ Each message contains:
 | `message_id` | Message ID |
 | `msg_type` | Message type: `text`, `image`, `file`, `interactive`, `post`, `audio`, `video`, `system`, etc. |
 | `create_time` | Creation time |
-| `sender` | Sender information (includes `name` for user senders) |
+| `sender_id` | Sender ID referencing `participants[sender_id]`; present when sender metadata can be normalized safely |
+| `sender` | Inline sender fallback for system/anonymous senders or conflicting metadata |
 | `content` | Message content |
 | `deleted` | Whether the message has been recalled (always present, `true` = recalled) |
 | `updated` | Whether the message has been edited after sending |
 | `mentions` | Array of @mentions in the message; each item contains `{id, key, name}`. Present only when the message contains @mentions |
 | `thread_id` | Thread ID (`omt_xxx`) if the message has replies in a thread. Present only when replies exist |
+
+The JSON response normalizes repeated conversation context. Instead of copying
+the same `chat_id` and complete `sender` object into every message, it emits the
+conversation `chat_id` once and stores sender metadata once in `participants`:
+
+```json
+{
+  "chat_id": "oc_xxx",
+  "participants": {
+    "ou_alice": {"name": "Alice", "sender_type": "user"}
+  },
+  "messages": [
+    {"message_id": "om_xxx", "sender_id": "ou_alice", "content": "Hello"}
+  ]
+}
+```
+
+Migration: resolve a sender name with
+`.data as $data | $data.messages[] as $message | ($message.sender.name // $data.participants[$message.sender_id].name)`.
+A sender without a stable ID, or an ID whose metadata conflicts within the
+response, remains inline as a `sender` object so normalization never drops
+information.
 
 ## Pagination (`has_more` / `page_token`)
 

@@ -55,6 +55,9 @@ lark-cli im +chat-members-list --chat-id oc_xxx
 ## +chat-messages-list
 Use this for message history when the conversation is already known.
 
+### Tips
+- JSON output stores chat_id once at the top level and sender metadata in participants; resolve each message's sender_id through that map.
+
 ### Avoid when
 - Searching across conversations → use [[+messages-search]].
 - Fetching full details for known message ids → use [[+messages-mget]].
@@ -226,6 +229,9 @@ lark-cli im +messages-send --chat-id oc_xxx --text "Hello"
 
 ## +threads-messages-list
 Use this when a message or thread id is known and the replies inside that thread are needed.
+
+### Tips
+- JSON output stores thread_id once at the top level and sender metadata in participants; resolve each message's sender_id through that map.
 
 ### Examples
 

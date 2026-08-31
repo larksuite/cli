@@ -175,14 +175,9 @@ var ImChatMessageList = common.Shortcut{
 		}
 		pagination.Items = len(messages)
 
-		// Emit: pagination completion belongs to framework metadata; the
-		// business payload remains compatible for existing consumers.
-		outData := map[string]interface{}{
-			"messages":   messages,
-			"total":      len(messages),
-			"has_more":   hasMore,
-			"page_token": nextPageToken,
-		}
+		// Emit: JSON normalizes repeated chat/sender context; human and record
+		// formats keep the established per-message projection.
+		outData := messageListOutputData(runtime.Format, runtime.JqExpr, messages, chatId, "", hasMore, nextPageToken)
 		runtime.OutFormat(outData, &output.Meta{
 			Pagination: pagination,
 		}, func(w io.Writer) {

@@ -147,15 +147,9 @@ var ImThreadsMessagesList = common.Shortcut{
 		}
 		pagination.Items = len(messages)
 
-		// Emit: keep legacy data fields while publishing the authoritative run
-		// outcome through the shared output metadata contract.
-		outData := map[string]interface{}{
-			"thread_id":  threadId,
-			"messages":   messages,
-			"total":      len(messages),
-			"has_more":   hasMore,
-			"page_token": nextPageToken,
-		}
+		// Emit: JSON normalizes repeated thread/sender context; human and record
+		// formats keep the established per-message projection.
+		outData := messageListOutputData(runtime.Format, runtime.JqExpr, messages, "", threadId, hasMore, nextPageToken)
 		runtime.OutFormat(outData, &output.Meta{
 			Pagination: pagination,
 		}, func(w io.Writer) {

@@ -166,6 +166,19 @@ func TestIMAffordanceDoesNotDuplicateRuntimeRecovery(t *testing.T) {
 	}
 }
 
+func TestIMMessageListAffordanceDocumentsNormalizedJSON(t *testing.T) {
+	prev := mdSource
+	t.Cleanup(func() { SetSource(prev) })
+	SetSource(os.DirFS("../../affordance"))
+
+	for _, method := range []string{"+chat-messages-list", "+threads-messages-list"} {
+		tips := parsedIMAffordance(t, method).Tips
+		if !containsItem(tips, "participants") || !containsItem(tips, "sender_id") {
+			t.Errorf("%s tips must explain normalized participant lookup: %v", method, tips)
+		}
+	}
+}
+
 func TestIMAffordancePreservesOutboundAndDeleteIntentBoundaries(t *testing.T) {
 	prev := mdSource
 	t.Cleanup(func() { SetSource(prev) })
