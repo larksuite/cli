@@ -84,6 +84,32 @@ func TestVCBotShortcutsIdentityDocsMatchAuthTypes(t *testing.T) {
 	}
 }
 
+func TestVCMeetingJoinDocsRouteCalendarStart(t *testing.T) {
+	skill := readSkillDoc(t, "skills/lark-meeting/SKILL.md")
+	scene := readSkillDoc(t, "skills/lark-meeting/scenes/live-meeting-attend.md")
+	reference := readSkillDoc(t, "skills/lark-meeting/references/lark-vc-agent-meeting-join.md")
+
+	if !strings.Contains(reference, "# vc +meeting-join：发起日程会议或加入会议") {
+		t.Error("lark-vc-agent-meeting-join.md must identify Calendar meeting starts")
+	}
+	for _, want := range []string{
+		"机器人发起日程会议或参与会议",
+		"让应用机器人发起日程会议或加入会议",
+	} {
+		if !strings.Contains(skill, want) {
+			t.Errorf("SKILL.md must document %q", want)
+		}
+	}
+	for name, content := range map[string]string{
+		"live-meeting-attend.md":        scene,
+		"lark-vc-agent-meeting-join.md": reference,
+	} {
+		if !strings.Contains(content, "应用机器人发起会议、参会与会中互动") {
+			t.Errorf("%s must route application-bot meeting starts", name)
+		}
+	}
+}
+
 func TestMeetingArtifactSceneDelegatesToDomainOwners(t *testing.T) {
 	scene := readSkillDoc(t, "skills/lark-meeting/scenes/query-meeting-and-artifacts.md")
 	for _, target := range []string{
