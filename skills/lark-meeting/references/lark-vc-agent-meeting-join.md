@@ -1,7 +1,7 @@
 
-# vc +meeting-join
+# vc +meeting-join：发起日程会议或加入会议
 
-通过 9 位会议号让应用机器人加入一场正在进行的视频会议。这是一次**写操作**，会实际让应用机器人加入会议。
+通过 9 位会议号让应用机器人发起符合条件的日程会议，或加入一场正在进行的视频会议。这是一次**写操作**，会实际让应用机器人发起或加入会议。
 
 本 skill 对应 shortcut：`lark-cli vc +meeting-join`（调用 `POST /open-apis/vc/v1/bots/join`）。
 
@@ -93,4 +93,4 @@ lark-cli vc +meeting-join --as bot --meeting-number 123456789 --action start
 - 执行成功后，立即记录返回的 `meeting.id`，用于后续 `+meeting-leave` / `+meeting-events`。
 
 ## 相关场景
-- [应用机器人参会与会中互动](../scenes/live-meeting-attend.md)
+- [应用机器人发起会议、参会与会中互动](../scenes/live-meeting-attend.md)
