@@ -22,3 +22,12 @@ func zipEntryNames(t *testing.T, body []byte) []string {
 	}
 	return names
 }
+
+func TestBuildAppDevZip_MissingSourceFile(t *testing.T) {
+	_, err := buildAppDevZip(permissiveFIO{}, []appDevPackEntry{
+		{ZipPath: "output/gone.html", AbsPath: "/nonexistent/gone.html", Size: 1},
+	})
+	if err == nil {
+		t.Fatal("an entry whose source file vanished must fail the pack")
+	}
+}
