@@ -137,7 +137,7 @@ func validateAppDevOutputs(fio fileio.FileIO, cfg *appDevProjectConfig) (entries
 		entries = append(entries, appDevPackEntry{ZipPath: "output/routes.json", Content: b, Size: int64(len(b))})
 	default:
 		return nil, -1, appsFailedPreconditionError("%s/routes.json is missing", cfg.BuildOutput).
-			WithHint("routes.json is required for content review routing; a declared build.command is expected to produce it (official templates generate it during the build)")
+			WithHint("routes.json is required by the hosting protocol and must enumerate the app's real routes; a declared build.command is expected to produce it (official templates generate it during the build)")
 	}
 	return entries, generatedRoutes, nil
 }
@@ -294,7 +294,7 @@ func verifyLocalEndpointIdentity(cfg *appDevProjectConfig, targetAppID string) e
 // output/index.html entry. The platform gateway's SPA fallback serves the
 // entry HTML for unmatched paths, so publishing without one is almost
 // always a broken build — kept as a warning (not a gate) per the protocol
-// owner's call.
+// decision.
 func warnMissingIndexHTML(entries []appDevPackEntry) bool {
 	for _, e := range entries {
 		if e.ZipPath == "output/index.html" {
@@ -673,8 +673,8 @@ var AppsDeploy = common.Shortcut{
 			pollHint = fmt.Sprintf("lark-cli apps +release-get --app-id %s --release-id %s", appID, releaseID)
 			data["poll_hint"] = pollHint
 		}
-		// The release was accepted — write the app state back per protocol
-		// (§3): spark.json gets the app section replaced wholesale.
+		// The release was accepted — write the app state back per protocol:
+		// spark.json gets the app section replaced wholesale.
 		// Best-effort: a write failure must not fail the publish.
 		if err := writeSparkAppSection(".", appID, onlineURL); err != nil {
 			fmt.Fprintf(rctx.IO().ErrOut, "warning: failed to write app state into %s: %v\n", sparkJSONRelPath, err)
