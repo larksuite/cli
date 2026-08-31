@@ -551,8 +551,8 @@ func TestResolveAppDevRegistries(t *testing.T) {
 		t.Errorf("unset = (%v, %v), want (nil, nil)", regs, err)
 	}
 	// Explicit https URL: single entry, trailing slash trimmed.
-	regs, err = resolveAppDevRegistries(rctxWith("https://bnpm.example.com/"))
-	if err != nil || len(regs) != 1 || regs[0] != "https://bnpm.example.com" {
+	regs, err = resolveAppDevRegistries(rctxWith("https://bnpm.example/"))
+	if err != nil || len(regs) != 1 || regs[0] != "https://bnpm.example" {
 		t.Errorf("explicit = (%v, %v)", regs, err)
 	}
 	// http and bare hosts are rejected.
@@ -793,5 +793,33 @@ func TestAppDevInitTemplateDryRun_DirNotEmptySurfaced(t *testing.T) {
 	state, _ := data["target_dir_state"].(string)
 	if !strings.Contains(state, "not usable") {
 		t.Errorf("target_dir_state = %q, want non-empty dir surfaced", state)
+	}
+}
+
+// --- registry HTTP error branches ---
+
+func TestAppDevHTTPGet_ErrorPaths(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/missing", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNotFound) })
+	mux.HandleFunc("/boom", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusBadGateway) })
+	mux.HandleFunc("/denied", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusForbidden) })
+	mux.HandleFunc("/big", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(bytes.Repeat([]byte("x"), 64)) })
+	srv := httptest.NewTLSServer(mux)
+	t.Cleanup(srv.Close)
+	orig := appDevNewTransferClient
+	appDevNewTransferClient = func() *http.Client { return srv.Client() }
+	t.Cleanup(func() { appDevNewTransferClient = orig })
+
+	if _, err := appDevHTTPGet(context.Background(), srv.URL+"/missing", 1024, "check the template name"); err == nil || !strings.Contains(err.Error(), "404") {
+		t.Errorf("404: err = %v", err)
+	}
+	if _, err := appDevHTTPGet(context.Background(), srv.URL+"/boom", 1024, ""); err == nil || !strings.Contains(err.Error(), "502") {
+		t.Errorf("5xx: err = %v", err)
+	}
+	if _, err := appDevHTTPGet(context.Background(), srv.URL+"/denied", 1024, ""); err == nil || !strings.Contains(err.Error(), "403") {
+		t.Errorf("4xx: err = %v", err)
+	}
+	if _, err := appDevHTTPGet(context.Background(), srv.URL+"/big", 16, ""); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Errorf("size cap: err = %v", err)
 	}
 }

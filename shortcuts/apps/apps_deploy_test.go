@@ -714,7 +714,7 @@ func TestAppDevPublishExecute_SyncSuccess(t *testing.T) {
 	})
 	stubReleases(reg, "app_x", map[string]interface{}{
 		"release_id": "rel_1", "status": "finished",
-		"online_url": "https://x.feishuapp.cn/app/app_x",
+		"online_url": "https://apps.example/app/app_x",
 	})
 	if err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected: %v", err)
@@ -735,7 +735,7 @@ func TestAppDevPublishExecute_SyncSuccess(t *testing.T) {
 	}
 	// Output contract.
 	data := parseEnvelopeData(t, stdout)
-	if data["online_url"] != "https://x.feishuapp.cn/app/app_x" || data["release_id"] != "rel_1" {
+	if data["online_url"] != "https://apps.example/app/app_x" || data["release_id"] != "rel_1" {
 		t.Errorf("data = %v", data)
 	}
 	if data["built"] != true {
@@ -749,7 +749,7 @@ func TestAppDevPublishExecute_SyncSuccess(t *testing.T) {
 	var doc map[string]interface{}
 	_ = json.Unmarshal(b, &doc)
 	app, _ := doc["app"].(map[string]interface{})
-	if app == nil || app["id"] != "app_x" || app["online_url"] != "https://x.feishuapp.cn/app/app_x" {
+	if app == nil || app["id"] != "app_x" || app["online_url"] != "https://apps.example/app/app_x" {
 		t.Errorf("app section after publish = %v", doc["app"])
 	}
 }
@@ -1086,5 +1086,23 @@ func TestAppsDeploy_Declaration(t *testing.T) {
 	}
 	if len(AppsDeploy.Scopes) != 2 {
 		t.Errorf("Scopes = %v", AppsDeploy.Scopes)
+	}
+}
+
+// --- real exec runner ---
+
+func TestExecEnvCommandRunner(t *testing.T) {
+	dir := t.TempDir()
+	stdout, stderr, err := execEnvCommandRunner{}.RunEnv(context.Background(), dir,
+		[]string{"APP_DEV_TEST_FOO=bar"}, "sh", "-c", `printf '%s' "$APP_DEV_TEST_FOO"; printf 'oops' 1>&2`)
+	if err != nil || stdout != "bar" || stderr != "oops" {
+		t.Errorf("RunEnv = (%q, %q, %v), want (bar, oops, nil)", stdout, stderr, err)
+	}
+	// Empty dir means "inherit the process cwd" (the cmd.Dir branch is skipped).
+	if _, _, err := (execEnvCommandRunner{}).RunEnv(context.Background(), "", nil, "sh", "-c", "true"); err != nil {
+		t.Errorf("empty dir must run in the inherited cwd: %v", err)
+	}
+	if _, _, err := (execEnvCommandRunner{}).RunEnv(context.Background(), "", nil, "sh", "-c", "exit 3"); err == nil {
+		t.Error("a failing command must surface its error")
 	}
 }
