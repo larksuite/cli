@@ -21,6 +21,25 @@ func SafeOutputPath(path string) (string, error) {
 	return safePath(path, "--output")
 }
 
+// rejectMultiplyLinkedTarget refuses to approve writing over an existing file
+// that carries more than one name. A hard link has no target to resolve, so
+// name-based containment cannot see that the same inode is also reachable from
+// outside the allowlist; a caller that truncates the approved path in place
+// would rewrite that outside file's contents. Writers that commit through a
+// temp file and rename are immune, but the check belongs here so it also covers
+// the ones that write directly.
+func rejectMultiplyLinkedTarget(flagName, raw, resolved string) error {
+	info, err := vfs.Lstat(resolved)
+	if err != nil || !info.Mode().IsRegular() {
+		return nil
+	}
+	if hasExtraHardLinks(resolved, info) {
+		return fmt.Errorf("%s %q has multiple hard links, so writing it would also rewrite the other names "+
+			"(hint: remove the file first, or write to a new name)", flagName, raw)
+	}
+	return nil
+}
+
 // SafeInputPath validates an upload/read source path for --file flags.
 // The baseline invariant asserted by drive sync, upload flags, and the CI
 // quality gates is "reject everything outside the built-in allowlist"
@@ -126,6 +145,7 @@ func SafeEnvDirPath(path, envName string) (string, error) {
 // over allow, cwd included. Both lists are compiled in (policy.go) — no
 // runtime input can change them.
 func safePath(raw, flagName string) (string, error) {
+	isOutputFlag := flagName == "--output"
 	if err := charcheck.RejectControlChars(raw, flagName); err != nil {
 		return "", err
 	}
@@ -163,6 +183,11 @@ func safePath(raw, flagName string) (string, error) {
 		}
 		if err := checkAllow(flagName, raw, resolved, cwd); err != nil {
 			return "", err
+		}
+		if isOutputFlag {
+			if err := rejectMultiplyLinkedTarget(flagName, raw, resolved); err != nil {
+				return "", err
+			}
 		}
 		if i == 0 {
 			primary = resolved

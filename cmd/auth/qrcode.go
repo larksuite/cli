@@ -16,7 +16,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
 // QRCodeOptions holds inputs for auth qrcode command.
@@ -55,7 +55,7 @@ For ASCII output, the result is printed to stdout with fixed size.`,
 
 	cmd.Flags().IntVar(&opts.Size, "size", 256, "Size of the QR code image in pixels (default: 256, for PNG mode only)")
 	cmd.Flags().BoolVar(&opts.ASCII, "ascii", false, "Output ASCII QR code to stdout")
-	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "Output file path for PNG image (relative path within current directory, required for non-ASCII mode)")
+	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "Output file path for PNG image (within the allowed roots: cwd, /tmp, ~/files; required for non-ASCII mode)")
 
 	return cmd
 }
@@ -114,15 +114,18 @@ func runQRCode(opts *QRCodeOptions) error {
 	return nil
 }
 
-// generateImageQRCode encodes the URL as a PNG QR code and writes it to outputPath.
+// generateImageQRCode encodes the URL as a PNG QR code and writes it to
+// outputPath. The write commits through a temp file and a rename rather than
+// truncating the target in place: a rename replaces the directory entry, so an
+// existing target that happens to be a hard link keeps its other names intact
+// instead of receiving the QR code's bytes.
 func generateImageQRCode(url string, size int, outputPath string) error {
 	png, err := qrcode.Encode(url, qrcode.Medium, size)
 	if err != nil {
 		return errs.NewInternalError(errs.SubtypeSDKError, "failed to encode QR code: %v", err).WithCause(err)
 	}
 
-	err = vfs.WriteFile(outputPath, png, 0644)
-	if err != nil {
+	if err := localfileio.AtomicWrite(outputPath, png, 0644); err != nil {
 		return errs.NewInternalError(errs.SubtypeSDKError, "failed to write QR code to %s: %v", outputPath, err).WithCause(err)
 	}
 

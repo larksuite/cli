@@ -304,3 +304,36 @@ func TestPolicy_ConfigDirFallbackIsDeniedWithoutHome(t *testing.T) {
 		t.Fatal("the fallback CLI config directory was not denied")
 	}
 }
+
+// TestPolicy_OutputTargetWithHardLinkIsRejected covers a write that stays
+// inside the allowlist by name while sharing an inode with a file outside it:
+// truncating the approved name in place would rewrite that outside file, and a
+// hard link has no target for name resolution to follow.
+func TestPolicy_OutputTargetWithHardLinkIsRejected(t *testing.T) {
+	outside := t.TempDir()
+	original := filepath.Join(outside, "secret.json")
+	if err := os.WriteFile(original, []byte("ORIGINAL"), 0600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	work := t.TempDir()
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(work)
+	if err := os.Link(original, filepath.Join(work, "target.png")); err != nil {
+		t.Skipf("cannot create the hard-link probe: %v", err)
+	}
+
+	_, err := SafeOutputPath("target.png")
+	if err == nil {
+		t.Fatal(`SafeOutputPath("target.png") = nil error; want rejection for a multiply-linked target`)
+	}
+	if !strings.Contains(err.Error(), "hard links") {
+		t.Errorf("error should cite the hard links, got: %v", err)
+	}
+
+	// A target with a single name stays writable, and reads are unaffected.
+	if _, err := SafeOutputPath("fresh.png"); err != nil {
+		t.Errorf(`SafeOutputPath("fresh.png") error = %v, want nil`, err)
+	}
+}

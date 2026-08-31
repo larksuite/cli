@@ -160,7 +160,7 @@ func TestNewCmdAuthQRCode_HelpText(t *testing.T) {
 		"QR code",
 		"--output",
 		"--ascii",
-		"relative path",
+		"allowed roots",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("help missing %q", want)
