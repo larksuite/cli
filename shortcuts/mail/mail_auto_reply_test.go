@@ -73,8 +73,8 @@ func TestMailAutoReplyModifyBuildsFriendlyPayload(t *testing.T) {
 				"auto_reply": map[string]interface{}{
 					"enabled":             true,
 					"content_summary":     "Out today",
-					"start_time":          "1786723200000",
-					"end_time":            "1787068799999",
+					"start_time":          "1912953600000",
+					"end_time":            "1913299199999",
 					"time_zone":           "Asia/Shanghai",
 					"only_send_to_tenant": false,
 				},
@@ -88,8 +88,8 @@ func TestMailAutoReplyModifyBuildsFriendlyPayload(t *testing.T) {
 		"--mailbox", "user@example.com",
 		"--enable",
 		"--content", "<p>Out today</p>",
-		"--start", "2026-08-15T09:00:00+08:00",
-		"--end", "2026-08-18T09:00:00+08:00",
+		"--start", "2030-08-15T09:00:00+08:00",
+		"--end", "2030-08-18T09:00:00+08:00",
 		"--timezone", "Asia/Shanghai",
 		"--all",
 		"--format", "json",
@@ -102,8 +102,8 @@ func TestMailAutoReplyModifyBuildsFriendlyPayload(t *testing.T) {
 	assertAutoReplyPayloadValue(t, captured, "enabled", true)
 	assertAutoReplyPayloadValue(t, captured, "content_html", "<p>Out today</p>")
 	assertAutoReplyPayloadAbsent(t, captured, "content_summary")
-	assertAutoReplyPayloadValue(t, captured, "start_time", "1786723200000")
-	assertAutoReplyPayloadValue(t, captured, "end_time", "1787068799999")
+	assertAutoReplyPayloadValue(t, captured, "start_time", "1912953600000")
+	assertAutoReplyPayloadValue(t, captured, "end_time", "1913299199999")
 	assertAutoReplyPayloadValue(t, captured, "time_zone", "Asia/Shanghai")
 	assertAutoReplyPayloadValue(t, captured, "only_send_to_tenant", false)
 	assertAutoReplyPayloadAbsent(t, captured, "auto_reply")
@@ -203,8 +203,8 @@ func TestMailAutoReplyModifyAllowsSameStartAndEndDate(t *testing.T) {
 	err := runMountedMailShortcut(t, MailAutoReplyModify, []string{
 		"+auto-reply-modify",
 		"--yes",
-		"--start", "2026-08-28",
-		"--end", "2026-08-28",
+		"--start", "2030-08-28",
+		"--end", "2030-08-28",
 		"--timezone", "Asia/Shanghai",
 	}, f, stdout)
 	if err != nil {
@@ -212,8 +212,8 @@ func TestMailAutoReplyModifyAllowsSameStartAndEndDate(t *testing.T) {
 	}
 	reg.Verify(t)
 
-	assertAutoReplyPayloadValue(t, captured, "start_time", "1787846400000")
-	assertAutoReplyPayloadValue(t, captured, "end_time", "1787932799999")
+	assertAutoReplyPayloadValue(t, captured, "start_time", "1914076800000")
+	assertAutoReplyPayloadValue(t, captured, "end_time", "1914163199999")
 }
 
 func TestMailAutoReplyModifyRejectsEndBeforeStart(t *testing.T) {
@@ -221,8 +221,8 @@ func TestMailAutoReplyModifyRejectsEndBeforeStart(t *testing.T) {
 	err := runMountedMailShortcut(t, MailAutoReplyModify, []string{
 		"+auto-reply-modify",
 		"--yes",
-		"--start", "2026-08-29",
-		"--end", "2026-08-28",
+		"--start", "2030-08-29",
+		"--end", "2030-08-28",
 	}, f, stdout)
 	if err == nil {
 		t.Fatal("expected validation error")
@@ -287,6 +287,60 @@ func TestMailAutoReplyModifyPreflightsCurrentSetting(t *testing.T) {
 		t.Fatal("expected preflight validation error")
 	}
 	if !strings.Contains(err.Error(), "start_time is required when enabled=true") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+}
+
+func TestMailAutoReplyModifyPreflightRejectsPastEnabledTime(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	stubAutoReplyGet(reg, "me", map[string]interface{}{
+		"enabled":             false,
+		"content":             "",
+		"start_time":          "0",
+		"end_time":            "0",
+		"time_zone":           "",
+		"only_send_to_tenant": false,
+	})
+
+	err := runMountedMailShortcut(t, MailAutoReplyModify, []string{
+		"+auto-reply-modify",
+		"--yes",
+		"--enable",
+		"--content", "ok",
+		"--start", "2000-01-01",
+		"--end", "2000-01-02",
+		"--timezone", "Asia/Shanghai",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected preflight validation error")
+	}
+	if !strings.Contains(err.Error(), "start_time must be greater than or equal to current date") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+}
+
+func TestMailAutoReplyModifyRejectsPastExplicitEndWhenDisabled(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	stubAutoReplyGet(reg, "me", map[string]interface{}{
+		"enabled":             false,
+		"content":             "",
+		"start_time":          "0",
+		"end_time":            "0",
+		"time_zone":           "Asia/Shanghai",
+		"only_send_to_tenant": false,
+	})
+
+	err := runMountedMailShortcut(t, MailAutoReplyModify, []string{
+		"+auto-reply-modify",
+		"--yes",
+		"--end", "2000-01-02",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected preflight validation error")
+	}
+	if !strings.Contains(err.Error(), "end_time must be greater than or equal to current date") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	reg.Verify(t)
