@@ -121,10 +121,9 @@ func TestScanCommentContentPreservesReviewCommentPath(t *testing.T) {
 }
 
 func TestCommentBodyRejectsUnsafeEventPath(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "event.json")
-	if err := writeTestFile(path, `{"comment":{"body":"clean"}}`); err != nil {
-		t.Fatal(err)
-	}
+	// No file is created: the path is refused by validation before any read,
+	// and a location outside every allowed root is not writable here anyway.
+	path := filepath.Join(string(filepath.Separator), "not-an-allowed-root", "event.json")
 
 	_, err := commentBody(path)
 	problem, ok := errs.ProblemOf(err)

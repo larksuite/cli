@@ -40,7 +40,7 @@ func NewCmdAuthQRCode(f *cmdutil.Factory, runF func(*QRCodeOptions) error) *cobr
 
 This command is designed for AI agents to generate QR codes for OAuth authorization URLs.
 
-For PNG output, the --output flag is required to specify the output file path (must be a relative path within the current directory).
+For PNG output, the --output flag is required to specify the output file path (must be within the allowed roots (cwd, /tmp, ~/files)).
 For ASCII output, the result is printed to stdout with fixed size.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

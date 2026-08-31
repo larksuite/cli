@@ -675,10 +675,10 @@ func TestDownload_Validation_RejectsTraversalPath(t *testing.T) {
 
 	for _, flag := range []string{"--output", "--output-dir"} {
 		err := mountAndRun(t, MinutesDownload, []string{
-			"+download", "--minute-tokens", "tok001", flag, "../escape", "--as", "bot",
+			"+download", "--minute-tokens", "tok001", flag, "../../../../../../../../../../../../escape", "--as", "bot",
 		}, f, nil)
 		if err == nil {
-			t.Errorf("%s ../escape: expected validation error, got nil", flag)
+			t.Errorf("%s escape-to-root: expected validation error, got nil", flag)
 		}
 	}
 }

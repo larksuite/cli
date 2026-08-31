@@ -27,6 +27,11 @@ func StatLocalFile(path string) (fs.FileInfo, error) {
 // direct os.Open/os.ReadFile use in commands that intentionally read local
 // paths outside the workspace sandbox. Callers inspect the returned descriptor
 // before reading so validation and use apply to the same opened file.
+// The open deliberately follows symlinks and skips the fd checks the policy
+// tier applies: this tier accepts a path on its own terms, so a symlinked
+// input is a legitimate argument rather than a sign of a swap, and callers
+// inspect the descriptor themselves. Its protection comes from the denylist
+// check inside LocalInputPath, which resolves the path before deciding.
 func OpenLocalFile(path string) (fs.File, error) {
 	localPath, err := validate.LocalInputPath(path)
 	if err != nil {

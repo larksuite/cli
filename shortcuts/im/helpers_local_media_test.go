@@ -49,7 +49,7 @@ func TestResolveLocalMedia_ValidatesPathBeforeParsingDuration(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	runtime := &common.RuntimeContext{Factory: f}
 	spec := mediaSpec{
-		value:        "../outside.mp4",
+		value:        "../../../../../../../../../../../../outside.mp4",
 		mediaType:    "video",
 		kind:         mediaKindFile,
 		withDuration: true,
@@ -59,7 +59,7 @@ func TestResolveLocalMedia_ValidatesPathBeforeParsingDuration(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected path validation error")
 	}
-	if !strings.Contains(err.Error(), "resolves outside the current working directory") {
+	if !strings.Contains(err.Error(), "outside the built-in allowlist") {
 		t.Fatalf("error = %v, want path validation error", err)
 	}
 	if mockFS.openCalls != 0 {
