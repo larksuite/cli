@@ -366,6 +366,23 @@ func TestEachLoginBuildResolvesAgainstItsOwnSnapshot(t *testing.T) {
 	}
 }
 
+// hasExternal must distinguish a build that injected business commands
+// (WithCommandSets) from the standard built-in snapshot, so authLoginRun can
+// skip the remote scopes.json — generated from the standard CLI and blind to
+// those commands — and resolve locally instead.
+func TestDomainResolverHasExternalMarksCustomBuilds(t *testing.T) {
+	if newDomainResolver(shortcuts.AllShortcuts()).hasExternal {
+		t.Error("standard built-in snapshot must not be flagged as a custom build")
+	}
+	withBusiness := append(shortcuts.AllShortcuts(), common.Shortcut{
+		Service: "im", Command: "+business-external", AuthTypes: []string{"user"},
+		UserScopes: []string{"im:business.external:read"},
+	})
+	if !newDomainResolver(withBusiness).hasExternal {
+		t.Error("a snapshot carrying external business commands must be flagged as a custom build")
+	}
+}
+
 // The login command must resolve --domain against the snapshot it was
 // constructed with. The help text is the observable projection of that snapshot,
 // so a business command's domain has to survive into it.
@@ -987,44 +1004,90 @@ func TestAuthLoginRun_BatchExcludesSendAsUser(t *testing.T) {
 
 func TestAuthLoginRun_DomainExcludeSendAsUser(t *testing.T) {
 	// Regression (P1): `--domain im --exclude im:message.send_as_user` must keep
-	// succeeding as it did before the batch-exclusion filter existed. The batch
-	// filter drops send_as_user from the effective (wire) set, but --exclude is
-	// validated against the pre-filter selected universe, so naming it stays a
-	// valid no-op instead of an invalid_argument error. Automations relied on
-	// this exact form to dodge the send-as-user approval; do not break them.
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	// succeeding as a no-op. Automations relied on this exact form to dodge the
+	// send-as-user approval; do not break them. Whether --exclude names a valid
+	// scope is judged against what the domain locally covers, so it holds even
+	// when the batch filter and the published remote scopes.json both omit
+	// send_as_user — which is the production reality once the server drops it.
+	//
+	// The remote fetch is stubbed so each case is deterministic and never reaches
+	// the live endpoint. `wrong-domain` pins that the fix stays narrow: excluding
+	// a scope the domain never covers is still rejected.
+	cases := []struct {
+		name          string
+		remote        map[string][]string // nil with remoteOK=false exercises the local fallback
+		remoteOK      bool
+		domain        string
+		wantErr       bool
+		wantErrSubstr string // wantErr: the error must be the --exclude validation error, not an unrelated one
+		wireOnly      string // success: a remote-only scope that must reach the wire, pinning remote-sourcing ("" to skip)
+	}{
+		// im:remote_only:read is not a local im scope, so its presence on the wire
+		// proves the request was fed from the (send_as_user-free) remote list.
+		{name: "remote-without-send_as_user", remote: map[string][]string{"im": {"im:message", "im:remote_only:read"}}, remoteOK: true, domain: "im", wireOnly: "im:remote_only:read"},
+		{name: "local-fallback", remote: nil, remoteOK: false, domain: "im"},
+		{name: "wrong-domain-still-unknown", remote: map[string][]string{"calendar": {"calendar:calendar:read"}}, remoteOK: true, domain: "calendar", wantErr: true, wantErrSubstr: "not present in the requested set"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			orig := fetchRemoteScopes
+			fetchRemoteScopes = func(core.LarkBrand) (map[string][]string, bool) { return tc.remote, tc.remoteOK }
+			t.Cleanup(func() { fetchRemoteScopes = orig })
 
-	stubBody := map[string]interface{}{
-		"device_code": "dc", "user_code": "uc",
-		"verification_uri": "https://example.com/v", "verification_uri_complete": "https://example.com/v?c=1",
-		"expires_in": 240, "interval": 5,
-	}
-	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
-		ProfileName: "default", AppID: "cli_test", AppSecret: "secret", Brand: core.BrandFeishu,
-	})
-	stub := &httpmock.Stub{Method: "POST", URL: larkauth.PathDeviceAuthorization, Body: stubBody}
-	reg.Register(stub)
-	if err := authLoginRun(&LoginOptions{
-		Factory: f, Ctx: context.Background(),
-		Domains: []string{"im"}, Exclude: []string{"im:message.send_as_user"},
-		NoWait: true, JSON: true,
-	}, builtinResolver()); err != nil {
-		t.Fatalf("authLoginRun --domain im --exclude send_as_user: %v", err)
-	}
-	if stub.CapturedBody == nil {
-		t.Fatal("no device authorization request was sent (command errored before the wire call)")
-	}
-	v, _ := url.ParseQuery(string(stub.CapturedBody))
-	scope := v.Get("scope")
-	scopeSet := make(map[string]bool)
-	for _, s := range strings.Fields(scope) {
-		scopeSet[s] = true
-	}
-	if scopeSet["im:message.send_as_user"] {
-		t.Errorf("excluded scope leaked into wire request; scope=%q", scope)
-	}
-	if !scopeSet["im:message"] {
-		t.Errorf("--domain im missing exact im:message; scope=%q", scope)
+			f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+				ProfileName: "default", AppID: "cli_test", AppSecret: "secret", Brand: core.BrandFeishu,
+			})
+			// The error case rejects --exclude before any wire call, so a
+			// device-authorization stub it never hits would trip httpmock's
+			// unmatched-stub check. Only the success cases reach the wire.
+			var stub *httpmock.Stub
+			if !tc.wantErr {
+				stub = &httpmock.Stub{Method: "POST", URL: larkauth.PathDeviceAuthorization, Body: map[string]interface{}{
+					"device_code": "dc", "user_code": "uc",
+					"verification_uri": "https://example.com/v", "verification_uri_complete": "https://example.com/v?c=1",
+					"expires_in": 240, "interval": 5,
+				}}
+				reg.Register(stub)
+			}
+
+			err := authLoginRun(&LoginOptions{
+				Factory: f, Ctx: context.Background(),
+				Domains: []string{tc.domain}, Exclude: []string{"im:message.send_as_user"},
+				NoWait: true, JSON: true,
+			}, builtinResolver())
+
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("excluding a scope the domain never covers must error, not silently pass")
+				}
+				if !strings.Contains(err.Error(), tc.wantErrSubstr) {
+					t.Fatalf("want the --exclude validation error containing %q, got a different error: %v", tc.wantErrSubstr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("authLoginRun --domain %s --exclude send_as_user: %v", tc.domain, err)
+			}
+			if stub.CapturedBody == nil {
+				t.Fatal("no device authorization request was sent (command errored before the wire call)")
+			}
+			v, _ := url.ParseQuery(string(stub.CapturedBody))
+			scope := v.Get("scope")
+			scopeSet := make(map[string]bool)
+			for _, s := range strings.Fields(scope) {
+				scopeSet[s] = true
+			}
+			if scopeSet["im:message.send_as_user"] {
+				t.Errorf("excluded scope leaked into wire request; scope=%q", scope)
+			}
+			if !scopeSet["im:message"] {
+				t.Errorf("--domain im missing exact im:message; scope=%q", scope)
+			}
+			if tc.wireOnly != "" && !scopeSet[tc.wireOnly] {
+				t.Errorf("wire missing remote-only scope %q (request not fed from remote?); scope=%q", tc.wireOnly, scope)
+			}
+		})
 	}
 }
 

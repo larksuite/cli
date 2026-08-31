@@ -16,7 +16,7 @@ import (
 
 const (
 	remoteScopesPath    = "/lark-cli/apis/scopes.json"
-	remoteScopesTimeout = 1 * time.Second
+	remoteScopesTimeout = 2 * time.Second
 	maxRemoteScopesSize = 10 * 1024 * 1024 // 10MB, aligned with internal/registry/remote.go
 )
 

@@ -127,6 +127,11 @@ func (r domainResolver) complete(toComplete string, brand core.LarkBrand) []stri
 	return completions
 }
 
+// fetchRemoteScopes is the remote scopes.json fetch, indirected through a
+// package var so tests can supply a deterministic result instead of reaching
+// the live endpoint.
+var fetchRemoteScopes = larkauth.FetchRemoteScopes
+
 // authLoginRun executes the login command logic.
 func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	f := opts.Factory
@@ -176,10 +181,18 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	var remoteOK bool
 
 	if !scopeOnly {
-		// Pull the remote scopes.json once for this login (not cached); any
-		// read failure (network/timeout/non-2xx/malformed) silently falls back
-		// to the local full computation — no warning, no telemetry.
-		remote, remoteOK = larkauth.FetchRemoteScopes(config.Brand)
+		// A build that injected external business commands (WithCommandSets) has
+		// a scope universe the remote scopes.json — generated from the standard
+		// CLI — does not cover, so it resolves locally instead of remote-first:
+		// trusting the remote would silently drop the custom scopes such a build
+		// added to existing domains (WithCommandSets can only extend existing
+		// domains, never add new ones). Standard builds keep remote-first.
+		if !resolver.hasExternal {
+			// Pull the remote scopes.json once for this login (not cached); any
+			// read failure (network/timeout/non-2xx/malformed) silently falls
+			// back to the local full computation — no warning, no telemetry.
+			remote, remoteOK = fetchRemoteScopes(config.Brand)
+		}
 		legalDomains, allLegalDomains := legalDomainsFor(remote, remoteOK, resolver, config.Brand)
 
 		// Expand --domain all against the resolved legal domain set.
@@ -242,6 +255,18 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 		// batch exclusion) so --exclude may legitimately name a batch-withheld
 		// scope like im:message.send_as_user.
 		for _, s := range candidateScopes {
+			excludeUniverse[s] = true
+		}
+
+		// Whether --exclude names a legitimate scope is a question about what the
+		// selected domains cover — a stable local fact, not "what the published
+		// remote scopes.json happens to list today". Fold in the local resolution
+		// too: once the server drops a batch-withheld scope (im:message.send_as_user)
+		// from the remote list, the remote candidateScopes above no longer carries
+		// it, but --domain im --exclude im:message.send_as_user must stay a valid
+		// no-op. The local set still declares it under im; a domain that never had
+		// it (e.g. calendar) still rejects it as unknown.
+		for _, s := range resolver.scopesFor(selectedDomains, "user", config.Brand) {
 			excludeUniverse[s] = true
 		}
 
@@ -556,10 +581,47 @@ func filterBatchExcludedScopes(scopes []string) []string {
 // built-in set.
 type domainResolver struct {
 	registered []common.Shortcut
+	// hasExternal is true when this build carries business commands injected via
+	// WithCommandSets beyond the built-in set. Such a build's domain/scope
+	// universe is not reflected in the remote scopes.json (generated from the
+	// standard CLI), so auth login must resolve locally instead of remote-first.
+	hasExternal bool
 }
 
 func newDomainResolver(registered []common.Shortcut) domainResolver {
-	return domainResolver{registered: registered}
+	return domainResolver{
+		registered:  registered,
+		hasExternal: hasExternalCommands(registered),
+	}
+}
+
+// hasExternalCommands reports whether registered carries any command beyond the
+// built-in set — the mark of a build that injected business commands via
+// WithCommandSets. Such a build's scope universe reaches past what the remote
+// scopes.json (generated from the standard CLI) covers, so auth login must
+// resolve locally rather than remote-first.
+//
+// It compares command paths rather than counts: a business command mounts onto
+// an existing domain (WithCommandSets cannot create new domains) and only ever
+// adds to the built-in set, so any registered path absent from the built-in
+// snapshot came from an injected command. A build that instead forks the
+// registry to change scopes without adding commands is not detected here — no
+// supported build option does that, and every current custom build extends via
+// WithCommandSets. Activating a build-tag feature that swaps only the credential
+// provider or transport (e.g. the auth sidecar) registers no commands, so it is
+// correctly treated as standard.
+func hasExternalCommands(registered []common.Shortcut) bool {
+	builtin := shortcuts.AllShortcuts()
+	paths := make(map[string]struct{}, len(builtin))
+	for _, sc := range builtin {
+		paths[sc.Service+" "+sc.Command] = struct{}{}
+	}
+	for _, sc := range registered {
+		if _, ok := paths[sc.Service+" "+sc.Command]; !ok {
+			return true
+		}
+	}
+	return false
 }
 
 // scopesFor collects API scopes (from from_meta projects) and shortcut scopes
