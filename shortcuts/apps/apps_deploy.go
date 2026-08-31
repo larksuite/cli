@@ -567,7 +567,7 @@ var AppsDeploy = common.Shortcut{
 			return appsSubprocessEnvelopeError("pre_release kvs missing %s", appDevUploadURLKey)
 		}
 		if u, perr := url.Parse(uploadURL); perr != nil || u.Scheme != "https" {
-			return appsSubprocessEnvelopeError("pre_release upload_url is not https; refusing to upload")
+			return appsSubprocessEnvelopeError("pre_release %s is not https; refusing to upload", appDevUploadURLKey)
 		}
 
 		built := false
@@ -621,7 +621,8 @@ var AppsDeploy = common.Shortcut{
 			if resp.StatusCode >= 500 {
 				return errs.NewNetworkError(errs.SubtypeNetworkServer, "TOS upload failed: HTTP %d", resp.StatusCode).WithRetryable()
 			}
-			return errs.NewNetworkError(errs.SubtypeNetworkTransport, "TOS upload failed: HTTP %d", resp.StatusCode)
+			return errs.NewNetworkError(errs.SubtypeNetworkTransport, "TOS upload failed: HTTP %d", resp.StatusCode).
+				WithHint("a presigned upload URL can expire while a long build runs; re-run the deploy (add --skip-build to reuse the artifacts just built)")
 		}
 
 		// The artifact-hosting release needs no body: the artifact location is
