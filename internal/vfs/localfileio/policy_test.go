@@ -233,3 +233,74 @@ func TestPolicy_ForeignAbsoluteShapeCannotEscapeViaCwdSymlink(t *testing.T) {
 		})
 	}
 }
+
+// TestPolicy_LiteralTildeEntryCannotEscape covers the gap between the two
+// readings of a "~/..." argument: validation expands it to the home
+// directory, while a caller that keeps the original string opens whatever "~"
+// names in the working directory. Both readings must be checked.
+func TestPolicy_LiteralTildeEntryCannotEscape(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("~ is not a home-directory shorthand on Windows")
+	}
+	dir := t.TempDir()
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(dir)
+	if err := os.Symlink("/etc", filepath.Join(dir, "~")); err != nil {
+		t.Skipf("cannot create the probe symlink: %v", err)
+	}
+
+	if _, err := SafeInputPath("~/passwd"); err == nil {
+		t.Error(`SafeInputPath("~/passwd") = nil error; want denylist rejection`)
+	}
+	if _, err := LocalInputPath("~/passwd"); err == nil {
+		t.Error(`LocalInputPath("~/passwd") = nil error; want denylist rejection`)
+	}
+}
+
+// TestPolicy_TildeStillReachesHomeFiles guards the other direction: closing
+// the literal-~ gap must not cost the ~/files allow root for callers that pass
+// the shorthand through argv, where no shell expands it.
+func TestPolicy_TildeStillReachesHomeFiles(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("~ is not a home-directory shorthand on Windows")
+	}
+	home, err := trustedHome()
+	if err != nil {
+		t.Skipf("no trusted home: %v", err)
+	}
+	if home == "/root" {
+		t.Skip("~/files is a deny root when the home directory is /root")
+	}
+	dir := t.TempDir()
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(dir)
+
+	got, err := SafeOutputPath("~/files/tilde-probe.txt")
+	if err != nil {
+		t.Fatalf(`SafeOutputPath("~/files/tilde-probe.txt") error = %v, want nil`, err)
+	}
+	if want := filepath.Join(home, "files", "tilde-probe.txt"); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// TestPolicy_ConfigDirFallbackIsDeniedWithoutHome covers the home-less
+// container case: core.GetBaseConfigDir then keeps credentials in a bare
+// ".lark-cli" under the working directory, which is otherwise an allow root.
+func TestPolicy_ConfigDirFallbackIsDeniedWithoutHome(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the home lookup does not read the environment on Windows")
+	}
+	dir := t.TempDir()
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	os.Chdir(dir)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", "")
+	t.Setenv("HOME", "")
+
+	if _, err := SafeInputPath(filepath.Join(".lark-cli", "config.json")); err == nil {
+		t.Fatal("the fallback CLI config directory was not denied")
+	}
+}

@@ -66,14 +66,21 @@ func newPolicyEntry(label, path string) policyEntry {
 // directory — core.GetBaseConfigDir accepts relative values, so refusing to
 // consider them here would leave that credential directory unprotected.
 func configDirDenyRoots(cwd string) []policyEntry {
-	dir := os.Getenv("LARKSUITE_CLI_CONFIG_DIR")
-	if dir == "" {
-		return nil
+	if dir := os.Getenv("LARKSUITE_CLI_CONFIG_DIR"); dir != "" {
+		if !filepath.IsAbs(dir) {
+			dir = filepath.Join(cwd, dir)
+		}
+		return []policyEntry{newPolicyEntry("the CLI config directory", dir)}
 	}
-	if !filepath.IsAbs(dir) {
-		dir = filepath.Join(cwd, dir)
+	// With no override and no reachable home directory, core.GetBaseConfigDir
+	// falls back to a bare ".lark-cli", which resolves inside the working
+	// directory — an allow root. Mirroring that fallback here keeps the
+	// credentials it holds out of reach in containers where the home lookup
+	// fails.
+	if home, err := vfs.UserHomeDir(); err != nil || home == "" {
+		return []policyEntry{newPolicyEntry("the CLI config directory", filepath.Join(cwd, ".lark-cli"))}
 	}
-	return []policyEntry{newPolicyEntry("the CLI config directory", dir)}
+	return nil
 }
 
 // trustedHome returns the account's home directory from the most

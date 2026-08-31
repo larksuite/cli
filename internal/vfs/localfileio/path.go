@@ -59,21 +59,28 @@ func LocalInputPath(path string) (string, error) {
 
 // denyCheckLocalInput applies the built-in denylist to the relaxed local
 // input tier. Resolution is fail-closed like safePath, but the allowlist is
-// deliberately not consulted here.
+// deliberately not consulted here. This tier hands the path back verbatim, so
+// every interpretation of it is checked — the caller opens the one the OS
+// picks, which for "~/..." is a literal "~" entry in the working directory.
 func denyCheckLocalInput(path string) error {
 	cwd, err := vfs.Getwd()
 	if err != nil {
 		return fmt.Errorf("cannot determine working directory: %w", err)
 	}
-	abs, err := absolutize(path, cwd)
+	interps, err := interpretations(path, cwd)
 	if err != nil {
 		return err
 	}
-	resolved, err := resolveReal(abs)
-	if err != nil {
-		return err
+	for _, abs := range interps {
+		resolved, err := resolveReal(abs)
+		if err != nil {
+			return err
+		}
+		if err := checkDeny("local input path", path, abs, resolved, cwd); err != nil {
+			return err
+		}
 	}
-	return checkDeny("local input path", path, abs, resolved, cwd)
+	return nil
 }
 
 func isWindowsNonLocalNamespace(path string) bool {
@@ -136,21 +143,52 @@ func safePath(raw, flagName string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("cannot determine working directory: %w", err)
 	}
+	// Every reading of the argument must pass, not just the one this function
+	// returns: callers that keep the original string (SafeLocalFlagPath does)
+	// open the location the OS computes, and for a "~/..." argument that is a
+	// literal "~" entry in the working directory rather than the home
+	// directory. A path is only safe when both readings are.
+	interps, err := interpretations(raw, cwd)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", flagName, err)
+	}
+	var primary string
+	for i, abs := range interps {
+		resolved, err := resolveReal(abs)
+		if err != nil {
+			return "", fmt.Errorf("%s: %w", flagName, err)
+		}
+		if err := checkDeny(flagName, raw, abs, resolved, cwd); err != nil {
+			return "", err
+		}
+		if err := checkAllow(flagName, raw, resolved, cwd); err != nil {
+			return "", err
+		}
+		if i == 0 {
+			primary = resolved
+		}
+	}
+	return primary, nil
+}
+
+// interpretations returns every location this platform could open the argument
+// at, most-intended first. They differ only for a leading "~": the first entry
+// expands it to the home directory (what a caller using the returned path
+// gets), the second keeps it literal (what the OS does with the original
+// string).
+func interpretations(raw, cwd string) ([]string, error) {
 	abs, err := absolutize(raw, cwd)
 	if err != nil {
-		return "", fmt.Errorf("%s: %w", flagName, err)
+		return nil, err
 	}
-	resolved, err := resolveReal(abs)
-	if err != nil {
-		return "", fmt.Errorf("%s: %w", flagName, err)
+	out := []string{abs}
+	if raw == "~" || strings.HasPrefix(raw, "~/") {
+		literal := filepath.Clean(filepath.Join(cwd, raw))
+		if literal != abs {
+			out = append(out, literal)
+		}
 	}
-	if err := checkDeny(flagName, raw, abs, resolved, cwd); err != nil {
-		return "", err
-	}
-	if err := checkAllow(flagName, raw, resolved, cwd); err != nil {
-		return "", err
-	}
-	return resolved, nil
+	return out, nil
 }
 
 // absolutize expands a leading ~/ to the user home directory and roots
