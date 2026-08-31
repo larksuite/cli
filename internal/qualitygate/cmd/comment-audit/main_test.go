@@ -139,6 +139,35 @@ func TestCommentBodyRejectsUnsafeEventPath(t *testing.T) {
 	}
 }
 
+func TestCommentBodyRejectsHardLinkedEventFile(t *testing.T) {
+	dir := t.TempDir()
+	original := filepath.Join(dir, "event.json")
+	link := filepath.Join(dir, "event-link.json")
+	if err := writeTestFile(original, `{"comment":{"body":"clean"}}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(original, link); err != nil {
+		t.Skipf("cannot create hard-link probe: %v", err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(origDir)
+	})
+
+	_, err = commentBody(filepath.Base(link))
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) || validationErr.Param != "--event" {
+		t.Fatalf("commentBody(hard link) error = %v, want --event validation error", err)
+	}
+}
+
 func TestAuditFailureSummaryStatesPostPublicationAudit(t *testing.T) {
 	got := auditFailureSummary(2)
 	want := "post-publication audit found public content findings: 2"

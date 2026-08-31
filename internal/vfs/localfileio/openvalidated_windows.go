@@ -8,6 +8,7 @@ package localfileio
 import (
 	"fmt"
 	"os"
+	"syscall"
 
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/vfs"
@@ -47,6 +48,13 @@ func inspectOpenedFile(f *os.File, pre os.FileInfo) error {
 	}
 	if !post.Mode().IsRegular() {
 		return fmt.Errorf("not a regular file (device, FIFO, and socket inputs are refused)")
+	}
+	var handleInfo syscall.ByHandleFileInformation
+	if err := syscall.GetFileInformationByHandle(syscall.Handle(f.Fd()), &handleInfo); err != nil {
+		return fmt.Errorf("cannot inspect opened file links: %w", err)
+	}
+	if handleInfo.NumberOfLinks > 1 {
+		return fmt.Errorf("file has multiple hard links (copy the file into an allowed directory and retry)")
 	}
 	return nil
 }
