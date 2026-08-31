@@ -3716,7 +3716,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Data label content; pass value by default for a basic chart, but omit it when many data points or series would make labels crowded; combine value, category, and percentage in value_category_percentage order for any non-empty combination; series shows series names and none removes labels",
+        "desc": "Data label content; pass value by default for a basic chart and do not omit it solely because there are many data points or series; pass none only when the user explicitly requests hiding all labels; combine value, category, and percentage in value_category_percentage order for any non-empty combination; series shows series names",
         "enum": [
           "none",
           "value",
