@@ -120,6 +120,17 @@ var MailAutoReplyModify = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		mailboxID := resolveAutoReplyMailboxID(runtime)
+		preflightPatch, err := buildAutoReplyPatch(ctx, runtime, false)
+		if err != nil {
+			return err
+		}
+		current, err := fetchAutoReplySetting(ctx, runtime, mailboxID)
+		if err != nil {
+			return err
+		}
+		if err := validateAutoReplyFinal(mergeAutoReplySetting(current, preflightPatch)); err != nil {
+			return err
+		}
 		patch, err := buildAutoReplyPatch(ctx, runtime, true)
 		if err != nil {
 			return err
@@ -238,6 +249,98 @@ func buildAutoReplyPatch(ctx context.Context, runtime *common.RuntimeContext, up
 		return nil, mailValidationError("no auto-reply changes provided")
 	}
 	return autoReply, nil
+}
+
+func fetchAutoReplySetting(ctx context.Context, runtime *common.RuntimeContext, mailboxID string) (map[string]interface{}, error) {
+	data, err := runtime.CallAPITyped("GET", autoReplyPath(mailboxID), nil, nil)
+	if err != nil {
+		return nil, mailDecorateProblemMessage(err, "get current auto-reply failed")
+	}
+	if nested, ok := data["auto_reply"].(map[string]interface{}); ok {
+		data = nested
+	}
+	return normalizeAutoReplyFields(data), nil
+}
+
+func mergeAutoReplySetting(current, patch map[string]interface{}) map[string]interface{} {
+	merged := map[string]interface{}{}
+	for k, v := range current {
+		merged[k] = v
+	}
+	for k, v := range patch {
+		merged[k] = v
+	}
+	return normalizeAutoReplyFields(merged)
+}
+
+func validateAutoReplyFinal(autoReply map[string]interface{}) error {
+	if !autoReplyBool(autoReply["enabled"]) {
+		return nil
+	}
+	if strings.TrimSpace(autoReplyString(autoReply["content_html"])) == "" {
+		return mailValidationParamError("--content", "content_html is required when enabled=true")
+	}
+	startTS, err := autoReplyInt64(autoReply["start_time"])
+	if err != nil {
+		return mailValidationParamError("--start", "start_time must be a Unix milliseconds timestamp")
+	}
+	endTS, err := autoReplyInt64(autoReply["end_time"])
+	if err != nil {
+		return mailValidationParamError("--end", "end_time must be a Unix milliseconds timestamp")
+	}
+	if startTS <= 0 {
+		return mailValidationParamError("--start", "start_time is required when enabled=true")
+	}
+	if endTS <= 0 {
+		return mailValidationParamError("--end", "end_time is required when enabled=true")
+	}
+	if strings.TrimSpace(autoReplyString(autoReply["time_zone"])) == "" {
+		return mailValidationParamError("--timezone", "time_zone is required when enabled=true")
+	}
+	if startTS >= endTS {
+		return mailValidationParamError("--end", "end_time must be greater than start_time")
+	}
+	return nil
+}
+
+func autoReplyString(raw interface{}) string {
+	switch v := raw.(type) {
+	case string:
+		return v
+	case fmt.Stringer:
+		return v.String()
+	case int:
+		return strconv.Itoa(v)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case float64:
+		return strconv.FormatInt(int64(v), 10)
+	default:
+		return ""
+	}
+}
+
+func autoReplyBool(raw interface{}) bool {
+	v, _ := raw.(bool)
+	return v
+}
+
+func autoReplyInt64(raw interface{}) (int64, error) {
+	switch v := raw.(type) {
+	case string:
+		if strings.TrimSpace(v) == "" {
+			return 0, nil
+		}
+		return strconv.ParseInt(v, 10, 64)
+	case int:
+		return int64(v), nil
+	case int64:
+		return v, nil
+	case float64:
+		return int64(v), nil
+	default:
+		return 0, nil
+	}
 }
 
 func resolveAutoReplyContent(runtime *common.RuntimeContext) (string, error) {

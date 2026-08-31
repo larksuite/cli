@@ -56,6 +56,7 @@ func TestMailAutoReply(t *testing.T) {
 func TestMailAutoReplyModifyBuildsFriendlyPayload(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	var captured map[string]interface{}
+	stubAutoReplyGet(reg, "user@example.com", map[string]interface{}{})
 	reg.Register(&httpmock.Stub{
 		Method: "PUT",
 		URL:    mailboxPath("user@example.com", "settings", "auto_reply"),
@@ -120,6 +121,7 @@ func TestMailAutoReplyContentFile(t *testing.T) {
 
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	var captured map[string]interface{}
+	stubAutoReplyGet(reg, "me", map[string]interface{}{})
 	reg.Register(&httpmock.Stub{
 		Method: "PUT",
 		URL:    mailboxPath("me", "settings", "auto_reply"),
@@ -151,6 +153,7 @@ func TestMailAutoReplyContentFile(t *testing.T) {
 func TestMailAutoReplyEmptyContentClearsBody(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	var captured map[string]interface{}
+	stubAutoReplyGet(reg, "me", map[string]interface{}{})
 	reg.Register(&httpmock.Stub{
 		Method: "PUT",
 		URL:    mailboxPath("me", "settings", "auto_reply"),
@@ -180,6 +183,7 @@ func TestMailAutoReplyEmptyContentClearsBody(t *testing.T) {
 func TestMailAutoReplyModifyAllowsSameStartAndEndDate(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	var captured map[string]interface{}
+	stubAutoReplyGet(reg, "me", map[string]interface{}{})
 	reg.Register(&httpmock.Stub{
 		Method: "PUT",
 		URL:    mailboxPath("me", "settings", "auto_reply"),
@@ -261,9 +265,37 @@ func TestMailAutoReplyModifyRejectsEnableWithZeroTimePair(t *testing.T) {
 	}
 }
 
+func TestMailAutoReplyModifyPreflightsCurrentSetting(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	stubAutoReplyGet(reg, "me", map[string]interface{}{
+		"enabled":             false,
+		"content":             "",
+		"start_time":          "0",
+		"end_time":            "0",
+		"time_zone":           "",
+		"only_send_to_tenant": false,
+	})
+
+	err := runMountedMailShortcut(t, MailAutoReplyModify, []string{
+		"+auto-reply-modify",
+		"--yes",
+		"--enable",
+		"--content", "ok",
+		"--internal-only",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected preflight validation error")
+	}
+	if !strings.Contains(err.Error(), "start_time is required when enabled=true") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+}
+
 func TestMailAutoReplyModifyAllowsZeroTimePairWhenDisabled(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	var captured map[string]interface{}
+	stubAutoReplyGet(reg, "me", map[string]interface{}{})
 	reg.Register(&httpmock.Stub{
 		Method: "PUT",
 		URL:    mailboxPath("me", "settings", "auto_reply"),
@@ -309,6 +341,7 @@ func TestMailAutoReplyUploadsLocalImages(t *testing.T) {
 
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	var captured map[string]interface{}
+	stubAutoReplyGet(reg, "me", map[string]interface{}{})
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/medias/upload_all",
@@ -370,6 +403,7 @@ func TestMailAutoReplyUploadsDataURIImages(t *testing.T) {
 
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	var captured map[string]interface{}
+	stubAutoReplyGet(reg, "me", map[string]interface{}{})
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/medias/upload_all",
@@ -604,4 +638,16 @@ func assertAutoReplyPayloadEmptyImages(t *testing.T, payload map[string]interfac
 	if !ok || len(images) != 0 {
 		t.Fatalf("images = %#v, want empty array (payload=%#v)", payload["images"], payload)
 	}
+}
+
+func stubAutoReplyGet(reg *httpmock.Registry, mailboxID string, autoReply map[string]interface{}) {
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    mailboxPath(mailboxID, "settings", "auto_reply"),
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{"auto_reply": autoReply},
+		},
+	})
 }
