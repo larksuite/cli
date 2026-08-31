@@ -157,7 +157,7 @@ The `value` inside `{ "type": "constant", "value": ... }` varies by field type:
 | `number` | Number | `100`, `0.8` |
 | `datetime` / `created_at` / `updated_at` | String | `"ExactDate(2025-01-01)"`, `"ExactDate(2025-01-01 09:30)"`, `"Today"`, `"Yesterday"`, `"Tomorrow"` |
 | `select` (`multiple=false/true`) | Option name array | `["Todo"]`, `["Todo", "Done"]` |
-| `link` | Record reference array | `[{ "id": "rec_xxx" }]`, `[{ "id": "rec_xxx" }, { "id": "rec_yyy" }]` |
+| `link` | Record reference array | `[{ "id": "recxxx" }]`, `[{ "id": "recxxx" }, { "id": "recyyy" }]` |
 | `user` / `created_by` / `updated_by` | User reference array | `[{ "id": "ou_xxx" }]`, `[{ "id": "ou_xxx" }, { "id": "ou_yyy" }]` |
 | `checkbox` | Boolean | `true`, `false` |
 | `attachment` / `location` | Only `empty` / `non_empty` | value must be `null` or omitted |

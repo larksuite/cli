@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
@@ -17,46 +16,20 @@ import (
 )
 
 // Drive media parent_type values for uploading an image into a spreadsheet.
-// Native spreadsheets use "sheet_image"; imported "office" spreadsheets use a
-// legacy synthetic-token prefix or a 28-character token whose interleaved
-// product/region marker is "OFL0X". The backend requires
-// "office_sheet_file" for those imported spreadsheets.
+// Native spreadsheets use "sheet_image"; the backend requires
+// "office_sheet_file" for a spreadsheet backed by an imported office file.
+// Recognising one is common.IsLocalOfficeToken's job — see the equivalent note
+// in shortcuts/sheets/helpers.go, whose mapping this deliberately mirrors for
+// the deprecated surface.
 const (
 	sheetImageParentType      = "sheet_image"
 	officeSheetFileParentType = "office_sheet_file"
-	fakeOfficePrefix          = "fake_office_"
-	localOfficePrefix         = "local_office_"
 )
-
-// officePrefixes are the legacy synthetic token prefixes an imported "office"
-// spreadsheet may carry.
-var officePrefixes = []string{fakeOfficePrefix, localOfficePrefix}
-
-func isOfficeSpreadsheet(spreadsheetToken string) bool {
-	for _, prefix := range officePrefixes {
-		if strings.HasPrefix(spreadsheetToken, prefix) {
-			return true
-		}
-	}
-	if len(spreadsheetToken) < 25 {
-		return false
-	}
-	// The five-character marker occupies positions 5, 10, 15, 20, and 25
-	// (1-based) in the interleaved token.
-	marker := []byte{
-		spreadsheetToken[4],
-		spreadsheetToken[9],
-		spreadsheetToken[14],
-		spreadsheetToken[19],
-		spreadsheetToken[24],
-	}
-	return string(marker) == "OFL0X"
-}
 
 // sheetMediaParentType returns the drive media parent_type to use when
 // uploading an image whose parent_node is spreadsheetToken.
 func sheetMediaParentType(spreadsheetToken string) string {
-	if isOfficeSpreadsheet(spreadsheetToken) {
+	if common.IsLocalOfficeToken(spreadsheetToken) {
 		return officeSheetFileParentType
 	}
 	return sheetImageParentType
@@ -137,12 +110,10 @@ var SheetMediaUpload = common.Shortcut{
 		}
 
 		fileName := filepath.Base(safePath)
-		fmt.Fprintf(runtime.IO().ErrOut, "Uploading: %s (%s) -> spreadsheet %s\n",
-			fileName, common.FormatSize(stat.Size()), common.MaskToken(parentNode))
-		if stat.Size() > common.MaxDriveMediaUploadSinglePartSize {
-			fmt.Fprintf(runtime.IO().ErrOut, "File exceeds 20MB, using multipart upload\n")
-		}
-
+		// Which path the upload took used to be narrated on stderr ("Uploading:
+		// …", "File exceeds 20MB, using multipart upload"). Its terminal form is
+		// in the result's upload summary instead, so a successful run says
+		// nothing on stderr.
 		fileToken, err := uploadSheetMediaFile(runtime, safePath, fileName, stat.Size(), parentNode)
 		if err != nil {
 			return err
@@ -153,6 +124,7 @@ var SheetMediaUpload = common.Shortcut{
 			"file_name":         fileName,
 			"size":              stat.Size(),
 			"spreadsheet_token": parentNode,
+			"upload":            sheetMediaUploadSummary(stat.Size()),
 		}, nil)
 		return nil
 	},
@@ -187,6 +159,37 @@ func resolveSheetMediaUploadParent(runtime *common.RuntimeContext) (string, erro
 	return token, nil
 }
 
+// sheetMediaUploadSummary reports how the upload was performed. The
+// server-planned chunk count is deliberately absent: it only exists inside the
+// shared multipart helper, and exposing it would mean changing that shared
+// contract. Mode and size are decided here, which is enough for a caller to
+// understand what the CLI did.
+func sheetMediaUploadSummary(fileSize int64) map[string]interface{} {
+	mode := "single"
+	if fileSize > common.MaxDriveMediaUploadSinglePartSize {
+		mode = "multipart"
+	}
+	return map[string]interface{}{"mode": mode, "size_bytes": fileSize}
+}
+
+// uploadSheetMediaFile uploads filePath as spreadsheet media, picking the
+// single-part or multipart endpoint by size.
+//
+// Both parent_type values survive the multipart path, which is not obvious and
+// is worth recording: slides caps its image uploads at 20 MB because
+// upload_prepare rejects slide_file / office_slide_file outright
+// (see shortcuts/slides/slides_media_upload.go). Sheets has no such cap, so the
+// question is whether the office value is the one that breaks.
+//
+// It is not. Verified against the live API on 2026-08-27: upload_prepare accepts
+// both sheet_image and office_sheet_file, and a 20.6 MB file uploaded with
+// office_sheet_file completes prepare → 6 × upload_part → upload_finish and
+// returns a file_token that a float image then accepts. (A bogus parent_type
+// fails the same call with 99992402, so the endpoint really is validating the
+// field.) What that does not prove is rendering inside a genuinely imported
+// office spreadsheet: the backend does not check parent_node against
+// parent_type, so the probe ran with a native token, and no imported office
+// spreadsheet was reachable to test with.
 func uploadSheetMediaFile(runtime *common.RuntimeContext, filePath, fileName string, fileSize int64, parentNode string) (string, error) {
 	parentType := sheetMediaParentType(parentNode)
 	if fileSize <= common.MaxDriveMediaUploadSinglePartSize {
@@ -205,6 +208,7 @@ func uploadSheetMediaFile(runtime *common.RuntimeContext, filePath, fileName str
 		FileSize:   fileSize,
 		ParentType: parentType,
 		ParentNode: parentNode,
+		Quiet:      true,
 	})
 }
 

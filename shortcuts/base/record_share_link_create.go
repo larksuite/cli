@@ -19,10 +19,10 @@ var BaseRecordShareLinkCreate = common.Shortcut{
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
-		{Name: "record-ids", Type: "string_slice", Desc: "record IDs to generate share links for (comma-separated or repeatable, max 100)", Required: true},
+		{Name: "record-id", Aliases: []string{"record-ids"}, Type: "string_slice", Desc: "record ID to generate a share link for (comma-separated or repeatable, max 100)", Required: true},
 	},
 	Tips: []string{
-		`Example: lark-cli base +record-share-link-create --base-token <base_token> --table-id <table_id> --record-ids <record_id>`,
+		`Example: lark-cli base +record-share-link-create --base-token <base_token> --table-id <table_id> --record-id <record_id>`,
 		"Max 100 record IDs per call; duplicate IDs are ignored.",
 		"Output record_share_links maps record_id to URL; records without permission or missing records may be absent.",
 	},

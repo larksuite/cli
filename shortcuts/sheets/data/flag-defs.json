@@ -1342,6 +1342,7 @@
           "style",
           "comment",
           "data_validation",
+          "conditional_format",
           "truncation"
         ]
       },
@@ -2153,7 +2154,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Source range for listFromRange dropdown (A1 + sheet prefix, e.g. `'Sheet1'!T1:T3`); maps to server `data_validation.range` and auto-sets `data_validation.type='listFromRange'`. XOR with `--options`: pass `--options` for an inline list (type=list), pass this for a range reference (type=listFromRange). `--colors` length rule unchanged (≤ source range cell count); `--highlight` / `--multiple` behave the same. When `--highlight` is on and the source covers more than 2000 cells, the server flags the dropdown as option-error (highlight + large source is an unsupported combo); CLI emits a stderr warning. Pass `--highlight=false` to suppress."
+        "desc": "Source range for listFromRange dropdown (A1 + sheet prefix, e.g. `'Sheet1'!T1:T3`); maps to server `data_validation.range` and auto-sets `data_validation.type='listFromRange'`. XOR with `--options`: pass `--options` for an inline list (type=list), pass this for a range reference (type=listFromRange). `--colors` length rule unchanged (≤ source range cell count); `--highlight` / `--multiple` behave the same. When `--highlight` is on and the source covers more than 2000 cells, the server flags the dropdown as option-error (highlight + large source is an unsupported combo); CLI reports the warning in the result's `data.warnings`. Pass `--highlight=false` to suppress."
       },
       {
         "name": "dry-run",
@@ -3286,7 +3287,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Source range for listFromRange dropdown (A1 + sheet prefix, e.g. `'Sheet1'!T1:T3`); maps to server `data_validation.range` and auto-sets `data_validation.type='listFromRange'`. XOR with `--options`: pass `--options` for an inline list (type=list), pass this for a range reference (type=listFromRange). `--colors` length rule unchanged (≤ source range cell count); `--highlight` / `--multiple` behave the same. When `--highlight` is on and the source covers more than 2000 cells, the server flags the dropdown as option-error (highlight + large source is an unsupported combo); CLI emits a stderr warning. Pass `--highlight=false` to suppress."
+        "desc": "Source range for listFromRange dropdown (A1 + sheet prefix, e.g. `'Sheet1'!T1:T3`); maps to server `data_validation.range` and auto-sets `data_validation.type='listFromRange'`. XOR with `--options`: pass `--options` for an inline list (type=list), pass this for a range reference (type=listFromRange). `--colors` length rule unchanged (≤ source range cell count); `--highlight` / `--multiple` behave the same. When `--highlight` is on and the source covers more than 2000 cells, the server flags the dropdown as option-error (highlight + large source is an unsupported combo); CLI reports the warning in the result's `data.warnings`. Pass `--highlight=false` to suppress."
       },
       {
         "name": "dry-run",
@@ -4631,6 +4632,61 @@
         "type": "string",
         "required": "optional",
         "desc": "Filter by rule id"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+cond-format-result-get": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "A1 range, e.g. `A1:F10` (no sheet prefix — use `--sheet-id` / `--sheet-name` to select the sheet)"
+      },
+      {
+        "name": "max-chars",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Max output chars per call; default 500000 (safety cap)",
+        "default": "500000"
       },
       {
         "name": "dry-run",

@@ -72,7 +72,7 @@ Block 的 `id` 按类型直接作为对应模块坐标：
 
 ## Table Block（The Core）
 
-Table 本身是 Base Block，也是 Base 的核心数据存储层；Field、Record、View 和 Form 是 Table 内部对象，不是 Base Block。业务数据查询、写入、关联、统计和分析都从 Table 开始；标准资源读取链路是 `+table-list → +field-list → +record-list` / `+record-search`，多表的 `+field-list` 可以并发执行；记录相关任务读取 [Record 查询与分析 SOP](references/lark-base-record-query-and-analysis-sop.md)。
+Table 本身是 Base Block，也是 Base 的核心数据存储层；Field、Record、View 和 Form 是 Table 内部对象，不是 Base Block。业务数据查询、写入、关联、统计和分析都从 Table 开始。先用 `+table-list` 定位 Table；字段名和目标已知的普通读取可直接进入 Record 命令，只有写入、筛选或关联等依赖字段类型/schema 的任务才补 `+field-list`。多表的 `+field-list` 可以并发执行。基础的 Record / CellValue 读写直接按下方路径；reference 只承载高级分析、完整协议和边界细节。
 
 **读取 Table：** `+table-list` 定位表，`+table-get` 读取详情。Table 专属复制使用 `+table-copy`，异步状态用 `+table-copy-status`；schema 和 records 由下方内部对象操作。
 
@@ -82,17 +82,120 @@ Table 下的大多数更新通过异步链路生效，接口成功返回后立�
 
 Field 定义列 schema。`field_id` 是稳定列标识，`name` 是可修改的展示名称；Formula、Lookup、Link、Select 等属于 Field 类型或能力。
 
-**读取 Field：** `+field-list` / `+field-get` / `+field-search-options`。**写入 Field：** 已有 Table 中创建多个字段时，优先向一次 `+field-create --json` 传字段对象数组；单字段更新和删除用 `+field-update` / `+field-delete`。创建和更新分别读取 [field-create](references/lark-base-field-create.md) / [field-update](references/lark-base-field-update.md)，由命令文档继续路由 Field JSON、Formula 和 Lookup 协议。
+**读取 Field：** `+field-list` / `+field-get` / `+field-search-options`。**写入 Field：** 已有 Table 中创建多个字段时，优先向一次 `+field-create --json` 传字段对象数组；单字段更新和删除用 `+field-update` / `+field-delete`。创建和更新分别读取 [field-create](references/lark-base-field-create.md) / [field-update](references/lark-base-field-update.md)，由命令文档继续路由 Field JSON、Formula 和 Lookup 协议。`字段插件` 用于扩展基础字段能力：按同一行其他字段内容触发 LLM 生成，并写回已有目标字段；当前已确认目标字段支持文本、单选、数字，配置或触发前先读 [field-extension](references/lark-base-field-extension.md)。
 
 ### Record
 
 Record 是 Table 中的一行数据，包含该记录在各个 Field 下的 CellValue。系统 `record_id` 是表内稳定、非空且唯一的主键，Table 的主字段只是展示字段。
 
-**读取 Record：** 记录预览、筛选、匹配、统计、聚合、TopN、多表或语义分析，以及写前定位记录和写后验收，都必须先完整读取 [Record 查询与分析 SOP](references/lark-base-record-query-and-analysis-sop.md)，并由该 SOP 选择具体命令。**写入 Record：** 优先使用 [batch create](references/lark-base-record-batch-create.md) / [batch update](references/lark-base-record-batch-update.md) 创建或更新一条或多条记录，按其文档中的 CellValue 协议提交字段值。
+#### 1. 读取记录或单元格
 
-**Record 生命周期：** `+record-delete` 删除记录；`+record-share-link-create` 创建记录分享链接；`+record-history-list` 查询单条记录的变更事件，读取 [历史记录协议](references/lark-base-record-history-list.md)。附件使用 `+record-upload-attachment` / `+record-download-attachment` / `+record-remove-attachment` 操作。
+- 已知若干个 `record_id`：`+record-get --record-id <id1> --record-id <id2>`
+- 关键词搜索：`+record-search --keyword <text> --search-field <field>`；至少指定一个搜索字段。
+- 其余读取：`+record-list`；结构化条件和排序分别用 `--filter-json` / `--sort-json`。
 
-Record 中的 Select、人员、群组、Link、附件的 CellValue 通常是多值；Link 的目标 `table_id` 来自 Field schema，CellValue 中的 `id` 对应目标表 `record_id`。
+行数较大、需要服务端谓词下推时，`--filter-json` 使用 tuple condition；最常用的筛选与完整日期范围写法：
+
+```jsonc
+{
+  "logic": "and", // 全部条件成立；任一条件成立改为 "or"
+  "conditions": [
+    ["状态", "intersects", ["进行中", "暂停"]], // Select 命中任一选项
+    ["标题", "intersects", "urgent"], // 文本包含
+    ["备注", "non_empty"], // 非空；判断为空改用 "empty"，两者都不传 value
+    ["金额", ">=", 100], // 数字比较；支持 ==、!=、>、>=、<、<=
+    ["关联项目", "intersects", [{ "id": "recxxx" }]], // Link 包含目标记录
+    ["业务日期", "==", "ExactDate(2026-08-07)"], // 具体一天：按 Base 时区匹配 2026-08-07 当天
+    ["发生时间", ">", "ExactDate(2024-01-31 23:59:59.999)"], // 日期不支持 >=；用 > 前一天最后一毫秒表达含当天的下界
+    ["发生时间", "<", "ExactDate(2024-03-01 00:00:00)"] // 2024 年 2 月范围上界：小于 3 月 1 日零点
+  ]
+}
+```
+
+完整操作符和各字段取值结构读取 [Filter 条件结构](references/lark-base-filter-condition.md)。
+
+所有读取都重复传 `--field-id` 做最小字段投影，并统一写入 NDJSON artifact：`--format ndjson --output <path>.ndjson`。每行是一条 Record JSON，stdout 摘要包含 `records_count` 和 `has_more` 用于分页判断。
+
+```bash
+# Example: 行数较大时先筛选 Status 包含 Doing 的记录，再导出 20 条作为局部预览
+lark-cli base +record-list \
+  --base-token <base_token> --table-id <table_id> \
+  --filter-json '{"logic":"and","conditions":[["Status","intersects",["Doing"]]]}' \
+  --field-id Name --field-id Status --field-id Score --limit 20 \
+  --format ndjson --output ./records-preview.ndjson --as user
+
+PREVIEW_ROWS=5
+head -n "$PREVIEW_ROWS" ./records-preview.ndjson
+tail -n "$PREVIEW_ROWS" ./records-preview.ndjson
+```
+
+预计记录数少于 500 行时，建议不做谓词下推，直接拉取到本地用 jq 或 Python 处理；行数较大时可用 `--filter-json` 下推可表达的条件，正则、派生等无法下推的条件继续在本地处理。
+
+```bash
+# jq：对服务端筛选结果追加名称格式筛选，再投影必要字段
+jq -c 'select((.Name // "") | test("^Task-[0-9]+$")) | {record_id, Name}' ./records-preview.ndjson
+
+# Python：按行读取并做简单汇总
+python3 - <<'PY'
+import json
+
+with open("records-preview.ndjson", encoding="utf-8") as stream:
+    rows = (json.loads(line) for line in stream if line.strip())
+    print(sum((row.get("Score") or 0) for row in rows))
+PY
+```
+
+`--limit` 的缺省值是 2000，最大值是 2000，通常无需手动指定 limit 参数；支持 `--offset` 参数；只有 `has_more=false` 且查询范围符合问题时，才能当作完整结果。大表完整读取、View 范围读取、复杂 JOIN、集合/多值、时序、语义或专业统计分析时，读取 [Record 查询与分析 SOP](references/lark-base-record-query-and-analysis-sop.md)。
+
+#### 2. 新增记录或更新记录单元格
+
+一条 Record 是 `{字段名或 field_id: CellValue}`，常见 CellValue：
+
+```jsonc
+{
+  "标题": "Created from shortcut", // text: string
+  "官网": "[官网](https://example.com)", // text(url): 裸 URL 或 Markdown link
+  "联系电话": "13800000000", // text(phone): 合法电话号码字符串
+  "邮箱": "owner@example.com", // text(email): 合法邮箱字符串
+  "单选": ["Todo"], // select: array<string>；单选时数组最多一个值；
+  "标签": ["高优", "外部依赖"], // 多选 select: array<string>；必须是当前字段存在的选项；
+  "工时": 8, // number: double，不经过格式化的纯数字
+  "带时区时间": "2026-03-24T10:00:00+08:00", // datetime：带时区，遵循传入的时区
+  "不带时区时间": "2026-03-24 10:00", // datetime：不带时区，自动按当前 Base 时区转换
+  "毫秒时间戳": 1774317600000, // datetime：也支持 Unix 毫秒时间戳
+  "已完成": false, // checkbox: boolean
+  "负责人": [{ "id": "ou_123" }], // user(multiple=false): 数组最多一个元素
+  "协作人": [{ "id": "ou_123" }, { "id": "ou_456" }], // user(multiple=true): 数组可包含多个元素
+  "群聊": [{ "id": "oc_123" }, { "id": "oc_456" }], // group_chat(multiple=true)
+  "关联任务": [{ "id": "rec456" }], // link: array<{id}>，record_id 来自目标表
+  "坐标": { "lng": 116.397428, "lat": 39.90923 }, // location: {lng,lat}
+  "清空": null, // 清空单元格，传 null
+  "清空数组": [] // 清空数组类单元格，空数组和 null 都可以
+}
+```
+
+附件使用专用 shortcut 上传、下载或移除。created_at, updated_at, created_by, updated_by, auto_number, formula, lookup 类型字段只读，若误写入单元格会返回 `ignored_fields` 表示这些字段被静默过滤，其余字段正常写入。
+
+```bash
+# 新增：成功时返回 record_id_list
+lark-cli base +record-batch-create \
+  --base-token <base_token> --table-id <table_id> \
+  --json '{"create_records":[{"Name":"Task A","Status":["Todo"]},{"Name":"Task B","Score":20}]}' --as user
+
+# 更新：每条记录只提交要改变的字段
+lark-cli base +record-batch-update \
+  --base-token <base_token> --table-id <table_id> \
+  --json '{"update_records":{"<record_id_a>":{"Status":["Done"]},"<record_id_b>":{"Score":100}}}' --as user
+```
+
+大 payload 可用脚本生成 json 后用 `--json @file.json`。单批最多 200 条，超过后分批，同一 Table 串行写入；并行可能触发 `1254291` 并发冲突错误。
+
+#### 3. 其他 Record 操作
+
+- `+record-delete --base-token <base_token> --table-id <table_id> --record-id <id1> --record-id <id2>` 删除若干个记录
+- `+record-share-link-create --base-token <base_token> --table-id <table_id> --record-id <id1> --record-id <id2>` 创建记录分享链接
+- `+record-history-list` 查询单条记录的变更事件，读取 [历史记录协议](references/lark-base-record-history-list.md)
+- 附件必须使用 `+record-upload-attachment` / `+record-download-attachment` / `+record-remove-attachment` 操作。
 
 ### View
 
