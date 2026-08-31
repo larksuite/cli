@@ -54,7 +54,8 @@ func inspectOpenedFile(f *os.File, pre os.FileInfo) error {
 		return fmt.Errorf("cannot inspect opened file links: %w", err)
 	}
 	if handleInfo.NumberOfLinks > 1 {
-		return fmt.Errorf("file has multiple hard links (copy the file into an allowed directory and retry)")
+		return fmt.Errorf("file has multiple hard links, so the other names it can be reached by " +
+			"cannot be checked (hint: copy the file and use the copy instead)")
 	}
 	return nil
 }

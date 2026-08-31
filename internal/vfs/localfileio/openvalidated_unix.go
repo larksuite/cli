@@ -26,6 +26,14 @@ const hardenedOpenFlags = os.O_RDONLY | syscall.O_NOFOLLOW | syscall.O_NONBLOCK
 // on a path, and SameFile is what ties the opened object back to that
 // decision. Hard links are refused here because an extra link is how a
 // denylisted file gets smuggled into an allowed directory.
+//
+// The link check is deliberately blunt: it refuses any file with more than one
+// name, including one whose every name sits inside an allowed root, because
+// the filesystem offers no way to enumerate the other names. Content-addressed
+// package layouts (pnpm, nix) link into a shared store outside the allowlist
+// and are refused for the same reason. Narrowing this to "another name is
+// inside a deny root" needs an index of deny-root inodes; until then the
+// refusal is accepted and the message says how to work around it.
 func openValidated(path string) (*os.File, error) {
 	pre, err := vfs.Stat(path)
 	if err != nil {
@@ -60,7 +68,8 @@ func inspectOpenedFile(f *os.File, pre os.FileInfo, rejectHardLinks bool) error 
 	}
 	if rejectHardLinks {
 		if st, ok := post.Sys().(*syscall.Stat_t); ok && st.Nlink > 1 {
-			return fmt.Errorf("file has multiple hard links (copy the file into an allowed directory and retry)")
+			return fmt.Errorf("file has multiple hard links, so the other names it can be reached by " +
+				"cannot be checked (hint: copy the file and use the copy instead)")
 		}
 	}
 	if err := syscall.SetNonblock(int(f.Fd()), false); err != nil {
