@@ -46,7 +46,7 @@ lark-cli apps +deploy --dry-run
 - `current directory is not a Miaoda app project`：不在项目根执行；`cd` 到含 `spark.json` 的目录。
 - `spark.json is missing the required dev.port field`：声明本地 dev 端口（如 `{"dev":{"port":5173}}`）——托管后平台能力依托本地自描述端点（`GET localhost:<dev.port>/spark.json`），必填。
 - `the local self-description endpoint is unavailable`：先启动 dev server（官方模板已内置 /spark.json 端点；custom 项目须自己伺服项目根 spark.json）；无头/CI 环境用 `--no-verify`——**不要因为端点验证失败就自动加 `--no-verify` 重试**，先确认是环境问题而非发错目录。
-- `the dev server ... declares app X, but this directory deploys app Y`：**大概率发错目录**——停下核对当前目录与正在运行的 dev server 是否同一项目，把情况告知用户，不要用 `--no-verify` 绕过。
+- `the dev server ... declares app X, but this deploy targets app Y`：**大概率发错目录**——停下核对当前目录与正在运行的 dev server 是否同一项目，把情况告知用户，不要用 `--no-verify` 绕过。
 - `warning: no index.html ...`：不拦截但强烈建议修复——平台 SPA fallback 依赖入口 index.html，缺失时线上路由回退会异常。
 - `routes.json is missing` / schema 校验失败：声明了 `build.command` 的项目由构建脚本负责生成合法 routes.json；让用户检查构建配置，不要手工伪造（buildless 项目无此问题，CLI 会自动生成）。
 - `build command ... failed`：转述 stderr 摘要让用户修构建错误（构建命令来自 spark.json `build.command`）；用户已手动构建时可用 `--skip-build`。

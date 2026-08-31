@@ -262,7 +262,7 @@ var AppsInitTemplate = common.Shortcut{
 		}
 		devPrefix := ""
 		if dir != "." {
-			devPrefix = "cd " + dir + " && "
+			devPrefix = fmt.Sprintf("cd %q && ", dir)
 		}
 		nextSteps := []string{
 			devPrefix + "npm install && npm run dev",

@@ -9,6 +9,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -557,7 +558,16 @@ func TestResolveAppDevRegistries(t *testing.T) {
 	}
 	// http and bare hosts are rejected.
 	for _, bad := range []string{"http://registry.npmjs.org", "registry.npmjs.org", "ftp://x"} {
-		if _, err := resolveAppDevRegistries(rctxWith(bad)); err == nil || !strings.Contains(err.Error(), "https") {
+		_, err := resolveAppDevRegistries(rctxWith(bad))
+		if err == nil {
+			t.Errorf("registry %q must be rejected", bad)
+			continue
+		}
+		var verr *errs.ValidationError
+		if !errors.As(err, &verr) || verr.Param != "--registry" {
+			t.Errorf("registry %q: want a --registry validation error, got %v", bad, err)
+		}
+		if !strings.Contains(err.Error(), "https") {
 			t.Errorf("registry %q must be rejected with an https hint, got %v", bad, err)
 		}
 	}

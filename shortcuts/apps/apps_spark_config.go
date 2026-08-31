@@ -124,6 +124,9 @@ func writeSparkAppSection(dir, appID, appURL string) error {
 	} else if !os.IsNotExist(err) {
 		return appsFileIOError(err, "read %s failed: %v", sparkJSONRelPath, err)
 	}
+	if doc == nil { // a literal JSON null unmarshals to a nil map
+		doc = map[string]interface{}{}
+	}
 	app := map[string]interface{}{"id": appID}
 	if appURL != "" {
 		app["online_url"] = appURL
@@ -173,6 +176,9 @@ func writeSparkScaffoldFields(dir, stack, version string) error {
 		}
 	} else if !os.IsNotExist(err) {
 		return appsFileIOError(err, "read %s failed: %v", sparkJSONRelPath, err)
+	}
+	if doc == nil { // a literal JSON null unmarshals to a nil map
+		doc = map[string]interface{}{}
 	}
 	if cur, _ := doc["stack"].(string); strings.TrimSpace(cur) == "" {
 		doc["stack"] = stack
