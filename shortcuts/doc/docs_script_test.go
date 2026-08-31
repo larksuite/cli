@@ -54,21 +54,29 @@ func TestDocsCreateWorkflowRetainsDraftWorkspace(t *testing.T) {
 	if !strings.Contains(text, "保留 Step 4 返回的 `work_dir` 及其中的创作草稿") {
 		t.Fatal("create workflow does not retain the draft workspace")
 	}
-	for _, forbidden := range []string{"cleanup-draft", "文件删除能力", "删除整个 `work_dir`"} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("create workflow still instructs draft workspace cleanup %q", forbidden)
-		}
-	}
 
 	script, err := os.ReadFile("../../skills/lark-doc/references/lark-doc-script.md")
 	if err != nil {
 		t.Fatalf("read script reference: %v", err)
 	}
-	if !strings.Contains(string(script), "保留 `workspace` 及其中的创作草稿") {
+	scriptText := string(script)
+	if !strings.Contains(scriptText, "保留 `workspace` 及其中的创作草稿") {
 		t.Fatal("script reference does not retain the draft workspace")
 	}
-	if strings.Contains(string(script), "精确删除 `workspace`") {
-		t.Fatal("script reference still instructs draft workspace cleanup")
+
+	documents := []struct {
+		name    string
+		content string
+	}{
+		{name: "create workflow", content: text},
+		{name: "script reference", content: scriptText},
+	}
+	for _, document := range documents {
+		for _, forbidden := range []string{"cleanup-draft", "文件删除能力", "删除整个 `work_dir`", "精确删除 `workspace`"} {
+			if strings.Contains(document.content, forbidden) {
+				t.Fatalf("%s still instructs draft workspace cleanup %q", document.name, forbidden)
+			}
+		}
 	}
 }
 
