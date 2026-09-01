@@ -15,7 +15,7 @@ type Provider interface {
 	ResolveInterceptor(ctx context.Context) Interceptor
 }
 
-// URLRewriter maps a URL to the URL that lark-cli should use.
+// URLRewriter maps a CLI-owned URL to the URL that lark-cli should use.
 // Returning the input unchanged means no rewrite.
 type URLRewriter interface {
 	RewriteURL(rawURL string) string
@@ -45,10 +45,10 @@ const (
 )
 
 // ScopedProvider optionally limits the request Interceptor to selected request
-// classes. URL rewriting is intentionally not scoped: it also applies to
-// presentation URLs and URLs passed to child processes, which have no request
-// class. Providers that do not implement this interface retain the original
-// interceptor behavior and apply to every request class.
+// classes. URL rewriting is applied separately at CLI-owned URL boundaries,
+// including presentation URLs and URLs passed to child processes, which have
+// no request class. Providers that do not implement this interface retain the
+// original interceptor behavior and apply to every request class.
 type ScopedProvider interface {
 	Provider
 	SupportsRequestClass(RequestClass) bool

@@ -242,14 +242,14 @@ func TestHTTPPolicyRouterInterceptorObservesRewrittenURL(t *testing.T) {
 		return noContentResponse(req), nil
 	})
 	req := httptest.NewRequest(http.MethodGet, "https://source.example.test/path", nil)
-	roundTripForTest(t, WrapWithExtension(base), req)
+	roundTripForTest(t, WrapWithExtensionForClass(base, exttransport.RequestClassPlatform), req)
 
 	if interceptor.url != "https://mirror.example.test/path" {
 		t.Fatalf("interceptor URL = %q, want rewritten URL", interceptor.url)
 	}
 }
 
-func TestHTTPPolicyRouterClassifiesOriginalURLsAndScopesOnlyInterceptor(t *testing.T) {
+func TestHTTPPolicyRouterRewritesPlatformButPreservesExternalURL(t *testing.T) {
 	interceptor := &testHeaderInterceptor{}
 	registerTestProvider(t, rewriteTestProvider{
 		testProvider: testProvider{interceptor: interceptor},
@@ -287,7 +287,7 @@ func TestHTTPPolicyRouterClassifiesOriginalURLsAndScopesOnlyInterceptor(t *testi
 	if want := (receivedRequest{url: "https://open.mirror.test/open-apis/test", header: "routed"}); platform != want {
 		t.Fatalf("platform request = %#v, want %#v", platform, want)
 	}
-	if want := (receivedRequest{url: "https://external.mirror.test/file"}); external != want {
+	if want := (receivedRequest{url: "https://external.example.test/file"}); external != want {
 		t.Fatalf("external request = %#v, want %#v", external, want)
 	}
 	if interceptor.calls != 1 {
@@ -306,7 +306,7 @@ func TestHTTPPolicyRouterRejectsUnparsableRewriteBeforeBase(t *testing.T) {
 		return nil, nil
 	})
 	router := NewHTTPPolicyRouter(base, base)
-	req := httptest.NewRequest(http.MethodGet, "https://example.test/path", nil)
+	req := httptest.NewRequest(http.MethodGet, "https://open.feishu.cn/path", nil)
 	resp, err := router.RoundTrip(req)
 	if resp != nil {
 		t.Fatalf("response = %v, want nil", resp)
