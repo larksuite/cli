@@ -32,10 +32,10 @@ type InstallOptions struct {
 // Install downloads, verifies, and commits the configured Skills and binary
 // resources as one rollback-capable local transaction. The executable is
 // committed last.
-func Install(ctx context.Context, manifest *Manifest, opts InstallOptions) error {
+func Install(ctx context.Context, manifest *Manifest, opts InstallOptions) errs.TypedError {
 	prepared, err := prepareUpdate(ctx, manifest)
 	if err != nil {
-		return ClassifyError("failed to prepare distribution update", err)
+		return classifyError("failed to prepare distribution update", err)
 	}
 	defer prepared.cleanup()
 	if err := installPrepared(prepared, opts); err != nil {
@@ -93,15 +93,12 @@ func installPrepared(prepared *preparedUpdate, opts InstallOptions) error {
 		return cause
 	}
 
-	added := difference(prepared.SkillNames, officialSkills(previous))
-	state := skillscheck.SkillsState{
-		Version:             prepared.Manifest.Version,
-		Layout:              skillscheck.LayoutSeparate,
-		OfficialSkills:      prepared.SkillNames,
-		UpdatedSkills:       prepared.SkillNames,
-		AddedOfficialSkills: added,
-		UpdatedAt:           time.Now().UTC().Format(time.RFC3339),
-	}
+	state := skillscheck.NewCompleteState(
+		prepared.Manifest.Version,
+		skillscheck.LayoutSeparate,
+		prepared.SkillNames,
+		previous,
+	)
 	if err := skillscheck.WriteState(state); err != nil {
 		return rollback(fmt.Errorf("write Skills state: %w", err))
 	}
@@ -253,7 +250,7 @@ func installSkills(prepared *preparedUpdate, target string, previous *skillschec
 		cleanup()
 		return nil, nil, err
 	}
-	managed := union(prepared.SkillNames, officialSkills(previous))
+	managed := union(prepared.SkillNames, skillscheck.KnownOfficialSkills(previous))
 	movedOld := []string{}
 	movedNew := []string{}
 	rollback := func() error {
@@ -396,13 +393,6 @@ func replaceBinary(staged, target string) (func(), error) {
 	return func() { _ = vfs.Remove(backupPath) }, nil
 }
 
-func officialSkills(state *skillscheck.SkillsState) []string {
-	if state == nil || state.OfficialSkillsUnknown {
-		return nil
-	}
-	return state.OfficialSkills
-}
-
 func union(a, b []string) []string {
 	set := map[string]bool{}
 	for _, values := range [][]string{a, b} {
@@ -415,16 +405,6 @@ func union(a, b []string) []string {
 		result = append(result, value)
 	}
 	sort.Strings(result)
-	return result
-}
-
-func difference(a, b []string) []string {
-	result := []string{}
-	for _, value := range a {
-		if !contains(b, value) {
-			result = append(result, value)
-		}
-	}
 	return result
 }
 

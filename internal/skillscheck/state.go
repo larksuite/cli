@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"slices"
+	"time"
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/validate"
@@ -30,6 +32,43 @@ type SkillsState struct {
 	AddedOfficialSkills   []string `json:"added_official_skills"`
 	SkippedDeletedSkills  []string `json:"skipped_deleted_skills"`
 	UpdatedAt             string   `json:"updated_at"`
+}
+
+// KnownOfficialSkills returns the previous managed Skill set when the state is
+// authoritative. Callers receive a copy so installation planning cannot mutate
+// the persisted state in memory.
+func KnownOfficialSkills(state *SkillsState) []string {
+	if state == nil || state.OfficialSkillsUnknown {
+		return nil
+	}
+	return slices.Clone(state.OfficialSkills)
+}
+
+// NewCompleteState builds state for a complete managed Skills replacement.
+// Every supplied Skill is installed in this operation, and Skills that were not
+// present in the previous authoritative state are recorded as newly added.
+func NewCompleteState(version string, layout Layout, official []string, previous *SkillsState) SkillsState {
+	official = slices.Clone(official)
+	previousSet := make(map[string]bool)
+	for _, name := range KnownOfficialSkills(previous) {
+		previousSet[name] = true
+	}
+	added := make([]string, 0, len(official))
+	for _, name := range official {
+		if !previousSet[name] {
+			added = append(added, name)
+		}
+	}
+	state := SkillsState{
+		Version:             version,
+		Layout:              layout,
+		OfficialSkills:      official,
+		UpdatedSkills:       slices.Clone(official),
+		AddedOfficialSkills: added,
+		UpdatedAt:           time.Now().UTC().Format(time.RFC3339),
+	}
+	state.ensureNonNilSlices()
+	return state
 }
 
 func statePath() string {

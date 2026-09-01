@@ -14,9 +14,9 @@ import (
 	"github.com/larksuite/cli/errs"
 )
 
-// ClassifyError maps distribution transport, protocol, and local file failures
+// classifyError maps distribution transport, protocol, and local file failures
 // to the CLI error contract while preserving the original cause.
-func ClassifyError(message string, err error) errs.TypedError {
+func classifyError(message string, err error) errs.TypedError {
 	var typed errs.TypedError
 	if errors.As(err, &typed) {
 		return typed

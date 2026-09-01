@@ -144,9 +144,11 @@ func WrapWithExtension(base http.RoundTripper) http.RoundTripper {
 	return resolveExtension().wrap(base, "", false)
 }
 
-// WrapWithExtensionForClass wraps base only when the registered provider
-// supports class. Providers without the optional ScopedProvider interface keep
-// their historical all-request behavior.
+// WrapWithExtensionForClass applies URL rewriting and wraps base with the
+// interceptor when the registered provider supports class. ScopedProvider only
+// limits the interceptor; URL rewriting remains available for every class.
+// Providers without ScopedProvider keep their historical all-request
+// interceptor behavior.
 func WrapWithExtensionForClass(base http.RoundTripper, class exttransport.RequestClass) http.RoundTripper {
 	return resolveExtension().wrap(base, class, true)
 }

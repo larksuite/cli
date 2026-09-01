@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	internaltransport "github.com/larksuite/cli/internal/transport"
 )
 
 const testChecksum = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -20,6 +22,16 @@ func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { r
 
 func validManifestJSON(version string) string {
 	return fmt.Sprintf(`{"schema":1,"version":%q,"artifacts":{"skills":{"url":"https://dist.example/skills.tar.gz","checksum":%q},"test-os":{"url":"https://dist.example/cli.tar.gz","checksum":%q}}}`, version, testChecksum, testChecksum)
+}
+
+func TestDistributionClientUsesSharedBuiltInTransport(t *testing.T) {
+	previousClient := DefaultClient
+	DefaultClient = nil
+	t.Cleanup(func() { DefaultClient = previousClient })
+
+	if got, want := httpClient().Transport, internaltransport.Shared(); got != want {
+		t.Fatalf("distribution transport = %T, want shared transport %T", got, want)
+	}
 }
 
 func TestValidateDistributionURLAcceptsHTTPAndHTTPS(t *testing.T) {

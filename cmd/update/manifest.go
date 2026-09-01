@@ -17,7 +17,7 @@ func runManifestUpdate(ctx context.Context, opts *UpdateOptions, manifestURL str
 	current := currentVersion()
 	manifest, err := distribution.FetchManifest(ctx, manifestURL)
 	if err != nil {
-		return reportDistributionError(opts, "failed to load distribution manifest", err)
+		return reportDistributionError(opts, err)
 	}
 	target := manifest.Version
 	if opts.Check {
@@ -30,7 +30,7 @@ func runManifestUpdate(ctx context.Context, opts *UpdateOptions, manifestURL str
 		fmt.Fprintf(streams.ErrOut, "Updating lark-cli %s %s %s from the configured distribution ...\n", current, symArrow(), target)
 	}
 	if err := distribution.Install(ctx, manifest, distribution.InstallOptions{}); err != nil {
-		return reportDistributionError(opts, "failed to install distribution update", err)
+		return reportDistributionError(opts, err)
 	}
 	if opts.JSON {
 		output.PrintJson(streams.Out, map[string]interface{}{
@@ -73,8 +73,7 @@ func reportManifestStatus(opts *UpdateOptions, current, target string, check boo
 	return nil
 }
 
-func reportDistributionError(opts *UpdateOptions, message string, err error) error {
-	typed := distribution.ClassifyError(message, err)
+func reportDistributionError(opts *UpdateOptions, typed errs.TypedError) error {
 	errType := "update_error"
 	if problem, ok := errs.ProblemOf(typed); ok && problem.Category == errs.CategoryNetwork {
 		errType = "network"

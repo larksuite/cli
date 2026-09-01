@@ -17,6 +17,9 @@ import (
 	"regexp"
 	"runtime"
 	"time"
+
+	"github.com/larksuite/cli/errs"
+	internaltransport "github.com/larksuite/cli/internal/transport"
 )
 
 const (
@@ -50,6 +53,9 @@ func httpClient() *http.Client {
 		return DefaultClient
 	}
 	return &http.Client{
+		// Distribution URLs bypass extension hooks, but they still use the CLI's
+		// built-in proxy, custom CA, and fail-closed transport policy.
+		Transport: internaltransport.Shared(),
 		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
 			if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
 				return fmt.Errorf("distribution URL redirected to an unsupported scheme")
@@ -66,7 +72,17 @@ func PlatformKey(goos, goarch string) string { return goos + "-" + goarch }
 func CurrentPlatformKey() string { return PlatformKey(runtime.GOOS, runtime.GOARCH) }
 
 // FetchManifest synchronously loads and validates the configured manifest.
-func FetchManifest(ctx context.Context, manifestURL string) (*Manifest, error) {
+// Failures are classified at this owner boundary before they reach commands,
+// background checks, or diagnostics.
+func FetchManifest(ctx context.Context, manifestURL string) (*Manifest, errs.TypedError) {
+	manifest, err := fetchManifest(ctx, manifestURL)
+	if err != nil {
+		return nil, classifyError("failed to load distribution manifest", err)
+	}
+	return manifest, nil
+}
+
+func fetchManifest(ctx context.Context, manifestURL string) (*Manifest, error) {
 	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, manifestURL, nil)

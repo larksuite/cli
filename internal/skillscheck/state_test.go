@@ -27,6 +27,23 @@ func TestReadState_Missing(t *testing.T) {
 	}
 }
 
+func TestNewCompleteStateOwnsManagedStateSemantics(t *testing.T) {
+	previous := &SkillsState{OfficialSkills: []string{"existing", "retired"}}
+	got := NewCompleteState("target", LayoutSeparate, []string{"existing", "new"}, previous)
+
+	if got.Version != "target" || got.Layout != LayoutSeparate {
+		t.Fatalf("state identity = %#v", got)
+	}
+	if !reflect.DeepEqual(got.OfficialSkills, []string{"existing", "new"}) ||
+		!reflect.DeepEqual(got.UpdatedSkills, []string{"existing", "new"}) ||
+		!reflect.DeepEqual(got.AddedOfficialSkills, []string{"new"}) {
+		t.Fatalf("state Skills = %#v", got)
+	}
+	if got.SkippedDeletedSkills == nil || got.UpdatedAt == "" {
+		t.Fatalf("state completeness = %#v", got)
+	}
+}
+
 func TestReadState_Valid(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)

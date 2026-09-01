@@ -153,10 +153,9 @@ func updateRunWithContext(ctx context.Context, opts *UpdateOptions) error {
 				WithParam("--skills-layout").
 				WithHint("Remove --skills-layout when using --check."))
 	}
-	manifestURL, manifestMode, err := distribution.ResolveManifestURL(ctx)
-	if err != nil {
-		return reportError(opts, io, "configuration",
-			errs.NewConfigError(errs.SubtypeInvalidConfig, "invalid distribution configuration: %s", err).WithCause(err))
+	manifestURL, manifestMode, configErr := distribution.ResolveManifestURL(ctx)
+	if configErr != nil {
+		return reportError(opts, io, "configuration", configErr)
 	}
 	if manifestMode {
 		if strings.TrimSpace(opts.SkillsLayout) != "" {

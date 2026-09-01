@@ -22,8 +22,10 @@ type URLRewriter interface {
 }
 
 // URLRewriterProvider optionally supplies URL rewriting in addition to the
-// existing request interceptor. Providers that do not implement this interface
-// retain their existing behavior.
+// existing request interceptor. ResolveURLRewriter must be a fast, local
+// lookup; it may run while the CLI is constructing an HTTP client or rendering
+// a non-network URL. Providers that do not implement this interface retain
+// their existing behavior.
 type URLRewriterProvider interface {
 	Provider
 	ResolveURLRewriter(ctx context.Context) URLRewriter
@@ -37,6 +39,8 @@ type URLRewriterProvider interface {
 // pass them through URL rewriting or the request interceptor. HTTP is supported
 // for trusted distribution networks; the provider is responsible for transport
 // integrity when it does not use HTTPS.
+// ResolveManifestURL must be a fast, local lookup. Manifest fetching, parsing,
+// and artifact installation are owned by the CLI.
 type DistributionProvider interface {
 	Provider
 	ResolveManifestURL(ctx context.Context) string
@@ -55,9 +59,11 @@ const (
 	RequestClassExternal RequestClass = "external"
 )
 
-// ScopedProvider optionally limits a Provider to selected request classes.
-// Providers that do not implement this interface retain the original
-// behavior and apply to every request class.
+// ScopedProvider optionally limits the request Interceptor to selected request
+// classes. URL rewriting is intentionally not scoped: it also applies to
+// presentation URLs and URLs passed to child processes, which have no request
+// class. Providers that do not implement this interface retain the original
+// interceptor behavior and apply to every request class.
 type ScopedProvider interface {
 	Provider
 	SupportsRequestClass(RequestClass) bool
