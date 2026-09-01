@@ -441,11 +441,11 @@ func TestMailAutoReplyUploadsLocalImages(t *testing.T) {
 	if image["file_key"] != "file_logo" || image["image_name"] != "logo.png" {
 		t.Fatalf("image metadata = %#v", image)
 	}
-	if image["image_width"] != float64(1) {
-		t.Fatalf("image_width = %#v, want 1", image["image_width"])
+	if _, ok := image["image_width"]; ok {
+		t.Fatalf("image metadata should not include image_width: %#v", image)
 	}
-	if image["image_height"] != float64(1) {
-		t.Fatalf("image_height = %#v, want 1", image["image_height"])
+	if _, ok := image["image_height"]; ok {
+		t.Fatalf("image metadata should not include image_height: %#v", image)
 	}
 	if cid, _ := image["cid"].(string); cid == "" || !strings.Contains(html, "cid:"+cid) {
 		t.Fatalf("image cid = %q, html = %q", cid, html)
@@ -505,11 +505,11 @@ func TestMailAutoReplyUploadsDataURIImages(t *testing.T) {
 	if image["file_key"] != "file_data_uri" || image["image_name"] != "auto-reply-image-1.png" {
 		t.Fatalf("image metadata = %#v", image)
 	}
-	if image["image_width"] != float64(1) {
-		t.Fatalf("image_width = %#v, want 1", image["image_width"])
+	if _, ok := image["image_width"]; ok {
+		t.Fatalf("image metadata should not include image_width: %#v", image)
 	}
-	if image["image_height"] != float64(1) {
-		t.Fatalf("image_height = %#v, want 1", image["image_height"])
+	if _, ok := image["image_height"]; ok {
+		t.Fatalf("image metadata should not include image_height: %#v", image)
 	}
 	if _, ok := image["content_type"]; ok {
 		t.Fatalf("image metadata should not include content_type: %#v", image)
