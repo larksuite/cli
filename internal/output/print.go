@@ -4,6 +4,7 @@
 package output
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -46,13 +47,21 @@ func legacyStderrf(format string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, format, args...) //nolint:forbidigo // legacy leaf-formatter stderr; removed in the output-ownership follow-up
 }
 
-// WriteJSON writes data as formatted JSON to w and returns marshal or write errors.
+// WriteJSON writes data as formatted JSON to w and returns marshal or write
+// errors. HTML escaping is disabled: consumers of the envelope (notably the
+// citation render pipeline) read the raw bytes without JSON-decoding first,
+// so <-style escapes for <, > and & leak into what they match against.
+// This also keeps the non-Raw path byte-consistent with the Raw and jq paths,
+// which already encode with SetEscapeHTML(false).
 func WriteJSON(w io.Writer, data interface{}) error {
-	b, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(data); err != nil {
 		return &outputMarshalError{err: err}
 	}
-	_, err = fmt.Fprintln(w, string(b))
+	_, err := w.Write(buf.Bytes())
 	return err
 }
 
