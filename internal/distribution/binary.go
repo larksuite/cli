@@ -5,9 +5,10 @@ package distribution
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
-	"os"
+	"io/fs"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -74,19 +75,45 @@ func matchesVersionOutput(output, version string) bool {
 
 func replaceBinary(staged, target string) (func(), error) {
 	backupPath := target + ".old"
-	if _, err := vfs.Stat(backupPath); err == nil {
+	targetExists, err := pathExists(target)
+	if err != nil {
+		return nil, err
+	}
+	backupExists, err := pathExists(backupPath)
+	if err != nil {
+		return nil, err
+	}
+	if targetExists && backupExists {
 		if err := vfs.Remove(backupPath); err != nil {
 			return nil, fmt.Errorf("remove stale binary backup: %w", err)
 		}
-	} else if !os.IsNotExist(err) {
-		return nil, err
+		backupExists = false
 	}
-	if err := vfs.Rename(target, backupPath); err != nil {
-		return nil, err
+	if targetExists {
+		if err := vfs.Rename(target, backupPath); err != nil {
+			return nil, err
+		}
+		backupExists = true
 	}
 	if err := vfs.Rename(staged, target); err != nil {
-		_ = vfs.Rename(backupPath, target)
+		if targetExists {
+			_ = vfs.Rename(backupPath, target)
+		}
 		return nil, err
 	}
-	return func() { _ = vfs.Remove(backupPath) }, nil
+	return func() {
+		if backupExists {
+			_ = vfs.Remove(backupPath)
+		}
+	}, nil
+}
+
+func pathExists(path string) (bool, error) {
+	if _, err := vfs.Stat(path); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }

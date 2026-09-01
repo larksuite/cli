@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
 )
 
 func TestApplyFetchIMMarkdown(t *testing.T) {
@@ -67,6 +69,19 @@ func TestApplyFetchIMMarkdown(t *testing.T) {
 				t.Fatalf("data = %#v, want %#v", tt.data, tt.want)
 			}
 		})
+	}
+}
+
+func TestNewIMMarkdownContextRewritesFallbackURL(t *testing.T) {
+	testurlrewrite.Register(t, func(raw string) string {
+		if raw == "https://larkoffice.com" {
+			return "https://tenant.example.com/base"
+		}
+		return raw
+	})
+
+	if got := newIMMarkdownContext("doc_token").baseURL; got != "https://tenant.example.com/base" {
+		t.Fatalf("baseURL = %q", got)
 	}
 }
 

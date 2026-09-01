@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/larksuite/cli/internal/vfs"
 )
@@ -76,7 +77,11 @@ func extractTarGzip(source io.Reader, destination string, maxBytes int64) error 
 		}
 		switch header.Typeflag {
 		case tar.TypeDir:
-			if err := vfs.MkdirAll(filepath.Join(destination, filepath.FromSlash(header.Name)), 0o755); err != nil {
+			target, err := archiveEntryPath(destination, header.Name)
+			if err != nil {
+				return err
+			}
+			if err := vfs.MkdirAll(target, 0o755); err != nil {
 				return err
 			}
 		case tar.TypeReg, tar.TypeRegA:
@@ -95,7 +100,11 @@ func extractZip(reader *zip.Reader, destination string, maxBytes int64) error {
 	var total int64
 	for _, entry := range reader.File {
 		if entry.FileInfo().IsDir() {
-			if err := vfs.MkdirAll(filepath.Join(destination, filepath.FromSlash(entry.Name)), 0o755); err != nil {
+			target, err := archiveEntryPath(destination, entry.Name)
+			if err != nil {
+				return err
+			}
+			if err := vfs.MkdirAll(target, 0o755); err != nil {
 				return err
 			}
 			continue
@@ -124,7 +133,10 @@ func extractZip(reader *zip.Reader, destination string, maxBytes int64) error {
 }
 
 func writeArchiveFile(root, name string, mode os.FileMode, source io.Reader) error {
-	target := filepath.Join(root, filepath.FromSlash(name))
+	target, err := archiveEntryPath(root, name)
+	if err != nil {
+		return err
+	}
 	if err := vfs.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return err
 	}
@@ -144,4 +156,18 @@ func writeArchiveFile(root, name string, mode os.FileMode, source io.Reader) err
 		return copyErr
 	}
 	return closeErr
+}
+
+func archiveEntryPath(root, name string) (string, error) {
+	localName := filepath.FromSlash(name)
+	if filepath.IsAbs(localName) || filepath.VolumeName(localName) != "" {
+		return "", fmt.Errorf("archive entry %q escapes the extraction root", name)
+	}
+	root = filepath.Clean(root)
+	target := filepath.Join(root, localName)
+	relative, err := filepath.Rel(root, target)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("archive entry %q escapes the extraction root", name)
+	}
+	return target, nil
 }

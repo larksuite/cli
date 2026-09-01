@@ -5,12 +5,13 @@ package distribution
 
 import (
 	"errors"
-	"os"
+	"io/fs"
 	"path/filepath"
 	"slices"
 	"testing"
 
 	"github.com/larksuite/cli/internal/skillscheck"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 func TestInstallPreparedUpdatesManagedSkillsAndPreservesCustom(t *testing.T) {
@@ -35,7 +36,7 @@ func TestInstallPreparedUpdatesManagedSkillsAndPreservesCustom(t *testing.T) {
 	assertFile(t, executable, "new")
 	assertFile(t, filepath.Join(skillsDir, "new-managed", "SKILL.md"), "new")
 	assertFile(t, filepath.Join(skillsDir, "custom", "SKILL.md"), "custom")
-	if _, err := os.Stat(filepath.Join(skillsDir, "old-managed")); !os.IsNotExist(err) {
+	if _, err := vfs.Stat(filepath.Join(skillsDir, "old-managed")); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("old managed Skill still exists: %v", err)
 	}
 	state, ok, err := skillscheck.ReadState()
@@ -50,10 +51,10 @@ func TestInstallPreparedSyncsDetectedClaudeAndCodexSkillsDirs(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("CODEX_HOME", "")
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", filepath.Join(root, "config"))
-	if err := os.MkdirAll(filepath.Join(root, ".claude"), 0o755); err != nil {
+	if err := vfs.MkdirAll(filepath.Join(root, ".claude"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(root, ".codex"), 0o755); err != nil {
+	if err := vfs.MkdirAll(filepath.Join(root, ".codex"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	executable := filepath.Join(root, "bin", "lark-cli")
@@ -149,7 +150,9 @@ func TestMatchesVersionOutputSupportsOpaqueVersion(t *testing.T) {
 func TestInstallPreparedBinaryCommitFailureRollsBackSkillsAndState(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", filepath.Join(root, "config"))
-	missingExecutable := filepath.Join(root, "bin", "missing-lark-cli")
+	executable := filepath.Join(root, "bin", "lark-cli")
+	mustWrite(t, executable, "old")
+	mustWrite(t, filepath.Join(executable+".old", "block-removal"), "blocked")
 	skillsDir := filepath.Join(root, "skills")
 	mustWrite(t, filepath.Join(skillsDir, "managed", "SKILL.md"), "old")
 	before := skillscheck.SkillsState{Version: "old", OfficialSkills: []string{"managed"}}
@@ -160,7 +163,7 @@ func TestInstallPreparedBinaryCommitFailureRollsBackSkillsAndState(t *testing.T)
 	mustWrite(t, binary, "new")
 	mustWrite(t, filepath.Join(root, "prepared", "skills", "managed", "SKILL.md"), "new")
 	prepared := &preparedUpdate{Manifest: &Manifest{Version: "target"}, BinaryPath: binary, SkillsRoot: filepath.Join(root, "prepared", "skills"), SkillNames: []string{"managed"}}
-	err := installPrepared(prepared, InstallOptions{ExecutablePath: missingExecutable, SkillsDir: skillsDir, VerifyBinary: func(path, version string) error { return nil }})
+	err := installPrepared(prepared, InstallOptions{ExecutablePath: executable, SkillsDir: skillsDir, VerifyBinary: func(path, version string) error { return nil }})
 	if err == nil {
 		t.Fatal("InstallPrepared succeeded")
 	}
@@ -169,21 +172,42 @@ func TestInstallPreparedBinaryCommitFailureRollsBackSkillsAndState(t *testing.T)
 	if readErr != nil || !ok || state.Version != "old" {
 		t.Fatalf("state after rollback = %#v, %v, %v", state, ok, readErr)
 	}
+	assertFile(t, executable, "old")
+}
+
+func TestReplaceBinaryRecoversWhenOnlyBackupExists(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "lark-cli")
+	backup := target + ".old"
+	staged := filepath.Join(root, "staged")
+	mustWrite(t, backup, "old")
+	mustWrite(t, staged, "new")
+
+	cleanup, err := replaceBinary(staged, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFile(t, target, "new")
+	assertFile(t, backup, "old")
+	cleanup()
+	if _, err := vfs.Stat(backup); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("backup still exists after cleanup: %v", err)
+	}
 }
 
 func mustWrite(t *testing.T, path, value string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := vfs.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(value), 0o755); err != nil {
+	if err := vfs.WriteFile(path, []byte(value), 0o755); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func assertFile(t *testing.T, path, want string) {
 	t.Helper()
-	got, err := os.ReadFile(path)
+	got, err := vfs.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}

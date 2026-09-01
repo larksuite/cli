@@ -42,6 +42,14 @@ func TestNewCompleteStateOwnsManagedStateSemantics(t *testing.T) {
 	if got.SkippedDeletedSkills == nil || got.UpdatedAt == "" {
 		t.Fatalf("state completeness = %#v", got)
 	}
+	if known := KnownOfficialSkills(&SkillsState{OfficialSkillsUnknown: true, OfficialSkills: []string{"existing"}}); known != nil {
+		t.Fatalf("unknown official Skills = %#v, want nil", known)
+	}
+	known := KnownOfficialSkills(&got)
+	known[0] = "mutated"
+	if got.OfficialSkills[0] == "mutated" {
+		t.Fatal("KnownOfficialSkills returned state-owned storage")
+	}
 }
 
 func TestReadState_Valid(t *testing.T) {

@@ -78,6 +78,7 @@ func TestManifestCheckAcceptsHTTPAndReportsOpaqueDowngradeTarget(t *testing.T) {
 }
 
 func TestManifestArtifactProtocolFailureUsesNetworkTaxonomy(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	payload := []byte("not an archive")
 	digest := fmt.Sprintf("sha256:%x", sha256.Sum256(payload))
 	var server *httptest.Server

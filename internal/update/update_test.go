@@ -18,6 +18,7 @@ import (
 
 	exttransport "github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/distribution"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // roundTripFunc adapts a function to http.RoundTripper.
@@ -74,7 +75,7 @@ func TestManifestCacheUsesExactTargetAndSourceIdentity(t *testing.T) {
 	})
 
 	RefreshCache("new-current")
-	stateBytes, err := os.ReadFile(statePath())
+	stateBytes, err := vfs.ReadFile(statePath())
 	if err != nil {
 		t.Fatal(err)
 	}
