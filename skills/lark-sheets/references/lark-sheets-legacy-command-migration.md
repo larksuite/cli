@@ -34,7 +34,7 @@
 | --- | --- |
 | `+read` | `+cells-get`（只要纯值 / CSV 用 `+csv-get`，整表用 `+table-get`） |
 | `+write` | `+cells-set` |
-| `+append` | `+table-put --sheets '[{…,"mode":"append"}]'`（追加到已有数据下方）；若已知目标行号，`+cells-set` 写该区域即可 |
+| `+append` | `+table-put --sheets '{"sheets":[{…,"mode":"append"}]}'`（追加到已有数据下方；顶层必须是 `{"sheets":[…]}` 信封，裸数组会被拒绝）；若已知目标行号，`+cells-set` 写该区域即可 |
 | `+find` | `+cells-search` |
 | `+replace` | `+cells-replace` |
 
@@ -104,7 +104,7 @@
 旧命令的 `--values` 里，公式写成 `{"type":"formula","text":"=SUM(C2:C5)"}`。这类带 `type` / `text`
 的写法会被 `+cells-set` **直接拒绝**：
 
-```
+```text
 --cells[0][0].type is not a cell field — the value type is inferred from the JSON value;
 control display format via cell_styles.number_format
 ```
