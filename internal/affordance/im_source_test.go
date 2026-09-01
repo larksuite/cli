@@ -169,13 +169,21 @@ func TestIMAffordanceDoesNotDuplicateRuntimeRecovery(t *testing.T) {
 func TestIMMessageListAffordanceDocumentsNormalizedJSONOptIn(t *testing.T) {
 	prev := mdSource
 	t.Cleanup(func() { SetSource(prev) })
-	SetSource(os.DirFS("../../affordance"))
+	// SetSource requires fs.FS; this bounded repository-local fixture is test-only.
+	SetSource(os.DirFS("../../affordance")) //nolint:forbidigo
 
-	for _, method := range []string{"+chat-messages-list", "+threads-messages-list"} {
-		tips := parsedIMAffordance(t, method).Tips
+	for _, tc := range []struct {
+		method  string
+		context string
+	}{
+		{method: "+chat-messages-list", context: "chat_id"},
+		{method: "+threads-messages-list", context: "thread_id"},
+	} {
+		tips := parsedIMAffordance(t, tc.method).Tips
 		if !containsItem(tips, "Default JSON") || !containsItem(tips, "--json-shape normalized") ||
+			!containsItem(tips, tc.context) ||
 			!containsItem(tips, "participants") || !containsItem(tips, "sender_id") {
-			t.Errorf("%s tips must explain the normalized JSON opt-in and participant lookup: %v", method, tips)
+			t.Errorf("%s tips must explain the normalized JSON opt-in and %s context: %v", tc.method, tc.context, tips)
 		}
 	}
 }

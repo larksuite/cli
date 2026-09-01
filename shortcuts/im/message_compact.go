@@ -179,8 +179,13 @@ func commonMessageString(messages []map[string]interface{}, key string) string {
 	common := ""
 	conflict := false
 	walkMessageTree(messages, func(message map[string]interface{}) {
-		value, _ := message[key].(string)
-		if value == "" || conflict {
+		if conflict {
+			return
+		}
+		value, ok := message[key].(string)
+		if !ok || value == "" {
+			common = ""
+			conflict = true
 			return
 		}
 		if common == "" {

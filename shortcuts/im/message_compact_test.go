@@ -126,6 +126,27 @@ func TestCompactMessageListDataDoesNotHoistMixedChatIDs(t *testing.T) {
 	}
 }
 
+func TestCompactMessageListDataDoesNotHoistPartiallyPresentChatID(t *testing.T) {
+	for _, missingValue := range []interface{}{nil, 42} {
+		messages := []map[string]interface{}{
+			{"message_id": "om_1", "chat_id": "oc_a"},
+			{"message_id": "om_2", "chat_id": missingValue},
+		}
+		if missingValue == nil {
+			delete(messages[1], "chat_id")
+		}
+
+		got := compactMessageListData(messages, "", "omt_thread", false, "")
+		if _, exists := got["chat_id"]; exists {
+			t.Fatalf("partially present chat_id was hoisted for %#v: %#v", missingValue, got)
+		}
+		projected := got["messages"].([]map[string]interface{})
+		if projected[0]["chat_id"] != "oc_a" {
+			t.Fatalf("known chat_id was lost for %#v: %#v", missingValue, projected)
+		}
+	}
+}
+
 func TestCompactMessageListDataPreservesMismatchedContextAndReplyValues(t *testing.T) {
 	messages := []map[string]interface{}{
 		{
