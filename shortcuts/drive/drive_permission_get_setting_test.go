@@ -192,7 +192,8 @@ func TestDrivePermissionGetSettingResourceURLUsesConfiguredBrand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read spec: %v", err)
 	}
-	if got, want := spec.url(runtime), "https://www.larksuite.com/page/appMetaTok"; got != want {
+	got := spec.url(runtime)
+	if want := "https://www.larksuite.com/page/appMetaTok"; got != want {
 		t.Fatalf("resource URL = %q, want %q", got, want)
 	}
 }

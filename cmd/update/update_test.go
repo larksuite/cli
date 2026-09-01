@@ -22,6 +22,7 @@ import (
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/selfupdate"
 	"github.com/larksuite/cli/internal/skillscheck"
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
 )
 
 const runLiveSkillsTestsEnv = "LARKSUITE_CLI_RUN_LIVE_SKILLS_TESTS"
@@ -907,6 +908,17 @@ func TestReleaseURL(t *testing.T) {
 	}
 }
 
+func TestResolvePresentationURLsRewrites(t *testing.T) {
+	testurlrewrite.Register(t, func(rawURL string) string {
+		return strings.Replace(rawURL, "github.com", "mirror.example.test", 1)
+	})
+
+	got := resolvePresentationURLs("2.0.0")
+	if got.release != "https://mirror.example.test/larksuite/cli/releases/tag/v2.0.0" || got.changelog != "https://mirror.example.test/larksuite/cli/blob/main/CHANGELOG.md" {
+		t.Fatalf("resolvePresentationURLs() = %#v", got)
+	}
+}
+
 func TestPermissionHint(t *testing.T) {
 	origOS := currentOS
 	defer func() { currentOS = origOS }()
@@ -922,7 +934,7 @@ func TestPermissionHint(t *testing.T) {
 	}
 
 	// Linux + pnpm: EACCES should point at pnpm setup, not npm prefix/sudo.
-	pnpmHint := permissionHint("EACCES: permission denied, access '/Users/x/Library/pnpm'", "pnpm")
+	pnpmHint := permissionHint("EACCES: permission denied, access 'pnpm-home'", "pnpm")
 	if !strings.Contains(pnpmHint, "pnpm setup") {
 		t.Errorf("expected pnpm setup hint, got: %s", pnpmHint)
 	}

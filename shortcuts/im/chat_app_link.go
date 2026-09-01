@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/urlrewrite"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -37,7 +38,7 @@ func assembleChatAppLink(rawChatID interface{}, brand core.LarkBrand) string {
 	q := url.Values{}
 	q.Set("openChatId", chatID)
 	u.RawQuery = q.Encode()
-	return u.String()
+	return urlrewrite.Rewrite(u.String())
 }
 
 func resolveChatAppLinkDomain(brand core.LarkBrand) string {

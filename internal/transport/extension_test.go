@@ -35,6 +35,24 @@ func (p testProvider) ResolveInterceptor(context.Context) exttransport.Intercept
 	return p.interceptor
 }
 
+type rewriteTestProvider struct {
+	testProvider
+	rewriter  exttransport.URLRewriter
+	supported exttransport.RequestClass
+}
+
+func (p rewriteTestProvider) ResolveURLRewriter(context.Context) exttransport.URLRewriter {
+	return p.rewriter
+}
+
+func (p rewriteTestProvider) SupportsRequestClass(class exttransport.RequestClass) bool {
+	return p.supported == "" || class == p.supported
+}
+
+type rewriteFunc func(string) string
+
+func (f rewriteFunc) RewriteURL(rawURL string) string { return f(rawURL) }
+
 type scopedTestProvider struct {
 	testProvider
 	supported exttransport.RequestClass
@@ -46,10 +64,12 @@ func (p scopedTestProvider) SupportsRequestClass(class exttransport.RequestClass
 
 type testHeaderInterceptor struct {
 	calls int
+	url   string
 }
 
 func (i *testHeaderInterceptor) PreRoundTrip(req *http.Request) func(*http.Response, error) {
 	i.calls++
+	i.url = req.URL.String()
 	req.Header.Set("X-Test-Platform", "routed")
 	return nil
 }
@@ -168,6 +188,151 @@ func TestHTTPPolicyRouterResolvesProviderOnce(t *testing.T) {
 	if resolveCalls != 1 {
 		t.Fatalf("ResolveInterceptor() calls = %d, want 1 per router", resolveCalls)
 	}
+}
+
+func TestHTTPPolicyRouterRewriteOnlyProviderDoesNotMutateCaller(t *testing.T) {
+	registerTestProvider(t, rewriteTestProvider{
+		rewriter: rewriteFunc(func(rawURL string) string {
+			return strings.Replace(rawURL, "source.example.test", "mirror.example.test", 1)
+		}),
+	})
+
+	var received *http.Request
+	router := NewHTTPPolicyRouter(
+		roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			received = req
+			return noContentResponse(req), nil
+		}),
+		roundTripFunc(func(*http.Request) (*http.Response, error) {
+			t.Fatal("external policy selected for explicit platform request")
+			return nil, nil
+		}),
+	)
+
+	const originalURL = "https://source.example.test/open-apis/test?x=1"
+	req := httptest.NewRequest(http.MethodGet, originalURL, nil)
+	req = WithRequestClass(req, exttransport.RequestClassPlatform)
+	roundTripForTest(t, router, req)
+
+	const rewrittenURL = "https://mirror.example.test/open-apis/test?x=1"
+	if got := received.URL.String(); got != rewrittenURL {
+		t.Fatalf("base URL = %q, want %q", got, rewrittenURL)
+	}
+	if received.Host != "mirror.example.test" {
+		t.Fatalf("base Host = %q, want rewritten host", received.Host)
+	}
+	if got := req.URL.String(); got != originalURL {
+		t.Fatalf("caller request URL = %q, want %q", got, originalURL)
+	}
+	if got := req.Host; got != "source.example.test" {
+		t.Fatalf("caller request Host = %q, want original host", got)
+	}
+}
+
+func TestHTTPPolicyRouterInterceptorObservesRewrittenURL(t *testing.T) {
+	interceptor := &testHeaderInterceptor{}
+	registerTestProvider(t, rewriteTestProvider{
+		testProvider: testProvider{interceptor: interceptor},
+		rewriter: rewriteFunc(func(rawURL string) string {
+			return strings.Replace(rawURL, "source.example.test", "mirror.example.test", 1)
+		}),
+	})
+
+	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return noContentResponse(req), nil
+	})
+	req := httptest.NewRequest(http.MethodGet, "https://source.example.test/path", nil)
+	roundTripForTest(t, WrapWithExtension(base), req)
+
+	if interceptor.url != "https://mirror.example.test/path" {
+		t.Fatalf("interceptor URL = %q, want rewritten URL", interceptor.url)
+	}
+}
+
+func TestHTTPPolicyRouterClassifiesOriginalURLsAndScopesOnlyInterceptor(t *testing.T) {
+	interceptor := &testHeaderInterceptor{}
+	registerTestProvider(t, rewriteTestProvider{
+		testProvider: testProvider{interceptor: interceptor},
+		rewriter: rewriteFunc(func(rawURL string) string {
+			rawURL = strings.Replace(rawURL, "open.feishu.cn", "open.mirror.test", 1)
+			return strings.Replace(rawURL, ".example.test", ".mirror.test", 1)
+		}),
+		supported: exttransport.RequestClassPlatform,
+	})
+
+	type receivedRequest struct {
+		url    string
+		header string
+	}
+	var platform, external receivedRequest
+	router := NewHTTPPolicyRouter(
+		roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			platform = receivedRequest{url: req.URL.String(), header: req.Header.Get("X-Test-Platform")}
+			return noContentResponse(req), nil
+		}),
+		roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			external = receivedRequest{url: req.URL.String(), header: req.Header.Get("X-Test-Platform")}
+			return noContentResponse(req), nil
+		}),
+	)
+
+	for _, rawURL := range []string{
+		"https://open.feishu.cn/open-apis/test",
+		"https://external.example.test/file",
+	} {
+		req := httptest.NewRequest(http.MethodGet, rawURL, nil)
+		roundTripForTest(t, router, req)
+	}
+
+	if want := (receivedRequest{url: "https://open.mirror.test/open-apis/test", header: "routed"}); platform != want {
+		t.Fatalf("platform request = %#v, want %#v", platform, want)
+	}
+	if want := (receivedRequest{url: "https://external.mirror.test/file"}); external != want {
+		t.Fatalf("external request = %#v, want %#v", external, want)
+	}
+	if interceptor.calls != 1 {
+		t.Fatalf("interceptor calls = %d, want platform only", interceptor.calls)
+	}
+}
+
+func TestHTTPPolicyRouterRejectsUnparsableRewriteBeforeBase(t *testing.T) {
+	registerTestProvider(t, rewriteTestProvider{
+		rewriter: rewriteFunc(func(string) string { return "http://[::1" }),
+	})
+
+	baseCalls := 0
+	base := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		baseCalls++
+		return nil, nil
+	})
+	router := NewHTTPPolicyRouter(base, base)
+	req := httptest.NewRequest(http.MethodGet, "https://example.test/path", nil)
+	resp, err := router.RoundTrip(req)
+	if resp != nil {
+		t.Fatalf("response = %v, want nil", resp)
+	}
+	if err == nil {
+		t.Fatal("RoundTrip() error = nil, want URL parse error")
+	}
+	if baseCalls != 0 {
+		t.Fatalf("base calls = %d, want 0", baseCalls)
+	}
+}
+
+func registerTestProvider(t *testing.T, provider exttransport.Provider) {
+	t.Helper()
+	previous := exttransport.GetProvider()
+	exttransport.Register(provider)
+	t.Cleanup(func() { exttransport.Register(previous) })
+}
+
+func roundTripForTest(t *testing.T, transport http.RoundTripper, req *http.Request) {
+	t.Helper()
+	resp, err := transport.RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
 }
 
 func TestSDKBootstrapBridgeBlocksCrossOriginRedirectAfterSameOriginHop(t *testing.T) {

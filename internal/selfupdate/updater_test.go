@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/core"
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -178,16 +179,18 @@ func TestVerifyBinaryEmptyOutput(t *testing.T) {
 
 func TestSkillsCommandsUseExpectedArgs(t *testing.T) {
 	tests := []struct {
-		name string
-		run  func(*Updater) *NpmResult
-		want string
+		name    string
+		rewrite bool
+		run     func(*Updater) *NpmResult
+		want    string
 	}{
 		{
-			name: "stage suite",
+			name:    "stage suite with rewritten source",
+			rewrite: true,
 			run: func(u *Updater) *NpmResult {
 				return u.StageSuite("https://open.feishu.cn/lark-cli/skills/regular", ".")
 			},
-			want: "-y skills add https://open.feishu.cn/lark-cli/skills/isolated -s lark-suite -y",
+			want: "-y skills add http://mirror.example.test/lark-cli/skills/isolated -s lark-suite -y",
 		},
 		{
 			name: "list global",
@@ -204,11 +207,20 @@ func TestSkillsCommandsUseExpectedArgs(t *testing.T) {
 			want: "-y skills ls -g --json",
 		},
 		{
-			name: "install skill primary",
+			name:    "install skill with rewritten source",
+			rewrite: true,
 			run: func(u *Updater) *NpmResult {
 				return u.runSkillsInstall("https://open.feishu.cn", []string{"lark-mail"})
 			},
-			want: "-y skills add https://open.feishu.cn -s lark-mail -g -y",
+			want: "-y skills add http://mirror.example.test -s lark-mail -g -y",
+		},
+		{
+			name:    "install all with rewritten source",
+			rewrite: true,
+			run: func(u *Updater) *NpmResult {
+				return u.InstallAllSkills("https://open.feishu.cn")
+			},
+			want: "-y skills add http://mirror.example.test -g -y",
 		},
 	}
 
@@ -224,6 +236,11 @@ func TestSkillsCommandsUseExpectedArgs(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+			if tt.rewrite {
+				testurlrewrite.Register(t, func(rawURL string) string {
+					return strings.Replace(rawURL, "https://open.feishu.cn", "http://mirror.example.test", 1)
+				})
+			}
 
 			result := tt.run(New())
 			if result.Err != nil {

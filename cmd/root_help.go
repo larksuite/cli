@@ -4,9 +4,11 @@
 package cmd
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/internal/surface"
+	"github.com/larksuite/cli/internal/urlrewrite"
 )
 
 // rootHelpFragment is one framework-owned root-help fragment. A fragment with
@@ -142,13 +144,24 @@ Skills setup (one-time, humans): npx skills add larksuite/cli -g -y — https://
 var rootUsageTemplate = renderRootUsageTemplate(nil)
 
 func renderRootUsageTemplate(plan *surface.Plan) string {
+	return renderRootUsageTemplateWithSkillsURL(plan, "https://github.com/larksuite/cli#agent-skills")
+}
+
+func renderRootUsageTemplateWithSkillsURL(plan *surface.Plan, skillsURL string) string {
 	var b strings.Builder
 	b.WriteString(rootUsageTemplatePrefix)
 	b.WriteString(renderRootHelpFragments(rootUsageSynopsis, plan))
 	b.WriteString(rootUsageTemplateSuffix)
 	if plan.CanReference(surface.CommandSkillsRead) {
-		b.WriteString(skillsSetupFooter)
+		b.WriteString(fmt.Sprintf(`{{if not .HasParent}}
+
+Skills setup (one-time, humans): npx skills add larksuite/cli -g -y — %s{{end}}`, skillsURL))
 	}
 	b.WriteByte('\n')
 	return b.String()
+}
+
+func rewrittenRootUsageTemplate(plan *surface.Plan) string {
+	return renderRootUsageTemplateWithSkillsURL(plan,
+		urlrewrite.Rewrite("https://github.com/larksuite/cli#agent-skills"))
 }
