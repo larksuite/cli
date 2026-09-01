@@ -29,7 +29,7 @@ from lark_sheet_read_cli import (
     sheet_identifier,
     sheet_title,
 )
-from lark_chart_size_rules import minimum_chart_size
+from lark_chart_size_rules import MAX_ASPECT_RATIO, MAX_CHART_WIDTH, minimum_chart_size
 
 ACTION = "chart_quality_check"
 DEFAULT_COLUMN_WIDTH = 105.0
@@ -487,6 +487,35 @@ def _undersized_chart(chart: dict[str, Any]) -> dict[str, Any] | None:
         "actual_size": actual,
         "minimum_size": minimum,
         "suggested_fix": "run_lark_chart_size_advisor_before_resizing",
+    }
+
+
+def _overwide_chart(chart: dict[str, Any]) -> dict[str, Any] | None:
+    details = chart.get("details") if isinstance(chart.get("details"), dict) else chart
+    snapshot = _chart_snapshot(chart)
+    chart_type = _chart_type(snapshot)
+    size = details.get("size") if isinstance(details.get("size"), dict) else {}
+    width = float(size.get("width") or 0)
+    height = float(size.get("height") or 0)
+    minimum = minimum_chart_size(chart_type)
+    aspect_ratio = width / height if height > 0 else 0
+    width_exceeded = width > MAX_CHART_WIDTH
+    aspect_ratio_exceeded = (
+        width >= minimum["width"]
+        and height >= minimum["height"]
+        and aspect_ratio > MAX_ASPECT_RATIO
+    )
+    if not width_exceeded and not aspect_ratio_exceeded:
+        return None
+    return {
+        "chart_id": str(chart.get("chart_id") or chart.get("id") or ""),
+        "reason": "chart_too_wide",
+        "chart_type": chart_type,
+        "actual_size": {"width": width, "height": height},
+        "actual_aspect_ratio": round(aspect_ratio, 2),
+        "maximum_width": MAX_CHART_WIDTH,
+        "maximum_aspect_ratio": MAX_ASPECT_RATIO,
+        "suggested_fix": "use_size_advisor_create_flags_or_change_chart_structure",
     }
 
 
@@ -955,6 +984,7 @@ def check_sheet(
             "degenerate_numeric_series": [],
             "constant_labeled_series": [],
             "undersized_charts": [],
+            "overwide_charts": [],
             "out_of_visible_range": [],
             "unverifiable_charts": unverifiable,
             "issue_count": 0,
@@ -1055,6 +1085,7 @@ def check_sheet(
     degenerate_numeric_series: list[dict[str, Any]] = []
     constant_series_issues: list[dict[str, Any]] = []
     undersized_charts: list[dict[str, Any]] = []
+    overwide_charts: list[dict[str, Any]] = []
     for chart in charts:
         issues, degenerate, source_unverifiable, profiles = _numeric_source_issues(
             chart,
@@ -1072,6 +1103,9 @@ def check_sheet(
         undersized = _undersized_chart(chart)
         if undersized:
             undersized_charts.append(undersized)
+        overwide = _overwide_chart(chart)
+        if overwide:
+            overwide_charts.append(overwide)
 
     issue_count = (
         len(overlaps)
@@ -1081,6 +1115,7 @@ def check_sheet(
         + len(degenerate_numeric_series)
         + len(constant_series_issues)
         + len(undersized_charts)
+        + len(overwide_charts)
     )
     return {
         "sheet_id": sheet_id,
@@ -1093,6 +1128,7 @@ def check_sheet(
         "degenerate_numeric_series": degenerate_numeric_series,
         "constant_labeled_series": constant_series_issues,
         "undersized_charts": undersized_charts,
+        "overwide_charts": overwide_charts,
         "out_of_visible_range": out_of_bounds,
         "unverifiable_charts": unverifiable,
         "issue_count": issue_count,
@@ -1105,7 +1141,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Check chart overlap, covered cell content, worksheet boundary overflow, "
-            "minimum size, constant labeled series, numeric source-cell "
+            "minimum size, excessive width, constant labeled series, numeric source-cell "
             "formats, and all-zero/empty numeric series."
         )
     )
