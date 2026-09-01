@@ -18,10 +18,12 @@ import (
 	"github.com/larksuite/cli/internal/vfs"
 )
 
-// Built-in path access policy. Both lists are compiled into the binary and
-// accept no runtime input (no env, no flag, no config file), so no caller —
-// including one that controls the process environment — can widen them.
-// Deny always wins over allow, the cwd root included.
+// Built-in path access policy. Both lists are compiled into the binary; no
+// flag and no config file names a root. Two environment inputs remain, and
+// each is bounded: LARKSUITE_CLI_CONFIG_DIR only contributes a deny root, and
+// $HOME decides where ~/files points on a system whose account database
+// cannot name this uid's home (see trustedHome). Deny always wins over allow,
+// the cwd root included.
 
 // allowRootsLabel names the allowlist in rejection messages. The lists are
 // public documentation, so the error message is allowed (and expected) to
@@ -84,18 +86,21 @@ func configDirDenyRoots(cwd string) []policyEntry {
 }
 
 // trustedHome returns the account's home directory from the most
-// authoritative source available, preferring the account database over $HOME:
-// an invocation that controls the environment must not be able to move the
-// ~/files allow root, nor to make the real ~/.ssh, ~/.gnupg, ~/.aws and
-// ~/.lark-cli deny roots disappear.
+// authoritative source available, preferring the account database over $HOME.
+// Where the database names this uid, an invocation that controls the
+// environment cannot move the ~/files allow root, nor make the real ~/.ssh,
+// ~/.gnupg, ~/.aws and ~/.lark-cli deny roots disappear.
 //
-// Known limit: release binaries are built with CGO_ENABLED=0, and pure-Go
-// os/user silently falls back to $HOME (returning no error) for a uid with no
-// account-database entry — distroless images and `--user 99999` containers
-// among them. passwdHome is consulted first for exactly that case; where it
-// too finds nothing, this value is only as trustworthy as $HOME. denyRoots
-// covers every candidate home to keep that configuration from unprotecting
-// the real credential directories.
+// Where it does not, that preference has nothing to prefer, so this is not a
+// guarantee. Release binaries are built with CGO_ENABLED=0, and pure-Go
+// os/user answers from $HOME for a uid the database does not list — distroless
+// images and `--user 99999` containers among them — as long as $USER is set
+// too; with $USER unset it returns an error instead and the ~/files root is
+// dropped altogether. Such an invocation does choose where ~/files points.
+// What that reaches is a directory named "files" under the path it names and
+// nothing else: the home directory itself is not an allow root, and denyRoots
+// covers every candidate home, so the credential directories stay protected
+// either way.
 var trustedHome = sync.OnceValues(func() (string, error) {
 	if home, ok := passwdHome(); ok {
 		return home, nil

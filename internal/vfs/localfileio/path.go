@@ -142,8 +142,8 @@ func SafeEnvDirPath(path, envName string) (string, error) {
 // safePath is the shared implementation for SafeOutputPath and SafeInputPath.
 // A path is accepted when its real location falls inside the built-in
 // allowlist (cwd, /tmp, ~/files) and outside the built-in denylist; deny wins
-// over allow, cwd included. Both lists are compiled in (policy.go) — no
-// runtime input can change them.
+// over allow, cwd included. Both lists are compiled in (policy.go), which
+// also documents the two bounded environment inputs that remain.
 func safePath(raw, flagName string) (string, error) {
 	isOutputFlag := flagName == "--output"
 	if err := charcheck.RejectControlChars(raw, flagName); err != nil {
