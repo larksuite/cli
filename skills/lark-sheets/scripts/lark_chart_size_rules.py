@@ -20,6 +20,7 @@ MINIMUM_SIZES = {
     "doughnut": (720, 440),
 }
 DEFAULT_MINIMUM_SIZE = (640, 400)
+MAX_CHART_WIDTH = 1600
 MAX_ASPECT_RATIO = 2.6
 COMBO_SERIES_TYPES = {"column", "line", "area", "scatter"}
 
@@ -189,7 +190,7 @@ def recommend_chart_size(
         if size_alone_is_insufficient:
             advice.extend(["prefer_bar_or_top_n", "split_chart"])
 
-    width = min(1600, _round_up(width))
+    width = min(MAX_CHART_WIDTH, _round_up(width))
     aspect_width_limit = max(minimum["width"], _round_down(height * MAX_ASPECT_RATIO))
     if width > aspect_width_limit:
         width = aspect_width_limit
@@ -219,7 +220,6 @@ def recommend_chart_size(
         "create_flags": {"width": width, "height": height},
         "evidence": {
             "chart_type": chart_type,
-            "category_count": category_count,
             "series_count": series_count,
             "series_types": normalized_series_types,
             "column_series_count": column_series_count,
