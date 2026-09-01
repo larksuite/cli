@@ -47,7 +47,7 @@ func inspectOpenedFile(f *os.File, pre os.FileInfo) error {
 		return fmt.Errorf("file changed between validation and open")
 	}
 	if !post.Mode().IsRegular() {
-		return fmt.Errorf("not a regular file (device, FIFO, and socket inputs are refused)")
+		return fmt.Errorf("not a regular file (directories, devices, FIFOs, and sockets are refused)")
 	}
 	var handleInfo syscall.ByHandleFileInformation
 	if err := syscall.GetFileInformationByHandle(syscall.Handle(f.Fd()), &handleInfo); err != nil {

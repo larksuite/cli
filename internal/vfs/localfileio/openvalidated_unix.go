@@ -64,7 +64,7 @@ func inspectOpenedFile(f *os.File, pre os.FileInfo, rejectHardLinks bool) error 
 		return fmt.Errorf("file changed between validation and open")
 	}
 	if !post.Mode().IsRegular() {
-		return fmt.Errorf("not a regular file (device, FIFO, and socket inputs are refused)")
+		return fmt.Errorf("not a regular file (directories, devices, FIFOs, and sockets are refused)")
 	}
 	if rejectHardLinks {
 		if st, ok := post.Sys().(*syscall.Stat_t); ok && st.Nlink > 1 {
