@@ -75,12 +75,12 @@ func TestApplyFetchIMMarkdown(t *testing.T) {
 func TestNewIMMarkdownContextRewritesFallbackURL(t *testing.T) {
 	testurlrewrite.Register(t, func(raw string) string {
 		if raw == "https://larkoffice.com" {
-			return "https://tenant.example.com/base"
+			return "https://example.larkoffice.com/base"
 		}
 		return raw
 	})
 
-	if got := newIMMarkdownContext("doc_token").baseURL; got != "https://tenant.example.com/base" {
+	if got := newIMMarkdownContext("doc_token").baseURL; got != "https://example.larkoffice.com/base" {
 		t.Fatalf("baseURL = %q", got)
 	}
 }
