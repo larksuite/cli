@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
-	"sort"
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/vfs"
@@ -20,7 +19,6 @@ type preparedUpdate struct {
 	Manifest   *Manifest
 	BinaryPath string
 	SkillsRoot string
-	SkillNames []string
 	root       string
 }
 
@@ -45,21 +43,9 @@ func prepareUpdate(ctx context.Context, manifest *Manifest) (*preparedUpdate, er
 		}
 	}()
 
-	binaryArchive, err := downloadArtifact(ctx, manifest.Artifacts[CurrentPlatformKey()], root, "binary-*.archive")
+	binaryRoot, err := prepareArtifact(ctx, manifest, CurrentPlatformKey(), root, "binary")
 	if err != nil {
-		return nil, fmt.Errorf("download %s artifact: %w", CurrentPlatformKey(), err)
-	}
-	skillsArchive, err := downloadArtifact(ctx, manifest.Artifacts[SkillsKey], root, "skills-*.archive")
-	if err != nil {
-		return nil, fmt.Errorf("download skills artifact: %w", err)
-	}
-
-	binaryRoot := filepath.Join(root, "binary")
-	if err := vfs.MkdirAll(binaryRoot, 0o700); err != nil {
 		return nil, err
-	}
-	if err := extractArchive(binaryArchive, binaryRoot); err != nil {
-		return nil, fmt.Errorf("extract binary artifact: %w", err)
 	}
 	executableName := "lark-cli"
 	if runtime.GOOS == "windows" {
@@ -70,14 +56,7 @@ func prepareUpdate(ctx context.Context, manifest *Manifest) (*preparedUpdate, er
 	if err != nil || !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("binary artifact must contain %s at its root", executableName)
 	}
-	prepared.SkillsRoot = filepath.Join(root, "skills")
-	if err := vfs.MkdirAll(prepared.SkillsRoot, 0o700); err != nil {
-		return nil, err
-	}
-	if err := extractArchive(skillsArchive, prepared.SkillsRoot); err != nil {
-		return nil, fmt.Errorf("extract skills artifact: %w", err)
-	}
-	prepared.SkillNames, err = listSkills(prepared.SkillsRoot)
+	prepared.SkillsRoot, err = prepareArtifact(ctx, manifest, SkillsKey, root, "skills")
 	if err != nil {
 		return nil, err
 	}
@@ -85,29 +64,24 @@ func prepareUpdate(ctx context.Context, manifest *Manifest) (*preparedUpdate, er
 	return prepared, nil
 }
 
+func prepareArtifact(ctx context.Context, manifest *Manifest, key, root, directory string) (string, error) {
+	archive, err := downloadArtifact(ctx, manifest.Artifacts[key], root, directory+"-*.archive")
+	if err != nil {
+		return "", fmt.Errorf("download %s artifact: %w", key, err)
+	}
+	destination := filepath.Join(root, directory)
+	if err := vfs.MkdirAll(destination, 0o700); err != nil {
+		return "", err
+	}
+	if err := extractArchive(archive, destination); err != nil {
+		return "", fmt.Errorf("extract %s artifact: %w", key, err)
+	}
+	return destination, nil
+}
+
 // cleanup removes downloaded and extracted temporary resources.
 func (p *preparedUpdate) cleanup() {
 	if p != nil && p.root != "" {
 		_ = vfs.RemoveAll(p.root)
 	}
-}
-
-func listSkills(root string) ([]string, error) {
-	entries, err := vfs.ReadDir(root)
-	if err != nil {
-		return nil, err
-	}
-	names := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		names = append(names, name)
-	}
-	if len(names) == 0 {
-		return nil, fmt.Errorf("skills artifact contains no Skills")
-	}
-	sort.Strings(names)
-	return names, nil
 }

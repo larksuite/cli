@@ -11,16 +11,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"regexp"
 	"runtime"
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/extension/download"
+	"github.com/larksuite/cli/internal/downloadtransport"
 	internaltransport "github.com/larksuite/cli/internal/transport"
 )
 
@@ -97,18 +97,11 @@ func FetchManifest(ctx context.Context, manifestURL string) (*Manifest, errs.Typ
 func fetchManifest(ctx context.Context, manifestURL string) (*Manifest, error) {
 	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, manifestURL, nil)
+	resp, err := downloadtransport.URL(httpClient(), manifestURL)(ctx, download.Request{})
 	if err != nil {
-		return nil, fmt.Errorf("create manifest request: %w", err)
-	}
-	resp, err := httpClient().Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetch distribution manifest: %w", redactRequestError(err))
+		return nil, fmt.Errorf("fetch distribution manifest: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, newHTTPStatusError("fetch distribution manifest", resp.StatusCode)
-	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, manifestMaxBody+1))
 	if err != nil {
 		return nil, fmt.Errorf("read distribution manifest: %w", err)
@@ -122,35 +115,6 @@ func fetchManifest(ctx context.Context, manifestURL string) (*Manifest, error) {
 	}
 	manifest.sourceIdentity = ManifestSourceIdentity(manifestURL)
 	return manifest, nil
-}
-
-type httpStatusError struct {
-	operation  string
-	statusCode int
-}
-
-func (e *httpStatusError) Error() string {
-	return fmt.Sprintf("%s: HTTP %d", e.operation, e.statusCode)
-}
-
-func newHTTPStatusError(operation string, statusCode int) error {
-	return &httpStatusError{operation: operation, statusCode: statusCode}
-}
-
-func httpStatusCode(err error) (int, bool) {
-	var statusErr *httpStatusError
-	if !errors.As(err, &statusErr) {
-		return 0, false
-	}
-	return statusErr.statusCode, true
-}
-
-func redactRequestError(err error) error {
-	var requestErr *url.Error
-	if errors.As(err, &requestErr) {
-		return fmt.Errorf("%s request failed: %w", requestErr.Op, requestErr.Err)
-	}
-	return err
 }
 
 func parseManifest(data []byte, platformKey string) (*Manifest, error) {

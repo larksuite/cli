@@ -9,22 +9,25 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestDownloadArtifactRejectsExcessiveBody(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.(http.Flusher).Flush()
-		_, _ = w.Write([]byte("123456789"))
-	}))
-	defer server.Close()
+	previousClient := DefaultClient
+	DefaultClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode:    http.StatusOK,
+			Body:          io.NopCloser(strings.NewReader("123456789")),
+			ContentLength: -1,
+			Header:        make(http.Header),
+		}, nil
+	})}
+	t.Cleanup(func() { DefaultClient = previousClient })
 
 	_, err := downloadArtifactWithLimit(context.Background(), Artifact{
-		URL: server.URL, Checksum: testChecksum,
+		URL: "https://dist.example/artifact", Checksum: testChecksum,
 	}, t.TempDir(), "artifact-*", 8)
 	if err == nil || !strings.Contains(err.Error(), "exceeds 8 bytes") {
 		t.Fatalf("err = %v", err)

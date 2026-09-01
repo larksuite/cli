@@ -10,117 +10,60 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"golang.org/x/mod/semver"
 )
 
 var gitDescribePattern = regexp.MustCompile(`-\d+-g[0-9a-f]{7,}`)
 
-var validPrerelease = regexp.MustCompile(
-	`^(?:0|[1-9]\d*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)` +
-		`(?:\.(?:0|[1-9]\d*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*$`)
-
 // IsRelease reports whether version is a clean published SemVer rather than a
 // git-describe development build.
 func IsRelease(version string) bool {
-	version = strings.TrimPrefix(version, "v")
-	return Parse(version) != nil && !gitDescribePattern.MatchString(version)
+	canonical, ok := canonical(version)
+	return ok && !gitDescribePattern.MatchString(canonical)
 }
 
 // IsNewer reports whether a is a SemVer update over b. A valid remote version
 // is considered newer than an unparseable local development version.
 func IsNewer(a, b string) bool {
-	ap := parse(a)
-	bp := parse(b)
-	if ap == nil {
+	remote, remoteOK := canonical(a)
+	if !remoteOK {
 		return false
 	}
-	if bp == nil {
-		return true
-	}
-	for i := range ap.core {
-		if ap.core[i] != bp.core[i] {
-			return ap.core[i] > bp.core[i]
-		}
-	}
-	return comparePrerelease(ap.prerelease, bp.prerelease) > 0
+	local, localOK := canonical(b)
+	return !localOK || semver.Compare(remote, local) > 0
 }
 
 // Parse returns the major, minor, and patch components of a SemVer value.
 func Parse(version string) []int {
-	parsed := parse(version)
-	if parsed == nil {
+	canonicalVersion, ok := canonical(version)
+	if !ok {
 		return nil
 	}
-	return []int{parsed.core[0], parsed.core[1], parsed.core[2]}
-}
-
-type parsedVersion struct {
-	core       [3]int
-	prerelease string
-}
-
-func parse(version string) *parsedVersion {
-	version = strings.TrimPrefix(version, "v")
-	if idx := strings.Index(version, "+"); idx >= 0 {
-		version = version[:idx]
-	}
-	prerelease := ""
-	if idx := strings.Index(version, "-"); idx >= 0 {
-		prerelease = version[idx+1:]
-		version = version[:idx]
-		if prerelease == "" || !validPrerelease.MatchString(prerelease) {
-			return nil
-		}
-	}
-	parts := strings.SplitN(version, ".", 3)
-	if len(parts) != 3 {
-		return nil
-	}
-	var core [3]int
+	core := strings.SplitN(strings.TrimPrefix(canonicalVersion, "v"), "-", 2)[0]
+	core = strings.SplitN(core, "+", 2)[0]
+	parts := strings.Split(core, ".")
+	result := make([]int, 3)
 	for i, part := range parts {
-		if len(part) > 1 && part[0] == '0' {
-			return nil
-		}
-		value, err := strconv.Atoi(part)
-		if err != nil {
-			return nil
-		}
-		core[i] = value
+		result[i], _ = strconv.Atoi(part)
 	}
-	return &parsedVersion{core: core, prerelease: prerelease}
+	return result
 }
 
-func comparePrerelease(a, b string) int {
-	if a == "" && b == "" {
-		return 0
+func canonical(version string) (string, bool) {
+	version = strings.TrimPrefix(version, "v")
+	core := strings.SplitN(strings.SplitN(version, "-", 2)[0], "+", 2)[0]
+	parts := strings.Split(core, ".")
+	if len(parts) != 3 {
+		return "", false
 	}
-	if a == "" {
-		return 1
-	}
-	if b == "" {
-		return -1
-	}
-	aParts, bParts := strings.Split(a, "."), strings.Split(b, ".")
-	for i := 0; i < len(aParts) && i < len(bParts); i++ {
-		if comparison := compareIdentifier(aParts[i], bParts[i]); comparison != 0 {
-			return comparison
+	for _, part := range parts {
+		if _, err := strconv.Atoi(part); err != nil {
+			return "", false
 		}
 	}
-	return len(aParts) - len(bParts)
-}
-
-func compareIdentifier(a, b string) int {
-	aNumber, aErr := strconv.Atoi(a)
-	bNumber, bErr := strconv.Atoi(b)
-	switch {
-	case aErr == nil && bErr == nil:
-		return aNumber - bNumber
-	case aErr == nil:
-		return -1
-	case bErr == nil:
-		return 1
-	default:
-		return strings.Compare(a, b)
-	}
+	canonicalVersion := "v" + version
+	return canonicalVersion, semver.IsValid(canonicalVersion)
 }
 
 // IsCIEnv reports whether the process is running in a supported CI

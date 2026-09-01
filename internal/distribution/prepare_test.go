@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -141,23 +140,6 @@ func TestInstallRejectsChecksumMismatchBeforeBinaryVerification(t *testing.T) {
 	}
 	if verified {
 		t.Fatal("binary verification ran before checksum validation")
-	}
-}
-
-func TestListSkillsIgnoresRootFiles(t *testing.T) {
-	root := t.TempDir()
-	if err := os.Mkdir(filepath.Join(root, "lark-example"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("metadata"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	names, err := listSkills(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := []string{"lark-example"}; !reflect.DeepEqual(names, want) {
-		t.Fatalf("names = %v, want %v", names, want)
 	}
 }
 

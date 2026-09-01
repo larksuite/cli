@@ -9,10 +9,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"net/http"
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/extension/download"
+	"github.com/larksuite/cli/internal/downloadtransport"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -31,19 +32,16 @@ func downloadArtifact(ctx context.Context, artifact Artifact, directory, pattern
 }
 
 func downloadArtifactWithLimit(ctx context.Context, artifact Artifact, directory, pattern string, maxBytes int64) (string, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, artifact.URL, nil)
+	stream, err := download.Open(
+		ctx,
+		download.ImmutableSource(downloadtransport.URL(httpClient(), artifact.URL)),
+		download.Options{},
+	)
 	if err != nil {
 		return "", err
 	}
-	response, err := httpClient().Do(request)
-	if err != nil {
-		return "", redactRequestError(err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return "", newHTTPStatusError("artifact download", response.StatusCode)
-	}
-	if response.ContentLength > maxBytes {
+	defer stream.Body.Close()
+	if stream.ContentLength > maxBytes {
 		return "", fmt.Errorf("artifact download exceeds %d bytes", maxBytes)
 	}
 	temporary, err := vfs.CreateTemp(directory, pattern)
@@ -60,7 +58,7 @@ func downloadArtifactWithLimit(ctx context.Context, artifact Artifact, directory
 	}()
 
 	hash := sha256.New()
-	written, err := io.Copy(io.MultiWriter(temporary, hash), io.LimitReader(response.Body, maxBytes+1))
+	written, err := io.Copy(io.MultiWriter(temporary, hash), io.LimitReader(stream.Body, maxBytes+1))
 	if err != nil {
 		return "", err
 	}

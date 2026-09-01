@@ -6,11 +6,10 @@ package distribution
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/selfupdate"
 	"github.com/larksuite/cli/internal/skillscheck"
-	"github.com/larksuite/cli/internal/vfs"
 )
 
 // InstallOptions supplies destinations and test seams for a distribution update.
@@ -42,63 +41,33 @@ func installPrepared(prepared *preparedUpdate, opts InstallOptions) error {
 	if prepared == nil || prepared.Manifest == nil {
 		return fmt.Errorf("prepared distribution update is required")
 	}
-	executable, skillsDirs, err := resolveInstallDestinations(opts)
+	candidate, err := selfupdate.PrepareCandidate(
+		prepared.BinaryPath,
+		opts.ExecutablePath,
+		prepared.Manifest.Version,
+		opts.VerifyBinary,
+	)
+	if err != nil {
+		return fmt.Errorf("prepare binary: %w", err)
+	}
+	defer candidate.Cleanup()
+
+	rollbackSkills, finalizeSkills, err := skillscheck.SyncPreparedTree(skillscheck.PreparedTreeOptions{
+		Root:           prepared.SkillsRoot,
+		Version:        prepared.Manifest.Version,
+		SourceIdentity: prepared.Manifest.sourceIdentity,
+		TargetDir:      opts.SkillsDir,
+	})
 	if err != nil {
 		return err
 	}
-	if opts.VerifyBinary == nil {
-		opts.VerifyBinary = verifyBinaryVersion
-	}
-
-	stagedBinary, err := stageBinary(prepared.BinaryPath, executable)
+	finalizeBinary, err := candidate.Install()
 	if err != nil {
-		return fmt.Errorf("stage binary: %w", err)
-	}
-	defer func() { _ = vfs.Remove(stagedBinary) }()
-	if err := opts.VerifyBinary(stagedBinary, prepared.Manifest.Version); err != nil {
-		return fmt.Errorf("verify staged binary: %w", err)
-	}
-
-	previous, _, err := skillscheck.ReadState()
-	if err != nil {
-		return fmt.Errorf("read Skills state: %w", err)
-	}
-	restoreState, err := skillscheck.SnapshotState()
-	if err != nil {
-		return fmt.Errorf("snapshot Skills state: %w", err)
-	}
-	rollbackSkills, finalizeSkills, err := installSkillsToTargets(prepared, skillsDirs, previous)
-	if err != nil {
-		return err
-	}
-	rollback := func(cause error) error {
-		var failures []string
-		if err := rollbackSkills(); err != nil {
-			failures = append(failures, "Skills: "+err.Error())
-		}
-		if err := restoreState(); err != nil {
-			failures = append(failures, "state: "+err.Error())
-		}
-		if len(failures) > 0 {
-			return fmt.Errorf("%w (rollback failed: %s)", cause, strings.Join(failures, "; "))
+		cause := fmt.Errorf("replace binary: %w", err)
+		if rollbackErr := rollbackSkills(); rollbackErr != nil {
+			return fmt.Errorf("%w (Skills rollback failed: %w)", cause, rollbackErr)
 		}
 		return cause
-	}
-
-	state := skillscheck.NewCompleteState(
-		prepared.Manifest.Version,
-		skillscheck.LayoutSeparate,
-		prepared.SkillNames,
-		previous,
-	)
-	state.SourceIdentity = prepared.Manifest.sourceIdentity
-	if err := skillscheck.WriteState(state); err != nil {
-		return rollback(fmt.Errorf("write Skills state: %w", err))
-	}
-
-	finalizeBinary, err := replaceBinary(stagedBinary, executable)
-	if err != nil {
-		return rollback(fmt.Errorf("replace binary: %w", err))
 	}
 	finalizeSkills()
 	finalizeBinary()
