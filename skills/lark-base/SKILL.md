@@ -174,7 +174,7 @@ PY
 }
 ```
 
-普通附件使用专用 shortcut 上传、下载或移除。签字字段虽然返回 `type:"attachment"`，但 `style.type` 为 `signature` 时单元格只读：向 `attachment` 字段写入或清空前先用 `+field-list` / `+field-get` 核对样式；命中签字字段时不要调用记录写入、`+record-upload-attachment` 或 `+record-remove-attachment`，读取、下载、筛选、lookup 和 workflow 下钻仍按普通附件规则处理。这些写操作会返回成功并把字段放进 `ignored_fields`（`SIGNATURE_READONLY`）；其中上传命令会先上传媒体再被追加接口忽略，不能把成功退出当成签字已写入。created_at, updated_at, created_by, updated_by, auto_number, formula, lookup 类型字段同样只读，误写时会被静默过滤，其余字段正常写入。
+附件使用专用 shortcut 上传、下载或移除。created_at, updated_at, created_by, updated_by, auto_number, formula, lookup 类型字段只读，若误写入单元格会返回 `ignored_fields` 表示这些字段被静默过滤，其余字段正常写入。
 
 ```bash
 # 新增：成功时返回 record_id_list
