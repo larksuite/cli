@@ -14,10 +14,21 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/client"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
+
+// exportScope is the scope this command needs. It is named once so the
+// declared Scopes and the authorization fact attached on a 401 cannot drift.
+const exportScope = "spark:app:read"
+
+// maxExportEnvelopeBytes bounds how much of a suspected JSON error envelope is
+// read before classification. It matches the limit DoStream already applies to
+// the error bodies it reads for status >= 400.
+const maxExportEnvelopeBytes = 4096
 
 // AppsExport downloads an app's source code as a zip archive.
 //
@@ -34,7 +45,7 @@ var AppsExport = common.Shortcut{
 		"Example (share token): lark-cli apps +export --meta-token <token>   # for an app shared with you; you still need download permission",
 		"Example (omit --output): lark-cli apps +export --app-id <app_id>   # saves to ./<app_id>.zip",
 	},
-	Scopes:    []string{"spark:app:read"},
+	Scopes:    []string{exportScope},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
@@ -81,6 +92,10 @@ var AppsExport = common.Shortcut{
 			return classifyExportErr(err)
 		}
 		defer resp.Body.Close()
+
+		if err := rejectExportErrorEnvelope(rctx, resp); err != nil {
+			return err
+		}
 
 		out := strings.TrimSpace(rctx.Str("output"))
 		if out == "" {
@@ -181,9 +196,14 @@ func classifyExportErr(err error) error {
 	detail := netErr.Message
 	switch netErr.Code {
 	case http.StatusUnauthorized:
-		return errs.NewAuthenticationError(errs.SubtypeTokenMissing, "export failed: %s", detail).
-			WithHint("run: lark-cli auth login").
-			WithCause(err)
+		// Hand back the scope as a structured fact rather than a literal login
+		// command: the root presenter renders recovery, and a reduced
+		// distribution may not carry the command this text would name. Same
+		// shape the git-credential path already uses.
+		return recovery.Attach(
+			errs.NewAuthenticationError(errs.SubtypeTokenMissing, "export failed: %s", detail).WithCause(err),
+			recovery.UserAuthorization(exportScope),
+		)
 	case http.StatusForbidden:
 		return errs.NewPermissionError(errs.SubtypePermissionDenied, "export failed: %s", detail).
 			WithHint("you need download permission on this app; holding a share token is not enough").
@@ -205,6 +225,51 @@ func classifyExportErr(err error) error {
 		// including its retryable flag and log id.
 		return err
 	}
+}
+
+// rejectExportErrorEnvelope fails the export when the body is a JSON error
+// envelope rather than the archive.
+//
+// The stream client only intercepts status >= 400, but the OpenAPI gateway
+// reports several failures as HTTP 200 carrying {"code":...,"msg":...}. Without
+// this gate the envelope is streamed to disk as the "archive" and the command
+// reports success — the caller gets a .zip that is really a 300-byte JSON blob,
+// which is worse than a plain failure because nothing looks wrong until it is
+// opened. Observed against this endpoint on a test lane.
+//
+// An absent Content-Type is treated as JSON-suspect too, matching
+// client.HandleResponse; a truthful archive always carries an explicit binary
+// type. The body is bounded at 4 KiB, the same limit DoStream uses for the
+// error bodies it reads itself.
+func rejectExportErrorEnvelope(rctx *common.RuntimeContext, resp *http.Response) error {
+	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	if contentType != "" && !client.IsJSONContentType(strings.ToLower(contentType)) {
+		return nil
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxExportEnvelopeBytes))
+	if err != nil {
+		return errs.NewNetworkError(errs.SubtypeNetworkTransport, "export failed while reading the response: %s", err).WithCause(err)
+	}
+	// Route through the shared classifier so an envelope becomes the same typed
+	// error a non-streaming command would raise, log id and all.
+	if _, classifyErr := rctx.ClassifyAPIResponse(&larkcore.ApiResp{
+		StatusCode: resp.StatusCode,
+		Header:     resp.Header,
+		RawBody:    body,
+	}); classifyErr != nil {
+		return classifyErr
+	}
+	// Parsed clean but still not an archive: refuse rather than save it.
+	return errs.NewInternalError(errs.SubtypeInvalidResponse,
+		"export returned %q instead of an archive", contentTypeForMessage(contentType))
+}
+
+// contentTypeForMessage renders a missing Content-Type readably in diagnostics.
+func contentTypeForMessage(contentType string) string {
+	if contentType == "" {
+		return "a body with no content type"
+	}
+	return contentType
 }
 
 // defaultExportFilename derives the save path when --output is omitted, preferring

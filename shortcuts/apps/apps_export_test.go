@@ -112,6 +112,50 @@ func TestAppsExport_StreamsArchiveToDisk(t *testing.T) {
 	}
 }
 
+// TestAppsExport_RejectsJSONEnvelopeBody pins the gateway's HTTP 200 + JSON
+// error envelope: the stream client only intercepts status >= 400, so without a
+// content-type gate the envelope is written to disk as the "archive" and the
+// command reports success. The caller then holds an unopenable .zip.
+func TestAppsExport_RejectsJSONEnvelopeBody(t *testing.T) {
+	dir := chdirTemp(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(archiveStub("app_x", 200,
+		[]byte(`{"code":40400,"msg":"app not found"}`), "application/json; charset=utf-8", ""))
+
+	err := runAppsShortcut(t, AppsExport,
+		[]string{"+export", "--app-id", "app_x", "--output", "src.zip", "--as", "user"}, factory, stdout)
+	if err == nil {
+		t.Fatal("execute err = nil, want the envelope surfaced as an error")
+	}
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("err = %T %v, want *errs.APIError carrying the envelope code", err, err)
+	}
+	if apiErr.Code != 40400 {
+		t.Errorf("code = %d, want 40400 from the envelope", apiErr.Code)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "src.zip")); !os.IsNotExist(statErr) {
+		t.Error("src.zip was written; a JSON error envelope must never become a product")
+	}
+}
+
+// TestAppsExport_RejectsEmptyContentType covers the same gate for a response
+// that omits Content-Type: the repo treats an absent type as JSON-suspect
+// (see client.HandleResponse), so it must not stream straight to disk either.
+func TestAppsExport_RejectsEmptyContentType(t *testing.T) {
+	dir := chdirTemp(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(archiveStub("app_x", 200, []byte(`{"code":40400,"msg":"app not found"}`), "", ""))
+
+	if err := runAppsShortcut(t, AppsExport,
+		[]string{"+export", "--app-id", "app_x", "--output", "src.zip", "--as", "user"}, factory, stdout); err == nil {
+		t.Fatal("execute err = nil, want the envelope surfaced as an error")
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "src.zip")); !os.IsNotExist(statErr) {
+		t.Error("src.zip was written despite an untyped JSON body")
+	}
+}
+
 // TestAppsExport_DefaultsOutputToContentDisposition prefers the server-provided
 // filename so the archive keeps its canonical name.
 func TestAppsExport_DefaultsOutputToContentDisposition(t *testing.T) {
