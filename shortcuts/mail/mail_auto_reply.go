@@ -7,6 +7,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net/url"
 	"path/filepath"
@@ -365,10 +369,12 @@ func validateAutoReplyContentFilePath(path string) error {
 }
 
 type autoReplyImage struct {
-	ImageName string `json:"image_name,omitempty"`
-	FileKey   string `json:"file_key,omitempty"`
-	CID       string `json:"cid,omitempty"`
-	FileSize  int64  `json:"file_size,omitempty"`
+	ImageName   string `json:"image_name,omitempty"`
+	FileKey     string `json:"file_key,omitempty"`
+	CID         string `json:"cid,omitempty"`
+	FileSize    int64  `json:"file_size,omitempty"`
+	ImageWidth  int    `json:"image_width,omitempty"`
+	ImageHeight int    `json:"image_height,omitempty"`
 }
 
 func uploadAutoReplyLocalImages(ctx context.Context, runtime *common.RuntimeContext, content string) (string, []autoReplyImage, error) {
@@ -382,15 +388,18 @@ func uploadAutoReplyLocalImages(ctx context.Context, runtime *common.RuntimeCont
 			if err != nil {
 				return "", nil, err
 			}
+			width, height, _ := detectAutoReplyImageDimensions(runtime, img.Path)
 			cid, err := generateTemplateCID()
 			if err != nil {
 				return "", nil, err
 			}
 			image = autoReplyImage{
-				ImageName: filepath.Base(img.Path),
-				FileKey:   fileKey,
-				CID:       cid,
-				FileSize:  size,
+				ImageName:   filepath.Base(img.Path),
+				FileKey:     fileKey,
+				CID:         cid,
+				FileSize:    size,
+				ImageWidth:  width,
+				ImageHeight: height,
 			}
 			pathToImage[img.Path] = image
 			images = append(images, image)
@@ -398,6 +407,22 @@ func uploadAutoReplyLocalImages(ctx context.Context, runtime *common.RuntimeCont
 		content = replaceImgSrcOnce(content, img.RawSrc, "cid:"+image.CID)
 	}
 	return content, images, nil
+}
+
+func detectAutoReplyImageDimensions(runtime *common.RuntimeContext, path string) (int, int, bool) {
+	if runtime == nil || runtime.FileIO() == nil {
+		return 0, 0, false
+	}
+	f, err := runtime.FileIO().Open(path)
+	if err != nil {
+		return 0, 0, false
+	}
+	defer f.Close()
+	cfg, _, err := image.DecodeConfig(f)
+	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 {
+		return 0, 0, false
+	}
+	return cfg.Width, cfg.Height, true
 }
 
 func parseAutoReplyDateMillis(flag, raw, timezone string, endOfDay bool) (string, error) {

@@ -318,6 +318,12 @@ func TestMailAutoReplyUploadsLocalImages(t *testing.T) {
 	if image["image_name"] != "logo.png" {
 		t.Fatalf("image_name = %#v, want logo.png", image["image_name"])
 	}
+	if image["image_width"] != float64(1) {
+		t.Fatalf("image_width = %#v, want 1", image["image_width"])
+	}
+	if image["image_height"] != float64(1) {
+		t.Fatalf("image_height = %#v, want 1", image["image_height"])
+	}
 	cid, _ := image["cid"].(string)
 	if cid == "" || !strings.Contains(html, "cid:"+cid) {
 		t.Fatalf("image cid %q should be referenced by html %q", cid, html)
