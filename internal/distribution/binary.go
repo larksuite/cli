@@ -74,6 +74,9 @@ func matchesVersionOutput(output, version string) bool {
 }
 
 func replaceBinary(staged, target string) (func(), error) {
+	// The backup supports error-path rollback, but this process cannot recover
+	// from termination between the two renames. A later installer may safely
+	// promote a newly staged binary while preserving the existing backup.
 	backupPath := target + ".old"
 	targetExists, err := pathExists(target)
 	if err != nil {

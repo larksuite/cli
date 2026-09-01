@@ -91,6 +91,7 @@ func installPrepared(prepared *preparedUpdate, opts InstallOptions) error {
 		prepared.SkillNames,
 		previous,
 	)
+	state.SourceIdentity = prepared.Manifest.sourceIdentity
 	if err := skillscheck.WriteState(state); err != nil {
 		return rollback(fmt.Errorf("write Skills state: %w", err))
 	}

@@ -18,13 +18,15 @@ import (
 )
 
 const (
-	stateFile = "skills-state.json"
+	stateFile              = "skills-state.json"
+	OfficialSourceIdentity = "official"
 )
 
 var ErrUnreadableState = errors.New("skills state is unreadable")
 
 type SkillsState struct {
 	Version               string   `json:"version"`
+	SourceIdentity        string   `json:"source_identity,omitempty"`
 	Layout                Layout   `json:"layout,omitempty"`
 	OfficialSkills        []string `json:"official_skills"`
 	OfficialSkillsUnknown bool     `json:"official_skills_unknown,omitempty"`
@@ -32,6 +34,18 @@ type SkillsState struct {
 	AddedOfficialSkills   []string `json:"added_official_skills"`
 	SkippedDeletedSkills  []string `json:"skipped_deleted_skills"`
 	UpdatedAt             string   `json:"updated_at"`
+}
+
+// MatchesSource reports whether state belongs to the expected Skills source.
+// States written before source tracking are treated as the official source.
+func MatchesSource(state *SkillsState, expected string) bool {
+	if state == nil {
+		return false
+	}
+	if state.SourceIdentity == "" {
+		return expected == OfficialSourceIdentity
+	}
+	return state.SourceIdentity == expected
 }
 
 // KnownOfficialSkills returns the previous managed Skill set when the state is

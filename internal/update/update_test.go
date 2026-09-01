@@ -62,13 +62,17 @@ func TestManifestCacheUsesExactTargetAndSourceIdentity(t *testing.T) {
 		if r.Header.Get("X-External-Route") != "" {
 			t.Fatal("manifest request passed through the request interceptor")
 		}
-		fmt.Fprintf(w, `{"schema":1,"version":"old-target","artifacts":{"skills":{"url":"https://dist.example/skills","checksum":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},%q:{"url":"https://dist.example/binary","checksum":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}}`, distribution.CurrentPlatformKey())
+		target := "old-target"
+		if r.URL.Path == "/second" {
+			target = "second-target"
+		}
+		fmt.Fprintf(w, `{"schema":1,"version":%q,"artifacts":{"skills":{"url":"https://dist.example/skills","checksum":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},%q:{"url":"https://dist.example/binary","checksum":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}}`, target, distribution.CurrentPlatformKey())
 	}))
 	defer server.Close()
 	previousProvider := exttransport.GetProvider()
 	previousClient := distribution.DefaultClient
 	distribution.DefaultClient = server.Client()
-	exttransport.Register(updateExternalProvider{interceptor: &updateExternalInterceptor{}, manifestURL: server.URL})
+	exttransport.Register(updateExternalProvider{interceptor: &updateExternalInterceptor{}, manifestURL: server.URL + "/first"})
 	t.Cleanup(func() {
 		exttransport.Register(previousProvider)
 		distribution.DefaultClient = previousClient
@@ -85,6 +89,15 @@ func TestManifestCacheUsesExactTargetAndSourceIdentity(t *testing.T) {
 	info := CheckCached("new-current")
 	if info == nil || info.Latest != "old-target" || info.Source != "manifest" {
 		t.Fatalf("CheckCached = %#v", info)
+	}
+
+	// A different manifest is a different source even while the 24-hour cache
+	// from the first source is fresh.
+	exttransport.Register(updateExternalProvider{manifestURL: server.URL + "/second"})
+	RefreshCache("new-current")
+	info = CheckCached("new-current")
+	if info == nil || info.Latest != "second-target" {
+		t.Fatalf("CheckCached after source switch = %#v", info)
 	}
 }
 

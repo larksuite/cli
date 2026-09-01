@@ -122,6 +122,28 @@ func TestInstallSkillsToTargetsRollsBackEarlierTarget(t *testing.T) {
 	assertFile(t, filepath.Join(first, "managed", "SKILL.md"), "old")
 }
 
+func TestFailedSkillsRollbackRetainsBackup(t *testing.T) {
+	root := t.TempDir()
+	stage := filepath.Join(root, "stage")
+	backup := filepath.Join(root, "backup")
+	if err := vfs.MkdirAll(stage, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := vfs.MkdirAll(backup, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rollbackErr := errors.New("restore failed")
+	if err := finishSkillsRollback(stage, backup, rollbackErr); !errors.Is(err, rollbackErr) {
+		t.Fatalf("rollback error = %v, want %v", err, rollbackErr)
+	}
+	if _, err := vfs.Stat(stage); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("staging directory remains after rollback: %v", err)
+	}
+	if _, err := vfs.Stat(backup); err != nil {
+		t.Fatalf("backup removed after failed rollback: %v", err)
+	}
+}
+
 func TestInstallPreparedVerificationFailureDoesNotMutate(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", filepath.Join(root, "config"))
@@ -175,7 +197,7 @@ func TestInstallPreparedBinaryCommitFailureRollsBackSkillsAndState(t *testing.T)
 	assertFile(t, executable, "old")
 }
 
-func TestReplaceBinaryRecoversWhenOnlyBackupExists(t *testing.T) {
+func TestReplaceBinaryPromotesStagedWhenOnlyBackupExists(t *testing.T) {
 	root := t.TempDir()
 	target := filepath.Join(root, "lark-cli")
 	backup := target + ".old"

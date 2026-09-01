@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/internal/vfs"
 )
@@ -18,9 +19,14 @@ import (
 // These ceilings bound temporary disk use while leaving ample room for the
 // CLI and Skills bundles. Raise them only when a supported bundle outgrows
 // the current distribution contract.
-const artifactDownloadMaxBytes int64 = 4 << 30
+const (
+	artifactDownloadMaxBytes int64 = 4 << 30
+	artifactDownloadTimeout        = 10 * time.Minute
+)
 
 func downloadArtifact(ctx context.Context, artifact Artifact, directory, pattern string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, artifactDownloadTimeout)
+	defer cancel()
 	return downloadArtifactWithLimit(ctx, artifact, directory, pattern, artifactDownloadMaxBytes)
 }
 

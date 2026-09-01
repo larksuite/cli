@@ -458,7 +458,8 @@ func runSkillsAndState(updater *selfupdate.Updater, io *cmdutil.IOStreams, state
 	layout, _ := skillscheck.ParseLayout(requestedLayout)
 	if !force {
 		if state, ok, err := skillscheck.ReadState(); err == nil && ok && normalizeVersion(state.Version) == normalizeVersion(stateVersion) {
-			if !state.OfficialSkillsUnknown && (layout == "" || skillscheck.EffectiveLayout(state) == layout) {
+			if !state.OfficialSkillsUnknown && skillscheck.MatchesSource(state, skillscheck.OfficialSourceIdentity) &&
+				(layout == "" || skillscheck.EffectiveLayout(state) == layout) {
 				return nil
 			}
 		}
@@ -524,7 +525,8 @@ func applySkillsStatus(env map[string]interface{}, target string) {
 	status := map[string]interface{}{
 		"current": state.Version,
 		"target":  target,
-		"in_sync": normalizeVersion(state.Version) == normalizeVersion(target) && !state.OfficialSkillsUnknown,
+		"in_sync": normalizeVersion(state.Version) == normalizeVersion(target) &&
+			!state.OfficialSkillsUnknown && skillscheck.MatchesSource(state, skillscheck.OfficialSourceIdentity),
 	}
 	if state.OfficialSkillsUnknown {
 		status["official_unknown"] = true

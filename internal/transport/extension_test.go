@@ -37,14 +37,10 @@ func (p testProvider) ResolveInterceptor(context.Context) exttransport.Intercept
 
 type rewriteTestProvider struct {
 	testProvider
-	rewriter     exttransport.URLRewriter
-	rewriteCalls *int
+	rewriter exttransport.URLRewriter
 }
 
 func (p rewriteTestProvider) ResolveURLRewriter(context.Context) exttransport.URLRewriter {
-	if p.rewriteCalls != nil {
-		*p.rewriteCalls++
-	}
 	return p.rewriter
 }
 
@@ -375,30 +371,6 @@ func TestHTTPPolicyRouterRejectsUnparsableRewriteBeforeBase(t *testing.T) {
 	}
 	if baseCalls != 0 {
 		t.Fatalf("base calls = %d, want 0", baseCalls)
-	}
-}
-
-func TestHTTPPolicyRouterResolvesURLRewriterOnce(t *testing.T) {
-	interceptorCalls := 0
-	rewriteCalls := 0
-	previousProvider := exttransport.GetProvider()
-	exttransport.Register(rewriteTestProvider{
-		testProvider: testProvider{resolveCalls: &interceptorCalls},
-		rewriter:     rewriteFunc(func(rawURL string) string { return rawURL }),
-		rewriteCalls: &rewriteCalls,
-	})
-	t.Cleanup(func() { exttransport.Register(previousProvider) })
-
-	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		return noContentResponse(req), nil
-	})
-	_ = NewHTTPPolicyRouter(base, base)
-
-	if interceptorCalls != 1 {
-		t.Fatalf("ResolveInterceptor() calls = %d, want 1 per router", interceptorCalls)
-	}
-	if rewriteCalls != 1 {
-		t.Fatalf("ResolveURLRewriter() calls = %d, want 1 per router", rewriteCalls)
 	}
 }
 

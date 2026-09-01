@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDownloadArtifactRejectsExcessiveBody(t *testing.T) {
@@ -30,12 +31,17 @@ func TestDownloadArtifactRejectsExcessiveBody(t *testing.T) {
 	}
 }
 
-func TestDownloadArtifactDoesNotApplyManifestDeadline(t *testing.T) {
+func TestDownloadArtifactAppliesTenMinuteDeadline(t *testing.T) {
 	payload := []byte("artifact")
 	previousClient := DefaultClient
 	DefaultClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if _, ok := req.Context().Deadline(); ok {
-			t.Fatal("artifact request inherited the manifest deadline")
+		deadline, ok := req.Context().Deadline()
+		if !ok {
+			t.Fatal("artifact request has no deadline")
+		}
+		remaining := time.Until(deadline)
+		if remaining < 9*time.Minute || remaining > artifactDownloadTimeout {
+			t.Fatalf("artifact deadline remaining = %s, want about %s", remaining, artifactDownloadTimeout)
 		}
 		return &http.Response{
 			StatusCode: http.StatusOK,

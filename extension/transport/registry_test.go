@@ -22,19 +22,6 @@ type stubProvider struct {
 func (s *stubProvider) Name() string                                   { return s.name }
 func (s *stubProvider) ResolveInterceptor(context.Context) Interceptor { return &stubInterceptor{} }
 
-type stubURLRewriterProvider struct {
-	stubProvider
-	rewriter URLRewriter
-}
-
-func (s *stubURLRewriterProvider) ResolveURLRewriter(context.Context) URLRewriter {
-	return s.rewriter
-}
-
-type stubURLRewriter func(string) string
-
-func (f stubURLRewriter) RewriteURL(rawURL string) string { return f(rawURL) }
-
 type stubDistributionProvider struct {
 	stubProvider
 	manifestURL string
@@ -95,26 +82,6 @@ func TestResolveInterceptor_ReturnsNonNil(t *testing.T) {
 	ic := GetProvider().ResolveInterceptor(context.Background())
 	if ic == nil {
 		t.Fatal("expected non-nil Interceptor")
-	}
-}
-
-func TestURLRewriterProviderIsOptional(t *testing.T) {
-	previous := GetProvider()
-	Register(nil)
-	t.Cleanup(func() { Register(previous) })
-
-	p := &stubURLRewriterProvider{
-		stubProvider: stubProvider{name: "rewrite"},
-		rewriter:     stubURLRewriter(func(string) string { return "https://mirror.example.test" }),
-	}
-	Register(p)
-
-	rewriterProvider, ok := GetProvider().(URLRewriterProvider)
-	if !ok {
-		t.Fatalf("registered provider does not implement URLRewriterProvider")
-	}
-	if got := rewriterProvider.ResolveURLRewriter(context.Background()).RewriteURL("https://source.example.test"); got != "https://mirror.example.test" {
-		t.Fatalf("RewriteURL() = %q", got)
 	}
 }
 

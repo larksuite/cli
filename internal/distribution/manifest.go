@@ -8,6 +8,8 @@ package distribution
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -44,6 +46,14 @@ type Manifest struct {
 	Schema    int                 `json:"schema"`
 	Version   string              `json:"version"`
 	Artifacts map[string]Artifact `json:"artifacts"`
+
+	sourceIdentity string
+}
+
+// ManifestSourceIdentity identifies one manifest without persisting its URL.
+func ManifestSourceIdentity(raw string) string {
+	sum := sha256.Sum256([]byte(raw))
+	return "manifest:" + hex.EncodeToString(sum[:])
 }
 
 // DefaultClient overrides the manifest/artifact client in tests. Production
@@ -110,6 +120,7 @@ func fetchManifest(ctx context.Context, manifestURL string) (*Manifest, error) {
 	if err != nil {
 		return nil, err
 	}
+	manifest.sourceIdentity = ManifestSourceIdentity(manifestURL)
 	return manifest, nil
 }
 

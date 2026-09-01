@@ -55,27 +55,21 @@ func installSkills(prepared *preparedUpdate, target string, previous *skillschec
 				first = err
 			}
 		}
-		return first
+		return finishSkillsRollback(stage, backup, first)
 	}
 	for _, name := range managed {
 		current := filepath.Join(target, name)
 		if _, err := vfs.Stat(current); err == nil {
 			if err := vfs.Rename(current, filepath.Join(backup, name)); err != nil {
-				_ = rollback()
-				cleanup()
-				return nil, nil, err
+				return nil, nil, failAfterRollback(err, rollback)
 			}
 			movedOld = append(movedOld, name)
 		} else if !os.IsNotExist(err) {
-			_ = rollback()
-			cleanup()
-			return nil, nil, err
+			return nil, nil, failAfterRollback(err, rollback)
 		}
 		if contains(prepared.SkillNames, name) {
 			if err := vfs.Rename(filepath.Join(stage, name), current); err != nil {
-				_ = rollback()
-				cleanup()
-				return nil, nil, err
+				return nil, nil, failAfterRollback(err, rollback)
 			}
 			movedNew = append(movedNew, name)
 		}
@@ -103,14 +97,28 @@ func installSkillsToTargets(prepared *preparedUpdate, targets []string, previous
 	for _, target := range targets {
 		rollback, finalize, err := installSkills(prepared, target, previous)
 		if err != nil {
-			_ = rollbackAll()
-			finalizeAll()
-			return nil, nil, fmt.Errorf("install Skills to %s: %w", target, err)
+			cause := fmt.Errorf("install Skills to %s: %w", target, err)
+			return nil, nil, failAfterRollback(cause, rollbackAll)
 		}
 		rollbacks = append(rollbacks, rollback)
 		finalizers = append(finalizers, finalize)
 	}
 	return rollbackAll, finalizeAll, nil
+}
+
+func failAfterRollback(cause error, rollback func() error) error {
+	if err := rollback(); err != nil {
+		return fmt.Errorf("%w (rollback failed: %v; backup retained)", cause, err)
+	}
+	return cause
+}
+
+func finishSkillsRollback(stage, backup string, rollbackErr error) error {
+	_ = vfs.RemoveAll(stage)
+	if rollbackErr == nil {
+		_ = vfs.RemoveAll(backup)
+	}
+	return rollbackErr
 }
 
 func copyTree(source, destination string) error {

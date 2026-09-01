@@ -1373,6 +1373,26 @@ func TestRunSkillsAndState_UnknownOfficialSkillsBypassesVersionDedup(t *testing.
 	}
 }
 
+func TestRunSkillsAndState_ManifestSourceBypassesVersionDedup(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := skillscheck.WriteState(skillscheck.SkillsState{
+		Version:        "1.0.21",
+		SourceIdentity: "manifest:test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	originalSync := syncSkills
+	t.Cleanup(func() { syncSkills = originalSync })
+	called := false
+	syncSkills = func(skillscheck.SyncOptions) *skillscheck.SyncResult {
+		called = true
+		return &skillscheck.SyncResult{Action: "synced"}
+	}
+	if got := runSkillsAndState(&selfupdate.Updater{}, newTestIO(), "1.0.21", false, ""); !called || got == nil {
+		t.Fatalf("runSkillsAndState() = %+v, called = %v", got, called)
+	}
+}
+
 func TestSkillsSummaryMarksUnknownOfficialSkills(t *testing.T) {
 	summary := skillsSummary(&skillscheck.SyncResult{
 		Layout:          skillscheck.LayoutSeparate,

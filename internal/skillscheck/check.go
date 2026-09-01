@@ -14,6 +14,11 @@ import "strings"
 // Skip rules: see shouldSkip (CI envs, DEV builds, non-release semver,
 // LARKSUITE_CLI_NO_SKILLS_NOTIFIER opt-out).
 func Init(currentVersion string) {
+	InitForSource(currentVersion, OfficialSourceIdentity)
+}
+
+// InitForSource also considers which distribution owns the installed Skills.
+func InitForSource(currentVersion, sourceIdentity string) {
 	SetPending(nil)
 	if shouldSkip(currentVersion) {
 		return
@@ -22,7 +27,8 @@ func Init(currentVersion string) {
 	if err != nil || !ok || state.Version == "" {
 		return
 	}
-	if strings.TrimPrefix(strings.TrimPrefix(state.Version, "v"), "V") == strings.TrimPrefix(strings.TrimPrefix(currentVersion, "v"), "V") && !state.OfficialSkillsUnknown {
+	if strings.TrimPrefix(strings.TrimPrefix(state.Version, "v"), "V") == strings.TrimPrefix(strings.TrimPrefix(currentVersion, "v"), "V") &&
+		!state.OfficialSkillsUnknown && MatchesSource(state, sourceIdentity) {
 		return
 	}
 	SetPending(&StaleNotice{

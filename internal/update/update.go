@@ -5,8 +5,6 @@ package update
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -92,7 +90,7 @@ func CheckCached(currentVersion string) *UpdateInfo {
 		return nil
 	}
 	if manifestMode {
-		if state.Source != manifestSourceKey(manifestURL) || state.LatestVersion == currentVersion {
+		if state.Source != distribution.ManifestSourceIdentity(manifestURL) || state.LatestVersion == currentVersion {
 			return nil
 		}
 		return &UpdateInfo{Current: currentVersion, Latest: state.LatestVersion, Source: "manifest"}
@@ -116,7 +114,7 @@ func RefreshCache(currentVersion string) {
 	state, _ := loadState()
 	identityMatches := !manifestMode && state != nil && state.Source == ""
 	if manifestMode {
-		identityMatches = state != nil && state.Source == manifestSourceKey(manifestURL)
+		identityMatches = state != nil && state.Source == distribution.ManifestSourceIdentity(manifestURL)
 	}
 	if identityMatches && time.Since(time.Unix(state.CheckedAt, 0)) < cacheTTL {
 		return // cache is fresh
@@ -127,18 +125,13 @@ func RefreshCache(currentVersion string) {
 	}
 	sourceKey := ""
 	if manifestMode {
-		sourceKey = manifestSourceKey(manifestURL)
+		sourceKey = distribution.ManifestSourceIdentity(manifestURL)
 	}
 	_ = saveState(&updateState{
 		LatestVersion: target.Version,
 		CheckedAt:     time.Now().Unix(),
 		Source:        sourceKey,
 	})
-}
-
-func manifestSourceKey(raw string) string {
-	sum := sha256.Sum256([]byte(raw))
-	return "manifest:" + hex.EncodeToString(sum[:])
 }
 
 func shouldSkipForMode(version string, manifestMode bool) bool {

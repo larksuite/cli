@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -19,33 +21,39 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/distribution"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/surface"
 	"github.com/larksuite/cli/internal/update"
 )
 
-type doctorManifestProvider struct{}
+type doctorManifestProvider struct{ manifestURL string }
 
 func (doctorManifestProvider) Name() string { return "doctor-manifest-test" }
 func (doctorManifestProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
 	return nil
 }
-func (doctorManifestProvider) ResolveManifestURL(context.Context) string {
-	return "https://dist.example/manifest.json"
+func (p doctorManifestProvider) ResolveManifestURL(context.Context) string {
+	return p.manifestURL
 }
 
 func TestCheckCLIUpdateReportsDifferentOpaqueManifestTarget(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprintf(w, `{"schema":1,"version":"older-channel","artifacts":{"skills":{"url":"https://distribution.example/skills.zip","checksum":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},%q:{"url":"https://distribution.example/cli.zip","checksum":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}}`, distribution.CurrentPlatformKey())
+	}))
+	defer server.Close()
 	previousProvider := exttransport.GetProvider()
 	previousFetch := fetchLatestForDoctor
+	previousClient := distribution.DefaultClient
 	previousVersion := build.Version
-	exttransport.Register(doctorManifestProvider{})
-	fetchLatestForDoctor = func() (update.Target, error) {
-		return update.Target{Version: "older-channel", Exact: true}, nil
-	}
+	exttransport.Register(doctorManifestProvider{manifestURL: server.URL})
+	distribution.DefaultClient = server.Client()
+	fetchLatestForDoctor = update.FetchTarget
 	build.Version = "newer-channel"
 	t.Cleanup(func() {
 		exttransport.Register(previousProvider)
 		fetchLatestForDoctor = previousFetch
+		distribution.DefaultClient = previousClient
 		build.Version = previousVersion
 	})
 	checks := checkCLIUpdate()
