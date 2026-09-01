@@ -86,7 +86,7 @@ func TestDocsFetchCitations(t *testing.T) {
 		"document": map[string]interface{}{
 			"document_id": "doxcnCitation",
 			"url":         "https://example.feishu.cn/docx/doxcnCitation",
-			"title":       "Roadmap",
+			"content":     "<title>Roadmap</title><p>Body</p>",
 		},
 	})
 	if len(got) != 1 {
@@ -100,6 +100,34 @@ func TestDocsFetchCitations(t *testing.T) {
 	}
 	if got[0].Title != "Roadmap" {
 		t.Errorf("title = %q, want Roadmap", got[0].Title)
+	}
+}
+
+func TestDocsFetchCitationTitleFromContent(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{
+			name:    "smart meeting title",
+			content: `<title>智能纪要：05-18 | 企业知识问答周会 2026年5月18日</title><blockquote><p>会议主题</p></blockquote>`,
+			want:    "智能纪要：05-18 | 企业知识问答周会 2026年5月18日",
+		},
+		{name: "whitespace", content: "<title>\n  Q3   Roadmap \n</title>", want: "Q3 Roadmap"},
+		{name: "escaped text", content: `<title>A &amp; B &lt;C&gt;</title>`, want: "A & B <C>"},
+		{name: "inline markup", content: `<title><b>Bold</b> Title</title>`, want: "Bold Title"},
+		{name: "uppercase", content: `<TITLE>Roadmap</TITLE>`, want: "Roadmap"},
+		{name: "missing", content: `<p>Body</p>`, want: ""},
+		{name: "unclosed", content: `<title>Roadmap`, want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := docsFetchCitationTitle(tt.content); got != tt.want {
+				t.Fatalf("docsFetchCitationTitle() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -176,10 +204,10 @@ func TestDocsFetchMountedExecuteEmitsCitation(t *testing.T) {
 	for _, frag := range []string{
 		fmt.Sprintf("<source_type>%d</source_type>", citation.SourceDoc),
 		"<url>" + docURL + "</url>",
-		"<title></title>",
+		"<title>Roadmap</title>",
 	} {
 		if !strings.Contains(got, frag) {
-			t.Fatalf("citation %q missing %q (title stays empty because fetch response has no title field)", got, frag)
+			t.Fatalf("citation %q missing %q", got, frag)
 		}
 	}
 }
