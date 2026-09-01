@@ -56,11 +56,36 @@ type PaginationMeta struct {
 // Returns nil when there is nothing to report.
 var PendingNotice func() map[string]interface{}
 
+// builtinNotices are process-local notice providers that do not depend on the
+// entry point wiring PendingNotice (cmd/root.go). They surface in every
+// distribution — including embedders that assemble the command tree via
+// cmd.Build and never run setupNotices. Registration happens from package
+// init functions (single goroutine, before main), so no locking is needed.
+var builtinNotices []func() (key string, value interface{})
+
+// RegisterBuiltinNotice adds a provider whose non-nil value is merged into the
+// "_notice" envelope block under the returned key. Call from package init only.
+func RegisterBuiltinNotice(fn func() (string, interface{})) {
+	builtinNotices = append(builtinNotices, fn)
+}
+
 // GetNotice returns the current pending notice for struct-based callers.
-// Returns nil when there is nothing to report.
+// It merges the entry-point-wired PendingNotice hook (when set) with any
+// registered builtin providers. Returns nil when there is nothing to report.
 func GetNotice() map[string]interface{} {
-	if PendingNotice == nil {
-		return nil
+	var merged map[string]interface{}
+	if PendingNotice != nil {
+		merged = PendingNotice()
 	}
-	return PendingNotice()
+	for _, fn := range builtinNotices {
+		key, value := fn()
+		if key == "" || value == nil {
+			continue
+		}
+		if merged == nil {
+			merged = map[string]interface{}{}
+		}
+		merged[key] = value
+	}
+	return merged
 }
