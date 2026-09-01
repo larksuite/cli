@@ -6,6 +6,7 @@ package config
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -774,5 +775,55 @@ func TestShouldPromptInitLang(t *testing.T) {
 				t.Errorf("shouldPromptInitLang() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestConfigInitRun_LangFlagDrivesRenderedOutput drives configInitRun itself
+// rather than replaying the order it calls its own helpers in. It is the only
+// test that fails if the orchestrator stops resolving the display language
+// before it renders, which is exactly the reported regression: --lang was
+// accepted and persisted while every rendered line stayed Chinese.
+//
+// Hermetic despite going through the whole command: the probe's token fetch
+// gets an untyped transport error from the http mock, which runProbe swallows,
+// and the language confirmation is written before the probe runs.
+func TestConfigInitRun_LangFlagDrivesRenderedOutput(t *testing.T) {
+	// GetConfigPath is workspace-scoped, so a stray Agent env var on the host
+	// would send the write somewhere LARKSUITE_CLI_CONFIG_DIR does not cover.
+	clearAgentEnv(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, _, stderr, _ := cmdutil.TestFactory(t, nil)
+	f.IOStreams.In = strings.NewReader("test-secret\n")
+
+	opts := &ConfigInitOptions{
+		Factory:        f,
+		Ctx:            context.Background(),
+		AppID:          "cli_lang_probe",
+		AppSecretStdin: true,
+		Brand:          "feishu",
+		Lang:           "en_us",
+		langExplicit:   true,
+	}
+	if err := configInitRun(opts); err != nil {
+		t.Fatalf("configInitRun: %v", err)
+	}
+
+	got := stderr.String()
+	if want := fmt.Sprintf(initMsgEn.LangPreferenceSet, "en_us"); !strings.Contains(got, want) {
+		t.Errorf("stderr = %q, want it to contain %q", got, want)
+	}
+	if unwanted := fmt.Sprintf(initMsgZh.LangPreferenceSet, "en_us"); strings.Contains(got, unwanted) {
+		t.Errorf("stderr rendered the Chinese bundle despite --lang en_us: %q", got)
+	}
+
+	// The preference reaches disk as well as the screen; the regression left
+	// these two disagreeing.
+	saved, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig: %v", err)
+	}
+	if app := saved.CurrentAppConfig(""); app == nil || app.Lang != i18n.LangEnUS {
+		t.Errorf("persisted Lang = %v, want %q", app, i18n.LangEnUS)
 	}
 }
