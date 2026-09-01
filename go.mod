@@ -20,6 +20,7 @@ require (
 	github.com/tidwall/gjson v1.18.0
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/image v0.30.0
+	golang.org/x/mod v0.27.0
 	golang.org/x/net v0.33.0
 	golang.org/x/sync v0.16.0
 	golang.org/x/sys v0.33.0
