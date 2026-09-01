@@ -9,16 +9,90 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	extcred "github.com/larksuite/cli/extension/credential"
 	_ "github.com/larksuite/cli/extension/credential/env"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/envvars"
+	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
 type countingFileIOProvider struct {
 	resolveCalls int
+}
+
+type tenantLookupConfigurableProvider struct {
+	configured bool
+}
+
+func (p *tenantLookupConfigurableProvider) Name() string { return "custom" }
+func (p *tenantLookupConfigurableProvider) ResolveAccount(context.Context) (*extcred.Account, error) {
+	return nil, nil
+}
+func (p *tenantLookupConfigurableProvider) ResolveToken(context.Context, extcred.TokenSpec) (*extcred.Token, error) {
+	return nil, nil
+}
+func (p *tenantLookupConfigurableProvider) WithTenantAccessTokenLookup(func(context.Context, string) (*extcred.Token, error)) extcred.Provider {
+	clone := *p
+	clone.configured = true
+	return &clone
+}
+
+type factoryTenantTokenKeychain struct {
+	value    string
+	getCalls int
+}
+
+func (k *factoryTenantTokenKeychain) Get(string, string) (string, error) {
+	k.getCalls++
+	return k.value, nil
+}
+func (k *factoryTenantTokenKeychain) Set(string, string, string) error { return nil }
+func (k *factoryTenantTokenKeychain) Remove(string, string) error      { return nil }
+
+func TestWithTenantAccessTokenLookupUsesExplicitCapability(t *testing.T) {
+	provider := &tenantLookupConfigurableProvider{}
+	got := withTenantAccessTokenLookup([]extcred.Provider{provider}, func(context.Context, string) (*extcred.Token, error) {
+		return nil, nil
+	})
+	configured, ok := got[0].(*tenantLookupConfigurableProvider)
+	if !ok || !configured.configured || provider.configured {
+		t.Fatalf("configured providers = %#v, want configured copy without mutating registry instance", got)
+	}
+}
+
+func TestNewDefaultStoredTATReadsKeychainOnlyDuringBotTokenResolution(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "env-app")
+	t.Setenv(envvars.CliAppSecret, "")
+	t.Setenv(envvars.CliUserAccessToken, "")
+	t.Setenv(envvars.CliTenantAccessToken, "")
+	t.Setenv(envvars.CliTenantAccessTokenSource, "credential-store")
+	t.Setenv(envvars.CliDefaultAs, "")
+	t.Setenv(envvars.CliStrictMode, "")
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f := NewDefault(nil, InvocationContext{})
+	kc := &factoryTenantTokenKeychain{value: "stored-tat"}
+	f.Keychain = kc
+
+	acct, err := f.Credential.ResolveAccount(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveAccount() error = %v", err)
+	}
+	if acct.AppID != "env-app" || kc.getCalls != 0 {
+		t.Fatalf("account=%#v getCalls=%d, want env-app without keychain read", acct, kc.getCalls)
+	}
+	result, err := f.Credential.ResolveToken(context.Background(), credential.TokenSpec{
+		Type: credential.TokenTypeTAT, AppID: "env-app",
+	})
+	if err != nil {
+		t.Fatalf("ResolveToken() error = %v", err)
+	}
+	if result == nil || result.Token != "stored-tat" || result.Source != core.CredentialSourceEnv || kc.getCalls != 1 {
+		t.Fatalf("result=%#v getCalls=%d, want stored env TAT and one read", result, kc.getCalls)
+	}
 }
 
 func (p *countingFileIOProvider) Name() string { return "counting" }
@@ -27,6 +101,8 @@ func (p *countingFileIOProvider) ResolveFileIO(context.Context) fileio.FileIO {
 	p.resolveCalls++
 	return &localfileio.LocalFileIO{}
 }
+
+var _ keychain.KeychainAccess = (*factoryTenantTokenKeychain)(nil)
 
 func TestNewDefault_InvocationProfileUsedByStrictModeAndConfig(t *testing.T) {
 	t.Setenv(envvars.CliAppID, "")

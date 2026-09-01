@@ -72,11 +72,14 @@ var commandFlagAliases = map[string]map[string]string{
 	// spells the pixel dimension "size", and pre-2026-07 batches accepted it
 	// here too — the rename is the single largest sub-op error cluster in
 	// eval traces (15+ hits). Same pixel-count semantics, safe to rewrite.
-	"+cols-resize": {"cols": "range", "size": "width"},
-	"+rows-resize": {"rows": "range", "size": "height"},
-	"+range-fill":  {"source": "source-range", "target": "target-range"},
-	"+range-copy":  {"source": "source-range", "target": "target-range"},
-	"+range-move":  {"source": "source-range", "target": "target-range"},
+	"+cols-resize":         {"cols": "range", "size": "width"},
+	"+rows-resize":         {"rows": "range", "size": "height"},
+	"+range-fill":          {"source": "source-range", "target": "target-range"},
+	"+range-copy":          {"source": "source-range", "target": "target-range"},
+	"+range-move":          {"source": "source-range", "target": "target-range"},
+	"+chart-create-basic":  {"type": "chart-type", "range": "data-range", "x-axis": "x-axis-title", "y-axis": "y-axis-title"},
+	"+chart-config-update": {"x-axis": "x-axis-title", "y-axis": "y-axis-title"},
+	"+chart-data-update":   {"range": "data-range"},
 	// values → cells: gspread spells the write payload values, and this CLI's
 	// own +workbook-create uses --values for untyped 2D data. It qualifies for
 	// the silent tier only because normalizeCellsFlagValue lifts bare scalars
@@ -137,6 +140,13 @@ var intuitiveFlagHints = map[string]map[string]string{
 		"start-cell": `anchor each sub-sheet via the "start_cell" field inside --sheets (e.g. {"sheets":[{"name":"Sheet1","start_cell":"B2",…}]}); to paste CSV at a cell use +csv-put --start-cell`,
 		"sheet-name": `+table-put has no sheet selector — each --sheets item carries its own "name" field ({"sheets":[{"name":"Sheet1",…}]})`,
 		"sheet-id":   `+table-put has no sheet selector — each --sheets item carries its own "name" field ({"sheets":[{"name":"Sheet1",…}]})`,
+	},
+	"+chart-create-basic": {
+		"position":    "use --anchor-cell F2 for the chart anchor; optionally pair --width and --height for its pixel size",
+		"show-labels": "use --data-labels value (or any value/category/percentage combination such as value_category_percentage; use series for series names or none to hide labels)",
+	},
+	"+chart-config-update": {
+		"show-labels": "use --data-labels value (or any value/category/percentage combination such as value_category_percentage; use series for series names or none to hide labels)",
 	},
 }
 
@@ -311,6 +321,10 @@ var enumAliases = map[string]string{
 	// the first two need mapping — overflow is spelled the same in both.
 	"wrap": "auto-wrap",
 	"clip": "word-clip",
+	// Combined chart data-label vocabulary emitted by models. The tool enum
+	// spells the same intent as one value.
+	"percentage,value": "value_percentage",
+	"value,percentage": "value_percentage",
 }
 
 // DEPRECATED(phase-2): enum values this CLI used to accept and now expresses
@@ -374,7 +388,8 @@ func canonicalEnumValue(val string, enum []string) string {
 			return allowed
 		}
 	}
-	if target, ok := enumAliases[lower]; ok {
+	aliasKey := strings.ReplaceAll(lower, " ", "")
+	if target, ok := enumAliases[aliasKey]; ok {
 		if slices.Contains(enum, target) {
 			return target
 		}

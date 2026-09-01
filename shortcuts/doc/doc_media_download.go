@@ -12,9 +12,25 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+func docMediaDownloadIsPermissionAuthScopeError(err error) bool {
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryAuthorization {
+		return false
+	}
+	switch problem.Code {
+	case output.LarkErrAppScopeNotEnabled,
+		output.LarkErrTokenNoPermission,
+		output.LarkErrUserScopeInsufficient:
+		return true
+	default:
+		return false
+	}
+}
 
 var DocMediaDownload = common.Shortcut{
 	Service:           "docs",
@@ -50,12 +66,6 @@ var DocMediaDownload = common.Shortcut{
 			Desc("[2] (when --type=media) Download document media file").
 			Set("token", token).Set("output", outputPath)
 	},
-	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if runtime.Str("type") == "whiteboard" {
-			return nil
-		}
-		return runtime.EnsureScopes([]string{common.DrivePermissionMemberAuthScope})
-	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token := runtime.Str("token")
 		outputPath := runtime.Str("output")
@@ -71,9 +81,12 @@ var DocMediaDownload = common.Shortcut{
 		if mediaType != "whiteboard" {
 			allowed, err := common.CheckDriveFileExportPermission(runtime, token)
 			if err != nil {
-				return withDocMediaDownloadRecoveryHint(err, mediaType)
-			}
-			if !allowed {
+				if docMediaDownloadIsPermissionAuthScopeError(err) {
+					fmt.Fprintf(runtime.IO().ErrOut, "warning: export permission check failed; continuing with download: %v\n", err)
+				} else {
+					return withDocMediaDownloadRecoveryHint(err, mediaType)
+				}
+			} else if !allowed {
 				return docMediaDownloadPermissionDeniedError()
 			}
 		}

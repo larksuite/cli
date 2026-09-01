@@ -515,6 +515,33 @@ func TestShortcuts_IntuitiveFlagAliases(t *testing.T) {
 	})
 }
 
+func TestMapFlagView_AliasResolutionIsDeterministic(t *testing.T) {
+	t.Parallel()
+
+	t.Run("multiple aliases use stable lexical precedence", func(t *testing.T) {
+		t.Parallel()
+		fv := newMapFlagViewForCommand("+sheet-rename", map[string]interface{}{
+			"name":     "first",
+			"new-name": "second",
+		})
+		for range 100 {
+			if got := fv.Str("title"); got != "first" {
+				t.Fatalf("title = %q, want stable alias value %q", got, "first")
+			}
+		}
+	})
+
+	t.Run("underscored canonical name resolves alias", func(t *testing.T) {
+		t.Parallel()
+		fv := newMapFlagViewForCommand("+chart-config-update", map[string]interface{}{
+			"x-axis": "Month",
+		})
+		if got := fv.Str("x_axis_title"); got != "Month" {
+			t.Fatalf("x_axis_title = %q, want %q", got, "Month")
+		}
+	})
+}
+
 // TestShortcuts_IntuitiveFlagHints verifies the prescription tier: habitual
 // names whose fix is not a rename answer with the exact correct form, so the
 // retry needs no --help round trip (eval: +sheet-copy burned 3/3 post-error
@@ -615,6 +642,24 @@ func TestShortcuts_IntuitiveFlagHints(t *testing.T) {
 			args:     []string{"--url", testURL, "--sheet-name", "s", "--range", "A1", "--border-color", "#000"},
 			wrong:    "--border-color",
 			wantHint: []string{"--border-styles", "color"},
+		},
+		{
+			command:  "+chart-create-basic",
+			args:     []string{"--url", testURL, "--sheet-name", "s", "--position", "F2"},
+			wrong:    "--position",
+			wantHint: []string{"--anchor-cell F2", "--width", "--height"},
+		},
+		{
+			command:  "+chart-create-basic",
+			args:     []string{"--url", testURL, "--sheet-name", "s", "--show-labels", "true"},
+			wrong:    "--show-labels",
+			wantHint: []string{"--data-labels value", "value_category_percentage", "series", "none"},
+		},
+		{
+			command:  "+chart-config-update",
+			args:     []string{"--url", testURL, "--sheet-name", "s", "--show-labels", "true"},
+			wrong:    "--show-labels",
+			wantHint: []string{"--data-labels value", "value_category_percentage", "series", "none"},
 		},
 	}
 	for _, tc := range cases {

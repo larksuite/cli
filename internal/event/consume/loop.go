@@ -16,7 +16,6 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
-	"unicode/utf8"
 
 	"github.com/itchyny/gojq"
 	"github.com/larksuite/cli/internal/event"
@@ -206,18 +205,8 @@ func consumeLoop(ctx context.Context, conn net.Conn, br *bufio.Reader, keyDef *e
 // prefix of them.
 const diagnosticErrMaxLen = 200
 
-// truncateDiagnostic bounds s to diagnosticErrMaxLen bytes, backing off to
-// the previous rune boundary so the cut never emits invalid UTF-8, and marks
-// the cut explicitly.
 func truncateDiagnostic(s string) string {
-	if len(s) <= diagnosticErrMaxLen {
-		return s
-	}
-	cut := diagnosticErrMaxLen
-	for cut > 0 && !utf8.RuneStart(s[cut]) {
-		cut--
-	}
-	return s[:cut] + "...(truncated)"
+	return event.TruncateDiagnostic(s, diagnosticErrMaxLen, "...(truncated)")
 }
 
 // processAndOutput returns (wrote, err); err non-nil only for sink.Write failures.

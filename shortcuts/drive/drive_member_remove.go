@@ -16,7 +16,7 @@ import (
 
 var driveMemberRemoveIDTypes = []string{
 	"email", "openid", "openchat", "opendepartmentid",
-	"userid", "unionid", "groupid", "wikispaceid",
+	"userid", "unionid", "groupid", "appid", "wikispaceid",
 }
 
 // DriveMemberRemove removes one collaborator/member permission from a Drive resource.
@@ -31,7 +31,7 @@ var DriveMemberRemove = common.Shortcut{
 		{Name: "token", Desc: "target token or document URL; type is auto-inferred from URL path when omitted", Required: true},
 		{Name: "type", Desc: "target resource type; required when --token is a bare token"},
 		{Name: "member-id", Desc: "single collaborator ID to remove; comma-separated values are rejected", Required: true},
-		{Name: "member-type", Desc: "ID type for --member-id; supported: email|openid|openchat|opendepartmentid|userid|unionid|groupid|wikispaceid", Required: true},
+		{Name: "member-type", Desc: "ID type for --member-id; supported: email|openid|openchat|opendepartmentid|userid|unionid|groupid|appid|wikispaceid", Required: true},
 		{Name: "member-kind", Desc: "request body type when --member-type=wikispaceid; one of wiki_space_member|wiki_space_viewer|wiki_space_editor"},
 		{Name: "perm-type", Desc: "wiki permission scope; defaults to container; rejected for non-wiki types and wiki-space members"},
 	},

@@ -5,10 +5,22 @@ package sheets
 
 import (
 	"encoding/json"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 )
+
+func TestBatchUpdate_Scopes(t *testing.T) {
+	t.Parallel()
+
+	if got, want := BatchUpdate.Scopes, []string{"sheets:spreadsheet:write_only"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("unconditional scopes = %v, want %v", got, want)
+	}
+	if got, want := BatchUpdate.ConditionalScopes, []string{"sheets:spreadsheet:read"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("conditional scopes = %v, want %v", got, want)
+	}
+}
 
 // TestBatchUpdate_TranslatesShortcutToToolName verifies +batch-update
 // translates each CLI-shape sub-op ({shortcut, input}) to the MCP-shape
@@ -361,7 +373,7 @@ func TestValidateDropdownRanges_RejectsMalformedRange(t *testing.T) {
 
 // TestBatchUpdate_TranslatorRejects covers per-op shape errors caught by
 // translateBatchOp: unknown shortcut, missing shortcut, banned (read /
-// fan-out / legacy v2) shortcuts, hand-filled reserved keys, etc.
+// fan-out / legacy v2) shortcuts, malformed wrapper keys, etc.
 func TestBatchUpdate_TranslatorRejects(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -413,16 +425,6 @@ func TestBatchUpdate_TranslatorRejects(t *testing.T) {
 			name:      "user filled operation manually",
 			opsJSON:   `[{"shortcut":"+dim-insert","input":{"operation":"delete","position":"1","count":1}}]`,
 			wantMatch: "do not pass input.operation",
-		},
-		{
-			name:      "user filled excel_id",
-			opsJSON:   `[{"shortcut":"+cells-set","input":{"excel_id":"shtcnX","range":"A1"}}]`,
-			wantMatch: "do not pass input.excel_id",
-		},
-		{
-			name:      "user filled url",
-			opsJSON:   `[{"shortcut":"+cells-set","input":{"url":"https://x.feishu.cn/sheets/sh","range":"A1"}}]`,
-			wantMatch: "do not pass input.url",
 		},
 		{
 			name:      "extra top-level key",
@@ -860,6 +862,52 @@ func TestBatchUpdate_CollidingDimFreezeWarns(t *testing.T) {
 			t.Errorf("one combined freeze is the correct form, got warning %q", warning)
 		}
 	})
+}
+
+func TestBatchUpdate_IgnoredLocatorWarns(t *testing.T) {
+	t.Parallel()
+
+	warning := dryRunWarning(t, BatchUpdate, []string{
+		"--url", testURL,
+		"--operations", `[{
+		  "shortcut":"+cells-clear",
+		  "input":{
+		    "sheet_name":"S1",
+		    "range":"A1:B2",
+		    "spreadsheet-token":"shtOTHER",
+		    "excel_id":"shtIGNORED",
+		    "url":"https://example.invalid/sheets/shtWRONG"
+		  }
+		}]`,
+		"--yes",
+	})
+	for _, want := range []string{
+		"operations[0] (+cells-clear)",
+		"excel_id, spreadsheet-token, url",
+		"top-level +batch-update --url/--spreadsheet-token locator is authoritative",
+	} {
+		if !strings.Contains(warning, want) {
+			t.Errorf("locator warning should contain %q, got %q", want, warning)
+		}
+	}
+}
+
+func TestBatchUpdate_CombinesLocatorAndDimInsertWarnings(t *testing.T) {
+	t.Parallel()
+
+	warning := dryRunWarning(t, BatchUpdate, []string{
+		"--url", testURL,
+		"--operations", `[{"shortcut":"+dim-insert","input":{"sheet_id":"sh1","position":1,"count":1,"inherit_style":"before","url":"https://example.invalid/sheets/shtWRONG"}}]`,
+		"--yes",
+	})
+	for _, want := range []string{
+		"ignored input locator keys url",
+		dimInsertBeforeStyleWarning,
+	} {
+		if !strings.Contains(warning, want) {
+			t.Errorf("combined warning should contain %q, got %q", want, warning)
+		}
+	}
 }
 
 // TestBatchOpAliasCollidesWithTarget pins the message for a sub-op carrying

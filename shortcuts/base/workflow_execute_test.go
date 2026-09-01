@@ -4,11 +4,37 @@
 package base
 
 import (
+	"encoding/json"
+	"errors"
+	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/shortcuts/common"
 )
+
+func TestBaseButtonRuleScopesDoNotRequireWorkflowAccess(t *testing.T) {
+	tests := []struct {
+		name       string
+		shortcut   common.Shortcut
+		wantScopes []string
+	}{
+		{name: "bind", shortcut: BaseButtonRuleBind, wantScopes: []string{"base:field:read", "base:field:update"}},
+		{name: "get", shortcut: BaseButtonRuleGet, wantScopes: []string{"base:field:read"}},
+		{name: "unbind", shortcut: BaseButtonRuleUnbind, wantScopes: []string{"base:field:read", "base:field:update"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !slices.Equal(tt.shortcut.Scopes, tt.wantScopes) {
+				t.Fatalf("Scopes=%v want=%v", tt.shortcut.Scopes, tt.wantScopes)
+			}
+		})
+	}
+}
 
 func TestBaseWorkflowExecuteGet(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
@@ -131,4 +157,177 @@ func TestBaseWorkflowExecuteDisableValidate(t *testing.T) {
 			t.Fatalf("err=%v", err)
 		}
 	})
+}
+
+func TestBaseButtonRuleExecuteResolvesFieldReference(t *testing.T) {
+	tests := []struct {
+		name              string
+		shortcut          common.Shortcut
+		args              []string
+		fieldRef          string
+		canonicalFieldID  string
+		fieldIdentityKey  string
+		buttonRuleMethod  string
+		wantWorkflowID    string
+		wantWorkflowField bool
+	}{
+		{
+			name: "bind by name", shortcut: BaseButtonRuleBind,
+			args:     []string{"+button-rule-bind", "--base-token", "app_x", "--table-id", "tbl_1", "--field-id", "按钮", "--workflow-id", "wkf_1"},
+			fieldRef: "按钮", canonicalFieldID: "fld_bind", fieldIdentityKey: "id",
+			buttonRuleMethod: "PUT", wantWorkflowID: "wkf_1", wantWorkflowField: true,
+		},
+		{
+			name: "get by name", shortcut: BaseButtonRuleGet,
+			args:     []string{"+button-rule-get", "--base-token", "app_x", "--table-id", "tbl_1", "--field-id", "按钮"},
+			fieldRef: "按钮", canonicalFieldID: "fld_get", fieldIdentityKey: "id",
+			buttonRuleMethod: "GET",
+		},
+		{
+			name: "unbind by name with field_id compatibility", shortcut: BaseButtonRuleUnbind,
+			args:     []string{"+button-rule-unbind", "--base-token", "app_x", "--table-id", "tbl_1", "--field-id", "按钮"},
+			fieldRef: "按钮", canonicalFieldID: "fld_unbind", fieldIdentityKey: "field_id",
+			buttonRuleMethod: "PUT", wantWorkflowID: "", wantWorkflowField: true,
+		},
+		{
+			name: "ID input is still resolved", shortcut: BaseButtonRuleGet,
+			args:     []string{"+button-rule-get", "--base-token", "app_x", "--table-id", "tbl_1", "--field-id", "fld_input"},
+			fieldRef: "fld_input", canonicalFieldID: "fld_canonical", fieldIdentityKey: "id",
+			buttonRuleMethod: "GET",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			factory, stdout, reg := newExecuteFactory(t)
+			callOrder := 0
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    baseV3Path("bases", "app_x", "tables", "tbl_1", "fields", tt.fieldRef),
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{tt.fieldIdentityKey: tt.canonicalFieldID, "name": tt.fieldRef},
+				},
+				OnMatch: func(_ *http.Request) {
+					if callOrder != 0 {
+						t.Fatalf("field resolution call order=%d want=0", callOrder)
+					}
+					callOrder++
+				},
+			})
+			buttonRuleStub := &httpmock.Stub{
+				Method: tt.buttonRuleMethod,
+				URL:    baseV3Path("bases", "app_x", "tables", "tbl_1", "fields", tt.canonicalFieldID, "button_rule"),
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{"table_id": "tbl_1", "field_id": tt.canonicalFieldID, "workflow_id": tt.wantWorkflowID, "bound": tt.wantWorkflowID != ""},
+				},
+				OnMatch: func(_ *http.Request) {
+					if callOrder != 1 {
+						t.Fatalf("ButtonRule call order=%d want=1", callOrder)
+					}
+					callOrder++
+				},
+			}
+			reg.Register(buttonRuleStub)
+
+			if err := runShortcut(t, tt.shortcut, tt.args, factory, stdout); err != nil {
+				t.Fatalf("err=%v", err)
+			}
+			if callOrder != 2 {
+				t.Fatalf("call order count=%d want=2", callOrder)
+			}
+			if got := stdout.String(); !strings.Contains(got, `"field_id": "`+tt.canonicalFieldID+`"`) {
+				t.Fatalf("stdout=%s", got)
+			}
+			if tt.wantWorkflowField {
+				var body map[string]interface{}
+				if err := json.Unmarshal(buttonRuleStub.CapturedBody, &body); err != nil {
+					t.Fatalf("decode ButtonRule body: %v", err)
+				}
+				if got, ok := body["workflow_id"].(string); !ok || got != tt.wantWorkflowID {
+					t.Fatalf("workflow_id=%#v want=%q body=%s", body["workflow_id"], tt.wantWorkflowID, buttonRuleStub.CapturedBody)
+				}
+			}
+		})
+	}
+}
+
+func TestBaseButtonRuleFieldResolutionFailureStopsBeforeButtonRule(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	buttonRuleCalls := 0
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    baseV3Path("bases", "app_x", "tables", "tbl_1", "fields", "missing"),
+		Body: map[string]interface{}{
+			"code": 1254045,
+			"msg":  "field not found",
+			"data": map[string]interface{}{"error": map[string]interface{}{"logid": "log_field_resolution"}},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "PUT", URL: "/button_rule", Optional: true,
+		OnMatch: func(_ *http.Request) { buttonRuleCalls++ },
+	})
+
+	err := runShortcut(t, BaseButtonRuleBind, []string{"+button-rule-bind", "--base-token", "app_x", "--table-id", "tbl_1", "--field-id", "missing", "--workflow-id", "wkf_1"}, factory, stdout)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryAPI || problem.Code != 1254045 || problem.LogID != "log_field_resolution" {
+		t.Fatalf("expected preserved typed field resolution error, got %T %#v", err, problem)
+	}
+	if buttonRuleCalls != 0 {
+		t.Fatalf("ButtonRule calls=%d want=0", buttonRuleCalls)
+	}
+}
+
+func TestBaseButtonRuleFieldResolutionRejectsMissingCanonicalID(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	buttonRuleCalls := 0
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    baseV3Path("bases", "app_x", "tables", "tbl_1", "fields", "按钮"),
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"name": "按钮"}},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: "/button_rule", Optional: true,
+		OnMatch: func(_ *http.Request) { buttonRuleCalls++ },
+	})
+
+	err := runShortcut(t, BaseButtonRuleGet, []string{"+button-rule-get", "--base-token", "app_x", "--table-id", "tbl_1", "--field-id", "按钮"}, factory, stdout)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("expected typed invalid-response error, got %T %#v", err, problem)
+	}
+	if buttonRuleCalls != 0 {
+		t.Fatalf("ButtonRule calls=%d want=0", buttonRuleCalls)
+	}
+}
+
+func TestBaseButtonRuleAPIFailurePreservesTypedCause(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	cause := errors.New("button rule transport failed")
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    baseV3Path("bases", "app_x", "tables", "tbl_1", "fields", "按钮"),
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"id": "fld_1"}},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    baseV3Path("bases", "app_x", "tables", "tbl_1", "fields", "fld_1", "button_rule"),
+		Error:  cause,
+	})
+
+	err := runShortcut(t, BaseButtonRuleGet, []string{"+button-rule-get", "--base-token", "app_x", "--table-id", "tbl_1", "--field-id", "按钮"}, factory, stdout)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryNetwork || !errors.Is(err, cause) {
+		t.Fatalf("expected typed network error preserving cause, got %T %#v", err, problem)
+	}
+}
+
+func TestBaseButtonRuleValidateRejectsInternalWorkflowID(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	err := runShortcut(t, BaseButtonRuleBind, []string{"+button-rule-bind", "--base-token", "app_x", "--table-id", "tbl_1", "--field-id", "fld_1", "--workflow-id", "123456"}, factory, stdout)
+	if err == nil || !strings.Contains(err.Error(), "public wkf workflow ID") {
+		t.Fatalf("err=%v", err)
+	}
 }

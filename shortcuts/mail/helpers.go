@@ -2232,7 +2232,7 @@ func normalizeInlineCID(cid string) string {
 func validateInlineCIDs(html string, userCIDs, extraCIDs []string) error {
 	allCIDs := append(append([]string{}, userCIDs...), extraCIDs...)
 	if err := draftpkg.ValidateCIDReferences(html, allCIDs); err != nil {
-		return err
+		return mailValidationParamError("--inline", "%v", err).WithCause(err)
 	}
 	if len(userCIDs) > 0 {
 		orphaned := draftpkg.FindOrphanedCIDs(html, userCIDs)
@@ -2281,25 +2281,112 @@ type InlineSpec struct {
 	FilePath string `json:"file_path"`
 }
 
-// parseInlineSpecs parses the --inline flag value as a JSON array of InlineSpec.
-// Returns an empty slice when raw is empty.
+// normalizeRecipientFlagValues folds repeated recipient flags back into the
+// comma-separated string shape consumed by the existing compose helpers.
+func normalizeRecipientFlagValues(values []string) string {
+	var parts []string
+	for _, raw := range values {
+		for _, m := range ParseMailboxList(raw) {
+			parts = append(parts, m.rawString())
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+func normalizeCommaListFlagValues(values []string) []string {
+	var out []string
+	for _, raw := range values {
+		out = append(out, splitByComma(raw)...)
+	}
+	return out
+}
+
+func normalizeCommaFlagValues(values []string) string {
+	return strings.Join(normalizeCommaListFlagValues(values), ",")
+}
+
+func normalizeInlineFlagValues(values []string) (string, error) {
+	var all []InlineSpec
+	for _, raw := range values {
+		specs, err := parseInlineSpecs(raw)
+		if err != nil {
+			return "", err
+		}
+		all = append(all, specs...)
+	}
+	if len(all) == 0 {
+		return "", nil
+	}
+	buf, err := json.Marshal(all)
+	if err != nil {
+		return "", mailValidationParamError("--inline", "marshal normalized --inline values: %v", err).WithCause(err)
+	}
+	return string(buf), nil
+}
+
+func inlineSpecsFromFlagValuesForLog(values []string) []InlineSpec {
+	raw, err := normalizeInlineFlagValues(values)
+	if err != nil {
+		return nil
+	}
+	specs, err := parseInlineSpecs(raw)
+	if err != nil {
+		return nil
+	}
+	return specs
+}
+
+func countInlineSpecsForLog(values []string) int {
+	return len(inlineSpecsFromFlagValuesForLog(values))
+}
+
+// parseInlineSpecs parses one --inline flag value as either a JSON array or a
+// single JSON object. Returns an empty slice when raw is empty.
 func parseInlineSpecs(raw string) ([]InlineSpec, error) {
-	if strings.TrimSpace(raw) == "" {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	if raw == "null" {
 		return nil, nil
 	}
 	var specs []InlineSpec
-	if err := json.Unmarshal([]byte(raw), &specs); err != nil {
-		return nil, mailValidationParamError("--inline", "--inline must be a JSON array, e.g. '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]': %v", err).WithCause(err)
+	switch raw[0] {
+	case '{':
+		var spec InlineSpec
+		if err := json.Unmarshal([]byte(raw), &spec); err != nil {
+			return nil, mailValidationParamError("--inline", "--inline must be a JSON object or array, e.g. '{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}' or '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]': %v", err).WithCause(err)
+		}
+		specs = []InlineSpec{spec}
+	case '[':
+		if err := json.Unmarshal([]byte(raw), &specs); err != nil {
+			return nil, mailValidationParamError("--inline", "--inline must be a JSON object or array, e.g. '{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}' or '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]': %v", err).WithCause(err)
+		}
+	default:
+		return nil, mailValidationParamError("--inline", "--inline must be a JSON object or array, e.g. '{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}' or '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]'")
 	}
 	for i, s := range specs {
-		if strings.TrimSpace(s.CID) == "" {
+		cid := normalizeInlineCID(s.CID)
+		if cid == "" {
 			return nil, mailValidationParamError("--inline", "--inline entry %d: \"cid\" must not be empty", i)
 		}
 		if strings.TrimSpace(s.FilePath) == "" {
 			return nil, mailValidationParamError("--inline", "--inline entry %d: \"file_path\" must not be empty", i)
 		}
+		specs[i].CID = cid
 	}
 	return specs, nil
+}
+
+func validateInlineWithPlainTextTemplate(inlineFlag string, plainText bool, plainTextParam string) error {
+	if inlineFlag == "" || !plainText {
+		return nil
+	}
+	return mailValidationError("--inline is not supported with plain-text templates (inline images require HTML body)").
+		WithParams(
+			mailInvalidParam("--inline", "requires HTML body"),
+			mailInvalidParam(plainTextParam, "mutually exclusive with --inline"),
+		)
 }
 
 // inlineSpecFilePaths returns the file paths from a slice of InlineSpec, for use in size checks.

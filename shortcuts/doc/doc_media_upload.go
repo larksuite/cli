@@ -23,14 +23,14 @@ var DocMediaUpload = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "file", Desc: "local file path (files > 20MB use multipart upload automatically)", Required: true},
-		{Name: "parent-type", Desc: "parent type: docx_image | docx_file | whiteboard | mindnote_image", Required: true},
+		{Name: "parent-type", Desc: "parent type: docx_image | docx_file | whiteboard | mindnote_image (local Office Word tokens automatically use office_docx_file)", Required: true},
 		{Name: "parent-node", Desc: "parent node ID (block_id for docx, board_token for whiteboard, mindnote token for mindnote)", Required: true},
 		{Name: "doc-id", Desc: "document ID (for drive_route_token)"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		filePath := runtime.Str("file")
-		parentType := runtime.Str("parent-type")
 		parentNode := runtime.Str("parent-node")
+		parentType := docMediaParentType(runtime.Str("parent-type"), parentNode)
 		docId := runtime.Str("doc-id")
 		body := map[string]interface{}{
 			"file_name":   filepath.Base(filePath),
@@ -77,8 +77,8 @@ var DocMediaUpload = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		filePath := runtime.Str("file")
-		parentType := runtime.Str("parent-type")
 		parentNode := runtime.Str("parent-node")
+		parentType := docMediaParentType(runtime.Str("parent-type"), parentNode)
 		docId := runtime.Str("doc-id")
 
 		// Validate file
@@ -115,6 +115,23 @@ var DocMediaUpload = common.Shortcut{
 		}, nil)
 		return nil
 	},
+}
+
+const (
+	officeDocxFileParentType = "office_docx_file"
+	localOfficeWordType      = byte('W')
+)
+
+// Local Word media uploads use a dedicated Drive mount point.
+func docMediaParentType(parentType, parentNode string) string {
+	if !isLocalWordToken(parentNode) {
+		return parentType
+	}
+	return officeDocxFileParentType
+}
+
+func isLocalWordToken(token string) bool {
+	return common.IsLocalOfficeToken(token) && len(token) > 0 && token[len(token)-1] == localOfficeWordType
 }
 
 // UploadDocMediaFileConfig groups the inputs to uploadDocMediaFile so the

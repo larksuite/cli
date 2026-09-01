@@ -304,6 +304,72 @@ func documentContextChangedEvent(items []interface{}) map[string]interface{} {
 	}
 }
 
+func countdownChangedEvent() map[string]interface{} {
+	return map[string]interface{}{
+		"event_id":   "event-countdown",
+		"event_type": "countdown_changed",
+		"event_time": "2026-08-17T08:38:40Z",
+		"payload": map[string]interface{}{
+			"activity_event_type": "countdown_changed",
+			"meeting": map[string]interface{}{
+				"id":         "7674839513696374289",
+				"topic":      "用户204901的视频会议",
+				"meeting_no": "795201611",
+				"start_time": "2026-08-17T08:25:54Z",
+			},
+			"countdown_items": []interface{}{
+				map[string]interface{}{
+					"action":                 "SET",
+					"countdown_set_time":     "1786955920442",
+					"end_time":               "1786956520442",
+					"event_time":             "1786955920465",
+					"need_play_audio_at_end": false,
+					"seq_id":                 "4",
+					"operator":               map[string]interface{}{"id": "ou_201d63482ba649f81a7c9c67bd523b40", "user_name": "用户204901", "user_role": 2, "user_type": 1},
+				},
+				map[string]interface{}{
+					"action":                 "PROLONG",
+					"countdown_set_time":     "1786955920442",
+					"end_time":               "1786956580442",
+					"event_time":             "1786955923183",
+					"need_play_audio_at_end": false,
+					"seq_id":                 "5",
+					"operator":               map[string]interface{}{"id": "ou_201d63482ba649f81a7c9c67bd523b40", "user_name": "用户204901", "user_role": 2, "user_type": 1},
+				},
+				map[string]interface{}{
+					"action":                 "END_IN_ADVANCE",
+					"end_time":               "0",
+					"event_time":             "1786955924725",
+					"need_play_audio_at_end": false,
+					"seq_id":                 "6",
+					"operator":               map[string]interface{}{"id": "ou_201d63482ba649f81a7c9c67bd523b40", "user_name": "用户204901", "user_role": 2, "user_type": 1},
+				},
+				map[string]interface{}{
+					"action":                 "CLOSE_WINDOW",
+					"end_time":               "0",
+					"event_time":             "1786955926444",
+					"need_play_audio_at_end": false,
+					"seq_id":                 "7",
+					"operator":               map[string]interface{}{"id": "ou_201d63482ba649f81a7c9c67bd523b40", "user_name": "用户204901", "user_role": 2, "user_type": 1},
+				},
+				map[string]interface{}{
+					"action":                 "ENDED",
+					"end_time":               "0",
+					"event_time":             "1786955928000",
+					"need_play_audio_at_end": false,
+					"seq_id":                 "8",
+				},
+				map[string]interface{}{
+					"action":         "REMIND",
+					"event_time":     "1786955929000",
+					"remain_minutes": "5",
+					"seq_id":         "9",
+				},
+			},
+		},
+	}
+}
+
 func TestChatReceivedSummary_MultipleItems(t *testing.T) {
 	payload := map[string]interface{}{
 		"chat_received_items": []interface{}{
@@ -1321,6 +1387,89 @@ func TestCompactMeetingEvents_IgnoresNonMapsAndCompactsPayload(t *testing.T) {
 	}
 }
 
+func TestCountdownChangedTimeline_KnownActions(t *testing.T) {
+	event := countdownChangedEvent()
+	got := meetingEventsEventFromPayload(event, meetingEventsIdentity{})
+	if len(got.Actors) != 4 {
+		t.Fatalf("actors = %#v, want the four operator-bearing countdown items", got.Actors)
+	}
+	if got.Actors[0].ID != "ou_201d63482ba649f81a7c9c67bd523b40" || got.Actors[0].Name != "用户204901" {
+		t.Fatalf("first actor = %#v", got.Actors[0])
+	}
+
+	var sequence int
+	entries := buildTimelineEntriesForEvent(event, &sequence)
+	if len(entries) != 6 {
+		t.Fatalf("timeline entries = %d, want 6: %#v", len(entries), entries)
+	}
+	want := []struct {
+		subject     string
+		description string
+		details     []string
+	}{
+		{
+			subject:     "用户204901(ou_201d63482ba649f81a7c9c67bd523b40)",
+			description: "设置了倒计时",
+			details:     []string{"时长：10分钟", "结束时间：2026-08-17 16:48:40", "seq_id：4"},
+		},
+		{
+			subject:     "用户204901(ou_201d63482ba649f81a7c9c67bd523b40)",
+			description: "延长了倒计时",
+			details:     []string{"时长：11分钟", "结束时间：2026-08-17 16:49:40", "seq_id：5"},
+		},
+		{
+			subject:     "用户204901(ou_201d63482ba649f81a7c9c67bd523b40)",
+			description: "提前结束了倒计时",
+			details:     []string{"seq_id：6"},
+		},
+		{
+			subject:     "用户204901(ou_201d63482ba649f81a7c9c67bd523b40)",
+			description: "关闭了倒计时窗口",
+			details:     []string{"seq_id：7"},
+		},
+		{subject: "", description: "倒计时已结束", details: []string{"seq_id：8"}},
+		{subject: "", description: "倒计时结束前提醒", details: []string{"剩余：5分钟", "seq_id：9"}},
+	}
+	for i := range want {
+		if entries[i].subject != want[i].subject || entries[i].description != want[i].description {
+			t.Fatalf("entry[%d] = %#v, want subject=%q description=%q", i, entries[i], want[i].subject, want[i].description)
+		}
+		if !entries[i].isAction {
+			t.Fatalf("entry[%d] should use action formatting", i)
+		}
+		if !reflect.DeepEqual(entries[i].details, want[i].details) {
+			t.Fatalf("entry[%d] details = %#v, want %#v", i, entries[i].details, want[i].details)
+		}
+		if !entries[i].hasWhen {
+			t.Fatalf("entry[%d] should use item event_time", i)
+		}
+	}
+}
+
+func TestCountdownChangedPrettyDoesNotUseFallbackTopicSummary(t *testing.T) {
+	timeline := buildMeetingEventTimeline([]interface{}{countdownChangedEvent()})
+	out := renderMeetingEventsPretty(timeline)
+	for _, want := range []string{
+		"会议主题：用户204901的视频会议",
+		"用户204901(ou_201d63482ba649f81a7c9c67bd523b40) 设置了倒计时",
+		"时长：10分钟",
+		"结束时间：2026-08-17 16:48:40",
+		"用户204901(ou_201d63482ba649f81a7c9c67bd523b40) 延长了倒计时",
+		"用户204901(ou_201d63482ba649f81a7c9c67bd523b40) 提前结束了倒计时",
+		"用户204901(ou_201d63482ba649f81a7c9c67bd523b40) 关闭了倒计时窗口",
+		"倒计时已结束",
+		"倒计时结束前提醒",
+		"剩余：5分钟",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("pretty output missing %q: %s", want, out)
+		}
+	}
+	if strings.Contains(out, "countdown_changed: 用户204901的视频会议") {
+		t.Fatalf("pretty output should not use fallback topic summary: %s", out)
+	}
+}
+
 func TestDocumentContextChangedTimeline_KnownItems(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -1747,7 +1896,7 @@ func TestVCShortcuts_RegistersMeetingAgentCommands(t *testing.T) {
 	for _, shortcut := range got {
 		commands = append(commands, shortcut.Command)
 	}
-	want := []string{"+search", "+notes", "+recording", "+detail", "+meeting-join", "+meeting-leave", "+meeting-list-active", "+meeting-events", "+meeting-message-send"}
+	want := []string{"+search", "+notes", "+recording", "+detail", "+meeting-join", "+meeting-invite", "+meeting-end", "+meeting-leave", "+meeting-list-active", "+meeting-events", "+meeting-message-send", "+meeting-screenshot", "+meeting-countdown"}
 	if !reflect.DeepEqual(commands, want) {
 		t.Fatalf("shortcut commands = %#v, want %#v", commands, want)
 	}
@@ -1895,6 +2044,11 @@ func TestMeetingEventSummary(t *testing.T) {
 				"payload":    map[string]interface{}{},
 			},
 			want: "mystery_event",
+		},
+		{
+			name:  "countdown changed",
+			event: countdownChangedEvent(),
+			want:  "6 countdown changes: set, prolonged, ended in advance, window closed, ended, reminder",
 		},
 	}
 	for _, tt := range tests {

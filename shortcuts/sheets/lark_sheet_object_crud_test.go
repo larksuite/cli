@@ -119,7 +119,7 @@ func TestObjectCRUDShortcuts_DryRun(t *testing.T) {
 		{
 			name:     "+chart-update",
 			sc:       ChartUpdate,
-			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--chart-id", "chartXYZ", "--properties", `{"type":"bar","position":{"row":0,"col":"A"},"size":{"width":400,"height":300}}`},
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--chart-id", "chartXYZ", "--properties", `{"snapshot":{"plotArea":{"plot":{"labels":{"value":true,"position":"top"}}}}}`},
 			toolName: "manage_chart_object",
 			wantInput: map[string]interface{}{
 				"excel_id":  testToken,
@@ -127,9 +127,13 @@ func TestObjectCRUDShortcuts_DryRun(t *testing.T) {
 				"operation": "update",
 				"chart_id":  "chartXYZ",
 				"properties": map[string]interface{}{
-					"type":     "bar",
-					"position": map[string]interface{}{"row": float64(0), "col": "A"},
-					"size":     map[string]interface{}{"width": float64(400), "height": float64(300)},
+					"snapshot": map[string]interface{}{
+						"plotArea": map[string]interface{}{
+							"plot": map[string]interface{}{
+								"labels": map[string]interface{}{"value": true, "position": "top"},
+							},
+						},
+					},
 				},
 			},
 		},

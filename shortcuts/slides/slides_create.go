@@ -90,7 +90,7 @@ var SlidesCreate = common.Shortcut{
 			// Upload steps come right after creation so they can use the new
 			// presentation_id as parent_node.
 			for i, path := range placeholders {
-				appendSlidesUploadDryRun(dry, path, "<xml_presentation_id>", i+2)
+				appendSlidesUploadDryRun(dry, path, "<xml_presentation_id>", slideFileParentType, i+2)
 			}
 
 			slideStepStart := 2 + len(placeholders)
@@ -211,10 +211,15 @@ var SlidesCreate = common.Shortcut{
 
 		// Prefer the URL returned by presentation.create. Fall back to a local
 		// brand-standard URL only when the API omits it.
-		if url := common.GetString(data, "url"); url != "" {
-			result["url"] = url
-		} else if url := common.BuildResourceURL(runtime.Config.Brand, "slides", presentationID); url != "" {
-			result["url"] = url
+		presentationURL := common.GetString(data, "url")
+		if presentationURL == "" {
+			presentationURL = common.BuildResourceURL(runtime.Config.Brand, "slides", presentationID)
+		}
+		if presentationURL != "" {
+			result["url"] = presentationURL
+			if len(slides) == 0 {
+				result["message"] = fmt.Sprintf("成功创建空白幻灯片，url：%s，请给用户推送开工通知。", presentationURL)
+			}
 		}
 
 		if grant := common.AutoGrantCurrentUserDrivePermission(runtime, presentationID, "slides"); grant != nil {
@@ -375,8 +380,6 @@ func uploadSlidesPlaceholders(runtime *common.RuntimeContext, presentationID str
 			return tokens, i, errs.NewValidationError(errs.SubtypeInvalidArgument, "@%s: must be a regular file", path).WithParam(param)
 		}
 		fileName := filepath.Base(path)
-		fmt.Fprintf(runtime.IO().ErrOut, "Uploading image %d/%d: %s (%s)\n",
-			i+1, len(paths), fileName, common.FormatSize(stat.Size()))
 
 		token, err := uploadSlidesMedia(runtime, path, fileName, stat.Size(), presentationID)
 		if err != nil {

@@ -6,6 +6,8 @@ package base
 import (
 	"encoding/json"
 	"fmt"
+	"math"
+	"sort"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -24,6 +26,14 @@ var chartBlockTypes = []string{
 // page blocks share the same spelling "text" and the same data_config shape
 // ({"text": "..."}).
 var textBlockTypes = []string{"text"}
+
+var validNumberFormatNames = map[string]bool{
+	"digital":                   true,
+	"digital_without_separator": true,
+	"percentage_rounded":        true,
+	"cyn_rounded":               true,
+	"dollar_rounded":            true,
+}
 
 func matchesBlockType(blockType string, candidates []string) bool {
 	trimmed := strings.ToLower(strings.TrimSpace(blockType))
@@ -110,16 +120,48 @@ func normalizeDataConfig(cfg map[string]interface{}) map[string]interface{} {
 	return out
 }
 
+// normalizeDataConfigForCreate adds type-specific defaults only when the
+// create request declares the block type.
+func normalizeDataConfigForCreate(blockType string, cfg map[string]interface{}) map[string]interface{} {
+	out := normalizeDataConfig(cfg)
+	if !matchesBlockType(blockType, []string{"ranking"}) || out == nil {
+		return out
+	}
+	if _, ok := out["limit_size"]; !ok {
+		out["limit_size"] = float64(10)
+	}
+	if groups, ok := out["group_by"].([]interface{}); ok && len(groups) == 1 {
+		if group, ok := groups[0].(map[string]interface{}); ok {
+			if _, ok := group["sort"]; !ok {
+				group["sort"] = map[string]interface{}{"type": "value", "order": "desc"}
+			}
+		}
+	}
+	return out
+}
+
 // validateBlockDataConfig validates data_config based on block type.
 // Text blocks only need a text field; everything else falls through to the
 // dashboard chart rules. BaseApp list validation lives in
 // app_list_block_data_config.go and never enters this dashboard path.
 func validateBlockDataConfig(blockType string, cfg map[string]interface{}) []string {
+	blockType = strings.ToLower(strings.TrimSpace(blockType))
+	if _, hasNumberFormat := cfg["number_format"]; hasNumberFormat && blockType != "statistics" {
+		return []string{"number_format 仅支持 statistics 类型组件"}
+	}
 	switch {
 	case isTextBlockType(blockType):
 		return validateTextDataConfig(blockType, cfg)
+	case matchesBlockType(blockType, []string{"ranking"}):
+		return validateRankingDataConfig(cfg)
 	default:
-		return validateChartDataConfig(cfg)
+		problems := validateChartDataConfig(cfg)
+		if matchesBlockType(blockType, []string{"statistics"}) {
+			if rawNumberFormat, hasNumberFormat := cfg["number_format"]; hasNumberFormat {
+				problems = append(problems, validateNumberFormat(rawNumberFormat)...)
+			}
+		}
+		return problems
 	}
 }
 
@@ -212,6 +254,149 @@ func validateChartDataConfig(cfg map[string]interface{}) []string {
 	// filter 基本结构
 	errs = append(errs, validateBlockFilter(cfg, "filter", false)...)
 	return errs
+}
+
+func validateNumberFormat(raw interface{}) []string {
+	if raw == nil {
+		return []string{"number_format 必须是对象，例如 {\"formatName\":\"digital\",\"precision\":2}"}
+	}
+	nf, ok := raw.(map[string]interface{})
+	if !ok {
+		return []string{"number_format 必须是对象，例如 {\"formatName\":\"digital\",\"precision\":2}"}
+	}
+	var problems []string
+	if fnRaw, has := nf["formatName"]; has {
+		fn, isString := fnRaw.(string)
+		if !isString || !validNumberFormatNames[fn] {
+			problems = append(problems, "number_format.formatName 仅支持 digital|digital_without_separator|percentage_rounded|cyn_rounded|dollar_rounded")
+		}
+	}
+	if pRaw, has := nf["precision"]; has {
+		p, ok := toIntStrict(pRaw)
+		if !ok || p < 0 || p > 9 {
+			problems = append(problems, "number_format.precision 必须是 0 到 9 的整数")
+		}
+	}
+	return problems
+}
+
+func validateRankingDataConfig(cfg map[string]interface{}) []string {
+	var problems []string
+	if tableName, _ := cfg["table_name"].(string); strings.TrimSpace(tableName) == "" {
+		problems = append(problems, "ranking 缺少必填字段 table_name")
+	}
+	for _, field := range unexpectedObjectFields(cfg, "table_name", "series", "count_all", "group_by", "filter", "limit_size") {
+		switch field {
+		case "sort":
+			problems = append(problems, "ranking 不支持顶层 sort；请使用 group_by[0].sort")
+		case "ranking", "is_need_avatar", "isNeedAvatar":
+			problems = append(problems, fmt.Sprintf("ranking 不支持公开字段 %s", field))
+		default:
+			problems = append(problems, fmt.Sprintf("ranking 不支持字段 %s", field))
+		}
+	}
+
+	series, hasSeries := cfg["series"]
+	countAll, hasCountAll := cfg["count_all"]
+	if hasSeries == hasCountAll {
+		problems = append(problems, "ranking 的 series 与 count_all:true 必须二选一")
+	}
+	if hasCountAll {
+		if value, ok := countAll.(bool); !ok || !value {
+			problems = append(problems, "ranking.count_all 只能为 true")
+		}
+	}
+	if hasSeries {
+		items, ok := series.([]interface{})
+		if !ok || len(items) != 1 {
+			problems = append(problems, "ranking.series 必须严格包含 1 个指标")
+		} else if item, ok := items[0].(map[string]interface{}); !ok {
+			problems = append(problems, "ranking.series[0] 必须是对象")
+		} else {
+			for _, field := range unexpectedObjectFields(item, "field_name", "rollup") {
+				problems = append(problems, fmt.Sprintf("ranking.series[0] 不支持字段 %s", field))
+			}
+			if fieldName, _ := item["field_name"].(string); strings.TrimSpace(fieldName) == "" {
+				problems = append(problems, "ranking.series[0].field_name 不能为空")
+			}
+			rollup, _ := item["rollup"].(string)
+			allowed := map[string]bool{"SUM": true, "MAX": true, "MIN": true, "AVERAGE": true}
+			if !allowed[strings.ToUpper(strings.TrimSpace(rollup))] {
+				problems = append(problems, "ranking.series[0].rollup 仅支持 SUM|MAX|MIN|AVERAGE")
+			}
+		}
+	}
+
+	groups, ok := cfg["group_by"].([]interface{})
+	if !ok || len(groups) != 1 {
+		problems = append(problems, "ranking.group_by 必须严格包含 1 个分组")
+	} else if group, ok := groups[0].(map[string]interface{}); !ok {
+		problems = append(problems, "ranking.group_by[0] 必须是对象")
+	} else {
+		for _, field := range unexpectedObjectFields(group, "field_name", "mode", "sort") {
+			problems = append(problems, fmt.Sprintf("ranking.group_by[0] 不支持字段 %s", field))
+		}
+		if fieldName, _ := group["field_name"].(string); strings.TrimSpace(fieldName) == "" {
+			problems = append(problems, "ranking.group_by[0].field_name 不能为空")
+		}
+		if mode, exists := group["mode"]; exists {
+			modeValue, ok := mode.(string)
+			if !ok || (modeValue != "integrated" && modeValue != "enumerated") {
+				problems = append(problems, "ranking.group_by[0].mode 仅支持 integrated|enumerated")
+			}
+		}
+		sortConfig, ok := group["sort"].(map[string]interface{})
+		if !ok {
+			problems = append(problems, "ranking.group_by[0].sort 必须是对象")
+		} else {
+			for _, field := range unexpectedObjectFields(sortConfig, "type", "order") {
+				problems = append(problems, fmt.Sprintf("ranking.group_by[0].sort 不支持字段 %s", field))
+			}
+			if sortType, _ := sortConfig["type"].(string); sortType != "value" {
+				problems = append(problems, "ranking.group_by[0].sort.type 只能为 value")
+			}
+			order, ok := sortConfig["order"].(string)
+			if !ok || (order != "asc" && order != "desc") {
+				problems = append(problems, "ranking.group_by[0].sort.order 仅支持 asc|desc")
+			}
+		}
+	}
+
+	limit, ok := cfg["limit_size"].(float64)
+	if !ok || limit != math.Trunc(limit) || limit < 1 || limit > 500 {
+		problems = append(problems, "ranking.limit_size 必须是 1..500 的整数")
+	}
+	if filter, ok := cfg["filter"].(map[string]interface{}); ok {
+		for _, field := range unexpectedObjectFields(filter, "conjunction", "conditions") {
+			problems = append(problems, fmt.Sprintf("ranking.filter 不支持字段 %s", field))
+		}
+		if conditions, ok := filter["conditions"].([]interface{}); ok {
+			for i, rawCondition := range conditions {
+				if condition, ok := rawCondition.(map[string]interface{}); ok {
+					for _, field := range unexpectedObjectFields(condition, "field_name", "operator", "value") {
+						problems = append(problems, fmt.Sprintf("ranking.filter.conditions[%d] 不支持字段 %s", i, field))
+					}
+				}
+			}
+		}
+	}
+	problems = append(problems, validateProtocolFilter(cfg, "filter")...)
+	return problems
+}
+
+func unexpectedObjectFields(object map[string]interface{}, allowedFields ...string) []string {
+	allowed := make(map[string]struct{}, len(allowedFields))
+	for _, field := range allowedFields {
+		allowed[field] = struct{}{}
+	}
+	unexpected := make([]string, 0)
+	for field := range object {
+		if _, ok := allowed[field]; !ok {
+			unexpected = append(unexpected, field)
+		}
+	}
+	sort.Strings(unexpected)
+	return unexpected
 }
 
 // ── BaseApp chart data_config (multi-datasource) ─────────────────────

@@ -187,6 +187,7 @@ lark-cli im +messages-reply --message-id om_xxx --msg-type interactive --content
 | `--video <path\|url\|key>` | One content option | Cwd-relative local video path, URL, or `file_key` (`file_xxx`); **must be used together with `--video-cover`**                                                                                |
 | `--video-cover <path\|url\|key>` | **Required with `--video`** | Cwd-relative local cover image path, URL, or `image_key` (`img_xxx`)                                                                                                                          |
 | `--audio <path\|url\|key>` | One content option | Voice-message audio key, URL, or cwd-relative local path. Local paths and URLs must be Opus (`.opus` or Ogg Opus `.ogg`) |
+| `--attachment <key>` | One content option | Repeatable bare file/folder key (`file_xxx`); merges into the post message's attachment zone. Requires a post message (`--markdown` or `--msg-type post`). Name/size/mime/is_folder are filled by the server from file service metadata, not taken from the client. Use this instead of `--file` when the file should render inside a rich-text message's attachment area |
 | `--reply-in-thread` | No | Reply inside the thread. The reply appears in the target message's thread instead of the main chat stream                                                                                     |
 | `--idempotency-key <key>` | No | Idempotency key, max 50 characters; the same key sends only one reply within 1 hour                                                                                                          |
 | `--as <identity>` | No | Identity type: `bot` or `user` (default `bot`)                                                                                                                                                |
@@ -206,6 +207,7 @@ lark-cli im +messages-reply --message-id om_xxx --msg-type interactive --content
 - Using `--content` without making the JSON match the effective `--msg-type`.
 - Explicitly setting `--msg-type` to something that conflicts with `--text`, `--markdown`, or media flags.
 - Mixing `--text`, `--markdown`, or `--content` with media flags in one command.
+- Using `--attachment` with `--text` or a media flag. The attachment zone only exists on `post` messages — pair `--attachment` with `--markdown` or `--msg-type post`.
 
 ## Return Value
 

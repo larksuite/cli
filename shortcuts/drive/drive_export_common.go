@@ -438,7 +438,6 @@ func resolveDriveExportWikiSource(ctx context.Context, runtime *common.RuntimeCo
 		return spec, driveExportWikiResolution{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--token")
 	}
 
-	fmt.Fprintf(runtime.IO().ErrOut, "Resolving wiki node for export: %s\n", common.MaskToken(wikiToken))
 	data, err := driveInspectCallWithRetry(ctx, func() (map[string]interface{}, error) {
 		return runtime.CallAPITyped(
 			"GET",
@@ -479,7 +478,8 @@ func resolveDriveExportWikiSource(ctx context.Context, runtime *common.RuntimeCo
 	if err := validateDriveExportNormalizedSpec(spec); err != nil {
 		return spec, driveExportWikiResolution{}, err
 	}
-	fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
+	// The resolution is reported through the result's wiki_token / wiki_node
+	// fields (see annotateDriveExportWikiOutput), not on stderr.
 	return spec, driveExportWikiResolution{
 		Resolved:  true,
 		WikiToken: wikiToken,

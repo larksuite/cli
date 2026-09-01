@@ -14,6 +14,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/commandbridge"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/deprecation"
 	"github.com/larksuite/cli/internal/registry"
@@ -95,11 +96,37 @@ func init() {
 	allShortcuts = append(allShortcuts, okr.Shortcuts()...)
 }
 
-// AllShortcuts returns a copy of all registered shortcuts (for dump-shortcuts).
+// AllShortcuts returns an isolated copy of all registered shortcuts.
+//
+// This is the isolation boundary, and the only place that needs to deep-copy:
+// the package global is filled once by init and never written again, but a
+// Shortcut carries slice fields whose backing arrays a shallow copy would still
+// share, so an external distribution mutating an element (registered[0].Flags[0])
+// would corrupt the global for the whole process. Callers inside this repository
+// receive an already-isolated snapshot and must not clone it again -- the copy
+// costs ~165us over 500+ shortcuts, which lands on every CLI startup.
 //
 //go:noinline
 func AllShortcuts() []common.Shortcut {
-	return append([]common.Shortcut(nil), allShortcuts...)
+	return common.CloneHostedShortcuts(allShortcuts, commandbridge.Access{})
+}
+
+// AllShortcutsWithExternal returns one isolated shortcut snapshot after validating external path collisions.
+func AllShortcutsWithExternal(commands []common.Shortcut) ([]common.Shortcut, error) {
+	registered := AllShortcuts()
+	external := common.CloneHostedShortcuts(commands, commandbridge.Access{})
+	paths := make(map[string]struct{}, len(registered)+len(external))
+	for _, shortcut := range registered {
+		paths[shortcut.Service+" "+shortcut.Command] = struct{}{}
+	}
+	for _, shortcut := range external {
+		path := shortcut.Service + " " + shortcut.Command
+		if _, duplicate := paths[path]; duplicate {
+			return nil, fmt.Errorf("external command path %q is already registered", path) //nolint:forbidigo // Intermediate build diagnostic wrapped by the command-set startup guard.
+		}
+		paths[path] = struct{}{}
+	}
+	return append(registered, external...), nil
 }
 
 // RegisterShortcuts registers all +shortcut commands on the program.
@@ -108,6 +135,11 @@ func RegisterShortcuts(program *cobra.Command, f *cmdutil.Factory) {
 }
 
 func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f *cmdutil.Factory) {
+	RegisterShortcutSnapshotWithContext(ctx, program, f, AllShortcuts())
+}
+
+// RegisterShortcutSnapshotWithContext mounts one build-local shortcut snapshot.
+func RegisterShortcutSnapshotWithContext(ctx context.Context, program *cobra.Command, f *cmdutil.Factory, registered []common.Shortcut) {
 	// Factory.Config may be nil in tests that pass a zero-value factory.
 	var brand core.LarkBrand
 	if f != nil && f.Config != nil {
@@ -118,7 +150,7 @@ func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f
 
 	// Group by service
 	byService := make(map[string][]common.Shortcut)
-	for _, s := range allShortcuts {
+	for _, s := range registered {
 		byService[s.Service] = append(byService[s.Service], s)
 	}
 

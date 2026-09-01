@@ -96,6 +96,44 @@ lark-cli im +chat-update --chat-id oc_xxx --name "New Group Name"
 - `lark-im/references/lark-im-chat-update.md`
 - `lark-im/references/lark-im-chat-identity.md`
 
+## +message-read-users
+Use this to list the users who have read one known message. Select user or bot identity according to who sent the message and the API's seven-day constraint.
+
+### Examples
+
+**List readers for one message**
+```bash
+lark-cli im +message-read-users --message-id om_xxx
+```
+
+### Skills
+- `lark-im/references/lark-im-message-read-status.md`
+
+## +messages-edit
+Use this to edit an already-sent **text or rich-text (post)** message, including its attachment zone.
+
+### Avoid when
+- Editing an interactive card → use [[messages patch]].
+- Sending a corrected message as a new message → use [[+messages-send]].
+
+### Prerequisites
+- Confirm the target message id, the new content, and that the calling identity (bot) is the original sender before editing.
+
+### Tips
+- Omit attachment flags to preserve the current attachment zone.
+- `--set-attachments` replaces the attachment set; `--clear-attachments` removes it.
+- `--content` that already carries a `files` array cannot be combined with the attachment flags.
+
+### Examples
+
+**Edit a message to a post with an attachment zone**
+```bash
+lark-cli im +messages-edit --as bot --message-id om_xxx --markdown "Updated content" --set-attachments file_xxx
+```
+
+### Skills
+- `lark-im/references/lark-im-messages-edit.md`
+
 ## +messages-mget
 Use this when one or more message_ids are already known and full message details are needed.
 
@@ -111,6 +149,19 @@ lark-cli im +messages-mget --message-ids om_xxx
 
 ### Skills
 - `lark-im/references/lark-im-messages-mget.md`
+
+## +messages-read-status
+Use this to query whether the current user has read one or more known messages. The shortcut is user-only and accepts at most 50 message ids.
+
+### Examples
+
+**Query the current user's read status**
+```bash
+lark-cli im +messages-read-status --as user --message-ids om_xxx,om_yyy
+```
+
+### Skills
+- `lark-im/references/lark-im-message-read-status.md`
 
 ## +messages-reply
 Use this when the response must remain attached to a specific message or thread.

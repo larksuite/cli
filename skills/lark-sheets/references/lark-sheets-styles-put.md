@@ -6,7 +6,7 @@
 
 ## 使用场景
 
-写入。对存量表格的多个子表批量应用视觉规格：新表美化、加汇总行后统一版式、按分组合并同类单元格、调列宽行高、冻结表头。整份规格展开为一次批量提交按序执行，与 `+batch-update` 同为 **fail-fast 且不回滚**——失败时已执行的子操作保留生效。
+写入。对存量表格的多个子表批量应用视觉规格：新表美化、加汇总行后统一版式、按分组合并同类单元格、调列宽行高、冻结表头。整份规格展开为一次批量提交按序执行，与 `+batch-update` 同为 **fail-fast**——失败后哪些子操作已生效不做统一假设，先回读确认再补发（语义同 `lark-sheets-batch-update`「执行语义」）。
 
 ⚠️ **失败后不要照抄报错里的 `operations[N]` 去续发**：那个数组是 CLI 从 `--styles` 展开出来的（相邻同样式的 `cell_styles` 还会被合并成更大的矩形），下标与你写的 spec 项没有对应关系，也不是你能直接重发的东西。正确做法：回读受影响区域（`+cells-get --include style` / `+sheet-info`）确认哪些已生效，再重发没落上的部分。样式 / 行高列宽 / 冻结是幂等盖章（整份重发无副作用，这通常就是最省事的解法），只有 `cell_merges` 需要挑出未生效的部分单独发。
 
@@ -36,7 +36,7 @@ _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--styles` | string + File + Stdin（复合 JSON） | required | 对**已有**表格应用的视觉规格 JSON：顶层 `{styles:[...]}`，每项对应一个目标子表（`name` 用真实子表名），并至少给 `cell_styles` / `cell_merges` / `row_sizes` / `col_sizes` / `freeze` 之一。字段词汇与 `+workbook-create` / `+table-put` 的 `--styles` 完全同构（cell_styles 用 A1 range + 扁平样式字段，边框用 `border` 简写 {style,weight,color} 四边同款、分侧才用 border_styles；row/col sizes 用行/列范围 + size（px 即像素，standard/auto 才需 type）；merges 用单元格 range；freeze 用 `{rows:N, cols:N}` 冻结前 N 行/列）。整份规格展开为一次批量提交（fail-fast、不回滚：失败时已生效的子操作保留）；range 不受「本次写入区域」限制，可指向表内任意区域 |
+| `--styles` | string + File + Stdin（复合 JSON） | required | 对**已有**表格应用的视觉规格 JSON：顶层 `{styles:[...]}`，每项对应一个目标子表（`name` 用真实子表名），并至少给 `cell_styles` / `cell_merges` / `row_sizes` / `col_sizes` / `freeze` 之一。字段词汇与 `+workbook-create` / `+table-put` 的 `--styles` 完全同构（cell_styles 用 A1 range + 扁平样式字段，边框用 `border` 简写 {style,weight,color} 四边同款、分侧才用 border_styles；row/col sizes 用行/列范围 + size（px 即像素，standard/auto 才需 type）；merges 用单元格 range；freeze 用 `{rows:N, cols:N}` 冻结前 N 行/列）。整份规格展开为一次批量提交（fail-fast：失败后哪些已生效不做统一假设，先回读确认再补发）；range 不受「本次写入区域」限制，可指向表内任意区域 |
 
 ## Schemas
 
@@ -90,4 +90,4 @@ JSON
 
 - `Validate`：`--styles` 必须是合法 JSON、`styles` 非空数组；每项 `name` 必填、至少给 `cell_merges` / `cell_styles` / `row_sizes` / `col_sizes` / `freeze` 之一；`cell_styles` 每项至少一个样式字段；展开后受子操作数（100）与总格数预算约束，超限报错给拆分建议。
 - `DryRun`：输出展开后每个子操作的请求模板，不发起调用。
-- `Execute`：整份规格合成一次批量请求按序执行；fail-fast 且不回滚。报错会列出失败的子操作及原因，但其中的 `operations[N]` 是 CLI 展开后的内部下标（含 `cell_styles` 合并），不对应 `--styles` 里的项，也不能直接按下标续发——报错会明说这一点并让你先回读再补发。
+- `Execute`：整份规格合成一次批量请求按序执行；fail-fast。报错会列出失败的子操作及原因，但其中的 `operations[N]` 是 CLI 展开后的内部下标（含 `cell_styles` 合并），不对应 `--styles` 里的项，也不能直接按下标续发——报错会明说这一点并让你先回读再补发。

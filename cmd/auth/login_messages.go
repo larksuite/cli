@@ -171,10 +171,3 @@ func bundleKey(lang i18n.Lang) string {
 	}
 	return "zh"
 }
-
-// getShortcutOnlyDomainNames returns domain names that exist only as shortcuts
-// (not backed by from_meta service specs). Descriptions are now centralized in
-// service_descriptions.json.
-func getShortcutOnlyDomainNames() []string {
-	return []string{"application", "base", "contact", "docs", "markdown", "apps", "note"}
-}

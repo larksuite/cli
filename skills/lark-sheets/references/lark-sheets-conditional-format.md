@@ -5,7 +5,7 @@
 用户出现以下口语指令时，**强制**走 `+cond-format-{create|update|delete}`，**禁止**用 `+cells-set` 写静态背景色 / 字体色代替：
 
 - **颜色动作**："标红 / 标黄 / 标绿 / 上色 / 染色 / 涂色 / 表红色 / 表黄色"
-- **视觉强调**："高亮 / 突出 / 标记 / 标注 / 区分"
+- **视觉强调**："高亮 / 突出 / 标记 / 标注 / 区分"——**限带条件语义的**（按值 / 规则决定哪些格上色）；纯装饰性无条件上色（斑马纹、整行固定底色）不在强制范围，按视觉规范直接设背景色
 - **条件触发**："重复的标出来 / 异常的圈出来 / 过期的染红 / 大于 X 的标黄 / 不达标的标红"
 - **联动语义**："颜色随数据变 / 联动 / 自动更新 / 改了数据颜色也跟着变"
 - **数值可视化**："数据条 / 色阶 / 渐变色 / 进度条样式"
@@ -18,21 +18,25 @@
 
 ## 使用场景
 
-读写条件格式对象。本 reference 覆盖 4 个 shortcut：
+读写条件格式对象，并读取条件格式**计算后的单元格样式结果**。本 reference 覆盖这些 shortcut：
 
 | 操作需求 | 使用工具 | 说明 |
 |---------|---------|------|
-| 查看已有条件格式 | `+cond-format-list` | 获取规则类型、范围和样式配置 |
-| 创建/更新/删除条件格式 | `+cond-format-{create|update|delete}` | 对条件格式规则执行写入操作 |
+| 查看已有条件格式规则 | `+cond-format-list` | 获取规则类型、范围和样式配置；用于确认规则对象已存在 |
+| 创建/更新/删除条件格式规则 | `+cond-format-create` / `+cond-format-update` / `+cond-format-delete` | 对条件格式规则执行写入操作 |
+| 验证条件格式计算结果 | `+cond-format-result-get` | 读取命中后的 `cell_styles`，确认条件格式是否真的作用到哨兵单元格 |
+| 常规读数时临时带上条件格式 | `+cells-get --include conditional_format` | 与 `+cond-format-result-get` 等价地合并条件格式样式，但仍归属普通单元格读取入口 |
 
-典型工作流：先读取现有条件格式了解配置 → 执行创建/更新/删除 → **必须再次读取验证结果**。
+典型工作流：先读取现有条件格式了解配置 → 执行创建/更新/删除 → **必须先用 `+cond-format-list` 验证规则对象，再用 `+cond-format-result-get` 抽查计算结果**。
 
 **常见配置错误（必须注意）**：
-- **创建后必须验证**：条件格式创建后必须调用 `+cond-format-list` 验证规则是否生效。如果验证发现规则未生效或配置不正确，应立即修复并重试
+- **创建后必须两段验证**：条件格式创建后先调用 `+cond-format-list` 验证规则对象（rule_type / ranges / style / attrs）是否存在且配置正确；再调用 `+cond-format-result-get --range "<哨兵范围>"` 读取命中后的 `cell_styles`，验证条件格式是否真的按计算结果作用到单元格。如果任一阶段不符合预期，应立即修复并重试
+- **验证要覆盖哨兵格**：不要只确认规则对象存在；还要按用户规则抽查 2-3 个应命中 / 不应命中的单元格/行（含边界行、空值、重复值、非图例状态），用 `+cond-format-result-get` 读取 `cell_styles.background_color` / `font_color` / `font_weight` 等结果，确认公式、范围、颜色语义能解释这些哨兵。若规则存在但哨兵样式/命中逻辑不对，继续修正
 - **范围要精确**：条件格式的应用范围必须精确覆盖用户指定的列/行，不要遗漏
-- **`style.back_color` vs `style.fore_color` 的中文语义**：用户中文语境下的"**标红/高亮/染色/标记**"指**单元格背景色**，用 `back_color`；"**文字红/字体红/把字变红**"才用 `fore_color`。默认无说明时选 `back_color`。把过期数据涂红、重复值高亮等都应该是 `back_color: "#FFE6E6"`（或类似浅红）配合可选的 `fore_color` 加深字体
+- **`style.back_color` vs `style.fore_color` 的中文语义**：用户中文语境下的"**标红/染色/标记**"指**单元格背景色**，用 `back_color`；"**文字红/字体红/把字变红**"才用 `fore_color`。默认无说明时选 `back_color`。用户说"**标红**"用标准红 `back_color: "#FF0000"`；说"**高亮/突出**"才用浅色底（如 `#FFE6E6`）配合可选的 `fore_color` 加深字体——把"标红"做成浅粉会被认为没按要求标色
 - **日期/空值比较必须防空**：用户说"过期的标红"时，除了 `TODAY()`，公式必须排除空单元格，否则空白格也会被误判为"早于今天"而全表标红。正确公式：`=AND(E1<>"", E1<=TODAY())`；错误公式：`=E1<=TODAY()`（空值会被当作 0 判为过期）
 - **公式条件注意引用方式**：自定义公式条件中的单元格引用需要根据实际场景选择相对/绝对引用（如 `=E1<=TODAY()` 而非 `=$E$1<=TODAY()`，后者只比较一个格）
+- **`duplicateValues` 只按单列判重**：用户说的"多字段完全相同才算重复"无法直接表达——先建辅助键列（把参与判重的列用分隔符拼成一个键），再用引用该键列的 `expression`（如 `COUNTIF` 键列 >1）把规则应用到数据区整行；只想标记键列本身时才用 `duplicateValues`
 
 ⚠️ **用户明确要求"辅助列+条件格式"两步走时，禁止用 `expression` 绕过**：当用户说以下任意一种表达时，必须按两步走（先建辅助列 → 再基于辅助列做条件格式），**禁止**直接用一个 `rule_type: "expression"` 公式一步完成：
 
@@ -77,6 +81,7 @@ Step 2: 基于辅助列值做条件格式（用 cellIs 或引用辅助列的 exp
 | Shortcut | Risk | 分组 |
 | --- | --- | --- |
 | `+cond-format-list` | read | 对象 |
+| `+cond-format-result-get` | read | 对象 |
 | `+cond-format-create` | write | 对象 |
 | `+cond-format-update` | write | 对象 |
 | `+cond-format-delete` | high-risk-write | 对象 |
@@ -90,6 +95,15 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--rule-id` | string | optional | 按规则 id 过滤 |
+
+### `+cond-format-result-get`
+
+_公共四件套 · 系统：`--dry-run`_
+
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--range` | string | required | A1 范围，如 `A1:F10`（不带 sheet 前缀；用 `--sheet-id` / `--sheet-name` 指定 sheet） |
+| `--max-chars` | int | optional | 单次返回字符上限，默认 500000（兜底防爆） |
 
 ### `+cond-format-create`
 
@@ -160,6 +174,29 @@ lark-cli sheets +cond-format-create --url "..." --sheet-id "$SID" \
 lark-cli sheets +cond-format-create --url "..." --sheet-id "$SID" \
   --rule-type dataBar --ranges '["B2:B100"]' \
   --properties @rule.json
+
+# 创建后先确认规则对象存在
+lark-cli sheets +cond-format-list --url "..." --sheet-id "$SID"
+
+# 再抽查条件格式计算结果：读取哨兵单元格的命中样式
+lark-cli sheets +cond-format-result-get --url "..." --sheet-id "$SID" \
+  --range "B2:B10"
+```
+
+### `+cond-format-result-get`
+
+用于读取条件格式**计算后的样式结果**，不是读取规则对象。创建 / 更新条件格式后必须用它抽查哨兵单元格。
+
+CLI 会对白名单字段做输出裁剪：顶层只保留警告、分页和返回单元格计数；每个 range 只保留请求/实际范围、真实行列坐标、截断标记和二维 `cells`；每个 cell 只保留 `cell_styles`，不返回 `value` / `formula` / `note` / `data_validation` / `border_styles` 等其它单元格数据。`cell_styles` 是底层开启条件格式计算后得到的最终合并样式，不包含 `rule_id` 或独立的命中标记。
+
+```bash
+# 读取 B2:B10 的条件格式命中样式，返回 cell_styles.background_color / font_color 等
+lark-cli sheets +cond-format-result-get --url "..." --sheet-id "$SID" \
+  --range "B2:B10"
+
+# 如果只想在普通读取里临时合并条件格式，也可用 +cells-get --include conditional_format
+lark-cli sheets +cells-get --url "..." --sheet-id "$SID" \
+  --range "B2:B10" --include conditional_format
 ```
 
 ### `+cond-format-update`
@@ -172,10 +209,10 @@ lark-cli sheets +cond-format-create --url "..." --sheet-id "$SID" \
 lark-cli sheets +cond-format-delete --url "..." --sheet-id "$SID" --rule-id "$RULE_ID" --yes
 ```
 
-> 一次只删一个 `--rule-id`。要删**多个**条件格式时，先 `+cond-format-list` 拿到各 `rule-id`，再用 `+batch-update` 把多个 `+cond-format-delete` 合并为单次批量提交（fail-fast、不回滚），不要逐个调用。
+> 一次只删一个 `--rule-id`。要删**多个**条件格式时，先 `+cond-format-list` 拿到各 `rule-id`，再用 `+batch-update` 把多个 `+cond-format-delete` 合并为单次批量提交（fail-fast，失败处置见 `lark-sheets-batch-update`），不要逐个调用。
 
 ### Validate / DryRun / Execute 约束
 
 - `Validate`：XOR 公共四件套；`--rule-type` / `--ranges` 必填；`--properties` 必须能解析为合法 JSON；按 `--rule-type` 检查必填子字段（`cellIs` 需 `attrs.operator` + `attrs.value`、`expression` 需 `attrs.formula`、`colorScale` 需 `min/mid/max` 配色等）；`+cond-format-delete` 强制 `--yes` 或 `--dry-run`。
 - `DryRun`：写操作输出"将要 POST/PATCH/DELETE 的 conditional_format 请求模板"。
-- `Execute`：写后不自动回读；如需确认，自行调用 `+cond-format-list --rule-id <id>` 比对规则 / 范围 / 样式。
+- `Execute`：写后不自动回读；必须自行调用 `+cond-format-list --rule-id <id>` 比对规则 / 范围 / 样式，并用 `+cond-format-result-get --range <哨兵范围>` 验证实际计算后的单元格样式。

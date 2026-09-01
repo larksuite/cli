@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/deprecation"
+	"github.com/larksuite/cli/internal/skillscheck"
 )
 
 // composePendingNotice must surface a deprecated-command alias under the
@@ -42,6 +43,27 @@ func TestComposePendingNoticeDeprecatedCommand(t *testing.T) {
 	}
 	if msg, _ := entry["message"].(string); !strings.Contains(msg, "update your lark-sheets skill") {
 		t.Errorf("message missing skill-update hint: %q", msg)
+	}
+}
+
+func TestComposePendingNoticeOfficialSkillsUnknown(t *testing.T) {
+	t.Cleanup(func() { skillscheck.SetPending(nil) })
+	skillscheck.SetPending(&skillscheck.StaleNotice{
+		Current:         "1.0.21",
+		Target:          "1.0.21",
+		OfficialUnknown: true,
+	})
+
+	got := composePendingNotice(nil)
+	entry, ok := got["skills"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("missing skills notice: %#v", got)
+	}
+	if entry["official_unknown"] != true {
+		t.Fatalf("skills notice = %#v, want official_unknown=true", entry)
+	}
+	if entry["command"] != "lark-cli update" {
+		t.Fatalf("skills notice command = %v, want lark-cli update", entry["command"])
 	}
 }
 
