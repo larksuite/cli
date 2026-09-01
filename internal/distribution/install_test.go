@@ -144,6 +144,15 @@ func TestFailedSkillsRollbackRetainsBackup(t *testing.T) {
 	}
 }
 
+func TestFailAfterRollbackPreservesBothCauses(t *testing.T) {
+	cause := errors.New("install failed")
+	rollbackErr := errors.New("restore failed")
+	err := failAfterRollback(cause, func() error { return rollbackErr })
+	if !errors.Is(err, cause) || !errors.Is(err, rollbackErr) {
+		t.Fatalf("error = %v, want both install and rollback causes", err)
+	}
+}
+
 func TestInstallPreparedVerificationFailureDoesNotMutate(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", filepath.Join(root, "config"))

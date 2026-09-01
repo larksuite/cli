@@ -108,7 +108,7 @@ func installSkillsToTargets(prepared *preparedUpdate, targets []string, previous
 
 func failAfterRollback(cause error, rollback func() error) error {
 	if err := rollback(); err != nil {
-		return fmt.Errorf("%w (rollback failed: %v; backup retained)", cause, err)
+		return fmt.Errorf("%w (rollback failed: %w; backup retained)", cause, err)
 	}
 	return cause
 }
