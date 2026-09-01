@@ -123,6 +123,8 @@ lark-cli base +form-questions-create \
 | `number`（评分） | `{"type":"rating","icon":"star","min":1,"max":5}` | icon 可选：`star`/`heart`/`thumbsup`/`fire`/`smile`/`lightning`/`flower`/`number` |
 | `datetime` | `{"format":"yyyy/MM/dd"}` | format 可选：`yyyy/MM/dd`、`yyyy/MM/dd HH:mm`、`MM-dd`、`MM/dd/yyyy`、`dd/MM/yyyy` |
 
+`+form-questions-create` 对签字题目的两种输入当前行为不一致：新建题目会接受 `style.type:"signature"`，但 `use_existing_field` 会拒绝已有签字字段。不要依赖这组不一致行为；需要签字题目时报告当前命令尚未形成稳定支持契约。
+
 ### `visible_rule` 显隐条件
 
 > **仅当用户明确要求为题目设置显隐条件（显示/隐藏逻辑）时，才需要读下面的结构说明；否则忽略本节。**

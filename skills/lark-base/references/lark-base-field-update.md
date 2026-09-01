@@ -47,7 +47,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
   - 不能把非 `link` 字段改成 `link`，也不能把 `link` 改成非 `link`。
   - 现有 `link` 字段的 `bidirectional` 不能改。
 - 更新 `auto_number.style.rules` 会按新规则更新已有记录的编号；规则结构见 [Field Schema](lark-base-field-schema.md)。
-- 签字字段（`attachment` + `style.type:"signature"`）更新时必须把 `style` 一起写回；漏传按 `plain` 处理，会静默退化成普通附件。误降级后可再 `PUT` 一次带 `style.type:"signature"` 原地恢复，已有签名值不受影响；这不改 `type`，不属于下方黑名单的类型转换。**不要**用"新建字段 + 迁移"来恢复——签字单元格写不进去，重建会丢掉全部已有签名。
+- 签字字段（`attachment` + `style.type:"signature"`）更新时必须把 `style` 一起写回；漏传会按 `plain` 处理，转成普通附件并移除签字专属的 `signatureExtra`。不要再 `PUT` 回 `signature` 来自动恢复：当前底层 `attachment -> signature` 转换会清空该列的附件值；也不要用"新建字段 + 迁移"，因为签字单元格无法通过 API 写回。若已经误降级，停止后续写操作并报告数据风险；恢复方案必须单独验证后再执行。
 
 **推荐更新示例**
 

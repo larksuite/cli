@@ -54,7 +54,7 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/fields
   - `link`：必须有 `link_table`，可选 `bidirectional`、`bidirectional_link_field_name`。
   - `formula`：必须有 `expression`；先读 formula guide，再创建。
   - `lookup`：必须有 `from`、`select`、`where`；先读 lookup guide，再创建。
-  - `attachment`：签字字段没有 `"type":"signature"`，用 `style.type:"signature"` 创建；见 [Field Schema](lark-base-field-schema.md) §3.12。
+  - `attachment`：签字字段没有 `"type":"signature"`，用 `style.type:"signature"` 创建；见 [Field Schema](lark-base-field-schema.md) §3.12。若接口拒绝该 style，停止并报告当前环境尚未支持；不要删掉 `style` 重试，否则会创建普通附件字段。
 
 **正确（base +field-create）**
 
