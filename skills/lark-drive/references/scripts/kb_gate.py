@@ -81,6 +81,7 @@ VALID_WRITE_MODES = {"overwrite", "append", "new_docx", "skip"}
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse CLI arguments (--plan path or stdin)."""
     parser = argparse.ArgumentParser(
         description="Gate the knowledge_base_bootstrap write plan."
     )
@@ -92,6 +93,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_plan(path: str | None) -> dict:
+    """Load and shape-check the write-plan JSON from a file or stdin."""
     if not path or path == "-":
         raw = sys.stdin.read()
     else:
@@ -104,6 +106,7 @@ def load_plan(path: str | None) -> dict:
 
 
 def has_unresolved(value) -> bool:
+    """Return True if the value contains an unresolved marker (待确认, TBD, ...)."""
     normalized = str(value or "").strip().lower()
     if not normalized:
         return False
@@ -111,14 +114,26 @@ def has_unresolved(value) -> bool:
 
 
 def is_empty(value) -> bool:
+    """Return True if the value is empty or whitespace-only."""
     return not str(value or "").strip()
 
 
 def evaluate_node(node: dict) -> dict:
+    """Evaluate one write-plan node and return its gate verdict.
+
+    Applies hard gates (block the write) and a consistency narrowing (allow the
+    write but force page status back to 进行中). A node's own claims can only
+    narrow the outcome; they can never bypass a hard gate.
+    """
     title = str(node.get("title") or node.get("node_token") or "<未命名节点>")
-    token = str(node.get("node_token") or "")
+    token = str(node.get("node_token") or "").strip()
     write_mode = str(node.get("write_mode") or "")
-    governance = node.get("governance") or {}
+    # Normalize a non-dict / missing governance to {} so every downstream
+    # access is safe (a truthy non-dict such as a string would otherwise crash
+    # governance.get(...), including on the skip branch).
+    governance = node.get("governance")
+    if not isinstance(governance, dict):
+        governance = {}
 
     hard_reasons: list[str] = []
     narrow_reasons: list[str] = []
@@ -131,17 +146,27 @@ def evaluate_node(node: dict) -> dict:
             "ready": False,
             "blocked_reasons": ["计划为 skip，不写入"],
             "narrowed": False,
+            "narrow_reasons": [],
             "effective_page_status": str(governance.get("page_status") or ""),
         }
 
     if write_mode not in VALID_WRITE_MODES:
         hard_reasons.append(f"未知写法：{write_mode or '（空）'}")
 
+    # --- Hard gate 0: a real write needs a stable node target ---
+    if not token and write_mode != "new_docx":
+        hard_reasons.append("缺少 node_token，无法定位写入目标")
+
     # --- Hard gate 1: carrier must be a document node ---
     obj_type = str(node.get("obj_type") or "").strip().lower()
-    if not obj_type:
+    if write_mode == "new_docx":
+        # new_docx creates a fresh docx page; it must not target a node that is
+        # already a docx (that should be overwrite/append instead).
+        if obj_type == "docx":
+            hard_reasons.append("new_docx 不能用于已是 docx 的节点，应改用 overwrite/append")
+    elif not obj_type:
         hard_reasons.append("未提供节点 obj_type，无法确认载体")
-    elif obj_type != "docx" and write_mode != "new_docx":
+    elif obj_type != "docx":
         hard_reasons.append(f"载体不是文档节点：obj_type={node.get('obj_type')}")
 
     # --- Hard gate 2: overwrite on a real draft needs explicit confirmation ---
@@ -150,7 +175,7 @@ def evaluate_node(node: dict) -> dict:
             hard_reasons.append("覆盖有草稿的节点但缺少用户显式确认")
 
     # --- Governance completeness ---
-    if not isinstance(governance, dict) or not governance:
+    if not governance:
         hard_reasons.append("缺少 6 行治理表")
     else:
         for field in REQUIRED_NON_EMPTY:
@@ -173,7 +198,7 @@ def evaluate_node(node: dict) -> dict:
             )
 
     ready = not hard_reasons
-    effective_status = str(governance.get("page_status") or "") if isinstance(governance, dict) else ""
+    effective_status = str(governance.get("page_status") or "")
     narrowed = bool(narrow_reasons)
     if narrowed:
         effective_status = "进行中"
@@ -190,6 +215,7 @@ def evaluate_node(node: dict) -> dict:
 
 
 def main() -> int:
+    """Load the plan, evaluate every node, and print the gate result JSON."""
     args = parse_args()
     try:
         plan = load_plan(args.plan)

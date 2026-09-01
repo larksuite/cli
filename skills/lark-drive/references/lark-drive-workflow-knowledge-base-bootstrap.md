@@ -66,7 +66,7 @@ Risk / Structure: `R2` / `S2`
 | Field | Meaning |
 |-------|---------|
 | `current_state` | `Execution State Machine` 中的当前状态 |
-| `target_space` | 解析出的 `space_id`、根层节点集合（顶层节点 token 列表）和用户原始输入 URL。空间本身即知识库根，`wiki +node-list --space-id` 省略 parent 时返回的顶层节点即根层节点 |
+| `target_space` | 解析出的 `space_id`、`root_node`（承载通用规范的唯一根节点：token + obj_type）、`top_level_nodes`（空间顶层节点列表）和用户原始输入 URL。通用规范只写入单一 `root_node`；解析规则见 `Root Node Resolution` |
 | `identity` | 执行身份，默认 `user`；节点解析与写入必须使用同一身份 |
 | `node_inventory` | 全部节点的归一化列表：`node_token`、`obj_token`、`title`、`obj_type`、`node_type`、父子层级 |
 | `node_class` | 每个节点的分诊结果：`writable_docx` / `non_docx_entity` / `shortcut` |
@@ -84,8 +84,8 @@ Risk / Structure: `R2` / `S2`
 
 | State | Protocol Step | Entry Condition | Agent MUST Do | User-Facing Output | wait_for_user | Next State |
 |-------|---------------|-----------------|---------------|--------------------|---------------|------------|
-| `PARSE_TARGET` | `route` / `scope` | Workflow 触发 | 加载 wiki skill；把目标解析为 `space_id`：给定 wiki 节点 / 文档 URL 时用 `wiki +node-get` 取 `space_id`，给定空间时用 `wiki +space-list` 取 `space_id`；再用 `wiki +node-list --space-id`（省略 parent）确认根层节点存在；确认目标就是该知识库 | 目标知识库确认或澄清问题 | `true` | `READ_STRUCTURE` |
-| `READ_STRUCTURE` | `read` | 目标已确认 | 递归读取节点树填充 `node_inventory`；对 docx 节点读取现有内容填充 `draft_map`；判定结构是否过简（无子节点或子节点不足以承载分类） | 结构概览：节点数、层级、草稿 / 占位分布 | 除非读取被阻断，否则为 `false` | `OUTLINE_PROPOSE` or `TYPE_TRIAGE` |
+| `PARSE_TARGET` | `route` / `scope` | Workflow 触发 | 加载 wiki skill；把目标解析为 `space_id`：给定 wiki 节点 / 文档 URL 时用 `wiki +node-get` 取 `space_id` 且该节点即候选根，给定空间时用 `wiki +space-list` 取 `space_id` 并用 `wiki +node-list --page-all`（省略 parent）列出顶层节点；按 `Root Node Resolution` 确定唯一 `root_node`，多个顶层节点无法自动定根时停下请用户选定；确认目标就是该知识库 | 目标知识库与根节点确认，或（多顶层时）请用户选定根节点 | `true` | `READ_STRUCTURE` |
+| `READ_STRUCTURE` | `read` | 目标已确认 | 递归读取整棵节点树填充 `node_inventory`：每次 `wiki +node-list` 必须用 `--page-all`（或按 `page_token` 翻页到 `has_more=false`），并对 `has_child=true` 的节点逐层下钻，不得只取首页；对 docx 节点读取现有内容填充 `draft_map`；判定结构是否过简（无子节点或子节点不足以承载分类）。任何一层因分页上限、权限或 API 失败未能读全时，置 `partial` 并记原因，不把不完整清单当作完整 | 结构概览：节点数、层级、草稿 / 占位分布；不完整时明确标注 | 除非读取被阻断，否则为 `false` | `OUTLINE_PROPOSE` or `TYPE_TRIAGE` |
 | `OUTLINE_PROPOSE` | `assess` / `plan` / `confirm` | 结构过简 | 加载 outputs 文档；基于知识库主题、根节点标题和已有草稿提议子节点大纲填充 `outline_proposal`；请用户确认后用 `wiki +node-create --obj-type docx` 新建拟定子节点，并回读并入 `node_inventory` | 大纲提议表 + 新建确认请求；确认后报告新建结果 | `true` | `TYPE_TRIAGE` |
 | `TYPE_TRIAGE` | `assess` / `plan` | 结构已读（含新建节点） | 按 `obj_type` / `node_type` 将每个节点分诊为 `writable_docx` / `non_docx_entity` / `shortcut`，填充 `node_class` | 分诊表：可写正文节点、需特殊处理节点及原因 | 存在 `non_docx_entity` / `shortcut` 时为 `true`，否则为 `false` | `GEN_STANDARD` |
 | `GEN_STANDARD` | `assess` / `plan` | 分诊完成 | 加载 outputs 文档；为可写范围生成 `standard_plan`：根节点通用规范 + 各子节点专属维护要求；子节点收录范围优先从草稿归纳，缺失再据业务常识补全 | 维护规范草案预览 | 除非用户直接进入确认，否则为 `false` | `WRITE_CONFIRM` |
@@ -108,6 +108,17 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 | `WRITE_CONFIRM` | [`lark-drive-workflow-knowledge-base-bootstrap-outputs.md`](lark-drive-workflow-knowledge-base-bootstrap-outputs.md)；门禁脚本 `scripts/kb_gate.py` |
 | `WRITE` | [`../../lark-doc/references/lark-doc-update.md`](../../lark-doc/references/lark-doc-update.md)；`new_docx` 时读取 [`../../lark-wiki/references/lark-wiki-node-create.md`](../../lark-wiki/references/lark-wiki-node-create.md) |
 | `VERIFY` | 复用 `READ_STRUCTURE` 阶段的读取上下文 |
+
+## Root Node Resolution
+
+通用维护规范只写入**唯一**根节点 `root_node`，不得写入多个顶层节点。按以下顺序确定：
+
+1. 目标是 wiki 节点 / 文档 URL（`wiki +node-get` 可解析出该节点）→ 该节点即 `root_node`，其子树为处理范围。
+2. 目标是知识空间、且顶层只有 1 个节点 → 该顶层节点即 `root_node`。
+3. 目标是知识空间、顶层有多个节点 → 不自动选根，停在 `PARSE_TARGET`，列出候选顶层节点（标题 + token）请用户选定一个作为 `root_node`；用户也可指定“为每个顶层节点分别建规范”，但仍需逐个确认，不默认批量。
+4. 选定的 `root_node` 若不是 docx（`obj_type != docx`）→ 不向其 `docs +update` 写通用规范；按 `Node Type Triage` 处理：经用户确认走 `new_docx` 在其下新建 docx 规范页，或跳过并记入 `unsupported_checks`。
+
+`root_node` 确定前不生成写入计划，也不进入 `WRITE`。
 
 ## Node Type Triage
 
@@ -159,8 +170,8 @@ python3 "<SKILL_ROOT>/references/scripts/kb_gate.py" --plan "<写入计划 JSON 
 
 | State | Allowed Command Families | Purpose |
 |-------|--------------------------|---------|
-| `PARSE_TARGET` | `wiki +node-get`、`wiki +space-list`、`wiki +node-list` | 把 URL / 空间解析为 `space_id` 并确认根层节点 |
-| `READ_STRUCTURE` | `wiki +node-list`、`docs +fetch` | 递归读取节点树和读取节点草稿内容 |
+| `PARSE_TARGET` | `wiki +node-get`、`wiki +space-list`、`wiki +node-list --page-all` | 把 URL / 空间解析为 `space_id` 并确认根层节点 |
+| `READ_STRUCTURE` | `wiki +node-list --page-all`（对 `has_child=true` 逐层下钻）、`docs +fetch` | 完整递归读取节点树和节点草稿内容 |
 | `OUTLINE_PROPOSE` | `wiki +node-create --obj-type docx`（仅用户确认大纲后）、`wiki +node-list` | 新建确认后的大纲子节点并回读 |
 | `TYPE_TRIAGE` | 无写命令 | 仅对已读结构做分类 |
 | `GEN_STANDARD` | 无写命令 | 模型生成维护规范 |
@@ -171,20 +182,21 @@ python3 "<SKILL_ROOT>/references/scripts/kb_gate.py" --plan "<写入计划 JSON 
 ## Transition Rules
 
 1. `PARSE_TARGET` 无法解析出唯一知识库时，只问目标澄清问题并停止。
-2. 认证或 API scope 缺失时，按 `lark-shared` 权限处理并停止。
-3. 权限按动作分别判断，填充 `permissions_observed`，一个动作受阻不连累其余动作：
+2. `PARSE_TARGET` 按 `Root Node Resolution` 确定唯一 `root_node`；知识空间存在多个顶层节点且无法自动定根时，停下列出候选请用户选定，不擅自选一个或默认全建。
+3. 认证或 API scope 缺失时，按 `lark-shared` 权限处理并停止。
+4. 权限按动作分别判断，填充 `permissions_observed`，一个动作受阻不连累其余动作：
    - 读权限缺失 → 停止，无法盘点结构（前提不满足）；
    - `docs +update` 可用、`wiki +node-create` 不可用 → 照常为可编辑的 docx 节点写规范；`OUTLINE_PROPOSE` 或 `new_docx` 需新建的节点列入“待创建节点（缺创建权限）”并记入 `unsupported_checks`，不阻塞其余写入；
    - 两者都可用 → 正常执行建节点与写规范；
    - 仅可读 → 只输出规范草案与写入计划，不执行任何写入；
    - 某动作实际返回 `permission_denied` → 只停该动作、记入 `unsupported_checks`，不用同参数重试、不静默切 bot、不自动申请权限。
-4. 权限硬规则：读取成功不等于具备写权限；写权限只以实际写入返回为准，不由身份、角色或读取成功推断。遇权限不足不自动申请，但必须精确告知受阻的动作和具体节点，不静默跳过。
-5. `READ_STRUCTURE` 判定结构过简（无子节点或子节点不足以承载分类）时进入 `OUTLINE_PROPOSE`；结构已足够时直接进入 `TYPE_TRIAGE`。
-6. `OUTLINE_PROPOSE` 中用户拒绝新建大纲、或只想为现有根节点写规范时，跳过新建，直接以现有节点进入 `TYPE_TRIAGE`；不擅自新建任何节点。
-7. `TYPE_TRIAGE` 发现全部节点均为 `non_docx_entity` / `shortcut` 时，说明本知识库没有可写入正文的 docx 节点，询问是否对相关节点走 `new_docx`，不静默结束。
-8. 用户在 `WRITE_CONFIRM` 拒绝写入时，输出已保存的规范草案并转入 `DONE`。
-9. `WRITE` 中单个节点写入失败时，记录失败并继续其余相互独立的节点；写入结束后在 `VERIFY` 统一报告失败项。
-10. 身份在 `PARSE_TARGET` 确定后保持不变；节点解析、读取、写入、验证使用同一身份。
+5. 权限硬规则：读取成功不等于具备写权限；写权限只以实际写入返回为准，不由身份、角色或读取成功推断。遇权限不足不自动申请，但必须精确告知受阻的动作和具体节点，不静默跳过。
+6. `READ_STRUCTURE` 判定结构过简（无子节点或子节点不足以承载分类）时进入 `OUTLINE_PROPOSE`；结构已足够时直接进入 `TYPE_TRIAGE`。
+7. `OUTLINE_PROPOSE` 中用户拒绝新建大纲、或只想为现有根节点写规范时，跳过新建，直接以现有节点进入 `TYPE_TRIAGE`；不擅自新建任何节点。
+8. `TYPE_TRIAGE` 发现全部节点均为 `non_docx_entity` / `shortcut` 时，说明本知识库没有可写入正文的 docx 节点，询问是否对相关节点走 `new_docx`，不静默结束。
+9. 用户在 `WRITE_CONFIRM` 拒绝写入时，输出已保存的规范草案并转入 `DONE`。
+10. `WRITE` 中单个节点写入失败时，记录失败并继续其余相互独立的节点；写入结束后在 `VERIFY` 统一报告失败项。
+11. 身份在 `PARSE_TARGET` 确定后保持不变；节点解析、读取、写入、验证使用同一身份。
 
 ## References
 

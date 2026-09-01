@@ -122,6 +122,37 @@ class KbGateTest(unittest.TestCase):
         self.assertFalse(result["ready"])
         self.assertTrue(any("未知写法" in r for r in result["blocked_reasons"]))
 
+    def test_skip_with_nondict_governance_does_not_crash(self):
+        # Regression: a truthy non-dict governance on a skip entry must not raise.
+        result = kb_gate.evaluate_node(_node(write_mode="skip", governance="待确认"))
+        self.assertFalse(result["ready"])
+        self.assertEqual(result["blocked_reasons"], ["计划为 skip，不写入"])
+        self.assertEqual(result["effective_page_status"], "")
+
+    def test_nondict_governance_normalized_blocks(self):
+        # A non-dict governance on a real write is treated as missing table.
+        result = kb_gate.evaluate_node(_node(governance="oops"))
+        self.assertFalse(result["ready"])
+        self.assertTrue(any("6 行治理表" in r for r in result["blocked_reasons"]))
+
+    def test_empty_node_token_blocks(self):
+        result = kb_gate.evaluate_node(_node(node_token=""))
+        self.assertFalse(result["ready"])
+        self.assertTrue(any("node_token" in r for r in result["blocked_reasons"]))
+
+    def test_new_docx_without_token_ok(self):
+        # new_docx creates a fresh node, so it does not require an existing token.
+        result = kb_gate.evaluate_node(
+            _node(node_token="", obj_type="", write_mode="new_docx")
+        )
+        self.assertTrue(result["ready"])
+
+    def test_new_docx_on_existing_docx_blocks(self):
+        # new_docx must not target a node that is already docx.
+        result = kb_gate.evaluate_node(_node(obj_type="docx", write_mode="new_docx"))
+        self.assertFalse(result["ready"])
+        self.assertTrue(any("new_docx" in r for r in result["blocked_reasons"]))
+
 
 if __name__ == "__main__":
     unittest.main()

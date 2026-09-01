@@ -70,17 +70,21 @@
 
 ### OUTLINE_PROPOSE：大纲提议表
 
-仅在结构过简（如只有根节点）时展示。基于知识库主题和根节点标题提议子节点大纲，请用户确认后新建。
+仅在结构过简（如只有根节点）时展示。基于知识库主题和根节点标题提议子节点大纲，请用户确认后新建。确认表除节点名和收录范围外，必须给出每个拟建节点的精确 `--title`、目标位置（`--parent-node-token` 指向 `root_node`，或 `--space-id` 建在空间顶层）和对象类型，以便用户逐项核对。
 
 ```text
-当前知识库仅有根节点 <根节点标题>，缺少承载分类的子节点。
+当前知识库仅有根节点 <根节点标题>（root_node token: wikcn_ROOT），缺少承载分类的子节点。
 基于主题提议以下子节点大纲，确认后新建（新建为文档节点，可再调整）：
 
-| 拟建子节点 | 收录范围（简述） |
-|------------|------------------|
-| 消防验收 | 消防设计图、验收报告、现场照片 |
-| 质量验收 | 质量检验记录、整改单、验收结论 |
-| 集团项目验收 | 批复、招标、合同、竣工验收总结 |
+| 拟建 --title | 目标位置（parent） | 对象类型 | 收录范围（简述） |
+|--------------|--------------------|----------|------------------|
+| 消防验收 | wikcn_ROOT | docx | 消防设计图、验收报告、现场照片 |
+| 质量验收 | wikcn_ROOT | docx | 质量检验记录、整改单、验收结论 |
+| 集团项目验收 | wikcn_ROOT | docx | 批复、招标、合同、竣工验收总结 |
+
+确认后对每个节点执行：
+  wiki +node-create --as user --parent-node-token wikcn_ROOT --title "<拟建标题>" --obj-type docx
+  → 记录返回的 node_token 与 obj_token，回读并入 node_inventory；obj_token 即后续 docs +update 的写入目标
 
 确认新建这些节点吗？也可增删或改名后再建；如只想为现有根节点写规范，可跳过新建。
 ```
@@ -111,8 +115,15 @@ R2 高风险写入。确认前必须展示每个目标节点的稳定标识（`n
 | 建材经贸大厦改造项目验收（根） | wikcn_ROOT | 覆盖 | docs +update overwrite | 通过 | 通用维护规范（六部分，全文见下） |
 | 消防验收 | wikcn_A | 追加 | docs +update append | 收紧为进行中：负责人待确认 | 收录范围 + 分类细则（全文见下） |
 | 质量验收 | wikcn_B | 覆盖 | docs +update overwrite | 通过 | 收录范围 + 分类细则（全文见下） |
+| 验收台账·规范页（新建） | 建后回填 | 新建文档 | wiki +node-create → docs +update | 通过 | 该节点专属维护要求（全文见下） |
 
 <逐节点展开将写入的精确正文；append 场景标明追加位置，overwrite 场景标明将替换的占位内容>
+
+新建文档（new_docx）项，须展示完整命令序列（原对象不改动）：
+  1) wiki +node-create --as user --parent-node-token <目标父节点，如非docx原节点同级 wikcn_T 的父> --title "<精确标题，如：验收台账·维护规范>" --obj-type docx
+  2) 记录返回的 node_token 与 obj_token
+  3) docs +update --as user --doc <上一步 obj_token> --command overwrite --content <规范正文>
+说明：new_docx 目标位置必须显式（--parent-node-token 或 --space-id），标题必须精确给出；node-create 返回的 obj_token 才是 docs +update 的写入目标，不得写向原非 docx 节点。
 
 门禁拦截（不写入，记入 unsupported_checks）：
 | 节点标题 | node_token | 门禁原因 |
