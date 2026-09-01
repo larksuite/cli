@@ -19,6 +19,7 @@ func TestValidateMediaFlagPath(t *testing.T) {
 	defer os.Chdir(orig)
 	os.Chdir(dir)
 	os.WriteFile(filepath.Join(dir, "photo.jpg"), []byte("img"), 0644)
+	absolutePath := filepath.Join(dir, "absolute.jpg")
 
 	fio := &localfileio.LocalFileIO{}
 
@@ -36,7 +37,7 @@ func TestValidateMediaFlagPath(t *testing.T) {
 		{"valid local file", "--image", "photo.jpg", false},
 		{"nonexistent file allowed", "--file", "missing.txt", false},
 		{"path traversal rejected", "--image", "../../etc/passwd", true},
-		{"absolute path rejected", "--file", "/etc/passwd", true},
+		{"absolute path rejected", "--file", absolutePath, true},
 	}
 
 	for _, tt := range tests {
