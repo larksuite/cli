@@ -15,6 +15,7 @@ import (
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/distribution"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/selfupdate"
 	"github.com/larksuite/cli/internal/skillscheck"
@@ -31,7 +32,10 @@ const (
 
 // Overridable for testing.
 var (
-	fetchLatest    = func() (string, error) { return update.FetchLatest() }
+	fetchLatest = func() (string, error) {
+		target, err := update.FetchTarget()
+		return target.Version, err
+	}
 	currentVersion = func() string { return build.Version }
 	currentOS      = runtime.GOOS
 	newUpdater     = func() *selfupdate.Updater { return selfupdate.New() }
@@ -102,10 +106,11 @@ func NewCmdUpdate(f *cmdutil.Factory) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "update",
-		Short: "Update lark-cli to the latest version",
-		Long: `Update lark-cli to the latest version.
+		Short: "Update lark-cli and its managed Skills",
+		Long: `Update lark-cli using the active update source.
 
 Detects the installation method automatically:
+  - configured distribution: installs checksum-verified CLI and Skills artifacts
   - npm install:  runs npm install -g @larksuite/cli@<version>
   - pnpm install: runs pnpm add -g @larksuite/cli@<version>
   - manual/other: shows GitHub Releases download URL
@@ -129,6 +134,13 @@ The skill name "lark-suite" is reserved for CLI-managed suite layout.`,
 }
 
 func updateRun(opts *UpdateOptions) error {
+	return updateRunWithContext(nil, opts)
+}
+
+func updateRunWithContext(ctx context.Context, opts *UpdateOptions) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	io := opts.Factory.IOStreams
 	if _, err := skillscheck.ParseLayout(opts.SkillsLayout); err != nil {
 		return reportError(opts, io, "validation",
@@ -139,6 +151,19 @@ func updateRun(opts *UpdateOptions) error {
 			errs.NewValidationError(errs.SubtypeInvalidArgument, "--skills-layout cannot be used with --check").
 				WithParam("--skills-layout").
 				WithHint("Remove --skills-layout when using --check."))
+	}
+	manifestURL, manifestMode, configErr := distribution.ResolveManifestURL(ctx)
+	if configErr != nil {
+		return reportError(opts, io, "configuration", configErr)
+	}
+	if manifestMode {
+		if strings.TrimSpace(opts.SkillsLayout) != "" {
+			return reportError(opts, io, "validation",
+				errs.NewValidationError(errs.SubtypeInvalidArgument, "--skills-layout is not supported by the configured distribution").
+					WithParam("--skills-layout"))
+		}
+		output.PendingNotice = nil
+		return runManifestUpdate(ctx, opts, manifestURL)
 	}
 	cur := currentVersion()
 	updater := newUpdater()
@@ -432,7 +457,8 @@ func runSkillsAndState(updater *selfupdate.Updater, io *cmdutil.IOStreams, state
 	layout, _ := skillscheck.ParseLayout(requestedLayout)
 	if !force {
 		if state, ok, err := skillscheck.ReadState(); err == nil && ok && normalizeVersion(state.Version) == normalizeVersion(stateVersion) {
-			if !state.OfficialSkillsUnknown && (layout == "" || skillscheck.EffectiveLayout(state) == layout) {
+			if !state.OfficialSkillsUnknown && skillscheck.MatchesSource(state, skillscheck.OfficialSourceIdentity) &&
+				(layout == "" || skillscheck.EffectiveLayout(state) == layout) {
 				return nil
 			}
 		}
@@ -498,7 +524,8 @@ func applySkillsStatus(env map[string]interface{}, target string) {
 	status := map[string]interface{}{
 		"current": state.Version,
 		"target":  target,
-		"in_sync": normalizeVersion(state.Version) == normalizeVersion(target) && !state.OfficialSkillsUnknown,
+		"in_sync": normalizeVersion(state.Version) == normalizeVersion(target) &&
+			!state.OfficialSkillsUnknown && skillscheck.MatchesSource(state, skillscheck.OfficialSourceIdentity),
 	}
 	if state.OfficialSkillsUnknown {
 		status["official_unknown"] = true

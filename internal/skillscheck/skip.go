@@ -6,7 +6,7 @@ package skillscheck
 import (
 	"os"
 
-	"github.com/larksuite/cli/internal/update"
+	"github.com/larksuite/cli/internal/versioncheck"
 )
 
 // shouldSkip returns true when the skills check should be silently
@@ -17,11 +17,11 @@ func shouldSkip(version string) bool {
 	if os.Getenv("LARKSUITE_CLI_NO_SKILLS_NOTIFIER") != "" {
 		return true
 	}
-	if update.IsCIEnv() {
+	if versioncheck.IsCIEnv() {
 		return true
 	}
 	if version == "DEV" || version == "dev" || version == "" {
 		return true
 	}
-	return !update.IsRelease(version)
+	return !versioncheck.IsRelease(version)
 }

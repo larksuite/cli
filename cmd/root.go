@@ -21,6 +21,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/deprecation"
+	"github.com/larksuite/cli/internal/distribution"
 	"github.com/larksuite/cli/internal/flagalias"
 	"github.com/larksuite/cli/internal/hook"
 	"github.com/larksuite/cli/internal/output"
@@ -142,7 +143,13 @@ func isDeferredBootstrapProfileError(err error) bool {
 var (
 	checkCachedUpdate     = update.CheckCached
 	refreshUpdateCache    = update.RefreshCache
-	initializeSkillsCheck = skillscheck.Init
+	initializeSkillsCheck = func(version string) {
+		sourceIdentity := skillscheck.OfficialSourceIdentity
+		if manifestURL, enabled, err := distribution.ResolveManifestURL(context.Background()); err == nil && enabled {
+			sourceIdentity = distribution.ManifestSourceIdentity(manifestURL)
+		}
+		skillscheck.InitForSource(version, sourceIdentity)
+	}
 )
 
 // setupNotices wires both the binary update notice and the skills

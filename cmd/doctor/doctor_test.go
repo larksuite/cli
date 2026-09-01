@@ -7,19 +7,60 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
 	extcred "github.com/larksuite/cli/extension/credential"
+	exttransport "github.com/larksuite/cli/extension/transport"
+	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/distribution"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/surface"
+	"github.com/larksuite/cli/internal/update"
 )
+
+type doctorManifestProvider struct{ manifestURL string }
+
+func (doctorManifestProvider) Name() string { return "doctor-manifest-test" }
+func (doctorManifestProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
+	return nil
+}
+func (p doctorManifestProvider) ResolveManifestURL(context.Context) string {
+	return p.manifestURL
+}
+
+func TestCheckCLIUpdateReportsDifferentOpaqueManifestTarget(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprintf(w, `{"schema":1,"version":"older-channel","artifacts":{"skills":{"url":"https://distribution.example/skills.zip","checksum":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},%q:{"url":"https://distribution.example/cli.zip","checksum":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}}`, distribution.CurrentPlatformKey())
+	}))
+	defer server.Close()
+	previousProvider := exttransport.GetProvider()
+	previousFetch := fetchLatestForDoctor
+	previousClient := distribution.DefaultClient
+	previousVersion := build.Version
+	exttransport.Register(doctorManifestProvider{manifestURL: server.URL})
+	distribution.DefaultClient = server.Client()
+	fetchLatestForDoctor = update.FetchTarget
+	build.Version = "newer-channel"
+	t.Cleanup(func() {
+		exttransport.Register(previousProvider)
+		fetchLatestForDoctor = previousFetch
+		distribution.DefaultClient = previousClient
+		build.Version = previousVersion
+	})
+	checks := checkCLIUpdate()
+	if len(checks) != 1 || checks[0].Status != "warn" || !strings.Contains(checks[0].Message, "older-channel") {
+		t.Fatalf("checks = %#v", checks)
+	}
+}
 
 func TestNewCmdDoctor_FlagParsing(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
@@ -109,9 +150,9 @@ func TestDoctorRunDoesNotFetchUpdateWhenCommandIsConcealed(t *testing.T) {
 	t.Cleanup(func() { fetchLatestForDoctor = oldFetch })
 
 	fetches := 0
-	fetchLatestForDoctor = func() (string, error) {
+	fetchLatestForDoctor = func() (update.Target, error) {
 		fetches++
-		return "9.9.9", nil
+		return update.Target{Version: "9.9.9"}, nil
 	}
 	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
 		surface.CommandUpdate: surface.CommandConcealed,
