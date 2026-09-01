@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	neturl "net/url"
 	"strings"
 
@@ -750,6 +751,96 @@ func aggregatedIssueText(err error) string {
 		return msg
 	}
 	return msg + " (" + hint + ")"
+}
+
+// collapseAggregatedIssues renders the collected sub-errors for a folded
+// message, stating each DISTINCT defect once and naming the other locations
+// it occurred at. Results keep first-appearance order.
+//
+// One wrong field name in a payload that styles N cells produces N identical
+// issues, each re-listing the full supported-field vocabulary. 08-18..24
+// eval: a six-cell payload with one bad field spent 1.6k characters saying
+// the same thing six times, and the prescription the agent needed was buried
+// mid-message — the fold meant to save round trips was drowning its own
+// answer. Deduplicated, that payload states the fix once and names the six
+// ranges, which is what a rewrite actually needs.
+//
+// Two issues are "the same defect" when their text matches after every
+// [<index>] is blanked, so cell_styles[0] and cell_styles[7] collapse while
+// two different bad fields never do.
+func collapseAggregatedIssues(probs []error) []string {
+	const maxRepeatPaths = 3
+	type group struct {
+		text  string
+		paths []string
+	}
+	order := make([]string, 0, len(probs))
+	groups := make(map[string]*group, len(probs))
+	for _, e := range probs {
+		text := aggregatedIssueText(e)
+		key := blankIssueIndices(text)
+		g, seen := groups[key]
+		if !seen {
+			g = &group{text: text}
+			groups[key] = g
+			order = append(order, key)
+			continue
+		}
+		g.paths = append(g.paths, issuePathToken(text))
+	}
+	out := make([]string, 0, len(order))
+	for _, key := range order {
+		g := groups[key]
+		if len(g.paths) == 0 {
+			out = append(out, g.text)
+			continue
+		}
+		shown := g.paths
+		suffix := ""
+		if len(shown) > maxRepeatPaths {
+			suffix = fmt.Sprintf(", +%d more", len(shown)-maxRepeatPaths)
+			shown = shown[:maxRepeatPaths]
+		}
+		out = append(out, fmt.Sprintf("%s [same at %d more: %s%s]",
+			g.text, len(g.paths), strings.Join(shown, ", "), suffix))
+	}
+	return out
+}
+
+// blankIssueIndices replaces every [<digits>] with [#], so the grouping key of
+// an issue ignores which item it was found on.
+func blankIssueIndices(text string) string {
+	var b strings.Builder
+	b.Grow(len(text))
+	for i := 0; i < len(text); i++ {
+		if text[i] != '[' {
+			b.WriteByte(text[i])
+			continue
+		}
+		j := i + 1
+		for j < len(text) && text[j] >= '0' && text[j] <= '9' {
+			j++
+		}
+		if j > i+1 && j < len(text) && text[j] == ']' {
+			b.WriteString("[#]")
+			i = j
+			continue
+		}
+		b.WriteByte(text[i])
+	}
+	return b.String()
+}
+
+// issuePathToken is the leading path of an issue message ("--styles.styles[0]
+// .cell_styles[1].border_type"), used to name a repeat's location. Every
+// collected sub-error starts with its path, either inline or as a "path: "
+// prefix added by prefixValidationIssue.
+func issuePathToken(text string) string {
+	token := text
+	if i := strings.IndexByte(token, ' '); i >= 0 {
+		token = token[:i]
+	}
+	return strings.TrimSuffix(token, ":")
 }
 
 // prefixValidationIssue re-labels a collected sub-error with the path it was

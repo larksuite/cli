@@ -5,9 +5,11 @@ package consume
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/larksuite/cli/internal/event/testutil"
 )
@@ -51,6 +53,28 @@ func TestCheckRemoteConnections_MalformedJSON(t *testing.T) {
 	_, err := CheckRemoteConnections(context.Background(), c)
 	if err == nil {
 		t.Fatal("expected decode error")
+	}
+}
+
+func TestCheckRemoteConnections_MalformedJSONTruncationPreservesUTF8(t *testing.T) {
+	body := strings.Repeat("x", 255) + "界tail"
+	c := &testutil.StubAPIClient{Body: body}
+	_, err := CheckRemoteConnections(context.Background(), c)
+	if err == nil {
+		t.Fatal("expected decode error")
+	}
+	var syntaxErr *json.SyntaxError
+	if !errors.As(err, &syntaxErr) {
+		t.Fatalf("error does not preserve JSON decode cause: %v", err)
+	}
+	if !utf8.ValidString(err.Error()) {
+		t.Fatalf("truncated error is not valid UTF-8: %q", err)
+	}
+	if strings.Contains(err.Error(), "\uFFFD") {
+		t.Fatalf("truncation replaced a split rune instead of preserving its boundary: %q", err)
+	}
+	if !strings.Contains(err.Error(), "…(truncated)") {
+		t.Fatalf("truncated error missing suffix: %v", err)
 	}
 }
 

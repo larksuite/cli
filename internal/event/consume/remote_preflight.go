@@ -39,10 +39,7 @@ func CheckRemoteConnections(ctx context.Context, client APIClient) (int, error) 
 // truncateForError bounds length and collapses control chars to defang log injection.
 func truncateForError(b []byte) string {
 	const max = 256
-	s := string(b)
-	if len(s) > max {
-		s = s[:max] + "…(truncated)"
-	}
+	s := event.TruncateDiagnostic(string(b), max, "…(truncated)")
 	out := make([]byte, 0, len(s))
 	for _, r := range s {
 		if r == '\n' || r == '\r' || r == '\t' {
