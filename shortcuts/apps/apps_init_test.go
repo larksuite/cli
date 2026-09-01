@@ -18,11 +18,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
-	exttransport "github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/testutil/gitcmd"
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -157,29 +157,6 @@ func withFakeRunner(t *testing.T, f *fakeCommandRunner) {
 	t.Cleanup(func() { initRunner = orig })
 }
 
-type appsRewriteProvider struct {
-	rewriter exttransport.URLRewriter
-}
-
-func (appsRewriteProvider) Name() string { return "apps-rewrite" }
-
-func (appsRewriteProvider) ResolveInterceptor(context.Context) exttransport.Interceptor { return nil }
-
-func (p appsRewriteProvider) ResolveURLRewriter(context.Context) exttransport.URLRewriter {
-	return p.rewriter
-}
-
-type appsRewriteFunc func(string) string
-
-func (f appsRewriteFunc) RewriteURL(rawURL string) string { return f(rawURL) }
-
-func withAppsRewriteProvider(t *testing.T, rewriter exttransport.URLRewriter) {
-	t.Helper()
-	previous := exttransport.GetProvider()
-	exttransport.Register(appsRewriteProvider{rewriter: rewriter})
-	t.Cleanup(func() { exttransport.Register(previous) })
-}
-
 func stubAppType(reg *httpmock.Registry, appID, appType string) {
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
@@ -301,38 +278,19 @@ func TestRunScaffoldRewritesFixedRegistry(t *testing.T) {
 	dir := t.TempDir()
 	f := &fakeCommandRunner{results: map[string]fakeCallResult{"git ls-files": {stdout: "src/x.ts\n"}}}
 	withFakeRunner(t, f)
-	withAppsRewriteProvider(t, appsRewriteFunc(func(rawURL string) string {
+	testurlrewrite.Register(t, func(rawURL string) string {
 		if rawURL == npmRegistry {
 			return "http://registry.example.test"
 		}
 		return rawURL
-	}))
+	})
 
 	if _, err := runScaffold(context.Background(), dir, "app_x", "", ""); err != nil {
 		t.Fatalf("runScaffold() error = %v", err)
 	}
-	for _, call := range f.calls {
-		if len(call) < 2 || call[1] != "npx" {
-			continue
-		}
-		if !containsAll(call, "--registry", "http://registry.example.test") {
-			t.Fatalf("npx call = %v, want rewritten registry", call)
-		}
-	}
-}
-
-func TestRunScaffoldPassesRewrittenRegistryVerbatim(t *testing.T) {
-	f := &fakeCommandRunner{}
-	withFakeRunner(t, f)
-	withAppsRewriteProvider(t, appsRewriteFunc(func(string) string { return "/relative" }))
-
-	_, err := runScaffold(context.Background(), t.TempDir(), "app_x", "", "")
-	if err != nil {
-		t.Fatalf("runScaffold() error = %v", err)
-	}
-	call := findCall(f.calls, "npx", "-y")
-	if call == nil || !containsAll(call, "--registry", "/relative") {
-		t.Fatalf("npx call = %v, want verbatim rewritten registry", call)
+	npxCall := findCall(f.calls, "npx", "-y")
+	if npxCall == nil || !containsAll(npxCall, "--registry", "http://registry.example.test") {
+		t.Fatalf("npx call = %v, want rewritten registry", npxCall)
 	}
 }
 

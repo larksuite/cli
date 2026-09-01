@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	exttransport "github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/core"
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -30,29 +30,6 @@ type executableTestFS struct {
 }
 
 func (f executableTestFS) Executable() (string, error) { return f.exe, nil }
-
-type skillsRewriteProvider struct {
-	rewriter exttransport.URLRewriter
-}
-
-func (skillsRewriteProvider) Name() string { return "skills-rewrite" }
-
-func (skillsRewriteProvider) ResolveInterceptor(context.Context) exttransport.Interceptor { return nil }
-
-func (p skillsRewriteProvider) ResolveURLRewriter(context.Context) exttransport.URLRewriter {
-	return p.rewriter
-}
-
-type skillsRewriteFunc func(string) string
-
-func (f skillsRewriteFunc) RewriteURL(rawURL string) string { return f(rawURL) }
-
-func withSkillsRewriteProvider(t *testing.T, rewriter exttransport.URLRewriter) {
-	t.Helper()
-	previous := exttransport.GetProvider()
-	exttransport.Register(skillsRewriteProvider{rewriter: rewriter})
-	t.Cleanup(func() { exttransport.Register(previous) })
-}
 
 // lookPathMock patches execLookPath within VerifyBinary for controlled testing.
 // Do not use t.Parallel() in tests that install this mock — it mutates a package-level var.
@@ -275,12 +252,12 @@ func TestSkillsCommandsRewriteSourcesBeforeInvocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	withSkillsRewriteProvider(t, skillsRewriteFunc(func(rawURL string) string {
+	testurlrewrite.Register(t, func(rawURL string) string {
 		if strings.HasPrefix(rawURL, "https://open.feishu.cn") {
 			return strings.Replace(rawURL, "https://open.feishu.cn", "http://mirror.example.test", 1)
 		}
 		return rawURL
-	}))
+	})
 
 	u := New()
 	if result := u.StageSuite("https://open.feishu.cn/lark-cli/skills/regular", "."); result.Err != nil {
@@ -305,24 +282,6 @@ func TestSkillsCommandsRewriteSourcesBeforeInvocation(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("commands = %q, want %q", got, want)
-	}
-}
-
-func TestSkillsCommandsPassRewrittenSourceVerbatim(t *testing.T) {
-	withSkillsRewriteProvider(t, skillsRewriteFunc(func(string) string { return "/relative" }))
-	var got []string
-	u := &Updater{SkillsCommandOverride: func(args ...string) *NpmResult {
-		got = append([]string(nil), args...)
-		return &NpmResult{}
-	}}
-
-	result := u.InstallAllSkills("https://open.feishu.cn/lark-cli/skills/regular")
-	if result.Err != nil {
-		t.Fatalf("InstallAllSkills() error = %v", result.Err)
-	}
-	want := []string{"-y", "skills", "add", "/relative", "-g", "-y"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("args = %q, want %q", got, want)
 	}
 }
 

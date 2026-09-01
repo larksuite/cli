@@ -20,7 +20,6 @@ import (
 	cmdconfig "github.com/larksuite/cli/cmd/config"
 	"github.com/larksuite/cli/cmd/schema"
 	"github.com/larksuite/cli/errs"
-	exttransport "github.com/larksuite/cli/extension/transport"
 	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -30,6 +29,7 @@ import (
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/surface"
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
 )
 
 // TestPersistentPreRunE_AuthCheckDisabledAnnotations verifies that
@@ -92,28 +92,10 @@ func TestRootLong_AgentSkillsLinkTargetsReadmeSection(t *testing.T) {
 	}
 }
 
-type rootURLRewriteProvider struct{}
-
-func (rootURLRewriteProvider) Name() string { return "test-url-rewrite" }
-
-func (rootURLRewriteProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
-	return nil
-}
-
-func (rootURLRewriteProvider) ResolveURLRewriter(context.Context) exttransport.URLRewriter {
-	return rootURLRewriter{}
-}
-
-type rootURLRewriter struct{}
-
-func (rootURLRewriter) RewriteURL(rawURL string) string {
-	return strings.Replace(rawURL, "github.com", "mirror.example.test", 1)
-}
-
 func TestBuildRewritesRootSkillsHelpURLAfterProviderRegistration(t *testing.T) {
-	previous := exttransport.GetProvider()
-	exttransport.Register(rootURLRewriteProvider{})
-	t.Cleanup(func() { exttransport.Register(previous) })
+	testurlrewrite.Register(t, func(rawURL string) string {
+		return strings.Replace(rawURL, "github.com", "mirror.example.test", 1)
+	})
 
 	_, root, _ := buildInternal(context.Background(), buildInvocationForTest(t), WithoutPlugins())
 	if got := root.UsageTemplate(); !strings.Contains(got, "https://mirror.example.test/larksuite/cli#agent-skills") {

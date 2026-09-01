@@ -28,21 +28,10 @@ import (
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/selfupdate"
 	"github.com/larksuite/cli/internal/skillscheck"
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
 )
 
 const runLiveSkillsTestsEnv = "LARKSUITE_CLI_RUN_LIVE_SKILLS_TESTS"
-
-type updateURLRewriteProvider struct{}
-
-func (updateURLRewriteProvider) Name() string { return "test-url-rewrite" }
-
-func (updateURLRewriteProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
-	return nil
-}
-
-func (updateURLRewriteProvider) ResolveURLRewriter(context.Context) exttransport.URLRewriter {
-	return updateURLRewriter{}
-}
 
 type updateManifestProvider struct{ manifestURL string }
 
@@ -127,12 +116,6 @@ func TestManifestArtifactProtocolFailureUsesNetworkTaxonomy(t *testing.T) {
 	if problem["type"] != "network" {
 		t.Fatalf("output = %#v", got)
 	}
-}
-
-type updateURLRewriter struct{}
-
-func (updateURLRewriter) RewriteURL(rawURL string) string {
-	return strings.Replace(rawURL, "github.com", "mirror.example.test", 1)
 }
 
 // newTestFactory creates a test factory with minimal config.
@@ -1017,9 +1000,9 @@ func TestReleaseURL(t *testing.T) {
 }
 
 func TestUpdateCheckRewritesPresentationURLs(t *testing.T) {
-	previous := exttransport.GetProvider()
-	exttransport.Register(updateURLRewriteProvider{})
-	t.Cleanup(func() { exttransport.Register(previous) })
+	testurlrewrite.Register(t, func(rawURL string) string {
+		return strings.Replace(rawURL, "github.com", "mirror.example.test", 1)
+	})
 
 	f, stdout, _ := newTestFactory(t)
 	cmd := NewCmdUpdate(f)

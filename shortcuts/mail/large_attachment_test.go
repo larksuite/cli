@@ -4,7 +4,6 @@
 package mail
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"os"
@@ -13,38 +12,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	exttransport "github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/core"
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
 )
-
-type largeAttachmentRewriteProvider struct {
-	rewriter exttransport.URLRewriter
-}
-
-func (largeAttachmentRewriteProvider) Name() string { return "mail-url-rewrite" }
-
-func (largeAttachmentRewriteProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
-	return nil
-}
-
-func (p largeAttachmentRewriteProvider) ResolveURLRewriter(context.Context) exttransport.URLRewriter {
-	return p.rewriter
-}
-
-type largeAttachmentRewriteFunc func(string) string
-
-func (f largeAttachmentRewriteFunc) RewriteURL(rawURL string) string { return f(rawURL) }
-
-func withLargeAttachmentURLRewriter(t *testing.T, rewriter exttransport.URLRewriter) {
-	t.Helper()
-	previous := exttransport.GetProvider()
-	exttransport.Register(largeAttachmentRewriteProvider{rewriter: rewriter})
-	t.Cleanup(func() { exttransport.Register(previous) })
-}
 
 func TestEstimateBase64EMLSize(t *testing.T) {
 	// 3 bytes raw → 4 bytes base64 + ~200 overhead
@@ -148,9 +122,9 @@ func TestBuildLargeAttachmentPreviewURL(t *testing.T) {
 }
 
 func TestBuildLargeAttachmentContentRewritesURLs(t *testing.T) {
-	withLargeAttachmentURLRewriter(t, largeAttachmentRewriteFunc(func(rawURL string) string {
+	testurlrewrite.Register(t, func(rawURL string) string {
 		return strings.Replace(rawURL, "https://", "https://mirror.example/", 1)
-	}))
+	})
 	results := []largeAttachmentResult{{FileName: "report.pdf", FileSize: 1024, FileToken: "token"}}
 
 	html := buildLargeAttachmentHTML(core.BrandFeishu, "en_us", results)
