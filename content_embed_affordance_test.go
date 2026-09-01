@@ -4,6 +4,7 @@
 package main
 
 import (
+	"io/fs"
 	"slices"
 	"strings"
 	"testing"
@@ -80,6 +81,29 @@ func TestEmbeddedDocsAffordanceComplementsShortcutMetadata(t *testing.T) {
 				"`task_id` from `+history-revert`",
 			},
 		},
+		"+render-word": {
+			description: "Render a local DOCX file to PDF and download the result",
+			useWhen: []string{
+				"Choose this workflow when the original Word pagination must be preserved in a downloadable PDF and heading page locations are useful.",
+			},
+			tips: []string{
+				"A wait timeout is recoverable: keep the returned `task_id` and continue with `+render-word-status`.",
+			},
+			skills: []string{
+				"lark-doc",
+				"lark-doc/references/lark-doc-render-word.md",
+			},
+		},
+		"+render-word-status": {
+			description: "Get a Word render task and optionally download its PDF",
+			prerequisites: []string{
+				"`task_id` from `+render-word`",
+			},
+			skills: []string{
+				"lark-doc",
+				"lark-doc/references/lark-doc-render-word.md",
+			},
+		},
 	}
 
 	shortcuts := make(map[string]struct {
@@ -132,6 +156,16 @@ func TestEmbeddedDocsAffordanceComplementsShortcutMetadata(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestEmbeddedWordRenderSkillReferenceIsReachable(t *testing.T) {
+	content, err := fs.ReadFile(embeddedContentFS, "skills/lark-doc/references/lark-doc-render-word.md")
+	if err != nil {
+		t.Fatalf("read embedded Word render reference: %v", err)
+	}
+	if !strings.Contains(string(content), "docs +render-word-status") {
+		t.Fatalf("embedded Word render reference is incomplete")
 	}
 }
 

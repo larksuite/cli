@@ -65,6 +65,7 @@ Typed errors render to **stderr** as one JSON object per process exit:
 | `error.retry_after_seconds` | per-Subtype-stable | upstream-provided minimum delay before retry; emitted when available for retryable `api/rate_limit` and HTTP-backed `network` errors |
 | `error.param` | per-Subtype-stable | single offending parameter (`ValidationError`); see **Validation parameters** |
 | `error.params` | per-Subtype-stable | per-parameter validation detail array (`ValidationError`); see **Validation parameters** |
+| `error.download_url` | per-Subtype-stable | short-lived artifact URL when a `policy/access_denied` download can be completed or inspected manually; treat as sensitive |
 | per-Subtype extension fields | per-Subtype-stable | e.g. `missing_scopes`, `console_url`, `challenge_url`; `console_url` is emitted for developer/admin recovery such as `app_scope_not_applied`, not user `missing_scope` |
 
 For retryable `type=api, subtype=rate_limit`, and for a retryable HTTP-backed
@@ -644,6 +645,9 @@ string cannot be classified retroactively.
 - `missing_scopes` is app configuration, not user data.
 - `Message` and `Hint` must not contain tokens, JWTs, or personally
   identifying values. CI does not catch this — producer responsibility.
+- `download_url` may contain a short-lived signature. Emit it only for an
+  explicit structured recovery contract, never copy it into `Message` or
+  `Hint`, and treat it as sensitive until it expires.
 - Wrapped `Cause` is **not** serialized to the wire (`json:"-"`). It is
   retained for in-process `errors.Is` / `errors.Unwrap` traversal and
   optional debug logging only.

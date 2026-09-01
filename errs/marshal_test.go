@@ -219,6 +219,7 @@ func TestSecurityPolicyError_MarshalJSON(t *testing.T) {
 	spe := &SecurityPolicyError{
 		Problem:      Problem{Category: CategoryPolicy, Subtype: SubtypeChallengeRequired, Message: "blocked"},
 		ChallengeURL: "https://chal.example",
+		DownloadURL:  "https://download.example/file.pdf?signature=short-lived",
 	}
 	b, _ := json.Marshal(spe)
 	s := string(b)
@@ -226,6 +227,7 @@ func TestSecurityPolicyError_MarshalJSON(t *testing.T) {
 		`"type":"policy"`,
 		`"subtype":"challenge_required"`,
 		`"challenge_url":"https://chal.example"`,
+		`"download_url":"https://download.example/file.pdf?signature=short-lived"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q in %s", want, s)
@@ -241,7 +243,8 @@ func TestSecurityPolicyError_MarshalJSON(t *testing.T) {
 // path threaded through cmd/* sites that surface policy-deny outcomes.
 func TestSecurityPolicyError_MarshalJSON_AccessDenied(t *testing.T) {
 	err := NewSecurityPolicyError(SubtypeAccessDenied, "user denied").
-		WithChallengeURL("https://chal.example/2")
+		WithChallengeURL("https://chal.example/2").
+		WithDownloadURL("https://download.example/file.pdf?signature=short-lived")
 
 	b, e := json.Marshal(err)
 	if e != nil {
@@ -252,6 +255,7 @@ func TestSecurityPolicyError_MarshalJSON_AccessDenied(t *testing.T) {
 		`"type":"policy"`,
 		`"subtype":"access_denied"`,
 		`"challenge_url":"https://chal.example/2"`,
+		`"download_url":"https://download.example/file.pdf?signature=short-lived"`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("envelope missing %s\nactual: %s", want, got)
