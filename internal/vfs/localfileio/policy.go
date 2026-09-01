@@ -232,13 +232,32 @@ var denyRoots = sync.OnceValue(func() []policyEntry {
 		homes[u.HomeDir] = true
 	}
 	for home := range homes {
-		for _, d := range []string{".ssh", ".gnupg", ".aws"} {
+		for _, d := range homeDenyNames {
 			entries = append(entries, newPolicyEntry("~/"+d, filepath.Join(home, d)))
 		}
 		entries = append(entries, newPolicyEntry("the CLI config directory", filepath.Join(home, ".lark-cli")))
 	}
 	return entries
 })
+
+// homeDenyNames lists what under the account home is refused. Entries are
+// matched by containment, so naming a directory covers everything beneath it
+// and naming a file covers that file — filepath.Rel reports "." for a path
+// against itself, which isUnderDir accepts.
+//
+// The working directory is an allow root and running the CLI from the home
+// directory is ordinary, so anything here that is not listed is readable by a
+// relative path. That makes the list the whole of the protection, not a
+// convenience: a credential store missing from it has none. Shell histories
+// are included because they carry pasted keys and internal hostnames as
+// reliably as a credential file does.
+var homeDenyNames = []string{
+	".ssh", ".gnupg", ".aws",
+	".netrc", ".git-credentials", ".gitconfig",
+	".kube", ".docker", ".azure", ".config/gh", ".config/gcloud",
+	".npmrc", ".pypirc", ".gem/credentials", ".cargo/credentials", ".cargo/credentials.toml",
+	".bash_history", ".zsh_history", ".sh_history", ".python_history", ".psql_history",
+}
 
 // checkDeny rejects paths under any built-in deny root. absLiteral is the
 // cleaned pre-resolution form; matching it alongside the realpath form closes

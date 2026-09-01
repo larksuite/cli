@@ -184,6 +184,9 @@ func safePath(raw, flagName string) (string, error) {
 		if err := checkAllow(flagName, raw, resolved, cwd); err != nil {
 			return "", err
 		}
+		if err := checkRelativeStaysInCwd(flagName, raw, resolved, cwd); err != nil {
+			return "", err
+		}
 		if isOutputFlag {
 			if err := rejectMultiplyLinkedTarget(flagName, raw, resolved); err != nil {
 				return "", err
@@ -194,6 +197,26 @@ func safePath(raw, flagName string) (string, error) {
 		}
 	}
 	return primary, nil
+}
+
+// checkRelativeStaysInCwd holds a relative path to the working directory even
+// when a wider allow root would accept where it lands. Naming a full path is a
+// deliberate act and the allowlist is the right judge of it; climbing out with
+// ".." is not, and the two cannot share one verdict once an allow root is big
+// enough to contain the working directory. A process running under /tmp — CI
+// runners, containers and agent sandboxes commonly do — would otherwise reach
+// a sibling session's files with "../", which the allowlist alone reads as
+// still inside /tmp.
+func checkRelativeStaysInCwd(flagName, raw, resolved, cwd string) error {
+	if filepath.IsAbs(raw) || raw == "~" || strings.HasPrefix(raw, "~/") {
+		return nil
+	}
+	if matchResolved(resolved, newPolicyEntry("the current working directory", cwd)) {
+		return nil
+	}
+	return fmt.Errorf("%s %q resolves outside the current working directory "+
+		"(hint: a relative path has to stay inside it; give a full path to reach another allowed root)",
+		flagName, raw)
 }
 
 // interpretations returns every location this platform could open the argument

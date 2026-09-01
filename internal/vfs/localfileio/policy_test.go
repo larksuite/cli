@@ -355,3 +355,86 @@ func denylistedAbsolutePath(t *testing.T) string {
 	}
 	return filepath.Join(home, ".ssh", "id_rsa")
 }
+
+// TestPolicy_RelativePathCannotLeaveCwdInsideAllowRoot covers the case an
+// allow root wide enough to hold the working directory creates: with the
+// process under /tmp, "../" reaches a sibling directory that the allowlist
+// still reads as inside /tmp. /tmp is world-writable, so that sibling can
+// belong to another user or another session.
+func TestPolicy_RelativePathCannotLeaveCwdInsideAllowRoot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the /tmp allow root is Unix-only")
+	}
+	base, err := os.MkdirTemp("/tmp", "policy-cwd")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(base) })
+	work := filepath.Join(base, "work")
+	victim := filepath.Join(base, "victim")
+	for _, d := range []string{work, victim} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(victim, "other-session.txt"), []byte("SECRET"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	if err := os.Chdir(work); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+
+	for _, raw := range []string{"../victim/other-session.txt", ".."} {
+		if _, err := SafeInputPath(raw); err == nil {
+			t.Errorf("SafeInputPath(%q) = nil error; a relative path must not climb out of the working directory", raw)
+		}
+	}
+	if _, err := SafeOutputPath("../victim/planted.txt"); err == nil {
+		t.Error(`SafeOutputPath("../victim/planted.txt") = nil error; want the write refused`)
+	}
+
+	// The feature this branch exists for is untouched: a full path under an
+	// allow root still works, and so does a relative path that stays put.
+	if _, err := SafeOutputPath(filepath.Join(victim, "planted.txt")); err != nil {
+		t.Errorf("an absolute path inside /tmp should stay writable, got: %v", err)
+	}
+	if _, err := SafeOutputPath("./inside.txt"); err != nil {
+		t.Errorf("a relative path inside the working directory should stay writable, got: %v", err)
+	}
+}
+
+// TestPolicy_HomeCredentialFilesAreDenied covers the other half of the same
+// exposure: the working directory is an allow root and running from the home
+// directory is ordinary, so every credential store there is reachable by a
+// relative name unless the denylist names it.
+func TestPolicy_HomeCredentialFilesAreDenied(t *testing.T) {
+	home, err := trustedHome()
+	if err != nil {
+		t.Skipf("no trusted home: %v", err)
+	}
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	if err := os.Chdir(home); err != nil {
+		t.Skipf("cannot chdir to home: %v", err)
+	}
+
+	for _, rel := range []string{
+		".netrc", ".git-credentials", ".gitconfig",
+		".kube/config", ".docker/config.json", ".npmrc",
+		".config/gh/hosts.yml", ".zsh_history", ".bash_history",
+		".ssh/id_rsa", ".aws/credentials",
+	} {
+		if _, err := SafeInputPath(rel); err == nil {
+			t.Errorf("SafeInputPath(%q) from the home directory = nil error; want it denied", rel)
+		}
+	}
+
+	// An ordinary file in the home directory is still readable.
+	if _, err := SafeInputPath("some-ordinary-file.txt"); err != nil &&
+		!strings.Contains(err.Error(), "cannot inspect path") {
+		t.Errorf("an ordinary name in the home directory should not be denied, got: %v", err)
+	}
+}
