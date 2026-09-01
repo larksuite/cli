@@ -20,8 +20,8 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// TestDocs_MediaDownloadWorkflow creates a document-owned image fixture, then
-// downloads the same media through docs +media-download and verifies its bytes.
+// TestDocs_MediaDownloadWorkflow appends a local image through docs +update,
+// then downloads the same media through docs +media-download and verifies its bytes.
 func TestDocs_MediaDownloadWorkflow(t *testing.T) {
 	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
@@ -38,22 +38,24 @@ func TestDocs_MediaDownloadWorkflow(t *testing.T) {
 	fixtureName := "fixture-" + suffix + ".png"
 	require.NoError(t, vfs.WriteFile(filepath.Join(workDir, fixtureName), imageBytes, 0o600))
 
-	insertResult, err := clie2e.RunCmd(ctx, clie2e.Request{
+	updateResult, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
-			"docs", "+media-insert",
+			"docs", "+update",
 			"--doc", docToken,
-			"--file", fixtureName,
-			"--type", "image",
+			"--command", "append",
+			"--content", `<img path="@` + fixtureName + `"/>`,
 		},
 		WorkDir:   workDir,
 		DefaultAs: defaultAs,
 	})
 	require.NoError(t, err)
-	insertResult.AssertExitCode(t, 0)
-	insertResult.AssertStdoutStatus(t, true)
+	updateResult.AssertExitCode(t, 0)
+	updateResult.AssertStdoutStatus(t, true)
 
-	mediaToken := gjson.Get(insertResult.Stdout, "data.file_token").String()
-	require.NotEmpty(t, mediaToken, "media insert should return data.file_token; stdout:\n%s", insertResult.Stdout)
+	imageBlock := gjson.Get(updateResult.Stdout, "data.document.new_blocks.0")
+	require.Equal(t, "image", imageBlock.Get("block_type").String(), "stdout:\n%s", updateResult.Stdout)
+	mediaToken := imageBlock.Get("block_token").String()
+	require.NotEmpty(t, mediaToken, "docs update should return the bound image token; stdout:\n%s", updateResult.Stdout)
 
 	downloadResult, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{

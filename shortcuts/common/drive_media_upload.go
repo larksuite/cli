@@ -47,7 +47,7 @@ type DriveMediaUploadAllConfig struct {
 	// Reader, when non-nil, is used as the upload source instead of opening
 	// FilePath. Callers must set FileName and FileSize explicitly. The reader
 	// is NOT closed by UploadDriveMediaAllTyped; the caller owns its lifetime.
-	// Used by the clipboard path in docs +media-insert.
+	// Used by callers that upload in-memory content, such as document covers.
 	Reader io.Reader
 }
 

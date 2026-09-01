@@ -2,7 +2,7 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-Docx 封面图不是正文里的 `<img token="...">` 素材块。读取、更新、删除文档封面图时，使用 `docs +resource-download/+resource-update/+resource-delete --type cover`，不要使用 `+media-insert` 或 `+media-download --token <cover.token>` 让用户手动拼步骤。
+Docx 封面图不是正文里的 `<img token="...">` 素材块。读取、更新、删除文档封面图时，使用 `docs +resource-download/+resource-update/+resource-delete --type cover`，不要使用 `+media-download --token <cover.token>` 让用户手动拼步骤。
 
 ## 选择规则
 
@@ -66,5 +66,4 @@ lark-cli docs +resource-delete --doc doxcnXXX --type cover
 ## 参考
 
 - [lark-doc-media-download](lark-doc-media-download.md) — 下载正文素材或画板缩略图
-- [lark-doc-media-insert](lark-doc-media-insert.md) — 在正文插入图片/文件
 - [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数

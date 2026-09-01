@@ -21,7 +21,6 @@ func Shortcuts() []common.Shortcut {
 		DocsHistoryList,
 		DocsHistoryRevert,
 		DocsHistoryRevertStatus,
-		DocMediaInsert,
 		DocMediaUpload,
 		DocMediaPreview,
 		DocMediaDownload,
