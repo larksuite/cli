@@ -348,11 +348,7 @@ func preflightScopes(ctx context.Context, pf *preflightCtx) (checked bool, err e
 		WithIdentity(string(pf.identity)).
 		WithMissingScopes(missing...)
 	if pf.identity.IsBot() {
-		hint, hintErr := botScopeRemediationHint(ctx, pf.brand, pf.appID, missing)
-		if hintErr != nil {
-			return true, hintErr
-		}
-		permissionErr.WithHint("%s", hint)
+		permissionErr.WithHint("%s", botScopeRemediationHint(pf.brand, pf.appID, missing))
 	}
 	// The scope check itself completed, so the precondition is answered even
 	// though it answered "missing". A user-identity hint is deliberately left
@@ -365,18 +361,15 @@ func preflightScopes(ctx context.Context, pf *preflightCtx) (checked bool, err e
 // The bot-specific scan-to-enable link adds the scopes to the app manifest,
 // after which the tenant token carries them. User recovery is generated from
 // the PermissionError's identity and missing_scopes by the root presenter.
-func botScopeRemediationHint(ctx context.Context, brand core.LarkBrand, appID string, missing []string) (string, error) {
-	url, err := addonsHintURL(ctx, brand, appID, missingScopeAddons(core.AsBot, missing))
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("grant these scopes by scanning: %s", url), nil
+func botScopeRemediationHint(brand core.LarkBrand, appID string, missing []string) string {
+	return fmt.Sprintf("grant these scopes by scanning: %s",
+		addonsHintURL(brand, appID, missingScopeAddons(core.AsBot, missing)))
 }
 
 // preflightEventTypes verifies every RequiredConsoleEvents entry is subscribed
 // in the app's console 底账 — published app_versions for event subscriptions,
 // application/get subscribed_callbacks for callback subscriptions.
-func preflightEventTypes(ctx context.Context, pf *preflightCtx) error {
+func preflightEventTypes(pf *preflightCtx) error {
 	if len(pf.keyDef.RequiredConsoleEvents) == 0 {
 		return nil
 	}
@@ -410,10 +403,7 @@ func preflightEventTypes(ctx context.Context, pf *preflightCtx) error {
 		return nil
 	}
 
-	url, err := addonsHintURL(ctx, pf.brand, pf.appID, missingSubscriptionAddons(pf.keyDef.SubscriptionType, pf.identity, missing))
-	if err != nil {
-		return err
-	}
+	url := addonsHintURL(pf.brand, pf.appID, missingSubscriptionAddons(pf.keyDef.SubscriptionType, pf.identity, missing))
 	return errs.NewValidationError(errs.SubtypeFailedPrecondition,
 		"EventKey %s requires %s not subscribed in console: %s",
 		pf.keyDef.Key, noun, strings.Join(missing, ", ")).

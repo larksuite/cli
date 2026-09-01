@@ -4,7 +4,6 @@
 package common
 
 import (
-	"context"
 	"testing"
 
 	"github.com/larksuite/cli/internal/core"
@@ -91,10 +90,7 @@ func TestParseResourceURL_RoundTrip(t *testing.T) {
 
 	for _, kind := range types {
 		t.Run(kind, func(t *testing.T) {
-			built, err := BuildResourceURL(context.Background(), core.BrandFeishu, kind, token)
-			if err != nil {
-				t.Fatalf("BuildResourceURL() error = %v", err)
-			}
+			built := BuildResourceURL(core.BrandFeishu, kind, token)
 			if built == "" {
 				t.Fatalf("BuildResourceURL returned empty for kind %q", kind)
 			}
@@ -144,10 +140,7 @@ func TestBuildResourceURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := BuildResourceURL(context.Background(), tt.brand, tt.kind, tt.token)
-			if err != nil {
-				t.Fatalf("BuildResourceURL() error = %v", err)
-			}
+			got := BuildResourceURL(tt.brand, tt.kind, tt.token)
 			if got != tt.want {
 				t.Errorf("BuildResourceURL(%q, %q, %q) = %q, want %q", tt.brand, tt.kind, tt.token, got, tt.want)
 			}

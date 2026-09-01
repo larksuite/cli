@@ -56,7 +56,6 @@ func driveMethod(httpMethod string, params map[string]interface{}) meta.Method {
 
 func TestNewPreflightMissingScopeErrorUsesCanonicalFieldGate(t *testing.T) {
 	err := newPreflightMissingScopeError(
-		context.Background(),
 		"feishu",
 		"cli_test",
 		"user",

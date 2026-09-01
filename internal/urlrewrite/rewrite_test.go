@@ -5,15 +5,11 @@ package urlrewrite
 
 import (
 	"context"
-	"errors"
-	"net/url"
 	"strings"
 	"sync"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
 	exttransport "github.com/larksuite/cli/extension/transport"
-	"github.com/larksuite/cli/internal/output"
 )
 
 type testProvider struct {
@@ -57,10 +53,7 @@ func TestRewriteIdentityWithoutURLRewriter(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			withProvider(t, tc.provider)
 
-			got, err := Rewrite(context.Background(), raw)
-			if err != nil {
-				t.Fatalf("Rewrite() error = %v", err)
-			}
+			got := Rewrite(raw)
 			if got != raw {
 				t.Fatalf("Rewrite() = %q, want exact %q", got, raw)
 			}
@@ -76,10 +69,7 @@ func TestResolveProviderUsesCapturedProvider(t *testing.T) {
 		return "https://registered.example.test/path"
 	})})
 
-	got, err := ResolveProvider(context.Background(), captured).Rewrite("https://source.example.test/path")
-	if err != nil {
-		t.Fatalf("Rewrite() error = %v", err)
-	}
+	got := ResolveProvider(context.Background(), captured).Rewrite("https://source.example.test/path")
 	if got != "https://captured.example.test/path" {
 		t.Fatalf("Rewrite() = %q, want URL from captured provider", got)
 	}
@@ -89,10 +79,7 @@ func TestRewriteIdentityPreservesRawURL(t *testing.T) {
 	raw := "not a valid URL %2F?x=1+2&x=3"
 	withProvider(t, testProvider{rewriter: rewriteFunc(func(string) string { return raw })})
 
-	got, err := Rewrite(context.Background(), raw)
-	if err != nil {
-		t.Fatalf("Rewrite() error = %v", err)
-	}
+	got := Rewrite(raw)
 	if got != raw {
 		t.Fatalf("Rewrite() = %q, want exact %q", got, raw)
 	}
@@ -102,56 +89,18 @@ func TestRewriteAcceptsChangedAbsoluteHTTPURL(t *testing.T) {
 	const want = "http://mirror.example.test:8080/a%2Fb?x=1+2&x=3#fragment"
 	withProvider(t, testProvider{rewriter: rewriteFunc(func(string) string { return want })})
 
-	got, err := Rewrite(context.Background(), "https://source.example.test/path")
-	if err != nil {
-		t.Fatalf("Rewrite() error = %v", err)
-	}
+	got := Rewrite("https://source.example.test/path")
 	if got != want {
 		t.Fatalf("Rewrite() = %q, want %q", got, want)
 	}
 }
 
-func TestRewriteRejectsInvalidChangedURL(t *testing.T) {
-	userInfoURL := (&url.URL{
-		Scheme: "https",
-		Host:   "example.test",
-		Path:   "/path",
-		User:   url.User("sample-user"),
-	}).String()
-	for _, rewritten := range []string{
-		"",
-		"/relative/path",
-		"ftp://example.test/path",
-		userInfoURL,
-		"https://",
-		"https://example.test/%zz",
-	} {
-		t.Run(rewritten, func(t *testing.T) {
-			withProvider(t, testProvider{rewriter: rewriteFunc(func(string) string { return rewritten })})
+func TestRewriteReturnsExtensionValueVerbatim(t *testing.T) {
+	const rewritten = "/extension-owned/value"
+	withProvider(t, testProvider{rewriter: rewriteFunc(func(string) string { return rewritten })})
 
-			_, err := Rewrite(context.Background(), "https://source.example.test/path?secret=one")
-			var configErr *errs.ConfigError
-			if !errors.As(err, &configErr) {
-				t.Fatalf("Rewrite() error = %T %v, want *errs.ConfigError", err, err)
-			}
-			if configErr.Subtype != errs.SubtypeInvalidConfig {
-				t.Errorf("subtype = %q, want %q", configErr.Subtype, errs.SubtypeInvalidConfig)
-			}
-			if configErr.Message != "registered URL rewriter returned an invalid absolute HTTP(S) URL" {
-				t.Errorf("message = %q", configErr.Message)
-			}
-			if configErr.Hint != "check the URL rewrite configuration" {
-				t.Errorf("hint = %q", configErr.Hint)
-			}
-			if got := output.ExitCodeOf(err); got != output.ExitAuth {
-				t.Errorf("exit code = %d, want %d", got, output.ExitAuth)
-			}
-			for _, sensitive := range []string{"source.example.test", "secret=one", rewritten} {
-				if sensitive != "" && strings.Contains(err.Error(), sensitive) {
-					t.Errorf("error leaked %q: %v", sensitive, err)
-				}
-			}
-		})
+	if got := Rewrite("https://source.example.test/path"); got != rewritten {
+		t.Fatalf("Rewrite() = %q, want %q", got, rewritten)
 	}
 }
 
@@ -167,10 +116,7 @@ func TestResolverRewriteConcurrent(t *testing.T) {
 	for range workers {
 		go func() {
 			defer group.Done()
-			got, err := resolver.Rewrite("https://source.example.test/path")
-			if err != nil {
-				t.Errorf("Rewrite() error = %v", err)
-			}
+			got := resolver.Rewrite("https://source.example.test/path")
 			if got != "https://mirror.example.test/path" {
 				t.Errorf("Rewrite() = %q", got)
 			}

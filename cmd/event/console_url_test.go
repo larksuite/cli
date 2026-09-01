@@ -6,7 +6,6 @@ package event
 import (
 	"bytes"
 	"compress/gzip"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -56,7 +55,7 @@ func TestEncodeAddons_RoundTrip(t *testing.T) {
 }
 
 func TestConsoleAddonsURL_FormatAndBrandHost(t *testing.T) {
-	url, err := consoleAddonsURL(context.Background(), core.BrandFeishu, "cli_x", ManifestAddons{Callbacks: &AddonsCallbacks{Items: []string{"card.action.trigger"}}})
+	url, err := consoleAddonsURL(core.BrandFeishu, "cli_x", ManifestAddons{Callbacks: &AddonsCallbacks{Items: []string{"card.action.trigger"}}})
 	if err != nil {
 		t.Fatalf("url: %v", err)
 	}

@@ -4,7 +4,6 @@
 package im
 
 import (
-	"context"
 	"net/url"
 	"strings"
 
@@ -13,36 +12,33 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-func addChatAppLinks(chats []map[string]interface{}, runtime *common.RuntimeContext) error {
+func addChatAppLinks(chats []map[string]interface{}, runtime *common.RuntimeContext) {
 	if runtime == nil || runtime.Config == nil {
-		return nil
+		return
 	}
 	for _, chat := range chats {
-		if link, err := assembleChatAppLink(runtime.Ctx(), chat["chat_id"], runtime.Config.Brand); err != nil {
-			return err
-		} else if link != "" {
+		if link := assembleChatAppLink(chat["chat_id"], runtime.Config.Brand); link != "" {
 			chat["chat_app_link"] = link
 		}
 	}
-	return nil
 }
 
-func assembleChatAppLink(ctx context.Context, rawChatID interface{}, brand core.LarkBrand) (string, error) {
+func assembleChatAppLink(rawChatID interface{}, brand core.LarkBrand) string {
 	chatID, _ := rawChatID.(string)
 	chatID = strings.TrimSpace(chatID)
 	if !strings.HasPrefix(chatID, "oc_") {
-		return "", nil
+		return ""
 	}
 	domain := resolveChatAppLinkDomain(brand)
 	if domain == "" {
-		return "", nil
+		return ""
 	}
 
 	u := &url.URL{Scheme: "https", Host: domain, Path: "/client/chat/open"}
 	q := url.Values{}
 	q.Set("openChatId", chatID)
 	u.RawQuery = q.Encode()
-	return urlrewrite.Rewrite(ctx, u.String())
+	return urlrewrite.Rewrite(u.String())
 }
 
 func resolveChatAppLinkDomain(brand core.LarkBrand) string {

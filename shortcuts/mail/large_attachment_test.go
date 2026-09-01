@@ -147,16 +147,13 @@ func TestBuildLargeAttachmentPreviewURL(t *testing.T) {
 	}
 }
 
-func TestBuildRewrittenLargeAttachmentContent(t *testing.T) {
+func TestBuildLargeAttachmentContentRewritesURLs(t *testing.T) {
 	withLargeAttachmentURLRewriter(t, largeAttachmentRewriteFunc(func(rawURL string) string {
 		return strings.Replace(rawURL, "https://", "https://mirror.example/", 1)
 	}))
 	results := []largeAttachmentResult{{FileName: "report.pdf", FileSize: 1024, FileToken: "token"}}
 
-	html, err := buildRewrittenLargeAttachmentHTML(context.Background(), core.BrandFeishu, "en_us", results)
-	if err != nil {
-		t.Fatalf("buildRewrittenLargeAttachmentHTML() error: %v", err)
-	}
+	html := buildLargeAttachmentHTML(core.BrandFeishu, "en_us", results)
 	if !strings.Contains(html, "https://mirror.example/www.feishu.cn/mail/page/attachment?token=token") {
 		t.Fatalf("HTML does not contain rewritten preview URL: %s", html)
 	}
@@ -164,20 +161,9 @@ func TestBuildRewrittenLargeAttachmentContent(t *testing.T) {
 		t.Fatalf("HTML does not contain rewritten icon URL: %s", html)
 	}
 
-	text, err := buildRewrittenLargeAttachmentPlainText(context.Background(), core.BrandFeishu, "en_us", results)
-	if err != nil {
-		t.Fatalf("buildRewrittenLargeAttachmentPlainText() error: %v", err)
-	}
+	text := buildLargeAttachmentPlainText(core.BrandFeishu, "en_us", results)
 	if !strings.Contains(text, "https://mirror.example/www.feishu.cn/mail/page/attachment?token=token") {
 		t.Fatalf("text does not contain rewritten preview URL: %s", text)
-	}
-}
-
-func TestBuildRewrittenLargeAttachmentContentRejectsInvalidURL(t *testing.T) {
-	withLargeAttachmentURLRewriter(t, largeAttachmentRewriteFunc(func(string) string { return "invalid" }))
-	results := []largeAttachmentResult{{FileName: "report.pdf", FileSize: 1024, FileToken: "token"}}
-	if _, err := buildRewrittenLargeAttachmentHTML(context.Background(), core.BrandFeishu, "en_us", results); err == nil {
-		t.Fatal("buildRewrittenLargeAttachmentHTML() error = nil, want invalid rewrite error")
 	}
 }
 

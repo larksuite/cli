@@ -107,9 +107,7 @@ var WikiNodeCopy = common.Shortcut{
 		fmt.Fprintf(runtime.IO().ErrOut, "Copied to node %s in space %s\n",
 			common.MaskToken(node.NodeToken), common.MaskToken(node.SpaceID))
 		out := wikiNodeCopyOutput(node)
-		if u, err := wikiNodeURL(ctx, runtime.Config.Brand, node); err != nil {
-			return err
-		} else if u != "" {
+		if u := wikiNodeURL(runtime.Config.Brand, node); u != "" {
 			out["url"] = u
 		}
 		runtime.OutFormat(out, nil, func(w io.Writer) {

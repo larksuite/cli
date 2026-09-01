@@ -343,10 +343,7 @@ func (u *Updater) InstallAllSkills(source string) *NpmResult {
 }
 
 func (u *Updater) StageSuite(source, dir string) *NpmResult {
-	source, result := rewriteSkillsSource(source)
-	if result != nil {
-		return result
-	}
+	source = rewriteSkillsSource(source)
 	suiteSource := strings.TrimSuffix(strings.TrimRight(source, "/"), "/regular") + "/isolated"
 	return u.runSkillsCommandInDir(dir, "-y", "skills", "add", suiteSource, "-s", "lark-suite", "-y")
 }
@@ -363,10 +360,7 @@ func (u *Updater) RemoveGlobalSkills(names []string) *NpmResult {
 }
 
 func (u *Updater) runSkillsAdd(source string) *NpmResult {
-	source, result := rewriteSkillsSource(source)
-	if result != nil {
-		return result
-	}
+	source = rewriteSkillsSource(source)
 	return u.runSkillsCommand("-y", "skills", "add", source, "-g", "-y")
 }
 
@@ -375,10 +369,7 @@ func (u *Updater) runSkillsListGlobal() *NpmResult {
 }
 
 func (u *Updater) runSkillsInstall(source string, nameList []string) *NpmResult {
-	source, result := rewriteSkillsSource(source)
-	if result != nil {
-		return result
-	}
+	source = rewriteSkillsSource(source)
 	args := []string{"-y", "skills", "add", source, "-s"}
 	args = append(args, nameList...)
 	args = append(args, "-g", "-y")
@@ -386,14 +377,9 @@ func (u *Updater) runSkillsInstall(source string, nameList []string) *NpmResult 
 }
 
 // rewriteSkillsSource applies the optional URL rewriter to the CLI-owned
-// skills source passed to npx or pnpm. A malformed rewritten URL prevents the
-// external command from running.
-func rewriteSkillsSource(source string) (string, *NpmResult) {
-	rewritten, err := urlrewrite.Rewrite(context.Background(), source)
-	if err != nil {
-		return "", &NpmResult{Err: err}
-	}
-	return rewritten, nil
+// skills source passed to npx or pnpm.
+func rewriteSkillsSource(source string) string {
+	return urlrewrite.Rewrite(source)
 }
 
 // skillsInvocation decides how to launch the `skills` CLI. When the lark-cli

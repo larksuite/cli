@@ -466,7 +466,7 @@ func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider
 	if len(method.RequiredScopes) > 0 {
 		// Strict: ALL requiredScopes must be present
 		if missing := auth.MissingScopes(result.Scopes, method.RequiredScopes); len(missing) > 0 {
-			return newPreflightMissingScopeError(ctx, string(config.Brand), config.AppID, string(identity), missing)
+			return newPreflightMissingScopeError(string(config.Brand), config.AppID, string(identity), missing)
 		}
 		return nil
 	}
@@ -486,7 +486,7 @@ func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider
 		}
 	}
 	recommended := registry.SelectRecommendedScopeFromStrings(method.Scopes, "user")
-	return newPreflightMissingScopeError(ctx, string(config.Brand), config.AppID, string(identity), []string{recommended})
+	return newPreflightMissingScopeError(string(config.Brand), config.AppID, string(identity), []string{recommended})
 }
 
 // newPreflightMissingScopeError constructs a PermissionError for the local
@@ -498,8 +498,8 @@ func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider
 // SubtypeAppScopeNotApplied (bot-perspective dev-action recovery), and this
 // pre-flight path is user-perspective SubtypeMissingScope whose recovery is
 // `lark-cli auth login --scope ...`, not a console deep-link.
-func newPreflightMissingScopeError(ctx context.Context, brand, appID, identity string, missing []string) error {
-	return errclass.NewMissingScopeError(ctx, brand, appID, identity, missing)
+func newPreflightMissingScopeError(brand, appID, identity string, missing []string) error {
+	return errclass.NewMissingScopeError(brand, appID, identity, missing)
 }
 
 // unusableParamValue reports whether a provided path/query parameter value

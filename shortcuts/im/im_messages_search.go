@@ -178,10 +178,7 @@ var ImMessagesSearch = common.Shortcut{
 			chatId, _ := m["chat_id"].(string)
 
 			// Reuse unified content converter
-			msg, err := convertlib.FormatMessageItemWithMergePrefetchE(m, runtime, nameCache, mergePrefetch)
-			if err != nil {
-				return err
-			}
+			msg := convertlib.FormatMessageItemWithMergePrefetch(m, runtime, nameCache, mergePrefetch)
 			if chatId != "" {
 				msg["chat_id"] = chatId
 			}

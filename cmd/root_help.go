@@ -4,7 +4,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -162,10 +161,7 @@ Skills setup (one-time, humans): npx skills add larksuite/cli -g -y — %s{{end}
 	return b.String()
 }
 
-func rewrittenRootUsageTemplate(ctx context.Context, plan *surface.Plan) (string, error) {
-	skillsURL, err := urlrewrite.Rewrite(ctx, "https://github.com/larksuite/cli#agent-skills")
-	if err != nil {
-		return "", err
-	}
-	return renderRootUsageTemplateWithSkillsURL(plan, skillsURL), nil
+func rewrittenRootUsageTemplate(plan *surface.Plan) string {
+	return renderRootUsageTemplateWithSkillsURL(plan,
+		urlrewrite.Rewrite("https://github.com/larksuite/cli#agent-skills"))
 }

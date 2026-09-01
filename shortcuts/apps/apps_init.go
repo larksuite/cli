@@ -409,10 +409,7 @@ func isEmptyRepo(ctx context.Context, dir string) (bool, error) {
 // Empty repo -> `app init`; non-empty -> `app sync` + meta app_id patch +
 // conditional `skills sync`. Returns "init" or "upgrade".
 func runScaffold(ctx context.Context, dir, appID, appType, sourcePath string) (string, error) {
-	registry, err := urlrewrite.Rewrite(ctx, npmRegistry)
-	if err != nil {
-		return "", err
-	}
+	registry := urlrewrite.Rewrite(npmRegistry)
 	empty, err := isEmptyRepo(ctx, dir)
 	if err != nil {
 		return "", err

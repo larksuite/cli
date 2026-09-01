@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/larksuite/cli/errs"
 	exttransport "github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/urlrewrite"
 )
@@ -102,18 +101,11 @@ func (m *ExtensionMiddleware) RoundTrip(req *http.Request) (*http.Response, erro
 	origCtx := req.Context()
 	req = req.Clone(origCtx)
 	if m.rewriter != nil {
-		rewritten, err := m.rewriter.Rewrite(req.URL.String())
-		if err != nil {
-			return nil, err
-		}
+		rewritten := m.rewriter.Rewrite(req.URL.String())
 		if rewritten != req.URL.String() {
-			// Resolver validates changed URLs with url.Parse before returning.
 			rewrittenURL, err := url.Parse(rewritten)
 			if err != nil {
-				return nil, errs.NewInternalError(
-					errs.SubtypeUnknown,
-					"URL rewrite validation returned an unparsable URL",
-				)
+				return nil, err
 			}
 			req.URL = rewrittenURL
 			req.Host = rewrittenURL.Host

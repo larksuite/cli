@@ -4,7 +4,6 @@
 package common
 
 import (
-	"context"
 	"net/url"
 	"strings"
 
@@ -24,10 +23,10 @@ import (
 // Returns "" when token is empty or kind is unrecognized — callers should
 // only set the field when the result is non-empty so that "" never overrides
 // a real URL the backend already returned.
-func BuildResourceURL(ctx context.Context, brand core.LarkBrand, kind, token string) (string, error) {
+func BuildResourceURL(brand core.LarkBrand, kind, token string) string {
 	token = strings.TrimSpace(token)
 	if token == "" {
-		return "", nil
+		return ""
 	}
 
 	host := "https://www.feishu.cn"
@@ -56,9 +55,9 @@ func BuildResourceURL(ctx context.Context, brand core.LarkBrand, kind, token str
 	case "slides":
 		resourceURL = host + "/slides/" + token
 	default:
-		return "", nil
+		return ""
 	}
-	return urlrewrite.Rewrite(ctx, resourceURL)
+	return urlrewrite.Rewrite(resourceURL)
 }
 
 // ResourceRef holds the parsed type and token from a Lark resource URL.

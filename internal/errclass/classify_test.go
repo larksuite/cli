@@ -5,7 +5,6 @@ package errclass_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -526,10 +525,7 @@ func TestConsoleURL_EscapesDangerousChars(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := errclass.ConsoleURL(context.Background(), "feishu", tt.appID, tt.scopes)
-			if err != nil {
-				t.Fatalf("ConsoleURL() error = %v", err)
-			}
+			got := errclass.ConsoleURL("feishu", tt.appID, tt.scopes)
 			for _, want := range tt.wantInURL {
 				if !strings.Contains(got, want) {
 					t.Errorf("ConsoleURL missing escaped substring\n  want: %s\n  got:  %s", want, got)
@@ -619,7 +615,7 @@ func TestServiceShortcutEnvelopeConverge(t *testing.T) {
 	// Path B: the production constructor used by cmd/service's local
 	// preflight. ConsoleURL is intentionally NOT set on either path for
 	// SubtypeMissingScope — see the gating rationale in buildPermissionError.
-	directErr := errclass.NewMissingScopeError(context.Background(), brand, appID, identity, missing)
+	directErr := errclass.NewMissingScopeError(brand, appID, identity, missing)
 
 	var bufA, bufB bytes.Buffer
 	if ok := output.WriteTypedErrorEnvelope(&bufA, dispatcherErr, identity); !ok {

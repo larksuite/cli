@@ -1075,10 +1075,7 @@ func TestPermissionHint(t *testing.T) {
 
 	// Linux + npm: EACCES should produce a hint with npm prefix guidance.
 	currentOS = "linux"
-	hint, err := permissionHint(context.Background(), "EACCES: permission denied, access '/usr/local/lib'", "npm")
-	if err != nil {
-		t.Fatalf("permissionHint() error = %v", err)
-	}
+	hint := permissionHint("EACCES: permission denied, access '/usr/local/lib'", "npm")
 	if !strings.Contains(hint, "npm global prefix") {
 		t.Errorf("expected npm prefix hint on linux, got: %s", hint)
 	}
@@ -1087,10 +1084,7 @@ func TestPermissionHint(t *testing.T) {
 	}
 
 	// Linux + pnpm: EACCES should point at pnpm setup, not npm prefix/sudo.
-	pnpmHint, err := permissionHint(context.Background(), "EACCES: permission denied, access '/home/user/.local/share/pnpm'", "pnpm")
-	if err != nil {
-		t.Fatalf("permissionHint() error = %v", err)
-	}
+	pnpmHint := permissionHint("EACCES: permission denied, access '/home/user/.local/share/pnpm'", "pnpm")
 	if !strings.Contains(pnpmHint, "pnpm setup") {
 		t.Errorf("expected pnpm setup hint, got: %s", pnpmHint)
 	}
@@ -1100,17 +1094,14 @@ func TestPermissionHint(t *testing.T) {
 
 	// Windows: EACCES hint is suppressed (no EACCES on Windows).
 	currentOS = "windows"
-	hint, err = permissionHint(context.Background(), "EACCES: permission denied", "npm")
-	if err != nil {
-		t.Fatalf("permissionHint() error = %v", err)
-	}
+	hint = permissionHint("EACCES: permission denied", "npm")
 	if hint != "" {
 		t.Errorf("expected empty hint on Windows, got: %s", hint)
 	}
 
 	// Non-EACCES error: always empty.
 	currentOS = "linux"
-	if got, err := permissionHint(context.Background(), "some other error", "npm"); err != nil || got != "" {
+	if got := permissionHint("some other error", "npm"); got != "" {
 		t.Errorf("expected empty hint for non-EACCES, got: %s", got)
 	}
 }

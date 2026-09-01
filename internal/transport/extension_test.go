@@ -348,11 +348,11 @@ func TestHTTPPolicyRouterClassifiesOriginalURLsAndScopesOnlyInterceptor(t *testi
 	}
 }
 
-func TestHTTPPolicyRouterRejectsInvalidRewriteBeforeBase(t *testing.T) {
+func TestHTTPPolicyRouterRejectsUnparsableRewriteBeforeBase(t *testing.T) {
 	previousProvider := exttransport.GetProvider()
 	exttransport.Register(rewriteTestProvider{
 		testProvider: testProvider{},
-		rewriter:     rewriteFunc(func(string) string { return "/relative" }),
+		rewriter:     rewriteFunc(func(string) string { return "http://[::1" }),
 	})
 	t.Cleanup(func() { exttransport.Register(previousProvider) })
 
@@ -370,9 +370,8 @@ func TestHTTPPolicyRouterRejectsInvalidRewriteBeforeBase(t *testing.T) {
 	if resp != nil {
 		t.Fatalf("response = %v, want nil", resp)
 	}
-	var configErr *errs.ConfigError
-	if !errors.As(err, &configErr) {
-		t.Fatalf("RoundTrip() error = %T %v, want *errs.ConfigError", err, err)
+	if err == nil {
+		t.Fatal("RoundTrip() error = nil, want URL parse error")
 	}
 	if baseCalls != 0 {
 		t.Fatalf("base calls = %d, want 0", baseCalls)

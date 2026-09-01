@@ -143,11 +143,7 @@ var DriveUpdateTitle = common.Shortcut{
 			return decorateDriveUpdateTitleError(err, spec)
 		}
 
-		out, err := buildDriveUpdateTitleOutput(ctx, runtime, spec, guard)
-		if err != nil {
-			return err
-		}
-		runtime.Out(out, nil)
+		runtime.Out(buildDriveUpdateTitleOutput(runtime, spec, guard), nil)
 		return nil
 	},
 }
@@ -490,16 +486,14 @@ func buildDriveUpdateTitleDryRun(spec driveUpdateTitleSpec) *common.DryRunAPI {
 // buildDriveUpdateTitleOutput reports the applied title: the endpoint answers
 // with an empty data object, so the submitted state plus what the extension
 // guard read are the only ground truth available without a follow-up read.
-func buildDriveUpdateTitleOutput(ctx context.Context, runtime *common.RuntimeContext, spec driveUpdateTitleSpec, guard driveUpdateTitleGuard) (map[string]interface{}, error) {
+func buildDriveUpdateTitleOutput(runtime *common.RuntimeContext, spec driveUpdateTitleSpec, guard driveUpdateTitleGuard) map[string]interface{} {
 	out := map[string]interface{}{
 		"updated":    true,
 		"file_token": spec.Ref.Token,
 		"type":       spec.Ref.Type,
 		"title":      spec.Title,
 	}
-	if url, err := common.BuildResourceURL(ctx, runtime.Config.Brand, spec.Ref.Type, spec.Ref.Token); err != nil {
-		return nil, err
-	} else if url != "" {
+	if url := common.BuildResourceURL(runtime.Config.Brand, spec.Ref.Type, spec.Ref.Token); url != "" {
 		out["url"] = url
 	}
 	// previous_title makes a wrong rename reversible in one follow-up command.
@@ -509,7 +503,7 @@ func buildDriveUpdateTitleOutput(ctx context.Context, runtime *common.RuntimeCon
 	if guard.ExtensionAppended != "" {
 		out["extension_appended"] = guard.ExtensionAppended
 	}
-	return out, nil
+	return out
 }
 
 // decorateDriveUpdateTitleError adds command-level recovery guidance to the API

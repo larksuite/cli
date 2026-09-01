@@ -81,9 +81,7 @@ func executeFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 		fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warning)
 	}
 	if isIMMarkdownFetch(runtime) {
-		if err := applyFetchIMMarkdown(runtime.Ctx(), data, runtime.Str("doc")); err != nil {
-			return err
-		}
+		applyFetchIMMarkdown(data, runtime.Str("doc"))
 	}
 
 	runtime.OutFormatRaw(data, nil, func(w io.Writer) {

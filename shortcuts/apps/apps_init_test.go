@@ -321,17 +321,18 @@ func TestRunScaffoldRewritesFixedRegistry(t *testing.T) {
 	}
 }
 
-func TestRunScaffoldRejectsInvalidRewrittenRegistry(t *testing.T) {
+func TestRunScaffoldPassesRewrittenRegistryVerbatim(t *testing.T) {
 	f := &fakeCommandRunner{}
 	withFakeRunner(t, f)
 	withAppsRewriteProvider(t, appsRewriteFunc(func(string) string { return "/relative" }))
 
 	_, err := runScaffold(context.Background(), t.TempDir(), "app_x", "", "")
-	if err == nil || !errs.IsConfig(err) {
-		t.Fatalf("runScaffold() error = %v, want config error", err)
+	if err != nil {
+		t.Fatalf("runScaffold() error = %v", err)
 	}
-	if len(f.calls) != 0 {
-		t.Fatalf("commands = %v, want none after invalid registry", f.calls)
+	call := findCall(f.calls, "npx", "-y")
+	if call == nil || !containsAll(call, "--registry", "/relative") {
+		t.Fatalf("npx call = %v, want verbatim rewritten registry", call)
 	}
 }
 

@@ -18,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/errs"
 	exttransport "github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/vfs"
@@ -309,20 +308,21 @@ func TestSkillsCommandsRewriteSourcesBeforeInvocation(t *testing.T) {
 	}
 }
 
-func TestSkillsCommandsRejectInvalidRewrittenSource(t *testing.T) {
+func TestSkillsCommandsPassRewrittenSourceVerbatim(t *testing.T) {
 	withSkillsRewriteProvider(t, skillsRewriteFunc(func(string) string { return "/relative" }))
-	called := false
+	var got []string
 	u := &Updater{SkillsCommandOverride: func(args ...string) *NpmResult {
-		called = true
+		got = append([]string(nil), args...)
 		return &NpmResult{}
 	}}
 
 	result := u.InstallAllSkills("https://open.feishu.cn/lark-cli/skills/regular")
-	if result.Err == nil || !errs.IsConfig(result.Err) {
-		t.Fatalf("InstallAllSkills() error = %v, want config error", result.Err)
+	if result.Err != nil {
+		t.Fatalf("InstallAllSkills() error = %v", result.Err)
 	}
-	if called {
-		t.Fatal("skills command ran after invalid rewritten source")
+	want := []string{"-y", "skills", "add", "/relative", "-g", "-y"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("args = %q, want %q", got, want)
 	}
 }
 

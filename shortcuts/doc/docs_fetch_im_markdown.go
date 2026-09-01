@@ -4,7 +4,6 @@
 package doc
 
 import (
-	"context"
 	"fmt"
 	"html"
 	"net/url"
@@ -104,36 +103,27 @@ func isIMMarkdownFetch(runtime interface{ Str(string) string }) bool {
 	return strings.TrimSpace(runtime.Str("doc-format")) == "im-markdown"
 }
 
-func applyFetchIMMarkdown(ctx context.Context, data map[string]interface{}, docInput string) error {
+func applyFetchIMMarkdown(data map[string]interface{}, docInput string) {
 	doc, ok := data["document"].(map[string]interface{})
 	if !ok {
-		return nil
+		return
 	}
 	content, ok := doc["content"].(string)
 	if !ok {
-		return nil
+		return
 	}
-	imCtx, err := newIMMarkdownContext(ctx, docInput)
-	if err != nil {
-		return err
-	}
-	doc["content"] = convertToIMMarkdown(content, imCtx)
-	return nil
+	doc["content"] = convertToIMMarkdown(content, newIMMarkdownContext(docInput))
 }
 
-func newIMMarkdownContext(ctx context.Context, docInput string) (imMarkdownContext, error) {
+func newIMMarkdownContext(docInput string) imMarkdownContext {
 	base := "https://larkoffice.com"
 	raw := strings.TrimSpace(docInput)
 	if extracted, ok := imMarkdownBaseURLFromInput(raw); ok {
 		base = extracted
 	} else {
-		var err error
-		base, err = urlrewrite.Rewrite(ctx, base)
-		if err != nil {
-			return imMarkdownContext{}, err
-		}
+		base = urlrewrite.Rewrite(base)
 	}
-	return imMarkdownContext{baseURL: base}, nil
+	return imMarkdownContext{baseURL: base}
 }
 
 func (c imMarkdownContext) withBlockquote() imMarkdownContext {

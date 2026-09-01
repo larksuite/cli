@@ -59,7 +59,7 @@ func readPreconditions(ctx context.Context, pf *preflightCtx, appVerErr, tokenEr
 			console.Detail = "console ledger unavailable"
 		}
 	default:
-		if err := preflightEventTypes(ctx, pf); err != nil {
+		if err := preflightEventTypes(pf); err != nil {
 			console.Status = appconsume.PreconditionBlocked
 			console.Detail = err.Error()
 			console.BlockErr = err

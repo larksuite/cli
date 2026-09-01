@@ -4,7 +4,6 @@
 package convertlib
 
 import (
-	"context"
 	"encoding/json"
 	"math"
 	"net/url"
@@ -357,10 +356,7 @@ func TestAssembleMessageAppLink_EncodesQueryValues(t *testing.T) {
 		"chat_id":          "oc_1+2/3",
 		"message_position": 12,
 	}
-	gotChat, err := assembleMessageAppLink(context.Background(), chat, core.BrandFeishu)
-	if err != nil {
-		t.Fatalf("assembleMessageAppLink() error = %v", err)
-	}
+	gotChat := assembleMessageAppLink(chat, core.BrandFeishu)
 	assertURLHasQuery(t, gotChat, "applink.feishu.cn", "/client/chat/open", map[string]string{
 		"openChatId": "oc_1+2/3",
 		"position":   "12",
@@ -372,10 +368,7 @@ func TestAssembleMessageAppLink_EncodesQueryValues(t *testing.T) {
 		"thread_id":               "omt_1+2/3",
 		"thread_message_position": -1,
 	}
-	gotThread, err := assembleMessageAppLink(context.Background(), thread, core.BrandFeishu)
-	if err != nil {
-		t.Fatalf("assembleMessageAppLink() error = %v", err)
-	}
+	gotThread := assembleMessageAppLink(thread, core.BrandFeishu)
 	assertURLHasQuery(t, gotThread, "applink.feishu.cn", "/client/thread/open", map[string]string{
 		"open_thread_id":  "omt_1+2/3",
 		"open_chat_id":    "oc_1+2/3",

@@ -4,7 +4,6 @@
 package calendar
 
 import (
-	"context"
 	"fmt"
 	"image"
 
@@ -110,10 +109,7 @@ func resolveLocalImage(runtime *common.RuntimeContext, calendarID, src, alt stri
 	}
 
 	width, height := decodeImageDimensions(runtime, localPath)
-	uploadedURL, err := buildCalendarImagePreviewURL(runtime.Ctx(), runtime.Config.Brand, fileToken, width, height, info.Size())
-	if err != nil {
-		return "", err
-	}
+	uploadedURL := buildCalendarImagePreviewURL(runtime.Config.Brand, fileToken, width, height, info.Size())
 	cache[localPath] = uploadedURL
 	return uploadedURL, nil
 }
@@ -161,7 +157,7 @@ func localImagePath(src string) string {
 	return s
 }
 
-func buildCalendarImagePreviewURL(ctx context.Context, brand core.LarkBrand, fileToken string, width, height int, size int64) (string, error) {
+func buildCalendarImagePreviewURL(brand core.LarkBrand, fileToken string, width, height int, size int64) string {
 	host := "internal-api-drive-stream.feishu.cn"
 	if brand == core.BrandLark {
 		host = "internal-api-drive-stream.larksuite.com"
@@ -173,5 +169,5 @@ func buildCalendarImagePreviewURL(ctx context.Context, brand core.LarkBrand, fil
 	if size > 0 {
 		u += fmt.Sprintf("&im_size=%d", size)
 	}
-	return urlrewrite.Rewrite(ctx, u)
+	return urlrewrite.Rewrite(u)
 }

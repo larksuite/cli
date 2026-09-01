@@ -846,11 +846,11 @@ func TestWikiNodeCreateUserSkipsPermissionGrantAugmentation(t *testing.T) {
 func TestAugmentWikiNodeCreateOutputReturnsEmptyMapForNilInput(t *testing.T) {
 	t.Parallel()
 
-	if got, err := augmentWikiNodeCreateOutput(context.Background(), nil, nil); err != nil || len(got) != 0 {
+	if got := augmentWikiNodeCreateOutput(nil, nil); len(got) != 0 {
 		t.Fatalf("augmentWikiNodeCreateOutput(nil, nil) = %#v, want empty map", got)
 	}
 
-	if got, err := augmentWikiNodeCreateOutput(context.Background(), nil, &wikiNodeCreateExecution{}); err != nil || len(got) != 0 {
+	if got := augmentWikiNodeCreateOutput(nil, &wikiNodeCreateExecution{}); len(got) != 0 {
 		t.Fatalf("augmentWikiNodeCreateOutput(nil, empty execution) = %#v, want empty map", got)
 	}
 }
@@ -892,10 +892,7 @@ func TestWikiNodeURL(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := wikiNodeURL(context.Background(), core.BrandFeishu, tc.node)
-			if err != nil {
-				t.Fatalf("wikiNodeURL() error = %v", err)
-			}
+			got := wikiNodeURL(core.BrandFeishu, tc.node)
 			if got != tc.want {
 				t.Fatalf("wikiNodeURL() = %q, want %q", got, tc.want)
 			}

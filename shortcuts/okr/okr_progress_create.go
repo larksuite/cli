@@ -79,11 +79,7 @@ func parseCreateProgressRecordParams(runtime *common.RuntimeContext) (*createPro
 
 	sourceURL := runtime.Str("source-url")
 	if sourceURL == "" {
-		var err error
-		sourceURL, err = urlrewrite.Rewrite(runtime.Ctx(), core.ResolveOpenBaseURL(runtime.Config.Brand)+"/app")
-		if err != nil {
-			return nil, err
-		}
+		sourceURL = urlrewrite.Rewrite(core.ResolveOpenBaseURL(runtime.Config.Brand) + "/app")
 	}
 
 	var progressRate *ProgressRateV1

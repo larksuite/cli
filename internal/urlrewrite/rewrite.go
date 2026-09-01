@@ -6,9 +6,7 @@ package urlrewrite
 
 import (
 	"context"
-	"net/url"
 
-	"github.com/larksuite/cli/errs"
 	exttransport "github.com/larksuite/cli/extension/transport"
 )
 
@@ -38,43 +36,19 @@ func ResolveProvider(ctx context.Context, provider exttransport.Provider) *Resol
 	return &Resolver{rewriter: p.ResolveURLRewriter(ctx)}
 }
 
-// Rewrite resolves the registered URL rewriter and applies it to rawURL.
-func Rewrite(ctx context.Context, rawURL string) (string, error) {
-	return Resolve(ctx).Rewrite(rawURL)
+// Rewrite resolves the registered URL rewriter with a background context and
+// applies it to rawURL. Rewriting is a synchronous in-process string mapping;
+// callers that already captured a provider can use ResolveProvider instead.
+func Rewrite(rawURL string) string {
+	return Resolve(context.Background()).Rewrite(rawURL)
 }
 
-// Rewrite applies the resolved URL rewriter to rawURL. Identity results are
-// returned verbatim. Changed values must be absolute HTTP(S) URLs without
-// userinfo.
-func (r *Resolver) Rewrite(rawURL string) (string, error) {
+// Rewrite applies the resolved URL rewriter to rawURL. The extension is trusted
+// in-process code and owns the returned value; URL-consuming call sites apply
+// their existing parsing and transport behavior.
+func (r *Resolver) Rewrite(rawURL string) string {
 	if r == nil || r.rewriter == nil {
-		return rawURL, nil
+		return rawURL
 	}
-
-	rewritten := r.rewriter.RewriteURL(rawURL)
-	if rewritten == rawURL {
-		return rawURL, nil
-	}
-	if !validURL(rewritten) {
-		return "", invalidRewriteError()
-	}
-	return rewritten, nil
-}
-
-func validURL(rawURL string) bool {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return false
-	}
-	return u.IsAbs() &&
-		(u.Scheme == "http" || u.Scheme == "https") &&
-		u.Host != "" &&
-		u.User == nil
-}
-
-func invalidRewriteError() *errs.ConfigError {
-	return errs.NewConfigError(
-		errs.SubtypeInvalidConfig,
-		"registered URL rewriter returned an invalid absolute HTTP(S) URL",
-	).WithHint("check the URL rewrite configuration")
+	return r.rewriter.RewriteURL(rawURL)
 }

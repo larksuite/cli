@@ -160,10 +160,7 @@ func TestDrivePermissionGetSettingResourceKindsRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatalf("read bare-token spec: %v", err)
 			}
-			resourceURL, err := bareSpec.url(bareRuntime)
-			if err != nil {
-				t.Fatalf("build resource URL: %v", err)
-			}
+			resourceURL := bareSpec.url(bareRuntime)
 			if resourceURL == "" {
 				t.Fatalf("resource URL is empty for allowed type %q", kind.Type)
 			}
@@ -195,10 +192,7 @@ func TestDrivePermissionGetSettingResourceURLUsesConfiguredBrand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read spec: %v", err)
 	}
-	got, err := spec.url(runtime)
-	if err != nil {
-		t.Fatalf("build resource URL: %v", err)
-	}
+	got := spec.url(runtime)
 	if want := "https://www.larksuite.com/page/appMetaTok"; got != want {
 		t.Fatalf("resource URL = %q, want %q", got, want)
 	}

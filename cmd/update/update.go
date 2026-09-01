@@ -196,7 +196,7 @@ func updateRunWithContext(ctx context.Context, opts *UpdateOptions) error {
 				return err
 			}
 		}
-		return reportAlreadyUpToDate(ctx, opts, io, cur, latest, skillsResult, opts.Check)
+		return reportAlreadyUpToDate(opts, io, cur, latest, skillsResult, opts.Check)
 	}
 
 	// 4. Detect installation method.
@@ -204,14 +204,14 @@ func updateRunWithContext(ctx context.Context, opts *UpdateOptions) error {
 
 	// 5. --check
 	if opts.Check {
-		return reportCheckResult(ctx, opts, io, cur, latest, detect.CanAutoUpdate())
+		return reportCheckResult(opts, io, cur, latest, detect.CanAutoUpdate())
 	}
 
 	// 6. Execute update
 	if !detect.CanAutoUpdate() {
-		return doManualUpdate(ctx, opts, io, cur, latest, detect, updater)
+		return doManualUpdate(opts, io, cur, latest, detect, updater)
 	}
-	return doAutoUpdate(ctx, opts, io, cur, latest, detect, updater)
+	return doAutoUpdate(opts, io, cur, latest, detect, updater)
 }
 
 type presentationURLs struct {
@@ -219,16 +219,11 @@ type presentationURLs struct {
 	changelog string
 }
 
-func resolvePresentationURLs(ctx context.Context, latest string) (presentationURLs, error) {
-	release, err := urlrewrite.Rewrite(ctx, releaseURL(latest))
-	if err != nil {
-		return presentationURLs{}, err
+func resolvePresentationURLs(latest string) presentationURLs {
+	return presentationURLs{
+		release:   urlrewrite.Rewrite(releaseURL(latest)),
+		changelog: urlrewrite.Rewrite(changelogURL()),
 	}
-	changelog, err := urlrewrite.Rewrite(ctx, changelogURL())
-	if err != nil {
-		return presentationURLs{}, err
-	}
-	return presentationURLs{release: release, changelog: changelog}, nil
 }
 
 // resolveSkillsBrand returns the skills-source brand: resolved config first,
@@ -271,11 +266,8 @@ func reportErrorWithFields(opts *UpdateOptions, io *cmdutil.IOStreams, errType s
 	return typedErr
 }
 
-func reportCheckResult(ctx context.Context, opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, canAutoUpdate bool) error {
-	urls, err := resolvePresentationURLs(ctx, latest)
-	if err != nil {
-		return err
-	}
+func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, canAutoUpdate bool) error {
+	urls := resolvePresentationURLs(latest)
 	if opts.JSON {
 		out := map[string]interface{}{
 			"ok": true, "previous_version": cur, "current_version": cur,
@@ -299,11 +291,8 @@ func reportCheckResult(ctx context.Context, opts *UpdateOptions, io *cmdutil.IOS
 	return nil
 }
 
-func doManualUpdate(ctx context.Context, opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, detect selfupdate.DetectResult, updater *selfupdate.Updater) error {
-	urls, err := resolvePresentationURLs(ctx, latest)
-	if err != nil {
-		return err
-	}
+func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, detect selfupdate.DetectResult, updater *selfupdate.Updater) error {
+	urls := resolvePresentationURLs(latest)
 	skillsResult := runSkillsAndState(updater, io, cur, opts.Force, opts.SkillsLayout)
 	reason := detect.ManualReason()
 	if opts.JSON {
@@ -336,11 +325,8 @@ func doManualUpdate(ctx context.Context, opts *UpdateOptions, io *cmdutil.IOStre
 	return nil
 }
 
-func doAutoUpdate(ctx context.Context, opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, detect selfupdate.DetectResult, updater *selfupdate.Updater) error {
-	urls, err := resolvePresentationURLs(ctx, latest)
-	if err != nil {
-		return err
-	}
+func doAutoUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, detect selfupdate.DetectResult, updater *selfupdate.Updater) error {
+	urls := resolvePresentationURLs(latest)
 	pm := "npm"
 	install := updater.RunNpmInstall
 	if detect.Method == selfupdate.InstallPnpm {
@@ -362,10 +348,7 @@ func doAutoUpdate(ctx context.Context, opts *UpdateOptions, io *cmdutil.IOStream
 	if npmResult.Err != nil {
 		restore()
 		combined := npmResult.CombinedOutput()
-		hint, hintErr := permissionHint(ctx, combined, pm)
-		if hintErr != nil {
-			return hintErr
-		}
+		hint := permissionHint(combined, pm)
 		if opts.JSON {
 			output.PrintJson(io.Out, map[string]interface{}{
 				"ok": false, "error": map[string]interface{}{
@@ -394,10 +377,7 @@ func doAutoUpdate(ctx context.Context, opts *UpdateOptions, io *cmdutil.IOStream
 	if err := updater.VerifyBinary(latest); err != nil {
 		restore()
 		msg := fmt.Sprintf("new binary verification failed: %s", err)
-		hint, hintErr := verificationFailureHint(ctx, updater, latest, pm)
-		if hintErr != nil {
-			return hintErr
-		}
+		hint := verificationFailureHint(updater, latest, pm)
 		if opts.JSON {
 			output.PrintJson(io.Out, map[string]interface{}{
 				"ok":    false,
@@ -451,36 +431,25 @@ func doAutoUpdate(ctx context.Context, opts *UpdateOptions, io *cmdutil.IOStream
 	return nil
 }
 
-func permissionHint(ctx context.Context, pmOutput, pm string) (string, error) {
+func permissionHint(pmOutput, pm string) string {
 	if !strings.Contains(pmOutput, "EACCES") || isWindows() {
-		return "", nil
+		return ""
 	}
 	if pm == "pnpm" {
-		url, err := urlrewrite.Rewrite(ctx, "https://pnpm.io/pnpm-cli")
-		if err != nil {
-			return "", err
-		}
-		return "Permission denied. Ensure your pnpm global directory is writable — re-run `pnpm setup`, or see " + url, nil
+		return "Permission denied. Ensure your pnpm global directory is writable — re-run `pnpm setup`, or see " + urlrewrite.Rewrite("https://pnpm.io/pnpm-cli")
 	}
-	url, err := urlrewrite.Rewrite(ctx, "https://docs.npmjs.com/resolving-eacces-permissions-errors")
-	if err != nil {
-		return "", err
-	}
-	return "Permission denied. Try: sudo lark-cli update, or adjust your npm global prefix: " + url, nil
+	return "Permission denied. Try: sudo lark-cli update, or adjust your npm global prefix: " + urlrewrite.Rewrite("https://docs.npmjs.com/resolving-eacces-permissions-errors")
 }
 
-func verificationFailureHint(ctx context.Context, updater *selfupdate.Updater, latest, pm string) (string, error) {
+func verificationFailureHint(updater *selfupdate.Updater, latest, pm string) string {
 	if updater.CanRestorePreviousVersion() {
-		return "the previous version has been restored", nil
+		return "the previous version has been restored"
 	}
-	release, err := urlrewrite.Rewrite(ctx, releaseURL(latest))
-	if err != nil {
-		return "", err
-	}
+	release := urlrewrite.Rewrite(releaseURL(latest))
 	if pm == "pnpm" {
-		return fmt.Sprintf("automatic rollback is unavailable on this platform; reinstall manually (skills will not be synced): pnpm add -g %s@%s && pnpm dlx skills add larksuite/cli -y -g, or download %s", selfupdate.NpmPackage, latest, release), nil
+		return fmt.Sprintf("automatic rollback is unavailable on this platform; reinstall manually (skills will not be synced): pnpm add -g %s@%s && pnpm dlx skills add larksuite/cli -y -g, or download %s", selfupdate.NpmPackage, latest, release)
 	}
-	return fmt.Sprintf("automatic rollback is unavailable on this platform; reinstall manually (skills will not be synced): npm install -g %s@%s && npx skills add larksuite/cli -y -g, or download %s", selfupdate.NpmPackage, latest, release), nil
+	return fmt.Sprintf("automatic rollback is unavailable on this platform; reinstall manually (skills will not be synced): npm install -g %s@%s && npx skills add larksuite/cli -y -g, or download %s", selfupdate.NpmPackage, latest, release)
 }
 
 func runSkillsAndState(updater *selfupdate.Updater, io *cmdutil.IOStreams, stateVersion string, force bool, requestedLayout string) *skillscheck.SyncResult {
@@ -523,7 +492,7 @@ func reportSkillsFailureWithFields(opts *UpdateOptions, io *cmdutil.IOStreams, r
 // fields derived from skillsResult. When check is true, this is the pure
 // report path (spec §3.6): no side-effects, JSON envelope uses
 // skills_status (spec §4.2) instead of skills_action.
-func reportAlreadyUpToDate(ctx context.Context, opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, skillsResult *skillscheck.SyncResult, check bool) error {
+func reportAlreadyUpToDate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, skillsResult *skillscheck.SyncResult, check bool) error {
 	if opts.JSON {
 		out := map[string]interface{}{
 			"ok": true, "previous_version": cur, "current_version": cur,

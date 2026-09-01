@@ -142,9 +142,7 @@ var ImChatList = common.Shortcut{
 		}
 		items = mfOut.Chats
 		pagination.Items = len(items)
-		if err := addChatAppLinks(items, runtime); err != nil {
-			return err
-		}
+		addChatAppLinks(items, runtime)
 
 		// Presentation stage: business data stays backward compatible while the
 		// output layer carries the authoritative pagination outcome for every

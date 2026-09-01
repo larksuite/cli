@@ -126,9 +126,7 @@ var ImChatCreate = common.Shortcut{
 			"external":  resData["external"],
 		}
 		if runtime.Config != nil {
-			if link, err := assembleChatAppLink(ctx, resData["chat_id"], runtime.Config.Brand); err != nil {
-				return err
-			} else if link != "" {
+			if link := assembleChatAppLink(resData["chat_id"], runtime.Config.Brand); link != "" {
 				outData["chat_app_link"] = link
 			}
 		}

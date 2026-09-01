@@ -6,7 +6,6 @@ package event
 import (
 	"bytes"
 	"compress/gzip"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -69,28 +68,28 @@ func encodeAddons(a ManifestAddons) (string, error) {
 }
 
 // consoleAddonsURL builds the scan-to-enable deep link carrying incremental scopes/events/callbacks.
-func consoleAddonsURL(ctx context.Context, brand core.LarkBrand, appID string, a ManifestAddons) (string, error) {
+func consoleAddonsURL(brand core.LarkBrand, appID string, a ManifestAddons) (string, error) {
 	encoded, err := encodeAddons(a)
 	if err != nil {
 		return "", err
 	}
 	host := core.ResolveEndpoints(brand).Open
-	return urlrewrite.Rewrite(ctx, fmt.Sprintf("%s%s?%s=%s&addons=%s", host, addonsLandingPath, addonsClientIDParam, appID, encoded))
+	return urlrewrite.Rewrite(fmt.Sprintf("%s%s?%s=%s&addons=%s", host, addonsLandingPath, addonsClientIDParam, appID, encoded)), nil
 }
 
 // consoleLandingURL is the bare landing page (no addons) — fallback when encoding fails.
-func consoleLandingURL(ctx context.Context, brand core.LarkBrand, appID string) (string, error) {
+func consoleLandingURL(brand core.LarkBrand, appID string) string {
 	host := core.ResolveEndpoints(brand).Open
-	return urlrewrite.Rewrite(ctx, fmt.Sprintf("%s%s?%s=%s", host, addonsLandingPath, addonsClientIDParam, appID))
+	return urlrewrite.Rewrite(fmt.Sprintf("%s%s?%s=%s", host, addonsLandingPath, addonsClientIDParam, appID))
 }
 
 // addonsHintURL returns the scan URL, degrading to the bare landing page on encode error.
-func addonsHintURL(ctx context.Context, brand core.LarkBrand, appID string, a ManifestAddons) (string, error) {
-	url, err := consoleAddonsURL(ctx, brand, appID, a)
+func addonsHintURL(brand core.LarkBrand, appID string, a ManifestAddons) string {
+	url, err := consoleAddonsURL(brand, appID, a)
 	if err != nil {
-		return consoleLandingURL(ctx, brand, appID)
+		return consoleLandingURL(brand, appID)
 	}
-	return url, nil
+	return url
 }
 
 // missingScopeAddons routes missing scopes into the identity-appropriate section.
