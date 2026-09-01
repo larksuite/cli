@@ -239,7 +239,7 @@
 {
   "table_name": "项目表",
   "field_name": "截止日期",
-  "offset": 1,
+  "offset": -1,
   "unit": "DAY",
   "hour": 9,
   "minute": 0,
