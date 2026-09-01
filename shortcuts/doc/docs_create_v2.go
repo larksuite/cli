@@ -86,6 +86,8 @@ func dryRunCreateV2(_ context.Context, runtime *common.RuntimeContext) *common.D
 		POST("/open-apis/docs_ai/v1/documents").
 		Desc(desc).
 		Body(body)
+	dry.GET("/open-apis/docs_ai/v1/async_tasks/<task_id>").
+		Desc("Conditional: poll the generic async-task endpoint when document creation returns a task_id.")
 	dry = appendRemoteDocImageDownloadsDryRun(dry, resources)
 	return appendLocalDocResourcesDryRun(dry, "<created_document_id>", resources)
 }
@@ -105,6 +107,14 @@ func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 	}
 	if docsAPIOperationFailed(data) {
 		return runtime.OutPartialFailure(data, nil)
+	}
+	data, pending, err := waitForDocsCreateAsyncTask(runtime, data)
+	if err != nil {
+		return err
+	}
+	if pending {
+		runtime.OutRaw(data, nil)
+		return nil
 	}
 
 	augmentDocsCreatePermission(runtime, data)

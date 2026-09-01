@@ -39,17 +39,87 @@ func TestDocsCreateV2RemoteImageDryRunDownloadsAfterDocumentCreation(t *testing.
 	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode dry-run output: %v\n%s", err, stdout)
 	}
-	if len(envelope.Data.API) < 3 {
-		t.Fatalf("dry-run API calls = %d, want create, download, and upload: %#v", len(envelope.Data.API), envelope.Data.API)
+	if len(envelope.Data.API) < 4 {
+		t.Fatalf("dry-run API calls = %d, want create, async poll, download, and upload: %#v", len(envelope.Data.API), envelope.Data.API)
 	}
 	if got := envelope.Data.API[0].URL; got != "/open-apis/docs_ai/v1/documents" {
 		t.Fatalf("first API URL = %q, want document creation", got)
 	}
-	if got := envelope.Data.API[1].URL; got != "https://93.184.216.34/photo.png" {
-		t.Fatalf("second API URL = %q, want remote image download", got)
+	if got := envelope.Data.API[1].URL; got != "/open-apis/docs_ai/v1/async_tasks/<task_id>" {
+		t.Fatalf("second API URL = %q, want conditional async task poll", got)
 	}
-	if got := envelope.Data.API[2].URL; got != "/open-apis/drive/v1/medias/upload_all" {
-		t.Fatalf("third API URL = %q, want image upload", got)
+	if got := envelope.Data.API[2].URL; got != "https://93.184.216.34/photo.png" {
+		t.Fatalf("third API URL = %q, want remote image download", got)
+	}
+	if got := envelope.Data.API[3].URL; got != "/open-apis/drive/v1/medias/upload_all" {
+		t.Fatalf("fourth API URL = %q, want image upload", got)
+	}
+}
+
+func TestDocsCreateV2AsyncSuccessRestoresSynchronousResult(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	registerDocsCreateAPIStub(reg, map[string]interface{}{
+		"task": map[string]interface{}{
+			"task_id":       "task_create_1",
+			"type":          "create_document",
+			"status":        "processing",
+			"stage":         "writing_content",
+			"poll_after_ms": 3000,
+		},
+	})
+	resultJSON, err := json.Marshal(map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_async_doc",
+			"revision_id": 7,
+			"url":         "https://example.feishu.cn/docx/doxcn_async_doc",
+		},
+		"warnings": []string{"one block was normalized"},
+	})
+	if err != nil {
+		t.Fatalf("marshal task result: %v", err)
+	}
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/docs_ai/v1/async_tasks/task_create_1",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"task": map[string]interface{}{
+					"task_id": "task_create_1",
+					"type":    "create_document",
+					"status":  "succeeded",
+					"stage":   "finalizing",
+					"result": map[string]interface{}{
+						"create_document": string(resultJSON),
+					},
+				},
+			},
+		},
+	})
+
+	err = runDocsCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--content", "<title>异步文档</title><p>正文</p>",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeDocsCreateEnvelope(t, stdout)
+	doc, _ := data["document"].(map[string]interface{})
+	if got := common.GetString(doc, "document_id"); got != "doxcn_async_doc" {
+		t.Fatalf("document_id = %q, want doxcn_async_doc; data=%#v", got, data)
+	}
+	if _, ok := data["task"]; ok {
+		t.Fatalf("async success should preserve the synchronous output shape: %#v", data)
+	}
+	warnings, _ := data["warnings"].([]interface{})
+	if len(warnings) != 1 || warnings[0] != "one block was normalized" {
+		t.Fatalf("warnings = %#v", data["warnings"])
 	}
 }
 
