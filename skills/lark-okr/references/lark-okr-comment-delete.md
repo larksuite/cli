@@ -18,14 +18,12 @@ lark-cli okr +comment-delete --comment-id 7000000000000000004 --yes
 
 ## 参数
 
-| 参数 | 必填 | 默认值 | 说明 |
-|---|---|---|---|
-| --comment-id | 是 | — | 要删除的评论 ID，int64 正整数。建议先由 +comment-get 核对。 |
-| --yes | 真实执行时是 | — | 确认 high-risk-write 操作。--dry-run 时不需要。 |
-| --dry-run | 否 | — | 预览 API 调用而不实际执行。 |
-| --format | 否 | json | 输出格式。 |
-
-接口的 user_id_type 和 department_id_type 参数由 shortcut 忽略并不会传递。
+| 参数         | 必填         | 默认值 | 说明                                                        |
+|--------------|--------------|--------|-------------------------------------------------------------|
+| --comment-id | 是           | —      | 要删除的评论 ID，int64 正整数。建议先由 +comment-get 核对。 |
+| --yes        | 真实执行时是 | —      | 确认 high-risk-write 操作。--dry-run 时不需要。             |
+| --dry-run    | 否           | —      | 预览 API 调用而不实际执行。                                 |
+| --format     | 否           | json   | 输出格式。                                                  |
 
 ## 工作流程
 

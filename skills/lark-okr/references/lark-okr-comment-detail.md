@@ -18,12 +18,12 @@ lark-cli okr +comment-detail --cycle-id 1234567890123456789 --dry-run
 
 ## 参数
 
-| 参数 | 必填 | 默认值 | 说明 |
-|---|---|---|---|
-| --cycle-id | 是 | — | OKR 周期 ID，int64 正整数，可从 +cycle-list 获取。 |
-| --style | 否 | simple | simple 返回 SemiPlainContent；richtext 返回原始 ContentBlock。 |
-| --dry-run | 否 | — | 预览聚合查询而不实际执行。 |
-| --format | 否 | json | 输出格式。 |
+| 参数       | 必填 | 默认值 | 说明                                                                                       |
+|------------|------|--------|--------------------------------------------------------------------------------------------|
+| --cycle-id | 是   | —      | OKR 周期 ID，int64 正整数，可从 +cycle-list 获取。                                         |
+| --style    | 否   | simple | simple 返回半纯文本格式，不涉及字体/颜色等信息时推荐使用；richtext 返回原始 ContentBlock。 |
+| --dry-run  | 否   | —      | 预览聚合查询而不实际执行。                                                                 |
+| --format   | 否   | json   | 输出格式。                                                                                 |
 
 ## 工作流程
 

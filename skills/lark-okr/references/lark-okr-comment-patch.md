@@ -3,6 +3,8 @@
 
 修改指定评论的正文。评论目标、划词定位、引用关系则一经创建不可修改。只支持 user 身份。
 
+`--content` 是业务必填项：OpenAPI schema 中该字段可能表现为可选，但实际修改评论必须提供非空正文。
+
 ## 推荐命令
 
 ```bash
@@ -18,16 +20,14 @@ lark-cli okr +comment-patch --comment-id 7000000000000000004 --content '{"text":
 
 ## 参数
 
-| 参数 | 必填 | 默认值 | 说明 |
-|---|---|---|---|
-| --comment-id | 是 | — | 评论 ID，int64 正整数；可从 [+comment-list](lark-okr-comment-list.md) 或 [+comment-detail](lark-okr-comment-detail.md) 获取。 |
-| --content | 是 | — | 新正文；simple 输入 SemiPlainContent JSON，richtext 输入 ContentBlock JSON。支持 @文件路径。 |
-| --style | 否 | simple | 输入/输出风格：simple 或 richtext。 |
-| --user-id-type | 否 | open_id | open_id、union_id、user_id 或 user_key。 |
-| --dry-run | 否 | — | 预览 API 调用而不实际执行。 |
-| --format | 否 | json | 输出格式。 |
-
-接口的 department_id_type 参数不在 shortcut 中暴露，也不会传递。
+| 参数           | 必填 | 默认值  | 说明                                                                                                                          |
+|----------------|------|---------|-------------------------------------------------------------------------------------------------------------------------------|
+| --comment-id   | 是   | —       | 评论 ID，int64 正整数；可从 [+comment-list](lark-okr-comment-list.md) 或 [+comment-detail](lark-okr-comment-detail.md) 获取。 |
+| --content      | 是   | —       | 新正文；输入风格：`simple`（半纯文本 JSON，推荐） \| `richtext`（完整 ContentBlock JSON），支持 @文件路径。                   |
+| --style        | 否   | simple  | 输入/输出风格：simple 或 richtext。                                                                                           |
+| --user-id-type | 否   | open_id | open_id、union_id、user_id 或 user_key。                                                                                      |
+| --dry-run      | 否   | —       | 预览 API 调用而不实际执行。                                                                                                   |
+| --format       | 否   | json    | 输出格式。                                                                                                                    |
 
 ## 工作流程
 

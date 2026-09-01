@@ -1,4 +1,5 @@
 # okr +comment-solve / +comment-reopen
+
 > **前置条件：** 先阅读 [lark-shared/SKILL.md](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则；
 
 解决/重新打开一条评论。实体级评论按单条评论处理；划词评论则是操作整个评论串。只支持 user 身份。
@@ -18,15 +19,13 @@ lark-cli okr +comment-solve --comment-id 7000000000000000004 --dry-run
 
 ## 参数
 
-| 参数 | 必填 | 默认值 | 说明 |
-|---|---|---|---|
-| --comment-id | 是 | — | 评论 ID，int64 正整数。可从 +comment-list、+comment-detail 或 +comment-get 获取。 |
-| --user-id-type | 否 | open_id | open_id、union_id、user_id 或 user_key。 |
-| --style | 否 | simple | affected_comments 的正文风格：simple（SemiPlainContent）或 richtext（ContentBlock）。 |
-| --dry-run | 否 | — | 预览 API 调用而不实际执行。 |
-| --format | 否 | json | 输出格式。 |
-
-接口的 department_id_type 参数不在 shortcut 中暴露，也不会传递。
+| 参数           | 必填 | 默认值  | 说明                                                                                  |
+|----------------|------|---------|---------------------------------------------------------------------------------------|
+| --comment-id   | 是   | —       | 评论 ID，int64 正整数。可从 +comment-list、+comment-detail 或 +comment-get 获取。     |
+| --user-id-type | 否   | open_id | open_id、union_id、user_id 或 user_key。                                              |
+| --style        | 否   | simple  | affected_comments 的正文风格：simple（SemiPlainContent）或 richtext（ContentBlock）。 |
+| --dry-run      | 否   | —       | 预览 API 调用而不实际执行。                                                           |
+| --format       | 否   | json    | 输出格式。                                                                            |
 
 ## 工作流程
 
@@ -44,13 +43,21 @@ lark-cli okr +comment-solve --comment-id 7000000000000000004 --dry-run
   "affected_comments": [
     {
       "id": "7000000000000000004",
-      "target": {"target_type": "objective", "target_id": "2345678901234567890"},
+      "target": {
+        "target_type": "objective",
+        "target_id": "2345678901234567890"
+      },
       "commentator_id": "ou_xxx",
       "status": "solved",
       "create_time": "2025-01-15 10:30:00",
       "update_time": "2025-01-15 11:30:00",
-      "selection": {"id": "8000000000000000001", "selected_text": "提升核心接口稳定性"},
-      "content": {"text": "请补充指标", "mention": [], "docs": [], "images": []}
+      "selection": {
+        "id": "8000000000000000001",
+        "selected_text": "提升核心接口稳定性"
+      },
+      "content": {
+        "text": "请补充指标", "mention": [], "docs": [], "images": []
+      }
     }
   ],
   "style": "simple"

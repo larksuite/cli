@@ -246,6 +246,9 @@ func validateCreateSelection(runtime *common.RuntimeContext) error {
 		if err := validateCommentID("--ref-comment-id", ref); err != nil {
 			return err
 		}
+		if selected != "" || all {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--ref-comment-id is mutually exclusive with --selected-text and --select-all").WithParam("--ref-comment-id")
+		}
 	}
 	if selected != "" {
 		if err := common.RejectDangerousCharsTyped("--selected-text", selected); err != nil {
@@ -264,21 +267,15 @@ func validateCreateSelection(runtime *common.RuntimeContext) error {
 
 func createCommentBody(runtime *common.RuntimeContext) (map[string]interface{}, error) {
 	body := map[string]interface{}{"target": CommentTarget{TargetType: runtime.Str("target-type"), TargetID: runtime.Str("target-id")}}
-	if runtime.Str("content") != "" {
-		content, err := parseCommentContent(runtime)
-		if err != nil {
-			return nil, err
-		}
-		body["content"] = content
+	content, err := parseCommentContent(runtime)
+	if err != nil {
+		return nil, err
 	}
+	body["content"] = content
 	if selected := runtime.Str("selected-text"); selected != "" {
 		body["selected_text"] = selected
 	}
 	if runtime.Bool("select-all") {
-		content, err := parseCommentContent(runtime)
-		if err != nil {
-			return nil, err
-		}
 		plain := content.ToSemiPlain()
 		if plain != nil {
 			body["selected_text"] = strings.Repeat("*", len([]rune(plain.Text)))
@@ -301,7 +298,7 @@ var OKRCreateComment = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "target-id", Desc: "comment target ID (int64)", Required: true},
 		{Name: "target-type", Desc: "comment target type: cycle | progress | objective | key_result", Required: true, Enum: []string{"cycle", "progress", "objective", "key_result"}},
-		{Name: "content", Desc: "comment content: semi-plain JSON or ContentBlock JSON according to --style", Input: []string{common.File, common.Stdin}},
+		{Name: "content", Desc: "comment content: semi-plain JSON or ContentBlock JSON according to --style", Required: true, Input: []string{common.File, common.Stdin}},
 		{Name: "selected-text", Desc: "selected text for a new objective/key_result selection comment"},
 		{Name: "select-all", Type: "bool", Desc: "use wildcard selection to trigger full-text selection"},
 		{Name: "ref-comment-id", Desc: "comment ID to reply to or attach to an existing selection"},
@@ -321,14 +318,8 @@ var OKRCreateComment = common.Shortcut{
 		if err := validateCreateSelection(runtime); err != nil {
 			return err
 		}
-		if runtime.Bool("select-all") && runtime.Str("content") == "" {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--select-all requires --content").WithParam("--content")
-		}
-		if runtime.Str("content") != "" {
-			_, err := parseCommentContent(runtime)
-			return err
-		}
-		return nil
+		_, err := parseCommentContent(runtime)
+		return err
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		body, _ := createCommentBody(runtime)

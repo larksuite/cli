@@ -6,8 +6,8 @@
 ## 推荐命令
 
 ```bash
-# 在 Progress 下创建实体级评论。
-lark-cli okr +comment-create --target-type progress --target-id 3456789012345678901 --content '{"text":"进展不错"}'
+# 在周期下创建实体级评论。
+lark-cli okr +comment-create --target-type cycle --target-id 3456789012345678901 --content '{"text":"进展不错"}'
 
 # 在 Objective 正文中创建指定文本的划词评论。
 lark-cli okr +comment-create --target-type objective --target-id 2345678901234567890 --content '{"text":"请补充数据"}' --selected-text '提升核心接口稳定性'
@@ -27,32 +27,44 @@ lark-cli okr +comment-create --target-type progress --target-id 3456789012345678
 lark-cli okr +comment-create --target-type progress --target-id 3456789012345678901 --content '{"text":"进展不错"}' --dry-run
 ```
 
+## 常用表述
+
+以下是一些用户需求中常见的表述:
+
+- 全局评论/周期评论/OKR评论: 指 OKR 周期的实体级评论，当用户要求创建全局评论，或对某个周期的 OKR 进行评论（不特指某个 Objective 或 KeyResult 时），可以创建周期实体级评论。
+- 划词评论: 指 Objective/KeyResult 下的划词评论。需要注意，Objective/KeyResult 下不能创建实体级评论（必须携带 selected-text 或 select-all）。若用户没有特别指定需评论的段落，使用 --select-all
+
 ## 参数
 
-| 参数 | 必填 | 默认值 | 说明 |
-|---|---|---|---|
-| --target-type | 是 | — | cycle、progress、objective 或 key_result。 |
-| --target-id | 是 | — | 评论对象 ID，int64 正整数。 |
-| --content | 否¹ | — | 评论正文；simple 输入 SemiPlainContent JSON，richtext 输入 ContentBlock JSON。支持 @文件路径。 |
-| --selected-text | 否¹ | — | Objective/KeyResult 新建划词时的完整纯文本。 |
-| --select-all | 否¹ | false | Objective/KeyResult 使用全文 fallback；必须同时传 --content。 |
-| --ref-comment-id | 否¹ | — | 回复 Progress/Cycle 评论，或将 Objective/KeyResult 评论挂入已有划词串。 |
-| --style | 否 | simple | 输入/输出风格：simple 或 richtext。 |
-| --user-id-type | 否 | open_id | open_id、union_id、user_id 或 user_key。 |
-| --dry-run | 否 | — | 预览 API 调用而不实际执行。 |
-| --format | 否 | json | 输出格式。 |
+| 参数             | 必填 | 默认值  | 说明                                                                                                          |
+|------------------|------|---------|---------------------------------------------------------------------------------------------------------------|
+| --target-type    | 是   | —       | cycle、progress、objective 或 key_result。                                                                    |
+| --target-id      | 是   | —       | 评论对象 ID，int64 正整数。                                                                                   |
+| --content        | 是   | —       | 评论正文；输入风格：`simple`（半纯文本 JSON，推荐） \| `richtext`（完整 ContentBlock JSON），支持 @文件路径。 |
+| --selected-text  | 否   | —       | Objective/KeyResult 新建划词时的完整纯文本。                                                                  |
+| --select-all     | 否   | false   | Objective/KeyResult 划词时选择全文。                                                                          |
+| --ref-comment-id | 否   | —       | 回复 Progress/Cycle 评论，或将 Objective/KeyResult 评论挂入已有划词串。                                       |
+| --style          | 否   | simple  | 输入/输出风格：simple 或 richtext。                                                                           |
+| --user-id-type   | 否   | open_id | open_id、union_id、user_id 或 user_key。                                                                      |
+| --dry-run        | 否   | —       | 预览 API 调用而不实际执行。                                                                                   |
+| --format         | 否   | json    | 输出格式。                                                                                                    |
 
-> ¹ content 对 Cycle/Progress 评论可选，但 select-all 必须有 content；Objective/KeyResult 新建评论需要 content。
+## 评论场景参数组合
 
-接口的 department_id_type 参数不在 shortcut 中暴露，也不会传递。
+| 场景                           | target-type             | 必须传                                                        | 不能传                                                |
+|--------------------------------|-------------------------|---------------------------------------------------------------|-------------------------------------------------------|
+| 创建周期/进展实体级评论        | cycle 或 progress       | `--content`                                                   | `--selected-text`、`--select-all`、`--ref-comment-id` |
+| 回复周期/进展已有评论          | cycle 或 progress       | `--content`、`--ref-comment-id`                               | `--selected-text`、`--select-all`                     |
+| 创建 Objective/KR 划词评论     | objective 或 key_result | `--content`，并在 `--selected-text` / `--select-all` 中二选一 | `--ref-comment-id`                                    |
+| 追加到 Objective/KR 划词评论串 | objective 或 key_result | `--content`、`--ref-comment-id`                               | `--selected-text`、`--select-all`                     |
 
 ## 工作流程
 
 1. 确定评论 target：使用 [+cycle-detail](lark-okr-cycle-detail.md) 获取 Objective/KeyResult ID，使用 [+progress-list](lark-okr-progress-list.md) 获取 Progress ID；已有评论串时使用 [+comment-list](lark-okr-comment-list.md) 或 [+comment-get](lark-okr-comment-get.md) 获取 comment-id。
 2. 根据 target-type 选择评论形式：
    - cycle/progress：不传 selected-text 或 select-all；需要回复时传 ref-comment-id。
-   - objective/key_result：在 selected-text、select-all、ref-comment-id 中选择且只能选择一个。
-3. 准备 content：通常建议使用 simple 格式，需要精确控制 @用户的位置时，可以使用 richtext 格式，参考 [ContentBlock 格式](lark-okr-contentblock.md)
+   - objective/key_result：在 selected-text、select-all、ref-comment-id 中选择且只能选择一个；selected-text 和 select-all 互斥，二者也都和 ref-comment-id 互斥。
+3. 准备 content：content 是业务必填，通常建议使用 simple 格式，需要精确控制 @用户的位置时，可以使用 richtext 格式，参考 [ContentBlock 格式](lark-okr-contentblock.md)
 4. 执行命令；真实写入前可以先使用 --dry-run 检查 URL、query 和 body。
 5. 在创建(而非回复) Objective/KeyResult 划词评论时，若用户未指定评论的具体位置，通常可以使用 select-all 而非自行指定 selected-text，除非用户需求中明确了具体的段落。
    - 若需使用 selected-text 精确选择划词选区时，只可传入正文中真实存在的连续纯文本片段；不要包含或跨越 mention 占位符，否则无法命中具体内容。

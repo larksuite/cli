@@ -122,6 +122,8 @@ func TestCommentValidationBranches(t *testing.T) {
 	}
 	invalid := [][]string{
 		{"--select-all", "--selected-text", "x"},
+		{"--selected-text", "x", "--ref-comment-id", "1"},
+		{"--select-all", "--ref-comment-id", "1"},
 		{"--ref-comment-id", "bad"},
 		{"--target-type", "objective"},
 		{"--target-type", "cycle", "--selected-text", "x"},
@@ -139,23 +141,26 @@ func TestCommentValidationBranches(t *testing.T) {
 func TestCommentContentValidationBranches(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name, content, style, param string
-		wantCause                   bool
+		name, command, content, style, param string
+		shortcut                             *common.Shortcut
+		wantCause                            bool
 	}{
-		{"bad simple json", "not-json", "simple", "--content", true},
-		{"empty simple text", "{\"text\":\"  \"}", "simple", "--content", false},
-		{"simple docs", "{\"text\":\"x\",\"docs\":[{\"url\":\"u\"}]}", "simple", "--content", false},
-		{"bad richtext json", "not-json", "richtext", "--content", true},
+		{"bad simple json", "+comment-create", "not-json", "simple", "--content", &OKRCreateComment, true},
+		{"missing create content", "+comment-create", "", "simple", "--content", &OKRCreateComment, false},
+		{"missing patch content", "+comment-patch", "", "simple", "--content", &OKRPatchComment, false},
+		{"empty simple text", "+comment-create", "{\"text\":\"  \"}", "simple", "--content", &OKRCreateComment, false},
+		{"simple docs", "+comment-create", "{\"text\":\"x\",\"docs\":[{\"url\":\"u\"}]}", "simple", "--content", &OKRCreateComment, false},
+		{"bad richtext json", "+comment-create", "not-json", "richtext", "--content", &OKRCreateComment, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			shortcut := &OKRCreateComment
-			args := []string{"+comment-create", "--target-id", "1", "--target-type", "cycle", "--content", tc.content, "--style", tc.style}
-			if tc.name == "missing" {
-				shortcut = &OKRPatchComment
-				args = []string{"+comment-patch", "--comment-id", "1", "--style", tc.style}
+			args := []string{tc.command, "--content", tc.content, "--style", tc.style}
+			if tc.shortcut == &OKRCreateComment {
+				args = append(args, "--target-id", "1", "--target-type", "cycle")
+			} else {
+				args = append(args, "--comment-id", "1")
 			}
-			err, _ := runCommentShortcut(t, shortcut, args)
+			err, _ := runCommentShortcut(t, tc.shortcut, args)
 			ve := requireCommentValidationError(t, err, tc.param)
 			if tc.wantCause {
 				var syntaxErr *json.SyntaxError

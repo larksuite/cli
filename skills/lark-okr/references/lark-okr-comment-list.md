@@ -18,18 +18,16 @@ lark-cli okr +comment-list --target-type key_result --target-id 4567890123456789
 
 ## 参数
 
-| 参数             | 必填 | 默认值     | 说明                                                   |
-|----------------|----|---------|------------------------------------------------------|
-| --target-type  | 是  | —       | cycle、objective、key_result 或 progress。               |
-| --target-id    | 是  | —       | 评论对象 ID，int64 正整数。                                   |
-| --page-size    | 否  | 100     | 每页数量，范围 1-100。                                       |
-| --page-token   | 否  | ""      | 上一次响应中的 token；首页不传。                                  |
-| --user-id-type | 否  | open_id | open_id、union_id、user_id 或 user_key。                 |
-| --style        | 否  | simple  | simple 返回 SemiPlainContent；richtext 返回 ContentBlock。 |
-| --dry-run      | 否  | —       | 预览 API 调用而不实际执行。                                     |
-| --format       | 否  | json    | 输出格式。                                                |
-
-接口的 department_id_type 参数不在 shortcut 中暴露，也不会传递。
+| 参数           | 必填 | 默认值  | 说明                                                                                   |
+|----------------|------|---------|----------------------------------------------------------------------------------------|
+| --target-type  | 是   | —       | cycle、objective、key_result 或 progress。                                             |
+| --target-id    | 是   | —       | 评论对象 ID，int64 正整数。                                                            |
+| --page-size    | 否   | 100     | 每页数量，范围 1-100。                                                                 |
+| --page-token   | 否   | ""      | 上一次响应中的 token；首页不传。                                                       |
+| --user-id-type | 否   | open_id | open_id、union_id、user_id 或 user_key。                                               |
+| --style        | 否   | simple  | simple 返回半纯文本格式，不涉及字体/颜色等信息时推荐使用；richtext 返回 ContentBlock。 |
+| --dry-run      | 否   | —       | 预览 API 调用而不实际执行。                                                            |
+| --format       | 否   | json    | 输出格式。                                                                             |
 
 ## 工作流程
 
@@ -62,7 +60,7 @@ lark-cli okr +comment-list --target-type key_result --target-id 4567890123456789
 }
 ```
 
-comments 是当前页按评论串分组的二维数组，不会自动拉取所有分页；simple 风格返回 SemiPlainContent，richtext 风格返回 ContentBlock。
+comments 是当前页按评论串分组的二维数组，不会自动拉取所有分页；simple 风格返回简单的半纯文本格式，richtext 风格返回原生 ContentBlock。
 
 ## 注意事项
 
