@@ -6,6 +6,7 @@ package update
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +18,8 @@ import (
 	"time"
 
 	exttransport "github.com/larksuite/cli/extension/transport"
+	"github.com/larksuite/cli/internal/distribution"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // roundTripFunc adapts a function to http.RoundTripper.
@@ -26,6 +29,7 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { re
 
 type updateExternalProvider struct {
 	interceptor exttransport.Interceptor
+	manifestURL string
 	rewriter    exttransport.URLRewriter
 }
 
@@ -33,6 +37,10 @@ func (p updateExternalProvider) Name() string { return "update-external-test" }
 
 func (p updateExternalProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
 	return p.interceptor
+}
+
+func (p updateExternalProvider) ResolveManifestURL(context.Context) string {
+	return p.manifestURL
 }
 
 func (p updateExternalProvider) ResolveURLRewriter(context.Context) exttransport.URLRewriter {
@@ -55,6 +63,52 @@ func (i *updateExternalInterceptor) PreRoundTrip(req *http.Request) func(*http.R
 	i.calls++
 	req.Header.Set("X-External-Route", "1")
 	return nil
+}
+
+func TestManifestCacheUsesExactTargetAndSourceIdentity(t *testing.T) {
+	clearSkipEnv(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-External-Route") != "" {
+			t.Fatal("manifest request passed through the request interceptor")
+		}
+		target := "old-target"
+		if r.URL.Path == "/second" {
+			target = "second-target"
+		}
+		fmt.Fprintf(w, `{"schema":1,"version":%q,"artifacts":{"skills":{"url":"https://dist.example/skills","checksum":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},%q:{"url":"https://dist.example/binary","checksum":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}}`, target, distribution.CurrentPlatformKey())
+	}))
+	defer server.Close()
+	previousProvider := exttransport.GetProvider()
+	previousClient := distribution.DefaultClient
+	distribution.DefaultClient = server.Client()
+	exttransport.Register(updateExternalProvider{interceptor: &updateExternalInterceptor{}, manifestURL: server.URL + "/first"})
+	t.Cleanup(func() {
+		exttransport.Register(previousProvider)
+		distribution.DefaultClient = previousClient
+	})
+
+	RefreshCache("new-current")
+	stateBytes, err := vfs.ReadFile(statePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(stateBytes), server.URL) {
+		t.Fatal("update cache persisted the manifest URL")
+	}
+	info := CheckCached("new-current")
+	if info == nil || info.Latest != "old-target" || info.Source != "manifest" {
+		t.Fatalf("CheckCached = %#v", info)
+	}
+
+	// A different manifest is a different source even while the 24-hour cache
+	// from the first source is fresh.
+	exttransport.Register(updateExternalProvider{manifestURL: server.URL + "/second"})
+	RefreshCache("new-current")
+	info = CheckCached("new-current")
+	if info == nil || info.Latest != "second-target" {
+		t.Fatalf("CheckCached after source switch = %#v", info)
+	}
 }
 
 // clearSkipEnv unsets all env vars that shouldSkip checks,

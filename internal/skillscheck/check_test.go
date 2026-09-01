@@ -51,6 +51,22 @@ func TestInit_NormalizedVersion_NoNotice(t *testing.T) {
 	}
 }
 
+func TestInitForSourceNoticesAtSameVersionWhenSourceChanges(t *testing.T) {
+	clearSkillsSkipEnv(t)
+	resetPending(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := WriteState(SkillsState{
+		Version:        "1.0.21",
+		SourceIdentity: "manifest:first",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	InitForSource("1.0.21", "manifest:second")
+	if got := GetPending(); got == nil {
+		t.Fatal("GetPending() = nil, want notice for a changed Skills source")
+	}
+}
+
 func TestInit_OfficialSkillsUnknown_NoticeAtSameVersion(t *testing.T) {
 	clearSkillsSkipEnv(t)
 	resetPending(t)
