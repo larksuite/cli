@@ -343,8 +343,8 @@ func (u *Updater) InstallAllSkills(source string) *NpmResult {
 }
 
 func (u *Updater) StageSuite(source, dir string) *NpmResult {
-	source = rewriteSkillsSource(source)
 	suiteSource := strings.TrimSuffix(strings.TrimRight(source, "/"), "/regular") + "/isolated"
+	suiteSource = rewriteSkillsSource(suiteSource)
 	return u.runSkillsCommandInDir(dir, "-y", "skills", "add", suiteSource, "-s", "lark-suite", "-y")
 }
 

@@ -47,19 +47,26 @@ func (e *resolvedExtension) wrap(base http.RoundTripper, class exttransport.Requ
 		return base
 	}
 	interceptor := e.interceptor
+	rewriter := e.rewriter
 	if enforceScope && interceptor != nil {
 		if scoped, ok := e.provider.(exttransport.ScopedProvider); ok && !scoped.SupportsRequestClass(class) {
 			interceptor = nil
 		}
 	}
-	if interceptor == nil && e.rewriter == nil {
+	// Automatic network rewriting is limited to resolver-owned platform URLs.
+	// CLI-owned external URLs are rewritten explicitly where they are built, so
+	// user-provided and pre-signed external requests remain verbatim.
+	if class != exttransport.RequestClassPlatform {
+		rewriter = nil
+	}
+	if interceptor == nil && rewriter == nil {
 		return base
 	}
 	return &ExtensionMiddleware{
 		Base:     base,
 		Ext:      interceptor,
 		ExtName:  e.provider.Name(),
-		rewriter: e.rewriter,
+		rewriter: rewriter,
 	}
 }
 
@@ -138,17 +145,18 @@ func (m *ExtensionMiddleware) RoundTrip(req *http.Request) (*http.Response, erro
 	return resp, err
 }
 
-// WrapWithExtension wraps base with the currently registered transport
-// extension. With no registered provider, base is returned unchanged.
+// WrapWithExtension wraps base with the currently registered request
+// interceptor. Callers that need automatic platform URL rewriting use
+// WrapWithExtensionForClass with RequestClassPlatform.
 func WrapWithExtension(base http.RoundTripper) http.RoundTripper {
 	return resolveExtension().wrap(base, "", false)
 }
 
-// WrapWithExtensionForClass applies URL rewriting and wraps base with the
-// interceptor when the registered provider supports class. ScopedProvider only
-// limits the interceptor; URL rewriting remains available for every class.
-// Providers without ScopedProvider keep their historical all-request
-// interceptor behavior.
+// WrapWithExtensionForClass applies URL rewriting to resolver-owned platform
+// requests and wraps base with the interceptor when the registered provider
+// supports class. External URLs are left unchanged here; fixed CLI-owned
+// external URLs are rewritten at their construction sites. Providers without
+// ScopedProvider keep their historical all-request interceptor behavior.
 func WrapWithExtensionForClass(base http.RoundTripper, class exttransport.RequestClass) http.RoundTripper {
 	return resolveExtension().wrap(base, class, true)
 }
