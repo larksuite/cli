@@ -40,18 +40,20 @@ var MailThreadModify = common.Shortcut{
 	Description: "Modify existing mail threads by adding/removing label IDs or moving them to a folder. Batches thread IDs in groups of 20 and keeps output compact.",
 	Risk:        "write",
 	Scopes:      []string{"mail:user_mailbox.message:modify"},
-	AuthTypes:   []string{"user"},
+	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "mailbox", Default: "me", Desc: "Mailbox email address that owns the threads (default: me)."},
 		{Name: "thread-ids", Type: "string_array", Required: true, Desc: "Thread IDs to modify; comma-separated or repeat the flag."},
 		{Name: "add-label-ids", Type: "string_slice", Desc: "Label IDs to add. System labels unread/important/other/flagged are normalized to upper case."},
 		{Name: "remove-label-ids", Type: "string_slice", Desc: "Label IDs to remove. Cannot overlap with --add-label-ids."},
-		{Name: "add-folder", Aliases: []string{"folder-id"}, Desc: "Folder ID to move threads to."},
+		{Name: "add-folder", Desc: "Folder ID to move threads to."},
+		{Name: "folder-id", Hidden: true, Desc: "Compatibility alias for --add-folder."},
 	},
-	Validate: validateThreadModify,
-	DryRun:   dryRunThreadModify,
-	Execute:  executeThreadModify,
+	Normalize: normalizeThreadModifyCompatibility,
+	Validate:  validateThreadModify,
+	DryRun:    dryRunThreadModify,
+	Execute:   executeThreadModify,
 }
 
 // MailThreadTrash is the `+thread-trash` shortcut: soft-delete existing mail
@@ -63,7 +65,7 @@ var MailThreadTrash = common.Shortcut{
 	Description: "Soft-delete existing mail threads. Batches thread IDs in groups of 20 and calls batch_trash sequentially. Requires --yes.",
 	Risk:        "high-risk-write",
 	Scopes:      []string{"mail:user_mailbox.message:modify"},
-	AuthTypes:   []string{"user"},
+	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "mailbox", Default: "me", Desc: "Mailbox email address that owns the threads (default: me)."},
@@ -74,7 +76,23 @@ var MailThreadTrash = common.Shortcut{
 	Execute:  executeThreadTrash,
 }
 
+func normalizeThreadModifyCompatibility(ctx context.Context, flags *common.FlagContext) error {
+	if flags.Changed("add-folder") && flags.Changed("folder-id") {
+		return mailValidationParamError("--folder-id", "--folder-id is a compatibility alias for --add-folder; pass only one of them")
+	}
+	if !flags.Changed("folder-id") {
+		return nil
+	}
+	if _, err := normalizeThreadManageFolderForFlag(flags.Str("folder-id"), "--folder-id"); err != nil {
+		return err
+	}
+	return flags.SetCanonicalFrom("folder-id", "add-folder", flags.Str("folder-id"))
+}
+
 func validateThreadModify(ctx context.Context, rt *common.RuntimeContext) error {
+	if err := validateBotMailboxNotMe(rt); err != nil {
+		return err
+	}
 	_, err := buildThreadModifyInput(rt)
 	return err
 }
@@ -130,6 +148,9 @@ func executeThreadModify(ctx context.Context, rt *common.RuntimeContext) error {
 }
 
 func validateThreadTrash(ctx context.Context, rt *common.RuntimeContext) error {
+	if err := validateBotMailboxNotMe(rt); err != nil {
+		return err
+	}
 	_, err := normalizeThreadManageIDs(rt.StrArray("thread-ids"))
 	return err
 }
@@ -263,15 +284,19 @@ func validateThreadManageID(id string, index int) error {
 }
 
 func normalizeThreadManageFolder(raw string) (string, error) {
+	return normalizeThreadManageFolderForFlag(raw, "--add-folder")
+}
+
+func normalizeThreadManageFolderForFlag(raw, flagName string) (string, error) {
 	if raw == "" {
 		return "", nil
 	}
 	folder := strings.TrimSpace(raw)
 	if folder == "" {
-		return "", mailValidationParamError("--add-folder", "--add-folder must not be empty")
+		return "", mailValidationParamError(flagName, "%s must not be empty", flagName)
 	}
 	if strings.EqualFold(folder, "TRASH") {
-		return "", mailValidationParamError("--add-folder", "TRASH is not supported by +thread-modify; use +thread-trash")
+		return "", mailValidationParamError(flagName, "TRASH is not supported by +thread-modify; use +thread-trash")
 	}
 	if system, ok := messageManageSystemFolders[strings.ToUpper(folder)]; ok {
 		return system, nil

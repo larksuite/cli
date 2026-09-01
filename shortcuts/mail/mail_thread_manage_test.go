@@ -56,8 +56,8 @@ func TestThreadModify_Metadata(t *testing.T) {
 	if MailThreadModify.Risk != "write" {
 		t.Errorf("Risk = %q, want write", MailThreadModify.Risk)
 	}
-	if len(MailThreadModify.AuthTypes) != 1 || MailThreadModify.AuthTypes[0] != "user" {
-		t.Errorf("AuthTypes = %v, want [user]", MailThreadModify.AuthTypes)
+	if strings.Join(MailThreadModify.AuthTypes, ",") != "user,bot" {
+		t.Errorf("AuthTypes = %v, want [user bot]", MailThreadModify.AuthTypes)
 	}
 	if len(MailThreadModify.Scopes) != 1 || MailThreadModify.Scopes[0] != "mail:user_mailbox.message:modify" {
 		t.Errorf("Scopes = %v, want [mail:user_mailbox.message:modify]", MailThreadModify.Scopes)
@@ -69,7 +69,7 @@ func TestThreadModify_Metadata(t *testing.T) {
 	for _, fl := range MailThreadModify.Flags {
 		flags[fl.Name] = fl
 	}
-	for _, name := range []string{"mailbox", "thread-ids", "add-label-ids", "remove-label-ids", "add-folder"} {
+	for _, name := range []string{"mailbox", "thread-ids", "add-label-ids", "remove-label-ids", "add-folder", "folder-id"} {
 		if _, ok := flags[name]; !ok {
 			t.Fatalf("missing --%s flag", name)
 		}
@@ -77,8 +77,11 @@ func TestThreadModify_Metadata(t *testing.T) {
 	if flags["thread-ids"].Type != "string_array" || !flags["thread-ids"].Required {
 		t.Errorf("--thread-ids = %#v, want required string_array", flags["thread-ids"])
 	}
-	if got := strings.Join(flags["add-folder"].Aliases, ","); got != "folder-id" {
-		t.Errorf("--add-folder aliases = %q, want folder-id", got)
+	if got := strings.Join(flags["add-folder"].Aliases, ","); got != "" {
+		t.Errorf("--add-folder aliases = %q, want none", got)
+	}
+	if !flags["folder-id"].Hidden {
+		t.Errorf("--folder-id hidden = false, want true")
 	}
 }
 
@@ -89,8 +92,8 @@ func TestThreadTrash_Metadata(t *testing.T) {
 	if MailThreadTrash.Risk != "high-risk-write" {
 		t.Errorf("Risk = %q, want high-risk-write", MailThreadTrash.Risk)
 	}
-	if len(MailThreadTrash.AuthTypes) != 1 || MailThreadTrash.AuthTypes[0] != "user" {
-		t.Errorf("AuthTypes = %v, want [user]", MailThreadTrash.AuthTypes)
+	if strings.Join(MailThreadTrash.AuthTypes, ",") != "user,bot" {
+		t.Errorf("AuthTypes = %v, want [user bot]", MailThreadTrash.AuthTypes)
 	}
 }
 
@@ -213,6 +216,21 @@ func TestThreadModify_FolderIDAliasMapsToAddFolder(t *testing.T) {
 	}
 	if got := body["add_folder"]; got != "ARCHIVED" {
 		t.Fatalf("add_folder = %v, want ARCHIVED", got)
+	}
+}
+
+func TestThreadModify_AddFolderAndFolderIDConflict(t *testing.T) {
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	id := threadManageID("conflict")
+	err := runMountedMailShortcut(t, MailThreadModify, []string{
+		"+thread-modify",
+		"--thread-ids", id,
+		"--add-folder", "archive",
+		"--folder-id", "folderA",
+	}, f, stdout)
+	requireMessageManageValidationParam(t, err, "--folder-id")
+	if !strings.Contains(err.Error(), "pass only one") {
+		t.Fatalf("error = %v, want pass only one conflict message", err)
 	}
 }
 

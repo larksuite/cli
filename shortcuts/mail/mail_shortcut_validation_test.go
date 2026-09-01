@@ -163,6 +163,38 @@ func TestMailThreadBotExplicitMailboxPassesValidation(t *testing.T) {
 	assertValidatePasses(t, err)
 }
 
+func TestMailThreadModifyBotDefaultMailboxMeReturnsValidationError(t *testing.T) {
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	err := runMountedMailShortcut(t, MailThreadModify, []string{
+		"+thread-modify", "--as", "bot", "--thread-ids", "thread_xxx", "--add-folder", "archive",
+	}, f, stdout)
+	assertValidationError(t, err, "does not support --mailbox me")
+}
+
+func TestMailThreadModifyBotExplicitMailboxPassesValidation(t *testing.T) {
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	err := runMountedMailShortcut(t, MailThreadModify, []string{
+		"+thread-modify", "--as", "bot", "--mailbox", "alice@example.com", "--thread-ids", "thread_xxx", "--add-folder", "archive", "--dry-run",
+	}, f, stdout)
+	assertValidatePasses(t, err)
+}
+
+func TestMailThreadTrashBotDefaultMailboxMeReturnsValidationError(t *testing.T) {
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	err := runMountedMailShortcut(t, MailThreadTrash, []string{
+		"+thread-trash", "--as", "bot", "--thread-ids", "thread_xxx", "--dry-run",
+	}, f, stdout)
+	assertValidationError(t, err, "does not support --mailbox me")
+}
+
+func TestMailThreadTrashBotExplicitMailboxPassesValidation(t *testing.T) {
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	err := runMountedMailShortcut(t, MailThreadTrash, []string{
+		"+thread-trash", "--as", "bot", "--mailbox", "alice@example.com", "--thread-ids", "thread_xxx", "--dry-run",
+	}, f, stdout)
+	assertValidatePasses(t, err)
+}
+
 // TC-8: +triage --as bot (default mailbox=me) → ErrValidation
 func TestMailTriageBotDefaultMailboxMeReturnsValidationError(t *testing.T) {
 	f, stdout, _, _ := mailShortcutTestFactory(t)
