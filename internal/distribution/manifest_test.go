@@ -90,12 +90,32 @@ func TestParseManifestIgnoresArtifactsForOtherPlatforms(t *testing.T) {
 	}
 }
 
+func TestParseManifestAllowsExtensionFields(t *testing.T) {
+	input := strings.Replace(
+		validManifestJSON("1"),
+		`"schema":1`,
+		`"schema":1,"environment":"customer-a"`,
+		1,
+	)
+	input = strings.Replace(
+		input,
+		`"url":"https://dist.example/skills.tar.gz"`,
+		`"url":"https://dist.example/skills.tar.gz","channel":"stable"`,
+		1,
+	)
+	if _, err := parseManifest([]byte(input), "test-os"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestParseManifestRejectsInvalidContracts(t *testing.T) {
 	tests := []struct{ name, input, contains string }{
-		{"unknown field", strings.Replace(validManifestJSON("1"), `"schema":1`, `"schema":1,"extra":true`, 1), "unknown field"},
+		{"schema", strings.Replace(validManifestJSON("1"), `"schema":1`, `"schema":2`, 1), "unsupported distribution manifest schema"},
+		{"missing version", strings.Replace(validManifestJSON("1"), `"version":"1",`, "", 1), "version must be"},
 		{"unsupported scheme", strings.Replace(validManifestJSON("1"), "https://dist.example/skills", "file:///tmp/skills", 1), "HTTP or HTTPS"},
 		{"checksum", strings.Replace(validManifestJSON("1"), testChecksum, "sha256:ABC", 1), "checksum"},
 		{"missing skills", strings.Replace(validManifestJSON("1"), `"skills"`, `"other"`, 1), "missing required"},
+		{"missing platform", strings.Replace(validManifestJSON("1"), `"test-os"`, `"other-os"`, 1), "missing required"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

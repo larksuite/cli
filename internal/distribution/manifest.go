@@ -37,7 +37,9 @@ type Artifact struct {
 	Checksum string `json:"checksum"`
 }
 
-// Manifest is schema 1 of the distribution protocol.
+// Manifest is schema 1 of the distribution protocol. Unknown JSON fields are
+// ignored so producers can attach metadata without breaking older CLIs; the
+// required fields and artifacts are still validated before use.
 type Manifest struct {
 	Schema    int                 `json:"schema"`
 	Version   string              `json:"version"`
@@ -142,7 +144,6 @@ func redactRequestError(err error) error {
 
 func parseManifest(data []byte, platformKey string) (*Manifest, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
 	var manifest Manifest
 	if err := decoder.Decode(&manifest); err != nil {
 		return nil, fmt.Errorf("invalid distribution manifest: %w", err)
