@@ -37,11 +37,11 @@ func (f stubURLRewriter) RewriteURL(rawURL string) string { return f(rawURL) }
 
 type stubDistributionProvider struct {
 	stubProvider
-	config DistributionConfig
+	manifestURL string
 }
 
-func (s *stubDistributionProvider) ResolveDistribution(context.Context) DistributionConfig {
-	return s.config
+func (s *stubDistributionProvider) ResolveManifestURL(context.Context) string {
+	return s.manifestURL
 }
 
 func TestGetProvider_NilByDefault(t *testing.T) {
@@ -123,14 +123,14 @@ func TestDistributionProviderIsOptional(t *testing.T) {
 	t.Cleanup(func() { Register(previous) })
 	p := &stubDistributionProvider{
 		stubProvider: stubProvider{name: "distribution"},
-		config:       DistributionConfig{ManifestURL: "https://dist.example/manifest.json"},
+		manifestURL:  "https://dist.example/manifest.json",
 	}
 	Register(p)
 	configured, ok := GetProvider().(DistributionProvider)
 	if !ok {
 		t.Fatal("registered provider does not implement DistributionProvider")
 	}
-	if got := configured.ResolveDistribution(context.Background()).ManifestURL; got != p.config.ManifestURL {
+	if got := configured.ResolveManifestURL(context.Background()); got != p.manifestURL {
 		t.Fatalf("ManifestURL = %q", got)
 	}
 }

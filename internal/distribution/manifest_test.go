@@ -59,7 +59,7 @@ func TestFetchManifestAppliesManifestDeadline(t *testing.T) {
 		}, nil
 	})}
 	t.Cleanup(func() { DefaultClient = previousClient })
-	if _, err := FetchManifest(context.Background(), Source{ManifestURL: "https://dist.example/manifest.json"}); err != nil {
+	if _, err := FetchManifest(context.Background(), "https://dist.example/manifest.json"); err != nil {
 		t.Fatal(err)
 	}
 }

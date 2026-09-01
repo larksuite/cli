@@ -14,9 +14,9 @@ import (
 	"github.com/larksuite/cli/internal/vfs"
 )
 
-// PreparedUpdate contains fully downloaded, checksum-verified, extracted
-// resources. Call Cleanup when installation is not completed.
-type PreparedUpdate struct {
+// preparedUpdate contains fully downloaded, checksum-verified, extracted
+// resources owned by one Install call.
+type preparedUpdate struct {
 	Manifest   *Manifest
 	BinaryPath string
 	SkillsRoot string
@@ -24,9 +24,9 @@ type PreparedUpdate struct {
 	root       string
 }
 
-// PrepareUpdate downloads and validates every resource before installed state
+// prepareUpdate downloads and validates every resource before installed state
 // is mutated.
-func PrepareUpdate(ctx context.Context, manifest *Manifest) (*PreparedUpdate, error) {
+func prepareUpdate(ctx context.Context, manifest *Manifest) (*preparedUpdate, error) {
 	if manifest == nil {
 		return nil, fmt.Errorf("distribution manifest is nil")
 	}
@@ -37,11 +37,11 @@ func PrepareUpdate(ctx context.Context, manifest *Manifest) (*PreparedUpdate, er
 	if err != nil {
 		return nil, err
 	}
-	prepared := &PreparedUpdate{Manifest: manifest, root: root}
+	prepared := &preparedUpdate{Manifest: manifest, root: root}
 	keep := false
 	defer func() {
 		if !keep {
-			prepared.Cleanup()
+			prepared.cleanup()
 		}
 	}()
 
@@ -85,8 +85,8 @@ func PrepareUpdate(ctx context.Context, manifest *Manifest) (*PreparedUpdate, er
 	return prepared, nil
 }
 
-// Cleanup removes downloaded and extracted temporary resources.
-func (p *PreparedUpdate) Cleanup() {
+// cleanup removes downloaded and extracted temporary resources.
+func (p *preparedUpdate) cleanup() {
 	if p != nil && p.root != "" {
 		_ = vfs.RemoveAll(p.root)
 	}

@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -51,8 +50,8 @@ func (p updateManifestProvider) Name() string { return "test-manifest" }
 func (p updateManifestProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
 	return nil
 }
-func (p updateManifestProvider) ResolveDistribution(context.Context) exttransport.DistributionConfig {
-	return exttransport.DistributionConfig{ManifestURL: p.manifestURL}
+func (p updateManifestProvider) ResolveManifestURL(context.Context) string {
+	return p.manifestURL
 }
 
 func TestManifestCheckAcceptsHTTPAndReportsOpaqueDowngradeTarget(t *testing.T) {
@@ -86,33 +85,6 @@ func TestManifestCheckAcceptsHTTPAndReportsOpaqueDowngradeTarget(t *testing.T) {
 	}
 	if _, exists := got["latest_version"]; exists {
 		t.Fatalf("manifest output must not label an arbitrary target as latest: %#v", got)
-	}
-}
-
-func TestClassifyDistributionError(t *testing.T) {
-	tests := []struct {
-		name      string
-		err       error
-		category  errs.Category
-		subtype   errs.Subtype
-		retryable bool
-	}{
-		{name: "timeout", err: context.DeadlineExceeded, category: errs.CategoryNetwork, subtype: errs.SubtypeNetworkTimeout, retryable: true},
-		{name: "dns", err: &net.DNSError{Err: "lookup failed", Name: "dist.example"}, category: errs.CategoryNetwork, subtype: errs.SubtypeNetworkDNS, retryable: true},
-		{name: "file IO", err: &os.PathError{Op: "mkdir", Path: "/tmp/config", Err: os.ErrPermission}, category: errs.CategoryInternal, subtype: errs.SubtypeFileIO},
-		{name: "bad archive", err: errors.New("unsupported archive format"), category: errs.CategoryNetwork, subtype: errs.SubtypeNetworkProtocol},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := classifyDistributionError("distribution failed", tt.err)
-			problem, ok := errs.ProblemOf(got)
-			if !ok || problem.Category != tt.category || problem.Subtype != tt.subtype || problem.Retryable != tt.retryable {
-				t.Fatalf("problem = %#v, want category=%q subtype=%q retryable=%v", problem, tt.category, tt.subtype, tt.retryable)
-			}
-			if !errors.Is(got, tt.err) {
-				t.Fatalf("cause %v was not preserved", tt.err)
-			}
-		})
 	}
 }
 

@@ -21,6 +21,7 @@ import (
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/surface"
+	"github.com/larksuite/cli/internal/update"
 )
 
 type doctorManifestProvider struct{}
@@ -29,8 +30,8 @@ func (doctorManifestProvider) Name() string { return "doctor-manifest-test" }
 func (doctorManifestProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
 	return nil
 }
-func (doctorManifestProvider) ResolveDistribution(context.Context) exttransport.DistributionConfig {
-	return exttransport.DistributionConfig{ManifestURL: "https://dist.example/manifest.json"}
+func (doctorManifestProvider) ResolveManifestURL(context.Context) string {
+	return "https://dist.example/manifest.json"
 }
 
 func TestCheckCLIUpdateReportsDifferentOpaqueManifestTarget(t *testing.T) {
@@ -38,7 +39,9 @@ func TestCheckCLIUpdateReportsDifferentOpaqueManifestTarget(t *testing.T) {
 	previousFetch := fetchLatestForDoctor
 	previousVersion := build.Version
 	exttransport.Register(doctorManifestProvider{})
-	fetchLatestForDoctor = func() (string, error) { return "older-channel", nil }
+	fetchLatestForDoctor = func() (update.Target, error) {
+		return update.Target{Version: "older-channel", Exact: true}, nil
+	}
 	build.Version = "newer-channel"
 	t.Cleanup(func() {
 		exttransport.Register(previousProvider)
@@ -139,9 +142,9 @@ func TestDoctorRunDoesNotFetchUpdateWhenCommandIsConcealed(t *testing.T) {
 	t.Cleanup(func() { fetchLatestForDoctor = oldFetch })
 
 	fetches := 0
-	fetchLatestForDoctor = func() (string, error) {
+	fetchLatestForDoctor = func() (update.Target, error) {
 		fetches++
-		return "9.9.9", nil
+		return update.Target{Version: "9.9.9"}, nil
 	}
 	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
 		surface.CommandUpdate: surface.CommandConcealed,

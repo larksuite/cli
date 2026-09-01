@@ -33,7 +33,10 @@ const (
 
 // Overridable for testing.
 var (
-	fetchLatest    = func() (string, error) { return update.FetchLatest() }
+	fetchLatest = func() (string, error) {
+		target, err := update.FetchTarget()
+		return target.Version, err
+	}
 	currentVersion = func() string { return build.Version }
 	currentOS      = runtime.GOOS
 	newUpdater     = func() *selfupdate.Updater { return selfupdate.New() }
@@ -150,7 +153,7 @@ func updateRunWithContext(ctx context.Context, opts *UpdateOptions) error {
 				WithParam("--skills-layout").
 				WithHint("Remove --skills-layout when using --check."))
 	}
-	source, manifestMode, err := distribution.ResolveSource(ctx)
+	manifestURL, manifestMode, err := distribution.ResolveManifestURL(ctx)
 	if err != nil {
 		return reportError(opts, io, "configuration",
 			errs.NewConfigError(errs.SubtypeInvalidConfig, "invalid distribution configuration: %s", err).WithCause(err))
@@ -162,7 +165,7 @@ func updateRunWithContext(ctx context.Context, opts *UpdateOptions) error {
 					WithParam("--skills-layout"))
 		}
 		output.PendingNotice = nil
-		return runManifestUpdate(ctx, opts, source)
+		return runManifestUpdate(ctx, opts, manifestURL)
 	}
 	cur := currentVersion()
 	updater := newUpdater()

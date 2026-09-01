@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-package distributioninstall
+package distribution
 
 import (
 	"errors"
@@ -10,7 +10,6 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/larksuite/cli/internal/distribution"
 	"github.com/larksuite/cli/internal/skillscheck"
 )
 
@@ -29,8 +28,8 @@ func TestInstallPreparedUpdatesManagedSkillsAndPreservesCustom(t *testing.T) {
 	binary := filepath.Join(preparedRoot, "lark-cli")
 	mustWrite(t, binary, "new")
 	mustWrite(t, filepath.Join(preparedRoot, "skills", "new-managed", "SKILL.md"), "new")
-	prepared := &distribution.PreparedUpdate{Manifest: &distribution.Manifest{Version: "target"}, BinaryPath: binary, SkillsRoot: filepath.Join(preparedRoot, "skills"), SkillNames: []string{"new-managed"}}
-	if err := InstallPrepared(prepared, InstallOptions{ExecutablePath: executable, SkillsDir: skillsDir, VerifyBinary: func(path, version string) error { return nil }}); err != nil {
+	prepared := &preparedUpdate{Manifest: &Manifest{Version: "target"}, BinaryPath: binary, SkillsRoot: filepath.Join(preparedRoot, "skills"), SkillNames: []string{"new-managed"}}
+	if err := installPrepared(prepared, InstallOptions{ExecutablePath: executable, SkillsDir: skillsDir, VerifyBinary: func(path, version string) error { return nil }}); err != nil {
 		t.Fatal(err)
 	}
 	assertFile(t, executable, "new")
@@ -63,13 +62,13 @@ func TestInstallPreparedSyncsDetectedClaudeAndCodexSkillsDirs(t *testing.T) {
 	binary := filepath.Join(preparedRoot, "lark-cli")
 	mustWrite(t, binary, "new")
 	mustWrite(t, filepath.Join(preparedRoot, "skills", "managed", "SKILL.md"), "new")
-	prepared := &distribution.PreparedUpdate{
-		Manifest:   &distribution.Manifest{Version: "target"},
+	prepared := &preparedUpdate{
+		Manifest:   &Manifest{Version: "target"},
 		BinaryPath: binary,
 		SkillsRoot: filepath.Join(preparedRoot, "skills"),
 		SkillNames: []string{"managed"},
 	}
-	if err := InstallPrepared(prepared, InstallOptions{ExecutablePath: executable, VerifyBinary: func(path, version string) error { return nil }}); err != nil {
+	if err := installPrepared(prepared, InstallOptions{ExecutablePath: executable, VerifyBinary: func(path, version string) error { return nil }}); err != nil {
 		t.Fatal(err)
 	}
 	for _, target := range []string{
@@ -110,8 +109,8 @@ func TestInstallSkillsToTargetsRollsBackEarlierTarget(t *testing.T) {
 	mustWrite(t, blockedParent, "not a directory")
 	preparedRoot := filepath.Join(root, "prepared")
 	mustWrite(t, filepath.Join(preparedRoot, "skills", "managed", "SKILL.md"), "new")
-	prepared := &distribution.PreparedUpdate{
-		Manifest:   &distribution.Manifest{Version: "target"},
+	prepared := &preparedUpdate{
+		Manifest:   &Manifest{Version: "target"},
 		SkillsRoot: filepath.Join(preparedRoot, "skills"),
 		SkillNames: []string{"managed"},
 	}
@@ -130,8 +129,8 @@ func TestInstallPreparedVerificationFailureDoesNotMutate(t *testing.T) {
 	binary := filepath.Join(root, "prepared", "lark-cli")
 	mustWrite(t, binary, "new")
 	mustWrite(t, filepath.Join(root, "prepared", "skills", "managed", "SKILL.md"), "new")
-	prepared := &distribution.PreparedUpdate{Manifest: &distribution.Manifest{Version: "target"}, BinaryPath: binary, SkillsRoot: filepath.Join(root, "prepared", "skills"), SkillNames: []string{"managed"}}
-	err := InstallPrepared(prepared, InstallOptions{ExecutablePath: executable, SkillsDir: filepath.Join(root, "skills"), VerifyBinary: func(path, version string) error { return errors.New("bad binary") }})
+	prepared := &preparedUpdate{Manifest: &Manifest{Version: "target"}, BinaryPath: binary, SkillsRoot: filepath.Join(root, "prepared", "skills"), SkillNames: []string{"managed"}}
+	err := installPrepared(prepared, InstallOptions{ExecutablePath: executable, SkillsDir: filepath.Join(root, "skills"), VerifyBinary: func(path, version string) error { return errors.New("bad binary") }})
 	if err == nil {
 		t.Fatal("InstallPrepared succeeded")
 	}
@@ -160,8 +159,8 @@ func TestInstallPreparedBinaryCommitFailureRollsBackSkillsAndState(t *testing.T)
 	binary := filepath.Join(root, "prepared", "lark-cli")
 	mustWrite(t, binary, "new")
 	mustWrite(t, filepath.Join(root, "prepared", "skills", "managed", "SKILL.md"), "new")
-	prepared := &distribution.PreparedUpdate{Manifest: &distribution.Manifest{Version: "target"}, BinaryPath: binary, SkillsRoot: filepath.Join(root, "prepared", "skills"), SkillNames: []string{"managed"}}
-	err := InstallPrepared(prepared, InstallOptions{ExecutablePath: missingExecutable, SkillsDir: skillsDir, VerifyBinary: func(path, version string) error { return nil }})
+	prepared := &preparedUpdate{Manifest: &Manifest{Version: "target"}, BinaryPath: binary, SkillsRoot: filepath.Join(root, "prepared", "skills"), SkillNames: []string{"managed"}}
+	err := installPrepared(prepared, InstallOptions{ExecutablePath: missingExecutable, SkillsDir: skillsDir, VerifyBinary: func(path, version string) error { return nil }})
 	if err == nil {
 		t.Fatal("InstallPrepared succeeded")
 	}

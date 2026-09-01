@@ -12,28 +12,23 @@ import (
 	exttransport "github.com/larksuite/cli/extension/transport"
 )
 
-// Source is the validated configured distribution source.
-type Source struct {
-	ManifestURL string
-}
-
-// ResolveSource returns the configured distribution source. The boolean is
+// ResolveManifestURL returns the configured distribution manifest URL. The boolean is
 // false when the active transport provider does not opt into manifest-based
 // distribution or returns an empty URL.
-func ResolveSource(ctx context.Context) (Source, bool, error) {
+func ResolveManifestURL(ctx context.Context) (string, bool, error) {
 	provider := exttransport.GetProvider()
 	configured, ok := provider.(exttransport.DistributionProvider)
 	if !ok {
-		return Source{}, false, nil
+		return "", false, nil
 	}
-	raw := strings.TrimSpace(configured.ResolveDistribution(ctx).ManifestURL)
+	raw := strings.TrimSpace(configured.ResolveManifestURL(ctx))
 	if raw == "" {
-		return Source{}, false, nil
+		return "", false, nil
 	}
 	if err := validateDistributionURL(raw); err != nil {
-		return Source{}, false, fmt.Errorf("invalid distribution manifest URL: %w", err)
+		return "", false, fmt.Errorf("invalid distribution manifest URL: %w", err)
 	}
-	return Source{ManifestURL: raw}, true, nil
+	return raw, true, nil
 }
 
 func validateDistributionURL(raw string) error {

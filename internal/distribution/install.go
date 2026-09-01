@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-package distributioninstall
+package distribution
 
 import (
 	"context"
@@ -14,14 +14,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/distribution"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/skillscheck"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
 const binaryVerifyTimeout = 10 * time.Second
 
-// InstallOptions supplies destinations and test seams for a prepared update.
+// InstallOptions supplies destinations and test seams for a distribution update.
 type InstallOptions struct {
 	ExecutablePath string
 	// SkillsDir overrides automatic Agent directory discovery when non-empty.
@@ -29,9 +29,24 @@ type InstallOptions struct {
 	VerifyBinary func(path, version string) error
 }
 
-// InstallPrepared commits verified Skills and binary resources as one
-// rollback-capable local transaction. The executable is committed last.
-func InstallPrepared(prepared *distribution.PreparedUpdate, opts InstallOptions) error {
+// Install downloads, verifies, and commits the configured Skills and binary
+// resources as one rollback-capable local transaction. The executable is
+// committed last.
+func Install(ctx context.Context, manifest *Manifest, opts InstallOptions) error {
+	prepared, err := prepareUpdate(ctx, manifest)
+	if err != nil {
+		return ClassifyError("failed to prepare distribution update", err)
+	}
+	defer prepared.cleanup()
+	if err := installPrepared(prepared, opts); err != nil {
+		return errs.NewInternalError(errs.SubtypeUnknown, "failed to install distribution update: %s", err).
+			WithHint("Retry with `lark-cli update --force`.").
+			WithCause(err)
+	}
+	return nil
+}
+
+func installPrepared(prepared *preparedUpdate, opts InstallOptions) error {
 	if prepared == nil || prepared.Manifest == nil {
 		return fmt.Errorf("prepared distribution update is required")
 	}
@@ -213,7 +228,7 @@ func matchesVersionOutput(output, version string) bool {
 	return strings.TrimSpace(output) == "lark-cli version "+version
 }
 
-func installSkills(prepared *distribution.PreparedUpdate, target string, previous *skillscheck.SkillsState) (func() error, func(), error) {
+func installSkills(prepared *preparedUpdate, target string, previous *skillscheck.SkillsState) (func() error, func(), error) {
 	parent := filepath.Dir(target)
 	if err := vfs.MkdirAll(parent, 0o755); err != nil {
 		return nil, nil, err
@@ -282,7 +297,7 @@ func installSkills(prepared *distribution.PreparedUpdate, target string, previou
 	return rollback, func() { _ = vfs.RemoveAll(stage); _ = vfs.RemoveAll(backup) }, nil
 }
 
-func installSkillsToTargets(prepared *distribution.PreparedUpdate, targets []string, previous *skillscheck.SkillsState) (func() error, func(), error) {
+func installSkillsToTargets(prepared *preparedUpdate, targets []string, previous *skillscheck.SkillsState) (func() error, func(), error) {
 	rollbacks := make([]func() error, 0, len(targets))
 	finalizers := make([]func(), 0, len(targets))
 	rollbackAll := func() error {

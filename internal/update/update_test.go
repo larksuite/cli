@@ -36,8 +36,8 @@ func (p updateExternalProvider) ResolveInterceptor(context.Context) exttransport
 	return p.interceptor
 }
 
-func (p updateExternalProvider) ResolveDistribution(context.Context) exttransport.DistributionConfig {
-	return exttransport.DistributionConfig{ManifestURL: p.manifestURL}
+func (p updateExternalProvider) ResolveManifestURL(context.Context) string {
+	return p.manifestURL
 }
 
 func (updateExternalProvider) SupportsRequestClass(class exttransport.RequestClass) bool {

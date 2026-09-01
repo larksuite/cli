@@ -66,10 +66,10 @@ func PlatformKey(goos, goarch string) string { return goos + "-" + goarch }
 func CurrentPlatformKey() string { return PlatformKey(runtime.GOOS, runtime.GOARCH) }
 
 // FetchManifest synchronously loads and validates the configured manifest.
-func FetchManifest(ctx context.Context, source Source) (*Manifest, error) {
+func FetchManifest(ctx context.Context, manifestURL string) (*Manifest, error) {
 	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source.ManifestURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, manifestURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create manifest request: %w", err)
 	}
@@ -108,8 +108,7 @@ func newHTTPStatusError(operation string, statusCode int) error {
 	return &httpStatusError{operation: operation, statusCode: statusCode}
 }
 
-// HTTPStatusCode returns an upstream status preserved in a distribution error.
-func HTTPStatusCode(err error) (int, bool) {
+func httpStatusCode(err error) (int, bool) {
 	var statusErr *httpStatusError
 	if !errors.As(err, &statusErr) {
 		return 0, false
