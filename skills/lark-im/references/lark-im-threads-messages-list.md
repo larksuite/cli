@@ -28,6 +28,7 @@ lark-cli im +threads-messages-list --thread omt_xxx --page-all
 
 # Output format options
 lark-cli im +threads-messages-list --thread omt_xxx --format pretty
+lark-cli im +threads-messages-list --thread omt_xxx --format concise
 lark-cli im +threads-messages-list --thread omt_xxx --format table
 lark-cli im +threads-messages-list --thread omt_xxx --format csv
 
@@ -50,7 +51,7 @@ lark-cli im +threads-messages-list --thread omt_xxx --dry-run
 | `--page-token <token>` | No | Starting cursor, normally returned by a previous response |
 | `--page-all` | No | Automatically fetch and merge subsequent pages; capped by `--page-limit` |
 | `--page-limit <n>` | No | Maximum pages fetched by `--page-all` (default 10, range 1-1000) |
-| `--format <fmt>` | No | Output format: `json` (default) / `pretty` / `table` / `ndjson` / `csv` |
+| `--format <fmt>` | No | Output format: `json` (default) / `pretty` / `concise` / `table` / `ndjson` / `csv`; concise emits complete conversation-oriented Markdown |
 | `--as <identity>` | No | Identity type: `user` (default) / `bot` |
 | `--dry-run` | No | Print the request only, do not execute it |
 

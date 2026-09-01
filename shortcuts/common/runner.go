@@ -852,6 +852,31 @@ func (ctx *RuntimeContext) OutFormat(data interface{}, meta *output.Meta, pretty
 	}))
 }
 
+// OutFormatWithConcise extends OutFormat with one command-owned concise renderer.
+// Pair it with AddOutputFormats in the shortcut's PostMount hook so help and
+// shell completion advertise the renderer without changing the process-wide
+// set of generic output formats.
+func (ctx *RuntimeContext) OutFormatWithConcise(
+	data interface{},
+	meta *output.Meta,
+	prettyFn func(w io.Writer),
+	conciseFn func(w io.Writer) error,
+) {
+	var concise output.PrettyRenderer
+	if conciseFn != nil {
+		concise = func(w io.Writer, _ bool) error {
+			return conciseFn(w)
+		}
+	}
+	ctx.handleEmitterError(output.SuccessWithConcise(ctx.newEmitter(), data, output.EmitOptions{
+		Format: ctx.Format,
+		Raw:    false,
+		JQ:     ctx.JqExpr,
+		Meta:   meta,
+		Pretty: wrapLegacyPrettyRenderer(prettyFn),
+	}, concise))
+}
+
 // OutFormatRaw is like OutFormat but with HTML escaping disabled in JSON output.
 // Use this when the data contains XML/HTML content that should be preserved as-is.
 func (ctx *RuntimeContext) OutFormatRaw(data interface{}, meta *output.Meta, prettyFn func(w io.Writer)) {
@@ -1420,6 +1445,85 @@ func registerShortcutFlags(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) 
 	registerShortcutFlagsWithContext(context.Background(), cmd, f, s)
 }
 
+const additionalOutputFormatsAnnotation = "lark-cli.shortcut.output-formats.additional"
+
+var standardShortcutOutputFormats = []string{"json", "pretty", "table", "ndjson", "csv"}
+
+// AddOutputFormats extends the standard shortcut --format help and completion
+// surface without replacing its historical open-value runtime contract. It is
+// intended for legacy shortcut PostMount hooks whose command supplies the
+// corresponding renderer; the framework remains the sole owner of --format
+// and --json. Typed commands declare their output formats in their schema.
+func AddOutputFormats(cmd *cobra.Command, additional ...string) {
+	existing := []string(nil)
+	if cmd != nil && cmd.Annotations != nil {
+		existing = strings.Split(cmd.Annotations[additionalOutputFormatsAnnotation], ",")
+	}
+	additional = normalizeAdditionalOutputFormats(append(existing, additional...))
+	if len(additional) == 0 {
+		return
+	}
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	cmd.Annotations[additionalOutputFormatsAnnotation] = strings.Join(additional, ",")
+
+	formatFlag := cmd.Flags().Lookup("format")
+	if formatFlag == nil {
+		panic("AddOutputFormats requires the standard --format flag")
+	}
+	formatFlag.Usage = shortcutOutputFormatUsage(shortcutOutputFormats(cmd))
+}
+
+func shortcutOutputFormats(cmd *cobra.Command) []string {
+	formats := append([]string(nil), standardShortcutOutputFormats...)
+	if cmd == nil || cmd.Annotations == nil {
+		return formats
+	}
+	return insertOutputFormats(formats, strings.Split(cmd.Annotations[additionalOutputFormatsAnnotation], ","))
+}
+
+func normalizeAdditionalOutputFormats(formats []string) []string {
+	seen := make(map[string]struct{}, len(standardShortcutOutputFormats)+len(formats))
+	for _, format := range standardShortcutOutputFormats {
+		seen[format] = struct{}{}
+	}
+	additional := make([]string, 0, len(formats))
+	for _, format := range formats {
+		format = strings.TrimSpace(format)
+		if format == "" {
+			continue
+		}
+		if _, exists := seen[format]; exists {
+			continue
+		}
+		seen[format] = struct{}{}
+		additional = append(additional, format)
+	}
+	return additional
+}
+
+func insertOutputFormats(standard, additional []string) []string {
+	additional = normalizeAdditionalOutputFormats(additional)
+	if len(additional) == 0 {
+		return standard
+	}
+	insertAt := min(2, len(standard))
+	out := make([]string, 0, len(standard)+len(additional))
+	out = append(out, standard[:insertAt]...)
+	out = append(out, additional...)
+	out = append(out, standard[insertAt:]...)
+	return out
+}
+
+func shortcutOutputFormatUsage(formats []string) string {
+	labels := append([]string(nil), formats...)
+	if len(labels) > 0 {
+		labels[0] += " (default)"
+	}
+	return "output format: " + strings.Join(labels, " | ")
+}
+
 // shortcutDeclaresJSONFlag reports whether the shortcut itself declares a flag
 // named "json" in its Flags list (custom semantics, e.g. event +subscribe's
 // pretty-print switch or base +record-search's request-body payload).
@@ -1561,9 +1665,9 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 
 	cmd.Flags().Bool("dry-run", false, "print request without executing")
 	if cmd.Flags().Lookup("format") == nil {
-		cmd.Flags().String("format", "json", "output format: json (default) | pretty | table | ndjson | csv")
+		cmd.Flags().String("format", "json", shortcutOutputFormatUsage(standardShortcutOutputFormats))
 		cmdutil.RegisterFlagCompletion(cmd, "format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-			return []string{"json", "pretty", "table", "ndjson", "csv"}, cobra.ShellCompDirectiveNoFileComp
+			return shortcutOutputFormats(cmd), cobra.ShellCompDirectiveNoFileComp
 		})
 	}
 	ensureJSONShorthand(cmd, s)

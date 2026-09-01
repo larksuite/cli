@@ -15,6 +15,7 @@ import (
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
+	"github.com/spf13/cobra"
 )
 
 const (
@@ -41,6 +42,9 @@ var ImThreadsMessagesList = common.Shortcut{
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
 		downloadResourcesFlag,
 	}, common.PageAllFlags()...),
+	PostMount: func(cmd *cobra.Command) {
+		common.AddOutputFormats(cmd, "concise")
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		threadFlag := runtime.Str("thread")
 		dir := runtime.Str("order")
@@ -156,9 +160,7 @@ var ImThreadsMessagesList = common.Shortcut{
 			"has_more":   hasMore,
 			"page_token": nextPageToken,
 		}
-		runtime.OutFormat(outData, &output.Meta{
-			Pagination: pagination,
-		}, func(w io.Writer) {
+		runtime.OutFormatWithConcise(outData, &output.Meta{Pagination: pagination}, func(w io.Writer) {
 			if len(messages) == 0 {
 				fmt.Fprintln(w, "No messages in this thread.")
 				return
@@ -181,6 +183,14 @@ var ImThreadsMessagesList = common.Shortcut{
 			}
 			output.PrintTable(w, rows)
 			fmt.Fprintf(w, "\n%d thread message(s)\ntip: use --format json to view full message content\n", len(messages))
+		}, func(w io.Writer) error {
+			return renderMessagesConcise(w, conciseMessageView{
+				Title:     "Thread messages",
+				ThreadID:  threadId,
+				Messages:  messages,
+				HasMore:   hasMore,
+				NextToken: nextPageToken,
+			})
 		})
 		return nil
 	},
