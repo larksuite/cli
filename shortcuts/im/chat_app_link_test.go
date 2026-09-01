@@ -47,7 +47,8 @@ func TestAssembleChatAppLink(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := assembleChatAppLink(tt.chatID, tt.brand); got != tt.want {
+			got := assembleChatAppLink(tt.chatID, tt.brand)
+			if got != tt.want {
 				t.Fatalf("assembleChatAppLink() = %q, want %q", got, tt.want)
 			}
 		})

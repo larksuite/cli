@@ -15,6 +15,22 @@ type Provider interface {
 	ResolveInterceptor(ctx context.Context) Interceptor
 }
 
+// URLRewriter maps a URL to the URL that lark-cli should use.
+// Returning the input unchanged means no rewrite.
+type URLRewriter interface {
+	RewriteURL(rawURL string) string
+}
+
+// URLRewriterProvider optionally supplies URL rewriting in addition to the
+// existing request interceptor. ResolveURLRewriter must be a fast, local
+// lookup; it may run while the CLI is constructing an HTTP client or rendering
+// a non-network URL. Providers that do not implement this interface retain
+// their existing behavior.
+type URLRewriterProvider interface {
+	Provider
+	ResolveURLRewriter(ctx context.Context) URLRewriter
+}
+
 // RequestClass describes the trust boundary of an outbound HTTP request.
 // Platform requests target endpoints owned by the CLI's endpoint resolver;
 // external requests target user-provided, pre-signed, CDN, registry, or other
@@ -28,9 +44,11 @@ const (
 	RequestClassExternal RequestClass = "external"
 )
 
-// ScopedProvider optionally limits a Provider to selected request classes.
-// Providers that do not implement this interface retain the original
-// behavior and apply to every request class.
+// ScopedProvider optionally limits the request Interceptor to selected request
+// classes. URL rewriting is intentionally not scoped: it also applies to
+// presentation URLs and URLs passed to child processes, which have no request
+// class. Providers that do not implement this interface retain the original
+// interceptor behavior and apply to every request class.
 type ScopedProvider interface {
 	Provider
 	SupportsRequestClass(RequestClass) bool

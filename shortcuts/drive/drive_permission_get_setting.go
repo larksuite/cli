@@ -13,6 +13,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/urlrewrite"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -178,7 +179,7 @@ func (s drivePermissionGetSettingSpec) url(runtime *common.RuntimeContext) strin
 	if brand == core.BrandLark {
 		host = "https://www.larksuite.com"
 	}
-	return host + resourceKind.CanonicalPath + url.PathEscape(token)
+	return urlrewrite.Rewrite(host + resourceKind.CanonicalPath + url.PathEscape(token))
 }
 
 func validateDrivePermissionGetSettingToken(token string) error {

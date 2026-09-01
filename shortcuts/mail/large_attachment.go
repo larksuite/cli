@@ -17,6 +17,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/urlrewrite"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
@@ -271,10 +272,10 @@ func buildLargeAttachmentItems(brand core.LarkBrand, lang string, results []larg
 	var items strings.Builder
 	for _, att := range results {
 		fmt.Fprintf(&items, largeAttItemTpl,
-			htmlEscape(iconCDN+fileTypeIcon(att.FileName)),
+			htmlEscape(urlrewrite.Rewrite(iconCDN+fileTypeIcon(att.FileName))),
 			htmlEscape(att.FileName),
 			htmlEscape(common.FormatSize(att.FileSize)),
-			htmlEscape(buildLargeAttachmentPreviewURL(brand, att.FileToken)),
+			htmlEscape(urlrewrite.Rewrite(buildLargeAttachmentPreviewURL(brand, att.FileToken))),
 			htmlEscape(att.FileToken),
 			downloadText,
 		)
@@ -320,7 +321,7 @@ func buildLargeAttachmentPlainText(brand core.LarkBrand, lang string, results []
 		sb.WriteString("\n")
 		sb.WriteString(common.FormatSize(att.FileSize))
 		sb.WriteString("\n")
-		sb.WriteString(downloadText + ": " + buildLargeAttachmentPreviewURL(brand, att.FileToken))
+		sb.WriteString(downloadText + ": " + urlrewrite.Rewrite(buildLargeAttachmentPreviewURL(brand, att.FileToken)))
 		if i < len(results)-1 {
 			sb.WriteString("\n\n")
 		} else {

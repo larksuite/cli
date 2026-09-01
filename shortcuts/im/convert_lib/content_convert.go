@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/urlrewrite"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -283,7 +284,7 @@ func assembleMessageAppLink(m map[string]interface{}, brand core.LarkBrand) stri
 		q.Set("open_chat_id", chatID)
 		q.Set("thread_position", threadPos)
 		u.RawQuery = q.Encode()
-		return u.String()
+		return urlrewrite.Rewrite(u.String())
 	}
 	if chatID != "" && okMsgPos {
 		u := &url.URL{Scheme: "https", Host: domain, Path: "/client/chat/open"}
@@ -291,7 +292,7 @@ func assembleMessageAppLink(m map[string]interface{}, brand core.LarkBrand) stri
 		q.Set("openChatId", chatID)
 		q.Set("position", msgPos)
 		u.RawQuery = q.Encode()
-		return u.String()
+		return urlrewrite.Rewrite(u.String())
 	}
 	return ""
 }

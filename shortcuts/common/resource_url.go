@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/urlrewrite"
 )
 
 // BuildResourceURL returns a brand-standard, user-facing URL for a freshly
@@ -33,28 +34,30 @@ func BuildResourceURL(brand core.LarkBrand, kind, token string) string {
 		host = "https://www.larksuite.com"
 	}
 
+	var resourceURL string
 	switch strings.ToLower(strings.TrimSpace(kind)) {
 	case "docx":
-		return host + "/docx/" + token
+		resourceURL = host + "/docx/" + token
 	case "doc":
-		return host + "/doc/" + token
+		resourceURL = host + "/doc/" + token
 	case "sheet":
-		return host + "/sheets/" + token
+		resourceURL = host + "/sheets/" + token
 	case "bitable":
-		return host + "/base/" + token
+		resourceURL = host + "/base/" + token
 	case "wiki":
-		return host + "/wiki/" + token
+		resourceURL = host + "/wiki/" + token
 	case "file":
-		return host + "/file/" + token
+		resourceURL = host + "/file/" + token
 	case "folder":
-		return host + "/drive/folder/" + token
+		resourceURL = host + "/drive/folder/" + token
 	case "mindnote":
-		return host + "/mindnote/" + token
+		resourceURL = host + "/mindnote/" + token
 	case "slides":
-		return host + "/slides/" + token
+		resourceURL = host + "/slides/" + token
 	default:
 		return ""
 	}
+	return urlrewrite.Rewrite(resourceURL)
 }
 
 // ResourceRef holds the parsed type and token from a Lark resource URL.
