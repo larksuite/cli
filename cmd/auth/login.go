@@ -182,7 +182,7 @@ func authLoginRun(opts *LoginOptions) error {
 
 	if !hasAnyOption {
 		if !opts.JSON && f.IOStreams.IsTerminal {
-			result, err := runInteractiveLogin(f.IOStreams, lang.Base(), msg, config.Brand)
+			result, err := runInteractiveLogin(f.IOStreams, lang, msg, config.Brand)
 			if err != nil {
 				return err
 			}

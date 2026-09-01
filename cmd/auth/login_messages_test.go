@@ -153,3 +153,39 @@ func TestAgentTimeoutHint_ExplicitProfilePreservesStartAndResume(t *testing.T) {
 		}
 	}
 }
+
+// TestBundleKey_AgreesWithGetLoginMsg pins the property that keeps the
+// interactive login screen in one language: the key handed to the
+// service-description registry must select the same bundle the surrounding
+// form text came from. The locale list is derived from the i18n catalog, so a
+// locale added there is covered here without anyone remembering to.
+func TestBundleKey_AgreesWithGetLoginMsg(t *testing.T) {
+	var locales []i18n.Lang
+	for _, entry := range strings.Split(i18n.CodesWithShort(), ", ") {
+		code, _, found := strings.Cut(entry, " (")
+		if !found {
+			t.Fatalf("CodesWithShort() entry %q is not in the %q form", entry, "code (short)")
+		}
+		locales = append(locales, i18n.Lang(code))
+	}
+	if len(locales) < 2 {
+		t.Fatalf("derived %d locales from CodesWithShort(), want the whole catalog", len(locales))
+	}
+
+	// Values expressing no preference render Chinese, same as getLoginMsg.
+	locales = append(locales, "", "unknown", "ZH", "en_US")
+
+	for _, lang := range locales {
+		wantEnglish := getLoginMsg(lang) == loginMsgEn
+		key := bundleKey(lang)
+		if key != "en" && key != "zh" {
+			t.Errorf("bundleKey(%q) = %q, want %q or %q", lang, key, "en", "zh")
+			continue
+		}
+		if gotEnglish := key == "en"; gotEnglish != wantEnglish {
+			t.Errorf("bundleKey(%q) = %q but getLoginMsg(%q) returns the %s bundle: "+
+				"the form and its domain rows would render in different languages",
+				lang, key, lang, map[bool]string{true: "English", false: "Chinese"}[wantEnglish])
+		}
+	}
+}

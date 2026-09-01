@@ -159,6 +159,19 @@ func getLoginMsg(lang i18n.Lang) *loginMsg {
 	return loginMsgZh
 }
 
+// bundleKey returns the language key the service-description registry uses to
+// pick its localized text. It follows the same rule as getLoginMsg, so the
+// domain rows rendered inside the interactive form match the form around them.
+// Selecting them by ISO base instead splits the screen: the registry treats
+// anything that is not "en" as Chinese, so a locale rendering the English
+// bundle would list Chinese domain descriptions under English headings.
+func bundleKey(lang i18n.Lang) string {
+	if lang.UsesEnglishUI() {
+		return "en"
+	}
+	return "zh"
+}
+
 // getShortcutOnlyDomainNames returns domain names that exist only as shortcuts
 // (not backed by from_meta service specs). Descriptions are now centralized in
 // service_descriptions.json.
