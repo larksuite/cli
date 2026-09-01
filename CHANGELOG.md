@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.93] - 2026-09-01
+
+### Features
+
+- **docs**: route local Word media uploads to office mount point (#2568)
+- **base**: support ranking dashboard blocks (#2528)
+- **sheets**: cut the top command-error clusters from the 08-18..24 eval batch (#2559)
+- add shortcut for +list-attendees (#2591)
+- **vfs**: allow absolute paths under a built-in path policy (#2580)
+
+### Bug Fixes
+
+- **event**: preserve UTF-8 in truncated diagnostics (#2535)
+- **base**: correct reminder trigger offset direction (#2584)
+- **shortcuts**: remove non-actionable stderr progress (#2532)
+
+### Documentation
+
+- **lark-doc**: retain draft workspaces after creation (#2574)
+- **sheets**: clarify dropdown values and default colors (#2582)
+
+### Refactoring
+
+- **sheets**: remove legacy sheets command surface (#2572)
+
+### Misc
+
+- Feat/okr comment (#2558)
+
 ## [v1.0.92] - 2026-08-28
 
 ### Features
@@ -2055,6 +2084,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.93]: https://github.com/larksuite/cli/releases/tag/v1.0.93
 [v1.0.92]: https://github.com/larksuite/cli/releases/tag/v1.0.92
 [v1.0.91]: https://github.com/larksuite/cli/releases/tag/v1.0.91
 [v1.0.90]: https://github.com/larksuite/cli/releases/tag/v1.0.90
