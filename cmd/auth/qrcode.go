@@ -16,6 +16,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
@@ -125,11 +126,24 @@ func generateImageQRCode(url string, size int, outputPath string) error {
 		return errs.NewInternalError(errs.SubtypeSDKError, "failed to encode QR code: %v", err).WithCause(err)
 	}
 
-	if err := localfileio.AtomicWrite(outputPath, png, 0644); err != nil {
+	if err := localfileio.AtomicWrite(outputPath, png, outputFileMode(outputPath)); err != nil {
 		return errs.NewInternalError(errs.SubtypeSDKError, "failed to write QR code to %s: %v", outputPath, err).WithCause(err)
 	}
 
 	return nil
+}
+
+// outputFileMode reports the mode to write outputPath with, keeping the mode a
+// file already has. The rename that commits the write installs the temp file's
+// mode along with its contents, so passing a fixed one would hand a target the
+// caller had restricted back as world-readable — where an in-place write left
+// it alone. Only a path with nothing at it yet takes the default.
+func outputFileMode(outputPath string) os.FileMode {
+	info, err := vfs.Stat(outputPath)
+	if err != nil || !info.Mode().IsRegular() {
+		return 0644
+	}
+	return info.Mode().Perm()
 }
 
 // generateASCIIQRCode encodes the URL as an ASCII QR code and prints it to stdout.
