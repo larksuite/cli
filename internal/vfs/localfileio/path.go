@@ -28,12 +28,12 @@ func SafeOutputPath(path string) (string, error) {
 // would rewrite that outside file's contents. Writers that commit through a
 // temp file and rename are immune, but the check belongs here so it also covers
 // the ones that write directly.
+// A target that cannot be inspected, or that is not a regular file, carries no
+// link count to judge: the write layer reports the real failure with proper
+// typing, and a directory legitimately holds several names.
 func rejectMultiplyLinkedTarget(flagName, raw, resolved string) error {
 	info, err := vfs.Lstat(resolved)
-	if err != nil || !info.Mode().IsRegular() {
-		return nil
-	}
-	if hasExtraHardLinks(resolved, info) {
+	if err == nil && info.Mode().IsRegular() && hasExtraHardLinks(resolved, info) {
 		return fmt.Errorf("%s %q has multiple hard links, so writing it would also rewrite the other names "+
 			"(hint: remove the file first, or write to a new name)", flagName, raw)
 	}
