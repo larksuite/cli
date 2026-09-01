@@ -34,6 +34,9 @@ lark-cli im +chat-messages-list --chat-id oc_xxx --page-all
 
 # JSON output
 lark-cli im +chat-messages-list --chat-id oc_xxx --format json
+
+# JSON with repeated conversation and sender context normalized
+lark-cli im +chat-messages-list --chat-id oc_xxx --json-shape normalized
 ```
 
 ## Parameters
@@ -47,6 +50,7 @@ lark-cli im +chat-messages-list --chat-id oc_xxx --format json
 | `--order <order>` | No | Sort order: `asc` / `desc` (default `desc`) |
 | `--page-size <n>` | No | Page size (default 50, max 50) |
 | `--page-token <token>` | No | Starting cursor, normally returned by a previous response |
+| `--json-shape <shape>` | No | JSON data shape: `legacy` (default) preserves the established inline fields; `normalized` hoists repeated context |
 | `--page-all` | No | Automatically fetch and merge subsequent pages; capped by `--page-limit` |
 | `--page-limit <n>` | No | Maximum pages fetched by `--page-all` (default 10, range 1-1000) |
 | `--no-reactions` | No | Skip auto-fetching the `reactions` block |
@@ -90,8 +94,6 @@ lark-cli im +threads-messages-list --thread omt_xxx
 
 | Field | Description |
 |------|------|
-| `chat_id` | Conversation ID shared by every returned message |
-| `participants` | Sender metadata keyed by sender ID; messages refer to entries through `sender_id` |
 | `messages` | Message array |
 | `total` | Number of messages in the current page |
 | `has_more` | Whether additional pages are available |
@@ -104,17 +106,19 @@ Each message contains:
 | `message_id` | Message ID |
 | `msg_type` | Message type: `text`, `image`, `file`, `interactive`, `post`, `audio`, `video`, `system`, etc. |
 | `create_time` | Creation time |
-| `sender_id` | Sender ID referencing `participants[sender_id]`; present when sender metadata can be normalized safely |
-| `sender` | Inline sender fallback for system/anonymous senders or conflicting metadata |
+| `chat_id` | Conversation ID |
+| `sender` | Sender information (includes `name` for user senders) |
 | `content` | Message content |
 | `deleted` | Whether the message has been recalled (always present, `true` = recalled) |
 | `updated` | Whether the message has been edited after sending |
 | `mentions` | Array of @mentions in the message; each item contains `{id, key, name}`. Present only when the message contains @mentions |
 | `thread_id` | Thread ID (`omt_xxx`) if the message has replies in a thread. Present only when replies exist |
 
-The JSON response normalizes repeated conversation context. Instead of copying
-the same `chat_id` and complete `sender` object into every message, it emits the
-conversation `chat_id` once and stores sender metadata once in `participants`:
+### Optional normalized JSON context
+
+Default JSON preserves the established per-message `chat_id` and `sender`
+fields. Pass `--json-shape normalized` to emit the conversation `chat_id` once
+and store reusable sender metadata in top-level `participants`:
 
 ```json
 {
@@ -128,11 +132,12 @@ conversation `chat_id` once and stores sender metadata once in `participants`:
 }
 ```
 
-Migration: resolve a sender name with
+With normalized output, resolve a sender name with
 `.data as $data | $data.messages[] as $message | ($message.sender.name // $data.participants[$message.sender_id].name)`.
 A sender without a stable ID, or an ID whose metadata conflicts within the
 response, remains inline as a `sender` object so normalization never drops
-information.
+information. `--jq` filters the selected shape; `pretty`, `table`, `csv`, and
+`ndjson` retain their established projections.
 
 ## Pagination (`has_more` / `page_token`)
 

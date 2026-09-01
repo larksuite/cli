@@ -10,6 +10,7 @@ import (
 )
 
 func messageListOutputData(
+	jsonShape string,
 	runtimeFormat string,
 	jqExpr string,
 	messages []map[string]interface{},
@@ -28,8 +29,15 @@ func messageListOutputData(
 		legacy["thread_id"] = threadID
 	}
 
+	// Preserve the established message envelope unless the caller explicitly
+	// opts into normalization. JQ filters whichever envelope the caller chose.
+	if jsonShape != messageListJSONShapeNormalized {
+		return legacy
+	}
+
 	// JQ always filters the JSON envelope. Unknown formats also fall back to
-	// JSON in Emitter.Success, so both paths must see the normalized shape.
+	// JSON in Emitter.Success. Record-oriented and human formats keep their
+	// established per-message shape even when the JSON-only option is present.
 	if jqExpr != "" {
 		return compactMessageListData(messages, chatID, threadID, hasMore, pageToken)
 	}
@@ -42,6 +50,11 @@ func messageListOutputData(
 	}
 	return legacy
 }
+
+const (
+	messageListJSONShapeLegacy     = "legacy"
+	messageListJSONShapeNormalized = "normalized"
+)
 
 // compactMessageListData normalizes repeated conversation metadata for JSON
 // output. It never mutates messages: the enriched message tree remains the
@@ -133,14 +146,33 @@ func compactMessage(message map[string]interface{}, chatID string, threadID stri
 			out["sender_id"] = id
 		}
 	}
-	if replies := messageSlice(out["thread_replies"]); replies != nil {
+	if replies, ok := compactThreadReplies(out["thread_replies"], chatID, threadID, reusableSenders); ok {
+		out["thread_replies"] = replies
+	}
+	return out
+}
+
+func compactThreadReplies(value interface{}, chatID string, threadID string, reusableSenders map[string]bool) (interface{}, bool) {
+	switch replies := value.(type) {
+	case []map[string]interface{}:
 		projected := make([]map[string]interface{}, 0, len(replies))
 		for _, reply := range replies {
 			projected = append(projected, compactMessage(reply, chatID, threadID, reusableSenders))
 		}
-		out["thread_replies"] = projected
+		return projected, true
+	case []interface{}:
+		projected := make([]interface{}, 0, len(replies))
+		for _, reply := range replies {
+			if message, ok := reply.(map[string]interface{}); ok {
+				projected = append(projected, compactMessage(message, chatID, threadID, reusableSenders))
+				continue
+			}
+			projected = append(projected, reply)
+		}
+		return projected, true
+	default:
+		return nil, false
 	}
-	return out
 }
 
 func commonMessageString(messages []map[string]interface{}, key string) string {

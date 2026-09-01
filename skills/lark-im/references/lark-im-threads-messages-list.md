@@ -31,6 +31,9 @@ lark-cli im +threads-messages-list --thread omt_xxx --format pretty
 lark-cli im +threads-messages-list --thread omt_xxx --format table
 lark-cli im +threads-messages-list --thread omt_xxx --format csv
 
+# JSON with repeated thread and sender context normalized
+lark-cli im +threads-messages-list --thread omt_xxx --json-shape normalized
+
 # View as a bot
 lark-cli im +threads-messages-list --thread omt_xxx --as bot
 
@@ -48,6 +51,7 @@ lark-cli im +threads-messages-list --thread omt_xxx --dry-run
 | `--order <order>` | No | Sort order: `asc` (default) / `desc` |
 | `--page-size <n>` | No | Number of items per page (default 50, range 1-50) |
 | `--page-token <token>` | No | Starting cursor, normally returned by a previous response |
+| `--json-shape <shape>` | No | JSON data shape: `legacy` (default) preserves established inline fields; `normalized` hoists repeated context |
 | `--page-all` | No | Automatically fetch and merge subsequent pages; capped by `--page-limit` |
 | `--page-limit <n>` | No | Maximum pages fetched by `--page-all` (default 10, range 1-1000) |
 | `--format <fmt>` | No | Output format: `json` (default) / `pretty` / `table` / `ndjson` / `csv` |
@@ -70,9 +74,10 @@ Default is one page. With `--page-all`, `--page-token` sets the starting cursor;
 
 ### 4. Normalized JSON context
 
-JSON output emits `thread_id` once at the top level and stores repeated sender
-metadata in `participants`, keyed by sender ID. Each message normally carries a
-`sender_id` reference instead of a complete `sender` object. For example:
+Default JSON preserves the established per-message `thread_id` and `sender`
+fields. Pass `--json-shape normalized` to store repeated sender metadata in
+top-level `participants`, keyed by sender ID, and use `sender_id` references in
+messages. The existing top-level `thread_id` remains the shared context:
 
 ```json
 {
@@ -86,10 +91,11 @@ metadata in `participants`, keyed by sender ID. Each message normally carries a
 }
 ```
 
-Migration: resolve a sender name with
+With normalized output, resolve a sender name with
 `.data as $data | $data.messages[] as $message | ($message.sender.name // $data.participants[$message.sender_id].name)`.
 Sender data remains inline when it cannot be referenced without losing
-information.
+information. `--jq` filters the selected shape; `pretty`, `table`, `csv`, and
+`ndjson` retain their established projections.
 
 ### 5. Recommended expansion strategy
 

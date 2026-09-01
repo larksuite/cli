@@ -4,11 +4,15 @@
 package im
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"reflect"
 	"testing"
+
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 func TestCompactMessageListDataHoistsRepeatedContext(t *testing.T) {
@@ -60,9 +64,14 @@ func TestCompactMessageListDataHoistsRepeatedContext(t *testing.T) {
 		t.Fatalf("reactions were lost: %#v", projected[0])
 	}
 
-	// Projection must not mutate the enriched source used by other formats.
+	// Projection must not mutate the enriched source used by other formats,
+	// including nested thread replies.
 	if messages[0]["chat_id"] != "oc_chat" || messages[0]["sender"] == nil {
 		t.Fatalf("source message mutated: %#v", messages[0])
+	}
+	sourceReply := messages[0]["thread_replies"].([]map[string]interface{})[0]
+	if sourceReply["chat_id"] != "oc_chat" || sourceReply["sender"] == nil {
+		t.Fatalf("source thread reply mutated: %#v", sourceReply)
 	}
 }
 
@@ -117,28 +126,104 @@ func TestCompactMessageListDataDoesNotHoistMixedChatIDs(t *testing.T) {
 	}
 }
 
-func TestMessageListOutputDataOnlyCompactsJSON(t *testing.T) {
+func TestCompactMessageListDataPreservesMismatchedContextAndReplyValues(t *testing.T) {
+	messages := []map[string]interface{}{
+		{
+			"message_id": "om_root", "chat_id": "oc_expected", "thread_id": "omt_expected",
+			"thread_replies": []interface{}{
+				map[string]interface{}{"message_id": "om_reply", "chat_id": "oc_other", "thread_id": "omt_other"},
+				"opaque-reply-value",
+			},
+		},
+	}
+
+	got := compactMessageListData(messages, "oc_expected", "omt_expected", false, "")
+	root := got["messages"].([]map[string]interface{})[0]
+	if _, exists := root["chat_id"]; exists {
+		t.Fatalf("root retained matching chat_id: %#v", root)
+	}
+	if _, exists := root["thread_id"]; exists {
+		t.Fatalf("root retained matching thread_id: %#v", root)
+	}
+	replies := root["thread_replies"].([]interface{})
+	reply := replies[0].(map[string]interface{})
+	if reply["chat_id"] != "oc_other" || reply["thread_id"] != "omt_other" {
+		t.Fatalf("mismatched reply context was lost: %#v", reply)
+	}
+	if replies[1] != "opaque-reply-value" {
+		t.Fatalf("non-message reply value was lost: %#v", replies)
+	}
+}
+
+func TestCompactMessageListDataEmptyMessages(t *testing.T) {
+	got := compactMessageListData(nil, "oc_chat", "", false, "")
+	if got["chat_id"] != "oc_chat" || got["total"] != 0 {
+		t.Fatalf("empty normalized output = %#v", got)
+	}
+	if messages := got["messages"].([]map[string]interface{}); len(messages) != 0 {
+		t.Fatalf("empty normalized messages = %#v", messages)
+	}
+	if _, exists := got["participants"]; exists {
+		t.Fatalf("empty output gained participants: %#v", got)
+	}
+}
+
+func TestCompactMessageListDataDoesNotMutateInput(t *testing.T) {
+	messages := []map[string]interface{}{
+		{
+			"message_id": "om_root", "chat_id": "oc_chat",
+			"sender": map[string]interface{}{
+				"id": "ou_alice", "name": "Alice",
+				"sender_i18n_names": map[string]interface{}{"en_us": "Alice"},
+			},
+			"thread_replies": []interface{}{map[string]interface{}{
+				"message_id": "om_reply", "chat_id": "oc_chat",
+				"sender": map[string]interface{}{"id": "ou_alice", "name": "Alice", "sender_i18n_names": map[string]interface{}{"en_us": "Alice"}},
+			}},
+		},
+	}
+	before, err := json.Marshal(messages)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_ = compactMessageListData(messages, "oc_chat", "", false, "")
+
+	after, err := json.Marshal(messages)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("projection mutated input\nbefore: %s\nafter:  %s", before, after)
+	}
+}
+
+func TestMessageListOutputDataRequiresExplicitNormalizedJSON(t *testing.T) {
 	messages := []map[string]interface{}{{
 		"message_id": "om_1", "chat_id": "oc_chat",
 		"sender": map[string]interface{}{"id": "ou_alice", "name": "Alice"},
 	}}
 
 	for _, tc := range []struct {
-		name, format, jq string
-		wantCompact      bool
+		name, shape, format, jq string
+		wantCompact             bool
 	}{
-		{name: "default JSON", format: "json", wantCompact: true},
-		{name: "case-insensitive JSON", format: "JSON", wantCompact: true},
-		{name: "jq envelope", format: "table", jq: ".data", wantCompact: true},
-		{name: "unknown falls back to JSON", format: "other", wantCompact: true},
-		{name: "uppercase pretty falls back to JSON", format: "Pretty", wantCompact: true},
-		{name: "pretty", format: "pretty"},
-		{name: "table", format: "table"},
-		{name: "csv", format: "csv"},
-		{name: "ndjson", format: "ndjson"},
+		{name: "omitted shape keeps default JSON legacy", format: "json"},
+		{name: "explicit legacy keeps JSON legacy", shape: "legacy", format: "json"},
+		{name: "legacy jq filters legacy envelope", shape: "legacy", format: "table", jq: ".data"},
+		{name: "legacy unknown format fallback stays legacy", shape: "legacy", format: "other"},
+		{name: "normalized JSON", shape: "normalized", format: "json", wantCompact: true},
+		{name: "case-insensitive normalized JSON", shape: "normalized", format: "JSON", wantCompact: true},
+		{name: "normalized jq filters normalized envelope", shape: "normalized", format: "table", jq: ".data", wantCompact: true},
+		{name: "normalized unknown format uses JSON fallback", shape: "normalized", format: "other", wantCompact: true},
+		{name: "normalized uppercase pretty uses JSON fallback", shape: "normalized", format: "Pretty", wantCompact: true},
+		{name: "normalized pretty keeps legacy projection", shape: "normalized", format: "pretty"},
+		{name: "normalized table keeps legacy projection", shape: "normalized", format: "table"},
+		{name: "normalized csv keeps legacy projection", shape: "normalized", format: "csv"},
+		{name: "normalized ndjson keeps legacy projection", shape: "normalized", format: "ndjson"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := messageListOutputData(tc.format, tc.jq, messages, "oc_chat", "", false, "")
+			got := messageListOutputData(tc.shape, tc.format, tc.jq, messages, "oc_chat", "", false, "")
 			message := got["messages"].([]map[string]interface{})[0]
 			_, compact := message["sender_id"]
 			if compact != tc.wantCompact {
@@ -151,6 +236,32 @@ func TestMessageListOutputDataOnlyCompactsJSON(t *testing.T) {
 				if _, exists := got["participants"]; exists {
 					t.Fatalf("legacy format gained participants: %#v", got)
 				}
+			}
+		})
+	}
+}
+
+func TestMessageListJSONShapeFlagContract(t *testing.T) {
+	for _, shortcut := range []struct {
+		name  string
+		flags []common.Flag
+	}{
+		{name: "chat messages", flags: ImChatMessageList.Flags},
+		{name: "thread messages", flags: ImThreadsMessagesList.Flags},
+	} {
+		t.Run(shortcut.name, func(t *testing.T) {
+			var shape *common.Flag
+			for index := range shortcut.flags {
+				if shortcut.flags[index].Name == "json-shape" {
+					shape = &shortcut.flags[index]
+					break
+				}
+			}
+			if shape == nil {
+				t.Fatal("missing --json-shape flag")
+			}
+			if shape.Default != "legacy" || !reflect.DeepEqual(shape.Enum, []string{"legacy", "normalized"}) {
+				t.Fatalf("--json-shape contract = %#v", shape)
 			}
 		})
 	}
@@ -184,7 +295,23 @@ func TestCompactMessageListDataReducesRepeatedJSON(t *testing.T) {
 	}
 }
 
-func TestChatMessagesListEmitsCompactJSONContract(t *testing.T) {
+func TestChatMessagesListPreservesLegacyJSONByDefault(t *testing.T) {
+	testMessageListCommandJSONShape(t, "chat-messages-list", nil, false)
+}
+
+func TestChatMessagesListEmitsNormalizedJSONWhenRequested(t *testing.T) {
+	testMessageListCommandJSONShape(t, "chat-messages-list", map[string]string{"json-shape": "normalized"}, true)
+}
+
+func TestThreadsMessagesListPreservesLegacyJSONByDefault(t *testing.T) {
+	testMessageListCommandJSONShape(t, "threads-messages-list", nil, false)
+}
+
+func TestThreadsMessagesListEmitsNormalizedJSONWhenRequested(t *testing.T) {
+	testMessageListCommandJSONShape(t, "threads-messages-list", map[string]string{"json-shape": "normalized"}, true)
+}
+
+func TestChatMessagesListJQFiltersSelectedJSONShape(t *testing.T) {
 	var tc listPageAllCase
 	for _, candidate := range listPageAllCases() {
 		if candidate.name == "chat-messages-list" {
@@ -192,15 +319,80 @@ func TestChatMessagesListEmitsCompactJSONContract(t *testing.T) {
 			break
 		}
 	}
-	runtime, calls := newListPageAllRuntime(t, tc, nil, func(req *http.Request, _ int) map[string]interface{} {
-		if got := req.URL.Query().Get("container_id"); got != "oc_test" {
-			t.Fatalf("container_id = %q, want oc_test", got)
+	for _, test := range []struct {
+		name       string
+		flags      map[string]string
+		normalized bool
+	}{
+		{name: "legacy default"},
+		{name: "normalized opt-in", flags: map[string]string{"json-shape": "normalized"}, normalized: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			runtime, _ := newListPageAllRuntime(t, tc, test.flags, func(_ *http.Request, _ int) map[string]interface{} {
+				return map[string]interface{}{
+					"items": []interface{}{map[string]interface{}{
+						"message_id": "om_1", "chat_id": "oc_test", "msg_type": "text",
+						"sender": map[string]interface{}{"id": "ou_alice", "sender_type": "user", "sender_name": "Alice"},
+						"body":   map[string]interface{}{"content": `{"text":"hello"}`}, "create_time": "0",
+					}},
+					"has_more": false, "page_token": "",
+				}
+			})
+			runtime.Format = "table"
+			runtime.JqExpr = ".data.messages[0]"
+
+			if err := tc.shortcut.Execute(context.Background(), runtime); err != nil {
+				t.Fatalf("Execute() error = %v", err)
+			}
+			var message map[string]interface{}
+			if err := json.Unmarshal(runtime.IO().Out.(*bytes.Buffer).Bytes(), &message); err != nil {
+				t.Fatalf("jq output is not a JSON object: %v", err)
+			}
+			_, hasSenderID := message["sender_id"]
+			if hasSenderID != test.normalized {
+				t.Fatalf("sender_id present = %t, want %t: %#v", hasSenderID, test.normalized, message)
+			}
+			if test.normalized {
+				if _, exists := message["sender"]; exists {
+					t.Fatalf("normalized jq output retained sender: %#v", message)
+				}
+			} else if message["sender"] == nil || message["chat_id"] != "oc_test" {
+				t.Fatalf("legacy jq output lost inline context: %#v", message)
+			}
+		})
+	}
+}
+
+func testMessageListCommandJSONShape(t *testing.T, caseName string, flags map[string]string, normalized bool) {
+	t.Helper()
+	var tc listPageAllCase
+	for _, candidate := range listPageAllCases() {
+		if candidate.name == caseName {
+			tc = candidate
+			break
+		}
+	}
+	containerID := "oc_test"
+	contextKey := "chat_id"
+	senderID := "ou_alice"
+	senderName := "Alice"
+	content := "full content"
+	if caseName == "threads-messages-list" {
+		containerID = "omt_test"
+		contextKey = "thread_id"
+		senderID = "ou_bob"
+		senderName = "Bob"
+		content = "reply"
+	}
+	runtime, calls := newListPageAllRuntime(t, tc, flags, func(req *http.Request, _ int) map[string]interface{} {
+		if got := req.URL.Query().Get("container_id"); got != containerID {
+			t.Fatalf("container_id = %q, want %s", got, containerID)
 		}
 		return map[string]interface{}{
 			"items": []interface{}{map[string]interface{}{
-				"message_id": "om_1", "msg_type": "text", "chat_id": "oc_test",
-				"sender": map[string]interface{}{"id": "ou_alice", "sender_type": "user", "sender_name": "Alice"},
-				"body":   map[string]interface{}{"content": `{"text":"full content"}`}, "create_time": "0",
+				"message_id": "om_1", "msg_type": "text", contextKey: containerID,
+				"sender": map[string]interface{}{"id": senderID, "sender_type": "user", "sender_name": senderName},
+				"body":   map[string]interface{}{"content": fmt.Sprintf(`{"text":%q}`, content)}, "create_time": "0",
 			}},
 			"has_more": false, "page_token": "final",
 		}
@@ -212,59 +404,47 @@ func TestChatMessagesListEmitsCompactJSONContract(t *testing.T) {
 		t.Fatalf("API calls = %d, want 1", *calls)
 	}
 	data := listPageAllOutputData(t, runtime)
-	if data["chat_id"] != "oc_test" || data["page_token"] != "final" {
-		t.Fatalf("top-level data = %#v", data)
-	}
-	participants := data["participants"].(map[string]interface{})
-	alice := participants["ou_alice"].(map[string]interface{})
-	if alice["name"] != "Alice" || alice["sender_type"] != "user" {
-		t.Fatalf("participant = %#v", alice)
+	if data["page_token"] != "final" {
+		t.Fatalf("page_token = %#v, want final", data["page_token"])
 	}
 	message := data["messages"].([]interface{})[0].(map[string]interface{})
-	if message["sender_id"] != "ou_alice" || message["content"] != "full content" {
+	if message["content"] != content {
 		t.Fatalf("message = %#v", message)
 	}
-	if _, exists := message["sender"]; exists {
-		t.Fatalf("message retained sender: %#v", message)
-	}
-	if _, exists := message["chat_id"]; exists {
-		t.Fatalf("message retained chat_id: %#v", message)
-	}
-}
-
-func TestThreadsMessagesListEmitsCompactJSONContract(t *testing.T) {
-	var tc listPageAllCase
-	for _, candidate := range listPageAllCases() {
-		if candidate.name == "threads-messages-list" {
-			tc = candidate
-			break
+	if normalized {
+		if data[contextKey] != containerID {
+			t.Fatalf("top-level %s = %#v, want %s", contextKey, data[contextKey], containerID)
 		}
-	}
-	runtime, _ := newListPageAllRuntime(t, tc, nil, func(req *http.Request, _ int) map[string]interface{} {
-		if got := req.URL.Query().Get("container_id"); got != "omt_test" {
-			t.Fatalf("container_id = %q, want omt_test", got)
+		participants := data["participants"].(map[string]interface{})
+		participant := participants[senderID].(map[string]interface{})
+		if participant["name"] != senderName || participant["sender_type"] != "user" {
+			t.Fatalf("participant = %#v", participant)
 		}
-		return map[string]interface{}{
-			"items": []interface{}{map[string]interface{}{
-				"message_id": "om_reply", "thread_id": "omt_test", "msg_type": "text",
-				"sender": map[string]interface{}{"id": "ou_bob", "sender_type": "user", "sender_name": "Bob"},
-				"body":   map[string]interface{}{"content": `{"text":"reply"}`}, "create_time": "0",
-			}},
-			"has_more": true, "page_token": "next",
+		if message["sender_id"] != senderID {
+			t.Fatalf("sender_id = %#v, want %s", message["sender_id"], senderID)
 		}
-	})
-	if err := tc.shortcut.Execute(context.Background(), runtime); err != nil {
-		t.Fatalf("Execute() error = %v", err)
+		if _, exists := message["sender"]; exists {
+			t.Fatalf("normalized message retained sender: %#v", message)
+		}
+		if _, exists := message[contextKey]; exists {
+			t.Fatalf("normalized message retained %s: %#v", contextKey, message)
+		}
+		return
 	}
-	data := listPageAllOutputData(t, runtime)
-	if data["thread_id"] != "omt_test" || data["has_more"] != true || data["page_token"] != "next" {
-		t.Fatalf("top-level data = %#v", data)
+	if caseName == "chat-messages-list" {
+		if _, exists := data[contextKey]; exists {
+			t.Fatalf("legacy chat output gained top-level %s: %#v", contextKey, data)
+		}
+	} else if data[contextKey] != containerID {
+		t.Fatalf("legacy thread output lost top-level %s: %#v", contextKey, data)
 	}
-	message := data["messages"].([]interface{})[0].(map[string]interface{})
-	if message["sender_id"] != "ou_bob" || message["content"] != "reply" {
-		t.Fatalf("message = %#v", message)
+	if message[contextKey] != containerID || message["sender"] == nil {
+		t.Fatalf("legacy message lost inline context: %#v", message)
 	}
-	if _, exists := message["thread_id"]; exists {
-		t.Fatalf("message retained repeated thread_id: %#v", message)
+	if _, exists := message["sender_id"]; exists {
+		t.Fatalf("legacy message gained sender_id: %#v", message)
+	}
+	if _, exists := data["participants"]; exists {
+		t.Fatalf("legacy output gained participants: %#v", data)
 	}
 }
