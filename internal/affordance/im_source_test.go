@@ -169,8 +169,7 @@ func TestIMAffordanceDoesNotDuplicateRuntimeRecovery(t *testing.T) {
 func TestIMMessageListAffordanceDocumentsNormalizedJSONOptIn(t *testing.T) {
 	prev := mdSource
 	t.Cleanup(func() { SetSource(prev) })
-	// SetSource requires fs.FS; this bounded repository-local fixture is test-only.
-	SetSource(os.DirFS("../../affordance")) //nolint:forbidigo
+	SetSource(os.DirFS("../../affordance"))
 
 	for _, tc := range []struct {
 		method  string
