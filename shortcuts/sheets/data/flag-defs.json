@@ -3576,7 +3576,7 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "1-based category/X-axis dimension index within the data range; defaults to 1"
+        "desc": "1-based index of the single supported category/X-axis dimension within the data range; defaults to 1; multiple fields cannot form a multi-level X-axis"
       },
       {
         "name": "dim2-indexes",
@@ -3734,7 +3734,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Pass only when the user explicitly requests a position; it only repositions existing data labels and does not enable labels by itself; omit it for chart-type-aware placement",
+        "desc": "For an ordinary non-stacked column chart with labels, generally pass outside; in other cases, pass only when the user explicitly requests a position; this only repositions existing labels and does not enable them",
         "enum": [
           "auto",
           "top",
@@ -4148,7 +4148,7 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "1-based category/X-axis dimension index within the data range; defaults to the first dimension"
+        "desc": "1-based index of the single supported category/X-axis dimension within the data range; defaults to the first dimension; multiple fields cannot form a multi-level X-axis"
       },
       {
         "name": "dim2-indexes",
