@@ -852,6 +852,7 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 			shortcut: BaseDashboardBlockCreate,
 			wantTips: []string{
 				`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Order Count" --type statistics --data-config '{"table_name":"Orders","count_all":true}'`,
+				`--type ranking --data-config '{"table_name":"Orders"`,
 				`--type text --data-config '{"text":"# Sales Dashboard"}'`,
 				"+table-list and +field-list",
 				"not table_id or field_id",
@@ -868,6 +869,7 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 			wantTips: []string{
 				`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --name "Total Sales"`,
 				`--data-config '{"series":[{"field_name":"Amount","rollup":"SUM"}]}'`,
+				`--data-config '{"limit_size":20}'`,
 				"lark-base-dashboard-block-config.md as the SSOT",
 				"do not invent data_config from natural language",
 				"Block type cannot be changed",

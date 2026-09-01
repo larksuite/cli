@@ -91,8 +91,6 @@ var DocMediaDownload = common.Shortcut{
 			}
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Downloading: %s %s\n", mediaType, common.MaskToken(token))
-
 		// Build API URL
 		encodedToken := validate.EncodePathSegment(token)
 		var apiPath string

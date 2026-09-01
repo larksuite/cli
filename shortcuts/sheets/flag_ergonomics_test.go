@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -691,4 +693,158 @@ func TestShortcuts_IntuitiveFlagHints(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestShortcuts_RequiredFlagsMarkedInHelp pins the required marker on the
+// mounted commands. It is a sheets-local decoration (chainRequiredFlagHelp),
+// so the assertions live here rather than against the framework: cobra renders
+// no marker of its own, and the two commands that relax the annotation after
+// mounting must still be answered from flag-defs.
+func TestShortcuts_RequiredFlagsMarkedInHelp(t *testing.T) {
+	t.Parallel()
+
+	usageOf := func(t *testing.T, command, flag string) string {
+		t.Helper()
+		parent, _, _, _ := newTestRig(t, shortcutFromRegistry(t, command))
+		cmd, _, err := parent.Find([]string{command})
+		if err != nil {
+			t.Fatalf("Find(%q) error = %v", command, err)
+		}
+		fl := cmd.Flags().Lookup(flag)
+		if fl == nil {
+			t.Fatalf("%s has no --%s", command, flag)
+		}
+		return fl.Usage
+	}
+
+	t.Run("a required flag says so", func(t *testing.T) {
+		t.Parallel()
+		if got := usageOf(t, "+workbook-create", "title"); !strings.HasPrefix(got, "(required) ") {
+			t.Errorf("--title usage = %q, want the required marker", got)
+		}
+	})
+
+	t.Run("an optional flag is left alone", func(t *testing.T) {
+		t.Parallel()
+		if got := usageOf(t, "+workbook-create", "folder-token"); strings.Contains(got, "(required)") {
+			t.Errorf("--folder-token usage = %q, want no required marker", got)
+		}
+	})
+
+	t.Run("a relaxed-but-still-required flag says so", func(t *testing.T) {
+		t.Parallel()
+		// +chart-create clears the cobra annotation so --print-example can run
+		// without it; --properties is still required on every other path.
+		if got := usageOf(t, "+chart-create", "properties"); !strings.HasPrefix(got, "(required) ") {
+			t.Errorf("--properties usage = %q, want the required marker", got)
+		}
+	})
+
+	t.Run("a one-required pair marks neither member", func(t *testing.T) {
+		t.Parallel()
+		// +csv-put takes --start-cell OR its --range alias, so neither is
+		// individually required — saying otherwise would be a false statement.
+		for _, flag := range []string{"start-cell", "range"} {
+			if got := usageOf(t, "+csv-put", flag); strings.Contains(got, "(required)") {
+				t.Errorf("--%s usage = %q, want no required marker", flag, got)
+			}
+		}
+		if got := usageOf(t, "+csv-put", "csv"); !strings.HasPrefix(got, "(required) ") {
+			t.Errorf("--csv usage = %q, want the required marker", got)
+		}
+	})
+}
+
+// TestCsvPut_FileAliasProvenance pins which spelling a value is attributed to
+// when both are on one command line. The record is committed by the flag's
+// Value on each real occurrence, so the LAST occurrence wins — pflag also
+// normalizes names on Lookup and Set (the framework's own input resolution
+// looks --csv up before Validate runs), and attributing those would either
+// lose a legitimate --file or steal an explicit --csv.
+func TestCsvPut_FileAliasProvenance(t *testing.T) {
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+	if err := os.WriteFile("data.csv", []byte("a,b\n1,2\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	run := func(t *testing.T, extra ...string) (string, error) {
+		t.Helper()
+		args := append([]string{"--url", testURL, "--sheet-name", "s", "--start-cell", "A1"}, extra...)
+		stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+csv-put"), append(args, "--dry-run"))
+		return stdout, err
+	}
+
+	t.Run("--file alone reads the file", func(t *testing.T) {
+		stdout, err := run(t, "--file", "./data.csv")
+		if err != nil {
+			t.Fatalf("--file should read the path, got: %v", err)
+		}
+		if !strings.Contains(stdout, `a,b`) {
+			t.Errorf("dry-run body should carry the file contents, got %q", stdout)
+		}
+	})
+
+	t.Run("a later --csv occurrence keeps its own semantics", func(t *testing.T) {
+		// The last occurrence supplied the value and it was typed --csv, so the
+		// path must hit the --csv guard rather than being read as a file.
+		_, err := run(t, "--file", "./data.csv", "--csv", "./data.csv")
+		requireValidation(t, err, "is an existing file, not inline CSV")
+	})
+
+	t.Run("a later --file occurrence reads the file", func(t *testing.T) {
+		stdout, err := run(t, "--csv", "./data.csv", "--file", "./data.csv")
+		if err != nil {
+			t.Fatalf("the last occurrence was --file, so it should read the path, got: %v", err)
+		}
+		if !strings.Contains(stdout, `a,b`) {
+			t.Errorf("dry-run body should carry the file contents, got %q", stdout)
+		}
+	})
+}
+
+// TestCsvPut_FileAliasProvenance_DoubleMount pins the staging guard. The
+// ergonomics chain looks its aliases up while installing, and pflag normalizes
+// a name on Lookup — so composing PostMount twice replays "file" through an
+// already-installed normalizer at mount time. Without the Parsed() guard that
+// arms the pending spelling before parsing starts, and the next real --csv
+// occurrence commits it: an explicit --csv path would be read from disk instead
+// of meeting its guard.
+func TestCsvPut_FileAliasProvenance_DoubleMount(t *testing.T) {
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+	if err := os.WriteFile("data.csv", []byte("a,b\n1,2\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("mounted twice before parsing", func(t *testing.T) {
+		sc := shortcutFromRegistry(t, "+csv-put")
+		sc.PostMount = withFlagErgonomics(sc.PostMount) // a second, redundant pass
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL, "--sheet-name", "s", "--start-cell", "A1",
+			"--csv", "./data.csv", "--dry-run",
+		})
+		requireValidation(t, err, "is an existing file, not inline CSV")
+	})
+
+	t.Run("remounted after a parse", func(t *testing.T) {
+		// Parsed() stays true once parsing has started, so a remount at that
+		// point can stage through the normalizer the first pass installed.
+		// Re-running the install resets staging, which is what keeps the next
+		// parse's --csv occurrence from inheriting it.
+		parent, _, _, _ := newTestRig(t, shortcutFromRegistry(t, "+csv-put"))
+		parent.SetArgs([]string{"+csv-put", "--url", testURL, "--sheet-name", "s",
+			"--start-cell", "A1", "--file", "./data.csv", "--dry-run"})
+		if err := parent.Execute(); err != nil {
+			t.Fatalf("first run: %v", err)
+		}
+		cmd, _, err := parent.Find([]string{"+csv-put"})
+		if err != nil {
+			t.Fatalf("Find: %v", err)
+		}
+		withFlagErgonomics(nil)(cmd)
+		parent.SetArgs([]string{"+csv-put", "--url", testURL, "--sheet-name", "s",
+			"--start-cell", "A1", "--csv", "./data.csv", "--dry-run"})
+		requireValidation(t, parent.Execute(), "is an existing file, not inline CSV")
+	})
 }

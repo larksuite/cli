@@ -56,7 +56,7 @@ var WikiMove = common.Shortcut{
 	Tips: []string{
 		"Use --node-token to move an existing wiki node inside or across wiki spaces.",
 		"Use --obj-type and --obj-token to move a Drive document into Wiki.",
-		"If docs-to-wiki returns a long-running task, this command polls for a bounded window and then prints a follow-up drive +task_result command.",
+		"If docs-to-wiki returns a long-running task, this command polls for a bounded window and then returns a follow-up drive +task_result command.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		spec := readWikiMoveSpec(runtime)
@@ -73,8 +73,6 @@ var WikiMove = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		spec := readWikiMoveSpec(runtime)
-		fmt.Fprintf(runtime.IO().ErrOut, "Running wiki move (%s)...\n", spec.Mode())
-
 		out, err := runWikiMove(ctx, wikiMoveAPI{runtime: runtime}, runtime, spec)
 		if err != nil {
 			return err
@@ -537,7 +535,6 @@ func runWikiDocsToWikiMove(ctx context.Context, client wikiMoveClient, runtime *
 		out["status_msg"] = "move request submitted for approval"
 		return out, nil
 	case response.TaskID != "":
-		fmt.Fprintf(runtime.IO().ErrOut, "Docs-to-wiki move is async, polling task %s...\n", response.TaskID)
 		status, ready, err := pollWikiMoveTask(ctx, client, runtime, response.TaskID)
 		if err != nil {
 			return nil, err
@@ -556,7 +553,6 @@ func runWikiDocsToWikiMove(ctx context.Context, client wikiMoveClient, runtime *
 		}
 		if !ready {
 			nextCommand := wikiMoveTaskResultCommand(response.TaskID, runtime.As())
-			fmt.Fprintf(runtime.IO().ErrOut, "Wiki move task is still in progress. Continue with: %s\n", nextCommand)
 			out["timed_out"] = true
 			out["next_command"] = nextCommand
 		}
@@ -594,21 +590,18 @@ func pollWikiMoveTask(ctx context.Context, client wikiMoveClient, runtime *commo
 		status, err := client.GetMoveTask(ctx, taskID)
 		if err != nil {
 			lastErr = err
-			fmt.Fprintf(runtime.IO().ErrOut, "Wiki move status attempt %d/%d failed: %v\n", attempt, wikiMovePollAttempts, err)
 			continue
 		}
 		lastStatus = status
 		hadSuccessfulPoll = true
 
 		if status.Ready() {
-			fmt.Fprintf(runtime.IO().ErrOut, "Wiki move task completed successfully.\n")
 			return status, true, nil
 		}
 		if status.Failed() {
 			return status, false, errs.NewAPIError(errs.SubtypeServerError, "wiki move task failed: %s", status.PrimaryStatusLabel())
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Wiki move status %d/%d: %s\n", attempt, wikiMovePollAttempts, status.PrimaryStatusLabel())
 	}
 
 	if !hadSuccessfulPoll && lastErr != nil {
