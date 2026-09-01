@@ -468,6 +468,48 @@ def _constant_labeled_series(
     ]
 
 
+def _unbound_secondary_axis(chart: dict[str, Any]) -> dict[str, Any] | None:
+    snapshot = _chart_snapshot(chart)
+    plot_area = snapshot.get("plotArea")
+    if not isinstance(plot_area, dict):
+        return None
+    plot = plot_area.get("plot")
+    if not isinstance(plot, dict) or str(plot.get("type") or "").lower() != "combo":
+        return None
+
+    axes = plot_area.get("axes")
+    has_right_axis = isinstance(axes, list) and any(
+        isinstance(axis, dict)
+        and str(axis.get("type") or "").lower() == "y"
+        and str(axis.get("position") or axis.get("axisPosition") or "").lower() == "right"
+        for axis in axes
+    )
+    series = plot.get("series")
+    configured_series = (
+        [item for item in series if isinstance(item, dict)]
+        if isinstance(series, list)
+        else []
+    )
+    if not has_right_axis or not configured_series:
+        return None
+    if str(plot.get("yAxisPosition") or "").lower() == "right" or any(
+        str(item.get("yAxisPosition") or "").lower() == "right"
+        for item in configured_series
+    ):
+        return None
+
+    return {
+        "chart_id": str(chart.get("chart_id") or chart.get("id") or ""),
+        "reason": "secondary_axis_has_no_bound_series",
+        "series_indexes": [
+            int(item["index"])
+            for item in configured_series
+            if isinstance(item.get("index"), (int, float))
+        ],
+        "suggested_fix": "bind_the_intended_combo_series_to_the_right_axis",
+    }
+
+
 def _undersized_chart(chart: dict[str, Any]) -> dict[str, Any] | None:
     details = chart.get("details") if isinstance(chart.get("details"), dict) else chart
     snapshot = _chart_snapshot(chart)
@@ -983,6 +1025,7 @@ def check_sheet(
             "numeric_source_format_issues": [],
             "degenerate_numeric_series": [],
             "constant_labeled_series": [],
+            "unbound_secondary_axes": [],
             "undersized_charts": [],
             "overwide_charts": [],
             "out_of_visible_range": [],
@@ -1084,6 +1127,7 @@ def check_sheet(
     numeric_source_issues: list[dict[str, Any]] = []
     degenerate_numeric_series: list[dict[str, Any]] = []
     constant_series_issues: list[dict[str, Any]] = []
+    unbound_secondary_axes: list[dict[str, Any]] = []
     undersized_charts: list[dict[str, Any]] = []
     overwide_charts: list[dict[str, Any]] = []
     for chart in charts:
@@ -1100,6 +1144,9 @@ def check_sheet(
         degenerate_numeric_series.extend(degenerate)
         unverifiable.extend(source_unverifiable)
         constant_series_issues.extend(_constant_labeled_series(chart, profiles))
+        unbound_secondary_axis = _unbound_secondary_axis(chart)
+        if unbound_secondary_axis:
+            unbound_secondary_axes.append(unbound_secondary_axis)
         undersized = _undersized_chart(chart)
         if undersized:
             undersized_charts.append(undersized)
@@ -1114,6 +1161,7 @@ def check_sheet(
         + len(numeric_source_issues)
         + len(degenerate_numeric_series)
         + len(constant_series_issues)
+        + len(unbound_secondary_axes)
         + len(undersized_charts)
         + len(overwide_charts)
     )
@@ -1127,6 +1175,7 @@ def check_sheet(
         "numeric_source_format_issues": numeric_source_issues,
         "degenerate_numeric_series": degenerate_numeric_series,
         "constant_labeled_series": constant_series_issues,
+        "unbound_secondary_axes": unbound_secondary_axes,
         "undersized_charts": undersized_charts,
         "overwide_charts": overwide_charts,
         "out_of_visible_range": out_of_bounds,
@@ -1142,7 +1191,7 @@ def parse_args() -> argparse.Namespace:
         description=(
             "Check chart overlap, covered cell content, worksheet boundary overflow, "
             "minimum size, excessive width, constant labeled series, numeric source-cell "
-            "formats, and all-zero/empty numeric series."
+            "formats, all-zero/empty numeric series, and unbound combo-chart secondary axes."
         )
     )
     parser.add_argument("sheet_id", help="Spreadsheet URL or spreadsheet token")
