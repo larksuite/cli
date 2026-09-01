@@ -9,6 +9,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net/url"
 	"path/filepath"
@@ -568,6 +572,7 @@ func uploadAutoReplyLocalImages(ctx context.Context, runtime *common.RuntimeCont
 			if err != nil {
 				return "", nil, mailValidationParamError("--content", "inline image %s: %v", img.Path, err).WithCause(err)
 			}
+			width, height, hasDimensions := detectAutoReplyImageDimensions(buf)
 			fileKey, size, err := uploadAutoReplyImageToDrive(runtime, img.Path)
 			if err != nil {
 				return "", nil, err
@@ -578,10 +583,12 @@ func uploadAutoReplyLocalImages(ctx context.Context, runtime *common.RuntimeCont
 			}
 			item = uploadedImage{cid: cid, fileKey: fileKey, size: size}
 			uploaded[img.Path] = item
-			images = append(images, map[string]interface{}{
+			image := map[string]interface{}{
 				"cid": item.cid, "image_name": filepath.Base(img.Path), "file_key": item.fileKey,
 				"file_size": item.size,
-			})
+			}
+			addAutoReplyImageDimensions(image, width, height, hasDimensions)
+			images = append(images, image)
 		}
 		content = replaceImgSrcOnce(content, img.RawSrc, "cid:"+item.cid)
 	}
@@ -612,6 +619,7 @@ func uploadAutoReplyDataImages(runtime *common.RuntimeContext, content string, i
 		if mimeType != mediaType {
 			return "", nil, mailValidationParamError("--content", "inline data image declares %s but content is %s", mediaType, mimeType)
 		}
+		width, height, hasDimensions := detectAutoReplyImageDimensions(buf)
 		fileKey, size, err := uploadAutoReplyImageBytes(runtime, name, buf)
 		if err != nil {
 			return "", nil, err
@@ -621,10 +629,12 @@ func uploadAutoReplyDataImages(runtime *common.RuntimeContext, content string, i
 			return "", nil, err
 		}
 		content = replaceImgSrcOnce(content, rawSrc, "cid:"+cid)
-		images = append(images, map[string]interface{}{
+		image := map[string]interface{}{
 			"cid": cid, "image_name": name, "file_key": fileKey,
 			"file_size": size,
-		})
+		}
+		addAutoReplyImageDimensions(image, width, height, hasDimensions)
+		images = append(images, image)
 	}
 	return content, images, nil
 }
@@ -722,6 +732,22 @@ func readAutoReplyImage(runtime *common.RuntimeContext, path string) ([]byte, er
 		return nil, mailValidationParamError("--content", "read inline image %s: %v", path, err).WithCause(err)
 	}
 	return buf, nil
+}
+
+func detectAutoReplyImageDimensions(buf []byte) (int, int, bool) {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(buf))
+	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 {
+		return 0, 0, false
+	}
+	return cfg.Width, cfg.Height, true
+}
+
+func addAutoReplyImageDimensions(image map[string]interface{}, width, height int, ok bool) {
+	if !ok {
+		return
+	}
+	image["image_width"] = width
+	image["image_height"] = height
 }
 
 func parseAutoReplyDateMillis(flag, raw, timezone string, endOfDay bool) (string, error) {
