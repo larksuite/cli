@@ -70,6 +70,7 @@ Risk / Structure: `R2` / `S2`
 | `identity` | 执行身份，默认 `user`；节点解析与写入必须使用同一身份 |
 | `node_inventory` | 全部节点的归一化列表：`node_token`、`obj_token`、`title`、`obj_type`、`node_type`、父子层级 |
 | `node_class` | 每个节点的分诊结果：`writable_docx` / `non_docx_entity` / `shortcut` |
+| `permissions_observed` | 各写动作实际观测到的权限：`read` / `edit_existing_docx`（`docs +update`）/ `create_node`（`wiki +node-create`），取值 `true` / `false` / `unknown`；只记录已验证或实际报错得到的结果，不由身份或读取成功推断写权限 |
 | `outline_proposal` | 结构过简时提议的子节点大纲：拟建节点标题、层级、收录范围摘要；经用户确认后用于新建节点 |
 | `draft_map` | 每个 docx 节点的现有内容判定：`empty_placeholder` / `has_draft` 及内容摘要 |
 | `standard_plan` | 生成的维护规范：根节点通用规范 + 各子节点专属维护要求 |
@@ -88,7 +89,7 @@ Risk / Structure: `R2` / `S2`
 | `OUTLINE_PROPOSE` | `assess` / `plan` / `confirm` | 结构过简 | 加载 outputs 文档；基于知识库主题、根节点标题和已有草稿提议子节点大纲填充 `outline_proposal`；请用户确认后用 `wiki +node-create --obj-type docx` 新建拟定子节点，并回读并入 `node_inventory` | 大纲提议表 + 新建确认请求；确认后报告新建结果 | `true` | `TYPE_TRIAGE` |
 | `TYPE_TRIAGE` | `assess` / `plan` | 结构已读（含新建节点） | 按 `obj_type` / `node_type` 将每个节点分诊为 `writable_docx` / `non_docx_entity` / `shortcut`，填充 `node_class` | 分诊表：可写正文节点、需特殊处理节点及原因 | 存在 `non_docx_entity` / `shortcut` 时为 `true`，否则为 `false` | `GEN_STANDARD` |
 | `GEN_STANDARD` | `assess` / `plan` | 分诊完成 | 加载 outputs 文档；为可写范围生成 `standard_plan`：根节点通用规范 + 各子节点专属维护要求；子节点收录范围优先从草稿归纳，缺失再据业务常识补全 | 维护规范草案预览 | 除非用户直接进入确认，否则为 `false` | `WRITE_CONFIRM` |
-| `WRITE_CONFIRM` | `confirm` | 规范草案就绪 | 生成逐节点写入计划：目标节点 `node_token`（区分重名节点）、命令族、`overwrite` / `append` / `new_docx` / `skip`，以及将写入的精确正文或 diff，并说明非 docx / shortcut 的处置 | 写入计划表（含 node_token + 命令族）+ 逐节点精确内容 / diff + 跳过清单及原因 | `true` | `WRITE` or `DONE` |
+| `WRITE_CONFIRM` | `confirm` | 规范草案就绪 | 生成逐节点写入计划（含 `node_token`、`obj_type`、`write_mode`、6 行治理字段）；运行 `kb_gate.py` 门禁校验，仅 `ready=true` 的节点可进入 `WRITE`，被拦节点记入 `unsupported_checks`，门禁将 `narrowed` 节点的页面状态收紧为进行中；向用户展示计划、门禁结果、精确正文 / diff 与跳过原因 | 写入计划表（含 node_token + 命令族 + 门禁结果）+ 逐节点精确内容 / diff + 被拦 / 收紧 / 跳过清单及原因 | `true` | `WRITE` or `DONE` |
 | `WRITE` | `execute` | 用户已确认写入范围 | 加载 doc-update reference；按 `write_mode_map` 逐节点写入（根节点与子节点可并行）；非 docx 节点仅在用户选择 `new_docx` 时新建 docx 规范页 | 写入进度报告 | 除非被阻断，否则为 `false` | `VERIFY` |
 | `VERIFY` | `verify` | 写入完成 | 对每个已写节点执行 fresh read 校验内容落地；汇总 `unsupported_checks` | 验证表和最终汇总 | `false` | `DONE` |
 | `DONE` | `done` | 无更多动作 | 停止 | 最终回复：已更新节点数、跳过节点及原因、知识库链接 | `false` | End |
@@ -104,7 +105,7 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 | `OUTLINE_PROPOSE` | [`lark-drive-workflow-knowledge-base-bootstrap-outputs.md`](lark-drive-workflow-knowledge-base-bootstrap-outputs.md)、[`../../lark-wiki/references/lark-wiki-node-create.md`](../../lark-wiki/references/lark-wiki-node-create.md) |
 | `TYPE_TRIAGE` | 本文件的 `Node Type Triage` |
 | `GEN_STANDARD` | [`lark-drive-workflow-knowledge-base-bootstrap-outputs.md`](lark-drive-workflow-knowledge-base-bootstrap-outputs.md) |
-| `WRITE_CONFIRM` | [`lark-drive-workflow-knowledge-base-bootstrap-outputs.md`](lark-drive-workflow-knowledge-base-bootstrap-outputs.md) |
+| `WRITE_CONFIRM` | [`lark-drive-workflow-knowledge-base-bootstrap-outputs.md`](lark-drive-workflow-knowledge-base-bootstrap-outputs.md)；门禁脚本 `scripts/kb_gate.py` |
 | `WRITE` | [`../../lark-doc/references/lark-doc-update.md`](../../lark-doc/references/lark-doc-update.md)；`new_docx` 时读取 [`../../lark-wiki/references/lark-wiki-node-create.md`](../../lark-wiki/references/lark-wiki-node-create.md) |
 | `VERIFY` | 复用 `READ_STRUCTURE` 阶段的读取上下文 |
 
@@ -132,6 +133,26 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 | 已有用户实质草稿（`has_draft`） | `append`（默认） | 追加规范，保留用户原文 |
 | 用户在 `WRITE_CONFIRM` 明确点名要求重写的有草稿节点 | `overwrite` | 需用户对该节点显式确认 |
 
+## Write Gate
+
+`WRITE_CONFIRM` 生成写入计划后，必须先经 `scripts/kb_gate.py` 门禁校验，再进入 `WRITE`。门禁是确定性代码校验，agent 的判断只能收紧结果、不能绕过门禁。
+
+先从当前 `SKILL.md` 位置解析 skill 根目录绝对路径 `<SKILL_ROOT>`，再运行；不要假设当前工作目录，也不要用相对路径直接执行。
+
+```bash
+python3 "<SKILL_ROOT>/references/scripts/kb_gate.py" --plan "<写入计划 JSON 路径>"
+# 或经 stdin：cat plan.json | python3 "<...>/kb_gate.py" --plan -
+```
+
+写入计划 JSON 每个节点提供：`node_token`、`title`、`obj_type`、`write_mode`（`overwrite`/`append`/`new_docx`/`skip`）、`draft_state`（`empty_placeholder`/`has_draft`）、`overwrite_confirmed`，以及 6 行治理字段 `governance`（`source`、`owner`、`version_status`、`scope_visibility`、`effective_update`、`review_policy`、`page_status`）。
+
+门禁判定分两级：
+
+- **硬拦（`ready=false`，不得写入）**：载体不是 docx 且写法不是 `new_docx`、缺少 6 行治理表、必填字段（来源、适用与可见范围）为空、页面状态非法、覆盖有草稿节点但缺 `overwrite_confirmed`、未知写法。
+- **一致性收紧（`narrowed=true`，可写但降级）**：治理字段含“待确认”却把 `page_status` 标为“已完成”时，强制收紧为“进行中”，以保留“先建框架、后续补全”的场景，同时不让残缺内容冒充已完成。
+
+`ready=false` 的节点记入 `unsupported_checks` 并在写入计划中标出原因，不进入 `WRITE`；`narrowed=true` 的节点按收紧后的状态写入。
+
 ## Command Map
 
 只能使用当前状态允许的 command family。命令详细语法属于被引用 skill / reference。
@@ -143,7 +164,7 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 | `OUTLINE_PROPOSE` | `wiki +node-create --obj-type docx`（仅用户确认大纲后）、`wiki +node-list` | 新建确认后的大纲子节点并回读 |
 | `TYPE_TRIAGE` | 无写命令 | 仅对已读结构做分类 |
 | `GEN_STANDARD` | 无写命令 | 模型生成维护规范 |
-| `WRITE_CONFIRM` | 无写命令 | 生成写入计划并请用户确认 |
+| `WRITE_CONFIRM` | 无飞书写命令；`python3 <SKILL_ROOT>/references/scripts/kb_gate.py`（本地只读门禁校验） | 生成写入计划、门禁校验并请用户确认 |
 | `WRITE` | `docs +update`（`overwrite` / `append` / `block_*`）；仅 `new_docx` 时 `wiki +node-create --obj-type docx` | 执行已确认的受控写入 |
 | `VERIFY` | `docs +fetch`、`wiki +node-list` | fresh read 校验写入结果 |
 
@@ -151,18 +172,25 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 
 1. `PARSE_TARGET` 无法解析出唯一知识库时，只问目标澄清问题并停止。
 2. 认证或 API scope 缺失时，按 `lark-shared` 权限处理并停止。
-3. 节点访问权限缺失时，记入 `unsupported_checks` 并在结构概览中报告，不擅自申请权限。
-4. `READ_STRUCTURE` 判定结构过简（无子节点或子节点不足以承载分类）时进入 `OUTLINE_PROPOSE`；结构已足够时直接进入 `TYPE_TRIAGE`。
-5. `OUTLINE_PROPOSE` 中用户拒绝新建大纲、或只想为现有根节点写规范时，跳过新建，直接以现有节点进入 `TYPE_TRIAGE`；不擅自新建任何节点。
-6. `TYPE_TRIAGE` 发现全部节点均为 `non_docx_entity` / `shortcut` 时，说明本知识库没有可写入正文的 docx 节点，询问是否对相关节点走 `new_docx`，不静默结束。
-7. 用户在 `WRITE_CONFIRM` 拒绝写入时，输出已保存的规范草案并转入 `DONE`。
-8. `WRITE` 中单个节点写入失败时，记录失败并继续其余相互独立的节点；写入结束后在 `VERIFY` 统一报告失败项。
-9. 身份在 `PARSE_TARGET` 确定后保持不变；节点解析、读取、写入、验证使用同一身份。
+3. 权限按动作分别判断，填充 `permissions_observed`，一个动作受阻不连累其余动作：
+   - 读权限缺失 → 停止，无法盘点结构（前提不满足）；
+   - `docs +update` 可用、`wiki +node-create` 不可用 → 照常为可编辑的 docx 节点写规范；`OUTLINE_PROPOSE` 或 `new_docx` 需新建的节点列入“待创建节点（缺创建权限）”并记入 `unsupported_checks`，不阻塞其余写入；
+   - 两者都可用 → 正常执行建节点与写规范；
+   - 仅可读 → 只输出规范草案与写入计划，不执行任何写入；
+   - 某动作实际返回 `permission_denied` → 只停该动作、记入 `unsupported_checks`，不用同参数重试、不静默切 bot、不自动申请权限。
+4. 权限硬规则：读取成功不等于具备写权限；写权限只以实际写入返回为准，不由身份、角色或读取成功推断。遇权限不足不自动申请，但必须精确告知受阻的动作和具体节点，不静默跳过。
+5. `READ_STRUCTURE` 判定结构过简（无子节点或子节点不足以承载分类）时进入 `OUTLINE_PROPOSE`；结构已足够时直接进入 `TYPE_TRIAGE`。
+6. `OUTLINE_PROPOSE` 中用户拒绝新建大纲、或只想为现有根节点写规范时，跳过新建，直接以现有节点进入 `TYPE_TRIAGE`；不擅自新建任何节点。
+7. `TYPE_TRIAGE` 发现全部节点均为 `non_docx_entity` / `shortcut` 时，说明本知识库没有可写入正文的 docx 节点，询问是否对相关节点走 `new_docx`，不静默结束。
+8. 用户在 `WRITE_CONFIRM` 拒绝写入时，输出已保存的规范草案并转入 `DONE`。
+9. `WRITE` 中单个节点写入失败时，记录失败并继续其余相互独立的节点；写入结束后在 `VERIFY` 统一报告失败项。
+10. 身份在 `PARSE_TARGET` 确定后保持不变；节点解析、读取、写入、验证使用同一身份。
 
 ## References
 
 - [lark-drive workflow 总框架](lark-drive-workflow.md)
 - [Outputs：规范模板与输出模板](lark-drive-workflow-knowledge-base-bootstrap-outputs.md)
+- 门禁脚本：`scripts/kb_gate.py`（及测试 `scripts/kb_gate_test.py`）
 - [lark-shared](../../lark-shared/SKILL.md)
 - [lark-wiki](../../lark-wiki/SKILL.md)
 - [lark-wiki-node-list](../../lark-wiki/references/lark-wiki-node-list.md)
