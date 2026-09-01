@@ -274,9 +274,40 @@ func (p *CredentialProvider) resolveTokenFromSource(ctx context.Context, source 
 		return nil, err
 	}
 	if !found {
+		if result, fallbackFound, err := p.tryResolveEnvTATFromAppSecret(ctx, source, req); err != nil || fallbackFound {
+			return result, err
+		}
 		return nil, &TokenUnavailableError{Source: source.Name(), Type: req.Type}
 	}
 	return result, nil
+}
+
+func (p *CredentialProvider) tryResolveEnvTATFromAppSecret(ctx context.Context, source credentialSource, req TokenSpec) (*TokenResult, bool, error) {
+	if source == nil || source.Name() != "env" || req.Type != TokenTypeTAT || p.httpClient == nil {
+		return nil, false, nil
+	}
+	acct, err := p.ResolveAccount(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	if acct == nil || !HasRealAppSecret(acct.AppSecret) {
+		return nil, false, nil
+	}
+	if req.AppID != "" && req.AppID != acct.AppID {
+		return nil, false, nil
+	}
+	httpClient, err := p.httpClient()
+	if err != nil {
+		return nil, true, err
+	}
+	token, err := FetchTAT(ctx, httpClient, acct.Brand, acct.AppID, acct.AppSecret)
+	if err != nil {
+		return nil, true, err
+	}
+	if token == "" {
+		return nil, true, &MalformedTokenResultError{Source: source.Name(), Type: req.Type, Reason: "empty token"}
+	}
+	return &TokenResult{Token: token, Source: core.CredentialSourceEnv}, true, nil
 }
 
 // ResolveIdentityHint resolves default/auto identity guidance from the selected source.
