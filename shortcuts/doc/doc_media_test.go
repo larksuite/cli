@@ -577,12 +577,8 @@ func TestDocMediaInsertExecuteFromClipboard(t *testing.T) {
 		t.Fatalf("unexpected error: %v — stderr: %s", err, stderr.String())
 	}
 
-	// stderr should show clipboard read + file name "clipboard.png"
-	if !strings.Contains(stderr.String(), "Reading image from clipboard") {
-		t.Errorf("stderr missing clipboard-read log: %s", stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "clipboard.png") {
-		t.Errorf("stderr missing clipboard.png file name: %s", stderr.String())
+	if stderr.Len() != 0 {
+		t.Errorf("stderr = %q, want no clipboard progress", stderr.String())
 	}
 	// stdout should include the file_token
 	if !strings.Contains(stdout.String(), "file_clip_abc") {
@@ -618,6 +614,127 @@ func TestDocMediaInsertExecuteClipboardReadError(t *testing.T) {
 	}
 }
 
+func TestDocMediaInsertBindFailureReportsUploadedStateAndRollback(t *testing.T) {
+	tests := []struct {
+		name             string
+		rollbackBody     map[string]interface{}
+		wantRollback     string
+		wantRollbackText string
+	}{
+		{
+			name:         "rollback succeeds",
+			rollbackBody: map[string]interface{}{"code": 0, "msg": "ok"},
+			wantRollback: "rollback=succeeded",
+		},
+		{
+			name: "rollback fails",
+			rollbackBody: map[string]interface{}{
+				"code": 1777001,
+				"msg":  "rollback backend failure",
+			},
+			wantRollback:     "rollback=failed",
+			wantRollbackText: "rollback backend failure",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, stderr, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-bind-recovery-app"))
+			documentID := "doxcnBindRecovery1"
+			blockID := "blk_bind_recovery"
+			fileToken := "file_bind_recovery_token"
+
+			tmpDir := t.TempDir()
+			withDocsWorkingDir(t, tmpDir)
+			if err := os.WriteFile("image.png", []byte("png-data"), 0644); err != nil {
+				t.Fatalf("WriteFile() error: %v", err)
+			}
+
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/docx/v1/documents/" + documentID + "/blocks/" + documentID,
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{
+						"block": map[string]interface{}{
+							"block_id": documentID,
+							"children": []interface{}{},
+						},
+					},
+				},
+			})
+			reg.Register(&httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/docx/v1/documents/" + documentID + "/blocks/" + documentID + "/children",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{
+						"children": []interface{}{map[string]interface{}{"block_id": blockID}},
+					},
+				},
+			})
+			reg.Register(&httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/drive/v1/medias/upload_all",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{"file_token": fileToken},
+				},
+			})
+			reg.Register(&httpmock.Stub{
+				Method: "PATCH",
+				URL:    "/open-apis/docx/v1/documents/" + documentID + "/blocks/batch_update",
+				Body:   map[string]interface{}{"code": 1777000, "msg": "bind backend failure"},
+			})
+			reg.Register(&httpmock.Stub{
+				Method: "DELETE",
+				URL:    "/open-apis/docx/v1/documents/" + documentID + "/blocks/" + documentID + "/children/batch_delete",
+				Body:   tt.rollbackBody,
+			})
+
+			err := mountAndRunDocs(t, DocMediaInsert, []string{
+				"+media-insert",
+				"--doc", documentID,
+				"--file", "image.png",
+				"--width", "100",
+				"--height", "80",
+				"--as", "bot",
+			}, f, stdout)
+			if err == nil {
+				t.Fatal("expected bind failure, got nil")
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("stdout = %q, want empty on bind failure", stdout.String())
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("stderr = %q, want recovery in typed error only", stderr.String())
+			}
+
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed error, got %T: %v", err, err)
+			}
+			if problem.Code != 1777000 {
+				t.Fatalf("code = %d, want preserved bind error code 1777000", problem.Code)
+			}
+			for _, want := range []string{
+				"phase=bind_media",
+				"document_id=" + documentID,
+				"upload_succeeded=true",
+				"file_token=" + fileToken,
+				"block_id=" + blockID,
+				"replace_block_id=" + blockID,
+				tt.wantRollback,
+				tt.wantRollbackText,
+			} {
+				if want != "" && !strings.Contains(problem.Hint, want) {
+					t.Fatalf("hint = %q, want %q", problem.Hint, want)
+				}
+			}
+		})
+	}
+}
+
 func TestDocMediaInsertExecuteResolvesWikiBeforeFileCheck(t *testing.T) {
 	f, _, stderr, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-insert-exec-app"))
 	reg.Register(&httpmock.Stub{
@@ -649,8 +766,8 @@ func TestDocMediaInsertExecuteResolvesWikiBeforeFileCheck(t *testing.T) {
 	if !strings.Contains(err.Error(), "file not found") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(stderr.String(), "Resolved wiki to docx") {
-		t.Fatalf("stderr missing wiki resolution log: %s", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no wiki resolution progress", stderr.String())
 	}
 }
 
@@ -1231,7 +1348,7 @@ func TestDocMediaPreviewRejectsHTTPErrorBeforeWrite(t *testing.T) {
 }
 
 func TestDocMediaPreviewAppendsExtensionFromRFC5987Filename(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-preview-disposition-app"))
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-preview-disposition-app"))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/drive/v1/medias/tok_123/preview_download?preview_type=" + PreviewType_SOURCE_FILE,
@@ -1260,6 +1377,9 @@ func TestDocMediaPreviewAppendsExtensionFromRFC5987Filename(t *testing.T) {
 	wantPath := mustDocSafeOutputPath(t, "preview.csv")
 	if got.Data.SavedPath != wantPath {
 		t.Fatalf("saved_path = %q, want %q", got.Data.SavedPath, wantPath)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no preview progress", stderr.String())
 	}
 	if _, err := os.Stat(wantPath); err != nil {
 		t.Fatalf("expected preview file at %q: %v", wantPath, err)

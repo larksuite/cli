@@ -179,7 +179,7 @@ Risk / Structure: `R2-R3` / `S3`
 | `RESOLVE_TARGET` | `drive +inspect`、`wiki +node-get`、`wiki +space-list`、仅用于查找文件夹候选的 `drive +search` | 解析目标位置 |
 | `SEARCH_RECALL` / `RECALL_ENHANCE` | `drive +search` | 搜索召回和覆盖增强 |
 | `RESOURCE_RESOLVE` | `drive +inspect`、`wiki +node-get`、`drive metas batch_query`、必要时 `drive permission.members auth` | 解析标准 token、owner、权限信号和移动资格 |
-| `CONTENT_VERIFY` | `docs +fetch`、`sheets +read`、`sheets +find`、必要时 `drive +preview` | 验证内容证据 |
+| `CONTENT_VERIFY` | `docs +fetch`、`sheets +cells-get`、`sheets +cells-search`、必要时 `drive +preview` | 验证内容证据 |
 | `EXECUTE` | `drive +create-folder`、`wiki +node-create`、`drive +move`、`wiki +move`、`wiki +move-to-drive`、`drive +task_result` | 执行已确认写操作 |
 | `VERIFY` | `drive files list`、`wiki +node-list`、`wiki +node-get`、`drive +inspect`、`drive +task_result` | 验证执行结果 |
 | `RESTORE` | `drive +move`、`wiki +move`、`drive +delete`、`wiki +node-delete`、`drive +task_result` | 恢复已确认资源并清理本次新建目标 |

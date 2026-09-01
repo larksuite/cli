@@ -95,7 +95,6 @@ var DriveInspect = common.Shortcut{
 
 		// Step 2: If type is "wiki", unwrap via get_node API.
 		if docType == "wiki" {
-			fmt.Fprintf(runtime.IO().ErrOut, "Inspecting wiki node: %s\n", common.MaskToken(docToken))
 			data, err := driveInspectCallWithRetry(
 				ctx,
 				func() (map[string]interface{}, error) {
@@ -131,7 +130,6 @@ var DriveInspect = common.Shortcut{
 			docType = objType
 			docToken = objToken
 
-			fmt.Fprintf(runtime.IO().ErrOut, "Wiki unwrapped to %s: %s\n", docType, common.MaskToken(docToken))
 		}
 
 		// Step 3: Call batch_query to verify and get title.

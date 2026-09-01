@@ -191,6 +191,10 @@ var CalendarCreate = common.Shortcut{
 		if e <= s {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "end time must be after start time")
 		}
+		warnCalendarTimezoneMismatch(runtime,
+			calendarTimeInputRange{Flag: "start", Value: runtime.Str("start")},
+			calendarTimeInputRange{Flag: "end", Value: runtime.Str("end")},
+		)
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {

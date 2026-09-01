@@ -116,10 +116,8 @@ func sheetsDryRunParentType(ref spreadsheetRef) string {
 // Files over 20 MB go through the chunked endpoint rather than failing.
 // upload_all answers an oversized file with a bare 1061002 "upload media
 // failed: params error" that names neither the size nor the limit, so there is
-// nothing for the caller to act on. The deprecated sheets +media-upload has
-// always dispatched by size (backward.uploadSheetMediaFile), which left the same
-// image succeeding through the old shortcut and failing through the ones meant
-// to replace it.
+// nothing for the caller to act on. Dispatching by size here is what keeps an
+// oversized image working through every sheets upload surface.
 func uploadSheetImage(runtime *common.RuntimeContext, spreadsheetToken, filePath, fileName string, fileSize int64) (string, error) {
 	parentType := sheetMediaParentType(spreadsheetToken)
 	if fileSize <= common.MaxDriveMediaUploadSinglePartSize {
@@ -137,7 +135,6 @@ func uploadSheetImage(runtime *common.RuntimeContext, spreadsheetToken, filePath
 		FileSize:   fileSize,
 		ParentType: parentType,
 		ParentNode: spreadsheetToken,
-		Quiet:      true,
 	})
 }
 

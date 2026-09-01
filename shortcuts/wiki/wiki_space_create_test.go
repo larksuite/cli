@@ -162,8 +162,8 @@ func TestWikiSpaceCreateMountedExecuteFlattensSpace(t *testing.T) {
 	if captured["name"] != "Eng Wiki" || captured["description"] != "team docs" {
 		t.Fatalf("captured request body = %#v", captured)
 	}
-	if !strings.Contains(stderr.String(), "Created wiki space") {
-		t.Fatalf("stderr = %q, want creation log", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no creation log", stderr.String())
 	}
 }
 

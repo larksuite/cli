@@ -306,8 +306,8 @@ func TestRunWikiNodeDeleteAsyncReadyShape(t *testing.T) {
 	if out["task_id"] != "task_async_node" || out["ready"] != true || out["failed"] != false {
 		t.Fatalf("async-ready output = %#v", out)
 	}
-	if !strings.Contains(stderr.String(), "async, polling task") || !strings.Contains(stderr.String(), "delete-node task completed successfully") {
-		t.Fatalf("stderr = %q", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no async progress output", stderr.String())
 	}
 }
 

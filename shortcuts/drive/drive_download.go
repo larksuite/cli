@@ -268,8 +268,6 @@ var DriveDownload = common.Shortcut{
 			}
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Downloading: %s\n", common.MaskToken(fileToken))
-
 		resp, err := runtime.DoAPIStream(ctx, &larkcore.ApiReq{
 			HttpMethod: http.MethodGet,
 			ApiPath:    fmt.Sprintf("/open-apis/drive/v1/files/%s/download", validate.EncodePathSegment(fileToken)),
