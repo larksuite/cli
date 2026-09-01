@@ -116,6 +116,6 @@ lark-cli docs +script --command init-draft --presentation-decision '<上方完�
 1. 只有最新 release candidate 完成 Draft Profile Check 和 XML 规则复查后，才读取 [`lark-doc-create.md`](lark-doc-create.md)，使用同一个 `draft_path` 创建文档。
 2. 创建结果存在 warning、局部资源失败或回查发现局部问题时，不得再次新建文档；读取 [`lark-doc-update.md`](lark-doc-update.md)，对已创建文档做最小范围修复，并按 update 流程 fetch 验证。
 
-### Step 8：清理并交付。
+### Step 8：交付。
 
-无论创建成功、失败或被阻塞，只要 Step 4 已返回 `work_dir`，就先离开该目录，再使用当前运行时的文件删除能力精确删除整个 `work_dir`；不要使用通配符，也不要删除目录外的用户原始文件。最终只交付用户需要的结果，并说明必要来源、未关闭缺口、异常、失败或阻塞原因，以及文档 URL 或 token。
+保留 Step 4 返回的 `work_dir` 及其中的创作草稿。最终只交付用户需要的结果，并说明必要来源、未关闭缺口、异常、失败或阻塞原因，以及文档 URL 或 token。

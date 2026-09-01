@@ -178,6 +178,146 @@ func TestDocMediaInsertDryRunWikiAddsResolveStep(t *testing.T) {
 	}
 }
 
+func TestDocMediaParentType(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		parentType string
+		parentNode string
+		want       string
+	}{
+		{
+			name:       "local Word token uses office mount point",
+			parentType: "docx_image",
+			parentNode: "aaaaOaaaaFaaaaLaaaa0aaaaXaW",
+			want:       officeDocxFileParentType,
+		},
+		{
+			name:       "ordinary docx preserves parent type",
+			parentType: "docx_image",
+			parentNode: "blkcnNative123",
+			want:       "docx_image",
+		},
+		{
+			name:       "local Excel token preserves parent type",
+			parentType: "docx_image",
+			parentNode: "aaaaOaaaaFaaaaLaaaa0aaaaXaE",
+			want:       "docx_image",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := docMediaParentType(tt.parentType, tt.parentNode); got != tt.want {
+				t.Fatalf("docMediaParentType(%q, %q) = %q, want %q", tt.parentType, tt.parentNode, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsLocalWordToken(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		token string
+		want  bool
+	}{
+		{name: "27 character Word token", token: "aaaaOaaaaFaaaaLaaaa0aaaaXaW", want: true},
+		{name: "28 character Word token", token: "aaaaOaaaaFaaaaLaaaa0aaaaXaaW", want: true},
+		{name: "Excel token", token: "aaaaOaaaaFaaaaLaaaa0aaaaXaE"},
+		{name: "PPT token", token: "aaaaOaaaaFaaaaLaaaa0aaaaXaP"},
+		{name: "legacy numeric Word type", token: "aaaaOaaaaFaaaaLaaaa0aaaaXa3"},
+		{name: "wrong marker", token: "aaaaOaaaaFaaaaLaaaa0aaaaYaW"},
+		{name: "short token", token: "aaaaOaaaaFaaaaLaaaa0aaa"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := isLocalWordToken(tt.token); got != tt.want {
+				t.Fatalf("isLocalWordToken(%q) = %v, want %v", tt.token, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDocMediaUploadDryRunUsesOfficeParentTypeForLocalWord(t *testing.T) {
+	cmd := &cobra.Command{Use: "docs +media-upload"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("parent-type", "", "")
+	cmd.Flags().String("parent-node", "", "")
+	cmd.Flags().String("doc-id", "", "")
+	if err := cmd.Flags().Set("file", "./image.png"); err != nil {
+		t.Fatalf("set --file: %v", err)
+	}
+	if err := cmd.Flags().Set("parent-type", "docx_image"); err != nil {
+		t.Fatalf("set --parent-type: %v", err)
+	}
+	const localToken = "aaaaOaaaaFaaaaLaaaa0aaaaXaW"
+	if err := cmd.Flags().Set("parent-node", localToken); err != nil {
+		t.Fatalf("set --parent-node: %v", err)
+	}
+
+	dry := decodeDocDryRun(t, DocMediaUpload.DryRun(context.Background(), common.TestNewRuntimeContext(cmd, nil)))
+	if len(dry.API) != 1 {
+		t.Fatalf("expected 1 API call, got %d", len(dry.API))
+	}
+	if got, _ := dry.API[0].Body["parent_type"].(string); got != officeDocxFileParentType {
+		t.Fatalf("parent_type = %q, want %q", got, officeDocxFileParentType)
+	}
+	if got, _ := dry.API[0].Body["parent_node"].(string); got != localToken {
+		t.Fatalf("parent_node = %q, want %q", got, localToken)
+	}
+}
+
+func TestDocMediaUploadExecuteUsesOfficeParentTypeForLocalWord(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-local-office-upload-app"))
+	uploadStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"file_token": "file_local_office_123"},
+		},
+	}
+	reg.Register(uploadStub)
+
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+	if err := os.WriteFile("image.png", []byte("png-bytes"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	const localToken = "aaaaOaaaaFaaaaLaaaa0aaaaXaW"
+	err := mountAndRunDocs(t, DocMediaUpload, []string{
+		"+media-upload",
+		"--file", "image.png",
+		"--parent-type", "docx_image",
+		"--parent-node", localToken,
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	body := string(uploadStub.CapturedBody)
+	if !strings.Contains(body, "\r\n\r\n"+officeDocxFileParentType+"\r\n") {
+		t.Fatalf("upload body missing parent_type %q: %s", officeDocxFileParentType, body)
+	}
+	if strings.Contains(body, "\r\n\r\ndocx_image\r\n") {
+		t.Fatalf("upload body retained caller parent_type docx_image: %s", body)
+	}
+	if !strings.Contains(body, "\r\n\r\n"+localToken+"\r\n") {
+		t.Fatalf("upload body missing local parent_node %q: %s", localToken, body)
+	}
+	if !strings.Contains(stdout.String(), "file_local_office_123") {
+		t.Fatalf("stdout missing file token: %s", stdout.String())
+	}
+}
+
 func TestDocMediaUploadDryRunUsesMultipartForLargeFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	withDocsWorkingDir(t, tmpDir)
