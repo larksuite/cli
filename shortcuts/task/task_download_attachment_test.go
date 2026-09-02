@@ -222,8 +222,13 @@ func TestDownloadAttachmentTaskRejectsPrivateRedirect(t *testing.T) {
 		"--output", "./note.txt",
 		"--as", "bot",
 	}, factory, stdout)
-	if err == nil {
-		t.Fatal("error = nil, want blocked redirect")
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryPolicy || problem.Subtype != errs.SubtypeAccessDenied {
+		t.Fatalf("problem = %#v, %v; want policy/access_denied", problem, ok)
+	}
+	var policyErr *errs.SecurityPolicyError
+	if !errors.As(err, &policyErr) || policyErr.Cause == nil || !errors.Is(err, policyErr.Cause) {
+		t.Fatalf("error = %T, want policy error with preserved validator cause", err)
 	}
 	if privateCalls != 0 {
 		t.Fatalf("private redirect target calls = %d, want 0", privateCalls)
@@ -440,6 +445,26 @@ func TestSaveTaskAttachmentRejectsUnknownLengthTruncation(t *testing.T) {
 	}
 	if _, statErr := os.Stat("short.bin"); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("output stat error = %v, want no committed partial file", statErr)
+	}
+}
+
+func TestSaveTaskAttachmentRejectsUnknownLengthOversize(t *testing.T) {
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+	runtime := &common.RuntimeContext{}
+	stream := &download.Stream{
+		Body:          io.NopCloser(strings.NewReader("abcde")),
+		Header:        make(http.Header),
+		ContentLength: -1,
+	}
+
+	_, err := saveTaskAttachment(runtime, "long.bin", false, 4, stream)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryNetwork || problem.Subtype != errs.SubtypeNetworkRepresentationChanged || !problem.Retryable {
+		t.Fatalf("problem = %#v, %v; want retryable network/representation_changed", problem, ok)
+	}
+	if _, statErr := os.Stat("long.bin"); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("output stat error = %v, want no committed oversized file", statErr)
 	}
 }
 
