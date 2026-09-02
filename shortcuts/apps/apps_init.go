@@ -409,18 +409,20 @@ func isEmptyRepo(ctx context.Context, dir string) (bool, error) {
 // Empty repo -> `app init`; non-empty -> `app sync` + meta app_id patch +
 // conditional `skills sync`. Returns "init" or "upgrade".
 func runScaffold(ctx context.Context, dir, appID, appType, sourcePath string) (string, error) {
-	registry := urlrewrite.Rewrite(npmRegistry)
 	empty, err := isEmptyRepo(ctx, dir)
 	if err != nil {
 		return "", err
 	}
 	if empty {
-		args := scaffoldInitArgsWithRegistry(registry, appType, appID, sourcePath)
+		args := scaffoldInitArgs(appType, appID, sourcePath)
 		if _, stderr, err := initRunner.Run(ctx, dir, "npx", args...); err != nil {
 			return "", appsExternalToolError(err, "npx app init failed: %s", gitErr(stderr, err))
 		}
 		return scaffoldKindInit, nil
 	}
+	// The npm registry is a CLI-owned URL handed to the child process, so it
+	// passes through the URL rewrite extension once for both npx invocations.
+	registry := urlrewrite.Rewrite(npmRegistry)
 	policy := policyForAppType(appType)
 	if !policy.skipAppSync {
 		if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", "--registry", registry, miaodaCLIPkg, "app", "sync"); err != nil {
@@ -446,9 +448,10 @@ func runScaffold(ctx context.Context, dir, appID, appType, sourcePath string) (s
 // install; others run it as usual.
 // appType is forwarded verbatim (including "frontend") — the CLI does not
 // translate the app type; mapping the app type to a concrete tech stack is the
-// downstream tool's responsibility.
+// downstream tool's responsibility. The registry is a CLI-owned URL handed to
+// npx, so it passes through the URL rewrite extension.
 func scaffoldInitArgs(appType, appID, sourcePath string) []string {
-	return scaffoldInitArgsWithRegistry(npmRegistry, appType, appID, sourcePath)
+	return scaffoldInitArgsWithRegistry(urlrewrite.Rewrite(npmRegistry), appType, appID, sourcePath)
 }
 
 func scaffoldInitArgsWithRegistry(registry, appType, appID, sourcePath string) []string {

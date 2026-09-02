@@ -4,7 +4,6 @@
 package cmdupdate
 
 import (
-	"context"
 	"fmt"
 	stdio "io"
 	"runtime"
@@ -116,7 +115,7 @@ Use --check to only check for updates without installing.
 
 The skill name "lark-suite" is reserved for CLI-managed suite layout.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return updateRunWithContext(cmd.Context(), opts)
+			return updateRun(opts)
 		},
 	}
 	cmdutil.DisableAuthCheck(cmd)
@@ -130,10 +129,6 @@ The skill name "lark-suite" is reserved for CLI-managed suite layout.`,
 }
 
 func updateRun(opts *UpdateOptions) error {
-	return updateRunWithContext(nil, opts)
-}
-
-func updateRunWithContext(ctx context.Context, opts *UpdateOptions) error {
 	io := opts.Factory.IOStreams
 	if _, err := skillscheck.ParseLayout(opts.SkillsLayout); err != nil {
 		return reportError(opts, io, "validation",

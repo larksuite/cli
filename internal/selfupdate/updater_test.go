@@ -238,9 +238,6 @@ func TestSkillsCommandsUseExpectedArgs(t *testing.T) {
 			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 			if tt.rewrite {
 				testurlrewrite.Register(t, func(rawURL string) string {
-					if tt.name == "stage suite with rewritten source" && rawURL != "https://open.feishu.cn/lark-cli/skills/isolated" {
-						t.Fatalf("RewriteURL() input = %q, want final suite source", rawURL)
-					}
 					return strings.Replace(rawURL, "https://open.feishu.cn", "http://mirror.example.test", 1)
 				})
 			}

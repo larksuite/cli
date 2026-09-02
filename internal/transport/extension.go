@@ -5,6 +5,7 @@ package transport
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 
@@ -17,7 +18,7 @@ var _ RoundTripperDecorator = (*ExtensionMiddleware)(nil)
 type resolvedExtension struct {
 	provider    exttransport.Provider
 	interceptor exttransport.Interceptor
-	rewriter    *urlrewrite.Resolver
+	rewriter    exttransport.URLRewriter
 }
 
 func resolveExtension() *resolvedExtension {
@@ -26,12 +27,11 @@ func resolveExtension() *resolvedExtension {
 		return nil
 	}
 
+	ctx := context.Background()
 	extension := &resolvedExtension{
 		provider:    p,
-		interceptor: p.ResolveInterceptor(context.Background()),
-	}
-	if _, ok := p.(exttransport.URLRewriterProvider); ok {
-		extension.rewriter = urlrewrite.ResolveProvider(context.Background(), p)
+		interceptor: p.ResolveInterceptor(ctx),
+		rewriter:    urlrewrite.ResolveProvider(ctx, p),
 	}
 	if extension.interceptor == nil && extension.rewriter == nil {
 		return nil
@@ -83,7 +83,7 @@ type ExtensionMiddleware struct {
 	Base     http.RoundTripper
 	Ext      exttransport.Interceptor
 	ExtName  string
-	rewriter *urlrewrite.Resolver
+	rewriter exttransport.URLRewriter
 }
 
 // BaseRoundTripper returns the wrapped built-in transport chain.
@@ -108,11 +108,11 @@ func (m *ExtensionMiddleware) RoundTrip(req *http.Request) (*http.Response, erro
 	origCtx := req.Context()
 	req = req.Clone(origCtx)
 	if m.rewriter != nil {
-		rewritten := m.rewriter.Rewrite(req.URL.String())
+		rewritten := m.rewriter.RewriteURL(req.URL.String())
 		if rewritten != req.URL.String() {
 			rewrittenURL, err := url.Parse(rewritten)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("extension %q rewrote request URL to an invalid value: %w", m.ExtName, err)
 			}
 			req.URL = rewrittenURL
 			req.Host = rewrittenURL.Host

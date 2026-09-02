@@ -83,8 +83,7 @@ var ImMessagesMGet = common.Shortcut{
 		messages := make([]map[string]interface{}, 0, len(rawItems))
 		for _, item := range rawItems {
 			m, _ := item.(map[string]interface{})
-			message := convertlib.FormatMessageItemWithMergePrefetchOpts(m, runtime, nameCache, mergePrefetch, downloadResources)
-			messages = append(messages, message)
+			messages = append(messages, convertlib.FormatMessageItemWithMergePrefetchOpts(m, runtime, nameCache, mergePrefetch, downloadResources))
 		}
 
 		convertlib.ResolveSenderNames(runtime, messages, nameCache)

@@ -160,8 +160,7 @@ var ImChatMessageList = common.Shortcut{
 		downloadResources := runtime.Bool("download-resources")
 		messages := make([]map[string]interface{}, 0, len(rawItems))
 		for _, m := range result.items {
-			message := convertlib.FormatMessageItemWithMergePrefetchOpts(m, runtime, nameCache, mergePrefetch, downloadResources)
-			messages = append(messages, message)
+			messages = append(messages, convertlib.FormatMessageItemWithMergePrefetchOpts(m, runtime, nameCache, mergePrefetch, downloadResources))
 		}
 
 		// Enrich: resolve sender names for outer messages (reuses cache from merge_forward)
