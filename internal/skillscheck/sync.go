@@ -257,6 +257,13 @@ type SyncOptions struct {
 	Now     func() time.Time
 }
 
+// ActionNotInstalled reports that skills sync was skipped because no official
+// skill is installed and no sync state exists. That combination means the user
+// never installed skills (for example `npx @larksuite/cli install --no-skills`),
+// so update must not install them uninvited. --force and an explicit
+// --skills-layout are treated as a request to install and bypass the skip.
+const ActionNotInstalled = "not_installed"
+
 type SyncResult struct {
 	Action          string
 	Official        []string
@@ -281,6 +288,7 @@ func SyncSkills(opts SyncOptions) *SyncResult {
 	}
 
 	previous, readable, err := ReadState()
+	stateMissing := err == nil && !readable
 	if err != nil {
 		readable = false
 		previous = nil
@@ -292,6 +300,9 @@ func SyncSkills(opts SyncOptions) *SyncResult {
 	installed, err := listInstalledSkills(opts.Runner)
 	if err != nil {
 		return &SyncResult{Action: "failed", Layout: targetLayout, Err: err}
+	}
+	if skipNotInstalled(opts, stateMissing, installed) {
+		return &SyncResult{Action: ActionNotInstalled, Layout: targetLayout, Force: opts.Force}
 	}
 	localOfficial, err := localOfficialSkills(installed, previous, readable)
 	if err != nil {
@@ -344,6 +355,24 @@ func SyncSkills(opts SyncOptions) *SyncResult {
 	}
 
 	return fallbackSeparate(opts, previous, readable, localOfficial, installed, fallbackPlan, reasons)
+}
+
+func skipNotInstalled(opts SyncOptions, stateMissing bool, installed []installedSkill) bool {
+	if !stateMissing || opts.Force || opts.Layout != "" {
+		return false
+	}
+	return !hasOfficialSkillCandidate(installed)
+}
+
+// hasOfficialSkillCandidate matches the lark- prefix instead of the official
+// index so a CLI-only update never fetches the skills index just to skip.
+func hasOfficialSkillCandidate(installed []installedSkill) bool {
+	for _, skill := range installed {
+		if strings.HasPrefix(skill.Name, "lark-") {
+			return true
+		}
+	}
+	return false
 }
 
 func fetchOfficialSkills(runner SkillsRunner, source string) ([]string, error) {

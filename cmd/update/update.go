@@ -37,6 +37,9 @@ var (
 	syncSkills     = func(opts skillscheck.SyncOptions) *skillscheck.SyncResult { return skillscheck.SyncSkills(opts) }
 )
 
+// skillsInstallCommand matches the README install step so hints stay in sync.
+const skillsInstallCommand = "npx skills add larksuite/cli -y -g"
+
 func isWindows() bool { return currentOS == osWindows }
 
 // normalizeVersion canonicalizes a version string for state comparison.
@@ -111,6 +114,11 @@ Detects the installation method automatically:
 
 Use --json for structured output (for AI agents and scripts).
 Use --check to only check for updates without installing.
+
+Official skills are synced only when they are already installed. When no
+official skill is installed and no sync state exists, skills are left alone;
+install them with: npx skills add larksuite/cli -y -g
+(--force and --skills-layout also install them).
 
 The skill name "lark-suite" is reserved for CLI-managed suite layout.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -505,6 +513,9 @@ func applySkillsResult(env map[string]interface{}, r *skillscheck.SyncResult) {
 		env["skills_action"] = "failed"
 		env["skills_warning"] = fmt.Sprintf("skills update failed: %s", r.Err)
 		env["skills_summary"] = skillsSummary(r)
+	case r.Action == skillscheck.ActionNotInstalled:
+		env["skills_action"] = skillscheck.ActionNotInstalled
+		env["skills_hint"] = "official skills are not installed; to install them run: " + skillsInstallCommand
 	default:
 		env["skills_action"] = "synced"
 		env["skills_summary"] = skillsSummary(r)
@@ -541,6 +552,9 @@ func emitSkillsTextHints(io *cmdutil.IOStreams, r *skillscheck.SyncResult) {
 			fmt.Fprintf(io.ErrOut, "  Failed skills: %s\n", strings.Join(r.Failed, ", "))
 		}
 		fmt.Fprintf(io.ErrOut, "  To retry all official skills: lark-cli update --force\n")
+	case r.Action == skillscheck.ActionNotInstalled:
+		fmt.Fprintf(io.ErrOut, "%s Skills not installed; skills sync skipped\n", symArrow())
+		fmt.Fprintf(io.ErrOut, "  To install official skills: %s\n", skillsInstallCommand)
 	case r.Warning != "":
 		fmt.Fprintf(io.ErrOut, "%s Skills updated using %s layout\n", symOK(), r.Layout)
 		fmt.Fprintf(io.ErrOut, "%s %s\n", symWarn(), r.Warning)

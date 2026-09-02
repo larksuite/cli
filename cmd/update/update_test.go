@@ -2044,3 +2044,67 @@ func TestResolveSkillsBrand_RespectsActiveProfile(t *testing.T) {
 		t.Errorf("unexpected notice: %q", errBuf.String())
 	}
 }
+
+func TestUpdateRun_AlreadyLatest_NothingInstalled_SkipsSkillsSync(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	origFetch := fetchLatest
+	origCur := currentVersion
+	t.Cleanup(func() { fetchLatest = origFetch; currentVersion = origCur })
+	fetchLatest = func() (string, error) { return "1.0.21", nil }
+	currentVersion = func() string { return "1.0.21" }
+
+	var skillsCommands []string
+	origNew := newUpdater
+	t.Cleanup(func() { newUpdater = origNew })
+	newUpdater = func() *selfupdate.Updater {
+		return &selfupdate.Updater{
+			SkillsIndexFetchOverride: func() *selfupdate.NpmResult {
+				t.Error("skills index fetched although no official skill is installed")
+				return &selfupdate.NpmResult{Err: fmt.Errorf("unexpected index fetch")}
+			},
+			SkillsCommandOverride: func(args ...string) *selfupdate.NpmResult {
+				joined := strings.Join(args, " ")
+				skillsCommands = append(skillsCommands, joined)
+				r := &selfupdate.NpmResult{}
+				if joined == "-y skills ls -g --json" {
+					r.Stdout.WriteString(`[{"name":"custom-skill","path":"/tmp/custom-skill","scope":"global","agents":["Codex"]}]`)
+				}
+				return r
+			},
+		}
+	}
+
+	f, stdout, _ := newTestFactory(t)
+	if err := updateRun(&UpdateOptions{Factory: f, JSON: true}); err != nil {
+		t.Fatalf("updateRun() err = %v, want nil", err)
+	}
+
+	var env map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("json.Unmarshal stdout: %v\nstdout: %s", err, stdout.String())
+	}
+	if env["skills_action"] != skillscheck.ActionNotInstalled {
+		t.Errorf("skills_action = %v, want %q", env["skills_action"], skillscheck.ActionNotInstalled)
+	}
+	if hint, _ := env["skills_hint"].(string); !strings.Contains(hint, skillsInstallCommand) {
+		t.Errorf("skills_hint = %q, want install command %q", hint, skillsInstallCommand)
+	}
+	for _, command := range skillsCommands {
+		if strings.Contains(command, "skills add") {
+			t.Errorf("skills add was run for a CLI-only install: %q", command)
+		}
+	}
+	if _, readable, err := skillscheck.ReadState(); readable || err != nil {
+		t.Errorf("ReadState() = (_, %v, %v), want no state written", readable, err)
+	}
+}
+
+func TestEmitSkillsTextHints_NotInstalled(t *testing.T) {
+	f, _, stderr := newTestFactory(t)
+	emitSkillsTextHints(f.IOStreams, &skillscheck.SyncResult{Action: skillscheck.ActionNotInstalled, Layout: skillscheck.LayoutSeparate})
+	out := stderr.String()
+	if !strings.Contains(out, "Skills not installed") || !strings.Contains(out, skillsInstallCommand) {
+		t.Errorf("stderr = %q, want not-installed notice with install command", out)
+	}
+}

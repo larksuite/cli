@@ -75,6 +75,8 @@ Choose **one** of the following methods:
 npx @larksuite/cli@latest install
 ```
 
+The wizard also installs the AI Agent [Skills](#agent-skills). Pass `--no-skills` to install only the CLI; skills can be added later with `npx skills add larksuite/cli -y -g`, and `lark-cli update` leaves skills alone until they are installed.
+
 **Option 2 — From source:**
 
 Requires Go `v1.23`+ and Python 3.
@@ -84,7 +86,7 @@ git clone https://github.com/larksuite/cli.git
 cd cli
 make install
 
-# Install CLI SKILL (required)
+# Install the AI Agent Skills (recommended; required for agent use)
 npx skills add larksuite/cli -y -g
 ```
 
