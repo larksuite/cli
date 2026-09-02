@@ -1342,6 +1342,7 @@
           "style",
           "comment",
           "data_validation",
+          "conditional_format",
           "truncation"
         ]
       },
@@ -1800,7 +1801,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "JSON 2D array `[[{cell},...],...]`, dimensions must match `--range`; each cell may carry `value` / `formula` / `cell_styles` / `note` / `rich_text` (incl. `type=\"embed-image\"` in-cell image); run `--print-schema` for full fields",
+        "desc": "JSON 2D array `[[{cell},...],...]`, dimensions must match `--range`; each cell may carry `value` / `formula` / `multiple_values` / `cell_styles` / `note` / `rich_text` (incl. `type=\"embed-image\"` in-cell image). To write selected values into a multi-select dropdown cell, use `multiple_values:[{\"value\":...}]`; do not join multiple options with commas into one `value`. Run `--print-schema` for full fields",
         "input": [
           "file",
           "stdin"
@@ -2128,7 +2129,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Per-option pill colors, RGB hex array (e.g. `[\"#1FB6C1\",\"#F006C2\"]`). Length may be shorter than the source (`--options` items / `--source-range` cells) — extras cycle through a 10-color palette — but never longer (CLI Validate rejects: `--colors length (N) must not exceed dropdown source size (M)`). **Applies on its own**; ignored when `--highlight=false`.",
+        "desc": "Per-option pill background colors as an RGB hex array. Omit when creating a dropdown to use the built-in 10-color palette; pass only when the user explicitly requests custom colors or options have clear color semantics. Pill text is black, so prefer light, low-saturation backgrounds. The array may be shorter than the source (`--options` items / `--source-range` cells) — extras use the built-in palette — but never longer (CLI Validate rejects: `--colors length (N) must not exceed dropdown source size (M)`). Applies on its own; ignored when `--highlight=false`.",
         "input": [
           "file",
           "stdin"
@@ -2139,7 +2140,7 @@
         "kind": "own",
         "type": "bool",
         "required": "optional",
-        "desc": "Enable multi-select; default `false`"
+        "desc": "Enable multi-select; default `false`. This flag only configures validation and does not write selected values. When writing selections with `+cells-set`, pass a `multiple_values` array, not a comma-joined `value`"
       },
       {
         "name": "highlight",
@@ -2153,7 +2154,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Source range for listFromRange dropdown (A1 + sheet prefix, e.g. `'Sheet1'!T1:T3`); maps to server `data_validation.range` and auto-sets `data_validation.type='listFromRange'`. XOR with `--options`: pass `--options` for an inline list (type=list), pass this for a range reference (type=listFromRange). `--colors` length rule unchanged (≤ source range cell count); `--highlight` / `--multiple` behave the same. When `--highlight` is on and the source covers more than 2000 cells, the server flags the dropdown as option-error (highlight + large source is an unsupported combo); CLI emits a stderr warning. Pass `--highlight=false` to suppress."
+        "desc": "Source range for listFromRange dropdown (A1 + sheet prefix, e.g. `'Sheet1'!T1:T3`); maps to server `data_validation.range` and auto-sets `data_validation.type='listFromRange'`. XOR with `--options`: pass `--options` for an inline list (type=list), pass this for a range reference (type=listFromRange). `--colors` length rule unchanged (≤ source range cell count); `--highlight` / `--multiple` behave the same. When `--highlight` is on and the source covers more than 2000 cells, the server flags the dropdown as option-error (highlight + large source is an unsupported combo); CLI reports the warning in the result's `data.warnings`. Pass `--highlight=false` to suppress."
       },
       {
         "name": "dry-run",
@@ -3261,7 +3262,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Per-option pill colors, RGB hex array (e.g. `[\"#1FB6C1\",\"#F006C2\"]`). Length may be shorter than the source (`--options` items / `--source-range` cells) — extras cycle through a 10-color palette — but never longer (CLI Validate rejects: `--colors length (N) must not exceed dropdown source size (M)`). **Applies on its own**; ignored when `--highlight=false`.",
+        "desc": "Per-option pill background colors as an RGB hex array. Updating rewrites the entire validation rule: unless the user asks to reset colors, first read the dropdown with `+dropdown-get` and pass its existing `highlight_colors` through this flag; omission rebuilds colors from the built-in 10-color palette. For explicitly requested or semantic new colors, prefer light, low-saturation backgrounds because pill text is black. The array may be shorter than the source (`--options` items / `--source-range` cells) — extras use the built-in palette — but never longer (CLI Validate rejects: `--colors length (N) must not exceed dropdown source size (M)`). Applies on its own; ignored when `--highlight=false`.",
         "input": [
           "file",
           "stdin"
@@ -3272,7 +3273,7 @@
         "kind": "own",
         "type": "bool",
         "required": "optional",
-        "desc": "Enable multi-select"
+        "desc": "Enable multi-select. This flag only updates validation and does not write selected values. When writing selections with `+cells-set`, pass a `multiple_values` array, not a comma-joined `value`"
       },
       {
         "name": "highlight",
@@ -3286,7 +3287,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Source range for listFromRange dropdown (A1 + sheet prefix, e.g. `'Sheet1'!T1:T3`); maps to server `data_validation.range` and auto-sets `data_validation.type='listFromRange'`. XOR with `--options`: pass `--options` for an inline list (type=list), pass this for a range reference (type=listFromRange). `--colors` length rule unchanged (≤ source range cell count); `--highlight` / `--multiple` behave the same. When `--highlight` is on and the source covers more than 2000 cells, the server flags the dropdown as option-error (highlight + large source is an unsupported combo); CLI emits a stderr warning. Pass `--highlight=false` to suppress."
+        "desc": "Source range for listFromRange dropdown (A1 + sheet prefix, e.g. `'Sheet1'!T1:T3`); maps to server `data_validation.range` and auto-sets `data_validation.type='listFromRange'`. XOR with `--options`: pass `--options` for an inline list (type=list), pass this for a range reference (type=listFromRange). `--colors` length rule unchanged (≤ source range cell count); `--highlight` / `--multiple` behave the same. When `--highlight` is on and the source covers more than 2000 cells, the server flags the dropdown as option-error (highlight + large source is an unsupported combo); CLI reports the warning in the result's `data.warnings`. Pass `--highlight=false` to suppress."
       },
       {
         "name": "dry-run",
@@ -4631,6 +4632,61 @@
         "type": "string",
         "required": "optional",
         "desc": "Filter by rule id"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+cond-format-result-get": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "A1 range, e.g. `A1:F10` (no sheet prefix — use `--sheet-id` / `--sheet-name` to select the sheet)"
+      },
+      {
+        "name": "max-chars",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Max output chars per call; default 500000 (safety cap)",
+        "default": "500000"
       },
       {
         "name": "dry-run",

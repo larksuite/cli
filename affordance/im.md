@@ -109,6 +109,31 @@ lark-cli im +message-read-users --message-id om_xxx
 ### Skills
 - `lark-im/references/lark-im-message-read-status.md`
 
+## +messages-edit
+Use this to edit an already-sent **text or rich-text (post)** message, including its attachment zone.
+
+### Avoid when
+- Editing an interactive card → use [[messages patch]].
+- Sending a corrected message as a new message → use [[+messages-send]].
+
+### Prerequisites
+- Confirm the target message id, the new content, and that the calling identity (bot) is the original sender before editing.
+
+### Tips
+- Omit attachment flags to preserve the current attachment zone.
+- `--set-attachments` replaces the attachment set; `--clear-attachments` removes it.
+- `--content` that already carries a `files` array cannot be combined with the attachment flags.
+
+### Examples
+
+**Edit a message to a post with an attachment zone**
+```bash
+lark-cli im +messages-edit --as bot --message-id om_xxx --markdown "Updated content" --set-attachments file_xxx
+```
+
+### Skills
+- `lark-im/references/lark-im-messages-edit.md`
+
 ## +messages-mget
 Use this when one or more message_ids are already known and full message details are needed.
 

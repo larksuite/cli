@@ -65,7 +65,6 @@ var DriveDeleteReply = common.Shortcut{
 			return err
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Deleting reply %s of comment %s in %s...\n", spec.ReplyID, spec.CommentID, common.MaskToken(target.FileToken))
 		path := fmt.Sprintf(
 			"/open-apis/drive/v1/files/%s/comments/%s/replies/%s",
 			validate.EncodePathSegment(target.FileToken),

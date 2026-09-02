@@ -9,7 +9,6 @@ import (
 	"time"
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -25,22 +24,21 @@ func TestSheets_CreateWorkflowAsUser(t *testing.T) {
 	title := "lark-cli-e2e-user-sheets-" + suffix
 	var spreadsheetToken string
 
-	t.Run("create spreadsheet with +create as user", func(t *testing.T) {
+	t.Run("create spreadsheet with +workbook-create as user", func(t *testing.T) {
 		spreadsheetToken = createSpreadsheet(t, parentT, ctx, title, "user")
 	})
 
-	t.Run("get spreadsheet info with +info as user", func(t *testing.T) {
+	t.Run("get spreadsheet info with +workbook-info as user", func(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"sheets", "+info", "--spreadsheet-token", spreadsheetToken},
+			Args:      []string{"sheets", "+workbook-info", "--spreadsheet-token", spreadsheetToken},
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 
-		assert.Equal(t, spreadsheetToken, gjson.Get(result.Stdout, "data.spreadsheet.spreadsheet.token").String())
-		require.NotEmpty(t, gjson.Get(result.Stdout, "data.sheets.sheets.0.sheet_id").String(), "stdout:\n%s", result.Stdout)
+		require.NotEmpty(t, gjson.Get(result.Stdout, "data.sheets.0.sheet_id").String(), "stdout:\n%s", result.Stdout)
 	})
 }

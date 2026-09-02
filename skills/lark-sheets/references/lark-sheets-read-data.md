@@ -24,13 +24,13 @@
 | 快速查看纯值数据、批量处理 | `+csv-get` | 对话上下文 | 返回 CSV 文本（每行带 `[row=N]` 前缀）；大表请按 `--range` 行窗口分批读（截断时看 `has_more`） |
 | 按列类型结构化读出（喂 DataFrame / round-trip 回 `+table-put`） | `+table-get` | 对话上下文 | 返回 typed 协议（`columns:[列名]` + `data` + `dtypes`/`formats` + `range`），输出形状对齐 pandas split；可一行 `pd.DataFrame(sheet["data"], columns=sheet["columns"]).astype(sheet["dtypes"])` 还原 DataFrame，或直接 round-trip 回 `+table-put`。不带 `--range` 时读**完整 used range**（跨过表中部空行 / 空列），每个子表回传读取范围 `range`；被 `max_chars` 裁掉时**该子表**带 `truncated: true` 与 `truncation_warning`，预算耗尽导致后续整表未读时**顶层**也带同组字段，`--output-path` 落盘模式另看 stdout 回执的 `complete` / `truncated`——**先看截断字段再用数据；三层都没报也不等于逻辑读全**，仍要用返回数据实际行数、关键末行与源数据交叉核对（详见下文）。注意这与下文 `current_region` "遇表中部空行截断"不矛盾：`+table-get` 读的是子表物理 used range（飞书记录的已用矩形，含中间空行），`current_region` 是从锚点连通扩展、遇整行空行就断 |
 | 查看公式、样式、批注、数据验证 | `+cells-get` | 对话上下文 | 返回单元格完整信息，token 开销较大 |
-| 查看某区域的下拉框（数据验证）选项 | `+dropdown-get` | 对话上下文 | 返回该 A1 范围已配置的下拉列表选项 |
+| 查看某区域的下拉框（数据验证）配置 | `+dropdown-get` | 对话上下文 | 返回该 A1 范围的下拉选项、多选开关和胶囊配色 |
 
 **选择原则**：
 - 只看值或做数据处理 → `+csv-get`；大表分批读取，避免一次拉全表撑爆上下文
 - 要按列类型结构化读出（喂 DataFrame / round-trip 回 `+table-put`）→ `+table-get`
 - 需要公式/样式/批注 → `+cells-get`
-- 只想知道某区域下拉框有哪些选项 → `+dropdown-get`
+- 查看某区域下拉框的选项、多选开关或胶囊配色 → `+dropdown-get`
 
 ## 读表理解脚本（Agent 优先入口）
 
@@ -165,7 +165,7 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--range` | string | required | A1 范围，如 `A1:F10`（不带 sheet 前缀；用 `--sheet-id` / `--sheet-name` 指定 sheet） |
-| `--include` | string_slice | optional | 要返回的信息类别，逗号分隔多个。`truncation` 会额外按行高列宽 / 字号 / 自动换行估算每个单元格是否被截断显示，返回 `isRowTruncated` / `isColTruncated`（有额外计算开销，仅排版检查 / 调整行高列宽前才开）（可选值：`value` / `formula` / `style` / `comment` / `data_validation` / `truncation`） |
+| `--include` | string_slice | optional | 要返回的信息类别，逗号分隔多个。`truncation` 会额外按行高列宽 / 字号 / 自动换行估算每个单元格是否被截断显示，返回 `isRowTruncated` / `isColTruncated`（有额外计算开销，仅排版检查 / 调整行高列宽前才开）（可选值：`value` / `formula` / `style` / `comment` / `data_validation` / `conditional_format` / `truncation`） |
 | `--max-chars` | int | optional | 单次返回字符上限，默认 500000（兜底防爆）。要整表无截断直接用 --output-path 落盘（上限自动放宽到 2000 万字符——读取链路非流式，此上限是内存保护；更大就显式给 --max-chars）；仅当要让结果直接进上下文、又不落盘时才调小（如 25000），按 has_more 分页。 传 0 表示「不自设上限」，等价于不传（仍是 500000 / 落盘时 2000 万），不会退回底层工具那个更小的默认截断。 |
 | `--output-path` | string | optional | 把完整读取结果写入本地路径（如 `./out.json`），文件内容为 data 载荷的 JSON；stdout 只回一个含 output_path/字节数的确认信息。**一旦设置，字符上限自动放宽到有界的 2000 万字符**（覆盖 --max-chars 默认），并非无限——读取链路非流式，该上限是内存保护；显式 --max-chars 优先。stdout 回执带 `complete` 字段（命中上限时另有 `truncated` 与提示），据此判断文件是否完整，不要默认整表已落全。省略时按常规把结果打到 stdout。 |
 | `--skip-hidden` | bool | optional | 跳过隐藏行列，默认 `false` |

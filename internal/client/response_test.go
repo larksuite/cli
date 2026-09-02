@@ -566,7 +566,7 @@ func TestSaveResponse_RejectsPathTraversal(t *testing.T) {
 	defer os.Chdir(origWd)
 
 	resp := newApiResp([]byte("data"), map[string]string{"Content-Type": "application/octet-stream"})
-	_, err := SaveResponse(&localfileio.LocalFileIO{}, resp, "../../evil.txt")
+	_, err := SaveResponse(&localfileio.LocalFileIO{}, resp, "../../../../../../../../../../../../evil.txt")
 	if err == nil {
 		t.Fatal("expected error for path traversal")
 	}
@@ -577,7 +577,7 @@ func TestSaveResponse_RejectsPathTraversal(t *testing.T) {
 
 func TestSaveResponse_RejectsAbsolutePath(t *testing.T) {
 	resp := newApiResp([]byte("data"), map[string]string{"Content-Type": "application/octet-stream"})
-	_, err := SaveResponse(&localfileio.LocalFileIO{}, resp, "/tmp/evil.txt")
+	_, err := SaveResponse(&localfileio.LocalFileIO{}, resp, "/etc/evil.txt")
 	if err == nil {
 		t.Fatal("expected error for absolute path")
 	}

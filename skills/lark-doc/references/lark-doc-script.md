@@ -38,7 +38,7 @@ lark-cli docs +script --command init-draft \
 - 决策必须是单个 JSON 对象，包含 `audience`、`reader_task`、`genre_contract`、`adapter`、`presentation_mode` 和 `visual_plan`。`presentation_mode` 取 `formal|normal|rich`；`genre_contract`、`adapter` 使用固定短名、`"none"` 或 `null`。
 - `visual_plan` 包含非空 `reason` 和 `blocks` 数组；每项为 `{type,min_count,purpose}`，`type` 不重复，`min_count` 为正整数。按本 Skill 创建文档时，`blocks` 只对 `whiteboard`、`img`、`html5-block` 设置最低数量，其他表达按内容需要使用但不设数量约束；三类均无需约束时写 `[]`。CLI 为外部决策兼容 `type: "list"`，检查时将 `<ul>` 与 `<ol>` 的数量相加。仅有字数要求时添加 `word_count: {min,max}`；未指定的一侧写 `null`，至少一侧为正整数，且 `min <= max`。
 - 返回 `data.workspace`（已创建的随机工作区）、`data.draft_path`（可直接写入的 XML 路径）和英文操作提示 `data.tip`。工作区及其中的 `.presentation-decision.json` 已存在，但 XML 尚不存在；遵循提示直接使用文件创建/写入能力在 `draft_path` 写入完整 XML，首次写入前不要读取该路径。
-- 后续始终使用 `draft_path`，不得另建 XML、复用其他任务的路径或修改工作区中的 `.presentation-decision.json`；使用完后精确删除 `workspace`。
+- 后续始终使用 `draft_path`，不得另建 XML、复用其他任务的路径或修改工作区中的 `.presentation-decision.json`；保留 `workspace` 及其中的创作草稿。
 
 ## `parse`
 
