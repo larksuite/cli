@@ -19,6 +19,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/extension/fileio"
+	exttransport "github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
@@ -27,6 +28,7 @@ import (
 	"github.com/larksuite/cli/internal/riskcontrol"
 	_ "github.com/larksuite/cli/internal/security/contentsafety" // register content safety provider
 	"github.com/larksuite/cli/internal/transport"
+	"github.com/larksuite/cli/internal/urlrewrite"
 	_ "github.com/larksuite/cli/internal/vfs/localfileio" // register default FileIO provider
 )
 
@@ -117,14 +119,21 @@ func safeRedirectPolicy(req *http.Request, via []*http.Request) error {
 	}
 	original := via[0]
 	previous := via[len(via)-1]
-	if previous.URL != nil && req.URL != nil && strings.EqualFold(previous.URL.Scheme, "https") && !strings.EqualFold(req.URL.Scheme, "https") {
+	originalURL, previousURL, targetURL := original.URL, previous.URL, req.URL
+	platformRedirect := core.IsPlatformEndpointURL(originalURL)
+	if platformRedirect {
+		originalURL = effectiveRedirectURL(originalURL)
+		previousURL = effectiveRedirectURL(previousURL)
+		targetURL = effectiveRedirectURL(targetURL)
+	}
+	if previousURL != nil && targetURL != nil && strings.EqualFold(previousURL.Scheme, "https") && !strings.EqualFold(targetURL.Scheme, "https") {
 		return errs.NewSecurityPolicyError(
 			errs.SubtypeAccessDenied,
 			"redirect from HTTPS to %s is not allowed",
 			req.URL.Scheme,
 		)
 	}
-	if !sameRedirectOrigin(previous.URL, req.URL) {
+	if !sameRedirectOrigin(previousURL, targetURL) {
 		if req.Method != http.MethodGet && req.Method != http.MethodHead {
 			return errs.NewSecurityPolicyError(
 				errs.SubtypeAccessDenied,
@@ -142,12 +151,34 @@ func safeRedirectPolicy(req *http.Request, via []*http.Request) error {
 	// net/http copies initial headers onto every redirect request. Continue
 	// stripping credentials for every hop outside the initial origin, even when
 	// two consecutive redirect targets share an origin.
-	if !sameRedirectOrigin(original.URL, req.URL) {
+	if !sameRedirectOrigin(originalURL, targetURL) {
 		req.Header.Del("Authorization")
 		req.Header.Del("X-Lark-MCP-UAT")
 		req.Header.Del("X-Lark-MCP-TAT")
+	} else if platformRedirect {
+		// net/http sees the logical platform host and the rewritten host as
+		// different origins and removes Authorization before CheckRedirect.
+		// Restore it only after the effective origins have matched.
+		if values := original.Header.Values("Authorization"); len(values) > 0 {
+			req.Header.Del("Authorization")
+			for _, value := range values {
+				req.Header.Add("Authorization", value)
+			}
+		}
+		*req = *transport.WithRequestClass(req, exttransport.RequestClassPlatform)
 	}
 	return nil
+}
+
+func effectiveRedirectURL(candidate *url.URL) *url.URL {
+	if candidate == nil || !core.IsPlatformEndpointURL(candidate) {
+		return candidate
+	}
+	rewritten, err := url.Parse(urlrewrite.Rewrite(candidate.String()))
+	if err != nil || rewritten.Scheme == "" || rewritten.Host == "" {
+		return candidate
+	}
+	return rewritten
 }
 
 func sameRedirectOrigin(left, right *url.URL) bool {
