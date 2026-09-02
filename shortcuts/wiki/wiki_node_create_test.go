@@ -896,8 +896,7 @@ func TestWikiNodeURL(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := wikiNodeURL(core.BrandFeishu, tc.node)
-			if got != tc.want {
+			if got := wikiNodeURL(core.BrandFeishu, tc.node); got != tc.want {
 				t.Fatalf("wikiNodeURL() = %q, want %q", got, tc.want)
 			}
 		})

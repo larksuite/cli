@@ -374,7 +374,7 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 	// mechanically unchanged.
 	var hasConcealedCommands bool
 	runtime.surface, hasConcealedCommands = applyDistributionPresentation(rootCmd, cfg.presentation, denied)
-	rootCmd.SetUsageTemplate(rewrittenRootUsageTemplate(runtime.surface))
+	rootCmd.SetUsageTemplate(renderRootUsageTemplate(runtime.surface))
 
 	// Resolve skill assets and canonical references before installing hooks.
 	// A declared customization is a build-integrity boundary: failure must

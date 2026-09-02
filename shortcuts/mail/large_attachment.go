@@ -197,13 +197,21 @@ func uploadLargeAttachments(ctx context.Context, runtime *common.RuntimeContext,
 
 // buildLargeAttachmentPreviewURL builds the download/preview URL for a large
 // attachment token. The domain is derived from the CLI's configured endpoint
-// (e.g. open.feishu.cn → www.feishu.cn).
+// (e.g. open.feishu.cn → www.feishu.cn). The URL is CLI-owned presentation
+// text, so it passes through the URL rewrite extension here rather than at
+// each card-formatting call site.
 func buildLargeAttachmentPreviewURL(brand core.LarkBrand, fileToken string) string {
 	ep := core.ResolveEndpoints(brand)
 	host := strings.TrimPrefix(ep.Open, "https://")
 	host = strings.TrimPrefix(host, "http://")
 	mainDomain := strings.TrimPrefix(host, "open.")
-	return "https://www." + mainDomain + "/mail/page/attachment?token=" + url.QueryEscape(fileToken)
+	return urlrewrite.Rewrite("https://www." + mainDomain + "/mail/page/attachment?token=" + url.QueryEscape(fileToken))
+}
+
+// largeAttachmentIconURL builds the CLI-owned CDN icon URL for an attachment,
+// applying the URL rewrite extension.
+func largeAttachmentIconURL(iconCDN, filename string) string {
+	return urlrewrite.Rewrite(iconCDN + fileTypeIcon(filename))
 }
 
 // buildLargeAttachmentHTML generates the HTML block for large attachments,
@@ -272,10 +280,10 @@ func buildLargeAttachmentItems(brand core.LarkBrand, lang string, results []larg
 	var items strings.Builder
 	for _, att := range results {
 		fmt.Fprintf(&items, largeAttItemTpl,
-			htmlEscape(urlrewrite.Rewrite(iconCDN+fileTypeIcon(att.FileName))),
+			htmlEscape(largeAttachmentIconURL(iconCDN, att.FileName)),
 			htmlEscape(att.FileName),
 			htmlEscape(common.FormatSize(att.FileSize)),
-			htmlEscape(urlrewrite.Rewrite(buildLargeAttachmentPreviewURL(brand, att.FileToken))),
+			htmlEscape(buildLargeAttachmentPreviewURL(brand, att.FileToken)),
 			htmlEscape(att.FileToken),
 			downloadText,
 		)
@@ -321,7 +329,7 @@ func buildLargeAttachmentPlainText(brand core.LarkBrand, lang string, results []
 		sb.WriteString("\n")
 		sb.WriteString(common.FormatSize(att.FileSize))
 		sb.WriteString("\n")
-		sb.WriteString(downloadText + ": " + urlrewrite.Rewrite(buildLargeAttachmentPreviewURL(brand, att.FileToken)))
+		sb.WriteString(downloadText + ": " + buildLargeAttachmentPreviewURL(brand, att.FileToken))
 		if i < len(results)-1 {
 			sb.WriteString("\n\n")
 		} else {

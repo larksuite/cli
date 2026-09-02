@@ -34,30 +34,30 @@ func BuildResourceURL(brand core.LarkBrand, kind, token string) string {
 		host = "https://www.larksuite.com"
 	}
 
-	var resourceURL string
+	var path string
 	switch strings.ToLower(strings.TrimSpace(kind)) {
 	case "docx":
-		resourceURL = host + "/docx/" + token
+		path = "/docx/"
 	case "doc":
-		resourceURL = host + "/doc/" + token
+		path = "/doc/"
 	case "sheet":
-		resourceURL = host + "/sheets/" + token
+		path = "/sheets/"
 	case "bitable":
-		resourceURL = host + "/base/" + token
+		path = "/base/"
 	case "wiki":
-		resourceURL = host + "/wiki/" + token
+		path = "/wiki/"
 	case "file":
-		resourceURL = host + "/file/" + token
+		path = "/file/"
 	case "folder":
-		resourceURL = host + "/drive/folder/" + token
+		path = "/drive/folder/"
 	case "mindnote":
-		resourceURL = host + "/mindnote/" + token
+		path = "/mindnote/"
 	case "slides":
-		resourceURL = host + "/slides/" + token
+		path = "/slides/"
 	default:
 		return ""
 	}
-	return urlrewrite.Rewrite(resourceURL)
+	return urlrewrite.Rewrite(host + path + token)
 }
 
 // ResourceRef holds the parsed type and token from a Lark resource URL.

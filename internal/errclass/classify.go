@@ -569,10 +569,10 @@ func ConsoleURL(brand, appID string, scopes []string) string {
 	// open-platform base URL stays a single source of truth.
 	base := fmt.Sprintf("%s/page/scope-apply?clientID=%s",
 		core.ResolveOpenBaseURL(core.ParseBrand(brand)), url.QueryEscape(appID))
-	if len(scopes) == 0 {
-		return urlrewrite.Rewrite(base)
+	if len(scopes) > 0 {
+		base += "&scopes=" + url.QueryEscape(strings.Join(scopes, ","))
 	}
-	return urlrewrite.Rewrite(base + "&scopes=" + url.QueryEscape(strings.Join(scopes, ",")))
+	return urlrewrite.Rewrite(base)
 }
 
 func intFromAny(v any) int {

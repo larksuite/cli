@@ -934,7 +934,7 @@ func TestPermissionHint(t *testing.T) {
 	}
 
 	// Linux + pnpm: EACCES should point at pnpm setup, not npm prefix/sudo.
-	pnpmHint := permissionHint("EACCES: permission denied, access 'pnpm-home'", "pnpm")
+	pnpmHint := permissionHint("EACCES: permission denied, access '/Users/x/Library/pnpm'", "pnpm")
 	if !strings.Contains(pnpmHint, "pnpm setup") {
 		t.Errorf("expected pnpm setup hint, got: %s", pnpmHint)
 	}
