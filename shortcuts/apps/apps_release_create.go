@@ -96,6 +96,9 @@ func validateReleaseApplyReason(value string) error {
 		if unicode.IsControl(r) {
 			return appsValidationParamError("--apply-reason", "--apply-reason must not contain control characters")
 		}
+		if common.IsDangerousUnicode(r) {
+			return appsValidationParamError("--apply-reason", "--apply-reason must not contain dangerous Unicode characters")
+		}
 	}
 	if utf8.RuneCountInString(value) > maxReleaseApplyReasonRunes {
 		return appsValidationParamError("--apply-reason", "--apply-reason must be at most 1000 characters")

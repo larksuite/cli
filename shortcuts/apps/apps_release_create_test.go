@@ -58,6 +58,13 @@ func TestValidateReleaseApplyReason(t *testing.T) {
 		{name: "tab", value: "before\tafter", wantErr: "--apply-reason must not contain control characters"},
 		{name: "nul", value: "before\x00after", wantErr: "--apply-reason must not contain control characters"},
 		{name: "c1", value: "before\u0085after", wantErr: "--apply-reason must not contain control characters"},
+		{name: "zero width space only", value: "\u200B", wantErr: "--apply-reason must not contain dangerous Unicode characters"},
+		{name: "line separator", value: "before\u2028after", wantErr: "--apply-reason must not contain dangerous Unicode characters"},
+		{name: "paragraph separator", value: "before\u2029after", wantErr: "--apply-reason must not contain dangerous Unicode characters"},
+		{name: "bidi override", value: "before\u202Eafter", wantErr: "--apply-reason must not contain dangerous Unicode characters"},
+		{name: "bidi isolate", value: "before\u2066after", wantErr: "--apply-reason must not contain dangerous Unicode characters"},
+		{name: "bidi isolate terminator", value: "before\u2069after", wantErr: "--apply-reason must not contain dangerous Unicode characters"},
+		{name: "byte order mark", value: "before\uFEFFafter", wantErr: "--apply-reason must not contain dangerous Unicode characters"},
 		{name: "invalid utf8", value: string([]byte{'b', 0xff, 'd'}), wantErr: "--apply-reason must be valid UTF-8"},
 		{name: "too long ascii", value: longASCII + "a", wantErr: "--apply-reason must be at most 1000 characters"},
 		{name: "too long chinese", value: longChinese + "中", wantErr: "--apply-reason must be at most 1000 characters"},
@@ -139,6 +146,56 @@ func TestAppsReleaseCreateRequiresApplyReason(t *testing.T) {
 		[]string{"+release-create", "--app-id", "app_x", "--as", "user"}, factory, stdout)
 	if err == nil || !strings.Contains(err.Error(), "apply-reason") {
 		t.Fatalf("expected --apply-reason required error, got %v", err)
+	}
+}
+
+func TestAppsReleaseCreateRejectsDangerousUnicodeBeforePlanningOrRequest(t *testing.T) {
+	tests := []struct {
+		name   string
+		reason string
+		dryRun bool
+	}{
+		{name: "dry run zero width", reason: "deploy\u200Bnow", dryRun: true},
+		{name: "execute bidi override", reason: "deploy\u202Enow"},
+		{name: "execute line separator", reason: "deploy\u2028now"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			factory, stdout, reg := newAppsExecuteFactory(t)
+			stub := &httpmock.Stub{
+				Method:   "POST",
+				URL:      "/open-apis/spark/v1/apps/app_x/releases",
+				Body:     map[string]interface{}{"code": 0, "data": map[string]interface{}{"releaseID": "unexpected"}},
+				Optional: true,
+			}
+			reg.Register(stub)
+
+			args := []string{
+				"+release-create", "--app-id", "app_x", "--apply-reason", tt.reason, "--as", "user",
+			}
+			if tt.dryRun {
+				args = append(args, "--dry-run")
+			}
+			err := runAppsShortcut(t, AppsReleaseCreate, args, factory, stdout)
+			problem := requireAppsValidationProblem(t, err)
+			if problem.Message != "--apply-reason must not contain dangerous Unicode characters" {
+				t.Errorf("Message = %q", problem.Message)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error = %T, want *errs.ValidationError", err)
+			}
+			if validationErr.Param != "--apply-reason" {
+				t.Errorf("Param = %q, want --apply-reason", validationErr.Param)
+			}
+			if stdout.Len() != 0 {
+				t.Errorf("validation must fail before writing a dry-run or success result, got %q", stdout.String())
+			}
+			if len(stub.CapturedBodies) != 0 {
+				t.Errorf("validation must fail before the release-create request, got %d request(s)", len(stub.CapturedBodies))
+			}
+		})
 	}
 }
 
