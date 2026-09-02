@@ -4,6 +4,7 @@
 package cmdupdate
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -33,14 +34,44 @@ import (
 
 const runLiveSkillsTestsEnv = "LARKSUITE_CLI_RUN_LIVE_SKILLS_TESTS"
 
-type updateManifestProvider struct{ manifestURL string }
+type updateManifestProvider struct {
+	manifestURL string
+	onResolve   func(context.Context)
+}
 
 func (p updateManifestProvider) Name() string { return "test-manifest" }
 func (p updateManifestProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
 	return nil
 }
-func (p updateManifestProvider) ResolveManifestURL(context.Context) string {
+func (p updateManifestProvider) ResolveManifestURL(ctx context.Context) string {
+	if p.onResolve != nil {
+		p.onResolve(ctx)
+	}
 	return p.manifestURL
+}
+
+func TestUpdateCommandPreservesCancellationContext(t *testing.T) {
+	type contextKey struct{}
+	ctx := context.WithValue(context.Background(), contextKey{}, "command")
+	ctx, cancel := context.WithCancel(ctx)
+	cancel()
+	previousProvider := exttransport.GetProvider()
+	exttransport.Register(updateManifestProvider{
+		manifestURL: "://invalid",
+		onResolve: func(resolved context.Context) {
+			if resolved.Value(contextKey{}) != "command" || !errors.Is(resolved.Err(), context.Canceled) {
+				t.Error("distribution provider did not receive the command context")
+			}
+		},
+	})
+	t.Cleanup(func() { exttransport.Register(previousProvider) })
+
+	factory, _, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(factory)
+	cmd.SetContext(ctx)
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("update succeeded with an invalid manifest URL")
+	}
 }
 
 func TestManifestCheckAcceptsHTTPAndReportsOpaqueDowngradeTarget(t *testing.T) {
@@ -116,6 +147,63 @@ func TestManifestArtifactProtocolFailureUsesNetworkTaxonomy(t *testing.T) {
 	problem, _ := got["error"].(map[string]interface{})
 	if problem["type"] != "network" {
 		t.Fatalf("output = %#v", got)
+	}
+}
+
+func TestManifestUpdateRepairsSkillsWhenBinaryMatches(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("HOME", root)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", filepath.Join(root, "config"))
+	if err := os.MkdirAll(filepath.Join(root, "config"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "config", "skills-state.json"), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var archive bytes.Buffer
+	writer := zip.NewWriter(&archive)
+	entry, err := writer.Create("lark-approval/SKILL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := entry.Write([]byte("repaired")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	digest := fmt.Sprintf("sha256:%x", sha256.Sum256(archive.Bytes()))
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/skills.zip" {
+			_, _ = w.Write(archive.Bytes())
+			return
+		}
+		fmt.Fprintf(w, `{"schema":1,"version":"same","artifacts":{"skills":{"url":%q,"checksum":%q},%q:{"url":%q,"checksum":%q}}}`,
+			server.URL+"/skills.zip", digest, distribution.CurrentPlatformKey(), server.URL+"/unused.zip", digest)
+	}))
+	defer server.Close()
+	previousProvider := exttransport.GetProvider()
+	previousClient := distribution.DefaultClient
+	previousVersion := currentVersion
+	exttransport.Register(updateManifestProvider{manifestURL: server.URL + "/manifest.json"})
+	distribution.DefaultClient = server.Client()
+	currentVersion = func() string { return "same" }
+	t.Cleanup(func() {
+		exttransport.Register(previousProvider)
+		distribution.DefaultClient = previousClient
+		currentVersion = previousVersion
+	})
+
+	factory, stdout, _ := newTestFactory(t)
+	if err := updateRunWithContext(context.Background(), &UpdateOptions{Factory: factory, JSON: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(filepath.Join(root, ".agents", "skills", "lark-approval", "SKILL.md")); err != nil || string(got) != "repaired" {
+		t.Fatalf("repaired Skill = %q, %v", got, err)
+	}
+	if !strings.Contains(stdout.String(), `"skills_action": "synced"`) {
+		t.Fatalf("output = %s", stdout.String())
 	}
 }
 

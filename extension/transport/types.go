@@ -40,7 +40,8 @@ type URLRewriterProvider interface {
 // for trusted distribution networks; the provider is responsible for transport
 // integrity when it does not use HTTPS.
 // ResolveManifestURL must be a fast, local lookup. Manifest fetching, parsing,
-// and artifact installation are owned by the CLI.
+// and artifact installation are owned by the CLI. The complete public wire
+// contract is documented in extension/README.md.
 type DistributionProvider interface {
 	Provider
 	ResolveManifestURL(ctx context.Context) string

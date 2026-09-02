@@ -113,7 +113,7 @@ Use --check to only check for updates without installing.
 
 The skill name "lark-suite" is reserved for CLI-managed suite layout.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return updateRun(opts)
+			return updateRunWithContext(cmd.Context(), opts)
 		},
 	}
 	cmdutil.DisableAuthCheck(cmd)

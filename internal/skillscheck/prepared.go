@@ -31,8 +31,11 @@ func SyncPreparedTree(opts PreparedTreeOptions) (rollback func() error, finalize
 		return nil, nil, err
 	}
 	previous, readable, err := ReadState()
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrUnreadableState) {
 		return nil, nil, fmt.Errorf("read Skills state: %w", err)
+	}
+	if err != nil {
+		previous, readable = nil, false
 	}
 	restoreState, err := SnapshotState()
 	if err != nil {

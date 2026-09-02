@@ -34,6 +34,17 @@ func TestDistributionClientUsesSharedBuiltInTransport(t *testing.T) {
 	}
 }
 
+func TestDistributionRedirectPolicyRejectsDowngradeAndLimitsHops(t *testing.T) {
+	httpsRequest, _ := http.NewRequest(http.MethodGet, "https://dist.example/manifest.json", nil)
+	httpRequest, _ := http.NewRequest(http.MethodGet, "http://dist.example/manifest.json", nil)
+	if err := distributionRedirectPolicy(httpRequest, []*http.Request{httpsRequest}); err == nil {
+		t.Fatal("HTTPS to HTTP redirect was allowed")
+	}
+	if err := distributionRedirectPolicy(httpsRequest, make([]*http.Request, 10)); err == nil {
+		t.Fatal("eleventh redirect was allowed")
+	}
+}
+
 func TestValidateDistributionURLAcceptsHTTPAndHTTPS(t *testing.T) {
 	for _, raw := range []string{"http://dist.example/manifest.json", "https://dist.example/manifest.json"} {
 		if err := validateDistributionURL(raw); err != nil {

@@ -20,8 +20,14 @@ func runManifestUpdate(ctx context.Context, opts *UpdateOptions, src distributio
 		return reportDistributionError(opts, err)
 	}
 	target := manifest.Version
-	if opts.Check || (!opts.Force && target == current) {
-		return reportManifestStatus(opts, current, target, opts.Check)
+	if opts.Check {
+		return reportManifestStatus(opts, current, target, false)
+	}
+	if !opts.Force && target == current {
+		if err := distribution.SyncSkills(ctx, manifest, distribution.InstallOptions{}); err != nil {
+			return reportDistributionError(opts, err)
+		}
+		return reportManifestStatus(opts, current, target, true)
 	}
 	if !opts.JSON {
 		fmt.Fprintf(streams.ErrOut, "Updating lark-cli %s %s %s from the configured distribution ...\n", current, symArrow(), target)
@@ -45,7 +51,7 @@ func runManifestUpdate(ctx context.Context, opts *UpdateOptions, src distributio
 // reportManifestStatus reports the configured target. The target is an opaque
 // string chosen by the distribution, so the JSON field is target_version —
 // it must not be labeled latest_version like an npm registry result.
-func reportManifestStatus(opts *UpdateOptions, current, target string, check bool) error {
+func reportManifestStatus(opts *UpdateOptions, current, target string, skillsSynced bool) error {
 	streams := opts.Factory.IOStreams
 	action := "already_up_to_date"
 	message := fmt.Sprintf("lark-cli %s matches the configured target", current)
@@ -59,14 +65,20 @@ func reportManifestStatus(opts *UpdateOptions, current, target string, check boo
 			"previous_version": current, "current_version": current, "target_version": target,
 			"action": action, "message": message,
 		}
-		if check {
+		if opts.Check {
 			result["auto_update"] = true
+		}
+		if skillsSynced {
+			result["skills_action"] = "synced"
 		}
 		output.PrintJson(streams.Out, result)
 		return nil
 	}
 	if current == target {
 		fmt.Fprintf(streams.ErrOut, "%s %s\n", symOK(), message)
+		if skillsSynced {
+			fmt.Fprintln(streams.ErrOut, "Skills synchronized from the configured distribution.")
+		}
 	} else {
 		fmt.Fprintf(streams.ErrOut, "Configured target: %s %s %s\n\nRun `lark-cli update` to install.\n", current, symArrow(), target)
 	}
