@@ -86,6 +86,75 @@ func TestPlainTextFromHTMLTokensKeepsBodyWithoutHeadEndTag(t *testing.T) {
 	}
 }
 
+// TestPlainTextFromHTMLFallbackMatchesParsedPath feeds the same document to
+// the parsed path (shallow) and to the tokenizer fallback (the same document
+// with a 600-level <template> wrapper that trips the parser's 512-node limit)
+// and requires identical output, so the fallback cannot leak content the
+// parser drops — notably anything inside <head>.
+func TestPlainTextFromHTMLFallbackMatchesParsedPath(t *testing.T) {
+	deepWrap := func(inner string) string {
+		return strings.Repeat("<template>", 600) + inner + strings.Repeat("</template>", 600)
+	}
+	for _, test := range []struct {
+		name    string
+		shallow string
+		deep    string
+		want    string
+	}{
+		{
+			name:    "template inside head is dropped",
+			shallow: "<html><head><template>HIDDEN</template></head><body><p>VISIBLE</p></body></html>",
+			deep:    "<html><head>" + deepWrap("HIDDEN") + "</head><body><p>VISIBLE</p></body></html>",
+			want:    "VISIBLE",
+		},
+		{
+			name:    "template inside body is kept",
+			shallow: "<html><body><template>T</template><p>VISIBLE</p></body></html>",
+			deep:    "<html><body>" + deepWrap("T") + "<p>VISIBLE</p></body></html>",
+			want:    "T\nVISIBLE",
+		},
+		{
+			name:    "omitted head end tag still drops head content",
+			shallow: "<html><head><title>T</title><meta charset=utf-8><template>H</template><p>VISIBLE</p>",
+			deep:    "<html><head><title>T</title><meta charset=utf-8>" + deepWrap("H") + "<p>VISIBLE</p>",
+			want:    "VISIBLE",
+		},
+		{
+			name:    "noframes inside head is dropped",
+			shallow: "<html><head><noframes>NF</noframes></head><body>VISIBLE</body></html>",
+			deep:    "<html><head><noframes>NF</noframes>" + deepWrap("") + "</head><body>VISIBLE</body></html>",
+			want:    "VISIBLE",
+		},
+		{
+			name:    "text directly in head implicitly ends head",
+			shallow: "<html><head>STRAY<title>T</title></head><body>VISIBLE</body></html>",
+			deep:    "<html><head>STRAY<title>T</title>" + deepWrap("") + "</head><body>VISIBLE</body></html>",
+			want:    "STRAY VISIBLE",
+		},
+		{
+			name:    "explicit body after head metadata",
+			shallow: "<html><head><title>T</title><link rel=stylesheet href=x><meta charset=utf-8></head><body><p>Hello</p></body></html>",
+			deep:    "<html><head><title>T</title><link rel=stylesheet href=x><meta charset=utf-8>" + deepWrap("") + "</head><body><p>Hello</p></body></html>",
+			want:    "Hello",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := xhtml.Parse(strings.NewReader(test.shallow)); err != nil {
+				t.Fatalf("shallow input unexpectedly rejected by the parser: %v", err)
+			}
+			if _, err := xhtml.Parse(strings.NewReader(test.deep)); err == nil {
+				t.Fatal("deep input was accepted by the parser, so the fallback was not exercised")
+			}
+			if got := plainTextFromHTML(test.shallow); got != test.want {
+				t.Errorf("parsed path = %q, want %q", got, test.want)
+			}
+			if got := plainTextFromHTML(test.deep); got != test.want {
+				t.Errorf("fallback path = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestIsHTMLNonTextTag(t *testing.T) {
 	tests := []struct {
 		tag  string

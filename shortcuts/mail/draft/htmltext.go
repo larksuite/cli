@@ -70,43 +70,110 @@ func plainTextFromHTML(raw string) string {
 }
 
 // plainTextFromHTMLTokens extracts text with the streaming tokenizer, which
-// builds no tree and therefore has no nesting limit. Only elements whose end
-// tag is required in practice (script, style, noscript, title) are skipped by
-// depth; head/meta/link carry no direct text, and skipping head by depth would
-// drop the whole body when </head> is omitted.
+// builds no tree and therefore has no nesting limit. It mirrors the parser's
+// head handling so both paths drop the same content: text inside <head>
+// (including <template> and <noframes> content) is never emitted, and head
+// ends at </head>, at the first start tag that is not allowed in head, or at
+// the first non-whitespace text — the parser's implicit </head> rules.
 func plainTextFromHTMLTokens(raw string) string {
-	var buf bytes.Buffer
+	w := &tokenTextWriter{}
 	z := xhtml.NewTokenizer(strings.NewReader(raw))
-	skipDepth := 0
 	for {
 		switch z.Next() {
 		case xhtml.ErrorToken:
-			return joinPlainTextLines(&buf)
+			return joinPlainTextLines(&w.buf)
 		case xhtml.StartTagToken, xhtml.SelfClosingTagToken:
-			el := tokenElement(z)
-			if isSkippedTextContainer(el) {
-				skipDepth++
-				continue
-			}
-			if skipDepth == 0 {
-				writeBlockBoundary(&buf, el)
-			}
+			w.startTag(tokenElement(z))
 		case xhtml.EndTagToken:
-			el := tokenElement(z)
-			if isSkippedTextContainer(el) {
-				if skipDepth > 0 {
-					skipDepth--
-				}
-				continue
-			}
-			if skipDepth == 0 {
-				writeBlockBoundary(&buf, el)
-			}
+			w.endTag(tokenElement(z))
 		case xhtml.TextToken:
-			if skipDepth == 0 {
-				writePlainText(&buf, string(z.Text()))
-			}
+			w.text(string(z.Text()))
 		}
+	}
+}
+
+// tokenTextWriter holds the tokenizer walk state. skipDepth counts open
+// containers whose text is never emitted; inHead never changes while
+// skipDepth > 0 because template contents are inert.
+type tokenTextWriter struct {
+	buf       bytes.Buffer
+	inHead    bool
+	skipDepth int
+}
+
+func (w *tokenTextWriter) startTag(el *xhtml.Node) {
+	if w.skipDepth > 0 {
+		if w.skipsText(el) {
+			w.skipDepth++
+		}
+		return
+	}
+	name := strings.ToLower(el.Data)
+	switch {
+	case name == "head":
+		w.inHead = true
+		return
+	case w.inHead && name == "html":
+		return
+	case w.skipsText(el):
+		w.skipDepth++
+		return
+	case w.inHead && isHeadElement(name):
+		return
+	}
+	w.inHead = false
+	writeBlockBoundary(&w.buf, el)
+}
+
+func (w *tokenTextWriter) endTag(el *xhtml.Node) {
+	if w.skipsText(el) {
+		if w.skipDepth > 0 {
+			w.skipDepth--
+		}
+		return
+	}
+	if w.skipDepth > 0 {
+		return
+	}
+	if strings.EqualFold(el.Data, "head") {
+		w.inHead = false
+		return
+	}
+	if w.inHead {
+		return
+	}
+	writeBlockBoundary(&w.buf, el)
+}
+
+func (w *tokenTextWriter) text(s string) {
+	if w.skipDepth > 0 {
+		return
+	}
+	if w.inHead {
+		if collapseHTMLWhitespace(s) == "" {
+			return
+		}
+		w.inHead = false
+	}
+	writePlainText(&w.buf, s)
+}
+
+// skipsText reports whether el opens a container whose text must not be
+// emitted: script/style/noscript/title anywhere, plus template and noframes
+// while inside head (the parser drops them with the rest of the head subtree,
+// but keeps their text in body).
+func (w *tokenTextWriter) skipsText(el *xhtml.Node) bool {
+	if isSkippedTextContainer(el) {
+		return true
+	}
+	if !w.inHead {
+		return false
+	}
+	switch strings.ToLower(el.Data) {
+	case "template", "noframes":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -118,6 +185,17 @@ func tokenElement(z *xhtml.Tokenizer) *xhtml.Node {
 func isSkippedTextContainer(n *xhtml.Node) bool {
 	switch strings.ToLower(n.Data) {
 	case "script", "style", "noscript", "title":
+		return true
+	default:
+		return false
+	}
+}
+
+// isHeadElement lists the elements the HTML parser keeps inside <head>; any
+// other start tag implicitly ends the head.
+func isHeadElement(name string) bool {
+	switch name {
+	case "base", "basefont", "bgsound", "link", "meta", "noframes", "noscript", "script", "style", "template", "title":
 		return true
 	default:
 		return false
