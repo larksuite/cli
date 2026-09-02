@@ -939,6 +939,10 @@ func TestBaseWorkflowHelpGuidesAgents(t *testing.T) {
 				"lark-base-workflow.md as the module entry",
 				"lark-base-workflow-schema.md as the steps JSON SSOT",
 				"do not invent steps[].type/data/next/children from natural language",
+				"classes/content/classification_rule/no_match_action",
+				"omit mode",
+				"only supports service-side Exclusive semantics",
+				"cannot be saved as an empty shell",
 			},
 		},
 		{
@@ -952,6 +956,10 @@ func TestBaseWorkflowHelpGuidesAgents(t *testing.T) {
 				"workflow-id must start with wkf",
 				"Updating does not enable or disable",
 				"do not invent steps[].type/data/next/children from natural language",
+				"classes/content/classification_rule/no_match_action",
+				"omit mode",
+				"only supports service-side Exclusive semantics",
+				"label default",
 			},
 		},
 		{

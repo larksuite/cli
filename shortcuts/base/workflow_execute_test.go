@@ -107,6 +107,57 @@ func TestBaseWorkflowExecuteCreate(t *testing.T) {
 	}
 }
 
+func TestBaseWorkflowExecuteCreatePreservesAIClassificationAgentData(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/workflows",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"workflow_id": "wkf_ai", "title": "Feedback classify"},
+		},
+	}
+	reg.Register(stub)
+
+	body := `{
+		"title": "Feedback classify",
+		"steps": [
+			{"id": "step_trigger", "type": "AddRecordTrigger", "next": "step_classify", "data": {"table_name": "Feedback"}},
+			{
+				"id": "step_classify",
+				"type": "AIClassificationBranch",
+				"children": {"links": [
+					{"kind": "case", "label": "branch_1", "desc": "Bug", "to": "step_bug"},
+					{"kind": "case", "label": "branch_2", "desc": "Feature", "to": "step_feature"},
+					{"kind": "case", "label": "default", "desc": "默认分支", "to": "step_other"}
+				]},
+				"data": {
+					"classes": [
+						{"name": "Bug", "desc": "Broken behavior"},
+						{"name": "Feature", "desc": "New capability"}
+					],
+					"content": [
+						{"value_type": "text", "value": "Classify feedback: "},
+						{"value_type": "ref", "value": "$.step_trigger.fldFeedback"}
+					],
+					"classification_rule": "Use Other when unsure.",
+					"no_match_action": "classifyToOther",
+					"future_server_field": {"keep": true}
+				}
+			},
+			{"id": "step_bug", "type": "SetRecordAction", "next": null, "data": {}},
+			{"id": "step_feature", "type": "SetRecordAction", "next": null, "data": {}},
+			{"id": "step_other", "type": "LarkMessageAction", "next": null, "data": {}}
+		]
+	}`
+	if err := runShortcut(t, BaseWorkflowCreate, []string{"+workflow-create", "--base-token", "app_x", "--json", body}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if got := string(stub.CapturedBody); !strings.Contains(got, `"type":"AIClassificationBranch"`) || !strings.Contains(got, `"future_server_field":{"keep":true}`) {
+		t.Fatalf("AI classification payload was not forwarded verbatim enough: %s", got)
+	}
+}
+
 func TestBaseWorkflowExecuteCreateValidate(t *testing.T) {
 	t.Run("missing base-token", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
@@ -122,6 +173,237 @@ func TestBaseWorkflowExecuteCreateValidate(t *testing.T) {
 			t.Fatalf("expected error for invalid json")
 		}
 	})
+}
+
+func TestBaseWorkflowExecuteValidateAIClassificationAgentData(t *testing.T) {
+	base := func(data string, children string) string {
+		return `{
+			"title": "Feedback classify",
+			"steps": [
+				{"id": "step_trigger", "type": "AddRecordTrigger", "next": "step_classify", "data": {}},
+				{"id": "step_classify", "type": "AIClassificationBranch", "children": ` + children + `, "data": ` + data + `},
+				{"id": "step_bug", "type": "SetRecordAction", "next": null, "data": {}},
+				{"id": "step_feature", "type": "SetRecordAction", "next": null, "data": {}},
+				{"id": "step_other", "type": "LarkMessageAction", "next": null, "data": {}}
+			]
+		}`
+	}
+	validChildren := `{"links":[{"kind":"case","label":"branch_1","desc":"Bug","to":"step_bug"},{"kind":"case","label":"branch_2","desc":"Feature","to":"step_feature"}]}`
+	validData := `{
+		"classes": [
+			{"name": "Bug", "desc": "Broken behavior"},
+			{"name": "Feature", "desc": "New capability"}
+		],
+		"content": [{"value_type": "text", "value": "Classify"}],
+		"classification_rule": "Use the closest category.",
+		"no_match_action": "fail"
+	}`
+
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "draft data is not public protocol",
+			body: base(`{"prompt":[{"value_type":"text","value":"Classify"}],"childBranchList":[{"name":"Bug"},{"name":"Feature"}],"no_match_action":"fail"}`, validChildren),
+			want: "data.classes must be an array",
+		},
+		{
+			name: "exclusive mode is not public input",
+			body: base(strings.Replace(validData, `"classes": [`, `"mode": "Exclusive", "classes": [`, 1), validChildren),
+			want: "data.mode is not supported; omit it because AI classification only supports Exclusive mode",
+		},
+		{
+			name: "parallel mode is not public input",
+			body: base(strings.Replace(validData, `"classes": [`, `"mode": "Parallel", "classes": [`, 1), validChildren),
+			want: "data.mode is not supported; omit it because AI classification only supports Exclusive mode",
+		},
+		{
+			name: "empty mode is not public input",
+			body: base(strings.Replace(validData, `"classes": [`, `"mode": "", "classes": [`, 1), validChildren),
+			want: "data.mode is not supported; omit it because AI classification only supports Exclusive mode",
+		},
+		{
+			name: "non string mode is not public input",
+			body: base(strings.Replace(validData, `"classes": [`, `"mode": true, "classes": [`, 1), validChildren),
+			want: "data.mode is not supported; omit it because AI classification only supports Exclusive mode",
+		},
+		{
+			name: "empty links",
+			body: base(validData, `{"links":[]}`),
+			want: "children.links must contain one non-empty case link for each class",
+		},
+		{
+			name: "other default label",
+			body: base(strings.Replace(validData, `"no_match_action": "fail"`, `"no_match_action": "classifyToOther"`, 1), `{"links":[{"kind":"case","label":"branch_1","desc":"Bug","to":"step_bug"},{"kind":"case","label":"branch_2","desc":"Feature","to":"step_feature"},{"kind":"case","label":"other","desc":"其他","to":"step_other"}]}`),
+			want: "label must be default",
+		},
+		{
+			name: "missing no match action still requires default link",
+			body: base(strings.Replace(validData, `,
+		"no_match_action": "fail"`, "", 1), validChildren),
+			want: "children.links must contain exactly one default link when no_match_action is classifyToOther",
+		},
+		{
+			name: "class link count mismatch",
+			body: base(validData, `{"links":[{"kind":"case","label":"branch_1","desc":"Bug","to":"step_bug"}]}`),
+			want: "children.links must contain one non-empty case link for each class",
+		},
+		{
+			name: "class link desc mismatch",
+			body: base(validData, `{"links":[{"kind":"case","label":"branch_1","desc":"Bug","to":"step_bug"},{"kind":"case","label":"branch_2","desc":"Mismatch","to":"step_feature"}]}`),
+			want: "desc must equal --json steps data.classes[1].name",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			factory, stdout, _ := newExecuteFactory(t)
+			err := runShortcut(t, BaseWorkflowCreate, []string{"+workflow-create", "--base-token", "app_x", "--json", tt.body}, factory, stdout)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("err=%v want substring %q", err, tt.want)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("err type=%T want *errs.ValidationError", err)
+			}
+		})
+	}
+}
+
+func TestBaseWorkflowExecuteValidateAIClassificationOptionalModeAndNoMatchAction(t *testing.T) {
+	base := func(data string, children string) string {
+		return `{
+			"title": "Feedback classify",
+			"steps": [
+				{"id": "step_trigger", "type": "AddRecordTrigger", "next": "step_classify", "data": {}},
+				{"id": "step_classify", "type": "AIClassificationBranch", "children": ` + children + `, "data": ` + data + `},
+				{"id": "step_bug", "type": "SetRecordAction", "next": null, "data": {}},
+				{"id": "step_feature", "type": "SetRecordAction", "next": null, "data": {}},
+				{"id": "step_other", "type": "LarkMessageAction", "next": null, "data": {}}
+			]
+		}`
+	}
+	data := `{
+		"classes": [
+			{"name": "Bug", "desc": "Broken behavior"},
+			{"name": "Feature", "desc": "New capability"}
+		],
+		"content": [{"value_type": "text", "value": "Classify"}],
+		"classification_rule": "Use the closest category."
+	}`
+	children := `{"links":[{"kind":"case","label":"branch_1","desc":"Bug","to":"step_bug"},{"kind":"case","label":"branch_2","desc":"Feature","to":"step_feature"},{"kind":"case","label":"default","desc":"默认分支","to":"step_other"}]}`
+
+	factory, stdout, reg := newExecuteFactory(t)
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/workflows",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"workflow_id": "wkf_ai", "title": "Feedback classify"},
+		},
+	}
+	reg.Register(stub)
+	if err := runShortcut(t, BaseWorkflowCreate, []string{"+workflow-create", "--base-token", "app_x", "--json", base(data, children)}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	got := string(stub.CapturedBody)
+	if strings.Contains(got, `"mode"`) || strings.Contains(got, `"no_match_action"`) {
+		t.Fatalf("AI classification optional fields should not be injected by CLI: %s", got)
+	}
+}
+
+func TestBaseWorkflowExecuteUpdateRejectsAIClassificationMode(t *testing.T) {
+	base := func(mode string) string {
+		return `{
+			"title": "Feedback classify",
+			"steps": [
+				{"id": "step_trigger", "type": "AddRecordTrigger", "next": "step_classify", "data": {}},
+				{
+					"id": "step_classify",
+					"type": "AIClassificationBranch",
+					"children": {"links":[
+						{"kind":"case","label":"branch_1","desc":"Bug","to":"step_bug"},
+						{"kind":"case","label":"branch_2","desc":"Feature","to":"step_feature"}
+					]},
+					"data": {
+						"mode": "` + mode + `",
+						"classes": [
+							{"name": "Bug", "desc": "Broken behavior"},
+							{"name": "Feature", "desc": "New capability"}
+						],
+						"content": [{"value_type": "text", "value": "Classify"}],
+						"classification_rule": "Use the closest category.",
+						"no_match_action": "fail"
+					}
+				},
+				{"id": "step_bug", "type": "SetRecordAction", "next": null, "data": {}},
+				{"id": "step_feature", "type": "SetRecordAction", "next": null, "data": {}}
+			]
+		}`
+	}
+
+	for _, mode := range []string{"Exclusive", "Parallel"} {
+		t.Run(mode, func(t *testing.T) {
+			factory, stdout, _ := newExecuteFactory(t)
+			err := runShortcut(t, BaseWorkflowUpdate, []string{"+workflow-update", "--base-token", "app_x", "--workflow-id", "wkf_1", "--json", base(mode)}, factory, stdout)
+			if err == nil || !strings.Contains(err.Error(), "data.mode is not supported; omit it because AI classification only supports Exclusive mode") {
+				t.Fatalf("err=%v", err)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("err type=%T want *errs.ValidationError", err)
+			}
+		})
+	}
+}
+
+func TestBaseWorkflowExecuteUpdatePreservesAIClassificationWithoutMode(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	stub := &httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/base/v3/bases/app_x/workflows/wkf_1",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"workflow_id": "wkf_1", "title": "Feedback classify"},
+		},
+	}
+	reg.Register(stub)
+
+	body := `{
+		"title": "Feedback classify",
+		"status": "disabled",
+		"steps": [
+			{"id": "step_trigger", "type": "AddRecordTrigger", "next": "step_classify", "data": {}},
+			{
+				"id": "step_classify",
+				"type": "AIClassificationBranch",
+				"children": {"links":[
+					{"kind":"case","label":"branch_1","desc":"Bug","to":"step_bug"},
+					{"kind":"case","label":"branch_2","desc":"Feature","to":"step_feature"},
+					{"kind":"case","label":"default","desc":"默认分支","to":"step_other"}
+				]},
+				"data": {
+					"classes": [
+						{"name": "Bug", "desc": "Broken behavior"},
+						{"name": "Feature", "desc": "New capability"}
+					],
+					"content": [{"value_type": "text", "value": "Classify"}],
+					"classification_rule": "Use the closest category."
+				}
+			},
+			{"id": "step_bug", "type": "SetRecordAction", "next": null, "data": {}},
+			{"id": "step_feature", "type": "SetRecordAction", "next": null, "data": {}},
+			{"id": "step_other", "type": "LarkMessageAction", "next": null, "data": {}}
+		]
+	}`
+	if err := runShortcut(t, BaseWorkflowUpdate, []string{"+workflow-update", "--base-token", "app_x", "--workflow-id", "wkf_1", "--json", body}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if got := string(stub.CapturedBody); strings.Contains(got, `"mode"`) || strings.Contains(got, `"no_match_action"`) || !strings.Contains(got, `"classes":[`) {
+		t.Fatalf("AI classification payload should be forwarded without injected optional fields: %s", got)
+	}
 }
 
 func TestBaseWorkflowExecuteDisable(t *testing.T) {

@@ -134,6 +134,7 @@
 |------|------|
 | `IfElseBranch` | 条件分支，`children.links` 含 `if_true` 和 `if_false` |
 | `SwitchBranch` | 多路分支，`children.links` 含多个 `case` |
+| `AIClassificationBranch` | AI 分类分支，`children.links` 含多个 `case` |
 
 ### System 类型
 
@@ -551,6 +552,48 @@
 |------|------|------|
 | `name` | string | 分支名称 |
 | `condition` | OrGroup | 分支条件 |
+
+### AIClassificationBranch
+
+`AIClassificationBranch` 用 AI 对 `content` 内容做分类，再通过 `children.links` 中的 `case` 边进入命中的后续步骤。`steps[].data` 使用公开 Agent Data 协议，不提交内部 Draft Data 字段。
+
+```json
+{
+  "classes": [
+    {
+      "name": "Bug",
+      "desc": "功能报错、异常、不可用或结果错误"
+    },
+    {
+      "name": "功能建议",
+      "desc": "希望新增能力或优化现有功能"
+    }
+  ],
+  "content": [
+    { "value_type": "text", "value": "请根据反馈内容判断类型：" },
+    { "value_type": "ref", "value": "$.step_trigger.fldFeedback" }
+  ],
+  "classification_rule": "信息不足时判定为无法匹配。"
+}
+```
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `classes` | 是 | 分类列表，至少 2 项。每项包含 `name` 和 `desc` |
+| `classes[].name` | 是 | 分类名称，需与对应普通 `children.links[].desc` 保持一致 |
+| `classes[].desc` | 是 | 分类描述，可为空字符串，但字段必须存在 |
+| `content` | 是 | TextRefItem[]，用于分类的内容，支持 `text` / `ref` |
+| `classification_rule` | 否 | 全局分类规则纯文本 |
+| `no_match_action` | 否 | 无匹配策略。`classifyToOther`：进入默认分支；`fail`：当前节点失败。创建缺省时使用服务端/SDK 默认 `classifyToOther`，更新缺省时保留既有配置 |
+
+不要在公开 JSON 中提交内部 Draft Data 字段：`prompt`、`childBranchList` / `child_branch_list`、`defaultBranchInfo` / `default_branch_info`、`classifyPrompt` / `classify_prompt`。
+
+`children.links` 规则：
+- 分类和默认分支的拓扑只由 `children.links` 表达。
+- 普通分类边使用 `kind: "case"` 和 `label: "branch_1"`、`branch_2` 等稳定标签；`desc` 与 `classes[i].name` 保持一致；`to` 指向该分类的入口 step。
+- 缺省或 `no_match_action: "classifyToOther"` 时必须额外提供一条默认分支边：`{ "kind": "case", "label": "default", "desc": "默认分支", "to": "step_other_action" }`。
+- `label: "other"` 不表示默认分支，不要使用。
+- 创建或更新后，用 `+workflow-get` 回读确认公开 Agent Data 和分支拓扑均已保存；更新时保留回读中的未修改字段。
 
 
 ## System data 详细结构

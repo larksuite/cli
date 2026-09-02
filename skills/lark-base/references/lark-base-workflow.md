@@ -59,6 +59,7 @@
 | 定时+循环 | TimerTrigger → FindRecordAction → Loop → LarkMessageAction | [下方](#示例2-定时触发--查找记录--循环遍历--发送消息) |
 | 条件判断 | ... → IfElseBranch → 分支处理 | [下方](#示例3-条件分支-ifelsebranch) |
 | 多路分类 | ... → SwitchBranch → 多分支处理 | [下方](#示例4-多路分支-switchbranch) |
+| AI 分类 | ... → AIClassificationBranch → 分类后处理 | [下方](#示例-ai-分类用户反馈自动分流) |
 | 复杂组合 | 定时+查找+循环+分支+消息 | [下方](#示例5-组合场景-定时查找循环分支消息) |
 
 ---
@@ -467,6 +468,135 @@
 - `children.links` 中 `kind: "case"` 的 `label` 对应 `child_branch_list` 中的条件
 - `mode: "exclusive"` 表示排他执行（第一个匹配的分支执行后停止）
 - `no_match_action: "classifyToOther"` 表示无匹配时走最后一个 `case`（兜底分支）
+
+---
+
+### 示例 AI 分类：用户反馈自动分流
+
+**场景**: 当用户反馈表新增记录时，AI 根据反馈内容分类为 Bug、功能建议或体验问题；无法判断时进入其他分支并通知人工复核。
+
+```json
+{
+  "client_token": "1704067206",
+  "title": "用户反馈自动分流",
+  "steps": [
+    {
+      "id": "step_trigger",
+      "type": "AddRecordTrigger",
+      "title": "新增反馈时触发",
+      "next": "step_ai_classify",
+      "data": {
+        "table_name": "用户反馈表",
+        "watched_field_name": "反馈详情"
+      }
+    },
+    {
+      "id": "step_ai_classify",
+      "type": "AIClassificationBranch",
+      "title": "AI 判断反馈类型",
+      "children": {
+        "links": [
+          { "kind": "case", "to": "step_bug_action", "label": "branch_1", "desc": "Bug" },
+          { "kind": "case", "to": "step_feature_action", "label": "branch_2", "desc": "功能建议" },
+          { "kind": "case", "to": "step_experience_action", "label": "branch_3", "desc": "体验问题" },
+          { "kind": "case", "to": "step_other_action", "label": "default", "desc": "默认分支" }
+        ]
+      },
+      "next": null,
+      "data": {
+        "classes": [
+          {
+            "name": "Bug",
+            "desc": "功能报错、异常、崩溃、无法使用或结果错误"
+          },
+          {
+            "name": "功能建议",
+            "desc": "希望新增能力或改变产品行为"
+          },
+          {
+            "name": "体验问题",
+            "desc": "流程繁琐、操作难懂、性能慢或界面体验不佳"
+          }
+        ],
+        "content": [
+          { "value_type": "text", "value": "请根据反馈标题和反馈详情判断类型：" },
+          { "value_type": "ref", "value": "$.step_trigger.fldFeedbackTitle" },
+          { "value_type": "text", "value": " " },
+          { "value_type": "ref", "value": "$.step_trigger.fldFeedbackDetail" }
+        ],
+        "classification_rule": "有明确故障现象时优先归入 Bug；同时包含多个诉求时，以最影响用户完成任务的问题为准；信息不足时进入默认分支。"
+      }
+    },
+    {
+      "id": "step_bug_action",
+      "type": "SetRecordAction",
+      "title": "标记为 Bug",
+      "next": null,
+      "data": {
+        "table_name": "用户反馈表",
+        "ref_info": { "step_id": "step_trigger" },
+        "field_values": [
+          { "field_name": "分类", "value": [{ "value_type": "text", "value": "Bug" }] }
+        ]
+      }
+    },
+    {
+      "id": "step_feature_action",
+      "type": "SetRecordAction",
+      "title": "标记为功能建议",
+      "next": null,
+      "data": {
+        "table_name": "用户反馈表",
+        "ref_info": { "step_id": "step_trigger" },
+        "field_values": [
+          { "field_name": "分类", "value": [{ "value_type": "text", "value": "功能建议" }] }
+        ]
+      }
+    },
+    {
+      "id": "step_experience_action",
+      "type": "SetRecordAction",
+      "title": "标记为体验问题",
+      "next": null,
+      "data": {
+        "table_name": "用户反馈表",
+        "ref_info": { "step_id": "step_trigger" },
+        "field_values": [
+          { "field_name": "分类", "value": [{ "value_type": "text", "value": "体验问题" }] }
+        ]
+      }
+    },
+    {
+      "id": "step_other_action",
+      "type": "LarkMessageAction",
+      "title": "通知人工复核",
+      "next": null,
+      "data": {
+        "receiver": [{ "value_type": "user", "value": { "id": "ou_xxxx", "name": "负责人" } }],
+        "send_to_everyone": false,
+        "title": [{ "value_type": "text", "value": "反馈需要人工复核" }],
+        "content": [
+          { "value_type": "text", "value": "AI 未能确定反馈分类，请人工确认：" },
+          { "value_type": "ref", "value": "$.step_trigger.fldFeedbackDetail" }
+        ],
+        "btn_list": []
+      }
+    }
+  ]
+}
+```
+
+标准操作顺序：
+1. 创建：`lark-cli base +workflow-create --base-token <base_token> --json @workflow.json`
+2. 回读：`lark-cli base +workflow-get --base-token <base_token> --workflow-id <workflow_id>`
+3. 更新：先保存回读结果，只修改目标字段，再执行 `+workflow-update --json @workflow.json`
+4. 再次回读：确认 `AIClassificationBranch` 的 `classes`、`content`、`classification_rule`、`no_match_action` 和 `children.links` 均未丢失
+
+关键点：
+- `AIClassificationBranch.data` 使用公开 Agent Data：`classes`、`content`、`classification_rule`、`no_match_action`。
+- `AIClassificationBranch.children.links` 使用 `kind: "case"`；普通分类使用 `branch_1`、`branch_2` 等标签，默认分支使用 `label: "default"`。
+- `classes[i].name` 与对应普通分支 `children.links[i].desc` 保持一致；缺省或 `no_match_action: "classifyToOther"` 时必须提供默认分支。
+- AI 分类可能处理业务敏感信息；创建或更新后用 `+workflow-get` 确认最终保存结果，不要只依赖提交前 JSON。
 
 ---
 
