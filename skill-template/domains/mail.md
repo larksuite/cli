@@ -113,6 +113,14 @@ lark-cli mail user_mailbox.messages -h
 
 `-h` 输出即可用 flag 的权威来源。reference 文档中的参数表可辅助理解语义，但实际 flag 名称以 `-h` 为准。
 
+### 管理允许 / 屏蔽发件人
+
+用户级白名单和黑名单分别通过 `user_mailbox.allow_senders` 与
+`user_mailbox.blocked_senders` 管理。创建、查询、清理的自包含闭环、scope、
+标准 JSON 输出和 `15180304` 重试规则见
+[允许 / 屏蔽发件人管理](references/lark-mail-sender-controls.md)。不要为这两个资源
+寻找 `+` shortcut；它们由通用动态 API 命令直接执行。
+
 ### 收件人搜索：查找邮箱地址
 
 当需要查找收件人邮箱地址时，使用联系人搜索接口。支持多种搜索方式，如：
