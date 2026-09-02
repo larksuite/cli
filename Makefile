@@ -16,7 +16,7 @@ PUBLIC_CONTENT_METADATA ?= $(QUALITY_GATE_DIR)/public-content-metadata.json
 LDFLAGS  := -s -w -X $(MODULE)/internal/build.Version=$(VERSION) -X $(MODULE)/internal/build.Date=$(DATE)
 PREFIX   ?= /usr/local
 
-# The repository's Go 1.23 CI toolchain does not support -race on riscv64.
+# The repository's Go 1.25 CI toolchain does not support -race on riscv64.
 # Prefer GOARCH passed to make (for example, `make GOARCH=riscv64 unit-test`)
 # over `go env GOARCH`, because command-line make variables are not visible to
 # $(shell ...).

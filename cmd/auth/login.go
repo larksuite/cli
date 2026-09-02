@@ -346,7 +346,7 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 			return errs.NewInternalError(errs.SubtypeSDKError, "failed to write JSON output: %v", err).WithCause(err)
 		}
 	} else {
-		fmt.Fprintf(f.IOStreams.ErrOut, msg.OpenURL)
+		fmt.Fprint(f.IOStreams.ErrOut, msg.OpenURL)
 		fmt.Fprintf(f.IOStreams.ErrOut, "  %s\n\n", authResp.VerificationUriComplete)
 		if f.IOStreams != nil && !f.IOStreams.IsTerminal {
 			fmt.Fprintln(f.IOStreams.ErrOut, msg.AgentTimeoutHint(renderContext))

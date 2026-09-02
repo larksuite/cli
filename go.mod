@@ -1,6 +1,6 @@
 module github.com/larksuite/cli
 
-go 1.23.0
+go 1.25.0
 
 require (
 	github.com/Microsoft/go-winio v0.6.2
@@ -19,12 +19,12 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/tidwall/gjson v1.18.0
 	github.com/zalando/go-keyring v0.2.8
-	golang.org/x/image v0.30.0
-	golang.org/x/net v0.33.0
-	golang.org/x/sync v0.16.0
-	golang.org/x/sys v0.33.0
-	golang.org/x/term v0.27.0
-	golang.org/x/text v0.28.0
+	golang.org/x/image v0.45.0
+	golang.org/x/net v0.58.0
+	golang.org/x/sync v0.22.0
+	golang.org/x/sys v0.47.0
+	golang.org/x/term v0.45.0
+	golang.org/x/text v0.41.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -46,7 +46,7 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/gopherjs/gopherjs v1.17.2 // indirect
-	github.com/gorilla/websocket v1.5.0 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/itchyny/timefmt-go v0.1.6 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect

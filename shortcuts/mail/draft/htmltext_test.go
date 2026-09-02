@@ -60,19 +60,29 @@ func TestPlainTextFromHTML(t *testing.T) {
 
 func TestPlainTextFromHTMLDeepNesting(t *testing.T) {
 	// Build HTML with 10000 levels of nesting — would overflow the stack
-	// with the old recursive implementation.
+	// with the old recursive implementation, and exceeds the 512-node open
+	// element limit that x/net/html's parser enforces, so this exercises the
+	// tokenizer fallback: block boundaries, skipped script content and
+	// entity unescaping must still behave like the parsed path.
 	const depth = 10_000
 	var b strings.Builder
 	for i := 0; i < depth; i++ {
 		b.WriteString("<div>")
 	}
-	b.WriteString("deep")
+	b.WriteString("<p>deep &amp; nested</p><script>alert(1)</script><p>end</p>")
 	for i := 0; i < depth; i++ {
 		b.WriteString("</div>")
 	}
 	got := plainTextFromHTML(b.String())
-	if got != "deep" {
-		t.Errorf("deep nesting: got %q, want %q", got, "deep")
+	if want := "deep & nested\nend"; got != want {
+		t.Errorf("deep nesting: got %q, want %q", got, want)
+	}
+}
+
+func TestPlainTextFromHTMLTokensKeepsBodyWithoutHeadEndTag(t *testing.T) {
+	got := plainTextFromHTMLTokens("<html><head><title>T</title><meta charset=utf-8><body><p>Hello <b>world</b></p><style>p{}</style>bye")
+	if want := "Hello world\nbye"; got != want {
+		t.Errorf("plainTextFromHTMLTokens() = %q, want %q", got, want)
 	}
 }
 
