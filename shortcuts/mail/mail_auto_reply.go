@@ -743,15 +743,13 @@ func parseAutoReplyDateMillis(flag, raw, timezone string, endOfDay bool) (string
 		if value == 0 {
 			return "0", nil
 		}
-		t := time.Unix(value, 0)
+		if value < 0 {
+			return "", mailValidationParamError(flag, "%s must be 0 or a positive Unix timestamp, got %q", flag, raw)
+		}
 		if value >= 1_000_000_000_000 {
-			t = time.UnixMilli(value)
+			return strconv.FormatInt(value, 10), nil
 		}
-		loc, err := autoReplyLocation(timezone, t.Location())
-		if err != nil {
-			return "", err
-		}
-		return strconv.FormatInt(autoReplyDayBoundary(t.In(loc), endOfDay).UnixMilli(), 10), nil
+		return strconv.FormatInt(time.Unix(value, 0).UnixMilli(), 10), nil
 	}
 
 	t, err := parseAutoReplyDate(raw, timezone)
