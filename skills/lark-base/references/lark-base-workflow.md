@@ -54,12 +54,12 @@
 
 | 场景 | 步骤组合 | 示例 |
 |------|---------|------|
-| 新增触发+通知 | AddRecordTrigger → LarkMessageAction | [下方](#示例1-新增记录触发--发送消息) |
+| 新增触发+通知 | AddRecordTrigger → LarkMessageAction | [下方](#示例-1-新增记录触发--发送消息) |
 | 按钮点击+调用外部接口+写入日志 | ButtonTrigger → HTTPClientAction → AddRecordAction | [下方](#示例-6-按钮触发--调用外部接口--写入同步日志) |
-| 定时+循环 | TimerTrigger → FindRecordAction → Loop → LarkMessageAction | [下方](#示例2-定时触发--查找记录--循环遍历--发送消息) |
-| 条件判断 | ... → IfElseBranch → 分支处理 | [下方](#示例3-条件分支-ifelsebranch) |
-| 多路分类 | ... → SwitchBranch → 多分支处理 | [下方](#示例4-多路分支-switchbranch) |
-| 复杂组合 | 定时+查找+循环+分支+消息 | [下方](#示例5-组合场景-定时查找循环分支消息) |
+| 定时+循环 | TimerTrigger → FindRecordAction → Loop → LarkMessageAction | [下方](#示例-2-定时触发--查找记录--循环遍历--发送消息) |
+| 条件判断 | ... → IfElseBranch → 分支处理 | [下方](#示例-3-条件分支ifelsebranch) |
+| 多路分类 | ... → SwitchBranch → 多分支处理 | [下方](#示例-4-多路分支switchbranch) |
+| 复杂组合 | 定时+查找+循环+分支+消息 | [下方](#示例-5-组合场景定时查找循环分支消息) |
 
 ---
 
