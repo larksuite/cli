@@ -19,10 +19,11 @@ type SuccessEnvelopeOptions struct {
 // envelope from a Lark API response. Outer code/msg fields are transport
 // protocol details and are intentionally not exposed as business data.
 //
-// Most endpoints wrap the payload in "data". Legacy endpoints such as
-// /open-apis/bot/v3/info put it beside code/msg under another key; everything
-// except the transport fields is then the payload. A non-object body is passed
-// through untouched so this function never collapses a payload to {}.
+// Most endpoints wrap the payload in "data". The legacy /open-apis/bot/v3/info
+// endpoint uses "bot" as that payload container; normalize its sole business
+// field to the same data shape. Other non-data responses fall back to everything
+// except the transport fields. A non-object body is passed through untouched so
+// this function never collapses a payload to {}.
 func SuccessEnvelopeData(result interface{}) interface{} {
 	if result == nil {
 		return map[string]interface{}{}
@@ -40,6 +41,11 @@ func SuccessEnvelopeData(result interface{}) interface{} {
 			continue
 		}
 		payload[k] = v
+	}
+	if len(payload) == 1 {
+		if bot, ok := payload["bot"].(map[string]interface{}); ok {
+			return bot
+		}
 	}
 	return payload
 }

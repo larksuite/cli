@@ -34,6 +34,21 @@ func TestSuccessEnvelopeData_ExtractsBusinessData(t *testing.T) {
 	}
 }
 
+func TestSuccessEnvelopeData_StandardDataTakesPrecedenceOverBot(t *testing.T) {
+	result := map[string]interface{}{
+		"code": float64(0),
+		"msg":  "ok",
+		"data": map[string]interface{}{"id": "1"},
+		"bot":  map[string]interface{}{"open_id": "ou_legacy"},
+	}
+
+	got := SuccessEnvelopeData(result)
+	want := map[string]interface{}{"id": "1"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("business data = %#v, want standard data payload %#v", got, want)
+	}
+}
+
 func TestSuccessEnvelopeData_MissingDataUsesEmptyObject(t *testing.T) {
 	got := SuccessEnvelopeData(map[string]interface{}{"code": float64(0), "msg": "ok"})
 	m, ok := got.(map[string]interface{})
@@ -56,7 +71,7 @@ func TestSuccessEnvelopeData_NilDataUsesEmptyObject(t *testing.T) {
 	}
 }
 
-func TestSuccessEnvelopeData_NonDataPayloadKeyPreserved(t *testing.T) {
+func TestSuccessEnvelopeData_BotPayloadNormalized(t *testing.T) {
 	// /bot/v3/info returns payload under "bot" key, not "data"
 	result := map[string]interface{}{
 		"code": float64(0),
@@ -79,21 +94,35 @@ func TestSuccessEnvelopeData_NonDataPayloadKeyPreserved(t *testing.T) {
 	if _, ok := m["msg"]; ok {
 		t.Fatal("business data must not contain outer msg")
 	}
-	bot, ok := m["bot"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("business data.bot type = %T, want map", m["bot"])
+	if _, ok := m["bot"]; ok {
+		t.Fatalf("business data = %#v, want legacy bot container normalized away", m)
 	}
-	if bot["activate_status"] != float64(2) {
-		t.Fatalf("bot.activate_status = %v, want 2", bot["activate_status"])
+	if m["activate_status"] != float64(2) {
+		t.Fatalf("activate_status = %v, want 2", m["activate_status"])
 	}
-	if bot["app_name"] != "TestBot" {
-		t.Fatalf("bot.app_name = %v, want TestBot", bot["app_name"])
+	if m["app_name"] != "TestBot" {
+		t.Fatalf("app_name = %v, want TestBot", m["app_name"])
 	}
 }
 
-func TestSuccessEnvelopeData_NullDataWithSiblingPayloadPreserved(t *testing.T) {
+func TestSuccessEnvelopeData_UnknownNonDataPayloadPreserved(t *testing.T) {
+	result := map[string]interface{}{
+		"code":       float64(0),
+		"msg":        "ok",
+		"result":     "success",
+		"request_id": "req_123",
+	}
+
+	got := SuccessEnvelopeData(result)
+	want := map[string]interface{}{"result": "success", "request_id": "req_123"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("business data = %#v, want %#v", got, want)
+	}
+}
+
+func TestSuccessEnvelopeData_NullDataWithBotPayloadNormalized(t *testing.T) {
 	// A null "data" next to a payload key used to collapse to {} and lose the
-	// payload; the sibling key is the business data in that shape.
+	// payload; the legacy bot container is normalized like standard data.
 	result := map[string]interface{}{
 		"code": float64(0),
 		"msg":  "ok",
@@ -109,12 +138,14 @@ func TestSuccessEnvelopeData_NullDataWithSiblingPayloadPreserved(t *testing.T) {
 	if _, ok := m["data"]; ok {
 		t.Fatal("business data must not contain the null data key")
 	}
-	bot, ok := m["bot"].(map[string]interface{})
-	if !ok || bot["open_id"] != "ou_123" {
-		t.Fatalf("business data.bot = %#v, want sibling payload preserved", m["bot"])
+	if _, ok := m["bot"]; ok {
+		t.Fatalf("business data = %#v, want legacy bot container normalized away", m)
+	}
+	if m["open_id"] != "ou_123" {
+		t.Fatalf("business data.open_id = %#v, want ou_123", m["open_id"])
 	}
 	if len(m) != 1 {
-		t.Fatalf("business data = %#v, want only the bot key", m)
+		t.Fatalf("business data = %#v, want only the normalized bot fields", m)
 	}
 }
 

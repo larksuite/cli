@@ -195,7 +195,7 @@ func TestApiCmd_BotMode(t *testing.T) {
 	}
 }
 
-func TestApiCmd_NonDataPayload_PreservedInEnvelope(t *testing.T) {
+func TestApiCmd_BotPayload_NormalizedInEnvelope(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app-nondata", AppSecret: "test-secret-nondata", Brand: core.BrandFeishu,
 	})
@@ -226,9 +226,11 @@ func TestApiCmd_NonDataPayload_PreservedInEnvelope(t *testing.T) {
 	if !ok {
 		t.Fatalf("data = %#v, want object", got["data"])
 	}
-	bot, ok := data["bot"].(map[string]interface{})
-	if !ok || bot["open_id"] != "ou_123" {
-		t.Fatalf("data.bot = %#v, want the legacy payload preserved", data["bot"])
+	if _, ok := data["bot"]; ok {
+		t.Fatalf("data = %#v, want legacy bot container normalized away", data)
+	}
+	if data["open_id"] != "ou_123" || data["app_name"] != "TestBot" {
+		t.Fatalf("data = %#v, want normalized bot fields", data)
 	}
 	for _, k := range []string{"code", "msg"} {
 		if _, leaked := data[k]; leaked {
