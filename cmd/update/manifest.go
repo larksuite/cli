@@ -12,19 +12,16 @@ import (
 	"github.com/larksuite/cli/internal/output"
 )
 
-func runManifestUpdate(ctx context.Context, opts *UpdateOptions, manifestURL string) error {
+func runManifestUpdate(ctx context.Context, opts *UpdateOptions, src distribution.Source) error {
 	streams := opts.Factory.IOStreams
 	current := currentVersion()
-	manifest, err := distribution.FetchManifest(ctx, manifestURL)
+	manifest, err := src.FetchManifest(ctx)
 	if err != nil {
 		return reportDistributionError(opts, err)
 	}
 	target := manifest.Version
-	if opts.Check {
-		return reportManifestStatus(opts, current, target, true)
-	}
-	if !opts.Force && target == current {
-		return reportManifestStatus(opts, current, target, false)
+	if opts.Check || (!opts.Force && target == current) {
+		return reportManifestStatus(opts, current, target, opts.Check)
 	}
 	if !opts.JSON {
 		fmt.Fprintf(streams.ErrOut, "Updating lark-cli %s %s %s from the configured distribution ...\n", current, symArrow(), target)
@@ -45,6 +42,9 @@ func runManifestUpdate(ctx context.Context, opts *UpdateOptions, manifestURL str
 	return nil
 }
 
+// reportManifestStatus reports the configured target. The target is an opaque
+// string chosen by the distribution, so the JSON field is target_version —
+// it must not be labeled latest_version like an npm registry result.
 func reportManifestStatus(opts *UpdateOptions, current, target string, check bool) error {
 	streams := opts.Factory.IOStreams
 	action := "already_up_to_date"

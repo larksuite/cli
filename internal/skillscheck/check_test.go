@@ -61,9 +61,32 @@ func TestInitForSourceNoticesAtSameVersionWhenSourceChanges(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	InitForSource("1.0.21", "manifest:second")
+	InitForSource("1.0.21", "manifest:second", true)
 	if got := GetPending(); got == nil {
 		t.Fatal("GetPending() = nil, want notice for a changed Skills source")
+	}
+}
+
+// TestInitForSourceNoticesOpaqueManifestVersion pins the manifest-mode
+// regression: an opaque target version must not be suppressed by the
+// SemVer/release gate.
+func TestInitForSourceNoticesOpaqueManifestVersion(t *testing.T) {
+	clearSkillsSkipEnv(t)
+	resetPending(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := WriteState(SkillsState{
+		Version:        "release-channel-6",
+		SourceIdentity: "manifest:dist",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	InitForSource("release-channel-7", "manifest:dist", true)
+	got := GetPending()
+	if got == nil {
+		t.Fatal("GetPending() = nil, want notice for opaque manifest version drift")
+	}
+	if got.Current != "release-channel-6" || got.Target != "release-channel-7" {
+		t.Errorf("notice = %+v", got)
 	}
 }
 

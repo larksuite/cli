@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 
 	"github.com/larksuite/cli/internal/vfs"
 )
@@ -84,7 +83,7 @@ func listPreparedSkills(root string) ([]string, error) {
 	if len(names) == 0 {
 		return nil, fmt.Errorf("skills artifact contains no Skills")
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	return names, nil
 }
 
@@ -130,13 +129,11 @@ func installPreparedToTargets(root string, targets []string, plan SyncPlan) (fun
 	rollbacks := make([]func() error, 0, len(targets))
 	finalizers := make([]func(), 0, len(targets))
 	rollbackAll := func() error {
-		var first error
+		var errs []error
 		for i := len(rollbacks) - 1; i >= 0; i-- {
-			if err := rollbacks[i](); err != nil && first == nil {
-				first = err
-			}
+			errs = append(errs, rollbacks[i]())
 		}
-		return first
+		return errors.Join(errs...)
 	}
 	for _, target := range targets {
 		rollback, finalize, err := installPrepared(root, target, plan)
@@ -182,23 +179,20 @@ func installPrepared(root, target string, plan SyncPlan) (func() error, func(), 
 	}
 	movedOld, movedNew := []string{}, []string{}
 	rollback := func() error {
-		var first error
+		var errs []error
 		for i := len(movedNew) - 1; i >= 0; i-- {
-			if err := vfs.RemoveAll(filepath.Join(target, movedNew[i])); err != nil && first == nil {
-				first = err
-			}
+			errs = append(errs, vfs.RemoveAll(filepath.Join(target, movedNew[i])))
 		}
 		for i := len(movedOld) - 1; i >= 0; i-- {
 			name := movedOld[i]
-			if err := vfs.Rename(filepath.Join(backup, name), filepath.Join(target, name)); err != nil && first == nil {
-				first = err
-			}
+			errs = append(errs, vfs.Rename(filepath.Join(backup, name), filepath.Join(target, name)))
 		}
 		_ = vfs.RemoveAll(stage)
-		if first == nil {
-			_ = vfs.RemoveAll(backup)
+		if err := errors.Join(errs...); err != nil {
+			return err // keep the backup for manual recovery
 		}
-		return first
+		_ = vfs.RemoveAll(backup)
+		return nil
 	}
 	for _, name := range plan.CleanupOfficial {
 		current := filepath.Join(target, name)

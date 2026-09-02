@@ -3,7 +3,7 @@
 
 package skillscheck
 
-import "strings"
+import "github.com/larksuite/cli/internal/versioncheck"
 
 // Init runs the synchronous skills version check. Stores a StaleNotice when
 // the local skills state records a version that does not match currentVersion,
@@ -14,20 +14,22 @@ import "strings"
 // Skip rules: see shouldSkip (CI envs, DEV builds, non-release semver,
 // LARKSUITE_CLI_NO_SKILLS_NOTIFIER opt-out).
 func Init(currentVersion string) {
-	InitForSource(currentVersion, OfficialSourceIdentity)
+	InitForSource(currentVersion, OfficialSourceIdentity, false)
 }
 
 // InitForSource also considers which distribution owns the installed Skills.
-func InitForSource(currentVersion, sourceIdentity string) {
+// exactTarget is true for manifest distributions, whose versions are opaque
+// strings rather than SemVer releases.
+func InitForSource(currentVersion, sourceIdentity string, exactTarget bool) {
 	SetPending(nil)
-	if shouldSkip(currentVersion) {
+	if shouldSkip(currentVersion, exactTarget) {
 		return
 	}
 	state, ok, err := ReadState()
 	if err != nil || !ok || state.Version == "" {
 		return
 	}
-	if strings.TrimPrefix(strings.TrimPrefix(state.Version, "v"), "V") == strings.TrimPrefix(strings.TrimPrefix(currentVersion, "v"), "V") &&
+	if versioncheck.Equal(state.Version, currentVersion) &&
 		!state.OfficialSkillsUnknown && MatchesSource(state, sourceIdentity) {
 		return
 	}

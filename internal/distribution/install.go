@@ -5,11 +5,17 @@ package distribution
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/selfupdate"
 	"github.com/larksuite/cli/internal/skillscheck"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // InstallOptions supplies destinations and test seams for a distribution update.
@@ -24,9 +30,9 @@ type InstallOptions struct {
 // resources as one rollback-capable local transaction. The executable is
 // committed last.
 func Install(ctx context.Context, manifest *Manifest, opts InstallOptions) errs.TypedError {
-	prepared, err := prepareUpdate(ctx, manifest)
-	if err != nil {
-		return classifyError("failed to prepare distribution update", err)
+	prepared, typedErr := prepareUpdate(ctx, manifest)
+	if typedErr != nil {
+		return typedErr
 	}
 	defer prepared.cleanup()
 	if err := installPrepared(prepared, opts); err != nil {
@@ -72,4 +78,95 @@ func installPrepared(prepared *preparedUpdate, opts InstallOptions) error {
 	finalizeSkills()
 	finalizeBinary()
 	return nil
+}
+
+// preparedUpdate contains fully downloaded, checksum-verified, extracted
+// resources owned by one Install call.
+type preparedUpdate struct {
+	Manifest   *Manifest
+	BinaryPath string
+	SkillsRoot string
+	root       string
+}
+
+// cleanup removes downloaded and extracted temporary resources.
+func (p *preparedUpdate) cleanup() {
+	if p != nil && p.root != "" {
+		_ = vfs.RemoveAll(p.root)
+	}
+}
+
+// prepareUpdate downloads and validates every resource before installed state
+// is mutated.
+func prepareUpdate(ctx context.Context, manifest *Manifest) (*preparedUpdate, errs.TypedError) {
+	if manifest == nil {
+		return nil, errs.NewInternalError(errs.SubtypeUnknown, "distribution manifest is nil")
+	}
+	if err := vfs.MkdirAll(core.GetBaseConfigDir(), 0o700); err != nil {
+		return nil, prepareFileError(err)
+	}
+	root, err := vfs.MkdirTemp(core.GetBaseConfigDir(), ".distribution-update-*")
+	if err != nil {
+		return nil, prepareFileError(err)
+	}
+	prepared := &preparedUpdate{Manifest: manifest, root: root}
+	keep := false
+	defer func() {
+		if !keep {
+			prepared.cleanup()
+		}
+	}()
+
+	binaryRoot, typedErr := prepareArtifact(ctx, manifest, CurrentPlatformKey(), root, "binary")
+	if typedErr != nil {
+		return nil, typedErr
+	}
+	executableName := "lark-cli"
+	if runtime.GOOS == "windows" {
+		executableName += ".exe"
+	}
+	prepared.BinaryPath = filepath.Join(binaryRoot, executableName)
+	info, err := vfs.Stat(prepared.BinaryPath)
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse,
+			"binary artifact must contain %s at its root", executableName)
+	}
+	prepared.SkillsRoot, typedErr = prepareArtifact(ctx, manifest, SkillsKey, root, "skills")
+	if typedErr != nil {
+		return nil, typedErr
+	}
+	keep = true
+	return prepared, nil
+}
+
+func prepareArtifact(ctx context.Context, manifest *Manifest, key, root, directory string) (string, errs.TypedError) {
+	archive, err := downloadArtifact(ctx, manifest.Artifacts[key], root, directory+"-*.archive")
+	if err != nil {
+		return "", classifyArtifactError("download", key, err)
+	}
+	destination := filepath.Join(root, directory)
+	if err := vfs.MkdirAll(destination, 0o700); err != nil {
+		return "", prepareFileError(err)
+	}
+	if err := extractArchive(archive, destination); err != nil {
+		return "", classifyArtifactError("extract", key, err)
+	}
+	return destination, nil
+}
+
+// classifyArtifactError attributes an artifact-stage failure: local file I/O
+// is FileIO; fetch, size-limit, checksum, and archive-format failures mean the
+// delivered artifact is missing or broken and are reported as network/protocol.
+func classifyArtifactError(stage, key string, err error) errs.TypedError {
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		return prepareFileError(err)
+	}
+	return errs.NewNetworkError(errs.SubtypeNetworkProtocol, "failed to %s %s artifact: %s", stage, key, err).
+		WithCause(err)
+}
+
+func prepareFileError(err error) errs.TypedError {
+	return errs.NewInternalError(errs.SubtypeFileIO, "failed to prepare distribution update: %s", err).
+		WithCause(err)
 }

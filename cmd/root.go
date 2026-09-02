@@ -144,11 +144,11 @@ var (
 	checkCachedUpdate     = update.CheckCached
 	refreshUpdateCache    = update.RefreshCache
 	initializeSkillsCheck = func(version string) {
-		sourceIdentity := skillscheck.OfficialSourceIdentity
-		if manifestURL, enabled, err := distribution.ResolveManifestURL(context.Background()); err == nil && enabled {
-			sourceIdentity = distribution.ManifestSourceIdentity(manifestURL)
+		if src, err := distribution.ResolveSource(context.Background()); err == nil && src.ManifestMode() {
+			skillscheck.InitForSource(version, src.Identity(), true)
+			return
 		}
-		skillscheck.InitForSource(version, sourceIdentity)
+		skillscheck.Init(version)
 	}
 )
 

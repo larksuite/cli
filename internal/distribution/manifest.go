@@ -8,14 +8,13 @@ package distribution
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"regexp"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/larksuite/cli/errs"
@@ -50,20 +49,11 @@ type Manifest struct {
 	sourceIdentity string
 }
 
-// ManifestSourceIdentity identifies one manifest without persisting its URL.
-func ManifestSourceIdentity(raw string) string {
-	sum := sha256.Sum256([]byte(raw))
-	return "manifest:" + hex.EncodeToString(sum[:])
-}
-
 // DefaultClient overrides the manifest/artifact client in tests. Production
 // uses a standalone net/http client so distribution URLs bypass extensions.
 var DefaultClient *http.Client
 
-func httpClient() *http.Client {
-	if DefaultClient != nil {
-		return DefaultClient
-	}
+var defaultClientOnce = sync.OnceValue(func() *http.Client {
 	return &http.Client{
 		// Distribution URLs bypass extension hooks, but they still use the CLI's
 		// built-in proxy, custom CA, and fail-closed transport policy.
@@ -75,6 +65,13 @@ func httpClient() *http.Client {
 			return nil
 		},
 	}
+})
+
+func httpClient() *http.Client {
+	if DefaultClient != nil {
+		return DefaultClient
+	}
+	return defaultClientOnce()
 }
 
 // PlatformKey returns the manifest artifact key for a platform.
@@ -83,86 +80,74 @@ func PlatformKey(goos, goarch string) string { return goos + "-" + goarch }
 // CurrentPlatformKey returns the artifact key for this binary.
 func CurrentPlatformKey() string { return PlatformKey(runtime.GOOS, runtime.GOARCH) }
 
-// FetchManifest synchronously loads and validates the configured manifest.
-// Failures are classified at this owner boundary before they reach commands,
-// background checks, or diagnostics.
-func FetchManifest(ctx context.Context, manifestURL string) (*Manifest, errs.TypedError) {
-	manifest, err := fetchManifest(ctx, manifestURL)
+// FetchManifest synchronously loads and validates the source's manifest.
+// Fetch failures are network errors; a fetched body that fails validation is
+// an invalid response.
+func (s Source) FetchManifest(ctx context.Context) (*Manifest, errs.TypedError) {
+	body, err := fetchManifestBody(ctx, s.manifestURL)
 	if err != nil {
-		return nil, classifyError("failed to load distribution manifest", err)
+		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "failed to fetch distribution manifest: %s", err).
+			WithCause(err)
 	}
+	manifest, err := parseManifest(body, CurrentPlatformKey())
+	if err != nil {
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "invalid distribution manifest: %s", err).
+			WithCause(err)
+	}
+	manifest.sourceIdentity = s.Identity()
 	return manifest, nil
 }
 
-func fetchManifest(ctx context.Context, manifestURL string) (*Manifest, error) {
+func fetchManifestBody(ctx context.Context, manifestURL string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
 	resp, err := downloadtransport.URL(httpClient(), manifestURL)(ctx, download.Request{})
 	if err != nil {
-		return nil, fmt.Errorf("fetch distribution manifest: %w", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, manifestMaxBody+1))
 	if err != nil {
-		return nil, fmt.Errorf("read distribution manifest: %w", err)
+		return nil, err
 	}
 	if len(body) > manifestMaxBody {
 		return nil, fmt.Errorf("distribution manifest exceeds %d bytes", manifestMaxBody)
 	}
-	manifest, err := parseManifest(body, CurrentPlatformKey())
-	if err != nil {
-		return nil, err
-	}
-	manifest.sourceIdentity = ManifestSourceIdentity(manifestURL)
-	return manifest, nil
+	return body, nil
 }
 
 func parseManifest(data []byte, platformKey string) (*Manifest, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	var manifest Manifest
 	if err := decoder.Decode(&manifest); err != nil {
-		return nil, fmt.Errorf("invalid distribution manifest: %w", err)
+		return nil, err
 	}
-	if err := ensureJSONEOF(decoder); err != nil {
-		return nil, fmt.Errorf("invalid distribution manifest: %w", err)
+	if _, err := decoder.Token(); err != io.EOF {
+		if err == nil {
+			err = fmt.Errorf("multiple JSON values")
+		}
+		return nil, err
 	}
 	if manifest.Schema != manifestSchema {
-		return nil, fmt.Errorf("unsupported distribution manifest schema %d", manifest.Schema)
+		return nil, fmt.Errorf("unsupported schema %d", manifest.Schema)
 	}
 	if manifest.Version == "" {
-		return nil, fmt.Errorf("distribution manifest version must be a non-empty opaque string")
+		return nil, fmt.Errorf("version must be a non-empty opaque string")
 	}
 	if manifest.Artifacts == nil {
-		return nil, fmt.Errorf("distribution manifest artifacts are required")
+		return nil, fmt.Errorf("artifacts are required")
 	}
 	for _, required := range []string{SkillsKey, platformKey} {
 		artifact, ok := manifest.Artifacts[required]
 		if !ok {
-			return nil, fmt.Errorf("distribution manifest is missing required artifact %q", required)
+			return nil, fmt.Errorf("missing required artifact %q", required)
 		}
-		if err := validateArtifact(required, artifact); err != nil {
-			return nil, err
+		if err := validateDistributionURL(artifact.URL); err != nil {
+			return nil, fmt.Errorf("artifact %q has invalid URL: %w", required, err)
+		}
+		if !checksumPattern.MatchString(artifact.Checksum) {
+			return nil, fmt.Errorf("artifact %q has invalid checksum", required)
 		}
 	}
 	return &manifest, nil
-}
-
-func validateArtifact(key string, artifact Artifact) error {
-	if err := validateDistributionURL(artifact.URL); err != nil {
-		return fmt.Errorf("distribution artifact %q has invalid URL: %w", key, err)
-	}
-	if !checksumPattern.MatchString(artifact.Checksum) {
-		return fmt.Errorf("distribution artifact %q has invalid checksum", key)
-	}
-	return nil
-}
-
-func ensureJSONEOF(decoder *json.Decoder) error {
-	if _, err := decoder.Token(); err != io.EOF {
-		if err == nil {
-			return fmt.Errorf("multiple JSON values")
-		}
-		return err
-	}
-	return nil
 }

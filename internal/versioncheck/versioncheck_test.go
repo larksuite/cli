@@ -72,6 +72,62 @@ func TestIsNewerHandlesVersionInputBoundaries(t *testing.T) {
 	}
 }
 
+func TestParse(t *testing.T) {
+	tests := []struct {
+		input string
+		want  []int
+	}{
+		{"1.2.3", []int{1, 2, 3}},
+		{"v1.2.3", []int{1, 2, 3}},
+		{"0.0.1", []int{0, 0, 1}},
+		{"1.0.0-beta.1", []int{1, 0, 0}},
+		{"1.0.0-rc.1", []int{1, 0, 0}},
+		{"1.0.0-0", []int{1, 0, 0}},
+		{"1.0.0+build.123", []int{1, 0, 0}},
+		{"1.0.0-beta.1+build", []int{1, 0, 0}},
+		{"1.0.0-", nil},        // empty pre-release
+		{"1.0.0-01", nil},      // leading zero in numeric pre-release
+		{"1.0.0-beta..1", nil}, // empty identifier between dots
+		{"01.0.0", nil},        // leading zero in major
+		{"1.00.0", nil},        // leading zero in minor
+		{"1.0.00", nil},        // leading zero in patch
+		{"DEV", nil},
+		{"", nil},
+		{"1.2", nil},
+	}
+	for _, tt := range tests {
+		got := Parse(tt.input)
+		if tt.want == nil {
+			if got != nil {
+				t.Errorf("Parse(%q) = %v, want nil", tt.input, got)
+			}
+			continue
+		}
+		if got == nil || got[0] != tt.want[0] || got[1] != tt.want[1] || got[2] != tt.want[2] {
+			t.Errorf("Parse(%q) = %v, want %v", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestNormalizeAndEqual(t *testing.T) {
+	for _, tt := range []struct {
+		input string
+		want  string
+	}{
+		{"1.2.3", "1.2.3"},
+		{"v1.2.3", "1.2.3"},
+		{"V1.2.3", "1.2.3"},
+		{" v1.2.3 ", "1.2.3"},
+	} {
+		if got := Normalize(tt.input); got != tt.want {
+			t.Errorf("Normalize(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+	if !Equal("v1.2.3", "1.2.3") || Equal("1.2.3", "1.2.4") {
+		t.Error("Equal mismatch")
+	}
+}
+
 func TestIsCIEnv(t *testing.T) {
 	for _, key := range []string{"CI", "BUILD_NUMBER", "RUN_ID"} {
 		t.Run(key, func(t *testing.T) {

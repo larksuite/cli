@@ -335,25 +335,6 @@ func TestUpdatePnpm_Unavailable_ManualFallback(t *testing.T) {
 	}
 }
 
-func TestNormalizeVersion(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{input: "1.2.3", want: "1.2.3"},
-		{input: "v1.2.3", want: "1.2.3"},
-		{input: "V1.2.3", want: "1.2.3"},
-		{input: " v1.2.3 ", want: "1.2.3"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			if got := normalizeVersion(tt.input); got != tt.want {
-				t.Fatalf("normalizeVersion(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestUpdateAlreadyUpToDate_JSON(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	mockSkillsSync(t)
