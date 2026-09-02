@@ -579,6 +579,25 @@ func TestSDKBootstrapRedirectGuardUsesLogicalURLAfterExtensionRewrite(t *testing
 	}
 }
 
+func TestSDKBootstrapRedirectGuardAllowsRewrittenOrigin(t *testing.T) {
+	logical, err := http.NewRequest(http.MethodGet, "https://platform.example/bootstrap", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	effective := logical.Clone(logical.Context())
+	effective.URL, err = url.Parse("https://mirror.example/bootstrap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	guard := &sameOriginRedirectTransport{base: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return redirectResponse(effective, http.StatusTemporaryRedirect, "https://mirror.example/next"), nil
+	})}
+
+	if _, err := guard.RoundTrip(logical); err != nil {
+		t.Fatalf("RoundTrip() error = %v, want rewritten-origin redirect allowed", err)
+	}
+}
+
 func TestSDKBootstrapRedirectGuardChecksLocationAfterExtensionPostHook(t *testing.T) {
 	var externalCalls atomic.Int32
 	sidecarURL, err := url.Parse("https://sidecar.example")

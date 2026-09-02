@@ -15,6 +15,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/command"
 	"github.com/larksuite/cli/extension/platform"
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
 )
 
 type businessArgs struct {
@@ -62,6 +63,12 @@ func TestWithCommandSetsInIsolatedProcesses(t *testing.T) {
 
 func TestFailedBuildDoesNotAffectNextBuild(t *testing.T) {
 	tmpHome(t)
+	testurlrewrite.Register(t, func(rawURL string) string {
+		if rawURL == skillsSetupURL {
+			return "https://mirror.example/skills-help"
+		}
+		return rawURL
+	})
 	platform.ResetForTesting()
 	t.Cleanup(platform.ResetForTesting)
 	platform.Register(&failingPlugin{
@@ -79,6 +86,9 @@ func TestFailedBuildDoesNotAffectNextBuild(t *testing.T) {
 	)
 	if findCommand(failed, "im +business-failed-build") == nil || failed.PersistentPreRunE == nil {
 		t.Fatal("failed build did not reach the post-mount plugin guard")
+	}
+	if !strings.Contains(failed.UsageTemplate(), "https://mirror.example/skills-help") {
+		t.Fatal("failed build retained the package-initialized help URL")
 	}
 
 	platform.ResetForTesting()
