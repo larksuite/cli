@@ -253,8 +253,8 @@ func TestRunWikiMoveToDriveSuccess(t *testing.T) {
 	if len(client.moveSpecs) != 1 || client.moveSpecs[0].FolderToken != "fldABC" {
 		t.Fatalf("move specs = %#v", client.moveSpecs)
 	}
-	if !strings.Contains(stderr.String(), "completed successfully") {
-		t.Fatalf("stderr = %q", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no progress output", stderr.String())
 	}
 }
 

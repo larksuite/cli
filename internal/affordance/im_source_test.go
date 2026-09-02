@@ -31,6 +31,7 @@ var imAffordanceExamples = []imAffordanceExample{
 	{method: "+chat-update", command: `lark-cli im +chat-update --chat-id oc_xxx --name "New Group Name"`, source: "lark-im/references/lark-im-chat-update.md"},
 	{method: "+message-read-users", command: "lark-cli im +message-read-users --message-id om_xxx", source: "lark-im/references/lark-im-message-read-status.md"},
 	{method: "+messages-mget", command: "lark-cli im +messages-mget --message-ids om_xxx", source: "lark-im/references/lark-im-messages-mget.md"},
+	{method: "+messages-edit", command: "lark-cli im +messages-edit --as bot --message-id om_xxx --markdown \"Updated content\" --set-attachments file_xxx", source: "lark-im/references/lark-im-messages-edit.md"},
 	{
 		method:        "+messages-read-status",
 		command:       "lark-cli im +messages-read-status --as user --message-ids om_xxx,om_yyy",
@@ -77,6 +78,7 @@ var imAffordanceExamples = []imAffordanceExample{
 	},
 }
 
+// TestIMAffordanceExamplesTraceToCurrentSkill verifies affordance examples resolve to current shortcuts.
 func TestIMAffordanceExamplesTraceToCurrentSkill(t *testing.T) {
 	prev := mdSource
 	t.Cleanup(func() { SetSource(prev) })
@@ -85,7 +87,7 @@ func TestIMAffordanceExamplesTraceToCurrentSkill(t *testing.T) {
 	if got, ok := DomainSkill("im"); !ok || got != "lark-im" {
 		t.Fatalf("DomainSkill(im) = (%q, %v), want (lark-im, true)", got, ok)
 	}
-	if got, want := len(imAffordanceExamples), 35; got != want {
+	if got, want := len(imAffordanceExamples), 36; got != want {
 		t.Fatalf("audited IM example count = %d, want %d", got, want)
 	}
 	affordanceSource, err := os.ReadFile("../../affordance/im.md")
@@ -104,8 +106,8 @@ func TestIMAffordanceExamplesTraceToCurrentSkill(t *testing.T) {
 			shortcutCount++
 		}
 	}
-	if shortcutCount != 23 || len(imAffordanceExamples)-shortcutCount != 12 {
-		t.Fatalf("audited split = %d shortcuts / %d raw, want 23 / 12", shortcutCount, len(imAffordanceExamples)-shortcutCount)
+	if shortcutCount != 24 || len(imAffordanceExamples)-shortcutCount != 12 {
+		t.Fatalf("audited split = %d shortcuts / %d raw, want 24 / 12", shortcutCount, len(imAffordanceExamples)-shortcutCount)
 	}
 	for method := range parsedDomain.methods {
 		if !audited[method] {

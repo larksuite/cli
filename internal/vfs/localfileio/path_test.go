@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -36,9 +37,9 @@ func TestSafeOutputPath_RejectsPathTraversalAndDangerousInput(t *testing.T) {
 		{"dot-dot mid path", "subdir/../../etc/passwd", true},
 		{"triple dot-dot", "../../../etc/shadow", true},
 
-		// ── GIVEN: absolute paths → THEN: rejected ──
-		{"absolute path unix", "/etc/passwd", true},
-		{"absolute path root", "/tmp/evil", true},
+		// ── GIVEN: absolute paths outside the built-in allowlist → THEN: rejected ──
+		{"absolute path denylist", "/etc/passwd", true},
+		{"allow prefix boundary", "/tmpfoo/x", true},
 		{"absolute path windows drive", `C:\Users\agent\secret.txt`, true},
 		{"absolute path windows drive slash", "C:/Users/agent/secret.txt", true},
 		{"absolute path windows rooted", `\Users\agent\secret.txt`, true},
@@ -58,7 +59,10 @@ func TestSafeOutputPath_RejectsPathTraversalAndDangerousInput(t *testing.T) {
 
 		// ── GIVEN: looks dangerous but is actually safe → THEN: allowed ──
 		{"literal percent 2e", "%2e%2e/etc/passwd", false},
-		{"tilde path", "~/file.txt", false},
+
+		// ── GIVEN: ~ expands to the home directory, which is not an allow
+		// root by itself (only ~/files is) → THEN: rejected ──
+		{"tilde path outside allowlist", "~/file.txt", true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			// WHEN: SafeOutputPath validates the path
@@ -242,9 +246,10 @@ func TestSafeOutputPath_DeepNonExistentPathStaysInCWD(t *testing.T) {
 	}
 }
 
-func TestSafeUploadPath_RejectsTempFileAbsolutePath(t *testing.T) {
-	// GIVEN: a real temp file (absolute path under os.TempDir())
-	f, err := os.CreateTemp("", "upload-test-*.bin")
+func TestSafeInputPath_AllowsBuiltinTmpAbsolutePath(t *testing.T) {
+	// GIVEN: a real file under the built-in /tmp allow root (the system temp
+	// dir on Windows)
+	f, err := os.CreateTemp(tmpRoot(), "upload-test-*.bin")
 	if err != nil {
 		t.Fatalf("CreateTemp: %v", err)
 	}
@@ -253,12 +258,73 @@ func TestSafeUploadPath_RejectsTempFileAbsolutePath(t *testing.T) {
 	t.Cleanup(func() { os.Remove(tmpPath) })
 
 	// WHEN: SafeInputPath validates the absolute temp path
-	_, err = SafeInputPath(tmpPath)
+	got, err := SafeInputPath(tmpPath)
 
-	// THEN: the strict validator rejects it — uploads / drive sync rely on
-	// relative-only; out-of-tree content reaches flags via stdin ("-")
+	// THEN: accepted — /tmp is on the built-in allowlist
+	if err != nil {
+		t.Fatalf("SafeInputPath(%q) error = %v, want nil", tmpPath, err)
+	}
+	want, _ := filepath.EvalSymlinks(tmpPath)
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestSafeOutputPath_AllowsHomeFilesWithoutTouchingDisk(t *testing.T) {
+	// GIVEN: a target under ~/files that does not exist (validation must not
+	// require the directory to exist, and must not create it)
+	// trustedHome, not $HOME: the policy derives ~/files from the account
+	// record, and on a host where the two disagree (sudo, a container) the
+	// $HOME-based target would not be the allow root under test.
+	home, err := trustedHome()
+	if err != nil {
+		t.Skipf("no trusted home: %v", err)
+	}
+	target := filepath.Join(home, "files", "safeoutput-test-nonexistent", "out.xlsx")
+
+	// WHEN: SafeOutputPath validates the path
+	_, err = SafeOutputPath(target)
+
+	// THEN: accepted — ~/files is on the built-in allowlist
+	if err != nil {
+		t.Fatalf("SafeOutputPath(%q) error = %v, want nil", target, err)
+	}
+	// The validation must not have created the directory it approved.
+	if _, statErr := os.Stat(filepath.Dir(target)); !os.IsNotExist(statErr) {
+		t.Errorf("validation created the target directory, stat err = %v", statErr)
+	}
+}
+
+func TestSafePath_DenyBeatsCwd(t *testing.T) {
+	// GIVEN: the process works inside a denylisted directory
+	if runtime.GOOS == "windows" {
+		t.Skip("/etc does not exist on Windows")
+	}
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	if err := os.Chdir("/etc"); err != nil {
+		t.Skipf("cannot chdir into /etc: %v", err)
+	}
+
+	// WHEN: a cwd-relative path is validated
+	_, err := SafeInputPath("./passwd")
+
+	// THEN: rejected — the denylist wins over the cwd allow root
 	if err == nil {
-		t.Fatal("expected error for absolute temp path, got nil")
+		t.Fatal("expected denylist rejection inside /etc, got nil")
+	}
+	if !strings.Contains(err.Error(), "denylist") {
+		t.Errorf("error should mention the denylist, got: %v", err)
+	}
+}
+
+func TestLocalInputPath_DeniesProtectedDirs(t *testing.T) {
+	// GIVEN/WHEN: the relaxed tier validates a denylisted absolute path
+	_, err := LocalInputPath(denylistedAbsolutePath(t))
+
+	// THEN: rejected — the denylist applies even without allowlist containment
+	if err == nil {
+		t.Fatal("expected denylist rejection, got nil")
 	}
 }
 

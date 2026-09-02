@@ -135,6 +135,71 @@ var styleFieldPrescriptions = map[string]string{
 	"underline":  `underline is font_line:"underline"`,
 	"text_align": "horizontal text alignment is horizontal_alignment (left/center/right)",
 	"font":       `cell_styles has no nested font object — use the flat font_* fields (font:{"bold":true,"size":18,"color":"#000"} becomes font_weight:"bold", font_size:18, font_color:"#000")`,
+	// The OpenAPI's own request shape is {range, style:{…}}, so a cell_styles
+	// item written from the API docs nests one level too deep. Distance-based
+	// suggestion is useless here (the fix is structural, not a rename) and the
+	// bare "style is not a supported style field" reads like the whole payload
+	// shape is wrong. 08-18..24 eval, --styles group.
+	"style": `cell_styles has no nested style object — the style fields sit directly on the item, next to range ({"range":"A1:B2","style":{"font_weight":"bold"}} becomes {"range":"A1:B2","font_weight":"bold"})`,
+	// bg_color / text_color read unambiguously (unlike fore_color, which is
+	// rejected as ambiguous above) but stay prescriptions rather than silent
+	// aliases: they are spelling permutations, not words from a real external
+	// vocabulary, and the silent-alias admission bar excludes those.
+	"bg_color":   "the cell fill is background_color",
+	"fill_color": "the cell fill is background_color",
+	"text_color": "the text color is font_color",
+}
+
+// borderFieldPrescription answers any unsupported border-family spelling that
+// survived foldBorderFamilyAliases (which already absorbs border / borders /
+// border_<side> / border_<attr> and their word-order twins). What is left is
+// vocabulary with no equivalent here at all: the Lark OpenAPI's own
+// border_type (FULL_BORDER / OUTER_BORDER / …) and CSS's border_width. Both
+// are real external vocabularies, so they recur; neither maps unambiguously
+// onto a per-side style/weight/color triple — FULL_BORDER vs OUTER_BORDER
+// differ on the interior edges this payload cannot address. 08-18..24 eval:
+// border_type was the top single field in the --styles error group, and the
+// did-you-mean it drew ("border_styles") sent the retry back with the same
+// unusable value.
+const borderFieldPrescription = `borders go in border ({"border":{"style":"solid","weight":"thin","color":"#000000"}} — all four sides) or border_styles for per-side control ({"border_styles":{"bottom":{"style":"solid"}}}); style is solid/dashed/dotted/double/none, weight is thin/medium/thick — there is no border_type / border_width field`
+
+// styleFieldPrescriptionsSquashed keys the curated table by letters alone, so
+// every separator spelling of one mistake (border_type / borderType /
+// border-type) resolves to the same prescription. Built once at init; the
+// parity test asserts no two entries collide after squashing.
+var styleFieldPrescriptionsSquashed = func() map[string]string {
+	out := make(map[string]string, len(styleFieldPrescriptions))
+	for k, v := range styleFieldPrescriptions {
+		out[squashStyleFieldKey(k)] = v
+	}
+	return out
+}()
+
+// squashStyleFieldKey reduces a field name to its letters and digits, lowercased.
+func squashStyleFieldKey(field string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(field) {
+		if r == '_' || r == '-' || r == ' ' {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// styleFieldPrescriptionFor returns the curated fix for an unsupported
+// cell_styles field name, or "" when the generic did-you-mean should answer
+// instead. The border family gets one shared answer: enumerating its spelling
+// permutations is endless, but every one of them has the same two-form fix.
+func styleFieldPrescriptionFor(field string) string {
+	key := squashStyleFieldKey(field)
+	if rx, ok := styleFieldPrescriptionsSquashed[key]; ok {
+		return rx
+	}
+	if strings.HasPrefix(key, "border") || strings.HasSuffix(key, "border") {
+		return borderFieldPrescription
+	}
+	return ""
 }
 
 // cellStyleEnumFields sources the enum vocabulary for enum-bearing

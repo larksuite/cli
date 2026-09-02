@@ -33,5 +33,6 @@ func ReadDir(name string) ([]os.DirEntry, error)       { return DefaultFS.ReadDi
 func Remove(name string) error                         { return DefaultFS.Remove(name) }
 func RemoveAll(path string) error                      { return DefaultFS.RemoveAll(path) }
 func Rename(oldpath, newpath string) error             { return DefaultFS.Rename(oldpath, newpath) }
+func Link(oldname, newname string) error               { return DefaultFS.Link(oldname, newname) }
 func EvalSymlinks(path string) (string, error)         { return DefaultFS.EvalSymlinks(path) }
 func Executable() (string, error)                      { return DefaultFS.Executable() }

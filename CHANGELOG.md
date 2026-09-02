@@ -2,6 +2,107 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.93] - 2026-09-01
+
+### Features
+
+- **docs**: route local Word media uploads to office mount point (#2568)
+- **base**: support ranking dashboard blocks (#2528)
+- **sheets**: cut the top command-error clusters from the 08-18..24 eval batch (#2559)
+- add shortcut for +list-attendees (#2591)
+- **vfs**: allow absolute paths under a built-in path policy (#2580)
+
+### Bug Fixes
+
+- **event**: preserve UTF-8 in truncated diagnostics (#2535)
+- **base**: correct reminder trigger offset direction (#2584)
+- **shortcuts**: remove non-actionable stderr progress (#2532)
+
+### Documentation
+
+- **lark-doc**: retain draft workspaces after creation (#2574)
+- **sheets**: clarify dropdown values and default colors (#2582)
+
+### Refactoring
+
+- **sheets**: remove legacy sheets command surface (#2572)
+
+### Misc
+
+- Feat/okr comment (#2558)
+
+## [v1.0.92] - 2026-08-28
+
+### Features
+
+- **sheets**: add +cond-format-result-get and --include conditional_format (#2502)
+- **im**: support rich-text message attachment zone in send/reply/mge… (#2515)
+
+### Bug Fixes
+
+- **slides**: relax office token length check from 28 to >=25 (#2531)
+- **sheets**: make image-upload previews match what Execute sends (#2537)
+- **sheets**: suppress multipart stderr noise and tighten e2e boundary test (#2550)
+
+### Refactoring
+
+- **sheets**: keep the success path off stderr (#2533)
+
+## [v1.0.91] - 2026-08-27
+
+### Features
+
+- **im**: add chat AppLink output (#2491)
+- **sheets**: relax local-office token length check from 28 to >=25 (#2509)
+- **calendar**: add +join-event shortcut and share token support (#2508)
+- **base**: streamline record workflows (#2529)
+- **base**: add field extension shortcuts (#2463)
+- add im message patch meta api (#2407)
+
+### Bug Fixes
+
+- **docs**: recover PowerShell-dequoted presentation JSON (#2501)
+
+### Documentation
+
+- **approval**: document keyword search and add-sign flow (#2388)
+
+## [v1.0.90] - 2026-08-25
+
+### Features
+
+- event organizer transfer bot to user (#2448)
+- **base**: document app default page reuse (#2436)
+- **slides**: un-deprecate +replace-pages shortcut (#2470)
+- **slides**: add media download shortcut (#2446)
+- **vc**: add agent meeting control shortcuts (#2466)
+- **slides**: add marginRight attribute to <p> element schema (#2493)
+- words replace and minutes fix (#2490)
+- **sheets**: combine chart workflows and special chart types (#2374)
+- **extension**: add business command extension v1 (#2308)
+- **drive**: support appid in member-remove (#2499)
+- **config**: support keychain-backed tenant access tokens (#2488)
+
+### Bug Fixes
+
+- **apps**: classify the online DDL ban and the file storage quota failure (#2460)
+- **base**: hide dashboard auto analysis setting (#2465)
+- **slides**: strip stale <note> id in +update-slide to avoid backend crash (#2475)
+- **drive**: continue downloads on permission scope errors (#2494)
+- **wiki**: keep node-get stderr machine-readable (#2449)
+- **slides**: avoid PID variable in examples (#2496)
+- **docs**: continue media downloads on permission scope errors (#2498)
+- **skills**: scope markdown routing to Lark resources (#2497)
+- **auth**: exclude im:message.send_as_user from batch scope sets (#2471)
+
+### Refactoring
+
+- **slides**: assert dry-run parent_type instead of deriving it from a placeholder (#2461)
+
+### Misc
+
+- Support repeated mail compose flags (#2271)
+
 ## [v1.0.89] - 2026-08-21
 
 ### Features
@@ -1983,6 +2084,10 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.93]: https://github.com/larksuite/cli/releases/tag/v1.0.93
+[v1.0.92]: https://github.com/larksuite/cli/releases/tag/v1.0.92
+[v1.0.91]: https://github.com/larksuite/cli/releases/tag/v1.0.91
+[v1.0.90]: https://github.com/larksuite/cli/releases/tag/v1.0.90
 [v1.0.89]: https://github.com/larksuite/cli/releases/tag/v1.0.89
 [v1.0.88]: https://github.com/larksuite/cli/releases/tag/v1.0.88
 [v1.0.87]: https://github.com/larksuite/cli/releases/tag/v1.0.87

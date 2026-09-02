@@ -1161,6 +1161,209 @@ func TestTemplateCenterExecuteShortcuts(t *testing.T) {
 
 }
 
+func TestFieldExtensionExecuteShortcuts(t *testing.T) {
+	t.Run("get", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x/field_extensions",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"current_extension": map[string]interface{}{
+						"extension_id": "builtin_llm_completion",
+						"inputs": map[string]interface{}{
+							"prompt": []interface{}{
+								map[string]interface{}{"type": "text", "text": "Summarize "},
+								map[string]interface{}{"type": "field_ref", "field": "Description"},
+							},
+						},
+					},
+				},
+			},
+		})
+
+		err := runShortcut(t, BaseFieldExtensionGet, []string{
+			"+field-extension-get",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--field-id", "fld_x",
+		}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+
+		data := decodeBaseEnvelope(t, stdout)
+		current, _ := data["current_extension"].(map[string]interface{})
+		if current["extension_id"] != "builtin_llm_completion" {
+			t.Fatalf("unexpected current_extension: %#v", current)
+		}
+	})
+
+	t.Run("update", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		stub := &httpmock.Stub{
+			Method: "PUT",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x/field_extensions",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"current_extension": map[string]interface{}{
+						"extension_id": "builtin_llm_completion",
+						"inputs": map[string]interface{}{
+							"prompt": []interface{}{map[string]interface{}{"type": "text", "text": "Summarize"}},
+						},
+					},
+				},
+			},
+		}
+		reg.Register(stub)
+
+		err := runShortcut(t, BaseFieldExtensionUpdate, []string{
+			"+field-extension-update",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--field-id", "fld_x",
+			"--json", `{"extension_id":"builtin_llm_completion","inputs":{"prompt":[{"type":"text","text":"Summarize "},{"type":"field_ref","field":"Description"}]}}`,
+			"--yes",
+		}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+
+		body := decodeCapturedJSONBody(t, stub)
+		if body["extension_id"] != "builtin_llm_completion" {
+			t.Fatalf("request body=%#v", body)
+		}
+		inputs, _ := body["inputs"].(map[string]interface{})
+		prompt, _ := inputs["prompt"].([]interface{})
+		if len(prompt) != 2 {
+			t.Fatalf("prompt=%#v, want two segments", inputs["prompt"])
+		}
+		textSegment, _ := prompt[0].(map[string]interface{})
+		if textSegment["type"] != "text" || textSegment["text"] != "Summarize " {
+			t.Fatalf("text prompt segment=%#v", textSegment)
+		}
+		fieldRefSegment, _ := prompt[1].(map[string]interface{})
+		if fieldRefSegment["type"] != "field_ref" || fieldRefSegment["field"] != "Description" {
+			t.Fatalf("field_ref prompt segment=%#v", fieldRefSegment)
+		}
+		data := decodeBaseEnvelope(t, stdout)
+		current, _ := data["current_extension"].(map[string]interface{})
+		if current["extension_id"] != "builtin_llm_completion" {
+			t.Fatalf("unexpected output: %#v", data)
+		}
+	})
+
+	t.Run("clear", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		stub := &httpmock.Stub{
+			Method: "PUT",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x/field_extensions",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"current_extension": nil},
+			},
+		}
+		reg.Register(stub)
+
+		err := runShortcut(t, BaseFieldExtensionUpdate, []string{
+			"+field-extension-update",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--field-id", "fld_x",
+			"--json", `{}`,
+			"--yes",
+		}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+
+		body := decodeCapturedJSONBody(t, stub)
+		if len(body) != 0 {
+			t.Fatalf("clear request body=%#v, want empty object", body)
+		}
+		data := decodeBaseEnvelope(t, stdout)
+		if _, exists := data["current_extension"]; !exists || data["current_extension"] != nil {
+			t.Fatalf("unexpected clear output: %#v", data)
+		}
+	})
+
+	t.Run("update cells row", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		stub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x/field_extensions/update_cells",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"task_id": "tsk_x"},
+			},
+		}
+		reg.Register(stub)
+
+		err := runShortcut(t, BaseFieldExtensionUpdateCells, []string{
+			"+field-extension-update-cells",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--field-id", "fld_x",
+			"--type", "row",
+			"--record-id", "rec_1",
+			"--record-id", "rec_2",
+			"--yes",
+		}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+
+		body := decodeCapturedJSONBody(t, stub)
+		if body["type"] != "row" {
+			t.Fatalf("request body=%#v", body)
+		}
+		recordIDs, _ := body["record_ids"].([]interface{})
+		if len(recordIDs) != 2 || recordIDs[0] != "rec_1" || recordIDs[1] != "rec_2" {
+			t.Fatalf("record_ids=%#v", body["record_ids"])
+		}
+		data := decodeBaseEnvelope(t, stdout)
+		if data["task_id"] != "tsk_x" {
+			t.Fatalf("task_id=%#v, want tsk_x", data["task_id"])
+		}
+	})
+
+	t.Run("update cells column", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		stub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x/field_extensions/update_cells",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"task_id": "tsk_column"},
+			},
+		}
+		reg.Register(stub)
+
+		err := runShortcut(t, BaseFieldExtensionUpdateCells, []string{
+			"+field-extension-update-cells",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--field-id", "fld_x",
+			"--type", "column",
+			"--view-id", "vew_x",
+			"--yes",
+		}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+
+		body := decodeCapturedJSONBody(t, stub)
+		if body["type"] != "column" || body["view_id"] != "vew_x" {
+			t.Fatalf("request body=%#v", body)
+		}
+		if _, exists := body["record_ids"]; exists {
+			t.Fatalf("column request must omit record_ids: %#v", body)
+		}
+	})
+}
+
 func TestBaseBlockExecuteShortcuts(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	listStub := &httpmock.Stub{
@@ -4052,7 +4255,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			"--base-token", "app_x",
 			"--table-id", "tbl_x",
 			"--record-id", "rec_x",
-			"--output", "../escape",
+			"--output", "../../../../../../../../../../../../escape",
 		}, factory, stdout)
 		if err == nil || !strings.Contains(err.Error(), "unsafe output path") {
 			t.Fatalf("err=%v", err)

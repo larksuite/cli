@@ -42,6 +42,24 @@ type FileIO interface {
 	Save(path string, opts SaveOptions, body io.Reader) (SaveResult, error)
 }
 
+// ExclusiveFileIO is an optional extension for providers whose commit step can
+// refuse an existing target.
+//
+// A no-clobber policy cannot be honoured by checking existence and then calling
+// Save: another writer may create the target between the two, and the commit
+// would overwrite it. Only a provider that makes the commit itself exclusive can
+// promise otherwise, so a provider that cannot must leave this interface
+// unimplemented -- callers then reject the policy explicitly instead of
+// appearing to enforce it.
+type ExclusiveFileIO interface {
+	FileIO
+
+	// SaveExclusive writes content to path only when path does not exist, and
+	// returns an error satisfying errors.Is(err, fs.ErrExist) when it does.
+	// A failed write must not leave a partial artifact at path.
+	SaveExclusive(path string, opts SaveOptions, body io.Reader) (SaveResult, error)
+}
+
 // WorkspaceFileIO is an optional extension for commands that own temporary
 // workspace entries. RemoveWorkspaceEntry must remove exactly one file or one
 // empty directory, never recursively, and must apply the same path validation

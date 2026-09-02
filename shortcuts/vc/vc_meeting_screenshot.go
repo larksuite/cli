@@ -139,7 +139,6 @@ var VCMeetingScreenshot = common.Shortcut{
 			"size_bytes":   result.Size(),
 			"content_type": contentType,
 			"sha256":       fmt.Sprintf("%x", digest),
-			"log_id":       strings.TrimSpace(resp.Header.Get(larkcore.HttpHeaderKeyLogId)),
 		}, nil)
 		return nil
 	},

@@ -178,6 +178,146 @@ func TestDocMediaInsertDryRunWikiAddsResolveStep(t *testing.T) {
 	}
 }
 
+func TestDocMediaParentType(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		parentType string
+		parentNode string
+		want       string
+	}{
+		{
+			name:       "local Word token uses office mount point",
+			parentType: "docx_image",
+			parentNode: "aaaaOaaaaFaaaaLaaaa0aaaaXaW",
+			want:       officeDocxFileParentType,
+		},
+		{
+			name:       "ordinary docx preserves parent type",
+			parentType: "docx_image",
+			parentNode: "blkcnNative123",
+			want:       "docx_image",
+		},
+		{
+			name:       "local Excel token preserves parent type",
+			parentType: "docx_image",
+			parentNode: "aaaaOaaaaFaaaaLaaaa0aaaaXaE",
+			want:       "docx_image",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := docMediaParentType(tt.parentType, tt.parentNode); got != tt.want {
+				t.Fatalf("docMediaParentType(%q, %q) = %q, want %q", tt.parentType, tt.parentNode, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsLocalWordToken(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		token string
+		want  bool
+	}{
+		{name: "27 character Word token", token: "aaaaOaaaaFaaaaLaaaa0aaaaXaW", want: true},
+		{name: "28 character Word token", token: "aaaaOaaaaFaaaaLaaaa0aaaaXaaW", want: true},
+		{name: "Excel token", token: "aaaaOaaaaFaaaaLaaaa0aaaaXaE"},
+		{name: "PPT token", token: "aaaaOaaaaFaaaaLaaaa0aaaaXaP"},
+		{name: "legacy numeric Word type", token: "aaaaOaaaaFaaaaLaaaa0aaaaXa3"},
+		{name: "wrong marker", token: "aaaaOaaaaFaaaaLaaaa0aaaaYaW"},
+		{name: "short token", token: "aaaaOaaaaFaaaaLaaaa0aaa"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := isLocalWordToken(tt.token); got != tt.want {
+				t.Fatalf("isLocalWordToken(%q) = %v, want %v", tt.token, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDocMediaUploadDryRunUsesOfficeParentTypeForLocalWord(t *testing.T) {
+	cmd := &cobra.Command{Use: "docs +media-upload"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("parent-type", "", "")
+	cmd.Flags().String("parent-node", "", "")
+	cmd.Flags().String("doc-id", "", "")
+	if err := cmd.Flags().Set("file", "./image.png"); err != nil {
+		t.Fatalf("set --file: %v", err)
+	}
+	if err := cmd.Flags().Set("parent-type", "docx_image"); err != nil {
+		t.Fatalf("set --parent-type: %v", err)
+	}
+	const localToken = "aaaaOaaaaFaaaaLaaaa0aaaaXaW"
+	if err := cmd.Flags().Set("parent-node", localToken); err != nil {
+		t.Fatalf("set --parent-node: %v", err)
+	}
+
+	dry := decodeDocDryRun(t, DocMediaUpload.DryRun(context.Background(), common.TestNewRuntimeContext(cmd, nil)))
+	if len(dry.API) != 1 {
+		t.Fatalf("expected 1 API call, got %d", len(dry.API))
+	}
+	if got, _ := dry.API[0].Body["parent_type"].(string); got != officeDocxFileParentType {
+		t.Fatalf("parent_type = %q, want %q", got, officeDocxFileParentType)
+	}
+	if got, _ := dry.API[0].Body["parent_node"].(string); got != localToken {
+		t.Fatalf("parent_node = %q, want %q", got, localToken)
+	}
+}
+
+func TestDocMediaUploadExecuteUsesOfficeParentTypeForLocalWord(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-local-office-upload-app"))
+	uploadStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"file_token": "file_local_office_123"},
+		},
+	}
+	reg.Register(uploadStub)
+
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+	if err := os.WriteFile("image.png", []byte("png-bytes"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	const localToken = "aaaaOaaaaFaaaaLaaaa0aaaaXaW"
+	err := mountAndRunDocs(t, DocMediaUpload, []string{
+		"+media-upload",
+		"--file", "image.png",
+		"--parent-type", "docx_image",
+		"--parent-node", localToken,
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	body := string(uploadStub.CapturedBody)
+	if !strings.Contains(body, "\r\n\r\n"+officeDocxFileParentType+"\r\n") {
+		t.Fatalf("upload body missing parent_type %q: %s", officeDocxFileParentType, body)
+	}
+	if strings.Contains(body, "\r\n\r\ndocx_image\r\n") {
+		t.Fatalf("upload body retained caller parent_type docx_image: %s", body)
+	}
+	if !strings.Contains(body, "\r\n\r\n"+localToken+"\r\n") {
+		t.Fatalf("upload body missing local parent_node %q: %s", localToken, body)
+	}
+	if !strings.Contains(stdout.String(), "file_local_office_123") {
+		t.Fatalf("stdout missing file token: %s", stdout.String())
+	}
+}
+
 func TestDocMediaUploadDryRunUsesMultipartForLargeFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	withDocsWorkingDir(t, tmpDir)
@@ -437,12 +577,8 @@ func TestDocMediaInsertExecuteFromClipboard(t *testing.T) {
 		t.Fatalf("unexpected error: %v — stderr: %s", err, stderr.String())
 	}
 
-	// stderr should show clipboard read + file name "clipboard.png"
-	if !strings.Contains(stderr.String(), "Reading image from clipboard") {
-		t.Errorf("stderr missing clipboard-read log: %s", stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "clipboard.png") {
-		t.Errorf("stderr missing clipboard.png file name: %s", stderr.String())
+	if stderr.Len() != 0 {
+		t.Errorf("stderr = %q, want no clipboard progress", stderr.String())
 	}
 	// stdout should include the file_token
 	if !strings.Contains(stdout.String(), "file_clip_abc") {
@@ -478,6 +614,127 @@ func TestDocMediaInsertExecuteClipboardReadError(t *testing.T) {
 	}
 }
 
+func TestDocMediaInsertBindFailureReportsUploadedStateAndRollback(t *testing.T) {
+	tests := []struct {
+		name             string
+		rollbackBody     map[string]interface{}
+		wantRollback     string
+		wantRollbackText string
+	}{
+		{
+			name:         "rollback succeeds",
+			rollbackBody: map[string]interface{}{"code": 0, "msg": "ok"},
+			wantRollback: "rollback=succeeded",
+		},
+		{
+			name: "rollback fails",
+			rollbackBody: map[string]interface{}{
+				"code": 1777001,
+				"msg":  "rollback backend failure",
+			},
+			wantRollback:     "rollback=failed",
+			wantRollbackText: "rollback backend failure",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, stderr, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-bind-recovery-app"))
+			documentID := "doxcnBindRecovery1"
+			blockID := "blk_bind_recovery"
+			fileToken := "file_bind_recovery_token"
+
+			tmpDir := t.TempDir()
+			withDocsWorkingDir(t, tmpDir)
+			if err := os.WriteFile("image.png", []byte("png-data"), 0644); err != nil {
+				t.Fatalf("WriteFile() error: %v", err)
+			}
+
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/docx/v1/documents/" + documentID + "/blocks/" + documentID,
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{
+						"block": map[string]interface{}{
+							"block_id": documentID,
+							"children": []interface{}{},
+						},
+					},
+				},
+			})
+			reg.Register(&httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/docx/v1/documents/" + documentID + "/blocks/" + documentID + "/children",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{
+						"children": []interface{}{map[string]interface{}{"block_id": blockID}},
+					},
+				},
+			})
+			reg.Register(&httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/drive/v1/medias/upload_all",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": map[string]interface{}{"file_token": fileToken},
+				},
+			})
+			reg.Register(&httpmock.Stub{
+				Method: "PATCH",
+				URL:    "/open-apis/docx/v1/documents/" + documentID + "/blocks/batch_update",
+				Body:   map[string]interface{}{"code": 1777000, "msg": "bind backend failure"},
+			})
+			reg.Register(&httpmock.Stub{
+				Method: "DELETE",
+				URL:    "/open-apis/docx/v1/documents/" + documentID + "/blocks/" + documentID + "/children/batch_delete",
+				Body:   tt.rollbackBody,
+			})
+
+			err := mountAndRunDocs(t, DocMediaInsert, []string{
+				"+media-insert",
+				"--doc", documentID,
+				"--file", "image.png",
+				"--width", "100",
+				"--height", "80",
+				"--as", "bot",
+			}, f, stdout)
+			if err == nil {
+				t.Fatal("expected bind failure, got nil")
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("stdout = %q, want empty on bind failure", stdout.String())
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("stderr = %q, want recovery in typed error only", stderr.String())
+			}
+
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed error, got %T: %v", err, err)
+			}
+			if problem.Code != 1777000 {
+				t.Fatalf("code = %d, want preserved bind error code 1777000", problem.Code)
+			}
+			for _, want := range []string{
+				"phase=bind_media",
+				"document_id=" + documentID,
+				"upload_succeeded=true",
+				"file_token=" + fileToken,
+				"block_id=" + blockID,
+				"replace_block_id=" + blockID,
+				tt.wantRollback,
+				tt.wantRollbackText,
+			} {
+				if want != "" && !strings.Contains(problem.Hint, want) {
+					t.Fatalf("hint = %q, want %q", problem.Hint, want)
+				}
+			}
+		})
+	}
+}
+
 func TestDocMediaInsertExecuteResolvesWikiBeforeFileCheck(t *testing.T) {
 	f, _, stderr, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-insert-exec-app"))
 	reg.Register(&httpmock.Stub{
@@ -509,8 +766,8 @@ func TestDocMediaInsertExecuteResolvesWikiBeforeFileCheck(t *testing.T) {
 	if !strings.Contains(err.Error(), "file not found") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(stderr.String(), "Resolved wiki to docx") {
-		t.Fatalf("stderr missing wiki resolution log: %s", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no wiki resolution progress", stderr.String())
 	}
 }
 
@@ -685,6 +942,60 @@ func TestDocWhiteboardDownloadSkipsExportAuth(t *testing.T) {
 func TestDocMediaDownloadDeclaresConditionalPermissionMemberAuthScope(t *testing.T) {
 	if len(DocMediaDownload.ConditionalScopes) != 1 || DocMediaDownload.ConditionalScopes[0] != common.DrivePermissionMemberAuthScope {
 		t.Fatalf("ConditionalScopes = %v, want [%q]", DocMediaDownload.ConditionalScopes, common.DrivePermissionMemberAuthScope)
+	}
+}
+
+func TestDocMediaDownloadPermissionAuthScopeErrorsWarnAndContinue(t *testing.T) {
+	tests := []struct {
+		name string
+		code int
+		msg  string
+	}{
+		{name: "app_scope_not_applied", code: 99991672, msg: "app scope not applied"},
+		{name: "token_scope_insufficient", code: 99991676, msg: "token scope insufficient"},
+		{name: "missing_scope", code: 99991679, msg: "missing scope"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, _, stderr, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-download-"+tt.name+"-app"))
+			f.Credential = credential.NewCredentialProvider(nil, nil, &docMediaScopedTokenResolver{scopes: "docs:document.media:download"}, nil)
+			token := "media_" + tt.name
+			reg.Register(&httpmock.Stub{
+				Method: http.MethodGet,
+				URL:    "/open-apis/drive/v1/permissions/" + token + "/members/auth",
+				Body: map[string]interface{}{
+					"code": tt.code,
+					"msg":  tt.msg,
+				},
+			})
+			reg.Register(&httpmock.Stub{
+				Method:  http.MethodGet,
+				URL:     "/open-apis/drive/v1/medias/" + token + "/download",
+				Status:  http.StatusOK,
+				RawBody: []byte("downloaded without permission auth scope"),
+				Headers: http.Header{"Content-Type": []string{"application/octet-stream"}},
+			})
+
+			tmpDir := t.TempDir()
+			withDocsWorkingDir(t, tmpDir)
+			err := mountAndRunDocs(t, DocMediaDownload, []string{
+				"+media-download",
+				"--token", token,
+				"--output", "downloaded.bin",
+				"--as", "bot",
+			}, f, nil)
+			if err != nil {
+				t.Fatalf("media download error = %v, want permission auth scope error %d to be non-blocking", err, tt.code)
+			}
+			if !strings.Contains(stderr.String(), "warning: export permission check failed; continuing with download:") {
+				t.Fatalf("stderr=%q, want permission scope warning", stderr.String())
+			}
+			data, readErr := os.ReadFile(filepath.Join(tmpDir, "downloaded.bin"))
+			if readErr != nil || string(data) != "downloaded without permission auth scope" {
+				t.Fatalf("downloaded content = %q, err=%v", string(data), readErr)
+			}
+		})
 	}
 }
 
@@ -1037,7 +1348,7 @@ func TestDocMediaPreviewRejectsHTTPErrorBeforeWrite(t *testing.T) {
 }
 
 func TestDocMediaPreviewAppendsExtensionFromRFC5987Filename(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-preview-disposition-app"))
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-preview-disposition-app"))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/drive/v1/medias/tok_123/preview_download?preview_type=" + PreviewType_SOURCE_FILE,
@@ -1066,6 +1377,9 @@ func TestDocMediaPreviewAppendsExtensionFromRFC5987Filename(t *testing.T) {
 	wantPath := mustDocSafeOutputPath(t, "preview.csv")
 	if got.Data.SavedPath != wantPath {
 		t.Fatalf("saved_path = %q, want %q", got.Data.SavedPath, wantPath)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no preview progress", stderr.String())
 	}
 	if _, err := os.Stat(wantPath); err != nil {
 		t.Fatalf("expected preview file at %q: %v", wantPath, err)

@@ -24,7 +24,10 @@ func TestMeetingScreenshotSkillKeepsQuickActionFocused(t *testing.T) {
 	require.Contains(t, skill, "### 查询进行中的会议内容")
 	require.NotContains(t, skill, "### 查询或截图进行中的会议内容")
 	require.NotContains(t, skill, "## 视频会议截图")
-	require.Contains(t, skill, "获取视频会议截图")
+	frontmatterParts := strings.SplitN(skill, "---", 3)
+	require.Len(t, frontmatterParts, 3)
+	require.NotContains(t, frontmatterParts[1], "获取视频会议截图")
+	require.Contains(t, skill, "| `vc +meeting-screenshot` | 获取视频会议截图 |")
 	require.Contains(t, skill, "查看发言/聊天/共享内容、按需读取当前会议画面")
 
 	sceneContent, err := vfs.ReadFile(filepath.Join(skillDir, "scenes", "live-meeting-interact.md"))

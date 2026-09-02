@@ -43,7 +43,16 @@ var pollDeviceToken = larkauth.PollDeviceToken
 
 // NewCmdAuthLogin creates the auth login subcommand.
 func NewCmdAuthLogin(f *cmdutil.Factory, runF func(*LoginOptions) error) *cobra.Command {
+	return newCmdAuthLogin(f, runF, shortcuts.AllShortcuts())
+}
+
+// newCmdAuthLogin resolves domains from one build's shortcut snapshot. The
+// snapshot stays a closure capture rather than a LoginOptions field: LoginOptions
+// is part of the exported runF signature, and an unexported field on it would
+// end positional literals for every caller outside this module.
+func newCmdAuthLogin(f *cmdutil.Factory, runF func(*LoginOptions) error, registered []common.Shortcut) *cobra.Command {
 	opts := &LoginOptions{Factory: f}
+	resolver := newDomainResolver(registered)
 
 	cmd := &cobra.Command{
 		Use:   "login",
@@ -65,7 +74,7 @@ to generate QR codes (supports ASCII and PNG formats).`,
 			if runF != nil {
 				return runF(opts)
 			}
-			return authLoginRun(opts)
+			return authLoginRun(opts, resolver)
 		},
 	}
 	cmdutil.SetSupportedIdentities(cmd, []string{"user"})
@@ -79,7 +88,7 @@ to generate QR codes (supports ASCII and PNG formats).`,
 			helpBrand = cfg.Brand
 		}
 	}
-	available := sortedKnownDomains(helpBrand)
+	available := resolver.sorted(helpBrand)
 	cmd.Flags().StringSliceVar(&opts.Domains, "domain", nil,
 		fmt.Sprintf("domain (repeatable or comma-separated, e.g. --domain calendar,task)\navailable: %s, all", strings.Join(available, ", ")))
 	cmd.Flags().StringSliceVar(&opts.Exclude, "exclude", nil,
@@ -89,15 +98,15 @@ to generate QR codes (supports ASCII and PNG formats).`,
 	cmd.Flags().StringVar(&opts.DeviceCode, "device-code", "", "poll and complete authorization with a device code from a previous --no-wait call")
 
 	cmdutil.RegisterFlagCompletion(cmd, "domain", func(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return completeDomain(toComplete), cobra.ShellCompDirectiveNoFileComp
+		return resolver.complete(toComplete, helpBrand), cobra.ShellCompDirectiveNoFileComp
 	})
 
 	return cmd
 }
 
-// completeDomain returns completions for comma-separated domain values.
-func completeDomain(toComplete string) []string {
-	allDomains := registry.ListFromMetaProjects()
+// complete returns completions for comma-separated domain values.
+func (r domainResolver) complete(toComplete string, brand core.LarkBrand) []string {
+	allDomains := r.sorted(brand)
 	parts := strings.Split(toComplete, ",")
 	prefix := parts[len(parts)-1]
 	base := strings.Join(parts[:len(parts)-1], ",")
@@ -116,7 +125,7 @@ func completeDomain(toComplete string) []string {
 }
 
 // authLoginRun executes the login command logic.
-func authLoginRun(opts *LoginOptions) error {
+func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	f := opts.Factory
 
 	config, err := f.Config()
@@ -151,14 +160,14 @@ func authLoginRun(opts *LoginOptions) error {
 	// Expand --domain all to all available domains (from_meta projects + shortcut services)
 	for _, d := range selectedDomains {
 		if strings.EqualFold(d, "all") {
-			selectedDomains = sortedKnownDomains(config.Brand)
+			selectedDomains = resolver.sorted(config.Brand)
 			break
 		}
 	}
 
 	// Validate domain names and suggest corrections for unknown ones
 	if len(selectedDomains) > 0 {
-		knownDomains := allKnownDomains(config.Brand)
+		knownDomains := resolver.allKnown(config.Brand)
 		for _, d := range selectedDomains {
 			if !knownDomains[d] {
 				if suggestion := suggestDomain(d, knownDomains); suggestion != "" {
@@ -182,7 +191,7 @@ func authLoginRun(opts *LoginOptions) error {
 
 	if !hasAnyOption {
 		if !opts.JSON && f.IOStreams.IsTerminal {
-			result, err := runInteractiveLogin(f.IOStreams, lang.Base(), msg, config.Brand)
+			result, err := runInteractiveLogin(f.IOStreams, lang.Base(), msg, config.Brand, resolver)
 			if err != nil {
 				return err
 			}
@@ -213,6 +222,18 @@ func authLoginRun(opts *LoginOptions) error {
 	// endpoint rejects raw "a,b" strings as a single malformed scope.
 	finalScope := normalizeScopeInput(opts.Scope)
 
+	// excludeUniverse is the set --exclude is validated against: every scope the
+	// caller's selection legitimately covers. It deliberately keeps scopes that
+	// the batch-exclusion policy later withholds from the wire request (e.g.
+	// im:message.send_as_user), so `--domain im --exclude im:message.send_as_user`
+	// stays a valid no-op instead of erroring on a scope we silently removed.
+	// Seed it with --scope; domain/recommend scopes are added below, pre batch
+	// exclusion.
+	excludeUniverse := make(map[string]bool)
+	for _, s := range strings.Fields(finalScope) {
+		excludeUniverse[s] = true
+	}
+
 	// Resolve scopes from domain/permission filters and merge with --scope.
 	// --scope, --domain, and --recommend combine additively so callers can,
 	// for example, request all `docs` scopes plus a few specific `drive`
@@ -220,16 +241,27 @@ func authLoginRun(opts *LoginOptions) error {
 	if len(selectedDomains) > 0 || opts.Recommend {
 		var candidateScopes []string
 		if len(selectedDomains) > 0 {
-			candidateScopes = collectScopesForDomains(selectedDomains, "user", config.Brand)
+			candidateScopes = resolver.scopesFor(selectedDomains, "user", config.Brand)
 		} else {
 			// --recommend without --domain: all domains
-			candidateScopes = collectScopesForDomains(sortedKnownDomains(config.Brand), "user", config.Brand)
+			candidateScopes = resolver.scopesFor(resolver.sorted(config.Brand), "user", config.Brand)
 		}
 
 		// Filter to auto-approve scopes if --recommend or interactive "common"
 		if opts.Recommend || scopeLevel == "common" {
 			candidateScopes = registry.FilterAutoApproveScopes(candidateScopes)
 		}
+
+		// Record the selected universe (after recommend/common filtering, before
+		// batch exclusion) so --exclude may legitimately name a batch-withheld
+		// scope like im:message.send_as_user.
+		for _, s := range candidateScopes {
+			excludeUniverse[s] = true
+		}
+
+		// Withhold batch-excluded scopes (e.g. im:message.send_as_user) from the
+		// effective set; an explicit --scope re-adds them below.
+		candidateScopes = filterBatchExcludedScopes(candidateScopes)
 
 		if len(candidateScopes) == 0 && opts.Scope == "" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "no matching scopes found, check domain/scope options")
@@ -248,9 +280,11 @@ func authLoginRun(opts *LoginOptions) error {
 
 	// Apply --exclude on top of the resolved scope set. We honour exclude
 	// regardless of whether scopes came from --scope, --domain, --recommend,
-	// or any combination thereof.
+	// or any combination thereof. Validation uses excludeUniverse (a superset of
+	// the effective finalScope) so excluding a batch-withheld scope is a no-op,
+	// not an error.
 	if len(opts.Exclude) > 0 {
-		excluded, unknown := applyExcludeScopes(finalScope, opts.Exclude)
+		excluded, unknown := applyExcludeScopes(finalScope, opts.Exclude, excludeUniverse)
 		if len(unknown) > 0 {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"these --exclude scopes are not present in the requested set: %s",
@@ -504,11 +538,51 @@ func findProfileByName(multi *core.MultiAppConfig, profileName string) *core.App
 	return nil
 }
 
+// batchExcludedScopes lists scopes deliberately withheld from the aggregate
+// batch sets that --domain / --recommend / bare `auth login` compute. In some
+// tenants im:message.send_as_user requires admin review even for a personal
+// assistant, so requesting it in bulk blocks users on approval. It stays
+// available through an explicit --scope and through the on-demand grant flow
+// when a command actually needs it.
+var batchExcludedScopes = map[string]bool{
+	"im:message.send_as_user": true,
+}
+
+// filterBatchExcludedScopes drops batchExcludedScopes entries from a
+// domain-derived scope slice, preserving order.
+func filterBatchExcludedScopes(scopes []string) []string {
+	out := scopes[:0:0]
+	for _, s := range scopes {
+		if !batchExcludedScopes[s] {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // collectScopesForDomains collects API scopes (from from_meta projects) and
 // shortcut scopes for the given domain names.
 // Domains with auth_domain children are automatically expanded to include
 // their children's scopes.
-func collectScopesForDomains(domains []string, identity string, brand core.LarkBrand) []string {
+// domainResolver answers auth domain and scope questions against one build's
+// shortcut snapshot. The snapshot is a build-local input rather than a constant:
+// a distribution assembled with cmd.WithCommandSets contributes business
+// commands whose declared scopes must participate in --domain resolution, so
+// every method here reads the snapshot it was constructed with instead of the
+// built-in set.
+type domainResolver struct {
+	registered []common.Shortcut
+}
+
+func newDomainResolver(registered []common.Shortcut) domainResolver {
+	return domainResolver{registered: registered}
+}
+
+// scopesFor collects API scopes (from from_meta projects) and shortcut scopes
+// for the given domain names.
+// Domains with auth_domain children are automatically expanded to include
+// their children's scopes.
+func (r domainResolver) scopesFor(domains []string, identity string, brand core.LarkBrand) []string {
 	scopeSet := make(map[string]bool)
 
 	// 1. API scopes from from_meta projects
@@ -526,7 +600,7 @@ func collectScopesForDomains(domains []string, identity string, brand core.LarkB
 	}
 
 	// 3. Shortcut scopes matching by Service (only include shortcuts supporting the identity)
-	for _, sc := range shortcuts.AllShortcuts() {
+	for _, sc := range r.registered {
 		if !shortcuts.IsShortcutServiceAvailable(sc.Service, brand) {
 			continue
 		}
@@ -549,17 +623,21 @@ func collectScopesForDomains(domains []string, identity string, brand core.LarkB
 // allKnownDomains returns all valid auth domain names (from_meta projects +
 // shortcut services), excluding domains that have auth_domain set (they are
 // folded into their parent domain).
-func allKnownDomains(brand core.LarkBrand) map[string]bool {
+func (r domainResolver) allKnown(brand core.LarkBrand) map[string]bool {
 	domains := make(map[string]bool)
 	for _, p := range registry.ListFromMetaProjects() {
 		if !registry.HasAuthDomain(p) {
 			domains[p] = true
 		}
 	}
-	for _, sc := range shortcuts.AllShortcuts() {
+	for _, sc := range r.registered {
 		if !shortcuts.IsShortcutServiceAvailable(sc.Service, brand) {
 			continue
 		}
+		// No scope filter here: matching main, a scope-less domain (e.g.
+		// event) stays addressable via --domain and the --help list, and
+		// fails later with "no matching scopes found". Only the interactive
+		// selector hides it (see domainResolver.metadata).
 		if !registry.HasAuthDomain(sc.Service) {
 			domains[sc.Service] = true
 		}
@@ -567,9 +645,44 @@ func allKnownDomains(brand core.LarkBrand) map[string]bool {
 	return domains
 }
 
+func shortcutHasDeclaredScopes(shortcut common.Shortcut) bool {
+	for _, identity := range []string{"user", "bot"} {
+		if len(shortcut.DeclaredScopesForIdentity(identity)) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// scopelessShortcutOnlyDomains returns shortcut-only domains none of whose
+// shortcuts declare any scope (e.g. event). The interactive selector hides
+// them — picking one can only end in "no matching scopes found" — while
+// --domain and the help list keep accepting them, matching main.
+func (r domainResolver) scopeless() map[string]bool {
+	fromMeta := make(map[string]bool)
+	for _, p := range registry.ListFromMetaProjects() {
+		fromMeta[p] = true
+	}
+	hasScopes := make(map[string]bool)
+	seen := make(map[string]bool)
+	for _, sc := range r.registered {
+		seen[sc.Service] = true
+		if shortcutHasDeclaredScopes(sc) {
+			hasScopes[sc.Service] = true
+		}
+	}
+	scopeless := make(map[string]bool)
+	for service := range seen {
+		if !fromMeta[service] && !hasScopes[service] {
+			scopeless[service] = true
+		}
+	}
+	return scopeless
+}
+
 // sortedKnownDomains returns all valid domain names sorted alphabetically.
-func sortedKnownDomains(brand core.LarkBrand) []string {
-	m := allKnownDomains(brand)
+func (r domainResolver) sorted(brand core.LarkBrand) []string {
+	m := r.allKnown(brand)
 	domains := make([]string, 0, len(m))
 	for d := range m {
 		domains = append(domains, d)
@@ -652,16 +765,26 @@ func joinSortedScopeSet(set map[string]bool) string {
 	return strings.Join(out, " ")
 }
 
-// applyExcludeScopes removes the provided exclude entries from the requested
-// scope string. Each --exclude flag value may itself contain comma- or
-// whitespace-separated scopes. Returns the filtered scope string and any
-// exclude entries that were not present in the requested set (callers can
-// surface those as a validation error to catch typos like
-// `--exclude drive:file:downlod`).
-func applyExcludeScopes(requested string, excludes []string) (string, []string) {
+// applyExcludeScopes removes the provided exclude entries from requested (the
+// effective scope string that goes on the wire). Each --exclude flag value may
+// itself contain comma- or whitespace-separated scopes. It returns the filtered
+// scope string and any exclude entries that are "unknown".
+//
+// An exclude is unknown only when it is absent from validUniverse — the set of
+// scopes the caller's selection legitimately covers. validUniverse is a superset
+// of requested: it also carries scopes that the batch-exclusion policy withheld
+// from requested, so excluding such a scope (e.g. im:message.send_as_user under
+// --domain im) is a valid no-op rather than an error, while a genuine typo like
+// `--exclude drive:file:downlod` still surfaces as unknown. Pass validUniverse ==
+// nil to validate against requested itself (pure --scope path, where the two are
+// identical).
+func applyExcludeScopes(requested string, excludes []string, validUniverse map[string]bool) (string, []string) {
 	requestedSet := make(map[string]bool)
 	for _, s := range strings.Fields(requested) {
 		requestedSet[s] = true
+	}
+	if validUniverse == nil {
+		validUniverse = requestedSet
 	}
 
 	excludeSet := make(map[string]bool)
@@ -675,7 +798,7 @@ func applyExcludeScopes(requested string, excludes []string) (string, []string) 
 
 	var unknown []string
 	for s := range excludeSet {
-		if !requestedSet[s] {
+		if !validUniverse[s] {
 			unknown = append(unknown, s)
 		}
 	}

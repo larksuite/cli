@@ -14,8 +14,8 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/commandbridge"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/deprecation"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts/application"
 	"github.com/larksuite/cli/shortcuts/apps"
@@ -32,7 +32,6 @@ import (
 	"github.com/larksuite/cli/shortcuts/minutes"
 	"github.com/larksuite/cli/shortcuts/note"
 	"github.com/larksuite/cli/shortcuts/sheets"
-	sheetsbackward "github.com/larksuite/cli/shortcuts/sheets/backward"
 	"github.com/larksuite/cli/shortcuts/slides"
 	"github.com/larksuite/cli/shortcuts/task"
 	"github.com/larksuite/cli/shortcuts/vc"
@@ -76,11 +75,6 @@ func init() {
 	allShortcuts = append(allShortcuts, im.Shortcuts()...)
 	allShortcuts = append(allShortcuts, contact_shortcuts.Shortcuts()...)
 	allShortcuts = append(allShortcuts, sheets.Shortcuts()...)
-	// Backward-compatible sheets shortcuts (pre-refactor command names),
-	// kept under shortcuts/sheets/backward so external callers relying on the
-	// old `+create`, `+read`, `+write`, ... commands keep working alongside the
-	// refactored ones. Command names are disjoint from sheets.Shortcuts().
-	allShortcuts = append(allShortcuts, wrapSheetsBackwardDeprecation(sheetsbackward.Shortcuts())...)
 	allShortcuts = append(allShortcuts, base.Shortcuts()...)
 	allShortcuts = append(allShortcuts, event.Shortcuts()...)
 	allShortcuts = append(allShortcuts, mail.Shortcuts()...)
@@ -95,11 +89,37 @@ func init() {
 	allShortcuts = append(allShortcuts, okr.Shortcuts()...)
 }
 
-// AllShortcuts returns a copy of all registered shortcuts (for dump-shortcuts).
+// AllShortcuts returns an isolated copy of all registered shortcuts.
+//
+// This is the isolation boundary, and the only place that needs to deep-copy:
+// the package global is filled once by init and never written again, but a
+// Shortcut carries slice fields whose backing arrays a shallow copy would still
+// share, so an external distribution mutating an element (registered[0].Flags[0])
+// would corrupt the global for the whole process. Callers inside this repository
+// receive an already-isolated snapshot and must not clone it again -- the copy
+// costs ~165us over 500+ shortcuts, which lands on every CLI startup.
 //
 //go:noinline
 func AllShortcuts() []common.Shortcut {
-	return append([]common.Shortcut(nil), allShortcuts...)
+	return common.CloneHostedShortcuts(allShortcuts, commandbridge.Access{})
+}
+
+// AllShortcutsWithExternal returns one isolated shortcut snapshot after validating external path collisions.
+func AllShortcutsWithExternal(commands []common.Shortcut) ([]common.Shortcut, error) {
+	registered := AllShortcuts()
+	external := common.CloneHostedShortcuts(commands, commandbridge.Access{})
+	paths := make(map[string]struct{}, len(registered)+len(external))
+	for _, shortcut := range registered {
+		paths[shortcut.Service+" "+shortcut.Command] = struct{}{}
+	}
+	for _, shortcut := range external {
+		path := shortcut.Service + " " + shortcut.Command
+		if _, duplicate := paths[path]; duplicate {
+			return nil, fmt.Errorf("external command path %q is already registered", path) //nolint:forbidigo // Intermediate build diagnostic wrapped by the command-set startup guard.
+		}
+		paths[path] = struct{}{}
+	}
+	return append(registered, external...), nil
 }
 
 // RegisterShortcuts registers all +shortcut commands on the program.
@@ -108,6 +128,11 @@ func RegisterShortcuts(program *cobra.Command, f *cmdutil.Factory) {
 }
 
 func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f *cmdutil.Factory) {
+	RegisterShortcutSnapshotWithContext(ctx, program, f, AllShortcuts())
+}
+
+// RegisterShortcutSnapshotWithContext mounts one build-local shortcut snapshot.
+func RegisterShortcutSnapshotWithContext(ctx context.Context, program *cobra.Command, f *cmdutil.Factory, registered []common.Shortcut) {
 	// Factory.Config may be nil in tests that pass a zero-value factory.
 	var brand core.LarkBrand
 	if f != nil && f.Config != nil {
@@ -118,7 +143,7 @@ func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f
 
 	// Group by service
 	byService := make(map[string][]common.Shortcut)
-	for _, s := range allShortcuts {
+	for _, s := range registered {
 		byService[s.Service] = append(byService[s.Service], s)
 	}
 
@@ -174,7 +199,7 @@ func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f
 			mail.InstallOnMail(svc)
 		}
 		if service == "sheets" {
-			applySheetsCompatGroups(svc)
+			applySheetsCommandGroups(svc)
 			sheets.InstallUnknownSubcommandHints(svc)
 		}
 
@@ -221,197 +246,25 @@ func installBrandRestrictionGuard(svc *cobra.Command, service string, brand core
 	svc.Long = fmt.Sprintf("The %q feature is not yet supported on the %s brand.", service, brand)
 }
 
-// Sheets backward-compatibility grouping.
+// Sheets help grouping.
 //
-// shortcuts/sheets/backward keeps the pre-refactor command names alive so that
-// users whose lark-sheets skill predates the refactor keep working even after
-// upgrading only the binary. applySheetsCompatGroups tags each alias into a
-// dedicated deprecated cobra group. The refactored commands have been the
-// default for over a month, so `sheets --help` no longer lists these aliases:
-// sheetsUsageTemplate renders every group except the deprecated one. The
-// grouping is still applied for two reasons — the unknown-subcommand path
-// (cmd/root.go) keys off it to classify a mistyped legacy alias, and each
-// alias's own `sheets <alias> --help` still surfaces the "(→ +new-command)"
-// migration pointer appended below. The aliases stay fully executable.
-const (
-	sheetsCurrentGroupID = "sheets-current"
-	// sheetsDeprecatedGroupID aliases the shared deprecated-group id so both
-	// `sheets --help` grouping and the generic unknown-subcommand path
-	// (cmd/root.go) classify these aliases the same way.
-	sheetsDeprecatedGroupID = cmdutil.DeprecatedGroupID
-)
+// The sheets service mounts two kinds of subcommand on the same cobra parent:
+// this repository's "+"-prefixed shortcuts and the auto-registered OpenAPI
+// metaapi subcommands (spreadsheets, ...). applySheetsCommandGroups tags only
+// the former into a named group so cobra files the latter under its stock
+// "Additional Commands" heading instead of interleaving them.
+const sheetsCurrentGroupID = "sheets-current"
 
-// sheetsAliasReplacement maps each pre-refactor sheets alias to the current
-// command(s) that replace it, shown as a "(→ ...)" suffix in the alias's own
-// --help and reused by wrapSheetsBackwardDeprecation for the on-execution
-// _notice. Aliases absent from this map still land in the deprecated group,
-// just without a pointer, so a missing entry degrades gracefully.
-var sheetsAliasReplacement = map[string]string{
-	// spreadsheet / sheet management
-	"+create":       "+workbook-create",
-	"+info":         "+workbook-info",
-	"+export":       "+workbook-export",
-	"+create-sheet": "+sheet-create",
-	"+copy-sheet":   "+sheet-copy",
-	"+delete-sheet": "+sheet-delete",
-	"+update-sheet": "+sheet-rename / +sheet-move / …",
-	// cell data
-	"+read":    "+cells-get",
-	"+write":   "+cells-set",
-	"+append":  "+cells-set",
-	"+find":    "+cells-search",
-	"+replace": "+cells-replace",
-	// cell style / merge / image
-	"+set-style":       "+cells-set-style",
-	"+batch-set-style": "+cells-batch-set-style",
-	"+merge-cells":     "+cells-merge",
-	"+unmerge-cells":   "+cells-unmerge",
-	"+write-image":     "+cells-set-image",
-	// row / column dimensions
-	"+add-dimension":    "+dim-insert",
-	"+insert-dimension": "+dim-insert",
-	"+update-dimension": "+rows-resize / +dim-hide / …",
-	"+move-dimension":   "+dim-move",
-	"+delete-dimension": "+dim-delete",
-	// filter views (conditions folded into the view flags)
-	"+create-filter-view":           "+filter-view-create",
-	"+update-filter-view":           "+filter-view-update",
-	"+list-filter-views":            "+filter-view-list",
-	"+get-filter-view":              "+filter-view-list",
-	"+delete-filter-view":           "+filter-view-delete",
-	"+create-filter-view-condition": "+filter-view-update",
-	"+update-filter-view-condition": "+filter-view-update",
-	"+list-filter-view-conditions":  "+filter-view-list",
-	"+get-filter-view-condition":    "+filter-view-list",
-	"+delete-filter-view-condition": "+filter-view-update",
-	// dropdowns
-	"+set-dropdown":    "+dropdown-set",
-	"+update-dropdown": "+dropdown-update",
-	"+get-dropdown":    "+dropdown-get",
-	"+delete-dropdown": "+dropdown-delete",
-	// float images (media-upload folded into create)
-	"+media-upload":       "+float-image-create",
-	"+create-float-image": "+float-image-create",
-	"+update-float-image": "+float-image-update",
-	"+get-float-image":    "+float-image-list",
-	"+list-float-images":  "+float-image-list",
-	"+delete-float-image": "+float-image-delete",
-}
-
-// sheetsUsageTemplate is cobra v1.10.2's stock usage template with a single
-// change: the group loop is guarded by {{if ne $group.ID "deprecated"}} so the
-// deprecated pre-refactor aliases are omitted from `sheets --help` altogether.
-// Everything else — current commands, ungrouped metaapi subcommands under
-// "Additional Commands", flags — renders exactly as cobra's default. Keep in
-// sync with cobra's defaultUsageTemplate on upgrade.
-var sheetsUsageTemplate = fmt.Sprintf(`Usage:{{if .Runnable}}
-  {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
-  {{.CommandPath}} [command]{{end}}{{if gt (len .Aliases) 0}}
-
-Aliases:
-  {{.NameAndAliases}}{{end}}{{if .HasExample}}
-
-Examples:
-{{.Example}}{{end}}{{if .HasAvailableSubCommands}}{{$cmds := .Commands}}{{if eq (len .Groups) 0}}
-
-Available Commands:{{range $cmds}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
-  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{else}}{{range $group := .Groups}}{{if ne $group.ID %q}}
-
-{{.Title}}{{range $cmds}}{{if (and (eq .GroupID $group.ID) (or .IsAvailableCommand (eq .Name "help")))}}
-  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{if not .AllChildCommandsHaveGroup}}
-
-Additional Commands:{{range $cmds}}{{if (and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help")))}}
-  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
-
-Flags:
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
-
-Global Flags:
-{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasHelpSubCommands}}
-
-Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
-  {{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
-
-Use "{{.CommandPath}} [command] --help" for more information about a command.{{end}}
-`, sheetsDeprecatedGroupID)
-
-func applySheetsCompatGroups(svc *cobra.Command) {
-	svc.AddGroup(
-		&cobra.Group{ID: sheetsCurrentGroupID, Title: "Available Commands:"},
-		&cobra.Group{
-			ID:    sheetsDeprecatedGroupID,
-			Title: "Deprecated pre-refactor commands (still work) — update your lark-sheets skill, then: lark-cli update",
-		},
-	)
-
-	deprecated := make(map[string]struct{})
-	for _, s := range sheetsbackward.Shortcuts() {
-		deprecated[s.Command] = struct{}{}
-	}
+func applySheetsCommandGroups(svc *cobra.Command) {
+	svc.AddGroup(&cobra.Group{ID: sheetsCurrentGroupID, Title: "Available Commands:"})
 
 	for _, c := range svc.Commands() {
-		name := c.Name()
-		if _, ok := deprecated[name]; ok {
-			c.GroupID = sheetsDeprecatedGroupID
-			if repl := sheetsAliasReplacement[name]; repl != "" {
-				c.Short = c.Short + "  (→ " + repl + ")"
-			}
-			continue
-		}
-		// Only the refactored shortcuts (all "+"-prefixed) belong in the current
-		// group. Leave the OpenAPI metaapi subcommands (spreadsheets, ...) and the
-		// auto-added help/completion ungrouped so cobra files them under
-		// "Additional Commands".
-		if len(name) > 0 && name[0] == '+' {
+		// Only the shortcuts (all "+"-prefixed) belong in the group. Leave the
+		// OpenAPI metaapi subcommands (spreadsheets, ...) and the auto-added
+		// help/completion ungrouped so cobra files them under "Additional
+		// Commands".
+		if name := c.Name(); len(name) > 0 && name[0] == '+' {
 			c.GroupID = sheetsCurrentGroupID
 		}
 	}
-
-	// Refactored commands have been the default for over a month: drop the
-	// deprecated group from `sheets --help` (see sheetsUsageTemplate). The
-	// aliases remain grouped and executable, just no longer advertised here.
-	svc.SetUsageTemplate(sheetsUsageTemplate)
-}
-
-// wrapSheetsBackwardDeprecation decorates each backward-compatibility sheets
-// alias so that invoking it records a process-level deprecation notice, which
-// cmd/root.go surfaces in the JSON "_notice" envelope. This reaches the users
-// the --help grouping cannot: those whose pre-refactor skill calls +read /
-// +write directly and never reads --help. Replacement targets come from
-// sheetsAliasReplacement — the same single source of truth that drives the
-// "(→ +new)" help pointers.
-func wrapSheetsBackwardDeprecation(list []common.Shortcut) []common.Shortcut {
-	for i := range list {
-		notice := &deprecation.Notice{
-			Command:     list[i].Command,
-			Replacement: sheetsAliasReplacement[list[i].Command],
-			Skill:       "lark-sheets",
-		}
-		// Record the notice as soon as the command's own logic runs, so it is
-		// surfaced even when Validate rejects the call — an out-of-date skill
-		// can pass pre-refactor argument shapes (e.g. a range without the new
-		// sheet-id prefix) and fail validation before Execute — and when
-		// --dry-run short-circuits before Execute. Both hooks store the same
-		// pointer, so setting it twice is harmless.
-		if origValidate := list[i].Validate; origValidate != nil {
-			list[i].Validate = func(ctx context.Context, runtime *common.RuntimeContext) error {
-				deprecation.SetPending(notice)
-				return origValidate(ctx, runtime)
-			}
-		}
-		if origExecute := list[i].Execute; origExecute != nil {
-			list[i].Execute = func(ctx context.Context, runtime *common.RuntimeContext) error {
-				deprecation.SetPending(notice)
-				return origExecute(ctx, runtime)
-			}
-		}
-		// The Validate/Execute wrappers above miss one path: a cobra-level
-		// required flag (MarkFlagRequired) that is absent fails at
-		// ValidateRequiredFlags, before RunE — so neither hook runs and the
-		// notice would be lost on exactly the "stale skill calls the old command
-		// and mis-supplies flags" case it exists for. OnInvoke runs from PreRunE,
-		// ahead of ValidateRequiredFlags, so the notice still surfaces there.
-		list[i].OnInvoke = func() { deprecation.SetPending(notice) }
-	}
-	return list
 }

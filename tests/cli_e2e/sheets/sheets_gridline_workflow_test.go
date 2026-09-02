@@ -29,13 +29,13 @@ func TestSheets_GridlineWorkflow(t *testing.T) {
 	spreadsheetToken := createSpreadsheet(t, parentT, ctx, "lark-cli-e2e-sheets-gridline-"+suffix, "bot")
 
 	infoResult, err := clie2e.RunCmd(ctx, clie2e.Request{
-		Args:      []string{"sheets", "+info", "--spreadsheet-token", spreadsheetToken},
+		Args:      []string{"sheets", "+workbook-info", "--spreadsheet-token", spreadsheetToken},
 		DefaultAs: "bot",
 	})
 	require.NoError(t, err)
 	infoResult.AssertExitCode(t, 0)
 	infoResult.AssertStdoutStatus(t, true)
-	sheetID := gjson.Get(infoResult.Stdout, "data.sheets.sheets.0.sheet_id").String()
+	sheetID := gjson.Get(infoResult.Stdout, "data.sheets.0.sheet_id").String()
 	require.NotEmpty(t, sheetID, "sheet_id should not be empty, stdout: %s", infoResult.Stdout)
 
 	for _, shortcut := range []string{"+sheet-hide-gridline", "+sheet-show-gridline"} {

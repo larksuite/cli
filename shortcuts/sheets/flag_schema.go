@@ -60,9 +60,105 @@ func loadFlagSchemas() (*flagSchemaIndex, error) {
 		if idx.Flags == nil {
 			idx.Flags = map[string]map[string]json.RawMessage{}
 		}
+		for _, command := range []string{"+chart-create", "+chart-update"} {
+			entry := idx.Flags[command]
+			if entry == nil {
+				continue
+			}
+			if raw := entry["properties"]; raw != nil {
+				materialized, err := materializeChartSnapshotSchema(raw)
+				if err != nil {
+					parseFlagErr = errs.NewInternalError(errs.SubtypeUnknown, "materialize %s --properties schema: %v", command, err).WithCause(err)
+					return
+				}
+				if command == "+chart-update" {
+					materialized, err = recursivePartialJSONSchema(materialized)
+					if err != nil {
+						parseFlagErr = errs.NewInternalError(errs.SubtypeUnknown, "derive +chart-update --properties schema: %v", err).WithCause(err)
+						return
+					}
+				}
+				entry["properties"] = materialized
+			}
+		}
 		parsedFlagSchemas = &idx
 	})
 	return parsedFlagSchemas, parseFlagErr
+}
+
+// materializeChartSnapshotSchema unwraps the canonical snapshot union into
+// its structured branch. The other union branch documents that chart-update
+// accepts a partial snapshot, but leaving it in the runtime schema would also
+// permit invalid values. The snapshot root remains optional-field compatible
+// with the previous generated schema, while nested create constraints remain
+// strict; chart-update becomes recursively partial below.
+func materializeChartSnapshotSchema(raw json.RawMessage) (json.RawMessage, error) {
+	var schema map[string]interface{}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		return nil, err
+	}
+	properties, _ := schema["properties"].(map[string]interface{})
+	snapshot, _ := properties["snapshot"].(map[string]interface{})
+	branches, _ := snapshot["anyOf"].([]interface{})
+	for _, branch := range branches {
+		full, ok := branch.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		fullProperties, ok := full["properties"].(map[string]interface{})
+		if !ok || len(fullProperties) == 0 {
+			continue
+		}
+		if description, ok := snapshot["description"]; ok {
+			full["description"] = description
+		}
+		delete(full, "required")
+		properties["snapshot"] = full
+		break
+	}
+	return json.Marshal(schema)
+}
+
+// recursivePartialJSONSchema derives an update schema from a full object
+// schema by removing required constraints from patchable objects. Arrays are
+// replaced as a whole, so their item schemas remain strict. The remaining
+// type, enum, bounds, and additionalProperties constraints still reject
+// malformed fields that are present in the patch.
+func recursivePartialJSONSchema(raw json.RawMessage) (json.RawMessage, error) {
+	var schema map[string]interface{}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		return nil, err
+	}
+	makeJSONSchemaRecursivePartial(schema)
+	return json.Marshal(schema)
+}
+
+func makeJSONSchemaRecursivePartial(schema map[string]interface{}) {
+	delete(schema, "required")
+
+	for _, key := range []string{"properties", "patternProperties", "dependentSchemas", "definitions", "$defs"} {
+		children, _ := schema[key].(map[string]interface{})
+		for _, child := range children {
+			makeJSONSchemaValueRecursivePartial(child)
+		}
+	}
+	for _, key := range []string{"additionalProperties", "not", "if", "then", "else", "propertyNames"} {
+		makeJSONSchemaValueRecursivePartial(schema[key])
+	}
+	for _, key := range []string{"allOf", "anyOf", "oneOf"} {
+		makeJSONSchemaValueRecursivePartial(schema[key])
+	}
+}
+
+func makeJSONSchemaValueRecursivePartial(value interface{}) {
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		makeJSONSchemaRecursivePartial(typed)
+	case []interface{}:
+		for _, item := range typed {
+			makeJSONSchemaValueRecursivePartial(item)
+		}
+	}
 }
 
 // commandsWithFlagSchema returns the set of shortcut commands that have
@@ -159,7 +255,7 @@ func splitSchemaPath(flagName string) (string, []string) {
 // sliceSchemaByPath walks a decoded JSON Schema along dotted path segments.
 // Each segment matches a key under "properties"; array levels are descended
 // implicitly through "items" (an explicit "items" segment also works), and
-// oneOf branches are searched for the first one carrying the key. A miss
+// oneOf / anyOf branches are searched for the first one carrying the key. A miss
 // errors with the keys actually available at that level so the caller can
 // re-issue the path without a full dump.
 func sliceSchemaByPath(schema interface{}, flagName string, path []string) (interface{}, error) {
@@ -179,7 +275,7 @@ func sliceSchemaByPath(schema interface{}, flagName string, path []string) (inte
 }
 
 // schemaChild resolves one path segment against a schema node, descending
-// through items / oneOf wrappers as needed.
+// through items / oneOf / anyOf wrappers as needed.
 func schemaChild(node interface{}, seg string) (interface{}, bool) {
 	for depth := 0; depth < 8; depth++ {
 		m, ok := node.(map[string]interface{})
@@ -207,13 +303,20 @@ func schemaChild(node interface{}, seg string) (interface{}, bool) {
 				}
 			}
 		}
+		if branches, ok := m["anyOf"].([]interface{}); ok {
+			for _, b := range branches {
+				if child, ok := schemaChild(b, seg); ok {
+					return child, true
+				}
+			}
+		}
 		return nil, false
 	}
 	return nil, false
 }
 
 // schemaChildKeys lists the property keys reachable at a schema node (through
-// items / oneOf wrappers), for the path-miss error.
+// items / oneOf / anyOf wrappers), for the path-miss error.
 func schemaChildKeys(node interface{}) []string {
 	seen := map[string]struct{}{}
 	var collect func(n interface{}, depth int)
@@ -236,6 +339,11 @@ func schemaChildKeys(node interface{}) []string {
 			return
 		}
 		if branches, ok := m["oneOf"].([]interface{}); ok {
+			for _, b := range branches {
+				collect(b, depth+1)
+			}
+		}
+		if branches, ok := m["anyOf"].([]interface{}); ok {
 			for _, b := range branches {
 				collect(b, depth+1)
 			}

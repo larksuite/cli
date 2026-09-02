@@ -96,6 +96,7 @@ func (calendarEventConverter) Convert(ctx *ConvertContext) string {
 	if eventID != "" {
 		attrs += fmt.Sprintf(` open_event_id="%s"`, cardEscapeAttr(eventID))
 	}
+	attrs += calendarShareTokenAttr(parsed)
 	return formatCalendarContent(parsed, "calendar_share", attrs)
 }
 
@@ -117,7 +118,15 @@ func (generalCalendarConverter) Convert(ctx *ConvertContext) string {
 	if err != nil {
 		return invalidJSONPlaceholder("calendar")
 	}
-	return formatCalendarContent(parsed, "calendar", "")
+	return formatCalendarContent(parsed, "calendar", calendarShareTokenAttr(parsed))
+}
+
+func calendarShareTokenAttr(parsed map[string]interface{}) string {
+	shareToken, _ := parsed["share_token"].(string)
+	if shareToken == "" {
+		return ""
+	}
+	return fmt.Sprintf(` share_token="%s"`, cardEscapeAttr(shareToken))
 }
 
 // formatCalendarContent builds a human-readable string from a calendar JSON object.

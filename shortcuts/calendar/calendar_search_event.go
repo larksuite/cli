@@ -195,6 +195,10 @@ var CalendarSearchEvent = common.Shortcut{
 		if _, err := common.ValidatePageSizeTyped(runtime, "page-size", defaultSearchEventPageSize, 1, maxSearchEventPageSize); err != nil {
 			return err
 		}
+		warnCalendarTimezoneMismatch(runtime,
+			calendarTimeInputRange{Flag: "start", Value: runtime.Str("start")},
+			calendarTimeInputRange{Flag: "end", Value: runtime.Str("end")},
+		)
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {

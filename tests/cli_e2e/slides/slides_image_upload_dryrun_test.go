@@ -22,9 +22,22 @@ import (
 // rule the sheets domain already applies.
 //
 // This runs through the built binary because the parent_type has to survive the
-// whole path — flag parsing, ref classification, the @path placeholder scan —
-// and the covered entries are every surface a local file can enter through:
-// +media-upload directly, and +add-slide / +update-slide via <img src="@...">.
+// whole path — flag parsing, ref classification, the @path placeholder scan.
+//
+// Covered surfaces: +media-upload directly, and +add-slide / +update-slide via
+// <img src="@...">, each with a direct token and with an unresolved wiki
+// reference. +create is deliberately absent: it has no --presentation flag, so it
+// always uploads into a deck it just created through the API, which is never an
+// imported office one. Its preview is pinned in the unit lane instead, where the
+// native-only expectation can be stated as such.
+//
+// The wiki cases pin slide_file for a token the preview never sees. That is sound
+// rather than a guess: resolvePresentationID rejects any wiki node whose obj_type
+// is not "slides", and an imported office deck is a drive "file" node, so it
+// cannot reach an upload through a wiki ref at all. They are here because the
+// production code now asserts that value instead of arriving at it by running the
+// placeholder through the office check, and only an end-to-end case can tell the
+// two apart if the placeholder is ever respelled.
 func TestSlides_ImageUploadDryRunParentType(t *testing.T) {
 	setSlidesDryRunEnv(t)
 
@@ -34,7 +47,10 @@ func TestSlides_ImageUploadDryRunParentType(t *testing.T) {
 	const (
 		nativeToken = "presDryRunNative"
 		officeToken = "aaaaOaaaaFaaaaLaaaa0aaaaXaaa"
-		slideXML    = `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data>` +
+		wikiURL     = "https://example.feishu.cn/wiki/wikcnDryRunProbe123"
+		// What a preview shows in place of a token it must not resolve.
+		unresolvedNode = "<resolved_slides_token>"
+		slideXML       = `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data>` +
 			`<img src="@img.png" topLeftX="10" topLeftY="10" width="100" height="100"/>` +
 			`</data></slide>`
 	)
@@ -42,8 +58,11 @@ func TestSlides_ImageUploadDryRunParentType(t *testing.T) {
 	tests := []struct {
 		name           string
 		args           []string
-		token          string
+		wantParentNode string
 		wantParentType string
+		// uploadStep is the index of the upload_all call in data.api. A wiki ref
+		// plans get_node first, so its upload is not the leading step.
+		uploadStep string
 	}{
 		{
 			name: "media-upload native",
@@ -53,8 +72,9 @@ func TestSlides_ImageUploadDryRunParentType(t *testing.T) {
 				"--file", "img.png",
 				"--dry-run",
 			},
-			token:          nativeToken,
+			wantParentNode: nativeToken,
 			wantParentType: "slide_file",
+			uploadStep:     "0",
 		},
 		{
 			name: "media-upload office",
@@ -64,8 +84,21 @@ func TestSlides_ImageUploadDryRunParentType(t *testing.T) {
 				"--file", "img.png",
 				"--dry-run",
 			},
-			token:          officeToken,
+			wantParentNode: officeToken,
 			wantParentType: "office_slide_file",
+			uploadStep:     "0",
+		},
+		{
+			name: "media-upload wiki, wiki deck is always native",
+			args: []string{
+				"slides", "+media-upload",
+				"--presentation", wikiURL,
+				"--file", "img.png",
+				"--dry-run",
+			},
+			wantParentNode: unresolvedNode,
+			wantParentType: "slide_file",
+			uploadStep:     "1",
 		},
 		{
 			name: "add-slide placeholder native",
@@ -75,8 +108,9 @@ func TestSlides_ImageUploadDryRunParentType(t *testing.T) {
 				"--slide", slideXML,
 				"--dry-run",
 			},
-			token:          nativeToken,
+			wantParentNode: nativeToken,
 			wantParentType: "slide_file",
+			uploadStep:     "0",
 		},
 		{
 			name: "add-slide placeholder office",
@@ -86,8 +120,21 @@ func TestSlides_ImageUploadDryRunParentType(t *testing.T) {
 				"--slide", slideXML,
 				"--dry-run",
 			},
-			token:          officeToken,
+			wantParentNode: officeToken,
 			wantParentType: "office_slide_file",
+			uploadStep:     "0",
+		},
+		{
+			name: "add-slide placeholder wiki, wiki deck is always native",
+			args: []string{
+				"slides", "+add-slide",
+				"--presentation", wikiURL,
+				"--slide", slideXML,
+				"--dry-run",
+			},
+			wantParentNode: unresolvedNode,
+			wantParentType: "slide_file",
+			uploadStep:     "1",
 		},
 		{
 			name: "update-slide placeholder office",
@@ -98,8 +145,22 @@ func TestSlides_ImageUploadDryRunParentType(t *testing.T) {
 				"--content", slideXML,
 				"--dry-run",
 			},
-			token:          officeToken,
+			wantParentNode: officeToken,
 			wantParentType: "office_slide_file",
+			uploadStep:     "0",
+		},
+		{
+			name: "update-slide placeholder wiki, wiki deck is always native",
+			args: []string{
+				"slides", "+update-slide",
+				"--presentation", wikiURL,
+				"--slide-id", "slide_1",
+				"--content", slideXML,
+				"--dry-run",
+			},
+			wantParentNode: unresolvedNode,
+			wantParentType: "slide_file",
+			uploadStep:     "1",
 		},
 	}
 
@@ -117,16 +178,18 @@ func TestSlides_ImageUploadDryRunParentType(t *testing.T) {
 			result.AssertExitCode(t, 0)
 
 			out := result.Stdout
-			// The upload is planned first in every case: the file_token has to
-			// exist before the page XML that references it can be posted.
-			require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(),
-				"data.api.0 must be the drive upload; stdout:\n%s", out)
+			// The upload precedes the page XML that references its file_token,
+			// and follows the get_node that names the deck to upload into.
+			require.Equal(t, "POST", clie2e.DryRunGet(out, "api."+tt.uploadStep+".method").String(),
+				"data.api.%s must be the drive upload; stdout:\n%s", tt.uploadStep, out)
 			require.Equal(t, "/open-apis/drive/v1/medias/upload_all",
-				clie2e.DryRunGet(out, "api.0.url").String(), "stdout:\n%s", out)
-			require.Equal(t, tt.wantParentType, clie2e.DryRunGet(out, "api.0.body.parent_type").String(),
-				"parent_type for token %q must be %q; stdout:\n%s", tt.token, tt.wantParentType, out)
-			require.Equal(t, tt.token, clie2e.DryRunGet(out, "api.0.body.parent_node").String(),
-				"parent_node must equal the presentation token; stdout:\n%s", out)
+				clie2e.DryRunGet(out, "api."+tt.uploadStep+".url").String(), "stdout:\n%s", out)
+			require.Equal(t, tt.wantParentType,
+				clie2e.DryRunGet(out, "api."+tt.uploadStep+".body.parent_type").String(),
+				"parent_type for node %q must be %q; stdout:\n%s", tt.wantParentNode, tt.wantParentType, out)
+			require.Equal(t, tt.wantParentNode,
+				clie2e.DryRunGet(out, "api."+tt.uploadStep+".body.parent_node").String(),
+				"parent_node must equal the presentation token, or the placeholder when unresolved; stdout:\n%s", out)
 		})
 	}
 }

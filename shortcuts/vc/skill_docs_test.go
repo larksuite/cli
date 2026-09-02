@@ -54,7 +54,7 @@ func TestVCSearchIdentityDocsMatchAuthTypes(t *testing.T) {
 }
 
 // TestVCBotShortcutsIdentityDocsMatchAuthTypes pins that the VC shortcuts this
-// PR opened to bot (`+detail`, `+recording`) are both declared bot-capable in
+// PR opened to bot (`+detail`, `+recording`, `+meeting-countdown`) are all declared bot-capable in
 // code and documented as such in their lark-meeting references.
 func TestVCBotShortcutsIdentityDocsMatchAuthTypes(t *testing.T) {
 	skill := readSkillDoc(t, "skills/lark-meeting/SKILL.md")
@@ -66,6 +66,7 @@ func TestVCBotShortcutsIdentityDocsMatchAuthTypes(t *testing.T) {
 	}{
 		{"+detail", VCDetail.AuthTypes, "lark-vc-detail.md"},
 		{"+recording", VCRecording.AuthTypes, "lark-vc-recording.md"},
+		{"+meeting-countdown", VCMeetingCountdown.AuthTypes, "lark-vc-meeting-countdown.md"},
 	} {
 		if !hasAuthType(cmd.authTypes, "bot") {
 			t.Errorf("%s AuthTypes = %v, want bot included (this PR's contract)", cmd.name, cmd.authTypes)
