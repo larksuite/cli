@@ -124,6 +124,97 @@ func TestBaseWorkflowExecuteCreateValidate(t *testing.T) {
 	})
 }
 
+func TestBaseWorkflowExecuteCreateValidateAIAnalysisData(t *testing.T) {
+	t.Run("rejects table names string", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(t, BaseWorkflowCreate, []string{"+workflow-create", "--base-token", "app_x", "--json", `{"steps":[{"id":"step_ai","type":"AIAnalysisAction","data":{"analysis_table_names":"订单表","identity_type":"maker"}}]}`}, factory, stdout)
+		assertInvalidArgumentValidation(t, err, "--json", []string{"--json"}, "steps[0].data.analysis_table_names")
+	})
+	t.Run("rejects table names item type", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(t, BaseWorkflowCreate, []string{"+workflow-create", "--base-token", "app_x", "--json", `{"steps":[{"id":"step_ai","type":"AIAnalysisAction","data":{"analysis_table_names":["订单表",1],"identity_type":"maker"}}]}`}, factory, stdout)
+		assertInvalidArgumentValidation(t, err, "--json", []string{"--json"}, "steps[0].data.analysis_table_names[1]")
+	})
+	t.Run("rejects identity type enum", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(t, BaseWorkflowCreate, []string{"+workflow-create", "--base-token", "app_x", "--json", `{"steps":[{"id":"step_ai","type":"AIAnalysisAction","data":{"analysis_table_names":["订单表"],"identity_type":"unknownIdentity"}}]}`}, factory, stdout)
+		assertInvalidArgumentValidation(t, err, "--json", []string{"--json"}, "maker, triggerPersonal")
+		if !strings.Contains(err.Error(), "steps[0].data.identity_type") {
+			t.Fatalf("err=%v, want field path", err)
+		}
+	})
+	t.Run("accepts maker", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/workflows",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"workflow_id": "wkf_new"},
+			},
+		})
+		err := runShortcut(t, BaseWorkflowCreate, []string{"+workflow-create", "--base-token", "app_x", "--json", `{"steps":[{"id":"step_ai","type":"AIAnalysisAction","data":{"analysis_table_names":["订单表"],"identity_type":"maker"}}]}`}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+	})
+	t.Run("accepts triggerPersonal", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/workflows",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"workflow_id": "wkf_new"},
+			},
+		})
+		err := runShortcut(t, BaseWorkflowCreate, []string{"+workflow-create", "--base-token", "app_x", "--json", `{"steps":[{"id":"step_ai","type":"AIAnalysisAction","data":{"analysis_table_names":["订单表"],"identity_type":"triggerPersonal"}}]}`}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+	})
+}
+
+func TestBaseWorkflowExecuteUpdateValidateAIAnalysisData(t *testing.T) {
+	t.Run("rejects table names string", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(t, BaseWorkflowUpdate, []string{"+workflow-update", "--base-token", "app_x", "--workflow-id", "wkf_1", "--json", `{"steps":[{"id":"step_ai","type":"AIAnalysisAction","data":{"analysis_table_names":"订单表","identity_type":"maker"}}]}`}, factory, stdout)
+		assertInvalidArgumentValidation(t, err, "--json", []string{"--json"}, "steps[0].data.analysis_table_names")
+	})
+	t.Run("rejects identity type enum", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(t, BaseWorkflowUpdate, []string{"+workflow-update", "--base-token", "app_x", "--workflow-id", "wkf_1", "--json", `{"steps":[{"id":"step_ai","type":"AIAnalysisAction","data":{"analysis_table_names":["订单表"],"identity_type":"unknownIdentity"}}]}`}, factory, stdout)
+		assertInvalidArgumentValidation(t, err, "--json", []string{"--json"}, "maker, triggerPersonal")
+		if !strings.Contains(err.Error(), "steps[0].data.identity_type") {
+			t.Fatalf("err=%v, want field path", err)
+		}
+	})
+}
+
+func TestBaseWorkflowExecuteUpdateOmittedStepsClearsWorkflow(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	stub := &httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/base/v3/bases/app_x/workflows/wkf_1",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"workflow_id": "wkf_1", "title": "Only Title", "steps": []interface{}{}},
+		},
+	}
+	reg.Register(stub)
+	if err := runShortcut(t, BaseWorkflowUpdate, []string{"+workflow-update", "--base-token", "app_x", "--workflow-id", "wkf_1", "--json", `{"title":"Only Title"}`}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("request body invalid JSON: %v", err)
+	}
+	steps, ok := body["steps"].([]interface{})
+	if !ok || len(steps) != 0 {
+		t.Fatalf("request steps=%#v, want []", body["steps"])
+	}
+}
+
 func TestBaseWorkflowExecuteDisable(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	reg.Register(&httpmock.Stub{

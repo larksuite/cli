@@ -125,6 +125,7 @@
 | `Delay` | 延迟 |
 | `LarkMessageAction` | 发送飞书消息 |
 | `GenerateAiTextAction` | AI 生成文本 |
+| `AIAnalysisAction` | AI 分析 |
 
 > 所有 Action 节点**请勿设置** `children` ，通过 `next` 串联后继。
 
@@ -473,6 +474,30 @@
 |------|------|------|
 | `prompt` | 是 | TextRefItem[] 提示词，支持 `text` / `ref` |
 
+### AIAnalysisAction
+
+```json
+{
+  "analysis_task": [
+    { "value_type": "text", "value": "分析昨日订单趋势、异常原因，并给出行动建议" }
+  ],
+  "analysis_table_names": ["订单表", "退款表"],
+  "identity_type": "maker",
+  "output_instruction": "先给结论，再列证据与行动建议"
+}
+```
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `analysis_task` | 是 | TextRefItem[] 分析任务，支持 `text` / `ref` 混排；至少包含一项有效内容 |
+| `analysis_table_names` | 否 | string[] 分析数据范围；为空数组 `[]` 或省略时表示当前 Base 的全部数据表 |
+| `identity_type` | 是 | 数据访问身份：`maker`（固定流程身份） / `triggerPersonal`（流程触发者） |
+| `output_instruction` | 否 | string 输出要求；仅支持纯文本，不支持引用、附件或云文档模板 |
+
+> ⚠️ `AIAnalysisAction` 的公开 JSON 使用 snake_case；服务端内部会按既有规则映射到 `analysisTask` / `analysisTableNames` / `identityType` / `outputInstruction`。
+>
+> ⚠️ `analysis_table_names` 中指定的表名必须能解析到当前 Base；无效表名、无权限或身份与触发器不兼容时，应在保存或启用前失败，不能静默降级。
+
 
 ## Branch data 详细结构
 
@@ -788,6 +813,12 @@ HTTPClientAction 的输出取决于 `response_type`：
 |--------|------|----------|
 | （整体出参） | AI 生成的文本内容（不支持下钻，只能引用 `$.{stepId}`） | `$.{stepId}` |
 
+##### AIAnalysisAction（AI 分析）
+
+| pathId | 说明 | 引用示例 |
+|--------|------|----------|
+| `analysisResult` | AI 分析结果字符串 | `$.{stepId}.analysisResult` |
+
 ##### 无输出的操作节点
 
 以下节点不产生任何可引用的输出数据：
@@ -887,6 +918,7 @@ $.{stepId}.{fieldId}.fileToken    → 文件 Token 列表（array<string>，仅�
 | SetRecordAction | 动作 | ✅ | 动态（用户配置的字段） |
 | HTTPClientAction | 动作 | ✅ | 动态（取决于用户配置的 HTTP 响应输出） |
 | GenerateAiTextAction | 动作 | ✅ | 静态（单 string） |
+| AIAnalysisAction | 动作 | ✅ | 静态（`analysisResult`） |
 | Delay | 动作 | ❌ | 无输出 |
 | LarkMessageAction | 动作 | ❌ | 无输出 |
 | IfElseBranch | 分支 | ❌ | 无输出 |

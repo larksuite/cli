@@ -55,6 +55,7 @@
 | 场景 | 步骤组合 | 示例 |
 |------|---------|------|
 | 新增触发+通知 | AddRecordTrigger → LarkMessageAction | [下方](#示例1-新增记录触发--发送消息) |
+| 定时触发+AI 分析 | TimerTrigger → AIAnalysisAction | [下方](#示例-ai-分析-定时分析-base-数据并回读核验) |
 | 按钮点击+调用外部接口+写入日志 | ButtonTrigger → HTTPClientAction → AddRecordAction | [下方](#示例-6-按钮触发--调用外部接口--写入同步日志) |
 | 定时+循环 | TimerTrigger → FindRecordAction → Loop → LarkMessageAction | [下方](#示例2-定时触发--查找记录--循环遍历--发送消息) |
 | 条件判断 | ... → IfElseBranch → 分支处理 | [下方](#示例3-条件分支-ifelsebranch) |
@@ -64,6 +65,51 @@
 ---
 
 ## 完整示例
+
+### 示例: AI 分析 - 定时分析 Base 数据并回读核验
+
+**场景**: 每天早上 9 点分析「订单表」和「退款表」的昨日趋势。创建后先回读确认四项配置已落盘；修改时始终先 `+workflow-get` 再做全量更新。
+
+```json
+{
+  "client_token": "1704067200-ai-analysis",
+  "title": "每日经营 AI 分析",
+  "steps": [
+    {
+      "id": "step_timer",
+      "type": "TimerTrigger",
+      "title": "每天早上 9 点触发",
+      "next": "step_ai_analysis",
+      "data": {
+        "rule": "DAILY",
+        "start_time": "2025-01-01 09:00",
+        "is_never_end": true
+      }
+    },
+    {
+      "id": "step_ai_analysis",
+      "type": "AIAnalysisAction",
+      "title": "分析昨日经营异常",
+      "next": null,
+      "data": {
+        "analysis_task": [
+          { "value_type": "text", "value": "分析昨日订单趋势、退款异常和可能原因，并给出今日行动建议" }
+        ],
+        "analysis_table_names": ["订单表", "退款表"],
+        "identity_type": "maker",
+        "output_instruction": "先给结论，再列证据与行动建议"
+      }
+    }
+  ]
+}
+```
+
+**推荐操作顺序**:
+- 创建后立刻执行 `lark-cli base +workflow-get --base-token <base_token> --workflow-id <workflow_id> --as user`，确认 `steps[].type` 仍为 `AIAnalysisAction`，且四个字段语义与提交一致。
+- 更新已有流程时，先用 `+workflow-get` 读取完整 JSON，只改目标字段，再把完整 body 传给 `+workflow-update`；不要手写局部 patch。
+- `analysis_table_names: []` 表示当前 Base 的全部数据表；若要限制范围，请显式列出表名。
+- `identity_type: "maker"` 表示固定流程身份；`identity_type: "triggerPersonal"` 仅适用于能提供真实触发者身份的触发器。
+- AI 分析是异步执行链路：配置保存成功、工作流启用成功、单次节点执行成功是三件事，需分别观察。
 
 ### 示例 1: 新增记录触发 + 发送消息
 

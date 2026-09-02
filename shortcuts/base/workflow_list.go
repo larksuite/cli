@@ -46,7 +46,7 @@ var BaseWorkflowList = common.Shortcut{
 			Set("base_token", runtime.Str("base-token"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		var allItems []interface{}
+		allItems := make([]interface{}, 0)
 		pageToken := ""
 		for {
 			body := map[string]interface{}{
