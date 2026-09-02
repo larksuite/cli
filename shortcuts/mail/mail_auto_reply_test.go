@@ -248,6 +248,37 @@ func TestMailAutoReplyModifyRejectsMismatchedZeroTimePair(t *testing.T) {
 	}
 }
 
+func TestMailAutoReplyModifyRejectsNegativeTime(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "start",
+			args: []string{"+auto-reply-modify", "--yes", "--start", "-1"},
+			want: "--start must be 0 or a positive Unix timestamp",
+		},
+		{
+			name: "end",
+			args: []string{"+auto-reply-modify", "--yes", "--end", "-1"},
+			want: "--end must be 0 or a positive Unix timestamp",
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, _ := mailShortcutTestFactory(t)
+			err := runMountedMailShortcut(t, MailAutoReplyModify, tt.args, f, stdout)
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
 func TestMailAutoReplyModifyRejectsEnableWithZeroTimePair(t *testing.T) {
 	f, stdout, _, _ := mailShortcutTestFactory(t)
 	err := runMountedMailShortcut(t, MailAutoReplyModify, []string{

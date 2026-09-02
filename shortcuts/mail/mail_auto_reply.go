@@ -755,6 +755,9 @@ func parseAutoReplyDateMillis(flag, raw, timezone string, endOfDay bool) (string
 		if value == 0 {
 			return "0", nil
 		}
+		if value < 0 {
+			return "", mailValidationParamError(flag, "%s must be 0 or a positive Unix timestamp, got %q", flag, raw)
+		}
 		t := time.Unix(value, 0)
 		if value >= 1_000_000_000_000 {
 			t = time.UnixMilli(value)
