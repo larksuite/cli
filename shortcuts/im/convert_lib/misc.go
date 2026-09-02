@@ -4,6 +4,7 @@
 package convertlib
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -80,7 +81,7 @@ func (folderConverter) Convert(ctx *ConvertContext) string {
 	// 展开一层：调 openapi children（recursive=false），输出第一层 + children_count + 深层提示
 	// 需要 Runtime + MessageID（srctype=message&srcid=MessageID）；不可用时降级为旧输出
 	if ctx.Runtime != nil && ctx.MessageID != "" {
-		if tree := fetchFolderChildrenTree(ctx.Runtime, key, ctx.MessageID); tree != "" {
+		if tree := fetchFolderChildrenTree(ctx.Runtime, key, name, ctx.MessageID); tree != "" {
 			return tree
 		}
 	}
@@ -92,8 +93,8 @@ func (folderConverter) Convert(ctx *ConvertContext) string {
 
 // fetchFolderChildrenTree 调 openapi 展开文件夹一层，返回树形文本（含 children_count 深层提示）。
 // 失败时返回空串，由调用方降级为旧输出。
-func fetchFolderChildrenTree(runtime *common.RuntimeContext, folderKey, messageID string) string {
-	data, err := runtime.DoAPIJSONTyped(http.MethodGet, "/open-apis/im/v1/resources/folder/"+folderKey+"/children",
+func fetchFolderChildrenTree(runtime *common.RuntimeContext, folderKey, folderName, messageID string) string {
+	data, err := runtime.DoAPIJSONTyped(http.MethodGet, "/open-apis/im/v1/files/"+folderKey+"/folder",
 		larkcore.QueryParams{
 			"srctype":   []string{"message"},
 			"srcid":     []string{messageID},
@@ -106,23 +107,60 @@ func fetchFolderChildrenTree(runtime *common.RuntimeContext, folderKey, messageI
 	if len(rawItems) == 0 {
 		return ""
 	}
+	// 只展开一层：file 用 <file name key/>；子文件夹用 <folder name key child_count/>（不递归，child_count 提示深层）
+	// 根 folder 带 child_count（=all_count 子项总数）+ has_more（items 数 < all_count 时标注还有更多未展示）
+	hasMore := false
+	var allCount int64
+	if v, ok := data["all_count"]; ok {
+		allCount = numToInt64(v)
+		if allCount > int64(len(rawItems)) {
+			hasMore = true
+		}
+	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "<folder key=\"%s\" expanded>\n", cardEscapeAttr(folderKey))
+	b.WriteString(`<folder name="` + cardEscapeAttr(folderName) + `" key="` + cardEscapeAttr(folderKey) + `"`)
+	if allCount > 0 {
+		fmt.Fprintf(&b, ` child_count="%d"`, allCount)
+	}
+	if hasMore {
+		b.WriteString(` has_more="true"`)
+	}
+	b.WriteString(`>`)
 	for _, raw := range rawItems {
 		item, _ := raw.(map[string]interface{})
 		k, _ := item["file_key"].(string)
 		n, _ := item["name"].(string)
 		isFolder, _ := item["is_folder"].(bool)
 		if isFolder {
-			cc, _ := item["children_count"].(float64)
-			fmt.Fprintf(&b, "  - [dir] %s (%s) children_count=%d [可 recursive=true 展开更深层]\n",
-				cardEscapeAttr(n), cardEscapeAttr(k), int64(cc))
+			cc := numToInt64(item["children_count"])
+			fmt.Fprintf(&b, `<folder name="%s" key="%s" child_count="%d"/>`,
+				cardEscapeAttr(n), cardEscapeAttr(k), cc)
 		} else {
-			fmt.Fprintf(&b, "  - %s (%s)\n", cardEscapeAttr(n), cardEscapeAttr(k))
+			fmt.Fprintf(&b, `<file name="%s" key="%s"/>`, cardEscapeAttr(n), cardEscapeAttr(k))
 		}
 	}
 	b.WriteString("</folder>")
 	return b.String()
+}
+
+
+// numToInt64 兼容 JSON number（json.Number）/ float64 / int 的类型转换。
+func numToInt64(v interface{}) int64 {
+	switch n := v.(type) {
+	case json.Number:
+		if i, err := n.Int64(); err == nil {
+			return i
+		}
+	case float64:
+		return int64(n)
+	case float32:
+		return int64(n)
+	case int:
+		return int64(n)
+	case int64:
+		return n
+	}
+	return 0
 }
 
 type calendarEventConverter struct{}
