@@ -116,7 +116,8 @@ var BaseFormSubmitActionsUpdate = common.Shortcut{
 	),
 	Tips: []string{
 		"Use result-page for the submit result page or redirect for a submit redirect; do not combine fields for both action types.",
-		"--description-json supports only text, url, and mention blocks; mention blocks must use open_id.",
+		"Enabling result-page requires --title; omit --description-json to preserve the current description, or pass [] to clear it.",
+		"When provided, --description-json supports only text, url, and mention blocks; mention blocks must use open_id.",
 	},
 	Validate: func(_ context.Context, runtime *common.RuntimeContext) error {
 		_, err := buildFormSubmitActionsBody(runtime)
@@ -436,18 +437,17 @@ func buildFormSubmitActionsBody(runtime *common.RuntimeContext) (map[string]inte
 			if runtime.Str("title") == "" {
 				return nil, baseFlagErrorf("--title is required when result page is enabled")
 			}
-			if runtime.Str("description-json") == "" {
-				return nil, baseFlagErrorf("--description-json is required when result page is enabled")
-			}
-			description, err := parseJSONArrayFlag("description-json", runtime.Str("description-json"))
-			if err != nil {
-				return nil, err
-			}
-			if err := validateResultPageDescription(description); err != nil {
-				return nil, err
-			}
 			group["title"] = runtime.Str("title")
-			group["description"] = description
+			if runtime.Changed("description-json") {
+				description, err := parseJSONArrayFlag("description-json", runtime.Str("description-json"))
+				if err != nil {
+					return nil, err
+				}
+				if err := validateResultPageDescription(description); err != nil {
+					return nil, err
+				}
+				group["description"] = description
+			}
 		} else if runtime.Changed("title") || runtime.Changed("description-json") {
 			return nil, baseFlagErrorf("disabling result page must not include --title or --description-json")
 		}
