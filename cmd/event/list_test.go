@@ -10,20 +10,18 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
-	eventlib "github.com/larksuite/cli/internal/event"
-
-	_ "github.com/larksuite/cli/events"
 )
 
 func TestEventLookup_VCMeetingLifecycleKeys(t *testing.T) {
+	snap := compileCatalog()
 	for _, key := range []string{
 		"approval.instance.status_changed_v4",
 		"approval.task.status_changed_v4",
 		"vc.meeting.participant_meeting_started_v1",
 		"vc.meeting.participant_meeting_joined_v1",
 	} {
-		if _, ok := eventlib.Lookup(key); !ok {
-			t.Fatalf("event.Lookup(%q) should succeed", key)
+		if _, ok := snap.Resolve(key); !ok {
+			t.Fatalf("snap.Resolve(%q) should succeed", key)
 		}
 	}
 }
@@ -31,7 +29,7 @@ func TestEventLookup_VCMeetingLifecycleKeys(t *testing.T) {
 func TestRunList_TextOutput(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
 
-	if err := runList(f, false); err != nil {
+	if err := runList(f, compileCatalog(), "", false); err != nil {
 		t.Fatalf("runList: %v", err)
 	}
 
@@ -55,7 +53,7 @@ func TestRunList_TextOutput(t *testing.T) {
 func TestRunList_JSONOutput(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
 
-	if err := runList(f, true); err != nil {
+	if err := runList(f, compileCatalog(), "", true); err != nil {
 		t.Fatalf("runList json: %v", err)
 	}
 

@@ -10,31 +10,44 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	eventlib "github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/output"
 )
 
-func NewCmdList(f *cmdutil.Factory) *cobra.Command {
+func NewCmdList(f *cmdutil.Factory, snap *catalog.Snapshot) *cobra.Command {
 	var asJSON bool
+	var domain string
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all available EventKeys",
-		Long:  "Show all registered EventKeys grouped by domain (first segment of the key). Use --json for machine-readable output.",
+		Long:  "Show all registered EventKeys grouped by domain (first segment of the key). Use --domain to keep one domain only, --json for machine-readable output.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runList(f, asJSON)
+			return runList(f, snap, domain, asJSON)
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Emit the full EventKey list as JSON (for AI / scripts)")
+	cmd.Flags().StringVar(&domain, "domain", "", fmt.Sprintf(
+		"Only list EventKeys of this domain. Valid domains: %s",
+		strings.Join(snap.Domains(), ", "),
+	))
 	cmdutil.SetRisk(cmd, "read")
 	return cmd
 }
 
-func runList(f *cmdutil.Factory, asJSON bool) error {
-	all := eventlib.ListAll()
-
+func runList(f *cmdutil.Factory, snap *catalog.Snapshot, domain string, asJSON bool) error {
+	entries, err := entriesForDomain(snap, domain)
+	if err != nil {
+		return err
+	}
 	if asJSON {
-		return writeListJSON(f, all)
+		return writeListJSON(f, entries)
+	}
+	all := make([]*eventlib.KeyDefinition, 0, len(entries))
+	for _, entry := range entries {
+		all = append(all, entry.Definition())
 	}
 
 	if len(all) == 0 {
@@ -104,18 +117,43 @@ func runList(f *cmdutil.Factory, asJSON bool) error {
 	return nil
 }
 
-func writeListJSON(f *cmdutil.Factory, all []*eventlib.KeyDefinition) error {
-	type row struct {
-		*eventlib.KeyDefinition
-		ResolvedSchema json.RawMessage `json:"resolved_output_schema,omitempty"`
+// listRow is the JSON shape of one `event list --json` row. It is a named
+// type (not a function-local literal) so the render contract test can walk
+// its fields and reject accidental additions to the public output.
+type listRow struct {
+	*eventlib.KeyDefinition
+	ResolvedSchema json.RawMessage `json:"resolved_output_schema,omitempty"`
+}
+
+// entriesForDomain filters at the snapshot query layer: without a domain the
+// full catalog comes back untouched; with one, rows are only removed, never
+// reshaped. An unknown domain is rejected with the valid set spelled out.
+func entriesForDomain(snap *catalog.Snapshot, domain string) ([]*catalog.Entry, error) {
+	if domain == "" {
+		return snap.Entries(), nil
 	}
-	rows := make([]row, len(all))
-	for i, def := range all {
-		resolved, _, err := resolveSchemaJSON(def)
-		if err != nil {
-			return err
+	var filtered []*catalog.Entry
+	for _, entry := range snap.Entries() {
+		if entry.Descriptor().Domain == domain {
+			filtered = append(filtered, entry)
 		}
-		rows[i] = row{KeyDefinition: def, ResolvedSchema: resolved}
+	}
+	if len(filtered) == 0 {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"unknown domain: %s", domain).
+			WithParam("--domain").
+			WithHint("valid domains: %s", strings.Join(snap.Domains(), ", "))
+	}
+	return filtered, nil
+}
+
+func writeListJSON(f *cmdutil.Factory, entries []*catalog.Entry) error {
+	rows := make([]listRow, len(entries))
+	for i, entry := range entries {
+		rows[i] = listRow{
+			KeyDefinition:  entry.Definition(),
+			ResolvedSchema: entry.Output().SchemaJSON,
+		}
 	}
 	output.PrintJson(f.IOStreams.Out, rows)
 	return nil

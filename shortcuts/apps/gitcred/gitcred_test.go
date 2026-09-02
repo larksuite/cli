@@ -113,8 +113,8 @@ func (f *fakeGitConfig) SetHelper(ctx context.Context, gitHTTPURL, appID string)
 	return f.err
 }
 
-func (f *fakeGitConfig) UnsetHelper(ctx context.Context, gitHTTPURL string) error {
-	f.unset = append(f.unset, gitHTTPURL)
+func (f *fakeGitConfig) UnsetHelper(ctx context.Context, gitHTTPURL, appID string) error {
+	f.unset = append(f.unset, gitHTTPURL+" "+appID)
 	return f.err
 }
 
@@ -127,7 +127,7 @@ func (f splitFakeGitConfig) SetHelper(ctx context.Context, gitHTTPURL, appID str
 	return f.setErr
 }
 
-func (f splitFakeGitConfig) UnsetHelper(ctx context.Context, gitHTTPURL string) error {
+func (f splitFakeGitConfig) UnsetHelper(ctx context.Context, gitHTTPURL, appID string) error {
 	return f.unsetErr
 }
 
@@ -325,8 +325,8 @@ func TestManagerInitCleansOldURLHelperAfterRepositoryURLChanges(t *testing.T) {
 	if _, err := manager.Init(context.Background(), testProfile(), "app_xxx"); err != nil {
 		t.Fatalf("second Init returned error: %v", err)
 	}
-	if len(gitConfig.unset) != 1 || gitConfig.unset[0] != "https://example.com/git/u/old.git" {
-		t.Fatalf("git config unset = %#v, want old URL cleanup", gitConfig.unset)
+	if got, want := gitConfig.unset, []string{"https://example.com/git/u/old.git app_xxx"}; !slices.Equal(got, want) {
+		t.Fatalf("git config unset = %#v, want %#v", got, want)
 	}
 }
 
@@ -752,8 +752,8 @@ func TestRemoveDeletesMetadataSecretAndGitConfig(t *testing.T) {
 	if got := kc.values[result.Records[0].PATRef]; got != "" {
 		t.Fatalf("keychain PAT after remove = %q, want empty", got)
 	}
-	if len(gitConfig.unset) != 1 || gitConfig.unset[0] != "https://example.com/git/u/app.git" {
-		t.Fatalf("git config unset = %#v", gitConfig.unset)
+	if got, want := gitConfig.unset, []string{"https://example.com/git/u/app.git app_xxx"}; !slices.Equal(got, want) {
+		t.Fatalf("git config unset = %#v, want %#v", got, want)
 	}
 	record, err := manager.Store.FindByURL("https://example.com/git/u/app.git")
 	if err != nil {
@@ -807,8 +807,8 @@ func TestInitWorksAfterRemove(t *testing.T) {
 	if len(gitConfig.set) != 2 {
 		t.Fatalf("git config set calls = %#v, want initial and re-init", gitConfig.set)
 	}
-	if len(gitConfig.unset) != 1 {
-		t.Fatalf("git config unset calls = %#v, want remove cleanup", gitConfig.unset)
+	if got, want := gitConfig.unset, []string{"https://example.com/git/u/app.git app_xxx"}; !slices.Equal(got, want) {
+		t.Fatalf("git config unset calls = %#v, want %#v", got, want)
 	}
 }
 
@@ -948,186 +948,6 @@ func TestListReturnsStoreError(t *testing.T) {
 	}
 	if _, err := manager.List(); err == nil || !strings.Contains(err.Error(), "invalid git.json") {
 		t.Fatalf("List store error = %v", err)
-	}
-}
-
-func TestGlobalGitConfigSetAndUnsetHelper(t *testing.T) {
-	logPath := installFakeGit(t, 0)
-	cfg := GlobalGitConfig{HelperCommand: "!custom-helper"}
-	ctx := context.Background()
-
-	if err := cfg.SetHelper(ctx, "https://example.com/git/u/app.git", "app_xxx"); err != nil {
-		t.Fatalf("SetHelper returned error: %v", err)
-	}
-	if err := cfg.UnsetHelper(ctx, "https://example.com/git/u/app.git"); err != nil {
-		t.Fatalf("UnsetHelper returned error: %v", err)
-	}
-
-	log := readFileString(t, logPath)
-	for _, want := range []string{
-		"config --global credential.https://example.com/git/u/app.git.helper !custom-helper",
-		"config --global credential.https://example.com/git/u/app.git.useHttpPath true",
-		"config --global --unset credential.https://example.com/git/u/app.git.helper",
-		"config --global --unset credential.https://example.com/git/u/app.git.useHttpPath",
-	} {
-		if !strings.Contains(log, want) {
-			t.Fatalf("git log missing %q in:\n%s", want, log)
-		}
-	}
-}
-
-func TestGlobalGitConfigNormalizesCredentialKeyURL(t *testing.T) {
-	logPath := installFakeGit(t, 0)
-	cfg := GlobalGitConfig{HelperCommand: "!custom-helper"}
-	rawURL := "HTTPS://[2001:DB8::1]:443//repo.git?x=1"
-
-	if err := cfg.SetHelper(context.Background(), rawURL, "app_xxx"); err != nil {
-		t.Fatalf("SetHelper returned error: %v", err)
-	}
-	if err := cfg.UnsetHelper(context.Background(), rawURL); err != nil {
-		t.Fatalf("UnsetHelper returned error: %v", err)
-	}
-
-	log := readFileString(t, logPath)
-	for _, want := range []string{
-		"config --global credential.https://[2001:db8::1]/repo.git.helper !custom-helper",
-		"config --global credential.https://[2001:db8::1]/repo.git.useHttpPath true",
-		"config --global --unset credential.https://[2001:db8::1]/repo.git.helper",
-		"config --global --unset credential.https://[2001:db8::1]/repo.git.useHttpPath",
-	} {
-		if !strings.Contains(log, want) {
-			t.Fatalf("git log missing normalized key %q in:\n%s", want, log)
-		}
-	}
-}
-
-func TestGlobalGitConfigRollsBackHelperWhenUseHttpPathFails(t *testing.T) {
-	logPath := installFakeGit(t, 7)
-	err := (GlobalGitConfig{}).SetHelper(context.Background(), "https://example.com/git/u/app.git", "app_xxx")
-	if err == nil {
-		t.Fatal("SetHelper returned nil error, want git failure")
-	}
-	log := readFileString(t, logPath)
-	if !strings.Contains(log, "config --global --unset credential.https://example.com/git/u/app.git.helper") {
-		t.Fatalf("git log missing rollback unset:\n%s", log)
-	}
-}
-
-func TestGlobalGitConfigQuotesDefaultHelperAppID(t *testing.T) {
-	logPath := installFakeGit(t, 0)
-	appID := "app_xxx; touch /tmp/pwned"
-	if err := (GlobalGitConfig{}).SetHelper(context.Background(), "https://example.com/git/u/app.git", appID); err != nil {
-		t.Fatalf("SetHelper returned error: %v", err)
-	}
-	log := readFileString(t, logPath)
-	want := "helper !lark-cli apps git-credential-helper --app-id 'app_xxx; touch /tmp/pwned'"
-	if !strings.Contains(log, want) {
-		t.Fatalf("git log missing quoted helper %q in:\n%s", want, log)
-	}
-}
-
-func TestGlobalGitConfigReturnsFirstGitCommandError(t *testing.T) {
-	installAlwaysFailingGit(t)
-	err := (GlobalGitConfig{}).SetHelper(context.Background(), "https://example.com/git/u/app.git", "app_xxx")
-	if err == nil {
-		t.Fatal("SetHelper returned nil error, want first git command failure")
-	}
-}
-
-func TestGlobalGitConfigUnsetReportsUnexpectedErrors(t *testing.T) {
-	installAlwaysFailingGit(t)
-	err := (GlobalGitConfig{}).UnsetHelper(context.Background(), "https://example.com/git/u/app.git")
-	if err == nil || !strings.Contains(err.Error(), "get credential.https://example.com/git/u/app.git.helper") {
-		t.Fatalf("UnsetHelper error = %v", err)
-	}
-}
-
-func TestGlobalGitConfigDoesNotOverwriteOrUnsetNonLarkHelper(t *testing.T) {
-	logPath := installFakeGitWithGet(t, "!other-helper")
-	cfg := GlobalGitConfig{}
-	err := cfg.SetHelper(context.Background(), "https://example.com/git/u/app.git", "app_xxx")
-	if err == nil || !strings.Contains(err.Error(), "refusing to overwrite non-lark helper") {
-		t.Fatalf("SetHelper error = %v", err)
-	}
-	if err := cfg.UnsetHelper(context.Background(), "https://example.com/git/u/app.git"); err != nil {
-		t.Fatalf("UnsetHelper returned error: %v", err)
-	}
-	log := readFileString(t, logPath)
-	for _, unwanted := range []string{
-		"credential.https://example.com/git/u/app.git.helper !lark-cli",
-		"--unset credential.https://example.com/git/u/app.git.helper",
-		"--unset credential.https://example.com/git/u/app.git.useHttpPath",
-	} {
-		if strings.Contains(log, unwanted) {
-			t.Fatalf("git log contains unwanted %q in:\n%s", unwanted, log)
-		}
-	}
-}
-
-func TestGlobalGitConfigUnsetIgnoresMissingManagedKeys(t *testing.T) {
-	logPath := installFakeGitWithGetAndUnsetExit(t, "!lark-cli apps git-credential-helper --app-id app_xxx", 5)
-	if err := (GlobalGitConfig{}).UnsetHelper(context.Background(), "https://example.com/git/u/app.git"); err != nil {
-		t.Fatalf("UnsetHelper returned error: %v", err)
-	}
-	log := readFileString(t, logPath)
-	for _, want := range []string{
-		"config --global --unset credential.https://example.com/git/u/app.git.helper",
-		"config --global --unset credential.https://example.com/git/u/app.git.useHttpPath",
-	} {
-		if !strings.Contains(log, want) {
-			t.Fatalf("git log missing %q in:\n%s", want, log)
-		}
-	}
-}
-
-func TestGlobalGitConfigAdditionalBranches(t *testing.T) {
-	if err := (GlobalGitConfig{}).SetHelper(context.Background(), "ssh://example.com/git/u/app.git", "app_xxx"); err == nil {
-		t.Fatal("SetHelper invalid URL returned nil error")
-	}
-	if err := (GlobalGitConfig{}).UnsetHelper(context.Background(), "ssh://example.com/git/u/app.git"); err == nil {
-		t.Fatal("UnsetHelper invalid URL returned nil error")
-	}
-
-	if err := (GlobalGitConfig{}).SetHelper(context.Background(), "https://example.com/git/u/app.git", "../bad"); err == nil {
-		t.Fatal("SetHelper invalid appID returned nil error")
-	}
-
-	installFakeGitSetFails(t)
-	if err := (GlobalGitConfig{}).SetHelper(context.Background(), "https://example.com/git/u/app.git", "app_xxx"); err == nil {
-		t.Fatal("SetHelper set failure returned nil error")
-	}
-
-	logPath := installFakeGitWithGetAndUseHTTPPathFailure(t, "!lark-cli apps git-credential-helper --app-id old_app", 7)
-	if err := (GlobalGitConfig{}).SetHelper(context.Background(), "https://example.com/git/u/app.git", "app_xxx"); err == nil {
-		t.Fatal("SetHelper useHttpPath failure returned nil error")
-	}
-	log := readFileString(t, logPath)
-	if !strings.Contains(log, "config --global credential.https://example.com/git/u/app.git.helper !lark-cli apps git-credential-helper --app-id old_app") {
-		t.Fatalf("git log missing previous helper restore:\n%s", log)
-	}
-
-	installFakeGitWithGetAndUnsetExit(t, "!lark-cli apps git-credential-helper --app-id app_xxx", 9)
-	if err := (GlobalGitConfig{}).UnsetHelper(context.Background(), "https://example.com/git/u/app.git"); err == nil || !strings.Contains(err.Error(), "unset credential.https://example.com/git/u/app.git.helper") {
-		t.Fatalf("UnsetHelper helper unset error = %v", err)
-	}
-
-	logPath = installFakeGitWithGetAndSecondUnsetFails(t, "!lark-cli apps git-credential-helper --app-id app_xxx")
-	if err := (GlobalGitConfig{}).UnsetHelper(context.Background(), "https://example.com/git/u/app.git"); err == nil || !strings.Contains(err.Error(), "unset credential.https://example.com/git/u/app.git.useHttpPath") {
-		t.Fatalf("UnsetHelper useHttpPath unset error = %v", err)
-	}
-	if !strings.Contains(readFileString(t, logPath), "--unset credential.https://example.com/git/u/app.git.useHttpPath") {
-		t.Fatalf("git log missing useHttpPath unset:\n%s", readFileString(t, logPath))
-	}
-
-	cfg := GlobalGitConfig{HelperCommand: "!custom-helper"}
-	if !cfg.isManagedHelper(" !custom-helper ") {
-		t.Fatal("custom helper should be managed")
-	}
-	if cfg.isManagedHelper("!other-helper") {
-		t.Fatal("other helper should not be managed")
-	}
-	if isGitConfigUnsetMissing(errors.New("plain error")) {
-		t.Fatal("plain error must not be treated as missing git config")
 	}
 }
 
@@ -2478,160 +2298,6 @@ func (w *failWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func installFakeGit(t *testing.T, failUseHTTPPathExit int) string {
-	t.Helper()
-	dir := t.TempDir()
-	logPath := filepath.Join(dir, "git.log")
-	gitPath := filepath.Join(dir, "git")
-	script := fmt.Sprintf(`#!/bin/sh
-printf '%%s\n' "$*" >> "$GIT_FAKE_LOG"
-case "$*" in
-  *"--get"*) exit 1 ;;
-esac
-case "$*" in
-  *useHttpPath*) exit %d ;;
-esac
-exit 0
-`, failUseHTTPPathExit)
-	if failUseHTTPPathExit == 0 {
-		script = `#!/bin/sh
-printf '%s\n' "$*" >> "$GIT_FAKE_LOG"
-case "$*" in
-  *"--get"*) exit 1 ;;
-esac
-exit 0
-`
-	}
-	if err := os.WriteFile(gitPath, []byte(script), 0700); err != nil {
-		t.Fatalf("write fake git: %v", err)
-	}
-	t.Setenv("GIT_FAKE_LOG", logPath)
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	return logPath
-}
-
-func installFakeGitWithGet(t *testing.T, value string) string {
-	t.Helper()
-	dir := t.TempDir()
-	logPath := filepath.Join(dir, "git.log")
-	gitPath := filepath.Join(dir, "git")
-	script := fmt.Sprintf(`#!/bin/sh
-printf '%%s\n' "$*" >> "$GIT_FAKE_LOG"
-case "$*" in
-  *"--get"*) printf '%%s\n' %s; exit 0 ;;
-esac
-exit 0
-`, shellQuoteArg(value))
-	if err := os.WriteFile(gitPath, []byte(script), 0700); err != nil {
-		t.Fatalf("write fake git: %v", err)
-	}
-	t.Setenv("GIT_FAKE_LOG", logPath)
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	return logPath
-}
-
-func installFakeGitWithGetAndUnsetExit(t *testing.T, value string, unsetExit int) string {
-	t.Helper()
-	dir := t.TempDir()
-	logPath := filepath.Join(dir, "git.log")
-	gitPath := filepath.Join(dir, "git")
-	script := fmt.Sprintf(`#!/bin/sh
-printf '%%s\n' "$*" >> "$GIT_FAKE_LOG"
-case "$*" in
-  *"--get"*) printf '%%s\n' %s; exit 0 ;;
-  *"--unset"*) exit %d ;;
-esac
-exit 0
-`, shellQuoteArg(value), unsetExit)
-	if err := os.WriteFile(gitPath, []byte(script), 0700); err != nil {
-		t.Fatalf("write fake git: %v", err)
-	}
-	t.Setenv("GIT_FAKE_LOG", logPath)
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	return logPath
-}
-
-func installFakeGitSetFails(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	logPath := filepath.Join(dir, "git.log")
-	gitPath := filepath.Join(dir, "git")
-	script := `#!/bin/sh
-printf '%s\n' "$*" >> "$GIT_FAKE_LOG"
-case "$*" in
-  *"--get"*) exit 1 ;;
-  *".helper "*) exit 8 ;;
-esac
-exit 0
-`
-	if err := os.WriteFile(gitPath, []byte(script), 0700); err != nil {
-		t.Fatalf("write fake git: %v", err)
-	}
-	t.Setenv("GIT_FAKE_LOG", logPath)
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	return logPath
-}
-
-func installFakeGitWithGetAndUseHTTPPathFailure(t *testing.T, value string, useHTTPPathExit int) string {
-	t.Helper()
-	dir := t.TempDir()
-	logPath := filepath.Join(dir, "git.log")
-	gitPath := filepath.Join(dir, "git")
-	script := fmt.Sprintf(`#!/bin/sh
-printf '%%s\n' "$*" >> "$GIT_FAKE_LOG"
-case "$*" in
-  *"--get"*) printf '%%s\n' %s; exit 0 ;;
-  *"useHttpPath true"*) exit %d ;;
-esac
-exit 0
-`, shellQuoteArg(value), useHTTPPathExit)
-	if err := os.WriteFile(gitPath, []byte(script), 0700); err != nil {
-		t.Fatalf("write fake git: %v", err)
-	}
-	t.Setenv("GIT_FAKE_LOG", logPath)
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	return logPath
-}
-
-func installFakeGitWithGetAndSecondUnsetFails(t *testing.T, value string) string {
-	t.Helper()
-	dir := t.TempDir()
-	logPath := filepath.Join(dir, "git.log")
-	gitPath := filepath.Join(dir, "git")
-	script := fmt.Sprintf(`#!/bin/sh
-printf '%%s\n' "$*" >> "$GIT_FAKE_LOG"
-case "$*" in
-  *"--get"*) printf '%%s\n' %s; exit 0 ;;
-  *"--unset"*"useHttpPath"*) exit 9 ;;
-  *"--unset"*) exit 0 ;;
-esac
-exit 0
-`, shellQuoteArg(value))
-	if err := os.WriteFile(gitPath, []byte(script), 0700); err != nil {
-		t.Fatalf("write fake git: %v", err)
-	}
-	t.Setenv("GIT_FAKE_LOG", logPath)
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	return logPath
-}
-
-func installAlwaysFailingGit(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	logPath := filepath.Join(dir, "git.log")
-	gitPath := filepath.Join(dir, "git")
-	script := `#!/bin/sh
-printf '%s\n' "$*" >> "$GIT_FAKE_LOG"
-exit 9
-`
-	if err := os.WriteFile(gitPath, []byte(script), 0700); err != nil {
-		t.Fatalf("write fake git: %v", err)
-	}
-	t.Setenv("GIT_FAKE_LOG", logPath)
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	return logPath
-}
-
 func makeDirReadOnly(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.Chmod(dir, 0500); err != nil {
@@ -2640,15 +2306,6 @@ func makeDirReadOnly(t *testing.T, dir string) {
 	t.Cleanup(func() {
 		_ = os.Chmod(dir, 0700)
 	})
-}
-
-func readFileString(t *testing.T, path string) string {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("read %s: %v", path, err)
-	}
-	return string(data)
 }
 
 var _ io.Reader = errorReader{}

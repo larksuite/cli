@@ -123,13 +123,15 @@ func TestGetRelatedTasks_Execute(t *testing.T) {
 									"tasklists":     []interface{}{},
 									"url":           "https://example.com/task-123",
 									"creator":       map[string]interface{}{"id": "ou_testuser", "type": "user"},
+									"start":         map[string]interface{}{"timestamp": "1775088000000", "is_all_day": false},
+									"due":           map[string]interface{}{"timestamp": "1775174400000", "is_all_day": false},
 								},
 							},
 						},
 					},
 				})
 			},
-			wantParts: []string{`"guid": "task-123"`, `"summary": "Related Task"`},
+			wantParts: []string{`"guid": "task-123"`, `"summary": "Related Task"`, `"start":`, `"due":`},
 		},
 		{
 			name: "pretty pagination followed by me",

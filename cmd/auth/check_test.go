@@ -13,6 +13,8 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/surface"
 	"github.com/zalando/go-keyring"
 )
 
@@ -160,5 +162,74 @@ func TestAuthCheckRun_EmptyScopeIsValidationError(t *testing.T) {
 	}
 	if got := output.ExitCodeOf(err); got != output.ExitValidation {
 		t.Errorf("exit code = %d, want ExitValidation (%d)", got, output.ExitValidation)
+	}
+}
+
+func TestAuthCheckRun_ConcealedLoginOmitsSuggestion(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	cfg := &core.CliConfig{
+		AppID:      "test-app",
+		AppSecret:  "test-secret",
+		Brand:      core.BrandFeishu,
+		UserOpenId: "ou_user",
+		UserName:   "tester",
+	}
+	now := time.Now()
+	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
+		AppId:            cfg.AppID,
+		UserOpenId:       cfg.UserOpenId,
+		AccessToken:      "user-access-token",
+		RefreshToken:     "refresh-token",
+		ExpiresAt:        now.Add(time.Hour).UnixMilli(),
+		RefreshExpiresAt: now.Add(24 * time.Hour).UnixMilli(),
+		GrantedAt:        now.Add(-time.Hour).UnixMilli(),
+		Scope:            "im:message",
+	}); err != nil {
+		t.Fatalf("SetStoredToken() error = %v", err)
+	}
+
+	visibleFactory, visibleStdout, _, _ := cmdutil.TestFactory(t, cfg)
+	if err := authCheckRun(&CheckOptions{
+		Factory: visibleFactory,
+		Scope:   "calendar:calendar:read",
+	}); output.ExitCodeOf(err) != 1 {
+		t.Fatalf("default check exit = %d, want predicate miss exit 1", output.ExitCodeOf(err))
+	}
+	var visiblePayload map[string]any
+	if err := json.Unmarshal(visibleStdout.Bytes(), &visiblePayload); err != nil {
+		t.Fatalf("default stdout must be valid JSON: %v", err)
+	}
+	const wantSuggestion = "run `lark-cli auth login --scope \"calendar:calendar:read\" --no-wait --json` to get device_code and verification_url; present verification_url to the user exactly and end this turn; after the user confirms authorization, run `lark-cli auth login --device-code <device_code>` in a later turn to finish login"
+	if suggestion, _ := visiblePayload["suggestion"].(string); suggestion != wantSuggestion {
+		t.Fatalf("default suggestion = %q, want executable split-flow recovery %q", suggestion, wantSuggestion)
+	}
+
+	f, stdout, stderr, _ := cmdutil.TestFactory(t, cfg)
+	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandAuthLogin: surface.CommandConcealed,
+	})
+	err := authCheckRunWithRecovery(
+		&CheckOptions{Factory: f, Scope: "calendar:calendar:read"},
+		recovery.NewProjector(func() *surface.Plan { return plan }),
+	)
+	if got := output.ExitCodeOf(err); got != 1 {
+		t.Fatalf("exit code = %d, want predicate miss exit 1", got)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr must stay empty, got:\n%s", stderr.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("stdout must be valid JSON: %v\nstdout=%s", err, stdout.String())
+	}
+	if _, ok := payload["suggestion"]; ok {
+		t.Fatalf("concealed auth/login left a dead suggestion: %#v", payload["suggestion"])
+	}
+	if missing, ok := payload["missing"].([]any); !ok || len(missing) != 1 {
+		t.Fatalf("projection removed missing-scope facts: %#v", payload["missing"])
 	}
 }

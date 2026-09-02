@@ -5,11 +5,13 @@ package common
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -298,5 +300,17 @@ func TestBotInfo_NilFunc(t *testing.T) {
 	// BotInfo() returns a raw fmt.Errorf when botInfoFunc is nil, not a typed envelope — message-substring assertion is intentional.
 	if !strings.Contains(err.Error(), "not fully initialized") {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestBotInfo_OfflineReturnsTypedFailedPrecondition(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	rctx := TestNewRuntimeContext(cmd, &core.CliConfig{})
+	rctx.offline = true
+	_, err := rctx.BotInfo()
+	var validation *errs.ValidationError
+	problem, ok := errs.ProblemOf(err)
+	if !ok || !errors.As(err, &validation) || problem.Subtype != errs.SubtypeFailedPrecondition {
+		t.Fatalf("error = %#v, problem = %#v", err, problem)
 	}
 }

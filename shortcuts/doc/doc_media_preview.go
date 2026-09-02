@@ -21,12 +21,12 @@ const PreviewType_SOURCE_FILE = "16"
 var DocMediaPreview = common.Shortcut{
 	Service:     "docs",
 	Command:     "+media-preview",
-	Description: "Preview document media file (auto-detects extension)",
+	Description: "Preview document media or comment image (auto-detects extension)",
 	Risk:        "read",
 	Scopes:      []string{"docs:document.media:download"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "token", Desc: "media file token", Required: true},
+		{Name: "token", Desc: "document media token or comment image token", Required: true},
 		{Name: "output", Desc: "local save path", Required: true},
 		{Name: "overwrite", Type: "bool", Desc: "overwrite existing output file"},
 	},
@@ -51,8 +51,6 @@ var DocMediaPreview = common.Shortcut{
 		if _, err := runtime.ResolveSavePath(outputPath); err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", err).WithParam("--output").WithCause(err)
 		}
-
-		fmt.Fprintf(runtime.IO().ErrOut, "Previewing: media %s\n", common.MaskToken(token))
 
 		encodedToken := validate.EncodePathSegment(token)
 		apiPath := fmt.Sprintf("/open-apis/drive/v1/medias/%s/preview_download", encodedToken)

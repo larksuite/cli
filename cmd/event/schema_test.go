@@ -10,14 +10,26 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	eventlib "github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/catalog"
 	"github.com/larksuite/cli/internal/event/schemas"
-
-	_ "github.com/larksuite/cli/events"
 )
+
+// compileTestSnapshot compiles synthetic declarations into a snapshot using
+// the same strategy set the production wiring provides.
+func compileTestSnapshot(t *testing.T, defs ...eventlib.KeyDefinition) *catalog.Snapshot {
+	t.Helper()
+	snap, err := catalog.Compile(defs, catalog.StrategyRefs{
+		catalog.StrategyNone,
+		catalog.StrategyLegacyPreConsume,
+	})
+	if err != nil {
+		t.Fatalf("compile test catalog: %v", err)
+	}
+	return snap
+}
 
 type approvalSchemaJSONPayload struct {
 	JQRootPath           string                           `json:"jq_root_path"`
@@ -45,7 +57,7 @@ type approvalSchemaJSONProperty struct {
 func TestRunSchema_ProcessedKey_Text(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
 
-	if err := runSchema(f, "im.message.receive_v1", false); err != nil {
+	if err := runSchema(f, compileCatalog(), "im.message.receive_v1", false); err != nil {
 		t.Fatalf("runSchema: %v", err)
 	}
 
@@ -65,7 +77,7 @@ func TestRunSchema_ProcessedKey_Text(t *testing.T) {
 func TestRunSchema_NativeKey_WrapsEnvelope(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
 
-	if err := runSchema(f, "im.message.message_read_v1", false); err != nil {
+	if err := runSchema(f, compileCatalog(), "im.message.message_read_v1", false); err != nil {
 		t.Fatalf("runSchema: %v", err)
 	}
 
@@ -85,7 +97,7 @@ func TestRunSchema_NativeKey_WrapsEnvelope(t *testing.T) {
 func TestRunSchema_UnknownKey_SuggestsAlternatives(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
 
-	err := runSchema(f, "im.message.recieve_v1", false)
+	err := runSchema(f, compileCatalog(), "im.message.recieve_v1", false)
 	if err == nil {
 		t.Fatal("expected error for unknown key")
 	}
@@ -101,7 +113,7 @@ func TestRunSchema_UnknownKey_SuggestsAlternatives(t *testing.T) {
 func TestRunSchema_JSONOutput(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
 
-	if err := runSchema(f, "im.message.receive_v1", true); err != nil {
+	if err := runSchema(f, compileCatalog(), "im.message.receive_v1", true); err != nil {
 		t.Fatalf("runSchema json: %v", err)
 	}
 
@@ -122,7 +134,7 @@ func TestRunSchema_JSONOutput(t *testing.T) {
 func TestRunSchema_ReceiveMessageAgentFieldsJSON(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
 
-	if err := runSchema(f, "im.message.receive_v1", true); err != nil {
+	if err := runSchema(f, compileCatalog(), "im.message.receive_v1", true); err != nil {
 		t.Fatalf("runSchema json: %v", err)
 	}
 
@@ -156,7 +168,7 @@ func TestRunSchema_ReceiveMessageAgentFieldsJSON(t *testing.T) {
 func TestRunSchema_TaskUpdateUserAccessJSON(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
 
-	if err := runSchema(f, "task.task.update_user_access_v2", true); err != nil {
+	if err := runSchema(f, compileCatalog(), "task.task.update_user_access_v2", true); err != nil {
 		t.Fatalf("runSchema json: %v", err)
 	}
 
@@ -195,7 +207,7 @@ func TestRunSchema_ApprovalStatusChangedJSON(t *testing.T) {
 			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 			f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
 
-			if err := runSchema(f, tc.key, true); err != nil {
+			if err := runSchema(f, compileCatalog(), tc.key, true); err != nil {
 				t.Fatalf("runSchema json: %v", err)
 			}
 
@@ -243,7 +255,7 @@ func TestRunSchema_JSONOutput_VCMeetingLifecycleKeys(t *testing.T) {
 		t.Run(key, func(t *testing.T) {
 			f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
 
-			if err := runSchema(f, key, true); err != nil {
+			if err := runSchema(f, compileCatalog(), key, true); err != nil {
 				t.Fatalf("runSchema json: %v", err)
 			}
 
@@ -276,9 +288,8 @@ func TestRunSchema_JSONOutput_VCMeetingLifecycleKeys(t *testing.T) {
 
 func TestSchema_RendersSubscriptionKeyMarker(t *testing.T) {
 	const syntheticKey = "test.evt_sub"
-	t.Cleanup(func() { eventlib.UnregisterKeyForTest(syntheticKey) })
 
-	eventlib.RegisterKey(eventlib.KeyDefinition{
+	snap := compileTestSnapshot(t, eventlib.KeyDefinition{
 		Key:       syntheticKey,
 		EventType: syntheticKey,
 		Params: []eventlib.ParamDef{
@@ -289,7 +300,7 @@ func TestSchema_RendersSubscriptionKeyMarker(t *testing.T) {
 	})
 
 	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
-	if err := runSchema(f, syntheticKey, false); err != nil {
+	if err := runSchema(f, snap, syntheticKey, false); err != nil {
 		t.Fatalf("runSchema: %v", err)
 	}
 
@@ -325,9 +336,8 @@ func TestSchema_RendersSubscriptionKeyMarker(t *testing.T) {
 
 func TestSchema_JSON_IncludesSubscriptionKey(t *testing.T) {
 	const syntheticKey = "test.evt_json"
-	t.Cleanup(func() { eventlib.UnregisterKeyForTest(syntheticKey) })
 
-	eventlib.RegisterKey(eventlib.KeyDefinition{
+	snap := compileTestSnapshot(t, eventlib.KeyDefinition{
 		Key:       syntheticKey,
 		EventType: syntheticKey,
 		Params:    []eventlib.ParamDef{{Name: "mailbox", SubscriptionKey: true}},
@@ -335,7 +345,7 @@ func TestSchema_JSON_IncludesSubscriptionKey(t *testing.T) {
 	})
 
 	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
-	if err := runSchema(f, syntheticKey, true); err != nil {
+	if err := runSchema(f, snap, syntheticKey, true); err != nil {
 		t.Fatalf("runSchema json: %v", err)
 	}
 
@@ -349,12 +359,13 @@ func TestSchema_JSON_IncludesSubscriptionKey(t *testing.T) {
 
 func TestResolveSchemaJSON_CustomWithOverlay(t *testing.T) {
 	const syntheticKey = "t.custom.overlay"
-	t.Cleanup(func() { eventlib.UnregisterKeyForTest(syntheticKey) })
 
 	type out struct {
 		SenderID string `json:"sender_id"`
 	}
-	eventlib.RegisterKey(eventlib.KeyDefinition{
+	// A compile that succeeds proves the overlay left no orphan pointers; the
+	// entry's output contract carries the resolved schema.
+	snap := compileTestSnapshot(t, eventlib.KeyDefinition{
 		Key:       syntheticKey,
 		EventType: syntheticKey,
 		Schema: eventlib.SchemaDef{
@@ -367,13 +378,12 @@ func TestResolveSchemaJSON_CustomWithOverlay(t *testing.T) {
 			return nil, nil
 		},
 	})
-	def, _ := eventlib.Lookup(syntheticKey)
-	resolved, orphans, err := resolveSchemaJSON(def)
-	if err != nil || len(orphans) != 0 {
-		t.Fatalf("resolve: err=%v orphans=%v", err, orphans)
+	entry, ok := snap.Resolve(syntheticKey)
+	if !ok {
+		t.Fatalf("snap.Resolve(%q) should succeed", syntheticKey)
 	}
 	var parsed map[string]interface{}
-	if err := json.Unmarshal(resolved, &parsed); err != nil {
+	if err := json.Unmarshal(entry.Output().SchemaJSON, &parsed); err != nil {
 		t.Fatal(err)
 	}
 	got := parsed["properties"].(map[string]interface{})["sender_id"].(map[string]interface{})["format"]
@@ -382,37 +392,35 @@ func TestResolveSchemaJSON_CustomWithOverlay(t *testing.T) {
 	}
 }
 
-func TestRenderSpec_EmptySpecIsTypedInternalError(t *testing.T) {
-	_, err := renderSpec(&eventlib.SchemaSpec{})
+func TestCompile_EmptySpecIsRejected(t *testing.T) {
+	_, err := catalog.Compile([]eventlib.KeyDefinition{{
+		Key:       "synthetic.empty.spec",
+		EventType: "synthetic.empty.spec",
+		Schema:    eventlib.SchemaDef{Native: &eventlib.SchemaSpec{}},
+	}}, catalog.StrategyRefs{catalog.StrategyNone})
 	if err == nil {
 		t.Fatal("expected error for spec with neither Type nor Raw")
 	}
-	p, ok := errs.ProblemOf(err)
-	if !ok {
-		t.Fatalf("expected typed errs error, got %T: %v", err, err)
-	}
-	if p.Category != errs.CategoryInternal {
-		t.Errorf("category = %s, want %s", p.Category, errs.CategoryInternal)
+	if !strings.Contains(err.Error(), "exactly one of Type or Raw") {
+		t.Errorf("error should reject the empty spec, got: %v", err)
 	}
 }
 
-func TestResolveSchemaJSON_InvalidBaseWithOverridesIsTypedInternalError(t *testing.T) {
-	def := &eventlib.KeyDefinition{
-		Key: "synthetic.invalid.base",
+func TestCompile_InvalidBaseWithOverridesIsRejected(t *testing.T) {
+	_, err := catalog.Compile([]eventlib.KeyDefinition{{
+		Key:       "synthetic.invalid.base",
+		EventType: "synthetic.invalid.base",
 		Schema: eventlib.SchemaDef{
 			Custom:         &eventlib.SchemaSpec{Raw: json.RawMessage("{not json")},
 			FieldOverrides: map[string]schemas.FieldMeta{"x": {}},
 		},
-	}
-	_, _, err := resolveSchemaJSON(def)
+	}}, catalog.StrategyRefs{catalog.StrategyNone})
 	if err == nil {
 		t.Fatal("expected error for unparsable base schema")
 	}
-	p, ok := errs.ProblemOf(err)
-	if !ok {
-		t.Fatalf("expected typed errs error, got %T: %v", err, err)
-	}
-	if p.Category != errs.CategoryInternal {
-		t.Errorf("category = %s, want %s", p.Category, errs.CategoryInternal)
+	// Garbage raw bytes are rejected by the spec check itself, before the
+	// overlay machinery would even try to parse them.
+	if !strings.Contains(err.Error(), "is not a JSON object") {
+		t.Errorf("error should reject the unparsable base schema, got: %v", err)
 	}
 }

@@ -16,12 +16,14 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/adapter/lark/websocket"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/transport"
 	"github.com/larksuite/cli/internal/event/bus"
-	"github.com/larksuite/cli/internal/event/transport"
+	"github.com/larksuite/cli/internal/event/catalog"
 )
 
 // NewCmdBus creates the hidden `event _bus` daemon subcommand, forked by the consume client; fork argv lives in consume/startup.go.
-func NewCmdBus(f *cmdutil.Factory) *cobra.Command {
+func NewCmdBus(f *cmdutil.Factory, snap *catalog.Snapshot) *cobra.Command {
 	var domain string
 
 	cmd := &cobra.Command{
@@ -44,7 +46,13 @@ func NewCmdBus(f *cmdutil.Factory) *cobra.Command {
 			}
 
 			tr := transport.New()
-			b := bus.NewBus(cfg.AppID, cfg.AppSecret, domain, tr, logger)
+			ingress := &websocket.FeishuSource{
+				AppID:     cfg.AppID,
+				AppSecret: cfg.AppSecret,
+				Domain:    domain,
+				Logger:    logger,
+			}
+			b := bus.NewBus(cfg.AppID, cfg.AppSecret, domain, tr, logger, snap, ingress)
 
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()

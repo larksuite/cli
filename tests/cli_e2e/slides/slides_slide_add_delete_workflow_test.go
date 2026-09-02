@@ -17,7 +17,7 @@ import (
 // slideXMLWithBody renders a one-shape page carrying a caller-supplied marker,
 // so a readback can tell the pages apart by content instead of by index.
 func slideXMLWithBody(body string) string {
-	return `<slide xmlns="http://www.larkoffice.com/sml/2.0"><data>` +
+	return `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data>` +
 		`<shape type="text" topLeftX="80" topLeftY="80" width="800" height="120">` +
 		`<content textType="title"><p>` + body + `</p></content></shape></data></slide>`
 }

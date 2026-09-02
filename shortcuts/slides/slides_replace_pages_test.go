@@ -64,7 +64,7 @@ func TestReplacePagesCreatesBeforeThenDeletesOld(t *testing.T) {
 	}
 	reg.Register(deleteStub)
 
-	pages := `[{"slide_id":"old2","content":"<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data></data></slide>"}]`
+	pages := `[{"slide_id":"old2","content":"<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data></data></slide>"}]`
 	err := runSlidesShortcut(t, f, stdout, SlidesReplacePages, []string{
 		"+replace-pages",
 		"--presentation", "pres_abc",
@@ -159,8 +159,8 @@ func TestReplacePagesContinueOnErrorReturnsPartialFailure(t *testing.T) {
 	})
 
 	pages := `[
-		{"slide_id":"old1","content":"<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data></data></slide>"},
-		{"slide_id":"old2","content":"<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data></data></slide>"}
+		{"slide_id":"old1","content":"<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data></data></slide>"},
+		{"slide_id":"old2","content":"<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data></data></slide>"}
 	]`
 	err := runSlidesShortcut(t, f, stdout, SlidesReplacePages, []string{
 		"+replace-pages",
@@ -222,7 +222,7 @@ func TestReplacePagesContinueOnErrorDeleteFailureIncludesNewSlideID(t *testing.T
 		},
 	})
 
-	pages := `[{"slide_id":"old1","content":"<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data></data></slide>"}]`
+	pages := `[{"slide_id":"old1","content":"<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data></data></slide>"}]`
 	err := runSlidesShortcut(t, f, stdout, SlidesReplacePages, []string{
 		"+replace-pages",
 		"--presentation", "pres_abc",
@@ -257,7 +257,7 @@ func TestReplacePagesDryRunPlansOnly(t *testing.T) {
 
 	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
 
-	pages := `[{"slide_id":"old2","content":"<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data></data></slide>"}]`
+	pages := `[{"slide_id":"old2","content":"<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data></data></slide>"}]`
 	err := runSlidesShortcut(t, f, stdout, SlidesReplacePages, []string{
 		"+replace-pages",
 		"--presentation", "pres_abc",

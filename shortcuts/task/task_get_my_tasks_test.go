@@ -45,6 +45,8 @@ func TestGetMyTasks_LocalTimeFormatting(t *testing.T) {
 			expectedOutput: []string{
 				`"due_at": "` + expectedRFC3339 + `"`,
 				`"created_at": "` + expectedRFC3339 + `"`,
+				`"role": "assignee"`,
+				`"start": {`,
 			},
 		},
 		{
@@ -74,6 +76,13 @@ func TestGetMyTasks_LocalTimeFormatting(t *testing.T) {
 								"guid":       "task-123",
 								"summary":    "Test Task",
 								"created_at": tsStr,
+								"members": []interface{}{
+									map[string]interface{}{"id": "ou_owner", "role": "assignee", "type": "user"},
+								},
+								"start": map[string]interface{}{
+									"timestamp":  tsStr,
+									"is_all_day": false,
+								},
 								"due": map[string]interface{}{
 									"timestamp": tsStr,
 								},

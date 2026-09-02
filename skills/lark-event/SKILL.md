@@ -32,7 +32,7 @@ metadata:
 | `--max-events N` | Exit after N events. Default 0 = unlimited |
 | `--timeout D` | Exit after duration D (e.g. `30s`, `2m`). Default 0 = no timeout. Whichever of `--max-events` / `--timeout` fires first wins |
 | `--output-dir <dir>` | Write each event as a file (relative paths only; prevents traversal) |
-| `--quiet` | Suppress stderr diagnostics. **AI should not use this** — it silences the ready marker |
+| `--quiet` | Suppress ready/exit markers and per-event stderr diagnostics, including drop warnings. This can hide event loss. **AI should not use this** — it removes readiness and integrity signals |
 | `--as user\|bot\|auto` | Identity for the session (see lark-shared) |
 
 
@@ -41,6 +41,9 @@ metadata:
 ```bash
 # Default: stream every event for the key (no filter, no projection)
 lark-cli event consume im.message.receive_v1 --as bot
+
+# List every EventKey of one domain (the authoritative, always-current catalog)
+lark-cli event list --domain vc --json
 
 # Grab one sample event to inspect payload shape
 lark-cli event consume im.message.receive_v1 --max-events 1 --timeout 30s --as bot
@@ -57,7 +60,7 @@ wait
 
 ## Call flow
 
-1. `lark-cli event list --json` → pick a legal key
+1. `lark-cli event list --json` → pick a legal key. `--domain <d>` narrows to one domain; the domains are `application`, `approval`, `board`, `card`, `im`, `minutes`, `task`, `vc`. An unknown domain fails with the valid set listed in the hint.
 2. `lark-cli event schema <key> --json` → read `resolved_output_schema` + `jq_root_path` to determine field paths
 3. `lark-cli event consume <key> [--jq '<expr>']` → consume
 
@@ -94,7 +97,7 @@ Orchestrators should treat `reason: limit/timeout/signal` (all exit 0) as "busin
 
 ### Never `kill -9`
 
-**Avoid `kill -9` on consume processes**: for EventKeys with a **PreConsume hook** (those that register server-side subscriptions via OAPI), `kill -9` skips the OAPI unsubscribe and leaks server-side subscriptions (symptoms: "subscription already exists" on restart, duplicate event delivery). Prefer SIGTERM or closing stdin.
+**Avoid `kill -9` on consume processes** for EventKeys whose PreConsume registers a server-side subscription **and** unsubscribes on exit (minutes, vc, board keys): `kill -9` skips the OAPI unsubscribe and leaks the server-side subscription (symptoms: "subscription already exists" on restart, duplicate event delivery). Keys whose subscription is a durable relation with no cleanup (task, approval keys) do not leak this way, but SIGTERM or closing stdin remains the right shutdown for every key.
 
 ### One consume, one EventKey (multi-key = multi-shell)
 
@@ -151,6 +154,6 @@ Lark-defined semantic tags (**not** JSON Schema's standard `format`). Common val
 | Approval   | [`references/lark-event-approval.md`](references/lark-event-approval.md)     | Catalog of 2 Approval EventKeys (`approval.instance.status_changed_v4`, `approval.task.status_changed_v4`) + optional/multi `subscription_type` pre-registration + user-auth subscription lifecycle + flat output field reference |
 | IM         | [`references/lark-event-im.md`](references/lark-event-im.md)                 | Catalog of 12 IM EventKeys + shape notes (flat vs V2 envelope) + `im.message.receive_v1` field gotchas (`sender_id` is open_id only; `.content` is plain text except for `interactive` cards) + common jq recipes (filter by chat_type / message_type / sender); for `card.action.trigger` see also [`../lark-im/references/lark-im-card-action-reply.md`](../lark-im/references/lark-im-card-action-reply.md) |
 | Task       | [`references/lark-event-task.md`](references/lark-event-task.md)             | Catalog of 1 Task EventKey (`task.task.update_user_access_v2`) + Native V2 envelope shape + task commit types + user/bot subscription notes |
-| VC         | [`references/lark-event-vc.md`](references/lark-event-vc.md)                 | Catalog of 4 VC EventKeys (`vc.meeting.participant_meeting_started_v1`, `vc.meeting.participant_meeting_joined_v1`, `vc.meeting.participant_meeting_ended_v1`, `vc.note.generated_v1`) + field reference + source type semantics (meeting only) |
+| VC         | [`references/lark-event-vc.md`](references/lark-event-vc.md)                 | Catalog of 7 VC EventKeys (meeting lifecycle `participant_meeting_started/joined/ended_v1`, `vc.note.generated_v1`, recording `recording_started/transcript_generated/ended_v1`) + field reference + source type semantics; the live list is always `lark-cli event list --domain vc --json` |
 | Minutes    | [`references/lark-event-minutes.md`](references/lark-event-minutes.md)       | Catalog of 1 Minutes EventKey (`minutes.minute.generated_v1`) + field reference + source type semantics (meeting only) |
 | Whiteboard | [`references/lark-event-whiteboard.md`](references/lark-event-whiteboard.md) | Catalog of 1 Board EventKey (`board.whiteboard.updated_v1`) + per-whiteboard subscription model (requires `-p whiteboard_id=<token>`) + payload field reference (whiteboard_id / operator_ids triple-id) |

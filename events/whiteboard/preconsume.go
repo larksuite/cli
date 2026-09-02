@@ -6,16 +6,12 @@ package whiteboard
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/events/internal/subscribeprep"
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/validate"
 )
-
-// cleanupTimeout bounds how long the unsubscribe call has to finish during
-// PreConsume cleanup so a stuck OAPI cannot block process shutdown.
-const cleanupTimeout = 5 * time.Second
 
 // whiteboardSubscriptionPreConsume calls the whiteboard event subscribe OAPI
 // and returns a cleanup that invokes the matching unsubscribe.
@@ -39,18 +35,6 @@ func whiteboardSubscriptionPreConsume(eventType string) func(context.Context, ev
 		subscribePath := fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/subscribe", encoded)
 		unsubscribePath := fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/unsubscribe", encoded)
 
-		body := map[string]string{"event_type": eventType}
-		if _, err := rt.CallAPI(ctx, "POST", subscribePath, body); err != nil {
-			return nil, err
-		}
-
-		return func() error {
-			cleanupCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
-			defer cancel()
-			if _, err := rt.CallAPI(cleanupCtx, "POST", unsubscribePath, body); err != nil {
-				return err
-			}
-			return nil
-		}, nil
+		return subscribeprep.SubscribeWithCleanup(ctx, rt, eventType, subscribePath, unsubscribePath)
 	}
 }

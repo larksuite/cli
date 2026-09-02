@@ -101,6 +101,7 @@ var CompleteTask = common.Shortcut{
 			"completed_at":      completedAt,
 			"already_completed": alreadyCompleted,
 		}
+		projectTaskFields(outData, task, taskOutputSummary, taskOutputMembers, taskOutputStart, taskOutputDue)
 
 		runtime.OutFormat(outData, nil, func(w io.Writer) {
 			summary, _ := task["summary"].(string)

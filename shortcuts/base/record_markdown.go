@@ -17,10 +17,10 @@ const maxRecordMarkdownIgnoredFields = 20
 
 func validateRecordReadFormat(runtime *common.RuntimeContext) error {
 	switch runtime.Str("format") {
-	case "", "json", "markdown":
+	case "", "json", "markdown", "ndjson":
 		return nil
 	default:
-		return baseValidationErrorf("--format must be json or markdown")
+		return baseValidationErrorf("--format must be json, markdown, or ndjson")
 	}
 }
 

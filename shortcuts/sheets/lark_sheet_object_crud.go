@@ -470,19 +470,19 @@ func pivotPlacementWarn(rt flagView) string {
 }
 
 // sheetNameFromA1 extracts the sheet name from a sheet-prefixed A1 reference,
-// stripping the single quotes Lark wraps around names that contain spaces:
-// "'Sheet 1'!A1:D100" → "Sheet 1", "Data!A1" → "Data". Returns "" when there
-// is no sheet prefix. (splitSheetPrefixedRange keeps the quotes; this one drops
-// them, which is what name comparison needs.)
+// stripping the single quotes Lark wraps around names that are not pure
+// letters: "'Sheet 1'!A1:D100" → "Sheet 1", "Data!A1" → "Data". Returns "" when
+// there is no sheet prefix. The grammar comes from scanSheetQualifier, so a
+// doubled-quote escape or a "!" inside the quotes ('Q!A'!A1) still compares
+// equal to the sheet it names.
+//
+// scanSheetQualifier rather than splitRangeSheetPrefix because a name is all
+// this wants: "Sheet1!" with no range still names Sheet1, and the placement
+// warning is more useful naming it than falling back to the generic wording.
 func sheetNameFromA1(ref string) string {
-	ref = strings.TrimSpace(ref)
-	idx := strings.Index(ref, "!")
-	if idx <= 0 {
+	name, _, ok := scanSheetQualifier(strings.TrimSpace(ref))
+	if !ok {
 		return ""
-	}
-	name := strings.TrimSpace(ref[:idx])
-	if len(name) >= 2 && strings.HasPrefix(name, "'") && strings.HasSuffix(name, "'") {
-		name = name[1 : len(name)-1]
 	}
 	return name
 }
@@ -852,23 +852,17 @@ func newFloatImageWriteShortcut(command, description, op string, withIDFlag, isH
 			return err
 		},
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-			token, _ := resolveSpreadsheetToken(runtime)
+			ref, _ := parseSpreadsheetRef(runtime)
+			token := ref.Token
 			sheetID, sheetName, _ := resolveSheetSelector(runtime)
 			input, _ := floatImageWriteInput(runtime, token, sheetID, sheetName, op, withIDFlag, "")
 			// With a local --image, Execute first uploads the file; surface that
 			// extra step in the preview (mirrors +cells-set-image's dry-run).
 			if img := strings.TrimSpace(runtime.Str("image")); img != "" {
 				manageBody, _ := buildToolBody("manage_float_image_object", input)
-				return common.NewDryRunAPI().
-					POST("/open-apis/drive/v1/medias/upload_all").
-					Desc("upload local image to drive (parent_type=" + sheetMediaParentType(token) + ")").
-					Body(map[string]interface{}{
-						"file_name":   floatImageName(runtime),
-						"parent_type": sheetMediaParentType(token),
-						"parent_node": token,
-						"size":        "<file_size>",
-						"file":        "@" + img,
-					}).
+				d := common.NewDryRunAPI()
+				appendSheetImageUploadDryRun(d, runtime, ref, img, floatImageName(runtime))
+				return d.
 					POST(toolInvokePath(token, ToolKindWrite)).
 					Desc("create float image referencing the uploaded file_token").
 					Body(manageBody)

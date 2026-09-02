@@ -87,7 +87,7 @@ lark-cli wiki +node-list --space-id 6946843325487912356 --parent-node-token wikc
 - `--space-id my_library` is a per-user alias and only valid with `--as user`. The shortcut will refuse `--as bot` with `my_library` upfront.
 - `--space-id` is a numeric wiki `space_id`. Do not pass a wiki URL, wiki node token, document token, or title. Use `lark-cli wiki +space-list --as user` to discover it.
 - `--parent-node-token` must resolve to a wiki node token. If you have a docx/sheet/base/file URL, first run `lark-cli wiki +node-get --node-token <url>` and use the returned `node_token`.
-- Treat `invalid_parameters` (`space_id is not int`, `invalid page_token`), `not_found` (`node not found by parent node token`), and `permission_denied` as terminal for the current arguments. Fix the argument or permission before retrying.
+- Treat `invalid_parameters` (`space_id is not int`, `invalid page_token`), `not_found` (`node not found by parent node token`), and `permission_denied` as terminal for the current arguments. For `131006 permission_denied`, the user or app/bot identity lacks access to the target space or parent node; this is resource access, not app scope authorization. Do not retry the same request, reauthorize, or switch identity as trial and error. Ask the resource owner or wiki administrator to grant read access, or use an accessible resource.
 - For `rate_limit`, stop immediate retries and retry later with exponential backoff or a smaller `--page-limit`.
 
 ## Required Scope

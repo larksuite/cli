@@ -6,8 +6,9 @@ package platform
 // Rule is the declarative policy rule data structure. yaml files and
 // Plugin.Restrict() both produce the same Rule.
 //
-// At any moment there is at most one effective Rule -- the resolver decides
-// which source wins (Plugin > yaml > none). This package only defines the
+// At any moment there is at most one effective SOURCE of rules -- the
+// resolver decides which wins (Plugin > yaml > none); the winning source
+// may contribute several scoped rules. This package only defines the
 // shape; selection lives in internal/cmdpolicy.
 //
 // The four filter fields are joined by AND. See the engine's Evaluate for

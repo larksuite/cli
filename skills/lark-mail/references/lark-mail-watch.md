@@ -91,4 +91,4 @@ lark-cli mail +watch --print-output-schema
 
 - [lark-mail](../SKILL.md) — 邮箱域总览
 - [lark-mail-triage](lark-mail-triage.md) — 邮件摘要列表
-- [lark-event-subscribe](../../lark-event/references/lark-event-subscribe.md) — 通用事件订阅
+- [lark-event](../../lark-event/SKILL.md) — 通用事件订阅

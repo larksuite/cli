@@ -1,24 +1,15 @@
 # docs +create（创建飞书云文档）
 
-> **前置条件（MUST READ）：** 生成文档内容前，必须先用 Read 工具读取以下文件，缺一不可：
-> 1. [`lark-doc-xml.md`](lark-doc-xml.md) — XML 语法规则（使用 Markdown 格式时改读 [`lark-doc-md.md`](lark-doc-md.md)）
-> 2. [`lark-doc-style.md`](style/lark-doc-style.md) — 写作原则（默认段落、按体裁、组件克制）
-> 3. [`lark-doc-create-workflow.md`](style/lark-doc-create-workflow.md) — 从零创作工作流（Code-Act Loop、单 Agent 串行撰写）
->
-> **未读完以上文件就生成内容会导致格式错误。**
+从 XML（默认）或 Markdown 内容创建一个新的飞书云文档；语义创作默认使用 XML，只有 Authoring 明确判定为 Markdown 例外时才使用 Markdown。
 
-从 XML（默认）或 Markdown 内容创建一个新的飞书云文档。
-
-> **⚠️ 格式选择规则：** 创建 / 导入场景下 XML 和 Markdown 都可以——用户提供 `.md` 本地文件、或明确说"导入 Markdown"时，直接用 Markdown；没有明确指示时默认 XML（表达能力更强，可承载更丰富的结构化内容）。不要在用户没要求的情况下主动从 XML 切到 Markdown，也不要在用户已给出 Markdown 时强行改成 XML。
+写入前必须按 `--doc-format` 读取对应格式参考：`xml` 读取 [`lark-doc-xml.md`](lark-doc-xml.md)，`markdown` 读取 [`lark-doc-md.md`](lark-doc-md.md)；Markdown 中使用 XML 扩展标签时还须读取 `lark-doc-xml.md`。
 
 ## 命令
 
 ```bash
-# 创建 XML 文档（默认格式，推荐）
-lark-cli docs +create --content '<title>项目计划</title><h1>目标</h1><p>记录本周重点。</p>'
-
-# 仅当用户明确要求导入 Markdown 时才使用；文档标题用 --title，正文标题按内容自然组织
-lark-cli docs +create --doc-format markdown --title "项目计划" --content $'## 目标\n\n- 明确重点\n- 记录待办'
+# 简单内容优先使用 `--content -`，文件导入如下：
+lark-cli docs +create --doc-format xml --content "@<XML 文件相对路径>"
+lark-cli docs +create --doc-format markdown --content "@./draft.md"
 ```
 
 ## 返回值
@@ -35,46 +26,29 @@ lark-cli docs +create --doc-format markdown --title "项目计划" --content $'#
       "new_blocks": [
         { "block_id": "blkcnXXXX", "block_type": "whiteboard", "block_token": "boardXXXX" }
       ]
-    }
+    },
+    "warnings": [],
+    "tips": ""
   }
 }
 ```
 
-- **`document.new_blocks`**：本次操作新增的 block 列表（如画板）。`block_id` 可用于 `docs +update` 的 `--block-id` 做精确编辑；`block_token` 是资源块（如画板）的 token，可交给 `lark-whiteboard` 等 skill 继续操作
-
-> \[!IMPORTANT]
-> 如果文档是**以应用身份（bot）创建**的，如 `lark-cli docs +create --as bot` 在文档创建成功后，CLI 会**尝试为当前 CLI 用户自动授予该文档的 `full_access`（可管理权限）**。
->
-> 以应用身份创建时，结果里会额外返回 `permission_grant` 字段，明确说明授权结果：
-> - `status = granted`：当前 CLI 用户已获得该文档的可管理权限
-> - `status = skipped`：本地没有可用的当前用户 `open_id`，因此不会自动授权；可提示用户先完成 `lark-cli auth login`，再让 AI / agent 继续使用应用身份（bot）授予当前用户权限
-> - `status = failed`：文档已创建成功，但自动授权用户失败；会带上失败原因，并提示稍后重试或继续使用 bot 身份处理该文档
->
-> `permission_grant.perm = full_access` 表示该资源已授予”可管理权限”。
->
-> **不要擅自执行 owner 转移。** 如果用户需要把 owner 转给自己，必须单独确认。
+- **`document.new_blocks`**：本次操作新增的 block 列表（如画板）。`block_id` 可用于 `docs +update` 的 `--block-id` 做精确编辑；`block_token` 是资源块（如画板）的 token，可交给 `lark-whiteboard` 等 skill 继续操作。
+- **`warnings`**：服务端返回的警告列表；`ok=true` 时也要检查，按提示确认是否存在降级或未完全处理的内容。
+- **`tips`**：服务端返回的后续处理建议；为空表示没有额外建议，非空本身不表示创建失败。
+- **`permission_grant`**：仅以 bot 身份创建时返回。CLI 会尝试为当前 CLI 用户授予新文档的 `full_access`；`status` 为 `granted` 表示授权成功，`skipped` 表示没有可用的当前用户 `open_id`，`failed` 表示文档已创建但授权失败。`perm` 固定为 `full_access`，失败或跳过时按 `message` / `hint` 处理。**自动授权不等于 owner 转移；用户要求转移 owner 时必须单独确认。**
 
 ## 参数
 
-| 参数                  | 必填 | 说明                                          |
-| ------------------- | -- |---------------------------------------------|
-| `--title`           | 否  | 文档标题，Markdown 导入时使用；XML 创建推荐在 `--content` 开头写 `<title>...</title>`；多个标题仅保留第一个并在 `warnings` / `degrade_details` 提示 |
-| `--content`         | 视情况 | 文档内容（XML 或 Markdown 格式）；不传 `--content` 时必须传 `--title` |
-| `--reference-map` | 否 | 结构化 `reference_map` JSON object；必须与 `--content` 一起使用。普通写入优先把结构写在正文里；该参数主要用于保留或回放已有 `document.reference_map`。支持直接 JSON、`@reference-map.json`（相对路径）或 `-` 从 stdin 读取。 |
-| `--doc-format`      | 否  | 内容格式：`xml`（默认，始终优先使用）\| `markdown`（仅用户明确要求时） |
-| `--parent-token`    | 否  | 父文件夹或知识库节点 token（与 `--parent-position` 互斥）  |
-| `--parent-position` | 否  | 父节点位置，如 `my_library`（与 `--parent-token` 互斥） |
+|参数|必填|说明|
+|-|-|-|
+|`--title`|否|文档标题，Markdown 导入时使用；XML 创建推荐在 `--content` 开头写 `<title>...</title>`；多个标题仅保留第一个|
+|`--content`|视情况|文档内容（XML 或 Markdown 格式）；不传 `--content` 时必须传 `--title`|
+|`--reference-map`|否|结构化 `reference_map` JSON object；必须与 `--content` 一起使用。普通写入优先把结构写在正文里；该参数主要用于保留或回放已有 `document.reference_map`。支持直接 JSON、任务独占目录内的相对 `@file`，或 `-` 从 stdin 读取。|
+|`--doc-format`|否|CLI 与语义创作均默认 `xml`，并建议显式传入；仅用户明确要求 Markdown 或保真导入 Markdown 时使用 `markdown`。不要混用完整的 XML 与 Markdown 文档格式；Markdown 中允许使用文档已定义的 XML 扩展标签。|
+|`--parent-token`|否|父文件夹或知识库节点 token（与 `--parent-position` 互斥）|
+|`--parent-position`|否|父节点位置，如 `my_library`（与 `--parent-token` 互斥）|
 
-## 最佳实践
+## 需要回查文档
 
-- **较长文档**：参考 [`lark-doc-create-workflow.md`](style/lark-doc-create-workflow.md) 先建骨架再分段写入；短文档可一次写完整内容
-- **表达形式**：由用户目标和内容决定。需要结构化表达时可参考 [`lark-doc-style.md`](style/lark-doc-style.md)，但不要默认套用固定开头、固定富 block 比例或固定图表
-
-## 参考
-
-- [`lark-doc-create-workflow.md`](style/lark-doc-create-workflow.md) — 从零创作工作流（Code-Act Loop、单 Agent 串行撰写）
-- [`lark-doc-style.md`](style/lark-doc-style.md) — 文档写作原则（默认段落、按体裁、组件克制）
-- [`lark-doc-xml.md`](lark-doc-xml.md) — XML 语法规范
-- [`lark-doc-fetch.md`](lark-doc-fetch.md) — 获取文档
-- [`lark-doc-update.md`](lark-doc-update.md) — 更新文档
-- [`lark-doc-media-insert.md`](lark-doc-media-insert.md) — 插入图片/文件到文档
+用 `lark-cli docs +fetch --doc "<document_id 或文档 URL>" --detail with-ids` 回查，若需要更多信息可查看 [`+fetch`](lark-doc-fetch.md)。

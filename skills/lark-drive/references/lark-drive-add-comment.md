@@ -165,10 +165,10 @@ lark-cli drive +add-comment \
 - 未传 `--block-id` 时，shortcut 默认创建**全文评论**；也可以显式传 `--full-comment`。全文评论支持 `docx`、旧版 `doc` URL、白名单扩展名的 Drive file，以及最终可解析为 `doc`/`docx`/`file` 的 wiki URL。
 - **Drive file 评论**：仅支持白名单扩展名的普通文件。当前支持：`.md`、`.txt`、`.json`、`.csv`、`.go`、`.js`、`.py`、`.pptx`、`.png`、`.jpg`、`.jpeg`、`.zip`、`.mp3`、`.mp4`。
 - **Drive file 暂不支持**：`.pdf`、`.docx`、`.xlsx` 等未在白名单内的普通文件会被 CLI 拒绝，并提示“当前还不支持这种类型的评论”。这些类型虽然可能接受 OpenAPI 请求，但在页面评论展示上存在问题。
-- **Drive file 只支持全文评论**：file 目标不支持局部评论，不允许传 `--block-id` 或 `--selection-with-ellipsis`。
+- **Drive file 只支持全文评论**：file 目标不支持局部评论，不允许传 `--block-id`。
 - 传 `--block-id` 时，shortcut 创建**局部评论（划词评论）**；该模式支持 `docx`、`sheet`、`slides`、Base / bitable，以及最终可解析为这些类型的 wiki URL。
 - **Sheet 评论**：当 `--doc` 为 sheet URL 或 wiki 解析为 sheet 时，使用 `--block-id "<sheetId>!<cell>"` 指定单元格（如 `a281f9!D6`）；sheet 没有全文评论，`--full-comment` 不可用。
-- **Slide 评论**：当 `--doc` 为 slides URL、`--type slides`，或 wiki 解析为 slides 时，必须传 `--block-id "<SLIDE_BLOCK_TYPE>!<XML_ELEMENT_ID>"`。此时 `--full-comment` 和 `--selection-with-ellipsis` 不可用。
+- **Slide 评论**：当 `--doc` 为 slides URL、`--type slides`，或 wiki 解析为 slides 时，必须传 `--block-id "<SLIDE_BLOCK_TYPE>!<XML_ELEMENT_ID>"`。此时 `--full-comment` 不可用。
 - **Base 记录局部评论**：Base 不支持全局评论，所有评论都挂在记录上；裸 token 可传 `--type bitable` 或 `--type base`，推荐 `bitable`。定位信息必须是 file token（base token）+ `--block-id "<table-id>!<record-id>!<view-id>"`，其中 table/record/view ID 通常分别以 `tbl`/`rec`/`vew` 开头；view_id 只决定被提及时点击通知打开哪个视图，不影响评论挂载点，但必须传。ID 获取参考 [`lark-base`](../../lark-base/SKILL.md)。
 - **Slide 参数映射示例**：`--block-id` 由 PPT XML 元素类型和元素 `id` 组成。例如：
     - `<slide id="pkk">` 对应 `--block-id slide!pkk`，表示给整页评论。

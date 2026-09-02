@@ -6,11 +6,10 @@ package event
 import (
 	"strings"
 	"testing"
-
-	_ "github.com/larksuite/cli/events"
 )
 
 func TestSuggestEventKeys(t *testing.T) {
+	snap := compileCatalog()
 	cases := []struct {
 		name              string
 		input             string
@@ -41,7 +40,7 @@ func TestSuggestEventKeys(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := suggestEventKeys(tc.input)
+			got := suggestEventKeys(snap, tc.input)
 			if tc.wantEmpty {
 				if len(got) != 0 {
 					t.Errorf("expected empty slice, got %v", got)
@@ -98,7 +97,7 @@ func TestFormatSuggestions(t *testing.T) {
 }
 
 func TestUnknownEventKeyErr_IncludesSuggestion(t *testing.T) {
-	err := unknownEventKeyErr("im.message.recieve_v1")
+	err := unknownEventKeyErr(compileCatalog(), "im.message.recieve_v1")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -115,7 +114,7 @@ func TestUnknownEventKeyErr_IncludesSuggestion(t *testing.T) {
 }
 
 func TestUnknownEventKeyErr_NoSuggestion(t *testing.T) {
-	err := unknownEventKeyErr("xyzzy_no_such_event_key_at_all")
+	err := unknownEventKeyErr(compileCatalog(), "xyzzy_no_such_event_key_at_all")
 	if err == nil {
 		t.Fatal("expected error")
 	}

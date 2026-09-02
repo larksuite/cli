@@ -2,6 +2,7 @@
 abc.feishu.cn
 attacker.example.com
 bytedance.feishu.cn
+cdn.example.com
 cdn.feishu.cn
 evil.example.com
 example.feishu.cn
@@ -16,6 +17,7 @@ host.lima.internal
 lf3-static.bytednsdoc.com
 meetings.feishu.cn
 meetings.larksuite.com
+open.feishu.cn.example.com
 p3-lark-file.byteimg.com
 passport.feishu.cn
 sample.feishu.cn

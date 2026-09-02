@@ -4,48 +4,32 @@
 package cmd
 
 import (
-	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/apicatalog"
-	internalauth "github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
-	"github.com/larksuite/cli/shortcuts"
-	shortcutcommon "github.com/larksuite/cli/shortcuts/common"
 )
 
-// applyNeedAuthorizationHint augments a typed *errs.AuthenticationError with a
-// "current command requires scope(s): X, Y" hint when the underlying error is
-// a need_user_authorization signal AND the current command declares scopes
-// locally (via shortcut registration or service-method metadata). Existing
-// Hint text is preserved; scopes are appended on a new line.
-func applyNeedAuthorizationHint(f *cmdutil.Factory, err error) {
-	if err == nil || f == nil {
-		return
+// presentRootError uses the same build-local presenter as shortcut result
+// sinks, adding only the root command's lazy declared-scope resolver.
+func presentRootError(f *cmdutil.Factory, err error, projector *recovery.Projector) error {
+	identity := core.Identity("")
+	if f != nil {
+		identity = f.ResolvedIdentity
 	}
-	if !internalauth.IsNeedUserAuthorizationError(err) {
-		return
-	}
-	var authErr *errs.AuthenticationError
-	if !errors.As(err, &authErr) {
-		return
-	}
-	scopes := resolveDeclaredScopesForCurrentCommand(f)
-	if len(scopes) == 0 {
-		return
-	}
-	scopeHint := fmt.Sprintf("current command requires scope(s): %s", strings.Join(scopes, ", "))
-	if authErr.Hint == "" {
-		authErr.Hint = scopeHint
-		return
-	}
-	authErr.Hint += "\n" + scopeHint
+	return f.PresentError(err, cmdutil.ErrorPresentationOptions{
+		Projector: projector,
+		Identity:  identity,
+		DeclaredScopes: func() []string {
+			return resolveDeclaredScopesForCurrentCommand(f)
+		},
+	})
 }
 
 // resolveDeclaredScopesForCurrentCommand returns the scopes declared by the
@@ -76,19 +60,7 @@ func resolveDeclaredShortcutScopes(cmd *cobra.Command, identity string) []string
 	if cmd == nil || cmd.Parent() == nil || !strings.HasPrefix(cmd.Name(), "+") {
 		return nil
 	}
-
-	service := cmd.Parent().Name()
-	for _, sc := range shortcuts.AllShortcuts() {
-		if sc.Service != service || sc.Command != cmd.Name() || !shortcutSupportsIdentity(sc, identity) {
-			continue
-		}
-		scopes := sc.DeclaredScopesForIdentity(identity)
-		if len(scopes) == 0 {
-			return nil
-		}
-		return append([]string(nil), scopes...)
-	}
-	return nil
+	return cmdmeta.DeclaredScopes(cmd, identity)
 }
 
 // resolveDeclaredServiceMethodScopes returns the scopes declared by a
@@ -123,19 +95,4 @@ func commandCatalogPath(cmd *cobra.Command) []string {
 		path = append([]string{c.Name()}, path...)
 	}
 	return path
-}
-
-// shortcutSupportsIdentity reports whether a shortcut supports the requested
-// identity, applying the default user-only behavior when AuthTypes is empty.
-func shortcutSupportsIdentity(sc shortcutcommon.Shortcut, identity string) bool {
-	authTypes := sc.AuthTypes
-	if len(authTypes) == 0 {
-		authTypes = []string{string(core.AsUser)}
-	}
-	for _, authType := range authTypes {
-		if authType == identity {
-			return true
-		}
-	}
-	return false
 }

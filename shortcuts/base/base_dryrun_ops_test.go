@@ -5,6 +5,7 @@ package base
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -27,8 +28,9 @@ func TestDryRunTableOps(t *testing.T) {
 
 	rt := newBaseTestRuntime(map[string]string{"base-token": "app_x", "table-id": "tbl_1", "name": "Orders"}, nil, nil)
 	assertDryRunContains(t, dryRunTableGet(ctx, rt), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1")
-	assertDryRunContains(t, dryRunTableCreate(ctx, rt), "POST /open-apis/base/v3/bases/app_x/tables")
 
+	// +table-create requires --fields, so the fieldless shape is unreachable
+	// through the command surface; see table_create_test.go for that contract.
 	tableCreateWithFieldsRT := newBaseTestRuntime(
 		map[string]string{"base-token": "app_x", "name": "Orders", "fields": `[{"name":"Title","type":"text"}]`},
 		nil,
@@ -38,6 +40,80 @@ func TestDryRunTableOps(t *testing.T) {
 
 	assertDryRunContains(t, dryRunTableUpdate(ctx, rt), "PATCH /open-apis/base/v3/bases/app_x/tables/tbl_1")
 	assertDryRunContains(t, dryRunTableDelete(ctx, rt), "DELETE /open-apis/base/v3/bases/app_x/tables/tbl_1")
+}
+
+func TestDryRunTemplateCenterOps(t *testing.T) {
+	ctx := context.Background()
+
+	assertDryRunContains(t, dryRunTemplateCategories(ctx, newBaseTestRuntime(nil, nil, nil)), "GET /open-apis/base/v3/bases/templates/category")
+
+	listRT := newBaseTestRuntime(map[string]string{"category-key": "office", "offset": "cursor_1"}, nil, map[string]int{"limit": 20})
+	assertDryRunContains(t, dryRunTemplateList(ctx, listRT), "GET /open-apis/base/v3/bases/templates", "category_key=office", "limit=20", "offset=cursor_1")
+
+	recommendedRT := newBaseTestRuntime(map[string]string{}, nil, map[string]int{"limit": 10})
+	listOut := dryRunTemplateList(ctx, recommendedRT).Format()
+	if strings.Contains(listOut, "category_key") {
+		t.Fatalf("recommended template list must omit category_key when unset:\n%s", listOut)
+	}
+
+	searchRT := newBaseTestRuntime(map[string]string{"keyword": " AI ", "offset": "cursor_2"}, nil, map[string]int{"limit": 10})
+	assertDryRunContains(t, dryRunTemplateSearch(ctx, searchRT), "GET /open-apis/base/v3/bases/templates/search", "keyword=AI", "limit=10", "offset=cursor_2")
+}
+
+func TestDryRunFieldExtensionOps(t *testing.T) {
+	ctx := context.Background()
+
+	baseFlags := map[string]string{"base-token": "app_x", "table-id": "tbl_x", "field-id": "fld_x"}
+	assertDryRunContains(
+		t,
+		dryRunFieldExtensionGet(ctx, newBaseTestRuntime(baseFlags, nil, nil)),
+		"GET /open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x/field_extensions",
+	)
+
+	updateRT := newBaseTestRuntime(
+		map[string]string{
+			"base-token": "app_x",
+			"table-id":   "tbl_x",
+			"field-id":   "fld_x",
+			"json":       `{"extension_id":"builtin_llm_completion","inputs":{"prompt":[{"type":"text","text":"Summarize "},{"type":"field_ref","field":"Description"}]}}`,
+		},
+		nil,
+		nil,
+	)
+	assertDryRunContains(
+		t,
+		dryRunFieldExtensionUpdate(ctx, updateRT),
+		"PUT /open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x/field_extensions",
+		`"extension_id":"builtin_llm_completion"`,
+		`"prompt":[{"type":"text","text":"Summarize "},{"type":"field_ref","field":"Description"}]`,
+	)
+
+	columnRT := newBaseTestRuntime(map[string]string{
+		"base-token": "app_x",
+		"table-id":   "tbl_x",
+		"field-id":   "fld_x",
+		"type":       "column",
+		"view-id":    "vew_x",
+	}, nil, nil)
+	assertDryRunContains(
+		t,
+		dryRunFieldExtensionUpdateCells(ctx, columnRT),
+		"POST /open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x/field_extensions/update_cells",
+		`"type":"column"`,
+		`"view_id":"vew_x"`,
+	)
+
+	rowRT := newBaseTestRuntimeWithArrays(
+		map[string]string{"base-token": "app_x", "table-id": "tbl_x", "field-id": "fld_x", "type": "row"},
+		map[string][]string{"record-id": {"rec_1", "rec_2"}},
+		nil,
+		nil,
+	)
+	assertDryRunContains(
+		t,
+		dryRunFieldExtensionUpdateCells(ctx, rowRT),
+		`"record_ids":["rec_1","rec_2"]`,
+	)
 }
 
 func TestDryRunBaseBlockOps(t *testing.T) {
@@ -119,6 +195,47 @@ func TestDryRunFieldOps(t *testing.T) {
 	}
 }
 
+func TestDryRunButtonRuleOps(t *testing.T) {
+	ctx := context.Background()
+
+	for _, fieldRef := range []string{"fld_1", "按钮"} {
+		t.Run(fieldRef, func(t *testing.T) {
+			rt := newBaseTestRuntime(
+				map[string]string{
+					"base-token":  "app_x",
+					"table-id":    "tbl_1",
+					"field-id":    fieldRef,
+					"workflow-id": "wkf_1",
+				},
+				nil,
+				nil,
+			)
+			resolvePath := baseV3Path("bases", "app_x", "tables", "tbl_1", "fields", fieldRef)
+			buttonRulePath := "/open-apis/base/v3/bases/app_x/tables/tbl_1/fields/%3Cresolved_field_id%3E/button_rule"
+			assertDryRunContains(t, BaseButtonRuleBind.DryRun(ctx, rt), "GET "+resolvePath, "PUT "+buttonRulePath, `"workflow_id":"wkf_1"`)
+			assertDryRunContains(t, BaseButtonRuleGet.DryRun(ctx, rt), "GET "+resolvePath, "GET "+buttonRulePath)
+			assertDryRunContains(t, BaseButtonRuleUnbind.DryRun(ctx, rt), "GET "+resolvePath, "PUT "+buttonRulePath, `"workflow_id":""`)
+
+			dryRunJSON, err := json.Marshal(BaseButtonRuleBind.DryRun(ctx, rt))
+			if err != nil {
+				t.Fatalf("marshal dry-run: %v", err)
+			}
+			var envelope map[string]interface{}
+			if err := json.Unmarshal(dryRunJSON, &envelope); err != nil {
+				t.Fatalf("decode dry-run: %v", err)
+			}
+			if envelope["field_ref"] != fieldRef || envelope["resolved_field_id"] != "<resolved_field_id>" {
+				t.Fatalf("dry-run field identity=%#v", envelope)
+			}
+			for _, want := range []string{`"desc":"Resolve --field-id as a field ID or name"`, `"desc":"Use the canonical field ID returned by step 1"`} {
+				if !strings.Contains(string(dryRunJSON), want) {
+					t.Fatalf("dry-run JSON missing %q: %s", want, dryRunJSON)
+				}
+			}
+		})
+	}
+}
+
 func TestDryRunRecordOps(t *testing.T) {
 	ctx := context.Background()
 
@@ -129,6 +246,19 @@ func TestDryRunRecordOps(t *testing.T) {
 		map[string]int{"offset": -3, "limit": 200},
 	)
 	assertDryRunContains(t, dryRunRecordList(ctx, listRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/records", "offset=0", "limit=200", "view_id=viw_1", "field_id=Name", "field_id=Age")
+
+	listNDJSONRT := newBaseTestRuntime(
+		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "format": "ndjson", "output": "records.ndjson"},
+		nil,
+		map[string]int{"limit": 2000},
+	)
+	assertDryRunContains(
+		t,
+		dryRunRecordList(ctx, listNDJSONRT),
+		"GET /open-apis/base/v3/bases/app_x/tables/tbl_1/records",
+		"offset=0",
+		"limit=500",
+	)
 
 	listFieldNamesAliasRT := newBaseTestRuntimeWithArrays(
 		map[string]string{"base-token": "app_x", "table-id": "tbl_1"},
@@ -186,6 +316,24 @@ func TestDryRunRecordOps(t *testing.T) {
 		`"search_fields":["Title","fld_owner"]`,
 		`"select_fields":["Title","fld_owner"]`,
 		`"offset":-1`,
+		`"limit":500`,
+	)
+
+	searchNDJSONRT := newBaseTestRuntime(
+		map[string]string{
+			"base-token": "app_x",
+			"table-id":   "tbl_1",
+			"format":     "ndjson",
+			"output":     "search.ndjson",
+			"json":       `{"keyword":"Created","search_fields":["Title"],"limit":2000}`,
+		},
+		nil,
+		nil,
+	)
+	assertDryRunContains(
+		t,
+		dryRunRecordSearch(ctx, searchNDJSONRT),
+		"POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/search",
 		`"limit":500`,
 	)
 
@@ -385,6 +533,45 @@ func TestDryRunDashboardOps(t *testing.T) {
 	assertDryRunContains(t, dryRunDashboardBlockCreate(ctx, rt), "POST /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks", "user_id_type=open_id")
 	assertDryRunContains(t, dryRunDashboardBlockUpdate(ctx, rt), "PATCH /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks/blk_1", "user_id_type=open_id")
 	assertDryRunContains(t, dryRunDashboardBlockDelete(ctx, rt), "DELETE /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks/blk_1")
+}
+
+// TestDryRunDashboardBlockPositionAndNumberFormat asserts the shared body
+// builder surfaces the optional top-level position and data_config.number_format
+// in the dry-run request body, and that the update preview never carries type
+// (which the API rejects). Preview-vs-executed body equality is proven end to
+// end by TestBaseDashboardBlockDryRunMatchesExecuteBody.
+func TestDryRunDashboardBlockPositionAndNumberFormat(t *testing.T) {
+	ctx := context.Background()
+
+	rt := newBaseTestRuntime(
+		map[string]string{
+			"base-token":   "app_x",
+			"dashboard-id": "dash_1",
+			"block-id":     "blk_1",
+			"name":         "Revenue",
+			"type":         "statistics",
+			"data-config":  `{"table_name":"Orders","count_all":true,"number_format":{"formatName":"dollar_rounded","precision":2}}`,
+			"position":     `{"x":0,"y":0,"w":6,"h":4}`,
+		},
+		nil,
+		nil,
+	)
+
+	assertDryRunContains(t, dryRunDashboardBlockCreate(ctx, rt),
+		"POST /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks",
+		`"position"`, `"w":6`, `"number_format"`, `"dollar_rounded"`)
+	assertDryRunContains(t, dryRunDashboardBlockUpdate(ctx, rt),
+		"PATCH /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks/blk_1",
+		`"position"`, `"w":6`)
+
+	pc := newParseCtx(rt)
+	updateBody, err := buildDashboardBlockBody(pc, rt, false)
+	if err != nil {
+		t.Fatalf("update body build err=%v", err)
+	}
+	if _, hasType := updateBody["type"]; hasType {
+		t.Fatalf("update body must not carry type: %v", updateBody)
+	}
 }
 
 func TestDryRunViewOps(t *testing.T) {

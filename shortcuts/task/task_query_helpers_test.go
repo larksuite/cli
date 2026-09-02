@@ -5,6 +5,7 @@ package task
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -74,6 +75,11 @@ func TestOutputTaskSummary(t *testing.T) {
 				"summary":    "summary",
 				"url":        "https://example.com/task-123&suite_entity_num=t1",
 				"created_at": "1775174400000",
+				"members": []interface{}{
+					map[string]interface{}{"id": "ou_owner", "role": "assignee", "type": "user"},
+				},
+				"start":  map[string]interface{}{"timestamp": "1775088000000", "is_all_day": false},
+				"status": "todo",
 				"due": map[string]interface{}{
 					"timestamp": "1775174400000",
 				},
@@ -99,6 +105,15 @@ func TestOutputTaskSummary(t *testing.T) {
 			}
 			if got["url"] == "" {
 				t.Fatalf("expected url in output, got %#v", got)
+			}
+			if tt.name == "with timestamps and due" {
+				if !reflect.DeepEqual(got["members"], tt.task["members"]) ||
+					!reflect.DeepEqual(got["start"], tt.task["start"]) || got["status"] != "todo" {
+					t.Fatalf("search projection lost compact fields: %#v", got)
+				}
+				if _, duplicated := got["due"]; duplicated {
+					t.Fatalf("search projection duplicated due alongside due_at: %#v", got)
+				}
 			}
 		})
 	}
@@ -200,6 +215,8 @@ func TestOutputRelatedTaskAndTimeRangeFilter(t *testing.T) {
 				"url":           "https://example.com/task-123&suite_entity_num=t1",
 				"creator":       map[string]interface{}{"id": "ou_1"},
 				"members":       []interface{}{map[string]interface{}{"id": "ou_2", "role": "follower"}},
+				"start":         map[string]interface{}{"timestamp": "1775088000000", "is_all_day": false},
+				"due":           map[string]interface{}{"timestamp": "1775174400000", "is_all_day": false},
 				"created_at":    "1775174400000",
 				"completed_at":  "1775174400000",
 			},
@@ -218,6 +235,10 @@ func TestOutputRelatedTaskAndTimeRangeFilter(t *testing.T) {
 			got := outputRelatedTask(tt.task)
 			if got["guid"] != tt.task["guid"] || got["summary"] != tt.task["summary"] {
 				t.Fatalf("unexpected related task output: %#v", got)
+			}
+			if tt.name == "full related task" &&
+				(!reflect.DeepEqual(got["start"], tt.task["start"]) || !reflect.DeepEqual(got["due"], tt.task["due"])) {
+				t.Fatalf("related task projection lost start/due: %#v", got)
 			}
 		})
 	}

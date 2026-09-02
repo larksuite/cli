@@ -1377,6 +1377,398 @@ func TestDriveExportPollErrorsReturnLastErrorWithRecoveryHint(t *testing.T) {
 	}
 }
 
+func TestDriveExportRateLimitStopsPollingAndSuggestsOneMinuteBackoff(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/export_tasks",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"ticket": "tk_rate_limited"},
+		},
+	})
+	pollStub := &httpmock.Stub{
+		Method:   "GET",
+		URL:      "/open-apis/drive/v1/export_tasks/tk_rate_limited",
+		Status:   http.StatusTooManyRequests,
+		Reusable: true,
+		Body: map[string]interface{}{
+			"code": 99991400,
+			"msg":  "request trigger frequency limit",
+		},
+	}
+	reg.Register(pollStub)
+
+	prevAttempts, prevInterval := driveExportPollAttempts, driveExportPollInterval
+	driveExportPollAttempts, driveExportPollInterval = 3, 0
+	t.Cleanup(func() {
+		driveExportPollAttempts, driveExportPollInterval = prevAttempts, prevInterval
+	})
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "docx123",
+		"--doc-type", "docx",
+		"--file-extension", "pdf",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected rate-limit error, got nil")
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout should stay empty on rate limit: %s", stdout.String())
+	}
+	if got := len(pollStub.CapturedBodies); got != 1 {
+		t.Fatalf("export status poll count = %d, want 1 after rate limit", got)
+	}
+
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed rate-limit error, got %T (%v)", err, err)
+	}
+	if problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeRateLimit || problem.Code != 99991400 || !problem.Retryable {
+		t.Fatalf("problem = %+v, want api/rate_limit code 99991400 retryable", problem)
+	}
+	for _, want := range []string{
+		"wait at least 1 minute",
+		"exponential backoff starting at 1 minute",
+		"lark-cli drive +task_result --scenario export --ticket tk_rate_limited --file-token docx123",
+		"do not run `lark-cli drive +export` again",
+	} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Fatalf("hint missing %q: %q", want, problem.Hint)
+		}
+	}
+}
+
+func TestDriveExportCreateRateLimitSuggestsRetryingOriginalCommand(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	createStub := &httpmock.Stub{
+		Method: http.MethodPost,
+		URL:    "/open-apis/drive/v1/export_tasks",
+		Status: http.StatusTooManyRequests,
+		Body: map[string]interface{}{
+			"code": 99991400,
+			"msg":  "request trigger frequency limit",
+		},
+	}
+	reg.Register(createStub)
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "docx123",
+		"--doc-type", "docx",
+		"--file-extension", "pdf",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected rate-limit error, got nil")
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout should stay empty on rate limit: %s", stdout.String())
+	}
+	if got := len(createStub.CapturedBodies); got != 1 {
+		t.Fatalf("export task creation count = %d, want 1", got)
+	}
+
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed rate-limit error, got %T (%v)", err, err)
+	}
+	if problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeRateLimit || problem.Code != 99991400 || !problem.Retryable {
+		t.Fatalf("problem = %+v, want api/rate_limit code 99991400 retryable", problem)
+	}
+	for _, want := range []string{
+		"before a ticket was issued",
+		"wait at least 1 minute",
+		"rerun the original command with the same arguments",
+		"exponential backoff starting at 1 minute",
+		"do not run `lark-cli drive +task_result`",
+	} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Fatalf("hint missing %q: %q", want, problem.Hint)
+		}
+	}
+	if strings.Contains(problem.Hint, "--ticket") {
+		t.Fatalf("creation hint must not invent a ticket: %q", problem.Hint)
+	}
+}
+
+func TestDriveExportCreateCode9499TooManyRequestsUsesRateLimitRecovery(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	createStub := &httpmock.Stub{
+		Method: http.MethodPost,
+		URL:    "/open-apis/drive/v1/export_tasks",
+		Status: http.StatusBadRequest,
+		Body: map[string]interface{}{
+			"code": 9499,
+			"msg":  "too many request",
+		},
+	}
+	reg.Register(createStub)
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "docx123",
+		"--doc-type", "docx",
+		"--file-extension", "pdf",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected rate-limit error, got nil")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed rate-limit error, got %T (%v)", err, err)
+	}
+	if problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeRateLimit || problem.Code != 9499 || !problem.Retryable {
+		t.Fatalf("problem = %+v, want api/rate_limit code 9499 retryable", problem)
+	}
+	for _, want := range []string{
+		"before a ticket was issued",
+		"wait at least 1 minute",
+		"rerun the original command with the same arguments",
+	} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Fatalf("hint missing %q: %q", want, problem.Hint)
+		}
+	}
+}
+
+func TestDriveExportCreateCode9499NonRateLimitRemainsInvalidParameters(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodPost,
+		URL:    "/open-apis/drive/v1/export_tasks",
+		Status: http.StatusBadRequest,
+		Body: map[string]interface{}{
+			"code": 9499,
+			"msg":  "Invalid parameter type in json: id",
+		},
+	})
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "docx123",
+		"--doc-type", "docx",
+		"--file-extension", "pdf",
+		"--as", "bot",
+	}, f, stdout)
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed invalid-parameters error, got %T (%v)", err, err)
+	}
+	if problem.Category != errs.CategoryAPI || problem.Subtype != errs.SubtypeInvalidParameters || problem.Code != 9499 || problem.Retryable {
+		t.Fatalf("problem = %+v, want api/invalid_parameters code 9499 non-retryable", problem)
+	}
+	if strings.Contains(problem.Hint, "wait at least 1 minute") {
+		t.Fatalf("non-rate-limit 9499 received export throttling recovery: %q", problem.Hint)
+	}
+}
+
+func TestDriveExportPollCode9499TooManyRequestsStopsImmediately(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodPost,
+		URL:    "/open-apis/drive/v1/export_tasks",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"ticket": "tk_9499_rate_limited"},
+		},
+	})
+	pollStub := &httpmock.Stub{
+		Method:   http.MethodGet,
+		URL:      "/open-apis/drive/v1/export_tasks/tk_9499_rate_limited",
+		Status:   http.StatusBadRequest,
+		Reusable: true,
+		Body: map[string]interface{}{
+			"code": 9499,
+			"msg":  "too many request",
+		},
+	}
+	reg.Register(pollStub)
+
+	prevAttempts, prevInterval := driveExportPollAttempts, driveExportPollInterval
+	driveExportPollAttempts, driveExportPollInterval = 3, 0
+	t.Cleanup(func() {
+		driveExportPollAttempts, driveExportPollInterval = prevAttempts, prevInterval
+	})
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "docx123",
+		"--doc-type", "docx",
+		"--file-extension", "pdf",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected rate-limit error, got nil")
+	}
+	if got := len(pollStub.CapturedBodies); got != 1 {
+		t.Fatalf("export status poll count = %d, want 1 after code 9499 rate limit", got)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Subtype != errs.SubtypeRateLimit || problem.Code != 9499 || !problem.Retryable {
+		t.Fatalf("problem = %+v, ok=%v, want rate_limit code 9499 retryable", problem, ok)
+	}
+	for _, want := range []string{
+		"ticket=tk_9499_rate_limited",
+		"lark-cli drive +task_result --scenario export --ticket tk_9499_rate_limited --file-token docx123",
+		"do not run `lark-cli drive +export` again",
+	} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Fatalf("hint missing %q: %q", want, problem.Hint)
+		}
+	}
+}
+
+func TestDriveExportCreatePermanentFailuresHaveActionableRecovery(t *testing.T) {
+	cases := []struct {
+		name        string
+		code        int
+		message     string
+		wantCat     errs.Category
+		wantSubtype errs.Subtype
+		wantHints   []string
+	}{
+		{
+			name:        "resource permission denied",
+			code:        1069902,
+			message:     "no permission",
+			wantCat:     errs.CategoryAuthorization,
+			wantSubtype: errs.SubtypePermissionDenied,
+			wantHints:   []string{"current --as identity", "DLP", "document owner"},
+		},
+		{
+			name:        "source document deleted",
+			code:        1069906,
+			message:     "docs deleted",
+			wantCat:     errs.CategoryAPI,
+			wantSubtype: errs.SubtypeNotFound,
+			wantHints:   []string{"source document was deleted", "stop retrying"},
+		},
+		{
+			name:        "source token invalid",
+			code:        1069914,
+			message:     "file token invalid",
+			wantCat:     errs.CategoryAPI,
+			wantSubtype: errs.SubtypeNotFound,
+			wantHints:   []string{"prefer --url", "--doc-type wiki", "token still exists"},
+		},
+		{
+			name:        "extension mismatch",
+			code:        1069918,
+			message:     "file extension mismatch",
+			wantCat:     errs.CategoryAPI,
+			wantSubtype: errs.SubtypeInvalidParameters,
+			wantHints:   []string{"--file-extension", "--sub-id"},
+		},
+		{
+			name:        "field validation failure",
+			code:        99992402,
+			message:     "field validation failed",
+			wantCat:     errs.CategoryAPI,
+			wantSubtype: errs.SubtypeInvalidParameters,
+			wantHints:   []string{"--file-extension", "--sub-id"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+			reg.Register(&httpmock.Stub{
+				Method: http.MethodPost,
+				URL:    "/open-apis/drive/v1/export_tasks",
+				Status: http.StatusBadRequest,
+				Body: map[string]interface{}{
+					"code":   tc.code,
+					"msg":    tc.message,
+					"log_id": "log_export_recovery",
+				},
+			})
+
+			err := mountAndRunDrive(t, DriveExport, []string{
+				"+export",
+				"--token", "docx123",
+				"--doc-type", "docx",
+				"--file-extension", "pdf",
+				"--as", "bot",
+			}, f, stdout)
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed error, got %T (%v)", err, err)
+			}
+			if problem.Category != tc.wantCat || problem.Subtype != tc.wantSubtype || problem.Code != tc.code || problem.Retryable {
+				t.Fatalf("problem = %+v, want %s/%s code %d non-retryable", problem, tc.wantCat, tc.wantSubtype, tc.code)
+			}
+			if problem.LogID != "log_export_recovery" {
+				t.Fatalf("log ID = %q, want preserved log_export_recovery", problem.LogID)
+			}
+			for _, want := range tc.wantHints {
+				if !strings.Contains(problem.Hint, want) {
+					t.Errorf("hint missing %q: %q", want, problem.Hint)
+				}
+			}
+		})
+	}
+}
+
+func TestDriveExportRateLimitAfterObservedStatusReturnsError(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/export_tasks",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"ticket": "tk_processing_then_limited"},
+		},
+	})
+	pendingStub := &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/export_tasks/tk_processing_then_limited",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": map[string]interface{}{"job_status": 2},
+			},
+		},
+	}
+	reg.Register(pendingStub)
+	rateLimitStub := &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/export_tasks/tk_processing_then_limited",
+		Body: map[string]interface{}{
+			"code": 99991400,
+			"msg":  "request trigger frequency limit",
+		},
+	}
+	reg.Register(rateLimitStub)
+
+	prevAttempts, prevInterval := driveExportPollAttempts, driveExportPollInterval
+	driveExportPollAttempts, driveExportPollInterval = 3, 0
+	t.Cleanup(func() {
+		driveExportPollAttempts, driveExportPollInterval = prevAttempts, prevInterval
+	})
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "docx123",
+		"--doc-type", "docx",
+		"--file-extension", "pdf",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected rate-limit error after processing status, got nil")
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("rate limit must not be hidden by a timed-out success envelope: %s", stdout.String())
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Subtype != errs.SubtypeRateLimit || problem.Code != 99991400 {
+		t.Fatalf("problem = %+v, ok=%v, want rate_limit code 99991400", problem, ok)
+	}
+}
+
 func TestDriveExportDownloadUsesProvidedFileName(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
@@ -1508,11 +1900,11 @@ func TestDriveTaskResultExportIncludesReadyFlags(t *testing.T) {
 // directly so an untyped context.Canceled would escape as a plain string at
 // the command layer, bypassing the typed-error contract.
 func TestWrapExportContextErr(t *testing.T) {
-	if err := wrapExportContextErr(nil); err != nil {
+	if err := wrapExportContextErr("+export", nil); err != nil {
 		t.Errorf("wrapExportContextErr(nil) = %v, want nil", err)
 	}
 
-	cancelled := wrapExportContextErr(context.Canceled)
+	cancelled := wrapExportContextErr("+workbook-export", context.Canceled)
 	var netErrCancel *errs.NetworkError
 	if !errors.As(cancelled, &netErrCancel) {
 		t.Fatalf("wrapExportContextErr(Canceled) = %T, want *errs.NetworkError", cancelled)
@@ -1520,11 +1912,16 @@ func TestWrapExportContextErr(t *testing.T) {
 	if netErrCancel.Subtype != errs.SubtypeNetworkTransport {
 		t.Errorf("Canceled subtype = %q, want %q", netErrCancel.Subtype, errs.SubtypeNetworkTransport)
 	}
+	// The message must name the shortcut actually running — RunExport is shared
+	// with sheets +workbook-export, which used to be told about "drive +export".
+	if !strings.Contains(cancelled.Error(), "+workbook-export") {
+		t.Errorf("message should carry the running command, got %q", cancelled.Error())
+	}
 	if !errors.Is(cancelled, context.Canceled) {
 		t.Error("wrapExportContextErr should preserve context.Canceled via errors.Is")
 	}
 
-	deadline := wrapExportContextErr(context.DeadlineExceeded)
+	deadline := wrapExportContextErr("+export", context.DeadlineExceeded)
 	var netErrDeadline *errs.NetworkError
 	if !errors.As(deadline, &netErrDeadline) {
 		t.Fatalf("wrapExportContextErr(DeadlineExceeded) = %T, want *errs.NetworkError", deadline)
@@ -1534,5 +1931,96 @@ func TestWrapExportContextErr(t *testing.T) {
 	}
 	if !errors.Is(deadline, context.DeadlineExceeded) {
 		t.Error("wrapExportContextErr should preserve context.DeadlineExceeded via errors.Is")
+	}
+}
+
+// TestDriveExportSuccessIsSilentAndReportsRetriedPolls pins the export core's
+// reporting contract, which sheets +workbook-export rides on as well: a
+// completed export writes nothing to stderr (its ticket, readiness and file
+// token are all in the payload), and a poll run that had to retry says so in
+// the result's `poll` block instead of in per-attempt stderr lines — a caller
+// otherwise cannot tell a clean export from one that limped to the finish.
+func TestDriveExportSuccessIsSilentAndReportsRetriedPolls(t *testing.T) {
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodPost,
+		URL:    "/open-apis/drive/v1/export_tasks",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"ticket": "tk_flaky"},
+		},
+	})
+	// First poll fails transiently (5xx), second returns the ready task.
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/drive/v1/export_tasks/tk_flaky",
+		Status: http.StatusInternalServerError,
+		Body:   map[string]interface{}{"code": 1, "msg": "backend hiccup"},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/drive/v1/export_tasks/tk_flaky",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"result": map[string]interface{}{
+				"job_status": float64(0),
+				"file_token": "ftk_pdf",
+				"file_name":  "doc.pdf",
+				"file_size":  float64(1024),
+			}},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  http.MethodGet,
+		URL:     "/open-apis/drive/v1/export_tasks/file/ftk_pdf/download",
+		Status:  http.StatusOK,
+		RawBody: []byte("pdf"),
+		Headers: http.Header{
+			"Content-Type":        []string{"application/pdf"},
+			"Content-Disposition": []string{`attachment; filename="doc.pdf"`},
+		},
+	})
+
+	prevAttempts, prevInterval := driveExportPollAttempts, driveExportPollInterval
+	driveExportPollAttempts, driveExportPollInterval = 3, 0
+	t.Cleanup(func() {
+		driveExportPollAttempts, driveExportPollInterval = prevAttempts, prevInterval
+	})
+	withDriveWorkingDir(t, t.TempDir())
+
+	if err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "docx123",
+		"--doc-type", "docx",
+		"--file-extension", "pdf",
+		"--as", "user",
+	}, f, stdout); err != nil {
+		t.Fatalf("export failed: %v\n%s", err, stdout.String())
+	}
+	if got := stderr.String(); got != "" {
+		t.Errorf("a successful export must leave stderr empty, got: %q", got)
+	}
+
+	var envelope struct {
+		Data map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v\nraw=%s", err, stdout.String())
+	}
+	if envelope.Data["ticket"] != "tk_flaky" || envelope.Data["file_token"] != "ftk_pdf" {
+		t.Fatalf("payload should report the finished export, got %#v", envelope.Data)
+	}
+	poll, _ := envelope.Data["poll"].(map[string]interface{})
+	if poll == nil {
+		t.Fatalf("expected a poll summary after a retried poll, got %#v", envelope.Data)
+	}
+	if poll["attempts"] != float64(2) {
+		t.Errorf("poll.attempts = %v, want 2 (one failure, then the ready status)", poll["attempts"])
+	}
+	if poll["transient_failures"] != float64(1) {
+		t.Errorf("poll.transient_failures = %v, want 1", poll["transient_failures"])
+	}
+	if last, _ := poll["last_error"].(string); last == "" {
+		t.Errorf("poll summary should carry the last transient error, got %#v", poll)
 	}
 }

@@ -94,5 +94,7 @@ func setSlidesDryRunEnv(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	t.Setenv("LARKSUITE_CLI_APP_ID", "slides_dryrun_test")
 	t.Setenv("LARKSUITE_CLI_APP_SECRET", "slides_dryrun_secret")
+	t.Setenv("LARKSUITE_CLI_USER_ACCESS_TOKEN", "")
+	t.Setenv("LARKSUITE_CLI_TENANT_ACCESS_TOKEN", "")
 	t.Setenv("LARKSUITE_CLI_BRAND", "feishu")
 }

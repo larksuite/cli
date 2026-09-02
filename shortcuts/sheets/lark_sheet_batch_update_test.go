@@ -5,9 +5,22 @@ package sheets
 
 import (
 	"encoding/json"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 )
+
+func TestBatchUpdate_Scopes(t *testing.T) {
+	t.Parallel()
+
+	if got, want := BatchUpdate.Scopes, []string{"sheets:spreadsheet:write_only"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("unconditional scopes = %v, want %v", got, want)
+	}
+	if got, want := BatchUpdate.ConditionalScopes, []string{"sheets:spreadsheet:read"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("conditional scopes = %v, want %v", got, want)
+	}
+}
 
 // TestBatchUpdate_TranslatesShortcutToToolName verifies +batch-update
 // translates each CLI-shape sub-op ({shortcut, input}) to the MCP-shape
@@ -56,6 +69,39 @@ func TestBatchUpdate_TranslatesShortcutToToolName(t *testing.T) {
 	if in1["operation"] != "insert" {
 		t.Errorf("op[1].input.operation = %v, want \"insert\"", in1["operation"])
 	}
+}
+
+func TestBatchUpdate_DimInsertInheritAfterCopiesFollowingStyle(t *testing.T) {
+	t.Parallel()
+
+	body := parseDryRunBody(t, BatchUpdate, []string{
+		"--url", testURL,
+		"--operations", `[
+		  {"shortcut":"+dim-insert","input":{"sheet_id":"sh1","position":"D","count":1,"inherit_style":"after"}}
+		]`,
+		"--yes",
+	})
+	input := decodeToolInput(t, body, "batch_update")
+	ops, _ := input["operations"].([]interface{})
+	if len(ops) != 1 {
+		t.Fatalf("operations length = %d, want 1", len(ops))
+	}
+	op := ops[0].(map[string]interface{})
+	if op["tool_name"] != "modify_sheet_structure" {
+		t.Fatalf("tool_name = %v, want modify_sheet_structure", op["tool_name"])
+	}
+	in, _ := op["input"].(map[string]interface{})
+	// inherit_style=after copies the following column's style via a plain
+	// before-insert at the same position (the backend anchors on the following
+	// column), so position stays D with side=before.
+	assertInputEquals(t, in, map[string]interface{}{
+		"excel_id":  testToken,
+		"sheet_id":  "sh1",
+		"operation": "insert",
+		"position":  "D",
+		"count":     float64(1),
+		"side":      "before",
+	})
 }
 
 func TestBatchUpdate_HighRiskWriteRequiresYes(t *testing.T) {
@@ -327,7 +373,7 @@ func TestValidateDropdownRanges_RejectsMalformedRange(t *testing.T) {
 
 // TestBatchUpdate_TranslatorRejects covers per-op shape errors caught by
 // translateBatchOp: unknown shortcut, missing shortcut, banned (read /
-// fan-out / legacy v2) shortcuts, hand-filled reserved keys, etc.
+// fan-out / legacy v2) shortcuts, malformed wrapper keys, etc.
 func TestBatchUpdate_TranslatorRejects(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -381,16 +427,6 @@ func TestBatchUpdate_TranslatorRejects(t *testing.T) {
 			wantMatch: "do not pass input.operation",
 		},
 		{
-			name:      "user filled excel_id",
-			opsJSON:   `[{"shortcut":"+cells-set","input":{"excel_id":"shtcnX","range":"A1"}}]`,
-			wantMatch: "do not pass input.excel_id",
-		},
-		{
-			name:      "user filled url",
-			opsJSON:   `[{"shortcut":"+cells-set","input":{"url":"https://x.feishu.cn/sheets/sh","range":"A1"}}]`,
-			wantMatch: "do not pass input.url",
-		},
-		{
 			name:      "extra top-level key",
 			opsJSON:   `[{"shortcut":"+cells-set","input":{"range":"A1"},"tool_name":"oops"}]`,
 			wantMatch: "unknown top-level key",
@@ -405,6 +441,21 @@ func TestBatchUpdate_TranslatorRejects(t *testing.T) {
 			opsJSON:   `[{"shortcut":"+cells-set","input":"not-an-object"}]`,
 			wantMatch: "'input' must be a JSON object",
 		},
+		{
+			name:      "wrapped cell_styles structure",
+			opsJSON:   `[{"shortcut":"+cells-set-style","input":{"sheet_name":"s","range":"A1","cell_styles":{"background_color":"#EBF1F8"}}}]`,
+			wantMatch: "do not wrap in cell_styles",
+		},
+		{
+			name:      "wrapped styles structure",
+			opsJSON:   `[{"shortcut":"+cells-set-style","input":{"sheet_name":"s","range":"A1","styles":{"font_weight":"bold"}}}]`,
+			wantMatch: "do not wrap in styles",
+		},
+		{
+			name:      "wrapped cell_merges structure",
+			opsJSON:   `[{"shortcut":"+cells-set-style","input":{"sheet_name":"s","range":"A1","cell_merges":[{"range":"A1:B1"}]}}]`,
+			wantMatch: "do not wrap in cell_merges",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -418,6 +469,99 @@ func TestBatchUpdate_TranslatorRejects(t *testing.T) {
 			requireValidation(t, err, tc.wantMatch)
 		})
 	}
+}
+
+// TestBatchUpdate_FlattenedStyleKeysNotMistakenForWrapper guards the
+// wrapped-structure rejection against overreach: the same style fields in
+// their correct flattened form must translate cleanly — only the wrapper
+// container keys (cell_styles / styles / cell_merges) are rejected.
+func TestBatchUpdate_FlattenedStyleKeysNotMistakenForWrapper(t *testing.T) {
+	t.Parallel()
+	got, err := translateBatchOp(map[string]interface{}{
+		"shortcut": "+cells-set-style",
+		"input": map[string]interface{}{
+			"sheet_name":       "s",
+			"range":            "A1",
+			"background_color": "#EBF1F8",
+			"font_weight":      "bold",
+		},
+	}, testToken, 0)
+	if err != nil {
+		t.Fatalf("flattened style keys must pass the wrapper check, got %v", err)
+	}
+	input := got["input"].(map[string]interface{})
+	cells := input["cells"].([][]interface{})
+	style := cells[0][0].(map[string]interface{})["cell_styles"].(map[string]interface{})
+	if style["background_color"] != "#EBF1F8" || style["font_weight"] != "bold" {
+		t.Fatalf("translated style = %#v", style)
+	}
+}
+
+// TestBatchUpdate_WrapperKeysDisjointFromSubOpFlags locks the static
+// assumption wrappedSubOpInputKeys relies on: no shortcut registered in
+// batchOpDispatch declares a flag named cell_styles / cell_merges / styles.
+// If a future dispatch-table addition (e.g. +table-put) carries one of these
+// flags, its legitimate input would be silently rejected by the wrapper
+// check — this test turns that silent breakage into a build-time failure.
+func TestBatchUpdate_WrapperKeysDisjointFromSubOpFlags(t *testing.T) {
+	t.Parallel()
+	wrapped := make(map[string]struct{}, len(wrappedSubOpInputKeys))
+	for _, k := range wrappedSubOpInputKeys {
+		wrapped[k] = struct{}{}
+	}
+	for shortcut := range batchOpDispatch {
+		for _, f := range flagsFor(shortcut) {
+			key := strings.ReplaceAll(f.Name, "-", "_")
+			if _, clash := wrapped[key]; clash {
+				t.Errorf("%s declares flag --%s which collides with wrappedSubOpInputKeys; "+
+					"exempt this shortcut from the wrapper check before adding it to batchOpDispatch",
+					shortcut, f.Name)
+			}
+		}
+	}
+}
+
+// TestBatchUpdate_AggregatesMultipleOpErrors pins op-level aggregation: when
+// several operations are invalid, one reply names them all (numbered, with
+// each op's own error) instead of failing on the first bad op only. A single
+// bad op keeps the historical single-error message (no aggregate wrapper).
+func TestBatchUpdate_AggregatesMultipleOpErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("two bad ops reported together", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, BatchUpdate, []string{
+			"--url", testURL,
+			"--operations", `[
+				{"shortcut":"+cells-set-magic","input":{}},
+				{"shortcut":"+cells-set","input":{"sheet_name":"s","range":"A1"}},
+				{"shortcut":"+cells-clear","input":{"sheet_name":"s","range":"A1"}}
+			]`,
+			"--yes", "--dry-run",
+		})
+		requireValidation(t, err, "2 of 3 operations failed validation")
+		for _, want := range []string{"1) ", "2) ", "operations[0]", "operations[1]"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("aggregated op error should contain %q, got %q", want, err.Error())
+			}
+		}
+	})
+
+	t.Run("single bad op keeps plain message", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, BatchUpdate, []string{
+			"--url", testURL,
+			"--operations", `[
+				{"shortcut":"+cells-set-magic","input":{}},
+				{"shortcut":"+cells-clear","input":{"sheet_name":"s","range":"A1"}}
+			]`,
+			"--yes", "--dry-run",
+		})
+		requireValidation(t, err, "not allowed in +batch-update")
+		if strings.Contains(err.Error(), "operations failed validation") {
+			t.Errorf("single bad op must not get the aggregate wrapper, got %q", err.Error())
+		}
+	})
 }
 
 // TestBatchUpdate_PrescriptiveHints pins the recovery hints that ride on the
@@ -572,19 +716,261 @@ func TestBatchUpdate_ResizeNoOperationField(t *testing.T) {
 	}
 }
 
-// TestSplitSheetPrefixedRange exercises the helper directly.
+// TestSplitSheetPrefixedRange exercises the helper directly, including the
+// grammar it shares with --range's selector rewrite: the sheet it returns is
+// written verbatim into a sub-op's "sheet_name", so a quoted name has to come
+// back unwrapped and every spelling of the separator has to be recognized.
 func TestSplitSheetPrefixedRange(t *testing.T) {
 	t.Parallel()
-	sheet, sub, err := splitSheetPrefixedRange("sheet1!A2:A100")
-	if err != nil || sheet != "sheet1" || sub != "A2:A100" {
-		t.Errorf("split = (%q,%q,%v), want (sheet1, A2:A100, nil)", sheet, sub, err)
+	ok := []struct{ in, sheet, sub string }{
+		{"sheet1!A2:A100", "sheet1", "A2:A100"},
+		{"工作表1！A1:B2", "工作表1", "A1:B2"},           // full-width separator
+		{`sheet1\!A2`, "sheet1", "A2"},            // survived shell history expansion
+		{"'My Sheet'!A1:B2", "My Sheet", "A1:B2"}, // quotes are the delimiter, not the name
+		{"'Q1!Sales'!A1", "Q1!Sales", "A1"},       // separator inside a quoted name
+		{"  sheet1!A2  ", "sheet1", "A2"},
 	}
-	if _, _, err := splitSheetPrefixedRange("A2:A100"); err == nil {
-		t.Error("expected error on missing prefix")
+	for _, tc := range ok {
+		sheet, sub, err := splitSheetPrefixedRange(tc.in)
+		if err != nil || sheet != tc.sheet || sub != tc.sub {
+			t.Errorf("split(%q) = (%q,%q,%v), want (%q,%q,nil)", tc.in, sheet, sub, err, tc.sheet, tc.sub)
+		}
 	}
-	if _, _, err := splitSheetPrefixedRange("!A2"); err == nil {
-		t.Error("expected error on empty sheet name")
+	for _, in := range []string{"A2:A100", "!A2", "sheet1!", "'unclosed!A1"} {
+		_, _, err := splitSheetPrefixedRange(in)
+		// Typed metadata, not just "an error": the flag attribution is what
+		// lets a caller find what to fix, and a plain error would otherwise
+		// pass this regression test.
+		ve := requireValidation(t, err, "must use sheet!range form")
+		if ve.Param != "--range" {
+			t.Errorf("split(%q): Param = %q, want --range", in, ve.Param)
+		}
+		if !strings.Contains(ve.Message, strconv.Quote(in)) {
+			t.Errorf("split(%q): message %q does not name the offending input", in, ve.Message)
+		}
 	}
 	// Compile-time use of json import
 	_ = json.Marshal
+}
+
+// TestValidateDropdownRanges_AcceptsPrefixGrammar pins the two --ranges items
+// the literal-"!" scan got wrong: a full-width separator was rejected as
+// carrying no prefix at all, and a quoted name shipped its quotes inside
+// sheet_name for the backend to fail on as sheet-not-found.
+func TestValidateDropdownRanges_AcceptsPrefixGrammar(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ name, ranges, wantSheet string }{
+		{"full-width separator", `["工作表1！A1:B2"]`, "工作表1"},
+		{"quoted sheet name", `["'My Sheet'!A1:B2"]`, "My Sheet"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			body := parseDryRunBody(t, CellsBatchClear, []string{
+				"--url", testURL,
+				"--ranges", tc.ranges,
+				"--yes",
+			})
+			input := decodeToolInput(t, body, "batch_update")
+			ops, _ := input["operations"].([]interface{})
+			if len(ops) != 1 {
+				t.Fatalf("operations length = %d, want 1", len(ops))
+			}
+			params, _ := ops[0].(map[string]interface{})["input"].(map[string]interface{})
+			if params["sheet_name"] != tc.wantSheet {
+				t.Errorf("sheet_name = %q, want %q", params["sheet_name"], tc.wantSheet)
+			}
+			if params["range"] != "A1:B2" {
+				t.Errorf("range = %q, want A1:B2", params["range"])
+			}
+		})
+	}
+}
+
+// TestBatchUpdate_CollidingDimFreezeWarns covers the failure mode the legacy
+// deprecation note alone could not surface: two +dim-freeze sub-ops on one
+// sheet. Freeze is full-state replacement, so the second silently discards the
+// first — and BOTH report success, which is why it goes unnoticed. Per-op
+// "equivalent to --rows 1" / "equivalent to --cols 2" notes do not say that;
+// the caller has to infer the interaction. This pins that the CLI states it.
+func TestBatchUpdate_CollidingDimFreezeWarns(t *testing.T) {
+	t.Parallel()
+
+	t.Run("two per-axis freezes on one sheet", func(t *testing.T) {
+		t.Parallel()
+		warning := dryRunWarning(t, BatchUpdate, []string{
+			"--url", testURL,
+			"--operations", `[
+			  {"shortcut":"+dim-freeze","input":{"sheet_name":"S1","rows":1}},
+			  {"shortcut":"+dim-freeze","input":{"sheet_name":"S1","cols":2}}
+			]`,
+			"--yes",
+		})
+		for _, want := range []string{
+			"operations[0], operations[1]",
+			"only operations[1] survives",
+			"--cols 2)",                     // the state actually reached
+			"ONE sub-op: --rows 1 --cols 2", // the fix
+		} {
+			if !strings.Contains(warning, want) {
+				t.Errorf("collision warning should contain %q, got %q", want, warning)
+			}
+		}
+	})
+
+	t.Run("legacy spelling collides the same way and keeps its own note", func(t *testing.T) {
+		t.Parallel()
+		warning := dryRunWarning(t, BatchUpdate, []string{
+			"--url", testURL,
+			"--operations", `[
+			  {"shortcut":"+dim-freeze","input":{"sheet_name":"S1","dimension":"row","count":1}},
+			  {"shortcut":"+dim-freeze","input":{"sheet_name":"S1","dimension":"column","count":2}}
+			]`,
+			"--yes",
+		})
+		if !strings.Contains(warning, "ONE sub-op: --rows 1 --cols 2") {
+			t.Errorf("legacy spelling should collide too, got %q", warning)
+		}
+		if !strings.Contains(warning, "superseded by --rows/--cols") {
+			t.Errorf("per-op deprecation note should still ride along, got %q", warning)
+		}
+	})
+
+	t.Run("different sheets do not collide", func(t *testing.T) {
+		t.Parallel()
+		warning := dryRunWarning(t, BatchUpdate, []string{
+			"--url", testURL,
+			"--operations", `[
+			  {"shortcut":"+dim-freeze","input":{"sheet_name":"S1","rows":1}},
+			  {"shortcut":"+dim-freeze","input":{"sheet_name":"S2","cols":2}}
+			]`,
+			"--yes",
+		})
+		if strings.Contains(warning, "same sheet") {
+			t.Errorf("freezes on different sheets are independent, got %q", warning)
+		}
+	})
+
+	t.Run("a single freeze warns about nothing", func(t *testing.T) {
+		t.Parallel()
+		warning := dryRunWarning(t, BatchUpdate, []string{
+			"--url", testURL,
+			"--operations", `[{"shortcut":"+dim-freeze","input":{"sheet_name":"S1","rows":1,"cols":2}}]`,
+			"--yes",
+		})
+		if warning != "" {
+			t.Errorf("one combined freeze is the correct form, got warning %q", warning)
+		}
+	})
+}
+
+func TestBatchUpdate_IgnoredLocatorWarns(t *testing.T) {
+	t.Parallel()
+
+	warning := dryRunWarning(t, BatchUpdate, []string{
+		"--url", testURL,
+		"--operations", `[{
+		  "shortcut":"+cells-clear",
+		  "input":{
+		    "sheet_name":"S1",
+		    "range":"A1:B2",
+		    "spreadsheet-token":"shtOTHER",
+		    "excel_id":"shtIGNORED",
+		    "url":"https://example.invalid/sheets/shtWRONG"
+		  }
+		}]`,
+		"--yes",
+	})
+	for _, want := range []string{
+		"operations[0] (+cells-clear)",
+		"excel_id, spreadsheet-token, url",
+		"top-level +batch-update --url/--spreadsheet-token locator is authoritative",
+	} {
+		if !strings.Contains(warning, want) {
+			t.Errorf("locator warning should contain %q, got %q", want, warning)
+		}
+	}
+}
+
+func TestBatchUpdate_CombinesLocatorAndDimInsertWarnings(t *testing.T) {
+	t.Parallel()
+
+	warning := dryRunWarning(t, BatchUpdate, []string{
+		"--url", testURL,
+		"--operations", `[{"shortcut":"+dim-insert","input":{"sheet_id":"sh1","position":1,"count":1,"inherit_style":"before","url":"https://example.invalid/sheets/shtWRONG"}}]`,
+		"--yes",
+	})
+	for _, want := range []string{
+		"ignored input locator keys url",
+		dimInsertBeforeStyleWarning,
+	} {
+		if !strings.Contains(warning, want) {
+			t.Errorf("combined warning should contain %q, got %q", want, warning)
+		}
+	}
+}
+
+// TestBatchOpAliasCollidesWithTarget pins the message for a sub-op carrying
+// BOTH an intuitive alias and the flag it aliases. The key is recognized, so
+// reporting it as "unknown input key" (which it did, because keys are walked
+// in sorted order and "size" sorts before "width", leaving nothing to conflict
+// with yet) sent the caller looking for a typo that was not there.
+func TestBatchOpAliasCollidesWithTarget(t *testing.T) {
+	t.Parallel()
+
+	t.Run("conflicting values name both spellings", func(t *testing.T) {
+		t.Parallel()
+		input := map[string]interface{}{"sheet_name": "S1", "range": "A:C", "size": float64(100), "width": float64(120)}
+		err := normalizeSubOpInputKeys("+cols-resize", input)
+		if err == nil {
+			t.Fatal("want an error for size + width with different values")
+		}
+		for _, want := range []string{`"size"`, `"width"`, "same flag"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error should contain %q, got %q", want, err.Error())
+			}
+		}
+		if strings.Contains(err.Error(), "unknown input key") {
+			t.Errorf("an aliased key is not unknown, got %q", err.Error())
+		}
+	})
+
+	t.Run("same value under both spellings drops the alias", func(t *testing.T) {
+		t.Parallel()
+		input := map[string]interface{}{"sheet_name": "S1", "range": "A:C", "size": float64(120), "width": float64(120)}
+		if err := normalizeSubOpInputKeys("+cols-resize", input); err != nil {
+			t.Fatalf("identical values are harmless, got %v", err)
+		}
+		if _, still := input["size"]; still {
+			t.Errorf("the alias should be dropped, got %#v", input)
+		}
+		if input["width"] != float64(120) {
+			t.Errorf("width = %#v, want 120", input["width"])
+		}
+	})
+}
+
+// TestBatchUpdate_AggregatedErrorsKeepHints pins that folding several bad
+// sub-ops into one message does not cost the caller the per-shortcut key
+// contract each single-op error carries — otherwise the more mistakes you
+// make, the less guidance you get.
+func TestBatchUpdate_AggregatedErrorsKeepHints(t *testing.T) {
+	t.Parallel()
+
+	_, _, err := runShortcutCapturingErr(t, BatchUpdate, []string{
+		"--url", testURL, "--yes",
+		"--operations", `[
+		  {"shortcut":"+cells-set","input":{"sheet_name":"S1","bogus":1}},
+		  {"shortcut":"+cells-clear","input":{"sheet_name":"S1","nope":2}}
+		]`,
+	})
+	ve := requireValidation(t, err, "2 of 2 operations failed validation")
+	for _, want := range []string{
+		"+cells-set input keys:",
+		"+cells-clear input keys:",
+	} {
+		if !strings.Contains(ve.Message, want) {
+			t.Errorf("aggregated message should inline %q, got %q", want, ve.Message)
+		}
+	}
 }

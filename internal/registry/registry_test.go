@@ -537,6 +537,43 @@ func TestCollectScopesForProjects_NonexistentProject(t *testing.T) {
 	}
 }
 
+// TestCollectScopesForProjects_HonorsRequiredScopes verifies that a method's
+// full requiredScopes conjunction is collected, not just the umbrella scope.
+// The mail message get/batch_get APIs declare requiredScopes =
+// [readonly, subject:read, address:read, body:read]; the conjunction must be
+// collected together — the umbrella readonly scope alone does not cover
+// subject/address/body.
+func TestCollectScopesForProjects_HonorsRequiredScopes(t *testing.T) {
+	hasMail := false
+	for _, p := range ListFromMetaProjects() {
+		if p == "mail" {
+			hasMail = true
+			break
+		}
+	}
+	if !hasMail {
+		t.Skip("mail domain not present in meta catalog")
+	}
+
+	scopes := CollectScopesForProjects([]string{"mail"}, "user")
+	for _, want := range []string{
+		"mail:user_mailbox.message.subject:read",
+		"mail:user_mailbox.message.address:read",
+		"mail:user_mailbox.message.body:read",
+	} {
+		found := false
+		for _, s := range scopes {
+			if s == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected requiredScope %q in collected scopes, got %v", want, scopes)
+		}
+	}
+}
+
 // --- auth_domain functions ---
 
 func TestGetAuthDomain_Configured(t *testing.T) {

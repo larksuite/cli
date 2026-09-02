@@ -62,6 +62,23 @@ func TestFormulaVerify_DryRun(t *testing.T) {
 				"max_locations_per_error": float64(5),
 			},
 		},
+		{
+			name: "ai_only — AI-formula-only polling probe",
+			args: []string{"--url", testURL, "--ai-only"},
+			wantInput: map[string]interface{}{
+				"excel_id": testToken,
+				"ai_only":  true,
+			},
+		},
+		{
+			name: "ai_only coexists with range selector",
+			args: []string{"--url", testURL, "--ai-only", "--range", "A1:Z200"},
+			wantInput: map[string]interface{}{
+				"excel_id": testToken,
+				"ai_only":  true,
+				"ranges":   []interface{}{"A1:Z200"},
+			},
+		},
 	}
 
 	for _, tt := range tests {

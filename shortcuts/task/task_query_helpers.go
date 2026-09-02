@@ -164,6 +164,7 @@ func outputTaskSummary(task map[string]interface{}) map[string]interface{} {
 			}
 		}
 	}
+	projectTaskFields(out, task, taskOutputMembers, taskOutputStart, taskOutputStatus)
 	return out
 }
 
@@ -198,6 +199,7 @@ func outputRelatedTask(task map[string]interface{}) map[string]interface{} {
 			out["completed_at"] = completed
 		}
 	}
+	projectTaskFields(out, task, taskOutputStart, taskOutputDue)
 	return out
 }
 

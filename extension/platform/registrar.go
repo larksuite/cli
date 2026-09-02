@@ -36,3 +36,24 @@ type Registrar interface {
 	// plugins both calling Restrict abort startup.
 	Restrict(r *Rule)
 }
+
+// EmbeddedSkillsRegistrar is the optional extension a host registrar
+// implements to accept embedded-skill customization. It is deliberately NOT
+// part of Registrar: every exported symbol in this package is a stability
+// contract, and widening Registrar would break existing third-party
+// implementations (fakes, decorators, custom hosts). A Builder-built plugin
+// type-asserts for this interface at Install time and fails closed when the
+// host lacks it -- a declared customization is never silently dropped.
+//
+// Skill content has a single owner: a second customizing plugin, a FailOpen
+// declaration, or a SkillsOverlay that cannot compose aborts startup
+// unconditionally. EmbeddedSkills is a distribution build-integrity boundary:
+// silently dropping it could republish host defaults the distribution removed.
+// Removing a skill drops it from skills list/read and from structured
+// framework-owned pointers, but does not disable any command; use Restrict to
+// actually block a command.
+type EmbeddedSkillsRegistrar interface {
+	// EmbeddedSkills contributes a SkillsOverlay customizing the CLI's
+	// embedded skill content (see SkillsOverlay).
+	EmbeddedSkills(spec *SkillsOverlay)
+}

@@ -431,3 +431,161 @@ func TestInstallAll_multipleRestrictPerPlugin(t *testing.T) {
 			result.PluginRules[0].Rule.Name, result.PluginRules[1].Rule.Name)
 	}
 }
+
+// skillPlugin contributes a SkillsOverlay via r.EmbeddedSkills; the install pipeline
+// must capture it into PluginSkills for the skill resolver.
+type skillPlugin struct{}
+
+func (skillPlugin) Name() string    { return "skiller" }
+func (skillPlugin) Version() string { return "1.0.0" }
+func (skillPlugin) Capabilities() platform.Capabilities {
+	return platform.Capabilities{FailurePolicy: platform.FailClosed}
+}
+func (skillPlugin) Install(r platform.Registrar) error {
+	sr, ok := r.(platform.EmbeddedSkillsRegistrar)
+	if !ok {
+		return errors.New("host registrar does not support EmbeddedSkills")
+	}
+	sr.EmbeddedSkills(&platform.SkillsOverlay{Remove: []string{"lark-shared"}})
+	return nil
+}
+
+func TestInstallAll_skillsCommitted(t *testing.T) {
+	result, err := internalplatform.InstallAll([]platform.Plugin{skillPlugin{}}, nil)
+	if err != nil {
+		t.Fatalf("InstallAll: %v", err)
+	}
+	if len(result.PluginSkills) != 1 {
+		t.Fatalf("PluginSkills = %d, want 1", len(result.PluginSkills))
+	}
+	ps := result.PluginSkills[0]
+	if ps.PluginName != "skiller" {
+		t.Errorf("PluginName = %q, want skiller", ps.PluginName)
+	}
+	if ps.SkillsOverlay == nil || len(ps.SkillsOverlay.Remove) != 1 || ps.SkillsOverlay.Remove[0] != "lark-shared" {
+		t.Errorf("Spec = %+v, want Remove=[lark-shared]", ps.SkillsOverlay)
+	}
+}
+
+// A hand-written plugin can bypass Builder's automatic FailClosed flip. The
+// staging registrar therefore validates the actual contribution before it is
+// committed or reaches skill composition. Treat the mismatch as an invalid
+// capability, not as an ordinary FailOpen install failure that may be skipped.
+type failOpenSkillPlugin struct{}
+
+func (failOpenSkillPlugin) Name() string    { return "fail-open-skiller" }
+func (failOpenSkillPlugin) Version() string { return "1.0.0" }
+func (failOpenSkillPlugin) Capabilities() platform.Capabilities {
+	return platform.Capabilities{FailurePolicy: platform.FailOpen}
+}
+func (failOpenSkillPlugin) Install(r platform.Registrar) error {
+	r.(platform.EmbeddedSkillsRegistrar).EmbeddedSkills(
+		&platform.SkillsOverlay{Remove: []string{"lark-shared"}})
+	return nil
+}
+
+func TestInstallAll_failOpenEmbeddedSkillsIsFatalInvalidCapability(t *testing.T) {
+	var warnings bytes.Buffer
+	result, err := internalplatform.InstallAll(
+		[]platform.Plugin{failOpenSkillPlugin{}}, &warnings)
+	if err == nil {
+		t.Fatal("FailOpen+EmbeddedSkills must abort before composition")
+	}
+	if result != nil {
+		t.Fatalf("result = %+v, want nil on fatal invalid capability", result)
+	}
+	var pi *internalplatform.PluginInstallError
+	if !errors.As(err, &pi) || pi.ReasonCode != internalplatform.ReasonInvalidCapability {
+		t.Fatalf("err = %v, want PluginInstallError reason_code %s",
+			err, internalplatform.ReasonInvalidCapability)
+	}
+	if !strings.Contains(pi.Reason, "EmbeddedSkills requires FailClosed") {
+		t.Fatalf("reason = %q, want EmbeddedSkills FailClosed guidance", pi.Reason)
+	}
+	if warnings.Len() != 0 {
+		t.Fatalf("fatal mismatch was rendered as a FailOpen warning: %q", warnings.String())
+	}
+}
+
+type failOpenSkillsThenFailurePlugin struct {
+	mode string
+}
+
+func (p failOpenSkillsThenFailurePlugin) Name() string    { return "fail-open-skills-failure" }
+func (p failOpenSkillsThenFailurePlugin) Version() string { return "1.0.0" }
+func (p failOpenSkillsThenFailurePlugin) Capabilities() platform.Capabilities {
+	return platform.Capabilities{FailurePolicy: platform.FailOpen}
+}
+func (p failOpenSkillsThenFailurePlugin) Install(r platform.Registrar) error {
+	sr := r.(platform.EmbeddedSkillsRegistrar)
+	if p.mode == "nil" {
+		sr.EmbeddedSkills(nil)
+	} else {
+		sr.EmbeddedSkills(&platform.SkillsOverlay{})
+	}
+	switch p.mode {
+	case "duplicate":
+		sr.EmbeddedSkills(&platform.SkillsOverlay{})
+		return nil
+	case "panic":
+		panic("after skills")
+	default:
+		return errors.New("after skills")
+	}
+}
+
+func TestInstallAll_failOpenCannotDowngradeStagedSkillsToInstallFailure(t *testing.T) {
+	for _, mode := range []string{"error", "panic", "duplicate", "nil"} {
+		t.Run(mode, func(t *testing.T) {
+			var warnings bytes.Buffer
+			result, err := internalplatform.InstallAll(
+				[]platform.Plugin{failOpenSkillsThenFailurePlugin{mode: mode}},
+				&warnings,
+			)
+			if result != nil {
+				t.Fatalf("result = %+v, want nil on fatal invalid capability", result)
+			}
+			var pi *internalplatform.PluginInstallError
+			if !errors.As(err, &pi) {
+				t.Fatalf("InstallAll error = %T %v, want PluginInstallError", err, err)
+			}
+			if pi.ReasonCode != internalplatform.ReasonInvalidCapability {
+				t.Fatalf("reason_code = %q, want %q",
+					pi.ReasonCode, internalplatform.ReasonInvalidCapability)
+			}
+			if !strings.Contains(pi.Reason, "EmbeddedSkills requires FailClosed") {
+				t.Fatalf("reason = %q, want fail-closed guidance", pi.Reason)
+			}
+			if warnings.Len() != 0 {
+				t.Fatalf("fatal asset mismatch was rendered as fail-open warning: %q", warnings.String())
+			}
+		})
+	}
+}
+
+// doubleSkillPlugin calls r.EmbeddedSkills twice; staging must reject it. Declared
+// FailClosed so the staging error aborts InstallAll deterministically.
+type doubleSkillPlugin struct{}
+
+func (doubleSkillPlugin) Name() string    { return "double-skiller" }
+func (doubleSkillPlugin) Version() string { return "1.0.0" }
+func (doubleSkillPlugin) Capabilities() platform.Capabilities {
+	return platform.Capabilities{FailurePolicy: platform.FailClosed}
+}
+func (doubleSkillPlugin) Install(r platform.Registrar) error {
+	sr := r.(platform.EmbeddedSkillsRegistrar)
+	sr.EmbeddedSkills(&platform.SkillsOverlay{Remove: []string{"lark-a"}})
+	sr.EmbeddedSkills(&platform.SkillsOverlay{Remove: []string{"lark-b"}})
+	return nil
+}
+
+func TestInstallAll_skillsCalledTwice_aborts(t *testing.T) {
+	_, err := internalplatform.InstallAll([]platform.Plugin{doubleSkillPlugin{}}, nil)
+	if err == nil {
+		t.Fatal("calling r.EmbeddedSkills twice must abort a FailClosed plugin")
+	}
+	var pi *internalplatform.PluginInstallError
+	if !errors.As(err, &pi) || pi.ReasonCode != internalplatform.ReasonInvalidSkillsOverlay {
+		t.Errorf("err = %v, want PluginInstallError reason_code %s", err, internalplatform.ReasonInvalidSkillsOverlay)
+	}
+}

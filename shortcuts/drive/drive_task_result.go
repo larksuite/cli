@@ -22,6 +22,26 @@ const (
 	wikiMoveToDriveResultKey = "move_wiki_to_docs_result"
 )
 
+// driveTaskResultCommandContext preserves the credential context that created
+// an async task so a recovery command does not silently fall back to another
+// profile or identity.
+func driveTaskResultCommandContext(runtime *common.RuntimeContext) (prefix, identity string) {
+	prefix = "lark-cli"
+	identity = "user"
+	if runtime == nil {
+		return prefix, identity
+	}
+	if runtime.Config != nil {
+		if profile := strings.TrimSpace(runtime.Config.ProfileName); profile != "" {
+			prefix = fmt.Sprintf("lark-cli --profile %s", profile)
+		}
+	}
+	if resolved := strings.TrimSpace(string(runtime.As())); resolved != "" {
+		identity = resolved
+	}
+	return prefix, identity
+}
+
 // DriveTaskResult exposes a unified read path for the async task types produced
 // by Drive import, export, file/folder move/delete, wiki move, wiki move-to-drive,
 // and wiki delete flows.
@@ -138,8 +158,6 @@ var DriveTaskResult = common.Shortcut{
 		taskID := runtime.Str("task-id")
 		fileToken := runtime.Str("file-token")
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Querying %s task result...\n", scenario)
-
 		var result map[string]interface{}
 		var err error
 
@@ -206,7 +224,7 @@ func queryImportTaskAndAutoGrantPermission(runtime *common.RuntimeContext, ticke
 func queryExportTask(runtime *common.RuntimeContext, ticket, fileToken string) (map[string]interface{}, error) {
 	status, err := getDriveExportStatus(runtime, fileToken, ticket)
 	if err != nil {
-		return nil, err
+		return nil, withDriveExportRateLimitRecovery(err, ticket, fileToken)
 	}
 
 	return map[string]interface{}{
@@ -279,8 +297,7 @@ func requireDriveScopes(storedScopes string, required []string) error {
 
 	return errs.NewPermissionError(errs.SubtypeMissingScope,
 		"missing required scope(s): %s", strings.Join(missing, ", ")).
-		WithMissingScopes(missing...).
-		WithHint("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " "))
+		WithMissingScopes(missing...)
 }
 
 func missingDriveScopes(storedScopes string, required []string) []string {

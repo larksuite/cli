@@ -3,7 +3,12 @@
 
 package common
 
-import "github.com/larksuite/cli/internal/util"
+import (
+	"encoding/json"
+	"strconv"
+
+	"github.com/larksuite/cli/internal/util"
+)
 
 // GetString safely extracts a string from a nested map path.
 // Usage: GetString(data, "user", "name") is equivalent to
@@ -18,6 +23,35 @@ func GetString(m map[string]interface{}, keys ...string) string {
 	}
 	s, _ := v[keys[len(keys)-1]].(string)
 	return s
+}
+
+// GetStringLoose extracts a string, tolerating a numeric JSON value. Responses
+// decode with json.Number (see client.ParseJSONResponse's dec.UseNumber()), so a
+// field the server sometimes quotes and sometimes emits bare — e.g. a numeric
+// Miaoda user_id — would read as "" under GetString's strict string assertion.
+// A json.Number is stringified via its literal text, so large integer IDs keep
+// full precision and are never routed through a lossy float64.
+func GetStringLoose(m map[string]interface{}, keys ...string) string {
+	if len(keys) == 0 {
+		return ""
+	}
+	v := navigate(m, keys[:len(keys)-1])
+	if v == nil {
+		return ""
+	}
+	switch n := v[keys[len(keys)-1]].(type) {
+	case string:
+		return n
+	case json.Number:
+		return n.String()
+	case int:
+		return strconv.Itoa(n)
+	case int64:
+		return strconv.FormatInt(n, 10)
+	case float64:
+		return strconv.FormatFloat(n, 'f', -1, 64)
+	}
+	return ""
 }
 
 // GetFloat safely extracts a float64 (the default JSON number type).

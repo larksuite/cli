@@ -5,6 +5,7 @@ package task
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -12,7 +13,90 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/surface"
 )
+
+func TestCreateTasklist_UserMissingScopeProjectsInlineHint(t *testing.T) {
+	tests := []struct {
+		name string
+		plan *surface.Plan
+	}{
+		{name: "visible"},
+		{
+			name: "concealed",
+			plan: surface.NewPlan(map[surface.CommandID]surface.CommandState{
+				surface.CommandAuthLogin: surface.CommandConcealed,
+			}),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, reg := taskShortcutTestFactory(t)
+			f.Recovery = recovery.NewProjector(func() *surface.Plan { return tt.plan })
+			reg.Register(&httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/task/v2/tasklists",
+				Body: map[string]interface{}{
+					"code": 0,
+					"msg":  "success",
+					"data": map[string]interface{}{
+						"tasklist": map[string]interface{}{"guid": "tl-new", "name": "My List"},
+					},
+				},
+			})
+			reg.Register(&httpmock.Stub{
+				Method:     "POST",
+				URL:        "/open-apis/task/v2/tasks",
+				BodyFilter: func(body []byte) bool { return bytes.Contains(body, []byte("bad-task")) },
+				Body: map[string]interface{}{
+					"code": 99991679,
+					"msg":  "missing scope",
+					"error": map[string]interface{}{
+						"permission_violations": []interface{}{
+							map[string]interface{}{"subject": "task:task:write"},
+						},
+					},
+				},
+			})
+
+			s := CreateTasklist
+			s.AuthTypes = []string{"bot", "user"}
+			err := runMountedTaskShortcut(t, s, []string{
+				"+tasklist-create", "--name", "My List", "--data", `[{"summary":"bad-task"}]`,
+				"--as", "user", "--format", "json",
+			}, f, stdout)
+			var partial *output.PartialFailureError
+			if !errors.As(err, &partial) {
+				t.Fatalf("err = %T, want *output.PartialFailureError: %v", err, err)
+			}
+
+			var envelope struct {
+				OK   bool `json:"ok"`
+				Data struct {
+					Failed []map[string]interface{} `json:"failed_tasks"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+				t.Fatalf("unmarshal stdout: %v\n%s", err, stdout.String())
+			}
+			if envelope.OK || len(envelope.Data.Failed) != 1 {
+				t.Fatalf("envelope = %#v, want ok:false with one failure", envelope)
+			}
+			failed := envelope.Data.Failed[0]
+			if got, want := failed["type"], string(errs.SubtypeMissingScope); got != want {
+				t.Errorf("failed type = %v, want %v", got, want)
+			}
+			if got, want := failed["hint"], recovery.UserAuthorization("task:task:write").Render(tt.plan); got != want {
+				t.Errorf("failed hint = %q, want %q", got, want)
+			}
+			if tt.plan != nil && strings.Contains(failed["hint"].(string), "auth login") {
+				t.Errorf("concealed hint leaked auth command: %q", failed["hint"])
+			}
+		})
+	}
+}
 
 // TestCreateTasklist_PartialFailure exercises the batch sub-task path: the
 // tasklist is created (code 0), then two sub-tasks are created concurrently —
@@ -25,6 +109,9 @@ import (
 func TestCreateTasklist_PartialFailure(t *testing.T) {
 	f, stdout, _, reg := taskShortcutTestFactory(t)
 	warmTenantToken(t, f, reg)
+	createdTask := fullTaskOutputFixture()
+	createdTask["guid"] = "task-ok"
+	createdTask["url"] = "https://example.feishu.cn/task-ok"
 
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -48,12 +135,7 @@ func TestCreateTasklist_PartialFailure(t *testing.T) {
 		BodyFilter: func(b []byte) bool { return bytes.Contains(b, []byte("ok-task")) },
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
-			"data": map[string]interface{}{
-				"task": map[string]interface{}{
-					"guid": "task-ok",
-					"url":  "https://example.feishu.cn/task-ok",
-				},
-			},
+			"data": map[string]interface{}{"task": createdTask},
 		},
 	})
 
@@ -105,6 +187,16 @@ func TestCreateTasklist_PartialFailure(t *testing.T) {
 	if strings.Contains(out, "permission_error") {
 		t.Errorf("legacy type \"permission_error\" leaked into output: %s", out)
 	}
+	var envelope map[string]interface{}
+	if decodeErr := json.Unmarshal(stdout.Bytes(), &envelope); decodeErr != nil {
+		t.Fatalf("decode output: %v\n%s", decodeErr, out)
+	}
+	resultData, _ := envelope["data"].(map[string]interface{})
+	createdTasks, _ := resultData["created_tasks"].([]interface{})
+	if len(createdTasks) != 1 {
+		t.Fatalf("created_tasks = %#v, want one item", resultData["created_tasks"])
+	}
+	assertStandardTaskFields(t, createdTasks[0].(map[string]interface{}))
 }
 
 func TestCreateTasklist_PartialFailurePrettyOutput(t *testing.T) {
@@ -164,7 +256,7 @@ func TestCreateTasklist_PartialFailurePrettyOutput(t *testing.T) {
 		"Failed tasks:",
 		"Index",
 		"bad-task",
-		"user lacks permission",
+		"bot lacks permission",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("pretty output missing %q; got:\n%s", want, out)

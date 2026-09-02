@@ -5,7 +5,9 @@ package localfileio
 
 import (
 	"context"
+	"errors"
 	"io"
+	"io/fs"
 	"path/filepath"
 
 	"github.com/larksuite/cli/extension/fileio"
@@ -30,13 +32,17 @@ func init() {
 // and atomic writes are handled internally.
 type LocalFileIO struct{}
 
-// Open opens a local file for reading after validating the path.
+var _ fileio.WorkspaceFileIO = (*LocalFileIO)(nil)
+
+// Open opens a local file for reading after validating the path. The open
+// itself is hardened (openValidated): the fd is verified against the
+// validation-stage stat and must be a regular file.
 func (l *LocalFileIO) Open(name string) (fileio.File, error) {
 	safePath, err := SafeInputPath(name)
 	if err != nil {
 		return nil, &fileio.PathValidationError{Err: err}
 	}
-	return vfs.Open(safePath)
+	return openValidated(safePath)
 }
 
 // Stat returns file metadata after validating the path.
@@ -78,4 +84,35 @@ func (l *LocalFileIO) Save(path string, _ fileio.SaveOptions, body io.Reader) (f
 		return nil, &fileio.WriteError{Err: err}
 	}
 	return &saveResult{size: n}, nil
+}
+
+// SaveExclusive writes content only when path does not exist, satisfying
+// fileio.ExclusiveFileIO. It exists so a no-clobber download policy is enforced
+// by the commit itself rather than by an existence check the commit ignores.
+func (l *LocalFileIO) SaveExclusive(path string, _ fileio.SaveOptions, body io.Reader) (fileio.SaveResult, error) {
+	safePath, err := SafeOutputPath(path)
+	if err != nil {
+		return nil, &fileio.PathValidationError{Err: err}
+	}
+	if err := vfs.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
+		return nil, &fileio.MkdirError{Err: err}
+	}
+	n, err := ExclusiveWriteFromReader(safePath, body, 0600)
+	if err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return nil, err
+		}
+		return nil, &fileio.WriteError{Err: err}
+	}
+	return &saveResult{size: n}, nil
+}
+
+// RemoveWorkspaceEntry removes one workspace file or one empty workspace
+// directory after applying the same output-path validation as Save.
+func (l *LocalFileIO) RemoveWorkspaceEntry(path string) error {
+	safePath, err := SafeOutputPath(path)
+	if err != nil {
+		return &fileio.PathValidationError{Err: err}
+	}
+	return vfs.Remove(safePath)
 }

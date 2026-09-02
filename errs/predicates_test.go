@@ -4,11 +4,50 @@
 package errs_test
 
 import (
+	"errors"
 	"fmt"
+	"math"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 )
+
+func TestRetryAfter(t *testing.T) {
+	negative := errs.NewNetworkError(errs.SubtypeNetworkServer, "busy")
+	negative.RetryAfterSeconds = -1
+	type testCase struct {
+		name string
+		err  error
+		want time.Duration
+		ok   bool
+	}
+	tests := []testCase{
+		{name: "api", err: errs.NewAPIError(errs.SubtypeRateLimit, "slow down").WithRetryAfterSeconds(8), want: 8 * time.Second, ok: true},
+		{name: "wrapped network", err: fmt.Errorf("download: %w", errs.NewNetworkError(errs.SubtypeNetworkServer, "busy").WithRetryAfterSeconds(4)), want: 4 * time.Second, ok: true},
+		{name: "negative", err: negative},
+		{name: "absent", err: errs.NewNetworkError(errs.SubtypeNetworkServer, "busy")},
+		{name: "untyped", err: errors.New("busy")},
+	}
+	if strconv.IntSize == 64 {
+		overflowSeconds := math.MaxInt64/int64(time.Second) + 1
+		tests = append(tests, testCase{
+			name: "saturates",
+			err:  errs.NewNetworkError(errs.SubtypeNetworkServer, "busy").WithRetryAfterSeconds(int(overflowSeconds)),
+			want: time.Duration(math.MaxInt64),
+			ok:   true,
+		})
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := errs.RetryAfter(tt.err)
+			if got != tt.want || ok != tt.ok {
+				t.Fatalf("RetryAfter() = %s, %v; want %s, %v", got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}
 
 func TestIsRetryable(t *testing.T) {
 	tests := []struct {

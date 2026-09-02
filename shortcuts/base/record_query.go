@@ -5,18 +5,22 @@ package base
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/shortcuts/base/recordexport"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
 const (
-	recordFilterJSONFlag = "filter-json"
-	recordSortJSONFlag   = "sort-json"
-	recordSortMaxCount   = 10
+	recordFilterJSONFlag     = "filter-json"
+	recordSortJSONFlag       = "sort-json"
+	recordSortMaxCount       = 10
+	recordSearchFlagModeHint = "In flag mode, provide --keyword and at least one --search-field. For filter/sort-only reads, use base +record-list; it accepts --filter-json and --sort-json. Use --json for a full record-search request body."
 )
 
 func recordFilterFlag() common.Flag {
@@ -203,6 +207,9 @@ func recordSearchJSONBody(runtime *common.RuntimeContext) (map[string]interface{
 	if err := normalizeRecordSearchJSONBody(body); err != nil {
 		return nil, err
 	}
+	if _, exists := body["limit"]; !exists && runtime.Str("format") == recordexport.FormatNDJSON {
+		body["limit"] = maxNDJSONRecordReadLimit
+	}
 	return body, applyRecordQueryToBody(runtime, body)
 }
 
@@ -234,6 +241,9 @@ func validateRecordSearchFlags(runtime *common.RuntimeContext) error {
 	if err := validateRecordReadFormat(runtime); err != nil {
 		return err
 	}
+	if err := validateRecordExportFlags(runtime); err != nil {
+		return err
+	}
 	jsonRaw := strings.TrimSpace(runtime.Str("json"))
 	if jsonRaw != "" {
 		if exclusiveParams := recordSearchJSONExclusiveFlagParams(runtime); len(exclusiveParams) > 0 {
@@ -251,22 +261,96 @@ func validateRecordSearchFlags(runtime *common.RuntimeContext) error {
 				WithParams(invalidParams...).
 				WithHint("Put keyword, search, projection, view, and pagination fields inside --json, or omit --json.")
 		}
-		_, err := recordSearchJSONBody(runtime)
-		return err
+		body, err := recordSearchJSONBody(runtime)
+		if err != nil {
+			return err
+		}
+		_, limit, err := recordSearchPagination(body)
+		if err != nil {
+			return withValidationParam(err, "--json")
+		}
+		maximum := maxInlineRecordReadLimit
+		if runtime.Str("format") == "ndjson" {
+			maximum = maxNDJSONRecordReadLimit
+		}
+		if limit > maximum {
+			return withValidationParam(baseFlagErrorf("limit must be between 1 and %d; got %d", maximum, limit), "--json")
+		}
+		return nil
 	}
 	if strings.TrimSpace(runtime.Str("keyword")) == "" {
-		return baseFlagErrorf("--keyword is required unless --json is used")
+		return withRecordSearchFlagModeHint(withValidationParam(
+			baseFlagErrorf("--keyword is required unless --json is used"), "--keyword",
+		))
 	}
 	if len(runtime.StrArray("search-field")) == 0 {
-		return baseFlagErrorf("--search-field is required unless --json is used")
+		return withRecordSearchFlagModeHint(withValidationParam(
+			baseFlagErrorf("--search-field is required unless --json is used"), "--search-field",
+		))
 	}
-	if _, err := common.ValidatePageSizeTyped(runtime, "limit", 10, 1, 200); err != nil {
+	if err := validateRecordReadLimit(runtime, 10); err != nil {
 		return err
 	}
 	if _, err := recordSearchProjectionFields(runtime); err != nil {
 		return err
 	}
 	return validateRecordQueryOptions(runtime)
+}
+
+func withRecordSearchFlagModeHint(err error) error {
+	var validationErr *errs.ValidationError
+	if errors.As(err, &validationErr) {
+		validationErr.WithHint(recordSearchFlagModeHint)
+	}
+	return err
+}
+
+func recordSearchPagination(body map[string]any) (int, int, error) {
+	offset := 0
+	if raw, exists := body["offset"]; exists {
+		value, err := recordSearchInteger(raw, "offset")
+		if err != nil {
+			return 0, 0, err
+		}
+		if value < 0 {
+			return 0, 0, baseFlagErrorf("offset must be greater than or equal to 0; got %d", value)
+		}
+		offset = value
+	}
+	limit := 10
+	if raw, exists := body["limit"]; exists {
+		value, err := recordSearchInteger(raw, "limit")
+		if err != nil {
+			return 0, 0, err
+		}
+		if value < 1 {
+			return 0, 0, baseFlagErrorf("limit must be greater than or equal to 1; got %d", value)
+		}
+		limit = value
+	}
+	return offset, limit, nil
+}
+
+func recordSearchInteger(raw any, name string) (int, error) {
+	switch value := raw.(type) {
+	case int:
+		return value, nil
+	case int64:
+		return int(value), nil
+	case json.Number:
+		parsed, err := value.Int64()
+		if err != nil {
+			return 0, baseFlagErrorf("%s must be an integer; got %v", name, raw)
+		}
+		return int(parsed), nil
+	case float64:
+		if math.Trunc(value) != value {
+			return 0, baseFlagErrorf("%s must be an integer; got %v", name, raw)
+		}
+		return int(value), nil
+	default:
+		return 0, baseFlagErrorf("%s must be an integer; got %T", name, raw)
+	}
 }
 
 func recordSearchJSONExclusiveFlagParams(runtime *common.RuntimeContext) []string {

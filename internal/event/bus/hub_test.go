@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/protocol"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/protocol"
 )
 
 func TestHub_Subscribe(t *testing.T) {

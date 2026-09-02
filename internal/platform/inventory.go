@@ -29,6 +29,10 @@ type PluginEntry struct {
 	// plugin did not call r.Restrict.
 	Rules []*RuleView
 
+	// EmbeddedSkills summarises the plugin's EmbeddedSkills contribution;
+	// nil when the plugin did not customize embedded skills.
+	EmbeddedSkills *SkillsOverlayView `json:"embedded_skills,omitempty"`
+
 	Observers  []HookEntry
 	Wrappers   []HookEntry
 	Lifecycles []HookEntry
@@ -74,6 +78,22 @@ type RuleView struct {
 	AllowUnannotated bool     `json:"allow_unannotated"`
 }
 
+// SkillsOverlayView is the displayable summary of an EmbeddedSkills
+// contribution. Overlay / Base report presence only (an fs.FS has no
+// display form).
+type SkillsOverlayView struct {
+	Allow   []string `json:"allow,omitempty"`
+	Remove  []string `json:"remove,omitempty"`
+	Overlay bool     `json:"overlay"`
+	Base    bool     `json:"base"`
+}
+
+// SkillsInventorySource pairs a plugin name with its overlay summary.
+type SkillsInventorySource struct {
+	PluginName string
+	View       SkillsOverlayView
+}
+
 // Inventory is the full snapshot.
 type Inventory struct {
 	Plugins []PluginEntry
@@ -108,7 +128,7 @@ type RuleInventorySource struct {
 // Hooks are attributed to plugins by the namespaced name convention:
 // each entry's Name starts with "<plugin>.", and we group by the
 // leading segment up to the first dot.
-func BuildInventory(plugins []PluginInventorySource, registry *hook.Registry, rules []RuleInventorySource) *Inventory {
+func BuildInventory(plugins []PluginInventorySource, registry *hook.Registry, rules []RuleInventorySource, skills []SkillsInventorySource) *Inventory {
 	byPlugin := make(map[string]*PluginEntry, len(plugins))
 	out := &Inventory{Plugins: make([]PluginEntry, 0, len(plugins))}
 	for _, p := range plugins {
@@ -160,6 +180,15 @@ func BuildInventory(plugins []PluginInventorySource, registry *hook.Registry, ru
 				Identities:       append([]string(nil), r.Identities...),
 				AllowUnannotated: r.AllowUnannotated,
 			})
+		}
+	}
+
+	for _, sk := range skills {
+		if entry := byPlugin[sk.PluginName]; entry != nil {
+			v := sk.View
+			v.Allow = append([]string(nil), sk.View.Allow...)
+			v.Remove = append([]string(nil), sk.View.Remove...)
+			entry.EmbeddedSkills = &v
 		}
 	}
 	return out
@@ -262,6 +291,12 @@ func cloneInventory(in *Inventory) *Inventory {
 				rv.Identities = append([]string(nil), r.Identities...)
 				entry.Rules[j] = &rv
 			}
+		}
+		if p.EmbeddedSkills != nil {
+			sv := *p.EmbeddedSkills
+			sv.Allow = append([]string(nil), p.EmbeddedSkills.Allow...)
+			sv.Remove = append([]string(nil), p.EmbeddedSkills.Remove...)
+			entry.EmbeddedSkills = &sv
 		}
 		entry.Observers = append([]HookEntry(nil), p.Observers...)
 		entry.Wrappers = append([]HookEntry(nil), p.Wrappers...)

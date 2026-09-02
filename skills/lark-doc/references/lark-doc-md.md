@@ -48,7 +48,7 @@
 自行构造 Markdown 内容写入时同理：如字面文本 `a]b` 应写为 `a\]b`，`C:\Users` 应写为 `C:\\Users`。
 
 ## Shell 传参
-- **首选文件传参**：`--content` 支持 `@path/to/file.md`（读文件）和 `-`（读 stdin），彻底绕开 shell 转义；多行、含特殊字符、长文本强烈推荐。字面量以 `@` 开头时用 `@@` 转义（`--pattern` 不支持 `@file`）
+- **首选文件传参**：`--content` 支持 `@./path/to/file.md`（读文件）和 `-`（读 stdin），彻底绕开 shell 转义；多行、含特殊字符、长文本强烈推荐。字面量以 `@` 开头时用 `@@` 转义（`--pattern` 不支持 `@file`）
 - **⚠️ `@file` 路径限制**：`@file` 只接受当前工作目录下的相对路径，传绝对路径（如 `@/tmp/xxx.md`）会报 `unsafe file path`。需要落盘时，将文件写在 cwd 下（如 `./_content.md`），用完自行清理。
 - **默认用单引号 `'...'`**：完全字面量，`$`、`` ` ``、`\`、`>`、`\<b>` 等全部原样保留
 - **双引号 `"..."`**：会展开 `$变量`、反引号和 `$(...)` 命令替换，`\` 仍参与转义，易踩坑
@@ -65,6 +65,10 @@ Markdown 格式支持通过 URL 插入网络图片，图片将自动从 HTTP 下
 - `alt text` 为图片描述（可选，可留空）
 - URL 支持 `http://` 和 `https://` 协议
 - 对应的 XML 格式为：`<img href="https://example.com/photo.png"/>`
+
+本地图片使用 `![alt](@./images/photo.png)`（路径含空格时写作 `![alt](<@./images/product shot.png>)`）；路径必须位于当前工作目录内，`alt` 会作为 caption。附件使用 `<source path="@./files/report.pdf"/>`
+
+目前不支持将 Base64 Data URI（如 `data:image/png;base64,...`）直接作为 Markdown 图片地址传入；如仅有 Base64 数据，请先解码为本地图片文件，再使用上述 `@./...` 路径上传。
 
 ## Markdown 不支持的 Block 类型
 

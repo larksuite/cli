@@ -3,14 +3,15 @@
 
 // Command readonly-policy is a runnable fork of lark-cli that
 // installs a Rule permitting only docs/* and im/* read commands.
-// Any write command produces a structured command_denied envelope.
+// Any write command is rejected with the established Restrict policy
+// envelope.
 //
 // Build & run:
 //
 //	cd extension/platform/examples/readonly-policy
 //	go build -o readonly-cli .
 //	./readonly-cli docs +update --doc-token X --content Y
-//	# {"ok":false,"error":{"type":"command_denied", ...}}
+//	# {"ok":false,"error":{"type":"validation","subtype":"failed_precondition",...}}
 //
 //	./readonly-cli config policy show
 //	# shows the active Rule with source=plugin:readonly

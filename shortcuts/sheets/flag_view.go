@@ -29,6 +29,7 @@ type flagView interface {
 	StrArray(name string) []string
 	StrSlice(name string) []string
 	Changed(name string) bool
+	InputResolvedFromSource(name string) bool
 	// Command returns the shortcut command this view feeds (e.g.
 	// "+pivot-create"). Used to look up the schema entry for
 	// schema-driven flag validation; both standalone and batch sub-op
@@ -131,6 +132,21 @@ func (m mapFlagView) lookupRawWithKey(name string) (string, interface{}, bool) {
 	} {
 		if v, ok := m.raw[key]; ok {
 			return key, v, true
+		}
+	}
+	canonicalName := strings.ReplaceAll(name, "_", "-")
+	aliases := make([]string, 0, len(commandFlagAliases[m.command]))
+	for alias, target := range commandFlagAliases[m.command] {
+		if strings.ReplaceAll(target, "_", "-") == canonicalName {
+			aliases = append(aliases, alias)
+		}
+	}
+	slices.Sort(aliases)
+	for _, alias := range aliases {
+		for _, key := range []string{alias, strings.ReplaceAll(alias, "-", "_")} {
+			if v, ok := m.raw[key]; ok {
+				return key, v, true
+			}
 		}
 	}
 	return "", nil, false
@@ -238,6 +254,8 @@ func (m mapFlagView) Changed(name string) bool {
 	return ok
 }
 
+func (m mapFlagView) InputResolvedFromSource(name string) bool { return false }
+
 // validateRawTypes rejects sub-op input fields whose JSON type contradicts the
 // flag's declared type in flag-defs. +batch-update skips parse-time schema
 // validation for `operations`, and Int/Float64/Bool silently fall back to
@@ -333,6 +351,12 @@ func (m *mapFlagView) normalizeAndValidateEnums() error {
 			m.raw[rawKey] = canonical
 			continue
 		}
+		// A retired value means "as if omitted" — delete the key so Changed()
+		// also reports it as absent, matching the standalone path.
+		if isRetiredEnumValue(m.command, df.Name, value) {
+			delete(m.raw, rawKey)
+			continue
+		}
 		message := fmt.Sprintf("invalid value %q for --%s, allowed: %s", value, df.Name, strings.Join(df.Enum, ", "))
 		if match := closestEnumValue(value, df.Enum); match != "" {
 			message += fmt.Sprintf("; did you mean %q?", match)
@@ -340,6 +364,44 @@ func (m *mapFlagView) normalizeAndValidateEnums() error {
 		return fmt.Errorf("%s", message) //nolint:forbidigo // intermediate error; batch dispatcher adds typed operations context
 	}
 	return nil
+}
+
+// normalizeRangeSheetPrefix mirrors the standalone chainRangeSheetPrefix
+// rewrite (range_sheet_prefix.go) for the map-backed paths, +batch-update
+// sub-ops and +cells-set --writes items: one that named its sheet only inside
+// "range" ("Sheet1!A1:D20") gets sheet_name filled in and the bare range left
+// behind, so every form accepts the same input.
+//
+// The derived selector is written under the underscore key the sub-op input
+// vocabulary uses, and left as the only spelling of it; lookupRaw is
+// separator-tolerant, so a translator asking for "sheet-name" finds it anyway.
+func (m *mapFlagView) normalizeRangeSheetPrefix() {
+	if !rangeSheetPrefixApplies(m.command) {
+		return
+	}
+	if strings.TrimSpace(m.Str("sheet-id")) != "" || strings.TrimSpace(m.Str("sheet-name")) != "" {
+		return
+	}
+	rangeKey, raw, ok := m.lookupRawWithKey(rangeSheetPrefixFlag)
+	if !ok {
+		return
+	}
+	value, isString := raw.(string)
+	if !isString {
+		return
+	}
+	sheet, rest, ok := splitRangeSheetPrefix(value)
+	if !ok {
+		return
+	}
+	m.raw[rangeKey] = rest
+	// Drop the hyphen spelling before writing the underscore one. An item may
+	// carry both when their values agree (normalizeSubOpInputKeys keeps a
+	// harmless duplicate rather than erroring), and lookupRaw answers with the
+	// first spelling it finds — so an empty "sheet-name" left in place would
+	// shadow the selector just derived and fail as "no sheet selector".
+	delete(m.raw, "sheet-name")
+	m.raw["sheet_name"] = sheet
 }
 
 // jsonTypeName names the JSON kind of a value decoded by encoding/json, for

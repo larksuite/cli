@@ -160,6 +160,30 @@ func MustBind(cmd *cobra.Command, specs []Spec) {
 	}
 }
 
+// InstallNormalizer composes an invisible parse-time flag-name rewrite onto cmd,
+// chaining any normalizer already installed (its result feeds the next stage).
+// Unlike Bind it records nothing on the canonical flags: rewrite is for
+// spellings that must be accepted but must not surface as aliases in --help or
+// the exported manifest — underscore folding, or domain compatibility forms a
+// domain wants silently corrected rather than advertised. Keeping the call here
+// preserves this package as the sole owner of SetNormalizeFunc (see the
+// flag_alias_normalizer_owner source-contract lint), so Bind's alias mapping and
+// a domain's normalizer compose in install order regardless of which ran first.
+func InstallNormalizer(cmd *cobra.Command, rewrite func(name string) string) {
+	if cmd == nil || rewrite == nil {
+		return
+	}
+	flagSet := cmd.Flags()
+	previous := flagSet.GetNormalizeFunc()
+	flagSet.SetNormalizeFunc(func(set *pflag.FlagSet, name string) pflag.NormalizedName {
+		name = rewrite(name)
+		if previous != nil {
+			return previous(set, name)
+		}
+		return pflag.NormalizedName(name)
+	})
+}
+
 // Aliases returns a defensive copy of the raw accepted alias spellings stored
 // on a canonical pflag. Alias order matches declaration order.
 func Aliases(flag *pflag.Flag) []string {

@@ -97,11 +97,13 @@ var UpdateTask = common.Shortcut{
 					confirmed[field] = value
 				}
 			}
-			tasks = append(tasks, map[string]interface{}{
+			item := map[string]interface{}{
 				"guid":      guid,
 				"url":       urlVal,
 				"confirmed": confirmed,
-			})
+			}
+			projectTaskFields(item, task, standardTaskOutputFields...)
+			tasks = append(tasks, item)
 		}
 		// Standardized write output: return resource identifiers
 		outData := map[string]interface{}{

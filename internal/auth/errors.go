@@ -9,6 +9,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
 )
 
 const (
@@ -40,12 +41,23 @@ func (e *NeedAuthorizationError) Error() string {
 // recovery vocabulary as the token-missing surface in internal/client, and the
 // legacy *NeedAuthorizationError sentinel is preserved in the Cause chain for
 // errors.As / errors.Is traversal.
-func NewNeedUserAuthorizationError(userOpenID string) *errs.AuthenticationError {
-	return errs.NewAuthenticationError(errs.SubtypeTokenMissing,
+func NewNeedUserAuthorizationError(userOpenID string) error {
+	return newNeedUserAuthorizationError(userOpenID, nil, recovery.UserAuthorization())
+}
+
+// newNeedUserAuthorizationError preserves the missing-UAT sentinel alongside
+// an optional lower-layer cause and attaches build-local recovery metadata.
+func newNeedUserAuthorizationError(userOpenID string, cause error, hint recovery.Hint) error {
+	needAuthCause := error(&NeedAuthorizationError{UserOpenId: userOpenID})
+	if cause != nil {
+		needAuthCause = errors.Join(needAuthCause, cause)
+	}
+
+	e := errs.NewAuthenticationError(errs.SubtypeTokenMissing,
 		"%s (user: %s)", needUserAuthorizationMarker, userOpenID).
 		WithUserOpenID(userOpenID).
-		WithHint("run: lark-cli auth login to re-authorize").
-		WithCause(&NeedAuthorizationError{UserOpenId: userOpenID})
+		WithCause(needAuthCause)
+	return recovery.Attach(e, hint)
 }
 
 // IsNeedUserAuthorizationError reports whether err represents a missing-UAT

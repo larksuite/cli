@@ -237,12 +237,12 @@ if ! grep -Fq "deterministic-gate" <<<"$results_section"; then
 fi
 
 if ! grep -Fq "if: \${{ $live_job_condition }}" <<<"$section"; then
-  echo "e2e-live should preserve active cleanup while requiring a successful non-skip dry run and excluding fork pull requests"
+  echo "e2e-live should require a successful non-skip dry run and exclude fork pull requests"
   exit 1
 fi
 
 if ! grep -Fq "needs: [unit-test, lint, script-test, deterministic-gate, e2e-dry-run]" <<<"$section"; then
-  echo "e2e-live should wait outside the exclusive queue until e2e-dry-run finishes"
+  echo "e2e-live should wait for e2e-dry-run to finish"
   exit 1
 fi
 
@@ -252,22 +252,12 @@ if ! grep -Fq "timeout-minutes: 20" <<<"$dry_run_section"; then
 fi
 
 if ! grep -Fq "timeout-minutes: 30" <<<"$section"; then
-  echo "e2e-live should release the repository-wide slot after 30 minutes" >&2
+  echo "e2e-live should remain bounded at 30 minutes" >&2
   exit 1
 fi
 
-if ! grep -Fq "group: lark-cli-e2e-live" <<<"$section"; then
-  echo "e2e-live should use one repository-wide execution slot" >&2
-  exit 1
-fi
-
-if ! grep -Fq "cancel-in-progress: false" <<<"$section"; then
-  echo "e2e-live should queue waiting runs instead of cancelling an active live test" >&2
-  exit 1
-fi
-
-if ! grep -Fq "queue: max" <<<"$section"; then
-  echo "e2e-live should preserve queued runs instead of replacing an existing pending run" >&2
+if grep -Eq '^    concurrency:$' <<<"$section"; then
+  echo "e2e-live should allow unrelated pull requests to run concurrently" >&2
   exit 1
 fi
 

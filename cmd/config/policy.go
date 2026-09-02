@@ -57,7 +57,7 @@ func runConfigPolicyShow(f *cmdutil.Factory) error {
 	out := map[string]any{
 		"source":       string(active.Source.Kind),
 		"source_name":  sourceName,
-		"denied_paths": active.DeniedPaths,
+		"denied_paths": active.DeniedPathCount(),
 	}
 	if len(active.Rules) > 0 {
 		rules := make([]map[string]any, 0, len(active.Rules))

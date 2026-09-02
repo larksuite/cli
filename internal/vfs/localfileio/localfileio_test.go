@@ -4,6 +4,7 @@
 package localfileio
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -77,20 +78,20 @@ func TestLocalFileIO_Open_RejectsTraversal(t *testing.T) {
 	testChdir(t, dir)
 
 	fio := &LocalFileIO{}
-	_, err := fio.Open("../../etc/passwd")
+	_, err := fio.Open("../../../../../../../../../../../../etc/passwd")
 	if err == nil {
 		t.Error("expected error for path traversal")
 	}
 }
 
-func TestLocalFileIO_Open_RejectsAbsolutePath(t *testing.T) {
+func TestLocalFileIO_Open_RejectsDenylistedAbsolutePath(t *testing.T) {
 	fio := &LocalFileIO{}
-	_, err := fio.Open("/etc/passwd")
+	_, err := fio.Open(denylistedAbsolutePath(t))
 	if err == nil {
-		t.Error("expected error for absolute path")
+		t.Error("expected error for denylisted absolute path")
 	}
-	if err != nil && !strings.Contains(err.Error(), "relative path") {
-		t.Errorf("error should mention relative path, got: %v", err)
+	if err != nil && !strings.Contains(err.Error(), "denylist") {
+		t.Errorf("error should mention the denylist, got: %v", err)
 	}
 }
 
@@ -131,7 +132,7 @@ func TestLocalFileIO_Stat_RejectsTraversal(t *testing.T) {
 	testChdir(t, dir)
 
 	fio := &LocalFileIO{}
-	_, err := fio.Stat("../../etc/passwd")
+	_, err := fio.Stat("../../../../../../../../../../../../etc/passwd")
 	if err == nil {
 		t.Error("expected error for path traversal")
 	}
@@ -198,17 +199,65 @@ func TestLocalFileIO_Save_RejectsTraversal(t *testing.T) {
 	testChdir(t, dir)
 
 	fio := &LocalFileIO{}
-	_, err := fio.Save("../../evil.txt", fileio.SaveOptions{}, strings.NewReader("bad"))
+	_, err := fio.Save("../../../../../../../../../../../../evil.txt", fileio.SaveOptions{}, strings.NewReader("bad"))
 	if err == nil {
 		t.Error("expected error for path traversal in Save")
 	}
 }
 
-func TestLocalFileIO_Save_RejectsAbsolutePath(t *testing.T) {
+func TestLocalFileIO_Save_RejectsPathOutsideAllowlist(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skipf("no home dir: %v", err)
+	}
+	// The home directory itself is not an allow root (only ~/files is), so
+	// this absolute target must be refused before anything touches the disk.
+	target := filepath.Join(home, "save-outside-allowlist-test", "evil.txt")
+
 	fio := &LocalFileIO{}
-	_, err := fio.Save("/tmp/evil.txt", fileio.SaveOptions{}, strings.NewReader("bad"))
-	if err == nil {
-		t.Error("expected error for absolute path in Save")
+	if _, err := fio.Save(target, fileio.SaveOptions{}, strings.NewReader("bad")); err == nil {
+		t.Error("expected error for absolute path outside the allowlist in Save")
+	}
+	if _, err := os.Stat(filepath.Dir(target)); !os.IsNotExist(err) {
+		t.Errorf("Save must not create directories for rejected paths, stat err = %v", err)
+	}
+}
+
+func TestLocalFileIO_RemoveWorkspaceEntry_IsValidatedAndNonRecursive(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
+
+	fio := &LocalFileIO{}
+	workspace := "draft_workspace"
+	decisionPath := filepath.Join(workspace, ".presentation-decision.json")
+	keepPath := filepath.Join(workspace, "keep.txt")
+	if _, err := fio.Save(decisionPath, fileio.SaveOptions{}, strings.NewReader("{}")); err != nil {
+		t.Fatalf("Save decision: %v", err)
+	}
+	if _, err := fio.Save(keepPath, fileio.SaveOptions{}, strings.NewReader("keep")); err != nil {
+		t.Fatalf("Save retained entry: %v", err)
+	}
+
+	if err := fio.RemoveWorkspaceEntry(decisionPath); err != nil {
+		t.Fatalf("RemoveWorkspaceEntry file: %v", err)
+	}
+	if _, err := os.Stat(decisionPath); !os.IsNotExist(err) {
+		t.Fatalf("removed decision still exists or stat failed unexpectedly: %v", err)
+	}
+	if err := fio.RemoveWorkspaceEntry(workspace); err == nil {
+		t.Fatal("RemoveWorkspaceEntry recursively removed a non-empty directory")
+	}
+	if _, err := os.Stat(keepPath); err != nil {
+		t.Fatalf("non-recursive removal deleted retained entry: %v", err)
+	}
+	if err := fio.RemoveWorkspaceEntry(keepPath); err != nil {
+		t.Fatalf("RemoveWorkspaceEntry retained file: %v", err)
+	}
+	if err := fio.RemoveWorkspaceEntry(workspace); err != nil {
+		t.Fatalf("RemoveWorkspaceEntry empty directory: %v", err)
+	}
+	if err := fio.RemoveWorkspaceEntry("../../../../../../../../../../../../outside"); !errors.Is(err, fileio.ErrPathValidation) {
+		t.Fatalf("traversal error = %v, want fileio.ErrPathValidation", err)
 	}
 }
 
@@ -236,7 +285,7 @@ func TestLocalFileIO_ResolvePath_RejectsTraversal(t *testing.T) {
 	testChdir(t, dir)
 
 	fio := &LocalFileIO{}
-	_, err := fio.ResolvePath("../../etc/passwd")
+	_, err := fio.ResolvePath("../../../../../../../../../../../../etc/passwd")
 	if err == nil {
 		t.Error("expected error for path traversal in ResolvePath")
 	}

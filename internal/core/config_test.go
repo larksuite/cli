@@ -105,7 +105,7 @@ func TestResolveConfigFromMulti_RejectsSecretKeyMismatch(t *testing.T) {
 		},
 	}
 
-	_, err := ResolveConfigFromMulti(raw, nil, "")
+	_, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
 	if err == nil {
 		t.Fatal("expected error for mismatched appId and appSecret keychain key")
 	}
@@ -129,7 +129,7 @@ func TestResolveConfigFromMulti_AcceptsPlainSecret(t *testing.T) {
 		},
 	}
 
-	cfg, err := ResolveConfigFromMulti(raw, nil, "")
+	cfg, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestResolveConfigFromMulti_CarriesLang(t *testing.T) {
 		},
 	}
 
-	cfg, err := ResolveConfigFromMulti(raw, nil, "")
+	cfg, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestResolveConfigFromMulti_MatchingKeychainRefPassesValidation(t *testing.T
 		},
 	}
 
-	_, err := ResolveConfigFromMulti(raw, stubKeychain{}, "")
+	_, err := ResolveConfigFromMulti(raw, stubKeychain{}, "", ProfileFromConfig)
 	if err == nil {
 		// stubKeychain returns ErrNotFound, so we expect a keychain error,
 		// but NOT a mismatch error — that's the point of this test.
@@ -206,7 +206,7 @@ func TestResolveConfigFromMulti_DoesNotUseEnvProfileFallback(t *testing.T) {
 		},
 	}
 
-	cfg, err := ResolveConfigFromMulti(raw, nil, "")
+	cfg, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
 	if err != nil {
 		t.Fatalf("ResolveConfigFromMulti() error = %v", err)
 	}
@@ -244,7 +244,7 @@ func TestResolveConfigFromMulti_NormalizesBrand(t *testing.T) {
 		AppSecret: PlainSecret("test-secret"),
 		Brand:     LarkBrand(" LARK "),
 	}}}
-	cfg, err := ResolveConfigFromMulti(multi, nil, "")
+	cfg, err := ResolveConfigFromMulti(multi, nil, "", ProfileFromConfig)
 	if err != nil {
 		t.Fatalf("ResolveConfigFromMulti error = %v", err)
 	}

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/deprecation"
+	"github.com/larksuite/cli/internal/skillscheck"
 )
 
 // composePendingNotice must surface a deprecated-command alias under the
@@ -23,7 +24,7 @@ func TestComposePendingNoticeDeprecatedCommand(t *testing.T) {
 		Skill:       "lark-sheets",
 	})
 
-	got := composePendingNotice()
+	got := composePendingNotice(nil)
 	if got == nil {
 		t.Fatal("composePendingNotice() = nil, want deprecated_command entry")
 	}
@@ -45,13 +46,34 @@ func TestComposePendingNoticeDeprecatedCommand(t *testing.T) {
 	}
 }
 
+func TestComposePendingNoticeOfficialSkillsUnknown(t *testing.T) {
+	t.Cleanup(func() { skillscheck.SetPending(nil) })
+	skillscheck.SetPending(&skillscheck.StaleNotice{
+		Current:         "1.0.21",
+		Target:          "1.0.21",
+		OfficialUnknown: true,
+	})
+
+	got := composePendingNotice(nil)
+	entry, ok := got["skills"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("missing skills notice: %#v", got)
+	}
+	if entry["official_unknown"] != true {
+		t.Fatalf("skills notice = %#v, want official_unknown=true", entry)
+	}
+	if entry["command"] != "lark-cli update" {
+		t.Fatalf("skills notice command = %v, want lark-cli update", entry["command"])
+	}
+}
+
 // With nothing pending, the provider returns nil so no "_notice" field is
 // emitted on a clean run.
 func TestComposePendingNoticeEmpty(t *testing.T) {
 	t.Cleanup(func() { deprecation.SetPending(nil) })
 	deprecation.SetPending(nil)
 
-	if got := composePendingNotice(); got != nil {
+	if got := composePendingNotice(nil); got != nil {
 		// update/skills pending are process-global; only assert the absence of
 		// our own key to stay robust against unrelated pending state.
 		if _, ok := got["deprecated_command"]; ok {

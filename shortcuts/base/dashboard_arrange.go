@@ -24,6 +24,7 @@ var BaseDashboardArrange = common.Shortcut{
 	},
 	Tips: []string{
 		"Server-side smart layout is not deterministic or position-specific; use only when the user asks to arrange or beautify a dashboard, or to tidy up a dashboard created from scratch in this session.",
+		"For exact placement, set --position on +dashboard-block-create / +dashboard-block-update instead; do not run this command as a substitute for coordinates the user asked for.",
 	},
 	DryRun: dryRunDashboardArrange,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

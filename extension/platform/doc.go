@@ -32,7 +32,9 @@
 //     gives a comparable rank for the read < write < high-risk-write ordering
 //   - CommandDeniedError - structured error returned to denied callers
 //
-// Stability: every exported symbol here is part of the contract. Internal
+// Stability: every exported symbol here is part of the contract. Interfaces
+// never gain methods; new host capability surfaces arrive as optional
+// extension interfaces (see EmbeddedSkillsRegistrar). Internal
 // orchestration (staging, validation, RunE wrapping, denial guard) lives
 // under internal/platform, internal/hook and internal/cmdpolicy and is not
 // importable by third parties.

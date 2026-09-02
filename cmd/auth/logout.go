@@ -58,8 +58,14 @@ func authLogoutRun(opts *LogoutOptions) error {
 		return nil
 	}
 
-	app := multi.CurrentAppConfig(f.Invocation.Profile)
-	if app == nil || len(app.Users) == 0 {
+	// A selector that matches no profile is an input error, not a logged-out
+	// state: "not_logged_in" (exit 0) would hide a stale --profile or
+	// LARKSUITE_CLI_PROFILE value from the caller.
+	app, err := multi.RequireAppConfig(f.Invocation.Profile, f.Invocation.ProfileSource)
+	if err != nil {
+		return err
+	}
+	if len(app.Users) == 0 {
 		if opts.JSON {
 			output.PrintJson(f.IOStreams.Out, map[string]interface{}{
 				"ok":        true,

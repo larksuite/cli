@@ -8,7 +8,7 @@
 
 The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by the [larksuite](https://github.com/larksuite) team — built for humans and AI Agents. Covers core business domains including Messenger, Docs, Base, Sheets, Slides, Calendar, Mail, Tasks, Meetings, Markdown, and more, with 200+ commands and 26 AI Agent [Skills](./skills/).
 
-[Install](#installation--quick-start) · [AI Agent Skills](#agent-skills) · [Auth](#authentication) · [Commands](#three-layer-command-system) · [Advanced](#advanced-usage) · [Security](#security--risk-warnings-read-before-use) · [Contributing](#contributing)
+[Install](#installation--quick-start) · [AI Agent Skills](#agent-skills) · [Auth](#authentication) · [Commands](#three-layer-command-system) · [Advanced](#advanced-usage) · [Enterprise](#personal-or-enterprise) · [Security](#security--risk-warnings-read-before-use) · [Contributing](#contributing)
 
 ## Why lark-cli?
 
@@ -19,6 +19,15 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 - **Up and Running in 3 Minutes** — One-click app creation, interactive login, from install to first API call in just 3 steps
 - **Secure & Controllable** — Input injection protection, terminal output sanitization, OS-native keychain credential storage
 - **Three-Layer Architecture** — Shortcuts (human & AI friendly) → API Commands (platform-synced) → Raw API (full coverage), choose the right granularity
+
+## Personal or Enterprise?
+
+| You are... | Recommended path |
+| ---------- | ---------------- |
+| **An individual developer** — using lark-cli in your terminal or with your own AI Agent | Follow the [Quick Start](#installation--quick-start) below |
+| **Enterprise IT / ISV** — embedding lark-cli into your own Agent or platform, with centralized credentials (database / Vault / config center), unified audit logging, and a restricted command surface | Read [Embed lark-cli in your Agent](https://open.larksuite.com/document/mcp_open_tools/feishu-cli/embed-feishu-cli-in-agent) and the [`extension/`](./extension/) packages — extend via a wrapper `main`, no need to modify CLI source |
+
+> 💡 **For AI Agents:** append `.md` to any Open Platform doc URL to fetch it as raw Markdown, e.g. [`embed-feishu-cli-in-agent.md`](https://open.larksuite.com/document/mcp_open_tools/feishu-cli/embed-feishu-cli-in-agent.md).
 
 ## Features
 
@@ -36,7 +45,7 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 | 📚 Wiki       | Create and manage knowledge spaces, nodes, and documents                                                                          |
 | 👤 Contact    | Search users by name/email/phone, get user profiles                                                                               |
 | 📧 Mail       | Browse, search, read emails, send, reply, forward, manage drafts, watch new mail                                                  |
-| 🎥 Meetings   | Search meeting records, query meeting minutes artifacts and recordings                                                            |
+| 🎥 Meetings   | Search live and historical meetings, inspect participants and artifacts, analyze transcripts, manage Minutes, and assist in meetings |
 | 🕐 Attendance | Query personal attendance check-in records                                                                                        |
 | ✍️ Approval   | Query approval tasks, approve/reject/transfer tasks, cancel and CC instances                                                      |
 | 🎯 OKR        | Query, create, update OKRs; manage objective & key results, alignments, indicators and progress.                                  |
@@ -142,9 +151,8 @@ lark-cli auth status
 | `lark-contact`                  | Search users by name/email/phone, get user profiles                                                            |
 | `lark-wiki`                     | Knowledge spaces, nodes, documents                                                                             |
 | `lark-event`                    | Real-time event subscriptions (WebSocket), regex routing & agent-friendly format                               |
-| `lark-vc`                       | Search meeting records, query meeting minutes (summary, todos, transcript)                                     |
+| `lark-meeting`                  | Search live or historical meetings, inspect participants and artifacts, analyze transcripts, manage Minutes, and assist in meetings |
 | `lark-whiteboard`               | Whiteboard/chart DSL rendering                                                                                 |
-| `lark-minutes`                  | Minutes metadata & AI artifacts (summary, todos, chapters); upload audio/video to create minutes, download media |
 | `lark-openapi-explorer`         | Explore underlying APIs from official docs                                                                     |
 | `lark-skill-maker`              | Custom skill creation framework                                                                                |
 | `lark-attendance`               | Query personal attendance check-in records                                                                     |

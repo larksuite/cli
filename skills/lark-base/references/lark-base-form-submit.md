@@ -86,7 +86,7 @@ lark-cli base +form-submit \
 
 #### fields（普通字段）
 
-`fields` 中的单元格值写法与 [`lark-base-cell-value.md`](lark-base-cell-value.md) 完全对齐，填写前应先阅读该文档了解各类型的构造规则：
+`fields` 中的常见单元格值按下方示例构造（与主 skill 一致）：
 
 ```json
 {
@@ -126,7 +126,7 @@ CLI 收到路径后会自动完成以下流程：
 2. 并行上传到 Base Drive Media（并发上限 5，跨字段重复路径自动去重）
 3. 获取 `file_token` 后合并到最终表单提交内容中
 
-> 与 [`lark-base-cell-value.md`](lark-base-cell-value.md) 中 Record 场景的附件写法不同：Record 写入时附件走独立的 `+record-upload-attachment` 命令；而 `+form-submit` 只需在 `attachments` 中传本地路径，上传由 CLI 内部自动完成。
+> Record 写入时附件走独立的 `+record-upload-attachment` 命令；`+form-submit` 则在 `attachments` 中传本地路径，由 CLI 自动上传。
 
 ### 从分享链接提取 share-token
 

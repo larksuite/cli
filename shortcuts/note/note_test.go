@@ -152,9 +152,12 @@ func TestMapNoteError_NoReadPermission(t *testing.T) {
 		Problem: errs.Problem{
 			Category: errs.CategoryAuthorization,
 			Subtype:  errs.SubtypePermissionDenied,
-			Code:     NoNoteReadPermissionCode,
-			Message:  "upstream permission denied",
-			LogID:    "log_1",
+			// Literal wire code, not the constant: feeding the constant back in
+			// would pass whatever value it holds, hiding a drift to the vc
+			// service's internal 10005.
+			Code:    121005,
+			Message: "upstream permission denied",
+			LogID:   "log_1",
 		},
 		MissingScopes: []string{"vc:note:read"},
 		Identity:      "user",
@@ -198,7 +201,7 @@ func TestMapNoteError_NormalizesNonPermissionTypedError(t *testing.T) {
 		Problem: errs.Problem{
 			Category: errs.CategoryAPI,
 			Subtype:  errs.SubtypeUnknown,
-			Code:     NoNoteReadPermissionCode,
+			Code:     121005,
 			Message:  "upstream api error",
 			LogID:    "log_2",
 		},
@@ -270,6 +273,70 @@ func TestShortcuts(t *testing.T) {
 	}
 	if shortcuts[0].Command != "+detail" || shortcuts[1].Command != "+transcript" {
 		t.Fatalf("Shortcuts commands = %q, %q", shortcuts[0].Command, shortcuts[1].Command)
+	}
+}
+
+func TestNoteDetailAuthTypesIncludeBot(t *testing.T) {
+	got := NoteDetail.AuthTypes
+	if len(got) != 2 || got[0] != "user" || got[1] != "bot" {
+		t.Fatalf("NoteDetail.AuthTypes = %#v, want [user bot]", got)
+	}
+	if len(NoteTranscript.AuthTypes) != 1 || NoteTranscript.AuthTypes[0] != "user" {
+		t.Fatalf("NoteTranscript.AuthTypes = %#v, want [user] only", NoteTranscript.AuthTypes)
+	}
+}
+
+func TestNoteDetailSupportsBotIdentity(t *testing.T) {
+	factory, stdout, _, reg := noteShortcutTestFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/notes/note_bot_ok",
+		Body: map[string]any{
+			"code": 0,
+			"data": map[string]any{
+				"note": map[string]any{
+					"note_display_type": float64(1),
+					"creator_id":        "ou_bot",
+					"create_time":       "1710000000",
+					"artifacts": []any{
+						map[string]any{"artifact_type": float64(1), "doc_token": "doc_main"},
+					},
+				},
+			},
+		},
+	})
+
+	err := runNoteShortcut(t, NoteDetail, []string{"+detail", "--note-id", "note_bot_ok", "--as", "bot"}, factory, stdout)
+	if err != nil {
+		t.Fatalf("note +detail --as bot failed: %v", err)
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &resp); err != nil {
+		t.Fatalf("parse output: %v\nstdout=%s", err, stdout.String())
+	}
+	if resp["identity"] != "bot" {
+		t.Fatalf("identity = %v, want bot", resp["identity"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	note, _ := data["note"].(map[string]any)
+	if note["note_id"] != "note_bot_ok" || note["note_doc_token"] != "doc_main" {
+		t.Fatalf("note payload = %#v, want note_id/note_doc_token filled", note)
+	}
+}
+
+func TestNoteTranscriptRejectsBotIdentity(t *testing.T) {
+	factory, stdout, _, _ := noteShortcutTestFactory(t)
+	err := runNoteShortcut(t, NoteTranscript, []string{"+transcript", "--note-id", "note_x", "--as", "bot"}, factory, stdout)
+	if err == nil {
+		t.Fatal("expected note +transcript --as bot to fail")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryValidation {
+		t.Fatalf("error = %v (%T), want typed validation error", err, err)
+	}
+	if !strings.Contains(err.Error(), "bot") {
+		t.Fatalf("error = %q, want mention of bot", err.Error())
 	}
 }
 

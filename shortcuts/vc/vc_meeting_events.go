@@ -345,6 +345,10 @@ func eventActors(eventType string, payload map[string]interface{}, selfIdentity 
 		addFromItems("magic_share_started_items", "operator")
 	case "magic_share_ended":
 		addFromItems("magic_share_ended_items", "operator")
+	case "document_context_changed":
+		addFromItems("document_context_changed_items", "operator")
+	case "countdown_changed":
+		addFromItems("countdown_items", "operator")
 	}
 	return actors
 }
@@ -737,10 +741,12 @@ type meetingTimelineEntry struct {
 	subject     string
 	description string
 	details     []string
+	isAction    bool
 }
 
 func buildMeetingEventTimeline(events []interface{}) meetingTimeline {
 	timeline := meetingTimeline{}
+	speakerLabels := buildTranscriptSpeakerLabels(events)
 	var sequence int
 	for _, raw := range events {
 		event, _ := raw.(map[string]interface{})
@@ -754,7 +760,7 @@ func buildMeetingEventTimeline(events []interface{}) meetingTimeline {
 		if timeline.topic == "" || !timeline.hasStart || !timeline.hasEnd {
 			populateMeetingHeader(&timeline, common.GetMap(payload, "meeting"))
 		}
-		for _, entry := range buildTimelineEntriesForEvent(event, &sequence) {
+		for _, entry := range buildTimelineEntriesForEventWithSpeakerLabels(event, &sequence, speakerLabels) {
 			timeline.entries = append(timeline.entries, entry)
 		}
 	}
@@ -818,7 +824,67 @@ func populateMeetingHeader(timeline *meetingTimeline, meeting map[string]interfa
 	}
 }
 
+func buildTranscriptSpeakerLabels(events []interface{}) map[string]string {
+	speakerIDsByName := make(map[string][]string)
+	seen := make(map[string]map[string]struct{})
+	for _, raw := range events {
+		event, _ := raw.(map[string]interface{})
+		if event == nil || meetingEventType(event) != "transcript_received" {
+			continue
+		}
+		for _, rawItem := range common.GetSlice(common.GetMap(event, "payload"), "transcript_received_items") {
+			item, _ := rawItem.(map[string]interface{})
+			speaker := common.GetMap(item, "speaker")
+			name := strings.TrimSpace(common.GetString(speaker, "user_name"))
+			id := strings.TrimSpace(common.GetString(speaker, "id"))
+			if name == "" || id == "" {
+				continue
+			}
+			if seen[name] == nil {
+				seen[name] = make(map[string]struct{})
+			}
+			if _, exists := seen[name][id]; exists {
+				continue
+			}
+			seen[name][id] = struct{}{}
+			speakerIDsByName[name] = append(speakerIDsByName[name], id)
+		}
+	}
+
+	labels := make(map[string]string)
+	for name, ids := range speakerIDsByName {
+		for index, id := range ids {
+			label := name
+			if len(ids) > 1 {
+				label = fmt.Sprintf("%s[%d]", name, index+1)
+			}
+			labels[transcriptSpeakerKey(name, id)] = label
+		}
+	}
+	return labels
+}
+
+func transcriptSpeakerKey(name, id string) string {
+	return name + "\x00" + id
+}
+
+func transcriptSpeakerDisplayName(user map[string]interface{}, labels map[string]string) string {
+	name := strings.TrimSpace(common.GetString(user, "user_name"))
+	id := strings.TrimSpace(common.GetString(user, "id"))
+	if label := labels[transcriptSpeakerKey(name, id)]; label != "" {
+		return label
+	}
+	if name != "" {
+		return name
+	}
+	return id
+}
+
 func buildTimelineEntriesForEvent(event map[string]interface{}, sequence *int) []meetingTimelineEntry {
+	return buildTimelineEntriesForEventWithSpeakerLabels(event, sequence, nil)
+}
+
+func buildTimelineEntriesForEventWithSpeakerLabels(event map[string]interface{}, sequence *int, speakerLabels map[string]string) []meetingTimelineEntry {
 	payload := common.GetMap(event, "payload")
 	if payload == nil {
 		return nil
@@ -831,16 +897,271 @@ func buildTimelineEntriesForEvent(event map[string]interface{}, sequence *int) [
 	case "participant_left":
 		return participantLeftEntries(payload, eventTime, eventTimeOK, sequence)
 	case "transcript_received":
-		return transcriptEntries(payload, eventTime, eventTimeOK, sequence)
+		return transcriptEntries(payload, eventTime, eventTimeOK, sequence, speakerLabels)
 	case "chat_received":
 		return chatEntries(payload, eventTime, eventTimeOK, sequence)
 	case "magic_share_started":
 		return magicShareStartedEntries(payload, eventTime, eventTimeOK, sequence)
 	case "magic_share_ended":
 		return magicShareEndedEntries(payload, eventTime, eventTimeOK, sequence)
+	case "document_context_changed":
+		return documentContextEntries(payload, eventTime, eventTimeOK, sequence)
+	case "countdown_changed":
+		return countdownChangedEntries(payload, eventTime, eventTimeOK, sequence)
 	default:
 		return []meetingTimelineEntry{newTimelineEntry(eventTime, eventTimeOK, sequence, meetingEventUserDisplayName(nil), meetingEventSummary(event), nil)}
 	}
+}
+
+func countdownChangedEntries(payload map[string]interface{}, fallbackTime time.Time, fallbackOK bool, sequence *int) []meetingTimelineEntry {
+	items := common.GetSlice(payload, "countdown_items")
+	if len(items) == 0 {
+		return []meetingTimelineEntry{newTimelineActionEntry(fallbackTime, fallbackOK, sequence, "倒计时", "已更新", nil)}
+	}
+	entries := make([]meetingTimelineEntry, 0, len(items))
+	for _, raw := range items {
+		item, _ := raw.(map[string]interface{})
+		if item == nil {
+			continue
+		}
+		when, ok := parseFlexibleTime(common.GetString(item, "event_time"))
+		if !ok {
+			when, ok = fallbackTime, fallbackOK
+		}
+		subject := countdownTimelineSubject(item)
+		description := countdownActionDescription(common.GetString(item, "action"))
+		entries = append(entries, newTimelineActionEntry(when, ok, sequence, subject, description, countdownDetails(item)))
+	}
+	return entries
+}
+
+func countdownTimelineSubject(item map[string]interface{}) string {
+	switch countdownAction(common.GetString(item, "action")) {
+	case "ENDED", "REMIND":
+		// 自然结束与临近提醒由系统触发，无操作人，subject 留空，语义由 description 承载
+		return ""
+	default:
+		if subject := meetingEventUserWithID(common.GetMap(item, "operator")); subject != "" {
+			return subject
+		}
+		return "未知用户"
+	}
+}
+
+func countdownActionDescription(action string) string {
+	switch countdownAction(action) {
+	case "SET":
+		return "设置了倒计时"
+	case "PROLONG":
+		return "延长了倒计时"
+	case "END_IN_ADVANCE":
+		return "提前结束了倒计时"
+	case "CLOSE_WINDOW":
+		return "关闭了倒计时窗口"
+	case "ENDED":
+		return "倒计时已结束"
+	case "REMIND":
+		return "倒计时结束前提醒"
+	default:
+		return "更新了倒计时"
+	}
+}
+
+func countdownDetails(item map[string]interface{}) []string {
+	var details []string
+	if remain := countdownRemainDetail(item); remain != "" {
+		details = append(details, remain)
+	}
+	if duration := countdownDurationDetail(item); duration != "" {
+		details = append(details, duration)
+	}
+	if end := countdownEndTimeDetail(item); end != "" {
+		details = append(details, end)
+	}
+	if seqID := strings.TrimSpace(fieldValueString(item, "seq_id")); seqID != "" {
+		details = append(details, "seq_id："+seqID)
+	}
+	return details
+}
+
+func countdownRemainDetail(item map[string]interface{}) string {
+	remain := strings.TrimSpace(fieldValueString(item, "remain_minutes"))
+	if remain == "" {
+		return ""
+	}
+	return "剩余：" + remain + "分钟"
+}
+
+func countdownDurationDetail(item map[string]interface{}) string {
+	start, startOK := parseFlexibleTime(fieldValueString(item, "countdown_set_time"))
+	end, endOK := parseFlexibleTime(fieldValueString(item, "end_time"))
+	if !startOK || !endOK || !end.After(start) {
+		return ""
+	}
+	return "时长：" + formatCountdownDuration(end.Sub(start))
+}
+
+func countdownEndTimeDetail(item map[string]interface{}) string {
+	end, ok := parseFlexibleTime(fieldValueString(item, "end_time"))
+	if !ok || end.IsZero() {
+		return ""
+	}
+	return "结束时间：" + end.In(meetingDisplayLocation).Format("2006-01-02 15:04:05")
+}
+
+func formatCountdownDuration(duration time.Duration) string {
+	if duration < 0 {
+		duration = 0
+	}
+	totalSeconds := int64(duration.Round(time.Second).Seconds())
+	hours := totalSeconds / 3600
+	minutes := (totalSeconds % 3600) / 60
+	seconds := totalSeconds % 60
+	parts := make([]string, 0, 3)
+	if hours > 0 {
+		parts = append(parts, fmt.Sprintf("%d小时", hours))
+	}
+	if minutes > 0 {
+		parts = append(parts, fmt.Sprintf("%d分钟", minutes))
+	}
+	if seconds > 0 || len(parts) == 0 {
+		parts = append(parts, fmt.Sprintf("%d秒", seconds))
+	}
+	return strings.Join(parts, "")
+}
+
+func countdownAction(action string) string {
+	return strings.ToUpper(strings.TrimSpace(action))
+}
+
+func documentContextEntries(payload map[string]interface{}, fallbackTime time.Time, fallbackOK bool, sequence *int) []meetingTimelineEntry {
+	items := common.GetSlice(payload, "document_context_changed_items")
+	entries := make([]meetingTimelineEntry, 0, len(items))
+	for _, raw := range items {
+		item, _ := raw.(map[string]interface{})
+		description, details, recognized := describeDocumentContextItem(item)
+		if !recognized {
+			continue
+		}
+		when, ok := parseFlexibleTime(common.GetString(item, "time"))
+		if !ok {
+			when, ok = fallbackTime, fallbackOK
+		}
+		subject := meetingEventUserWithID(common.GetMap(item, "operator"))
+		if subject == "" {
+			subject = "未知用户"
+		}
+		entries = append(entries, newTimelineActionEntry(when, ok, sequence, subject, description, details))
+	}
+	return entries
+}
+
+func describeDocumentContextItem(item map[string]interface{}) (string, []string, bool) {
+	if item == nil {
+		return "", nil, false
+	}
+
+	var contextKind string
+	var context map[string]interface{}
+	for _, kind := range []string{"comment_focus", "section_location", "element_preview"} {
+		value, exists := item[kind]
+		if !exists {
+			continue
+		}
+		parsed, ok := value.(map[string]interface{})
+		if !ok || contextKind != "" {
+			return "", nil, false
+		}
+		contextKind = kind
+		context = parsed
+	}
+	if contextKind == "" {
+		return "", nil, false
+	}
+
+	switch contextKind {
+	case "comment_focus":
+		return describeCommentFocus(item, context)
+	case "section_location":
+		return describeSectionLocation(context)
+	case "element_preview":
+		return describeElementPreview(context)
+	default:
+		return "", nil, false
+	}
+}
+
+func describeCommentFocus(_ map[string]interface{}, comment map[string]interface{}) (string, []string, bool) {
+	commentID := strings.TrimSpace(common.GetString(comment, "comment_id"))
+	focused, hasFocused := comment["focused"].(bool)
+	if !hasFocused {
+		return "", nil, false
+	}
+	var description string
+	switch {
+	case focused && commentID != "":
+		description = "聚焦评论 " + commentID
+	case focused:
+		description = "聚焦评论"
+	case commentID != "":
+		description = "取消聚焦评论 " + commentID
+	default:
+		description = "取消评论聚焦"
+	}
+	return description, nil, true
+}
+
+func describeSectionLocation(section map[string]interface{}) (string, []string, bool) {
+	sectionPath := documentSectionPath(section)
+	if sectionPath == "" {
+		return "", nil, false
+	}
+	description := "定位到章节「" + sectionPath + "」"
+	var details []string
+	if level := strings.TrimSpace(fieldValueString(section, "level")); level != "" {
+		details = append(details, "层级："+level)
+	}
+	return description, details, true
+}
+
+func documentSectionPath(section map[string]interface{}) string {
+	parts := make([]string, 0, len(common.GetSlice(section, "parent_titles"))+1)
+	for _, raw := range common.GetSlice(section, "parent_titles") {
+		title, _ := raw.(string)
+		if title = strings.TrimSpace(title); title != "" {
+			parts = append(parts, title)
+		}
+	}
+	if title := strings.TrimSpace(common.GetString(section, "title")); title != "" {
+		parts = append(parts, title)
+	}
+	return strings.Join(parts, " > ")
+}
+
+func describeElementPreview(element map[string]interface{}) (string, []string, bool) {
+	action := strings.TrimSpace(common.GetString(element, "action"))
+	elementType := strings.TrimSpace(common.GetString(element, "element_type"))
+	if elementType != "image" && elementType != "whiteboard" {
+		return "", nil, false
+	}
+	token := strings.TrimSpace(common.GetString(element, "element_token"))
+	var description string
+	switch action {
+	case "open":
+		description = "打开 " + elementType + " 预览"
+	case "close":
+		description = "关闭 " + elementType + " 预览"
+	default:
+		return "", nil, false
+	}
+	if token != "" {
+		description += " " + token
+	}
+	var details []string
+	if blockID := strings.TrimSpace(common.GetString(element, "block_id")); blockID != "" {
+		details = append(details, "block_id："+blockID)
+	}
+	return description, details, true
 }
 
 func participantJoinedEntries(payload map[string]interface{}, fallbackTime time.Time, fallbackOK bool, sequence *int) []meetingTimelineEntry {
@@ -885,7 +1206,7 @@ func participantLeftEntries(payload map[string]interface{}, fallbackTime time.Ti
 	return entries
 }
 
-func transcriptEntries(payload map[string]interface{}, fallbackTime time.Time, fallbackOK bool, sequence *int) []meetingTimelineEntry {
+func transcriptEntries(payload map[string]interface{}, fallbackTime time.Time, fallbackOK bool, sequence *int, speakerLabels map[string]string) []meetingTimelineEntry {
 	items := common.GetSlice(payload, "transcript_received_items")
 	if len(items) == 0 {
 		return []meetingTimelineEntry{newTimelineEntry(fallbackTime, fallbackOK, sequence, "", "产生了转写", nil)}
@@ -897,7 +1218,7 @@ func transcriptEntries(payload map[string]interface{}, fallbackTime time.Time, f
 		if !ok {
 			when, ok = fallbackTime, fallbackOK
 		}
-		subject := meetingEventUserWithID(common.GetMap(item, "speaker"))
+		subject := transcriptSpeakerDisplayName(common.GetMap(item, "speaker"), speakerLabels)
 		if subject == "" {
 			subject = "未知发言人"
 		}
@@ -1004,6 +1325,12 @@ func newTimelineEntry(when time.Time, hasWhen bool, sequence *int, subject, desc
 	return entry
 }
 
+func newTimelineActionEntry(when time.Time, hasWhen bool, sequence *int, subject, description string, details []string) meetingTimelineEntry {
+	entry := newTimelineEntry(when, hasWhen, sequence, subject, description, details)
+	entry.isAction = true
+	return entry
+}
+
 func parseFlexibleTime(raw string) (time.Time, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -1044,7 +1371,7 @@ func renderMeetingEventsPretty(timeline meetingTimeline) string {
 				}
 				continue
 			}
-			if needsColon(entry.description) {
+			if !entry.isAction && needsColon(entry.description) {
 				fmt.Fprintf(&b, "%s: %s\n", escapePrettyText(entry.subject), escapePrettyText(entry.description))
 			} else {
 				fmt.Fprintf(&b, "%s %s\n", escapePrettyText(entry.subject), escapePrettyText(entry.description))
@@ -1189,6 +1516,8 @@ func meetingEventSummary(event map[string]interface{}) string {
 		return magicShareStartedSummary(payload)
 	case "magic_share_ended":
 		return magicShareEndedSummary(payload)
+	case "countdown_changed":
+		return countdownChangedSummary(payload)
 	default:
 		return fallbackMeetingEventSummary(payload, eventType)
 	}
@@ -1308,6 +1637,83 @@ func magicShareEndedSummary(payload map[string]interface{}) string {
 		return fmt.Sprintf("share %s ended", shareID)
 	}
 	return "share ended"
+}
+
+func countdownChangedSummary(payload map[string]interface{}) string {
+	items := common.GetSlice(payload, "countdown_items")
+	if len(items) > 1 {
+		return countdownChangedMultiSummary(items)
+	}
+	item := firstSliceMap(payload, "countdown_items")
+	action := countdownAction(common.GetString(item, "action"))
+	operator := meetingEventUserDisplayName(common.GetMap(item, "operator"))
+	switch action {
+	case "SET":
+		if operator != "" {
+			return fmt.Sprintf("countdown set by %s", operator)
+		}
+		return "countdown set"
+	case "PROLONG":
+		if operator != "" {
+			return fmt.Sprintf("countdown prolonged by %s", operator)
+		}
+		return "countdown prolonged"
+	case "END_IN_ADVANCE":
+		if operator != "" {
+			return fmt.Sprintf("countdown ended in advance by %s", operator)
+		}
+		return "countdown ended in advance"
+	case "CLOSE_WINDOW":
+		if operator != "" {
+			return fmt.Sprintf("countdown window closed by %s", operator)
+		}
+		return "countdown window closed"
+	case "ENDED":
+		return "countdown ended"
+	case "REMIND":
+		return "countdown reminder"
+	default:
+		return "countdown changed"
+	}
+}
+
+func countdownChangedMultiSummary(items []interface{}) string {
+	actions := make([]string, 0, len(items))
+	seen := make(map[string]bool, len(items))
+	for _, raw := range items {
+		item, _ := raw.(map[string]interface{})
+		if item == nil {
+			continue
+		}
+		action := countdownActionSummaryLabel(common.GetString(item, "action"))
+		if !seen[action] {
+			actions = append(actions, action)
+			seen[action] = true
+		}
+	}
+	if len(actions) == 0 {
+		return fmt.Sprintf("%d countdown changes", len(items))
+	}
+	return fmt.Sprintf("%d countdown changes: %s", len(items), strings.Join(actions, ", "))
+}
+
+func countdownActionSummaryLabel(action string) string {
+	switch countdownAction(action) {
+	case "SET":
+		return "set"
+	case "PROLONG":
+		return "prolonged"
+	case "END_IN_ADVANCE":
+		return "ended in advance"
+	case "CLOSE_WINDOW":
+		return "window closed"
+	case "ENDED":
+		return "ended"
+	case "REMIND":
+		return "reminder"
+	default:
+		return "changed"
+	}
 }
 
 func fallbackMeetingEventSummary(payload map[string]interface{}, eventType string) string {

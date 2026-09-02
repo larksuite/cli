@@ -15,6 +15,8 @@ func TestShortcutsDeclarePresentationFlagAliases(t *testing.T) {
 		"+media-upload":          true,
 		"+replace-slide":         true,
 		"+replace-pages":         true,
+		"+update-slide":          true,
+		"+update":                true,
 		"+screenshot":            false,
 		"+xml-get":               true,
 		"+history-list":          true,
@@ -61,5 +63,55 @@ func TestPresentationRefFlagReturnsIndependentAliases(t *testing.T) {
 	}
 	if want := presentationRefDescription + "; list mode only"; second.Desc != want || second.Required {
 		t.Fatalf("optional flag = %#v, want description %q", second, want)
+	}
+}
+
+// TestContentFlagAliasesAreScopedToWholePageCommands guards the blast radius of
+// the --content spellings: only the commands that take a whole page may carry
+// them. +screenshot has a --content of its own, and resolving --xml there would
+// rewrite a mistyped flag into one the caller never meant to use.
+func TestContentFlagAliasesAreScopedToWholePageCommands(t *testing.T) {
+	wholePage := map[string]bool{
+		SlidesUpdateSlide.Command: true,
+		SlidesUpdate.Command:      true,
+	}
+	sawWholePage, sawOther := false, false
+	for _, shortcut := range Shortcuts() {
+		for _, flag := range shortcut.Flags {
+			if flag.Name != "content" {
+				continue
+			}
+			if wholePage[shortcut.Command] {
+				sawWholePage = true
+				if !slices.Equal(flag.Aliases, contentFlagAliases) {
+					t.Errorf("%s --content aliases = %v, want %v", shortcut.Command, flag.Aliases, contentFlagAliases)
+				}
+				continue
+			}
+			sawOther = true
+			if len(flag.Aliases) != 0 {
+				t.Errorf("%s --content must carry no aliases, got %v", shortcut.Command, flag.Aliases)
+			}
+		}
+	}
+	if !sawWholePage {
+		t.Fatal("expected at least one whole-page command to declare --content")
+	}
+	// Without a negative case the assertion above proves nothing about scoping.
+	if !sawOther {
+		t.Fatal("expected at least one other command with its own --content")
+	}
+}
+
+// TestSlideFlagIsNotAnAlias pins a deliberate omission: several slides commands
+// take --slide-id, so `--slide <id>` is a likely typo for that. Resolving it to
+// --content would turn the typo into a request carrying an id where page XML
+// belongs.
+func TestSlideFlagIsNotAnAlias(t *testing.T) {
+	if slices.Contains(contentFlagAliases, "slide") {
+		t.Fatal("--slide must not be a --content alias")
+	}
+	if slices.Contains(presentationFlagAliases, "slide") {
+		t.Fatal("--slide must not be a --presentation alias")
 	}
 }

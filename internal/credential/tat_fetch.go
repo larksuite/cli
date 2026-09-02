@@ -6,14 +6,25 @@ package credential
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 )
+
+type tatResponse struct {
+	Code             int    `json:"code"`
+	AccessToken      string `json:"access_token"`
+	Error            string `json:"error"`
+	ErrorDescription string `json:"error_description"`
+	Msg              string `json:"msg"`
+}
 
 // FetchTAT performs a single HTTP POST to mint a tenant access token via the
 // unified OAuth 2.0 Token Endpoint ({accounts}/oauth/v3/token) using the
@@ -27,8 +38,9 @@ import (
 // doResolveTAT (and thus every token-resolving command) produces, so callers
 // see one consistent envelope. Transport failures, unreadable/unparseable
 // bodies, and transient server-side failures (5xx / server_error) are returned
-// raw (untyped), leaving them ambiguous; a caller can use errs.IsTyped to tell a
-// deterministic credential rejection apart from upstream/transport noise.
+// raw (untyped), leaving them ambiguous. HTTP 429 is the exception: it carries
+// typed retry metadata so callers can back off instead of treating it as a
+// credential rejection.
 //
 // The caller owns the context timeout.
 func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret string) (string, error) {
@@ -56,14 +68,37 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 	if err != nil {
 		return "", fmt.Errorf("failed to read TAT response: %w", err)
 	}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		var rateLimitErr *errs.APIError
+		var result tatResponse
+		if json.Unmarshal(body, &result) == nil {
+			desc := result.ErrorDescription
+			if desc == "" {
+				desc = result.Msg
+			}
+			classified := classifyTATResponseCode(result.Code, result.Error, desc, string(brand), appID)
+			var apiErr *errs.APIError
+			if errors.As(classified, &apiErr) &&
+				apiErr.Subtype == errs.SubtypeRateLimit && apiErr.Retryable {
+				rateLimitErr = apiErr
+			}
+		}
 
-	var result struct {
-		Code             int    `json:"code"`
-		AccessToken      string `json:"access_token"`
-		Error            string `json:"error"`
-		ErrorDescription string `json:"error_description"`
-		Msg              string `json:"msg"`
+		if rateLimitErr == nil {
+			rateLimitErr = errs.NewAPIError(errs.SubtypeRateLimit, "TAT endpoint rate limited (HTTP 429)").
+				WithCode(http.StatusTooManyRequests).
+				WithRetryable()
+		}
+		if retryAfter := tatRetryAfterSeconds(resp.Header); retryAfter > 0 {
+			rateLimitErr.RetryAfterSeconds = retryAfter
+			rateLimitErr.Hint = fmt.Sprintf("wait at least %d seconds before retrying; if throttling continues, use exponential backoff with jitter", retryAfter)
+		} else {
+			rateLimitErr.Hint = "use exponential backoff with jitter when retrying"
+		}
+		return "", rateLimitErr
 	}
+
+	var result tatResponse
 	if err := json.Unmarshal(body, &result); err != nil {
 		// An unparseable body is ambiguous (covers non-JSON error pages and
 		// truncated payloads); stay untyped so probe callers treat it as noise.
@@ -76,10 +111,10 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 
 	// Transient/server-side failures stay untyped so probe callers stay silent and
 	// retryers can back off; only deterministic client rejections are typed. Covers
-	// 5xx, HTTP 429 rate-limit, and the OAuth transient error strings (server_error,
-	// temporarily_unavailable, slow_down) — matching the legacy "non-2xx is noise"
-	// behavior so a rate-limited probe is not surfaced as a hard credential error.
-	if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests ||
+	// 5xx and the OAuth transient error strings (server_error,
+	// temporarily_unavailable, slow_down). HTTP 429 was already returned above
+	// as a typed rate-limit error with retry guidance and an upstream delay when available.
+	if resp.StatusCode >= 500 ||
 		result.Error == "server_error" || result.Error == "temporarily_unavailable" ||
 		result.Error == "slow_down" {
 		return "", fmt.Errorf("TAT endpoint transient failure (HTTP %d, code=%d, error=%q): %s",
@@ -99,4 +134,14 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 		desc = result.Msg
 	}
 	return "", classifyTATResponseCode(result.Code, result.Error, desc, string(brand), appID)
+}
+
+func tatRetryAfterSeconds(header http.Header) int {
+	for _, name := range []string{"X-Ogw-Ratelimit-Reset", "Retry-After"} {
+		seconds, err := strconv.Atoi(strings.TrimSpace(header.Get(name)))
+		if err == nil && seconds > 0 {
+			return seconds
+		}
+	}
+	return 0
 }

@@ -19,11 +19,29 @@ import pandas as pd
 
 def df_to_sheet(df, name, formats=None):
     """Pack one DataFrame into one entry of a `+table-put --sheets` payload."""
+    packed = json.loads(df.to_json(orient="split", date_format="iso"))
+    # The protocol requires string column names. pandas keeps integer labels
+    # (e.g. the default RangeIndex columns 0/1/2) as JSON numbers, while the
+    # dtypes dict keys get stringified during JSON serialization — the CLI
+    # then rejects `columns` ("cannot unmarshal number into … type string")
+    # and the dtype lookup would miss anyway. Stringify every key once, and
+    # refuse to continue when that conversion silently merges two columns.
+    normalized_labels = [str(c) for c in df.columns]
+    columns = [str(c) for c in packed["columns"]]
+    if normalized_labels != columns:
+        columns = normalized_labels
+    if len(set(columns)) != len(columns):
+        raise ValueError(
+            "column labels collide after str() conversion; "
+            "rename the DataFrame columns before packing"
+        )
+    packed["columns"] = columns
+    dtype_values = list(df.dtypes)
     return {
         "name": name,
-        **json.loads(df.to_json(orient="split", date_format="iso")),
-        "dtypes": df.dtypes.astype(str).to_dict(),
-        **({"formats": formats} if formats else {}),
+        **packed,
+        "dtypes": {key: str(dtype) for key, dtype in zip(columns, dtype_values)},
+        **({"formats": {str(k): v for k, v in formats.items()}} if formats else {}),
     }
 
 

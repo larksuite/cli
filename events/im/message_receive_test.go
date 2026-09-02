@@ -6,22 +6,15 @@ package im
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 )
 
-func TestMain(m *testing.M) {
-	for _, k := range Keys() {
-		event.RegisterKey(k)
-	}
-	os.Exit(m.Run())
-}
-
 func TestIMKeys_ProcessedReceiveRegistered(t *testing.T) {
-	def, ok := event.Lookup("im.message.receive_v1")
+	def, ok := lookupCompiledDef(t, "im.message.receive_v1")
 	if !ok {
 		t.Fatal("im.message.receive_v1 should be registered via Keys()")
 	}
@@ -53,7 +46,7 @@ func TestIMKeys_NativeEventsRegistered(t *testing.T) {
 		"im.chat.disbanded_v1",
 	}
 	for _, k := range want {
-		def, ok := event.Lookup(k)
+		def, ok := lookupCompiledDef(t, k)
 		if !ok {
 			t.Errorf("%s should be registered via Keys()", k)
 			continue
@@ -232,11 +225,11 @@ func TestProcessImMessageReceive_MalformedPayload(t *testing.T) {
 		Timestamp: time.Now(),
 	}
 	got, err := processImMessageReceive(context.Background(), nil, raw, nil)
-	if err != nil {
-		t.Fatalf("Process should swallow parse errors, got %v", err)
+	if !processing.IsDropMalformed(err) {
+		t.Fatalf("malformed payload must be dropped with a malformed marker, got err=%v", err)
 	}
-	if string(got) != "not json" {
-		t.Errorf("malformed fallback output = %q, want original bytes", string(got))
+	if got != nil {
+		t.Errorf("malformed payload must be dropped without output, got %q", string(got))
 	}
 }
 
@@ -248,6 +241,7 @@ func runReceive(t *testing.T, payload string) ImMessageReceiveOutput {
 		Payload:   json.RawMessage(payload),
 		Timestamp: time.Now(),
 	}
+	fillCanonicalFromHeader(t, raw)
 	got, err := processImMessageReceive(context.Background(), nil, raw, nil)
 	if err != nil {
 		t.Fatalf("Process error: %v", err)
@@ -267,6 +261,7 @@ func runReceiveMap(t *testing.T, payload string) map[string]interface{} {
 		Payload:   json.RawMessage(payload),
 		Timestamp: time.Now(),
 	}
+	fillCanonicalFromHeader(t, raw)
 	got, err := processImMessageReceive(context.Background(), nil, raw, nil)
 	if err != nil {
 		t.Fatalf("Process error: %v", err)

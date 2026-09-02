@@ -11,6 +11,7 @@ import (
 	"github.com/larksuite/cli/extension/platform"
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/hook"
+	"github.com/larksuite/cli/internal/skillpolicy"
 )
 
 // PluginInfo is the metadata of a successfully-installed plugin,
@@ -29,9 +30,10 @@ type PluginInfo struct {
 // every plugin that committed successfully (FailOpen-skipped plugins
 // are absent), for downstream diagnostics.
 type InstallResult struct {
-	Registry    *hook.Registry
-	PluginRules []cmdpolicy.PluginRule
-	Plugins     []PluginInfo
+	Registry     *hook.Registry
+	PluginRules  []cmdpolicy.PluginRule
+	PluginSkills []skillpolicy.PluginSkill
+	Plugins      []PluginInfo
 }
 
 // InstallAll runs every registered plugin through the staging
@@ -71,8 +73,8 @@ func InstallAll(plugins []platform.Plugin, errOut io.Writer) (*InstallResult, er
 		if err := installOne(name, p, result); err != nil {
 			// Some errors must abort regardless of FailurePolicy
 			// because they imply the plugin's FailurePolicy itself
-			// cannot be trusted (e.g. the consistency check between
-			// Restricts and FailClosed failed).
+			// cannot be trusted (e.g. a Restrict or EmbeddedSkills
+			// contribution was paired with FailOpen).
 			if isUntrustedConfigError(err) {
 				return nil, err
 			}
@@ -92,9 +94,9 @@ func InstallAll(plugins []platform.Plugin, errOut io.Writer) (*InstallResult, er
 
 // isUntrustedConfigError flags errors where the plugin's declared
 // FailurePolicy is itself part of the misconfiguration. For these the
-// host MUST abort unconditionally; honouring an FailOpen declaration on
-// a misconfigured Restricts plugin would defeat the whole point of the
-// consistency check.
+// host MUST abort unconditionally; honouring a FailOpen declaration on
+// a misconfigured Restrict/EmbeddedSkills plugin would defeat the whole point
+// of the consistency check.
 func isUntrustedConfigError(err error) bool {
 	var pi *PluginInstallError
 	if !errors.As(err, &pi) {
@@ -170,20 +172,28 @@ func installOne(name string, p platform.Plugin, result *InstallResult) error {
 	}
 
 	staging := newStagingRegistrar(name)
-	if err := safeCallInstall(p, staging); err != nil {
+	installErr := safeCallInstall(p, staging)
+	// A hand-written plugin can stage EmbeddedSkills and then return an error
+	// or panic. Validate the asset/failure-policy contract before classifying
+	// that ordinary Install failure; otherwise FailOpen would skip the plugin
+	// and silently republish the host's default skills.
+	if staging.overlaySet && caps.FailurePolicy != platform.FailClosed {
+		return staging.failOpenSkillsError()
+	}
+	if installErr != nil {
 		// Don't double-wrap typed PluginInstallError -- safeCallInstall
 		// already produces install_panic for recovered panics, and a
 		// re-wrap would bury the precise reason_code under
 		// install_failed.
 		var pi *PluginInstallError
-		if errors.As(err, &pi) {
-			return err
+		if errors.As(installErr, &pi) {
+			return installErr
 		}
 		return &PluginInstallError{
 			PluginName: name,
 			ReasonCode: ReasonInstallFailed,
 			Reason:     "Install returned error",
-			Cause:      err,
+			Cause:      installErr,
 		}
 	}
 
@@ -205,6 +215,12 @@ func installOne(name string, p platform.Plugin, result *InstallResult) error {
 		result.PluginRules = append(result.PluginRules, cmdpolicy.PluginRule{
 			PluginName: name,
 			Rule:       rule,
+		})
+	}
+	if staging.skillsOverlay != nil {
+		result.PluginSkills = append(result.PluginSkills, skillpolicy.PluginSkill{
+			PluginName:    name,
+			SkillsOverlay: staging.skillsOverlay,
 		})
 	}
 

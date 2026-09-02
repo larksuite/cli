@@ -12,6 +12,18 @@ metadata:
 
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 
+## 命令选择与渐进式发现（必读）
+
+执行任何 Task 命令前，必须先确认能力真实存在，禁止根据用户意图自行拼接或猜测 `+<verb>`：
+
+1. 先将用户意图与下方 Shortcut 表精确匹配。只有表中明确列出的 shortcut 才可直接选择；参数不确定时读取对应 reference 或运行该 shortcut 的 `--help`。
+2. 没有精确匹配、或无法确认当前版本是否支持时，先运行 `lark-cli task --help`，以当前 CLI 输出的命令列表为准。
+3. help 中存在匹配 shortcut 时，使用 help 列出的完整 shortcut token（例如 `+create`）运行 `lark-cli task <shortcut> --help`，再按真实 flag 执行。
+4. help 中没有匹配 shortcut 时，不得尝试相似的 `+<verb>`；从 help 中选择原生 resource，运行 `lark-cli task <resource> --help` 确认 method，再运行 `lark-cli schema task.<resource>.<method>` 获取参数结构，最后调用 `lark-cli task <resource> <method> ...`。
+5. 遇到 `unknown_subcommand` 时必须停止猜测或尝试变体，回到第 2 步重新发现能力。
+
+shortcut 名称只能来自本 Skill 的 Shortcut 表或 `lark-cli task --help`；原生 resource/method 以逐级 help 为准，参数名、类型和嵌套结构以 method schema 为准。
+
 > **任务搜索技巧**：先区分用户是否**特地指定使用搜索 skill**，以及是否真的提供了**查询关键字**（例如任务名称、关键词、片段描述）。如果用户特地指定使用搜索 skill，或明确给出了任务查询关键字，则目标是**任务**时优先使用 `+search`。如果用户没有特地指定使用搜索 skill，且意图里没有查询关键字，只有范围条件（例如“今年以来”“已完成”“由我创建”“我关注的”），并且使用 `+search` 与 `+get-related-tasks` / `+get-my-tasks` 都能达到目的时，应优先使用列表型能力，而不是搜索型能力。其中，“与我相关 / 我关注的 / 由我创建”等优先考虑 `+get-related-tasks`；“我负责的 / 分配给我”的列表优先考虑 `+get-my-tasks`。不要把时间范围词（例如“今年以来”）本身误当成 `query` 去走搜索。
 > **任务搜索相关性提示**：`+search` 当前不会自动判断搜索结果与搜索发起人的相关性。如果用户明确要求搜索“与我相关”的任务，必须先识别具体关系，获取当前用户的 `open_id`，并显式传入对应的 `--assignee`（负责人）、`--creator`（创建人）或 `--follower`（关注人）过滤条件；不能只依赖 `query` 期待自动返回与当前用户相关的任务。
 > **任务清单搜索技巧**：任务清单也遵循同样的判断逻辑。先区分用户是否**特地指定使用搜索 skill**，以及是否真的提供了**清单查询关键字**（例如清单名称、关键词、片段描述）。如果用户特地指定使用搜索 skill，或明确给出了清单查询关键字，则优先使用 `+tasklist-search`。如果用户没有特地指定使用搜索 skill，且意图里没有查询关键字，只有范围条件（例如“由我创建的任务清单”“今年以来创建的清单”），并且使用搜索或原生列取清单都能达到目的时，应优先使用原生 `tasklists.list` 接口列取清单（先 `schema task.tasklists.list`，再 `lark-cli task tasklists list --as user ...`），再按 `creator`、`created_at` 等字段做本地筛选和分页控制。
@@ -19,7 +31,7 @@ metadata:
 > **用户身份识别**：在用户身份（user identity）场景下，如果用户提到了“我”（例如“分配给我”、“由我创建”），请默认获取当前登录用户的 `open_id` 作为对应的参数值。
 > **术语理解 — 待办 disambiguation（必读）**：
 > - 用户提到「待办 / todo / 任务」时，**先判断归属**，不要默认走本 skill。
-> - **走 [lark-minutes](../lark-minutes/SKILL.md) 的 `minutes +todo`**（禁止本 skill）：上下文含 **妙记 / 会议纪要 / minute_token / 妙记 URL**（`/minutes/`）；或「在某某妙记里新建/修改待办」「妙记 AI 待办」「会议录制里的待办」。
+> - **走 [lark-meeting](../lark-meeting/SKILL.md) 的 `minutes +todo`**（禁止本 skill）：上下文含 **妙记 / 会议纪要 / minute_token / 妙记 URL**（`/minutes/`）；或「在某某妙记里新建/修改待办」「妙记 AI 待办」「会议录制里的待办」。
 > - **走本 skill（lark-task）**：任务清单、分配给我、项目待办、截止日期/提醒、子任务、任务清单成员；或 applink 含 `client/todo/task?guid=`；或明确说「飞书任务」「任务中心」「我的任务清单」。
 > - **禁止**：用户要在妙记里加待办时，**不要**调用 `task tasklists list`、`task +create` 或任何 task 命令去「找清单再放任务」。
 > **友好输出**：在输出任务（或清单）的执行结果给用户时，建议同时提取并输出命令返回结果中的 `url` 字段（任务链接），以便用户可以直接点击跳转查看详情。

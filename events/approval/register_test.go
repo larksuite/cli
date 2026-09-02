@@ -14,6 +14,8 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/catalog"
+	"github.com/larksuite/cli/internal/event/processing"
 	"github.com/larksuite/cli/internal/event/schemas"
 )
 
@@ -255,10 +257,7 @@ func TestApprovalPreConsumeRegistersSubscriptionTypesWithoutCleanup(t *testing.T
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			pc := approvalSubscriptionPreConsume(approvalSubscriptionConfig{
-				eventType:     approvalEventType(tc.eventType),
-				subscribePath: approvalSubscriptionPath(tc.subscribePath),
-			})
+			pc := approvalSubscriptionPreConsume(tc.eventType, tc.subscribePath)
 			rt := &fakeAPIClient{}
 			cleanup, err := pc(context.Background(), rt, tc.params)
 			if err != nil {
@@ -297,9 +296,7 @@ func assertCall(t *testing.T, got recordedCall, wantMethod, wantPath string, wan
 
 func TestApprovalPreConsumeValidationErrors(t *testing.T) {
 	t.Run("nil runtime", func(t *testing.T) {
-		pc := approvalSubscriptionPreConsume(approvalSubscriptionConfig{
-			eventType: eventTypeApprovalInstanceStatusChangedV4,
-		})
+		pc := approvalSubscriptionPreConsume(eventTypeApprovalInstanceStatusChangedV4, "")
 		_, err := pc(context.Background(), nil, map[string]string{"subscription_type": approvalSubscriptionTypeInvolved})
 		if err == nil {
 			t.Fatal("expected nil runtime error")
@@ -312,9 +309,7 @@ func TestApprovalPreConsumeValidationErrors(t *testing.T) {
 
 	for _, raw := range []string{"BAD", "[]", `["INVOLVED_APPROVAL",3]`} {
 		t.Run("invalid subscription type "+raw, func(t *testing.T) {
-			pc := approvalSubscriptionPreConsume(approvalSubscriptionConfig{
-				eventType: eventTypeApprovalInstanceStatusChangedV4,
-			})
+			pc := approvalSubscriptionPreConsume(eventTypeApprovalInstanceStatusChangedV4, "")
 			cleanup, err := pc(context.Background(), &fakeAPIClient{}, map[string]string{"subscription_type": raw})
 			if err == nil {
 				t.Fatal("expected invalid subscription_type error")
@@ -338,10 +333,7 @@ func TestApprovalPreConsumeValidationErrors(t *testing.T) {
 	t.Run("partial registration failure reports registered and failed relation types", func(t *testing.T) {
 		upstream := errs.NewAPIError(errs.SubtypeServerError, "approval subscription API failed")
 		rt := &fakeAPIClient{err: upstream, errOnCall: 2}
-		pc := approvalSubscriptionPreConsume(approvalSubscriptionConfig{
-			eventType:     eventTypeApprovalTaskStatusChangedV4,
-			subscribePath: pathApprovalTasksSubscription,
-		})
+		pc := approvalSubscriptionPreConsume(eventTypeApprovalTaskStatusChangedV4, pathApprovalTasksSubscription)
 
 		cleanup, err := pc(context.Background(), rt, map[string]string{})
 		if err == nil {
@@ -553,7 +545,7 @@ func TestProcessApprovalStatusChangedUsesRawEventTypeFallback(t *testing.T) {
 	}
 }
 
-func TestProcessApprovalStatusChangedMalformedPayloadPassthrough(t *testing.T) {
+func TestProcessApprovalStatusChangedMalformedPayloadDrop(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
 		eventType string
@@ -569,11 +561,11 @@ func TestProcessApprovalStatusChangedMalformedPayloadPassthrough(t *testing.T) {
 				Timestamp: time.Now(),
 			}
 			got, err := tc.process(context.Background(), nil, raw, nil)
-			if err != nil {
-				t.Fatalf("Process should swallow parse errors, got %v", err)
+			if !processing.IsDropMalformed(err) {
+				t.Fatalf("malformed payload must be dropped with a malformed marker, got err=%v", err)
 			}
-			if string(got) != "not json" {
-				t.Errorf("malformed fallback output = %q, want original bytes", string(got))
+			if got != nil {
+				t.Errorf("malformed payload must be dropped without output, got %q", string(got))
 			}
 		})
 	}
@@ -599,6 +591,30 @@ func TestProcessApprovalStatusChangedNilRaw(t *testing.T) {
 	}
 }
 
+// fillCanonicalFromHeader copies the payload envelope header metadata onto
+// the RawEvent canonical fields. Process handlers read event_id and
+// create_time from the RawEvent, which the consume pipeline fills from the
+// envelope header before dispatch; tests that hand-build a RawEvent must
+// mirror that so both views agree.
+func fillCanonicalFromHeader(t *testing.T, raw *event.RawEvent) {
+	t.Helper()
+	var envelope struct {
+		Header struct {
+			EventID    string `json:"event_id"`
+			EventType  string `json:"event_type"`
+			CreateTime string `json:"create_time"`
+		} `json:"header"`
+	}
+	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
+		t.Fatalf("parse envelope header: %v", err)
+	}
+	raw.EventID = envelope.Header.EventID
+	if envelope.Header.EventType != "" {
+		raw.EventType = envelope.Header.EventType
+	}
+	raw.SourceTime = envelope.Header.CreateTime
+}
+
 func runApprovalInstanceStatusChanged(t *testing.T, payload string) ApprovalInstanceStatusChangedV4Output {
 	t.Helper()
 	raw := &event.RawEvent{
@@ -606,6 +622,7 @@ func runApprovalInstanceStatusChanged(t *testing.T, payload string) ApprovalInst
 		Payload:   json.RawMessage(payload),
 		Timestamp: time.Now(),
 	}
+	fillCanonicalFromHeader(t, raw)
 	got, err := processApprovalInstanceStatusChanged(context.Background(), nil, raw, nil)
 	if err != nil {
 		t.Fatalf("Process returned error: %v", err)
@@ -624,6 +641,7 @@ func runApprovalTaskStatusChanged(t *testing.T, payload string) ApprovalTaskStat
 		Payload:   json.RawMessage(payload),
 		Timestamp: time.Now(),
 	}
+	fillCanonicalFromHeader(t, raw)
 	got, err := processApprovalTaskStatusChanged(context.Background(), nil, raw, nil)
 	if err != nil {
 		t.Fatalf("Process returned error: %v", err)
@@ -636,17 +654,16 @@ func runApprovalTaskStatusChanged(t *testing.T, payload string) ApprovalTaskStat
 }
 
 func TestApprovalKeysRegisterCleanly(t *testing.T) {
-	for _, key := range []string{eventTypeApprovalInstanceStatusChangedV4, eventTypeApprovalTaskStatusChangedV4} {
-		event.UnregisterKeyForTest(key)
-		t.Cleanup(func() { event.UnregisterKeyForTest(key) })
+	snap, err := catalog.Compile(Keys(), catalog.StrategyRefs{
+		catalog.StrategyNone,
+		catalog.StrategyLegacyPreConsume,
+	})
+	if err != nil {
+		t.Fatalf("catalog.Compile(Keys()): %v", err)
 	}
-
-	for _, def := range Keys() {
-		event.RegisterKey(def)
-	}
 	for _, key := range []string{eventTypeApprovalInstanceStatusChangedV4, eventTypeApprovalTaskStatusChangedV4} {
-		if _, ok := event.Lookup(key); !ok {
-			t.Fatalf("event.Lookup(%q) not registered", key)
+		if _, ok := snap.Resolve(key); !ok {
+			t.Fatalf("snap.Resolve(%q): key missing from compiled catalog", key)
 		}
 	}
 }

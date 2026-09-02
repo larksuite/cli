@@ -13,20 +13,27 @@ import (
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/meta"
+	"github.com/larksuite/cli/internal/skillref"
 	"github.com/spf13/cobra"
 )
 
 // PrepareDomainHelp appends navigational guidance (routing line, risk legend,
-// skill pointer) to a top-level Lark domain's description, returning false for
-// anything that is not such a domain. Built lazily at help time because
+// skill pointers) to a top-level Lark domain's description, returning false
+// for anything that is not such a domain. Built lazily at help time because
 // shortcuts attach after service registration. skillFS (nil-safe) gates the
-// skill pointer.
+// skill pointers.
 //
 // A hand-authored Long is preserved as the base (e.g. event's "Use 'event
 // consume <EventKey>'…"); service domains carry only a Short at this point, so
 // we fall back to it. The pristine base is captured once into an annotation so
 // re-rendering does not append the guidance twice.
 func PrepareDomainHelp(cmd *cobra.Command, skillFS fs.FS) bool {
+	return PrepareDomainHelpWithReferences(cmd, skillFS, nil)
+}
+
+// PrepareDomainHelpWithReferences is PrepareDomainHelp with a build-local
+// canonical-to-runtime skill projection.
+func PrepareDomainHelpWithReferences(cmd *cobra.Command, skillFS fs.FS, references *skillref.Resolver) bool {
 	if cmd.Annotations[schemaPathAnnotation] != "" {
 		return false // a method command
 	}
@@ -61,11 +68,11 @@ func PrepareDomainHelp(cmd *cobra.Command, skillFS fs.FS) bool {
 		b.WriteString("\n\nPrefer a +-prefixed shortcut when one matches your task; otherwise use the raw API resource below.")
 	}
 	b.WriteString("\n\nRisk levels (read | write | high-risk-write) appear in each command's --help; high-risk-write requires --yes, only after the user confirms.")
-	if skill := "lark-" + cmd.Name(); skillFS != nil {
-		if _, err := fs.Stat(skillFS, skill+"/SKILL.md"); err == nil {
-			fmt.Fprintf(&b, "\n\nDomain guide (concepts, command choice, conventions): lark-cli skills read %s", skill)
-		}
+	canonicalSkills := []string{"lark-" + cmd.Name()}
+	if declared, ok := affordance.DomainSkills(cmdmeta.Domain(cmd)); ok {
+		canonicalSkills = declared
 	}
+	writeDomainSkills(&b, canonicalSkills, skillFS, references)
 	cmd.Long = b.String()
 	return true
 }
@@ -137,6 +144,34 @@ func setMethodHelpData(cmd *cobra.Command, service, methodID, schemaPath, params
 // affordance.SkillStatPath), so a typo or a build without embedded skills never
 // prints a `skills read` that cannot be opened.
 func PrepareMethodHelp(cmd *cobra.Command, skillFS fs.FS) bool {
+	return PrepareMethodHelpWithReferences(cmd, skillFS, nil)
+}
+
+// PrepareMethodHelpWithReferences is PrepareMethodHelp with a build-local
+// canonical-to-runtime skill projection.
+func PrepareMethodHelpWithReferences(cmd *cobra.Command, skillFS fs.FS, references *skillref.Resolver) bool {
+	return prepareMethodHelp(cmd, skillFS, references, nil)
+}
+
+// PrepareMethodHelpWithProjection is PrepareMethodHelpWithReferences with the
+// command tree's lazy, build-local schema-reference decision. The established
+// helpers remain fully-visible by default; cmd.Build uses this form so the
+// framework-owned schema pointer follows the same surface as execution.
+func PrepareMethodHelpWithProjection(
+	cmd *cobra.Command,
+	skillFS fs.FS,
+	references *skillref.Resolver,
+	canReferenceSchema func() bool,
+) bool {
+	return prepareMethodHelp(cmd, skillFS, references, canReferenceSchema)
+}
+
+func prepareMethodHelp(
+	cmd *cobra.Command,
+	skillFS fs.FS,
+	references *skillref.Resolver,
+	canReferenceSchema func() bool,
+) bool {
 	ann := cmd.Annotations
 	if ann == nil {
 		return false
@@ -161,10 +196,12 @@ func PrepareMethodHelp(cmd *cobra.Command, skillFS fs.FS) bool {
 		}
 	}
 
-	fmt.Fprintf(&b, "\n\nFull parameter schema:\n  lark-cli schema %s", schemaPath)
+	if canReferenceSchema == nil || canReferenceSchema() {
+		fmt.Fprintf(&b, "\n\nFull parameter schema:\n  lark-cli schema %s", schemaPath)
+	}
 	b.WriteString(ann[paramsOnlyAnnotation])
 
-	writeRelatedSkills(&b, skills, skillFS)
+	writeRelatedSkills(&b, skills, skillFS, references)
 
 	cmd.Long = b.String()
 	return true
@@ -177,10 +214,9 @@ func PrepareMethodHelp(cmd *cobra.Command, skillFS fs.FS) bool {
 // entry, so shortcuts without guidance keep the default help plus the bottom
 // risk/tips append.
 //
-// The lead is the command's pristine base (captureHelpBase): a shortcut that
-// set a hand-authored Long in PostMount (e.g. the docs shortcuts' "agents MUST
-// read the skill" directive) keeps it — the affordance block is appended below,
-// never clobbering it.
+// The lead is the command's pristine base (captureHelpBase): a shortcut with a
+// hand-authored Long keeps it, while structured affordance guidance is
+// appended below without clobbering the business description.
 //
 // Tips precedence (intentional, not a bug): the overlay's ### Tips win. The
 // shortcut's declarative Tips (the Go Tips field) are only a fallback used when
@@ -188,6 +224,12 @@ func PrepareMethodHelp(cmd *cobra.Command, skillFS fs.FS) bool {
 // (replaced, not merged) so tips never render twice. Authoring a ### Tips block
 // therefore silently retires that shortcut's Go Tips — consolidate into one.
 func PrepareShortcutHelp(cmd *cobra.Command, skillFS fs.FS) bool {
+	return PrepareShortcutHelpWithReferences(cmd, skillFS, nil)
+}
+
+// PrepareShortcutHelpWithReferences is PrepareShortcutHelp with a build-local
+// canonical-to-runtime skill projection.
+func PrepareShortcutHelpWithReferences(cmd *cobra.Command, skillFS fs.FS, references *skillref.Resolver) bool {
 	if src, _ := cmdmeta.SourceOf(cmd); src != cmdmeta.SourceShortcut {
 		return false
 	}
@@ -210,7 +252,7 @@ func PrepareShortcutHelp(cmd *cobra.Command, skillFS fs.FS) bool {
 		b.WriteString("\n\n")
 		b.WriteString(block)
 	}
-	writeRelatedSkills(&b, a.Skills, skillFS)
+	writeRelatedSkills(&b, a.Skills, skillFS, references)
 
 	cmd.Long = b.String()
 	return true
@@ -234,16 +276,8 @@ func writeRisk(b *strings.Builder, cmd *cobra.Command) {
 // writeRelatedSkills appends the "Related skills" block for the entries that
 // exist in skillFS. Nothing is written when skillFS is nil or no entry resolves,
 // so help never prints a `skills read` pointer that cannot be opened.
-func writeRelatedSkills(b *strings.Builder, skills []string, skillFS fs.FS) {
-	if skillFS == nil || len(skills) == 0 {
-		return
-	}
-	var avail []string
-	for _, s := range skills {
-		if _, err := fs.Stat(skillFS, affordance.SkillStatPath(s)); err == nil {
-			avail = append(avail, s)
-		}
-	}
+func writeRelatedSkills(b *strings.Builder, skills []string, skillFS fs.FS, references *skillref.Resolver) {
+	avail := availableSkillReferences(skills, skillFS, references)
 	if len(avail) == 0 {
 		return
 	}
@@ -251,6 +285,55 @@ func writeRelatedSkills(b *strings.Builder, skills []string, skillFS fs.FS) {
 	for _, s := range avail {
 		fmt.Fprintf(b, "\n  lark-cli skills read %s", s)
 	}
+}
+
+// writeDomainSkills appends the domain-level skill navigation configured by
+// affordance. Preserve the established single-guide sentence for existing
+// domains; only domains that opt into multiple entries get the list form.
+func writeDomainSkills(b *strings.Builder, skills []string, skillFS fs.FS, references *skillref.Resolver) {
+	avail := availableSkillReferences(skills, skillFS, references)
+	switch len(avail) {
+	case 0:
+		return
+	case 1:
+		fmt.Fprintf(b, "\n\nDomain guide (concepts, command choice, conventions): lark-cli skills read %s", avail[0])
+	default:
+		b.WriteString("\n\nDomain skills (concepts, command choice, conventions):")
+		for _, skill := range avail {
+			fmt.Fprintf(b, "\n  lark-cli skills read %s", skill)
+		}
+	}
+}
+
+func availableSkillReferences(skills []string, skillFS fs.FS, references *skillref.Resolver) []string {
+	if skillFS == nil || len(skills) == 0 {
+		return nil
+	}
+	var avail []string
+	for _, skill := range skills {
+		resolved, ok := resolveSkillReference(skill, skillFS, references)
+		if !ok {
+			continue
+		}
+		avail = append(avail, resolved)
+	}
+	return avail
+}
+
+func resolveSkillReference(canonical string, skillFS fs.FS, references *skillref.Resolver) (string, bool) {
+	// A nil skillFS is also the command-surface gate supplied by cmd.Build:
+	// embedded bytes may still exist, but presenters must not point at them
+	// when `skills read` is concealed.
+	if skillFS == nil {
+		return "", false
+	}
+	if references != nil {
+		return references.ResolveString(canonical)
+	}
+	if _, err := fs.Stat(skillFS, affordance.SkillStatPath(canonical)); err != nil {
+		return "", false
+	}
+	return canonical, true
 }
 
 // affordanceLookup is the overlay source; a package var so tests can inject.

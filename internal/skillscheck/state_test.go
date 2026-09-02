@@ -32,6 +32,7 @@ func TestReadState_Valid(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
 	want := SkillsState{
 		Version:              "1.2.3",
+		Layout:               LayoutSuite,
 		OfficialSkills:       []string{"lark-doc", "lark-im"},
 		UpdatedSkills:        []string{"lark-doc"},
 		AddedOfficialSkills:  []string{"lark-task"},
@@ -58,6 +59,15 @@ func TestReadState_Valid(t *testing.T) {
 	}
 	if !reflect.DeepEqual(*got, want) {
 		t.Fatalf("ReadState() state = %#v, want %#v", *got, want)
+	}
+}
+
+func TestEffectiveLayoutDefaultsLegacyStateToSeparate(t *testing.T) {
+	if got := EffectiveLayout(&SkillsState{Version: "1.0.0"}); got != LayoutSeparate {
+		t.Fatalf("EffectiveLayout(legacy) = %q, want separate", got)
+	}
+	if got := EffectiveLayout(&SkillsState{Layout: LayoutSuite}); got != LayoutSuite {
+		t.Fatalf("EffectiveLayout(suite) = %q, want suite", got)
 	}
 }
 

@@ -6,10 +6,7 @@ package slides
 import (
 	"context"
 	"encoding/json"
-	"encoding/xml"
-	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -17,15 +14,15 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+const replacePagesInitialRevisionID = -1
+
 // SlidesReplacePages rebuilds multiple pages inside an existing presentation.
 // It deliberately creates the new page before deleting the old one so a create
 // failure cannot remove existing user content. The operation is not atomic.
-const replacePagesInitialRevisionID = -1
-
 var SlidesReplacePages = common.Shortcut{
 	Service:     "slides",
 	Command:     "+replace-pages",
-	Description: "Batch rebuild pages inside an existing Slides presentation (create before old page, then delete old page; not atomic)",
+	Description: "Rebuild multiple pages in a presentation: create each new page before old page, then delete old page (not atomic; changes slide_id and element ids)",
 	Risk:        "write",
 	Scopes:      []string{"slides:presentation:update", "slides:presentation:write_only"},
 	// wiki:node:read is required only when --presentation is a wiki URL.
@@ -226,50 +223,9 @@ func validateReplacePagesInput(pages []replacePageInput) error {
 	return nil
 }
 
-func validateCompleteSlideXML(content string) error {
-	dec := xml.NewDecoder(strings.NewReader(content))
-	depth := 0
-	seenRoot := false
-	for {
-		tok, err := dec.Token()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		switch t := tok.(type) {
-		case xml.StartElement:
-			if depth == 0 {
-				if seenRoot {
-					return invalidSlideXMLStructureError("multiple root elements")
-				}
-				if t.Name.Local != "slide" {
-					return invalidSlideXMLStructureError("root element is <%s>, want <slide>", t.Name.Local)
-				}
-				seenRoot = true
-			}
-			depth++
-		case xml.EndElement:
-			depth--
-		case xml.CharData:
-			if depth == 0 && strings.TrimSpace(string(t)) != "" {
-				return invalidSlideXMLStructureError("non-whitespace text outside root element")
-			}
-		}
-	}
-	if !seenRoot {
-		return invalidSlideXMLStructureError("missing root element")
-	}
-	if depth != 0 {
-		return invalidSlideXMLStructureError("unclosed XML element")
-	}
-	return nil
-}
-
-func invalidSlideXMLStructureError(format string, args ...interface{}) error {
-	return errs.NewValidationError(errs.SubtypeInvalidArgument, format, args...)
-}
+// validateCompleteSlideXML, invalidSlideXMLStructureError and revisionFromData
+// live in slides_shared.go: shared helpers used by +add-slide, +delete-slide,
+// and +replace-pages.
 
 func buildReplacePagesPlan(pages []replacePageInput) ([]replacePagePlanItem, error) {
 	plan := make([]replacePagePlanItem, 0, len(pages))
@@ -358,13 +314,6 @@ func replaceOnePage(runtime *common.RuntimeContext, presentationID string, item 
 	}
 	result.Status = "replaced"
 	return result, nil
-}
-
-func revisionFromData(data map[string]interface{}) (int, bool) {
-	if _, ok := data["revision_id"]; !ok {
-		return 0, false
-	}
-	return int(common.GetFloat(data, "revision_id")), true
 }
 
 func replacePagesPlanOutput(plan []replacePagePlanItem) []map[string]interface{} {

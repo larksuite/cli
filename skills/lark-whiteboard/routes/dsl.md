@@ -33,7 +33,7 @@ Step 3: 渲染 & 审查 → 交付
       npx -y @larksuite/whiteboard-cli@^0.2.13 -i diagram.json --to openapi --format json \
         | lark-cli whiteboard +update --whiteboard-token <board_token> \
             --source - --input_format raw --idempotent-token <时间戳+标识> --as user
-      → 完整 dry-run / 确认流程见 SKILL.md [§ 写入画板](../SKILL.md#写入画板)
+      → 完整 dry-run / 确认流程见 [§ 写入画板](../references/lark-whiteboard-workflow.md#写入画板)
   - 交付：向用户报告 board_token 写入成功
 ```
 
@@ -73,7 +73,13 @@ Step 3: 渲染 & 审查 → 交付
 | 循环/飞轮图 | `scenes/flywheel.md`     | 增长飞轮、闭环链路                     |
 | 里程碑      | `scenes/milestone.md`    | 时间线、版本演进                       |
 | 流程图      | `scenes/flowchart.md`    | 业务流、状态机、带条件判断的链路       |
-| 图片展示    | `scenes/photo-showcase.md` | 用户显式要求图片/配图/插图时（需先完成 `elements/image.md` 的图片准备） |
+
+### 插入 @用户提及 / 图片
+
+| 当前内容包含 | 必读指南 |
+|---|---|
+| @用户提及 | [`../scenes/mention.md`](../scenes/mention.md) |
+| 图片 / 配图 | [`../scenes/photo-showcase.md`](../scenes/photo-showcase.md) |
 
 ## 渲染前自查
 

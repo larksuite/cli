@@ -24,10 +24,9 @@ type Notice struct {
 	Skill       string `json:"skill,omitempty"`
 }
 
-// Message returns a single-line, AI-agent-parseable description of the alias
-// plus the canonical fix (update the skill). Mirrors the style of
-// internal/skillscheck.StaleNotice.Message ("..., run: lark-cli update").
-func (n *Notice) Message() string {
+// MessageWithoutUpdateAction returns the useful migration context that remains
+// valid even in a distribution that does not ship the update command.
+func (n *Notice) MessageWithoutUpdateAction() string {
 	var b strings.Builder
 	b.WriteString(n.Command)
 	b.WriteString(" is a pre-refactor compatibility alias")
@@ -39,11 +38,18 @@ func (n *Notice) Message() string {
 	if n.Skill != "" {
 		b.WriteString("; update your ")
 		b.WriteString(n.Skill)
-		b.WriteString(" skill, run: lark-cli update")
+		b.WriteString(" skill")
 	} else {
-		b.WriteString("; update your skill, run: lark-cli update")
+		b.WriteString("; update your skill")
 	}
 	return b.String()
+}
+
+// Message returns a single-line, AI-agent-parseable description of the alias
+// plus the canonical fix (update the skill). Mirrors the style of
+// internal/skillscheck.StaleNotice.Message ("..., run: lark-cli update").
+func (n *Notice) Message() string {
+	return n.MessageWithoutUpdateAction() + ", run: lark-cli update"
 }
 
 // pending stores the latest deprecation notice for the current process.

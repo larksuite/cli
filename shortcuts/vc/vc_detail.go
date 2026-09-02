@@ -164,7 +164,7 @@ var VCDetail = common.Shortcut{
 	Description: "Get meeting details including note_id and minute_token by meeting IDs",
 	Risk:        "read",
 	Scopes:      []string{"vc:meeting.meetingevent:read", "vc:record:readonly"},
-	AuthTypes:   []string{"user"},
+	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "meeting-ids", Desc: "meeting IDs, comma-separated for batch", Required: true},
@@ -181,7 +181,6 @@ var VCDetail = common.Shortcut{
 			if missing := auth.MissingScopes(result.Scopes, scopesDetailMeetingIDs); len(missing) > 0 {
 				return errs.NewPermissionError(errs.SubtypeMissingScope,
 					"missing required scope(s): %s", strings.Join(missing, ", ")).
-					WithHint("run `lark-cli auth login --scope %q` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " ")).
 					WithMissingScopes(missing...).
 					WithIdentity(string(runtime.As()))
 			}

@@ -54,6 +54,30 @@ func driveMethod(httpMethod string, params map[string]interface{}) meta.Method {
 	return meta.FromMap(m)
 }
 
+func TestNewPreflightMissingScopeErrorUsesCanonicalFieldGate(t *testing.T) {
+	err := newPreflightMissingScopeError(
+		"feishu",
+		"cli_test",
+		"user",
+		[]string{"docx:document"},
+	)
+	var permissionErr *errs.PermissionError
+	if !errors.As(err, &permissionErr) {
+		t.Fatalf("error = %T, want *errs.PermissionError", err)
+	}
+	if permissionErr.Subtype != errs.SubtypeMissingScope {
+		t.Fatalf("subtype = %q, want %q", permissionErr.Subtype, errs.SubtypeMissingScope)
+	}
+	if permissionErr.ConsoleURL != "" {
+		t.Fatalf("missing_scope console_url = %q, want empty", permissionErr.ConsoleURL)
+	}
+	if len(permissionErr.MissingScopes) != 1 ||
+		permissionErr.MissingScopes[0] != "docx:document" ||
+		permissionErr.Identity != "user" {
+		t.Fatalf("permission facts = %+v", permissionErr)
+	}
+}
+
 // ── registerService ──
 
 func TestRegisterService(t *testing.T) {

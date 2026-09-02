@@ -37,6 +37,9 @@ type bindMsg struct {
 	// MessageBotOnly format: app_id, source display name, brand.
 	// MessageUserDefault format: app_id, source display name, source display
 	// name (second source ref anchors the "run in this chat" directive).
+	// MessageUserDefaultFallback format: app_id, source display name. It keeps
+	// the completed bind facts but uses target-free recovery when auth/login
+	// is not part of this distribution.
 	// MessageUserDefault directs the Agent at the blocking single-call
 	// `auth login --recommend` flow: the CLI streams verification_url to
 	// stderr, which Agent runtimes (OpenClaw, Hermes) relay to the user in
@@ -44,8 +47,9 @@ type bindMsg struct {
 	// The Agent also needs an explicit "do not navigate the URL yourself"
 	// guard — its own browser is sandboxed and cannot complete the user's
 	// authorization.
-	MessageBotOnly     string
-	MessageUserDefault string
+	MessageBotOnly             string
+	MessageUserDefault         string
+	MessageUserDefaultFallback string
 
 	// Identity preset (collapses strict-mode + default-as into one choice).
 	// IdentityBotOnly/IdentityUserDefault are short, single-line labels for
@@ -108,8 +112,9 @@ var bindMsgZh = &bindMsg{
 	ConflictCancel:    "保留当前配置",
 	ConflictCancelled: "已保留当前配置",
 
-	MessageBotOnly:     "已绑定应用 %s 到 %s，可立即以应用（bot）身份调用%s API，现在可以继续执行用户的请求。",
-	MessageUserDefault: "已绑定应用 %s 到 %s。请接着在此 %s 对话中运行 `lark-cli auth login --recommend`。该命令会在 stderr 打出 verification_url 后阻塞等待用户授权；请将此链接原样发给用户在其浏览器中完成授权（不要自己调 browser_navigate 之类的工具打开，授权必须在用户的浏览器里完成），命令会在用户授权完成后自动返回。",
+	MessageBotOnly:             "已绑定应用 %s 到 %s，可立即以应用（bot）身份调用%s API，现在可以继续执行用户的请求。",
+	MessageUserDefault:         "已绑定应用 %s 到 %s。请接着在此 %s 对话中运行 `lark-cli auth login --recommend`。该命令会在 stderr 打出 verification_url 后阻塞等待用户授权；请将此链接原样发给用户在其浏览器中完成授权（不要自己调 browser_navigate 之类的工具打开，授权必须在用户的浏览器里完成），命令会在用户授权完成后自动返回。",
+	MessageUserDefaultFallback: "已绑定应用 %s 到 %s。请通过该发行版支持的授权流程获取或刷新用户凭证，然后再继续执行用户的请求。",
 
 	SelectIdentity:      "你希望 AI 如何与你协作？",
 	IdentityBotOnly:     "以机器人身份",
@@ -144,8 +149,9 @@ var bindMsgEn = &bindMsg{
 	ConflictCancel:    "Keep current config",
 	ConflictCancelled: "Current config kept. No changes made.",
 
-	MessageBotOnly:     "Bound app %s to %s. The %s app (bot) identity is ready — you can now continue with the user's request.",
-	MessageUserDefault: "Bound app %s to %s. Next, in this %s chat, run `lark-cli auth login --recommend`. The command prints the verification URL to stderr and then blocks until the user authorizes it; relay the URL to the user so they can approve it in their own browser (do not call browser_navigate or any tool that opens a browser yourself — your browser is sandboxed and cannot complete the authorization). The command returns automatically once authorization completes.",
+	MessageBotOnly:             "Bound app %s to %s. The %s app (bot) identity is ready — you can now continue with the user's request.",
+	MessageUserDefault:         "Bound app %s to %s. Next, in this %s chat, run `lark-cli auth login --recommend`. The command prints the verification URL to stderr and then blocks until the user authorizes it; relay the URL to the user so they can approve it in their own browser (do not call browser_navigate or any tool that opens a browser yourself — your browser is sandboxed and cannot complete the authorization). The command returns automatically once authorization completes.",
+	MessageUserDefaultFallback: "Bound app %s to %s. Obtain or refresh a user credential through this distribution's supported authorization flow before continuing with the user's request.",
 
 	SelectIdentity:      "How should the AI work with you?",
 	IdentityBotOnly:     "As bot",

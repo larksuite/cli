@@ -86,6 +86,10 @@ var appTypePolicies = map[string]appTypePolicy{
 	// no startup env vars to pull, no steering skills to sync, and no app sync.
 	"modern_html": {skipInstall: true, skipEnvPull: true, skipSkillsSync: true, skipAppSync: true},
 	"html":        {skipInstall: true, skipEnvPull: true, skipSkillsSync: true, skipAppSync: true},
+	// frontend (vite-react, a buildable front-end app) is intentionally NOT
+	// listed here: it takes the zero-value policy (install deps, pull env, sync
+	// skills) like full_stack, since it needs a build step — it is not a static
+	// HTML site and must not skip those steps.
 }
 
 // policyForAppType returns the +init control strategy for appType. Unlisted
@@ -438,6 +442,9 @@ func runScaffold(ctx context.Context, dir, appID, appType, sourcePath string) (s
 // --skip-install is appended per the app_type's policy (see appTypePolicy):
 // types whose policy sets skipInstall (e.g. modern_html) skip the dependency
 // install; others run it as usual.
+// appType is forwarded verbatim (including "frontend") — the CLI does not
+// translate the app type; mapping the app type to a concrete tech stack is the
+// downstream tool's responsibility.
 func scaffoldInitArgs(appType, appID, sourcePath string) []string {
 	base := []string{"-y", "--prefer-online", "--registry", npmRegistry, miaodaCLIPkg, "app", "init"}
 	at := appType

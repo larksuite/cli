@@ -55,11 +55,6 @@ var ImChatMembersList = common.Shortcut{
 		{Name: "page-limit", Type: "int", Default: "10", Desc: "max pages to fetch with --page-all (default 10, 0 = unlimited)"},
 		{Name: "page-delay", Type: "int", Default: fmt.Sprintf("%d", chatMembersListDefaultPageDelay), Desc: "delay in ms between pages when --page-all (0 = no delay)"},
 	},
-	Tips: []string{
-		"Default fetches a single page; pass --page-all to walk every page.",
-		"With --page-all and no explicit --page-size, the max page size is used to minimize round-trips.",
-		"truncations[] in the result means the server capped a bucket due to security config — the member list is incomplete.",
-	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		chatID := strings.TrimSpace(runtime.Str("chat-id"))
 		if chatID == "" {

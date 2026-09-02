@@ -53,6 +53,24 @@ func TestDocs_CreateAndFetchWorkflowAsBot(t *testing.T) {
 		assert.Contains(t, content, docTitle)
 		assert.Contains(t, content, "This document was created by lark-cli e2e test.")
 	})
+
+	t.Run("script parse by token", func(t *testing.T) {
+		require.NotEmpty(t, docToken, "document token should be created before script parse")
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"docs", "+script",
+				"--command", "parse",
+				"--doc", docToken,
+			},
+			DefaultAs: defaultAs,
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		result.AssertStdoutStatus(t, true)
+		assert.Positive(t, gjson.Get(result.Stdout, "data.profile.word_count").Int())
+		assert.Positive(t, gjson.Get(result.Stdout, "data.profile.block_count").Int())
+	})
 }
 
 func TestDocs_CreateAndFetchWorkflowAsUser(t *testing.T) {

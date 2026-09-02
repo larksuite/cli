@@ -62,7 +62,10 @@ func TestConfigPolicyShow_PluginActive(t *testing.T) {
 			Kind: cmdpolicy.SourcePlugin,
 			Name: "secaudit",
 		},
-		DeniedPaths: 42,
+		DeniedByPath: map[string]cmdpolicy.Denial{
+			"docs/create": {},
+			"docs/update": {},
+		},
 	})
 
 	f, out, _ := newPolicyTestFactory()
@@ -80,8 +83,8 @@ func TestConfigPolicyShow_PluginActive(t *testing.T) {
 		t.Errorf("source_name = %v, want secaudit", got["source_name"])
 	}
 	// json.Unmarshal returns float64 for numbers.
-	if got["denied_paths"] != float64(42) {
-		t.Errorf("denied_paths = %v, want 42", got["denied_paths"])
+	if got["denied_paths"] != float64(2) {
+		t.Errorf("denied_paths = %v, want 2", got["denied_paths"])
 	}
 	rulesAny, ok := got["rules"].([]any)
 	if !ok || len(rulesAny) != 1 {

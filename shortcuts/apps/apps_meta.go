@@ -15,7 +15,7 @@ import (
 // queryAppType fetches the app's type string from the server via
 // GET /open-apis/spark/v1/apps/{identifier}. The identifier can be either
 // an app_id or a meta_token — the server resolves both. The server returns
-// uppercase app_type values ("HTML", "FULL_STACK", "MODERN_HTML");
+// uppercase app_type values ("HTML", "FRONTEND", "FULL_STACK", "MODERN_HTML");
 // this function normalizes to lowercase. Returns an error when the API
 // is unavailable or the response is malformed — callers must not proceed
 // with a fallback type to avoid creating the wrong project scaffold.

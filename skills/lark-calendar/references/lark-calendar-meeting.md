@@ -19,7 +19,7 @@ lark-cli calendar +meeting --event-ids <event_id> --calendar-id <calendar_id>
 |------|------|
 | `event_id` | 日程 ID |
 | `meeting_id` | 关联的视频会议 ID |
-| `meeting_note` | 用户主动绑定到日程的纪要文档 Token（`MeetingNotes`，由用户在日程页手动添加；）。**与会中产生的 AI 智能纪要 `note_doc_token` 是两份不同文档**，要拿 AI 纪要请继续走 `vc +detail` → `note +detail`。 |
+| `meeting_note` | 日程关联的原生会议纪要文档 Token（`MeetingNotes`），可来自日程页中的客户端操作，或由下文 Calendar API 新建。**与会中产生的 AI 智能纪要 `note_doc_token` 是两份不同文档**，要拿 AI 纪要请继续走 `vc +detail` → `note +detail`。 |
 
 ## 下游链路
 

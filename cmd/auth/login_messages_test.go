@@ -4,12 +4,14 @@
 package auth
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/i18n"
+	"github.com/larksuite/cli/internal/recovery"
 )
 
 func TestGetLoginMsg_Zh(t *testing.T) {
@@ -105,13 +107,44 @@ func TestLoginMsg_FormatStrings(t *testing.T) {
 // after presenting the URL instead of blocking in the same turn.
 func TestAgentTimeoutHint_CarriesKeyInfo(t *testing.T) {
 	for _, lang := range []i18n.Lang{i18n.LangZhCN, i18n.LangEnUS} {
-		hint := getLoginMsg(lang).AgentTimeoutHint
-		for _, want := range []string{"--no-wait", "--device-code", "turn"} {
+		hint := getLoginMsg(lang).AgentTimeoutHint(recovery.RenderContext{})
+		for _, want := range []string{"--scope", "--domain", "--recommend", "--exclude", "--no-wait", "--device-code", "turn"} {
 			if lang == i18n.LangZhCN && want == "turn" {
 				want = "本轮"
 			}
 			if !strings.Contains(hint, want) {
 				t.Errorf("%s AgentTimeoutHint missing %q: %s", lang, want, hint)
+			}
+		}
+		if strings.Contains(hint, "lark-cli auth login --no-wait --json") {
+			t.Errorf("%s AgentTimeoutHint recommends an invalid optionless retry: %s", lang, hint)
+		}
+	}
+}
+
+func TestAgentTimeoutHint_DefaultBytesStable(t *testing.T) {
+	wantSHA256 := map[i18n.Lang]string{
+		i18n.LangZhCN: "9b9d23f6785d7a259de98620184fb05a4952464687a9f60982ce007aee39451e",
+		i18n.LangEnUS: "f39c9cd432668401040a4eda43b5ced0d4f20c0b8f55e06ef1773bc4048c6071",
+	}
+	for lang, want := range wantSHA256 {
+		hint := getLoginMsg(lang).AgentTimeoutHint(recovery.RenderContext{})
+		if got := fmt.Sprintf("%x", sha256.Sum256([]byte(hint))); got != want {
+			t.Errorf("%s default AgentTimeoutHint digest = %s, want legacy %s", lang, got, want)
+		}
+	}
+}
+
+func TestAgentTimeoutHint_ExplicitProfilePreservesStartAndResume(t *testing.T) {
+	context := recovery.RenderContext{Profile: "team-beta"}
+	for _, lang := range []i18n.Lang{i18n.LangZhCN, i18n.LangEnUS} {
+		hint := getLoginMsg(lang).AgentTimeoutHint(context)
+		for _, want := range []string{
+			"`lark-cli auth login --profile='team-beta'`",
+			`"lark-cli auth login --profile='team-beta' --device-code <code>"`,
+		} {
+			if !strings.Contains(hint, want) {
+				t.Errorf("%s profile-aware AgentTimeoutHint missing %q: %s", lang, want, hint)
 			}
 		}
 	}

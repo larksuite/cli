@@ -174,7 +174,7 @@ var CalendarSearchEvent = common.Shortcut{
 	Description: "Search calendar events by keyword, time range, and attendees",
 	Risk:        "read",
 	Scopes:      []string{"calendar:calendar.event:read"},
-	AuthTypes:   []string{"user"},
+	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "calendar-id", Desc: "calendar ID (default: primary)"},
@@ -195,6 +195,10 @@ var CalendarSearchEvent = common.Shortcut{
 		if _, err := common.ValidatePageSizeTyped(runtime, "page-size", defaultSearchEventPageSize, 1, maxSearchEventPageSize); err != nil {
 			return err
 		}
+		warnCalendarTimezoneMismatch(runtime,
+			calendarTimeInputRange{Flag: "start", Value: runtime.Str("start")},
+			calendarTimeInputRange{Flag: "end", Value: runtime.Str("end")},
+		)
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {

@@ -3,7 +3,13 @@
 
 package cmd
 
-import "testing"
+import (
+	"errors"
+	"testing"
+
+	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/envvars"
+)
 
 func TestBootstrapInvocationContext_ProfileFlag(t *testing.T) {
 	inv, err := BootstrapInvocationContext([]string{"--profile", "target", "auth", "status"})
@@ -42,6 +48,7 @@ func TestBootstrapInvocationContext_MissingProfileValue(t *testing.T) {
 }
 
 func TestBootstrapInvocationContext_HelpFlag(t *testing.T) {
+	t.Setenv(envvars.CliProfile, "")
 	inv, err := BootstrapInvocationContext([]string{"--help"})
 	if err != nil {
 		t.Fatalf("--help should not error, got: %v", err)
@@ -52,6 +59,7 @@ func TestBootstrapInvocationContext_HelpFlag(t *testing.T) {
 }
 
 func TestBootstrapInvocationContext_ShortHelp(t *testing.T) {
+	t.Setenv(envvars.CliProfile, "")
 	inv, err := BootstrapInvocationContext([]string{"-h"})
 	if err != nil {
 		t.Fatalf("-h should not error, got: %v", err)
@@ -68,5 +76,46 @@ func TestBootstrapInvocationContext_HelpWithProfile(t *testing.T) {
 	}
 	if inv.Profile != "target" {
 		t.Fatalf("profile = %q, want %q", inv.Profile, "target")
+	}
+}
+
+func TestBootstrapInvocationContext_ProfilePrecedence(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		environment string
+		args        []string
+		wantProfile string
+		wantSource  core.ProfileSource
+	}{
+		{"environment default", "session", []string{"whoami"}, "session", core.ProfileFromEnvironment},
+		{"flag overrides environment", "session", []string{"whoami", "--profile", "command"}, "command", core.ProfileFromFlag},
+		{"empty flag suppresses environment", "session", []string{"whoami", "--profile="}, "", core.ProfileFromFlag},
+		{"empty environment is unset", "", []string{"whoami"}, "", core.ProfileFromConfig},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(envvars.CliProfile, tc.environment)
+			inv, err := BootstrapInvocationContext(tc.args)
+			if err != nil {
+				t.Fatalf("BootstrapInvocationContext() error = %v", err)
+			}
+			if inv.Profile != tc.wantProfile || inv.ProfileSource != tc.wantSource {
+				t.Fatalf("profile = %q, source = %v, want %q / %v", inv.Profile, inv.ProfileSource, tc.wantProfile, tc.wantSource)
+			}
+		})
+	}
+}
+
+func TestIsDeferredBootstrapProfileError(t *testing.T) {
+	if !isDeferredBootstrapProfileError(errors.New("flag needs an argument: --profile")) {
+		t.Fatal("missing --profile value must be deferred to the completed Cobra tree")
+	}
+	for _, err := range []error{
+		nil,
+		errors.New("flag needs an argument: --future"),
+		errors.New("invalid argument for --profile"),
+	} {
+		if isDeferredBootstrapProfileError(err) {
+			t.Fatalf("unexpected deferred bootstrap error: %v", err)
+		}
 	}
 }

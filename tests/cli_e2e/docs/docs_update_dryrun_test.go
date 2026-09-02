@@ -5,12 +5,15 @@ package docs
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
@@ -59,7 +62,7 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 				"--dry-run",
 			},
 			wantContains:   []string{"/open-apis/docs_ai/v1/documents/doxcnDryRunE2E/fetch"},
-			wantExtraParam: `{"enable_user_cite_reference_map":true,"return_html5_block_data":true}`,
+			wantExtraParam: `{"enable_user_cite_reference_map":true,"include_comments":true,"return_html5_block_data":true}`,
 		},
 		{
 			name: "update",
@@ -95,6 +98,42 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 				"--dry-run",
 			},
 			wantContains: []string{"/open-apis/docs_ai/v1/documents/doxcnDryRunE2E"},
+		},
+		{
+			name: "block_replace inclusive range",
+			args: []string{
+				"docs", "+update",
+				"--doc", "doxcnDryRunE2E",
+				"--command", "block_replace",
+				"--start-block-id", "li1",
+				"--end-block-id", "li3",
+				"--content", "<li>combined</li>",
+				"--dry-run",
+			},
+			wantContains: []string{"/open-apis/docs_ai/v1/documents/doxcnDryRunE2E"},
+			wantBody: map[string]any{
+				"command":        "block_replace",
+				"start_block_id": "li1",
+				"end_block_id":   "li3",
+				"content":        "<li>combined</li>",
+			},
+		},
+		{
+			name: "block_delete inclusive range",
+			args: []string{
+				"docs", "+update",
+				"--doc", "doxcnDryRunE2E",
+				"--command", "block_delete",
+				"--start-block-id", "p1",
+				"--end-block-id", "p3",
+				"--dry-run",
+			},
+			wantContains: []string{"/open-apis/docs_ai/v1/documents/doxcnDryRunE2E"},
+			wantBody: map[string]any{
+				"command":        "block_delete",
+				"start_block_id": "p1",
+				"end_block_id":   "p3",
+			},
 		},
 		{
 			name: "history list",
@@ -224,4 +263,67 @@ func TestDocs_CreateTitleDryRunPrependsContent(t *testing.T) {
 	require.Equal(t, "/open-apis/docs_ai/v1/documents", clie2e.DryRunGet(out, "api.0.url").String(), "stdout:\n%s", out)
 	require.Equal(t, "markdown", clie2e.DryRunGet(out, "api.0.body.format").String(), "stdout:\n%s", out)
 	require.Equal(t, "<title>Dry Run &amp; Title</title>\n## Body", clie2e.DryRunGet(out, "api.0.body.content").String(), "stdout:\n%s", out)
+}
+
+func TestDocsUpdateDryRunLegacyFlagReturnsCurrentEmbeddedGuidance(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_APP_ID", "app")
+	t.Setenv("LARKSUITE_CLI_APP_SECRET", "secret")
+	t.Setenv("LARKSUITE_CLI_BRAND", "feishu")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"docs", "+update",
+			"--doc", "doxcnDryRunE2E",
+			"--mode", "overwrite",
+			"--content", "<p>hello</p>",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 2)
+	require.Empty(t, result.Stdout, "validate-stage failure must not write to stdout")
+
+	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), result.Stderr)
+	require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), result.Stderr)
+	require.Equal(t, "--mode", gjson.Get(result.Stderr, "error.param").String(), result.Stderr)
+	require.Equal(t,
+		"run `lark-cli docs +update --help` for the latest command flags; read the version-matched embedded guidance before retrying: `lark-cli skills read lark-doc`, `lark-cli skills read lark-doc/references/lark-doc-update.md`, `lark-cli skills read lark-doc/references/lark-doc-xml.md`, `lark-cli skills read lark-doc/references/lark-doc-md.md`; do not inspect another local SKILL.md copy",
+		gjson.Get(result.Stderr, "error.hint").String(),
+		result.Stderr,
+	)
+}
+
+func TestDocs_CreateEmptyContentFileReportsActionableError(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_APP_ID", "app")
+	t.Setenv("LARKSUITE_CLI_APP_SECRET", "secret")
+	t.Setenv("LARKSUITE_CLI_BRAND", "feishu")
+
+	workDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(workDir, "draft.xml"), nil, 0o600))
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"docs", "+create",
+			"--doc-format", "xml",
+			"--content", "@draft.xml",
+			"--dry-run",
+		},
+		DefaultAs: "user",
+		WorkDir:   workDir,
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 2)
+	require.Empty(t, result.Stdout, "stdout must stay reserved for program data")
+	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String())
+	require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String())
+	require.Equal(t, "--content", gjson.Get(result.Stderr, "error.param").String())
+	require.Equal(t, `--content file "draft.xml" is empty`, gjson.Get(result.Stderr, "error.message").String())
+	require.Contains(t, gjson.Get(result.Stderr, "error.hint").String(), "exact data.draft_path returned by that command")
 }

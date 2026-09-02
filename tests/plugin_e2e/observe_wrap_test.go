@@ -93,13 +93,14 @@ func init() {
 //
 //	exit=2
 //	stderr=[audit] docs/+update
-//	{"ok":false,"error":{"type":"validation","subtype":"failed_precondition",...}}
+//	{"ok":false,"error":{"type":"validation","subtype":"command_unavailable",
+//	  "message":"command not included in this build"}}
 //
 // The leading "[audit] ..." line means gjson.Valid on the raw stderr is
 // false; the JSON envelope must be sliced out from the first '{' before
 // parsing it as JSON.
 func TestObserveOnDeniedPin(t *testing.T) {
-	bin := buildFork(t, "audit-restrict", auditRestrictPlugin)
+	bin := buildConcealedFork(t, "concealed-audit-restrict", auditRestrictPlugin)
 	res := run(t, bin, "docs", "+update", "--doc-token", "x", "--content", "y")
 	if res.exit != 2 {
 		t.Fatalf("exit=%d stdout=%s stderr=%s", res.exit, res.stdout, res.stderr)
@@ -115,15 +116,7 @@ func TestObserveOnDeniedPin(t *testing.T) {
 	if !gjson.Valid(envelope) {
 		t.Fatalf("sliced envelope not JSON: %s", envelope)
 	}
-	if got := gjson.Get(envelope, "error.type").String(); got != "validation" {
-		t.Errorf("error.type=%q want validation", got)
-	}
-	if got := gjson.Get(envelope, "error.subtype").String(); got != "failed_precondition" {
-		t.Errorf("error.subtype=%q want failed_precondition", got)
-	}
-	if hint := gjson.Get(envelope, "error.hint").String(); !strings.Contains(hint, "reason_code write_not_allowed") {
-		t.Errorf("hint=%q want to contain reason_code write_not_allowed", hint)
-	}
+	assertUnavailableJSON(t, envelope)
 }
 
 // observerPanicPlugin's After observer panics unconditionally. runObserverSafe

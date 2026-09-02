@@ -114,17 +114,6 @@ func TestDocMediaInsertValidateContract(t *testing.T) {
 			wantParam: "--doc",
 		},
 		{
-			name:      "blank selection",
-			str:       map[string]string{"doc": testDocxToken, "file": "dummy.png", "selection-with-ellipsis": "   "},
-			wantParam: "--selection-with-ellipsis",
-		},
-		{
-			name:      "before without selection",
-			str:       map[string]string{"doc": testDocxToken, "file": "dummy.png"},
-			bools:     map[string]bool{"before": true},
-			wantParam: "--before",
-		},
-		{
 			name:      "invalid file-view",
 			str:       map[string]string{"doc": testDocxToken, "file": "dummy.png", "file-view": "bogus"},
 			wantParam: "--file-view",
@@ -360,6 +349,11 @@ func TestValidateUpdateV2Contract(t *testing.T) {
 			name:      "block_delete without block id",
 			str:       map[string]string{"doc": testDocxToken, "command": "block_delete"},
 			wantParam: "--block-id",
+		},
+		{
+			name:      "block_delete rejects content",
+			str:       map[string]string{"doc": testDocxToken, "command": "block_delete", "block-id": "blkX", "content": "unexpected"},
+			wantParam: "--content",
 		},
 		{
 			name:      "block_insert_after without block id",

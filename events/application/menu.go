@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/processing"
 )
 
 // BotMenuOutput is the flattened shape for application.bot.menu_v6.
@@ -29,13 +30,6 @@ type BotMenuOutput struct {
 
 func processBotMenu(_ context.Context, _ event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {
 	var envelope struct {
-		Header struct {
-			EventID    string `json:"event_id"`
-			EventType  string `json:"event_type"`
-			CreateTime string `json:"create_time"`
-			AppID      string `json:"app_id"`
-			TenantKey  string `json:"tenant_key"`
-		} `json:"header"`
 		Event struct {
 			EventKey  string          `json:"event_key"`
 			Timestamp json.RawMessage `json:"timestamp"`
@@ -50,11 +44,11 @@ func processBotMenu(_ context.Context, _ event.APIClient, raw *event.RawEvent, _
 		} `json:"event"`
 	}
 	if err := json.Unmarshal(raw.Payload, &envelope); err != nil {
-		return raw.Payload, nil //nolint:nilerr // passthrough on malformed payload so consumers still see the event
+		return nil, processing.DropMalformed(raw.EventType)
 	}
 
 	menuTimestamp := timestampMillisString(envelope.Event.Timestamp)
-	timestamp := envelope.Header.CreateTime
+	timestamp := raw.SourceTime
 	if timestamp == "" {
 		timestamp = menuTimestamp
 	}
@@ -62,10 +56,10 @@ func processBotMenu(_ context.Context, _ event.APIClient, raw *event.RawEvent, _
 
 	out := &BotMenuOutput{
 		Type:            eventTypeBotMenuV6,
-		EventID:         envelope.Header.EventID,
+		EventID:         raw.EventID,
 		Timestamp:       timestamp,
-		AppID:           envelope.Header.AppID,
-		TenantKey:       envelope.Header.TenantKey,
+		AppID:           raw.AppID,
+		TenantKey:       raw.TenantKey,
 		EventKey:        envelope.Event.EventKey,
 		MenuTimestamp:   menuTimestamp,
 		OperatorID:      operatorID,

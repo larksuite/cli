@@ -129,7 +129,8 @@ type TokenSpec struct {
 // TokenResult is the output of TokenProvider.ResolveToken.
 type TokenResult struct {
 	Token  string
-	Scopes string // optional, space-separated; empty = skip scope pre-check
+	Scopes string                // optional, space-separated; empty = skip scope pre-check
+	Source core.CredentialSource // whewe the token came from
 }
 
 // IdentityHint is credential-layer guidance for resolving the effective identity.

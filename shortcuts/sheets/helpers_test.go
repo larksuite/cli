@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -144,6 +145,13 @@ func TestSheetHelpersValidationMetadata(t *testing.T) {
 		if validationErr.Params[0].Name != "--sheet-id" || validationErr.Params[1].Name != "--sheet-name" {
 			t.Fatalf("params = %#v, want --sheet-id/--sheet-name", validationErr.Params)
 		}
+		// Eval traces recover on the very next call, so the missing piece is
+		// which name to pass — the hint has to name Sheet1 and the lookup.
+		for _, want := range []string{"Sheet1", "+workbook-info"} {
+			if !strings.Contains(validationErr.Hint, want) {
+				t.Errorf("hint should mention %q, got %q", want, validationErr.Hint)
+			}
+		}
 	})
 
 	t.Run("spreadsheet url shape reports url param", func(t *testing.T) {
@@ -222,6 +230,19 @@ func parseDryRunAPI(t *testing.T, sc common.Shortcut, args []string) []interface
 	dryRun := decodeDryRunRaw(t, out)
 	calls, _ := dryRunAPIEntries(dryRun)
 	return calls
+}
+
+// dryRunWarning returns the advisory text a dry-run surfaces under
+// data.warning_message, or "" when the shortcut emitted none.
+func dryRunWarning(t *testing.T, sc common.Shortcut, args []string) string {
+	t.Helper()
+	out, err := runShortcut(t, sc, append(args, "--dry-run"))
+	if err != nil {
+		t.Fatalf("dry-run failed: %v\noutput=%s", err, out)
+	}
+	data, _ := decodeDryRunRaw(t, out)["data"].(map[string]interface{})
+	warning, _ := data["warning_message"].(string)
+	return warning
 }
 
 func decodeDryRunRaw(t *testing.T, out string) map[string]interface{} {
@@ -372,4 +393,62 @@ func TestParseSpreadsheetRef(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestCollapseAggregatedIssues covers the grouping rule behind the folded
+// --styles / --writes messages: one defect repeated across items is stated
+// once and its other locations named, while genuinely different defects each
+// keep their own line.
+func TestCollapseAggregatedIssues(t *testing.T) {
+	t.Parallel()
+
+	issue := func(msg string) error { return common.ValidationErrorf("%s", msg) }
+
+	t.Run("identical defects across items collapse", func(t *testing.T) {
+		t.Parallel()
+		got := collapseAggregatedIssues([]error{
+			issue("--styles.styles[0].cell_styles[0].border_type is bad; supported: a, b"),
+			issue("--styles.styles[0].cell_styles[1].border_type is bad; supported: a, b"),
+		})
+		if len(got) != 1 {
+			t.Fatalf("got %d lines, want 1: %q", len(got), got)
+		}
+		if !strings.Contains(got[0], "[same at 1 more: --styles.styles[0].cell_styles[1].border_type]") {
+			t.Errorf("the collapsed line must name the other location, got %q", got[0])
+		}
+	})
+
+	t.Run("different defects stay separate", func(t *testing.T) {
+		t.Parallel()
+		got := collapseAggregatedIssues([]error{
+			issue("--styles.styles[0].cell_styles[0].border_type is bad"),
+			issue("--styles.styles[0].cell_styles[1].bg_color is bad"),
+		})
+		if len(got) != 2 {
+			t.Fatalf("got %d lines, want 2: %q", len(got), got)
+		}
+	})
+
+	t.Run("a long repeat lists a few locations then counts the rest", func(t *testing.T) {
+		t.Parallel()
+		probs := make([]error, 0, 9)
+		for i := 0; i < 9; i++ {
+			probs = append(probs, issue(fmt.Sprintf("--styles.styles[0].cell_styles[%d].border_type is bad", i)))
+		}
+		got := collapseAggregatedIssues(probs)
+		if len(got) != 1 {
+			t.Fatalf("got %d lines, want 1: %q", len(got), got)
+		}
+		if !strings.Contains(got[0], "[same at 8 more:") || !strings.Contains(got[0], "+5 more]") {
+			t.Errorf("want 3 locations named and the rest counted, got %q", got[0])
+		}
+	})
+
+	t.Run("a lone issue is rendered verbatim", func(t *testing.T) {
+		t.Parallel()
+		got := collapseAggregatedIssues([]error{issue("--writes[0]: nope")})
+		if len(got) != 1 || got[0] != "--writes[0]: nope" {
+			t.Errorf("got %q, want the message unchanged", got)
+		}
+	})
 }

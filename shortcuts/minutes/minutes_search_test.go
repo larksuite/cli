@@ -18,6 +18,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func TestMinutesSearchSupportsUserAndBotIdentity(t *testing.T) {
+	if !minutesStringSliceContains(MinutesSearch.AuthTypes, "user") {
+		t.Fatalf("MinutesSearch.AuthTypes = %v, want user support", MinutesSearch.AuthTypes)
+	}
+	if !minutesStringSliceContains(MinutesSearch.AuthTypes, "bot") {
+		t.Fatalf("MinutesSearch.AuthTypes = %v, want bot support for tenant access token", MinutesSearch.AuthTypes)
+	}
+}
+
 // newMinutesSearchTestCommand builds a command with the flags used by minutes search tests.
 func newMinutesSearchTestCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "test"}
@@ -29,6 +38,15 @@ func newMinutesSearchTestCommand() *cobra.Command {
 	cmd.Flags().String("page-token", "", "")
 	cmd.Flags().String("page-size", "15", "")
 	return cmd
+}
+
+func minutesStringSliceContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 // configWithoutUserOpenID returns a test config without a resolvable user open_id.

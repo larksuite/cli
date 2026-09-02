@@ -14,6 +14,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
 )
 
 // ListOptions holds all inputs for auth list.
@@ -24,6 +25,14 @@ type ListOptions struct {
 
 // NewCmdAuthList creates the auth list subcommand.
 func NewCmdAuthList(f *cmdutil.Factory, runF func(*ListOptions) error) *cobra.Command {
+	return newCmdAuthList(f, runF, nil)
+}
+
+func newCmdAuthList(
+	f *cmdutil.Factory,
+	runF func(*ListOptions) error,
+	projector *recovery.Projector,
+) *cobra.Command {
 	opts := &ListOptions{Factory: f}
 
 	cmd := &cobra.Command{
@@ -33,7 +42,7 @@ func NewCmdAuthList(f *cmdutil.Factory, runF func(*ListOptions) error) *cobra.Co
 			if runF != nil {
 				return runF(opts)
 			}
-			return authListRun(opts)
+			return authListRunWithRecovery(opts, projector)
 		},
 	}
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
@@ -43,6 +52,10 @@ func NewCmdAuthList(f *cmdutil.Factory, runF func(*ListOptions) error) *cobra.Co
 }
 
 func authListRun(opts *ListOptions) error {
+	return authListRunWithRecovery(opts, nil)
+}
+
+func authListRunWithRecovery(opts *ListOptions, projector *recovery.Projector) error {
 	f := opts.Factory
 
 	multi, _ := core.LoadMultiAppConfig()
@@ -61,7 +74,7 @@ func authListRun(opts *ListOptions) error {
 		// workspace-aware, so we pull the message+hint out of
 		// NotConfiguredError() instead of hard-coding it.
 		var cfgErr *errs.ConfigError
-		if errors.As(core.NotConfiguredError(), &cfgErr) {
+		if errors.As(projector.Render(core.NotConfiguredError()), &cfgErr) {
 			fmt.Fprintln(f.IOStreams.ErrOut, cfgErr.Message)
 			if cfgErr.Hint != "" {
 				fmt.Fprintln(f.IOStreams.ErrOut, "  hint: "+cfgErr.Hint)
@@ -70,8 +83,14 @@ func authListRun(opts *ListOptions) error {
 		return nil
 	}
 
-	app := multi.CurrentAppConfig(f.Invocation.Profile)
-	if app == nil || len(app.Users) == 0 {
+	// A selector that matches no profile is an input error, not an empty
+	// account: reporting it as not_logged_in (exit 0) would steer the caller
+	// into auth login against a profile that does not exist.
+	app, err := multi.RequireAppConfig(f.Invocation.Profile, f.Invocation.ProfileSource)
+	if err != nil {
+		return err
+	}
+	if len(app.Users) == 0 {
 		if opts.JSON {
 			output.PrintJson(f.IOStreams.Out, map[string]interface{}{
 				"ok":     true,
@@ -80,7 +99,11 @@ func authListRun(opts *ListOptions) error {
 			})
 			return nil
 		}
-		fmt.Fprintln(f.IOStreams.ErrOut, "No logged-in users. Run `lark-cli auth login` to log in.")
+		fmt.Fprint(f.IOStreams.ErrOut, "No logged-in users.")
+		if projector.CanReference(recovery.TargetAuthLogin) {
+			fmt.Fprint(f.IOStreams.ErrOut, " Run `lark-cli auth login` to log in.")
+		}
+		fmt.Fprintln(f.IOStreams.ErrOut)
 		return nil
 	}
 

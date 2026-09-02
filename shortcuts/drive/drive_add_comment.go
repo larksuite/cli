@@ -16,8 +16,6 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-const defaultLocateDocLimit = 10
-
 // maxCommentTotalRunes is the cap on the combined character (rune) count
 // across all `reply_elements[].text` fields in a single
 // `drive +add-comment` request.
@@ -96,22 +94,6 @@ type resolvedCommentTarget struct {
 	WikiToken  string
 }
 
-type locateDocBlock struct {
-	BlockID     string
-	RawMarkdown string
-}
-
-type locateDocMatch struct {
-	AnchorBlockID string
-	ParentBlockID string
-	Blocks        []locateDocBlock
-}
-
-type locateDocResult struct {
-	MatchCount int
-	Matches    []locateDocMatch
-}
-
 type commentReplyElementInput struct {
 	Type        string `json:"type"`
 	Text        string `json:"text"`
@@ -143,7 +125,6 @@ var DriveAddComment = common.Shortcut{
 		{Name: "type", Desc: "document type: doc, docx, file, sheet, slides, bitable, base (required when --doc is a bare token; auto-detected for URLs; use bitable as the wire value, base is accepted as a compatibility alias)", Enum: []string{"doc", "docx", "file", "sheet", "slides", "bitable", "base"}},
 		{Name: "content", Desc: "reply_elements JSON string", Required: true, Input: []string{common.File, common.Stdin}},
 		{Name: "full-comment", Type: "bool", Desc: "create a full-document comment; also the default when no location is provided"},
-		{Name: "selection-with-ellipsis", Desc: "target content locator (plain text or 'start...end')"},
 		{Name: "block-id", Desc: "for docx: anchor block ID; for sheet: <sheetId>!<cell>; for slides: <slide-block-type>!<xml-id>; for base(bitable): <table-id>!<record-id>!<view-id>"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -160,9 +141,6 @@ var DriveAddComment = common.Shortcut{
 			if runtime.Bool("full-comment") {
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--full-comment is not applicable for base(bitable) comments; use --block-id <table-id>!<record-id>!<view-id>").WithParam("--full-comment")
 			}
-			if strings.TrimSpace(runtime.Str("selection-with-ellipsis")) != "" {
-				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--selection-with-ellipsis is not applicable for base(bitable) comments; use --block-id <table-id>!<record-id>!<view-id>").WithParam("--selection-with-ellipsis")
-			}
 			_, err := parseBaseCommentAnchor(runtime)
 			return err
 		}
@@ -176,8 +154,8 @@ var DriveAddComment = common.Shortcut{
 			if _, err := parseSheetCellRef(blockID); err != nil {
 				return err
 			}
-			if runtime.Bool("full-comment") || strings.TrimSpace(runtime.Str("selection-with-ellipsis")) != "" {
-				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--full-comment and --selection-with-ellipsis are not applicable for sheet comments; use --block-id with <sheetId>!<cell> format")
+			if runtime.Bool("full-comment") {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--full-comment is not applicable for sheet comments; use --block-id with <sheetId>!<cell> format")
 			}
 			return nil
 		}
@@ -188,21 +166,14 @@ var DriveAddComment = common.Shortcut{
 			if runtime.Bool("full-comment") {
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--full-comment is not applicable for slide comments; use --block-id <slide-block-type>!<xml-id>")
 			}
-			if strings.TrimSpace(runtime.Str("selection-with-ellipsis")) != "" {
-				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--selection-with-ellipsis is not applicable for slide comments; use --block-id <slide-block-type>!<xml-id>")
-			}
 			return nil
 		}
-		selection := runtime.Str("selection-with-ellipsis")
 		blockID := strings.TrimSpace(runtime.Str("block-id"))
-		if strings.TrimSpace(selection) != "" && blockID != "" {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--selection-with-ellipsis and --block-id are mutually exclusive")
-		}
-		if runtime.Bool("full-comment") && (strings.TrimSpace(selection) != "" || blockID != "") {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--full-comment cannot be used with --selection-with-ellipsis or --block-id")
+		if runtime.Bool("full-comment") && blockID != "" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--full-comment cannot be used with --block-id")
 		}
 
-		mode := resolveCommentMode(runtime.Bool("full-comment"), selection, blockID)
+		mode := resolveCommentMode(runtime.Bool("full-comment"), blockID)
 		if docRef.Kind == "file" {
 			return validateFileCommentMode(mode, "")
 		}
@@ -215,9 +186,8 @@ var DriveAddComment = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		docRef, _ := parseCommentDocRef(runtime.Str("doc"), runtime.Str("type"))
 		replyElements, _ := parseCommentReplyElements(runtime.Str("content"))
-		selection := runtime.Str("selection-with-ellipsis")
 		blockID := strings.TrimSpace(runtime.Str("block-id"))
-		mode := resolveCommentMode(runtime.Bool("full-comment"), selection, blockID)
+		mode := resolveCommentMode(runtime.Bool("full-comment"), blockID)
 
 		// For wiki URLs, resolve the actual target type via API so dry-run
 		// matches real execution behavior instead of guessing from --block-id.
@@ -319,62 +289,24 @@ var DriveAddComment = common.Shortcut{
 			commentBody = buildCommentCreateV2Request(resolvedKind, anchorBlockIDForDryRun(blockID), "", replyElements, nil)
 		}
 
-		mcpEndpoint := common.MCPEndpoint(runtime.Config.Brand)
-
 		dry := common.NewDryRunAPI()
 		switch {
 		case mode == commentModeFull && isWiki:
 			dry.Desc("2-step orchestration: resolve wiki -> create full comment")
 		case mode == commentModeFull:
 			dry.Desc("1-step request: create full comment")
-		case isWiki && strings.TrimSpace(selection) != "":
-			dry.Desc("3-step orchestration: resolve wiki -> locate block -> create local comment")
 		case isWiki:
 			dry.Desc("2-step orchestration: resolve wiki -> create local comment")
-		case strings.TrimSpace(selection) != "":
-			dry.Desc("2-step orchestration: locate block -> create local comment")
 		default:
 			dry.Desc("1-step request: create local comment with explicit block ID")
-		}
-
-		if mode == commentModeLocal && strings.TrimSpace(selection) != "" {
-			step := "[1]"
-			if isWiki {
-				step = "[2]"
-			}
-			docID := resolvedToken
-			if isWiki && resolvedToken == docRef.Token {
-				docID = "<resolved_docx_token>"
-			}
-			mcpArgs := map[string]interface{}{
-				"doc_id":                  docID,
-				"limit":                   defaultLocateDocLimit,
-				"selection_with_ellipsis": selection,
-			}
-			dry.POST(mcpEndpoint).
-				Desc(step+" MCP tool: locate-doc").
-				Body(map[string]interface{}{
-					"method": "tools/call",
-					"params": map[string]interface{}{
-						"name":      "locate-doc",
-						"arguments": mcpArgs,
-					},
-				}).
-				Set("mcp_tool", "locate-doc").
-				Set("args", mcpArgs)
 		}
 
 		step := "[1]"
 		createDesc := "Create full comment"
 		if mode == commentModeLocal {
 			createDesc = "Create local comment"
-			step = "[2]"
-			if isWiki && strings.TrimSpace(selection) != "" {
-				step = "[3]"
-			} else if isWiki || strings.TrimSpace(selection) != "" {
+			if isWiki {
 				step = "[2]"
-			} else {
-				step = "[1]"
 			}
 		} else if isWiki {
 			step = "[2]"
@@ -403,9 +335,8 @@ var DriveAddComment = common.Shortcut{
 			return executeSlidesComment(runtime, docRef)
 		}
 
-		selection := runtime.Str("selection-with-ellipsis")
 		blockID := strings.TrimSpace(runtime.Str("block-id"))
-		mode := resolveCommentMode(runtime.Bool("full-comment"), selection, blockID)
+		mode := resolveCommentMode(runtime.Bool("full-comment"), blockID)
 
 		target, err := resolveCommentTarget(ctx, runtime, runtime.Str("doc"), mode)
 		if err != nil {
@@ -431,38 +362,10 @@ var DriveAddComment = common.Shortcut{
 			return err
 		}
 
-		var locateResult locateDocResult
-		selectedMatch := 0
-		if mode == commentModeLocal && blockID == "" {
-			_, locateResult, err = locateDocumentSelection(runtime, target, selection, defaultLocateDocLimit)
-			if err != nil {
-				return err
-			}
-
-			match, idx, err := selectLocateMatch(locateResult)
-			if err != nil {
-				return err
-			}
-			blockID = match.AnchorBlockID
-			if strings.TrimSpace(blockID) == "" {
-				return errs.NewInternalError(errs.SubtypeInvalidResponse, "locate-doc response missing anchor_block_id")
-			}
-			selectedMatch = idx
-			fmt.Fprintf(runtime.IO().ErrOut, "Locate-doc matched %d block(s); using match #%d (%s)\n", len(locateResult.Matches), idx, blockID)
-		} else if mode == commentModeLocal {
-			fmt.Fprintf(runtime.IO().ErrOut, "Using explicit block ID: %s\n", blockID)
-		}
-
 		requestPath := fmt.Sprintf("/open-apis/drive/v1/files/%s/new_comments", validate.EncodePathSegment(target.FileToken))
 		requestBody := buildCommentCreateV2Request(target.FileType, "", "", replyElements, nil)
 		if mode == commentModeLocal {
 			requestBody = buildCommentCreateV2Request(target.FileType, blockID, "", replyElements, nil)
-		}
-
-		if mode == commentModeLocal {
-			fmt.Fprintf(runtime.IO().ErrOut, "Creating local comment in %s\n", common.MaskToken(target.FileToken))
-		} else {
-			fmt.Fprintf(runtime.IO().ErrOut, "Creating full comment in %s\n", common.MaskToken(target.FileToken))
 		}
 
 		data, err := runtime.CallAPITyped(
@@ -492,12 +395,6 @@ var DriveAddComment = common.Shortcut{
 		if mode == commentModeLocal {
 			out["anchor_block_id"] = blockID
 			out["selection_source"] = "block_id"
-			if strings.TrimSpace(selection) != "" {
-				out["selection_source"] = "locate-doc"
-				out["selection_with_ellipsis"] = selection
-				out["match_count"] = locateResult.MatchCount
-				out["match_index"] = selectedMatch
-			}
 		} else if isWhole, ok := data["is_whole"]; ok {
 			out["is_whole"] = isWhole
 		}
@@ -507,11 +404,11 @@ var DriveAddComment = common.Shortcut{
 	},
 }
 
-func resolveCommentMode(explicitFullComment bool, selection, blockID string) commentMode {
+func resolveCommentMode(explicitFullComment bool, blockID string) commentMode {
 	if explicitFullComment {
 		return commentModeFull
 	}
-	if strings.TrimSpace(selection) == "" && strings.TrimSpace(blockID) == "" {
+	if strings.TrimSpace(blockID) == "" {
 		return commentModeFull
 	}
 	return commentModeLocal
@@ -590,7 +487,6 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 		}, nil
 	}
 
-	fmt.Fprintf(runtime.IO().ErrOut, "Resolving wiki node: %s\n", common.MaskToken(docRef.Token))
 	data, err := runtime.CallAPITyped(
 		"GET",
 		"/open-apis/wiki/v2/spaces/get_node",
@@ -610,17 +506,10 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 	if objType == "slides" && mode == commentModeFull {
 		return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but slide comments require --block-id <slide-block-type>!<xml-id>; --full-comment is not applicable", objType)
 	}
-	if objType == "slides" && strings.TrimSpace(runtime.Str("selection-with-ellipsis")) != "" {
-		return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but --selection-with-ellipsis is not applicable for slide comments; use --block-id <slide-block-type>!<xml-id>", objType)
-	}
 	if objType == "bitable" || objType == "base" {
 		if runtime.Bool("full-comment") {
 			return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but --full-comment is not applicable for base(bitable) comments; use --block-id <table-id>!<record-id>!<view-id>", objType).WithParam("--full-comment")
 		}
-		if strings.TrimSpace(runtime.Str("selection-with-ellipsis")) != "" {
-			return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but --selection-with-ellipsis is not applicable for base(bitable) comments; use --block-id <table-id>!<record-id>!<view-id>", objType).WithParam("--selection-with-ellipsis")
-		}
-		fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to base: %s\n", common.MaskToken(objToken))
 		return resolvedCommentTarget{
 			DocID:      objToken,
 			FileToken:  objToken,
@@ -631,7 +520,6 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 	}
 	if objType == "sheet" {
 		// Sheet comments are handled via the sheet fast path in Execute.
-		fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
 		return resolvedCommentTarget{
 			DocID:      objToken,
 			FileToken:  objToken,
@@ -641,7 +529,6 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 		}, nil
 	}
 	if objType == "slides" {
-		fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
 		return resolvedCommentTarget{
 			DocID:      objToken,
 			FileToken:  objToken,
@@ -654,7 +541,6 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 		if err := validateFileCommentMode(mode, objType); err != nil {
 			return resolvedCommentTarget{}, err
 		}
-		fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
 		return resolvedCommentTarget{
 			DocID:      objToken,
 			FileToken:  objToken,
@@ -670,7 +556,6 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 		return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but comments only support doc/docx/file/sheet/slides/base(bitable)", objType)
 	}
 
-	fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
 	return resolvedCommentTarget{
 		DocID:      objToken,
 		FileToken:  objToken,
@@ -678,99 +563,6 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 		ResolvedBy: "wiki",
 		WikiToken:  docRef.Token,
 	}, nil
-}
-
-func locateDocumentSelection(runtime *common.RuntimeContext, target resolvedCommentTarget, selection string, limit int) (map[string]interface{}, locateDocResult, error) {
-	args := map[string]interface{}{
-		"doc_id":                  target.DocID,
-		"limit":                   limit,
-		"selection_with_ellipsis": selection,
-	}
-
-	result, err := common.CallMCPTool(runtime, "locate-doc", args)
-	if err != nil {
-		return nil, locateDocResult{}, err
-	}
-
-	return result, parseLocateDocResult(result), nil
-}
-
-func parseLocateDocResult(result map[string]interface{}) locateDocResult {
-	rawMatches := common.GetSlice(result, "matches")
-	locate := locateDocResult{
-		MatchCount: int(common.GetFloat(result, "match_count")),
-	}
-
-	for _, item := range rawMatches {
-		matchMap, ok := item.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		match := locateDocMatch{
-			AnchorBlockID: common.GetString(matchMap, "anchor_block_id"),
-			ParentBlockID: common.GetString(matchMap, "parent_block_id"),
-		}
-		for _, blockItem := range common.GetSlice(matchMap, "blocks") {
-			blockMap, ok := blockItem.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			match.Blocks = append(match.Blocks, locateDocBlock{
-				BlockID:     common.GetString(blockMap, "block_id"),
-				RawMarkdown: common.GetString(blockMap, "raw_markdown"),
-			})
-		}
-		if match.AnchorBlockID == "" && len(match.Blocks) > 0 {
-			match.AnchorBlockID = match.Blocks[0].BlockID
-		}
-		locate.Matches = append(locate.Matches, match)
-	}
-
-	if locate.MatchCount == 0 {
-		locate.MatchCount = len(locate.Matches)
-	}
-	return locate
-}
-
-func selectLocateMatch(result locateDocResult) (locateDocMatch, int, error) {
-	if len(result.Matches) == 0 {
-		return locateDocMatch{}, 0, errs.NewValidationError(errs.SubtypeInvalidArgument, "locate-doc did not find any matching block").WithParam("--selection-with-ellipsis")
-	}
-
-	if len(result.Matches) > 1 {
-		return locateDocMatch{}, 0, errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"locate-doc matched %d blocks:\n%s", len(result.Matches), formatLocateCandidates(result.Matches)).
-			WithHint("narrow --selection-with-ellipsis until only one block matches").
-			WithParam("--selection-with-ellipsis")
-	}
-
-	return result.Matches[0], 1, nil
-}
-
-func formatLocateCandidates(matches []locateDocMatch) string {
-	lines := make([]string, 0, len(matches))
-	for i, match := range matches {
-		lines = append(lines, fmt.Sprintf("%d. anchor_block_id=%s", i+1, match.AnchorBlockID))
-	}
-	return strings.Join(lines, "\n")
-}
-
-func summarizeLocateMatch(match locateDocMatch) string {
-	if len(match.Blocks) == 0 {
-		return ""
-	}
-
-	parts := make([]string, 0, len(match.Blocks))
-	for _, block := range match.Blocks {
-		snippet := strings.TrimSpace(block.RawMarkdown)
-		if snippet == "" {
-			continue
-		}
-		snippet = strings.ReplaceAll(snippet, "\n", " ")
-		parts = append(parts, snippet)
-	}
-	return common.TruncateStr(strings.Join(parts, " | "), 120)
 }
 
 func parseCommentReplyElements(raw string) ([]map[string]interface{}, error) {
@@ -1095,9 +887,9 @@ func validateFileCommentMode(mode commentMode, resolvedObjType string) error {
 		return nil
 	}
 	if resolvedObjType != "" {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but file comments only support full comments; omit --block-id and --selection-with-ellipsis", resolvedObjType)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but file comments only support full comments; omit --block-id", resolvedObjType)
 	}
-	return errs.NewValidationError(errs.SubtypeInvalidArgument, "file comments only support full comments; omit --block-id and --selection-with-ellipsis")
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "file comments only support full comments; omit --block-id")
 }
 
 func executeSheetComment(runtime *common.RuntimeContext, docRef commentDocRef) error {
@@ -1117,9 +909,6 @@ func executeSheetComment(runtime *common.RuntimeContext, docRef commentDocRef) e
 
 	requestPath := fmt.Sprintf("/open-apis/drive/v1/files/%s/new_comments", validate.EncodePathSegment(docRef.Token))
 	requestBody := buildCommentCreateV2Request("sheet", "", "", replyElements, anchor)
-
-	fmt.Fprintf(runtime.IO().ErrOut, "Creating sheet comment in %s (sheet=%s, col=%d, row=%d)\n",
-		common.MaskToken(docRef.Token), anchor.SheetID, anchor.Col, anchor.Row)
 
 	data, err := runtime.CallAPITyped("POST", requestPath, nil, requestBody)
 	if err != nil {
@@ -1152,9 +941,6 @@ func executeBaseComment(runtime *common.RuntimeContext, target resolvedCommentTa
 
 	requestPath := fmt.Sprintf("/open-apis/drive/v1/files/%s/new_comments", validate.EncodePathSegment(target.FileToken))
 	requestBody := buildBaseCommentCreateV2Request(replyElements, anchor)
-
-	fmt.Fprintf(runtime.IO().ErrOut, "Creating base(bitable) record-local comment in %s (table=%s, record=%s, view=%s)\n",
-		common.MaskToken(target.FileToken), anchor.BlockID, anchor.BaseRecordID, anchor.BaseViewID)
 
 	data, err := runtime.CallAPITyped("POST", requestPath, nil, requestBody)
 	if err != nil {
@@ -1201,8 +987,6 @@ func executeFileComment(runtime *common.RuntimeContext, target resolvedCommentTa
 	requestPath := fmt.Sprintf("/open-apis/drive/v1/files/%s/new_comments", validate.EncodePathSegment(target.FileToken))
 	requestBody := buildCommentCreateV2Request("file", "", "", replyElements, nil)
 
-	fmt.Fprintf(runtime.IO().ErrOut, "Creating file comment in %s (%s)\n", common.MaskToken(target.FileToken), extension)
-
 	data, err := runtime.CallAPITyped("POST", requestPath, nil, requestBody)
 	if err != nil {
 		return err
@@ -1242,9 +1026,6 @@ func executeSlidesComment(runtime *common.RuntimeContext, docRef commentDocRef) 
 
 	requestPath := fmt.Sprintf("/open-apis/drive/v1/files/%s/new_comments", validate.EncodePathSegment(docRef.Token))
 	requestBody := buildCommentCreateV2Request("slides", blockID, slideBlockType, replyElements, nil)
-
-	fmt.Fprintf(runtime.IO().ErrOut, "Creating slide block comment in %s (block_id=%s, slide_block_type=%s)\n",
-		common.MaskToken(docRef.Token), blockID, slideBlockType)
 
 	data, err := runtime.CallAPITyped("POST", requestPath, nil, requestBody)
 	if err != nil {

@@ -14,11 +14,13 @@ import (
 // recorder Registrar captures everything a builder schedules so the
 // test can assert what Install produced without involving the host.
 type recorder struct {
-	observers  int
-	wrappers   int
-	lifecycles int
-	rule       *platform.Rule   // last rule (existing single-rule assertions)
-	rules      []*platform.Rule // every rule, in Restrict order
+	observers     int
+	wrappers      int
+	lifecycles    int
+	rule          *platform.Rule   // last rule (existing single-rule assertions)
+	rules         []*platform.Rule // every rule, in Restrict order
+	skillsOverlay *platform.SkillsOverlay
+	skillCalls    int
 }
 
 func (r *recorder) Observe(platform.When, string, platform.Selector, platform.Observer) {
@@ -29,6 +31,10 @@ func (r *recorder) On(platform.LifecycleEvent, string, platform.LifecycleHandler
 func (r *recorder) Restrict(rule *platform.Rule) {
 	r.rule = rule
 	r.rules = append(r.rules, rule)
+}
+func (r *recorder) EmbeddedSkills(spec *platform.SkillsOverlay) {
+	r.skillsOverlay = spec
+	r.skillCalls++
 }
 
 // Restrict must snapshot each rule: a caller that reuses and mutates the
@@ -209,5 +215,126 @@ func TestBuilder_failOpenThenRestrictOK(t *testing.T) {
 	}
 	if p.Capabilities().FailurePolicy != platform.FailClosed {
 		t.Errorf("FailurePolicy = %v, want FailClosed", p.Capabilities().FailurePolicy)
+	}
+}
+
+// EmbeddedSkills() must snapshot selection and remap slices: a caller that
+// mutates the same backing arrays after the call must still get the values
+// staged at call time.
+func TestBuilder_skillsInstalledAndCloned(t *testing.T) {
+	remove := []string{"lark-shared"}
+	remaps := []platform.SkillRefRemap{
+		platform.RemapSkillRef("lark-doc", "acme-docx"),
+	}
+	spec := &platform.SkillsOverlay{Remove: remove, ReferenceRemaps: remaps}
+	b := platform.NewPlugin("p", "0").EmbeddedSkills(spec)
+	remove[0] = "mutated"
+	remaps[0] = platform.RemapSkillRef("lark-doc", "mutated")
+	spec.ReferenceRemaps = nil
+
+	p, err := b.Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	r := &recorder{}
+	if err := p.Install(r); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if r.skillCalls != 1 {
+		t.Fatalf("Skills calls = %d, want 1", r.skillCalls)
+	}
+	if r.skillsOverlay == nil || len(r.skillsOverlay.Remove) != 1 || r.skillsOverlay.Remove[0] != "lark-shared" {
+		t.Errorf("staged Remove leaked later mutation: %+v", r.skillsOverlay)
+	}
+	if len(r.skillsOverlay.ReferenceRemaps) != 1 {
+		t.Fatalf("staged ReferenceRemaps = %+v, want one mapping", r.skillsOverlay.ReferenceRemaps)
+	}
+	remap := r.skillsOverlay.ReferenceRemaps[0]
+	if remap.From() != "lark-doc" || remap.To() != "acme-docx" {
+		t.Errorf("staged remap = %q -> %q, want lark-doc -> acme-docx", remap.From(), remap.To())
+	}
+}
+
+func TestBuilder_skillsNilRejected(t *testing.T) {
+	_, err := platform.NewPlugin("p", "0").EmbeddedSkills(nil).Build()
+	if err == nil {
+		t.Fatal("EmbeddedSkills(nil) must produce error")
+	}
+}
+
+func TestBuilder_skillsTwiceRejected(t *testing.T) {
+	_, err := platform.NewPlugin("p", "0").
+		EmbeddedSkills(&platform.SkillsOverlay{Remove: []string{"lark-a"}}).
+		EmbeddedSkills(&platform.SkillsOverlay{Remove: []string{"lark-b"}}).
+		Build()
+	if err == nil {
+		t.Fatal("calling EmbeddedSkills() twice must produce error")
+	}
+}
+
+// EmbeddedSkills is a distribution build-integrity commitment: skipping it
+// could silently restore content that the distribution intended to remove.
+func TestBuilder_skillsForcesFailClosed(t *testing.T) {
+	p, err := platform.NewPlugin("p", "0").EmbeddedSkills(&platform.SkillsOverlay{Remove: []string{"lark-a"}}).Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	caps := p.Capabilities()
+	if caps.Restricts {
+		t.Error("EmbeddedSkills() must not set Restricts")
+	}
+	if caps.FailurePolicy != platform.FailClosed {
+		t.Errorf("FailurePolicy = %v, want FailClosed", caps.FailurePolicy)
+	}
+}
+
+func TestBuilder_skillsFailurePolicyOrder(t *testing.T) {
+	spec := func() *platform.SkillsOverlay {
+		return &platform.SkillsOverlay{Remove: []string{"lark-a"}}
+	}
+	tests := []struct {
+		name      string
+		build     func() *platform.Builder
+		wantError bool
+	}{
+		{
+			name: "FailOpen before EmbeddedSkills is overridden",
+			build: func() *platform.Builder {
+				return platform.NewPlugin("p", "0").FailOpen().EmbeddedSkills(spec())
+			},
+		},
+		{
+			name: "FailOpen after EmbeddedSkills is invalid",
+			build: func() *platform.Builder {
+				return platform.NewPlugin("p", "0").EmbeddedSkills(spec()).FailOpen()
+			},
+			wantError: true,
+		},
+		{
+			name: "later FailClosed restores a valid final state",
+			build: func() *platform.Builder {
+				return platform.NewPlugin("p", "0").EmbeddedSkills(spec()).FailOpen().FailClosed()
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p, err := tc.build().Build()
+			if tc.wantError {
+				if err == nil {
+					t.Fatal("Build succeeded, want FailOpen+EmbeddedSkills rejection")
+				}
+				if !strings.Contains(err.Error(), "EmbeddedSkills() requires FailClosed") {
+					t.Fatalf("error = %v, want EmbeddedSkills FailClosed guidance", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Build: %v", err)
+			}
+			if got := p.Capabilities().FailurePolicy; got != platform.FailClosed {
+				t.Fatalf("FailurePolicy = %v, want FailClosed", got)
+			}
+		})
 	}
 }

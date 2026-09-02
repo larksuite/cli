@@ -32,6 +32,11 @@ func TestLookupCodeMeta_DriveCodes(t *testing.T) {
 		{1063001, errs.CategoryAPI, errs.SubtypeInvalidParameters, false},
 		{1063002, errs.CategoryAuthorization, errs.SubtypePermissionDenied, false},
 		{1063013, errs.CategoryValidation, errs.SubtypeFailedPrecondition, false},
+		// Export task errors observed from the Drive export API.
+		{1069902, errs.CategoryAuthorization, errs.SubtypePermissionDenied, false},
+		{1069906, errs.CategoryAPI, errs.SubtypeNotFound, false},
+		{1069914, errs.CategoryAPI, errs.SubtypeNotFound, false},
+		{1069918, errs.CategoryAPI, errs.SubtypeInvalidParameters, false},
 		{99992402, errs.CategoryAPI, errs.SubtypeInvalidParameters, false},
 		{9499, errs.CategoryAPI, errs.SubtypeInvalidParameters, false},
 	}

@@ -33,6 +33,7 @@ var (
 
 type credentialSource interface {
 	Name() string
+	CredentialSource() string
 	TryResolveToken(ctx context.Context, req TokenSpec) (*TokenResult, bool, error)
 	ResolveIdentityHint(ctx context.Context, acct *Account) (*IdentityHint, error)
 }
@@ -42,6 +43,15 @@ type extensionTokenSource struct {
 }
 
 func (s extensionTokenSource) Name() string { return s.provider.Name() }
+
+func (s extensionTokenSource) CredentialSource() string {
+	switch s.Name() {
+	case "env", "sidecar":
+		return s.Name()
+	default:
+		return "extension"
+	}
+}
 
 func (s extensionTokenSource) TryResolveToken(ctx context.Context, req TokenSpec) (*TokenResult, bool, error) {
 	tok, err := s.provider.ResolveToken(ctx, extcred.TokenSpec{
@@ -57,7 +67,7 @@ func (s extensionTokenSource) TryResolveToken(ctx context.Context, req TokenSpec
 	if tok.Value == "" {
 		return nil, false, &MalformedTokenResultError{Source: s.Name(), Type: req.Type, Reason: "empty token"}
 	}
-	return &TokenResult{Token: tok.Value, Scopes: tok.Scopes}, true, nil
+	return &TokenResult{Token: tok.Value, Scopes: tok.Scopes, Source: core.CredentialSource(s.CredentialSource())}, true, nil
 }
 
 func (s extensionTokenSource) ResolveIdentityHint(ctx context.Context, acct *Account) (*IdentityHint, error) {
@@ -86,7 +96,8 @@ type defaultTokenSource struct {
 	resolver DefaultTokenResolver
 }
 
-func (s defaultTokenSource) Name() string { return "default" }
+func (s defaultTokenSource) Name() string             { return "default" }
+func (s defaultTokenSource) CredentialSource() string { return "local" }
 
 func (s defaultTokenSource) TryResolveToken(ctx context.Context, req TokenSpec) (*TokenResult, bool, error) {
 	if s.resolver == nil {
@@ -102,7 +113,9 @@ func (s defaultTokenSource) TryResolveToken(ctx context.Context, req TokenSpec) 
 	if result.Token == "" {
 		return nil, false, &MalformedTokenResultError{Source: s.Name(), Type: req.Type, Reason: "empty token"}
 	}
-	return result, true, nil
+	resultCopy := *result
+	resultCopy.Source = core.CredentialSource(s.CredentialSource())
+	return &resultCopy, true, nil
 }
 
 func (s defaultTokenSource) ResolveIdentityHint(ctx context.Context, acct *Account) (*IdentityHint, error) {
@@ -229,7 +242,8 @@ func (p *CredentialProvider) enrichUserInfo(ctx context.Context, acct *Account, 
 	if err != nil {
 		return fmt.Errorf("failed to get HTTP client for user_info: %w", err)
 	}
-	info, err := fetchUserInfo(ctx, hc, acct.Brand, tok.Token)
+	requestCtx := core.WithCredentialSource(ctx, tok.Source)
+	info, err := fetchUserInfo(requestCtx, hc, acct.Brand, tok.Token)
 	if err != nil {
 		return fmt.Errorf("failed to verify user identity: %w", err)
 	}
@@ -254,7 +268,7 @@ func (p *CredentialProvider) selectedCredentialSource(ctx context.Context) (cred
 	return p.selectedSource, nil
 }
 
-func resolveTokenFromSource(ctx context.Context, source credentialSource, req TokenSpec) (*TokenResult, error) {
+func (p *CredentialProvider) resolveTokenFromSource(ctx context.Context, source credentialSource, req TokenSpec) (*TokenResult, error) {
 	result, found, err := source.TryResolveToken(ctx, req)
 	if err != nil {
 		return nil, err
@@ -307,7 +321,7 @@ func (p *CredentialProvider) ResolveToken(ctx context.Context, req TokenSpec) (*
 		return nil, err
 	}
 	if source != nil {
-		return resolveTokenFromSource(ctx, source, req)
+		return p.resolveTokenFromSource(ctx, source, req)
 	}
 
 	for _, prov := range p.providers {

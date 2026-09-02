@@ -17,7 +17,7 @@
 |----------------------|----|--------------------------------------------|
 | `--whiteboard-token` | 是  | 画板 token，需要拥有画板的编辑权限                       |
 | `--idempotent-token` | 否  | 幂等 token，确保更新操作幂等；最少 10 个字符，建议使用时间戳 + 场景标识拼接（如 `1744800000-board-1`）。同一次逻辑更新只生成一次该 token，重试时须原样复用；切勿在每次重试时重新生成时间戳或幂等 key，否则会重复写入 |
-| `--overwrite`        | 否  | 覆盖更新，在更新前删除所有现有内容，默认为 false                |
+| `--overwrite`        | 否  | 写入模式：带上则覆盖更新（写入前删除画板所有现有内容再写入）；省略则为增量追加（保留原有内容，新内容叠加写入）。默认 false（增量追加）|
 | `--source`           | 是  | 输入画板内容，支持使用 `@path` 从文件读取，或 `-` 从 stdin 读取 |
 | `--input_format`     | 否  | 输入格式：`raw`、`plantuml`、`mermaid`、`svg`，默认为 `raw`  |
 
@@ -27,7 +27,7 @@
 
 思维导图，时序图，类图，饼图，流程图等图表推荐使用 Mermaid/PlantUML 语法绘制。
 
-而当需要绘制架构图，组织架构图，泳道图，对比图，鱼骨图，柱状图，折线图，树状图，漏斗图，金字塔图，循环/飞轮图，里程碑或其他较为复杂的图表时，推荐参考 [§ 渲染 & 写入画板](../SKILL.md#渲染--写入画板) 使用 whiteboard-cli 工具创作。
+而当需要绘制架构图，组织架构图，泳道图，对比图，鱼骨图，柱状图，折线图，树状图，漏斗图，金字塔图，循环/飞轮图，里程碑或其他较为复杂的图表时，推荐参考 [§ 渲染 & 写入画板](lark-whiteboard-workflow.md#渲染--写入画板) 使用 whiteboard-cli 工具创作。
 
 ## 示例
 
@@ -71,7 +71,7 @@ lark-cli whiteboard +update \
 
 ### 示例 3：使用 whiteboard-cli 生成 OpenAPI 格式并写入画板
 
-whiteboard-cli 工具的具体用法请参考 [§ 渲染 & 写入画板](../SKILL.md#渲染--写入画板)
+whiteboard-cli 工具的具体用法请参考 [§ 渲染 & 写入画板](lark-whiteboard-workflow.md#渲染--写入画板)
 
 ```bash
 # 使用 whiteboard-cli 生成 OpenAPI 格式并通过管道传递
@@ -85,7 +85,7 @@ npx -y @larksuite/whiteboard-cli@^0.2.13 -i <产物文件> --to openapi --format
 
 ### 示例 4：先生成产物文件，再从文件读取更新
 
-whiteboard-cli 工具的具体用法请参考 [§ 渲染 & 写入画板](../SKILL.md#渲染--写入画板)
+whiteboard-cli 工具的具体用法请参考 [§ 渲染 & 写入画板](lark-whiteboard-workflow.md#渲染--写入画板)
 
 ```bash
 # 生成 OpenAPI 格式到文件

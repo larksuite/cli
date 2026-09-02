@@ -399,7 +399,7 @@ func TestBuildMeta_FullFields(t *testing.T) {
 			"im:resource:upload",
 			"im:resource",
 		},
-		"accessTokens": []interface{}{"tenant"},
+		"accessTokens": []interface{}{"user", "tenant"},
 		"docUrl":       "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/image/create",
 	}
 	m := buildMeta(meta.FromMap(method))
@@ -413,8 +413,8 @@ func TestBuildMeta_FullFields(t *testing.T) {
 	if !m.Danger {
 		t.Errorf("Danger = false, want true")
 	}
-	if !reflect.DeepEqual(m.AccessTokens, []string{"bot"}) {
-		t.Errorf("AccessTokens = %v, want [bot]", m.AccessTokens)
+	if !reflect.DeepEqual(m.AccessTokens, []string{"bot", "user"}) {
+		t.Errorf("AccessTokens = %v, want [bot user]", m.AccessTokens)
 	}
 	if m.DocURL == "" {
 		t.Errorf("DocURL should be present for im.images.create")

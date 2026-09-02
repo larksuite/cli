@@ -27,7 +27,7 @@ func TestBusCommandLoggerSetupFailureIsTypedFileIO(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "cli_bus_test", AppSecret: "secret", Brand: core.BrandFeishu,
 	})
-	cmd := NewCmdBus(f)
+	cmd := NewCmdBus(f, compileCatalog())
 	cmd.SetArgs([]string{})
 
 	err := cmd.Execute()

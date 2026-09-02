@@ -142,7 +142,7 @@ func TestAppsCreateDryRun(t *testing.T) {
 	})
 
 	t.Run("RejectsLegacyUppercaseAppType", func(t *testing.T) {
-		// --app-type is a strict lowercase enum (html / full_stack); the CLI does
+		// --app-type is a strict lowercase enum (html / frontend / full_stack); the CLI does
 		// not normalize case. Legacy uppercase "HTML" is rejected — backend
 		// compatibility for legacy values is a server concern the client does not
 		// surface.

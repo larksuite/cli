@@ -58,13 +58,13 @@ func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Id
 	if identity.IsBot() {
 		wantScope = meetingQueryBotScope
 	}
-	if !strings.Contains(pe.Hint, wantScope) {
+	if identity.IsBot() && !strings.Contains(pe.Hint, wantScope) {
 		t.Fatalf("Hint = %q, want recommended scope %q", pe.Hint, wantScope)
 	}
 	if len(pe.MissingScopes) != 1 || pe.MissingScopes[0] != wantScope {
 		t.Fatalf("MissingScopes = %v, want only recommended scope %q", pe.MissingScopes, wantScope)
 	}
-	if strings.Contains(pe.Hint, "either compatible scope") {
+	if pe.Hint != "" && strings.Contains(pe.Hint, "either compatible scope") {
 		t.Fatalf("Hint = %q, must not repeat the OR-scope explanation from message", pe.Hint)
 	}
 	switch code {
@@ -82,8 +82,8 @@ func assertMeetingQueryPermissionError(t *testing.T, err error, identity core.Id
 			t.Fatalf("ConsoleURL = %q, want only bot scope", pe.ConsoleURL)
 		}
 	case output.LarkErrUserScopeInsufficient:
-		if !strings.Contains(pe.Hint, "auth login --scope") {
-			t.Fatalf("Hint = %q, want auth login guidance", pe.Hint)
+		if pe.Hint != "" {
+			t.Fatalf("Hint = %q, want root presenter to own user recovery", pe.Hint)
 		}
 		if pe.ConsoleURL != "" {
 			t.Fatalf("ConsoleURL = %q, user-scope error must not expose a developer-console URL", pe.ConsoleURL)
@@ -129,8 +129,8 @@ func TestNormalizeMeetingQueryPermissionError_RecommendsScopeForMatchingIdentity
 			if !errors.As(got, &pe) {
 				t.Fatalf("got %T, want *errs.PermissionError", got)
 			}
-			if got != original || pe != original {
-				t.Fatal("normalizer did not return the original permission error")
+			if pe != original {
+				t.Fatal("normalizer did not preserve the original permission producer")
 			}
 			if pe.Code != tc.code || pe.Subtype != tc.subtype || pe.LogID != "log-id" || !pe.Retryable {
 				t.Fatalf("diagnostics changed: %+v", pe.Problem)

@@ -5,9 +5,13 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/envvars"
+	"github.com/larksuite/cli/internal/recovery"
 )
 
 // isMalformedConfigError reports whether a config load failure indicates a
@@ -81,14 +85,24 @@ const (
 func NotConfiguredError() error {
 	ws := CurrentWorkspace()
 	if ws.IsLocal() {
-		return errs.NewConfigError(errs.SubtypeNotConfigured, "not configured").
-			WithHint("%s", localInitHint)
+		hint := recovery.Join("", recovery.Command(recovery.TargetConfigInit, localInitHint)).
+			WithFallback("configure this distribution before retrying")
+		return recovery.Annotate(
+			errs.NewConfigError(errs.SubtypeNotConfigured, "not configured").
+				WithHint("%s", hint.String()),
+			hint,
+		)
 	}
 	// Agent workspace: the workspace name appears only in the message, never
 	// in the wire subtype, which stays not_configured.
-	return errs.NewConfigError(errs.SubtypeNotConfigured,
-		"%s context detected but lark-cli is not bound to it", ws.Display()).
-		WithHint("%s", agentBindHint)
+	hint := recovery.Join("", recovery.Command(recovery.TargetConfigBind, agentBindHint)).
+		WithFallback("bind this agent workspace through the distribution's supported setup flow")
+	return recovery.Annotate(
+		errs.NewConfigError(errs.SubtypeNotConfigured,
+			"%s context detected but lark-cli is not bound to it", ws.Display()).
+			WithHint("%s", hint.String()),
+		hint,
+	)
 }
 
 // reconfigureHint returns the workspace-aware "fix it from scratch" hint
@@ -103,6 +117,67 @@ func reconfigureHint() string {
 	return agentBindHint
 }
 
+// RequireAppConfig resolves the profile selection to an app entry, or returns
+// a typed error naming the input that must change. Use it wherever
+// CurrentAppConfig's nil is a user-visible failure: the bare nil folds three
+// distinct causes — a bad explicit selector, a dangling persisted currentApp,
+// and a genuinely empty config — that need three different recoveries.
+func (m *MultiAppConfig) RequireAppConfig(profile string, source ProfileSource) (*AppConfig, error) {
+	if app := m.CurrentAppConfig(profile); app != nil {
+		return app, nil
+	}
+	return nil, m.ProfileNotFoundError(profile, source)
+}
+
+// ProfileNotFoundError is the typed error behind RequireAppConfig, exported
+// separately for call sites that keep their own nil tolerance (e.g. a
+// --global branch that proceeds without a profile).
+//
+// The selector split matters most for the environment case: the variable may
+// have been exported long before the failing command, so the error must name
+// LARKSUITE_CLI_PROFILE explicitly — nothing in what the user just typed
+// points at it. config init is never suggested here; the remaining profiles
+// are intact and re-initializing would be destructive misdirection.
+func (m *MultiAppConfig) ProfileNotFoundError(profile string, source ProfileSource) error {
+	if profile == "" && m.CurrentApp == "" {
+		// Nothing was selected and nothing is selectable: genuinely unconfigured.
+		return NotConfiguredError()
+	}
+	available := strings.Join(m.ProfileNames(), ", ")
+	if profile == "" {
+		// No explicit selector involved: the persisted default itself is a
+		// dangling reference, so recovery is re-pointing the persisted state.
+		hint := recovery.Join("",
+			recovery.Command(recovery.TargetProfileList,
+				fmt.Sprintf("config.json currentApp %q matches no profile; run `lark-cli profile list`, then switch with `lark-cli profile use <name>` (available: %s)", m.CurrentApp, available))).
+			WithFallback("the persisted default profile no longer exists; select an available profile through this distribution")
+		return recovery.Annotate(
+			errs.NewConfigError(errs.SubtypeNotConfigured, "profile %q not found", m.CurrentApp).
+				WithField("currentApp").
+				WithHint("%s", hint.String()),
+			hint,
+		)
+	}
+	selector := source.SelectorLabel()
+	if selector == "" {
+		selector = "--profile" // defensive: an explicit value implies a selector channel
+	}
+	action := fmt.Sprintf("pass one of: %s", available)
+	if source == ProfileFromEnvironment {
+		action = fmt.Sprintf("unset %s or set it to one of: %s", envvars.CliProfile, available)
+	}
+	hint := recovery.Join("",
+		recovery.Command(recovery.TargetProfileList,
+			fmt.Sprintf("%s selected profile %q, which does not exist; %s (run `lark-cli profile list` for details)", selector, profile, action))).
+		WithFallback(fmt.Sprintf("%s selected profile %q, which does not exist; %s", selector, profile, action))
+	return recovery.Annotate(
+		errs.NewConfigError(errs.SubtypeNotConfigured, "profile %q not found", profile).
+			WithField(selector).
+			WithHint("%s", hint.String()),
+		hint,
+	)
+}
+
 // NoActiveProfileError mirrors NotConfiguredError for the related
 // "config exists but the requested profile cannot be resolved" case. In agent
 // workspaces a missing profile typically means the binding was wiped while
@@ -110,10 +185,20 @@ func reconfigureHint() string {
 func NoActiveProfileError() error {
 	ws := CurrentWorkspace()
 	if ws.IsLocal() {
-		return errs.NewConfigError(errs.SubtypeNotConfigured, "no active profile").
-			WithHint("%s", localInitHint)
+		hint := recovery.Join("", recovery.Command(recovery.TargetConfigInit, localInitHint)).
+			WithFallback("configure this distribution before retrying")
+		return recovery.Annotate(
+			errs.NewConfigError(errs.SubtypeNotConfigured, "no active profile").
+				WithHint("%s", hint.String()),
+			hint,
+		)
 	}
-	return errs.NewConfigError(errs.SubtypeNotConfigured,
-		"no active profile in %s workspace", ws.Display()).
-		WithHint("%s", agentBindHint)
+	hint := recovery.Join("", recovery.Command(recovery.TargetConfigBind, agentBindHint)).
+		WithFallback("bind this agent workspace through the distribution's supported setup flow")
+	return recovery.Annotate(
+		errs.NewConfigError(errs.SubtypeNotConfigured,
+			"no active profile in %s workspace", ws.Display()).
+			WithHint("%s", hint.String()),
+		hint,
+	)
 }

@@ -6,35 +6,50 @@ package wiki
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/spf13/cobra"
 )
 
+const (
+	testWikiNodeToken = "Abcdw_EXAMPLE_WIKI_TOKEN_27"
+	testDocxObjToken  = "Abcdd_EXAMPLE_DOCX_TOKEN_27"
+	testBaseObjToken  = "Abcdb_EXAMPLE_BASE_TOKEN_27"
+	testSheetObjToken = "Abcds_EXAMPLE_SHT_TOKEN_027"
+)
+
 func TestParseWikiNodeGetSpecRawNodeToken(t *testing.T) {
 	t.Parallel()
 
-	spec, err := parseWikiNodeGetSpec("wikcnABC", "", "")
+	spec, err := parseWikiNodeGetSpec(testWikiNodeToken, "", "")
 	if err != nil {
 		t.Fatalf("parseWikiNodeGetSpec() error = %v", err)
 	}
-	if spec.Token != "wikcnABC" || spec.ObjType != "" || spec.SourceKind != "raw-node" {
-		t.Fatalf("spec = %+v, want raw-node wikcnABC with no obj_type", spec)
+	if spec.Token != testWikiNodeToken || spec.ObjType != "" || spec.SourceKind != "raw-node" {
+		t.Fatalf("spec = %+v, want raw-node %s with no obj_type", spec, testWikiNodeToken)
 	}
-	if got := spec.RequestParams(); !reflect.DeepEqual(got, map[string]interface{}{"token": "wikcnABC"}) {
-		t.Fatalf("RequestParams() = %v, want {token: wikcnABC}", got)
+	if got := spec.RequestParams(); !reflect.DeepEqual(got, map[string]interface{}{"token": testWikiNodeToken}) {
+		t.Fatalf("RequestParams() = %v, want {token: %s}", got, testWikiNodeToken)
 	}
 }
 
 func TestParseWikiNodeGetSpecOpaqueRawNodeToken(t *testing.T) {
 	t.Parallel()
 
-	const opaqueNodeToken = "Sm78_EXAMPLE_TOKEN"
+	// Opaque tokens must not require a known resource-type prefix. Use a
+	// complete-length fixture so this test remains independent of the
+	// truncated-token validation contract.
+	const opaqueNodeToken = "Sm78_EXAMPLE_OPAQUE_TOKEN_X"
+	if len(opaqueNodeToken) != minWikiResourceTokenLength {
+		t.Fatalf("opaqueNodeToken length = %d, want %d", len(opaqueNodeToken), minWikiResourceTokenLength)
+	}
 	spec, err := parseWikiNodeGetSpec(opaqueNodeToken, "", "")
 	if err != nil {
 		t.Fatalf("parseWikiNodeGetSpec() error = %v", err)
@@ -50,70 +65,70 @@ func TestParseWikiNodeGetSpecOpaqueRawNodeToken(t *testing.T) {
 func TestParseWikiNodeGetSpecRawObjTokenWithExplicitObjType(t *testing.T) {
 	t.Parallel()
 
-	spec, err := parseWikiNodeGetSpec("docxXYZ", "docx", "")
+	spec, err := parseWikiNodeGetSpec(testDocxObjToken, "docx", "")
 	if err != nil {
 		t.Fatalf("parseWikiNodeGetSpec() error = %v", err)
 	}
-	if spec.Token != "docxXYZ" || spec.ObjType != "docx" || spec.SourceKind != "raw-obj" {
-		t.Fatalf("spec = %+v, want raw-obj docxXYZ obj_type=docx", spec)
+	if spec.Token != testDocxObjToken || spec.ObjType != "docx" || spec.SourceKind != "raw-obj" {
+		t.Fatalf("spec = %+v, want raw-obj %s obj_type=docx", spec, testDocxObjToken)
 	}
 }
 
 func TestParseWikiNodeGetSpecRawTokenWithoutObjTypeDefaultsToNodeToken(t *testing.T) {
 	t.Parallel()
 
-	spec, err := parseWikiNodeGetSpec("bascnXYZ", "", "")
+	spec, err := parseWikiNodeGetSpec(testBaseObjToken, "", "")
 	if err != nil {
 		t.Fatalf("parseWikiNodeGetSpec() error = %v", err)
 	}
-	if spec.Token != "bascnXYZ" || spec.ObjType != "" || spec.SourceKind != "raw-node" {
-		t.Fatalf("spec = %+v, want raw-node bascnXYZ with no obj_type", spec)
+	if spec.Token != testBaseObjToken || spec.ObjType != "" || spec.SourceKind != "raw-node" {
+		t.Fatalf("spec = %+v, want raw-node %s with no obj_type", spec, testBaseObjToken)
 	}
 }
 
 func TestParseWikiNodeGetSpecRawTokenWithObjTypeUsesObjTokenLookup(t *testing.T) {
 	t.Parallel()
 
-	spec, err := parseWikiNodeGetSpec("wikcnABC", "docx", "")
+	spec, err := parseWikiNodeGetSpec(testWikiNodeToken, "docx", "")
 	if err != nil {
 		t.Fatalf("parseWikiNodeGetSpec() error = %v", err)
 	}
-	if spec.Token != "wikcnABC" || spec.ObjType != "docx" || spec.SourceKind != "raw-obj" {
-		t.Fatalf("spec = %+v, want raw-obj wikcnABC with obj_type docx", spec)
+	if spec.Token != testWikiNodeToken || spec.ObjType != "docx" || spec.SourceKind != "raw-obj" {
+		t.Fatalf("spec = %+v, want raw-obj %s with obj_type docx", spec, testWikiNodeToken)
 	}
-	if got := spec.RequestParams(); !reflect.DeepEqual(got, map[string]interface{}{"token": "wikcnABC", "obj_type": "docx"}) {
-		t.Fatalf("RequestParams() = %v, want {token: wikcnABC, obj_type: docx}", got)
+	if got := spec.RequestParams(); !reflect.DeepEqual(got, map[string]interface{}{"token": testWikiNodeToken, "obj_type": "docx"}) {
+		t.Fatalf("RequestParams() = %v, want {token: %s, obj_type: docx}", got, testWikiNodeToken)
 	}
 }
 
 func TestParseWikiNodeGetSpecExtractsTokenFromWikiURL(t *testing.T) {
 	t.Parallel()
 
-	spec, err := parseWikiNodeGetSpec("https://feishu.cn/wiki/wikcnABC?foo=bar", "", "")
+	spec, err := parseWikiNodeGetSpec("https://feishu.cn/wiki/"+testWikiNodeToken+"?foo=bar", "", "")
 	if err != nil {
 		t.Fatalf("parseWikiNodeGetSpec() error = %v", err)
 	}
-	if spec.Token != "wikcnABC" || spec.ObjType != "" || spec.SourceKind != "url-wiki" {
-		t.Fatalf("spec = %+v, want url-wiki wikcnABC", spec)
+	if spec.Token != testWikiNodeToken || spec.ObjType != "" || spec.SourceKind != "url-wiki" {
+		t.Fatalf("spec = %+v, want url-wiki %s", spec, testWikiNodeToken)
 	}
 }
 
 func TestParseWikiNodeGetSpecExtractsTokenAndObjTypeFromDocxURL(t *testing.T) {
 	t.Parallel()
 
-	spec, err := parseWikiNodeGetSpec("https://feishu.cn/docx/docxXYZ", "", "")
+	spec, err := parseWikiNodeGetSpec("https://feishu.cn/docx/"+testDocxObjToken, "", "")
 	if err != nil {
 		t.Fatalf("parseWikiNodeGetSpec() error = %v", err)
 	}
-	if spec.Token != "docxXYZ" || spec.ObjType != "docx" || spec.SourceKind != "url-obj" {
-		t.Fatalf("spec = %+v, want url-obj docxXYZ", spec)
+	if spec.Token != testDocxObjToken || spec.ObjType != "docx" || spec.SourceKind != "url-obj" {
+		t.Fatalf("spec = %+v, want url-obj %s", spec, testDocxObjToken)
 	}
 }
 
 func TestParseWikiNodeGetSpecRejectsURLObjTypeMismatch(t *testing.T) {
 	t.Parallel()
 
-	_, err := parseWikiNodeGetSpec("https://feishu.cn/sheets/shtXYZ", "docx", "")
+	_, err := parseWikiNodeGetSpec("https://feishu.cn/sheets/"+testSheetObjToken, "docx", "")
 	if err == nil || !strings.Contains(err.Error(), "does not match the obj_type") {
 		t.Fatalf("expected URL/obj-type mismatch error, got %v", err)
 	}
@@ -142,6 +157,80 @@ func TestParseWikiNodeGetSpecRejectsEmptyToken(t *testing.T) {
 
 	if _, err := parseWikiNodeGetSpec("   ", "", ""); err == nil || !strings.Contains(err.Error(), "--node-token is required") {
 		t.Fatalf("expected required-token error, got %v", err)
+	}
+}
+
+func TestParseWikiNodeGetSpecRejectsTruncatedToken(t *testing.T) {
+	t.Parallel()
+
+	for _, input := range []string{
+		"PImXw",
+		"https://feishu.cn/wiki/PImXw",
+	} {
+		t.Run(input, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := parseWikiNodeGetSpec(input, "", "")
+			if err == nil {
+				t.Fatal("expected truncated token validation error")
+			}
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("ProblemOf() ok=false for %T: %v", err, err)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("expected ValidationError, got %T: %v", err, err)
+			}
+			if p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument || validationErr.Param != "--node-token" {
+				t.Fatalf("problem = %#v param=%q, want validation/invalid_argument/--node-token", p, validationErr.Param)
+			}
+			if !strings.Contains(p.Hint, "complete token") || !strings.Contains(p.Hint, "full Lark URL") {
+				t.Fatalf("hint = %q, want actionable complete-token guidance", p.Hint)
+			}
+		})
+	}
+}
+
+func TestValidateWikiResourceTokenLengthBoundary(t *testing.T) {
+	t.Parallel()
+
+	if err := validateWikiResourceTokenLength(strings.Repeat("a", minWikiResourceTokenLength-1), "--node-token"); err == nil {
+		t.Fatal("expected a 26-character token to be rejected")
+	}
+	if err := validateWikiResourceTokenLength(strings.Repeat("a", minWikiResourceTokenLength), "--node-token"); err != nil {
+		t.Fatalf("expected a 27-character token to be accepted, got %v", err)
+	}
+}
+
+func TestWikiNodeGetRejectsTruncatedTokenBeforeHTTPRequest(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	factory, stdout, _, reg := cmdutil.TestFactory(t, wikiTestConfig())
+	requested := false
+	reg.Register(&httpmock.Stub{
+		Method:   "GET",
+		URL:      "/open-apis/wiki/v2/spaces/get_node",
+		Optional: true,
+		OnMatch: func(*http.Request) {
+			requested = true
+		},
+	})
+
+	err := mountAndRunWiki(t, WikiNodeGet, []string{
+		"+node-get",
+		"--node-token", "PImXw",
+		"--as", "bot",
+	}, factory, stdout)
+	if err == nil {
+		t.Fatal("expected truncated token validation error")
+	}
+	if requested {
+		t.Fatal("truncated token reached the OpenAPI transport")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("problem = %#v ok=%v, want validation/invalid_argument", p, ok)
 	}
 }
 
@@ -198,7 +287,7 @@ func TestResolveWikiNodeGetRawTokenEmptyDefersToParser(t *testing.T) {
 func TestBuildWikiNodeGetDryRunSendsObjType(t *testing.T) {
 	t.Parallel()
 
-	spec, err := parseWikiNodeGetSpec("https://feishu.cn/docx/docxXYZ", "", "")
+	spec, err := parseWikiNodeGetSpec("https://feishu.cn/docx/"+testDocxObjToken, "", "")
 	if err != nil {
 		t.Fatalf("parseWikiNodeGetSpec() error = %v", err)
 	}
@@ -221,7 +310,7 @@ func TestBuildWikiNodeGetDryRunSendsObjType(t *testing.T) {
 	if len(got.API) != 1 || got.API[0].URL != "/open-apis/wiki/v2/spaces/get_node" {
 		t.Fatalf("dry-run api = %#v, want single get_node call", got.API)
 	}
-	if got.API[0].Params["token"] != "docxXYZ" || got.API[0].Params["obj_type"] != "docx" {
+	if got.API[0].Params["token"] != testDocxObjToken || got.API[0].Params["obj_type"] != "docx" {
 		t.Fatalf("dry-run params = %#v", got.API[0].Params)
 	}
 }
@@ -279,15 +368,15 @@ func TestWikiNodeGetMountedExecuteParsesURLAndFormatsOutput(t *testing.T) {
 
 	err := mountAndRunWiki(t, WikiNodeGet, []string{
 		"+node-get",
-		"--node-token", "https://feishu.cn/docx/docxXYZ",
+		"--node-token", "https://feishu.cn/docx/" + testDocxObjToken,
 		"--as", "bot",
 	}, factory, stdout)
 	if err != nil {
 		t.Fatalf("mountAndRunWiki() error = %v", err)
 	}
 
-	if !strings.Contains(capturedQuery, "token=docxXYZ") || !strings.Contains(capturedQuery, "obj_type=docx") {
-		t.Fatalf("captured query = %q, want token=docxXYZ and obj_type=docx", capturedQuery)
+	if !strings.Contains(capturedQuery, "token="+testDocxObjToken) || !strings.Contains(capturedQuery, "obj_type=docx") {
+		t.Fatalf("captured query = %q, want token=%s and obj_type=docx", capturedQuery, testDocxObjToken)
 	}
 
 	data := decodeWikiEnvelope(t, stdout)
@@ -315,8 +404,193 @@ func TestWikiNodeGetMountedExecuteParsesURLAndFormatsOutput(t *testing.T) {
 	if _, ok := data["url"]; ok {
 		t.Fatalf("did not expect a url field in +node-get output, got %#v", data["url"])
 	}
-	if got := stderr.String(); !strings.Contains(got, "Fetching wiki node") {
-		t.Fatalf("stderr = %q, want fetching message", got)
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no progress output", stderr.String())
+	}
+}
+
+func TestWikiNodeGetMountedClassifiesTerminalBusinessErrors(t *testing.T) {
+	tests := []struct {
+		name     string
+		code     int
+		message  string
+		subtype  errs.Subtype
+		hintText string
+	}{
+		{
+			name:     "deleted node",
+			code:     131012,
+			message:  "node has been deleted",
+			subtype:  errs.SubtypeNotFound,
+			hintText: "Do not retry the same node token",
+		},
+		{
+			name:     "invalid resource token",
+			code:     131013,
+			message:  "token is invalid",
+			subtype:  errs.SubtypeInvalidParameters,
+			hintText: "Do not retry the same token",
+		},
+		{
+			name:     "document not in wiki",
+			code:     131014,
+			message:  "document is not in wiki",
+			subtype:  errs.SubtypeFailedPrecondition,
+			hintText: "Do not retry wiki +node-get with the same document",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+			factory, stdout, stderr, reg := cmdutil.TestFactory(t, wikiTestConfig())
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/wiki/v2/spaces/get_node",
+				Body: map[string]interface{}{
+					"code":   tt.code,
+					"msg":    tt.message,
+					"log_id": "log-node-get-terminal",
+				},
+			})
+
+			err := mountAndRunWiki(t, WikiNodeGet, []string{
+				"+node-get",
+				"--node-token", testWikiNodeToken,
+				"--as", "bot",
+			}, factory, stdout)
+			if err == nil {
+				t.Fatal("expected a terminal business error")
+			}
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed error, got %T: %v", err, err)
+			}
+			if p.Category != errs.CategoryAPI || p.Code != tt.code || p.Subtype != tt.subtype {
+				t.Fatalf("problem category/code/subtype = %s/%d/%s, want %s/%d/%s",
+					p.Category, p.Code, p.Subtype, errs.CategoryAPI, tt.code, tt.subtype)
+			}
+			if p.Retryable {
+				t.Fatalf("problem retryable = true, want false: %#v", p)
+			}
+			if !strings.Contains(p.Hint, tt.hintText) {
+				t.Fatalf("hint = %q, want %q", p.Hint, tt.hintText)
+			}
+			if p.LogID != "log-node-get-terminal" {
+				t.Fatalf("log_id = %q, want log-node-get-terminal", p.LogID)
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("stdout = %q, want no success envelope", stdout.String())
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("stderr = %q, want no output before the root error envelope", stderr.String())
+			}
+		})
+	}
+}
+
+func TestWikiNodeGetMountedExplainsResourcePermissionDenied(t *testing.T) {
+	for _, identity := range []string{"user", "bot"} {
+		t.Run(identity, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+			factory, stdout, _, reg := cmdutil.TestFactory(t, wikiTestConfig())
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/wiki/v2/spaces/get_node",
+				Body: map[string]interface{}{
+					"code":   131006,
+					"msg":    "permission denied: node permission denied, user needs read permission.",
+					"log_id": "log-node-get-permission",
+				},
+			})
+
+			err := mountAndRunWiki(t, WikiNodeGet, []string{
+				"+node-get",
+				"--node-token", testWikiNodeToken,
+				"--as", identity,
+			}, factory, stdout)
+			if err == nil {
+				t.Fatal("expected permission error")
+			}
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed error, got %T: %v", err, err)
+			}
+			if p.Category != errs.CategoryAuthorization || p.Subtype != errs.SubtypePermissionDenied || p.Code != 131006 {
+				t.Fatalf("problem = %#v, want authorization/permission_denied/131006", p)
+			}
+			if p.Retryable {
+				t.Fatalf("problem retryable = true, want false: %#v", p)
+			}
+			if !strings.Contains(p.Hint, "resource access, not app scope authorization") || !strings.Contains(p.Hint, "Do not retry the same request") {
+				t.Fatalf("hint = %q, want non-retryable resource-access guidance", p.Hint)
+			}
+		})
+	}
+}
+
+func TestWikiNodeGetProblemBoundsRateLimitRetries(t *testing.T) {
+	t.Parallel()
+
+	cause := errors.New("opaque upstream cause")
+	const upstreamHint = "upstream pacing hint"
+	err := errs.NewAPIError(errs.SubtypeRateLimit, "opaque upstream message").
+		WithCode(99991400).
+		WithRetryable().
+		WithRetryAfterSeconds(8).
+		WithHint(upstreamHint).
+		WithCause(cause)
+
+	got := wikiNodeGetProblem(err)
+	p, ok := errs.ProblemOf(got)
+	if !ok {
+		t.Fatalf("ProblemOf() ok=false")
+	}
+	if p.Category != errs.CategoryAPI || p.Subtype != errs.SubtypeRateLimit || p.Code != 99991400 || !p.Retryable {
+		t.Fatalf("problem = %#v, want retryable api/rate_limit/99991400", p)
+	}
+	var apiErr *errs.APIError
+	if !errors.As(got, &apiErr) {
+		t.Fatalf("error = %T, want *errs.APIError", got)
+	}
+	if apiErr.RetryAfterSeconds != 8 {
+		t.Fatalf("retry_after_seconds = %d, want 8", apiErr.RetryAfterSeconds)
+	}
+	wantHint := upstreamHint + "\n" + wikiNodeGetRateLimitHint
+	if p.Hint != wantHint {
+		t.Fatalf("hint = %q, want %q", p.Hint, wantHint)
+	}
+	if !errors.Is(got, cause) {
+		t.Fatalf("error does not preserve cause %v: %v", cause, got)
+	}
+}
+
+func TestWikiNodeGetProblemPreservesPermissionErrorContract(t *testing.T) {
+	t.Parallel()
+
+	cause := errors.New("opaque upstream cause")
+	err := errs.NewPermissionError(errs.SubtypePermissionDenied, "opaque upstream message").
+		WithCode(131006).
+		WithCause(cause)
+
+	got := wikiNodeGetProblem(err)
+	p, ok := errs.ProblemOf(got)
+	if !ok {
+		t.Fatalf("ProblemOf() ok=false")
+	}
+	if p.Category != errs.CategoryAuthorization || p.Subtype != errs.SubtypePermissionDenied || p.Code != 131006 {
+		t.Fatalf("problem = %#v, want authorization/permission_denied/131006", p)
+	}
+	if p.Retryable {
+		t.Fatalf("problem retryable = true, want false: %#v", p)
+	}
+	if !errors.Is(got, cause) {
+		t.Fatalf("errors.Is(got, cause) = false, want preserved cause")
+	}
+	if p.Hint != wikiPermissionDeniedHint() {
+		t.Fatalf("hint = %q, want %q", p.Hint, wikiPermissionDeniedHint())
 	}
 }
 
@@ -358,7 +632,7 @@ func TestWikiNodeGetMountedAcceptsNodeTokenFlag(t *testing.T) {
 	parent := mountWikiNodeGetWithFlagOut(t, factory, &flagOut)
 	parent.SetArgs([]string{
 		"+node-get",
-		"--node-token", "https://feishu.cn/docx/docxXYZ",
+		"--node-token", "https://feishu.cn/docx/" + testDocxObjToken,
 		"--as", "bot",
 	})
 	stdout.Reset()
@@ -366,8 +640,8 @@ func TestWikiNodeGetMountedAcceptsNodeTokenFlag(t *testing.T) {
 		t.Fatalf("parent.Execute() error = %v", err)
 	}
 
-	if !strings.Contains(capturedQuery, "token=docxXYZ") || !strings.Contains(capturedQuery, "obj_type=docx") {
-		t.Fatalf("captured query = %q, want token=docxXYZ and obj_type=docx", capturedQuery)
+	if !strings.Contains(capturedQuery, "token="+testDocxObjToken) || !strings.Contains(capturedQuery, "obj_type=docx") {
+		t.Fatalf("captured query = %q, want token=%s and obj_type=docx", capturedQuery, testDocxObjToken)
 	}
 
 	data := decodeWikiEnvelope(t, stdout)
@@ -428,7 +702,7 @@ func TestWikiNodeGetMountedLegacyTokenFlagWarnsButWorks(t *testing.T) {
 	parent := mountWikiNodeGetWithFlagOut(t, factory, &flagOut)
 	parent.SetArgs([]string{
 		"+node-get",
-		"--token", "wikcnABC",
+		"--token", testWikiNodeToken,
 		"--as", "bot",
 	})
 	stdout.Reset()
@@ -491,7 +765,7 @@ func TestWikiNodeGetFallsBackToCreatorWhenNodeCreatorMissing(t *testing.T) {
 
 	err := mountAndRunWiki(t, WikiNodeGet, []string{
 		"+node-get",
-		"--node-token", "wikcnABC",
+		"--node-token", testWikiNodeToken,
 		"--as", "bot",
 	}, factory, stdout)
 	if err != nil {
@@ -530,7 +804,7 @@ func TestWikiNodeGetRejectsSpaceIDMismatch(t *testing.T) {
 
 	err := mountAndRunWiki(t, WikiNodeGet, []string{
 		"+node-get",
-		"--node-token", "wikcnABC",
+		"--node-token", testWikiNodeToken,
 		"--space-id", "space_expected",
 		"--as", "bot",
 	}, factory, stdout)

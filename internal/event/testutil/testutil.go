@@ -11,7 +11,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/larksuite/cli/internal/event/transport"
+	"github.com/larksuite/cli/internal/event/adapter/localbus/transport"
 )
 
 // FakeTransport delegates to inner with a fixed addr, so tests can use t.TempDir paths.

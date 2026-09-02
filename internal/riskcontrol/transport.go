@@ -15,23 +15,26 @@ import (
 var _ internaltransport.RoundTripperDecorator = (*Transport)(nil)
 
 const (
-	HeaderProductModel = "X-Agent-Device-Type"
-	HeaderOSType       = "X-Agent-Os-Type"
+	HeaderProductModel     = "X-Agent-Device-Type"
+	HeaderOSType           = "X-Agent-Os-Type"
+	HeaderCredentialSource = "X-Agent-Credential-Source"
 )
 
-var restrictedHeaders = [...]string{HeaderProductModel, HeaderOSType}
+var restrictedHeaders = [...]string{HeaderProductModel, HeaderOSType, HeaderCredentialSource}
 
 // Transport is the feature's final outbound boundary. It removes caller- or
-// extension-supplied signal headers first and writes trusted values only after
-// authorizing an official SDK origin and authentication state.
+// extension-supplied signal headers first and writes trusted values only when
+// workspace policy enables risk control and the request targets an official
+// SDK origin.
 type Transport struct {
 	next   http.RoundTripper
 	source Source
 }
 
 // NewTransport creates the final SDK outbound policy boundary. A nil source
-// disables collection and injection while preserving restricted-header
-// stripping for opt-out and extension-credential requests.
+// means workspace policy disabled risk control, so all signal injection,
+// including credential source, is disabled. Restricted headers are still
+// stripped from caller- and extension-supplied requests.
 func NewTransport(next http.RoundTripper, source Source) *Transport {
 	if next == nil {
 		next = internaltransport.Fallback()
@@ -72,7 +75,12 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	stripRestrictedHeaders(req.Header)
 
+	// A nil source is the caller's disabled/unavailable policy marker. Treat it
+	// as the master gate for the complete signal set, not only device collection.
 	if t.source != nil && t.routeAllowsSignals(req) {
+		if source, ok := core.CredentialSourceFromContext(req.Context()); ok {
+			req.Header.Set(HeaderCredentialSource, string(source))
+		}
 		snapshot := t.source.Snapshot()
 		if isSupportedOSType(snapshot.OSType) {
 			req.Header.Set(HeaderOSType, string(snapshot.OSType))
@@ -111,10 +119,12 @@ type origin struct {
 }
 
 var officialFeishuOrigins = [...]origin{
-	apiOrigin(core.BrandFeishu, core.ResolveEndpoints(core.BrandFeishu).Open),
-	apiOrigin(core.BrandLark, core.ResolveEndpoints(core.BrandLark).Open),
-	apiOrigin(core.BrandFeishu, core.ResolveEndpoints(core.BrandFeishu).Accounts),
-	apiOrigin(core.BrandLark, core.ResolveEndpoints(core.BrandLark).Accounts),
+	apiOrigin(core.ResolveEndpoints(core.BrandFeishu).Open),
+	apiOrigin(core.ResolveEndpoints(core.BrandLark).Open),
+	apiOrigin(core.ResolveEndpoints(core.BrandFeishu).Accounts),
+	apiOrigin(core.ResolveEndpoints(core.BrandLark).Accounts),
+	apiOrigin(core.ResolveEndpoints(core.BrandFeishu).MCP),
+	apiOrigin(core.ResolveEndpoints(core.BrandLark).MCP),
 }
 
 func (t *Transport) routeAllowsSignals(req *http.Request) bool {
@@ -141,7 +151,7 @@ func originOf(value *url.URL) origin {
 	return origin{scheme: scheme, host: strings.ToLower(value.Hostname()), port: port}
 }
 
-func apiOrigin(brand core.LarkBrand, endpointURL string) origin {
+func apiOrigin(endpointURL string) origin {
 	endpoint, err := url.Parse(endpointURL)
 	if err != nil {
 		return origin{}

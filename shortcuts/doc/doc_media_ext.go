@@ -33,6 +33,7 @@ var docMediaMimeToExt = map[string]string{
 	"image/jpeg":      ".jpg",
 	"image/png":       ".png",
 	"image/svg+xml":   ".svg",
+	"image/tiff":      ".tiff",
 	"image/webp":      ".webp",
 	"text/csv":        ".csv",
 	"text/html":       ".html",

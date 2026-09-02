@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -762,25 +763,35 @@ func enhanceProfileError(err error) error {
 	if p, ok := errs.ProblemOf(err); ok {
 		lower := strings.ToLower(p.Message)
 		if p.Category == errs.CategoryAuthorization {
-			p.Message = "unable to resolve mailbox address: " + p.Message
-			p.Hint = "run `lark-cli auth login --scope \"mail:user_mailbox:readonly\"` to grant mailbox profile access"
-			return err
+			var permissionErr *errs.PermissionError
+			if errors.As(err, &permissionErr) && permissionErr != nil {
+				permissionErr.Message = "unable to resolve mailbox address: " + permissionErr.Message
+				permissionErr.Hint = ""
+				return err
+			}
+			return mailboxProfilePermissionError(p, err)
 		}
 		if strings.Contains(lower, "permission") || strings.Contains(lower, "scope") {
-			permErr := errs.NewPermissionError(errs.SubtypeMissingScope, "unable to resolve mailbox address: %s", p.Message).
-				WithHint("run `lark-cli auth login --scope \"mail:user_mailbox:readonly\"` to grant mailbox profile access").
-				WithCause(err)
-			if p.Code != 0 {
-				permErr = permErr.WithCode(p.Code)
-			}
-			if p.LogID != "" {
-				permErr = permErr.WithLogID(p.LogID)
-			}
-			return permErr
+			return mailboxProfilePermissionError(p, err)
 		}
 	}
 	// Preserve original error (and its exit code) for non-permission failures.
 	return err
+}
+
+func mailboxProfilePermissionError(source *errs.Problem, cause error) error {
+	permissionErr := errs.NewPermissionError(errs.SubtypeMissingScope,
+		"unable to resolve mailbox address: %s", source.Message).
+		WithMissingScopes("mail:user_mailbox:readonly").
+		WithIdentity("user").
+		WithCause(cause)
+	if source.Code != 0 {
+		permissionErr.WithCode(source.Code)
+	}
+	if source.LogID != "" {
+		permissionErr.WithLogID(source.LogID)
+	}
+	return permissionErr
 }
 
 // decodeBodyFieldsForFile returns a shallow copy of outputData with body_html and

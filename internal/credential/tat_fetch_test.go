@@ -18,11 +18,12 @@ import (
 
 // stubRoundTripper lets us assert request shape and return canned responses.
 type stubRoundTripper struct {
-	gotReq   *http.Request
-	gotBody  string
-	respCode int
-	respBody string
-	err      error
+	gotReq     *http.Request
+	gotBody    string
+	respCode   int
+	respBody   string
+	respHeader http.Header
+	err        error
 }
 
 func (s *stubRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -34,10 +35,14 @@ func (s *stubRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 	if s.err != nil {
 		return nil, s.err
 	}
+	header := make(http.Header)
+	if s.respHeader != nil {
+		header = s.respHeader.Clone()
+	}
 	return &http.Response{
 		StatusCode: s.respCode,
 		Body:       io.NopCloser(strings.NewReader(s.respBody)),
-		Header:     make(http.Header),
+		Header:     header,
 	}, nil
 }
 
@@ -174,31 +179,80 @@ func TestFetchTAT_ServerError_Untyped(t *testing.T) {
 	}
 }
 
-// Rate-limiting is transient, not a deterministic credential rejection — an HTTP
-// 429 (even with a parseable OAuth body) and the OAuth slow_down error must both
-// stay UNTYPED so a rate-limited probe stays silent and retryers can back off.
-func TestFetchTAT_RateLimit_Untyped(t *testing.T) {
-	cases := []struct {
-		name string
-		code int
-		body string
+// HTTP 429 is actionable even while fetching TAT: surface a typed rate-limit
+// error and carry the platform reset interval instead of misreporting a bad
+// credential or returning an opaque transient error.
+func TestFetchTAT_HTTP429_TypedRateLimit(t *testing.T) {
+	tests := []struct {
+		name      string
+		body      string
+		header    http.Header
+		wantCode  int
+		wantDelay int
 	}{
-		{"http 429", 429, `{"code":99991400,"error":"too_many_requests","error_description":"rate limit exceeded"}`},
-		{"oauth slow_down", 200, `{"error":"slow_down","error_description":"polling too fast"}`},
+		{
+			name:      "platform envelope",
+			body:      `{"code":99991400,"error":"too_many_requests","error_description":"rate limit exceeded"}`,
+			header:    http.Header{"X-Ogw-Ratelimit-Reset": []string{"8"}, "Retry-After": []string{"4"}},
+			wantCode:  99991400,
+			wantDelay: 8,
+		},
+		{
+			name:      "standard retry-after fallback",
+			body:      `{"error":"too_many_requests"}`,
+			header:    http.Header{"Retry-After": []string{"4"}},
+			wantCode:  http.StatusTooManyRequests,
+			wantDelay: 4,
+		},
+		{
+			name:      "non-JSON gateway response",
+			body:      "rate limit exceeded",
+			wantCode:  http.StatusTooManyRequests,
+			wantDelay: 0,
+		},
 	}
-	for _, tc := range cases {
+	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			rt := &stubRoundTripper{respCode: tc.code, respBody: tc.body}
+			rt := &stubRoundTripper{
+				respCode:   http.StatusTooManyRequests,
+				respBody:   tc.body,
+				respHeader: tc.header,
+			}
 			hc := &http.Client{Transport: rt}
 
 			_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
-			if err == nil {
-				t.Fatal("expected error for rate-limit")
+			var apiErr *errs.APIError
+			if !errors.As(err, &apiErr) {
+				t.Fatalf("HTTP 429 error = %T %v, want *errs.APIError", err, err)
 			}
-			if errs.IsTyped(err) {
-				t.Errorf("rate-limit must be UNTYPED (transient), got typed %T %v", err, err)
+			if apiErr.Subtype != errs.SubtypeRateLimit || !apiErr.Retryable {
+				t.Fatalf("problem = %+v, want retryable api/rate_limit", apiErr.Problem)
+			}
+			if apiErr.Code != tc.wantCode {
+				t.Fatalf("code = %d, want %d", apiErr.Code, tc.wantCode)
+			}
+			if apiErr.RetryAfterSeconds != tc.wantDelay {
+				t.Fatalf("retry_after_seconds = %v, want %d", apiErr.RetryAfterSeconds, tc.wantDelay)
+			}
+			if !strings.Contains(apiErr.Hint, "exponential backoff with jitter") {
+				t.Fatalf("hint = %q, want backoff guidance", apiErr.Hint)
 			}
 		})
+	}
+}
+
+// OAuth slow_down without HTTP 429 remains an ambiguous transient response;
+// it has no OpenAPI reset header from which to produce precise retry metadata.
+func TestFetchTAT_OAuthSlowDown_Untyped(t *testing.T) {
+	rt := &stubRoundTripper{respCode: 200, respBody: `{"error":"slow_down","error_description":"polling too fast"}`}
+	hc := &http.Client{Transport: rt}
+
+	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	if err == nil {
+		t.Fatal("expected error for slow_down")
+	}
+	if errs.IsTyped(err) {
+		t.Errorf("slow_down without HTTP 429 must stay untyped, got %T %v", err, err)
 	}
 }
 

@@ -51,10 +51,43 @@
         "type": "bool",
         "required": "optional",
         "desc": "When status=errors_found, exit non-zero. Useful for CI gate after batch formula writes."
+      },
+      {
+        "name": "ai-only",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Only verify AI formulas (=AI(prompt, [range])), skipping the 7 Excel-error scan of ordinary formulas. AI formulas compute asynchronously: use this flag with --range as the first post-write sample check, not cells-get polling; if the sample has no explicit failed/unsupported state, delivery may proceed with pending formulas while telling the user that computation continues in the background."
       }
     ]
   },
   "+workbook-info": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet locator"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet locator"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+sheet-list": {
     "risk": "read",
     "flags": [
       {
@@ -196,14 +229,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "yes",
@@ -243,14 +276,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "title",
@@ -290,14 +323,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "index",
@@ -345,14 +378,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "title",
@@ -400,14 +433,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "dry-run",
@@ -440,14 +473,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "dry-run",
@@ -480,14 +513,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "color",
@@ -527,14 +560,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "dry-run",
@@ -567,14 +600,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "dry-run",
@@ -744,14 +777,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "include",
@@ -807,26 +840,24 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "inherit-style",
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Style inheritance for the new row/column: `before` (from preceding) / `after` (from following) / `none` (default)",
-        "default": "none",
+        "desc": "Style inheritance for the new row/column: `before` (from the preceding row/column) / `after` (from the following row/column). Omit the flag to inherit the following row/column (same as `after`) — the backend cannot leave a new row/column unstyled; for a truly blank row/column, clear formats afterwards with +cells-clear --scope formats. Insertion always lands before `--position`; this only selects which side's style is copied.",
         "enum": [
           "before",
-          "after",
-          "none"
+          "after"
         ]
       },
       {
@@ -874,21 +905,32 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "range",
         "kind": "own",
         "type": "string",
-        "required": "required",
-        "desc": "Row/column closed range to delete; rows use 1-based numbers like `3:7` or `5` (single row), columns use letters like `C:F` or `C`"
+        "required": "xor",
+        "desc": "Row/column closed range to delete; rows use 1-based numbers like `3:7` or `5` (single row), columns use letters like `C:F` or `C`. XOR with `--ranges`"
+      },
+      {
+        "name": "ranges",
+        "kind": "own",
+        "type": "string",
+        "required": "xor",
+        "desc": "Multiple row/column ranges to delete as a JSON array (up to 100 items, e.g. `[\"5:5\",\"8:8\",\"11:13\"]` or `[\"C:C\",\"F:G\"]`); rows and columns cannot be mixed, ranges must not overlap; XOR with `--range`. CLI sorts positions in DESCENDING order into one batched delete (fail-fast; read back before resending) — ascending deletion would shift later indexes as earlier rows/columns disappear; the CLI handles the ordering",
+        "input": [
+          "file",
+          "stdin"
+        ]
       },
       {
         "name": "yes",
@@ -928,14 +970,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "range",
@@ -975,14 +1017,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "range",
@@ -1022,21 +1064,22 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "dimension",
         "kind": "own",
         "type": "string",
-        "required": "required",
-        "desc": "Dimension (row or column)",
+        "required": "optional",
+        "desc": "[legacy] Dimension (row or column), paired with --count; sets one axis only and unfreezes the other. Prefer --rows / --cols",
+        "hidden": true,
         "enum": [
           "row",
           "column"
@@ -1046,8 +1089,23 @@
         "name": "count",
         "kind": "own",
         "type": "int",
-        "required": "required",
-        "desc": "Freeze the first N rows/columns; pass 0 to unfreeze"
+        "required": "optional",
+        "desc": "[legacy] Freeze the first N rows/columns (paired with --dimension); 0 clears all freezing. Equivalent to --rows N / --cols N, and only --rows/--cols can hold both axes at once",
+        "hidden": true
+      },
+      {
+        "name": "rows",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Freeze the first N rows; together with --cols this states the COMPLETE freeze state — an omitted axis is left unfrozen (0 means no frozen rows)"
+      },
+      {
+        "name": "cols",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Freeze the first N columns; together with --rows this states the COMPLETE freeze state — an omitted axis is left unfrozen (0 means no frozen columns)"
       },
       {
         "name": "dry-run",
@@ -1080,14 +1138,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "depth",
@@ -1147,14 +1205,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "depth",
@@ -1202,14 +1260,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "source-range",
@@ -1256,14 +1314,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "range",
@@ -1277,13 +1335,15 @@
         "kind": "own",
         "type": "string_slice",
         "required": "optional",
-        "desc": "Comma-separated info categories to include",
+        "desc": "Comma-separated info categories to include. `truncation` additionally estimates whether each cell's content is clipped (by row height / col width / font size / wrap) and returns `isRowTruncated` / `isColTruncated` (extra compute; enable only for layout checks or before adjusting row heights / column widths)",
         "enum": [
           "value",
           "formula",
           "style",
           "comment",
-          "data_validation"
+          "data_validation",
+          "conditional_format",
+          "truncation"
         ]
       },
       {
@@ -1291,8 +1351,15 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Max output chars per call; default 500000 (safety cap). Large reads are usually better redirected to a file; only lower it (e.g. 25000) when you want results inline without triggering file offload, paging via has_more",
+        "desc": "Max output chars per call; default 500000 (safety cap). For a full untruncated read, use --output-path to dump to a file (the cap auto-raises to a bounded 20M chars — the read path is not streaming, this cap is the memory guard; pass an explicit --max-chars for more); only lower it (e.g. 25000) when you want results inline without a file, paging via has_more. Passing 0 means \"no cap of my own\" and resolves to the same ceiling as leaving the flag alone (500000, or the offload limit with --output-path) — never down to the tool's smaller omitted-value fallback.",
         "default": "500000"
+      },
+      {
+        "name": "output-path",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Write the full read result to a local path (e.g. `./out.json`); the file holds the data payload as JSON while stdout returns only a small confirmation (output_path, byte count). **When set, the char cap auto-raises to a bounded offload default (20M chars)** rather than unlimited — the read path is not streaming, so this cap is the memory guard; an explicit --max-chars overrides it. The stdout receipt reports `complete` (and `truncated` plus a warning when the cap was hit), so check it instead of assuming the file holds the whole sheet. Omit it to print to stdout as usual."
       },
       {
         "name": "skip-hidden",
@@ -1332,14 +1399,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "range",
@@ -1379,29 +1446,36 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "range",
         "kind": "own",
         "type": "string",
-        "required": "required",
-        "desc": "A1 range, e.g. `A1:F30` (no sheet prefix — use `--sheet-id` / `--sheet-name` to select the sheet)"
+        "required": "optional",
+        "desc": "A1 range, e.g. `A1:F30` (no sheet prefix — use `--sheet-id` / `--sheet-name` to select the sheet). Optional: when omitted the whole sheet is read (clipped to the actual grid bounds; actual_range in the response names what was read); pair with --max-chars / --output-path on large sheets"
       },
       {
         "name": "max-chars",
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Max output chars per call; default 500000 (safety cap). Large reads are usually better redirected to a file; only lower it (e.g. 25000) when you want results inline without triggering file offload, paging via has_more",
+        "desc": "Max output chars per call; default 500000 (safety cap). For a full untruncated read, use --output-path to dump to a file (the cap auto-raises to a bounded 20M chars — the read path is not streaming, this cap is the memory guard; pass an explicit --max-chars for more); only lower it (e.g. 25000) when you want results inline without a file, paging via has_more. Passing 0 means \"no cap of my own\" and resolves to the same ceiling as leaving the flag alone (500000, or the offload limit with --output-path) — never down to the tool's smaller omitted-value fallback.",
         "default": "500000"
+      },
+      {
+        "name": "output-path",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Write the full read result to a local path (e.g. `./out.json`); the file holds the data payload as JSON while stdout returns only a small confirmation (output_path, byte count). **When set, the char cap auto-raises to a bounded offload default (20M chars)** rather than unlimited — the read path is not streaming, so this cap is the memory guard; an explicit --max-chars overrides it. The stdout receipt reports `complete` (and `truncated` plus a warning when the cap was hit), so check it instead of assuming the file holds the whole sheet. Note the file is the data payload as JSON — on +csv-get too, where the CSV text sits in a field inside it — not a ready-to-use .csv; redirect stdout instead if you want a bare CSV file. Omit it to print to stdout as usual."
       },
       {
         "name": "include-row-prefix",
@@ -1466,6 +1540,21 @@
         "desc": "A1 range to read; omit to read each sheet's full used range (spans internal blank rows/columns, not just the A1 current region)"
       },
       {
+        "name": "max-chars",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Max output chars per call; default 500000 (safety cap). The underlying tool truncates at ~50000 even when unset, so this is sent explicitly to raise it; for a full untruncated read use --output-path (cap auto-raises to a bounded 20M chars; explicit --max-chars overrides). Passing 0 means \"no cap of my own\" and resolves to the same ceiling as leaving the flag alone (500000, or the offload limit with --output-path) — never down to the tool's smaller omitted-value fallback.",
+        "default": "500000"
+      },
+      {
+        "name": "output-path",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Write the full read result to a local path (e.g. `./out.json`); the file holds the data payload as JSON while stdout returns only a small confirmation (output_path, byte count). **When set, the char cap auto-raises to a bounded offload default (20M chars)** rather than unlimited — the read path is not streaming, so this cap is the memory guard; an explicit --max-chars overrides it. The stdout receipt reports `complete` (and `truncated` plus a warning when the cap was hit), so check it instead of assuming the file holds the whole sheet. Omit it to print to stdout as usual."
+      },
+      {
         "name": "no-header",
         "kind": "own",
         "type": "bool",
@@ -1503,14 +1592,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "find",
@@ -1602,14 +1691,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "find",
@@ -1691,28 +1780,39 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two); not accepted with `--writes` (each writes item carries its own sheet selector)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two); not accepted with `--writes` (each writes item carries its own sheet selector)"
       },
       {
         "name": "range",
         "kind": "own",
         "type": "string",
-        "required": "required",
-        "desc": "Write range (A1 notation)"
+        "required": "xor",
+        "desc": "Write range (A1 notation). XOR with `--writes` (single region: --range+--cells; multiple regions: --writes)"
       },
       {
         "name": "cells",
         "kind": "own",
         "type": "string",
-        "required": "required",
-        "desc": "JSON 2D array `[[{cell},...],...]`, dimensions must match `--range`; each cell may carry `value` / `formula` / `cell_styles` / `note` / `rich_text` (incl. `type=\"embed-image\"` in-cell image); run `--print-schema` for full fields",
+        "required": "xor",
+        "desc": "JSON 2D array `[[{cell},...],...]`, dimensions must match `--range`; each cell may carry `value` / `formula` / `multiple_values` / `cell_styles` / `note` / `rich_text` (incl. `type=\"embed-image\"` in-cell image). To write selected values into a multi-select dropdown cell, use `multiple_values:[{\"value\":...}]`; do not join multiple options with commas into one `value`. Run `--print-schema` for full fields",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "writes",
+        "kind": "own",
+        "type": "string",
+        "required": "xor",
+        "desc": "Multi-region write as a JSON array (up to 100 items), each `{sheet_name|sheet_id, range, cells}` — the sheet selector LIVES IN EACH ITEM (same convention as +batch-update sub-ops and +styles-put items; the top-level --sheet-name is rejected). cells has the same shape as `--cells` (2D array; per-cell cell_styles/border_styles allowed). The whole array goes out as ONE batched request (fail-fast; read back to confirm what applied before resending), cross-sheet supported; typical use: fixing formulas scattered across ranges/sheets — do not assemble a +batch-update operations array for this. XOR with `--range`+`--cells`; range-level uniform styling stays with +styles-put afterwards",
         "input": [
           "file",
           "stdin"
@@ -1773,14 +1873,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "range",
@@ -1899,7 +1999,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Border config JSON: `{ top: {style,color,weight}, bottom: ..., left: ..., right: ... }`; same shape for all 4 sides",
+        "desc": "Border config JSON: `{ top: {style,weight,color}, bottom: ..., left: ..., right: ... }`; same shape for all 4 sides. style = line type (solid|dashed|dotted|double|none); weight = thickness (thin|medium|thick — a string, not a pixel number); color = hex like #000000. { all: {...} } sets all four sides at once. This is the only border flag: no --border-all / --border-top / --border-color exist",
         "input": [
           "file",
           "stdin"
@@ -1936,14 +2036,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "range",
@@ -1997,14 +2097,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "range",
@@ -2029,7 +2129,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Per-option pill colors, RGB hex array (e.g. `[\"#1FB6C1\",\"#F006C2\"]`). Length may be shorter than the source (`--options` items / `--source-range` cells) — extras cycle through a 10-color palette — but never longer (CLI Validate rejects: `--colors length (N) must not exceed dropdown source size (M)`). **Applies on its own**; ignored when `--highlight=false`.",
+        "desc": "Per-option pill background colors as an RGB hex array. Omit when creating a dropdown to use the built-in 10-color palette; pass only when the user explicitly requests custom colors or options have clear color semantics. Pill text is black, so prefer light, low-saturation backgrounds. The array may be shorter than the source (`--options` items / `--source-range` cells) — extras use the built-in palette — but never longer (CLI Validate rejects: `--colors length (N) must not exceed dropdown source size (M)`). Applies on its own; ignored when `--highlight=false`.",
         "input": [
           "file",
           "stdin"
@@ -2040,7 +2140,7 @@
         "kind": "own",
         "type": "bool",
         "required": "optional",
-        "desc": "Enable multi-select; default `false`"
+        "desc": "Enable multi-select; default `false`. This flag only configures validation and does not write selected values. When writing selections with `+cells-set`, pass a `multiple_values` array, not a comma-joined `value`"
       },
       {
         "name": "highlight",
@@ -2054,7 +2154,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Source range for listFromRange dropdown (A1 + sheet prefix, e.g. `'Sheet1'!T1:T3`); maps to server `data_validation.range` and auto-sets `data_validation.type='listFromRange'`. XOR with `--options`: pass `--options` for an inline list (type=list), pass this for a range reference (type=listFromRange). `--colors` length rule unchanged (≤ source range cell count); `--highlight` / `--multiple` behave the same. When `--highlight` is on and the source covers more than 2000 cells, the server flags the dropdown as option-error (highlight + large source is an unsupported combo); CLI emits a stderr warning. Pass `--highlight=false` to suppress."
+        "desc": "Source range for listFromRange dropdown (A1 + sheet prefix, e.g. `'Sheet1'!T1:T3`); maps to server `data_validation.range` and auto-sets `data_validation.type='listFromRange'`. XOR with `--options`: pass `--options` for an inline list (type=list), pass this for a range reference (type=listFromRange). `--colors` length rule unchanged (≤ source range cell count); `--highlight` / `--multiple` behave the same. When `--highlight` is on and the source covers more than 2000 cells, the server flags the dropdown as option-error (highlight + large source is an unsupported combo); CLI reports the warning in the result's `data.warnings`. Pass `--highlight=false` to suppress."
       },
       {
         "name": "dry-run",
@@ -2087,14 +2187,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "start-cell",
@@ -2210,14 +2310,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "range",
@@ -2277,14 +2377,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "range",
@@ -2337,14 +2437,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "range",
@@ -2384,14 +2484,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "height",
@@ -2406,7 +2506,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Per-row height map — set different heights for many rows in one atomic call. Keys: single row (`\"1\"`) or closed range (`\"2:20\"`); values: pixel height (e.g. 30 / 50), `\"auto\"` (fit content) or `\"standard\"` (reset to default). Units are pixels, NOT points. Mutually exclusive with `--range` / `--height` / `--type`",
+        "desc": "Per-row height map — set different heights for many rows in one batched call (fail-fast; read back before resending). Keys: single row (`\"1\"`) or closed range (`\"2:20\"`); values: pixel height (e.g. 30 / 50), `\"auto\"` (fit content) or `\"standard\"` (reset to default). Units are pixels, NOT points. Mutually exclusive with `--range` / `--height` / `--type`",
         "input": [
           "file",
           "stdin"
@@ -2462,14 +2562,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "width",
@@ -2484,7 +2584,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Per-column width map — set different widths for many columns in one atomic call. Keys: single column (`\"A\"`) or closed range (`\"C:E\"`); values: pixel width (e.g. 80 / 120 / 200) or `\"standard\"` (reset to default). Units are pixels, NOT Excel character units (px ≈ chars × 8 + 16). Mutually exclusive with `--range` / `--width` / `--type`",
+        "desc": "Per-column width map — set different widths for many columns in one batched call (fail-fast; read back before resending). Keys: single column (`\"A\"`) or closed range (`\"C:E\"`); values: pixel width (e.g. 80 / 120 / 200) or `\"standard\"` (reset to default). Units are pixels, NOT Excel character units (px ≈ chars × 8 + 16). Mutually exclusive with `--range` / `--width` / `--type`",
         "input": [
           "file",
           "stdin"
@@ -2539,14 +2639,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "source-range",
@@ -2600,14 +2700,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "source-range",
@@ -2675,14 +2775,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "source-range",
@@ -2744,14 +2844,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "range",
@@ -2787,6 +2887,43 @@
       }
     ]
   },
+  "+styles-put": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet locator (target sheets are named inside --styles items)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "styles",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Visual spec JSON applied to an EXISTING spreadsheet: top-level `{styles:[...]}`, one item per target sheet (`name` is the real sheet name), each giving at least one of `cell_styles` / `cell_merges` / `row_sizes` / `col_sizes` / `freeze`. The vocabulary is identical to `--styles` on `+workbook-create` / `+table-put` (cell_styles = A1 range + flat style fields, borders via the `border` shorthand {style,weight,color} applied to all four sides — border_styles only for per-side differences; row/col sizes = row/column range + size in px — type only for standard/auto; merges = cell range; freeze = `{rows:N, cols:N}`). The whole spec expands into one batched request (fail-fast: do not assume what applied — read back to confirm before resending); ranges may target any region of the sheet",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Print the batched request template for each expanded operation; no network side effects"
+      }
+    ]
+  },
   "+batch-update": {
     "risk": "high-risk-write",
     "flags": [
@@ -2809,7 +2946,7 @@
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "JSON array: [{\"shortcut\":\"+xxx-yyy\",\"input\":{...}}, ...]. shortcut uses CLI names; input is that shortcut's flag set — it includes the per-operation sheet locator (sheet_id or sheet_name) but not the spreadsheet token/url (pass that once at the top level via --url/--spreadsheet-token; +batch-update has no top-level --sheet-id). input keys are the shortcut's flags flattened into JSON (e.g. \"range\":\"A11:B12\"), not another nested layer. For basic flags use lark-cli sheets <shortcut> --help; for composite JSON flags use --print-schema --flag-name <flag>. Do not pass an explicit operation field. Strict transaction by default, pass --continue-on-error for soft batch; no nesting; executed serially.",
+        "desc": "JSON array: [{\"shortcut\":\"+xxx-yyy\",\"input\":{...}}, ...]. shortcut uses CLI names; input is that shortcut's flag set — it includes the per-operation sheet locator (sheet_id or sheet_name) but not the spreadsheet token/url (pass that once at the top level via --url/--spreadsheet-token; +batch-update has no top-level --sheet-id). input keys are the shortcut's flags flattened into JSON (e.g. \"range\":\"A11:B12\"), not another nested layer. For basic flags use lark-cli sheets <shortcut> --help; for composite JSON flags use --print-schema --flag-name <flag>. Do not pass an explicit operation field. Fail-fast by default: the first failure aborts the remaining operations. Whether earlier sub-operations persisted is NOT uniform: pure cell/structure writes are only buffered and are dropped on failure (effective rollback), while chart/pivot-type sub-operations flush the buffered writes to disk before creating the object and cannot be rolled back. After a failure, assume neither full-rollback nor full-persist — check results, read back the current state (dims / target cells / object lists) to determine what actually applied, then resend only the unapplied part. Pass --continue-on-error to keep going past failures with successes preserved; no nesting; executed serially.",
         "input": [
           "file",
           "stdin"
@@ -2835,6 +2972,96 @@
         "type": "bool",
         "required": "optional",
         "desc": "Print the request template for each sub-operation; no network side effects"
+      }
+    ]
+  },
+  "+batch-chart-create": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "operations",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Chart creation operations as JSON; put each target sheet selector and `+chart-create-basic` flag directly on the item, without `shortcut` or `input`. The CLI dispatches every item through `+chart-create-basic` internally. Partial failure is enabled by default: successful charts stay applied and only failed items should be retried",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "continue-on-error",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Continue after an individual chart fails; default true",
+        "default": "true"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Print the internal MCP request template with no network side effects; tool_name / operation / basic_chart in the output are for inspection only and must not be copied back into --operations"
+      }
+    ]
+  },
+  "+batch-chart-update": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "operations",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Chart update operations as JSON; every item uses `+chart-config-update` or `+chart-data-update`, with that command's flags and target sheet selector in input. The CLI reads each current chart snapshot before building partial properties; partial failure is enabled by default",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "continue-on-error",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Continue after an individual chart fails; default true",
+        "default": "true"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Print the batch update request template and snapshot preflight note with no network side effects"
       }
     ]
   },
@@ -2976,7 +3203,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Border config JSON (same shape as in +cells-set-style)",
+        "desc": "Border config JSON (same shape as in +cells-set-style): `{ top|bottom|left|right|all: {style,weight,color} }`; style = solid|dashed|dotted|double|none, weight = thin|medium|thick (string), color = hex like #000000",
         "input": [
           "file",
           "stdin"
@@ -3035,7 +3262,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Per-option pill colors, RGB hex array (e.g. `[\"#1FB6C1\",\"#F006C2\"]`). Length may be shorter than the source (`--options` items / `--source-range` cells) — extras cycle through a 10-color palette — but never longer (CLI Validate rejects: `--colors length (N) must not exceed dropdown source size (M)`). **Applies on its own**; ignored when `--highlight=false`.",
+        "desc": "Per-option pill background colors as an RGB hex array. Updating rewrites the entire validation rule: unless the user asks to reset colors, first read the dropdown with `+dropdown-get` and pass its existing `highlight_colors` through this flag; omission rebuilds colors from the built-in 10-color palette. For explicitly requested or semantic new colors, prefer light, low-saturation backgrounds because pill text is black. The array may be shorter than the source (`--options` items / `--source-range` cells) — extras use the built-in palette — but never longer (CLI Validate rejects: `--colors length (N) must not exceed dropdown source size (M)`). Applies on its own; ignored when `--highlight=false`.",
         "input": [
           "file",
           "stdin"
@@ -3046,7 +3273,7 @@
         "kind": "own",
         "type": "bool",
         "required": "optional",
-        "desc": "Enable multi-select"
+        "desc": "Enable multi-select. This flag only updates validation and does not write selected values. When writing selections with `+cells-set`, pass a `multiple_values` array, not a comma-joined `value`"
       },
       {
         "name": "highlight",
@@ -3060,7 +3287,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "Source range for listFromRange dropdown (A1 + sheet prefix, e.g. `'Sheet1'!T1:T3`); maps to server `data_validation.range` and auto-sets `data_validation.type='listFromRange'`. XOR with `--options`: pass `--options` for an inline list (type=list), pass this for a range reference (type=listFromRange). `--colors` length rule unchanged (≤ source range cell count); `--highlight` / `--multiple` behave the same. When `--highlight` is on and the source covers more than 2000 cells, the server flags the dropdown as option-error (highlight + large source is an unsupported combo); CLI emits a stderr warning. Pass `--highlight=false` to suppress."
+        "desc": "Source range for listFromRange dropdown (A1 + sheet prefix, e.g. `'Sheet1'!T1:T3`); maps to server `data_validation.range` and auto-sets `data_validation.type='listFromRange'`. XOR with `--options`: pass `--options` for an inline list (type=list), pass this for a range reference (type=listFromRange). `--colors` length rule unchanged (≤ source range cell count); `--highlight` / `--multiple` behave the same. When `--highlight` is on and the source covers more than 2000 cells, the server flags the dropdown as option-error (highlight + large source is an unsupported combo); CLI reports the warning in the result's `data.warnings`. Pass `--highlight=false` to suppress."
       },
       {
         "name": "dry-run",
@@ -3194,14 +3421,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "chart-id",
@@ -3219,7 +3446,7 @@
       }
     ]
   },
-  "+chart-create": {
+  "+chart-create-basic": {
     "risk": "write",
     "flags": [
       {
@@ -3251,15 +3478,341 @@
         "desc": "Sheet name (XOR with `--sheet-id`)"
       },
       {
-        "name": "properties",
+        "name": "chart-type",
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "Full chart config JSON. Top-level keys: `position` / `offset` / `size` / `snapshot` (no top-level `data`, no extra nested `properties`); chart data config lives under `snapshot.data` (`refs` / `headerMode` / `dim1` / `dim2`); must include at least one of `snapshot.data.dim1.serie.index` or `dim2.series[].index`, otherwise the server rejects it. Deeply nested — run `--print-schema --flag-name properties` for the full structure.",
-        "input": [
-          "file",
-          "stdin"
+        "desc": "Chart type",
+        "enum": [
+          "column",
+          "bar",
+          "line",
+          "area",
+          "pie",
+          "scatter",
+          "combo",
+          "radar",
+          "bubble",
+          "waterfall",
+          "pareto"
         ]
+      },
+      {
+        "name": "data-range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Data range; include headers unless --header-range is set, in which case pass data only; accepts comma-separated ranges across one or more sheets"
+      },
+      {
+        "name": "header-range",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Optional detached header range; use one row for column direction or one column for row direction, with one header per data dimension"
+      },
+      {
+        "name": "data-direction",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Data series direction; column uses the first column as categories, row uses the first row",
+        "default": "column",
+        "enum": [
+          "column",
+          "row"
+        ]
+      },
+      {
+        "name": "x-axis-numbers-as",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "How to interpret numeric X-axis values; text treats numbers as evenly spaced text categories, while values uses a continuous numeric scale and preserves true spacing",
+        "default": "text",
+        "enum": [
+          "text",
+          "values"
+        ]
+      },
+      {
+        "name": "x-axis-min",
+        "kind": "own",
+        "type": "float64",
+        "required": "optional",
+        "desc": "Lower display bound for a continuous numeric X-axis; requires --x-axis-numbers-as values"
+      },
+      {
+        "name": "x-axis-max",
+        "kind": "own",
+        "type": "float64",
+        "required": "optional",
+        "desc": "Upper display bound for a continuous numeric X-axis; requires --x-axis-numbers-as values"
+      },
+      {
+        "name": "y-axis-min",
+        "kind": "own",
+        "type": "float64",
+        "required": "optional",
+        "desc": "Lower display bound for the left Y-axis; must be less than --y-axis-max"
+      },
+      {
+        "name": "y-axis-max",
+        "kind": "own",
+        "type": "float64",
+        "required": "optional",
+        "desc": "Upper display bound for the left Y-axis; must be greater than --y-axis-min"
+      },
+      {
+        "name": "dim1-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "1-based category/X-axis dimension index within the data range; defaults to 1"
+      },
+      {
+        "name": "dim2-indexes",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Comma-separated 1-based value/Y-axis dimension indexes; must exclude dim1, at most 50. Legacy bubble calls accept 2–4 indexes in `x,y[,group][,size]` order; new calls should use role-specific indexes. Pie and pareto charts accept exactly one"
+      },
+      {
+        "name": "series-types",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Combo charts only; comma-separated series types aligned with --dim2-indexes; use column, line, or area and provide one value per selected series"
+      },
+      {
+        "name": "series-y-axes",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Combo charts only; comma-separated left or right Y-axis assignments aligned with --dim2-indexes; provide one value per selected series"
+      },
+      {
+        "name": "key-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Bubble only: 1-based key/name dimension index; mutually exclusive with dim1/dim2 indexes; defaults to 1"
+      },
+      {
+        "name": "x-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Bubble only: 1-based X-value dimension index; must be provided with --y-index"
+      },
+      {
+        "name": "y-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Bubble only: 1-based Y-value dimension index; must be provided with --x-index"
+      },
+      {
+        "name": "group-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Bubble only: optional 1-based group dimension index"
+      },
+      {
+        "name": "size-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Bubble only: optional 1-based bubble-size dimension index"
+      },
+      {
+        "name": "title",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Chart title"
+      },
+      {
+        "name": "subtitle",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Chart subtitle"
+      },
+      {
+        "name": "legend-position",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Legend position; hidden removes the legend",
+        "enum": [
+          "top",
+          "bottom",
+          "left",
+          "right",
+          "hidden"
+        ]
+      },
+      {
+        "name": "x-axis-title",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "X-axis title"
+      },
+      {
+        "name": "y-axis-title",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Left Y-axis title"
+      },
+      {
+        "name": "secondary-y-axis-title",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Right Y-axis title"
+      },
+      {
+        "name": "x-axis-label-angle",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "X-axis label angle",
+        "enum": [
+          "-90",
+          "-45",
+          "0",
+          "45",
+          "90"
+        ]
+      },
+      {
+        "name": "y-axis-label-angle",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Left Y-axis label angle",
+        "enum": [
+          "-90",
+          "-45",
+          "0",
+          "45",
+          "90"
+        ]
+      },
+      {
+        "name": "data-labels",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Data label content; combine value, category, and percentage in value_category_percentage order for any non-empty combination; series shows series names and none removes labels",
+        "enum": [
+          "none",
+          "value",
+          "category",
+          "percentage",
+          "value_category",
+          "value_percentage",
+          "category_percentage",
+          "value_category_percentage",
+          "series"
+        ]
+      },
+      {
+        "name": "data-label-position",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Pass only when the user explicitly requests a position; it only repositions existing data labels and does not enable labels by itself; omit it for chart-type-aware placement",
+        "enum": [
+          "auto",
+          "top",
+          "bottom",
+          "left",
+          "right",
+          "center",
+          "inside",
+          "outside"
+        ]
+      },
+      {
+        "name": "stack",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Stacking mode",
+        "enum": [
+          "none",
+          "normal",
+          "percent"
+        ]
+      },
+      {
+        "name": "stacked",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Compatibility alias for --stack normal",
+        "hidden": true
+      },
+      {
+        "name": "smooth",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Use smooth curves; accepts both --smooth=false and --smooth false"
+      },
+      {
+        "name": "color-palette",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Preset chart-level color palette; mutually exclusive with --colors",
+        "enum": [
+          "brandColorSeries@v2",
+          "rainbowColorSeries@v2",
+          "complementaryColorSeries@v2",
+          "converseColorSeries@v2",
+          "primaryColorSeries@v2",
+          "singleColorSeries-B-@v2",
+          "singleColorSeries-W-@v2",
+          "singleColorSeries-G-@v2",
+          "singleColorSeries-Y-@v2",
+          "singleColorSeries-O-@v2",
+          "singleColorSeries-R-@v2",
+          "singleColorSeries-D-@v2"
+        ]
+      },
+      {
+        "name": "colors",
+        "kind": "own",
+        "type": "string_slice",
+        "required": "optional",
+        "desc": "Custom chart-level series colors as a comma-separated list of at least two hex colors; mutually exclusive with --color-palette"
+      },
+      {
+        "name": "anchor-cell",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Optional chart anchor cell such as F2; defaults to the right of the data range"
+      },
+      {
+        "name": "width",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Optional chart width; must be paired with --height"
+      },
+      {
+        "name": "height",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Optional chart height; must be paired with --width"
       },
       {
         "name": "dry-run",
@@ -3270,7 +3823,7 @@
       }
     ]
   },
-  "+chart-update": {
+  "+chart-config-update": {
     "risk": "write",
     "flags": [
       {
@@ -3309,11 +3862,439 @@
         "desc": "Target chart reference_id"
       },
       {
+        "name": "title",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Chart title"
+      },
+      {
+        "name": "subtitle",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Chart subtitle"
+      },
+      {
+        "name": "legend-position",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Legend position; hidden removes the legend",
+        "enum": [
+          "top",
+          "bottom",
+          "left",
+          "right",
+          "hidden"
+        ]
+      },
+      {
+        "name": "x-axis-title",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "X-axis title"
+      },
+      {
+        "name": "y-axis-title",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Left Y-axis title"
+      },
+      {
+        "name": "secondary-y-axis-title",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Right Y-axis title"
+      },
+      {
+        "name": "x-axis-label-angle",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "X-axis label angle",
+        "enum": [
+          "-90",
+          "-45",
+          "0",
+          "45",
+          "90"
+        ]
+      },
+      {
+        "name": "y-axis-label-angle",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Left Y-axis label angle",
+        "enum": [
+          "-90",
+          "-45",
+          "0",
+          "45",
+          "90"
+        ]
+      },
+      {
+        "name": "x-axis-min",
+        "kind": "own",
+        "type": "float64",
+        "required": "optional",
+        "desc": "Lower display bound for a continuous numeric X-axis; must be less than --x-axis-max"
+      },
+      {
+        "name": "x-axis-max",
+        "kind": "own",
+        "type": "float64",
+        "required": "optional",
+        "desc": "Upper display bound for a continuous numeric X-axis; must be greater than --x-axis-min"
+      },
+      {
+        "name": "y-axis-min",
+        "kind": "own",
+        "type": "float64",
+        "required": "optional",
+        "desc": "Lower display bound for the left Y-axis; must be less than --y-axis-max"
+      },
+      {
+        "name": "y-axis-max",
+        "kind": "own",
+        "type": "float64",
+        "required": "optional",
+        "desc": "Upper display bound for the left Y-axis; must be greater than --y-axis-min"
+      },
+      {
+        "name": "data-labels",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Data label content; combine value, category, and percentage in value_category_percentage order for any non-empty combination; series shows series names and none removes labels",
+        "enum": [
+          "none",
+          "value",
+          "category",
+          "percentage",
+          "value_category",
+          "value_percentage",
+          "category_percentage",
+          "value_category_percentage",
+          "series"
+        ]
+      },
+      {
+        "name": "data-label-position",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Pass only when the user explicitly requests a position; it only repositions existing data labels and does not enable labels by itself; omit it for chart-type-aware placement",
+        "enum": [
+          "auto",
+          "top",
+          "bottom",
+          "left",
+          "right",
+          "center",
+          "inside",
+          "outside"
+        ]
+      },
+      {
+        "name": "last-point-label",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "For line, area, radar, and linear combo series only; true shows a value label on the last data point of every series, while false removes those point labels"
+      },
+      {
+        "name": "stack",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Stacking mode",
+        "enum": [
+          "none",
+          "normal",
+          "percent"
+        ]
+      },
+      {
+        "name": "stacked",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Compatibility alias for --stack normal",
+        "hidden": true
+      },
+      {
+        "name": "smooth",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Use smooth curves; accepts both --smooth=false and --smooth false"
+      },
+      {
+        "name": "color-palette",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Preset chart-level color palette; mutually exclusive with --colors",
+        "enum": [
+          "brandColorSeries@v2",
+          "rainbowColorSeries@v2",
+          "complementaryColorSeries@v2",
+          "converseColorSeries@v2",
+          "primaryColorSeries@v2",
+          "singleColorSeries-B-@v2",
+          "singleColorSeries-W-@v2",
+          "singleColorSeries-G-@v2",
+          "singleColorSeries-Y-@v2",
+          "singleColorSeries-O-@v2",
+          "singleColorSeries-R-@v2",
+          "singleColorSeries-D-@v2"
+        ]
+      },
+      {
+        "name": "colors",
+        "kind": "own",
+        "type": "string_slice",
+        "required": "optional",
+        "desc": "Custom chart-level series colors as a comma-separated list of at least two hex colors; mutually exclusive with --color-palette"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Print the request template; no side effects"
+      }
+    ]
+  },
+  "+chart-data-update": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "chart-id",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target chart reference_id"
+      },
+      {
+        "name": "data-range",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "New data range; include headers unless --header-range is set or the chart already uses detached headers; accepts comma-separated ranges across one or more sheets"
+      },
+      {
+        "name": "header-range",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Optional detached header range; enables detached header mapping, while omission preserves an existing detached mapping"
+      },
+      {
+        "name": "data-direction",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Data series direction; defaults to the existing chart direction when omitted",
+        "enum": [
+          "column",
+          "row"
+        ]
+      },
+      {
+        "name": "dim1-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "1-based category/X-axis dimension index within the data range; defaults to the first dimension"
+      },
+      {
+        "name": "dim2-indexes",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Comma-separated 1-based value/Y-axis series indexes within the data range; defaults to all dimensions except dim1"
+      },
+      {
+        "name": "key-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Bubble only: 1-based key/name dimension index; mutually exclusive with dim1/dim2 indexes; defaults to 1"
+      },
+      {
+        "name": "x-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Bubble only: 1-based X-value dimension index; must be provided with --y-index"
+      },
+      {
+        "name": "y-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Bubble only: 1-based Y-value dimension index; must be provided with --x-index"
+      },
+      {
+        "name": "group-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Bubble only: optional 1-based group dimension index"
+      },
+      {
+        "name": "size-index",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Bubble only: optional 1-based bubble-size dimension index"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Print the request template; no side effects"
+      }
+    ]
+  },
+  "+chart-create": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
+      },
+      {
         "name": "properties",
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "Full or sufficiently complete chart config JSON (read back with `+chart-list` first, then patch)",
+        "desc": "Full chart config JSON. Top-level keys: `position` / `offset` / `size` / `snapshot` (no top-level `data`, no extra nested `properties`); chart data config lives under `snapshot.data` (`refs` / `headerMode` / `dim1` / `dim2`); must include at least one of `snapshot.data.dim1.serie.index` or `dim2.series[].index`, otherwise the server rejects it. Deeply nested — run `--print-schema --flag-name properties` for the full structure.",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "print-example",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Print a minimal ready-to-edit --properties template for a chart type (area|bar|bubble|column|combo|line|pareto|pie|radar|scatter|waterfall) and exit. Purely local: no locator flags, no network; an unknown type lists the available ones"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Print the request template; no side effects"
+      }
+    ]
+  },
+  "+chart-update": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
+      },
+      {
+        "name": "chart-id",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Target chart reference_id"
+      },
+      {
+        "name": "properties",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Chart config patch JSON; send changed fields only by default; omitted fields are preserved, objects merge recursively, and arrays replace as a whole",
         "input": [
           "file",
           "stdin"
@@ -3350,14 +4331,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "chart-id",
@@ -3404,14 +4385,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "pivot-table-id",
@@ -3524,14 +4505,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "pivot-table-id",
@@ -3582,14 +4563,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "pivot-table-id",
@@ -3636,6 +4617,53 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
+      },
+      {
+        "name": "rule-id",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Filter by rule id"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+cond-format-result-get": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
         "desc": "Sheet reference_id (XOR with `--sheet-name`)"
       },
       {
@@ -3646,11 +4674,19 @@
         "desc": "Sheet name (XOR with `--sheet-id`)"
       },
       {
-        "name": "rule-id",
+        "name": "range",
         "kind": "own",
         "type": "string",
+        "required": "required",
+        "desc": "A1 range, e.g. `A1:F10` (no sheet prefix — use `--sheet-id` / `--sheet-name` to select the sheet)"
+      },
+      {
+        "name": "max-chars",
+        "kind": "own",
+        "type": "int",
         "required": "optional",
-        "desc": "Filter by rule id"
+        "desc": "Max output chars per call; default 500000 (safety cap)",
+        "default": "500000"
       },
       {
         "name": "dry-run",
@@ -3683,14 +4719,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "properties",
@@ -3767,14 +4803,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "rule-id",
@@ -3858,14 +4894,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "rule-id",
@@ -3912,14 +4948,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "dry-run",
@@ -3952,14 +4988,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "range",
@@ -4010,14 +5046,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "properties",
@@ -4068,14 +5104,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "yes",
@@ -4115,14 +5151,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "view-id",
@@ -4162,14 +5198,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "properties",
@@ -4227,14 +5263,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "view-id",
@@ -4299,14 +5335,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "view-id",
@@ -4353,14 +5389,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "group-id",
@@ -4400,14 +5436,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "properties",
@@ -4451,14 +5487,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "group-id",
@@ -4509,14 +5545,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "group-id",
@@ -4563,14 +5599,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "float-image-id",
@@ -4610,14 +5646,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "image-name",
@@ -4727,14 +5763,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "float-image-id",
@@ -4844,14 +5880,14 @@
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+        "desc": "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"
       },
       {
         "name": "sheet-name",
         "kind": "public",
         "type": "string",
         "required": "xor",
-        "desc": "Sheet name (XOR with `--sheet-id`)"
+        "desc": "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"
       },
       {
         "name": "float-image-id",

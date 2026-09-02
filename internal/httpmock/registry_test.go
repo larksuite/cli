@@ -4,6 +4,7 @@
 package httpmock
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"testing"
@@ -111,4 +112,22 @@ func TestRegistry_CustomStatus(t *testing.T) {
 	if resp.StatusCode != 500 {
 		t.Errorf("want status 500, got %d", resp.StatusCode)
 	}
+}
+
+func TestRegistry_TransportError(t *testing.T) {
+	wantErr := errors.New("connection reset")
+	reg := &Registry{}
+	reg.Register(&Stub{
+		Method: "POST",
+		URL:    "/transport-error",
+		Error:  wantErr,
+	})
+
+	client := NewClient(reg)
+	req, _ := http.NewRequest("POST", "https://example.com/transport-error", nil)
+	_, err := client.Do(req)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("error = %v, want transport error %v", err, wantErr)
+	}
+	reg.Verify(t)
 }

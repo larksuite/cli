@@ -25,11 +25,11 @@ var BaseRoleCreate = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
-		{Name: "json", Desc: "role config JSON; read lark-base-role-guide.md and role-config.md before constructing permissions", Required: true},
+		{Name: "json", Desc: "role config JSON; read lark-base-advanced-permission-and-role.md and lark-base-role-config.md before constructing permissions", Required: true},
 	},
 	Tips: []string{
 		"Requires advanced permissions to be enabled and the caller to be a Base admin.",
-		"Use lark-base-role-guide.md as the entry guide and role-config.md as the role permission JSON SSOT.",
+		"Use lark-base-advanced-permission-and-role.md as the module entry and lark-base-role-config.md as the role permission schema.",
 		"Create supports custom_role only.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {

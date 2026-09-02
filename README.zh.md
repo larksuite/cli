@@ -8,7 +8,7 @@
 
 飞书官方 CLI 工具，由 [larksuite](https://github.com/larksuite) 团队维护 — 让人类和 AI Agent 都能在终端中操作飞书。覆盖消息、文档、多维表格、电子表格、幻灯片、日历、邮箱、任务、会议、Markdown 等核心业务域，提供 200+ 命令及 26 个 AI Agent [Skills](./skills/)。
 
-[安装](#安装与快速开始) · [AI Agent Skills](#agent-skills) · [认证](#认证) · [命令](#三层命令调用) · [进阶用法](#进阶用法) · [安全](#安全与风险提示使用前必读) · [贡献](#贡献)
+[安装](#安装与快速开始) · [AI Agent Skills](#agent-skills) · [认证](#认证) · [命令](#三层命令调用) · [进阶用法](#进阶用法) · [企业接入](#个人使用还是企业集成) · [安全](#安全与风险提示使用前必读) · [贡献](#贡献)
 
 ## 为什么选 lark-cli？
 
@@ -19,6 +19,15 @@
 - **三分钟上手** — 一键创建应用、交互式登录授权，从安装到第一次 API 调用只需三步
 - **安全可控** — 输入防注入、终端输出净化、OS 原生密钥链存储凭证
 - **三层调用架构** — 快捷命令（人机友好）→ API 命令（平台同步）→ 通用调用（全 API 覆盖），按需选择粒度
+
+## 个人使用还是企业集成？
+
+| 你是... | 推荐路径 |
+| ------- | -------- |
+| **个人开发者** — 在终端里直接使用，或搭配自己的 AI Agent | 按下方[快速开始](#安装与快速开始)操作 |
+| **企业 IT / ISV** — 把 lark-cli 内嵌到自研 Agent 或平台中，需要中心化凭证管理（数据库 / Vault / 配置中心）、统一审计日志、命令能力裁剪 | 阅读[《自研 Agent 接入飞书 CLI》](https://open.larkoffice.com/document/mcp_open_tools/feishu-cli/embed-feishu-cli-in-agent)与 [`extension/`](./extension/) 扩展包 — 通过 wrapper `main` 扩展，无需修改 CLI 源码 |
+
+> 💡 **给 AI Agent：** 任意开放平台文档 URL 加 `.md` 后缀即可直接获取原始 Markdown，例如 [`embed-feishu-cli-in-agent.md`](https://open.larkoffice.com/document/mcp_open_tools/feishu-cli/embed-feishu-cli-in-agent.md)。
 
 ## 功能
 
@@ -36,7 +45,7 @@
 | 📚 知识库   | 创建和管理知识空间、节点和文档                            |
 | 👤 通讯录   | 按姓名/邮箱/手机号搜索用户、获取用户信息                      |
 | 📧 邮箱     | 浏览、搜索、阅读邮件，发送、回复、转发邮件，管理草稿，监听新邮件           |
-| 🎥 视频会议 | 搜索会议记录、查询会议纪要产物与会议录制                        |
+| 🎥 视频会议 | 查询进行中或历史会议、参会人和会议产物，分析逐字稿，管理妙记并提供会中协助 |
 | 🕐 考勤打卡 | 查询个人考勤打卡记录                                |
 | ✍️ 审批     | 查询审批任务、同意/拒绝/转交审批任务、撤回与抄送审批实例              |
 | 🎯 OKR  | 查询、创建、更新 OKR，管理目标、关键结果、对齐、指标和进展记录        |
@@ -143,9 +152,8 @@ lark-cli auth status
 | `lark-contact`                  | 按姓名/邮箱/手机号搜索用户，获取用户信息                     |
 | `lark-wiki`                     | 知识空间、节点、文档                                |
 | `lark-event`                    | 实时事件订阅（WebSocket），支持正则路由与 Agent 友好格式      |
-| `lark-vc`                       | 搜索会议记录、查询会议纪要产物（总结、待办、逐字稿）                |
+| `lark-meeting`                  | 查询进行中或历史会议、参会人和会议产物，分析逐字稿，管理妙记并提供会中协助 |
 | `lark-whiteboard`               | 画板/图表 DSL 渲染                              |
-| `lark-minutes`                  | 妙记元数据与 AI 产物（总结、待办、章节），上传音视频生成妙记，下载音视频文件 |
 | `lark-openapi-explorer`         | 从官方文档探索底层 API                             |
 | `lark-skill-maker`              | 自定义 skill 创建框架                            |
 | `lark-attendance`               | 查询个人考勤打卡记录                                |

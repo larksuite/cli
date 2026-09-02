@@ -20,6 +20,7 @@ import (
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
 )
 
 // ConfigInitOptions holds all inputs for config init.
@@ -40,12 +41,43 @@ type ConfigInitOptions struct {
 	ProfileName string // when set, create/update a named profile instead of replacing Apps[0]
 
 	// ForceInit overrides the agent-workspace guard. Without it, running
-	// init under OPENCLAW_HOME / HERMES_HOME refuses and points the caller
-	// at config bind — which is what AI agents almost always want. Manual
-	// users with a legitimate need for a separate app can pass --force-init
-	// to bypass.
+	// init under OPENCLAW_HOME / HERMES_HOME refuses so the distribution's
+	// supported Agent-app setup flow remains the default. Manual users with
+	// a legitimate need for a separate app can pass --force-init to bypass.
 	ForceInit bool
 }
+
+const (
+	configInitLongPrefix = `Initialize configuration (app-id / app-secret-stdin / brand).
+
+For AI agents: use --new to create a new app. The command blocks until the user
+completes setup in the browser. Run it in the background and retrieve the
+verification URL from its output.
+
+Inside an Agent context (OPENCLAW_HOME / HERMES_HOME set) this command`
+
+	configInitBindGuidance = `
+refuses by default — use 'lark-cli config bind' to bind to the Agent's
+existing app instead of creating a parallel one.`
+
+	configInitBindFallback = `
+refuses by default to avoid creating a parallel app alongside Agent-managed
+credentials. Reuse the Agent's existing app through this distribution's
+supported setup flow.`
+
+	configInitBindSuffix = ` Pass --force-init only
+if the user explicitly wants a separate app inside the Agent workspace.`
+
+	configInitFallbackSuffix = ` Pass --force-init only if the user explicitly wants a
+separate app inside the Agent workspace.`
+
+	configInitLongWithBind    = configInitLongPrefix + configInitBindGuidance + configInitBindSuffix
+	configInitLongWithoutBind = configInitLongPrefix + configInitBindFallback + configInitFallbackSuffix
+
+	forceInitUsageWithBind = "allow init inside an Agent workspace (OPENCLAW_HOME / HERMES_HOME); use config bind instead unless you really want a separate app"
+
+	forceInitUsageWithoutBind = "allow init inside an Agent workspace (OPENCLAW_HOME / HERMES_HOME) only when the user explicitly wants a separate app"
+)
 
 // NewCmdConfigInit creates the config init subcommand.
 func NewCmdConfigInit(f *cmdutil.Factory, runF func(*ConfigInitOptions) error) *cobra.Command {
@@ -54,16 +86,7 @@ func NewCmdConfigInit(f *cmdutil.Factory, runF func(*ConfigInitOptions) error) *
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize configuration (app-id / app-secret-stdin / brand)",
-		Long: `Initialize configuration (app-id / app-secret-stdin / brand).
-
-For AI agents: use --new to create a new app. The command blocks until the user
-completes setup in the browser. Run it in the background and retrieve the
-verification URL from its output.
-
-Inside an Agent context (OPENCLAW_HOME / HERMES_HOME set) this command
-refuses by default — use 'lark-cli config bind' to bind to the Agent's
-existing app instead of creating a parallel one. Pass --force-init only
-if the user explicitly wants a separate app inside the Agent workspace.`,
+		Long:  configInitLongWithBind,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Ctx = cmd.Context()
 			opts.langExplicit = cmd.Flags().Changed("lang")
@@ -86,10 +109,28 @@ if the user explicitly wants a separate app inside the Agent workspace.`,
 	cmd.Flags().StringVar(&opts.Brand, "brand", "feishu", "feishu or lark (non-interactive, default feishu)")
 	cmd.Flags().StringVar(&opts.Lang, "lang", "", "language preference (e.g. zh or zh_cn)")
 	cmd.Flags().StringVar(&opts.ProfileName, "name", "", "create or update a named profile (append instead of replace)")
-	cmd.Flags().BoolVar(&opts.ForceInit, "force-init", false, "allow init inside an Agent workspace (OPENCLAW_HOME / HERMES_HOME); use config bind instead unless you really want a separate app")
+	cmd.Flags().BoolVar(&opts.ForceInit, "force-init", false, forceInitUsageWithBind)
 	cmdutil.SetRisk(cmd, "write")
 
 	return cmd
+}
+
+// ProjectInitHelp keeps the default command-specific guidance intact and
+// replaces it only when this build conceals config bind. The config package
+// owns both variants; the root presentation pass supplies the build-local
+// availability decision after plugin policy has finalized the command tree.
+func ProjectInitHelp(cmd *cobra.Command, canReferenceBind bool) {
+	if cmd == nil {
+		return
+	}
+	long, forceInitUsage := configInitLongWithBind, forceInitUsageWithBind
+	if !canReferenceBind {
+		long, forceInitUsage = configInitLongWithoutBind, forceInitUsageWithoutBind
+	}
+	cmd.Long = long
+	if flag := cmd.Flags().Lookup("force-init"); flag != nil {
+		flag.Usage = forceInitUsage
+	}
 }
 
 // printLangPreferenceConfirmation echoes the set preference to stderr, only
@@ -125,9 +166,14 @@ func guardAgentWorkspace(opts *ConfigInitOptions) error {
 	if ws.IsLocal() {
 		return nil
 	}
-	return errs.NewConfigError(errs.SubtypeNotConfigured,
-		"config init is refused inside %s context (would create a parallel app and shadow the existing %s binding)", ws.Display(), ws.Display()).
-		WithHint("see `lark-cli config bind --help` to bind lark-cli to the Agent's existing app instead. Pass --force-init only if the user explicitly wants a separate app in this workspace.")
+	return recovery.Attach(
+		errs.NewConfigError(errs.SubtypeNotConfigured,
+			"config init is refused inside %s context (would create a parallel app and shadow the existing %s binding)", ws.Display(), ws.Display()),
+		recovery.Join(" ",
+			recovery.Command(recovery.TargetConfigBind, "see `lark-cli config bind --help` to bind lark-cli to the Agent's existing app instead."),
+			recovery.Text("Pass --force-init only if the user explicitly wants a separate app in this workspace."),
+		),
+	)
 }
 
 // hasAnyNonInteractiveFlag returns true if any non-interactive flag is set.

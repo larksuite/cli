@@ -14,12 +14,16 @@ import (
 // with --yes.
 //
 // action identifies the operation for the agent (e.g. "mail +send",
-// "drive.files.delete"). The envelope does not carry a pre-built retry
-// command: agents already know their original invocation and only need to
-// append --yes per the hint, which keeps the protocol free of shell-quoting
-// pitfalls.
+// "drive.files.delete"). The hint is deliberately NOT a pre-built retry
+// command: argv cannot faithfully reproduce the original invocation (pipeline
+// producers, stdin bytes, redirections, inline env and the executable's real
+// path are all gone), POSIX quoting does not survive PowerShell/cmd.exe, and
+// echoing argv values can copy credentials or free-form payloads (--sql,
+// --json) into the error envelope and every log that captures it. Per the
+// lark-shared approval protocol, the caller that obtained the user's consent
+// appends --yes to its own saved argv array and re-executes.
 func RequireConfirmation(action string) error {
-	return errs.NewConfirmationRequiredError(errs.RiskHighRiskWrite, action,
-		"%s requires confirmation", action).
-		WithHint("add --yes to confirm")
+	err := errs.NewConfirmationRequiredError(errs.RiskHighRiskWrite, action,
+		"%s requires confirmation", action)
+	return err.WithHint("add --yes to confirm")
 }

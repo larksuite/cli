@@ -11,6 +11,7 @@ import (
 
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/update"
 	"github.com/spf13/cobra"
 )
@@ -27,6 +28,8 @@ var runRootUpgrade = func(cmd *cobra.Command) {
 		}
 	}
 }
+
+var checkRootCachedUpdate = update.CheckCached
 
 // isBareRootInvocation reports whether this is a bare `lark-cli` (no subcommand,
 // no flags) — the only invocation that triggers the interactive upgrade prompt.
@@ -51,7 +54,10 @@ func readYes(r io.Reader) bool {
 // offerRootUpgrade prompts for an interactive upgrade when running bare
 // `lark-cli` in an interactive terminal with a cached newer version. Every
 // failure is swallowed — it must never affect help output or the exit code.
-func offerRootUpgrade(f *cmdutil.Factory, cmd *cobra.Command) {
+func offerRootUpgrade(f *cmdutil.Factory, cmd *cobra.Command, projector *recovery.Projector) {
+	if f == nil || !projector.CanReference(recovery.TargetUpdate) {
+		return
+	}
 	ios := f.IOStreams
 	// Gates 1/2/3: need to read stdin AND show the prompt on stderr, and require
 	// stdout TTY too so this only fires in a pure foreground terminal session.
@@ -61,7 +67,7 @@ func offerRootUpgrade(f *cmdutil.Factory, cmd *cobra.Command) {
 	// Gate 4: cached newer version. CheckCached applies opt-out (shouldSkip)
 	// and the IsNewer/semver validation chain; it reads the on-disk cache that
 	// the 24h-throttled RefreshCache maintains (CheckCached itself has no TTL).
-	info := update.CheckCached(build.Version)
+	info := checkRootCachedUpdate(build.Version)
 	if info == nil {
 		return
 	}
@@ -86,14 +92,18 @@ func offerRootUpgrade(f *cmdutil.Factory, cmd *cobra.Command) {
 // unknownSubcommandRunE by installUnknownSubcommandGuard) so a bare `lark-cli`
 // invocation offers an interactive upgrade before printing help. Non-bare
 // invocations are passed straight through, unchanged.
-func installRootUpgradePrompt(f *cmdutil.Factory, root *cobra.Command) {
+func installRootUpgradePrompt(
+	f *cmdutil.Factory,
+	root *cobra.Command,
+	projector *recovery.Projector,
+) {
 	inner := root.RunE
 	if inner == nil {
 		return
 	}
 	root.RunE = func(cmd *cobra.Command, args []string) error {
 		if isBareRootInvocation(args) {
-			offerRootUpgrade(f, cmd)
+			offerRootUpgrade(f, cmd, projector)
 		}
 		return inner(cmd, args)
 	}

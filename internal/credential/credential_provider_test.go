@@ -131,12 +131,19 @@ func TestCredentialProvider_TokenFromExtension(t *testing.T) {
 	if result.Token != "ext_tok" {
 		t.Errorf("expected ext_tok, got %s", result.Token)
 	}
+	if result.Source != core.CredentialSourceEnv {
+		t.Errorf("TokenResult.Source = %q, want env", result.Source)
+	}
 }
 
 func TestCredentialProvider_TokenFallsToDefault(t *testing.T) {
+	defaultResult := &TokenResult{
+		Token:  "default_tok",
+		Source: core.CredentialSourceExtension,
+	}
 	cp := NewCredentialProvider(
 		[]extcred.Provider{&mockExtProvider{name: "skip"}},
-		&mockDefaultAcct{}, &mockDefaultToken{result: &TokenResult{Token: "default_tok"}}, nil,
+		&mockDefaultAcct{}, &mockDefaultToken{result: defaultResult}, nil,
 	)
 	result, err := cp.ResolveToken(context.Background(), TokenSpec{Type: TokenTypeUAT})
 	if err != nil {
@@ -144,6 +151,24 @@ func TestCredentialProvider_TokenFallsToDefault(t *testing.T) {
 	}
 	if result.Token != "default_tok" {
 		t.Errorf("expected default_tok, got %s", result.Token)
+	}
+	if result.Source != core.CredentialSourceLocal {
+		t.Errorf("TokenResult.Source = %q, want local", result.Source)
+	}
+	if defaultResult.Source != core.CredentialSourceExtension {
+		t.Errorf("default resolver result Source = %q, want unchanged extension", defaultResult.Source)
+	}
+}
+
+func TestExtensionCredentialSource(t *testing.T) {
+	for _, test := range []struct{ provider, want string }{
+		{provider: "sidecar", want: "sidecar"},
+		{provider: "custom", want: "extension"},
+	} {
+		source := extensionTokenSource{provider: &mockExtProvider{name: test.provider}}
+		if got := source.CredentialSource(); got != test.want {
+			t.Errorf("provider %q source = %q, want %q", test.provider, got, test.want)
+		}
 	}
 }
 

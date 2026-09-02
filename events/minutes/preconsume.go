@@ -5,33 +5,18 @@ package minutes
 
 import (
 	"context"
-	"time"
 
-	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/events/internal/subscribeprep"
 	"github.com/larksuite/cli/internal/event"
 )
 
-const cleanupTimeout = 5 * time.Second
-
+// subscriptionPreConsume registers the minutes event type with the server so
+// this tenant starts receiving it, and hands back the matching unregister.
+//
+// The subscription is per event type (not per minute), so the first consumer
+// registers it and the last one to exit unregisters it. The
+// register/unregister pair itself is shared with the other domains that follow
+// the same OAPI convention.
 func subscriptionPreConsume(eventType, subscribePath, unsubscribePath string) func(context.Context, event.APIClient, map[string]string) (func() error, error) {
-	return func(ctx context.Context, rt event.APIClient, _ map[string]string) (func() error, error) {
-		if rt == nil {
-			return nil, errs.NewInternalError(errs.SubtypeUnknown,
-				"runtime API client is required for pre-consume subscription")
-		}
-
-		body := map[string]string{"event_type": eventType}
-		if _, err := rt.CallAPI(ctx, "POST", subscribePath, body); err != nil {
-			return nil, err
-		}
-
-		return func() error {
-			cleanupCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
-			defer cancel()
-			if _, err := rt.CallAPI(cleanupCtx, "POST", unsubscribePath, body); err != nil {
-				return err
-			}
-			return nil
-		}, nil
-	}
+	return subscribeprep.Hook(eventType, subscribePath, unsubscribePath)
 }

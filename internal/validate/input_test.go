@@ -60,26 +60,3 @@ func TestRejectControlChars_FiltersControlCharsAndDangerousUnicode(t *testing.T)
 		})
 	}
 }
-
-func TestStripQueryFragment(t *testing.T) {
-	for _, tt := range []struct {
-		name string
-		in   string
-		want string
-	}{
-		{"no query or fragment", "/open-apis/test", "/open-apis/test"},
-		{"query only", "/open-apis/test?admin=true", "/open-apis/test"},
-		{"fragment only", "/open-apis/test#section", "/open-apis/test"},
-		{"query and fragment", "/open-apis/test?a=1#frag", "/open-apis/test"},
-		{"empty string", "", ""},
-		{"query at start", "?foo=bar", ""},
-		{"fragment at start", "#frag", ""},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			got := StripQueryFragment(tt.in)
-			if got != tt.want {
-				t.Errorf("StripQueryFragment(%q) = %q, want %q", tt.in, got, tt.want)
-			}
-		})
-	}
-}

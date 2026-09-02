@@ -71,10 +71,10 @@ var SlidesAddSlide = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		// validateCompleteSlideXML is shared with +replace-pages and reports the
-		// structural problem alone ("root element is <presentation>, want
-		// <slide>"). Re-tag it with the flag it came from so the caller sees
-		// which input to fix, and so agents can route on the typed Param.
+		// validateCompleteSlideXML reports the structural problem alone ("root
+		// element is <presentation>, want <slide>"). Re-tag it with the flag it
+		// came from so the caller sees which input to fix, and so agents can
+		// route on the typed Param.
 		if err := validateCompleteSlideXML(slideXML); err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--slide is not a single complete <slide> document: %v", err).WithParam("--slide").WithCause(err)
 		}
@@ -112,7 +112,7 @@ var SlidesAddSlide = common.Shortcut{
 		}
 
 		if ref.Kind == "wiki" {
-			presentationID = "<resolved_slides_token>"
+			presentationID = unresolvedSlidesTokenPlaceholder
 			dry.Desc(fmt.Sprintf("%d-step orchestration: resolve wiki → add page", total)).
 				GET("/open-apis/wiki/v2/spaces/get_node").
 				Desc(fmt.Sprintf("[%d/%d] Resolve wiki node to slides presentation", step, total)).
@@ -125,7 +125,7 @@ var SlidesAddSlide = common.Shortcut{
 		}
 
 		for _, path := range placeholders {
-			appendSlidesUploadDryRun(dry, path, presentationID, step)
+			appendSlidesUploadDryRun(dry, path, presentationID, slidesDryRunParentType(ref), step)
 			step++
 		}
 
@@ -165,7 +165,7 @@ var SlidesAddSlide = common.Shortcut{
 		// after a wiki ref has been resolved to a real presentation id.
 		placeholders := extractImagePlaceholderPaths([]string{slideXML})
 		if len(placeholders) > 0 {
-			tokens, uploaded, err := uploadSlidesPlaceholders(runtime, presentationID, placeholders)
+			tokens, uploaded, err := uploadSlidesPlaceholders(runtime, presentationID, placeholders, "--slide")
 			if err != nil {
 				return appendSlidesProgressHint(err, fmt.Sprintf("no page was added; %d of %d image(s) uploaded before failure", uploaded, len(placeholders)))
 			}

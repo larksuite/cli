@@ -19,11 +19,6 @@ var SlashCommandList = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{"application:app_slash_command:read"},
 	AuthTypes:   []string{"bot", "user"},
-	Tips: []string{
-		"lark-cli application +slash-command-list --as bot",
-		"user identity needs explicit authorization first: lark-cli auth login --scope application:app_slash_command:read",
-		"the upstream API returns all commands at once (max 100 per app, no pagination)",
-	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			Desc("List all slash commands of the current bound app (read-only)").

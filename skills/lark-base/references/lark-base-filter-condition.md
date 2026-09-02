@@ -10,7 +10,7 @@ Filter 是一组「字段/操作符/值」条件的组合，用 `logic`（`and` 
 - `+record-list --filter-json` / `+record-search --filter-json` 的结构化记录筛选。
 - `+form-questions-create` / `+form-questions-update` 中的 `visible_rule` 显隐条件。
 
-本协议**不适用于 `+data-query`**。`+data-query` 支持过滤，但使用的是 LiteQuery DSL 的 `filters` 对象结构：`{"type":1,"conjunction":"and","conditions":[{"field_name":"状态","operator":"is","value":["有效"]}]}`，不是这里的 tuple 条件 `["状态","==","有效"]`。构造 `+data-query --dsl` 时请阅读 [lark-base-data-query.md](lark-base-data-query.md) 的 FilterGroup / Condition 章节。
+本协议**不适用于 `+data-query`**。`+data-query` 支持过滤，但使用的是 LiteQuery DSL 的 `filters` 对象结构：`{"type":1,"conjunction":"and","conditions":[{"field_name":"状态","operator":"is","value":["有效"]}]}`，不是这里的 tuple 条件 `["状态","==","有效"]`。需要聚合查询时先返回 [Record 查询与分析 SOP](lark-base-record-query-and-analysis-sop.md) 选路；SOP 选定 `+data-query` 后再读取 guide 和完整 DSL reference。
 
 ## 1. 顶层结构
 
@@ -40,7 +40,34 @@ Filter 是一组「字段/操作符/值」条件的组合，用 `logic`（`and` 
 }
 ```
 
-## 2. operator
+## 2. 单表谓词下推常用 example
+
+`+record-list` / `+record-search` 的 `--filter-json '<filter-json>'` 也支持使用与视图相同的 tuple condition。以下示例用注释说明各条件的含义；实际传参时删除注释并使用标准 JSON：
+
+```jsonc
+{
+  "logic": "and", // 所有 conditions 同时成立；任意一个成立时使用 "or"
+  "conditions": [
+    ["标题", "==", "Launch plan"], // 文本全等
+    ["标题", "!=", "Archived plan"], // 文本不全等
+    ["标题", "intersects", "urgent"], // 文本包含目标片段
+    ["标题", "disjoint", "internal"], // 文本不包含目标片段
+    ["金额", ">=", 100], // 数字比较；支持 ==、!=、>、>=、<、<=
+    ["状态", "intersects", ["进行中", "暂停"]], // Select 集合相交：包含“进行中”或“暂停”任意一个选项
+    ["状态", "disjoint", ["已终止"]], // Select 集合无交集
+    ["已完成", "==", true], // Checkbox
+    ["负责人", "intersects", [{ "id": "ou_xxx" }]], // 负责人包含某个人；intersects 表示包含数组中任意一个人员
+    ["负责人", "disjoint", [{ "id": "ou_yyy" }]], // 负责人不包含指定人员中的任何一个
+    ["关联项目", "intersects", [{ "id": "recxxx" }]], // 关联项目包含某个 record_id；intersects 表示包含数组中任意一条关联
+    ["备注", "non_empty"], // 格子非空；判断格子为空改用 ["备注", "empty"]
+    ["业务日期", "==", "ExactDate(2026-08-07)"], // 具体一天：按 Base 时区匹配 2026-08-07 当天
+    ["发生时间", ">", "ExactDate(2024-01-31 23:59:59.999)"], // 日期不支持 >=；用 > 前一天最后一毫秒表达含当天的下界
+    ["发生时间", "<", "ExactDate(2024-03-01 00:00:00)"] // 2024 年 2 月范围上界：小于 3 月 1 日零点
+  ]
+}
+```
+
+## 3. operator
 
 可用 operator：
 - `==`
@@ -54,16 +81,20 @@ Filter 是一组「字段/操作符/值」条件的组合，用 `logic`（`and` 
 - `empty`
 - `non_empty`
 
-## 3. value 写法
+## 4. value 写法
 
 value 类型取决于条件引用对象（字段 / 题目）的类型。
 
 ### `text`
 
-用字符串：
+用字符串；高频的片段包含 / 排除使用 `intersects` / `disjoint`，完整文本比较使用 `==` / `!=`：
 
 ```json
 ["标题", "intersects", "发布"]
+```
+
+```json
+["标题", "disjoint", "内部"]
 ```
 
 ### `location`
@@ -73,8 +104,6 @@ location 筛选只按 `full_address` 字符串匹配，不能直接按经纬度�
 ```json
 ["位置", "intersects", "深圳"]
 ```
-
-不推荐写 `["位置", "==", "深圳"]` 这类精确匹配，除非确保筛选值与完整 `full_address` 完全一致。
 
 ### `number` / `auto_number`
 
@@ -86,27 +115,27 @@ location 筛选只按 `full_address` 字符串匹配，不能直接按经纬度�
 
 ### `select`
 
-用选项名数组：
+用选项名数组；`intersects` 表示命中任意选项，`disjoint` 表示不包含其中任何选项：
 
 ```json
 ["状态", "intersects", ["Doing", "Blocked"]]
 ```
 
-### `user` / `created_by` / `updated_by`
+```json
+["状态", "disjoint", ["Archived"]]
+```
 
-用对象数组：
+### `user` / `group_chat` / `created_by` / `updated_by`
 
-> **人员筛选：不要猜 ID。** 不知道 `open_id` 时，先用 `lark-contact` 查 id：`lark-cli contact +search-user --query "<姓名/邮箱/手机号>" --as user`。
+用对象数组；人员使用 `ou_xxx`，群组使用 `oc_xxx`。不知道 ID 时，人员用 `lark-contact` 查询，群组用 `lark-im` 搜索。
 
 ```json
 ["负责人", "intersects", [{ "id": "ou_xxx" }]]
 ```
 
-### `group_chat`
-
-用对象数组：
-
-> **群组筛选：不要猜 ID。** 不知道 `chat_id` 时，先用 `lark-im` 搜群：`lark-cli im +chat-search --query "<群名关键词>" --as user`；取结果里的 `oc_xxx`。
+```json
+["负责人", "disjoint", [{ "id": "ou_xxx" }]]
+```
 
 ```json
 ["负责群", "intersects", [{ "id": "oc_xxx" }]]
@@ -117,7 +146,7 @@ location 筛选只按 `full_address` 字符串匹配，不能直接按经纬度�
 用记录 id 对象数组：
 
 ```json
-["关联任务", "intersects", [{ "id": "rec_xxx" }]]
+["关联任务", "intersects", [{ "id": "recxxx" }]]
 ```
 
 ### `checkbox`
@@ -151,29 +180,15 @@ location 筛选只按 `full_address` 字符串匹配，不能直接按经纬度�
 
 ### `formula` / `lookup`
 
-- 筛选值类型由字段计算结果类型动态决定。
-- 拿不准时，先把 `value` 当作单个字符串填入做一次尝试。
-- 如果报错，再按错误提示把 `value` 改成对应类型。
+value schema 随计算结果类型变化；拿不准时先读取字段定义，或根据错误提示修正 value 和 operator。
 
-字符串示例：
-
-```json
-["风险说明", "intersects", "高风险"]
-```
-
-数字示例：
-
-```json
-["汇总分", ">=", 80]
-```
-
-## 4. 易错点
+## 5. 易错点
 
 - 不要再写旧对象风格：`{"field_name":...,"operator":...}`。
 - `user` / `group_chat` / `link` 不要写成单个标量。
-- `empty` / `non_empty` 不要硬塞无意义的 value。
+- `empty` / `non_empty` 统一表示格子为空 / 非空，不要传 value；标量空格子和多值字段没有任何元素都属于空。
 - 日期条件稳定写法用 `ExactDate(...)` 或 `Today` / `Yesterday` / `Tomorrow`。
-- `formula` / `lookup` 的 value 形状不固定；拿不准时先读当前配置或字段定义，或根据错误提示修正类型。
+- `formula` / `lookup` 的 value schema 是动态的；拿不准 value 类型时先读字段定义，或根据错误提示修正类型。
 
-## 5. 参考
-- [lookup-field-guide.md](lookup-field-guide.md)
+## 6. 参考
+- [Lookup Field](lark-base-field-lookup.md)

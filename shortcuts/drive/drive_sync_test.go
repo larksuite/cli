@@ -376,6 +376,75 @@ func TestDriveSyncAbortsAfterNewRemoteDownloadForbidden(t *testing.T) {
 	}
 }
 
+func TestDriveSyncContinuesAfterNewRemoteDownloadNotFound(t *testing.T) {
+	syncTestConfig := &core.CliConfig{
+		AppID: "drive-sync-not-found", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, syncTestConfig)
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_a", "name": "a.txt", "type": "file", "modified_time": "100"},
+					map[string]interface{}{"token": "tok_b", "name": "b.txt", "type": "file", "modified_time": "100"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/tok_a/download",
+		Status:  http.StatusNotFound,
+		RawBody: []byte("not found"),
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/tok_b/download",
+		Status:  http.StatusOK,
+		RawBody: []byte("BBB"),
+	})
+
+	err := mountAndRunDrive(t, DriveSync, []string{
+		"+sync",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--quick",
+		"--as", "bot",
+	}, f, stdout)
+	assertDriveSyncPartialFailure(t, err)
+
+	summary := driveSyncStdoutSummary(t, stdout.Bytes())
+	if got := summary["aborted"]; got != false {
+		t.Fatalf("summary.aborted = %v, want false", got)
+	}
+	if got := summary["failed"]; got != float64(1) {
+		t.Fatalf("summary.failed = %v, want 1", got)
+	}
+	if got := summary["pulled"]; got != float64(1) {
+		t.Fatalf("summary.pulled = %v, want 1", got)
+	}
+	items := driveSyncStdoutItems(t, stdout.Bytes())
+	if len(items) != 2 || items[0].RelPath != "a.txt" || items[1].RelPath != "b.txt" || items[1].Action != "downloaded" {
+		t.Fatalf("item-local 404 must not block b.txt: %#v", items)
+	}
+	failedItem := items[0]
+	if failedItem.Action != "failed" || failedItem.Phase != "download" || failedItem.Code != http.StatusNotFound || failedItem.Retryable == nil || *failedItem.Retryable {
+		t.Fatalf("unexpected failed-download metadata: %#v", failedItem)
+	}
+	mustReadFile(t, filepath.Join("local", "b.txt"), "BBB")
+}
+
 // TestDriveSyncLocalWinsPushesOverRemote verifies that --on-conflict=local-wins
 // pushes the local version over the remote file.
 func TestDriveSyncLocalWinsPushesOverRemote(t *testing.T) {

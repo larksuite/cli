@@ -138,13 +138,15 @@ func TestConfigError_MarshalJSON(t *testing.T) {
 
 func TestNetworkError_MarshalJSON(t *testing.T) {
 	ne := &NetworkError{
-		Problem: Problem{Category: CategoryNetwork, Subtype: SubtypeNetworkTimeout, Message: "dial timeout"},
+		Problem:           Problem{Category: CategoryNetwork, Subtype: SubtypeNetworkTimeout, Message: "dial timeout"},
+		RetryAfterSeconds: 4,
 	}
 	b, _ := json.Marshal(ne)
 	s := string(b)
 	for _, want := range []string{
 		`"type":"network"`,
 		`"subtype":"timeout"`,
+		`"retry_after_seconds":4`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q in %s", want, s)
@@ -157,7 +159,8 @@ func TestNetworkError_MarshalJSON(t *testing.T) {
 
 func TestAPIError_MarshalJSON(t *testing.T) {
 	ae := &APIError{
-		Problem: Problem{Category: CategoryAPI, Subtype: SubtypeRateLimit, Code: 99991400, Message: "slow", Retryable: true},
+		Problem:           Problem{Category: CategoryAPI, Subtype: SubtypeRateLimit, Code: 99991400, Message: "slow", Retryable: true},
+		RetryAfterSeconds: 12,
 	}
 	b, _ := json.Marshal(ae)
 	s := string(b)
@@ -166,10 +169,20 @@ func TestAPIError_MarshalJSON(t *testing.T) {
 		`"subtype":"rate_limit"`,
 		`"code":99991400`,
 		`"retryable":true`,
+		`"retry_after_seconds":12`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q in %s", want, s)
 		}
+	}
+	if strings.Contains(s, `"retry_after_source"`) {
+		t.Errorf("implementation detail retry_after_source must not be emitted: %s", s)
+	}
+
+	ae.RetryAfterSeconds = 0
+	b, _ = json.Marshal(ae)
+	if strings.Contains(string(b), `"retry_after_seconds"`) {
+		t.Errorf("retry_after_seconds must be omitted when no precise delay was provided: %s", b)
 	}
 }
 

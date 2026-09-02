@@ -2,6 +2,8 @@
 
 用于查看 Docx 历史版本、按 `history_version_id` 回滚，以及查询回滚任务状态。
 
+`entries[].edit_time` 是 RFC3339 时间字符串（例如 `2026-06-22T12:24:45Z`）。按时间匹配时先将其解析为时间值，再比较先后关系或时间差。
+
 ## 安全约束
 
 - `overwrite` 会重建正文和 block ID，且无法保证保留评论等非正文对象。用户要求保留这些对象时，应先说明限制并确认。
@@ -70,7 +72,7 @@ lark-cli docs +history-revert-status --doc "<docx_url_or_token>" --task-id "<tas
     {
       "revision_id": 42,
       "history_version_id": "11",
-      "edit_time": "1780000000",
+      "edit_time": "2026-06-22T12:24:45Z",
       "type": 1,
       "name": "版本名",
       "description": "版本说明",

@@ -28,6 +28,9 @@ import (
 //   - Restricts ↔ FailClosed consistency (calling Restrict() implies
 //     FailClosed, so plugin authors cannot accidentally ship a policy
 //     plugin under FailOpen)
+//   - EmbeddedSkills ↔ FailClosed consistency (declaring distribution
+//     assets is a build-integrity commitment; falling back to host defaults
+//     is never allowed)
 //   - Rule validation via ValidateRule analogues (delegated to
 //     internal/cmdpolicy at install time; Builder only fast-fails
 //     blatantly bad input)
@@ -36,8 +39,9 @@ type Builder struct {
 	version string
 	caps    Capabilities
 
-	actions []func(Registrar)
-	rules   []*Rule
+	actions       []func(Registrar)
+	rules         []*Rule
+	skillsOverlay *SkillsOverlay
 
 	hookNames map[string]bool
 	errs      []error
@@ -68,14 +72,16 @@ func (b *Builder) RequireCLI(constraint string) *Builder {
 }
 
 // FailOpen sets Capabilities.FailurePolicy = FailOpen. Default when
-// neither FailOpen nor FailClosed is called and Restrict is not used.
+// neither FailOpen nor FailClosed is called and neither Restrict nor
+// EmbeddedSkills is used. Build rejects a final FailOpen state after either
+// safety-sensitive contribution.
 func (b *Builder) FailOpen() *Builder {
 	b.caps.FailurePolicy = FailOpen
 	return b
 }
 
-// FailClosed sets Capabilities.FailurePolicy = FailClosed. Implicit
-// when Restrict() is called.
+// FailClosed sets Capabilities.FailurePolicy = FailClosed. Implicit when
+// Restrict() or EmbeddedSkills() is called.
 func (b *Builder) FailClosed() *Builder {
 	b.caps.FailurePolicy = FailClosed
 	return b
@@ -145,25 +151,68 @@ func (b *Builder) Restrict(rule *Rule) *Builder {
 	return b
 }
 
+// EmbeddedSkills contributes a SkillsOverlay (see SkillsOverlay) customizing
+// the CLI's embedded skill content. It implies FailClosed: although skill
+// content is not a command-enforcement boundary, the overlay is a distribution
+// build-integrity declaration. Silently skipping it could republish host
+// defaults that the distribution explicitly removed or replaced.
+//
+// Calling FailOpen before EmbeddedSkills is allowed; EmbeddedSkills overrides
+// it to FailClosed, matching Restrict. Calling FailOpen afterward leaves an
+// invalid final state that Build rejects. A later FailClosed restores a valid
+// final state. A plugin owns at most one SkillsOverlay, so calling
+// EmbeddedSkills more than once is a build error.
+func (b *Builder) EmbeddedSkills(spec *SkillsOverlay) *Builder {
+	if spec == nil {
+		b.errs = append(b.errs, errors.New("EmbeddedSkills(nil): spec must not be nil"))
+		return b
+	}
+	if b.skillsOverlay != nil {
+		b.errs = append(b.errs, errors.New("EmbeddedSkills() called more than once; a plugin owns at most one SkillsOverlay"))
+		return b
+	}
+	b.caps.FailurePolicy = FailClosed
+	b.skillsOverlay = cloneSkillsOverlay(spec)
+	return b
+}
+
+// cloneSkillsOverlay snapshots the caller's spec so a later mutation of the
+// same *SkillsOverlay cannot alter the staged copy. Selection and remap slices
+// are copied; Overlay/Base are fs.FS handles retained by reference (an fs.FS is
+// a read-only view, not caller-mutable state).
+func cloneSkillsOverlay(spec *SkillsOverlay) *SkillsOverlay {
+	cp := *spec
+	cp.Allow = append([]string(nil), spec.Allow...)
+	cp.Remove = append([]string(nil), spec.Remove...)
+	cp.ReferenceRemaps = append([]SkillRefRemap(nil), spec.ReferenceRemaps...)
+	return &cp
+}
+
 // Build returns the configured Plugin, or an error if any builder
 // step found a fault. MustBuild panics on the same error.
 //
-// The Restrict + FailOpen mismatch is checked here, not in the chained
-// setters, because the two methods may be called in either order.
+// FailOpen mismatches are checked against the final builder state, not in the
+// chained setters, because FailOpen/FailClosed and the contributing methods may
+// be called in either order.
 func (b *Builder) Build() (Plugin, error) {
 	if len(b.rules) > 0 && b.caps.FailurePolicy == FailOpen {
 		b.errs = append(b.errs, errors.New(
 			"Restrict() requires FailClosed; do not call FailOpen() after Restrict()"))
 	}
+	if b.skillsOverlay != nil && b.caps.FailurePolicy == FailOpen {
+		b.errs = append(b.errs, errors.New(
+			"EmbeddedSkills() requires FailClosed; do not call FailOpen() after EmbeddedSkills()"))
+	}
 	if len(b.errs) > 0 {
 		return nil, errors.Join(b.errs...)
 	}
 	return &builtPlugin{
-		name:    b.name,
-		version: b.version,
-		caps:    b.caps,
-		actions: b.actions,
-		rules:   b.rules,
+		name:          b.name,
+		version:       b.version,
+		caps:          b.caps,
+		actions:       b.actions,
+		rules:         b.rules,
+		skillsOverlay: b.skillsOverlay,
 	}, nil
 }
 
@@ -202,11 +251,12 @@ func (b *Builder) validateHookName(hookName, kind string) bool {
 
 // builtPlugin is the Plugin implementation the builder emits.
 type builtPlugin struct {
-	name    string
-	version string
-	caps    Capabilities
-	actions []func(Registrar)
-	rules   []*Rule
+	name          string
+	version       string
+	caps          Capabilities
+	actions       []func(Registrar)
+	rules         []*Rule
+	skillsOverlay *SkillsOverlay
 }
 
 func (p *builtPlugin) Name() string               { return p.name }
@@ -215,6 +265,15 @@ func (p *builtPlugin) Capabilities() Capabilities { return p.caps }
 func (p *builtPlugin) Install(r Registrar) error {
 	for _, rule := range p.rules {
 		r.Restrict(rule)
+	}
+	if p.skillsOverlay != nil {
+		sr, ok := r.(EmbeddedSkillsRegistrar)
+		if !ok {
+			// Fail closed: a declared skill customization must never be
+			// silently dropped by a host that cannot honour it.
+			return errors.New("host registrar does not support EmbeddedSkills")
+		}
+		sr.EmbeddedSkills(p.skillsOverlay)
 	}
 	for _, action := range p.actions {
 		action(r)
