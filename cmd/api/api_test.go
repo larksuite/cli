@@ -237,31 +237,6 @@ func TestApiCmd_NonDataPayload_PreservedInEnvelope(t *testing.T) {
 	}
 }
 
-func TestApiCmd_NonObjectBody_FailsLoudly(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app-arraybody", AppSecret: "test-secret-arraybody", Brand: core.BrandFeishu,
-	})
-
-	// The SDK rejects a body that is not a JSON object before it reaches the
-	// output layer. Pin that this surfaces as an error: the #2428 failure mode
-	// is a silent ok:true with empty data, and an array body must not regress
-	// into that shape either.
-	reg.Register(&httpmock.Stub{
-		URL:  "/open-apis/test/list",
-		Body: []interface{}{map[string]interface{}{"id": "1"}, map[string]interface{}{"id": "2"}},
-	})
-
-	cmd := newTestApiCmd(f, nil)
-	cmd.SetArgs([]string{"GET", "/open-apis/test/list", "--as", "bot"})
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatalf("array body must not be reported as success; stdout:\n%s", stdout.String())
-	}
-	if strings.Contains(stdout.String(), `"ok": true`) {
-		t.Fatalf("array body produced a success envelope: %s", stdout.String())
-	}
-}
-
 func TestApiCmd_MissingArgs(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,

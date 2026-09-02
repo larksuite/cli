@@ -91,6 +91,33 @@ func TestSuccessEnvelopeData_NonDataPayloadKeyPreserved(t *testing.T) {
 	}
 }
 
+func TestSuccessEnvelopeData_NullDataWithSiblingPayloadPreserved(t *testing.T) {
+	// A null "data" next to a payload key used to collapse to {} and lose the
+	// payload; the sibling key is the business data in that shape.
+	result := map[string]interface{}{
+		"code": float64(0),
+		"msg":  "ok",
+		"data": nil,
+		"bot":  map[string]interface{}{"open_id": "ou_123"},
+	}
+
+	got := SuccessEnvelopeData(result)
+	m, ok := got.(map[string]interface{})
+	if !ok {
+		t.Fatalf("business data type = %T, want map", got)
+	}
+	if _, ok := m["data"]; ok {
+		t.Fatal("business data must not contain the null data key")
+	}
+	bot, ok := m["bot"].(map[string]interface{})
+	if !ok || bot["open_id"] != "ou_123" {
+		t.Fatalf("business data.bot = %#v, want sibling payload preserved", m["bot"])
+	}
+	if len(m) != 1 {
+		t.Fatalf("business data = %#v, want only the bot key", m)
+	}
+}
+
 func TestSuccessEnvelopeData_NilResultUsesEmptyObject(t *testing.T) {
 	got := SuccessEnvelopeData(nil)
 	m, ok := got.(map[string]interface{})
