@@ -41,8 +41,8 @@ lark-cli mail +auto-reply-modify --as user --yes --disable
 | `--disable` | modify | 否 | 关闭自动回复；与 `--enable` 互斥 |
 | `--content <text-or-html>` | modify | 否 | 自动回复正文，支持纯文本或 HTML；支持直接传值、`@file`、`-` stdin、本地图片和 data URI 图片 |
 | `--content-file <path>` | modify | 否 | 从当前目录下的文件读取正文，支持纯文本或 HTML；与 `--content` 互斥；正文里可包含本地图片和 data URI 图片 |
-| `--start <time>` | modify | 否 | 开始日期，支持 Unix timestamp 或 ISO 8601；按当天开始保存 |
-| `--end <time>` | modify | 否 | 结束日期，支持 Unix timestamp 或 ISO 8601；按当天结束保存 |
+| `--start <date>` | modify | 否 | 开始日期，支持 `YYYY-MM-DD`、Unix timestamp 或 ISO 8601；CLI 会按指定时区折算为当天开始 |
+| `--end <date>` | modify | 否 | 结束日期，支持 `YYYY-MM-DD`、Unix timestamp 或 ISO 8601；CLI 会按指定时区折算为当天结束 |
 | `--timezone <tz>` | modify | 否 | 时区，例如 `Asia/Shanghai` |
 | `--internal-only` | modify | 否 | 仅对租户内发件人发送自动回复；与 `--all` 互斥 |
 | `--all` | modify | 否 | 对所有发件人发送自动回复，包括外部发件人；与 `--internal-only` 互斥 |
@@ -57,9 +57,30 @@ lark-cli mail +auto-reply-modify --as user --yes --disable
 - `+auto-reply-modify` 是 `high-risk-write` 写操作。执行前必须先向用户展示预览并取得明确确认；用户确认且目标设置无误后，再带 `--yes` 运行。不要在未获用户明确同意时静默追加 `--yes`。预览至少包含：`enabled`、时间范围、时区、收件范围和内容摘要。
 - 关闭自动回复也要确认，因为内容和时间配置可能仍会保留在设置中。
 
-## 返回值
+## `+auto-reply` 返回值
 
-输出为结构化 envelope，核心字段在 `data.auto_reply`：
+查看 shortcut 输出为结构化 envelope，核心字段在 `data.auto_reply`：
+
+```json
+{
+  "ok": true,
+  "data": {
+    "auto_reply": {
+      "enabled": true,
+      "content": "<p>我正在休假，回来后回复。</p>",
+      "content_summary": "我正在休假，回来后回复。",
+      "start_time": "1786723200000",
+      "end_time": "1787068799999",
+      "time_zone": "Asia/Shanghai",
+      "only_send_to_tenant": false
+    }
+  }
+}
+```
+
+## `+auto-reply-modify` 返回值
+
+修改 shortcut 成功后也返回结构化 envelope，核心字段在 `data.auto_reply`。普通文本格式会先输出 `Auto-reply modified.`，再输出当前自动回复设置摘要：
 
 ```json
 {
@@ -86,7 +107,7 @@ lark-cli mail +auto-reply-modify --as user --yes --disable
 | `content` | 自动回复正文，可能是纯文本或 HTML；后端 `content_html` 在 CLI 输出层适配为此字段 |
 | `content_summary` | 自动回复摘要 |
 | `images` | 内联图片列表；包含 `cid`、`file_key`、`image_name` 和 `file_size` |
-| `start_time` | 毫秒级开始日期时间戳 |
-| `end_time` | 毫秒级结束日期时间戳 |
+| `start_time` | 自动回复开始时间；由 shortcut 的 `--start` 日期按时区折算为当天开始后写入并返回 |
+| `end_time` | 自动回复结束时间；由 shortcut 的 `--end` 日期按时区折算为当天结束后写入并返回 |
 | `time_zone` | 自动回复时间范围对应的时区 |
 | `only_send_to_tenant` | 是否仅对租户内发件人发送自动回复 |
