@@ -296,13 +296,24 @@ def main() -> int:
         return 2
     try:
         output_dir = Path(args.output_dir).expanduser()
+        # Reject output-dir equal to the scan root: the ledger would be written
+        # into the very directory being scanned and ingested on the next run.
+        # (A nested output-dir is instead pruned during traversal, below.)
+        try:
+            resolved_output = output_dir.resolve()
+        except OSError:
+            resolved_output = None
+        if root.is_dir() and resolved_output is not None and resolved_output == root.resolve():
+            print(
+                "error: --output-dir must not be the scan root; choose a path "
+                "outside the scanned directory to avoid ingesting the ledger",
+                file=sys.stderr,
+            )
+            return 2
         # If the output dir is nested under the scanned root, exclude it so a
         # re-run does not ingest its own inventory ledger (and the JSON's
         # changing timestamp does not read as a new file every run).
-        try:
-            exclude_dir = output_dir.resolve()
-        except OSError:
-            exclude_dir = None
+        exclude_dir = resolved_output
         skipped_symlinks: list[str] = []
         skipped_nonregular: list[str] = []
         rows = build_inventory(

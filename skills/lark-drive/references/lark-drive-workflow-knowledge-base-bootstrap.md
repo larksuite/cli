@@ -144,6 +144,8 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 | 已有用户实质草稿（`has_draft`） | `append`（默认） | 追加规范，保留用户原文 |
 | 用户在 `WRITE_CONFIRM` 明确点名要求重写的有草稿节点 | `overwrite` | 需用户对该节点显式确认 |
 
+`draft_state` 必须来自**写入前对目标节点的新鲜读取**（`WRITE_CONFIRM` 阶段的 `docs +fetch`），不得复用 `READ_STRUCTURE` 早期缓存或过期计划里的 `draft_state`。门禁只能校验传入 JSON、无法验证其新鲜度；若 `overwrite` 用了过期的 `empty_placeholder` 判定，可能覆盖此后新增的草稿。有疑问时改用 `append` 或重新读取确认。
+
 ## Write Gate
 
 `WRITE_CONFIRM` 生成写入计划后，必须先经 `scripts/kb_gate.py` 门禁校验，再进入 `WRITE`。门禁是确定性代码校验，agent 的判断只能收紧结果、不能绕过门禁。
@@ -172,7 +174,7 @@ python3 "<SKILL_ROOT>/references/scripts/kb_gate.py" --plan "<写入计划 JSON 
 |-------|--------------------------|---------|
 | `PARSE_TARGET` | `wiki +node-get`、`wiki +space-list`、`wiki spaces get`（解析个人库 my_library）、`wiki +node-list --page-all` | 把 URL / 空间解析为 `space_id` 并确认根层节点 |
 | `READ_STRUCTURE` | `wiki +node-list --page-all`（对 `has_child=true` 逐层下钻）、`docs +fetch` | 完整递归读取节点树和节点草稿内容 |
-| `OUTLINE_PROPOSE` | `wiki +node-create --obj-type docx`（仅用户确认大纲后）、`wiki +node-list` | 新建确认后的大纲子节点并回读 |
+| `OUTLINE_PROPOSE` | `wiki +node-create --obj-type docx`（仅用户确认大纲后）、`wiki +node-list --page-all` | 新建确认后的大纲子节点并分页回读（`--page-all`，避免漏掉新建节点） |
 | `TYPE_TRIAGE` | 无写命令 | 仅对已读结构做分类 |
 | `GEN_STANDARD` | 无写命令 | 模型生成维护规范 |
 | `WRITE_CONFIRM` | 无飞书写命令；`python3 <SKILL_ROOT>/references/scripts/kb_gate.py`（本地只读门禁校验） | 生成写入计划、门禁校验并请用户确认 |

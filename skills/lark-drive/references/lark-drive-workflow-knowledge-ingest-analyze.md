@@ -38,6 +38,8 @@ python3 "<SKILL_ROOT>/references/scripts/inventory.py" \
 
 递归读取目标库节点树填充 `node_inventory`：每次 `wiki +node-list` 用 `--page-all`（或按 `page_token` 翻到 `has_more=false`），对 `has_child=true` 的节点逐层下钻，不得只取首页；任何一层未读全时置 `partial` 并记原因。
 
+**`partial` 时 fail closed**：节点树未读全（分页上限、权限或 API 失败）时，不得基于残缺 `node_inventory` 做资料映射或进入 `NODE_PROPOSE` 新建节点——否则可能把资料映射错节点，或因没看见已存在的节点而重复新建。此时停下向用户报告读取不全的原因与范围，先补齐读取或由用户缩小目标范围，再继续；确实无法读全时只输出「读取不完整」结论，不写入。
+
 ### 探测维护规范与对齐模式
 
 逐节点探测维护规范，但**只对 origin docx 节点执行 `docs +fetch`**（`node_type=origin` 且 `obj_type=docx`）：读取其正文，判断是否存在 `knowledge_base_bootstrap` 写入的维护规范（顶部 6 行治理表 + 收录范围 / 命名规范段落），填充 `standard_map`。sheet、bitable、file、shortcut 等非 docx 节点没有可读正文，直接记为「无可读规范」，不对其 `docs +fetch`（否则会读失败中断混合知识库的对齐）。据规范覆盖情况设 `alignment_mode`：
@@ -69,7 +71,7 @@ python3 "<SKILL_ROOT>/references/scripts/inventory.py" \
 
 1. 据 `inventory` 与已读资料内容，按主题聚类提议一组承载节点（拟建标题 + 目标位置 + 收录范围摘要），填充 `outline_proposal`。
 2. 展示提议表（含每个拟建节点的精确 `--title`、`--parent-node-token` 或 `--space-id`、`--obj-type docx`），请用户确认。
-3. **建节点是外部写入，必须用户确认后**才执行 `wiki +node-create --obj-type docx`；记录返回的 `node_token` / `obj_token`，回读并入 `node_inventory`。
+3. **建节点是外部写入，必须用户确认后**才执行 `wiki +node-create --obj-type docx`；记录返回的 `node_token` / `obj_token`，并用 `wiki +node-list --page-all` 分页回读并入 `node_inventory`（分页回读避免漏掉刚新建的节点）。
 4. 用户拒绝新建时，只把资料映射到现有节点或列「待人工归位」，不擅自新建。
 
 提议表样式见 [`lark-drive-workflow-knowledge-ingest-outputs.md`](lark-drive-workflow-knowledge-ingest-outputs.md)。

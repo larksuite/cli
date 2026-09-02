@@ -192,7 +192,7 @@ python3 "<SKILL_ROOT>/references/scripts/publish_gate.py" --plan "<发布计划 
 | `PARSE_SOURCES` | `wiki +node-get`、`wiki +space-list`、`wiki +node-list --page-all`、`drive +search`（定位/消歧目标库） | 解析本地路径与目标库，判定 `Situation Routing` |
 | `INVENTORY` | `python3 <SKILL_ROOT>/references/scripts/inventory.py`（本地只读盘点） | 盘点本地资料、去重、敏感初筛 |
 | `TARGET_ALIGN` | `wiki +node-list --page-all`（逐层下钻）、`docs +fetch` | 读节点树与各节点维护规范 |
-| `NODE_PROPOSE` | `wiki +node-create --obj-type docx`（仅用户确认后）、`wiki +node-list` | 新建确认后的承载节点并回读 |
+| `NODE_PROPOSE` | `wiki +node-create --obj-type docx`（仅用户确认后）、`wiki +node-list --page-all` | 新建确认后的承载节点并分页回读（`--page-all`，避免漏掉新建节点） |
 | `ANALYZE_TRIAGE` | 无飞书写命令（agent 读本地资料正文分析） | 判类、冲突识别、映射、命名、分诊 |
 | `PUBLISH_PLAN` | 无飞书写命令；`python3 <SKILL_ROOT>/references/scripts/publish_gate.py`（本地只读门禁） | 生成发布计划、门禁校验、请用户确认 |
 | `CONVERT_WRITE` | `drive +import --type docx`、`drive +task_result --scenario import`（import 异步续跑）、`docs +update`、`wiki +move --obj-type docx`（import 件迁入目标节点）、`wiki +node-create --obj-type docx`（new_docx）、`drive +upload`（仅 source_attachment） | 执行已确认的受控转换写入 |
@@ -205,7 +205,7 @@ python3 "<SKILL_ROOT>/references/scripts/publish_gate.py" --plan "<发布计划 
 3. 认证或 API scope 缺失时，按 `lark-shared` 权限处理并停止。
 4. 权限按动作分别判断，一个动作受阻不连累其余：读权限缺失 → 停止（无法盘点结构）；`docs +update` 可用而 `wiki +node-create` 不可用 → 照常写可编辑 docx 节点，`NODE_PROPOSE` / `new_docx` 需新建的列入「待创建节点」并记 `unsupported_checks`；仅可读 → 只输出发布计划不写入；某动作实际返回 `permission_denied` → 只停该动作、记入 `unsupported_checks`，不同参重试、不静默切 bot、不自动申请权限。
 5. 权限硬规则：读取成功不等于具备写权限；写权限只以实际写入返回为准。
-6. `TARGET_ALIGN` 判定节点足以承载资料时直接进入 `ANALYZE_TRIAGE`；不足时进入 `NODE_PROPOSE`。用户拒绝新建节点时，只把资料映射到现有节点或列为待人工归位，不擅自新建。
+6. `TARGET_ALIGN` 判定节点足以承载资料时直接进入 `ANALYZE_TRIAGE`；不足时进入 `NODE_PROPOSE`。用户拒绝新建节点时，只把资料映射到现有节点或列为待人工归位，不擅自新建。节点树读取不全（`partial`）时 fail closed：不基于残缺清单做映射或新建节点，停下报告并先补齐读取。
 7. 无维护规范时（情况 3/6）降级继续并提示，不强制路由到 `knowledge_base_bootstrap`。
 8. `ANALYZE_TRIAGE` 发现版本冲突且无法自动裁决时，该资料标 `conflict_status=suspected/confirmed`，不覆盖现有生产页，列入「需业务确认」；相关资料由门禁阻塞发布。
 9. `PUBLISH_PLAN` 门禁拦截的资料不进入写入；用户拒绝发布时输出已保存的发布计划并转入 `DONE`。全部资料被拦时（情况 9）报告 0 入库及逐项原因，不静默结束。

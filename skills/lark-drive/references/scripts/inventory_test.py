@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -180,6 +181,46 @@ class InventoryOutputTest(unittest.TestCase):
             self.assertEqual(payload["summary"]["files"], 3)
             self.assertEqual(payload["summary"]["exact_duplicate_groups"], 1)
             self.assertEqual(payload["summary"]["possible_sensitive_by_filename"], 1)
+
+
+class InventoryMainTest(unittest.TestCase):
+    def _run_main(self, argv):
+        old = sys.argv
+        sys.argv = ["inventory.py"] + argv
+        try:
+            return inventory.main()
+        finally:
+            sys.argv = old
+
+    def test_output_dir_equal_to_root_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "doc.txt").write_bytes(b"x")
+            code = self._run_main(["--root", tmp, "--output-dir", tmp])
+            self.assertEqual(code, 2)
+            # No ledger should have been written into the scanned root.
+            self.assertFalse((Path(tmp) / "inventory.json").exists())
+
+    def test_output_dir_outside_root_ok(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "src"
+            root.mkdir()
+            (root / "doc.txt").write_bytes(b"x")
+            out = Path(tmp) / "out"
+            code = self._run_main(["--root", str(root), "--output-dir", str(out)])
+            self.assertEqual(code, 0)
+            self.assertTrue((out / "inventory.json").exists())
+
+    def test_nested_output_dir_not_self_ingested(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "doc.txt").write_bytes(b"x")
+            out = Path(tmp) / "inventory"
+            # First run writes the ledger nested under root.
+            self.assertEqual(self._run_main(["--root", tmp, "--output-dir", str(out)]), 0)
+            # Second run must not ingest the ledger it just wrote.
+            self.assertEqual(self._run_main(["--root", tmp, "--output-dir", str(out)]), 0)
+            payload = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
+            titles = [item["title"] for item in payload["items"]]
+            self.assertEqual(titles, ["doc.txt"])
 
 
 if __name__ == "__main__":
