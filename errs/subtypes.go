@@ -86,7 +86,7 @@ const (
 // CategoryInternal subtypes
 const (
 	SubtypeSDKError        Subtype = "sdk_error"        // lark SDK Do() returned an unexpected error
-	SubtypeInvalidResponse Subtype = "invalid_response" // SDK response body not parsable as JSON
+	SubtypeInvalidResponse Subtype = "invalid_response" // response body not parsable as JSON, or a response the CLI cannot accept as the envelope it expects (e.g. a --page-all page that did not declare success)
 	SubtypeFileIO          Subtype = "file_io"          // local file I/O failure (mkdir / write / read)
 	SubtypeExternalTool    Subtype = "external_tool"    // an external tool the CLI shells out to (git, npx) failed at runtime; the tool output is in the message
 	SubtypeStorage         Subtype = "storage"          // local persistence failure (e.g. config file save)

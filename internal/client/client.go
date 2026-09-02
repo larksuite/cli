@@ -374,8 +374,132 @@ func (c *APIClient) CallAPI(ctx context.Context, request RawApiRequest) (interfa
 	return result, nil
 }
 
-// paginateLoop runs the core pagination loop. For each successful page (code == 0),
-// it calls onResult if non-nil. It always accumulates and returns all raw page results.
+// callPage is CallAPI plus the raw response. CallAPI drops the
+// *larkcore.ApiResp, which is why the pagination loop could not tell a 4xx/5xx
+// page from a successful one — nothing below it reads the HTTP status.
+//
+// A body that fails to parse is classified by status when the status is a
+// failure, as HandleResponse does (response.go), or --page-all would exit 5
+// where plain `api` exits 4; on a success status the parse error stands. What
+// reaches that branch is a body the SDK did not decode itself: one with no
+// Content-Type, or one typed text/json, which IsJSONContentType accepts but the
+// SDK does not. A body typed application/json that does not parse fails inside
+// DoAPI instead, with no response left to read a status from, and a body that
+// declares a non-JSON type never gets as far as the parser.
+func (c *APIClient) callPage(ctx context.Context, request RawApiRequest) (interface{}, *larkcore.ApiResp, error) {
+	resp, err := c.DoAPI(ctx, request)
+	if err != nil {
+		return nil, nil, err
+	}
+	// Whether the body is JSON is decided by the rule HandleResponse uses, so
+	// both paths look at the same bytes the same way. A declared non-JSON body
+	// is never parsed: failed, it is classified by status; succeeded, plain `api`
+	// treats it as a download, which a paginated run has no way to be.
+	if ct := resp.Header.Get("Content-Type"); !isJSONBody(ct) {
+		if resp.StatusCode >= 400 {
+			return nil, resp, httpStatusError(resp.StatusCode, resp.RawBody)
+		}
+		return nil, resp, errs.NewInternalError(errs.SubtypeInvalidResponse,
+			"response is not JSON (Content-Type %q); --page-all needs a JSON list response", ct)
+	}
+	result, parseErr := ParseJSONResponse(resp)
+	if parseErr != nil {
+		if resp.StatusCode >= 400 {
+			return nil, resp, httpStatusError(resp.StatusCode, resp.RawBody)
+		}
+		return nil, resp, WrapJSONResponseParseError(parseErr, resp.RawBody)
+	}
+	return result, resp, nil
+}
+
+// pageDeclaresSuccess reports whether a page carries a business code that is
+// exactly 0. It decides one thing — whether the loop may treat the page as a
+// step in the pagination: follow its cursor, or accept it as the continuation
+// an earlier page promised — and is deliberately narrower than CheckResponse's
+// notion of "not an error", which is what decides whether the page is output:
+// that one reads the code as a float, under which 0.5, 1e-324 and an absent
+// field all become 0. Here a JSON number is zero only if every digit of its
+// mantissa is 0 — 0, -0, 0.0, 0e10 — which is exact, allocation-free, and
+// indifferent to how large an exponent a hostile body attaches.
+func pageDeclaresSuccess(result interface{}) bool {
+	m, ok := result.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	switch n := m["code"].(type) {
+	case int:
+		return n == 0
+	case int64:
+		return n == 0
+	case float64:
+		// Reachable only from a caller that decoded without UseNumber;
+		// ParseJSONResponse never produces this.
+		return n == 0
+	case json.Number:
+		return isZeroLiteral(string(n))
+	}
+	return false
+}
+
+func isZeroLiteral(s string) bool {
+	s = strings.TrimPrefix(s, "-")
+	if e := strings.IndexAny(s, "eE"); e >= 0 {
+		s = s[:e]
+	}
+	sawDigit := false
+	for _, c := range s {
+		switch c {
+		case '0':
+			sawDigit = true
+		case '.':
+		default:
+			return false
+		}
+	}
+	return sawDigit
+}
+
+// nextPageToken is the continuation token a page carries: its page_token or
+// next_page_token when has_more is true, or "" when it carries none.
+func nextPageToken(result interface{}) string {
+	resultMap, ok := result.(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	data, ok := resultMap["data"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	if hasMore, _ := data["has_more"].(bool); !hasMore {
+		return ""
+	}
+	if pt, ok := data["page_token"].(string); ok && pt != "" {
+		return pt
+	}
+	if pt, ok := data["next_page_token"].(string); ok && pt != "" {
+		return pt
+	}
+	return ""
+}
+
+func firstPageRecoveryHint(method string) string {
+	if strings.EqualFold(method, http.MethodGet) || strings.EqualFold(method, http.MethodHead) {
+		return "remove `--page-all` and `--jq`; use `--output <path>` to save the raw response"
+	}
+	// The generic api command does not confirmation-gate every write. Do not
+	// turn the automatic replay protection below into instructions for a human
+	// or agent to replay a POST, PUT, PATCH, or DELETE manually.
+	return "verify whether the first request changed remote state before retrying it"
+}
+
+// paginateLoop runs the core pagination loop. Each page accepted for output
+// calls onResult if non-nil and is accumulated after that callback succeeds.
+// Acceptance requires a business code of exactly 0, except that a first page
+// which passes classification and carries no continuation token is still output
+// for plain-api compatibility.
+// A first-page business error is handed back whole with a nil error for the
+// command layer to classify; any later failure returns the pages accumulated so
+// far together with the error.
 func (c *APIClient) paginateLoop(ctx context.Context, request RawApiRequest, opts PaginationOptions, onResult func(interface{}) error) ([]interface{}, error) {
 	var allResults []interface{}
 	var pageToken string
@@ -383,6 +507,21 @@ func (c *APIClient) paginateLoop(ctx context.Context, request RawApiRequest, opt
 	pageDelay := opts.PageDelay
 	if pageDelay == 0 {
 		pageDelay = 200
+	}
+
+	// This loop owns the CheckResponse call that classifies a later page's
+	// failure, so it resolves the identity that classification uses rather than
+	// trusting every caller to fill opts in. An empty identity is not neutral:
+	// errclass rewrites it to "user" (internal/errclass/classify.go) and hands a bot the
+	// user-facing recovery text. The request carries the identity it was sent
+	// with, so prefer it over guessing; AsAuto means "not resolved yet" and is
+	// treated as unset at both steps.
+	identity := opts.Identity
+	if identity == "" || identity == core.AsAuto {
+		identity = request.As
+	}
+	if identity == "" || identity == core.AsAuto {
+		identity = core.AsUser
 	}
 
 	for {
@@ -396,7 +535,7 @@ func (c *APIClient) paginateLoop(ctx context.Context, request RawApiRequest, opt
 		}
 
 		fmt.Fprintf(c.ErrOut, "[page %d] fetching...\n", page)
-		result, err := c.CallAPI(ctx, RawApiRequest{
+		result, resp, err := c.callPage(ctx, RawApiRequest{
 			Method:    request.Method,
 			URL:       request.URL,
 			Params:    params,
@@ -405,23 +544,69 @@ func (c *APIClient) paginateLoop(ctx context.Context, request RawApiRequest, opt
 			ExtraOpts: request.ExtraOpts,
 		})
 		if err != nil {
-			if page == 1 {
-				return nil, err
+			// Page 1 has nothing accumulated yet, so both paths return the same
+			// (nil, err); only the progress line differs. A later page must not
+			// fall through to the loop's `return allResults, nil` — that is what
+			// turned a mid-pagination failure into a successful partial result.
+			if page > 1 {
+				fmt.Fprintf(c.ErrOut, "[page %d] error, stopping pagination\n", page)
 			}
-			fmt.Fprintf(c.ErrOut, "[page %d] error, stopping pagination\n", page)
-			break
+			return allResults, err
 		}
 
-		if resultMap, ok := result.(map[string]interface{}); ok {
-			code, _ := util.ToFloat64(resultMap["code"])
-			if code != 0 {
-				allResults = append(allResults, result)
-				if page == 1 {
-					return allResults, nil
-				}
-				fmt.Fprintf(c.ErrOut, "[page %d] API error (code=%.0f), stopping pagination\n", page, code)
-				break
+		// A failed page is classified exactly as HandleResponse classifies a plain
+		// `api` response, in the same order — the business code through
+		// CheckResponse, then the HTTP status — so one response cannot exit two
+		// ways depending on a flag. A business error on page 1 is handed back
+		// whole with a nil error so the command layer can classify it and dump
+		// the raw response, the long-standing output contract; on a later page it
+		// fails the run. An HTTP failure fails the run on any page, as plain `api`
+		// fails it too. Whether a page that passes both checks is a step in the
+		// pagination at all is decided below.
+		if apiErr := c.CheckResponse(result, identity); apiErr != nil {
+			if page == 1 {
+				return append(allResults, result), nil
 			}
+			fmt.Fprintf(c.ErrOut, "[page %d] API error, stopping pagination\n", page)
+			return allResults, apiErr
+		}
+		if resp.StatusCode >= 400 {
+			if page > 1 {
+				fmt.Fprintf(c.ErrOut, "[page %d] HTTP %d, stopping pagination\n", page, resp.StatusCode)
+			}
+			return allResults, httpStatusError(resp.StatusCode, resp.RawBody)
+		}
+
+		// A page that passed both checks is a response the classifier accepts. It
+		// is output on the existing contract — unless the run must not treat it as
+		// a step in the pagination, which is decided by whether it declared
+		// success: a business code that is exactly 0. CheckResponse cannot make
+		// that call, it reads the code as a float, under which 0.5, 1e-324 and an
+		// absent field all become 0. The rule is asymmetric on purpose:
+		//   - a later page that did not declare success fails the run before it is
+		//     emitted or accumulated. The page before it promised more data, and
+		//     accepting this one — with or without a cursor of its own — would end
+		//     the run as complete over that promise, which is #2477.
+		//   - a first page that did not declare success but carries a continuation
+		//     token is refused before output. `api --page-all` is not restricted to
+		//     GET, and re-issuing the request for its cursor would replay a POST or a
+		//     DELETE against a page the loop could not read. Refusing with an
+		//     error, rather than outputting the page and stopping, is what gives
+		//     the streaming formats — which have no envelope to carry has_more — a
+		//     machine-readable signal that the run did not complete.
+		//   - a first page that did not declare success and carries no continuation
+		//     token is output on the existing contract: there is nothing to
+		//     paginate, and plain `api` would have shown the same response.
+		token := nextPageToken(result)
+		if !pageDeclaresSuccess(result) && (page > 1 || token != "") {
+			if page > 1 {
+				fmt.Fprintf(c.ErrOut, "[page %d] response did not declare success (code is missing, unreadable, or not exactly zero), stopping pagination\n", page)
+				return allResults, errs.NewInternalError(errs.SubtypeInvalidResponse,
+					"page %d of a --page-all run did not declare success (code is missing, unreadable, or not exactly zero)", page)
+			}
+			return allResults, errs.NewInternalError(errs.SubtypeInvalidResponse,
+				"the first page carries a continuation token but did not declare success (code is missing, unreadable, or not exactly zero)").
+				WithHint("%s", firstPageRecoveryHint(request.Method))
 		}
 
 		if onResult != nil {
@@ -431,20 +616,7 @@ func (c *APIClient) paginateLoop(ctx context.Context, request RawApiRequest, opt
 		}
 		allResults = append(allResults, result)
 
-		pageToken = ""
-		if resultMap, ok := result.(map[string]interface{}); ok {
-			if data, ok := resultMap["data"].(map[string]interface{}); ok {
-				hasMore, _ := data["has_more"].(bool)
-				if hasMore {
-					if pt, ok := data["page_token"].(string); ok && pt != "" {
-						pageToken = pt
-					} else if pt, ok := data["next_page_token"].(string); ok && pt != "" {
-						pageToken = pt
-					}
-				}
-			}
-		}
-
+		pageToken = token
 		if pageToken == "" {
 			break
 		}
@@ -479,9 +651,11 @@ func (c *APIClient) PaginateAll(ctx context.Context, request RawApiRequest, opts
 
 // StreamPages fetches all pages and streams each page's list items via onItems.
 // Returns the last page result (for error checking), whether any list items were found,
-// and any network error. Use this for streaming formats (ndjson, table, csv).
+// and the error that ended the run — transport, HTTP status, business code, or a page
+// that did not declare success. Use this for streaming formats (ndjson, table, csv).
 func (c *APIClient) StreamPages(ctx context.Context, request RawApiRequest, onItems func([]interface{}) error, opts PaginationOptions) (result interface{}, hasItems bool, err error) {
 	totalItems := 0
+	emittedPages := 0
 	results, loopErr := c.paginateLoop(ctx, request, opts, func(r interface{}) error {
 		resultMap, ok := r.(map[string]interface{})
 		if !ok {
@@ -499,17 +673,36 @@ func (c *APIClient) StreamPages(ctx context.Context, request RawApiRequest, onIt
 		if !ok {
 			return nil
 		}
-		totalItems += len(items)
+		// Counted only after onItems accepts them. onItems is what actually
+		// writes the page out, and it can refuse — counting first would let the
+		// failure summary claim items that never reached stdout, in precisely
+		// the run where the caller is relying on that number.
 		if err := onItems(items); err != nil {
 			return err
 		}
+		totalItems += len(items)
+		emittedPages++
 		hasItems = true
 		return nil
 	})
 	if loopErr != nil {
+		// Streaming formats have already written the pages that succeeded, so the
+		// exit code says the run is incomplete and this line says how far it got.
+		// Worded apart from the success summary so the two are never confused.
+		//
+		// emittedPages, not len(results): a page whose data carries no array
+		// field is fetched and accumulated but never offered to onItems, so it
+		// put nothing on stdout and must not be counted here.
+		if hasItems {
+			fmt.Fprintf(c.ErrOut, "[pagination] streamed %d pages, %d total items before the run failed\n", emittedPages, totalItems)
+		}
 		return nil, false, loopErr
 	}
 
+	// Deliberately still len(results): this line predates this change and reads
+	// as "the run traversed N pages", which is true. Switching it to
+	// emittedPages would alter established output outside the scope of the
+	// failure semantics being fixed here. Unifying the two is a separate call.
 	if hasItems {
 		fmt.Fprintf(c.ErrOut, "[pagination] streamed %d pages, %d total items\n", len(results), totalItems)
 	}
