@@ -33,7 +33,7 @@ npm run dev
 git add <本次开发的文件>          # 提交粒度见下方「改完代码后部署上线」
 git commit -m "feat: ..."
 git push origin sprint/default
-lark-cli apps +release-create --as user --app-id app_xxx --branch sprint/default
+lark-cli apps +release-create --as user --app-id app_xxx --branch sprint/default --apply-reason "发布审批系统功能更新"
 ```
 
 ### frontend
@@ -57,7 +57,7 @@ npm run dev
 git add <本次开发的文件>
 git commit -m "feat: ..."
 git push origin sprint/default
-lark-cli apps +release-create --as user --app-id app_xxx --branch sprint/default
+lark-cli apps +release-create --as user --app-id app_xxx --branch sprint/default --apply-reason "发布 JSON 格式化功能更新"
 # 发布是异步的：用 +release-get 轮询到 status=finished 才算部署完成、拿到 online_url
 lark-cli apps +release-get --as user --app-id app_xxx --release-id <上一步返回的 release_id>
 ```
@@ -66,7 +66,7 @@ lark-cli apps +release-get --as user --app-id app_xxx --release-id <上一步返
 
 #### 首次开发（无 app，无代码）
 
-`+create(html)` → `+init` → 加载 [`creative-design`](../creative-design/creative-design.md) skill 在 repo 根目录产出文件 → `git add .` + `git commit` → `git push origin sprint/default` → `+release-create` → `+release-get`。
+`+create(html)` → `+init` → 加载 [`creative-design`](../creative-design/creative-design.md) skill 在 repo 根目录产出文件 → `git add .` + `git commit` → `git push origin sprint/default` → `+release-create`（携带已确认的同一 `--apply-reason`）→ `+release-get`。
 
 ```bash
 lark-cli apps +create --name "活动页" --app-type html --as user
@@ -80,16 +80,16 @@ cd ./my-page
 git add .
 git commit -m "feat: ..."
 git push origin sprint/default
-lark-cli apps +release-create --app-id app_xxx
+lark-cli apps +release-create --app-id app_xxx --apply-reason "发布活动页视觉与交互更新"
 ```
 
 #### 已有 app，二次开发/迭代
 
-`+init`（拉取远程代码）→ 加载 creative-design skill 在 repo 根目录迭代 → `git add .` + `git commit` → `git push origin sprint/default` → `+release-create` → `+release-get`。
+`+init`（拉取远程代码）→ 加载 creative-design skill 在 repo 根目录迭代 → `git add .` + `git commit` → `git push origin sprint/default` → `+release-create`（携带已确认的同一 `--apply-reason`）→ `+release-get`。
 
 #### creative-design 已提前生成文件，需要 init 后迁入
 
-`+create(html)` → `+init` → 先 `ls` 查看 repo 根目录模板结构（创意模式模板无 `src/` 目录，文件直接放根目录）→ 将已生成的所有产出文件（HTML、JSX 组件、starter components 等）拷贝到 repo 根目录 → `git add .` + `git commit` → `git push origin sprint/default` → `+release-create` → `+release-get`。
+`+create(html)` → `+init` → 先 `ls` 查看 repo 根目录模板结构（创意模式模板无 `src/` 目录，文件直接放根目录）→ 将已生成的所有产出文件（HTML、JSX 组件、starter components 等）拷贝到 repo 根目录 → `git add .` + `git commit` → `git push origin sprint/default` → `+release-create`（携带已确认的同一 `--apply-reason`）→ `+release-get`。
 
 `+init` 是推荐便捷入口；想逐步手动控制时，先 `+git-credential-init` 拿 `repository_url`，再用原生 `git clone` / `git checkout sprint/default`。
 
@@ -111,8 +111,8 @@ lark-cli apps +release-create --app-id app_xxx
 
 1. `git status` 看本次改动；`git add <本次相关文件>` 暂存后 `git commit` 提交。只提交本次任务相关的改动即可，无关的零散文件不必强求清空——发布门禁是「**本次相关改动已提交并推送**」，不是「工作区绝对干净」。
 2. `git push origin sprint/default` 把工作分支推到云端（遇非 fast-forward：先 `git pull --rebase origin sprint/default` 解决冲突再推，绝不 force-push；遇 Git 认证失败 / 401 / 403 / credential helper 缺失 / token 过期：先执行 `lark-cli apps +git-credential-init --app-id <app_id> --as user` 刷新本地 Git 凭证，再重试原 git 命令；刷新凭证也失败时，停止并向用户报告错误，不要换路）。
-3. `lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/default` 发起部署上线，记下返回的 `release_id`。
-4. `lark-cli apps +release-get --as user --app-id <app_id> --release-id <release_id>` 轮询：`publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status。`finished` 成功时，若返回 `online_url`，可直接使用；未返回时不要编造链接。交付线上访问链接给他人前，注意 `online_url` 默认仅创建者可见，需先告知当前仅本人可见、按需用 `+access-scope-set` 放开可见范围。无需再调 `+list`；`failed` 时若返回非空 `error_logs`，据此给出失败原因；否则只报告 `release_id` 和当前 status，不要编造原因（`+list` 仅作独立查询入口）。
+3. 读取 [`lark-apps-release-create.md`](lark-apps-release-create.md)，生成并在现有发布确认中确认理由；执行 `lark-cli apps +release-create --as user --app-id <app_id> --branch sprint/default --apply-reason "发布本轮已提交并推送的功能更新"` 发起部署上线。示例文本须替换为刚确认的实际理由且保持逐字相同，并记下返回的 `release_id`。
+4. `lark-cli apps +release-get --as user --app-id <app_id> --release-id <release_id>` 先检查当前节点：`current_node_info.current_status=PENDING` 时立即停止本轮轮询，保留同一个 `release_id` 并等待用户处理审批；用户明确说已处理后继续查询该 ID。在此之前不得自动审批或写回发布节点，也不得新建另一轮 release。非 PENDING 的 `publishing` 时每 20 秒继续轮询，整体最多约 5 分钟；超时仍未完成时停止本轮轮询、报告 `release_id` 和当前 status。`finished` 成功时，若返回 `online_url`，可直接使用；未返回时不要编造链接。交付线上访问链接给他人前，注意 `online_url` 默认仅创建者可见，需先告知当前仅本人可见、按需用 `+access-scope-set` 放开可见范围。无需再调 `+list`；`failed` 时若返回非空 `error_logs`，据此给出失败原因；否则只报告 `release_id` 和当前 status，不要编造原因（`+list` 仅作独立查询入口）。
 
 用户只要求启用已有 trigger 时，转到 [automation SOP 的「仅启用已有 disabled trigger」路径](lark-apps-automation.md#仅启用已有-disabled-trigger)；不得因 enable 反向修改 handler、commit/push 或 release。
 
