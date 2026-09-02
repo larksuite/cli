@@ -232,37 +232,94 @@ func TestMailAutoReplyModifyRejectsEndBeforeStart(t *testing.T) {
 	}
 }
 
-func TestMailAutoReplyModifyRejectsMismatchedZeroTimePair(t *testing.T) {
-	for _, args := range [][]string{
-		{"+auto-reply-modify", "--yes", "--start", "0", "--end", "1787846400000"},
-		{"+auto-reply-modify", "--yes", "--start", "1787846400000", "--end", "0"},
+func TestMailAutoReplyModifyAllowsZeroStartOrEndTime(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		args      []string
+		wantStart string
+		wantEnd   string
+	}{
+		{
+			name:      "immediate start",
+			args:      []string{"+auto-reply-modify", "--yes", "--start", "0", "--end", "1914163199999"},
+			wantStart: "0",
+			wantEnd:   "1914163199999",
+		},
+		{
+			name:      "no end time",
+			args:      []string{"+auto-reply-modify", "--yes", "--start", "1914076800000", "--end", "0"},
+			wantStart: "1914076800000",
+			wantEnd:   "0",
+		},
 	} {
-		f, stdout, _, _ := mailShortcutTestFactory(t)
-		err := runMountedMailShortcut(t, MailAutoReplyModify, args, f, stdout)
-		if err == nil {
-			t.Fatalf("expected validation error for args %#v", args)
-		}
-		if !strings.Contains(err.Error(), "--start and --end must both be 0 or both be non-zero") {
-			t.Fatalf("unexpected error for args %#v: %v", args, err)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			f, stdout, _, reg := mailShortcutTestFactory(t)
+			var captured map[string]interface{}
+			stubAutoReplyGet(reg, "me", map[string]interface{}{})
+			reg.Register(&httpmock.Stub{
+				Method: "PUT",
+				URL:    mailboxPath("me", "settings", "auto_reply"),
+				BodyFilter: func(body []byte) bool {
+					if err := json.Unmarshal(body, &captured); err != nil {
+						t.Fatalf("unmarshal request body: %v; body=%s", err, body)
+					}
+					return true
+				},
+				Body: map[string]interface{}{
+					"code": 0,
+					"msg":  "ok",
+					"data": map[string]interface{}{"auto_reply": map[string]interface{}{}},
+				},
+			})
+
+			if err := runMountedMailShortcut(t, MailAutoReplyModify, tc.args, f, stdout); err != nil {
+				t.Fatalf("runMountedMailShortcut() error = %v", err)
+			}
+			reg.Verify(t)
+
+			assertAutoReplyPayloadValue(t, captured, "start_time", tc.wantStart)
+			assertAutoReplyPayloadValue(t, captured, "end_time", tc.wantEnd)
+		})
 	}
 }
 
-func TestMailAutoReplyModifyRejectsEnableWithZeroTimePair(t *testing.T) {
-	f, stdout, _, _ := mailShortcutTestFactory(t)
+func TestMailAutoReplyModifyAllowsEnableWithZeroTimePair(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	var captured map[string]interface{}
+	stubAutoReplyGet(reg, "me", map[string]interface{}{})
+	reg.Register(&httpmock.Stub{
+		Method: "PUT",
+		URL:    mailboxPath("me", "settings", "auto_reply"),
+		BodyFilter: func(body []byte) bool {
+			if err := json.Unmarshal(body, &captured); err != nil {
+				t.Fatalf("unmarshal request body: %v; body=%s", err, body)
+			}
+			return true
+		},
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{"auto_reply": map[string]interface{}{}},
+		},
+	})
+
 	err := runMountedMailShortcut(t, MailAutoReplyModify, []string{
 		"+auto-reply-modify",
 		"--yes",
 		"--enable",
+		"--content", "ok",
 		"--start", "0",
 		"--end", "0",
+		"--timezone", "28800",
 	}, f, stdout)
-	if err == nil {
-		t.Fatal("expected validation error")
+	if err != nil {
+		t.Fatalf("runMountedMailShortcut() error = %v", err)
 	}
-	if !strings.Contains(err.Error(), "--enable requires non-zero --start and --end") {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	reg.Verify(t)
+
+	assertAutoReplyPayloadValue(t, captured, "enabled", true)
+	assertAutoReplyPayloadValue(t, captured, "start_time", "0")
+	assertAutoReplyPayloadValue(t, captured, "end_time", "0")
 }
 
 func TestMailAutoReplyModifyPreflightsCurrentSetting(t *testing.T) {
@@ -286,7 +343,7 @@ func TestMailAutoReplyModifyPreflightsCurrentSetting(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected preflight validation error")
 	}
-	if !strings.Contains(err.Error(), "start_time is required when enabled=true") {
+	if !strings.Contains(err.Error(), "time_zone is required when enabled=true") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	reg.Verify(t)

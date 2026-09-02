@@ -225,13 +225,7 @@ func buildAutoReplyPatch(ctx context.Context, runtime *common.RuntimeContext, up
 		if end, ok := autoReply["end_time"].(string); ok {
 			startTS, _ := strconv.ParseInt(start, 10, 64)
 			endTS, _ := strconv.ParseInt(end, 10, 64)
-			if (startTS == 0) != (endTS == 0) {
-				return nil, mailValidationParamError("--end", "--start and --end must both be 0 or both be non-zero")
-			}
-			if startTS == 0 && runtime.Bool("enable") {
-				return nil, mailValidationParamError("--start", "--enable requires non-zero --start and --end")
-			}
-			if startTS != 0 && startTS >= endTS {
+			if startTS > 0 && endTS > 0 && startTS >= endTS {
 				return nil, mailValidationParamError("--end", "--end must be after --start")
 			}
 		}
@@ -288,12 +282,6 @@ func validateAutoReplyFinal(patch, autoReply map[string]interface{}) error {
 	endTS, err := autoReplyInt64(autoReply["end_time"])
 	if err != nil {
 		return mailValidationParamError("--end", "end_time must be a Unix milliseconds timestamp")
-	}
-	if enabled && startTS <= 0 {
-		return mailValidationParamError("--start", "start_time is required when enabled=true")
-	}
-	if enabled && endTS <= 0 {
-		return mailValidationParamError("--end", "end_time is required when enabled=true")
 	}
 	timezone := strings.TrimSpace(autoReplyString(autoReply["time_zone"]))
 	if enabled && timezone == "" {
