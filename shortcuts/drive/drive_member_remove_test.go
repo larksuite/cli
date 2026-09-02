@@ -14,7 +14,6 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/shortcuts/common"
 )
 
 func TestDriveMemberRemoveMetadata(t *testing.T) {
@@ -445,11 +444,8 @@ func TestDriveMemberRemoveExecuteSuccess(t *testing.T) {
 		data["member_kind"] != "user" || data["perm_type"] != "single_page" {
 		t.Fatalf("output = %#v", data)
 	}
-	if strings.Contains(stderr.String(), "wikcnSecretToken") || strings.Contains(stderr.String(), "ou_secret_member") {
-		t.Fatalf("stderr exposes unmasked identifiers: %q", stderr.String())
-	}
-	if !strings.Contains(stderr.String(), common.MaskToken("wikcnSecretToken")) || !strings.Contains(stderr.String(), common.MaskToken("ou_secret_member")) {
-		t.Fatalf("stderr missing masked identifiers: %q", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no removal progress", stderr.String())
 	}
 }
 

@@ -1047,8 +1047,8 @@ func TestDriveMemberAdd_ExecuteSuccessFlattensMember(t *testing.T) {
 		data["perm"] != "view" || data["member_kind"] != "user" {
 		t.Fatalf("flattened output = %#v", data)
 	}
-	if !strings.Contains(stderr.String(), "Added Drive member") {
-		t.Fatalf("stderr = %q, want success log", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no success log", stderr.String())
 	}
 }
 
@@ -1108,8 +1108,8 @@ func TestDriveMemberAdd_ExecuteBatchSuccess(t *testing.T) {
 	if first["member_id"] != "ou_a" || second["member_id"] != "ou_b" {
 		t.Fatalf("members = %#v, want request-order fallback IDs", members)
 	}
-	if !strings.Contains(stderr.String(), "Added 2 Drive member(s)") {
-		t.Fatalf("stderr = %q, want success log", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no success log", stderr.String())
 	}
 	if !strings.Contains(capturedQuery, "type=bitable") {
 		t.Fatalf("captured query = %q, want type=bitable for bascn token", capturedQuery)

@@ -656,8 +656,12 @@ func TestNormalizeDownloadOutputPath(t *testing.T) {
 		{name: "clean relative path", fileKey: "file_123", outputPath: " nested/../out.bin ", want: "out.bin"},
 		{name: "empty key", fileKey: " ", wantErr: "file-key cannot be empty"},
 		{name: "separator in key", fileKey: "dir/file", wantErr: "file-key cannot contain path separators"},
-		{name: "absolute path", fileKey: "file_123", outputPath: "/tmp/out.bin", wantErr: "absolute paths are not allowed"},
-		{name: "parent escape", fileKey: "file_123", outputPath: "../out.bin", wantErr: "path cannot escape the current working directory"},
+		// Where the path points is the built-in policy's call, made by the
+		// ResolveSavePath both call sites run next; this function only settles
+		// what the caller named. An absolute path reaching that policy is the
+		// whole point — refusing it here is what failed an agent's first call.
+		{name: "absolute path passes through", fileKey: "file_123", outputPath: "/tmp/out.bin", want: "/tmp/out.bin"},
+		{name: "parent-relative path passes through", fileKey: "file_123", outputPath: "../out.bin", want: "../out.bin"},
 		{name: "empty path after clean", fileKey: "file_123", outputPath: " . ", wantErr: "path cannot be empty"},
 	}
 

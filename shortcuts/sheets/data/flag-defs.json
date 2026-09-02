@@ -1801,7 +1801,7 @@
         "kind": "own",
         "type": "string",
         "required": "xor",
-        "desc": "JSON 2D array `[[{cell},...],...]`, dimensions must match `--range`; each cell may carry `value` / `formula` / `cell_styles` / `note` / `rich_text` (incl. `type=\"embed-image\"` in-cell image); run `--print-schema` for full fields",
+        "desc": "JSON 2D array `[[{cell},...],...]`, dimensions must match `--range`; each cell may carry `value` / `formula` / `multiple_values` / `cell_styles` / `note` / `rich_text` (incl. `type=\"embed-image\"` in-cell image). To write selected values into a multi-select dropdown cell, use `multiple_values:[{\"value\":...}]`; do not join multiple options with commas into one `value`. Run `--print-schema` for full fields",
         "input": [
           "file",
           "stdin"
@@ -2129,7 +2129,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Per-option pill colors, RGB hex array (e.g. `[\"#1FB6C1\",\"#F006C2\"]`). Length may be shorter than the source (`--options` items / `--source-range` cells) — extras cycle through a 10-color palette — but never longer (CLI Validate rejects: `--colors length (N) must not exceed dropdown source size (M)`). **Applies on its own**; ignored when `--highlight=false`.",
+        "desc": "Per-option pill background colors as an RGB hex array. Omit when creating a dropdown to use the built-in 10-color palette; pass only when the user explicitly requests custom colors or options have clear color semantics. Pill text is black, so prefer light, low-saturation backgrounds. The array may be shorter than the source (`--options` items / `--source-range` cells) — extras use the built-in palette — but never longer (CLI Validate rejects: `--colors length (N) must not exceed dropdown source size (M)`). Applies on its own; ignored when `--highlight=false`.",
         "input": [
           "file",
           "stdin"
@@ -2140,7 +2140,7 @@
         "kind": "own",
         "type": "bool",
         "required": "optional",
-        "desc": "Enable multi-select; default `false`"
+        "desc": "Enable multi-select; default `false`. This flag only configures validation and does not write selected values. When writing selections with `+cells-set`, pass a `multiple_values` array, not a comma-joined `value`"
       },
       {
         "name": "highlight",
@@ -3262,7 +3262,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Per-option pill colors, RGB hex array (e.g. `[\"#1FB6C1\",\"#F006C2\"]`). Length may be shorter than the source (`--options` items / `--source-range` cells) — extras cycle through a 10-color palette — but never longer (CLI Validate rejects: `--colors length (N) must not exceed dropdown source size (M)`). **Applies on its own**; ignored when `--highlight=false`.",
+        "desc": "Per-option pill background colors as an RGB hex array. Updating rewrites the entire validation rule: unless the user asks to reset colors, first read the dropdown with `+dropdown-get` and pass its existing `highlight_colors` through this flag; omission rebuilds colors from the built-in 10-color palette. For explicitly requested or semantic new colors, prefer light, low-saturation backgrounds because pill text is black. The array may be shorter than the source (`--options` items / `--source-range` cells) — extras use the built-in palette — but never longer (CLI Validate rejects: `--colors length (N) must not exceed dropdown source size (M)`). Applies on its own; ignored when `--highlight=false`.",
         "input": [
           "file",
           "stdin"
@@ -3273,7 +3273,7 @@
         "kind": "own",
         "type": "bool",
         "required": "optional",
-        "desc": "Enable multi-select"
+        "desc": "Enable multi-select. This flag only updates validation and does not write selected values. When writing selections with `+cells-set`, pass a `multiple_values` array, not a comma-joined `value`"
       },
       {
         "name": "highlight",

@@ -106,9 +106,6 @@ var DriveCopy = common.Shortcut{
 			}
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Copying %s %s to folder %s...\n",
-			spec.Ref.Type, common.MaskToken(spec.Ref.Token), common.MaskToken(folderToken))
-
 		data, err := runtime.CallAPITyped(
 			"POST",
 			fmt.Sprintf("/open-apis/drive/v1/files/%s/copy", validate.EncodePathSegment(spec.Ref.Token)),
@@ -255,7 +252,6 @@ func resolveDriveCopyInput(urlInput, tokenInput, explicitType string) (driveCopy
 
 func resolveDriveCopyWikiResource(ctx context.Context, runtime *common.RuntimeContext, spec driveCopySpec) (driveCopySpec, error) {
 	wikiToken := spec.Ref.Token
-	fmt.Fprintf(runtime.IO().ErrOut, "Resolving wiki resource: %s\n", common.MaskToken(wikiToken))
 	data, err := driveInspectCallWithRetry(ctx, func() (map[string]interface{}, error) {
 		return runtime.CallAPITyped(
 			"GET",
@@ -297,7 +293,6 @@ func resolveDriveCopyWikiResource(ctx context.Context, runtime *common.RuntimeCo
 	spec.Ref.Token = objToken
 	spec.Ref.Type = objType
 	spec.Ref.WikiToken = wikiToken
-	fmt.Fprintf(runtime.IO().ErrOut, "Wiki resource resolved to %s: %s\n", objType, common.MaskToken(objToken))
 	return spec, nil
 }
 
@@ -329,7 +324,6 @@ func resolveDriveCopyFolderToken(input string) (string, bool, error) {
 // The endpoint is absent from platform metadata; the path follows the official
 // get-root-folder-meta documentation and works for both user and bot tokens.
 func resolveDriveCopyMySpaceRoot(runtime *common.RuntimeContext) (string, error) {
-	fmt.Fprintf(runtime.IO().ErrOut, "Resolving My Space root folder...\n")
 	data, err := runtime.CallAPITyped("GET", driveCopyRootFolderMetaPath, nil, nil)
 	if err != nil {
 		return "", err
@@ -338,7 +332,6 @@ func resolveDriveCopyMySpaceRoot(runtime *common.RuntimeContext) (string, error)
 	if token == "" {
 		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "root folder meta returned an empty token")
 	}
-	fmt.Fprintf(runtime.IO().ErrOut, "Resolved My Space root: %s\n", common.MaskToken(token))
 	return token, nil
 }
 

@@ -9,9 +9,11 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -1048,14 +1050,15 @@ func TestCreate_WithAttendees_RollbackAlsoFails(t *testing.T) {
 func TestUpdate_PatchEventOnly(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 
+	reg.Register(plainEventStub("cal_test123", "evt_update1_0"))
 	stub := &httpmock.Stub{
 		Method: "PATCH",
-		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_update1",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_update1_0",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
 			"data": map[string]interface{}{
 				"event": map[string]interface{}{
-					"event_id": "evt_update1",
+					"event_id": "evt_update1_0",
 					"summary":  "Updated Meeting",
 					"start_time": map[string]interface{}{
 						"timestamp": "1742518800",
@@ -1071,7 +1074,7 @@ func TestUpdate_PatchEventOnly(t *testing.T) {
 
 	err := mountAndRun(t, CalendarUpdate, []string{
 		"+update",
-		"--event-id", "evt_update1",
+		"--event-id", "evt_update1_0",
 		"--calendar-id", "cal_test123",
 		"--summary", "Updated Meeting",
 		"--description", "Updated description",
@@ -1100,7 +1103,7 @@ func TestUpdate_PatchEventOnly(t *testing.T) {
 	if body["need_notification"] != false {
 		t.Fatalf("need_notification = %#v, want false", body["need_notification"])
 	}
-	if !strings.Contains(stdout.String(), "evt_update1") {
+	if !strings.Contains(stdout.String(), "evt_update1_0") {
 		t.Fatalf("stdout should contain event id, got: %s", stdout.String())
 	}
 }
@@ -1108,16 +1111,17 @@ func TestUpdate_PatchEventOnly(t *testing.T) {
 func TestUpdate_AddAttendees(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 
+	reg.Register(plainEventStub("cal_test123", "evt_update2_0"))
 	stub := &httpmock.Stub{
 		Method: "POST",
-		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_update2/attendees",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_update2_0/attendees",
 		Body:   map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
 	}
 	reg.Register(stub)
 
 	err := mountAndRun(t, CalendarUpdate, []string{
 		"+update",
-		"--event-id", "evt_update2",
+		"--event-id", "evt_update2_0",
 		"--calendar-id", "cal_test123",
 		"--add-attendee-ids", "ou_user1,oc_group1,omm_room1",
 		"--as", "bot",
@@ -1138,16 +1142,17 @@ func TestUpdate_AddAttendees(t *testing.T) {
 func TestUpdate_RemoveAttendees(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 
+	reg.Register(plainEventStub("cal_test123", "evt_update3_0"))
 	stub := &httpmock.Stub{
 		Method: "POST",
-		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_update3/attendees/batch_delete",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_update3_0/attendees/batch_delete",
 		Body:   map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
 	}
 	reg.Register(stub)
 
 	err := mountAndRun(t, CalendarUpdate, []string{
 		"+update",
-		"--event-id", "evt_update3",
+		"--event-id", "evt_update3_0",
 		"--calendar-id", "cal_test123",
 		"--remove-attendee-ids", "ou_user1,oc_group1,omm_room1",
 		"--notify=false",
@@ -1172,22 +1177,23 @@ func TestUpdate_RemoveAttendees(t *testing.T) {
 func TestUpdate_CombinedPatchRemoveAdd(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 
+	reg.Register(plainEventStub("primary", "evt_update4_0"))
 	patchStub := &httpmock.Stub{
 		Method: "PATCH",
-		URL:    "/events/evt_update4",
+		URL:    "/events/evt_update4_0",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
-			"data": map[string]interface{}{"event": map[string]interface{}{"event_id": "evt_update4", "summary": "Combined"}},
+			"data": map[string]interface{}{"event": map[string]interface{}{"event_id": "evt_update4_0", "summary": "Combined"}},
 		},
 	}
 	removeStub := &httpmock.Stub{
 		Method: "POST",
-		URL:    "/events/evt_update4/attendees/batch_delete",
+		URL:    "/events/evt_update4_0/attendees/batch_delete",
 		Body:   map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
 	}
 	addStub := &httpmock.Stub{
 		Method: "POST",
-		URL:    "/events/evt_update4/attendees",
+		URL:    "/events/evt_update4_0/attendees",
 		Body:   map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
 	}
 	reg.Register(patchStub)
@@ -1196,7 +1202,7 @@ func TestUpdate_CombinedPatchRemoveAdd(t *testing.T) {
 
 	err := mountAndRun(t, CalendarUpdate, []string{
 		"+update",
-		"--event-id", "evt_update4",
+		"--event-id", "evt_update4_0",
 		"--summary", "Combined",
 		"--remove-attendee-ids", "ou_old",
 		"--add-attendee-ids", "ou_new",
@@ -1345,6 +1351,11 @@ func TestCalendarShortcuts_RequireLoginUnlessExplicitBot(t *testing.T) {
 			name:     "suggestion",
 			shortcut: CalendarSuggestion,
 			args:     []string{"+suggestion", "--start", "2025-03-21", "--end", "2025-03-21"},
+		},
+		{
+			name:     "list-attendees",
+			shortcut: CalendarListAttendees,
+			args:     []string{"+list-attendees", "--event-id", "evt_1"},
 		},
 	}
 
@@ -1821,14 +1832,19 @@ func TestFreebusy_Success(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
-		URL:    "/open-apis/calendar/v4/freebusy/list",
+		URL:    "/open-apis/calendar/v4/freebusy/batch",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
 			"data": map[string]interface{}{
-				"freebusy_list": []interface{}{
+				"freebusy_lists": []interface{}{
 					map[string]interface{}{
-						"start_time": "2025-03-21T10:00:00+08:00",
-						"end_time":   "2025-03-21T11:00:00+08:00",
+						"user_id": "ou_someone",
+						"freebusy_items": []interface{}{
+							map[string]interface{}{
+								"start_time": "2025-03-21T10:00:00+08:00",
+								"end_time":   "2025-03-21T11:00:00+08:00",
+							},
+						},
 					},
 				},
 			},
@@ -1873,7 +1889,7 @@ func TestFreebusy_APIError(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
-		URL:    "/open-apis/calendar/v4/freebusy/list",
+		URL:    "/open-apis/calendar/v4/freebusy/batch",
 		Body: map[string]interface{}{
 			"code": 190001,
 			"msg":  "permission denied",
@@ -1898,7 +1914,7 @@ func TestFreebusy_InvalidParamsWithDetail(t *testing.T) {
 
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
-		URL:    "/open-apis/calendar/v4/freebusy/list",
+		URL:    "/open-apis/calendar/v4/freebusy/batch",
 		Body: map[string]interface{}{
 			"code": codeInvalidParamsWithDetail,
 			"msg":  "invalid params",
@@ -2596,17 +2612,17 @@ func TestResolveStartEnd_ExplicitValues(t *testing.T) {
 // Shortcuts() registration test
 // ---------------------------------------------------------------------------
 
-func TestShortcuts_Returns12(t *testing.T) {
+func TestShortcuts_Returns14(t *testing.T) {
 	shortcuts := Shortcuts()
-	if len(shortcuts) != 12 {
-		t.Fatalf("expected 12 shortcuts, got %d", len(shortcuts))
+	if len(shortcuts) != 14 {
+		t.Fatalf("expected 14 shortcuts, got %d", len(shortcuts))
 	}
 
 	names := map[string]bool{}
 	for _, s := range shortcuts {
 		names[s.Command] = true
 	}
-	for _, want := range []string{"+agenda", "+create", "+update", "+freebusy", "+room-find", "+rsvp", "+suggestion", "+get", "+transfer", "+join-event"} {
+	for _, want := range []string{"+agenda", "+create", "+update", "+delete", "+freebusy", "+room-find", "+rsvp", "+suggestion", "+get", "+transfer", "+join-event", "+list-attendees", "+meeting", "+search-event"} {
 		if !names[want] {
 			t.Errorf("missing shortcut %s", want)
 		}
@@ -3124,15 +3140,16 @@ func TestAgenda_TimeRangeExceeded_CannotSplit(t *testing.T) {
 // the typed API error wrapped with completed-step context.
 func TestUpdate_PatchStepFails_TypedError(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(plainEventStub("cal_test123", "evt_patchfail_0"))
 	reg.Register(&httpmock.Stub{
 		Method: "PATCH",
-		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_patchfail",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_patchfail_0",
 		Body:   map[string]interface{}{"code": 190001, "msg": "permission denied"},
 	})
 
 	err := mountAndRun(t, CalendarUpdate, []string{
 		"+update",
-		"--event-id", "evt_patchfail",
+		"--event-id", "evt_patchfail_0",
 		"--calendar-id", "cal_test123",
 		"--summary", "New title",
 		"--as", "bot",
@@ -3150,15 +3167,16 @@ func TestUpdate_PatchStepFails_TypedError(t *testing.T) {
 // TestUpdate_RemoveStepFails_TypedError pins the batch_delete failure path.
 func TestUpdate_RemoveStepFails_TypedError(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(plainEventStub("primary", "evt_removefail_0"))
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
-		URL:    "/events/evt_removefail/attendees/batch_delete",
+		URL:    "/events/evt_removefail_0/attendees/batch_delete",
 		Body:   map[string]interface{}{"code": 190001, "msg": "permission denied"},
 	})
 
 	err := mountAndRun(t, CalendarUpdate, []string{
 		"+update",
-		"--event-id", "evt_removefail",
+		"--event-id", "evt_removefail_0",
 		"--remove-attendee-ids", "ou_user1",
 		"--as", "bot",
 	}, f, nil)
@@ -3175,15 +3193,16 @@ func TestUpdate_RemoveStepFails_TypedError(t *testing.T) {
 // TestUpdate_AddStepFails_TypedError pins the add-attendees failure path.
 func TestUpdate_AddStepFails_TypedError(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(plainEventStub("primary", "evt_addfail_0"))
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
-		URL:    "/events/evt_addfail/attendees",
+		URL:    "/events/evt_addfail_0/attendees",
 		Body:   map[string]interface{}{"code": 190001, "msg": "permission denied"},
 	})
 
 	err := mountAndRun(t, CalendarUpdate, []string{
 		"+update",
-		"--event-id", "evt_addfail",
+		"--event-id", "evt_addfail_0",
 		"--add-attendee-ids", "ou_user1",
 		"--as", "bot",
 	}, f, nil)
@@ -3544,12 +3563,12 @@ func TestGet_UnifiesDescriptionRich(t *testing.T) {
 		f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
-			URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_rich",
+			URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_rich_0",
 			Body: map[string]interface{}{
 				"code": 0, "msg": "success",
 				"data": map[string]interface{}{
 					"event": map[string]interface{}{
-						"event_id":         "evt_rich",
+						"event_id":         "evt_rich_0",
 						"summary":          "Rich",
 						"description":      "[表格]",
 						"description_rich": "| a | b |\n| --- | --- |\n| c | d |",
@@ -3559,7 +3578,7 @@ func TestGet_UnifiesDescriptionRich(t *testing.T) {
 				},
 			},
 		})
-		if err := mountAndRun(t, CalendarGet, []string{"+get", "--calendar-id", "cal_test123", "--event-id", "evt_rich", "--as", "bot"}, f, stdout); err != nil {
+		if err := mountAndRun(t, CalendarGet, []string{"+get", "--calendar-id", "cal_test123", "--event-id", "evt_rich_0", "--as", "bot"}, f, stdout); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		out := stdout.String()
@@ -3576,12 +3595,12 @@ func TestGet_UnifiesDescriptionRich(t *testing.T) {
 		f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
-			URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_plain",
+			URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_plain_0",
 			Body: map[string]interface{}{
 				"code": 0, "msg": "success",
 				"data": map[string]interface{}{
 					"event": map[string]interface{}{
-						"event_id":    "evt_plain",
+						"event_id":    "evt_plain_0",
 						"summary":     "Plain",
 						"description": "just text",
 						"start_time":  map[string]interface{}{"timestamp": "1742515200", "timezone": "Asia/Shanghai"},
@@ -3590,7 +3609,7 @@ func TestGet_UnifiesDescriptionRich(t *testing.T) {
 				},
 			},
 		})
-		if err := mountAndRun(t, CalendarGet, []string{"+get", "--calendar-id", "cal_test123", "--event-id", "evt_plain", "--as", "bot"}, f, stdout); err != nil {
+		if err := mountAndRun(t, CalendarGet, []string{"+get", "--calendar-id", "cal_test123", "--event-id", "evt_plain_0", "--as", "bot"}, f, stdout); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		out := stdout.String()
@@ -3702,7 +3721,7 @@ func TestGet_MissingEventField_TypedInternal(t *testing.T) {
 
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_404",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_404_0",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{},
@@ -3712,7 +3731,7 @@ func TestGet_MissingEventField_TypedInternal(t *testing.T) {
 	err := mountAndRun(t, CalendarGet, []string{
 		"+get",
 		"--calendar-id", "cal_test123",
-		"--event-id", "evt_404",
+		"--event-id", "evt_404_0",
 		"--as", "bot",
 	}, f, nil)
 	if err == nil {
@@ -3724,6 +3743,75 @@ func TestGet_MissingEventField_TypedInternal(t *testing.T) {
 	}
 	if ie.Subtype != errs.SubtypeInvalidResponse {
 		t.Errorf("subtype=%q, want invalid_response", ie.Subtype)
+	}
+}
+
+// A recurring instance id ({uid}_{originalTime > 0}) is not stored on its own
+// until it is edited. When the direct GET returns 193001, +get transparently
+// falls back to the master and returns a synthetic snapshot: the master's
+// fields (summary, description, rrule, ...) with the instance's original
+// start/end so the output still describes the instance the caller asked about.
+func TestGet_UnmaterialisedInstance_FallsBackToMaster(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	// Instance start = master start + 7 * 86400 (one week after the master).
+	const masterStart int64 = 1742515200
+	const masterEnd int64 = 1742518800
+	const instanceOriginalTime int64 = masterStart + 7*86400
+
+	// Direct GET on the instance id -> 193001 not found.
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_series_" + strconv.FormatInt(instanceOriginalTime, 10),
+		Body: map[string]interface{}{
+			"code": 193001, "msg": "event not found",
+			"data": map[string]interface{}{},
+		},
+	})
+	// Fallback GET on master returns the recurring series.
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_series_0",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{
+				"event": map[string]interface{}{
+					"event_id":   "evt_series_0",
+					"summary":    "Weekly Sync",
+					"recurrence": "FREQ=WEEKLY;INTERVAL=1",
+					"start_time": map[string]interface{}{"timestamp": strconv.FormatInt(masterStart, 10), "timezone": "Asia/Shanghai"},
+					"end_time":   map[string]interface{}{"timestamp": strconv.FormatInt(masterEnd, 10), "timezone": "Asia/Shanghai"},
+				},
+			},
+		},
+	})
+
+	err := mountAndRun(t, CalendarGet, []string{
+		"+get",
+		"--calendar-id", "cal_test123",
+		"--event-id", "evt_series_" + strconv.FormatInt(instanceOriginalTime, 10),
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	// The instance id is echoed (not the master id).
+	if !strings.Contains(out, "\"event_id\": \"evt_series_"+strconv.FormatInt(instanceOriginalTime, 10)+"\"") {
+		t.Errorf("expected instance event_id in output, got: %s", out)
+	}
+	// Start datetime reflects the instance's originalTime, not the master's start.
+	instanceStartRFC := time.Unix(instanceOriginalTime, 0).Local().Format(time.RFC3339)
+	if !strings.Contains(out, instanceStartRFC) {
+		t.Errorf("expected instance start %s in output, got: %s", instanceStartRFC, out)
+	}
+	// Master's summary is inherited on the synthetic instance snapshot.
+	if !strings.Contains(out, "\"summary\": \"Weekly Sync\"") {
+		t.Errorf("expected inherited summary in output, got: %s", out)
+	}
+	// The synthetic snapshot drops recurrence so classifiers see a plain instance.
+	if strings.Contains(out, "\"recurrence\":") {
+		t.Errorf("recurrence must be stripped from the synthetic instance snapshot, got: %s", out)
 	}
 }
 
@@ -3760,24 +3848,47 @@ func eventSnapshotStub(calendarID, eventID, startTs, endTs string, roomIDs ...st
 	}
 }
 
+// plainEventStub returns a GET-event fixture for a non-recurring event. +update
+// resolves the event first (see resolveCalendarEventOrMaster) to route to the
+// single / recurring branch; tests that only assert on the PATCH / attendee
+// payload still need this fixture to satisfy the classifier fetch.
+func plainEventStub(calendarID, eventID string) *httpmock.Stub {
+	return &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/calendar/v4/calendars/" + calendarID + "/events/" + eventID,
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"event": map[string]interface{}{
+					"event_id": eventID,
+					"summary":  "Existing",
+				},
+			},
+		},
+		Reusable: true,
+	}
+}
+
 func TestUpdate_RoomCheck_SkipFlag_BypassesAPI(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 
-	// Register the PATCH stub but no room-check stub — the test asserts that no
-	// unmatched request is made.
+	// The event snapshot GET is unavoidable — +update resolves the event first
+	// to classify recurring vs. single. The test asserts that no room-check
+	// call is made once --skip-room-check is set.
+	reg.Register(plainEventStub("cal_rc", "evt_rc1_0"))
 	patchStub := &httpmock.Stub{
 		Method: "PATCH",
-		URL:    "/open-apis/calendar/v4/calendars/cal_rc/events/evt_rc1",
+		URL:    "/open-apis/calendar/v4/calendars/cal_rc/events/evt_rc1_0",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
-			"data": map[string]interface{}{"event": map[string]interface{}{"event_id": "evt_rc1"}},
+			"data": map[string]interface{}{"event": map[string]interface{}{"event_id": "evt_rc1_0"}},
 		},
 	}
 	reg.Register(patchStub)
 
 	err := mountAndRun(t, CalendarUpdate, []string{
 		"+update",
-		"--event-id", "evt_rc1",
+		"--event-id", "evt_rc1_0",
 		"--calendar-id", "cal_rc",
 		"--summary", "Skip",
 		"--start", "2025-03-21T00:00:00+08:00",
@@ -3797,21 +3908,23 @@ func TestUpdate_RoomCheck_SkipFlag_BypassesAPI(t *testing.T) {
 func TestUpdate_RoomCheck_TitleOnly_SkipsCheck(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 
-	// Only registered PATCH; title-only changes should never trigger room-check
-	// and never fetch the event snapshot.
+	// The event snapshot GET is unavoidable — +update resolves the event first
+	// to classify recurring vs. single. The test asserts that title-only changes
+	// never trigger the additional room-availability check.
+	reg.Register(plainEventStub("cal_rc", "evt_rc2_0"))
 	patchStub := &httpmock.Stub{
 		Method: "PATCH",
-		URL:    "/open-apis/calendar/v4/calendars/cal_rc/events/evt_rc2",
+		URL:    "/open-apis/calendar/v4/calendars/cal_rc/events/evt_rc2_0",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
-			"data": map[string]interface{}{"event": map[string]interface{}{"event_id": "evt_rc2"}},
+			"data": map[string]interface{}{"event": map[string]interface{}{"event_id": "evt_rc2_0"}},
 		},
 	}
 	reg.Register(patchStub)
 
 	err := mountAndRun(t, CalendarUpdate, []string{
 		"+update",
-		"--event-id", "evt_rc2",
+		"--event-id", "evt_rc2_0",
 		"--calendar-id", "cal_rc",
 		"--summary", "New title only",
 		"--as", "bot",
@@ -3829,7 +3942,7 @@ func TestUpdate_RoomCheck_NewRoomAvailable_Allows(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 
 	// Snapshot has no existing rooms; we're adding omm_new.
-	reg.Register(eventSnapshotStub("cal_rc", "evt_rc3", "1742515200", "1742518800"))
+	reg.Register(eventSnapshotStub("cal_rc", "evt_rc3_0", "1742515200", "1742518800"))
 
 	checkStub := &httpmock.Stub{
 		Method: "POST",
@@ -3847,14 +3960,14 @@ func TestUpdate_RoomCheck_NewRoomAvailable_Allows(t *testing.T) {
 
 	addStub := &httpmock.Stub{
 		Method: "POST",
-		URL:    "/open-apis/calendar/v4/calendars/cal_rc/events/evt_rc3/attendees",
+		URL:    "/open-apis/calendar/v4/calendars/cal_rc/events/evt_rc3_0/attendees",
 		Body:   map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
 	}
 	reg.Register(addStub)
 
 	err := mountAndRun(t, CalendarUpdate, []string{
 		"+update",
-		"--event-id", "evt_rc3",
+		"--event-id", "evt_rc3_0",
 		"--calendar-id", "cal_rc",
 		"--add-attendee-ids", "omm_new",
 		"--as", "bot",
@@ -3871,7 +3984,7 @@ func TestUpdate_RoomCheck_NewRoomAvailable_Allows(t *testing.T) {
 	if len(rooms) != 1 || rooms[0] != "omm_new" {
 		t.Fatalf("room_ids should be [omm_new], got %#v", rooms)
 	}
-	if body["calendar_id"] != "cal_rc" || body["event_id"] != "evt_rc3" {
+	if body["calendar_id"] != "cal_rc" || body["event_id"] != "evt_rc3_0" {
 		t.Fatalf("room-check body missing ids: %#v", body)
 	}
 	if body["start_timezone"] != "Asia/Shanghai" {
@@ -3891,7 +4004,7 @@ func TestUpdate_RoomCheck_NewRoomAvailable_Allows(t *testing.T) {
 func TestUpdate_RoomCheck_NewRoomUnavailable_Blocks(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 
-	reg.Register(eventSnapshotStub("cal_rc", "evt_rc4", "1742515200", "1742518800"))
+	reg.Register(eventSnapshotStub("cal_rc", "evt_rc4_0", "1742515200", "1742518800"))
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/calendar/v4/freebusy/room_availability_check",
@@ -3911,7 +4024,7 @@ func TestUpdate_RoomCheck_NewRoomUnavailable_Blocks(t *testing.T) {
 
 	err := mountAndRun(t, CalendarUpdate, []string{
 		"+update",
-		"--event-id", "evt_rc4",
+		"--event-id", "evt_rc4_0",
 		"--calendar-id", "cal_rc",
 		"--add-attendee-ids", "omm_busy",
 		"--as", "bot",
@@ -3939,7 +4052,7 @@ func TestUpdate_RoomCheck_TimeChanged_ChecksExistingRoom(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 
 	// Existing event already has omm_existing booked.
-	reg.Register(eventSnapshotStub("cal_rc", "evt_rc5", "1742515200", "1742518800", "omm_existing"))
+	reg.Register(eventSnapshotStub("cal_rc", "evt_rc5_0", "1742515200", "1742518800", "omm_existing"))
 
 	checkStub := &httpmock.Stub{
 		Method: "POST",
@@ -3957,17 +4070,17 @@ func TestUpdate_RoomCheck_TimeChanged_ChecksExistingRoom(t *testing.T) {
 
 	patchStub := &httpmock.Stub{
 		Method: "PATCH",
-		URL:    "/open-apis/calendar/v4/calendars/cal_rc/events/evt_rc5",
+		URL:    "/open-apis/calendar/v4/calendars/cal_rc/events/evt_rc5_0",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
-			"data": map[string]interface{}{"event": map[string]interface{}{"event_id": "evt_rc5"}},
+			"data": map[string]interface{}{"event": map[string]interface{}{"event_id": "evt_rc5_0"}},
 		},
 	}
 	reg.Register(patchStub)
 
 	err := mountAndRun(t, CalendarUpdate, []string{
 		"+update",
-		"--event-id", "evt_rc5",
+		"--event-id", "evt_rc5_0",
 		"--calendar-id", "cal_rc",
 		"--start", "2025-03-21T02:00:00+08:00",
 		"--end", "2025-03-21T03:00:00+08:00",
@@ -3993,7 +4106,7 @@ func TestUpdate_RoomCheck_TimeChanged_ChecksExistingRoom(t *testing.T) {
 func TestUpdate_RoomCheck_APIFailure_DegradesGracefully(t *testing.T) {
 	f, _, stderr, reg := cmdutil.TestFactory(t, defaultConfig())
 
-	reg.Register(eventSnapshotStub("cal_rc", "evt_rc6", "1742515200", "1742518800"))
+	reg.Register(eventSnapshotStub("cal_rc", "evt_rc6_0", "1742515200", "1742518800"))
 	// Simulate room-check API failure (e.g., not yet rolled out) so the CLI
 	// degrades gracefully instead of blocking the update.
 	reg.Register(&httpmock.Stub{
@@ -4006,14 +4119,14 @@ func TestUpdate_RoomCheck_APIFailure_DegradesGracefully(t *testing.T) {
 	})
 	addStub := &httpmock.Stub{
 		Method: "POST",
-		URL:    "/open-apis/calendar/v4/calendars/cal_rc/events/evt_rc6/attendees",
+		URL:    "/open-apis/calendar/v4/calendars/cal_rc/events/evt_rc6_0/attendees",
 		Body:   map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
 	}
 	reg.Register(addStub)
 
 	err := mountAndRun(t, CalendarUpdate, []string{
 		"+update",
-		"--event-id", "evt_rc6",
+		"--event-id", "evt_rc6_0",
 		"--calendar-id", "cal_rc",
 		"--add-attendee-ids", "omm_new",
 		"--as", "bot",
@@ -4035,7 +4148,7 @@ func TestUpdate_RoomCheck_DryRun_IncludesPrecheckStep(t *testing.T) {
 
 	err := mountAndRun(t, CalendarUpdate, []string{
 		"+update",
-		"--event-id", "evt_rc7",
+		"--event-id", "evt_rc7_0",
 		"--calendar-id", "cal_rc",
 		"--add-attendee-ids", "omm_dryrun",
 		"--start", "2025-03-21T00:00:00+08:00",
@@ -4060,7 +4173,7 @@ func TestUpdate_RoomCheck_DryRun_SkipFlagOmitsStep(t *testing.T) {
 
 	err := mountAndRun(t, CalendarUpdate, []string{
 		"+update",
-		"--event-id", "evt_rc8",
+		"--event-id", "evt_rc8_0",
 		"--calendar-id", "cal_rc",
 		"--add-attendee-ids", "omm_dryrun2",
 		"--start", "2025-03-21T00:00:00+08:00",
@@ -4166,7 +4279,7 @@ func TestStrategyDetail_ByReason(t *testing.T) {
 func TestUpdate_RoomCheck_StrategyDetailInMessage(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 
-	reg.Register(eventSnapshotStub("cal_rc", "evt_rc_strategy", "1742515200", "1742525200"))
+	reg.Register(eventSnapshotStub("cal_rc", "evt_rc_strategy_0", "1742515200", "1742525200"))
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/calendar/v4/freebusy/room_availability_check",
@@ -4190,7 +4303,7 @@ func TestUpdate_RoomCheck_StrategyDetailInMessage(t *testing.T) {
 
 	err := mountAndRun(t, CalendarUpdate, []string{
 		"+update",
-		"--event-id", "evt_rc_strategy",
+		"--event-id", "evt_rc_strategy_0",
 		"--calendar-id", "cal_rc",
 		"--add-attendee-ids", "omm_toolong",
 		"--as", "bot",
@@ -4266,7 +4379,7 @@ func TestRequisitionDetail_ByBounds(t *testing.T) {
 func TestUpdate_RoomCheck_RequisitionDetailInMessage(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 
-	reg.Register(eventSnapshotStub("cal_rc", "evt_rc_req", "1742515200", "1742525200"))
+	reg.Register(eventSnapshotStub("cal_rc", "evt_rc_req_0", "1742515200", "1742525200"))
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/calendar/v4/freebusy/room_availability_check",
@@ -4291,7 +4404,7 @@ func TestUpdate_RoomCheck_RequisitionDetailInMessage(t *testing.T) {
 
 	err := mountAndRun(t, CalendarUpdate, []string{
 		"+update",
-		"--event-id", "evt_rc_req",
+		"--event-id", "evt_rc_req_0",
 		"--calendar-id", "cal_rc",
 		"--add-attendee-ids", "omm_req",
 		"--as", "bot",
@@ -4376,10 +4489,14 @@ func TestRecurringMasterEventID_Shapes(t *testing.T) {
 func TestUpdate_RoomCheck_EventNotFound_FallsBackToMaster(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 
-	// First GET on the instance event: 193001.
+	// First GET on the instance event: 193001. Reusable because both the
+	// +update pre-fetch (recurring-kind detection) and the room-check
+	// snapshot GET hit this same URL; they both need the 193001 answer to
+	// fall through to the master snapshot.
 	instanceStub := &httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/calendar/v4/calendars/cal_rc/events/uid_master_1742515200",
+		Method:   "GET",
+		URL:      "/open-apis/calendar/v4/calendars/cal_rc/events/uid_master_1742515200",
+		Reusable: true,
 		Body: map[string]interface{}{
 			"code": 193001,
 			"msg":  "event not found",
@@ -4390,8 +4507,9 @@ func TestUpdate_RoomCheck_EventNotFound_FallsBackToMaster(t *testing.T) {
 	// Fallback GET on the master event: 200 with an existing room attendee, so
 	// the pre-check has something to reason about.
 	masterStub := &httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/calendar/v4/calendars/cal_rc/events/uid_master_0",
+		Method:   "GET",
+		URL:      "/open-apis/calendar/v4/calendars/cal_rc/events/uid_master_0",
+		Reusable: true,
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
 			"data": map[string]interface{}{
@@ -4400,6 +4518,7 @@ func TestUpdate_RoomCheck_EventNotFound_FallsBackToMaster(t *testing.T) {
 					"summary":    "Weekly sync",
 					"start_time": map[string]interface{}{"timestamp": "1742515200", "timezone": "Asia/Shanghai"},
 					"end_time":   map[string]interface{}{"timestamp": "1742518800", "timezone": "Asia/Shanghai"},
+					"recurrence": "FREQ=DAILY;INTERVAL=1",
 					"attendees":  []interface{}{map[string]interface{}{"type": "resource", "room_id": "omm_from_master"}},
 				},
 			},
@@ -4442,6 +4561,7 @@ func TestUpdate_RoomCheck_EventNotFound_FallsBackToMaster(t *testing.T) {
 		"--calendar-id", "cal_rc",
 		"--start", "2025-03-21T08:00:00+08:00",
 		"--end", "2025-03-21T09:00:00+08:00",
+		"--apply-to", "single",
 		"--as", "bot",
 	}, f, nil)
 	if err != nil {
@@ -4559,7 +4679,7 @@ func TestUpdate_RoomCheck_NeedApproval_Blocks(t *testing.T) {
 
 	// Snapshot window: 1742515200 -> 1742522400 (2h). Threshold is 1h, so the
 	// current duration is over threshold.
-	reg.Register(eventSnapshotStub("cal_rc", "evt_rc_approval", "1742515200", "1742522400"))
+	reg.Register(eventSnapshotStub("cal_rc", "evt_rc_approval_0", "1742515200", "1742522400"))
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/calendar/v4/freebusy/room_availability_check",
@@ -4583,7 +4703,7 @@ func TestUpdate_RoomCheck_NeedApproval_Blocks(t *testing.T) {
 
 	err := mountAndRun(t, CalendarUpdate, []string{
 		"+update",
-		"--event-id", "evt_rc_approval",
+		"--event-id", "evt_rc_approval_0",
 		"--calendar-id", "cal_rc",
 		"--add-attendee-ids", "omm_approval",
 		"--as", "bot",
@@ -4636,7 +4756,7 @@ func TestUpdate_RoomCheck_NeedApproval_Blocks(t *testing.T) {
 func TestUpdate_RoomCheck_RequisitionMissingBoundsStillCoherent(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 
-	reg.Register(eventSnapshotStub("cal_rc", "evt_rc_req2", "1742515200", "1742525200"))
+	reg.Register(eventSnapshotStub("cal_rc", "evt_rc_req2_0", "1742515200", "1742525200"))
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/calendar/v4/freebusy/room_availability_check",
@@ -4656,7 +4776,7 @@ func TestUpdate_RoomCheck_RequisitionMissingBoundsStillCoherent(t *testing.T) {
 
 	err := mountAndRun(t, CalendarUpdate, []string{
 		"+update",
-		"--event-id", "evt_rc_req2",
+		"--event-id", "evt_rc_req2_0",
 		"--calendar-id", "cal_rc",
 		"--add-attendee-ids", "omm_req_nobounds",
 		"--as", "bot",

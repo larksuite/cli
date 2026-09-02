@@ -1,9 +1,9 @@
 # Base CLI E2E Coverage
 
 ## Metrics
-- Denominator: 96 leaf commands
-- Covered: 44
-- Coverage: 45.8%
+- Denominator: 99 leaf commands
+- Covered: 49
+- Coverage: 49.5%
 
 ## Summary
 - TestBase_BasicWorkflow: proves `+base-create`, `+base-get`, `+table-create`, `+table-get`, and `+table-list`; key `t.Run(...)` proof points are `get base as bot`, `get table as bot`, and `list tables and find created table as bot`.
@@ -81,7 +81,7 @@
 | ✓ | base +form-share-get | shortcut | base_share_dryrun_test.go::TestBaseShareDryRun/form get; base_share_workflow_test.go::TestBaseShareWorkflow/form share update and get | `--base-token`; `--table-id`; `--form-id`; dry-run + deployment-gated live | live requires `LARK_CLI_E2E_BASE_SHARE_READY=1` |
 | ✓ | base +form-share-update | shortcut | base_share_dryrun_test.go::TestBaseShareDryRun/form settings update; base_share_workflow_test.go::TestBaseShareWorkflow/form share update and get | one of share enablement; `access-scope=invite`; anonymous/login settings per request | single-field updates, login-plus-anonymous across separate requests, explicit false, and live read-back covered |
 | ✓ | base +form-questions-create | shortcut | TestBaseFormQuestionsCreateVisibleRuleDryRun; base_form_questions_create_dryrun_test.go | questions[].visible_rule; dry-run | request body, visible_rule passthrough, and help guard covered |
-| ✕ | base +form-questions-delete | shortcut |  | none | form workflows not covered |
+| ✓ | base +form-questions-delete | shortcut | base_form_questions_dryrun_test.go::TestBaseFormQuestionsDeleteDefaultDryRun; TestBaseFormQuestionsDeleteKeepFieldDryRun | `question_ids`; optional `keep_field=true` | default destructive body and opt-in field-preserving body covered |
 | ✕ | base +form-questions-list | shortcut |  | none | form workflows not covered |
 | ✓ | base +form-questions-update | shortcut | TestBaseFormQuestionsUpdateVisibleRuleDryRun | questions[].visible_rule | dry-run: request shape + visible_rule body passthrough |
 | ✓ | base +form-submit | shortcut | base_form_submit_dryrun_test.go::TestBaseFormSubmitDryRun | `--share-token`; `--json`; dry-run only | submission request shape |

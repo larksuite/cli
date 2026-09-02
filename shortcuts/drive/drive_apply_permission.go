@@ -191,9 +191,6 @@ var DriveApplyPermission = common.Shortcut{
 		}
 		body := buildPermApplyBody(runtime)
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Requesting %s access on %s %s...\n",
-			runtime.Str("perm"), docType, common.MaskToken(token))
-
 		data, err := runtime.CallAPITyped("POST",
 			fmt.Sprintf("/open-apis/drive/v1/permissions/%s/members/apply", validate.EncodePathSegment(token)),
 			map[string]interface{}{"type": docType},

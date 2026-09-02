@@ -5,7 +5,6 @@ package drive
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -150,7 +149,6 @@ var DrivePreview = common.Shortcut{
 		}
 
 		if requestedType == "source_file" {
-			fmt.Fprintf(runtime.IO().ErrOut, "Downloading source file artifact: %s\n", common.MaskToken(fileToken))
 			result, err := downloadDrivePreviewArtifact(ctx, runtime, fileToken, drivePreviewTypeSourceFile, version, outputPath, ifExists, drivePreviewFallbackExt("source_file"))
 			if err != nil {
 				return err
@@ -162,7 +160,6 @@ var DrivePreview = common.Shortcut{
 			return nil
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Fetching preview candidates: %s\n", common.MaskToken(fileToken))
 		data, candidates, err := fetchDrivePreviewCandidates(runtime, fileToken, body)
 		if err != nil {
 			if runtime.Bool("list-only") {
@@ -187,7 +184,6 @@ var DrivePreview = common.Shortcut{
 		if downloadVersion == "" {
 			downloadVersion = versionString(data["version"])
 		}
-		fmt.Fprintf(runtime.IO().ErrOut, "Downloading preview %s for file %s\n", candidate.Type, common.MaskToken(fileToken))
 		result, err := downloadDrivePreviewArtifact(ctx, runtime, fileToken, candidate.TypeCode, downloadVersion, outputPath, ifExists, drivePreviewFallbackExt(candidate.Type))
 		if err != nil {
 			return err

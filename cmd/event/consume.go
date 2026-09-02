@@ -68,7 +68,7 @@ Use 'event schema <EventKey>' for parameter details.`,
 	cmd.Flags().StringArrayVarP(&o.params, "param", "p", nil, "Key=value parameter (repeatable)")
 	cmd.Flags().StringVar(&o.jqExpr, "jq", "", "JQ expression to filter output")
 	cmd.Flags().BoolVar(&o.quiet, "quiet", false, "Suppress routine and per-event stderr output, including ready/exit markers and drop diagnostics. This can hide event loss; omit --quiet when integrity matters")
-	cmd.Flags().StringVar(&o.outputDir, "output-dir", "", "Write each event as a file in this directory (relative paths only; absolute paths and ~ are rejected to prevent path traversal)")
+	cmd.Flags().StringVar(&o.outputDir, "output-dir", "", "Write each event as a file in this directory (within the allowed roots: cwd, /tmp, ~/files; denylisted system/credential paths are rejected)")
 	cmd.Flags().IntVar(&o.maxEvents, "max-events", 0, "Exit after N successful emits (0 = unlimited). Multi-worker EventKeys may emit up to workers-1 past N before all workers stop. Bounded runs ignore stdin EOF.")
 	cmd.Flags().BoolVar(&o.dryRun, "dry-run", false, "Decide and preview the consume (identity, preconditions, side effects) without performing any of them, then exit")
 	cmd.Flags().DurationVar(&o.timeout, "timeout", 0, "Exit after DURATION (e.g. 30s, 2m). 0 = no timeout. Timeout is a normal exit (code 0; stderr 'reason: timeout'). Bounded runs ignore stdin EOF.")
@@ -410,14 +410,9 @@ func preflightEventTypes(pf *preflightCtx) error {
 		WithHint("subscribe these %s by scanning: %s", noun, url)
 }
 
-// sanitizeOutputDir rejects absolute/parent-escaping paths and ~ (SafeOutputPath treats it as a literal dir name).
+// sanitizeOutputDir defers to the built-in path policy (SafeOutputPath):
+// allowed roots are cwd, /tmp, and ~/files; the denylist wins over all.
 func sanitizeOutputDir(dir string) (string, error) {
-	if strings.HasPrefix(dir, "~") {
-		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"%s; use a relative path like ./output instead", errOutputDirTilde).
-			WithParam("--output-dir").
-			WithCause(errOutputDirTilde)
-	}
 	safe, err := validate.SafeOutputPath(dir)
 	if err != nil {
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
@@ -451,9 +446,8 @@ func resolveTenantToken(ctx context.Context, f *cmdutil.Factory, appID string) (
 
 // Sentinels for errors.Is checks; call sites wrap them as typed ValidationError causes.
 var (
-	errInvalidParamFormat = errors.New("invalid --param format")                    //nolint:forbidigo // sentinel, typed at call sites
-	errOutputDirTilde     = errors.New("--output-dir does not support ~ expansion") //nolint:forbidigo // sentinel, typed at call sites
-	errOutputDirUnsafe    = errors.New("unsafe --output-dir")                       //nolint:forbidigo // sentinel, typed at call sites
+	errInvalidParamFormat = errors.New("invalid --param format") //nolint:forbidigo // sentinel, typed at call sites
+	errOutputDirUnsafe    = errors.New("unsafe --output-dir")    //nolint:forbidigo // sentinel, typed at call sites
 )
 
 func parseParams(raw []string) (map[string]string, error) {

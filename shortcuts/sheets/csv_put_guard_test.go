@@ -181,9 +181,12 @@ func TestResolveCSVPathFromFileAlias(t *testing.T) {
 		}
 	})
 
+	// The fixture is a path no allow root can contain. /tmp used to serve here
+	// and no longer does: the built-in path policy accepts it, so a value under
+	// it is answered as a missing file rather than an out-of-tree one.
 	t.Run("an out-of-tree path is rejected toward stdin", func(t *testing.T) {
-		err := resolveCSVPathFromFileAlias(newCSVFileAliasRuntime("/tmp/data.csv"))
-		ve := requireValidation(t, err, "relative path")
+		err := resolveCSVPathFromFileAlias(newCSVFileAliasRuntime("/outside-every-allow-root/data.csv"))
+		ve := requireValidation(t, err, "outside the built-in allowlist")
 		if ve.Param != "--file" {
 			t.Errorf("param = %q, want the flag the caller actually typed", ve.Param)
 		}
@@ -274,12 +277,16 @@ func TestResolveCSVPathFromFileAlias_UnreadablePaths(t *testing.T) {
 		}
 	})
 
+	// A directory is now refused when the descriptor is inspected, before any
+	// read is attempted, so the verdict reads "not a regular file" rather than
+	// the read failure it used to surface. What the caller sees of it — the
+	// flag named and the cause kept — is unchanged.
 	t.Run("a directory", func(t *testing.T) {
 		if err := os.Mkdir("adir", 0o755); err != nil {
 			t.Fatal(err)
 		}
 		err := resolveCSVPathFromFileAlias(newCSVFileAliasRuntime("./adir"))
-		ve := requireValidation(t, err, "cannot read file")
+		ve := requireValidation(t, err, "not a regular file")
 		if ve.Param != "--file" {
 			t.Errorf("param = %q, want --file", ve.Param)
 		}
