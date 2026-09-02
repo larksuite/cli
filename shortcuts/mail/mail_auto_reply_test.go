@@ -88,8 +88,8 @@ func TestMailAutoReplyModifyBuildsFriendlyPayload(t *testing.T) {
 		"--mailbox", "user@example.com",
 		"--enable",
 		"--content", "<p>Out today</p>",
-		"--start", "2030-08-15T09:00:00+08:00",
-		"--end", "2030-08-18T09:00:00+08:00",
+		"--start", "2030-08-15",
+		"--end", "2030-08-18",
 		"--timezone", "28800",
 		"--all",
 		"--format", "json",
@@ -228,6 +228,22 @@ func TestMailAutoReplyModifyRejectsEndBeforeStart(t *testing.T) {
 		t.Fatal("expected validation error")
 	}
 	if !strings.Contains(err.Error(), "--end must be after --start") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestMailAutoReplyModifyRejectsISO8601DateTime(t *testing.T) {
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	err := runMountedMailShortcut(t, MailAutoReplyModify, []string{
+		"+auto-reply-modify",
+		"--yes",
+		"--start", "2030-08-15T09:00:00+08:00",
+		"--timezone", "28800",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "--start must be Unix seconds, Unix milliseconds, or YYYY-MM-DD") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -717,7 +733,7 @@ func TestMailAutoReplyInvalidTimezoneOffsetIsReportedBeforeStartParse(t *testing
 			if !strings.Contains(err.Error(), "--timezone must be UTC offset seconds") {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if strings.Contains(err.Error(), "--start must be Unix seconds or ISO 8601") {
+			if strings.Contains(err.Error(), "--start must be Unix seconds, Unix milliseconds, or YYYY-MM-DD") {
 				t.Fatalf("timezone error should not be wrapped as a start parse error: %v", err)
 			}
 		})

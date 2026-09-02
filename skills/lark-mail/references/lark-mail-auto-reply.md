@@ -41,8 +41,8 @@ lark-cli mail +auto-reply-modify --as user --yes --disable
 | `--disable` | modify | 否 | 关闭自动回复；与 `--enable` 互斥 |
 | `--content <text-or-html>` | modify | 否 | 自动回复正文，支持纯文本或 HTML；支持直接传值、`@file`、`-` stdin、本地图片和 data URI 图片 |
 | `--content-file <path>` | modify | 否 | 从当前目录下的文件读取正文，支持纯文本或 HTML；与 `--content` 互斥；正文里可包含本地图片和 data URI 图片 |
-| `--start <time>` | modify | 否 | 开始日期，支持 `YYYY-MM-DD`、Unix timestamp 或 ISO 8601；`0` 表示立即生效；CLI 会按指定 UTC 偏移折算为当天开始 |
-| `--end <time>` | modify | 否 | 结束日期，支持 `YYYY-MM-DD`、Unix timestamp 或 ISO 8601；`0` 表示不设置结束时间；CLI 会按指定 UTC 偏移折算为当天结束 |
+| `--start <time>` | modify | 否 | 开始日期，支持 `YYYY-MM-DD` 或 Unix timestamp；`0` 表示立即生效；CLI 会按指定 UTC 偏移折算为当天开始 |
+| `--end <time>` | modify | 否 | 结束日期，支持 `YYYY-MM-DD` 或 Unix timestamp；`0` 表示不设置结束时间；CLI 会按指定 UTC 偏移折算为当天结束 |
 | `--timezone <offset_seconds>` | modify | 否 | UTC 偏移秒数，例如 `28800` 表示 UTC+8，`-28800` 表示 UTC-8 |
 | `--internal-only` | modify | 否 | 仅对租户内发件人发送自动回复；与 `--all` 互斥 |
 | `--all` | modify | 否 | 对所有发件人发送自动回复，包括外部发件人；与 `--internal-only` 互斥 |

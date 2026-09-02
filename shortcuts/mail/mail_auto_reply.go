@@ -77,8 +77,8 @@ var MailAutoReplyModify = common.Shortcut{
 		{Name: "disable", Type: "bool", Desc: "Turn auto-reply off."},
 		{Name: "content", Desc: "Auto-reply HTML content. Plain text is accepted and sent as-is. Supports @file, - stdin, local images, and data URI images.", Input: []string{common.File, common.Stdin}},
 		{Name: "content-file", Desc: "Read auto-reply content from a file in the current directory. Local and data URI images are supported. Mutually exclusive with --content."},
-		{Name: "start", Desc: "Start date as Unix timestamp or ISO 8601. Stored as the day's 00:00:00.000."},
-		{Name: "end", Desc: "End date as Unix timestamp or ISO 8601. Stored as the day's 23:59:59.999."},
+		{Name: "start", Desc: "Start date as YYYY-MM-DD or Unix timestamp. Stored as the day's 00:00:00.000."},
+		{Name: "end", Desc: "End date as YYYY-MM-DD or Unix timestamp. Stored as the day's 23:59:59.999."},
 		{Name: "timezone", Desc: "UTC offset seconds for the auto-reply range, e.g. 28800 for UTC+8."},
 		{Name: "internal-only", Type: "bool", Desc: "Only send auto-replies to tenant-internal senders."},
 		{Name: "all", Type: "bool", Desc: "Send auto-replies to all senders, including external senders."},
@@ -754,37 +754,22 @@ func parseAutoReplyDateMillis(flag, raw, timezone string, endOfDay bool) (string
 		return strconv.FormatInt(autoReplyDayBoundary(t.In(loc), endOfDay).UnixMilli(), 10), nil
 	}
 
-	t, err := parseAutoReplyISODate(raw, timezone)
+	t, err := parseAutoReplyDate(raw, timezone)
 	if err != nil {
-		return "", mailValidationParamError(flag, "%s must be Unix seconds or ISO 8601, got %q", flag, raw).WithCause(err)
+		return "", mailValidationParamError(flag, "%s must be Unix seconds, Unix milliseconds, or YYYY-MM-DD, got %q", flag, raw).WithCause(err)
 	}
 	return strconv.FormatInt(autoReplyDayBoundary(t, endOfDay).UnixMilli(), 10), nil
 }
 
-func parseAutoReplyISODate(raw, timezone string) (time.Time, error) {
-	if timezone != "" && !autoReplyHasExplicitZone(raw) {
-		loc, err := autoReplyLocation(timezone, time.Local)
-		if err != nil {
-			return time.Time{}, err
-		}
-		for _, layout := range []string{"2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02"} {
-			if t, err := time.ParseInLocation(layout, raw, loc); err == nil {
-				return t, nil
-			}
-		}
-	}
-	t, err := parseISO8601(raw)
-	if err != nil {
-		return time.Time{}, err
-	}
+func parseAutoReplyDate(raw, timezone string) (time.Time, error) {
 	if timezone != "" {
 		loc, err := autoReplyLocation(timezone, time.Local)
 		if err != nil {
 			return time.Time{}, err
 		}
-		t = t.In(loc)
+		return time.ParseInLocation("2006-01-02", raw, loc)
 	}
-	return t, nil
+	return time.Parse("2006-01-02", raw)
 }
 
 func autoReplyLocation(timezone string, fallback *time.Location) (*time.Location, error) {
@@ -807,17 +792,6 @@ func autoReplyDayBoundary(t time.Time, endOfDay bool) time.Time {
 		return start.AddDate(0, 0, 1).Add(-time.Millisecond)
 	}
 	return start
-}
-
-func autoReplyHasExplicitZone(raw string) bool {
-	if strings.HasSuffix(raw, "Z") {
-		return true
-	}
-	tPos := strings.Index(raw, "T")
-	if tPos < 0 {
-		return false
-	}
-	return strings.ContainsAny(raw[tPos+1:], "+-")
 }
 
 func normalizeAutoReplyFields(in map[string]interface{}) map[string]interface{} {
