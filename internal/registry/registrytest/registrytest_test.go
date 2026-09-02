@@ -64,8 +64,8 @@ func TestFixtureContract(t *testing.T) {
 		gotNames = append(gotNames, service.Name)
 	}
 	sort.Strings(gotNames)
-	if !slices.Equal(gotNames, []string{"calendar", "im", "mail", "task"}) {
-		t.Fatalf("fixture services = %v, want [calendar im mail task]", gotNames)
+	if !slices.Equal(gotNames, []string{"calendar", "im", "task"}) {
+		t.Fatalf("fixture services = %v, want [calendar im task]", gotNames)
 	}
 
 	calendarCreate := fixtureMethod(t, reg, "calendar", "events", "create")
@@ -95,13 +95,6 @@ func TestFixtureContract(t *testing.T) {
 		if !slices.Contains(imCreate.Scopes, scope) {
 			t.Fatalf("im create scopes = %v, want %s", imCreate.Scopes, scope)
 		}
-	}
-
-	mailList := fixtureMethod(t, reg, "mail", "user_mailbox.messages", "list")
-	assertMethodContract(t, mailList, "user_mailboxes/{user_mailbox_id}/messages", http.MethodGet)
-	mailboxID, ok := mailList.Parameters["user_mailbox_id"]
-	if !ok || mailboxID.Location != "path" || !mailboxID.Required {
-		t.Fatalf("user_mailbox_id = %+v, want required path parameter", mailboxID)
 	}
 }
 

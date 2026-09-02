@@ -69,7 +69,8 @@ func Init() {
 	InitWithBrand(core.BrandFeishu)
 }
 
-// ConfiguredBrand reports the brand the registry was initialized with.
+// ConfiguredBrand reports the brand the registry was initialized with
+// (empty before initialization). Diagnostics and startup-order tests use it.
 func ConfiguredBrand() core.LarkBrand {
 	return configuredBrand
 }

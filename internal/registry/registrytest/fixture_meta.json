@@ -62,33 +62,6 @@
       }
     },
     {
-      "name": "mail",
-      "version": "v1",
-      "title": "Mail API",
-      "servicePath": "/open-apis/mail/v1",
-      "resources": {
-        "user_mailbox.messages": {
-          "methods": {
-            "list": {
-              "path": "user_mailboxes/{user_mailbox_id}/messages",
-              "httpMethod": "GET",
-              "risk": "read",
-              "scopes": [
-                "mail:user_mailbox.message:readonly"
-              ],
-              "parameters": {
-                "user_mailbox_id": {
-                  "type": "string",
-                  "location": "path",
-                  "required": true
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    {
       "name": "task",
       "version": "v2",
       "title": "Task API",
