@@ -20,6 +20,16 @@ import (
 // temporary disk consumed by one bundle.
 const artifactExtractedMaxBytes int64 = 8 << 30
 
+// archiveExtractor accumulates extracted size and owns the shared per-entry
+// policy: entries must stay under the root, extracted bytes are bounded, and
+// file permissions are normalized.
+type archiveExtractor struct {
+	destination string
+	maxBytes    int64
+	total       int64
+}
+
+// extractArchive extracts a .tar.gz or .zip bundle into destination.
 func extractArchive(archivePath, destination string) error {
 	return extractArchiveWithLimit(archivePath, destination, artifactExtractedMaxBytes)
 }
@@ -40,25 +50,18 @@ func extractArchiveWithLimit(archivePath, destination string, maxBytes int64) er
 		return err
 	}
 
+	extractor := &archiveExtractor{destination: destination, maxBytes: maxBytes}
 	switch {
 	case n >= 2 && header[0] == 0x1f && header[1] == 0x8b:
-		return extractTarGzip(file, destination, maxBytes)
+		return extractor.extractTarGzip(file)
 	case n >= 4 && string(header[:4]) == "PK\x03\x04":
-		info, err := file.Stat()
-		if err != nil {
-			return err
-		}
-		reader, err := zip.NewReader(file, info.Size())
-		if err != nil {
-			return err
-		}
-		return extractZip(reader, destination, maxBytes)
+		return extractor.extractZip(file)
 	default:
 		return fmt.Errorf("unsupported distribution archive format")
 	}
 }
 
-func extractTarGzip(source io.Reader, destination string, maxBytes int64) error {
+func (e *archiveExtractor) extractTarGzip(source io.Reader) error {
 	gzipReader, err := gzip.NewReader(source)
 	if err != nil {
 		return err
@@ -66,7 +69,6 @@ func extractTarGzip(source io.Reader, destination string, maxBytes int64) error 
 	defer gzipReader.Close()
 
 	reader := tar.NewReader(gzipReader)
-	var total int64
 	for {
 		header, err := reader.Next()
 		if err == io.EOF {
@@ -77,63 +79,63 @@ func extractTarGzip(source io.Reader, destination string, maxBytes int64) error 
 		}
 		switch header.Typeflag {
 		case tar.TypeDir:
-			target, err := archiveEntryPath(destination, header.Name)
-			if err != nil {
-				return err
-			}
-			if err := vfs.MkdirAll(target, 0o755); err != nil {
+			if err := e.mkdir(header.Name); err != nil {
 				return err
 			}
 		case tar.TypeReg, tar.TypeRegA:
-			if header.Size < 0 || header.Size > maxBytes-total {
-				return fmt.Errorf("extracted artifact exceeds %d bytes", maxBytes)
-			}
-			if err := writeArchiveFile(destination, header.Name, header.FileInfo().Mode(), reader); err != nil {
+			if err := e.writeFile(header.Name, header.FileInfo().Mode(), header.Size, reader); err != nil {
 				return err
 			}
-			total += header.Size
 		}
 	}
 }
 
-func extractZip(reader *zip.Reader, destination string, maxBytes int64) error {
-	var total int64
+func (e *archiveExtractor) extractZip(file *os.File) error {
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	reader, err := zip.NewReader(file, info.Size())
+	if err != nil {
+		return err
+	}
 	for _, entry := range reader.File {
-		if entry.FileInfo().IsDir() {
-			target, err := archiveEntryPath(destination, entry.Name)
+		switch {
+		case entry.FileInfo().IsDir():
+			if err := e.mkdir(entry.Name); err != nil {
+				return err
+			}
+		case entry.Mode().IsRegular():
+			source, err := entry.Open()
 			if err != nil {
 				return err
 			}
-			if err := vfs.MkdirAll(target, 0o755); err != nil {
-				return err
+			writeErr := e.writeFile(entry.Name, entry.Mode(), int64(entry.UncompressedSize64), source)
+			closeErr := source.Close()
+			if writeErr != nil {
+				return writeErr
 			}
-			continue
+			if closeErr != nil {
+				return closeErr
+			}
 		}
-		if !entry.Mode().IsRegular() {
-			continue
-		}
-		if entry.UncompressedSize64 > uint64(maxBytes-total) {
-			return fmt.Errorf("extracted artifact exceeds %d bytes", maxBytes)
-		}
-		source, err := entry.Open()
-		if err != nil {
-			return err
-		}
-		writeErr := writeArchiveFile(destination, entry.Name, entry.Mode(), source)
-		closeErr := source.Close()
-		if writeErr != nil {
-			return writeErr
-		}
-		if closeErr != nil {
-			return closeErr
-		}
-		total += int64(entry.UncompressedSize64)
 	}
 	return nil
 }
 
-func writeArchiveFile(root, name string, mode os.FileMode, source io.Reader) error {
-	target, err := archiveEntryPath(root, name)
+func (e *archiveExtractor) mkdir(name string) error {
+	target, err := archiveEntryPath(e.destination, name)
+	if err != nil {
+		return err
+	}
+	return vfs.MkdirAll(target, 0o755)
+}
+
+func (e *archiveExtractor) writeFile(name string, mode os.FileMode, size int64, source io.Reader) error {
+	if size < 0 || size > e.maxBytes-e.total {
+		return fmt.Errorf("extracted artifact exceeds %d bytes", e.maxBytes)
+	}
+	target, err := archiveEntryPath(e.destination, name)
 	if err != nil {
 		return err
 	}
@@ -155,9 +157,15 @@ func writeArchiveFile(root, name string, mode os.FileMode, source io.Reader) err
 	if copyErr != nil {
 		return copyErr
 	}
-	return closeErr
+	if closeErr != nil {
+		return closeErr
+	}
+	e.total += size
+	return nil
 }
 
+// archiveEntryPath maps an archive entry name to a path under root, rejecting
+// absolute paths and ".." traversal.
 func archiveEntryPath(root, name string) (string, error) {
 	localName := filepath.FromSlash(name)
 	if filepath.IsAbs(localName) || filepath.VolumeName(localName) != "" {

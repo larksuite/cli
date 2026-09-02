@@ -11,7 +11,7 @@ import (
 	"github.com/larksuite/cli/errs"
 )
 
-func TestClassifyError(t *testing.T) {
+func TestClassifyArtifactError(t *testing.T) {
 	for _, tt := range []struct {
 		name     string
 		err      error
@@ -22,7 +22,7 @@ func TestClassifyError(t *testing.T) {
 		{name: "bad archive", err: errors.New("unsupported archive format"), category: errs.CategoryNetwork, subtype: errs.SubtypeNetworkProtocol},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			got := classifyError("distribution failed", tt.err)
+			got := classifyArtifactError("extract", "skills", tt.err)
 			problem, ok := errs.ProblemOf(got)
 			if !ok || problem.Category != tt.category || problem.Subtype != tt.subtype {
 				t.Fatalf("problem = %#v, want category=%q subtype=%q", problem, tt.category, tt.subtype)

@@ -15,7 +15,7 @@ import (
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/meta"
-	"github.com/larksuite/cli/internal/update"
+	"github.com/larksuite/cli/internal/versioncheck"
 )
 
 //go:embed scope_priorities.json scope_overrides.json
@@ -94,7 +94,7 @@ func InitWithBrand(brand core.LarkBrand) {
 			if !brandChanged {
 				// After a CLI upgrade the embedded data can be fresher than an old
 				// cache; an equal/older cache must not shadow it.
-				if cached, err := loadCachedMerged(); err == nil && update.IsNewer(cached.Version, embeddedVersion) {
+				if cached, err := loadCachedMerged(); err == nil && versioncheck.IsNewer(cached.Version, embeddedVersion) {
 					overlayMergedServices(cached)
 				}
 			}

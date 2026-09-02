@@ -4,6 +4,7 @@
 package cmdupdate
 
 import (
+	"context"
 	"fmt"
 	stdio "io"
 	"runtime"
@@ -21,6 +22,7 @@ import (
 	"github.com/larksuite/cli/internal/skillscheck"
 	"github.com/larksuite/cli/internal/update"
 	"github.com/larksuite/cli/internal/urlrewrite"
+	"github.com/larksuite/cli/internal/versioncheck"
 )
 
 const (
@@ -43,15 +45,6 @@ var (
 )
 
 func isWindows() bool { return currentOS == osWindows }
-
-// normalizeVersion canonicalizes a version string for state comparison.
-// Strips a leading "v" so versions written from Makefile (git describe →
-// "v1.0.0") and npm (no prefix → "1.0.0") compare equal.
-func normalizeVersion(s string) string {
-	s = strings.TrimSpace(s)
-	s = strings.TrimPrefix(s, "v")
-	return strings.TrimPrefix(s, "V")
-}
 
 func releaseURL(version string) string {
 	return repoURL + "/releases/tag/v" + strings.TrimPrefix(version, "v")
@@ -152,18 +145,18 @@ func updateRunWithContext(ctx context.Context, opts *UpdateOptions) error {
 				WithParam("--skills-layout").
 				WithHint("Remove --skills-layout when using --check."))
 	}
-	manifestURL, manifestMode, configErr := distribution.ResolveManifestURL(ctx)
+	src, configErr := distribution.ResolveSource(ctx)
 	if configErr != nil {
 		return reportError(opts, io, "configuration", configErr)
 	}
-	if manifestMode {
+	if src.ManifestMode() {
 		if strings.TrimSpace(opts.SkillsLayout) != "" {
 			return reportError(opts, io, "validation",
 				errs.NewValidationError(errs.SubtypeInvalidArgument, "--skills-layout is not supported by the configured distribution").
 					WithParam("--skills-layout"))
 		}
 		output.PendingNotice = nil
-		return runManifestUpdate(ctx, opts, manifestURL)
+		return runManifestUpdate(ctx, opts, src)
 	}
 	cur := currentVersion()
 	updater := newUpdater()
@@ -183,13 +176,13 @@ func updateRunWithContext(ctx context.Context, opts *UpdateOptions) error {
 	}
 
 	// 2. Validate version format
-	if update.ParseVersion(latest) == nil {
+	if versioncheck.Parse(latest) == nil {
 		return reportError(opts, io, "update_error",
 			errs.NewInternalError(errs.SubtypeInvalidResponse, "invalid version from registry: %s", latest))
 	}
 
 	// 3. Compare versions
-	if !opts.Force && !update.IsNewer(latest, cur) {
+	if !opts.Force && !versioncheck.IsNewer(latest, cur) {
 		var skillsResult *skillscheck.SyncResult
 		if !opts.Check {
 			skillsResult = runSkillsAndState(updater, io, cur, opts.Force, opts.SkillsLayout)
@@ -456,7 +449,7 @@ func verificationFailureHint(updater *selfupdate.Updater, latest, pm string) str
 func runSkillsAndState(updater *selfupdate.Updater, io *cmdutil.IOStreams, stateVersion string, force bool, requestedLayout string) *skillscheck.SyncResult {
 	layout, _ := skillscheck.ParseLayout(requestedLayout)
 	if !force {
-		if state, ok, err := skillscheck.ReadState(); err == nil && ok && normalizeVersion(state.Version) == normalizeVersion(stateVersion) {
+		if state, ok, err := skillscheck.ReadState(); err == nil && ok && versioncheck.Equal(state.Version, stateVersion) {
 			if !state.OfficialSkillsUnknown && skillscheck.MatchesSource(state, skillscheck.OfficialSourceIdentity) &&
 				(layout == "" || skillscheck.EffectiveLayout(state) == layout) {
 				return nil
@@ -524,7 +517,7 @@ func applySkillsStatus(env map[string]interface{}, target string) {
 	status := map[string]interface{}{
 		"current": state.Version,
 		"target":  target,
-		"in_sync": normalizeVersion(state.Version) == normalizeVersion(target) &&
+		"in_sync": versioncheck.Equal(state.Version, target) &&
 			!state.OfficialSkillsUnknown && skillscheck.MatchesSource(state, skillscheck.OfficialSourceIdentity),
 	}
 	if state.OfficialSkillsUnknown {

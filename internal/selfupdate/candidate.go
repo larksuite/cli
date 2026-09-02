@@ -5,9 +5,7 @@ package selfupdate
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io/fs"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -77,45 +75,15 @@ func (c *Candidate) Cleanup() {
 	}
 }
 
-// Install atomically promotes the prepared candidate. The returned finalize
-// function removes the previous executable after the surrounding update commits.
+// Install promotes the prepared candidate. The returned finalize function
+// drops the previous executable's backup after the surrounding update
+// commits; on Unix promotion is a single atomic rename and finalize is a
+// no-op. Platform mechanics live in candidate_install_{unix,windows}.go.
 func (c *Candidate) Install() (func(), error) {
 	if c == nil || c.path == "" || c.target == "" {
 		return nil, fmt.Errorf("prepared binary candidate is required")
 	}
-	backup := c.target + ".old"
-	targetExists, err := candidatePathExists(c.target)
-	if err != nil {
-		return nil, err
-	}
-	backupExists, err := candidatePathExists(backup)
-	if err != nil {
-		return nil, err
-	}
-	if targetExists && backupExists {
-		if err := vfs.Remove(backup); err != nil {
-			return nil, fmt.Errorf("remove stale binary backup: %w", err)
-		}
-		backupExists = false
-	}
-	if targetExists {
-		if err := vfs.Rename(c.target, backup); err != nil {
-			return nil, err
-		}
-		backupExists = true
-	}
-	if err := vfs.Rename(c.path, c.target); err != nil {
-		if targetExists {
-			_ = vfs.Rename(backup, c.target)
-		}
-		return nil, err
-	}
-	c.path = ""
-	return func() {
-		if backupExists {
-			_ = vfs.Remove(backup)
-		}
-	}, nil
+	return c.install()
 }
 
 // VerifyCandidateVersion checks the exact opaque version reported by a binary.
@@ -133,14 +101,4 @@ func VerifyCandidateVersion(path, version string) error {
 		return fmt.Errorf("binary reported %q, want version %q", strings.TrimSpace(string(output)), version)
 	}
 	return nil
-}
-
-func candidatePathExists(path string) (bool, error) {
-	if _, err := vfs.Stat(path); err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
 }

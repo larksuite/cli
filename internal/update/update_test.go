@@ -129,73 +129,6 @@ func mustParseURL(raw string) *url.URL {
 	return u
 }
 
-func TestIsNewer(t *testing.T) {
-	tests := []struct {
-		a, b string
-		want bool
-	}{
-		{"1.1.0", "1.0.0", true},
-		{"1.0.0", "1.0.0", false},
-		{"1.0.0", "1.1.0", false},
-		{"2.0.0", "1.9.9", true},
-		{"1.0.1", "1.0.0", true},
-		{"v1.1.0", "1.0.0", true},
-		{"1.1.0", "v1.0.0", true},
-		{"0.0.1", "0.0.0", true},
-		{"DEV", "1.0.0", false},                     // unparseable remote → false
-		{"1.0.0", "DEV", true},                      // unparseable local → assume outdated
-		{"1.0.0", "9b933f1", true},                  // bare commit hash → assume outdated
-		{"", "1.0.0", false},                        // empty remote → false
-		{"1.1.0", "v1.0.0-12-g9b933f1-dirty", true}, // git describe: 1.1.0 > 1.0.0
-		{"1.0.0", "1.0.0-rc.1", true},               // stable release > prerelease
-		{"1.0.0-rc.2", "1.0.0-rc.1", true},          // prerelease identifiers are ordered
-		{"1.0.0-rc.1", "1.0.0", false},              // prerelease < stable release
-	}
-	for _, tt := range tests {
-		got := IsNewer(tt.a, tt.b)
-		if got != tt.want {
-			t.Errorf("IsNewer(%q, %q) = %v, want %v", tt.a, tt.b, got, tt.want)
-		}
-	}
-}
-
-func TestParseVersion(t *testing.T) {
-	tests := []struct {
-		input string
-		want  []int
-	}{
-		{"1.2.3", []int{1, 2, 3}},
-		{"v1.2.3", []int{1, 2, 3}},
-		{"0.0.1", []int{0, 0, 1}},
-		{"1.0.0-beta.1", []int{1, 0, 0}},
-		{"1.0.0-rc.1", []int{1, 0, 0}},
-		{"1.0.0-0", []int{1, 0, 0}},
-		{"1.0.0+build.123", []int{1, 0, 0}},
-		{"1.0.0-beta.1+build", []int{1, 0, 0}},
-		{"1.0.0-", nil},        // empty pre-release
-		{"1.0.0-01", nil},      // leading zero in numeric pre-release
-		{"1.0.0-beta..1", nil}, // empty identifier between dots
-		{"01.0.0", nil},        // leading zero in major
-		{"1.00.0", nil},        // leading zero in minor
-		{"1.0.00", nil},        // leading zero in patch
-		{"DEV", nil},
-		{"", nil},
-		{"1.2", nil},
-	}
-	for _, tt := range tests {
-		got := ParseVersion(tt.input)
-		if tt.want == nil {
-			if got != nil {
-				t.Errorf("ParseVersion(%q) = %v, want nil", tt.input, got)
-			}
-			continue
-		}
-		if got == nil || got[0] != tt.want[0] || got[1] != tt.want[1] || got[2] != tt.want[2] {
-			t.Errorf("ParseVersion(%q) = %v, want %v", tt.input, got, tt.want)
-		}
-	}
-}
-
 func TestShouldSkip(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -224,37 +157,9 @@ func TestShouldSkip(t *testing.T) {
 			for k, v := range tt.env {
 				t.Setenv(k, v)
 			}
-			got := shouldSkip(tt.version)
+			got := shouldSkip(tt.version, false)
 			if got != tt.want {
 				t.Errorf("shouldSkip(%q) = %v, want %v", tt.version, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestIsRelease(t *testing.T) {
-	tests := []struct {
-		name string
-		ver  string
-		want bool
-	}{
-		{"clean_semver", "1.0.0", true},
-		{"v_prefix", "v1.0.0", true},
-		{"prerelease", "1.0.0-beta.1", true},
-		{"rc", "1.0.0-rc.1", true},
-		{"alpha_prerelease", "2.0.0-alpha.0", true},
-		{"git_describe_dirty", "1.0.0-12-g9b933f1-dirty", false},
-		{"git_describe_clean", "1.0.0-12-g9b933f1", false},
-		{"bare_commit_hash", "9b933f1", false},
-		{"dev_marker", "DEV", false},
-		{"incomplete_semver", "1.0", false},
-		{"empty", "", false},
-		{"invalid", "not-a-version", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := IsRelease(tt.ver); got != tt.want {
-				t.Errorf("IsRelease(%q) = %v, want %v", tt.ver, got, tt.want)
 			}
 		})
 	}
@@ -393,20 +298,4 @@ func TestPendingAtomicAccess(t *testing.T) {
 
 	// Clean up for other tests
 	SetPending(nil)
-}
-
-func TestIsCIEnv(t *testing.T) {
-	clearSkipEnv(t)
-	if IsCIEnv() {
-		t.Fatal("IsCIEnv() = true after clearSkipEnv, want false")
-	}
-	for _, key := range []string{"CI", "BUILD_NUMBER", "RUN_ID"} {
-		t.Run(key, func(t *testing.T) {
-			clearSkipEnv(t)
-			t.Setenv(key, "1")
-			if !IsCIEnv() {
-				t.Errorf("IsCIEnv() = false with %s=1, want true", key)
-			}
-		})
-	}
 }

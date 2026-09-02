@@ -29,7 +29,6 @@ const (
 	fetchTimeout = 15 * time.Second
 	stateFile    = "update-state.json"
 	maxBody      = 256 << 10 // 256 KB
-
 )
 
 // UpdateInfo holds version update information.
@@ -79,24 +78,21 @@ type updateState struct {
 
 // CheckCached checks the local cache only (no network). Always fast.
 func CheckCached(currentVersion string) *UpdateInfo {
-	manifestURL, manifestMode, sourceErr := distribution.ResolveManifestURL(context.Background())
-	if sourceErr != nil {
-		return nil
-	}
-	if shouldSkipForMode(currentVersion, manifestMode) {
+	src, err := distribution.ResolveSource(context.Background())
+	if err != nil || shouldSkip(currentVersion, src.ManifestMode()) {
 		return nil
 	}
 	state, _ := loadState()
-	if state == nil || state.LatestVersion == "" {
+	if state == nil || state.LatestVersion == "" || state.Source != src.Identity() {
 		return nil
 	}
-	if manifestMode {
-		if state.Source != distribution.ManifestSourceIdentity(manifestURL) || state.LatestVersion == currentVersion {
+	if src.ManifestMode() {
+		if state.LatestVersion == currentVersion {
 			return nil
 		}
 		return &UpdateInfo{Current: currentVersion, Latest: state.LatestVersion, Source: "manifest"}
 	}
-	if state.Source != "" || !IsNewer(state.LatestVersion, currentVersion) {
+	if !versioncheck.IsNewer(state.LatestVersion, currentVersion) {
 		return nil
 	}
 	return &UpdateInfo{Current: currentVersion, Latest: state.LatestVersion}
@@ -105,82 +101,37 @@ func CheckCached(currentVersion string) *UpdateInfo {
 // RefreshCache fetches the configured target and updates the local cache.
 // No-op if the cache is still fresh (< 24h). Safe to call from a goroutine.
 func RefreshCache(currentVersion string) {
-	manifestURL, manifestMode, sourceErr := distribution.ResolveManifestURL(context.Background())
-	if sourceErr != nil {
-		return
-	}
-	if shouldSkipForMode(currentVersion, manifestMode) {
+	src, err := distribution.ResolveSource(context.Background())
+	if err != nil || shouldSkip(currentVersion, src.ManifestMode()) {
 		return
 	}
 	state, _ := loadState()
-	identityMatches := !manifestMode && state != nil && state.Source == ""
-	if manifestMode {
-		identityMatches = state != nil && state.Source == distribution.ManifestSourceIdentity(manifestURL)
-	}
-	if identityMatches && time.Since(time.Unix(state.CheckedAt, 0)) < cacheTTL {
+	if state != nil && state.Source == src.Identity() && time.Since(time.Unix(state.CheckedAt, 0)) < cacheTTL {
 		return // cache is fresh
 	}
-	target, err := fetchTarget(context.Background(), manifestURL, manifestMode)
-	if err != nil {
+	version, fetchErr := fetchTargetVersion(context.Background(), src)
+	if fetchErr != nil {
 		return
 	}
-	sourceKey := ""
-	if manifestMode {
-		sourceKey = distribution.ManifestSourceIdentity(manifestURL)
-	}
 	_ = saveState(&updateState{
-		LatestVersion: target.Version,
+		LatestVersion: version,
 		CheckedAt:     time.Now().Unix(),
-		Source:        sourceKey,
+		Source:        src.Identity(),
 	})
 }
 
-func shouldSkipForMode(version string, manifestMode bool) bool {
+// shouldSkip suppresses the notifier in CI, when opted out, or without a
+// usable version. The npm flow additionally only tracks published releases;
+// a manifest distribution may target development builds.
+func shouldSkip(version string, manifestMode bool) bool {
+	if os.Getenv("LARKSUITE_CLI_NO_UPDATE_NOTIFIER") != "" || versioncheck.IsCIEnv() || version == "" {
+		return true
+	}
 	if manifestMode {
-		if os.Getenv("LARKSUITE_CLI_NO_UPDATE_NOTIFIER") != "" || IsCIEnv() {
-			return true
-		}
-		return version == ""
-	}
-	return shouldSkip(version)
-}
-
-func shouldSkip(version string) bool {
-	if os.Getenv("LARKSUITE_CLI_NO_UPDATE_NOTIFIER") != "" {
-		return true
-	}
-	// Suppress in CI environments.
-	if IsCIEnv() {
-		return true
-	}
-	// No version info at all — can't compare.
-	if version == "DEV" || version == "dev" || version == "" {
-		return true
+		return false
 	}
 	// Skip local dev builds (e.g. v1.0.0-12-g9b933f1-dirty from git describe).
-	// Only released versions (clean X.Y.Z) should check for updates.
-	if !isRelease(version) {
-		return true
-	}
-	return false
-}
-
-// isRelease returns true for published versions: clean semver (1.0.0)
-// and npm prerelease (1.0.0-beta.1, 1.0.0-rc.1).
-// Returns false for git describe dev builds (v1.0.0-12-g9b933f1-dirty).
-func isRelease(version string) bool { return versioncheck.IsRelease(version) }
-
-// IsRelease reports whether version looks like a clean published release
-// (semver "1.0.0", or npm prerelease "1.0.0-beta.1") and not a git-describe
-// dev build like "1.0.0-12-g9b933f1-dirty". Exported so internal/skillscheck
-// can apply the same release-only gating without duplicating the regex.
-func IsRelease(version string) bool { return isRelease(version) }
-
-// IsCIEnv returns true when any of the standard CI environment variables
-// is set. Exported for internal/skillscheck so its skip rules track the
-// same CI-suppression behavior as the update notifier.
-func IsCIEnv() bool {
-	return versioncheck.IsCIEnv()
+	return version == "DEV" || version == "dev" || !versioncheck.IsRelease(version)
 }
 
 // --- state file I/O ---
@@ -224,32 +175,33 @@ func (t Target) Available(current string) bool {
 	if t.Exact {
 		return t.Version != "" && t.Version != current
 	}
-	return IsNewer(t.Version, current)
+	return versioncheck.IsNewer(t.Version, current)
 }
 
 // FetchTarget synchronously queries the active update source. It is intended
 // for explicit checks such as update and doctor.
 func FetchTarget() (Target, error) {
-	manifestURL, manifestMode, err := distribution.ResolveManifestURL(context.Background())
+	ctx := context.Background()
+	src, err := distribution.ResolveSource(ctx)
 	if err != nil {
 		return Target{}, err
 	}
-	return fetchTarget(context.Background(), manifestURL, manifestMode)
+	version, fetchErr := fetchTargetVersion(ctx, src)
+	if fetchErr != nil {
+		return Target{}, fetchErr
+	}
+	return Target{Version: version, Exact: src.ManifestMode()}, nil
 }
 
-func fetchTarget(ctx context.Context, manifestURL string, manifestMode bool) (Target, error) {
-	if manifestMode {
-		manifest, err := distribution.FetchManifest(ctx, manifestURL)
+func fetchTargetVersion(ctx context.Context, src distribution.Source) (string, error) {
+	if src.ManifestMode() {
+		manifest, err := src.FetchManifest(ctx)
 		if err != nil {
-			return Target{}, err
+			return "", err
 		}
-		return Target{Version: manifest.Version, Exact: true}, nil
+		return manifest.Version, nil
 	}
-	latest, err := fetchLatestVersion()
-	if err != nil {
-		return Target{}, err
-	}
-	return Target{Version: latest}, nil
+	return fetchLatestVersion()
 }
 
 // --- npm registry ---
@@ -282,22 +234,4 @@ func fetchLatestVersion() (string, error) {
 		return "", fmt.Errorf("npm registry: empty version")
 	}
 	return result.Version, nil
-}
-
-// --- semver helpers ---
-
-// IsNewer returns true if version a should be considered an update over b.
-//
-// When both parse as semver, standard comparison applies.
-// When b cannot be parsed (e.g. bare commit hash "9b933f1"), any valid a
-// is considered newer — an unparseable local version is assumed outdated.
-// When a cannot be parsed, returns false (can't confirm it's newer).
-func IsNewer(a, b string) bool {
-	return versioncheck.IsNewer(a, b)
-}
-
-// ParseVersion parses "X.Y.Z" (with optional "v" prefix and pre-release suffix)
-// into [major, minor, patch]. Returns nil on invalid input.
-func ParseVersion(v string) []int {
-	return versioncheck.Parse(v)
 }

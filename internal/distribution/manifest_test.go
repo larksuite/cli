@@ -71,7 +71,7 @@ func TestFetchManifestAppliesManifestDeadline(t *testing.T) {
 		}, nil
 	})}
 	t.Cleanup(func() { DefaultClient = previousClient })
-	if _, err := FetchManifest(context.Background(), "https://dist.example/manifest.json"); err != nil {
+	if _, err := (Source{manifestURL: "https://dist.example/manifest.json"}).FetchManifest(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -110,7 +110,7 @@ func TestParseManifestAllowsExtensionFields(t *testing.T) {
 
 func TestParseManifestRejectsInvalidContracts(t *testing.T) {
 	tests := []struct{ name, input, contains string }{
-		{"schema", strings.Replace(validManifestJSON("1"), `"schema":1`, `"schema":2`, 1), "unsupported distribution manifest schema"},
+		{"schema", strings.Replace(validManifestJSON("1"), `"schema":1`, `"schema":2`, 1), "unsupported schema"},
 		{"missing version", strings.Replace(validManifestJSON("1"), `"version":"1",`, "", 1), "version must be"},
 		{"unsupported scheme", strings.Replace(validManifestJSON("1"), "https://dist.example/skills", "file:///tmp/skills", 1), "HTTP or HTTPS"},
 		{"checksum", strings.Replace(validManifestJSON("1"), testChecksum, "sha256:ABC", 1), "checksum"},

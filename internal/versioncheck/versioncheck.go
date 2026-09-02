@@ -34,6 +34,18 @@ func IsNewer(a, b string) bool {
 	return !localOK || semver.Compare(remote, local) > 0
 }
 
+// Normalize canonicalizes a version string for comparison: trims whitespace
+// and strips a leading "v"/"V" so versions written by the Makefile
+// (git describe → "v1.0.0") and npm (no prefix → "1.0.0") compare equal.
+func Normalize(version string) string {
+	version = strings.TrimSpace(version)
+	version = strings.TrimPrefix(version, "v")
+	return strings.TrimPrefix(version, "V")
+}
+
+// Equal reports whether two versions are the same after Normalize.
+func Equal(a, b string) bool { return Normalize(a) == Normalize(b) }
+
 // Parse returns the major, minor, and patch components of a SemVer value.
 func Parse(version string) []int {
 	canonicalVersion, ok := canonical(version)
