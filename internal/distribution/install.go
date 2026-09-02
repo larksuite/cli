@@ -13,6 +13,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/lockfile"
 	"github.com/larksuite/cli/internal/selfupdate"
 	"github.com/larksuite/cli/internal/skillscheck"
 	"github.com/larksuite/cli/internal/vfs"
@@ -43,10 +44,47 @@ func Install(ctx context.Context, manifest *Manifest, opts InstallOptions) errs.
 	return nil
 }
 
+// SyncSkills repairs the managed Skills from a manifest without replacing an
+// already-matching binary.
+func SyncSkills(ctx context.Context, manifest *Manifest, opts InstallOptions) errs.TypedError {
+	if manifest == nil {
+		return errs.NewInternalError(errs.SubtypeUnknown, "distribution manifest is nil")
+	}
+	if err := vfs.MkdirAll(core.GetBaseConfigDir(), 0o700); err != nil {
+		return prepareFileError(err)
+	}
+	root, err := vfs.MkdirTemp(core.GetBaseConfigDir(), ".distribution-skills-*")
+	if err != nil {
+		return prepareFileError(err)
+	}
+	defer func() { _ = vfs.RemoveAll(root) }()
+
+	skillsRoot, typedErr := prepareArtifact(ctx, manifest, SkillsKey, root, "skills")
+	if typedErr != nil {
+		return typedErr
+	}
+	if err := withInstallLock(func() error {
+		_, finalize, err := syncPreparedSkills(skillsRoot, manifest, opts.SkillsDir)
+		if err == nil {
+			finalize()
+		}
+		return err
+	}); err != nil {
+		return errs.NewInternalError(errs.SubtypeUnknown, "failed to synchronize distribution Skills: %s", err).
+			WithHint("Retry with `lark-cli update --force`.").
+			WithCause(err)
+	}
+	return nil
+}
+
 func installPrepared(prepared *preparedUpdate, opts InstallOptions) error {
 	if prepared == nil || prepared.Manifest == nil {
 		return fmt.Errorf("prepared distribution update is required")
 	}
+	return withInstallLock(func() error { return installPreparedLocked(prepared, opts) })
+}
+
+func installPreparedLocked(prepared *preparedUpdate, opts InstallOptions) error {
 	candidate, err := selfupdate.PrepareCandidate(
 		prepared.BinaryPath,
 		opts.ExecutablePath,
@@ -58,12 +96,11 @@ func installPrepared(prepared *preparedUpdate, opts InstallOptions) error {
 	}
 	defer candidate.Cleanup()
 
-	rollbackSkills, finalizeSkills, err := skillscheck.SyncPreparedTree(skillscheck.PreparedTreeOptions{
-		Root:           prepared.SkillsRoot,
-		Version:        prepared.Manifest.Version,
-		SourceIdentity: prepared.Manifest.sourceIdentity,
-		TargetDir:      opts.SkillsDir,
-	})
+	rollbackSkills, finalizeSkills, err := syncPreparedSkills(
+		prepared.SkillsRoot,
+		prepared.Manifest,
+		opts.SkillsDir,
+	)
 	if err != nil {
 		return err
 	}
@@ -78,6 +115,27 @@ func installPrepared(prepared *preparedUpdate, opts InstallOptions) error {
 	finalizeSkills()
 	finalizeBinary()
 	return nil
+}
+
+func syncPreparedSkills(root string, manifest *Manifest, targetDir string) (func() error, func(), error) {
+	return skillscheck.SyncPreparedTree(skillscheck.PreparedTreeOptions{
+		Root:           root,
+		Version:        manifest.Version,
+		SourceIdentity: manifest.sourceIdentity,
+		TargetDir:      targetDir,
+	})
+}
+
+func withInstallLock(fn func() error) error {
+	if err := vfs.MkdirAll(core.GetBaseConfigDir(), 0o700); err != nil {
+		return err
+	}
+	lock := lockfile.New(filepath.Join(core.GetBaseConfigDir(), "distribution-update.lock"))
+	if err := lock.TryLock(); err != nil {
+		return fmt.Errorf("acquire distribution update lock: %w", err)
+	}
+	defer func() { _ = lock.Unlock() }()
+	return fn()
 }
 
 // preparedUpdate contains fully downloaded, checksum-verified, extracted

@@ -18,9 +18,28 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/lockfile"
 	"github.com/larksuite/cli/internal/skillscheck"
 	"github.com/larksuite/cli/internal/vfs"
 )
+
+func TestInstallPreparedRejectsConcurrentUpdate(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := vfs.MkdirAll(core.GetBaseConfigDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	lock := lockfile.New(filepath.Join(core.GetBaseConfigDir(), "distribution-update.lock"))
+	if err := lock.TryLock(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = lock.Unlock() })
+
+	err := installPrepared(&preparedUpdate{Manifest: &Manifest{}}, InstallOptions{})
+	if !errors.Is(err, lockfile.ErrHeld) {
+		t.Fatalf("installPrepared() error = %v, want lock held", err)
+	}
+}
 
 func TestInstallDownloadsAndCommitsManifestArtifacts(t *testing.T) {
 	root := t.TempDir()

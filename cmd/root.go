@@ -199,12 +199,18 @@ func composePendingNotice(plan *surface.Plan) map[string]interface{} {
 	// both exist solely to steer the caller to `lark-cli update`.
 	if canUpdate {
 		if info := update.GetPending(); info != nil {
-			notice["update"] = map[string]interface{}{
+			entry := map[string]interface{}{
 				"current": info.Current,
-				"latest":  info.Latest,
 				"message": info.Message(),
 				"command": "lark-cli update",
 			}
+			if info.Source == "manifest" {
+				entry["source"] = "manifest"
+				entry["target"] = info.Latest
+			} else {
+				entry["latest"] = info.Latest
+			}
+			notice["update"] = entry
 		}
 		if stale := skillscheck.GetPending(); stale != nil {
 			entry := map[string]interface{}{

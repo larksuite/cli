@@ -22,3 +22,28 @@ When `DistributionProvider` returns a manifest URL, that URL and the artifact
 URLs inside the manifest are final download addresses. Distribution downloads
 retain lark-cli's built-in proxy and custom-CA policy, but deliberately bypass
 the registered URL rewriter and request interceptor.
+
+## Distribution manifest protocol
+
+The manifest is JSON with this fixed schema:
+
+```json
+{
+  "schema": 1,
+  "version": "1.2.3",
+  "artifacts": {
+    "darwin-arm64": { "url": "https://dist.example/lark-cli-darwin-arm64.tar.gz", "checksum": "sha256:<64 lowercase hex characters>" },
+    "skills": { "url": "https://dist.example/skills.tar.gz", "checksum": "sha256:<64 lowercase hex characters>" }
+  }
+}
+```
+
+`schema`, `version`, and `artifacts` are required; unknown fields are ignored.
+`version` is an exact opaque target and must match the installed binary's
+`lark-cli --version` output. `artifacts` must contain `skills` and a key named
+`<GOOS>-<GOARCH>` for every published platform. URLs must be absolute HTTP or
+HTTPS URLs. Checksums cover the downloaded archive bytes.
+
+Archives may be zip or gzip-compressed tar files. A binary archive contains
+`lark-cli` at its root (`lark-cli.exe` on Windows). A Skills archive contains
+one directory per Skill at its root, for example `lark-doc/SKILL.md`.

@@ -57,15 +57,23 @@ var defaultClientOnce = sync.OnceValue(func() *http.Client {
 	return &http.Client{
 		// Distribution URLs bypass extension hooks, but they still use the CLI's
 		// built-in proxy, custom CA, and fail-closed transport policy.
-		Transport: internaltransport.Shared(),
-		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
-			if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
-				return fmt.Errorf("distribution URL redirected to an unsupported scheme")
-			}
-			return nil
-		},
+		Transport:     internaltransport.Shared(),
+		CheckRedirect: distributionRedirectPolicy,
 	}
 })
+
+func distributionRedirectPolicy(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return fmt.Errorf("stopped after 10 redirects")
+	}
+	if req == nil || (req.URL.Scheme != "http" && req.URL.Scheme != "https") {
+		return fmt.Errorf("distribution URL redirected to an unsupported scheme")
+	}
+	if len(via) > 0 && via[len(via)-1].URL.Scheme == "https" && req.URL.Scheme == "http" {
+		return fmt.Errorf("distribution URL redirected from HTTPS to HTTP")
+	}
+	return nil
+}
 
 func httpClient() *http.Client {
 	if DefaultClient != nil {
