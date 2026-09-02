@@ -95,6 +95,60 @@ func TestFormatMessageItem(t *testing.T) {
 	}
 }
 
+func TestFormatMessageItemProjectsSyncToChatInfo(t *testing.T) {
+	info := map[string]interface{}{
+		"type":               float64(1),
+		"thread_id":          "omt_origin",
+		"related_message_id": "om_source",
+		"future_field":       "ignored",
+	}
+	got := FormatMessageItem(map[string]interface{}{
+		"message_id":        "om_current",
+		"msg_type":          "text",
+		"sync_to_chat_info": info,
+	}, nil)
+	gotInfo, ok := got["sync_to_chat_info"].(*SyncToChatRelation)
+	if !ok {
+		t.Fatalf("FormatMessageItem() sync_to_chat_info = %#v, want typed relation", got["sync_to_chat_info"])
+	}
+	if gotInfo.Type != 1 || gotInfo.ThreadID != "omt_origin" || gotInfo.RelatedMessageID != "om_source" {
+		t.Fatalf("FormatMessageItem() sync_to_chat_info = %#v", gotInfo)
+	}
+}
+
+func TestFormatMessageItemOmitsUnusableSyncToChatInfo(t *testing.T) {
+	tests := []struct {
+		name string
+		info interface{}
+	}{
+		{name: "empty object", info: map[string]interface{}{}},
+		{name: "wrong known field type", info: map[string]interface{}{"type": "1", "related_message_id": "om_source"}},
+		{name: "unsupported type", info: map[string]interface{}{"type": float64(3), "related_message_id": "om_source"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FormatMessageItem(map[string]interface{}{
+				"message_id":        "om_current",
+				"msg_type":          "text",
+				"sync_to_chat_info": tt.info,
+			}, nil)
+			if _, ok := got["sync_to_chat_info"]; ok {
+				t.Fatalf("FormatMessageItem() retained unusable relation: %#v", got["sync_to_chat_info"])
+			}
+			if got["message_id"] != "om_current" {
+				t.Fatalf("FormatMessageItem() dropped containing message: %#v", got)
+			}
+		})
+	}
+}
+
+func TestFormatMessageItemOmitsMissingSyncToChatInfo(t *testing.T) {
+	got := FormatMessageItem(map[string]interface{}{"message_id": "om_legacy", "msg_type": "text"}, nil)
+	if _, ok := got["sync_to_chat_info"]; ok {
+		t.Fatalf("sync_to_chat_info = %#v, want omitted", got["sync_to_chat_info"])
+	}
+}
+
 func TestFormatMessageItem_UpdateTime_Present(t *testing.T) {
 	raw := map[string]interface{}{
 		"msg_type":    "text",

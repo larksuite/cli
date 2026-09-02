@@ -14,24 +14,28 @@ import (
 
 // ImMessageReceiveOutput is the flattened shape for im.message.receive_v1; `desc` tags drive the reflected schema.
 type ImMessageReceiveOutput struct {
-	Type        string          `json:"type"                   desc:"Event type; always im.message.receive_v1"`
-	EventID     string          `json:"event_id,omitempty"     desc:"Event delivery ID. Do not use as the message deduplication key; use message_id instead."`
-	Timestamp   string          `json:"timestamp,omitempty"    desc:"Event delivery time (ms timestamp string); prefers header.create_time"                                                                                                              kind:"timestamp_ms"`
-	ID          string          `json:"id,omitempty"           desc:"Message ID (legacy alias of message_id, kept for compatibility)"                                                                                                                     kind:"message_id"`
-	MessageID   string          `json:"message_id,omitempty"   desc:"Message ID; prefixed with om_. Recommended idempotency key for im.message.receive_v1 consumers."                                                                                     kind:"message_id"`
-	CreateTime  string          `json:"create_time,omitempty"  desc:"Message creation time (ms timestamp string)"                                                                                                                                         kind:"timestamp_ms"`
-	UpdateTime  string          `json:"update_time,omitempty"  desc:"Message update time (ms timestamp string); emitted only when different from create_time"                                                                                              kind:"timestamp_ms"`
-	ChatID      string          `json:"chat_id,omitempty"      desc:"Chat/conversation ID; prefixed with oc_"                                                                                                                                             kind:"chat_id"`
-	ChatType    string          `json:"chat_type,omitempty"    desc:"Conversation type"                                                                                                                                                                   enum:"p2p,group"`
-	MessageType string          `json:"message_type,omitempty" desc:"Message type"`
-	SenderID    string          `json:"sender_id,omitempty"    desc:"Sender open_id; prefixed with ou_"                                                                                                                                                   kind:"open_id"`
-	SenderType  string          `json:"sender_type,omitempty"  desc:"Sender type"                                                                                                                                                                         enum:"user,bot"`
-	RootID      string          `json:"root_id,omitempty"      desc:"Root message ID of the reply/thread context, when present"                                                                                                                           kind:"message_id"`
-	ThreadID    string          `json:"thread_id,omitempty"    desc:"Thread ID, when present"`
-	ReplyTo     string          `json:"reply_to,omitempty"     desc:"Parent message ID of the direct reply context, when present"                                                                                                                         kind:"message_id"`
-	Content     string          `json:"content,omitempty"      desc:"Message content. For most types (text/post/image/file/audio, etc.) this is pre-rendered human-readable text."`
-	Mentions    []MentionOutput `json:"mentions,omitempty" desc:"Compact mentions aligned with im +messages-mget"`
+	Type           string                `json:"type"                   desc:"Event type; always im.message.receive_v1"`
+	EventID        string                `json:"event_id,omitempty"     desc:"Event delivery ID. Do not use as the message deduplication key; use message_id instead."`
+	Timestamp      string                `json:"timestamp,omitempty"    desc:"Event delivery time (ms timestamp string); prefers header.create_time"                                                                                                              kind:"timestamp_ms"`
+	ID             string                `json:"id,omitempty"           desc:"Message ID (legacy alias of message_id, kept for compatibility)"                                                                                                                     kind:"message_id"`
+	MessageID      string                `json:"message_id,omitempty"   desc:"Message ID; prefixed with om_. Recommended idempotency key for im.message.receive_v1 consumers."                                                                                     kind:"message_id"`
+	CreateTime     string                `json:"create_time,omitempty"  desc:"Message creation time (ms timestamp string)"                                                                                                                                         kind:"timestamp_ms"`
+	UpdateTime     string                `json:"update_time,omitempty"  desc:"Message update time (ms timestamp string); emitted only when different from create_time"                                                                                              kind:"timestamp_ms"`
+	ChatID         string                `json:"chat_id,omitempty"      desc:"Chat/conversation ID; prefixed with oc_"                                                                                                                                             kind:"chat_id"`
+	ChatType       string                `json:"chat_type,omitempty"    desc:"Conversation type"                                                                                                                                                                   enum:"p2p,group"`
+	MessageType    string                `json:"message_type,omitempty" desc:"Message type"`
+	SenderID       string                `json:"sender_id,omitempty"    desc:"Sender open_id; prefixed with ou_"                                                                                                                                                   kind:"open_id"`
+	SenderType     string                `json:"sender_type,omitempty"  desc:"Sender type"                                                                                                                                                                         enum:"user,bot"`
+	RootID         string                `json:"root_id,omitempty"      desc:"Root message ID of the reply/thread context, when present"                                                                                                                           kind:"message_id"`
+	ThreadID       string                `json:"thread_id,omitempty"    desc:"Thread ID, when present"`
+	ReplyTo        string                `json:"reply_to,omitempty"     desc:"Parent message ID of the direct reply context, when present"                                                                                                                         kind:"message_id"`
+	Content        string                `json:"content,omitempty"      desc:"Message content. For most types (text/post/image/file/audio, etc.) this is pre-rendered human-readable text."`
+	Mentions       []MentionOutput       `json:"mentions,omitempty" desc:"Compact mentions aligned with im +messages-mget"`
+	SyncToChatInfo *SyncToChatInfoOutput `json:"sync_to_chat_info,omitempty" desc:"Relation between a thread reply and the message synchronized to chat"`
 }
+
+// SyncToChatInfoOutput is the event-facing alias of the shared IM relation projection.
+type SyncToChatInfoOutput = convertlib.SyncToChatRelation
 
 type MentionOutput struct {
 	Key  string `json:"key,omitempty"  desc:"Mention placeholder key, for example @_user_1"`
@@ -43,17 +47,18 @@ func processImMessageReceive(_ context.Context, _ event.APIClient, raw *event.Ra
 	var envelope struct {
 		Event struct {
 			Message struct {
-				MessageID   string        `json:"message_id"`
-				RootID      string        `json:"root_id"`
-				ParentID    string        `json:"parent_id"`
-				ThreadID    string        `json:"thread_id"`
-				ChatID      string        `json:"chat_id"`
-				ChatType    string        `json:"chat_type"`
-				MessageType string        `json:"message_type"`
-				Content     string        `json:"content"`
-				CreateTime  string        `json:"create_time"`
-				UpdateTime  string        `json:"update_time"`
-				Mentions    []interface{} `json:"mentions"`
+				MessageID      string          `json:"message_id"`
+				RootID         string          `json:"root_id"`
+				ParentID       string          `json:"parent_id"`
+				ThreadID       string          `json:"thread_id"`
+				ChatID         string          `json:"chat_id"`
+				ChatType       string          `json:"chat_type"`
+				MessageType    string          `json:"message_type"`
+				Content        string          `json:"content"`
+				CreateTime     string          `json:"create_time"`
+				UpdateTime     string          `json:"update_time"`
+				Mentions       []interface{}   `json:"mentions"`
+				SyncToChatInfo json.RawMessage `json:"sync_to_chat_info"`
 			} `json:"message"`
 			Sender struct {
 				SenderType string `json:"sender_type"`
@@ -84,22 +89,23 @@ func processImMessageReceive(_ context.Context, _ event.APIClient, raw *event.Ra
 	}
 
 	out := &ImMessageReceiveOutput{
-		Type:        raw.EventType,
-		EventID:     raw.EventID,
-		Timestamp:   timestamp,
-		ID:          msg.MessageID,
-		MessageID:   msg.MessageID,
-		CreateTime:  msg.CreateTime,
-		ChatID:      msg.ChatID,
-		ChatType:    msg.ChatType,
-		MessageType: msg.MessageType,
-		SenderID:    envelope.Event.Sender.SenderID.OpenID,
-		SenderType:  envelope.Event.Sender.SenderType,
-		RootID:      msg.RootID,
-		ThreadID:    msg.ThreadID,
-		ReplyTo:     msg.ParentID,
-		Content:     content,
-		Mentions:    compactMentions(msg.Mentions),
+		Type:           raw.EventType,
+		EventID:        raw.EventID,
+		Timestamp:      timestamp,
+		ID:             msg.MessageID,
+		MessageID:      msg.MessageID,
+		CreateTime:     msg.CreateTime,
+		ChatID:         msg.ChatID,
+		ChatType:       msg.ChatType,
+		MessageType:    msg.MessageType,
+		SenderID:       envelope.Event.Sender.SenderID.OpenID,
+		SenderType:     envelope.Event.Sender.SenderType,
+		RootID:         msg.RootID,
+		ThreadID:       msg.ThreadID,
+		ReplyTo:        msg.ParentID,
+		Content:        content,
+		Mentions:       compactMentions(msg.Mentions),
+		SyncToChatInfo: convertlib.DecodeSyncToChatRelation(msg.SyncToChatInfo),
 	}
 	if msg.UpdateTime != "" && msg.UpdateTime != msg.CreateTime {
 		out.UpdateTime = msg.UpdateTime

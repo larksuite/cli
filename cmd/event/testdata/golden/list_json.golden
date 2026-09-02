@@ -2428,6 +2428,25 @@
             "bot"
           ]
         },
+        "sync_to_chat_info": {
+          "type": "object",
+          "description": "Relation between a thread reply and the message synchronized to chat",
+          "properties": {
+            "related_message_id": {
+              "type": "string",
+              "description": "Message ID on the other side: the original thread reply for type 1, or the chat-level copy for type 2",
+              "format": "message_id"
+            },
+            "thread_id": {
+              "type": "string",
+              "description": "Root thread ID of the original reply; normally present when this message is the chat-level copy"
+            },
+            "type": {
+              "type": "integer",
+              "description": "Role of this message: 1 (SYNC_TO_CHAT_TARGET_MESSAGE) means this message is the chat-level copy; 2 (SYNC_TO_CHAT_SOURCE_MESSAGE) means this message is the original thread reply"
+            }
+          }
+        },
         "thread_id": {
           "type": "string",
           "description": "Thread ID, when present"

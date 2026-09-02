@@ -50,6 +50,7 @@ Each message contains:
 | `create_time` | Creation time |
 | `sender` | Sender information (includes `name`) |
 | `content` | Message content |
+| `sync_to_chat_info` | Optional relation between a source thread reply and its synchronized chat message. See [IM sync-to-chat relation](lark-im-sync-to-chat-info.md). |
 
 For `post` messages, the attachment zone (top-level `files` array) is rendered as trailing lines in `content`, one per attachment:
 
