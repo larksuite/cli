@@ -40,7 +40,7 @@ MAX_ZERO_SCAN_CELLS = 10_000
 
 
 CellBounds = tuple[int, int, int, int]
-CellCache = dict[tuple[str, str, str], dict[str, Any]]
+CellCache = dict[tuple[str, str, str, bool], dict[str, Any]]
 SeriesProfile = dict[str, Any]
 
 
@@ -351,17 +351,21 @@ def _read_cells(
     sheet_name: str | None,
     cell_range: str,
     include: str,
+    skip_hidden: bool = False,
     timeout: int,
 ) -> dict[str, Any]:
     selector = f"id:{sheet_id}" if sheet_id else f"name:{sheet_name}"
-    key = (selector, cell_range, include)
+    key = (selector, cell_range, include, skip_hidden)
     if key not in cache:
+        flags: dict[str, Any] = {"range": cell_range, "include": include}
+        if skip_hidden:
+            flags["skip-hidden"] = True
         cache[key] = envelope_data(
             run_sheets(
                 "+cells-get",
                 **locator,
                 **({"sheet_id": sheet_id} if sheet_id else {"sheet_name": sheet_name}),
-                flags={"range": cell_range, "include": key[2]},
+                flags=flags,
                 timeout=timeout,
             )
         )
@@ -463,6 +467,7 @@ def _constant_labeled_series(
         }
         for profile in profiles
         if int(profile.get("dimension_index", -1)) in labeled
+        and profile.get("constant_check_unverifiable") is not True
         and int(profile.get("numeric_value_count", 0)) >= 2
         and len(profile.get("unique_numeric_values") or []) == 1
     ]
@@ -514,10 +519,23 @@ def _undersized_chart(chart: dict[str, Any]) -> dict[str, Any] | None:
     details = chart.get("details") if isinstance(chart.get("details"), dict) else chart
     snapshot = _chart_snapshot(chart)
     chart_type = _chart_type(snapshot)
-    size = details.get("size") if isinstance(details.get("size"), dict) else {}
+    size = details.get("size")
+    if not isinstance(size, dict):
+        return None
+    width = size.get("width")
+    height = size.get("height")
+    if (
+        not isinstance(width, (int, float))
+        or isinstance(width, bool)
+        or width <= 0
+        or not isinstance(height, (int, float))
+        or isinstance(height, bool)
+        or height <= 0
+    ):
+        return None
     actual = {
-        "width": float(size.get("width") or 0),
-        "height": float(size.get("height") or 0),
+        "width": float(width),
+        "height": float(height),
     }
     minimum = minimum_chart_size(chart_type)
     if actual["width"] >= minimum["width"] and actual["height"] >= minimum["height"]:
@@ -598,6 +616,27 @@ def _numeric_dimensions(snapshot: dict[str, Any]) -> list[tuple[int, str]]:
         dimensions.append((int(serie["index"]), "x"))
 
     return list(dict.fromkeys(dimensions))
+
+
+def _aggregation_can_change_constant(data: dict[str, Any], dimension_index: int) -> bool:
+    dim1 = data.get("dim1")
+    category_series = dim1.get("serie") if isinstance(dim1, dict) else None
+    if not isinstance(category_series, dict) or category_series.get("aggregate") is False:
+        return False
+    dim2 = data.get("dim2")
+    value_series = dim2.get("series") if isinstance(dim2, dict) else None
+    source_series = next(
+        (
+            item
+            for item in (value_series if isinstance(value_series, list) else [])
+            if isinstance(item, dict)
+            and item.get("index") is not None
+            and int(item["index"]) == dimension_index
+        ),
+        {},
+    )
+    aggregate_type = str(source_series.get("aggregateType") or "sum").lower()
+    return aggregate_type in {"sum", "count", "counta"}
 
 
 def _parse_chart_ref(value: str, default_sheet: str) -> tuple[str, str, CellBounds]:
@@ -702,6 +741,7 @@ def _numeric_source_issues(
             return [], [], unverifiable, []
 
     direction = str(data.get("direction") or "column").lower()
+    skip_hidden = data.get("includeHiddenOrFilter") is not True
     mapped: list[tuple[int, str, int, str, str, CellBounds]] = []
     for dimension_index, role in dimensions:
         offset = 0
@@ -777,6 +817,7 @@ def _numeric_source_issues(
             sheet_name=None if same_sheet else source_sheet,
             cell_range=checked_range,
             include="value,style,raw_value",
+            skip_hidden=skip_hidden,
             timeout=timeout,
         )
         truncated = _cells_truncated(cells_data)
@@ -855,6 +896,7 @@ def _numeric_source_issues(
                     sheet_name=None if same_sheet else source_sheet,
                     cell_range=scan_range,
                     include="value",
+                    skip_hidden=skip_hidden,
                     timeout=timeout,
                 )
                 if _cells_truncated(scan_data):
@@ -915,22 +957,38 @@ def _numeric_source_issues(
                 ),
                 {},
             )
-            series_profiles.append(
-                {
-                    "dimension_index": dimension_index,
-                    "series_name": str(
-                        source_series.get("name")
-                        or source_series.get("nameRef")
-                        or f"Series {dimension_index}"
-                    ),
-                    "point_count": point_total,
-                    "numeric_value_count": state["numeric_value_count"],
-                    "unique_numeric_values": list(state["unique_numeric_values"]),
-                    "source_sheet": source_sheet,
-                    "source_range": source_range,
-                    "series_range": series_range,
-                }
-            )
+            profile = {
+                "dimension_index": dimension_index,
+                "series_name": str(
+                    source_series.get("name")
+                    or source_series.get("nameRef")
+                    or f"Series {dimension_index}"
+                ),
+                "point_count": point_total,
+                "numeric_value_count": state["numeric_value_count"],
+                "unique_numeric_values": list(state["unique_numeric_values"]),
+                "source_sheet": source_sheet,
+                "source_range": source_range,
+                "series_range": series_range,
+            }
+            if (
+                state["numeric_value_count"] >= 2
+                and len(state["unique_numeric_values"]) == 1
+                and dimension_index
+                in _labeled_series_indexes(snapshot, [{"dimension_index": dimension_index}])
+                and _aggregation_can_change_constant(data, dimension_index)
+            ):
+                profile["constant_check_unverifiable"] = True
+                unverifiable.append(
+                    {
+                        "chart_id": chart_id,
+                        "reason": (
+                            "constant-series check is unverifiable after category "
+                            f"aggregation for dimension {dimension_index}"
+                        ),
+                    }
+                )
+            series_profiles.append(profile)
             if coordinate not in zero_candidates:
                 continue
             degenerate_series.append(
