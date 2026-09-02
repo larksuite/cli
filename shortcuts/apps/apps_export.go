@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -227,41 +229,75 @@ func classifyExportErr(err error) error {
 	}
 }
 
-// rejectExportErrorEnvelope fails the export when the body is a JSON error
-// envelope rather than the archive.
+// rejectExportErrorEnvelope fails the export when the body is an error envelope
+// rather than the archive.
 //
 // The stream client only intercepts status >= 400, but the OpenAPI gateway
-// reports several failures as HTTP 200 carrying {"code":...,"msg":...}. Without
-// this gate the envelope is streamed to disk as the "archive" and the command
-// reports success — the caller gets a .zip that is really a 300-byte JSON blob,
-// which is worse than a plain failure because nothing looks wrong until it is
-// opened. Observed against this endpoint on a test lane.
+// reports several failures as HTTP 200 carrying an error body — either a JSON
+// envelope {"code":...,"msg":...} or, when the api.status field is not wired
+// through on the gateway response, a bare text/plain line the handler produced
+// (e.g. "permission denied", "app not found"). Without this gate the body is
+// streamed to disk as the "archive" and the command reports success — the caller
+// gets a .zip that is really a short error blob, which is worse than a plain
+// failure because nothing looks wrong until it is opened. Both variants were
+// observed against this endpoint on a test lane.
 //
-// An absent Content-Type is treated as JSON-suspect too, matching
-// client.HandleResponse; a truthful archive always carries an explicit binary
-// type. The body is bounded at 4 KiB, the same limit DoStream uses for the
-// error bodies it reads itself.
+// The check is a whitelist, not a blacklist: only an explicit archive
+// Content-Type (application/octet-stream / application/zip) is trusted and
+// streamed straight through. Everything else — JSON, text/plain, or an absent
+// Content-Type — is read back (bounded at 4 KiB, the same limit DoStream uses
+// for the error bodies it reads itself) and refused, because a truthful archive
+// always carries an explicit binary type. Whitelisting keeps the gate robust
+// against any future error Content-Type the gateway might use.
 func rejectExportErrorEnvelope(rctx *common.RuntimeContext, resp *http.Response) error {
 	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
-	if contentType != "" && !client.IsJSONContentType(strings.ToLower(contentType)) {
+	if isArchiveContentType(contentType) {
 		return nil
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxExportEnvelopeBytes))
 	if err != nil {
 		return errs.NewNetworkError(errs.SubtypeNetworkTransport, "export failed while reading the response: %s", err).WithCause(err)
 	}
-	// Route through the shared classifier so an envelope becomes the same typed
-	// error a non-streaming command would raise, log id and all.
-	if _, classifyErr := rctx.ClassifyAPIResponse(&larkcore.ApiResp{
-		StatusCode: resp.StatusCode,
-		Header:     resp.Header,
-		RawBody:    body,
-	}); classifyErr != nil {
-		return classifyErr
+	// A JSON body (or an absent Content-Type, treated as JSON-suspect like
+	// client.HandleResponse) goes through the shared classifier so an envelope
+	// becomes the same typed error a non-streaming command would raise, log id
+	// and all.
+	if contentType == "" || client.IsJSONContentType(strings.ToLower(contentType)) {
+		if _, classifyErr := rctx.ClassifyAPIResponse(&larkcore.ApiResp{
+			StatusCode: resp.StatusCode,
+			Header:     resp.Header,
+			RawBody:    body,
+		}); classifyErr != nil {
+			return classifyErr
+		}
 	}
-	// Parsed clean but still not an archive: refuse rather than save it.
+	// Non-JSON body (or a JSON one that parsed clean but still isn't an archive).
+	// If the gateway handed back a short text/plain reason (the api.status-not-
+	// wired case: HTTP 200 + "permission denied" etc.), surface that text so the
+	// caller sees the server's reason rather than an opaque "not an archive".
+	// Fall back to the Content-Type when the body is empty or unreadable.
+	if msg := strings.TrimSpace(string(body)); msg != "" {
+		return errs.NewInternalError(errs.SubtypeInvalidResponse,
+			"export failed: %s", util.TruncateStr(msg, 500))
+	}
 	return errs.NewInternalError(errs.SubtypeInvalidResponse,
 		"export returned %q instead of an archive", contentTypeForMessage(contentType))
+}
+
+// isArchiveContentType reports whether ct is a Content-Type an export archive is
+// allowed to carry. The handler emits application/octet-stream on success;
+// application/zip is accepted defensively in case the gateway relabels it.
+//
+// The media type is parsed and matched exactly, not by substring: a substring
+// check would accept a hostile/mislabeled header like
+// text/plain; detail="application/zip" and stream the error body to disk as the
+// "archive". Parameters (charset, etc.) are stripped before comparison.
+func isArchiveContentType(ct string) bool {
+	mediaType, _, err := mime.ParseMediaType(ct)
+	if err != nil {
+		return false
+	}
+	return mediaType == "application/octet-stream" || mediaType == "application/zip"
 }
 
 // contentTypeForMessage renders a missing Content-Type readably in diagnostics.
