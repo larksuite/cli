@@ -55,6 +55,31 @@ func TestSuccessEnvelopeData_NilDataUsesEmptyObject(t *testing.T) {
 	}
 }
 
+func TestSuccessEnvelopeData_TopLevelPayloadPreserved(t *testing.T) {
+	result := map[string]interface{}{
+		"code": float64(0),
+		"msg":  "ok",
+		"bot": map[string]interface{}{
+			"activate_status": float64(2),
+			"app_name":        "HypeSTAFF",
+			"open_id":         "ou_62277add34f7250b065b3865729ed099",
+		},
+	}
+
+	got := SuccessEnvelopeData(result)
+	m, ok := got.(map[string]interface{})
+	if !ok {
+		t.Fatalf("business data type = %T, want map", got)
+	}
+	if m["code"] != float64(0) || m["msg"] != "ok" {
+		t.Fatalf("protocol fields missing: %#v", m)
+	}
+	bot, ok := m["bot"].(map[string]interface{})
+	if !ok || bot["open_id"] != "ou_62277add34f7250b065b3865729ed099" {
+		t.Fatalf("top-level bot payload missing: %#v", m)
+	}
+}
+
 func TestWriteSuccessEnvelope_PrintsShortcutCompatibleEnvelope(t *testing.T) {
 	var out strings.Builder
 
