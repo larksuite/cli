@@ -805,3 +805,37 @@ func TestSyncSkillsNothingInstalledStillInstallsWhenRequested(t *testing.T) {
 		})
 	}
 }
+
+func TestSyncSkillsOfficialDetectionUsesKnownOfficialSkills(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		known      []string
+		installed  []string
+		wantAction string
+	}{
+		{name: "custom lark- prefixed skill is not official", known: []string{"lark-calendar", "lark-mail"}, installed: []string{"lark-custom"}, wantAction: ActionNotInstalled},
+		{name: "known official skill syncs", known: []string{"lark-calendar", "lark-mail"}, installed: []string{"lark-calendar"}, wantAction: "synced"},
+		{name: "suite counts as official", known: []string{"lark-calendar", "lark-mail"}, installed: []string{"lark-suite"}, wantAction: "synced"},
+		{name: "no embedded list falls back to prefix", known: nil, installed: []string{"lark-custom"}, wantAction: "synced"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			runner := &fakeSkillsRunner{
+				sources:       []string{"primary"},
+				indexes:       map[string]string{"primary": officialSkillsIndexOutput("lark-calendar", "lark-mail")},
+				indexErrors:   map[string]error{},
+				installErrors: map[string]error{},
+				stageErrors:   map[string]error{},
+				globalJSON:    globalSkillsJSONOutput(test.installed...),
+			}
+
+			result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now, KnownOfficialSkills: test.known})
+			if result.Err != nil || result.Action != test.wantAction {
+				t.Fatalf("result = %+v, want action %q without error", result, test.wantAction)
+			}
+			if test.wantAction == ActionNotInstalled && len(runner.installs) != 0 {
+				t.Fatalf("installs = %v, want none", runner.installs)
+			}
+		})
+	}
+}

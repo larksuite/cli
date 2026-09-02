@@ -255,6 +255,10 @@ type SyncOptions struct {
 	Force   bool
 	Runner  SkillsRunner
 	Now     func() time.Time
+	// KnownOfficialSkills lists the official skill names embedded in this
+	// binary. It tells an official installation apart from a user skill that
+	// merely shares the lark- prefix; empty when the build embeds no skills.
+	KnownOfficialSkills []string
 }
 
 // ActionNotInstalled reports that skills sync was skipped because no official
@@ -357,16 +361,37 @@ func SyncSkills(opts SyncOptions) *SyncResult {
 	return fallbackSeparate(opts, previous, readable, localOfficial, installed, fallbackPlan, reasons)
 }
 
+// skipNotInstalled is the only path that leaves skills alone: no sync state,
+// no official skill installed, and no explicit request via --force or
+// --skills-layout. Wizard installs write no state, so an installed official
+// skill alone must keep syncing.
 func skipNotInstalled(opts SyncOptions, stateMissing bool, installed []installedSkill) bool {
 	if !stateMissing || opts.Force || opts.Layout != "" {
 		return false
 	}
-	return !hasOfficialSkillCandidate(installed)
+	return !hasOfficialSkillInstalled(installed, opts.KnownOfficialSkills)
 }
 
-// hasOfficialSkillCandidate matches the lark- prefix instead of the official
-// index so a CLI-only update never fetches the skills index just to skip.
-func hasOfficialSkillCandidate(installed []installedSkill) bool {
+// hasOfficialSkillInstalled decides offline so a CLI-only update never fetches
+// the skills index just to skip. Installed names are matched against the
+// official skills embedded in the binary plus the CLI-managed suite, so a user
+// skill such as lark-custom does not count. A build without embedded skills
+// falls back to the lark- prefix.
+func hasOfficialSkillInstalled(installed []installedSkill, known []string) bool {
+	if len(known) == 0 {
+		return hasLarkPrefixedSkill(installed)
+	}
+	official := toSet(known)
+	official["lark-suite"] = true
+	for _, skill := range installed {
+		if official[skill.Name] {
+			return true
+		}
+	}
+	return false
+}
+
+func hasLarkPrefixedSkill(installed []installedSkill) bool {
 	for _, skill := range installed {
 		if strings.HasPrefix(skill.Name, "lark-") {
 			return true

@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/larksuite/cli/errs"
@@ -1201,7 +1202,7 @@ func TestRunSkillsAndState_DedupHit(t *testing.T) {
 			return &selfupdate.NpmResult{}
 		},
 	}
-	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false, "")
+	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false, "", nil)
 	if got != nil {
 		t.Errorf("runSkillsAndState() = %+v, want nil for dedup hit", got)
 	}
@@ -1226,7 +1227,7 @@ func TestRunSkillsAndState_RequestedLayoutBypassesVersionDedup(t *testing.T) {
 		return &skillscheck.SyncResult{Action: "synced", Layout: skillscheck.LayoutSuite}
 	}
 
-	got := runSkillsAndState(&selfupdate.Updater{}, newTestIO(), "1.0.21", false, "suite")
+	got := runSkillsAndState(&selfupdate.Updater{}, newTestIO(), "1.0.21", false, "suite", nil)
 	if !called || got == nil || got.Err != nil {
 		t.Fatalf("runSkillsAndState() = %+v, called = %v", got, called)
 	}
@@ -1249,7 +1250,7 @@ func TestRunSkillsAndState_UnknownOfficialSkillsBypassesVersionDedup(t *testing.
 		return &skillscheck.SyncResult{Action: "synced", Layout: skillscheck.LayoutSeparate}
 	}
 
-	got := runSkillsAndState(&selfupdate.Updater{}, newTestIO(), "1.0.21", false, "")
+	got := runSkillsAndState(&selfupdate.Updater{}, newTestIO(), "1.0.21", false, "", nil)
 	if !called || got == nil || got.Err != nil {
 		t.Fatalf("runSkillsAndState() = %+v, called = %v", got, called)
 	}
@@ -1316,7 +1317,7 @@ func TestRunSkillsAndState_DedupForceBypass(t *testing.T) {
 			return successfulSkillsCommand()(args...)
 		},
 	}
-	got := runSkillsAndState(updater, newTestIO(), "1.0.21", true, "")
+	got := runSkillsAndState(updater, newTestIO(), "1.0.21", true, "", nil)
 	if got == nil || got.Err != nil {
 		t.Fatalf("runSkillsAndState(force=true) = %+v, want successful result", got)
 	}
@@ -1331,7 +1332,7 @@ func TestRunSkillsAndState_SuccessWritesState(t *testing.T) {
 		SkillsIndexFetchOverride: successfulSkillsIndexFetch(),
 		SkillsCommandOverride:    successfulSkillsCommand(),
 	}
-	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false, "")
+	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false, "", nil)
 	if got == nil || got.Err != nil {
 		t.Fatalf("runSkillsAndState() = %+v, want non-nil with nil Err", got)
 	}
@@ -1357,7 +1358,7 @@ func TestRunSkillsAndState_FailureKeepsOldState(t *testing.T) {
 			return r
 		},
 	}
-	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false, "")
+	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false, "", nil)
 	if got == nil || got.Err == nil {
 		t.Fatalf("runSkillsAndState() = %+v, want non-nil with non-nil Err", got)
 	}
@@ -1650,7 +1651,7 @@ func TestRunSkillsAndState_StateWriteFailureWarns(t *testing.T) {
 	t.Cleanup(func() { syncSkills = origSync })
 
 	f, _, stderr := newTestFactory(t)
-	got := runSkillsAndState(&selfupdate.Updater{}, f.IOStreams, "1.0.21", false, "")
+	got := runSkillsAndState(&selfupdate.Updater{}, f.IOStreams, "1.0.21", false, "", nil)
 	if got == nil || got.Err == nil {
 		t.Fatalf("runSkillsAndState() = %+v, want non-nil with write error", got)
 	}
@@ -2106,5 +2107,101 @@ func TestEmitSkillsTextHints_NotInstalled(t *testing.T) {
 	out := stderr.String()
 	if !strings.Contains(out, "Skills not installed") || !strings.Contains(out, skillsInstallCommand) {
 		t.Errorf("stderr = %q, want not-installed notice with install command", out)
+	}
+}
+
+func TestRunSkillsAndState_CustomLarkPrefixedSkillIsNotInstalled(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	updater := &selfupdate.Updater{
+		SkillsIndexFetchOverride: func() *selfupdate.NpmResult {
+			t.Error("skills index fetched although only a custom lark- skill is installed")
+			return &selfupdate.NpmResult{Err: fmt.Errorf("unexpected index fetch")}
+		},
+		SkillsCommandOverride: func(args ...string) *selfupdate.NpmResult {
+			r := &selfupdate.NpmResult{}
+			if strings.Join(args, " ") == "-y skills ls -g --json" {
+				r.Stdout.WriteString(`[{"name":"lark-custom","path":"/tmp/lark-custom","scope":"global","agents":["Codex"]}]`)
+			}
+			return r
+		},
+	}
+
+	got := runSkillsAndState(updater, newTestIO(), "1.0.21", false, "", []string{"lark-calendar", "lark-mail"})
+	if got == nil || got.Err != nil || got.Action != skillscheck.ActionNotInstalled {
+		t.Fatalf("runSkillsAndState() = %+v, want action %q", got, skillscheck.ActionNotInstalled)
+	}
+	if _, readable, err := skillscheck.ReadState(); readable || err != nil {
+		t.Errorf("ReadState() = (_, %v, %v), want no state written", readable, err)
+	}
+}
+
+func TestEmbeddedOfficialSkills_ReadsFactorySkillContent(t *testing.T) {
+	if got := embeddedOfficialSkills(nil); got != nil {
+		t.Errorf("embeddedOfficialSkills(nil) = %v, want nil", got)
+	}
+	f, _, _ := newTestFactory(t)
+	f.SkillContent = nil
+	if got := embeddedOfficialSkills(f); got != nil {
+		t.Errorf("embeddedOfficialSkills(no content) = %v, want nil", got)
+	}
+	f.SkillContent = fstest.MapFS{
+		"lark-calendar/SKILL.md": {Data: []byte("---\nname: lark-calendar\ndescription: calendar\n---\n")},
+		"lark-mail/SKILL.md":     {Data: []byte("---\nname: lark-mail\ndescription: mail\n---\n")},
+		"notes/README.md":        {Data: []byte("not a skill")},
+	}
+	got := embeddedOfficialSkills(f)
+	if strings.Join(got, ",") != "lark-calendar,lark-mail" {
+		t.Errorf("embeddedOfficialSkills() = %v, want [lark-calendar lark-mail]", got)
+	}
+}
+
+func TestUpdateNpm_Human_NothingInstalled_NoSkillsProgressLine(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, _, stderr := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{})
+
+	origFetch := fetchLatest
+	origVersion := currentVersion
+	t.Cleanup(func() { fetchLatest = origFetch; currentVersion = origVersion })
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	currentVersion = func() string { return "1.0.0" }
+
+	origNew := newUpdater
+	t.Cleanup(func() { newUpdater = origNew })
+	newUpdater = func() *selfupdate.Updater {
+		u := selfupdate.New()
+		u.DetectOverride = func() selfupdate.DetectResult {
+			return selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true}
+		}
+		u.NpmInstallOverride = func(string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} }
+		u.VerifyOverride = func(string) error { return nil }
+		u.SkillsIndexFetchOverride = func() *selfupdate.NpmResult {
+			t.Error("skills index fetched although no official skill is installed")
+			return &selfupdate.NpmResult{Err: fmt.Errorf("unexpected index fetch")}
+		}
+		u.SkillsCommandOverride = func(args ...string) *selfupdate.NpmResult {
+			r := &selfupdate.NpmResult{}
+			if strings.Join(args, " ") == "-y skills ls -g --json" {
+				r.Stdout.WriteString(`[{"name":"custom-skill","path":"/tmp/custom-skill","scope":"global","agents":["Codex"]}]`)
+			}
+			return r
+		}
+		return u
+	}
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "Successfully updated") {
+		t.Errorf("expected success message in stderr, got: %s", out)
+	}
+	if strings.Contains(out, "Updating skills via") {
+		t.Errorf("progress line printed although skills sync was skipped: %s", out)
+	}
+	if !strings.Contains(out, "Skills not installed") || !strings.Contains(out, skillsInstallCommand) {
+		t.Errorf("expected not-installed notice with install command, got: %s", out)
 	}
 }
