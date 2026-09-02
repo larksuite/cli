@@ -28,7 +28,7 @@ func TestMailAutoReply(t *testing.T) {
 					"content_summary":     "OOO",
 					"start_time":          "1786723200000",
 					"end_time":            "1787068799999",
-					"time_zone":           "Asia/Shanghai",
+					"time_zone":           "28800",
 					"only_send_to_tenant": true,
 				},
 			},
@@ -75,7 +75,7 @@ func TestMailAutoReplyModifyBuildsFriendlyPayload(t *testing.T) {
 					"content_summary":     "Out today",
 					"start_time":          "1912953600000",
 					"end_time":            "1913299199999",
-					"time_zone":           "Asia/Shanghai",
+					"time_zone":           "28800",
 					"only_send_to_tenant": false,
 				},
 			},
@@ -90,7 +90,7 @@ func TestMailAutoReplyModifyBuildsFriendlyPayload(t *testing.T) {
 		"--content", "<p>Out today</p>",
 		"--start", "2030-08-15T09:00:00+08:00",
 		"--end", "2030-08-18T09:00:00+08:00",
-		"--timezone", "Asia/Shanghai",
+		"--timezone", "28800",
 		"--all",
 		"--format", "json",
 	}, f, stdout)
@@ -104,7 +104,7 @@ func TestMailAutoReplyModifyBuildsFriendlyPayload(t *testing.T) {
 	assertAutoReplyPayloadAbsent(t, captured, "content_summary")
 	assertAutoReplyPayloadValue(t, captured, "start_time", "1912953600000")
 	assertAutoReplyPayloadValue(t, captured, "end_time", "1913299199999")
-	assertAutoReplyPayloadValue(t, captured, "time_zone", "Asia/Shanghai")
+	assertAutoReplyPayloadValue(t, captured, "time_zone", "28800")
 	assertAutoReplyPayloadValue(t, captured, "only_send_to_tenant", false)
 	assertAutoReplyPayloadAbsent(t, captured, "auto_reply")
 	assertAutoReplyPayloadAbsent(t, captured, "enable")
@@ -205,7 +205,7 @@ func TestMailAutoReplyModifyAllowsSameStartAndEndDate(t *testing.T) {
 		"--yes",
 		"--start", "2030-08-28",
 		"--end", "2030-08-28",
-		"--timezone", "Asia/Shanghai",
+		"--timezone", "28800",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("runMountedMailShortcut() error = %v", err)
@@ -310,7 +310,7 @@ func TestMailAutoReplyModifyPreflightRejectsPastEnabledTime(t *testing.T) {
 		"--content", "ok",
 		"--start", "2000-01-01",
 		"--end", "2000-01-02",
-		"--timezone", "Asia/Shanghai",
+		"--timezone", "28800",
 	}, f, stdout)
 	if err == nil {
 		t.Fatal("expected preflight validation error")
@@ -328,7 +328,7 @@ func TestMailAutoReplyModifyRejectsPastExplicitEndWhenDisabled(t *testing.T) {
 		"content":             "",
 		"start_time":          "0",
 		"end_time":            "0",
-		"time_zone":           "Asia/Shanghai",
+		"time_zone":           "28800",
 		"only_send_to_tenant": false,
 	})
 
@@ -646,10 +646,10 @@ func TestMailAutoReplyModifyRequiresConfirmation(t *testing.T) {
 	}
 }
 
-func TestMailAutoReplyInvalidTimezoneIsReportedBeforeStartParse(t *testing.T) {
+func TestMailAutoReplyInvalidTimezoneOffsetIsReportedBeforeStartParse(t *testing.T) {
 	for _, args := range [][]string{
-		{"+auto-reply-modify", "--timezone", "Mars/Olympus"},
-		{"+auto-reply-modify", "--start", "2026-08-19T00:00:00", "--timezone", "Mars/Olympus"},
+		{"+auto-reply-modify", "--timezone", "Asia/Shanghai"},
+		{"+auto-reply-modify", "--start", "2026-08-19T00:00:00", "--timezone", "Asia/Shanghai"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			f, stdout, _, _ := mailShortcutTestFactory(t)
@@ -657,7 +657,7 @@ func TestMailAutoReplyInvalidTimezoneIsReportedBeforeStartParse(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected timezone validation error")
 			}
-			if !strings.Contains(err.Error(), `invalid --timezone "Mars/Olympus"`) {
+			if !strings.Contains(err.Error(), "--timezone must be UTC offset seconds") {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			if strings.Contains(err.Error(), "--start must be Unix seconds or ISO 8601") {

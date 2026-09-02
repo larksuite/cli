@@ -20,7 +20,7 @@ lark-cli mail +auto-reply-modify --as user \
   --content '<p>我正在休假，回来后回复。</p>' \
   --start 2026-08-15 \
   --end 2026-08-18 \
-  --timezone Asia/Shanghai
+  --timezone 28800
 
 # 从文件读取正文
 lark-cli mail +auto-reply-modify --as user --yes --content @auto-reply.html
@@ -41,9 +41,9 @@ lark-cli mail +auto-reply-modify --as user --yes --disable
 | `--disable` | modify | 否 | 关闭自动回复；与 `--enable` 互斥 |
 | `--content <text-or-html>` | modify | 否 | 自动回复正文，支持纯文本或 HTML；支持直接传值、`@file`、`-` stdin、本地图片和 data URI 图片 |
 | `--content-file <path>` | modify | 否 | 从当前目录下的文件读取正文，支持纯文本或 HTML；与 `--content` 互斥；正文里可包含本地图片和 data URI 图片 |
-| `--start <time>` | modify | 否 | 开始日期，支持 `YYYY-MM-DD`、Unix timestamp 或 ISO 8601；CLI 会按指定时区折算为当天开始 |
-| `--end <time>` | modify | 否 | 结束日期，支持 `YYYY-MM-DD`、Unix timestamp 或 ISO 8601；CLI 会按指定时区折算为当天结束 |
-| `--timezone <tz>` | modify | 否 | 时区，例如 `Asia/Shanghai` |
+| `--start <time>` | modify | 否 | 开始日期，支持 `YYYY-MM-DD`、Unix timestamp 或 ISO 8601；CLI 会按指定 UTC 偏移折算为当天开始 |
+| `--end <time>` | modify | 否 | 结束日期，支持 `YYYY-MM-DD`、Unix timestamp 或 ISO 8601；CLI 会按指定 UTC 偏移折算为当天结束 |
+| `--timezone <offset_seconds>` | modify | 否 | UTC 偏移秒数，例如 `28800` 表示 UTC+8，`-28800` 表示 UTC-8 |
 | `--internal-only` | modify | 否 | 仅对租户内发件人发送自动回复；与 `--all` 互斥 |
 | `--all` | modify | 否 | 对所有发件人发送自动回复，包括外部发件人；与 `--internal-only` 互斥 |
 
@@ -71,7 +71,7 @@ lark-cli mail +auto-reply-modify --as user --yes --disable
       "content_summary": "我正在休假，回来后回复。",
       "start_time": "1786723200000",
       "end_time": "1787068799999",
-      "time_zone": "Asia/Shanghai",
+      "time_zone": "28800",
       "only_send_to_tenant": false
     }
   }
@@ -92,7 +92,7 @@ lark-cli mail +auto-reply-modify --as user --yes --disable
       "content_summary": "我正在休假，回来后回复。",
       "start_time": "1786723200000",
       "end_time": "1787068799999",
-      "time_zone": "Asia/Shanghai",
+      "time_zone": "28800",
       "only_send_to_tenant": false
     }
   }
@@ -109,5 +109,5 @@ lark-cli mail +auto-reply-modify --as user --yes --disable
 | `images` | 内联图片列表；包含 `cid`、`file_key`、`image_name` 和 `file_size` |
 | `start_time` | 自动回复开始时间 |
 | `end_time` | 自动回复结束时间 |
-| `time_zone` | 自动回复时间范围对应的时区 |
+| `time_zone` | 自动回复时间范围对应的 UTC 偏移秒数字符串 |
 | `only_send_to_tenant` | 是否仅对租户内发件人发送自动回复 |

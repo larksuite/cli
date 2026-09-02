@@ -30,6 +30,8 @@ const (
 	maxAutoReplyContentHTMLRunes = 20000
 	maxAutoReplyImageCount       = 250
 	maxAutoReplyContentBytes     = 25 * 1024 * 1024
+	minAutoReplyTimezoneOffset   = -12 * 60 * 60
+	maxAutoReplyTimezoneOffset   = 14 * 60 * 60
 )
 
 var autoReplyDataImageRegexp = regexp.MustCompile(`(?i)<img\s(?:[^>]*?\s)?src\s*=\s*["'](data:image/[^"']+)["']`)
@@ -77,7 +79,7 @@ var MailAutoReplyModify = common.Shortcut{
 		{Name: "content-file", Desc: "Read auto-reply content from a file in the current directory. Local and data URI images are supported. Mutually exclusive with --content."},
 		{Name: "start", Desc: "Start date as Unix timestamp or ISO 8601. Stored as the day's 00:00:00.000."},
 		{Name: "end", Desc: "End date as Unix timestamp or ISO 8601. Stored as the day's 23:59:59.999."},
-		{Name: "timezone", Desc: "Time zone for the auto-reply range, e.g. Asia/Shanghai. Defaults to the start time zone when it can be inferred."},
+		{Name: "timezone", Desc: "UTC offset seconds for the auto-reply range, e.g. 28800 for UTC+8."},
 		{Name: "internal-only", Type: "bool", Desc: "Only send auto-replies to tenant-internal senders."},
 		{Name: "all", Type: "bool", Desc: "Send auto-replies to all senders, including external senders."},
 	},
@@ -236,8 +238,6 @@ func buildAutoReplyPatch(ctx context.Context, runtime *common.RuntimeContext, up
 	}
 	if timezone != "" {
 		autoReply["time_zone"] = timezone
-	} else if inferred := inferAutoReplyTimezone(runtime.Str("start")); inferred != "" {
-		autoReply["time_zone"] = inferred
 	}
 	if runtime.Bool("internal-only") {
 		autoReply["only_send_to_tenant"] = true
@@ -301,7 +301,7 @@ func validateAutoReplyFinal(patch, autoReply map[string]interface{}) error {
 	}
 	loc := time.Local
 	if timezone != "" {
-		loadedLoc, err := time.LoadLocation(timezone)
+		loadedLoc, err := autoReplyLocation(timezone, time.Local)
 		if err != nil {
 			return mailValidationParamError("--timezone", "invalid time_zone: %s", timezone)
 		}
@@ -531,10 +531,34 @@ func validateAutoReplyTimezone(timezone string) error {
 	if timezone == "" {
 		return nil
 	}
-	if _, err := time.LoadLocation(timezone); err != nil {
-		return mailValidationParamError("--timezone", "invalid --timezone %q", timezone).WithCause(err)
+	if _, err := parseAutoReplyTimezoneOffset(timezone); err != nil {
+		return err
 	}
 	return nil
+}
+
+func parseAutoReplyTimezoneOffset(timezone string) (int, error) {
+	offset, err := strconv.Atoi(strings.TrimSpace(timezone))
+	if err != nil {
+		return 0, mailValidationParamError("--timezone", "--timezone must be UTC offset seconds, e.g. 28800 for UTC+8").WithCause(err)
+	}
+	if offset < minAutoReplyTimezoneOffset || offset > maxAutoReplyTimezoneOffset {
+		return 0, mailValidationParamError("--timezone", "--timezone must be between %d and %d seconds", minAutoReplyTimezoneOffset, maxAutoReplyTimezoneOffset)
+	}
+	return offset, nil
+}
+
+func autoReplyOffsetLocation(offset int) *time.Location {
+	return time.FixedZone(autoReplyOffsetName(offset), offset)
+}
+
+func autoReplyOffsetName(offset int) string {
+	sign := "+"
+	if offset < 0 {
+		sign = "-"
+		offset = -offset
+	}
+	return fmt.Sprintf("UTC%s%02d:%02d", sign, offset/3600, offset%3600/60)
 }
 
 func validateAutoReplyContentFilePath(path string) error {
@@ -751,9 +775,9 @@ func parseAutoReplyDateMillis(flag, raw, timezone string, endOfDay bool) (string
 
 func parseAutoReplyISODate(raw, timezone string) (time.Time, error) {
 	if timezone != "" && !autoReplyHasExplicitZone(raw) {
-		loc, err := time.LoadLocation(timezone)
+		loc, err := autoReplyLocation(timezone, time.Local)
 		if err != nil {
-			return time.Time{}, mailValidationParamError("--timezone", "invalid --timezone %q", timezone).WithCause(err)
+			return time.Time{}, err
 		}
 		for _, layout := range []string{"2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02"} {
 			if t, err := time.ParseInLocation(layout, raw, loc); err == nil {
@@ -766,9 +790,9 @@ func parseAutoReplyISODate(raw, timezone string) (time.Time, error) {
 		return time.Time{}, err
 	}
 	if timezone != "" {
-		loc, err := time.LoadLocation(timezone)
+		loc, err := autoReplyLocation(timezone, time.Local)
 		if err != nil {
-			return time.Time{}, mailValidationParamError("--timezone", "invalid --timezone %q", timezone).WithCause(err)
+			return time.Time{}, err
 		}
 		t = t.In(loc)
 	}
@@ -778,6 +802,9 @@ func parseAutoReplyISODate(raw, timezone string) (time.Time, error) {
 func autoReplyLocation(timezone string, fallback *time.Location) (*time.Location, error) {
 	if timezone == "" {
 		return fallback, nil
+	}
+	if offset, err := parseAutoReplyTimezoneOffset(timezone); err == nil {
+		return autoReplyOffsetLocation(offset), nil
 	}
 	loc, err := time.LoadLocation(timezone)
 	if err != nil {
@@ -803,20 +830,6 @@ func autoReplyHasExplicitZone(raw string) bool {
 		return false
 	}
 	return strings.ContainsAny(raw[tPos+1:], "+-")
-}
-
-func inferAutoReplyTimezone(rawStart string) string {
-	if rawStart == "" {
-		return ""
-	}
-	t, err := parseISO8601(rawStart)
-	if err != nil {
-		return ""
-	}
-	if name := t.Location().String(); name != "" && name != "UTC" && name != "Local" {
-		return name
-	}
-	return ""
 }
 
 func normalizeAutoReplyFields(in map[string]interface{}) map[string]interface{} {
