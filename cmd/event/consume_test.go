@@ -182,9 +182,11 @@ func TestSanitizeOutputDir(t *testing.T) {
 			in:   "events/today",
 		},
 		{
-			name:       "tilde rejected explicitly",
+			// ~ expands to the home directory, which is not an allow root
+			// (only ~/files is), so the policy layer rejects it.
+			name:       "tilde outside allowlist rejected",
 			in:         "~/events",
-			wantSentry: errOutputDirTilde,
+			wantSentry: errOutputDirUnsafe,
 		},
 		{
 			name:       "parent escape rejected",
@@ -192,8 +194,8 @@ func TestSanitizeOutputDir(t *testing.T) {
 			wantSentry: errOutputDirUnsafe,
 		},
 		{
-			name:       "absolute path rejected",
-			in:         "/tmp/events",
+			name:       "denylisted absolute path rejected",
+			in:         "/etc/events",
 			wantSentry: errOutputDirUnsafe,
 		},
 	}

@@ -131,9 +131,6 @@ var DriveUpdateTitle = common.Shortcut{
 		}
 		spec.Title = guard.Title
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Updating %s %s title to %q...\n",
-			spec.Ref.Type, common.MaskToken(spec.Ref.Token), spec.Title)
-
 		if _, err := runtime.CallAPITyped(
 			"PATCH",
 			driveUpdateTitlePath(spec.Ref.Token),

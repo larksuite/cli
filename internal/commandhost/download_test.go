@@ -106,7 +106,7 @@ func TestExternalDownloadRejectsTraversalBeforeNetwork(t *testing.T) {
 		OnMatch: func(*http.Request) { called = true },
 	})
 
-	root.SetArgs([]string{"drive", "+external-backup", "--file-token", "file_1", "--output", "../escape/file.bin", "--as", "user"})
+	root.SetArgs([]string{"drive", "+external-backup", "--file-token", "file_1", "--output", "../../../../../../../../../../../../escape/file.bin", "--as", "user"})
 	_, err := root.ExecuteC()
 	var validation *errs.ValidationError
 	if !errors.As(err, &validation) || validation.Subtype != errs.SubtypeInvalidArgument {

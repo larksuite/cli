@@ -60,6 +60,22 @@ type ImportParams struct {
 	// sniffed the file's real container use this to correct a mislabeled name
 	// so the backend receives the true format.
 	FileExtension string
+	// InputCorrections lets a wrapping shortcut report inputs it rewrote before
+	// handing them over (e.g. sheets +workbook-import correcting a mislabeled
+	// .xls that is really an .xlsx). They land in the result as
+	// input_corrections: the request the backend ran differs from the one the
+	// caller typed, which is a fact the caller may need in order to trust the
+	// outcome — so it belongs in the payload, not on stderr.
+	InputCorrections []ImportInputCorrection
+}
+
+// ImportInputCorrection records one caller input the CLI rewrote before the
+// import ran.
+type ImportInputCorrection struct {
+	Field    string `json:"field"`
+	Declared string `json:"declared"`
+	Actual   string `json:"actual"`
+	Reason   string `json:"reason"`
 }
 
 // spec projects public import parameters into the internal execution model.
@@ -141,8 +157,6 @@ func RunImport(ctx context.Context, runtime *common.RuntimeContext, p ImportPara
 		return uploadErr
 	}
 
-	fmt.Fprintf(runtime.IO().ErrOut, "Creating import task for %s as %s...\n", spec.TargetFileName(), spec.DocType)
-
 	// Step 2: Create import task
 	ticket, err := createDriveImportTask(runtime, spec, fileToken)
 	if err != nil {
@@ -150,11 +164,15 @@ func RunImport(ctx context.Context, runtime *common.RuntimeContext, p ImportPara
 	}
 
 	// Step 3: Poll task
-	fmt.Fprintf(runtime.IO().ErrOut, "Polling import task %s...\n", ticket)
-
-	status, ready, err := pollDriveImportTask(runtime, ticket)
+	status, ready, pollSummary, err := pollDriveImportTask(runtime, ticket)
 	if err != nil {
-		return err
+		// The import is already running server-side, so the ticket is the only
+		// handle back to it. It used to be visible because polling narrated
+		// itself on stderr; now it rides on the typed error, which is the one
+		// artifact a caller still gets on this path.
+		return appendDriveExportRecoveryHint(err, fmt.Sprintf(
+			"the import task was already created (ticket=%s)\ncheck its result with: %s",
+			ticket, driveImportTaskResultCommand(runtime, ticket)))
 	}
 
 	// Some intermediate responses omit the final type, so fall back to the
@@ -186,11 +204,15 @@ func RunImport(ctx context.Context, runtime *common.RuntimeContext, p ImportPara
 	if status.Extra != nil {
 		out["extra"] = status.Extra
 	}
+	if len(p.InputCorrections) > 0 {
+		out["input_corrections"] = p.InputCorrections
+	}
+	pollSummary.attach(out)
 	if !ready {
-		nextCommand := driveImportTaskResultCommand(ticket)
-		fmt.Fprintf(runtime.IO().ErrOut, "Import task is still in progress. Continue with: %s\n", nextCommand)
+		// next_command in the payload is the whole resume story; the stderr copy
+		// it used to carry told a caller nothing extra.
 		out["timed_out"] = true
-		out["next_command"] = nextCommand
+		out["next_command"] = driveImportTaskResultCommand(runtime, ticket)
 	}
 	if ready {
 		if grant := common.AutoGrantCurrentUserDrivePermission(runtime, common.GetString(out, "token"), resultType); grant != nil {

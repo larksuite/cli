@@ -44,7 +44,7 @@ var WikiDeleteSpace = common.Shortcut{
 	Tips: []string{
 		"Deletion is irreversible; double-check --space-id before running.",
 		"This is a high-risk-write command; pass --yes to confirm the deletion.",
-		"If the API returns a long-running task, this command polls for a bounded window and then prints a follow-up drive +task_result command.",
+		"If the API returns a long-running task, this command polls for a bounded window and then returns a follow-up drive +task_result command.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateWikiDeleteSpaceSpec(readWikiDeleteSpaceSpec(runtime))
@@ -54,8 +54,6 @@ var WikiDeleteSpace = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		spec := readWikiDeleteSpaceSpec(runtime)
-		fmt.Fprintf(runtime.IO().ErrOut, "Deleting wiki space %s...\n", spec.SpaceID)
-
 		out, err := runWikiDeleteSpace(ctx, wikiDeleteSpaceAPI{runtime: runtime}, runtime, spec)
 		if err != nil {
 			return err
@@ -170,7 +168,6 @@ func runWikiDeleteSpace(ctx context.Context, client wikiDeleteSpaceClient, runti
 		return out, nil
 	}
 
-	fmt.Fprintf(runtime.IO().ErrOut, "Wiki space delete is async, polling task %s...\n", response.TaskID)
 	status, ready, err := pollWikiDeleteSpaceTask(ctx, client, runtime, response.TaskID)
 	if err != nil {
 		return nil, err
@@ -184,7 +181,6 @@ func runWikiDeleteSpace(ctx context.Context, client wikiDeleteSpaceClient, runti
 
 	if !ready {
 		nextCommand := wikiDeleteSpaceTaskResultCommand(response.TaskID, runtime.As())
-		fmt.Fprintf(runtime.IO().ErrOut, "Wiki delete-space task is still in progress. Continue with: %s\n", nextCommand)
 		out["timed_out"] = true
 		out["next_command"] = nextCommand
 	}

@@ -3,9 +3,11 @@
 
 package convertlib
 
-// ResourceRef is a downloadable resource reference extracted from a message
-// during formatting. Type is the download API resource type ("image" or
-// "file"); MessageID is the message id used as the download API path parameter.
+// ResourceRef is a resource reference for the --download-resources worklist:
+// the single-file resources to fetch from a message (image_key of images,
+// file_key of files/media, and attachment-zone files). Type is the download API
+// resource type ("image" or "file"); MessageID is the message id used as the
+// download API path parameter.
 // For a standalone message that is the message's own id; for a resource carried
 // inside a merge_forward it is the TOP-LEVEL container's id, because the
 // download API addresses forwarded resources by the container, not the sub-item
@@ -60,18 +62,43 @@ func extractResourceRefs(msgType, rawContent, messageID string, mergeSub map[str
 }
 
 // extractPostResourceRefs walks a post body's elements and collects img/media
-// resource refs.
+// resource refs, plus any attachment-zone file keys (top-level "files" array;
+// folder entries, is_folder=true, are excluded — see the inline comment).
+//
+// The rawContent is the message API's post content as returned by get/mget/
+// list, whose attachment zone arrives in the packed response format:
+//
+//	{"zh_cn":{...},"files":[{"file_key":"file_xxx","file_name":"a.txt"}]}
 func extractPostResourceRefs(rawContent, messageID string) []ResourceRef {
 	parsed, err := ParseJSONObject(rawContent)
 	if err != nil || parsed == nil {
 		return nil
 	}
+	var refs []ResourceRef
+	// Attachment zone: top-level files[] each carry a file_key. Only files enter
+	// the download worklist — folders (is_folder=true) are not single-file
+	// resources, and GET /messages/:id/resources/:file_key cannot return one, so
+	// fetching one would only fail. Folders are not hidden from the output:
+	// renderPostAttachments surfaces them as <folder key="..." name="..."/>.
+	if rawFiles, ok := parsed["files"].([]interface{}); ok {
+		for _, raw := range rawFiles {
+			f, _ := raw.(map[string]interface{})
+			if f == nil {
+				continue
+			}
+			if isFolder, _ := f["is_folder"].(bool); isFolder {
+				continue
+			}
+			if key, _ := f["file_key"].(string); key != "" {
+				refs = append(refs, ResourceRef{MessageID: messageID, Key: key, Type: "file"})
+			}
+		}
+	}
 	body := unwrapPostLocale(parsed)
 	if body == nil {
-		return nil
+		return refs
 	}
 	blocks, _ := body["content"].([]interface{})
-	var refs []ResourceRef
 	for _, para := range blocks {
 		elems, _ := para.([]interface{})
 		for _, el := range elems {

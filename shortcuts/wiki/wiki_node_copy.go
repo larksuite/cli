@@ -85,9 +85,6 @@ var WikiNodeCopy = common.Shortcut{
 		spaceID := strings.TrimSpace(runtime.Str("space-id"))
 		nodeToken := strings.TrimSpace(runtime.Str("node-token"))
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Copying wiki node %s from space %s\n",
-			common.MaskToken(nodeToken), common.MaskToken(spaceID))
-
 		apiPath := fmt.Sprintf("/open-apis/wiki/v2/spaces/%s/nodes/%s/copy",
 			validate.EncodePathSegment(spaceID),
 			validate.EncodePathSegment(nodeToken))
@@ -104,8 +101,6 @@ var WikiNodeCopy = common.Shortcut{
 			return err
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Copied to node %s in space %s\n",
-			common.MaskToken(node.NodeToken), common.MaskToken(node.SpaceID))
 		out := wikiNodeCopyOutput(node)
 		if u := wikiNodeURL(runtime.Config.Brand, node); u != "" {
 			out["url"] = u
@@ -117,12 +112,11 @@ var WikiNodeCopy = common.Shortcut{
 	},
 }
 
-func runWikiNodeCopyWithRetry(ctx context.Context, errOut io.Writer, baseDelay time.Duration, call func() (map[string]interface{}, error)) (map[string]interface{}, error) {
+func runWikiNodeCopyWithRetry(ctx context.Context, _ io.Writer, baseDelay time.Duration, call func() (map[string]interface{}, error)) (map[string]interface{}, error) {
 	var lastErr error
 	for attempt := 0; attempt <= wikiNodeCopyMaxRetries; attempt++ {
 		if attempt > 0 {
 			delay := baseDelay << uint(attempt-1)
-			fmt.Fprintf(errOut, "Wiki node copy encountered lock contention, retrying (attempt %d/%d) in %v...\n", attempt, wikiNodeCopyMaxRetries, delay)
 			select {
 			case <-ctx.Done():
 				return nil, wikiNodeCopyBackoffContextError(ctx.Err())

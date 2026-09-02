@@ -11,10 +11,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	neturl "net/url"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -52,51 +54,57 @@ func sheetsInputStatError(flag string, err error) error {
 }
 
 // Drive media parent_type values for uploading an image into a spreadsheet.
-// Native spreadsheets use "sheet_image"; imported "office" spreadsheets use a
-// legacy synthetic-token prefix or a 28-character token whose interleaved
-// product/region marker is "OFL0X". The backend requires
-// "office_sheet_file" for those imported spreadsheets.
+// Native spreadsheets use "sheet_image"; the backend requires
+// "office_sheet_file" for a spreadsheet backed by an imported office file.
+//
+// Recognising one is common.IsLocalOfficeToken's job, not this package's: the
+// token shape is a drive-level property shared with slides, while the
+// parent_type it selects is what differs per domain, so only the mapping below
+// lives here.
 const (
 	sheetImageParentType      = "sheet_image"
 	officeSheetFileParentType = "office_sheet_file"
-	fakeOfficePrefix          = "fake_office_"
-	localOfficePrefix         = "local_office_"
 )
-
-// officePrefixes are the legacy synthetic token prefixes an imported "office"
-// spreadsheet may carry.
-var officePrefixes = []string{fakeOfficePrefix, localOfficePrefix}
-
-func isOfficeSpreadsheet(spreadsheetToken string) bool {
-	for _, prefix := range officePrefixes {
-		if strings.HasPrefix(spreadsheetToken, prefix) {
-			return true
-		}
-	}
-	if len(spreadsheetToken) != 28 {
-		return false
-	}
-	// The five-character marker occupies positions 5, 10, 15, 20, and 25
-	// (1-based) in the interleaved token.
-	marker := []byte{
-		spreadsheetToken[4],
-		spreadsheetToken[9],
-		spreadsheetToken[14],
-		spreadsheetToken[19],
-		spreadsheetToken[24],
-	}
-	return string(marker) == "OFL0X"
-}
 
 // sheetMediaParentType returns the drive media parent_type to use when
 // uploading an image whose parent_node is spreadsheetToken. It is the single
 // place that maps a spreadsheet token to its parent_type so every image-upload
 // entry point (and its dry-run preview) stays consistent.
 func sheetMediaParentType(spreadsheetToken string) string {
-	if isOfficeSpreadsheet(spreadsheetToken) {
+	if common.IsLocalOfficeToken(spreadsheetToken) {
 		return officeSheetFileParentType
 	}
 	return sheetImageParentType
+}
+
+// sheetsDryRunParentType returns the parent_type a dry-run should preview for
+// ref, without resolving anything.
+//
+// It exists so a wiki node_token never reaches sheetMediaParentType. Feeding it
+// one happens to yield the right answer — a wiki node_token carries its own
+// interleaved marker, not the office one, so it falls through to
+// sheetImageParentType — but by accident rather than on purpose. That leaves the
+// preview hostage to the shape of a token it is not even previewing, and to
+// every future rule added to common.IsLocalOfficeToken.
+//
+// A wiki ref is native by construction, not by default:
+// resolveWikiNodeToSpreadsheetToken rejects any node whose obj_type is not
+// "sheet", and a spreadsheet backed by an imported office file sits in drive as
+// a "file" node, so it never survives that gate to reach an upload. That gate is
+// where this assumption has to be revisited if it ever changes; Execute is
+// unaffected either way, since it derives the parent_type from the resolved
+// token.
+//
+// Callers are DryRun hooks, which swallow the parse error to build a
+// best-effort preview; the zero spreadsheetRef they pass on that path is neither
+// a wiki ref nor an office token, so it previews the native value.
+//
+// This mirrors slidesDryRunParentType (shortcuts/slides/slides_media_upload.go).
+func sheetsDryRunParentType(ref spreadsheetRef) string {
+	if ref.Kind == spreadsheetRefWiki {
+		return sheetImageParentType
+	}
+	return sheetMediaParentType(ref.Token)
 }
 
 // uploadSheetImage uploads a local image file as a spreadsheet media asset and
@@ -104,14 +112,90 @@ func sheetMediaParentType(spreadsheetToken string) string {
 // place so the parent_type selection (see sheetMediaParentType) is never
 // duplicated or forgotten at a call site. Callers are expected to have already
 // resolved spreadsheetToken (the upload's parent_node) and stat'd the file.
+//
+// Files over 20 MB go through the chunked endpoint rather than failing.
+// upload_all answers an oversized file with a bare 1061002 "upload media
+// failed: params error" that names neither the size nor the limit, so there is
+// nothing for the caller to act on. Dispatching by size here is what keeps an
+// oversized image working through every sheets upload surface.
 func uploadSheetImage(runtime *common.RuntimeContext, spreadsheetToken, filePath, fileName string, fileSize int64) (string, error) {
-	return common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
+	parentType := sheetMediaParentType(spreadsheetToken)
+	if fileSize <= common.MaxDriveMediaUploadSinglePartSize {
+		return common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
+			FilePath:   filePath,
+			FileName:   fileName,
+			FileSize:   fileSize,
+			ParentType: parentType,
+			ParentNode: &spreadsheetToken,
+		})
+	}
+	return common.UploadDriveMediaMultipartTyped(runtime, common.DriveMediaMultipartUploadConfig{
 		FilePath:   filePath,
 		FileName:   fileName,
 		FileSize:   fileSize,
-		ParentType: sheetMediaParentType(spreadsheetToken),
-		ParentNode: &spreadsheetToken,
+		ParentType: parentType,
+		ParentNode: spreadsheetToken,
 	})
+}
+
+// sheetImageShouldUseMultipart is the dry-run's planning hint for which branch
+// of uploadSheetImage a file will take. It is best-effort by design: a preview
+// may name a path that does not exist yet, and a stat failure plans the
+// single-part step rather than refusing to render. Execute re-stats and decides
+// for itself.
+func sheetImageShouldUseMultipart(fio fileio.FileIO, filePath string) bool {
+	info, err := fio.Stat(filePath)
+	if err != nil {
+		return false
+	}
+	return info.Mode().IsRegular() && info.Size() > common.MaxDriveMediaUploadSinglePartSize
+}
+
+// appendSheetImageUploadDryRun renders the upload step or steps that precede an
+// image write's tool call, so a preview shows the endpoints Execute will
+// actually hit: one upload_all under 20 MB, and the
+// upload_prepare / upload_part / upload_finish trio above it.
+//
+// parentNode is previewed verbatim — sheets dry-runs show the token as given,
+// including an unresolved wiki node_token — while parentType comes from the
+// ref's kind via sheetsDryRunParentType, which is the one value that must not be
+// read out of that token.
+func appendSheetImageUploadDryRun(d *common.DryRunAPI, runtime *common.RuntimeContext, ref spreadsheetRef, filePath, fileName string) {
+	parentType := sheetsDryRunParentType(ref)
+	if sheetImageShouldUseMultipart(runtime.FileIO(), filePath) {
+		d.POST("/open-apis/drive/v1/medias/upload_prepare").
+			Desc("upload local image to drive in chunks, files > 20 MB (parent_type=" + parentType + ")").
+			Body(map[string]interface{}{
+				"file_name":   fileName,
+				"parent_type": parentType,
+				"parent_node": ref.Token,
+				"size":        "<file_size>",
+			}).
+			POST("/open-apis/drive/v1/medias/upload_part").
+			Desc("upload each chunk, repeated <block_num> times").
+			Body(map[string]interface{}{
+				"upload_id": "<upload_id>",
+				"seq":       "<chunk_index>",
+				"size":      "<chunk_size>",
+				"file":      "<chunk_binary>",
+			}).
+			POST("/open-apis/drive/v1/medias/upload_finish").
+			Desc("finish the chunked upload and return the file_token").
+			Body(map[string]interface{}{
+				"upload_id": "<upload_id>",
+				"block_num": "<block_num>",
+			})
+		return
+	}
+	d.POST("/open-apis/drive/v1/medias/upload_all").
+		Desc("upload local image to drive (parent_type=" + parentType + ")").
+		Body(map[string]interface{}{
+			"file_name":   fileName,
+			"parent_type": parentType,
+			"parent_node": ref.Token,
+			"size":        "<file_size>",
+			"file":        "@" + filePath,
+		})
 }
 
 // spreadsheetRef classification: a --url / --spreadsheet-token input names a
@@ -664,6 +748,96 @@ func aggregatedIssueText(err error) string {
 		return msg
 	}
 	return msg + " (" + hint + ")"
+}
+
+// collapseAggregatedIssues renders the collected sub-errors for a folded
+// message, stating each DISTINCT defect once and naming the other locations
+// it occurred at. Results keep first-appearance order.
+//
+// One wrong field name in a payload that styles N cells produces N identical
+// issues, each re-listing the full supported-field vocabulary. 08-18..24
+// eval: a six-cell payload with one bad field spent 1.6k characters saying
+// the same thing six times, and the prescription the agent needed was buried
+// mid-message — the fold meant to save round trips was drowning its own
+// answer. Deduplicated, that payload states the fix once and names the six
+// ranges, which is what a rewrite actually needs.
+//
+// Two issues are "the same defect" when their text matches after every
+// [<index>] is blanked, so cell_styles[0] and cell_styles[7] collapse while
+// two different bad fields never do.
+func collapseAggregatedIssues(probs []error) []string {
+	const maxRepeatPaths = 3
+	type group struct {
+		text  string
+		paths []string
+	}
+	order := make([]string, 0, len(probs))
+	groups := make(map[string]*group, len(probs))
+	for _, e := range probs {
+		text := aggregatedIssueText(e)
+		key := blankIssueIndices(text)
+		g, seen := groups[key]
+		if !seen {
+			g = &group{text: text}
+			groups[key] = g
+			order = append(order, key)
+			continue
+		}
+		g.paths = append(g.paths, issuePathToken(text))
+	}
+	out := make([]string, 0, len(order))
+	for _, key := range order {
+		g := groups[key]
+		if len(g.paths) == 0 {
+			out = append(out, g.text)
+			continue
+		}
+		shown := g.paths
+		suffix := ""
+		if len(shown) > maxRepeatPaths {
+			suffix = fmt.Sprintf(", +%d more", len(shown)-maxRepeatPaths)
+			shown = shown[:maxRepeatPaths]
+		}
+		out = append(out, fmt.Sprintf("%s [same at %d more: %s%s]",
+			g.text, len(g.paths), strings.Join(shown, ", "), suffix))
+	}
+	return out
+}
+
+// blankIssueIndices replaces every [<digits>] with [#], so the grouping key of
+// an issue ignores which item it was found on.
+func blankIssueIndices(text string) string {
+	var b strings.Builder
+	b.Grow(len(text))
+	for i := 0; i < len(text); i++ {
+		if text[i] != '[' {
+			b.WriteByte(text[i])
+			continue
+		}
+		j := i + 1
+		for j < len(text) && text[j] >= '0' && text[j] <= '9' {
+			j++
+		}
+		if j > i+1 && j < len(text) && text[j] == ']' {
+			b.WriteString("[#]")
+			i = j
+			continue
+		}
+		b.WriteByte(text[i])
+	}
+	return b.String()
+}
+
+// issuePathToken is the leading path of an issue message ("--styles.styles[0]
+// .cell_styles[1].border_type"), used to name a repeat's location. Every
+// collected sub-error starts with its path, either inline or as a "path: "
+// prefix added by prefixValidationIssue.
+func issuePathToken(text string) string {
+	token := text
+	if i := strings.IndexByte(token, ' '); i >= 0 {
+		token = token[:i]
+	}
+	return strings.TrimSuffix(token, ":")
 }
 
 // prefixValidationIssue re-labels a collected sub-error with the path it was

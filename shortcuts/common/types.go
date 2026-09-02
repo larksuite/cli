@@ -70,9 +70,10 @@ type Shortcut struct {
 	// OnInvoke, when non-nil, runs from the command's cobra PreRunE — before
 	// cobra validates required flags — so its side effect fires even when the
 	// call later fails on a missing required flag (which short-circuits before
-	// Validate/Execute). The backward-compat aliases use it to record a
-	// deprecation notice that must surface regardless of whether the call
-	// validates. Fire-and-forget: no args, no return (e.g. deprecation.SetPending).
+	// Validate/Execute). It exists for side effects that must surface
+	// regardless of whether the call validates — recording a deprecation
+	// notice was the original case. No shortcut sets it at present.
+	// Fire-and-forget: no args, no return (e.g. deprecation.SetPending).
 	OnInvoke func()
 
 	// PrintFlagSchema, when non-nil, opts this shortcut into the

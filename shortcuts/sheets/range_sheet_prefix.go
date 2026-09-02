@@ -68,8 +68,8 @@ func rangeSheetPrefixApplies(command string) bool {
 //   - The separator has four equal spellings: "!", the full-width "！"
 //     (TractorLexer.ts, ExclamationMark = `[ \t\r\n]*(?:!|！)[ \t\r\n]*`), and
 //     the backslash-escaped forms of both, which survive shell history
-//     expansion. Legacy v2 normalizes the same set (backward/helpers.go,
-//     sheetRangeSeparatorReplacer).
+//     expansion. The pre-refactor v2 surface normalized the same four
+//     spellings, so nothing a caller could already type is rejected here.
 //   - Quoted names ('My Sheet'!A1) are unwrapped, doubled-quote escape
 //     collapsed. The quotes are what delimit the name, so one may contain a
 //     "!"; escapeSheetName quotes everything that is not pure a-z, so any name

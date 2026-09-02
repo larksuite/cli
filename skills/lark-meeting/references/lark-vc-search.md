@@ -1,7 +1,7 @@
 
 # vc +search
 
-搜索已结束的历史会议记录，支持关键词、时间范围、组织者、参与者、会议室多条件过滤。只读，仅 `--as user`。
+搜索已结束的历史会议记录，支持关键词、时间范围、组织者、参与者、会议室多条件过滤。只读，支持 `--as user` / `--as bot`。
 
 ## 关键词使用边界
 
@@ -28,6 +28,7 @@ lark-cli vc +search --query "周会"
 
 # 通过 9 位会议号查询会议 ID
 lark-cli vc +search --query "123456789" --format json --as user
+lark-cli vc +search --query "123456789" --format json --as bot
 
 # 查询某一天开过的会（单日查询时，start 和 end 必须填写同一天）
 lark-cli vc +search --start 2026-03-10 --end 2026-03-10
@@ -75,9 +76,11 @@ lark-cli vc +search --query "周会" --page-token "<PAGE_TOKEN>"
 
 `vc +search` 只能搜索已结束的历史会议记录，不用于查询未来日程。查询未来会议安排请使用 [lark-calendar](../../lark-calendar/SKILL.md)。
 
-### 3. 仅支持 user 身份
+### 3. 支持 user 和 bot 身份
 
-该接口仅支持 `user` 身份，使用前需完成 `lark-cli auth login` 并具备 `vc:meeting.search:read` 权限。
+该接口支持 `--as user` 和 `--as bot`。user 身份需要完成 `lark-cli auth login` 并具备 `vc:meeting.search:read` 权限；bot 身份使用应用的 tenant access token，需要确认当前应用已开通 `vc:meeting.search:read` scope，且运行环境能获取有效的 TAT。
+
+搜索得到 `meeting_id` 后，后续 `vc +detail`、`vc +recording`、`vc meeting get` 和 `note +detail` 必须显式沿用本次搜索使用的身份。不要为了绕过权限错误自动切换身份。
 
 ### 4. 支持分页
 
@@ -131,7 +134,7 @@ lark-cli vc +search --query "周会" --page-size 15 --page-token "<PAGE_TOKEN>"
 | 命令直接报错，要求提供过滤条件 | 没有传入 `--query`、时间范围或任何过滤 ID | 至少补充一个过滤条件后重试 |
 | 时间参数校验失败 | `--start` 或 `--end` 格式不合法 | 改用 ISO 8601 或 `YYYY-MM-DD` |
 | 搜不到未来会议 | `vc +search` 只查历史会议 | 改用 [lark-calendar](../../lark-calendar/SKILL.md) 查询未来日程 |
-| 权限不足 | 未授权 `vc:meeting.search:read` | 使用 `auth login` 完成授权 |
+| 权限不足 | 未授权 `vc:meeting.search:read` | `--as user`：按提示完成用户授权；`--as bot`：检查 tenant access token 和应用 scope，不要执行 `auth login` |
 
 ## 提示
 - 必须使用 `--format json` 输出，便于稳定解析。

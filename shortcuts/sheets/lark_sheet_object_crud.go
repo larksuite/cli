@@ -852,23 +852,17 @@ func newFloatImageWriteShortcut(command, description, op string, withIDFlag, isH
 			return err
 		},
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-			token, _ := resolveSpreadsheetToken(runtime)
+			ref, _ := parseSpreadsheetRef(runtime)
+			token := ref.Token
 			sheetID, sheetName, _ := resolveSheetSelector(runtime)
 			input, _ := floatImageWriteInput(runtime, token, sheetID, sheetName, op, withIDFlag, "")
 			// With a local --image, Execute first uploads the file; surface that
 			// extra step in the preview (mirrors +cells-set-image's dry-run).
 			if img := strings.TrimSpace(runtime.Str("image")); img != "" {
 				manageBody, _ := buildToolBody("manage_float_image_object", input)
-				return common.NewDryRunAPI().
-					POST("/open-apis/drive/v1/medias/upload_all").
-					Desc("upload local image to drive (parent_type=" + sheetMediaParentType(token) + ")").
-					Body(map[string]interface{}{
-						"file_name":   floatImageName(runtime),
-						"parent_type": sheetMediaParentType(token),
-						"parent_node": token,
-						"size":        "<file_size>",
-						"file":        "@" + img,
-					}).
+				d := common.NewDryRunAPI()
+				appendSheetImageUploadDryRun(d, runtime, ref, img, floatImageName(runtime))
+				return d.
 					POST(toolInvokePath(token, ToolKindWrite)).
 					Desc("create float image referencing the uploaded file_token").
 					Body(manageBody)

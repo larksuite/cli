@@ -66,7 +66,7 @@ lark-cli apps +release-get --as user --app-id app_xxx --release-id <上一步返
 
 #### 首次开发（无 app，无代码）
 
-`+create(html)` → `+init` → 加载 [`creative-design`](../creative-design/SKILL.md) skill 在 repo 根目录产出文件 → `git add .` + `git commit` → `git push origin sprint/default` → `+release-create` → `+release-get`。
+`+create(html)` → `+init` → 加载 [`creative-design`](../creative-design/creative-design.md) skill 在 repo 根目录产出文件 → `git add .` + `git commit` → `git push origin sprint/default` → `+release-create` → `+release-get`。
 
 ```bash
 lark-cli apps +create --name "活动页" --app-type html --as user

@@ -231,7 +231,7 @@ func TestMailWatchOutputDirRejectsUnsafePathTyped(t *testing.T) {
 
 	err := runMountedMailShortcut(t, MailWatch, []string{
 		"+watch",
-		"--output-dir", "../escape",
+		"--output-dir", "../../../../../../../../../../../../escape",
 	}, f, stdout)
 	if err == nil {
 		t.Fatal("expected unsafe output-dir error")

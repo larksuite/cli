@@ -8,7 +8,7 @@
 
 如需修改已有草稿，不要使用此命令，请使用 `lark-cli mail +draft-edit`。
 
-**CRITICAL - 编辑邮件内容前 MUST 先用 Read 工具读取 [references/lark-mail-html.md](references/lark-mail-html.md)，其中包含邮件书写规范**
+**CRITICAL - 编辑邮件内容前 MUST 先用 Read 工具读取 [lark-mail-html.md](lark-mail-html.md)，其中包含邮件书写规范**
 
 ## 安全约束
 
