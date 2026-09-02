@@ -30,6 +30,7 @@ def _page(**overrides) -> dict:
         "title": "退货政策说明",
         "publish_role": "knowledge_page",
         "write_via": "docs_update",
+        "proposed_action": "add",
         "target_obj_type": "docx",
         "target_token": "wikcn_NODE",
         "sensitivity": "internal",
@@ -86,6 +87,33 @@ class KnowledgePageGateTest(unittest.TestCase):
         result = publish_gate.evaluate_item(_page(write_via="magic"))
         self.assertFalse(result["ready"])
         self.assertTrue(any("未知写法" in r for r in result["blocked_reasons"]))
+
+    def test_update_via_import_docx_blocks(self):
+        # update/merge must not route through import_docx (would dup a child page).
+        for action in ("update", "merge"):
+            result = publish_gate.evaluate_item(
+                _page(proposed_action=action, write_via="import_docx")
+            )
+            self.assertFalse(result["ready"], action)
+            self.assertTrue(any("import_docx" in r for r in result["blocked_reasons"]), action)
+
+    def test_update_via_docs_update_ok(self):
+        result = publish_gate.evaluate_item(_page(proposed_action="update", write_via="docs_update"))
+        self.assertTrue(result["ready"])
+
+    def test_add_via_import_docx_ok(self):
+        result = publish_gate.evaluate_item(_page(proposed_action="add", write_via="import_docx"))
+        self.assertTrue(result["ready"])
+
+    def test_unknown_action_fails_closed(self):
+        result = publish_gate.evaluate_item(_page(proposed_action="publish"))
+        self.assertFalse(result["ready"])
+        self.assertTrue(any("处置动作未分类或非法" in r for r in result["blocked_reasons"]))
+
+    def test_missing_action_fails_closed(self):
+        result = publish_gate.evaluate_item(_page(proposed_action=""))
+        self.assertFalse(result["ready"])
+        self.assertTrue(any("处置动作未分类或非法" in r for r in result["blocked_reasons"]))
 
     def test_missing_token_blocks(self):
         result = publish_gate.evaluate_item(_page(target_token=""))

@@ -56,9 +56,11 @@ class KbGateTest(unittest.TestCase):
         self.assertTrue(any("不是文档节点" in r for r in result["blocked_reasons"]))
 
     def test_new_docx_allows_non_docx_source(self):
-        # new_docx creates a fresh docx page beside a non-docx node; not blocked.
+        # new_docx creates a fresh docx page beside a non-docx node; not blocked
+        # when a confirmed destination is given.
         result = kb_gate.evaluate_node(
-            _node(obj_type="sheet", write_mode="new_docx", draft_state="empty_placeholder")
+            _node(obj_type="sheet", write_mode="new_docx", draft_state="empty_placeholder",
+                  parent_node_token="wikcn_PARENT")
         )
         self.assertTrue(result["ready"])
 
@@ -152,15 +154,32 @@ class KbGateTest(unittest.TestCase):
         self.assertTrue(any("node_token" in r for r in result["blocked_reasons"]))
 
     def test_new_docx_without_token_ok(self):
-        # new_docx creates a fresh node, so it does not require an existing token.
+        # new_docx creates a fresh node, so it does not require an existing token,
+        # but it does require a confirmed destination (parent or space).
         result = kb_gate.evaluate_node(
-            _node(node_token="", obj_type="", write_mode="new_docx")
+            _node(node_token="", obj_type="", write_mode="new_docx", parent_node_token="wikcn_PARENT")
         )
         self.assertTrue(result["ready"])
 
+    def test_new_docx_with_space_ok(self):
+        result = kb_gate.evaluate_node(
+            _node(node_token="", obj_type="", write_mode="new_docx", space_id="spc_X")
+        )
+        self.assertTrue(result["ready"])
+
+    def test_new_docx_without_destination_blocks(self):
+        # No parent and no space: a user-mode create would fall back to my_library.
+        result = kb_gate.evaluate_node(
+            _node(node_token="", obj_type="", write_mode="new_docx")
+        )
+        self.assertFalse(result["ready"])
+        self.assertTrue(any("建节点位置" in r for r in result["blocked_reasons"]))
+
     def test_new_docx_on_existing_docx_blocks(self):
         # new_docx must not target a node that is already docx.
-        result = kb_gate.evaluate_node(_node(obj_type="docx", write_mode="new_docx"))
+        result = kb_gate.evaluate_node(
+            _node(obj_type="docx", write_mode="new_docx", parent_node_token="wikcn_PARENT")
+        )
         self.assertFalse(result["ready"])
         self.assertTrue(any("new_docx" in r for r in result["blocked_reasons"]))
 

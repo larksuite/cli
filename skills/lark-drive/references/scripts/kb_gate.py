@@ -23,6 +23,8 @@ Input: a JSON object (via --plan <file> or stdin) shaped as:
           "obj_type": "docx",              # wiki node object type
           "write_mode": "overwrite",       # overwrite | append | new_docx | skip
           "draft_state": "empty_placeholder",  # empty_placeholder | has_draft
+          "parent_node_token": "",         # new_docx: confirmed parent node (alt to space_id)
+          "space_id": "",                   # new_docx: confirmed target space (alt to parent)
           "overwrite_confirmed": false,    # user explicitly confirmed rewriting a draft
           "governance": {                  # the 6-row governance table fields
             "source": "据业务常识制定",
@@ -157,6 +159,11 @@ def evaluate_node(node: dict) -> dict:
     # --- Hard gate 0: a real write needs a stable node target ---
     if not token and write_mode != "new_docx":
         hard_reasons.append("缺少 node_token，无法定位写入目标")
+    # new_docx must carry a confirmed destination; otherwise a user-mode create
+    # silently falls back to my_library instead of the target space.
+    if write_mode == "new_docx":
+        if is_empty(node.get("parent_node_token")) and is_empty(node.get("space_id")):
+            hard_reasons.append("new_docx 缺少确认的建节点位置（parent_node_token 或 space_id）")
 
     # --- Hard gate 1: carrier must be a document node ---
     obj_type = str(node.get("obj_type") or "").strip().lower()

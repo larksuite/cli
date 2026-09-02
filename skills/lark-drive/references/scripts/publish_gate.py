@@ -33,6 +33,7 @@ Input: a JSON object (via --plan <file> or stdin) shaped as:
           "title": "退货政策说明",
           "publish_role": "knowledge_page",   # knowledge_page | source_attachment
           "write_via": "docs_update",          # docs_update | import_docx | node_create_docx | drive_upload
+          "proposed_action": "add",             # add | update | merge | reference | review | skip (fail-closed)
           "target_obj_type": "docx",           # target wiki node object type
           "target_token": "wikcn_NODE",        # node/obj token (blank ok for node_create_docx)
           "parent_token": "",                   # node_create_docx: confirmed parent node token
@@ -110,6 +111,11 @@ VALID_WRITE_VIA = PAGE_WRITE_VIA | {ATTACHMENT_WRITE_VIA}
 VALID_SENSITIVITY = {"public", "internal", "restricted", "prohibited"}
 VALID_CONFLICT = {"none", "suspected", "confirmed", "resolved"}
 VALID_PARSE = {"parsed", "partial", "unsupported", "failed"}
+# Closed proposed_action enum. import_docx creates a fresh page and is only
+# valid for `add`; update/merge target an existing page and must use docs_update
+# (routing an update through import_docx would create a duplicate child page).
+VALID_ACTIONS = {"add", "update", "merge", "reference", "review", "skip"}
+UPDATE_ACTIONS = {"update", "merge"}
 # Conflict states that block production until a human resolves them.
 BLOCKING_CONFLICTS = {"suspected", "confirmed"}
 # Parse states that cannot yield a searchable body at all.
@@ -226,6 +232,7 @@ def _evaluate_knowledge_page(item: dict, title: str, source_id: str) -> dict:
     write_via = str(item.get("write_via") or "")
     token = str(item.get("target_token") or "").strip()
     obj_type = str(item.get("target_obj_type") or "").strip().lower()
+    action = str(item.get("proposed_action") or "").strip().lower()
 
     # --- Hard gate: write_via must be a page-producing path ---
     if write_via not in VALID_WRITE_VIA:
@@ -234,6 +241,14 @@ def _evaluate_knowledge_page(item: dict, title: str, source_id: str) -> dict:
         # The single most important rule: uploading the original file cannot
         # complete a knowledge page.
         hard_reasons.append("drive_upload 只能上传原文件，不能完成知识页")
+
+    # --- Hard gate: proposed_action must be a known action, and update/merge
+    # must not route through import_docx (which would create a duplicate child
+    # page instead of updating the existing target). ---
+    if action not in VALID_ACTIONS:
+        hard_reasons.append(f"处置动作未分类或非法（proposed_action={item.get('proposed_action')}）")
+    elif action in UPDATE_ACTIONS and write_via == "import_docx":
+        hard_reasons.append("update/merge 不能用 import_docx（会新增子页），须用 docs_update 更新既有页")
 
     # --- Hard gate: a real write needs a stable target ---
     if not token and write_via != "node_create_docx":

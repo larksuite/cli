@@ -31,8 +31,10 @@
       "title": "退货政策说明",
       "publish_role": "knowledge_page",
       "write_via": "import_docx",
+      "proposed_action": "add",
       "target_obj_type": "docx",
       "target_token": "wikcn_NODE",
+      "target_obj_token": "doxcn_OBJ",
       "parent_token": "",
       "space_id": "",
       "sensitivity": "internal",
@@ -58,8 +60,10 @@
 
 - `publish_role`：`knowledge_page`（默认，需 governance）/ `source_attachment`（原文件附件，需 `attachment_confirmed=true`、`write_via=drive_upload`、`target_token` 指向确认的 Wiki 节点，无 governance）。
 - `write_via`：`import_docx` / `docs_update` / `node_create_docx`（知识页三种写法）/ `drive_upload`（仅附件）。
+- `proposed_action`：`add` / `update` / `merge` / `reference` / `review` / `skip`。**闭集，缺失或非法值一律硬拦**；`update` / `merge` 面向既有页必须走 `docs_update`，用 `import_docx` 会被硬拦（避免新增重复子页）。
 - `target_obj_type`：目标节点对象类型；知识页必须为 `docx`。
-- `target_token`：既有目标节点 token；`node_create_docx` 可空，但须提供 `parent_token` 或 `space_id`。
+- `target_token`：既有目标节点 token（Wiki `wikcn_*`），用于 Wiki 操作；`node_create_docx` 可空，但须提供 `parent_token` 或 `space_id`。
+- `target_obj_token`：目标页的 docx 对象 token（`doxcn_*`）或规范 Wiki URL，供图片类 `docs +update` 绑定本地资源用——裸 `wikcn_*` node token 不触发资源解析；无图片资源时可省略。
 - `parent_token` / `space_id`：`node_create_docx` 的确认建节点位置（二选一必填），防止 user 身份下静默回退到个人库 my_library。
 - `sensitivity`：`public` / `internal` / `restricted` / `prohibited`。**闭集，缺失或非法值一律硬拦**（不当安全放行）。
 - `conflict_status`：`none` / `suspected` / `confirmed` / `resolved`。**闭集，缺失或非法值一律硬拦**。

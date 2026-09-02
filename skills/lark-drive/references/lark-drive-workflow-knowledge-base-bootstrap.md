@@ -90,7 +90,7 @@ Risk / Structure: `R2` / `S2`
 | `TYPE_TRIAGE` | `assess` / `plan` | 结构已读（含新建节点） | 按 `obj_type` / `node_type` 将每个节点分诊为 `writable_docx` / `non_docx_entity` / `shortcut`，填充 `node_class` | 分诊表：可写正文节点、需特殊处理节点及原因 | 存在 `non_docx_entity` / `shortcut` 时为 `true`，否则为 `false` | `GEN_STANDARD` |
 | `GEN_STANDARD` | `assess` / `plan` | 分诊完成 | 加载 outputs 文档；为可写范围生成 `standard_plan`：根节点通用规范 + 各子节点专属维护要求；子节点收录范围优先从草稿归纳，缺失再据业务常识补全 | 维护规范草案预览 | 除非用户直接进入确认，否则为 `false` | `WRITE_CONFIRM` |
 | `WRITE_CONFIRM` | `confirm` | 规范草案就绪 | 生成逐节点写入计划（含 `node_token`、`obj_type`、`write_mode`、6 行治理字段）；运行 `kb_gate.py` 门禁校验，仅 `ready=true` 的节点可进入 `WRITE`，被拦节点记入 `unsupported_checks`，门禁将 `narrowed` 节点的页面状态收紧为进行中；向用户展示计划、门禁结果、精确正文 / diff 与跳过原因 | 写入计划表（含 node_token + 命令族 + 门禁结果）+ 逐节点精确内容 / diff + 被拦 / 收紧 / 跳过清单及原因 | `true` | `WRITE` or `DONE` |
-| `WRITE` | `execute` | 用户已确认写入范围 | 加载 doc-update reference；按 `write_mode_map` 逐节点写入（根节点与子节点可并行）；非 docx 节点仅在用户选择 `new_docx` 时新建 docx 规范页 | 写入进度报告 | 除非被阻断，否则为 `false` | `VERIFY` |
+| `WRITE` | `execute` | 用户已确认写入范围 | 加载 doc-update reference；按 `write_mode_map` 逐节点写入（根节点与子节点可并行）；**每个 `overwrite` 节点落笔前先 `docs +fetch` 重读确认仍为 `empty_placeholder` 并携带读到的 `revision` 再写，内容已变则停下重新确认**；非 docx 节点仅在用户选择 `new_docx` 时新建 docx 规范页 | 写入进度报告 | 除非被阻断，否则为 `false` | `VERIFY` |
 | `VERIFY` | `verify` | 写入完成 | 对每个已写节点执行 fresh read 校验内容落地；汇总 `unsupported_checks` | 验证表和最终汇总 | `false` | `DONE` |
 | `DONE` | `done` | 无更多动作 | 停止 | 最终回复：已更新节点数、跳过节点及原因、知识库链接 | `false` | End |
 
@@ -106,7 +106,7 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 | `TYPE_TRIAGE` | 本文件的 `Node Type Triage` |
 | `GEN_STANDARD` | [`lark-drive-workflow-knowledge-base-bootstrap-outputs.md`](lark-drive-workflow-knowledge-base-bootstrap-outputs.md) |
 | `WRITE_CONFIRM` | [`lark-drive-workflow-knowledge-base-bootstrap-outputs.md`](lark-drive-workflow-knowledge-base-bootstrap-outputs.md)；门禁脚本 `scripts/kb_gate.py` |
-| `WRITE` | [`../../lark-doc/references/lark-doc-update.md`](../../lark-doc/references/lark-doc-update.md)；`new_docx` 时读取 [`../../lark-wiki/references/lark-wiki-node-create.md`](../../lark-wiki/references/lark-wiki-node-create.md) |
+| `WRITE` | [`../../lark-doc/references/lark-doc-update.md`](../../lark-doc/references/lark-doc-update.md)、[`../../lark-doc/references/lark-doc-fetch.md`](../../lark-doc/references/lark-doc-fetch.md)（overwrite 前重读）；`new_docx` 时读取 [`../../lark-wiki/references/lark-wiki-node-create.md`](../../lark-wiki/references/lark-wiki-node-create.md) |
 | `VERIFY` | 复用 `READ_STRUCTURE` 阶段的读取上下文 |
 
 ## Root Node Resolution
@@ -144,7 +144,9 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 | 已有用户实质草稿（`has_draft`） | `append`（默认） | 追加规范，保留用户原文 |
 | 用户在 `WRITE_CONFIRM` 明确点名要求重写的有草稿节点 | `overwrite` | 需用户对该节点显式确认 |
 
-`draft_state` 必须来自**写入前对目标节点的新鲜读取**（`WRITE_CONFIRM` 阶段的 `docs +fetch`），不得复用 `READ_STRUCTURE` 早期缓存或过期计划里的 `draft_state`。门禁只能校验传入 JSON、无法验证其新鲜度；若 `overwrite` 用了过期的 `empty_placeholder` 判定，可能覆盖此后新增的草稿。有疑问时改用 `append` 或重新读取确认。
+`draft_state` 必须来自对目标节点的**新鲜读取**（`docs +fetch`），不得复用 `READ_STRUCTURE` 早期缓存或过期计划里的 `draft_state`；门禁只能校验传入 JSON、无法验证其新鲜度。
+
+**关键：新鲜读取的时机在用户确认之后、每次 `overwrite` 落笔之前**，而不仅是 `WRITE_CONFIRM` 生成计划时。因为 `WRITE_CONFIRM` 会停下等用户确认，等待期间协作者可能给"占位"节点补入草稿；若沿用确认前的 `empty_placeholder` 判定、且 `docs +update` 用默认 `revision-id=-1` 写最新版，`overwrite` 仍会覆盖新内容。因此在 `WRITE` 阶段对每个 `overwrite` 节点：先 `docs +fetch` 重读并记录其 `revision`，确认仍为 `empty_placeholder`（内容未变）后，携带读到的 `revision` 再写；若发现内容已变，停下重新确认（或改用 `append`），不静默覆盖。有疑问时优先 `append`。
 
 ## Write Gate
 
@@ -157,11 +159,11 @@ python3 "<SKILL_ROOT>/references/scripts/kb_gate.py" --plan "<写入计划 JSON 
 # 或经 stdin：cat plan.json | python3 "<...>/kb_gate.py" --plan -
 ```
 
-写入计划 JSON 每个节点提供：`node_token`、`title`、`obj_type`、`write_mode`（`overwrite`/`append`/`new_docx`/`skip`）、`draft_state`（`empty_placeholder`/`has_draft`）、`overwrite_confirmed`，以及 6 行治理字段 `governance`（`source`、`owner`、`version_status`、`scope_visibility`、`effective_update`、`review_policy`、`page_status`）。
+写入计划 JSON 每个节点提供：`node_token`、`title`、`obj_type`、`write_mode`（`overwrite`/`append`/`new_docx`/`skip`）、`draft_state`（`empty_placeholder`/`has_draft`）、`overwrite_confirmed`，`new_docx` 另需 `parent_node_token` 或 `space_id`（确认的建节点位置），以及 6 行治理字段 `governance`（`source`、`owner`、`version_status`、`scope_visibility`、`effective_update`、`review_policy`、`page_status`）。
 
 门禁判定分两级：
 
-- **硬拦（`ready=false`，不得写入）**：载体不是 docx 且写法不是 `new_docx`、缺少 6 行治理表、必填字段（来源、适用与可见范围）为空、页面状态非法、覆盖有草稿节点但缺 `overwrite_confirmed`、覆盖写入但 `draft_state` 缺失或未知（fail-closed，避免误清空草稿）、未知写法。
+- **硬拦（`ready=false`，不得写入）**：载体不是 docx 且写法不是 `new_docx`、缺少 6 行治理表、必填字段（来源、适用与可见范围）为空、页面状态非法、覆盖有草稿节点但缺 `overwrite_confirmed`、覆盖写入但 `draft_state` 缺失或未知（fail-closed，避免误清空草稿）、`new_docx` 缺确认的建节点位置（`parent_node_token` / `space_id` 都为空，避免 user 身份回退个人库 my_library）、未知写法。
 - **一致性收紧（`narrowed=true`，可写但降级）**：治理字段含“待确认”却把 `page_status` 标为“已完成”时，强制收紧为“进行中”，以保留“先建框架、后续补全”的场景，同时不让残缺内容冒充已完成。
 
 `ready=false` 的节点记入 `unsupported_checks` 并在写入计划中标出原因，不进入 `WRITE`；`narrowed=true` 的节点按收紧后的状态写入。
@@ -178,7 +180,7 @@ python3 "<SKILL_ROOT>/references/scripts/kb_gate.py" --plan "<写入计划 JSON 
 | `TYPE_TRIAGE` | 无写命令 | 仅对已读结构做分类 |
 | `GEN_STANDARD` | 无写命令 | 模型生成维护规范 |
 | `WRITE_CONFIRM` | 无飞书写命令；`python3 <SKILL_ROOT>/references/scripts/kb_gate.py`（本地只读门禁校验） | 生成写入计划、门禁校验并请用户确认 |
-| `WRITE` | `docs +update`（`overwrite` / `append` / `block_*`）；仅 `new_docx` 时 `wiki +node-create --obj-type docx` | 执行已确认的受控写入 |
+| `WRITE` | `docs +fetch`（overwrite 前重读 draft_state 与 revision）、`docs +update`（`overwrite` / `append` / `block_*`）；仅 `new_docx` 时 `wiki +node-create --obj-type docx` | 执行已确认的受控写入 |
 | `VERIFY` | `docs +fetch`、`wiki +node-list` | fresh read 校验写入结果 |
 
 ## Transition Rules

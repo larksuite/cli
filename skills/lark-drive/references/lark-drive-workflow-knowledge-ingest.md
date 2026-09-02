@@ -122,7 +122,7 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 | `NODE_PROPOSE` | [`lark-drive-workflow-knowledge-ingest-analyze.md`](lark-drive-workflow-knowledge-ingest-analyze.md)、[`../../lark-wiki/references/lark-wiki-node-create.md`](../../lark-wiki/references/lark-wiki-node-create.md) |
 | `ANALYZE_TRIAGE` | [`lark-drive-workflow-knowledge-ingest-analyze.md`](lark-drive-workflow-knowledge-ingest-analyze.md) |
 | `PUBLISH_PLAN` | [`lark-drive-workflow-knowledge-ingest-publish.md`](lark-drive-workflow-knowledge-ingest-publish.md)、[`lark-drive-workflow-knowledge-ingest-outputs.md`](lark-drive-workflow-knowledge-ingest-outputs.md)；门禁脚本 `scripts/publish_gate.py` |
-| `CONVERT_WRITE` | [`lark-drive-workflow-knowledge-ingest-publish.md`](lark-drive-workflow-knowledge-ingest-publish.md)、[`../../lark-drive/references/lark-drive-import.md`](lark-drive-import.md)、[`../../lark-doc/references/lark-doc-update.md`](../../lark-doc/references/lark-doc-update.md)；`import_docx` 迁入时 [`../../lark-wiki/references/lark-wiki-move.md`](../../lark-wiki/references/lark-wiki-move.md)；`new_docx` 时 [`../../lark-wiki/references/lark-wiki-node-create.md`](../../lark-wiki/references/lark-wiki-node-create.md)；附件时 [`lark-drive-upload.md`](lark-drive-upload.md) |
+| `CONVERT_WRITE` | [`lark-drive-workflow-knowledge-ingest-publish.md`](lark-drive-workflow-knowledge-ingest-publish.md)、[`../../lark-drive/references/lark-drive-import.md`](lark-drive-import.md)、[`../../lark-doc/references/lark-doc-update.md`](../../lark-doc/references/lark-doc-update.md)；`import_docx` 迁入时 [`../../lark-wiki/references/lark-wiki-move.md`](../../lark-wiki/references/lark-wiki-move.md) 与异步续跑 [`lark-drive-task-result.md`](lark-drive-task-result.md)；`new_docx` 时 [`../../lark-wiki/references/lark-wiki-node-create.md`](../../lark-wiki/references/lark-wiki-node-create.md)；附件时 [`lark-drive-upload.md`](lark-drive-upload.md) |
 | `VERIFY` | 复用 `TARGET_ALIGN` 阶段的读取上下文 |
 
 ## Situation Routing
@@ -195,7 +195,7 @@ python3 "<SKILL_ROOT>/references/scripts/publish_gate.py" --plan "<发布计划 
 | `NODE_PROPOSE` | `wiki +node-create --obj-type docx`（仅用户确认后）、`wiki +node-list --page-all` | 新建确认后的承载节点并分页回读（`--page-all`，避免漏掉新建节点） |
 | `ANALYZE_TRIAGE` | 无飞书写命令（agent 读本地资料正文分析） | 判类、冲突识别、映射、命名、分诊 |
 | `PUBLISH_PLAN` | 无飞书写命令；`python3 <SKILL_ROOT>/references/scripts/publish_gate.py`（本地只读门禁） | 生成发布计划、门禁校验、请用户确认 |
-| `CONVERT_WRITE` | `drive +import --type docx`、`drive +task_result --scenario import`（import 异步续跑）、`docs +update`、`wiki +move --obj-type docx`（import 件迁入目标节点）、`wiki +node-create --obj-type docx`（new_docx）、`drive +upload`（仅 source_attachment） | 执行已确认的受控转换写入 |
+| `CONVERT_WRITE` | `docs +fetch`（update/merge 落笔前重读 revision）、`drive +import --type docx`、`drive +task_result --scenario import`（import 异步续跑）、`docs +update`、`wiki +move --obj-type docx`（import 件迁入目标节点）、`drive +task_result --scenario wiki_move`（迁入异步续跑）、`wiki +node-create --obj-type docx`（new_docx）、`drive +upload`（仅 source_attachment） | 执行已确认的受控转换写入 |
 | `VERIFY` | `docs +fetch`、`wiki +node-list` | fresh read 校验写入结果 |
 
 ## Transition Rules

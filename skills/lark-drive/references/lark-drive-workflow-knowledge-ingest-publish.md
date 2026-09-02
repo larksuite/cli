@@ -55,7 +55,7 @@ lark-cli drive +import --as user --type docx --file "<本地文件>" --folder-to
 
 - 导入结果必须返回 `docx` 类型和在线文档 token，否则转换失败。
 - **异步续跑**：`drive +import` 内置轮询窗口内未完成时会返回 `ready=false` / `timed_out=true` 和 `ticket`，用 `drive +task_result --scenario import --ticket <TICKET>` 续查，拿到最终在线文档 token 后再继续，不把未完成当完成。
-- **迁入目标节点**：一份对应一页且保真结构适用时，用 `wiki +move --obj-type docx --obj-token <导入文档 token> --target-space-id <SPACE_ID> --target-parent-token <目标父节点>` 迁入目标位置；迁入后必须 fresh read 确认目标 Wiki 节点 `obj_type=docx` 且 `docs +fetch` 可读（ready-state 验证），再套 6 行治理表。
+- **迁入目标节点**：一份对应一页且保真结构适用时，用 `wiki +move --obj-type docx --obj-token <导入文档 token> --target-space-id <SPACE_ID> --target-parent-token <目标父节点>` 迁入目标位置。`docs_to_wiki` 迁入可能返回 `task_id` 异步执行；返回 `ready=false` / `timed_out=true` 时，用 `drive +task_result --scenario wiki_move --task-id <TASK_ID>` 续查至完成，不把超时当失败。迁入完成后必须 fresh read 确认目标 Wiki 节点 `obj_type=docx` 且 `docs +fetch` 可读（ready-state 验证），再套 6 行治理表。
 - 多份合并 / 一份拆页 / 需统一重写时，创建目标 docx 节点后 `docs +update` 写整理内容，导入件仅作暂存来源。
 - PDF **不可**用 `drive +import`（不在支持扩展名内），走下节。
 
@@ -71,11 +71,13 @@ PDF 不假设可直接导入。先解析文本层；扫描件借 agent 多模态
 
 结合上下文判断媒体作用再决定是否入页：只保留能解释规则 / 步骤 / 入口 / 证据的图片，放在其解释的段落附近，加图注（说明 + 来源 + 必要时间），并把图中关键文字转成可检索正文——不让答案只存在于截图里。
 
+图片类 `docs +update` 绑定本地资源时，必须用目标页的 **docx 对象 token（`doxcn_*`，即计划里的 `target_obj_token`）或规范 Wiki URL** 定位，裸 Wiki node token（`wikcn_*`）不触发资源解析。计划须同时保留 `target_token`（Wiki 操作用）和 `target_obj_token`（写正文 / 绑图用）。
+
 ### 更新既有页（write_via=docs_update，proposed_action=update/merge）
 
 资料映射到一个**既有目标页**（`proposed_action=update` 或 `merge`）时，不论原始资料是不是 Word，都走 `docs_update` 对既有页定向更新，**不走 import_docx**（import 会新增子页面，而非更新目标页）：
 
-- 先用稳定 token（`target_token`）定位既有页并读取现状，不按标题匹配。
+- 先用稳定 token（`target_token`）定位既有页并读取现状，不按标题匹配。落笔前 `docs +fetch` 重读并记录 `revision`，携带该 `revision` 再写；若确认后、写入前内容已变（协作者改动），停下重新确认，不用默认 `revision-id=-1` 静默覆盖最新版。
 - 优先定向替换或 block 级编辑受影响部分；仅整页失效且用户确认整页重建时才 overwrite。
 - Word/PDF 等来源仍先解析为整理内容，再写入既有页；导入件（如用到）仅作暂存来源，不作为最终页。
 - 更新后保持 6 行治理表结构，刷新版本、生效 / 更新时间、更新原因与复核策略。
