@@ -41,8 +41,8 @@ lark-cli mail +auto-reply-modify --as user --yes --disable
 | `--disable` | modify | 否 | 关闭自动回复；与 `--enable` 互斥 |
 | `--content <text-or-html>` | modify | 否 | 自动回复正文，支持纯文本或 HTML；支持直接传值、`@file`、`-` stdin、本地图片和 data URI 图片 |
 | `--content-file <path>` | modify | 否 | 从当前目录下的文件读取正文，支持纯文本或 HTML；与 `--content` 互斥；正文里可包含本地图片和 data URI 图片 |
-| `--start <date>` | modify | 否 | 开始日期，支持 `YYYY-MM-DD`、Unix timestamp 或 ISO 8601；CLI 会按指定时区折算为当天开始 |
-| `--end <date>` | modify | 否 | 结束日期，支持 `YYYY-MM-DD`、Unix timestamp 或 ISO 8601；CLI 会按指定时区折算为当天结束 |
+| `--start <time>` | modify | 否 | 开始日期，支持 `YYYY-MM-DD`、Unix timestamp 或 ISO 8601；CLI 会按指定时区折算为当天开始 |
+| `--end <time>` | modify | 否 | 结束日期，支持 `YYYY-MM-DD`、Unix timestamp 或 ISO 8601；CLI 会按指定时区折算为当天结束 |
 | `--timezone <tz>` | modify | 否 | 时区，例如 `Asia/Shanghai` |
 | `--internal-only` | modify | 否 | 仅对租户内发件人发送自动回复；与 `--all` 互斥 |
 | `--all` | modify | 否 | 对所有发件人发送自动回复，包括外部发件人；与 `--internal-only` 互斥 |
@@ -107,7 +107,7 @@ lark-cli mail +auto-reply-modify --as user --yes --disable
 | `content` | 自动回复正文，可能是纯文本或 HTML；后端 `content_html` 在 CLI 输出层适配为此字段 |
 | `content_summary` | 自动回复摘要 |
 | `images` | 内联图片列表；包含 `cid`、`file_key`、`image_name` 和 `file_size` |
-| `start_time` | 自动回复开始时间；由 shortcut 的 `--start` 日期按时区折算为当天开始后写入并返回 |
-| `end_time` | 自动回复结束时间；由 shortcut 的 `--end` 日期按时区折算为当天结束后写入并返回 |
+| `start_time` | 自动回复开始时间 |
+| `end_time` | 自动回复结束时间 |
 | `time_zone` | 自动回复时间范围对应的时区 |
 | `only_send_to_tenant` | 是否仅对租户内发件人发送自动回复 |
