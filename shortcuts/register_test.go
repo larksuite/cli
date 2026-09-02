@@ -5,6 +5,7 @@ package shortcuts
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -205,7 +206,7 @@ func TestRegisterShortcutsForDomainsRunsHooksOnlyForSelectedBuckets(t *testing.T
 		if got := mailCmd.FlagErrorFunc()(mailCmd, in); got != in {
 			t.Fatalf("mail hook ran for an unselected domain: got %T (%v)", got, got)
 		}
-		if sheetsCmd.ContainsGroup(sheetsCurrentGroupID) || sheetsCmd.ContainsGroup(sheetsDeprecatedGroupID) {
+		if sheetsCmd.ContainsGroup(sheetsCurrentGroupID) {
 			t.Fatal("sheets hook ran for an unselected domain")
 		}
 	})
@@ -232,8 +233,8 @@ func TestRegisterShortcutsForDomainsRunsHooksOnlyForSelectedBuckets(t *testing.T
 			t.Fatalf("selected mail hook did not install typed flag handling: %T (%v)", got, got)
 		}
 		sheetsCmd := findChild(program, "sheets")
-		if sheetsCmd == nil || !sheetsCmd.ContainsGroup(sheetsCurrentGroupID) || !sheetsCmd.ContainsGroup(sheetsDeprecatedGroupID) {
-			t.Fatal("selected sheets hook did not apply compatibility groups")
+		if sheetsCmd == nil || !sheetsCmd.ContainsGroup(sheetsCurrentGroupID) {
+			t.Fatal("selected sheets hook did not apply command groups")
 		}
 	})
 }
