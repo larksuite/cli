@@ -43,16 +43,20 @@ python3 "<SKILL_ROOT>/references/scripts/publish_gate.py" --plan "<发布计划 
 
 收到确认后逐份执行。批量写入 / 导入同一位置时**串行**，避免并发冲突。
 
-### Word / Markdown / TXT / HTML（write_via=import_docx）
+### Word / Markdown / TXT / HTML（write_via=import_docx，仅用于新建页）
 
-用 `drive +import --type docx` 转飞书云文档，读回整理后写入目标节点；不要把原始分页、页眉页脚当知识结构。
+`import_docx` 只用于 `proposed_action=add`（**新建页**）。`update` / `merge` 面向既有目标页，必须走 `docs_update` 定向更新，不得用 import_docx——否则会新增一个子页面而不是更新既有页（见「更新既有页」小节）。
+
+用 `drive +import --type docx` 转飞书云文档，读回整理后落到目标节点；不要把原始分页、页眉页脚当知识结构。
 
 ```bash
 lark-cli drive +import --as user --type docx --file "<本地文件>" --folder-token "<暂存/目标文件夹>" --name "<发布计划中的标题>"
 ```
 
 - 导入结果必须返回 `docx` 类型和在线文档 token，否则转换失败。
-- 一份对应一页且保真结构适用时，整理后可 `wiki +move --obj-type docx` 迁入目标节点；多份合并 / 一份拆页 / 需统一重写时，创建目标 docx 节点后 `docs +update` 写整理内容，导入件仅作暂存来源。
+- **异步续跑**：`drive +import` 内置轮询窗口内未完成时会返回 `ready=false` / `timed_out=true` 和 `ticket`，用 `drive +task_result --scenario import --ticket <TICKET>` 续查，拿到最终在线文档 token 后再继续，不把未完成当完成。
+- **迁入目标节点**：一份对应一页且保真结构适用时，用 `wiki +move --obj-type docx --obj-token <导入文档 token> --target-space-id <SPACE_ID> --target-parent-token <目标父节点>` 迁入目标位置；迁入后必须 fresh read 确认目标 Wiki 节点 `obj_type=docx` 且 `docs +fetch` 可读（ready-state 验证），再套 6 行治理表。
+- 多份合并 / 一份拆页 / 需统一重写时，创建目标 docx 节点后 `docs +update` 写整理内容，导入件仅作暂存来源。
 - PDF **不可**用 `drive +import`（不在支持扩展名内），走下节。
 
 ### PDF（write_via=docs_update）
@@ -66,6 +70,15 @@ PDF 不假设可直接导入。先解析文本层；扫描件借 agent 多模态
 ### 图片（write_via=docs_update）
 
 结合上下文判断媒体作用再决定是否入页：只保留能解释规则 / 步骤 / 入口 / 证据的图片，放在其解释的段落附近，加图注（说明 + 来源 + 必要时间），并把图中关键文字转成可检索正文——不让答案只存在于截图里。
+
+### 更新既有页（write_via=docs_update，proposed_action=update/merge）
+
+资料映射到一个**既有目标页**（`proposed_action=update` 或 `merge`）时，不论原始资料是不是 Word，都走 `docs_update` 对既有页定向更新，**不走 import_docx**（import 会新增子页面，而非更新目标页）：
+
+- 先用稳定 token（`target_token`）定位既有页并读取现状，不按标题匹配。
+- 优先定向替换或 block 级编辑受影响部分；仅整页失效且用户确认整页重建时才 overwrite。
+- Word/PDF 等来源仍先解析为整理内容，再写入既有页；导入件（如用到）仅作暂存来源，不作为最终页。
+- 更新后保持 6 行治理表结构，刷新版本、生效 / 更新时间、更新原因与复核策略。
 
 ### 6 行治理表
 

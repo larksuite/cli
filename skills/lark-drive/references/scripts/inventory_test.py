@@ -55,19 +55,22 @@ class InventoryScanTest(unittest.TestCase):
 
     def _build(self, **kwargs):
         skipped: list[str] = []
+        skipped_nonregular: list[str] = []
         rows = inventory.build_inventory(
             self.root,
             inventory.normalize_extensions(kwargs.get("extensions")),
             kwargs.get("include_hidden", False),
             skipped,
+            skipped_nonregular,
+            kwargs.get("exclude_dir"),
         )
-        return rows, skipped
+        return rows, skipped, skipped_nonregular
 
     def test_exact_duplicates_grouped(self):
         self._write("a.txt", b"same content")
         self._write("sub/b.txt", b"same content")
         self._write("c.txt", b"different")
-        rows, _ = self._build()
+        rows, _, _ = self._build()
         dup_rows = [r for r in rows if r["duplicate_group"]]
         self.assertEqual(len(dup_rows), 2)
         self.assertEqual({r["duplicate_group"] for r in dup_rows}, {"exact-0001"})
@@ -80,31 +83,31 @@ class InventoryScanTest(unittest.TestCase):
 
     def test_sensitive_filename_flagged(self):
         self._write("薪资明细.xlsx", b"x")
-        rows, _ = self._build()
+        rows, _, _ = self._build()
         self.assertTrue(rows[0]["risk_hint"].startswith("possible_sensitive:"))
 
     def test_extension_filter_excludes_others(self):
         self._write("keep.pdf", b"x")
         self._write("drop.exe", b"x")
-        rows, _ = self._build(extensions="pdf")
+        rows, _, _ = self._build(extensions="pdf")
         self.assertEqual([r["title"] for r in rows], ["keep.pdf"])
 
     def test_skip_dirs_ignored(self):
         self._write("node_modules/pkg.json", b"{}")
         self._write("real.json", b"{}")
-        rows, _ = self._build()
+        rows, _, _ = self._build()
         self.assertEqual([r["title"] for r in rows], ["real.json"])
 
     def test_hidden_files_excluded_by_default(self):
         self._write(".secret.txt", b"x")
         self._write("visible.txt", b"x")
-        rows, _ = self._build()
+        rows, _, _ = self._build()
         self.assertEqual([r["title"] for r in rows], ["visible.txt"])
 
     def test_office_lock_files_excluded(self):
         self._write("~$draft.docx", b"x")
         self._write("draft.docx", b"x")
-        rows, _ = self._build()
+        rows, _, _ = self._build()
         self.assertEqual([r["title"] for r in rows], ["draft.docx"])
 
     @unittest.skipUnless(hasattr(os, "symlink"), "symlink not supported")
@@ -114,14 +117,36 @@ class InventoryScanTest(unittest.TestCase):
             os.symlink(target, self.root / "link.txt")
         except (OSError, NotImplementedError):
             self.skipTest("symlink creation not permitted")
-        rows, skipped = self._build()
+        rows, skipped, _ = self._build()
         self.assertEqual([r["title"] for r in rows], ["target.txt"])
         self.assertIn("link.txt", skipped)
 
     def test_empty_dir_produces_no_rows(self):
-        rows, skipped = self._build()
+        rows, skipped, _ = self._build()
         self.assertEqual(rows, [])
         self.assertEqual(skipped, [])
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "mkfifo not supported")
+    def test_fifo_skipped_not_hashed(self):
+        # A FIFO with an allowed suffix must be skipped, not opened (which would
+        # block hash_file indefinitely).
+        try:
+            os.mkfifo(self.root / "pipe.txt")
+        except (OSError, NotImplementedError, AttributeError):
+            self.skipTest("mkfifo not permitted")
+        self._write("real.txt", b"x")
+        rows, _, nonregular = self._build()
+        self.assertEqual([r["title"] for r in rows], ["real.txt"])
+        self.assertIn("pipe.txt", nonregular)
+
+    def test_nested_output_dir_excluded(self):
+        # The workflow ledger under the scanned root must not ingest itself.
+        self._write("doc.txt", b"x")
+        self._write("inventory/inventory.csv", b"source_id,\n")
+        self._write("inventory/inventory.json", b"{}")
+        exclude = (self.root / "inventory").resolve()
+        rows, _, _ = self._build(exclude_dir=exclude)
+        self.assertEqual([r["title"] for r in rows], ["doc.txt"])
 
 
 class InventoryOutputTest(unittest.TestCase):
@@ -130,7 +155,7 @@ class InventoryOutputTest(unittest.TestCase):
             root = Path(tmp) / "src"
             root.mkdir()
             out = Path(tmp) / "out"
-            inventory.write_outputs([], root, out, [])
+            inventory.write_outputs([], root, out, [], [])
             csv_text = (out / "inventory.csv").read_text(encoding="utf-8-sig")
             self.assertTrue(csv_text.startswith("source_id,"))
             payload = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
@@ -146,10 +171,11 @@ class InventoryOutputTest(unittest.TestCase):
             (root / "薪资明细.xlsx").write_bytes(b"x")
             out = Path(tmp) / "out"
             skipped: list[str] = []
+            skipped_nonregular: list[str] = []
             rows = inventory.build_inventory(
-                root, set(inventory.DEFAULT_EXTENSIONS), False, skipped
+                root, set(inventory.DEFAULT_EXTENSIONS), False, skipped, skipped_nonregular
             )
-            inventory.write_outputs(rows, root, out, skipped)
+            inventory.write_outputs(rows, root, out, skipped, skipped_nonregular)
             payload = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
             self.assertEqual(payload["summary"]["files"], 3)
             self.assertEqual(payload["summary"]["exact_duplicate_groups"], 1)

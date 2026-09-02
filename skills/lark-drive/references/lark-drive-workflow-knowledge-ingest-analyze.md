@@ -40,7 +40,7 @@ python3 "<SKILL_ROOT>/references/scripts/inventory.py" \
 
 ### 探测维护规范与对齐模式
 
-逐节点用 `docs +fetch` 探测是否存在 `knowledge_base_bootstrap` 写入的维护规范（顶部 6 行治理表 + 收录范围 / 命名规范段落），填充 `standard_map`，并据覆盖情况设 `alignment_mode`：
+逐节点探测维护规范，但**只对 origin docx 节点执行 `docs +fetch`**（`node_type=origin` 且 `obj_type=docx`）：读取其正文，判断是否存在 `knowledge_base_bootstrap` 写入的维护规范（顶部 6 行治理表 + 收录范围 / 命名规范段落），填充 `standard_map`。sheet、bitable、file、shortcut 等非 docx 节点没有可读正文，直接记为「无可读规范」，不对其 `docs +fetch`（否则会读失败中断混合知识库的对齐）。据规范覆盖情况设 `alignment_mode`：
 
 | alignment_mode | 判定 | 处理 |
 |----------------|------|------|

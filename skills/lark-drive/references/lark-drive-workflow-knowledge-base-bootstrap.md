@@ -84,7 +84,7 @@ Risk / Structure: `R2` / `S2`
 
 | State | Protocol Step | Entry Condition | Agent MUST Do | User-Facing Output | wait_for_user | Next State |
 |-------|---------------|-----------------|---------------|--------------------|---------------|------------|
-| `PARSE_TARGET` | `route` / `scope` | Workflow 触发 | 加载 wiki skill；把目标解析为 `space_id`：给定 wiki 节点 / 文档 URL 时用 `wiki +node-get` 取 `space_id` 且该节点即候选根，给定空间时用 `wiki +space-list` 取 `space_id` 并用 `wiki +node-list --page-all`（省略 parent）列出顶层节点；按 `Root Node Resolution` 确定唯一 `root_node`，多个顶层节点无法自动定根时停下请用户选定；确认目标就是该知识库 | 目标知识库与根节点确认，或（多顶层时）请用户选定根节点 | `true` | `READ_STRUCTURE` |
+| `PARSE_TARGET` | `route` / `scope` | Workflow 触发 | 加载 wiki skill；把目标解析为 `space_id`：给定 wiki 节点 / 文档 URL 时用 `wiki +node-get` 取 `space_id` 且该节点即候选根，给定普通知识空间时用 `wiki +space-list` 取 `space_id` 并用 `wiki +node-list --page-all`（省略 parent）列出顶层节点；**目标是个人知识库（`my_library` 或个人库 URL）时，`wiki +space-list` 不返回个人库，须改用 `wiki spaces get --params '{"space_id":"my_library"}'` 解析出真实 `space_id`，再列顶层节点**；按 `Root Node Resolution` 确定唯一 `root_node`，多个顶层节点无法自动定根时停下请用户选定；确认目标就是该知识库 | 目标知识库与根节点确认，或（多顶层时）请用户选定根节点 | `true` | `READ_STRUCTURE` |
 | `READ_STRUCTURE` | `read` | 目标已确认 | 递归读取整棵节点树填充 `node_inventory`：每次 `wiki +node-list` 必须用 `--page-all`（或按 `page_token` 翻页到 `has_more=false`），并对 `has_child=true` 的节点逐层下钻，不得只取首页；对 docx 节点读取现有内容填充 `draft_map`；判定结构是否过简（无子节点或子节点不足以承载分类）。任何一层因分页上限、权限或 API 失败未能读全时，置 `partial` 并记原因，不把不完整清单当作完整 | 结构概览：节点数、层级、草稿 / 占位分布；不完整时明确标注 | 除非读取被阻断，否则为 `false` | `OUTLINE_PROPOSE` or `TYPE_TRIAGE` |
 | `OUTLINE_PROPOSE` | `assess` / `plan` / `confirm` | 结构过简 | 加载 outputs 文档；基于知识库主题、根节点标题和已有草稿提议子节点大纲填充 `outline_proposal`；请用户确认后用 `wiki +node-create --obj-type docx` 新建拟定子节点，并回读并入 `node_inventory` | 大纲提议表 + 新建确认请求；确认后报告新建结果 | `true` | `TYPE_TRIAGE` |
 | `TYPE_TRIAGE` | `assess` / `plan` | 结构已读（含新建节点） | 按 `obj_type` / `node_type` 将每个节点分诊为 `writable_docx` / `non_docx_entity` / `shortcut`，填充 `node_class` | 分诊表：可写正文节点、需特殊处理节点及原因 | 存在 `non_docx_entity` / `shortcut` 时为 `true`，否则为 `false` | `GEN_STANDARD` |
@@ -159,7 +159,7 @@ python3 "<SKILL_ROOT>/references/scripts/kb_gate.py" --plan "<写入计划 JSON 
 
 门禁判定分两级：
 
-- **硬拦（`ready=false`，不得写入）**：载体不是 docx 且写法不是 `new_docx`、缺少 6 行治理表、必填字段（来源、适用与可见范围）为空、页面状态非法、覆盖有草稿节点但缺 `overwrite_confirmed`、未知写法。
+- **硬拦（`ready=false`，不得写入）**：载体不是 docx 且写法不是 `new_docx`、缺少 6 行治理表、必填字段（来源、适用与可见范围）为空、页面状态非法、覆盖有草稿节点但缺 `overwrite_confirmed`、覆盖写入但 `draft_state` 缺失或未知（fail-closed，避免误清空草稿）、未知写法。
 - **一致性收紧（`narrowed=true`，可写但降级）**：治理字段含“待确认”却把 `page_status` 标为“已完成”时，强制收紧为“进行中”，以保留“先建框架、后续补全”的场景，同时不让残缺内容冒充已完成。
 
 `ready=false` 的节点记入 `unsupported_checks` 并在写入计划中标出原因，不进入 `WRITE`；`narrowed=true` 的节点按收紧后的状态写入。
@@ -170,7 +170,7 @@ python3 "<SKILL_ROOT>/references/scripts/kb_gate.py" --plan "<写入计划 JSON 
 
 | State | Allowed Command Families | Purpose |
 |-------|--------------------------|---------|
-| `PARSE_TARGET` | `wiki +node-get`、`wiki +space-list`、`wiki +node-list --page-all` | 把 URL / 空间解析为 `space_id` 并确认根层节点 |
+| `PARSE_TARGET` | `wiki +node-get`、`wiki +space-list`、`wiki spaces get`（解析个人库 my_library）、`wiki +node-list --page-all` | 把 URL / 空间解析为 `space_id` 并确认根层节点 |
 | `READ_STRUCTURE` | `wiki +node-list --page-all`（对 `has_child=true` 逐层下钻）、`docs +fetch` | 完整递归读取节点树和节点草稿内容 |
 | `OUTLINE_PROPOSE` | `wiki +node-create --obj-type docx`（仅用户确认大纲后）、`wiki +node-list` | 新建确认后的大纲子节点并回读 |
 | `TYPE_TRIAGE` | 无写命令 | 仅对已读结构做分类 |

@@ -33,6 +33,8 @@
       "write_via": "import_docx",
       "target_obj_type": "docx",
       "target_token": "wikcn_NODE",
+      "parent_token": "",
+      "space_id": "",
       "sensitivity": "internal",
       "sensitive_review_status": "",
       "conflict_status": "none",
@@ -54,12 +56,15 @@
 
 字段取值：
 
-- `publish_role`：`knowledge_page`（默认，需 governance）/ `source_attachment`（原文件附件，需 `attachment_confirmed=true`、`write_via=drive_upload`，无 governance）。
+- `publish_role`：`knowledge_page`（默认，需 governance）/ `source_attachment`（原文件附件，需 `attachment_confirmed=true`、`write_via=drive_upload`、`target_token` 指向确认的 Wiki 节点，无 governance）。
 - `write_via`：`import_docx` / `docs_update` / `node_create_docx`（知识页三种写法）/ `drive_upload`（仅附件）。
 - `target_obj_type`：目标节点对象类型；知识页必须为 `docx`。
-- `sensitivity`：`public` / `internal` / `restricted` / `prohibited`。
-- `conflict_status`：`none` / `suspected` / `confirmed` / `resolved`。
-- `parse_status`：`parsed` / `partial` / `unsupported` / `failed`。
+- `target_token`：既有目标节点 token；`node_create_docx` 可空，但须提供 `parent_token` 或 `space_id`。
+- `parent_token` / `space_id`：`node_create_docx` 的确认建节点位置（二选一必填），防止 user 身份下静默回退到个人库 my_library。
+- `sensitivity`：`public` / `internal` / `restricted` / `prohibited`。**闭集，缺失或非法值一律硬拦**（不当安全放行）。
+- `conflict_status`：`none` / `suspected` / `confirmed` / `resolved`。**闭集，缺失或非法值一律硬拦**。
+- `parse_status`：`parsed` / `partial` / `unsupported` / `failed`。**闭集，缺失或非法值一律硬拦**。
+- `governance.page_status`：`进行中` / `已完成` / `已废弃`。**缺失即硬拦**（不得省略）。
 
 门禁输出为 `{ok, summary{total,writable,blocked,narrowed,attachments}, items[]}`，每项含 `ready`、`blocked_reasons`、`narrowed`、`narrow_reasons`、`counts_as_page`、`effective_page_status`。
 

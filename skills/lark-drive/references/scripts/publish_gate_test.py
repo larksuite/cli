@@ -92,12 +92,27 @@ class KnowledgePageGateTest(unittest.TestCase):
         self.assertFalse(result["ready"])
         self.assertTrue(any("target_token" in r for r in result["blocked_reasons"]))
 
-    def test_node_create_docx_without_token_ok(self):
-        # node_create_docx makes a fresh node, so it needs no existing token.
+    def test_node_create_docx_with_parent_ok(self):
+        # node_create_docx makes a fresh node, so it needs no existing token,
+        # but it does need a confirmed destination (parent or space).
+        result = publish_gate.evaluate_item(
+            _page(write_via="node_create_docx", target_token="", parent_token="wikcn_PARENT")
+        )
+        self.assertTrue(result["ready"])
+
+    def test_node_create_docx_with_space_ok(self):
+        result = publish_gate.evaluate_item(
+            _page(write_via="node_create_docx", target_token="", space_id="spc_X")
+        )
+        self.assertTrue(result["ready"])
+
+    def test_node_create_docx_without_destination_blocks(self):
+        # No parent and no space: a user-mode create would fall back to my_library.
         result = publish_gate.evaluate_item(
             _page(write_via="node_create_docx", target_token="")
         )
-        self.assertTrue(result["ready"])
+        self.assertFalse(result["ready"])
+        self.assertTrue(any("建节点位置" in r for r in result["blocked_reasons"]))
 
     def test_import_docx_is_writable(self):
         result = publish_gate.evaluate_item(_page(write_via="import_docx"))
@@ -135,6 +150,32 @@ class KnowledgePageGateTest(unittest.TestCase):
         result = publish_gate.evaluate_item(_page(parse_status="unsupported"))
         self.assertFalse(result["ready"])
         self.assertTrue(any("无法解析" in r for r in result["blocked_reasons"]))
+
+    def test_unknown_sensitivity_fails_closed(self):
+        # A misspelled / unclassified sensitivity must block, not pass as safe.
+        result = publish_gate.evaluate_item(_page(sensitivity="機密"))
+        self.assertFalse(result["ready"])
+        self.assertTrue(any("敏感等级未分类或非法" in r for r in result["blocked_reasons"]))
+
+    def test_missing_sensitivity_fails_closed(self):
+        result = publish_gate.evaluate_item(_page(sensitivity=""))
+        self.assertFalse(result["ready"])
+        self.assertTrue(any("敏感等级未分类或非法" in r for r in result["blocked_reasons"]))
+
+    def test_unknown_conflict_fails_closed(self):
+        result = publish_gate.evaluate_item(_page(conflict_status="conflict"))
+        self.assertFalse(result["ready"])
+        self.assertTrue(any("冲突状态未分类或非法" in r for r in result["blocked_reasons"]))
+
+    def test_unknown_parse_fails_closed(self):
+        result = publish_gate.evaluate_item(_page(parse_status="ok"))
+        self.assertFalse(result["ready"])
+        self.assertTrue(any("解析状态未分类或非法" in r for r in result["blocked_reasons"]))
+
+    def test_missing_page_status_blocks(self):
+        result = publish_gate.evaluate_item(_page(governance=_governance(page_status="")))
+        self.assertFalse(result["ready"])
+        self.assertTrue(any("页面状态" in r for r in result["blocked_reasons"]))
 
     def test_missing_governance_blocks(self):
         result = publish_gate.evaluate_item(_page(governance={}))
@@ -201,6 +242,11 @@ class AttachmentGateTest(unittest.TestCase):
     def test_attachment_never_counts_as_page(self):
         result = publish_gate.evaluate_item(_attachment())
         self.assertFalse(result["counts_as_page"])
+
+    def test_attachment_without_target_blocks(self):
+        result = publish_gate.evaluate_item(_attachment(target_token=""))
+        self.assertFalse(result["ready"])
+        self.assertTrue(any("目标 Wiki 节点" in r for r in result["blocked_reasons"]))
 
     def test_prohibited_attachment_blocks(self):
         result = publish_gate.evaluate_item(_attachment(sensitivity="prohibited"))

@@ -69,6 +69,17 @@ class KbGateTest(unittest.TestCase):
         self.assertFalse(result["ready"])
         self.assertTrue(any("覆盖有草稿" in r for r in result["blocked_reasons"]))
 
+    def test_overwrite_unknown_draft_state_fails_closed(self):
+        # Missing / unknown draft_state must block overwrite, not silently wipe.
+        result = kb_gate.evaluate_node(_node(write_mode="overwrite", draft_state=""))
+        self.assertFalse(result["ready"])
+        self.assertTrue(any("草稿状态未知" in r for r in result["blocked_reasons"]))
+
+    def test_overwrite_bogus_draft_state_fails_closed(self):
+        result = kb_gate.evaluate_node(_node(write_mode="overwrite", draft_state="maybe"))
+        self.assertFalse(result["ready"])
+        self.assertTrue(any("草稿状态未知" in r for r in result["blocked_reasons"]))
+
     def test_overwrite_draft_with_confirm_ok(self):
         result = kb_gate.evaluate_node(
             _node(write_mode="overwrite", draft_state="has_draft", overwrite_confirmed=True)

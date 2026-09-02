@@ -78,6 +78,7 @@ REQUIRED_NON_EMPTY = ("source", "scope_visibility")
 VALID_PAGE_STATUSES = {"进行中", "已完成", "已废弃"}
 UNRESOLVED_MARKERS = ("待确认", "待补充", "待指定", "未确认", "未解决", "tbd", "unknown")
 VALID_WRITE_MODES = {"overwrite", "append", "new_docx", "skip"}
+VALID_DRAFT_STATES = {"empty_placeholder", "has_draft"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -169,9 +170,16 @@ def evaluate_node(node: dict) -> dict:
     elif obj_type != "docx":
         hard_reasons.append(f"载体不是文档节点：obj_type={node.get('obj_type')}")
 
-    # --- Hard gate 2: overwrite on a real draft needs explicit confirmation ---
-    if write_mode == "overwrite" and str(node.get("draft_state")) == "has_draft":
-        if node.get("overwrite_confirmed") is not True:
+    # --- Hard gate 2: overwrite must know the draft state, and overwriting a
+    # real draft needs explicit confirmation. Fails closed: a missing or unknown
+    # draft_state blocks overwrite rather than risking a silent draft wipe. ---
+    if write_mode == "overwrite":
+        draft_state = str(node.get("draft_state") or "").strip()
+        if draft_state not in VALID_DRAFT_STATES:
+            hard_reasons.append(
+                f"覆盖写入的草稿状态未知（draft_state={node.get('draft_state')}），拒绝覆盖"
+            )
+        elif draft_state == "has_draft" and node.get("overwrite_confirmed") is not True:
             hard_reasons.append("覆盖有草稿的节点但缺少用户显式确认")
 
     # --- Governance completeness ---

@@ -35,10 +35,12 @@ Input: a JSON object (via --plan <file> or stdin) shaped as:
           "write_via": "docs_update",          # docs_update | import_docx | node_create_docx | drive_upload
           "target_obj_type": "docx",           # target wiki node object type
           "target_token": "wikcn_NODE",        # node/obj token (blank ok for node_create_docx)
-          "sensitivity": "internal",           # public | internal | restricted | prohibited
+          "parent_token": "",                   # node_create_docx: confirmed parent node token
+          "space_id": "",                       # node_create_docx: confirmed target space (alt to parent)
+          "sensitivity": "internal",           # public | internal | restricted | prohibited (fail-closed)
           "sensitive_review_status": "",        # for restricted: approved | pending | ...
-          "conflict_status": "none",           # none | suspected | confirmed | resolved
-          "parse_status": "parsed",            # parsed | partial | unsupported | failed
+          "conflict_status": "none",           # none | suspected | confirmed | resolved (fail-closed)
+          "parse_status": "parsed",            # parsed | partial | unsupported | failed (fail-closed)
           "attachment_confirmed": false,        # user opted in to uploading the original file
           "governance": {                       # 6-row governance table (knowledge_page only)
             "source": "退货政策原始 Word｜2026-08 版",
@@ -102,6 +104,12 @@ PAGE_WRITE_VIA = {"docs_update", "import_docx", "node_create_docx"}
 ATTACHMENT_WRITE_VIA = "drive_upload"
 VALID_WRITE_VIA = PAGE_WRITE_VIA | {ATTACHMENT_WRITE_VIA}
 
+# Closed triage enums. Values outside these sets are rejected (fail closed)
+# rather than treated as safe, so a typo or an unclassified item cannot bypass
+# the sensitivity / conflict / parse gates.
+VALID_SENSITIVITY = {"public", "internal", "restricted", "prohibited"}
+VALID_CONFLICT = {"none", "suspected", "confirmed", "resolved"}
+VALID_PARSE = {"parsed", "partial", "unsupported", "failed"}
 # Conflict states that block production until a human resolves them.
 BLOCKING_CONFLICTS = {"suspected", "confirmed"}
 # Parse states that cannot yield a searchable body at all.
@@ -147,9 +155,16 @@ def is_empty(value) -> bool:
 
 
 def _check_sensitivity_conflict(item: dict, hard_reasons: list[str]) -> None:
-    """Shared gates: sensitive and unresolved-conflict material never ships."""
+    """Shared gates: sensitive and unresolved-conflict material never ships.
+
+    Both enums fail closed: a missing or unrecognized value is blocked rather
+    than treated as safe, so an unclassified or misspelled triage state cannot
+    slip past the gate.
+    """
     sensitivity = str(item.get("sensitivity") or "").strip().lower()
-    if sensitivity == "prohibited":
+    if sensitivity not in VALID_SENSITIVITY:
+        hard_reasons.append(f"敏感等级未分类或非法（sensitivity={item.get('sensitivity')}）")
+    elif sensitivity == "prohibited":
         hard_reasons.append("敏感等级 prohibited，禁止入库")
     elif sensitivity == "restricted":
         review = str(item.get("sensitive_review_status") or "").strip().lower()
@@ -157,7 +172,9 @@ def _check_sensitivity_conflict(item: dict, hard_reasons: list[str]) -> None:
             hard_reasons.append("受限敏感内容未通过审核（sensitive_review_status 非 approved）")
 
     conflict = str(item.get("conflict_status") or "").strip().lower()
-    if conflict in BLOCKING_CONFLICTS:
+    if conflict not in VALID_CONFLICT:
+        hard_reasons.append(f"冲突状态未分类或非法（conflict_status={item.get('conflict_status')}）")
+    elif conflict in BLOCKING_CONFLICTS:
         hard_reasons.append(f"存在未裁决冲突（conflict_status={conflict}）")
 
 
@@ -177,6 +194,10 @@ def _evaluate_attachment(item: dict, title: str, source_id: str) -> dict:
         )
     if item.get("attachment_confirmed") is not True:
         hard_reasons.append("上传原文件需用户显式确认（attachment_confirmed）")
+    # The upload must be anchored to a confirmed Wiki node; without it the file
+    # lands in the Drive root instead of the knowledge base the user approved.
+    if is_empty(item.get("target_token")):
+        hard_reasons.append("附件缺少目标 Wiki 节点（target_token），拒绝上传到未确认位置")
 
     _check_sensitivity_conflict(item, hard_reasons)
 
@@ -217,6 +238,11 @@ def _evaluate_knowledge_page(item: dict, title: str, source_id: str) -> dict:
     # --- Hard gate: a real write needs a stable target ---
     if not token and write_via != "node_create_docx":
         hard_reasons.append("缺少 target_token，无法定位写入目标")
+    # A new node must carry a confirmed destination; otherwise a user-mode
+    # create silently falls back to my_library instead of the target space.
+    if write_via == "node_create_docx":
+        if is_empty(item.get("parent_token")) and is_empty(item.get("space_id")):
+            hard_reasons.append("new_docx 缺少确认的建节点位置（parent_token 或 space_id）")
 
     # --- Hard gate: carrier must be a docx node (the core iron rule) ---
     if not obj_type:
@@ -224,9 +250,13 @@ def _evaluate_knowledge_page(item: dict, title: str, source_id: str) -> dict:
     elif obj_type != "docx":
         hard_reasons.append(f"知识页载体不是 docx 节点：target_obj_type={item.get('target_obj_type')}")
 
-    # --- Hard gate: material must be parseable into a searchable body ---
+    # --- Hard gate: material must parse into a searchable body ---
+    # parse_status fails closed: an unclassified or misspelled value is blocked
+    # rather than assumed parseable.
     parse_status = str(item.get("parse_status") or "").strip().lower()
-    if parse_status in UNUSABLE_PARSE:
+    if parse_status not in VALID_PARSE:
+        hard_reasons.append(f"解析状态未分类或非法（parse_status={item.get('parse_status')}）")
+    elif parse_status in UNUSABLE_PARSE:
         hard_reasons.append(f"资料无法解析为可检索正文（parse_status={parse_status}）")
 
     # --- Shared gates: sensitivity + conflict ---
@@ -245,7 +275,9 @@ def _evaluate_knowledge_page(item: dict, title: str, source_id: str) -> dict:
                 hard_reasons.append(f"治理字段缺失：{GOVERNANCE_FIELDS[field]}")
 
         page_status = str(governance.get("page_status") or "").strip()
-        if page_status and page_status not in VALID_PAGE_STATUSES:
+        if not page_status:
+            hard_reasons.append(f"治理字段缺失：{GOVERNANCE_FIELDS['page_status']}")
+        elif page_status not in VALID_PAGE_STATUSES:
             hard_reasons.append(f"页面状态非法：{page_status}")
 
         # Consistency narrowing: any 待确认 field cannot be sold as 已完成.

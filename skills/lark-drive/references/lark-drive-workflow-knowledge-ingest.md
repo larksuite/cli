@@ -122,7 +122,7 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 | `NODE_PROPOSE` | [`lark-drive-workflow-knowledge-ingest-analyze.md`](lark-drive-workflow-knowledge-ingest-analyze.md)、[`../../lark-wiki/references/lark-wiki-node-create.md`](../../lark-wiki/references/lark-wiki-node-create.md) |
 | `ANALYZE_TRIAGE` | [`lark-drive-workflow-knowledge-ingest-analyze.md`](lark-drive-workflow-knowledge-ingest-analyze.md) |
 | `PUBLISH_PLAN` | [`lark-drive-workflow-knowledge-ingest-publish.md`](lark-drive-workflow-knowledge-ingest-publish.md)、[`lark-drive-workflow-knowledge-ingest-outputs.md`](lark-drive-workflow-knowledge-ingest-outputs.md)；门禁脚本 `scripts/publish_gate.py` |
-| `CONVERT_WRITE` | [`lark-drive-workflow-knowledge-ingest-publish.md`](lark-drive-workflow-knowledge-ingest-publish.md)、[`../../lark-drive/references/lark-drive-import.md`](lark-drive-import.md)、[`../../lark-doc/references/lark-doc-update.md`](../../lark-doc/references/lark-doc-update.md)；`new_docx` 时 [`../../lark-wiki/references/lark-wiki-node-create.md`](../../lark-wiki/references/lark-wiki-node-create.md)；附件时 [`lark-drive-upload.md`](lark-drive-upload.md) |
+| `CONVERT_WRITE` | [`lark-drive-workflow-knowledge-ingest-publish.md`](lark-drive-workflow-knowledge-ingest-publish.md)、[`../../lark-drive/references/lark-drive-import.md`](lark-drive-import.md)、[`../../lark-doc/references/lark-doc-update.md`](../../lark-doc/references/lark-doc-update.md)；`import_docx` 迁入时 [`../../lark-wiki/references/lark-wiki-move.md`](../../lark-wiki/references/lark-wiki-move.md)；`new_docx` 时 [`../../lark-wiki/references/lark-wiki-node-create.md`](../../lark-wiki/references/lark-wiki-node-create.md)；附件时 [`lark-drive-upload.md`](lark-drive-upload.md) |
 | `VERIFY` | 复用 `TARGET_ALIGN` 阶段的读取上下文 |
 
 ## Situation Routing
@@ -155,13 +155,14 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 
 ## Write Via Selection
 
-对 `writable_docx` 目标，依据资料类型选择 `write_via`（详见 publish phase）。
+对 `writable_docx` 目标，依据 `proposed_action` 与资料类型选择 `write_via`（详见 publish phase）。**先看 `proposed_action`**：`update` / `merge` 面向既有页，一律走 `docs_update`；`add`（新建页）才按资料类型选 import 或 docs_update。
 
-| 资料类型 | write_via | 说明 |
-|----------|-----------|------|
-| Word / .doc / .md / .txt / .html | `import_docx` | `drive +import --type docx` 转飞书文档后整理写入 |
-| PDF / 图片 / 需重写的内容 | `docs_update` | 解析 / OCR 后 `docs +update` 重建可检索正文 |
-| 目标节点缺失、需新建承载页 | `node_create_docx` | 先 `wiki +node-create --obj-type docx` 再写正文 |
+| proposed_action / 资料类型 | write_via | 说明 |
+|----------------------------|-----------|------|
+| update / merge（既有页，任意来源） | `docs_update` | 定向更新既有页；不用 import_docx（会新增子页面而非更新目标页） |
+| add + Word / .doc / .md / .txt / .html | `import_docx` | `drive +import --type docx` 转飞书文档后整理，`wiki +move` 迁入目标节点 |
+| add + PDF / 图片 / 需重写的内容 | `docs_update` | 解析 / OCR 后 `docs +update` 重建可检索正文 |
+| add + 目标节点缺失、需新建承载页 | `node_create_docx` | 先 `wiki +node-create --obj-type docx` 再写正文 |
 | 原始文件（仅用户开启附件时） | `drive_upload` | 只作 `source_attachment`，永不算知识页完成 |
 
 ## Publish Gate
@@ -194,7 +195,7 @@ python3 "<SKILL_ROOT>/references/scripts/publish_gate.py" --plan "<发布计划 
 | `NODE_PROPOSE` | `wiki +node-create --obj-type docx`（仅用户确认后）、`wiki +node-list` | 新建确认后的承载节点并回读 |
 | `ANALYZE_TRIAGE` | 无飞书写命令（agent 读本地资料正文分析） | 判类、冲突识别、映射、命名、分诊 |
 | `PUBLISH_PLAN` | 无飞书写命令；`python3 <SKILL_ROOT>/references/scripts/publish_gate.py`（本地只读门禁） | 生成发布计划、门禁校验、请用户确认 |
-| `CONVERT_WRITE` | `drive +import --type docx`、`docs +update`、`wiki +node-create --obj-type docx`（new_docx）、`drive +upload`（仅 source_attachment） | 执行已确认的受控转换写入 |
+| `CONVERT_WRITE` | `drive +import --type docx`、`drive +task_result --scenario import`（import 异步续跑）、`docs +update`、`wiki +move --obj-type docx`（import 件迁入目标节点）、`wiki +node-create --obj-type docx`（new_docx）、`drive +upload`（仅 source_attachment） | 执行已确认的受控转换写入 |
 | `VERIFY` | `docs +fetch`、`wiki +node-list` | fresh read 校验写入结果 |
 
 ## Transition Rules

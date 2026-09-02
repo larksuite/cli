@@ -96,7 +96,8 @@ def hash_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def iter_files(root: Path, include_hidden: bool, skipped_symlinks: list[str]):
+def iter_files(root: Path, include_hidden: bool, skipped_symlinks: list[str],
+               skipped_nonregular: list[str], exclude_dir: Path | None = None):
     if root.is_file():
         yield root
         return
@@ -105,6 +106,7 @@ def iter_files(root: Path, include_hidden: bool, skipped_symlinks: list[str]):
             item for item in dirs
             if item not in SKIP_DIRS and (include_hidden or not item.startswith("."))
             and not _record_symlink(Path(current) / item, root, skipped_symlinks)
+            and not _is_excluded(Path(current) / item, exclude_dir)
         )
         for name in sorted(files):
             if name.startswith("~$") or (not include_hidden and name.startswith(".")):
@@ -112,18 +114,41 @@ def iter_files(root: Path, include_hidden: bool, skipped_symlinks: list[str]):
             path = Path(current) / name
             if _record_symlink(path, root, skipped_symlinks):
                 continue
+            # Skip non-regular files (FIFOs, devices, sockets): opening a FIFO
+            # for reading blocks indefinitely in hash_file. is_file() follows no
+            # symlink here because symlinks are already filtered above.
+            if not path.is_file():
+                skipped_nonregular.append(_relative_name(path, root))
+                continue
             yield path
+
+
+def _relative_name(path: Path, root: Path) -> str:
+    """Best-effort path relative to root, falling back to the bare name."""
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return path.name
+
+
+def _is_excluded(path: Path, exclude_dir: Path | None) -> bool:
+    """Return True if path is the workflow output dir nested under the root.
+
+    Keeps a re-run from ingesting its own inventory.csv/json ledger.
+    """
+    if exclude_dir is None:
+        return False
+    try:
+        return path.resolve() == exclude_dir
+    except OSError:
+        return False
 
 
 def _record_symlink(path: Path, root: Path, skipped_symlinks: list[str]) -> bool:
     """Return True for symlinks without resolving or reading their targets."""
     if not path.is_symlink():
         return False
-    try:
-        relative = str(path.relative_to(root))
-    except ValueError:
-        relative = path.name
-    skipped_symlinks.append(relative)
+    skipped_symlinks.append(_relative_name(path, root))
     return True
 
 
@@ -159,9 +184,12 @@ def build_inventory(
     extensions: set[str],
     include_hidden: bool,
     skipped_symlinks: list[str],
+    skipped_nonregular: list[str],
+    exclude_dir: Path | None = None,
 ) -> list[dict]:
     rows = []
-    for path in iter_files(root, include_hidden, skipped_symlinks):
+    for path in iter_files(root, include_hidden, skipped_symlinks,
+                           skipped_nonregular, exclude_dir):
         extension = path.suffix.lower()
         if extension not in extensions:
             continue
@@ -221,6 +249,7 @@ def write_outputs(
     root: Path,
     output_dir: Path,
     skipped_symlinks: list[str],
+    skipped_nonregular: list[str],
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     fields = list(rows[0]) if rows else list(empty_row("", "", "", ""))
@@ -235,9 +264,11 @@ def write_outputs(
         "authorized_root": str(root.resolve()),
         "source_files_modified": False,
         "skipped_symlinks": sorted(skipped_symlinks),
+        "skipped_nonregular": sorted(skipped_nonregular),
         "summary": {
             "files": len(rows),
             "skipped_symlinks": len(skipped_symlinks),
+            "skipped_nonregular": len(skipped_nonregular),
             "failed": sum(row["parse_readiness"] == "failed" for row in rows),
             "exact_duplicate_groups": len({row["duplicate_group"] for row in rows if row["duplicate_group"]}),
             "possible_sensitive_by_filename": sum(
@@ -264,15 +295,25 @@ def main() -> int:
         print(f"error: authorized root is not a readable file or directory: {root}", file=sys.stderr)
         return 2
     try:
+        output_dir = Path(args.output_dir).expanduser()
+        # If the output dir is nested under the scanned root, exclude it so a
+        # re-run does not ingest its own inventory ledger (and the JSON's
+        # changing timestamp does not read as a new file every run).
+        try:
+            exclude_dir = output_dir.resolve()
+        except OSError:
+            exclude_dir = None
         skipped_symlinks: list[str] = []
+        skipped_nonregular: list[str] = []
         rows = build_inventory(
             root,
             normalize_extensions(args.extensions),
             args.include_hidden,
             skipped_symlinks,
+            skipped_nonregular,
+            exclude_dir,
         )
-        output_dir = Path(args.output_dir).expanduser()
-        write_outputs(rows, root, output_dir, skipped_symlinks)
+        write_outputs(rows, root, output_dir, skipped_symlinks, skipped_nonregular)
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -282,6 +323,7 @@ def main() -> int:
         "files": len(rows),
         "exact_duplicate_groups": len({row["duplicate_group"] for row in rows if row["duplicate_group"]}),
         "skipped_symlinks": len(skipped_symlinks),
+        "skipped_nonregular": len(skipped_nonregular),
         "output_dir": str(output_dir.resolve()),
         "source_files_modified": False,
     }, ensure_ascii=False))
