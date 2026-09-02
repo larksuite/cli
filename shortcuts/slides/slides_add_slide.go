@@ -53,6 +53,7 @@ var SlidesAddSlide = common.Shortcut{
 		{Name: "slide", Desc: "one complete <slide> XML document", Required: true, Input: []string{common.File, common.Stdin}},
 		{Name: "before-slide-id", Desc: "insert before this slide_id (default: append after the last page)"},
 		{Name: "revision-id", Type: "int", Default: "-1", Desc: "presentation revision (-1 = latest; pass a specific number for optimistic locking)"},
+		noLintFlag(),
 	},
 	Tips: []string{
 		"<img src=\"@path\"> placeholders resolve against the current directory, not the directory of the --slide file, and are deduplicated per call: a page-by-page loop re-uploads a shared image once per page, so upload it once with slides +media-upload and reuse the file_token instead.",
@@ -139,7 +140,7 @@ var SlidesAddSlide = common.Shortcut{
 		)).
 			Desc(fmt.Sprintf("[%d/%d] Add page%s", step, total, descSuffix)).
 			Params(addSlideQuery(runtime)).
-			Body(addSlideBody(slideXML, runtime.Str("before-slide-id")))
+			Body(addSlideBody(slideXML, runtime.Str("before-slide-id"), runtime))
 
 		return dry.Set("images_to_upload", len(placeholders))
 	},
@@ -181,7 +182,7 @@ var SlidesAddSlide = common.Shortcut{
 				validate.EncodePathSegment(presentationID),
 			),
 			addSlideQuery(runtime),
-			addSlideBody(slideXML, beforeSlideID),
+			addSlideBody(slideXML, beforeSlideID, runtime),
 		)
 		if err != nil {
 			if len(placeholders) > 0 {
@@ -189,7 +190,10 @@ var SlidesAddSlide = common.Shortcut{
 				// a retry silently uploads a second copy of every file.
 				err = appendSlidesProgressHint(err, fmt.Sprintf("%d image(s) were uploaded before the page failed; re-running will upload them again", len(placeholders)))
 			}
-			return enrichSlidesReplaceError(err)
+			// Lint first: it names the actual finding, and enrichSlidesReplaceError
+			// only fills an empty hint, so its generic checklist stays out of the
+			// way when the backend already said what was wrong.
+			return enrichSlidesReplaceError(enrichSlidesLintError(err))
 		}
 
 		slideID := common.GetString(data, "slide_id")
@@ -234,12 +238,12 @@ func addSlideQuery(runtime *common.RuntimeContext) map[string]interface{} {
 // addSlideBody builds the request body shared by dry-run and execute.
 // before_slide_id is omitted when empty: the backend appends to the end only
 // if the key is absent, and an empty string is rejected as an unknown slide.
-func addSlideBody(slideXML, beforeSlideID string) map[string]interface{} {
+func addSlideBody(slideXML, beforeSlideID string, runtime *common.RuntimeContext) map[string]interface{} {
 	body := map[string]interface{}{
 		"slide": map[string]interface{}{"content": slideXML},
 	}
 	if id := strings.TrimSpace(beforeSlideID); id != "" {
 		body["before_slide_id"] = id
 	}
-	return body
+	return withLintXML(body, runtime)
 }

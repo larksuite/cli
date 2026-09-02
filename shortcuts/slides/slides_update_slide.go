@@ -99,6 +99,7 @@ var updateSlideFlags = []common.Flag{
 	{Name: "content", Aliases: contentFlagAliases, Desc: "the page's full target XML, one <slide> root; elements omitted here are removed from the page", Required: true, Input: []string{common.File, common.Stdin}},
 	{Name: "revision-id", Type: "int", Default: "-1", Desc: "revision to apply against; -1 (default) means latest. Pinning an older revision rebuilds the page from that snapshot and discards newer edits to it"},
 	{Name: "tid", Desc: "transaction id for concurrent-edit locking (usually empty)"},
+	noLintFlag(),
 }
 
 func updateSlideValidate(_ context.Context, runtime *common.RuntimeContext) error {
@@ -187,7 +188,7 @@ func updateSlideDryRun(_ context.Context, runtime *common.RuntimeContext) *commo
 	dry.POST(slideReplaceAPIPath(presentationID)).
 		Desc(fmt.Sprintf("[%d/%d] Replace slide%s", step, total, descSuffix)).
 		Params(updateSlideQuery(runtime, slideID)).
-		Body(map[string]interface{}{"parts": updateSlideParts(slideID, content)})
+		Body(updateSlideBody(slideID, content, runtime))
 	return dry.Set("slide_id", slideID).
 		Set("content_bytes", len(content)).
 		Set("images_to_upload", len(placeholders))
@@ -233,14 +234,17 @@ func updateSlideExecute(_ context.Context, runtime *common.RuntimeContext) error
 
 	data, err := runtime.CallAPITyped("POST", slideReplaceAPIPath(presentationID),
 		updateSlideQuery(runtime, slideID),
-		map[string]interface{}{"parts": updateSlideParts(slideID, content)})
+		updateSlideBody(slideID, content, runtime))
 	if err != nil {
 		if len(placeholders) > 0 {
 			// The images are already in the deck's media store; say so, or a
 			// retry silently uploads a second copy of every file.
 			err = appendSlidesProgressHint(err, fmt.Sprintf("%d image(s) were uploaded before the slide failed; re-running will upload them again", len(placeholders)))
 		}
-		return enrichUpdateSlideError(err)
+		// .../slide/replace is gated, and the subject is the page the write
+		// produces rather than the payload sent, so a page that is invalid only
+		// in combination is caught here too.
+		return enrichUpdateSlideError(enrichSlidesLintError(err))
 	}
 
 	// A single part carries the whole page, so any failed_reason means the page
@@ -262,6 +266,14 @@ func updateSlideExecute(_ context.Context, runtime *common.RuntimeContext) error
 
 	if v, ok := data["revision_id"]; ok {
 		result["revision_id"] = v
+	}
+	// issues is advisory and only ever arrives on a page that was written: a
+	// finding serious enough to refuse the write leaves as an error carrying the
+	// same report, and the failed_reason branch above has already returned. Passed
+	// through untouched, as +add-slide and +create do, so a caller reads one field
+	// however it wrote the page.
+	if issues, ok := data["issues"]; ok {
+		result["issues"] = issues
 	}
 	runtime.Out(result, nil)
 	return nil
@@ -314,6 +326,12 @@ func updateSlideQuery(runtime *common.RuntimeContext, slideID string) map[string
 		query["tid"] = tid
 	}
 	return query
+}
+
+// updateSlideBody builds the request body shared by dry-run and execute, so the
+// two cannot disagree about the lint switch.
+func updateSlideBody(slideID, content string, runtime *common.RuntimeContext) map[string]interface{} {
+	return withLintXML(map[string]interface{}{"parts": updateSlideParts(slideID, content)}, runtime)
 }
 
 // updateSlideParts builds the one part the command ever sends. block_id is the
