@@ -6,6 +6,7 @@ package output
 import (
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -61,9 +62,9 @@ func TestSuccessEnvelopeData_NonDataPayloadKeyPreserved(t *testing.T) {
 		"code": float64(0),
 		"msg":  "ok",
 		"bot": map[string]interface{}{
-			"activate_status": 2,
-			"app_name":       "TestBot",
-			"open_id":        "ou_123",
+			"activate_status": float64(2),
+			"app_name":        "TestBot",
+			"open_id":         "ou_123",
 		},
 	}
 
@@ -82,11 +83,39 @@ func TestSuccessEnvelopeData_NonDataPayloadKeyPreserved(t *testing.T) {
 	if !ok {
 		t.Fatalf("business data.bot type = %T, want map", m["bot"])
 	}
-	if bot["activate_status"] != 2 {
+	if bot["activate_status"] != float64(2) {
 		t.Fatalf("bot.activate_status = %v, want 2", bot["activate_status"])
 	}
 	if bot["app_name"] != "TestBot" {
 		t.Fatalf("bot.app_name = %v, want TestBot", bot["app_name"])
+	}
+}
+
+func TestSuccessEnvelopeData_NilResultUsesEmptyObject(t *testing.T) {
+	got := SuccessEnvelopeData(nil)
+	m, ok := got.(map[string]interface{})
+	if !ok || len(m) != 0 {
+		t.Fatalf("business data = %#v, want empty object", got)
+	}
+}
+
+func TestSuccessEnvelopeData_NonObjectBodyPreserved(t *testing.T) {
+	cases := []struct {
+		name string
+		body interface{}
+	}{
+		{"array", []interface{}{map[string]interface{}{"id": "1"}, map[string]interface{}{"id": "2"}}},
+		{"string", "pong"},
+		{"number", json.Number("42")},
+		{"bool", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := SuccessEnvelopeData(tc.body)
+			if !reflect.DeepEqual(got, tc.body) {
+				t.Fatalf("business data = %#v, want body %#v preserved", got, tc.body)
+			}
+		})
 	}
 }
 

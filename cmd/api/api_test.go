@@ -195,6 +195,73 @@ func TestApiCmd_BotMode(t *testing.T) {
 	}
 }
 
+func TestApiCmd_NonDataPayload_PreservedInEnvelope(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-nondata", AppSecret: "test-secret-nondata", Brand: core.BrandFeishu,
+	})
+
+	// /bot/v3/info is a legacy endpoint whose payload sits beside code/msg
+	// under "bot" instead of inside "data" (#2428).
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/bot/v3/info",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"bot": map[string]interface{}{"open_id": "ou_123", "app_name": "TestBot"},
+		},
+	})
+
+	cmd := newTestApiCmd(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/bot/v3/info", "--as", "bot"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON output: %v\n%s", err, stdout.String())
+	}
+	if got["ok"] != true || got["identity"] != "bot" {
+		t.Fatalf("unexpected envelope: %#v", got)
+	}
+	data, ok := got["data"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("data = %#v, want object", got["data"])
+	}
+	bot, ok := data["bot"].(map[string]interface{})
+	if !ok || bot["open_id"] != "ou_123" {
+		t.Fatalf("data.bot = %#v, want the legacy payload preserved", data["bot"])
+	}
+	for _, k := range []string{"code", "msg"} {
+		if _, leaked := data[k]; leaked {
+			t.Fatalf("transport field %q leaked into data: %s", k, stdout.String())
+		}
+	}
+}
+
+func TestApiCmd_NonObjectBody_FailsLoudly(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-arraybody", AppSecret: "test-secret-arraybody", Brand: core.BrandFeishu,
+	})
+
+	// The SDK rejects a body that is not a JSON object before it reaches the
+	// output layer. Pin that this surfaces as an error: the #2428 failure mode
+	// is a silent ok:true with empty data, and an array body must not regress
+	// into that shape either.
+	reg.Register(&httpmock.Stub{
+		URL:  "/open-apis/test/list",
+		Body: []interface{}{map[string]interface{}{"id": "1"}, map[string]interface{}{"id": "2"}},
+	})
+
+	cmd := newTestApiCmd(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/test/list", "--as", "bot"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatalf("array body must not be reported as success; stdout:\n%s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), `"ok": true`) {
+		t.Fatalf("array body produced a success envelope: %s", stdout.String())
+	}
+}
+
 func TestApiCmd_MissingArgs(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
