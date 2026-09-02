@@ -6,6 +6,7 @@ package slides
 import (
 	"errors"
 	"io/fs"
+	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
@@ -38,6 +39,34 @@ func slidesInputStatError(err error, param, context string) error {
 	default:
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s: cannot read file: %s", context, err).WithParam(param).WithCause(err)
 	}
+}
+
+// slidesMissingScopeTerminalHint keeps 99991679 / missing_scope terminal for
+// the current slides workflow. The shared classifier already emits min-scope
+// auth-login recovery; this sentence stops screenshot → GET / next-batch /
+// create-continue loops that amplified those failures.
+const slidesMissingScopeTerminalHint = "Do not retry this request or continue other slides calls until that authorization completes."
+
+// annotateSlidesMissingScope appends terminal recovery on user/app scope
+// failures without replacing the classifier's auth-login or console hint.
+// Resource ACL failures (permission_denied) are left unchanged.
+func annotateSlidesMissingScope(err error) error {
+	if err == nil {
+		return nil
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok || p == nil || p.Subtype != errs.SubtypeMissingScope {
+		return err
+	}
+	if strings.Contains(p.Hint, slidesMissingScopeTerminalHint) {
+		return err
+	}
+	if strings.TrimSpace(p.Hint) == "" {
+		p.Hint = slidesMissingScopeTerminalHint
+		return err
+	}
+	p.Hint = p.Hint + "\n" + slidesMissingScopeTerminalHint
+	return err
 }
 
 // appendSlidesProgressHint preserves err's typed classification (per

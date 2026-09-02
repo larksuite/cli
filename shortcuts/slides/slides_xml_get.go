@@ -176,7 +176,7 @@ func fetchSlidesXMLGetContent(runtime *common.RuntimeContext, presentationID str
 			nil,
 		)
 		if err != nil {
-			return "", nil, err
+			return "", nil, annotateSlidesMissingScope(err)
 		}
 		slide := common.GetMap(data, "slide")
 		content := common.GetString(slide, "content")
@@ -224,7 +224,7 @@ func fetchSlidesXMLGetContent(runtime *common.RuntimeContext, presentationID str
 		nil,
 	)
 	if err != nil {
-		return "", nil, err
+		return "", nil, annotateSlidesMissingScope(err)
 	}
 
 	presentation := common.GetMap(data, "xml_presentation")

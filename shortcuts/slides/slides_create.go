@@ -134,7 +134,7 @@ var SlidesCreate = common.Shortcut{
 			},
 		)
 		if err != nil {
-			return err
+			return annotateSlidesMissingScope(err)
 		}
 
 		presentationID := common.GetString(data, "xml_presentation_id")
@@ -162,7 +162,7 @@ var SlidesCreate = common.Shortcut{
 			if len(placeholders) > 0 {
 				tokens, uploaded, err := uploadSlidesPlaceholders(runtime, presentationID, placeholders, param)
 				if err != nil {
-					return appendSlidesProgressHint(err, fmt.Sprintf("presentation %s was created; %d image(s) uploaded before failure", presentationID, uploaded))
+					return appendSlidesProgressHint(annotateSlidesMissingScope(err), fmt.Sprintf("presentation %s was created; %d image(s) uploaded before failure", presentationID, uploaded))
 				}
 				for i := range slides {
 					slides[i] = replaceImagePlaceholders(slides[i], tokens)
@@ -187,7 +187,7 @@ var SlidesCreate = common.Shortcut{
 					},
 				)
 				if err != nil {
-					return appendSlidesProgressHint(err, fmt.Sprintf("adding slide %d/%d failed; presentation %s was created, %d slide(s) added before failure", i+1, len(slides), presentationID, i))
+					return appendSlidesProgressHint(annotateSlidesMissingScope(err), fmt.Sprintf("adding slide %d/%d failed; presentation %s was created, %d slide(s) added before failure", i+1, len(slides), presentationID, i))
 				}
 				sid := common.GetString(slideData, "slide_id")
 				if sid != "" {

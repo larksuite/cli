@@ -7,11 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/httpmock"
 )
 
 // TestSlidesInputStatError verifies the shared stat-error helper tags the
@@ -135,4 +138,133 @@ func TestAppendSlidesProgressHint(t *testing.T) {
 			t.Fatalf("fallback must preserve the original cause via WithCause")
 		}
 	})
+}
+
+func slidesMissingScopeAPIBody(scope string) map[string]interface{} {
+	return map[string]interface{}{
+		"code": 99991679,
+		"msg":  "scope missing",
+		"error": map[string]interface{}{
+			"permission_violations": []interface{}{
+				map[string]interface{}{"subject": scope},
+			},
+		},
+	}
+}
+
+func assertSlidesMissingScopeTerminal(t *testing.T, err error, scope string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected missing_scope error")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("err = %T %v, want typed problem", err, err)
+	}
+	if p.Category != errs.CategoryAuthorization || p.Subtype != errs.SubtypeMissingScope || p.Code != 99991679 {
+		t.Fatalf("problem = %#v, want authorization/missing_scope/99991679", p)
+	}
+	if !strings.Contains(p.Hint, scope) {
+		t.Fatalf("hint missing min scope %q: %q", scope, p.Hint)
+	}
+	if !strings.Contains(p.Hint, "auth login --scope") {
+		t.Fatalf("hint missing re-auth command: %q", p.Hint)
+	}
+	if !strings.Contains(p.Hint, slidesMissingScopeTerminalHint) {
+		t.Fatalf("hint missing terminal stop: %q", p.Hint)
+	}
+}
+
+func TestAnnotateSlidesMissingScope(t *testing.T) {
+	t.Parallel()
+
+	if err := annotateSlidesMissingScope(nil); err != nil {
+		t.Fatalf("nil input should return nil, got %v", err)
+	}
+
+	plain := errors.New("raw")
+	if got := annotateSlidesMissingScope(plain); got != plain {
+		t.Fatalf("untyped error should pass through, got %v", got)
+	}
+
+	denied := errs.NewPermissionError(errs.SubtypePermissionDenied, "no access").
+		WithHint("ask the owner")
+	if got := annotateSlidesMissingScope(denied); got != denied {
+		t.Fatalf("permission_denied should pass through unchanged")
+	}
+	if p, _ := errs.ProblemOf(denied); strings.Contains(p.Hint, slidesMissingScopeTerminalHint) {
+		t.Fatalf("resource ACL hint must not get the OAuth stop sentence: %q", p.Hint)
+	}
+
+	missing := errs.NewPermissionError(errs.SubtypeMissingScope, "unauthorized").
+		WithCode(99991679).
+		WithHint(`run lark-cli auth login --scope "slides:presentation:screenshot"`)
+	got := annotateSlidesMissingScope(missing)
+	p, ok := errs.ProblemOf(got)
+	if !ok {
+		t.Fatalf("got %T, want typed permission error", got)
+	}
+	if !strings.Contains(p.Hint, `auth login --scope "slides:presentation:screenshot"`) {
+		t.Fatalf("hint dropped min-scope recovery: %q", p.Hint)
+	}
+	if !strings.Contains(p.Hint, slidesMissingScopeTerminalHint) {
+		t.Fatalf("hint missing terminal stop: %q", p.Hint)
+	}
+	if p2, _ := errs.ProblemOf(annotateSlidesMissingScope(got)); strings.Count(p2.Hint, slidesMissingScopeTerminalHint) != 1 {
+		t.Fatalf("terminal hint should be appended once, got %q", p2.Hint)
+	}
+}
+
+func TestSlidesScreenshotMissingScopeIsTerminal(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+
+	const scope = "slides:presentation:screenshot"
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc/slide_images",
+		Body:   slidesMissingScopeAPIBody(scope),
+	})
+	err := runSlidesShortcut(t, f, stdout, SlidesScreenshot, []string{
+		"+screenshot",
+		"--presentation", "pres_abc",
+		"--slide-number", "1",
+		"--as", "user",
+	})
+	assertSlidesMissingScopeTerminal(t, err, scope)
+}
+
+func TestSlidesCreateMissingScopeIsTerminal(t *testing.T) {
+	t.Parallel()
+
+	const scope = "slides:presentation:create"
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations",
+		Body:   slidesMissingScopeAPIBody(scope),
+	})
+	err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "Need Scope",
+		"--as", "user",
+	})
+	assertSlidesMissingScopeTerminal(t, err, scope)
+}
+
+func TestSlidesXMLGetMissingScopeIsTerminal(t *testing.T) {
+	const scope = "slides:presentation:read"
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc",
+		Body:   slidesMissingScopeAPIBody(scope),
+	})
+	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+		"+xml-get",
+		"--presentation", "pres_abc",
+		"--as", "user",
+	})
+	assertSlidesMissingScopeTerminal(t, err, scope)
 }
