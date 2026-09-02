@@ -71,10 +71,12 @@ func plainTextFromHTML(raw string) string {
 
 // plainTextFromHTMLTokens extracts text with the streaming tokenizer, which
 // builds no tree and therefore has no nesting limit. It mirrors the parser's
-// head handling so both paths drop the same content: text inside <head>
-// (including <template> and <noframes> content) is never emitted, and head
-// ends at </head>, at the first start tag that is not allowed in head, or at
-// the first non-whitespace text — the parser's implicit </head> rules.
+// head handling so both paths drop the same content: everything the parser
+// would place in <head> (including an implicit head before any <head> tag and
+// head elements that appear between </head> and <body>) is never emitted, the
+// body starts at <body>, at the first start tag that is not allowed in head,
+// or at the first non-whitespace text, and a stray <head> inside the body is
+// ignored the way the parser ignores it.
 func plainTextFromHTMLTokens(raw string) string {
 	w := &tokenTextWriter{}
 	z := xhtml.NewTokenizer(strings.NewReader(raw))
@@ -92,86 +94,112 @@ func plainTextFromHTMLTokens(raw string) string {
 	}
 }
 
-// tokenTextWriter holds the tokenizer walk state. skipDepth counts open
-// containers whose text is never emitted; inHead never changes while
-// skipDepth > 0 because template contents are inert.
+// headPhase follows the parser's insertion modes around <head>: text and
+// head-only elements are dropped until the body starts.
+type headPhase int
+
+const (
+	beforeHead headPhase = iota
+	inHead
+	afterHead
+	inBody
+)
+
+// tokenTextWriter holds the tokenizer walk state. skip lists the open
+// containers whose text is never emitted, innermost last; an end tag pops
+// only when its name is on the stack, so a stray </script> inside a
+// <template> cannot end the skip early. phase never changes while skip is
+// non-empty because skipped contents are inert.
 type tokenTextWriter struct {
-	buf       bytes.Buffer
-	inHead    bool
-	skipDepth int
+	buf   bytes.Buffer
+	phase headPhase
+	skip  []string
 }
 
 func (w *tokenTextWriter) startTag(el *xhtml.Node) {
-	if w.skipDepth > 0 {
-		if w.skipsText(el) {
-			w.skipDepth++
+	name := strings.ToLower(el.Data)
+	if len(w.skip) > 0 {
+		if w.skipsText(name) {
+			w.skip = append(w.skip, name)
 		}
 		return
 	}
-	name := strings.ToLower(el.Data)
-	switch {
-	case name == "head":
-		w.inHead = true
-		return
-	case w.inHead && name == "html":
-		return
-	case w.skipsText(el):
-		w.skipDepth++
-		return
-	case w.inHead && isHeadElement(name):
+	if w.phase != inBody {
+		switch {
+		case name == "html":
+			return
+		case name == "head":
+			if w.phase == beforeHead {
+				w.phase = inHead
+			}
+			return
+		case name == "body":
+			w.phase = inBody
+			return
+		case isHeadElement(name):
+			if w.skipsText(name) {
+				w.skip = append(w.skip, name)
+			}
+			return
+		}
+		w.phase = inBody
+	}
+	if w.skipsText(name) {
+		w.skip = append(w.skip, name)
 		return
 	}
-	w.inHead = false
 	writeBlockBoundary(&w.buf, el)
 }
 
 func (w *tokenTextWriter) endTag(el *xhtml.Node) {
-	if w.skipsText(el) {
-		if w.skipDepth > 0 {
-			w.skipDepth--
+	name := strings.ToLower(el.Data)
+	for i := len(w.skip) - 1; i >= 0; i-- {
+		if w.skip[i] == name {
+			w.skip = w.skip[:i]
+			return
+		}
+	}
+	if len(w.skip) > 0 {
+		return
+	}
+	switch name {
+	case "head":
+		if w.phase == beforeHead || w.phase == inHead {
+			w.phase = afterHead
 		}
 		return
-	}
-	if w.skipDepth > 0 {
+	case "html", "body":
 		return
 	}
-	if strings.EqualFold(el.Data, "head") {
-		w.inHead = false
-		return
-	}
-	if w.inHead {
+	if w.phase != inBody {
 		return
 	}
 	writeBlockBoundary(&w.buf, el)
 }
 
 func (w *tokenTextWriter) text(s string) {
-	if w.skipDepth > 0 {
+	if len(w.skip) > 0 {
 		return
 	}
-	if w.inHead {
+	if w.phase != inBody {
 		if collapseHTMLWhitespace(s) == "" {
 			return
 		}
-		w.inHead = false
+		w.phase = inBody
 	}
 	writePlainText(&w.buf, s)
 }
 
-// skipsText reports whether el opens a container whose text must not be
+// skipsText reports whether name opens a container whose text must not be
 // emitted: script/style/noscript/title anywhere, plus template and noframes
-// while inside head (the parser drops them with the rest of the head subtree,
-// but keeps their text in body).
-func (w *tokenTextWriter) skipsText(el *xhtml.Node) bool {
-	if isSkippedTextContainer(el) {
+// while the parser would still place them in head (it keeps their text in
+// body).
+func (w *tokenTextWriter) skipsText(name string) bool {
+	switch name {
+	case "script", "style", "noscript", "title":
 		return true
-	}
-	if !w.inHead {
-		return false
-	}
-	switch strings.ToLower(el.Data) {
 	case "template", "noframes":
-		return true
+		return w.phase != inBody
 	default:
 		return false
 	}
@@ -180,15 +208,6 @@ func (w *tokenTextWriter) skipsText(el *xhtml.Node) bool {
 func tokenElement(z *xhtml.Tokenizer) *xhtml.Node {
 	name, _ := z.TagName()
 	return &xhtml.Node{Type: xhtml.ElementNode, Data: string(name)}
-}
-
-func isSkippedTextContainer(n *xhtml.Node) bool {
-	switch strings.ToLower(n.Data) {
-	case "script", "style", "noscript", "title":
-		return true
-	default:
-		return false
-	}
 }
 
 // isHeadElement lists the elements the HTML parser keeps inside <head>; any

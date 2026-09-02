@@ -132,6 +132,36 @@ func TestPlainTextFromHTMLFallbackMatchesParsedPath(t *testing.T) {
 			want:    "STRAY VISIBLE",
 		},
 		{
+			name:    "implicit head: template before any head tag is dropped",
+			shallow: "<html><template>HIDDEN</template><body><p>TEXT</p></body></html>",
+			deep:    "<html>" + deepWrap("HIDDEN") + "<body><p>TEXT</p></body></html>",
+			want:    "TEXT",
+		},
+		{
+			name:    "template between head end and body goes back into head",
+			shallow: "<html><head></head><template>HIDDEN</template><body><p>TEXT</p></body></html>",
+			deep:    "<html><head></head>" + deepWrap("HIDDEN") + "<body><p>TEXT</p></body></html>",
+			want:    "TEXT",
+		},
+		{
+			name:    "stray head tag inside body is ignored",
+			shallow: "<html><body><p>A</p><head><template>T</template></head><p>B</p></body></html>",
+			deep:    "<html><body><p>A</p><head><template>T</template></head>" + strings.Repeat("<div>", 600) + strings.Repeat("</div>", 600) + "<p>B</p></body></html>",
+			want:    "A\nT\nB",
+		},
+		{
+			name:    "mismatched script end tag does not end a head template",
+			shallow: "<head><template><div></script>HIDDEN</div></template></head><body>VISIBLE</body>",
+			deep:    "<head><template>" + strings.Repeat("<div>", 600) + "</script>HIDDEN" + strings.Repeat("</div>", 600) + "</template></head><body>VISIBLE</body>",
+			want:    "VISIBLE",
+		},
+		{
+			name:    "mismatched style and title end tags do not end a head template",
+			shallow: "<head><template><div></style></title>HIDDEN</div></template></head><body>VISIBLE</body>",
+			deep:    "<head><template>" + strings.Repeat("<div>", 600) + "</style></title>HIDDEN" + strings.Repeat("</div>", 600) + "</template></head><body>VISIBLE</body>",
+			want:    "VISIBLE",
+		},
+		{
 			name:    "explicit body after head metadata",
 			shallow: "<html><head><title>T</title><link rel=stylesheet href=x><meta charset=utf-8></head><body><p>Hello</p></body></html>",
 			deep:    "<html><head><title>T</title><link rel=stylesheet href=x><meta charset=utf-8>" + deepWrap("") + "</head><body><p>Hello</p></body></html>",
