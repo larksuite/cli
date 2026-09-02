@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  RELEASE_GO_VERSION: '1.26.7'
+  RELEASE_GO_VERSION: '1.26.8'
 
 concurrency:
   group: release-${{ github.ref_name }}
