@@ -86,7 +86,7 @@ git clone https://github.com/larksuite/cli.git
 cd cli
 make install
 
-# Install the AI Agent Skills (recommended; required for agent use)
+# Install CLI SKILL (required)
 npx skills add larksuite/cli -y -g
 ```
 

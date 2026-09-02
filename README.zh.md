@@ -86,7 +86,7 @@ git clone https://github.com/larksuite/cli.git
 cd cli
 make install
 
-# 安装 AI Agent Skills（推荐；Agent 场景需要）
+# 安装 CLI SKILL（必需）
 npx skills add larksuite/cli -y -g
 ```
 
