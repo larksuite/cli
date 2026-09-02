@@ -49,6 +49,15 @@ def _percentile(values: list[int], ratio: float) -> int:
     return ordered[max(0, math.ceil(len(ordered) * ratio) - 1)]
 
 
+def _has_clustered_small_slices(values: list[float]) -> bool:
+    positive = [value for value in values if value > 0]
+    total = sum(positive)
+    if not total:
+        return False
+    shares = [value / total for value in positive]
+    return max(shares, default=0) >= 0.75 and sum(share < 0.05 for share in shares) >= 3
+
+
 def minimum_chart_size(chart_type: str) -> dict[str, int]:
     width, height = MINIMUM_SIZES.get(str(chart_type).lower(), DEFAULT_MINIMUM_SIZE)
     return {"width": width, "height": height}
@@ -141,14 +150,9 @@ def recommend_chart_size(
         width = max(width, 420 + 2 * label_reserve)
         if labels_enabled:
             reasons.append("outside_slice_labels")
-        if values:
-            positive = [value for value in values if value > 0]
-            total = sum(positive)
-            if total:
-                shares = [value / total for value in positive]
-                if max(shares, default=0) >= 0.75 and sum(share < 0.05 for share in shares) >= 3:
-                    height += 40
-                    reasons.append("clustered_small_slices")
+        if values and _has_clustered_small_slices(values):
+            height += 40
+            reasons.append("clustered_small_slices")
         if category_count > 8:
             advice.append("prefer_bar_or_top_n")
         size_alone_is_insufficient = category_count > 12

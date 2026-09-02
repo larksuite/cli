@@ -3562,14 +3562,14 @@
         "kind": "own",
         "type": "float64",
         "required": "optional",
-        "desc": "Lower display bound for the left Y-axis; omit by default and pass only when the user explicitly requests fixed bounds; do not copy a raw source-column minimum, and keep it below --y-axis-max"
+        "desc": "Lower display bound for the left Y-axis; omit by default and pass together with --y-axis-max only when the user explicitly requests fixed bounds; do not copy a raw source-column minimum, and keep it below the upper bound"
       },
       {
         "name": "y-axis-max",
         "kind": "own",
         "type": "float64",
         "required": "optional",
-        "desc": "Upper display bound for the left Y-axis; omit by default and pass only when the user explicitly requests fixed bounds; calculate it from rendered chart semantics, and keep it above --y-axis-min"
+        "desc": "Upper display bound for the left Y-axis; omit by default and pass together with --y-axis-min only when the user explicitly requests fixed bounds; calculate it from rendered chart semantics, and keep it above the lower bound"
       },
       {
         "name": "dim1-index",
@@ -3965,14 +3965,14 @@
         "kind": "own",
         "type": "float64",
         "required": "optional",
-        "desc": "Lower display bound for the left Y-axis; omit by default and pass only when the user explicitly requests fixed bounds; do not copy a raw source-column minimum, and keep it below --y-axis-max"
+        "desc": "Lower display bound for the left Y-axis; omit by default and pass together with --y-axis-max only when the user explicitly requests fixed bounds; do not copy a raw source-column minimum, and keep it below the upper bound"
       },
       {
         "name": "y-axis-max",
         "kind": "own",
         "type": "float64",
         "required": "optional",
-        "desc": "Upper display bound for the left Y-axis; omit by default and pass only when the user explicitly requests fixed bounds; calculate it from rendered chart semantics, and keep it above --y-axis-min"
+        "desc": "Upper display bound for the left Y-axis; omit by default and pass together with --y-axis-min only when the user explicitly requests fixed bounds; calculate it from rendered chart semantics, and keep it above the lower bound"
       },
       {
         "name": "data-labels",
