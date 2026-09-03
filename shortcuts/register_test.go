@@ -234,7 +234,7 @@ func TestRegisterShortcutsForDomainsRunsHooksOnlyForSelectedBuckets(t *testing.T
 		}
 		sheetsCmd := findChild(program, "sheets")
 		if sheetsCmd == nil || !sheetsCmd.ContainsGroup(sheetsCurrentGroupID) {
-			t.Fatal("selected sheets hook did not apply compatibility groups")
+			t.Fatal("selected sheets hook did not apply command groups")
 		}
 	})
 }
