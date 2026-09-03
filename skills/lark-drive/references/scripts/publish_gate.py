@@ -98,7 +98,6 @@ REQUIRED_NON_EMPTY = ("source", "scope_visibility")
 VALID_PAGE_STATUSES = {"进行中", "已完成", "已废弃"}
 UNRESOLVED_MARKERS = ("待确认", "待补充", "待指定", "未确认", "未解决", "tbd", "unknown")
 
-VALID_PUBLISH_ROLES = {"knowledge_page", "source_attachment"}
 # write_via paths that produce a searchable docx knowledge page.
 PAGE_WRITE_VIA = {"docs_update", "import_docx", "node_create_docx"}
 # write_via that only uploads the original file as an attachment node.
