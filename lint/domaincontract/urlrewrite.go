@@ -14,9 +14,10 @@ import (
 
 const urlRewriteImport = "github.com/larksuite/cli/internal/urlrewrite"
 
+// unrewrittenURLViolation rejects an added static URL in CLI runtime code that
+// is not wrapped in urlrewrite.Rewrite.
 func (s *fileDomainScan) unrewrittenURLViolation(rel string, evidence domainEvidence, added []addedLineRange) (lintapi.Violation, bool) {
-	if evidence.Kind != "absolute URL" || !urlRewriteRuntimeFile(rel) ||
-		(rel == resolverPath && s.inEndpointResolver(evidence.Expr)) || s.inURLRewriteCall(evidence.Expr) || s.hasURLRewriteExemption(evidence.Expr) {
+	if evidence.Kind != "absolute URL" || !urlRewriteRuntimeFile(rel) || s.urlRewriteExempt(rel, evidence.Expr) {
 		return lintapi.Violation{}, false
 	}
 	start := s.Fset.Position(evidence.Expr.Pos()).Line
@@ -35,20 +36,34 @@ func (s *fileDomainScan) unrewrittenURLViolation(rel string, evidence domainEvid
 	}, true
 }
 
-func urlRewriteRuntimeFile(rel string) bool {
-	rel = filepath.ToSlash(rel)
-	if strings.HasSuffix(rel, "_test.go") || strings.Contains(rel, "/testdata/") ||
-		strings.HasPrefix(rel, "internal/qualitygate/") || strings.HasPrefix(rel, "internal/testutil/") ||
-		strings.HasPrefix(rel, "internal/urlrewrite/") {
-		return false
+// urlRewriteExempt reports whether a static URL needs no Rewrite wrapper: it
+// sits inside the endpoint resolver body (platform URLs are rewritten by the
+// transport layer), inside a urlrewrite.Rewrite call, or next to a documented
+// //nolint:urlrewrite reason.
+func (s *fileDomainScan) urlRewriteExempt(rel string, expr ast.Expr) bool {
+	aliases := urlRewriteAliases(s.File)
+	for node := ast.Node(expr); node != nil; node = s.parents[node] {
+		switch n := node.(type) {
+		case *ast.CallExpr:
+			sel, ok := n.Fun.(*ast.SelectorExpr)
+			pkg, pkgOK := sel.X.(*ast.Ident)
+			if ok && pkgOK && aliases[pkg.Name] && sel.Sel.Name == "Rewrite" {
+				return true
+			}
+		case *ast.FuncDecl:
+			if rel == resolverPath && n.Recv == nil && n.Name.Name == "ResolveEndpoints" {
+				return true
+			}
+		}
 	}
-	return rel == "main.go" || strings.HasPrefix(rel, "cmd/") ||
-		strings.HasPrefix(rel, "internal/") || strings.HasPrefix(rel, "shortcuts/")
+	return s.hasURLRewriteExemption(expr)
 }
 
-func (s *fileDomainScan) inURLRewriteCall(expr ast.Expr) bool {
+// urlRewriteAliases returns the import names under which this file imports the
+// urlrewrite package (usually just "urlrewrite").
+func urlRewriteAliases(file *ast.File) map[string]bool {
 	aliases := map[string]bool{}
-	for _, imp := range s.File.Imports {
+	for _, imp := range file.Imports {
 		path, err := strconv.Unquote(imp.Path.Value)
 		if err != nil || path != urlRewriteImport {
 			continue
@@ -59,40 +74,18 @@ func (s *fileDomainScan) inURLRewriteCall(expr ast.Expr) bool {
 		}
 		aliases[name] = true
 	}
-	for node := ast.Node(expr); node != nil; node = s.parents[node] {
-		call, ok := node.(*ast.CallExpr)
-		if !ok {
-			continue
-		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		pkg, pkgOK := sel.X.(*ast.Ident)
-		if ok && pkgOK && aliases[pkg.Name] && sel.Sel.Name == "Rewrite" && !s.atPackageScope(call) {
-			return true
-		}
-	}
-	return false
+	return aliases
 }
 
-func (s *fileDomainScan) atPackageScope(node ast.Node) bool {
-	for parent := s.parents[node]; parent != nil; parent = s.parents[parent] {
-		switch parent.(type) {
-		case *ast.FuncDecl, *ast.FuncLit:
-			return false
-		}
-		if _, ok := parent.(*ast.File); ok {
-			return true
-		}
+func urlRewriteRuntimeFile(rel string) bool {
+	rel = filepath.ToSlash(rel)
+	if strings.HasSuffix(rel, "_test.go") || strings.Contains(rel, "/testdata/") ||
+		strings.HasPrefix(rel, "internal/qualitygate/") || strings.HasPrefix(rel, "internal/testutil/") ||
+		strings.HasPrefix(rel, "internal/urlrewrite/") {
+		return false
 	}
-	return false
-}
-
-func (s *fileDomainScan) inEndpointResolver(expr ast.Expr) bool {
-	for node := ast.Node(expr); node != nil; node = s.parents[node] {
-		if fn, ok := node.(*ast.FuncDecl); ok {
-			return fn.Recv == nil && fn.Name.Name == "ResolveEndpoints"
-		}
-	}
-	return false
+	return rel == "main.go" || strings.HasPrefix(rel, "cmd/") ||
+		strings.HasPrefix(rel, "internal/") || strings.HasPrefix(rel, "shortcuts/")
 }
 
 func (s *fileDomainScan) hasURLRewriteExemption(expr ast.Expr) bool {

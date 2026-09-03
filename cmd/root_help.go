@@ -145,17 +145,13 @@ Skills setup (one-time, humans): npx skills add larksuite/cli -g -y — %s{{end}
 
 var rootUsageTemplate = renderRootUsageTemplate(nil)
 
-func skillsSetupURL() string {
-	return urlrewrite.Rewrite("https://github.com/larksuite/cli#agent-skills")
-}
-
 func renderRootUsageTemplate(plan *surface.Plan) string {
 	var b strings.Builder
 	b.WriteString(rootUsageTemplatePrefix)
 	b.WriteString(renderRootHelpFragments(rootUsageSynopsis, plan))
 	b.WriteString(rootUsageTemplateSuffix)
 	if plan.CanReference(surface.CommandSkillsRead) {
-		fmt.Fprintf(&b, skillsSetupFooter, skillsSetupURL())
+		fmt.Fprintf(&b, skillsSetupFooter, urlrewrite.Rewrite("https://github.com/larksuite/cli#agent-skills"))
 	}
 	b.WriteByte('\n')
 	return b.String()
