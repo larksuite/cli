@@ -124,7 +124,7 @@ metadata:
 - 撤回已发送邮件：撤回邮件并查询异步撤回状态。ref: [lark-mail-recall](references/lark-mail-recall.md)
 - 修改邮件标签/已读状态/文件夹：优先使用 `+message-modify`。ref: [`+message-modify`](references/lark-mail-message-modify.md)
 - 软删除邮件：优先使用 `+message-trash`。ref: [`+message-trash`](references/lark-mail-message-trash.md)
-- 收信规则：创建、验证、删除自动处理收到邮件的规则。ref: [lark-mail-rules](references/lark-mail-rules.md)
+- 收信规则：查看、创建、更新、删除、启停、排序自动处理收到邮件的规则。ref: [lark-mail-rules](references/lark-mail-rules.md)
 - 分享邮件到 IM：分享邮件或会话到群聊、个人会话。ref: [lark-mail-share-to-chat](references/lark-mail-share-to-chat.md)
 - 发送日程邀请邮件：在邮件中嵌入 `text/calendar` 日程邀请。ref: [lark-mail-calendar-invite](references/lark-mail-calendar-invite.md)
 - 编写复杂 HTML 正文：复杂 HTML、本地图片、安全不确定时读取规范或运行 `+lint-html`；普通正文无需预读。ref: [lark-mail-html](references/lark-mail-html.md)
