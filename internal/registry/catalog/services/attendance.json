@@ -17,16 +17,16 @@
               "type": "string",
               "location": "query",
               "required": true,
-              "description": "Employee ID type. If you don't have background administrative privileges, you can use [Get user ID by mobile phone number or email](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/contact-v3/user/batch_get_id)",
+              "description": "Employee ID type. If you don't have background administrative privileges, you can use Get user ID by mobile phone number or email",
               "example": "employee_id",
               "options": [
                 {
                   "value": "employee_id",
-                  "description": "Employee's employee ID, that is the user ID in [Feishu Admin](https://example.larksuite.com/admin/index) > Organization > Member and Department > Member Details"
+                  "description": "Employee's employee ID, that is the user ID in Feishu Admin > Organization > Member and Department > Member Details"
                 },
                 {
                   "value": "employee_no",
-                  "description": "Employee ID, that is the employee ID in [Feishu Admin](https://example.larksuite.com/admin/index) > Organization > Member and Department > Member Details"
+                  "description": "Employee ID, that is the employee ID in Feishu Admin > Organization > Member and Department > Member Details"
                 }
               ],
               "enumName": "GetUserTaskClockInFlowsEmployeeType",
@@ -107,13 +107,13 @@
                 },
                 "group_id": {
                   "type": "string",
-                  "description": "考勤组 ID（特别说明：1代表未加入考勤组），可用于[按 ID 查询考勤组](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/attendance-v1/group/get)",
+                  "description": "考勤组 ID（特别说明：1代表未加入考勤组），可用于按 ID 查询考勤组",
                   "required": true,
                   "example": "6737202939523236110"
                 },
                 "shift_id": {
                   "type": "string",
-                  "description": "班次 ID（特别说明：9代表默认班次），可用于[按 ID 查询班次](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/attendance-v1/shift/get)",
+                  "description": "班次 ID（特别说明：9代表默认班次），可用于按 ID 查询班次",
                   "required": true,
                   "example": "6753520403404030215"
                 },

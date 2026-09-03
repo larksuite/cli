@@ -256,7 +256,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Calendar ID.; When creating a shared calendar, the calendar ID will be returned. You can also call the following interfaces to get the ID of a calendar.;- [Query Primary Calendar Information](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/primary);- [Query Calendar List](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/list);- [Search Calendars](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/search)",
+              "description": "Calendar ID.; When creating a shared calendar, the calendar ID will be returned. You can also call the following interfaces to get the ID of a calendar.;- Query Primary Calendar Information;- Query Calendar List;- Search Calendars",
               "example": "feishu.cn_xxxxxxxxxx@group.calendar.feishu.cn"
             }
           },
@@ -285,7 +285,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Calendar ID. ; When creating a shared calendar, the calendar ID will be returned. You can also call the following interfaces to get the ID of a calendar.;- [Query Primary Calendar Information](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/primary);- [Query Calendar List](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/list);- [Search Calendars](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/search)",
+              "description": "Calendar ID.; When creating a shared calendar, the calendar ID will be returned. You can also call the following interfaces to get the ID of a calendar.;- Query Primary Calendar Information;- Query Calendar List;- Search Calendars",
               "example": "feishu.cn_xxxxxxxxxx@group.calendar.feishu.cn"
             }
           },
@@ -706,7 +706,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Calendar ID. ; When creating a shared calendar, the calendar ID will be returned. You can also call the following interfaces to get the ID of a calendar.;- [Query Primary Calendar Information](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/primary);- [Query Calendar List](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/list);- [Search Calendars](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/search)",
+              "description": "Calendar ID.; When creating a shared calendar, the calendar ID will be returned. You can also call the following interfaces to get the ID of a calendar.;- Query Primary Calendar Information;- Query Calendar List;- Search Calendars",
               "example": "feishu.cn_xxxxxxxxxx@group.calendar.feishu.cn"
             }
           },
@@ -1162,7 +1162,7 @@
                 },
                 "user_id": {
                   "type": "string",
-                  "description": "The creator's User ID of the calendar. Understand different types of user IDs. See [User-related ID concept](https://open.feishu.cn/document/home/user-identity-introduction/introduction)",
+                  "description": "The creator's User ID of the calendar. Understand different types of user IDs.",
                   "required": false,
                   "example": "ou_xxxxxx",
                   "annotations": [
@@ -1416,14 +1416,14 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Calendar ID. For details, see [Calendar-related IDs](https://open.feishu.cn/document/ukTMukTMukTM/uETM3YjLxEzN24SMxcjN#f066a96c)",
+              "description": "Calendar ID.",
               "example": "feishu.cn_xxxxxxxxxx@group.calendar.feishu.cn"
             },
             "event_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Event ID.; The event ID is returned when creating a event. You can also call the following interface to obtain the ID of a certain calendar.;- [Get event list](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event/list);- [Search event](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event/search)",
+              "description": "Event ID.; The event ID is returned when creating an event. You can also call the following interface to obtain the ID of a certain calendar.;- Get event list;- Search event",
               "example": "xxxxxxxxx_0"
             },
             "user_id_type": {
@@ -1459,7 +1459,7 @@
           "requestBody": {
             "attendee_ids": {
               "type": "array",
-              "description": "List of invitee IDs that need to be deleted.; When adding a event invitee, the invitee ID (attendee_id) will be returned. You can also call [Get event invitee list](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event-attendee/list) Interface to query the invitee ID of the specified event.;- Up to 500 attendees can be deleted at a time (counted together with delete_ids)",
+              "description": "List of invitee IDs that need to be deleted.; When adding an event invitee, the invitee ID (attendee_id) will be returned. You can also call Get event invitee list Interface to query the invitee ID of the specified event.;- Up to 500 attendees can be deleted at a time (counted together with delete_ids)",
               "required": false
             },
             "delete_ids": {
@@ -1499,7 +1499,7 @@
                 },
                 "user_id": {
                   "type": "string",
-                  "description": "Event invitee's user ID, which depends on the returned user_id_type parameter. When is_external is true, this field returns the open_id or union_id. For more information, see [User-related IDs](https://open.feishu.cn/document/home/user-identity-introduction/introduction)",
+                  "description": "Event invitee's user ID, which depends on the returned user_id_type parameter. When is_external is true, this field returns the open_id or union_id.",
                   "required": false,
                   "example": "ou_xxxxxxxx"
                 },
@@ -1571,14 +1571,14 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "The calendar ID corresponding to the event. To learn more, see [Calendar ID Introduction](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/introduction)",
+              "description": "The calendar ID corresponding to the event.",
               "example": "feishu.cn_xxxxxxxxxx@group.calendar.feishu.cn"
             },
             "event_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Event ID.; The event ID is returned when creating a event. You can also call the following interface to obtain the ID of a certain calendar.;- [Get event list](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event/list);- [Search event](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event/search)",
+              "description": "Event ID.; The event ID is returned when creating an event. You can also call the following interface to obtain the ID of a certain calendar.;- Get event list;- Search event",
               "example": "xxxxxxxxx_0"
             },
             "user_id_type": {
@@ -1655,7 +1655,7 @@
                 },
                 "user_id": {
                   "type": "string",
-                  "description": "User ID. When selecting a user type invitee (the value of type is user), this parameter needs to be passed in. The user ID type passed in needs to be consistent with the value of user_id_type. For information about user IDs, see [User-related ID concepts](https://open.feishu.cn/document/home/user-identity-introduction/introduction)",
+                  "description": "User ID. When selecting a user type invitee (the value of type is user), this parameter needs to be passed in. The user ID type passed in needs to be consistent with the value of user_id_type.",
                   "required": false,
                   "example": "ou_xxxxxxxx"
                 },
@@ -1685,7 +1685,7 @@
                 },
                 "operate_id": {
                   "type": "string",
-                  "description": "Meeting room contact ID. The user ID type passed in needs to be consistent with the value of user_id_type. For information about user IDs, see [User-related ID concepts](https://open.feishu.cn/document/home/user-identity-introduction/introduction).; Note: If the current schedule is created based on the application identity, when adding a meeting room type invitee, you need to specify the contact person of the meeting room through this parameter, and the contact will be displayed in the schedule meeting room information.; Default: empty",
+                  "description": "Meeting room contact ID. The user ID type passed in needs to be consistent with the value of user_id_type.; Note: If the current schedule is created based on the application identity, when adding a meeting room type invitee, you need to specify the contact person of the meeting room through this parameter, and the contact will be displayed in the schedule meeting room information.; Default: empty",
                   "required": false,
                   "example": "ou_xxxxxxxx"
                 },
@@ -1733,7 +1733,7 @@
             },
             "instance_start_time_admin": {
               "type": "string",
-              "description": "The instance to be modified when accessing as an administrator.; Note:; - This parameter is only used to modify a event instance in a repeating event. This field does not need to be filled in for non-repeating events.;- You can call the [Get repeating event instance](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event/instances) interface to obtain the event_id of a event instance in the repeating event. The value of this parameter is the timestamp suffix of event_id. For example, the queried event instance ID is `<redacted>_1713168000`, then the current `instance_start_time_admin` value is `1713168000`.; Default: empty",
+              "description": "The instance to be modified when accessing as an administrator.; Note:; - This parameter is only used to modify an event instance in a repeating event. This field does not need to be filled in for non-repeating events.;- You can call the Get repeating event instance interface to obtain the event_id of an event instance in the repeating event. The value of this parameter is the timestamp suffix of event_id. For example, the queried event instance ID is `<event_id>_1713168000`, then the current `instance_start_time_admin` value is `1713168000`.; Default: empty",
               "required": false,
               "example": "1647320400"
             },
@@ -1952,7 +1952,7 @@
                 },
                 "user_id": {
                   "type": "string",
-                  "description": "Event invitee's user ID, which depends on the returned user_id_type parameter. When is_external is true, this field returns the open_id or union_id. For more information, see [User-related IDs](https://open.feishu.cn/document/home/user-identity-introduction/introduction)",
+                  "description": "Event invitee's user ID, which depends on the returned user_id_type parameter. When is_external is true, this field returns the open_id or union_id.",
                   "required": false,
                   "example": "ou_xxxxxxxx",
                   "annotations": [
@@ -1985,7 +1985,7 @@
                 },
                 "operate_id": {
                   "type": "string",
-                  "description": "Meeting room contact ID. The user ID type passed in needs to be consistent with the value of user_id_type. For information about user IDs, see [User-related ID concepts](https://open.feishu.cn/document/home/user-identity-introduction/introduction).; Note: If the current schedule is created based on the application identity, when adding a meeting room type invitee, you need to specify the contact person of the meeting room through this parameter, and the contact will be displayed in the schedule meeting room information.; Default: empty",
+                  "description": "Meeting room contact ID. The user ID type passed in needs to be consistent with the value of user_id_type.; Note: If the current schedule is created based on the application identity, when adding a meeting room type invitee, you need to specify the contact person of the meeting room through this parameter, and the contact will be displayed in the schedule meeting room information.; Default: empty",
                   "required": false,
                   "example": "ou_xxxxxxxx"
                 },
@@ -2048,14 +2048,14 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Calendar ID. For details, see [Calendar-related IDs](https://open.feishu.cn/document/ukTMukTMukTM/uETM3YjLxEzN24SMxcjN#f066a96c)",
+              "description": "Calendar ID.",
               "example": "feishu.cn_xxxxxxxxxx@group.calendar.feishu.cn"
             },
             "event_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Evnet ID.; The evnet ID is returned when creating a evnet. You can also call the following interface to obtain the ID of a certain calendar.;- [Get evnet list](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event/list);- [Search evnet](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event/search)",
+              "description": "Event ID.; The event ID is returned when creating an event. You can also call the following interface to obtain the ID of a certain calendar.;- Get event list;- Search event",
               "example": "xxxxxxxxx_0"
             },
             "user_id_type": {
@@ -2087,7 +2087,7 @@
               "type": "boolean",
               "location": "query",
               "required": false,
-              "description": "Whether meeting room form information is required.; Optional values are:;- true: required;- false (default): not required; Note: The current identity needs to have the editing rights of the event to return the meeting room form information, that is, the current identity needs to be the organizer of the event, or a invitee of the event and the event is set to Invitees can edit the event permissions. You can call the [Get event](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event/get) interface to obtain the invitee permissions (attendee_ability) of the event",
+              "description": "Whether meeting room form information is required.; Optional values are:;- true: required;- false (default): not required; Note: The current identity needs to have the editing rights of the event to return the meeting room form information, that is, the current identity needs to be the organizer of the event, or a invitee of the event and the event is set to Invitees can edit the event permissions. You can call the Get event interface to obtain the invitee permissions (attendee_ability) of the event",
               "example": true
             },
             "page_token": {
@@ -2320,7 +2320,7 @@
                 },
                 "user_id": {
                   "type": "string",
-                  "description": "User type The user ID of the invitee. The ID type is consistent with the value of user_id_type. For information about user IDs, see [User-related ID concepts](https://open.feishu.cn/document/home/user-identity-introduction/introduction).; Note: When is_external returns true, this field will only return open_id or union_id",
+                  "description": "User type The user ID of the invitee. The ID type is consistent with the value of user_id_type.; Note: When is_external returns true, this field will only return open_id or union_id",
                   "required": false,
                   "example": "ou_xxxxxxxx",
                   "annotations": [
@@ -2353,7 +2353,7 @@
                 },
                 "operate_id": {
                   "type": "string",
-                  "description": "Meeting room contact ID. The user ID type passed in needs to be consistent with the value of user_id_type. For information about user IDs, see [User-related ID concepts](https://open.feishu.cn/document/home/user-identity-introduction/introduction).; Note: If the current schedule is created based on the application identity, when adding a meeting room type invitee, you need to specify the contact person of the meeting room through this parameter, and the contact will be displayed in the schedule meeting room information.; Default: empty",
+                  "description": "Meeting room contact ID. The user ID type passed in needs to be consistent with the value of user_id_type.; Note: If the current schedule is created based on the application identity, when adding a meeting room type invitee, you need to specify the contact person of the meeting room through this parameter, and the contact will be displayed in the schedule meeting room information.; Default: empty",
                   "required": false,
                   "example": "ou_xxxxxxxx"
                 },
@@ -2423,7 +2423,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Calendar ID.; The calendar ID is returned when creating a shared calendar. You can also call the following interface to obtain the ID of a certain calendar.;- [Query primary calendar information](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/primary);- [Query calendar list](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/list);- [Search calendar](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/search)",
+              "description": "Calendar ID.; The calendar ID is returned when creating a shared calendar. You can also call the following interface to obtain the ID of a certain calendar.;- Query primary calendar information;- Query calendar list;- Search calendar",
               "example": "feishu.cn_xxxxxxxxxx@group.calendar.feishu.cn"
             },
             "idempotency_key": {
@@ -2492,7 +2492,7 @@
               "properties": {
                 "date": {
                   "type": "string",
-                  "description": "Specify the start time in days, in [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) format, for example, 2018-09-01.; Note: This parameter cannot be specified at the same time as `timestamp`",
+                  "description": "Specify the start time in days, in RFC 3339 format, for example, 2018-09-01.; Note: This parameter cannot be specified at the same time as `timestamp`",
                   "required": false,
                   "example": "2018-09-01"
                 },
@@ -2518,7 +2518,7 @@
               "properties": {
                 "date": {
                   "type": "string",
-                  "description": "Specify the end time in days, in [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) format, for example, 2018-09-01.; Note: This parameter cannot be specified at the same time as `timestamp`",
+                  "description": "Specify the end time in days, in RFC 3339 format, for example, 2018-09-01.; Note: This parameter cannot be specified at the same time as `timestamp`",
                   "required": false,
                   "example": "2018-09-01"
                 },
@@ -3059,7 +3059,7 @@
             },
             "description_rich": {
               "type": "string",
-              "description": "日程描述，Markdown 富文本（推荐创建/更新日程统一使用本字段）。与纯文本 description 互斥，二者至多传其一，切勿同时传。支持加粗、斜体、下划线（<u>...</u>）、删除线、链接 [文本](url)、标题（# 到 ###，最多三级）、引用（> ）、有序/无序列表、GFM 表格、图片 ![alt](url)。飞书文档 URL 会自动解析为内联文档。注意：图片仅支持传入已上传的图片 URL，本地图片不会自动上传；需要本地图片自动上传请改用 lark-cli calendar +create 快捷命令",
+              "description": "日程描述，Markdown 富文本（推荐创建/更新日程统一使用本字段）。与纯文本 description 互斥，二者至多传其一，切勿同时传。支持加粗、斜体、下划线（<u>...</u>）、删除线、链接 文本、标题（# 到 ###，最多三级）、引用（> ）、有序/无序列表、GFM 表格、图片 !alt。飞书文档 URL 会自动解析为内联文档。注意：图片仅支持传入已上传的图片 URL，本地图片不会自动上传；需要本地图片自动上传请改用 lark-cli calendar +create 快捷命令",
               "required": false,
               "example": "**重点**：见 [设计文档](https://sample.feishu.cn/docx/example)"
             }
@@ -3109,7 +3109,7 @@
                   "properties": {
                     "date": {
                       "type": "string",
-                      "description": "Specify the start time in days, in [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) format, for example, 2018-09-01.; Note: This parameter cannot be specified at the same time as `timestamp`",
+                      "description": "Specify the start time in days, in RFC 3339 format, for example, 2018-09-01.; Note: This parameter cannot be specified at the same time as `timestamp`",
                       "required": false,
                       "example": "2018-09-01"
                     },
@@ -3135,7 +3135,7 @@
                   "properties": {
                     "date": {
                       "type": "string",
-                      "description": "Specify the end time in days, in [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) format, for example, 2018-09-01.; Note: This parameter cannot be specified at the same time as `timestamp`",
+                      "description": "Specify the end time in days, in RFC 3339 format, for example, 2018-09-01.; Note: This parameter cannot be specified at the same time as `timestamp`",
                       "required": false,
                       "example": "2018-09-01"
                     },
@@ -3683,21 +3683,21 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "The calendar ID where the event is located. See [Calendar ID Description](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/introduction)",
+              "description": "The calendar ID where the event is located.",
               "example": "feishu.cn_xxxxxxxxxx@group.calendar.feishu.cn"
             },
             "event_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Event ID. How to get it:; - [Create a event](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event/create) will return the event ID;- [Get a event list](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event/list);- [Search for a event](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event/search)",
+              "description": "Event ID. How to get it:; - Create an event will return the event ID;- Get an event list;- Search for an event",
               "example": "xxxxxxxxx_0"
             },
             "need_notification": {
               "type": "string",
               "location": "query",
               "required": false,
-              "description": "Whether to send Bot notifications to event participants when deleting a event.; Default value: true",
+              "description": "Whether to send Bot notifications to event participants when deleting an event.; Default value: true",
               "example": "false",
               "options": [
                 {
@@ -3742,14 +3742,14 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "The calendar ID where the event is located. For information about calendar ID, please refer to [Calendar ID Description](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/introduction)",
+              "description": "The calendar ID where the event is located.",
               "example": "feishu.cn_xxxxxxxxxx@group.calendar.feishu.cn"
             },
             "event_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Event ID.; The event ID is returned when creating a event. You can also call the following interface to obtain the ID of a certain calendar.;- [Get event list](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event/list);- [Search event](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event/search)",
+              "description": "Event ID.; The event ID is returned when creating an event. You can also call the following interface to obtain the ID of a certain calendar.;- Get event list;- Search event",
               "example": "xxxxxxxxx_0"
             },
             "need_meeting_settings": {
@@ -3770,7 +3770,7 @@
               "type": "integer",
               "location": "query",
               "required": false,
-              "description": "The maximum number of invitees returned. Call [Get event invitee list](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event-attendee/list) to get complete invitee information of the event",
+              "description": "The maximum number of invitees returned. Call Get event invitee list to get complete invitee information of the event",
               "default": 10,
               "max": "100"
             },
@@ -3856,7 +3856,7 @@
                   "properties": {
                     "date": {
                       "type": "string",
-                      "description": "Specify the start time in days, in [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) format, for example, 2018-09-01.; Note: This parameter cannot be specified at the same time as `timestamp`",
+                      "description": "Specify the start time in days, in RFC 3339 format, for example, 2018-09-01.; Note: This parameter cannot be specified at the same time as `timestamp`",
                       "required": false,
                       "example": "2018-09-01"
                     },
@@ -3882,7 +3882,7 @@
                   "properties": {
                     "date": {
                       "type": "string",
-                      "description": "Specify the end time in days, in [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) format, for example, 2018-09-01.; Note: This parameter cannot be specified at the same time as `timestamp`",
+                      "description": "Specify the end time in days, in RFC 3339 format, for example, 2018-09-01.; Note: This parameter cannot be specified at the same time as `timestamp`",
                       "required": false,
                       "example": "2018-09-01"
                     },
@@ -4412,7 +4412,7 @@
                     },
                     "user_id": {
                       "type": "string",
-                      "description": "User type The user ID of the invitee. The ID type is consistent with the value of user_id_type. For information about user IDs, see [User-related ID concepts](https://open.feishu.cn/document/home/user-identity-introduction/introduction).; Note: When is_external returns true, this field will only return open_id or union_id",
+                      "description": "User type The user ID of the invitee. The ID type is consistent with the value of user_id_type.; Note: When is_external returns true, this field will only return open_id or union_id",
                       "required": false,
                       "example": "ou_ 8bfcecaf02c9d8d026de984db04cf5b9"
                     },
@@ -4442,7 +4442,7 @@
                     },
                     "operate_id": {
                       "type": "string",
-                      "description": "Meeting room contact ID. The user ID type passed in needs to be consistent with the value of user_id_type. For information about user IDs, see [User-related ID concepts](https://open.feishu.cn/document/home/user-identity-introduction/introduction).; Note: If the current schedule is created based on the application identity, when adding a meeting room type invitee, you need to specify the contact person of the meeting room through this parameter, and the contact will be displayed in the schedule meeting room information.; Default: empty",
+                      "description": "Meeting room contact ID. The user ID type passed in needs to be consistent with the value of user_id_type.; Note: If the current schedule is created based on the application identity, when adding a meeting room type invitee, you need to specify the contact person of the meeting room through this parameter, and the contact will be displayed in the schedule meeting room information.; Default: empty",
                       "required": false,
                       "example": "ou_xxxxxxxx"
                     }
@@ -4593,7 +4593,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Calendar ID. For information about calendar ID, please refer to [Calendar ID Description](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar/introduction)",
+              "description": "Calendar ID.",
               "example": "feishu.cn_example0000@group.calendar.feishu.cn"
             },
             "start_time": {
@@ -5002,7 +5002,7 @@
                 },
                 "attendees": {
                   "type": "array",
-                  "description": "Event invitee information, currently only returns to the conference room. If you need other types of invitee information, please use [Get event invitee list](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event-attendee/list) interface",
+                  "description": "Event invitee information, currently only returns to the conference room. If you need other types of invitee information, please use Get event invitee list interface",
                   "required": false,
                   "properties": {
                     "type": {
@@ -5125,7 +5125,7 @@
                     },
                     "user_id": {
                       "type": "string",
-                      "description": "User type The user ID of the invitee. The ID type is consistent with the value of user_id_type. For information about user IDs, see [User-related ID concepts](https://open.feishu.cn/document/home/user-identity-introduction/introduction).; Note: When is_external returns true, this field will only return open_id or union_id",
+                      "description": "User type The user ID of the invitee. The ID type is consistent with the value of user_id_type.; Note: When is_external returns true, this field will only return open_id or union_id",
                       "required": false,
                       "example": "ou_xxxxxxxx"
                     },
@@ -5155,7 +5155,7 @@
                     },
                     "operate_id": {
                       "type": "string",
-                      "description": "Meeting room contact ID. The user ID type passed in needs to be consistent with the value of user_id_type. For information about user IDs, see [User-related ID concepts](https://open.feishu.cn/document/home/user-identity-introduction/introduction).; Note: If the current schedule is created based on the application identity, when adding a meeting room type invitee, you need to specify the contact person of the meeting room through this parameter, and the contact will be displayed in the schedule meeting room information.; Default: empty",
+                      "description": "Meeting room contact ID. The user ID type passed in needs to be consistent with the value of user_id_type.; Note: If the current schedule is created based on the application identity, when adding a meeting room type invitee, you need to specify the contact person of the meeting room through this parameter, and the contact will be displayed in the schedule meeting room information.; Default: empty",
                       "required": false,
                       "example": "ou_xxxxxxxx"
                     },
@@ -5244,14 +5244,14 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Calendar ID. For details, see [Calendar-related IDs](https://open.feishu.cn/document/ukTMukTMukTM/uETM3YjLxEzN24SMxcjN#f066a96c)",
+              "description": "Calendar ID.",
               "example": "feishu.cn_xxxxxxxxxx@group.calendar.feishu.cn"
             },
             "event_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Event ID.; The event ID is returned when creating a event. You can also call the following interface to obtain the ID of a certain calendar.;- [Get event list](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event/list);- [Search event](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/calendar-v4/calendar-event/search)",
+              "description": "Event ID.; The event ID is returned when creating an event. You can also call the following interface to obtain the ID of a certain calendar.;- Get event list;- Search event",
               "example": "00592a0e-7edf-4678-bc9d-1b77383ef08e_0"
             },
             "user_id_type": {
@@ -5314,7 +5314,7 @@
               "properties": {
                 "date": {
                   "type": "string",
-                  "description": "Specify the start time in days, in [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) format, for example, 2018-09-01.; Note: This parameter cannot be specified at the same time as `timestamp`",
+                  "description": "Specify the start time in days, in RFC 3339 format, for example, 2018-09-01.; Note: This parameter cannot be specified at the same time as `timestamp`",
                   "required": false,
                   "example": "2018-09-01"
                 },
@@ -5340,7 +5340,7 @@
               "properties": {
                 "date": {
                   "type": "string",
-                  "description": "Specify the end time in days, in [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) format, for example, 2018-09-01.; Note: This parameter cannot be specified at the same time as `timestamp`",
+                  "description": "Specify the end time in days, in RFC 3339 format, for example, 2018-09-01.; Note: This parameter cannot be specified at the same time as `timestamp`",
                   "required": false,
                   "example": "2018-09-01"
                 },
@@ -5890,7 +5890,7 @@
             },
             "description_rich": {
               "type": "string",
-              "description": "日程描述，Markdown 富文本（推荐创建/更新日程统一使用本字段）。与纯文本 description 互斥，二者至多传其一，切勿同时传。支持加粗、斜体、下划线（<u>...</u>）、删除线、链接 [文本](url)、标题（# 到 ###，最多三级）、引用（> ）、有序/无序列表、GFM 表格、图片 ![alt](url)。飞书文档 URL 会自动解析为内联文档。注意：图片仅支持传入已上传的图片 URL，本地图片不会自动上传；需要本地图片自动上传请改用 lark-cli calendar +update 快捷命令。默认值：空，表示不更新该字段",
+              "description": "日程描述，Markdown 富文本（推荐创建/更新日程统一使用本字段）。与纯文本 description 互斥，二者至多传其一，切勿同时传。支持加粗、斜体、下划线（<u>...</u>）、删除线、链接 文本、标题（# 到 ###，最多三级）、引用（> ）、有序/无序列表、GFM 表格、图片 !alt。飞书文档 URL 会自动解析为内联文档。注意：图片仅支持传入已上传的图片 URL，本地图片不会自动上传；需要本地图片自动上传请改用 lark-cli calendar +update 快捷命令。默认值：空，表示不更新该字段",
               "required": false,
               "example": "**重点**：见 [设计文档](https://sample.feishu.cn/docx/example)"
             }
@@ -5940,7 +5940,7 @@
                   "properties": {
                     "date": {
                       "type": "string",
-                      "description": "Specify the start time in days, in [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) format, for example, 2018-09-01.; Note: This parameter cannot be specified at the same time as `timestamp`",
+                      "description": "Specify the start time in days, in RFC 3339 format, for example, 2018-09-01.; Note: This parameter cannot be specified at the same time as `timestamp`",
                       "required": false,
                       "example": "2018-09-01"
                     },
@@ -5966,7 +5966,7 @@
                   "properties": {
                     "date": {
                       "type": "string",
-                      "description": "Specify the end time in days, in [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) format, for example, 2018-09-01.; Note: This parameter cannot be specified at the same time as `timestamp`",
+                      "description": "Specify the end time in days, in RFC 3339 format, for example, 2018-09-01.; Note: This parameter cannot be specified at the same time as `timestamp`",
                       "required": false,
                       "example": "2018-09-01"
                     },
@@ -6792,25 +6792,25 @@
           "requestBody": {
             "time_min": {
               "type": "string",
-              "description": "The start time of the query period, in [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) date_time format.; Note: The time interval between time_min and time_max cannot be more than 90 days",
+              "description": "The start time of the query period, in RFC 3339 date_time format.; Note: The time interval between time_min and time_max cannot be more than 90 days",
               "required": true,
               "example": "2020-10-28T12:00:00+08:00"
             },
             "time_max": {
               "type": "string",
-              "description": "The end time of the query period, in [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) date_time format.; Note: The time interval between time_min and time_max cannot be more than 90 days",
+              "description": "The end time of the query period, in RFC 3339 date_time format.; Note: The time interval between time_min and time_max cannot be more than 90 days",
               "required": true,
               "example": "2020-12-28T12:00:00+08:00"
             },
             "user_id": {
               "type": "string",
-              "description": "User ID, you need to input an id that matches the query parameter user_id_type. For example, when user_id_type=open_id, you need to input the user's open_id. Refer to [User-related ID concepts](https://open.feishu.cn/document/home/user-identity-introduction/introduction) for understanding user IDs.; Note: Either user_id or room_id needs to be entered. If both are entered at the same time, only user_id will take effect",
+              "description": "User ID, you need to input an id that matches the query parameter user_id_type. For example, when user_id_type=open_id, you need to input the user's open_id.; Note: Either user_id or room_id needs to be entered. If both are entered at the same time, only user_id will take effect",
               "required": false,
               "example": "ou_xxxxxxxxxx"
             },
             "room_id": {
               "type": "string",
-              "description": "Meeting room room_id. You can call the [Query Meeting Room List](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/vc-v1/room/list) interface or the [Search for Meeting Room](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/vc-v1/room/search) interface to get the corresponding meeting room's room_id.; Note: Either user_id or room_id needs to be entered. If both are entered at the same time, only user_id will take effect",
+              "description": "Meeting room room_id. You can call the Query Meeting Room List interface or the Search for Meeting Room interface to get the corresponding meeting room's room_id.; Note: Either user_id or room_id needs to be entered. If both are entered at the same time, only user_id will take effect",
               "required": false,
               "example": "omm_xxxxxxxxxx",
               "annotations": [
@@ -6844,7 +6844,7 @@
               "properties": {
                 "start_time": {
                   "type": "string",
-                  "description": "Start time of the availability information. The value must be in the same format as specified in the date_time parameter in [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339)",
+                  "description": "Start time of the availability information. The value must be in the same format as specified in the date_time parameter in RFC 3339",
                   "required": true,
                   "example": "2020-10-28T22:30:00+08:00",
                   "annotations": [
@@ -6853,7 +6853,7 @@
                 },
                 "end_time": {
                   "type": "string",
-                  "description": "End time of the availability information. The value must be in the same format as specified in the date_time parameter in [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339)",
+                  "description": "End time of the availability information. The value must be in the same format as specified in the date_time parameter in RFC 3339",
                   "required": true,
                   "example": "2020-10-28T22:45:00+08:00",
                   "annotations": [

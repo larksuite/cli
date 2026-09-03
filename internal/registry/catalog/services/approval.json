@@ -132,7 +132,7 @@
                 },
                 {
                   "value": "zh-HK",
-                  "description": "繁体中文（中国香港）"
+                  "description": "繁体中文"
                 },
                 {
                   "value": "zh-TW",
@@ -354,14 +354,14 @@
               "type": "string",
               "location": "query",
               "required": true,
-              "description": "Approval Instance Code",
+              "description": "Approval instance code, obtained through the approval task list",
               "example": "81D31358-93AF-92D6-7425-01A5D67C4E71"
             },
             "locale": {
               "type": "string",
               "location": "query",
               "required": false,
-              "description": "language",
+              "description": "Language, default to zh-CN",
               "example": "zh-CN",
               "options": [
                 {
@@ -378,11 +378,11 @@
                 },
                 {
                   "value": "zh-HK",
-                  "description": "Traditional Chinese (Hong Kong, China)"
+                  "description": "Traditional Chinese"
                 },
                 {
                   "value": "zh-TW",
-                  "description": "繁体中文"
+                  "description": "Traditional Chinese"
                 },
                 {
                   "value": "de-DE",
@@ -1707,7 +1707,7 @@
               "type": "string",
               "location": "query",
               "required": false,
-              "description": "language",
+              "description": "Language, default to zh-CN",
               "example": "zh-CN",
               "options": [
                 {
@@ -1733,7 +1733,7 @@
               "type": "string",
               "location": "query",
               "required": false,
-              "description": "Approval Definition Code",
+              "description": "Approval Definition Code, corresponding to the definition_code of the return value, and approval_code the same concept as other interfaces",
               "example": "7C468A54-8745-2245-9675-08B7C63E7A85"
             },
             "start_timestamp": {
@@ -2122,7 +2122,7 @@
             },
             "add_sign_user_ids": {
               "type": "array",
-              "description": "Added person id",
+              "description": "ID of the user to add as an approver. It must match the user_id_type and can be obtained from the user-related APIs",
               "required": true
             },
             "add_sign_type": {

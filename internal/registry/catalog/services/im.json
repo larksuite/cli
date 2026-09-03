@@ -11,7 +11,7 @@
           "id": "chats.create",
           "path": "chats",
           "httpMethod": "POST",
-          "description": "Create a group。Identity: `bot` only (`tenant_access_token`)",
+          "description": "Create a group. Identity: supports `user` and `bot`",
           "parameters": {
             "user_id_type": {
               "type": "string",
@@ -60,7 +60,7 @@
           "requestBody": {
             "avatar": {
               "type": "string",
-              "description": "Image Key of group avatar; - Can be obtained by [upload image](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/image/create) (Note: ==image_type== of uploaded image needs to be specified as ==avatar==);- If no value is passed, the system default avatar will be used",
+              "description": "Image Key of group avatar; - Can be obtained by upload image (Note: ==image_type== of uploaded image needs to be specified as ==avatar==);- If no value is passed, the system default avatar will be used",
               "required": false,
               "example": "default-avatar_44ae0ca3-e140-494b-956f-78091e348435"
             },
@@ -104,13 +104,13 @@
             },
             "owner_id": {
               "type": "string",
-              "description": "The group owner specified when a group was created. If the field is left empty, the bot that created the group will be specified as the owner. The group owner ID value corresponds to ==user_id_type== in the query parameter. Open ID is recommended here. For details, refer to [How to get Open ID?](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid); Note: When a robot with external sharing capability is enabled, it cannot be the group owner when creating an external group. A user must be designated as the group owner. In addition, when adding external users to a group, the external users must be friends with the group owner on Feishu",
+              "description": "The group owner specified when a group was created. If the field is left empty, the bot that created the group will be specified as the owner. The group owner ID value corresponds to ==user_id_type== in the query parameter. Open ID is recommended here.; Note: When a robot with external sharing capability is enabled, it cannot be the group owner when creating an external group. A user must be designated as the group owner. In addition, when adding external users to a group, the external users must be friends with the group owner on Feishu",
               "required": false,
               "example": "ou_7d8a6e6df7621556ce0d21922b676706ccs"
             },
             "user_id_list": {
               "type": "array",
-              "description": "Group members invited when creating the group. The ID type is specified in the query parameter ==user_id_type==. Open ID is recommended here. For details, refer to [How to get Open ID?](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid); Note: ;- Up to 50 users can be invited at the same time.;- To facilitate viewing the effect on the client, it is recommended to add the developer's own ID when debugging the API.;- If you need to invite external users to create an external group, the external users must be friends with the group owner on Feishu.;- To obtain the open_id of an external user, refer to [Obtaining the open_id of an external user](https://open.feishu.cn/document/uAjLw4CM/ukzMukzMukzM/develop-robots/add-bot-to-external-group#c38b1d97)",
+              "description": "Group members invited when creating the group. The ID type is specified in the query parameter ==user_id_type==. Open ID is recommended here.; Note:;- Up to 50 users can be invited at the same time.;- To facilitate viewing the effect on the client, it is recommended to add the developer's own ID when debugging the API.;- If you need to invite external users to create an external group, the external users must be friends with the group owner on Feishu.",
               "required": false,
               "annotations": [
                 "open:x_user_id"
@@ -118,7 +118,7 @@
             },
             "bot_id_list": {
               "type": "array",
-              "description": "Group robots invited when creating a group. For more information, please refer to [How to Obtain App ID ?](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-app-id) to get the App ID of the application.; Notes:;- The Bot operating this API will automatically join the group, no need to fill in again.;- Please use `app_id` to invite the bot into the group.;- At most 5 bots can be invited at the same time, and the number of bots in the group after invitation cannot exceed 15",
+              "description": "Group robots invited when creating a group.; Notes:;- The Bot operating this API will automatically join the group, no need to fill in again.;- Please use `app_id` to invite the bot into the group.;- At most 5 bots can be invited at the same time, and the number of bots in the group after invitation cannot exceed 15",
               "required": false
             },
             "group_message_type": {
@@ -190,19 +190,19 @@
             },
             "restricted_mode_setting": {
               "type": "object",
-              "description": "Restricted mode setting; Notice: Confidentiality mode is applicable to Enterprise Ultimate Edition. For applicable versions and function introduction, please refer to [Session Confidentiality Mode](https://www.feishu.cn/hc/zh-CN/articles/418691056559)",
+              "description": "Restricted mode setting; Notice: Confidentiality mode is applicable to Enterprise Ultimate Edition.",
               "required": false,
               "ref": "restricted_mode_setting",
               "properties": {
                 "status": {
                   "type": "boolean",
-                  "description": "Whether the restricted mode is enabled",
+                  "description": "Whether the restricted mode is enabled. Optional values: true (enabled; screenshot_has_permission_setting, download_has_permission_setting and message_has_permission_setting cannot all be all_members), false (disabled; none of them can be not_anyone). Default: false",
                   "required": false,
                   "example": false
                 },
                 "screenshot_has_permission_setting": {
                   "type": "string",
-                  "description": "Whether to allow screenshots",
+                  "description": "Whether to allow screenshots and screen recording. Default: all_members",
                   "required": false,
                   "example": "all_members",
                   "options": [
@@ -379,7 +379,7 @@
           "responseBody": {
             "chat_id": {
               "type": "string",
-              "description": "Group ID. It is recommended to save this ID, as it will be used for subsequent group-related operations such as [sending messages to the group](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create), [updating group information](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/update), and [adding users or bots to group chat](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat-members/create)",
+              "description": "Group ID. It is recommended to save this ID, as it will be used for subsequent group-related operations such as sending messages to the group, updating group information, and adding users or bots to group chat",
               "required": false,
               "example": "oc_a0553eda9014c201e6969b478895c230",
               "annotations": [
@@ -432,7 +432,7 @@
             },
             "owner_id": {
               "type": "string",
-              "description": "Group owner ID. The ID value corresponds to ==user_id_type== in the query parameter. For information about different IDs, see [User-related IDs](https://open.feishu.cn/document/home/user-identity-introduction/introduction).; Note: If the group owner is a bot, this field is not returned",
+              "description": "Group owner ID. The ID value corresponds to ==user_id_type== in the query parameter.; Note: If the group owner is a bot, this field is not returned",
               "required": false,
               "example": "ou_7d8a6e6df7621556ce0d21922b676706ccs"
             },
@@ -718,13 +718,13 @@
           "id": "chats.get",
           "path": "chats/{chat_id}",
           "httpMethod": "GET",
-          "description": "Obtain group information。Identity: supports `user` and `bot`; the caller must be in the target chat to get full details, and must belong to the same tenant for internal chats",
+          "description": "Obtain group information. Identity: supports `user` and `bot`; the caller must be in the target chat to get full details, and must belong to the same tenant for internal chats",
           "parameters": {
             "chat_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Group ID. How to obtain it:; - [Create a group](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/create), and get the chat_id of the group from the returned result.;- Call the [Get the list of groups where the user or bot is](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/list) interface to query the chat_id of the group where the user or bot is.;- Call the [Search the list of groups visible to the user or bot](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/search) to search for the chat_id of the group where the user or bot is and the group that is open to the user or bot",
+              "description": "Group ID. How to obtain it:; - Create a group, and get the chat_id of the group from the returned result.;- Call the Get the list of groups where the user or bot is interface to query the chat_id of the group where the user or bot is.;- Call the Search the list of groups visible to the user or bot to search for the chat_id of the group where the user or bot is and the group that is open to the user or bot",
               "example": "oc_a0553eda9014c201e6969b478895c230"
             },
             "user_id_type": {
@@ -828,7 +828,7 @@
             },
             "owner_id_type": {
               "type": "string",
-              "description": "The user ID type of the group owner, which is the same as the user_id_type in the query parameter. The value is one of `open_id`, `user_id`, `union_id`. For the description of different IDs, see [User-related ID concepts](https://open.feishu.cn/document/home/user-identity-introduction/introduction).; Note: ;- If the group owner is a bot, this field is not returned.;- P2P chat does not return this field",
+              "description": "The user ID type of the group owner, which is the same as the user_id_type in the query parameter. The value is one of `open_id`, `user_id`, `union_id`.; Note:;- If the group owner is a bot, this field is not returned.;- P2P chat does not return this field",
               "required": false,
               "example": "user_id"
             },
@@ -1140,13 +1140,13 @@
           "id": "chats.link",
           "path": "chats/{chat_id}/link",
           "httpMethod": "POST",
-          "description": "Get group share link。Identity: supports `user` and `bot`; the caller must be in the target chat, must be an owner or admin when chat sharing is restricted to owners/admins, and must belong to the same tenant for internal chats",
+          "description": "Get group share link. Identity: supports `user` and `bot`; the caller must be in the target chat, must be an owner or admin when chat sharing is restricted to owners/admins, and must belong to the same tenant for internal chats",
           "parameters": {
             "chat_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Group ID. How to get it:; - [Create a group](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/create), get the chat_id of the group from the returned result.;- Call the [Get the list of groups that the user or robot is in](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/list) interface to query the chat_id of the group that the user or bot is in.;- Call [Search the list of groups visible to the user or robot](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/search) to search the chat_id of the group that the user or robot is in and the group that is open to the user or bot.; Note: Single chat, private chat, and team group do not support sharing group links",
+              "description": "Group ID. How to get it:; - Create a group, get the chat_id of the group from the returned result.;- Call the Get the list of groups that the user or robot is in interface to query the chat_id of the group that the user or bot is in.;- Call Search the list of groups visible to the user or robot to search the chat_id of the group that the user or robot is in and the group that is open to the user or bot.; Note: Single chat, private chat, and team group do not support sharing group links",
               "example": "oc_a0553eda9014c201e6969b478895c230"
             }
           },
@@ -1218,13 +1218,13 @@
           "id": "chats.update",
           "path": "chats/{chat_id}",
           "httpMethod": "PUT",
-          "description": "Update group information。Identity: supports `user` and `bot`",
+          "description": "Update group information. Identity: supports `user` and `bot`",
           "parameters": {
             "chat_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Group ID. How to get it:; - [Create a group](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/create), get the chat_id of the group from the returned result.;- Call the [Get the list of groups that the user or bot is in](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/list) interface to query the chat_id of the group that the user or bot is in.;- Call the [Search the list of groups visible to the user or bot](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/search) to search for the chat_id of the group that the user or bot is in and the group that is open to the user or bot.; Note: Only group IDs with group mode of `group` are supported. You can call the [get group information](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/get) interface and check whether the value of the `chat_mode` parameter is `group` in the returned result",
+              "description": "Group ID. How to get it:; - Create a group, get the chat_id of the group from the returned result.;- Call the Get the list of groups that the user or bot is in interface to query the chat_id of the group that the user or bot is in.;- Call the Search the list of groups visible to the user or bot to search for the chat_id of the group that the user or bot is in and the group that is open to the user or bot.; Note: Only group IDs with group mode of `group` are supported. You can call the get group information interface and check whether the value of the `chat_mode` parameter is `group` in the returned result",
               "example": "oc_a0553eda9014c201e6969b478895c230"
             },
             "user_id_type": {
@@ -1260,7 +1260,7 @@
           "requestBody": {
             "avatar": {
               "type": "string",
-              "description": "The image key that corresponds to the group profile photo. It can be obtained using the [Upload image](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/image/create) API. (Note: The ==image_type== of the uploaded image needs to be specified as ==avatar==)",
+              "description": "The image key that corresponds to the group profile photo. It can be obtained using the Upload image API. (Note: The ==image_type== of the uploaded image needs to be specified as ==avatar==)",
               "required": false,
               "example": "default-avatar_44ae0ca3-e140-494b-956f-78091e348435"
             },
@@ -1328,7 +1328,7 @@
             },
             "owner_id": {
               "type": "string",
-              "description": "New group owner ID, no need to fill in if the group owner is not transferred. Open ID is recommended here. For details, refer to [How to get Open ID?](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid)",
+              "description": "New group owner ID, no need to fill in if the group owner is not transferred. Open ID is recommended here.",
               "required": false,
               "example": "4d7a3c6g"
             },
@@ -1362,13 +1362,13 @@
             },
             "restricted_mode_setting": {
               "type": "object",
-              "description": "Restricted mode setting ; Notice: Confidentiality mode is applicable to Enterprise Ultimate Edition. For applicable versions and function introduction, please refer to [Session Confidentiality Mode](https://www.feishu.cn/hc/zh-CN/articles/418691056559)",
+              "description": "Restricted mode setting; Notice: Confidentiality mode is applicable to Enterprise Ultimate Edition.",
               "required": false,
               "ref": "restricted_mode_setting",
               "properties": {
                 "status": {
                   "type": "boolean",
-                  "description": "Whether the restricted mode is enabled",
+                  "description": "Whether the restricted mode is enabled. Optional values: true (enabled; screenshot_has_permission_setting, download_has_permission_setting and message_has_permission_setting cannot all be all_members), false (disabled; none of them can be not_anyone)",
                   "required": false,
                   "example": false
                 },
@@ -1623,13 +1623,13 @@
           "id": "chat.members.create",
           "path": "chats/{chat_id}/members",
           "httpMethod": "POST",
-          "description": "Add users or bots to a group。Identity: supports `user` and `bot`; the caller must be in the target chat; for `bot` calls, added users must be within the app's availability; for internal chats the operator must belong to the same tenant; if only owners/admins can add members, the caller must be an owner/admin, or a chat-creator bot with `im:chat:operate_as_owner`",
+          "description": "Add users or bots to a group. Identity: supports `user` and `bot`; the caller must be in the target chat; for `bot` calls, added users must be within the app's availability; for internal chats the operator must belong to the same tenant; if only owners/admins can add members, the caller must be an owner/admin, or a chat-creator bot with `im:chat:operate_as_owner`",
           "parameters": {
             "chat_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Group ID. How to get it:; - [Create a group](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/create), get the chat_id of the group from the returned result.;- Call the [Get the list of groups that the user or robot is in](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/list) interface to query the chat_id of the group that the user or robot is in.;- Call the [Search the list of groups visible to the user or robot](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/search) to search for the chat_id of the group that the user or robot is in and the group that is open to the user or robot.; Note: Only group IDs with group modes group and topic are supported. You can call the [get group information](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/get) interface and check whether the value of the `chat_mode` parameter is `group` or `topic` in the returned result",
+              "description": "Group ID. How to get it:; - Create a group, get the chat_id of the group from the returned result.;- Call the Get the list of groups that the user or robot is in interface to query the chat_id of the group that the user or robot is in.;- Call the Search the list of groups visible to the user or robot to search for the chat_id of the group that the user or robot is in and the group that is open to the user or robot.; Note: Only group IDs with group modes group and topic are supported. You can call the get group information interface and check whether the value of the `chat_mode` parameter is `group` or `topic` in the returned result",
               "example": "oc_a0553eda9014c201e6969b478895c230"
             },
             "member_id_type": {
@@ -1642,19 +1642,19 @@
               "options": [
                 {
                   "value": "user_id",
-                  "description": "Identifies a user to a tenant. The same user has different User IDs in different tenants. In one single tenant, a user has the same User ID in all apps （including store apps）. User ID is usually used to communicate user data between different apps. [How to get User ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-user-id)"
+                  "description": "Identifies a user to a tenant. The same user has different User IDs in different tenants. In one single tenant, a user has the same User ID in all apps （including store apps）. User ID is usually used to communicate user data between different apps."
                 },
                 {
                   "value": "union_id",
-                  "description": "Identifies a user to a tenant that acts as a developer. A user has the same Union ID in apps developed by the same developer, and has different Union IDs in apps developed by different developers. A developer can use Union ID to link the same user's identities in multiple apps. [How to get Union ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-union-id)"
+                  "description": "Identifies a user to a tenant that acts as a developer. A user has the same Union ID in apps developed by the same developer, and has different Union IDs in apps developed by different developers. A developer can use Union ID to link the same user's identities in multiple apps."
                 },
                 {
                   "value": "open_id",
-                  "description": "Identifies a user to an app. The same user has different Open IDs in different apps. [How to get Open ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid)"
+                  "description": "Identifies a user to an app. The same user has different Open IDs in different apps."
                 },
                 {
                   "value": "app_id",
-                  "description": "The unique identifier of the Feishu open platform application. When an application is created, it is automatically generated by the system and cannot be modified by the user. [How to get App ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-app-id)"
+                  "description": "The unique identifier of the Feishu open platform application. When an application is created, it is automatically generated by the system and cannot be modified by the user."
                 }
               ],
               "enumName": "InviteMemberMemberIDType",
@@ -1699,7 +1699,7 @@
           "requestBody": {
             "id_list": {
               "type": "array",
-              "description": "Member ID list. ; - It is recommended to use OpenID when inviting users to join the group. For how to obtain it, please refer to [How to get Open ID? ](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid).; - When inviting bots into the group, you need to fill in the App ID of the application. Please refer to [How to get the App ID of the application?](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-app-id); Note: ;- The list cannot be empty.;- The member ID type filled in the list should correspond to the type selected in the ==member_id_type== parameter.;- Each request can pull up to 50 users and does not exceed the upper limit of the group size. The default maximum number of Feishu groups for certified companies is: 5,000 members in general groups, 3,000 members in conference groups, and 5,000 members in topic groups. If the tenant administrator configures the upper limit of the number of groups, the upper limit shall prevail.;- At most 5 bots can be invited at the same time, and the number of bots in the group after invitation cannot exceed 15",
+              "description": "Member ID list.; - It is recommended to use OpenID when inviting users to join the group.; - When inviting bots into the group, you need to fill in the App ID of the application.; Note:;- The list cannot be empty.;- The member ID type filled in the list should correspond to the type selected in the ==member_id_type== parameter.;- Each request can pull up to 50 users and does not exceed the upper limit of the group size. The default maximum number of Feishu groups for certified companies is: 5,000 members in general groups, 3,000 members in conference groups, and 5,000 members in topic groups. If the tenant administrator configures the upper limit of the number of groups, the upper limit shall prevail.;- At most 5 bots can be invited at the same time, and the number of bots in the group after invitation cannot exceed 15",
               "required": false,
               "annotations": [
                 "open:x_user_id",
@@ -1740,13 +1740,13 @@
           "id": "chat.members.delete",
           "path": "chats/{chat_id}/members",
           "httpMethod": "DELETE",
-          "description": "Remove users or bots from a group。Identity: supports `user` and `bot`; only group owner, admin, or creator bot can remove others; max 50 users or 5 bots per request",
+          "description": "Remove users or bots from a group. Identity: supports `user` and `bot`; only group owner, admin, or creator bot can remove others; max 50 users or 5 bots per request",
           "parameters": {
             "chat_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Group ID. How to get it:; - [Create a group](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/create), get the chat_id of the group from the returned result.;- Call the [Get the list of groups that the user or robot is in](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/list) interface to query the chat_id of the group that the user or robot is in.;- Call the [Search the list of groups visible to the user or robot](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/search) to search for the chat_id of the group that the user or robot is in and the group that is open to the user or robot.; Note: Only group IDs with group mode group and topic are supported. You can call the [get group information](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/get) interface and check whether the value of the `chat_mode` parameter is `group` or `topic` in the returned result",
+              "description": "Group ID. How to get it:; - Create a group, get the chat_id of the group from the returned result.;- Call the Get the list of groups that the user or robot is in interface to query the chat_id of the group that the user or robot is in.;- Call the Search the list of groups visible to the user or robot to search for the chat_id of the group that the user or robot is in and the group that is open to the user or robot.; Note: Only group IDs with group mode group and topic are supported. You can call the get group information interface and check whether the value of the `chat_mode` parameter is `group` or `topic` in the returned result",
               "example": "oc_a0553eda9014c201e6969b478895c230"
             },
             "member_id_type": {
@@ -1759,19 +1759,19 @@
               "options": [
                 {
                   "value": "user_id",
-                  "description": "Identifies a user to a tenant. The same user has different User IDs in different tenants. In one single tenant, a user has the same User ID in all apps （including store apps）. User ID is usually used to communicate user data between different apps. [How to get User ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-user-id)"
+                  "description": "Identifies a user to a tenant. The same user has different User IDs in different tenants. In one single tenant, a user has the same User ID in all apps （including store apps）. User ID is usually used to communicate user data between different apps."
                 },
                 {
                   "value": "union_id",
-                  "description": "Identifies a user to a tenant that acts as a developer. A user has the same Union ID in apps developed by the same developer, and has different Union IDs in apps developed by different developers. A developer can use Union ID to link the same user's identities in multiple apps. [How to get Union ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-union-id)"
+                  "description": "Identifies a user to a tenant that acts as a developer. A user has the same Union ID in apps developed by the same developer, and has different Union IDs in apps developed by different developers. A developer can use Union ID to link the same user's identities in multiple apps."
                 },
                 {
                   "value": "open_id",
-                  "description": "Identifies a user to an app. The same user has different Open IDs in different apps. [How to get Open ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid)"
+                  "description": "Identifies a user to an app. The same user has different Open IDs in different apps."
                 },
                 {
                   "value": "app_id",
-                  "description": "The unique identifier of the Feishu open platform application. When an application is created, it is automatically generated by the system and cannot be modified by the user. [How to get App ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-app-id)"
+                  "description": "The unique identifier of the Feishu open platform application. When an application is created, it is automatically generated by the system and cannot be modified by the user."
                 }
               ],
               "enumName": "KickMemberMemberIDType",
@@ -1789,7 +1789,7 @@
           "requestBody": {
             "id_list": {
               "type": "array",
-              "description": "Member ID list. The ID type is consistent with the value of the query parameter member_id_type.; - It is recommended to use OpenID when removing users from the group. For how to obtain it, please refer to [How to get Open ID? ](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid).; - When removing bots from the group, you need to fill in the App ID of the application. Please refer to [How to get the App ID of the application?](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-app-id).; Note: ;- ==id_list== cannot be empty.;- For each request, a maximum of 50 users or 5 bots can be removed",
+              "description": "Member ID list. The ID type is consistent with the value of the query parameter member_id_type.; - It is recommended to use OpenID when removing users from the group.; - When removing bots from the group, you need to fill in the App ID of the application.; Note:;- ==id_list== cannot be empty.;- For each request, a maximum of 50 users or 5 bots can be removed",
               "required": false,
               "annotations": [
                 "open:x_user_id"
@@ -1822,13 +1822,13 @@
           "id": "chat.members.get",
           "path": "chats/{chat_id}/members",
           "httpMethod": "GET",
-          "description": "Obtain group member list。Identity: supports `user` and `bot`; the caller must be in the target chat and must belong to the same tenant for internal chats",
+          "description": "Obtain group member list. Identity: supports `user` and `bot`; the caller must be in the target chat and must belong to the same tenant for internal chats",
           "parameters": {
             "chat_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Group ID. How to obtain it:; - [Create a group](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/create), and get the chat_id of the group from the returned result.;- Call the [Get the list of groups where the user or robot is](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/list) interface to query the chat_id of the group where the user or robot is.;- Call the [Search the list of groups visible to the user or robot](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/search) to search for the chat_id of the group where the user or robot is and the group that is open to the user or robot",
+              "description": "Group ID. How to obtain it:; - Create a group, and get the chat_id of the group from the returned result.;- Call the Get the list of groups where the user or robot is interface to query the chat_id of the group where the user or robot is.;- Call the Search the list of groups visible to the user or robot to search for the chat_id of the group where the user or robot is and the group that is open to the user or robot",
               "example": "oc_a0553eda9014c201e6969b478895c230"
             },
             "member_id_type": {
@@ -1840,15 +1840,15 @@
               "options": [
                 {
                   "value": "user_id",
-                  "description": "Identifies a user to a tenant. The same user has different User IDs in different tenants. In one single tenant, a user has the same User ID in all apps （including store apps）. User ID is usually used to communicate user data between different apps. [How to get User ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-user-id)"
+                  "description": "Identifies a user to a tenant. The same user has different User IDs in different tenants. In one single tenant, a user has the same User ID in all apps （including store apps）. User ID is usually used to communicate user data between different apps."
                 },
                 {
                   "value": "union_id",
-                  "description": "Identifies a user to a tenant that acts as a developer. A user has the same Union ID in apps developed by the same developer, and has different Union IDs in apps developed by different developers. A developer can use Union ID to link the same user's identities in multiple apps. [How to get Union ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-union-id)"
+                  "description": "Identifies a user to a tenant that acts as a developer. A user has the same Union ID in apps developed by the same developer, and has different Union IDs in apps developed by different developers. A developer can use Union ID to link the same user's identities in multiple apps."
                 },
                 {
                   "value": "open_id",
-                  "description": "Identifies a user to an app. The same user has different Open IDs in different apps. [How to get Open ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid)"
+                  "description": "Identifies a user to an app. The same user has different Open IDs in different apps."
                 }
               ],
               "enumName": "ListMemberMemberIDType",
@@ -1895,7 +1895,7 @@
                 },
                 "member_id": {
                   "type": "string",
-                  "description": "User ID of a member. The ID value corresponds to member_id_type in the query parameter.; For information about different IDs, see [User-related IDs](https://open.feishu.cn/document/home/user-identity-introduction/introduction)",
+                  "description": "User ID of a member. The ID value corresponds to member_id_type in the query parameter.",
                   "required": false,
                   "example": "4d7a3c6g",
                   "annotations": [
@@ -2121,13 +2121,13 @@
           "id": "chat.managers.add_managers",
           "path": "chats/{chat_id}/managers/add_managers",
           "httpMethod": "POST",
-          "description": "Specify group administrators。Identity: supports `user` and `bot`; only the group owner can add managers; max 10 managers per chat (20 for super-large chats), and at most 5 bots per request",
+          "description": "Specify group administrators. Identity: supports `user` and `bot`; only the group owner can add managers; max 10 managers per chat (20 for super-large chats), and at most 5 bots per request",
           "parameters": {
             "chat_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Group ID. How to get it:; - [Create a group](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/create), get the chat_id of the group from the returned result.;- Call the [Get the list of groups that the user or bot is in](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/list) interface to query the chat_id of the group that the user or bot is in.;- Call the [Search the list of groups visible to the user or bot](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/search) to search for the chat_id of the group that the user or bot is in and the group that is open to the user or bot.; Note: Only group IDs with group modes group and topic are supported. You can call the [get group information](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/get) interface and check whether the value of the `chat_mode` parameter is `group` or `topic` in the returned result",
+              "description": "Group ID. How to get it:; - Create a group, get the chat_id of the group from the returned result.;- Call the Get the list of groups that the user or bot is in interface to query the chat_id of the group that the user or bot is in.;- Call the Search the list of groups visible to the user or bot to search for the chat_id of the group that the user or bot is in and the group that is open to the user or bot.; Note: Only group IDs with group modes group and topic are supported. You can call the get group information interface and check whether the value of the `chat_mode` parameter is `group` or `topic` in the returned result",
               "example": "oc_a0553eda9014c201e6969b478895c230"
             },
             "member_id_type": {
@@ -2139,19 +2139,19 @@
               "options": [
                 {
                   "value": "user_id",
-                  "description": "Identifies a user to a tenant. The same user has different User IDs in different tenants. In one single tenant, a user has the same User ID in all apps （including store apps）. User ID is usually used to communicate user data between different apps. [How to get User ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-user-id)"
+                  "description": "Identifies a user to a tenant. The same user has different User IDs in different tenants. In one single tenant, a user has the same User ID in all apps （including store apps）. User ID is usually used to communicate user data between different apps."
                 },
                 {
                   "value": "union_id",
-                  "description": "Identifies a user to a tenant that acts as a developer. A user has the same Union ID in apps developed by the same developer, and has different Union IDs in apps developed by different developers. A developer can use Union ID to link the same user's identities in multiple apps. [How to get Union ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-union-id)"
+                  "description": "Identifies a user to a tenant that acts as a developer. A user has the same Union ID in apps developed by the same developer, and has different Union IDs in apps developed by different developers. A developer can use Union ID to link the same user's identities in multiple apps."
                 },
                 {
                   "value": "open_id",
-                  "description": "Identifies a user to an app. The same user has different Open IDs in different apps. [How to get Open ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid)"
+                  "description": "Identifies a user to an app. The same user has different Open IDs in different apps."
                 },
                 {
                   "value": "app_id",
-                  "description": "The unique identifier of the Feishu open platform application. When an application is created, it is automatically generated by the system and cannot be modified by the user. [How to get App ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-app-id)"
+                  "description": "The unique identifier of the Feishu open platform application. When an application is created, it is automatically generated by the system and cannot be modified by the user."
                 }
               ],
               "enumName": "AddManagersChatManagersMemberIDType",
@@ -2169,7 +2169,7 @@
           "requestBody": {
             "manager_ids": {
               "type": "array",
-              "description": "To set the administrator's ID, the ID type is consistent with the query parameter member_id_type value.; - If it is a user (member_id_type value is user_id/open_id/union_id), it is recommended to use the user's open_id. For how to obtain it, please refer to the document [How to obtain Open ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid).; - If it is a bot (member_id_type value is app_id), please refer to [How to obtain the App ID of the application](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-app-id); Note:; - For ordinary groups, up to 10 administrators can be specified.;- For super large groups, up to 20 administrators can be specified.;- When making a single request to specify robots, up to 5 bots can be specified.; For the difference between super large groups and ordinary groups, see [What is the difference between super large groups and ordinary groups](https://www.feishu.cn/hc/zh-CN/articles/374791927841)",
+              "description": "To set the administrator's ID, the ID type is consistent with the query parameter member_id_type value.; - If it is a user (member_id_type value is user_id/open_id/union_id), it is recommended to use the user's open_id.;; Note:; - For ordinary groups, up to 10 administrators can be specified.;- For super large groups, up to 20 administrators can be specified.;- When making a single request to specify robots, up to 5 bots can be specified.",
               "required": false,
               "annotations": [
                 "open:x_user_id"
@@ -2207,13 +2207,13 @@
           "id": "chat.managers.delete_managers",
           "path": "chats/{chat_id}/managers/delete_managers",
           "httpMethod": "POST",
-          "description": "Delete group administrators。Identity: supports `user` and `bot`; only the group owner can remove managers; max 50 users or 5 bots per request",
+          "description": "Delete group administrators. Identity: supports `user` and `bot`; only the group owner can remove managers; max 50 users or 5 bots per request",
           "parameters": {
             "chat_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Group ID. How to get it:; - [Create a group](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/create), get the chat_id of the group from the returned result.;- Call the [Get the list of groups that the user or robot is in](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/list) interface to query the chat_id of the group that the user or robot is in.;- Call the [Search the list of groups visible to the user or robot](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/search) to search for the chat_id of the group that the user or robot is in and the group that is open to the user or robot.; Note: Only group IDs with group modes group and topic are supported. You can call the [get group information](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/get) interface and check whether the value of the `chat_mode` parameter is `group` or `topic` in the returned result",
+              "description": "Group ID. How to get it:; - Create a group, get the chat_id of the group from the returned result.;- Call the Get the list of groups that the user or robot is in interface to query the chat_id of the group that the user or robot is in.;- Call the Search the list of groups visible to the user or robot to search for the chat_id of the group that the user or robot is in and the group that is open to the user or robot.; Note: Only group IDs with group modes group and topic are supported. You can call the get group information interface and check whether the value of the `chat_mode` parameter is `group` or `topic` in the returned result",
               "example": "oc_a0553eda9014c201e6969b478895c230"
             },
             "member_id_type": {
@@ -2225,19 +2225,19 @@
               "options": [
                 {
                   "value": "user_id",
-                  "description": "Identifies a user to a tenant. The same user has different User IDs in different tenants. In one single tenant, a user has the same User ID in all apps （including store apps）. User ID is usually used to communicate user data between different apps. [How to get User ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-user-id)"
+                  "description": "Identifies a user to a tenant. The same user has different User IDs in different tenants. In one single tenant, a user has the same User ID in all apps （including store apps）. User ID is usually used to communicate user data between different apps."
                 },
                 {
                   "value": "union_id",
-                  "description": "Identifies a user to a tenant that acts as a developer. A user has the same Union ID in apps developed by the same developer, and has different Union IDs in apps developed by different developers. A developer can use Union ID to link the same user's identities in multiple apps. [How to get Union ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-union-id)"
+                  "description": "Identifies a user to a tenant that acts as a developer. A user has the same Union ID in apps developed by the same developer, and has different Union IDs in apps developed by different developers. A developer can use Union ID to link the same user's identities in multiple apps."
                 },
                 {
                   "value": "open_id",
-                  "description": "Identifies a user to an app. The same user has different Open IDs in different apps. [How to get Open ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid)"
+                  "description": "Identifies a user to an app. The same user has different Open IDs in different apps."
                 },
                 {
                   "value": "app_id",
-                  "description": "The unique identifier of the Feishu open platform application. When an application is created, it is automatically generated by the system and cannot be modified by the user. [How to get App ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-app-id)"
+                  "description": "The unique identifier of the Feishu open platform application. When an application is created, it is automatically generated by the system and cannot be modified by the user."
                 }
               ],
               "enumName": "DeleteManagersChatManagersMemberIDType",
@@ -2255,7 +2255,7 @@
           "requestBody": {
             "manager_ids": {
               "type": "array",
-              "description": "The administrator ID to be deleted. The ID type is consistent with the value of the query parameter member_id_type.; - If it is a user (member_id_type is user_id/open_id/union_id), it is recommended to use the user's open_id. For how to obtain it, please refer to the document [How to obtain Open ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid).; - If it is a robot (member_id_type is app_id), please refer to [How to obtain the App ID of the application](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-app-id); Note: Each request can specify up to 50 users or 5 robots",
+              "description": "The administrator ID to be deleted. The ID type is consistent with the value of the query parameter member_id_type.; - If it is a user (member_id_type is user_id/open_id/union_id), it is recommended to use the user's open_id.;; Note: Each request can specify up to 50 users or 5 robots",
               "required": false,
               "annotations": [
                 "open:x_user_id"
@@ -2297,13 +2297,13 @@
           "id": "chat.moderation.get",
           "path": "chats/{chat_id}/moderation",
           "httpMethod": "GET",
-          "description": "Obtains the group member speech scopes。Identity: supports `user` and `bot`; the caller must be in the target chat and belong to the same tenant",
+          "description": "Obtains the group member speech scopes. Identity: supports `user` and `bot`; the caller must be in the target chat and belong to the same tenant",
           "parameters": {
             "chat_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Group ID. How to obtain it:; - [Create a group](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/create), and get the chat_id of the group from the returned result.;- Call the [Get the list of groups where the user or robot is](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/list) interface to query the chat_id of the group where the user or bot is.;- Call the [Search the list of groups visible to the user or robot](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/search) to search for the chat_id of the group where the user or bot is and the group that is open to the user or bot",
+              "description": "Group ID. How to obtain it:; - Create a group, and get the chat_id of the group from the returned result.;- Call the Get the list of groups where the user or robot is interface to query the chat_id of the group where the user or bot is.;- Call the Search the list of groups visible to the user or robot to search for the chat_id of the group where the user or bot is and the group that is open to the user or bot",
               "example": "oc_a0553eda9014c201e6969b478895c230"
             },
             "user_id_type": {
@@ -2353,7 +2353,7 @@
           "responseBody": {
             "moderation_setting": {
               "type": "string",
-              "description": "Group speech mode, possible values ​​are:; - all_members: all group members can speak;- only_owner: only group owner or administrator can speak;- moderator_list: specified group members can speak",
+              "description": "Group speech mode, possible values are:; - all_members: all group members can speak;- only_owner: only group owner or administrator can speak;- moderator_list: specified group members can speak",
               "required": false,
               "example": "moderator_list"
             },
@@ -2417,13 +2417,13 @@
           "id": "chat.moderation.update",
           "path": "chats/{chat_id}/moderation",
           "httpMethod": "PUT",
-          "description": "Updates group speech scopes。Identity: supports `user` and `bot`; only the group owner (or creator bot with `im:chat:operate_as_owner`) can update; the caller must be in the chat",
+          "description": "Updates group speech scopes. Identity: supports `user` and `bot`; only the group owner (or creator bot with `im:chat:operate_as_owner`) can update; the caller must be in the chat",
           "parameters": {
             "chat_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Group ID. How to obtain:; - [Create a group](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/create), and obtain the chat_id of the group from the returned result.;- Call the [Get the list of groups where the user or robot is](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/list) interface to query the chat_id of the group where the user or bot is.;- Call [Search the list of groups visible to the user or bot](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/search) to search for the chat_id of the group where the user or bot is and the group that is open to the user or bot",
+              "description": "Group ID. How to obtain:; - Create a group, and obtain the chat_id of the group from the returned result.;- Call the Get the list of groups where the user or robot is interface to query the chat_id of the group where the user or bot is.;- Call Search the list of groups visible to the user or bot to search for the chat_id of the group where the user or bot is and the group that is open to the user or bot",
               "example": "oc_a0553eda9014c201e6969b478895c230"
             },
             "user_id_type": {
@@ -2465,7 +2465,7 @@
             },
             "moderator_added_list": {
               "type": "array",
-              "description": "When `moderation_setting` is set to `moderator_list`, users who can speak are added as an ID list.; Notice:; - The ID type is consistent with the query parameter user_id_type. It is recommended to use OpenID. For how to obtain it, please refer to the document [How to obtain Open ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid).;- If the user in the list is not in the group, it will be automatically filtered out.;- When requesting, please ensure that the IDs in the two parameters `moderator_added_list` and `moderator_removed_list` are not repeated",
+              "description": "When `moderation_setting` is set to `moderator_list`, users who can speak are added as an ID list.; Notice:; - The ID type is consistent with the query parameter user_id_type. It is recommended to use OpenID.;- If the user in the list is not in the group, it will be automatically filtered out.;- When requesting, please ensure that the IDs in the two parameters `moderator_added_list` and `moderator_removed_list` are not repeated",
               "required": false,
               "annotations": [
                 "open:x_user_id"
@@ -2473,7 +2473,7 @@
             },
             "moderator_removed_list": {
               "type": "array",
-              "description": "When `moderation_setting` is set to `moderator_list`, users who can speak are removed in the form of an ID list.; Notice:; - The ID type is consistent with the query parameter user_id_type. It is recommended to use OpenID. For how to obtain it, please refer to the document [How to obtain Open ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid).;- If the user in the list is not in the group, it will be automatically filtered out.;- When requesting, please ensure that the IDs in the two parameters `moderator_added_list` and `moderator_removed_list` are not repeated",
+              "description": "When `moderation_setting` is set to `moderator_list`, users who can speak are removed in the form of an ID list.; Notice:; - The ID type is consistent with the query parameter user_id_type. It is recommended to use OpenID.;- If the user in the list is not in the group, it will be automatically filtered out.;- When requesting, please ensure that the IDs in the two parameters `moderator_added_list` and `moderator_removed_list` are not repeated",
               "required": false,
               "annotations": [
                 "open:x_user_id"
@@ -2914,13 +2914,13 @@
           "id": "messages.delete",
           "path": "messages/{message_id}",
           "httpMethod": "DELETE",
-          "description": "Recall message。Identity: supports `user` and `bot`; for `bot` calls, the bot must be in the chat to revoke group messages; to revoke another user's group message, the bot must be the owner, an admin, or the creator; for user P2P recalls, the target user must be within the bot's availability",
+          "description": "Recall message. Identity: supports `user` and `bot`; for `bot` calls, the bot must be in the chat to revoke group messages; to revoke another user's group message, the bot must be the owner, an admin, or the creator; for user P2P recalls, the target user must be within the bot's availability",
           "parameters": {
             "message_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "The ID of the message to be withdrawn.; How to obtain the ID:; - After calling the [Send Message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create) interface, obtain it from the `message_id` parameter of the response result.;- Listen to the [Receive Message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/events/receive) event. When the event is triggered, you can obtain the `message_id` of the message from the event body.;- Call the [Get Session History Messages](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/list) interface and obtain it from the `message_id` parameter of the response result",
+              "description": "The ID of the message to be withdrawn.; How to obtain the ID:; - After calling the Send Message interface, obtain it from the `message_id` parameter of the response result.;- Listen to the Receive Message event. When the event is triggered, you can obtain the `message_id` of the message from the event body.;- Call the Get Session History Messages interface and obtain it from the `message_id` parameter of the response result",
               "example": "om_dc13264520392913993dd051dba21dcf"
             }
           },
@@ -2944,13 +2944,13 @@
           "id": "messages.forward",
           "path": "messages/{message_id}/forward",
           "httpMethod": "POST",
-          "description": "Forward a message。Identity: supports `user` and `bot`",
+          "description": "Forward a message. Identity: supports `user` and `bot`",
           "parameters": {
             "message_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "The ID of the message to be forwarded. How to obtain the ID:; - After calling the [Send Message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create) interface, obtain it from the `message_id` parameter of the response result.;- Listen to the [Receive Message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/events/receive) event. When the event is triggered, you can obtain the `message_id` of the message from the event body.;- Call the [Get Session History Messages](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/list) interface and obtain it from the `message_id` parameter of the response result",
+              "description": "The ID of the message to be forwarded. How to obtain the ID:; - After calling the Send Message interface, obtain it from the `message_id` parameter of the response result.;- Listen to the Receive Message event. When the event is triggered, you can obtain the `message_id` of the message from the event body.;- Call the Get Session History Messages interface and obtain it from the `message_id` parameter of the response result",
               "example": "om_dc13264520392913993dd051dba21dcf"
             },
             "receive_id_type": {
@@ -2962,15 +2962,15 @@
               "options": [
                 {
                   "value": "open_id",
-                  "description": "Identifies a user to an app. The same user has different Open IDs in different apps. [How to get Open ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid)"
+                  "description": "Identifies a user to an app. The same user has different Open IDs in different apps."
                 },
                 {
                   "value": "user_id",
-                  "description": "Identifies a user to a tenant. The same user has different User IDs in different tenants. In one single tenant, a user has the same User ID in all apps （including store apps）. User ID is usually used to communicate user data between different apps. [How to get User ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-user-id)"
+                  "description": "Identifies a user to a tenant. The same user has different User IDs in different tenants. In one single tenant, a user has the same User ID in all apps （including store apps）. User ID is usually used to communicate user data between different apps."
                 },
                 {
                   "value": "union_id",
-                  "description": "Identifies a user to a tenant that acts as a developer. A user has the same Union ID in apps developed by the same developer, and has different Union IDs in apps developed by different developers. A developer can use Union ID to link the same user's identities in multiple apps. [How to get Union ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-union-id)"
+                  "description": "Identifies a user to a tenant that acts as a developer. A user has the same Union ID in apps developed by the same developer, and has different Union IDs in apps developed by different developers. A developer can use Union ID to link the same user's identities in multiple apps."
                 },
                 {
                   "value": "email",
@@ -2978,11 +2978,11 @@
                 },
                 {
                   "value": "chat_id",
-                  "description": "Identifies group chats by chat_id. You can call the API [Search for groups visible to a user or bot](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/search) to obtain the chat_id value. For group ID description, refer to [Group ID description](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat-id-description)"
+                  "description": "Identifies group chats by chat_id. You can call the API Search for groups visible to a user or bot to obtain the chat_id value."
                 },
                 {
                   "value": "thread_id",
-                  "description": "Identifies thread by thread_id. For thread ID description, refer to [Thread Introduction](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/thread-introduction)</md-enum-item>\n\n\n**When the value is `user_id`, the following field scopes are required:**\n\n<md-perm name=\"contact:user.employee_id:readonly\" desc=\"Obtain user ID\" support_app_types=\"custom\" tags=\"\">Obtain user ID</md-perm>"
+                  "description": "Identifies thread by thread_id.\n\n\n**When the value is `user_id`, the following field scopes are required:**\n\nObtain user ID"
                 }
               ],
               "enumName": "ForwardMessageV1ReceiveIDType",
@@ -3328,7 +3328,7 @@
           "id": "messages.merge_forward",
           "path": "messages/merge_forward",
           "httpMethod": "POST",
-          "description": "Merge and forward messages。Identity: `bot` only (`tenant_access_token`)",
+          "description": "Merge and forward messages. Identity: `bot` only (`tenant_access_token`)",
           "parameters": {
             "receive_id_type": {
               "type": "string",
@@ -3339,15 +3339,15 @@
               "options": [
                 {
                   "value": "open_id",
-                  "description": "Identifies a user to an app. The same user has different Open IDs in different apps. [How to get Open ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid)"
+                  "description": "Identifies a user to an app. The same user has different Open IDs in different apps."
                 },
                 {
                   "value": "user_id",
-                  "description": "Identifies a user to a tenant. The same user has different User IDs in different tenants. In one single tenant, a user has the same User ID in all apps （including store apps）. User ID is usually used to communicate user data between different apps. [How to get User ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-user-id)"
+                  "description": "Identifies a user to a tenant. The same user has different User IDs in different tenants. In one single tenant, a user has the same User ID in all apps （including store apps）. User ID is usually used to communicate user data between different apps."
                 },
                 {
                   "value": "union_id",
-                  "description": "Identifies a user to a tenant that acts as a developer. A user has the same Union ID in apps developed by the same developer, and has different Union IDs in apps developed by different developers. A developer can use Union ID to link the same user's identities in multiple apps. [How to get Union ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-union-id)"
+                  "description": "Identifies a user to a tenant that acts as a developer. A user has the same Union ID in apps developed by the same developer, and has different Union IDs in apps developed by different developers. A developer can use Union ID to link the same user's identities in multiple apps."
                 },
                 {
                   "value": "email",
@@ -3355,11 +3355,11 @@
                 },
                 {
                   "value": "chat_id",
-                  "description": "Identifies group chats by chat_id. You can call the API [Search for groups visible to a user or bot](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/search) to obtain the chat_id value. For group ID description, refer to [Group ID description](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat-id-description)"
+                  "description": "Identifies group chats by chat_id. You can call the API Search for groups visible to a user or bot to obtain the chat_id value."
                 },
                 {
                   "value": "thread_id",
-                  "description": "Identifies thread by thread_id. For thread ID description, refer to [Thread Introduction](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/thread-introduction)</md-enum-item>\n\n\n**When the value is `user_id`, the following field scopes are required:**\n\n<md-perm name=\"contact:user.employee_id:readonly\" desc=\"Obtain user ID\" support_app_types=\"custom\" tags=\"\">Obtain user ID</md-perm>"
+                  "description": "Identifies thread by thread_id.\n\n\n**When the value is `user_id`, the following field scopes are required:**\n\nObtain user ID"
                 }
               ],
               "enumName": "MergeForwardMessagesV1ReceiveIDType",
@@ -3392,7 +3392,7 @@
             },
             "message_id_list": {
               "type": "array",
-              "description": "The list of message IDs to be forwarded. The messages in the list must be from the same session. How to get the ID:; - After calling the [Send message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create) interface, get it from the `message_id` parameter of the response result.;- Listen to the [Receive message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/events/receive) event. When the event is triggered, you can get the `message_id` of the message from the event body.;- Call the [Get session history messages](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/list) interface and get it from the `message_id` parameter of the response result",
+              "description": "The list of message IDs to be forwarded. The messages in the list must be from the same session. How to get the ID:; - After calling the Send message interface, get it from the `message_id` parameter of the response result.;- Listen to the Receive message event. When the event is triggered, you can get the `message_id` of the message from the event body.;- Call the Get session history messages interface and get it from the `message_id` parameter of the response result",
               "required": true,
               "annotations": [
                 "open:open_x_id"
@@ -3707,13 +3707,13 @@
           "id": "messages.patch",
           "path": "messages/{message_id}",
           "httpMethod": "PATCH",
-          "description": "Update sent message card。Update an interactive message card sent by the app. Identity: supports `user` and `bot`; the message must have been sent within the last 14 days, and `content` must be a JSON-serialized string no larger than 30 KB",
+          "description": "Update sent message card. Update an interactive message card sent by the app. Identity: supports `user` and `bot`; the message must have been sent within the last 14 days, and `content` must be a JSON-serialized string no larger than 30 KB",
           "parameters": {
             "message_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "The ID of the message to be updated. Only update cards (message type is `interactive`) are supported. ID acquisition method:; - After calling the [Send message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create) interface, get it from the `message_id` parameter of the response result.;- Listen to the [Receive message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/events/receive) event. When the event is triggered, you can get the `message_id` of the message from the event body.;- Call the [Get session history messages](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/list) interface and get it from the `message_id` parameter of the response result",
+              "description": "The ID of the message to be updated. Only update cards (message type is `interactive`) are supported. ID acquisition method:; - After calling the Send message interface, get it from the `message_id` parameter of the response result.;- Listen to the Receive message event. When the event is triggered, you can get the `message_id` of the message from the event body.;- Call the Get session history messages interface and get it from the `message_id` parameter of the response result",
               "example": "om_dc13264520392913993dd051dba21dcf"
             }
           },
@@ -3723,7 +3723,7 @@
           "requestBody": {
             "content": {
               "type": "string",
-              "description": "Message card content. Cards constructed with Card JSON or the [Card building tool](https://open.feishu.cn/cardkit?from=open_docs) are supported.; - To use card JSON, refer to [card JSON structure](https://open.feishu.cn/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-json-structure). When passing the value, you need to compress and escape the JSON as a string.; - To use the card template built by the [Card building tool](https://open.feishu.cn/cardkit?from=open_docs), you need to pass in the `type` and `data` parameters. Refer to following description for details.; ; Note:; - The updated card message must not exceed 30 KB. If the message contains a large number of style tags, it will make the actual message body length larger than the input request body length.; - The following example values ​​are not escaped. Please pay attention to convert them into JSON serialized strings when using them",
+              "description": "Message card content. Cards constructed with Card JSON or the Card building tool are supported.; When passing the value, you need to compress and escape the JSON as a string.; - To use the card template built by the Card building tool, you need to pass in the `type` and `data` parameters. Refer to following description for details.;; Note:; - The updated card message must not exceed 30 KB. If the message contains a large number of style tags, it will make the actual message body length larger than the input request body length.; - The following example values are not escaped. Please pay attention to convert them into JSON serialized strings when using them",
               "required": true,
               "example": "{\"elements\":[{\"tag\":\"div\",\"text\":{\"content\":\"This is the plain text\",\"tag\":\"plain_text\"}}],\"header\":{\"template\":\"blue\",\"title\":{\"content\":\"This is the title\",\"tag\":\"plain_text\"}}}"
             }
@@ -3745,7 +3745,7 @@
           "id": "messages.read_status",
           "path": "messages/read_status",
           "httpMethod": "POST",
-          "description": "批量查询当前用户对消息的已读状态。Identity: `user` only (`user_access_token`); accepts up to 50 message IDs and returns `items[].is_read` plus `invalid_message_ids` for messages that cannot be determined.[Must-read](references/lark-im-message-read-status.md)",
+          "description": "批量查询当前用户对消息的已读状态。Identity: `user` only (`user_access_token`); accepts up to 50 message IDs and returns `items[].is_read` plus `invalid_message_ids` for messages that cannot be determined.Must-read",
           "requestBody": {
             "message_ids": {
               "type": "array",
@@ -3806,13 +3806,13 @@
           "id": "messages.read_users",
           "path": "messages/{message_id}/read_users",
           "httpMethod": "GET",
-          "description": "Query the read status of a message as the sender。Identity: supports `user` and `bot`. With `user_access_token`, the user must still be in the chat and can query read users only for messages they sent within the last 7 days. With `tenant_access_token`, the bot must be in the chat and can only query its own messages within the last 7 days.[Must-read](references/lark-im-message-read-status.md)",
+          "description": "Query the read status of a message as the sender. Identity: supports `user` and `bot`. With `user_access_token`, the user must still be in the chat and can query read users only for messages they sent within the last 7 days. With `tenant_access_token`, the bot must be in the chat and can only query its own messages within the last 7 days.Must-read",
           "parameters": {
             "message_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "The ID of the message to be queried. How to obtain the ID:; - After calling the [Send Message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create) interface, obtain it from the `message_id` parameter of the response result.;- Listen to the [Receive Message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/events/receive) event. When the event is triggered, you can obtain the `message_id` of the message from the event body.;- Call the [Get Session History Messages](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/list) interface and obtain it from the `message_id` parameter of the response result",
+              "description": "The ID of the message to be queried. How to obtain the ID:; - After calling the Send Message interface, obtain it from the `message_id` parameter of the response result.;- Listen to the Receive Message event. When the event is triggered, you can obtain the `message_id` of the message from the event body.;- Call the Get Session History Messages interface and obtain it from the `message_id` parameter of the response result",
               "example": "om_dc13264520392913993dd051dba21dcf"
             },
             "user_id_type": {
@@ -3925,13 +3925,13 @@
           "id": "messages.urgent_app",
           "path": "messages/{message_id}/urgent_app",
           "httpMethod": "PATCH",
-          "description": "Send buzz messages in apps。Identity: `bot` only (`tenant_access_token`); the bot must be the message sender and must be in the conversation that contains the message",
+          "description": "Send buzz messages in apps. Identity: `bot` only (`tenant_access_token`); the bot must be the message sender and must be in the conversation that contains the message",
           "parameters": {
             "message_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "ID of the message to be buzzed. How to get the ID:; - After calling the [Send Message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create) interface, get it from the `message_id` parameter of the response result.;- Listen to the [Receive Message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/events/receive) event. When the event is triggered, you can get the `message_id` of the message from the event body.;- Call the [Get Session History Messages](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/list) interface and get it from the `message_id` parameter of the response result.; Notice: Buzz [batch messages](https://open.feishu.cn/document/ukTMukTMukTM/ucDO1EjL3gTNx4yN4UTM) are not supported (the corresponding message ID format is `bm_xxx`)",
+              "description": "ID of the message to be buzzed. How to get the ID:; - After calling the Send Message interface, get it from the `message_id` parameter of the response result.;- Listen to the Receive Message event. When the event is triggered, you can get the `message_id` of the message from the event body.;- Call the Get Session History Messages interface and get it from the `message_id` parameter of the response result.; Notice: Buzz batch messages are not supported (the corresponding message ID format is `bm_xxx`)",
               "example": "om_dc13264520392913993dd051dba21dcf"
             },
             "user_id_type": {
@@ -3993,13 +3993,13 @@
           "id": "messages.urgent_phone",
           "path": "messages/{message_id}/urgent_phone",
           "httpMethod": "PATCH",
-          "description": "Send buzz messages via phone call。Identity: `bot` only (`tenant_access_token`); the bot must be the message sender and must be in the conversation that contains the message",
+          "description": "Send buzz messages via phone call. Identity: `bot` only (`tenant_access_token`); the bot must be the message sender and must be in the conversation that contains the message",
           "parameters": {
             "message_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "ID of the message to be buzzed. How to get the ID:; - After calling the [Send Message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create) interface, get it from the `message_id` parameter of the response result.;- Listen to the [Receive Message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/events/receive) event. When the event is triggered, you can get the `message_id` of the message from the event body.;- Call the [Get Session History Messages](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/list) interface and get it from the `message_id` parameter of the response result.; Notice: Buzz [batch messages](https://open.feishu.cn/document/ukTMukTMukTM/ucDO1EjL3gTNx4yN4UTM) are not supported (the corresponding message ID format is `bm_xxx`)",
+              "description": "ID of the message to be buzzed. How to get the ID:; - After calling the Send Message interface, get it from the `message_id` parameter of the response result.;- Listen to the Receive Message event. When the event is triggered, you can get the `message_id` of the message from the event body.;- Call the Get Session History Messages interface and get it from the `message_id` parameter of the response result.; Notice: Buzz batch messages are not supported (the corresponding message ID format is `bm_xxx`)",
               "example": "om_dc13264520392913993dd051dba21dcf"
             },
             "user_id_type": {
@@ -4062,13 +4062,13 @@
           "id": "messages.urgent_sms",
           "path": "messages/{message_id}/urgent_sms",
           "httpMethod": "PATCH",
-          "description": "Send buzz messages via SMS。Identity: `bot` only (`tenant_access_token`); the bot must be the message sender and must be in the conversation that contains the message",
+          "description": "Send buzz messages via SMS. Identity: `bot` only (`tenant_access_token`); the bot must be the message sender and must be in the conversation that contains the message",
           "parameters": {
             "message_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "ID of the message to be buzzed. How to get the ID:; - After calling the [Send Message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create) interface, get it from the `message_id` parameter of the response result.;- Listen to the [Receive Message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/events/receive) event. When the event is triggered, you can get the `message_id` of the message from the event body.;- Call the [Get Session History Messages](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/list) interface and get it from the `message_id` parameter of the response result.; Notice: Buzz [batch messages](https://open.feishu.cn/document/ukTMukTMukTM/ucDO1EjL3gTNx4yN4UTM) are not supported (the corresponding message ID format is `bm_xxx`)",
+              "description": "ID of the message to be buzzed. How to get the ID:; - After calling the Send Message interface, get it from the `message_id` parameter of the response result.;- Listen to the Receive Message event. When the event is triggered, you can get the `message_id` of the message from the event body.;- Call the Get Session History Messages interface and get it from the `message_id` parameter of the response result.; Notice: Buzz batch messages are not supported (the corresponding message ID format is `bm_xxx`)",
               "example": "om_dc13264520392913993dd051dba21dcf"
             },
             "user_id_type": {
@@ -4134,7 +4134,7 @@
           "id": "reactions.batch_query",
           "path": "messages/reactions/batch_query",
           "httpMethod": "POST",
-          "description": "Batch list message reactions。Identity: supports `user` and `bot`.[Must-read](references/lark-im-reactions.md)",
+          "description": "Batch list message reactions. Identity: supports `user` and `bot`.Must-read",
           "parameters": {
             "user_id_type": {
               "type": "string",
@@ -4193,7 +4193,7 @@
             },
             "reaction_type": {
               "type": "string",
-              "description": "The type of emoji to be queried. For supported enumeration values, refer to the emoji_type value in [Emoji Text Description](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message-reaction/emojis-introduce).; Notice: This parameter is optional. If it is not passed, all reactions in the message will be queried",
+              "description": "The type of emoji to be queried.; Notice: This parameter is optional. If it is not passed, all reactions in the message will be queried",
               "required": false,
               "example": "LAUGH"
             }
@@ -4339,13 +4339,13 @@
           "id": "reactions.create",
           "path": "messages/{message_id}/reactions",
           "httpMethod": "POST",
-          "description": "Add a reaction for a message。Identity: supports `user` and `bot`; the caller must be in the conversation that contains the message.[Must-read](references/lark-im-reactions.md)",
+          "description": "Add a reaction for a message. Identity: supports `user` and `bot`; the caller must be in the conversation that contains the message.Must-read",
           "parameters": {
             "message_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Message ID of the reaction to be added. How to get the ID:; - After calling the [Send message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create) interface, get it from the `message_id` parameter of the response result.;- Listen to the [Receive message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/events/receive) event. When the event is triggered, you can get the `message_id` of the message from the event body.;- Call the [Get session history messages](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/list) interface and get it from the `message_id` parameter of the response result",
+              "description": "Message ID of the reaction to be added. How to get the ID:; - After calling the Send message interface, get it from the `message_id` parameter of the response result.;- Listen to the Receive message event. When the event is triggered, you can get the `message_id` of the message from the event body.;- Call the Get session history messages interface and get it from the `message_id` parameter of the response result",
               "example": "om_a8f2294b************a1a38afaac9d"
             }
           },
@@ -4361,7 +4361,7 @@
               "properties": {
                 "emoji_type": {
                   "type": "string",
-                  "description": "Emoji type. For emojis corresponding to the emoji_type value, see the [Emojis Introduction](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message-reaction/emojis-introduce)",
+                  "description": "Emoji type.",
                   "required": true,
                   "example": "SMILE"
                 }
@@ -4386,7 +4386,7 @@
               "properties": {
                 "operator_id": {
                   "type": "string",
-                  "description": "Operator ID, that is, the user's open_id. Call the [Get Single User Information](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/contact-v3/user/get) interface to get user information through the user ID",
+                  "description": "Operator ID, that is, the user's open_id. Call the Get Single User Information interface to get user information through the user ID",
                   "required": true,
                   "example": "ou_ff0b7ba35fb********67dfc8b885136"
                 },
@@ -4428,7 +4428,7 @@
               "properties": {
                 "emoji_type": {
                   "type": "string",
-                  "description": "Emoji type. For emojis corresponding to the emoji_type value, see the [Emojis Introduction](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message-reaction/emojis-introduce)",
+                  "description": "Emoji type.",
                   "required": true,
                   "example": "SMILE"
                 }
@@ -4451,20 +4451,20 @@
           "id": "reactions.delete",
           "path": "messages/{message_id}/reactions/{reaction_id}",
           "httpMethod": "DELETE",
-          "description": "Delete a reaction for a message。Identity: supports `user` and `bot`; the caller must be in the conversation that contains the message, and can only delete reactions added by itself.[Must-read](references/lark-im-reactions.md)",
+          "description": "Delete a reaction for a message. Identity: supports `user` and `bot`; the caller must be in the conversation that contains the message, and can only delete reactions added by itself.Must-read",
           "parameters": {
             "message_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Message ID of the reaction to be deleted. How to get the ID:; - After calling the [Send message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create) interface, get it from the `message_id` parameter of the response result.;- Listen to the [Receive message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/events/receive) event. When the event is triggered, you can get the `message_id` of the message from the event body.;- Call the [Get session history messages](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/list) interface and get it from the `message_id` parameter of the response result",
+              "description": "Message ID of the reaction to be deleted. How to get the ID:; - After calling the Send message interface, get it from the `message_id` parameter of the response result.;- Listen to the Receive message event. When the event is triggered, you can get the `message_id` of the message from the event body.;- Call the Get session history messages interface and get it from the `message_id` parameter of the response result",
               "example": "om_8964d1b4*********2b31383276113"
             },
             "reaction_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "ID of the reaction to be deleted, how to get the ID:; - Call the [Add message reaction](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message-reaction/create) interface to add an emoji reply, and get it in the returned result.; - Call the [Get message reaction](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message-reaction/list) interface to get the ID of a certain emoji reply",
+              "description": "ID of the reaction to be deleted, how to get the ID:; - Call the Add message reaction interface to add an emoji reply, and get it in the returned result.; - Call the Get message reaction interface to get the ID of a certain emoji reply",
               "example": "ZCaCIjUBVVWSrm5L-3ZTw*************sNa8dHVplEzzSfJVUVLMLcS_"
             }
           },
@@ -4490,7 +4490,7 @@
               "properties": {
                 "operator_id": {
                   "type": "string",
-                  "description": "Operator ID, that is, the user's open_id. Call the [Get Single User Information](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/contact-v3/user/get) interface to get user information through the user ID",
+                  "description": "Operator ID, that is, the user's open_id. Call the Get Single User Information interface to get user information through the user ID",
                   "required": true,
                   "example": "ou_ff0b7ba35fb********67dfc8b885136"
                 },
@@ -4532,7 +4532,7 @@
               "properties": {
                 "emoji_type": {
                   "type": "string",
-                  "description": "Emoji type. For emojis corresponding to the emoji_type value, see the [Emojis Introduction](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message-reaction/emojis-introduce)",
+                  "description": "Emoji type.",
                   "required": true,
                   "example": "SMILE"
                 }
@@ -4555,20 +4555,20 @@
           "id": "reactions.list",
           "path": "messages/{message_id}/reactions",
           "httpMethod": "GET",
-          "description": "List message reactions。Identity: supports `user` and `bot`; the caller must be in the conversation that contains the message.[Must-read](references/lark-im-reactions.md)",
+          "description": "List message reactions. Identity: supports `user` and `bot`; the caller must be in the conversation that contains the message.Must-read",
           "parameters": {
             "message_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Message ID of the reaction to be obtained. How to get the ID:; - After calling the [Send message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create) interface, get it from the `message_id` parameter of the response result.;- Listen to the [Receive message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/events/receive) event. When the event is triggered, you can get the `message_id` of the message from the event body.;- Call the [Get session history messages](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/list) interface and get it from the `message_id` parameter of the response result",
+              "description": "Message ID of the reaction to be obtained. How to get the ID:; - After calling the Send message interface, get it from the `message_id` parameter of the response result.;- Listen to the Receive message event. When the event is triggered, you can get the `message_id` of the message from the event body.;- Call the Get session history messages interface and get it from the `message_id` parameter of the response result",
               "example": "om_8964d1b4*********2b31383276113"
             },
             "reaction_type": {
               "type": "string",
               "location": "query",
               "required": false,
-              "description": "The type of emoji to be queried. For supported enumeration values, refer to the emoji_type value in [Emoji Text Description](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message-reaction/emojis-introduce).; Notice: This parameter is optional. If it is not passed, all reactions in the message will be queried",
+              "description": "The type of emoji to be queried.; Notice: This parameter is optional. If it is not passed, all reactions in the message will be queried",
               "example": "LAUGH"
             },
             "page_token": {
@@ -4639,7 +4639,7 @@
                   "properties": {
                     "operator_id": {
                       "type": "string",
-                      "description": "Operator ID, that is, the user's open_id. Call the [Get Single User Information](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/contact-v3/user/get) interface to get user information through the user ID",
+                      "description": "Operator ID, that is, the user's open_id. Call the Get Single User Information interface to get user information through the user ID",
                       "required": true,
                       "example": "ou_ff0b7ba35fb********67dfc8b885136"
                     },
@@ -4681,7 +4681,7 @@
                   "properties": {
                     "emoji_type": {
                       "type": "string",
-                      "description": "Emoji type. For emojis corresponding to the emoji_type value, see the [Emojis Introduction](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message-reaction/emojis-introduce)",
+                      "description": "Emoji type.",
                       "required": true,
                       "example": "SMILE"
                     }
@@ -4721,13 +4721,13 @@
           "id": "threads.forward",
           "path": "threads/{thread_id}/forward",
           "httpMethod": "POST",
-          "description": "Forward a thread。Identity: supports `user` and `bot`",
+          "description": "Forward a thread. Identity: supports `user` and `bot`",
           "parameters": {
             "thread_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "The ID of the thread to be forwarded. For how to obtain it, see the How ​​to obtain thread_id section in [Thread Overview](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/thread-introduction)",
+              "description": "The ID of the thread to be forwarded.",
               "example": "ot_70eb06e7b84dc71c03e009ad3c754680"
             },
             "receive_id_type": {
@@ -4755,11 +4755,11 @@
                 },
                 {
                   "value": "chat_id",
-                  "description": "Identifies group chats by chat_id. You can call the API [Search for groups visible to a user or bot](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat/search) to obtain the chat_id value. For group ID description, refer to [Group ID description](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat-id-description)"
+                  "description": "Identifies group chats by chat_id. You can call the API Search for groups visible to a user or bot to obtain the chat_id value."
                 },
                 {
                   "value": "thread_id",
-                  "description": "Identifies thread by thread_id. For thread ID description, refer to [Thread Introduction](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/thread-introduction)</md-enum-item>"
+                  "description": "Identifies thread by thread_id."
                 }
               ],
               "enumName": "ForwardThreadV1ReceiveIDType",
@@ -5109,7 +5109,7 @@
           "id": "images.create",
           "path": "images",
           "httpMethod": "POST",
-          "description": "Upload image。Identity: supports `user` and `bot`; user identity requires `im:resource` scope on the UAT",
+          "description": "Upload image. Identity: supports `user` and `bot`; user identity requires `im:resource` scope on the UAT",
           "requestBody": {
             "image_type": {
               "type": "string",
@@ -5167,7 +5167,7 @@
           "id": "files.create",
           "path": "files",
           "httpMethod": "POST",
-          "description": "Upload file。Identity: supports `user` and `bot`; user identity requires `im:resource` scope on the UAT",
+          "description": "Upload file. Identity: supports `user` and `bot`; user identity requires `im:resource` scope on the UAT",
           "requestBody": {
             "file_type": {
               "type": "string",
@@ -5366,11 +5366,11 @@
           "id": "pins.create",
           "path": "pins",
           "httpMethod": "POST",
-          "description": "Pin a message。Identity: supports `user` and `bot`",
+          "description": "Pin a message. Identity: supports `user` and `bot`",
           "requestBody": {
             "message_id": {
               "type": "string",
-              "description": "Message ID to be pinned. How to get the ID:; - After calling the [Send Message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create) interface, get it from the `message_id` parameter of the response result.;- Listen to the [Receive Message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/events/receive) event. When the event is triggered, you can get the `message_id` of the message from the event body.;- Call the [Get Session History Messages](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/list) interface and get it from the `message_id` parameter of the response result",
+              "description": "Message ID to be pinned. How to get the ID:; - After calling the Send Message interface, get it from the `message_id` parameter of the response result.;- Listen to the Receive Message event. When the event is triggered, you can get the `message_id` of the message from the event body.;- Call the Get Session History Messages interface and get it from the `message_id` parameter of the response result",
               "required": true,
               "example": "om_dc13264520392913993dd051dba21dcf"
             }
@@ -5405,7 +5405,7 @@
                 },
                 "operator_id_type": {
                   "type": "string",
-                  "description": "Operator ID type of pin. Possible values ​​are:; - open_id: indicates that the operator is a user, in which case `operator_id` returns the user's open_id.;- app_id: indicates that the operator is an application, in which case `operator_id` returns the application's app_id",
+                  "description": "Operator ID type of pin. Possible values are:; - open_id: indicates that the operator is a user, in which case `operator_id` returns the user's open_id.;- app_id: indicates that the operator is an application, in which case `operator_id` returns the application's app_id",
                   "required": false,
                   "example": "open_id"
                 },
@@ -5435,13 +5435,13 @@
           "id": "pins.delete",
           "path": "pins/{message_id}",
           "httpMethod": "DELETE",
-          "description": "Unpin a message。Identity: supports `user` and `bot`",
+          "description": "Unpin a message. Identity: supports `user` and `bot`",
           "parameters": {
             "message_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Message ID to be unpin. How to get the ID:; - After calling the [Send Message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create) interface, get it from the `message_id` parameter of the response result.;- Listen to the [Receive Message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/events/receive) event. When the event is triggered, you can get the `message_id` of the message from the event body.;- Call the [Get Session History Messages](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/list) interface and get it from the `message_id` parameter of the response result",
+              "description": "Message ID to be unpin. How to get the ID:; - After calling the Send Message interface, get it from the `message_id` parameter of the response result.;- Listen to the Receive Message event. When the event is triggered, you can get the `message_id` of the message from the event body.;- Call the Get Session History Messages interface and get it from the `message_id` parameter of the response result",
               "example": "om_dc13264520392913993dd051dba21dcf"
             }
           },
@@ -5465,13 +5465,13 @@
           "id": "pins.list",
           "path": "pins",
           "httpMethod": "GET",
-          "description": "Get pins in group。Identity: supports `user` and `bot`",
+          "description": "Get pins in group. Identity: supports `user` and `bot`",
           "parameters": {
             "chat_id": {
               "type": "string",
               "location": "query",
               "required": true,
-              "description": "Group ID. For details, refer to [Group ID description](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat-id-description)",
+              "description": "Group ID.",
               "example": "oc_234jsi43d3ssi993d43545f"
             },
             "start_time": {
@@ -5535,7 +5535,7 @@
                 },
                 "operator_id_type": {
                   "type": "string",
-                  "description": "Operator ID type of pin. Possible values ​​are:; - open_id: indicates that the operator is a user, in which case `operator_id` returns the user's open_id.;- app_id: indicates that the operator is an application, in which case `operator_id` returns the application's app_id",
+                  "description": "Operator ID type of pin. Possible values are:; - open_id: indicates that the operator is a user, in which case `operator_id` returns the user's open_id.;- app_id: indicates that the operator is an application, in which case `operator_id` returns the application's app_id",
                   "required": false,
                   "example": "open_id"
                 },
@@ -5580,7 +5580,7 @@
           "id": "feed.groups.batch_add_item",
           "path": "groups/{feed_group_id}/batch_add_item",
           "httpMethod": "POST",
-          "description": "Batch add feed cards to a feed group. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)",
+          "description": "Batch add feed cards to a feed group. Identity: `user` only (`user_access_token`).Must-read",
           "parameters": {
             "feed_group_id": {
               "type": "string",
@@ -5671,13 +5671,13 @@
           "id": "feed.groups.batch_query",
           "path": "groups/batch_query",
           "httpMethod": "POST",
-          "description": "Batch query feed groups. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)",
+          "description": "Batch query feed groups. Identity: `user` only (`user_access_token`).Must-read",
           "parameters": {
             "user_id_type": {
               "type": "string",
               "location": "query",
               "required": false,
-              "description": "",
+              "description": "此次调用中使用的用户ID的类型",
               "options": [
                 {
                   "value": "user_id",
@@ -5828,7 +5828,7 @@
           "id": "feed.groups.batch_remove_item",
           "path": "groups/{feed_group_id}/batch_remove_item",
           "httpMethod": "POST",
-          "description": "Batch remove feed cards from a feed group. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)",
+          "description": "Batch remove feed cards from a feed group. Identity: `user` only (`user_access_token`).Must-read",
           "parameters": {
             "feed_group_id": {
               "type": "string",
@@ -5919,13 +5919,13 @@
           "id": "feed.groups.create",
           "path": "groups",
           "httpMethod": "POST",
-          "description": "Create a feed group. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)",
+          "description": "Create a feed group. Identity: `user` only (`user_access_token`).Must-read",
           "parameters": {
             "user_id_type": {
               "type": "string",
               "location": "query",
               "required": false,
-              "description": "",
+              "description": "此次调用中使用的用户ID的类型",
               "options": [
                 {
                   "value": "user_id",
@@ -6004,7 +6004,7 @@
           "id": "feed.groups.delete",
           "path": "groups/{feed_group_id}",
           "httpMethod": "DELETE",
-          "description": "Delete a feed group. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)",
+          "description": "Delete a feed group. Identity: `user` only (`user_access_token`).Must-read",
           "parameters": {
             "feed_group_id": {
               "type": "string",
@@ -6031,7 +6031,7 @@
           "id": "feed.groups.update",
           "path": "groups/{feed_group_id}",
           "httpMethod": "PUT",
-          "description": "Update a feed group. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)",
+          "description": "Update a feed group. Identity: `user` only (`user_access_token`).Must-read",
           "parameters": {
             "feed_group_id": {
               "type": "string",
@@ -6044,7 +6044,7 @@
               "type": "string",
               "location": "query",
               "required": false,
-              "description": "",
+              "description": "此次调用中使用的用户ID的类型",
               "options": [
                 {
                   "value": "user_id",

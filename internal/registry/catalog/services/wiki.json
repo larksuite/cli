@@ -176,14 +176,14 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Wiki space ID <md-text type=\"field-name\" >[How to get Wiki space ID](https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-overview)</md-text>",
+              "description": "Wiki space ID",
               "example": "6870403571079249922"
             },
             "lang": {
               "type": "string",
               "location": "query",
               "required": false,
-              "description": "When querying My Document Library​​, specify the document library name display language to return",
+              "description": "When querying My Document Library, specify the document library name display language to return",
               "default": "en",
               "example": "zh",
               "options": [
@@ -245,11 +245,11 @@
                 },
                 {
                   "value": "zh-HK",
-                  "description": "Traditional Chinese (Hong Kong, China)"
+                  "description": "Traditional Chinese"
                 },
                 {
                   "value": "zh-TW",
-                  "description": "繁体中文"
+                  "description": "Traditional Chinese"
                 }
               ],
               "enumName": "ShowLanguage",
@@ -407,7 +407,7 @@
               "type": "string",
               "location": "query",
               "required": true,
-              "description": "The wiki node or the actual token of the corresponding cloud document.;- Wiki node token: If the token in the URL link is preceded by \"wiki\", the token is the node token of the wiki.;- Actual cloud document token: If the token in the URL link is preceded by \"docx\", \"base\", \"sheets\", or other non-\"wiki\" types, it indicates that the token is the actual token of the current cloud document.; For more information, please refer to [Frequently Asked Questions about Documents - How to Retrieve Cloud Document Resource Tokens (IDs)](https://open.feishu.cn/document/ukTMukTMukTM/uczNzUjL3czM14yN3MTN).; Note: ;When querying with a cloud document token, you need to pass the corresponding document type into the `obj_type` parameter",
+              "description": "The wiki node or the actual token of the corresponding cloud document.;- Wiki node token: If the token in the URL link is preceded by \"wiki\", the token is the node token of the wiki.;- Actual cloud document token: If the token in the URL link is preceded by \"docx\", \"base\", \"sheets\", or other non-\"wiki\" types, it indicates that the token is the actual token of the current cloud document.;; Note:;When querying with a cloud document token, you need to pass the corresponding document type into the `obj_type` parameter",
               "example": "wikcnKQ1k3p******8Vabcef"
             },
             "obj_type": {
@@ -473,7 +473,7 @@
               "properties": {
                 "space_id": {
                   "type": "string",
-                  "description": "[Wiki space id](https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-overview)",
+                  "description": "Wiki space id",
                   "required": false,
                   "example": "6946843325487906839",
                   "annotations": [
@@ -482,7 +482,7 @@
                 },
                 "node_token": {
                   "type": "string",
-                  "description": "节点token，[获取方式](https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-overview)",
+                  "description": "节点token，获取方式",
                   "required": false,
                   "example": "wikcnKQ1k3p******8Vabcef",
                   "annotations": [
@@ -855,7 +855,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Wiki space id",
+              "description": "Wiki space ID. It can be obtained in two ways.;- Call List wiki spaces;- If you are a wiki admin, open the space settings page and copy the numeric part of the address bar: https://sample.feishu.cn/wiki/settings/==6870403571079249922==",
               "example": "1565676577122621"
             },
             "need_notification": {
@@ -1246,7 +1246,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "[Wiki space id](https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-overview)",
+              "description": "Wiki space id",
               "example": "6946843325487912356"
             },
             "node_token": {
@@ -1293,7 +1293,7 @@
               "properties": {
                 "space_id": {
                   "type": "string",
-                  "description": "[Wiki space id](https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-overview)",
+                  "description": "Wiki space id",
                   "required": false,
                   "example": "6946843325487906839",
                   "annotations": [
@@ -1302,7 +1302,7 @@
                 },
                 "node_token": {
                   "type": "string",
-                  "description": "节点token，[获取方式](https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-overview)",
+                  "description": "节点token，获取方式",
                   "required": false,
                   "example": "wikcnKQ1k3p******8Vabcef",
                   "annotations": [
@@ -1509,7 +1509,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "[Wiki space id](https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-overview)",
+              "description": "Wiki space id",
               "example": "6704147935988285963"
             }
           },
@@ -1612,7 +1612,7 @@
               "properties": {
                 "space_id": {
                   "type": "string",
-                  "description": "[Wiki space id](https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-overview)",
+                  "description": "Wiki space id",
                   "required": false,
                   "example": "6946843325487906839",
                   "annotations": [
@@ -1621,7 +1621,7 @@
                 },
                 "node_token": {
                   "type": "string",
-                  "description": "节点token，[获取方式](https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-overview)",
+                  "description": "节点token，获取方式",
                   "required": false,
                   "example": "wikcnKQ1k3p******8Vabcef",
                   "annotations": [
@@ -1828,7 +1828,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "[Wiki space id](https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-overview), when querying My Document Library​​, it can be replaced with `my_library`",
+              "description": "Wiki space id, when querying My Document Library, it can be replaced with `my_library`",
               "example": "6946843325487906839"
             },
             "page_size": {
@@ -1865,7 +1865,7 @@
               "properties": {
                 "space_id": {
                   "type": "string",
-                  "description": "[Wiki space id](https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-overview)",
+                  "description": "Wiki space id",
                   "required": false,
                   "example": "6946843325487906839",
                   "annotations": [
@@ -1874,7 +1874,7 @@
                 },
                 "node_token": {
                   "type": "string",
-                  "description": "节点token，[获取方式](https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-overview)",
+                  "description": "节点token，获取方式",
                   "required": false,
                   "example": "wikcnKQ1k3p******8Vabcef",
                   "annotations": [

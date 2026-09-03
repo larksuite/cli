@@ -37,7 +37,7 @@
             },
             "due": {
               "type": "object",
-              "description": "Task due",
+              "description": "Task due timestamp (ms). Fill in either the due timestamp or the due date",
               "required": false,
               "ref": "due",
               "example": "1675742789470",
@@ -82,13 +82,13 @@
                     },
                     "zh_hk": {
                       "type": "string",
-                      "description": "Chinese (Hong Kong)",
+                      "description": "Traditional Chinese",
                       "required": false,
                       "example": "工作臺"
                     },
                     "zh_tw": {
                       "type": "string",
-                      "description": "繁体中文",
+                      "description": "Traditional Chinese",
                       "required": false,
                       "example": "工作臺"
                     },
@@ -209,7 +209,7 @@
             },
             "members": {
               "type": "array",
-              "description": "A list of task members, including assignees and followers. If not filled in, the task has no members. Support up to 50 members per request after de-duplication.; Please refer to the \" How to represent members of tasks and tasklists?\" section in [Feature Overview](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/task-v2/tasklist/overview)",
+              "description": "A list of task members, including assignees and followers. If not filled in, the task has no members. Support up to 50 members per request after de-duplication.",
               "required": false,
               "properties": {
                 "id": {
@@ -246,7 +246,7 @@
             },
             "custom_complete": {
               "type": "object",
-              "description": "Custom completion configuration of task",
+              "description": "If set, the task is designed as custom complete: when the user clicks Complete in the task center, the task is not completed directly but jumps to the address configured by the third party or shows a custom prompt",
               "required": false,
               "ref": "custom_complete",
               "properties": {
@@ -748,7 +748,7 @@
                 },
                 "repeat_rule": {
                   "type": "string",
-                  "description": "Task repeat rule. If set, the tasks are \"recurring task\". Please refer to the \"How to Use Recurring Tasks? \" section in [Task Feature Overview](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/task-v2/task/overview)",
+                  "description": "Task repeat rule. If set, the tasks are \"recurring task\".",
                   "required": false,
                   "example": "FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,TU,WE,TH,FR"
                 },
@@ -1427,7 +1427,7 @@
                 },
                 "repeat_rule": {
                   "type": "string",
-                  "description": "Task repeat rule. If set, the tasks are \"recurring task\". Please refer to the \"How to Use Recurring Tasks? \" section in [Task Feature Overview](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/task-v2/task/overview)",
+                  "description": "Task repeat rule. If set, the tasks are \"recurring task\".",
                   "required": false,
                   "example": "FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,TU,WE,TH,FR"
                 },
@@ -2106,7 +2106,7 @@
                 },
                 "repeat_rule": {
                   "type": "string",
-                  "description": "Task repeat rule. If set, the tasks are \"recurring task\". Please refer to the \"How to Use Recurring Tasks? \" section in [Task Feature Overview](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/task-v2/task/overview)",
+                  "description": "Task repeat rule. If set, the tasks are \"recurring task\".",
                   "required": false,
                   "example": "FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,TU,WE,TH,FR"
                 },
@@ -2544,7 +2544,7 @@
                 },
                 "due": {
                   "type": "object",
-                  "description": "Task due",
+                  "description": "Task due timestamp (ms). Fill in either the due timestamp or the due date",
                   "required": false,
                   "ref": "due",
                   "example": "1675742789470",
@@ -2583,7 +2583,7 @@
                 },
                 "custom_complete": {
                   "type": "object",
-                  "description": "Custom completion configuration of task",
+                  "description": "If set, the task is designed as custom complete: when the user clicks Complete in the task center, the task is not completed directly but jumps to the address configured by the third party or shows a custom prompt",
                   "required": false,
                   "ref": "custom_complete",
                   "properties": {
@@ -2724,7 +2724,7 @@
             },
             "update_fields": {
               "type": "array",
-              "description": "Set the fields that need to be modified;<md-enum>;<md-enum-item key=\"summary\">Task summary</md-enum-item>;<md-enum-item key=\"descriptions\">Task description</md-enum-item>;<md-enum-item key=\"start\">Task start time </md-enum-item>;<md-enum-item key=\"due\">Task due time </md-enum-item>;<md-enum-item key = \"completed_at\">Task completion time</md-enum-item>;<md-enum-item key=\"extra\">Task attached custom data</md-enum-item>;<md-enum-item key=\"custom_complete\"> Task custom completion config</md-enum-item>;<md-enum-item key=\"repeat_rule\">Task repeat rule</md-enum-item >;</md-enum>",
+              "description": "Set the fields that need to be modified;;Task summary;Task description;Task start time;Task due time;Task completion time;Task attached custom data; Task custom completion config;Task repeat rule",
               "required": true
             }
           },
@@ -2972,7 +2972,7 @@
                 },
                 "repeat_rule": {
                   "type": "string",
-                  "description": "Task repeat rule. If set, the tasks are \"recurring task\". Please refer to the \"How to Use Recurring Tasks? \" section in [Task Feature Overview](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/task-v2/task/overview)",
+                  "description": "Task repeat rule. If set, the tasks are \"recurring task\".",
                   "required": false,
                   "example": "FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,TU,WE,TH,FR"
                 },
@@ -3385,7 +3385,7 @@
           "requestBody": {
             "members": {
               "type": "array",
-              "description": "Members to add. For the format of member, please refer to the \" How to represent members of tasks and tasklists?\" section in [Feature Overview](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/task-v2/tasklist/overview)",
+              "description": "Members to add.",
               "required": true,
               "properties": {
                 "id": {
@@ -4191,7 +4191,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Globally unique GUID of the manifest to update",
+              "description": "GUID of tasklist to update",
               "example": "D300a75f-c56a-4be9-80d1-e47653028ceb"
             },
             "user_id_type": {
@@ -4260,7 +4260,7 @@
             },
             "update_fields": {
               "type": "array",
-              "description": "Field name to update, support;<md-enum>;<md-enum-item key=\"name\">Tasklist name </md-enum-item>;<md-enum-item key=\"owner\">Tasklist owner </md-enum-item>;</md-enum>",
+              "description": "Field name to update, support;;Tasklist name;Tasklist owner",
               "required": true
             },
             "origin_owner_to_role": {
@@ -4470,7 +4470,7 @@
           "requestBody": {
             "members": {
               "type": "array",
-              "description": "Members to remove. For the format of member, please refer to the \" How to represent members of tasks and tasklists?\" section in [Feature Overview](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/task-v2/tasklist/overview)",
+              "description": "Members to remove.",
               "required": true,
               "properties": {
                 "id": {
@@ -4887,7 +4887,7 @@
             },
             "due": {
               "type": "object",
-              "description": "Task due",
+              "description": "Task due timestamp (ms). Fill in either the due timestamp or the due date",
               "required": false,
               "ref": "due",
               "example": "1675742789470",
@@ -4932,13 +4932,13 @@
                     },
                     "zh_hk": {
                       "type": "string",
-                      "description": "Chinese (Hong Kong)",
+                      "description": "Traditional Chinese",
                       "required": false,
                       "example": "工作臺"
                     },
                     "zh_tw": {
                       "type": "string",
-                      "description": "繁体中文",
+                      "description": "Traditional Chinese",
                       "required": false,
                       "example": "工作臺"
                     },
@@ -5096,7 +5096,7 @@
             },
             "custom_complete": {
               "type": "object",
-              "description": "Custom completion configuration of task",
+              "description": "If set, the task is designed as custom complete: when the user clicks Complete in the task center, the task is not completed directly but jumps to the address configured by the third party or shows a custom prompt",
               "required": false,
               "ref": "custom_complete",
               "properties": {
@@ -5591,7 +5591,7 @@
                 },
                 "repeat_rule": {
                   "type": "string",
-                  "description": "Task repeat rule. If set, the tasks are \"recurring task\". Please refer to the \"How to Use Recurring Tasks? \" section in [Task Feature Overview](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/task-v2/task/overview)",
+                  "description": "Task repeat rule. If set, the tasks are \"recurring task\".",
                   "required": false,
                   "example": "FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,TU,WE,TH,FR"
                 },
@@ -6257,7 +6257,7 @@
                 },
                 "repeat_rule": {
                   "type": "string",
-                  "description": "Task repeat rule. If set, the tasks are \"recurring task\". Please refer to the \"How to Use Recurring Tasks? \" section in [Task Feature Overview](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/task-v2/task/overview)",
+                  "description": "Task repeat rule. If set, the tasks are \"recurring task\".",
                   "required": false,
                   "example": "FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,TU,WE,TH,FR"
                 },
@@ -7580,7 +7580,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "custom field GUID, which can be created by[Create Custom Field](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/task-v2/custom_field/create), or queried by[List Custom Field](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/task-v2/custom_field/list)",
+              "description": "custom field GUID, which can be created byCreate Custom Field, or queried byList Custom Field",
               "example": "0110a4bd-f24b-4a93-8c1a-1732b94f9593"
             }
           },
@@ -7825,7 +7825,7 @@
               "properties": {
                 "format": {
                   "type": "string",
-                  "description": "Date time format, supported;<md-enum>;<md-enum-item key= \"yyyy-mm-dd\"> Year, month and day separated by dashes, e.g. 2023-08-24</md-enum-item>;<md-enum-item key= \"yyyy/mm/dd\"> Year, month and day separated by slashes, e.g. 2023/08/04 </md-enum-item>;<md-enum-item key = \"mm/dd/yyyy\">months, days and years separated by slashes, e.g. 08/24/2023</md-enum-item>;<md-enum-item key = \"dd/mm/yyyy\">Day, month and year separated by slashes, e.g. 24/08/2023</md-enum-item>;</md-enum>; Default is \"yyyy-mm-dd\".; Note that this setting only affects the display format of field values, and does not affect the format of field values input/output in openapi",
+                  "description": "Date time format, supported;; Year, month and day separated by dashes, e.g. 2023-08-24; Year, month and day separated by slashes, e.g. 2023/08/04;months, days and years separated by slashes, e.g. 08/24/2023;Day, month and year separated by slashes, e.g. 24/08/2023;; Default is \"yyyy-mm-dd\".; Note that this setting only affects the display format of field values, and does not affect the format of field values input/output in openapi",
                   "required": false,
                   "example": "yyyy/mm/dd"
                 }
@@ -8052,7 +8052,7 @@
                   "properties": {
                     "format": {
                       "type": "string",
-                      "description": "Date time format, supported;<md-enum>;<md-enum-item key= \"yyyy-mm-dd\"> Year, month and day separated by dashes, e.g. 2023-08-24</md-enum-item>;<md-enum-item key= \"yyyy/mm/dd\"> Year, month and day separated by slashes, e.g. 2023/08/04 </md-enum-item>;<md-enum-item key = \"mm/dd/yyyy\">months, days and years separated by slashes, e.g. 08/24/2023</md-enum-item>;<md-enum-item key = \"dd/mm/yyyy\">Day, month and year separated by slashes, e.g. 24/08/2023</md-enum-item>;</md-enum>; Default is \"yyyy-mm-dd\".; Note that this setting only affects the display format of field values, and does not affect the format of field values input/output in openapi",
+                      "description": "Date time format, supported;; Year, month and day separated by dashes, e.g. 2023-08-24; Year, month and day separated by slashes, e.g. 2023/08/04;months, days and years separated by slashes, e.g. 08/24/2023;Day, month and year separated by slashes, e.g. 24/08/2023;; Default is \"yyyy-mm-dd\".; Note that this setting only affects the display format of field values, and does not affect the format of field values input/output in openapi",
                       "required": false,
                       "example": "yyyy/mm/dd"
                     }
@@ -8159,7 +8159,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "custom field GUID, which can be created by[Create Custom Field](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/task-v2/custom_field/create), or queried by[List Custom Field](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/task-v2/custom_field/list)",
+              "description": "custom field GUID, which can be created byCreate Custom Field, or queried byList Custom Field",
               "example": "5ffbe0ca-6600-41e0-a634-2b38cbcf13b8"
             },
             "user_id_type": {
@@ -8337,7 +8337,7 @@
                   "properties": {
                     "format": {
                       "type": "string",
-                      "description": "Date time format, supported;<md-enum>;<md-enum-item key= \"yyyy-mm-dd\"> Year, month and day separated by dashes, e.g. 2023-08-24</md-enum-item>;<md-enum-item key= \"yyyy/mm/dd\"> Year, month and day separated by slashes, e.g. 2023/08/04 </md-enum-item>;<md-enum-item key = \"mm/dd/yyyy\">months, days and years separated by slashes, e.g. 08/24/2023</md-enum-item>;<md-enum-item key = \"dd/mm/yyyy\">Day, month and year separated by slashes, e.g. 24/08/2023</md-enum-item>;</md-enum>; Default is \"yyyy-mm-dd\".; Note that this setting only affects the display format of field values, and does not affect the format of field values input/output in openapi",
+                      "description": "Date time format, supported;; Year, month and day separated by dashes, e.g. 2023-08-24; Year, month and day separated by slashes, e.g. 2023/08/04;months, days and years separated by slashes, e.g. 08/24/2023;Day, month and year separated by slashes, e.g. 24/08/2023;; Default is \"yyyy-mm-dd\".; Note that this setting only affects the display format of field values, and does not affect the format of field values input/output in openapi",
                       "required": false,
                       "example": "yyyy/mm/dd"
                     }
@@ -8648,7 +8648,7 @@
                   "properties": {
                     "format": {
                       "type": "string",
-                      "description": "Date time format, supported;<md-enum>;<md-enum-item key= \"yyyy-mm-dd\"> Year, month and day separated by dashes, e.g. 2023-08-24</md-enum-item>;<md-enum-item key= \"yyyy/mm/dd\"> Year, month and day separated by slashes, e.g. 2023/08/04 </md-enum-item>;<md-enum-item key = \"mm/dd/yyyy\">months, days and years separated by slashes, e.g. 08/24/2023</md-enum-item>;<md-enum-item key = \"dd/mm/yyyy\">Day, month and year separated by slashes, e.g. 24/08/2023</md-enum-item>;</md-enum>; Default is \"yyyy-mm-dd\".; Note that this setting only affects the display format of field values, and does not affect the format of field values input/output in openapi",
+                      "description": "Date time format, supported;; Year, month and day separated by dashes, e.g. 2023-08-24; Year, month and day separated by slashes, e.g. 2023/08/04;months, days and years separated by slashes, e.g. 08/24/2023;Day, month and year separated by slashes, e.g. 24/08/2023;; Default is \"yyyy-mm-dd\".; Note that this setting only affects the display format of field values, and does not affect the format of field values input/output in openapi",
                       "required": false,
                       "example": "yyyy/mm/dd"
                     }
@@ -8766,7 +8766,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "custom field GUID, which can be created by[Create Custom Field](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/task-v2/custom_field/create), or queried by[List Custom Field](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/task-v2/custom_field/list)",
+              "description": "custom field GUID, which can be created byCreate Custom Field, or queried byList Custom Field",
               "example": "5ffbe0ca-6600-41e0-a634-2b38cbcf13b8"
             },
             "user_id_type": {
@@ -8932,7 +8932,7 @@
                   "properties": {
                     "format": {
                       "type": "string",
-                      "description": "Date time format, supported;<md-enum>;<md-enum-item key= \"yyyy-mm-dd\"> Year, month and day separated by dashes, e.g. 2023-08-24</md-enum-item>;<md-enum-item key= \"yyyy/mm/dd\"> Year, month and day separated by slashes, e.g. 2023/08/04 </md-enum-item>;<md-enum-item key = \"mm/dd/yyyy\">months, days and years separated by slashes, e.g. 08/24/2023</md-enum-item>;<md-enum-item key = \"dd/mm/yyyy\">Day, month and year separated by slashes, e.g. 24/08/2023</md-enum-item>;</md-enum>; Default is \"yyyy-mm-dd\".; Note that this setting only affects the display format of field values, and does not affect the format of field values input/output in openapi",
+                      "description": "Date time format, supported;; Year, month and day separated by dashes, e.g. 2023-08-24; Year, month and day separated by slashes, e.g. 2023/08/04;months, days and years separated by slashes, e.g. 08/24/2023;Day, month and year separated by slashes, e.g. 24/08/2023;; Default is \"yyyy-mm-dd\".; Note that this setting only affects the display format of field values, and does not affect the format of field values input/output in openapi",
                       "required": false,
                       "example": "yyyy/mm/dd"
                     }
@@ -9122,7 +9122,7 @@
                   "properties": {
                     "format": {
                       "type": "string",
-                      "description": "Date time format, supported;<md-enum>;<md-enum-item key= \"yyyy-mm-dd\"> Year, month and day separated by dashes, e.g. 2023-08-24</md-enum-item>;<md-enum-item key= \"yyyy/mm/dd\"> Year, month and day separated by slashes, e.g. 2023/08/04 </md-enum-item>;<md-enum-item key = \"mm/dd/yyyy\">months, days and years separated by slashes, e.g. 08/24/2023</md-enum-item>;<md-enum-item key = \"dd/mm/yyyy\">Day, month and year separated by slashes, e.g. 24/08/2023</md-enum-item>;</md-enum>; Default is \"yyyy-mm-dd\".; Note that this setting only affects the display format of field values, and does not affect the format of field values input/output in openapi",
+                      "description": "Date time format, supported;; Year, month and day separated by dashes, e.g. 2023-08-24; Year, month and day separated by slashes, e.g. 2023/08/04;months, days and years separated by slashes, e.g. 08/24/2023;Day, month and year separated by slashes, e.g. 24/08/2023;; Default is \"yyyy-mm-dd\".; Note that this setting only affects the display format of field values, and does not affect the format of field values input/output in openapi",
                       "required": false,
                       "example": "yyyy/mm/dd"
                     }
@@ -9229,7 +9229,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "custom field GUID, which can be created by[Create Custom Field](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/task-v2/custom_field/create), or queried by[List Custom Field](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/task-v2/custom_field/list)",
+              "description": "custom field GUID, which can be created byCreate Custom Field, or queried byList Custom Field",
               "example": "0110a4bd-f24b-4a93-8c1a-1732b94f9593"
             }
           },
@@ -9518,7 +9518,7 @@
           "requestBody": {
             "members": {
               "type": "array",
-              "description": "Members to add. Supports up to 50 members per request after de-duplication. For the format of member, please refer to the \" How to represent members of tasks and tasklists?\" section in [Feature Overview](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/task-v2/tasklist/overview)",
+              "description": "Members to add. Supports up to 50 members per request after de-duplication.",
               "required": true,
               "properties": {
                 "id": {
@@ -9549,7 +9549,7 @@
             },
             "client_token": {
               "type": "string",
-              "description": "Idempotent token. If provided, api supports idempotent invocation. Please refer to the \"Idempotent Invocation\" section in [Function Overview](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/task-v2/overview) for details",
+              "description": "Idempotent token. If provided, api supports idempotent invocation.",
               "required": false,
               "example": "6d99f59c-4d7d-4452-98d6-3d0556393cf6"
             }
@@ -9798,7 +9798,7 @@
                 },
                 "repeat_rule": {
                   "type": "string",
-                  "description": "Task repeat rule. If set, the tasks are \"recurring task\". Please refer to the \"How to Use Recurring Tasks? \" section in [Task Feature Overview](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/task-v2/task/overview)",
+                  "description": "Task repeat rule. If set, the tasks are \"recurring task\".",
                   "required": false,
                   "example": "FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,TU,WE,TH,FR"
                 },
@@ -10481,7 +10481,7 @@
                 },
                 "repeat_rule": {
                   "type": "string",
-                  "description": "Task repeat rule. If set, the tasks are \"recurring task\". Please refer to the \"How to Use Recurring Tasks? \" section in [Task Feature Overview](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/task-v2/task/overview)",
+                  "description": "Task repeat rule. If set, the tasks are \"recurring task\".",
                   "required": false,
                   "example": "FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,TU,WE,TH,FR"
                 },

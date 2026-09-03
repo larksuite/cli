@@ -12,7 +12,6 @@ package service
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -90,30 +89,34 @@ func paramExample(f meta.Field) string {
 	return `"<value>"`
 }
 
-var markdownLinkRe = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
-
 // Help-line budgets in terminal cells (an East Asian wide or fullwidth rune is
-// 2 cells, anything else 1). The old 60-rune cap effectively gave Chinese text
-// 120 cells — a whole sentence — while English needs about 2.4x the characters
-// for the same meaning and was cut mid-word at half a sentence. A shared cell
-// budget gives both languages the same information density, so the Chinese
-// rendering is unchanged and English now gets the room it always needed.
+// 2 cells, anything else 1). They are caps for pathological prose, not a
+// target width: the help reader is usually an agent, and a terminal wraps a
+// long line while a cut clause loses the fact an agent needed (a "me"
+// placeholder, an exactly-one constraint). Measured over the embedded
+// Catalog, field descriptions run to 288 cells, so 300 keeps every current
+// field whole. Enum option meanings share one line per flag, so they get a
+// tighter cap; the only ones past it are the open_id/user_id/union_id
+// boilerplate, which then ends at its first sentence. The old 60-rune cap
+// gave Chinese 120 cells but cut English mid-word at half a sentence.
 const (
-	fieldDescBudget  = 120
-	optionDescBudget = 80
+	fieldDescBudget  = 300
+	optionDescBudget = 160
 )
 
-// inlineClause compresses metadata prose into one help clause: markdown links
-// keep their text, the clause cuts at the first rune in stops, whitespace
-// collapses, trailing punctuation goes — sentence enders (the clause join adds
-// its own) and connectors a cut can strand, like a colon introducing a list the
-// newline cut dropped — and the result is fitted to budget cells by fitClause.
-// The two policies below differ only in where they cut and how much they keep.
+// inlineClause compresses metadata prose into one help clause: the clause cuts
+// at the first rune in stops, whitespace collapses, trailing punctuation goes —
+// sentence enders (the clause join adds its own) and connectors a cut can
+// strand, like a colon introducing a list the newline cut dropped — and the
+// result is fitted to budget cells by fitClause. The two policies below differ
+// only in where they cut and how much they keep. Descriptions arrive without
+// markdown links or "see the docs" breadcrumbs: the Catalog snapshot is
+// published without them (internal/registry guards that), so nothing here has
+// to guess which sentence is a dead pointer.
 func inlineClause(s, stops string, budget int) string {
 	if s == "" {
 		return ""
 	}
-	s = markdownLinkRe.ReplaceAllString(s, "$1")
 	// Backquotes must go: pflag's UnquoteUsage treats a backquoted word in a
 	// flag's usage string as the flag's metavar, so a description like wiki
 	// space_id's "可替换为`my_library`" would render the flag as
@@ -229,25 +232,9 @@ func sanitizeOptionDesc(s string) string { return inlineClause(s, "。；;\n\r",
 // sanitizeFieldDesc is the field-description policy: one line per field, so
 // keep full sentences and cut only at note separators (meta_data appends
 // bullet notes after ;/；) — the later sentence often carries the key
-// affordance, e.g. user_mailbox_id's `可以输入"me"`. The trailing doc
-// cross-reference is dropped first (see cutDocRef).
+// affordance, e.g. user_mailbox_id's `可以输入"me"`.
 func sanitizeFieldDesc(s string) string {
-	return inlineClause(cutDocRef(s), "；;\n\r", fieldDescBudget)
-}
-
-// docRefRe matches a "see the docs" breadcrumb in either language (更多信息参见…/
-// 获取方式见…/详见…/了解更多…, "For details, see …"/"Please refer to …"). On the
-// compact flag line the markdown link's URL is stripped, so the breadcrumb is a
-// dead pointer — drop it. Anchored on a leading clause separator so a subject
-// that runs straight into the phrase isn't orphaned.
-var docRefRe = regexp.MustCompile(`(?i)[。；;，,、.]\s*(更多信息|获取方式|获取方法|详见|了解更多|[请可]?参[见考阅]|for (?:more )?(?:details|information)[,，]?\s*(?:see|refer to)\b|please refer to\b|see also\b)`)
-
-// cutDocRef truncates s at the first doc-reference breadcrumb.
-func cutDocRef(s string) string {
-	if loc := docRefRe.FindStringIndex(s); loc != nil {
-		return s[:loc[0]]
-	}
-	return s
+	return inlineClause(s, "；;\n\r", fieldDescBudget)
 }
 
 // formatEnumInline renders allowed values for the help line: "v=meaning" when

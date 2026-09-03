@@ -304,7 +304,7 @@
             },
             "filter": {
               "type": "object",
-              "description": "It is used for fine filtering of search results, and supports multi-dimensional combination filtering by sender, recipient, folder, time range, etc., narrowing the query range and improving search accuracy.; Example values: {\"from\": [\"<redacted>\"], \"is_unread\": true}",
+              "description": "It is used for fine filtering of search results, and supports multi-dimensional combination filtering by sender, recipient, folder, time range, etc., narrowing the query range and improving search accuracy.; Example values: {\"from\": [\"<sender-email>\"], \"is_unread\": true}",
               "required": false,
               "ref": "mail_search_filter",
               "properties": {
@@ -490,7 +490,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "A scheduled email ID has been set",
+              "description": "ID of the mail whose scheduled send has been set",
               "example": "268dce11-85f7-427d-8756-6be3abc850fd"
             }
           },
@@ -747,7 +747,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "The user's email address does not exist. Please check whether the user's email address entered is correct, or confirm that the user's email address is in normal condition",
+              "description": "User email address. When accessing as a user, you can enter \"me\" to represent the current calling interface user",
               "example": "aba@aac.com or me"
             },
             "draft_id": {
@@ -1575,7 +1575,7 @@
             },
             "parent_folder_id": {
               "type": "string",
-              "description": "父文件夹 id，该值为 0 表示根文件夹，id 获取方式见 [列出邮箱文件夹](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-folder/list)",
+              "description": "父文件夹 id，该值为 0 表示根文件夹，id 获取方式见 列出邮箱文件夹",
               "required": true,
               "example": "725627422334644"
             }
@@ -1604,7 +1604,7 @@
                 },
                 "parent_folder_id": {
                   "type": "string",
-                  "description": "父文件夹 id，该值为 0 表示根文件夹，id 获取方式见 [列出邮箱文件夹](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-folder/list)",
+                  "description": "父文件夹 id，该值为 0 表示根文件夹，id 获取方式见 列出邮箱文件夹",
                   "required": true,
                   "example": "725627422334644"
                 },
@@ -1683,7 +1683,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Folder ID. The method for obtaining ID is shown in [List Email Folders](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-folder/list)",
+              "description": "Folder ID. The method for obtaining ID is shown in List Email Folders",
               "example": "7620003644728938013"
             }
           },
@@ -1752,7 +1752,7 @@
                 },
                 "parent_folder_id": {
                   "type": "string",
-                  "description": "父文件夹 id，该值为 0 表示根文件夹，id 获取方式见 [列出邮箱文件夹](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-folder/list)",
+                  "description": "父文件夹 id，该值为 0 表示根文件夹，id 获取方式见 列出邮箱文件夹",
                   "required": true,
                   "example": "725627422334644"
                 },
@@ -1831,7 +1831,7 @@
               "type": "integer",
               "location": "query",
               "required": false,
-              "description": "Folder type",
+              "description": "Folder type. Supports 1 (system folder) and 2 (user folder)",
               "example": 1,
               "options": [
                 {
@@ -1878,7 +1878,7 @@
                 },
                 "parent_folder_id": {
                   "type": "string",
-                  "description": "父文件夹 id，该值为 0 表示根文件夹，id 获取方式见 [列出邮箱文件夹](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-folder/list)",
+                  "description": "父文件夹 id，该值为 0 表示根文件夹，id 获取方式见 列出邮箱文件夹",
                   "required": true,
                   "example": "725627422334644"
                 },
@@ -1957,7 +1957,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Folder ID. The method for obtaining ID is shown in [List Email Folders](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-folder/list)",
+              "description": "Folder ID. The method for obtaining ID is shown in List Email Folders",
               "example": "7620003644728938013"
             }
           },
@@ -1974,7 +1974,7 @@
             },
             "parent_folder_id": {
               "type": "string",
-              "description": "父文件夹 id，该值为 0 表示根文件夹，id 获取方式见 [列出邮箱文件夹](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-folder/list)",
+              "description": "父文件夹 id，该值为 0 表示根文件夹，id 获取方式见 列出邮箱文件夹",
               "required": false,
               "example": "725627422334644"
             }
@@ -2014,7 +2014,7 @@
           "requestBody": {
             "label": {
               "type": "object",
-              "description": "mail label",
+              "description": "Mail label. The label name is required, the background color is optional",
               "required": true,
               "annotations": [
                 ""
@@ -2096,7 +2096,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "The user's email address does not exist. Please check whether the user's email address entered is correct, or confirm that the user's email address is in normal condition",
+              "description": "User email address. When accessing as a user, you can enter \"me\" to represent the current calling interface user",
               "example": "user@xxx.xx 或 me"
             },
             "label_id": {
@@ -2532,7 +2532,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Email Contact's ID. For the acquisition method, see [List Email Contacts](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-mail_contact/list)",
+              "description": "Email Contact's ID. For the acquisition method, see List Email Contacts",
               "example": "123"
             }
           },
@@ -2705,7 +2705,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Email Contact's ID. For the acquisition method, see [List Email Contacts](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-mail_contact/list)",
+              "description": "Email Contact's ID. For the acquisition method, see List Email Contacts",
               "example": "123"
             }
           },
@@ -2789,7 +2789,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Message ID, the method for obtaining ID is shown in [List Emails](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-message/list)",
+              "description": "Message ID, the method for obtaining ID is shown in List Emails",
               "example": "TUlHc1NoWFhJMXgyUi9VZTNVL3h6UnlkRUdzPQ=="
             },
             "attachment_ids": {
@@ -3503,14 +3503,14 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Message ID, the method for obtaining ID is shown in [List Emails](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-message/list)",
+              "description": "Message ID, the method for obtaining ID is shown in List Emails",
               "example": "TUlHc1NoWFhJMXgyUi9VZTNVL3h6UnlkRUdzPQ=="
             },
             "format": {
               "type": "string",
               "location": "query",
               "required": false,
-              "description": "format type",
+              "description": "Mail content to obtain. Supports full/plain_text_full/metadata",
               "example": "full",
               "options": [
                 {
@@ -4042,7 +4042,7 @@
               "type": "string",
               "location": "query",
               "required": false,
-              "description": "Folder ID. The method for obtaining ID is shown in [List Email Folders](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-folder/list)",
+              "description": "Folder ID. The method for obtaining ID is shown in List Email Folders",
               "example": "INBOX or user folder id"
             },
             "only_unread": {
@@ -4056,7 +4056,7 @@
               "type": "string",
               "location": "query",
               "required": false,
-              "description": "Label ID",
+              "description": "Label ID, support IMPORTANT, OTHER, FLAGGED, SCHEDULED and custom folder labels",
               "example": "FLAGGED"
             }
           },
@@ -4729,7 +4729,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Rule ID. The method for obtaining ID is shown in [List Auto Filters](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-rule/list)",
+              "description": "Rule ID. The method for obtaining ID is shown in List Auto Filters",
               "example": "123123123"
             }
           },
@@ -4881,7 +4881,7 @@
           "requestBody": {
             "rule_ids": {
               "type": "array",
-              "description": "Auto filter ID list. The method for obtaining ID is shown in [List Auto Filters](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-rule/list)",
+              "description": "Auto filter ID list. The method for obtaining ID is shown in List Auto Filters",
               "required": true,
               "example": "111111111"
             }
@@ -4914,7 +4914,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Rule ID. The method for obtaining ID is shown in [List Auto Filters](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-rule/list)",
+              "description": "Rule ID. The method for obtaining ID is shown in List Auto Filters",
               "example": "123123123"
             }
           },
@@ -5243,7 +5243,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "You need to query the email ID of the withdrawal result, that is, the email ID used when calling the interface [Withdraw Mail] (/ssl: ttdoc/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox - sent_message/recall)",
+              "description": "You need to query the email ID of the withdrawal result, that is, the email ID used when calling the interface [Withdraw Mail]",
               "example": "om_6f8c3b2d4a9e1f0c"
             }
           },
@@ -5461,7 +5461,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "The email ID that needs to be withdrawn, that is, the parameter returned by the call interface [Send Draft] (/ssl: ttdoc/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox -draft/send) message_id",
+              "description": "The email ID that needs to be withdrawn, that is, the parameter returned by the call interface [Send Draft] message_id",
               "example": "xxx"
             }
           },
@@ -7091,7 +7091,7 @@
               "type": "string",
               "location": "query",
               "required": false,
-              "description": "Folder ID, support INBOX, SENT, SPAM, ARCHIVED, SCHEDULED, TRASH, DRAFT and custom folder ID",
+              "description": "Folder ID, support INBOX, SENT, SPAM, ARCHIVED, SCHEDULED, TRASH, DRAFT and custom folder ID. Exactly one of folder_id and label_id must be provided; requests with neither or both fail",
               "example": "INBOX 或者用户文件夹 id"
             },
             "only_unread": {
@@ -7105,7 +7105,7 @@
               "type": "string",
               "location": "query",
               "required": false,
-              "description": "Label ID, support IMPORTANT, OTHER, FLAGGED and custom label ID",
+              "description": "Label ID, support IMPORTANT, OTHER, FLAGGED and custom label ID. Exactly one of folder_id and label_id must be provided; requests with neither or both fail",
               "example": "FLAGGED"
             }
           },

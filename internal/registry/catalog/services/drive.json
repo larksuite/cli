@@ -17,7 +17,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "File token that needs to be copied. Learn how to get the file token, see [File overview](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/drive-v1/file/file-overview)",
+              "description": "File token that needs to be copied.",
               "example": "doccngpahSdXrFPIBD4XdIabcef"
             },
             "user_id_type": {
@@ -103,7 +103,7 @@
             },
             "folder_token": {
               "type": "string",
-              "description": "The target folder token to which the file is copied. Learn how to get the folder token, see [Folder overview](https://open.feishu.cn/document/ukTMukTMukTM/ugTNzUjL4UzM14CO1MTN/folder-overview)",
+              "description": "The target folder token to which the file is copied.",
               "required": true,
               "example": "fldbcO1UuPz8VwnpPx5a92abcef"
             },
@@ -234,7 +234,7 @@
             },
             "folder_token": {
               "type": "string",
-              "description": "Parent folder token. This parameter can be an empty string, which means the folder will be created in the root folder. You can refer to [List items in folder](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/drive-v1/file/list) to get other level folder. For details, see [Folder overview](https://open.feishu.cn/document/ukTMukTMukTM/ugTNzUjL4UzM14CO1MTN/folder-overview)",
+              "description": "Parent folder token. This parameter can be an empty string, which means the folder will be created in the root folder. You can refer to List items in folder to get other level folder.",
               "required": true,
               "example": "fldbcO1UuPz8VwnpPx5a92abcef"
             }
@@ -990,7 +990,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Token of the document. For the acquisition method, refer to [How to obtain the relevant token for cloud documents](https://open.feishu.cn/document/ukTMukTMukTM/uczNzUjL3czM14yN3MTN#08bb5df6)",
+              "description": "Token of the document.",
               "example": "doccnHh7U87HOFpii5u5Gabcef"
             },
             "file_type": {
@@ -2227,7 +2227,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Token of the file. For more information about how to obtain the token, see [How to get the token of docs resources](https://open.feishu.cn/document/ukTMukTMukTM/uczNzUjL3czM14yN3MTN#036e0b0f)",
+              "description": "Token of the file.",
               "example": "doccnBKgoMyY5OMbUG6Fioabcef"
             },
             "type": {
@@ -2382,7 +2382,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Token of the file. For more information about how to obtain the token, see [How to get the token of docs resources](https://open.feishu.cn/document/ukTMukTMukTM/uczNzUjL3czM14yN3MTN#036e0b0f)",
+              "description": "Token of the file.",
               "example": "doccnBKgoMyY5OMbUG6FioTXuBe"
             },
             "type": {
@@ -2553,7 +2553,7 @@
             },
             "perm_type": {
               "type": "string",
-              "description": "Collaborator's permission role type",
+              "description": "Collaborator's permission role type. This parameter takes effect when the document type is wiki, that is, a wiki node",
               "required": false,
               "example": "container",
               "options": [
@@ -2806,7 +2806,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Token of the file. For more information about how to obtain the token, see [How to get the token of docs resources](https://open.feishu.cn/document/ukTMukTMukTM/uczNzUjL3czM14yN3MTN#036e0b0f)",
+              "description": "Token of the file.",
               "example": "doccnBKgoMyY5OMbUG6FioTXuBe"
             },
             "type": {
@@ -2981,7 +2981,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Token of the file. For more information about how to obtain the token, see [How to get the token of docs resources](https://open.feishu.cn/document/ukTMukTMukTM/uczNzUjL3czM14yN3MTN#036e0b0f)",
+              "description": "Token of the file.",
               "example": "doccnBKgoMyY5OMbUG6FioTXuBe"
             },
             "type": {
@@ -3204,7 +3204,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Token of the file. For more information about how to obtain the token, see [How to get the token of docs resources](https://open.feishu.cn/document/ukTMukTMukTM/uczNzUjL3czM14yN3MTN#036e0b0f)",
+              "description": "Token of the file.",
               "example": "doccnBKgoMyY5OMbUG6FioTXuBe"
             },
             "type": {
@@ -3271,7 +3271,7 @@
           "requestBody": {
             "external_access": {
               "type": "boolean",
-              "description": "Indicates whether sharing out of the tenant is allowed",
+              "description": "Indicates whether sharing out of the tenant is allowed. Not supported when the document type is wiki. Optional values: true (allowed), false (not allowed)",
               "required": false,
               "example": true
             },
@@ -3322,7 +3322,7 @@
             },
             "share_entity": {
               "type": "string",
-              "description": "Indicates who can add and manage collaborators",
+              "description": "Who can view, add and remove collaborators. Not supported when the document type is wiki",
               "required": false,
               "example": "anyone",
               "options": [
@@ -3580,7 +3580,7 @@
               "properties": {
                 "doc_token": {
                   "type": "string",
-                  "description": "Token of the file. For more information about how to obtain the token, see [File overview](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/drive-v1/file/file-overview)",
+                  "description": "Token of the file.",
                   "required": true,
                   "example": "doccnfYZzTlvXqZIGTdAHKabcef"
                 },
@@ -3731,7 +3731,7 @@
                   "properties": {
                     "doc_token": {
                       "type": "string",
-                      "description": "Token of the file. For more information about how to obtain the token, see [File overview](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/drive-v1/file/file-overview)",
+                      "description": "Token of the file.",
                       "required": true,
                       "example": "doccnfYZzTlvXqZIGTdAHKabcef"
                     },
@@ -3949,7 +3949,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "File token. For details, see [File overview](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/drive-v1/file/file-overview)",
+              "description": "File token.",
               "example": "doccnfYZzTlvXqZIGTdAHKabcef"
             },
             "file_type": {
@@ -4092,7 +4092,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "File token. For how to get tokens, see [File overview](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/drive-v1/file/file-overview)",
+              "description": "File token.",
               "example": "XIHSdYSI7oMEU1xrsnxc8fabcef"
             },
             "page_size": {
@@ -4161,21 +4161,21 @@
               "type": "string",
               "location": "query",
               "required": false,
-              "description": "Type of viewer ID used in this call; When the value is `user_id`, the following field scopes are required：;<md-perm name=\"contact:user.employee_id:readonly\" desc=\"Obtain user ID\" support_app_types=\"custom\" tags=\"\">Obtain user ID</md-perm>",
+              "description": "Type of viewer ID used in this call; When the value is `user_id`, the following field scopes are required：;Obtain user ID",
               "default": "open_id",
               "example": "open_id",
               "options": [
                 {
                   "value": "user_id",
-                  "description": "Identifies a user to a tenant. The same user has different User IDs in different tenants. In one single tenant, a user has the same User ID in all apps （including store apps）. User ID is usually used to communicate user data between different apps.[How to get User ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-user-id)"
+                  "description": "Identifies a user to a tenant. The same user has different User IDs in different tenants. In one single tenant, a user has the same User ID in all apps （including store apps）. User ID is usually used to communicate user data between different apps."
                 },
                 {
                   "value": "union_id",
-                  "description": "Identifies a user to a tenant that acts as a developer. A user has the same Union ID in apps developed by the same developer, and has different Union IDs in apps developed by different developers. A developer can use Union ID to link the same user's identities in multiple apps.[How to get Union ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-union-id)"
+                  "description": "Identifies a user to a tenant that acts as a developer. A user has the same Union ID in apps developed by the same developer, and has different Union IDs in apps developed by different developers. A developer can use Union ID to link the same user's identities in multiple apps."
                 },
                 {
                   "value": "open_id",
-                  "description": "Identifies a user to an app. The same user has different Open IDs in different apps.[How to get Open ID](https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-obtain-openid)"
+                  "description": "Identifies a user to an app. The same user has different Open IDs in different apps."
                 }
               ],
               "enum": [
@@ -4268,7 +4268,7 @@
               "type": "string",
               "location": "query",
               "required": true,
-              "description": "File type, used to distinguish different types of cloud documents. For optional values, refer to the [Enumeration of File Types in The Open Platform](https://open.feishu.cn/document/ukTMukTMukTM/uczNzUjL3czM14yN3MTN)",
+              "description": "File type, used to distinguish different types of cloud documents.",
               "example": "docx"
             }
           },

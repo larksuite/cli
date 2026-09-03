@@ -1304,14 +1304,14 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Identify department by department_id. The ID type must match the value of the department_id_type parameter",
+              "description": "User cycle ID. The ID type must match the value of the user_id_type parameter. How to obtain: Call the \"Get user OKR cycle list\" API",
               "example": "od_3bbe8a09c20e89cce9bff989ed840674"
             },
             "page_size": {
               "type": "integer",
               "location": "query",
               "required": false,
-              "description": "User cycle ID. Obtain by calling the \"Get user OKR Cycle list\" API. The ID type must match the value of the user_id_type parameter",
+              "description": "Page size, maximum 100",
               "default": 10,
               "example": 7342342398472398471,
               "max": "100",
@@ -1354,17 +1354,17 @@
               "type": "string",
               "location": "query",
               "required": false,
-              "description": "Page size, maximum 100",
+              "description": "Department ID type used in this call",
               "default": "open_department_id",
               "example": "10",
               "options": [
                 {
                   "value": "department_id",
-                  "description": "Page token. Leave empty for the first request to start from the beginning. When there are more items, a new page_token will be returned. Use this page_token for the next request to get more results."
+                  "description": "use department_id for department"
                 },
                 {
                   "value": "open_department_id",
-                  "description": "Department ID type used in this call"
+                  "description": "use open_department_id for department"
                 }
               ],
               "enum": [

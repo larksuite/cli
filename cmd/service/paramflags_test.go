@@ -507,14 +507,14 @@ func TestParamFlagUsage_Description(t *testing.T) {
 		fields := meta.FromMap(map[string]interface{}{"parameters": map[string]interface{}{
 			"x": map[string]interface{}{
 				"type": "string", "location": "query",
-				"description": strings.Repeat("长", 80),
+				"description": strings.Repeat("长", fieldDescBudget/2+20),
 			},
 		}}).Params()
 		usage := paramFlagUsage(fields[0])
 		if !strings.Contains(usage, clauseEllipsis) {
 			t.Errorf("long description should be shortened with an ellipsis, got %q", usage)
 		}
-		if strings.Contains(usage, strings.Repeat("长", 61)) {
+		if strings.Contains(usage, strings.Repeat("长", fieldDescBudget/2+1)) {
 			t.Errorf("description should not exceed the cap, got %q", usage)
 		}
 	})
@@ -523,7 +523,7 @@ func TestParamFlagUsage_Description(t *testing.T) {
 		fields := meta.FromMap(map[string]interface{}{"parameters": map[string]interface{}{
 			"page_size": map[string]interface{}{
 				"type": "integer", "location": "query", "max": "100", "default": "20",
-				"description": strings.Repeat("The maximum number of items returned in one request ", 4),
+				"description": strings.Repeat("The maximum number of items returned in one request ", fieldDescBudget/52+2),
 			},
 		}}).Params()
 		usage := paramFlagUsage(fields[0])
