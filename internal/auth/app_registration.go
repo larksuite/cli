@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/urlrewrite"
 )
 
 // Terminal registration outcomes, exposed for typed classification by callers.
@@ -156,7 +157,9 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 
 	userCode := getStr(data, "user_code")
 	verificationUri := getStr(data, "verification_uri")
-	verificationUriComplete := fmt.Sprintf("%s/page/cli?user_code=%s", ep.Open, userCode)
+	// The confirmation page is CLI-owned presentation (shown as a link/QR code,
+	// never fetched), so it passes through the URL rewrite extension.
+	verificationUriComplete := urlrewrite.Rewrite(fmt.Sprintf("%s/page/cli?user_code=%s", ep.Open, userCode))
 
 	return &AppRegistrationResponse{
 		DeviceCode:              deviceCode,
