@@ -235,6 +235,19 @@ func TestIntegration_StrictModeBot_ProfileOverride_HidesCommandsInHelp(t *testin
 	if !strings.Contains(stdout.String(), "+chat-create") {
 		t.Fatalf("im --help should keep +chat-create in bot mode, got:\n%s", stdout.String())
 	}
+
+	resetBuffers(stdout, stderr)
+	rootCmd = buildStrictModeIntegrationRootCmd(t, f)
+	code = executeRootIntegration(t, f, rootCmd, []string{"vc", "--help"})
+	if code != 0 {
+		t.Fatalf("vc --help exit code = %d, want 0", code)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "+search") {
+		t.Fatalf("vc --help should keep +search in bot mode, got:\n%s", stdout.String())
+	}
 }
 
 func TestIntegration_StrictModeBot_ProfileOverride_DirectAuthLoginReturnsEnvelope(t *testing.T) {
@@ -334,6 +347,32 @@ func TestIntegration_StrictModeBot_ProfileOverride_MessagesSearchDryRunSucceeds(
 	}
 	if !strings.Contains(out, `"identity":"bot"`) && !strings.Contains(out, `"identity": "bot"`) {
 		t.Fatalf("messages-search dry-run did not run as bot; stdout:\n%s", out)
+	}
+}
+
+func TestIntegration_StrictModeBot_ProfileOverride_VCSearchDryRunSucceeds(t *testing.T) {
+	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeBot)
+	rootCmd := buildStrictModeIntegrationRootCmd(t, f)
+
+	code := executeRootIntegration(t, f, rootCmd, []string{
+		"vc", "+search", "--query", "roadmap", "--page-size", "5", "--page-token", "next", "--dry-run",
+	})
+
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got: %s", stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"/open-apis/vc/v1/meetings/search"`) {
+		t.Fatalf("vc +search dry-run did not include search API; stdout:\n%s", out)
+	}
+	if !strings.Contains(out, `"page_token":"next"`) && !strings.Contains(out, `"page_token": "next"`) {
+		t.Fatalf("vc +search dry-run did not preserve pagination; stdout:\n%s", out)
+	}
+	if !strings.Contains(out, `"identity":"bot"`) && !strings.Contains(out, `"identity": "bot"`) {
+		t.Fatalf("vc +search dry-run did not run as bot; stdout:\n%s", out)
 	}
 }
 

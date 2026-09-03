@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 //
 // Tests pinning bot-identity support for the vc read shortcuts
-// (+detail / +notes / +recording).
+// (+search / +detail / +notes / +recording).
 
 package vc
 
@@ -10,12 +10,14 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/httpmock"
 )
 
 // ---------------------------------------------------------------------------
@@ -25,6 +27,7 @@ import (
 func TestVCReadShortcutsSupportUserAndBotIdentity(t *testing.T) {
 	want := []string{"user", "bot"}
 	cases := map[string][]string{
+		"+search":    VCSearch.AuthTypes,
 		"+detail":    VCDetail.AuthTypes,
 		"+notes":     VCNotes.AuthTypes,
 		"+recording": VCRecording.AuthTypes,
@@ -121,6 +124,68 @@ func TestNotes_DryRun_BotIdentity_CalendarEventIDs(t *testing.T) {
 // vc_recording.go's Validate. TestRecording_CalendarEventIDs_MissingExtraScope
 // below is the test that actually fails if that shortcut-local check regresses.
 // ---------------------------------------------------------------------------
+
+func TestSearch_BotIdentityResolvesTenantToken(t *testing.T) {
+	cfg := defaultConfig()
+	f, stdout, _, _ := cmdutil.TestFactory(t, cfg)
+	resolver := &recordingIdentityTokenResolver{tatScopes: ""}
+	f.Credential = credential.NewCredentialProvider(nil, nil, resolver, nil)
+
+	err := mountAndRun(t, VCSearch, []string{
+		"+search", "--query", "weekly", "--page-size", "5",
+		"--page-token", "next", "--dry-run", "--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected bot dry-run error: %v", err)
+	}
+	if len(resolver.requestsOfType(credential.TokenTypeTAT)) == 0 {
+		t.Fatalf("expected bot search to resolve TAT, requests: %v", resolver.requests)
+	}
+	if got := resolver.requestsOfType(credential.TokenTypeUAT); len(got) != 0 {
+		t.Fatalf("bot search must not resolve UAT, requests: %v", got)
+	}
+}
+
+func TestSearch_BotPermissionErrorKeepsIdentityAndScope(t *testing.T) {
+	cfg := defaultConfig()
+	f, _, _, reg := cmdutil.TestFactory(t, cfg)
+	resolver := &recordingIdentityTokenResolver{tatScopes: ""}
+	f.Credential = credential.NewCredentialProvider(nil, nil, resolver, nil)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/vc/v1/meetings/search",
+		Body: map[string]interface{}{
+			"code": 99991672,
+			"msg":  "app scope not enabled",
+			"error": map[string]interface{}{
+				"permission_violations": []interface{}{
+					map[string]interface{}{"subject": "vc:meeting.search:read"},
+				},
+			},
+		},
+	})
+
+	err := mountAndRun(t, VCSearch, []string{
+		"+search", "--query", "weekly", "--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected bot permission error")
+	}
+	var permissionErr *errs.PermissionError
+	if !errors.As(err, &permissionErr) {
+		t.Fatalf("expected *errs.PermissionError, got %T: %v", err, err)
+	}
+	if permissionErr.Code != 99991672 || permissionErr.Identity != "bot" {
+		t.Fatalf("permission error = %+v, want code 99991672 and bot identity", permissionErr)
+	}
+	if !slices.Contains(permissionErr.MissingScopes, "vc:meeting.search:read") {
+		t.Fatalf("missing scopes = %v, want vc:meeting.search:read", permissionErr.MissingScopes)
+	}
+	if strings.Contains(permissionErr.Hint, "auth login") {
+		t.Fatalf("bot permission hint must not suggest user login: %q", permissionErr.Hint)
+	}
+	reg.Verify(t)
+}
 
 func TestRecording_BotIdentityAwareScopePreflight(t *testing.T) {
 	cfg := defaultConfig()
