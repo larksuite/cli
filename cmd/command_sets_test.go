@@ -64,7 +64,7 @@ func TestWithCommandSetsInIsolatedProcesses(t *testing.T) {
 func TestFailedBuildDoesNotAffectNextBuild(t *testing.T) {
 	tmpHome(t)
 	testurlrewrite.Register(t, func(rawURL string) string {
-		if rawURL == skillsSetupURL {
+		if rawURL == "https://github.com/larksuite/cli#agent-skills" {
 			return "https://mirror.example/skills-help"
 		}
 		return rawURL
