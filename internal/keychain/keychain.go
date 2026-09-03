@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/recovery"
 )
 
 var (
@@ -29,8 +30,8 @@ const (
 	LarkCliService = "lark-cli"
 )
 
-// wrapError wraps underlying keychain failures into a typed *errs.APIError
-// (exit code 1) carrying a hint for troubleshooting keychain access issues.
+// wrapError classifies keychain failures at the storage boundary and carries a
+// hint for troubleshooting keychain access issues.
 // nil and ErrNotFound pass through unchanged.
 func wrapError(op string, err error) error {
 	if err == nil || errors.Is(err, ErrNotFound) {
@@ -38,21 +39,34 @@ func wrapError(op string, err error) error {
 	}
 
 	msg := fmt.Sprintf("keychain %s failed: %v", op, err)
-	hint := "Check if the OS keychain/credential manager is locked or accessible. If running inside a sandbox or CI environment, please ensure the process has the necessary permissions to access the keychain, you can try running this outside the sandbox."
-
-	if errors.Is(err, errNotInitialized) {
-		hint = "The keychain master key may have been cleaned up or deleted. If running inside a sandbox or CI environment, please ensure the process has the necessary permissions to access the keychain, you can try running this outside the sandbox. Otherwise, please reconfigure the CLI by running lark-cli config init."
-	}
-	hint += extraHint(err)
-
 	func() {
 		defer func() { recover() }()
 		LogAuthError("keychain", op, fmt.Errorf("keychain %s error: %w", op, err))
 	}()
 
-	return errs.NewAPIError(errs.SubtypeUnknown, "%s", msg).
-		WithHint("%s", hint).
-		WithCause(err)
+	return recovery.Attach(
+		errs.NewInternalError(errs.SubtypeStorage, "%s", msg).WithCause(err),
+		RecoveryHint(err),
+	)
+}
+
+// RecoveryHint separates generic guidance from command-specific recovery.
+func RecoveryHint(err error) recovery.Hint {
+	base := "Check if the OS keychain/credential manager is locked or accessible. If running inside a sandbox or CI environment, please ensure the process has the necessary permissions to access the keychain, you can try running this outside the sandbox."
+	parts := []recovery.Part{}
+	if errors.Is(err, errNotInitialized) {
+		base = "The keychain master key may have been cleaned up or deleted. If running inside a sandbox or CI environment, please ensure the process has the necessary permissions to access the keychain, you can try running this outside the sandbox."
+		parts = append(parts, recovery.Text(base), recovery.Command(
+			recovery.TargetConfigInit,
+			" Otherwise, please reconfigure the CLI by running lark-cli config init.",
+		))
+	} else {
+		parts = append(parts, recovery.Text(base))
+	}
+	if extra := extraHint(err); extra != "" {
+		parts = append(parts, recovery.Command(recovery.TargetConfigKeychainDowngrade, extra))
+	}
+	return recovery.Join("", parts...)
 }
 
 // KeychainAccess abstracts keychain Get/Set/Remove for dependency injection.

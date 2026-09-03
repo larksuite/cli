@@ -59,7 +59,8 @@ func ensureRequestedScopesGranted(requestedScope, grantedScope string, msg *logi
 // previously stored scopes, and the newly granted scopes from the current login.
 func loadLoginScopeSummary(appID, openId, requestedScope, grantedScope string) *loginScopeSummary {
 	previousScope := ""
-	if previous := larkauth.GetStoredToken(appID, openId); previous != nil {
+	previous, _ := larkauth.GetStoredToken(appID, openId)
+	if previous != nil {
 		previousScope = previous.Scope
 	}
 	return buildLoginScopeSummary(requestedScope, previousScope, grantedScope)

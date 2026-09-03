@@ -15,10 +15,12 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/i18n"
+	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/surface"
 	"github.com/larksuite/cli/internal/vfs"
+	"github.com/zalando/go-keyring"
 )
 
 type failRenameFS struct {
@@ -377,6 +379,59 @@ func TestProfileListRun_NotConfiguredReturnsEmptyList(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestProfileListRun_DistinguishesMissingFromCorruptStoredToken(t *testing.T) {
+	keyring.MockInit()
+	setupProfileConfigDir(t)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
+
+	multi := &core.MultiAppConfig{
+		CurrentApp: "missing",
+		Apps: []core.AppConfig{
+			{
+				Name: "missing", AppId: "app-missing", AppSecret: core.PlainSecret("secret-missing"), Brand: core.BrandFeishu,
+				Users: []core.AppUser{{UserOpenId: "ou_missing", UserName: "Missing Token"}},
+			},
+			{
+				Name: "corrupt", AppId: "app-corrupt", AppSecret: core.PlainSecret("secret-corrupt"), Brand: core.BrandFeishu,
+				Users: []core.AppUser{{UserOpenId: "ou_corrupt", UserName: "Corrupt Token"}},
+			},
+		},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	if err := keychain.Set(keychain.LarkCliService, "app-corrupt:ou_corrupt", `{"accessToken":`); err != nil {
+		t.Fatalf("keychain.Set() error = %v", err)
+	}
+
+	f, stdout, stderr, _ := cmdutil.TestFactory(t, nil)
+	if err := profileListRun(f); err != nil {
+		t.Fatalf("profileListRun() error = %v; want successful diagnostic list", err)
+	}
+
+	var got []profileListItem
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v\nstdout=%s", err, stdout.String())
+	}
+	if len(got) != 2 {
+		t.Fatalf("len(got) = %d, want 2", len(got))
+	}
+	if got[0].TokenStatus != "" || got[0].Error != nil {
+		t.Fatalf("missing profile = %#v, want historical omitted tokenStatus without error", got[0])
+	}
+	if got[1].TokenStatus != "error" {
+		t.Fatalf("corrupt profile = %#v, want tokenStatus=error", got[1])
+	}
+	if got[1].Error == nil || got[1].Error.Category != errs.CategoryInternal || got[1].Error.Subtype != errs.SubtypeStorage {
+		t.Fatalf("corrupt profile error = %#v, want internal/storage", got[1].Error)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want list diagnostics entirely on stdout", stderr.String())
 	}
 }
 

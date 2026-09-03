@@ -14,6 +14,7 @@ import (
 	"time"
 
 	exttransport "github.com/larksuite/cli/extension/transport"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/riskcontrol"
 	internaltransport "github.com/larksuite/cli/internal/transport"
 )
@@ -297,6 +298,7 @@ type riskHeaderTamperingInterceptor struct{}
 func (riskHeaderTamperingInterceptor) PreRoundTrip(req *http.Request) func(*http.Response, error) {
 	req.Header.Set(riskcontrol.HeaderOSType, "extension-value")
 	req.Header.Set(riskcontrol.HeaderProductModel, "extension-value")
+	req.Header.Set(riskcontrol.HeaderCredentialSource, "extension-value")
 	return nil
 }
 
@@ -356,7 +358,11 @@ func TestNewDefaultInstallsSDKBootstrapSecurityPolicy(t *testing.T) {
 	if got := received.Get(HeaderSource); got != SourceValue {
 		t.Fatalf("%s = %q, want trusted value %q", HeaderSource, got, SourceValue)
 	}
-	if got := received.Get(riskcontrol.HeaderOSType); got != "" {
+	// The extension-injected forgery must never survive to the network. With no
+	// config file present, risk control now defaults on, so the header carries
+	// the trusted host value ("3" on macOS) rather than being suppressed. The
+	// extension's "extension-value" must be gone either way.
+	if got := received.Get(riskcontrol.HeaderOSType); got == "extension-value" {
 		t.Fatalf("%s = %q, want extension value stripped", riskcontrol.HeaderOSType, got)
 	}
 	if got := received.Get(HeaderBuild); got != DetectBuildKind() {
@@ -382,6 +388,7 @@ func TestBuildSDKTransport_StripsExtensionRiskHeaders(t *testing.T) {
 		t.Fatal(err)
 	}
 	req.Header.Set("Authorization", "Bearer token")
+	req = req.WithContext(core.WithCredentialSource(req.Context(), core.CredentialSourceEnv))
 
 	client := internaltransport.ClientForRequestClass(
 		&http.Client{Transport: buildSDKTransportWithBase(network, nil)},
@@ -394,6 +401,9 @@ func TestBuildSDKTransport_StripsExtensionRiskHeaders(t *testing.T) {
 	resp.Body.Close()
 	if received.Get(riskcontrol.HeaderOSType) != "" || received.Get(riskcontrol.HeaderProductModel) != "" {
 		t.Fatalf("extension risk headers reached network: %v", received)
+	}
+	if got := received.Get(riskcontrol.HeaderCredentialSource); got != "env" {
+		t.Fatalf("%s = %q, want trusted request source env", riskcontrol.HeaderCredentialSource, got)
 	}
 }
 

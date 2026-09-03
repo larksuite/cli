@@ -264,11 +264,11 @@ func TestCredentialProvider_ResolveIdentityHint_DefaultSourceUsesStoredTokenStat
 		getStoredTokenStatus = origTokenStatus
 	})
 
-	getStoredToken = func(appID, userOpenID string) *auth.StoredUAToken {
+	getStoredToken = func(appID, userOpenID string) (*auth.StoredUAToken, error) {
 		if appID != "default_app" || userOpenID != "ou_default" {
 			t.Fatalf("GetStoredToken() args = (%q, %q), want (%q, %q)", appID, userOpenID, "default_app", "ou_default")
 		}
-		return &auth.StoredUAToken{AppId: appID, UserOpenId: userOpenID}
+		return &auth.StoredUAToken{AppId: appID, UserOpenId: userOpenID}, nil
 	}
 	getStoredTokenStatus = func(token *auth.StoredUAToken) string {
 		return "valid"
@@ -300,9 +300,9 @@ func TestCredentialProvider_ResolveIdentityHint_CachesResult(t *testing.T) {
 
 	storedCalls := 0
 	statusCalls := 0
-	getStoredToken = func(appID, userOpenID string) *auth.StoredUAToken {
+	getStoredToken = func(appID, userOpenID string) (*auth.StoredUAToken, error) {
 		storedCalls++
-		return &auth.StoredUAToken{AppId: appID, UserOpenId: userOpenID}
+		return &auth.StoredUAToken{AppId: appID, UserOpenId: userOpenID}, nil
 	}
 	getStoredTokenStatus = func(token *auth.StoredUAToken) string {
 		statusCalls++

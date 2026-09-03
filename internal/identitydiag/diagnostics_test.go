@@ -5,19 +5,58 @@ package identitydiag
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	extcred "github.com/larksuite/cli/extension/credential"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/surface"
 	"github.com/zalando/go-keyring"
 )
+
+func TestFilterRecoveryProjectsTopLevelAndNestedErrorHintTogether(t *testing.T) {
+	hint := recovery.Join("; ",
+		recovery.Text("check keychain access"),
+		recovery.Command(recovery.TargetConfigKeychainDowngrade,
+			"run lark-cli config keychain-downgrade"),
+	)
+	source := recovery.Attach(
+		errs.NewInternalError(errs.SubtypeStorage, "stored token read failed").
+			WithCause(errors.New("keychain unavailable")),
+		hint,
+	)
+	problem, ok := errs.ProblemOf(source)
+	if !ok {
+		t.Fatalf("source error = %T, want typed problem", source)
+	}
+	identity := Identity{
+		Status:        StatusError,
+		Hint:          problem.Hint,
+		Error:         problem,
+		recoveryError: source,
+	}
+
+	plan := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandConfigKeychainDowngrade: surface.CommandConcealed,
+	})
+	projector := recovery.NewProjector(func() *surface.Plan { return plan })
+	got := FilterRecovery(Result{User: identity}, projector).User
+	if got.Hint != "check keychain access" {
+		t.Errorf("top-level hint = %q, want generic recovery only", got.Hint)
+	}
+	if got.Error == nil || got.Error.Hint != got.Hint {
+		t.Fatalf("nested error hint = %#v, want %q", got.Error, got.Hint)
+	}
+}
 
 func TestDiagnose_NoUserReportsBotReadyAndUserMissing(t *testing.T) {
 	cfg := &core.CliConfig{AppID: "test-app", AppSecret: "secret", Brand: core.BrandFeishu}
@@ -306,6 +345,7 @@ func TestStatusMessage(t *testing.T) {
 		StatusVerifyFailed:  "verify failed",
 		StatusNeedsRefresh:  "needs refresh",
 		StatusMissing:       "missing",
+		StatusError:         "error",
 		"unknown":           "unknown",
 	}
 	for in, want := range cases {
