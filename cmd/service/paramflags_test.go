@@ -511,11 +511,27 @@ func TestParamFlagUsage_Description(t *testing.T) {
 			},
 		}}).Params()
 		usage := paramFlagUsage(fields[0])
-		if !strings.Contains(usage, "...") {
-			t.Errorf("long description should be truncated with ellipsis, got %q", usage)
+		if !strings.Contains(usage, clauseEllipsis) {
+			t.Errorf("long description should be shortened with an ellipsis, got %q", usage)
 		}
 		if strings.Contains(usage, strings.Repeat("长", 61)) {
 			t.Errorf("description should not exceed the cap, got %q", usage)
+		}
+	})
+
+	t.Run("ellipsis closes the clause before the next fact", func(t *testing.T) {
+		fields := meta.FromMap(map[string]interface{}{"parameters": map[string]interface{}{
+			"page_size": map[string]interface{}{
+				"type": "integer", "location": "query", "max": "100", "default": "20",
+				"description": strings.Repeat("The maximum number of items returned in one request ", 4),
+			},
+		}}).Params()
+		usage := paramFlagUsage(fields[0])
+		if strings.Contains(usage, clauseEllipsis+".") {
+			t.Errorf("a fitted clause must not be followed by the sentence joiner, got %q", usage)
+		}
+		if !strings.Contains(usage, clauseEllipsis+" max: 100. API default: 20") {
+			t.Errorf("structured facts must follow the fitted clause, got %q", usage)
 		}
 	})
 
