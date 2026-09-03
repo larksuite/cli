@@ -30,15 +30,16 @@ var scopesDetailMeetingIDs = []string{
 
 // meetingDetailItem represents a single meeting detail result.
 type meetingDetailItem struct {
-	MeetingID   string `json:"meeting_id"`
-	MeetingNo   string `json:"meeting_no,omitempty"`
-	Topic       string `json:"topic"`
-	StartTime   string `json:"start_time,omitempty"`
-	EndTime     string `json:"end_time,omitempty"`
-	NoteID      string `json:"note_id,omitempty"`
-	MinuteToken string `json:"minute_token,omitempty"`
-	Error       string `json:"error,omitempty"`
-	Hint        string `json:"hint,omitempty"`
+	MeetingID       string `json:"meeting_id"`
+	MeetingNo       string `json:"meeting_no,omitempty"`
+	Topic           string `json:"topic"`
+	StartTime       string `json:"start_time,omitempty"`
+	EndTime         string `json:"end_time,omitempty"`
+	NoteID          string `json:"note_id,omitempty"`
+	MinuteToken     string `json:"minute_token,omitempty"`
+	CalendarEventID string `json:"calendar_event_id,omitempty"`
+	Error           string `json:"error,omitempty"`
+	Hint            string `json:"hint,omitempty"`
 }
 
 // fetchMeetingDetail queries meeting.get and recording API to return a
@@ -77,6 +78,13 @@ func fetchMeetingDetail(ctx context.Context, runtime *common.RuntimeContext, mee
 	}
 	if v, ok := meeting["note_id"].(string); ok && v != "" {
 		result.NoteID = v
+	}
+	// calendar_event_id links the meeting back to its originating calendar
+	// event. Not every meeting has one — instant meetings, for example, are not
+	// created from a calendar event — so read it defensively and only surface it
+	// when the meeting actually carries it.
+	if v, ok := meeting["calendar_event_id"].(string); ok && v != "" {
+		result.CalendarEventID = v
 	}
 
 	// Step 2: query minute_token via recording API — only meaningful once the
@@ -245,6 +253,9 @@ var VCDetail = common.Shortcut{
 				}
 				if r.MinuteToken != "" {
 					row["minute_token"] = r.MinuteToken
+				}
+				if r.CalendarEventID != "" {
+					row["calendar_event_id"] = r.CalendarEventID
 				}
 				row["topic"] = r.Topic
 				if r.Hint != "" {

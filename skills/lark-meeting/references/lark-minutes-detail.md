@@ -25,7 +25,7 @@ lark-cli minutes +detail --as <source_identity> --minute-tokens obcxxx --transcr
 
 ## 输出
 
-`minutes` 数组每条含 `minute_token`、`title`、`note_id`、`artifacts`。`note_id` 仅在该妙记关联了会议纪要时返回，可直接传给 [`note +detail`](lark-note-detail.md) 拿纪要文档 token，无需再绕回 `vc +detail`。`artifacts` 中**只包含本次请求的产物**：
+`minutes` 数组每条含 `minute_token`、`title`、`note_id`、`meeting_id`（仅在该妙记由会议生成时返回）、`artifacts`。`note_id` 仅在该妙记关联了会议纪要时返回，可直接传给 [`note +detail`](lark-note-detail.md) 拿纪要文档 token，无需再绕回 `vc +detail`。`artifacts` 中**只包含本次请求的产物**：
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -36,6 +36,12 @@ lark-cli minutes +detail --as <source_identity> --minute-tokens obcxxx --transcr
 | `artifacts.transcript_file` | string | 逐字稿本地文件路径。 |
 
 逐字稿默认落地 `./minutes/{minute_token}/transcript.txt`，与 `minutes +download` 同目录便于聚合。指定 `--output-dir <dir>` 时改写到 `<dir>/artifact-{title}-{minute_token}/transcript.txt`。
+
+## 反查关联会议
+
+`meeting_id` 提供从妙记反向定位会议的入口，传给 `vc +detail --meeting-ids` 可继续查会议详情、参会人或反查日程（会议详情可含 `calendar_event_id`，用于再反查日程）。
+
+字段为空说明该妙记不是由会议生成（如手动上传的妙记），不要据此反查，也不视为错误。
 
 ## minute_token 来源
 

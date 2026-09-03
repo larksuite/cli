@@ -316,6 +316,67 @@ func TestDetail_Execute_BasicInfo(t *testing.T) {
 	}
 }
 
+// TestDetail_Execute_MeetingID pins the meeting_id passthrough: when the
+// minute.get response carries generated_source with a meeting origin, +detail
+// surfaces meeting_id so callers can trace the minute back to its meeting.
+func TestDetail_Execute_MeetingID(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/minutes/v1/minutes/tokmeet",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"minute": map[string]interface{}{
+				"title":   "Linked Minute",
+				"note_id": "note_meet",
+				"generated_source": map[string]interface{}{
+					"source_type":      "meeting",
+					"source_entity_id": "meeting_from_minute",
+				},
+			}},
+		},
+	})
+
+	err := detailMountAndRun(t, MinutesDetail, []string{"+detail", "--minute-tokens", "tokmeet", "--as", "user"}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	m := firstDetailMinute(t, stdout.Bytes())
+	if m["meeting_id"] != "meeting_from_minute" {
+		t.Errorf("meeting_id = %v, want meeting_from_minute", m["meeting_id"])
+	}
+}
+
+// TestDetail_Execute_OmitsMeetingIDForNonMeetingSource pins that a non-meeting
+// generated_source never surfaces meeting_id.
+func TestDetail_Execute_OmitsMeetingIDForNonMeetingSource(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/minutes/v1/minutes/tokother",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"minute": map[string]interface{}{
+				"title":   "Uploaded Minute",
+				"note_id": "note_other",
+				"generated_source": map[string]interface{}{
+					"source_type":      "upload",
+					"source_entity_id": "should_be_ignored",
+				},
+			}},
+		},
+	})
+
+	err := detailMountAndRun(t, MinutesDetail, []string{"+detail", "--minute-tokens", "tokother", "--as", "user"}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	m := firstDetailMinute(t, stdout.Bytes())
+	if _, ok := m["meeting_id"]; ok {
+		t.Errorf("meeting_id should be omitted for non-meeting source, got %v", m["meeting_id"])
+	}
+}
+
 func TestDetail_Execute_WithSummaryAndTodo(t *testing.T) {
 	chdirForDetailTest(t)
 

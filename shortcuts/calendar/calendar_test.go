@@ -2612,17 +2612,17 @@ func TestResolveStartEnd_ExplicitValues(t *testing.T) {
 // Shortcuts() registration test
 // ---------------------------------------------------------------------------
 
-func TestShortcuts_Returns14(t *testing.T) {
+func TestShortcuts_Returns16(t *testing.T) {
 	shortcuts := Shortcuts()
-	if len(shortcuts) != 14 {
-		t.Fatalf("expected 14 shortcuts, got %d", len(shortcuts))
+	if len(shortcuts) != 16 {
+		t.Fatalf("expected 16 shortcuts, got %d", len(shortcuts))
 	}
 
 	names := map[string]bool{}
 	for _, s := range shortcuts {
 		names[s.Command] = true
 	}
-	for _, want := range []string{"+agenda", "+create", "+update", "+delete", "+freebusy", "+room-find", "+rsvp", "+suggestion", "+get", "+transfer", "+join-event", "+list-attendees", "+meeting", "+search-event"} {
+	for _, want := range []string{"+agenda", "+create", "+update", "+delete", "+freebusy", "+room-find", "+rsvp", "+suggestion", "+get", "+transfer", "+join-event", "+list-attendees", "+meeting", "+search-event", "+meeting-chat-create", "+meeting-chat-get"} {
 		if !names[want] {
 			t.Errorf("missing shortcut %s", want)
 		}

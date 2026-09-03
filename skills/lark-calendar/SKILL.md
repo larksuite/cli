@@ -46,6 +46,8 @@ lark-cli calendar +agenda --as bot
 | [`+suggestion`](references/lark-calendar-suggestion.md) | 根据非明确时间或一段时间范围，推荐多个可用时间块方案 |
 | [`+transfer`](references/lark-calendar-transfer.md) | 把日程组织者转让给另一个用户或机器人；不可逆，需 `--yes` |
 | [`+list-attendees`](references/lark-calendar-list-attendees.md) | 列出日程的参与人和会议室（支持按 `--type` 过滤：user / resource / chat / third_party） |
+| `+meeting-chat-create` | 为日程创建会议群（返回 `meeting_chat_id`）；要求日程在本人主日历、有 WRITER 权限、≥2 名参会人且参会人对访客可见。整条重复性序列共用一个会议群 |
+| `+meeting-chat-get` | 查询日程绑定的会议群（返回 `meeting_chat_id`）；未建群时返回 `found:false` 而非报错 |
 
 ### `+get` — 单日程详情
 

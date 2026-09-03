@@ -20,6 +20,16 @@
 | `note_id` | 直接进入 [智能纪要场景](query-note-and-artifacts.md) |
 | `minute_token` / 妙记 URL | 直接进入 [妙记场景](query-minutes-and-artifacts.md)；URL 取路径最后一段并去掉 query 参数 |
 
+反向定位（从产物 / 会议回溯上一跳）：
+
+| 已有信息 | 反查操作 |
+|---|---|
+| 妙记 `meeting_id`（`minutes +detail` 返回） | 用 `vc +detail --meeting-ids <meeting_id>` 回到会议 |
+| 纪要 `meeting_id`（`note +detail` 返回） | 用 `vc +detail --meeting-ids <meeting_id>` 回到会议 |
+| 会议 `calendar_event_id`（`vc +detail` 返回） | 用 `calendar +get --event-id <calendar_event_id>` 回到日程 |
+
+> 这些反查字段只在产物 / 会议确实有来源时出现：手动上传的妙记、非会议纪要没有 `meeting_id`；即时会议没有 `calendar_event_id`。字段为空即无上一跳，不要硬查，也不视为错误。
+
 没有标识时，用 `vc +search` 搜索已经结束的会议：
 
 ```bash
