@@ -7,10 +7,25 @@ import (
 	"errors"
 	"io/fs"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/larksuite/cli/internal/vfs"
 )
+
+func TestVerifyCandidateVersionIgnoresStderr(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test helper uses a POSIX shell script")
+	}
+	path := filepath.Join(t.TempDir(), "lark-cli")
+	script := "#!/bin/sh\nprintf 'Fetching API metadata...\\n' >&2\nprintf 'lark-cli version 1.2.3\\n'\n"
+	if err := vfs.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyCandidateVersion(path, "1.2.3"); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestCandidateInstallPromotesStagedBinaryAndCleansBackup(t *testing.T) {
 	root := t.TempDir()

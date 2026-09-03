@@ -90,7 +90,7 @@ func (c *Candidate) Install() (func(), error) {
 func VerifyCandidateVersion(path, version string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), candidateVerifyTimeout)
 	defer cancel()
-	output, err := exec.CommandContext(ctx, path, "--version").CombinedOutput() //nolint:gosec // path is a checksum-verified staged binary.
+	output, err := exec.CommandContext(ctx, path, "--version").Output() //nolint:gosec // path is a checksum-verified staged binary.
 	if ctx.Err() == context.DeadlineExceeded {
 		return fmt.Errorf("binary verification timed out after %s", candidateVerifyTimeout)
 	}
