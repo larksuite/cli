@@ -72,17 +72,17 @@
 邮箱是用户的个人资源，**策略上应优先显式使用 `--as user`（用户身份）请求**（CLI 的 `--as` 默认值为 `auto`）。
 
 - **`--as user`（推荐）**：以当前登录用户的身份访问其邮箱。需要先通过 `lark-cli auth login --domain mail` 完成用户授权。
-- **`--as bot`**：以应用身份访问邮箱。需要在飞书开发者后台为应用开通相应权限，否则请求会被拒绝。**注意：bot 身份仅适用于读取类操作，所有写操作（发送、回复、转发、草稿编辑等）仅支持 user 身份。**
+- **`--as bot`**：以应用身份访问邮箱。需要在飞书开发者后台为应用开通相应权限，否则请求会被拒绝。bot 身份不能使用默认 `--mailbox me`，必须显式传邮箱地址。
 
 1. 所有邮件写操作（发送、回复、转发、草稿编辑） → 必须使用 `--as user`，未登录时先使用 `lark-cli auth login --domain mail` 进行登录
-2. 读取类操作（查看邮件、会话、收件箱列表等） → 推荐使用 `--as user`；如需应用级批量读取（如管理员代操作），可使用 `--as bot`，确保应用已开通对应权限
+2. 读取类操作（查看邮件、会话、收件箱列表等）和会话级批量整理（`+thread-modify` / `+thread-trash`）→ 推荐使用 `--as user`；如需管理员/应用代操作，可使用 `--as bot` 并显式传 `--mailbox <email>`，确保应用已开通对应权限。message 级整理（`+message-modify` / `+message-trash`）仍仅支持 `--as user`
 
 ## 典型工作流
 
 1. **确认身份** — 首次操作邮箱前先调用 `lark-cli mail user_mailboxes profile --params '{"user_mailbox_id":"me"}'` 获取当前用户的真实邮箱地址（`primary_email_address`），不要通过系统用户名猜测。后续判断"发件人是否为用户本人"时以此地址为准。
 2. **浏览** — `+triage` 查看收件箱摘要，获取 `message_id` / `thread_id`
 3. **阅读** — `+message` 读单封邮件，`+thread` 读整个会话
-4. **整理** — 标签、已读/未读状态和移动文件夹优先用 `+message-modify`；软删除优先用 `+message-trash`
+4. **整理** — 标签、已读/未读状态和移动文件夹优先用 `+message-modify`；软删除优先用 `+message-trash`；会话级批量整理可用 `+thread-modify`，软删除会话可用 `+thread-trash`
 5. **回复** — `+reply` / `+reply-all`（默认存草稿，加 `--confirm-send` 则立即发送）
 6. **转发** — `+forward`（默认存草稿，加 `--confirm-send` 则立即发送）
 7. **新邮件** — `+send` 存草稿（默认），加 `--confirm-send` 发送
@@ -418,7 +418,7 @@ lark-cli mail +message --message-id <id>
 
 ## 原生 API 调用规则
 
-没有 Shortcut 覆盖的操作才使用原生 API。标签、已读状态、移动文件夹优先使用 `+message-modify`；软删除优先使用 `+message-trash`。调用步骤以本节为准（API Resources 章节的 resource/method 列表可辅助查阅）。
+没有 Shortcut 覆盖的操作才使用原生 API。标签、已读状态、移动文件夹优先使用 `+message-modify`；软删除优先使用 `+message-trash`。会话或 thread ID 级标签/文件夹整理可使用 `+thread-modify`；软删除会话可使用 `+thread-trash`。调用步骤以本节为准（API Resources 章节的 resource/method 列表可辅助查阅）。
 
 ### Step 1 — 用 `-h` 确定要调用的 API（必须，不可跳过）
 
