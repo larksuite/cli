@@ -73,11 +73,15 @@ lark-cli calendar +get --calendar-id <calendar_id> --event-id <event_id>
 lark-cli calendar +search-event --query "周会" --start 2026-04-20 --end 2026-04-27 --attendee-ids "ou_user1,oc_chat1,omm_room1" --page-token <page_token> --page-size 30
 ```
 
+`--attendee-ids` 的多值语义：**同类型内为 OR（并集）**——只要日程命中列表中的任意一个同类型 ID，就会返回。
+
+- `--attendee-ids "ou_A,ou_B"` = A **或** B 参加的日程（**不是** A 和 B 都参加的）。
+
 ### `+delete` — 删除日程
 
 ```bash
 # calendar_id不传，默认primary
-lark-cli calendar +delete --calendar-id <calendar_id> --event-id <event_id> --notify true
+lark-cli calendar +delete --calendar-id <calendar_id> --event-id <event_id> --notify=true
 ```
 
 ### `+agenda` — 查看近期日程安排
@@ -157,13 +161,14 @@ lark-cli calendar +freebusy --start 2026-03-11T09:00:00+08:00 --end 2026-03-11T1
 
 ## 意图路由
 
+**日程与会议的关系**：用户口中的「会议」通常不区分日程和视频会议。定义、三种查询意图（当前/未来/过去）的分流规则见 [日程与视频会议的关系](references/lark-calendar-meeting-relation.md)。
+
 | 用户意图 | 路由到 |
 |----------|--------|
-| 查询过去的会议（"昨天的会议""上周的会"） | [`../lark-meeting/SKILL.md`](../lark-meeting/SKILL.md)（会议数据含即时会议，仅查日程会遗漏） |
-| 今天有哪些会议| 需要合并两部分内容：[`../lark-meeting/SKILL.md`](../lark-meeting/SKILL.md) 中的 `vc +search` 查询今天已结束的会议， `calendar +agenda` 查询进行中或未开始的日程。|
-| 查询日历/日程或未来时间的会议 | 本 skill |
+| 查询过去的会议（"昨天的会议""上周的会"）/今天有哪些会议 / 当前正在开的会议 | 先读 [日程与视频会议的关系](references/lark-calendar-meeting-relation.md) |
+| 未来的会议 / 明天/下周的会议 | 本 skill：视频会议不存在于未来，等价于查日程 |
 | 按关键词搜索日程 | 本 skill（`+search-event`） |
-| 从日程获取关联的视频会议 ID 或用户绑定的会议纪要文档 | 本 skill（`+meeting`） |
+| 从日程获取关联的视频会议 ID 或用户绑定的会议纪要文档 | 本 skill（[`+meeting`](references/lark-calendar-meeting.md)） |
 | 查看日程的参会人 / 会议室（含 `--type resource` 只看会议室） | 本 skill（[`+list-attendees`](references/lark-calendar-list-attendees.md)） |
 | 把日程分享给某人 / 群 / 粘贴到文档 | 本 skill：先 `calendar events share_info` 取**日程分享链接**，再走 [lark-im](../lark-im/SKILL.md) 发送或粘贴该链接；**分享日程给某个人、某个群或粘贴到文档中，需要的都是日程分享链接，不是 applink**，不要自己拼接或用 applink 代替 |
 | 从日程进一步拿 AI 智能纪要 / 逐字稿 / 妙记产物 | 先 `+meeting` 取 `meeting_id`，再进入 [`lark-meeting`](../lark-meeting/SKILL.md)：[`vc +detail`](../lark-meeting/references/lark-vc-detail.md) → [`note +detail`](../lark-meeting/references/lark-note-detail.md) / [`minutes +detail`](../lark-meeting/references/lark-minutes-detail.md) |
