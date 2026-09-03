@@ -397,9 +397,11 @@ func TestTablePut_SheetsDecodeHints(t *testing.T) {
 	t.Run("type mismatch inlines skeleton", func(t *testing.T) {
 		t.Parallel()
 		sc := shortcutFromRegistry(t, "+table-put")
+		// `data` as an object is a kind mismatch with no accepted reading —
+		// unlike object-form `columns`, which columnHeadings now decodes.
 		_, _, err := runShortcutCapturingErr(t, sc, []string{
 			"--url", testURL,
-			"--sheets", `{"sheets":[{"name":"s","columns":[{"name":"a"}],"data":[]}]}`,
+			"--sheets", `{"sheets":[{"name":"s","columns":["a"],"data":{"0":["x"]}}]}`,
 			"--dry-run",
 		})
 		ve := requireValidation(t, err, "--sheets: invalid JSON")
@@ -410,16 +412,34 @@ func TestTablePut_SheetsDecodeHints(t *testing.T) {
 		}
 	})
 
-	t.Run("bare array names the missing envelope", func(t *testing.T) {
+	t.Run("bare array is accepted as the sub-sheet list", func(t *testing.T) {
 		t.Parallel()
 		sc := shortcutFromRegistry(t, "+table-put")
-		_, _, err := runShortcutCapturingErr(t, sc, []string{
+		// The envelope is the only thing such a payload is missing, and an
+		// array at the top level can only be the list it would have held
+		// (07-28 root-cause report #4, 84 occurrences; still 10 in the
+		// 08-29..31 reflow after the error message was made explicit).
+		stdout, _, err := runShortcutCapturingErr(t, sc, []string{
 			"--url", testURL,
 			"--sheets", `[{"name":"s","columns":["a"],"data":[["x"]]}]`,
 			"--dry-run",
 		})
-		// The Go unmarshal text names the internal struct, not the fix
-		// (07-28 root-cause report #4, 84 occurrences).
+		if err != nil {
+			t.Fatalf("bare sub-sheet list should be accepted, got %v", err)
+		}
+		if !strings.Contains(stdout, "set_cell_range") {
+			t.Errorf("dry-run should plan the write, got %q", stdout)
+		}
+	})
+
+	t.Run("bare scalar still names the expected shapes", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+table-put")
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL,
+			"--sheets", `"just a string"`,
+			"--dry-run",
+		})
 		ve := requireValidation(t, err, `top level must be the object {"sheets":[…]}`)
 		if strings.Contains(ve.Message, "cannot unmarshal") {
 			t.Errorf("message should not leak the Go unmarshal wording, got %q", ve.Message)

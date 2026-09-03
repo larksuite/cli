@@ -5,6 +5,7 @@ package sheets
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -49,7 +50,7 @@ var CellsGet = common.Shortcut{
 		if strings.TrimSpace(runtime.Str("range")) == "" {
 			return sheetsValidationForFlag("range", "--range is required")
 		}
-		return nil
+		return rejectMultiAreaRange(runtime)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
@@ -71,6 +72,44 @@ var CellsGet = common.Shortcut{
 		}
 		return emitReadResult(runtime, out)
 	},
+}
+
+// rejectMultiAreaRange answers the Excel multi-area habit — several
+// non-adjacent cells joined by commas ("A3,G3,H3") — before it reaches the
+// backend, which rejects it as an opaque "[90015206] invalid range". A single
+// A1 range never contains a comma, so the shape is unambiguous; the fix is not
+// (read the enclosing rectangle, or call once per area), so this prescribes
+// both rather than picking one. 08-29..31 reflow: 54 of +cells-get's 69
+// rejections, the largest cluster on any read command.
+func rejectMultiAreaRange(runtime *common.RuntimeContext) error {
+	rng := strings.TrimSpace(runtime.Str("range"))
+	if !strings.Contains(rng, ",") {
+		return nil
+	}
+	areas := strings.Split(rng, ",")
+	first, last := strings.TrimSpace(areas[0]), strings.TrimSpace(areas[len(areas)-1])
+	hint := "read the enclosing rectangle in one call and pick the cells you need"
+	if enclosing := enclosingRangeHint(first, last); enclosing != "" {
+		hint = fmt.Sprintf("read the enclosing rectangle in one call (--range %q) and pick the cells you need", enclosing)
+	}
+	return sheetsValidationForFlag("range", "--range %q lists %d separate areas; one call reads ONE continuous A1 range", rng, len(areas)).
+		WithHint("%s, or issue one call per area; for a whole block of data +csv-get returns it in one pass", hint)
+}
+
+// enclosingRangeHint spells the rectangle covering the caller's first and last
+// area, so the prescription carries a range they can paste. Empty when either
+// end is not a plain cell reference — a guess is worse than the generic hint.
+func enclosingRangeHint(first, last string) string {
+	if first == "" || last == "" || strings.Contains(first, ":") || strings.Contains(last, ":") {
+		return ""
+	}
+	if _, _, ok := splitCellRef(first); !ok {
+		return ""
+	}
+	if _, _, ok := splitCellRef(last); !ok {
+		return ""
+	}
+	return first + ":" + last
 }
 
 func cellsGetInput(runtime *common.RuntimeContext, token, sheetID, sheetName string) map[string]interface{} {

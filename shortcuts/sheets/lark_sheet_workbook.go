@@ -656,16 +656,19 @@ var WorkbookCreate = common.Shortcut{
 			matrix, _ := buildSheetMatrix(s, headerOn(s))
 			_, col0, row0, _ := sheetAnchor(s)
 			matrix, _ = applyWorkbookCreateStylesToMatrix(matrix, sheetStyles.styleFor(i), col0, row0, fmt.Sprintf("--styles for sheet %q", s.Name))
+			if len(matrix) == 0 {
+				// Nothing to write (a column-less sheet, or header:false with
+				// no data rows): Execute skips the set_cell_range entirely, so
+				// the plan must not show one. Visual ops still run.
+				appendWorkbookCreateVisualOpsDryRun(dry, "<new-token>", "", s.Name, sheetStyles.styleFor(i))
+				continue
+			}
 			// Padding can widen / lengthen the matrix past the data, so build the
 			// range from the padded dims to match what Execute writes.
-			rng := tablePutFullRange(s, len(matrix))
-			writeCols := len(s.Columns)
-			if len(matrix) > 0 {
-				writeCols = len(matrix[0])
-				rng = fmt.Sprintf("%s%d:%s%d",
-					columnIndexToLetter(col0), row0+1,
-					columnIndexToLetter(col0+writeCols-1), row0+len(matrix))
-			}
+			writeCols := len(matrix[0])
+			rng := fmt.Sprintf("%s%d:%s%d",
+				columnIndexToLetter(col0), row0+1,
+				columnIndexToLetter(col0+writeCols-1), row0+len(matrix))
 			input := map[string]interface{}{
 				"excel_id":   "<new-token>",
 				"sheet_name": s.Name,

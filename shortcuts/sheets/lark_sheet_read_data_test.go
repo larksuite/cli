@@ -263,3 +263,41 @@ func TestCsvGet_StripRowPrefix(t *testing.T) {
 		t.Errorf("other field corrupted: %v", out["other"])
 	}
 }
+
+// TestCellsGet_MultiAreaRangeRejected pins the Excel multi-area prescription.
+// The backend answers such a range with "[90015206] invalid range", which
+// names neither the rule nor the fix; 08-29..31 reflow put 54 of +cells-get's
+// 69 rejections here.
+func TestCellsGet_MultiAreaRangeRejected(t *testing.T) {
+	t.Parallel()
+	t.Run("cells joined by commas prescribe the enclosing rectangle", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, CellsGet, []string{
+			"--url", testURL, "--sheet-name", "s", "--range", "A3,G3,H3,J3", "--dry-run",
+		})
+		ve := requireValidation(t, err, "lists 4 separate areas")
+		if !strings.Contains(ve.Hint, `--range "A3:J3"`) {
+			t.Errorf("hint should spell the enclosing rectangle, got %q", ve.Hint)
+		}
+	})
+
+	t.Run("ranges joined by commas fall back to the generic fix", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, CellsGet, []string{
+			"--url", testURL, "--sheet-name", "s", "--range", "A1:B2,D1:E2", "--dry-run",
+		})
+		ve := requireValidation(t, err, "lists 2 separate areas")
+		if strings.Contains(ve.Hint, "--range \"A1:B2:D1:E2\"") {
+			t.Errorf("hint must not invent a rectangle from two ranges, got %q", ve.Hint)
+		}
+	})
+
+	t.Run("a single continuous range still passes", func(t *testing.T) {
+		t.Parallel()
+		if _, _, err := runShortcutCapturingErr(t, CellsGet, []string{
+			"--url", testURL, "--sheet-name", "s", "--range", "A3:L3", "--dry-run",
+		}); err != nil {
+			t.Fatalf("a continuous range should be accepted, got: %v", err)
+		}
+	})
+}

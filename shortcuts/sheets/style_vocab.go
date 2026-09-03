@@ -4,6 +4,7 @@
 package sheets
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"slices"
@@ -148,6 +149,16 @@ var styleFieldPrescriptions = map[string]string{
 	"bg_color":   "the cell fill is background_color",
 	"fill_color": "the cell fill is background_color",
 	"text_color": "the text color is font_color",
+	// 08-29..31 reflow, --styles unknown-field group (96 rejections on
+	// +styles-put alone). These name real concepts that the payload does
+	// carry — just not inside a cell_styles item, so the fix is structural
+	// and the field list alone does not spell it.
+	"row_height":    `row height is a sheet-level row_sizes entry, not a cell style ({"row_sizes":[{"range":"1:1","type":"pixel","size":30}]})`,
+	"row_heights":   `row height is a sheet-level row_sizes entry, not a cell style ({"row_sizes":[{"range":"1:1","type":"pixel","size":30}]})`,
+	"column_width":  `column width is a sheet-level col_sizes entry, not a cell style ({"col_sizes":[{"range":"A:C","type":"pixel","size":120}]})`,
+	"col_width":     `column width is a sheet-level col_sizes entry, not a cell style ({"col_sizes":[{"range":"A:C","type":"pixel","size":120}]})`,
+	"wrap":          `automatic line wrapping is word_wrap ("auto-wrap" to wrap, "overflow" to spill, "word-clip" to truncate)`,
+	"unmerge_cells": "a styles payload only adds merges (cell_merges); undo an existing one with +cells-unmerge --range <A1 range>",
 }
 
 // borderFieldPrescription answers any unsupported border-family spelling that
@@ -272,6 +283,22 @@ func cellStyleScalarTypes() map[string]string {
 // cross-vocabulary aliases like CSS "center" → Lark "middle"; boolean
 // word_wrap → the enum) and rejects off-enum values client-side instead of
 // letting the server fail the whole batch. path labels the map for errors.
+// numericStyleValue reads a quoted number ("16", " 10.5 ") as the number a
+// numeric style field wants. The test is "is this a JSON number literal", not
+// "does Go parse it": strconv.ParseFloat also takes Inf / NaN / hex floats,
+// none of which survive as JSON in the request body.
+func numericStyleValue(raw interface{}) (float64, bool) {
+	s, ok := raw.(string)
+	if !ok {
+		return 0, false
+	}
+	var f float64
+	if err := json.Unmarshal([]byte(strings.TrimSpace(s)), &f); err != nil {
+		return 0, false
+	}
+	return f, true
+}
+
 func normalizeCellStyleAliases(style map[string]interface{}, path string) error {
 	if len(style) == 0 {
 		return nil
@@ -317,6 +344,18 @@ func normalizeCellStyleAliases(style map[string]interface{}, path string) error 
 			continue
 		}
 		if got := jsType(raw); got != want {
+			// A quoted number under a numeric style field ("font_size":"16")
+			// is the one type mismatch with a single reading — the digits are
+			// right and only the quotes are wrong. 08-29..31 reflow: 30
+			// --styles rejections, all font_size. Every other mismatch
+			// (a boolean font_weight, a numeric background_color) still
+			// fails: those are guesses about the vocabulary, not typing slips.
+			if want == "number" {
+				if n, ok := numericStyleValue(raw); ok {
+					style[field] = n
+					continue
+				}
+			}
 			return common.ValidationErrorf("%s.%s must be a %s, got %s (%s)",
 				path, field, want, got, formatJSONValue(raw))
 		}
@@ -405,7 +444,18 @@ func normalizeTypedCellsStyleAliases(cells []interface{}, path string) error {
 // sub-ops get the same rewrite as standalone calls. Every side it leaves
 // behind then goes through normalizeBorderSideVocab, which makes this the
 // one funnel where border VALUES get canonicalized as well.
+//
+// "outer" is the same shorthand under the Lark OpenAPI's own name
+// (OUTER_BORDER): per-side specs address the RANGE's edges, so its four sides
+// are exactly the outer box. Its counterpart INNER_BORDER has no expression
+// here at all and keeps the border prescription instead of a wrong guess.
 func expandBorderAllShorthand(border map[string]interface{}) {
+	if outer, ok := border["outer"]; ok {
+		if _, exists := border["all"]; !exists {
+			border["all"] = outer
+		}
+		delete(border, "outer")
+	}
 	if all, ok := border["all"]; ok {
 		for _, side := range []string{"top", "bottom", "left", "right"} {
 			if _, exists := border[side]; !exists {

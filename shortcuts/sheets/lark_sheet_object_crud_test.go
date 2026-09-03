@@ -857,3 +857,97 @@ func TestObjectDelete_AllHighRisk(t *testing.T) {
 		})
 	}
 }
+
+// TestCondFormatPropertiesNormalization pins the --properties acceptances.
+// attrs is a oneOf over nine shapes, so a near-miss fails with "does not match
+// any of oneOf alternatives" — a message that names no field; 62 of
+// +cond-format-create's 97 rejections in the 08-29..31 reflow were one of
+// these spellings.
+func TestCondFormatPropertiesNormalization(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name  string
+		props string
+		want  map[string]interface{}
+	}{
+		{
+			name:  "operator renamed under a value-shaped entry",
+			props: `{"style":{"back_color":"#C00000"},"attrs":[{"operator":"lessThan","value":"0"}]}`,
+			want:  map[string]interface{}{"compare_type": "lessThan", "value": "0"},
+		},
+		{
+			name:  "symbol comparison canonicalized",
+			props: `{"style":{"back_color":"#C00000"},"attrs":[{"compare_type":">=","value":"60"}]}`,
+			want:  map[string]interface{}{"compare_type": "greaterThanOrEqual", "value": "60"},
+		},
+		{
+			name:  "separator and casing variants canonicalized",
+			props: `{"style":{"back_color":"#C00000"},"attrs":[{"compare_type":"LESS_THAN","value":"60"}]}`,
+			want:  map[string]interface{}{"compare_type": "lessThan", "value": "60"},
+		},
+		{
+			name:  "abbreviation plus a numeric threshold",
+			props: `{"style":{"back_color":"#C00000"},"attrs":[{"operator":"LT","value":0}]}`,
+			want:  map[string]interface{}{"compare_type": "lessThan", "value": "0"},
+		},
+		{
+			name:  "between takes its two thresholds as a list",
+			props: `{"style":{"back_color":"#C00000"},"attrs":[{"compare_type":"between","value":[10,20]}]}`,
+			want:  map[string]interface{}{"compare_type": "between", "value": "10,20"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var props map[string]interface{}
+			if err := json.Unmarshal([]byte(tc.props), &props); err != nil {
+				t.Fatal(err)
+			}
+			normalizeCondFormatProperties(props)
+			attrs, _ := props["attrs"].([]interface{})
+			if len(attrs) != 1 {
+				t.Fatalf("attrs = %v, want one entry", props["attrs"])
+			}
+			entry, _ := attrs[0].(map[string]interface{})
+			for key, want := range tc.want {
+				if entry[key] != want {
+					t.Errorf("attrs[0].%s = %v, want %v", key, entry[key], want)
+				}
+			}
+			if _, leftover := entry["operator"]; leftover {
+				t.Errorf("operator should have been renamed, got %v", entry)
+			}
+		})
+	}
+
+	t.Run("a bare attrs object becomes the one-entry list", func(t *testing.T) {
+		t.Parallel()
+		var props map[string]interface{}
+		if err := json.Unmarshal([]byte(`{"attrs":{"compare_type":"lessThan","value":"0"}}`), &props); err != nil {
+			t.Fatal(err)
+		}
+		normalizeCondFormatProperties(props)
+		if attrs, _ := props["attrs"].([]interface{}); len(attrs) != 1 {
+			t.Errorf("attrs = %v, want a one-entry list", props["attrs"])
+		}
+	})
+
+	t.Run("rules that spell the comparison operator keep it", func(t *testing.T) {
+		t.Parallel()
+		var props map[string]interface{}
+		// timePeriod's own contract is {operator, time_period}, and dataBar /
+		// colorScale thresholds are numbers — neither may be rewritten.
+		if err := json.Unmarshal([]byte(`{"attrs":[{"operator":"before","time_period":"today"},{"color":"#63BE7B","value_type":"num","value":100}]}`), &props); err != nil {
+			t.Fatal(err)
+		}
+		normalizeCondFormatProperties(props)
+		attrs, _ := props["attrs"].([]interface{})
+		first, _ := attrs[0].(map[string]interface{})
+		if first["operator"] != "before" {
+			t.Errorf("timePeriod operator = %v, want it untouched", first["operator"])
+		}
+		second, _ := attrs[1].(map[string]interface{})
+		if second["value"] != float64(100) {
+			t.Errorf("dataBar value = %v (%T), want the number untouched", second["value"], second["value"])
+		}
+	})
+}

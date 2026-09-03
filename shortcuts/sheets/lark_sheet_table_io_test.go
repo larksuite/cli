@@ -288,7 +288,7 @@ func TestNormalize_DefaultsAndFormatOverride(t *testing.T) {
 	t.Parallel()
 	in := &tableSheetIn{
 		Name:    "S",
-		Columns: []string{"id", "amt", "d", "raw"},
+		Columns: headingNames("id", "amt", "d", "raw"),
 		Dtypes:  labelsByName(map[string]string{"amt": "float64", "d": "datetime64[ns]"}), // id, raw left unspecified
 		Formats: labelsByName(map[string]string{"amt": "#,##0.00"}),                       // override float default ("")
 		Data:    [][]interface{}{},
@@ -334,12 +334,12 @@ func TestTablePut_PayloadValidation(t *testing.T) {
 		{"empty sheets", `{"sheets":[]}`, "at least one sheet"},
 		{"missing name", `{"sheets":[{"columns":["a"],"data":[]}]}`, "name is required"},
 		{"duplicate name", `{"sheets":[{"name":"S","columns":["a"],"data":[]},{"name":"S","columns":["a"],"data":[]}]}`, "duplicate sheet name"},
-		{"no columns", `{"sheets":[{"name":"S","columns":[],"data":[]}]}`, "columns must be non-empty"},
+		{"no columns with data", `{"sheets":[{"name":"S","columns":[],"data":[["x"]]}]}`, "columns must be non-empty when `data` has rows"},
 		{"column missing name", `{"sheets":[{"name":"S","columns":[""],"data":[]}]}`, "columns[0] name is required"},
 		{"duplicate column", `{"sheets":[{"name":"S","columns":["a","a"],"data":[]}]}`, "duplicate column name"},
 		{"dtypes refs unknown column", `{"sheets":[{"name":"S","columns":["a"],"data":[],"dtypes":{"b":"int64"}}]}`, "dtypes references unknown column"},
 		{"formats refs unknown column", `{"sheets":[{"name":"S","columns":["a"],"data":[],"formats":{"b":"0.0"}}]}`, "formats references unknown column"},
-		{"row width mismatch", `{"sheets":[{"name":"S","columns":["a","b"],"data":[["x"]]}]}`, "column count"},
+		{"row wider than columns", `{"sheets":[{"name":"S","columns":["a"],"data":[["x","y"]]}]}`, "`columns` declares 1"},
 		{"bad start_cell", `{"sheets":[{"name":"S","start_cell":"A","columns":["a"],"data":[]}]}`, "start_cell"},
 		{"bad date value", `{"sheets":[{"name":"S","columns":["d"],"dtypes":{"d":"datetime64[ns]"},"data":[["2025/03/31"]]}]}`, "must be ISO"},
 		{"number expects numeric", `{"sheets":[{"name":"S","columns":["n"],"dtypes":{"n":"int64"},"data":[["abc"]]}]}`, "number expects"},
@@ -524,9 +524,9 @@ func TestTablePut_Validation(t *testing.T) {
 			want: "duplicate column name",
 		},
 		{
-			name: "row width mismatch rejected",
-			args: []string{"--url", testURL, "--sheets", `{"sheets":[{"name":"S","columns":["a","b"],"data":[["only-one"]]}]}`},
-			want: "column count",
+			name: "row wider than columns rejected",
+			args: []string{"--url", testURL, "--sheets", `{"sheets":[{"name":"S","columns":["a"],"data":[["one","two"]]}]}`},
+			want: "`columns` declares 1",
 		},
 		{
 			name: "trailing JSON data after --sheets value rejected",
@@ -2006,5 +2006,83 @@ func TestPositionalColumnLabels(t *testing.T) {
 			"sheets": `{"sheets":[{"name":"S","columns":["id"],"data":[["001"]],"dtypes":{"nope":"float64"}}]}`,
 		}))
 		requireValidation(t, err, `dtypes references unknown column "nope"`)
+	})
+}
+
+// TestTablePut_ReflowLeniency pins the --sheets acceptances added after the
+// 08-29..31 reflow report, where the payload was otherwise correct and every
+// retry rewrote the same data in a different spelling. Each case states the
+// rejection count it removes; the rejections that remain are the ones where
+// the caller's intent is genuinely unclear.
+func TestTablePut_ReflowLeniency(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		sheets string
+		want   []string // substrings the planned write body must carry
+	}{
+		{
+			name:   "numeric column written as strings (155 rejections)",
+			sheets: `{"sheets":[{"name":"S","columns":["n","t"],"dtypes":{"n":"Int64"},"data":[["1","a"],["2.5","b"],["","c"]]}]}`,
+			want:   []string{`"value":1`, `"value":2.5`},
+		},
+		{
+			name:   "short rows padded to the column count (25)",
+			sheets: `{"sheets":[{"name":"S","columns":["a","b","c"],"data":[["title"]]}]}`,
+			want:   []string{`"value":"title"`},
+		},
+		{
+			name:   "object-per-column entries (35)",
+			sheets: `{"sheets":[{"name":"S","columns":[{"name":"n","dtype":"float64"},{"name":"t"}],"data":[[1.5,"a"]]}]}`,
+			want:   []string{`"value":1.5`, `"value":"n"`},
+		},
+		{
+			name:   "the writer's own type vocabulary as a dtype",
+			sheets: `{"sheets":[{"name":"S","columns":["n"],"dtypes":{"n":"number"},"data":[[1.5]]}]}`,
+			want:   []string{`"value":1.5`},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			stdout, _, err := runShortcutCapturingErr(t, TablePut, []string{
+				"--url", testURL, "--sheets", tc.sheets, "--dry-run",
+			})
+			if err != nil {
+				t.Fatalf("payload should be accepted, got: %v", err)
+			}
+			// The tool body is a JSON string inside the dry-run envelope, so
+			// its own quotes arrive escaped.
+			plain := strings.ReplaceAll(stdout, `\"`, `"`)
+			for _, want := range tc.want {
+				if !strings.Contains(plain, want) {
+					t.Errorf("write body should carry %s, got %q", want, stdout)
+				}
+			}
+		})
+	}
+
+	t.Run("a column-less sheet plans no write", func(t *testing.T) {
+		t.Parallel()
+		stdout, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL, "--sheets", `{"sheets":[{"name":"S","columns":[],"data":[]}]}`, "--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("an empty sheet should be accepted, got: %v", err)
+		}
+		if strings.Contains(stdout, "set_cell_range") {
+			t.Errorf("nothing to write, so no set_cell_range should be planned, got %q", stdout)
+		}
+	})
+
+	t.Run("a non-numeric string in a numeric column still fails", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","columns":["n"],"dtypes":{"n":"Int64"},"data":[["1,234"]]}]}`,
+			"--dry-run",
+		})
+		// A thousands separator is either one number or two cells that lost
+		// their split — stripping it would guess at a locale.
+		requireValidation(t, err, "non-numeric string")
 	})
 }

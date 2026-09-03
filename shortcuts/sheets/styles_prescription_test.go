@@ -366,7 +366,9 @@ func TestStylesFieldTypesValidated(t *testing.T) {
 	}{
 		{"boolean font_weight", `"font_weight":true`, "font_weight must be a string, got boolean"},
 		{"numeric background_color", `"background_color":123`, "background_color must be a string, got number"},
-		{"string font_size", `"font_size":"12"`, "font_size must be a number, got string"},
+		// A quoted number is coerced (see the reflow row in the styles
+		// corpus); a word is not a number in any reading and still fails.
+		{"non-numeric font_size", `"font_size":"large"`, "font_size must be a number, got string"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

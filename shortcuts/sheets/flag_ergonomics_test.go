@@ -767,6 +767,11 @@ func TestCsvPut_FileAliasProvenance(t *testing.T) {
 	if err := os.WriteFile("data.csv", []byte("a,b\n1,2\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
+	// Not path-shaped, so --csv never reads it on its own (see
+	// csvValueLooksLikePath): the probe for "which spelling supplied this".
+	if err := os.WriteFile("notes.txt", []byte("a,b\n1,2\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	run := func(t *testing.T, extra ...string) (string, error) {
 		t.Helper()
@@ -787,8 +792,11 @@ func TestCsvPut_FileAliasProvenance(t *testing.T) {
 
 	t.Run("a later --csv occurrence keeps its own semantics", func(t *testing.T) {
 		// The last occurrence supplied the value and it was typed --csv, so the
-		// path must hit the --csv guard rather than being read as a file.
-		_, err := run(t, "--file", "./data.csv", "--csv", "./data.csv")
+		// name must hit the --csv guard rather than being read as a file. The
+		// probe is a name --csv does NOT read on its own: a path-shaped one is
+		// now read under either spelling, which is what makes the two
+		// semantics observable only here.
+		_, err := run(t, "--file", "notes.txt", "--csv", "notes.txt")
 		requireValidation(t, err, "is an existing file, not inline CSV")
 	})
 
@@ -816,13 +824,18 @@ func TestCsvPut_FileAliasProvenance_DoubleMount(t *testing.T) {
 	if err := os.WriteFile("data.csv", []byte("a,b\n1,2\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
+	// Not path-shaped, so --csv never reads it on its own (see
+	// csvValueLooksLikePath): the probe for "which spelling supplied this".
+	if err := os.WriteFile("notes.txt", []byte("a,b\n1,2\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	t.Run("mounted twice before parsing", func(t *testing.T) {
 		sc := shortcutFromRegistry(t, "+csv-put")
 		sc.PostMount = withFlagErgonomics(sc.PostMount) // a second, redundant pass
 		_, _, err := runShortcutCapturingErr(t, sc, []string{
 			"--url", testURL, "--sheet-name", "s", "--start-cell", "A1",
-			"--csv", "./data.csv", "--dry-run",
+			"--csv", "notes.txt", "--dry-run",
 		})
 		requireValidation(t, err, "is an existing file, not inline CSV")
 	})
@@ -844,7 +857,99 @@ func TestCsvPut_FileAliasProvenance_DoubleMount(t *testing.T) {
 		}
 		withFlagErgonomics(nil)(cmd)
 		parent.SetArgs([]string{"+csv-put", "--url", testURL, "--sheet-name", "s",
-			"--start-cell", "A1", "--csv", "./data.csv", "--dry-run"})
+			"--start-cell", "A1", "--csv", "notes.txt", "--dry-run"})
 		requireValidation(t, parent.Execute(), "is an existing file, not inline CSV")
+	})
+}
+
+// TestReflowFlagVocabulary pins the flag-name and enum-value acceptances added
+// after the 08-29..31 reflow: the payload-flag names +csv-put answers to, the
+// CSS text-decoration words for --font-line, and the wrap / style
+// prescriptions on +cells-set-style.
+func TestReflowFlagVocabulary(t *testing.T) {
+	t.Parallel()
+
+	t.Run("csv-put payload flag names", func(t *testing.T) {
+		t.Parallel()
+		for _, name := range []string{"--csv", "--data", "--content"} {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+				stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+csv-put"), []string{
+					"--url", testURL, "--sheet-name", "s", "--start-cell", "A1",
+					name, "a,b\n1,2", "--dry-run",
+				})
+				if err != nil {
+					t.Fatalf("%s should carry the CSV payload, got: %v", name, err)
+				}
+				if !strings.Contains(stdout, `a,b`) {
+					t.Errorf("dry-run body should carry the CSV, got %q", stdout)
+				}
+			})
+		}
+	})
+
+	t.Run("csv-file names a path and reports itself by that name", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+csv-put"), []string{
+			"--url", testURL, "--sheet-name", "s", "--start-cell", "A1",
+			"--csv-file", "./missing.csv", "--dry-run",
+		})
+		ve := requireValidation(t, err, "names no file under the current directory")
+		if !strings.Contains(ve.Message, "--csv-file") {
+			t.Errorf("the error should name the spelling the caller typed, got %q", ve.Message)
+		}
+	})
+
+	t.Run("font-line takes the CSS text-decoration words", func(t *testing.T) {
+		t.Parallel()
+		for value, want := range map[string]string{
+			"strikethrough": "line-through",
+			"strike":        "line-through",
+			"underlined":    "underline",
+		} {
+			t.Run(value, func(t *testing.T) {
+				t.Parallel()
+				stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set-style"), []string{
+					"--url", testURL, "--sheet-name", "s", "--range", "A1:A10",
+					"--font-line", value, "--dry-run",
+				})
+				if err != nil {
+					t.Fatalf("%s should normalize, got: %v", value, err)
+				}
+				if !strings.Contains(strings.ReplaceAll(stdout, `\"`, `"`), `"font_line":"`+want+`"`) {
+					t.Errorf("body should carry font_line %q, got %q", want, stdout)
+				}
+			})
+		}
+	})
+
+	t.Run("unsupported font-line values still fail with the enum", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set-style"), []string{
+			"--url", testURL, "--sheet-name", "s", "--range", "A1:A10",
+			"--font-line", "wavy", "--dry-run",
+		})
+		requireValidation(t, err, "allowed: none, underline, line-through")
+	})
+
+	t.Run("wrap and style spellings get prescriptions", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct{ flag, want string }{
+			{"--wrap-text", "use --word-wrap"},
+			{"--text-wrap", "use --word-wrap"},
+			{"--style", "there is no single --style flag"},
+		} {
+			t.Run(tc.flag, func(t *testing.T) {
+				t.Parallel()
+				_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set-style"), []string{
+					"--url", testURL, "--sheet-name", "s", "--range", "A1:A10",
+					tc.flag, "x", "--dry-run",
+				})
+				ve := requireValidation(t, err, "unknown flag")
+				if !strings.Contains(ve.Hint, tc.want) {
+					t.Errorf("hint should carry %q, got %q", tc.want, ve.Hint)
+				}
+			})
+		}
 	})
 }

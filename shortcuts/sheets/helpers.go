@@ -541,6 +541,8 @@ var jsonFlagNormalizers = map[string]map[string]func(interface{}) interface{}{
 	"+cells-batch-set-style": {"border-styles": normalizeBorderStylesFlagValue},
 	"+chart-create":          {"properties": normalizeChartHexColors},
 	"+chart-update":          {"properties": normalizeChartHexColors},
+	"+cond-format-create":    {"properties": normalizeCondFormatProperties},
+	"+cond-format-update":    {"properties": normalizeCondFormatProperties},
 }
 
 // normalizeChartHexColors walks a chart properties payload and prefixes bare

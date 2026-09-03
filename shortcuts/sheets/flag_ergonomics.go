@@ -107,14 +107,19 @@ const requiredFlagHelpPrefix = "(required) "
 // actually registered. Only pairs with identical value semantics belong
 // here: the rewrite is invisible, so it must be safe to apply unread.
 //
-// +csv-put's file → csv is the one entry whose value semantics differ, and it
-// carries its own value-side rule to make them match: --file names a path by
-// definition, so the value is read as one (resolveCSVPathFromFileAlias) rather
-// than being written into the sheet as literal text. Without that, the alias
-// itself manufactured a failure — an agent that wrote `--file ./data.csv` got
-// "--csv value is an existing file", an error about a flag it never typed.
+// +csv-put's file / csv-file → csv are the entries whose value semantics
+// differ, and they carry their own value-side rule to make them match: both
+// name a path by definition, so the value is read as one
+// (resolveCSVPathFromFileAlias) rather than being written into the sheet as
+// literal text. Without that, the alias itself manufactured a failure — an
+// agent that wrote `--file ./data.csv` got "--csv value is an existing file",
+// an error about a flag it never typed.
 var commandFlagAliases = map[string]map[string]string{
-	"+csv-put":      {"file": "csv"},
+	// data / content name the payload the way sibling CLIs do and carry
+	// --csv's own value semantics (inline text, @file or -), so they are pure
+	// renames. csv-file joins file on the path-valued side. 08-29..31 reflow:
+	// 8 of +csv-put's 29 rejections were one of these four names.
+	"+csv-put":      {"file": "csv", "csv-file": "csv", "data": "csv", "content": "csv"},
 	"+sheet-create": {"name": "title"},
 	// The new name is the only name-valued input a rename takes, so the
 	// habitual spellings are unambiguous (unlike +sheet-copy, where a name
@@ -173,8 +178,17 @@ var intuitiveFlagHints = map[string]map[string]string{
 		"underline": "use --font-line underline",
 		"font-bold": "use --font-weight bold",
 		"bg-color":  "use --background-color",
-		// Google Sheets API vocabulary (wrapStrategy).
+		// Google Sheets API vocabulary (wrapStrategy), plus the openpyxl / CSS
+		// wrap spellings (08-29..31 reflow: 4 of the 22 unknown-flag
+		// rejections). Not silent renames — the values differ too
+		// (--wrap-text true vs --word-wrap auto-wrap).
 		"wrap-strategy": "use --word-wrap (overflow / auto-wrap / word-clip)",
+		"wrap-text":     "use --word-wrap (overflow / auto-wrap / word-clip)",
+		"text-wrap":     "use --word-wrap (overflow / auto-wrap / word-clip)",
+		"wrap":          "use --word-wrap (overflow / auto-wrap / word-clip)",
+		// There is no composite style flag here: the OpenAPI's {style:{…}}
+		// envelope is one flat flag per field on this command.
+		"style": "there is no single --style flag — pass each field on its own: --font-weight, --font-style, --font-color, --background-color, --font-size, --border-styles",
 		// The border family: the only border flag is --border-styles (composite
 		// JSON); color and per-side variants ride inside it.
 		"border-style":  `borders take one composite flag: --border-styles '{"all":{"style":"solid","weight":"thin","color":"#000000"}}' (sides: top/bottom/left/right, or "all" for all four)`,
@@ -335,13 +349,30 @@ func aliasSourceAnnotation(canonical string) string {
 	return "lark-cli/sheets-alias-source/" + canonical
 }
 
+// pathValuedCSVAliases are the +csv-put spellings whose value is a path rather
+// than CSV text (see resolveCSVPathFromFileAlias). The other two aliases
+// (data / content) carry --csv's own semantics and need no value-side rule.
+var pathValuedCSVAliases = []string{"file", "csv-file"}
+
+// aliasSpellingUsed returns the habitual spelling that supplied canonical's
+// value, or fallback when the annotation is missing.
+func aliasSpellingUsed(cmd *cobra.Command, canonical, fallback string) string {
+	if cmd == nil {
+		return fallback
+	}
+	if used := cmd.Annotations[aliasSourceAnnotation(canonical)]; used != "" {
+		return used
+	}
+	return fallback
+}
+
 // flagValueCameFromAlias reports whether canonical's value was supplied under
-// the given habitual spelling on this invocation.
-func flagValueCameFromAlias(cmd *cobra.Command, canonical, alias string) bool {
+// any of the given habitual spellings on this invocation.
+func flagValueCameFromAlias(cmd *cobra.Command, canonical string, aliases ...string) bool {
 	if cmd == nil {
 		return false
 	}
-	return cmd.Annotations[aliasSourceAnnotation(canonical)] == alias
+	return slices.Contains(aliases, cmd.Annotations[aliasSourceAnnotation(canonical)])
 }
 
 // sheetsFlagErrorFunc overrides the root FlagErrorFunc for sheets commands.
@@ -484,6 +515,14 @@ var enumAliases = map[string]string{
 	// the first two need mapping — overflow is spelled the same in both.
 	"wrap": "auto-wrap",
 	"clip": "word-clip",
+	// CSS text-decoration vocabulary for --font-line, whose Lark spelling is
+	// the hyphenated line-through. 08-29..31 reflow: every one of the 8
+	// --font-line rejections was one of these words.
+	"strikethrough": "line-through",
+	"strike":        "line-through",
+	"line_through":  "line-through",
+	"linethrough":   "line-through",
+	"underlined":    "underline",
 	// Combined chart data-label vocabulary emitted by models. The tool enum
 	// spells the same intent as one value.
 	"percentage,value": "value_percentage",

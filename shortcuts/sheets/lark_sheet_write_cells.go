@@ -444,7 +444,7 @@ var CsvPut = common.Shortcut{
 				m["writes_range"] = rng
 			}
 		}
-		runtime.Out(out, nil)
+		runtime.Out(appendSheetsWarnings(out, csvForgottenAtWarnings(runtime)), nil)
 		return nil
 	},
 }
@@ -514,9 +514,13 @@ func csvPutWriteRangeFromInput(input map[string]interface{}) (string, bool) {
 // but cannot be read, with advice that cannot work ("pass it with @", which
 // uses this very reader).
 func resolveCSVPathFromFileAlias(runtime *common.RuntimeContext) error {
-	if runtime == nil || !flagValueCameFromAlias(runtime.Cmd, "csv", "file") {
+	if runtime == nil || !flagValueCameFromAlias(runtime.Cmd, "csv", pathValuedCSVAliases...) {
 		return nil
 	}
+	// Name the spelling the caller actually typed: an error about --file for
+	// someone who wrote --csv-file is the same "flag I never typed" confusion
+	// the alias exists to remove.
+	flag := aliasSpellingUsed(runtime.Cmd, "csv", "file")
 	if runtime.InputResolvedFromSource("csv") {
 		return nil
 	}
@@ -530,28 +534,29 @@ func resolveCSVPathFromFileAlias(runtime *common.RuntimeContext) error {
 		case errors.Is(err, fileio.ErrPathValidation):
 			// A real location the policy will not read (absolute, or outside
 			// the tree). The fix is stdin.
-			return sheetsValidationForFlag("file", "--file %v", err).
+			return sheetsValidationForFlag(flag, "--%s %v", flag, err).
 				WithCause(err).
-				WithHint("--file reads a path relative to the current directory; pipe a file outside it in via stdin instead (--csv - < <path>)")
+				WithHint("--%s reads a path relative to the current directory; pipe a file outside it in via stdin instead (--csv - < <path>)", flag)
 		case errors.Is(err, fs.ErrNotExist) && !csvValueLooksLikePath(raw):
 			// Names nothing and does not look like a path: literal CSV text
-			// passed under --file. Leave it for the --csv guard, which judges
+			// passed under the path-valued alias. Leave it for the --csv guard,
+			// which judges
 			// inline values on their shape.
 			return nil
 		case errors.Is(err, fs.ErrNotExist):
-			return sheetsValidationForFlag("file", "--file %q names no file under the current directory", raw).
+			return sheetsValidationForFlag(flag, "--%s %q names no file under the current directory", flag, raw).
 				WithCause(err).
-				WithHint("--file takes a path relative to the current directory; for a file outside it, pipe the contents in instead (--csv - < <path>)")
+				WithHint("--%s takes a path relative to the current directory; for a file outside it, pipe the contents in instead (--csv - < <path>)", flag)
 		default:
 			// Exists but cannot be read (permissions, a directory). @file
 			// shares this reader, so pointing there would be dead advice.
-			return sheetsValidationForFlag("file", "--file %v", err).
+			return sheetsValidationForFlag(flag, "--%s %v", flag, err).
 				WithCause(err).
-				WithHint("--file reads the path itself; to pass contents this process cannot open, pipe them in instead (--csv - < <path>)")
+				WithHint("--%s reads the path itself; to pass contents this process cannot open, pipe them in instead (--csv - < <path>)", flag)
 		}
 	}
 	if err := runtime.Cmd.Flags().Set("csv", common.StripUTF8BOM(string(data))); err != nil {
-		return sheetsValidationForFlag("file", "--file: %v", err).WithCause(err)
+		return sheetsValidationForFlag(flag, "--%s: %v", flag, err).WithCause(err)
 	}
 	// The value is now file contents, so every downstream shape check has to
 	// treat it as such — the same bit @file and stdin get. Without it a file
@@ -603,6 +608,20 @@ func guardCSVValueIsNotFilePath(runtime *common.RuntimeContext) error {
 	if fio := runtime.FileIO(); fio != nil {
 		info, err := fio.Stat(raw)
 		if err == nil && info != nil && !info.IsDir() {
+			// A path-shaped value naming a real file is a forgotten "@", and
+			// nothing else: the shape test already excludes prose, CJK text
+			// and plain filenames like "README.md" (see csvValueLooksLikePath).
+			// Read it and say so in the result rather than spending a round
+			// trip on the punctuation — the sibling path-valued flags
+			// (+workbook-import --file, this command's own --file alias) take
+			// the same value with no prefix, so requiring one here was an
+			// inconsistency of this flag's own making. 08-29..31 reflow:
+			// 11 of +csv-put's 29 rejections.
+			if csvValueLooksLikePath(raw) {
+				return readCSVFromForgottenAtPath(runtime, raw)
+			}
+			// Exists but is not path-shaped: the inline value collides with a
+			// file name. Reading it would be a guess, so prescribe both routes.
 			return sheetsValidationForFlag("csv",
 				"--csv value %q is an existing file, not inline CSV; to read it, pass the same path with an @ prefix (--csv @<path>), or pipe the literal text via stdin (--csv -)",
 				raw,
@@ -618,6 +637,49 @@ func guardCSVValueIsNotFilePath(runtime *common.RuntimeContext) error {
 	).WithHint(
 		"to read a file: --csv @<path> (relative to the current directory; @ rejects absolute paths — pipe such a file in via stdin instead: --csv - < <path>). To write this text into the cell verbatim, pass it on stdin the same way (--csv -); values arriving via stdin or @file skip this check",
 	)
+}
+
+// readCSVFromForgottenAtPath loads the file a path-shaped --csv value names,
+// as @<path> would, and records the substitution for the success envelope so
+// the read is reported rather than silent. A read failure falls back to the
+// original prescription: the value did name a file, so "@" is still the fix
+// for whatever the caller meant.
+func readCSVFromForgottenAtPath(runtime *common.RuntimeContext, raw string) error {
+	data, err := cmdutil.ReadInputFile(runtime.FileIO(), raw)
+	if err != nil {
+		return sheetsValidationForFlag("csv",
+			"--csv value %q names a file this process cannot read (%v); pass the path with an @ prefix (--csv @<path>) or pipe the contents via stdin (--csv -)",
+			raw, err,
+		).WithCause(err)
+	}
+	if err := runtime.Cmd.Flags().Set("csv", common.StripUTF8BOM(string(data))); err != nil {
+		return sheetsValidationForFlag("csv", "--csv: %v", err).WithCause(err)
+	}
+	// The value is file contents now, so every downstream shape check must
+	// treat it as such — the same bit @file and stdin get.
+	runtime.MarkInputResolved("csv")
+	if runtime.Cmd.Annotations == nil {
+		runtime.Cmd.Annotations = map[string]string{}
+	}
+	runtime.Cmd.Annotations[csvReadFromPathAnnotation] = raw
+	return nil
+}
+
+// csvReadFromPathAnnotation records that --csv's value was replaced by the
+// contents of the file it named. Read once, on the success path.
+const csvReadFromPathAnnotation = "lark-cli/sheets-csv-read-from-path"
+
+// csvForgottenAtWarnings reports the substitution readCSVFromForgottenAtPath
+// made, for the success envelope. Empty when the value was used as written.
+func csvForgottenAtWarnings(runtime *common.RuntimeContext) []string {
+	if runtime == nil || runtime.Cmd == nil {
+		return nil
+	}
+	path := runtime.Cmd.Annotations[csvReadFromPathAnnotation]
+	if path == "" {
+		return nil
+	}
+	return []string{fmt.Sprintf("--csv named an existing file, so its contents were pasted; write %q to read a file explicitly, or pass the CSV text on stdin (--csv -) to paste a path-shaped value verbatim", "@"+path)}
 }
 
 // csvValueLooksLikePath reports whether a --csv value is unmistakably a path
