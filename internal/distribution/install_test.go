@@ -18,6 +18,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/lockfile"
 	"github.com/larksuite/cli/internal/skillscheck"
@@ -38,6 +39,15 @@ func TestInstallPreparedRejectsConcurrentUpdate(t *testing.T) {
 	err := installPrepared(&preparedUpdate{Manifest: &Manifest{}}, InstallOptions{})
 	if !errors.Is(err, lockfile.ErrHeld) {
 		t.Fatalf("installPrepared() error = %v, want lock held", err)
+	}
+
+	typed := installError("failed to install distribution update", err)
+	problem, ok := errs.ProblemOf(typed)
+	if !ok || problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeFailedPrecondition {
+		t.Fatalf("lock contention problem = %#v, want validation/failed_precondition", problem)
+	}
+	if strings.Contains(problem.Hint, "--force") {
+		t.Fatalf("lock contention hint = %q, want a retry-later hint", problem.Hint)
 	}
 }
 

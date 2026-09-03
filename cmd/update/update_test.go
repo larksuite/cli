@@ -154,12 +154,6 @@ func TestManifestUpdateRepairsSkillsWhenBinaryMatches(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("HOME", root)
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", filepath.Join(root, "config"))
-	if err := os.MkdirAll(filepath.Join(root, "config"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "config", "skills-state.json"), []byte("{"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	var archive bytes.Buffer
 	writer := zip.NewWriter(&archive)
 	entry, err := writer.Create("lark-approval/SKILL.md")
@@ -195,11 +189,20 @@ func TestManifestUpdateRepairsSkillsWhenBinaryMatches(t *testing.T) {
 		currentVersion = previousVersion
 	})
 
+	factory, _, _ := newTestFactory(t)
+	if err := updateRunWithContext(context.Background(), &UpdateOptions{Factory: factory, JSON: true}); err != nil {
+		t.Fatal(err)
+	}
+	skillDir := filepath.Join(root, ".agents", "skills", "lark-approval")
+	if err := os.RemoveAll(skillDir); err != nil {
+		t.Fatal(err)
+	}
+
 	factory, stdout, _ := newTestFactory(t)
 	if err := updateRunWithContext(context.Background(), &UpdateOptions{Factory: factory, JSON: true}); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := os.ReadFile(filepath.Join(root, ".agents", "skills", "lark-approval", "SKILL.md")); err != nil || string(got) != "repaired" {
+	if got, err := os.ReadFile(filepath.Join(skillDir, "SKILL.md")); err != nil || string(got) != "repaired" {
 		t.Fatalf("repaired Skill = %q, %v", got, err)
 	}
 	if !strings.Contains(stdout.String(), `"skills_action": "synced"`) {

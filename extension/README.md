@@ -39,8 +39,9 @@ The manifest is JSON with this fixed schema:
 ```
 
 `schema`, `version`, and `artifacts` are required; unknown fields are ignored.
-`version` is an exact opaque target and must match the installed binary's
-`lark-cli --version` output. `artifacts` must contain `skills` and a key named
+`version` is an exact opaque target; the staged binary is verified by running
+`<binary> --version`, whose output must be exactly `lark-cli version <version>`.
+`artifacts` must contain `skills` and a key named
 `<GOOS>-<GOARCH>` for every published platform. URLs must be absolute HTTP or
 HTTPS URLs. Checksums cover the downloaded archive bytes.
 
