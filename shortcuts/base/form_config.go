@@ -75,7 +75,7 @@ var BaseFormNotificationsUpdate = common.Shortcut{
 		common.Flag{Name: "type", Desc: "notification type", Required: true, Enum: []string{"on-submission", "scheduled"}},
 		common.Flag{Name: "enabled", Type: "bool", Desc: "enable or disable this notification", Required: true},
 		common.Flag{Name: "locale", Desc: "notification locale"},
-		common.Flag{Name: "receiver-open-id", Type: "string_array", Desc: "receiver open_id; repeat this flag for multiple receivers"},
+		common.Flag{Name: "receiver-open-id", Type: "string_array", Desc: "receiver open_id; required when enabling notifications or disabling scheduled notifications; repeat for multiple receivers"},
 		common.Flag{Name: "notify-time", Desc: "scheduled notify time in RFC3339 format"},
 		common.Flag{Name: "repeat-type", Desc: "scheduled repeat type", Enum: []string{"no_repeat", "day", "week", "month"}},
 		common.Flag{Name: "timezone", Desc: "IANA timezone, for example Asia/Shanghai"},
@@ -83,7 +83,8 @@ var BaseFormNotificationsUpdate = common.Shortcut{
 	Tips: []string{
 		"Use --type on-submission or --type scheduled; update only one notification group per invocation.",
 		"When enabling either notification type, repeat --receiver-open-id at least once.",
-		"Disabling a notification only accepts --type and --enabled=false, plus optional --locale.",
+		"Disabling scheduled notifications requires --receiver-open-id; do not pass --notify-time, --repeat-type, or --timezone.",
+		"Disabling on-submission notifications only accepts --type and --enabled=false, plus optional --locale.",
 	},
 	Validate: func(_ context.Context, runtime *common.RuntimeContext) error {
 		_, err := buildFormNotificationsBody(runtime)
@@ -383,6 +384,10 @@ func buildFormNotificationsBody(runtime *common.RuntimeContext) (map[string]inte
 		return nil, baseFlagErrorf("at least one --receiver-open-id is required when notification is enabled")
 	}
 	if notificationType == "scheduled" {
+		if len(receivers) == 0 {
+			return nil, baseFlagErrorf("at least one --receiver-open-id is required for scheduled notifications, including when disabled")
+		}
+		group["receivers"] = receivers
 		if enabled {
 			if runtime.Str("notify-time") == "" {
 				return nil, baseFlagErrorf("--notify-time is required when scheduled notification is enabled")
@@ -399,12 +404,11 @@ func buildFormNotificationsBody(runtime *common.RuntimeContext) (map[string]inte
 			if _, err := time.LoadLocation(runtime.Str("timezone")); err != nil {
 				return nil, baseFlagErrorf("--timezone must be a valid IANA timezone: %v", err)
 			}
-			group["receivers"] = receivers
 			group["notify_time"] = runtime.Str("notify-time")
 			group["repeat_type"] = runtime.Str("repeat-type")
 			group["timezone"] = runtime.Str("timezone")
-		} else if anyChanged(runtime, "receiver-open-id", "notify-time", "repeat-type", "timezone") {
-			return nil, baseFlagErrorf("disabling scheduled notification only accepts --type, --enabled=false, and optional --locale")
+		} else if anyChanged(runtime, "notify-time", "repeat-type", "timezone") {
+			return nil, baseFlagErrorf("disabling scheduled notification must not include --notify-time, --repeat-type, or --timezone")
 		}
 		body["scheduled"] = group
 		return body, nil
