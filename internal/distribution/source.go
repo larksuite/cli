@@ -19,11 +19,43 @@ import (
 // registry flow; a non-zero Source selects manifest-based distribution.
 type Source struct{ manifestURL string }
 
+// SourceSnapshot freezes source resolution for one command invocation.
+type SourceSnapshot struct {
+	source Source
+	err    errs.TypedError
+}
+
+type sourceSnapshotKey struct{}
+
+// CaptureSource resolves the provider once and stores the result in ctx.
+func CaptureSource(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, ok := ctx.Value(sourceSnapshotKey{}).(SourceSnapshot); ok {
+		return ctx
+	}
+	source, err := resolveSource(ctx)
+	return context.WithValue(ctx, sourceSnapshotKey{}, SourceSnapshot{source: source, err: err})
+}
+
 // ResolveSource reads the optional distribution manifest URL from the
 // registered transport provider. Providers that do not implement
 // exttransport.DistributionProvider, or return an empty URL, yield the zero
 // (npm) Source.
 func ResolveSource(ctx context.Context) (Source, errs.TypedError) {
+	if ctx != nil {
+		if snapshot, ok := ctx.Value(sourceSnapshotKey{}).(SourceSnapshot); ok {
+			return snapshot.source, snapshot.err
+		}
+	}
+	return resolveSource(ctx)
+}
+
+func resolveSource(ctx context.Context) (Source, errs.TypedError) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	configured, ok := exttransport.GetProvider().(exttransport.DistributionProvider)
 	if !ok {
 		return Source{}, nil

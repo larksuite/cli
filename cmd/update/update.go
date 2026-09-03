@@ -35,7 +35,7 @@ const (
 // Overridable for testing.
 var (
 	fetchLatest = func() (string, error) {
-		target, err := update.FetchTarget()
+		target, err := update.FetchTargetForSource(context.Background(), distribution.Source{})
 		return target.Version, err
 	}
 	currentVersion = func() string { return build.Version }

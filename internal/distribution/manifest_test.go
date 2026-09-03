@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	exttransport "github.com/larksuite/cli/extension/transport"
 	internaltransport "github.com/larksuite/cli/internal/transport"
 )
 
@@ -20,8 +21,37 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return fn(req) }
 
+type snapshotProvider struct {
+	manifestURL string
+	calls       int
+}
+
+func (*snapshotProvider) Name() string { return "snapshot-test" }
+func (*snapshotProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
+	return nil
+}
+func (p *snapshotProvider) ResolveManifestURL(context.Context) string {
+	p.calls++
+	return p.manifestURL
+}
+
 func validManifestJSON(version string) string {
 	return fmt.Sprintf(`{"schema":1,"version":%q,"artifacts":{"skills":{"url":"https://dist.example/skills.tar.gz","checksum":%q},"test-os":{"url":"https://dist.example/cli.tar.gz","checksum":%q}}}`, version, testChecksum, testChecksum)
+}
+
+func TestCaptureSourceKeepsOneProviderResult(t *testing.T) {
+	previous := exttransport.GetProvider()
+	first := &snapshotProvider{manifestURL: "https://first.example/manifest.json"}
+	second := &snapshotProvider{manifestURL: "https://second.example/manifest.json"}
+	exttransport.Register(first)
+	t.Cleanup(func() { exttransport.Register(previous) })
+
+	ctx := CaptureSource(context.Background())
+	exttransport.Register(second)
+	got, err := ResolveSource(ctx)
+	if err != nil || got.manifestURL != first.manifestURL || first.calls != 1 || second.calls != 0 {
+		t.Fatalf("captured source = %#v, err = %v, calls = %d/%d", got, err, first.calls, second.calls)
+	}
 }
 
 func TestDistributionClientUsesSharedBuiltInTransport(t *testing.T) {

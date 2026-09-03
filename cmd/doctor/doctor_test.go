@@ -56,7 +56,7 @@ func TestCheckCLIUpdateReportsDifferentOpaqueManifestTarget(t *testing.T) {
 		distribution.DefaultClient = previousClient
 		build.Version = previousVersion
 	})
-	checks := checkCLIUpdate()
+	checks := checkCLIUpdate(context.Background())
 	if len(checks) != 1 || checks[0].Status != "warn" || !strings.Contains(checks[0].Message, "older-channel") {
 		t.Fatalf("checks = %#v", checks)
 	}
@@ -150,7 +150,7 @@ func TestDoctorRunDoesNotFetchUpdateWhenCommandIsConcealed(t *testing.T) {
 	t.Cleanup(func() { fetchLatestForDoctor = oldFetch })
 
 	fetches := 0
-	fetchLatestForDoctor = func() (update.Target, error) {
+	fetchLatestForDoctor = func(context.Context) (update.Target, error) {
 		fetches++
 		return update.Target{Version: "9.9.9"}, nil
 	}

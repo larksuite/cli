@@ -77,8 +77,8 @@ type updateState struct {
 }
 
 // CheckCached checks the local cache only (no network). Always fast.
-func CheckCached(currentVersion string) *UpdateInfo {
-	src, err := distribution.ResolveSource(context.Background())
+func CheckCached(ctx context.Context, currentVersion string) *UpdateInfo {
+	src, err := distribution.ResolveSource(ctx)
 	if err != nil || shouldSkip(currentVersion, src.ManifestMode()) {
 		return nil
 	}
@@ -100,8 +100,8 @@ func CheckCached(currentVersion string) *UpdateInfo {
 
 // RefreshCache fetches the configured target and updates the local cache.
 // No-op if the cache is still fresh (< 24h). Safe to call from a goroutine.
-func RefreshCache(currentVersion string) {
-	src, err := distribution.ResolveSource(context.Background())
+func RefreshCache(ctx context.Context, currentVersion string) {
+	src, err := distribution.ResolveSource(ctx)
 	if err != nil || shouldSkip(currentVersion, src.ManifestMode()) {
 		return
 	}
@@ -180,15 +180,20 @@ func (t Target) Available(current string) bool {
 
 // FetchTarget synchronously queries the active update source. It is intended
 // for explicit checks such as update and doctor.
-func FetchTarget() (Target, error) {
-	ctx := context.Background()
+func FetchTarget(ctx context.Context) (Target, error) {
 	src, err := distribution.ResolveSource(ctx)
 	if err != nil {
 		return Target{}, err
 	}
-	version, fetchErr := fetchTargetVersion(ctx, src)
-	if fetchErr != nil {
-		return Target{}, fetchErr
+	return FetchTargetForSource(ctx, src)
+}
+
+// FetchTargetForSource queries an already-resolved source without consulting
+// the extension registry again.
+func FetchTargetForSource(ctx context.Context, src distribution.Source) (Target, error) {
+	version, err := fetchTargetVersion(ctx, src)
+	if err != nil {
+		return Target{}, err
 	}
 	return Target{Version: version, Exact: src.ManifestMode()}, nil
 }
@@ -201,7 +206,7 @@ func fetchTargetVersion(ctx context.Context, src distribution.Source) (string, e
 		}
 		return manifest.Version, nil
 	}
-	return fetchLatestVersion()
+	return fetchLatestVersion(ctx)
 }
 
 // --- npm registry ---
@@ -210,8 +215,12 @@ type npmLatestResponse struct {
 	Version string `json:"version"`
 }
 
-func fetchLatestVersion() (string, error) {
-	resp, err := httpClient().Get(urlrewrite.Rewrite(registryURL))
+func fetchLatestVersion(ctx context.Context) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlrewrite.Rewrite(registryURL), nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := httpClient().Do(req)
 	if err != nil {
 		return "", err
 	}

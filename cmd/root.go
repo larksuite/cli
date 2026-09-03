@@ -107,7 +107,7 @@ func executeWithOptions(opts []BuildOption) int {
 
 	// --- Notices (non-blocking) ---
 	if !isCompletionCommand(os.Args) {
-		setupNotices(runtime.surface)
+		setupNotices(rootCmd.Context(), runtime.surface)
 	}
 
 	runErr := rootCmd.Execute()
@@ -143,8 +143,8 @@ func isDeferredBootstrapProfileError(err error) bool {
 var (
 	checkCachedUpdate     = update.CheckCached
 	refreshUpdateCache    = update.RefreshCache
-	initializeSkillsCheck = func(version string) {
-		if src, err := distribution.ResolveSource(context.Background()); err == nil && src.ManifestMode() {
+	initializeSkillsCheck = func(ctx context.Context, version string) {
+		if src, err := distribution.ResolveSource(ctx); err == nil && src.ManifestMode() {
 			skillscheck.InitForSource(version, src.Identity(), true)
 			return
 		}
@@ -156,10 +156,10 @@ var (
 // staleness notice into output.PendingNotice as a composed function.
 // Each provider populates an independent key under _notice; either
 // or both may be present in any given envelope.
-func setupNotices(plan *surface.Plan) {
+func setupNotices(ctx context.Context, plan *surface.Plan) {
 	if plan.CanReference(surface.CommandUpdate) {
 		// Binary update — synchronous cache check + async refresh.
-		if info := checkCachedUpdate(build.Version); info != nil {
+		if info := checkCachedUpdate(ctx, build.Version); info != nil {
 			update.SetPending(info)
 		}
 		ver := build.Version
@@ -169,9 +169,9 @@ func setupNotices(plan *surface.Plan) {
 					fmt.Fprintf(os.Stderr, "update check panic: %v\n", r)
 				}
 			}()
-			refreshUpdateCache(ver)
+			refreshUpdateCache(ctx, ver)
 			if update.GetPending() == nil {
-				if info := checkCachedUpdate(ver); info != nil {
+				if info := checkCachedUpdate(ctx, ver); info != nil {
 					update.SetPending(info)
 				}
 			}
@@ -179,7 +179,7 @@ func setupNotices(plan *surface.Plan) {
 
 		// Skills drift has only one recovery action: lark-cli update. Do not
 		// even inspect local drift state when that action is absent.
-		initializeSkillsCheck(build.Version)
+		initializeSkillsCheck(ctx, build.Version)
 	}
 
 	// Capture this build's immutable plan; never consult another Build's state.
