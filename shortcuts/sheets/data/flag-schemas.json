@@ -3113,14 +3113,6 @@
                                 "type": "number"
                               }
                             },
-                            "domainArrow": {
-                              "type": "string",
-                              "description": "轴线末端箭头",
-                              "enum": [
-                                "none",
-                                "triangle"
-                              ]
-                            },
                             "title": {
                               "type": "object",
                               "description": "坐标轴标题配置",
@@ -5599,14 +5591,6 @@
                               "items": {
                                 "type": "number"
                               }
-                            },
-                            "domainArrow": {
-                              "type": "string",
-                              "description": "轴线末端箭头",
-                              "enum": [
-                                "none",
-                                "triangle"
-                              ]
                             },
                             "title": {
                               "type": "object",
