@@ -1555,12 +1555,18 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 	}
 	if _, err := completeRuleTargetOrder([]string{"a", "a"}, []string{"a", "b"}); err == nil {
 		t.Fatal("expected duplicate error")
+	} else {
+		assertMailRuleValidationProblem(t, err, "--rule-ids")
 	}
 	if _, err := completeRuleTargetOrder([]string{"a", "z"}, []string{"a", "b"}); err == nil {
 		t.Fatal("expected unknown rule error")
+	} else {
+		assertMailRuleValidationProblem(t, err, "--rule-ids")
 	}
 	if _, err := normalizeSubmittedRuleIDs([]string{"a", " "}); err == nil {
 		t.Fatal("expected empty rule id error")
+	} else {
+		assertMailRuleValidationProblem(t, err, "--rule-ids")
 	}
 	if _, err := insertRelative([]string{"a", "b"}, "c", "", true); err == nil {
 		t.Fatal("expected missing target error")
@@ -1570,9 +1576,10 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		name string
-		args []string
-		want string
+		name      string
+		args      []string
+		want      string
+		wantParam string
 	}{
 		{
 			name: "no mode",
@@ -1595,14 +1602,16 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 			want: "is not in current rule order",
 		},
 		{
-			name: "unknown rule id",
-			args: []string{"+rule-reorder", "--rule-ids", "a,z"},
-			want: "unknown rule id z",
+			name:      "unknown rule id",
+			args:      []string{"+rule-reorder", "--rule-ids", "a,z"},
+			want:      "unknown rule id z",
+			wantParam: "--rule-ids",
 		},
 		{
-			name: "duplicate rule id",
-			args: []string{"+rule-reorder", "--rule-ids", "a,a"},
-			want: "duplicate rule id a",
+			name:      "duplicate rule id",
+			args:      []string{"+rule-reorder", "--rule-ids", "a,a"},
+			want:      "duplicate rule id a",
+			wantParam: "--rule-ids",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1614,6 +1623,7 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected reorder error")
 			}
+			assertMailRuleValidationProblem(t, err, tc.wantParam)
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error = %v, want %q", err, tc.want)
 			}
@@ -1641,6 +1651,11 @@ func TestMailRuleReorderDoesNotPostWhenListOrLocalValidationFails(t *testing.T) 
 		if err == nil || !strings.Contains(err.Error(), "list mail rules before reorder failed") {
 			t.Fatalf("error = %v, want list failure", err)
 		}
+		assertMailRuleProblem(t, err, errs.CategoryAPI, errs.SubtypeUnknown)
+		var apiErr *errs.APIError
+		if !errors.As(err, &apiErr) {
+			t.Fatalf("expected decorated error to preserve APIError cause, got %T: %v", err, err)
+		}
 		if len(post.CapturedBodies) != 0 {
 			t.Fatalf("POST should not be sent after list failure, captured %d request(s)", len(post.CapturedBodies))
 		}
@@ -1661,10 +1676,34 @@ func TestMailRuleReorderDoesNotPostWhenListOrLocalValidationFails(t *testing.T) 
 		if err == nil || !strings.Contains(err.Error(), "unknown rule id z") {
 			t.Fatalf("error = %v, want unknown rule validation", err)
 		}
+		assertMailRuleValidationProblem(t, err, "--rule-ids")
 		if len(post.CapturedBodies) != 0 {
 			t.Fatalf("POST should not be sent after local validation failure, captured %d request(s)", len(post.CapturedBodies))
 		}
 	})
+}
+
+func assertMailRuleProblem(t testing.TB, err error, wantCategory errs.Category, wantSubtype errs.Subtype) {
+	t.Helper()
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf(%T) ok = false, want true: %v", err, err)
+	}
+	if p.Category != wantCategory || p.Subtype != wantSubtype {
+		t.Fatalf("problem = %s/%s, want %s/%s", p.Category, p.Subtype, wantCategory, wantSubtype)
+	}
+}
+
+func assertMailRuleValidationProblem(t testing.TB, err error, wantParam string) {
+	t.Helper()
+	assertMailRuleProblem(t, err, errs.CategoryValidation, errs.SubtypeInvalidArgument)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if wantParam != "" && validationErr.Param != wantParam {
+		t.Fatalf("validation Param = %q, want %q", validationErr.Param, wantParam)
+	}
 }
 
 func mailRuleTestRawRule(ruleID, name string) map[string]interface{} {
