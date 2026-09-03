@@ -7,6 +7,10 @@ The single required argument is a spreadsheet URL or spreadsheet token. By
 default every worksheet is checked; pass --worksheet-id to restrict the check
 to one worksheet reference_id.
 
+Numeric source checks sample at most 50 data points per series and request at
+most 2000 source cells per chart, including headers and gaps between series.
+Sampled zero/constant values do not establish a whole-series issue.
+
 Exit codes:
   0: check completed and no issue was found
   1: the check could not be completed (CLI/read/response error)
@@ -36,7 +40,6 @@ DEFAULT_COLUMN_WIDTH = 105.0
 DEFAULT_ROW_HEIGHT = 27.0
 MAX_CELL_READ_SIZE = 2_000
 MAX_SOURCE_SAMPLE_POINTS = 50
-MAX_ZERO_SCAN_CELLS = 10_000
 
 
 CellBounds = tuple[int, int, int, int]
@@ -656,15 +659,20 @@ def _looks_numeric(value: str) -> bool:
 
 
 def _numeric_text_value(value: str) -> float | None:
-    text = value.strip().replace(" ", "").replace(",", "")
+    text = value.strip()
     if not text:
         return None
     text = re.sub(r"^([+-]?)[\$\u00a5\uffe5\u20ac\u00a3]", r"\1", text)
     if text.endswith("%"):
         text = text[:-1]
-    if not re.fullmatch(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?", text):
+    # Group separators must be consistent and separate groups of three digits.
+    if not re.fullmatch(
+        r"[+-]?(?:(?:\d+|\d{1,3}([, ])\d{3}(?:\1\d{3})*)(?:\.\d*)?|\.\d+)"
+        r"(?:[eE][+-]?\d+)?",
+        text,
+    ):
         return None
-    return float(text)
+    return float(text.replace(" ", "").replace(",", ""))
 
 
 def _zero_state(value: Any) -> str:
@@ -783,13 +791,26 @@ def _numeric_source_issues(
     issue_counts: dict[tuple[int, str, str, str, str, str], int] = {}
     degenerate_series: list[dict[str, Any]] = []
     series_profiles: list[SeriesProfile] = []
+    remaining_source_cells = MAX_CELL_READ_SIZE
     for (source_sheet, source_range, bounds), ref_dimensions in mapped_by_ref.items():
+        dimension_start = bounds[2] if direction == "column" else bounds[0]
+        selected = {
+            dimension_start + local_index - 1: (dimension_index, role)
+            for dimension_index, role, local_index in ref_dimensions
+        }
+        dimension_span = max(selected) - min(selected) + 1
+        header_points = 0 if detached else 1
+        point_count = min(
+            MAX_SOURCE_SAMPLE_POINTS + header_points,
+            remaining_source_cells // dimension_span,
+        )
+        if point_count <= header_points:
+            unverifiable.append({
+                "chart_id": chart_id,
+                "reason": f"source sampling 2000-cell budget cannot cover {source_sheet}!{source_range}",
+            })
+            continue
         if direction == "column":
-            selected = {
-                bounds[2] + local_index - 1: (dimension_index, role)
-                for dimension_index, role, local_index in ref_dimensions
-            }
-            point_count = MAX_SOURCE_SAMPLE_POINTS + (0 if detached else 1)
             checked_bounds = (
                 bounds[0],
                 min(bounds[1], bounds[0] + point_count - 1),
@@ -797,17 +818,13 @@ def _numeric_source_issues(
                 max(selected),
             )
         else:
-            selected = {
-                bounds[0] + local_index - 1: (dimension_index, role)
-                for dimension_index, role, local_index in ref_dimensions
-            }
-            point_count = MAX_SOURCE_SAMPLE_POINTS + (0 if detached else 1)
             checked_bounds = (
                 min(selected),
                 max(selected),
                 bounds[2],
                 min(bounds[3], bounds[2] + point_count - 1),
             )
+        remaining_source_cells -= _bounds_area(checked_bounds)
         checked_range = _format_a1_bounds(checked_bounds)
         same_sheet = source_sheet == owner_sheet_name
         cells_data = _read_cells(
@@ -830,6 +847,7 @@ def _numeric_source_issues(
                 "zero": False,
                 "empty": False,
                 "nonzero": False,
+                "sample_point_count": 0,
                 "numeric_value_count": 0,
                 "unique_numeric_values": set(),
             }
@@ -845,6 +863,7 @@ def _numeric_source_issues(
                 or (direction != "column" and column_index == bounds[2])
             ):
                 continue
+            states[coordinate]["sample_point_count"] += 1
             value = cell.get("value") if isinstance(cell, dict) else None
             _update_series_state(states[coordinate], value)
             number_format = (
@@ -866,61 +885,6 @@ def _numeric_source_issues(
             samples = issue_groups.setdefault(key, [])
             if len(samples) < sample_limit:
                 samples.append(f"{index_to_column(column_index)}{row_number}")
-
-        zero_candidates = {
-            coordinate for coordinate, state in states.items() if not state["nonzero"]
-        }
-        constant_candidates = {
-            coordinate
-            for coordinate, state in states.items()
-            if len(state["unique_numeric_values"]) <= 1
-        }
-        candidates = zero_candidates | constant_candidates
-        if not truncated and candidates:
-            cursor = checked_bounds[1] + 1 if direction == "column" else checked_bounds[3] + 1
-            end = bounds[1] if direction == "column" else bounds[3]
-            while candidates and cursor <= end:
-                fixed_span = max(candidates) - min(candidates) + 1
-                points_per_window = max(1, MAX_ZERO_SCAN_CELLS // fixed_span)
-                window_end = min(end, cursor + points_per_window - 1)
-                scan_bounds = (
-                    (cursor, window_end, min(candidates), max(candidates))
-                    if direction == "column"
-                    else (min(candidates), max(candidates), cursor, window_end)
-                )
-                scan_range = _format_a1_bounds(scan_bounds)
-                scan_data = _read_cells(
-                    cache,
-                    locator,
-                    sheet_id=owner_sheet_id if same_sheet else None,
-                    sheet_name=None if same_sheet else source_sheet,
-                    cell_range=scan_range,
-                    include="value",
-                    skip_hidden=skip_hidden,
-                    timeout=timeout,
-                )
-                if _cells_truncated(scan_data):
-                    truncated = True
-                    unverifiable.append(
-                        {
-                            "chart_id": chart_id,
-                            "reason": f"cells-get truncated for {source_sheet}!{scan_range}",
-                        }
-                    )
-                    break
-                for row_number, column_index, cell in _iter_cells(scan_data):
-                    coordinate = column_index if direction == "column" else row_number
-                    if coordinate not in candidates:
-                        continue
-                    value = cell.get("value") if isinstance(cell, dict) else None
-                    _update_series_state(states[coordinate], value)
-                candidates = {
-                    coordinate
-                    for coordinate in candidates
-                    if not states[coordinate]["nonzero"]
-                    or len(states[coordinate]["unique_numeric_values"]) <= 1
-                }
-                cursor = window_end + 1
 
         if truncated:
             continue
@@ -965,19 +929,36 @@ def _numeric_source_issues(
                     or f"Series {dimension_index}"
                 ),
                 "point_count": point_total,
+                "sample_point_count": state["sample_point_count"],
+                "checked_range": checked_range,
+                "sampled": (
+                    checked_bounds[1] < bounds[1]
+                    if direction == "column"
+                    else checked_bounds[3] < bounds[3]
+                ),
                 "numeric_value_count": state["numeric_value_count"],
                 "unique_numeric_values": list(state["unique_numeric_values"]),
                 "source_sheet": source_sheet,
                 "source_range": source_range,
                 "series_range": series_range,
             }
-            if (
+            constant_labeled = (
                 state["numeric_value_count"] >= 2
                 and len(state["unique_numeric_values"]) == 1
                 and dimension_index
                 in _labeled_series_indexes(snapshot, [{"dimension_index": dimension_index}])
-                and _aggregation_can_change_constant(data, dimension_index)
-            ):
+            )
+            if profile["sampled"]:
+                profile["constant_check_unverifiable"] = True
+                if coordinate in zero_candidates or constant_labeled:
+                    unverifiable.append({
+                        "chart_id": chart_id,
+                        "reason": (
+                            "zero/constant-series check is unverifiable outside sampled source "
+                            f"{source_sheet}!{checked_range} for dimension {dimension_index}"
+                        ),
+                    })
+            elif constant_labeled and _aggregation_can_change_constant(data, dimension_index):
                 profile["constant_check_unverifiable"] = True
                 unverifiable.append(
                     {
@@ -989,7 +970,7 @@ def _numeric_source_issues(
                     }
                 )
             series_profiles.append(profile)
-            if coordinate not in zero_candidates:
+            if coordinate not in zero_candidates or profile["sampled"]:
                 continue
             degenerate_series.append(
                 {
@@ -1081,6 +1062,7 @@ def check_sheet(
             "chart_overlaps": [],
             "cell_content_overlaps": [],
             "numeric_source_format_issues": [],
+            "numeric_source_samples": [],
             "degenerate_numeric_series": [],
             "constant_labeled_series": [],
             "unbound_secondary_axes": [],
@@ -1183,6 +1165,7 @@ def check_sheet(
                 )
 
     numeric_source_issues: list[dict[str, Any]] = []
+    numeric_source_samples: list[dict[str, Any]] = []
     degenerate_numeric_series: list[dict[str, Any]] = []
     constant_series_issues: list[dict[str, Any]] = []
     unbound_secondary_axes: list[dict[str, Any]] = []
@@ -1199,6 +1182,11 @@ def check_sheet(
             sample_limit=sample_limit,
         )
         numeric_source_issues.extend(issues)
+        numeric_source_samples.extend(
+            {"chart_id": str(chart.get("chart_id") or chart.get("id") or ""), **profile}
+            for profile in profiles
+            if "checked_range" in profile
+        )
         degenerate_numeric_series.extend(degenerate)
         unverifiable.extend(source_unverifiable)
         constant_series_issues.extend(_constant_labeled_series(chart, profiles))
@@ -1231,6 +1219,7 @@ def check_sheet(
         "chart_overlaps": overlaps,
         "cell_content_overlaps": content_overlaps,
         "numeric_source_format_issues": numeric_source_issues,
+        "numeric_source_samples": numeric_source_samples,
         "degenerate_numeric_series": degenerate_numeric_series,
         "constant_labeled_series": constant_series_issues,
         "unbound_secondary_axes": unbound_secondary_axes,

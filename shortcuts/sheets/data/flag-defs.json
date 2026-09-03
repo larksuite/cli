@@ -3653,7 +3653,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Legend position; use bottom by default for pie and doughnut charts; hidden removes the legend",
+        "desc": "Legend position; use bottom by default for pie charts; hidden removes the legend",
         "enum": [
           "top",
           "bottom",
@@ -3813,7 +3813,7 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Optional chart width; must be paired with --height; widen pie or doughnut charts and charts with long category labels to avoid truncation"
+        "desc": "Optional chart width; must be paired with --height; widen pie charts and charts with long category labels to avoid truncation"
       },
       {
         "name": "height",
