@@ -249,7 +249,7 @@
                 },
                 {
                   "value": "zh-TW",
-                  "description": "<redacted>"
+                  "description": "繁体中文"
                 }
               ],
               "enumName": "ShowLanguage",

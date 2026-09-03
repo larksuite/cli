@@ -88,7 +88,7 @@
                     },
                     "zh_tw": {
                       "type": "string",
-                      "description": "<redacted>",
+                      "description": "繁体中文",
                       "required": false,
                       "example": "工作臺"
                     },
@@ -4938,7 +4938,7 @@
                     },
                     "zh_tw": {
                       "type": "string",
-                      "description": "<redacted>",
+                      "description": "繁体中文",
                       "required": false,
                       "example": "工作臺"
                     },
