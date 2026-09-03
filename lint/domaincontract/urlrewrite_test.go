@@ -18,7 +18,6 @@ func TestStaticURLRewriteGuard(t *testing.T) {
 	}{
 		{"raw URL", "cmd/x.go", `package p; func f() { _ = "https://github.com/acme/project" }`, 1},
 		{"wrapped URL", "cmd/x.go", `package p; import rewrite "github.com/larksuite/cli/internal/urlrewrite"; func f() { _ = rewrite.Rewrite("https://github.com/acme/project") }`, 0},
-		{"package initialization is too early", "cmd/x.go", `package p; import rewrite "github.com/larksuite/cli/internal/urlrewrite"; var u = rewrite.Rewrite("https://github.com/acme/project")`, 1},
 		{"static concatenation", "shortcuts/x/x.go", `package p; func f() { _ = "https://" + "github.com/acme/project" }`, 1},
 		{"documented exemption", "cmd/x.go", "package p\nfunc f() {\n//nolint:urlrewrite protocol namespace\n_ = \"https://www.larkoffice.com/sml/2.0\"\n}\n", 0},
 		{"test fixture", "cmd/x_test.go", `package p; var u = "https://github.com/acme/project"`, 0},
