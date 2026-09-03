@@ -750,10 +750,23 @@ func TestMailAutoReplyModifyRequiresConfirmation(t *testing.T) {
 	}
 }
 
-func TestMailAutoReplyInvalidTimezoneOffsetIsReportedBeforeStartParse(t *testing.T) {
+func TestMailAutoReplyAllowsIANATimezone(t *testing.T) {
+	if err := validateAutoReplyTimezone("Asia/Shanghai"); err != nil {
+		t.Fatalf("validateAutoReplyTimezone() error = %v", err)
+	}
+	got, err := parseAutoReplyDateMillis("--start", "2030-08-15", "Asia/Shanghai", false)
+	if err != nil {
+		t.Fatalf("parseAutoReplyDateMillis() error = %v", err)
+	}
+	if got != "1912953600000" {
+		t.Fatalf("start millis = %s, want 1912953600000", got)
+	}
+}
+
+func TestMailAutoReplyInvalidTimezoneIsReportedBeforeStartParse(t *testing.T) {
 	for _, args := range [][]string{
-		{"+auto-reply-modify", "--timezone", "Asia/Shanghai"},
-		{"+auto-reply-modify", "--start", "2026-08-19T00:00:00", "--timezone", "Asia/Shanghai"},
+		{"+auto-reply-modify", "--timezone", "Asia/NotExist"},
+		{"+auto-reply-modify", "--start", "2026-08-19T00:00:00", "--timezone", "Asia/NotExist"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			f, stdout, _, _ := mailShortcutTestFactory(t)
@@ -761,7 +774,7 @@ func TestMailAutoReplyInvalidTimezoneOffsetIsReportedBeforeStartParse(t *testing
 			if err == nil {
 				t.Fatal("expected timezone validation error")
 			}
-			if !strings.Contains(err.Error(), "--timezone must be UTC offset seconds") {
+			if !strings.Contains(err.Error(), "invalid --timezone") {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			if strings.Contains(err.Error(), "--start must be Unix seconds, Unix milliseconds, or YYYY-MM-DD") {

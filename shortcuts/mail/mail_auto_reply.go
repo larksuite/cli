@@ -519,8 +519,11 @@ func validateAutoReplyTimezone(timezone string) error {
 	if timezone == "" {
 		return nil
 	}
-	if _, err := parseAutoReplyTimezoneOffset(timezone); err != nil {
-		return err
+	if _, err := parseAutoReplyTimezoneOffset(timezone); err == nil {
+		return nil
+	}
+	if _, err := time.LoadLocation(timezone); err != nil {
+		return mailValidationParamError("--timezone", "invalid --timezone %q", timezone).WithCause(err)
 	}
 	return nil
 }
