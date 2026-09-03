@@ -45,6 +45,13 @@ func TestDocsCreateV2RemoteImageDryRunDownloadsAfterDocumentCreation(t *testing.
 	if got := envelope.Data.API[0].URL; got != "/open-apis/docs_ai/v1/documents" {
 		t.Fatalf("first API URL = %q, want document creation", got)
 	}
+	createBody, ok := envelope.Data.API[0].Body.(map[string]interface{})
+	if !ok {
+		t.Fatalf("create dry-run body = %#v, want object", envelope.Data.API[0].Body)
+	}
+	if got := createBody["extra_param"]; got != docsCreateAsyncExtraParam {
+		t.Fatalf("create dry-run extra_param = %#v, want %q", got, docsCreateAsyncExtraParam)
+	}
 	if got := envelope.Data.API[1].URL; got != "/open-apis/docs_ai/v1/async_tasks/<task_id>" {
 		t.Fatalf("second API URL = %q, want conditional async task poll", got)
 	}

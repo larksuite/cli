@@ -13,6 +13,8 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+const docsCreateAsyncExtraParam = `{"open_create_async":true}`
+
 // v2CreateFlags returns the flag definitions for the v2 (OpenAPI) create path.
 func v2CreateFlags() []common.Flag {
 	return []common.Flag{
@@ -131,8 +133,9 @@ func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 
 func buildCreateBody(runtime *common.RuntimeContext) map[string]interface{} {
 	body := map[string]interface{}{
-		"format":  runtime.Str("doc-format"),
-		"content": buildCreateContent(runtime),
+		"format":      runtime.Str("doc-format"),
+		"content":     buildCreateContent(runtime),
+		"extra_param": docsCreateAsyncExtraParam,
 	}
 	if v := runtime.Str("parent-token"); v != "" {
 		body["parent_token"] = v
