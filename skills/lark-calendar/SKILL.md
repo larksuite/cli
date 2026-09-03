@@ -73,11 +73,15 @@ lark-cli calendar +get --calendar-id <calendar_id> --event-id <event_id>
 lark-cli calendar +search-event --query "周会" --start 2026-04-20 --end 2026-04-27 --attendee-ids "ou_user1,oc_chat1,omm_room1" --page-token <page_token> --page-size 30
 ```
 
+`--attendee-ids` 的多值语义：**同类型内为 OR（并集）**——只要日程命中列表中的任意一个同类型 ID，就会返回。
+
+- `--attendee-ids "ou_A,ou_B"` = A **或** B 参加的日程（**不是** A 和 B 都参加的）。
+
 ### `+delete` — 删除日程
 
 ```bash
 # calendar_id不传，默认primary
-lark-cli calendar +delete --calendar-id <calendar_id> --event-id <event_id> --notify true
+lark-cli calendar +delete --calendar-id <calendar_id> --event-id <event_id> --notify=true
 ```
 
 ### `+agenda` — 查看近期日程安排

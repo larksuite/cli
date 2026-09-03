@@ -67,8 +67,8 @@ lark-cli minutes +search --query "预算复盘" --format json
 | 参数                        | 必填 | 说明                                   |
 | ------------------------- | -- | ------------------------------------ |
 | `--query <text>`          | 否  | 搜索关键词                                |
-| `--owner-ids <ids>`       | 否  | 所有者 open\_id 列表，逗号分隔；支持传 `me` 表示当前用户 |
-| `--participant-ids <ids>` | 否  | 参与者 open\_id 列表，逗号分隔；支持传 `me` 表示当前用户 |
+| `--owner-ids <ids>`       | 否  | 所有者 open\_id 列表，逗号分隔；多值为 OR 语义；支持传 `me` 表示当前用户 |
+| `--participant-ids <ids>` | 否  | 参与者 open\_id 列表，逗号分隔；多值为 OR 语义；支持传 `me` 表示当前用户 |
 | `--start <time>`          | 否  | 开始时间（ISO 8601 或仅日期）                  |
 | `--end <time>`            | 否  | 结束时间（ISO 8601 或仅日期）                  |
 | `--page-size <n>`         | 否  | 每页数量，默认 `15`，最大 `30`                 |

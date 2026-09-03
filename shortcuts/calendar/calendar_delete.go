@@ -10,7 +10,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 	"time"
 
@@ -372,62 +371,7 @@ func resolveCalendarEventOrMaster(runtime *common.RuntimeContext, calendarID, ev
 		return nil, errMalformedEventID(eventID)
 	}
 	event, err := fetchCalendarEvent(runtime, calendarID, eventID)
-	if err == nil {
-		return event, nil
-	}
-	if !isEventNotFound(err) {
-		return nil, err
-	}
-	// Try the master fallback: any instance-shaped id can degrade to the
-	// master. If the id is already the master (`_0`), masterEventID is a
-	// no-op and this second GET is redundant, so short-circuit.
-	masterID := masterEventID(eventID)
-	if masterID == eventID {
-		return nil, errs.NewAPIError(errs.SubtypeNotFound,
-			"calendar event %s not found", eventID)
-	}
-	master, mErr := fetchCalendarEvent(runtime, calendarID, masterID)
-	if mErr != nil {
-		if isEventNotFound(mErr) {
-			return nil, errs.NewAPIError(errs.SubtypeNotFound,
-				"calendar event %s not found (also tried master %s)", eventID, masterID)
-		}
-		return nil, mErr
-	}
-	if master == nil {
-		return nil, errs.NewAPIError(errs.SubtypeNotFound,
-			"calendar event %s not found (also tried master %s)", eventID, masterID)
-	}
-	// Clone the master into a synthetic snapshot for the instance the caller
-	// asked about. The classifier keys off (IsException, Recurrence, EventID
-	// shape); dropping Recurrence lets classifyRecurringEvent tag this as a
-	// plain recurring instance (EventID has a positive originalTime) rather
-	// than a master. ensureMasterEvent still does the real master GET when
-	// downstream needs the master's stored recurrence.
-	shadow := *master
-	shadow.EventID = eventID
-	// 根据eventID的originalTime对齐shadow的StartTime和EndTime
-	if originalTime, ok := parseInstanceOriginalTime(eventID); ok &&
-		master.StartTime != nil &&
-		master.EndTime != nil &&
-		master.StartTime.Timestamp != "" &&
-		master.EndTime.Timestamp != "" {
-		st, e1 := strconv.ParseInt(master.StartTime.Timestamp, 10, 64)
-		et, e2 := strconv.ParseInt(master.EndTime.Timestamp, 10, 64)
-		if e1 != nil || e2 != nil {
-			parseErr := e1
-			if parseErr == nil {
-				parseErr = e2
-			}
-			return nil, withStepContext(parseErr, "failed to parse start time %s or end time %s", master.StartTime.Timestamp, master.EndTime.Timestamp)
-		}
-		duration := et - st
-		shadow.StartTime.Timestamp = strconv.FormatInt(originalTime, 10)
-		shadow.EndTime.Timestamp = strconv.FormatInt(originalTime+duration, 10)
-	}
-	shadow.IsException = false
-	shadow.Recurrence = ""
-	return &shadow, nil
+	return event, err
 }
 
 // ensureMasterEvent returns the master calendar event. It avoids a redundant
