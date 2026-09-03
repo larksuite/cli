@@ -20,6 +20,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -147,9 +148,36 @@ func TestGetValidAccessTokenRetriesAndStoresSuccessfulRefresh(t *testing.T) {
 	if accessToken != "access-new" || calls.Load() != 2 {
 		t.Fatalf("refresh result = (%q, %d calls), want access-new after one retry", accessToken, calls.Load())
 	}
-	current := GetStoredToken(stored.AppId, stored.UserOpenId)
+	current := mustGetStoredToken(t, stored.AppId, stored.UserOpenId)
 	if current == nil || current.RefreshToken != "refresh-new" || current.Scope != stored.Scope || current.GrantedAt != stored.GrantedAt {
 		t.Fatalf("stored token = %#v, want refreshed generation with stable metadata", current)
+	}
+}
+
+func TestGetValidAccessTokenPreservesCorruptStoredTokenError(t *testing.T) {
+	setupStoredTokenTest(t)
+	stored := newRefreshTestToken()
+	if err := keychain.Set(
+		keychain.LarkCliService,
+		accountKey(stored.AppId, stored.UserOpenId),
+		`{"accessToken":`,
+	); err != nil {
+		t.Fatalf("keychain.Set() error = %v", err)
+	}
+
+	accessToken, err := GetValidAccessToken(http.DefaultClient, newRefreshTestOptions(stored))
+	if accessToken != "" {
+		t.Fatalf("access token = %q, want empty", accessToken)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeStorage {
+		t.Fatalf("error = %v (%T), want internal/storage", err, err)
+	}
+	if IsNeedUserAuthorizationError(err) {
+		t.Fatalf("error = %v, must not be classified as token_missing", err)
+	}
+	if !errors.Is(err, errStoredTokenCorrupt) {
+		t.Fatalf("error = %v, want corruption cause preserved", err)
 	}
 }
 
@@ -274,7 +302,7 @@ func TestRefreshFailureDeterminesStoredTokenDisposition(t *testing.T) {
 			if calls.Load() != tt.wantCalls {
 				t.Fatalf("request count = %d, want %d", calls.Load(), tt.wantCalls)
 			}
-			current := GetStoredToken(stored.AppId, stored.UserOpenId)
+			current := mustGetStoredToken(t, stored.AppId, stored.UserOpenId)
 			if tt.wantPreserved {
 				if current == nil || current.RefreshToken != stored.RefreshToken {
 					t.Fatalf("stored token = %#v, want original generation preserved", current)
@@ -334,7 +362,7 @@ func TestRefreshDoesNotOverwriteNewerGeneration(t *testing.T) {
 			}}, &calls)
 
 			accessToken, err := GetValidAccessToken(client, newRefreshTestOptions(stored))
-			current := GetStoredToken(stored.AppId, stored.UserOpenId)
+			current := mustGetStoredToken(t, stored.AppId, stored.UserOpenId)
 			if tt.deleteNext {
 				if !IsNeedUserAuthorizationError(err) || accessToken != "" || current != nil {
 					t.Fatalf("logout result = (access=%q, err=%v, stored=%#v), want deleted generation", accessToken, err, current)
@@ -439,7 +467,7 @@ func TestRefreshStopsBeforeRequestWhenStorageProbeFails(t *testing.T) {
 	if _, ok := errs.ProblemOf(err); !ok || !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v (%T), want typed storage failure preserving cause", err, err)
 	}
-	current := GetStoredToken(stored.AppId, stored.UserOpenId)
+	current := mustGetStoredToken(t, stored.AppId, stored.UserOpenId)
 	if current == nil || current.RefreshToken != stored.RefreshToken {
 		t.Fatalf("stored token = %#v, want original token preserved", current)
 	}
@@ -462,7 +490,7 @@ func TestExpiredRefreshTokenIsClearedWithoutRequest(t *testing.T) {
 	if accessToken != "" || !IsNeedUserAuthorizationError(err) {
 		t.Fatalf("expired refresh result = (access=%q, err=%v), want authorization required", accessToken, err)
 	}
-	if calls.Load() != 0 || GetStoredToken(stored.AppId, stored.UserOpenId) != nil {
+	if calls.Load() != 0 || mustGetStoredToken(t, stored.AppId, stored.UserOpenId) != nil {
 		t.Fatalf("expired refresh made %d request(s) or left token stored", calls.Load())
 	}
 }

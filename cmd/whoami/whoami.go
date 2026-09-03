@@ -109,7 +109,7 @@ func whoamiRun(cmd *cobra.Command, opts *Options, projector *recovery.Projector)
 	)
 	diag := identitydiag.FilterRecovery(
 		identitydiag.Diagnose(ctx, f, cfg, false),
-		projector.CanReference,
+		projector,
 	)
 	res := buildResult(cfg, as, source, diag)
 	output.PrintJson(f.IOStreams.Out, res)
