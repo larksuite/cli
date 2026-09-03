@@ -351,10 +351,7 @@ func factoryWithDeclaredServiceScope(t *testing.T) *cmdutil.Factory {
 	if err != nil {
 		t.Fatalf("open catalog snapshot: %v", err)
 	}
-	catalog, err := snapshot.FullCatalog()
-	if err != nil {
-		t.Fatalf("load full catalog: %v", err)
-	}
+	catalog := snapshot.Catalog()
 	f := &cmdutil.Factory{APICatalog: catalog, ResolvedIdentity: core.AsUser}
 	var target registry.CommandEntry
 	for _, entry := range registry.CollectCommandScopes(catalog, []string{"calendar"}, "user") {

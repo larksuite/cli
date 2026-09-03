@@ -104,7 +104,7 @@ func TestBuildForArgsRecognizesExternalOnlyShortcutDomain(t *testing.T) {
 		},
 	})
 
-	root, err := BuildForArgs(context.Background(), buildInvocationForTest(t), []string{"approval", "+business-target"},
+	root, err := buildRootForArgs(context.Background(), buildInvocationForTest(t), []string{"approval", "+business-target"},
 		WithCommandSets(command.Set{
 			Domain:   command.ExtendDomain(command.DomainApproval),
 			Commands: []command.Command{declaration},

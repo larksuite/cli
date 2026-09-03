@@ -16,9 +16,5 @@ func testFullCatalog(t *testing.T) apicatalog.Catalog {
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog, err := snapshot.FullCatalog()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return catalog
+	return snapshot.Catalog()
 }

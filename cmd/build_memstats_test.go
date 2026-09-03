@@ -35,19 +35,19 @@ func TestBuild_DefaultNoCompletionLeak(t *testing.T) {
 
 	buildFull := func() {
 		t.Helper()
-		if _, err := BuildForArgs(
+		if _, err := buildRootForArgs(
 			context.Background(),
 			cmdutil.InvocationContext{},
 			[]string{"--help"},
 			WithoutPlugins(),
 		); err != nil {
-			t.Fatalf("BuildForArgs: %v", err)
+			t.Fatalf("buildRootForArgs: %v", err)
 		}
 	}
 
 	// Warm one-time package initialization so it does not skew retained-growth
 	// measurements. Snapshot service data is still parsed independently by
-	// every BuildForArgs call.
+	// every target build.
 	buildFull()
 	baseMB, baseObj := snap()
 

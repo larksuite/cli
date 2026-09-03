@@ -34,13 +34,10 @@ func buildInternalForTest(
 	opts ...BuildOption,
 ) (*cmdutil.Factory, *cobra.Command, *hook.Registry) {
 	t.Helper()
-	cfg := resolveBuildConfig(opts)
-	catalog, err := fullCatalog(cfg)
+	runtime, root, reg, err := assembleInternal(ctx, inv, assemblyRequest{}, resolveBuildConfig(opts))
 	if err != nil {
-		t.Fatalf("load full Catalog: %v", err)
+		t.Fatalf("assemble full tree: %v", err)
 	}
-	registeredShortcuts, commandSetErr := resolveShortcutSnapshot(cfg.commandSets)
-	runtime, root, reg := assembleInternal(ctx, inv, catalog, nil, registeredShortcuts, commandSetErr, frozenPlugins(cfg), cfg)
 	return runtime.Factory, root, reg
 }
 

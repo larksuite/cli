@@ -24,7 +24,7 @@ func BenchmarkBuildForArgs(b *testing.B) {
 		b.Run(tt.name, func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				if _, err := BuildForArgs(
+				if _, err := buildRootForArgs(
 					context.Background(),
 					cmdutil.InvocationContext{},
 					tt.args,

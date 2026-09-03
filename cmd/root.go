@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"os/signal"
 	"sort"
@@ -16,7 +15,6 @@ import (
 	"github.com/larksuite/cli/cmd/service"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/platform"
-	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdpolicy"
@@ -26,7 +24,6 @@ import (
 	"github.com/larksuite/cli/internal/hook"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
-	"github.com/larksuite/cli/internal/skillref"
 	"github.com/larksuite/cli/internal/skillscheck"
 	"github.com/larksuite/cli/internal/suggest"
 	"github.com/larksuite/cli/internal/surface"
@@ -84,20 +81,11 @@ func executeWithOptions(opts []BuildOption) int {
 		cfg.deferStartup = true
 	}
 	result, buildErr := buildForArgsWithConfig(ctx, inv, rawInvocationArgs, cfg)
-	var runtime *buildRuntime
-	var rootCmd *cobra.Command
-	var reg *hook.Registry
 	if buildErr != nil {
-		f := cmdutil.NewDefault(cfg.streams, inv)
-		runtime = &buildRuntime{Factory: f, surface: surface.NewPlan(nil)}
-		runtime.recovery = recovery.NewProjector(func() *surface.Plan { return runtime.surface })
-		f.Recovery = runtime.recovery
-		rootCmd = newCatalogFailureRoot(ctx, cfg, buildErr)
-		rootCmd.SetArgs(rawInvocationArgs)
-	} else {
-		runtime, rootCmd, reg = result.runtime, result.root, result.registry
-		rootCmd.SetArgs(append([]string(nil), rawInvocationArgs...))
+		result = failedCatalogBuild(ctx, inv, cfg, buildErr)
 	}
+	runtime, rootCmd, reg := result.runtime, result.root, result.registry
+	rootCmd.SetArgs(append([]string(nil), rawInvocationArgs...))
 	f := runtime.Factory
 
 	if deferProfileError {
@@ -817,17 +805,12 @@ func installHelpCommand(root *cobra.Command) {
 // when rendering the root command's own help, so users discovering the CLI
 // still see them at `lark-cli --help`.
 //
-// skillContent is read lazily at help-render time (not captured up front) so
-// the domain-guide pointer reflects the resolved skill tree -- the same
-// f.SkillContent that `skills list`/`read` serve -- even though plugin skill
-// customization is applied after this help func is installed.
-func installTipsHelpFunc(
-	root *cobra.Command,
-	catalog apicatalog.Catalog,
-	skillContent func() fs.FS,
-	skillReferences func() *skillref.Resolver,
-	projector *recovery.Projector,
-) {
+// help is this build's renderer; its skill and reference fields are read lazily
+// at help-render time (not captured up front) so the domain-guide pointer
+// reflects the resolved skill tree -- the same f.SkillContent that `skills
+// list`/`read` serve -- even though plugin skill customization is applied after
+// this help func is installed.
+func installTipsHelpFunc(root *cobra.Command, help *service.HelpRenderer) {
 	defaultHelp := root.HelpFunc()
 	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		if cmd == root {
@@ -841,25 +824,7 @@ func installTipsHelpFunc(
 		// Domain and method commands compose their agent guidance into Long lazily
 		// here (shortcuts attach after service registration); both skip the generic
 		// bottom-of-help append below.
-		var refs *skillref.Resolver
-		if skillReferences != nil {
-			refs = skillReferences()
-		}
-		var content fs.FS
-		if skillContent != nil {
-			content = skillContent()
-		}
-		if service.PrepareDomainHelpWithReferences(cmd, content, refs) {
-			defaultHelp(cmd, args)
-			return
-		}
-		if service.PrepareMethodHelpWithProjectionCatalog(catalog, cmd, content, refs, func() bool {
-			return projector == nil || projector.CanReference(recovery.TargetSchema)
-		}) {
-			defaultHelp(cmd, args)
-			return
-		}
-		if service.PrepareShortcutHelpWithReferencesCatalog(catalog, cmd, content, refs) {
+		if help.PrepareDomainHelp(cmd) || help.PrepareMethodHelp(cmd) || help.PrepareShortcutHelp(cmd) {
 			defaultHelp(cmd, args)
 			return
 		}

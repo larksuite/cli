@@ -369,7 +369,7 @@ func TestAllEnvelopesPass(t *testing.T) {
 	knownEnvelopes := map[string]bool{}
 	catalog := testFullCatalog(t)
 	for _, svc := range catalog.Services() {
-		envs := Envelopes(apicatalog.ServiceMethods(svc, nil))
+		envs := Envelopes(nil, apicatalog.ServiceMethods(svc, nil))
 		for _, env := range envs {
 			errs := lintEnvelope(env)
 			if len(errs) == 0 {
@@ -399,7 +399,7 @@ func TestAllEnvelopesPass(t *testing.T) {
 	}
 
 	// L4 coverage report (warn-only via t.Logf)
-	all := Envelopes(catalog.WalkMethods(nil))
+	all := Envelopes(nil, catalog.WalkMethods(nil))
 	c := measureCoverage(all)
 	for metric, rate := range c {
 		baseline := coverageBaseline[metric]

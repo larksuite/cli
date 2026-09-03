@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/apicatalog"
+	"github.com/larksuite/cli/internal/meta"
 )
 
 func snapshotServiceNames(t *testing.T) []string {
@@ -28,11 +29,7 @@ func scopeTestCatalog(t *testing.T) apicatalog.Catalog {
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog, err := snapshot.FullCatalog()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return catalog
+	return snapshot.Catalog()
 }
 
 func TestLoadScopePriorities(t *testing.T) {
@@ -559,10 +556,9 @@ func TestCollectScopesForProjects_APICatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog, err := snapshot.Catalog("drive")
-	if err != nil {
-		t.Fatal(err)
-	}
+	catalog := apicatalog.Filter(snapshot.Catalog(), func(s meta.Service) (meta.Service, bool) {
+		return s, s.Name == "drive"
+	})
 	if scopes := CollectScopesForProjects(catalog, []string{"drive"}, "user"); len(scopes) == 0 {
 		t.Fatal("drive-only catalog returned no drive scopes")
 	}

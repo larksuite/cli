@@ -25,6 +25,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/deprecation"
+	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
@@ -524,10 +525,9 @@ func TestApplyNeedAuthorizationHint_ServiceMethodUsesLocalScopesWhenNoUAT(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.APICatalog, err = snapshot.Catalog("drive")
-	if err != nil {
-		t.Fatal(err)
-	}
+	f.APICatalog = apicatalog.Filter(snapshot.Catalog(), func(svc meta.Service) (meta.Service, bool) {
+		return svc, svc.Name == "drive"
+	})
 	f.ResolvedIdentity = core.AsUser
 
 	var target apicatalog.MethodRef

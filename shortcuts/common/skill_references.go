@@ -4,7 +4,6 @@
 package common
 
 import (
-	"github.com/larksuite/cli/internal/affordance"
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/meta"
 )
@@ -23,7 +22,7 @@ func (ctx *RuntimeContext) ResolveAffordanceSkillReferences() []string {
 	if !ok {
 		return nil
 	}
-	raw, ok := affordance.For(ctx.Factory.APICatalog, service, methodID)
+	raw, ok := ctx.Factory.Affordance.For(service, methodID)
 	if !ok {
 		return nil
 	}

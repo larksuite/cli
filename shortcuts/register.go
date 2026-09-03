@@ -46,6 +46,13 @@ var serviceAliases = map[string][]string{
 	"slides": {"slide"},
 }
 
+// ServiceAliases returns the alternate spellings mounted on service's root
+// command, so a routing stub created before the domain is expanded answers the
+// same invocations as the expanded command.
+func ServiceAliases(service string) []string {
+	return append([]string(nil), serviceAliases[service]...)
+}
+
 // Empty brand (no config loaded) is treated as no-restriction so bootstrap
 // paths and tests without config still see the full service list.
 var brandRestrictedServices = map[string][]core.LarkBrand{
@@ -197,15 +204,17 @@ func RegisterShortcutSnapshotForDomainsWithContext(
 			}
 		}
 		if svc == nil {
+			svc = &cobra.Command{Use: service}
+			program.AddCommand(svc)
+		}
+		// A pre-mounted routing stub carries no description yet; a service
+		// command registered by cmd/service keeps its own.
+		if svc.Short == "" {
 			desc := registry.GetServiceDescription(service, "en")
 			if desc == "" {
 				desc = service + " operations"
 			}
-			svc = &cobra.Command{
-				Use:   service,
-				Short: desc,
-			}
-			program.AddCommand(svc)
+			svc.Short = desc
 		}
 		// Tag the service group with its domain so platform.ByDomain
 		// and Rule.Allow path-globs work without each leaf shortcut

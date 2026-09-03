@@ -35,15 +35,15 @@ func collectCommandIndex(ctx context.Context) (manifest.Manifest, error) {
 	if err != nil {
 		return manifest.Manifest{}, err
 	}
-	catalog, err := snapshot.FullCatalog()
-	if err != nil {
+	catalog := snapshot.Catalog()
+	if err := catalog.Preload(catalog.Names()...); err != nil {
 		return manifest.Manifest{}, err
 	}
 	root := rootcmd.Build(ctx, cmdutil.InvocationContext{},
 		rootcmd.WithIO(strings.NewReader(""), io.Discard, io.Discard),
 		rootcmd.WithoutPlugins(),
 		rootcmd.WithoutStrictMode(),
-		rootcmd.WithAPICatalog(catalog),
+		rootcmd.WithServiceCatalog(catalog),
 	)
 
 	idx := collectFromRoot(root)

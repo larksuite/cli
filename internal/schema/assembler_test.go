@@ -557,7 +557,8 @@ func TestBuildOutputSchema_EmptyResponseBody(t *testing.T) {
 // via the public ref entry, so these unit tests build the same MethodRef the
 // command layer feeds Envelope.
 func synthEnvelope(serviceName string, resourcePath []string, m meta.Method) Envelope {
-	return EnvelopeOf(apicatalog.MethodRef{Service: meta.Service{Name: serviceName}, ResourcePath: resourcePath, Method: m})
+	guidance := affordance.NewResolver(affordance.Source(), apicatalog.Catalog{})
+	return EnvelopeOf(guidance, apicatalog.MethodRef{Service: meta.Service{Name: serviceName}, ResourcePath: resourcePath, Method: m})
 }
 
 func TestAssembleEnvelope_ReactionsList_FullStructure(t *testing.T) {
@@ -605,7 +606,7 @@ func TestAssembleEnvelope_JSONIsStable(t *testing.T) {
 
 func TestAssembleService_Im(t *testing.T) {
 	svc, _ := testFullCatalog(t).Service("im")
-	envs := Envelopes(apicatalog.ServiceMethods(svc, nil))
+	envs := Envelopes(nil, apicatalog.ServiceMethods(svc, nil))
 	if len(envs) == 0 {
 		t.Fatal("expected non-empty envelopes for service im")
 	}
@@ -626,7 +627,7 @@ func TestAssembleService_Im(t *testing.T) {
 func TestAssembleService_FilterByAccessToken(t *testing.T) {
 	svc, _ := testFullCatalog(t).Service("im")
 	// Filter to bot-only (--as bot, which corresponds to "tenant")
-	envs := Envelopes(apicatalog.ServiceMethods(svc, func(m meta.Method) bool {
+	envs := Envelopes(nil, apicatalog.ServiceMethods(svc, func(m meta.Method) bool {
 		for _, t := range m.AccessTokens {
 			if t == "tenant" {
 				return true
@@ -650,7 +651,7 @@ func TestAssembleService_FilterByAccessToken(t *testing.T) {
 }
 
 func TestAssembleAll_AtLeast193(t *testing.T) {
-	envs := Envelopes(testFullCatalog(t).WalkMethods(nil))
+	envs := Envelopes(nil, testFullCatalog(t).WalkMethods(nil))
 	// Envelope assembly walks the committed Catalog Snapshot, so the count is
 	// stable across machines.
 	if len(envs) < 193 {

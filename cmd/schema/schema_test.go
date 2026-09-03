@@ -27,10 +27,7 @@ func schemaTestFactory(t *testing.T, config *core.CliConfig) (*cmdutil.Factory, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.APICatalog, err = snapshot.FullCatalog()
-	if err != nil {
-		t.Fatal(err)
-	}
+	f.APICatalog = snapshot.Catalog()
 	return f, out, errOut, in
 }
 
@@ -57,10 +54,9 @@ func TestSchemaCmd_APICatalogCompletionAndRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog, err := snapshot.Catalog("drive")
-	if err != nil {
-		t.Fatal(err)
-	}
+	catalog := apicatalog.Filter(snapshot.Catalog(), func(svc meta.Service) (meta.Service, bool) {
+		return svc, svc.Name == "drive"
+	})
 	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
 	f.APICatalog = catalog
 	cmd := NewCmdSchema(f, nil)
@@ -343,7 +339,7 @@ func TestSchemaSurfaceProjectionFiltersExecutionListingAndCompletion(t *testing.
 	}
 
 	var out bytes.Buffer
-	if err := runSchemaCatalog(&out, nil, core.StrictModeOff, catalog, visible); err != nil {
+	if err := runSchemaCatalog(&out, nil, core.StrictModeOff, catalog, nil, visible); err != nil {
 		t.Fatalf("broad schema failed: %v", err)
 	}
 	var envelopes []map[string]interface{}
@@ -370,6 +366,7 @@ func TestSchemaSurfaceProjectionFiltersExecutionListingAndCompletion(t *testing.
 		[]string{"mail", "user_mailbox", "messages", "list"},
 		core.StrictModeOff,
 		catalog,
+		nil,
 		visible,
 	)
 	if err == nil {
@@ -438,10 +435,10 @@ func TestSchemaSurfaceProjectionPreservesDefaultAndDeniedVisibleCatalog(t *testi
 	allVisible := func([]string) bool { return true }
 
 	var defaultOut, projectedOut bytes.Buffer
-	if err := runSchemaCatalog(&defaultOut, nil, core.StrictModeOff, catalog, nil); err != nil {
+	if err := runSchemaCatalog(&defaultOut, nil, core.StrictModeOff, catalog, nil, nil); err != nil {
 		t.Fatalf("default schema failed: %v", err)
 	}
-	if err := runSchemaCatalog(&projectedOut, nil, core.StrictModeOff, catalog, allVisible); err != nil {
+	if err := runSchemaCatalog(&projectedOut, nil, core.StrictModeOff, catalog, nil, allVisible); err != nil {
 		t.Fatalf("all-visible schema failed: %v", err)
 	}
 	if defaultOut.String() != projectedOut.String() {

@@ -4,6 +4,7 @@
 package registry
 
 import (
+	"slices"
 	"sort"
 	"strings"
 
@@ -12,23 +13,26 @@ import (
 	"github.com/larksuite/cli/internal/meta"
 )
 
-// methodsForProjects walks the runtime catalog once and returns the methods in
-// the given projects that are reachable by the identity. Catalog navigation is
+// methodsForProjects loads the given projects from the catalog and returns the
+// methods that are reachable by the identity. Catalog navigation is
 // owned by apicatalog; the collectors below only apply scope policy.
 func methodsForProjects(catalog apicatalog.Catalog, projects []string, identity string) []apicatalog.MethodRef {
-	want := make(map[string]bool, len(projects))
-	for _, p := range projects {
-		want[p] = true
-	}
+	names := append([]string(nil), projects...)
+	sort.Strings(names)
+	names = slices.Compact(names)
 	wantToken := meta.TokenForIdentity(identity)
 	supported := func(m meta.Method) bool { return m.SupportsToken(wantToken) }
-	// Walk only the requested services (in catalog name order) instead of every
-	// service's methods then discarding the rest.
+	// Load only the requested services (in name order) so a caller asking about
+	// one domain does not parse every shard. A service the catalog cannot
+	// provide contributes nothing here; callers that must not tolerate a corrupt
+	// shard call Catalog.Preload first.
 	var out []apicatalog.MethodRef
-	for _, svc := range catalog.Services() {
-		if want[svc.Name] {
-			out = append(out, apicatalog.ServiceMethods(svc, supported)...)
+	for _, name := range names {
+		svc, ok := catalog.Service(name)
+		if !ok {
+			continue
 		}
+		out = append(out, apicatalog.ServiceMethods(svc, supported)...)
 	}
 	return out
 }
@@ -263,7 +267,7 @@ func GetScopesForDomains(catalog apicatalog.Catalog, projects []string, identity
 
 // GetReadOnlyScopes returns read-only scopes from the recommended (best-per-method) scope set.
 func GetReadOnlyScopes(catalog apicatalog.Catalog, identity string) []string {
-	return FilterScopes(CollectScopesForProjects(catalog, catalogServiceNames(catalog), identity), nil, []string{"read", "readonly"})
+	return FilterScopes(CollectScopesForProjects(catalog, catalog.ServiceNames(), identity), nil, []string{"read", "readonly"})
 }
 
 // ResolveScopesFromFilters resolves scopes from project and permission filters.
@@ -274,14 +278,5 @@ func ResolveScopesFromFilters(catalog apicatalog.Catalog, projects []string, per
 // ComputeMinimumScopeSet computes the minimum set of scopes that covers all
 // from_meta API methods. Equivalent to CollectScopesForProjects with all projects.
 func ComputeMinimumScopeSet(catalog apicatalog.Catalog, identity string) []string {
-	return CollectScopesForProjects(catalog, catalogServiceNames(catalog), identity)
-}
-
-func catalogServiceNames(catalog apicatalog.Catalog) []string {
-	services := catalog.Services()
-	names := make([]string, 0, len(services))
-	for _, service := range services {
-		names = append(names, service.Name)
-	}
-	return names
+	return CollectScopesForProjects(catalog, catalog.ServiceNames(), identity)
 }

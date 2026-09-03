@@ -58,22 +58,164 @@ func TestNew_PreservesOrderAndLookup(t *testing.T) {
 	}
 }
 
-func TestCatalogIdentity(t *testing.T) {
-	first := testCatalog()
-	copyOfFirst := first
-	second := testCatalog()
+// recordingLoader counts Load calls per service so tests can pin laziness.
+type recordingLoader struct {
+	services map[string]meta.Service
+	failures map[string]error
+	loads    map[string]int
+}
 
-	if first.Identity() == 0 {
-		t.Fatal("New returned the zero Catalog identity")
+func newRecordingLoader(services ...meta.Service) *recordingLoader {
+	l := &recordingLoader{services: map[string]meta.Service{}, failures: map[string]error{}, loads: map[string]int{}}
+	for _, s := range services {
+		l.services[s.Name] = s
 	}
-	if copyOfFirst.Identity() != first.Identity() {
-		t.Fatal("copying a Catalog changed its identity")
+	return l
+}
+
+func (l *recordingLoader) Names() []string {
+	names := make([]string, 0, len(l.services)+len(l.failures))
+	for name := range l.services {
+		names = append(names, name)
 	}
-	if second.Identity() == first.Identity() {
-		t.Fatal("independently constructed Catalogs share an identity")
+	for name := range l.failures {
+		names = append(names, name)
 	}
-	if (apicatalog.Catalog{}).Identity() != 0 {
-		t.Fatal("zero Catalog has a non-zero identity")
+	return names // deliberately unsorted: the Catalog owns ordering
+}
+
+func (l *recordingLoader) Load(name string) (meta.Service, error) {
+	l.loads[name]++
+	if err, ok := l.failures[name]; ok {
+		return meta.Service{}, err
+	}
+	svc, ok := l.services[name]
+	if !ok {
+		return meta.Service{}, apicatalog.ErrServiceNotFound
+	}
+	return svc, nil
+}
+
+func TestNewLazy_LoadsOnDemandOnce(t *testing.T) {
+	loader := newRecordingLoader(
+		meta.ServiceFromMap(map[string]interface{}{"name": "im"}),
+		meta.ServiceFromMap(map[string]interface{}{"name": "drive"}),
+	)
+	c := apicatalog.NewLazy(apicatalog.SourceEmbedded, loader)
+	handle := c // copies share the same state
+
+	if got := c.Names(); !reflect.DeepEqual(got, []string{"drive", "im"}) {
+		t.Fatalf("Names = %v, want sorted [drive im]", got)
+	}
+	if len(loader.loads) != 0 {
+		t.Fatalf("Names must not load bodies, loads = %v", loader.loads)
+	}
+
+	if _, ok := handle.Service("im"); !ok {
+		t.Fatal("Service(im) not found")
+	}
+	if _, ok := c.Service("im"); !ok {
+		t.Fatal("Service(im) not found through the copy")
+	}
+	if loader.loads["im"] != 1 || loader.loads["drive"] != 0 {
+		t.Fatalf("expected exactly one im load and no drive load, got %v", loader.loads)
+	}
+	if _, ok := c.Service("nope"); ok || loader.loads["nope"] != 0 {
+		t.Fatalf("unknown service must be absent without a Load call, loads = %v", loader.loads)
+	}
+
+	names := []string{}
+	for _, s := range c.Services() {
+		names = append(names, s.Name)
+	}
+	if !reflect.DeepEqual(names, []string{"drive", "im"}) {
+		t.Fatalf("Services = %v", names)
+	}
+	c.Services()
+	if loader.loads["im"] != 1 || loader.loads["drive"] != 1 {
+		t.Fatalf("Services must reuse cached bodies, loads = %v", loader.loads)
+	}
+}
+
+func TestNewLazy_SurfacesLoadFailures(t *testing.T) {
+	boom := errors.New("shard corrupt")
+	loader := newRecordingLoader(meta.ServiceFromMap(map[string]interface{}{"name": "im"}))
+	loader.failures["drive"] = boom
+	c := apicatalog.NewLazy(apicatalog.SourceEmbedded, loader)
+
+	if err := c.Preload("im"); err != nil {
+		t.Fatalf("Preload(im) = %v", err)
+	}
+	if err := c.Preload("missing"); err != nil {
+		t.Fatalf("Preload of an unknown name is not a failure, got %v", err)
+	}
+	if err := c.Preload("drive"); !errors.Is(err, boom) {
+		t.Fatalf("Preload(drive) = %v, want %v", err, boom)
+	}
+	if _, ok := c.Service("drive"); ok {
+		t.Fatal("a failed service must not resolve")
+	}
+	if got := c.Services(); len(got) != 1 || got[0].Name != "im" {
+		t.Fatalf("Services must omit the failed shard, got %d services", len(got))
+	}
+	if !errors.Is(c.Err(), boom) {
+		t.Fatalf("Err = %v, want %v", c.Err(), boom)
+	}
+	if loader.loads["drive"] != 1 {
+		t.Fatalf("a failed Load must be cached, loads = %v", loader.loads)
+	}
+}
+
+func TestFilter_ProjectsLazily(t *testing.T) {
+	loader := newRecordingLoader(
+		meta.ServiceFromMap(map[string]interface{}{"name": "im"}),
+		meta.ServiceFromMap(map[string]interface{}{"name": "drive"}),
+	)
+	base := apicatalog.NewLazy(apicatalog.SourceEmbedded, loader)
+	filtered := apicatalog.Filter(base, func(s meta.Service) (meta.Service, bool) {
+		if s.Name == "drive" {
+			return meta.Service{}, false
+		}
+		s.Description = "projected"
+		return s, true
+	})
+
+	if len(loader.loads) != 0 {
+		t.Fatalf("Filter must be lazy, loads = %v", loader.loads)
+	}
+	if _, ok := filtered.Service("drive"); ok {
+		t.Fatal("dropped service must be absent from the projection")
+	}
+	if svc, ok := filtered.Service("im"); !ok || svc.Description != "projected" {
+		t.Fatalf("Service(im) = %+v, %v", svc, ok)
+	}
+	if svc, _ := base.Service("im"); svc.Description == "projected" {
+		t.Fatal("projection leaked into the parent catalog")
+	}
+	if names := filtered.Services(); len(names) != 1 || names[0].Name != "im" {
+		t.Fatalf("Services = %v", names)
+	}
+	if _, err := filtered.Resolve([]string{"drive"}); err == nil {
+		t.Fatal("Resolve must not find a dropped service")
+	}
+	if (apicatalog.Filter(apicatalog.Catalog{}, nil)).Names() != nil {
+		t.Fatal("filtering the zero Catalog yields the zero Catalog")
+	}
+}
+
+func TestZeroCatalogIsEmpty(t *testing.T) {
+	var c apicatalog.Catalog
+	if c.Names() != nil || c.Services() != nil || c.Err() != nil || c.Source() != "" {
+		t.Fatal("zero Catalog must behave as empty")
+	}
+	if _, ok := c.Service("im"); ok {
+		t.Fatal("zero Catalog has no services")
+	}
+	if err := c.Preload("im"); err != nil {
+		t.Fatalf("Preload on the zero Catalog = %v", err)
+	}
+	if _, err := c.Resolve([]string{"im"}); err == nil {
+		t.Fatal("Resolve on the zero Catalog must fail")
 	}
 }
 

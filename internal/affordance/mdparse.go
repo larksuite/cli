@@ -24,7 +24,7 @@ import (
 //	### <other>         -> extensions[] (custom section, flows through verbatim)
 //	[[cmd]]             -> a command reference, rendered as `cmd`
 //
-// Parsing is lazy and cached (see For), so the constrained grammar is read at
+// Parsing is lazy and cached per Resolver, so the constrained grammar is read at
 // most once per domain.
 
 var mdLink = regexp.MustCompile(`\[\[(.+?)\]\]`)
@@ -96,6 +96,7 @@ type mdSection struct {
 }
 
 type parsedDomain struct {
+	present      bool // false marks a cached "no guidance file for this service"
 	skill        string
 	domainSkills []string
 	methods      map[string]meta.Affordance
@@ -109,31 +110,6 @@ func parseDomainMD(src []byte, resolve func(string) string) parsedDomain {
 	if resolve == nil {
 		resolve = headingToKey
 	}
-	return resolveParsedDomain(parseRawDomainMD(src), resolve)
-}
-
-// resolveParsedDomain applies a Catalog-specific command-form mapping to raw
-// markdown headings. It returns a new method map and never mutates the cached
-// raw source, allowing each Catalog to resolve independently.
-func resolveParsedDomain(raw parsedDomain, resolve func(string) string) parsedDomain {
-	if resolve == nil {
-		resolve = headingToKey
-	}
-	methods := make(map[string]meta.Affordance, len(raw.methods))
-	for heading, affordance := range raw.methods {
-		methods[resolve(heading)] = affordance
-	}
-	return parsedDomain{
-		skill:        raw.skill,
-		domainSkills: raw.domainSkills,
-		methods:      methods,
-	}
-}
-
-// parseRawDomainMD parses one service's markdown into stable source data. Its
-// method keys are command-form headings; Catalog-dependent resource-to-method
-// mappings are applied by resolveParsedDomain at lookup time.
-func parseRawDomainMD(src []byte) parsedDomain {
 	out := map[string]meta.Affordance{}
 
 	var skill, curKey string
@@ -178,7 +154,7 @@ func parseRawDomainMD(src []byte) parsedDomain {
 		if s := mergeSkills(skill, perCmdSkills); len(s) > 0 {
 			a.Skills = s
 		}
-		out[curKey] = a
+		out[resolve(curKey)] = a
 	}
 
 	reset := func() { useWhen, para, secs, sec, pending, fence, inFence = nil, nil, nil, nil, "", nil, false }

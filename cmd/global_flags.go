@@ -27,25 +27,6 @@ func RegisterGlobalFlags(fs *pflag.FlagSet, opts *GlobalOptions) {
 	}
 }
 
-// registeredGlobalFlagArities returns the root flag names and whether each flag
-// requires a separate value. Deriving this information from RegisterGlobalFlags
-// keeps bootstrap parsing, Cobra, and pre-assembly argv routing in lockstep.
-func registeredGlobalFlagArities() (map[string]bool, map[string]bool) {
-	fs := pflag.NewFlagSet("global-flag-arities", pflag.ContinueOnError)
-	RegisterGlobalFlags(fs, &GlobalOptions{})
-
-	long := make(map[string]bool)
-	short := make(map[string]bool)
-	fs.VisitAll(func(flag *pflag.Flag) {
-		requiresValue := flag.NoOptDefVal == ""
-		long[flag.Name] = requiresValue
-		if flag.Shorthand != "" {
-			short[flag.Shorthand] = requiresValue
-		}
-	})
-	return long, short
-}
-
 // isSingleAppMode reports whether the on-disk config has at most one app.
 // Missing configs are treated as single-app since --profile is meaningless
 // until at least two profiles exist. Intended for the Execute entry point —

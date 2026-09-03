@@ -4,6 +4,7 @@
 package cmd
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/larksuite/cli/internal/apicatalog"
@@ -45,15 +46,15 @@ func TestResolveStartupBrandCompatibilityPrecedence(t *testing.T) {
 func TestWithStartupBrandDoesNotOverrideAPICatalog(t *testing.T) {
 	catalog := apicatalog.New(apicatalog.SourceEmbedded, []meta.Service{{Name: "compat"}})
 	cfg := resolveBuildConfig([]BuildOption{
-		WithAPICatalog(catalog),
+		WithServiceCatalog(catalog),
 		WithStartupBrand(core.BrandLark),
 	})
 
-	got, err := fullCatalog(cfg)
+	got, err := openCatalog(cfg)
 	if err != nil {
-		t.Fatalf("fullCatalog: %v", err)
+		t.Fatalf("openCatalog: %v", err)
 	}
-	if got.Identity() != catalog.Identity() {
-		t.Fatalf("WithStartupBrand changed injected catalog identity: got %d, want %d", got.Identity(), catalog.Identity())
+	if !reflect.DeepEqual(got.Names(), catalog.Names()) {
+		t.Fatalf("WithStartupBrand changed injected catalog: got %v, want %v", got.Names(), catalog.Names())
 	}
 }

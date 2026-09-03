@@ -119,19 +119,16 @@ func TestRegisterService(t *testing.T) {
 	}
 }
 
-func TestRegisterServiceCommands_APICatalog(t *testing.T) {
+func TestRegisterServiceCommands_ForNames(t *testing.T) {
 	snapshot, err := registry.OpenSnapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog, err := snapshot.Catalog("drive")
-	if err != nil {
-		t.Fatal(err)
-	}
+	catalog := snapshot.Catalog()
 	parent := &cobra.Command{Use: "root"}
 	f := &cmdutil.Factory{APICatalog: catalog}
 
-	RegisterServiceCommandsWithContext(context.Background(), parent, f)
+	RegisterServiceCommandsForNames(context.Background(), parent, f, catalog, []string{"drive", "not-a-service"})
 
 	if cmd, _, err := parent.Find([]string{"drive"}); err != nil || cmd == parent {
 		t.Fatalf("drive command not registered: cmd=%v err=%v", cmd, err)

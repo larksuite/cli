@@ -29,23 +29,38 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// RegisterServiceCommands registers all service commands from from_meta specs.
+// RegisterServiceCommands registers every service of f.APICatalog under parent.
+// A zero (unset) Catalog has no services and registers nothing; the root
+// builder is responsible for wiring the Catalog before calling this.
 func RegisterServiceCommands(parent *cobra.Command, f *cmdutil.Factory) {
 	RegisterServiceCommandsWithContext(context.Background(), parent, f)
 }
 
+// RegisterServiceCommandsWithContext is RegisterServiceCommands with the
+// request context that method commands capture.
 func RegisterServiceCommandsWithContext(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
 	RegisterServiceCommandsFromCatalog(ctx, parent, f, f.APICatalog)
 }
 
+// RegisterServiceCommandsFromCatalog registers every service of catalog,
+// parsing all of its shards.
 func RegisterServiceCommandsFromCatalog(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory, catalog apicatalog.Catalog) {
+	RegisterServiceCommandsForNames(ctx, parent, f, catalog, catalog.Names())
+}
+
+// RegisterServiceCommandsForNames registers only the named services from
+// catalog, parsing exactly those shards. Unknown names are skipped; the root
+// builder preloads its selection first so a corrupt shard fails typed before
+// dispatch instead of vanishing here.
+func RegisterServiceCommandsForNames(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory, catalog apicatalog.Catalog, names []string) {
 	// Drive the service list from the same navigation catalog the method walk
 	// uses, so registration is catalog-sourced end to end. Kept as a per-service
 	// loop rather than a flat WalkMethods(nil) drive precisely so a service with
 	// no methods still gets its bare command (WalkMethods yields one ref per
 	// method, so empty services would vanish).
-	for _, svc := range catalog.Services() {
-		if svc.Name == "" || svc.ServicePath == "" {
+	for _, name := range names {
+		svc, ok := catalog.Service(name)
+		if !ok || svc.Name == "" || svc.ServicePath == "" {
 			continue
 		}
 		registerServiceWithContext(ctx, parent, svc, f)
@@ -109,10 +124,14 @@ func serviceShort(svc meta.Service) string {
 
 // ensureChildCommand returns the child of parent named name, creating it (with
 // short) when absent — so re-registration merges into an existing command tree
-// instead of duplicating a level.
+// instead of duplicating a level. An existing child without a description (a
+// routing stub mounted before expansion) takes short as well.
 func ensureChildCommand(parent *cobra.Command, name, short string) *cobra.Command {
 	for _, c := range parent.Commands() {
 		if c.Name() == name {
+			if c.Short == "" {
+				c.Short = short
+			}
 			cmdmeta.SetSource(c, cmdmeta.SourceService, true)
 			return c
 		}

@@ -261,11 +261,7 @@ func imAffordanceCatalog(t *testing.T) apicatalog.Catalog {
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog, err := snapshot.Catalog("im")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return catalog
+	return snapshot.Catalog()
 }
 
 func containsExact(items []string, want string) bool {

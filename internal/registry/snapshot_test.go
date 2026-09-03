@@ -263,13 +263,15 @@ func TestCatalogIntegrityValidation(t *testing.T) {
 			tt.mutate(fsys)
 			snapshot, err := OpenSnapshotFS(fsys)
 			require.NoError(t, err)
-			_, err = snapshot.Catalog("drive")
+			err = snapshot.Catalog().Preload("drive")
+			requireCatalogIntegrityError(t, err, `embedded catalog service "drive" failed integrity validation: `+tt.reason)
+			_, err = snapshot.Load("drive")
 			requireCatalogIntegrityError(t, err, `embedded catalog service "drive" failed integrity validation: `+tt.reason)
 		})
 	}
 }
 
-func TestOpenSnapshotFSIsLazyAndCatalogDeduplicatesReads(t *testing.T) {
+func TestOpenSnapshotFSIsLazyAndCatalogReadsEachShardOnce(t *testing.T) {
 	base := validSnapshotMapFS(t, "drive")
 	rewriteManifest(t, base, func(manifest map[string]any) {
 		manifest["future_optional_field"] = map[string]any{"accepted": true}
@@ -280,14 +282,18 @@ func TestOpenSnapshotFSIsLazyAndCatalogDeduplicatesReads(t *testing.T) {
 	require.NoError(t, err)
 	assert.Zero(t, counting.opens["services/drive.json"])
 
-	catalog, err := snapshot.Catalog("drive", "drive")
-	require.NoError(t, err)
-	require.Len(t, catalog.Services(), 1)
-	assert.Equal(t, 1, counting.opens["services/drive.json"])
+	catalog := snapshot.Catalog()
+	assert.Equal(t, []string{"drive"}, catalog.Names())
+	assert.Zero(t, counting.opens["services/drive.json"], "Names must not read shard bodies")
 
-	_, err = snapshot.Catalog("drive")
-	require.NoError(t, err)
-	assert.Equal(t, 2, counting.opens["services/drive.json"], "Snapshot must not cache service bodies")
+	_, ok := catalog.Service("drive")
+	require.True(t, ok)
+	require.Len(t, catalog.Services(), 1)
+	assert.Equal(t, 1, counting.opens["services/drive.json"], "one Catalog reads a shard at most once")
+
+	_, ok = snapshot.Catalog().Service("drive")
+	require.True(t, ok)
+	assert.Equal(t, 2, counting.opens["services/drive.json"], "Snapshot itself must not cache service bodies")
 }
 
 func TestEmbeddedSnapshot(t *testing.T) {
@@ -298,12 +304,14 @@ func TestEmbeddedSnapshot(t *testing.T) {
 	names[0] = "modified"
 	assert.Equal(t, expectedSnapshotServices, snapshot.ServiceNames())
 
-	catalog, err := snapshot.FullCatalog()
-	require.NoError(t, err)
+	catalog := snapshot.Catalog()
+	assert.Equal(t, expectedSnapshotServices, catalog.Names())
+	require.NoError(t, catalog.Preload(expectedSnapshotServices...))
 	require.Len(t, catalog.Services(), len(expectedSnapshotServices))
 	for i, service := range catalog.Services() {
 		assert.Equal(t, expectedSnapshotServices[i], service.Name)
 	}
+	require.NoError(t, catalog.Err())
 }
 
 func TestCatalogIntegrityCauseIsPreservedButRedacted(t *testing.T) {
@@ -315,7 +323,7 @@ func TestCatalogIntegrityCauseIsPreservedButRedacted(t *testing.T) {
 	snapshot, err := OpenSnapshotFS(&failingFS{FS: base, target: "services/drive.json", err: cause})
 	require.NoError(t, err)
 
-	_, err = snapshot.Catalog("drive")
+	err = snapshot.Catalog().Preload("drive")
 	requireCatalogIntegrityError(t, err, `embedded catalog service "drive" failed integrity validation: service file is missing`)
 	assert.ErrorIs(t, err, cause)
 	assert.Equal(t, cause, errors.Unwrap(err))

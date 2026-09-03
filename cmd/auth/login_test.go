@@ -18,6 +18,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/command"
 	"github.com/larksuite/cli/internal/apicatalog"
 	larkauth "github.com/larksuite/cli/internal/auth"
@@ -42,11 +43,7 @@ func authTestCatalog(t *testing.T) apicatalog.Catalog {
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog, err := snapshot.FullCatalog()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return catalog
+	return snapshot.Catalog()
 }
 
 func (failWriter) Write([]byte) (int, error) {
@@ -623,6 +620,92 @@ func TestAuthLoginRun_NonTerminal_NoFlags_RejectsWithHint(t *testing.T) {
 		if !strings.Contains(stderrStr, want) {
 			t.Errorf("expected stderr to mention %q, got: %s", want, stderrStr)
 		}
+	}
+}
+
+// corruptShardLoader serves the embedded manifest but fails to load one shard,
+// standing in for a damaged embedded catalog.
+type corruptShardLoader struct {
+	delegate *registry.Snapshot
+	broken   string
+	err      error
+}
+
+func (l corruptShardLoader) Names() []string { return l.delegate.Names() }
+
+func (l corruptShardLoader) Load(name string) (meta.Service, error) {
+	if name == l.broken {
+		return meta.Service{}, l.err
+	}
+	return l.delegate.Load(name)
+}
+
+// A corrupt shard must fail `auth login --domain` typed before any
+// authorization request is made. Silently authorizing with that domain's API
+// scopes missing would persist a shrunken grant the user never asked for.
+func TestAuthLoginRun_CorruptCatalogShardFailsBeforeAuthorization(t *testing.T) {
+	snapshot, err := registry.OpenSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cause := errors.New("sha256 mismatch")
+	shardErr := errs.NewInternalError(errs.SubtypeCatalogIntegrity, "service drive is corrupt").WithCause(cause)
+	catalog := apicatalog.NewLazy(apicatalog.SourceEmbedded, corruptShardLoader{
+		delegate: snapshot,
+		broken:   "drive",
+		err:      shardErr,
+	})
+
+	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		ProfileName: "default",
+		AppID:       "cli_test",
+		AppSecret:   "secret",
+		Brand:       core.BrandFeishu,
+	})
+	authorizations := 0
+	reg.Register(&httpmock.Stub{
+		Method:   "POST",
+		URL:      larkauth.PathDeviceAuthorization,
+		Reusable: true,
+		Optional: true,
+		OnMatch:  func(*http.Request) { authorizations++ },
+		Body: map[string]interface{}{
+			"device_code":               "device-code",
+			"user_code":                 "user-code",
+			"verification_uri":          "https://example.com/verify",
+			"verification_uri_complete": "https://example.com/verify?code=123",
+			"expires_in":                240,
+			"interval":                  5,
+		},
+	})
+	login := func(domain string) error {
+		return authLoginRun(&LoginOptions{
+			Factory: f,
+			Ctx:     context.Background(),
+			Domains: []string{domain},
+			NoWait:  true,
+			JSON:    true,
+		}, newDomainResolver(catalog, shortcuts.AllShortcuts()))
+	}
+
+	err = login("drive")
+	if !errors.Is(err, cause) {
+		t.Fatalf("login error = %v, want the shard integrity failure with its cause preserved", err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Subtype != errs.SubtypeCatalogIntegrity {
+		t.Fatalf("login problem = %#v (ok=%v), want catalog_integrity", problem, ok)
+	}
+	if authorizations != 0 {
+		t.Fatalf("login requested device authorization %d times despite a corrupt catalog shard", authorizations)
+	}
+
+	// Other domains remain fully usable through the same catalog.
+	if err := login("calendar"); err != nil {
+		t.Fatalf("healthy domain was blocked by another shard's failure: %v", err)
+	}
+	if authorizations != 1 {
+		t.Fatalf("healthy login requested device authorization %d times, want 1", authorizations)
 	}
 }
 

@@ -45,8 +45,10 @@ type ManifestServiceEntry struct {
 	SHA256   string `json:"sha256"`
 }
 
-// Snapshot is an immutable manifest paired with its backing filesystem.
-// Service bodies are read only when Catalog is called and are never cached.
+// Snapshot is an immutable manifest paired with its backing filesystem. It is
+// the apicatalog.Loader behind the embedded catalog: opening it reads only the
+// manifest, and a service body is validated and parsed the first time a
+// Catalog navigates into it.
 type Snapshot struct {
 	manifest Manifest
 	fs       fs.FS
@@ -92,52 +94,48 @@ func (s *Snapshot) ServiceNames() []string {
 	return names
 }
 
-// Catalog validates and parses only the requested service shards. Duplicate
-// names are collapsed so each selected shard is read at most once per call.
-func (s *Snapshot) Catalog(names ...string) (apicatalog.Catalog, error) {
-	selected := append([]string(nil), names...)
-	sort.Strings(selected)
-	selected = compactStrings(selected)
+// Names implements apicatalog.Loader from the manifest alone.
+func (s *Snapshot) Names() []string { return s.ServiceNames() }
 
-	services := make([]meta.Service, 0, len(selected))
-	for _, name := range selected {
-		entry, ok := s.manifestEntry(name)
-		if !ok {
-			cause := catalogIntegrityCause("requested service is not present in manifest")
-			return apicatalog.Catalog{}, serviceIntegrityError(name, "service file is missing", cause)
-		}
-
-		data, err := fs.ReadFile(s.fs, entry.File)
-		if err != nil {
-			return apicatalog.Catalog{}, serviceIntegrityError(name, "service file is missing", err)
-		}
-		if int64(len(data)) != entry.Size {
-			cause := catalogIntegrityCause("service file size does not match manifest")
-			return apicatalog.Catalog{}, serviceIntegrityError(name, "size mismatch", cause)
-		}
-		sum := sha256.Sum256(data)
-		if hex.EncodeToString(sum[:]) != entry.SHA256 {
-			cause := catalogIntegrityCause("service file sha256 does not match manifest")
-			return apicatalog.Catalog{}, serviceIntegrityError(name, "sha256 mismatch", cause)
-		}
-
-		var service meta.Service
-		if err := decodeOne(data, &service, false); err != nil {
-			return apicatalog.Catalog{}, serviceIntegrityError(name, "invalid JSON", err)
-		}
-		if service.Name != name {
-			cause := catalogIntegrityCause("service body name does not match manifest")
-			return apicatalog.Catalog{}, serviceIntegrityError(name, "service name mismatch", cause)
-		}
-		services = append(services, service)
+// Load implements apicatalog.Loader: it validates one service shard against
+// its manifest entry and parses it. Failures are typed catalog-integrity
+// errors; a name absent from the manifest is apicatalog.ErrServiceNotFound.
+func (s *Snapshot) Load(name string) (meta.Service, error) {
+	entry, ok := s.manifestEntry(name)
+	if !ok {
+		return meta.Service{}, apicatalog.ErrServiceNotFound
 	}
 
-	return apicatalog.New(apicatalog.SourceEmbedded, services), nil
+	data, err := fs.ReadFile(s.fs, entry.File)
+	if err != nil {
+		return meta.Service{}, serviceIntegrityError(name, "service file is missing", err)
+	}
+	if int64(len(data)) != entry.Size {
+		cause := catalogIntegrityCause("service file size does not match manifest")
+		return meta.Service{}, serviceIntegrityError(name, "size mismatch", cause)
+	}
+	sum := sha256.Sum256(data)
+	if hex.EncodeToString(sum[:]) != entry.SHA256 {
+		cause := catalogIntegrityCause("service file sha256 does not match manifest")
+		return meta.Service{}, serviceIntegrityError(name, "sha256 mismatch", cause)
+	}
+
+	var service meta.Service
+	if err := decodeOne(data, &service, false); err != nil {
+		return meta.Service{}, serviceIntegrityError(name, "invalid JSON", err)
+	}
+	if service.Name != name {
+		cause := catalogIntegrityCause("service body name does not match manifest")
+		return meta.Service{}, serviceIntegrityError(name, "service name mismatch", cause)
+	}
+	return service, nil
 }
 
-// FullCatalog validates and parses every service shard in the snapshot.
-func (s *Snapshot) FullCatalog() (apicatalog.Catalog, error) {
-	return s.Catalog(s.ServiceNames()...)
+// Catalog returns a lazy navigation handle over every service in the
+// snapshot. No shard is read until it is navigated; callers that must fail
+// early for a corrupt shard use Catalog.Preload.
+func (s *Snapshot) Catalog() apicatalog.Catalog {
+	return apicatalog.NewLazy(apicatalog.SourceEmbedded, s)
 }
 
 func parseManifest(data []byte) (Manifest, error) {
@@ -250,19 +248,6 @@ func decodeOne(data []byte, target any, disallowUnknown bool) error {
 		return err
 	}
 	return nil
-}
-
-func compactStrings(sorted []string) []string {
-	if len(sorted) == 0 {
-		return sorted
-	}
-	out := sorted[:1]
-	for _, value := range sorted[1:] {
-		if value != out[len(out)-1] {
-			out = append(out, value)
-		}
-	}
-	return out
 }
 
 func equalStrings(left, right []string) bool {

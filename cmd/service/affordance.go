@@ -4,38 +4,71 @@
 package service
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"strings"
 
 	"github.com/larksuite/cli/internal/affordance"
-	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/meta"
-	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/skillref"
 	"github.com/spf13/cobra"
 )
 
+// HelpRenderer composes agent guidance into command help for exactly one
+// command tree. It is built once per cmd.Build and holds that build's
+// affordance resolver and skill surface, so help never consults process-global
+// state or another build's catalog. Function fields are evaluated at render
+// time because skill customization is resolved after the help hook is
+// installed.
+type HelpRenderer struct {
+	// Guidance resolves affordance overlays against the catalog that built the
+	// tree. nil renders no guidance blocks.
+	Guidance *affordance.Resolver
+	// SkillContent returns the skill tree readable through this build's command
+	// surface, or nil when `skills read` cannot be referenced (which suppresses
+	// every skill pointer). nil behaves like a nil tree.
+	SkillContent func() fs.FS
+	// SkillReferences returns the build's canonical-to-runtime skill projection;
+	// nil (or a nil result) keeps canonical names and gates them by existence.
+	SkillReferences func() *skillref.Resolver
+	// CanReferenceSchema reports whether the `lark-cli schema` pointer may be
+	// rendered on method help. nil means it may.
+	CanReferenceSchema func() bool
+}
+
+func (r *HelpRenderer) skillContent() fs.FS {
+	if r == nil || r.SkillContent == nil {
+		return nil
+	}
+	return r.SkillContent()
+}
+
+func (r *HelpRenderer) skillReferences() *skillref.Resolver {
+	if r == nil || r.SkillReferences == nil {
+		return nil
+	}
+	return r.SkillReferences()
+}
+
+func (r *HelpRenderer) guidance() *affordance.Resolver {
+	if r == nil {
+		return nil
+	}
+	return r.Guidance
+}
+
 // PrepareDomainHelp appends navigational guidance (routing line, risk legend,
 // skill pointers) to a top-level Lark domain's description, returning false
 // for anything that is not such a domain. Built lazily at help time because
-// shortcuts attach after service registration. skillFS (nil-safe) gates the
-// skill pointers.
+// shortcuts attach after service registration.
 //
 // A hand-authored Long is preserved as the base (e.g. event's "Use 'event
 // consume <EventKey>'…"); service domains carry only a Short at this point, so
 // we fall back to it. The pristine base is captured once into an annotation so
 // re-rendering does not append the guidance twice.
-func PrepareDomainHelp(cmd *cobra.Command, skillFS fs.FS) bool {
-	return PrepareDomainHelpWithReferences(cmd, skillFS, nil)
-}
-
-// PrepareDomainHelpWithReferences is PrepareDomainHelp with a build-local
-// canonical-to-runtime skill projection.
-func PrepareDomainHelpWithReferences(cmd *cobra.Command, skillFS fs.FS, references *skillref.Resolver) bool {
+func (r *HelpRenderer) PrepareDomainHelp(cmd *cobra.Command) bool {
 	if cmd.Annotations[schemaPathAnnotation] != "" {
 		return false // a method command
 	}
@@ -65,24 +98,113 @@ func PrepareDomainHelpWithReferences(cmd *cobra.Command, skillFS fs.FS, referenc
 	}
 
 	var b strings.Builder
-	b.WriteString(domainHelpBase(cmd))
+	b.WriteString(captureHelpBase(cmd, domainBaseAnnotation))
 	if hasShortcuts && hasResources { // routing only matters when both styles exist
 		b.WriteString("\n\nPrefer a +-prefixed shortcut when one matches your task; otherwise use the raw API resource below.")
 	}
 	b.WriteString("\n\nRisk levels (read | write | high-risk-write) appear in each command's --help; high-risk-write requires --yes, only after the user confirms.")
 	canonicalSkills := []string{"lark-" + cmd.Name()}
-	if declared, ok := affordance.DomainSkills(cmdmeta.Domain(cmd)); ok {
+	if declared, ok := r.guidance().DomainSkills(cmdmeta.Domain(cmd)); ok {
 		canonicalSkills = declared
 	}
-	writeDomainSkills(&b, canonicalSkills, skillFS, references)
+	writeDomainSkills(&b, canonicalSkills, r.skillContent(), r.skillReferences())
 	cmd.Long = b.String()
 	return true
 }
 
-// domainHelpBase returns the description to seed domain help with — the
-// hand-authored Long when present, else the Short.
-func domainHelpBase(cmd *cobra.Command) string {
-	return captureHelpBase(cmd, domainBaseAnnotation)
+// PrepareMethodHelp rebuilds a generated method command's Long with the agent
+// guidance at the TOP (Risk, then the affordance block, then the schema
+// pointer), returning false for non-method commands. The overlay is resolved
+// here — only when help is rendered. Related-skill pointers are emitted only
+// when they resolve in the skill tree (see affordance.SkillStatPath), so a typo
+// or a build without embedded skills never prints a `skills read` that cannot
+// be opened.
+func (r *HelpRenderer) PrepareMethodHelp(cmd *cobra.Command) bool {
+	ann := cmd.Annotations
+	if ann == nil {
+		return false
+	}
+	schemaPath, ok := ann[schemaPathAnnotation]
+	if !ok {
+		return false
+	}
+
+	var b strings.Builder
+	b.WriteString(cmd.Short)
+	writeRisk(&b, cmd)
+
+	var skills []string
+	if a, ok := r.parsedAffordance(cmd); ok {
+		if block := renderAffordanceValue(a); block != "" {
+			b.WriteString("\n\n")
+			b.WriteString(block)
+		}
+		skills = a.Skills
+	}
+
+	if r == nil || r.CanReferenceSchema == nil || r.CanReferenceSchema() {
+		fmt.Fprintf(&b, "\n\nFull parameter schema:\n  lark-cli schema %s", schemaPath)
+	}
+	b.WriteString(ann[paramsOnlyAnnotation])
+
+	writeRelatedSkills(&b, skills, r.skillContent(), r.skillReferences())
+
+	cmd.Long = b.String()
+	return true
+}
+
+// PrepareShortcutHelp composes a +-prefixed shortcut's Long from its affordance
+// overlay — the same top layout as method help (description, Risk, guidance
+// block, related skills) minus the schema pointer, which shortcuts have none
+// of. Returns false when the command is not a shortcut or carries no overlay
+// entry, so shortcuts without guidance keep the default help plus the bottom
+// risk/tips append.
+//
+// The lead is the command's pristine base (captureHelpBase): a shortcut with a
+// hand-authored Long keeps it, while structured affordance guidance is
+// appended below without clobbering the business description.
+//
+// Tips precedence (intentional, not a bug): the overlay's ### Tips win. The
+// shortcut's declarative Tips (the Go Tips field) are only a fallback used when
+// the overlay declares none; when the overlay has tips, the Go tips are dropped
+// (replaced, not merged) so tips never render twice. Authoring a ### Tips block
+// therefore silently retires that shortcut's Go Tips — consolidate into one.
+func (r *HelpRenderer) PrepareShortcutHelp(cmd *cobra.Command) bool {
+	if src, _ := cmdmeta.SourceOf(cmd); src != cmdmeta.SourceShortcut {
+		return false
+	}
+	a, ok := r.parsedAffordance(cmd)
+	if !ok {
+		return false
+	}
+	if len(a.Tips) == 0 {
+		a.Tips = cmdutil.GetTips(cmd)
+	}
+
+	var b strings.Builder
+	b.WriteString(captureHelpBase(cmd, shortcutBaseAnnotation))
+	writeRisk(&b, cmd)
+	if block := renderAffordanceValue(a); block != "" {
+		b.WriteString("\n\n")
+		b.WriteString(block)
+	}
+	writeRelatedSkills(&b, a.Skills, r.skillContent(), r.skillReferences())
+
+	cmd.Long = b.String()
+	return true
+}
+
+// parsedAffordance resolves and parses the overlay recorded on cmd.
+func (r *HelpRenderer) parsedAffordance(cmd *cobra.Command) (meta.Affordance, bool) {
+	service, methodID, ok := cmdmeta.AffordanceRef(cmd)
+	if !ok {
+		return meta.Affordance{}, false
+	}
+	raw, ok := r.guidance().For(service, methodID)
+	if !ok {
+		return meta.Affordance{}, false
+	}
+	return (meta.Method{Affordance: raw}).ParsedAffordance()
 }
 
 // captureHelpBase records a command's pristine lead text once — its
@@ -136,167 +258,6 @@ func setMethodHelpData(cmd *cobra.Command, service, methodID, schemaPath, params
 	if paramsOnly != "" {
 		cmd.Annotations[paramsOnlyAnnotation] = paramsOnly
 	}
-}
-
-// PrepareMethodHelp rebuilds a generated method command's Long with the agent
-// guidance at the TOP (Risk, then the affordance block, then the schema
-// pointer), returning false for non-method commands. The overlay is parsed
-// here — only when help is rendered. skillFS (nil-safe) gates the related-skill
-// pointers: each is emitted only when it resolves in the skill tree (see
-// affordance.SkillStatPath), so a typo or a build without embedded skills never
-// prints a `skills read` that cannot be opened.
-func PrepareMethodHelp(cmd *cobra.Command, skillFS fs.FS) bool {
-	return PrepareMethodHelpCatalog(defaultAPICatalog(), cmd, skillFS)
-}
-
-// PrepareMethodHelpWithReferences is PrepareMethodHelp with a build-local
-// canonical-to-runtime skill projection.
-func PrepareMethodHelpWithReferences(cmd *cobra.Command, skillFS fs.FS, references *skillref.Resolver) bool {
-	return PrepareMethodHelpWithReferencesCatalog(defaultAPICatalog(), cmd, skillFS, references)
-}
-
-// PrepareMethodHelpCatalog is PrepareMethodHelp using the catalog that built
-// cmd. Catalog-aware callers should use this form so irregular command-form
-// mappings remain authoritative.
-func PrepareMethodHelpCatalog(catalog apicatalog.Catalog, cmd *cobra.Command, skillFS fs.FS) bool {
-	return PrepareMethodHelpWithReferencesCatalog(catalog, cmd, skillFS, nil)
-}
-
-// PrepareMethodHelpWithReferencesCatalog is PrepareMethodHelpWithReferences
-// using the catalog that built cmd.
-func PrepareMethodHelpWithReferencesCatalog(catalog apicatalog.Catalog, cmd *cobra.Command, skillFS fs.FS, references *skillref.Resolver) bool {
-	return prepareMethodHelp(catalog, cmd, skillFS, references, nil)
-}
-
-// PrepareMethodHelpWithProjection is PrepareMethodHelpWithReferences with the
-// command tree's lazy, build-local schema-reference decision. The established
-// helpers remain fully-visible by default; cmd.Build uses this form so the
-// framework-owned schema pointer follows the same surface as execution.
-func PrepareMethodHelpWithProjection(
-	cmd *cobra.Command,
-	skillFS fs.FS,
-	references *skillref.Resolver,
-	canReferenceSchema func() bool,
-) bool {
-	return PrepareMethodHelpWithProjectionCatalog(defaultAPICatalog(), cmd, skillFS, references, canReferenceSchema)
-}
-
-// PrepareMethodHelpWithProjectionCatalog is PrepareMethodHelpWithProjection
-// using the catalog that built cmd.
-func PrepareMethodHelpWithProjectionCatalog(
-	catalog apicatalog.Catalog,
-	cmd *cobra.Command,
-	skillFS fs.FS,
-	references *skillref.Resolver,
-	canReferenceSchema func() bool,
-) bool {
-	return prepareMethodHelp(catalog, cmd, skillFS, references, canReferenceSchema)
-}
-
-func prepareMethodHelp(
-	catalog apicatalog.Catalog,
-	cmd *cobra.Command,
-	skillFS fs.FS,
-	references *skillref.Resolver,
-	canReferenceSchema func() bool,
-) bool {
-	ann := cmd.Annotations
-	if ann == nil {
-		return false
-	}
-	schemaPath, ok := ann[schemaPathAnnotation]
-	if !ok {
-		return false
-	}
-
-	var b strings.Builder
-	b.WriteString(cmd.Short)
-	writeRisk(&b, cmd)
-
-	var skills []string
-	if raw, ok := affordanceRaw(catalog, cmd); ok {
-		if a, ok := (meta.Method{Affordance: raw}).ParsedAffordance(); ok {
-			if block := renderAffordanceValue(a); block != "" {
-				b.WriteString("\n\n")
-				b.WriteString(block)
-			}
-			skills = a.Skills
-		}
-	}
-
-	if canReferenceSchema == nil || canReferenceSchema() {
-		fmt.Fprintf(&b, "\n\nFull parameter schema:\n  lark-cli schema %s", schemaPath)
-	}
-	b.WriteString(ann[paramsOnlyAnnotation])
-
-	writeRelatedSkills(&b, skills, skillFS, references)
-
-	cmd.Long = b.String()
-	return true
-}
-
-// PrepareShortcutHelp composes a +-prefixed shortcut's Long from its affordance
-// overlay — the same top layout as method help (description, Risk, guidance
-// block, related skills) minus the schema pointer, which shortcuts have none
-// of. Returns false when the command is not a shortcut or carries no overlay
-// entry, so shortcuts without guidance keep the default help plus the bottom
-// risk/tips append.
-//
-// The lead is the command's pristine base (captureHelpBase): a shortcut with a
-// hand-authored Long keeps it, while structured affordance guidance is
-// appended below without clobbering the business description.
-//
-// Tips precedence (intentional, not a bug): the overlay's ### Tips win. The
-// shortcut's declarative Tips (the Go Tips field) are only a fallback used when
-// the overlay declares none; when the overlay has tips, the Go tips are dropped
-// (replaced, not merged) so tips never render twice. Authoring a ### Tips block
-// therefore silently retires that shortcut's Go Tips — consolidate into one.
-func PrepareShortcutHelp(cmd *cobra.Command, skillFS fs.FS) bool {
-	return PrepareShortcutHelpCatalog(defaultAPICatalog(), cmd, skillFS)
-}
-
-// PrepareShortcutHelpWithReferences is PrepareShortcutHelp with a build-local
-// canonical-to-runtime skill projection.
-func PrepareShortcutHelpWithReferences(cmd *cobra.Command, skillFS fs.FS, references *skillref.Resolver) bool {
-	return PrepareShortcutHelpWithReferencesCatalog(defaultAPICatalog(), cmd, skillFS, references)
-}
-
-// PrepareShortcutHelpCatalog is PrepareShortcutHelp using the catalog that
-// built cmd. Catalog-aware callers should use this form so irregular
-// command-form mappings remain authoritative.
-func PrepareShortcutHelpCatalog(catalog apicatalog.Catalog, cmd *cobra.Command, skillFS fs.FS) bool {
-	return PrepareShortcutHelpWithReferencesCatalog(catalog, cmd, skillFS, nil)
-}
-
-// PrepareShortcutHelpWithReferencesCatalog is
-// PrepareShortcutHelpWithReferences using the catalog that built cmd.
-func PrepareShortcutHelpWithReferencesCatalog(catalog apicatalog.Catalog, cmd *cobra.Command, skillFS fs.FS, references *skillref.Resolver) bool {
-	if src, _ := cmdmeta.SourceOf(cmd); src != cmdmeta.SourceShortcut {
-		return false
-	}
-	raw, ok := affordanceRaw(catalog, cmd)
-	if !ok {
-		return false
-	}
-	a, ok := (meta.Method{Affordance: raw}).ParsedAffordance()
-	if !ok {
-		return false
-	}
-	if len(a.Tips) == 0 {
-		a.Tips = cmdutil.GetTips(cmd)
-	}
-
-	var b strings.Builder
-	b.WriteString(captureHelpBase(cmd, shortcutBaseAnnotation))
-	writeRisk(&b, cmd)
-	if block := renderAffordanceValue(a); block != "" {
-		b.WriteString("\n\n")
-		b.WriteString(block)
-	}
-	writeRelatedSkills(&b, a.Skills, skillFS, references)
-
-	cmd.Long = b.String()
-	return true
 }
 
 // writeRisk appends the "Risk: <level>" line, warning agents not to self-approve
@@ -375,48 +336,6 @@ func resolveSkillReference(canonical string, skillFS fs.FS, references *skillref
 		return "", false
 	}
 	return canonical, true
-}
-
-// affordanceLookup is the overlay source; a package var so tests can inject.
-var affordanceLookup = affordance.For
-
-// RenderAffordanceForCmd renders a method command's affordance block, or "" when
-// it carries none.
-func RenderAffordanceForCmd(cmd *cobra.Command) string {
-	return RenderAffordanceForCmdCatalog(defaultAPICatalog(), cmd)
-}
-
-// RenderAffordanceForCmdCatalog renders a method command using command-form
-// mappings from the catalog that built it.
-func RenderAffordanceForCmdCatalog(catalog apicatalog.Catalog, cmd *cobra.Command) string {
-	raw, ok := affordanceRaw(catalog, cmd)
-	if !ok {
-		return ""
-	}
-	return renderAffordance(meta.Method{Affordance: raw})
-}
-
-// defaultAPICatalog resolves the immutable catalog committed with this binary.
-// Compatibility wrappers intentionally collapse snapshot failures to an empty
-// catalog: help remains available, but emits no mapping-dependent guidance.
-func defaultAPICatalog() apicatalog.Catalog {
-	snapshot, err := registry.OpenSnapshot()
-	if err != nil {
-		return apicatalog.Catalog{}
-	}
-	catalog, err := snapshot.FullCatalog()
-	if err != nil {
-		return apicatalog.Catalog{}
-	}
-	return catalog
-}
-
-func affordanceRaw(catalog apicatalog.Catalog, cmd *cobra.Command) (json.RawMessage, bool) {
-	service, methodID, ok := cmdmeta.AffordanceRef(cmd)
-	if !ok {
-		return nil, false
-	}
-	return affordanceLookup(catalog, service, methodID)
 }
 
 // renderAffordance renders a method's affordance as a help block, or "" when it

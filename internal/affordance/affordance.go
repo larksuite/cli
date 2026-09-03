@@ -4,9 +4,14 @@
 // Package affordance is the lazily-loaded store of usage guidance for
 // service-API methods. The source of truth is one markdown file per service in
 // the top-level affordance/ tree (see mdparse.go), injected via SetSource so
-// domain owners maintain it next to skills/ and shortcuts/. A service is read
-// and parsed at most once, on first access, so normal command execution never
-// touches it.
+// domain owners maintain it next to skills/ and shortcuts/.
+//
+// Guidance is keyed by method id, but the markdown headings use the command
+// form ("user_mailbox messages list"), and mapping one to the other needs the
+// API catalog that built the command tree. A Resolver therefore belongs to one
+// build: it pairs the content tree with that build's Catalog and resolves each
+// service at most once, so normal command execution never touches the
+// markdown and help rendering never rebuilds a mapping it already has.
 package affordance
 
 import (
@@ -19,32 +24,57 @@ import (
 )
 
 var (
-	mu        sync.Mutex
-	byService = map[string]parsedDomain{}
-	mdSource  fs.FS // top-level affordance/*.md tree; nil in the minimal preview build
+	sourceMu sync.Mutex
+	mdSource fs.FS // top-level affordance/*.md tree; nil in the minimal preview build
 )
 
 // SetSource installs the markdown guidance tree (the top-level affordance/
-// directory) as the source. Called once at startup before any lookup; clears
-// the parse cache so re-sourcing (e.g. in tests) takes effect.
+// directory) as the content source for Resolvers created afterwards. Called
+// once at startup before any lookup.
 func SetSource(fsys fs.FS) {
-	mu.Lock()
-	defer mu.Unlock()
+	sourceMu.Lock()
+	defer sourceMu.Unlock()
 	mdSource = fsys
-	byService = map[string]parsedDomain{}
+}
+
+// Source returns the registered markdown guidance tree, or nil when the build
+// embeds none.
+func Source() fs.FS {
+	sourceMu.Lock()
+	defer sourceMu.Unlock()
+	return mdSource
+}
+
+// Resolver serves guidance for one build: one content tree paired with the
+// Catalog whose command forms the headings are written against. Each service
+// is read, parsed, and mapped once, on first access.
+type Resolver struct {
+	source  fs.FS
+	catalog apicatalog.Catalog
+
+	mu        sync.Mutex
+	byService map[string]parsedDomain
+}
+
+// NewResolver pairs a guidance tree with the catalog that built the command
+// tree. A nil source yields a Resolver that reports no guidance.
+func NewResolver(source fs.FS, catalog apicatalog.Catalog) *Resolver {
+	return &Resolver{source: source, catalog: catalog, byService: map[string]parsedDomain{}}
 }
 
 // For returns the raw affordance overlay for one method, loading the owning
 // service on first access. ok is false when there is no entry (absent source,
-// parse failure, or unknown method all collapse to "no guidance").
-func For(catalog apicatalog.Catalog, service, methodID string) (json.RawMessage, bool) {
-	mu.Lock()
-	defer mu.Unlock()
-	parsed, ok := sourceForService(service)
+// parse failure, or unknown method all collapse to "no guidance"). A nil
+// Resolver reports no guidance.
+func (r *Resolver) For(service, methodID string) (json.RawMessage, bool) {
+	if r == nil {
+		return nil, false
+	}
+	parsed, ok := r.domain(service)
 	if !ok {
 		return nil, false
 	}
-	a, ok := resolveParsedDomain(parsed, commandFormResolver(catalog, service)).methods[methodID]
+	a, ok := parsed.methods[methodID]
 	if !ok {
 		return nil, false
 	}
@@ -54,56 +84,57 @@ func For(catalog apicatalog.Catalog, service, methodID string) (json.RawMessage,
 
 // DomainSkill returns the service-level canonical skill declared by
 // `> skill:`. That declaration is independent of method command mappings.
-func DomainSkill(service string) (string, bool) {
-	mu.Lock()
-	defer mu.Unlock()
-	parsed, ok := sourceForService(service)
+func (r *Resolver) DomainSkill(service string) (string, bool) {
+	if r == nil {
+		return "", false
+	}
+	parsed, ok := r.domain(service)
 	if !ok {
 		return "", false
 	}
-	skill := parsed.skill
-	return skill, skill != ""
+	return parsed.skill, parsed.skill != ""
 }
 
 // DomainSkills returns the skill references configured for service-level help.
 // The canonical `> skill:` entry is first when present, followed by entries in
 // the domain's `## Skills` section. The returned slice is a copy so callers
-// cannot mutate the lazy parse cache.
-func DomainSkills(service string) ([]string, bool) {
-	mu.Lock()
-	defer mu.Unlock()
-	parsed, ok := sourceForService(service)
+// cannot mutate the cache.
+func (r *Resolver) DomainSkills(service string) ([]string, bool) {
+	if r == nil {
+		return nil, false
+	}
+	parsed, ok := r.domain(service)
 	if !ok {
 		return nil, false
 	}
-	skills := parsed.domainSkills
-	if len(skills) == 0 {
+	if len(parsed.domainSkills) == 0 {
 		return nil, false
 	}
-	return append([]string(nil), skills...), true
+	return append([]string(nil), parsed.domainSkills...), true
 }
 
-// sourceForService caches only stable markdown-derived source keyed by service.
-// Catalog-specific command-form mappings are resolved at lookup time, so short-
-// lived Catalog instances cannot become process-global cache keys.
-func sourceForService(service string) (parsedDomain, bool) {
-	if parsed, ok := byService[service]; ok {
-		return parsed, true
+// domain returns the parsed, catalog-mapped guidance for one service, reading
+// and resolving it on first access. A missing file is cached as absent so a
+// domain without guidance is stat'ed once, not on every help render.
+func (r *Resolver) domain(service string) (parsedDomain, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if parsed, ok := r.byService[service]; ok {
+		return parsed, parsed.present
 	}
-	if mdSource == nil {
-		return parsedDomain{}, false
+	parsed := parsedDomain{}
+	if r.source != nil {
+		if src, err := fs.ReadFile(r.source, service+".md"); err == nil {
+			parsed = parseDomainMD(src, commandFormResolver(r.catalog, service))
+			parsed.present = true
+		}
 	}
-	src, err := fs.ReadFile(mdSource, service+".md")
-	if err != nil {
-		return parsedDomain{}, false
-	}
-	parsed := parseRawDomainMD(src)
-	byService[service] = parsed
-	return parsed, true
+	r.byService[service] = parsed
+	return parsed, parsed.present
 }
 
 // commandFormResolver maps a method's command-form heading ("user_mailbox.messages
-// list") to its method id ("user_mailbox.message.list") via the injected catalog's
+// list") to its method id ("user_mailbox.message.list") via the catalog's
 // authoritative resource↔id table. Resource names are irregularly pluralised
 // (message/messages, user_mailbox/user_mailboxes), so this cannot be guessed; the
 // space→dot fallback covers domains where the two already coincide.

@@ -201,10 +201,7 @@ func TestRegisterServiceCommands_GeneratesFlagsNoPanic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.APICatalog, err = snapshot.FullCatalog()
-	if err != nil {
-		t.Fatal(err)
-	}
+	f.APICatalog = snapshot.Catalog()
 
 	defer func() {
 		if r := recover(); r != nil {

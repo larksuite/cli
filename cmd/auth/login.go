@@ -240,13 +240,18 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	// for example, request all `docs` scopes plus a few specific `drive`
 	// scopes in a single command.
 	if len(selectedDomains) > 0 || opts.Recommend {
-		var candidateScopes []string
-		if len(selectedDomains) > 0 {
-			candidateScopes = resolver.scopesFor(selectedDomains, "user", config.Brand)
-		} else {
+		scopeDomains := selectedDomains
+		if len(scopeDomains) == 0 {
 			// --recommend without --domain: all domains
-			candidateScopes = resolver.scopesFor(resolver.sorted(config.Brand), "user", config.Brand)
+			scopeDomains = resolver.sorted(config.Brand)
 		}
+		// A corrupt Catalog shard fails the login typed, exactly as it fails a
+		// command build, instead of silently dropping that domain's API scopes
+		// from the authorization request that is about to be persisted.
+		if err := resolver.catalog.Preload(scopeDomains...); err != nil {
+			return err
+		}
+		candidateScopes := resolver.scopesFor(scopeDomains, "user", config.Brand)
 
 		// Filter to auto-approve scopes if --recommend or interactive "common"
 		if opts.Recommend || scopeLevel == "common" {
@@ -623,7 +628,10 @@ func (r domainResolver) scopesFor(domains []string, identity string, brand core.
 // folded into their parent domain).
 func (r domainResolver) allKnown(brand core.LarkBrand) map[string]bool {
 	domains := make(map[string]bool)
-	for _, p := range catalogServiceNames(r.catalog) {
+	// The manifest name list is the --domain vocabulary: it is cheap (no shard
+	// is parsed) and a corrupt shard stays addressable so that selecting it
+	// fails typed in Preload instead of being reported as an unknown domain.
+	for _, p := range r.catalog.Names() {
 		if !registry.HasAuthDomain(p) {
 			domains[p] = true
 		}
@@ -658,7 +666,7 @@ func shortcutHasDeclaredScopes(shortcut common.Shortcut) bool {
 // --domain and the help list keep accepting them, matching main.
 func (r domainResolver) scopeless() map[string]bool {
 	fromMeta := make(map[string]bool)
-	for _, p := range catalogServiceNames(r.catalog) {
+	for _, p := range r.catalog.Names() {
 		fromMeta[p] = true
 	}
 	hasScopes := make(map[string]bool)
@@ -687,15 +695,6 @@ func (r domainResolver) sorted(brand core.LarkBrand) []string {
 	}
 	sort.Strings(domains)
 	return domains
-}
-
-func catalogServiceNames(catalog apicatalog.Catalog) []string {
-	services := catalog.Services()
-	names := make([]string, 0, len(services))
-	for _, service := range services {
-		names = append(names, service.Name)
-	}
-	return names
 }
 
 // shortcutSupportsIdentity checks if a shortcut supports the given identity ("user" or "bot").

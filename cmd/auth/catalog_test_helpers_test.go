@@ -15,11 +15,7 @@ func testCatalogServiceNames(t *testing.T) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog, err := snapshot.FullCatalog()
-	if err != nil {
-		t.Fatal(err)
-	}
-	services := catalog.Services()
+	services := snapshot.Catalog().Services()
 	names := make([]string, 0, len(services))
 	for _, service := range services {
 		names = append(names, service.Name)

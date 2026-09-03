@@ -43,11 +43,7 @@ func diagnoseCatalog() apicatalog.Catalog {
 	if err != nil {
 		panic(err)
 	}
-	catalog, err := snapshot.FullCatalog()
-	if err != nil {
-		panic(err)
-	}
-	return catalog
+	return snapshot.Catalog()
 }
 
 // ── Core logic ────────────────────────────────────────────────────────

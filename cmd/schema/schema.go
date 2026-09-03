@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/affordance"
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -111,7 +112,7 @@ func completeSchemaPath(
 func schemaRunWithVisibility(opts *SchemaOptions, visibility CommandVisibility) error {
 	out := opts.Factory.IOStreams.Out
 	mode := opts.Factory.ResolveStrictMode(opts.Ctx)
-	return runSchemaCatalog(out, apicatalog.ParsePath(opts.Args), mode, opts.Factory.APICatalog, visibility)
+	return runSchemaCatalog(out, apicatalog.ParsePath(opts.Args), mode, opts.Factory.APICatalog, opts.Factory.Affordance, visibility)
 }
 
 // runSchemaCatalog resolves the path through the build-selected schema catalog
@@ -123,32 +124,41 @@ func runSchemaCatalog(
 	parts []string,
 	mode core.StrictMode,
 	catalog apicatalog.Catalog,
+	guidance *affordance.Resolver,
 	visibility CommandVisibility,
 ) error {
 	// Test the source catalog before presentation projection. A distribution
 	// that intentionally conceals every generated method still has metadata;
 	// bare `schema` should render an empty list rather than claim metadata is
 	// unavailable.
-	if len(catalog.Services()) == 0 {
+	if len(catalog.Names()) == 0 {
 		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "No API metadata available").
 			WithHint("the current command build did not select any API metadata")
 	}
 	catalog = projectSchemaCatalog(catalog, visibility)
 	target, err := catalog.Resolve(parts)
 	if err != nil {
+		if loadErr := catalog.Err(); loadErr != nil {
+			return loadErr
+		}
 		return resolveError(err)
 	}
 	refs := catalog.MethodRefs(target, registry.FilterForStrictMode(mode))
+	// Navigation parses shards lazily; a corrupt shard must fail typed rather
+	// than silently shrink the listing.
+	if loadErr := catalog.Err(); loadErr != nil {
+		return loadErr
+	}
 	if target.Kind == apicatalog.TargetMethod {
 		if len(refs) == 0 {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"Method %s not available in current identity mode", target.Method.SchemaPath()).
 				WithHint("strict mode hides methods the active account identity cannot call; it is shown for an identity (user or bot) that has the required access token")
 		}
-		output.PrintJson(out, schema.EnvelopeOfCatalog(catalog, refs[0]))
+		output.PrintJson(out, schema.EnvelopeOf(guidance, refs[0]))
 		return nil
 	}
-	output.PrintJson(out, schema.EnvelopesCatalog(catalog, refs))
+	output.PrintJson(out, schema.Envelopes(guidance, refs))
 	return nil
 }
 
@@ -162,39 +172,31 @@ func runSchemaCatalog(
 // projection removed its last reachable method, so a fully concealed service
 // cannot survive as an empty schema namespace. Originally-empty, unaffected
 // metadata remains unchanged for backward compatibility.
+//
+// The projection is applied per service on first navigation, so a precise
+// `schema drive.file.list` still parses only the drive shard.
 func projectSchemaCatalog(catalog apicatalog.Catalog, visibility CommandVisibility) apicatalog.Catalog {
 	if visibility == nil {
 		return catalog
 	}
-
-	services := make([]meta.Service, 0, len(catalog.Services()))
-	changed := false
-	for _, service := range catalog.Services() {
+	return apicatalog.Filter(catalog, func(service meta.Service) (meta.Service, bool) {
 		servicePath := []string{service.Name}
 		if !visibility(servicePath) {
-			changed = true
-			continue
+			return meta.Service{}, false
 		}
-
 		resources, resourceChanged, hasVisibleMethod := projectSchemaResources(
 			service.Resources,
 			servicePath,
 			visibility,
 		)
 		if resourceChanged && !hasVisibleMethod {
-			changed = true
-			continue
+			return meta.Service{}, false
 		}
 		if resourceChanged {
 			service.Resources = resources
-			changed = true
 		}
-		services = append(services, service)
-	}
-	if !changed {
-		return catalog
-	}
-	return apicatalog.New(catalog.Source(), services)
+		return service, true
+	})
 }
 
 func projectSchemaResources(

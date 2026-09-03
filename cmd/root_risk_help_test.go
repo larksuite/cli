@@ -5,18 +5,13 @@ package cmd
 
 import (
 	"bytes"
-	"io/fs"
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/apicatalog"
+	"github.com/larksuite/cli/cmd/service"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/spf13/cobra"
 )
-
-// nilSkills is the skill-content getter used by help-func tests that do
-// not exercise the domain-guide pointer.
-func nilSkills() fs.FS { return nil }
 
 // rendersHelp runs the wrapped help func and returns stdout.
 func rendersHelp(t *testing.T, cmd *cobra.Command) string {
@@ -30,7 +25,7 @@ func rendersHelp(t *testing.T, cmd *cobra.Command) string {
 
 func TestHelpFunc_RendersRiskLineWhenAnnotated(t *testing.T) {
 	root := &cobra.Command{Use: "lark-cli"}
-	installTipsHelpFunc(root, apicatalog.Catalog{}, nilSkills, nil, nil)
+	installTipsHelpFunc(root, &service.HelpRenderer{})
 
 	child := &cobra.Command{Use: "delete", Short: "delete a file"}
 	cmdutil.SetRisk(child, "high-risk-write")
@@ -44,7 +39,7 @@ func TestHelpFunc_RendersRiskLineWhenAnnotated(t *testing.T) {
 
 func TestHelpFunc_NoRiskLineWhenUnannotated(t *testing.T) {
 	root := &cobra.Command{Use: "lark-cli"}
-	installTipsHelpFunc(root, apicatalog.Catalog{}, nilSkills, nil, nil)
+	installTipsHelpFunc(root, &service.HelpRenderer{})
 
 	child := &cobra.Command{Use: "list", Short: "list items"}
 	root.AddCommand(child)
@@ -57,7 +52,7 @@ func TestHelpFunc_NoRiskLineWhenUnannotated(t *testing.T) {
 
 func TestHelpFunc_RiskLinePrecedesTips(t *testing.T) {
 	root := &cobra.Command{Use: "lark-cli"}
-	installTipsHelpFunc(root, apicatalog.Catalog{}, nilSkills, nil, nil)
+	installTipsHelpFunc(root, &service.HelpRenderer{})
 
 	child := &cobra.Command{Use: "delete", Short: "delete a file"}
 	cmdutil.SetRisk(child, "high-risk-write")
