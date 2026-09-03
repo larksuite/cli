@@ -301,15 +301,19 @@ def _evaluate_knowledge_page(item: dict, title: str, source_id: str) -> dict:
         elif page_status not in VALID_PAGE_STATUSES:
             hard_reasons.append(f"页面状态非法：{page_status}")
 
-        # Consistency narrowing: any 待确认 field cannot be sold as 已完成.
+        # Consistency narrowing: a field that is unresolved (待确认/TBD) OR
+        # entirely missing/empty cannot be sold as 已完成. A missing key is
+        # treated the same as 待确认 so an omitted row cannot pass as complete.
+        # (source/scope_visibility are already hard-blocked when empty above.)
         unresolved_fields = [
             GOVERNANCE_FIELDS[key]
             for key in GOVERNANCE_FIELDS
-            if key != "page_status" and has_unresolved(governance.get(key))
+            if key != "page_status"
+            and (has_unresolved(governance.get(key)) or is_empty(governance.get(key)))
         ]
         if unresolved_fields and page_status == "已完成":
             narrow_reasons.append(
-                "存在待确认字段（" + "、".join(unresolved_fields) + "），状态收紧为进行中"
+                "存在待确认或缺失字段（" + "、".join(unresolved_fields) + "），状态收紧为进行中"
             )
         # Consistency narrowing: a partial parse must not be sold as 已完成.
         if parse_status == "partial" and page_status == "已完成":

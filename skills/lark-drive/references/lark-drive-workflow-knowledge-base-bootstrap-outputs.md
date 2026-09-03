@@ -83,7 +83,7 @@
 | 集团项目验收 | wikcn_ROOT | docx | 批复、招标、合同、竣工验收总结 |
 
 确认后对每个节点执行：
-  wiki +node-create --as user --parent-node-token wikcn_ROOT --title "<拟建标题>" --obj-type docx
+  wiki +node-create --as <runtime identity> --parent-node-token wikcn_ROOT --title "<拟建标题>" --obj-type docx
   → 记录返回的 node_token 与 obj_token，回读并入 node_inventory；obj_token 即后续 docs +update 的写入目标
 
 确认新建这些节点吗？也可增删或改名后再建；如只想为现有根节点写规范，可跳过新建。
@@ -120,9 +120,9 @@ R2 高风险写入。确认前必须展示每个目标节点的稳定标识（`n
 <逐节点展开将写入的精确正文；append 场景标明追加位置，overwrite 场景标明将替换的占位内容>
 
 新建文档（new_docx）项，须展示完整命令序列（原对象不改动）：
-  1) wiki +node-create --as user --parent-node-token <目标父节点，如非docx原节点同级 wikcn_T 的父> --title "<精确标题，如：验收台账·维护规范>" --obj-type docx
+  1) wiki +node-create --as <runtime identity> --parent-node-token <目标父节点，如非docx原节点同级 wikcn_T 的父> --title "<精确标题，如：验收台账·维护规范>" --obj-type docx
   2) 记录返回的 node_token 与 obj_token
-  3) docs +update --as user --doc <上一步 obj_token> --command overwrite --content <规范正文>
+  3) docs +update --as <runtime identity> --doc <上一步 obj_token> --command overwrite --content <规范正文>
 说明：new_docx 目标位置必须显式（--parent-node-token 或 --space-id），标题必须精确给出；node-create 返回的 obj_token 才是 docs +update 的写入目标，不得写向原非 docx 节点。
 
 门禁拦截（不写入，记入 unsupported_checks）：

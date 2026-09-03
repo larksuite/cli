@@ -43,7 +43,7 @@ Risk / Structure: `R2-R3` / `S3`
 
 本 workflow 不处理：
 
-- **从零创建知识空间**：目标 Wiki 不存在时，指路 [`knowledge_base_bootstrap`](lark-drive-workflow-knowledge-base-bootstrap.md) 建库，不自行 `wiki +space-create`（见 `Situation Routing` 情况 2）。
+- **从零创建知识空间**：目标 Wiki 不存在时，本 workflow 停下，请用户先自建一个知识库（或提供已有库链接）再来；本 workflow 不建知识空间，也不代跑其他 workflow（见 `Situation Routing` 情况 2）。
 - **撰写维护规范**：立规范是 [`knowledge_base_bootstrap`](lark-drive-workflow-knowledge-base-bootstrap.md) 的职责；本 workflow 只**读**其产物做映射依据。
 - **云盘 / Wiki / 会议纪要等非本地来源**：本版仅摄取本地文件。
 - **移动、复制、删除或重命名已有节点**：结构调整用 [`knowledge_organize`](lark-drive-workflow-knowledge-organize.md) 或 [`topic_move_collector`](lark-drive-workflow-topic-move-collector.md)。本 workflow 仅在 `NODE_PROPOSE` 经用户确认后新建承载节点。
@@ -100,14 +100,14 @@ Risk / Structure: `R2-R3` / `S3`
 
 | State | Protocol Step | Entry Condition | Agent MUST Do | User-Facing Output | wait_for_user | Next State |
 |-------|---------------|-----------------|---------------|--------------------|---------------|------------|
-| `PARSE_SOURCES` | `route` / `scope` | Workflow 触发 | 解析本地授权路径为 `source_scope`；解析目标 Wiki 为 `space_id` 和节点范围。按 `Situation Routing` 判定：目标库不存在 → 停下指路 `knowledge_base_bootstrap`（情况 2）；目标不唯一 → 停下请用户选定（情况 7）。确认来源路径与目标库 | 来源路径 + 目标知识库确认；或无库指路 / 多目标选定请求 | `true` | `INVENTORY` |
+| `PARSE_SOURCES` | `route` / `scope` | Workflow 触发 | 解析本地授权路径为 `source_scope`；解析目标 Wiki 为 `space_id` 和节点范围。按 `Situation Routing` 判定：目标库不存在 → 停下请用户先自建知识库或提供已有库链接（情况 2）；目标不唯一 → 停下请用户选定（情况 7）。确认来源路径与目标库 | 来源路径 + 目标知识库确认；或无库请用户先建库 / 多目标选定请求 | `true` | `INVENTORY` |
 | `INVENTORY` | `read` | 来源与目标已确认 | 运行 `inventory.py` 盘点本地资料填充 `inventory`（SHA-256 去重、敏感初筛、可解析性判断）。若存在上次运行的旧台账，做 SHA-256 diff，未变资料标记跳过（增量）。仅本地读，零写入、零修改原件 | 资料盘点概览：文件数、重复组、可能敏感数、无法解析数；增量时标出跳过数 | 除非报错否则 `false` | `TARGET_ALIGN` |
 | `TARGET_ALIGN` | `read` / `assess` | 盘点完成 | 递归读取目标库节点树填充 `node_inventory`（`wiki +node-list --page-all`，对 `has_child=true` 逐层下钻）；逐节点探测 `knowledge_base_bootstrap` 维护规范填充 `standard_map`，据覆盖情况设 `alignment_mode`（`standard`/`degraded`/`mixed`）。判定节点是否足以承载本批资料 | 目标结构概览 + 规范探测结果（哪些节点有规范）+ 对齐模式；无规范时明确降级提示 | 除非读取被阻断否则 `false` | `NODE_PROPOSE` or `ANALYZE_TRIAGE` |
 | `NODE_PROPOSE` | `assess` / `plan` / `confirm` | 节点不足以承载资料（情况 1 / 5） | 加载 analyze phase；据已盘点的真实资料内容提议承载节点填充 `outline_proposal`；请用户确认后用 `wiki +node-create --obj-type docx` 新建，回读并入 `node_inventory` | 承载节点提议表 + 新建确认请求；确认后报告新建结果 | `true` | `ANALYZE_TRIAGE` |
 | `ANALYZE_TRIAGE` | `assess` / `plan` | 结构就位（含新建节点） | 加载 analyze phase；逐份读取资料正文，判类、识别版本冲突、映射到目标节点（据 `standard_map`；无规范则降级据内容推断）、按规范或主题生成拟定标题、给 `proposed_action`；对目标节点做 Node Type Triage（非 docx / shortcut 处理）填充 `material_map` | 资料分析表：判类、目标节点、拟定名、冲突/敏感标记、映射置信度 | 除非用户直接进入确认否则 `false` | `PUBLISH_PLAN` |
 | `PUBLISH_PLAN` | `plan` / `confirm` | 分析完成 | 加载 publish phase + outputs；生成逐资料 `publish_plan`（含 `publish_role`、`write_via`、目标节点、`parse_status`、6 行治理字段）；运行 `publish_gate.py` 门禁；产出发布计划 + 冲突/敏感/无法解析三清单。仅 `ready=true` 的资料进入 `CONVERT_WRITE`，被拦记入 `unsupported_checks`，`narrowed` 项按收紧后状态写入 | 发布计划表（含目标节点 + write_via + 门禁结果）+ 逐资料精确处置 + 三清单 + 被拦/收紧/跳过原因 | `true` | `CONVERT_WRITE` or `DONE` |
-| `CONVERT_WRITE` | `execute` | 用户已确认发布计划 | 加载 publish phase；按计划逐份转换写入知识页：Word/.md/.txt/.html 走 `drive +import --type docx`，PDF/图片解析后 `docs +update`，每页套 6 行治理表；`new_docx` 目标先 `wiki +node-create`。**本状态只写知识页，不上传任何附件**。逐项更新 `execution_ledger` | 转换写入进度报告 | 除非被阻断否则 `false` | `VERIFY` |
-| `VERIFY` | `verify` | 写入完成 | 对每个已写页面 fresh read：确认 `obj_type=docx`、`docs +fetch` 可读、6 行治理表存在、正文非空且不依赖附件；任一不满足记 `failed`。**仅对 `verified` 的知识页，且用户开启附件时，才 `drive +upload` 挂其 `source_attachment`（页面验证失败的不上传原件，避免孤儿附件）**。汇总 `unsupported_checks` | 验证表 + 最终汇总 | `false` | `DONE` |
+| `CONVERT_WRITE` | `execute` | 用户已确认发布计划 | 加载 publish phase；按计划逐份转换写入知识页：Word/.md/.txt/.html 走 `drive +import --type docx`，PDF/图片解析后 `docs +update`，每页套 6 行治理表；`new_docx` 目标先 `wiki +node-create`。**纯附件项**（用户只要原件、无对应知识页）在此直接 `drive +upload` 挂到确认节点；**知识页的伴随附件不在此上传**（留到 VERIFY）。逐项更新 `execution_ledger` | 转换写入进度报告 | 除非被阻断否则 `false` | `VERIFY` |
+| `VERIFY` | `verify` | 写入完成 | 对每个已写页面 fresh read：确认 `obj_type=docx`、`docs +fetch` 可读、6 行治理表存在、正文非空且不依赖附件；任一不满足记 `failed`。**仅对 `verified` 的知识页、且用户开启伴随附件时，才 `drive +upload` 挂其 `source_attachment`（页面验证失败的不上传，避免孤儿附件）**；纯附件在 `CONVERT_WRITE` 已上传，此处校验其挂载成功。汇总 `unsupported_checks` | 验证表 + 最终汇总 | `false` | `DONE` |
 | `DONE` | `done` | 无更多动作 | 停止 | 最终回复：已入库页数、跳过 / 被拦资料及原因、失败项、台账位置、知识库链接 | `false` | End |
 
 ## Progressive Load Map
@@ -122,8 +122,8 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 | `NODE_PROPOSE` | [`lark-drive-workflow-knowledge-ingest-analyze.md`](lark-drive-workflow-knowledge-ingest-analyze.md)、[`../../lark-wiki/references/lark-wiki-node-create.md`](../../lark-wiki/references/lark-wiki-node-create.md) |
 | `ANALYZE_TRIAGE` | [`lark-drive-workflow-knowledge-ingest-analyze.md`](lark-drive-workflow-knowledge-ingest-analyze.md) |
 | `PUBLISH_PLAN` | [`lark-drive-workflow-knowledge-ingest-publish.md`](lark-drive-workflow-knowledge-ingest-publish.md)、[`lark-drive-workflow-knowledge-ingest-outputs.md`](lark-drive-workflow-knowledge-ingest-outputs.md)；门禁脚本 `scripts/publish_gate.py` |
-| `CONVERT_WRITE` | [`lark-drive-workflow-knowledge-ingest-publish.md`](lark-drive-workflow-knowledge-ingest-publish.md)、[`../../lark-drive/references/lark-drive-import.md`](lark-drive-import.md)、[`../../lark-doc/references/lark-doc-update.md`](../../lark-doc/references/lark-doc-update.md)；`import_docx` 迁入时 [`../../lark-wiki/references/lark-wiki-move.md`](../../lark-wiki/references/lark-wiki-move.md) 与异步续跑 [`lark-drive-task-result.md`](lark-drive-task-result.md)；`new_docx` 时 [`../../lark-wiki/references/lark-wiki-node-create.md`](../../lark-wiki/references/lark-wiki-node-create.md) |
-| `VERIFY` | 复用 `TARGET_ALIGN` 阶段的读取上下文；用户开启附件时 [`lark-drive-upload.md`](lark-drive-upload.md)（仅对 `verified` 页面） |
+| `CONVERT_WRITE` | [`lark-drive-workflow-knowledge-ingest-publish.md`](lark-drive-workflow-knowledge-ingest-publish.md)、[`../../lark-drive/references/lark-drive-import.md`](lark-drive-import.md)、[`../../lark-doc/references/lark-doc-update.md`](../../lark-doc/references/lark-doc-update.md)；`import_docx` 迁入时 [`../../lark-wiki/references/lark-wiki-move.md`](../../lark-wiki/references/lark-wiki-move.md) 与异步续跑 [`lark-drive-task-result.md`](lark-drive-task-result.md)；`new_docx` 时 [`../../lark-wiki/references/lark-wiki-node-create.md`](../../lark-wiki/references/lark-wiki-node-create.md)；纯附件时 [`lark-drive-upload.md`](lark-drive-upload.md) |
+| `VERIFY` | 复用 `TARGET_ALIGN` 阶段的读取上下文；用户开启伴随附件时 [`lark-drive-upload.md`](lark-drive-upload.md)（仅对 `verified` 知识页） |
 
 ## Situation Routing
 
@@ -132,7 +132,7 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 | 情况 | 判定 | 处理 |
 |------|------|------|
 | 1. 有库、节点不足以承载资料 | `TARGET_ALIGN` | 进入 `NODE_PROPOSE`：据真实资料提议承载节点，用户确认后新建（写入需确认），回主流程 |
-| 2. 目标库不存在 | `PARSE_SOURCES` | 停下，主动衔接式指路 `knowledge_base_bootstrap` 建库；**不**自行建知识空间 |
+| 2. 目标库不存在 | `PARSE_SOURCES` | 停下，请用户先自建一个知识库或提供已有库链接再来；**不**自行建知识空间、**不**代跑其他 workflow（建库能力不在本 workflow） |
 | 3. 有库、无维护规范 | `TARGET_ALIGN` | `alignment_mode=degraded`，据资料内容 + 节点标题推断映射与命名；提示可先跑 `knowledge_base_bootstrap`；不强制、不代跑 |
 | 4. 有库、有规范 | `TARGET_ALIGN` | 正常主路径：按规范收录范围与命名做映射 |
 | 5. 有库有规范、但无节点可承载这批资料 | `ANALYZE_TRIAGE` | 退化为情况 1，进入 `NODE_PROPOSE`；或用户选择归入最近节点 |
@@ -195,13 +195,13 @@ python3 "<SKILL_ROOT>/references/scripts/publish_gate.py" --plan "<发布计划 
 | `NODE_PROPOSE` | `wiki +node-create --obj-type docx`（仅用户确认后）、`wiki +node-list --page-all` | 新建确认后的承载节点并分页回读（`--page-all`，避免漏掉新建节点） |
 | `ANALYZE_TRIAGE` | 无飞书写命令（agent 读本地资料正文分析） | 判类、冲突识别、映射、命名、分诊 |
 | `PUBLISH_PLAN` | 无飞书写命令；`python3 <SKILL_ROOT>/references/scripts/publish_gate.py`（本地只读门禁） | 生成发布计划、门禁校验、请用户确认 |
-| `CONVERT_WRITE` | `docs +fetch`（update/merge 落笔前重读 revision）、`drive +import --type docx`、`drive +task_result --scenario import`（import 异步续跑）、`docs +update`、`wiki +move --obj-type docx`（import 件迁入目标节点）、`drive +task_result --scenario wiki_move`（迁入异步续跑）、`wiki +node-create --obj-type docx`（new_docx） | 执行已确认的受控转换写入（不含附件上传） |
-| `VERIFY` | `docs +fetch`、`wiki +node-list`；`drive +upload`（仅对 `verified` 页面上传 source_attachment） | fresh read 校验写入结果，并对已验证页面按需挂原件附件 |
+| `CONVERT_WRITE` | `docs +fetch`（update/merge 落笔前重读 revision）、`drive +import --type docx`、`drive +task_result --scenario import`（import 异步续跑）、`docs +update`、`wiki +move --obj-type docx`（import 件迁入目标节点）、`drive +task_result --scenario wiki_move`（迁入异步续跑）、`wiki +node-create --obj-type docx`（new_docx）、`drive +upload`（仅纯附件项） | 执行已确认的受控转换写入（纯附件在此上传，伴随附件留到 VERIFY） |
+| `VERIFY` | `docs +fetch`、`wiki +node-list`；`drive +upload`（仅对 `verified` 知识页挂伴随 source_attachment） | fresh read 校验写入结果，并对已验证页面按需挂伴随附件 |
 
 ## Transition Rules
 
 1. `PARSE_SOURCES` 无法解析出本地来源路径或唯一目标库时，只问澄清问题并停止。
-2. `PARSE_SOURCES` 检测目标库不存在（情况 2）时，停下指路 `knowledge_base_bootstrap`，不自行建知识空间；目标不唯一（情况 7）时列候选请用户选定。
+2. `PARSE_SOURCES` 检测目标库不存在（情况 2）时，停下请用户先自建知识库或提供已有库链接再来，不自行建知识空间、不代跑其他 workflow；目标不唯一（情况 7）时列候选请用户选定。
 3. 认证或 API scope 缺失时，按 `lark-shared` 权限处理并停止。
 4. 权限按动作分别判断，一个动作受阻不连累其余：读权限缺失 → 停止（无法盘点结构）；`docs +update` 可用而 `wiki +node-create` 不可用 → 照常写可编辑 docx 节点，`NODE_PROPOSE` / `new_docx` 需新建的列入「待创建节点」并记 `unsupported_checks`；仅可读 → 只输出发布计划不写入；某动作实际返回 `permission_denied` → 只停该动作、记入 `unsupported_checks`，不同参重试、不静默切 bot、不自动申请权限。
 5. 权限硬规则：读取成功不等于具备写权限；写权限只以实际写入返回为准。

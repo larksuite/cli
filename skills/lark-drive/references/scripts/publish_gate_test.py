@@ -241,6 +241,27 @@ class KnowledgePageGateTest(unittest.TestCase):
         self.assertTrue(result["narrowed"])
         self.assertEqual(result["effective_page_status"], "进行中")
 
+    def test_missing_field_with_done_narrows(self):
+        # A governance object that omits non-required rows entirely (owner,
+        # version, effective, review) must not pass as 已完成: an absent key is
+        # treated like 待确认 and narrows the status to 进行中.
+        gov = {
+            "source": "x",
+            "scope_visibility": "全员",
+            "page_status": "已完成",
+        }
+        result = publish_gate.evaluate_item(_page(governance=gov))
+        self.assertTrue(result["ready"])
+        self.assertTrue(result["narrowed"])
+        self.assertEqual(result["effective_page_status"], "进行中")
+
+    def test_full_governance_done_not_narrowed(self):
+        # A fully-populated table with no unresolved/missing rows stays 已完成.
+        result = publish_gate.evaluate_item(_page(governance=_governance(page_status="已完成")))
+        self.assertTrue(result["ready"])
+        self.assertFalse(result["narrowed"])
+        self.assertEqual(result["effective_page_status"], "已完成")
+
     def test_partial_parse_with_done_narrows(self):
         result = publish_gate.evaluate_item(
             _page(parse_status="partial", governance=_governance(page_status="已完成"))

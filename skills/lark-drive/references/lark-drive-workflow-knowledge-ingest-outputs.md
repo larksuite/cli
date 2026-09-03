@@ -17,7 +17,7 @@
 | 生效与更新 | 写成 `生效：YYYY-MM-DD｜更新：YYYY-MM-DD｜原因：首次入库 + 说明`；无独立生效日期写「不适用（原因）」 | 允许「待确认」 |
 | 复核策略 | 写成 `类型：<知识类型>｜周期：<天>｜下次复核：YYYY-MM-DD` | 允许「待确认」 |
 
-字段值未确定时统一填「待确认」，不得编造。含「待确认」或仅部分解析（partial）的页面 `page_status` 保持「进行中」；只有 6 行齐备、无「待确认」、完整解析的页面才可标「已完成」。
+字段值未确定时统一填「待确认」，不得编造。含「待确认」或仅部分解析（partial）的页面 `page_status` 保持「进行中」；只有 6 行齐备、无「待确认」、完整解析的页面才可标「已完成」。门禁把**字段整个缺失（key 省略）视同「待确认」**：缺 负责人 / 版本与状态 / 生效与更新 / 复核策略 任一行时，标「已完成」会被收紧为「进行中」（来源、适用与可见范围为空则直接硬拦）。
 
 ## 发布计划 JSON schema（publish_gate.py 输入）
 
@@ -115,7 +115,7 @@
 | 物流配送 | wikcn_ROOT | docx | 配送时效、区域政策 | 3 |
 
 确认后对每个节点执行：
-  wiki +node-create --as user --parent-node-token wikcn_ROOT --title "<拟建标题>" --obj-type docx
+  wiki +node-create --as <runtime identity> --parent-node-token wikcn_ROOT --title "<拟建标题>" --obj-type docx
   → 记录返回 node_token / obj_token，回读并入 node_inventory
 
 确认新建这些节点吗？也可增删 / 改名后再建；如只想归入现有节点，可跳过新建。

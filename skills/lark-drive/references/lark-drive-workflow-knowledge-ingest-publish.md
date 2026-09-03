@@ -43,6 +43,8 @@ python3 "<SKILL_ROOT>/references/scripts/publish_gate.py" --plan "<发布计划 
 
 收到确认后逐份执行。批量写入 / 导入同一位置时**串行**，避免并发冲突。
 
+**身份一致性**：本阶段所有写命令（`drive +import`、`docs +update`、`wiki +move`、`wiki +node-create`、`drive +upload`）都用 `PARSE_SOURCES` 确定的同一身份执行——命令模板中的 `--as <runtime identity>` 是占位符，须替换为该身份（用户选 bot 路径就是 `bot`），不得硬编码 `user`。discovery、目标解析、写入、验证若用不同身份，Drive 资源和权限不同，后续 move / 验证会失败或操作到错误资源。
+
 ### Word / Markdown / TXT / HTML（write_via=import_docx，仅用于新建页）
 
 `import_docx` 只用于 `proposed_action=add`（**新建页**）。`update` / `merge` 面向既有目标页，必须走 `docs_update` 定向更新，不得用 import_docx——否则会新增一个子页面而不是更新既有页（见「更新既有页」小节）。
@@ -50,7 +52,7 @@ python3 "<SKILL_ROOT>/references/scripts/publish_gate.py" --plan "<发布计划 
 用 `drive +import --type docx` 转飞书云文档，读回整理后落到目标节点；不要把原始分页、页眉页脚当知识结构。
 
 ```bash
-lark-cli drive +import --as user --type docx --file "<本地文件>" --folder-token "<暂存/目标文件夹>" --name "<发布计划中的标题>"
+lark-cli drive +import --as <runtime identity> --type docx --file "<本地文件>" --folder-token "<暂存/目标文件夹>" --name "<发布计划中的标题>"
 ```
 
 - 导入结果必须返回 `docx` 类型和在线文档 token，否则转换失败。
@@ -88,12 +90,17 @@ PDF 不假设可直接导入。先解析文本层；扫描件借 agent 多模态
 
 ### 原文件附件（write_via=drive_upload，默认关闭）
 
-仅当用户明确要求保留原件时，才把原文件挂为 `source_attachment`。上传必须**在其对应知识页 fresh-read 验证通过之后**执行——即附件只消费 `execution_ledger` 中状态为 `verified` 的知识页条目：
+仅当用户明确要求保留原件时，才把原文件挂为 `source_attachment`。附件分两类，执行路径不同：
 
-- `CONVERT_WRITE` 阶段只写知识页，不上传任何附件；
-- 每个知识页经 `VERIFY` fresh read 通过、台账记为 `verified` 后，才对其上传对应 `source_attachment`（`drive +upload --wiki-token`）；
-- 对应知识页验证失败（`failed` / `blocked`）的资料**不上传**其原件，避免留下没有可检索知识页的孤儿附件；
-- 上传成功只记为附件结果，绝不推进页面状态。绝不删除、修改或移动原始文件。
+**A. 知识页的伴随附件**（同一份资料既转知识页、又保留原件作证据）：上传必须**在其对应知识页 fresh-read 验证通过之后**，即只消费 `execution_ledger` 中状态为 `verified` 的知识页条目：
+
+- `CONVERT_WRITE` 阶段只写知识页，不上传伴随附件；
+- 对应知识页经 `VERIFY` 通过、记为 `verified` 后，才上传其 `source_attachment`（`drive +upload --wiki-token`）；
+- 对应知识页验证失败（`failed` / `blocked`）的资料**不上传**其原件，避免留下没有可检索知识页的孤儿附件。
+
+**B. 纯附件**（用户明确说“只上传原文件 / 只作附件、不要知识页”，该资料没有对应知识页）：这类项 `publish_role=source_attachment` 且没有伴随的 `knowledge_page` 台账条目，独立执行——在 `CONVERT_WRITE` 直接 `drive +upload --wiki-token` 挂到用户确认的目标节点，`VERIFY` 校验附件本身已挂载成功。它不依赖任何知识页 `verified`（否则永远执行不了）。
+
+两类附件上传成功都只记为附件结果，绝不推进知识页状态。绝不删除、修改或移动原始文件。
 
 ### 执行台账
 

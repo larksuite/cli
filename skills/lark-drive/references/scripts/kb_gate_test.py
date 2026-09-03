@@ -122,6 +122,15 @@ class KbGateTest(unittest.TestCase):
         self.assertTrue(result["narrowed"])
         self.assertEqual(result["effective_page_status"], "进行中")
 
+    def test_missing_field_with_done_status_narrows(self):
+        # A governance object omitting non-required rows entirely must not pass as
+        # 已完成: an absent key is treated like 待确认 and narrows to 进行中.
+        gov = {"source": "x", "scope_visibility": "全员", "page_status": "已完成"}
+        result = kb_gate.evaluate_node(_node(governance=gov))
+        self.assertTrue(result["ready"])
+        self.assertTrue(result["narrowed"])
+        self.assertEqual(result["effective_page_status"], "进行中")
+
     def test_unresolved_owner_with_inprogress_not_narrowed(self):
         # owner 待确认 and already 进行中 -> writable, no narrowing needed.
         result = kb_gate.evaluate_node(
