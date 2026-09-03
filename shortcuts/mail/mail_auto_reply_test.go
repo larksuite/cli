@@ -137,6 +137,62 @@ func TestMailAutoReplyModifyBuildsFriendlyPayload(t *testing.T) {
 	assertAutoReplyPayloadAbsent(t, captured, "only_send_inner_sender")
 }
 
+func TestMailAutoReplyModifyDisableSendsOnlyPatch(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	var captured map[string]interface{}
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    mailboxPath("me", "settings", "auto_reply"),
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"auto_reply": map[string]interface{}{
+					"enabled":             true,
+					"content_html":        "<p>Old</p>",
+					"content_summary":     "Old",
+					"start_time":          "1704067200000",
+					"end_time":            "1704153599999",
+					"time_zone":           "Asia/Shanghai",
+					"only_send_to_tenant": true,
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "PUT",
+		URL:    mailboxPath("me", "settings", "auto_reply"),
+		BodyFilter: func(body []byte) bool {
+			if err := json.Unmarshal(body, &captured); err != nil {
+				t.Fatalf("unmarshal request body: %v; body=%s", err, body)
+			}
+			return true
+		},
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"auto_reply": map[string]interface{}{
+					"enabled": false,
+				},
+			},
+		},
+	})
+
+	if err := runMountedMailShortcut(t, MailAutoReplyModify, []string{"+auto-reply-modify", "--disable"}, f, stdout); err != nil {
+		t.Fatalf("runMountedMailShortcut() error = %v", err)
+	}
+	reg.Verify(t)
+
+	assertAutoReplyPayloadValue(t, captured, "enabled", false)
+	assertAutoReplyPayloadAbsent(t, captured, "content_html")
+	assertAutoReplyPayloadAbsent(t, captured, "content_summary")
+	assertAutoReplyPayloadAbsent(t, captured, "start_time")
+	assertAutoReplyPayloadAbsent(t, captured, "end_time")
+	assertAutoReplyPayloadAbsent(t, captured, "time_zone")
+	assertAutoReplyPayloadAbsent(t, captured, "only_send_to_tenant")
+}
+
 func TestMailAutoReplyContentFile(t *testing.T) {
 	chdirTemp(t)
 	if err := os.WriteFile("auto_reply.html", []byte("<p>From file</p>"), 0644); err != nil {
@@ -186,8 +242,11 @@ func TestMailAutoReplyContentFile(t *testing.T) {
 	assertAutoReplyPayloadValue(t, captured, "content_html", "<p>From file</p>")
 	assertAutoReplyPayloadEmptyImages(t, captured)
 	assertAutoReplyPayloadAbsent(t, captured, "content_summary")
-	assertAutoReplyPayloadValue(t, captured, "enabled", true)
-	assertAutoReplyPayloadValue(t, captured, "only_send_to_tenant", true)
+	assertAutoReplyPayloadAbsent(t, captured, "enabled")
+	assertAutoReplyPayloadAbsent(t, captured, "start_time")
+	assertAutoReplyPayloadAbsent(t, captured, "end_time")
+	assertAutoReplyPayloadAbsent(t, captured, "time_zone")
+	assertAutoReplyPayloadAbsent(t, captured, "only_send_to_tenant")
 	assertAutoReplyPayloadAbsent(t, captured, "auto_reply")
 }
 
@@ -237,6 +296,17 @@ func TestMailAutoReplyEmptyContentClearsBody(t *testing.T) {
 	assertAutoReplyPayloadValue(t, captured, "content_html", "")
 	assertAutoReplyPayloadEmptyImages(t, captured)
 	assertAutoReplyPayloadAbsent(t, captured, "content_summary")
+}
+
+func TestMailAutoReplyRejectsEmptyContentWithContentFile(t *testing.T) {
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	err := runMountedMailShortcut(t, MailAutoReplyModify, []string{"+auto-reply-modify", "--content", "", "--content-file", "auto_reply.html"}, f, stdout)
+	if err == nil {
+		t.Fatal("expected content/content-file conflict error")
+	}
+	if !strings.Contains(err.Error(), "--content and --content-file are mutually exclusive") {
+		t.Fatalf("unexpected error: %v", err)
+	}
 }
 
 func TestMailAutoReplyUploadsLocalImages(t *testing.T) {

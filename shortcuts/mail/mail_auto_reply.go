@@ -94,7 +94,7 @@ var MailAutoReplyModify = common.Shortcut{
 					mailInvalidParam("--all", "mutually exclusive with --internal-only"),
 				)
 		}
-		if runtime.Str("content") != "" && runtime.Str("content-file") != "" {
+		if runtime.Changed("content") && runtime.Changed("content-file") {
 			return mailValidationError("--content and --content-file are mutually exclusive").
 				WithParams(
 					mailInvalidParam("--content", "mutually exclusive with --content-file"),
@@ -118,7 +118,10 @@ var MailAutoReplyModify = common.Shortcut{
 			return mailDecorateProblemMessage(err, "get auto-reply failed")
 		}
 		merged := mergeAutoReply(current, patch)
-		data, err := runtime.CallAPITyped("PUT", autoReplyPath(mailboxID), nil, merged)
+		if err := validateAutoReplyMerged(merged); err != nil {
+			return err
+		}
+		data, err := runtime.CallAPITyped("PUT", autoReplyPath(mailboxID), nil, patch)
 		if err != nil {
 			return mailDecorateProblemMessage(err, "modify auto-reply failed")
 		}
@@ -229,8 +232,8 @@ func buildAutoReplyPatch(ctx context.Context, runtime *common.RuntimeContext, up
 }
 
 func resolveAutoReplyContent(runtime *common.RuntimeContext) (string, error) {
-	if content := runtime.Str("content"); content != "" {
-		return content, nil
+	if runtime.Changed("content") {
+		return runtime.Str("content"), nil
 	}
 	path := runtime.Str("content-file")
 	if path == "" {
@@ -532,6 +535,18 @@ func mergeAutoReply(current map[string]interface{}, patch map[string]interface{}
 	}
 	delete(merged, "content_summary")
 	return merged
+}
+
+func validateAutoReplyMerged(autoReply map[string]interface{}) error {
+	enabled, _ := autoReply["enabled"].(bool)
+	if !enabled {
+		return nil
+	}
+	contentHTML, _ := autoReply["content_html"].(string)
+	if strings.TrimSpace(contentHTML) == "" {
+		return mailValidationParamError("--content", "--content is required when enabling auto-reply")
+	}
+	return nil
 }
 
 func normalizeAutoReplyFields(in map[string]interface{}) map[string]interface{} {
