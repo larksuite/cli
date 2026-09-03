@@ -114,6 +114,7 @@ lark-cli apps +member-settings-set --app-id <app_id> --external-access disabled 
 - **发布意图判定**：用户要"可访问 / 线上 / 分享 / 新链接 / 上线" = 发布意图，先走发布链路、确认完成再给链接。
 - 任何 `+release-create` 前先加载 [`lark-apps-release-create.md`](references/lark-apps-release-create.md)，生成理由并纳入现有发布确认；命令传入已确认的同一理由。
 - `+release-get` 返回 `current_node_info.current_status=PENDING` 时立即加载 [`lark-apps-release-get.md`](references/lark-apps-release-get.md)，停止轮询并把人工审批交还用户。
+- `+release-create` 或 `+release-get` 仅当服务端错误明确说明客户端版本过旧或要求升级时，才建议执行 `lark-cli update` 后重试原命令（查询仍使用同一个 `release_id`）。不要硬编码或猜测最低版本，不要用 `--help` 做能力预检；`X-Cli-Version` 由 CLI 请求统一携带且不是认证信息，本工作流不增加 CLI 版本门禁。
 - 完成 ≠ 发布：云端会话完成 / `+list is_published=true` 都不代表最新内容已部署。
 - 开发态链接 `https://miaoda.feishu.cn/app/{app_id}`（full_stack / frontend 应用）：进应用编辑/开发态、管理与继续开发应用的入口，也是 frontend 升级为 full_stack 的入口（云端会话）。创意模式（html）应用开发态和发布态是同一个链接，无需额外提供开发态链接。
 - 发布态链接来源：`+release-get` 轮询 `finished` 给 `online_url` / `failed` 给 `error_logs`（html / frontend / full_stack 统一走 `+release-get`）。

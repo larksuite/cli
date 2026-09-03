@@ -369,11 +369,28 @@ func TestAppsReleaseGetJSONOnlineURLPassthrough(t *testing.T) {
 }
 
 func TestProjectReleaseDetailAliases(t *testing.T) {
-	current := map[string]interface{}{
+	idlCurrent := map[string]interface{}{
 		"release": map[string]interface{}{
-			"releaseID": "release_new", "release_id": "release_old", "status": "publishing",
+			"releaseID": "9001", "status": "publishing",
 			"createdAt": json.Number("1788264000000"), "updatedAt": json.Number("1788264060000"),
-			"onlineUrl": "https://example.feishu.cn/app/release_new", "commitID": "abc123",
+			"onlineUrl": "https://example.feishu.cn/app/9001", "commitID": "abc123",
+			"future_field": "preserved",
+		},
+		"errorLogs": []interface{}{map[string]interface{}{
+			"step": "build", "errorLog": "compile error", "future_log_field": true,
+		}},
+		"currentNodeInfo": map[string]interface{}{
+			"current_node": "deploy", "current_status": "PENDING",
+			"result":       map[string]interface{}{"approval_url": "https://approval.example.com/task/1"},
+			"submitted_by": map[string]interface{}{"username": "张三", "email": "zhangsan@example.com", "openID": "ou_xxx"},
+			"created_at":   json.Number("1788264060"),
+		},
+	}
+	goTagCamel := map[string]interface{}{
+		"release": map[string]interface{}{
+			"releaseID": "9001", "status": "publishing",
+			"createdAt": json.Number("1788264000000"), "updatedAt": json.Number("1788264060000"),
+			"onlineUrl": "https://example.feishu.cn/app/9001", "commitID": "abc123",
 			"future_field": "preserved",
 		},
 		"errorLogs": []interface{}{map[string]interface{}{
@@ -388,9 +405,9 @@ func TestProjectReleaseDetailAliases(t *testing.T) {
 	}
 	legacy := map[string]interface{}{
 		"release": map[string]interface{}{
-			"release_id": "release_new", "status": "publishing",
+			"release_id": "9001", "status": "publishing",
 			"created_at": json.Number("1788264000000"), "updated_at": json.Number("1788264060000"),
-			"online_url": "https://example.feishu.cn/app/release_new", "commit_id": "abc123",
+			"online_url": "https://example.feishu.cn/app/9001", "commit_id": "abc123",
 			"future_field": "preserved",
 		},
 		"error_logs": []interface{}{map[string]interface{}{
@@ -404,12 +421,13 @@ func TestProjectReleaseDetailAliases(t *testing.T) {
 		},
 	}
 
-	var currentData map[string]interface{}
+	var idlData map[string]interface{}
 	for _, tc := range []struct {
 		name string
 		data map[string]interface{}
 	}{
-		{name: "current camel aliases", data: current},
+		{name: "current IDL mixed aliases", data: idlCurrent},
+		{name: "Go tag camel aliases", data: goTagCamel},
 		{name: "legacy snake aliases", data: legacy},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -417,12 +435,12 @@ func TestProjectReleaseDetailAliases(t *testing.T) {
 			projection := projectReleaseDetail(tc.data)
 			got := releaseTestJSONMap(t, projection.Data)
 
-			if tc.name == "current camel aliases" {
-				currentData = got
-			} else if !reflect.DeepEqual(got, currentData) {
-				t.Fatalf("legacy projection differs from current:\nlegacy=%#v\ncurrent=%#v", got, currentData)
+			if tc.name == "current IDL mixed aliases" {
+				idlData = got
+			} else if !reflect.DeepEqual(got, idlData) {
+				t.Fatalf("compatibility projection differs from current IDL:\ncompatibility=%#v\nIDL=%#v", got, idlData)
 			}
-			if got["release_id"] != "release_new" || got["future_field"] != "preserved" {
+			if got["release_id"] != "9001" || got["future_field"] != "preserved" {
 				t.Errorf("root fields = %#v", got)
 			}
 			assertNoReleaseCamelAliases(t, got)

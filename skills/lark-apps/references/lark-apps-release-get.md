@@ -39,7 +39,3 @@ lark-cli apps +release-get --app-id app_xxx --release-id release_yyy
 6. **只交给人处理**：不要调用 `lark-approval`，也不要调用 approve、reject、cancel 或发布节点写回 API。
 7. **审批后恢复查询**：用户明确说审批已处理后，继续查询同一个 `release_id`；绝不再调用 `+release-create` 创建另一轮发布。
 8. **终态**：`finished` 按 `online_url` 的可选输出规则报告；`failed` 按 `error_logs` 的可选输出规则报告。
-
-## 客户端版本错误
-
-仅当服务端错误明确说明客户端版本过旧或要求升级时，建议运行 `lark-cli update` 后重试同一查询。不要硬编码或猜测最低版本，不要用 `--help` 做能力预检。`X-Cli-Version` 不是认证信息，本工作流不增加 CLI 版本门禁。

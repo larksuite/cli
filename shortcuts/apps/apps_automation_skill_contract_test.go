@@ -584,28 +584,31 @@ func TestReleaseSkillContract_GetStopsAtPendingBeforePolling(t *testing.T) {
 	}
 }
 
-func TestReleaseSkillContract_ClientUpgradeIsServerDirectedOnly(t *testing.T) {
-	doc := readReleaseGetSkillDoc(t)
+func TestReleaseSkillContract_ClientUpgradeIsServerDirectedForCreateAndGet(t *testing.T) {
+	doc := readAppsSkillDoc(t, larkAppsSkillDoc)
 
 	for _, boundary := range []string{
+		"`+release-create` 或 `+release-get`",
 		"仅当服务端错误明确说明客户端版本过旧或要求升级",
 		"`lark-cli update`",
+		"重试原命令",
+		"查询仍使用同一个 `release_id`",
 		"不要硬编码或猜测最低版本",
 		"不要用 `--help` 做能力预检",
-		"`X-Cli-Version` 不是认证信息",
+		"`X-Cli-Version` 由 CLI 请求统一携带且不是认证信息",
 		"不增加 CLI 版本门禁",
 	} {
 		if !strings.Contains(doc, boundary) {
-			t.Errorf("release-get upgrade handling must preserve %q", boundary)
+			t.Errorf("release workflow upgrade handling must preserve %q", boundary)
 		}
 	}
 	allWorkflowDocs := strings.Join([]string{
 		readReleaseCreateSkillDoc(t),
-		doc,
+		readReleaseGetSkillDoc(t),
 		readLocalDevSkillDoc(t),
 		readAutomationSkillDoc(t),
 		readAppsSkillDoc(t, creativeDesignSkillDoc),
-		readAppsSkillDoc(t, larkAppsSkillDoc),
+		doc,
 	}, "\n")
 	if got := strings.Count(allWorkflowDocs, "lark-cli update"); got != 1 {
 		t.Errorf("only the explicit server-version-error branch may recommend lark-cli update, got %d mentions", got)
