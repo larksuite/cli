@@ -32,13 +32,15 @@ lark-cli mail +thread-modify --thread-ids <thread_id> --add-label-ids custom_lab
 |------|------|------|
 | `--mailbox <email>` | 否 | 会话所属邮箱，默认 `me`；使用 `--as bot` 时必须显式传邮箱地址 |
 | `--thread-ids <ids>` | 是 | 会话 ID 列表，支持逗号分隔和重复传参；超过 20 个时自动分批提交 |
-| `--add-label-ids <ids>` | 否 | 要添加的标签 ID。系统标签可传 `unread` / `important` / `other` / `flagged` / `read_receipt_request` |
+| `--add-label-ids <ids>` | 否 | 要添加的标签 ID。系统标签可传 `unread` / `important` / `other` / `flagged`；自定义标签传标签 ID |
 | `--remove-label-ids <ids>` | 否 | 要移除的标签 ID。不能与 `--add-label-ids` 传入重复标签 |
 | `--add-folder <id>` | 否 | 要移动到的文件夹。系统文件夹可传 `inbox` / `sent` / `spam` / `archive` / `archived`；自定义文件夹传文件夹 ID |
 
 `--add-label-ids`、`--remove-label-ids`、`--add-folder` 至少传一个。
 
 `TRASH` 不允许通过本 shortcut 作为目标文件夹传入。需要软删除会话时，使用 [`mail +thread-trash`](./lark-mail-thread-trash.md)，并在用户确认后加 `--yes` 执行。
+
+`READ_RECEIPT_REQUEST` / `read_receipt_request` 不允许通过本 shortcut 添加或移除。已读回执请求必须先读取具体 message、确认用户意图，再使用 [`mail +send-receipt`](./lark-mail-send-receipt.md) 或 [`mail +decline-receipt`](./lark-mail-decline-receipt.md)。
 
 ## 注意事项
 
