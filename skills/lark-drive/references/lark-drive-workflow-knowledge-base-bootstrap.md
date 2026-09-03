@@ -85,12 +85,12 @@ Risk / Structure: `R2` / `S2`
 | State | Protocol Step | Entry Condition | Agent MUST Do | User-Facing Output | wait_for_user | Next State |
 |-------|---------------|-----------------|---------------|--------------------|---------------|------------|
 | `PARSE_TARGET` | `route` / `scope` | Workflow 触发 | 加载 wiki skill；把目标解析为 `space_id`：给定 wiki 节点 / 文档 URL 时用 `wiki +node-get` 取 `space_id` 且该节点即候选根，给定普通知识空间时用 `wiki +space-list` 取 `space_id` 并用 `wiki +node-list --page-all`（省略 parent）列出顶层节点；**目标是个人知识库（`my_library` 或个人库 URL）时，`wiki +space-list` 不返回个人库，须改用 `wiki spaces get --params '{"space_id":"my_library"}'` 解析出真实 `space_id`，再列顶层节点**；按 `Root Node Resolution` 确定唯一 `root_node`，多个顶层节点无法自动定根时停下请用户选定；确认目标就是该知识库 | 目标知识库与根节点确认，或（多顶层时）请用户选定根节点 | `true` | `READ_STRUCTURE` |
-| `READ_STRUCTURE` | `read` | 目标已确认 | 递归读取整棵节点树填充 `node_inventory`：每次 `wiki +node-list` 必须用 `--page-all`（或按 `page_token` 翻页到 `has_more=false`），并对 `has_child=true` 的节点逐层下钻，不得只取首页；对 docx 节点读取现有内容填充 `draft_map`；判定结构是否过简（无子节点或子节点不足以承载分类）。任何一层因分页上限、权限或 API 失败未能读全时，置 `partial` 并记原因，不把不完整清单当作完整 | 结构概览：节点数、层级、草稿 / 占位分布；不完整时明确标注 | 除非读取被阻断，否则为 `false` | `OUTLINE_PROPOSE` or `TYPE_TRIAGE` |
+| `READ_STRUCTURE` | `read` | 目标已确认 | 递归读取整棵节点树填充 `node_inventory`：每次 `wiki +node-list` 必须用 `--page-all`（或按 `page_token` 翻页到 `has_more=false`），并对 `has_child=true` 的节点逐层下钻，不得只取首页；对 docx 节点读取现有内容填充 `draft_map`；判定结构是否过简（无子节点或子节点不足以承载分类）。注意 `--page-all` 仍有默认翻页上限（`--page-limit` 默认 10 页、每页至多 50 节点）：某层超过该上限或子节点读取失败时，置 `partial` 并记原因。**`partial` 时 fail closed：不进入 `OUTLINE_PROPOSE` / `TYPE_TRIAGE` / `WRITE`**，因为截断的树可能被误判为"结构过简"而重复建大纲、或写规范时漏掉未读到的节点；须先读全（提高 `--page-limit` / 续 `page_token` / 缩小目标）或由用户缩小范围后再继续 | 结构概览：节点数、层级、草稿 / 占位分布；不完整时明确标注并停下 | 读取不全时为 `true`（停下待用户），否则为 `false` | `OUTLINE_PROPOSE` or `TYPE_TRIAGE` |
 | `OUTLINE_PROPOSE` | `assess` / `plan` / `confirm` | 结构过简 | 加载 outputs 文档；基于知识库主题、根节点标题和已有草稿提议子节点大纲填充 `outline_proposal`；请用户确认后用 `wiki +node-create --obj-type docx` 新建拟定子节点，并回读并入 `node_inventory` | 大纲提议表 + 新建确认请求；确认后报告新建结果 | `true` | `TYPE_TRIAGE` |
 | `TYPE_TRIAGE` | `assess` / `plan` | 结构已读（含新建节点） | 按 `obj_type` / `node_type` 将每个节点分诊为 `writable_docx` / `non_docx_entity` / `shortcut`，填充 `node_class` | 分诊表：可写正文节点、需特殊处理节点及原因 | 存在 `non_docx_entity` / `shortcut` 时为 `true`，否则为 `false` | `GEN_STANDARD` |
 | `GEN_STANDARD` | `assess` / `plan` | 分诊完成 | 加载 outputs 文档；为可写范围生成 `standard_plan`：根节点通用规范 + 各子节点专属维护要求；子节点收录范围优先从草稿归纳，缺失再据业务常识补全 | 维护规范草案预览 | 除非用户直接进入确认，否则为 `false` | `WRITE_CONFIRM` |
 | `WRITE_CONFIRM` | `confirm` | 规范草案就绪 | 生成逐节点写入计划（含 `node_token`、`obj_type`、`write_mode`、6 行治理字段）；运行 `kb_gate.py` 门禁校验，仅 `ready=true` 的节点可进入 `WRITE`，被拦节点记入 `unsupported_checks`，门禁将 `narrowed` 节点的页面状态收紧为进行中；向用户展示计划、门禁结果、精确正文 / diff 与跳过原因 | 写入计划表（含 node_token + 命令族 + 门禁结果）+ 逐节点精确内容 / diff + 被拦 / 收紧 / 跳过清单及原因 | `true` | `WRITE` or `DONE` |
-| `WRITE` | `execute` | 用户已确认写入范围 | 加载 doc-update reference；按 `write_mode_map` 逐节点写入（根节点与子节点可并行）；**每个 `overwrite` 节点落笔前先 `docs +fetch` 重读确认仍为 `empty_placeholder` 并携带读到的 `revision` 再写，内容已变则停下重新确认**；非 docx 节点仅在用户选择 `new_docx` 时新建 docx 规范页 | 写入进度报告 | 除非被阻断，否则为 `false` | `VERIFY` |
+| `WRITE` | `execute` | 用户已确认写入范围 | 加载 doc-update reference；按 `write_mode_map` 逐节点写入（根节点与子节点可并行）；**每个 `overwrite` 节点落笔前先 `docs +fetch` 重读并按 `Write Mode Selection` 的基线校验（占位覆盖须仍为 `empty_placeholder`；已确认草稿覆盖须与确认时基线一致），携带读到的 `revision` 再写，与基线不符则停下重新确认**；非 docx 节点仅在用户选择 `new_docx` 时新建 docx 规范页 | 写入进度报告 | 除非被阻断，否则为 `false` | `VERIFY` |
 | `VERIFY` | `verify` | 写入完成 | 对每个已写节点执行 fresh read 校验内容落地；汇总 `unsupported_checks` | 验证表和最终汇总 | `false` | `DONE` |
 | `DONE` | `done` | 无更多动作 | 停止 | 最终回复：已更新节点数、跳过节点及原因、知识库链接 | `false` | End |
 
@@ -146,7 +146,12 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 
 `draft_state` 必须来自对目标节点的**新鲜读取**（`docs +fetch`），不得复用 `READ_STRUCTURE` 早期缓存或过期计划里的 `draft_state`；门禁只能校验传入 JSON、无法验证其新鲜度。
 
-**关键：新鲜读取的时机在用户确认之后、每次 `overwrite` 落笔之前**，而不仅是 `WRITE_CONFIRM` 生成计划时。因为 `WRITE_CONFIRM` 会停下等用户确认，等待期间协作者可能给"占位"节点补入草稿；若沿用确认前的 `empty_placeholder` 判定、且 `docs +update` 用默认 `revision-id=-1` 写最新版，`overwrite` 仍会覆盖新内容。因此在 `WRITE` 阶段对每个 `overwrite` 节点：先 `docs +fetch` 重读并记录其 `revision`，确认仍为 `empty_placeholder`（内容未变）后，携带读到的 `revision` 再写；若发现内容已变，停下重新确认（或改用 `append`），不静默覆盖。有疑问时优先 `append`。
+**关键：新鲜读取的时机在用户确认之后、每次 `overwrite` 落笔之前**，而不仅是 `WRITE_CONFIRM` 生成计划时。因为 `WRITE_CONFIRM` 会停下等用户确认，等待期间协作者可能改动目标节点；若沿用确认前的判定、且 `docs +update` 用默认 `revision-id=-1` 写最新版，`overwrite` 会覆盖确认后新增的内容。落笔前的校验按写法基线区分：
+
+- **占位覆盖（确认时 `draft_state=empty_placeholder`）**：fresh read 必须仍为 `empty_placeholder`（内容未变）才写；读回已变成 `has_draft` 说明等待期间被补入草稿，停下重新确认或改 `append`。
+- **已确认的草稿覆盖（确认时 `draft_state=has_draft` 且 `overwrite_confirmed=true`）**：记录确认时展示给用户的 `revision` / 内容基线，fresh read 必须与该基线**一致**（草稿未再变动）才写；一致即按确认执行，不因读回仍是 `has_draft` 而反复追问；若与基线不一致（草稿在确认后又被改），停下重新确认。
+
+两种情况都携带读到的 `revision` 写入；有疑问时优先 `append`，不静默覆盖。
 
 ## Write Gate
 
@@ -195,7 +200,7 @@ python3 "<SKILL_ROOT>/references/scripts/kb_gate.py" --plan "<写入计划 JSON 
    - 仅可读 → 只输出规范草案与写入计划，不执行任何写入；
    - 某动作实际返回 `permission_denied` → 只停该动作、记入 `unsupported_checks`，不用同参数重试、不静默切 bot、不自动申请权限。
 5. 权限硬规则：读取成功不等于具备写权限；写权限只以实际写入返回为准，不由身份、角色或读取成功推断。遇权限不足不自动申请，但必须精确告知受阻的动作和具体节点，不静默跳过。
-6. `READ_STRUCTURE` 判定结构过简（无子节点或子节点不足以承载分类）时进入 `OUTLINE_PROPOSE`；结构已足够时直接进入 `TYPE_TRIAGE`。
+6. `READ_STRUCTURE` 判定结构过简（无子节点或子节点不足以承载分类）时进入 `OUTLINE_PROPOSE`；结构已足够时直接进入 `TYPE_TRIAGE`。节点树读取不全（`partial`，含 `--page-all` 触及默认页数上限）时 fail closed：不进入 `OUTLINE_PROPOSE` / `TYPE_TRIAGE` / `WRITE`，先读全或由用户缩小范围，避免把截断的树误判为过简而重复建大纲或漏写节点。
 7. `OUTLINE_PROPOSE` 中用户拒绝新建大纲、或只想为现有根节点写规范时，跳过新建，直接以现有节点进入 `TYPE_TRIAGE`；不擅自新建任何节点。
 8. `TYPE_TRIAGE` 发现全部节点均为 `non_docx_entity` / `shortcut` 时，说明本知识库没有可写入正文的 docx 节点，询问是否对相关节点走 `new_docx`，不静默结束。
 9. 用户在 `WRITE_CONFIRM` 拒绝写入时，输出已保存的规范草案并转入 `DONE`。

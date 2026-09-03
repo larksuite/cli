@@ -97,11 +97,24 @@ def hash_file(path: Path) -> str:
 
 
 def iter_files(root: Path, include_hidden: bool, skipped_symlinks: list[str],
-               skipped_nonregular: list[str], exclude_dir: Path | None = None):
+               skipped_nonregular: list[str], walk_errors: list[str],
+               exclude_dir: Path | None = None):
     if root.is_file():
         yield root
         return
-    for current, dirs, files in os.walk(root):
+
+    def _on_error(exc: OSError) -> None:
+        # os.walk silently skips a directory it cannot list unless we capture the
+        # error here; record it so the scan is reported incomplete rather than a
+        # false success that omits authorized material.
+        target = getattr(exc, "filename", None) or str(root)
+        try:
+            rel = str(Path(target).relative_to(root))
+        except (ValueError, TypeError):
+            rel = str(target)
+        walk_errors.append(f"{rel}: {exc.strerror or exc}")
+
+    for current, dirs, files in os.walk(root, onerror=_on_error):
         dirs[:] = sorted(
             item for item in dirs
             if item not in SKIP_DIRS and (include_hidden or not item.startswith("."))
@@ -185,11 +198,12 @@ def build_inventory(
     include_hidden: bool,
     skipped_symlinks: list[str],
     skipped_nonregular: list[str],
+    walk_errors: list[str],
     exclude_dir: Path | None = None,
 ) -> list[dict]:
     rows = []
     for path in iter_files(root, include_hidden, skipped_symlinks,
-                           skipped_nonregular, exclude_dir):
+                           skipped_nonregular, walk_errors, exclude_dir):
         extension = path.suffix.lower()
         if extension not in extensions:
             continue
@@ -250,6 +264,7 @@ def write_outputs(
     output_dir: Path,
     skipped_symlinks: list[str],
     skipped_nonregular: list[str],
+    walk_errors: list[str],
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     fields = list(rows[0]) if rows else list(empty_row("", "", "", ""))
@@ -263,12 +278,18 @@ def write_outputs(
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
         "authorized_root": str(root.resolve()),
         "source_files_modified": False,
+        # A scan is complete only if every directory under the root was listable.
+        # An unreadable subdirectory makes the inventory incomplete, so downstream
+        # planning must not treat it as a full picture of authorized material.
+        "scan_complete": not walk_errors,
         "skipped_symlinks": sorted(skipped_symlinks),
         "skipped_nonregular": sorted(skipped_nonregular),
+        "unreadable_dirs": sorted(walk_errors),
         "summary": {
             "files": len(rows),
             "skipped_symlinks": len(skipped_symlinks),
             "skipped_nonregular": len(skipped_nonregular),
+            "unreadable_dirs": len(walk_errors),
             "failed": sum(row["parse_readiness"] == "failed" for row in rows),
             "exact_duplicate_groups": len({row["duplicate_group"] for row in rows if row["duplicate_group"]}),
             "possible_sensitive_by_filename": sum(
@@ -316,29 +337,36 @@ def main() -> int:
         exclude_dir = resolved_output
         skipped_symlinks: list[str] = []
         skipped_nonregular: list[str] = []
+        walk_errors: list[str] = []
         rows = build_inventory(
             root,
             normalize_extensions(args.extensions),
             args.include_hidden,
             skipped_symlinks,
             skipped_nonregular,
+            walk_errors,
             exclude_dir,
         )
-        write_outputs(rows, root, output_dir, skipped_symlinks, skipped_nonregular)
+        write_outputs(rows, root, output_dir, skipped_symlinks, skipped_nonregular, walk_errors)
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
+    scan_complete = not walk_errors
     print(json.dumps({
-        "ok": True,
+        "ok": scan_complete,
+        "scan_complete": scan_complete,
         "files": len(rows),
         "exact_duplicate_groups": len({row["duplicate_group"] for row in rows if row["duplicate_group"]}),
         "skipped_symlinks": len(skipped_symlinks),
         "skipped_nonregular": len(skipped_nonregular),
+        "unreadable_dirs": len(walk_errors),
         "output_dir": str(output_dir.resolve()),
         "source_files_modified": False,
     }, ensure_ascii=False))
-    return 0
+    # An unreadable directory means authorized material may be missing from the
+    # ledger; exit non-zero so the caller does not treat it as a complete scan.
+    return 0 if scan_complete else 1
 
 
 if __name__ == "__main__":

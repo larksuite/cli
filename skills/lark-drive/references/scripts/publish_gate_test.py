@@ -88,14 +88,19 @@ class KnowledgePageGateTest(unittest.TestCase):
         self.assertFalse(result["ready"])
         self.assertTrue(any("未知写法" in r for r in result["blocked_reasons"]))
 
-    def test_update_via_import_docx_blocks(self):
-        # update/merge must not route through import_docx (would dup a child page).
+    def test_update_via_non_docs_update_blocks(self):
+        # update/merge must use docs_update; import_docx or node_create_docx would
+        # create a duplicate child page instead of updating the target.
         for action in ("update", "merge"):
-            result = publish_gate.evaluate_item(
-                _page(proposed_action=action, write_via="import_docx")
-            )
-            self.assertFalse(result["ready"], action)
-            self.assertTrue(any("import_docx" in r for r in result["blocked_reasons"]), action)
+            for via in ("import_docx", "node_create_docx"):
+                result = publish_gate.evaluate_item(
+                    _page(proposed_action=action, write_via=via, parent_token="wikcn_P")
+                )
+                self.assertFalse(result["ready"], f"{action}/{via}")
+                self.assertTrue(
+                    any("update/merge 只能用 docs_update" in r for r in result["blocked_reasons"]),
+                    f"{action}/{via}",
+                )
 
     def test_update_via_docs_update_ok(self):
         result = publish_gate.evaluate_item(_page(proposed_action="update", write_via="docs_update"))
@@ -104,6 +109,14 @@ class KnowledgePageGateTest(unittest.TestCase):
     def test_add_via_import_docx_ok(self):
         result = publish_gate.evaluate_item(_page(proposed_action="add", write_via="import_docx"))
         self.assertTrue(result["ready"])
+
+    def test_nonpublish_action_blocks(self):
+        # skip/reference/review carry no write and must never be marked ready,
+        # even with an otherwise-valid docs_update plan.
+        for action in ("skip", "reference", "review"):
+            result = publish_gate.evaluate_item(_page(proposed_action=action, write_via="docs_update"))
+            self.assertFalse(result["ready"], action)
+            self.assertTrue(any("非发布动作" in r for r in result["blocked_reasons"]), action)
 
     def test_unknown_action_fails_closed(self):
         result = publish_gate.evaluate_item(_page(proposed_action="publish"))

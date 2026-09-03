@@ -57,12 +57,14 @@ class InventoryScanTest(unittest.TestCase):
     def _build(self, **kwargs):
         skipped: list[str] = []
         skipped_nonregular: list[str] = []
+        walk_errors: list[str] = []
         rows = inventory.build_inventory(
             self.root,
             inventory.normalize_extensions(kwargs.get("extensions")),
             kwargs.get("include_hidden", False),
             skipped,
             skipped_nonregular,
+            walk_errors,
             kwargs.get("exclude_dir"),
         )
         return rows, skipped, skipped_nonregular
@@ -156,12 +158,13 @@ class InventoryOutputTest(unittest.TestCase):
             root = Path(tmp) / "src"
             root.mkdir()
             out = Path(tmp) / "out"
-            inventory.write_outputs([], root, out, [], [])
+            inventory.write_outputs([], root, out, [], [], [])
             csv_text = (out / "inventory.csv").read_text(encoding="utf-8-sig")
             self.assertTrue(csv_text.startswith("source_id,"))
             payload = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
             self.assertEqual(payload["summary"]["files"], 0)
             self.assertFalse(payload["source_files_modified"])
+            self.assertTrue(payload["scan_complete"])
 
     def test_write_outputs_records_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -173,14 +176,26 @@ class InventoryOutputTest(unittest.TestCase):
             out = Path(tmp) / "out"
             skipped: list[str] = []
             skipped_nonregular: list[str] = []
+            walk_errors: list[str] = []
             rows = inventory.build_inventory(
-                root, set(inventory.DEFAULT_EXTENSIONS), False, skipped, skipped_nonregular
+                root, set(inventory.DEFAULT_EXTENSIONS), False, skipped,
+                skipped_nonregular, walk_errors
             )
-            inventory.write_outputs(rows, root, out, skipped, skipped_nonregular)
+            inventory.write_outputs(rows, root, out, skipped, skipped_nonregular, walk_errors)
             payload = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
             self.assertEqual(payload["summary"]["files"], 3)
             self.assertEqual(payload["summary"]["exact_duplicate_groups"], 1)
             self.assertEqual(payload["summary"]["possible_sensitive_by_filename"], 1)
+
+    def test_write_outputs_incomplete_when_walk_errors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "src"
+            root.mkdir()
+            out = Path(tmp) / "out"
+            inventory.write_outputs([], root, out, [], [], ["locked_dir: Permission denied"])
+            payload = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
+            self.assertFalse(payload["scan_complete"])
+            self.assertEqual(payload["summary"]["unreadable_dirs"], 1)
 
 
 class InventoryMainTest(unittest.TestCase):
@@ -221,6 +236,26 @@ class InventoryMainTest(unittest.TestCase):
             payload = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
             titles = [item["title"] for item in payload["items"]]
             self.assertEqual(titles, ["doc.txt"])
+
+    @unittest.skipIf(os.name == "nt" or os.geteuid() == 0, "needs POSIX perms, non-root")
+    def test_unreadable_subdir_reports_incomplete(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "src"
+            root.mkdir()
+            (root / "doc.txt").write_bytes(b"x")
+            locked = root / "locked"
+            locked.mkdir()
+            (locked / "hidden.txt").write_bytes(b"y")
+            os.chmod(locked, 0o000)
+            out = Path(tmp) / "out"
+            try:
+                code = self._run_main(["--root", str(root), "--output-dir", str(out)])
+            finally:
+                os.chmod(locked, 0o755)  # restore so tempdir cleanup succeeds
+            self.assertEqual(code, 1)
+            payload = json.loads((out / "inventory.json").read_text(encoding="utf-8"))
+            self.assertFalse(payload["scan_complete"])
+            self.assertGreaterEqual(payload["summary"]["unreadable_dirs"], 1)
 
 
 if __name__ == "__main__":

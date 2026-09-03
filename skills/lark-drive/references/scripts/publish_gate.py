@@ -111,11 +111,14 @@ VALID_WRITE_VIA = PAGE_WRITE_VIA | {ATTACHMENT_WRITE_VIA}
 VALID_SENSITIVITY = {"public", "internal", "restricted", "prohibited"}
 VALID_CONFLICT = {"none", "suspected", "confirmed", "resolved"}
 VALID_PARSE = {"parsed", "partial", "unsupported", "failed"}
-# Closed proposed_action enum. import_docx creates a fresh page and is only
-# valid for `add`; update/merge target an existing page and must use docs_update
-# (routing an update through import_docx would create a duplicate child page).
+# Closed proposed_action enum. Actions split into those that publish a page and
+# those that do not; a non-publishing action must never reach a write.
 VALID_ACTIONS = {"add", "update", "merge", "reference", "review", "skip"}
+# Actions that update an existing page: they must use docs_update (import_docx or
+# node_create_docx would create a duplicate child instead of updating).
 UPDATE_ACTIONS = {"update", "merge"}
+# Non-publishing actions: they carry no write and must not be marked ready.
+NONPUBLISH_ACTIONS = {"reference", "review", "skip"}
 # Conflict states that block production until a human resolves them.
 BLOCKING_CONFLICTS = {"suspected", "confirmed"}
 # Parse states that cannot yield a searchable body at all.
@@ -242,13 +245,17 @@ def _evaluate_knowledge_page(item: dict, title: str, source_id: str) -> dict:
         # complete a knowledge page.
         hard_reasons.append("drive_upload 只能上传原文件，不能完成知识页")
 
-    # --- Hard gate: proposed_action must be a known action, and update/merge
-    # must not route through import_docx (which would create a duplicate child
-    # page instead of updating the existing target). ---
+    # --- Hard gate: proposed_action must be known, must be a publishing action,
+    # and must match the write_via path. update/merge require docs_update (any
+    # other path would create a duplicate child instead of updating the target);
+    # add requires a page-creating path (import_docx / docs_update /
+    # node_create_docx). A non-publishing action must never reach a write. ---
     if action not in VALID_ACTIONS:
         hard_reasons.append(f"处置动作未分类或非法（proposed_action={item.get('proposed_action')}）")
-    elif action in UPDATE_ACTIONS and write_via == "import_docx":
-        hard_reasons.append("update/merge 不能用 import_docx（会新增子页），须用 docs_update 更新既有页")
+    elif action in NONPUBLISH_ACTIONS:
+        hard_reasons.append(f"非发布动作（{action}）不应作为知识页写入")
+    elif action in UPDATE_ACTIONS and write_via != "docs_update":
+        hard_reasons.append(f"update/merge 只能用 docs_update 更新既有页，当前 write_via={write_via or '（空）'}（避免新增重复页）")
 
     # --- Hard gate: a real write needs a stable target ---
     if not token and write_via != "node_create_docx":

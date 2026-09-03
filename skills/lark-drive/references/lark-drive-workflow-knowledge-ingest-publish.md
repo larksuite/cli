@@ -88,7 +88,12 @@ PDF 不假设可直接导入。先解析文本层；扫描件借 agent 多模态
 
 ### 原文件附件（write_via=drive_upload，默认关闭）
 
-仅当用户明确要求保留原件时，在**知识页已完成并验证后**，用 `drive +upload --wiki-token` 把原文件挂为 `source_attachment`。上传成功只记为附件结果，绝不推进页面状态。绝不删除、修改或移动原始文件。
+仅当用户明确要求保留原件时，才把原文件挂为 `source_attachment`。上传必须**在其对应知识页 fresh-read 验证通过之后**执行——即附件只消费 `execution_ledger` 中状态为 `verified` 的知识页条目：
+
+- `CONVERT_WRITE` 阶段只写知识页，不上传任何附件；
+- 每个知识页经 `VERIFY` fresh read 通过、台账记为 `verified` 后，才对其上传对应 `source_attachment`（`drive +upload --wiki-token`）；
+- 对应知识页验证失败（`failed` / `blocked`）的资料**不上传**其原件，避免留下没有可检索知识页的孤儿附件；
+- 上传成功只记为附件结果，绝不推进页面状态。绝不删除、修改或移动原始文件。
 
 ### 执行台账
 

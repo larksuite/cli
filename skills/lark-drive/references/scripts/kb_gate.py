@@ -198,7 +198,9 @@ def evaluate_node(node: dict) -> dict:
                 hard_reasons.append(f"治理字段缺失：{GOVERNANCE_FIELDS[field]}")
 
         page_status = str(governance.get("page_status") or "").strip()
-        if page_status and page_status not in VALID_PAGE_STATUSES:
+        if not page_status:
+            hard_reasons.append(f"治理字段缺失：{GOVERNANCE_FIELDS['page_status']}")
+        elif page_status not in VALID_PAGE_STATUSES:
             hard_reasons.append(f"页面状态非法：{page_status}")
 
         # Consistency narrowing: any 待确认 field cannot be sold as 已完成.

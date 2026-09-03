@@ -106,8 +106,8 @@ Risk / Structure: `R2-R3` / `S3`
 | `NODE_PROPOSE` | `assess` / `plan` / `confirm` | 节点不足以承载资料（情况 1 / 5） | 加载 analyze phase；据已盘点的真实资料内容提议承载节点填充 `outline_proposal`；请用户确认后用 `wiki +node-create --obj-type docx` 新建，回读并入 `node_inventory` | 承载节点提议表 + 新建确认请求；确认后报告新建结果 | `true` | `ANALYZE_TRIAGE` |
 | `ANALYZE_TRIAGE` | `assess` / `plan` | 结构就位（含新建节点） | 加载 analyze phase；逐份读取资料正文，判类、识别版本冲突、映射到目标节点（据 `standard_map`；无规范则降级据内容推断）、按规范或主题生成拟定标题、给 `proposed_action`；对目标节点做 Node Type Triage（非 docx / shortcut 处理）填充 `material_map` | 资料分析表：判类、目标节点、拟定名、冲突/敏感标记、映射置信度 | 除非用户直接进入确认否则 `false` | `PUBLISH_PLAN` |
 | `PUBLISH_PLAN` | `plan` / `confirm` | 分析完成 | 加载 publish phase + outputs；生成逐资料 `publish_plan`（含 `publish_role`、`write_via`、目标节点、`parse_status`、6 行治理字段）；运行 `publish_gate.py` 门禁；产出发布计划 + 冲突/敏感/无法解析三清单。仅 `ready=true` 的资料进入 `CONVERT_WRITE`，被拦记入 `unsupported_checks`，`narrowed` 项按收紧后状态写入 | 发布计划表（含目标节点 + write_via + 门禁结果）+ 逐资料精确处置 + 三清单 + 被拦/收紧/跳过原因 | `true` | `CONVERT_WRITE` or `DONE` |
-| `CONVERT_WRITE` | `execute` | 用户已确认发布计划 | 加载 publish phase；按计划逐份转换写入：Word/.md/.txt/.html 走 `drive +import --type docx`，PDF/图片解析后 `docs +update`，每页套 6 行治理表；`new_docx` 目标先 `wiki +node-create`。原件仅在用户开启附件时 `drive +upload` 挂为 `source_attachment`。逐项更新 `execution_ledger` | 转换写入进度报告 | 除非被阻断否则 `false` | `VERIFY` |
-| `VERIFY` | `verify` | 写入完成 | 对每个已写页面 fresh read：确认 `obj_type=docx`、`docs +fetch` 可读、6 行治理表存在、正文非空且不依赖附件；任一不满足记 `failed`。汇总 `unsupported_checks` | 验证表 + 最终汇总 | `false` | `DONE` |
+| `CONVERT_WRITE` | `execute` | 用户已确认发布计划 | 加载 publish phase；按计划逐份转换写入知识页：Word/.md/.txt/.html 走 `drive +import --type docx`，PDF/图片解析后 `docs +update`，每页套 6 行治理表；`new_docx` 目标先 `wiki +node-create`。**本状态只写知识页，不上传任何附件**。逐项更新 `execution_ledger` | 转换写入进度报告 | 除非被阻断否则 `false` | `VERIFY` |
+| `VERIFY` | `verify` | 写入完成 | 对每个已写页面 fresh read：确认 `obj_type=docx`、`docs +fetch` 可读、6 行治理表存在、正文非空且不依赖附件；任一不满足记 `failed`。**仅对 `verified` 的知识页，且用户开启附件时，才 `drive +upload` 挂其 `source_attachment`（页面验证失败的不上传原件，避免孤儿附件）**。汇总 `unsupported_checks` | 验证表 + 最终汇总 | `false` | `DONE` |
 | `DONE` | `done` | 无更多动作 | 停止 | 最终回复：已入库页数、跳过 / 被拦资料及原因、失败项、台账位置、知识库链接 | `false` | End |
 
 ## Progressive Load Map
@@ -122,8 +122,8 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 | `NODE_PROPOSE` | [`lark-drive-workflow-knowledge-ingest-analyze.md`](lark-drive-workflow-knowledge-ingest-analyze.md)、[`../../lark-wiki/references/lark-wiki-node-create.md`](../../lark-wiki/references/lark-wiki-node-create.md) |
 | `ANALYZE_TRIAGE` | [`lark-drive-workflow-knowledge-ingest-analyze.md`](lark-drive-workflow-knowledge-ingest-analyze.md) |
 | `PUBLISH_PLAN` | [`lark-drive-workflow-knowledge-ingest-publish.md`](lark-drive-workflow-knowledge-ingest-publish.md)、[`lark-drive-workflow-knowledge-ingest-outputs.md`](lark-drive-workflow-knowledge-ingest-outputs.md)；门禁脚本 `scripts/publish_gate.py` |
-| `CONVERT_WRITE` | [`lark-drive-workflow-knowledge-ingest-publish.md`](lark-drive-workflow-knowledge-ingest-publish.md)、[`../../lark-drive/references/lark-drive-import.md`](lark-drive-import.md)、[`../../lark-doc/references/lark-doc-update.md`](../../lark-doc/references/lark-doc-update.md)；`import_docx` 迁入时 [`../../lark-wiki/references/lark-wiki-move.md`](../../lark-wiki/references/lark-wiki-move.md) 与异步续跑 [`lark-drive-task-result.md`](lark-drive-task-result.md)；`new_docx` 时 [`../../lark-wiki/references/lark-wiki-node-create.md`](../../lark-wiki/references/lark-wiki-node-create.md)；附件时 [`lark-drive-upload.md`](lark-drive-upload.md) |
-| `VERIFY` | 复用 `TARGET_ALIGN` 阶段的读取上下文 |
+| `CONVERT_WRITE` | [`lark-drive-workflow-knowledge-ingest-publish.md`](lark-drive-workflow-knowledge-ingest-publish.md)、[`../../lark-drive/references/lark-drive-import.md`](lark-drive-import.md)、[`../../lark-doc/references/lark-doc-update.md`](../../lark-doc/references/lark-doc-update.md)；`import_docx` 迁入时 [`../../lark-wiki/references/lark-wiki-move.md`](../../lark-wiki/references/lark-wiki-move.md) 与异步续跑 [`lark-drive-task-result.md`](lark-drive-task-result.md)；`new_docx` 时 [`../../lark-wiki/references/lark-wiki-node-create.md`](../../lark-wiki/references/lark-wiki-node-create.md) |
+| `VERIFY` | 复用 `TARGET_ALIGN` 阶段的读取上下文；用户开启附件时 [`lark-drive-upload.md`](lark-drive-upload.md)（仅对 `verified` 页面） |
 
 ## Situation Routing
 
@@ -195,8 +195,8 @@ python3 "<SKILL_ROOT>/references/scripts/publish_gate.py" --plan "<发布计划 
 | `NODE_PROPOSE` | `wiki +node-create --obj-type docx`（仅用户确认后）、`wiki +node-list --page-all` | 新建确认后的承载节点并分页回读（`--page-all`，避免漏掉新建节点） |
 | `ANALYZE_TRIAGE` | 无飞书写命令（agent 读本地资料正文分析） | 判类、冲突识别、映射、命名、分诊 |
 | `PUBLISH_PLAN` | 无飞书写命令；`python3 <SKILL_ROOT>/references/scripts/publish_gate.py`（本地只读门禁） | 生成发布计划、门禁校验、请用户确认 |
-| `CONVERT_WRITE` | `docs +fetch`（update/merge 落笔前重读 revision）、`drive +import --type docx`、`drive +task_result --scenario import`（import 异步续跑）、`docs +update`、`wiki +move --obj-type docx`（import 件迁入目标节点）、`drive +task_result --scenario wiki_move`（迁入异步续跑）、`wiki +node-create --obj-type docx`（new_docx）、`drive +upload`（仅 source_attachment） | 执行已确认的受控转换写入 |
-| `VERIFY` | `docs +fetch`、`wiki +node-list` | fresh read 校验写入结果 |
+| `CONVERT_WRITE` | `docs +fetch`（update/merge 落笔前重读 revision）、`drive +import --type docx`、`drive +task_result --scenario import`（import 异步续跑）、`docs +update`、`wiki +move --obj-type docx`（import 件迁入目标节点）、`drive +task_result --scenario wiki_move`（迁入异步续跑）、`wiki +node-create --obj-type docx`（new_docx） | 执行已确认的受控转换写入（不含附件上传） |
+| `VERIFY` | `docs +fetch`、`wiki +node-list`；`drive +upload`（仅对 `verified` 页面上传 source_attachment） | fresh read 校验写入结果，并对已验证页面按需挂原件附件 |
 
 ## Transition Rules
 

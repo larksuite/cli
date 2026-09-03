@@ -107,6 +107,12 @@ class KbGateTest(unittest.TestCase):
         self.assertFalse(result["ready"])
         self.assertTrue(any("页面状态非法" in r for r in result["blocked_reasons"]))
 
+    def test_missing_page_status_blocks(self):
+        # An empty page_status must hard-block, not fall through as writable.
+        result = kb_gate.evaluate_node(_node(governance=_governance(page_status="")))
+        self.assertFalse(result["ready"])
+        self.assertTrue(any("页面状态" in r for r in result["blocked_reasons"]))
+
     def test_unresolved_owner_with_done_status_narrows(self):
         # owner 待确认 but marked 已完成 -> writable draft, status narrowed to 进行中.
         result = kb_gate.evaluate_node(
