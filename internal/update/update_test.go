@@ -88,7 +88,7 @@ func TestManifestCacheUsesExactTargetAndSourceIdentity(t *testing.T) {
 		distribution.DefaultClient = previousClient
 	})
 
-	RefreshCache("new-current")
+	RefreshCache(context.Background(), "new-current")
 	stateBytes, err := vfs.ReadFile(statePath())
 	if err != nil {
 		t.Fatal(err)
@@ -96,7 +96,7 @@ func TestManifestCacheUsesExactTargetAndSourceIdentity(t *testing.T) {
 	if strings.Contains(string(stateBytes), server.URL) {
 		t.Fatal("update cache persisted the manifest URL")
 	}
-	info := CheckCached("new-current")
+	info := CheckCached(context.Background(), "new-current")
 	if info == nil || info.Latest != "old-target" || info.Source != "manifest" {
 		t.Fatalf("CheckCached = %#v", info)
 	}
@@ -104,8 +104,8 @@ func TestManifestCacheUsesExactTargetAndSourceIdentity(t *testing.T) {
 	// A different manifest is a different source even while the 24-hour cache
 	// from the first source is fresh.
 	exttransport.Register(updateExternalProvider{manifestURL: server.URL + "/second"})
-	RefreshCache("new-current")
-	info = CheckCached("new-current")
+	RefreshCache(context.Background(), "new-current")
+	info = CheckCached(context.Background(), "new-current")
 	if info == nil || info.Latest != "second-target" {
 		t.Fatalf("CheckCached after source switch = %#v", info)
 	}
@@ -180,7 +180,7 @@ func TestCheckCached(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
 
 	// No cache → nil
-	info := CheckCached("1.0.0")
+	info := CheckCached(context.Background(), "1.0.0")
 	if info != nil {
 		t.Errorf("expected nil with no cache, got %+v", info)
 	}
@@ -190,7 +190,7 @@ func TestCheckCached(t *testing.T) {
 	data, _ := json.Marshal(state)
 	os.WriteFile(filepath.Join(tmp, stateFile), data, 0644)
 
-	info = CheckCached("1.0.0")
+	info = CheckCached(context.Background(), "1.0.0")
 	if info == nil {
 		t.Fatal("expected update info, got nil")
 	}
@@ -199,7 +199,7 @@ func TestCheckCached(t *testing.T) {
 	}
 
 	// Same version → nil
-	info = CheckCached("2.0.0")
+	info = CheckCached(context.Background(), "2.0.0")
 	if info != nil {
 		t.Errorf("expected nil when versions match, got %+v", info)
 	}
@@ -224,10 +224,10 @@ func TestRefreshCache(t *testing.T) {
 	})
 	defer func() { DefaultClient = nil }()
 
-	RefreshCache("1.0.0")
+	RefreshCache(context.Background(), "1.0.0")
 
 	// Verify cache was written
-	info := CheckCached("1.0.0")
+	info := CheckCached(context.Background(), "1.0.0")
 	if info == nil {
 		t.Fatal("expected update info after refresh, got nil")
 	}
@@ -236,7 +236,7 @@ func TestRefreshCache(t *testing.T) {
 	}
 
 	// Second refresh should be no-op (cache is fresh) — won't hit network.
-	RefreshCache("1.0.0")
+	RefreshCache(context.Background(), "1.0.0")
 }
 
 func TestFetchLatestVersionRewritesRegistryAndUsesExternalClass(t *testing.T) {
@@ -270,7 +270,7 @@ func TestFetchLatestVersionRewritesRegistryAndUsesExternalClass(t *testing.T) {
 	})
 	t.Cleanup(func() { http.DefaultTransport = previousTransport })
 
-	if _, err := fetchLatestVersion(); err != nil {
+	if _, err := fetchLatestVersion(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 

@@ -94,7 +94,7 @@ func doctorRun(opts *DoctorOptions, projector *recovery.Projector) error {
 	// ── 0. CLI version & update check ──
 	checks = append(checks, pass("cli_version", build.Version))
 	if !opts.Offline && projector.CanReference(recovery.TargetUpdate) {
-		checks = append(checks, checkCLIUpdate()...)
+		checks = append(checks, checkCLIUpdate(opts.Ctx)...)
 	}
 
 	// ── 1. Config file ──
@@ -244,8 +244,8 @@ func probeEndpoint(ctx context.Context, client *http.Client, url string) error {
 // checkCLIUpdate actively queries the configured source for its target version.
 // Unlike the root-level async check, this does a synchronous fetch with timeout
 // and works regardless of build version (dev builds included).
-func checkCLIUpdate() []checkResult {
-	target, err := fetchLatestForDoctor()
+func checkCLIUpdate(ctx context.Context) []checkResult {
+	target, err := fetchLatestForDoctor(ctx)
 	if err != nil {
 		return []checkResult{warn("cli_update", "check failed: "+err.Error(), "")}
 	}
