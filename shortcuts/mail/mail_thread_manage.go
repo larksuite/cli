@@ -200,11 +200,11 @@ func buildThreadModifyInput(rt *common.RuntimeContext) (threadModifyInput, error
 	if err != nil {
 		return threadModifyInput{}, err
 	}
-	addLabels, _, err := normalizeMessageManageLabels(rt.StrSlice("add-label-ids"), "--add-label-ids")
+	addLabels, err := normalizeThreadManageLabels(rt.StrSlice("add-label-ids"), "--add-label-ids")
 	if err != nil {
 		return threadModifyInput{}, err
 	}
-	removeLabels, _, err := normalizeMessageManageLabels(rt.StrSlice("remove-label-ids"), "--remove-label-ids")
+	removeLabels, err := normalizeThreadManageLabels(rt.StrSlice("remove-label-ids"), "--remove-label-ids")
 	if err != nil {
 		return threadModifyInput{}, err
 	}
@@ -224,6 +224,38 @@ func buildThreadModifyInput(rt *common.RuntimeContext) (threadModifyInput, error
 		RemoveLabelIDs: removeLabels,
 		FolderID:       folderID,
 	}, nil
+}
+
+func normalizeThreadManageLabels(raw []string, flagName string) ([]string, error) {
+	labels := make([]string, 0, len(raw))
+	seen := make(map[string]struct{}, len(raw))
+	for i, part := range raw {
+		id := strings.TrimSpace(part)
+		if id == "" {
+			return nil, mailValidationParamError(flagName, "%s entry %d is empty; remove extra commas or provide valid label IDs", flagName, i+1)
+		}
+		if id != part {
+			return nil, mailValidationParamError(flagName, "%s entry %d (%q): must not contain leading or trailing whitespace", flagName, i+1, part)
+		}
+		upper := strings.ToUpper(id)
+		if upper == readReceiptRequestLabel {
+			return nil, mailValidationParamError(flagName, "%s cannot manage READ_RECEIPT_REQUEST at thread level; read the message and use +send-receipt or +decline-receipt after user confirmation", flagName)
+		}
+		normalized := id
+		switch upper {
+		case "UNREAD", "IMPORTANT", "OTHER", "FLAGGED":
+			normalized = upper
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		labels = append(labels, normalized)
+	}
+	if len(labels) > 20 {
+		return nil, mailValidationParamError(flagName, "%s accepts at most 20 label IDs (got %d)", flagName, len(labels))
+	}
+	return labels, nil
 }
 
 func normalizeThreadManageIDs(raw []string) ([]string, error) {

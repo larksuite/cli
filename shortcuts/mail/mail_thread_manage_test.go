@@ -254,6 +254,26 @@ func TestThreadModify_Validation(t *testing.T) {
 	}, f, stdout)
 	requireMessageManageValidationParam(t, err, "--add-label-ids")
 
+	for _, tc := range []struct {
+		name string
+		flag string
+	}{
+		{name: "add", flag: "--add-label-ids"},
+		{name: "remove", flag: "--remove-label-ids"},
+	} {
+		t.Run("rejects read receipt request label on "+tc.name, func(t *testing.T) {
+			err := runMountedMailShortcut(t, MailThreadModify, []string{
+				"+thread-modify",
+				"--thread-ids", id,
+				tc.flag, "read_receipt_request",
+			}, f, stdout)
+			requireMessageManageValidationParam(t, err, tc.flag)
+			if !strings.Contains(err.Error(), "+send-receipt") || !strings.Contains(err.Error(), "+decline-receipt") {
+				t.Fatalf("error = %v, want receipt shortcut guidance", err)
+			}
+		})
+	}
+
 	err = runMountedMailShortcut(t, MailThreadModify, []string{
 		"+thread-modify",
 		"--thread-ids", id,

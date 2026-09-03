@@ -89,14 +89,14 @@ metadata:
 - **`--as bot`**：以应用身份访问邮箱。需要在飞书开发者后台为应用开通相应权限，否则请求会被拒绝。bot 身份不能使用默认 `--mailbox me`，必须显式传邮箱地址。
 
 1. 所有邮件写操作（发送、回复、转发、草稿编辑） → 必须使用 `--as user`，未登录时先使用 `lark-cli auth login --domain mail` 进行登录
-2. 读取类操作（查看邮件、会话、收件箱列表等） → 推荐使用 `--as user`；如需应用级批量操作（如管理员代操作），可使用 `--as bot`，确保应用已开通对应权限
+2. 读取类操作（查看邮件、会话、收件箱列表等）和会话级批量整理（`+thread-modify` / `+thread-trash`）→ 推荐使用 `--as user`；如需管理员/应用代操作，可使用 `--as bot` 并显式传 `--mailbox <email>`，确保应用已开通对应权限。message 级整理（`+message-modify` / `+message-trash`）仍仅支持 `--as user`
 
 ## 典型工作流
 
 1. **确认身份** — 首次操作邮箱前先调用 `lark-cli mail user_mailboxes profile --params '{"user_mailbox_id":"me"}'` 获取当前用户的真实邮箱地址（`primary_email_address`），不要通过系统用户名猜测。后续判断"发件人是否为用户本人"时以此地址为准。
 2. **浏览** — `+triage` 查看收件箱摘要，获取 `message_id` / `thread_id`
 3. **阅读** — `+message` 只读单封邮件；已有多个 `message_id` 时用 `+messages` 批量读取，不要循环调用 `+message`；`+thread` 读整个会话
-4. **整理** — 标签、已读/未读状态和移动文件夹优先用 `+message-modify`；软删除优先用 `+message-trash`；会话级批量整理可用 `+thread-modify`，软删除会话可用 `+thread-trash`
+4. **整理** — 具体邮件的标签、已读/未读状态和移动文件夹优先用 `+message-modify`（仅 `--as user`）；具体邮件软删除优先用 `+message-trash`（仅 `--as user`）；会话级批量整理可用 `+thread-modify`（支持 `--as user` / `--as bot`），软删除会话可用 `+thread-trash`（支持 `--as user` / `--as bot`）
 5. **回复** — `+reply` / `+reply-all`（默认存草稿，加 `--confirm-send` 则立即发送）
 6. **转发** — `+forward`（默认存草稿，加 `--confirm-send` 则立即发送）
 7. **新邮件** — `+send` 存草稿（默认），加 `--confirm-send` 发送
@@ -120,10 +120,10 @@ metadata:
 - 查看发送邮件后的投递状态：发送成功后查看邮件投递状态；也覆盖发送拦截。ref: [lark-mail-send-status](references/lark-mail-send-status.md)
 - 使用邮件模板：区分个人模板和静态 HTML 模板，发信类 shortcut 用 `--template-id` 套用模板。ref: [lark-mail-template](references/lark-mail-template.md)
 - 撤回已发送邮件：撤回邮件并查询异步撤回状态。ref: [lark-mail-recall](references/lark-mail-recall.md)
-- 修改邮件标签/已读状态/文件夹：优先使用 `+message-modify`。ref: [`+message-modify`](references/lark-mail-message-modify.md)
-- 修改会话标签/文件夹：已有 `thread_id` 时可使用 `+thread-modify`；没有 thread ID 时先通过会话列表、搜索或读取命令获取。ref: [`+thread-modify`](references/lark-mail-thread-modify.md)
-- 软删除邮件：优先使用 `+message-trash`。ref: [`+message-trash`](references/lark-mail-message-trash.md)
-- 软删除会话：已有 `thread_id` 时可使用 `+thread-trash`。ref: [`+thread-trash`](references/lark-mail-thread-trash.md)
+- 修改邮件标签/已读状态/文件夹：优先使用 `+message-modify`，仅支持 `--as user`。ref: [`+message-modify`](references/lark-mail-message-modify.md)
+- 修改会话标签/文件夹：已有 `thread_id` 时可使用 `+thread-modify`，支持 `--as user` / `--as bot`；没有 thread ID 时先通过会话列表、搜索或读取命令获取。ref: [`+thread-modify`](references/lark-mail-thread-modify.md)
+- 软删除邮件：优先使用 `+message-trash`，仅支持 `--as user`。ref: [`+message-trash`](references/lark-mail-message-trash.md)
+- 软删除会话：已有 `thread_id` 时可使用 `+thread-trash`，支持 `--as user` / `--as bot`。ref: [`+thread-trash`](references/lark-mail-thread-trash.md)
 - 收信规则：创建、验证、删除自动处理收到邮件的规则。ref: [lark-mail-rules](references/lark-mail-rules.md)
 - 分享邮件到 IM：分享邮件或会话到群聊、个人会话。ref: [lark-mail-share-to-chat](references/lark-mail-share-to-chat.md)
 - 发送日程邀请邮件：在邮件中嵌入 `text/calendar` 日程邀请。ref: [lark-mail-calendar-invite](references/lark-mail-calendar-invite.md)
@@ -197,7 +197,7 @@ lark-cli mail +messages --message-ids <id1>,<id2>,<id3> --html=false
 
 ## 原生 API 调用规则
 
-没有 Shortcut 覆盖的操作才使用原生 API。标签、已读状态、移动文件夹优先使用 `+message-modify`；软删除优先使用 `+message-trash`。会话或 thread ID 级标签/文件夹整理可使用 `+thread-modify`；软删除会话可使用 `+thread-trash`。调用步骤以本节为准；资源和 method 用 `lark-cli mail -h` / `lark-cli mail <resource> -h` 发现，不在入口保留完整资源表。
+没有 Shortcut 覆盖的操作才使用原生 API。message ID 级标签/已读状态/移动文件夹优先使用 `+message-modify`（仅 `--as user`）；message ID 级软删除优先使用 `+message-trash`（仅 `--as user`）。会话或 thread ID 级标签/文件夹整理可使用 `+thread-modify`（支持 `--as user` / `--as bot`）；软删除会话可使用 `+thread-trash`（支持 `--as user` / `--as bot`）。调用步骤以本节为准；资源和 method 用 `lark-cli mail -h` / `lark-cli mail <resource> -h` 发现，不在入口保留完整资源表。
 
 ### Step 1 — 用 `-h` 确定要调用的 API（必须，不可跳过）
 
