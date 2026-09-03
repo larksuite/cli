@@ -64,7 +64,13 @@ lark-cli api POST \
   --format json
 ```
 
-成功响应的 `data.doc_url` 是新建会议纪要的文档 URL。调用前需满足：
+成功响应的 `data.doc_url` 是新建会议纪要的文档 URL，可直接传给 `docs +fetch --doc` 读取正文；不要把完整的创建响应当作文档标识：
+
+```bash
+lark-cli docs +fetch --api-version v2 --doc "<data.doc_url>" --doc-format markdown
+```
+
+调用前需满足：
 
 - 目标日历是当前身份的主日历，且当前身份有 writer 权限；
 - 日程至少有 1 个参与人；
