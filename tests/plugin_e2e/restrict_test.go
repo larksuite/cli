@@ -263,7 +263,6 @@ func TestConcealedForkUsesTargetFreeAuthorizationFallback(t *testing.T) {
 		"LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1",
 		"LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1",
 		"LARKSUITE_CLI_CONFIG_DIR="+configDir,
-		"LARKSUITE_CLI_REMOTE_META=off",
 	)
 	res := runWithEnv(t, bin, env, "drive", "+search", "--as", "user")
 	if res.exit != 3 || !gjson.Valid(res.stderr) {
@@ -288,7 +287,6 @@ func TestConcealedForkProjectsAuthorizationCommandOutOfValidationMessage(t *test
 		"LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1",
 		"LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1",
 		"LARKSUITE_CLI_CONFIG_DIR="+configDir,
-		"LARKSUITE_CLI_REMOTE_META=off",
 	)
 	res := runWithEnv(t, bin, env, "drive", "+search", "--mine")
 	if res.exit != 2 || !gjson.Valid(res.stderr) {
@@ -310,7 +308,6 @@ func TestConcealedForkProjectsRetainedFrameworkRecovery(t *testing.T) {
 		"LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1",
 		"LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1",
 		"LARKSUITE_CLI_CONFIG_DIR="+configDir,
-		"LARKSUITE_CLI_REMOTE_META=off",
 	)
 
 	assertUnavailableEnvelope(t, runWithEnv(t, bin, env, "profile", "add", "--help"))

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
@@ -412,44 +413,6 @@ func TestBuildFormdata(t *testing.T) {
 
 // TestFormatFormFieldValue locks in decimal formatting for both the legacy
 // float64 input and exact json.Number values returned by Decoder.UseNumber.
-func TestFormatFormFieldValue(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		in   any
-		want string
-	}{
-		{"float64 large integer avoids scientific", float64(1185356), "1185356"},
-		{"float64 below scientific threshold", float64(358934), "358934"},
-		{"float64 zero", float64(0), "0"},
-		{"float64 huge", float64(20 * 1024 * 1024), "20971520"},
-		{"float64 negative", float64(-42), "-42"},
-		{"float64 fractional preserved", float64(3.14), "3.14"},
-		{"json number scientific integer", json.Number("1.185356e6"), "1185356"},
-		{"json number MaxInt64 scientific", json.Number("9.223372036854775807e18"), "9223372036854775807"},
-		{"json number negative scientific", json.Number("-4.2e2"), "-420"},
-		{"json number fractional scientific", json.Number("1.25e-3"), "0.00125"},
-		{"json number zero avoids exponent expansion", json.Number("0e-1048576"), "0"},
-		{"json number decimal unchanged", json.Number("3.14"), "3.14"},
-		{"string pass-through", "hello", "hello"},
-		{"bool true", true, "true"},
-		{"int via %v", 42, "42"},
-		{"int64 via %v", int64(9007199254740992), "9007199254740992"},
-	}
-
-	for _, temp := range tests {
-		tt := temp
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got := formatFormFieldValue(tt.in)
-			if got != tt.want {
-				t.Fatalf("formatFormFieldValue(%v) = %q, want %q", tt.in, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestParseOptionalBody_FileFormNumberFormatting(t *testing.T) {
 	body, err := ParseOptionalBody("POST", `{"size":1.185356e6,"revision_id":9223372036854775807}`, nil, nil)
 	if err != nil {
@@ -459,10 +422,10 @@ func TestParseOptionalBody_FileFormNumberFormatting(t *testing.T) {
 	if !ok {
 		t.Fatalf("body type = %T, want map[string]any", body)
 	}
-	if got := formatFormFieldValue(fields["size"]); got != "1185356" {
+	if got := client.FormatScalar(fields["size"]); got != "1185356" {
 		t.Fatalf("size form field = %q, want 1185356", got)
 	}
-	if got := formatFormFieldValue(fields["revision_id"]); got != "9223372036854775807" {
+	if got := client.FormatScalar(fields["revision_id"]); got != "9223372036854775807" {
 		t.Fatalf("revision_id form field = %q, want exact MaxInt64", got)
 	}
 }

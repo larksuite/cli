@@ -6,7 +6,6 @@ package registry
 import (
 	"slices"
 	"sort"
-	"strings"
 
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/core"
@@ -69,84 +68,6 @@ func FilterForStrictMode(mode core.StrictMode) apicatalog.MethodFilter {
 	return func(m meta.Method) bool { return m.SupportsToken(token) }
 }
 
-// FilterScopes filters scopes by domain and permission level.
-func FilterScopes(allScopes []string, domains []string, permissions []string) []string {
-	var result []string
-	for _, scope := range allScopes {
-		parts := strings.Split(scope, ":")
-
-		if len(domains) > 0 {
-			if len(parts) == 0 {
-				continue
-			}
-			found := false
-			for _, d := range domains {
-				if parts[0] == d {
-					found = true
-					break
-				}
-			}
-			if !found {
-				continue
-			}
-		}
-
-		if len(permissions) > 0 {
-			if len(parts) < 3 {
-				continue
-			}
-			perm := parts[2]
-			matched := false
-			for _, p := range permissions {
-				switch p {
-				case "read":
-					if strings.Contains(perm, "read") {
-						matched = true
-					}
-				case "write":
-					if strings.Contains(perm, "write") {
-						matched = true
-					}
-				case "readonly":
-					if perm == "readonly" {
-						matched = true
-					}
-				case "writeonly":
-					if perm == "writeonly" || perm == "write_only" {
-						matched = true
-					}
-				}
-			}
-			if !matched {
-				continue
-			}
-		}
-
-		result = append(result, scope)
-	}
-	return result
-}
-
-// CollectAllScopesFromCatalog collects all unique scopes from catalog for the
-// given identity ("user" or "tenant"). Results are deduplicated and sorted.
-func CollectAllScopesFromCatalog(catalog apicatalog.Catalog, identity string) []string {
-	wantToken := meta.TokenForIdentity(identity)
-	supported := func(m meta.Method) bool { return m.SupportsToken(wantToken) }
-	scopeSet := make(map[string]bool)
-	for _, ref := range catalog.WalkMethods(supported) {
-		for _, s := range ref.Method.Scopes {
-			scopeSet[s] = true
-		}
-	}
-
-	result := make([]string, 0, len(scopeSet))
-	for s := range scopeSet {
-		result = append(result, s)
-	}
-	sort.Strings(result)
-	return result
-}
-
 // CollectScopesForProjects collects the effective scopes for each API method in
 // the specified from_meta projects. It uses DeclaredScopesForMethod so a
 // method's full requiredScopes conjunction is honored (e.g. reading a mail
@@ -167,53 +88,6 @@ func CollectScopesForProjects(catalog apicatalog.Catalog, projects []string, ide
 	}
 	sort.Strings(result)
 	return result
-}
-
-// ScopeSource tracks which APIs and shortcuts contributed a scope.
-type ScopeSource struct {
-	APIs      []string // e.g. "POST calendar.event.create"
-	Shortcuts []string // e.g. "+send", "+reply"
-}
-
-// CollectScopesWithSources is like CollectScopesForProjects but also records
-// which API method contributed each scope. Used by scope-audit.
-func CollectScopesWithSources(catalog apicatalog.Catalog, projects []string, identity string) ([]string, map[string]*ScopeSource) {
-	priorities := LoadScopePriorities()
-	scopeSet := make(map[string]bool)
-	sources := make(map[string]*ScopeSource)
-
-	for _, ref := range methodsForProjects(catalog, projects, identity) {
-		m := ref.Method
-		best := bestScope(m.Scopes, priorities)
-		if best == "" {
-			continue
-		}
-		scopeSet[best] = true
-		if sources[best] == nil {
-			sources[best] = &ScopeSource{}
-		}
-		methodID := m.ID
-		if methodID == "" {
-			methodID = ref.ServiceName() + "." + ref.ResourceName() + "." + ref.MethodName()
-		}
-		httpMethod := m.HTTPMethod
-		if httpMethod == "" {
-			httpMethod = "?"
-		}
-		sources[best].APIs = append(sources[best].APIs, httpMethod+" "+methodID)
-	}
-
-	// Sort API lists for stable output
-	for _, src := range sources {
-		sort.Strings(src.APIs)
-	}
-
-	result := make([]string, 0, len(scopeSet))
-	for s := range scopeSet {
-		result = append(result, s)
-	}
-	sort.Strings(result)
-	return result, sources
 }
 
 // CommandEntry represents a CLI command (API method or shortcut) and its scopes.
@@ -258,25 +132,4 @@ func CollectCommandScopes(catalog apicatalog.Catalog, projects []string, identit
 		return entries[i].Command < entries[j].Command
 	})
 	return entries
-}
-
-// GetScopesForDomains returns scopes for specific projects (by project name).
-func GetScopesForDomains(catalog apicatalog.Catalog, projects []string, identity string) []string {
-	return CollectScopesForProjects(catalog, projects, identity)
-}
-
-// GetReadOnlyScopes returns read-only scopes from the recommended (best-per-method) scope set.
-func GetReadOnlyScopes(catalog apicatalog.Catalog, identity string) []string {
-	return FilterScopes(CollectScopesForProjects(catalog, catalog.ServiceNames(), identity), nil, []string{"read", "readonly"})
-}
-
-// ResolveScopesFromFilters resolves scopes from project and permission filters.
-func ResolveScopesFromFilters(catalog apicatalog.Catalog, projects []string, permissions []string, identity string) []string {
-	return FilterScopes(CollectScopesForProjects(catalog, projects, identity), nil, permissions)
-}
-
-// ComputeMinimumScopeSet computes the minimum set of scopes that covers all
-// from_meta API methods. Equivalent to CollectScopesForProjects with all projects.
-func ComputeMinimumScopeSet(catalog apicatalog.Catalog, identity string) []string {
-	return CollectScopesForProjects(catalog, catalog.ServiceNames(), identity)
 }

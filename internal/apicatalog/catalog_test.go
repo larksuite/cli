@@ -7,6 +7,7 @@ import (
 	"errors"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/larksuite/cli/internal/apicatalog"
@@ -62,6 +63,7 @@ func TestNew_PreservesOrderAndLookup(t *testing.T) {
 type recordingLoader struct {
 	services map[string]meta.Service
 	failures map[string]error
+	mu       sync.Mutex // the Catalog parses distinct shards concurrently
 	loads    map[string]int
 }
 
@@ -85,7 +87,9 @@ func (l *recordingLoader) Names() []string {
 }
 
 func (l *recordingLoader) Load(name string) (meta.Service, error) {
+	l.mu.Lock()
 	l.loads[name]++
+	l.mu.Unlock()
 	if err, ok := l.failures[name]; ok {
 		return meta.Service{}, err
 	}
@@ -163,6 +167,43 @@ func TestNewLazy_SurfacesLoadFailures(t *testing.T) {
 	}
 	if loader.loads["drive"] != 1 {
 		t.Fatalf("a failed Load must be cached, loads = %v", loader.loads)
+	}
+}
+
+// Concurrent holders of one Catalog must still parse each shard exactly once,
+// whether they arrive through Service, Preload, or Services.
+func TestNewLazy_ConcurrentAccessParsesEachShardOnce(t *testing.T) {
+	loader := newRecordingLoader(
+		meta.ServiceFromMap(map[string]interface{}{"name": "im"}),
+		meta.ServiceFromMap(map[string]interface{}{"name": "drive"}),
+	)
+	c := apicatalog.NewLazy(apicatalog.SourceEmbedded, loader)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(3)
+		go func() {
+			defer wg.Done()
+			if _, ok := c.Service("im"); !ok {
+				t.Error("Service(im) missing")
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			if err := c.Preload("im", "drive"); err != nil {
+				t.Errorf("Preload: %v", err)
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			if got := len(c.Services()); got != 2 {
+				t.Errorf("Services() = %d services, want 2", got)
+			}
+		}()
+	}
+	wg.Wait()
+	if loader.loads["im"] != 1 || loader.loads["drive"] != 1 {
+		t.Fatalf("shards parsed more than once under concurrency: %v", loader.loads)
 	}
 }
 

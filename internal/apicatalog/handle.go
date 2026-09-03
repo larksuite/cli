@@ -45,12 +45,16 @@ type catalogState struct {
 
 	mu     sync.Mutex
 	names  []string // sorted; from loader.Names, resolved once
-	loaded map[string]loadedService
+	loaded map[string]*loadedService
 	all    []meta.Service // every resolvable service in name order, once enumerated
 	err    error          // first non-ErrServiceNotFound Load failure
 }
 
+// loadedService is one shard's parse, performed at most once. The Once runs
+// Loader.Load outside the catalog mutex so distinct shards can parse in
+// parallel while a shard requested twice still parses once.
 type loadedService struct {
+	once    sync.Once
 	service meta.Service
 	err     error
 }
@@ -63,10 +67,12 @@ func New(source Source, services []meta.Service) Catalog {
 	sorted := append([]meta.Service(nil), services...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
 	names := make([]string, len(sorted))
-	loaded := make(map[string]loadedService, len(sorted))
+	loaded := make(map[string]*loadedService, len(sorted))
 	for i, s := range sorted {
 		names[i] = s.Name
-		loaded[s.Name] = loadedService{service: s}
+		entry := &loadedService{service: s}
+		entry.once.Do(func() {})
+		loaded[s.Name] = entry
 	}
 	return Catalog{&catalogState{
 		source: source,
@@ -157,21 +163,27 @@ func (c Catalog) Services() []meta.Service {
 		return nil
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.all != nil {
-		return c.all
+		all := c.all
+		c.mu.Unlock()
+		return all
 	}
-	names := c.namesLocked()
-	all := make([]meta.Service, 0, len(names))
-	for _, name := range names {
-		svc, err := c.loadLocked(name)
-		if err != nil {
-			continue
+	names := append([]string(nil), c.namesLocked()...)
+	c.mu.Unlock()
+
+	c.loadAll(names)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.all == nil {
+		all := make([]meta.Service, 0, len(names))
+		for _, name := range names {
+			if entry := c.loaded[name]; entry != nil && entry.err == nil {
+				all = append(all, entry.service)
+			}
 		}
-		all = append(all, svc)
+		c.all = all
 	}
-	c.all = all
-	return all
+	return c.all
 }
 
 // Service looks up one service by name, parsing it on first use.
@@ -180,19 +192,20 @@ func (c Catalog) Service(name string) (meta.Service, bool) {
 	return svc, err == nil
 }
 
-// Preload parses the named services now and returns the first failure. Build
-// paths use it so a corrupt service surfaces as a typed error before any
-// command is dispatched; afterwards Service and Services for those names are
-// pure cache hits.
+// Preload parses the named services now, distinct shards in parallel, and
+// returns the first failure. Build paths use it so a corrupt service surfaces
+// as a typed error before any command is dispatched; afterwards Service and
+// Services for those names are pure cache hits.
 func (c Catalog) Preload(names ...string) error {
 	if c.catalogState == nil {
 		return nil
 	}
+	c.loadAll(names)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for _, name := range names {
-		if _, err := c.loadLocked(name); err != nil && !errors.Is(err, ErrServiceNotFound) {
-			return err
+		if entry := c.loaded[name]; entry != nil && entry.err != nil && !errors.Is(entry.err, ErrServiceNotFound) {
+			return entry.err
 		}
 	}
 	return nil
@@ -214,30 +227,67 @@ func (c Catalog) load(name string) (meta.Service, error) {
 	if c.catalogState == nil {
 		return meta.Service{}, ErrServiceNotFound
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.loadLocked(name)
-}
-
-func (s *catalogState) loadLocked(name string) (meta.Service, error) {
-	if entry, ok := s.loaded[name]; ok {
-		return entry.service, entry.err
-	}
-	if !s.knownLocked(name) {
+	entry := c.entry(name)
+	if entry == nil {
 		return meta.Service{}, ErrServiceNotFound
 	}
-	svc, err := s.loader.Load(name)
-	if err != nil {
-		svc = meta.Service{}
-		if s.err == nil && !errors.Is(err, ErrServiceNotFound) {
-			s.err = err
+	c.parse(entry, name)
+	return entry.service, entry.err
+}
+
+// loadAll parses every named shard that is not yet loaded, in parallel.
+func (c Catalog) loadAll(names []string) {
+	var wg sync.WaitGroup
+	for _, name := range names {
+		entry := c.entry(name)
+		if entry == nil {
+			continue
 		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c.parse(entry, name)
+		}()
+	}
+	wg.Wait()
+}
+
+// entry returns the load slot for a known name, creating it on first request,
+// or nil for a name the loader does not list.
+func (s *catalogState) entry(name string) *loadedService {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if entry, ok := s.loaded[name]; ok {
+		return entry
+	}
+	if !s.knownLocked(name) {
+		return nil
 	}
 	if s.loaded == nil {
-		s.loaded = make(map[string]loadedService)
+		s.loaded = make(map[string]*loadedService)
 	}
-	s.loaded[name] = loadedService{service: svc, err: err}
-	return svc, err
+	entry := &loadedService{}
+	s.loaded[name] = entry
+	return entry
+}
+
+// parse runs the loader for entry exactly once and records the first source
+// failure on the catalog.
+func (s *catalogState) parse(entry *loadedService, name string) {
+	entry.once.Do(func() {
+		svc, err := s.loader.Load(name)
+		if err != nil {
+			svc = meta.Service{}
+			if !errors.Is(err, ErrServiceNotFound) {
+				s.mu.Lock()
+				if s.err == nil {
+					s.err = err
+				}
+				s.mu.Unlock()
+			}
+		}
+		entry.service, entry.err = svc, err
+	})
 }
 
 func (s *catalogState) knownLocked(name string) bool {

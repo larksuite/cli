@@ -74,12 +74,8 @@ func (r *Resolver) For(service, methodID string) (json.RawMessage, bool) {
 	if !ok {
 		return nil, false
 	}
-	a, ok := parsed.methods[methodID]
-	if !ok {
-		return nil, false
-	}
-	raw, err := json.Marshal(a)
-	return raw, err == nil && len(raw) > 0
+	raw, ok := parsed.raw[methodID]
+	return raw, ok && len(raw) > 0
 }
 
 // DomainSkill returns the service-level canonical skill declared by
@@ -127,6 +123,14 @@ func (r *Resolver) domain(service string) (parsedDomain, bool) {
 		if src, err := fs.ReadFile(r.source, service+".md"); err == nil {
 			parsed = parseDomainMD(src, commandFormResolver(r.catalog, service))
 			parsed.present = true
+			// Help and skill-reference lookups ask for the wire form repeatedly;
+			// encode each method once here rather than on every For call.
+			parsed.raw = make(map[string]json.RawMessage, len(parsed.methods))
+			for id, a := range parsed.methods {
+				if raw, err := json.Marshal(a); err == nil {
+					parsed.raw[id] = raw
+				}
+			}
 		}
 	}
 	r.byService[service] = parsed

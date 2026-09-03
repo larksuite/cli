@@ -163,8 +163,8 @@ func WithoutStrictMode() BuildOption {
 }
 
 // WithoutServiceCommands builds only hand-authored commands. It is intended for
-// repository quality gates that should not depend on the remote OpenAPI
-// metadata command surface.
+// repository quality gates that should not depend on the generated API command
+// surface of the embedded Catalog.
 func WithoutServiceCommands() BuildOption {
 	return func(c *buildConfig) {
 		c.skipService = true
@@ -317,19 +317,6 @@ func resolveShortcutSnapshot(sets []command.Set) ([]common.Shortcut, error) {
 		return shortcuts.AllShortcuts(), err
 	}
 	return shortcuts.AllShortcutsWithExternal(external)
-}
-
-func shortcutServiceNames(registered []common.Shortcut) []string {
-	seen := make(map[string]struct{})
-	for _, shortcut := range registered {
-		seen[shortcut.Service] = struct{}{}
-	}
-	names := make([]string, 0, len(seen))
-	for name := range seen {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
 }
 
 // buildInternalWithConfig assembles the complete command tree from an
@@ -512,7 +499,7 @@ func assembleInternal(
 	if !cfg.skipService {
 		catalogNames = catalog.Names()
 	}
-	shortcutDomains := shortcutServiceNames(registeredShortcuts)
+	shortcutDomains := shortcuts.ServiceNamesOf(registeredShortcuts)
 	stubs := mountDomainStubs(rootCmd, catalogNames, shortcutDomains)
 
 	selected := selectAllDomains
@@ -658,6 +645,18 @@ func finalizeFailedBuild(runtime *buildRuntime, root *cobra.Command) (*buildRunt
 // parsing on that root, so a stale value there could let --version bypass the
 // guard.
 func isVersionOnlyInvocation(root *cobra.Command, args []string) bool {
+	// Two Cobra decisions must both land on the root before the Catalog can be
+	// skipped. Find runs first, before --help/--version exist, on a root that
+	// has subcommands: `--version --profile x` swallows --profile there and
+	// leaves x as an unknown command whose error lists the full tree, so it is
+	// not a version-only invocation even though the flag parse below says so.
+	dispatch := &cobra.Command{Use: root.Use}
+	RegisterGlobalFlags(dispatch.PersistentFlags(), &GlobalOptions{})
+	dispatch.AddCommand(&cobra.Command{Use: "placeholder"})
+	if target, _, err := dispatch.Find(args); err != nil || target != dispatch {
+		return false
+	}
+
 	probe := &cobra.Command{Use: root.Use, Version: root.Version}
 	RegisterGlobalFlags(probe.PersistentFlags(), &GlobalOptions{})
 	probe.InitDefaultHelpFlag()

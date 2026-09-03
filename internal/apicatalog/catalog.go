@@ -35,7 +35,7 @@ func (c Catalog) Resolve(parts []string) (Target, error) {
 	}
 	svc, ok := c.Service(parts[0])
 	if !ok {
-		return Target{}, &ResolveError{Kind: ErrService, Subject: parts[0], Candidates: c.ServiceNames()}
+		return Target{}, &ResolveError{Kind: ErrService, Subject: parts[0], Candidates: c.resolvedNames()}
 	}
 	if len(parts) == 1 {
 		return Target{Kind: TargetService, Service: svc}, nil
@@ -154,7 +154,7 @@ func (c Catalog) Complete(args []string, toComplete string, filter MethodFilter)
 	if len(args) == 0 {
 		parts := strings.Split(toComplete, ".")
 		if len(parts) <= 1 {
-			for _, name := range c.ServiceNames() {
+			for _, name := range c.resolvedNames() {
 				if strings.HasPrefix(name, toComplete) {
 					completions = append(completions, name+".")
 				}
@@ -334,10 +334,11 @@ func resourceReachable(res meta.Resource, filter MethodFilter) bool {
 	return false
 }
 
-// ServiceNames lists the services that actually resolve, in name order. Unlike
-// Names it loads every service, so it belongs on enumeration and error paths;
-// a shard that fails to load is omitted (see Err).
-func (c Catalog) ServiceNames() []string {
+// resolvedNames lists the services that actually resolve, in name order. Hints
+// and completion use it rather than Names because a projected Catalog (see
+// Filter) may conceal services its manifest still lists; the cost is loading
+// every shard, which happens in parallel and only on those paths.
+func (c Catalog) resolvedNames() []string {
 	services := c.Services()
 	names := make([]string, len(services))
 	for i, s := range services {

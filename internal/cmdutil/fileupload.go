@@ -6,14 +6,13 @@ package cmdutil
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/client"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
@@ -138,7 +137,7 @@ func BuildFormdata(fileIO fileio.FileIO, fieldName, filePath string, isStdin boo
 		const maxMultipartNumberExpansionBytes = 1 << 20
 		totalNumberExpansionBytes := 0
 		for k, v := range m {
-			value := formatFormFieldValue(v)
+			value := client.FormatScalar(v)
 			if n, ok := v.(json.Number); ok && len(value) > len(n.String()) {
 				expansionBytes := len(value) - len(n.String())
 				if expansionBytes > maxMultipartNumberExpansionBytes-totalNumberExpansionBytes {
@@ -157,84 +156,4 @@ func BuildFormdata(fileIO fileio.FileIO, fieldName, filePath string, isStdin boo
 	}
 
 	return fd, nil
-}
-
-// formatFormFieldValue renders a JSON-unmarshalled value as a multipart form
-// field string. Numeric values are handled specially: scientific notation
-// (e.g. "1.185356e+06") is expanded to exact decimal notation because some
-// backends reject exponents when parsing integer form fields. json.Number must
-// not pass through float64, or large integers would lose precision. All other
-// types fall through to %v.
-func formatFormFieldValue(v any) string {
-	switch n := v.(type) {
-	case float64:
-		return strconv.FormatFloat(n, 'f', -1, 64)
-	case json.Number:
-		return expandJSONNumber(n)
-	}
-	return fmt.Sprintf("%v", v)
-}
-
-// expandJSONNumber converts a valid scientific-notation JSON number to exact
-// decimal notation by moving the decimal point in its original digits. Values
-// that already use decimal notation are returned unchanged.
-func expandJSONNumber(n json.Number) string {
-	raw := n.String()
-	expAt := strings.IndexAny(raw, "eE")
-	if expAt < 0 {
-		return raw
-	}
-
-	exponent, err := strconv.ParseInt(raw[expAt+1:], 10, 32)
-	if err != nil {
-		return raw
-	}
-	mantissa := raw[:expAt]
-	sign := ""
-	if strings.HasPrefix(mantissa, "-") {
-		sign = "-"
-		mantissa = mantissa[1:]
-	}
-
-	dot := strings.IndexByte(mantissa, '.')
-	integerDigits := len(mantissa)
-	digits := mantissa
-	if dot >= 0 {
-		integerDigits = dot
-		digits = mantissa[:dot] + mantissa[dot+1:]
-	}
-	if strings.Trim(digits, "0") == "" {
-		return sign + "0"
-	}
-	decimalPos := int64(integerDigits) + exponent
-
-	// Avoid turning a compact but pathological exponent into an unbounded
-	// allocation. Such a value is not a practical multipart form field; leave
-	// it unchanged so the server can reject it.
-	const maxExpandedDigits = int64(1 << 20)
-	if decimalPos > maxExpandedDigits || decimalPos < -maxExpandedDigits {
-		return raw
-	}
-
-	var out string
-	switch {
-	case decimalPos <= 0:
-		out = "0." + strings.Repeat("0", int(-decimalPos)) + digits
-	case decimalPos >= int64(len(digits)):
-		out = digits + strings.Repeat("0", int(decimalPos)-len(digits))
-	default:
-		pos := int(decimalPos)
-		out = digits[:pos] + "." + digits[pos:]
-	}
-	if strings.Contains(out, ".") {
-		out = strings.TrimRight(out, "0")
-		out = strings.TrimRight(out, ".")
-	}
-	if !strings.Contains(out, ".") {
-		out = strings.TrimLeft(out, "0")
-		if out == "" {
-			out = "0"
-		}
-	}
-	return sign + out
 }

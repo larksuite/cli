@@ -4,6 +4,7 @@
 package affordance
 
 import (
+	"encoding/json"
 	"regexp"
 	"strings"
 
@@ -100,6 +101,7 @@ type parsedDomain struct {
 	skill        string
 	domainSkills []string
 	methods      map[string]meta.Affordance
+	raw          map[string]json.RawMessage // methods encoded once, keyed by method id
 }
 
 // parseDomainMD parses one domain's markdown into per-method Affordance values,

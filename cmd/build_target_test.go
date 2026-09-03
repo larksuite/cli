@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
@@ -33,19 +34,31 @@ import (
 // a build actually parsed. Names is manifest-only and is not recorded.
 type recordingLoader struct {
 	delegate *registry.Snapshot
+	mu       sync.Mutex // Preload parses distinct shards concurrently
 	loads    []string
 }
 
 func (l *recordingLoader) Names() []string { return l.delegate.Names() }
 
 func (l *recordingLoader) Load(name string) (meta.Service, error) {
+	l.mu.Lock()
 	l.loads = append(l.loads, name)
+	l.mu.Unlock()
 	return l.delegate.Load(name)
+}
+
+// loadCount returns how many shard parses happened so far.
+func (l *recordingLoader) loadCount() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return len(l.loads)
 }
 
 // loadedSet returns the distinct shards parsed so far, sorted.
 func (l *recordingLoader) loadedSet() []string {
+	l.mu.Lock()
 	set := append([]string(nil), l.loads...)
+	l.mu.Unlock()
 	sort.Strings(set)
 	return compactTestStrings(set)
 }
@@ -136,6 +149,9 @@ func TestBuildForArgsAssemblyLoading(t *testing.T) {
 		{name: "short version before domain", args: []string{"-v", "drive"}, wantOpens: 1, wantAll: true},
 		{name: "help before domain", args: []string{"--help", "drive"}, wantOpens: 1, wantAll: true},
 		{name: "short help before domain", args: []string{"-h", "drive"}, wantOpens: 1, wantAll: true},
+		// Find swallows --profile as --version's value and leaves x as an unknown
+		// command, whose error lists the full tree.
+		{name: "version before profile", args: []string{"--version", "--profile", "x"}, wantOpens: 1, wantAll: true},
 		{name: "tree introspection", args: []string{"config", "policy", "show"}, wantOpens: 1, wantAll: true},
 		{name: "unknown command", args: []string{"nosuchdomain", "list"}, wantOpens: 1, wantAll: true},
 		{name: "ambiguous", args: []string{"--unknown", "drive"}, wantOpens: 1, wantAll: true},
@@ -165,8 +181,8 @@ func TestBuildForArgsAssemblyLoading(t *testing.T) {
 			if got := loader.loadedSet(); !reflect.DeepEqual(got, want) {
 				t.Errorf("parsed shards = %v, want %v", got, want)
 			}
-			if len(loader.loads) != len(loader.loadedSet()) {
-				t.Errorf("shards parsed more than once: %v", loader.loads)
+			if loader.loadCount() != len(loader.loadedSet()) {
+				t.Errorf("shards parsed more than once: %v", loader.loadedSet())
 			}
 		})
 	}
@@ -876,6 +892,7 @@ func TestFullTargetLeadingFlagDispatchContract(t *testing.T) {
 		{args: []string{"--help", "drive"}, wantHelp: true},
 		{args: []string{"-h", "drive"}, wantHelp: true},
 		{args: []string{"--help", "im", "+messages-send"}, wantErr: true},
+		{args: []string{"--version", "--profile", "x"}, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {

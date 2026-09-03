@@ -113,7 +113,7 @@ func AllShortcuts() []common.Shortcut {
 
 // ShortcutServiceNames returns the sorted domains that provide shortcuts.
 func ShortcutServiceNames() []string {
-	return shortcutServiceNamesForSnapshot(allShortcuts)
+	return ServiceNamesOf(allShortcuts)
 }
 
 // AllShortcutsWithExternal returns one isolated shortcut snapshot after
@@ -283,7 +283,9 @@ func selectShortcutServices(byService map[string][]common.Shortcut, domains []st
 	return services
 }
 
-func shortcutServiceNamesForSnapshot(registered []common.Shortcut) []string {
+// ServiceNamesOf returns the sorted distinct domains of one shortcut snapshot.
+// The root builder mounts a routing stub for each of them.
+func ServiceNamesOf(registered []common.Shortcut) []string {
 	seen := make(map[string]struct{})
 	for _, shortcut := range registered {
 		seen[shortcut.Service] = struct{}{}

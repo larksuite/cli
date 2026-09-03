@@ -383,6 +383,25 @@ func TestBuildApiReq_QueryParams(t *testing.T) {
 			params: map[string]interface{}{"with_bot": true},
 			want:   larkcore.QueryParams{"with_bot": []string{"true"}},
 		},
+		{
+			// --params numbers arrive as json.Number; the query string carries
+			// plain decimals, exactly as the multipart form path renders them.
+			name: "numeric literals render as plain decimals",
+			params: map[string]interface{}{
+				"exponent":    json.Number("1e3"),
+				"fraction":    json.Number("1.0"),
+				"large":       json.Number("9223372036854775807"),
+				"float_large": float64(1000000),
+				"ids":         []interface{}{json.Number("1e2"), json.Number("2.50")},
+			},
+			want: larkcore.QueryParams{
+				"exponent":    []string{"1000"},
+				"fraction":    []string{"1"},
+				"large":       []string{"9223372036854775807"},
+				"float_large": []string{"1000000"},
+				"ids":         []string{"100", "2.5"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
