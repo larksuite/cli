@@ -180,6 +180,17 @@ func TestMailAutoReplyEmptyContentClearsBody(t *testing.T) {
 	assertAutoReplyPayloadAbsent(t, captured, "content_summary")
 }
 
+func TestMailAutoReplyRejectsEmptyContentWithContentFile(t *testing.T) {
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	err := runMountedMailShortcut(t, MailAutoReplyModify, []string{"+auto-reply-modify", "--content", "", "--content-file", "auto_reply.html"}, f, stdout)
+	if err == nil {
+		t.Fatal("expected content/content-file conflict error")
+	}
+	if !strings.Contains(err.Error(), "--content and --content-file are mutually exclusive") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestMailAutoReplyModifyAllowsSameStartAndEndDate(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	var captured map[string]interface{}
