@@ -1,0 +1,113 @@
+# mail +auto-reply / +auto-reply-modify
+
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+
+查看或修改用户邮箱自动回复设置。读写是两个独立 shortcut：读取用 `+auto-reply`，修改用 `+auto-reply-modify`。同一个发件人 4 天内仅会收到一次外出自动回复邮件。该自动回复不与其他邮箱服务同步，请勿重复设置。
+
+## 命令
+
+```bash
+# 查看当前自动回复设置
+lark-cli mail +auto-reply --as user
+
+# 指定邮箱查看
+lark-cli mail +auto-reply --as user --mailbox shared@example.com
+
+# 开启或修改自动回复（确认预览后执行）
+lark-cli mail +auto-reply-modify --as user \
+  --yes \
+  --enable \
+  --content '<p>我正在休假，回来后回复。</p>' \
+  --start 2026-08-15 \
+  --end 2026-08-18 \
+  --timezone 28800
+
+# 从文件读取正文
+lark-cli mail +auto-reply-modify --as user --yes --content @auto-reply.html
+
+# 正文中可以包含本地图片
+lark-cli mail +auto-reply-modify --as user --yes --content '<p>休假中<img src="./logo.png"></p>'
+
+# 关闭自动回复
+lark-cli mail +auto-reply-modify --as user --yes --disable
+```
+
+## 参数
+
+| 参数 | 命令 | 必填 | 说明 |
+|------|------|------|------|
+| `--mailbox <email>` | 两者 | 否 | 邮箱地址，默认 `me` |
+| `--enable` | modify | 否 | 开启自动回复；与 `--disable` 互斥 |
+| `--disable` | modify | 否 | 关闭自动回复；与 `--enable` 互斥 |
+| `--content <text-or-html>` | modify | 否 | 自动回复正文，支持纯文本或 HTML；支持直接传值、`@file`、`-` stdin、本地图片和 data URI 图片 |
+| `--content-file <path>` | modify | 否 | 从当前目录下的文件读取正文，支持纯文本或 HTML；与 `--content` 互斥；正文里可包含本地图片和 data URI 图片 |
+| `--start <time>` | modify | 否 | 开始日期，支持 `YYYY-MM-DD` 或 Unix timestamp；`0` 表示立即生效；CLI 会按指定 UTC 偏移折算为当天开始 |
+| `--end <time>` | modify | 否 | 结束日期，支持 `YYYY-MM-DD` 或 Unix timestamp；`0` 表示不设置结束时间；CLI 会按指定 UTC 偏移折算为当天结束 |
+| `--timezone <offset_seconds>` | modify | 否 | UTC 偏移秒数，例如 `28800` 表示 UTC+8，`-28800` 表示 UTC-8 |
+| `--internal-only` | modify | 否 | 仅对租户内发件人发送自动回复；与 `--all` 互斥 |
+| `--all` | modify | 否 | 对所有发件人发送自动回复，包括外部发件人；与 `--internal-only` 互斥 |
+
+## 行为
+
+- `+auto-reply` 只调用读取接口，需要 `mail:user_mailbox.message:readonly`。
+- `+auto-reply-modify` 只更新用户提供的选项，未指定的配置会保留。
+- 修改正文时支持本地图片和 data URI 图片；CLI 会按邮箱接口要求处理图片内容。
+- 如需图片文件，可使用对应的图片下载 URL 接口。
+- 修改需要 `mail:user_mailbox.message:readonly` 和 `mail:user_mailbox.message:modify`。
+- `+auto-reply-modify` 是 `high-risk-write` 写操作。执行前必须先向用户展示预览并取得明确确认；用户确认且目标设置无误后，再带 `--yes` 运行。不要在未获用户明确同意时静默追加 `--yes`。预览至少包含：`enabled`、时间范围、时区、收件范围和内容摘要。
+- 关闭自动回复也要确认，因为内容和时间配置可能仍会保留在设置中。
+
+## `+auto-reply` 返回值
+
+查看 shortcut 输出为结构化 envelope，核心字段在 `data.auto_reply`：
+
+```json
+{
+  "ok": true,
+  "data": {
+    "auto_reply": {
+      "enabled": true,
+      "content": "<p>我正在休假，回来后回复。</p>",
+      "content_summary": "我正在休假，回来后回复。",
+      "start_time": "1786723200000",
+      "end_time": "1787068799999",
+      "time_zone": "28800",
+      "only_send_to_tenant": false
+    }
+  }
+}
+```
+
+## `+auto-reply-modify` 返回值
+
+修改 shortcut 成功后也返回结构化 envelope，核心字段在 `data.auto_reply`。普通文本格式会先输出 `Auto-reply modified.`，再输出当前自动回复设置摘要：
+
+```json
+{
+  "ok": true,
+  "data": {
+    "auto_reply": {
+      "enabled": true,
+      "content": "<p>我正在休假，回来后回复。</p>",
+      "content_summary": "我正在休假，回来后回复。",
+      "start_time": "1786723200000",
+      "end_time": "1787068799999",
+      "time_zone": "28800",
+      "only_send_to_tenant": false
+    }
+  }
+}
+```
+
+## 字段说明
+
+| 字段 | 说明 |
+|------|------|
+| `enabled` | 是否开启自动回复 |
+| `content` | 自动回复正文，可能是纯文本或 HTML；后端 `content_html` 在 CLI 输出层适配为此字段 |
+| `content_summary` | 自动回复摘要 |
+| `images` | 内联图片列表；包含 `cid`、`file_key`、`image_name` 和 `file_size` |
+| `start_time` | 自动回复开始时间 |
+| `end_time` | 自动回复结束时间 |
+| `time_zone` | 自动回复时间范围对应的 UTC 偏移秒数字符串 |
+| `only_send_to_tenant` | 是否仅对租户内发件人发送自动回复 |
