@@ -875,6 +875,18 @@
                   "min": "1"
                 }
               }
+            },
+            "total_count": {
+              "type": "string",
+              "description": "幻灯片总数量，用于分页统计场景",
+              "required": false,
+              "example": "10"
+            },
+            "revision": {
+              "type": "string",
+              "description": "演示文稿的版本标识，用于判断内容是否更新",
+              "required": false,
+              "example": "1"
             }
           },
           "scopes": [

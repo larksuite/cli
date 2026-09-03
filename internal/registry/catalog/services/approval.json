@@ -15,19 +15,19 @@
           "requestBody": {
             "keyword": {
               "type": "string",
-              "description": "关键词",
+              "description": "Keywords used to search for approval definitions",
               "required": false,
               "example": "请假"
             },
             "locale": {
               "type": "string",
-              "description": "语言类型",
+              "description": "language type",
               "required": false,
               "example": "zh-CN: 中文 en-US: 英文 ja-JP: 日文"
             },
             "page_size": {
               "type": "integer",
-              "description": "分页大小",
+              "description": "paging size",
               "required": false,
               "example": 20,
               "max": "100",
@@ -43,35 +43,36 @@
           "responseBody": {
             "approvals": {
               "type": "array",
-              "description": "可发起审批定义列表",
+              "description": "An approval definition list can be initiated",
               "required": false,
               "properties": {
                 "approval_code": {
                   "type": "string",
-                  "description": "审批定义编码",
+                  "description": "Approval Definition Code",
                   "required": false,
                   "example": "7C468A54-8745-2245-9675-08B7C63E7A85"
                 },
                 "approval_name": {
                   "type": "string",
-                  "description": "审批定义名称",
+                  "description": "approval definition name",
                   "required": false,
                   "example": "请假"
                 },
                 "description": {
                   "type": "string",
-                  "description": "审批定义描述",
+                  "description": "Approval Definition Description",
                   "required": false,
                   "example": "请假审批"
                 },
                 "is_external": {
                   "type": "boolean",
-                  "description": "是否三方定义。false 表示原生审批定义，true 表示三方审批定义",
-                  "required": false
+                  "description": "Whether a three-way definition. False means a native approval definition, and true means a three-way approval definition",
+                  "required": false,
+                  "example": false
                 },
                 "create_link": {
                   "type": "string",
-                  "description": "提单链接，可用于发起审批",
+                  "description": "The bill of lading link can be used to initiate approval",
                   "required": false,
                   "example": "https://www.example.com"
                 }
@@ -465,12 +466,17 @@
                 {
                   "value": "open_id",
                   "description": "以open_id来识别用户"
+                },
+                {
+                  "value": "user_key",
+                  "description": "以user_key来识别用户"
                 }
               ],
               "enum": [
                 "user_id",
                 "union_id",
-                "open_id"
+                "open_id",
+                "user_key"
               ]
             }
           },
@@ -1146,12 +1152,17 @@
                 {
                   "value": "open_id",
                   "description": "以open_id来识别用户"
+                },
+                {
+                  "value": "user_key",
+                  "description": "以user_key来识别用户"
                 }
               ],
               "enum": [
                 "user_id",
                 "union_id",
-                "open_id"
+                "open_id",
+                "user_key"
               ]
             }
           },
@@ -1249,6 +1260,12 @@
               "description": "按发起时间查询单据，时间范围的结束区间时间戳，精确到秒",
               "example": "1783528081"
             },
+            "keyword": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "搜索关键词"
+            },
             "user_id_type": {
               "type": "string",
               "location": "query",
@@ -1266,12 +1283,17 @@
                 {
                   "value": "open_id",
                   "description": "以open_id来识别用户"
+                },
+                {
+                  "value": "user_key",
+                  "description": "以user_key来识别用户"
                 }
               ],
               "enum": [
                 "user_id",
                 "union_id",
-                "open_id"
+                "open_id",
+                "user_key"
               ]
             }
           },
@@ -1576,12 +1598,17 @@
                 {
                   "value": "open_id",
                   "description": "以open_id来识别用户"
+                },
+                {
+                  "value": "user_key",
+                  "description": "以user_key来识别用户"
                 }
               ],
               "enum": [
                 "user_id",
                 "union_id",
-                "open_id"
+                "open_id",
+                "user_key"
               ]
             }
           },
@@ -1723,6 +1750,12 @@
               "description": "按时间查询任务，时间范围的结束区间时间戳，精确到秒",
               "example": "1783528081"
             },
+            "keyword": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "搜索关键词"
+            },
             "user_id_type": {
               "type": "string",
               "location": "query",
@@ -1740,12 +1773,17 @@
                 {
                   "value": "open_id",
                   "description": "以open_id来识别用户"
+                },
+                {
+                  "value": "user_key",
+                  "description": "以user_key来识别用户"
                 }
               ],
               "enum": [
                 "user_id",
                 "union_id",
-                "open_id"
+                "open_id",
+                "user_key"
               ]
             }
           },
@@ -2049,12 +2087,17 @@
                 {
                   "value": "open_id",
                   "description": "以open_id来识别用户"
+                },
+                {
+                  "value": "user_key",
+                  "description": "以user_key来识别用户"
                 }
               ],
               "enum": [
                 "user_id",
                 "union_id",
-                "open_id"
+                "open_id",
+                "user_key"
               ]
             }
           },

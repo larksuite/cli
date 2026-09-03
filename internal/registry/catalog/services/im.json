@@ -2599,6 +2599,315 @@
         }
       }
     },
+    "chat.join_requests": {
+      "methods": {
+        "handle": {
+          "id": "chat.join_requests.handle",
+          "path": "chats/{chat_id}/membership_applications/handle",
+          "httpMethod": "POST",
+          "description": "批量审批入群申请（approve/reject，仅群主/管理员，user_access_token）。Approve or reject pending join requests in bulk (1-50 items, processed in order). Identity: `user` only (`user_access_token`); the caller must be the chat owner or an admin. `results[]` mirrors `items[]` in count and order — check each `result` (`success` / `failed` / `already_handled`); exit 0 does not mean every item succeeded",
+          "parameters": {
+            "chat_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "群 ID",
+              "example": "oc_a0553eda9014c201e6969b478895c230"
+            },
+            "member_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "成员 id 类型 open_id/union_id/user_id",
+              "example": "open_id",
+              "options": [
+                {
+                  "value": "open_id",
+                  "description": "以 open_id 来识别成员"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以 union_id 来识别成员"
+                },
+                {
+                  "value": "user_id",
+                  "description": "以 user_id 来识别成员"
+                }
+              ],
+              "enumName": "HandleMembershipApplicationMemberIDType",
+              "enum": [
+                "open_id",
+                "union_id",
+                "user_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "chat_id"
+          ],
+          "requestBody": {
+            "items": {
+              "type": "array",
+              "description": "待处理的申请项，1-50 条；按下标保序处理",
+              "required": true,
+              "properties": {
+                "member_id": {
+                  "type": "string",
+                  "description": "申请人 member_id（不能传 inviter 的 app_id）",
+                  "required": true,
+                  "example": "ou_7dab8a3d3cdcc9da365777c7f8a1e3a3",
+                  "annotations": [
+                    "open:x_user_id"
+                  ]
+                },
+                "action": {
+                  "type": "string",
+                  "description": "处理动作 approve/reject",
+                  "required": true,
+                  "example": "approve"
+                }
+              }
+            }
+          },
+          "responseBody": {
+            "results": {
+              "type": "array",
+              "description": "逐条处理结果，与请求 items 数量、顺序完全一致",
+              "required": false,
+              "properties": {
+                "member_id": {
+                  "type": "string",
+                  "description": "申请人 member_id，与请求项对应",
+                  "required": false,
+                  "example": "ou_7dab8a3d3cdcc9da365777c7f8a1e3a3",
+                  "annotations": [
+                    "open:x_user_id"
+                  ]
+                },
+                "action": {
+                  "type": "string",
+                  "description": "处理动作 approve/reject",
+                  "required": false,
+                  "example": "approve"
+                },
+                "result": {
+                  "type": "string",
+                  "description": "处理结果 success/failed/already_handled",
+                  "required": false,
+                  "example": "success"
+                },
+                "error_code": {
+                  "type": "string",
+                  "description": "仅 result=failed 时返回，透传底层失败码",
+                  "required": false,
+                  "example": "member_not_found"
+                },
+                "error_message": {
+                  "type": "string",
+                  "description": "仅 result=failed 时返回，失败描述",
+                  "required": false,
+                  "example": "user has been in the chat"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "im:chat.membership_application:write"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=handle&project=im&resource=chat.membership_application&version=v1"
+        },
+        "list": {
+          "id": "chat.join_requests.list",
+          "path": "chats/{chat_id}/membership_applications",
+          "httpMethod": "GET",
+          "description": "列出群的待审批入群申请（仅群主/管理员，user_access_token）。List pending join requests for a chat. Identity: `user` only (`user_access_token`); the caller must be the chat owner or an admin. Paginated (`page_size` 1-100); stop on `has_more == false` — `page_token` is returned even on the last page, so paging while it is present never terminates",
+          "parameters": {
+            "chat_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "群 ID",
+              "example": "oc_a0553eda9014c201e6969b478895c230"
+            },
+            "member_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "成员 id 类型 open_id/union_id/user_id",
+              "example": "open_id",
+              "options": [
+                {
+                  "value": "open_id",
+                  "description": "以 open_id 来识别成员"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以 union_id 来识别成员"
+                },
+                {
+                  "value": "user_id",
+                  "description": "以 user_id 来识别成员"
+                }
+              ],
+              "enumName": "ListMembershipApplicationMemberIDType",
+              "enum": [
+                "open_id",
+                "union_id",
+                "user_id"
+              ]
+            },
+            "page_size": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "分页大小",
+              "example": 20,
+              "max": "100",
+              "min": "1"
+            },
+            "page_token": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "分页标记，第一次请求不填；还有更多项时返回新的 page_token",
+              "example": "WWxHTStrOEs5WHZpNktGbU94bUcvMWlxdDUzTWt1OXNrRmlLaGRNVG0yaz0="
+            }
+          },
+          "parameterOrder": [
+            "chat_id"
+          ],
+          "responseBody": {
+            "items": {
+              "type": "array",
+              "description": "待审批申请列表",
+              "required": false,
+              "properties": {
+                "applicant": {
+                  "type": "object",
+                  "description": "申请人（恒为 user，也是审批操作的目标）",
+                  "required": false,
+                  "ref": "membership_application_member",
+                  "properties": {
+                    "member_id": {
+                      "type": "string",
+                      "description": "成员 ID（按 member_id_type 返回；user_id 跨租户或 user_id+bot 模式时省略）",
+                      "required": false,
+                      "example": "ou_7dab8a3d3cdcc9da365777c7f8a1e3a3",
+                      "annotations": [
+                        "open:x_user_id"
+                      ]
+                    },
+                    "member_type": {
+                      "type": "string",
+                      "description": "成员类型 user/bot",
+                      "required": false,
+                      "example": "user"
+                    },
+                    "app_id": {
+                      "type": "string",
+                      "description": "应用 ID，仅当 member_type=bot 时返回",
+                      "required": false,
+                      "example": "cli_a1b2c3d4e5f6g7h8"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "名称",
+                      "required": false,
+                      "example": "张三"
+                    }
+                  }
+                },
+                "inviter": {
+                  "type": "object",
+                  "description": "邀请人（可能为空；可能是 bot，此时透出 member_type=bot 与 app_id）",
+                  "required": false,
+                  "ref": "membership_application_member",
+                  "properties": {
+                    "member_id": {
+                      "type": "string",
+                      "description": "成员 ID（按 member_id_type 返回；user_id 跨租户或 user_id+bot 模式时省略）",
+                      "required": false,
+                      "example": "ou_7dab8a3d3cdcc9da365777c7f8a1e3a3",
+                      "annotations": [
+                        "open:x_user_id"
+                      ]
+                    },
+                    "member_type": {
+                      "type": "string",
+                      "description": "成员类型 user/bot",
+                      "required": false,
+                      "example": "user"
+                    },
+                    "app_id": {
+                      "type": "string",
+                      "description": "应用 ID，仅当 member_type=bot 时返回",
+                      "required": false,
+                      "example": "cli_a1b2c3d4e5f6g7h8"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "名称",
+                      "required": false,
+                      "example": "张三"
+                    }
+                  }
+                },
+                "reason": {
+                  "type": "string",
+                  "description": "申请理由",
+                  "required": false,
+                  "example": "想加入项目群"
+                },
+                "apply_source": {
+                  "type": "string",
+                  "description": "入群来源 unknown/share/invitation/qr_code/search/department_structure/link/team_open_chat/calendar/team_private_discoverable/chat_linked_page",
+                  "required": false,
+                  "example": "invitation"
+                },
+                "apply_time": {
+                  "type": "integer",
+                  "description": "申请时间（秒级 unix 时间戳）",
+                  "required": false,
+                  "example": 1700000000,
+                  "max": "99999999999",
+                  "min": "0"
+                }
+              }
+            },
+            "page_token": {
+              "type": "string",
+              "description": "分页标记，has_more 为 true 时返回",
+              "required": false,
+              "example": "88"
+            },
+            "has_more": {
+              "type": "boolean",
+              "description": "是否还有更多项",
+              "required": false
+            },
+            "total": {
+              "type": "integer",
+              "description": "待审批申请总数",
+              "required": false,
+              "example": 5
+            }
+          },
+          "scopes": [
+            "im:chat.membership_application:read"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=im&resource=chat.membership_application&version=v1"
+        }
+      }
+    },
     "messages": {
       "methods": {
         "delete": {
@@ -2958,6 +3267,49 @@
               "description": "话题回复消息在话题回复里面的位置信息，仅话题回复生效",
               "required": false,
               "example": "1"
+            },
+            "sync_to_chat_info": {
+              "type": "object",
+              "description": "话题回复的时候，选择了同步发送到群时相关的信息",
+              "required": false,
+              "ref": "sync_to_chat_info",
+              "properties": {
+                "type": {
+                  "type": "integer",
+                  "description": "同步群消息对应的类型，分话题回复消息和同步的群消息",
+                  "required": true,
+                  "options": [
+                    {
+                      "value": 1,
+                      "description": "话题回复消息"
+                    },
+                    {
+                      "value": 2,
+                      "description": "同步对应群消息"
+                    }
+                  ],
+                  "enum": [
+                    1,
+                    2
+                  ]
+                },
+                "thread_id": {
+                  "type": "string",
+                  "description": "话题回复消息对应的根话题",
+                  "required": false,
+                  "example": "omt_d4be107c616a"
+                },
+                "related_message_id": {
+                  "type": "string",
+                  "description": "关联的消息id",
+                  "required": true,
+                  "example": "om_d4be107c616aed9c1da8ed8068570a9f",
+                  "annotations": [
+                    "readOnly",
+                    "open:open_x_id"
+                  ]
+                }
+              }
             }
           },
           "scopes": [
@@ -3284,6 +3636,49 @@
                   "description": "话题回复消息在话题回复里面的位置信息，仅话题回复生效",
                   "required": false,
                   "example": "1"
+                },
+                "sync_to_chat_info": {
+                  "type": "object",
+                  "description": "话题回复的时候，选择了同步发送到群时相关的信息",
+                  "required": false,
+                  "ref": "sync_to_chat_info",
+                  "properties": {
+                    "type": {
+                      "type": "integer",
+                      "description": "同步群消息对应的类型，分话题回复消息和同步的群消息",
+                      "required": true,
+                      "options": [
+                        {
+                          "value": 1,
+                          "description": "话题回复消息"
+                        },
+                        {
+                          "value": 2,
+                          "description": "同步对应群消息"
+                        }
+                      ],
+                      "enum": [
+                        1,
+                        2
+                      ]
+                    },
+                    "thread_id": {
+                      "type": "string",
+                      "description": "话题回复消息对应的根话题",
+                      "required": false,
+                      "example": "omt_d4be107c616a"
+                    },
+                    "related_message_id": {
+                      "type": "string",
+                      "description": "关联的消息id",
+                      "required": true,
+                      "example": "om_d4be107c616aed9c1da8ed8068570a9f",
+                      "annotations": [
+                        "readOnly",
+                        "open:open_x_id"
+                      ]
+                    }
+                  }
                 }
               }
             },
@@ -3308,11 +3703,110 @@
           "risk": "write",
           "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=merge_forward&project=im&resource=message&version=v1"
         },
+        "patch": {
+          "id": "messages.patch",
+          "path": "messages/{message_id}",
+          "httpMethod": "PATCH",
+          "description": "Update sent message card。Update an interactive message card sent by the app. Identity: supports `user` and `bot`; the message must have been sent within the last 14 days, and `content` must be a JSON-serialized string no larger than 30 KB",
+          "parameters": {
+            "message_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "The ID of the message to be updated. Only update cards (message type is `interactive`) are supported. ID acquisition method:; - After calling the [Send message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create) interface, get it from the `message_id` parameter of the response result.;- Listen to the [Receive message](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/events/receive) event. When the event is triggered, you can get the `message_id` of the message from the event body.;- Call the [Get session history messages](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/list) interface and get it from the `message_id` parameter of the response result",
+              "example": "om_dc13264520392913993dd051dba21dcf"
+            }
+          },
+          "parameterOrder": [
+            "message_id"
+          ],
+          "requestBody": {
+            "content": {
+              "type": "string",
+              "description": "Message card content. Cards constructed with Card JSON or the [Card building tool](https://open.feishu.cn/cardkit?from=open_docs) are supported.; - To use card JSON, refer to [card JSON structure](https://open.feishu.cn/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-json-structure). When passing the value, you need to compress and escape the JSON as a string.; - To use the card template built by the [Card building tool](https://open.feishu.cn/cardkit?from=open_docs), you need to pass in the `type` and `data` parameters. Refer to following description for details.; ; Note:; - The updated card message must not exceed 30 KB. If the message contains a large number of style tags, it will make the actual message body length larger than the input request body length.; - The following example values ​​are not escaped. Please pay attention to convert them into JSON serialized strings when using them",
+              "required": true,
+              "example": "{\"elements\":[{\"tag\":\"div\",\"text\":{\"content\":\"This is the plain text\",\"tag\":\"plain_text\"}}],\"header\":{\"template\":\"blue\",\"title\":{\"content\":\"This is the title\",\"tag\":\"plain_text\"}}}"
+            }
+          },
+          "scopes": [
+            "im:message:update",
+            "im:message",
+            "im:message:send_as_bot"
+          ],
+          "accessTokens": [
+            "tenant",
+            "user"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/patch"
+        },
+        "read_status": {
+          "id": "messages.read_status",
+          "path": "messages/read_status",
+          "httpMethod": "POST",
+          "description": "批量查询当前用户对消息的已读状态。Identity: `user` only (`user_access_token`); accepts up to 50 message IDs and returns `items[].is_read` plus `invalid_message_ids` for messages that cannot be determined.[Must-read](references/lark-im-message-read-status.md)",
+          "requestBody": {
+            "message_ids": {
+              "type": "array",
+              "description": "待查询的消息 ID 列表，单次最多 50 条",
+              "required": true,
+              "annotations": [
+                "open:open_x_id"
+              ]
+            }
+          },
+          "responseBody": {
+            "items": {
+              "type": "array",
+              "description": "可见且成功查询到的消息已读状态",
+              "required": false,
+              "properties": {
+                "message_id": {
+                  "type": "string",
+                  "description": "消息 ID",
+                  "required": true,
+                  "example": "om_dc13264520392913993dd051dba21dcf",
+                  "annotations": [
+                    "readOnly",
+                    "open:open_x_id"
+                  ]
+                },
+                "is_read": {
+                  "type": "boolean",
+                  "description": "当前用户是否已读该消息",
+                  "required": true,
+                  "example": true
+                }
+              }
+            },
+            "invalid_message_ids": {
+              "type": "array",
+              "description": "不存在、当前用户不可见或暂不支持查询的消息 ID 列表",
+              "required": false,
+              "annotations": [
+                "readOnly",
+                "open:open_x_id"
+              ]
+            }
+          },
+          "scopes": [
+            "im:message:get_as_user",
+            "im:message",
+            "im:message:readonly"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "danger": true,
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=read_status&project=im&resource=message&version=v1"
+        },
         "read_users": {
           "id": "messages.read_users",
           "path": "messages/{message_id}/read_users",
           "httpMethod": "GET",
-          "description": "Query the read status of a message as the sender。Identity: `bot` only (`tenant_access_token`); the bot must be in the chat, and can only query read status for messages it sent within the last 7 days",
+          "description": "Query the read status of a message as the sender。Identity: supports `user` and `bot`. With `user_access_token`, the user must still be in the chat and can query read users only for messages they sent within the last 7 days. With `tenant_access_token`, the bot must be in the chat and can only query its own messages within the last 7 days.[Must-read](references/lark-im-message-read-status.md)",
           "parameters": {
             "message_id": {
               "type": "string",
@@ -4550,6 +5044,49 @@
               "description": "话题回复消息在话题回复里面的位置信息，仅话题回复生效",
               "required": false,
               "example": "1"
+            },
+            "sync_to_chat_info": {
+              "type": "object",
+              "description": "话题回复的时候，选择了同步发送到群时相关的信息",
+              "required": false,
+              "ref": "sync_to_chat_info",
+              "properties": {
+                "type": {
+                  "type": "integer",
+                  "description": "同步群消息对应的类型，分话题回复消息和同步的群消息",
+                  "required": true,
+                  "options": [
+                    {
+                      "value": 1,
+                      "description": "话题回复消息"
+                    },
+                    {
+                      "value": 2,
+                      "description": "同步对应群消息"
+                    }
+                  ],
+                  "enum": [
+                    1,
+                    2
+                  ]
+                },
+                "thread_id": {
+                  "type": "string",
+                  "description": "话题回复消息对应的根话题",
+                  "required": false,
+                  "example": "omt_d4be107c616a"
+                },
+                "related_message_id": {
+                  "type": "string",
+                  "description": "关联的消息id",
+                  "required": true,
+                  "example": "om_d4be107c616aed9c1da8ed8068570a9f",
+                  "annotations": [
+                    "readOnly",
+                    "open:open_x_id"
+                  ]
+                }
+              }
             }
           },
           "scopes": [
@@ -4716,6 +5253,110 @@
           "danger": true,
           "risk": "write",
           "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/file/create"
+        },
+        "folder": {
+          "id": "files.folder",
+          "path": "files/{file_key}/folder",
+          "httpMethod": "GET",
+          "description": "获取消息或消息链接中资源文件夹的子文件列表。recursive=false 仅返回给定 file_key 的一层子项（folder 子项带 children_count 提示深度）；recursive=true 返回完整层级树（嵌套 children）",
+          "parameters": {
+            "file_key": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "待浏览子文件的文件夹 file_key",
+              "example": "file_456a92d6-c6ea-4de4-ac3f-7afcf44ac78g"
+            },
+            "srctype": {
+              "type": "string",
+              "location": "query",
+              "required": true,
+              "description": "资源来源类型。message=消息中的资源；messagelink=消息链接中的资源",
+              "example": "message"
+            },
+            "srcid": {
+              "type": "string",
+              "location": "query",
+              "required": true,
+              "description": "资源来源 ID。srctype=message 时为消息 ID（om_ 开头，resource 侧解析为内部 ID）；srctype=messagelink 时为消息链接 token",
+              "example": "om_dc13264520392913993dd051dba21dcf"
+            },
+            "recursive": {
+              "type": "boolean",
+              "location": "query",
+              "required": false,
+              "description": "是否递归展开全部层级。false=仅一层，true=全部展开",
+              "default": false
+            }
+          },
+          "parameterOrder": [
+            "file_key"
+          ],
+          "responseBody": {
+            "items": {
+              "type": "array",
+              "description": "文件夹子文件项[]（file 项或 folder 子项，folder 子项带 children_count）",
+              "required": false,
+              "properties": {
+                "file_key": {
+                  "type": "string",
+                  "description": "",
+                  "required": false
+                },
+                "name": {
+                  "type": "string",
+                  "description": "",
+                  "required": false
+                },
+                "is_folder": {
+                  "type": "boolean",
+                  "description": "",
+                  "required": false
+                },
+                "size": {
+                  "type": "string",
+                  "description": "",
+                  "required": false
+                },
+                "mimetype": {
+                  "type": "string",
+                  "description": "",
+                  "required": false
+                },
+                "parent_folder_key": {
+                  "type": "string",
+                  "description": "",
+                  "required": false
+                },
+                "children_count": {
+                  "type": "string",
+                  "description": "",
+                  "required": false
+                },
+                "children": {
+                  "type": "array",
+                  "description": "",
+                  "required": false
+                }
+              }
+            },
+            "all_count": {
+              "type": "string",
+              "description": "子项总数（folder 子项数；items 数 < all_count 表示还有更多未展示）",
+              "required": false
+            }
+          },
+          "scopes": [
+            "im:message.history:readonly",
+            "im:message:readonly",
+            "im:message"
+          ],
+          "accessTokens": [
+            "tenant",
+            "user"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=folder&project=im&resource=file&version=v1"
         }
       }
     },

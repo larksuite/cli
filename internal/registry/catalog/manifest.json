@@ -4,9 +4,9 @@
     {
       "name": "approval",
       "file": "services/approval.json",
-      "revision": 7,
-      "size": 78945,
-      "sha256": "07f878c3fd9c2ee0bad62f05a3808359593bde0fc00054fb387cb60162bd9330"
+      "revision": 9,
+      "size": 80489,
+      "sha256": "b5cb0a3843d5e44056de6e99089ecf30fe109ea0642ab84809ed19561a5e1c6e"
     },
     {
       "name": "attendance",
@@ -39,9 +39,9 @@
     {
       "name": "im",
       "file": "services/im.json",
-      "revision": 10,
-      "size": 246956,
-      "sha256": "596627056f1ecd052e10cb8d67fcbe403a9a465ae828d4a509c5517ab24eeaea"
+      "revision": 13,
+      "size": 273740,
+      "sha256": "d788fdf52adae0c4642b3a88dacdf6fd017208a9be452e1f7b48d24437b5626f"
     },
     {
       "name": "mail",
@@ -81,9 +81,9 @@
     {
       "name": "slides",
       "file": "services/slides.json",
-      "revision": 6,
-      "size": 33246,
-      "sha256": "02cca427ee8e25ec332dfe121798cd0e64724e5c9153fc7be4682feb83ee5d74"
+      "revision": 7,
+      "size": 33691,
+      "sha256": "fb56b739a53715a2317e596cf69a77f9cc7e82019f1e39da6aea50c33698fb32"
     },
     {
       "name": "task",
