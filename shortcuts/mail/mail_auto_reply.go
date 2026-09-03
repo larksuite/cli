@@ -107,7 +107,7 @@ var MailAutoReplyModify = common.Shortcut{
 					mailInvalidParam("--all", "mutually exclusive with --internal-only"),
 				)
 		}
-		if runtime.Str("content") != "" && runtime.Str("content-file") != "" {
+		if runtime.Changed("content") && runtime.Changed("content-file") {
 			return mailValidationError("--content and --content-file are mutually exclusive").
 				WithParams(
 					mailInvalidParam("--content", "mutually exclusive with --content-file"),
@@ -355,8 +355,8 @@ func autoReplyInt64(raw interface{}) (int64, error) {
 }
 
 func resolveAutoReplyContent(runtime *common.RuntimeContext) (string, error) {
-	if content := runtime.Str("content"); content != "" {
-		return content, nil
+	if runtime.Changed("content") {
+		return runtime.Str("content"), nil
 	}
 	path := runtime.Str("content-file")
 	if path == "" {
