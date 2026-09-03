@@ -37,9 +37,7 @@ func Install(ctx context.Context, manifest *Manifest, opts InstallOptions) errs.
 	}
 	defer prepared.cleanup()
 	if err := installPrepared(prepared, opts); err != nil {
-		return errs.NewInternalError(errs.SubtypeUnknown, "failed to install distribution update: %s", err).
-			WithHint("Retry with `lark-cli update --force`.").
-			WithCause(err)
+		return installError("failed to install distribution update", err)
 	}
 	return nil
 }
@@ -70,11 +68,24 @@ func SyncSkills(ctx context.Context, manifest *Manifest, opts InstallOptions) er
 		}
 		return err
 	}); err != nil {
-		return errs.NewInternalError(errs.SubtypeUnknown, "failed to synchronize distribution Skills: %s", err).
-			WithHint("Retry with `lark-cli update --force`.").
-			WithCause(err)
+		return installError("failed to synchronize distribution Skills", err)
 	}
 	return nil
+}
+
+// installError classifies commit-stage failures. Lock contention means a
+// concurrent update owns the transaction; everything else gets the generic
+// retry hint.
+func installError(message string, err error) errs.TypedError {
+	if errors.Is(err, lockfile.ErrHeld) {
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+			"another lark-cli update is already running").
+			WithHint("Wait for it to finish, then retry.").
+			WithCause(err)
+	}
+	return errs.NewInternalError(errs.SubtypeUnknown, "%s: %s", message, err).
+		WithHint("Retry with `lark-cli update --force`.").
+		WithCause(err)
 }
 
 func installPrepared(prepared *preparedUpdate, opts InstallOptions) error {

@@ -29,8 +29,11 @@ func InitForSource(currentVersion, sourceIdentity string, exactTarget bool) {
 	if err != nil || !ok || state.Version == "" {
 		return
 	}
-	if versioncheck.Equal(state.Version, currentVersion) &&
-		!state.OfficialSkillsUnknown && MatchesSource(state, sourceIdentity) {
+	versionMatches := versioncheck.Equal(state.Version, currentVersion)
+	if exactTarget {
+		versionMatches = state.Version == currentVersion
+	}
+	if versionMatches && !state.OfficialSkillsUnknown && MatchesSource(state, sourceIdentity) {
 		return
 	}
 	SetPending(&StaleNotice{

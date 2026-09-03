@@ -75,17 +75,17 @@ func TestInitForSourceNoticesOpaqueManifestVersion(t *testing.T) {
 	resetPending(t)
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	if err := WriteState(SkillsState{
-		Version:        "release-channel-6",
+		Version:        "1.0.21",
 		SourceIdentity: "manifest:dist",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	InitForSource("release-channel-7", "manifest:dist", true)
+	InitForSource("v1.0.21", "manifest:dist", true)
 	got := GetPending()
 	if got == nil {
 		t.Fatal("GetPending() = nil, want notice for opaque manifest version drift")
 	}
-	if got.Current != "release-channel-6" || got.Target != "release-channel-7" {
+	if got.Current != "1.0.21" || got.Target != "v1.0.21" {
 		t.Errorf("notice = %+v", got)
 	}
 }
