@@ -35,6 +35,17 @@ metadata:
 5. **文件路径只接受相对路径**：`--file`、`--output`、`--output-dir`、`@file` 等路径参数只接受 cwd 下的相对路径，传绝对路径会报 `unsafe file path`。数据输入（`@file`、大 JSON）优先用 stdin 传入，避免路径和转义问题。
 
 
+## AI Agent 无头环境 (Headless) 授权恢复与跨平台开发规范
+
+### 1. 分离式 OAuth 授权恢复闭环（AI Agent 子进程必读）
+在无浏览器 GUI 或 Agent 作为非交互式子进程运行的场景下，遇到 Token 过期或缺少 scopes 时，**绝不能**因无法自动弹窗而直接中断任务，须按以下标准 3 步闭环恢复：
+1. **获取授权链接与设备码**：执行 `lark-cli auth login --domain all --no-wait --json`（或指定缺少的 scopes）；先验证响应中 `ok == true`，再从中提取 `verification_url` 与 `device_code`（若失败则按错误信封处理，避免带空值进入下一步）；
+2. **向用户展示授权信息**：在交互中向用户展示 `verification_url` 授权链接，或按需执行 `lark-cli auth qrcode <verification_url>` 渲染二维码，提示用户在浏览器中打开或扫码完成授权；
+3. **完成授权校验闭环**：收到用户授权完成的反馈后，由 Agent 执行 `lark-cli auth login --device-code <device_code>` 完成最终校验，无缝恢复原本被阻塞的任务。
+
+### 2. Windows 平台子进程 stdin UTF-8 字节流传输规范
+在 Windows 平台通过子进程管道向 `lark-cli` 推送中文时，必须使用显式 UTF-8 字节流推送，避免 GBK/CP936 代码页乱码。详见 [`references/lark-shared-windows-stdin.md`](references/lark-shared-windows-stdin.md)。
+
 ## Reference 强触发索引
 
 命中任一触发条件时，**MUST 在执行下一步前读取对应 reference**。命中多条时按表中顺序读取，同一reference只读取一次。
