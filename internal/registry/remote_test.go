@@ -331,6 +331,131 @@ func TestOverlayMergedServices(t *testing.T) {
 	}
 }
 
+func TestOverlayMergedServicesPreservesEmbeddedMethods(t *testing.T) {
+	resetInit()
+	mergedServices = map[string]meta.Service{
+		"mail": {
+			Name:        "mail",
+			Version:     "embedded",
+			Title:       "Embedded Mail API",
+			ServicePath: "/open-apis/mail/v1",
+			Resources: map[string]meta.Resource{
+				"user_mailbox.rules": {
+					Methods: map[string]meta.Method{
+						"list": {
+							Path:       "user_mailboxes/{user_mailbox_id}/rules",
+							HTTPMethod: "GET",
+						},
+						"reorder": {
+							Path:       "user_mailboxes/{user_mailbox_id}/rules/reorder",
+							HTTPMethod: "POST",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	overlayMergedServices(&MergedRegistry{
+		Services: []meta.Service{
+			{
+				Name:        "mail",
+				Version:     "cache",
+				Title:       "Cached Mail API",
+				ServicePath: "/open-apis/mail/v1",
+				Resources: map[string]meta.Resource{
+					"user_mailbox.rules": {
+						Methods: map[string]meta.Method{
+							"list": {
+								Path:        "user_mailboxes/{user_mailbox_id}/rules",
+								HTTPMethod:  "GET",
+								Description: "cached list description",
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	rules := mergedServices["mail"].Resources["user_mailbox.rules"]
+	if _, ok := rules.Methods["reorder"]; !ok {
+		t.Fatal("embedded reorder method was removed by stale cache overlay")
+	}
+	if got := rules.Methods["list"].Description; got != "cached list description" {
+		t.Fatalf("list method description = %q, want cached overlay value", got)
+	}
+}
+
+func TestRuntimeCatalogPreservesEmbeddedMethodsWithNewerCache(t *testing.T) {
+	embedded, _ := json.Marshal(MergedRegistry{
+		Version: "1.0.0",
+		Services: []meta.Service{
+			{
+				Name:        "mail",
+				Version:     "v1",
+				ServicePath: "/open-apis/mail/v1",
+				Resources: map[string]meta.Resource{
+					"user_mailbox.rules": {
+						Methods: map[string]meta.Method{
+							"list": {
+								Path:       "user_mailboxes/{user_mailbox_id}/rules",
+								HTTPMethod: "GET",
+							},
+							"reorder": {
+								Path:       "user_mailboxes/{user_mailbox_id}/rules/reorder",
+								HTTPMethod: "POST",
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	swapEmbeddedMeta(t, embedded)
+
+	tmp := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
+	t.Setenv("LARKSUITE_CLI_REMOTE_META", "on")
+	t.Setenv("LARKSUITE_CLI_META_TTL", "3600")
+	seedCacheService(t, tmp, MergedRegistry{
+		Version: "2.0.0",
+		Services: []meta.Service{
+			{
+				Name:        "mail",
+				Version:     "v1",
+				ServicePath: "/open-apis/mail/v1",
+				Resources: map[string]meta.Resource{
+					"user_mailbox.rules": {
+						Methods: map[string]meta.Method{
+							"list": {
+								Path:        "user_mailboxes/{user_mailbox_id}/rules",
+								HTTPMethod:  "GET",
+								Description: "cached list description",
+							},
+						},
+					},
+				},
+			},
+		},
+	}, "feishu")
+
+	target, err := RuntimeCatalog().Resolve([]string{"mail", "user_mailbox.rules", "reorder"})
+	if err != nil {
+		t.Fatalf("runtime catalog lost embedded reorder method: %v", err)
+	}
+	if target.Method.SchemaPath() != "mail.user_mailbox.rules.reorder" {
+		t.Fatalf("schema path = %q, want mail.user_mailbox.rules.reorder", target.Method.SchemaPath())
+	}
+	list, err := RuntimeCatalog().Resolve([]string{"mail", "user_mailbox.rules", "list"})
+	if err != nil {
+		t.Fatalf("runtime catalog lost cached list method: %v", err)
+	}
+	if got := list.Method.Method.Description; got != "cached list description" {
+		t.Fatalf("list description = %q, want cached overlay value", got)
+	}
+}
+
 func TestOverlayMergedServicesDoesNotPolluteFollowingInit(t *testing.T) {
 	resetInit()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())

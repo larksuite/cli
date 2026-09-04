@@ -187,7 +187,36 @@ func createRole(t *testing.T, ctx context.Context, baseToken string, body string
 	result.AssertExitCode(t, 0)
 	result.AssertStdoutStatus(t, true)
 
-	return gjson.Get(result.Stdout, "data.role_id").String()
+	roleID := extractCreatedRoleID(result.Stdout)
+	require.NotEmpty(t, roleID, "created role ID should be returned; stdout:\n%s", result.Stdout)
+	return roleID
+}
+
+func extractCreatedRoleID(stdout string) string {
+	for _, path := range []string{
+		"data.role_id",
+		"data.data.role_id",
+		"data.data.data.role_id",
+	} {
+		if roleID := gjson.Get(stdout, path).String(); roleID != "" {
+			return roleID
+		}
+	}
+
+	for _, path := range []string{"data.data", "data.data.data"} {
+		raw := gjson.Get(stdout, path).String()
+		if raw == "" || !gjson.Valid(raw) {
+			continue
+		}
+		if roleID := gjson.Get(raw, "role_id").String(); roleID != "" {
+			return roleID
+		}
+		if roleID := gjson.Get(raw, "data.role_id").String(); roleID != "" {
+			return roleID
+		}
+	}
+
+	return ""
 }
 
 func findBaseTableByID(t *testing.T, ctx context.Context, baseToken string, tableID string) gjson.Result {

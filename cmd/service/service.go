@@ -431,6 +431,15 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	// with MissingScopes / Identity / ConsoleURL populated from the response.
 	checkErr := ac.CheckResponse
 
+	if err := completeMailRulesReorderRequest(opts.Ctx, ac, opts, &request); err != nil {
+		return err
+	}
+	if isMailRulesReorder(opts) {
+		checkErr = func(result interface{}, identity core.Identity) error {
+			return mailRulesReorderCheckResponse(ac, result, identity)
+		}
+	}
+
 	if opts.PageAll {
 		return servicePaginate(opts.Ctx, ac, request, format, opts.JqExpr, out, f.IOStreams.ErrOut, opts.Cmd.CommandPath(),
 			client.PaginationOptions{PageLimit: opts.PageLimit, PageDelay: opts.PageDelay}, checkErr)
