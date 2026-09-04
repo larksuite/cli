@@ -41,15 +41,13 @@ var BaseFormGet = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		form, err := decodeBaseFormResponse(data)
+		if err != nil {
+			return err
+		}
 
-		runtime.OutFormat(data, nil, func(w io.Writer) {
-			output.PrintTable(w, []map[string]interface{}{
-				{
-					"id":          data["id"],
-					"name":        data["name"],
-					"description": data["description"],
-				},
-			})
+		runtime.OutFormat(form, nil, func(w io.Writer) {
+			output.PrintTable(w, []map[string]interface{}{baseFormTableRow(form)})
 		})
 		return nil
 	},
