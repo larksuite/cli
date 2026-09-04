@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	extcred "github.com/larksuite/cli/extension/credential"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -42,19 +43,20 @@ type Result struct {
 
 // Identity is a single identity diagnostic result.
 type Identity struct {
-	Status           string `json:"status"`
-	Available        bool   `json:"available"`
-	Verified         *bool  `json:"verified,omitempty"`
-	Message          string `json:"message,omitempty"`
-	Hint             string `json:"hint,omitempty"`
-	OpenID           string `json:"openId,omitempty"`
-	AppName          string `json:"appName,omitempty"`
-	UserName         string `json:"userName,omitempty"`
-	TokenStatus      string `json:"tokenStatus,omitempty"`
-	Scope            string `json:"scope,omitempty"`
-	ExpiresAt        string `json:"expiresAt,omitempty"`
-	RefreshExpiresAt string `json:"refreshExpiresAt,omitempty"`
-	GrantedAt        string `json:"grantedAt,omitempty"`
+	Status           string          `json:"status"`
+	Available        bool            `json:"available"`
+	Verified         *bool           `json:"verified,omitempty"`
+	Message          string          `json:"message,omitempty"`
+	Hint             string          `json:"hint,omitempty"`
+	Error            errs.TypedError `json:"error,omitempty"`
+	OpenID           string          `json:"openId,omitempty"`
+	AppName          string          `json:"appName,omitempty"`
+	UserName         string          `json:"userName,omitempty"`
+	TokenStatus      string          `json:"tokenStatus,omitempty"`
+	Scope            string          `json:"scope,omitempty"`
+	ExpiresAt        string          `json:"expiresAt,omitempty"`
+	RefreshExpiresAt string          `json:"refreshExpiresAt,omitempty"`
+	GrantedAt        string          `json:"grantedAt,omitempty"`
 	recoveryTarget   recovery.Target
 }
 
@@ -83,6 +85,21 @@ func FilterRecovery(result Result, canReference func(recovery.Target) bool) Resu
 	result.Bot = filter(result.Bot)
 	result.User = filter(result.User)
 	return result
+}
+
+func withPolicyError(identity Identity, err error) Identity {
+	var typed errs.TypedError
+	if !errors.As(err, &typed) {
+		return identity
+	}
+	problem := typed.ProblemDetail()
+	if problem == nil || problem.Category != errs.CategoryPolicy {
+		return identity
+	}
+	// Keep the concrete typed value: reducing it to Problem would discard
+	// policy-specific wire fields such as challenge_url or rules.
+	identity.Error = typed
+	return identity
 }
 
 // Diagnose checks bot and user identities separately. When verify is false,
@@ -206,7 +223,7 @@ func externalVerifyFailed(id Identity, label, provider string, err error) Identi
 	id.TokenStatus = ""
 	id.Message = label + " identity: verify failed: " + err.Error()
 	id.Hint = externalCredentialHint(provider)
-	return id
+	return withPolicyError(id, err)
 }
 
 // externalCredentialHint reports the constraint, not a remediation: the
@@ -253,22 +270,22 @@ func diagnoseBot(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, v
 		if errors.As(err, &unavailable) {
 			status = StatusNotConfigured
 		}
-		return Identity{
+		return withPolicyError(Identity{
 			Status:   status,
 			Verified: boolPtr(false),
 			Message:  "Bot identity: " + StatusMessage(status) + ": " + err.Error(),
 			Hint:     "check app credentials or the active credential provider",
-		}
+		}, err)
 	}
 
 	info, err := fetchBotInfo(ctx, f, cfg, token)
 	if err != nil {
-		return Identity{
+		return withPolicyError(Identity{
 			Status:   StatusVerifyFailed,
 			Verified: boolPtr(false),
 			Message:  "Bot identity: verify failed: " + err.Error(),
 			Hint:     "check app credentials, scopes, network, or tenant access token configuration",
-		}
+		}, err)
 	}
 
 	id.Verified = boolPtr(true)
@@ -339,7 +356,10 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	}
 	token, err := larkauth.GetValidAccessToken(httpClient, larkauth.NewUATCallOptions(cfg, f.IOStreams.ErrOut))
 	if err != nil {
-		return markVerifyFailed("token unusable: "+err.Error(), "run: lark-cli auth login --help", recovery.TargetAuthLogin)
+		return withPolicyError(
+			markVerifyFailed("token unusable: "+err.Error(), "run: lark-cli auth login --help", recovery.TargetAuthLogin),
+			err,
+		)
 	}
 	sdk, err := f.LarkClient()
 	if err != nil {
@@ -349,7 +369,10 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	defer cancel()
 	verifyCtx = core.WithCredentialSource(verifyCtx, core.CredentialSourceLocal)
 	if err := larkauth.VerifyUserToken(verifyCtx, sdk, token); err != nil {
-		return markVerifyFailed("server rejected token: "+err.Error(), "run: lark-cli auth login --help", recovery.TargetAuthLogin)
+		return withPolicyError(
+			markVerifyFailed("server rejected token: "+err.Error(), "run: lark-cli auth login --help", recovery.TargetAuthLogin),
+			err,
+		)
 	}
 
 	id.Verified = boolPtr(true)

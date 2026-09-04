@@ -254,10 +254,16 @@ func (ab *authBridge) handlePoll(w http.ResponseWriter, r *http.Request, body []
 		ab.mu.Unlock()
 	}()
 
-	result := larkauth.PollDeviceToken(
+	result, err := larkauth.PollDeviceToken(
 		ctx, ab.httpCl, ab.appID, ab.appSecret, ab.brand,
 		req.DeviceCode, 5, 600, io.Discard,
 	)
+	if err != nil {
+		jsonError(w, http.StatusBadGateway, "token polling failed: "+err.Error())
+		ab.logger.Printf("AUTH_BRIDGE_ERROR action=poll device_code_prefix=%s error=%q",
+			truncate(req.DeviceCode, 12), err.Error())
+		return
+	}
 
 	if !result.OK {
 		resp := map[string]interface{}{
