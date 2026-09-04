@@ -413,6 +413,66 @@ func TestServiceMethod_InvalidDataJSON(t *testing.T) {
 	}
 }
 
+func TestServiceMethod_ApprovalInstanceCreateRejectsUnsupportedControls(t *testing.T) {
+	cases := []struct {
+		name        string
+		data        string
+		wantSubstrs []string
+	}{
+		{
+			name:        "top-level account control",
+			data:        `{"approval_code":"code","form":"[{\"id\":\"payee\",\"type\":\"account\",\"value\":{\"account_id\":\"acct_1\"}}]"}`,
+			wantSubstrs: []string{"account", "payee"},
+		},
+		{
+			name:        "nested account control",
+			data:        `{"approval_code":"code","form":"[{\"id\":\"group\",\"type\":\"fieldList\",\"value\":[[{\"id\":\"nested_payee\",\"type\":\"account\",\"value\":{\"account_id\":\"acct_1\"}}]]}]"}`,
+			wantSubstrs: []string{"account", "nested_payee"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+			spec := meta.ServiceFromMap(map[string]interface{}{
+				"name": "approval", "servicePath": "/open-apis/approval/v4",
+			})
+			method := meta.FromMap(map[string]interface{}{
+				"path": "instances", "httpMethod": "POST", "parameters": map[string]interface{}{},
+			})
+			cmd := NewCmdServiceMethod(f, spec, method, "create", "instances", nil)
+			cmd.SetArgs([]string{
+				"--data", tc.data,
+				"--dry-run",
+			})
+
+			err := cmd.Execute()
+			if err == nil {
+				t.Fatal("expected error for unsupported approval control")
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed error, got %T: %v", err, err)
+			}
+			if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("problem = %+v, want validation/invalid_argument", problem)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("expected ValidationError, got %T", err)
+			}
+			if validationErr.Param != "--data" {
+				t.Fatalf("param = %q, want --data", validationErr.Param)
+			}
+			for _, want := range tc.wantSubstrs {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("expected error to mention %q, got: %v", want, err)
+				}
+			}
+		})
+	}
+}
+
 func TestServiceMethod_ParamsAndDataBothStdinConflict(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
 	spec := meta.ServiceFromMap(map[string]interface{}{
