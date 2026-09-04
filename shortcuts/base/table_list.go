@@ -21,6 +21,9 @@ var BaseTableList = common.Shortcut{
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
 		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "50", Desc: "pagination size, range 1-100"},
 	},
+	Tips: []string{
+		"When meta.pagination.complete is false, pass its decimal next_token value to --offset and continue until complete is true.",
+	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		_, err := common.ValidatePageSizeTyped(runtime, "limit", 50, 1, 100)
 		return err

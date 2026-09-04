@@ -27,6 +27,7 @@ var BaseFieldCreate = common.Shortcut{
 		`Example select: lark-cli base +field-create --base-token <base_token> --table-id <table_id> --json '{"name":"Status","type":"select","multiple":false,"options":[{"name":"Todo"},{"name":"Done"}]}'`,
 		`+field-create defines storage schema only: choose a documented field type from explicit stored-value requirements and the user's semantics. Treat the field name or business purpose only as a clue to confirm; do not use it to invent derived behavior. Use style only to format the chosen type.`,
 		`For explicitly requested derived, automatic, synchronized, or backfilled behavior, use documented formula, lookup, link, workflow, or automation only. If unsupported, do not probe code/web/OpenAPI, create a storage placeholder, or claim completion; report the boundary and alternatives.`,
+		"Formula and lookup creates require reading the corresponding guide before passing --i-have-read-guide; the flag acknowledges the guide and does not replace it.",
 		"Agent hint: for multiple fields in one table, prefer one array; array items are created sequentially.",
 		"For generated arrays, prefer --json @file or an argv-safe subprocess call; do not double-escape JSON inside shell command substitution.",
 		`For large arrays, bound successful stdout with --jq 'if .ok then (.data | {created,total,field_get_recommended,next_step,verification_hint}) else . end'; this preserves the full partial-failure envelope. Omit the projection when individual field IDs are needed.`,

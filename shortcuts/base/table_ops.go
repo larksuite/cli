@@ -5,9 +5,11 @@ package base
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -84,14 +86,35 @@ func executeTableList(runtime *common.RuntimeContext) error {
 		offset = 0
 	}
 	limit := runtime.Int("limit")
-	tables, total, err := listAllTables(runtime, runtime.Str("base-token"), offset, limit)
+	tables, total, totalKnown, err := listAllTables(runtime, runtime.Str("base-token"), offset, limit)
 	if err != nil {
 		return err
 	}
 	if total == 0 {
 		total = len(tables)
 	}
-	runtime.Out(map[string]interface{}{"tables": tables, "total": total}, nil)
+	pagination := &output.PaginationMeta{
+		Complete: true,
+		Pages:    1,
+		Items:    len(tables),
+	}
+	nextOffset := offset + len(tables)
+	if totalKnown && len(tables) == 0 && offset < total {
+		return errs.NewInternalError(
+			errs.SubtypeInvalidResponse,
+			"+table-list returned an empty page at offset %d before the reported total %d",
+			offset,
+			total,
+		)
+	}
+	if (totalKnown && nextOffset < total) || (!totalKnown && len(tables) == limit) {
+		pagination.Complete = false
+		pagination.NextToken = strconv.Itoa(nextOffset)
+	}
+	runtime.Out(
+		map[string]interface{}{"tables": tables, "total": total},
+		&output.Meta{Pagination: pagination},
+	)
 	return nil
 }
 

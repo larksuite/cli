@@ -31,7 +31,7 @@ var BaseFieldUpdate = common.Shortcut{
 		"Update uses full field-definition PUT semantics. Read the current field first with +field-get, then send the target state.",
 		`When --json.type is "auto_number", updating the numbering rules also reapplies them to existing numbers; just submit the target field definition and do not add extra low-level parameters.`,
 		"Type conversion is allowlist-based: only use CLI for safe conversions; otherwise migrate through a new field, or ask the user to finish high-risk conversions in the web UI.",
-		"Formula and lookup updates require reading the corresponding guide first.",
+		"Formula and lookup updates require reading the corresponding guide before passing --i-have-read-guide; the flag acknowledges the guide and does not replace it.",
 		"Agent hint: use the lark-base skill's field-update guide for JSON shape, type-conversion rules, and limits.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
