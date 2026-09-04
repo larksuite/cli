@@ -4,9 +4,7 @@
 package cmdutil
 
 import (
-	"encoding/json"
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
@@ -116,44 +114,27 @@ func TestParseJSONMap(t *testing.T) {
 	}
 }
 
-func TestParseOptionalBody_PreservesLargeInteger(t *testing.T) {
-	const input = `{"revision_id":9223372036854775807}`
-	got, err := ParseOptionalBody("POST", input, nil, nil)
+// TestParseJSONNumbersUseFloat64 documents the deliberate ceiling: --data and
+// --params decode numbers into float64, so a literal above 2^53 is rounded.
+// Callers that need an exact 19-digit identifier pass it as a JSON string,
+// which is how every such identifier is typed in the API catalog. Decoding
+// into json.Number instead would keep the digits, but an exponent literal
+// would then expand to its full decimal form and a compact "1e1048575" in a
+// --params @file becomes a megabyte on the wire; float64 rejects that literal
+// at parse time instead.
+func TestParseJSONNumbersUseFloat64(t *testing.T) {
+	got, err := ParseJSONMap(`{"page_size":100,"created_at":1700000000}`, "--params", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, ok := got.(map[string]any)
-	if !ok {
-		t.Fatalf("body type = %T, want map[string]any", got)
+	for name, want := range map[string]float64{"page_size": 100, "created_at": 1700000000} {
+		f, ok := got[name].(float64)
+		if !ok || f != want {
+			t.Fatalf("%s = %v (%T), want float64 %v", name, got[name], got[name], want)
+		}
 	}
-	n, ok := body["revision_id"].(json.Number)
-	if !ok || n.String() != "9223372036854775807" {
-		t.Fatalf("revision_id = %v (%T), want exact json.Number", body["revision_id"], body["revision_id"])
-	}
-	encoded, err := json.Marshal(got)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(encoded) != input {
-		t.Fatalf("wire JSON = %s, want %s", encoded, input)
-	}
-}
 
-func TestParseJSONMap_PreservesLargeInteger(t *testing.T) {
-	const input = `{"revision_id":9223372036854775807}`
-	got, err := ParseJSONMap(input, "--params", nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	n, ok := got["revision_id"].(json.Number)
-	if !ok || n.String() != "9223372036854775807" {
-		t.Fatalf("revision_id = %v (%T), want exact json.Number", got["revision_id"], got["revision_id"])
-	}
-	encoded, err := json.Marshal(got)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.TrimSpace(string(encoded)) != input {
-		t.Fatalf("wire JSON = %s, want %s", encoded, input)
+	if _, err := ParseJSONMap(`{"n":1e1048575}`, "--params", nil, nil); err == nil {
+		t.Fatal("expected an out-of-range exponent literal to be rejected at parse time")
 	}
 }

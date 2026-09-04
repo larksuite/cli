@@ -4,7 +4,6 @@
 package client
 
 import (
-	"encoding/json"
 	"testing"
 )
 
@@ -22,17 +21,19 @@ func TestFormatScalar(t *testing.T) {
 		{"float64 huge", float64(20 * 1024 * 1024), "20971520"},
 		{"float64 negative", float64(-42), "-42"},
 		{"float64 fractional preserved", float64(3.14), "3.14"},
-		{"json number scientific integer", json.Number("1.185356e6"), "1185356"},
-		{"json number MaxInt64 scientific", json.Number("9.223372036854775807e18"), "9223372036854775807"},
-		{"json number MaxInt64 exact", json.Number("9223372036854775807"), "9223372036854775807"},
-		{"json number negative scientific", json.Number("-4.2e2"), "-420"},
-		{"json number fractional scientific", json.Number("1.25e-3"), "0.00125"},
-		{"json number plain exponent", json.Number("1e3"), "1000"},
-		{"json number zero avoids exponent expansion", json.Number("0e-1048576"), "0"},
-		{"json number decimal unchanged", json.Number("3.14"), "3.14"},
-		{"json number insignificant fraction dropped", json.Number("1.0"), "1"},
-		{"json number trailing fraction zeros dropped", json.Number("1.50"), "1.5"},
-		{"json number leading fraction", json.Number("0.5"), "0.5"},
+		// %v renders these in scientific notation ("1e+06", "1.7e+09"), which
+		// backends reject when parsing an integer field.
+		{"float64 at the scientific threshold", float64(1000000), "1000000"},
+		{"float64 second-precision timestamp", float64(1700000000), "1700000000"},
+		{"float64 millisecond-precision timestamp", float64(1700000000000), "1700000000000"},
+		{"float64 from an exponent literal", float64(1e3), "1000"},
+		// A fraction whose exponent is smaller than its decimal count must not
+		// acquire a leading zero: "01.2" is not a legal JSON number.
+		{"float64 from a leading-zero exponent literal", float64(0.12e1), "1.2"},
+		{"float64 from a wider leading-zero exponent literal", float64(0.72264e4), "7226.4"},
+		{"float64 negative leading-zero exponent literal", float64(-0.375e2), "-37.5"},
+		{"float64 insignificant fraction dropped", float64(1.0), "1"},
+		{"float64 small fraction avoids scientific", float64(1.25e-3), "0.00125"},
 		{"string pass-through", "hello", "hello"},
 		{"bool true", true, "true"},
 		{"int via %v", 42, "42"},

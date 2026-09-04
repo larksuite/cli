@@ -384,22 +384,23 @@ func TestBuildApiReq_QueryParams(t *testing.T) {
 			want:   larkcore.QueryParams{"with_bot": []string{"true"}},
 		},
 		{
-			// --params numbers arrive as json.Number; the query string carries
-			// plain decimals, exactly as the multipart form path renders them.
+			// --params numbers arrive as float64; the query string carries plain
+			// decimals, exactly as the multipart form path renders them. Go's
+			// %v would emit "1e+06" and "1.7e+09" here.
 			name: "numeric literals render as plain decimals",
 			params: map[string]interface{}{
-				"exponent":    json.Number("1e3"),
-				"fraction":    json.Number("1.0"),
-				"large":       json.Number("9223372036854775807"),
-				"float_large": float64(1000000),
-				"ids":         []interface{}{json.Number("1e2"), json.Number("2.50")},
+				"exponent":  float64(1e3),
+				"fraction":  float64(1.0),
+				"threshold": float64(1000000),
+				"timestamp": float64(1700000000),
+				"ids":       []interface{}{float64(1e2), float64(2.50)},
 			},
 			want: larkcore.QueryParams{
-				"exponent":    []string{"1000"},
-				"fraction":    []string{"1"},
-				"large":       []string{"9223372036854775807"},
-				"float_large": []string{"1000000"},
-				"ids":         []string{"100", "2.5"},
+				"exponent":  []string{"1000"},
+				"fraction":  []string{"1"},
+				"threshold": []string{"1000000"},
+				"timestamp": []string{"1700000000"},
+				"ids":       []string{"100", "2.5"},
 			},
 		},
 	}

@@ -5,7 +5,6 @@ package cmdutil
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"path/filepath"
 	"strings"
@@ -133,25 +132,11 @@ func BuildFormdata(fileIO fileio.FileIO, fieldName, filePath string, isStdin boo
 	}
 
 	// Add top-level JSON keys as text form fields.
+	// Field order is not ours to choose: Formdata keeps fields in a map and
+	// serializes by ranging over it, so ordering them here would not survive.
 	if m, ok := dataJSON.(map[string]any); ok {
-		const maxMultipartNumberExpansionBytes = 1 << 20
-		totalNumberExpansionBytes := 0
 		for k, v := range m {
-			value := client.FormatScalar(v)
-			if n, ok := v.(json.Number); ok && len(value) > len(n.String()) {
-				expansionBytes := len(value) - len(n.String())
-				if expansionBytes > maxMultipartNumberExpansionBytes-totalNumberExpansionBytes {
-					return nil, errs.NewValidationError(
-						errs.SubtypeInvalidArgument,
-						"--data numeric expansion exceeds the %d-byte multipart limit",
-						maxMultipartNumberExpansionBytes,
-					).
-						WithParam("--data").
-						WithHint("use ordinary decimal notation and smaller numeric exponents")
-				}
-				totalNumberExpansionBytes += expansionBytes
-			}
-			fd.AddField(k, value)
+			fd.AddField(k, client.FormatScalar(v))
 		}
 	}
 

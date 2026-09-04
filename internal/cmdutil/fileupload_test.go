@@ -5,7 +5,6 @@ package cmdutil
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -370,24 +369,6 @@ func TestBuildFormdata(t *testing.T) {
 		}
 	})
 
-	t.Run("expanded numeric fields have a request budget", func(t *testing.T) {
-		stdin := bytes.NewReader([]byte("content"))
-		_, err := BuildFormdata(fio, "file", "", true, stdin, map[string]any{
-			"a": json.Number("1e-600000"),
-			"b": json.Number("1e-600000"),
-		})
-		if err == nil {
-			t.Fatal("expected oversized expanded form fields to fail")
-		}
-		var validationErr *errs.ValidationError
-		if !errors.As(err, &validationErr) {
-			t.Fatalf("expected typed validation error, got %T: %v", err, err)
-		}
-		if validationErr.Subtype != errs.SubtypeInvalidArgument || validationErr.Param != "--data" {
-			t.Fatalf("validation error = %#v, want invalid_argument for --data", validationErr)
-		}
-	})
-
 	t.Run("dataJSON nil is fine", func(t *testing.T) {
 		stdin := bytes.NewReader([]byte("content"))
 		fd, err := BuildFormdata(fio, "file", "", true, stdin, nil)
@@ -411,10 +392,11 @@ func TestBuildFormdata(t *testing.T) {
 	})
 }
 
-// TestFormatFormFieldValue locks in decimal formatting for both the legacy
-// float64 input and exact json.Number values returned by Decoder.UseNumber.
+// TestParseOptionalBody_FileFormNumberFormatting locks in plain-decimal form
+// fields: %v would render these as "1.185356e+06" and "1.7e+09", which
+// backends reject when parsing an integer field.
 func TestParseOptionalBody_FileFormNumberFormatting(t *testing.T) {
-	body, err := ParseOptionalBody("POST", `{"size":1.185356e6,"revision_id":9223372036854775807}`, nil, nil)
+	body, err := ParseOptionalBody("POST", `{"size":1.185356e6,"created_at":1700000000}`, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -425,7 +407,7 @@ func TestParseOptionalBody_FileFormNumberFormatting(t *testing.T) {
 	if got := client.FormatScalar(fields["size"]); got != "1185356" {
 		t.Fatalf("size form field = %q, want 1185356", got)
 	}
-	if got := client.FormatScalar(fields["revision_id"]); got != "9223372036854775807" {
-		t.Fatalf("revision_id form field = %q, want exact MaxInt64", got)
+	if got := client.FormatScalar(fields["created_at"]); got != "1700000000" {
+		t.Fatalf("created_at form field = %q, want 1700000000", got)
 	}
 }

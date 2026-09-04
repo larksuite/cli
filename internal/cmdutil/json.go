@@ -4,7 +4,6 @@
 package cmdutil
 
 import (
-	"bytes"
 	"encoding/json"
 	"io"
 
@@ -31,7 +30,7 @@ func ParseOptionalBody(httpMethod, data string, stdin io.Reader, fileIO fileio.F
 		return nil, nil
 	}
 	var body interface{}
-	if err := decodeJSONPreserveNumbers([]byte(resolved), &body); err != nil {
+	if err := json.Unmarshal([]byte(resolved), &body); err != nil {
 		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--data invalid JSON format").
 			WithParam("--data").
 			WithCause(err)
@@ -54,7 +53,7 @@ func ParseJSONMap(input, label string, stdin io.Reader, fileIO fileio.FileIO) (m
 		return map[string]any{}, nil
 	}
 	var result map[string]any
-	if err := decodeJSONPreserveNumbers([]byte(resolved), &result); err != nil {
+	if err := json.Unmarshal([]byte(resolved), &result); err != nil {
 		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s invalid format, expected JSON object", label).
 			WithParam(label).
 			WithCause(err)
@@ -65,18 +64,4 @@ func ParseJSONMap(input, label string, stdin io.Reader, fileIO fileio.FileIO) (m
 		return map[string]any{}, nil
 	}
 	return result, nil
-}
-
-// decodeJSONPreserveNumbers keeps JSON number literals as json.Number so large
-// integers survive dry-run rendering and request serialization unchanged.
-// The initial RawMessage unmarshal preserves json.Unmarshal's strict
-// single-value/trailing-data validation before the UseNumber decode.
-func decodeJSONPreserveNumbers(data []byte, dst any) error {
-	var raw json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	return dec.Decode(dst)
 }

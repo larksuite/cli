@@ -301,7 +301,11 @@ func TestServiceMethod_DryRunWithJq(t *testing.T) {
 	}
 }
 
-func TestServiceMethod_DryRunPreservesLargeJSONIntegers(t *testing.T) {
+// TestServiceMethod_DryRunRendersPlainDecimals pins the previewed URL to the
+// same plain-decimal rendering the wire uses, so a previewed request is the
+// request that gets sent. The pretty form is the one that builds a URL out of
+// the params; Go's %v would print "start_time=1.7e+09" in it.
+func TestServiceMethod_DryRunRendersPlainDecimals(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
 	spec := meta.ServiceFromMap(map[string]interface{}{
 		"name": "svc", "servicePath": "/open-apis/svc/v1",
@@ -311,19 +315,24 @@ func TestServiceMethod_DryRunPreservesLargeJSONIntegers(t *testing.T) {
 	})
 	cmd := NewCmdServiceMethod(f, spec, method, "create", "items", nil)
 	cmd.SetArgs([]string{
-		"--params", `{"cursor":9223372036854775807}`,
-		"--data", `{"revision_id":9223372036854775807}`,
+		"--params", `{"start_time":1700000000}`,
+		"--data", `{"size":1185356}`,
 		"--dry-run",
+		"--format", "pretty",
 	})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := stdout.String()
-	if got := strings.Count(out, "9223372036854775807"); got != 2 {
-		t.Fatalf("large integers were not preserved in params and body (count=%d):\n%s", got, out)
+	for _, want := range []string{"1700000000", "1185356"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("dry-run output missing plain decimal %s:\n%s", want, out)
+		}
 	}
-	if strings.Contains(out, "9223372036854776000") {
-		t.Fatalf("dry-run output contains float64-rounded integer:\n%s", out)
+	for _, bad := range []string{"1.7e+09", "1.185356e+06"} {
+		if strings.Contains(out, bad) {
+			t.Fatalf("dry-run output contains scientific notation %s:\n%s", bad, out)
+		}
 	}
 }
 
