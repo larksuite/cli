@@ -1286,6 +1286,49 @@ func TestWikiSpaceListPrettyHintsWhenEmptyButHasMore(t *testing.T) {
 	}
 }
 
+func TestWikiNodeCopyMountedExplainsResourcePermissionDenied(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	factory, stdout, _, reg := cmdutil.TestFactory(t, wikiTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/wiki/v2/spaces/space_src/nodes/wik_src/copy",
+		Body: map[string]interface{}{
+			"code":   131006,
+			"msg":    "permission denied: node permission denied, user needs read permission.",
+			"log_id": "log-node-copy-permission",
+		},
+	})
+
+	err := mountAndRunWiki(t, WikiNodeCopy, []string{
+		"+node-copy",
+		"--space-id", "space_src",
+		"--node-token", "wik_src",
+		"--target-space-id", "space_dst",
+		"--yes",
+		"--as", "user",
+	}, factory, stdout)
+	if err == nil {
+		t.Fatal("expected permission error")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryAuthorization || p.Subtype != errs.SubtypePermissionDenied || p.Code != 131006 {
+		t.Fatalf("problem = %#v, want authorization/permission_denied/131006", p)
+	}
+	if p.Retryable {
+		t.Fatalf("problem retryable = true, want false: %#v", p)
+	}
+	if !strings.Contains(p.Hint, "container edit permission") || !strings.Contains(p.Hint, "source or destination parent") {
+		t.Fatalf("hint = %q, want copy container-edit guidance", p.Hint)
+	}
+	if strings.Contains(p.Hint, "grant read access") || strings.Contains(p.Hint, "edit permission on the node") {
+		t.Fatalf("hint = %q, must not use read or node-move recovery for copy", p.Hint)
+	}
+}
+
 func TestWikiNodeCopyHasFormatPrettyRendersNode(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
