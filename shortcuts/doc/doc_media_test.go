@@ -881,6 +881,33 @@ func TestDocMediaDownloadExportDeniedFailsBeforeDownload(t *testing.T) {
 	}
 }
 
+func TestDocMediaDownloadPermissionAuthInvalidParameterStopsRetriesAndExplainsToken(t *testing.T) {
+	err := errs.NewAPIError(errs.SubtypeInvalidArgument, "Invalid parameter").
+		WithCode(1063001).
+		WithRetryable().
+		WithLogID("log-doc-auth-invalid")
+
+	got := withDocMediaDownloadRecoveryHint(err, "media")
+	problem, ok := errs.ProblemOf(got)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", got, got)
+	}
+	if problem.Category != errs.CategoryAPI || problem.Code != 1063001 || problem.LogID != "log-doc-auth-invalid" {
+		t.Fatalf("problem=%+v, want preserved API metadata", problem)
+	}
+	if problem.Retryable {
+		t.Fatalf("problem=%+v, want invalid token failure to be non-retryable", problem)
+	}
+	for _, want := range []string{"stop retrying", "Fetch the document again", "<img token>", "<source token>", "stale media token"} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Fatalf("hint=%q, want %q", problem.Hint, want)
+		}
+	}
+	if strings.Contains(problem.Hint, "media_secret") {
+		t.Fatalf("hint=%q, want no caller token disclosure", problem.Hint)
+	}
+}
+
 func TestDocMediaDownloadHTTP403SuggestsPreview(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-download-403-app"))
 	registerDocMediaExportAuth(reg, "media_403", true)
