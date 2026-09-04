@@ -220,6 +220,76 @@ func TestSaveInitConfig_OmitLangPreservesPrior(t *testing.T) {
 	}
 }
 
+// TestSaveInitConfig_PreservesWorkspacePolicy guards the single-app replace
+// path: re-init without --name must not silently drop workspace-level policy
+// (strictMode, riskControl) even though it deliberately replaces the app set.
+func TestSaveInitConfig_PreservesWorkspacePolicy(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+
+	riskOff := false
+	existing := &core.MultiAppConfig{
+		StrictMode:  core.StrictModeBot,
+		RiskControl: &riskOff,
+		Apps: []core.AppConfig{
+			{AppId: "cli_x", AppSecret: core.PlainSecret("s"), Brand: core.BrandFeishu},
+		},
+	}
+	if err := core.SaveMultiAppConfig(existing); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+
+	if err := saveInitConfig("", existing, f, "cli_x", core.PlainSecret("s2"), core.BrandFeishu, ""); err != nil {
+		t.Fatalf("saveInitConfig: %v", err)
+	}
+
+	got, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig: %v", err)
+	}
+	if got.StrictMode != core.StrictModeBot {
+		t.Errorf("StrictMode after re-init = %q, want %q (preserved)", got.StrictMode, core.StrictModeBot)
+	}
+	if got.RiskControl == nil || *got.RiskControl != false {
+		t.Errorf("RiskControl after re-init = %v, want explicit false (preserved)", got.RiskControl)
+	}
+	if len(got.Apps) != 1 || got.Apps[0].AppId != "cli_x" {
+		t.Errorf("Apps after re-init = %#v, want single replaced app", got.Apps)
+	}
+}
+
+// TestConfigInitRun_OmitBrandPreservesPrior guards the non-interactive re-init
+// path: --brand defaults to "feishu" at flag registration, so omitting it must
+// inherit the prior app's brand rather than silently flipping lark → feishu.
+func TestConfigInitRun_OmitBrandPreservesPrior(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+
+	existing := &core.MultiAppConfig{Apps: []core.AppConfig{
+		{AppId: "cli_x", AppSecret: core.PlainSecret("s"), Brand: core.BrandLark},
+	}}
+	if err := core.SaveMultiAppConfig(existing); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+
+	opts := &ConfigInitOptions{
+		Factory: f, Ctx: context.Background(),
+		AppID: "cli_x", appSecret: "s2",
+		Brand: "feishu", // flag registration default; brandExplicit stays false
+	}
+	if err := configInitRun(opts); err != nil {
+		t.Fatalf("configInitRun: %v", err)
+	}
+
+	got, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig: %v", err)
+	}
+	if app := got.CurrentAppConfig(""); app == nil || app.Brand != core.BrandLark {
+		t.Errorf("Brand after re-init = %v, want %q (preserved)", app, core.BrandLark)
+	}
+}
+
 // TestConfigInitCmd_InvalidLang verifies a non-empty --lang on config init is
 // strictly validated the same way bind validates: wrong-case / typo / removed
 // codes / hyphen form all exit with ExitValidation. (Empty is a no-op.)
