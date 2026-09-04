@@ -155,6 +155,45 @@ sequenceDiagram
 A rule or strict-mode denial bypasses the `Wrap` chain entirely —
 observers still fire so audit plugins see the rejected dispatch.
 
+`On(Shutdown)` receives the invocation's failure in `LifecycleContext.Err` —
+from the command itself, or from the framework rejecting the command line
+before any command ran. It reports the same category and subtype the CLI
+wrote to stderr, so a plugin that records failures classifies them the way
+the user was told:
+
+```go
+import "github.com/larksuite/cli/errs"
+
+r.On(platform.Shutdown, "audit", func(_ context.Context, lc *platform.LifecycleContext) error {
+    if lc.Err == nil {
+        return nil // the command succeeded
+    }
+    problem, ok := errs.ProblemOf(lc.Err)
+    if !ok {
+        // An exit-code-only signal: the result is already on stdout and no
+        // error envelope was written. There is nothing to classify.
+        return nil
+    }
+    record(problem.Category, problem.Subtype)
+    return nil
+})
+```
+
+Always check that boolean. `Err` keeps the wrapping the command returned, so
+`errors.Is` and `errors.As` still reach through it. Treat it as read-only:
+writing to it never changes the envelope or the exit code the user gets, and
+for a wrapped chain the value is shared with the rest of the handlers.
+
+A handler that fails, or that the 2s budget skips, is reported as a warning on
+the **process** stderr. That is deliberate but worth knowing when embedding:
+`cmd.WithIO` redirects the CLI's own output, not this warning, so a host that
+captures stderr through `WithIO` will not see it.
+
+Not every failure reaches this event: bootstrap rejections, a plugin whose own
+installation or `Startup` handler failed, shell-completion invocations, and a
+failure to render help or usage text all end the process without emitting
+`Shutdown`. Treat it as best-effort, not an exhaustive audit trail.
+
 ## Safety contract (read this)
 
 - A plugin calling `Restrict()` MUST declare `FailClosed`. The Builder

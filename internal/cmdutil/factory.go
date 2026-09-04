@@ -283,7 +283,17 @@ func (f *Factory) RequireBuiltinCredentialProvider(ctx context.Context, command 
 	}
 	provName, err := f.Credential.ActiveExtensionProviderName(ctx)
 	if err != nil {
-		return err
+		// A provider that already classified its failure keeps that
+		// classification: rewrapping would discard its category, its retry
+		// hint and the exit code that goes with them.
+		if _, ok := errs.ProblemOf(err); ok {
+			return err
+		}
+		// This runs in PersistentPreRunE, ahead of the command body, so an
+		// unclassified error escaping here would be read as a mistake in what
+		// the user typed. A provider lookup failure is not that.
+		return errs.NewInternalError(errs.SubtypeUnknown,
+			"cannot determine the active credential provider: %v", err).WithCause(err)
 	}
 	if provName == "" {
 		return nil
