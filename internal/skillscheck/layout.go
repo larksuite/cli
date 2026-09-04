@@ -81,6 +81,17 @@ func syncSuite(runner SkillsRunner, source string, plan SyncPlan, installed []in
 	return nil
 }
 
+func cleanupSeparate(runner SkillsRunner, plan SyncPlan, installed []installedSkill) error {
+	removeSet := toSet(installedOfficialNames(installed, plan.CleanupOfficial))
+	for _, name := range plan.OfficialSkills {
+		delete(removeSet, name)
+	}
+	if hasInstalledSkill(installed, "lark-suite") {
+		removeSet["lark-suite"] = true
+	}
+	return removeSkills(runner, sortedKeys(removeSet))
+}
+
 func prepareSuite(suitePath string, official, target []string) error {
 	referencesPath := filepath.Join(suitePath, "references")
 	archived, err := listDirectSubdirs(referencesPath)

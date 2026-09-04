@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/selfupdate"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 func TestParseSkillsListIgnoresUnsupportedFormat(t *testing.T) {
@@ -185,17 +186,19 @@ func TestPlanForceRestoresAllOfficial(t *testing.T) {
 }
 
 type fakeSkillsRunner struct {
-	sources       []string
-	indexes       map[string]string
-	indexErrors   map[string]error
-	installErrors map[string]error
-	stageErrors   map[string]error
-	stageChildren map[string][]string
-	globalJSON    string
-	installs      []string
-	removals      [][]string
-	localSuite    string
-	stages        []string
+	sources            []string
+	indexes            map[string]string
+	indexErrors        map[string]error
+	installErrors      map[string]error
+	stageErrors        map[string]error
+	stageChildren      map[string][]string
+	globalJSON         string
+	installs           []string
+	removals           [][]string
+	removeError        error
+	localSuite         string
+	localSuiteChildren []string
+	stages             []string
 }
 
 func officialSkillsIndexOutput(names ...string) string {
@@ -269,11 +272,16 @@ func (f *fakeSkillsRunner) StageSuite(source, dir string) *selfupdate.NpmResult 
 }
 func (f *fakeSkillsRunner) InstallLocalSuite(path string) *selfupdate.NpmResult {
 	f.localSuite = path
+	children, err := listDirectSubdirs(filepath.Join(path, "references"))
+	if err != nil {
+		return &selfupdate.NpmResult{Err: err}
+	}
+	f.localSuiteChildren = children
 	return &selfupdate.NpmResult{}
 }
 func (f *fakeSkillsRunner) RemoveGlobalSkills(names []string) *selfupdate.NpmResult {
 	f.removals = append(f.removals, append([]string{}, names...))
-	return &selfupdate.NpmResult{}
+	return &selfupdate.NpmResult{Err: f.removeError}
 }
 
 const suiteFixture = `---
@@ -621,14 +629,106 @@ func TestSyncSkillsSwitchToSuiteRemovesPreviouslyOfficialSkillMissingFromIndex(t
 	assertStrings(t, runner.removals[0], []string{"lark-calendar", "lark-retired"})
 }
 
+func TestSyncSkillsPublishedSkillChangesReachOldLayoutInstallations(t *testing.T) {
+	previousState := SkillsState{
+		Version:              "1.0.32",
+		OfficialSkills:       []string{"lark-calendar", "lark-retired"},
+		UpdatedSkills:        []string{"lark-calendar", "lark-retired"},
+		AddedOfficialSkills:  []string{"lark-retired"},
+		SkippedDeletedSkills: []string{"lark-retired"},
+	}
+	assertCurrentState := func(t *testing.T, wantLayout Layout) {
+		t.Helper()
+		state, ok, err := ReadState()
+		if err != nil || !ok {
+			t.Fatalf("ReadState() = (%+v, %v, %v)", state, ok, err)
+		}
+		if state.Version != "1.0.33" || state.Layout != wantLayout {
+			t.Fatalf("state = %+v, want version 1.0.33 and layout %s", state, wantLayout)
+		}
+		assertStrings(t, state.OfficialSkills, []string{"lark-calendar", "lark-mail"})
+		assertStrings(t, state.UpdatedSkills, []string{"lark-calendar", "lark-mail"})
+		assertStrings(t, state.AddedOfficialSkills, []string{"lark-mail"})
+		assertStrings(t, state.SkippedDeletedSkills, []string{})
+	}
+
+	t.Run("separate", func(t *testing.T) {
+		t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+		state := previousState
+		state.Layout = LayoutSeparate
+		if err := WriteState(state); err != nil {
+			t.Fatal(err)
+		}
+		runner := &fakeSkillsRunner{
+			sources:       []string{"primary"},
+			indexes:       map[string]string{"primary": officialSkillsIndexOutput("lark-calendar", "lark-mail")},
+			indexErrors:   map[string]error{},
+			installErrors: map[string]error{},
+			stageErrors:   map[string]error{},
+			globalJSON:    globalSkillsJSONOutput("lark-calendar", "lark-retired", "lark-user-owned"),
+		}
+
+		result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
+		if result.Err != nil {
+			t.Fatal(result.Err)
+		}
+		assertStrings(t, runner.installs, []string{"primary:lark-calendar,lark-mail"})
+		if len(runner.removals) != 1 {
+			t.Fatalf("removals = %v, want one removal call", runner.removals)
+		}
+		assertStrings(t, runner.removals[0], []string{"lark-retired"})
+		assertCurrentState(t, LayoutSeparate)
+	})
+
+	t.Run("suite", func(t *testing.T) {
+		t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+		state := previousState
+		state.Layout = LayoutSuite
+		if err := WriteState(state); err != nil {
+			t.Fatal(err)
+		}
+		oldSuite := t.TempDir()
+		for _, name := range []string{"lark-calendar", "lark-retired"} {
+			if err := vfs.MkdirAll(filepath.Join(oldSuite, "references", name), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		runner := &fakeSkillsRunner{
+			sources:       []string{"primary"},
+			indexes:       map[string]string{"primary": officialSkillsIndexOutput("lark-calendar", "lark-mail")},
+			indexErrors:   map[string]error{},
+			installErrors: map[string]error{},
+			stageErrors:   map[string]error{},
+			globalJSON: fmt.Sprintf(
+				`[{"name":"lark-suite","path":%q,"scope":"global"},{"name":"lark-user-owned","path":"/tmp/lark-user-owned","scope":"global"}]`,
+				oldSuite,
+			),
+		}
+
+		result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
+		if result.Err != nil {
+			t.Fatal(result.Err)
+		}
+		assertStrings(t, runner.stages, []string{"primary"})
+		assertStrings(t, runner.localSuiteChildren, []string{"lark-calendar", "lark-mail"})
+		if len(runner.removals) != 0 {
+			t.Fatalf("removals = %v, want user-owned Skill untouched", runner.removals)
+		}
+		assertCurrentState(t, LayoutSuite)
+	})
+}
+
 func TestSyncSkillsSwitchToSeparateRemovesSuite(t *testing.T) {
 	for _, test := range []struct {
 		name        string
 		indexErrors map[string]error
 		wantInstall string
+		removeError error
+		wantError   bool
 	}{
 		{name: "official source", indexErrors: map[string]error{}, wantInstall: "primary:lark-calendar,lark-mail"},
 		{name: "GitHub fallback", indexErrors: map[string]error{"primary": fmt.Errorf("down")}, wantInstall: "larksuite/cli:lark-calendar,lark-mail"},
+		{name: "cleanup failure", indexErrors: map[string]error{}, removeError: fmt.Errorf("remove failed"), wantError: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
@@ -648,9 +748,16 @@ func TestSyncSkillsSwitchToSeparateRemovesSuite(t *testing.T) {
 				installErrors: map[string]error{},
 				stageErrors:   map[string]error{},
 				globalJSON:    fmt.Sprintf(`[{"name":"lark-suite","path":%q,"scope":"global"}]`, suite),
+				removeError:   test.removeError,
 			}
 
 			result := SyncSkills(SyncOptions{Version: "1.0.33", Layout: LayoutSeparate, Runner: runner, Now: time.Now})
+			if test.wantError {
+				if result.Err == nil {
+					t.Fatal("expected lark-suite cleanup failure")
+				}
+				return
+			}
 			if result.Err != nil {
 				t.Fatal(result.Err)
 			}

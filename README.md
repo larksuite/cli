@@ -75,6 +75,12 @@ Choose **one** of the following methods:
 npx @larksuite/cli@latest install
 ```
 
+To install the aggregated `lark-suite` layout instead of separate skills:
+
+```bash
+npx @larksuite/cli@latest install --skills-layout suite
+```
+
 **Option 2 — From source:**
 
 Requires Go `v1.23`+ and Python 3.
