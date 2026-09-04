@@ -24,15 +24,16 @@ const (
 )
 
 var ImChatMessageList = common.Shortcut{
-	Service:     "im",
-	Command:     "+chat-messages-list",
-	Description: "List messages in a chat or P2P conversation; user/bot; accepts --chat-id or --user-id, resolves P2P chat_id, supports time range, --order asc/desc sorting, auto-pagination",
-	Risk:        "read",
-	Scopes:      []string{"im:message:readonly"},
-	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "im:message.reactions:read"},
-	BotScopes:   []string{"im:message.group_msg", "im:message.p2p_msg:readonly", "im:message.reactions:read"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	Service:           "im",
+	Command:           "+chat-messages-list",
+	Description:       "List messages in a chat or P2P conversation; user/bot; accepts --chat-id or --user-id, resolves P2P chat_id, supports time range, --order asc/desc sorting, auto-pagination",
+	Risk:              "read",
+	Scopes:            []string{"im:message:readonly"},
+	UserScopes:        []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user"},
+	BotScopes:         []string{"im:message.group_msg", "im:message.p2p_msg:readonly"},
+	ConditionalScopes: []string{messageReactionReadScope},
+	AuthTypes:         []string{"user", "bot"},
+	HasFormat:         true,
 	Flags: append([]common.Flag{
 		{Name: "chat-id", Desc: "(required, mutually exclusive with --user-id) chat ID (oc_xxx)"},
 		{Name: "user-id", Desc: "(required, mutually exclusive with --chat-id; user identity only) user open_id (ou_xxx)"},
@@ -115,7 +116,7 @@ var ImChatMessageList = common.Shortcut{
 		if _, err := buildChatMessageListRequest(runtime, chatId); err != nil {
 			return err
 		}
-		return nil
+		return ensureMessageReactionScope(runtime)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := common.ValidatePageSizeTyped(runtime, "page-size", chatMessagesListDefaultPageSize, 1, chatMessagesListMaxPageSize); err != nil {
