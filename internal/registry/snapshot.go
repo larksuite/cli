@@ -112,7 +112,11 @@ func (s *Snapshot) Load(name string) (meta.Service, error) {
 	}
 	if int64(len(data)) != entry.Size {
 		cause := catalogIntegrityCause("service file size does not match manifest")
-		return meta.Service{}, serviceIntegrityError(name, "size mismatch", cause)
+		err := serviceIntegrityError(name, "size mismatch", cause)
+		if lineEndingsInflated(data, entry.Size) {
+			err = err.WithHint("the service file was checked out with CRLF line endings, usually by core.autocrlf; rebuild from a checkout that keeps LF (the repository's .gitattributes enforces this)")
+		}
+		return meta.Service{}, err
 	}
 	sum := sha256.Sum256(data)
 	if hex.EncodeToString(sum[:]) != entry.SHA256 {
@@ -287,7 +291,7 @@ func catalogAccessError(message string, cause error) error {
 	).WithHint("run lark-cli update to restore the embedded catalog").WithCause(cause)
 }
 
-func serviceIntegrityError(name, reason string, cause error) error {
+func serviceIntegrityError(name, reason string, cause error) *errs.InternalError {
 	return errs.NewInternalError(
 		errs.SubtypeCatalogIntegrity,
 		`embedded catalog service "%s" failed integrity validation: %s`,
@@ -301,6 +305,15 @@ func safeServiceName(name string) string {
 		return name
 	}
 	return "unknown"
+}
+
+// lineEndingsInflated reports whether data is the manifest-sized file with
+// every newline rewritten as CRLF. That is what a checkout under
+// core.autocrlf produces, and it is worth naming because the size check alone
+// reads like a corrupted download.
+func lineEndingsInflated(data []byte, size int64) bool {
+	crlf := int64(bytes.Count(data, []byte("\r\n")))
+	return crlf > 0 && int64(len(data))-crlf == size
 }
 
 type catalogIntegrityCause string
