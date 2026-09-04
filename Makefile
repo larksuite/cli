@@ -48,6 +48,8 @@ fmt-check:
 	fi
 
 script-test:
+	bash scripts/check-doc-tokens.test.sh
+	bash scripts/check-doc-tokens.sh
 	bash scripts/resolve-changed-from.test.sh
 	bash scripts/ci-workflow.test.sh
 	bash scripts/release-workflow.test.sh
@@ -124,7 +126,9 @@ sidecar-test:
 
 # Run secret-leak checks locally before pushing.
 # Step 1: check-doc-tokens catches realistic-looking example tokens in reference
-#         docs and asks you to use _EXAMPLE_TOKEN placeholders instead.
+#         docs and asks you to use _EXAMPLE_TOKEN placeholders instead. It also
+#         runs in CI via script-test, so this target is the faster local loop
+#         rather than the only place the docs are checked.
 # Step 2: gitleaks scans the full repo for real leaked secrets.
 # Install gitleaks: https://github.com/gitleaks/gitleaks#installing
 gitleaks:

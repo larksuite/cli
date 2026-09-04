@@ -63,7 +63,7 @@ lark-cli wiki +delete-space \
 ```json
 {
   "space_id": "7629741305993170448",
-  "task_id": "7631425120875056669-965458aec67417f5982250806c97950697ccb82f",
+  "task_id": "xxxxxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
   "ready": true,
   "failed": false,
   "status": "success",
@@ -76,13 +76,13 @@ lark-cli wiki +delete-space \
 ```json
 {
   "space_id": "7629741305993170448",
-  "task_id": "7631425120875056669-965458aec67417f5982250806c97950697ccb82f",
+  "task_id": "xxxxxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
   "ready": false,
   "failed": false,
   "status": "processing",
   "status_msg": "processing",
   "timed_out": true,
-  "next_command": "lark-cli drive +task_result --scenario wiki_delete_space --task-id 7631425120875056669-965458aec67417f5982250806c97950697ccb82f --as user"
+  "next_command": "lark-cli drive +task_result --scenario wiki_delete_space --task-id xxxxxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx --as user"
 }
 ```
 
