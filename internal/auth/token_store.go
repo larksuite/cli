@@ -25,7 +25,8 @@ type StoredUAToken struct {
 	GrantedAt        int64  `json:"grantedAt"` // Unix ms
 }
 
-const refreshAheadMs = 5 * 60 * 1000 // 5 minutes
+// Refresh-ahead assumes normal access token TTL is longer than this window.
+const refreshAheadMs = 60 * 60 * 1000 // 60 minutes
 
 var errStoredTokenCorrupt = errors.New("stored token data is corrupt")
 

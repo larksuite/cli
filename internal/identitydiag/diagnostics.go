@@ -353,11 +353,9 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	}
 
 	id.Verified = boolPtr(true)
-	if id.Status == StatusReady {
-		id.Message = "User identity: ready"
-	} else {
-		id.Message = "User identity: needs refresh (server verification succeeded after refresh)"
-	}
+	id.Status = StatusReady
+	id.Available = true
+	id.Message = "User identity: ready"
 	return id
 }
 
