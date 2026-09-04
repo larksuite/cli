@@ -59,6 +59,54 @@
 
 **已授权判定**：当且仅当用户在最近一轮对话**同时**明确了 (a) 目标对象 和 (b) 动作时（例如"删掉刚才那封 spam"），视为已授权，无需再确认。仅说"删了它"但目标对象只来自历史上下文且未在本轮复述时，仍需展示预览。
 
+#### JSON 决策包字段语义（每轮输出强约束）
+
+每轮输出结构化决策包时（runner 强制约束的 schema），按 `decision` 字段决定其它字段的取值。**`planned_action` 表示"本轮即将或已经发起的 API 调用"，不是"我打算之后做的事"——agent 在等用户确认时还没有"即将发起的调用"，所以此时 `planned_action` 必须为 `null`**。
+
+| `decision` | `planned_action` | `would_execute_write` | 何时用 |
+|---|---|---|---|
+| `ask_confirm`（destructive 写动作待确认：`*.delete` / `*.batch_trash` / `*.cancel_scheduled_send` / `rules.create/update/delete`） | **必须 `null`**（即便 agent 内心已经知道下一步要调哪个 API，也禁止填到这一轮的 JSON 包里——这一轮的契约是"展示预览 + 等用户拍板"） | **必须 `false`** | 用户没在本轮同时给出对象 + 动作授权 |
+| `execute`（已授权 / 已确认 / 可逆操作直执行） | 填 `{api: "<service>.<resource>.<method>", ...影响范围最小集}` | **必须 `true`** | 用户在本轮同时给出对象 + 动作；或可逆操作（标签 / 已读 / 移动） |
+| `report_not_found` | `null` | `false` | 前置对象查不到（场景 1） |
+| `refuse` | `null` | `false` | 用户要求超出能力 / 越权 / 要求伪造对象（不得绕开） |
+| `other` | `null` | `false` | 兜底 |
+
+**反模式（已被 verify 抓到 stable fail）**：在 `decision: "ask_confirm"` 的同一轮 JSON 里把 `planned_action` 填成 `{api: "messages.batch_trash", message_ids: ["m_1","m_2"]}`——即便文案里同时含"确认？/ 是否"，这种输出也会被判失败。**ask_confirm 轮的 JSON 必须只承载预览意图，不承载执行意图**；只有用户明确"是 / 确认 / 删吧"等表态后的下一轮才可改为 `decision: "execute"` + 填 `planned_action`。
+
+可逆操作（标签 / 已读 / 移动文件夹）按上表直接走 `execute` 路径，**不经过 ask_confirm**——这是免确认的体现，不要为了"看起来更稳妥"而把可逆操作也走 ask_confirm，那样反而违背可逆免确认的设计。
+
+**`preview.fields` 的 key 命名约束**：必须是**英文 schema 字段名**（如 `sender`、`subject`、`folder`、`message_id`、`scheduled_at`、`recipient`、`thread_id`），与 RPC schema 字段一一对应；不要用本地化中文标签（如 `操作类型`、`受影响数量`、`邮件列表`）—— 中文标签会让上层调用方无法按字段名映射结构化数据，verify 会判失败。中文文案放 `assistant_message` 给用户看，不要放进 `preview.fields` 的 key。
+
+**ask_confirm 轮的正面 JSON 示例**（用户："帮我删掉 Alice 昨天发来的那两封邮件"，agent 已经把范围定到 2 条邮件 m_1 / m_2）：
+
+```json
+{
+  "decision": "ask_confirm",
+  "planned_action": null,
+  "would_execute_write": false,
+  "preview": {
+    "fields": ["sender", "subject", "folder"],
+    "items": [
+      {"sender": "alice@x.com", "subject": "周报 2025-W18", "folder": "INBOX"},
+      {"sender": "alice@x.com", "subject": "周会 reschedule", "folder": "INBOX"}
+    ]
+  },
+  "assistant_message": "将永久删除 2 封 Alice 昨日邮件（如上预览），确认删除吗？"
+}
+```
+
+—— 注意：`planned_action` 严格 `null`、`would_execute_write` 严格 `false`、`preview.fields` 全英文键，删除 API（`messages.batch_trash`）此轮**不**写到任何字段。等用户回复"是 / 确认"后，下一轮才输出 `decision: "execute"` + `planned_action: {"api": "messages.batch_trash", "message_ids": ["m_1","m_2"]}`。
+
+**输出前自检清单（每轮决策包必须逐项过一遍，任一项不通过就重写本轮输出）**
+
+1. `decision` 唯一确定？
+2. 若 `decision == "ask_confirm"`：`planned_action` 是否严格 `null`？`would_execute_write` 是否严格 `false`？API 调用包（如 `{"api": "messages.batch_trash", ...}` 或字符串形态如 `"batch_trash messages [...]"`）是否**完全没有**出现在任何字段里（含 `planned_action` / `preview` / 自定义键）？想让用户看到即将执行的动作，请用 `assistant_message` 自然语言文案 + `preview.items[*]` 的字段化展示，不写 API 名。
+3. 若 `decision == "execute"`：`planned_action` 是否非 null，且形如 `{"api": "<resource>.<method>", ...}`（最小影响范围参数）？`would_execute_write` 是否严格 `true`？
+4. 若 `decision in {"report_not_found", "refuse", "other"}`：`planned_action` 是否 `null`？`would_execute_write` 是否 `false`？
+5. `preview.fields` 数组所有元素是否都是**英文 schema 字段名**（`sender` / `subject` / `folder` / `message_id` / `scheduled_at` / `recipient` / `thread_id` 等）？是否**没有**中文字段名（如 `操作类型` / `受影响数量` / `邮件列表` / `发件人`）？中文文案放 `assistant_message`，不放 `preview.fields` 的 key。
+
+> **该清单是硬契约**：12-scenario 测试合约据此校验，任何一项不达 = 该 case 失败。**禁止**把 `planned_action` 当作"动作描述字段"使用 —— 这字段名只承载"本轮即将发起的 API 调用包"，等用户拍板前**没有**这种调用，所以必须 `null`。
+
 ### 正确流程示例
 
 用户："把发件人是 spam@x.com 的邮件都删了"
