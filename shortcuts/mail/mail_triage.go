@@ -284,7 +284,7 @@ var MailTriage = common.Shortcut{
 		switch outFormat {
 		case "json", "data":
 			outData := map[string]interface{}{
-				"messages":   messages,
+				"messages":   triageStructuredMessages(messages, showLabels),
 				"mailbox_id": mailbox,
 				"count":      len(messages),
 				"has_more":   hasMore,
@@ -345,6 +345,24 @@ var MailTriage = common.Shortcut{
 		}
 		return nil
 	},
+}
+
+func triageStructuredMessages(messages []map[string]interface{}, showLabels bool) []map[string]interface{} {
+	out := make([]map[string]interface{}, 0, len(messages))
+	for _, msg := range messages {
+		item := make(map[string]interface{}, len(msg))
+		for key, value := range msg {
+			if key == "labels" && !showLabels {
+				continue
+			}
+			item[key] = value
+		}
+		if showLabels {
+			item["labels"] = strVal(msg["labels"])
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 func printTriageFilterSchema(runtime *common.RuntimeContext) {
