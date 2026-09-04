@@ -17,6 +17,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/selfupdate"
+	"github.com/larksuite/cli/internal/skillcontent"
 	"github.com/larksuite/cli/internal/skillscheck"
 	"github.com/larksuite/cli/internal/update"
 )
@@ -36,6 +37,9 @@ var (
 	newUpdater     = func() *selfupdate.Updater { return selfupdate.New() }
 	syncSkills     = func(opts skillscheck.SyncOptions) *skillscheck.SyncResult { return skillscheck.SyncSkills(opts) }
 )
+
+// skillsInstallCommand matches the README install step so hints stay in sync.
+const skillsInstallCommand = "npx skills add larksuite/cli -y -g"
 
 func isWindows() bool { return currentOS == osWindows }
 
@@ -112,6 +116,11 @@ Detects the installation method automatically:
 Use --json for structured output (for AI agents and scripts).
 Use --check to only check for updates without installing.
 
+Official skills are synced only when they are already installed. When no
+official skill is installed and no sync state exists, skills are left alone;
+install them with: npx skills add larksuite/cli -y -g
+(--force and --skills-layout also install them).
+
 The skill name "lark-suite" is reserved for CLI-managed suite layout.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return updateRun(opts)
@@ -166,7 +175,7 @@ func updateRun(opts *UpdateOptions) error {
 	if !opts.Force && !update.IsNewer(latest, cur) {
 		var skillsResult *skillscheck.SyncResult
 		if !opts.Check {
-			skillsResult = runSkillsAndState(updater, io, cur, opts.Force, opts.SkillsLayout)
+			skillsResult = runSkillsAndState(updater, io, cur, opts.Force, opts.SkillsLayout, embeddedOfficialSkills(opts.Factory))
 			if err := reportSkillsFailure(opts, io, skillsResult); err != nil {
 				return err
 			}
@@ -254,7 +263,7 @@ func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest s
 }
 
 func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, detect selfupdate.DetectResult, updater *selfupdate.Updater) error {
-	skillsResult := runSkillsAndState(updater, io, cur, opts.Force, opts.SkillsLayout)
+	skillsResult := runSkillsAndState(updater, io, cur, opts.Force, opts.SkillsLayout, embeddedOfficialSkills(opts.Factory))
 	reason := detect.ManualReason()
 	if opts.JSON {
 		out := map[string]interface{}{
@@ -349,7 +358,7 @@ func doAutoUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string
 		return output.ErrBare(output.ExitAPI)
 	}
 
-	skillsResult := runSkillsAndState(updater, io, latest, opts.Force, opts.SkillsLayout)
+	skillsResult := runSkillsAndState(updater, io, latest, opts.Force, opts.SkillsLayout, embeddedOfficialSkills(opts.Factory))
 	if skillsResult != nil && skillsResult.Err != nil {
 		fields := map[string]interface{}{
 			"previous_version": cur, "current_version": latest,
@@ -379,7 +388,7 @@ func doAutoUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string
 
 	fmt.Fprintf(io.ErrOut, "\n%s Successfully updated lark-cli from %s to %s\n", symOK(), cur, latest)
 	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
-	if skillsResult != nil {
+	if skillsResult != nil && skillsResult.Action != skillscheck.ActionNotInstalled {
 		skillsPM := "npx"
 		if detect.Method == selfupdate.InstallPnpm && detect.PnpmAvailable {
 			skillsPM = "pnpm dlx"
@@ -410,7 +419,7 @@ func verificationFailureHint(updater *selfupdate.Updater, latest, pm string) str
 	return fmt.Sprintf("automatic rollback is unavailable on this platform; reinstall manually (skills will not be synced): npm install -g %s@%s && npx skills add larksuite/cli -y -g, or download %s", selfupdate.NpmPackage, latest, releaseURL(latest))
 }
 
-func runSkillsAndState(updater *selfupdate.Updater, io *cmdutil.IOStreams, stateVersion string, force bool, requestedLayout string) *skillscheck.SyncResult {
+func runSkillsAndState(updater *selfupdate.Updater, io *cmdutil.IOStreams, stateVersion string, force bool, requestedLayout string, officialNames []string) *skillscheck.SyncResult {
 	layout, _ := skillscheck.ParseLayout(requestedLayout)
 	if !force {
 		if state, ok, err := skillscheck.ReadState(); err == nil && ok && normalizeVersion(state.Version) == normalizeVersion(stateVersion) {
@@ -420,15 +429,33 @@ func runSkillsAndState(updater *selfupdate.Updater, io *cmdutil.IOStreams, state
 		}
 	}
 	result := syncSkills(skillscheck.SyncOptions{
-		Version: stateVersion,
-		Layout:  layout,
-		Force:   force,
-		Runner:  updater,
+		Version:             stateVersion,
+		Layout:              layout,
+		Force:               force,
+		Runner:              updater,
+		KnownOfficialSkills: officialNames,
 	})
 	if result.Err != nil && strings.Contains(result.Err.Error(), "state not written") {
 		fmt.Fprintf(io.ErrOut, "warning: %v\n", result.Err)
 	}
 	return result
+}
+
+// embeddedOfficialSkills lists the official skill names embedded in this
+// binary, or nil when the build ships none.
+func embeddedOfficialSkills(f *cmdutil.Factory) []string {
+	if f == nil || f.SkillContent == nil {
+		return nil
+	}
+	infos, err := skillcontent.New(f.SkillContent).List()
+	if err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(infos))
+	for _, info := range infos {
+		names = append(names, info.Name)
+	}
+	return names
 }
 
 func reportSkillsFailure(opts *UpdateOptions, io *cmdutil.IOStreams, result *skillscheck.SyncResult) error {
@@ -505,6 +532,9 @@ func applySkillsResult(env map[string]interface{}, r *skillscheck.SyncResult) {
 		env["skills_action"] = "failed"
 		env["skills_warning"] = fmt.Sprintf("skills update failed: %s", r.Err)
 		env["skills_summary"] = skillsSummary(r)
+	case r.Action == skillscheck.ActionNotInstalled:
+		env["skills_action"] = skillscheck.ActionNotInstalled
+		env["skills_hint"] = "official skills are not installed; to install them run: " + skillsInstallCommand
 	default:
 		env["skills_action"] = "synced"
 		env["skills_summary"] = skillsSummary(r)
@@ -541,6 +571,9 @@ func emitSkillsTextHints(io *cmdutil.IOStreams, r *skillscheck.SyncResult) {
 			fmt.Fprintf(io.ErrOut, "  Failed skills: %s\n", strings.Join(r.Failed, ", "))
 		}
 		fmt.Fprintf(io.ErrOut, "  To retry all official skills: lark-cli update --force\n")
+	case r.Action == skillscheck.ActionNotInstalled:
+		fmt.Fprintf(io.ErrOut, "%s Skills not installed; skills sync skipped\n", symArrow())
+		fmt.Fprintf(io.ErrOut, "  To install official skills: %s\n", skillsInstallCommand)
 	case r.Warning != "":
 		fmt.Fprintf(io.ErrOut, "%s Skills updated using %s layout\n", symOK(), r.Layout)
 		fmt.Fprintf(io.ErrOut, "%s %s\n", symWarn(), r.Warning)
