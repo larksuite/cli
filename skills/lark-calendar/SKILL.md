@@ -164,6 +164,7 @@ lark-cli calendar +freebusy --start 2026-03-11T09:00:00+08:00 --end 2026-03-11T1
 | 查询日历/日程或未来时间的会议 | 本 skill |
 | 按关键词搜索日程 | 本 skill（`+search-event`） |
 | 从日程获取关联的视频会议 ID 或用户绑定的会议纪要文档 | 本 skill（`+meeting`） |
+| 为日程创建原生会议纪要，或排查失效的 `meeting_note` 关联 | 先读 [`+meeting`](references/lark-calendar-meeting.md) 的创建与能力边界说明 |
 | 查看日程的参会人 / 会议室（含 `--type resource` 只看会议室） | 本 skill（[`+list-attendees`](references/lark-calendar-list-attendees.md)） |
 | 把日程分享给某人 / 群 / 粘贴到文档 | 本 skill：先 `calendar events share_info` 取**日程分享链接**，再走 [lark-im](../lark-im/SKILL.md) 发送或粘贴该链接；**分享日程给某个人、某个群或粘贴到文档中，需要的都是日程分享链接，不是 applink**，不要自己拼接或用 applink 代替 |
 | 从日程进一步拿 AI 智能纪要 / 逐字稿 / 妙记产物 | 先 `+meeting` 取 `meeting_id`，再进入 [`lark-meeting`](../lark-meeting/SKILL.md)：[`vc +detail`](../lark-meeting/references/lark-vc-detail.md) → [`note +detail`](../lark-meeting/references/lark-note-detail.md) / [`minutes +detail`](../lark-meeting/references/lark-minutes-detail.md) |
