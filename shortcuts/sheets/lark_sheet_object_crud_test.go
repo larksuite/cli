@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -991,4 +992,44 @@ func TestCondFormatPropertiesNormalization(t *testing.T) {
 			t.Errorf("dataBar value = %v (%T), want the number untouched", second["value"], second["value"])
 		}
 	})
+}
+
+// TestCondFormatStaleRuleIDHint pins the prescription on an id-addressed
+// update or delete: the backend answers with the id alone, which reads like a
+// transport problem rather than a stale reference.
+func TestCondFormatStaleRuleIDHint(t *testing.T) {
+	t.Parallel()
+	for _, command := range []string{"+cond-format-update", "+cond-format-delete"} {
+		t.Run(command, func(t *testing.T) {
+			t.Parallel()
+			sc := shortcutFromRegistry(t, command)
+			parent, _, _, reg := newTestRig(t, sc)
+			reg.Register(&httpmock.Stub{
+				Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_write",
+				Body: map[string]interface{}{
+					"code": 1310214, "msg": "conditional format iXGbyDwC not found",
+					"data": map[string]interface{}{},
+				},
+			})
+			args := []string{command, "--url", testURL, "--sheet-name", "s", "--rule-id", "iXGbyDwC"}
+			if command == "+cond-format-delete" {
+				args = append(args, "--yes")
+			} else {
+				args = append(args, "--rule-type", "cellIs", "--ranges", `["A1:A9"]`,
+					"--properties", `{"style":{"back_color":"#FFF"},"attrs":[{"compare_type":"lessThan","value":"0"}]}`)
+			}
+			parent.SetArgs(args)
+			err := parent.Execute()
+			if err == nil {
+				t.Fatal("expected the not-found failure to surface")
+			}
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("err = %v, want a typed problem", err)
+			}
+			if !strings.Contains(p.Hint, "+cond-format-list") {
+				t.Errorf("hint should point at the list command, got %q", p.Hint)
+			}
+		})
+	}
 }

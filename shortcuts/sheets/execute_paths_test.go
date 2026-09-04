@@ -6,6 +6,7 @@ package sheets
 import (
 	"encoding/json"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -1184,4 +1185,77 @@ func decodeRawEnvelopeBody(t *testing.T, raw []byte) map[string]interface{} {
 		t.Fatalf("captured body parse error: %v\nraw=%s", err, string(raw))
 	}
 	return body
+}
+
+// TestExecute_TransientReadRetry pins the read-only retry: an identical read
+// is reissued when the tool answers with its own timeout wording, and the
+// write path is never reissued because this API has no idempotency key.
+func TestExecute_TransientReadRetry(t *testing.T) {
+	t.Parallel()
+
+	timeoutBody := map[string]interface{}{
+		"code": 1310299, "msg": "server time out error", "data": map[string]interface{}{},
+	}
+
+	t.Run("a read retries past a tool timeout", func(t *testing.T) {
+		t.Parallel()
+		parent, stdout, _, reg := newTestRig(t, WorkbookInfo)
+		calls := 0
+		count := func(*http.Request) { calls++ }
+		readURL := "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_read"
+		// Stubs are served in registration order, so the first try fails and
+		// the retry meets the success stub.
+		reg.Register(&httpmock.Stub{Method: "POST", URL: readURL, Body: timeoutBody, OnMatch: count})
+		reg.Register(&httpmock.Stub{Method: "POST", URL: readURL, OnMatch: count, Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{"output": `{"sheets":[]}`},
+		}})
+		parent.SetArgs([]string{"+workbook-info", "--url", testURL})
+		if err := parent.Execute(); err != nil {
+			t.Fatalf("the second try should succeed, got: %v", err)
+		}
+		if calls != 2 {
+			t.Errorf("calls = %d, want 2 (one retry)", calls)
+		}
+		if !strings.Contains(stdout.String(), `"ok": true`) {
+			t.Errorf("stdout should carry the successful read, got %q", stdout.String())
+		}
+	})
+
+	t.Run("a persistent failure surfaces after the attempts are spent", func(t *testing.T) {
+		t.Parallel()
+		parent, _, _, reg := newTestRig(t, WorkbookInfo)
+		calls := 0
+		reg.Register(&httpmock.Stub{
+			Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_read",
+			Body: timeoutBody, Reusable: true, OnMatch: func(*http.Request) { calls++ },
+		})
+		parent.SetArgs([]string{"+workbook-info", "--url", testURL})
+		if err := parent.Execute(); err == nil {
+			t.Fatal("expected the failure to surface")
+		}
+		if calls != readRetryAttempts {
+			t.Errorf("calls = %d, want %d", calls, readRetryAttempts)
+		}
+	})
+
+	t.Run("a write is never reissued", func(t *testing.T) {
+		t.Parallel()
+		parent, _, _, reg := newTestRig(t, CellsSet)
+		calls := 0
+		reg.Register(&httpmock.Stub{
+			Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_write",
+			Body: timeoutBody, Reusable: true, OnMatch: func(*http.Request) { calls++ },
+		})
+		parent.SetArgs([]string{"+cells-set", "--url", testURL, "--sheet-name", "s",
+			"--range", "A1:A1", "--cells", `[[{"value":"x"}]]`})
+		if err := parent.Execute(); err == nil {
+			t.Fatal("expected the failure to surface")
+		}
+		// A create that timed out after the backend committed it must not be
+		// committed twice.
+		if calls != 1 {
+			t.Errorf("calls = %d, want 1 (writes are not retried)", calls)
+		}
+	})
 }

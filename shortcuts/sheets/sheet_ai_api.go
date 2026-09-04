@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
@@ -70,7 +71,7 @@ func callTool(
 		return nil, err
 	}
 
-	data, err := runtime.CallAPITyped("POST", toolInvokePath(token, kind), nil, body)
+	data, err := callToolWithTransientRetry(ctx, runtime, token, kind, body)
 	if err != nil {
 		// A classified business error (non-zero API code) carries the tool's
 		// own code and raw msg. Rewrite the typed error in place: the Message
@@ -108,6 +109,90 @@ func callTool(
 			"tool %q returned invalid JSON output: %v", toolName, err).WithCause(err)
 	}
 	return out, nil
+}
+
+// ─── transient-failure retry (reads only) ─────────────────────────────
+
+// readRetryAttempts is the total number of tries a read tool call gets, and
+// readRetryBackoff the pause before the second one (doubled before the
+// third). Two extra tries at well under a second each stay inside the round
+// trip an agent already budgeted for, while covering the single-blip failures
+// that make up this class: 08-29..31 reflow, +csv-get's largest cause was
+// "API call failed: server time out error" at 25 of 71 rejections, with more
+// on +cells-get and +workbook-info, each on a command that was written
+// correctly and succeeded when the agent reissued it by hand.
+const (
+	readRetryAttempts = 3
+	readRetryBackoff  = 400 * time.Millisecond
+)
+
+// callToolWithTransientRetry reissues a READ tool call that failed for a
+// transient reason. Writes are never retried: this API has no idempotency
+// key, so a create that timed out after the backend committed it would be
+// committed twice — which is why the transport-level RetryTransport is
+// installed with MaxRetries at 0 and why this sits here, where the read/write
+// classification is already known, rather than in the shared transport.
+func callToolWithTransientRetry(
+	ctx context.Context,
+	runtime *common.RuntimeContext,
+	token string,
+	kind ToolKind,
+	body map[string]interface{},
+) (map[string]interface{}, error) {
+	attempts := 1
+	if kind == ToolKindRead {
+		attempts = readRetryAttempts
+	}
+	backoff := readRetryBackoff
+	var data map[string]interface{}
+	var err error
+	for attempt := 0; attempt < attempts; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return data, err
+			case <-time.After(backoff):
+			}
+			backoff *= 2
+		}
+		data, err = runtime.CallAPITyped("POST", toolInvokePath(token, kind), nil, body)
+		if err == nil || !isTransientToolFailure(err) {
+			return data, err
+		}
+	}
+	return data, err
+}
+
+// isTransientToolFailure reports whether an error is worth reissuing an
+// identical read for. Two signals, because the backend splits this class
+// across two layers: the typed Retryable flag (5xx and transport faults, set
+// by the shared classifier) and the tool's own message, since a sheet-ai tool
+// answers a timeout inside a 200 envelope with a business code the code table
+// does not carry — "server time out error" verbatim, which no client can
+// classify except by its text.
+//
+// A rate limit is excluded even though the classifier marks it retryable: the
+// server is asking for less traffic, and a fixed sub-second backoff answers
+// that by sending more. It surfaces immediately instead, carrying the
+// subtype an agent can pace on.
+func isTransientToolFailure(err error) bool {
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		return false
+	}
+	if p.Subtype == errs.SubtypeRateLimit {
+		return false
+	}
+	if p.Retryable {
+		return true
+	}
+	msg := strings.ToLower(p.Message)
+	for _, phrase := range []string{"server time out error", "data not ready"} {
+		if strings.Contains(msg, phrase) {
+			return true
+		}
+	}
+	return false
 }
 
 // flattenToolErrorMsg unwraps the nested-escaped-JSON error payload some

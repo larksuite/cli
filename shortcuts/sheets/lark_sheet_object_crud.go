@@ -261,12 +261,33 @@ func newObjectUpdateShortcut(spec objectCRUDSpec) common.Shortcut {
 			}
 			out, err := callTool(ctx, runtime, token, ToolKindWrite, spec.toolName, input)
 			if err != nil {
-				return err
+				return annotateStaleObjectID(err, spec)
 			}
 			runtime.Out(out, nil)
 			return nil
 		},
 	}
+}
+
+// annotateStaleObjectID points a "not found" on an id-addressed update or
+// delete at the list command that reports the live ids. The backend answers
+// with the id alone ("conditional format iXGbyDwC not found"), which reads
+// like a transport problem rather than "that id belongs to a rule that no
+// longer exists". 08-29..31 reflow: 14 rejections across +cond-format-update
+// and +cond-format-delete, the two largest long-tail entries after the flag
+// renames. Any other failure passes through untouched.
+func annotateStaleObjectID(err error, spec objectCRUDSpec) error {
+	if spec.idFlag == "" {
+		return err
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Hint != "" || !strings.Contains(strings.ToLower(p.Message), "not found") {
+		return err
+	}
+	p.Hint = fmt.Sprintf(
+		"list the live ids with %s-list and retry with one of those — an id from another sheet, or one whose object was replaced, does not exist here",
+		spec.commandPrefix)
+	return err
 }
 
 func objectUpdateInput(runtime flagView, token, sheetID, sheetName string, spec objectCRUDSpec) (map[string]interface{}, error) {
@@ -345,7 +366,7 @@ func newObjectDeleteShortcut(spec objectCRUDSpec) common.Shortcut {
 			}
 			out, err := callTool(ctx, runtime, token, ToolKindWrite, spec.toolName, input)
 			if err != nil {
-				return err
+				return annotateStaleObjectID(err, spec)
 			}
 			runtime.Out(out, nil)
 			return nil
@@ -1047,6 +1068,15 @@ func filterCreateInput(runtime flagView, token, sheetID, sheetName string) (map[
 	}
 	props := map[string]interface{}{
 		"range": strings.TrimSpace(runtime.Str("range")),
+		// The empty rule set, which is what a filter with no column
+		// conditions is: creating one is the documented meaning of omitting
+		// --properties, but `rules` is required at the properties root, so
+		// leaving it out failed schema validation with `required property
+		// "rules" is missing` — an error about a flag the caller deliberately
+		// did not pass, and one the flag's own description says is optional.
+		// 08-29..31 reflow: 9 +filter-create rejections. An explicit rules
+		// entry below replaces this.
+		"rules": []interface{}{},
 	}
 	if runtime.Str("properties") != "" {
 		extra, err := requireJSONObject(runtime, "properties")
