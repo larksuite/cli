@@ -10,7 +10,7 @@ import (
 )
 
 // 钉死域内 shortcut 数量。少一条（漏挂）或多一条（误加）都会被这个测试拦截。
-// 6 基础 + 1 init + 3 publish + 1 env-pull
+// 6 基础 + 1 init + 3 publish + 1 env-pull + 2 本地开发（init-template/deploy）
 //   - 6 observability（log-list/log-get/trace-list/trace-get/metric-list/analytics-list）
 //   - 3 env（list/set/delete）
 //   - 23 db（table-list/table-schema/sql/dev-init/data-import/data-export/sync create/list/get/enable/disable/update/delete/changelog-list/
@@ -26,11 +26,11 @@ import (
 //   - 9 role（role CRUD + role-member list/add/remove + role-match-list）
 //   - 6 creative app member/permission settings
 //   - 7 db-sync（create/list/get/enable/disable/update/delete）
-//   - 1 user-id-convert = 96。
-func TestAppsShortcuts_Returns96(t *testing.T) {
+//   - 1 user-id-convert = 98。
+func TestAppsShortcuts_Returns98(t *testing.T) {
 	got := Shortcuts()
-	if len(got) != 96 {
-		t.Fatalf("Shortcuts() returned %d entries, want 96", len(got))
+	if len(got) != 98 {
+		t.Fatalf("Shortcuts() returned %d entries, want 98", len(got))
 	}
 }
 
