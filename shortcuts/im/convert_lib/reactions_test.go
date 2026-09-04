@@ -408,3 +408,65 @@ func TestEnrichReactions_DuplicateMessageID(t *testing.T) {
 		t.Fatalf("dup entries reactions differ: %#v vs %#v", firstReactions, secondReactions)
 	}
 }
+
+// TestEnrichReactions_MissingScopeMarksAllNodes pins the conditional-scope
+// contract (issue #2352): when the runtime token lacks the reactions scope,
+// enrichment must not call the API and every message node (including nested
+// thread replies) is marked reactions_error instead of aborting the command.
+func TestEnrichReactions_MissingScopeMarksAllNodes(t *testing.T) {
+	apiCalled := false
+	runtime := newBotConvertlibRuntimeWithScopes(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		apiCalled = true
+		return convertlibJSONResponse(200, map[string]interface{}{"code": 0, "data": map[string]interface{}{}}), nil
+	}), "im:message:readonly")
+
+	parent := map[string]interface{}{"message_id": "om_a"}
+	child := map[string]interface{}{"message_id": "om_a1"}
+	parent["thread_replies"] = []map[string]interface{}{child}
+	messages := []map[string]interface{}{parent}
+
+	EnrichReactions(runtime, messages)
+
+	if apiCalled {
+		t.Fatalf("batch_query must not be called when the reactions scope is missing")
+	}
+	if parent["reactions_error"] != true {
+		t.Fatalf("parent missing reactions_error flag: %#v", parent)
+	}
+	if child["reactions_error"] != true {
+		t.Fatalf("nested thread reply missing reactions_error flag: %#v", child)
+	}
+}
+
+// TestEnrichReactions_MissingScopeMarksInterfaceBackedNestedNodes pins the
+// []interface{} branch of markAllReactionNodes: interface-backed thread
+// replies must be recursed into so grandchildren are flagged too.
+func TestEnrichReactions_MissingScopeMarksInterfaceBackedNestedNodes(t *testing.T) {
+	apiCalled := false
+	runtime := newBotConvertlibRuntimeWithScopes(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		apiCalled = true
+		return convertlibJSONResponse(200, map[string]interface{}{"code": 0, "data": map[string]interface{}{}}), nil
+	}), "im:message:readonly")
+
+	grandchild := map[string]interface{}{"message_id": "om_a2"}
+	child := map[string]interface{}{"message_id": "om_a1"}
+	child["thread_replies"] = []interface{}{grandchild}
+	parent := map[string]interface{}{"message_id": "om_a"}
+	parent["thread_replies"] = []interface{}{child}
+	messages := []map[string]interface{}{parent}
+
+	EnrichReactions(runtime, messages)
+
+	if apiCalled {
+		t.Fatalf("batch_query must not be called when the reactions scope is missing")
+	}
+	if parent["reactions_error"] != true {
+		t.Fatalf("parent missing reactions_error flag: %#v", parent)
+	}
+	if child["reactions_error"] != true {
+		t.Fatalf("interface-backed reply missing reactions_error flag: %#v", child)
+	}
+	if grandchild["reactions_error"] != true {
+		t.Fatalf("grandchild (nested inside interface-backed reply) missing reactions_error flag: %#v", grandchild)
+	}
+}

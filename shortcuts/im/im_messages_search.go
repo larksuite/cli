@@ -27,13 +27,14 @@ const (
 )
 
 var ImMessagesSearch = common.Shortcut{
-	Service:     "im",
-	Command:     "+messages-search",
-	Description: "Search messages across chats (supports keyword, sender, time range filters) with user or bot identity; filters by chat/sender/attachment/time, enriches results via mget and chats batch_query",
-	Risk:        "read",
-	Scopes:      []string{"search:message", "im:message.reactions:read"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	Service:           "im",
+	Command:           "+messages-search",
+	Description:       "Search messages across chats (supports keyword, sender, time range filters) with user or bot identity; filters by chat/sender/attachment/time, enriches results via mget and chats batch_query",
+	Risk:              "read",
+	Scopes:            []string{"search:message"},
+	ConditionalScopes: []string{convertlib.ImMessageReactionsReadScope},
+	AuthTypes:         []string{"user", "bot"},
+	HasFormat:         true,
 	Flags: []common.Flag{
 		{Name: "query", Aliases: []string{"keyword"}, Desc: "search keyword"},
 		{Name: "chat-id", Desc: "limit to chat IDs, comma-separated"},
