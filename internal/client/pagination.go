@@ -13,9 +13,19 @@ import (
 
 // PaginationOptions contains pagination control options.
 type PaginationOptions struct {
-	PageLimit int           // max pages to fetch; 0 = unlimited (default: 10)
-	PageDelay int           // ms, default 200
-	Identity  core.Identity // identity passed to checkErr; defaults to AsUser when empty
+	PageLimit int // max pages to fetch; 0 = unlimited (default: 10)
+	// PageDelay is the pause between pages in ms. Zero means "unset" and takes
+	// the 200ms default, so a caller that wants no pause at all — tests, mostly —
+	// passes a negative value: the loop sleeps only when the resolved delay is
+	// positive.
+	PageDelay int
+	// Identity is used when a later page's non-zero code is turned into a typed
+	// error. It is optional: paginateLoop falls back to the request's own
+	// identity and finally to AsUser, treating AsAuto as unresolved, so a caller
+	// that leaves it empty still classifies a bot's failure as a bot's. Setting
+	// it is only necessary to classify as something other than the identity the
+	// request was sent with.
+	Identity core.Identity
 }
 
 func mergePagedResults(w io.Writer, results []interface{}) interface{} {

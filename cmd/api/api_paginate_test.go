@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
@@ -392,5 +393,221 @@ func TestAPIPaginate_StreamBusinessErrorIsMarkedRaw(t *testing.T) {
 	}
 	if got := errOut.String(); got != "" {
 		t.Fatalf("stderr bytes = %q, want empty", got)
+	}
+}
+
+// firstPageHasMoreStub registers a successful page 1 that advertises a next
+// page, so the loop is guaranteed to attempt page 2.
+func firstPageHasMoreStub(reg *httpmock.Registry) {
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/test/v1/items",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":      []interface{}{map[string]interface{}{"id": "first"}},
+				"has_more":   true,
+				"page_token": "next-1",
+			},
+		},
+	})
+}
+
+// The command-layer view of the first-page rule. Exactly one stub is registered,
+// so a second request would fail the run; the method is POST because the hazard
+// pinned is a replayed write.
+//
+//   - A first page that passed classification and needs no pagination is output
+//     on each format's own contract: json wraps it in the envelope, ndjson
+//     streams its records — a code-less list is still a list.
+//   - A first page that did not declare success but carries a continuation token
+//     is refused before output, with a non-zero exit, so the streaming formats —
+//     which have no envelope to carry has_more — get a machine-readable signal.
+//   - A business error dumps the raw response (json) or writes nothing
+//     (ndjson) and fails, as before.
+func TestAPIPaginate_FirstPageIsOutputOnlyIfItNeedsNoPagination(t *testing.T) {
+	page := func(code string, cursor bool) []byte {
+		data := `"data":{"items":[{"id":"first"}],"has_more":false}`
+		if cursor {
+			data = `"data":{"items":[{"id":"first"}],"has_more":true,"page_token":"next-1"}`
+		}
+		if code == "" {
+			return []byte(`{"msg":"m",` + data + `}`)
+		}
+		return []byte(`{"code":` + code + `,"msg":"m",` + data + `}`)
+	}
+	for _, tc := range []struct {
+		name          string
+		code          string
+		cursor        bool
+		format        output.Format
+		wantErrCat    errs.Category // "" = expect nil error
+		wantSubtype   errs.Subtype
+		wantStdout    []string
+		wantNotStdout []string
+		wantNotStderr string
+	}{
+		{"json, code-less list, no cursor", "", false, output.FormatJSON, "", "", []string{`"has_more": false`, `"first"`}, nil, ""},
+		{"json, missing code, cursor", "", true, output.FormatJSON, errs.CategoryInternal, errs.SubtypeInvalidResponse, nil, []string{`first`}, ""},
+		{"json, fractional code, cursor", "0.5", true, output.FormatJSON, errs.CategoryInternal, errs.SubtypeInvalidResponse, nil, []string{`first`}, ""},
+		{"json, null code, cursor", "null", true, output.FormatJSON, errs.CategoryInternal, errs.SubtypeInvalidResponse, nil, []string{`first`}, ""},
+		{"json, business error", "230027", true, output.FormatJSON, errs.CategoryAuthorization, "", []string{`"code": 230027`}, nil, ""},
+		{"ndjson, code-less list, no cursor", "", false, output.FormatNDJSON, "", "", []string{`"first"`}, []string{`has_more`}, "does not return a list"},
+		{"ndjson, missing code, cursor", "", true, output.FormatNDJSON, errs.CategoryInternal, errs.SubtypeInvalidResponse, nil, []string{`first`}, ""},
+		{"ndjson, fractional code, cursor", "0.5", true, output.FormatNDJSON, errs.CategoryInternal, errs.SubtypeInvalidResponse, nil, []string{`first`}, ""},
+		{"ndjson, business error", "230027", true, output.FormatNDJSON, errs.CategoryAuthorization, "", nil, []string{`first`}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ac, out, errOut, reg := newAPIPaginateTestHarness(t)
+			reg.Register(&httpmock.Stub{URL: "/open-apis/test/v1/items", RawBody: page(tc.code, tc.cursor), ContentType: "text/json"})
+
+			err := apiPaginate(context.Background(), ac,
+				client.RawApiRequest{Method: "POST", URL: "/open-apis/test/v1/items", As: core.AsBot},
+				tc.format, "", out, errOut, "lark-cli api POST",
+				client.PaginationOptions{PageLimit: 0, PageDelay: -1})
+
+			if tc.wantErrCat == "" {
+				if err != nil {
+					t.Fatalf("apiPaginate() error = %v, want nil (a second request would have failed the run)", err)
+				}
+			} else {
+				if got := errs.CategoryOf(err); err == nil || got != tc.wantErrCat {
+					t.Fatalf("apiPaginate() error = %v (category %q), want %q", err, got, tc.wantErrCat)
+				}
+				if tc.wantSubtype != "" {
+					p, ok := errs.ProblemOf(err)
+					if !ok || p.Subtype != tc.wantSubtype {
+						t.Fatalf("subtype = %v, want %q", err, tc.wantSubtype)
+					}
+					if tc.cursor {
+						const wantHint = "verify whether the first request changed remote state before retrying it"
+						if p.Hint != wantHint {
+							t.Errorf("Hint = %q, want %q", p.Hint, wantHint)
+						}
+					}
+				}
+			}
+			for _, want := range tc.wantStdout {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("stdout = %q, want it to contain %q", out.String(), want)
+				}
+			}
+			for _, notWant := range tc.wantNotStdout {
+				if strings.Contains(out.String(), notWant) {
+					t.Errorf("stdout = %q, want it NOT to contain %q", out.String(), notWant)
+				}
+			}
+			if tc.wantNotStderr != "" && strings.Contains(errOut.String(), tc.wantNotStderr) {
+				t.Errorf("stderr = %q, want it NOT to contain %q: the page is a list and must be streamed", errOut.String(), tc.wantNotStderr)
+			}
+		})
+	}
+}
+
+// The counterpart to the JSON cases, and the reason "a failed run writes no
+// stdout" is only true for the buffered formats. A streaming format has already
+// emitted the pages that succeeded by the time a later one fails; those lines
+// stay, by design (see apiPaginate's note that callers must use the exit code
+// to tell complete from partial output). What this change fixes is that the
+// exit code now actually says so.
+func TestAPIPaginate_LaterPageFailureKeepsStreamedStdout(t *testing.T) {
+	ac, out, errOut, reg := newAPIPaginateTestHarness(t)
+	firstPageHasMoreStub(reg)
+	reg.Register(&httpmock.Stub{
+		URL:    "/open-apis/test/v1/items",
+		Status: 502,
+		Body:   map[string]interface{}{"msg": "Bad Gateway"},
+	})
+
+	err := apiPaginate(context.Background(), ac, apiPaginateRequest(),
+		output.FormatNDJSON, "", out, errOut, "lark-cli api GET",
+		client.PaginationOptions{PageLimit: 0, PageDelay: -1})
+
+	if err == nil {
+		t.Fatal("apiPaginate() error = nil, want HTTP 502 from page 2")
+	}
+	if got := errs.CategoryOf(err); got != errs.CategoryNetwork {
+		t.Errorf("errs.CategoryOf(err) = %q, want %q", got, errs.CategoryNetwork)
+	}
+	if !bytes.Contains(out.Bytes(), []byte(`"first"`)) {
+		t.Fatalf("streamed stdout = %q, want it to keep the page-1 item it already wrote", out.Bytes())
+	}
+}
+
+// apiPaginate's return value is what determines the process exit code, so a nil
+// here means the CLI would exit 0 on a partial result — the shape #2477 reported.
+// The buffered formats must also leave stdout empty: a success envelope written
+// alongside a non-zero exit is the same lie in a different place.
+//
+// Each case asserts the classification, not merely that something failed. A 502
+// body carrying no code is also an unreadable page, so the later-page guard would
+// catch it too; only the category shows which branch actually ran.
+func TestAPIPaginate_LaterPageFailureEmitsNoStdout(t *testing.T) {
+	transportErr := errors.New("simulated transport failure")
+
+	for _, tc := range []struct {
+		name        string
+		stub        *httpmock.Stub
+		wantCat     errs.Category
+		wantSubtype errs.Subtype
+		wantCause   error
+	}{
+		{
+			name:      "transport failure",
+			stub:      &httpmock.Stub{URL: "/open-apis/test/v1/items", Error: transportErr},
+			wantCat:   errs.CategoryNetwork,
+			wantCause: transportErr,
+		},
+		{
+			name:        "business error",
+			stub:        &httpmock.Stub{URL: "/open-apis/test/v1/items", Body: map[string]interface{}{"code": 230027, "msg": "user not authorized"}},
+			wantCat:     errs.CategoryAuthorization,
+			wantSubtype: errs.SubtypeUserUnauthorized,
+		},
+		{
+			name:    "gateway 502 carrying no code",
+			stub:    &httpmock.Stub{URL: "/open-apis/test/v1/items", Status: 502, Body: map[string]interface{}{"msg": "Bad Gateway"}},
+			wantCat: errs.CategoryNetwork,
+		},
+		{
+			// The page before it promised more data; this one carries no data and
+			// a code the float decoder reads as 0. Accepting it would merge into
+			// ok:true / has_more:false over the first page alone — #2477 exactly.
+			name:        "later page did not declare success and carries no data",
+			stub:        &httpmock.Stub{URL: "/open-apis/test/v1/items", RawBody: []byte(`{"code":1e-324,"msg":"underflow"}`), ContentType: "text/json"},
+			wantCat:     errs.CategoryInternal,
+			wantSubtype: errs.SubtypeInvalidResponse,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ac, out, errOut, reg := newAPIPaginateTestHarness(t)
+			firstPageHasMoreStub(reg)
+			reg.Register(tc.stub)
+
+			err := apiPaginate(context.Background(), ac, apiPaginateRequest(),
+				output.FormatJSON, "", out, errOut, "lark-cli api GET",
+				client.PaginationOptions{PageLimit: 0, PageDelay: -1})
+
+			if err == nil {
+				t.Fatal("apiPaginate() error = nil, want the page-2 failure to reach the exit code")
+			}
+			if got := errs.CategoryOf(err); got != tc.wantCat {
+				t.Errorf("errs.CategoryOf(err) = %q, want %q", got, tc.wantCat)
+			}
+			if tc.wantSubtype != "" {
+				p, ok := errs.ProblemOf(err)
+				if !ok {
+					t.Fatalf("errs.ProblemOf(err) = _, false; want a typed problem; err = %T: %v", err, err)
+				}
+				if p.Subtype != tc.wantSubtype {
+					t.Errorf("subtype = %q, want %q", p.Subtype, tc.wantSubtype)
+				}
+			}
+			if tc.wantCause != nil && !errors.Is(err, tc.wantCause) {
+				t.Errorf("errors.Is(err, cause) = false; the cause did not survive the command layer; err = %v", err)
+			}
+			if got := out.String(); got != "" {
+				t.Fatalf("stdout bytes = %q, want empty on a failed pagination run", got)
+			}
+		})
 	}
 }

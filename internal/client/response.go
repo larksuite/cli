@@ -84,12 +84,12 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 
 	// Non-JSON error responses (e.g. 404 text/plain from gateway): return error
 	// directly instead of falling through to the binary-save path.
-	if resp.StatusCode >= 400 && !IsJSONContentType(ct) && ct != "" {
+	if resp.StatusCode >= 400 && !isJSONBody(ct) {
 		return httpStatusError(resp.StatusCode, resp.RawBody)
 	}
 
 	// JSON responses: always check for business errors before saving.
-	if IsJSONContentType(ct) || ct == "" {
+	if isJSONBody(ct) {
 		result, err := ParseJSONResponse(resp)
 		if err != nil {
 			// An unparseable / empty body on an HTTP error (common with a
@@ -184,6 +184,15 @@ func classifySaveErr(err error) error {
 
 // ── JSON helpers ──
 
+// isJSONBody is the one rule HandleResponse and the pagination loop share for
+// deciding whether a body is JSON at all: a declared non-JSON Content-Type is
+// not, whatever the bytes look like; a JSON Content-Type, or none, is. Both
+// paths must ask this question the same way, or one of them ends up reading a
+// business code out of a body the other treats as a download.
+func isJSONBody(ct string) bool {
+	return IsJSONContentType(ct) || ct == ""
+}
+
 // IsJSONContentType reports whether the Content-Type header indicates a JSON response.
 func IsJSONContentType(ct string) bool {
 	return strings.Contains(ct, "application/json") || strings.Contains(ct, "text/json")
@@ -196,6 +205,17 @@ func ParseJSONResponse(resp *larkcore.ApiResp) (interface{}, error) {
 	dec := json.NewDecoder(bytes.NewReader(resp.RawBody))
 	dec.UseNumber()
 	if err := dec.Decode(&result); err != nil {
+		return nil, fmt.Errorf("response parse error: %w (body: %s)", err, util.TruncateStr(string(resp.RawBody), 500))
+	}
+	// A body is one JSON value. Anything after it other than whitespace is not
+	// part of the response — a truncated stream, a second value concatenated on
+	// — and accepting the first value would let such a body pass for a complete
+	// one, cursor and all.
+	var trailing json.RawMessage
+	if err := dec.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			err = errors.New("unexpected content after the JSON value")
+		}
 		return nil, fmt.Errorf("response parse error: %w (body: %s)", err, util.TruncateStr(string(resp.RawBody), 500))
 	}
 	return result, nil
