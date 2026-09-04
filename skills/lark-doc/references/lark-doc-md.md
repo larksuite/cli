@@ -75,6 +75,47 @@ Markdown 格式支持通过 URL 插入网络图片，图片将自动从 HTTP 下
 非原生 Markdown 语法的内容（如下划线、高亮框(Callout)、勾选框、多维表格、画板、思维导图、电子表格、网格布局、引用(@文档/@人)、按钮、日期提醒、行内文件、文字颜色/背景色、同步块等）采用 XML 语法表示，详见 [`lark-doc-xml.md`](lark-doc-xml.md)。
 > **⚠️ XML 标签会被解析并生效**：即使在 `--doc-format markdown` 下，`<b>`、`<u>`、`<img>` 等 XML 标签也会被识别为对应的富文本节点，**不会**按字面量显示。如需字面量输出尖括号包裹的文本（例如示例中的 `<tag>`），必须转义左尖括号：`\<b>`、`\<img>`。
 
+## Markdown 引用与高亮块 (Callout) 转译规范
+
+在 Markdown（GFM / Obsidian）中常见的引用与高亮块，转译或导入至飞书 Docx 时应按以下规则映射为原生组件：
+
+### 1. 类型映射对照表
+
+| Markdown 语法 | 飞书 Docx XML 映射 | 视觉效果 | 语义场景 |
+|---------------|-------------------|----------|----------|
+| `> [!NOTE]` / `> [!INFO]` | `<callout emoji="💡" background-color="light-blue" border-color="blue">` | 浅蓝高亮框 | 背景补充、重要信息、说明 |
+| `> [!IMPORTANT]` | `<callout emoji="📌" background-color="light-purple" border-color="purple">` | 浅紫高亮框 | 核心结论、关键决策、里程碑 |
+| `> [!WARNING]` / `> [!CAUTION]` | `<callout emoji="⚠️" background-color="light-red" border-color="red">` | 浅红高亮框 | 风险提示、注意事项、防坑指南 |
+| `> [!TIP]` / `> [!HINT]` | `<callout emoji="💡" background-color="light-blue" border-color="blue">` | 浅蓝高亮框 | 优化技巧、最佳实践、便捷操作 |
+| `> [!DANGER]` / `> [!ERROR]` | `<callout emoji="🚫" background-color="light-red" border-color="red">` | 浅红高亮框 | 致命错误、高危操作拦截 |
+| `> [!SUCCESS]` | `<callout emoji="✨" background-color="light-green" border-color="green">` | 浅绿高亮框 | 成功验证、通过断言 |
+| 默认无标记引用 `> 文本` | `<blockquote><p>文本</p></blockquote>` | 原生灰色引用（左侧单竖线） | 名言金句、文献摘抄、普通备选参考 |
+
+> **容错与回退机制**：
+> - 若 `[!TYPE]` 缺省标题（如裸写 `> [!NOTE]`），正文从后续非空行开始封装；
+> - 若遇到未知或自定义扩展类型（如 `> [!CUSTOM]`），默认降级回退为通用提示高亮框 `<callout emoji="💡" background-color="light-yellow" border-color="yellow">`。
+
+### 2. 语法转译与结构细则
+
+1. **首行类型剥离**：遇到 `> [!TYPE] 自定义标题` 时，自动剥离 `[!TYPE]` 声明，将自定义标题保留在卡片第一行，杜绝字面量 `[!NOTE]` 泄露在正文中。
+2. **列表嵌套引用封装**：
+   - 列表项内缩进的引用（如 `- 选项
+  > [!TIP] 补充说明`），必须作为子节点封装在对应 `<li>` 内部：
+     ```xml
+     <ul>
+       <li>
+         <p>选项描述</p>
+         <callout emoji="💡" background-color="light-blue" border-color="blue">
+           <p>补充说明</p>
+         </callout>
+       </li>
+     </ul>
+     ```
+   - 严禁被扁平化剥离或剥离 `>` 降级为平级列表项。
+3. **连续 Callout 与空行/EOF 边界断言**：
+   - **空引用行**：包含 `>` 的空引用行（如包含引用标记 `>` 的空行）属于当前 Callout 的段落分隔，保留在卡片内；
+   - **纯空行与前瞻探测**：遇到无 `>` 的纯空行时，向前探测后续第一个非空行。若后续行是以 `> [!TYPE]` 开头的新 Callout、普通正文或到达文件末尾（EOF），当前 Callout 必须立即封闭结束，防止多个独立卡片被贪婪合并。
+
 ## 参考
 
 - [`lark-doc-xml.md`](lark-doc-xml.md) — XML 语法规范
