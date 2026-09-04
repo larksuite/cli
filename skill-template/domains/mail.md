@@ -74,8 +74,9 @@
 - **`--as user`（推荐）**：以当前登录用户的身份访问其邮箱。需要先通过 `lark-cli auth login --domain mail` 完成用户授权。
 - **`--as bot`**：以应用身份访问邮箱。需要在飞书开发者后台为应用开通相应权限，否则请求会被拒绝。bot 身份不能使用默认 `--mailbox me`，必须显式传邮箱地址。
 
-1. 所有邮件写操作（发送、回复、转发、草稿编辑） → 必须使用 `--as user`，未登录时先使用 `lark-cli auth login --domain mail` 进行登录
-2. 读取类操作（查看邮件、会话、收件箱列表等）和会话级批量整理（`+thread-modify` / `+thread-trash`）→ 推荐使用 `--as user`；如需管理员/应用代操作，可使用 `--as bot` 并显式传 `--mailbox <email>`，确保应用已开通对应权限。message 级整理（`+message-modify` / `+message-trash`）仍仅支持 `--as user`
+1. 发信/草稿类写操作（发送、回复、转发、草稿编辑） → 必须使用 `--as user`，未登录时先使用 `lark-cli auth login --domain mail` 进行登录
+2. 读取类操作（查看邮件、会话、收件箱列表等） → 推荐使用 `--as user`；如需应用级批量读取（如管理员代操作），可使用 `--as bot`，确保应用已开通对应权限
+3. 整理类操作按具体 shortcut 的身份支持范围选择：message 级整理仍仅支持 `--as user`；会话级批量整理支持 `--as user` / `--as bot`，使用 bot 时必须显式传 `--mailbox <email>`
 
 ## 典型工作流
 
