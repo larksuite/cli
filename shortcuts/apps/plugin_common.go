@@ -344,12 +344,33 @@ func pluginInstalledVersion(projectPath, pluginKey string) string {
 
 // ── tgz extraction ──
 
-const pluginExtractMaxBytes = 10 * 1024 * 1024
+const (
+	// Remote plugin packages are capped at 10 MiB compressed. Keep both a
+	// per-file limit and an archive-wide expansion budget so compression ratio
+	// and entry count cannot turn one accepted package into unbounded local IO.
+	pluginExtractMaxEntryBytes = 10 * 1024 * 1024
+	pluginExtractMaxTotalBytes = 100 * 1024 * 1024
+	pluginExtractMaxEntries    = 10_000
+)
+
+type pluginExtractLimits struct {
+	maxEntryBytes int64
+	maxTotalBytes int64
+	maxEntries    int
+}
 
 // pluginExtractTGZ extracts a gzipped tar archive into destDir, stripping the
 // first path component (npm convention: tarballs contain a "package/" prefix).
 // Path traversal entries are silently skipped.
 func pluginExtractTGZ(r io.Reader, destDir string) error {
+	return pluginExtractTGZWithLimits(r, destDir, pluginExtractLimits{
+		maxEntryBytes: pluginExtractMaxEntryBytes,
+		maxTotalBytes: pluginExtractMaxTotalBytes,
+		maxEntries:    pluginExtractMaxEntries,
+	})
+}
+
+func pluginExtractTGZWithLimits(r io.Reader, destDir string, limits pluginExtractLimits) error {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
 		return fmt.Errorf("gzip: %w", err) //nolint:forbidigo // intermediate helper error; callers wrap as typed
@@ -358,6 +379,8 @@ func pluginExtractTGZ(r io.Reader, destDir string) error {
 
 	cleanDest := filepath.Clean(destDir) + string(filepath.Separator)
 	tr := tar.NewReader(gz)
+	var totalBytes int64
+	entries := 0
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -365,6 +388,10 @@ func pluginExtractTGZ(r io.Reader, destDir string) error {
 		}
 		if err != nil {
 			return fmt.Errorf("tar: %w", err) //nolint:forbidigo // intermediate helper error; callers wrap as typed
+		}
+		entries++
+		if entries > limits.maxEntries {
+			return fmt.Errorf("tar archive exceeds %d-entry limit", limits.maxEntries) //nolint:forbidigo // intermediate helper error; callers wrap as typed
 		}
 
 		name := pluginStripFirstComponent(hdr.Name)
@@ -389,6 +416,16 @@ func pluginExtractTGZ(r io.Reader, destDir string) error {
 				return err
 			}
 		case tar.TypeReg:
+			if hdr.Size < 0 {
+				return fmt.Errorf("tar entry %q has invalid negative size %d", hdr.Name, hdr.Size) //nolint:forbidigo // intermediate helper error; callers wrap as typed
+			}
+			if hdr.Size > limits.maxEntryBytes {
+				return fmt.Errorf("tar entry %q exceeds %d-byte size limit", hdr.Name, limits.maxEntryBytes) //nolint:forbidigo // intermediate helper error; callers wrap as typed
+			}
+			if hdr.Size > limits.maxTotalBytes-totalBytes {
+				return fmt.Errorf("tar archive exceeds %d-byte expanded size limit", limits.maxTotalBytes) //nolint:forbidigo // intermediate helper error; callers wrap as typed
+			}
+			totalBytes += hdr.Size
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil { //nolint:forbidigo
 				return err
 			}
@@ -396,7 +433,7 @@ func pluginExtractTGZ(r io.Reader, destDir string) error {
 			if err != nil {
 				return err
 			}
-			if _, err := io.Copy(f, io.LimitReader(tr, pluginExtractMaxBytes)); err != nil {
+			if _, err := io.CopyN(f, tr, hdr.Size); err != nil {
 				if cerr := f.Close(); cerr != nil {
 					return fmt.Errorf("copy tar entry: %w; close file: %w", err, cerr) //nolint:forbidigo // intermediate helper error; callers wrap as typed
 				}
