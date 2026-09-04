@@ -144,6 +144,13 @@ func buildInputSchema(m meta.Method) *InputSchema {
 	addInputObject(is, "params", "", m.Params(), true, "")
 	addInputObject(is, "data", "", m.Data(), false, "--data")
 	addInputObject(is, "file", "Binary file uploads. Each property is a file field with format:binary; CLI maps each to --file <key>=<path>.", m.Files(), false, "--file")
+	is.Properties.Set("timeout", Property{
+		Type:        "string",
+		Format:      "duration",
+		Flag:        "--timeout",
+		Default:     "0s",
+		Description: "Per-request timeout in Go duration format. 0 uses the client default; pagination applies it to each page.",
+	})
 
 	if m.Risk == core.RiskHighRiskWrite {
 		falseVal := false

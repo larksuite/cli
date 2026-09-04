@@ -250,9 +250,9 @@ func TestBuildInputSchema_ReactionsList(t *testing.T) {
 	if !reflect.DeepEqual(is.Required, []string{"params"}) {
 		t.Errorf("Required = %v, want [params]", is.Required)
 	}
-	// top-level properties only contains "params" (no body fields, no high-risk-write)
-	if !reflect.DeepEqual(is.Properties.Order, []string{"params"}) {
-		t.Errorf("top-level properties order = %v, want [params]", is.Properties.Order)
+	// timeout is a CLI-only control alongside the API parameter section.
+	if !reflect.DeepEqual(is.Properties.Order, []string{"params", "timeout"}) {
+		t.Errorf("top-level properties order = %v, want [params timeout]", is.Properties.Order)
 	}
 	// params sub-object: required + property order
 	params := is.Properties.Map["params"]
@@ -276,9 +276,9 @@ func TestBuildInputSchema_ImagesCreate_FileAndBody(t *testing.T) {
 	if !reflect.DeepEqual(is.Required, []string{"data", "file"}) {
 		t.Errorf("Required = %v, want [data, file]", is.Required)
 	}
-	// top-level properties: data (for non-file body) + file (for binary upload)
-	if !reflect.DeepEqual(is.Properties.Order, []string{"data", "file"}) {
-		t.Errorf("top-level properties order = %v, want [data, file]", is.Properties.Order)
+	// top-level properties: data, file, and the CLI-only timeout control.
+	if !reflect.DeepEqual(is.Properties.Order, []string{"data", "file", "timeout"}) {
+		t.Errorf("top-level properties order = %v, want [data file timeout]", is.Properties.Order)
 	}
 	// data sub-object carries only non-file body fields (image_type)
 	data := is.Properties.Map["data"]
@@ -361,6 +361,25 @@ func TestBuildInputSchema_NoYesForReadRisk(t *testing.T) {
 	is := buildInputSchema(method)
 	if _, ok := is.Properties.Map["yes"]; ok {
 		t.Errorf("`yes` must not be injected for risk=read")
+	}
+}
+
+func TestBuildInputSchema_RequestTimeout(t *testing.T) {
+	is := buildInputSchema(meta.FromMap(map[string]interface{}{"httpMethod": "GET"}))
+	timeout, ok := is.Properties.Map["timeout"]
+	if !ok {
+		t.Fatal("timeout property missing")
+	}
+	if timeout.Type != "string" || timeout.Format != "duration" || timeout.Flag != "--timeout" || timeout.Default != "0s" {
+		t.Fatalf("timeout property = %+v", timeout)
+	}
+	if timeout.Description != "Per-request timeout in Go duration format. 0 uses the client default; pagination applies it to each page." {
+		t.Fatalf("description = %q", timeout.Description)
+	}
+	for _, required := range is.Required {
+		if required == "timeout" {
+			t.Fatal("timeout must not be required")
+		}
 	}
 }
 

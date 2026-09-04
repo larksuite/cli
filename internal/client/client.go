@@ -35,6 +35,7 @@ type RawApiRequest struct {
 	Params    map[string]interface{}
 	Data      interface{}
 	As        core.Identity
+	Timeout   time.Duration
 	ExtraOpts []larkcore.RequestOptionFunc // additional SDK request options (e.g. security headers)
 }
 
@@ -350,7 +351,24 @@ func buildStreamBody(body interface{}) (io.Reader, string, error) {
 // any endpoint whose Content-Type may not be JSON.
 func (c *APIClient) DoAPI(ctx context.Context, request RawApiRequest) (*larkcore.ApiResp, error) {
 	apiReq, extraOpts := c.buildApiReq(request)
-	return c.DoSDKRequest(ctx, apiReq, request.As, extraOpts...)
+	requestCtx := ctx
+	cancel := func() {}
+	if request.Timeout > 0 {
+		// The caller owns any existing deadline, even when it is later than the
+		// request timeout; command-level policy must not replace caller policy.
+		if _, hasDeadline := requestCtx.Deadline(); !hasDeadline {
+			requestCtx, cancel = context.WithTimeout(requestCtx, request.Timeout)
+		}
+	}
+	defer cancel()
+	resp, err := c.DoSDKRequest(requestCtx, apiReq, request.As, extraOpts...)
+	if contextErr := requestCtx.Err(); err != nil && contextErr != nil {
+		var networkErr *errs.NetworkError
+		if errors.As(err, &networkErr) && networkErr.Subtype == errs.SubtypeNetworkTimeout && !errors.Is(networkErr, contextErr) {
+			networkErr.WithCause(errors.Join(networkErr.Unwrap(), contextErr))
+		}
+	}
+	return resp, err
 }
 
 // CallAPI is a convenience wrapper: DoAPI + ParseJSONResponse. Use DoAPI
@@ -402,6 +420,7 @@ func (c *APIClient) paginateLoop(ctx context.Context, request RawApiRequest, opt
 			Params:    params,
 			Data:      request.Data,
 			As:        request.As,
+			Timeout:   request.Timeout,
 			ExtraOpts: request.ExtraOpts,
 		})
 		if err != nil {

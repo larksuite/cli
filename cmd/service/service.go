@@ -9,6 +9,7 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/apicatalog"
@@ -143,7 +144,8 @@ type ServiceMethodOptions struct {
 	Format     string
 	JqExpr     string
 	DryRun     bool
-	File       string   // --file flag value
+	File       string // --file flag value
+	Timeout    time.Duration
 	FileFields []string // auto-detected file field names from metadata
 
 	// binder owns the generated typed param flags — registration and the
@@ -304,6 +306,7 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 	cmd.Flags().Bool("json", false, "shorthand for --format json")
 	cmd.Flags().StringVarP(&opts.JqExpr, "jq", "q", "", "jq expression to filter JSON output")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "print request without executing")
+	cmd.Flags().DurationVar(&opts.Timeout, "timeout", 0, "per-request timeout in Go duration format (0 = client default)")
 	if spec.risk == cmdutil.RiskHighRiskWrite {
 		cmd.Flags().Bool("yes", false, "confirm high-risk operation")
 	}
@@ -346,7 +349,7 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 			fl.Usage = "Raw URL/query params JSON. Supports - and @file. If both set, typed flags override matching keys in --params."
 		}
 	}
-	for _, name := range []string{"as", "dry-run", "page-all", "page-limit", "page-delay", "yes"} {
+	for _, name := range []string{"as", "dry-run", "page-all", "page-limit", "page-delay", "timeout", "yes"} {
 		tagFlagGroup(cmd.Flags(), name, groupExecution)
 	}
 	for _, name := range []string{"output", "format", "jq"} {
@@ -365,6 +368,9 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 
 func serviceMethodRun(opts *ServiceMethodOptions) error {
 	f := opts.Factory
+	if opts.Timeout < 0 {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--timeout must be zero or greater").WithParam("--timeout")
+	}
 	opts.As = f.ResolveAs(opts.Ctx, opts.Cmd, opts.As)
 
 	if err := f.CheckStrictMode(opts.Ctx, opts.As); err != nil {
@@ -619,10 +625,11 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 	}
 
 	request := client.RawApiRequest{
-		Method: httpMethod,
-		URL:    url,
-		Params: queryParams,
-		As:     opts.As,
+		Method:  httpMethod,
+		URL:     url,
+		Params:  queryParams,
+		As:      opts.As,
+		Timeout: opts.Timeout,
 	}
 
 	if opts.File != "" {
