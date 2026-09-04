@@ -9,8 +9,15 @@ import (
 	"net/http"
 	"strings"
 
+	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
+
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
+)
+
+const (
+	docMediaAppScopeHint  = "stop retrying now; ask the app developer to apply for the required scope(s), and retry only after they have been approved and enabled"
+	docMediaRateLimitHint = "the request was rate limited; stop immediate retries and retry later using exponential backoff with jitter"
 )
 
 // wrapDocNetworkErr returns err unchanged when it is already a typed errs.*
@@ -21,6 +28,57 @@ func wrapDocNetworkErr(err error, format string, args ...any) error {
 		return err
 	}
 	return errs.NewNetworkError(errs.SubtypeNetworkTransport, format, args...).WithCause(err)
+}
+
+// classifyDocMediaStreamError recovers the two business errors this shortcut
+// promises to guide from DoStream's current "HTTP <status>: <JSON>" transport
+// message. This compatibility shim is deliberately local to Doc media reads:
+// expand it only if DoStream exposes a structured response body or another Doc
+// streaming command adopts the same recovery contract.
+func classifyDocMediaStreamError(runtime *common.RuntimeContext, err error) error {
+	problem, ok := errs.ProblemOf(err)
+	if runtime == nil || !ok || problem == nil ||
+		problem.Category != errs.CategoryNetwork ||
+		problem.Subtype != errs.SubtypeNetworkTransport ||
+		problem.Code < http.StatusBadRequest {
+		return err
+	}
+
+	prefix := fmt.Sprintf("HTTP %d: ", problem.Code)
+	if !strings.HasPrefix(problem.Message, prefix) {
+		return err
+	}
+	body := strings.TrimSpace(strings.TrimPrefix(problem.Message, prefix))
+	if !strings.HasPrefix(body, "{") {
+		return err
+	}
+
+	header := make(http.Header)
+	header.Set("Content-Type", "application/json")
+	if problem.LogID != "" {
+		header.Set(larkcore.HttpHeaderKeyLogId, problem.LogID)
+	}
+	_, classified := runtime.ClassifyAPIResponse(&larkcore.ApiResp{
+		StatusCode: problem.Code,
+		Header:     header,
+		RawBody:    []byte(body),
+	})
+	classifiedProblem, classifiedOK := errs.ProblemOf(classified)
+	if !classifiedOK || classifiedProblem == nil ||
+		(classifiedProblem.Code != 99991672 && classifiedProblem.Code != 99991400) {
+		return err
+	}
+
+	var permissionErr *errs.PermissionError
+	if errors.As(classified, &permissionErr) {
+		permissionErr.WithCause(err)
+		return classified
+	}
+	var apiErr *errs.APIError
+	if errors.As(classified, &apiErr) {
+		apiErr.WithCause(err)
+	}
+	return classified
 }
 
 // withDocMediaDownloadRecoveryHint keeps the final download error intact while
@@ -41,15 +99,31 @@ func withDocMediaDownloadRecoveryHint(err error, mediaType string) error {
 		hint := fmt.Sprintf("Direct document media download returned HTTP 403. To preview the image or file content, try `lark-cli docs +media-preview --token %s --output <path>`.", tokenArg)
 		appendDocRecoveryHint(problem, hint)
 	}
+	if problem.Code == 99991672 && !strings.Contains(problem.Hint, "stop retrying now") {
+		appendDocRecoveryHint(problem, docMediaAppScopeHint)
+	}
 
-	if docMediaDownloadIsRateLimit(problem) && !strings.Contains(problem.Hint, "exponential backoff") {
-		const hint = "Document media download was rate limited; stop immediate retries and retry later with exponential backoff."
-		appendDocRecoveryHint(problem, hint)
+	if docMediaIsRateLimit(problem) && !strings.Contains(problem.Hint, "exponential backoff") {
+		appendDocRecoveryHint(problem, docMediaRateLimitHint)
 	}
 	return err
 }
 
-func docMediaDownloadIsRateLimit(problem *errs.Problem) bool {
+func withDocMediaPreviewRecoveryHint(err error) error {
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem == nil {
+		return err
+	}
+	if problem.Code == 99991672 && !strings.Contains(problem.Hint, "stop retrying now") {
+		appendDocRecoveryHint(problem, docMediaAppScopeHint)
+	}
+	if docMediaIsRateLimit(problem) && !strings.Contains(problem.Hint, "exponential backoff") {
+		appendDocRecoveryHint(problem, docMediaRateLimitHint)
+	}
+	return err
+}
+
+func docMediaIsRateLimit(problem *errs.Problem) bool {
 	return problem.Subtype == errs.SubtypeRateLimit ||
 		problem.Code == 99991400 ||
 		problem.Code == http.StatusTooManyRequests
