@@ -88,8 +88,34 @@ jobs:
           fs.appendFileSync(output, `source_sha=${sourceSha}\nversion=${result.data.tagVersion}\nchannel=${channel}\nprerelease=${channel === "beta"}\n`);
           NODE
 
-  build-sign-notarize:
+  license-compliance:
     needs: preflight
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.23'
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.x'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.14.0'
+          package-manager-cache: false
+      - name: Install pinned npm
+        run: npm install --global npm@11.16.0
+      - name: Check third-party notices
+        run: make check-third-party-notices
+
+  build-sign-notarize:
+    needs: [preflight, license-compliance]
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     # This is the single approval boundary for the release. It grants access to
@@ -100,6 +126,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
@@ -113,6 +140,15 @@ jobs:
           node-version: '22.14.0'
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
+
+      - name: Verify tag still points to source commit
+        env:
+          SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "refs/tags/${TAG}:refs/tags/${TAG}"
+          [[ "$(git rev-parse "refs/tags/${TAG}^{commit}")" == "$SOURCE_SHA" ]] || { echo "Release tag changed after preflight." >&2; exit 1; }
 
       - name: Fetch build metadata
         run: python3 scripts/fetch_meta.py
@@ -192,6 +228,12 @@ jobs:
         run: |
           set -euo pipefail
           (cd dist && sha256sum --check checksums.txt)
+          for archive in dist/*.tar.gz; do
+            tar -tzf "$archive" | grep -Eq '(^|/)THIRD_PARTY_NOTICES\.md$' || { echo "${archive} is missing THIRD_PARTY_NOTICES.md." >&2; exit 1; }
+          done
+          for archive in dist/*.zip; do
+            unzip -Z1 "$archive" | grep -Eq '(^|/)THIRD_PARTY_NOTICES\.md$' || { echo "${archive} is missing THIRD_PARTY_NOTICES.md." >&2; exit 1; }
+          done
           mkdir release-candidate
           cp dist/*.tar.gz dist/*.zip dist/checksums.txt release-candidate/
           cp dist/CHANGELOG.md release-candidate/CHANGELOG.md
@@ -205,6 +247,9 @@ jobs:
             throw new Error("npm pack did not produce the expected release package");
           }
           NODE
+          npm_archive="$(find release-candidate -maxdepth 1 -type f -name '*.tgz' -print -quit)"
+          [[ -n "$npm_archive" ]] || { echo "npm pack did not create a tarball." >&2; exit 1; }
+          tar -tzf "$npm_archive" | grep -Fxq 'package/THIRD_PARTY_NOTICES.md' || { echo "npm package is missing THIRD_PARTY_NOTICES.md." >&2; exit 1; }
 
       - name: Upload release candidate
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -547,8 +592,8 @@ jobs:
           esac
 
   retry-guidance:
-    needs: [preflight, build-sign-notarize, create-draft-release, verify-macos, publish-github, publish-npm]
-    if: ${{ always() && (needs.preflight.result == 'failure' || needs.build-sign-notarize.result == 'failure' || needs.create-draft-release.result == 'failure' || needs.verify-macos.result == 'failure' || needs.publish-github.result == 'failure' || needs.publish-npm.result == 'failure') }}
+    needs: [preflight, license-compliance, build-sign-notarize, create-draft-release, verify-macos, publish-github, publish-npm]
+    if: ${{ always() && (needs.preflight.result == 'failure' || needs.license-compliance.result == 'failure' || needs.build-sign-notarize.result == 'failure' || needs.create-draft-release.result == 'failure' || needs.verify-macos.result == 'failure' || needs.publish-github.result == 'failure' || needs.publish-npm.result == 'failure') }}
     runs-on: ubuntu-22.04
     permissions:
       contents: read
@@ -556,6 +601,7 @@ jobs:
       - name: Write retry guidance
         env:
           PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+          LICENSE_RESULT: ${{ needs.license-compliance.result }}
           BUILD_RESULT: ${{ needs.build-sign-notarize.result }}
           DRAFT_RESULT: ${{ needs.create-draft-release.result }}
           VERIFY_RESULT: ${{ needs.verify-macos.result }}
@@ -571,6 +617,7 @@ jobs:
             echo "| Job | Result |"
             echo "| --- | --- |"
             echo "| preflight | ${PREFLIGHT_RESULT} |"
+            echo "| license-compliance | ${LICENSE_RESULT} |"
             echo "| build-sign-notarize | ${BUILD_RESULT} |"
             echo "| create-draft-release | ${DRAFT_RESULT} |"
             echo "| verify-macos | ${VERIFY_RESULT} |"
@@ -581,6 +628,7 @@ jobs:
               'Select the recovery action from the failed-step diagnosis. If a Draft or public Release already exists, use **Re-run failed jobs**, not **Re-run all jobs**:' \
               '' \
               '- **preflight:** network or fetch failure → retry preflight. Version/tag validation failure → correct it, then create a new tag.' \
+              '- **license-compliance:** dependency registry failure → retry this job. Missing, unidentifiable, or currently unsupported license → update the dependency/notices or complete manual review, then create a new tag.' \
               '- **build-sign-notarize:** transient build/service failure → retry build. Code or release configuration issue → correct it, then create a new tag.' \
               '- **create-draft-release:** GitHub Draft Release API/upload failure → retry draft; a partial Draft is verified and only missing assets are uploaded. Release-candidate inconsistency → delete the Draft, then retry build.' \
               '- **verify-macos:** runner or network failure → retry only the failed matrix child. Checksum, signing, notarization, or runtime failure → delete the Draft, then retry build.' \

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 Lark Technologies Pte. Ltd.
+# SPDX-License-Identifier: MIT
+
+set -euo pipefail
+
+staged_files="$(git diff --cached --name-only --diff-filter=ACMR)"
+go_dependency_change='^[+-][[:space:]]*(require|replace|exclude)[[:space:]]|^[+-][[:space:]]+[^[:space:]]+[[:space:]]+v[0-9]'
+if git diff --cached --unified=0 -- go.mod | grep -Eq "$go_dependency_change"; then
+  dependency_change=1
+else
+  package_dependency_change="$(node -e '
+const dependencies = value => ({
+  dependencies: value.dependencies ?? {},
+  optionalDependencies: value.optionalDependencies ?? {},
+});
+const [before, after] = process.argv.slice(1).map(JSON.parse);
+process.stdout.write(JSON.stringify(dependencies(before)) === JSON.stringify(dependencies(after)) ? "0" : "1");
+' "$(git show HEAD:package.json 2>/dev/null || printf '{}')" "$(git show :package.json 2>/dev/null || printf '{}')")"
+  dependency_change="$package_dependency_change"
+fi
+
+if [ "$dependency_change" = 1 ] \
+  && ! printf '%s\n' "$staged_files" | grep -Fxq 'THIRD_PARTY_NOTICES.md'; then
+  echo "Dependency metadata changed. Run 'make third-party-notices', review it, and stage THIRD_PARTY_NOTICES.md." >&2
+  exit 1
+fi

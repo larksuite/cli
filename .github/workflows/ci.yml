@@ -480,6 +480,7 @@ jobs:
   # ── Layer 4: Security & Compliance (parallel with L2-L3) ──────────
   security:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
@@ -493,6 +494,10 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: '3.x'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.14.0'
+          package-manager-cache: false
       - name: Fetch meta data
         run: python3 scripts/fetch_meta.py
       - name: Gitleaks
@@ -506,6 +511,10 @@ jobs:
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
       - name: Check dependency licenses
         run: go run github.com/google/go-licenses/v2@v2.0.1 check ./... --disallowed_types=forbidden,restricted,reciprocal,unknown
+      - name: Install pinned npm
+        run: npm install --global npm@11.16.0
+      - name: Check third-party notices
+        run: make check-third-party-notices
 
   license-header:
     if: ${{ github.event_name == 'pull_request' }}

@@ -6,7 +6,7 @@ set -euo pipefail
 
 # This verifies the release workflow's declarative contract. The shell commands
 # inside individual steps are exercised by the beta release rehearsal instead.
-ruby -ropen3 -ryaml <<'RUBY'
+ruby -rjson -ropen3 -ryaml <<'RUBY'
 workflow = YAML.load_file(".github/workflows/release.yml")
 goreleaser = YAML.load_file(".goreleaser.yml")
 
@@ -49,9 +49,8 @@ jobs.each do |job_name, job|
   end
 end
 
+expected_jobs = %w[preflight license-compliance build-sign-notarize create-draft-release verify-macos publish-github publish-npm retry-guidance]
 expect_equal(workflow.dig("env", "RELEASE_GO_VERSION"), "1.26.5", "release Go version")
-
-expected_jobs = %w[preflight build-sign-notarize create-draft-release verify-macos publish-github publish-npm retry-guidance]
 expect_equal(jobs.keys.sort, expected_jobs.sort, "release jobs")
 
 expect_equal(workflow.fetch("concurrency"), {
@@ -61,12 +60,13 @@ expect_equal(workflow.fetch("concurrency"), {
 
 expected_needs = {
   "preflight" => nil,
-  "build-sign-notarize" => "preflight",
+  "license-compliance" => "preflight",
+  "build-sign-notarize" => %w[preflight license-compliance],
   "create-draft-release" => %w[preflight build-sign-notarize],
   "verify-macos" => %w[preflight build-sign-notarize create-draft-release],
   "publish-github" => %w[preflight create-draft-release verify-macos],
   "publish-npm" => %w[preflight build-sign-notarize publish-github],
-  "retry-guidance" => %w[preflight build-sign-notarize create-draft-release verify-macos publish-github publish-npm],
+  "retry-guidance" => %w[preflight license-compliance build-sign-notarize create-draft-release verify-macos publish-github publish-npm],
 }
 expected_needs.each do |job_name, needs|
   expect_equal(jobs.fetch(job_name)["needs"], needs, "#{job_name} dependencies")
@@ -74,6 +74,7 @@ end
 
 expected_permissions = {
   "preflight" => { "contents" => "read" },
+  "license-compliance" => { "contents" => "read" },
   "build-sign-notarize" => { "contents" => "read" },
   "create-draft-release" => { "contents" => "write" },
   "verify-macos" => { "contents" => "read" },
@@ -86,6 +87,7 @@ expected_permissions.each do |job_name, permissions|
 end
 
 expected_timeouts = {
+  "license-compliance" => 15,
   "build-sign-notarize" => 45,
   "create-draft-release" => 15,
   "verify-macos" => 20,
@@ -105,7 +107,7 @@ expect_equal(jobs.fetch("publish-npm").fetch("concurrency"), {
 }, "npm publication concurrency")
 
 retry_guidance = jobs.fetch("retry-guidance")
-retry_condition = "${{ always() && (needs.preflight.result == 'failure' || needs.build-sign-notarize.result == 'failure' || needs.create-draft-release.result == 'failure' || needs.verify-macos.result == 'failure' || needs.publish-github.result == 'failure' || needs.publish-npm.result == 'failure') }}"
+retry_condition = "${{ always() && (needs.preflight.result == 'failure' || needs.license-compliance.result == 'failure' || needs.build-sign-notarize.result == 'failure' || needs.create-draft-release.result == 'failure' || needs.verify-macos.result == 'failure' || needs.publish-github.result == 'failure' || needs.publish-npm.result == 'failure') }}"
 expect_equal(retry_guidance.fetch("if"), retry_condition, "retry guidance failure condition")
 expect_equal(retry_guidance.fetch("runs-on"), "ubuntu-22.04", "retry guidance runner")
 
@@ -117,6 +119,16 @@ contract_error("retry guidance must write to the GitHub step summary") unless re
 contract_error("retry guidance must direct recoveries to failed-job retries") unless retry_step.fetch("run").include?("Re-run failed jobs")
 contract_error("retry guidance must explain Draft cleanup before a rebuild") unless retry_step.fetch("run").include?("delete the Draft, then retry build")
 contract_error("retry guidance must explain public Release cleanup after npm policy rejection") unless retry_step.fetch("run").include?("delete the public GitHub Release")
+
+license_compliance = jobs.fetch("license-compliance")
+contract_error("license-compliance must not request an Environment") if license_compliance.key?("environment")
+contract_error("license-compliance must not reference secrets") if scalar_values(license_compliance).grep(String).any? { |value| value.include?("secrets.") }
+license_checkout = license_compliance.fetch("steps").first
+expect_equal(license_checkout.dig("with", "ref"), "${{ needs.preflight.outputs.source_sha }}", "license-compliance checkout ref")
+expect_equal(license_compliance.fetch("steps").last.fetch("run"), "make check-third-party-notices", "license-compliance command")
+
+build_checkout = jobs.fetch("build-sign-notarize").fetch("steps").first
+expect_equal(build_checkout.dig("with", "ref"), "${{ needs.preflight.outputs.source_sha }}", "build checkout ref")
 
 signing_references = %w[
   secrets.MACOS_SIGN_P12
@@ -149,6 +161,11 @@ fetch_metadata_index = build_steps.index { |step| step["name"] == "Fetch build m
 prepare_key_index = build_steps.index { |step| step["name"] == "Prepare Apple notarization key" }
 contract_error("build metadata must be fetched before Apple credentials are prepared") unless fetch_metadata_index && prepare_key_index && fetch_metadata_index < prepare_key_index
 contract_error("build metadata must be fetched outside GoReleaser hooks") if goreleaser.dig("before", "hooks")&.include?("python3 scripts/fetch_meta.py")
+contract_error("build must recheck that the release tag still resolves to source_sha") unless build_steps.any? { |step| step["name"] == "Verify tag still points to source commit" }
+candidate_step = build_steps.find { |step| step["name"] == "Build release candidate" }
+candidate_run = candidate_step&.fetch("run", nil)
+contract_error("candidate archives must contain third-party notices") unless candidate_run&.include?("THIRD_PARTY_NOTICES")
+contract_error("candidate npm package must contain third-party notices") unless candidate_run&.include?("package/THIRD_PARTY_NOTICES.md")
 
 goreleaser_index = build_steps.index { |step| step["name"] == "Run GoReleaser" }
 toolchain_verify_index = build_steps.index { |step| step["name"] == "Verify release Go toolchain" }
@@ -224,6 +241,12 @@ expect_equal(macos_notarize.fetch("notarize"), {
   "timeout" => "20m",
 }, "macOS notarization inputs")
 contract_error("GoReleaser must build a darwin release artifact") unless goreleaser.fetch("builds").any? { |build| build.fetch("goos").include?("darwin") }
+contract_error("GoReleaser archives must include third-party notices") unless goreleaser.fetch("archives").all? { |archive| archive.fetch("files").include?("THIRD_PARTY_NOTICES.md") }
+
+npm_package = JSON.parse(File.read("package.json"))
+contract_error("npm package must include third-party notices") unless npm_package.fetch("files").include?("THIRD_PARTY_NOTICES.md")
+preview_package = File.read("scripts/build-pkg-pr-new.sh")
+contract_error("preview package must include third-party notices") unless preview_package.include?("THIRD_PARTY_NOTICES.md")
 
 puts "release workflow contract passed"
 RUBY

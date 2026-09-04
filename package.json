@@ -32,7 +32,8 @@
     "scripts/install-wizard.js",
     "scripts/run.js",
     "checksums.txt",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "dependencies": {
     "@clack/prompts": "^1.2.0"

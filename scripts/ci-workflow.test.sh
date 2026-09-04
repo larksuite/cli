@@ -130,6 +130,21 @@ if grep -Fq '${{ secrets.' <<<"$deterministic_section"; then
   exit 1
 fi
 
+if ! grep -Fq 'actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38' <<<"$security_section"; then
+  echo "security job must install the pinned Node runtime for third-party notices" >&2
+  exit 1
+fi
+
+if ! grep -Fq "node-version: '22.14.0'" <<<"$security_section"; then
+  echo "security job must use Node 22.14.0 when checking third-party notices" >&2
+  exit 1
+fi
+
+if ! grep -Fq 'npm install --global npm@11.16.0' <<<"$security_section" || ! grep -Fq 'make check-third-party-notices' <<<"$security_section"; then
+  echo "security job must verify generated third-party notices with pinned npm" >&2
+  exit 1
+fi
+
 if ! grep -Fq "Run CLI deterministic gate" <<<"$deterministic_section"; then
   echo "deterministic-gate should run the CLI deterministic gate step"
   exit 1
