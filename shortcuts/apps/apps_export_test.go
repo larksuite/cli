@@ -333,3 +333,90 @@ func TestAppsExport_ClassifiesFailures(t *testing.T) {
 		})
 	}
 }
+
+// TestAppsExport_AcceptsTokenPassedAsAppID pins that the locator is NOT checked
+// for the "app_" prefix. Server-side this endpoint accepts an app id or a meta
+// token in the same path segment (same contract as +get, whose --app-id is
+// documented as "app ID or meta token"), so rejecting a token here would make the
+// CLI stricter than the API and diverge from +get.
+func TestAppsExport_AcceptsTokenPassedAsAppID(t *testing.T) {
+	chdirTemp(t)
+	token := "DemoPageTokenAbCdEf123456"
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(archiveStub(token, 200, []byte("ZIPDATA"), "application/octet-stream", ""))
+	if err := runAppsShortcut(t, AppsExport,
+		[]string{"+export", "--app-id", token, "--output", "src.zip", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+}
+
+// TestAppsExport_RejectsLinkAsLocator keeps a full URL from being percent-encoded
+// into the locator segment, where the server answers "app not found for the given
+// meta_token" — a 404 that reads as "wrong app" and sends the caller off verifying
+// app ids instead of trimming the URL. Checked on whichever flag carried it.
+func TestAppsExport_RejectsLinkAsLocator(t *testing.T) {
+	cases := []struct {
+		name  string
+		flag  string
+		value string
+	}{
+		{"share url via meta-token", "--meta-token", "https://x.feishu.cn/page/DemoPageTokenAbCdEf1"},
+		{"path fragment via meta-token", "--meta-token", "page/DemoPageTokenAbCdEf1"},
+		{"inner space via meta-token", "--meta-token", "Demo Token"},
+		{"app url via app-id", "--app-id", "https://x.feishu.cn/app/app_demo"},
+		{"path fragment via app-id", "--app-id", "app/app_demo"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			factory, stdout, _ := newAppsExecuteFactory(t)
+			err := runAppsShortcut(t, AppsExport,
+				[]string{"+export", c.flag, c.value, "--as", "user"}, factory, stdout)
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("err = %T %v, want *errs.ValidationError", err, err)
+			}
+			if ve.Param != c.flag {
+				t.Fatalf("Param = %q, want %s", ve.Param, c.flag)
+			}
+			// The recovery must say "pass only the last segment"; "app not found"
+			// is exactly the wrong lesson for this input.
+			if !strings.Contains(ve.Hint, "last segment") {
+				t.Fatalf("Hint = %q, want it to point at the last segment", ve.Hint)
+			}
+		})
+	}
+}
+
+// TestAppsExport_RejectsInvalidCheckpointID keeps a non-numeric or non-positive
+// checkpoint id from reaching the gateway, where i64 binding fails with a message
+// that does not name the flag. Zero is rejected because the server reads it as
+// "latest", silently ignoring the flag the caller just set.
+func TestAppsExport_RejectsInvalidCheckpointID(t *testing.T) {
+	for _, value := range []string{"abc", "0", "-1", "1.5"} {
+		t.Run(value, func(t *testing.T) {
+			factory, stdout, _ := newAppsExecuteFactory(t)
+			err := runAppsShortcut(t, AppsExport,
+				[]string{"+export", "--app-id", "app_x", "--checkpoint-id", value, "--as", "user"}, factory, stdout)
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("err = %T %v, want *errs.ValidationError", err, err)
+			}
+			if ve.Param != "--checkpoint-id" {
+				t.Fatalf("Param = %q, want --checkpoint-id", ve.Param)
+			}
+		})
+	}
+}
+
+// TestAppsExport_AcceptsValidCheckpointID guards the validator against being so
+// strict it blocks the happy path.
+func TestAppsExport_AcceptsValidCheckpointID(t *testing.T) {
+	chdirTemp(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(archiveStub("app_x", 200, []byte("ZIPDATA"), "application/octet-stream", ""))
+	if err := runAppsShortcut(t, AppsExport,
+		[]string{"+export", "--app-id", "app_x", "--checkpoint-id", "42", "--output", "src.zip", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+}
