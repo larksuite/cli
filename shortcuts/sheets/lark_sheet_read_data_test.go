@@ -49,20 +49,6 @@ func TestReadDataShortcuts_DryRun(t *testing.T) {
 			},
 		},
 		{
-			name:     "+cells-get include=raw_value preserves source value types",
-			sc:       CellsGet,
-			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2", "--include", "style,raw_value"},
-			toolName: "get_cell_ranges",
-			wantInput: map[string]interface{}{
-				"excel_id":            testToken,
-				"sheet_id":            testSheetID,
-				"ranges":              []interface{}{"A1:B2"},
-				"include_styles":      true,
-				"value_render_option": "raw_value",
-				"cell_limit":          float64(unboundedReadLimit),
-			},
-		},
-		{
 			// --include truncation toggles include_truncation_info so the tool
 			// estimates and returns per-cell isRowTruncated / isColTruncated.
 			name:     "+cells-get include=truncation",
@@ -215,15 +201,6 @@ func TestReadData_RequiresRange(t *testing.T) {
 			requireValidation(t, err, "--range is required")
 		})
 	}
-}
-
-func TestCellsGet_FormulaAndRawValueAreMutuallyExclusive(t *testing.T) {
-	t.Parallel()
-	_, _, err := runShortcutCapturingErr(t, CellsGet, []string{
-		"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:B2",
-		"--include", "formula,raw_value", "--dry-run",
-	})
-	requireValidation(t, err, "mutually exclusive")
 }
 
 // TestCsvGet_RangeOptionalDefaultsToFullSheet pins the whole-sheet default:

@@ -8,7 +8,8 @@ default every worksheet is checked; pass --worksheet-id to restrict the check
 to one worksheet reference_id.
 
 Numeric source checks sample at most 50 data points per series and request at
-most 2000 source cells per chart, including headers and gaps between series.
+most 2000 source cells per chart across the style and typed-value reads,
+including headers and gaps between series.
 Sampled zero/constant values do not establish a whole-series issue.
 
 Exit codes:
@@ -373,6 +374,52 @@ def _read_cells(
             )
         )
     return cache[key]
+
+
+def _read_typed_table(
+    cache: CellCache,
+    locator: dict[str, str],
+    *,
+    sheet_id: str | None,
+    sheet_name: str | None,
+    cell_range: str,
+    timeout: int,
+) -> tuple[list[list[Any]], list[str], bool]:
+    selector = f"id:{sheet_id}" if sheet_id else f"name:{sheet_name}"
+    key = (selector, cell_range, "typed_table", False)
+    if key not in cache:
+        cache[key] = envelope_data(
+            run_sheets(
+                "+table-get",
+                **locator,
+                **({"sheet_id": sheet_id} if sheet_id else {"sheet_name": sheet_name}),
+                flags={"range": cell_range, "no-header": True},
+                timeout=timeout,
+            )
+        )
+    data = cache[key]
+    sheets = data.get("sheets")
+    if not isinstance(sheets, list) or len(sheets) != 1 or not isinstance(sheets[0], dict):
+        return [], [], True
+    table = sheets[0]
+    rows = table.get("data")
+    columns = table.get("columns")
+    dtypes = table.get("dtypes")
+    if not isinstance(rows, list) or not isinstance(columns, list) or not isinstance(dtypes, dict):
+        return [], [], True
+    def value_kind(dtype: Any) -> str:
+        value = str(dtype or "").lower()
+        if value in {"number", "int64", "float64"}:
+            return "number"
+        if value in {"bool", "boolean"}:
+            return "bool"
+        if value.startswith("datetime"):
+            return "date"
+        return "string"
+
+    types = [value_kind(dtypes.get(str(column))) for column in columns]
+    truncated = bool(data.get("truncated")) or bool(table.get("truncated"))
+    return rows, types, truncated
 
 
 def _chart_snapshot(chart: dict[str, Any]) -> dict[str, Any]:
@@ -792,6 +839,12 @@ def _numeric_source_issues(
     degenerate_series: list[dict[str, Any]] = []
     series_profiles: list[SeriesProfile] = []
     remaining_source_cells = MAX_CELL_READ_SIZE
+    remaining_dimension_spans = sum(
+        max(local_index for _, _, local_index in ref_dimensions)
+        - min(local_index for _, _, local_index in ref_dimensions)
+        + 1
+        for ref_dimensions in mapped_by_ref.values()
+    )
     for (source_sheet, source_range, bounds), ref_dimensions in mapped_by_ref.items():
         dimension_start = bounds[2] if direction == "column" else bounds[0]
         selected = {
@@ -800,16 +853,18 @@ def _numeric_source_issues(
         }
         dimension_span = max(selected) - min(selected) + 1
         header_points = 0 if detached else 1
-        point_count = min(
-            MAX_SOURCE_SAMPLE_POINTS + header_points,
-            remaining_source_cells // dimension_span,
-        )
-        if point_count <= header_points:
+        # Each sampled rectangle is read twice: cells-get supplies coordinates,
+        # styles, and hidden/filter semantics; table-get supplies typed values.
+        cells_per_dimension = remaining_source_cells // remaining_dimension_spans
+        remaining_dimension_spans -= dimension_span
+        sample_points = min(MAX_SOURCE_SAMPLE_POINTS, max(0, (cells_per_dimension - header_points) // 2))
+        if sample_points == 0:
             unverifiable.append({
                 "chart_id": chart_id,
                 "reason": f"source sampling 2000-cell budget cannot cover {source_sheet}!{source_range}",
             })
             continue
+        point_count = sample_points + header_points
         if direction == "column":
             checked_bounds = (
                 bounds[0],
@@ -824,7 +879,12 @@ def _numeric_source_issues(
                 bounds[2],
                 min(bounds[3], bounds[2] + point_count - 1),
             )
-        remaining_source_cells -= _bounds_area(checked_bounds)
+        typed_bounds = (
+            (checked_bounds[0] + header_points, checked_bounds[1], checked_bounds[2], checked_bounds[3])
+            if direction == "column"
+            else (checked_bounds[0], checked_bounds[1], checked_bounds[2] + header_points, checked_bounds[3])
+        )
+        remaining_source_cells -= _bounds_area(checked_bounds) + _bounds_area(typed_bounds)
         checked_range = _format_a1_bounds(checked_bounds)
         same_sheet = source_sheet == owner_sheet_name
         cells_data = _read_cells(
@@ -833,15 +893,34 @@ def _numeric_source_issues(
             sheet_id=owner_sheet_id if same_sheet else None,
             sheet_name=None if same_sheet else source_sheet,
             cell_range=checked_range,
-            include="value,style,raw_value",
+            include="value,style",
             skip_hidden=skip_hidden,
             timeout=timeout,
         )
-        truncated = _cells_truncated(cells_data)
-        if truncated:
+        cells_truncated = _cells_truncated(cells_data)
+        typed_rows, typed_columns, table_truncated = _read_typed_table(
+            cache,
+            locator,
+            sheet_id=owner_sheet_id if same_sheet else None,
+            sheet_name=None if same_sheet else source_sheet,
+            cell_range=_format_a1_bounds(typed_bounds),
+            timeout=timeout,
+        )
+        if cells_truncated:
             unverifiable.append(
                 {"chart_id": chart_id, "reason": f"cells-get truncated for {source_sheet}!{checked_range}"}
             )
+        if table_truncated:
+            unverifiable.append(
+                {
+                    "chart_id": chart_id,
+                    "reason": (
+                        "table-get truncated or returned invalid typed data for "
+                        f"{source_sheet}!{_format_a1_bounds(typed_bounds)}"
+                    ),
+                }
+            )
+        truncated = cells_truncated or table_truncated
         states = {
             coordinate: {
                 "zero": False,
@@ -850,6 +929,8 @@ def _numeric_source_issues(
                 "sample_point_count": 0,
                 "numeric_value_count": 0,
                 "unique_numeric_values": set(),
+                "nonempty_value_count": 0,
+                "raw_types": set(),
             }
             for coordinate in selected
         }
@@ -864,33 +945,50 @@ def _numeric_source_issues(
             ):
                 continue
             states[coordinate]["sample_point_count"] += 1
-            value = cell.get("value") if isinstance(cell, dict) else None
+            row_offset = row_number - typed_bounds[0]
+            column_offset = column_index - typed_bounds[2]
+            value = (
+                typed_rows[row_offset][column_offset]
+                if 0 <= row_offset < len(typed_rows)
+                and isinstance(typed_rows[row_offset], list)
+                and 0 <= column_offset < len(typed_rows[row_offset])
+                else None
+            )
+            raw_type = typed_columns[column_offset] if 0 <= column_offset < len(typed_columns) else ""
+            if value not in (None, ""):
+                states[coordinate]["nonempty_value_count"] += 1
+                states[coordinate]["raw_types"].add(raw_type)
             _update_series_state(states[coordinate], value)
             number_format = (
                 cell.get("cell_styles", {}).get("number_format")
                 if isinstance(cell, dict) and isinstance(cell.get("cell_styles"), dict)
                 else None
             )
-            reason = ""
-            uses_text_format = str(number_format or "").strip() == "@"
-            if isinstance(value, (int, float)) and not isinstance(value, bool) and uses_text_format:
-                reason = "numeric_value_uses_text_format"
-            elif isinstance(value, str) and _looks_numeric(value):
-                reason = "numeric_value_stored_as_text"
-            if not reason:
-                continue
-            dimension_index, role = dimension
-            key = (dimension_index, role, source_sheet, source_range, checked_range, reason)
-            issue_counts[key] = issue_counts.get(key, 0) + 1
-            samples = issue_groups.setdefault(key, [])
-            if len(samples) < sample_limit:
-                samples.append(f"{index_to_column(column_index)}{row_number}")
+            if str(number_format or "").strip() == "@" and _looks_numeric(str(value or "")):
+                states[coordinate]["raw_types"].add("string")
 
         if truncated:
             continue
         zero_candidates = {
             coordinate for coordinate, state in states.items() if not state["nonzero"]
         }
+        for coordinate, state in states.items():
+            if (
+                state["nonempty_value_count"] > 0
+                and state["numeric_value_count"] == state["nonempty_value_count"]
+                and "string" in state["raw_types"]
+            ):
+                dimension_index, role = selected[coordinate]
+                key = (
+                    dimension_index,
+                    role,
+                    source_sheet,
+                    source_range,
+                    checked_range,
+                    "numeric_value_stored_as_text",
+                )
+                issue_counts[key] = 1
+                issue_groups[key] = []
         data_start = bounds[0] + (0 if detached else 1)
         data_column = bounds[2] + (0 if detached else 1)
         for coordinate, state in states.items():

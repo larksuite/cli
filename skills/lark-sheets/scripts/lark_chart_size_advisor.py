@@ -186,7 +186,7 @@ def _read_ranges(
                 stage=f"{stage_prefix} {ref}",
                 **locator,
                 **selector,
-                flags={"range": cell_range, "include": "value,raw_value"},
+                flags={"range": cell_range, "include": "value"},
                 timeout=timeout,
             )
         )
