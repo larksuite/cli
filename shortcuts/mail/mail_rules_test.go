@@ -1590,7 +1590,7 @@ func TestMailRuleReorderCompletesPartialOrderAndSkipsPOSTOnInvalidList(t *testin
 	t.Run("partial order posts complete list once", func(t *testing.T) {
 		f, stdout, _, reg := mailShortcutTestFactory(t)
 		reg.Register(mailRuleListStub(mailRuleTestRawRule("a", "A"), mailRuleTestRawRule("b", "B"), mailRuleTestRawRule("c", "C")))
-		post := &httpmock.Stub{Method: "POST", URL: "open-apis/mail/v1/user_mailboxes/me/rules/reorder", Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{}}}
+		post := &httpmock.Stub{Method: "POST", URL: "open-apis/mail/v1/user_mailboxes/me/rules/reorder", Optional: true, Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{}}}
 		reg.Register(post)
 		if err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--rule-ids", "c,a", "--format", "json"}, f, stdout); err != nil {
 			t.Fatalf("run partial reorder error = %v", err)
@@ -1604,7 +1604,7 @@ func TestMailRuleReorderCompletesPartialOrderAndSkipsPOSTOnInvalidList(t *testin
 	t.Run("malformed list does not post", func(t *testing.T) {
 		f, stdout, _, reg := mailShortcutTestFactory(t)
 		reg.Register(mailRuleListStub(mailRuleTestRawRule("a", "A"), mailRuleTestRawRule("a", "duplicate")))
-		post := &httpmock.Stub{Method: "POST", URL: "open-apis/mail/v1/user_mailboxes/me/rules/reorder", Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{}}}
+		post := &httpmock.Stub{Method: "POST", URL: "open-apis/mail/v1/user_mailboxes/me/rules/reorder", Optional: true, Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{}}}
 		reg.Register(post)
 		err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--rule-ids", "a", "--format", "json"}, f, stdout)
 		if err == nil || !strings.Contains(err.Error(), "duplicate rule_id") {
