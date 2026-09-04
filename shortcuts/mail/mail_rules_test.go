@@ -1275,9 +1275,7 @@ func TestMailRuleReorderShortcutPostsFullAndMoveOrders(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected list failure")
 		}
-		if !strings.Contains(err.Error(), "list_rules_failed") {
-			t.Fatalf("error = %v, want list_rules_failed", err)
-		}
+		assertMailRuleErrorContract(t, err, errs.CategoryAPI, errs.SubtypeUnknown, "list_rules_failed", "list unavailable")
 		if len(post.CapturedBodies) != 0 {
 			t.Fatalf("POST should not be sent after list failure, captured %d request(s)", len(post.CapturedBodies))
 		}
@@ -1296,10 +1294,25 @@ func TestMailRuleReorderShortcutPostsFullAndMoveOrders(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected reorder failure")
 		}
-		if !strings.Contains(err.Error(), "reorder_failed") {
-			t.Fatalf("error = %v, want reorder_failed", err)
-		}
+		assertMailRuleErrorContract(t, err, errs.CategoryAPI, errs.SubtypeUnknown, "reorder_failed", "reorder unavailable")
 	})
+}
+
+func assertMailRuleErrorContract(t *testing.T, err error, category errs.Category, subtype errs.Subtype, wantMessages ...string) {
+	t.Helper()
+
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error type = %T, want typed errs problem", err)
+	}
+	if problem.Category != category || problem.Subtype != subtype {
+		t.Fatalf("problem = %s/%s, want %s/%s", problem.Category, problem.Subtype, category, subtype)
+	}
+	for _, want := range wantMessages {
+		if !strings.Contains(problem.Message, want) {
+			t.Fatalf("problem message = %q, want substring %q", problem.Message, want)
+		}
+	}
 }
 
 func TestMailRuleUpdateReplacesUnknownConditionCollection(t *testing.T) {
