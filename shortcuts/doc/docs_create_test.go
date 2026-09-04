@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -302,6 +304,398 @@ func TestDocsCreateV2PreservesBackendURL(t *testing.T) {
 	}
 }
 
+func TestDocsCreateV2LargeXMLDryRunPlansCreateThenAppend(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	content := "<title>Large</title>\n" + strings.Repeat("<p>x</p>\n", 5_000)
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--content", content,
+		"--dry-run",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("execute docs +create dry-run: %v", err)
+	}
+	var envelope struct {
+		Data struct {
+			API []common.DryRunAPICall `json:"api"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode dry-run output: %v\n%s", err, stdout)
+	}
+	if len(envelope.Data.API) != 3 {
+		t.Fatalf("dry-run API calls = %d, want create + 2 appends", len(envelope.Data.API))
+	}
+	if envelope.Data.API[0].Method != "POST" || envelope.Data.API[0].URL != "/open-apis/docs_ai/v1/documents" {
+		t.Fatalf("create call = %#v", envelope.Data.API[0])
+	}
+	if envelope.Data.API[1].Method != "PUT" || envelope.Data.API[1].URL != "/open-apis/docs_ai/v1/documents/<created_document_id>" {
+		t.Fatalf("append call = %#v", envelope.Data.API[1])
+	}
+	createBody, _ := envelope.Data.API[0].Body.(map[string]interface{})
+	appendBody, _ := envelope.Data.API[1].Body.(map[string]interface{})
+	lastAppendBody, _ := envelope.Data.API[2].Body.(map[string]interface{})
+	if got := strings.Count(common.GetString(createBody, "content"), "<p>x</p>"); got != 1_999 {
+		t.Fatalf("create paragraph count = %d, want 1999", got)
+	}
+	if got := strings.Count(common.GetString(appendBody, "content"), "<p>x</p>"); got != 2_000 {
+		t.Fatalf("append paragraph count = %d, want 2000", got)
+	}
+	if got := strings.Count(common.GetString(lastAppendBody, "content"), "<p>x</p>"); got != 1_001 {
+		t.Fatalf("last append paragraph count = %d, want 1001", got)
+	}
+	if appendBody["command"] != "block_insert_after" || appendBody["block_id"] != "-1" || appendBody["revision_id"] != float64(-1) && appendBody["revision_id"] != -1 {
+		t.Fatalf("append body = %#v", appendBody)
+	}
+}
+
+func TestDocsCreateV2LargeXMLExecutesSerialAppendBatches(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	createStub := registerDocsAIStub(reg, "POST", "/open-apis/docs_ai/v1/documents", map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_batched",
+			"revision_id": 1,
+			"new_blocks":  []interface{}{map[string]interface{}{"block_id": "create-block"}},
+		},
+	})
+	appendStub := registerDocsAIStub(reg, "PUT", "/open-apis/docs_ai/v1/documents/doxcn_batched", map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_batched",
+			"revision_id": 3,
+			"new_blocks":  []interface{}{map[string]interface{}{"block_id": "append-block"}},
+		},
+	})
+	appendStub.Reusable = true
+	content := "<title>Large</title>" + strings.Repeat("<p>x</p>", 10_000)
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create", "--content", content, "--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("execute docs +create: %v", err)
+	}
+	if len(createStub.CapturedBodies) != 1 || len(appendStub.CapturedBodies) != 5 {
+		t.Fatalf("request counts: create=%d append=%d", len(createStub.CapturedBodies), len(appendStub.CapturedBodies))
+	}
+	data := decodeDocsCreateEnvelope(t, stdout)
+	doc := common.GetMap(data, "document")
+	if got := len(common.GetSlice(doc, "new_blocks")); got != 6 {
+		t.Fatalf("aggregated new_blocks = %d, want 6", got)
+	}
+	if got := doc["revision_id"]; got != float64(3) {
+		t.Fatalf("revision_id = %#v, want 3", got)
+	}
+}
+
+func TestDocsCreateV2LargeXMLAppendFailureReturnsPartialResult(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	registerDocsCreateAPIStub(reg, map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_partial_batch",
+			"revision_id": 1,
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/docs_ai/v1/documents/doxcn_partial_batch",
+		Body: map[string]interface{}{
+			"code": 12345,
+			"msg":  "append failed",
+		},
+	})
+	content := "<title>Large</title>" + strings.Repeat("<p>x</p>", 5_000)
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create", "--content", content, "--as", "user",
+	})
+	var partial *output.PartialFailureError
+	if !errors.As(err, &partial) {
+		t.Fatalf("error = %T %v, want PartialFailureError", err, err)
+	}
+	var envelope map[string]interface{}
+	if decodeErr := json.Unmarshal(stdout.Bytes(), &envelope); decodeErr != nil {
+		t.Fatalf("decode stdout: %v\n%s", decodeErr, stdout)
+	}
+	if envelope["ok"] != false {
+		t.Fatalf("partial result ok = %#v, want false", envelope["ok"])
+	}
+	data := common.GetMap(envelope, "data")
+	batch := common.GetMap(data, "create_batches")
+	if batch["total_batches"] != float64(3) || batch["completed_batches"] != float64(1) || batch["failed_batch"] != float64(2) {
+		t.Fatalf("create_batches = %#v", batch)
+	}
+	failure := common.GetMap(batch, "error")
+	if failure["code"] != float64(12345) || !strings.Contains(common.GetString(failure, "message"), "append failed") {
+		t.Fatalf("create_batches.error = %#v, want typed append failure", failure)
+	}
+	if got := common.GetString(common.GetMap(data, "document"), "document_id"); got != "doxcn_partial_batch" {
+		t.Fatalf("document_id = %q", got)
+	}
+}
+
+func TestDocsCreateV2MarkdownUsesClientBatching(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	content := strings.Repeat("paragraph\n\n", 6_000)
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create", "--doc-format", "markdown", "--content", content, "--dry-run", "--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("execute markdown dry-run: %v", err)
+	}
+	var envelope struct {
+		Data struct {
+			API []common.DryRunAPICall `json:"api"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode dry-run output: %v", err)
+	}
+	if len(envelope.Data.API) != 4 || envelope.Data.API[0].Method != "POST" || envelope.Data.API[1].Method != "PUT" || envelope.Data.API[2].Method != "PUT" || envelope.Data.API[3].Method != "PUT" {
+		t.Fatalf("markdown dry-run calls = %#v", envelope.Data.API)
+	}
+}
+
+func TestDocsCreateV2MarkdownTitleFlagUsesClientBatchingAt5001(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	content := strings.Repeat("paragraph\n\n", 5_000)
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create", "--title", "Boundary", "--doc-format", "markdown", "--content", content, "--dry-run", "--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("execute markdown dry-run: %v", err)
+	}
+	var envelope struct {
+		Data struct {
+			API []common.DryRunAPICall `json:"api"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode dry-run output: %v", err)
+	}
+	if len(envelope.Data.API) != 3 || envelope.Data.API[0].Method != "POST" || envelope.Data.API[1].Method != "PUT" || envelope.Data.API[2].Method != "PUT" {
+		t.Fatalf("markdown title dry-run calls = %#v", envelope.Data.API)
+	}
+}
+
+func TestDocsCreateV2RejectsTotalBlockLimitBeforeCreate(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	createStub := &httpmock.Stub{
+		Method:   "POST",
+		URL:      "/open-apis/docs_ai/v1/documents",
+		Optional: true,
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{},
+		},
+	}
+	reg.Register(createStub)
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create", "--content", strings.Repeat("<p>x</p>", 40_000), "--as", "user",
+	})
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--content")
+	if len(createStub.CapturedBodies) != 0 {
+		t.Fatalf("create was called for oversized content")
+	}
+}
+
+func TestDocsCreateV2RejectsCompatibleXMLTotalBlockLimitBeforeCreate(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	createStub := &httpmock.Stub{
+		Method:   "POST",
+		URL:      "/open-apis/docs_ai/v1/documents",
+		Optional: true,
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{},
+		},
+	}
+	reg.Register(createStub)
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create", "--content", "<callout>" + strings.Repeat("<p>x</p>", 40_000), "--as", "user",
+	})
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--content")
+	if len(createStub.CapturedBodies) != 0 {
+		t.Fatalf("create was called for oversized compatibility XML")
+	}
+}
+
+func TestDocsCreateV2RejectsContentLimitsBeforeCreate(t *testing.T) {
+	tests := []struct {
+		name    string
+		format  string
+		content string
+		actual  int
+		limit   int
+	}{
+		{
+			name:    "xml block characters",
+			format:  "xml",
+			content: `<title>Limit</title><p>` + strings.Repeat("x", 100_001) + `</p>`,
+			actual:  100_001,
+			limit:   100_000,
+		},
+		{
+			name:    "markdown block characters",
+			format:  "markdown",
+			content: "# Limit\n\n" + strings.Repeat("x", 100_001),
+			actual:  100_001,
+			limit:   100_000,
+		},
+		{
+			name:    "xml late block characters",
+			format:  "xml",
+			content: `<title>Limit</title>` + strings.Repeat(`<p>prefix</p>`, 1_999) + `<p>` + strings.Repeat("x", 100_001) + `</p>`,
+			actual:  100_001,
+			limit:   100_000,
+		},
+		{
+			name:    "xml table cells",
+			format:  "xml",
+			content: `<title>Limit</title>` + docsCreateXMLTable(2_001, 1),
+			actual:  2_001,
+			limit:   2_000,
+		},
+		{
+			name:    "xml table columns",
+			format:  "xml",
+			content: `<title>Limit</title>` + docsCreateXMLTable(1, 101),
+			actual:  101,
+			limit:   100,
+		},
+		{
+			name:    "xml late table columns",
+			format:  "xml",
+			content: `<title>Limit</title>` + strings.Repeat(`<p>prefix</p>`, 1_899) + docsCreateXMLTable(1, 101),
+			actual:  101,
+			limit:   100,
+		},
+		{
+			name:    "markdown gfm table columns",
+			format:  "markdown",
+			content: docsCreateMarkdownTable(2, 101),
+			actual:  101,
+			limit:   100,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+			createStub := &httpmock.Stub{
+				Method: "POST", URL: "/open-apis/docs_ai/v1/documents", Optional: true,
+				Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+			}
+			reg.Register(createStub)
+
+			err := runDocsCreateShortcut(t, f, stdout, []string{
+				"+create", "--doc-format", tt.format, "--content", tt.content, "--as", "user",
+			})
+			assertDocsCreateLimitError(t, err, tt.actual, tt.limit)
+			if len(createStub.CapturedBodies) != 0 {
+				t.Fatalf("create API was called for %s", tt.name)
+			}
+		})
+	}
+}
+
+func TestDocsCreateV2ContentLimitRunsBeforeLocalResourcePreparation(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	createStub := &httpmock.Stub{
+		Method: "POST", URL: "/open-apis/docs_ai/v1/documents", Optional: true,
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+	}
+	reg.Register(createStub)
+	content := `<p>` + strings.Repeat("x", 100_001) + `</p><img path="@missing.png"/>`
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create", "--content", content, "--as", "user",
+	})
+
+	assertDocsCreateLimitError(t, err, 100_001, 100_000)
+	if len(createStub.CapturedBodies) != 0 {
+		t.Fatal("create API was called before content/resource preflight")
+	}
+}
+
+func TestDocsCreateV2ContentLimitAcceptsExactBoundaries(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{name: "block characters", content: `<title>Limit</title><p>` + strings.Repeat("x", 100_000) + `</p>`},
+		{name: "table columns", content: `<title>Limit</title>` + docsCreateXMLTable(1, 100)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+			createStub := registerDocsAIStub(reg, "POST", "/open-apis/docs_ai/v1/documents", map[string]interface{}{
+				"document": map[string]interface{}{"document_id": "doxcn_boundary", "revision_id": 1},
+			})
+
+			err := runDocsCreateShortcut(t, f, stdout, []string{
+				"+create", "--content", tt.content, "--as", "user",
+			})
+			if err != nil {
+				t.Fatalf("exact boundary rejected: %v", err)
+			}
+			if len(createStub.CapturedBodies) != 1 {
+				t.Fatalf("create requests = %d, want 1", len(createStub.CapturedBodies))
+			}
+		})
+	}
+}
+
+func TestDocsCreateV2RejectsUnsplittableFirstContainerBeforeCreate(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	createStub := &httpmock.Stub{
+		Method:   "POST",
+		URL:      "/open-apis/docs_ai/v1/documents",
+		Optional: true,
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{},
+		},
+	}
+	reg.Register(createStub)
+	content := "<callout>" + strings.Repeat("<p>x</p>", 4_999) + "</callout>"
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create", "--content", content, "--as", "user",
+	})
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--content")
+	if len(createStub.CapturedBodies) != 0 {
+		t.Fatalf("create was called for an unsplittable initial container")
+	}
+}
+
+func TestMergeCreateBatchDataAggregatesResourceBlocksAndRevision(t *testing.T) {
+	createData := map[string]interface{}{
+		"document": map[string]interface{}{
+			"revision_id": 1,
+			"new_blocks":  []interface{}{map[string]interface{}{"block_id": "a", "block_token": "marker-a"}},
+		},
+	}
+	batchData := map[string]interface{}{
+		"document": map[string]interface{}{
+			"revision_id": 2,
+			"new_blocks":  []interface{}{map[string]interface{}{"block_id": "b", "block_token": "marker-b"}},
+		},
+	}
+
+	mergeCreateBatchData(createData, batchData)
+
+	doc := common.GetMap(createData, "document")
+	if len(common.GetSlice(doc, "new_blocks")) != 2 || doc["revision_id"] != 2 {
+		t.Fatalf("merged document = %#v", doc)
+	}
+}
+
 func TestDocsCreateAPIVersionCompatFlagIsIgnored(t *testing.T) {
 	t.Parallel()
 
@@ -442,4 +836,45 @@ func decodeDocsCreateEnvelope(t *testing.T, stdout *bytes.Buffer) map[string]int
 		t.Fatalf("missing data in output envelope: %#v", envelope)
 	}
 	return data
+}
+
+func assertDocsCreateLimitError(t *testing.T, err error, actual, limit int) {
+	t.Helper()
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--content")
+	want := fmt.Sprintf("%d", actual)
+	wantLimit := fmt.Sprintf("limit %d", limit)
+	if !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), wantLimit) {
+		t.Fatalf("limit error = %q, want actual %d and limit %d", err, actual, limit)
+	}
+}
+
+func docsCreateXMLTable(rows, columns int) string {
+	var content strings.Builder
+	content.WriteString("<table>")
+	for row := 0; row < rows; row++ {
+		content.WriteString("<tr>")
+		for column := 0; column < columns; column++ {
+			content.WriteString("<td><p>x</p></td>")
+		}
+		content.WriteString("</tr>")
+	}
+	content.WriteString("</table>")
+	return content.String()
+}
+
+func docsCreateMarkdownTable(rows, columns int) string {
+	var content strings.Builder
+	writeRow := func(value string) {
+		content.WriteByte('|')
+		for column := 0; column < columns; column++ {
+			content.WriteString(" " + value + " |")
+		}
+		content.WriteByte('\n')
+	}
+	writeRow("h")
+	writeRow("---")
+	for row := 1; row < rows; row++ {
+		writeRow("x")
+	}
+	return content.String()
 }

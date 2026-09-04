@@ -61,6 +61,9 @@ func validateCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 			WithParam("--content").
 			WithHint("provide XML or Markdown directly, use --content \"@relative/path\", or pass --title to create a title-only document")
 	}
+	if err := validateCreateContentPreflight(runtime); err != nil {
+		return err
+	}
 	if content != "" {
 		input, err := resolveDocsV2ContentReferenceMap(runtime)
 		if err != nil {
@@ -74,7 +77,7 @@ func validateCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 }
 
 func dryRunCreateV2(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	body, resources, err := buildCreateBodyWithPreparedInput(runtime)
+	plan, resources, err := buildCreateWritePlan(runtime)
 	if err != nil {
 		return common.NewDryRunAPI().Set("error", err.Error())
 	}
@@ -85,13 +88,14 @@ func dryRunCreateV2(_ context.Context, runtime *common.RuntimeContext) *common.D
 	dry := common.NewDryRunAPI().
 		POST("/open-apis/docs_ai/v1/documents").
 		Desc(desc).
-		Body(body)
+		Body(plan.CreateBody)
+	dry = appendCreateBatchDryRuns(dry, plan)
 	dry = appendRemoteDocImageDownloadsDryRun(dry, resources)
 	return appendLocalDocResourcesDryRun(dry, "<created_document_id>", resources)
 }
 
 func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
-	body, resources, err := buildCreateBodyWithPreparedInput(runtime)
+	plan, resources, err := buildCreateWritePlan(runtime)
 	if err != nil {
 		return err
 	}
@@ -99,7 +103,7 @@ func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 		return err
 	}
 
-	data, err := doDocAPI(runtime, "POST", "/open-apis/docs_ai/v1/documents", body)
+	data, err := doDocAPI(runtime, "POST", "/open-apis/docs_ai/v1/documents", plan.CreateBody)
 	if err != nil {
 		return err
 	}
@@ -109,6 +113,9 @@ func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 
 	augmentDocsCreatePermission(runtime, data)
 	fallbackDocsCreateURLV2(runtime, data)
+	if err := executeCreateAppendBatches(runtime, plan, data, resources); err != nil {
+		return err
+	}
 	if len(resources) > 0 {
 		doc, _ := data["document"].(map[string]interface{})
 		if err := finalizeLocalDocResources(runtime, strings.TrimSpace(common.GetString(doc, "document_id")), data, resources); err != nil {
