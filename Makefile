@@ -23,12 +23,17 @@ PREFIX   ?= /usr/local
 TEST_GOARCH := $(or $(GOARCH),$(shell go env GOARCH))
 RACE_FLAG := $(if $(filter riscv64,$(TEST_GOARCH)),,-race)
 
-.PHONY: all build vet fmt-check script-test test unit-test live-skills-test integration-test examples-build quality-gate install uninstall clean fetch_meta gitleaks sidecar-test
+.PHONY: all build vet fmt-check script-test test unit-test live-skills-test integration-test examples-build quality-gate affordance-coverage-warning install uninstall clean fetch_meta gitleaks sidecar-test
 
 all: test
 
 fetch_meta:
 	python3 scripts/fetch_meta.py
+
+# Manual inventory only: reports missing native-command affordances as warnings
+# and always exits successfully, so platform metadata changes do not block PRs.
+affordance-coverage-warning: fetch_meta
+	LARKSUITE_CLI_REMOTE_META=off go run ./internal/qualitygate/cmd/affordance-coverage-warning
 
 build: fetch_meta
 	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY) .

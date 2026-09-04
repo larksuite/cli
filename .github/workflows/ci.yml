@@ -103,6 +103,22 @@ jobs:
       - name: Run tests
         run: go test -v -race -count=1 -timeout=5m ./cmd/... ./internal/... ./shortcuts/... ./extension/...
 
+  affordance-consistency:
+    needs: fast-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: '3.x'
+      - name: Fetch meta data
+        run: python3 scripts/fetch_meta.py
+      - name: Check native affordance consistency
+        run: LARKSUITE_CLI_CHECK_AFFORDANCE_CONSISTENCY=1 go test ./cmd ./internal/affordance -run '^TestNativeAffordance(HeadingsMatchMetadata|ExamplesMatchCommands)$' -count=1
+
   lint:
     needs: fast-gate
     runs-on: ubuntu-latest
@@ -520,7 +536,7 @@ jobs:
   # ── Results Gate (single required check for branch protection) ─────
   results:
     if: ${{ always() }}
-    needs: [fast-gate, unit-test, lint, script-test, deterministic-gate, coverage, deadcode, e2e-dry-run, e2e-live, security, license-header, plugin-integration, sidecar-integration]
+    needs: [fast-gate, unit-test, affordance-consistency, lint, script-test, deterministic-gate, coverage, deadcode, e2e-dry-run, e2e-live, security, license-header, plugin-integration, sidecar-integration]
     runs-on: ubuntu-latest
     steps:
       - name: Evaluate results
@@ -531,6 +547,7 @@ jobs:
           echo "|-------|-----|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| L1 | fast-gate | ${{ needs.fast-gate.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L2 | unit-test | ${{ needs.unit-test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| L2 | affordance-consistency | ${{ needs.affordance-consistency.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L2 | lint | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L2 | script-test | ${{ needs.script-test.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L2 | deterministic-gate | ${{ needs.deterministic-gate.result }} |" >> $GITHUB_STEP_SUMMARY
@@ -557,6 +574,7 @@ jobs:
           for result in \
             "${{ needs.fast-gate.result }}" \
             "${{ needs.unit-test.result }}" \
+            "${{ needs.affordance-consistency.result }}" \
             "${{ needs.lint.result }}" \
             "${{ needs.script-test.result }}" \
             "${{ needs.deterministic-gate.result }}" \
