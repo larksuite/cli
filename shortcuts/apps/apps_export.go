@@ -11,10 +11,12 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/charcheck"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/util"
@@ -57,13 +59,8 @@ var AppsExport = common.Shortcut{
 		{Name: "output", Desc: "local output path (default: <app_id>.zip in cwd)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		if err := requireExactlyOneExportSource(rctx); err != nil {
+		if err := validateExportFlags(rctx); err != nil {
 			return err
-		}
-		if appID := strings.TrimSpace(rctx.Str("app-id")); appID != "" {
-			if _, err := requireAppID(appID); err != nil {
-				return err
-			}
 		}
 		return rejectOutputTraversal(rctx.Str("output"))
 	},
@@ -74,7 +71,7 @@ var AppsExport = common.Shortcut{
 			Params(exportQueryParams(rctx))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		if err := requireExactlyOneExportSource(rctx); err != nil {
+		if err := validateExportFlags(rctx); err != nil {
 			return err
 		}
 
@@ -127,6 +124,82 @@ var AppsExport = common.Shortcut{
 		})
 		return nil
 	},
+}
+
+// validateExportFlags is the single flag-validation entry point, shared by the
+// Validate hook and Execute so a direct Execute call (as in tests, and as the
+// pre-existing XOR re-check already assumed) cannot skip a check.
+func validateExportFlags(rctx *common.RuntimeContext) error {
+	if err := requireExactlyOneExportSource(rctx); err != nil {
+		return err
+	}
+	if appID := strings.TrimSpace(rctx.Str("app-id")); appID != "" {
+		if _, err := requireAppID(appID); err != nil {
+			return err
+		}
+	}
+	// The locator is deliberately NOT checked for the "app_" prefix: this endpoint
+	// accepts an app id or a meta token in the same path segment and tells them
+	// apart server-side, exactly like +get (whose --app-id is documented as "app ID
+	// or meta token"). validateRealAppID belongs to the commands whose server side
+	// only accepts a real app id (+init / +html-publish / +release-*), not here.
+	if err := validateExportLocatorShape(rctx); err != nil {
+		return err
+	}
+	return validateExportCheckpointID(rctx.Str("checkpoint-id"))
+}
+
+// validateExportLocatorShape rejects a share link passed where a bare identifier
+// is expected, whichever flag carried it.
+//
+// The locator goes into a path segment, so a full URL is percent-encoded and sent
+// as-is; the server then fails to resolve it and answers "app not found for the
+// given meta_token". That reads as "wrong app" and sends the caller off to verify
+// an app id, when the actual fix is to pass only the <token> segment. Catching the
+// shape here turns a misleading 404 into a precise, actionable local error.
+//
+// This checks the character shape only — never whether the value is an app id or a
+// token. That distinction is the server's (see validateExportFlags).
+func validateExportLocatorShape(rctx *common.RuntimeContext) error {
+	param := "--app-id"
+	value := strings.TrimSpace(rctx.Str("app-id"))
+	if value == "" {
+		param = "--meta-token"
+		value = strings.TrimSpace(rctx.Str("meta-token"))
+	}
+	if value == "" {
+		return nil
+	}
+	if err := charcheck.RejectControlChars(value, param); err != nil {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%v", err).
+			WithParam(param).WithCause(err)
+	}
+	if strings.ContainsAny(value, "/ \t") {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"%s must be a bare app id or share token, not a URL or a path", param).
+			WithParam(param).
+			WithHint(`from an app link .../app/<app_id> or a share link .../page/<token>, pass only the last segment`)
+	}
+	return nil
+}
+
+// validateExportCheckpointID keeps a non-numeric --checkpoint-id from reaching the
+// gateway, where it would fail during i64 binding with a message that does not name
+// the flag. Zero and negatives are rejected too: the server reads 0 as "latest",
+// so passing it explicitly would silently ignore the flag the caller just set.
+func validateExportCheckpointID(raw string) error {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return nil
+	}
+	n, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || n <= 0 {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--checkpoint-id must be a positive integer, got %q", value).
+			WithParam("--checkpoint-id").
+			WithHint("omit --checkpoint-id to export the latest commit on the default branch")
+	}
+	return nil
 }
 
 // requireExactlyOneExportSource enforces the app-id / meta-token XOR.
