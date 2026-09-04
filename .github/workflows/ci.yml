@@ -147,6 +147,20 @@ jobs:
       - name: Run script tests
         run: make script-test
 
+  shim-test-windows:
+    needs: fast-gate
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Run npm shim tests on Windows
+        run: node --test scripts/run.test.js scripts/install.test.js
+
   deterministic-gate:
     needs: fast-gate
     runs-on: ubuntu-latest
@@ -520,7 +534,7 @@ jobs:
   # ── Results Gate (single required check for branch protection) ─────
   results:
     if: ${{ always() }}
-    needs: [fast-gate, unit-test, lint, script-test, deterministic-gate, coverage, deadcode, e2e-dry-run, e2e-live, security, license-header, plugin-integration, sidecar-integration]
+    needs: [fast-gate, unit-test, lint, script-test, shim-test-windows, deterministic-gate, coverage, deadcode, e2e-dry-run, e2e-live, security, license-header, plugin-integration, sidecar-integration]
     runs-on: ubuntu-latest
     steps:
       - name: Evaluate results
@@ -533,6 +547,7 @@ jobs:
           echo "| L2 | unit-test | ${{ needs.unit-test.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L2 | lint | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L2 | script-test | ${{ needs.script-test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| L2 | shim-test-windows | ${{ needs.shim-test-windows.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L2 | deterministic-gate | ${{ needs.deterministic-gate.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L2 | coverage | ${{ needs.coverage.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L2 | deadcode | ${{ needs.deadcode.result }} |" >> $GITHUB_STEP_SUMMARY
@@ -559,6 +574,7 @@ jobs:
             "${{ needs.unit-test.result }}" \
             "${{ needs.lint.result }}" \
             "${{ needs.script-test.result }}" \
+            "${{ needs.shim-test-windows.result }}" \
             "${{ needs.deterministic-gate.result }}" \
             "${{ needs.coverage.result }}" \
             "${{ needs.deadcode.result }}" \

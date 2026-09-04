@@ -31,6 +31,7 @@ lint_section="$(awk '
   /^  script-test:/ { exit }
 ' "$workflow")"
 script_test_section="$(job_section script-test)"
+shim_test_windows_section="$(job_section shim-test-windows)"
 deterministic_section="$(awk '
   /^  deterministic-gate:/ { in_job = 1 }
   in_job { print }
@@ -170,6 +171,38 @@ if grep -Fq '${{ secrets.' <<<"$script_test_section"; then
   exit 1
 fi
 
+if ! grep -Fq "runs-on: windows-latest" <<<"$shim_test_windows_section"; then
+  echo "shim-test-windows must run on windows-latest so the npm shim is exercised on the platform it broke on"
+  exit 1
+fi
+if ! grep -Fq "node --test scripts/run.test.js scripts/install.test.js" <<<"$shim_test_windows_section"; then
+  echo "shim-test-windows must run the npm shim and atomic installer tests"
+  exit 1
+fi
+if ! grep -Fq "node-version: '22'" <<<"$shim_test_windows_section"; then
+  echo "shim-test-windows must pin node-version so process.execPath fixtures stay reproducible"
+  exit 1
+fi
+if ! grep -Fq "timeout-minutes: 15" <<<"$shim_test_windows_section"; then
+  echo "shim-test-windows must have a bounded timeout because its fixtures launch synchronous child processes"
+  exit 1
+fi
+if ! grep -Fq '"${{ needs.shim-test-windows.result }}"' <<<"$results_section"; then
+  echo "shim-test-windows must sit inside the results FAILED loop; needs and the summary table alone leave it non-blocking"
+  exit 1
+fi
+
+results_needs_line="$(grep -m1 '^    needs:' <<<"$results_section")"
+if ! grep -Fq "shim-test-windows" <<<"$results_needs_line"; then
+  echo "shim-test-windows must be listed in the results job's needs: array; GitHub returns an empty string for an undeclared dependency's result, so dropping it here would silently make it non-blocking even though the FAILED loop still references it"
+  exit 1
+fi
+
+if grep -Fq '${{ secrets.' <<<"$shim_test_windows_section"; then
+  echo "shim-test-windows must not reference secrets"
+  exit 1
+fi
+
 if grep -Fq "metadata-gate:" "$workflow"; then
   echo "metadata-gate should not run alongside deterministic-gate because both would upload the same facts artifact"
   exit 1
@@ -184,6 +217,7 @@ for full_job in \
   "$unit_test_section" \
   "$lint_section" \
   "$script_test_section" \
+  "$shim_test_windows_section" \
   "$deterministic_section" \
   "$coverage_job_section" \
   "$dry_run_section" \
