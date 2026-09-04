@@ -20,6 +20,7 @@ python3 "<SKILL_ROOT>/references/scripts/inventory.py" \
 - **敏感初筛**：按文件名命中敏感词（身份证 / 薪资明细 / 合同 / password 等）标 `risk_hint=possible_sensitive:*`；这是初筛线索，最终敏感等级在 `ANALYZE_TRIAGE` 据正文判定。
 - **可解析性判断**：`parse_readiness` = `text_extractable`（可提取文本）/ `ocr_or_visual_review`（图片需 OCR / 视觉审阅）/ `manual_review`（需人工）/ `failed`（读取失败）。
 - **符号链接安全**：拒绝符号链接作为授权根，跳过目录内符号链接（记入 `skipped_symlinks`），不通过快捷方式越界读取。
+- **扫描完整性**：不可读子目录（权限不足等）不会被静默跳过——脚本置 `scan_complete=false`、记入 `unreadable_dirs`，主输出 `ok=false` 且退出码非零。此时**盘点不完整**，须向用户如实报告未覆盖的目录与原因，不得当作完整成功；用户补授权或缩小范围后重跑，不基于残缺盘点直接规划入库。
 
 产物：`inventory/inventory.csv`（Excel 友好）+ `inventory/inventory.json`（含 `summary` 与逐条 `items`），填入 `Runtime State` 的 `inventory`。
 
