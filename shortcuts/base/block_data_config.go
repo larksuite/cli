@@ -45,6 +45,14 @@ func matchesBlockType(blockType string, candidates []string) bool {
 	return false
 }
 
+func normalizeDashboardBlockType(blockType string) string {
+	trimmed := strings.TrimSpace(blockType)
+	if strings.EqualFold(trimmed, "nps") {
+		return "nps"
+	}
+	return trimmed
+}
+
 func isTextBlockType(blockType string) bool { return matchesBlockType(blockType, textBlockTypes) }
 
 func isChartBlockType(blockType string) bool { return matchesBlockType(blockType, chartBlockTypes) }
@@ -123,6 +131,9 @@ func normalizeDataConfig(cfg map[string]interface{}) map[string]interface{} {
 // normalizeDataConfigForCreate adds type-specific defaults only when the
 // create request declares the block type.
 func normalizeDataConfigForCreate(blockType string, cfg map[string]interface{}) map[string]interface{} {
+	if normalizeDashboardBlockType(blockType) == "nps" {
+		return cloneMap(cfg)
+	}
 	out := normalizeDataConfig(cfg)
 	if !matchesBlockType(blockType, []string{"ranking"}) || out == nil {
 		return out
@@ -145,17 +156,20 @@ func normalizeDataConfigForCreate(blockType string, cfg map[string]interface{}) 
 // dashboard chart rules. BaseApp list validation lives in
 // app_list_block_data_config.go and never enters this dashboard path.
 func validateBlockDataConfig(blockType string, cfg map[string]interface{}) []string {
-	blockType = strings.ToLower(strings.TrimSpace(blockType))
-	if _, hasNumberFormat := cfg["number_format"]; hasNumberFormat && blockType != "statistics" {
-		return []string{"number_format 仅支持 statistics 类型组件"}
-	}
+	blockType = strings.ToLower(normalizeDashboardBlockType(blockType))
 	switch {
 	case isTextBlockType(blockType):
-		return validateTextDataConfig(blockType, cfg)
+		return append(validateNonNPSDataConfig(cfg), validateTextDataConfig(blockType, cfg)...)
+	case blockType == "nps":
+		return validateNPSDataConfig(cfg)
 	case matchesBlockType(blockType, []string{"ranking"}):
 		return validateRankingDataConfig(cfg)
 	default:
-		problems := validateChartDataConfig(cfg)
+		problems := validateNonNPSDataConfig(cfg)
+		if _, hasNumberFormat := cfg["number_format"]; hasNumberFormat && blockType != "statistics" {
+			return append(problems, "number_format 仅支持 statistics 类型组件")
+		}
+		problems = append(problems, validateChartDataConfig(cfg)...)
 		if matchesBlockType(blockType, []string{"statistics"}) {
 			if rawNumberFormat, hasNumberFormat := cfg["number_format"]; hasNumberFormat {
 				problems = append(problems, validateNumberFormat(rawNumberFormat)...)
@@ -163,6 +177,13 @@ func validateBlockDataConfig(blockType string, cfg map[string]interface{}) []str
 		}
 		return problems
 	}
+}
+
+func validateNonNPSDataConfig(cfg map[string]interface{}) []string {
+	if _, hasRange := cfg["category_range"]; hasRange {
+		return []string{"category_range 仅支持 nps 类型组件"}
+	}
+	return nil
 }
 
 // validateTextDataConfig validates the text data_config shape.
@@ -278,6 +299,57 @@ func validateNumberFormat(raw interface{}) []string {
 		}
 	}
 	return problems
+}
+
+func validateNPSDataConfig(cfg map[string]interface{}) []string {
+	var errs []string
+	if tn, _ := cfg["table_name"].(string); strings.TrimSpace(tn) == "" {
+		errs = append(errs, "缺少必填字段 table_name")
+	}
+	for _, field := range []string{"sort", "limit_size", "number_format", "text"} {
+		if _, hasField := cfg[field]; hasField {
+			errs = append(errs, fmt.Sprintf("nps 不支持 %s", field))
+		}
+	}
+	if _, hasSeries := cfg["series"]; hasSeries {
+		errs = append(errs, "nps 不支持 series；请省略 series，服务端会使用 count_all:true")
+	}
+	if v, hasCountAll := cfg["count_all"]; hasCountAll {
+		if b, ok := v.(bool); !ok || !b {
+			errs = append(errs, "nps.count_all 出现时只能为 true")
+		}
+	}
+	gb, ok := cfg["group_by"].([]interface{})
+	if !ok || len(gb) != 1 {
+		errs = append(errs, "nps.group_by 必须是长度为 1 的数组")
+	} else {
+		m, ok := gb[0].(map[string]interface{})
+		if !ok {
+			errs = append(errs, "nps.group_by[0] 必须是对象")
+		} else {
+			fn, _ := m["field_name"].(string)
+			if strings.TrimSpace(fn) == "" {
+				errs = append(errs, "nps.group_by[0].field_name 不能为空")
+			}
+			if rawMode, hasMode := m["mode"]; hasMode {
+				mode, modeOK := rawMode.(string)
+				if !modeOK || mode != "integrated" {
+					errs = append(errs, "nps.group_by[0].mode 只能为 integrated")
+				}
+			}
+			if _, hasSort := m["sort"]; hasSort {
+				errs = append(errs, "nps.group_by[0] 不支持 sort")
+			}
+		}
+	}
+	if cr, hasRange := cfg["category_range"]; hasRange {
+		arr, ok := cr.([]interface{})
+		if !ok || len(arr) != 4 {
+			errs = append(errs, "nps.category_range 必须是长度为 4 的数组")
+		}
+	}
+	errs = append(errs, validateBlockFilter(cfg, "filter", false)...)
+	return errs
 }
 
 func validateRankingDataConfig(cfg map[string]interface{}) []string {

@@ -19,11 +19,12 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档是 Dashboar
 | `radar` | 雷达图 |
 | `ranking` | 排行榜 |
 | `statistics` | 指标卡 |
+| `nps` | NPS 图 |
 | `text` | 文本（支持 Markdown） |
 
 ## 字段类型与操作符速查（AI 决策用）
 
-> 先用 `+field-list` / `+field-get` 确认字段 `type`；本节使用当前字段接口里的 canonical 类型名：`number`、`text`、`select`、`datetime`、`checkbox`、`user`。
+> 先用 `+field-list` / `+field-get` 确认字段 `type`；本节使用当前字段接口里的 canonical 类型名：`number`、`text`、`select`、`datetime`、`checkbox`、`user`。NPS 使用的 `Rating` 是 Dashboard 服务端识别的评分字段语义，不属于当前字段操作符速查里的通用筛选类型。
 
 ```
 text: is, isNot, contains, doesNotContain, isEmpty, isNotEmpty
@@ -48,6 +49,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 | `filter` | object | 筛选条件 |
 | `filter.conjunction` | `"and"` / `"or"` | 筛选逻辑 |
 | `filter.conditions` | `[{ "field_name", "operator", "value" }]` | 筛选条件数组，value 类型因字段类型而异（见下方 filter 格式规则） |
+| `category_range` | `[min, detractorMax, passiveMax, max]` | NPS 三段边界，仅 `nps` 类型支持；首尾必须等于 Rating 字段量程，首尾匹配由服务端按字段元数据校验 |
 
 ### text 类型特殊结构
 
@@ -214,6 +216,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
   - 图表类型必填：`table_name`
   - text 类型必填：`text`
   - 互斥：`series` 与 `count_all` 二选一，且至少提供其一（仅图表类型）
+  - nps 类型必填：`table_name`、长度为 1 的 `group_by`；`count_all` 可省略，出现时只能为 `true`；不支持 `series`
   - text 类型**不支持**：`series`、`count_all`、`group_by`、`filter`
 - 长度/结构
   - `group_by` 最多 2 个；每项 `field_name` 必填
@@ -238,6 +241,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 - 看流程转化 → 漏斗图
 - 看多维度评分 → 雷达图
 - 显示单个指标 → 指标卡（统计数字或记录数）
+- 统计满意度评分分布 → NPS 图（一个 Rating 字段 + 可选分段）
 - 查看单维度 Top N → 排行榜
 
 最小柱状图：
@@ -393,6 +397,20 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
   "series": [{ "field_name": "数字", "rollup": "SUM" }]
 }
 ```
+
+NPS 图（按 Rating 评分字段统计记录数）：
+
+```json
+{
+  "table_name": "问卷结果",
+  "group_by": [{ "field_name": "满意度评分", "mode": "integrated" }],
+  "category_range": [0, 6, 8, 10]
+}
+```
+
+NPS 的 `group_by[0].field_name` 必须指向 Base 的评分字段（Dashboard 内部识别为 `Rating` 语义）。调用方可通过 Base 字段详情或界面字段配置确认评分字段的最小值与最大值；CLI 只能做轻量 JSON 校验，字段类型、字段量程、`category_range` 首尾是否等于评分字段最小值和最大值由服务端按字段元数据校验。
+
+`category_range` 可省略，服务端会按 Rating 字段自身量程生成默认分段。显式传入时数组长度必须为 4，且首尾必须等于 Rating 字段最小值和最大值。
 
 指标卡（统计记录数）：
 

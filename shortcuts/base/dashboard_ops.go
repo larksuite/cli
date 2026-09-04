@@ -47,7 +47,7 @@ func buildDashboardBlockBody(pc *parseCtx, runtime *common.RuntimeContext, inclu
 		body["name"] = name
 	}
 	if includeType {
-		if blockType := strings.TrimSpace(runtime.Str("type")); blockType != "" {
+		if blockType := normalizeDashboardBlockType(runtime.Str("type")); blockType != "" {
 			body["type"] = blockType
 		}
 	}
