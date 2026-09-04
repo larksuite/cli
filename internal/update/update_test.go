@@ -6,11 +6,13 @@ package update
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,12 +26,17 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { re
 
 type updateExternalProvider struct {
 	interceptor exttransport.Interceptor
+	rewriter    exttransport.URLRewriter
 }
 
 func (p updateExternalProvider) Name() string { return "update-external-test" }
 
 func (p updateExternalProvider) ResolveInterceptor(context.Context) exttransport.Interceptor {
 	return p.interceptor
+}
+
+func (p updateExternalProvider) ResolveURLRewriter(context.Context) exttransport.URLRewriter {
+	return p.rewriter
 }
 
 func (updateExternalProvider) SupportsRequestClass(class exttransport.RequestClass) bool {
@@ -39,6 +46,10 @@ func (updateExternalProvider) SupportsRequestClass(class exttransport.RequestCla
 type updateExternalInterceptor struct {
 	calls int
 }
+
+type updateRewriteFunc func(string) string
+
+func (f updateRewriteFunc) RewriteURL(rawURL string) string { return f(rawURL) }
 
 func (i *updateExternalInterceptor) PreRoundTrip(req *http.Request) func(*http.Response, error) {
 	i.calls++
@@ -269,7 +280,7 @@ func TestRefreshCache(t *testing.T) {
 	RefreshCache("1.0.0")
 }
 
-func TestHTTPClientUsesExternalRequestClass(t *testing.T) {
+func TestFetchLatestVersionRewritesRegistryAndUsesExternalClass(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	t.Setenv("LARK_CLI_NO_PROXY", "")
 	previousClient := DefaultClient
@@ -278,34 +289,37 @@ func TestHTTPClientUsesExternalRequestClass(t *testing.T) {
 
 	previousProvider := exttransport.GetProvider()
 	interceptor := &updateExternalInterceptor{}
-	exttransport.Register(updateExternalProvider{interceptor: interceptor})
+	exttransport.Register(updateExternalProvider{
+		interceptor: interceptor,
+		rewriter: updateRewriteFunc(func(rawURL string) string {
+			return strings.Replace(rawURL, "registry.npmjs.org", "registry.example.test", 1)
+		}),
+	})
 	t.Cleanup(func() { exttransport.Register(previousProvider) })
 
 	previousTransport := http.DefaultTransport
-	var receivedHeader string
+	var receivedHeader, receivedURL string
 	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		receivedHeader = req.Header.Get("X-External-Route")
+		receivedURL = req.URL.String()
 		return &http.Response{
-			StatusCode: http.StatusNoContent,
+			StatusCode: http.StatusOK,
 			Header:     make(http.Header),
-			Body:       http.NoBody,
+			Body:       io.NopCloser(strings.NewReader(`{"version":"1.2.3"}`)),
 			Request:    req,
 		}, nil
 	})
 	t.Cleanup(func() { http.DefaultTransport = previousTransport })
 
-	req, err := http.NewRequest(http.MethodGet, "https://open.feishu.cn/npm/latest", nil)
-	if err != nil {
+	if _, err := fetchLatestVersion(); err != nil {
 		t.Fatal(err)
 	}
-	resp, err := httpClient().Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
 
 	if interceptor.calls != 1 || receivedHeader != "1" {
 		t.Fatalf("external route = calls %d, header %q; want 1, %q", interceptor.calls, receivedHeader, "1")
+	}
+	if receivedURL != "https://registry.example.test/@larksuite/cli/latest" {
+		t.Fatalf("registry URL = %q, want rewritten CLI-owned URL", receivedURL)
 	}
 }
 

@@ -19,6 +19,7 @@ import (
 	"github.com/larksuite/cli/internal/selfupdate"
 	"github.com/larksuite/cli/internal/skillscheck"
 	"github.com/larksuite/cli/internal/update"
+	"github.com/larksuite/cli/internal/urlrewrite"
 )
 
 const (
@@ -189,6 +190,18 @@ func updateRun(opts *UpdateOptions) error {
 	return doAutoUpdate(opts, io, cur, latest, detect, updater)
 }
 
+type presentationURLs struct {
+	release   string
+	changelog string
+}
+
+func resolvePresentationURLs(latest string) presentationURLs {
+	return presentationURLs{
+		release:   urlrewrite.Rewrite(releaseURL(latest)),
+		changelog: urlrewrite.Rewrite(changelogURL()),
+	}
+}
+
 // resolveSkillsBrand returns the skills-source brand: resolved config first,
 // then the active profile's raw config entry (the brand is not a secret; a
 // locked keychain must not flip the source), then the default with a notice.
@@ -230,21 +243,22 @@ func reportErrorWithFields(opts *UpdateOptions, io *cmdutil.IOStreams, errType s
 }
 
 func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, canAutoUpdate bool) error {
+	urls := resolvePresentationURLs(latest)
 	if opts.JSON {
 		out := map[string]interface{}{
 			"ok": true, "previous_version": cur, "current_version": cur,
 			"latest_version": latest, "action": "update_available",
 			"auto_update": canAutoUpdate,
 			"message":     fmt.Sprintf("lark-cli %s %s %s available", cur, symArrow(), latest),
-			"url":         releaseURL(latest), "changelog": changelogURL(),
+			"url":         urls.release, "changelog": urls.changelog,
 		}
 		applySkillsStatus(out, cur)
 		output.PrintJson(io.Out, out)
 		return nil
 	}
 	fmt.Fprintf(io.ErrOut, "Update available: %s %s %s\n", cur, symArrow(), latest)
-	fmt.Fprintf(io.ErrOut, "  Release:   %s\n", releaseURL(latest))
-	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
+	fmt.Fprintf(io.ErrOut, "  Release:   %s\n", urls.release)
+	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", urls.changelog)
 	if canAutoUpdate {
 		fmt.Fprintf(io.ErrOut, "\nRun `lark-cli update` to install.\n")
 	} else {
@@ -254,6 +268,7 @@ func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest s
 }
 
 func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, detect selfupdate.DetectResult, updater *selfupdate.Updater) error {
+	urls := resolvePresentationURLs(latest)
 	skillsResult := runSkillsAndState(updater, io, cur, opts.Force, opts.SkillsLayout)
 	reason := detect.ManualReason()
 	if opts.JSON {
@@ -261,7 +276,7 @@ func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest stri
 			"ok": true, "previous_version": cur, "latest_version": latest,
 			"action":  "manual_required",
 			"message": fmt.Sprintf("Automatic update unavailable: %s (path: %s)", reason, detect.ResolvedPath),
-			"url":     releaseURL(latest), "changelog": changelogURL(),
+			"url":     urls.release, "changelog": urls.changelog,
 		}
 		applySkillsResult(out, skillsResult)
 		if err := reportSkillsFailureWithFields(opts, io, skillsResult, out); err != nil {
@@ -272,8 +287,8 @@ func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest stri
 	}
 	fmt.Fprintf(io.ErrOut, "Automatic update unavailable: %s (path: %s).\n\n", reason, detect.ResolvedPath)
 	fmt.Fprintf(io.ErrOut, "To update manually, download the latest release:\n")
-	fmt.Fprintf(io.ErrOut, "  Release:   %s\n", releaseURL(latest))
-	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
+	fmt.Fprintf(io.ErrOut, "  Release:   %s\n", urls.release)
+	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", urls.changelog)
 	if detect.Method == selfupdate.InstallPnpm {
 		fmt.Fprintf(io.ErrOut, "\nOr install via pnpm (note: skills will not be synced):\n  pnpm add -g %s@%s\n  pnpm dlx skills add larksuite/cli -y -g   # sync skills separately\n", selfupdate.NpmPackage, latest)
 	} else {
@@ -287,6 +302,7 @@ func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest stri
 }
 
 func doAutoUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, detect selfupdate.DetectResult, updater *selfupdate.Updater) error {
+	urls := resolvePresentationURLs(latest)
 	pm := "npm"
 	install := updater.RunNpmInstall
 	if detect.Method == selfupdate.InstallPnpm {
@@ -308,12 +324,13 @@ func doAutoUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string
 	if npmResult.Err != nil {
 		restore()
 		combined := npmResult.CombinedOutput()
+		hint := permissionHint(combined, pm)
 		if opts.JSON {
 			output.PrintJson(io.Out, map[string]interface{}{
 				"ok": false, "error": map[string]interface{}{
 					"type": "update_error", "message": fmt.Sprintf("%s install failed: %s", pm, npmResult.Err),
 					"detail": selfupdate.Truncate(combined, maxNpmOutput),
-					"hint":   permissionHint(combined, pm),
+					"hint":   hint,
 				},
 			})
 			return output.ErrBare(output.ExitAPI)
@@ -325,7 +342,7 @@ func doAutoUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string
 			fmt.Fprint(io.ErrOut, npmResult.Stderr.String())
 		}
 		fmt.Fprintf(io.ErrOut, "\n%s Update failed: %s\n", symFail(), npmResult.Err)
-		if hint := permissionHint(combined, pm); hint != "" {
+		if hint != "" {
 			fmt.Fprintf(io.ErrOut, "  %s\n", hint)
 		}
 		return output.ErrBare(output.ExitAPI)
@@ -355,12 +372,12 @@ func doAutoUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string
 			"previous_version": cur, "current_version": latest,
 			"latest_version": latest, "action": "updated",
 			"message": fmt.Sprintf("lark-cli updated from %s to %s, but skills update failed", cur, latest),
-			"url":     releaseURL(latest), "changelog": changelogURL(),
+			"url":     urls.release, "changelog": urls.changelog,
 		}
 		applySkillsResult(fields, skillsResult)
 		if !opts.JSON {
 			fmt.Fprintf(io.ErrOut, "\n%s lark-cli binary updated from %s to %s\n", symOK(), cur, latest)
-			fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
+			fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", urls.changelog)
 		}
 		return reportSkillsFailureWithFields(opts, io, skillsResult, fields)
 	}
@@ -370,7 +387,7 @@ func doAutoUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string
 			"ok": true, "previous_version": cur, "current_version": latest,
 			"latest_version": latest, "action": "updated",
 			"message": fmt.Sprintf("lark-cli updated from %s to %s", cur, latest),
-			"url":     releaseURL(latest), "changelog": changelogURL(),
+			"url":     urls.release, "changelog": urls.changelog,
 		}
 		applySkillsResult(result, skillsResult)
 		output.PrintJson(io.Out, result)
@@ -378,7 +395,7 @@ func doAutoUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string
 	}
 
 	fmt.Fprintf(io.ErrOut, "\n%s Successfully updated lark-cli from %s to %s\n", symOK(), cur, latest)
-	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
+	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", urls.changelog)
 	if skillsResult != nil {
 		skillsPM := "npx"
 		if detect.Method == selfupdate.InstallPnpm && detect.PnpmAvailable {
@@ -395,19 +412,20 @@ func permissionHint(pmOutput, pm string) string {
 		return ""
 	}
 	if pm == "pnpm" {
-		return "Permission denied. Ensure your pnpm global directory is writable — re-run `pnpm setup`, or see https://pnpm.io/pnpm-cli"
+		return "Permission denied. Ensure your pnpm global directory is writable — re-run `pnpm setup`, or see " + urlrewrite.Rewrite("https://pnpm.io/pnpm-cli")
 	}
-	return "Permission denied. Try: sudo lark-cli update, or adjust your npm global prefix: https://docs.npmjs.com/resolving-eacces-permissions-errors"
+	return "Permission denied. Try: sudo lark-cli update, or adjust your npm global prefix: " + urlrewrite.Rewrite("https://docs.npmjs.com/resolving-eacces-permissions-errors")
 }
 
 func verificationFailureHint(updater *selfupdate.Updater, latest, pm string) string {
 	if updater.CanRestorePreviousVersion() {
 		return "the previous version has been restored"
 	}
+	release := urlrewrite.Rewrite(releaseURL(latest))
 	if pm == "pnpm" {
-		return fmt.Sprintf("automatic rollback is unavailable on this platform; reinstall manually (skills will not be synced): pnpm add -g %s@%s && pnpm dlx skills add larksuite/cli -y -g, or download %s", selfupdate.NpmPackage, latest, releaseURL(latest))
+		return fmt.Sprintf("automatic rollback is unavailable on this platform; reinstall manually (skills will not be synced): pnpm add -g %s@%s && pnpm dlx skills add larksuite/cli -y -g, or download %s", selfupdate.NpmPackage, latest, release)
 	}
-	return fmt.Sprintf("automatic rollback is unavailable on this platform; reinstall manually (skills will not be synced): npm install -g %s@%s && npx skills add larksuite/cli -y -g, or download %s", selfupdate.NpmPackage, latest, releaseURL(latest))
+	return fmt.Sprintf("automatic rollback is unavailable on this platform; reinstall manually (skills will not be synced): npm install -g %s@%s && npx skills add larksuite/cli -y -g, or download %s", selfupdate.NpmPackage, latest, release)
 }
 
 func runSkillsAndState(updater *selfupdate.Updater, io *cmdutil.IOStreams, stateVersion string, force bool, requestedLayout string) *skillscheck.SyncResult {

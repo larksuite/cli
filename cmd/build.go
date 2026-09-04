@@ -269,7 +269,7 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 
 	// Root-only usage template (curated Usage synopsis + skills footer); see
 	// rootUsageTemplate.
-	rootCmd.SetUsageTemplate(rootUsageTemplate)
+	rootCmd.SetUsageTemplate(renderRootUsageTemplate(nil))
 
 	// Framework-generated skill pointers read this build's final content and
 	// exact command surface lazily. A second Build therefore cannot rewrite
@@ -374,6 +374,7 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 	// mechanically unchanged.
 	var hasConcealedCommands bool
 	runtime.surface, hasConcealedCommands = applyDistributionPresentation(rootCmd, cfg.presentation, denied)
+	rootCmd.SetUsageTemplate(renderRootUsageTemplate(runtime.surface))
 
 	// Resolve skill assets and canonical references before installing hooks.
 	// A declared customization is a build-integrity boundary: failure must

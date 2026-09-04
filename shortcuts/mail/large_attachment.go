@@ -17,6 +17,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/urlrewrite"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
@@ -196,13 +197,21 @@ func uploadLargeAttachments(ctx context.Context, runtime *common.RuntimeContext,
 
 // buildLargeAttachmentPreviewURL builds the download/preview URL for a large
 // attachment token. The domain is derived from the CLI's configured endpoint
-// (e.g. open.feishu.cn → www.feishu.cn).
+// (e.g. open.feishu.cn → www.feishu.cn). The URL is CLI-owned presentation
+// text, so it passes through the URL rewrite extension here rather than at
+// each card-formatting call site.
 func buildLargeAttachmentPreviewURL(brand core.LarkBrand, fileToken string) string {
 	ep := core.ResolveEndpoints(brand)
 	host := strings.TrimPrefix(ep.Open, "https://")
 	host = strings.TrimPrefix(host, "http://")
 	mainDomain := strings.TrimPrefix(host, "open.")
-	return "https://www." + mainDomain + "/mail/page/attachment?token=" + url.QueryEscape(fileToken)
+	return urlrewrite.Rewrite("https://www." + mainDomain + "/mail/page/attachment?token=" + url.QueryEscape(fileToken))
+}
+
+// largeAttachmentIconURL builds the CLI-owned CDN icon URL for an attachment,
+// applying the URL rewrite extension.
+func largeAttachmentIconURL(iconCDN, filename string) string {
+	return urlrewrite.Rewrite(iconCDN + fileTypeIcon(filename))
 }
 
 // buildLargeAttachmentHTML generates the HTML block for large attachments,
@@ -271,7 +280,7 @@ func buildLargeAttachmentItems(brand core.LarkBrand, lang string, results []larg
 	var items strings.Builder
 	for _, att := range results {
 		fmt.Fprintf(&items, largeAttItemTpl,
-			htmlEscape(iconCDN+fileTypeIcon(att.FileName)),
+			htmlEscape(largeAttachmentIconURL(iconCDN, att.FileName)),
 			htmlEscape(att.FileName),
 			htmlEscape(common.FormatSize(att.FileSize)),
 			htmlEscape(buildLargeAttachmentPreviewURL(brand, att.FileToken)),

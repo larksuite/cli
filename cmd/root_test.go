@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +29,7 @@ import (
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/surface"
+	testurlrewrite "github.com/larksuite/cli/internal/testutil/urlrewrite"
 )
 
 // TestPersistentPreRunE_AuthCheckDisabledAnnotations verifies that
@@ -87,6 +89,17 @@ func TestRootLong_AgentSkillsLinkTargetsReadmeSection(t *testing.T) {
 	}
 	if strings.Contains(rootUsageTemplate, "https://github.com/larksuite/cli#install-ai-agent-skills") {
 		t.Fatalf("root help should not reference the removed install-ai-agent-skills anchor, got:\n%s", rootUsageTemplate)
+	}
+}
+
+func TestBuildRewritesRootSkillsHelpURLAfterProviderRegistration(t *testing.T) {
+	testurlrewrite.Register(t, func(rawURL string) string {
+		return strings.Replace(rawURL, "github.com", "mirror.example.test", 1)
+	})
+
+	_, root, _ := buildInternal(context.Background(), buildInvocationForTest(t), WithoutPlugins())
+	if got := root.UsageTemplate(); !strings.Contains(got, "https://mirror.example.test/larksuite/cli#agent-skills") {
+		t.Fatalf("root help URL was not rewritten:\n%s", got)
 	}
 }
 
