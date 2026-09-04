@@ -32,6 +32,9 @@ lark-cli im +chat-messages-list --chat-id oc_xxx --page-token "xxx"
 # Fetch multiple pages automatically, up to 10 pages by default
 lark-cli im +chat-messages-list --chat-id oc_xxx --page-all
 
+# Read the current result as a complete conversation transcript
+lark-cli im +chat-messages-list --chat-id oc_xxx --format pretty
+
 # JSON output
 lark-cli im +chat-messages-list --chat-id oc_xxx --format json
 ```
@@ -150,7 +153,7 @@ lark-cli api GET /open-apis/im/v1/messages \
 2. **Prefer `--chat-id` when available:** if the chat_id is already known, use it directly to avoid extra API calls.
 3. **For direct messages:** use `--user-id` to resolve the p2p chat automatically instead of looking it up manually. This requires user identity (`--as user`); with bot identity, resolve the p2p `chat_id` yourself and pass it via `--chat-id`.
 4. **For time ranges:** both ISO 8601 and date-only inputs are supported. Date-only is usually simpler.
-5. **For full content:** table output truncates content. Use `--format json` when you need the complete message body.
+5. **Choose output by task:** use `--format pretty` to read returned messages and expanded replies. Continue with `--page-token` or `--page-all` for more outer messages; use `+threads-messages-list --page-all` for a complete thread. Use `--format json` for programmatic processing.
 6. **For sender info:** the command already resolves sender names, so you do not need a separate lookup.
 7. **Application/bot identity + named group history:** If the user says "使用应用身份/以 bot 身份" and asks to list or read historical messages for a named group, use bot identity for both steps:
    ```bash
