@@ -8,6 +8,10 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"image"
+	"image/draw"
+	_ "image/jpeg"
+	"image/png"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -54,8 +58,22 @@ var SlidesScreenshot = common.Shortcut{
 		{Name: "output", Desc: "preferred relative output path for a single screenshot (extension optional; .png, .jpg, or .jpeg)"},
 		{Name: "output-dir", Default: defaultSlidesScreenshotDir, Desc: "relative directory for saved screenshots"},
 		{Name: "output-name", Desc: "file name stem for --content render output"},
+		{Name: "region", Desc: "crop exactly one existing slide as x,y,width,height in the rendered screenshot pixels"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if runtime.Changed("region") && strings.TrimSpace(runtime.Str("region")) == "" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--region cannot be empty").WithParam("--region").WithHint("provide x,y,width,height in rendered screenshot pixels")
+		}
+		region, regionSet, err := parseSlidesScreenshotRegion(runtime.Str("region"))
+		if err != nil {
+			return err
+		}
+		if regionSet && runtime.Changed("content") {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--region cannot be combined with --content").WithParams(
+				errs.InvalidParam{Name: "--region", Reason: "only crops an existing slide selected by --slide-id or --slide-number"},
+				errs.InvalidParam{Name: "--content", Reason: "render mode does not select an existing slide"},
+			)
+		}
 		renderMode := runtime.Changed("content")
 		selectorCount := 1
 		if renderMode {
@@ -86,6 +104,10 @@ var SlidesScreenshot = common.Shortcut{
 				return slidesScreenshotMissingSelectorError()
 			}
 			selectorCount = len(slideIDs) + len(slideNumbers)
+			if regionSet && selectorCount != 1 {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--region requires exactly one slide selector").WithParam("--region").WithHint("use one --slide-id or one --slide-number")
+			}
+			_ = region
 			if err := validateSlidesScreenshotSelectorLimit(selectorCount); err != nil {
 				return err
 			}
@@ -187,6 +209,10 @@ var SlidesScreenshot = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		var region slidesScreenshotRegion
+		if parsed, set, _ := parseSlidesScreenshotRegion(runtime.Str("region")); set {
+			region = parsed
+		}
 
 		url := fmt.Sprintf(
 			"/open-apis/slides_ai/v1/xml_presentations/%s/slide_images",
@@ -205,6 +231,13 @@ var SlidesScreenshot = common.Shortcut{
 			return enrichSlidesScreenshotSelectorError(err, slideNumbers)
 		}
 
+		var crop map[string]interface{}
+		if _, set, _ := parseSlidesScreenshotRegion(runtime.Str("region")); set {
+			crop, err = cropSlidesScreenshotResponse(data, region)
+			if err != nil {
+				return err
+			}
+		}
 		saved, err := saveSlideScreenshots(runtime, data, outputTarget.safeOutputDir, presentationID, outputTarget.requested)
 		if err != nil {
 			return err
@@ -212,6 +245,9 @@ var SlidesScreenshot = common.Shortcut{
 		result := map[string]interface{}{
 			"xml_presentation_id": presentationID,
 			"screenshots":         saved,
+		}
+		if crop != nil {
+			result["region"] = crop
 		}
 		setSlidesScreenshotResultOutput(result, outputTarget, saved)
 		runtime.Out(result, nil)
@@ -568,6 +604,7 @@ func saveSlideScreenshotImage(runtime *common.RuntimeContext, item map[string]in
 	if err != nil {
 		return nil, slidesScreenshotImageDataCauseError(slideID, err, "decode screenshot: %s", err)
 	}
+	config, _, configErr := image.DecodeConfig(bytes.NewReader(imageBytes))
 	var path string
 	if outputPath != "" {
 		path, err = writeUniqueScreenshotPath(runtime, slideScreenshotOutputPathForFormat(outputPath, ext), imageBytes)
@@ -584,13 +621,21 @@ func saveSlideScreenshotImage(runtime *common.RuntimeContext, item map[string]in
 	if err != nil {
 		return nil, err
 	}
-	return map[string]interface{}{
+	result := map[string]interface{}{
 		"slide_id":     slideID,
 		"slide_number": slideScreenshotInt(item, "slide_number"),
 		"format":       label,
 		"path":         path,
 		"size":         len(imageBytes),
-	}, nil
+	}
+	// Preserve the shortcut's established behavior for an opaque server payload
+	// that is saved successfully but cannot be decoded locally. Real screenshot
+	// images always carry image_size; omitting it here avoids changing the
+	// historical save contract into a new decode failure.
+	if configErr == nil {
+		result["image_size"] = map[string]int{"width": config.Width, "height": config.Height}
+	}
+	return result, nil
 }
 
 func slideScreenshotOutputExtMatches(outputExt string, responseExt string) bool {
@@ -794,4 +839,79 @@ func writeUniqueScreenshotPath(runtime *common.RuntimeContext, outputPath string
 
 func isScreenshotFileNotExist(err error) bool {
 	return os.IsNotExist(err)
+}
+
+type slidesScreenshotRegion struct{ X, Y, Width, Height int }
+
+func parseSlidesScreenshotRegion(raw string) (slidesScreenshotRegion, bool, error) {
+	if strings.TrimSpace(raw) == "" {
+		return slidesScreenshotRegion{}, false, nil
+	}
+	parts := strings.Split(raw, ",")
+	if len(parts) != 4 {
+		return slidesScreenshotRegion{}, false, errs.NewValidationError(errs.SubtypeInvalidArgument, "--region must be x,y,width,height in rendered screenshot pixels").WithParam("--region")
+	}
+	vals := [4]int{}
+	for i, part := range parts {
+		n, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil {
+			return slidesScreenshotRegion{}, false, errs.NewValidationError(errs.SubtypeInvalidArgument, "--region values must be integers").WithParam("--region")
+		}
+		vals[i] = n
+	}
+	r := slidesScreenshotRegion{vals[0], vals[1], vals[2], vals[3]}
+	if r.X < 0 || r.Y < 0 || r.Width <= 0 || r.Height <= 0 {
+		return slidesScreenshotRegion{}, false, errs.NewValidationError(errs.SubtypeInvalidArgument, "--region requires non-negative x,y and positive width,height").WithParam("--region")
+	}
+	return r, true, nil
+}
+
+func validateSlidesScreenshotRegionBounds(region slidesScreenshotRegion, imageSize image.Point) error {
+	// Compare the remaining image size instead of adding X+Width so hostile
+	// integer inputs cannot wrap before the bounds check.
+	if region.X >= imageSize.X || region.Y >= imageSize.Y || region.Width > imageSize.X-region.X || region.Height > imageSize.Y-region.Y {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--region must stay within the %dx%d rendered screenshot", imageSize.X, imageSize.Y).WithParam("--region").WithHint(fmt.Sprintf("use x+width<=%d and y+height<=%d", imageSize.X, imageSize.Y))
+	}
+	return nil
+}
+
+func cropSlidesScreenshotResponse(data map[string]interface{}, region slidesScreenshotRegion) (map[string]interface{}, error) {
+	items := common.GetSlice(data, "slide_images")
+	if len(items) != 1 {
+		return nil, slidesScreenshotAPIDataError(data, "--region requires exactly one rendered slide image")
+	}
+	item, ok := items[0].(map[string]interface{})
+	if !ok {
+		return nil, slidesScreenshotAPIDataError(data, "slides screenshot returned invalid slide_images[0]")
+	}
+	if _, _, err := slideScreenshotFormat(item); err != nil {
+		return nil, slidesScreenshotImageDataError(common.GetString(item, "slide_id"), "%s", err)
+	}
+	encoded := common.GetString(item, "data")
+	b, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, slidesScreenshotImageDataCauseError(common.GetString(item, "slide_id"), err, "decode screenshot for --region: %s", err)
+	}
+	src, _, err := image.Decode(bytes.NewReader(b))
+	if err != nil {
+		return nil, slidesScreenshotImageDataCauseError(common.GetString(item, "slide_id"), err, "decode screenshot image for --region: %s", err)
+	}
+	bounds := src.Bounds()
+	if err := validateSlidesScreenshotRegionBounds(region, bounds.Size()); err != nil {
+		return nil, err
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, region.Width, region.Height))
+	draw.Draw(dst, dst.Bounds(), src, image.Point{X: bounds.Min.X + region.X, Y: bounds.Min.Y + region.Y}, draw.Src)
+	var out bytes.Buffer
+	if err := png.Encode(&out, dst); err != nil {
+		return nil, errs.NewInternalError(errs.SubtypeFileIO, "encode --region screenshot: %v", err).WithCause(err)
+	}
+	item["data"] = base64.StdEncoding.EncodeToString(out.Bytes())
+	item["format"] = 1
+	return map[string]interface{}{
+		"requested_pixel_rect": map[string]int{"x": region.X, "y": region.Y, "width": region.Width, "height": region.Height},
+		"source_image_size":    map[string]int{"width": bounds.Dx(), "height": bounds.Dy()},
+		"output_image_size":    map[string]int{"width": region.Width, "height": region.Height},
+		"format":               "png",
+	}, nil
 }
