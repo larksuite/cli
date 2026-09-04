@@ -34,7 +34,7 @@ func TestResolveOAuthEndpoints_Feishu(t *testing.T) {
 	if ep.Revoke != "https://accounts.feishu.cn/oauth/v1/revoke" {
 		t.Errorf("Revoke = %q", ep.Revoke)
 	}
-	if ep.Token != "https://open.feishu.cn/open-apis/authen/v2/oauth/token" {
+	if ep.Token != "https://accounts.feishu.cn/oauth/v3/token" {
 		t.Errorf("Token = %q", ep.Token)
 	}
 }
@@ -48,7 +48,7 @@ func TestResolveOAuthEndpoints_Lark(t *testing.T) {
 	if ep.Revoke != "https://accounts.larksuite.com/oauth/v1/revoke" {
 		t.Errorf("Revoke = %q", ep.Revoke)
 	}
-	if ep.Token != "https://open.larksuite.com/open-apis/authen/v2/oauth/token" {
+	if ep.Token != "https://accounts.larksuite.com/oauth/v3/token" {
 		t.Errorf("Token = %q", ep.Token)
 	}
 }

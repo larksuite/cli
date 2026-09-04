@@ -4,12 +4,12 @@
 package auth
 
 import (
-	"encoding/json"
 	"errors"
 	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptrace"
+	"net/url"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -117,21 +117,26 @@ func TestGetValidAccessTokenRetriesAndStoresSuccessfulRefresh(t *testing.T) {
 		if req.Method != http.MethodPost || req.URL.String() != ResolveOAuthEndpoints(opts.Domain).Token {
 			t.Fatalf("refresh request = %s %s, want documented token endpoint", req.Method, req.URL)
 		}
-		if req.Header.Get("Content-Type") != "application/json; charset=utf-8" {
-			t.Fatalf("Content-Type = %q, want JSON", req.Header.Get("Content-Type"))
+		if req.Header.Get("Content-Type") != "application/x-www-form-urlencoded" {
+			t.Fatalf("Content-Type = %q, want form data", req.Header.Get("Content-Type"))
 		}
-		var payload refreshRequest
-		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-			t.Fatalf("decode refresh request: %v", err)
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read refresh request: %v", err)
 		}
-		want := refreshRequest{
-			GrantType:    "refresh_token",
-			RefreshToken: stored.RefreshToken,
-			ClientID:     opts.AppId,
-			ClientSecret: opts.AppSecret,
+		form, err := url.ParseQuery(string(body))
+		if err != nil {
+			t.Fatalf("parse refresh request: %v", err)
 		}
-		if payload != want {
-			t.Fatalf("refresh payload = %#v, want %#v", payload, want)
+		for key, want := range map[string]string{
+			"grant_type":    "refresh_token",
+			"refresh_token": stored.RefreshToken,
+			"client_id":     opts.AppId,
+			"client_secret": opts.AppSecret,
+		} {
+			if got := form.Get(key); got != want {
+				t.Fatalf("refresh form %s = %q, want %q", key, got, want)
+			}
 		}
 		if call == 1 {
 			return refreshHTTPResponse(req, `{"code":20050,"error_description":"retry"}`), nil
