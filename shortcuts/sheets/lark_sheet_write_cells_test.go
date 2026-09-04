@@ -820,3 +820,88 @@ func TestRangeDimensions(t *testing.T) {
 		}
 	}
 }
+
+// TestCellsSet_ReflowSecondPass pins the acceptances the 08-29..31 reflow's
+// full breakdown added: the two object spellings of --writes, and style
+// vocabulary written directly on a cell.
+func TestCellsSet_ReflowSecondPass(t *testing.T) {
+	t.Parallel()
+
+	t.Run("writes object spellings", func(t *testing.T) {
+		t.Parallel()
+		write := `{"sheet_name":"s","range":"A1:A1","cells":[[{"value":"x"}]]}`
+		for name, payload := range map[string]string{
+			"envelope":    `{"writes":[` + write + `]}`,
+			"lone write":  write,
+			"lone values": `{"sheet_name":"s","range":"A1:A1","values":[["x"]]}`,
+		} {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+				stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set"), []string{
+					"--url", testURL, "--writes", payload, "--dry-run",
+				})
+				if err != nil {
+					t.Fatalf("%s should be accepted, got: %v", name, err)
+				}
+				if !strings.Contains(stdout, "set_cell_range") {
+					t.Errorf("dry-run should plan the write, got %q", stdout)
+				}
+			})
+		}
+	})
+
+	t.Run("an object that is not a write still fails on type", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set"), []string{
+			"--url", testURL, "--writes", `{"foo":1}`, "--dry-run",
+		})
+		requireValidation(t, err, `expected type "array", got "object"`)
+	})
+
+	// A cell carrying style fields at its top level passed every client check
+	// and reached the backend verbatim, which answered `[cells[0][0].border]
+	// unexpected property "border" is not defined` — 33 rejections, on a
+	// payload the --styles path accepts.
+	t.Run("cell-level style vocabulary folds into its carrier", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct {
+			name, cell, want string
+		}{
+			{"border folds to the four sides", `{"value":"x","border":{"style":"solid"}}`, `"border_styles":{"bottom":{"style":"solid"}`},
+			{"scalars move into cell_styles", `{"value":"x","font_weight":"bold"}`, `"cell_styles":{"font_weight":"bold"}`},
+			{"an alias lands canonical", `{"value":"x","valign":"center"}`, `"cell_styles":{"vertical_alignment":"middle"}`},
+			{"a boolean wrap becomes the enum", `{"value":"x","wrap_text":true}`, `"cell_styles":{"word_wrap":"auto-wrap"}`},
+			{"a quoted size becomes the number", `{"value":"x","font_size":"14"}`, `"cell_styles":{"font_size":14}`},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set"), []string{
+					"--url", testURL, "--sheet-name", "s", "--range", "A1:A1",
+					"--cells", `[[` + tc.cell + `]]`, "--dry-run",
+				})
+				if err != nil {
+					t.Fatalf("cell should be accepted, got: %v", err)
+				}
+				if !strings.Contains(strings.ReplaceAll(stdout, `\"`, `"`), tc.want) {
+					t.Errorf("body should carry %s, got %q", tc.want, stdout)
+				}
+			})
+		}
+	})
+
+	t.Run("a key this domain does not know is left alone", func(t *testing.T) {
+		t.Parallel()
+		// The tool contract may gain fields between builds; guessing at one
+		// is what the acceptance contract forbids.
+		stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set"), []string{
+			"--url", testURL, "--sheet-name", "s", "--range", "A1:A1",
+			"--cells", `[[{"value":"x","some_future_field":1}]]`, "--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("unknown keys must pass through, got: %v", err)
+		}
+		if !strings.Contains(strings.ReplaceAll(stdout, `\"`, `"`), `"some_future_field":1`) {
+			t.Errorf("the key should reach the body untouched, got %q", stdout)
+		}
+	})
+}

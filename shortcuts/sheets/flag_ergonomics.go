@@ -40,6 +40,7 @@ func withFlagErgonomics(prev func(cmd *cobra.Command)) func(cmd *cobra.Command) 
 		chainEnumNormalization(cmd)
 		chainFlagAliases(cmd)
 		chainRangeSheetPrefix(cmd)
+		chainMultiAreaRange(cmd)
 		chainRequiredFlagHelp(cmd)
 	}
 }
@@ -120,13 +121,13 @@ var commandFlagAliases = map[string]map[string]string{
 	// renames. csv-file joins file on the path-valued side. 08-29..31 reflow:
 	// 8 of +csv-put's 29 rejections were one of these four names.
 	"+csv-put":      {"file": "csv", "csv-file": "csv", "data": "csv", "content": "csv"},
-	"+sheet-create": {"name": "title"},
+	"+sheet-create": {"name": "title", "sheet-name": "title"},
 	// The new name is the only name-valued input a rename takes, so the
 	// habitual spellings are unambiguous (unlike +sheet-copy, where a name
 	// could mean the copy's title or the source selector and gets a
 	// prescription instead). 07-28 root-cause report #25: 10/10 wrote
 	// --new-name, 24 occurrences.
-	"+sheet-rename": {"name": "title", "new-name": "title"},
+	"+sheet-rename": {"name": "title", "new-name": "title", "new-title": "title"},
 	// size → width/height: the styles protocol (--styles row_sizes/col_sizes)
 	// spells the pixel dimension "size", and pre-2026-07 batches accepted it
 	// here too — the rename is the single largest sub-op error cluster in
@@ -145,6 +146,18 @@ var commandFlagAliases = map[string]map[string]string{
 	// into {"value":…}, so a --values matrix ('[["工作内容"]]') is accepted
 	// verbatim as --cells — the name was the only thing wrong.
 	"+cells-set": {"values": "cells"},
+	// 08-29..31 reflow, long-tail table. Each of these names an input the
+	// command already has under one other spelling, with identical value
+	// semantics: the import name (16 rejections, all but one on windows),
+	// the export destination (13 + 2), and the replacement text (7). None is
+	// within the did-you-mean budget -- "title" shares no prefix with "name",
+	// and "replace" is 4 edits from "replacement".
+	"+workbook-import": {"title": "name"},
+	"+workbook-export": {"file": "output-path", "outdir": "output-path", "output-dir": "output-path", "output": "output-path"},
+	"+cells-replace":   {"replace": "replacement"},
+	"+csv-get":         {"output": "output-path"},
+	// +sheet-create already answers to "name"; new-title joins new-name on
+	// +sheet-rename for the same reason.
 }
 
 // intuitiveFlagHints carries the prescription for habitual names whose fix
@@ -205,6 +218,7 @@ var intuitiveFlagHints = map[string]map[string]string{
 		"styles": `range-level styling goes through +styles-put (same {"styles":[...]} vocabulary); per-cell styles ride inside the cells objects as cell_styles`,
 	},
 	"+table-put": {
+		"payload":    `the sub-sheet payload flag is --sheets ({"sheets":[{"name":"Sheet1","columns":[…],"data":[…]}]}); --values takes an untyped 2D array instead`,
 		"start-cell": `anchor each sub-sheet via the "start_cell" field inside --sheets (e.g. {"sheets":[{"name":"Sheet1","start_cell":"B2",…}]}); to paste CSV at a cell use +csv-put --start-cell`,
 		"sheet-name": `+table-put has no sheet selector — each --sheets item carries its own "name" field ({"sheets":[{"name":"Sheet1",…}]})`,
 		"sheet-id":   `+table-put has no sheet selector — each --sheets item carries its own "name" field ({"sheets":[{"name":"Sheet1",…}]})`,
@@ -215,6 +229,34 @@ var intuitiveFlagHints = map[string]map[string]string{
 	},
 	"+chart-config-update": {
 		"show-labels": "use --data-labels value (or any value/category/percentage combination such as value_category_percentage; use series for series names or none to hide labels)",
+	},
+	// 08-29..31 reflow, long-tail table. These name a real input, but the fix
+	// is not a rename: the value moves to a differently-shaped flag, or the
+	// command does not carry that concept at all.
+	"+dim-delete": {
+		// 18 rejections, the largest single long-tail entry. +dim-insert does
+		// take --position, so the habit carries over to its sibling, where
+		// rows and columns are named by an A1 span instead.
+		"position":  `+dim-delete names what to remove with --range: "3:5" deletes rows 3 through 5, "C:E" deletes columns C through E`,
+		"index":     `+dim-delete names what to remove with --range: "3:5" deletes rows 3 through 5, "C:E" deletes columns C through E`,
+		"dimension": `+dim-delete infers rows vs columns from --range: "3:5" is rows, "C:E" is columns`,
+	},
+	"+cells-unmerge": {
+		"ranges": `+cells-unmerge takes one span per call: --range "A1:B2"; unmerge several regions with several calls (or one +batch-update carrying them all)`,
+	},
+	"+csv-get": {
+		"include":     "+csv-get returns values only; for formulas / styles / comments use +cells-get --include formula,style",
+		"include-all": "+csv-get returns values only; for formulas / styles / comments use +cells-get --include formula,style",
+	},
+	"+cells-get": {
+		"value-only": "+cells-get returns values by default; --include adds categories on top, so drop this flag (or narrow the output with --jq)",
+	},
+	"+workbook-import": {
+		"output-path": "+workbook-import uploads a local file and returns the new spreadsheet's token and url; it writes nothing locally. Capture the JSON result instead, or use +workbook-export --output-path to pull a sheet back down",
+	},
+	"+styles-put": {
+		"sheet-name": `+styles-put has no sheet selector -- each --styles item carries its own "name" field ({"styles":[{"name":"Sheet1","cell_styles":[…]}]})`,
+		"sheet-id":   `+styles-put has no sheet selector -- each --styles item carries its own "name" field ({"styles":[{"name":"Sheet1","cell_styles":[…]}]})`,
 	},
 }
 
@@ -488,6 +530,69 @@ func inlineFlagList(names []string) string {
 		parts[i] = "--" + n
 	}
 	return strings.Join(parts, ", ") + suffix
+}
+
+// chainMultiAreaRange rejects an Excel multi-area --range on any command that
+// takes one. It is chained AFTER chainRangeSheetPrefix so a sheet prefix has
+// already moved into --sheet-name: a sheet whose name contains a comma must
+// not be read as several areas.
+func chainMultiAreaRange(cmd *cobra.Command) {
+	prev := cmd.PreRunE
+	cmd.PreRunE = func(c *cobra.Command, args []string) error {
+		if prev != nil {
+			if err := prev(c, args); err != nil {
+				return err
+			}
+		}
+		if want, err := c.Flags().GetBool("print-schema"); err == nil && want {
+			return nil
+		}
+		rng, err := c.Flags().GetString("range")
+		if err != nil {
+			return nil //nolint:nilerr // the command has no plain --range; nothing to check
+		}
+		return rejectMultiAreaRange(rng)
+	}
+}
+
+// rejectMultiAreaRange answers the Excel multi-area habit — several
+// non-adjacent cells joined by commas ("A3,G3,H3") — before it reaches the
+// backend, which rejects it as an opaque "[90015206] invalid range" (or, on a
+// write path, as "invalid cell ref"). A single A1 range never contains a
+// comma, so the shape is unambiguous; the fix is not (the enclosing
+// rectangle, or one call per area), so this prescribes both rather than
+// picking one. 08-29..31 reflow: 54 of +cells-get's 69 rejections, 5 more on
+// +csv-get and 4 on +cells-set-style — the habit is not specific to reads,
+// which is why the check rides the shared --range chain.
+func rejectMultiAreaRange(rng string) error {
+	rng = strings.TrimSpace(rng)
+	if !strings.Contains(rng, ",") {
+		return nil
+	}
+	areas := strings.Split(rng, ",")
+	first, last := strings.TrimSpace(areas[0]), strings.TrimSpace(areas[len(areas)-1])
+	hint := "use the enclosing rectangle in one call"
+	if enclosing := enclosingRangeHint(first, last); enclosing != "" {
+		hint = fmt.Sprintf("use the enclosing rectangle in one call (--range %q)", enclosing)
+	}
+	return sheetsValidationForFlag("range", "--range %q lists %d separate areas; one call takes ONE continuous A1 range", rng, len(areas)).
+		WithHint("%s, or issue one call per area — several areas in one request go through +batch-update, which carries a separate op per area", hint)
+}
+
+// enclosingRangeHint spells the rectangle covering the caller's first and last
+// area, so the prescription carries a range they can paste. Empty when either
+// end is not a plain cell reference — a guess is worse than the generic hint.
+func enclosingRangeHint(first, last string) string {
+	if first == "" || last == "" || strings.Contains(first, ":") || strings.Contains(last, ":") {
+		return ""
+	}
+	if _, _, ok := splitCellRef(first); !ok {
+		return ""
+	}
+	if _, _, ok := splitCellRef(last); !ok {
+		return ""
+	}
+	return first + ":" + last
 }
 
 // ─── enum vocabulary normalization ──────────────────────────────────────

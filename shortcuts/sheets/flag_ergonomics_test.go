@@ -953,3 +953,84 @@ func TestReflowFlagVocabulary(t *testing.T) {
 		}
 	})
 }
+
+// TestReflowLongTailVocabulary pins the long-tail table from the 08-29..31
+// reflow: names that already exist on the command under another spelling get
+// aliased, names whose fix changes the shape get a prescription, and a
+// multi-area --range is answered on every command that takes one.
+func TestReflowLongTailVocabulary(t *testing.T) {
+	t.Parallel()
+
+	t.Run("aliases", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct {
+			name    string
+			command string
+			args    []string
+		}{
+			{"workbook-import names the new spreadsheet", "+workbook-import",
+				[]string{"--file", "./data.csv", "--title", "Q3"}},
+			{"workbook-export names the local destination", "+workbook-export",
+				[]string{"--url", testURL, "--file", "./out.xlsx"}},
+			{"cells-replace names the replacement text", "+cells-replace",
+				[]string{"--url", testURL, "--sheet-name", "s", "--find", "a", "--replace", "b"}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				if _, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, tc.command),
+					append(tc.args, "--dry-run")); err != nil {
+					t.Fatalf("the habitual spelling should parse, got: %v", err)
+				}
+			})
+		}
+	})
+
+	t.Run("prescriptions", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct {
+			name, command, want string
+			args                []string
+		}{
+			// 18 rejections, the largest long-tail entry: +dim-insert does
+			// take --position, so the habit carries to its sibling.
+			{"dim-delete has no position", "+dim-delete", `--range: "3:5" deletes rows`,
+				[]string{"--url", testURL, "--sheet-name", "s", "--position", "3"}},
+			{"cells-unmerge takes one span", "+cells-unmerge", "one span per call",
+				[]string{"--url", testURL, "--sheet-name", "s", "--ranges", `["A1:B2"]`}},
+			{"csv-get returns values only", "+csv-get", "+cells-get --include",
+				[]string{"--url", testURL, "--sheet-name", "s", "--range", "A1:B2", "--include", "formula"}},
+			{"styles-put has no sheet selector", "+styles-put", "no sheet selector",
+				[]string{"--url", testURL, "--sheet-name", "s", "--styles", `{"styles":[]}`}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, tc.command),
+					append(tc.args, "--dry-run"))
+				ve := requireValidation(t, err, "unknown flag")
+				if !strings.Contains(ve.Hint, tc.want) {
+					t.Errorf("hint should carry %q, got %q", tc.want, ve.Hint)
+				}
+			})
+		}
+	})
+
+	t.Run("a multi-area range is answered on write commands too", func(t *testing.T) {
+		t.Parallel()
+		// The habit is not specific to reads: 5 more on +csv-get and 4 on
+		// +cells-set-style, which is why the check rides the --range chain.
+		for _, tc := range []struct {
+			command string
+			args    []string
+		}{
+			{"+cells-set-style", []string{"--url", testURL, "--sheet-name", "s", "--range", "K14,K19", "--font-weight", "bold"}},
+			{"+csv-get", []string{"--url", testURL, "--sheet-name", "s", "--range", "A5:B11, AJ5:AP11"}},
+		} {
+			t.Run(tc.command, func(t *testing.T) {
+				t.Parallel()
+				_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, tc.command),
+					append(tc.args, "--dry-run"))
+				requireValidation(t, err, "separate areas")
+			})
+		}
+	})
+}

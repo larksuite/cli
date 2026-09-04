@@ -10,6 +10,7 @@ import (
 	"io"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -1143,7 +1144,9 @@ func parseWorkbookCreateStyleItem(item map[string]interface{}, path string, exis
 			break
 		}
 		msg := fmt.Sprintf("%s has unknown key %q", path, k)
-		if match := suggest.Closest(strings.ToLower(k), workbookCreateStyleItemKeys, 1); len(match) > 0 {
+		if rx := styleItemKeyPrescriptions[squashStyleFieldKey(k)]; rx != "" {
+			msg += " — " + rx
+		} else if match := suggest.Closest(strings.ToLower(k), workbookCreateStyleItemKeys, 1); len(match) > 0 {
 			msg += fmt.Sprintf(" — did you mean %q?", match[0])
 		}
 		probs = append(probs, common.ValidationErrorf("%s", msg))
@@ -1532,6 +1535,17 @@ func parseWorkbookCreateResizeOp(raw interface{}, path, dimension string) (workb
 	}
 	resizeType, _ := op["type"].(string)
 	resizeType = strings.TrimSpace(resizeType)
+	// "custom" is the word both Excel's UI and the Lark UI use for a
+	// hand-set dimension, and an op that carries an explicit size is asking
+	// for exactly the pixel mode. Only rewritten when a size is present:
+	// without one, "custom" states no dimension at all and the enum error is
+	// the right answer.
+	if strings.EqualFold(resizeType, "custom") {
+		if _, hasSize := op["size"]; hasSize {
+			resizeType = "pixel"
+			op["type"] = resizeType
+		}
+	}
 	if resizeType != "" {
 		if dimension == "column" && resizeType == "auto" {
 			return workbookCreateResizeOp{}, common.ValidationErrorf("%s.type auto is rows-only", path)
@@ -2102,6 +2116,32 @@ func workbookCreateVisualOpInput(token, sheetID, sheetName string, op workbookCr
 	}
 }
 
+// wholeAxisRangeHint answers a whole-column ("A:C") or whole-row ("2:10")
+// range where a rectangle is required, naming both ways out: bound it, or move
+// it to the sizing carrier that takes exactly this form. Returns "" for any
+// other malformed range, which keeps its own message.
+func wholeAxisRangeHint(rangeStr string) string {
+	parts := strings.SplitN(strings.TrimSpace(rangeStr), ":", 2)
+	if len(parts) != 2 {
+		return ""
+	}
+	left, right := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	if left == "" || right == "" {
+		return ""
+	}
+	isColumns := isColumnLetterKey(strings.ToUpper(left)) && isColumnLetterKey(strings.ToUpper(right))
+	_, digitsLeft := strconv.Atoi(left)
+	_, digitsRight := strconv.Atoi(right)
+	isRows := digitsLeft == nil && digitsRight == nil
+	switch {
+	case isColumns:
+		return fmt.Sprintf(`a cell style needs row bounds: give the rectangle you mean (e.g. "%s1:%s200"). The bare "%s" form is what col_sizes takes for column width`, left, right, rangeStr)
+	case isRows:
+		return fmt.Sprintf(`a cell style needs column bounds: give the rectangle you mean (e.g. "A%s:Z%s"). The bare "%s" form is what row_sizes takes for row height`, left, right, rangeStr)
+	}
+	return ""
+}
+
 func workbookCreateStyleRangeBounds(rangeStr string) (startCol, startRow, endCol, endRow int, err error) {
 	if idx := strings.Index(rangeStr, "!"); idx >= 0 {
 		rangeStr = rangeStr[idx+1:]
@@ -2121,6 +2161,14 @@ func workbookCreateStyleRangeBounds(rangeStr string) (startCol, startRow, endCol
 	startCol, startRow, ok1 := splitCellRef(parts[0])
 	endCol, endRow, ok2 := splitCellRef(parts[1])
 	if !ok1 || !ok2 {
+		// The whole-column / whole-row forms ("A:A", "1:1") are real range
+		// syntax — just not here: they are what row_sizes and col_sizes take,
+		// while a style stamp needs bounds to fill. 08-29..31 reflow: 28
+		// rejections across +styles-put and +workbook-create, and the bare
+		// "need rectangular A1:B2" left the caller guessing at the row count.
+		if hint := wholeAxisRangeHint(rangeStr); hint != "" {
+			return 0, 0, 0, 0, fmt.Errorf("unsupported range form %q — %s", rangeStr, hint) //nolint:forbidigo // intermediate error; callers wrap it into a typed validation error with flag/param context
+		}
 		return 0, 0, 0, 0, fmt.Errorf("unsupported range form %q (need rectangular A1:B2)", rangeStr) //nolint:forbidigo // intermediate error; callers wrap it into a typed validation error with flag/param context
 	}
 	if endRow < startRow || endCol < startCol {

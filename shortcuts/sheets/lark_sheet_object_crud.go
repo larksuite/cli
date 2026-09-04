@@ -1256,14 +1256,105 @@ var condFormatCompareAliases = map[string]string{
 // compare_type, get the rename.
 var condFormatShapeKeys = []string{"time_period", "icon_type", "value_type", "color"}
 
-// normalizeCondFormatProperties rewrites the two unambiguous --properties
-// habits in place: attrs written as a single object instead of a one-entry
-// list, and a comparison spelled as `operator` / in symbol form under a rule
-// whose contract is {compare_type, value|text}.
+// condFormatStyleAliases maps this domain's own cell-style vocabulary onto the
+// narrower one a conditional-format rule takes. A model that learned
+// background_color / font_color from --styles writes them here too, and the
+// backend answers `unexpected property "background_color" is not defined` --
+// 9 of +cond-format-create's rejections in the 08-29..31 reflow. The target
+// spellings are unambiguous within this schema: it has exactly one fill slot
+// (back_color) and one text-color slot (fore_color, which its own description
+// calls 前景色/字体颜色, unlike the openpyxl fgColor that makes fore_color
+// ambiguous on the cell-style paths).
+var condFormatStyleAliases = map[string]string{
+	"background_color": "back_color",
+	"bg_color":         "back_color",
+	"fill_color":       "back_color",
+	"font_color":       "fore_color",
+	"text_color":       "fore_color",
+	"color":            "fore_color",
+}
+
+// condFormatFontWords maps the flat weight / slant vocabulary onto the single
+// `font` enum this schema uses (bold / italic / "bold italic").
+var condFormatFontWords = map[string]string{
+	"font_weight": "bold",
+	"bold":        "bold",
+	"font_style":  "italic",
+	"italic":      "italic",
+}
+
+// normalizeCondFormatStyle folds the cell-style spellings a caller brings from
+// --styles into the rule style's own vocabulary, in place.
+func normalizeCondFormatStyle(style map[string]interface{}) {
+	for _, field := range sortedKeys(style) {
+		target, aliased := condFormatStyleAliases[field]
+		if !aliased {
+			continue
+		}
+		if _, taken := style[target]; taken {
+			continue
+		}
+		if s, isText := style[field].(string); isText && strings.TrimSpace(s) != "" {
+			style[target] = s
+			delete(style, field)
+		}
+	}
+	for _, field := range sortedKeys(style) {
+		word, isFontWord := condFormatFontWords[field]
+		if !isFontWord {
+			continue
+		}
+		// A weight/slant word is only folded when it actually asks for the
+		// effect: font_weight:"normal" or bold:false mean "leave it alone",
+		// and this schema has no way to say that.
+		switch v := style[field].(type) {
+		case bool:
+			if !v {
+				delete(style, field)
+				continue
+			}
+		case string:
+			if !strings.EqualFold(strings.TrimSpace(v), word) {
+				continue
+			}
+		default:
+			continue
+		}
+		existing, _ := style["font"].(string)
+		switch {
+		case existing == "":
+			style["font"] = word
+		case existing != word:
+			style["font"] = "bold italic"
+		}
+		delete(style, field)
+	}
+	if line, ok := style["font_line"].(string); ok {
+		if _, taken := style["text_decoration"]; !taken {
+			switch strings.ToLower(strings.TrimSpace(line)) {
+			case "underline":
+				style["text_decoration"] = "underline"
+				delete(style, "font_line")
+			case "line-through", "strikethrough":
+				style["text_decoration"] = "strikethrough"
+				delete(style, "font_line")
+			}
+		}
+	}
+}
+
+// normalizeCondFormatProperties rewrites the unambiguous --properties habits
+// in place: attrs written as a single object instead of a one-entry list, a
+// comparison spelled as `operator` / in symbol form under a rule whose
+// contract is {compare_type, value|text}, and cell-style vocabulary in the
+// rule's style block.
 func normalizeCondFormatProperties(v interface{}) interface{} {
 	props, ok := v.(map[string]interface{})
 	if !ok {
 		return v
+	}
+	if style, isMap := props["style"].(map[string]interface{}); isMap {
+		normalizeCondFormatStyle(style)
 	}
 	// attrs as a bare object: the list holds one entry per rule parameter and
 	// a single object can only be that one entry.

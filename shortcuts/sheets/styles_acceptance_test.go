@@ -245,6 +245,21 @@ var stylesPriorCorpus = []struct {
 		fields: map[string]interface{}{"wrap": true}, wantErr: "word_wrap"},
 	{name: "unmerge_cells prescribes the unmerge command",
 		fields: map[string]interface{}{"unmerge_cells": "A1:B2"}, wantErr: "+cells-unmerge"},
+	// 08-29..31 reflow, second pass. `type` is the line-kind slot in the Lark
+	// OpenAPI's border vocabulary and in openpyxl's Side(border_style=…); a
+	// per-side spec has exactly one kind slot, so it can mean nothing else.
+	{name: "border.type names the line kind",
+		fields: map[string]interface{}{"border": map[string]interface{}{"type": "dashed"}},
+		check:  wantBorder("top", "style", "dashed")},
+	{name: "border.type carrying a thickness word sorts into weight",
+		fields: map[string]interface{}{"border": map[string]interface{}{"type": "thin"}},
+		check:  wantAll(wantBorder("top", "weight", "thin"), wantBorder("top", "style", "solid"))},
+	{name: "border_styles side type names the line kind",
+		fields: map[string]interface{}{"border_styles": map[string]interface{}{"top": map[string]interface{}{"type": "dotted"}}},
+		check:  wantBorder("top", "style", "dotted")},
+	{name: "an unrelated border attribute stays rejected",
+		fields:  map[string]interface{}{"border": map[string]interface{}{"thickness": "solid"}},
+		wantErr: "is not a border attribute"},
 }
 
 // wantNumberStyle pins a numeric style field, which normalization stores as a

@@ -730,7 +730,7 @@ func TestStyleItemRangePrefixNormalization(t *testing.T) {
 		item := map[string]interface{}{
 			"name":        "Summary",
 			"cell_styles": []interface{}{map[string]interface{}{"range": "Detail!A1:D1", "font_weight": "bold"}},
-			"row_sizes":   []interface{}{map[string]interface{}{"range": "2:3", "type": "custom", "size": float64(32)}},
+			"row_sizes":   []interface{}{map[string]interface{}{"range": "2:3", "type": "snug", "size": float64(32)}},
 		}
 		_, probs := parseWorkbookCreateStyleItem(item, "--styles.styles[0]", false)
 		joined := make([]string, 0, len(probs))
@@ -743,7 +743,7 @@ func TestStyleItemRangePrefixNormalization(t *testing.T) {
 		if !strings.Contains(all, `names sheet "Detail" but the item targets "Summary"`) {
 			t.Fatalf("probs = %v, want the foreign-prefix issue", all)
 		}
-		if !strings.Contains(all, `row_sizes[0].type "custom" is invalid`) {
+		if !strings.Contains(all, `row_sizes[0].type "snug" is invalid`) {
 			t.Fatalf("probs = %v, want the type issue reported too", all)
 		}
 	})

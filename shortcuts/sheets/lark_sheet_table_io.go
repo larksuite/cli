@@ -550,9 +550,15 @@ func (in *tableSheetIn) normalize(idx int) (tableSheetSpec, error) {
 	seenCol := make(map[string]bool, len(columns))
 	spec.Columns = make([]tableColumnSpec, len(columns))
 	for j, name := range columns {
-		trimmed := strings.TrimSpace(name)
-		if trimmed == "" {
-			return tableSheetSpec{}, common.ValidationErrorf("--sheets[%d] %q: columns[%d] name is required", idx, in.Name, j)
+		// A blank heading is a real table shape, not a mistake: a spacer
+		// column, or the empty cells under a merged title. 08-29..31 reflow:
+		// 13 rejections said "columns[N] name is required" for a payload whose
+		// data was fine. It writes an empty header cell and takes no dtypes /
+		// formats entry — those are keyed by name, and "" names nothing, so a
+		// dtypes key of "" still reports as referencing an unknown column.
+		if strings.TrimSpace(name) == "" {
+			spec.Columns[j] = tableColumnSpec{Name: name, Type: "string", Format: "@"}
+			continue
 		}
 		if seenCol[name] {
 			return tableSheetSpec{}, common.ValidationErrorf("--sheets[%d] %q: duplicate column name %q", idx, in.Name, name)
@@ -882,6 +888,13 @@ func buildTypedCell(col *tableColumnSpec, raw interface{}) (map[string]interface
 		cell["value"] = b
 	case "date":
 		str, ok := raw.(string)
+		if ok && strings.TrimSpace(str) == "" {
+			// Blank text in a date column means "no date", the same thing JSON
+			// null means and the same rule the numeric branch above follows.
+			// 08-29..31 reflow: 7 rejections, all of them a total row or a
+			// trailing blank inside an otherwise valid date column.
+			return cell, nil
+		}
 		if !ok {
 			return nil, fmt.Errorf("date expects an ISO yyyy-mm-dd string, got %s", describeJSONType(raw)) //nolint:forbidigo // intermediate error; callers wrap it into a typed --sheets/--values validation error with row/column context
 		}

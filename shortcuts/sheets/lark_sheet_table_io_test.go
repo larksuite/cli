@@ -335,7 +335,7 @@ func TestTablePut_PayloadValidation(t *testing.T) {
 		{"missing name", `{"sheets":[{"columns":["a"],"data":[]}]}`, "name is required"},
 		{"duplicate name", `{"sheets":[{"name":"S","columns":["a"],"data":[]},{"name":"S","columns":["a"],"data":[]}]}`, "duplicate sheet name"},
 		{"no columns with data", `{"sheets":[{"name":"S","columns":[],"data":[["x"]]}]}`, "columns must be non-empty when `data` has rows"},
-		{"column missing name", `{"sheets":[{"name":"S","columns":[""],"data":[]}]}`, "columns[0] name is required"},
+		{"dtypes key on a blank column", `{"sheets":[{"name":"S","columns":["a",""],"dtypes":{"":"int64"},"data":[]}]}`, `dtypes references unknown column ""`},
 		{"duplicate column", `{"sheets":[{"name":"S","columns":["a","a"],"data":[]}]}`, "duplicate column name"},
 		{"dtypes refs unknown column", `{"sheets":[{"name":"S","columns":["a"],"data":[],"dtypes":{"b":"int64"}}]}`, "dtypes references unknown column"},
 		{"formats refs unknown column", `{"sheets":[{"name":"S","columns":["a"],"data":[],"formats":{"b":"0.0"}}]}`, "formats references unknown column"},
@@ -2041,6 +2041,18 @@ func TestTablePut_ReflowLeniency(t *testing.T) {
 			sheets: `{"sheets":[{"name":"S","columns":["n"],"dtypes":{"n":"number"},"data":[[1.5]]}]}`,
 			want:   []string{`"value":1.5`},
 		},
+		{
+			// A spacer column, or the empty cells under a merged title (13).
+			name:   "a blank column heading writes a blank header cell",
+			sheets: `{"sheets":[{"name":"S","columns":["a","","c"],"data":[["1","2","3"]]}]}`,
+			want:   []string{`"value":""`, `"value":"c"`},
+		},
+		{
+			// A total row or a trailing blank inside a date column (7).
+			name:   "blank text in a date column is a blank cell",
+			sheets: `{"sheets":[{"name":"S","columns":["d"],"dtypes":{"d":"datetime64[ns]"},"data":[["2026-01-01"],[""]]}]}`,
+			want:   []string{`"number_format":"yyyy-mm-dd"`},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -2072,6 +2084,16 @@ func TestTablePut_ReflowLeniency(t *testing.T) {
 		if strings.Contains(stdout, "set_cell_range") {
 			t.Errorf("nothing to write, so no set_cell_range should be planned, got %q", stdout)
 		}
+	})
+
+	t.Run("a genuinely duplicated heading still fails", func(t *testing.T) {
+		t.Parallel()
+		// Blank headings are exempt from the duplicate check (several blanks
+		// are one table shape); two real names that collide are not.
+		_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL, "--sheets", `{"sheets":[{"name":"S","columns":["a","a"],"data":[["x","y"]]}]}`, "--dry-run",
+		})
+		requireValidation(t, err, "duplicate column name")
 	})
 
 	t.Run("a non-numeric string in a numeric column still fails", func(t *testing.T) {

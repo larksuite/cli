@@ -919,6 +919,47 @@ func TestCondFormatPropertiesNormalization(t *testing.T) {
 		})
 	}
 
+	t.Run("cell-style vocabulary folds into the rule style", func(t *testing.T) {
+		t.Parallel()
+		// A model that learned background_color / font_color from --styles
+		// writes them here too, and the backend answers `unexpected property
+		// "background_color" is not defined` (9 rejections).
+		var props map[string]interface{}
+		if err := json.Unmarshal([]byte(`{"style":{"background_color":"#FFE6E6","font_color":"#C00000","font_weight":"bold","font_line":"line-through"}}`), &props); err != nil {
+			t.Fatal(err)
+		}
+		normalizeCondFormatProperties(props)
+		style, _ := props["style"].(map[string]interface{})
+		for key, want := range map[string]interface{}{
+			"back_color": "#FFE6E6", "fore_color": "#C00000",
+			"font": "bold", "text_decoration": "strikethrough",
+		} {
+			if style[key] != want {
+				t.Errorf("style.%s = %v, want %v", key, style[key], want)
+			}
+		}
+		for _, gone := range []string{"background_color", "font_color", "font_weight", "font_line"} {
+			if _, still := style[gone]; still {
+				t.Errorf("%s should have been folded, got %v", gone, style)
+			}
+		}
+	})
+
+	t.Run("a weight word that asks for nothing is not folded", func(t *testing.T) {
+		t.Parallel()
+		// This schema has no way to say "not bold", so bold:false is dropped
+		// rather than turned into font:"bold".
+		var props map[string]interface{}
+		if err := json.Unmarshal([]byte(`{"style":{"back_color":"#FFF","bold":false}}`), &props); err != nil {
+			t.Fatal(err)
+		}
+		normalizeCondFormatProperties(props)
+		style, _ := props["style"].(map[string]interface{})
+		if _, has := style["font"]; has {
+			t.Errorf("style = %v, want no font entry", style)
+		}
+	})
+
 	t.Run("a bare attrs object becomes the one-entry list", func(t *testing.T) {
 		t.Parallel()
 		var props map[string]interface{}

@@ -161,6 +161,18 @@ var styleFieldPrescriptions = map[string]string{
 	"unmerge_cells": "a styles payload only adds merges (cell_merges); undo an existing one with +cells-unmerge --range <A1 range>",
 }
 
+// styleItemKeyPrescriptions answers a key written on a styles[N] item that
+// belongs one level deeper, on a cell_styles entry. The distance ranker cannot
+// help: border_styles is six edits from cell_styles, and the fix is structural
+// anyway. 08-29..31 reflow, +workbook-create and +table-put --styles.
+var styleItemKeyPrescriptions = map[string]string{
+	"borderstyles": `borders belong on a cell_styles entry, next to its range ({"cell_styles":[{"range":"A1:C1","border_styles":{"top":{"style":"solid"}}}]})`,
+	"borders":      `borders belong on a cell_styles entry, next to its range ({"cell_styles":[{"range":"A1:C1","border":{"style":"solid","color":"#000000"}}]})`,
+	"border":       `borders belong on a cell_styles entry, next to its range ({"cell_styles":[{"range":"A1:C1","border":{"style":"solid","color":"#000000"}}]})`,
+	"style":        `a styles item carries cell_styles / cell_merges / row_sizes / col_sizes / freeze; the style fields themselves sit on a cell_styles entry next to its range`,
+	"styles":       `a styles item carries cell_styles / cell_merges / row_sizes / col_sizes / freeze; the style fields themselves sit on a cell_styles entry next to its range`,
+}
+
 // borderFieldPrescription answers any unsupported border-family spelling that
 // survived foldBorderFamilyAliases (which already absorbs border / borders /
 // border_<side> / border_<attr> and their word-order twins). What is left is
@@ -508,6 +520,20 @@ func normalizeBorderSideVocab(side map[string]interface{}) {
 			delete(side, "width")
 		}
 	}
+	// "type" is the line-kind slot in the Lark OpenAPI's own border vocabulary
+	// (border_type: FULL_BORDER / …) and in openpyxl's Side(border_style=…)
+	// read loosely; inside a per-side spec whose only kind slot is `style`,
+	// it can mean nothing else. 08-29..31 reflow: 29 rejections across
+	// +styles-put and +workbook-create answered "type is not a border
+	// attribute", a message that names the vocabulary but not the mapping.
+	// The value then goes through the style/weight sorting below, so
+	// {"type":"thin"} lands as a thin solid line exactly like {"style":"thin"}.
+	if t, aliased := side["type"]; aliased {
+		if _, taken := side["style"]; !taken {
+			side["style"] = t
+			delete(side, "type")
+		}
+	}
 	// A number is a line width in px/pt (xlsxwriter's set_border(1) and the
 	// Google Sheets API agree at 1 and 2). 0 and negatives are not guessed
 	// at: "no width" is a border the caller should spell style:"none".
@@ -615,10 +641,134 @@ func normalizeCellsFlagValue(v interface{}) interface{} {
 				}
 				continue
 			}
+			foldCellLevelStyleVocabulary(cell)
 			if bs, ok := cell["border_styles"].(map[string]interface{}); ok {
 				expandBorderAllShorthand(bs)
 			}
 		}
+	}
+	return v
+}
+
+// cellCarrierFields are the keys a cell object may hold on the wire: one
+// content field plus the stackable carriers. Anything else that is style
+// vocabulary belongs inside cell_styles (scalars) or border_styles (the
+// border family), which is what foldCellLevelStyleVocabulary arranges.
+var cellCarrierFields = map[string]bool{
+	"value": true, "formula": true, "rich_text": true, "multiple_values": true,
+	"cell_styles": true, "border_styles": true, "note": true, "data_validation": true,
+}
+
+// foldCellLevelStyleVocabulary moves style fields written directly on a cell
+// into the carrier that holds them. A cell spelled
+// {"value":"x","font_weight":"bold","border":{…}} passed every client check
+// and reached the backend verbatim, which answered
+// `[cells[0][0].border] unexpected property "border" is not defined` -- a
+// message naming neither the carrier nor the fix. 08-29..31 reflow: 33
+// +cells-set rejections came back from the server that way, on a payload the
+// --styles path would have accepted, which is exactly the vocabulary-parity
+// break this file's contract forbids.
+//
+// Only keys this domain already knows are moved. An unrecognized key is left
+// where it is: it may be a field the tool contract gained since this build,
+// and guessing at it is what the contract forbids.
+func foldCellLevelStyleVocabulary(cell map[string]interface{}) {
+	// The border family folds into border_styles, which IS a cell-level
+	// carrier -- the same rewrite the --styles path performs. A conflict
+	// (both spellings present) is left alone for the validator to report.
+	if hasBorderFamilyKey(cell) {
+		if err := foldBorderFamilyAliases(cell, "--cells"); err != nil {
+			return
+		}
+	}
+	scalars := cellStyleScalarTypes()
+	for _, field := range sortedKeys(cell) {
+		if cellCarrierFields[field] {
+			continue
+		}
+		canonical := field
+		if _, known := scalars[canonical]; !known {
+			// Try the alias table's spellings (wrap_text, halign, …) so a
+			// habitual name written at cell level lands the same way it does
+			// inside cell_styles.
+			for _, a := range cellStyleAliases {
+				if a.alias == field {
+					canonical = a.canonical
+					break
+				}
+			}
+		}
+		if _, known := scalars[canonical]; !known {
+			continue
+		}
+		styles, ok := cell["cell_styles"].(map[string]interface{})
+		if !ok {
+			if _, exists := cell["cell_styles"]; exists {
+				return // a non-object cell_styles is the validator's to report
+			}
+			styles = map[string]interface{}{}
+			cell["cell_styles"] = styles
+		}
+		if _, taken := styles[canonical]; taken {
+			continue // cell_styles wins; the duplicate is reported downstream
+		}
+		styles[canonical] = cell[field]
+		delete(cell, field)
+	}
+	// Canonicalize the values too, on the same pass. The typed --cells carrier
+	// meets the generic JSON-schema check right after this normalizer, while
+	// the --styles carrier skips it and reaches normalizeCellStyleAliases with
+	// its rewrites intact -- so without this, a boolean word_wrap that
+	// --styles accepts died here on "expected type string". The error is
+	// dropped on purpose: this is the rewrite pass, and the same function runs
+	// again later with the path context that makes a good message.
+	if styles, ok := cell["cell_styles"].(map[string]interface{}); ok {
+		_ = normalizeCellStyleAliases(styles, "--cells")
+	}
+}
+
+// hasBorderFamilyKey reports whether a cell carries any border spelling other
+// than the canonical border_styles carrier, i.e. whether the fold has work.
+func hasBorderFamilyKey(cell map[string]interface{}) bool {
+	for field := range cell {
+		if field == "border_styles" {
+			continue
+		}
+		if strings.Contains(strings.ToLower(field), "border") {
+			return true
+		}
+	}
+	return false
+}
+
+// unwrapWritesEnvelope turns the two object spellings of --writes into the
+// array the flag takes: the {"writes":[…]} wrapper (the flag name repeated
+// inside its own value, the same habit that produces a bare {"cells":…}), and
+// a lone write object written without its list. 08-29..31 reflow: 54
+// +cells-set rejections read `--writes: expected type "array", got "object"`,
+// the largest diagnosed cluster on that command.
+//
+// A lone write is recognized by carrying `cells` or `values` -- the payload a
+// write must have. An object with neither is left alone: it is not a write,
+// and the type error is the right answer for it.
+func unwrapWritesEnvelope(v interface{}) interface{} {
+	obj, ok := v.(map[string]interface{})
+	if !ok {
+		return v
+	}
+	if inner, wrapped := obj["writes"]; wrapped && len(obj) == 1 {
+		if list, isList := inner.([]interface{}); isList {
+			return list
+		}
+		if single, isObj := inner.(map[string]interface{}); isObj {
+			return []interface{}{single}
+		}
+		return v
+	}
+	_, hasCells := obj["cells"]
+	_, hasValues := obj["values"]
+	if hasCells || hasValues {
+		return []interface{}{obj}
 	}
 	return v
 }
@@ -636,6 +786,7 @@ func normalizeCellsFlagValue(v interface{}) interface{} {
 // different payloads is a conflict for normalizeSubOpInputKeys to report, not
 // one to silently resolve here.
 func normalizeWritesFlagValue(v interface{}) interface{} {
+	v = unwrapWritesEnvelope(v)
 	items, ok := v.([]interface{})
 	if !ok {
 		return v
@@ -754,6 +905,12 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 		if !ok {
 			return common.ValidationErrorf("%s.%s must be an object like {\"style\":\"solid\",\"color\":\"#000000\"}", path, from)
 		}
+		// The line-kind slot is spelled `type` in the Lark OpenAPI's own
+		// border vocabulary and in openpyxl's Side(border_style=…) read
+		// loosely. This spec has exactly one kind slot, so the rename is the
+		// only reading; normalizeBorderSideVocab then sorts a thickness word
+		// out of the style slot as it does for any other spelling.
+		normalizeBorderSideVocab(obj)
 		for _, attr := range sortedKeys(obj) {
 			if !attrs[attr] {
 				return common.ValidationErrorf("%s.%s.%s is not a border attribute (want style/weight/color)", path, from, attr)
