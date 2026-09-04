@@ -27,10 +27,17 @@ lark-cli wiki +node-create \
   --title "学习笔记"
 
 # 创建一个快捷方式节点（shortcut）
+# 先查询源节点；如果 node_type=shortcut，使用返回的 origin_node_token，
+# 如果 node_type=origin，使用返回的 node_token。obj_type 必须使用查询结果。
+lark-cli wiki +node-get \
+  --node-token <SOURCE_TOKEN> \
+  --format json
+
 lark-cli wiki +node-create \
   --parent-node-token <PARENT_NODE_TOKEN> \
   --node-type shortcut \
-  --origin-node-token <ORIGIN_NODE_TOKEN> \
+  --obj-type <RESOLVED_OBJ_TYPE> \
+  --origin-node-token <RESOLVED_ORIGIN_NODE_TOKEN> \
   --title "原文档快捷方式"
 
 # 创建非 docx 类型节点
@@ -100,7 +107,12 @@ lark-cli wiki +node-create \
 - `--node-type=origin` 时，不能传 `--origin-node-token`
 - `--obj-type=file` 仅支持 `--node-type=shortcut`；实体节点不支持创建 `file` 类型
 - `shortcut` 节点只是知识库中的快捷方式入口；真正被引用的节点由 `--origin-node-token` 指定
+- 创建 `shortcut` 前必须先用 `wiki +node-get --node-token <SOURCE_TOKEN> --format json` 解析源节点：
+  - 返回 `node_type=origin`：使用返回的 `node_token` 作为 `--origin-node-token`
+  - 返回 `node_type=shortcut`：使用返回的非空 `origin_node_token`，禁止直接使用该 shortcut 自身的 `node_token`
+  - `--obj-type` 必须与返回的 `obj_type` 一致；不一致时停止并修正输入，不能静默改写
 - 如果 `+node-create` 因上述组合返回参数校验错误，禁止改用 raw `wiki nodes create` 或直接调用 OpenAPI 绕过校验；应修正 `node_type`、`obj_type` 或 `origin_node_token`
+- 如果服务端返回 `131002`，且 CLI 确认 `--origin-node-token` 指向另一个 shortcut，错误会标记为不可重试并给出真实 `origin_node_token` / `obj_type`。按 hint 修改参数后重新执行；不要原参数重试。
 
 ```bash
 # 创建一个指向文件的快捷方式节点

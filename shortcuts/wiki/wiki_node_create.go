@@ -39,6 +39,7 @@ const (
 	// 131003 is command-specific here. For node creation it covers multiple
 	// structural limits, so do not classify it globally or infer a particular
 	// limit from the upstream error message.
+	wikiNodeCreateInvalidParamCode    = 131002
 	wikiNodeCreateStructuralLimitCode = 131003
 	wikiNodeCreateStructuralLimitHint = "Wiki node creation reached a structural limit, such as the space node count, hierarchy depth, or direct-child count. This is not a transient failure. Do not retry with the same parameters; review the upstream error message, then choose a shallower or different parent, reorganize existing nodes, or clean up or use another Wiki space as appropriate."
 )
@@ -344,7 +345,7 @@ func runWikiNodeCreate(ctx context.Context, client wikiNodeCreateClient, identit
 			break
 		}
 		if !isWikiNodeLockContention(lastErr) {
-			return nil, withWikiNodeCreateRecoveryHint(lastErr)
+			return nil, wikiNodeCreateProblem(ctx, client, spec, lastErr)
 		}
 	}
 	if lastErr != nil {
@@ -360,18 +361,57 @@ func runWikiNodeCreate(ctx context.Context, client wikiNodeCreateClient, identit
 	}, nil
 }
 
-func withWikiNodeCreateRecoveryHint(err error) error {
+// wikiNodeCreateProblem adds command-specific recovery while preserving the
+// original typed API error and its wire-stable fields.
+func wikiNodeCreateProblem(ctx context.Context, client wikiNodeCreateClient, spec wikiNodeCreateSpec, err error) error {
 	p, ok := errs.ProblemOf(err)
-	if !ok || p.Code != wikiNodeCreateStructuralLimitCode {
+	if !ok {
 		return err
 	}
-	p.Retryable = false
-	if existing := strings.TrimSpace(p.Hint); existing != "" {
-		p.Hint = existing + "\n" + wikiNodeCreateStructuralLimitHint
-	} else {
-		p.Hint = wikiNodeCreateStructuralLimitHint
+
+	switch p.Code {
+	case wikiNodeCreateStructuralLimitCode:
+		p.Retryable = false
+		return appendWikiProblemHint(err, wikiNodeCreateStructuralLimitHint)
+	case wikiNodeCreateInvalidParamCode:
+		return diagnoseWikiNodeCreateShortcutSource(ctx, client, spec, err)
 	}
 	return err
+}
+
+// diagnoseWikiNodeCreateShortcutSource narrows the generic 131002 response to
+// the confirmed shortcut-to-shortcut case. The command intentionally does not
+// rewrite the caller's token or replay the write: origin_node_token is an input
+// contract, and a second create with different parameters must remain explicit.
+// If the diagnostic read fails, preserve the original create error because it
+// is the failure that explains the command result.
+func diagnoseWikiNodeCreateShortcutSource(ctx context.Context, client wikiNodeCreateClient, spec wikiNodeCreateSpec, err error) error {
+	if spec.NodeType != wikiNodeTypeShortcut || strings.TrimSpace(spec.OriginNodeToken) == "" {
+		return err
+	}
+
+	source, lookupErr := client.GetNode(ctx, spec.OriginNodeToken)
+	if lookupErr != nil || source == nil || !strings.EqualFold(strings.TrimSpace(source.NodeType), wikiNodeTypeShortcut) {
+		return err
+	}
+
+	if p, ok := errs.ProblemOf(err); ok {
+		p.Retryable = false
+	}
+
+	hint := "The --origin-node-token points to another Wiki shortcut, but Wiki does not support creating a shortcut to a shortcut. Do not retry with the same parameters."
+	resolvedOrigin := strings.TrimSpace(source.OriginNodeToken)
+	resolvedObjType := strings.TrimSpace(source.ObjType)
+	if resolvedOrigin != "" {
+		hint += fmt.Sprintf(" Retry with --origin-node-token %s", resolvedOrigin)
+		if resolvedObjType != "" {
+			hint += fmt.Sprintf(" --obj-type %s", resolvedObjType)
+		}
+		hint += "."
+	} else {
+		hint += " Resolve the source with `lark-cli wiki +node-get --node-token <SOURCE_NODE_TOKEN>` and retry with its non-empty origin_node_token; keep --obj-type equal to the returned obj_type."
+	}
+	return appendWikiProblemHint(err, hint)
 }
 
 // isWikiNodeLockContention returns true if the error is a Lark API error with
