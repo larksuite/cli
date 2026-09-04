@@ -118,9 +118,28 @@ var CellsSet = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		runtime.Out(out, nil)
+		runtime.Out(appendSheetsWarnings(out, cellsRangeNarrowedWarnings(runtime, input)), nil)
 		return nil
 	},
+}
+
+// cellsRangeNarrowedWarnings reports a --range the write was narrowed to fit
+// the payload (see fitCellsRange). Silence would be the bug: the caller stated
+// an extent, and the cells covered less of it than they thought.
+func cellsRangeNarrowedWarnings(runtime *common.RuntimeContext, input map[string]interface{}) []string {
+	written, _ := input["range"].(string)
+	// The payload has to go in: cellsSetInput expands a bare anchor against
+	// it, so reconstructing the stated range without it leaves "A1" facing an
+	// "A1:B2" write and reports narrowing where the caller only omitted an
+	// extent the CLI filled in for them.
+	cells, _ := input["cells"].([]interface{})
+	stated := expandAnchorRange(strings.TrimSpace(runtime.Str("range")), cells)
+	if written == "" || stated == "" || written == stated {
+		return nil
+	}
+	return []string{fmt.Sprintf(
+		"--range %q is larger than the payload, so the write covered %q instead — the cells landed at the same top-left and nothing outside them was touched",
+		stated, written)}
 }
 
 // cellsSetWritesOps parses --writes ([{sheet_name|sheet_id, range, cells}, …])
@@ -261,6 +280,7 @@ func cellsSetInput(runtime flagView, token, sheetID, sheetName string) (map[stri
 	if err := checkCellsMatchRange(cells, rangeStr); err != nil {
 		return nil, err
 	}
+	rangeStr, _ = fitCellsRange(cells, rangeStr)
 	input := map[string]interface{}{
 		"excel_id": token,
 		"range":    rangeStr,
@@ -444,7 +464,7 @@ var CsvPut = common.Shortcut{
 				m["writes_range"] = rng
 			}
 		}
-		runtime.Out(out, nil)
+		runtime.Out(appendSheetsWarnings(out, csvForgottenAtWarnings(runtime)), nil)
 		return nil
 	},
 }
@@ -514,9 +534,13 @@ func csvPutWriteRangeFromInput(input map[string]interface{}) (string, bool) {
 // but cannot be read, with advice that cannot work ("pass it with @", which
 // uses this very reader).
 func resolveCSVPathFromFileAlias(runtime *common.RuntimeContext) error {
-	if runtime == nil || !flagValueCameFromAlias(runtime.Cmd, "csv", "file") {
+	if runtime == nil || !flagValueCameFromAlias(runtime.Cmd, "csv", pathValuedCSVAliases...) {
 		return nil
 	}
+	// Name the spelling the caller actually typed: an error about --file for
+	// someone who wrote --csv-file is the same "flag I never typed" confusion
+	// the alias exists to remove.
+	flag := aliasSpellingUsed(runtime.Cmd, "csv", "file")
 	if runtime.InputResolvedFromSource("csv") {
 		return nil
 	}
@@ -530,28 +554,29 @@ func resolveCSVPathFromFileAlias(runtime *common.RuntimeContext) error {
 		case errors.Is(err, fileio.ErrPathValidation):
 			// A real location the policy will not read (absolute, or outside
 			// the tree). The fix is stdin.
-			return sheetsValidationForFlag("file", "--file %v", err).
+			return sheetsValidationForFlag(flag, "--%s %v", flag, err).
 				WithCause(err).
-				WithHint("--file reads a path relative to the current directory; pipe a file outside it in via stdin instead (--csv - < <path>)")
+				WithHint("--%s reads a path relative to the current directory; for a file outside it, %s", flag, outOfTreeFileHint("csv"))
 		case errors.Is(err, fs.ErrNotExist) && !csvValueLooksLikePath(raw):
 			// Names nothing and does not look like a path: literal CSV text
-			// passed under --file. Leave it for the --csv guard, which judges
+			// passed under the path-valued alias. Leave it for the --csv guard,
+			// which judges
 			// inline values on their shape.
 			return nil
 		case errors.Is(err, fs.ErrNotExist):
-			return sheetsValidationForFlag("file", "--file %q names no file under the current directory", raw).
+			return sheetsValidationForFlag(flag, "--%s %q names no file under the current directory", flag, raw).
 				WithCause(err).
-				WithHint("--file takes a path relative to the current directory; for a file outside it, pipe the contents in instead (--csv - < <path>)")
+				WithHint("--%s takes a path relative to the current directory; for a file outside it, %s", flag, outOfTreeFileHint("csv"))
 		default:
 			// Exists but cannot be read (permissions, a directory). @file
 			// shares this reader, so pointing there would be dead advice.
-			return sheetsValidationForFlag("file", "--file %v", err).
+			return sheetsValidationForFlag(flag, "--%s %v", flag, err).
 				WithCause(err).
-				WithHint("--file reads the path itself; to pass contents this process cannot open, pipe them in instead (--csv - < <path>)")
+				WithHint("--%s reads the path itself; to pass contents this process cannot open, %s", flag, outOfTreeFileHint("csv"))
 		}
 	}
 	if err := runtime.Cmd.Flags().Set("csv", common.StripUTF8BOM(string(data))); err != nil {
-		return sheetsValidationForFlag("file", "--file: %v", err).WithCause(err)
+		return sheetsValidationForFlag(flag, "--%s: %v", flag, err).WithCause(err)
 	}
 	// The value is now file contents, so every downstream shape check has to
 	// treat it as such — the same bit @file and stdin get. Without it a file
@@ -603,6 +628,20 @@ func guardCSVValueIsNotFilePath(runtime *common.RuntimeContext) error {
 	if fio := runtime.FileIO(); fio != nil {
 		info, err := fio.Stat(raw)
 		if err == nil && info != nil && !info.IsDir() {
+			// A path-shaped value naming a real file is a forgotten "@", and
+			// nothing else: the shape test already excludes prose, CJK text
+			// and plain filenames like "README.md" (see csvValueLooksLikePath).
+			// Read it and say so in the result rather than spending a round
+			// trip on the punctuation — the sibling path-valued flags
+			// (+workbook-import --file, this command's own --file alias) take
+			// the same value with no prefix, so requiring one here was an
+			// inconsistency of this flag's own making. 08-29..31 reflow:
+			// 11 of +csv-put's 29 rejections.
+			if csvValueLooksLikePath(raw) {
+				return readCSVFromForgottenAtPath(runtime, raw)
+			}
+			// Exists but is not path-shaped: the inline value collides with a
+			// file name. Reading it would be a guess, so prescribe both routes.
 			return sheetsValidationForFlag("csv",
 				"--csv value %q is an existing file, not inline CSV; to read it, pass the same path with an @ prefix (--csv @<path>), or pipe the literal text via stdin (--csv -)",
 				raw,
@@ -616,8 +655,51 @@ func guardCSVValueIsNotFilePath(runtime *common.RuntimeContext) error {
 		"--csv value %q looks like a file path, not inline CSV, and no such file exists under the current directory",
 		raw,
 	).WithHint(
-		"to read a file: --csv @<path> (relative to the current directory; @ rejects absolute paths — pipe such a file in via stdin instead: --csv - < <path>). To write this text into the cell verbatim, pass it on stdin the same way (--csv -); values arriving via stdin or @file skip this check",
+		"to read a file: --csv @<path>, relative to the current directory; for a file outside it, " + outOfTreeFileHint("csv") + ". To write this text into the cell verbatim, pass it on stdin the same way; values arriving via stdin or @file skip this check",
 	)
+}
+
+// readCSVFromForgottenAtPath loads the file a path-shaped --csv value names,
+// as @<path> would, and records the substitution for the success envelope so
+// the read is reported rather than silent. A read failure falls back to the
+// original prescription: the value did name a file, so "@" is still the fix
+// for whatever the caller meant.
+func readCSVFromForgottenAtPath(runtime *common.RuntimeContext, raw string) error {
+	data, err := cmdutil.ReadInputFile(runtime.FileIO(), raw)
+	if err != nil {
+		return sheetsValidationForFlag("csv",
+			"--csv value %q names a file this process cannot read (%v); pass the path with an @ prefix (--csv @<path>) or pipe the contents via stdin (--csv -)",
+			raw, err,
+		).WithCause(err)
+	}
+	if err := runtime.Cmd.Flags().Set("csv", common.StripUTF8BOM(string(data))); err != nil {
+		return sheetsValidationForFlag("csv", "--csv: %v", err).WithCause(err)
+	}
+	// The value is file contents now, so every downstream shape check must
+	// treat it as such — the same bit @file and stdin get.
+	runtime.MarkInputResolved("csv")
+	if runtime.Cmd.Annotations == nil {
+		runtime.Cmd.Annotations = map[string]string{}
+	}
+	runtime.Cmd.Annotations[csvReadFromPathAnnotation] = raw
+	return nil
+}
+
+// csvReadFromPathAnnotation records that --csv's value was replaced by the
+// contents of the file it named. Read once, on the success path.
+const csvReadFromPathAnnotation = "lark-cli/sheets-csv-read-from-path"
+
+// csvForgottenAtWarnings reports the substitution readCSVFromForgottenAtPath
+// made, for the success envelope. Empty when the value was used as written.
+func csvForgottenAtWarnings(runtime *common.RuntimeContext) []string {
+	if runtime == nil || runtime.Cmd == nil {
+		return nil
+	}
+	path := runtime.Cmd.Annotations[csvReadFromPathAnnotation]
+	if path == "" {
+		return nil
+	}
+	return []string{fmt.Sprintf("--csv named an existing file, so its contents were pasted; write %q to read a file explicitly, or pass the CSV text on stdin (--csv -) to paste a path-shaped value verbatim", "@"+path)}
 }
 
 // csvValueLooksLikePath reports whether a --csv value is unmistakably a path
@@ -972,8 +1054,11 @@ func dropdownHighlightWarnings(runtime flagView) []string {
 // reporting one axis at a time cost a second round trip whenever both were
 // off, and 16 of the 132 retried straight into the same error.
 //
-// The computed range is NOT applied automatically: growing it would overwrite
-// rows the caller never mentioned and shrinking it would silently drop data.
+// Growing the range is never applied: it would write over rows the caller
+// never mentioned. Shrinking it to a payload that FITS inside the stated
+// range is applied (see fitCellsRange) — the cells are written in full at the
+// anchor either way, and the alternative was 122 rejections in the 08-29..31
+// reflow on a payload that was already unambiguous.
 func checkCellsMatchRange(cells []interface{}, rangeStr string) error {
 	if len(cells) == 0 {
 		return sheetsValidationForFlag("cells",
@@ -993,10 +1078,38 @@ func checkCellsMatchRange(cells []interface{}, rangeStr string) error {
 	if payloadRows == target.rows && payloadCols == target.cols {
 		return nil
 	}
+	if payloadRows <= target.rows && payloadCols <= target.cols {
+		return nil // fitCellsRange narrows the write to the payload
+	}
 	return sheetsValidationForFlag("cells",
 		"--cells is %d rows × %d columns but --range %q spans %d rows × %d columns; either write this payload to --range %q (same top-left, sized to the cells passed) or resize --cells to %d rows × %d columns — an A1 range covers both ends, so %q spans %d rows",
 		payloadRows, payloadCols, rangeStr, target.rows, target.cols,
 		target.sized(payloadRows, payloadCols), target.rows, target.cols, rangeStr, target.rows)
+}
+
+// fitCellsRange narrows a range to the payload that sits inside it, returning
+// the range to write and the note to report when it changed. Both ends of the
+// contract matter: the anchor is unchanged, so every cell lands exactly where
+// the caller put it, and no cell outside the payload is touched — the stated
+// range only ever said how far the caller THOUGHT the payload reached.
+//
+// The dominant shape is a one-cell title against the range it will occupy once
+// merged, where writing the top-left is what a merged region needs anyway. A
+// payload that overflows the range is untouched here: that one has no reading
+// short of writing over rows nobody named, and checkCellsMatchRange rejects it.
+func fitCellsRange(cells []interface{}, rangeStr string) (string, string) {
+	target, err := parseCellRange(rangeStr)
+	if err != nil {
+		return rangeStr, ""
+	}
+	rows, cols, ok := cellsExtent(cells)
+	if !ok || rows > target.rows || cols > target.cols || (rows == target.rows && cols == target.cols) {
+		return rangeStr, ""
+	}
+	fitted := target.sized(rows, cols)
+	return fitted, fmt.Sprintf(
+		"--cells is %d rows × %d columns, smaller than --range %q (%d × %d), so the write was narrowed to %q — cells land at the same top-left, and no cell outside them is touched",
+		rows, cols, rangeStr, target.rows, target.cols, fitted)
 }
 
 // cellsExtent measures a --cells payload: its row count and the width every

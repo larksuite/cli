@@ -4,8 +4,13 @@
 package sheets
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/httpmock"
 )
 
 func stylesPutView(spec map[string]interface{}) mapFlagView {
@@ -348,6 +353,41 @@ func TestStylesResizeSizeAliases(t *testing.T) {
 		}
 	})
 
+	t.Run("custom plus an alias is still a pixel resize", func(t *testing.T) {
+		t.Parallel()
+		// The custom→pixel rewrite used to look only at `size`, so the very
+		// alias the parser accepts everywhere else made "custom" fail the
+		// enum check before the alias was ever resolved.
+		for _, tc := range []struct {
+			name, array, alias string
+			rng                string
+		}{
+			{"row height", "row_sizes", "height", "1:1"},
+			{"column width", "col_sizes", "width", "A:C"},
+		} {
+			ops, err := stylesPutOperations(stylesPutView(map[string]interface{}{
+				"styles": []interface{}{map[string]interface{}{
+					"name": "S1",
+					tc.array: []interface{}{map[string]interface{}{
+						"range": tc.rng, "type": "custom", tc.alias: float64(36),
+					}},
+				}},
+			}), testToken)
+			if err != nil {
+				t.Fatalf("%s: unexpected error: %v", tc.name, err)
+			}
+			input := ops[0].(map[string]interface{})["input"].(map[string]interface{})
+			field := "resize_height"
+			if tc.array == "col_sizes" {
+				field = "resize_width"
+			}
+			block, _ := input[field].(map[string]interface{})
+			if block == nil || block["value"] != 36 {
+				t.Errorf("%s: %s = %v, want value 36", tc.name, field, input[field])
+			}
+		}
+	})
+
 	t.Run("wrong-dimension word is a targeted error", func(t *testing.T) {
 		t.Parallel()
 		_, err := stylesPutOperations(stylesPutView(map[string]interface{}{
@@ -493,4 +533,162 @@ func TestCoalesceStyleStamps_PreservesLastWriteWins(t *testing.T) {
 			t.Fatalf("bold stamps should merge to A1:A2, got %+v", got)
 		}
 	})
+}
+
+// TestStylesPut_ChunksPastTheRequestCap pins the split: a spec larger than one
+// batch_update is sent as several, and the caller is told so. The 100 is our
+// own per-request bound, not a limit the caller has to plan around.
+func TestStylesPut_ChunksPastTheRequestCap(t *testing.T) {
+	t.Parallel()
+
+	spec := func(rows int) string {
+		entries := make([]string, 0, rows)
+		for i := 1; i <= rows; i++ {
+			fill := "#FFFFFF"
+			if i%2 == 1 {
+				fill = "#FFE6E6"
+			}
+			entries = append(entries, fmt.Sprintf(`{"range":"A%d:F%d","background_color":%q}`, i, i, fill))
+		}
+		return `{"styles":[{"name":"S","cell_styles":[` + strings.Join(entries, ",") + `]}]}`
+	}
+
+	t.Run("152 operations go out as two requests", func(t *testing.T) {
+		t.Parallel()
+		stdout, _, err := runShortcutCapturingErr(t, StylesPut, []string{
+			"--url", testURL, "--styles", spec(152), "--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("a spec past the cap should be planned, not rejected: %v", err)
+		}
+		if got := plannedRequestCount(t, stdout); got != 2 {
+			t.Fatalf("plan should carry two batch_update requests, got %d", got)
+		}
+		// Counting entries alone passes when both requests repeat the first
+		// chunk, so the split itself has to be read off the payloads: 100 then
+		// 52, in the spec's own order and with nothing dropped in between.
+		chunks := plannedChunkRanges(t, stdout)
+		if len(chunks) != 2 || len(chunks[0]) != 100 || len(chunks[1]) != 52 {
+			t.Fatalf("operations per request = %v, want 100 then 52", chunkSizes(chunks))
+		}
+		if chunks[0][0] != "A1:F1" || chunks[0][99] != "A100:F100" {
+			t.Errorf("first request spans %s..%s, want A1:F1..A100:F100", chunks[0][0], chunks[0][99])
+		}
+		if chunks[1][0] != "A101:F101" || chunks[1][51] != "A152:F152" {
+			t.Errorf("second request spans %s..%s, want A101:F101..A152:F152", chunks[1][0], chunks[1][51])
+		}
+	})
+
+	t.Run("a failing later request reports what already applied", func(t *testing.T) {
+		t.Parallel()
+		parent, _, _, reg := newTestRig(t, StylesPut)
+		writeURL := "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_write"
+		// Stubs serve in registration order: the first chunk lands, the second
+		// fails. The sheet is left half-styled, which is exactly what the
+		// caller has to be told before deciding how to retry.
+		reg.Register(&httpmock.Stub{Method: "POST", URL: writeURL, Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{"output": `{"success":true}`},
+		}})
+		reg.Register(&httpmock.Stub{Method: "POST", URL: writeURL, Body: map[string]interface{}{
+			"code": 900015206, "msg": "batch_update: 0 succeeded, 52 failed", "data": map[string]interface{}{},
+		}})
+		parent.SetArgs([]string{"+styles-put", "--url", testURL, "--styles", spec(152)})
+		err := parent.Execute()
+		p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeServerError, "batch_update")
+		for _, want := range []string{"2 batch requests", "request 2 failed", "requests 1-1 already applied"} {
+			if !strings.Contains(p.Hint, want) {
+				t.Errorf("hint = %q, want it to carry %q", p.Hint, want)
+			}
+		}
+		// Merges are the one op a whole-spec retry cannot replay, so the
+		// recovery advice must not promise it blanket-safe.
+		if !strings.Contains(p.Hint, "cell_merges") || !strings.Contains(p.Hint, "read the sheet back") {
+			t.Errorf("hint = %q, want the merge-specific recovery route", p.Hint)
+		}
+	})
+
+	t.Run("a spec inside the cap stays one request", func(t *testing.T) {
+		t.Parallel()
+		stdout, _, err := runShortcutCapturingErr(t, StylesPut, []string{
+			"--url", testURL, "--styles", spec(4), "--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := plannedRequestCount(t, stdout); got != 1 {
+			t.Errorf("plan should carry one request, got %d", got)
+		}
+	})
+
+	t.Run("chunkOperations splits on the boundary", func(t *testing.T) {
+		t.Parallel()
+		ops := make([]interface{}, 250)
+		chunks := chunkOperations(ops, maxBatchOperations)
+		if len(chunks) != 3 || len(chunks[0]) != 100 || len(chunks[2]) != 50 {
+			t.Errorf("chunks = %d with sizes %d/%d/%d, want 3 of 100/100/50",
+				len(chunks), len(chunks[0]), len(chunks[1]), len(chunks[2]))
+		}
+	})
+}
+
+// plannedChunkRanges reads the ranges of every operation in every planned
+// request, so a test can assert the SPLIT rather than just the request count.
+func plannedChunkRanges(t *testing.T, stdout string) [][]string {
+	t.Helper()
+	var envelope struct {
+		Data struct {
+			API []struct {
+				Body struct {
+					Input string `json:"input"`
+				} `json:"body"`
+			} `json:"api"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &envelope); err != nil {
+		t.Fatalf("dry-run output is not JSON: %v", err)
+	}
+	chunks := make([][]string, 0, len(envelope.Data.API))
+	for i, entry := range envelope.Data.API {
+		// The tool body carries its input as an embedded JSON string.
+		var input struct {
+			Operations []struct {
+				Input map[string]interface{} `json:"input"`
+			} `json:"operations"`
+		}
+		if err := json.Unmarshal([]byte(entry.Body.Input), &input); err != nil {
+			t.Fatalf("request %d input is not JSON: %v", i, err)
+		}
+		ranges := make([]string, 0, len(input.Operations))
+		for _, op := range input.Operations {
+			rng, _ := op.Input["range"].(string)
+			ranges = append(ranges, rng)
+		}
+		chunks = append(chunks, ranges)
+	}
+	return chunks
+}
+
+func chunkSizes(chunks [][]string) []int {
+	sizes := make([]int, len(chunks))
+	for i, c := range chunks {
+		sizes[i] = len(c)
+	}
+	return sizes
+}
+
+// plannedRequestCount counts the requests a dry-run plan carries. The envelope
+// names the tool in two places for a single call, so counting occurrences of
+// the tool name in the text over-reports.
+func plannedRequestCount(t *testing.T, stdout string) int {
+	t.Helper()
+	var envelope struct {
+		Data struct {
+			API []interface{} `json:"api"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &envelope); err != nil {
+		t.Fatalf("dry-run output is not JSON: %v", err)
+	}
+	return len(envelope.Data.API)
 }

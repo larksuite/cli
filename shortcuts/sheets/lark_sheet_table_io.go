@@ -163,10 +163,113 @@ type tableSheetIn struct {
 	Mode           string          `json:"mode"`
 	Header         *bool           `json:"header"`
 	AllowOverwrite *bool           `json:"allow_overwrite"`
-	Columns        []string        `json:"columns"`
+	Columns        columnHeadings  `json:"columns"`
 	Data           [][]interface{} `json:"data"`
 	Dtypes         columnLabels    `json:"dtypes"`
 	Formats        columnLabels    `json:"formats"`
+}
+
+// columnHeadings holds `columns` as written on the wire. The documented shape
+// is the flat string array that pandas' to_json(orient="split") emits, but the
+// object-per-column form ([{"name":"序号"},{"name":"金额","dtype":"float64"}])
+// is the other standing habit — it is how most table APIs, and this CLI's own
+// internal tableColumnSpec, describe a column. 08-29..31 reflow: 35 payloads
+// were rejected for it across +workbook-create and +table-put, each otherwise
+// correct.
+//
+// Only the name is required on an object entry; a dtype / format written there
+// is folded into the sheet's dtypes / formats maps rather than dropped
+// (silently ignoring a declared type would write the wrong column type). An
+// explicit dtypes / formats map still wins on any column it names — it is the
+// documented carrier, so it cannot lose to a shorthand.
+type columnHeadings struct {
+	names   []string
+	dtypes  map[string]string
+	formats map[string]string
+}
+
+// headingNames builds the flat form, for call sites (tests, synthesized
+// payloads) that construct a tableSheetIn directly rather than decoding one.
+func headingNames(names ...string) columnHeadings { return columnHeadings{names: names} }
+
+// columnNames returns the flat name list the rest of the parser works against.
+func (c columnHeadings) columnNames() []string { return c.names }
+
+// UnmarshalJSON accepts the flat string array and the object-per-column array.
+func (c *columnHeadings) UnmarshalJSON(b []byte) error {
+	var raw []json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	c.names = make([]string, 0, len(raw))
+	for i, entry := range raw {
+		trimmed := strings.TrimSpace(string(entry))
+		if !strings.HasPrefix(trimmed, "{") {
+			var name string
+			if err := json.Unmarshal(entry, &name); err != nil {
+				return err
+			}
+			c.names = append(c.names, name)
+			continue
+		}
+		var obj map[string]interface{}
+		if err := json.Unmarshal(entry, &obj); err != nil {
+			return err
+		}
+		name, _ := obj["name"].(string)
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf(`columns[%d] is an object without a "name" string; a column entry is either the name itself ("Revenue") or an object carrying it ({"name":"Revenue","dtype":"float64"})`, i) //nolint:forbidigo // decode-time error; parseTablePutPayload wraps it into the typed --sheets validation error
+		}
+		c.names = append(c.names, name)
+		for _, key := range sortedKeys(obj) {
+			val := obj[key]
+			label, isText := val.(string)
+			switch key {
+			case "name":
+			case "dtype", "type", "format", "number_format":
+				if !isText {
+					return fmt.Errorf(`columns[%d] (%q): %s must be a string (e.g. "float64", "#,##0.00")`, i, name, key) //nolint:forbidigo // decode-time error; parseTablePutPayload wraps it into the typed --sheets validation error
+				}
+				if key == "dtype" || key == "type" {
+					c.dtypes = putColumnLabel(c.dtypes, name, label)
+				} else {
+					c.formats = putColumnLabel(c.formats, name, label)
+				}
+			default:
+				return fmt.Errorf(`columns[%d] (%q) has no %q field; an object column entry carries name plus an optional dtype / format ({"name":"Revenue","dtype":"float64","format":"#,##0.00"}) — everything else belongs in the sheet-level dtypes / formats maps`, i, name, key) //nolint:forbidigo // decode-time error; parseTablePutPayload wraps it into the typed --sheets validation error
+			}
+		}
+	}
+	return nil
+}
+
+// putColumnLabel records a non-empty inline dtype / format, allocating the map
+// on first use.
+func putColumnLabel(m map[string]string, name, label string) map[string]string {
+	if strings.TrimSpace(label) == "" {
+		return m
+	}
+	if m == nil {
+		m = map[string]string{}
+	}
+	m[name] = label
+	return m
+}
+
+// mergeInlineLabels layers the inline dtype / format entries under the
+// sheet-level map, which wins wherever both name the same column.
+func mergeInlineLabels(declared, inline map[string]string) map[string]string {
+	if len(inline) == 0 {
+		return declared
+	}
+	out := make(map[string]string, len(inline)+len(declared))
+	for k, v := range inline {
+		out[k] = v
+	}
+	for k, v := range declared {
+		out[k] = v
+	}
+	return out
 }
 
 // columnLabels holds `dtypes` / `formats` as written on the wire. The
@@ -272,6 +375,16 @@ func dtypeToTypeFormat(dtype string) (typ, format string) {
 	switch {
 	case strings.HasPrefix(lower, "datetime"):
 		return "date", "yyyy-mm-dd"
+	// The writer's own type vocabulary (number / date / bool / string, as
+	// +table-get reports it and --print-schema documents it) read back as a
+	// dtype: a caller who writes dtypes:{"金额":"number"} means the numeric
+	// column, and falling through to the string default silently wrote the
+	// figures as text — a wrong result rather than a rejection, so it never
+	// showed up as an error at all.
+	case lower == "date":
+		return "date", "yyyy-mm-dd"
+	case lower == "number" || lower == "numeric" || lower == "decimal":
+		return "number", ""
 	case lower == "bool" || lower == "boolean":
 		return "bool", ""
 	case isNumericDtype(lower):
@@ -352,30 +465,40 @@ func parseTablePutPayload(runtime flagView) (*tablePayload, error) {
 	var wire struct {
 		Sheets []tableSheetIn `json:"sheets"`
 	}
-	if err := dec.Decode(&wire); err != nil {
+	// A bare sub-sheet list is accepted as the envelope's contents: an array at
+	// the top level can only be the list `sheets` would have held, so the
+	// wrapper is the one thing the caller left out and re-typing the whole
+	// payload to add it (10 rejections in the 08-29..31 reflow) buys nothing.
+	// Decoding it here rather than retrying after a failure keeps the decode
+	// errors below reporting positions in the payload the caller actually sent.
+	target := interface{}(&wire)
+	if strings.HasPrefix(raw, "[") {
+		target = &wire.Sheets
+	}
+	if err := dec.Decode(target); err != nil {
 		// Eval traces show two distinct decode failures that each burned
-		// retries: a field with the wrong JSON kind (columns as objects,
-		// dtypes as an array) — fixed by seeing the expected shape once —
-		// and shell-mangled JSON, fixed by moving the payload to stdin/@file.
+		// retries: a field with a JSON kind no reading accepts (data as an
+		// object) — fixed by seeing the expected shape once — and
+		// shell-mangled JSON, fixed by moving the payload to stdin/@file.
 		verr := common.ValidationErrorf("--sheets: invalid JSON: %v", err).WithCause(err)
 		var ute *json.UnmarshalTypeError
 		if errors.As(err, &ute) {
-			// A mismatch with no field path is the missing envelope: the
-			// payload IS the sub-sheet list, written without the wrapper.
-			// Say that in the message — the Go unmarshal text ("cannot
-			// unmarshal array into Go value of type struct { Sheets …}")
-			// names the internal type, not the fix.
+			// A mismatch with no field path means the top level is neither the
+			// envelope nor the bare sub-sheet list this parser also accepts —
+			// a scalar, or a list holding something that is not a sheet. Say
+			// that in the message: the Go unmarshal text ("cannot unmarshal
+			// number into Go value of type sheets.tableSheetIn") names the
+			// internal type, not the fix.
 			if ute.Field == "" {
 				verr = common.ValidationErrorf(
-					`--sheets: top level must be the object {"sheets":[…]}, got a bare JSON %s; wrap the sub-sheet list in a "sheets" key`,
+					`--sheets: top level must be the object {"sheets":[…]} (or the bare […] sub-sheet list), got a bare JSON %s`,
 					ute.Value).WithCause(err)
 			}
 			return nil, verr.WithHint(
 				"expected shape: %s (columns is a flat string array; dtypes/formats are column-name-keyed maps; data is row-major)",
 				tablePutSheetsSkeleton)
 		}
-		return nil, verr.WithHint(
-			"if the payload contains formulas / quotes / commas, pass it via stdin (`--sheets - < file`) or a relative @file (`--sheets @./payload.json`)")
+		return nil, verr.WithHint("%s", mangledPayloadHint("sheets"))
 	}
 	// Reject trailing non-whitespace after the first JSON value: json.Decoder
 	// accepts it silently (unlike json.Unmarshal), so e.g. `--sheets '{...} oops'`
@@ -412,20 +535,29 @@ func (in *tableSheetIn) normalize(idx int) (tableSheetSpec, error) {
 		AllowOverwrite: in.AllowOverwrite,
 		Rows:           in.Data,
 	}
-	dtypes, err := in.Dtypes.resolve("dtypes", idx, in.Name, in.Columns)
+	columns := in.Columns.columnNames()
+	dtypes, err := in.Dtypes.resolve("dtypes", idx, in.Name, columns)
 	if err != nil {
 		return tableSheetSpec{}, err
 	}
-	formats, err := in.Formats.resolve("formats", idx, in.Name, in.Columns)
+	formats, err := in.Formats.resolve("formats", idx, in.Name, columns)
 	if err != nil {
 		return tableSheetSpec{}, err
 	}
-	seenCol := make(map[string]bool, len(in.Columns))
-	spec.Columns = make([]tableColumnSpec, len(in.Columns))
-	for j, name := range in.Columns {
-		trimmed := strings.TrimSpace(name)
-		if trimmed == "" {
-			return tableSheetSpec{}, common.ValidationErrorf("--sheets[%d] %q: columns[%d] name is required", idx, in.Name, j)
+	dtypes = mergeInlineLabels(dtypes, in.Columns.dtypes)
+	formats = mergeInlineLabels(formats, in.Columns.formats)
+	seenCol := make(map[string]bool, len(columns))
+	spec.Columns = make([]tableColumnSpec, len(columns))
+	for j, name := range columns {
+		// A blank heading is a real table shape, not a mistake: a spacer
+		// column, or the empty cells under a merged title. 08-29..31 reflow:
+		// 13 rejections said "columns[N] name is required" for a payload whose
+		// data was fine. It writes an empty header cell and takes no dtypes /
+		// formats entry — those are keyed by name, and "" names nothing, so a
+		// dtypes key of "" still reports as referencing an unknown column.
+		if strings.TrimSpace(name) == "" {
+			spec.Columns[j] = tableColumnSpec{Name: name, Type: "string", Format: "@"}
+			continue
 		}
 		if seenCol[name] {
 			return tableSheetSpec{}, common.ValidationErrorf("--sheets[%d] %q: duplicate column name %q", idx, in.Name, name)
@@ -445,16 +577,31 @@ func (in *tableSheetIn) normalize(idx int) (tableSheetSpec, error) {
 	for k := range dtypes {
 		if !seenCol[k] {
 			return tableSheetSpec{}, common.ValidationErrorf("--sheets[%d] %q: dtypes references unknown column %q", idx, in.Name, k).
-				WithHint("%s", columnKeyHint("dtypes", k, in.Columns))
+				WithHint("%s", columnKeyHint("dtypes", k, columns))
 		}
 	}
 	for k := range formats {
 		if !seenCol[k] {
 			return tableSheetSpec{}, common.ValidationErrorf("--sheets[%d] %q: formats references unknown column %q", idx, in.Name, k).
-				WithHint("%s", columnKeyHint("formats", k, in.Columns))
+				WithHint("%s", columnKeyHint("formats", k, columns))
 		}
 	}
+	padShortRows(&spec)
 	return spec, nil
+}
+
+// padShortRows right-pads every data row to the column count with nils, which
+// buildTypedCell writes as empty cells. It mirrors what the untyped --values
+// path already does (parseValuesPayload pads to a rectangle) and is the reason
+// tablePayload.validate only has to reject rows that are too WIDE: a row the
+// caller cut short at the last non-empty cell is the same table either way.
+func padShortRows(spec *tableSheetSpec) {
+	ncols := len(spec.Columns)
+	for r := range spec.Rows {
+		for len(spec.Rows[r]) < ncols {
+			spec.Rows[r] = append(spec.Rows[r], nil)
+		}
+	}
 }
 
 // columnKeyHint explains a dtypes/formats key that matched no column. The
@@ -505,7 +652,17 @@ func (p *tablePayload) validate() error {
 		}
 		seen[s.Name] = true
 		if len(s.Columns) == 0 {
-			return common.ValidationErrorf("--sheets[%d] %q: columns must be non-empty", i, s.Name)
+			// A header-less, data-less sheet is a legitimate request — "give
+			// me the tab, I will fill it later" — and rejecting it made the
+			// caller invent a placeholder column (08-29..31 reflow: 15
+			// rejections, all with `data` empty too). Only a payload that
+			// carries rows still needs columns: without them there is nothing
+			// to write those rows into.
+			// The loops below are no-ops for such a sheet, so nothing else
+			// here needs to know about it; start_cell / mode stay validated.
+			if len(s.Rows) > 0 {
+				return common.ValidationErrorf("--sheets[%d] %q: columns must be non-empty when `data` has rows", i, s.Name)
+			}
 		}
 		for j := range s.Columns {
 			c := &s.Columns[j]
@@ -519,10 +676,16 @@ func (p *tablePayload) validate() error {
 			}
 		}
 		for r := range s.Rows {
-			if len(s.Rows[r]) != len(s.Columns) {
-				return common.ValidationErrorf("--sheets[%d] %q: row %d has %d cells, want %d (column count)",
+			if len(s.Rows[r]) > len(s.Columns) {
+				return common.ValidationErrorf("--sheets[%d] %q: row %d has %d cells but `columns` declares %d; the extra values have no column to land in — add the missing names to `columns` or drop the values",
 					i, s.Name, r, len(s.Rows[r]), len(s.Columns))
 			}
+			// A row shorter than `columns` is padded with nulls (blank cells)
+			// rather than rejected: a trailing run of empty cells is what the
+			// short row already means, and demanding explicit nulls cost 25
+			// rejections in the 08-29..31 reflow — most of them a one-cell
+			// title row above a wide table. Padding happens in normalize, so
+			// the writer and this validator see the same rectangular payload.
 			// Validate each cell's value against its column type up front (pure,
 			// network-free): a bad date/number/bool is caught here — before any
 			// workbook is created — instead of failing mid-write and leaving a
@@ -627,6 +790,13 @@ func headerOn(s *tableSheetSpec) bool {
 // carry no style of their own — style them via --styles like any other cell.
 func buildSheetMatrix(s *tableSheetSpec, writeHeader bool) ([][]interface{}, error) {
 	ncols := len(s.Columns)
+	if ncols == 0 {
+		// A column-less sheet (allowed when it carries no data either) has no
+		// header to write and no cells: return no matrix rather than a matrix
+		// of one zero-width row, which would ask the backend to write an empty
+		// range. Callers treat an empty matrix as "create the tab only".
+		return nil, nil
+	}
 	matrix := make([][]interface{}, 0, len(s.Rows)+1)
 
 	if writeHeader {
@@ -689,7 +859,24 @@ func buildTypedCell(col *tableColumnSpec, raw interface{}) (map[string]interface
 	case "number":
 		n, ok := raw.(json.Number)
 		if !ok {
-			return nil, fmt.Errorf("number expects a numeric value, got %s", describeJSONType(raw)) //nolint:forbidigo // intermediate error; callers wrap it into a typed --sheets/--values validation error with row/column context
+			// A numeric column whose cells arrived as JSON strings ("1",
+			// "100.5") is the single largest --sheets rejection in the
+			// 08-29..31 reflow (155 across +workbook-create / +table-put):
+			// the payload is otherwise correct and every retry rewrote the
+			// same digits without the quotes. A string that IS a JSON number
+			// literal carries exactly one meaning under a declared numeric
+			// dtype, so it is coerced here; anything else still fails.
+			coerced, err := coerceNumericCellValue(raw)
+			if err != nil {
+				return nil, err
+			}
+			if coerced == nil {
+				// Blank text in a numeric column means "no value" — the same
+				// thing JSON null means, and what pandas writes for NaN when
+				// the frame went through a string cast.
+				return cell, nil
+			}
+			n = *coerced
 		}
 		cell["value"] = n
 	case "bool":
@@ -700,6 +887,13 @@ func buildTypedCell(col *tableColumnSpec, raw interface{}) (map[string]interface
 		cell["value"] = b
 	case "date":
 		str, ok := raw.(string)
+		if ok && strings.TrimSpace(str) == "" {
+			// Blank text in a date column means "no date", the same thing JSON
+			// null means and the same rule the numeric branch above follows.
+			// 08-29..31 reflow: 7 rejections, all of them a total row or a
+			// trailing blank inside an otherwise valid date column.
+			return cell, nil
+		}
 		if !ok {
 			return nil, fmt.Errorf("date expects an ISO yyyy-mm-dd string, got %s", describeJSONType(raw)) //nolint:forbidigo // intermediate error; callers wrap it into a typed --sheets/--values validation error with row/column context
 		}
@@ -712,6 +906,38 @@ func buildTypedCell(col *tableColumnSpec, raw interface{}) (map[string]interface
 		return nil, fmt.Errorf("unsupported type %q", col.Type) //nolint:forbidigo // intermediate error; callers wrap it into a typed --sheets/--values validation error with row/column context
 	}
 	return cell, nil
+}
+
+// coerceNumericCellValue turns a string cell in a numeric column into the
+// json.Number the writer needs. It returns (nil, nil) for blank text, meaning
+// "write an empty cell", and an error for anything that is not unambiguously
+// a number.
+//
+// The acceptance test is "is this a JSON number literal", not "does Go parse
+// it": strconv.ParseFloat also accepts Inf / NaN / hex floats, which would
+// marshal into a body the backend rejects. A thousands separator or a currency
+// symbol stays an error on purpose — stripping either guesses at a locale, and
+// "1,234" could be one number or two cells that lost their split.
+func coerceNumericCellValue(raw interface{}) (*json.Number, error) {
+	s, ok := raw.(string)
+	if !ok {
+		return nil, fmt.Errorf("number expects a numeric value, got %s", describeJSONType(raw)) //nolint:forbidigo // intermediate error; callers wrap it into a typed --sheets/--values validation error with row/column context
+	}
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return nil, nil
+	}
+	var probe json.Number
+	// The literal "null" decodes into any destination without an error and
+	// leaves it untouched, so an empty probe here means the text was "null",
+	// not a number. Left alone it marshals back out as 0 and silently writes
+	// a zero where the caller wrote a word.
+	if err := json.Unmarshal([]byte(trimmed), &probe); err != nil || probe == "" {
+		return nil, fmt.Errorf( //nolint:forbidigo // intermediate error; callers wrap it into a typed --sheets/--values validation error with row/column context
+			"number expects a numeric value, got the non-numeric string %q; write a blank cell as null, or drop this column from `dtypes` to store the text as-is",
+			s)
+	}
+	return &probe, nil
 }
 
 // stringifyCellValue renders any JSON scalar as the literal text a string
@@ -1285,27 +1511,33 @@ func tablePutDryRun(runtime *common.RuntimeContext) *common.DryRunAPI {
 		s := &payload.Sheets[i]
 		matrix, _ := buildSheetMatrix(s, headerOn(s))
 		rng := tablePutFullRange(s, len(matrix))
-		if s.Mode == "append" {
+		// cell_styles are merged into the matrix on BOTH modes, because
+		// Execute does: applyWorkbookCreateStylesToMatrix can turn an empty
+		// matrix into a style-only write, and skipping it here used to hide
+		// that write from the plan entirely. Padding can widen / lengthen the
+		// matrix past the data, so the range is recomputed from the padded
+		// dims to match what Execute writes.
+		_, col0, row0, _ := sheetAnchor(s)
+		matrix, _ = applyWorkbookCreateStylesToMatrix(matrix, sheetStyles.styleFor(i), col0, row0, fmt.Sprintf("--styles for sheet %q", s.Name))
+		switch {
+		case s.Mode == "append":
+			// The base row is resolved at execute time, so only the shape of
+			// the write is knowable here — the range stays dynamic.
 			rng = "<append below existing data>"
-		} else {
-			// cell_styles are merged into the matrix only for overwrite mode,
-			// where the anchor row is known statically; append's base row is
-			// resolved at execute time, so the preview leaves the matrix bare
-			// (the merges / sizes ops below still render). Padding can widen /
-			// lengthen the matrix past the data, so recompute the range from the
-			// padded dims to match what Execute writes.
-			_, col0, row0, _ := sheetAnchor(s)
-			matrix, _ = applyWorkbookCreateStylesToMatrix(matrix, sheetStyles.styleFor(i), col0, row0, fmt.Sprintf("--styles for sheet %q", s.Name))
-			if len(matrix) > 0 {
-				rng = fmt.Sprintf("%s%d:%s%d",
-					columnIndexToLetter(col0), row0+1,
-					columnIndexToLetter(col0+len(matrix[0])-1), row0+len(matrix))
-			}
+		case len(matrix) > 0:
+			rng = fmt.Sprintf("%s%d:%s%d",
+				columnIndexToLetter(col0), row0+1,
+				columnIndexToLetter(col0+len(matrix[0])-1), row0+len(matrix))
 		}
-		writeCols := len(s.Columns)
-		if len(matrix) > 0 {
-			writeCols = len(matrix[0])
+		if len(matrix) == 0 {
+			// Nothing to write (a column-less sheet, or header:false with no
+			// data rows and no styles to expand): Execute skips the
+			// set_cell_range entirely, so the plan must not show one. Visual
+			// ops still run.
+			appendWorkbookCreateVisualOpsDryRun(dry, token, "", s.Name, sheetStyles.styleFor(i))
+			continue
 		}
+		writeCols := len(matrix[0])
 		desc := fmt.Sprintf("write sheet %q (%d data rows × %d cols, mode=%s) via set_cell_range",
 			s.Name, len(s.Rows), writeCols, writeModeName(s))
 		input := map[string]interface{}{

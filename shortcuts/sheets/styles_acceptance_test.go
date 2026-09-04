@@ -142,8 +142,12 @@ var stylesPriorCorpus = []struct {
 	{name: "border_left_weight flattened",
 		fields: map[string]interface{}{"border_left_weight": "thin"},
 		check:  wantBorder("left", "weight", "thin")},
-	{name: "border_styles invalid side prescribed",
-		fields:  map[string]interface{}{"border_styles": map[string]interface{}{"outer": map[string]interface{}{"style": "solid"}}},
+	{name: "border_styles outer means the four range edges",
+		fields: map[string]interface{}{"border_styles": map[string]interface{}{"outer": map[string]interface{}{"style": "solid"}}},
+		check: wantAll(wantBorder("top", "style", "solid"), wantBorder("bottom", "style", "solid"),
+			wantBorder("left", "style", "solid"), wantBorder("right", "style", "solid"))},
+	{name: "border_styles inner has no expression and stays rejected",
+		fields:  map[string]interface{}{"border_styles": map[string]interface{}{"inner": map[string]interface{}{"style": "solid"}}},
 		wantErr: "not a valid side"},
 	// wrap family
 	{name: "wrap_text boolean", fields: map[string]interface{}{"wrap_text": true}, check: wantStyle("word_wrap", "auto-wrap")},
@@ -225,6 +229,69 @@ var stylesPriorCorpus = []struct {
 	{name: "unknown field carries did-you-mean and the field list",
 		fields: map[string]interface{}{"fontcolor": "#000000"}, wantErr: `did you mean "font_color"`},
 	{name: "enum typo gets did-you-mean", fields: map[string]interface{}{"vertical_alignment": "botom"}, wantErr: "did you mean"},
+	// 08-29..31 reflow. A quoted number under a numeric field is a typing
+	// slip with one reading; the row/column size fields and bare wrap are
+	// real concepts that live elsewhere in the payload, so they prescribe.
+	{name: "quoted font_size reads as the number",
+		fields: map[string]interface{}{"font_size": "16"},
+		check:  wantNumberStyle("font_size", 16)},
+	{name: "non-numeric font_size still rejected",
+		fields: map[string]interface{}{"font_size": "large"}, wantErr: "must be a number"},
+	{name: "row_height prescribes row_sizes",
+		fields: map[string]interface{}{"row_height": float64(30)}, wantErr: "row_sizes"},
+	{name: "column_width prescribes col_sizes",
+		fields: map[string]interface{}{"column_width": float64(120)}, wantErr: "col_sizes"},
+	{name: "bare wrap prescribes word_wrap",
+		fields: map[string]interface{}{"wrap": true}, wantErr: "word_wrap"},
+	{name: "unmerge_cells prescribes the unmerge command",
+		fields: map[string]interface{}{"unmerge_cells": "A1:B2"}, wantErr: "+cells-unmerge"},
+	// 08-29..31 reflow, second pass. `type` is the line-kind slot in the Lark
+	// OpenAPI's border vocabulary and in openpyxl's Side(border_style=…); a
+	// per-side spec has exactly one kind slot, so it can mean nothing else.
+	{name: "border.type names the line kind",
+		fields: map[string]interface{}{"border": map[string]interface{}{"type": "dashed"}},
+		check:  wantBorder("top", "style", "dashed")},
+	{name: "border.type carrying a thickness word sorts into weight",
+		fields: map[string]interface{}{"border": map[string]interface{}{"type": "thin"}},
+		check:  wantAll(wantBorder("top", "weight", "thin"), wantBorder("top", "style", "solid"))},
+	{name: "border_styles side type names the line kind",
+		fields: map[string]interface{}{"border_styles": map[string]interface{}{"top": map[string]interface{}{"type": "dotted"}}},
+		check:  wantBorder("top", "style", "dotted")},
+	{name: "an unrelated border attribute stays rejected",
+		fields:  map[string]interface{}{"border": map[string]interface{}{"thickness": "solid"}},
+		wantErr: "is not a border attribute"},
+	// The literal "null" decodes into any destination without an error and
+	// leaves it at the zero value, so a numeric field has to reject it
+	// explicitly or a zero-point font slips through as a success.
+	{name: "the string null is not a font size",
+		fields: map[string]interface{}{"font_size": "null"}, wantErr: "must be a number"},
+	// "outer" and "all" are two names for the same box. Two DIFFERENT boxes
+	// under them is a conflict, and dropping one would apply half the caller's
+	// intent silently; the invalid-side check answers it instead.
+	{name: "a conflicting outer border is not discarded",
+		fields: map[string]interface{}{"border_styles": map[string]interface{}{
+			"outer": map[string]interface{}{"style": "dashed"},
+			"all":   map[string]interface{}{"style": "solid"},
+		}},
+		wantErr: "is not a valid side"},
+	{name: "outer duplicating all is folded away",
+		fields: map[string]interface{}{"border_styles": map[string]interface{}{
+			"outer": map[string]interface{}{"style": "solid"},
+			"all":   map[string]interface{}{"style": "solid"},
+		}},
+		check: wantBorder("left", "style", "solid")},
+}
+
+// wantNumberStyle pins a numeric style field, which normalization stores as a
+// float64 regardless of how the caller spelled it.
+func wantNumberStyle(field string, want float64) func(map[string]interface{}) string {
+	return func(proto map[string]interface{}) string {
+		cs, _ := proto["cell_styles"].(map[string]interface{})
+		if cs == nil || cs[field] != want {
+			return fmt.Sprintf("cell_styles.%s = %v, want %v", field, cs[field], want)
+		}
+		return ""
+	}
 }
 
 func wantStyle(field, want string) func(map[string]interface{}) string {

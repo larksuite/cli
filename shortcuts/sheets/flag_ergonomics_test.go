@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	goruntime "runtime"
 	"strings"
 	"testing"
 
@@ -767,6 +768,11 @@ func TestCsvPut_FileAliasProvenance(t *testing.T) {
 	if err := os.WriteFile("data.csv", []byte("a,b\n1,2\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
+	// Not path-shaped, so --csv never reads it on its own (see
+	// csvValueLooksLikePath): the probe for "which spelling supplied this".
+	if err := os.WriteFile("notes.txt", []byte("a,b\n1,2\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	run := func(t *testing.T, extra ...string) (string, error) {
 		t.Helper()
@@ -787,8 +793,11 @@ func TestCsvPut_FileAliasProvenance(t *testing.T) {
 
 	t.Run("a later --csv occurrence keeps its own semantics", func(t *testing.T) {
 		// The last occurrence supplied the value and it was typed --csv, so the
-		// path must hit the --csv guard rather than being read as a file.
-		_, err := run(t, "--file", "./data.csv", "--csv", "./data.csv")
+		// name must hit the --csv guard rather than being read as a file. The
+		// probe is a name --csv does NOT read on its own: a path-shaped one is
+		// now read under either spelling, which is what makes the two
+		// semantics observable only here.
+		_, err := run(t, "--file", "notes.txt", "--csv", "notes.txt")
 		requireValidation(t, err, "is an existing file, not inline CSV")
 	})
 
@@ -816,13 +825,18 @@ func TestCsvPut_FileAliasProvenance_DoubleMount(t *testing.T) {
 	if err := os.WriteFile("data.csv", []byte("a,b\n1,2\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
+	// Not path-shaped, so --csv never reads it on its own (see
+	// csvValueLooksLikePath): the probe for "which spelling supplied this".
+	if err := os.WriteFile("notes.txt", []byte("a,b\n1,2\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	t.Run("mounted twice before parsing", func(t *testing.T) {
 		sc := shortcutFromRegistry(t, "+csv-put")
 		sc.PostMount = withFlagErgonomics(sc.PostMount) // a second, redundant pass
 		_, _, err := runShortcutCapturingErr(t, sc, []string{
 			"--url", testURL, "--sheet-name", "s", "--start-cell", "A1",
-			"--csv", "./data.csv", "--dry-run",
+			"--csv", "notes.txt", "--dry-run",
 		})
 		requireValidation(t, err, "is an existing file, not inline CSV")
 	})
@@ -844,7 +858,248 @@ func TestCsvPut_FileAliasProvenance_DoubleMount(t *testing.T) {
 		}
 		withFlagErgonomics(nil)(cmd)
 		parent.SetArgs([]string{"+csv-put", "--url", testURL, "--sheet-name", "s",
-			"--start-cell", "A1", "--csv", "./data.csv", "--dry-run"})
+			"--start-cell", "A1", "--csv", "notes.txt", "--dry-run"})
 		requireValidation(t, parent.Execute(), "is an existing file, not inline CSV")
 	})
+}
+
+// TestReflowFlagVocabulary pins the flag-name and enum-value acceptances added
+// after the 08-29..31 reflow: the payload-flag names +csv-put answers to, the
+// CSS text-decoration words for --font-line, and the wrap / style
+// prescriptions on +cells-set-style.
+func TestReflowFlagVocabulary(t *testing.T) {
+	t.Parallel()
+
+	t.Run("csv-put payload flag names", func(t *testing.T) {
+		t.Parallel()
+		for _, name := range []string{"--csv", "--data", "--content"} {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+				stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+csv-put"), []string{
+					"--url", testURL, "--sheet-name", "s", "--start-cell", "A1",
+					name, "a,b\n1,2", "--dry-run",
+				})
+				if err != nil {
+					t.Fatalf("%s should carry the CSV payload, got: %v", name, err)
+				}
+				if !strings.Contains(stdout, `a,b`) {
+					t.Errorf("dry-run body should carry the CSV, got %q", stdout)
+				}
+			})
+		}
+	})
+
+	t.Run("csv-file names a path and reports itself by that name", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+csv-put"), []string{
+			"--url", testURL, "--sheet-name", "s", "--start-cell", "A1",
+			"--csv-file", "./missing.csv", "--dry-run",
+		})
+		ve := requireValidation(t, err, "names no file under the current directory")
+		if !strings.Contains(ve.Message, "--csv-file") {
+			t.Errorf("the error should name the spelling the caller typed, got %q", ve.Message)
+		}
+	})
+
+	t.Run("font-line takes the CSS text-decoration words", func(t *testing.T) {
+		t.Parallel()
+		for value, want := range map[string]string{
+			"strikethrough": "line-through",
+			"strike":        "line-through",
+			"underlined":    "underline",
+		} {
+			t.Run(value, func(t *testing.T) {
+				t.Parallel()
+				stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set-style"), []string{
+					"--url", testURL, "--sheet-name", "s", "--range", "A1:A10",
+					"--font-line", value, "--dry-run",
+				})
+				if err != nil {
+					t.Fatalf("%s should normalize, got: %v", value, err)
+				}
+				if !strings.Contains(strings.ReplaceAll(stdout, `\"`, `"`), `"font_line":"`+want+`"`) {
+					t.Errorf("body should carry font_line %q, got %q", want, stdout)
+				}
+			})
+		}
+	})
+
+	t.Run("unsupported font-line values still fail with the enum", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set-style"), []string{
+			"--url", testURL, "--sheet-name", "s", "--range", "A1:A10",
+			"--font-line", "wavy", "--dry-run",
+		})
+		requireValidation(t, err, "allowed: none, underline, line-through")
+	})
+
+	t.Run("wrap and style spellings get prescriptions", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct{ flag, want string }{
+			{"--wrap-text", "use --word-wrap"},
+			{"--text-wrap", "use --word-wrap"},
+			{"--style", "there is no single --style flag"},
+		} {
+			t.Run(tc.flag, func(t *testing.T) {
+				t.Parallel()
+				_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set-style"), []string{
+					"--url", testURL, "--sheet-name", "s", "--range", "A1:A10",
+					tc.flag, "x", "--dry-run",
+				})
+				ve := requireValidation(t, err, "unknown flag")
+				if !strings.Contains(ve.Hint, tc.want) {
+					t.Errorf("hint should carry %q, got %q", tc.want, ve.Hint)
+				}
+			})
+		}
+	})
+}
+
+// TestReflowLongTailVocabulary pins the long-tail table from the 08-29..31
+// reflow: names that already exist on the command under another spelling get
+// aliased, names whose fix changes the shape get a prescription, and a
+// multi-area --range is answered on every command that takes one.
+func TestReflowLongTailVocabulary(t *testing.T) {
+	t.Parallel()
+
+	t.Run("aliases", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct {
+			name    string
+			command string
+			args    []string
+		}{
+			{"workbook-import names the new spreadsheet", "+workbook-import",
+				[]string{"--file", "./data.csv", "--title", "Q3"}},
+			{"workbook-export names the local destination", "+workbook-export",
+				[]string{"--url", testURL, "--file", "./out.xlsx"}},
+			{"cells-replace names the replacement text", "+cells-replace",
+				[]string{"--url", testURL, "--sheet-name", "s", "--find", "a", "--replace", "b"}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				if _, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, tc.command),
+					append(tc.args, "--dry-run")); err != nil {
+					t.Fatalf("the habitual spelling should parse, got: %v", err)
+				}
+			})
+		}
+	})
+
+	t.Run("prescriptions", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct {
+			name, command, want string
+			args                []string
+		}{
+			// 18 rejections, the largest long-tail entry: +dim-insert does
+			// take --position, so the habit carries to its sibling.
+			{"dim-delete has no position", "+dim-delete", `--range: "3:5" deletes rows`,
+				[]string{"--url", testURL, "--sheet-name", "s", "--position", "3"}},
+			{"cells-unmerge takes one span", "+cells-unmerge", "one span per call",
+				[]string{"--url", testURL, "--sheet-name", "s", "--ranges", `["A1:B2"]`}},
+			{"csv-get returns values only", "+csv-get", "+cells-get --include",
+				[]string{"--url", testURL, "--sheet-name", "s", "--range", "A1:B2", "--include", "formula"}},
+			{"styles-put has no sheet selector", "+styles-put", "no sheet selector",
+				[]string{"--url", testURL, "--sheet-name", "s", "--styles", `{"styles":[]}`}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, tc.command),
+					append(tc.args, "--dry-run"))
+				ve := requireValidation(t, err, "unknown flag")
+				if !strings.Contains(ve.Hint, tc.want) {
+					t.Errorf("hint should carry %q, got %q", tc.want, ve.Hint)
+				}
+			})
+		}
+	})
+
+	t.Run("a multi-area range is answered on write commands too", func(t *testing.T) {
+		t.Parallel()
+		// The habit is not specific to reads: 5 more on +csv-get and 4 on
+		// +cells-set-style, which is why the check rides the --range chain.
+		for _, tc := range []struct {
+			command string
+			args    []string
+		}{
+			{"+cells-set-style", []string{"--url", testURL, "--sheet-name", "s", "--range", "K14,K19", "--font-weight", "bold"}},
+			{"+csv-get", []string{"--url", testURL, "--sheet-name", "s", "--range", "A5:B11, AJ5:AP11"}},
+		} {
+			t.Run(tc.command, func(t *testing.T) {
+				t.Parallel()
+				_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, tc.command),
+					append(tc.args, "--dry-run"))
+				requireValidation(t, err, "separate areas")
+			})
+		}
+	})
+}
+
+// TestPositionalArgsCauseIsWindowsOnly pins the platform split on the
+// positional-argument prescription: the cause it names is a PowerShell one,
+// so it must not appear where a positional argument really is one.
+func TestPositionalArgsCauseIsWindowsOnly(t *testing.T) {
+	t.Parallel()
+	_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set"), []string{
+		"--url", testURL, "--sheet-name", "s", "--range", "A1",
+		"--cells", `[[{"value":"x"}]]`, "stray", "--dry-run",
+	})
+	if err == nil {
+		t.Fatal("a positional argument should still be rejected")
+	}
+	if goruntime.GOOS == "windows" {
+		p, ok := errs.ProblemOf(err)
+		if !ok || !strings.Contains(p.Hint, "PowerShell") {
+			t.Errorf("windows should name the shell as the cause, got %v", err)
+		}
+		return
+	}
+	if strings.Contains(err.Error(), "PowerShell") {
+		t.Errorf("non-windows must keep the framework wording, got %v", err)
+	}
+}
+
+// TestPositionalArgsCausePreservesTheValidatorError pins the typed shape of
+// the windows annotation on every host. The test above can only assert the
+// message on a non-windows runner, which is where CI runs — so the subtype and
+// the wrapped cause would otherwise go unchecked.
+func TestPositionalArgsCausePreservesTheValidatorError(t *testing.T) {
+	t.Parallel()
+	parent, _, _, _ := newTestRig(t, shortcutFromRegistry(t, "+cells-set"))
+	cmd, _, findErr := parent.Find([]string{"+cells-set"})
+	if findErr != nil {
+		t.Fatalf("Find: %v", findErr)
+	}
+	sentinel := errors.New(`unknown command "stray" for "sheets +cells-set"`)
+
+	ve := requireValidation(t, annotatePositionalArgsCause(cmd, sentinel), "stray")
+	if !strings.Contains(ve.Hint, "PowerShell") {
+		t.Errorf("hint = %q, want it to name the shell as the cause", ve.Hint)
+	}
+	if !strings.Contains(ve.Hint, "--cells") {
+		t.Errorf("hint = %q, want it to inline the command's payload flags", ve.Hint)
+	}
+	// The annotation adds a hint to the framework's own argument error; a
+	// caller must still be able to reach that error underneath.
+	if !errors.Is(annotatePositionalArgsCause(cmd, sentinel), sentinel) {
+		t.Error("the prior validator error must stay reachable via errors.Is")
+	}
+}
+
+// TestPayloadFlagNames pins the list the windows prescription inlines: the
+// flags whose values are large enough for a shell to split.
+func TestPayloadFlagNames(t *testing.T) {
+	t.Parallel()
+	parent, _, _, _ := newTestRig(t, shortcutFromRegistry(t, "+cells-set"))
+	cmd, _, err := parent.Find([]string{"+cells-set"})
+	if err != nil {
+		t.Fatalf("Find: %v", err)
+	}
+	got := payloadFlagNames(cmd)
+	for _, want := range []string{"--cells", "--writes"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("payload flags = %q, want it to carry %s", got, want)
+		}
+	}
 }

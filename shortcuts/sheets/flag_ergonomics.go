@@ -5,6 +5,8 @@ package sheets
 
 import (
 	"fmt"
+	"math"
+	goruntime "runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -40,6 +42,8 @@ func withFlagErgonomics(prev func(cmd *cobra.Command)) func(cmd *cobra.Command) 
 		chainEnumNormalization(cmd)
 		chainFlagAliases(cmd)
 		chainRangeSheetPrefix(cmd)
+		chainMultiAreaRange(cmd)
+		chainPositionalArgsCause(cmd)
 		chainRequiredFlagHelp(cmd)
 	}
 }
@@ -107,21 +111,26 @@ const requiredFlagHelpPrefix = "(required) "
 // actually registered. Only pairs with identical value semantics belong
 // here: the rewrite is invisible, so it must be safe to apply unread.
 //
-// +csv-put's file → csv is the one entry whose value semantics differ, and it
-// carries its own value-side rule to make them match: --file names a path by
-// definition, so the value is read as one (resolveCSVPathFromFileAlias) rather
-// than being written into the sheet as literal text. Without that, the alias
-// itself manufactured a failure — an agent that wrote `--file ./data.csv` got
-// "--csv value is an existing file", an error about a flag it never typed.
+// +csv-put's file / csv-file → csv are the entries whose value semantics
+// differ, and they carry their own value-side rule to make them match: both
+// name a path by definition, so the value is read as one
+// (resolveCSVPathFromFileAlias) rather than being written into the sheet as
+// literal text. Without that, the alias itself manufactured a failure — an
+// agent that wrote `--file ./data.csv` got "--csv value is an existing file",
+// an error about a flag it never typed.
 var commandFlagAliases = map[string]map[string]string{
-	"+csv-put":      {"file": "csv"},
-	"+sheet-create": {"name": "title"},
+	// data / content name the payload the way sibling CLIs do and carry
+	// --csv's own value semantics (inline text, @file or -), so they are pure
+	// renames. csv-file joins file on the path-valued side. 08-29..31 reflow:
+	// 8 of +csv-put's 29 rejections were one of these four names.
+	"+csv-put":      {"file": "csv", "csv-file": "csv", "data": "csv", "content": "csv"},
+	"+sheet-create": {"name": "title", "sheet-name": "title"},
 	// The new name is the only name-valued input a rename takes, so the
 	// habitual spellings are unambiguous (unlike +sheet-copy, where a name
 	// could mean the copy's title or the source selector and gets a
 	// prescription instead). 07-28 root-cause report #25: 10/10 wrote
 	// --new-name, 24 occurrences.
-	"+sheet-rename": {"name": "title", "new-name": "title"},
+	"+sheet-rename": {"name": "title", "new-name": "title", "new-title": "title"},
 	// size → width/height: the styles protocol (--styles row_sizes/col_sizes)
 	// spells the pixel dimension "size", and pre-2026-07 batches accepted it
 	// here too — the rename is the single largest sub-op error cluster in
@@ -140,6 +149,18 @@ var commandFlagAliases = map[string]map[string]string{
 	// into {"value":…}, so a --values matrix ('[["工作内容"]]') is accepted
 	// verbatim as --cells — the name was the only thing wrong.
 	"+cells-set": {"values": "cells"},
+	// 08-29..31 reflow, long-tail table. Each of these names an input the
+	// command already has under one other spelling, with identical value
+	// semantics: the import name (16 rejections, all but one on windows),
+	// the export destination (13 + 2), and the replacement text (7). None is
+	// within the did-you-mean budget -- "title" shares no prefix with "name",
+	// and "replace" is 4 edits from "replacement".
+	"+workbook-import": {"title": "name"},
+	"+workbook-export": {"file": "output-path", "outdir": "output-path", "output-dir": "output-path", "output": "output-path"},
+	"+cells-replace":   {"replace": "replacement"},
+	"+csv-get":         {"output": "output-path"},
+	// +sheet-create already answers to "name"; new-title joins new-name on
+	// +sheet-rename for the same reason.
 }
 
 // intuitiveFlagHints carries the prescription for habitual names whose fix
@@ -173,8 +194,17 @@ var intuitiveFlagHints = map[string]map[string]string{
 		"underline": "use --font-line underline",
 		"font-bold": "use --font-weight bold",
 		"bg-color":  "use --background-color",
-		// Google Sheets API vocabulary (wrapStrategy).
+		// Google Sheets API vocabulary (wrapStrategy), plus the openpyxl / CSS
+		// wrap spellings (08-29..31 reflow: 4 of the 22 unknown-flag
+		// rejections). Not silent renames — the values differ too
+		// (--wrap-text true vs --word-wrap auto-wrap).
 		"wrap-strategy": "use --word-wrap (overflow / auto-wrap / word-clip)",
+		"wrap-text":     "use --word-wrap (overflow / auto-wrap / word-clip)",
+		"text-wrap":     "use --word-wrap (overflow / auto-wrap / word-clip)",
+		"wrap":          "use --word-wrap (overflow / auto-wrap / word-clip)",
+		// There is no composite style flag here: the OpenAPI's {style:{…}}
+		// envelope is one flat flag per field on this command.
+		"style": "there is no single --style flag — pass each field on its own: --font-weight, --font-style, --font-color, --background-color, --font-size, --border-styles",
 		// The border family: the only border flag is --border-styles (composite
 		// JSON); color and per-side variants ride inside it.
 		"border-style":  `borders take one composite flag: --border-styles '{"all":{"style":"solid","weight":"thin","color":"#000000"}}' (sides: top/bottom/left/right, or "all" for all four)`,
@@ -191,6 +221,7 @@ var intuitiveFlagHints = map[string]map[string]string{
 		"styles": `range-level styling goes through +styles-put (same {"styles":[...]} vocabulary); per-cell styles ride inside the cells objects as cell_styles`,
 	},
 	"+table-put": {
+		"payload":    `the sub-sheet payload flag is --sheets ({"sheets":[{"name":"Sheet1","columns":[…],"data":[…]}]}); --values takes an untyped 2D array instead`,
 		"start-cell": `anchor each sub-sheet via the "start_cell" field inside --sheets (e.g. {"sheets":[{"name":"Sheet1","start_cell":"B2",…}]}); to paste CSV at a cell use +csv-put --start-cell`,
 		"sheet-name": `+table-put has no sheet selector — each --sheets item carries its own "name" field ({"sheets":[{"name":"Sheet1",…}]})`,
 		"sheet-id":   `+table-put has no sheet selector — each --sheets item carries its own "name" field ({"sheets":[{"name":"Sheet1",…}]})`,
@@ -201,6 +232,34 @@ var intuitiveFlagHints = map[string]map[string]string{
 	},
 	"+chart-config-update": {
 		"show-labels": "use --data-labels value (or any value/category/percentage combination such as value_category_percentage; use series for series names or none to hide labels)",
+	},
+	// 08-29..31 reflow, long-tail table. These name a real input, but the fix
+	// is not a rename: the value moves to a differently-shaped flag, or the
+	// command does not carry that concept at all.
+	"+dim-delete": {
+		// 18 rejections, the largest single long-tail entry. +dim-insert does
+		// take --position, so the habit carries over to its sibling, where
+		// rows and columns are named by an A1 span instead.
+		"position":  `+dim-delete names what to remove with --range: "3:5" deletes rows 3 through 5, "C:E" deletes columns C through E`,
+		"index":     `+dim-delete names what to remove with --range: "3:5" deletes rows 3 through 5, "C:E" deletes columns C through E`,
+		"dimension": `+dim-delete infers rows vs columns from --range: "3:5" is rows, "C:E" is columns`,
+	},
+	"+cells-unmerge": {
+		"ranges": `+cells-unmerge takes one span per call: --range "A1:B2"; unmerge several regions with several calls (or one +batch-update carrying them all)`,
+	},
+	"+csv-get": {
+		"include":     "+csv-get returns values only; for formulas / styles / comments use +cells-get --include formula,style",
+		"include-all": "+csv-get returns values only; for formulas / styles / comments use +cells-get --include formula,style",
+	},
+	"+cells-get": {
+		"value-only": "+cells-get returns values by default; --include adds categories on top, so drop this flag (or narrow the output with --jq)",
+	},
+	"+workbook-import": {
+		"output-path": "+workbook-import uploads a local file and returns the new spreadsheet's token and url; it writes nothing locally. Capture the JSON result instead, or use +workbook-export --output-path to pull a sheet back down",
+	},
+	"+styles-put": {
+		"sheet-name": `+styles-put has no sheet selector -- each --styles item carries its own "name" field ({"styles":[{"name":"Sheet1","cell_styles":[…]}]})`,
+		"sheet-id":   `+styles-put has no sheet selector -- each --styles item carries its own "name" field ({"styles":[{"name":"Sheet1","cell_styles":[…]}]})`,
 	},
 }
 
@@ -335,13 +394,30 @@ func aliasSourceAnnotation(canonical string) string {
 	return "lark-cli/sheets-alias-source/" + canonical
 }
 
+// pathValuedCSVAliases are the +csv-put spellings whose value is a path rather
+// than CSV text (see resolveCSVPathFromFileAlias). The other two aliases
+// (data / content) carry --csv's own semantics and need no value-side rule.
+var pathValuedCSVAliases = []string{"file", "csv-file"}
+
+// aliasSpellingUsed returns the habitual spelling that supplied canonical's
+// value, or fallback when the annotation is missing.
+func aliasSpellingUsed(cmd *cobra.Command, canonical, fallback string) string {
+	if cmd == nil {
+		return fallback
+	}
+	if used := cmd.Annotations[aliasSourceAnnotation(canonical)]; used != "" {
+		return used
+	}
+	return fallback
+}
+
 // flagValueCameFromAlias reports whether canonical's value was supplied under
-// the given habitual spelling on this invocation.
-func flagValueCameFromAlias(cmd *cobra.Command, canonical, alias string) bool {
+// any of the given habitual spellings on this invocation.
+func flagValueCameFromAlias(cmd *cobra.Command, canonical string, aliases ...string) bool {
 	if cmd == nil {
 		return false
 	}
-	return cmd.Annotations[aliasSourceAnnotation(canonical)] == alias
+	return slices.Contains(aliases, cmd.Annotations[aliasSourceAnnotation(canonical)])
 }
 
 // sheetsFlagErrorFunc overrides the root FlagErrorFunc for sheets commands.
@@ -459,6 +535,143 @@ func inlineFlagList(names []string) string {
 	return strings.Join(parts, ", ") + suffix
 }
 
+// chainPositionalArgsCause names the reason a sheets command saw a positional
+// argument on windows. The framework's message ("pass values via flags") is
+// correct and useless there: the caller DID pass a flag, and PowerShell split
+// its JSON value into separate tokens, so the tail arrived as positionals. The
+// framework cannot say that — it is one message for every command on every
+// platform — while this domain knows both the shell and which of its flags
+// take a payload big enough to split. 08-29..31 reflow: 35 rejections, every
+// one on windows.
+//
+// Other platforms keep the framework's wording: there a positional argument
+// usually is one.
+func chainPositionalArgsCause(cmd *cobra.Command) {
+	prev := cmd.Args
+	if prev == nil || goruntime.GOOS != "windows" {
+		return
+	}
+	cmd.Args = func(c *cobra.Command, args []string) error {
+		err := prev(c, args)
+		if err == nil {
+			return nil
+		}
+		return annotatePositionalArgsCause(c, err)
+	}
+}
+
+// annotatePositionalArgsCause is the windows annotation itself, split out from
+// the chain so it is reachable from a test on any host: chainPositionalArgsCause
+// declines to install anything off windows, which would otherwise leave the
+// typed shape of this error unasserted everywhere CI runs.
+func annotatePositionalArgsCause(cmd *cobra.Command, err error) error {
+	hint := "on PowerShell this is usually a JSON flag value the shell split into tokens: single quotes do not protect the quotes and commas inside it. Write the payload to a file and pass it as @./payload.json"
+	if payload := payloadFlagNames(cmd); payload != "" {
+		hint = fmt.Sprintf("%s — this command's payload flags are %s", hint, payload)
+	}
+	// err stays in the chain: the framework's argument-validation error is
+	// what this only annotates, and a caller inspecting the failure should
+	// still reach it through errors.Is / errors.As.
+	return common.ValidationErrorf("%v", err).WithHint("%s", hint).WithCause(err)
+}
+
+// payloadFlagNames lists the command's flags that take a file or stdin, i.e.
+// the ones whose values are large enough for a shell to split.
+func payloadFlagNames(cmd *cobra.Command) string {
+	defs, err := loadFlagDefs()
+	if err != nil {
+		return ""
+	}
+	spec, ok := defs[cmd.Name()]
+	if !ok {
+		return ""
+	}
+	names := make([]string, 0, 4)
+	for _, df := range spec.Flags {
+		if len(df.Input) > 0 {
+			names = append(names, "--"+df.Name)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	return strings.Join(names, " / ")
+}
+
+// chainMultiAreaRange rejects an Excel multi-area --range on any command that
+// takes one. It is chained AFTER chainRangeSheetPrefix so a sheet prefix has
+// already moved into --sheet-name: a sheet whose name contains a comma must
+// not be read as several areas.
+func chainMultiAreaRange(cmd *cobra.Command) {
+	prev := cmd.PreRunE
+	cmd.PreRunE = func(c *cobra.Command, args []string) error {
+		if prev != nil {
+			if err := prev(c, args); err != nil {
+				return err
+			}
+		}
+		if want, err := c.Flags().GetBool("print-schema"); err == nil && want {
+			return nil
+		}
+		rng, err := c.Flags().GetString("range")
+		if err != nil {
+			return nil //nolint:nilerr // the command has no plain --range; nothing to check
+		}
+		return rejectMultiAreaRange(rng)
+	}
+}
+
+// rejectMultiAreaRange answers the Excel multi-area habit — several
+// non-adjacent cells joined by commas ("A3,G3,H3") — before it reaches the
+// backend, which rejects it as an opaque "[90015206] invalid range" (or, on a
+// write path, as "invalid cell ref"). A single A1 range never contains a
+// comma, so the shape is unambiguous; the fix is not (the enclosing
+// rectangle, or one call per area), so this prescribes both rather than
+// picking one. 08-29..31 reflow: 54 of +cells-get's 69 rejections, 5 more on
+// +csv-get and 4 on +cells-set-style — the habit is not specific to reads,
+// which is why the check rides the shared --range chain.
+func rejectMultiAreaRange(rng string) error {
+	rng = strings.TrimSpace(rng)
+	if !strings.Contains(rng, ",") {
+		return nil
+	}
+	areas := strings.Split(rng, ",")
+	hint := "use the enclosing rectangle in one call"
+	if enclosing := enclosingRangeHint(areas); enclosing != "" {
+		hint = fmt.Sprintf("use the enclosing rectangle in one call (--range %q)", enclosing)
+	}
+	return sheetsValidationForFlag("range", "--range %q lists %d separate areas; one call takes ONE continuous A1 range", rng, len(areas)).
+		WithHint("%s, or issue one call per area — several areas in one request go through +batch-update, which carries a separate op per area", hint)
+}
+
+// enclosingRangeHint spells the rectangle covering EVERY area the caller
+// listed, so the prescription carries a range they can paste. The areas need
+// not be ordered — "A3,J3,G3" has its widest column in the middle, and taking
+// the first and last would prescribe a range that drops J3. Empty when any
+// area is not a plain cell reference: a guess is worse than the generic hint.
+func enclosingRangeHint(areas []string) string {
+	minCol, minRow := math.MaxInt, math.MaxInt
+	maxCol, maxRow := 0, 0
+	for _, area := range areas {
+		area = strings.TrimSpace(area)
+		if area == "" || strings.Contains(area, ":") {
+			return ""
+		}
+		col, row, ok := splitCellRef(area)
+		if !ok {
+			return ""
+		}
+		minCol, maxCol = min(minCol, col), max(maxCol, col)
+		minRow, maxRow = min(minRow, row), max(maxRow, row)
+	}
+	if minCol == math.MaxInt {
+		return ""
+	}
+	return fmt.Sprintf("%s%d:%s%d",
+		columnIndexToLetter(minCol), minRow+1,
+		columnIndexToLetter(maxCol), maxRow+1)
+}
+
 // ─── enum vocabulary normalization ──────────────────────────────────────
 
 // enumAliases maps habitual values agents import from CSS / Excel / Google
@@ -484,6 +697,14 @@ var enumAliases = map[string]string{
 	// the first two need mapping — overflow is spelled the same in both.
 	"wrap": "auto-wrap",
 	"clip": "word-clip",
+	// CSS text-decoration vocabulary for --font-line, whose Lark spelling is
+	// the hyphenated line-through. 08-29..31 reflow: every one of the 8
+	// --font-line rejections was one of these words.
+	"strikethrough": "line-through",
+	"strike":        "line-through",
+	"line_through":  "line-through",
+	"linethrough":   "line-through",
+	"underlined":    "underline",
 	// Combined chart data-label vocabulary emitted by models. The tool enum
 	// spells the same intent as one value.
 	"percentage,value": "value_percentage",

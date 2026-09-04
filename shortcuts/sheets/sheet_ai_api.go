@@ -7,7 +7,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
@@ -70,7 +73,7 @@ func callTool(
 		return nil, err
 	}
 
-	data, err := runtime.CallAPITyped("POST", toolInvokePath(token, kind), nil, body)
+	data, err := callToolWithTransientRetry(ctx, runtime, token, kind, body)
 	if err != nil {
 		// A classified business error (non-zero API code) carries the tool's
 		// own code and raw msg. Rewrite the typed error in place: the Message
@@ -94,6 +97,7 @@ func callTool(
 				p.Subtype = errs.SubtypeServerError
 			}
 			p.Message = fmt.Sprintf("tool %q failed: [%d] %s", toolName, p.Code, flat)
+			annotateMergedRegionConflict(p)
 		}
 		return nil, err
 	}
@@ -108,6 +112,150 @@ func callTool(
 			"tool %q returned invalid JSON output: %v", toolName, err).WithCause(err)
 	}
 	return out, nil
+}
+
+// mergedRegionBoundsRE matches the 0-based bounds the backend prints for the
+// merged region a merge would overlap: "[0,0-0,6]" is row 0 col 0 through row
+// 0 col 6, i.e. A1:G1. Callers work in A1 notation and this is the one piece
+// of the message they cannot act on as printed.
+var mergedRegionBoundsRE = regexp.MustCompile(`\[(\d+),(\d+)-(\d+),(\d+)\]`)
+
+// annotateMergedRegionConflict attaches the commands that resolve a merged-cell
+// rejection. The backend already says what went wrong and names the obstacle —
+// the top-left of the region a write landed inside, or the bounds of the region
+// a merge would overlap — but never in the form the caller passes back, and
+// never with the command that clears it. 08-29..31 reflow: 193 rejections,
+// 100 writing into a merged region and 93 merging across one, the largest
+// remaining cluster on any command.
+//
+// The message is read, never used to rewrite the request: auto-redirecting a
+// write to a merge's top-left would put data where the caller did not ask for
+// it, and auto-unmerging would discard a merge nobody agreed to lose. A parse
+// that finds nothing simply adds no hint.
+func annotateMergedRegionConflict(p *errs.Problem) {
+	if p.Hint != "" {
+		return
+	}
+	msg := strings.ToLower(p.Message)
+	if !strings.Contains(msg, "merge") {
+		return
+	}
+	switch {
+	case strings.Contains(msg, "overlaps existing merged cells"):
+		hint := "clear the existing merge first, then re-issue this call: +cells-unmerge --range <the region above>"
+		if m := mergedRegionBoundsRE.FindStringSubmatch(p.Message); m != nil {
+			if rng, ok := a1RangeFromZeroBased(m[1], m[2], m[3], m[4]); ok {
+				hint = fmt.Sprintf("clear the existing merge first, then re-issue this call: +cells-unmerge --range %q", rng)
+			}
+		}
+		p.Hint = hint
+	case strings.Contains(msg, "merged region"):
+		p.Hint = "a merged region takes its content from its top-left cell: write there instead, or clear the merge first with +cells-unmerge --range <the region above> and then write the cell you named"
+	}
+}
+
+// a1RangeFromZeroBased renders 0-based row/column bounds as the A1 range the
+// caller can pass back. Reports false on anything unparsable, so a changed
+// message format costs a hint rather than producing a wrong one.
+func a1RangeFromZeroBased(r1, c1, r2, c2 string) (string, bool) {
+	nums := make([]int, 0, 4)
+	for _, raw := range []string{r1, c1, r2, c2} {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 {
+			return "", false
+		}
+		nums = append(nums, n)
+	}
+	if nums[2] < nums[0] || nums[3] < nums[1] {
+		return "", false
+	}
+	return fmt.Sprintf("%s%d:%s%d",
+		columnIndexToLetter(nums[1]), nums[0]+1,
+		columnIndexToLetter(nums[3]), nums[2]+1), true
+}
+
+// ─── transient-failure retry (reads only) ─────────────────────────────
+
+// readRetryAttempts is the total number of tries a read tool call gets, and
+// readRetryBackoff the pause before the second one (doubled before the
+// third). Two extra tries at well under a second each stay inside the round
+// trip an agent already budgeted for, while covering the single-blip failures
+// that make up this class: 08-29..31 reflow, +csv-get's largest cause was
+// "API call failed: server time out error" at 25 of 71 rejections, with more
+// on +cells-get and +workbook-info, each on a command that was written
+// correctly and succeeded when the agent reissued it by hand.
+const (
+	readRetryAttempts = 3
+	readRetryBackoff  = 400 * time.Millisecond
+)
+
+// callToolWithTransientRetry reissues a READ tool call that failed for a
+// transient reason. Writes are never retried: this API has no idempotency
+// key, so a create that timed out after the backend committed it would be
+// committed twice — which is why the transport-level RetryTransport is
+// installed with MaxRetries at 0 and why this sits here, where the read/write
+// classification is already known, rather than in the shared transport.
+func callToolWithTransientRetry(
+	ctx context.Context,
+	runtime *common.RuntimeContext,
+	token string,
+	kind ToolKind,
+	body map[string]interface{},
+) (map[string]interface{}, error) {
+	attempts := 1
+	if kind == ToolKindRead {
+		attempts = readRetryAttempts
+	}
+	backoff := readRetryBackoff
+	var data map[string]interface{}
+	var err error
+	for attempt := 0; attempt < attempts; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return data, err
+			case <-time.After(backoff):
+			}
+			backoff *= 2
+		}
+		data, err = runtime.CallAPITyped("POST", toolInvokePath(token, kind), nil, body)
+		if err == nil || !isTransientToolFailure(err) {
+			return data, err
+		}
+	}
+	return data, err
+}
+
+// isTransientToolFailure reports whether an error is worth reissuing an
+// identical read for. Two signals, because the backend splits this class
+// across two layers: the typed Retryable flag (5xx and transport faults, set
+// by the shared classifier) and the tool's own message, since a sheet-ai tool
+// answers a timeout inside a 200 envelope with a business code the code table
+// does not carry — "server time out error" verbatim, which no client can
+// classify except by its text.
+//
+// A rate limit is excluded even though the classifier marks it retryable: the
+// server is asking for less traffic, and a fixed sub-second backoff answers
+// that by sending more. It surfaces immediately instead, carrying the
+// subtype an agent can pace on.
+func isTransientToolFailure(err error) bool {
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		return false
+	}
+	if p.Subtype == errs.SubtypeRateLimit {
+		return false
+	}
+	if p.Retryable {
+		return true
+	}
+	msg := strings.ToLower(p.Message)
+	for _, phrase := range []string{"server time out error", "data not ready"} {
+		if strings.Contains(msg, phrase) {
+			return true
+		}
+	}
+	return false
 }
 
 // flattenToolErrorMsg unwraps the nested-escaped-JSON error payload some

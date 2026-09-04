@@ -288,20 +288,25 @@ func TestCellsSetInput_MatrixPrecheck(t *testing.T) {
 			"+cells-clear",
 		},
 		{
-			"row count mismatch",
-			map[string]interface{}{"sheet_name": "S1", "range": "A1:B3",
-				"cells": []interface{}{
-					[]interface{}{map[string]interface{}{"value": "a"}, map[string]interface{}{"value": "b"}},
-				}},
-			"--cells is 1 rows × 2 columns but --range \"A1:B3\" spans 3 rows × 2 columns",
-		},
-		{
-			"column count mismatch",
+			// Overflow, not underflow: a payload that FITS inside the stated
+			// range is narrowed to it (fitCellsRange), so what the precheck
+			// still owns is a payload with nowhere to go.
+			"row count overflow",
 			map[string]interface{}{"sheet_name": "S1", "range": "A1:B1",
 				"cells": []interface{}{
-					[]interface{}{map[string]interface{}{"value": "a"}},
+					[]interface{}{map[string]interface{}{"value": "a"}, map[string]interface{}{"value": "b"}},
+					[]interface{}{map[string]interface{}{"value": "c"}, map[string]interface{}{"value": "d"}},
 				}},
-			"--cells is 1 rows × 1 columns but --range \"A1:B1\" spans 1 rows × 2 columns",
+			"--cells is 2 rows × 2 columns but --range \"A1:B1\" spans 1 rows × 2 columns",
+		},
+		{
+			"column count overflow",
+			map[string]interface{}{"sheet_name": "S1", "range": "A1:A1",
+				"cells": []interface{}{
+					[]interface{}{map[string]interface{}{"value": "a"}, map[string]interface{}{"value": "b"}},
+					[]interface{}{map[string]interface{}{"value": "c"}, map[string]interface{}{"value": "d"}},
+				}},
+			"--cells is 2 rows × 2 columns but --range \"A1:A1\" spans 1 rows × 1 columns",
 		},
 		{
 			// Both axes off used to cost two round trips: rows failed first,
@@ -363,7 +368,14 @@ func TestCellsSetInput_MatrixPrecheck(t *testing.T) {
 				}
 				return
 			}
-			requireValidation(t, err, tc.wantContains)
+			ve := requireValidation(t, err, tc.wantContains)
+			// The precheck runs inside a batch sub-op, so the attribution is
+			// the flag the CALLER actually passed — --operations, with the
+			// sub-op's own --cells named in the message. A regression can keep
+			// the rendered text and lose either half.
+			if ve.Param != "--operations" {
+				t.Errorf("Param = %q, want %q", ve.Param, "--operations")
+			}
 		})
 	}
 }

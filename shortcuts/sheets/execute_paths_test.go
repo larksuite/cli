@@ -6,6 +6,7 @@ package sheets
 import (
 	"encoding/json"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -1184,4 +1185,183 @@ func decodeRawEnvelopeBody(t *testing.T, raw []byte) map[string]interface{} {
 		t.Fatalf("captured body parse error: %v\nraw=%s", err, string(raw))
 	}
 	return body
+}
+
+// TestExecute_TransientReadRetry pins the read-only retry: an identical read
+// is reissued when the tool answers with its own timeout wording, and the
+// write path is never reissued because this API has no idempotency key.
+func TestExecute_TransientReadRetry(t *testing.T) {
+	t.Parallel()
+
+	timeoutBody := map[string]interface{}{
+		"code": 1310299, "msg": "server time out error", "data": map[string]interface{}{},
+	}
+
+	t.Run("a read retries past a tool timeout", func(t *testing.T) {
+		t.Parallel()
+		parent, stdout, _, reg := newTestRig(t, WorkbookInfo)
+		calls := 0
+		count := func(*http.Request) { calls++ }
+		readURL := "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_read"
+		// Stubs are served in registration order, so the first try fails and
+		// the retry meets the success stub.
+		reg.Register(&httpmock.Stub{Method: "POST", URL: readURL, Body: timeoutBody, OnMatch: count})
+		reg.Register(&httpmock.Stub{Method: "POST", URL: readURL, OnMatch: count, Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{"output": `{"sheets":[]}`},
+		}})
+		parent.SetArgs([]string{"+workbook-info", "--url", testURL})
+		if err := parent.Execute(); err != nil {
+			t.Fatalf("the second try should succeed, got: %v", err)
+		}
+		if calls != 2 {
+			t.Errorf("calls = %d, want 2 (one retry)", calls)
+		}
+		if !strings.Contains(stdout.String(), `"ok": true`) {
+			t.Errorf("stdout should carry the successful read, got %q", stdout.String())
+		}
+	})
+
+	t.Run("a persistent failure surfaces after the attempts are spent", func(t *testing.T) {
+		t.Parallel()
+		parent, _, _, reg := newTestRig(t, WorkbookInfo)
+		calls := 0
+		reg.Register(&httpmock.Stub{
+			Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_read",
+			Body: timeoutBody, Reusable: true, OnMatch: func(*http.Request) { calls++ },
+		})
+		parent.SetArgs([]string{"+workbook-info", "--url", testURL})
+		err := parent.Execute()
+		// The exhausted read must still surface the classified backend
+		// failure: a plain error here would cost an agent the subtype it
+		// routes on, and the request count alone would not notice.
+		p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeServerError, "server time out error")
+		if p.Code != 1310299 {
+			t.Errorf("Code = %d, want 1310299 (the backend's own code must survive the retry loop)", p.Code)
+		}
+		// Pinned locally, not read off readRetryAttempts: reading the
+		// production constant would let a regression that shrinks the retry
+		// budget pass this test unchanged.
+		const wantAttempts = 3
+		if calls != wantAttempts {
+			t.Errorf("calls = %d, want %d", calls, wantAttempts)
+		}
+	})
+
+	t.Run("a rate limit is not reissued even on a read", func(t *testing.T) {
+		t.Parallel()
+		parent, _, _, reg := newTestRig(t, WorkbookInfo)
+		calls := 0
+		reg.Register(&httpmock.Stub{
+			Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_read",
+			Body: map[string]interface{}{
+				"code": 99991400, "msg": "rate limited", "data": map[string]interface{}{},
+			},
+			Reusable: true, OnMatch: func(*http.Request) { calls++ },
+		})
+		parent.SetArgs([]string{"+workbook-info", "--url", testURL})
+		err := parent.Execute()
+		// The classifier marks a rate limit retryable, so only the explicit
+		// exclusion in isTransientToolFailure keeps the read path from
+		// answering "send less traffic" by sending more. The write test above
+		// cannot show this: it is excluded by ToolKindWrite instead.
+		p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeRateLimit, "rate limited")
+		if !p.Retryable {
+			t.Error("Retryable = false, want true — the agent pacing on this subtype needs the flag intact")
+		}
+		if calls != 1 {
+			t.Errorf("calls = %d, want 1 (a rate limit surfaces immediately)", calls)
+		}
+	})
+
+	t.Run("a write is never reissued", func(t *testing.T) {
+		t.Parallel()
+		parent, _, _, reg := newTestRig(t, CellsSet)
+		calls := 0
+		reg.Register(&httpmock.Stub{
+			Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_write",
+			Body: timeoutBody, Reusable: true, OnMatch: func(*http.Request) { calls++ },
+		})
+		parent.SetArgs([]string{"+cells-set", "--url", testURL, "--sheet-name", "s",
+			"--range", "A1:A1", "--cells", `[[{"value":"x"}]]`})
+		err := parent.Execute()
+		p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeServerError, "server time out error")
+		if p.Code != 1310299 {
+			t.Errorf("Code = %d, want 1310299 (the backend's own code must reach the caller unretried)", p.Code)
+		}
+		// A create that timed out after the backend committed it must not be
+		// committed twice.
+		if calls != 1 {
+			t.Errorf("calls = %d, want 1 (writes are not retried)", calls)
+		}
+	})
+}
+
+// TestExecute_MergedRegionHints pins the prescriptions on the two merged-cell
+// rejections. The backend names the obstacle but never in A1 notation and
+// never with the command that clears it.
+func TestExecute_MergedRegionHints(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, serverMsg, wantHint string
+	}{
+		{
+			name:      "merge overlapping an existing region",
+			serverMsg: "batch_update: 0 succeeded, 1 failed — operations[0] (merge_cells): Range A1:J1 overlaps existing merged cells: [0,0-0,6]. Unmerge them first (operation=unmerge) before merging.",
+			wantHint:  `+cells-unmerge --range "A1:G1"`,
+		},
+		{
+			name:      "write landing inside a merged region",
+			serverMsg: "cell at row 0, col 1 is inside a merged region (top-left: A1). Writing to non-top-left cells of merged regions is not supported.",
+			wantHint:  "top-left cell",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			parent, _, _, reg := newTestRig(t, CellsSet)
+			reg.Register(&httpmock.Stub{
+				Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_write",
+				Body: map[string]interface{}{
+					"code": 900015206, "msg": tc.serverMsg, "data": map[string]interface{}{},
+				},
+			})
+			parent.SetArgs([]string{"+cells-set", "--url", testURL, "--sheet-name", "s",
+				"--range", "B2:B2", "--cells", `[[{"value":"x"}]]`})
+			err := parent.Execute()
+			if err == nil {
+				t.Fatal("expected the merge conflict to surface")
+			}
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("err = %v, want a typed problem", err)
+			}
+			if !strings.Contains(p.Hint, tc.wantHint) {
+				t.Errorf("hint = %q, want it to carry %q", p.Hint, tc.wantHint)
+			}
+		})
+	}
+
+	t.Run("an unrelated failure gets no merge hint", func(t *testing.T) {
+		t.Parallel()
+		parent, _, _, reg := newTestRig(t, CellsSet)
+		reg.Register(&httpmock.Stub{
+			Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_write",
+			Body: map[string]interface{}{
+				"code": 900015206, "msg": "parameter validation failed", "data": map[string]interface{}{},
+			},
+		})
+		parent.SetArgs([]string{"+cells-set", "--url", testURL, "--sheet-name", "s",
+			"--range", "B2:B2", "--cells", `[[{"value":"x"}]]`})
+		err := parent.Execute()
+		// Assert the failure IS the classified API error first: without this
+		// the subtest also passes when Execute returns nil or an untyped
+		// error, neither of which proves anything about the hint.
+		p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeServerError, "parameter validation failed")
+		if p.Code != 900015206 {
+			t.Errorf("Code = %d, want 900015206", p.Code)
+		}
+		if strings.Contains(p.Hint, "+cells-unmerge") {
+			t.Errorf("hint = %q, want no merge prescription", p.Hint)
+		}
+	})
 }

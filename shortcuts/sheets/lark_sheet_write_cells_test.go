@@ -618,6 +618,46 @@ func TestCellsSetInput_AnchorRangeExpands(t *testing.T) {
 	}
 }
 
+// TestCellsSet_BareAnchorRaisesNoNarrowingWarning pins the other half of the
+// anchor expansion: a bare --range is not a stated extent the write fell short
+// of, so filling it in must stay silent. Reconstructing the stated range
+// without the payload made every anchored write report itself as narrowed.
+func TestCellsSet_BareAnchorRaisesNoNarrowingWarning(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a bare anchor with a 2x2 payload is silent", func(t *testing.T) {
+		t.Parallel()
+		stdout, err := runShortcutWithStubs(t, CellsSet, []string{
+			"--url", testURL, "--sheet-id", testSheetID, "--range", "A1",
+			"--cells", `[[{"value":"a"},{"value":"b"}],[{"value":"c"},{"value":"d"}]]`,
+		}, toolOutputStub(testToken, "write", `{"success":true}`))
+		if err != nil {
+			t.Fatalf("execute failed: %v\nstdout=%s", err, stdout)
+		}
+		if _, present := decodeEnvelopeData(t, stdout)["warnings"]; present {
+			t.Errorf("an expanded anchor is not a narrowed range: %s", stdout)
+		}
+	})
+
+	t.Run("a genuinely oversized range still warns", func(t *testing.T) {
+		t.Parallel()
+		stdout, err := runShortcutWithStubs(t, CellsSet, []string{
+			"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:D10",
+			"--cells", `[[{"value":"a"},{"value":"b"}],[{"value":"c"},{"value":"d"}]]`,
+		}, toolOutputStub(testToken, "write", `{"success":true}`))
+		if err != nil {
+			t.Fatalf("execute failed: %v\nstdout=%s", err, stdout)
+		}
+		warnings, _ := decodeEnvelopeData(t, stdout)["warnings"].([]interface{})
+		if len(warnings) != 1 {
+			t.Fatalf("a stated extent the payload did not fill must be reported, got %#v", warnings)
+		}
+		if w, _ := warnings[0].(string); !strings.Contains(w, `"A1:B2"`) {
+			t.Errorf("warning should name the range actually written, got %q", warnings[0])
+		}
+	})
+}
+
 // TestCellRange_Sized pins the range handed back by the dimension mismatch
 // prescription and by the anchor expansion: same top-left as what the caller
 // passed, sized to the payload, sheet prefix preserved so it pastes back in.
@@ -819,4 +859,89 @@ func TestRangeDimensions(t *testing.T) {
 			t.Errorf("rangeDimensions(%q) = (%d,%d), want (%d,%d)", c.in, rows, cols, c.wantRows, c.wantCols)
 		}
 	}
+}
+
+// TestCellsSet_ReflowSecondPass pins the acceptances the 08-29..31 reflow's
+// full breakdown added: the two object spellings of --writes, and style
+// vocabulary written directly on a cell.
+func TestCellsSet_ReflowSecondPass(t *testing.T) {
+	t.Parallel()
+
+	t.Run("writes object spellings", func(t *testing.T) {
+		t.Parallel()
+		write := `{"sheet_name":"s","range":"A1:A1","cells":[[{"value":"x"}]]}`
+		for name, payload := range map[string]string{
+			"envelope":    `{"writes":[` + write + `]}`,
+			"lone write":  write,
+			"lone values": `{"sheet_name":"s","range":"A1:A1","values":[["x"]]}`,
+		} {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+				stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set"), []string{
+					"--url", testURL, "--writes", payload, "--dry-run",
+				})
+				if err != nil {
+					t.Fatalf("%s should be accepted, got: %v", name, err)
+				}
+				if !strings.Contains(stdout, "set_cell_range") {
+					t.Errorf("dry-run should plan the write, got %q", stdout)
+				}
+			})
+		}
+	})
+
+	t.Run("an object that is not a write still fails on type", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set"), []string{
+			"--url", testURL, "--writes", `{"foo":1}`, "--dry-run",
+		})
+		requireValidation(t, err, `expected type "array", got "object"`)
+	})
+
+	// A cell carrying style fields at its top level passed every client check
+	// and reached the backend verbatim, which answered `[cells[0][0].border]
+	// unexpected property "border" is not defined` — 33 rejections, on a
+	// payload the --styles path accepts.
+	t.Run("cell-level style vocabulary folds into its carrier", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct {
+			name, cell, want string
+		}{
+			{"border folds to the four sides", `{"value":"x","border":{"style":"solid"}}`, `"border_styles":{"bottom":{"style":"solid"}`},
+			{"scalars move into cell_styles", `{"value":"x","font_weight":"bold"}`, `"cell_styles":{"font_weight":"bold"}`},
+			{"an alias lands canonical", `{"value":"x","valign":"center"}`, `"cell_styles":{"vertical_alignment":"middle"}`},
+			{"a boolean wrap becomes the enum", `{"value":"x","wrap_text":true}`, `"cell_styles":{"word_wrap":"auto-wrap"}`},
+			{"a quoted size becomes the number", `{"value":"x","font_size":"14"}`, `"cell_styles":{"font_size":14}`},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set"), []string{
+					"--url", testURL, "--sheet-name", "s", "--range", "A1:A1",
+					"--cells", `[[` + tc.cell + `]]`, "--dry-run",
+				})
+				if err != nil {
+					t.Fatalf("cell should be accepted, got: %v", err)
+				}
+				if !strings.Contains(strings.ReplaceAll(stdout, `\"`, `"`), tc.want) {
+					t.Errorf("body should carry %s, got %q", tc.want, stdout)
+				}
+			})
+		}
+	})
+
+	t.Run("a key this domain does not know is left alone", func(t *testing.T) {
+		t.Parallel()
+		// The tool contract may gain fields between builds; guessing at one
+		// is what the acceptance contract forbids.
+		stdout, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set"), []string{
+			"--url", testURL, "--sheet-name", "s", "--range", "A1:A1",
+			"--cells", `[[{"value":"x","some_future_field":1}]]`, "--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("unknown keys must pass through, got: %v", err)
+		}
+		if !strings.Contains(strings.ReplaceAll(stdout, `\"`, `"`), `"some_future_field":1`) {
+			t.Errorf("the key should reach the body untouched, got %q", stdout)
+		}
+	})
 }

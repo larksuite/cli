@@ -5,9 +5,12 @@ package sheets
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -258,12 +261,33 @@ func newObjectUpdateShortcut(spec objectCRUDSpec) common.Shortcut {
 			}
 			out, err := callTool(ctx, runtime, token, ToolKindWrite, spec.toolName, input)
 			if err != nil {
-				return err
+				return annotateStaleObjectID(err, spec)
 			}
 			runtime.Out(out, nil)
 			return nil
 		},
 	}
+}
+
+// annotateStaleObjectID points a "not found" on an id-addressed update or
+// delete at the list command that reports the live ids. The backend answers
+// with the id alone ("conditional format iXGbyDwC not found"), which reads
+// like a transport problem rather than "that id belongs to a rule that no
+// longer exists". 08-29..31 reflow: 14 rejections across +cond-format-update
+// and +cond-format-delete, the two largest long-tail entries after the flag
+// renames. Any other failure passes through untouched.
+func annotateStaleObjectID(err error, spec objectCRUDSpec) error {
+	if spec.idFlag == "" {
+		return err
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Hint != "" || !strings.Contains(strings.ToLower(p.Message), "not found") {
+		return err
+	}
+	p.Hint = fmt.Sprintf(
+		"list the live ids with %s-list and retry with one of those — an id from another sheet, or one whose object was replaced, does not exist here",
+		spec.commandPrefix)
+	return err
 }
 
 func objectUpdateInput(runtime flagView, token, sheetID, sheetName string, spec objectCRUDSpec) (map[string]interface{}, error) {
@@ -342,7 +366,7 @@ func newObjectDeleteShortcut(spec objectCRUDSpec) common.Shortcut {
 			}
 			out, err := callTool(ctx, runtime, token, ToolKindWrite, spec.toolName, input)
 			if err != nil {
-				return err
+				return annotateStaleObjectID(err, spec)
 			}
 			runtime.Out(out, nil)
 			return nil
@@ -1044,6 +1068,15 @@ func filterCreateInput(runtime flagView, token, sheetID, sheetName string) (map[
 	}
 	props := map[string]interface{}{
 		"range": strings.TrimSpace(runtime.Str("range")),
+		// The empty rule set, which is what a filter with no column
+		// conditions is: creating one is the documented meaning of omitting
+		// --properties, but `rules` is required at the properties root, so
+		// leaving it out failed schema validation with `required property
+		// "rules" is missing` — an error about a flag the caller deliberately
+		// did not pass, and one the flag's own description says is optional.
+		// 08-29..31 reflow: 9 +filter-create rejections. An explicit rules
+		// entry below replaces this.
+		"rules": []interface{}{},
 	}
 	if runtime.Str("properties") != "" {
 		extra, err := requireJSONObject(runtime, "properties")
@@ -1198,4 +1231,294 @@ func filterDeleteInput(runtime flagView, token, sheetID, sheetName string) (map[
 	}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
 	return input, nil
+}
+
+// ─── conditional-format properties acceptance ─────────────────────────
+//
+// Same contract as the style vocabulary layer (style_vocab.go): one
+// documented form, a wide acceptance layer, and only rewrites whose meaning
+// is beyond doubt. The 08-29..31 reflow put 62 of +cond-format-create's 97
+// rejections on the attrs shape, and the two recurring spellings are an
+// Excel/Google-Sheets `operator` key where this schema says `compare_type`,
+// and a comparison written in symbol or abbreviation form.
+
+// condFormatCompareTypes is the union of the compare_type enums across rule
+// types (cellIs's comparison set plus containsText's text-match set). No two
+// entries squash to the same key, so matching a caller's spelling against the
+// union identifies exactly one canonical value without knowing rule_type —
+// which is not on the payload yet when the normalizer runs.
+var condFormatCompareTypes = []string{
+	"equal", "notEqual", "greaterThan", "greaterThanOrEqual", "lessThan", "lessThanOrEqual", "between", "notBetween",
+	"beginsWith", "endsWith", "containsText", "notContains", "is",
+}
+
+// condFormatCompareAliases maps the symbol and abbreviation forms onto the
+// enum. Squashed keys (letters and digits only) are handled by the generic
+// separator-insensitive match instead, so this table carries only spellings
+// that share no letters with their target.
+var condFormatCompareAliases = map[string]string{
+	"<":        "lessThan",
+	"<=":       "lessThanOrEqual",
+	"=<":       "lessThanOrEqual",
+	">":        "greaterThan",
+	">=":       "greaterThanOrEqual",
+	"=>":       "greaterThanOrEqual",
+	"=":        "equal",
+	"==":       "equal",
+	"!=":       "notEqual",
+	"<>":       "notEqual",
+	"lt":       "lessThan",
+	"le":       "lessThanOrEqual",
+	"lte":      "lessThanOrEqual",
+	"gt":       "greaterThan",
+	"ge":       "greaterThanOrEqual",
+	"gte":      "greaterThanOrEqual",
+	"eq":       "equal",
+	"ne":       "notEqual",
+	"neq":      "notEqual",
+	"contains": "containsText",
+}
+
+// condFormatShapeKeys are the keys that identify an attrs entry as belonging
+// to a rule whose own contract spells `operator` (timePeriod, iconSet,
+// aboveAverage, dataBar, colorScale). An entry carrying one of them keeps its
+// operator untouched — only the {value} / {text} shapes, whose rules require
+// compare_type, get the rename.
+var condFormatShapeKeys = []string{"time_period", "icon_type", "value_type", "color"}
+
+// condFormatStyleAliases maps this domain's own cell-style vocabulary onto the
+// narrower one a conditional-format rule takes. A model that learned
+// background_color / font_color from --styles writes them here too, and the
+// backend answers `unexpected property "background_color" is not defined` --
+// 9 of +cond-format-create's rejections in the 08-29..31 reflow. The target
+// spellings are unambiguous within this schema: it has exactly one fill slot
+// (back_color) and one text-color slot (fore_color, which its own description
+// calls 前景色/字体颜色, unlike the openpyxl fgColor that makes fore_color
+// ambiguous on the cell-style paths).
+var condFormatStyleAliases = map[string]string{
+	"background_color": "back_color",
+	"bg_color":         "back_color",
+	"fill_color":       "back_color",
+	"font_color":       "fore_color",
+	"text_color":       "fore_color",
+	"color":            "fore_color",
+}
+
+// condFormatFontWords maps the flat weight / slant vocabulary onto the single
+// `font` enum this schema uses (bold / italic / "bold italic").
+var condFormatFontWords = map[string]string{
+	"font_weight": "bold",
+	"bold":        "bold",
+	"font_style":  "italic",
+	"italic":      "italic",
+}
+
+// normalizeCondFormatStyle folds the cell-style spellings a caller brings from
+// --styles into the rule style's own vocabulary, in place.
+func normalizeCondFormatStyle(style map[string]interface{}) {
+	for _, field := range sortedKeys(style) {
+		target, aliased := condFormatStyleAliases[field]
+		if !aliased {
+			continue
+		}
+		if _, taken := style[target]; taken {
+			continue
+		}
+		if s, isText := style[field].(string); isText && strings.TrimSpace(s) != "" {
+			style[target] = s
+			delete(style, field)
+		}
+	}
+	for _, field := range sortedKeys(style) {
+		word, isFontWord := condFormatFontWords[field]
+		if !isFontWord {
+			continue
+		}
+		// A weight/slant word is only folded when it actually asks for the
+		// effect: font_weight:"normal" or bold:false mean "leave it alone",
+		// and this schema has no way to say that.
+		switch v := style[field].(type) {
+		case bool:
+			if !v {
+				delete(style, field)
+				continue
+			}
+		case string:
+			if !strings.EqualFold(strings.TrimSpace(v), word) {
+				continue
+			}
+		default:
+			continue
+		}
+		existing, _ := style["font"].(string)
+		switch {
+		case existing == "":
+			style["font"] = word
+		case existing != word:
+			style["font"] = "bold italic"
+		}
+		delete(style, field)
+	}
+	if line, ok := style["font_line"].(string); ok {
+		if _, taken := style["text_decoration"]; !taken {
+			switch strings.ToLower(strings.TrimSpace(line)) {
+			case "underline":
+				style["text_decoration"] = "underline"
+				delete(style, "font_line")
+			case "line-through", "strikethrough":
+				style["text_decoration"] = "strikethrough"
+				delete(style, "font_line")
+			}
+		}
+	}
+}
+
+// normalizeCondFormatProperties rewrites the unambiguous --properties habits
+// in place: attrs written as a single object instead of a one-entry list, a
+// comparison spelled as `operator` / in symbol form under a rule whose
+// contract is {compare_type, value|text}, and cell-style vocabulary in the
+// rule's style block.
+func normalizeCondFormatProperties(v interface{}) interface{} {
+	props, ok := v.(map[string]interface{})
+	if !ok {
+		return v
+	}
+	if style, isMap := props["style"].(map[string]interface{}); isMap {
+		normalizeCondFormatStyle(style)
+	}
+	// attrs as a bare object: the list holds one entry per rule parameter and
+	// a single object can only be that one entry.
+	if obj, isObj := props["attrs"].(map[string]interface{}); isObj {
+		props["attrs"] = []interface{}{obj}
+	}
+	attrs, isList := props["attrs"].([]interface{})
+	if !isList {
+		return v
+	}
+	for _, raw := range attrs {
+		entry, isMap := raw.(map[string]interface{})
+		if !isMap {
+			continue
+		}
+		normalizeCondFormatAttrEntry(entry)
+	}
+	return v
+}
+
+// normalizeCondFormatAttrEntry applies the operator rename and the
+// compare_type value canonicalization to one attrs entry.
+func normalizeCondFormatAttrEntry(entry map[string]interface{}) {
+	if _, taken := entry["compare_type"]; !taken {
+		_, hasValue := entry["value"]
+		_, hasText := entry["text"]
+		op, hasOperator := entry["operator"]
+		if hasOperator && (hasValue || hasText) && !condFormatEntryHasShapeKey(entry) {
+			entry["compare_type"] = op
+			delete(entry, "operator")
+		}
+	}
+	val, isStr := entry["compare_type"].(string)
+	if !isStr {
+		return
+	}
+	if canon := canonicalCondFormatCompareType(val); canon != "" {
+		entry["compare_type"] = canon
+		val = canon
+	}
+	normalizeCondFormatCompareValue(entry, val)
+}
+
+// normalizeCondFormatCompareValue puts the comparison threshold in the string
+// form the numeric-comparison branch declares. The schema's `value` is a
+// STRING there ("100") while the dataBar / colorScale branches take a number,
+// so a numeric threshold under compare_type matched no oneOf alternative and
+// failed with the schema's blanket "does not match any of oneOf alternatives"
+// — a message that never names the quotes as the problem. Only entries that
+// carry compare_type and none of the number-valued branches' keys are
+// touched, so a real dataBar threshold keeps its numeric type.
+func normalizeCondFormatCompareValue(entry map[string]interface{}, compareType string) {
+	if condFormatEntryHasShapeKey(entry) {
+		return
+	}
+	raw, has := entry["value"]
+	if !has {
+		return
+	}
+	// between / notBetween read two thresholds out of one comma-separated
+	// string; a two-element list says exactly that and nothing else. Any
+	// other length is not a range, and joining it would hand the schema a
+	// plausible-looking string that passes the local shape check and fails
+	// at the backend instead.
+	if list, isList := raw.([]interface{}); isList {
+		if compareType != "between" && compareType != "notBetween" {
+			return
+		}
+		if len(list) != 2 {
+			return
+		}
+		parts := make([]string, 0, len(list))
+		for _, item := range list {
+			text, ok := condFormatScalarText(item)
+			if !ok {
+				return
+			}
+			parts = append(parts, text)
+		}
+		entry["value"] = strings.Join(parts, ",")
+		return
+	}
+	if text, ok := condFormatScalarText(raw); ok {
+		entry["value"] = text
+	}
+}
+
+// condFormatScalarText renders a numeric or boolean threshold as the literal
+// text the schema wants, and reports false for anything else (a string is
+// already right; an object has no single reading).
+func condFormatScalarText(raw interface{}) (string, bool) {
+	switch v := raw.(type) {
+	case json.Number:
+		return v.String(), true
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), true
+	case bool:
+		return strconv.FormatBool(v), true
+	}
+	return "", false
+}
+
+// condFormatEntryHasShapeKey reports whether the entry carries a key that
+// belongs to a rule type whose own contract spells the comparison `operator`.
+func condFormatEntryHasShapeKey(entry map[string]interface{}) bool {
+	for _, key := range condFormatShapeKeys {
+		if _, has := entry[key]; has {
+			return true
+		}
+	}
+	return false
+}
+
+// canonicalCondFormatCompareType returns the enum entry a caller's spelling
+// unambiguously means: an exact match, a separator/case-insensitive match
+// (LESS_THAN, less_than, lessthan), or a symbol / abbreviation from the alias
+// table. Returns "" when the value has no single reading, leaving the schema
+// to reject it with the enum inlined.
+func canonicalCondFormatCompareType(val string) string {
+	trimmed := strings.TrimSpace(val)
+	if trimmed == "" {
+		return ""
+	}
+	if slices.Contains(condFormatCompareTypes, trimmed) {
+		return ""
+	}
+	squashed := squashStyleFieldKey(trimmed)
+	for _, canon := range condFormatCompareTypes {
+		if squashStyleFieldKey(canon) == squashed {
+			return canon
+		}
+	}
+	if target, ok := condFormatCompareAliases[strings.ToLower(trimmed)]; ok {
+		return target
+	}
+	return ""
 }
