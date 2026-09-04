@@ -55,9 +55,9 @@ lark-cli vc +search --query "周会" --page-token "<PAGE_TOKEN>"
 | `--query <text>` | 否 | 9 位会议号或搜索关键词 |
 | `--start <time>` | 否 | 开始时间（ISO 8601 或仅日期） |
 | `--end <time>` | 否 | 结束时间（ISO 8601 或仅日期） |
-| `--organizer-ids <ids>` | 否 | 组织者 open_id 列表，逗号分隔 |
-| `--participant-ids <ids>` | 否 | 参与者 open_id 列表，逗号分隔 |
-| `--room-ids <ids>` | 否 | 会议室 ID 列表，逗号分隔 |
+| `--organizer-ids <ids>` | 否 | 组织者 open_id 列表，逗号分隔；多值为 OR 语义 |
+| `--participant-ids <ids>` | 否 | 参与者 open_id 列表，逗号分隔；多值为 OR 语义 |
+| `--room-ids <ids>` | 否 | 会议室 ID 列表，逗号分隔；多值为 OR 语义 |
 | `--page-size <n>` | 否 | 每页数量，默认 `15`，最大 `30` |
 | `--page-token <token>` | 否 | 翻页标记，用于获取下一页 |
 | `--dry-run` | 否 | 预览 API 调用，不执行 |
