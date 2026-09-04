@@ -14,6 +14,9 @@ func Shortcuts() []common.Shortcut {
 		WhiteboardUpdateOld,
 		WhiteboardExport,
 		WhiteboardQuery,
+		WhiteboardNodeCreate,
+		WhiteboardNodeUpdate,
+		WhiteboardNodeDelete,
 	}
 }
 

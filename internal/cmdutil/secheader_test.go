@@ -338,3 +338,28 @@ func TestBaseSecurityHeaders_AgentTraceRejectsLFInjection(t *testing.T) {
 		t.Fatalf("BaseSecurityHeaders()[%s] = %q, want absent for LF value", HeaderAgentTrace, v)
 	}
 }
+
+func TestBaseSecurityHeaders_NoTTEnvHeaderWhenEnvUnset(t *testing.T) {
+	t.Setenv(envvars.CliTTEnv, "")
+	h := BaseSecurityHeaders()
+	if v := h.Get(HeaderTTEnv); v != "" {
+		t.Fatalf("BaseSecurityHeaders() included %s = %q, want absent when env unset", HeaderTTEnv, v)
+	}
+}
+
+func TestBaseSecurityHeaders_IncludesTTEnvHeaderWhenEnvSet(t *testing.T) {
+	const ttEnv = "ppe_whiteboard_mindnote"
+	t.Setenv(envvars.CliTTEnv, ttEnv)
+	h := BaseSecurityHeaders()
+	if v := h.Get(HeaderTTEnv); v != ttEnv {
+		t.Fatalf("BaseSecurityHeaders()[%s] = %q, want %q", HeaderTTEnv, v, ttEnv)
+	}
+}
+
+func TestBaseSecurityHeaders_NoTTEnvHeaderWhenEnvInvalid(t *testing.T) {
+	t.Setenv(envvars.CliTTEnv, "ppe\r\nX-Evil: attack")
+	h := BaseSecurityHeaders()
+	if v := h.Get(HeaderTTEnv); v != "" {
+		t.Fatalf("BaseSecurityHeaders() included %s = %q, want absent for invalid input", HeaderTTEnv, v)
+	}
+}
