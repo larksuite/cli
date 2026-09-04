@@ -1,0 +1,394 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
+package apps
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"mime"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/charcheck"
+	"github.com/larksuite/cli/internal/client"
+	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/util"
+	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/shortcuts/common"
+	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
+)
+
+// exportScope is the scope this command needs. It is named once so the
+// declared Scopes and the authorization fact attached on a 401 cannot drift.
+const exportScope = "spark:app:read"
+
+// maxExportEnvelopeBytes bounds how much of a suspected JSON error envelope is
+// read before classification. It matches the limit DoStream already applies to
+// the error bodies it reads for status >= 400.
+const maxExportEnvelopeBytes = 4096
+
+// AppsExport downloads an app's source code as a zip archive.
+//
+// The response is a raw binary stream from the gateway (not a signed URL), so the
+// body is streamed straight to disk instead of being buffered in memory.
+var AppsExport = common.Shortcut{
+	Service:     appsService,
+	Command:     "+export",
+	Description: "Export an app's source code as a zip archive",
+	Risk:        "read",
+	Tips: []string{
+		"Exports the last commit on the app's default branch, not the sandbox working tree: changes made in the sandbox without a checkpoint are not included.",
+		"Example: lark-cli apps +export --app-id <app_id> --output ./src.zip",
+		"Example (share token): lark-cli apps +export --meta-token <token>   # for an app shared with you; you still need download permission",
+		"Example (omit --output): lark-cli apps +export --app-id <app_id>   # saves to ./<app_id>.zip",
+	},
+	Scopes:    []string{exportScope},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
+	Flags: []common.Flag{
+		{Name: "app-id", Desc: "Miaoda app id (exactly one of --app-id / --meta-token)"},
+		{Name: "meta-token", Desc: "share-link token of a creative app (exactly one of --app-id / --meta-token)"},
+		{Name: "checkpoint-id", Desc: "checkpoint id to export (default: latest commit on the default branch)"},
+		{Name: "output", Desc: "local output path (default: <app_id>.zip in cwd)"},
+	},
+	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
+		if err := validateExportFlags(rctx); err != nil {
+			return err
+		}
+		return rejectOutputTraversal(rctx.Str("output"))
+	},
+	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
+		return common.NewDryRunAPI().
+			GET(exportPath(exportLookup(rctx))).
+			Desc("Download the app source archive and save it to --output").
+			Params(exportQueryParams(rctx))
+	},
+	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
+		if err := validateExportFlags(rctx); err != nil {
+			return err
+		}
+
+		apiPath := exportPath(exportLookup(rctx))
+		query := url.Values{}
+		for k, v := range exportQueryParams(rctx) {
+			query.Set(k, fmt.Sprintf("%v", v))
+		}
+		if encoded := query.Encode(); encoded != "" {
+			apiPath += "?" + encoded
+		}
+		resp, err := rctx.DoAPIStream(ctx, &larkcore.ApiReq{
+			HttpMethod: http.MethodGet,
+			ApiPath:    apiPath,
+		})
+		if err != nil {
+			return classifyExportErr(err)
+		}
+		defer resp.Body.Close()
+
+		if err := rejectExportErrorEnvelope(rctx, resp); err != nil {
+			return err
+		}
+
+		out := strings.TrimSpace(rctx.Str("output"))
+		if out == "" {
+			out = defaultExportFilename(resp, rctx)
+		}
+		saved, err := rctx.FileIO().Save(out, fileio.SaveOptions{
+			ContentType:   resp.Header.Get("Content-Type"),
+			ContentLength: resp.ContentLength,
+		}, resp.Body)
+		if err != nil {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output: %v", err).WithParam("--output").WithCause(err)
+		}
+		resolved, perr := rctx.FileIO().ResolvePath(out)
+		if perr != nil || resolved == "" {
+			resolved = out
+		}
+
+		result := map[string]interface{}{
+			"output":     resolved,
+			"size_bytes": saved.Size(),
+		}
+		if appID := strings.TrimSpace(rctx.Str("app-id")); appID != "" {
+			result["app_id"] = appID
+		}
+		rctx.OutFormat(result, nil, func(w io.Writer) {
+			fmt.Fprintf(w, "Saved %s (%d bytes)\n", resolved, saved.Size())
+		})
+		return nil
+	},
+}
+
+// validateExportFlags is the single flag-validation entry point, shared by the
+// Validate hook and Execute so a direct Execute call (as in tests, and as the
+// pre-existing XOR re-check already assumed) cannot skip a check.
+func validateExportFlags(rctx *common.RuntimeContext) error {
+	if err := requireExactlyOneExportSource(rctx); err != nil {
+		return err
+	}
+	if appID := strings.TrimSpace(rctx.Str("app-id")); appID != "" {
+		if _, err := requireAppID(appID); err != nil {
+			return err
+		}
+	}
+	// The locator is deliberately NOT checked for the "app_" prefix: this endpoint
+	// accepts an app id or a meta token in the same path segment and tells them
+	// apart server-side, exactly like +get (whose --app-id is documented as "app ID
+	// or meta token"). validateRealAppID belongs to the commands whose server side
+	// only accepts a real app id (+init / +html-publish / +release-*), not here.
+	if err := validateExportLocatorShape(rctx); err != nil {
+		return err
+	}
+	return validateExportCheckpointID(rctx.Str("checkpoint-id"))
+}
+
+// validateExportLocatorShape rejects a share link passed where a bare identifier
+// is expected, whichever flag carried it.
+//
+// The locator goes into a path segment, so a full URL is percent-encoded and sent
+// as-is; the server then fails to resolve it and answers "app not found for the
+// given meta_token". That reads as "wrong app" and sends the caller off to verify
+// an app id, when the actual fix is to pass only the <token> segment. Catching the
+// shape here turns a misleading 404 into a precise, actionable local error.
+//
+// This checks the character shape only — never whether the value is an app id or a
+// token. That distinction is the server's (see validateExportFlags).
+func validateExportLocatorShape(rctx *common.RuntimeContext) error {
+	param := "--app-id"
+	value := strings.TrimSpace(rctx.Str("app-id"))
+	if value == "" {
+		param = "--meta-token"
+		value = strings.TrimSpace(rctx.Str("meta-token"))
+	}
+	if value == "" {
+		return nil
+	}
+	if err := charcheck.RejectControlChars(value, param); err != nil {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%v", err).
+			WithParam(param).WithCause(err)
+	}
+	if strings.ContainsAny(value, "/ \t") {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"%s must be a bare app id or share token, not a URL or a path", param).
+			WithParam(param).
+			WithHint(`from an app link .../app/<app_id> or a share link .../page/<token>, pass only the last segment`)
+	}
+	return nil
+}
+
+// validateExportCheckpointID keeps a non-numeric --checkpoint-id from reaching the
+// gateway, where it would fail during i64 binding with a message that does not name
+// the flag. Zero and negatives are rejected too: the server reads 0 as "latest",
+// so passing it explicitly would silently ignore the flag the caller just set.
+func validateExportCheckpointID(raw string) error {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return nil
+	}
+	n, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || n <= 0 {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--checkpoint-id must be a positive integer, got %q", value).
+			WithParam("--checkpoint-id").
+			WithHint("omit --checkpoint-id to export the latest commit on the default branch")
+	}
+	return nil
+}
+
+// requireExactlyOneExportSource enforces the app-id / meta-token XOR.
+//
+// Both empty or both set is a user error the server would also reject; failing
+// here keeps the message specific about which flags conflict.
+func requireExactlyOneExportSource(rctx *common.RuntimeContext) error {
+	appID := strings.TrimSpace(rctx.Str("app-id"))
+	metaToken := strings.TrimSpace(rctx.Str("meta-token"))
+	switch {
+	case appID == "" && metaToken == "":
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"one of --app-id / --meta-token is required").
+			WithHint("pass --app-id for an app you own, or --meta-token from a share link")
+	case appID != "" && metaToken != "":
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--app-id and --meta-token are mutually exclusive").
+			WithParam("--meta-token")
+	}
+	return nil
+}
+
+// exportLookup returns the path-segment locator: --app-id and --meta-token share
+// one segment and the server tells them apart by the "app_" prefix, matching how
+// +get already accepts either identifier.
+//
+// Callers must run requireExactlyOneExportSource first, so exactly one is set.
+func exportLookup(rctx *common.RuntimeContext) string {
+	if appID := strings.TrimSpace(rctx.Str("app-id")); appID != "" {
+		return appID
+	}
+	return strings.TrimSpace(rctx.Str("meta-token"))
+}
+
+// exportPath builds the archive endpoint for a locator.
+//
+// The locator is a path segment rather than a query parameter: the gateway
+// already routes GET /apps/:appID, so a static segment such as /apps/code_archive
+// would be swallowed by it and a missing route registration would surface as
+// "app not found" instead of a 404.
+func exportPath(lookup string) string {
+	return fmt.Sprintf("%s/apps/%s/code-archive", apiBasePath, validate.EncodePathSegment(lookup))
+}
+
+// exportQueryParams builds the request params shared by DryRun and Execute so the
+// dry-run output cannot drift from the real call.
+func exportQueryParams(rctx *common.RuntimeContext) map[string]interface{} {
+	params := map[string]interface{}{}
+	if checkpointID := strings.TrimSpace(rctx.Str("checkpoint-id")); checkpointID != "" {
+		params["checkpoint_id"] = checkpointID
+	}
+	return params
+}
+
+// classifyExportErr re-types the archive endpoint's HTTP failures.
+//
+// This endpoint returns a raw binary body, so the stream client cannot inspect a
+// JSON envelope and classifies every 4xx as a transport-level NetworkError. That
+// is wrong for the cases below: they are not transport problems and retrying will
+// never help. Re-map them onto the taxonomy an agent can act on, keeping the
+// original error as the cause. 422 is the distinguishing case — the app's code is
+// not stored in git at all (static HTML apps keep artifacts in file storage), so
+// the hint points at the interface that can actually serve it.
+func classifyExportErr(err error) error {
+	var netErr *errs.NetworkError
+	if !errors.As(err, &netErr) {
+		return err
+	}
+	detail := netErr.Message
+	switch netErr.Code {
+	case http.StatusUnauthorized:
+		// Hand back the scope as a structured fact rather than a literal login
+		// command: the root presenter renders recovery, and a reduced
+		// distribution may not carry the command this text would name. Same
+		// shape the git-credential path already uses.
+		return recovery.Attach(
+			errs.NewAuthenticationError(errs.SubtypeTokenMissing, "export failed: %s", detail).WithCause(err),
+			recovery.UserAuthorization(exportScope),
+		)
+	case http.StatusForbidden:
+		return errs.NewPermissionError(errs.SubtypePermissionDenied, "export failed: %s", detail).
+			WithHint("you need download permission on this app; holding a share token is not enough").
+			WithCause(err)
+	case http.StatusNotFound:
+		return errs.NewAPIError(errs.SubtypeNotFound, "export failed: %s", detail).
+			WithHint(appIDListHint).
+			WithCause(err)
+	case http.StatusUnprocessableEntity:
+		return errs.NewAPIError(errs.SubtypeUnknown, "export failed: %s", detail).
+			WithHint("this app type keeps its code outside git; use the file storage commands (+file-list / +file-download) to fetch its artifacts").
+			WithCause(err)
+	case http.StatusRequestEntityTooLarge:
+		return errs.NewAPIError(errs.SubtypeUnknown, "export failed: %s", detail).
+			WithHint("the archive exceeds the export size limit; clone the repository with +git-credential-init instead").
+			WithCause(err)
+	default:
+		// 5xx and genuine transport failures keep the client's classification,
+		// including its retryable flag and log id.
+		return err
+	}
+}
+
+// rejectExportErrorEnvelope fails the export when the body is an error envelope
+// rather than the archive.
+//
+// The stream client only intercepts status >= 400, but the OpenAPI gateway
+// reports several failures as HTTP 200 carrying an error body — either a JSON
+// envelope {"code":...,"msg":...} or, when the api.status field is not wired
+// through on the gateway response, a bare text/plain line the handler produced
+// (e.g. "permission denied", "app not found"). Without this gate the body is
+// streamed to disk as the "archive" and the command reports success — the caller
+// gets a .zip that is really a short error blob, which is worse than a plain
+// failure because nothing looks wrong until it is opened. Both variants were
+// observed against this endpoint on a test lane.
+//
+// The check is a whitelist, not a blacklist: only an explicit archive
+// Content-Type (application/octet-stream / application/zip) is trusted and
+// streamed straight through. Everything else — JSON, text/plain, or an absent
+// Content-Type — is read back (bounded at 4 KiB, the same limit DoStream uses
+// for the error bodies it reads itself) and refused, because a truthful archive
+// always carries an explicit binary type. Whitelisting keeps the gate robust
+// against any future error Content-Type the gateway might use.
+func rejectExportErrorEnvelope(rctx *common.RuntimeContext, resp *http.Response) error {
+	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	if isArchiveContentType(contentType) {
+		return nil
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxExportEnvelopeBytes))
+	if err != nil {
+		return errs.NewNetworkError(errs.SubtypeNetworkTransport, "export failed while reading the response: %s", err).WithCause(err)
+	}
+	// A JSON body (or an absent Content-Type, treated as JSON-suspect like
+	// client.HandleResponse) goes through the shared classifier so an envelope
+	// becomes the same typed error a non-streaming command would raise, log id
+	// and all.
+	if contentType == "" || client.IsJSONContentType(strings.ToLower(contentType)) {
+		if _, classifyErr := rctx.ClassifyAPIResponse(&larkcore.ApiResp{
+			StatusCode: resp.StatusCode,
+			Header:     resp.Header,
+			RawBody:    body,
+		}); classifyErr != nil {
+			return classifyErr
+		}
+	}
+	// Non-JSON body (or a JSON one that parsed clean but still isn't an archive).
+	// If the gateway handed back a short text/plain reason (the api.status-not-
+	// wired case: HTTP 200 + "permission denied" etc.), surface that text so the
+	// caller sees the server's reason rather than an opaque "not an archive".
+	// Fall back to the Content-Type when the body is empty or unreadable.
+	if msg := strings.TrimSpace(string(body)); msg != "" {
+		return errs.NewInternalError(errs.SubtypeInvalidResponse,
+			"export failed: %s", util.TruncateStr(msg, 500))
+	}
+	return errs.NewInternalError(errs.SubtypeInvalidResponse,
+		"export returned %q instead of an archive", contentTypeForMessage(contentType))
+}
+
+// isArchiveContentType reports whether ct is a Content-Type an export archive is
+// allowed to carry. The handler emits application/octet-stream on success;
+// application/zip is accepted defensively in case the gateway relabels it.
+//
+// The media type is parsed and matched exactly, not by substring: a substring
+// check would accept a hostile/mislabeled header like
+// text/plain; detail="application/zip" and stream the error body to disk as the
+// "archive". Parameters (charset, etc.) are stripped before comparison.
+func isArchiveContentType(ct string) bool {
+	mediaType, _, err := mime.ParseMediaType(ct)
+	if err != nil {
+		return false
+	}
+	return mediaType == "application/octet-stream" || mediaType == "application/zip"
+}
+
+// contentTypeForMessage renders a missing Content-Type readably in diagnostics.
+func contentTypeForMessage(contentType string) string {
+	if contentType == "" {
+		return "a body with no content type"
+	}
+	return contentType
+}
+
+// defaultExportFilename derives the save path when --output is omitted, preferring
+// the server's Content-Disposition so the archive keeps its canonical name.
+func defaultExportFilename(resp *http.Response, rctx *common.RuntimeContext) string {
+	if name := common.ResolveDownloadFileName(resp.Header, ""); name != "" {
+		return name
+	}
+	if appID := strings.TrimSpace(rctx.Str("app-id")); appID != "" {
+		return appID + ".zip"
+	}
+	return "app-source.zip"
+}
