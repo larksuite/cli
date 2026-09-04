@@ -59,11 +59,15 @@ Use this for message history when the conversation is already known.
 - Searching across conversations → use [[+messages-search]].
 - Fetching full details for known message ids → use [[+messages-mget]].
 
+### Tips
+- Use --format concise for complete message bodies and inline thread replies; use JSON for field-level metadata.
+- Thread replies are expanded automatically. Call [[+threads-messages-list]] only when thread_has_more=true, thread_replies_error=true, or a known thread must be read directly.
+
 ### Examples
 
 **List messages in a group chat**
 ```bash
-lark-cli im +chat-messages-list --chat-id oc_xxx
+lark-cli im +chat-messages-list --chat-id oc_xxx --format concise
 ```
 
 ### Skills
@@ -225,13 +229,16 @@ lark-cli im +messages-send --chat-id oc_xxx --text "Hello"
 - `lark-im/references/lark-im-messages-send.md`
 
 ## +threads-messages-list
-Use this when a message or thread id is known and the replies inside that thread are needed.
+Use this when a message or thread id is known and the thread must be read directly or continued after an incomplete inline expansion.
+
+### Tips
+- Use --format concise for complete message bodies in compact Markdown.
 
 ### Examples
 
 **List replies in a thread**
 ```bash
-lark-cli im +threads-messages-list --thread omt_xxx
+lark-cli im +threads-messages-list --thread omt_xxx --format concise
 ```
 
 ### Skills

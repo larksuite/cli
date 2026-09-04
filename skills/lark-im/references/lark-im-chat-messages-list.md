@@ -17,6 +17,9 @@ lark-cli im +chat-messages-list --chat-id oc_xxx
 # Get direct messages with a user (pass open_id and resolve p2p chat_id automatically)
 lark-cli im +chat-messages-list --user-id ou_xxx
 
+# Read complete conversation context as compact Markdown
+lark-cli im +chat-messages-list --chat-id oc_xxx --format concise
+
 # Specify a time range (ISO 8601)
 lark-cli im +chat-messages-list --chat-id oc_xxx --start "2026-03-10T00:00:00+08:00" --end "2026-03-11T00:00:00+08:00"
 
@@ -51,6 +54,7 @@ lark-cli im +chat-messages-list --chat-id oc_xxx --format json
 | `--page-limit <n>` | No | Maximum pages fetched by `--page-all` (default 10, range 1-1000) |
 | `--no-reactions` | No | Skip auto-fetching the `reactions` block |
 | `--download-resources` | No | Download message resources (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` and attach a `resources` block. Off by default; no extra requests when omitted |
+| `--format <fmt>` | No | `json` (default), `pretty`, `concise`, `table`, `ndjson`, or `csv`; concise emits complete conversation-oriented Markdown |
 
 > Rule: `--chat-id` and `--user-id` are mutually exclusive. You must provide exactly one of them.
 
@@ -74,17 +78,15 @@ Two ways to get the binaries:
 
 ## Thread Expansion (`thread_id`)
 
-In JSON output, a message may contain a `thread_id` (`omt_xxx`) field, which means the message has replies in a thread. Use [`im +threads-messages-list`](lark-im-threads-messages-list.md) to inspect replies in that thread:
+The command automatically fetches replies for each returned `thread_id` and attaches them under `thread_replies`. The limit is 50 replies per thread and 500 replies across the invocation. `--format concise` renders those replies inline under the root message.
 
-```bash
-lark-cli im +threads-messages-list --thread omt_xxx
-```
+Call [`im +threads-messages-list`](lark-im-threads-messages-list.md) only when reading a known thread directly or continuing an incomplete expansion:
 
 | Scenario | Recommendation |
 |------|------|
-| You need context | Call `im +threads-messages-list --order desc --page-size 10` for the discovered thread_id to inspect recent replies |
-| The user asks for the "full discussion" | Use `im +threads-messages-list --order asc --page-size 50`, then paginate if needed |
-| You only need an overview | Skip thread expansion |
+| `thread_has_more=true` | Continue with `im +threads-messages-list --thread <thread_id>` and paginate |
+| `thread_replies_error=true` | Retry that thread with `im +threads-messages-list --thread <thread_id>` |
+| Neither marker is present | Use the inline `thread_replies`; do not issue a duplicate request |
 
 ## Output Fields
 
@@ -149,7 +151,7 @@ lark-cli api GET /open-apis/im/v1/messages \
 2. **Prefer `--chat-id` when available:** if the chat_id is already known, use it directly to avoid extra API calls.
 3. **For direct messages:** use `--user-id` to resolve the p2p chat automatically instead of looking it up manually. This requires user identity (`--as user`); with bot identity, resolve the p2p `chat_id` yourself and pass it via `--chat-id`.
 4. **For time ranges:** both ISO 8601 and date-only inputs are supported. Date-only is usually simpler.
-5. **For full content:** table output truncates content. Use `--format json` when you need the complete message body.
+5. **For conversation context:** use `--format concise` for complete bodies and inline replies. Use JSON for field-level metadata.
 6. **For sender info:** the command already resolves sender names, so you do not need a separate lookup.
 7. **Application/bot identity + named group history:** If the user says "使用应用身份/以 bot 身份" and asks to list or read historical messages for a named group, use bot identity for both steps:
    ```bash

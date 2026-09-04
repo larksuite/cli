@@ -2,7 +2,7 @@
 
 > **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
 
-Fetch the reply message list inside a thread. When `im +chat-messages-list` returns messages that include a `thread_id` field, use this command to inspect all replies in that thread.
+Fetch the reply message list inside a thread. `im +chat-messages-list` already expands replies inline; use this command when the thread is known directly or when the inline result reports `thread_has_more=true` or `thread_replies_error=true`.
 
 By default each reply also carries a `reactions` block (counts + details from `im.reactions.batch_query`) when the server has reactions for it, and `update_time` for messages that were actually edited. Pass `--no-reactions` to skip the extra round-trip. Pass `--download-resources` to additionally download message resources (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` and attach a `resources` block — off by default, no extra requests when omitted. See [message enrichment](lark-im-message-enrichment.md) for the full contract.
 
@@ -11,8 +11,11 @@ This skill maps to the shortcut: `lark-cli im +threads-messages-list` (internall
 ## Commands
 
 ```bash
-# Get thread replies (ascending by time by default, table output)
+# Get thread replies (ascending by time, JSON output by default)
 lark-cli im +threads-messages-list --thread omt_xxx
+
+# Read the thread as compact Markdown
+lark-cli im +threads-messages-list --thread omt_xxx --format concise
 
 # Reverse chronological order (latest first)
 lark-cli im +threads-messages-list --thread omt_xxx --order desc
@@ -28,6 +31,7 @@ lark-cli im +threads-messages-list --thread omt_xxx --page-all
 
 # Output format options
 lark-cli im +threads-messages-list --thread omt_xxx --format pretty
+lark-cli im +threads-messages-list --thread omt_xxx --format concise
 lark-cli im +threads-messages-list --thread omt_xxx --format table
 lark-cli im +threads-messages-list --thread omt_xxx --format csv
 
@@ -50,7 +54,7 @@ lark-cli im +threads-messages-list --thread omt_xxx --dry-run
 | `--page-token <token>` | No | Starting cursor, normally returned by a previous response |
 | `--page-all` | No | Automatically fetch and merge subsequent pages; capped by `--page-limit` |
 | `--page-limit <n>` | No | Maximum pages fetched by `--page-all` (default 10, range 1-1000) |
-| `--format <fmt>` | No | Output format: `json` (default) / `pretty` / `table` / `ndjson` / `csv` |
+| `--format <fmt>` | No | Output format: `json` (default) / `pretty` / `concise` / `table` / `ndjson` / `csv`; concise emits complete conversation-oriented Markdown |
 | `--as <identity>` | No | Identity type: `user` (default) / `bot` |
 | `--dry-run` | No | Print the request only, do not execute it |
 
@@ -78,13 +82,13 @@ Default is one page. With `--page-all`, `--page-token` sets the starting cursor;
 
 ## Usage Scenarios
 
-### Scenario 1: Expand a thread discovered in group messages
+### Scenario 1: Continue an incomplete thread discovered in group messages
 
 ```bash
-# Step 1: Fetch group messages and find one that contains thread_id
-lark-cli im +chat-messages-list --chat-id oc_xxx
+# Step 1: Fetch messages with replies expanded inline
+lark-cli im +chat-messages-list --chat-id oc_xxx --format concise
 
-# Step 2: Extract thread_id from the JSON output and fetch thread replies
+# Step 2: Only continue when thread_has_more=true or thread_replies_error=true
 lark-cli im +threads-messages-list --thread omt_xxx
 ```
 
