@@ -2884,7 +2884,7 @@
               "type": "string",
               "description": "需要获取的邮件内容",
               "required": false,
-              "example": "Full",
+              "example": "full",
               "options": [
                 {
                   "value": "full",

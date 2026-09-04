@@ -2989,7 +2989,7 @@
               "location": "query",
               "required": true,
               "description": "File type, which needs to match the token of the file",
-              "example": "Doc",
+              "example": "docx",
               "options": [
                 {
                   "value": "doc",

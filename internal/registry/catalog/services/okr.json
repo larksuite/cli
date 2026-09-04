@@ -1313,7 +1313,6 @@
               "required": false,
               "description": "Page size, maximum 100",
               "default": 10,
-              "example": 7342342398472398471,
               "max": "100",
               "min": "1"
             },
@@ -1356,7 +1355,6 @@
               "required": false,
               "description": "Department ID type used in this call",
               "default": "open_department_id",
-              "example": "10",
               "options": [
                 {
                   "value": "department_id",

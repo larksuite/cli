@@ -161,6 +161,58 @@ func TestLintEnvelope_L2_TypeChecks(t *testing.T) {
 			wantSub: "enumDescriptions",
 		},
 		{
+			name: "example must belong to enum",
+			mutate: func(e *Envelope) {
+				e.InputSchema.Properties.Order = []string{"mode"}
+				e.InputSchema.Properties.Map["mode"] = Property{
+					Type:    "string",
+					Enum:    []interface{}{"open", "closed"},
+					Example: "Open",
+				}
+			},
+			wantSub: "example (Open) is not in enum",
+		},
+		{
+			name: "default must belong to enum",
+			mutate: func(e *Envelope) {
+				e.InputSchema.Properties.Order = []string{"mode"}
+				e.InputSchema.Properties.Map["mode"] = Property{
+					Type:    "string",
+					Enum:    []interface{}{"open", "closed"},
+					Default: "unknown",
+				}
+			},
+			wantSub: "default (unknown) is not in enum",
+		},
+		{
+			name: "example must not exceed maximum",
+			mutate: func(e *Envelope) {
+				min, max := json.Number("1"), json.Number("100")
+				e.InputSchema.Properties.Order = []string{"page_size"}
+				e.InputSchema.Properties.Map["page_size"] = Property{
+					Type:    "integer",
+					Example: int64(101),
+					Minimum: &min,
+					Maximum: &max,
+				}
+			},
+			wantSub: "example (101) is above maximum (100)",
+		},
+		{
+			name: "default must not fall below minimum",
+			mutate: func(e *Envelope) {
+				min, max := json.Number("1"), json.Number("100")
+				e.InputSchema.Properties.Order = []string{"page_size"}
+				e.InputSchema.Properties.Map["page_size"] = Property{
+					Type:    "integer",
+					Default: int64(0),
+					Minimum: &min,
+					Maximum: &max,
+				}
+			},
+			wantSub: "default (0) is below minimum (1)",
+		},
+		{
 			// Regression guard: walkForL2 must recurse into the params/data
 			// sub-objects introduced by the 4-bucket inputSchema, not only the
 			// top-level Properties map.
@@ -214,6 +266,28 @@ func TestLintEnvelope_L2_TypeChecks(t *testing.T) {
 				t.Errorf("expected error containing %q, got: %v", tt.wantSub, errs)
 			}
 		})
+	}
+}
+
+func TestLintEnvelope_L2_ConstrainedLiteralsValid(t *testing.T) {
+	env := validEnvelope()
+	min, max := json.Number("1"), json.Number("100")
+	env.InputSchema.Properties.Order = []string{"mode", "page_size"}
+	env.InputSchema.Properties.Map["mode"] = Property{
+		Type:    "string",
+		Enum:    []interface{}{"open", "closed"},
+		Example: "open",
+		Default: "closed",
+	}
+	env.InputSchema.Properties.Map["page_size"] = Property{
+		Type:    "integer",
+		Example: int64(10),
+		Default: int64(20),
+		Minimum: &min,
+		Maximum: &max,
+	}
+	if errs := lintEnvelope(env); len(errs) != 0 {
+		t.Fatalf("valid constrained literals were rejected: %v", errs)
 	}
 }
 

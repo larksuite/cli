@@ -29,7 +29,7 @@
               "type": "string",
               "description": "Represents Wiki space sharing status",
               "required": false,
-              "example": "Open",
+              "example": "open",
               "options": [
                 {
                   "value": "open",

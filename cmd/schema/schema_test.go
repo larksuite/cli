@@ -176,19 +176,39 @@ func TestSchemaCmd_LargeIntegerBoundStaysExact(t *testing.T) {
 }
 
 func TestSchemaCmd_LargeIntegerExampleStaysExact(t *testing.T) {
-	f, stdout, _, _ := schemaTestFactory(t, nil)
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	f.APICatalog = apicatalog.New(apicatalog.SourceEmbedded, []meta.Service{{
+		Name: "fixture",
+		Resources: map[string]meta.Resource{
+			"items": {
+				Methods: map[string]meta.Method{
+					"get": {
+						ID:         "items.get",
+						HTTPMethod: "GET",
+						Parameters: map[string]meta.Field{
+							"cursor": {
+								Type:     "integer",
+								Location: "query",
+								Example:  json.Number("7342342398472398471"),
+							},
+						},
+					},
+				},
+			},
+		},
+	}})
 
 	cmd := NewCmdSchema(f, nil)
-	cmd.SetArgs([]string{"okr.cycle.objectives.list", "--format", "json"})
+	cmd.SetArgs([]string{"fixture.items.get", "--format", "json"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := stdout.String()
 	if !strings.Contains(out, `"example": 7342342398472398471`) {
-		t.Fatalf("schema output does not preserve exact OKR example:\n%s", out)
+		t.Fatalf("schema output does not preserve exact large integer example:\n%s", out)
 	}
 	if strings.Contains(out, "7342342398472398848") {
-		t.Fatalf("schema output contains float64-rounded OKR example:\n%s", out)
+		t.Fatalf("schema output contains float64-rounded large integer example:\n%s", out)
 	}
 }
 

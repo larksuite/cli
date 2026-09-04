@@ -32,9 +32,9 @@
     {
       "name": "drive",
       "file": "services/drive.json",
-      "revision": 11,
-      "size": 158402,
-      "sha256": "d4bc7b2ac55071bd035317be92d867c3ed696493fabea9ae6fb0c1eec8968a97"
+      "revision": 12,
+      "size": 158403,
+      "sha256": "9bc2345418c9a3960b1b87771b250fbc6561ac643ac11671022675ee07b97055"
     },
     {
       "name": "im",
@@ -46,9 +46,9 @@
     {
       "name": "mail",
       "file": "services/mail.json",
-      "revision": 10,
+      "revision": 11,
       "size": 281427,
-      "sha256": "a82080d22023d2998152f45f0019c47df2f1d5afea96142e07ff08f32810e92e"
+      "sha256": "0b809fd958d5afbad9b7229e1c8d2696c200f6c556dac2d235bb4ea02aac8620"
     },
     {
       "name": "mindnotes",
@@ -67,9 +67,9 @@
     {
       "name": "okr",
       "file": "services/okr.json",
-      "revision": 7,
-      "size": 167660,
-      "sha256": "bf5b5535135fa3c28951554f0f655d786ef256aabea267d6d14d27cff02de6da"
+      "revision": 8,
+      "size": 167583,
+      "sha256": "ac79ff18e39254bdfb8501cf65f319d8c5781df09d29ee7900d4a2f1124bf09a"
     },
     {
       "name": "sheets",
@@ -102,9 +102,9 @@
     {
       "name": "wiki",
       "file": "services/wiki.json",
-      "revision": 10,
+      "revision": 11,
       "size": 71116,
-      "sha256": "08b3d5fc6261729227f6551cb40ac33463be4bce87d954fa7ccae4728c1f5a09"
+      "sha256": "e8c61bd3a6c2056aca7c5f1d4fa24c374e9b0e436bc608e168051c6ed4375cb5"
     }
   ]
 }
