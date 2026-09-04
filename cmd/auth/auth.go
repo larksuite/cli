@@ -74,38 +74,39 @@ type userInfoResponse struct {
 	Code int    `json:"code"`
 	Msg  string `json:"msg"`
 	Data struct {
-		OpenID string `json:"open_id"`
-		Name   string `json:"name"`
+		OpenID  string `json:"open_id"`
+		UnionID string `json:"union_id"`
+		Name    string `json:"name"`
 	} `json:"data"`
 }
 
-// getUserInfo fetches the current user's OpenID and name using the given access token.
-func getUserInfo(ctx context.Context, sdk *lark.Client, accessToken string) (openId, name string, err error) {
+// getUserInfo fetches the current user's OpenID, union_id, and name using the given access token.
+func getUserInfo(ctx context.Context, sdk *lark.Client, accessToken string) (openId, unionId, name string, err error) {
 	apiResp, err := sdk.Do(ctx, &larkcore.ApiReq{
 		HttpMethod:                http.MethodGet,
 		ApiPath:                   larkauth.PathUserInfoV1,
 		SupportedAccessTokenTypes: []larkcore.AccessTokenType{larkcore.AccessTokenTypeUser},
 	}, larkcore.WithUserAccessToken(accessToken))
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 
 	var resp userInfoResponse
 	if err := json.Unmarshal(apiResp.RawBody, &resp); err != nil {
-		return "", "", fmt.Errorf("failed to parse user info: %w", err)
+		return "", "", "", fmt.Errorf("failed to parse user info: %w", err)
 	}
 	if resp.Code != 0 {
-		return "", "", fmt.Errorf("failed to get user info [%d]: %s", resp.Code, resp.Msg)
+		return "", "", "", fmt.Errorf("failed to get user info [%d]: %s", resp.Code, resp.Msg)
 	}
 	if resp.Data.OpenID == "" {
-		return "", "", fmt.Errorf("failed to get user info: missing open_id in response")
+		return "", "", "", fmt.Errorf("failed to get user info: missing open_id in response")
 	}
 
 	name = resp.Data.Name
 	if name == "" {
 		name = "(unknown)"
 	}
-	return resp.Data.OpenID, name, nil
+	return resp.Data.OpenID, resp.Data.UnionID, name, nil
 }
 
 // appInfo contains application information (owner, scopes).

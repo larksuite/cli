@@ -249,6 +249,7 @@ func (p *CredentialProvider) enrichUserInfo(ctx context.Context, acct *Account, 
 	}
 	acct.UserOpenId = info.OpenID
 	acct.UserName = info.Name
+	acct.UserUnionId = info.UnionID
 	return nil
 }
 

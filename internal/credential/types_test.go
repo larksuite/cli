@@ -54,6 +54,7 @@ func TestAccountFromCliConfigAndBack_ReturnCopies(t *testing.T) {
 		DefaultAs:           "user",
 		UserOpenId:          "ou_123",
 		UserName:            "alice",
+		UserUnionId:         "on_123",
 		Lang:                i18n.LangJaJP,
 		SupportedIdentities: 3,
 	}
@@ -68,6 +69,9 @@ func TestAccountFromCliConfigAndBack_ReturnCopies(t *testing.T) {
 	if acct.Lang != cfg.Lang {
 		t.Fatalf("AccountFromCliConfig().Lang = %q, want %q", acct.Lang, cfg.Lang)
 	}
+	if acct.UserUnionId != cfg.UserUnionId {
+		t.Fatalf("AccountFromCliConfig().UserUnionId = %q, want %q", acct.UserUnionId, cfg.UserUnionId)
+	}
 
 	roundtrip := acct.ToCliConfig()
 	if roundtrip == nil {
@@ -78,6 +82,9 @@ func TestAccountFromCliConfigAndBack_ReturnCopies(t *testing.T) {
 	}
 	if roundtrip.Lang != cfg.Lang {
 		t.Fatalf("ToCliConfig().Lang = %q, want %q (production Factory path reads Lang via this conversion)", roundtrip.Lang, cfg.Lang)
+	}
+	if roundtrip.UserUnionId != cfg.UserUnionId {
+		t.Fatalf("ToCliConfig().UserUnionId = %q, want %q (round-trip must preserve union id)", roundtrip.UserUnionId, cfg.UserUnionId)
 	}
 
 	roundtrip.AppID = "mutated-cli"

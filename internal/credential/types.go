@@ -24,6 +24,7 @@ type Account struct {
 	DefaultAs           core.Identity
 	UserOpenId          string
 	UserName            string
+	UserUnionId         string
 	Lang                i18n.Lang
 	SupportedIdentities uint8
 }
@@ -67,6 +68,7 @@ func AccountFromCliConfig(cfg *core.CliConfig) *Account {
 		DefaultAs:           cfg.DefaultAs,
 		UserOpenId:          cfg.UserOpenId,
 		UserName:            cfg.UserName,
+		UserUnionId:         cfg.UserUnionId,
 		Lang:                cfg.Lang,
 		SupportedIdentities: cfg.SupportedIdentities,
 	}
@@ -86,6 +88,7 @@ func (a *Account) ToCliConfig() *core.CliConfig {
 		DefaultAs:           a.DefaultAs,
 		UserOpenId:          a.UserOpenId,
 		UserName:            a.UserName,
+		UserUnionId:         a.UserUnionId,
 		Lang:                a.Lang,
 		SupportedIdentities: a.SupportedIdentities,
 	}
