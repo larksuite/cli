@@ -77,6 +77,7 @@ lark-cli mail +messages --message-ids <id1>,<id2> --dry-run
 - CLI 每 20 个 ID 拆成一次调用并合并输出，不需要为大列表手动拆请求。
 - JSON 输出中 `messages[].body_html` 里的 `<` / `>` 可能显示为 `\u003c` / `\u003e`（JSON 安全转义，内容不变，`jq -r` 可还原）。
 - `mail +messages` 仅返回附件元数据。如后续步骤需要下载 URL，请针对特定的 `message_id` 和 `attachment_ids` 调用原生附件 URL API。
+- 原生附件 URL API 返回的 `download_url` 是短时效临时预签名下载链接，通常约 2 小时或更短时间内有效且可能更早失效，并且最多只能下载 2 次。不能当作长期可点击链接发送给用户或持久化；仅在用户准备下载时现取，并读取 OAPI response `data` 顶层字段 `download_url_usage_hint` 的服务端说明。
 - 与 `+message` 一样，普通附件和内嵌图片都出现在 `messages[].attachments[]` 中，使用同一个 `user_mailbox.message.attachments download_url` API。
 
 ## 典型场景
