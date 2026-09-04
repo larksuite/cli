@@ -12,11 +12,21 @@ metadata:
 
 普通 Base 是数据容器，由一棵 Base Block 资源树和 Base 级配置组成。`folder`、`table`、`docx`、`dashboard`、`workflow` 都是 Block 类型；Advanced Permission / Role 是 Base 级配置，不属于 Block。Table 是其中承载业务数据的核心 Block。Workspace 是组织 Base 与 BaseApp 的外层容器；BaseApp（AppMode）通过 Page 和组件组织 Base 数据，不是 Base 的别名。
 
+## 行动请求（优先）
+
+已提供具体 Base 或 BaseApp 目标，且用户要求在其中创建、更新、删除、复制、移动、配置、提交或生成在线对象/数据时，先按对应对象协议确认请求能力受支持。对受支持的行动请求，除非用户明确只要解释、示例、命令或 JSON 文本，或明确要求不执行，否则必须执行相应的 `lark-cli` 命令。上述非执行请求保持非变更：只返回用户要求的内容，不得执行写命令。
+
+对需要执行的请求，读取 guide、构造表达式、JSON 或命令都只是准备步骤，不能作为成功终态；命令返回后按对象协议检查操作结果和必要的最终状态，未执行所需写命令且未证明目标当前已满足时不得报告完成。协议不支持的请求按对应 reference 的能力边界停止，不得用其他对象或写入冒充。
+
 ## 身份选择（优先）
 
 操作 Base 优先使用 `--as user`；用户明确要求应用身份时使用 `--as bot`。权限失败按 `lark-shared` 以原身份修复 scope 或资源 ACL；只有用户明确同意更换操作者时才切换身份。
 
 ## 进入前必做：解析目标实体
+
+`/base/` 和 `/app/` 目标必须使用 `lark-cli base +url-resolve` 解析，再使用对应 Base 命令读写；不得使用通用文档读取器（包括 `GetDocument`）读取这些目标。通用 connector 的授权失败与 `lark-cli` 用户授权相互独立，不能据此判定 `lark-cli` 无权限；只有实际 `lark-cli` 命令返回的认证或授权错误才转 `lark-shared` 处理。
+
+本 Skill 引用的本地 Base guide 使用当前 Skill 内容读取；需要通过命令加载时，使用 `lark-cli skills read lark-base <relative-path>`，不将本地 guide 交给通用文档读取器。
 
 开始操作前先确定 `base_token` 和目标实体类型；上下文已提供 `<bitable>` / `<base_refer>` 标签及资源 ID 时直接使用。其余情况按意图选择入口：
 
@@ -83,6 +93,20 @@ Table 下的大多数更新通过异步链路生效，接口成功返回后立�
 Field 定义列 schema。`field_id` 是稳定列标识，`name` 是可修改的展示名称；Formula、Lookup、Link、Select 等属于 Field 类型或能力。
 
 **读取 Field：** `+field-list` / `+field-get` / `+field-search-options`。**写入 Field：** 已有 Table 中创建多个字段时，优先向一次 `+field-create --json` 传字段对象数组；单字段更新和删除用 `+field-update` / `+field-delete`。创建和更新分别读取 [field-create](references/lark-base-field-create.md) / [field-update](references/lark-base-field-update.md)，由命令文档继续路由 Field JSON、Formula 和 Lookup 协议。`字段插件` 用于扩展基础字段能力：按同一行其他字段内容触发 LLM 生成，并写回已有目标字段；当前已确认目标字段支持文本、单选、数字，配置或触发前先读 [field-extension](references/lark-base-field-extension.md)。
+
+明确请求 Formula 创建或更新时，在说明不支持或改用其他字段类型前，必须先阅读 [Formula guide](references/lark-base-field-formula.md)。跨表整列引用 `[SourceTable].[NumericField]` 是 List；对数值列可用 `SUM([SourceTable].[NumericField])` 聚合。
+
+用户已提供 Base 并明确要求创建或更新 Formula 字段时，或用户已提供 Base、指定结果写入的目标表并要求用 Formula 产出结果时，即使未使用“创建/更新”字样，除非用户明确只要解释，否则按执行请求处理：先完整阅读 [Formula guide](references/lark-base-field-formula.md)，完成表/字段发现后，按用户语句中的语法角色区分写入目标和引用来源，执行 `+field-create` / `+field-update`；再用 `+field-get` 读回最终类型和表达式，有适用记录时用 `+record-list` 读回代表性计算值。只给公式建议不算完成。
+
+Formula 日期差必须同时保留方向、符号和精度：`datetime` 字段默认以完整值直接参与日期算术；除非用户明确要求自然日、整天、截断、舍入或格式化，否则不得添加 `TEXT`、`TODATE`、`DATE`、`INT`、`ROUND`、`ROUNDDOWN` 或 `ROUNDUP` 等有损转换。字段 style、显示格式和当前样例值不授权降精度。
+
+Formula 变换必须保持用户明确要求的语义：仅要求去重时不要自行增加排序、首次出现顺序、`TRIM` 或大小写/空格归一化；未被用户点名的样例列或结果列只能暴露歧义，不能授权覆盖已经满足请求的表达式。
+
+Formula 条件分支必须先列出完整真值表，保留每个条件、`otherwise` / fallback 与空值边界。可选标识符为空时，除非用户明确要求把空值当成重复键，否则走未重复或既定 fallback。当前记录没有覆盖某个分支时，仍需从最终 `+field-get` 表达式结构确认该分支存在，不能用当前样例替代结构验收。
+
+明确请求 Lookup 时，`type=lookup` 是输出契约；除非用户明确批准变更字段类型，空值、暂未计算或配置错误只触发排查，不得改用 Formula、Link 或其他字段类型。创建、更新和验收前完整阅读 [Lookup guide](references/lark-base-field-lookup.md)。
+
+查找引用计数必须先绑定“被统计对象”：用户点名某个来源字段的出现次数时，`select` 必须是该字段且 `aggregate=counta`；只有明确统计记录/实体且未点名被统计字段时，才可退回该实体的稳定标识字段或主字段。匹配字段和 `select` 可以是同一字段，不能为了“数记录”改选其他非空字段。
 
 ### Record
 

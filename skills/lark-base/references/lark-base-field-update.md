@@ -80,9 +80,11 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 
 字段类型变更采用白名单机制：**只允许白名单转换**；未命中白名单时，**不建议用 CLI 转换字段类型** 除非用户明确知道风险并同意。
 
-### 允许直接转换 type
+转换白名单只描述技术可转换性，不授权改变用户明确要求的字段类型。用户明确要求 Formula 或 Lookup 语义时，必须保留该类型；除非用户明确要求转换，否则不得因为另一类型也能表达相同计算或命中转换白名单而更改 `type`。
 
-先 `+field-get` / `+field-list` 看结构，再抽样读值；只有命中以下规则时，转换才是比较安全的。
+### 用户明确要求转换时允许的 type
+
+先确认用户明确要求转换，再用 `+field-get` / `+field-list` 看结构并抽样读值；只有命中以下规则时，转换才是比较安全的。
 
 #### 相对安全
 
@@ -99,9 +101,9 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 - `user(multi) -> user(single)`: 只保留第一个人员，其余值会被丢弃。
 - `group_chat(multi) -> group_chat(single)`: 只保留第一个群，其余值会被丢弃。
 
-#### 无状态字段可直接转换
+#### 无状态字段的技术可转换性
 
-- `created_at`、`created_by`、`updated_at`、`updated_by`、`formula`、`lookup`: 这类字段值由系统或计算逻辑生成，不承载独立存储数据；可以执行类型转换，不必担心破坏原始记录值，但仍要做下游读回验证。
+- `created_at`、`created_by`、`updated_at`、`updated_by`、`formula`、`lookup`: 这类字段值由系统或计算逻辑生成，不承载独立存储数据。仅当用户明确要求转换时，可以按目标类型执行转换；转换后仍要做下游读回验证。
 
 ### 一律不要用 CLI 转换
 
@@ -128,9 +130,9 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 
 ### 非白名单场景如何处理
 
-- 命中白名单时：建议直接原地转换，再做读回验证。
+- 用户明确要求转换且命中白名单时：可以原地转换，再做读回验证。
 - 未命中白名单时：先询问用户是否仍要执行转换，并明确说明风险：
-  - 无状态字段除外；这类字段可以直接转换
+  - 用户明确要求转换时，无状态字段不涉及独立存储数据丢失，但仍会改变字段语义
   - 可能整列变空
   - 可能只保留第一个值
   - 可能只保留字符串表示，丢失原类型语义和结构化能力

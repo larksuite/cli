@@ -18,8 +18,11 @@ var BaseTableList = common.Shortcut{
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
-		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
+		{Name: "offset", Aliases: []string{"next-token", "page-token"}, Type: "int", Default: "0", Desc: "pagination offset"},
 		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "50", Desc: "pagination size, range 1-100"},
+	},
+	Tips: []string{
+		"When meta.pagination.complete is false, continue with `lark-cli base +table-list --base-token <base> --offset <next_token>` until complete is true. The decimal next_token response value maps to canonical --offset; response keys are not flags to guess. Compatibility aliases --next-token and --page-token are also accepted.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		_, err := common.ValidatePageSizeTyped(runtime, "limit", 50, 1, 100)

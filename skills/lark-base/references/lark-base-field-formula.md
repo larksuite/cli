@@ -10,13 +10,51 @@ When using `+field-update`, also pass `--yes`: field update is a high-risk `PUT`
 
 ## Default strategy
 
-**All cross-table references, aggregations, and computed fields should use Formula fields by default.** Do NOT use Lookup fields unless the user explicitly requests it. Formula is a strict superset of Lookup — anything Lookup can do, Formula can do with a single expression.
+**Use Formula fields by default for cross-table references, aggregations, and computed fields only when the user did not specify a field type.** When the user explicitly requests a Formula field, `type=formula` is an invariant unless the user explicitly requests conversion to another type. Technical convertibility to Lookup does not authorize a type change.
+
+## Action requests and operand roles
+
+When a user supplies a Base and explicitly asks to create or update a Formula field, treat it as an action request unless the user explicitly asks for explanation only. The same applies when the user supplies a Base, names the destination table and asks Formula to produce a result, even if the request does not literally say create or update. Read this guide, discover the actual table and field names, and execute the requested `+field-create` or `+field-update`; an advisory expression alone does not complete the request.
+
+Resolve operands from the grammatical roles in the user's request:
+
+- The **destination table** is where the Formula field must be created or updated; its ID belongs in `--table-id`.
+- The **source table and field** supply the values; their discovered names belong in the formula `expression`.
+- Do not swap these roles. For whole-column numeric aggregation, the destination receives a Formula whose expression follows `SUM([SourceTable].[NumericField])`.
+
+After a successful mutation response, verification may be eventually consistent. Poll read-only commands only against the same Base, table, and field, using bounded retries with backoff and a hard deadline. Keep the original Base token, table ID, and field ID fixed; read back the final Formula field with `+field-get` to confirm its `type` and `expression`, and, when applicable, read a representative computed value with `+record-list` on the same destination. A stale read must never trigger replay of `+field-create` or `+field-update`. If the deadline expires, verification has failed; report the timeout instead of claiming completion.
+
+## Preserve requested predicate semantics
+
+Translate the user's comparison words before choosing helper functions. Treat `equals`, `is`, and `is one of` as exact comparisons by default. Do not add `TRIM`, `LOWER`, `UPPER`, `CONTAINTEXT`, `CONTAIN`, regex, fuzzy matching, or synonym expansion merely to make the formula more permissive.
+
+Only normalize case or whitespace when the user explicitly requests it. Only use containment when the user requests contains or membership semantics, or when the schema proves that the searched operand is a list; in that case, keep the list and scalar roles explicit. Compare the candidate expression back to the requested predicate before mutation, and remove any unrequested normalization or broadening. After mutation, readback proves what was stored, but readback does not make a semantically broader expression acceptable.
+
+## Preserve requested transformation semantics
+
+Implement only the transformations the user requested. Do not add sorting, first-occurrence ordering, `TRIM`, case folding, whitespace cleanup, or other normalization because a nearby example or existing result column happens to use it. An unmentioned comparison column can reveal an ambiguity, but it does not authorize replacing an expression that already satisfies the request. If that evidence conflicts with the request, keep the minimal requested transformation or clarify the ambiguity before mutation.
+
+`UNIQUE` guarantees deduplication only; its output order is engine-defined and is not a first-occurrence guarantee. Use plain `UNIQUE` when the user asks only to deduplicate. Add ordering, first-occurrence preservation, or cleanup only when the user explicitly requests that behavior. Apply the same check to the final `+field-get` expression so verification cannot silently broaden the transformation.
+
+## Preserve complete branch semantics
+
+Before mutation, write a small truth table that includes every requested condition, `otherwise` / fallback result, and blank or null boundary. Current sample rows do not authorize dropping an unobserved branch. In particular, when checking duplicates for an optional identifier, a blank value means no identifier and should follow the non-duplicate or stated fallback branch unless the user explicitly asks to treat blank values as duplicate keys.
+
+After mutation, back-translate every branch of the final `+field-get` expression into the truth table. Use representative `+record-list` values where they exist, but verify branches absent from the current records from the expression structure itself; do not claim that samples covered a branch they did not exercise.
+
+## Preserve formula operand precision
+
+A `datetime` operand includes its time component. Use the complete field value directly in date arithmetic by default. Phrasing such as “difference in days” or a result unit of days does not by itself request calendar-day truncation or an integer.
+
+Do not add `TEXT`, `TODATE`, `DATE`, `INT`, `ROUND`, `ROUNDDOWN`, or `ROUNDUP` to a date-difference expression unless the user explicitly requests calendar-day, whole-day, truncation, rounding, or formatting semantics. Field style, display formatting, and current sample rows do not authorize loss of precision. A date-only display can still contain a non-midnight stored datetime.
+
+Before mutation, back-translate direction, sign, and precision / granularity from the candidate expression into plain language and compare all three with the request. Apply the same check to the final `+field-get` expression. If the request is genuinely ambiguous between elapsed time and calendar days, clarify instead of silently discarding the time component.
 
 ## Usage
 
 When creating a formula field, the Agent should:
 
-1. Get all table names: `lark-cli base +table-list --base-token <base>` — returns `items[].table_name`
+1. Get all table names: `lark-cli base +table-list --base-token <base>` — returns `tables[].name`. When `meta.pagination.complete` is `false`, pass its decimal `next_token` to `--offset` and repeat until `complete` is `true`. Do not assume the default first page contains the destination or source table.
 2. Get table structure: `lark-cli base +table-get --base-token <base> --table-id <table>` — returns `fields[]`
 3. If the formula references other tables, also get those tables' structures
 4. Write the formula expression following this guide
@@ -36,7 +74,7 @@ This is the foundation of formula logic. You must determine this before writing 
 
 | Syntax                | Meaning                                      | Return type            | Example                                      |
 | --------------------- | -------------------------------------------- | ---------------------- | -------------------------------------------- |
-| `[Field]`             | Value of this field in the current row       | Scalar (single value)  | `[Name]` → `"Alice"`                         |
+| `[Field]`             | Cell value of this field in the current row  | Scalar or list, according to field schema | `[Name]` → `"Alice"`              |
 | `[TableName].[Field]` | All values of this field in the target table | List (multiple values) | `[Employees].[Name]` → `["Alice","Bob",...]` |
 | `[TableName]`         | The target table (entire table)              | Table reference        | Used as data range for FILTER/COUNTIF etc.   |
 
@@ -85,7 +123,7 @@ When using comparison operators (`>`, `>=`, `<`, `<=`, `=`, `!=`), **both sides 
 
 - `number` vs `text` → use `VALUE()` to convert text to number
 - `datetime` vs `text` → use `TEXT()` to convert date to text
-- `datetime` vs `datetime` equality → dates include time components, so direct `=` comparison may fail due to different hours/minutes/seconds. For day-level equality, convert to text first: `TEXT([DateA], "YYYY/MM/DD") = TEXT([DateB], "YYYY/MM/DD")`
+- `datetime` vs `datetime` equality → dates include time components, so direct `=` comparison may fail due to different hours/minutes/seconds. For explicit day-level equality only, convert to text first: `TEXT([DateA], "YYYY/MM/DD") = TEXT([DateB], "YYYY/MM/DD")`; this conversion is for explicit day-level equality only; do not reuse it to truncate operands in date arithmetic.
 - `select` and `user` fields can be compared with both same-type values and text
 - `text` fields in numeric aggregation (SUM/AVERAGE/MIN/MAX etc.) → convert to number with `VALUE()` first. For FILTER results, use `.MAP(VALUE(CurrentValue)).SUM()`
 
@@ -347,7 +385,7 @@ After the result column, it's recommended to flatten with `.LISTCOMBINE()` first
 | MAP         | `data_range.MAP(mapping_expr)`                                               | List        | Apply mapping to each element. Use CurrentValue in mapping                                                                                                                                                       |
 | SORT        | `SORT(list, [ascending])`                                                    | List        | Sort; default ascending (TRUE)                                                                                                                                                                                   |
 | SORTBY      | `[Table].SORTBY([Table].[SortCol], [ascending]).[OutputCol]`                 | List        | Sort by column then extract output column. **Chain-only, must include output column**                                                                                                                            |
-| UNIQUE      | `UNIQUE(list)`                                                               | List        | Deduplicate                                                                                                                                                                                                      |
+| UNIQUE      | `UNIQUE(list)`                                                               | List        | Deduplicate; output order is engine-defined and does not guarantee first occurrence                                                                                                                              |
 | ARRAYJOIN   | `ARRAYJOIN(list, [delimiter])`                                               | Text        | Join list elements as text; default comma-separated                                                                                                                                                              |
 | LISTCOMBINE | `LISTCOMBINE(val1, [val2, ...])` or `list.LISTCOMBINE()`                     | List        | Two uses: (1) merge values/lists into one list; (2) chained call to flatten 2D array (commonly used when FILTER result column is a multi-value field)                                                            |
 | DISTANCE    | `DISTANCE(location1, location2)`                                             | Number      | Distance between two geographic locations (km)                                                                                                                                                                   |
@@ -381,6 +419,15 @@ After the result column, it's recommended to flatten with `.LISTCOMBINE()` first
 | Parameter order | `DAYS(end, start)` — end first                               | `DATEDIF(start, end, unit)` — start first |
 | Precision       | Includes decimals (hours/minutes/seconds as fractional days) | Integer only (whole days/months/years)    |
 | Negative values | Returns negative when start is after end                     | **Errors** when start is after end        |
+
+#### Choose a date-difference function by semantics
+
+- For a general difference in days, use `DAYS(end, start)`. It supports either date ordering and preserves direction through the sign of the result.
+- For elapsed days from a date through today, use `DAYS(TODAY(), date)`: past dates are positive and future dates are negative.
+- When the result must be non-negative, use `ABS(DAYS(end, start))`. Do not discard the sign unless the user requests an absolute difference or another non-negative result.
+- Use `DATEDIF` only when the user requests whole elapsed days, months, or years and the start date is guaranteed not to be after the end date. A few currently valid rows do not establish that guarantee.
+
+Back-check the expression against both past and future dates before mutation. Rows that currently exercise only one date ordering do not prove the formula handles the other ordering. Apply the same semantic check to the final `+field-get` expression; representative values from only one ordering cannot make an unsafe definition equivalent.
 
 ### SUM vs SUMIF
 
@@ -489,8 +536,9 @@ IF([Condition], "prefix" & [Field] & "suffix", "default text")
 ### Pattern 6: Date difference
 
 ```
-DATEDIF([StartDate], [EndDate], "D") & " days"
 DAYS([EndDate], [StartDate])
+ABS(DAYS([DateA], [DateB]))
+DATEDIF([StartDate], [EndDate], "D") & " days"  ← only for whole elapsed units when StartDate <= EndDate is guaranteed
 ```
 
 ### Pattern 7: List element mapping
@@ -499,6 +547,8 @@ DAYS([EndDate], [StartDate])
 [SelectField(which multiple=true)].MAP(CurrentValue & " tag")
 SPLIT([TextField], ",").MAP(TRIM(CurrentValue))
 ```
+
+Use the `TRIM` mapping only when the user explicitly requests whitespace cleanup; splitting or deduplicating alone does not imply trimming.
 
 ### Pattern 8: Cross-table with sorting
 
@@ -592,14 +642,14 @@ Recommended: "Deadline: " & TEXT([DateField], "YYYY-MM-DD")
 
 Reason: Concatenating a date with `&` won't error, but uses the default format. Use TEXT to specify the format explicitly.
 
-### Mistake 10: Reversed DAYS parameter order
+### Mistake 10: Ignoring DAYS parameter order
 
 ```
-Wrong:   DAYS([StartDate], [EndDate])  → returns negative
-Correct: DAYS([EndDate], [StartDate])  → returns positive
+DAYS([EndDate], [StartDate])  → end minus start
+DAYS([StartDate], [EndDate])  → start minus end
 ```
 
-Reason: DAYS parameter order is end date first, start date second.
+Reason: DAYS always computes its first argument minus its second. A negative result is not inherently wrong; it may be the requested signed direction. Choose argument order from the requested direction, or wrap the result in `ABS` only when a non-negative difference is required.
 
 ### Mistake 11: Chaining zero-argument functions
 
