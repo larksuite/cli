@@ -403,6 +403,9 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	}
 
 	if opts.DryRun {
+		if isMailRulesReorder(opts) {
+			return serviceDryRunMailRulesReorder(f, request, config, opts)
+		}
 		if fileMeta != nil {
 			return cmdutil.PrintDryRunWithFile(request, config, serviceDryRunOutputOptions(f, opts), *fileMeta)
 		}
@@ -431,7 +434,13 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	// with MissingScopes / Identity / ConsoleURL populated from the response.
 	checkErr := ac.CheckResponse
 
-	if opts.PageAll {
+	if isMailRulesReorder(opts) {
+		var err error
+		request, err = completeMailRulesReorderRequest(opts.Ctx, ac, request, checkErr)
+		if err != nil {
+			return err
+		}
+	} else if opts.PageAll {
 		return servicePaginate(opts.Ctx, ac, request, format, opts.JqExpr, out, f.IOStreams.ErrOut, opts.Cmd.CommandPath(),
 			client.PaginationOptions{PageLimit: opts.PageLimit, PageDelay: opts.PageDelay}, checkErr)
 	}
