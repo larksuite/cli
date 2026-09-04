@@ -139,6 +139,7 @@
 - 数值：用 `##` 放大（**唯一允许用 markdown 标题的特例**），可配 `<font>` 上色。
 - 描述：`<font color='grey'>` + `text_size: "notation"`。
 - 居中 `text_align: "center"`；列背景 `background_style: "grey-50"`；`padding: "12px"`；`vertical_spacing: "2px"`。
+- **注意：`column` 不支持 `corner_radius`**（卡片 2.0 组件规范里没有该属性，发送会报 `200621 unknown property`）。需要圆角时，把内容放进 `interactive_container`（见下方第 4 节描边卡片模式），那里支持。
 
 ```json
 {
@@ -147,7 +148,7 @@
   "horizontal_spacing": "12px",
   "columns": [
     { "tag": "column", "width": "weighted", "weight": 1,
-      "background_style": "grey-50", "corner_radius": "8px",
+      "background_style": "grey-50",
       "padding": "12px", "vertical_spacing": "2px",
       "elements": [
         { "tag": "markdown", "content": "## <font color='blue'>5,483</font>", "text_align": "center" },
