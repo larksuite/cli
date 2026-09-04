@@ -20,6 +20,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -2655,6 +2656,32 @@ func TestBaseFormDetailShortcut(t *testing.T) {
 // --- executeFormSubmit & uploadAttachmentsParallel 单元测试 ---
 
 func TestExecuteFormSubmit(t *testing.T) {
+	t.Run("requires confirmation before submitting fields", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		args := []string{
+			"+form-submit",
+			"--share-token", "shr_exec_confirm",
+			"--json", `{"fields":{"Name":"Alice"}}`,
+		}
+		err := runShortcut(t, BaseFormSubmit, args, factory, stdout)
+		if err == nil {
+			t.Fatal("expected confirmation_required error")
+		}
+		if code := output.ExitCodeOf(err); code != output.ExitConfirmationRequired {
+			t.Fatalf("exit code=%d want %d; err=%v", code, output.ExitConfirmationRequired, err)
+		}
+		p, ok := errs.ProblemOf(err)
+		if !ok {
+			t.Fatalf("expected typed problem, got err=%v", err)
+		}
+		if p.Category != errs.CategoryConfirmation || p.Subtype != errs.SubtypeConfirmationRequired {
+			t.Fatalf("category/subtype=%s/%s want %s/%s", p.Category, p.Subtype, errs.CategoryConfirmation, errs.SubtypeConfirmationRequired)
+		}
+		if stdout.Len() != 0 {
+			t.Fatalf("stdout should be empty before confirmation, got: %s", stdout.String())
+		}
+	})
+
 	t.Run("fields only - no attachments", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
