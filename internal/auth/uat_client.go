@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -58,10 +57,7 @@ func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer) UATCallOptions {
 
 // GetValidAccessToken obtains a valid access token for the given user.
 func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, error) {
-	stored, err := readStoredToken(opts.AppId, opts.UserOpenId)
-	if errors.Is(err, errStoredTokenCorrupt) {
-		return "", newNeedUserAuthorizationError(opts.UserOpenId, err, recovery.UserAuthorization())
-	}
+	stored, err := GetStoredToken(opts.AppId, opts.UserOpenId)
 	if err != nil {
 		return "", err
 	}
@@ -88,10 +84,7 @@ func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, 
 func refreshWithLock(httpClient *http.Client, opts UATCallOptions) (*StoredUAToken, error) {
 	var refreshed *StoredUAToken
 	err := withTokenStorageLock(opts.AppId, opts.UserOpenId, func() error {
-		freshStored, err := readStoredToken(opts.AppId, opts.UserOpenId)
-		if errors.Is(err, errStoredTokenCorrupt) {
-			return newNeedUserAuthorizationError(opts.UserOpenId, err, recovery.UserAuthorization())
-		}
+		freshStored, err := GetStoredToken(opts.AppId, opts.UserOpenId)
 		if err != nil {
 			return err
 		}

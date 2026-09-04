@@ -71,7 +71,7 @@ func authStatusRun(opts *StatusOptions, projector *recovery.Projector) error {
 
 	diagnostics := identitydiag.FilterRecovery(
 		identitydiag.Diagnose(context.Background(), f, config, opts.Verify),
-		projector.CanReference,
+		projector,
 	)
 	result["identities"] = diagnostics
 	result["identity"] = effectiveIdentity(diagnostics)
@@ -120,6 +120,12 @@ func addEffectiveVerification(result map[string]interface{}, d identitydiag.Resu
 
 func addStatusNote(result map[string]interface{}, d identitydiag.Result, canAuthLogin bool) {
 	switch {
+	case d.User.Status == identitydiag.StatusError:
+		note := d.User.Message
+		if d.User.Hint != "" {
+			note = d.User.Hint
+		}
+		result["note"] = note
 	case !d.User.Available && d.Bot.Available:
 		note := "User identity is " + identitydiag.StatusMessage(d.User.Status) + "; bot identity is ready for bot/tenant API calls."
 		if canAuthLogin {

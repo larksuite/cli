@@ -172,7 +172,10 @@ func TestMessageTrash_Metadata(t *testing.T) {
 
 func TestMessageModify_LabelOnlyDoesNotRequireFolderReadScope(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
-	token := auth.GetStoredToken("test-app", "ou_testuser")
+	token, readErr := auth.GetStoredToken("test-app", "ou_testuser")
+	if readErr != nil {
+		t.Fatalf("GetStoredToken() error = %v", readErr)
+	}
 	if token == nil {
 		t.Fatal("expected test token")
 	}
