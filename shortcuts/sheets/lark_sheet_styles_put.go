@@ -53,10 +53,21 @@ var StylesPut = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		ops, _ := stylesPutOperations(runtime, token)
-		return invokeToolDryRun(token, ToolKindWrite, "batch_update", map[string]interface{}{
+		chunks := chunkOperations(ops, maxBatchOperations)
+		dry := invokeToolDryRun(token, ToolKindWrite, "batch_update", map[string]interface{}{
 			"excel_id":   token,
-			"operations": ops,
+			"operations": chunks[0],
 		})
+		for _, chunk := range chunks[1:] {
+			body, _ := buildToolBody("batch_update", map[string]interface{}{
+				"excel_id":   token,
+				"operations": chunk,
+			})
+			dry.POST(toolInvokePath(token, ToolKindWrite)).
+				Desc(fmt.Sprintf("batch_update (%d operations)", len(chunk))).
+				Body(body)
+		}
+		return dry
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -67,12 +78,32 @@ var StylesPut = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		out, err := callTool(ctx, runtime, token, ToolKindWrite, "batch_update", map[string]interface{}{
-			"excel_id":   token,
-			"operations": ops,
-		})
-		if err != nil {
-			return err
+		chunks := chunkOperations(ops, maxBatchOperations)
+		var out interface{}
+		for i, chunk := range chunks {
+			out, err = callTool(ctx, runtime, token, ToolKindWrite, "batch_update", map[string]interface{}{
+				"excel_id":   token,
+				"operations": chunk,
+			})
+			if err != nil {
+				if len(chunks) == 1 {
+					return err
+				}
+				// Say what landed before naming the failure: each request is
+				// atomic on its own, so the sheet now carries the earlier
+				// chunks and re-running the whole spec is safe (style stamps
+				// are idempotent) while re-running "the rest" is not
+				// expressible from here.
+				return attachSheetsWarningsToError(err, []string{fmt.Sprintf(
+					"--styles was sent as %d batch requests and request %d failed; requests 1-%d already applied. Re-running the same spec is safe — style stamps and merges are idempotent",
+					len(chunks), i+1, i)})
+			}
+		}
+		if len(chunks) > 1 {
+			out = annotateSheetsResult(out, "batch_requests", len(chunks))
+			out = appendSheetsWarnings(out, []string{fmt.Sprintf(
+				"--styles expanded to %d operations, over the %d per-request cap, so it was sent as %d batch requests — each atomic on its own, not as a whole",
+				len(ops), maxBatchOperations, len(chunks))})
 		}
 		runtime.Out(out, nil)
 		return nil
@@ -177,12 +208,41 @@ func stylesPutOperations(runtime flagView, token string) ([]interface{}, error) 
 			appendVisual(spec.name, workbookCreateStyleOp{Kind: "freeze", FreezeRows: f.Rows, FreezeCols: f.Cols})
 		}
 	}
-	if len(ops) > maxBatchOperations {
+	if len(ops) > maxStylesPutOperations {
 		return nil, sheetsValidationForFlag("styles",
-			"--styles expands to %d operations even after merging adjacent same-style ranges, over the %d cap; split the spec into several +styles-put calls — and for alternating-row banding or value-dependent coloring use +cond-format-create instead of per-row stamps",
-			len(ops), maxBatchOperations)
+			"--styles expands to %d operations even after merging adjacent same-style ranges, over the %d cap; for alternating-row banding or value-dependent coloring use +cond-format-create instead of per-row stamps, which one rule covers whatever the sheet grows to",
+			len(ops), maxStylesPutOperations)
 	}
 	return ops, nil
+}
+
+// maxStylesPutOperations bounds the whole spec. It is far above the
+// per-request cap because the spec is no longer one request: chunkOperations
+// splits it. What it still bounds is materialization — every translated op
+// with its own cells matrix is held at once — so it stays finite, and a spec
+// that reaches it is stamping per row, which +cond-format-create expresses as
+// one rule.
+const maxStylesPutOperations = 1000
+
+// chunkOperations splits an operation list into batch_update-sized requests.
+// A declarative spec states intent, so its execution shape is the CLI's to
+// choose — the same license coalesceStyleStamps already takes when it fuses
+// adjacent stamps, and the same thing +table-put does when it slices a large
+// write. 08-29..31 reflow: 48 rejections told the caller to split the spec by
+// hand, which is work with no decision in it.
+func chunkOperations(ops []interface{}, size int) [][]interface{} {
+	if len(ops) <= size {
+		return [][]interface{}{ops}
+	}
+	chunks := make([][]interface{}, 0, (len(ops)+size-1)/size)
+	for start := 0; start < len(ops); start += size {
+		end := start + size
+		if end > len(ops) {
+			end = len(ops)
+		}
+		chunks = append(chunks, ops[start:end])
+	}
+	return chunks
 }
 
 // coalesceStyleStamps merges cell_styles entries that carry the IDENTICAL

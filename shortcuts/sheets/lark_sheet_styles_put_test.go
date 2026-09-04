@@ -4,6 +4,8 @@
 package sheets
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -493,4 +495,75 @@ func TestCoalesceStyleStamps_PreservesLastWriteWins(t *testing.T) {
 			t.Fatalf("bold stamps should merge to A1:A2, got %+v", got)
 		}
 	})
+}
+
+// TestStylesPut_ChunksPastTheRequestCap pins the split: a spec larger than one
+// batch_update is sent as several, and the caller is told so. The 100 is our
+// own per-request bound, not a limit the caller has to plan around.
+func TestStylesPut_ChunksPastTheRequestCap(t *testing.T) {
+	t.Parallel()
+
+	spec := func(rows int) string {
+		entries := make([]string, 0, rows)
+		for i := 1; i <= rows; i++ {
+			fill := "#FFFFFF"
+			if i%2 == 1 {
+				fill = "#FFE6E6"
+			}
+			entries = append(entries, fmt.Sprintf(`{"range":"A%d:F%d","background_color":%q}`, i, i, fill))
+		}
+		return `{"styles":[{"name":"S","cell_styles":[` + strings.Join(entries, ",") + `]}]}`
+	}
+
+	t.Run("152 operations go out as two requests", func(t *testing.T) {
+		t.Parallel()
+		stdout, _, err := runShortcutCapturingErr(t, StylesPut, []string{
+			"--url", testURL, "--styles", spec(152), "--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("a spec past the cap should be planned, not rejected: %v", err)
+		}
+		if got := plannedRequestCount(t, stdout); got != 2 {
+			t.Errorf("plan should carry two batch_update requests, got %d", got)
+		}
+	})
+
+	t.Run("a spec inside the cap stays one request", func(t *testing.T) {
+		t.Parallel()
+		stdout, _, err := runShortcutCapturingErr(t, StylesPut, []string{
+			"--url", testURL, "--styles", spec(4), "--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := plannedRequestCount(t, stdout); got != 1 {
+			t.Errorf("plan should carry one request, got %d", got)
+		}
+	})
+
+	t.Run("chunkOperations splits on the boundary", func(t *testing.T) {
+		t.Parallel()
+		ops := make([]interface{}, 250)
+		chunks := chunkOperations(ops, maxBatchOperations)
+		if len(chunks) != 3 || len(chunks[0]) != 100 || len(chunks[2]) != 50 {
+			t.Errorf("chunks = %d with sizes %d/%d/%d, want 3 of 100/100/50",
+				len(chunks), len(chunks[0]), len(chunks[1]), len(chunks[2]))
+		}
+	})
+}
+
+// plannedRequestCount counts the requests a dry-run plan carries. The envelope
+// names the tool in two places for a single call, so counting occurrences of
+// the tool name in the text over-reports.
+func plannedRequestCount(t *testing.T, stdout string) int {
+	t.Helper()
+	var envelope struct {
+		Data struct {
+			API []interface{} `json:"api"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &envelope); err != nil {
+		t.Fatalf("dry-run output is not JSON: %v", err)
+	}
+	return len(envelope.Data.API)
 }

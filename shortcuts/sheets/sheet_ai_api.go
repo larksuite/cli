@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -95,6 +97,7 @@ func callTool(
 				p.Subtype = errs.SubtypeServerError
 			}
 			p.Message = fmt.Sprintf("tool %q failed: [%d] %s", toolName, p.Code, flat)
+			annotateMergedRegionConflict(p)
 		}
 		return nil, err
 	}
@@ -109,6 +112,66 @@ func callTool(
 			"tool %q returned invalid JSON output: %v", toolName, err).WithCause(err)
 	}
 	return out, nil
+}
+
+// mergedRegionBoundsRE matches the 0-based bounds the backend prints for the
+// merged region a merge would overlap: "[0,0-0,6]" is row 0 col 0 through row
+// 0 col 6, i.e. A1:G1. Callers work in A1 notation and this is the one piece
+// of the message they cannot act on as printed.
+var mergedRegionBoundsRE = regexp.MustCompile(`\[(\d+),(\d+)-(\d+),(\d+)\]`)
+
+// annotateMergedRegionConflict attaches the commands that resolve a merged-cell
+// rejection. The backend already says what went wrong and names the obstacle —
+// the top-left of the region a write landed inside, or the bounds of the region
+// a merge would overlap — but never in the form the caller passes back, and
+// never with the command that clears it. 08-29..31 reflow: 193 rejections,
+// 100 writing into a merged region and 93 merging across one, the largest
+// remaining cluster on any command.
+//
+// The message is read, never used to rewrite the request: auto-redirecting a
+// write to a merge's top-left would put data where the caller did not ask for
+// it, and auto-unmerging would discard a merge nobody agreed to lose. A parse
+// that finds nothing simply adds no hint.
+func annotateMergedRegionConflict(p *errs.Problem) {
+	if p.Hint != "" {
+		return
+	}
+	msg := strings.ToLower(p.Message)
+	if !strings.Contains(msg, "merge") {
+		return
+	}
+	switch {
+	case strings.Contains(msg, "overlaps existing merged cells"):
+		hint := "clear the existing merge first, then re-issue this call: +cells-unmerge --range <the region above>"
+		if m := mergedRegionBoundsRE.FindStringSubmatch(p.Message); m != nil {
+			if rng, ok := a1RangeFromZeroBased(m[1], m[2], m[3], m[4]); ok {
+				hint = fmt.Sprintf("clear the existing merge first, then re-issue this call: +cells-unmerge --range %q", rng)
+			}
+		}
+		p.Hint = hint
+	case strings.Contains(msg, "merged region"):
+		p.Hint = "a merged region takes its content from its top-left cell: write there instead, or clear the merge first with +cells-unmerge --range <the region above> and then write the cell you named"
+	}
+}
+
+// a1RangeFromZeroBased renders 0-based row/column bounds as the A1 range the
+// caller can pass back. Reports false on anything unparsable, so a changed
+// message format costs a hint rather than producing a wrong one.
+func a1RangeFromZeroBased(r1, c1, r2, c2 string) (string, bool) {
+	nums := make([]int, 0, 4)
+	for _, raw := range []string{r1, c1, r2, c2} {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 {
+			return "", false
+		}
+		nums = append(nums, n)
+	}
+	if nums[2] < nums[0] || nums[3] < nums[1] {
+		return "", false
+	}
+	return fmt.Sprintf("%s%d:%s%d",
+		columnIndexToLetter(nums[1]), nums[0]+1,
+		columnIndexToLetter(nums[3]), nums[2]+1), true
 }
 
 // ─── transient-failure retry (reads only) ─────────────────────────────

@@ -1259,3 +1259,66 @@ func TestExecute_TransientReadRetry(t *testing.T) {
 		}
 	})
 }
+
+// TestExecute_MergedRegionHints pins the prescriptions on the two merged-cell
+// rejections. The backend names the obstacle but never in A1 notation and
+// never with the command that clears it.
+func TestExecute_MergedRegionHints(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, serverMsg, wantHint string
+	}{
+		{
+			name:      "merge overlapping an existing region",
+			serverMsg: "batch_update: 0 succeeded, 1 failed — operations[0] (merge_cells): Range A1:J1 overlaps existing merged cells: [0,0-0,6]. Unmerge them first (operation=unmerge) before merging.",
+			wantHint:  `+cells-unmerge --range "A1:G1"`,
+		},
+		{
+			name:      "write landing inside a merged region",
+			serverMsg: "cell at row 0, col 1 is inside a merged region (top-left: A1). Writing to non-top-left cells of merged regions is not supported.",
+			wantHint:  "top-left cell",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			parent, _, _, reg := newTestRig(t, CellsSet)
+			reg.Register(&httpmock.Stub{
+				Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_write",
+				Body: map[string]interface{}{
+					"code": 900015206, "msg": tc.serverMsg, "data": map[string]interface{}{},
+				},
+			})
+			parent.SetArgs([]string{"+cells-set", "--url", testURL, "--sheet-name", "s",
+				"--range", "B2:B2", "--cells", `[[{"value":"x"}]]`})
+			err := parent.Execute()
+			if err == nil {
+				t.Fatal("expected the merge conflict to surface")
+			}
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("err = %v, want a typed problem", err)
+			}
+			if !strings.Contains(p.Hint, tc.wantHint) {
+				t.Errorf("hint = %q, want it to carry %q", p.Hint, tc.wantHint)
+			}
+		})
+	}
+
+	t.Run("an unrelated failure gets no merge hint", func(t *testing.T) {
+		t.Parallel()
+		parent, _, _, reg := newTestRig(t, CellsSet)
+		reg.Register(&httpmock.Stub{
+			Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_write",
+			Body: map[string]interface{}{
+				"code": 900015206, "msg": "parameter validation failed", "data": map[string]interface{}{},
+			},
+		})
+		parent.SetArgs([]string{"+cells-set", "--url", testURL, "--sheet-name", "s",
+			"--range", "B2:B2", "--cells", `[[{"value":"x"}]]`})
+		err := parent.Execute()
+		p, _ := errs.ProblemOf(err)
+		if p != nil && strings.Contains(p.Hint, "+cells-unmerge") {
+			t.Errorf("hint = %q, want no merge prescription", p.Hint)
+		}
+	})
+}

@@ -135,7 +135,7 @@ func TestCellsSetWrites(t *testing.T) {
 		// Both items pass the --writes schema (range+cells present) but fail
 		// deeper: item 0 a matrix mismatch, item 1 a missing sheet selector.
 		_, _, err := writes(`[
-			{"sheet_name":"S1","range":"A1:B2","cells":[[{"value":"x"}]]},
+			{"sheet_name":"S1","range":"A1:A1","cells":[[{"value":"x"},{"value":"z"}]]},
 			{"range":"C1","cells":[[{"value":"y"}]]}
 		]`)
 		ve := requireValidation(t, err, "--writes has 2 issues")
@@ -227,5 +227,45 @@ func TestCellsSetWrites(t *testing.T) {
 		if !strings.Contains(ve.Hint, "+styles-put") || !strings.Contains(ve.Hint, "cell_styles") {
 			t.Fatalf("want the styles-put layering hint, got hint=%q", ve.Hint)
 		}
+	})
+}
+
+// TestCellsSet_RangeNarrowedToPayload pins the narrowing: a payload that fits
+// inside the stated range is written at the same anchor, sized to itself,
+// and the difference is reported rather than silently applied.
+func TestCellsSet_RangeNarrowedToPayload(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name, stated, want string
+		cells              string
+	}{
+		{"a title against the range it will occupy once merged", "A1:D1", "A1:A1", `[[{"value":"标题"}]]`},
+		{"a block smaller on both axes", "A1:D4", "A1:B2", `[[{"value":1},{"value":2}],[{"value":3},{"value":4}]]`},
+		{"an exact fit is untouched", "A1:B1", "A1:B1", `[[{"value":1},{"value":2}]]`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			stdout, _, err := runShortcutCapturingErr(t, CellsSet, []string{
+				"--url", testURL, "--sheet-name", "s", "--range", tc.stated,
+				"--cells", tc.cells, "--dry-run",
+			})
+			if err != nil {
+				t.Fatalf("payload fits, so it should be accepted: %v", err)
+			}
+			if !strings.Contains(strings.ReplaceAll(stdout, `\"`, `"`), `"range":"`+tc.want+`"`) {
+				t.Errorf("write should cover %s, got %q", tc.want, stdout)
+			}
+		})
+	}
+
+	t.Run("a payload with nowhere to go is still rejected", func(t *testing.T) {
+		t.Parallel()
+		// Growing the range would write over cells nobody named.
+		_, _, err := runShortcutCapturingErr(t, CellsSet, []string{
+			"--url", testURL, "--sheet-name", "s", "--range", "A1:A1",
+			"--cells", `[[{"value":1},{"value":2}]]`, "--dry-run",
+		})
+		requireValidation(t, err, `--range "A1:A1" spans`)
 	})
 }

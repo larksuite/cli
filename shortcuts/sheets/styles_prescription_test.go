@@ -581,13 +581,13 @@ func TestAggregatedIssuesKeepPrescriptions(t *testing.T) {
 		// the SAME defect collapse instead — pinned below.)
 		_, _, err := runShortcutCapturingErr(t, CellsSet, []string{
 			"--url", testURL,
-			"--writes", `[{"range":"A1","cells":[[{"value":1}]]},{"sheet_name":"S","range":"A1:B1","cells":[[{"value":2}]]}]`,
+			"--writes", `[{"range":"A1","cells":[[{"value":1}]]},{"sheet_name":"S","range":"A1:A1","cells":[[{"value":2},{"value":3}]]}]`,
 		})
 		ve := requireValidation(t, err, "--writes has 2 issues")
 		if !strings.Contains(ve.Message, "+workbook-info") {
 			t.Errorf("the first issue's Hint prescription should be inlined, got %q", ve.Message)
 		}
-		if !strings.Contains(ve.Message, `--range "A1:B1" spans`) {
+		if !strings.Contains(ve.Message, `--range "A1:A1" spans`) {
 			t.Errorf("the second issue should be rendered too, got %q", ve.Message)
 		}
 	})

@@ -118,9 +118,23 @@ var CellsSet = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		runtime.Out(out, nil)
+		runtime.Out(appendSheetsWarnings(out, cellsRangeNarrowedWarnings(runtime, input)), nil)
 		return nil
 	},
+}
+
+// cellsRangeNarrowedWarnings reports a --range the write was narrowed to fit
+// the payload (see fitCellsRange). Silence would be the bug: the caller stated
+// an extent, and the cells covered less of it than they thought.
+func cellsRangeNarrowedWarnings(runtime *common.RuntimeContext, input map[string]interface{}) []string {
+	written, _ := input["range"].(string)
+	stated := expandAnchorRange(strings.TrimSpace(runtime.Str("range")), nil)
+	if written == "" || stated == "" || written == stated {
+		return nil
+	}
+	return []string{fmt.Sprintf(
+		"--range %q is larger than the payload, so the write covered %q instead — the cells landed at the same top-left and nothing outside them was touched",
+		stated, written)}
 }
 
 // cellsSetWritesOps parses --writes ([{sheet_name|sheet_id, range, cells}, …])
@@ -261,6 +275,7 @@ func cellsSetInput(runtime flagView, token, sheetID, sheetName string) (map[stri
 	if err := checkCellsMatchRange(cells, rangeStr); err != nil {
 		return nil, err
 	}
+	rangeStr, _ = fitCellsRange(cells, rangeStr)
 	input := map[string]interface{}{
 		"excel_id": token,
 		"range":    rangeStr,
@@ -1034,8 +1049,11 @@ func dropdownHighlightWarnings(runtime flagView) []string {
 // reporting one axis at a time cost a second round trip whenever both were
 // off, and 16 of the 132 retried straight into the same error.
 //
-// The computed range is NOT applied automatically: growing it would overwrite
-// rows the caller never mentioned and shrinking it would silently drop data.
+// Growing the range is never applied: it would write over rows the caller
+// never mentioned. Shrinking it to a payload that FITS inside the stated
+// range is applied (see fitCellsRange) — the cells are written in full at the
+// anchor either way, and the alternative was 122 rejections in the 08-29..31
+// reflow on a payload that was already unambiguous.
 func checkCellsMatchRange(cells []interface{}, rangeStr string) error {
 	if len(cells) == 0 {
 		return sheetsValidationForFlag("cells",
@@ -1055,10 +1073,38 @@ func checkCellsMatchRange(cells []interface{}, rangeStr string) error {
 	if payloadRows == target.rows && payloadCols == target.cols {
 		return nil
 	}
+	if payloadRows <= target.rows && payloadCols <= target.cols {
+		return nil // fitCellsRange narrows the write to the payload
+	}
 	return sheetsValidationForFlag("cells",
 		"--cells is %d rows × %d columns but --range %q spans %d rows × %d columns; either write this payload to --range %q (same top-left, sized to the cells passed) or resize --cells to %d rows × %d columns — an A1 range covers both ends, so %q spans %d rows",
 		payloadRows, payloadCols, rangeStr, target.rows, target.cols,
 		target.sized(payloadRows, payloadCols), target.rows, target.cols, rangeStr, target.rows)
+}
+
+// fitCellsRange narrows a range to the payload that sits inside it, returning
+// the range to write and the note to report when it changed. Both ends of the
+// contract matter: the anchor is unchanged, so every cell lands exactly where
+// the caller put it, and no cell outside the payload is touched — the stated
+// range only ever said how far the caller THOUGHT the payload reached.
+//
+// The dominant shape is a one-cell title against the range it will occupy once
+// merged, where writing the top-left is what a merged region needs anyway. A
+// payload that overflows the range is untouched here: that one has no reading
+// short of writing over rows nobody named, and checkCellsMatchRange rejects it.
+func fitCellsRange(cells []interface{}, rangeStr string) (string, string) {
+	target, err := parseCellRange(rangeStr)
+	if err != nil {
+		return rangeStr, ""
+	}
+	rows, cols, ok := cellsExtent(cells)
+	if !ok || rows > target.rows || cols > target.cols || (rows == target.rows && cols == target.cols) {
+		return rangeStr, ""
+	}
+	fitted := target.sized(rows, cols)
+	return fitted, fmt.Sprintf(
+		"--cells is %d rows × %d columns, smaller than --range %q (%d × %d), so the write was narrowed to %q — cells land at the same top-left, and no cell outside them is touched",
+		rows, cols, rangeStr, target.rows, target.cols, fitted)
 }
 
 // cellsExtent measures a --cells payload: its row count and the width every
