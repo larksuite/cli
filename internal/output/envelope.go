@@ -24,12 +24,13 @@ type Envelope struct {
 // zero, and without omitempty it would pollute every other domain's meta. Every
 // non-batch command leaves them nil, so this stays invisible outside batch use.
 type Meta struct {
-	Count       int             `json:"count,omitempty"`
-	Rollback    string          `json:"rollback,omitempty"`
-	Pagination  *PaginationMeta `json:"pagination,omitempty"`
-	Total       *int            `json:"total,omitempty"`
-	HitCount    *int            `json:"hit_count,omitempty"`
-	MissedCount *int            `json:"missed_count,omitempty"`
+	Count                int             `json:"count,omitempty"`
+	Rollback             string          `json:"rollback,omitempty"`
+	Pagination           *PaginationMeta `json:"pagination,omitempty"`
+	Total                *int            `json:"total,omitempty"`
+	HitCount             *int            `json:"hit_count,omitempty"`
+	MissedCount          *int            `json:"missed_count,omitempty"`
+	SubmittedRuleIDCount *int            `json:"submitted_rule_id_count,omitempty"`
 }
 
 // PaginationMeta reports how a paginated read ended.
