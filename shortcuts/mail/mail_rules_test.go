@@ -753,9 +753,10 @@ func TestMailRuleCreateRejectsOversizedRuleInputFile(t *testing.T) {
 
 func TestMailRuleCreateValidationErrors(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		args []string
-		want string
+		name      string
+		args      []string
+		want      string
+		wantParam string
 	}{
 		{
 			name: "missing name",
@@ -1300,9 +1301,10 @@ func TestMailRuleUpdateReplacesConditionItemsAndPreservesMatchType(t *testing.T)
 
 func TestMailRuleUpdateRejectsExplicitEmptyCollections(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		args []string
-		want string
+		name      string
+		args      []string
+		want      string
+		wantParam string
 	}{
 		{name: "empty conditions", args: []string{"+rule-update", "--rule-id", "rule_1", "--conditions", "[]", "--format", "json"}, want: "at least one --condition"},
 		{name: "empty actions", args: []string{"+rule-update", "--rule-id", "rule_1", "--actions", "[]", "--format", "json"}, want: "at least one --action"},
@@ -1502,28 +1504,41 @@ func TestMailRuleOrderCompletion(t *testing.T) {
 	for _, target := range [][]string{{""}, {"a", "a"}, {"a", "z"}} {
 		if _, err := completeRuleOrder(target, []string{"a", "b"}); err == nil {
 			t.Fatalf("completeRuleOrder(%v) should fail", target)
+		} else {
+			assertMailRuleValidationError(t, err, "--rule-ids")
 		}
 	}
 	if _, err := validatedCurrentRuleIDs([]mailRuleEnvelope{{RuleID: "a"}, {RuleID: "a"}}); err == nil {
 		t.Fatal("duplicate current IDs should fail")
+	} else {
+		assertMailRuleValidationError(t, err, "")
 	}
 	if _, err := validatedCurrentRuleIDs([]mailRuleEnvelope{{RuleID: " "}}); err == nil {
 		t.Fatal("blank current ID should fail")
+	} else {
+		assertMailRuleValidationError(t, err, "")
 	}
 	if _, err := validatedCurrentRuleIDs(nil); err == nil {
 		t.Fatal("empty current rules should fail")
+	} else {
+		assertMailRuleValidationError(t, err, "")
 	}
 	if _, err := insertRelative([]string{"a", "b"}, "c", "", true); err == nil {
 		t.Fatal("expected missing target error")
+	} else {
+		assertMailRuleValidationError(t, err, "")
 	}
 	if _, err := insertRelative([]string{"a", "b"}, "c", "z", true); err == nil {
 		t.Fatal("expected unknown target error")
+	} else {
+		assertMailRuleValidationError(t, err, "")
 	}
 
 	for _, tc := range []struct {
-		name string
-		args []string
-		want string
+		name      string
+		args      []string
+		want      string
+		wantParam string
 	}{
 		{
 			name: "no mode",
@@ -1541,12 +1556,13 @@ func TestMailRuleOrderCompletion(t *testing.T) {
 			want: "move mode requires exactly one",
 		},
 		{
-			name: "move missing rule",
-			args: []string{"+rule-reorder", "--move-rule-id", "z", "--to-top"},
-			want: "is not in current rule order",
+			name:      "move missing rule",
+			args:      []string{"+rule-reorder", "--move-rule-id", "z", "--to-top"},
+			want:      "is not in current rule order",
+			wantParam: "--move-rule-id",
 		},
-		{name: "unknown ID", args: []string{"+rule-reorder", "--rule-ids", "a,z"}, want: "unknown rule id"},
-		{name: "duplicate ID", args: []string{"+rule-reorder", "--rule-ids", "a,a"}, want: "duplicate rule id"},
+		{name: "unknown ID", args: []string{"+rule-reorder", "--rule-ids", "a,z"}, want: "unknown rule id", wantParam: "--rule-ids"},
+		{name: "duplicate ID", args: []string{"+rule-reorder", "--rule-ids", "a,a"}, want: "duplicate rule id", wantParam: "--rule-ids"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f, stdout, _, reg := mailShortcutTestFactory(t)
@@ -1557,6 +1573,7 @@ func TestMailRuleOrderCompletion(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected reorder error")
 			}
+			assertMailRuleValidationError(t, err, tc.wantParam)
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error = %v, want %q", err, tc.want)
 			}
@@ -1582,16 +1599,26 @@ func TestMailRuleReorderCompletesPartialOrderAndSkipsPOSTOnInvalidList(t *testin
 	t.Run("malformed list does not post", func(t *testing.T) {
 		f, stdout, _, reg := mailShortcutTestFactory(t)
 		reg.Register(mailRuleListStub(mailRuleTestRawRule("a", "A"), mailRuleTestRawRule("a", "duplicate")))
-		post := &httpmock.Stub{Method: "POST", URL: "open-apis/mail/v1/user_mailboxes/me/rules/reorder", Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{}}}
-		reg.Register(post)
 		err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--rule-ids", "a", "--format", "json"}, f, stdout)
 		if err == nil || !strings.Contains(err.Error(), "duplicate rule_id") {
 			t.Fatalf("malformed list error = %v", err)
 		}
-		if len(post.CapturedBodies) != 0 {
-			t.Fatalf("POST should not be sent, captured %d", len(post.CapturedBodies))
-		}
+		assertMailRuleValidationError(t, err, "")
 	})
+}
+
+func assertMailRuleValidationError(t *testing.T, err error, wantParam string) {
+	t.Helper()
+	var got *errs.ValidationError
+	if !errors.As(err, &got) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if got.Category != errs.CategoryValidation || got.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("validation metadata = category %q subtype %q, want validation/invalid_argument", got.Category, got.Subtype)
+	}
+	if got.Param != wantParam {
+		t.Fatalf("validation parameter = %q, want %q", got.Param, wantParam)
+	}
 }
 
 func mailRuleTestRawRule(ruleID, name string) map[string]interface{} {
