@@ -59,6 +59,17 @@ func TestVCSearchIdentityDocsMatchAuthTypes(t *testing.T) {
 	}
 }
 
+func TestVCMeetingLeaveDocsMatchBotOnlyAuthTypes(t *testing.T) {
+	if len(VCMeetingLeave.AuthTypes) != 1 || VCMeetingLeave.AuthTypes[0] != "bot" {
+		t.Fatalf("VCMeetingLeave.AuthTypes = %v, want [bot]", VCMeetingLeave.AuthTypes)
+	}
+
+	reference := readSkillDoc(t, "skills/lark-meeting/references/lark-vc-agent-meeting-leave.md")
+	if !strings.Contains(reference, "仅支持 `bot` 身份") {
+		t.Error("lark-vc-agent-meeting-leave.md must state that +meeting-leave only supports bot identity")
+	}
+}
+
 // TestVCBotShortcutsIdentityDocsMatchAuthTypes pins that the VC shortcuts this
 // PR opened to bot (`+detail`, `+recording`, `+meeting-countdown`) are all declared bot-capable in
 // code and documented as such in their lark-meeting references.
@@ -86,6 +97,32 @@ func TestVCBotShortcutsIdentityDocsMatchAuthTypes(t *testing.T) {
 			if !strings.Contains(reference, identity) {
 				t.Errorf("%s must document %s support for %s", cmd.reference, identity, cmd.name)
 			}
+		}
+	}
+}
+
+func TestVCMeetingJoinDocsRouteCalendarStart(t *testing.T) {
+	skill := readSkillDoc(t, "skills/lark-meeting/SKILL.md")
+	scene := readSkillDoc(t, "skills/lark-meeting/scenes/live-meeting-attend.md")
+	reference := readSkillDoc(t, "skills/lark-meeting/references/lark-vc-agent-meeting-join.md")
+
+	if !strings.Contains(reference, "# vc +meeting-join：发起日程会议或加入会议") {
+		t.Error("lark-vc-agent-meeting-join.md must identify Calendar meeting starts")
+	}
+	for _, want := range []string{
+		"机器人发起日程会议或参与会议",
+		"让应用机器人发起日程会议或加入会议",
+	} {
+		if !strings.Contains(skill, want) {
+			t.Errorf("SKILL.md must document %q", want)
+		}
+	}
+	for name, content := range map[string]string{
+		"live-meeting-attend.md":        scene,
+		"lark-vc-agent-meeting-join.md": reference,
+	} {
+		if !strings.Contains(content, "应用机器人发起会议、参会与会中互动") {
+			t.Errorf("%s must route application-bot meeting starts", name)
 		}
 	}
 }
