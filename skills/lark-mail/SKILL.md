@@ -14,7 +14,7 @@ metadata:
 
 ## 核心概念
 
-- **邮件（Message）**：一封具体的邮件，包含发件人、收件人、主题、正文（纯文本/HTML）、附件。每封邮件有唯一 `message_id`。
+- **邮件（Message）**：一封具体的邮件，包含发件人、收件人、主题、正文（纯文本/HTML）、附件。每封邮件有唯一 `message_id`；回复邮件在服务端返回时还会带 `reply_to_message_id`，表示被回复原邮件的邮件 ID。
 - **会话（Thread）**：同一主题的邮件链，包含原始邮件和所有回复/转发。通过 `thread_id` 关联。
 - **草稿（Draft）**：未发送的邮件。所有发送类命令默认保存为草稿，加 `--confirm-send` 才实际发送。
 - **文件夹（Folder）**：邮件的组织容器。内置文件夹：`INBOX`、`SENT`、`DRAFT`、`SCHEDULED`、`TRASH`、`SPAM`、`ARCHIVED`，也可自定义。
