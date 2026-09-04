@@ -21,7 +21,7 @@ type GlobalOptions struct {
 // applies any visibility policy encoded in opts. Pure function: no disk,
 // network, or environment reads — the caller decides HideProfile.
 func RegisterGlobalFlags(fs *pflag.FlagSet, opts *GlobalOptions) {
-	fs.StringVar(&opts.Profile, "profile", "", "use a specific profile")
+	fs.StringVar(&opts.Profile, "profile", "", "use a specific configuration profile (see 'lark-cli profile list')")
 	if opts.HideProfile {
 		_ = fs.MarkHidden("profile")
 	}
