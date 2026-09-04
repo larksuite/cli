@@ -160,12 +160,42 @@ func baseAPIErrorFromResult(resultMap map[string]interface{}, cc errclass.Classi
 	if logID := extractBaseErrorLogID(resultMap); logID != "" {
 		resultMap["log_id"] = logID
 	}
+	if err := baseResourcePermissionError(resultMap, cc, hint); err != nil {
+		return err
+	}
 	err := errclass.BuildAPIError(resultMap, cc)
 	if err == nil {
 		return nil
 	}
 	if p, ok := errs.ProblemOf(err); ok && hint != "" {
 		p.Hint = hint
+	}
+	return err
+}
+
+func baseResourcePermissionError(resultMap map[string]interface{}, cc errclass.ClassifyContext, upstreamHint string) error {
+	code, ok := util.ToFloat64(resultMap["code"])
+	if !ok || int(code) != 91403 {
+		return nil
+	}
+	msg, _ := resultMap["msg"].(string)
+	if strings.TrimSpace(msg) == "" {
+		msg = "you don't have permission"
+	}
+	identity := strings.TrimSpace(cc.Identity)
+	if identity == "" {
+		identity = "current identity"
+	}
+	hint := fmt.Sprintf("resource access denied for %s; ask the Base owner to grant access, or retry once with --as user only if a user identity is already logged in. Do not run auth login or switch identities repeatedly for this resource-level permission error", identity)
+	if upstreamHint != "" {
+		hint = upstreamHint + "; " + hint
+	}
+	err := errs.NewPermissionError(errs.SubtypePermissionDenied, "%s", msg).
+		WithCode(91403).
+		WithHint("%s", hint)
+	err.Identity = identity
+	if logID, _ := resultMap["log_id"].(string); strings.TrimSpace(logID) != "" {
+		err.WithLogID(strings.TrimSpace(logID))
 	}
 	return err
 }
