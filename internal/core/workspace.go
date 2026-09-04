@@ -32,6 +32,10 @@ const (
 	// lark-channel-bridge in subprocesses it spawns (e.g. claude). See
 	// DetectWorkspaceFromEnv for the detection rule.
 	WorkspaceLarkChannel Workspace = "lark-channel"
+
+	// WorkspaceDSH activates inside a shell the DeepSeek Harness manages.
+	// See DetectWorkspaceFromEnv for the detection rule.
+	WorkspaceDSH Workspace = "dsh"
 )
 
 // currentWorkspace holds the workspace for the current process invocation.
@@ -98,7 +102,19 @@ func (w Workspace) IsLocal() bool {
 //  3. LARK_CHANNEL == "1" → WorkspaceLarkChannel. Set by lark-channel-bridge
 //     when spawning subprocesses (e.g. claude). Single boolean marker —
 //     mirrors the OPENCLAW_CLI / HERMES_QUIET style.
-//  4. Otherwise → WorkspaceLocal
+//  4. Any DeepSeek Harness signal → WorkspaceDSH. Every variable here is minted
+//     per shell call by the harness's shell-environment registry, which
+//     discards inherited DSH_* values before injecting its own snapshot — so
+//     unlike the OPENCLAW_* / HERMES_* signals above, a stale value exported in
+//     the user's own terminal cannot reach this process.
+//     - DSH_SHELL == "1": injected unconditionally into every harness-managed
+//     shell; the closest analogue of OPENCLAW_CLI / LARK_CHANNEL.
+//     - DSH_HOME:         also injected unconditionally, and the path the
+//     settings document is read from (see resolveDSHSettingsPath).
+//     - DSH_SESSION_ID:   the acting agent's session identity. Supplementary
+//     only — the harness omits it for shell calls that carry no agent, so it
+//     cannot carry the detection on its own.
+//  5. Otherwise → WorkspaceLocal
 func DetectWorkspaceFromEnv(getenv func(string) string) Workspace {
 	if getenv("OPENCLAW_CLI") == "1" ||
 		getenv("OPENCLAW_HOME") != "" ||
@@ -119,6 +135,11 @@ func DetectWorkspaceFromEnv(getenv func(string) string) Workspace {
 	}
 	if getenv("LARK_CHANNEL") == "1" {
 		return WorkspaceLarkChannel
+	}
+	if getenv("DSH_SHELL") == "1" ||
+		getenv("DSH_HOME") != "" ||
+		getenv("DSH_SESSION_ID") != "" {
+		return WorkspaceDSH
 	}
 	return WorkspaceLocal
 }
@@ -151,6 +172,7 @@ func GetBaseConfigDir() string {
 //   - WorkspaceOpenClaw → GetBaseConfigDir()/openclaw
 //   - WorkspaceHermes → GetBaseConfigDir()/hermes
 //   - WorkspaceLarkChannel → GetBaseConfigDir()/lark-channel
+//   - WorkspaceDSH → GetBaseConfigDir()/dsh
 func GetRuntimeDir() string {
 	base := GetBaseConfigDir()
 	ws := CurrentWorkspace()
