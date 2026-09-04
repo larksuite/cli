@@ -401,7 +401,11 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	if err != nil {
 		return err
 	}
+	extension := serviceMethodExtensionFor(opts.SchemaPath)
 
+	if opts.DryRun && extension.dryRun != nil {
+		return extension.dryRun(f, request, config, opts.Format)
+	}
 	if opts.DryRun {
 		if fileMeta != nil {
 			return cmdutil.PrintDryRunWithFile(request, config, serviceDryRunOutputOptions(f, opts), *fileMeta)
@@ -418,6 +422,13 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	ac, err := f.NewAPIClientWithConfig(config)
 	if err != nil {
 		return err
+	}
+
+	if extension.prepareRequest != nil {
+		request, err = extension.prepareRequest(opts.Ctx, ac, request)
+		if err != nil {
+			return err
+		}
 	}
 
 	out := f.IOStreams.Out
