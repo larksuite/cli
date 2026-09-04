@@ -85,6 +85,16 @@ lark-cli im +messages-search --query "test" --dry-run
 | `--as <identity>` | No | Identity type: `user` or `bot` |
 | `--dry-run` | No | Print the request only, do not execute it |
 
+## Output Fields
+
+Each search result uses the shared message output shape. In addition to core
+message fields such as `message_id`, `msg_type`, `create_time`, `sender`, and
+`content`, it may include:
+
+| Field | Description |
+|------|------|
+| `sync_to_chat_info` | Optional relation between a source thread reply and its synchronized chat message. See [IM sync-to-chat relation](lark-im-sync-to-chat-info.md). |
+
 ## Core Constraints
 
 ### 1. Provide at least one filter whenever possible

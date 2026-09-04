@@ -23,6 +23,7 @@ import (
 //   - root_id, thread_id, reply_to
 //   - content: human-readable text converted via convertlib
 //   - mentions: compact mentions array with key, id, name
+//   - sync_to_chat_info: relation between a thread reply and its synchronized chat message
 type ImMessageProcessor struct{}
 
 func (p *ImMessageProcessor) EventType() string { return "im.message.receive_v1" }
@@ -35,17 +36,18 @@ func (p *ImMessageProcessor) Transform(_ context.Context, raw *RawEvent, mode Tr
 	// Compact: unmarshal event portion into IM message structure
 	var ev struct {
 		Message struct {
-			MessageID   string        `json:"message_id"`
-			RootID      string        `json:"root_id"`
-			ParentID    string        `json:"parent_id"`
-			ThreadID    string        `json:"thread_id"`
-			ChatID      string        `json:"chat_id"`
-			ChatType    string        `json:"chat_type"`
-			MessageType string        `json:"message_type"`
-			Content     string        `json:"content"`
-			CreateTime  string        `json:"create_time"`
-			UpdateTime  string        `json:"update_time"`
-			Mentions    []interface{} `json:"mentions"`
+			MessageID      string          `json:"message_id"`
+			RootID         string          `json:"root_id"`
+			ParentID       string          `json:"parent_id"`
+			ThreadID       string          `json:"thread_id"`
+			ChatID         string          `json:"chat_id"`
+			ChatType       string          `json:"chat_type"`
+			MessageType    string          `json:"message_type"`
+			Content        string          `json:"content"`
+			CreateTime     string          `json:"create_time"`
+			UpdateTime     string          `json:"update_time"`
+			Mentions       []interface{}   `json:"mentions"`
+			SyncToChatInfo json.RawMessage `json:"sync_to_chat_info"`
 		} `json:"message"`
 		Sender struct {
 			SenderType string `json:"sender_type"`
@@ -124,6 +126,9 @@ func (p *ImMessageProcessor) Transform(_ context.Context, raw *RawEvent, mode Tr
 	}
 	if mentions := compactMentions(ev.Message.Mentions); len(mentions) > 0 {
 		out["mentions"] = mentions
+	}
+	if relation := convertlib.DecodeSyncToChatRelation(ev.Message.SyncToChatInfo); relation != nil {
+		out["sync_to_chat_info"] = relation
 	}
 	return out
 }

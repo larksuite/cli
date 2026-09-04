@@ -5,8 +5,81 @@ package event
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 )
+
+func TestImMessageProcessor_CompactProjectsSyncToChatInfo(t *testing.T) {
+	p := &ImMessageProcessor{}
+	raw := makeRawEvent("im.message.receive_v1", `{
+		"message": {
+			"message_id": "om_current",
+			"message_type": "text",
+			"content": "{\"text\":\"hello\"}",
+			"sync_to_chat_info": {
+				"type": 1,
+				"thread_id": "omt_origin",
+				"related_message_id": "om_source",
+				"future_relation": "kept"
+			}
+		}
+	}`)
+
+	result, ok := p.Transform(context.Background(), raw, TransformCompact).(map[string]interface{})
+	if !ok {
+		t.Fatal("compact should return map")
+	}
+	if _, loose := result["sync_to_chat_info"].(map[string]interface{}); loose {
+		t.Fatalf("sync_to_chat_info = %#v, want typed relation projection", result["sync_to_chat_info"])
+	}
+	relationJSON, err := json.Marshal(result["sync_to_chat_info"])
+	if err != nil {
+		t.Fatalf("marshal sync_to_chat_info: %v", err)
+	}
+	var info map[string]interface{}
+	if err := json.Unmarshal(relationJSON, &info); err != nil {
+		t.Fatalf("unmarshal sync_to_chat_info: %v", err)
+	}
+	if info["type"] != float64(1) || info["thread_id"] != "omt_origin" || info["related_message_id"] != "om_source" {
+		t.Errorf("sync_to_chat_info = %#v, want exact typed relation values", info)
+	}
+	if _, ok := info["future_relation"]; ok {
+		t.Errorf("sync_to_chat_info.future_relation = %#v, want omitted", info["future_relation"])
+	}
+}
+
+func TestImMessageProcessor_CompactOmitsUnusableSyncToChatInfo(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		info string
+	}{
+		{name: "empty object", info: `{}`},
+		{name: "wrong known field type", info: `{"type":"1","related_message_id":"om_source"}`},
+		{name: "unsupported type", info: `{"type":3,"related_message_id":"om_source"}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &ImMessageProcessor{}
+			raw := makeRawEvent("im.message.receive_v1", `{
+				"message": {
+					"message_id": "om_current",
+					"message_type": "text",
+					"content": "{\"text\":\"hello\"}",
+					"sync_to_chat_info": `+tt.info+`
+				}
+			}`)
+			result, ok := p.Transform(context.Background(), raw, TransformCompact).(map[string]interface{})
+			if !ok {
+				t.Fatalf("compact output = %T, want map", p.Transform(context.Background(), raw, TransformCompact))
+			}
+			if _, ok := result["sync_to_chat_info"]; ok {
+				t.Fatalf("sync_to_chat_info = %#v, want omitted", result["sync_to_chat_info"])
+			}
+			if result["message_id"] != "om_current" {
+				t.Fatalf("containing event was not preserved: %#v", result)
+			}
+		})
+	}
+}
 
 // --- im.message.message_read_v1 ---
 
