@@ -29,10 +29,10 @@ func TestShouldRunNamingForCommandChanges(t *testing.T) {
 	}
 }
 
-func TestShouldRunNamingIgnoresDefaultMetadataChanges(t *testing.T) {
-	scope := qdiff.FromChangedFiles([]string{"internal/registry/meta_data_default.json"})
-	if shouldRunNaming("origin/main", scope) {
-		t.Fatal("default metadata changes should not run ordinary naming gate")
+func TestShouldRunNamingForCatalogChanges(t *testing.T) {
+	scope := qdiff.FromChangedFiles([]string{"internal/registry/catalog/services/drive.json"})
+	if !shouldRunNaming("origin/main", scope) {
+		t.Fatal("catalog changes must run the ordinary naming gate")
 	}
 }
 
@@ -52,8 +52,11 @@ func TestReferenceCommandSurfaceTreatsTopLevelCmdFilesAsGlobal(t *testing.T) {
 	}
 }
 
-func TestReferenceCommandSurfaceTreatsServiceMetadataAsGlobal(t *testing.T) {
-	for _, file := range []string{"internal/registry/meta_data.json", "internal/registry/meta_data_default.json"} {
+func TestReferenceCommandSurfaceTreatsCatalogAsGlobal(t *testing.T) {
+	for _, file := range []string{
+		"internal/registry/catalog/manifest.json",
+		"internal/registry/catalog/services/drive.json",
+	} {
 		affected, domains := referenceCommandSurface(map[string]bool{file: true})
 		if !affected || len(domains) != 0 {
 			t.Fatalf("%s must affect reference command surface, affected=%v domains=%#v", file, affected, domains)

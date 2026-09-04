@@ -93,10 +93,10 @@ func (c *APIClient) buildApiReq(request RawApiRequest) (*larkcore.ApiReq, []lark
 			queryParams[k] = val
 		case []interface{}:
 			for _, item := range val {
-				queryParams.Add(k, fmt.Sprintf("%v", item))
+				queryParams.Add(k, FormatScalar(item))
 			}
 		default:
-			queryParams.Set(k, fmt.Sprintf("%v", v))
+			queryParams.Set(k, FormatScalar(v))
 		}
 	}
 

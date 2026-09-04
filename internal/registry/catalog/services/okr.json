@@ -1,0 +1,4709 @@
+{
+  "name": "okr",
+  "version": "v2",
+  "title": "OKR API",
+  "description": "OKR 目标、关键结果、对齐、量化指标管理",
+  "servicePath": "/open-apis/okr/v2",
+  "resources": {
+    "alignments": {
+      "methods": {
+        "delete": {
+          "id": "alignments.delete",
+          "path": "alignments/{alignment_id}",
+          "httpMethod": "DELETE",
+          "description": "Delete OKR Alignment",
+          "parameters": {
+            "alignment_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Alignment ID. How to get: Call the \"List Alignment of an Objective\" API",
+              "example": "7342342398472398473"
+            }
+          },
+          "parameterOrder": [
+            "alignment_id"
+          ],
+          "responseBody": {
+            "alignment_id": {
+              "type": "string",
+              "description": "Alignment ID",
+              "required": false,
+              "example": "7342342398472398473"
+            }
+          },
+          "scopes": [
+            "okr:okr.content:writeonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=delete&project=okr&resource=okr.alignment&version=v2"
+        },
+        "get": {
+          "id": "alignments.get",
+          "path": "alignments/{alignment_id}",
+          "httpMethod": "GET",
+          "description": "Get OKR Alignment",
+          "parameters": {
+            "alignment_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Alignment ID. How to get: Call the \"List Alignment of an Objective\" API",
+              "example": "7342342398472398473"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户 ID 的类型",
+              "default": "open_id",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            },
+            "department_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Department ID type used in this call",
+              "default": "open_department_id",
+              "example": "open_department_id",
+              "options": [
+                {
+                  "value": "department_id",
+                  "description": "use department_id for department"
+                },
+                {
+                  "value": "open_department_id",
+                  "description": "use open_department_id for department"
+                }
+              ],
+              "enum": [
+                "department_id",
+                "open_department_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "alignment_id"
+          ],
+          "responseBody": {
+            "alignment": {
+              "type": "object",
+              "description": "Alignment",
+              "required": false,
+              "ref": "alignment",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Alignment ID",
+                  "required": true,
+                  "example": "1"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "Alignment creation time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "update_time": {
+                  "type": "string",
+                  "description": "Alignment update time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "from_owner": {
+                  "type": "object",
+                  "description": "Owner who initiated the alignment",
+                  "required": true,
+                  "ref": "owner",
+                  "properties": {
+                    "owner_type": {
+                      "type": "string",
+                      "description": "Owner type",
+                      "required": true,
+                      "example": "user",
+                      "options": [
+                        {
+                          "value": "user",
+                          "description": "Employee"
+                        }
+                      ],
+                      "enum": [
+                        "user"
+                      ]
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "description": "Employee ID",
+                      "required": false,
+                      "example": "ou_3bbe8a09c20e89cce9bff989ed840674",
+                      "annotations": [
+                        "open:x_user_id",
+                        "tolerate_idtrans_failure"
+                      ]
+                    }
+                  }
+                },
+                "to_owner": {
+                  "type": "object",
+                  "description": "Owner who initiated the alignment",
+                  "required": true,
+                  "ref": "owner",
+                  "properties": {
+                    "owner_type": {
+                      "type": "string",
+                      "description": "Owner type",
+                      "required": true,
+                      "example": "user",
+                      "options": [
+                        {
+                          "value": "user",
+                          "description": "Employee"
+                        }
+                      ],
+                      "enum": [
+                        "user"
+                      ]
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "description": "Employee ID",
+                      "required": false,
+                      "example": "ou_3bbe8a09c20e89cce9bff989ed840674",
+                      "annotations": [
+                        "open:x_user_id",
+                        "tolerate_idtrans_failure"
+                      ]
+                    }
+                  }
+                },
+                "from_entity_type": {
+                  "type": "integer",
+                  "description": "Entity type that initiated the alignment",
+                  "required": true,
+                  "example": 2,
+                  "options": [
+                    {
+                      "value": 2,
+                      "description": "Objective"
+                    }
+                  ],
+                  "enum": [
+                    2
+                  ]
+                },
+                "from_entity_id": {
+                  "type": "string",
+                  "description": "Entity ID that initiated the alignment",
+                  "required": true,
+                  "example": "1"
+                },
+                "to_entity_type": {
+                  "type": "integer",
+                  "description": "Entity type being aligned to",
+                  "required": true,
+                  "example": 2,
+                  "options": [
+                    {
+                      "value": 2,
+                      "description": "Objective"
+                    }
+                  ],
+                  "enum": [
+                    2
+                  ]
+                },
+                "to_entity_id": {
+                  "type": "string",
+                  "description": "Entity ID being aligned to",
+                  "required": true,
+                  "example": "7342342398472398473"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "okr:okr.content:readonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=okr&resource=okr.alignment&version=v2"
+        }
+      }
+    },
+    "categories": {
+      "methods": {
+        "list": {
+          "id": "categories.list",
+          "path": "categories",
+          "httpMethod": "GET",
+          "description": "List all okr categories",
+          "parameters": {
+            "page_size": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "Page size, maximum 100",
+              "default": 10,
+              "example": 10,
+              "max": "100",
+              "min": "1"
+            },
+            "page_token": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Page identifier. It is not filled in the first request, indicating traversal from the beginning; when there will be more groups, the new page_token will be returned at the same time, and the next traversal can use the page_token to get more groups",
+              "example": "eVQrYzJBNDNONlk4VFZBZVlSdzlKdFJ4bVVHVExENDNKVHoxaVdiVnViQT0="
+            },
+            "owner_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Category owner type",
+              "default": "user",
+              "example": "user",
+              "options": [
+                {
+                  "value": "user",
+                  "description": "Employee"
+                },
+                {
+                  "value": "department",
+                  "description": "Department"
+                }
+              ],
+              "enum": [
+                "user",
+                "department"
+              ]
+            }
+          },
+          "responseBody": {
+            "has_more": {
+              "type": "boolean",
+              "description": "Whether the response body has more parameters",
+              "required": false,
+              "example": true
+            },
+            "page_token": {
+              "type": "string",
+              "description": "Page identifier, when has_more is true, a new page_token will also be returned. Otherwise, page_token will not be returned",
+              "required": false,
+              "example": "eVQrYzJBNDNONlk4VFZBZVlSdzlKdFJ4bVVHVExENDNKVHoxaVdiVnViQT0="
+            },
+            "items": {
+              "type": "array",
+              "description": "Category list",
+              "required": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Category ID",
+                  "required": true,
+                  "example": "7342342398472398473"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "Category creation time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "update_time": {
+                  "type": "string",
+                  "description": "Category update time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "category_type": {
+                  "type": "string",
+                  "description": "Category type",
+                  "required": true,
+                  "example": "user",
+                  "options": [
+                    {
+                      "value": "person",
+                      "description": "Personal"
+                    },
+                    {
+                      "value": "team",
+                      "description": "Team"
+                    }
+                  ],
+                  "enum": [
+                    "person",
+                    "team"
+                  ]
+                },
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Enabled",
+                  "required": true,
+                  "example": true
+                },
+                "color": {
+                  "type": "string",
+                  "description": "Color",
+                  "required": true,
+                  "example": "blue",
+                  "options": [
+                    {
+                      "value": "blue",
+                      "description": "Blue"
+                    },
+                    {
+                      "value": "purple",
+                      "description": "Purple"
+                    },
+                    {
+                      "value": "wathet",
+                      "description": "Light blue"
+                    },
+                    {
+                      "value": "turquoise",
+                      "description": "Turquoise"
+                    },
+                    {
+                      "value": "indigo",
+                      "description": "Indigo"
+                    },
+                    {
+                      "value": "orange",
+                      "description": "Orange"
+                    }
+                  ],
+                  "enum": [
+                    "blue",
+                    "purple",
+                    "wathet",
+                    "turquoise",
+                    "indigo",
+                    "orange"
+                  ]
+                },
+                "name": {
+                  "type": "object",
+                  "description": "Name",
+                  "required": true,
+                  "ref": "category_name",
+                  "properties": {
+                    "zh": {
+                      "type": "string",
+                      "description": "Chinese name",
+                      "required": false,
+                      "example": "Chinese"
+                    },
+                    "en": {
+                      "type": "string",
+                      "description": "English name",
+                      "required": false,
+                      "example": "English"
+                    },
+                    "ja": {
+                      "type": "string",
+                      "description": "Japanese name",
+                      "required": false,
+                      "example": "Japanese"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "scopes": [
+            "okr:okr.setting:read"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=okr&resource=okr.category&version=v2"
+        }
+      }
+    },
+    "cycles": {
+      "methods": {
+        "list": {
+          "id": "cycles.list",
+          "path": "cycles",
+          "httpMethod": "GET",
+          "description": "Get user OKR Cycle list",
+          "parameters": {
+            "user_id": {
+              "type": "string",
+              "location": "query",
+              "required": true,
+              "description": "User ID. The ID type must match the value of the user_id_type parameter",
+              "example": "ou_3bbe8a09c20e89cce9bff989ed840674"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户 ID 的类型",
+              "default": "open_id",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            },
+            "page_size": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "Page size, maximum 100",
+              "default": 10,
+              "example": 10,
+              "max": "100",
+              "min": "1"
+            },
+            "page_token": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Page identifier. It is not filled in the first request, indicating traversal from the beginning; when there will be more groups, the new page_token will be returned at the same time, and the next traversal can use the page_token to get more groups",
+              "example": "eVQrYzJBNDNONlk4VFZBZVlSdzlKdFJ4bVVHVExENDNKVHoxaVdiVnViQT0="
+            }
+          },
+          "responseBody": {
+            "has_more": {
+              "type": "boolean",
+              "description": "Whether the response body has more parameters",
+              "required": false,
+              "example": true
+            },
+            "page_token": {
+              "type": "string",
+              "description": "Page identifier, when has_more is true, a new page_token will also be returned. Otherwise, page_token will not be returned",
+              "required": false,
+              "example": "1"
+            },
+            "items": {
+              "type": "array",
+              "description": "User cycle list",
+              "required": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "User cycle ID",
+                  "required": true,
+                  "example": "7342342398472398471"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "User cycle creation time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "update_time": {
+                  "type": "string",
+                  "description": "User cycle update time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "tenant_cycle_id": {
+                  "type": "string",
+                  "description": "Tenant cycle ID",
+                  "required": true,
+                  "example": "7342342398472398472"
+                },
+                "owner": {
+                  "type": "object",
+                  "description": "Owner who initiated the alignment",
+                  "required": true,
+                  "ref": "owner",
+                  "properties": {
+                    "owner_type": {
+                      "type": "string",
+                      "description": "Owner type",
+                      "required": true,
+                      "example": "user",
+                      "options": [
+                        {
+                          "value": "user",
+                          "description": "Employee"
+                        }
+                      ],
+                      "enum": [
+                        "user"
+                      ]
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "description": "Employee ID",
+                      "required": false,
+                      "example": "ou_3bbe8a09c20e89cce9bff989ed840674",
+                      "annotations": [
+                        "open:x_user_id",
+                        "tolerate_idtrans_failure"
+                      ]
+                    }
+                  }
+                },
+                "start_time": {
+                  "type": "string",
+                  "description": "Cycle start time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "end_time": {
+                  "type": "string",
+                  "description": "Cycle end time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "cycle_status": {
+                  "type": "integer",
+                  "description": "User cycle status",
+                  "required": false,
+                  "example": 1,
+                  "options": [
+                    {
+                      "value": 0,
+                      "description": "Default"
+                    },
+                    {
+                      "value": 1,
+                      "description": "Normal"
+                    },
+                    {
+                      "value": 2,
+                      "description": "Invalid"
+                    },
+                    {
+                      "value": 3,
+                      "description": "Hidden"
+                    }
+                  ],
+                  "enum": [
+                    0,
+                    1,
+                    2,
+                    3
+                  ]
+                },
+                "score": {
+                  "type": "number",
+                  "description": "User cycle score: [0,1], supports one decimal place",
+                  "required": false,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "okr:okr.period:readonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=okr&resource=okr.cycle&version=v2"
+        },
+        "objectives_position": {
+          "id": "cycles.objectives_position",
+          "path": "cycles/{cycle_id}/objectives_position",
+          "httpMethod": "PUT",
+          "description": "Modify Objective positions in OKR Cycle",
+          "parameters": {
+            "cycle_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "User cycle ID. The ID type must match the user_id_type or department_id_type parameter value. How to get: Call the \"Get user OKR Cycle list\" API",
+              "example": "7342342398472398473"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户 ID 的类型",
+              "default": "open_id",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            },
+            "department_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Department ID type used in this call",
+              "default": "open_department_id",
+              "example": "open_department_id",
+              "options": [
+                {
+                  "value": "department_id",
+                  "description": "use department_id for department"
+                },
+                {
+                  "value": "open_department_id",
+                  "description": "use open_department_id for department"
+                }
+              ],
+              "enum": [
+                "department_id",
+                "open_department_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "cycle_id"
+          ],
+          "requestBody": {
+            "objective_ids": {
+              "type": "array",
+              "description": "Objective ID list, in sequence order",
+              "required": true
+            }
+          },
+          "responseBody": {
+            "items": {
+              "type": "array",
+              "description": "Objective list",
+              "required": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "目标的 ID",
+                  "required": true,
+                  "example": "7342342398472398473"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "目标的创建时间，毫秒级时间戳",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "update_time": {
+                  "type": "string",
+                  "description": "目标的更新时间，毫秒级时间戳",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "owner": {
+                  "type": "object",
+                  "description": "Owner who initiated the alignment",
+                  "required": true,
+                  "ref": "owner",
+                  "properties": {
+                    "owner_type": {
+                      "type": "string",
+                      "description": "Owner type",
+                      "required": true,
+                      "example": "user",
+                      "options": [
+                        {
+                          "value": "user",
+                          "description": "Employee"
+                        }
+                      ],
+                      "enum": [
+                        "user"
+                      ]
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "description": "Employee ID",
+                      "required": false,
+                      "example": "ou_3bbe8a09c20e89cce9bff989ed840674",
+                      "annotations": [
+                        "open:x_user_id",
+                        "tolerate_idtrans_failure"
+                      ]
+                    }
+                  }
+                },
+                "cycle_id": {
+                  "type": "string",
+                  "description": "目标的用户周期 ID",
+                  "required": true,
+                  "example": "1"
+                },
+                "position": {
+                  "type": "integer",
+                  "description": "目标的序号：从 1 开始计数",
+                  "required": true,
+                  "example": 1,
+                  "max": "100",
+                  "min": "1"
+                },
+                "content": {
+                  "type": "object",
+                  "description": "目标的内容",
+                  "required": false,
+                  "ref": "content_block",
+                  "properties": {
+                    "blocks": {
+                      "type": "array",
+                      "description": "文档结构是按行排列的，每行内容是一个 Block",
+                      "required": false
+                    }
+                  }
+                },
+                "score": {
+                  "type": "number",
+                  "description": "目标的分数：[0,1]，支持一位小数",
+                  "required": false,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                },
+                "notes": {
+                  "type": "object",
+                  "description": "目标的备注",
+                  "required": false,
+                  "ref": "content_block",
+                  "properties": {
+                    "blocks": {
+                      "type": "array",
+                      "description": "文档结构是按行排列的，每行内容是一个 Block",
+                      "required": false
+                    }
+                  }
+                },
+                "weight": {
+                  "type": "number",
+                  "description": "目标的权重：[0,1]，支持三位小数",
+                  "required": false,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                },
+                "deadline": {
+                  "type": "string",
+                  "description": "Objective deadline, millisecond timestamp",
+                  "required": false,
+                  "example": "1760604634563"
+                },
+                "category_id": {
+                  "type": "string",
+                  "description": "目标的分类 ID",
+                  "required": false,
+                  "example": "1"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "okr:okr.content:writeonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=objectives_position&project=okr&resource=okr.cycle&version=v2"
+        },
+        "objectives_weight": {
+          "id": "cycles.objectives_weight",
+          "path": "cycles/{cycle_id}/objectives_weight",
+          "httpMethod": "PUT",
+          "description": "Modify Objective weights in OKR Cycle",
+          "parameters": {
+            "cycle_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "User cycle ID. The ID type must match the value of the user_id_type parameter. How to obtain: Call the \"Get user OKR cycle list\" API",
+              "example": "7342342398472398473"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户 ID 的类型",
+              "default": "open_id",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            },
+            "department_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Department ID type used in this call",
+              "default": "open_department_id",
+              "example": "open_department_id",
+              "options": [
+                {
+                  "value": "department_id",
+                  "description": "use department_id for department"
+                },
+                {
+                  "value": "open_department_id",
+                  "description": "use open_department_id for department"
+                }
+              ],
+              "enum": [
+                "department_id",
+                "open_department_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "cycle_id"
+          ],
+          "requestBody": {
+            "objective_weights": {
+              "type": "array",
+              "description": "Objective weight list",
+              "required": true,
+              "properties": {
+                "objective_id": {
+                  "type": "string",
+                  "description": "Objective ID",
+                  "required": true,
+                  "example": "7342342398472398473"
+                },
+                "weight": {
+                  "type": "number",
+                  "description": "Objective weight: [0,1], supports three decimal places",
+                  "required": true,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                }
+              }
+            }
+          },
+          "responseBody": {
+            "items": {
+              "type": "array",
+              "description": "Objective list",
+              "required": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "目标的 ID",
+                  "required": true,
+                  "example": "7342342398472398473"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "目标的创建时间，毫秒级时间戳",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "update_time": {
+                  "type": "string",
+                  "description": "目标的更新时间，毫秒级时间戳",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "owner": {
+                  "type": "object",
+                  "description": "Owner who initiated the alignment",
+                  "required": true,
+                  "ref": "owner",
+                  "properties": {
+                    "owner_type": {
+                      "type": "string",
+                      "description": "Owner type",
+                      "required": true,
+                      "example": "user",
+                      "options": [
+                        {
+                          "value": "user",
+                          "description": "Employee"
+                        }
+                      ],
+                      "enum": [
+                        "user"
+                      ]
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "description": "Employee ID",
+                      "required": false,
+                      "example": "ou_3bbe8a09c20e89cce9bff989ed840674",
+                      "annotations": [
+                        "open:x_user_id",
+                        "tolerate_idtrans_failure"
+                      ]
+                    }
+                  }
+                },
+                "cycle_id": {
+                  "type": "string",
+                  "description": "目标的用户周期 ID",
+                  "required": true,
+                  "example": "1"
+                },
+                "position": {
+                  "type": "integer",
+                  "description": "目标的序号：从 1 开始计数",
+                  "required": true,
+                  "example": 1,
+                  "max": "100",
+                  "min": "1"
+                },
+                "content": {
+                  "type": "object",
+                  "description": "目标的内容",
+                  "required": false,
+                  "ref": "content_block",
+                  "properties": {
+                    "blocks": {
+                      "type": "array",
+                      "description": "文档结构是按行排列的，每行内容是一个 Block",
+                      "required": false
+                    }
+                  }
+                },
+                "score": {
+                  "type": "number",
+                  "description": "目标的分数：[0,1]，支持一位小数",
+                  "required": false,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                },
+                "notes": {
+                  "type": "object",
+                  "description": "目标的备注",
+                  "required": false,
+                  "ref": "content_block",
+                  "properties": {
+                    "blocks": {
+                      "type": "array",
+                      "description": "文档结构是按行排列的，每行内容是一个 Block",
+                      "required": false
+                    }
+                  }
+                },
+                "weight": {
+                  "type": "number",
+                  "description": "目标的权重：[0,1]，支持三位小数",
+                  "required": false,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                },
+                "deadline": {
+                  "type": "string",
+                  "description": "Objective deadline, millisecond timestamp",
+                  "required": false,
+                  "example": "1760604634563"
+                },
+                "category_id": {
+                  "type": "string",
+                  "description": "目标的分类 ID",
+                  "required": false,
+                  "example": "1"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "okr:okr.content:writeonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=objectives_weight&project=okr&resource=okr.cycle&version=v2"
+        }
+      }
+    },
+    "cycle.objectives": {
+      "methods": {
+        "create": {
+          "id": "cycle.objectives.create",
+          "path": "cycles/{cycle_id}/objectives",
+          "httpMethod": "POST",
+          "description": "Create Objective in OKR Cycle",
+          "parameters": {
+            "cycle_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "User cycle ID. The ID type must match the user_id_type or department_id_type parameter value. How to get: Call the \"Get user OKR Cycle list\" API",
+              "example": "7342342398472398473"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户 ID 的类型",
+              "default": "open_id",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            },
+            "department_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Department ID type used in this call",
+              "default": "open_department_id",
+              "example": "open_department_id",
+              "options": [
+                {
+                  "value": "department_id",
+                  "description": "use department_id for department"
+                },
+                {
+                  "value": "open_department_id",
+                  "description": "use open_department_id for department"
+                }
+              ],
+              "enum": [
+                "department_id",
+                "open_department_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "cycle_id"
+          ],
+          "requestBody": {
+            "content": {
+              "type": "object",
+              "description": "Objective content",
+              "required": false,
+              "ref": "content_block",
+              "properties": {
+                "blocks": {
+                  "type": "array",
+                  "description": "文档结构是按行排列的，每行内容是一个 Block",
+                  "required": false,
+                  "properties": {
+                    "block_element_type": {
+                      "type": "string",
+                      "description": "Document element type",
+                      "required": false,
+                      "example": "paragraph",
+                      "options": [
+                        {
+                          "value": "paragraph",
+                          "description": "Text paragraph"
+                        },
+                        {
+                          "value": "gallery",
+                          "description": "Image"
+                        }
+                      ],
+                      "enum": [
+                        "paragraph",
+                        "gallery"
+                      ]
+                    },
+                    "paragraph": {
+                      "type": "object",
+                      "description": "Text paragraph",
+                      "required": false,
+                      "ref": "content_paragraph"
+                    },
+                    "gallery": {
+                      "type": "object",
+                      "description": "Image",
+                      "required": false,
+                      "ref": "content_gallery"
+                    }
+                  }
+                }
+              }
+            },
+            "notes": {
+              "type": "object",
+              "description": "Objective notes",
+              "required": false,
+              "ref": "content_block",
+              "properties": {
+                "blocks": {
+                  "type": "array",
+                  "description": "文档结构是按行排列的，每行内容是一个 Block",
+                  "required": false,
+                  "properties": {
+                    "block_element_type": {
+                      "type": "string",
+                      "description": "Document element type",
+                      "required": false,
+                      "example": "paragraph",
+                      "options": [
+                        {
+                          "value": "paragraph",
+                          "description": "Text paragraph"
+                        },
+                        {
+                          "value": "gallery",
+                          "description": "Image"
+                        }
+                      ],
+                      "enum": [
+                        "paragraph",
+                        "gallery"
+                      ]
+                    },
+                    "paragraph": {
+                      "type": "object",
+                      "description": "Text paragraph",
+                      "required": false,
+                      "ref": "content_paragraph"
+                    },
+                    "gallery": {
+                      "type": "object",
+                      "description": "Image",
+                      "required": false,
+                      "ref": "content_gallery"
+                    }
+                  }
+                }
+              }
+            },
+            "deadline": {
+              "type": "string",
+              "description": "Objective deadline, millisecond timestamp",
+              "required": false,
+              "example": "1760604634563"
+            },
+            "weight": {
+              "type": "number",
+              "description": "Objective weight: [0,1], supports three decimal places",
+              "required": false,
+              "example": 0.5,
+              "max": "1",
+              "min": "0"
+            },
+            "category_id": {
+              "type": "string",
+              "description": "Objective category ID",
+              "required": false,
+              "example": "1"
+            },
+            "score": {
+              "type": "number",
+              "description": "Objective score: [0,1], supports one decimal place",
+              "required": false,
+              "example": 0.5,
+              "max": "1",
+              "min": "0"
+            }
+          },
+          "responseBody": {
+            "objective_id": {
+              "type": "string",
+              "description": "Objective ID",
+              "required": false,
+              "example": "7342342398472398473"
+            }
+          },
+          "scopes": [
+            "okr:okr.content:writeonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=create&project=okr&resource=okr.cycle.objective&version=v2"
+        },
+        "list": {
+          "id": "cycle.objectives.list",
+          "path": "cycles/{cycle_id}/objectives",
+          "httpMethod": "GET",
+          "description": "Get Objectives in OKR Cycle",
+          "parameters": {
+            "cycle_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "User cycle ID. The ID type must match the value of the user_id_type parameter. How to obtain: Call the \"Get user OKR cycle list\" API",
+              "example": "od_3bbe8a09c20e89cce9bff989ed840674"
+            },
+            "page_size": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "Page size, maximum 100",
+              "default": 10,
+              "max": "100",
+              "min": "1"
+            },
+            "page_token": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Page identifier. It is not filled in the first request, indicating traversal from the beginning; when there will be more groups, the new page_token will be returned at the same time, and the next traversal can use the page_token to get more groups",
+              "example": "eVQrYzJBNDNONlk4VFZBZVlSdzlKdFJ4bVVHVExENDNKVHoxaVdiVnViQT0="
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户 ID 的类型",
+              "default": "open_id",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            },
+            "department_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Department ID type used in this call",
+              "default": "open_department_id",
+              "options": [
+                {
+                  "value": "department_id",
+                  "description": "use department_id for department"
+                },
+                {
+                  "value": "open_department_id",
+                  "description": "use open_department_id for department"
+                }
+              ],
+              "enum": [
+                "department_id",
+                "open_department_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "cycle_id"
+          ],
+          "responseBody": {
+            "has_more": {
+              "type": "boolean",
+              "description": "Whether the response body has more parameters",
+              "required": false,
+              "example": true
+            },
+            "page_token": {
+              "type": "string",
+              "description": "Page identifier, when has_more is true, a new page_token will also be returned. Otherwise, page_token will not be returned",
+              "required": false,
+              "example": "eVQrYzJBNDNONlk4VFZBZVlSdzlKdFJ4bVVHVExENDNKVHoxaVdiVnViQT0="
+            },
+            "items": {
+              "type": "array",
+              "description": "Error code, non-zero means failure",
+              "required": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "目标的 ID",
+                  "required": true,
+                  "example": "7342342398472398473"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "目标的创建时间，毫秒级时间戳",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "update_time": {
+                  "type": "string",
+                  "description": "目标的更新时间，毫秒级时间戳",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "owner": {
+                  "type": "object",
+                  "description": "Owner who initiated the alignment",
+                  "required": true,
+                  "ref": "owner",
+                  "properties": {
+                    "owner_type": {
+                      "type": "string",
+                      "description": "Owner type",
+                      "required": true,
+                      "example": "user",
+                      "options": [
+                        {
+                          "value": "user",
+                          "description": "Employee"
+                        }
+                      ],
+                      "enum": [
+                        "user"
+                      ]
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "description": "Employee ID",
+                      "required": false,
+                      "example": "ou_3bbe8a09c20e89cce9bff989ed840674",
+                      "annotations": [
+                        "open:x_user_id",
+                        "tolerate_idtrans_failure"
+                      ]
+                    }
+                  }
+                },
+                "cycle_id": {
+                  "type": "string",
+                  "description": "目标的用户周期 ID",
+                  "required": true,
+                  "example": "1"
+                },
+                "position": {
+                  "type": "integer",
+                  "description": "目标的序号：从 1 开始计数",
+                  "required": true,
+                  "example": 1,
+                  "max": "100",
+                  "min": "1"
+                },
+                "content": {
+                  "type": "object",
+                  "description": "目标的内容",
+                  "required": false,
+                  "ref": "content_block",
+                  "properties": {
+                    "blocks": {
+                      "type": "array",
+                      "description": "文档结构是按行排列的，每行内容是一个 Block",
+                      "required": false
+                    }
+                  }
+                },
+                "score": {
+                  "type": "number",
+                  "description": "目标的分数：[0,1]，支持一位小数",
+                  "required": false,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                },
+                "notes": {
+                  "type": "object",
+                  "description": "目标的备注",
+                  "required": false,
+                  "ref": "content_block",
+                  "properties": {
+                    "blocks": {
+                      "type": "array",
+                      "description": "文档结构是按行排列的，每行内容是一个 Block",
+                      "required": false
+                    }
+                  }
+                },
+                "weight": {
+                  "type": "number",
+                  "description": "目标的权重：[0,1]，支持三位小数",
+                  "required": false,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                },
+                "deadline": {
+                  "type": "string",
+                  "description": "Objective deadline, millisecond timestamp",
+                  "required": false,
+                  "example": "1760604634563"
+                },
+                "category_id": {
+                  "type": "string",
+                  "description": "目标的分类 ID",
+                  "required": false,
+                  "example": "1"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "okr:okr.content:readonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=okr&resource=okr.cycle.objective&version=v2"
+        }
+      }
+    },
+    "indicators": {
+      "methods": {
+        "patch": {
+          "id": "indicators.patch",
+          "path": "indicators/{indicator_id}",
+          "httpMethod": "PATCH",
+          "description": "Update Indicator",
+          "parameters": {
+            "indicator_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Indicator ID. How to obtain: Call the \"Get Objective's indicator\" or \"Get Key Result's indicator\" API",
+              "example": "7342342398472398473"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户 ID 的类型",
+              "default": "open_id",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            },
+            "department_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Department ID type used in this call",
+              "default": "open_department_id",
+              "example": "open_department_id",
+              "options": [
+                {
+                  "value": "department_id",
+                  "description": "use department_id for department"
+                },
+                {
+                  "value": "open_department_id",
+                  "description": "use open_department_id for department"
+                }
+              ],
+              "enum": [
+                "department_id",
+                "open_department_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "indicator_id"
+          ],
+          "requestBody": {
+            "current_value_calculate_type": {
+              "type": "integer",
+              "description": "Indicator current value calculation method. Objective only supports 0, 1; Key Result only supports 0, 2",
+              "required": false,
+              "example": 0,
+              "options": [
+                {
+                  "value": 0,
+                  "description": "Manual update"
+                },
+                {
+                  "value": 1,
+                  "description": "Auto update based on Key Result progress"
+                },
+                {
+                  "value": 2,
+                  "description": "Updated based on decomposed Key Result progress"
+                }
+              ],
+              "enum": [
+                0,
+                1,
+                2
+              ]
+            },
+            "status_calculate_type": {
+              "type": "integer",
+              "description": "Indicator status calculation method. Objective only supports 0, 1, 2; Key Result only supports 0, 1",
+              "required": false,
+              "example": 0,
+              "options": [
+                {
+                  "value": 0,
+                  "description": "Manual update"
+                },
+                {
+                  "value": 1,
+                  "description": "Auto update based on progress and current time"
+                },
+                {
+                  "value": 2,
+                  "description": "Updated based on highest risk Key Result status"
+                }
+              ],
+              "enum": [
+                0,
+                1,
+                2
+              ]
+            },
+            "start_value": {
+              "type": "number",
+              "description": "Indicator start value. Not supported for Objective modification",
+              "required": false,
+              "example": 0.0,
+              "max": "99999999999",
+              "min": "-99999999999"
+            },
+            "target_value": {
+              "type": "number",
+              "description": "Indicator target value. Not supported for Objective modification; not supported for Key Result modification with carry-over records",
+              "required": false,
+              "example": 0.0,
+              "max": "99999999999",
+              "min": "-99999999999"
+            },
+            "current_value": {
+              "type": "number",
+              "description": "Indicator current value. Not supported for Objective modification with Auto update based on Key Result progress; not supported for Key Result modification with Auto update based on decomposed records",
+              "required": false,
+              "example": 0.0,
+              "max": "99999999999",
+              "min": "-99999999999"
+            },
+            "unit": {
+              "type": "object",
+              "description": "Indicator unit. Not supported for Objective modification; not supported for Key Result modification with carry-over records",
+              "required": false,
+              "ref": "indicator_unit",
+              "properties": {
+                "unit_type": {
+                  "type": "integer",
+                  "description": "Indicator unit type",
+                  "required": true,
+                  "example": 0,
+                  "options": [
+                    {
+                      "value": 0,
+                      "description": "Public"
+                    },
+                    {
+                      "value": 1,
+                      "description": "Custom"
+                    }
+                  ],
+                  "enum": [
+                    0,
+                    1
+                  ]
+                },
+                "unit_value": {
+                  "type": "string",
+                  "description": "Indicator unit value. If custom, character length not exceeding 5; if unit type is 'Public', unit value is one of the following enum values: Percentage: PERCENT; None: NONE; Yuan: YUAN; Dollar: DOLLAR",
+                  "required": true,
+                  "example": "PERCENT"
+                }
+              }
+            },
+            "indicator_status": {
+              "type": "integer",
+              "description": "Indicator status. Only modifiable when Indicator status calculation method is Manual update",
+              "required": false,
+              "example": 0,
+              "options": [
+                {
+                  "value": -1,
+                  "description": "Undefined"
+                },
+                {
+                  "value": 0,
+                  "description": "Normal"
+                },
+                {
+                  "value": 1,
+                  "description": "At risk"
+                },
+                {
+                  "value": 2,
+                  "description": "Delayed"
+                }
+              ],
+              "enum": [
+                -1,
+                0,
+                1,
+                2
+              ]
+            }
+          },
+          "responseBody": {
+            "indicator": {
+              "type": "object",
+              "description": "Indicator",
+              "required": false,
+              "ref": "indicator",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Indicator ID",
+                  "required": true,
+                  "example": "7342342398472398473"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "Indicator creation time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "update_time": {
+                  "type": "string",
+                  "description": "Indicator update time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "owner": {
+                  "type": "object",
+                  "description": "Owner who initiated the alignment",
+                  "required": true,
+                  "ref": "owner",
+                  "properties": {
+                    "owner_type": {
+                      "type": "string",
+                      "description": "Owner type",
+                      "required": true,
+                      "example": "user",
+                      "options": [
+                        {
+                          "value": "user",
+                          "description": "Employee"
+                        }
+                      ],
+                      "enum": [
+                        "user"
+                      ]
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "description": "Employee ID",
+                      "required": false,
+                      "example": "ou_3bbe8a09c20e89cce9bff989ed840674",
+                      "annotations": [
+                        "open:x_user_id",
+                        "tolerate_idtrans_failure"
+                      ]
+                    }
+                  }
+                },
+                "entity_type": {
+                  "type": "integer",
+                  "description": "Entity type that the indicator belongs to",
+                  "required": true,
+                  "example": 2,
+                  "options": [
+                    {
+                      "value": 2,
+                      "description": "Objective"
+                    },
+                    {
+                      "value": 3,
+                      "description": "Key Result"
+                    }
+                  ],
+                  "enum": [
+                    2,
+                    3
+                  ]
+                },
+                "entity_id": {
+                  "type": "string",
+                  "description": "Entity ID that the indicator belongs to",
+                  "required": true,
+                  "example": "7342342398472398473"
+                },
+                "indicator_status": {
+                  "type": "integer",
+                  "description": "Indicator status",
+                  "required": true,
+                  "example": 0,
+                  "options": [
+                    {
+                      "value": -1,
+                      "description": "Undefined"
+                    },
+                    {
+                      "value": 0,
+                      "description": "Normal"
+                    },
+                    {
+                      "value": 1,
+                      "description": "At risk"
+                    },
+                    {
+                      "value": 2,
+                      "description": "Delayed"
+                    }
+                  ],
+                  "enum": [
+                    -1,
+                    0,
+                    1,
+                    2
+                  ]
+                },
+                "status_calculate_type": {
+                  "type": "integer",
+                  "description": "Indicator status calculation method",
+                  "required": true,
+                  "example": 0,
+                  "options": [
+                    {
+                      "value": 0,
+                      "description": "Manual update"
+                    },
+                    {
+                      "value": 1,
+                      "description": "Auto update based on progress and current time"
+                    },
+                    {
+                      "value": 2,
+                      "description": "基于风险最高的关键结果状态更新"
+                    }
+                  ],
+                  "enum": [
+                    0,
+                    1,
+                    2
+                  ]
+                },
+                "start_value": {
+                  "type": "number",
+                  "description": "Indicator start value",
+                  "required": false,
+                  "example": 0.0,
+                  "max": "99999999999",
+                  "min": "-99999999999"
+                },
+                "target_value": {
+                  "type": "number",
+                  "description": "Indicator target value",
+                  "required": false,
+                  "example": 0.0,
+                  "max": "99999999999",
+                  "min": "-99999999999"
+                },
+                "current_value": {
+                  "type": "number",
+                  "description": "Indicator current value",
+                  "required": false,
+                  "example": 0.0,
+                  "max": "99999999999",
+                  "min": "-99999999999"
+                },
+                "current_value_calculate_type": {
+                  "type": "integer",
+                  "description": "Indicator current value calculation method",
+                  "required": false,
+                  "example": 0,
+                  "options": [
+                    {
+                      "value": 0,
+                      "description": "Manual update"
+                    },
+                    {
+                      "value": 1,
+                      "description": "Auto update based on Key Result progress"
+                    },
+                    {
+                      "value": 2,
+                      "description": "基于拆解的关键结果进度更新"
+                    }
+                  ],
+                  "enum": [
+                    0,
+                    1,
+                    2
+                  ]
+                },
+                "unit": {
+                  "type": "object",
+                  "description": "Indicator unit. Not supported for Objective modification; not supported for Key Result modification with carry-over records",
+                  "required": false,
+                  "ref": "indicator_unit",
+                  "properties": {
+                    "unit_type": {
+                      "type": "integer",
+                      "description": "Indicator unit type",
+                      "required": true,
+                      "example": 0,
+                      "options": [
+                        {
+                          "value": 0,
+                          "description": "Public"
+                        },
+                        {
+                          "value": 1,
+                          "description": "Custom"
+                        }
+                      ],
+                      "enum": [
+                        0,
+                        1
+                      ]
+                    },
+                    "unit_value": {
+                      "type": "string",
+                      "description": "Indicator unit value. If custom, character length not exceeding 5; if unit type is 'Public', unit value is one of the following enum values: Percentage: PERCENT; None: NONE; Yuan: YUAN; Dollar: DOLLAR",
+                      "required": true,
+                      "example": "PERCENT"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "scopes": [
+            "okr:okr.content:writeonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=patch&project=okr&resource=okr.indicator&version=v2"
+        }
+      }
+    },
+    "key_results": {
+      "methods": {
+        "delete": {
+          "id": "key_results.delete",
+          "path": "key_results/{key_result_id}",
+          "httpMethod": "DELETE",
+          "description": "Delete Key Result",
+          "parameters": {
+            "key_result_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Key Result ID. The ID type must match the user_id_type or department_id_type parameter value. How to get: Call the \"Get Key Results of an Objective\" API",
+              "example": "7342342398472398473"
+            }
+          },
+          "parameterOrder": [
+            "key_result_id"
+          ],
+          "responseBody": {
+            "key_result_id": {
+              "type": "string",
+              "description": "Key Result ID",
+              "required": false,
+              "example": "7342342398472398473"
+            }
+          },
+          "scopes": [
+            "okr:okr.content:writeonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "high-risk-write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=delete&project=okr&resource=okr.key_result&version=v2"
+        },
+        "get": {
+          "id": "key_results.get",
+          "path": "key_results/{key_result_id}",
+          "httpMethod": "GET",
+          "description": "Get Key Result",
+          "parameters": {
+            "key_result_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Key Result ID. Obtain it via [List Key Results of an Objective]",
+              "example": "7342342398472398473"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户 ID 的类型",
+              "default": "open_id",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            },
+            "department_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Department ID type used in this call",
+              "default": "open_department_id",
+              "example": "open_department_id",
+              "options": [
+                {
+                  "value": "department_id",
+                  "description": "use department_id for department"
+                },
+                {
+                  "value": "open_department_id",
+                  "description": "use open_department_id for department"
+                }
+              ],
+              "enum": [
+                "department_id",
+                "open_department_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "key_result_id"
+          ],
+          "responseBody": {
+            "key_result": {
+              "type": "object",
+              "description": "Key Result",
+              "required": false,
+              "ref": "key_result",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Key Result ID",
+                  "required": true,
+                  "example": "7342342398472398473"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "Key Result creation time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "update_time": {
+                  "type": "string",
+                  "description": "Key Result update time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "owner": {
+                  "type": "object",
+                  "description": "Owner who initiated the alignment",
+                  "required": true,
+                  "ref": "owner",
+                  "properties": {
+                    "owner_type": {
+                      "type": "string",
+                      "description": "Owner type",
+                      "required": true,
+                      "example": "user",
+                      "options": [
+                        {
+                          "value": "user",
+                          "description": "Employee"
+                        }
+                      ],
+                      "enum": [
+                        "user"
+                      ]
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "description": "Employee ID",
+                      "required": false,
+                      "example": "ou_3bbe8a09c20e89cce9bff989ed840674",
+                      "annotations": [
+                        "open:x_user_id",
+                        "tolerate_idtrans_failure"
+                      ]
+                    }
+                  }
+                },
+                "objective_id": {
+                  "type": "string",
+                  "description": "关键结果的目标 ID",
+                  "required": true,
+                  "example": "1"
+                },
+                "position": {
+                  "type": "integer",
+                  "description": "关键结果的序号：从 1 开始计数",
+                  "required": true,
+                  "example": 1,
+                  "max": "100",
+                  "min": "1"
+                },
+                "content": {
+                  "type": "object",
+                  "description": "关键结果的内容",
+                  "required": false,
+                  "ref": "content_block",
+                  "properties": {
+                    "blocks": {
+                      "type": "array",
+                      "description": "文档结构是按行排列的，每行内容是一个 Block",
+                      "required": false
+                    }
+                  }
+                },
+                "score": {
+                  "type": "number",
+                  "description": "Key Result score: [0,1], supports one decimal place",
+                  "required": false,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                },
+                "weight": {
+                  "type": "number",
+                  "description": "Objective weight: [0,1], supports three decimal places",
+                  "required": false,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                },
+                "deadline": {
+                  "type": "string",
+                  "description": "目标的截止时间，时间戳",
+                  "required": false,
+                  "example": "1760604634563"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "okr:okr.content:readonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=okr&resource=okr.key_result&version=v2"
+        },
+        "patch": {
+          "id": "key_results.patch",
+          "path": "key_results/{key_result_id}",
+          "httpMethod": "PATCH",
+          "description": "Modify Key Result",
+          "parameters": {
+            "key_result_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Key Result ID. Obtain it via [List Key Results of an Objective]",
+              "example": "7342342398472398473"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户 ID 的类型",
+              "default": "open_id",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            },
+            "department_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Department ID type used in this call",
+              "default": "open_department_id",
+              "example": "open_department_id",
+              "options": [
+                {
+                  "value": "department_id",
+                  "description": "use department_id for department"
+                },
+                {
+                  "value": "open_department_id",
+                  "description": "use open_department_id for department"
+                }
+              ],
+              "enum": [
+                "department_id",
+                "open_department_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "key_result_id"
+          ],
+          "requestBody": {
+            "content": {
+              "type": "object",
+              "description": "Key Result content",
+              "required": false,
+              "ref": "content_block",
+              "properties": {
+                "blocks": {
+                  "type": "array",
+                  "description": "文档结构是按行排列的，每行内容是一个 Block",
+                  "required": false,
+                  "properties": {
+                    "block_element_type": {
+                      "type": "string",
+                      "description": "Document element type",
+                      "required": false,
+                      "example": "paragraph",
+                      "options": [
+                        {
+                          "value": "paragraph",
+                          "description": "Text paragraph"
+                        },
+                        {
+                          "value": "gallery",
+                          "description": "Image"
+                        }
+                      ],
+                      "enum": [
+                        "paragraph",
+                        "gallery"
+                      ]
+                    },
+                    "paragraph": {
+                      "type": "object",
+                      "description": "Text paragraph",
+                      "required": false,
+                      "ref": "content_paragraph"
+                    },
+                    "gallery": {
+                      "type": "object",
+                      "description": "Image",
+                      "required": false,
+                      "ref": "content_gallery"
+                    }
+                  }
+                }
+              }
+            },
+            "score": {
+              "type": "number",
+              "description": "Key Result score: [0,1], supports one decimal place",
+              "required": false,
+              "example": 0.5,
+              "max": "1",
+              "min": "0"
+            },
+            "deadline": {
+              "type": "string",
+              "description": "Key Result deadline, millisecond timestamp",
+              "required": false,
+              "example": "1760604634563"
+            }
+          },
+          "responseBody": {
+            "key_result": {
+              "type": "object",
+              "description": "Key Result",
+              "required": false,
+              "ref": "key_result",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Key Result ID",
+                  "required": true,
+                  "example": "7342342398472398473"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "Key Result creation time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "update_time": {
+                  "type": "string",
+                  "description": "Key Result update time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "owner": {
+                  "type": "object",
+                  "description": "Owner who initiated the alignment",
+                  "required": true,
+                  "ref": "owner",
+                  "properties": {
+                    "owner_type": {
+                      "type": "string",
+                      "description": "Owner type",
+                      "required": true,
+                      "example": "user",
+                      "options": [
+                        {
+                          "value": "user",
+                          "description": "Employee"
+                        }
+                      ],
+                      "enum": [
+                        "user"
+                      ]
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "description": "Employee ID",
+                      "required": false,
+                      "example": "ou_3bbe8a09c20e89cce9bff989ed840674",
+                      "annotations": [
+                        "open:x_user_id",
+                        "tolerate_idtrans_failure"
+                      ]
+                    }
+                  }
+                },
+                "objective_id": {
+                  "type": "string",
+                  "description": "关键结果的目标 ID",
+                  "required": true,
+                  "example": "1"
+                },
+                "position": {
+                  "type": "integer",
+                  "description": "关键结果的序号：从 1 开始计数",
+                  "required": true,
+                  "example": 1,
+                  "max": "100",
+                  "min": "1"
+                },
+                "content": {
+                  "type": "object",
+                  "description": "关键结果的内容",
+                  "required": false,
+                  "ref": "content_block",
+                  "properties": {
+                    "blocks": {
+                      "type": "array",
+                      "description": "文档结构是按行排列的，每行内容是一个 Block",
+                      "required": false
+                    }
+                  }
+                },
+                "score": {
+                  "type": "number",
+                  "description": "Key Result score: [0,1], supports one decimal place",
+                  "required": false,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                },
+                "weight": {
+                  "type": "number",
+                  "description": "Objective weight: [0,1], supports three decimal places",
+                  "required": false,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                },
+                "deadline": {
+                  "type": "string",
+                  "description": "目标的截止时间，时间戳",
+                  "required": false,
+                  "example": "1760604634563"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "okr:okr.content:writeonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=patch&project=okr&resource=okr.key_result&version=v2"
+        }
+      }
+    },
+    "key_result.indicators": {
+      "methods": {
+        "list": {
+          "id": "key_result.indicators.list",
+          "path": "key_results/{key_result_id}/indicators",
+          "httpMethod": "GET",
+          "description": "Get Indicator of a Key Result",
+          "parameters": {
+            "key_result_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Key Result ID. Obtain it via [List Key Results of an Objective]",
+              "example": "7342342398472398473"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户 ID 的类型",
+              "default": "open_id",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            },
+            "department_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Department ID type used in this call",
+              "default": "open_department_id",
+              "example": "open_department_id",
+              "options": [
+                {
+                  "value": "department_id",
+                  "description": "use department_id for department"
+                },
+                {
+                  "value": "open_department_id",
+                  "description": "use open_department_id for department"
+                }
+              ],
+              "enum": [
+                "department_id",
+                "open_department_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "key_result_id"
+          ],
+          "responseBody": {
+            "indicator": {
+              "type": "object",
+              "description": "Indicator",
+              "required": false,
+              "ref": "indicator",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Indicator ID",
+                  "required": true,
+                  "example": "7342342398472398473"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "Indicator creation time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "update_time": {
+                  "type": "string",
+                  "description": "Indicator update time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "owner": {
+                  "type": "object",
+                  "description": "Owner who initiated the alignment",
+                  "required": true,
+                  "ref": "owner",
+                  "properties": {
+                    "owner_type": {
+                      "type": "string",
+                      "description": "Owner type",
+                      "required": true,
+                      "example": "user",
+                      "options": [
+                        {
+                          "value": "user",
+                          "description": "Employee"
+                        }
+                      ],
+                      "enum": [
+                        "user"
+                      ]
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "description": "Employee ID",
+                      "required": false,
+                      "example": "ou_3bbe8a09c20e89cce9bff989ed840674",
+                      "annotations": [
+                        "open:x_user_id",
+                        "tolerate_idtrans_failure"
+                      ]
+                    }
+                  }
+                },
+                "entity_type": {
+                  "type": "integer",
+                  "description": "Entity type that the indicator belongs to",
+                  "required": true,
+                  "example": 2,
+                  "options": [
+                    {
+                      "value": 2,
+                      "description": "Objective"
+                    },
+                    {
+                      "value": 3,
+                      "description": "Key Result"
+                    }
+                  ],
+                  "enum": [
+                    2,
+                    3
+                  ]
+                },
+                "entity_id": {
+                  "type": "string",
+                  "description": "Entity ID that the indicator belongs to",
+                  "required": true,
+                  "example": "7342342398472398473"
+                },
+                "indicator_status": {
+                  "type": "integer",
+                  "description": "Indicator status",
+                  "required": true,
+                  "example": 0,
+                  "options": [
+                    {
+                      "value": -1,
+                      "description": "Undefined"
+                    },
+                    {
+                      "value": 0,
+                      "description": "Normal"
+                    },
+                    {
+                      "value": 1,
+                      "description": "At risk"
+                    },
+                    {
+                      "value": 2,
+                      "description": "Delayed"
+                    }
+                  ],
+                  "enum": [
+                    -1,
+                    0,
+                    1,
+                    2
+                  ]
+                },
+                "status_calculate_type": {
+                  "type": "integer",
+                  "description": "Indicator status calculation method",
+                  "required": true,
+                  "example": 0,
+                  "options": [
+                    {
+                      "value": 0,
+                      "description": "Manual update"
+                    },
+                    {
+                      "value": 1,
+                      "description": "Auto update based on progress and current time"
+                    },
+                    {
+                      "value": 2,
+                      "description": "基于风险最高的关键结果状态更新"
+                    }
+                  ],
+                  "enum": [
+                    0,
+                    1,
+                    2
+                  ]
+                },
+                "start_value": {
+                  "type": "number",
+                  "description": "Indicator start value",
+                  "required": false,
+                  "example": 0.0,
+                  "max": "99999999999",
+                  "min": "-99999999999"
+                },
+                "target_value": {
+                  "type": "number",
+                  "description": "Indicator target value",
+                  "required": false,
+                  "example": 0.0,
+                  "max": "99999999999",
+                  "min": "-99999999999"
+                },
+                "current_value": {
+                  "type": "number",
+                  "description": "Indicator current value",
+                  "required": false,
+                  "example": 0.0,
+                  "max": "99999999999",
+                  "min": "-99999999999"
+                },
+                "current_value_calculate_type": {
+                  "type": "integer",
+                  "description": "Indicator current value calculation method",
+                  "required": false,
+                  "example": 0,
+                  "options": [
+                    {
+                      "value": 0,
+                      "description": "Manual update"
+                    },
+                    {
+                      "value": 1,
+                      "description": "Auto update based on Key Result progress"
+                    },
+                    {
+                      "value": 2,
+                      "description": "基于拆解的关键结果进度更新"
+                    }
+                  ],
+                  "enum": [
+                    0,
+                    1,
+                    2
+                  ]
+                },
+                "unit": {
+                  "type": "object",
+                  "description": "Indicator unit. Not supported for Objective modification; not supported for Key Result modification with carry-over records",
+                  "required": false,
+                  "ref": "indicator_unit",
+                  "properties": {
+                    "unit_type": {
+                      "type": "integer",
+                      "description": "Indicator unit type",
+                      "required": true,
+                      "example": 0,
+                      "options": [
+                        {
+                          "value": 0,
+                          "description": "Public"
+                        },
+                        {
+                          "value": 1,
+                          "description": "Custom"
+                        }
+                      ],
+                      "enum": [
+                        0,
+                        1
+                      ]
+                    },
+                    "unit_value": {
+                      "type": "string",
+                      "description": "Indicator unit value. If custom, character length not exceeding 5; if unit type is 'Public', unit value is one of the following enum values: Percentage: PERCENT; None: NONE; Yuan: YUAN; Dollar: DOLLAR",
+                      "required": true,
+                      "example": "PERCENT"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "scopes": [
+            "okr:okr.content:readonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=okr&resource=okr.key_result.indicator&version=v2"
+        }
+      }
+    },
+    "objectives": {
+      "methods": {
+        "delete": {
+          "id": "objectives.delete",
+          "path": "objectives/{objective_id}",
+          "httpMethod": "DELETE",
+          "description": "Delete Objective",
+          "parameters": {
+            "objective_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Objective ID. You can get this ID from the \"List Objectives in OKR Cycle\" API. The ID type must match the value of the user_id_type parameter",
+              "example": "7342342398472398473"
+            }
+          },
+          "parameterOrder": [
+            "objective_id"
+          ],
+          "responseBody": {
+            "objective_id": {
+              "type": "string",
+              "description": "Objective ID",
+              "required": false,
+              "example": "7342342398472398473"
+            }
+          },
+          "scopes": [
+            "okr:okr.content:writeonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "high-risk-write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=delete&project=okr&resource=okr.objective&version=v2"
+        },
+        "get": {
+          "id": "objectives.get",
+          "path": "objectives/{objective_id}",
+          "httpMethod": "GET",
+          "description": "Get Objective",
+          "parameters": {
+            "objective_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Objective ID. Obtain it via [List Objectives in OKR Cycle]",
+              "example": "7342342398472398473"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户 ID 的类型",
+              "default": "open_id",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            },
+            "department_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Department ID type used in this call",
+              "default": "open_department_id",
+              "example": "open_department_id",
+              "options": [
+                {
+                  "value": "department_id",
+                  "description": "use department_id for department"
+                },
+                {
+                  "value": "open_department_id",
+                  "description": "use open_department_id for department"
+                }
+              ],
+              "enum": [
+                "department_id",
+                "open_department_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "objective_id"
+          ],
+          "responseBody": {
+            "objective": {
+              "type": "object",
+              "description": "Objective",
+              "required": false,
+              "ref": "objective",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "目标的 ID",
+                  "required": true,
+                  "example": "7342342398472398473"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "目标的创建时间，毫秒级时间戳",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "update_time": {
+                  "type": "string",
+                  "description": "目标的更新时间，毫秒级时间戳",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "owner": {
+                  "type": "object",
+                  "description": "Owner who initiated the alignment",
+                  "required": true,
+                  "ref": "owner",
+                  "properties": {
+                    "owner_type": {
+                      "type": "string",
+                      "description": "Owner type",
+                      "required": true,
+                      "example": "user",
+                      "options": [
+                        {
+                          "value": "user",
+                          "description": "Employee"
+                        }
+                      ],
+                      "enum": [
+                        "user"
+                      ]
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "description": "Employee ID",
+                      "required": false,
+                      "example": "ou_3bbe8a09c20e89cce9bff989ed840674",
+                      "annotations": [
+                        "open:x_user_id",
+                        "tolerate_idtrans_failure"
+                      ]
+                    }
+                  }
+                },
+                "cycle_id": {
+                  "type": "string",
+                  "description": "目标的用户周期 ID",
+                  "required": true,
+                  "example": "1"
+                },
+                "position": {
+                  "type": "integer",
+                  "description": "目标的序号：从 1 开始计数",
+                  "required": true,
+                  "example": 1,
+                  "max": "100",
+                  "min": "1"
+                },
+                "content": {
+                  "type": "object",
+                  "description": "目标的内容",
+                  "required": false,
+                  "ref": "content_block",
+                  "properties": {
+                    "blocks": {
+                      "type": "array",
+                      "description": "文档结构是按行排列的，每行内容是一个 Block",
+                      "required": false
+                    }
+                  }
+                },
+                "score": {
+                  "type": "number",
+                  "description": "目标的分数：[0,1]，支持一位小数",
+                  "required": false,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                },
+                "notes": {
+                  "type": "object",
+                  "description": "目标的备注",
+                  "required": false,
+                  "ref": "content_block",
+                  "properties": {
+                    "blocks": {
+                      "type": "array",
+                      "description": "文档结构是按行排列的，每行内容是一个 Block",
+                      "required": false
+                    }
+                  }
+                },
+                "weight": {
+                  "type": "number",
+                  "description": "目标的权重：[0,1]，支持三位小数",
+                  "required": false,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                },
+                "deadline": {
+                  "type": "string",
+                  "description": "Objective deadline, millisecond timestamp",
+                  "required": false,
+                  "example": "1760604634563"
+                },
+                "category_id": {
+                  "type": "string",
+                  "description": "目标的分类 ID",
+                  "required": false,
+                  "example": "1"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "okr:okr.content:readonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=okr&resource=okr.objective&version=v2"
+        },
+        "key_results_position": {
+          "id": "objectives.key_results_position",
+          "path": "objectives/{objective_id}/key_results_position",
+          "httpMethod": "PUT",
+          "description": "Modify Key Result positions in Objective",
+          "parameters": {
+            "objective_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Objective ID. You can get this ID from the \"List Objectives in OKR Cycle\" API. The ID type must match the value of the user_id_type parameter",
+              "example": "7342342398472398473"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户 ID 的类型",
+              "default": "open_id",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            },
+            "department_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Department ID type used in this call",
+              "default": "open_department_id",
+              "example": "open_department_id",
+              "options": [
+                {
+                  "value": "department_id",
+                  "description": "use department_id for department"
+                },
+                {
+                  "value": "open_department_id",
+                  "description": "use open_department_id for department"
+                }
+              ],
+              "enum": [
+                "department_id",
+                "open_department_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "objective_id"
+          ],
+          "requestBody": {
+            "key_result_ids": {
+              "type": "array",
+              "description": "Key Result ID list, ordered by sequence number",
+              "required": true
+            }
+          },
+          "responseBody": {
+            "items": {
+              "type": "array",
+              "description": "Key Result list",
+              "required": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Key Result ID",
+                  "required": true,
+                  "example": "7342342398472398473"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "Key Result creation time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "update_time": {
+                  "type": "string",
+                  "description": "Key Result update time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "owner": {
+                  "type": "object",
+                  "description": "Owner who initiated the alignment",
+                  "required": true,
+                  "ref": "owner",
+                  "properties": {
+                    "owner_type": {
+                      "type": "string",
+                      "description": "Owner type",
+                      "required": true,
+                      "example": "user",
+                      "options": [
+                        {
+                          "value": "user",
+                          "description": "Employee"
+                        }
+                      ],
+                      "enum": [
+                        "user"
+                      ]
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "description": "Employee ID",
+                      "required": false,
+                      "example": "ou_3bbe8a09c20e89cce9bff989ed840674",
+                      "annotations": [
+                        "open:x_user_id",
+                        "tolerate_idtrans_failure"
+                      ]
+                    }
+                  }
+                },
+                "objective_id": {
+                  "type": "string",
+                  "description": "关键结果的目标 ID",
+                  "required": true,
+                  "example": "1"
+                },
+                "position": {
+                  "type": "integer",
+                  "description": "关键结果的序号：从 1 开始计数",
+                  "required": true,
+                  "example": 1,
+                  "max": "100",
+                  "min": "1"
+                },
+                "content": {
+                  "type": "object",
+                  "description": "关键结果的内容",
+                  "required": false,
+                  "ref": "content_block",
+                  "properties": {
+                    "blocks": {
+                      "type": "array",
+                      "description": "文档结构是按行排列的，每行内容是一个 Block",
+                      "required": false
+                    }
+                  }
+                },
+                "score": {
+                  "type": "number",
+                  "description": "Key Result score: [0,1], supports one decimal place",
+                  "required": false,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                },
+                "weight": {
+                  "type": "number",
+                  "description": "Objective weight: [0,1], supports three decimal places",
+                  "required": false,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                },
+                "deadline": {
+                  "type": "string",
+                  "description": "目标的截止时间，时间戳",
+                  "required": false,
+                  "example": "1760604634563"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "okr:okr.content:writeonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=key_results_position&project=okr&resource=okr.objective&version=v2"
+        },
+        "key_results_weight": {
+          "id": "objectives.key_results_weight",
+          "path": "objectives/{objective_id}/key_results_weight",
+          "httpMethod": "PUT",
+          "description": "Modify Key Result weights in Objective",
+          "parameters": {
+            "objective_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Objective ID. The ID type must match the user_id_type or department_id_type parameter value. How to get: Call the \"Get Objectives in OKR Cycle\" API",
+              "example": "7342342398472398473"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户 ID 的类型",
+              "default": "open_id",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            },
+            "department_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Department ID type used in this call",
+              "default": "open_department_id",
+              "example": "open_department_id",
+              "options": [
+                {
+                  "value": "department_id",
+                  "description": "use department_id for department"
+                },
+                {
+                  "value": "open_department_id",
+                  "description": "use open_department_id for department"
+                }
+              ],
+              "enum": [
+                "department_id",
+                "open_department_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "objective_id"
+          ],
+          "requestBody": {
+            "key_result_weights": {
+              "type": "array",
+              "description": "Key Result weight list",
+              "required": true,
+              "properties": {
+                "key_result_id": {
+                  "type": "string",
+                  "description": "Key Result ID",
+                  "required": true,
+                  "example": "7342342398472398473"
+                },
+                "weight": {
+                  "type": "number",
+                  "description": "Objective weight: [0,1], supports three decimal places",
+                  "required": true,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                }
+              }
+            }
+          },
+          "responseBody": {
+            "items": {
+              "type": "array",
+              "description": "Key Result list",
+              "required": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Key Result ID",
+                  "required": true,
+                  "example": "7342342398472398473"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "Key Result creation time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "update_time": {
+                  "type": "string",
+                  "description": "Key Result update time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "owner": {
+                  "type": "object",
+                  "description": "Owner who initiated the alignment",
+                  "required": true,
+                  "ref": "owner",
+                  "properties": {
+                    "owner_type": {
+                      "type": "string",
+                      "description": "Owner type",
+                      "required": true,
+                      "example": "user",
+                      "options": [
+                        {
+                          "value": "user",
+                          "description": "Employee"
+                        }
+                      ],
+                      "enum": [
+                        "user"
+                      ]
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "description": "Employee ID",
+                      "required": false,
+                      "example": "ou_3bbe8a09c20e89cce9bff989ed840674",
+                      "annotations": [
+                        "open:x_user_id",
+                        "tolerate_idtrans_failure"
+                      ]
+                    }
+                  }
+                },
+                "objective_id": {
+                  "type": "string",
+                  "description": "关键结果的目标 ID",
+                  "required": true,
+                  "example": "1"
+                },
+                "position": {
+                  "type": "integer",
+                  "description": "关键结果的序号：从 1 开始计数",
+                  "required": true,
+                  "example": 1,
+                  "max": "100",
+                  "min": "1"
+                },
+                "content": {
+                  "type": "object",
+                  "description": "关键结果的内容",
+                  "required": false,
+                  "ref": "content_block",
+                  "properties": {
+                    "blocks": {
+                      "type": "array",
+                      "description": "文档结构是按行排列的，每行内容是一个 Block",
+                      "required": false
+                    }
+                  }
+                },
+                "score": {
+                  "type": "number",
+                  "description": "Key Result score: [0,1], supports one decimal place",
+                  "required": false,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                },
+                "weight": {
+                  "type": "number",
+                  "description": "Objective weight: [0,1], supports three decimal places",
+                  "required": false,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                },
+                "deadline": {
+                  "type": "string",
+                  "description": "目标的截止时间，时间戳",
+                  "required": false,
+                  "example": "1760604634563"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "okr:okr.content:writeonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=key_results_weight&project=okr&resource=okr.objective&version=v2"
+        },
+        "patch": {
+          "id": "objectives.patch",
+          "path": "objectives/{objective_id}",
+          "httpMethod": "PATCH",
+          "description": "Modify Objective",
+          "parameters": {
+            "objective_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Objective ID. You can get this ID from the \"List Objectives in OKR Cycle\" API. The ID type must match the value of the user_id_type parameter",
+              "example": "7342342398472398473"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户 ID 的类型",
+              "default": "open_id",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            },
+            "department_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Department ID type used in this call",
+              "default": "open_department_id",
+              "example": "open_department_id",
+              "options": [
+                {
+                  "value": "department_id",
+                  "description": "use department_id for department"
+                },
+                {
+                  "value": "open_department_id",
+                  "description": "use open_department_id for department"
+                }
+              ],
+              "enum": [
+                "department_id",
+                "open_department_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "objective_id"
+          ],
+          "requestBody": {
+            "content": {
+              "type": "object",
+              "description": "ObjectiveContent",
+              "required": false,
+              "ref": "content_block",
+              "properties": {
+                "blocks": {
+                  "type": "array",
+                  "description": "文档结构是按行排列的，每行内容是一个 Block",
+                  "required": false,
+                  "properties": {
+                    "block_element_type": {
+                      "type": "string",
+                      "description": "Document element type",
+                      "required": false,
+                      "example": "paragraph",
+                      "options": [
+                        {
+                          "value": "paragraph",
+                          "description": "Text paragraph"
+                        },
+                        {
+                          "value": "gallery",
+                          "description": "Image"
+                        }
+                      ],
+                      "enum": [
+                        "paragraph",
+                        "gallery"
+                      ]
+                    },
+                    "paragraph": {
+                      "type": "object",
+                      "description": "Text paragraph",
+                      "required": false,
+                      "ref": "content_paragraph"
+                    },
+                    "gallery": {
+                      "type": "object",
+                      "description": "Image",
+                      "required": false,
+                      "ref": "content_gallery"
+                    }
+                  }
+                }
+              }
+            },
+            "score": {
+              "type": "number",
+              "description": "ObjectiveScore：[0,1]，Supports one decimal place",
+              "required": false,
+              "example": 0.5,
+              "max": "1",
+              "min": "0"
+            },
+            "notes": {
+              "type": "object",
+              "description": "Objective remark",
+              "required": false,
+              "ref": "content_block",
+              "properties": {
+                "blocks": {
+                  "type": "array",
+                  "description": "文档结构是按行排列的，每行内容是一个 Block",
+                  "required": false,
+                  "properties": {
+                    "block_element_type": {
+                      "type": "string",
+                      "description": "Document element type",
+                      "required": false,
+                      "example": "paragraph",
+                      "options": [
+                        {
+                          "value": "paragraph",
+                          "description": "Text paragraph"
+                        },
+                        {
+                          "value": "gallery",
+                          "description": "Image"
+                        }
+                      ],
+                      "enum": [
+                        "paragraph",
+                        "gallery"
+                      ]
+                    },
+                    "paragraph": {
+                      "type": "object",
+                      "description": "Text paragraph",
+                      "required": false,
+                      "ref": "content_paragraph"
+                    },
+                    "gallery": {
+                      "type": "object",
+                      "description": "Image",
+                      "required": false,
+                      "ref": "content_gallery"
+                    }
+                  }
+                }
+              }
+            },
+            "deadline": {
+              "type": "string",
+              "description": "Objective deadline, millisecond timestamp",
+              "required": false,
+              "example": "1760604634563"
+            },
+            "category_id": {
+              "type": "string",
+              "description": "Objective category ID",
+              "required": false,
+              "example": "7342342398472398473"
+            }
+          },
+          "responseBody": {
+            "objective": {
+              "type": "object",
+              "description": "Objective",
+              "required": false,
+              "ref": "objective",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "目标的 ID",
+                  "required": true,
+                  "example": "7342342398472398473"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "目标的创建时间，毫秒级时间戳",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "update_time": {
+                  "type": "string",
+                  "description": "目标的更新时间，毫秒级时间戳",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "owner": {
+                  "type": "object",
+                  "description": "Owner who initiated the alignment",
+                  "required": true,
+                  "ref": "owner",
+                  "properties": {
+                    "owner_type": {
+                      "type": "string",
+                      "description": "Owner type",
+                      "required": true,
+                      "example": "user",
+                      "options": [
+                        {
+                          "value": "user",
+                          "description": "Employee"
+                        }
+                      ],
+                      "enum": [
+                        "user"
+                      ]
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "description": "Employee ID",
+                      "required": false,
+                      "example": "ou_3bbe8a09c20e89cce9bff989ed840674",
+                      "annotations": [
+                        "open:x_user_id",
+                        "tolerate_idtrans_failure"
+                      ]
+                    }
+                  }
+                },
+                "cycle_id": {
+                  "type": "string",
+                  "description": "目标的用户周期 ID",
+                  "required": true,
+                  "example": "1"
+                },
+                "position": {
+                  "type": "integer",
+                  "description": "目标的序号：从 1 开始计数",
+                  "required": true,
+                  "example": 1,
+                  "max": "100",
+                  "min": "1"
+                },
+                "content": {
+                  "type": "object",
+                  "description": "目标的内容",
+                  "required": false,
+                  "ref": "content_block",
+                  "properties": {
+                    "blocks": {
+                      "type": "array",
+                      "description": "文档结构是按行排列的，每行内容是一个 Block",
+                      "required": false
+                    }
+                  }
+                },
+                "score": {
+                  "type": "number",
+                  "description": "目标的分数：[0,1]，支持一位小数",
+                  "required": false,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                },
+                "notes": {
+                  "type": "object",
+                  "description": "目标的备注",
+                  "required": false,
+                  "ref": "content_block",
+                  "properties": {
+                    "blocks": {
+                      "type": "array",
+                      "description": "文档结构是按行排列的，每行内容是一个 Block",
+                      "required": false
+                    }
+                  }
+                },
+                "weight": {
+                  "type": "number",
+                  "description": "目标的权重：[0,1]，支持三位小数",
+                  "required": false,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                },
+                "deadline": {
+                  "type": "string",
+                  "description": "Objective deadline, millisecond timestamp",
+                  "required": false,
+                  "example": "1760604634563"
+                },
+                "category_id": {
+                  "type": "string",
+                  "description": "目标的分类 ID",
+                  "required": false,
+                  "example": "1"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "okr:okr.content:writeonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=patch&project=okr&resource=okr.objective&version=v2"
+        }
+      }
+    },
+    "objective.alignments": {
+      "methods": {
+        "create": {
+          "id": "objective.alignments.create",
+          "path": "objectives/{objective_id}/alignments",
+          "httpMethod": "POST",
+          "description": "Create Object Alignment",
+          "parameters": {
+            "objective_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Objective ID. Obtain it via [List Objectives in OKR Cycle]",
+              "example": "7342342398472398473"
+            }
+          },
+          "parameterOrder": [
+            "objective_id"
+          ],
+          "requestBody": {
+            "to_entity_type": {
+              "type": "integer",
+              "description": "Aligned entity type",
+              "required": true,
+              "example": 2,
+              "options": [
+                {
+                  "value": 2,
+                  "description": "Objective"
+                }
+              ],
+              "enum": [
+                2
+              ]
+            },
+            "to_entity_id": {
+              "type": "string",
+              "description": "Aligned entity ID",
+              "required": true,
+              "example": "7342342398472398473"
+            }
+          },
+          "responseBody": {
+            "alignment_id": {
+              "type": "string",
+              "description": "Alignment ID",
+              "required": false,
+              "example": "7342342398472398473"
+            }
+          },
+          "scopes": [
+            "okr:okr.content:writeonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=create&project=okr&resource=okr.objective.alignment&version=v2"
+        },
+        "list": {
+          "id": "objective.alignments.list",
+          "path": "objectives/{objective_id}/alignments",
+          "httpMethod": "GET",
+          "description": "List Alignment of an Objective",
+          "parameters": {
+            "objective_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Objective ID. The ID type must match the user_id_type or department_id_type parameter value. How to get: Call the \"Get Objectives in OKR Cycle\" API",
+              "example": "7342342398472398473"
+            },
+            "page_size": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "Page size, maximum 100",
+              "default": 10,
+              "example": 10,
+              "max": "100",
+              "min": "1"
+            },
+            "page_token": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Page identifier. It is not filled in the first request, indicating traversal from the beginning; when there will be more groups, the new page_token will be returned at the same time, and the next traversal can use the page_token to get more groups",
+              "example": "eVQrYzJBNDNONlk4VFZBZVlSdzlKdFJ4bVVHVExENDNKVHoxaVdiVnViQT0="
+            },
+            "align_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Alignment type",
+              "example": "aligned",
+              "options": [
+                {
+                  "value": "aligned",
+                  "description": "Aligned by others"
+                },
+                {
+                  "value": "aligning",
+                  "description": "Alignment"
+                }
+              ],
+              "enum": [
+                "aligned",
+                "aligning"
+              ]
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户 ID 的类型",
+              "default": "open_id",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            },
+            "department_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Department ID type used in this call",
+              "default": "open_department_id",
+              "example": "open_department_id",
+              "options": [
+                {
+                  "value": "department_id",
+                  "description": "use department_id for department"
+                },
+                {
+                  "value": "open_department_id",
+                  "description": "use open_department_id for department"
+                }
+              ],
+              "enum": [
+                "department_id",
+                "open_department_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "objective_id"
+          ],
+          "responseBody": {
+            "has_more": {
+              "type": "boolean",
+              "description": "Whether the response body has more parameters",
+              "required": false,
+              "example": true
+            },
+            "page_token": {
+              "type": "string",
+              "description": "Page identifier, when has_more is true, a new page_token will also be returned. Otherwise, page_token will not be returned",
+              "required": false,
+              "example": "eVQrYzJBNDNONlk4VFZBZVlSdzlKdFJ4bVVHVExENDNKVHoxaVdiVnViQT0="
+            },
+            "items": {
+              "type": "array",
+              "description": "Alignment list",
+              "required": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Alignment ID",
+                  "required": true,
+                  "example": "1"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "Alignment creation time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "update_time": {
+                  "type": "string",
+                  "description": "Alignment update time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "from_owner": {
+                  "type": "object",
+                  "description": "Owner who initiated the alignment",
+                  "required": true,
+                  "ref": "owner",
+                  "properties": {
+                    "owner_type": {
+                      "type": "string",
+                      "description": "Owner type",
+                      "required": true,
+                      "example": "user",
+                      "options": [
+                        {
+                          "value": "user",
+                          "description": "Employee"
+                        }
+                      ],
+                      "enum": [
+                        "user"
+                      ]
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "description": "Employee ID",
+                      "required": false,
+                      "example": "ou_3bbe8a09c20e89cce9bff989ed840674",
+                      "annotations": [
+                        "open:x_user_id",
+                        "tolerate_idtrans_failure"
+                      ]
+                    }
+                  }
+                },
+                "to_owner": {
+                  "type": "object",
+                  "description": "Owner who initiated the alignment",
+                  "required": true,
+                  "ref": "owner",
+                  "properties": {
+                    "owner_type": {
+                      "type": "string",
+                      "description": "Owner type",
+                      "required": true,
+                      "example": "user",
+                      "options": [
+                        {
+                          "value": "user",
+                          "description": "Employee"
+                        }
+                      ],
+                      "enum": [
+                        "user"
+                      ]
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "description": "Employee ID",
+                      "required": false,
+                      "example": "ou_3bbe8a09c20e89cce9bff989ed840674",
+                      "annotations": [
+                        "open:x_user_id",
+                        "tolerate_idtrans_failure"
+                      ]
+                    }
+                  }
+                },
+                "from_entity_type": {
+                  "type": "integer",
+                  "description": "Entity type that initiated the alignment",
+                  "required": true,
+                  "example": 2,
+                  "options": [
+                    {
+                      "value": 2,
+                      "description": "Objective"
+                    }
+                  ],
+                  "enum": [
+                    2
+                  ]
+                },
+                "from_entity_id": {
+                  "type": "string",
+                  "description": "Entity ID that initiated the alignment",
+                  "required": true,
+                  "example": "1"
+                },
+                "to_entity_type": {
+                  "type": "integer",
+                  "description": "Entity type being aligned to",
+                  "required": true,
+                  "example": 2,
+                  "options": [
+                    {
+                      "value": 2,
+                      "description": "Objective"
+                    }
+                  ],
+                  "enum": [
+                    2
+                  ]
+                },
+                "to_entity_id": {
+                  "type": "string",
+                  "description": "Entity ID being aligned to",
+                  "required": true,
+                  "example": "7342342398472398473"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "okr:okr.content:readonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=okr&resource=okr.objective.alignment&version=v2"
+        }
+      }
+    },
+    "objective.indicators": {
+      "methods": {
+        "list": {
+          "id": "objective.indicators.list",
+          "path": "objectives/{objective_id}/indicators",
+          "httpMethod": "GET",
+          "description": "Get Indicator of an Objective",
+          "parameters": {
+            "objective_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Objective ID. Obtain it via [List Objectives in OKR Cycle]",
+              "example": "7342342398472398473"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户 ID 的类型",
+              "default": "open_id",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            },
+            "department_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Department ID type used in this call",
+              "default": "open_department_id",
+              "example": "open_department_id",
+              "options": [
+                {
+                  "value": "department_id",
+                  "description": "use department_id for department"
+                },
+                {
+                  "value": "open_department_id",
+                  "description": "use open_department_id for department"
+                }
+              ],
+              "enum": [
+                "department_id",
+                "open_department_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "objective_id"
+          ],
+          "responseBody": {
+            "indicator": {
+              "type": "object",
+              "description": "Indicator",
+              "required": false,
+              "ref": "indicator",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Indicator ID",
+                  "required": true,
+                  "example": "7342342398472398473"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "Indicator creation time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "update_time": {
+                  "type": "string",
+                  "description": "Indicator update time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "owner": {
+                  "type": "object",
+                  "description": "Owner who initiated the alignment",
+                  "required": true,
+                  "ref": "owner",
+                  "properties": {
+                    "owner_type": {
+                      "type": "string",
+                      "description": "Owner type",
+                      "required": true,
+                      "example": "user",
+                      "options": [
+                        {
+                          "value": "user",
+                          "description": "Employee"
+                        }
+                      ],
+                      "enum": [
+                        "user"
+                      ]
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "description": "Employee ID",
+                      "required": false,
+                      "example": "ou_3bbe8a09c20e89cce9bff989ed840674",
+                      "annotations": [
+                        "open:x_user_id",
+                        "tolerate_idtrans_failure"
+                      ]
+                    }
+                  }
+                },
+                "entity_type": {
+                  "type": "integer",
+                  "description": "Entity type that the indicator belongs to",
+                  "required": true,
+                  "example": 2,
+                  "options": [
+                    {
+                      "value": 2,
+                      "description": "Objective"
+                    },
+                    {
+                      "value": 3,
+                      "description": "Key Result"
+                    }
+                  ],
+                  "enum": [
+                    2,
+                    3
+                  ]
+                },
+                "entity_id": {
+                  "type": "string",
+                  "description": "Entity ID that the indicator belongs to",
+                  "required": true,
+                  "example": "7342342398472398473"
+                },
+                "indicator_status": {
+                  "type": "integer",
+                  "description": "Indicator status",
+                  "required": true,
+                  "example": 0,
+                  "options": [
+                    {
+                      "value": -1,
+                      "description": "Undefined"
+                    },
+                    {
+                      "value": 0,
+                      "description": "Normal"
+                    },
+                    {
+                      "value": 1,
+                      "description": "At risk"
+                    },
+                    {
+                      "value": 2,
+                      "description": "Delayed"
+                    }
+                  ],
+                  "enum": [
+                    -1,
+                    0,
+                    1,
+                    2
+                  ]
+                },
+                "status_calculate_type": {
+                  "type": "integer",
+                  "description": "Indicator status calculation method",
+                  "required": true,
+                  "example": 0,
+                  "options": [
+                    {
+                      "value": 0,
+                      "description": "Manual update"
+                    },
+                    {
+                      "value": 1,
+                      "description": "Auto update based on progress and current time"
+                    },
+                    {
+                      "value": 2,
+                      "description": "基于风险最高的关键结果状态更新"
+                    }
+                  ],
+                  "enum": [
+                    0,
+                    1,
+                    2
+                  ]
+                },
+                "start_value": {
+                  "type": "number",
+                  "description": "Indicator start value",
+                  "required": false,
+                  "example": 0.0,
+                  "max": "99999999999",
+                  "min": "-99999999999"
+                },
+                "target_value": {
+                  "type": "number",
+                  "description": "Indicator target value",
+                  "required": false,
+                  "example": 0.0,
+                  "max": "99999999999",
+                  "min": "-99999999999"
+                },
+                "current_value": {
+                  "type": "number",
+                  "description": "Indicator current value",
+                  "required": false,
+                  "example": 0.0,
+                  "max": "99999999999",
+                  "min": "-99999999999"
+                },
+                "current_value_calculate_type": {
+                  "type": "integer",
+                  "description": "Indicator current value calculation method",
+                  "required": false,
+                  "example": 0,
+                  "options": [
+                    {
+                      "value": 0,
+                      "description": "Manual update"
+                    },
+                    {
+                      "value": 1,
+                      "description": "Auto update based on Key Result progress"
+                    },
+                    {
+                      "value": 2,
+                      "description": "基于拆解的关键结果进度更新"
+                    }
+                  ],
+                  "enum": [
+                    0,
+                    1,
+                    2
+                  ]
+                },
+                "unit": {
+                  "type": "object",
+                  "description": "Indicator unit. Not supported for Objective modification; not supported for Key Result modification with carry-over records",
+                  "required": false,
+                  "ref": "indicator_unit",
+                  "properties": {
+                    "unit_type": {
+                      "type": "integer",
+                      "description": "Indicator unit type",
+                      "required": true,
+                      "example": 0,
+                      "options": [
+                        {
+                          "value": 0,
+                          "description": "Public"
+                        },
+                        {
+                          "value": 1,
+                          "description": "Custom"
+                        }
+                      ],
+                      "enum": [
+                        0,
+                        1
+                      ]
+                    },
+                    "unit_value": {
+                      "type": "string",
+                      "description": "Indicator unit value. If custom, character length not exceeding 5; if unit type is 'Public', unit value is one of the following enum values: Percentage: PERCENT; None: NONE; Yuan: YUAN; Dollar: DOLLAR",
+                      "required": true,
+                      "example": "PERCENT"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "scopes": [
+            "okr:okr.content:readonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=okr&resource=okr.objective.indicator&version=v2"
+        }
+      }
+    },
+    "objective.key_results": {
+      "methods": {
+        "create": {
+          "id": "objective.key_results.create",
+          "path": "objectives/{objective_id}/key_results",
+          "httpMethod": "POST",
+          "description": "Create Key Result of an Objective",
+          "parameters": {
+            "objective_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Objective ID. The ID type must match the user_id_type or department_id_type parameter value. How to get: Call the \"Get Objectives in OKR Cycle\" API",
+              "example": "7342342398472398473"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户 ID 的类型",
+              "default": "open_id",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            },
+            "department_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Department ID type used in this call",
+              "default": "open_department_id",
+              "example": "open_department_id",
+              "options": [
+                {
+                  "value": "department_id",
+                  "description": "use department_id for department"
+                },
+                {
+                  "value": "open_department_id",
+                  "description": "use open_department_id for department"
+                }
+              ],
+              "enum": [
+                "department_id",
+                "open_department_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "objective_id"
+          ],
+          "requestBody": {
+            "content": {
+              "type": "object",
+              "description": "Key Result content",
+              "required": false,
+              "ref": "content_block",
+              "properties": {
+                "blocks": {
+                  "type": "array",
+                  "description": "文档结构是按行排列的，每行内容是一个 Block",
+                  "required": false,
+                  "properties": {
+                    "block_element_type": {
+                      "type": "string",
+                      "description": "Document element type",
+                      "required": false,
+                      "example": "paragraph",
+                      "options": [
+                        {
+                          "value": "paragraph",
+                          "description": "Text paragraph"
+                        },
+                        {
+                          "value": "gallery",
+                          "description": "Image"
+                        }
+                      ],
+                      "enum": [
+                        "paragraph",
+                        "gallery"
+                      ]
+                    },
+                    "paragraph": {
+                      "type": "object",
+                      "description": "Text paragraph",
+                      "required": false,
+                      "ref": "content_paragraph"
+                    },
+                    "gallery": {
+                      "type": "object",
+                      "description": "Image",
+                      "required": false,
+                      "ref": "content_gallery"
+                    }
+                  }
+                }
+              }
+            },
+            "deadline": {
+              "type": "string",
+              "description": "Key Result deadline, millisecond timestamp",
+              "required": false,
+              "example": "1760604634563"
+            },
+            "score": {
+              "type": "number",
+              "description": "Objective score: [0,1], supports one decimal place",
+              "required": false,
+              "example": 0.5,
+              "max": "1",
+              "min": "0"
+            }
+          },
+          "responseBody": {
+            "key_result_id": {
+              "type": "string",
+              "description": "Key Result ID",
+              "required": false,
+              "example": "7342342398472398473"
+            }
+          },
+          "scopes": [
+            "okr:okr.content:writeonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=create&project=okr&resource=okr.objective.key_result&version=v2"
+        },
+        "list": {
+          "id": "objective.key_results.list",
+          "path": "objectives/{objective_id}/key_results",
+          "httpMethod": "GET",
+          "description": "List Key Results of an Objective",
+          "parameters": {
+            "objective_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Objective ID. The ID type must match the value of the user_id_type parameter. How to obtain: Call the \"Get Objectives in user OKR cycle\" API",
+              "example": "7342342398472398473"
+            },
+            "page_size": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "Page size, maximum 100",
+              "default": 10,
+              "example": 10,
+              "max": "100",
+              "min": "1"
+            },
+            "page_token": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Page identifier. It is not filled in the first request, indicating traversal from the beginning; when there will be more groups, the new page_token will be returned at the same time, and the next traversal can use the page_token to get more groups",
+              "example": "eVQrYzJBNDNONlk4VFZBZVlSdzlKdFJ4bVVHVExENDNKVHoxaVdiVnViQT0="
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户 ID 的类型",
+              "default": "open_id",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            },
+            "department_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Department ID type used in this call",
+              "default": "open_department_id",
+              "example": "open_department_id",
+              "options": [
+                {
+                  "value": "department_id",
+                  "description": "use department_id for department"
+                },
+                {
+                  "value": "open_department_id",
+                  "description": "use open_department_id for department"
+                }
+              ],
+              "enum": [
+                "department_id",
+                "open_department_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "objective_id"
+          ],
+          "responseBody": {
+            "has_more": {
+              "type": "boolean",
+              "description": "Whether the response body has more parameters",
+              "required": false,
+              "example": true
+            },
+            "page_token": {
+              "type": "string",
+              "description": "Page identifier, when has_more is true, a new page_token will also be returned. Otherwise, page_token will not be returned",
+              "required": false,
+              "example": "eVQrYzJBNDNONlk4VFZBZVlSdzlKdFJ4bVVHVExENDNKVHoxaVdiVnViQT0="
+            },
+            "items": {
+              "type": "array",
+              "description": "Key Result list",
+              "required": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Key Result ID",
+                  "required": true,
+                  "example": "7342342398472398473"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "Key Result creation time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "update_time": {
+                  "type": "string",
+                  "description": "Key Result update time, millisecond timestamp",
+                  "required": true,
+                  "example": "1760604634563"
+                },
+                "owner": {
+                  "type": "object",
+                  "description": "Owner who initiated the alignment",
+                  "required": true,
+                  "ref": "owner",
+                  "properties": {
+                    "owner_type": {
+                      "type": "string",
+                      "description": "Owner type",
+                      "required": true,
+                      "example": "user",
+                      "options": [
+                        {
+                          "value": "user",
+                          "description": "Employee"
+                        }
+                      ],
+                      "enum": [
+                        "user"
+                      ]
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "description": "Employee ID",
+                      "required": false,
+                      "example": "ou_3bbe8a09c20e89cce9bff989ed840674",
+                      "annotations": [
+                        "open:x_user_id",
+                        "tolerate_idtrans_failure"
+                      ]
+                    }
+                  }
+                },
+                "objective_id": {
+                  "type": "string",
+                  "description": "关键结果的目标 ID",
+                  "required": true,
+                  "example": "1"
+                },
+                "position": {
+                  "type": "integer",
+                  "description": "关键结果的序号：从 1 开始计数",
+                  "required": true,
+                  "example": 1,
+                  "max": "100",
+                  "min": "1"
+                },
+                "content": {
+                  "type": "object",
+                  "description": "关键结果的内容",
+                  "required": false,
+                  "ref": "content_block",
+                  "properties": {
+                    "blocks": {
+                      "type": "array",
+                      "description": "文档结构是按行排列的，每行内容是一个 Block",
+                      "required": false
+                    }
+                  }
+                },
+                "score": {
+                  "type": "number",
+                  "description": "Key Result score: [0,1], supports one decimal place",
+                  "required": false,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                },
+                "weight": {
+                  "type": "number",
+                  "description": "Objective weight: [0,1], supports three decimal places",
+                  "required": false,
+                  "example": 0.5,
+                  "max": "1",
+                  "min": "0"
+                },
+                "deadline": {
+                  "type": "string",
+                  "description": "目标的截止时间，时间戳",
+                  "required": false,
+                  "example": "1760604634563"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "okr:okr.content:readonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=okr&resource=okr.objective.key_result&version=v2"
+        }
+      }
+    }
+  }
+}

@@ -5,7 +5,6 @@ package schema
 
 import (
 	"encoding/json"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -14,30 +13,7 @@ import (
 	"github.com/larksuite/cli/internal/affordance"
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/meta"
-	"github.com/larksuite/cli/internal/registry"
 )
-
-// TestMain isolates registry-backed tests from any host ~/.lark-cli cache so
-// the suite gives the same answer on every machine. Without this, a stale
-// local remote_meta.json could surface methods that aren't in the embedded
-// snapshot (or alter their data) depending on the contributor's environment.
-//
-// Note: os.Exit skips deferred functions, so cleanup is done explicitly
-// after m.Run before exiting.
-func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "schema-test-cfg-*")
-	if err != nil {
-		// Surface the failure rather than silently running against the host
-		// cache — that defeats the whole purpose of this isolation.
-		println("schema test setup: MkdirTemp failed:", err.Error())
-		os.Exit(2)
-	}
-	os.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-	os.Setenv("LARKSUITE_CLI_REMOTE_META", "off") // never touch network
-	code := m.Run()
-	os.RemoveAll(dir)
-	os.Exit(code)
-}
 
 func TestConvertProperty_BasicTypes(t *testing.T) {
 	tests := []struct {
@@ -134,11 +110,25 @@ func TestConvertProperty_ListTypeFallback(t *testing.T) {
 func TestConvertProperty_MinMaxParsing(t *testing.T) {
 	input := map[string]interface{}{"type": "integer", "min": "10", "max": "50"}
 	got := convertProperty(input, "")
-	if got.Minimum == nil || *got.Minimum != 10.0 {
+	if got.Minimum == nil || got.Minimum.String() != "10" {
 		t.Errorf("Minimum = %v, want 10", got.Minimum)
 	}
-	if got.Maximum == nil || *got.Maximum != 50.0 {
+	if got.Maximum == nil || got.Maximum.String() != "50" {
 		t.Errorf("Maximum = %v, want 50", got.Maximum)
+	}
+}
+
+func TestConvertProperty_LargeIntegerBoundMarshalsExactly(t *testing.T) {
+	got := convertProperty(map[string]interface{}{
+		"type": "integer",
+		"max":  "9223372036854775807",
+	}, "")
+	b, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"maximum":9223372036854775807`) {
+		t.Fatalf("large integer bound lost precision: %s", b)
 	}
 }
 
@@ -151,7 +141,7 @@ func TestConvertProperty_MinMaxInvalid(t *testing.T) {
 }
 
 func TestConvertProperty_ArrayWithProperties(t *testing.T) {
-	// meta_data quirk: array element schema is in "properties" not "items"
+	// Catalog encoding quirk: array element schema is in "properties", not "items".
 	input := map[string]interface{}{
 		"type": "array",
 		"properties": map[string]interface{}{
@@ -239,7 +229,7 @@ func TestConvertProperty_DescriptionDefaultExample(t *testing.T) {
 }
 
 func TestBuildInputSchema_ReactionsList(t *testing.T) {
-	method := loadMethodFromRegistry(t, "im", []string{"reactions"}, "list")
+	method := loadMethodFromCatalog(t, "im", []string{"reactions"}, "list")
 
 	is := buildInputSchema(method)
 
@@ -268,7 +258,7 @@ func TestBuildInputSchema_ReactionsList(t *testing.T) {
 }
 
 func TestBuildInputSchema_ImagesCreate_FileAndBody(t *testing.T) {
-	method := loadMethodFromRegistry(t, "im", []string{"images"}, "create")
+	method := loadMethodFromCatalog(t, "im", []string{"images"}, "create")
 
 	is := buildInputSchema(method)
 
@@ -316,8 +306,8 @@ func TestBuildInputSchema_ImagesCreate_FileAndBody(t *testing.T) {
 }
 
 func TestBuildInputSchema_HighRiskWriteInjectsYes(t *testing.T) {
-	// Synthesized method to avoid registry-overlay variance (remote cache may
-	// strip `risk` field); buildInputSchema only cares about the method map.
+	// Keep this synthetic so the test pins risk handling independently of
+	// future changes to the committed Catalog Snapshot.
 	method := map[string]interface{}{
 		"risk": "high-risk-write",
 		"parameters": map[string]interface{}{
@@ -356,7 +346,7 @@ func TestBuildInputSchema_HighRiskWriteInjectsYes(t *testing.T) {
 }
 
 func TestBuildInputSchema_NoYesForReadRisk(t *testing.T) {
-	method := loadMethodFromRegistry(t, "im", []string{"reactions"}, "list")
+	method := loadMethodFromCatalog(t, "im", []string{"reactions"}, "list")
 
 	is := buildInputSchema(method)
 	if _, ok := is.Properties.Map["yes"]; ok {
@@ -365,7 +355,7 @@ func TestBuildInputSchema_NoYesForReadRisk(t *testing.T) {
 }
 
 func TestBuildOutputSchema_ReactionsList(t *testing.T) {
-	method := loadMethodFromRegistry(t, "im", []string{"reactions"}, "list")
+	method := loadMethodFromCatalog(t, "im", []string{"reactions"}, "list")
 
 	os := buildOutputSchema(method)
 
@@ -389,9 +379,8 @@ func TestBuildOutputSchema_ReactionsList(t *testing.T) {
 }
 
 func TestBuildMeta_FullFields(t *testing.T) {
-	// Synthesized method to avoid runtime variance from remote-cache overlay
-	// (which strips `risk` from merged services). All other field semantics
-	// match the real im.images.create entry in meta_data.json.
+	// Keep this synthetic so all metadata projection fields are covered
+	// independently of future changes to the committed Catalog Snapshot.
 	method := map[string]interface{}{
 		"risk":   "write",
 		"danger": true,
@@ -420,7 +409,7 @@ func TestBuildMeta_FullFields(t *testing.T) {
 		t.Errorf("DocURL should be present for im.images.create")
 	}
 	if !reflect.DeepEqual(m.Scopes, []string{"im:resource:upload", "im:resource"}) {
-		t.Errorf("Scopes = %v, want [im:resource:upload, im:resource] (meta_data natural order)", m.Scopes)
+		t.Errorf("Scopes = %v, want [im:resource:upload, im:resource] (Catalog source order)", m.Scopes)
 	}
 	if m.RequiredScopes == nil {
 		t.Errorf("RequiredScopes should be empty slice, not nil")
@@ -446,7 +435,7 @@ func TestBuildMeta_MissingRiskDefaultsToRead(t *testing.T) {
 }
 
 func TestBuildMeta_RequiredScopesPresent(t *testing.T) {
-	method := loadMethodFromRegistry(t, "mail", []string{"user_mailbox", "messages"}, "get")
+	method := loadMethodFromCatalog(t, "mail", []string{"user_mailbox", "messages"}, "get")
 	m := buildMeta(method)
 	if len(m.RequiredScopes) == 0 {
 		t.Errorf("RequiredScopes should be non-empty for mail.user_mailbox.messages.get")
@@ -568,11 +557,12 @@ func TestBuildOutputSchema_EmptyResponseBody(t *testing.T) {
 // via the public ref entry, so these unit tests build the same MethodRef the
 // command layer feeds Envelope.
 func synthEnvelope(serviceName string, resourcePath []string, m meta.Method) Envelope {
-	return EnvelopeOf(apicatalog.MethodRef{Service: meta.Service{Name: serviceName}, ResourcePath: resourcePath, Method: m})
+	guidance := affordance.NewResolver(affordance.Source(), apicatalog.Catalog{})
+	return EnvelopeOf(guidance, apicatalog.MethodRef{Service: meta.Service{Name: serviceName}, ResourcePath: resourcePath, Method: m})
 }
 
 func TestAssembleEnvelope_ReactionsList_FullStructure(t *testing.T) {
-	method := loadMethodFromRegistry(t, "im", []string{"reactions"}, "list")
+	method := loadMethodFromCatalog(t, "im", []string{"reactions"}, "list")
 	env := synthEnvelope("im", []string{"reactions"}, method)
 
 	if env.Name != "im reactions list" {
@@ -591,10 +581,8 @@ func TestAssembleEnvelope_ReactionsList_FullStructure(t *testing.T) {
 
 func TestAssembleEnvelope_NestedResource_NameJoinedWithSpaces(t *testing.T) {
 	// im.chat.members.create — resource path is one element "chat.members" with
-	// an internal dot. Substituted from plan's `bots` because remote-cache
-	// overlay strips `bots` from the loaded method map on this environment;
-	// the assertion is about name joining, not method specifics.
-	method := loadMethodFromRegistry(t, "im", []string{"chat.members"}, "create")
+	// an internal dot. The assertion is about name joining, not method specifics.
+	method := loadMethodFromCatalog(t, "im", []string{"chat.members"}, "create")
 	env := synthEnvelope("im", []string{"chat.members"}, method)
 	// chat.members resourcePath stays as one element in the slice with a dot;
 	// name should split it to "im chat.members create" — we keep the dot as-is
@@ -606,7 +594,7 @@ func TestAssembleEnvelope_NestedResource_NameJoinedWithSpaces(t *testing.T) {
 
 func TestAssembleEnvelope_JSONIsStable(t *testing.T) {
 	// Assemble twice; JSON output must be byte-identical (determinism).
-	method := loadMethodFromRegistry(t, "im", []string{"reactions"}, "list")
+	method := loadMethodFromCatalog(t, "im", []string{"reactions"}, "list")
 	a := synthEnvelope("im", []string{"reactions"}, method)
 	b := synthEnvelope("im", []string{"reactions"}, method)
 	ja, _ := json.MarshalIndent(a, "", "  ")
@@ -617,8 +605,8 @@ func TestAssembleEnvelope_JSONIsStable(t *testing.T) {
 }
 
 func TestAssembleService_Im(t *testing.T) {
-	svc, _ := registry.ServiceTyped("im")
-	envs := Envelopes(apicatalog.ServiceMethods(svc, nil))
+	svc, _ := testFullCatalog(t).Service("im")
+	envs := Envelopes(nil, apicatalog.ServiceMethods(svc, nil))
 	if len(envs) == 0 {
 		t.Fatal("expected non-empty envelopes for service im")
 	}
@@ -637,9 +625,9 @@ func TestAssembleService_Im(t *testing.T) {
 }
 
 func TestAssembleService_FilterByAccessToken(t *testing.T) {
-	svc, _ := registry.ServiceTyped("im")
+	svc, _ := testFullCatalog(t).Service("im")
 	// Filter to bot-only (--as bot, which corresponds to "tenant")
-	envs := Envelopes(apicatalog.ServiceMethods(svc, func(m meta.Method) bool {
+	envs := Envelopes(nil, apicatalog.ServiceMethods(svc, func(m meta.Method) bool {
 		for _, t := range m.AccessTokens {
 			if t == "tenant" {
 				return true
@@ -663,9 +651,9 @@ func TestAssembleService_FilterByAccessToken(t *testing.T) {
 }
 
 func TestAssembleAll_AtLeast193(t *testing.T) {
-	envs := Envelopes(registry.EmbeddedCatalog().WalkMethods(nil))
-	// Envelope assembly is overlay-independent: it walks the embedded
-	// meta_data.json directly, so the count is stable across machines.
+	envs := Envelopes(nil, testFullCatalog(t).WalkMethods(nil))
+	// Envelope assembly walks the committed Catalog Snapshot, so the count is
+	// stable across machines.
 	if len(envs) < 193 {
 		t.Errorf("envelope count = %d, expected >= 193", len(envs))
 	}
@@ -682,11 +670,10 @@ func TestAssembleAll_AtLeast193(t *testing.T) {
 	}
 }
 
-// loadMethodFromRegistry is a test helper that pulls one method from the real
-// embedded meta_data.json via the registry's typed accessor, with Name set.
-func loadMethodFromRegistry(t *testing.T, service string, resourcePath []string, methodName string) meta.Method {
+// loadMethodFromCatalog pulls one method from the committed Catalog Snapshot.
+func loadMethodFromCatalog(t *testing.T, service string, resourcePath []string, methodName string) meta.Method {
 	t.Helper()
-	svc, ok := registry.ServiceTyped(service)
+	svc, ok := testFullCatalog(t).Service(service)
 	if !ok {
 		t.Fatalf("service %q not found in registry", service)
 	}

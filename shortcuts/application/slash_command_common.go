@@ -10,7 +10,7 @@ import (
 	"github.com/larksuite/cli/internal/validate"
 )
 
-// slashCommandBasePath is the raw v7 endpoint (not in meta_data.json / SDK).
+// slashCommandBasePath is the raw v7 endpoint (not in the API catalog or SDK).
 const slashCommandBasePath = "/open-apis/application/v7/app_slash_commands"
 
 // clientCacheHint is printed to stderr after every successful write.

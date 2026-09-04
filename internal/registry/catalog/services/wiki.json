@@ -1,0 +1,2088 @@
+{
+  "name": "wiki",
+  "version": "v2",
+  "title": "知识库 API",
+  "description": "知识空间、节点、空间成员管理",
+  "servicePath": "/open-apis/wiki/v2",
+  "resources": {
+    "spaces": {
+      "methods": {
+        "create": {
+          "id": "spaces.create",
+          "path": "spaces",
+          "httpMethod": "POST",
+          "description": "Create Wiki space",
+          "requestBody": {
+            "name": {
+              "type": "string",
+              "description": "Wiki space name",
+              "required": false,
+              "example": "测试知识库"
+            },
+            "description": {
+              "type": "string",
+              "description": "Wiki space description",
+              "required": false,
+              "example": "测试知识库"
+            },
+            "open_sharing": {
+              "type": "string",
+              "description": "Represents Wiki space sharing status",
+              "required": false,
+              "example": "open",
+              "options": [
+                {
+                  "value": "open",
+                  "description": "Open"
+                },
+                {
+                  "value": "closed",
+                  "description": "Closed"
+                }
+              ],
+              "enum": [
+                "open",
+                "closed"
+              ]
+            }
+          },
+          "responseBody": {
+            "space": {
+              "type": "object",
+              "description": "知识空间",
+              "required": false,
+              "ref": "space",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Wiki space name",
+                  "required": false,
+                  "example": "测试知识库"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Wiki space description",
+                  "required": false,
+                  "example": "测试知识库"
+                },
+                "space_id": {
+                  "type": "string",
+                  "description": "Wiki space id",
+                  "required": false,
+                  "example": "123456",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "space_type": {
+                  "type": "string",
+                  "description": "表示知识空间类型（团队空间 或 个人空间 或 我的文档库）",
+                  "required": false,
+                  "example": "team",
+                  "options": [
+                    {
+                      "value": "team",
+                      "description": "Team space"
+                    },
+                    {
+                      "value": "person",
+                      "description": "个人空间"
+                    },
+                    {
+                      "value": "my_library",
+                      "description": "My document library"
+                    },
+                    {
+                      "value": "my_library_resigned",
+                      "description": "Resignation document library"
+                    }
+                  ],
+                  "enum": [
+                    "team",
+                    "person",
+                    "my_library",
+                    "my_library_resigned"
+                  ],
+                  "enumName": "SpaceType",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "visibility": {
+                  "type": "string",
+                  "description": "表示知识空间可见性（公开空间 或 私有空间）",
+                  "required": false,
+                  "example": "private",
+                  "options": [
+                    {
+                      "value": "public",
+                      "description": "Open space"
+                    },
+                    {
+                      "value": "private",
+                      "description": "Private space"
+                    }
+                  ],
+                  "enum": [
+                    "public",
+                    "private"
+                  ],
+                  "enumName": "SpaceVisibility",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "open_sharing": {
+                  "type": "string",
+                  "description": "Represents Wiki space sharing status",
+                  "required": false,
+                  "example": "Open",
+                  "options": [
+                    {
+                      "value": "open",
+                      "description": "Open"
+                    },
+                    {
+                      "value": "closed",
+                      "description": "Closed"
+                    }
+                  ],
+                  "enum": [
+                    "open",
+                    "closed"
+                  ]
+                }
+              }
+            }
+          },
+          "scopes": [
+            "wiki:wiki",
+            "wiki:space:write_only"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "danger": true,
+          "risk": "high-risk-write",
+          "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-v2/space/create"
+        },
+        "get": {
+          "id": "spaces.get",
+          "path": "spaces/{space_id}",
+          "httpMethod": "GET",
+          "description": "Access to Wiki space information",
+          "parameters": {
+            "space_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Wiki space ID",
+              "example": "6870403571079249922"
+            },
+            "lang": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "When querying My Document Library, specify the document library name display language to return",
+              "default": "en",
+              "example": "zh",
+              "options": [
+                {
+                  "value": "zh",
+                  "description": "Simplified Chinese"
+                },
+                {
+                  "value": "id",
+                  "description": "Indonesian"
+                },
+                {
+                  "value": "de",
+                  "description": "German"
+                },
+                {
+                  "value": "en",
+                  "description": "English"
+                },
+                {
+                  "value": "es",
+                  "description": "Spanish"
+                },
+                {
+                  "value": "fr",
+                  "description": "French"
+                },
+                {
+                  "value": "it",
+                  "description": "Italian"
+                },
+                {
+                  "value": "pt",
+                  "description": "Portuguese"
+                },
+                {
+                  "value": "vi",
+                  "description": "Vietnamese"
+                },
+                {
+                  "value": "ru",
+                  "description": "Russian"
+                },
+                {
+                  "value": "hi",
+                  "description": "Hindi"
+                },
+                {
+                  "value": "th",
+                  "description": "Thai"
+                },
+                {
+                  "value": "ko",
+                  "description": "Korean"
+                },
+                {
+                  "value": "ja",
+                  "description": "Japanese"
+                },
+                {
+                  "value": "zh-HK",
+                  "description": "Traditional Chinese"
+                },
+                {
+                  "value": "zh-TW",
+                  "description": "Traditional Chinese"
+                }
+              ],
+              "enumName": "ShowLanguage",
+              "enum": [
+                "zh",
+                "id",
+                "de",
+                "en",
+                "es",
+                "fr",
+                "it",
+                "pt",
+                "vi",
+                "ru",
+                "hi",
+                "th",
+                "ko",
+                "ja",
+                "zh-HK",
+                "zh-TW"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "space_id"
+          ],
+          "responseBody": {
+            "space": {
+              "type": "object",
+              "description": "知识空间",
+              "required": false,
+              "ref": "space",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Wiki space name",
+                  "required": false,
+                  "example": "测试知识库"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Wiki space description",
+                  "required": false,
+                  "example": "测试知识库"
+                },
+                "space_id": {
+                  "type": "string",
+                  "description": "Wiki space id",
+                  "required": false,
+                  "example": "123456",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "space_type": {
+                  "type": "string",
+                  "description": "表示知识空间类型（团队空间 或 个人空间 或 我的文档库）",
+                  "required": false,
+                  "example": "team",
+                  "options": [
+                    {
+                      "value": "team",
+                      "description": "Team space"
+                    },
+                    {
+                      "value": "person",
+                      "description": "个人空间"
+                    },
+                    {
+                      "value": "my_library",
+                      "description": "My document library"
+                    },
+                    {
+                      "value": "my_library_resigned",
+                      "description": "Resignation document library"
+                    }
+                  ],
+                  "enum": [
+                    "team",
+                    "person",
+                    "my_library",
+                    "my_library_resigned"
+                  ],
+                  "enumName": "SpaceType",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "visibility": {
+                  "type": "string",
+                  "description": "表示知识空间可见性（公开空间 或 私有空间）",
+                  "required": false,
+                  "example": "private",
+                  "options": [
+                    {
+                      "value": "public",
+                      "description": "Open space"
+                    },
+                    {
+                      "value": "private",
+                      "description": "Private space"
+                    }
+                  ],
+                  "enum": [
+                    "public",
+                    "private"
+                  ],
+                  "enumName": "SpaceVisibility",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "open_sharing": {
+                  "type": "string",
+                  "description": "Represents Wiki space sharing status",
+                  "required": false,
+                  "example": "Open",
+                  "options": [
+                    {
+                      "value": "open",
+                      "description": "Open"
+                    },
+                    {
+                      "value": "closed",
+                      "description": "Closed"
+                    }
+                  ],
+                  "enum": [
+                    "open",
+                    "closed"
+                  ]
+                }
+              }
+            }
+          },
+          "scopes": [
+            "wiki:wiki",
+            "wiki:wiki:readonly",
+            "wiki:space:read"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-v2/space/get"
+        },
+        "get_node": {
+          "id": "spaces.get_node",
+          "path": "spaces/get_node",
+          "httpMethod": "GET",
+          "description": "Get Wiki node information",
+          "parameters": {
+            "token": {
+              "type": "string",
+              "location": "query",
+              "required": true,
+              "description": "The wiki node or the actual token of the corresponding cloud document.;- Wiki node token: If the token in the URL link is preceded by \"wiki\", the token is the node token of the wiki.;- Actual cloud document token: If the token in the URL link is preceded by \"docx\", \"base\", \"sheets\", or other non-\"wiki\" types, it indicates that the token is the actual token of the current cloud document.;; Note:;When querying with a cloud document token, you need to pass the corresponding document type into the `obj_type` parameter",
+              "example": "wikcnKQ1k3p******8Vabcef"
+            },
+            "obj_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "文档类型。不传时默认以 wiki 类型查询",
+              "default": "wiki",
+              "example": "docx",
+              "options": [
+                {
+                  "value": "doc",
+                  "description": "doc"
+                },
+                {
+                  "value": "docx",
+                  "description": "docx"
+                },
+                {
+                  "value": "sheet",
+                  "description": "sheet"
+                },
+                {
+                  "value": "mindnote",
+                  "description": "mindnote"
+                },
+                {
+                  "value": "bitable",
+                  "description": "bitable"
+                },
+                {
+                  "value": "file",
+                  "description": "file"
+                },
+                {
+                  "value": "slides",
+                  "description": "slides"
+                },
+                {
+                  "value": "wiki",
+                  "description": "wiki"
+                }
+              ],
+              "enumName": "ObjTypeForQuery",
+              "enum": [
+                "doc",
+                "docx",
+                "sheet",
+                "mindnote",
+                "bitable",
+                "file",
+                "slides",
+                "wiki"
+              ]
+            }
+          },
+          "responseBody": {
+            "node": {
+              "type": "object",
+              "description": "Node",
+              "required": false,
+              "ref": "node",
+              "properties": {
+                "space_id": {
+                  "type": "string",
+                  "description": "Wiki space id",
+                  "required": false,
+                  "example": "6946843325487906839",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "node_token": {
+                  "type": "string",
+                  "description": "节点token，获取方式",
+                  "required": false,
+                  "example": "wikcnKQ1k3p******8Vabcef",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "obj_token": {
+                  "type": "string",
+                  "description": "对应文档类型的token，可根据 obj_type 判断属于哪种文档类型",
+                  "required": false,
+                  "example": "doccnzAaO******8g9Spprd",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "obj_type": {
+                  "type": "string",
+                  "description": "Document type, for shortcuts, this field is the obj_type of the corresponding entity",
+                  "required": true,
+                  "example": "doc",
+                  "options": [
+                    {
+                      "value": "doc",
+                      "description": "旧版文档"
+                    },
+                    {
+                      "value": "sheet",
+                      "description": "Sheet"
+                    },
+                    {
+                      "value": "mindnote",
+                      "description": "Mindnote"
+                    },
+                    {
+                      "value": "bitable",
+                      "description": "Bitable"
+                    },
+                    {
+                      "value": "file",
+                      "description": "File"
+                    },
+                    {
+                      "value": "docx",
+                      "description": "Docx"
+                    },
+                    {
+                      "value": "slides",
+                      "description": "Slides"
+                    }
+                  ],
+                  "enum": [
+                    "doc",
+                    "sheet",
+                    "mindnote",
+                    "bitable",
+                    "file",
+                    "docx",
+                    "slides"
+                  ],
+                  "enumName": "ObjType"
+                },
+                "parent_node_token": {
+                  "type": "string",
+                  "description": "Node's father token. If the node is at first level, this field is empty",
+                  "required": false,
+                  "example": "wikcnKQ1k3p******8Vabcef"
+                },
+                "node_type": {
+                  "type": "string",
+                  "description": "Node type",
+                  "required": true,
+                  "example": "origin",
+                  "options": [
+                    {
+                      "value": "origin",
+                      "description": "Entity"
+                    },
+                    {
+                      "value": "shortcut",
+                      "description": "Shortcut"
+                    }
+                  ],
+                  "enum": [
+                    "origin",
+                    "shortcut"
+                  ],
+                  "enumName": "NodeType"
+                },
+                "origin_node_token": {
+                  "type": "string",
+                  "description": "The entity node_token corresponding to the shortcut needs to pass this value when the node is created as a shortcut",
+                  "required": false,
+                  "example": "wikcnKQ1k3p******8Vabcef"
+                },
+                "origin_space_id": {
+                  "type": "string",
+                  "description": "The space id of the entity corresponding to the shortcut",
+                  "required": false,
+                  "example": "6946843325487912356",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "has_child": {
+                  "type": "boolean",
+                  "description": "Whether this node has any child nodes",
+                  "required": false,
+                  "example": false,
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "title": {
+                  "type": "string",
+                  "description": "The title of this document",
+                  "required": false,
+                  "example": "title"
+                },
+                "obj_create_time": {
+                  "type": "string",
+                  "description": "Document creation time",
+                  "required": false,
+                  "example": "1642402428",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "obj_edit_time": {
+                  "type": "string",
+                  "description": "Document last edited time",
+                  "required": false,
+                  "example": "1642402428",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "node_create_time": {
+                  "type": "string",
+                  "description": "Node creation time",
+                  "required": false,
+                  "example": "1642402428",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "creator": {
+                  "type": "string",
+                  "description": "文档创建者",
+                  "required": false,
+                  "example": "ou_xxxxx",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "owner": {
+                  "type": "string",
+                  "description": "文档所有者",
+                  "required": false,
+                  "example": "ou_xxxxx",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "node_creator": {
+                  "type": "string",
+                  "description": "Node creator",
+                  "required": false,
+                  "example": "ou_xxxxx",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "url": {
+                  "type": "string",
+                  "description": "文档url",
+                  "required": false,
+                  "example": "https://xxx/wiki/wikcnKQ1k3p******8Vabcef",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                }
+              }
+            }
+          },
+          "scopes": [
+            "wiki:wiki",
+            "wiki:wiki:readonly",
+            "wiki:node:read"
+          ],
+          "accessTokens": [
+            "tenant",
+            "user"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-v2/space/get_node"
+        },
+        "list": {
+          "id": "spaces.list",
+          "path": "spaces",
+          "httpMethod": "GET",
+          "description": "Get a list of Wiki spaces",
+          "parameters": {
+            "page_size": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "paging size",
+              "default": 20,
+              "example": 10,
+              "max": "50"
+            },
+            "page_token": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Page identifier. It is not filled in the first request, indicating traversal from the beginning; when there will be more groups, the new page_token will be returned at the same time, and the next traversal can use the page_token to get more groups",
+              "example": "1565676577122621"
+            },
+            "space_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "空间类型，不填时默认返回团队空间和个人空间列表；传入 my_library_resigned 返回离职文档库列表",
+              "example": "my_library_resigned"
+            }
+          },
+          "responseBody": {
+            "items": {
+              "type": "array",
+              "description": "Data list",
+              "required": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Wiki space name",
+                  "required": false,
+                  "example": "测试知识库"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Wiki space description",
+                  "required": false,
+                  "example": "测试知识库"
+                },
+                "space_id": {
+                  "type": "string",
+                  "description": "Wiki space id",
+                  "required": false,
+                  "example": "123456",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "space_type": {
+                  "type": "string",
+                  "description": "表示知识空间类型（团队空间 或 个人空间 或 我的文档库）",
+                  "required": false,
+                  "example": "team",
+                  "options": [
+                    {
+                      "value": "team",
+                      "description": "Team space"
+                    },
+                    {
+                      "value": "person",
+                      "description": "个人空间"
+                    },
+                    {
+                      "value": "my_library",
+                      "description": "My document library"
+                    },
+                    {
+                      "value": "my_library_resigned",
+                      "description": "Resignation document library"
+                    }
+                  ],
+                  "enum": [
+                    "team",
+                    "person",
+                    "my_library",
+                    "my_library_resigned"
+                  ],
+                  "enumName": "SpaceType",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "visibility": {
+                  "type": "string",
+                  "description": "表示知识空间可见性（公开空间 或 私有空间）",
+                  "required": false,
+                  "example": "private",
+                  "options": [
+                    {
+                      "value": "public",
+                      "description": "Open space"
+                    },
+                    {
+                      "value": "private",
+                      "description": "Private space"
+                    }
+                  ],
+                  "enum": [
+                    "public",
+                    "private"
+                  ],
+                  "enumName": "SpaceVisibility",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "open_sharing": {
+                  "type": "string",
+                  "description": "Represents Wiki space sharing status",
+                  "required": false,
+                  "example": "Open",
+                  "options": [
+                    {
+                      "value": "open",
+                      "description": "Open"
+                    },
+                    {
+                      "value": "closed",
+                      "description": "Closed"
+                    }
+                  ],
+                  "enum": [
+                    "open",
+                    "closed"
+                  ]
+                }
+              }
+            },
+            "page_token": {
+              "type": "string",
+              "description": "分页标记，当 has_more 为 true 时，会同时返回新的 page_token，否则不返回 page_token",
+              "required": false,
+              "example": "1565676577122621"
+            },
+            "has_more": {
+              "type": "boolean",
+              "description": "是否还有更多项",
+              "required": false,
+              "example": true
+            }
+          },
+          "scopes": [
+            "wiki:wiki",
+            "wiki:wiki:readonly",
+            "wiki:space:retrieve"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-v2/space/list"
+        }
+      }
+    },
+    "members": {
+      "methods": {
+        "create": {
+          "id": "members.create",
+          "path": "spaces/{space_id}/members",
+          "httpMethod": "POST",
+          "description": "Add Wiki space members",
+          "parameters": {
+            "space_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Wiki space ID. It can be obtained in two ways.;- Call List wiki spaces;- If you are a wiki admin, open the space settings page and copy the numeric part of the address bar: https://sample.feishu.cn/wiki/settings/==6870403571079249922==",
+              "example": "1565676577122621"
+            },
+            "need_notification": {
+              "type": "boolean",
+              "location": "query",
+              "required": false,
+              "description": "Whether to notify the other party after adding permissions",
+              "example": true
+            }
+          },
+          "parameterOrder": [
+            "space_id"
+          ],
+          "requestBody": {
+            "member_type": {
+              "type": "string",
+              "description": "知识库协作者 ID 类型",
+              "required": true,
+              "example": "userid"
+            },
+            "member_id": {
+              "type": "string",
+              "description": "知识库协作者 ID",
+              "required": true,
+              "example": "1565676577122621"
+            },
+            "member_role": {
+              "type": "string",
+              "description": "知识库协作者角色",
+              "required": true,
+              "example": "Admin"
+            },
+            "member_perm": {
+              "type": "string",
+              "description": "知识库协作组权限",
+              "required": false,
+              "example": "admin"
+            }
+          },
+          "responseBody": {
+            "member": {
+              "type": "object",
+              "description": "Wiki Space Members",
+              "required": false,
+              "ref": "member",
+              "properties": {
+                "member_type": {
+                  "type": "string",
+                  "description": "知识库协作者 ID 类型",
+                  "required": true,
+                  "example": "userid"
+                },
+                "member_id": {
+                  "type": "string",
+                  "description": "知识库协作者 ID",
+                  "required": true,
+                  "example": "1565676577122621"
+                },
+                "member_role": {
+                  "type": "string",
+                  "description": "知识库协作者角色",
+                  "required": true,
+                  "example": "Admin"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "知识库协作者类型",
+                  "required": false,
+                  "example": "user",
+                  "options": [
+                    {
+                      "value": "user",
+                      "description": "用户"
+                    },
+                    {
+                      "value": "chat",
+                      "description": "群组"
+                    },
+                    {
+                      "value": "department",
+                      "description": "组织架构"
+                    }
+                  ],
+                  "enum": [
+                    "user",
+                    "chat",
+                    "department"
+                  ],
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "member_perm": {
+                  "type": "string",
+                  "description": "知识库协作组权限",
+                  "required": false,
+                  "example": "admin"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "wiki:wiki",
+            "wiki:member:create"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "high-risk-write",
+          "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-v2/space-member/create"
+        },
+        "delete": {
+          "id": "members.delete",
+          "path": "spaces/{space_id}/members/{member_id}",
+          "httpMethod": "DELETE",
+          "description": "Delete Wiki space members",
+          "parameters": {
+            "space_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Wiki space id",
+              "example": "7008061636015554580"
+            },
+            "member_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Member id, which should match the member type below",
+              "example": "g64fb7g7"
+            }
+          },
+          "parameterOrder": [
+            "space_id",
+            "member_id"
+          ],
+          "requestBody": {
+            "member_type": {
+              "type": "string",
+              "description": "知识库协作者 ID 类型",
+              "required": true,
+              "example": "userid"
+            },
+            "member_role": {
+              "type": "string",
+              "description": "知识库协作者角色",
+              "required": true,
+              "example": "Admin"
+            },
+            "type": {
+              "type": "string",
+              "description": "知识库协作者类型",
+              "required": false,
+              "example": "user",
+              "options": [
+                {
+                  "value": "user",
+                  "description": "用户"
+                },
+                {
+                  "value": "chat",
+                  "description": "群组"
+                },
+                {
+                  "value": "department",
+                  "description": "组织架构"
+                }
+              ],
+              "enum": [
+                "user",
+                "chat",
+                "department"
+              ],
+              "annotations": [
+                "readOnly"
+              ]
+            },
+            "member_perm": {
+              "type": "string",
+              "description": "知识库协作组权限",
+              "required": false,
+              "example": "admin"
+            }
+          },
+          "responseBody": {
+            "member": {
+              "type": "object",
+              "description": "Member Information",
+              "required": false,
+              "ref": "member",
+              "properties": {
+                "member_type": {
+                  "type": "string",
+                  "description": "知识库协作者 ID 类型",
+                  "required": true,
+                  "example": "userid"
+                },
+                "member_id": {
+                  "type": "string",
+                  "description": "知识库协作者 ID",
+                  "required": true,
+                  "example": "1565676577122621"
+                },
+                "member_role": {
+                  "type": "string",
+                  "description": "知识库协作者角色",
+                  "required": true,
+                  "example": "Admin"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "知识库协作者类型",
+                  "required": false,
+                  "example": "user",
+                  "options": [
+                    {
+                      "value": "user",
+                      "description": "用户"
+                    },
+                    {
+                      "value": "chat",
+                      "description": "群组"
+                    },
+                    {
+                      "value": "department",
+                      "description": "组织架构"
+                    }
+                  ],
+                  "enum": [
+                    "user",
+                    "chat",
+                    "department"
+                  ],
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "member_perm": {
+                  "type": "string",
+                  "description": "知识库协作组权限",
+                  "required": false,
+                  "example": "admin"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "wiki:wiki",
+            "wiki:member:update"
+          ],
+          "accessTokens": [
+            "tenant",
+            "user"
+          ],
+          "danger": true,
+          "risk": "high-risk-write",
+          "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-v2/space-member/delete"
+        },
+        "list": {
+          "id": "members.list",
+          "path": "spaces/{space_id}/members",
+          "httpMethod": "GET",
+          "description": "Obtain Wiki space members",
+          "parameters": {
+            "space_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Wiki Workspace ID",
+              "example": "7375263209671884820"
+            },
+            "page_size": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "paging size",
+              "example": 1
+            },
+            "page_token": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果",
+              "example": "NzA0NDg5NjIzMDA3MzE3MTk3Ml83MzYzMjE4NDkzNDI1NzI5NTM4"
+            }
+          },
+          "parameterOrder": [
+            "space_id"
+          ],
+          "responseBody": {
+            "members": {
+              "type": "array",
+              "description": "space member list",
+              "required": false,
+              "properties": {
+                "member_type": {
+                  "type": "string",
+                  "description": "知识库协作者 ID 类型",
+                  "required": true,
+                  "example": "userid"
+                },
+                "member_id": {
+                  "type": "string",
+                  "description": "知识库协作者 ID",
+                  "required": true,
+                  "example": "1565676577122621"
+                },
+                "member_role": {
+                  "type": "string",
+                  "description": "知识库协作者角色",
+                  "required": true,
+                  "example": "Admin"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "知识库协作者类型",
+                  "required": false,
+                  "example": "user",
+                  "options": [
+                    {
+                      "value": "user",
+                      "description": "用户"
+                    },
+                    {
+                      "value": "chat",
+                      "description": "群组"
+                    },
+                    {
+                      "value": "department",
+                      "description": "组织架构"
+                    }
+                  ],
+                  "enum": [
+                    "user",
+                    "chat",
+                    "department"
+                  ],
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "member_perm": {
+                  "type": "string",
+                  "description": "知识库协作组权限",
+                  "required": false,
+                  "example": "admin"
+                }
+              }
+            },
+            "page_token": {
+              "type": "string",
+              "description": "分页标记",
+              "required": false,
+              "example": "ou_12345"
+            },
+            "has_more": {
+              "type": "boolean",
+              "description": "是否有下一页",
+              "required": false,
+              "example": false
+            }
+          },
+          "scopes": [
+            "wiki:wiki",
+            "wiki:wiki:readonly",
+            "wiki:member:retrieve"
+          ],
+          "accessTokens": [
+            "tenant",
+            "user"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=wiki&resource=space.member&version=v2"
+        }
+      }
+    },
+    "nodes": {
+      "methods": {
+        "copy": {
+          "id": "nodes.copy",
+          "path": "spaces/{space_id}/nodes/{node_token}/copy",
+          "httpMethod": "POST",
+          "description": "Create a node copy in Wiki",
+          "parameters": {
+            "space_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Wiki space id",
+              "example": "6946843325487912356"
+            },
+            "node_token": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Node token",
+              "example": "wikcnKQ1k3p******8Vabcef"
+            }
+          },
+          "parameterOrder": [
+            "space_id",
+            "node_token"
+          ],
+          "requestBody": {
+            "target_parent_token": {
+              "type": "string",
+              "description": "Target parent node token;- Target Wiki space ID and target parent token cannot be empty at the same time",
+              "required": false,
+              "example": "wikcnKQ1k3p******8Vabcef",
+              "annotations": [
+                ""
+              ]
+            },
+            "target_space_id": {
+              "type": "string",
+              "description": "Target Wiki space id;- Target Wiki space ID and target parent token cannot be empty at the same time",
+              "required": false,
+              "example": "6946843325487906839"
+            },
+            "title": {
+              "type": "string",
+              "description": "Copied new title. If blank, the new title is empty. If not, the original node title is used",
+              "required": false,
+              "example": "New title"
+            }
+          },
+          "responseBody": {
+            "node": {
+              "type": "object",
+              "description": "Copied node",
+              "required": false,
+              "ref": "node",
+              "properties": {
+                "space_id": {
+                  "type": "string",
+                  "description": "Wiki space id",
+                  "required": false,
+                  "example": "6946843325487906839",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "node_token": {
+                  "type": "string",
+                  "description": "节点token，获取方式",
+                  "required": false,
+                  "example": "wikcnKQ1k3p******8Vabcef",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "obj_token": {
+                  "type": "string",
+                  "description": "对应文档类型的token，可根据 obj_type 判断属于哪种文档类型",
+                  "required": false,
+                  "example": "doccnzAaO******8g9Spprd",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "obj_type": {
+                  "type": "string",
+                  "description": "Document type, for shortcuts, this field is the obj_type of the corresponding entity",
+                  "required": true,
+                  "example": "doc",
+                  "options": [
+                    {
+                      "value": "doc",
+                      "description": "旧版文档"
+                    },
+                    {
+                      "value": "sheet",
+                      "description": "Sheet"
+                    },
+                    {
+                      "value": "mindnote",
+                      "description": "Mindnote"
+                    },
+                    {
+                      "value": "bitable",
+                      "description": "Bitable"
+                    },
+                    {
+                      "value": "file",
+                      "description": "File"
+                    },
+                    {
+                      "value": "docx",
+                      "description": "Docx"
+                    },
+                    {
+                      "value": "slides",
+                      "description": "Slides"
+                    }
+                  ],
+                  "enum": [
+                    "doc",
+                    "sheet",
+                    "mindnote",
+                    "bitable",
+                    "file",
+                    "docx",
+                    "slides"
+                  ],
+                  "enumName": "ObjType"
+                },
+                "parent_node_token": {
+                  "type": "string",
+                  "description": "Node's father token. If the node is at first level, this field is empty",
+                  "required": false,
+                  "example": "wikcnKQ1k3p******8Vabcef"
+                },
+                "node_type": {
+                  "type": "string",
+                  "description": "Node type",
+                  "required": true,
+                  "example": "origin",
+                  "options": [
+                    {
+                      "value": "origin",
+                      "description": "Entity"
+                    },
+                    {
+                      "value": "shortcut",
+                      "description": "Shortcut"
+                    }
+                  ],
+                  "enum": [
+                    "origin",
+                    "shortcut"
+                  ],
+                  "enumName": "NodeType"
+                },
+                "origin_node_token": {
+                  "type": "string",
+                  "description": "The entity node_token corresponding to the shortcut needs to pass this value when the node is created as a shortcut",
+                  "required": false,
+                  "example": "wikcnKQ1k3p******8Vabcef"
+                },
+                "origin_space_id": {
+                  "type": "string",
+                  "description": "The space id of the entity corresponding to the shortcut",
+                  "required": false,
+                  "example": "6946843325487912356",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "has_child": {
+                  "type": "boolean",
+                  "description": "Whether this node has any child nodes",
+                  "required": false,
+                  "example": false,
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "title": {
+                  "type": "string",
+                  "description": "The title of this document",
+                  "required": false,
+                  "example": "title"
+                },
+                "obj_create_time": {
+                  "type": "string",
+                  "description": "Document creation time",
+                  "required": false,
+                  "example": "1642402428",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "obj_edit_time": {
+                  "type": "string",
+                  "description": "Document last edited time",
+                  "required": false,
+                  "example": "1642402428",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "node_create_time": {
+                  "type": "string",
+                  "description": "Node creation time",
+                  "required": false,
+                  "example": "1642402428",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "creator": {
+                  "type": "string",
+                  "description": "文档创建者",
+                  "required": false,
+                  "example": "ou_xxxxx",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "owner": {
+                  "type": "string",
+                  "description": "文档所有者",
+                  "required": false,
+                  "example": "ou_xxxxx",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "node_creator": {
+                  "type": "string",
+                  "description": "Node creator",
+                  "required": false,
+                  "example": "ou_xxxxx",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "url": {
+                  "type": "string",
+                  "description": "文档url",
+                  "required": false,
+                  "example": "https://xxx/wiki/wikcnKQ1k3p******8Vabcef",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                }
+              }
+            }
+          },
+          "scopes": [
+            "wiki:wiki",
+            "wiki:node:copy"
+          ],
+          "accessTokens": [
+            "tenant",
+            "user"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-v2/space-node/copy"
+        },
+        "create": {
+          "id": "nodes.create",
+          "path": "spaces/{space_id}/nodes",
+          "httpMethod": "POST",
+          "description": "Create node in Wiki",
+          "parameters": {
+            "space_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Wiki space id",
+              "example": "6704147935988285963"
+            }
+          },
+          "parameterOrder": [
+            "space_id"
+          ],
+          "requestBody": {
+            "obj_type": {
+              "type": "string",
+              "description": "Document type, for shortcuts, this field is the obj_type of the corresponding entity",
+              "required": true,
+              "example": "doc",
+              "options": [
+                {
+                  "value": "doc",
+                  "description": "旧版文档"
+                },
+                {
+                  "value": "sheet",
+                  "description": "Sheet"
+                },
+                {
+                  "value": "mindnote",
+                  "description": "Mindnote"
+                },
+                {
+                  "value": "bitable",
+                  "description": "Bitable"
+                },
+                {
+                  "value": "file",
+                  "description": "File"
+                },
+                {
+                  "value": "docx",
+                  "description": "Docx"
+                },
+                {
+                  "value": "slides",
+                  "description": "Slides"
+                }
+              ],
+              "enum": [
+                "doc",
+                "sheet",
+                "mindnote",
+                "bitable",
+                "file",
+                "docx",
+                "slides"
+              ],
+              "enumName": "ObjType"
+            },
+            "parent_node_token": {
+              "type": "string",
+              "description": "Node's father token. If the node is at first level, this field is empty",
+              "required": false,
+              "example": "wikcnKQ1k3p******8Vabcef"
+            },
+            "node_type": {
+              "type": "string",
+              "description": "Node type",
+              "required": true,
+              "example": "origin",
+              "options": [
+                {
+                  "value": "origin",
+                  "description": "Entity"
+                },
+                {
+                  "value": "shortcut",
+                  "description": "Shortcut"
+                }
+              ],
+              "enum": [
+                "origin",
+                "shortcut"
+              ],
+              "enumName": "NodeType"
+            },
+            "origin_node_token": {
+              "type": "string",
+              "description": "The entity node_token corresponding to the shortcut needs to pass this value when the node is created as a shortcut",
+              "required": false,
+              "example": "wikcnKQ1k3p******8Vabcef"
+            },
+            "title": {
+              "type": "string",
+              "description": "The title of this document",
+              "required": false,
+              "example": "title"
+            }
+          },
+          "responseBody": {
+            "node": {
+              "type": "object",
+              "description": "Node",
+              "required": false,
+              "ref": "node",
+              "properties": {
+                "space_id": {
+                  "type": "string",
+                  "description": "Wiki space id",
+                  "required": false,
+                  "example": "6946843325487906839",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "node_token": {
+                  "type": "string",
+                  "description": "节点token，获取方式",
+                  "required": false,
+                  "example": "wikcnKQ1k3p******8Vabcef",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "obj_token": {
+                  "type": "string",
+                  "description": "对应文档类型的token，可根据 obj_type 判断属于哪种文档类型",
+                  "required": false,
+                  "example": "doccnzAaO******8g9Spprd",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "obj_type": {
+                  "type": "string",
+                  "description": "Document type, for shortcuts, this field is the obj_type of the corresponding entity",
+                  "required": true,
+                  "example": "doc",
+                  "options": [
+                    {
+                      "value": "doc",
+                      "description": "旧版文档"
+                    },
+                    {
+                      "value": "sheet",
+                      "description": "Sheet"
+                    },
+                    {
+                      "value": "mindnote",
+                      "description": "Mindnote"
+                    },
+                    {
+                      "value": "bitable",
+                      "description": "Bitable"
+                    },
+                    {
+                      "value": "file",
+                      "description": "File"
+                    },
+                    {
+                      "value": "docx",
+                      "description": "Docx"
+                    },
+                    {
+                      "value": "slides",
+                      "description": "Slides"
+                    }
+                  ],
+                  "enum": [
+                    "doc",
+                    "sheet",
+                    "mindnote",
+                    "bitable",
+                    "file",
+                    "docx",
+                    "slides"
+                  ],
+                  "enumName": "ObjType"
+                },
+                "parent_node_token": {
+                  "type": "string",
+                  "description": "Node's father token. If the node is at first level, this field is empty",
+                  "required": false,
+                  "example": "wikcnKQ1k3p******8Vabcef"
+                },
+                "node_type": {
+                  "type": "string",
+                  "description": "Node type",
+                  "required": true,
+                  "example": "origin",
+                  "options": [
+                    {
+                      "value": "origin",
+                      "description": "Entity"
+                    },
+                    {
+                      "value": "shortcut",
+                      "description": "Shortcut"
+                    }
+                  ],
+                  "enum": [
+                    "origin",
+                    "shortcut"
+                  ],
+                  "enumName": "NodeType"
+                },
+                "origin_node_token": {
+                  "type": "string",
+                  "description": "The entity node_token corresponding to the shortcut needs to pass this value when the node is created as a shortcut",
+                  "required": false,
+                  "example": "wikcnKQ1k3p******8Vabcef"
+                },
+                "origin_space_id": {
+                  "type": "string",
+                  "description": "The space id of the entity corresponding to the shortcut",
+                  "required": false,
+                  "example": "6946843325487912356",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "has_child": {
+                  "type": "boolean",
+                  "description": "Whether this node has any child nodes",
+                  "required": false,
+                  "example": false,
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "title": {
+                  "type": "string",
+                  "description": "The title of this document",
+                  "required": false,
+                  "example": "title"
+                },
+                "obj_create_time": {
+                  "type": "string",
+                  "description": "Document creation time",
+                  "required": false,
+                  "example": "1642402428",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "obj_edit_time": {
+                  "type": "string",
+                  "description": "Document last edited time",
+                  "required": false,
+                  "example": "1642402428",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "node_create_time": {
+                  "type": "string",
+                  "description": "Node creation time",
+                  "required": false,
+                  "example": "1642402428",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "creator": {
+                  "type": "string",
+                  "description": "文档创建者",
+                  "required": false,
+                  "example": "ou_xxxxx",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "owner": {
+                  "type": "string",
+                  "description": "文档所有者",
+                  "required": false,
+                  "example": "ou_xxxxx",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "node_creator": {
+                  "type": "string",
+                  "description": "Node creator",
+                  "required": false,
+                  "example": "ou_xxxxx",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "url": {
+                  "type": "string",
+                  "description": "文档url",
+                  "required": false,
+                  "example": "https://xxx/wiki/wikcnKQ1k3p******8Vabcef",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                }
+              }
+            }
+          },
+          "scopes": [
+            "wiki:wiki",
+            "wiki:node:create"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-v2/space-node/create"
+        },
+        "list": {
+          "id": "nodes.list",
+          "path": "spaces/{space_id}/nodes",
+          "httpMethod": "GET",
+          "description": "Get the list of child nodes in Wiki",
+          "parameters": {
+            "space_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Wiki space id, when querying My Document Library, it can be replaced with `my_library`",
+              "example": "6946843325487906839"
+            },
+            "page_size": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "Paging size",
+              "example": 10,
+              "max": "50"
+            },
+            "page_token": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果",
+              "example": "6946843325487456878"
+            },
+            "parent_node_token": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Parent token",
+              "example": "wikcnKQ1k3p******8Vabcef"
+            }
+          },
+          "parameterOrder": [
+            "space_id"
+          ],
+          "responseBody": {
+            "items": {
+              "type": "array",
+              "description": "Data list",
+              "required": false,
+              "properties": {
+                "space_id": {
+                  "type": "string",
+                  "description": "Wiki space id",
+                  "required": false,
+                  "example": "6946843325487906839",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "node_token": {
+                  "type": "string",
+                  "description": "节点token，获取方式",
+                  "required": false,
+                  "example": "wikcnKQ1k3p******8Vabcef",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "obj_token": {
+                  "type": "string",
+                  "description": "对应文档类型的token，可根据 obj_type 判断属于哪种文档类型",
+                  "required": false,
+                  "example": "doccnzAaO******8g9Spprd",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "obj_type": {
+                  "type": "string",
+                  "description": "Document type, for shortcuts, this field is the obj_type of the corresponding entity",
+                  "required": true,
+                  "example": "doc",
+                  "options": [
+                    {
+                      "value": "doc",
+                      "description": "旧版文档"
+                    },
+                    {
+                      "value": "sheet",
+                      "description": "Sheet"
+                    },
+                    {
+                      "value": "mindnote",
+                      "description": "Mindnote"
+                    },
+                    {
+                      "value": "bitable",
+                      "description": "Bitable"
+                    },
+                    {
+                      "value": "file",
+                      "description": "File"
+                    },
+                    {
+                      "value": "docx",
+                      "description": "Docx"
+                    },
+                    {
+                      "value": "slides",
+                      "description": "Slides"
+                    }
+                  ],
+                  "enum": [
+                    "doc",
+                    "sheet",
+                    "mindnote",
+                    "bitable",
+                    "file",
+                    "docx",
+                    "slides"
+                  ],
+                  "enumName": "ObjType"
+                },
+                "parent_node_token": {
+                  "type": "string",
+                  "description": "Node's father token. If the node is at first level, this field is empty",
+                  "required": false,
+                  "example": "wikcnKQ1k3p******8Vabcef"
+                },
+                "node_type": {
+                  "type": "string",
+                  "description": "Node type",
+                  "required": true,
+                  "example": "origin",
+                  "options": [
+                    {
+                      "value": "origin",
+                      "description": "Entity"
+                    },
+                    {
+                      "value": "shortcut",
+                      "description": "Shortcut"
+                    }
+                  ],
+                  "enum": [
+                    "origin",
+                    "shortcut"
+                  ],
+                  "enumName": "NodeType"
+                },
+                "origin_node_token": {
+                  "type": "string",
+                  "description": "The entity node_token corresponding to the shortcut needs to pass this value when the node is created as a shortcut",
+                  "required": false,
+                  "example": "wikcnKQ1k3p******8Vabcef"
+                },
+                "origin_space_id": {
+                  "type": "string",
+                  "description": "The space id of the entity corresponding to the shortcut",
+                  "required": false,
+                  "example": "6946843325487912356",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "has_child": {
+                  "type": "boolean",
+                  "description": "Whether this node has any child nodes",
+                  "required": false,
+                  "example": false,
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "title": {
+                  "type": "string",
+                  "description": "The title of this document",
+                  "required": false,
+                  "example": "title"
+                },
+                "obj_create_time": {
+                  "type": "string",
+                  "description": "Document creation time",
+                  "required": false,
+                  "example": "1642402428",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "obj_edit_time": {
+                  "type": "string",
+                  "description": "Document last edited time",
+                  "required": false,
+                  "example": "1642402428",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "node_create_time": {
+                  "type": "string",
+                  "description": "Node creation time",
+                  "required": false,
+                  "example": "1642402428",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "creator": {
+                  "type": "string",
+                  "description": "文档创建者",
+                  "required": false,
+                  "example": "ou_xxxxx",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "owner": {
+                  "type": "string",
+                  "description": "文档所有者",
+                  "required": false,
+                  "example": "ou_xxxxx",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "node_creator": {
+                  "type": "string",
+                  "description": "Node creator",
+                  "required": false,
+                  "example": "ou_xxxxx",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "url": {
+                  "type": "string",
+                  "description": "文档url",
+                  "required": false,
+                  "example": "https://xxx/wiki/wikcnKQ1k3p******8Vabcef",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                }
+              }
+            },
+            "page_token": {
+              "type": "string",
+              "description": "分页Token",
+              "required": false,
+              "example": "6946843325487906839"
+            },
+            "has_more": {
+              "type": "boolean",
+              "description": "是否还有数据",
+              "required": false
+            }
+          },
+          "scopes": [
+            "wiki:wiki",
+            "wiki:wiki:readonly",
+            "wiki:node:retrieve"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/wiki-v2/space-node/list"
+        }
+      }
+    }
+  }
+}

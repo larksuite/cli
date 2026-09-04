@@ -72,7 +72,6 @@ func TestBuildConsoleScopeURL_EmptyInput(t *testing.T) {
 }
 
 func TestSelectRecommendedScopeFromStrings_FallsBackToFirst(t *testing.T) {
-	ensureFreshRegistry(t)
 	// Unknown scopes (not in priority table) → fallback to first
 	got := SelectRecommendedScopeFromStrings([]string{"unknown:foo", "unknown:bar"}, "tenant")
 	if got != "unknown:foo" {
@@ -83,7 +82,6 @@ func TestSelectRecommendedScopeFromStrings_FallsBackToFirst(t *testing.T) {
 // When at least one scope is recognized by the priority table, the
 // recommended scope wins over the fallback (first input).
 func TestSelectRecommendedScopeFromStrings_PicksKnownScopeOverFallback(t *testing.T) {
-	ensureFreshRegistry(t)
 	// docs:permission.member:create is recommended (recommend=true) in
 	// scope_priorities.json. Putting an unknown scope first would otherwise
 	// win via the fallback path; this ensures the priority table is consulted

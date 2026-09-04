@@ -1,0 +1,626 @@
+{
+  "name": "sheets",
+  "version": "v3",
+  "title": "电子表格 API",
+  "description": "电子表格操作",
+  "servicePath": "/open-apis/sheets/v3",
+  "resources": {
+    "spreadsheets": {
+      "methods": {
+        "create": {
+          "id": "spreadsheet.create",
+          "path": "spreadsheets",
+          "httpMethod": "POST",
+          "description": "Create a spreadsheet",
+          "requestBody": {
+            "title": {
+              "type": "string",
+              "description": "Spreadsheet title",
+              "required": false,
+              "example": "Sales sheet"
+            },
+            "folder_token": {
+              "type": "string",
+              "description": "Folder token. You can get the folder token in two ways:;- URL of the folder: https://sample.feishu.cn/drive/folder/==fldbcO1UuPz8VwnpPx5a92abcef==;- Call the open platform interface to get it:; - Call the get my space (root folder) metadata interface to get the root directory (i.e. root folder) token.; - Continue to call the get list of files in folder interface to get the token for the folder in the root directory.; Note: To create a spreadsheet in the knowledge base, you need to call the Create knowledge space node API and select the table (sheet) type",
+              "required": false,
+              "example": "fldbcO1UuPz8VwnpPx5a92abcef"
+            },
+            "without_mount": {
+              "type": "boolean",
+              "description": "是否挂载到云空间",
+              "required": false,
+              "example": false,
+              "annotations": [
+                "writeOnly"
+              ]
+            }
+          },
+          "responseBody": {
+            "spreadsheet": {
+              "type": "object",
+              "description": "Spreadsheet's information",
+              "required": false,
+              "ref": "spreadsheet",
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "description": "Spreadsheet title",
+                  "required": false,
+                  "example": "Sales sheet"
+                },
+                "folder_token": {
+                  "type": "string",
+                  "description": "Folder token. You can get the folder token in two ways:;- URL of the folder: https://sample.feishu.cn/drive/folder/==fldbcO1UuPz8VwnpPx5a92abcef==;- Call the open platform interface to get it:; - Call the get my space (root folder) metadata interface to get the root directory (i.e. root folder) token.; - Continue to call the get list of files in folder interface to get the token for the folder in the root directory.; Note: To create a spreadsheet in the knowledge base, you need to call the Create knowledge space node API and select the table (sheet) type",
+                  "required": false,
+                  "example": "fldbcO1UuPz8VwnpPx5a92abcef"
+                },
+                "url": {
+                  "type": "string",
+                  "description": "Document URL",
+                  "required": false,
+                  "example": "https://sample.feishu.cn/sheets/shtcnExampleSheet",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "spreadsheet_token": {
+                  "type": "string",
+                  "description": "Spreadsheet token",
+                  "required": false,
+                  "example": "Iow7sNNEphp3WbtnbCscPqabcef",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "without_mount": {
+                  "type": "boolean",
+                  "description": "是否挂载到云空间",
+                  "required": false,
+                  "example": false,
+                  "annotations": [
+                    "writeOnly"
+                  ]
+                }
+              }
+            }
+          },
+          "scopes": [
+            "drive:drive",
+            "sheets:spreadsheet",
+            "sheets:spreadsheet:create"
+          ],
+          "accessTokens": [
+            "tenant",
+            "user"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/sheets-v3/spreadsheet/create"
+        },
+        "get": {
+          "id": "spreadsheet.get",
+          "path": "spreadsheets/{spreadsheet_token}",
+          "httpMethod": "GET",
+          "description": "Get spreadsheet information",
+          "parameters": {
+            "spreadsheet_token": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Table token.",
+              "example": "Iow7sNNEphp3WbtnbCscPqabcef"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户ID的类型",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enumName": "GetSpreadsheetUserIDType",
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "spreadsheet_token"
+          ],
+          "responseBody": {
+            "spreadsheet": {
+              "type": "object",
+              "description": "Spreadsheet information",
+              "required": false,
+              "ref": "get_spreadsheet",
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "description": "Spreadsheet title",
+                  "required": false,
+                  "example": "title"
+                },
+                "owner_id": {
+                  "type": "string",
+                  "description": "Spreadsheet owner",
+                  "required": false,
+                  "example": "u_48d0958ee4b2ab3eaf0b5f6c968abcef",
+                  "annotations": [
+                    "readOnly",
+                    "open:x_user_id"
+                  ]
+                },
+                "token": {
+                  "type": "string",
+                  "description": "Spreadsheet token",
+                  "required": false,
+                  "example": "Iow7sNNEphp3WbtnbCscPqabcef",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "url": {
+                  "type": "string",
+                  "description": "Spreadsheet url",
+                  "required": false,
+                  "example": "https://sample.feishu.cn/sheets/shtcnExampleSheet",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                }
+              }
+            }
+          },
+          "scopes": [
+            "sheets:spreadsheet",
+            "sheets:spreadsheet:readonly",
+            "drive:drive",
+            "drive:drive:readonly",
+            "sheets:spreadsheet.meta:read"
+          ],
+          "accessTokens": [
+            "tenant",
+            "user"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/sheets-v3/spreadsheet/get"
+        },
+        "patch": {
+          "id": "spreadsheet.patch",
+          "path": "spreadsheets/{spreadsheet_token}",
+          "httpMethod": "PATCH",
+          "description": "Modify spreadsheet properties",
+          "parameters": {
+            "spreadsheet_token": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Table token.",
+              "example": "Iow7sNNEphp3WbtnbCscPqabcef"
+            }
+          },
+          "parameterOrder": [
+            "spreadsheet_token"
+          ],
+          "requestBody": {
+            "title": {
+              "type": "string",
+              "description": "Table title. When the parameter is empty, the title will be \"Untitled spreadsheet\" or content corresponding to the local language environment",
+              "required": false,
+              "example": "Sales sheet"
+            }
+          },
+          "scopes": [
+            "sheets:spreadsheet",
+            "drive:drive",
+            "sheets:spreadsheet.meta:write_only"
+          ],
+          "accessTokens": [
+            "tenant",
+            "user"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/sheets-v3/spreadsheet/patch"
+        }
+      }
+    },
+    "spreadsheet.sheet.filters": {
+      "methods": {
+        "create": {
+          "id": "spreadsheet.sheet.filter.create",
+          "path": "spreadsheets/{spreadsheet_token}/sheets/{sheet_id}/filter",
+          "httpMethod": "POST",
+          "description": "Create a filter",
+          "parameters": {
+            "spreadsheet_token": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Spreadsheet token. It can be obtained in two ways.;- From the spreadsheet URL: https://sample.feishu.cn/sheets/==Iow7sNNEphp3WbtnbCscPqabcef==;- Call List items in folder",
+              "example": "shtcnmBA\\*****yGehy8"
+            },
+            "sheet_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Sheet ID,",
+              "example": "0b\\**12"
+            }
+          },
+          "parameterOrder": [
+            "spreadsheet_token",
+            "sheet_id"
+          ],
+          "requestBody": {
+            "range": {
+              "type": "string",
+              "description": "Range the filter applies to. Five forms are supported: sheetId (the whole sheet), sheetId!{startRowIndex}:{endRowIndex} (whole rows), sheetId!{startColumnIndex}:{endColumnIndex} (whole columns), sheetId!{startCell}:{endCell} (the selected cell range), sheetId!{startCell}:{endColumnIndex} (from the start cell to the last row of the sheet). For details, see the filter guide",
+              "required": true,
+              "example": "xxxxxx!C1:H14"
+            },
+            "col": {
+              "type": "string",
+              "description": "Column with set filter conditions",
+              "required": true,
+              "example": "E"
+            },
+            "condition": {
+              "type": "object",
+              "description": "Filter conditions",
+              "required": true,
+              "ref": "condition",
+              "properties": {
+                "filter_type": {
+                  "type": "string",
+                  "description": "Filter type. Enumeration values: multiValue (multi-value filter), number (number filter), text (text filter), color (color filter). For details, see the filter guide",
+                  "required": true,
+                  "example": "number"
+                },
+                "compare_type": {
+                  "type": "string",
+                  "description": "Comparison type",
+                  "required": false,
+                  "example": "less"
+                },
+                "expected": {
+                  "type": "array",
+                  "description": "Filter parameter",
+                  "required": false
+                }
+              }
+            }
+          },
+          "scopes": [
+            "sheets:spreadsheet",
+            "drive:drive",
+            "sheets:spreadsheet:write_only"
+          ],
+          "accessTokens": [
+            "tenant",
+            "user"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/sheets-v3/spreadsheet-sheet-filter/create"
+        },
+        "delete": {
+          "id": "spreadsheet.sheet.filter.delete",
+          "path": "spreadsheets/{spreadsheet_token}/sheets/{sheet_id}/filter",
+          "httpMethod": "DELETE",
+          "description": "Delete a filter",
+          "parameters": {
+            "spreadsheet_token": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Spreadsheet token. It can be obtained in two ways.;- From the spreadsheet URL: https://sample.feishu.cn/sheets/==Iow7sNNEphp3WbtnbCscPqabcef==;- Call List items in folder",
+              "example": "shtcnmBA\\*****yGehy8"
+            },
+            "sheet_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Sheet ID,",
+              "example": "0b\\**12"
+            }
+          },
+          "parameterOrder": [
+            "spreadsheet_token",
+            "sheet_id"
+          ],
+          "scopes": [
+            "sheets:spreadsheet",
+            "drive:drive",
+            "sheets:spreadsheet:write_only"
+          ],
+          "accessTokens": [
+            "tenant",
+            "user"
+          ],
+          "danger": true,
+          "risk": "high-risk-write",
+          "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/sheets-v3/spreadsheet-sheet-filter/delete"
+        },
+        "get": {
+          "id": "spreadsheet.sheet.filter.get",
+          "path": "spreadsheets/{spreadsheet_token}/sheets/{sheet_id}/filter",
+          "httpMethod": "GET",
+          "description": "Obtain filter",
+          "parameters": {
+            "spreadsheet_token": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Spreadsheet token. It can be obtained in two ways.;- From the spreadsheet URL: https://sample.feishu.cn/sheets/==Iow7sNNEphp3WbtnbCscPqabcef==;- Call List items in folder",
+              "example": "shtcnmBA\\*****yGehy8"
+            },
+            "sheet_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Sheet ID,",
+              "example": "0b\\**12"
+            }
+          },
+          "parameterOrder": [
+            "spreadsheet_token",
+            "sheet_id"
+          ],
+          "responseBody": {
+            "sheet_filter_info": {
+              "type": "object",
+              "description": "Filter information",
+              "required": false,
+              "ref": "sheet_filter_info",
+              "properties": {
+                "range": {
+                  "type": "string",
+                  "description": "Range",
+                  "required": true,
+                  "example": "xxxxxx!A1:H14"
+                },
+                "filtered_out_rows": {
+                  "type": "array",
+                  "description": "Rows that are filtered out and hidden",
+                  "required": true
+                },
+                "filter_infos": {
+                  "type": "array",
+                  "description": "Sheet filter conditions",
+                  "required": true,
+                  "properties": {
+                    "col": {
+                      "type": "string",
+                      "description": "Columns with set filter conditions",
+                      "required": true,
+                      "example": "E"
+                    },
+                    "conditions": {
+                      "type": "array",
+                      "description": "Filter conditions",
+                      "required": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "scopes": [
+            "drive:drive",
+            "drive:drive:readonly",
+            "sheets:spreadsheet",
+            "sheets:spreadsheet:readonly",
+            "sheets:spreadsheet:read"
+          ],
+          "accessTokens": [
+            "tenant",
+            "user"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/sheets-v3/spreadsheet-sheet-filter/get"
+        },
+        "update": {
+          "id": "spreadsheet.sheet.filter.update",
+          "path": "spreadsheets/{spreadsheet_token}/sheets/{sheet_id}/filter",
+          "httpMethod": "PUT",
+          "description": "Update a filter",
+          "parameters": {
+            "spreadsheet_token": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Spreadsheet token. It can be obtained in two ways.;- From the spreadsheet URL: https://sample.feishu.cn/sheets/==Iow7sNNEphp3WbtnbCscPqabcef==;- Call List items in folder",
+              "example": "shtcnmBA\\*****yGehy8"
+            },
+            "sheet_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Sheet ID,",
+              "example": "0b\\**12"
+            }
+          },
+          "parameterOrder": [
+            "spreadsheet_token",
+            "sheet_id"
+          ],
+          "requestBody": {
+            "col": {
+              "type": "string",
+              "description": "Column with updated filter conditions",
+              "required": true,
+              "example": "E"
+            },
+            "condition": {
+              "type": "object",
+              "description": "Filter conditions",
+              "required": true,
+              "ref": "condition",
+              "properties": {
+                "filter_type": {
+                  "type": "string",
+                  "description": "Filter type. Enumeration values: multiValue (multi-value filter), number (number filter), text (text filter), color (color filter), clear (clear the filter condition of a column). For details, see the filter guide",
+                  "required": true,
+                  "example": "number"
+                },
+                "compare_type": {
+                  "type": "string",
+                  "description": "Comparison type. The enumeration values differ by filter type, see the filter guide",
+                  "required": false,
+                  "example": "less"
+                },
+                "expected": {
+                  "type": "array",
+                  "description": "Filter parameter. The restrictions differ by filter type, see the filter guide",
+                  "required": false
+                }
+              }
+            }
+          },
+          "scopes": [
+            "sheets:spreadsheet",
+            "drive:drive",
+            "sheets:spreadsheet:write_only"
+          ],
+          "accessTokens": [
+            "tenant",
+            "user"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/sheets-v3/spreadsheet-sheet-filter/update"
+        }
+      }
+    },
+    "spreadsheet.sheets": {
+      "methods": {
+        "find": {
+          "id": "spreadsheet.sheet.find",
+          "path": "spreadsheets/{spreadsheet_token}/sheets/{sheet_id}/find",
+          "httpMethod": "POST",
+          "description": "Search",
+          "parameters": {
+            "spreadsheet_token": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Sheet token,)",
+              "example": "shtcnmBA*****yGehy8"
+            },
+            "sheet_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Sheet ID,",
+              "example": "0b**12"
+            }
+          },
+          "parameterOrder": [
+            "spreadsheet_token",
+            "sheet_id"
+          ],
+          "requestBody": {
+            "find_condition": {
+              "type": "object",
+              "description": "Search conditions",
+              "required": true,
+              "ref": "find_condition",
+              "properties": {
+                "range": {
+                  "type": "string",
+                  "description": "Search range, glossary range",
+                  "required": true,
+                  "example": "0b**12!A1:H10"
+                },
+                "match_case": {
+                  "type": "boolean",
+                  "description": "Whether it is case insensitive;- `true`: Ignore differences in case of letters in a string;- `false`: case sensitive",
+                  "required": false,
+                  "example": true
+                },
+                "match_entire_cell": {
+                  "type": "boolean",
+                  "description": "Whether to match the entire cell;- `true`: exact match;- `false`: partial match",
+                  "required": false,
+                  "example": false
+                },
+                "search_by_regex": {
+                  "type": "boolean",
+                  "description": "Whether it is regular expression matching;- `true`: regular match;- `false`: not regular match",
+                  "required": false,
+                  "example": false
+                },
+                "include_formulas": {
+                  "type": "boolean",
+                  "description": "Whether to search formula content;- `true`: search formula only;- `false`: Search cell contents only",
+                  "required": false,
+                  "example": false
+                }
+              }
+            },
+            "find": {
+              "type": "string",
+              "description": "String to find. When search_by_regex is true, fill in a regular expression",
+              "required": true,
+              "example": "如下;;- Common lookup example: \"hello\";- Regular lookup example：”[A-Z]\\w+“"
+            }
+          },
+          "responseBody": {
+            "find_result": {
+              "type": "object",
+              "description": "Search return information that matches conditions",
+              "required": false,
+              "ref": "find_replace_result",
+              "properties": {
+                "matched_cells": {
+                  "type": "array",
+                  "description": "Array of cells that meet the search conditions, not including formulas, such as: [\"A1\", \"A2\"...]",
+                  "required": false
+                },
+                "matched_formula_cells": {
+                  "type": "array",
+                  "description": "Array of cells that meet the search conditions including formulas, such as: [\"B3\", \"H7\"...]",
+                  "required": false
+                },
+                "rows_count": {
+                  "type": "integer",
+                  "description": "Total rows that meet search conditions",
+                  "required": false,
+                  "example": 2
+                }
+              }
+            }
+          },
+          "scopes": [
+            "sheets:spreadsheet",
+            "sheets:spreadsheet:readonly",
+            "drive:drive",
+            "drive:drive:readonly",
+            "sheets:spreadsheet:read"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/sheets-v3/spreadsheet-sheet/find"
+        }
+      }
+    }
+  }
+}

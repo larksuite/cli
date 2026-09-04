@@ -7,6 +7,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/meta"
 )
 
@@ -32,7 +33,7 @@ func TestMeetingScreenshotRoutesToItsReference(t *testing.T) {
 	t.Cleanup(func() { SetSource(previousSource) })
 	SetSource(os.DirFS("../../affordance"))
 
-	raw, ok := For("vc", "+meeting-screenshot")
+	raw, ok := For(apicatalog.Catalog{}, "vc", "+meeting-screenshot")
 	if !ok {
 		t.Fatal("For(vc, +meeting-screenshot) ok=false")
 	}

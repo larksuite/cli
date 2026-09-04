@@ -488,12 +488,7 @@ type forkResult struct {
 }
 
 // runFork runs the fork against the in-test sidecar, fully offline, and returns
-// its exit code and captured output. LARKSUITE_CLI_REMOTE_META=off is essential:
-// without it the fork's startup metadata refresh hits the real
-// open.feishu.cn/api/tools/open/api_definition (internal/registry/remote.go),
-// which both breaks the "offline, secret-free" contract and makes the run
-// depend on live network. With it set, the command still completes and the
-// docs request still flows through the sidecar, but nothing leaves the machine.
+// its exit code and captured output.
 func runFork(t *testing.T, binPath, sidecarURL string) forkResult {
 	t.Helper()
 	scURL, err := url.Parse(sidecarURL)
@@ -522,7 +517,6 @@ func runFork(t *testing.T, binPath, sidecarURL string) forkResult {
 		"LARKSUITE_CLI_APP_ID="+testAppID,
 		"LARKSUITE_CLI_BRAND=feishu",
 		"LARKSUITE_CLI_CONFIG_DIR="+t.TempDir(),
-		"LARKSUITE_CLI_REMOTE_META=off",
 		"LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1",
 		"LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1",
 	)

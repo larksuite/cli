@@ -10,6 +10,7 @@ import (
 	"testing"
 	"unicode"
 
+	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/registry"
 )
@@ -94,7 +95,7 @@ func TestIMAffordanceExamplesTraceToCurrentSkill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	parsedDomain := parseDomainMD(affordanceSource, commandFormResolver("im"))
+	parsedDomain := parseDomainMD(affordanceSource, commandFormResolver(imAffordanceCatalog(t), "im"))
 	if got, want := len(parsedDomain.methods), len(imAffordanceExamples); got != want {
 		t.Fatalf("parsed IM affordance entries = %d, audited examples = %d", got, want)
 	}
@@ -228,10 +229,7 @@ func TestIMImageUploadExamplesPreserveIdentityChoice(t *testing.T) {
 }
 
 func TestIMImageUploadMetadataSupportsBothIdentities(t *testing.T) {
-	if len(registry.EmbeddedServicesTyped()) == 0 {
-		t.Skip("generated API metadata is not embedded in this bare-module test run")
-	}
-	target, err := registry.EmbeddedCatalog().Resolve([]string{"im", "images", "create"})
+	target, err := imAffordanceCatalog(t).Resolve([]string{"im", "images", "create"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +244,7 @@ func TestIMImageUploadMetadataSupportsBothIdentities(t *testing.T) {
 
 func parsedIMAffordance(t *testing.T, method string) meta.Affordance {
 	t.Helper()
-	raw, ok := For("im", method)
+	raw, ok := For(imAffordanceCatalog(t), "im", method)
 	if !ok {
 		t.Fatalf("For(im, %s) ok=false", method)
 	}
@@ -255,6 +253,15 @@ func parsedIMAffordance(t *testing.T, method string) meta.Affordance {
 		t.Fatalf("im %s affordance did not parse", method)
 	}
 	return a
+}
+
+func imAffordanceCatalog(t *testing.T) apicatalog.Catalog {
+	t.Helper()
+	snapshot, err := registry.OpenSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return snapshot.Catalog()
 }
 
 func containsExact(items []string, want string) bool {

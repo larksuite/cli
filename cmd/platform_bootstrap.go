@@ -116,8 +116,7 @@ func applyUserPolicyPruning(rootCmd *cobra.Command, pluginRules []cmdpolicy.Plug
 // cmdpolicy and the populated hook.Registry for the runtime wrapper.
 // Errors from FailClosed plugins propagate; FailOpen failures are
 // warned to errOut and the loop continues.
-func installPluginsAndHooks(errOut io.Writer) (*internalplatform.InstallResult, error) {
-	plugins := platform.RegisteredPlugins()
+func installPluginsAndHooks(plugins []platform.Plugin, errOut io.Writer) (*internalplatform.InstallResult, error) {
 	if len(plugins) == 0 {
 		return &internalplatform.InstallResult{Registry: nil}, nil
 	}

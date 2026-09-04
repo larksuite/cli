@@ -34,10 +34,15 @@ func TestScopeTreatsDeletedShortcutAsGlobal(t *testing.T) {
 	}
 }
 
-func TestScopeDoesNotTreatDefaultMetadataAsGlobal(t *testing.T) {
-	scope := FromChangedFiles([]string{"internal/registry/meta_data_default.json"})
-	if scope.Global {
-		t.Fatal("default metadata changes should not force ordinary quality-gate global scope")
+func TestScopeTreatsCatalogSnapshotAsGlobal(t *testing.T) {
+	for _, file := range []string{
+		"internal/registry/catalog/manifest.json",
+		"internal/registry/catalog/services/drive.json",
+	} {
+		scope := FromChangedFiles([]string{file})
+		if !scope.Global {
+			t.Fatalf("%s must force global quality-gate scope", file)
+		}
 	}
 }
 

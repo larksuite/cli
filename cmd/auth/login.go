@@ -15,6 +15,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 
+	"github.com/larksuite/cli/internal/apicatalog"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -52,7 +53,7 @@ func NewCmdAuthLogin(f *cmdutil.Factory, runF func(*LoginOptions) error) *cobra.
 // end positional literals for every caller outside this module.
 func newCmdAuthLogin(f *cmdutil.Factory, runF func(*LoginOptions) error, registered []common.Shortcut) *cobra.Command {
 	opts := &LoginOptions{Factory: f}
-	resolver := newDomainResolver(registered)
+	resolver := newDomainResolver(f.APICatalog, registered)
 
 	cmd := &cobra.Command{
 		Use:   "login",
@@ -239,13 +240,18 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	// for example, request all `docs` scopes plus a few specific `drive`
 	// scopes in a single command.
 	if len(selectedDomains) > 0 || opts.Recommend {
-		var candidateScopes []string
-		if len(selectedDomains) > 0 {
-			candidateScopes = resolver.scopesFor(selectedDomains, "user", config.Brand)
-		} else {
+		scopeDomains := selectedDomains
+		if len(scopeDomains) == 0 {
 			// --recommend without --domain: all domains
-			candidateScopes = resolver.scopesFor(resolver.sorted(config.Brand), "user", config.Brand)
+			scopeDomains = resolver.sorted(config.Brand)
 		}
+		// A corrupt Catalog shard fails the login typed, exactly as it fails a
+		// command build, instead of silently dropping that domain's API scopes
+		// from the authorization request that is about to be persisted.
+		if err := resolver.catalog.Preload(scopeDomains...); err != nil {
+			return err
+		}
+		candidateScopes := resolver.scopesFor(scopeDomains, "user", config.Brand)
 
 		// Filter to auto-approve scopes if --recommend or interactive "common"
 		if opts.Recommend || scopeLevel == "common" {
@@ -560,10 +566,6 @@ func filterBatchExcludedScopes(scopes []string) []string {
 	return out
 }
 
-// collectScopesForDomains collects API scopes (from from_meta projects) and
-// shortcut scopes for the given domain names.
-// Domains with auth_domain children are automatically expanded to include
-// their children's scopes.
 // domainResolver answers auth domain and scope questions against one build's
 // shortcut snapshot. The snapshot is a build-local input rather than a constant:
 // a distribution assembled with cmd.WithCommandSets contributes business
@@ -571,11 +573,12 @@ func filterBatchExcludedScopes(scopes []string) []string {
 // every method here reads the snapshot it was constructed with instead of the
 // built-in set.
 type domainResolver struct {
+	catalog    apicatalog.Catalog
 	registered []common.Shortcut
 }
 
-func newDomainResolver(registered []common.Shortcut) domainResolver {
-	return domainResolver{registered: registered}
+func newDomainResolver(catalog apicatalog.Catalog, registered []common.Shortcut) domainResolver {
+	return domainResolver{catalog: catalog, registered: registered}
 }
 
 // scopesFor collects API scopes (from from_meta projects) and shortcut scopes
@@ -586,7 +589,7 @@ func (r domainResolver) scopesFor(domains []string, identity string, brand core.
 	scopeSet := make(map[string]bool)
 
 	// 1. API scopes from from_meta projects
-	for _, s := range registry.CollectScopesForProjects(domains, identity) {
+	for _, s := range registry.CollectScopesForProjects(r.catalog, domains, identity) {
 		scopeSet[s] = true
 	}
 
@@ -625,7 +628,10 @@ func (r domainResolver) scopesFor(domains []string, identity string, brand core.
 // folded into their parent domain).
 func (r domainResolver) allKnown(brand core.LarkBrand) map[string]bool {
 	domains := make(map[string]bool)
-	for _, p := range registry.ListFromMetaProjects() {
+	// The manifest name list is the --domain vocabulary: it is cheap (no shard
+	// is parsed) and a corrupt shard stays addressable so that selecting it
+	// fails typed in Preload instead of being reported as an unknown domain.
+	for _, p := range r.catalog.Names() {
 		if !registry.HasAuthDomain(p) {
 			domains[p] = true
 		}
@@ -660,7 +666,7 @@ func shortcutHasDeclaredScopes(shortcut common.Shortcut) bool {
 // --domain and the help list keep accepting them, matching main.
 func (r domainResolver) scopeless() map[string]bool {
 	fromMeta := make(map[string]bool)
-	for _, p := range registry.ListFromMetaProjects() {
+	for _, p := range r.catalog.Names() {
 		fromMeta[p] = true
 	}
 	hasScopes := make(map[string]bool)

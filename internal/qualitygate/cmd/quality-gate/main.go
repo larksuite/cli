@@ -99,7 +99,6 @@ func runCheck(args []string) int {
 }
 
 func configureQualityGateEnvironment() {
-	_ = os.Setenv("LARKSUITE_CLI_REMOTE_META", "off")
 	if os.Getenv("LARKSUITE_CLI_CONFIG_DIR") == "" {
 		_ = os.Setenv("LARKSUITE_CLI_CONFIG_DIR", filepath.Join(os.TempDir(), "quality-gate-cli-config"))
 	}

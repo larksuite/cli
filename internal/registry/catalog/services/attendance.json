@@ -1,0 +1,395 @@
+{
+  "name": "attendance",
+  "version": "v1",
+  "title": "考勤打卡 API",
+  "description": "attendance record query",
+  "servicePath": "/open-apis/attendance/v1",
+  "resources": {
+    "user_tasks": {
+      "methods": {
+        "query": {
+          "id": "user_task.query",
+          "path": "user_tasks/query",
+          "httpMethod": "POST",
+          "description": "Obtain attendance result",
+          "parameters": {
+            "employee_type": {
+              "type": "string",
+              "location": "query",
+              "required": true,
+              "description": "Employee ID type. If you don't have background administrative privileges, you can use Get user ID by mobile phone number or email",
+              "example": "employee_id",
+              "options": [
+                {
+                  "value": "employee_id",
+                  "description": "Employee's employee ID, that is the user ID in Feishu Admin > Organization > Member and Department > Member Details"
+                },
+                {
+                  "value": "employee_no",
+                  "description": "Employee ID, that is the employee ID in Feishu Admin > Organization > Member and Department > Member Details"
+                }
+              ],
+              "enumName": "GetUserTaskClockInFlowsEmployeeType",
+              "enum": [
+                "employee_id",
+                "employee_no"
+              ]
+            },
+            "ignore_invalid_users": {
+              "type": "boolean",
+              "location": "query",
+              "required": false,
+              "description": "Whether to ignore invalid and no permissions users, the corresponding employee_type. If true, return the information of the valid user and inform the invalid and no permissions user; if false, and there are invalid or no permissions in the user_ids, return an error",
+              "example": true
+            },
+            "include_terminated_user": {
+              "type": "boolean",
+              "location": "query",
+              "required": false,
+              "description": "Since the new employee can reuse the employee_no/employee_id of the departed employee, corresponding to employee_type. If true, return the data of all current + departing employees corresponding to employee_no/employee_id; if false, only return the data of the current or most recent employee corresponding to employee_no/employee_id",
+              "example": true
+            }
+          },
+          "requestBody": {
+            "user_ids": {
+              "type": "array",
+              "description": "employee_no or employee_id list, corresponding to employee_type, not more than 50 in length",
+              "required": true
+            },
+            "check_date_from": {
+              "type": "integer",
+              "description": "The starting working day of the query, in the format yyyyMMdd",
+              "required": true,
+              "example": 20190817
+            },
+            "check_date_to": {
+              "type": "integer",
+              "description": "The closing working day of the query, in the format yyyyMMdd",
+              "required": true,
+              "example": 20190820
+            },
+            "need_overtime_result": {
+              "type": "boolean",
+              "description": "Whether you need the overtime shift clock in result; when need_overtime_result = true, the overtime shift will be returned. The overtime shift is marked by task_shift_type = 1, and there will be shared record_id when the overtime shift is connected to the normal shift. For example: 9-18 is the normal shift, 18-19 is the overtime shift, and the clock in result records two segments, 9-18, 18-19 and the two segments record_id the same (check_in_record_id and check_out_record_id are the same). Non-connected overtime shifts are returned in normal segments. When need_overtime_result = false, only the normal shift is returned and task_shift_type = 0",
+              "required": false,
+              "example": true
+            }
+          },
+          "responseBody": {
+            "user_task_results": {
+              "type": "array",
+              "description": "Attendance tasks list",
+              "required": false,
+              "properties": {
+                "result_id": {
+                  "type": "string",
+                  "description": "打卡记录 ID",
+                  "required": true,
+                  "example": "6709359313699356941"
+                },
+                "user_id": {
+                  "type": "string",
+                  "description": "用户 ID，对应employee_type",
+                  "required": true,
+                  "example": "abd754f7"
+                },
+                "employee_name": {
+                  "type": "string",
+                  "description": "用户姓名",
+                  "required": true,
+                  "example": "John"
+                },
+                "day": {
+                  "type": "integer",
+                  "description": "日期，格式为yyyyMMdd",
+                  "required": true,
+                  "example": 20190819
+                },
+                "group_id": {
+                  "type": "string",
+                  "description": "考勤组 ID（特别说明：1代表未加入考勤组），可用于按 ID 查询考勤组",
+                  "required": true,
+                  "example": "6737202939523236110"
+                },
+                "shift_id": {
+                  "type": "string",
+                  "description": "班次 ID（特别说明：9代表默认班次），可用于按 ID 查询班次",
+                  "required": true,
+                  "example": "6753520403404030215"
+                },
+                "records": {
+                  "type": "array",
+                  "description": "用户考勤记录",
+                  "required": true,
+                  "properties": {
+                    "check_in_record_id": {
+                      "type": "string",
+                      "description": "Clock-in record ID",
+                      "required": true,
+                      "example": "6709359313699356941"
+                    },
+                    "check_in_record": {
+                      "type": "object",
+                      "description": "上班打卡记录",
+                      "required": false,
+                      "ref": "user_flow"
+                    },
+                    "check_out_record_id": {
+                      "type": "string",
+                      "description": "Clock-out record ID",
+                      "required": true,
+                      "example": "6709359313699356942"
+                    },
+                    "check_out_record": {
+                      "type": "object",
+                      "description": "下班打卡记录",
+                      "required": false,
+                      "ref": "user_flow"
+                    },
+                    "check_in_result": {
+                      "type": "string",
+                      "description": "Clock-in results",
+                      "required": true,
+                      "example": "SystemCheck",
+                      "options": [
+                        {
+                          "value": "NoNeedCheck",
+                          "description": "No attendance is required"
+                        },
+                        {
+                          "value": "SystemCheck",
+                          "description": "System attendance (deprecated)"
+                        },
+                        {
+                          "value": "Normal",
+                          "description": "Available"
+                        },
+                        {
+                          "value": "Early",
+                          "description": "Early out"
+                        },
+                        {
+                          "value": "Late",
+                          "description": "Late in"
+                        },
+                        {
+                          "value": "Lack",
+                          "description": "No record"
+                        },
+                        {
+                          "value": "Todo",
+                          "description": "Not clocked in"
+                        }
+                      ],
+                      "enum": [
+                        "NoNeedCheck",
+                        "SystemCheck",
+                        "Normal",
+                        "Early",
+                        "Late",
+                        "Lack",
+                        "Todo"
+                      ]
+                    },
+                    "check_out_result": {
+                      "type": "string",
+                      "description": "Clock-out results",
+                      "required": true,
+                      "example": "SystemCheck",
+                      "options": [
+                        {
+                          "value": "NoNeedCheck",
+                          "description": "No attendance is required"
+                        },
+                        {
+                          "value": "SystemCheck",
+                          "description": "System attendance (deprecated)"
+                        },
+                        {
+                          "value": "Normal",
+                          "description": "Available"
+                        },
+                        {
+                          "value": "Early",
+                          "description": "Early out"
+                        },
+                        {
+                          "value": "Late",
+                          "description": "Late in"
+                        },
+                        {
+                          "value": "Lack",
+                          "description": "No record"
+                        },
+                        {
+                          "value": "Todo",
+                          "description": "Not clocked in"
+                        }
+                      ],
+                      "enum": [
+                        "NoNeedCheck",
+                        "SystemCheck",
+                        "Normal",
+                        "Early",
+                        "Late",
+                        "Lack",
+                        "Todo"
+                      ]
+                    },
+                    "check_in_result_supplement": {
+                      "type": "string",
+                      "description": "Supplement of clock-in results",
+                      "required": true,
+                      "example": "None",
+                      "options": [
+                        {
+                          "value": "None",
+                          "description": "None"
+                        },
+                        {
+                          "value": "ManagerModification",
+                          "description": "Administrator modification"
+                        },
+                        {
+                          "value": "CardReplacement",
+                          "description": "Correction approved"
+                        },
+                        {
+                          "value": "ShiftChange",
+                          "description": "Shift swap"
+                        },
+                        {
+                          "value": "Travel",
+                          "description": "Business trip"
+                        },
+                        {
+                          "value": "Leave",
+                          "description": "Leave"
+                        },
+                        {
+                          "value": "GoOut",
+                          "description": "Offsite"
+                        },
+                        {
+                          "value": "CardReplacementApplication",
+                          "description": "Applying correction"
+                        },
+                        {
+                          "value": "FieldPunch",
+                          "description": "Offsite attendance"
+                        }
+                      ],
+                      "enum": [
+                        "None",
+                        "ManagerModification",
+                        "CardReplacement",
+                        "ShiftChange",
+                        "Travel",
+                        "Leave",
+                        "GoOut",
+                        "CardReplacementApplication",
+                        "FieldPunch"
+                      ]
+                    },
+                    "check_out_result_supplement": {
+                      "type": "string",
+                      "description": "Supplement of clock-out results",
+                      "required": true,
+                      "example": "None",
+                      "options": [
+                        {
+                          "value": "None",
+                          "description": "None"
+                        },
+                        {
+                          "value": "ManagerModification",
+                          "description": "Administrator modification"
+                        },
+                        {
+                          "value": "CardReplacement",
+                          "description": "Correction approved"
+                        },
+                        {
+                          "value": "ShiftChange",
+                          "description": "Shift swap"
+                        },
+                        {
+                          "value": "Travel",
+                          "description": "Business trip"
+                        },
+                        {
+                          "value": "Leave",
+                          "description": "Leave"
+                        },
+                        {
+                          "value": "GoOut",
+                          "description": "Offsite"
+                        },
+                        {
+                          "value": "CardReplacementApplication",
+                          "description": "Applying correction"
+                        },
+                        {
+                          "value": "FieldPunch",
+                          "description": "Offsite attendance"
+                        }
+                      ],
+                      "enum": [
+                        "None",
+                        "ManagerModification",
+                        "CardReplacement",
+                        "ShiftChange",
+                        "Travel",
+                        "Leave",
+                        "GoOut",
+                        "CardReplacementApplication",
+                        "FieldPunch"
+                      ]
+                    },
+                    "check_in_shift_time": {
+                      "type": "string",
+                      "description": "上班打卡时间",
+                      "required": false,
+                      "example": "1609722000"
+                    },
+                    "check_out_shift_time": {
+                      "type": "string",
+                      "description": "下班打卡时间",
+                      "required": false,
+                      "example": "1609754400"
+                    },
+                    "task_shift_type": {
+                      "type": "integer",
+                      "description": "班次类型，0正常，1加班班次",
+                      "required": false,
+                      "example": 0
+                    }
+                  }
+                }
+              }
+            },
+            "invalid_user_ids": {
+              "type": "array",
+              "description": "List of invalid user IDs, corresponding to employee_type",
+              "required": false
+            },
+            "unauthorized_user_ids": {
+              "type": "array",
+              "description": "No permissions User ID list, corresponding employee_type",
+              "required": false
+            }
+          },
+          "scopes": [
+            "attendance:task:readonly"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/attendance-v1/user_task/query"
+        }
+      }
+    }
+  }
+}

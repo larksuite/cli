@@ -19,11 +19,13 @@ import (
 	cmdconfig "github.com/larksuite/cli/cmd/config"
 	"github.com/larksuite/cli/cmd/schema"
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/apicatalog"
 	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/deprecation"
+	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/registry"
@@ -519,30 +521,40 @@ func TestApplyNeedAuthorizationHint_ServiceMethodUsesLocalScopesWhenNoUAT(t *tes
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
+	snapshot, err := registry.OpenSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.APICatalog = apicatalog.Filter(snapshot.Catalog(), func(svc meta.Service) (meta.Service, bool) {
+		return svc, svc.Name == "drive"
+	})
 	f.ResolvedIdentity = core.AsUser
 
-	var target registry.CommandEntry
-	for _, entry := range registry.CollectCommandScopes([]string{"calendar"}, "user") {
-		if len(entry.Scopes) == 1 && entry.Scopes[0] == "calendar:calendar.event:create" {
-			target = entry
+	var target apicatalog.MethodRef
+	var scopes []string
+	for _, ref := range f.APICatalog.WalkMethods(nil) {
+		declared := registry.DeclaredScopesForMethod(ref.Method, "user")
+		if len(declared) > 0 {
+			target = ref
+			scopes = declared
 			break
 		}
 	}
-	if target.Command == "" {
-		t.Fatal("failed to locate a calendar create command in local registry metadata")
-	}
-	parts := strings.Split(target.Command, " ")
-	if len(parts) != 2 {
-		t.Fatalf("expected resource/method command, got %q", target.Command)
+	if target.Method.ID == "" {
+		t.Fatal("failed to locate a scoped drive method in catalog snapshot")
 	}
 
 	root := &cobra.Command{Use: "lark-cli"}
-	serviceCmd := &cobra.Command{Use: "calendar"}
-	resourceCmd := &cobra.Command{Use: parts[0]}
-	methodCmd := &cobra.Command{Use: parts[1]}
+	serviceCmd := &cobra.Command{Use: target.Service.Name}
 	root.AddCommand(serviceCmd)
-	serviceCmd.AddCommand(resourceCmd)
-	resourceCmd.AddCommand(methodCmd)
+	parent := serviceCmd
+	for _, name := range target.ResourcePath {
+		child := &cobra.Command{Use: name}
+		parent.AddCommand(child)
+		parent = child
+	}
+	methodCmd := &cobra.Command{Use: target.Method.Name}
+	parent.AddCommand(methodCmd)
 	f.CurrentCommand = methodCmd
 
 	source := internalauth.NewNeedUserAuthorizationError("u_service")
@@ -569,7 +581,12 @@ func TestApplyNeedAuthorizationHint_ServiceMethodUsesLocalScopesWhenNoUAT(t *tes
 	if !strings.Contains(problem.Message, "need_user_authorization") {
 		t.Errorf("Message should preserve need_user_authorization marker; got %q", problem.Message)
 	}
-	if !strings.Contains(problem.Hint, `auth login --scope "calendar:calendar.event:create" --no-wait --json`) {
+	for _, scope := range scopes {
+		if !strings.Contains(problem.Hint, scope) {
+			t.Errorf("expected scoped two-turn recovery to include %q, got %q", scope, problem.Hint)
+		}
+	}
+	if !strings.Contains(problem.Hint, `auth login --scope "`) || !strings.Contains(problem.Hint, `--no-wait --json`) {
 		t.Errorf("expected scoped two-turn recovery, got %q", problem.Hint)
 	}
 	if authErr.Hint != originalHint || !strings.Contains(authErr.Hint, "--recommend --no-wait --json") {
@@ -586,7 +603,7 @@ func TestApplyNeedAuthorizationHint_ServiceMethodUsesLocalScopesWhenNoUAT(t *tes
 	if !ok {
 		t.Fatalf("concealed rendered error = %T, want typed error", concealed)
 	}
-	wantFallback := recovery.UserAuthorization("calendar:calendar.event:create").Render(concealedPlan)
+	wantFallback := recovery.UserAuthorization(scopes...).Render(concealedPlan)
 	if concealedProblem.Hint != wantFallback {
 		t.Errorf("concealed recovery = %q, want fallback %q", concealedProblem.Hint, wantFallback)
 	}

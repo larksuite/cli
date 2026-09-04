@@ -121,3 +121,40 @@ func TestBrandGuard_DispatchHitsStubViaCobra(t *testing.T) {
 		t.Errorf("dispatched error should mention lark brand, got: %s", validationErr.Error())
 	}
 }
+
+func TestBrandGuard_SelectedDomainsOnly(t *testing.T) {
+	t.Run("selected restricted domain keeps guard", func(t *testing.T) {
+		program := &cobra.Command{Use: "root"}
+		RegisterShortcutsForDomainsWithContext(
+			context.Background(),
+			program,
+			newFactoryWithBrand(core.BrandLark),
+			[]string{"apps"},
+		)
+
+		apps := findChild(program, "apps")
+		if apps == nil {
+			t.Fatal("selected apps service should be registered")
+		}
+		if !apps.Hidden || !apps.DisableFlagParsing {
+			t.Fatal("selected apps service should retain the Lark brand guard")
+		}
+	})
+
+	t.Run("unselected existing domain is untouched", func(t *testing.T) {
+		program := &cobra.Command{Use: "root"}
+		apps := &cobra.Command{Use: "apps"}
+		program.AddCommand(apps)
+
+		RegisterShortcutsForDomainsWithContext(
+			context.Background(),
+			program,
+			newFactoryWithBrand(core.BrandLark),
+			[]string{"docs"},
+		)
+
+		if apps.Hidden || apps.DisableFlagParsing || apps.RunE != nil {
+			t.Fatal("brand guard must not mutate an unselected existing apps command")
+		}
+	})
+}

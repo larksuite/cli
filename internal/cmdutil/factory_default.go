@@ -23,7 +23,6 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/keychain"
-	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/riskcontrol"
 	_ "github.com/larksuite/cli/internal/security/contentsafety" // register content safety provider
 	"github.com/larksuite/cli/internal/transport"
@@ -93,7 +92,6 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 			return nil, err
 		}
 		cfg := acct.ToCliConfig()
-		registry.InitWithBrand(cfg.Brand)
 		return cfg, nil
 	})
 

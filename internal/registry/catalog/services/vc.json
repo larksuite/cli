@@ -1,0 +1,466 @@
+{
+  "name": "vc",
+  "version": "v1",
+  "title": "视频会议 API",
+  "description": "video conferencing and meeting notes",
+  "servicePath": "/open-apis/vc/v1",
+  "resources": {
+    "meeting": {
+      "methods": {
+        "get": {
+          "id": "meeting.get",
+          "path": "meetings/{meeting_id}",
+          "httpMethod": "GET",
+          "description": "Obtain meeting details",
+          "parameters": {
+            "meeting_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Meeting ID (Unique identifier of a video conference, generated after the conference is started)",
+              "example": "6911188411932033028"
+            },
+            "with_participants": {
+              "type": "boolean",
+              "location": "query",
+              "required": false,
+              "description": "Indicates whether the participant list is required",
+              "example": false
+            },
+            "with_meeting_ability": {
+              "type": "boolean",
+              "location": "query",
+              "required": false,
+              "description": "Indicates whether individual statistics is required in the meeting (only for tenant_access_token)",
+              "example": false
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户ID的类型，默认使用open_id可不填",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户（推荐）"
+                }
+              ],
+              "enumName": "GetMeetingByIDUserIDType",
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            },
+            "query_mode": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "此次查询的查询模式，不传，或传0，只查询会议信息；传1，只查询会议产物",
+              "options": [
+                {
+                  "value": 0,
+                  "description": "only get meeting"
+                },
+                {
+                  "value": 1,
+                  "description": "only get related artifacts"
+                }
+              ],
+              "enumName": "get_meeting_by_id_query_mode",
+              "enum": [
+                0,
+                1
+              ]
+            }
+          },
+          "parameterOrder": [
+            "meeting_id"
+          ],
+          "responseBody": {
+            "meeting": {
+              "type": "object",
+              "description": "Meeting data",
+              "required": false,
+              "ref": "meeting",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "会议ID",
+                  "required": false,
+                  "example": "6911188411934433028"
+                },
+                "topic": {
+                  "type": "string",
+                  "description": "会议主题",
+                  "required": false,
+                  "example": "my meeting"
+                },
+                "url": {
+                  "type": "string",
+                  "description": "会议链接",
+                  "required": false,
+                  "example": "https://sample.feishu.cn/vc/j/example"
+                },
+                "meeting_no": {
+                  "type": "string",
+                  "description": "会议号",
+                  "required": false,
+                  "example": "123456789"
+                },
+                "password": {
+                  "type": "string",
+                  "description": "会议密码",
+                  "required": false,
+                  "example": "123456"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "会议创建时间（unix时间，单位sec）",
+                  "required": false,
+                  "example": "1608885566"
+                },
+                "start_time": {
+                  "type": "string",
+                  "description": "会议开始时间（unix时间，单位sec）",
+                  "required": false,
+                  "example": "1608883322"
+                },
+                "end_time": {
+                  "type": "string",
+                  "description": "会议结束时间（unix时间，单位sec）",
+                  "required": false,
+                  "example": "1608888867"
+                },
+                "host_user": {
+                  "type": "object",
+                  "description": "Host",
+                  "required": false,
+                  "ref": "meeting_user",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "User ID",
+                      "required": false,
+                      "example": "ou_3ec3f6a28a0d08c45d895276e8e5e19b"
+                    },
+                    "user_type": {
+                      "type": "integer",
+                      "description": "user type",
+                      "required": false,
+                      "example": 1,
+                      "options": [
+                        {
+                          "value": 1,
+                          "description": "lark用户"
+                        },
+                        {
+                          "value": 2,
+                          "description": "rooms用户"
+                        },
+                        {
+                          "value": 3,
+                          "description": "文档用户"
+                        },
+                        {
+                          "value": 4,
+                          "description": "neo单品用户"
+                        },
+                        {
+                          "value": 5,
+                          "description": "neo单品游客用户"
+                        },
+                        {
+                          "value": 6,
+                          "description": "pstn用户"
+                        },
+                        {
+                          "value": 7,
+                          "description": "sip用户"
+                        }
+                      ],
+                      "enum": [
+                        1,
+                        2,
+                        3,
+                        4,
+                        5,
+                        6,
+                        7
+                      ],
+                      "enumName": "user_type"
+                    }
+                  }
+                },
+                "meeting_connect": {
+                  "type": "boolean",
+                  "description": "该会议是否支持互通",
+                  "required": false,
+                  "example": true
+                },
+                "status": {
+                  "type": "integer",
+                  "description": "会议状态",
+                  "required": false,
+                  "example": 2,
+                  "options": [
+                    {
+                      "value": 1,
+                      "description": "会议呼叫中"
+                    },
+                    {
+                      "value": 2,
+                      "description": "会议进行中"
+                    },
+                    {
+                      "value": 3,
+                      "description": "会议已结束"
+                    }
+                  ],
+                  "enum": [
+                    1,
+                    2,
+                    3
+                  ],
+                  "enumName": "meeting_status"
+                },
+                "participant_count": {
+                  "type": "string",
+                  "description": "峰值参会人数",
+                  "required": false,
+                  "example": "999"
+                },
+                "participant_count_accumulated": {
+                  "type": "string",
+                  "description": "累计参会人数",
+                  "required": false,
+                  "example": "10"
+                },
+                "participants": {
+                  "type": "array",
+                  "description": "Participant list",
+                  "required": false,
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "User ID",
+                      "required": false,
+                      "example": "ou_3ec3f6a28a0d08c45d895276e8e5e19b"
+                    },
+                    "first_join_time": {
+                      "type": "string",
+                      "description": "首次入会时间，秒级Unix时间戳",
+                      "required": false,
+                      "example": "1624438144"
+                    },
+                    "final_leave_time": {
+                      "type": "string",
+                      "description": "最终离会时间，秒级Unix时间戳",
+                      "required": false,
+                      "example": "1624438144"
+                    },
+                    "in_meeting_duration": {
+                      "type": "string",
+                      "description": "累计在会中时间，时间单位：秒",
+                      "required": false,
+                      "example": "123"
+                    },
+                    "user_type": {
+                      "type": "integer",
+                      "description": "用户类型",
+                      "required": false,
+                      "example": 1,
+                      "options": [
+                        {
+                          "value": 1,
+                          "description": "lark用户"
+                        },
+                        {
+                          "value": 2,
+                          "description": "rooms用户"
+                        },
+                        {
+                          "value": 3,
+                          "description": "文档用户"
+                        },
+                        {
+                          "value": 4,
+                          "description": "neo单品用户"
+                        },
+                        {
+                          "value": 5,
+                          "description": "neo单品游客用户"
+                        },
+                        {
+                          "value": 6,
+                          "description": "pstn用户"
+                        },
+                        {
+                          "value": 7,
+                          "description": "sip用户"
+                        }
+                      ],
+                      "enum": [
+                        1,
+                        2,
+                        3,
+                        4,
+                        5,
+                        6,
+                        7
+                      ],
+                      "enumName": "user_type"
+                    },
+                    "is_host": {
+                      "type": "boolean",
+                      "description": "是否为主持人",
+                      "required": false,
+                      "example": true
+                    },
+                    "is_cohost": {
+                      "type": "boolean",
+                      "description": "是否为联席主持人",
+                      "required": false,
+                      "example": false
+                    },
+                    "is_external": {
+                      "type": "boolean",
+                      "description": "是否为外部参会人",
+                      "required": false,
+                      "example": false
+                    },
+                    "status": {
+                      "type": "integer",
+                      "description": "参会人状态",
+                      "required": false,
+                      "example": 2,
+                      "options": [
+                        {
+                          "value": 1,
+                          "description": "呼叫中"
+                        },
+                        {
+                          "value": 2,
+                          "description": "在会中"
+                        },
+                        {
+                          "value": 3,
+                          "description": "正在响铃"
+                        },
+                        {
+                          "value": 4,
+                          "description": "不在会中或已经离开会议"
+                        }
+                      ],
+                      "enum": [
+                        1,
+                        2,
+                        3,
+                        4
+                      ],
+                      "enumName": "participant_status"
+                    }
+                  }
+                },
+                "ability": {
+                  "type": "object",
+                  "description": "会中使用的能力",
+                  "required": false,
+                  "ref": "meeting_ability",
+                  "properties": {
+                    "use_video": {
+                      "type": "boolean",
+                      "description": "是否使用视频",
+                      "required": false,
+                      "example": true
+                    },
+                    "use_audio": {
+                      "type": "boolean",
+                      "description": "是否使用音频",
+                      "required": false,
+                      "example": true
+                    },
+                    "use_share_screen": {
+                      "type": "boolean",
+                      "description": "是否使用共享屏幕",
+                      "required": false,
+                      "example": true
+                    },
+                    "use_follow_screen": {
+                      "type": "boolean",
+                      "description": "是否使用妙享（magic share）",
+                      "required": false,
+                      "example": true
+                    },
+                    "use_recording": {
+                      "type": "boolean",
+                      "description": "是否使用录制",
+                      "required": false,
+                      "example": true
+                    },
+                    "use_pstn": {
+                      "type": "boolean",
+                      "description": "是否使用PSTN",
+                      "required": false,
+                      "example": true
+                    }
+                  }
+                },
+                "note_id": {
+                  "type": "string",
+                  "description": "纪要ID",
+                  "required": false,
+                  "example": "6943848821689040898"
+                }
+              }
+            },
+            "related_artifacts": {
+              "type": "object",
+              "description": "",
+              "required": false,
+              "ref": "meeting_related_artifacts",
+              "properties": {
+                "note_doc_token": {
+                  "type": "string",
+                  "description": "智能纪要的 doc_token;- 文档一旦生成，就可以查到对应 token;- 无字段权限时，该 key 不会出现在 related_artifacts 结构当中;- 有字段权限而无内容时，related_artifacts 结构中会包含该 key，同时其值为空字符串",
+                  "required": false,
+                  "example": "J1X5wG7bFilbFDk42VNdhfS6n6g",
+                  "annotations": [
+                    "lark:data:vc:meeting.artifact.note"
+                  ]
+                },
+                "verbatim_doc_token": {
+                  "type": "string",
+                  "description": "逐字稿的 doc_token;- 文档一旦生成，就可以查到对应 token;- 无字段权限时，该 key 不会出现在 related_artifacts 结构当中;- 有字段权限而无内容时，related_artifacts 结构中会包含该 key，同时其值为空字符串",
+                  "required": false,
+                  "example": "J1X5wG7bFilbFDk42VNdhfS6n6g",
+                  "annotations": [
+                    "lark:data:vc:meeting.artifact.verbatim"
+                  ]
+                }
+              }
+            }
+          },
+          "scopes": [
+            "vc:meeting:readonly",
+            "vc:meeting.meetingevent:read"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/vc-v1/meeting/get"
+        }
+      }
+    }
+  }
+}

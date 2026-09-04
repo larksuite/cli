@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts"
 	shortcutTypes "github.com/larksuite/cli/shortcuts/common"
@@ -37,13 +38,22 @@ type diagOutput struct {
 	Scopes  []diagScopeInfo   `json:"scopes"`
 }
 
+func diagnoseCatalog() apicatalog.Catalog {
+	snapshot, err := registry.OpenSnapshot()
+	if err != nil {
+		panic(err)
+	}
+	return snapshot.Catalog()
+}
+
 // ── Core logic ────────────────────────────────────────────────────────
 
 // diagAllKnownDomains returns sorted, deduplicated domain names from both
 // from_meta projects and shortcuts.
 func diagAllKnownDomains() []string {
 	seen := make(map[string]bool)
-	for _, p := range registry.ListFromMetaProjects() {
+	for _, service := range diagnoseCatalog().Services() {
+		p := service.Name
 		seen[p] = true
 	}
 	for _, s := range shortcuts.AllShortcuts() {
@@ -77,7 +87,7 @@ func diagBuild(domains []string) diagOutput {
 
 	for _, domain := range domains {
 		for _, identity := range identities {
-			for _, ce := range registry.CollectCommandScopes([]string{domain}, identity) {
+			for _, ce := range registry.CollectCommandScopes(diagnoseCatalog(), []string{domain}, identity) {
 				for _, scope := range ce.Scopes {
 					method := domain + "." + strings.ReplaceAll(ce.Command, " ", ".")
 					k := methodKey{domain, "api", method, scope}
@@ -202,7 +212,6 @@ func TestScopeSnapshot(t *testing.T) {
 		t.Skip("set SCOPE_SNAPSHOT_DIR to enable snapshot generation")
 	}
 
-	registry.Init()
 	result := diagBuild(diagAllKnownDomains())
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {

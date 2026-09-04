@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/huh"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
@@ -39,7 +40,7 @@ func (r domainResolver) metadata(lang string, brand core.LarkBrand) []domainMeta
 		if scopeless[name] {
 			continue
 		}
-		domains = append(domains, buildDomainMeta(name, lang))
+		domains = append(domains, buildDomainMeta(r.catalog, name, lang))
 	}
 
 	sort.Slice(domains, func(i, j int) bool {
@@ -51,7 +52,7 @@ func (r domainResolver) metadata(lang string, brand core.LarkBrand) []domainMeta
 // buildDomainMeta constructs a domainMeta for a given service name and language.
 // It reads from the service_descriptions.json config first, falling back to
 // from_meta spec fields if not found.
-func buildDomainMeta(name, lang string) domainMeta {
+func buildDomainMeta(catalog apicatalog.Catalog, name, lang string) domainMeta {
 	title := registry.GetServiceTitle(name, lang)
 	desc := registry.GetServiceDetailDescription(name, lang)
 	if title != "" || desc != "" {
@@ -63,7 +64,7 @@ func buildDomainMeta(name, lang string) domainMeta {
 	}
 	// Fallback: read from the typed service spec (legacy)
 	dm := domainMeta{Name: name}
-	if svc, ok := registry.ServiceTyped(name); ok {
+	if svc, ok := catalog.Service(name); ok {
 		dm.Title = svc.Title
 		dm.Description = svc.Description
 	}

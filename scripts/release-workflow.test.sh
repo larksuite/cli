@@ -145,10 +145,10 @@ end
 build_steps = jobs.fetch("build-sign-notarize").fetch("steps")
 setup_go = build_steps.find { |step| step["uses"]&.start_with?("actions/setup-go@") }
 expect_equal(setup_go&.dig("with", "go-version"), "${{ env.RELEASE_GO_VERSION }}", "release Go toolchain input")
-fetch_metadata_index = build_steps.index { |step| step["name"] == "Fetch build metadata" }
-prepare_key_index = build_steps.index { |step| step["name"] == "Prepare Apple notarization key" }
-contract_error("build metadata must be fetched before Apple credentials are prepared") unless fetch_metadata_index && prepare_key_index && fetch_metadata_index < prepare_key_index
-contract_error("build metadata must be fetched outside GoReleaser hooks") if goreleaser.dig("before", "hooks")&.include?("python3 scripts/fetch_meta.py")
+contract_error("release workflow must not reference scripts/fetch_meta.py") if scalar_values(workflow).grep(String).any? { |value| value.include?("scripts/fetch_meta.py") }
+contract_error("GoReleaser must not reference scripts/fetch_meta.py") if scalar_values(goreleaser).grep(String).any? { |value| value.include?("scripts/fetch_meta.py") }
+contract_error("build-sign-notarize must not set up Python") if build_steps.any? { |step| step["uses"].to_s.start_with?("actions/setup-python@") }
+contract_error("build-sign-notarize must prepare Apple notarization credentials") unless build_steps.any? { |step| step["name"] == "Prepare Apple notarization key" }
 
 goreleaser_index = build_steps.index { |step| step["name"] == "Run GoReleaser" }
 toolchain_verify_index = build_steps.index { |step| step["name"] == "Verify release Go toolchain" }

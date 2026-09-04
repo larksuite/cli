@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/meta"
 )
 
@@ -36,7 +37,7 @@ func TestMinutesAffordanceExamples(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.method, func(t *testing.T) {
-			raw, ok := For("minutes", tt.method)
+			raw, ok := For(apicatalog.Catalog{}, "minutes", tt.method)
 			if !ok {
 				t.Fatalf("For(minutes, %s) ok=false", tt.method)
 			}
@@ -57,7 +58,7 @@ func TestMinutesAffordanceDoesNotDuplicateRuntimeRecovery(t *testing.T) {
 	SetSource(os.DirFS("../../affordance"))
 
 	for _, method := range []string{"+todo", "+word-replace", "+summary"} {
-		raw, ok := For("minutes", method)
+		raw, ok := For(apicatalog.Catalog{}, "minutes", method)
 		if !ok {
 			t.Fatalf("For(minutes, %s) ok=false", method)
 		}
@@ -76,7 +77,7 @@ func TestMinutesWordReplaceAffordanceDoesNotRequireTranscriptRead(t *testing.T) 
 	t.Cleanup(func() { SetSource(prev) })
 	SetSource(os.DirFS("../../affordance"))
 
-	raw, ok := For("minutes", "+word-replace")
+	raw, ok := For(apicatalog.Catalog{}, "minutes", "+word-replace")
 	if !ok {
 		t.Fatal("For(minutes, +word-replace) ok=false")
 	}
@@ -99,7 +100,7 @@ func TestMinutesTodoAffordanceRoutesAwayFromTask(t *testing.T) {
 	t.Cleanup(func() { SetSource(prev) })
 	SetSource(os.DirFS("../../affordance"))
 
-	raw, ok := For("minutes", "+todo")
+	raw, ok := For(apicatalog.Catalog{}, "minutes", "+todo")
 	if !ok {
 		t.Fatal("For(minutes, +todo) ok=false")
 	}

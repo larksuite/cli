@@ -88,6 +88,40 @@ func TestFailedBuildDoesNotAffectNextBuild(t *testing.T) {
 	}
 }
 
+func TestBuildForArgsRecognizesExternalOnlyShortcutDomain(t *testing.T) {
+	tmpHome(t)
+	declaration := command.Define(command.Definition[businessArgs, businessData]{
+		Metadata: command.CommandMetadata{
+			Service: command.DomainApproval, Command: "+business-target", Description: "Targeted business command", Risk: command.RiskRead,
+			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{
+				command.IdentityUser: {RequiredScopes: []string{"approval:approval:readonly"}},
+			}},
+		},
+		Hooks: command.Hooks[businessArgs, businessData]{
+			Execute: func(_ context.Context, _ command.CommandContext, args *businessArgs) (command.Result[businessData], error) {
+				return command.Success(businessData{ChatID: args.ChatID}), nil
+			},
+		},
+	})
+
+	root, err := buildRootForArgs(context.Background(), buildInvocationForTest(t), []string{"approval", "+business-target"},
+		WithCommandSets(command.Set{
+			Domain:   command.ExtendDomain(command.DomainApproval),
+			Commands: []command.Command{declaration},
+		}),
+		WithoutPlugins(), WithoutStrictMode(), WithoutServiceCommands(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if findCommand(root, "approval +business-target") == nil {
+		t.Fatal("target-aware assembly omitted the external approval command")
+	}
+	if findCommand(root, "im") != nil {
+		t.Fatal("target-aware assembly mounted unrelated im shortcuts")
+	}
+}
+
 func TestCommandSetSubprocess(t *testing.T) {
 	scenario := os.Getenv("LARK_CLI_COMMAND_SET_SCENARIO")
 	if scenario == "" {

@@ -1,12 +1,11 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-// Package apicatalog is the single navigation Module over the API metadata. It
+// Package apicatalog is the single navigation module over API catalog data. It
 // owns every "which services/resources/methods exist and how does a path
 // resolve" question that was previously duplicated across cmd/schema,
 // cmd/service, internal/schema and internal/registry. It depends only on
-// internal/meta; registry is the source Adapter (EmbeddedCatalog/RuntimeCatalog),
-// so apicatalog never imports registry.
+// internal/meta; apicatalog never imports the snapshot loader.
 package apicatalog
 
 import (
@@ -16,56 +15,16 @@ import (
 	"github.com/larksuite/cli/internal/meta"
 )
 
-// Source records whether a catalog includes the remote overlay. It is carried
-// so callers (and tests) can assert determinism instead of guessing.
+// Source records the immutable origin of a Catalog.
 type Source string
 
 const (
-	SourceEmbedded Source = "embedded" // compiled-in metadata only; deterministic
-	SourceRuntime  Source = "runtime"  // embedded + remote overlay
+	SourceEmbedded Source = "embedded"
 )
 
 // MethodFilter optionally drops methods (e.g. by identity in strict mode).
 // A nil filter includes everything.
 type MethodFilter func(meta.Method) bool
-
-// Catalog is a navigation view over services with a name index. It owns its
-// ordering — New sorts by name — so WalkMethods/Resolve/Complete are
-// deterministic regardless of how the source adapter ordered its input.
-type Catalog struct {
-	source   Source
-	services []meta.Service
-	byName   map[string]meta.Service
-}
-
-// New builds a Catalog over the given services, owning its navigation order:
-// the slice is copied and sorted by name so callers may pass any order and the
-// ordering contract is not delegated to the adapter. The copy is shallow —
-// meta.Service values share their Resources maps, which are treated as
-// read-only.
-func New(source Source, services []meta.Service) Catalog {
-	sorted := append([]meta.Service(nil), services...)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
-	byName := make(map[string]meta.Service, len(sorted))
-	for _, s := range sorted {
-		byName[s.Name] = s
-	}
-	return Catalog{source: source, services: sorted, byName: byName}
-}
-
-// Source reports embedded vs runtime.
-func (c Catalog) Source() Source { return c.source }
-
-// Services returns the services in name order. Treat the result as read-only:
-// it is the Catalog's own ordered slice and its element Resources maps are
-// shared.
-func (c Catalog) Services() []meta.Service { return c.services }
-
-// Service looks up one service by name.
-func (c Catalog) Service(name string) (meta.Service, bool) {
-	s, ok := c.byName[name]
-	return s, ok
-}
 
 // Resolve maps a path (already split into segments) to a Target. An empty path
 // is TargetAll. Failures return a *ResolveError carrying the available
@@ -74,9 +33,9 @@ func (c Catalog) Resolve(parts []string) (Target, error) {
 	if len(parts) == 0 {
 		return Target{Kind: TargetAll}, nil
 	}
-	svc, ok := c.byName[parts[0]]
+	svc, ok := c.Service(parts[0])
 	if !ok {
-		return Target{}, &ResolveError{Kind: ErrService, Subject: parts[0], Candidates: c.serviceNames()}
+		return Target{}, &ResolveError{Kind: ErrService, Subject: parts[0], Candidates: c.resolvedNames()}
 	}
 	if len(parts) == 1 {
 		return Target{Kind: TargetService, Service: svc}, nil
@@ -145,7 +104,7 @@ func (c Catalog) MethodRefs(target Target, filter MethodFilter) []MethodRef {
 // name, resources by name, methods by name.
 func (c Catalog) WalkMethods(filter MethodFilter) []MethodRef {
 	var out []MethodRef
-	for _, svc := range c.services {
+	for _, svc := range c.Services() {
 		out = append(out, ServiceMethods(svc, filter)...)
 	}
 	return out
@@ -195,14 +154,14 @@ func (c Catalog) Complete(args []string, toComplete string, filter MethodFilter)
 	if len(args) == 0 {
 		parts := strings.Split(toComplete, ".")
 		if len(parts) <= 1 {
-			for _, name := range c.serviceNames() {
+			for _, name := range c.resolvedNames() {
 				if strings.HasPrefix(name, toComplete) {
 					completions = append(completions, name+".")
 				}
 			}
 			return completions, true
 		}
-		svc, ok := c.byName[parts[0]]
+		svc, ok := c.Service(parts[0])
 		if !ok {
 			return nil, false
 		}
@@ -218,7 +177,7 @@ func (c Catalog) Complete(args []string, toComplete string, filter MethodFilter)
 	}
 
 	// Case 2: space-separated form — args holds resolved segments.
-	svc, ok := c.byName[args[0]]
+	svc, ok := c.Service(args[0])
 	if !ok {
 		return nil, false
 	}
@@ -375,12 +334,17 @@ func resourceReachable(res meta.Resource, filter MethodFilter) bool {
 	return false
 }
 
-func (c Catalog) serviceNames() []string {
-	names := make([]string, len(c.services))
-	for i, s := range c.services {
+// resolvedNames lists the services that actually resolve, in name order. Hints
+// and completion use it rather than Names because a projected Catalog (see
+// Filter) may conceal services its manifest still lists; the cost is loading
+// every shard, which happens in parallel and only on those paths.
+func (c Catalog) resolvedNames() []string {
+	services := c.Services()
+	names := make([]string, len(services))
+	for i, s := range services {
 		names[i] = s.Name
 	}
-	return names // c.services is already name-sorted
+	return names
 }
 
 func resourceNames(svc meta.Service) []string { return sortedKeys(svc.Resources) }

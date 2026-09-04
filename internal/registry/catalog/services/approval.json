@@ -1,0 +1,2238 @@
+{
+  "name": "approval",
+  "version": "v4",
+  "title": "审批 API",
+  "description": "搜索审批定义、获取定义详情、创建实例和管理审批任务",
+  "servicePath": "/open-apis/approval/v4",
+  "resources": {
+    "approvals": {
+      "methods": {
+        "search": {
+          "id": "approvals.search",
+          "path": "approvals/search_launchable",
+          "httpMethod": "POST",
+          "description": "搜索当前用户可发起的审批定义",
+          "requestBody": {
+            "keyword": {
+              "type": "string",
+              "description": "Keywords used to search for approval definitions",
+              "required": false,
+              "example": "请假"
+            },
+            "locale": {
+              "type": "string",
+              "description": "language type",
+              "required": false,
+              "example": "zh-CN: 中文 en-US: 英文 ja-JP: 日文"
+            },
+            "page_size": {
+              "type": "integer",
+              "description": "paging size",
+              "required": false,
+              "example": 20,
+              "max": "100",
+              "min": "1"
+            },
+            "page_token": {
+              "type": "string",
+              "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果",
+              "required": false,
+              "example": "ASDJHA1323_sda1JSASDFD"
+            }
+          },
+          "responseBody": {
+            "approvals": {
+              "type": "array",
+              "description": "An approval definition list can be initiated",
+              "required": false,
+              "properties": {
+                "approval_code": {
+                  "type": "string",
+                  "description": "Approval Definition Code",
+                  "required": false,
+                  "example": "7C468A54-8745-2245-9675-08B7C63E7A85"
+                },
+                "approval_name": {
+                  "type": "string",
+                  "description": "approval definition name",
+                  "required": false,
+                  "example": "请假"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Approval Definition Description",
+                  "required": false,
+                  "example": "请假审批"
+                },
+                "is_external": {
+                  "type": "boolean",
+                  "description": "Whether a three-way definition. False means a native approval definition, and true means a three-way approval definition",
+                  "required": false,
+                  "example": false
+                },
+                "create_link": {
+                  "type": "string",
+                  "description": "The bill of lading link can be used to initiate approval",
+                  "required": false,
+                  "example": "https://www.example.com"
+                }
+              }
+            },
+            "page_token": {
+              "type": "string",
+              "description": "分页标记",
+              "required": false
+            },
+            "has_more": {
+              "type": "boolean",
+              "description": "还有更多数据",
+              "required": false
+            }
+          },
+          "scopes": [
+            "approval:approval:read"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=search_launchable&project=approval&resource=approval&version=v4"
+        },
+        "get": {
+          "id": "approvals.get",
+          "path": "approvals/{approval_code}/detail",
+          "httpMethod": "GET",
+          "description": "获取审批定义详情",
+          "parameters": {
+            "approval_code": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "审批定义 Code",
+              "example": "7C468A54-8745-2245-9675-08B7C63E7A85"
+            },
+            "locale": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "语言可选值",
+              "example": "zh-CN",
+              "options": [
+                {
+                  "value": "zh-CN",
+                  "description": "中文"
+                },
+                {
+                  "value": "en-US",
+                  "description": "英文"
+                },
+                {
+                  "value": "ja-JP",
+                  "description": "日文"
+                },
+                {
+                  "value": "zh-HK",
+                  "description": "繁体中文"
+                },
+                {
+                  "value": "zh-TW",
+                  "description": "繁体中文"
+                },
+                {
+                  "value": "de-DE",
+                  "description": "德语"
+                },
+                {
+                  "value": "es-ES",
+                  "description": "西班牙语"
+                },
+                {
+                  "value": "fr-FR",
+                  "description": "法语"
+                },
+                {
+                  "value": "id-ID",
+                  "description": "印度尼西亚语"
+                },
+                {
+                  "value": "it-IT",
+                  "description": "意大利语"
+                },
+                {
+                  "value": "ko-KR",
+                  "description": "韩语"
+                },
+                {
+                  "value": "pt-BR",
+                  "description": "葡萄牙语"
+                },
+                {
+                  "value": "th-TH",
+                  "description": "泰语"
+                },
+                {
+                  "value": "vi-VN",
+                  "description": "越南语"
+                },
+                {
+                  "value": "ms-MY",
+                  "description": "马来语"
+                },
+                {
+                  "value": "ru-RU",
+                  "description": "俄语"
+                }
+              ],
+              "enumName": "GetApprovalV4Locale",
+              "enum": [
+                "zh-CN",
+                "en-US",
+                "ja-JP",
+                "zh-HK",
+                "zh-TW",
+                "de-DE",
+                "es-ES",
+                "fr-FR",
+                "id-ID",
+                "it-IT",
+                "ko-KR",
+                "pt-BR",
+                "th-TH",
+                "vi-VN",
+                "ms-MY",
+                "ru-RU"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "approval_code"
+          ],
+          "responseBody": {
+            "approval_name": {
+              "type": "string",
+              "description": "审批名称",
+              "required": false,
+              "example": "Payment"
+            },
+            "form": {
+              "type": "string",
+              "description": "表单定义快照，JSON 字符串，可作为创建审批实例时 form 参数的来源。具体控件 value 的结构可参考审批实例表单控件参数文档",
+              "required": false,
+              "example": "[{\\\"id\\\": \\\"widget1\\\", \\\"custom_id\\\": \\\"user_name\\\",\\\"name\\\": \\\"Item application\\\",\\\"type\\\": \\\"textarea\\\",\\\"printable\\\": true,\\\"required\\\": true}\\\"]"
+            },
+            "node_list": {
+              "type": "array",
+              "description": "流程节点信息列表，可作为创建审批实例时节点相关参数的来源",
+              "required": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "节点名称",
+                  "required": true,
+                  "example": "Approval"
+                },
+                "need_approver": {
+                  "type": "boolean",
+                  "description": "是否需要发起人自选审批人。true 表示创建审批实例时需要为该节点补充审批人 open_id 列表",
+                  "required": true,
+                  "example": true
+                },
+                "node_id": {
+                  "type": "string",
+                  "description": "节点 ID，可作为创建审批实例时节点参数中的 key",
+                  "required": true,
+                  "example": "46e6d96cfa756980907209209ec03b64"
+                },
+                "custom_node_id": {
+                  "type": "string",
+                  "description": "节点自定义 ID，如果没有设置则不返回。创建审批实例时如返回该字段，可优先使用该值作为节点参数中的 key",
+                  "required": false,
+                  "example": "46e6d96cfa756980907209209ec03b64"
+                },
+                "node_type": {
+                  "type": "string",
+                  "description": "审批方式。CC_NODE 表示抄送节点类型",
+                  "required": true,
+                  "example": "AND",
+                  "options": [
+                    {
+                      "value": "AND",
+                      "description": "Countersign"
+                    },
+                    {
+                      "value": "OR",
+                      "description": "Or sign"
+                    },
+                    {
+                      "value": "SEQUENTIAL",
+                      "description": "Sequance sign"
+                    },
+                    {
+                      "value": "CC_NODE",
+                      "description": "CC Node"
+                    }
+                  ],
+                  "enum": [
+                    "AND",
+                    "OR",
+                    "SEQUENTIAL",
+                    "CC_NODE"
+                  ]
+                },
+                "approver_chosen_multi": {
+                  "type": "boolean",
+                  "description": "是否支持多选：true 表示该节点允许传入多个审批人 open_id；false 表示只允许单个审批人",
+                  "required": true,
+                  "example": false
+                },
+                "approver_chosen_range": {
+                  "type": "array",
+                  "description": "发起人自选范围，可用于约束节点审批人的候选范围",
+                  "required": false,
+                  "properties": {
+                    "approver_range_type": {
+                      "type": "integer",
+                      "description": "specified range",
+                      "required": false,
+                      "example": 2,
+                      "options": [
+                        {
+                          "value": 0,
+                          "description": "Company-wide"
+                        },
+                        {
+                          "value": 1,
+                          "description": "Specify role scope"
+                        },
+                        {
+                          "value": 2,
+                          "description": "Specify user scope"
+                        }
+                      ],
+                      "enum": [
+                        0,
+                        1,
+                        2
+                      ]
+                    },
+                    "approver_range_ids": {
+                      "type": "array",
+                      "description": "Resource ID.;- approver_range_type value is 0, the parameter is empty.;- approver_range_type value is 1, the value of this parameter is the role ID.;- approver_range_type value is 2, the value of the parameter is the user open_id",
+                      "required": false
+                    }
+                  }
+                },
+                "require_signature": {
+                  "type": "boolean",
+                  "description": "是否签名",
+                  "required": false,
+                  "example": false
+                }
+              }
+            }
+          },
+          "scopes": [
+            "approval:approval:read"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=detail&project=approval&resource=approval&version=v4"
+        }
+      }
+    },
+    "instances": {
+      "methods": {
+        "get": {
+          "id": "instances.get",
+          "path": "instances/detail",
+          "httpMethod": "GET",
+          "description": "获取单个审批实例详情",
+          "parameters": {
+            "instance_code": {
+              "type": "string",
+              "location": "query",
+              "required": true,
+              "description": "Approval instance code, obtained through the approval task list",
+              "example": "81D31358-93AF-92D6-7425-01A5D67C4E71"
+            },
+            "locale": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Language, default to zh-CN",
+              "example": "zh-CN",
+              "options": [
+                {
+                  "value": "zh-CN",
+                  "description": "Chinese"
+                },
+                {
+                  "value": "en-US",
+                  "description": "English"
+                },
+                {
+                  "value": "ja-JP",
+                  "description": "Japanese"
+                },
+                {
+                  "value": "zh-HK",
+                  "description": "Traditional Chinese"
+                },
+                {
+                  "value": "zh-TW",
+                  "description": "Traditional Chinese"
+                },
+                {
+                  "value": "de-DE",
+                  "description": "German"
+                },
+                {
+                  "value": "es-ES",
+                  "description": "Spanish"
+                },
+                {
+                  "value": "fr-FR",
+                  "description": "French"
+                },
+                {
+                  "value": "id-ID",
+                  "description": "Indonesian"
+                },
+                {
+                  "value": "it-IT",
+                  "description": "Italian"
+                },
+                {
+                  "value": "ko-KR",
+                  "description": "Korean"
+                },
+                {
+                  "value": "pt-BR",
+                  "description": "Portuguese"
+                },
+                {
+                  "value": "th-TH",
+                  "description": "Thai"
+                },
+                {
+                  "value": "vi-VN",
+                  "description": "Vietnamese"
+                },
+                {
+                  "value": "ms-MY",
+                  "description": "Malay"
+                },
+                {
+                  "value": "ru-RU",
+                  "description": "Russian"
+                }
+              ],
+              "enumName": "GetInstanceV4Locale",
+              "enum": [
+                "zh-CN",
+                "en-US",
+                "ja-JP",
+                "zh-HK",
+                "zh-TW",
+                "de-DE",
+                "es-ES",
+                "fr-FR",
+                "id-ID",
+                "it-IT",
+                "ko-KR",
+                "pt-BR",
+                "th-TH",
+                "vi-VN",
+                "ms-MY",
+                "ru-RU"
+              ]
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户ID的类型",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                },
+                {
+                  "value": "user_key",
+                  "description": "以user_key来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id",
+                "user_key"
+              ]
+            }
+          },
+          "responseBody": {
+            "definition_name": {
+              "type": "string",
+              "description": "approval title",
+              "required": false,
+              "example": "Payment"
+            },
+            "start_time": {
+              "type": "string",
+              "description": "approval creation time",
+              "required": false,
+              "example": "1564590532967"
+            },
+            "end_time": {
+              "type": "string",
+              "description": "Approval completion time, not completed is 0",
+              "required": false,
+              "example": "1564590532967"
+            },
+            "user_id": {
+              "type": "string",
+              "description": "Initiating approval user",
+              "required": false,
+              "example": "f3ta757q",
+              "annotations": [
+                "open:x_user_id"
+              ]
+            },
+            "serial_number": {
+              "type": "string",
+              "description": "instance number",
+              "required": false,
+              "example": "202102060002"
+            },
+            "department_id": {
+              "type": "string",
+              "description": "The department of user that initiated the approval",
+              "required": false,
+              "example": "123456",
+              "annotations": [
+                "open:x_department_id"
+              ]
+            },
+            "status": {
+              "type": "string",
+              "description": "instance status",
+              "required": false,
+              "example": "PENDING",
+              "options": [
+                {
+                  "value": "PENDING",
+                  "description": "Pending"
+                },
+                {
+                  "value": "APPROVED",
+                  "description": "Approved"
+                },
+                {
+                  "value": "REJECTED",
+                  "description": "Rejected"
+                },
+                {
+                  "value": "CANCELED",
+                  "description": "Canceled"
+                },
+                {
+                  "value": "DELETED",
+                  "description": "Deleted"
+                }
+              ],
+              "enum": [
+                "PENDING",
+                "APPROVED",
+                "REJECTED",
+                "CANCELED",
+                "DELETED"
+              ],
+              "enumName": "GetInstanceV4Status"
+            },
+            "form": {
+              "type": "string",
+              "description": "json string, value of the form",
+              "required": false,
+              "example": "[{\\\"id\\\": \\\"widget1\\\",\\\"custom_id\\\": \\\"user_info\\\",\\\"name\\\": \\\"Item application\\\",\\\"type\\\": \\\"textarea\\\"},\\\"value\\\":\\\"aaaa\\\"]"
+            },
+            "tasks": {
+              "type": "array",
+              "description": "task list",
+              "required": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "task id",
+                  "required": true,
+                  "example": "1234"
+                },
+                "user_id": {
+                  "type": "string",
+                  "description": "The approver's user ID, empty when automatically approving or rejecting",
+                  "required": true,
+                  "example": "12345",
+                  "annotations": [
+                    "open:x_user_id"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "description": "instance status",
+                  "required": true,
+                  "example": "PENDING",
+                  "options": [
+                    {
+                      "value": "PENDING",
+                      "description": "Pending"
+                    },
+                    {
+                      "value": "APPROVED",
+                      "description": "Approved"
+                    },
+                    {
+                      "value": "REJECTED",
+                      "description": "Rejected"
+                    },
+                    {
+                      "value": "TRANSFERRED",
+                      "description": "Transferred"
+                    },
+                    {
+                      "value": "DONE",
+                      "description": "Done"
+                    }
+                  ],
+                  "enum": [
+                    "PENDING",
+                    "APPROVED",
+                    "REJECTED",
+                    "TRANSFERRED",
+                    "DONE"
+                  ]
+                },
+                "node_id": {
+                  "type": "string",
+                  "description": "task's node ID",
+                  "required": false,
+                  "example": "46e6d96cfa756980907209209ec03b64"
+                },
+                "node_name": {
+                  "type": "string",
+                  "description": "task's node name",
+                  "required": false,
+                  "example": "开始"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "Approval Method",
+                  "required": false,
+                  "example": "AND",
+                  "options": [
+                    {
+                      "value": "AND",
+                      "description": "Will sign"
+                    },
+                    {
+                      "value": "OR",
+                      "description": "Individual approval"
+                    },
+                    {
+                      "value": "AUTO_PASS",
+                      "description": "Pass automatically"
+                    },
+                    {
+                      "value": "AUTO_REJECT",
+                      "description": "Automatic rejection"
+                    },
+                    {
+                      "value": "SEQUENTIAL",
+                      "description": "In order"
+                    }
+                  ],
+                  "enum": [
+                    "AND",
+                    "OR",
+                    "AUTO_PASS",
+                    "AUTO_REJECT",
+                    "SEQUENTIAL"
+                  ],
+                  "enumName": "TaskType"
+                },
+                "start_time": {
+                  "type": "string",
+                  "description": "The start time of the approval task, in milliseconds timestamp",
+                  "required": true,
+                  "example": "1564590532967"
+                },
+                "end_time": {
+                  "type": "string",
+                  "description": "The completion time of the approval task, in milliseconds timestamp. Returns 0 if not completed",
+                  "required": false,
+                  "example": "0"
+                }
+              }
+            },
+            "comments": {
+              "type": "array",
+              "description": "List of comments",
+              "required": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Comment id",
+                  "required": true,
+                  "example": "1234"
+                },
+                "user_id": {
+                  "type": "string",
+                  "description": "The user_id of the user who posted the comment",
+                  "required": true,
+                  "example": "f7cb567e",
+                  "annotations": [
+                    "open:x_user_id"
+                  ]
+                },
+                "comment": {
+                  "type": "string",
+                  "description": "Comment content",
+                  "required": true,
+                  "example": "ok"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "The time of the comment, in milliseconds timestamp",
+                  "required": true,
+                  "example": "1564590532967"
+                },
+                "files": {
+                  "type": "array",
+                  "description": "Comment attachments",
+                  "required": false,
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "description": "Resource path",
+                      "required": false,
+                      "example": "https://sample.feishu.cn/approval/attachment/example.png"
+                    },
+                    "file_size": {
+                      "type": "integer",
+                      "description": "Attachment size, in bytes",
+                      "required": false,
+                      "example": 186823
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "Attachment title",
+                      "required": false,
+                      "example": "e018906140ed9388234bd03b0.png"
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "Attachment type:; - image;- attachment: consistent with the type selected during upload",
+                      "required": false,
+                      "example": "image"
+                    }
+                  }
+                }
+              }
+            },
+            "operation_records": {
+              "type": "array",
+              "description": "Approval dynamic",
+              "required": false,
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Dynamic type. Different dynamic types correspond to different ext return values. Please refer to the following enumeration value descriptions for details",
+                  "required": true,
+                  "example": "PASS",
+                  "options": [
+                    {
+                      "value": "START",
+                      "description": "Approval start. "
+                    },
+                    {
+                      "value": "PASS",
+                      "description": "Pass. "
+                    },
+                    {
+                      "value": "REJECT",
+                      "description": "Reject. "
+                    },
+                    {
+                      "value": "AUTO_PASS",
+                      "description": "Pass automatically. "
+                    },
+                    {
+                      "value": "AUTO_REJECT",
+                      "description": "Automatic rejection. "
+                    },
+                    {
+                      "value": "REMOVE_REPEAT",
+                      "description": "Deduplicate. "
+                    },
+                    {
+                      "value": "TRANSFER",
+                      "description": "Transfer. "
+                    },
+                    {
+                      "value": "ADD_APPROVER_BEFORE",
+                      "description": "Pre-approver. "
+                    },
+                    {
+                      "value": "ADD_APPROVER",
+                      "description": "And sign. "
+                    },
+                    {
+                      "value": "ADD_APPROVER_AFTER",
+                      "description": "Post-approver. "
+                    },
+                    {
+                      "value": "DELETE_APPROVER",
+                      "description": "Subtract. "
+                    },
+                    {
+                      "value": "ROLLBACK_SELECTED",
+                      "description": "Specify fallback."
+                    },
+                    {
+                      "value": "ROLLBACK",
+                      "description": "Fall back all. "
+                    },
+                    {
+                      "value": "CANCEL",
+                      "description": "Withdraw. "
+                    },
+                    {
+                      "value": "DELETE",
+                      "description": "Delete. "
+                    },
+                    {
+                      "value": "CC",
+                      "description": "CC."
+                    }
+                  ],
+                  "enum": [
+                    "START",
+                    "PASS",
+                    "REJECT",
+                    "AUTO_PASS",
+                    "AUTO_REJECT",
+                    "REMOVE_REPEAT",
+                    "TRANSFER",
+                    "ADD_APPROVER_BEFORE",
+                    "ADD_APPROVER",
+                    "ADD_APPROVER_AFTER",
+                    "DELETE_APPROVER",
+                    "ROLLBACK_SELECTED",
+                    "ROLLBACK",
+                    "CANCEL",
+                    "DELETE",
+                    "CC"
+                  ],
+                  "enumName": "EventType"
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "Occurrence time, in milliseconds timestamp",
+                  "required": true,
+                  "example": "1564590532967"
+                },
+                "user_id": {
+                  "type": "string",
+                  "description": "User who generated the dynamic, user_id",
+                  "required": false,
+                  "example": "123456789",
+                  "annotations": [
+                    "open:x_user_id"
+                  ]
+                },
+                "cc_user_ids": {
+                  "type": "array",
+                  "description": "List of Cc user id, which contains user_ids",
+                  "required": false
+                },
+                "task_id": {
+                  "type": "string",
+                  "description": "task_id for generating dynamic associations",
+                  "required": false,
+                  "example": "1234"
+                },
+                "comment": {
+                  "type": "string",
+                  "description": "Reason",
+                  "required": false,
+                  "example": "ok"
+                },
+                "node_id": {
+                  "type": "string",
+                  "description": "Generate the node id of the task",
+                  "required": false,
+                  "example": "APPROVAL_240330_4058663"
+                },
+                "files": {
+                  "type": "array",
+                  "description": "Approval attachments",
+                  "required": false,
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "description": "Resource path",
+                      "required": false,
+                      "example": "https://sample.feishu.cn/approval/attachment/example.png"
+                    },
+                    "file_size": {
+                      "type": "integer",
+                      "description": "Attachment size, in bytes",
+                      "required": false,
+                      "example": 186823
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "Attachment title",
+                      "required": false,
+                      "example": "e018906140ed9388234bd03b0.png"
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "Attachment type:; - image;- attachment: consistent with the type selected during upload",
+                      "required": false,
+                      "example": "image"
+                    }
+                  }
+                }
+              }
+            },
+            "definition_code": {
+              "type": "string",
+              "description": "Approval definition code",
+              "required": false,
+              "example": "7C468A54-8745-2245-9675-08B7C63E7A85"
+            },
+            "reverted": {
+              "type": "boolean",
+              "description": "Whether the document has been revoked",
+              "required": false,
+              "example": false
+            },
+            "instance_code": {
+              "type": "string",
+              "description": "Approval Instance Code",
+              "required": false,
+              "example": "81D31358-93AF-92D6-7425-01A5D67C4E71"
+            },
+            "current_nodes": {
+              "type": "array",
+              "description": "current nod",
+              "required": false,
+              "properties": {
+                "node_id": {
+                  "type": "string",
+                  "description": "node id",
+                  "required": false,
+                  "example": "46e6d96cfa756980907209209ec03b64"
+                },
+                "node_name": {
+                  "type": "string",
+                  "description": "node name",
+                  "required": false,
+                  "example": "开始"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "Current Node Approval Method",
+                  "required": false,
+                  "example": "AND",
+                  "options": [
+                    {
+                      "value": "AND",
+                      "description": "Consensus Approval: Requires agreement from all approvers for the approval to be passed"
+                    },
+                    {
+                      "value": "OR",
+                      "description": "Alternative Approval: Approval will be granted as long as one approver agrees"
+                    },
+                    {
+                      "value": "AUTO_PASS",
+                      "description": "The approval node was determined to be automatically approved."
+                    },
+                    {
+                      "value": "AUTO_REJECT",
+                      "description": "The approval node was determined to be automatically rejected."
+                    },
+                    {
+                      "value": "SEQUENTIAL",
+                      "description": "Sequential Approval: Approval is carried out in the order of the approvers one by one"
+                    }
+                  ],
+                  "enum": [
+                    "AND",
+                    "OR",
+                    "AUTO_PASS",
+                    "AUTO_REJECT",
+                    "SEQUENTIAL"
+                  ],
+                  "enumName": "TaskType"
+                },
+                "approvers": {
+                  "type": "array",
+                  "description": "Current node approver",
+                  "required": false,
+                  "properties": {
+                    "task_id": {
+                      "type": "string",
+                      "description": "Approval task ID",
+                      "required": false,
+                      "example": "123456789"
+                    },
+                    "user_id": {
+                      "type": "string",
+                      "description": "User corresponding to the approval task ID",
+                      "required": false,
+                      "example": "ou_c186b6833e2d5fxxxxxx",
+                      "annotations": [
+                        "open:x_user_id"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "scopes": [
+            "approval:instance:read"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=detail&project=approval&resource=instance&version=v4"
+        },
+        "create": {
+          "id": "instances.create",
+          "path": "instances/initiate",
+          "httpMethod": "POST",
+          "description": "创建审批实例",
+          "requestBody": {
+            "approval_code": {
+              "type": "string",
+              "description": "审批定义 Code",
+              "required": true,
+              "example": "7C468A54-8745-2245-9675-08B7C63E7A85"
+            },
+            "form": {
+              "type": "string",
+              "description": "填写的审批表单控件值，JSON 数组，传值时需要压缩转义为字符串。该字段可根据审批定义详情中的 form 组装；具体控件 value 的结构可参考审批实例表单控件参数文档",
+              "required": false,
+              "example": "[{\"id\":\"111\", \"type\": \"input\", \"value\":\"test\"}]"
+            },
+            "node_approver_list": {
+              "type": "array",
+              "description": "用于填写节点审批人。每项 key 对应节点 custom_node_id 或 node_id，value 为审批人 open_id 列表",
+              "required": false,
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "description": "节点参数 key，可填写审批定义详情中返回的 custom_node_id 或 node_id；若两者都返回，优先使用 custom_node_id",
+                  "required": false,
+                  "example": "manager_node_id"
+                },
+                "value": {
+                  "type": "array",
+                  "description": "审批人 open_id 列表",
+                  "required": false,
+                  "example": "ou_125b59ba923ce1b64c7aa6d8257e43cf"
+                }
+              }
+            },
+            "node_cc_list": {
+              "type": "array",
+              "description": "用于填写节点抄送人。每项 key 对应节点 custom_node_id 或 node_id，value 为抄送人 open_id 列表",
+              "required": false,
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "description": "节点参数 key，可填写审批定义详情中返回的 custom_node_id 或 node_id；若两者都返回，优先使用 custom_node_id",
+                  "required": false,
+                  "example": "manager_node_id"
+                },
+                "value": {
+                  "type": "array",
+                  "description": "抄送人 open_id 列表",
+                  "required": false,
+                  "example": "ou_125b59ba923ce1b64c7aa6d8257e43cf"
+                }
+              }
+            },
+            "uuid": {
+              "type": "string",
+              "description": "审批实例 uuid，用于幂等操作，单个企业内的唯一 key。同一个 uuid 只能用于创建一个审批实例，如果冲突则创建失败并返回错误码 60012 ，格式建议为 XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX，不区分大小写",
+              "required": false,
+              "example": "7C468A54-8745-2245-9675-08B7C63E7A87"
+            }
+          },
+          "responseBody": {
+            "instance_code": {
+              "type": "string",
+              "description": "审批实例 Code",
+              "required": false,
+              "example": "81D31358-93AF-92D6-7425-01A5D67C4E71"
+            },
+            "instance_link": {
+              "type": "string",
+              "description": "审批实例链接",
+              "required": false,
+              "example": "https://sample.feishu.cn/approval/s/example"
+            }
+          },
+          "scopes": [
+            "approval:instance:write"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "danger": true,
+          "risk": "high-risk-write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=initiate&project=approval&resource=instance&version=v4"
+        },
+        "cancel": {
+          "id": "instances.cancel",
+          "path": "instances/recall",
+          "httpMethod": "POST",
+          "description": "撤回审批实例",
+          "requestBody": {
+            "instance_code": {
+              "type": "string",
+              "description": "Approval instance Code, which can be obtained by querying the task list interface",
+              "required": true,
+              "example": "81D31358-93AF-92D6-7425-01A5D67C4E71"
+            }
+          },
+          "scopes": [
+            "approval:instance:write"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "danger": true,
+          "risk": "high-risk-write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=recall&project=approval&resource=instance&version=v4"
+        },
+        "cc": {
+          "id": "instances.cc",
+          "path": "instances/add_cc",
+          "httpMethod": "POST",
+          "description": "抄送审批实例",
+          "parameters": {
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户ID的类型",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                },
+                {
+                  "value": "user_key",
+                  "description": "以user_key来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id",
+                "user_key"
+              ]
+            }
+          },
+          "requestBody": {
+            "instance_code": {
+              "type": "string",
+              "description": "Approval instance Code, which can be obtained through the task list interface",
+              "required": true,
+              "example": "81D31358-93AF-92D6-7425-01A5D67C4E71"
+            },
+            "cc_user_ids": {
+              "type": "array",
+              "description": "List of user IDs of the CC sender, cc_user_ids ID type must be consistent with the value of the user_id_type",
+              "required": true
+            },
+            "comment": {
+              "type": "string",
+              "description": "CC message, no more than 500 words",
+              "required": false,
+              "example": "approved"
+            }
+          },
+          "scopes": [
+            "approval:instance:write"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "danger": true,
+          "risk": "high-risk-write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=add_cc&project=approval&resource=instance&version=v4"
+        },
+        "initiated": {
+          "id": "instances.initiated",
+          "path": "instances/initiated",
+          "httpMethod": "GET",
+          "description": "查询用户的已发起列表",
+          "parameters": {
+            "page_size": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "Page size, default 100, controlled between 1 and 100"
+            },
+            "page_token": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+            },
+            "locale": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Language, default to zh-CN",
+              "example": "zh-CN",
+              "options": [
+                {
+                  "value": "zh-CN",
+                  "description": "Chinese"
+                },
+                {
+                  "value": "en-US",
+                  "description": "English"
+                },
+                {
+                  "value": "ja-JP",
+                  "description": "Japanese"
+                }
+              ],
+              "enum": [
+                "zh-CN",
+                "en-US",
+                "ja-JP"
+              ]
+            },
+            "definition_code": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Approval Definition Code, corresponding to the definition_code of the return value, and approval_code the same concept as other interfaces",
+              "example": "7C468A54-8745-2245-9675-08B7C63E7A85"
+            },
+            "start_timestamp": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "按发起时间查询单据，时间范围的开始区间时间戳，精确到秒",
+              "example": "1783528081"
+            },
+            "end_timestamp": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "按发起时间查询单据，时间范围的结束区间时间戳，精确到秒",
+              "example": "1783528081"
+            },
+            "keyword": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "搜索关键词"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户ID的类型",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                },
+                {
+                  "value": "user_key",
+                  "description": "以user_key来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id",
+                "user_key"
+              ]
+            }
+          },
+          "responseBody": {
+            "instances": {
+              "type": "array",
+              "description": "task list",
+              "required": false,
+              "properties": {
+                "instance_status": {
+                  "type": "string",
+                  "description": "Approval instance status",
+                  "required": true,
+                  "example": "Running",
+                  "options": [
+                    {
+                      "value": "0",
+                      "description": "No process state, no corresponding label is displayed."
+                    },
+                    {
+                      "value": "1",
+                      "description": "Process instance in circulation"
+                    },
+                    {
+                      "value": "2",
+                      "description": "Passed"
+                    },
+                    {
+                      "value": "3",
+                      "description": "Rejected"
+                    },
+                    {
+                      "value": "4",
+                      "description": "revoked"
+                    },
+                    {
+                      "value": "5",
+                      "description": "terminated"
+                    }
+                  ],
+                  "enum": [
+                    "0",
+                    "1",
+                    "2",
+                    "3",
+                    "4",
+                    "5"
+                  ],
+                  "enumName": "ProcessStatus"
+                },
+                "definition_code": {
+                  "type": "string",
+                  "description": "Approval Definition Code",
+                  "required": true,
+                  "example": "7C468A54-8745-2245-9675-08B7C63E7A85"
+                },
+                "initiator": {
+                  "type": "string",
+                  "description": "Promoter ID",
+                  "required": false,
+                  "example": "123456",
+                  "annotations": [
+                    "open:x_user_id"
+                  ]
+                },
+                "initiator_name": {
+                  "type": "string",
+                  "description": "Promoter name",
+                  "required": false,
+                  "example": "张三"
+                },
+                "instance_code": {
+                  "type": "string",
+                  "description": "Approval Instance Code",
+                  "required": true,
+                  "example": "7C468A54-8745-2245-9675-08B7C63E7A85"
+                },
+                "definition_group_id": {
+                  "type": "string",
+                  "description": "Approval Definition Packet ID",
+                  "required": false,
+                  "example": "1234",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "definition_group_name": {
+                  "type": "string",
+                  "description": "Approval definition group name",
+                  "required": false,
+                  "example": "考勤",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "definition_name": {
+                  "type": "string",
+                  "description": "approval definition name",
+                  "required": false,
+                  "example": "加班",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "summaries": {
+                  "type": "array",
+                  "description": "abstract",
+                  "required": false,
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "description": "Field key",
+                      "required": false,
+                      "example": "key"
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "Field value",
+                      "required": false,
+                      "example": "value"
+                    }
+                  }
+                },
+                "instance_external_id": {
+                  "type": "string",
+                  "description": "The three-party approval instance ID, only the third-party approval instance exists in this field, and it needs to be unique within the current tenant and current APP",
+                  "required": false,
+                  "example": "example_instance_id"
+                },
+                "link": {
+                  "type": "string",
+                  "description": "The three-party approval jump link is used to jump back to the three-party approval system to view the document details",
+                  "required": false,
+                  "example": "https://www.xxxx.com"
+                }
+              }
+            },
+            "page_token": {
+              "type": "string",
+              "description": "翻页 Token",
+              "required": false,
+              "example": "example_page_token"
+            },
+            "has_more": {
+              "type": "boolean",
+              "description": "是否有更多任务可供拉取",
+              "required": false,
+              "example": false
+            },
+            "count": {
+              "type": "integer",
+              "description": "List count, only returned on the first page of the page, 99 will be returned when there are 100 tasks or more",
+              "required": false,
+              "example": 10,
+              "max": "999",
+              "min": "0"
+            }
+          },
+          "scopes": [
+            "approval:instance:read"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=initiated&project=approval&resource=instance&version=v4"
+        }
+      }
+    },
+    "tasks": {
+      "methods": {
+        "remind": {
+          "id": "tasks.remind",
+          "path": "instances/remind",
+          "httpMethod": "POST",
+          "description": "催办审批人",
+          "requestBody": {
+            "instance_code": {
+              "type": "string",
+              "description": "Approval instance Code, which can be obtained through the \"Get a single approval instance details interface\", is the same concept as instance_code other series interfaces",
+              "required": true,
+              "example": "81D31358-93AF-92D6-7425-01A5D67C4E71"
+            },
+            "task_ids": {
+              "type": "array",
+              "description": "The urged task ID is obtained through the \"Get individual approval instance details interface\"",
+              "required": true
+            },
+            "comment": {
+              "type": "string",
+              "description": "Comments should be limited to 500 characters",
+              "required": false,
+              "example": "approved"
+            }
+          },
+          "scopes": [
+            "approval:instance:write"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "danger": true,
+          "risk": "high-risk-write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=remind&project=approval&resource=instance&version=v4"
+        },
+        "approve": {
+          "id": "tasks.approve",
+          "path": "tasks/pass",
+          "httpMethod": "POST",
+          "description": "同意审批任务",
+          "requestBody": {
+            "instance_code": {
+              "type": "string",
+              "description": "Approval instance Code, which can be obtained through the relevant interface of the approval list",
+              "required": true,
+              "example": "81D31358-93AF-92D6-7425-01A5D67C4E71"
+            },
+            "task_id": {
+              "type": "string",
+              "description": "The approval task ID can be obtained through the relevant interface of the approval list",
+              "required": true,
+              "example": "123456789"
+            },
+            "form": {
+              "type": "string",
+              "description": "Form data does not need to be passed by default. Only the form fields that need to be entered by this node need to be passed in",
+              "required": false,
+              "example": "[{\"id\":\"user_name\", \"type\": \"input\", \"value\":\"ou_abc123ssa111\"}]"
+            },
+            "comment": {
+              "type": "string",
+              "description": "approval comment",
+              "required": false,
+              "example": "同意"
+            }
+          },
+          "scopes": [
+            "approval:task:write"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "danger": true,
+          "risk": "high-risk-write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=pass&project=approval&resource=task&version=v4"
+        },
+        "reject": {
+          "id": "tasks.reject",
+          "path": "tasks/refuse",
+          "httpMethod": "POST",
+          "description": "拒绝审批任务",
+          "requestBody": {
+            "instance_code": {
+              "type": "string",
+              "description": "Approval instance Code, which can be obtained through the query task list interface",
+              "required": true,
+              "example": "81D31358-93AF-92D6-7425-01A5D67C4E71"
+            },
+            "task_id": {
+              "type": "string",
+              "description": "The approval task ID can be obtained by querying the task list interface",
+              "required": true,
+              "example": "123456789"
+            },
+            "comment": {
+              "type": "string",
+              "description": "Approval comments should be limited to 500 characters",
+              "required": false,
+              "example": "rejected"
+            }
+          },
+          "scopes": [
+            "approval:task:write"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "danger": true,
+          "risk": "high-risk-write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=refuse&project=approval&resource=task&version=v4"
+        },
+        "transfer": {
+          "id": "tasks.transfer",
+          "path": "tasks/forward",
+          "httpMethod": "POST",
+          "description": "转交审批任务",
+          "parameters": {
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户ID的类型",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                },
+                {
+                  "value": "user_key",
+                  "description": "以user_key来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id",
+                "user_key"
+              ]
+            }
+          },
+          "requestBody": {
+            "instance_code": {
+              "type": "string",
+              "description": "Approval instance Code, which can be obtained by querying the approval list interface",
+              "required": true,
+              "example": "81D31358-93AF-92D6-7425-01A5D67C4E71"
+            },
+            "task_id": {
+              "type": "string",
+              "description": "The approval task ID can be obtained by querying the approval list interface",
+              "required": true,
+              "example": "123456789"
+            },
+            "transfer_user_id": {
+              "type": "string",
+              "description": "User ID of the person being transferred, consistent with user_id_type type",
+              "required": true,
+              "example": "ou_abacc112aa",
+              "annotations": [
+                "open:x_user_id"
+              ]
+            },
+            "comment": {
+              "type": "string",
+              "description": "Approval comments, no more than 500 characters",
+              "required": false,
+              "example": "Transfer to the product specialist for processing."
+            }
+          },
+          "scopes": [
+            "approval:task:write"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "danger": true,
+          "risk": "high-risk-write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=forward&project=approval&resource=task&version=v4"
+        },
+        "query": {
+          "id": "tasks.query",
+          "path": "tasks",
+          "httpMethod": "GET",
+          "description": "查询用户的任务列表",
+          "parameters": {
+            "page_size": {
+              "type": "integer",
+              "location": "query",
+              "required": false,
+              "description": "Page size, the default value is 100, and the limit is between 1 and 100",
+              "example": 10
+            },
+            "page_token": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果",
+              "example": "abcdefg"
+            },
+            "topic": {
+              "type": "string",
+              "location": "query",
+              "required": true,
+              "description": "The task grouping topics that need to be queried, such as \"to-do\", \"done\", etc",
+              "example": "1",
+              "options": [
+                {
+                  "value": "1",
+                  "description": "pending approval"
+                },
+                {
+                  "value": "2",
+                  "description": "Approved"
+                },
+                {
+                  "value": "17",
+                  "description": "unread notice"
+                },
+                {
+                  "value": "18",
+                  "description": "Read the notice"
+                }
+              ],
+              "enumName": "Topic",
+              "enum": [
+                "1",
+                "2",
+                "17",
+                "18"
+              ]
+            },
+            "locale": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Language, default to zh-CN",
+              "example": "zh-CN",
+              "options": [
+                {
+                  "value": "zh-CN",
+                  "description": "Chinese"
+                },
+                {
+                  "value": "en-US",
+                  "description": "English"
+                },
+                {
+                  "value": "ja-JP",
+                  "description": "Japanese"
+                }
+              ],
+              "enum": [
+                "zh-CN",
+                "en-US",
+                "ja-JP"
+              ]
+            },
+            "definition_code": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "Approval Definition Code, corresponding to the definition_code of the return value, and approval_code the same concept as other interfaces",
+              "example": "7C468A54-8745-2245-9675-08B7C63E7A85"
+            },
+            "start_timestamp": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "按时间查询任务，时间范围的开始区间时间戳，精确到秒",
+              "example": "1783528081"
+            },
+            "end_timestamp": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "按时间查询任务，时间范围的结束区间时间戳，精确到秒",
+              "example": "1783528081"
+            },
+            "keyword": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "搜索关键词"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户ID的类型",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                },
+                {
+                  "value": "user_key",
+                  "description": "以user_key来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id",
+                "user_key"
+              ]
+            }
+          },
+          "responseBody": {
+            "tasks": {
+              "type": "array",
+              "description": "task list",
+              "required": false,
+              "properties": {
+                "topic": {
+                  "type": "string",
+                  "description": "The task group to which the task belongs, such as \"to-do\", \"done\", etc",
+                  "required": true,
+                  "example": "1",
+                  "options": [
+                    {
+                      "value": "1",
+                      "description": "to do"
+                    },
+                    {
+                      "value": "2",
+                      "description": "Done"
+                    },
+                    {
+                      "value": "3",
+                      "description": "Initiated"
+                    },
+                    {
+                      "value": "17",
+                      "description": "unread notice"
+                    },
+                    {
+                      "value": "18",
+                      "description": "Read the notice"
+                    }
+                  ],
+                  "enum": [
+                    "1",
+                    "2",
+                    "3",
+                    "17",
+                    "18"
+                  ],
+                  "enumName": "Topic",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "user_id": {
+                  "type": "string",
+                  "description": "The user ID to which the task belongs",
+                  "required": true,
+                  "example": "123456",
+                  "annotations": [
+                    "open:x_user_id"
+                  ]
+                },
+                "title": {
+                  "type": "string",
+                  "description": "task title",
+                  "required": true,
+                  "example": "审批"
+                },
+                "status": {
+                  "type": "string",
+                  "description": "task status",
+                  "required": true,
+                  "example": "Todo",
+                  "options": [
+                    {
+                      "value": "1",
+                      "description": "to do"
+                    },
+                    {
+                      "value": "2",
+                      "description": "Done"
+                    },
+                    {
+                      "value": "17",
+                      "description": "unread"
+                    },
+                    {
+                      "value": "18",
+                      "description": "read"
+                    },
+                    {
+                      "value": "33",
+                      "description": "Processing is in progress, the mark is completed."
+                    },
+                    {
+                      "value": "34",
+                      "description": "withdraw"
+                    }
+                  ],
+                  "enum": [
+                    "1",
+                    "2",
+                    "17",
+                    "18",
+                    "33",
+                    "34"
+                  ],
+                  "enumName": "TaskStatus"
+                },
+                "instance_status": {
+                  "type": "string",
+                  "description": "Approval instance status",
+                  "required": true,
+                  "example": "Running",
+                  "options": [
+                    {
+                      "value": "0",
+                      "description": "No process state, no corresponding label is displayed."
+                    },
+                    {
+                      "value": "1",
+                      "description": "Process instance in circulation"
+                    },
+                    {
+                      "value": "2",
+                      "description": "Passed"
+                    },
+                    {
+                      "value": "3",
+                      "description": "Rejected"
+                    },
+                    {
+                      "value": "4",
+                      "description": "revoked"
+                    },
+                    {
+                      "value": "5",
+                      "description": "terminated"
+                    }
+                  ],
+                  "enum": [
+                    "0",
+                    "1",
+                    "2",
+                    "3",
+                    "4",
+                    "5"
+                  ],
+                  "enumName": "ProcessStatus"
+                },
+                "definition_code": {
+                  "type": "string",
+                  "description": "Approval Definition Code",
+                  "required": true,
+                  "example": "7C468A54-8745-2245-9675-08B7C63E7A85"
+                },
+                "initiator": {
+                  "type": "string",
+                  "description": "Promoter ID",
+                  "required": false,
+                  "example": "123456",
+                  "annotations": [
+                    "open:x_user_id"
+                  ]
+                },
+                "initiator_name": {
+                  "type": "string",
+                  "description": "Promoter name",
+                  "required": false,
+                  "example": "张三"
+                },
+                "task_id": {
+                  "type": "string",
+                  "description": "Task ID, globally unique",
+                  "required": true,
+                  "example": "1234"
+                },
+                "instance_code": {
+                  "type": "string",
+                  "description": "Approval Instance Code",
+                  "required": true,
+                  "example": "ABC"
+                },
+                "definition_group_id": {
+                  "type": "string",
+                  "description": "Approval Definition Packet ID",
+                  "required": false,
+                  "example": "1234",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "definition_group_name": {
+                  "type": "string",
+                  "description": "Approval definition group name",
+                  "required": false,
+                  "example": "加班",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "definition_name": {
+                  "type": "string",
+                  "description": "approval definition name",
+                  "required": false,
+                  "example": "加班",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "summaries": {
+                  "type": "array",
+                  "description": "abstract",
+                  "required": false,
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "description": "Field key",
+                      "required": false,
+                      "example": "key"
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "Field value",
+                      "required": false,
+                      "example": "value"
+                    }
+                  }
+                },
+                "instance_external_id": {
+                  "type": "string",
+                  "description": "The three-party approval instance ID, only the third-party approval instance exists in this field, and it needs to be unique within the current tenant and current APP",
+                  "required": false,
+                  "example": "example_instance_id"
+                },
+                "task_external_id": {
+                  "type": "string",
+                  "description": "Tripartite task ID, this field exists only for third-party approval tasks, and needs to be unique within the current approval instance",
+                  "required": false,
+                  "example": "example_task_id"
+                },
+                "support_api_operate": {
+                  "type": "boolean",
+                  "description": "Whether to support agreeing or rejecting tasks through the API interface",
+                  "required": false,
+                  "example": false
+                },
+                "link": {
+                  "type": "string",
+                  "description": "The three-party approval jump link is used to jump back to the three-party approval system to view the document details",
+                  "required": false,
+                  "example": "https://www.xxxx.com"
+                }
+              }
+            },
+            "page_token": {
+              "type": "string",
+              "description": "翻页 Token",
+              "required": false,
+              "example": "example_page_token"
+            },
+            "has_more": {
+              "type": "boolean",
+              "description": "是否有更多任务可供拉取",
+              "required": false,
+              "example": false
+            },
+            "count": {
+              "type": "integer",
+              "description": "List count, only returned on the first page of the pagination, 99 will be returned when there are 100 tasks or more",
+              "required": false,
+              "example": 10,
+              "max": "999",
+              "min": "0"
+            }
+          },
+          "scopes": [
+            "approval:task:read"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=approval&resource=task&version=v4"
+        },
+        "add_sign": {
+          "id": "tasks.add_sign",
+          "path": "tasks/add_sign",
+          "httpMethod": "POST",
+          "description": "审批任务加签",
+          "parameters": {
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户ID的类型",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                },
+                {
+                  "value": "user_key",
+                  "description": "以user_key来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id",
+                "user_key"
+              ]
+            }
+          },
+          "requestBody": {
+            "instance_code": {
+              "type": "string",
+              "description": "Approval instance code, obtained through the approval task list",
+              "required": true,
+              "example": "289330DE-FBF1-4A47-91F9-9EFCCF11BCAE"
+            },
+            "task_id": {
+              "type": "string",
+              "description": "Task id, obtained through the approval task list",
+              "required": true,
+              "example": "6955096766400167956"
+            },
+            "comment": {
+              "type": "string",
+              "description": "Approval comments, controlled within 500 characters",
+              "required": false,
+              "example": "Due to system requirements, increased business approval"
+            },
+            "add_sign_user_ids": {
+              "type": "array",
+              "description": "ID of the user to add as an approver. It must match the user_id_type and can be obtained from the user-related APIs",
+              "required": true
+            },
+            "add_sign_type": {
+              "type": "integer",
+              "description": "1/2/3 stand for Pre-approver/post-approver/and sign",
+              "required": true,
+              "example": 1,
+              "options": [
+                {
+                  "value": 1,
+                  "description": "Pre-approver"
+                },
+                {
+                  "value": 2,
+                  "description": "post-approver"
+                },
+                {
+                  "value": 3,
+                  "description": "And sign"
+                }
+              ],
+              "enum": [
+                1,
+                2,
+                3
+              ],
+              "enumName": "add_sign_enum",
+              "max": "3",
+              "min": "1"
+            },
+            "approval_method": {
+              "type": "integer",
+              "description": "It is only required to fill in the pre-approver and post-approver, 1/2 represents or sign/countersign respectively",
+              "required": false,
+              "example": 1,
+              "options": [
+                {
+                  "value": 1,
+                  "description": "or sign"
+                },
+                {
+                  "value": 2,
+                  "description": "countersign"
+                },
+                {
+                  "value": 3,
+                  "description": "approval in sequence"
+                }
+              ],
+              "enum": [
+                1,
+                2,
+                3
+              ],
+              "enumName": "approval_method_enum",
+              "max": "3",
+              "min": "1"
+            }
+          },
+          "scopes": [
+            "approval:task:write"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "danger": true,
+          "risk": "high-risk-write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=add_sign&project=approval&resource=task&version=v4"
+        },
+        "rollback": {
+          "id": "tasks.rollback",
+          "path": "tasks/rollback",
+          "httpMethod": "POST",
+          "description": "退回审批任务",
+          "requestBody": {
+            "instance_code": {
+              "type": "string",
+              "description": "Approval instance code, obtained through the approval task list",
+              "required": true,
+              "example": "289330DE-FBF1-4A47-91F9-9EFCCF11BCAE"
+            },
+            "task_id": {
+              "type": "string",
+              "description": "Task id, obtained through the approval task list",
+              "required": true,
+              "example": "6955096766400168956"
+            },
+            "comment": {
+              "type": "string",
+              "description": "Approval comments are limited to 500 characters",
+              "required": false,
+              "example": "If it does not meet the requirements, it will be returned for re-approval."
+            },
+            "node_ids": {
+              "type": "array",
+              "description": "Node id, originating node id is START",
+              "required": true
+            }
+          },
+          "scopes": [
+            "approval:task:write"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "danger": true,
+          "risk": "high-risk-write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=rollback&project=approval&resource=task&version=v4"
+        }
+      }
+    }
+  }
+}

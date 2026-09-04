@@ -576,6 +576,20 @@ if ! awk -v guard="$fork_safe_guard" '
 fi
 
 make_output="$(QUALITY_GATE_CHANGED_FROM= make -n quality-gate)"
+for build_contract in \
+  Makefile \
+  build.sh \
+  scripts/build-pkg-pr-new.sh \
+  .goreleaser.yml \
+  .github/workflows/ci.yml \
+  .github/workflows/arch-audit.yml \
+  .github/workflows/release.yml; do
+  if grep -Fq "scripts/fetch_meta.py" "$build_contract"; then
+    echo "$build_contract must build and test from the committed API catalog without fetch_meta.py"
+    exit 1
+  fi
+done
+
 if grep -Fq -- "--changed-from  \\" <<<"$make_output"; then
   echo "quality-gate should resolve an empty QUALITY_GATE_CHANGED_FROM before passing --changed-from"
   exit 1
