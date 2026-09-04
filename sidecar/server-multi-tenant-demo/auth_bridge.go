@@ -26,8 +26,11 @@ import (
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
 )
+
+const scopeCacheTTL = 24 * time.Hour
 
 // authBridge handles /_sidecar/auth/* management endpoints.
 // Supports multi-user token isolation: each client environment gets its own
@@ -182,7 +185,7 @@ func parseClientID(body []byte) string {
 }
 
 // handleLogin initiates a device-flow OAuth login.
-func (ab *authBridge) handleLogin(w http.ResponseWriter, _ *http.Request, body []byte) {
+func (ab *authBridge) handleLogin(w http.ResponseWriter, r *http.Request, body []byte) {
 	var req struct {
 		Scope   string   `json:"scope"`
 		Domains []string `json:"domains"`
@@ -194,10 +197,15 @@ func (ab *authBridge) handleLogin(w http.ResponseWriter, _ *http.Request, body [
 
 	scope := req.Scope
 	if scope == "" {
-		scope = loadCachedScopes()
+		scope = ab.resolveScopes(r.Context())
 	}
 	if scope == "" {
-		scope = "offline_access"
+		jsonError(w, http.StatusServiceUnavailable,
+			"scope discovery failed: no cached scopes and API query unsuccessful. "+
+				"Ensure the app has the application:application:self_manage scope enabled. "+
+				"See: https://open.feishu.cn/app/"+ab.appID+"/auth?q=application:application:self_manage")
+		ab.logger.Printf("AUTH_BRIDGE_LOGIN_ERROR client=%s reason=\"scope discovery failed\"", clientID)
+		return
 	}
 
 	ab.logger.Printf("AUTH_BRIDGE_LOGIN_SCOPE scope_count=%d domains=%v client=%s",
@@ -501,7 +509,71 @@ func truncate(s string, n int) string {
 	return s[:n] + "..."
 }
 
-func loadCachedScopes() string {
+// scopeCacheRecord stores discovered scopes with a timestamp for TTL checks.
+type scopeCacheRecord struct {
+	Scopes    string `json:"scopes"`
+	UpdatedAt int64  `json:"updated_at"`
+	Source    string `json:"source"` // "api" or "legacy"
+}
+
+// resolveScopes returns the OAuth scope string to use for login.
+// Priority: cached scopes (if fresh) → API discovery → stale cache (fallback).
+func (ab *authBridge) resolveScopes(ctx context.Context) string {
+	cached, stale := ab.loadScopeCache()
+	if cached != "" && !stale {
+		return cached
+	}
+
+	discovered := ab.discoverAppScopes(ctx)
+	if discovered != "" {
+		ab.saveScopeCache(discovered)
+		return discovered
+	}
+
+	// API failed: use stale cache if available (better than nothing).
+	if cached != "" {
+		ab.logger.Printf("AUTH_BRIDGE_SCOPE_WARN using stale scope cache (API discovery failed)")
+		return cached
+	}
+	return ""
+}
+
+// scopeCachePath returns the path for the scope discovery cache file.
+func scopeCachePath() string {
+	configDir := os.Getenv("LARKSUITE_CLI_CONFIG_DIR")
+	if configDir == "" {
+		return ""
+	}
+	return filepath.Join(configDir, "cache", "discovered_scopes.json")
+}
+
+// loadScopeCache loads cached scopes and reports whether they are stale.
+// It checks both the new discovery cache and the legacy auth_login_scopes
+// directory for backward compatibility.
+func (ab *authBridge) loadScopeCache() (scopes string, stale bool) {
+	// Try new discovery cache first.
+	if p := scopeCachePath(); p != "" {
+		data, err := vfs.ReadFile(p)
+		if err == nil {
+			var rec scopeCacheRecord
+			if json.Unmarshal(data, &rec) == nil && rec.Scopes != "" {
+				age := time.Since(time.Unix(rec.UpdatedAt, 0))
+				return rec.Scopes, age > scopeCacheTTL
+			}
+		}
+	}
+
+	// Fall back to legacy auth_login_scopes directory (written by lark-cli).
+	legacy := loadLegacyScopeCache()
+	if legacy != "" {
+		return legacy, true // always treat legacy as stale to trigger refresh
+	}
+	return "", false
+}
+
+// loadLegacyScopeCache reads the pre-existing auth_login_scopes cache
+// directory (populated by lark-cli auth login --no-wait).
+func loadLegacyScopeCache() string {
 	configDir := os.Getenv("LARKSUITE_CLI_CONFIG_DIR")
 	if configDir == "" {
 		return ""
@@ -527,4 +599,112 @@ func loadCachedScopes() string {
 		}
 	}
 	return ""
+}
+
+// saveScopeCache writes the discovered scopes to the cache file.
+func (ab *authBridge) saveScopeCache(scopes string) {
+	p := scopeCachePath()
+	if p == "" {
+		return
+	}
+	if err := vfs.MkdirAll(filepath.Dir(p), 0700); err != nil {
+		ab.logger.Printf("AUTH_BRIDGE_SCOPE_WARN failed to create scope cache dir: %v", err)
+		return
+	}
+	rec := scopeCacheRecord{
+		Scopes:    scopes,
+		UpdatedAt: time.Now().Unix(),
+		Source:    "api",
+	}
+	data, _ := json.Marshal(rec)
+	if err := validate.AtomicWrite(p, data, 0600); err != nil {
+		ab.logger.Printf("AUTH_BRIDGE_SCOPE_WARN failed to write scope cache: %v", err)
+	}
+}
+
+// appScopesResponse mirrors the /open-apis/application/v6/applications/:app_id
+// response structure, scoped to the fields we need.
+type appScopesResponse struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data struct {
+		App struct {
+			Scopes []struct {
+				Scope      string   `json:"scope"`
+				TokenTypes []string `json:"token_types"`
+			} `json:"scopes"`
+		} `json:"app"`
+	} `json:"data"`
+}
+
+// discoverAppScopes queries the Lark API for the app's enabled user scopes.
+// Returns a space-separated scope string, or empty on failure.
+func (ab *authBridge) discoverAppScopes(ctx context.Context) string {
+	tokenResult, err := ab.cred.ResolveToken(ctx, credential.TokenSpec{
+		Type:  credential.TokenTypeTAT,
+		AppID: ab.appID,
+	})
+	if err != nil {
+		ab.logger.Printf("AUTH_BRIDGE_SCOPE_ERROR action=resolve_tat error=%q", err.Error())
+		return ""
+	}
+
+	ep := core.ResolveEndpoints(ab.brand)
+	apiURL := ep.Open + larkauth.ApplicationInfoPath(ab.appID) + "?lang=zh_cn"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		ab.logger.Printf("AUTH_BRIDGE_SCOPE_ERROR action=build_request error=%q", err.Error())
+		return ""
+	}
+	req.Header.Set("Authorization", "Bearer "+tokenResult.Token)
+
+	resp, err := ab.httpCl.Do(req)
+	if err != nil {
+		ab.logger.Printf("AUTH_BRIDGE_SCOPE_ERROR action=api_call error=%q", err.Error())
+		return ""
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 256*1024))
+	if err != nil {
+		ab.logger.Printf("AUTH_BRIDGE_SCOPE_ERROR action=read_body error=%q", err.Error())
+		return ""
+	}
+
+	var apiResp appScopesResponse
+	if err := json.Unmarshal(respBody, &apiResp); err != nil {
+		ab.logger.Printf("AUTH_BRIDGE_SCOPE_ERROR action=parse_json error=%q", err.Error())
+		return ""
+	}
+	if apiResp.Code != 0 {
+		ab.logger.Printf("AUTH_BRIDGE_SCOPE_ERROR action=api_error code=%d msg=%q", apiResp.Code, apiResp.Msg)
+		return ""
+	}
+
+	var userScopes []string
+	for _, s := range apiResp.Data.App.Scopes {
+		if s.Scope == "" {
+			continue
+		}
+		isUser := false
+		for _, t := range s.TokenTypes {
+			if t == "user" {
+				isUser = true
+				break
+			}
+		}
+		if isUser {
+			userScopes = append(userScopes, s.Scope)
+		}
+	}
+
+	if len(userScopes) == 0 {
+		ab.logger.Printf("AUTH_BRIDGE_SCOPE_WARN no user scopes found for app %s", ab.appID)
+		return ""
+	}
+
+	scopeStr := strings.Join(userScopes, " ")
+	ab.logger.Printf("AUTH_BRIDGE_SCOPE_DISCOVERED scope_count=%d app=%s", len(userScopes), ab.appID)
+	return scopeStr
 }
