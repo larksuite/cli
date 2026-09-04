@@ -1385,6 +1385,23 @@ func TestBaseFormQuestionsUpdateHelpGuidesFullOverwrite(t *testing.T) {
 	}
 }
 
+func TestBaseViewSetVisibleFieldsHelpIncludesFormInSharedContract(t *testing.T) {
+	setTips := strings.Join(BaseViewSetVisibleFields.Tips, "\n")
+	for _, want := range []string{
+		"form",
+		"JSON object",
+		"controls both visibility and order",
+		"include every field that should remain visible",
+	} {
+		if !strings.Contains(setTips, want) {
+			t.Fatalf("set-visible-fields tips missing %q:\n%s", want, setTips)
+		}
+	}
+	if strings.Contains(strings.ToLower(setTips), "only reorders that same set") {
+		t.Fatalf("set-visible-fields tips retain the obsolete Form same-set restriction:\n%s", setTips)
+	}
+}
+
 func TestBaseAttachmentHelpGuidesAgents(t *testing.T) {
 	tests := []struct {
 		name     string

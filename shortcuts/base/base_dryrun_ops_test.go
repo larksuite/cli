@@ -629,3 +629,29 @@ func TestDryRunViewOps(t *testing.T) {
 
 	assertDryRunContains(t, dryRunViewGetProperty(listRT, "a/b"), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/views/viw_1/a%2Fb")
 }
+
+func TestDryRunFormVisibleFieldsPreservesCompleteTargetState(t *testing.T) {
+	ctx := context.Background()
+	formRT := newBaseTestRuntime(
+		map[string]string{
+			"base-token": "app_x",
+			"table-id":   "tbl_1",
+			"view-id":    "vew_form",
+			"json":       `{"visible_fields":["fld_c","fld_a"]}`,
+		},
+		nil,
+		nil,
+	)
+
+	assertDryRunContains(
+		t,
+		dryRunViewGetVisibleFields(ctx, formRT),
+		"GET /open-apis/base/v3/bases/app_x/tables/tbl_1/views/vew_form/visible_fields",
+	)
+	assertDryRunContains(
+		t,
+		dryRunViewSetVisibleFields(ctx, formRT),
+		"PUT /open-apis/base/v3/bases/app_x/tables/tbl_1/views/vew_form/visible_fields",
+		`"visible_fields":["fld_c","fld_a"]`,
+	)
+}

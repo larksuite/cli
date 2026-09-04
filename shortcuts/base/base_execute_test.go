@@ -4688,6 +4688,126 @@ func TestBaseViewExecuteReadCreateDeleteAndFilter(t *testing.T) {
 	})
 }
 
+func TestBaseFormVisibleFieldsExecuteContract(t *testing.T) {
+	const formVisibleFieldsPath = "/open-apis/base/v3/bases/app_x/tables/tbl_x/views/vew_form/visible_fields"
+
+	t.Run("get keeps the shared visible_fields output shape", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    formVisibleFieldsPath,
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": []interface{}{"Question A", "Question C", "Question B"},
+			},
+		})
+
+		err := runShortcut(t, BaseViewGetVisibleFields, []string{
+			"+view-get-visible-fields",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--view-id", "vew_form",
+		}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		for _, want := range []string{`"visible_fields"`, `"Question A"`, `"Question C"`, `"Question B"`} {
+			if !strings.Contains(got, want) {
+				t.Fatalf("stdout missing %q: %s", want, got)
+			}
+		}
+	})
+
+	t.Run("set passes a complete twelve-question order through unchanged", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		stub := &httpmock.Stub{
+			Method: "PUT",
+			URL:    formVisibleFieldsPath,
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": []interface{}{"Question 01", "Question 03", "Question 02"},
+			},
+		}
+		reg.Register(stub)
+		targetJSON := `{"visible_fields":["fld01","fld03","fld02","fld04","fld05","fld06","fld07","fld08","fld09","fld10","fld11","fld12"]}`
+
+		err := runShortcut(t, BaseViewSetVisibleFields, []string{
+			"+view-set-visible-fields",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--view-id", "vew_form",
+			"--json", targetJSON,
+		}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+
+		var body map[string]interface{}
+		if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+			t.Fatalf("decode request body: %v\nbody=%s", err, stub.CapturedBody)
+		}
+		visibleFields, ok := body["visible_fields"].([]interface{})
+		if !ok || len(visibleFields) != 12 {
+			t.Fatalf("visible_fields=%#v, want twelve entries", body["visible_fields"])
+		}
+		for index, want := range []string{"fld01", "fld03", "fld02", "fld04", "fld05", "fld06", "fld07", "fld08", "fld09", "fld10", "fld11", "fld12"} {
+			if visibleFields[index] != want {
+				t.Fatalf("visible_fields[%d]=%#v, want %q", index, visibleFields[index], want)
+			}
+		}
+		if len(body) != 1 {
+			t.Fatalf("request body added client-side fields: %#v", body)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"visible_fields"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("typed validation failure preserves server recovery evidence", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "PUT",
+			URL:    formVisibleFieldsPath,
+			Body: map[string]interface{}{
+				"code": 800010407,
+				"msg":  "invalid visible fields",
+				"data": map[string]interface{}{
+					"error": map[string]interface{}{
+						"message": "The field is not a question in this Form.",
+						"hint":    "Add the existing table field as a Form question first, then retry.",
+						"logid":   "202609010001FORMORDER",
+					},
+				},
+			},
+		})
+
+		err := runShortcut(t, BaseViewSetVisibleFields, []string{
+			"+view-set-visible-fields",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--view-id", "vew_form",
+			"--json", `{"visible_fields":["fld01"]}`,
+		}, factory, stdout)
+		if err == nil {
+			t.Fatal("expected API validation failure")
+		}
+		problem, ok := errs.ProblemOf(err)
+		if !ok {
+			t.Fatalf("expected typed problem, got %T %v", err, err)
+		}
+		if problem.Code != 800010407 || problem.LogID != "202609010001FORMORDER" {
+			t.Fatalf("code/log_id=%d/%q", problem.Code, problem.LogID)
+		}
+		if !strings.Contains(problem.Message, "not a question") || !strings.Contains(problem.Hint, "Add the existing table field") {
+			t.Fatalf("message/hint=%q/%q", problem.Message, problem.Hint)
+		}
+		if strings.TrimSpace(stdout.String()) != "" {
+			t.Fatalf("failure must not emit a success envelope: %s", stdout.String())
+		}
+	})
+}
+
 func TestBaseTableExecuteListFallbackShapes(t *testing.T) {
 	t.Run("items-payload", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
