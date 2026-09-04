@@ -37,13 +37,15 @@ const maxReplaceParts = 200
 //  5. It asks the backend to lint the page these parts produce, and renders the
 //     refusal when the lint blocks the write. --no-lint opts out.
 //
-// `str_replace` is intentionally NOT exposed: product direction is that
-// slide edits go through structural (block-level) operations only. The backend
-// still accepts str_replace, but the CLI rejects it up front.
+// `str_replace` is also exposed. It does a literal text substitution on the
+// whole serialized slide XML — no block_id, and (unlike the block actions) no
+// id/<content/> injection, since the pattern must match the stored bytes
+// verbatim. It is the only field-level patch path: change one attribute or word
+// without rewriting the enclosing block.
 var SlidesReplaceSlide = common.Shortcut{
 	Service:     "slides",
 	Command:     "+replace-slide",
-	Description: "Replace elements on a slide via block_replace / block_insert parts (auto-injects id + <content/> on shape elements)",
+	Description: "Replace elements on a slide via block_replace / block_insert (auto-injects id + <content/> on shape elements), or patch text via str_replace",
 	Risk:        "write",
 	Scopes:      []string{"slides:presentation:update", "slides:presentation:write_only"},
 	// wiki:node:read is required only when --presentation is a wiki URL.
@@ -52,7 +54,7 @@ var SlidesReplaceSlide = common.Shortcut{
 	Flags: []common.Flag{
 		requiredPresentationRefFlag(),
 		{Name: "slide-id", Desc: "slide page identifier (slide_id)", Required: true},
-		{Name: "parts", Desc: "JSON array of replace parts; accepts replace/insert action aliases, target_id for block_id, and block/content/shape/element for the action's XML payload; max 200", Required: true, Input: []string{common.File, common.Stdin}},
+		{Name: "parts", Desc: "JSON array of replace parts; accepts replace/insert action aliases, target_id for block_id, and block/content/shape/element for the action's XML payload; str_replace uses pattern/replacement/is_multiple; max 200", Required: true, Input: []string{common.File, common.Stdin}},
 		{Name: "revision-id", Type: "int", Default: "-1", Desc: "presentation revision (-1 = latest; pass a specific number for optimistic locking)"},
 		{Name: "tid", Desc: "transaction id for concurrent-edit locking (usually empty)"},
 		noLintFlag(),
@@ -218,6 +220,8 @@ type replacePart struct {
 	BlockID             *string
 	Insertion           *string
 	InsertBeforeBlockID *string
+	Pattern             *string
+	IsMultiple          *bool
 }
 
 // replacePartNormalization records each compatibility conversion so callers can
@@ -305,6 +309,20 @@ func parseReplacePartsWithNormalization(raw string) ([]replacePart, []replacePar
 				return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d].insert_before_block_id must be a string", i).WithParam("--parts")
 			}
 			p.InsertBeforeBlockID = &s
+		}
+		if v, ok := m["pattern"]; ok {
+			s, ok := v.(string)
+			if !ok {
+				return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d].pattern must be a string", i).WithParam("--parts")
+			}
+			p.Pattern = &s
+		}
+		if v, ok := m["is_multiple"]; ok {
+			b, ok := v.(bool)
+			if !ok {
+				return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d].is_multiple must be a boolean", i).WithParam("--parts")
+			}
+			p.IsMultiple = &b
 		}
 		out = append(out, p)
 	}
@@ -398,7 +416,7 @@ type replacePartSchema struct {
 	hint    string
 }
 
-// replacePartSchemas is the field contract of the two exposed actions. Holding
+// replacePartSchemas is the field contract of the exposed actions. Holding
 // it in one place lets the error name the exact set the caller may use, instead
 // of a generic "unknown field".
 var replacePartSchemas = map[string]replacePartSchema{
@@ -411,6 +429,11 @@ var replacePartSchemas = map[string]replacePartSchema{
 		fields:  []string{"action", "insertion", "insert_before_block_id"},
 		payload: "insertion",
 		hint:    `correct shape: {"action":"block_insert","insertion":"<shape type=\"rect\" width=\"100\" height=\"100\"/>"}`,
+	},
+	"str_replace": {
+		fields:  []string{"action", "pattern", "replacement", "is_multiple"},
+		payload: "replacement",
+		hint:    `correct shape: {"action":"str_replace","pattern":"width=\"560\"","replacement":"width=\"600\""}`,
 	},
 }
 
@@ -480,8 +503,8 @@ func checkMisspelledAction(i int, m map[string]interface{}) error {
 
 // checkReplacePartFields rejects fields that don't belong to the part's action,
 // naming the field the caller most likely meant. Actions this shortcut doesn't
-// expose ("", str_replace, unknown) are skipped so their own errors from
-// validateReplaceParts still win.
+// expose ("", unknown) are skipped so their own errors from validateReplaceParts
+// still win.
 func checkReplacePartFields(i int, m map[string]interface{}, action string) error {
 	schema, ok := replacePartSchemas[action]
 	if !ok {
@@ -559,7 +582,7 @@ func enrichSlidesReplaceError(err error) error {
 
 // validateReplaceParts enforces CLI-level invariants:
 //   - size is within [1, 200]
-//   - action is one of the exposed actions (block_replace / block_insert)
+//   - action is one of the exposed actions (block_replace / block_insert / str_replace)
 //   - per-action required fields are present
 func validateReplaceParts(parts []replacePart) error {
 	if len(parts) == 0 {
@@ -582,14 +605,20 @@ func validateReplaceParts(parts []replacePart) error {
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d] (block_insert) requires non-empty insertion", i).WithParam("--parts")
 			}
 		case "str_replace":
-			// Backend still accepts str_replace, but product decision is to
-			// force structural edits through the CLI. Block it up-front so
-			// users don't build tooling around an option we won't keep.
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d] action %q is not supported by this shortcut; use block_replace or block_insert", i, p.Action).WithParam("--parts")
+			// pattern must be non-empty; replacement must be present but may be
+			// the empty string (empty replacement = delete the matched text).
+			// This mirrors the backend contract (BuildReplaceCmd), so the CLI
+			// fails fast with the same rules rather than round-tripping a 4000002.
+			if p.Pattern == nil || *p.Pattern == "" {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d] (str_replace) requires non-empty pattern", i).WithParam("--parts")
+			}
+			if p.Replacement == nil {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d] (str_replace) requires replacement (may be an empty string to delete the match)", i).WithParam("--parts")
+			}
 		case "replace_all":
 			return errs.NewValidationError(
 				errs.SubtypeInvalidArgument,
-				"--parts[%d] action %q is not equivalent to a block operation and cannot be normalized safely; use block_replace for each known block or block_insert for new elements",
+				"--parts[%d] action %q is not equivalent to a block operation and cannot be normalized safely; use str_replace with is_multiple:true for whole-slide text, block_replace for a known block, or block_insert for new elements",
 				i, p.Action,
 			).WithParam("--parts")
 		case "page_replace", "slide_replace":
@@ -601,7 +630,7 @@ func validateReplaceParts(parts []replacePart) error {
 		case "":
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d].action is required", i).WithParam("--parts")
 		default:
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d] unknown action %q, supported: block_replace, block_insert", i, p.Action).WithParam("--parts")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d] unknown action %q, supported: block_replace, block_insert, str_replace", i, p.Action).WithParam("--parts")
 		}
 	}
 	return nil
@@ -631,6 +660,16 @@ func injectBlockReplaceIDs(parts []replacePart) ([]map[string]interface{}, error
 			m["insertion"] = ensureShapeHasContent(*p.Insertion)
 			if p.InsertBeforeBlockID != nil {
 				m["insert_before_block_id"] = *p.InsertBeforeBlockID
+			}
+		case "str_replace":
+			// Literal text substitution on the serialized slide XML: send
+			// pattern/replacement byte-for-byte, with no id or <content/>
+			// injection. The pattern must match the stored bytes exactly, so
+			// any CLI-side rewriting would break the match.
+			m["pattern"] = *p.Pattern
+			m["replacement"] = *p.Replacement
+			if p.IsMultiple != nil {
+				m["is_multiple"] = *p.IsMultiple
 			}
 		}
 		out = append(out, m)
