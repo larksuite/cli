@@ -304,7 +304,6 @@ func TestSearchEvent_Execute_Success(t *testing.T) {
 								"timezone":  "Asia/Shanghai",
 							},
 							"is_all_day": false,
-							"app_link":   "https://applink.feishu.cn/...",
 						},
 					},
 				},

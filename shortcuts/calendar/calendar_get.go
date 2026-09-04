@@ -97,7 +97,6 @@ type calendarEvent struct {
 	RecurringEventID    string                    `json:"recurring_event_id,omitempty"`
 	CreateTime          string                    `json:"create_time,omitempty"`
 	EventOrganizer      *calendarEventOrganizer   `json:"event_organizer,omitempty"`
-	AppLink             string                    `json:"app_link,omitempty"`
 	Attachments         []calendarEventAttachment `json:"attachments,omitempty"`
 	EventCheckIn        *calendarEventCheckIn     `json:"event_check_in,omitempty"`
 }
