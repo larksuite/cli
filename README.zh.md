@@ -1,7 +1,7 @@
 # lark-cli
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Go Version](https://img.shields.io/badge/go-%3E%3D1.23-blue.svg)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/go-%3E%3D1.25-blue.svg)](https://go.dev/)
 [![npm version](https://img.shields.io/npm/v/@larksuite/cli.svg)](https://www.npmjs.com/package/@larksuite/cli)
 
 [中文版](./README.zh.md) | [English](./README.md)
@@ -59,7 +59,7 @@
 开始之前，请确保具备以下条件：
 
 - Node.js（`npm`/`npx`）
-- Go `v1.23`+ 和 Python 3（仅源码构建需要）
+- Go `v1.25`+ 和 Python 3（仅源码构建需要）
 
 ### 快速开始（人类用户）
 
@@ -77,7 +77,7 @@ npx @larksuite/cli@latest install
 
 **方式二 — 从源码安装：**
 
-需要 Go `v1.23`+ 和 Python 3。
+需要 Go `v1.25`+ 和 Python 3。
 
 ```bash
 git clone https://github.com/larksuite/cli.git

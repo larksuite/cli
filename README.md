@@ -1,7 +1,7 @@
 # lark-cli
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Go Version](https://img.shields.io/badge/go-%3E%3D1.23-blue.svg)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/go-%3E%3D1.25-blue.svg)](https://go.dev/)
 [![npm version](https://img.shields.io/npm/v/@larksuite/cli.svg)](https://www.npmjs.com/package/@larksuite/cli)
 
 [中文版](./README.zh.md) | [English](./README.md)
@@ -59,7 +59,7 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 Before you start, make sure you have:
 
 - Node.js (`npm`/`npx`)
-- Go `v1.23`+ and Python 3 (only required for building from source)
+- Go `v1.25`+ and Python 3 (only required for building from source)
 
 ### Quick Start (Human Users)
 
@@ -77,7 +77,7 @@ npx @larksuite/cli@latest install
 
 **Option 2 — From source:**
 
-Requires Go `v1.23`+ and Python 3.
+Requires Go `v1.25`+ and Python 3.
 
 ```bash
 git clone https://github.com/larksuite/cli.git
