@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import unittest
@@ -117,11 +118,14 @@ class IconParkToolTest(unittest.TestCase):
 
 
 class IconParkToolCLITest(unittest.TestCase):
-    def run_tool(self, *args: str) -> subprocess.CompletedProcess[str]:
+    def run_tool(
+        self, *args: str, env: dict[str, str] | None = None
+    ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [sys.executable, str(SCRIPT_PATH), *args],
             capture_output=True,
             check=False,
+            env=env,
             text=True,
         )
 
@@ -135,6 +139,17 @@ class IconParkToolCLITest(unittest.TestCase):
         self.assertTrue(
             any(entry["iconType"] == "iconpark/Charts/positive-dynamics.svg" for entry in output)
         )
+
+    def test_cli_search_writes_json_with_non_utf8_stdout(self) -> None:
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "cp1252"
+
+        result = self.run_tool("search", "--query", "growth", "--limit", "1", env=env)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stderr, "")
+        self.assertTrue(result.stdout.isascii())
+        self.assertTrue(json.loads(result.stdout))
 
     def test_cli_resolve_writes_json_to_stdout(self) -> None:
         result = self.run_tool("resolve", "--name", "chart-line")
