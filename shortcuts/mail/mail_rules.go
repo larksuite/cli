@@ -364,7 +364,7 @@ var MailRuleDisable = makeRuleToggleShortcut("+rule-disable", false)
 var MailRuleReorder = common.Shortcut{
 	Service:     "mail",
 	Command:     "+rule-reorder",
-	Description: "Reorder mailbox rules by full rule_id list or by moving one rule before/after/top/bottom.",
+	Description: "Reorder mailbox rules with a full or partial rule_id prefix; omitted rules retain their relative order, or move one rule before/after/top/bottom.",
 	Risk:        "write",
 	Scopes:      []string{"mail:user_mailbox.rule:write"},
 	AuthTypes:   mailRuleAuthTypes,

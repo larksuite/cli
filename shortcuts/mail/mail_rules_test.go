@@ -1617,6 +1617,20 @@ func TestMailRuleReorderCompletesPartialOrderAndSkipsPOSTOnInvalidList(t *testin
 	})
 }
 
+func TestMailRuleReorderDescriptionExplainsPartialRuleIDOrdering(t *testing.T) {
+	desc := strings.ToLower(MailRuleReorder.Description)
+	for _, want := range []string{
+		"partial",
+		"prefix",
+		"omitted",
+		"relative order",
+	} {
+		if !strings.Contains(desc, want) {
+			t.Errorf("Description should mention %q; got: %s", want, MailRuleReorder.Description)
+		}
+	}
+}
+
 func assertMailRuleValidationError(t *testing.T, err error, wantParam string) {
 	t.Helper()
 	var got *errs.ValidationError
