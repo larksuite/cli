@@ -551,7 +551,7 @@ func resolveCSVPathFromFileAlias(runtime *common.RuntimeContext) error {
 			// the tree). The fix is stdin.
 			return sheetsValidationForFlag(flag, "--%s %v", flag, err).
 				WithCause(err).
-				WithHint("--%s reads a path relative to the current directory; pipe a file outside it in via stdin instead (--csv - < <path>)", flag)
+				WithHint("--%s reads a path relative to the current directory; for a file outside it, %s", flag, outOfTreeFileHint("csv"))
 		case errors.Is(err, fs.ErrNotExist) && !csvValueLooksLikePath(raw):
 			// Names nothing and does not look like a path: literal CSV text
 			// passed under the path-valued alias. Leave it for the --csv guard,
@@ -561,13 +561,13 @@ func resolveCSVPathFromFileAlias(runtime *common.RuntimeContext) error {
 		case errors.Is(err, fs.ErrNotExist):
 			return sheetsValidationForFlag(flag, "--%s %q names no file under the current directory", flag, raw).
 				WithCause(err).
-				WithHint("--%s takes a path relative to the current directory; for a file outside it, pipe the contents in instead (--csv - < <path>)", flag)
+				WithHint("--%s takes a path relative to the current directory; for a file outside it, %s", flag, outOfTreeFileHint("csv"))
 		default:
 			// Exists but cannot be read (permissions, a directory). @file
 			// shares this reader, so pointing there would be dead advice.
 			return sheetsValidationForFlag(flag, "--%s %v", flag, err).
 				WithCause(err).
-				WithHint("--%s reads the path itself; to pass contents this process cannot open, pipe them in instead (--csv - < <path>)", flag)
+				WithHint("--%s reads the path itself; to pass contents this process cannot open, %s", flag, outOfTreeFileHint("csv"))
 		}
 	}
 	if err := runtime.Cmd.Flags().Set("csv", common.StripUTF8BOM(string(data))); err != nil {
@@ -650,7 +650,7 @@ func guardCSVValueIsNotFilePath(runtime *common.RuntimeContext) error {
 		"--csv value %q looks like a file path, not inline CSV, and no such file exists under the current directory",
 		raw,
 	).WithHint(
-		"to read a file: --csv @<path> (relative to the current directory; @ rejects absolute paths — pipe such a file in via stdin instead: --csv - < <path>). To write this text into the cell verbatim, pass it on stdin the same way (--csv -); values arriving via stdin or @file skip this check",
+		"to read a file: --csv @<path>, relative to the current directory; for a file outside it, " + outOfTreeFileHint("csv") + ". To write this text into the cell verbatim, pass it on stdin the same way; values arriving via stdin or @file skip this check",
 	)
 }
 

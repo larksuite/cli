@@ -498,8 +498,7 @@ func parseTablePutPayload(runtime flagView) (*tablePayload, error) {
 				"expected shape: %s (columns is a flat string array; dtypes/formats are column-name-keyed maps; data is row-major)",
 				tablePutSheetsSkeleton)
 		}
-		return nil, verr.WithHint(
-			"if the payload contains formulas / quotes / commas, pass it via stdin (`--sheets - < file`) or a relative @file (`--sheets @./payload.json`)")
+		return nil, verr.WithHint("%s", mangledPayloadHint("sheets"))
 	}
 	// Reject trailing non-whitespace after the first JSON value: json.Decoder
 	// accepts it silently (unlike json.Unmarshal), so e.g. `--sheets '{...} oops'`

@@ -5,6 +5,7 @@ package sheets
 
 import (
 	"fmt"
+	goruntime "runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -41,6 +42,7 @@ func withFlagErgonomics(prev func(cmd *cobra.Command)) func(cmd *cobra.Command) 
 		chainFlagAliases(cmd)
 		chainRangeSheetPrefix(cmd)
 		chainMultiAreaRange(cmd)
+		chainPositionalArgsCause(cmd)
 		chainRequiredFlagHelp(cmd)
 	}
 }
@@ -530,6 +532,58 @@ func inlineFlagList(names []string) string {
 		parts[i] = "--" + n
 	}
 	return strings.Join(parts, ", ") + suffix
+}
+
+// chainPositionalArgsCause names the reason a sheets command saw a positional
+// argument on windows. The framework's message ("pass values via flags") is
+// correct and useless there: the caller DID pass a flag, and PowerShell split
+// its JSON value into separate tokens, so the tail arrived as positionals. The
+// framework cannot say that — it is one message for every command on every
+// platform — while this domain knows both the shell and which of its flags
+// take a payload big enough to split. 08-29..31 reflow: 35 rejections, every
+// one on windows.
+//
+// Other platforms keep the framework's wording: there a positional argument
+// usually is one.
+func chainPositionalArgsCause(cmd *cobra.Command) {
+	prev := cmd.Args
+	if prev == nil || goruntime.GOOS != "windows" {
+		return
+	}
+	cmd.Args = func(c *cobra.Command, args []string) error {
+		err := prev(c, args)
+		if err == nil {
+			return nil
+		}
+		hint := "on PowerShell this is usually a JSON flag value the shell split into tokens: single quotes do not protect the quotes and commas inside it. Write the payload to a file and pass it as @./payload.json"
+		if payload := payloadFlagNames(c); payload != "" {
+			hint = fmt.Sprintf("%s — this command's payload flags are %s", hint, payload)
+		}
+		return common.ValidationErrorf("%v", err).WithHint("%s", hint)
+	}
+}
+
+// payloadFlagNames lists the command's flags that take a file or stdin, i.e.
+// the ones whose values are large enough for a shell to split.
+func payloadFlagNames(cmd *cobra.Command) string {
+	defs, err := loadFlagDefs()
+	if err != nil {
+		return ""
+	}
+	spec, ok := defs[cmd.Name()]
+	if !ok {
+		return ""
+	}
+	names := make([]string, 0, 4)
+	for _, df := range spec.Flags {
+		if len(df.Input) > 0 {
+			names = append(names, "--"+df.Name)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	return strings.Join(names, " / ")
 }
 
 // chainMultiAreaRange rejects an Excel multi-area --range on any command that

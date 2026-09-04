@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	goruntime "runtime"
 	"strings"
 	"testing"
 
@@ -1033,4 +1034,45 @@ func TestReflowLongTailVocabulary(t *testing.T) {
 			})
 		}
 	})
+}
+
+// TestPositionalArgsCauseIsWindowsOnly pins the platform split on the
+// positional-argument prescription: the cause it names is a PowerShell one,
+// so it must not appear where a positional argument really is one.
+func TestPositionalArgsCauseIsWindowsOnly(t *testing.T) {
+	t.Parallel()
+	_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set"), []string{
+		"--url", testURL, "--sheet-name", "s", "--range", "A1",
+		"--cells", `[[{"value":"x"}]]`, "stray", "--dry-run",
+	})
+	if err == nil {
+		t.Fatal("a positional argument should still be rejected")
+	}
+	if goruntime.GOOS == "windows" {
+		p, ok := errs.ProblemOf(err)
+		if !ok || !strings.Contains(p.Hint, "PowerShell") {
+			t.Errorf("windows should name the shell as the cause, got %v", err)
+		}
+		return
+	}
+	if strings.Contains(err.Error(), "PowerShell") {
+		t.Errorf("non-windows must keep the framework wording, got %v", err)
+	}
+}
+
+// TestPayloadFlagNames pins the list the windows prescription inlines: the
+// flags whose values are large enough for a shell to split.
+func TestPayloadFlagNames(t *testing.T) {
+	t.Parallel()
+	parent, _, _, _ := newTestRig(t, shortcutFromRegistry(t, "+cells-set"))
+	cmd, _, err := parent.Find([]string{"+cells-set"})
+	if err != nil {
+		t.Fatalf("Find: %v", err)
+	}
+	got := payloadFlagNames(cmd)
+	for _, want := range []string{"--cells", "--writes"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("payload flags = %q, want it to carry %s", got, want)
+		}
+	}
 }
