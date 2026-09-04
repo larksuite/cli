@@ -111,12 +111,14 @@ var SearchTasklist = common.Shortcut{
 			}
 			urlVal, _ := tasklist["url"].(string)
 			urlVal = truncateTaskURL(urlVal)
-			tasklists = append(tasklists, map[string]interface{}{
+			item := map[string]interface{}{
 				"guid":    tasklist["guid"],
 				"name":    tasklist["name"],
 				"url":     urlVal,
 				"creator": tasklist["creator"],
-			})
+			}
+			projectTasklistFields(item, tasklist, standardTasklistOutputFields...)
+			tasklists = append(tasklists, item)
 		}
 
 		outData := map[string]interface{}{

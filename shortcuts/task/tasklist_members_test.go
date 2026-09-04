@@ -4,6 +4,7 @@
 package task
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -20,6 +21,83 @@ func TestBuildTlMembersBody(t *testing.T) {
 		members := body["members"].([]map[string]interface{})
 		convey.So(len(members), convey.ShouldEqual, 2)
 	})
+}
+
+func TestMembersTasklistOutputsServerMembers(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		method   string
+		url      string
+		response map[string]interface{}
+	}{
+		{
+			name:   "read",
+			args:   []string{"+tasklist-members", "--tasklist-id", "tl-123", "--as", "bot", "--format", "json"},
+			method: "GET",
+			url:    "/open-apis/task/v2/tasklists/tl-123",
+		},
+		{
+			name:   "write",
+			args:   []string{"+tasklist-members", "--tasklist-id", "tl-123", "--add", "ou_editor", "--as", "bot", "--format", "json"},
+			method: "POST",
+			url:    "/open-apis/task/v2/tasklists/tl-123/add_members",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, reg := taskShortcutTestFactory(t)
+			warmTenantToken(t, f, reg)
+			reg.Register(&httpmock.Stub{
+				Method: tt.method,
+				URL:    tt.url,
+				Body: map[string]interface{}{
+					"code": 0,
+					"msg":  "success",
+					"data": map[string]interface{}{
+						"tasklist": fullTasklistOutputFixture(),
+					},
+				},
+			})
+
+			s := MembersTasklist
+			s.AuthTypes = []string{"bot", "user"}
+			if err := runMountedTaskShortcut(t, s, tt.args, f, stdout); err != nil {
+				t.Fatalf("runMountedTaskShortcut() error = %v", err)
+			}
+
+			var envelope map[string]interface{}
+			if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+				t.Fatalf("decode output: %v\n%s", err, stdout.String())
+			}
+			data, _ := envelope["data"].(map[string]interface{})
+			assertTasklistMembers(t, data, "ou_editor", "Editor")
+		})
+	}
+}
+
+func fullTasklistOutputFixture() map[string]interface{} {
+	return map[string]interface{}{
+		"guid": "tl-123",
+		"name": "My List",
+		"url":  "https://example.com/tl-123",
+		"members": []interface{}{
+			map[string]interface{}{"id": "ou_editor", "name": "Editor", "role": "editor", "type": "user"},
+		},
+	}
+}
+
+func assertTasklistMembers(t *testing.T, data map[string]interface{}, wantID, wantName string) {
+	t.Helper()
+	members, ok := data["members"].([]interface{})
+	if !ok || len(members) != 1 {
+		t.Fatalf("members = %#v, want one member", data["members"])
+	}
+	member, _ := members[0].(map[string]interface{})
+	if member["id"] != wantID || member["name"] != wantName {
+		t.Fatalf("member = %#v, want id=%q name=%q", member, wantID, wantName)
+	}
 }
 
 // TestMembersTasklist_SetCombinedWithAddRejected covers the Validate guard:
