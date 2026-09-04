@@ -257,6 +257,82 @@ func TestEmitterPrettyRendererFailurePreservesCause(t *testing.T) {
 	}
 }
 
+func TestEmitterConciseUsesCommandRendererWithoutGenericPagination(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "off")
+	stdout := &bytes.Buffer{}
+	emitter := output.NewEmitter(output.EmitterConfig{
+		Out:         stdout,
+		ErrOut:      io.Discard,
+		CommandPath: "lark-cli im +chat-messages-list",
+	})
+	err := output.SuccessWithConcise(emitter, map[string]interface{}{"messages": []interface{}{}}, output.EmitOptions{
+		Format: "concise",
+		Meta: &output.Meta{Pagination: &output.PaginationMeta{
+			Complete:  false,
+			Pages:     1,
+			Items:     20,
+			NextToken: "next",
+		}},
+	}, func(w io.Writer, _ bool) error {
+		_, writeErr := io.WriteString(w, "# Messages\n\n- has_more: true\n- next_token: `next`\n")
+		return writeErr
+	})
+	if err != nil {
+		t.Fatalf("Emitter.Success() error = %v", err)
+	}
+	if got := stdout.String(); got != "# Messages\n\n- has_more: true\n- next_token: `next`\n" {
+		t.Fatalf("concise stdout = %q", got)
+	}
+	if strings.Contains(stdout.String(), "Pagination:") {
+		t.Fatalf("concise stdout contains duplicate generic pagination: %q", stdout.String())
+	}
+}
+
+func TestEmitterConciseWithNilRendererPreservesUnknownFormatFallback(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "off")
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	emitter := output.NewEmitter(output.EmitterConfig{
+		Out:         stdout,
+		ErrOut:      stderr,
+		CommandPath: "lark-cli fixture +emit",
+	})
+
+	if err := output.SuccessWithConcise(emitter, map[string]interface{}{"id": "1"}, output.EmitOptions{Format: "concise"}, nil); err != nil {
+		t.Fatalf("SuccessWithConcise() error = %v", err)
+	}
+	var envelope output.Envelope
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("fallback stdout is not JSON: %v\n%s", err, stdout.String())
+	}
+	if !strings.Contains(stderr.String(), `warning: unknown format "concise", falling back to json`) {
+		t.Fatalf("fallback stderr = %q, want unknown-format warning", stderr.String())
+	}
+}
+
+func TestEmitterConciseRendererFailurePreservesCause(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "off")
+	sentinel := errors.New("concise render failed")
+	stdout := &bytes.Buffer{}
+	emitter := output.NewEmitter(output.EmitterConfig{
+		Out:         stdout,
+		ErrOut:      io.Discard,
+		CommandPath: "lark-cli fixture +emit",
+	})
+
+	err := output.SuccessWithConcise(emitter, map[string]interface{}{"id": "1"}, output.EmitOptions{
+		Format: "concise",
+	}, func(io.Writer, bool) error {
+		return sentinel
+	})
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("Emitter.Success() error = %v, want preserved renderer cause", err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Emitter.Success() stdout = %q, want empty", stdout.String())
+	}
+}
+
 func TestEmitterAlertWarningFailurePreservesCause(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "warn")
 	extcs.Register(&contractSafetyProvider{alert: &extcs.Alert{

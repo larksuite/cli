@@ -17,6 +17,9 @@ lark-cli im +chat-messages-list --chat-id oc_xxx
 # Get direct messages with a user (pass open_id and resolve p2p chat_id automatically)
 lark-cli im +chat-messages-list --user-id ou_xxx
 
+# Read complete conversation context as compact Markdown
+lark-cli im +chat-messages-list --chat-id oc_xxx --format concise
+
 # Specify a time range (ISO 8601)
 lark-cli im +chat-messages-list --chat-id oc_xxx --start "2026-03-10T00:00:00+08:00" --end "2026-03-11T00:00:00+08:00"
 
@@ -51,6 +54,7 @@ lark-cli im +chat-messages-list --chat-id oc_xxx --format json
 | `--page-limit <n>` | No | Maximum pages fetched by `--page-all` (default 10, range 1-1000) |
 | `--no-reactions` | No | Skip auto-fetching the `reactions` block |
 | `--download-resources` | No | Download message resources (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` and attach a `resources` block. Off by default; no extra requests when omitted |
+| `--format <fmt>` | No | `json` (default), `pretty`, `concise`, `table`, `ndjson`, or `csv`; concise emits complete conversation-oriented Markdown |
 
 > Rule: `--chat-id` and `--user-id` are mutually exclusive. You must provide exactly one of them.
 

@@ -5,6 +5,8 @@ package common
 
 import (
 	"context"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -62,6 +64,48 @@ func TestShortcutMount_FlagCompletionsRegistered(t *testing.T) {
 		if got[i] != v {
 			t.Fatalf("format completion[%d] = %q, want %q", i, got[i], v)
 		}
+	}
+}
+
+func TestAddOutputFormatsExtendsFrameworkFormatSurface(t *testing.T) {
+	t.Cleanup(func() { cmdutil.SetFlagCompletionsEnabled(false) })
+	cmdutil.SetFlagCompletionsEnabled(true)
+
+	cmd := mountTestShortcut(t, Shortcut{
+		Service:     "im",
+		Command:     "+messages",
+		Description: "list messages",
+		PostMount: func(cmd *cobra.Command) {
+			AddOutputFormats(cmd, "concise", "concise", "json", "")
+		},
+		Execute: func(context.Context, *RuntimeContext) error { return nil },
+	})
+
+	format := cmd.Flags().Lookup("format")
+	if format == nil {
+		t.Fatal("expected framework --format flag")
+	}
+	if got, want := format.DefValue, "json"; got != want {
+		t.Fatalf("format default = %q, want %q", got, want)
+	}
+	if !strings.Contains(format.Usage, "concise") {
+		t.Fatalf("format usage = %q, want concise", format.Usage)
+	}
+	if cmd.Flags().Lookup("json") == nil {
+		t.Fatal("expected framework --json shorthand")
+	}
+
+	complete, ok := cmd.GetFlagCompletionFunc("format")
+	if !ok {
+		t.Fatal("expected completion func for --format")
+	}
+	got, directive := complete(cmd, nil, "")
+	want := []string{"json", "pretty", "concise", "table", "ndjson", "csv"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("format completion = %v, want %v", got, want)
+	}
+	if directive != cobra.ShellCompDirectiveNoFileComp {
+		t.Fatalf("format completion directive = %v, want no-file-comp", directive)
 	}
 }
 
