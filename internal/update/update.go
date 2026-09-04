@@ -4,22 +4,22 @@
 package update
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
-	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/distribution"
 	"github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/internal/urlrewrite"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/internal/versioncheck"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -29,13 +29,13 @@ const (
 	fetchTimeout = 15 * time.Second
 	stateFile    = "update-state.json"
 	maxBody      = 256 << 10 // 256 KB
-
 )
 
 // UpdateInfo holds version update information.
 type UpdateInfo struct {
 	Current string `json:"current"`
 	Latest  string `json:"latest"`
+	Source  string `json:"source,omitempty"`
 }
 
 // Message returns a concise update notification including the canonical
@@ -43,6 +43,9 @@ type UpdateInfo struct {
 // AI agents can parse a unified "run: lark-cli update" hint across
 // both notice types.
 func (u *UpdateInfo) Message() string {
+	if u.Source != "" {
+		return fmt.Sprintf("lark-cli target %s configured, current %s, run: lark-cli update", u.Latest, u.Current)
+	}
 	return fmt.Sprintf("lark-cli %s available, current %s, run: lark-cli update", u.Latest, u.Current)
 }
 
@@ -70,92 +73,65 @@ func httpClient() *http.Client {
 type updateState struct {
 	LatestVersion string `json:"latest_version"`
 	CheckedAt     int64  `json:"checked_at"`
+	Source        string `json:"source,omitempty"`
 }
 
 // CheckCached checks the local cache only (no network). Always fast.
-func CheckCached(currentVersion string) *UpdateInfo {
-	if shouldSkip(currentVersion) {
+func CheckCached(ctx context.Context, currentVersion string) *UpdateInfo {
+	src, err := distribution.ResolveSource(ctx)
+	if err != nil || shouldSkip(currentVersion, src.ManifestMode()) {
 		return nil
 	}
 	state, _ := loadState()
-	if state == nil || state.LatestVersion == "" {
+	if state == nil || state.LatestVersion == "" || state.Source != src.Identity() {
 		return nil
 	}
-	if !IsNewer(state.LatestVersion, currentVersion) {
+	if src.ManifestMode() {
+		if state.LatestVersion == currentVersion {
+			return nil
+		}
+		return &UpdateInfo{Current: currentVersion, Latest: state.LatestVersion, Source: "manifest"}
+	}
+	if !versioncheck.IsNewer(state.LatestVersion, currentVersion) {
 		return nil
 	}
 	return &UpdateInfo{Current: currentVersion, Latest: state.LatestVersion}
 }
 
-// RefreshCache fetches the latest version from npm and updates the local cache.
+// RefreshCache fetches the configured target and updates the local cache.
 // No-op if the cache is still fresh (< 24h). Safe to call from a goroutine.
-func RefreshCache(currentVersion string) {
-	if shouldSkip(currentVersion) {
+func RefreshCache(ctx context.Context, currentVersion string) {
+	src, err := distribution.ResolveSource(ctx)
+	if err != nil || shouldSkip(currentVersion, src.ManifestMode()) {
 		return
 	}
 	state, _ := loadState()
-	if state != nil && time.Since(time.Unix(state.CheckedAt, 0)) < cacheTTL {
+	if state != nil && state.Source == src.Identity() && time.Since(time.Unix(state.CheckedAt, 0)) < cacheTTL {
 		return // cache is fresh
 	}
-	latest, err := fetchLatestVersion()
-	if err != nil {
+	version, fetchErr := fetchTargetVersion(context.Background(), src)
+	if fetchErr != nil {
 		return
 	}
 	_ = saveState(&updateState{
-		LatestVersion: latest,
+		LatestVersion: version,
 		CheckedAt:     time.Now().Unix(),
+		Source:        src.Identity(),
 	})
 }
 
-func shouldSkip(version string) bool {
-	if os.Getenv("LARKSUITE_CLI_NO_UPDATE_NOTIFIER") != "" {
+// shouldSkip suppresses the notifier in CI, when opted out, or without a
+// usable version. The npm flow additionally only tracks published releases;
+// a manifest distribution may target development builds.
+func shouldSkip(version string, manifestMode bool) bool {
+	if os.Getenv("LARKSUITE_CLI_NO_UPDATE_NOTIFIER") != "" || versioncheck.IsCIEnv() || version == "" {
 		return true
 	}
-	// Suppress in CI environments.
-	if IsCIEnv() {
-		return true
-	}
-	// No version info at all — can't compare.
-	if version == "DEV" || version == "dev" || version == "" {
-		return true
-	}
-	// Skip local dev builds (e.g. v1.0.0-12-g9b933f1-dirty from git describe).
-	// Only released versions (clean X.Y.Z) should check for updates.
-	if !isRelease(version) {
-		return true
-	}
-	return false
-}
-
-// isRelease returns true for published versions: clean semver (1.0.0)
-// and npm prerelease (1.0.0-beta.1, 1.0.0-rc.1).
-// Returns false for git describe dev builds (v1.0.0-12-g9b933f1-dirty).
-var gitDescribePattern = regexp.MustCompile(`-\d+-g[0-9a-f]{7,}`)
-
-func isRelease(version string) bool {
-	v := strings.TrimPrefix(version, "v")
-	if ParseVersion(v) == nil {
+	if manifestMode {
 		return false
 	}
-	return !gitDescribePattern.MatchString(v)
-}
-
-// IsRelease reports whether version looks like a clean published release
-// (semver "1.0.0", or npm prerelease "1.0.0-beta.1") and not a git-describe
-// dev build like "1.0.0-12-g9b933f1-dirty". Exported so internal/skillscheck
-// can apply the same release-only gating without duplicating the regex.
-func IsRelease(version string) bool { return isRelease(version) }
-
-// IsCIEnv returns true when any of the standard CI environment variables
-// is set. Exported for internal/skillscheck so its skip rules track the
-// same CI-suppression behavior as the update notifier.
-func IsCIEnv() bool {
-	for _, key := range []string{"CI", "BUILD_NUMBER", "RUN_ID"} {
-		if os.Getenv(key) != "" {
-			return true
-		}
-	}
-	return false
+	// Skip local dev builds (e.g. v1.0.0-12-g9b933f1-dirty from git describe).
+	return version == "DEV" || version == "dev" || !versioncheck.IsRelease(version)
 }
 
 // --- state file I/O ---
@@ -188,10 +164,49 @@ func saveState(s *updateState) error {
 	return validate.AtomicWrite(statePath(), data, 0644)
 }
 
-// FetchLatest queries the npm registry and returns the latest published version.
-// This is a synchronous call with timeout, intended for diagnostic commands (doctor).
-func FetchLatest() (string, error) {
-	return fetchLatestVersion()
+// Target describes the active source's desired CLI version.
+type Target struct {
+	Version string
+	Exact   bool
+}
+
+// Available reports whether the target should be offered for current.
+func (t Target) Available(current string) bool {
+	if t.Exact {
+		return t.Version != "" && t.Version != current
+	}
+	return versioncheck.IsNewer(t.Version, current)
+}
+
+// FetchTarget synchronously queries the active update source. It is intended
+// for explicit checks such as update and doctor.
+func FetchTarget(ctx context.Context) (Target, error) {
+	src, err := distribution.ResolveSource(ctx)
+	if err != nil {
+		return Target{}, err
+	}
+	return FetchTargetForSource(ctx, src)
+}
+
+// FetchTargetForSource queries an already-resolved source without consulting
+// the extension registry again.
+func FetchTargetForSource(ctx context.Context, src distribution.Source) (Target, error) {
+	version, err := fetchTargetVersion(ctx, src)
+	if err != nil {
+		return Target{}, err
+	}
+	return Target{Version: version, Exact: src.ManifestMode()}, nil
+}
+
+func fetchTargetVersion(ctx context.Context, src distribution.Source) (string, error) {
+	if src.ManifestMode() {
+		manifest, err := src.FetchManifest(ctx)
+		if err != nil {
+			return "", err
+		}
+		return manifest.Version, nil
+	}
+	return fetchLatestVersion(ctx)
 }
 
 // --- npm registry ---
@@ -200,8 +215,12 @@ type npmLatestResponse struct {
 	Version string `json:"version"`
 }
 
-func fetchLatestVersion() (string, error) {
-	resp, err := httpClient().Get(urlrewrite.Rewrite(registryURL))
+func fetchLatestVersion(ctx context.Context) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlrewrite.Rewrite(registryURL), nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := httpClient().Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -224,136 +243,4 @@ func fetchLatestVersion() (string, error) {
 		return "", fmt.Errorf("npm registry: empty version")
 	}
 	return result.Version, nil
-}
-
-// --- semver helpers ---
-
-// IsNewer returns true if version a should be considered an update over b.
-//
-// When both parse as semver, standard comparison applies.
-// When b cannot be parsed (e.g. bare commit hash "9b933f1"), any valid a
-// is considered newer — an unparseable local version is assumed outdated.
-// When a cannot be parsed, returns false (can't confirm it's newer).
-func IsNewer(a, b string) bool {
-	ap := parseVersionDetail(a)
-	bp := parseVersionDetail(b)
-	if ap == nil {
-		return false // can't confirm remote is newer
-	}
-	if bp == nil {
-		return true // local version unparseable → assume outdated
-	}
-	for i := 0; i < 3; i++ {
-		if ap.core[i] > bp.core[i] {
-			return true
-		}
-		if ap.core[i] < bp.core[i] {
-			return false
-		}
-	}
-	return comparePrerelease(ap.prerelease, bp.prerelease) > 0
-}
-
-// ParseVersion parses "X.Y.Z" (with optional "v" prefix and pre-release suffix)
-// into [major, minor, patch]. Returns nil on invalid input.
-func ParseVersion(v string) []int {
-	parsed := parseVersionDetail(v)
-	if parsed == nil {
-		return nil
-	}
-	return []int{parsed.core[0], parsed.core[1], parsed.core[2]}
-}
-
-type parsedVersion struct {
-	core       [3]int
-	prerelease string
-}
-
-// validPrerelease matches semver pre-release identifiers (dot-separated).
-// Each identifier is either: "0", a non-zero-leading numeric, or alphanumeric with at least one letter/hyphen.
-// Rejects empty identifiers ("1.0.0-"), leading-zero numerics ("1.0.0-01"), etc.
-var validPrerelease = regexp.MustCompile(
-	`^(?:0|[1-9]\d*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)` +
-		`(?:\.(?:0|[1-9]\d*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*$`)
-
-func parseVersionDetail(v string) *parsedVersion {
-	v = strings.TrimPrefix(v, "v")
-	if idx := strings.Index(v, "+"); idx >= 0 {
-		v = v[:idx]
-	}
-	prerelease := ""
-	if idx := strings.Index(v, "-"); idx >= 0 {
-		prerelease = v[idx+1:]
-		v = v[:idx]
-		if prerelease == "" || !validPrerelease.MatchString(prerelease) {
-			return nil
-		}
-	}
-	parts := strings.SplitN(v, ".", 3)
-	if len(parts) != 3 {
-		return nil
-	}
-	var nums [3]int
-	for i, p := range parts {
-		if len(p) > 1 && p[0] == '0' {
-			return nil // leading zero in core part (e.g. "01.0.0")
-		}
-		n, err := strconv.Atoi(p)
-		if err != nil {
-			return nil
-		}
-		nums[i] = n
-	}
-	return &parsedVersion{core: nums, prerelease: prerelease}
-}
-
-func comparePrerelease(a, b string) int {
-	if a == "" && b == "" {
-		return 0
-	}
-	if a == "" {
-		return 1
-	}
-	if b == "" {
-		return -1
-	}
-	ap := strings.Split(a, ".")
-	bp := strings.Split(b, ".")
-	for i := 0; i < len(ap) && i < len(bp); i++ {
-		cmp := comparePrereleaseIdentifier(ap[i], bp[i])
-		if cmp != 0 {
-			return cmp
-		}
-	}
-	switch {
-	case len(ap) > len(bp):
-		return 1
-	case len(ap) < len(bp):
-		return -1
-	default:
-		return 0
-	}
-}
-
-func comparePrereleaseIdentifier(a, b string) int {
-	an, aErr := strconv.Atoi(a)
-	bn, bErr := strconv.Atoi(b)
-	aNumeric := aErr == nil
-	bNumeric := bErr == nil
-	switch {
-	case aNumeric && bNumeric:
-		if an > bn {
-			return 1
-		}
-		if an < bn {
-			return -1
-		}
-		return 0
-	case aNumeric:
-		return -1
-	case bNumeric:
-		return 1
-	default:
-		return strings.Compare(a, b)
-	}
 }

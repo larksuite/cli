@@ -21,6 +21,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/deprecation"
+	"github.com/larksuite/cli/internal/distribution"
 	"github.com/larksuite/cli/internal/flagalias"
 	"github.com/larksuite/cli/internal/hook"
 	"github.com/larksuite/cli/internal/output"
@@ -106,7 +107,7 @@ func executeWithOptions(opts []BuildOption) int {
 
 	// --- Notices (non-blocking) ---
 	if !isCompletionCommand(os.Args) {
-		setupNotices(runtime.surface)
+		setupNotices(rootCmd.Context(), runtime.surface)
 	}
 
 	runErr := rootCmd.Execute()
@@ -142,17 +143,23 @@ func isDeferredBootstrapProfileError(err error) bool {
 var (
 	checkCachedUpdate     = update.CheckCached
 	refreshUpdateCache    = update.RefreshCache
-	initializeSkillsCheck = skillscheck.Init
+	initializeSkillsCheck = func(ctx context.Context, version string) {
+		if src, err := distribution.ResolveSource(ctx); err == nil && src.ManifestMode() {
+			skillscheck.InitForSource(version, src.Identity(), true)
+			return
+		}
+		skillscheck.Init(version)
+	}
 )
 
 // setupNotices wires both the binary update notice and the skills
 // staleness notice into output.PendingNotice as a composed function.
 // Each provider populates an independent key under _notice; either
 // or both may be present in any given envelope.
-func setupNotices(plan *surface.Plan) {
+func setupNotices(ctx context.Context, plan *surface.Plan) {
 	if plan.CanReference(surface.CommandUpdate) {
 		// Binary update — synchronous cache check + async refresh.
-		if info := checkCachedUpdate(build.Version); info != nil {
+		if info := checkCachedUpdate(ctx, build.Version); info != nil {
 			update.SetPending(info)
 		}
 		ver := build.Version
@@ -162,9 +169,9 @@ func setupNotices(plan *surface.Plan) {
 					fmt.Fprintf(os.Stderr, "update check panic: %v\n", r)
 				}
 			}()
-			refreshUpdateCache(ver)
+			refreshUpdateCache(ctx, ver)
 			if update.GetPending() == nil {
-				if info := checkCachedUpdate(ver); info != nil {
+				if info := checkCachedUpdate(ctx, ver); info != nil {
 					update.SetPending(info)
 				}
 			}
@@ -172,7 +179,7 @@ func setupNotices(plan *surface.Plan) {
 
 		// Skills drift has only one recovery action: lark-cli update. Do not
 		// even inspect local drift state when that action is absent.
-		initializeSkillsCheck(build.Version)
+		initializeSkillsCheck(ctx, build.Version)
 	}
 
 	// Capture this build's immutable plan; never consult another Build's state.
@@ -192,12 +199,18 @@ func composePendingNotice(plan *surface.Plan) map[string]interface{} {
 	// both exist solely to steer the caller to `lark-cli update`.
 	if canUpdate {
 		if info := update.GetPending(); info != nil {
-			notice["update"] = map[string]interface{}{
+			entry := map[string]interface{}{
 				"current": info.Current,
-				"latest":  info.Latest,
 				"message": info.Message(),
 				"command": "lark-cli update",
 			}
+			if info.Source == "manifest" {
+				entry["source"] = "manifest"
+				entry["target"] = info.Latest
+			} else {
+				entry["latest"] = info.Latest
+			}
+			notice["update"] = entry
 		}
 		if stale := skillscheck.GetPending(); stale != nil {
 			entry := map[string]interface{}{

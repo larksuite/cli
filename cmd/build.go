@@ -29,6 +29,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/commandhost"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/distribution"
 	"github.com/larksuite/cli/internal/hook"
 	"github.com/larksuite/cli/internal/keychain"
 	internalplatform "github.com/larksuite/cli/internal/platform"
@@ -225,6 +226,7 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 	if cfg == nil {
 		cfg = &buildConfig{}
 	}
+	ctx = distribution.CaptureSource(ctx)
 	registeredShortcuts, commandSetErr := resolveShortcutSnapshot(cfg.commandSets)
 	// Default streams when WithIO is not supplied so the root command's
 	// SetIn/Out/Err calls below don't deref nil. NewDefault also normalizes
