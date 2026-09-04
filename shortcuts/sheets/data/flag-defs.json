@@ -6011,6 +6011,40 @@
       }
     ]
   },
+  "+undo": {
+    "risk": "high-risk-write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet locator"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet locator"
+      },
+      {
+        "name": "count",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "Number of active entries to undo from the current user's undo stack; defaults to 1, maximum 20. One entry is one undoable AI write record, not a conversation turn, revision, history version, action, or cell count. Prefer omitting this flag for a single undo; pass N only when the preceding N target writes are known precisely. The actual count is returned in undone.",
+        "default": "1"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
   "+changeset-get": {
     "risk": "read",
     "flags": [

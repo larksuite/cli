@@ -1154,6 +1154,15 @@ var flagDefs = map[string]commandDef{
 			{Name: "dry-run", Kind: "system", Type: "bool", Required: "optional"},
 		},
 	},
+	"+undo": {
+		Risk: "high-risk-write",
+		Flags: []flagDef{
+			{Name: "url", Kind: "public", Type: "string", Required: "xor", Desc: "Spreadsheet locator"},
+			{Name: "spreadsheet-token", Kind: "public", Type: "string", Required: "xor", Desc: "Spreadsheet locator"},
+			{Name: "count", Kind: "own", Type: "int", Required: "optional", Desc: "Number of active entries to undo from the current user's undo stack; defaults to 1, maximum 20. One entry is one undoable AI write record, not a conversation turn, revision, history version, action, or cell count. Prefer omitting this flag for a single undo; pass N only when the preceding N target writes are known precisely. The actual count is returned in undone.", Default: "1"},
+			{Name: "dry-run", Kind: "system", Type: "bool", Required: "optional"},
+		},
+	},
 	"+workbook-create": {
 		Risk: "write",
 		Flags: []flagDef{
