@@ -82,16 +82,6 @@ func GetServiceTitle(name, lang string) string {
 	return loc.Title
 }
 
-// GetServiceDetailDescription returns the localized detail description for a service domain.
-// Returns empty string if not found.
-func GetServiceDetailDescription(name, lang string) string {
-	loc := getServiceLocale(name, lang)
-	if loc == nil {
-		return ""
-	}
-	return loc.Description
-}
-
 // GetAuthDomain returns the auth_domain for a service, or "" if not set.
 // When auth_domain is set, the service's scopes are collected under the
 // parent domain during auth login.

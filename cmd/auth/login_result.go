@@ -20,6 +20,7 @@ type loginScopeSummary struct {
 	AlreadyGranted []string
 	Granted        []string
 	Missing        []string
+	StatusMessage  string
 }
 
 type loginScopeIssue struct {
@@ -114,11 +115,27 @@ func uniqueScopeList(scope string) []string {
 
 // formatScopeList joins scopes for display and falls back to the provided empty
 // label when the input slice is empty.
-func formatScopeList(scopes []string, empty string) string {
+func formatScopeList(scopes []string, empty, separator string) string {
 	if len(scopes) == 0 {
 		return empty
 	}
-	return strings.Join(scopes, " ")
+	return strings.Join(scopes, separator)
+}
+
+// grantedRequestedScopes returns requested scopes that are not in the missing
+// set, preserving the order of the authorization request.
+func grantedRequestedScopes(summary *loginScopeSummary) []string {
+	missing := make(map[string]bool, len(summary.Missing))
+	for _, scope := range summary.Missing {
+		missing[scope] = true
+	}
+	granted := make([]string, 0, len(summary.Requested))
+	for _, scope := range summary.Requested {
+		if !missing[scope] {
+			granted = append(granted, scope)
+		}
+	}
+	return granted
 }
 
 // emptyIfNil normalizes nil slices to empty slices for stable JSON output.
@@ -129,14 +146,47 @@ func emptyIfNil(s []string) []string {
 	return s
 }
 
-// writeLoginScopeBreakdown renders the requested/newly granted scope
-// breakdown to stderr.
+// writeLoginScopeBreakdown renders the compact granted/not-granted result.
 func writeLoginScopeBreakdown(errOut *cmdutil.IOStreams, msg *loginMsg, summary *loginScopeSummary) {
 	if summary == nil {
 		summary = &loginScopeSummary{}
 	}
-	fmt.Fprintf(errOut.ErrOut, msg.RequestedScopes, formatScopeList(summary.Requested, msg.NoScopes))
-	fmt.Fprintf(errOut.ErrOut, msg.NewlyGrantedScopes, formatScopeList(summary.NewlyGranted, msg.NoScopes))
+	fmt.Fprintln(errOut.ErrOut)
+	fmt.Fprintln(errOut.ErrOut, msg.GrantedScopes)
+	fmt.Fprintf(errOut.ErrOut, "  %s\n", formatScopeList(grantedRequestedScopes(summary), msg.NoScopes, msg.ScopeSeparator))
+	if summary.StatusMessage != "" {
+		fmt.Fprintln(errOut.ErrOut)
+		heading := msg.NotGrantedScopes
+		if len(summary.Missing) == 0 {
+			heading = msg.AuthDetails
+		}
+		fmt.Fprintln(errOut.ErrOut, heading)
+		writeLoginStatusMessage(errOut, summary.StatusMessage)
+		return
+	}
+	if len(summary.Missing) == 0 {
+		return
+	}
+	fmt.Fprintln(errOut.ErrOut)
+	fmt.Fprintln(errOut.ErrOut, msg.NotGrantedScopes)
+	fmt.Fprintf(errOut.ErrOut, "  %s\n", formatScopeList(summary.Missing, msg.NoScopes, msg.ScopeSeparator))
+}
+
+// writeLoginStatusMessage appends the server-rendered authorization result
+// without interpreting or rewriting its contents.
+func writeLoginStatusMessage(errOut *cmdutil.IOStreams, statusMessage string) {
+	if statusMessage == "" {
+		return
+	}
+	for _, line := range strings.SplitAfter(statusMessage, "\n") {
+		if line == "" {
+			continue
+		}
+		fmt.Fprint(errOut.ErrOut, "  ", line)
+	}
+	if !strings.HasSuffix(statusMessage, "\n") {
+		fmt.Fprintln(errOut.ErrOut)
+	}
 }
 
 // writeLoginSuccess emits the successful login payload in either JSON or text
@@ -154,9 +204,6 @@ func writeLoginSuccess(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory, op
 	fmt.Fprintln(f.IOStreams.ErrOut)
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.LoginSuccess, userName, openId))
 	writeLoginScopeBreakdown(f.IOStreams, msg, summary)
-	if len(summary.Missing) == 0 && msg.StatusHint != "" {
-		fmt.Fprintln(f.IOStreams.ErrOut, msg.StatusHint)
-	}
 }
 
 // handleLoginScopeIssue prints or returns a structured missing-scope result
@@ -182,15 +229,12 @@ func handleLoginScopeIssue(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory
 
 	fmt.Fprintln(f.IOStreams.ErrOut)
 	if loginSucceeded {
-		fmt.Fprintln(f.IOStreams.ErrOut, issue.Message)
-		if msg.AuthorizedUser != "" {
-			fmt.Fprintf(f.IOStreams.ErrOut, "%s\n", fmt.Sprintf(msg.AuthorizedUser, userName, openId))
-		}
+		output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.LoginSuccess, userName, openId))
 	} else {
 		fmt.Fprintln(f.IOStreams.ErrOut, issue.Message)
 	}
 	writeLoginScopeBreakdown(f.IOStreams, msg, issue.Summary)
-	if issue.Hint != "" {
+	if !loginSucceeded && issue.Hint != "" {
 		fmt.Fprintln(f.IOStreams.ErrOut, issue.Hint)
 	}
 	return output.ErrBare(output.ExitAuth)
@@ -214,10 +258,13 @@ func authorizationCompletePayload(openId, userName string, summary *loginScopeSu
 		"granted":         emptyIfNil(summary.Granted),
 	}
 	if issue != nil {
+		hint := summary.StatusMessage
+		if hint == "" {
+			hint = issue.Message
+		}
 		payload["warning"] = map[string]interface{}{
-			"type":    "missing_scope",
-			"message": issue.Message,
-			"hint":    issue.Hint,
+			"type": "missing_scope",
+			"hint": hint,
 		}
 	}
 	return payload
