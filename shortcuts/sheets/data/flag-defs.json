@@ -3524,6 +3524,13 @@
         ]
       },
       {
+        "name": "aggregate-categories",
+        "kind": "own",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Whether to aggregate duplicate categories; use --aggregate-categories=false for sparse markers or row-level data points, and omit it to use the chart default"
+      },
+      {
         "name": "x-axis-numbers-as",
         "kind": "own",
         "type": "string",
@@ -3554,21 +3561,21 @@
         "kind": "own",
         "type": "float64",
         "required": "optional",
-        "desc": "Lower display bound for the left Y-axis; must be less than --y-axis-max"
+        "desc": "Lower display bound for the left Y-axis; omit by default and pass together with --y-axis-max only when the user explicitly requests fixed bounds; do not copy a raw source-column minimum, and keep it below the upper bound"
       },
       {
         "name": "y-axis-max",
         "kind": "own",
         "type": "float64",
         "required": "optional",
-        "desc": "Upper display bound for the left Y-axis; must be greater than --y-axis-min"
+        "desc": "Upper display bound for the left Y-axis; omit by default and pass together with --y-axis-min only when the user explicitly requests fixed bounds; calculate it from rendered chart semantics, and keep it above the lower bound"
       },
       {
         "name": "dim1-index",
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "1-based category/X-axis dimension index within the data range; defaults to 1"
+        "desc": "1-based index of the single supported category/X-axis dimension within the data range; defaults to 1; multiple fields cannot form a multi-level X-axis"
       },
       {
         "name": "dim2-indexes",
@@ -3582,14 +3589,14 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Combo charts only; comma-separated series types aligned with --dim2-indexes; use column, line, or area and provide one value per selected series"
+        "desc": "Combo charts only; comma-separated series types aligned with --dim2-indexes; use column, line, area, or scatter and provide one value per selected series"
       },
       {
         "name": "series-y-axes",
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Combo charts only; comma-separated left or right Y-axis assignments aligned with --dim2-indexes; provide one value per selected series"
+        "desc": "Combo charts only; compare series units and magnitudes first and place a series that would be flattened on the right axis; pass left or right aligned with --dim2-indexes, one value per selected series"
       },
       {
         "name": "key-index",
@@ -3645,7 +3652,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Legend position; hidden removes the legend",
+        "desc": "Legend position; use bottom by default for pie charts; hidden removes the legend",
         "enum": [
           "top",
           "bottom",
@@ -3708,7 +3715,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Data label content; combine value, category, and percentage in value_category_percentage order for any non-empty combination; series shows series names and none removes labels",
+        "desc": "Data label content; pass value by default for a basic chart and do not omit it solely because there are many data points or series; pass none only when the user explicitly requests hiding all labels; combine value, category, and percentage in value_category_percentage order for any non-empty combination; series shows series names",
         "enum": [
           "none",
           "value",
@@ -3726,7 +3733,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Pass only when the user explicitly requests a position; it only repositions existing data labels and does not enable labels by itself; omit it for chart-type-aware placement",
+        "desc": "For an ordinary non-stacked column chart with labels, generally pass outside; in other cases, pass only when the user explicitly requests a position; this only repositions existing labels and does not enable them",
         "enum": [
           "auto",
           "top",
@@ -3763,7 +3770,7 @@
         "kind": "own",
         "type": "bool",
         "required": "optional",
-        "desc": "Use smooth curves; accepts both --smooth=false and --smooth false"
+        "desc": "Use smooth curves; pass --smooth=false to disable explicitly"
       },
       {
         "name": "color-palette",
@@ -3805,7 +3812,7 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Optional chart width; must be paired with --height"
+        "desc": "Optional chart width; must be paired with --height; widen pie charts and charts with long category labels to avoid truncation"
       },
       {
         "name": "height",
@@ -3957,14 +3964,14 @@
         "kind": "own",
         "type": "float64",
         "required": "optional",
-        "desc": "Lower display bound for the left Y-axis; must be less than --y-axis-max"
+        "desc": "Lower display bound for the left Y-axis; omit by default and pass together with --y-axis-max only when the user explicitly requests fixed bounds; do not copy a raw source-column minimum, and keep it below the upper bound"
       },
       {
         "name": "y-axis-max",
         "kind": "own",
         "type": "float64",
         "required": "optional",
-        "desc": "Upper display bound for the left Y-axis; must be greater than --y-axis-min"
+        "desc": "Upper display bound for the left Y-axis; omit by default and pass together with --y-axis-min only when the user explicitly requests fixed bounds; calculate it from rendered chart semantics, and keep it above the lower bound"
       },
       {
         "name": "data-labels",
@@ -4002,11 +4009,11 @@
         ]
       },
       {
-        "name": "last-point-label",
+        "name": "aggregate-categories",
         "kind": "own",
         "type": "bool",
         "required": "optional",
-        "desc": "For line, area, radar, and linear combo series only; true shows a value label on the last data point of every series, while false removes those point labels"
+        "desc": "Whether to aggregate duplicate categories; use --aggregate-categories=false for sparse markers or row-level data points, and omit it to preserve the current setting"
       },
       {
         "name": "stack",
@@ -4033,7 +4040,7 @@
         "kind": "own",
         "type": "bool",
         "required": "optional",
-        "desc": "Use smooth curves; accepts both --smooth=false and --smooth false"
+        "desc": "Use smooth curves; pass --smooth=false to disable explicitly"
       },
       {
         "name": "color-palette",
@@ -4140,7 +4147,7 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "1-based category/X-axis dimension index within the data range; defaults to the first dimension"
+        "desc": "1-based index of the single supported category/X-axis dimension within the data range; defaults to the first dimension; multiple fields cannot form a multi-level X-axis"
       },
       {
         "name": "dim2-indexes",
