@@ -57,6 +57,22 @@ func TestShellPayloadHints(t *testing.T) {
 		}
 	})
 
+	t.Run("posix prescribes stdin for an out-of-tree file", func(t *testing.T) {
+		t.Parallel()
+		// The windows branch is asserted above; without this the POSIX one is
+		// covered only by its negation there, so a regression that collapsed
+		// the two branches onto the "cd first" wording would go unnoticed.
+		for _, goos := range []string{"linux", "darwin"} {
+			got := outOfTreeFileHintFor("csv", goos)
+			if !strings.Contains(got, "--csv - < <path>") {
+				t.Errorf("%s hint should prescribe stdin redirection, got %q", goos, got)
+			}
+			if strings.Contains(got, "cd to the file") {
+				t.Errorf("%s hint should not carry the windows workaround, got %q", goos, got)
+			}
+		}
+	})
+
 	t.Run("both shells lead with the universal @file form", func(t *testing.T) {
 		t.Parallel()
 		for _, goos := range []string{"windows", "linux", "darwin"} {

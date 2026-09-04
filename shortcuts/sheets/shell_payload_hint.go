@@ -40,10 +40,8 @@ func payloadFileFormFor(flag, goos string) string {
 	return fmt.Sprintf("--%s @./payload.json", flag)
 }
 
-// payloadStdinForm spells "read this flag from stdin" for the host shell, and
-// reports "" where the shell has no usable form.
-func payloadStdinForm(flag string) string { return payloadStdinFormFor(flag, goruntime.GOOS) }
-
+// payloadStdinFormFor spells "read this flag from stdin" for the host shell,
+// and reports "" where the shell has no usable form.
 func payloadStdinFormFor(flag, goos string) string {
 	if goos == "windows" {
 		return "" // no redirection operator, and the pipe re-encodes

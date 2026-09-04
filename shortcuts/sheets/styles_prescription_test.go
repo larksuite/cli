@@ -590,6 +590,12 @@ func TestAggregatedIssuesKeepPrescriptions(t *testing.T) {
 		if !strings.Contains(ve.Message, `--range "A1:A1" spans`) {
 			t.Errorf("the second issue should be rendered too, got %q", ve.Message)
 		}
+		if ve.Param != "--writes" {
+			t.Errorf("Param = %q, want %q — the fold re-attributes to the outer flag", ve.Param, "--writes")
+		}
+		if ve.Cause == nil {
+			t.Error("Cause = nil, want the first inner issue preserved through the fold")
+		}
 	})
 
 	t.Run("identical issues collapse to one prescription", func(t *testing.T) {

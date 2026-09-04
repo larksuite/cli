@@ -1533,15 +1533,27 @@ func parseWorkbookCreateResizeOp(raw interface{}, path, dimension string) (workb
 	if dimension == "row" {
 		typeHint = "pixel/standard/auto"
 	}
+	// size is the canonical dimension key (uniform across row_sizes and
+	// col_sizes — the array name already carries the dimension). The Excel-
+	// vocabulary alias (height on rows, width on columns) is accepted
+	// silently; the WRONG dimension's word is a targeted error, never a
+	// silent rewrite.
+	alias, wrongDim := "height", "width"
+	if dimension == "column" {
+		alias, wrongDim = "width", "height"
+	}
 	resizeType, _ := op["type"].(string)
 	resizeType = strings.TrimSpace(resizeType)
 	// "custom" is the word both Excel's UI and the Lark UI use for a
 	// hand-set dimension, and an op that carries an explicit size is asking
 	// for exactly the pixel mode. Only rewritten when a size is present:
 	// without one, "custom" states no dimension at all and the enum error is
-	// the right answer.
+	// the right answer. The alias counts as a size — the two spellings are
+	// interchangeable everywhere else, so "custom" must not depend on which
+	// one the caller reached for.
 	if strings.EqualFold(resizeType, "custom") {
-		if _, hasSize := op["size"]; hasSize {
+		_, hasSize := op["size"]
+		if _, hasAlias := op[alias]; hasSize || hasAlias {
 			resizeType = "pixel"
 			op["type"] = resizeType
 		}
@@ -1555,15 +1567,6 @@ func parseWorkbookCreateResizeOp(raw interface{}, path, dimension string) (workb
 		default:
 			return workbookCreateResizeOp{}, common.ValidationErrorf("%s.type %q is invalid (want %s), e.g. %s", path, resizeType, typeHint, resizeOpExample(dimension))
 		}
-	}
-	// size is the canonical dimension key (uniform across row_sizes and
-	// col_sizes — the array name already carries the dimension). The Excel-
-	// vocabulary alias (height on rows, width on columns) is accepted
-	// silently; the WRONG dimension's word is a targeted error, never a
-	// silent rewrite.
-	alias, wrongDim := "height", "width"
-	if dimension == "column" {
-		alias, wrongDim = "width", "height"
 	}
 	if _, has := op[wrongDim]; has {
 		return workbookCreateResizeOp{}, common.ValidationErrorf("%s.%s does not apply to this array (the array name carries the dimension); use size, e.g. %s", path, wrongDim, resizeOpExample(dimension))

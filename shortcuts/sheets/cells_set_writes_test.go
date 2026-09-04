@@ -144,6 +144,15 @@ func TestCellsSetWrites(t *testing.T) {
 				t.Fatalf("message %q missing %q", ve.Message, want)
 			}
 		}
+		// The fold re-attributes to the outer flag and keeps the first inner
+		// issue as the cause; rendered text alone would not notice losing
+		// either.
+		if ve.Param != "--writes" {
+			t.Errorf("Param = %q, want %q", ve.Param, "--writes")
+		}
+		if ve.Cause == nil {
+			t.Error("Cause = nil, want the first inner issue preserved")
+		}
 	})
 
 	t.Run("item keys go through the vocabulary layer", func(t *testing.T) {

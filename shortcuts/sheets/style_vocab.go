@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"reflect"
 	"slices"
 	"sort"
 	"strconv"
@@ -304,8 +305,15 @@ func numericStyleValue(raw interface{}) (float64, bool) {
 	if !ok {
 		return 0, false
 	}
-	var f float64
-	if err := json.Unmarshal([]byte(strings.TrimSpace(s)), &f); err != nil {
+	// Decoding into interface{} rather than float64: the literal "null"
+	// unmarshals into a float64 without an error and leaves it at 0, which
+	// would turn {"font_size":"null"} into a zero-point font.
+	var decoded interface{}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(s)), &decoded); err != nil {
+		return 0, false
+	}
+	f, ok := decoded.(float64)
+	if !ok {
 		return 0, false
 	}
 	return f, true
@@ -463,10 +471,19 @@ func normalizeTypedCellsStyleAliases(cells []interface{}, path string) error {
 // here at all and keeps the border prescription instead of a wrong guess.
 func expandBorderAllShorthand(border map[string]interface{}) {
 	if outer, ok := border["outer"]; ok {
-		if _, exists := border["all"]; !exists {
+		all, hasAll := border["all"]
+		switch {
+		case !hasAll:
 			border["all"] = outer
+			delete(border, "outer")
+		case reflect.DeepEqual(all, outer):
+			// A duplicate spelling of the same box; dropping it loses nothing.
+			delete(border, "outer")
+		default:
+			// Two different boxes under two names for the same thing. Picking
+			// one would silently apply half the caller's intent, so "outer"
+			// stays and the invalid-side check downstream names the collision.
 		}
-		delete(border, "outer")
 	}
 	if all, ok := border["all"]; ok {
 		for _, side := range []string{"top", "bottom", "left", "right"} {

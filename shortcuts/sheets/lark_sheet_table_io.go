@@ -928,7 +928,11 @@ func coerceNumericCellValue(raw interface{}) (*json.Number, error) {
 		return nil, nil
 	}
 	var probe json.Number
-	if err := json.Unmarshal([]byte(trimmed), &probe); err != nil {
+	// The literal "null" decodes into any destination without an error and
+	// leaves it untouched, so an empty probe here means the text was "null",
+	// not a number. Left alone it marshals back out as 0 and silently writes
+	// a zero where the caller wrote a word.
+	if err := json.Unmarshal([]byte(trimmed), &probe); err != nil || probe == "" {
 		return nil, fmt.Errorf( //nolint:forbidigo // intermediate error; callers wrap it into a typed --sheets/--values validation error with row/column context
 			"number expects a numeric value, got the non-numeric string %q; write a blank cell as null, or drop this column from `dtypes` to store the text as-is",
 			s)
@@ -1507,27 +1511,29 @@ func tablePutDryRun(runtime *common.RuntimeContext) *common.DryRunAPI {
 		s := &payload.Sheets[i]
 		matrix, _ := buildSheetMatrix(s, headerOn(s))
 		rng := tablePutFullRange(s, len(matrix))
-		if s.Mode == "append" {
+		// cell_styles are merged into the matrix on BOTH modes, because
+		// Execute does: applyWorkbookCreateStylesToMatrix can turn an empty
+		// matrix into a style-only write, and skipping it here used to hide
+		// that write from the plan entirely. Padding can widen / lengthen the
+		// matrix past the data, so the range is recomputed from the padded
+		// dims to match what Execute writes.
+		_, col0, row0, _ := sheetAnchor(s)
+		matrix, _ = applyWorkbookCreateStylesToMatrix(matrix, sheetStyles.styleFor(i), col0, row0, fmt.Sprintf("--styles for sheet %q", s.Name))
+		switch {
+		case s.Mode == "append":
+			// The base row is resolved at execute time, so only the shape of
+			// the write is knowable here — the range stays dynamic.
 			rng = "<append below existing data>"
-		} else {
-			// cell_styles are merged into the matrix only for overwrite mode,
-			// where the anchor row is known statically; append's base row is
-			// resolved at execute time, so the preview leaves the matrix bare
-			// (the merges / sizes ops below still render). Padding can widen /
-			// lengthen the matrix past the data, so recompute the range from the
-			// padded dims to match what Execute writes.
-			_, col0, row0, _ := sheetAnchor(s)
-			matrix, _ = applyWorkbookCreateStylesToMatrix(matrix, sheetStyles.styleFor(i), col0, row0, fmt.Sprintf("--styles for sheet %q", s.Name))
-			if len(matrix) > 0 {
-				rng = fmt.Sprintf("%s%d:%s%d",
-					columnIndexToLetter(col0), row0+1,
-					columnIndexToLetter(col0+len(matrix[0])-1), row0+len(matrix))
-			}
+		case len(matrix) > 0:
+			rng = fmt.Sprintf("%s%d:%s%d",
+				columnIndexToLetter(col0), row0+1,
+				columnIndexToLetter(col0+len(matrix[0])-1), row0+len(matrix))
 		}
 		if len(matrix) == 0 {
 			// Nothing to write (a column-less sheet, or header:false with no
-			// data rows): Execute skips the set_cell_range entirely, so the
-			// plan must not show one. Visual ops still run.
+			// data rows and no styles to expand): Execute skips the
+			// set_cell_range entirely, so the plan must not show one. Visual
+			// ops still run.
 			appendWorkbookCreateVisualOpsDryRun(dry, token, "", s.Name, sheetStyles.styleFor(i))
 			continue
 		}

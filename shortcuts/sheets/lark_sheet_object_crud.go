@@ -1445,9 +1445,15 @@ func normalizeCondFormatCompareValue(entry map[string]interface{}, compareType s
 		return
 	}
 	// between / notBetween read two thresholds out of one comma-separated
-	// string; a two-element list says exactly that and nothing else.
+	// string; a two-element list says exactly that and nothing else. Any
+	// other length is not a range, and joining it would hand the schema a
+	// plausible-looking string that passes the local shape check and fails
+	// at the backend instead.
 	if list, isList := raw.([]interface{}); isList {
 		if compareType != "between" && compareType != "notBetween" {
+			return
+		}
+		if len(list) != 2 {
 			return
 		}
 		parts := make([]string, 0, len(list))

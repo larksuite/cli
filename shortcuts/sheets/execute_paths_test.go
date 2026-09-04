@@ -1231,11 +1231,46 @@ func TestExecute_TransientReadRetry(t *testing.T) {
 			Body: timeoutBody, Reusable: true, OnMatch: func(*http.Request) { calls++ },
 		})
 		parent.SetArgs([]string{"+workbook-info", "--url", testURL})
-		if err := parent.Execute(); err == nil {
-			t.Fatal("expected the failure to surface")
+		err := parent.Execute()
+		// The exhausted read must still surface the classified backend
+		// failure: a plain error here would cost an agent the subtype it
+		// routes on, and the request count alone would not notice.
+		p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeServerError, "server time out error")
+		if p.Code != 1310299 {
+			t.Errorf("Code = %d, want 1310299 (the backend's own code must survive the retry loop)", p.Code)
 		}
-		if calls != readRetryAttempts {
-			t.Errorf("calls = %d, want %d", calls, readRetryAttempts)
+		// Pinned locally, not read off readRetryAttempts: reading the
+		// production constant would let a regression that shrinks the retry
+		// budget pass this test unchanged.
+		const wantAttempts = 3
+		if calls != wantAttempts {
+			t.Errorf("calls = %d, want %d", calls, wantAttempts)
+		}
+	})
+
+	t.Run("a rate limit is not reissued even on a read", func(t *testing.T) {
+		t.Parallel()
+		parent, _, _, reg := newTestRig(t, WorkbookInfo)
+		calls := 0
+		reg.Register(&httpmock.Stub{
+			Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_read",
+			Body: map[string]interface{}{
+				"code": 99991400, "msg": "rate limited", "data": map[string]interface{}{},
+			},
+			Reusable: true, OnMatch: func(*http.Request) { calls++ },
+		})
+		parent.SetArgs([]string{"+workbook-info", "--url", testURL})
+		err := parent.Execute()
+		// The classifier marks a rate limit retryable, so only the explicit
+		// exclusion in isTransientToolFailure keeps the read path from
+		// answering "send less traffic" by sending more. The write test above
+		// cannot show this: it is excluded by ToolKindWrite instead.
+		p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeRateLimit, "rate limited")
+		if !p.Retryable {
+			t.Error("Retryable = false, want true — the agent pacing on this subtype needs the flag intact")
+		}
+		if calls != 1 {
+			t.Errorf("calls = %d, want 1 (a rate limit surfaces immediately)", calls)
 		}
 	})
 
@@ -1249,8 +1284,10 @@ func TestExecute_TransientReadRetry(t *testing.T) {
 		})
 		parent.SetArgs([]string{"+cells-set", "--url", testURL, "--sheet-name", "s",
 			"--range", "A1:A1", "--cells", `[[{"value":"x"}]]`})
-		if err := parent.Execute(); err == nil {
-			t.Fatal("expected the failure to surface")
+		err := parent.Execute()
+		p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeServerError, "server time out error")
+		if p.Code != 1310299 {
+			t.Errorf("Code = %d, want 1310299 (the backend's own code must reach the caller unretried)", p.Code)
 		}
 		// A create that timed out after the backend committed it must not be
 		// committed twice.
@@ -1316,8 +1353,14 @@ func TestExecute_MergedRegionHints(t *testing.T) {
 		parent.SetArgs([]string{"+cells-set", "--url", testURL, "--sheet-name", "s",
 			"--range", "B2:B2", "--cells", `[[{"value":"x"}]]`})
 		err := parent.Execute()
-		p, _ := errs.ProblemOf(err)
-		if p != nil && strings.Contains(p.Hint, "+cells-unmerge") {
+		// Assert the failure IS the classified API error first: without this
+		// the subtest also passes when Execute returns nil or an untyped
+		// error, neither of which proves anything about the hint.
+		p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeServerError, "parameter validation failed")
+		if p.Code != 900015206 {
+			t.Errorf("Code = %d, want 900015206", p.Code)
+		}
+		if strings.Contains(p.Hint, "+cells-unmerge") {
 			t.Errorf("hint = %q, want no merge prescription", p.Hint)
 		}
 	})

@@ -5,6 +5,7 @@ package sheets
 
 import (
 	"fmt"
+	"math"
 	goruntime "runtime"
 	"slices"
 	"sort"
@@ -555,12 +556,23 @@ func chainPositionalArgsCause(cmd *cobra.Command) {
 		if err == nil {
 			return nil
 		}
-		hint := "on PowerShell this is usually a JSON flag value the shell split into tokens: single quotes do not protect the quotes and commas inside it. Write the payload to a file and pass it as @./payload.json"
-		if payload := payloadFlagNames(c); payload != "" {
-			hint = fmt.Sprintf("%s — this command's payload flags are %s", hint, payload)
-		}
-		return common.ValidationErrorf("%v", err).WithHint("%s", hint)
+		return annotatePositionalArgsCause(c, err)
 	}
+}
+
+// annotatePositionalArgsCause is the windows annotation itself, split out from
+// the chain so it is reachable from a test on any host: chainPositionalArgsCause
+// declines to install anything off windows, which would otherwise leave the
+// typed shape of this error unasserted everywhere CI runs.
+func annotatePositionalArgsCause(cmd *cobra.Command, err error) error {
+	hint := "on PowerShell this is usually a JSON flag value the shell split into tokens: single quotes do not protect the quotes and commas inside it. Write the payload to a file and pass it as @./payload.json"
+	if payload := payloadFlagNames(cmd); payload != "" {
+		hint = fmt.Sprintf("%s — this command's payload flags are %s", hint, payload)
+	}
+	// err stays in the chain: the framework's argument-validation error is
+	// what this only annotates, and a caller inspecting the failure should
+	// still reach it through errors.Is / errors.As.
+	return common.ValidationErrorf("%v", err).WithHint("%s", hint).WithCause(err)
 }
 
 // payloadFlagNames lists the command's flags that take a file or stdin, i.e.
@@ -624,29 +636,40 @@ func rejectMultiAreaRange(rng string) error {
 		return nil
 	}
 	areas := strings.Split(rng, ",")
-	first, last := strings.TrimSpace(areas[0]), strings.TrimSpace(areas[len(areas)-1])
 	hint := "use the enclosing rectangle in one call"
-	if enclosing := enclosingRangeHint(first, last); enclosing != "" {
+	if enclosing := enclosingRangeHint(areas); enclosing != "" {
 		hint = fmt.Sprintf("use the enclosing rectangle in one call (--range %q)", enclosing)
 	}
 	return sheetsValidationForFlag("range", "--range %q lists %d separate areas; one call takes ONE continuous A1 range", rng, len(areas)).
 		WithHint("%s, or issue one call per area — several areas in one request go through +batch-update, which carries a separate op per area", hint)
 }
 
-// enclosingRangeHint spells the rectangle covering the caller's first and last
-// area, so the prescription carries a range they can paste. Empty when either
-// end is not a plain cell reference — a guess is worse than the generic hint.
-func enclosingRangeHint(first, last string) string {
-	if first == "" || last == "" || strings.Contains(first, ":") || strings.Contains(last, ":") {
+// enclosingRangeHint spells the rectangle covering EVERY area the caller
+// listed, so the prescription carries a range they can paste. The areas need
+// not be ordered — "A3,J3,G3" has its widest column in the middle, and taking
+// the first and last would prescribe a range that drops J3. Empty when any
+// area is not a plain cell reference: a guess is worse than the generic hint.
+func enclosingRangeHint(areas []string) string {
+	minCol, minRow := math.MaxInt, math.MaxInt
+	maxCol, maxRow := 0, 0
+	for _, area := range areas {
+		area = strings.TrimSpace(area)
+		if area == "" || strings.Contains(area, ":") {
+			return ""
+		}
+		col, row, ok := splitCellRef(area)
+		if !ok {
+			return ""
+		}
+		minCol, maxCol = min(minCol, col), max(maxCol, col)
+		minRow, maxRow = min(minRow, row), max(maxRow, row)
+	}
+	if minCol == math.MaxInt {
 		return ""
 	}
-	if _, _, ok := splitCellRef(first); !ok {
-		return ""
-	}
-	if _, _, ok := splitCellRef(last); !ok {
-		return ""
-	}
-	return first + ":" + last
+	return fmt.Sprintf("%s%d:%s%d",
+		columnIndexToLetter(minCol), minRow+1,
+		columnIndexToLetter(maxCol), maxRow+1)
 }
 
 // ─── enum vocabulary normalization ──────────────────────────────────────

@@ -1060,6 +1060,33 @@ func TestPositionalArgsCauseIsWindowsOnly(t *testing.T) {
 	}
 }
 
+// TestPositionalArgsCausePreservesTheValidatorError pins the typed shape of
+// the windows annotation on every host. The test above can only assert the
+// message on a non-windows runner, which is where CI runs — so the subtype and
+// the wrapped cause would otherwise go unchecked.
+func TestPositionalArgsCausePreservesTheValidatorError(t *testing.T) {
+	t.Parallel()
+	parent, _, _, _ := newTestRig(t, shortcutFromRegistry(t, "+cells-set"))
+	cmd, _, findErr := parent.Find([]string{"+cells-set"})
+	if findErr != nil {
+		t.Fatalf("Find: %v", findErr)
+	}
+	sentinel := errors.New(`unknown command "stray" for "sheets +cells-set"`)
+
+	ve := requireValidation(t, annotatePositionalArgsCause(cmd, sentinel), "stray")
+	if !strings.Contains(ve.Hint, "PowerShell") {
+		t.Errorf("hint = %q, want it to name the shell as the cause", ve.Hint)
+	}
+	if !strings.Contains(ve.Hint, "--cells") {
+		t.Errorf("hint = %q, want it to inline the command's payload flags", ve.Hint)
+	}
+	// The annotation adds a hint to the framework's own argument error; a
+	// caller must still be able to reach that error underneath.
+	if !errors.Is(annotatePositionalArgsCause(cmd, sentinel), sentinel) {
+		t.Error("the prior validator error must stay reachable via errors.Is")
+	}
+}
+
 // TestPayloadFlagNames pins the list the windows prescription inlines: the
 // flags whose values are large enough for a shell to split.
 func TestPayloadFlagNames(t *testing.T) {

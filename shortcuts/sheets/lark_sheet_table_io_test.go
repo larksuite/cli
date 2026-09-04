@@ -2107,4 +2107,42 @@ func TestTablePut_ReflowLeniency(t *testing.T) {
 		// their split — stripping it would guess at a locale.
 		requireValidation(t, err, "non-numeric string")
 	})
+
+	t.Run(`the literal "null" is not a number`, func(t *testing.T) {
+		t.Parallel()
+		// "null" decodes into a json.Number without an error and leaves it
+		// empty, which then marshals back out as 0 — a zero written into the
+		// cell under a success exit code. A blank cell is JSON null, not the
+		// four-letter word.
+		_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","columns":["n"],"dtypes":{"n":"Int64"},"data":[["null"]]}]}`,
+			"--dry-run",
+		})
+		requireValidation(t, err, "non-numeric string")
+	})
+
+	t.Run("append with cell_styles plans the style-only write", func(t *testing.T) {
+		t.Parallel()
+		// header:false with no data rows leaves an empty matrix, but Execute
+		// expands it through the styles before deciding whether to write. The
+		// plan has to model that expansion or it shows no write where one
+		// happens; the range stays dynamic because the base row is resolved
+		// against the live sheet.
+		stdout, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","mode":"append","header":false,"columns":["a"],"data":[]}]}`,
+			"--styles", `{"styles":[{"name":"S","cell_styles":[{"range":"A1:B2","background_color":"#FFE6E6"}]}]}`,
+			"--dry-run",
+		})
+		if err != nil {
+			t.Fatalf("the styled append should be planned, got: %v", err)
+		}
+		if !strings.Contains(stdout, "set_cell_range") {
+			t.Errorf("a style-only append still writes, so the plan must show it, got %q", stdout)
+		}
+		if !strings.Contains(stdout, "append below existing data") {
+			t.Errorf("the append range must stay dynamic in the plan, got %q", stdout)
+		}
+	})
 }

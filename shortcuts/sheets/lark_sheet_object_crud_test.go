@@ -5,6 +5,7 @@ package sheets
 
 import (
 	"encoding/json"
+	"errors"
 	"sort"
 	"strings"
 	"testing"
@@ -961,6 +962,29 @@ func TestCondFormatPropertiesNormalization(t *testing.T) {
 		}
 	})
 
+	t.Run("only a two-element list is read as a range", func(t *testing.T) {
+		t.Parallel()
+		// between / notBetween want exactly two thresholds. Joining any other
+		// length would produce a plausible non-empty string that passes the
+		// local shape check and fails at the backend instead.
+		for _, tc := range []struct{ name, props string }{
+			{"one threshold", `{"attrs":[{"compare_type":"between","value":[10]}]}`},
+			{"three thresholds", `{"attrs":[{"compare_type":"between","value":[10,20,30]}]}`},
+			{"one threshold under notBetween", `{"attrs":[{"compare_type":"notBetween","value":[10]}]}`},
+		} {
+			var props map[string]interface{}
+			if err := json.Unmarshal([]byte(tc.props), &props); err != nil {
+				t.Fatal(err)
+			}
+			normalizeCondFormatProperties(props)
+			attrs, _ := props["attrs"].([]interface{})
+			entry, _ := attrs[0].(map[string]interface{})
+			if _, joined := entry["value"].(string); joined {
+				t.Errorf("%s: value = %v, want the list left alone for validation to reject", tc.name, entry["value"])
+			}
+		}
+	})
+
 	t.Run("a bare attrs object becomes the one-entry list", func(t *testing.T) {
 		t.Parallel()
 		var props map[string]interface{}
@@ -1023,13 +1047,33 @@ func TestCondFormatStaleRuleIDHint(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected the not-found failure to surface")
 			}
-			p, ok := errs.ProblemOf(err)
-			if !ok {
-				t.Fatalf("err = %v, want a typed problem", err)
+			// The annotation adds a hint to the backend's own problem; it must
+			// not replace it. A hint-only error carrying none of the original
+			// metadata would satisfy a Hint-only assertion.
+			p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeServerError, "not found")
+			if p.Code != 1310214 {
+				t.Errorf("Code = %d, want 1310214 (the backend code must survive the annotation)", p.Code)
 			}
 			if !strings.Contains(p.Hint, "+cond-format-list") {
 				t.Errorf("hint should point at the list command, got %q", p.Hint)
 			}
 		})
 	}
+
+	t.Run("the annotated error keeps its wrapped cause", func(t *testing.T) {
+		t.Parallel()
+		sentinel := errors.New("underlying transport fault")
+		in := errs.NewAPIError(errs.SubtypeServerError, "conditional format iXGbyDwC not found").WithCause(sentinel)
+		out := annotateStaleObjectID(in, condFormatSpec)
+		p, ok := errs.ProblemOf(out)
+		if !ok {
+			t.Fatalf("out = %v, want a typed problem", out)
+		}
+		if !strings.Contains(p.Hint, "+cond-format-list") {
+			t.Errorf("hint = %q, want it to name the list command", p.Hint)
+		}
+		if !errors.Is(out, sentinel) {
+			t.Errorf("out = %v, want the wrapped cause still reachable via errors.Is", out)
+		}
+	})
 }

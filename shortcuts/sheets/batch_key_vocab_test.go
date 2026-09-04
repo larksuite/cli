@@ -368,7 +368,14 @@ func TestCellsSetInput_MatrixPrecheck(t *testing.T) {
 				}
 				return
 			}
-			requireValidation(t, err, tc.wantContains)
+			ve := requireValidation(t, err, tc.wantContains)
+			// The precheck runs inside a batch sub-op, so the attribution is
+			// the flag the CALLER actually passed — --operations, with the
+			// sub-op's own --cells named in the message. A regression can keep
+			// the rendered text and lose either half.
+			if ve.Param != "--operations" {
+				t.Errorf("Param = %q, want %q", ve.Param, "--operations")
+			}
 		})
 	}
 }

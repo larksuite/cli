@@ -260,6 +260,26 @@ var stylesPriorCorpus = []struct {
 	{name: "an unrelated border attribute stays rejected",
 		fields:  map[string]interface{}{"border": map[string]interface{}{"thickness": "solid"}},
 		wantErr: "is not a border attribute"},
+	// The literal "null" decodes into any destination without an error and
+	// leaves it at the zero value, so a numeric field has to reject it
+	// explicitly or a zero-point font slips through as a success.
+	{name: "the string null is not a font size",
+		fields: map[string]interface{}{"font_size": "null"}, wantErr: "must be a number"},
+	// "outer" and "all" are two names for the same box. Two DIFFERENT boxes
+	// under them is a conflict, and dropping one would apply half the caller's
+	// intent silently; the invalid-side check answers it instead.
+	{name: "a conflicting outer border is not discarded",
+		fields: map[string]interface{}{"border_styles": map[string]interface{}{
+			"outer": map[string]interface{}{"style": "dashed"},
+			"all":   map[string]interface{}{"style": "solid"},
+		}},
+		wantErr: "is not a valid side"},
+	{name: "outer duplicating all is folded away",
+		fields: map[string]interface{}{"border_styles": map[string]interface{}{
+			"outer": map[string]interface{}{"style": "solid"},
+			"all":   map[string]interface{}{"style": "solid"},
+		}},
+		check: wantBorder("left", "style", "solid")},
 }
 
 // wantNumberStyle pins a numeric style field, which normalization stores as a

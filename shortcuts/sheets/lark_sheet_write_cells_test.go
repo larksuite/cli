@@ -618,6 +618,46 @@ func TestCellsSetInput_AnchorRangeExpands(t *testing.T) {
 	}
 }
 
+// TestCellsSet_BareAnchorRaisesNoNarrowingWarning pins the other half of the
+// anchor expansion: a bare --range is not a stated extent the write fell short
+// of, so filling it in must stay silent. Reconstructing the stated range
+// without the payload made every anchored write report itself as narrowed.
+func TestCellsSet_BareAnchorRaisesNoNarrowingWarning(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a bare anchor with a 2x2 payload is silent", func(t *testing.T) {
+		t.Parallel()
+		stdout, err := runShortcutWithStubs(t, CellsSet, []string{
+			"--url", testURL, "--sheet-id", testSheetID, "--range", "A1",
+			"--cells", `[[{"value":"a"},{"value":"b"}],[{"value":"c"},{"value":"d"}]]`,
+		}, toolOutputStub(testToken, "write", `{"success":true}`))
+		if err != nil {
+			t.Fatalf("execute failed: %v\nstdout=%s", err, stdout)
+		}
+		if _, present := decodeEnvelopeData(t, stdout)["warnings"]; present {
+			t.Errorf("an expanded anchor is not a narrowed range: %s", stdout)
+		}
+	})
+
+	t.Run("a genuinely oversized range still warns", func(t *testing.T) {
+		t.Parallel()
+		stdout, err := runShortcutWithStubs(t, CellsSet, []string{
+			"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:D10",
+			"--cells", `[[{"value":"a"},{"value":"b"}],[{"value":"c"},{"value":"d"}]]`,
+		}, toolOutputStub(testToken, "write", `{"success":true}`))
+		if err != nil {
+			t.Fatalf("execute failed: %v\nstdout=%s", err, stdout)
+		}
+		warnings, _ := decodeEnvelopeData(t, stdout)["warnings"].([]interface{})
+		if len(warnings) != 1 {
+			t.Fatalf("a stated extent the payload did not fill must be reported, got %#v", warnings)
+		}
+		if w, _ := warnings[0].(string); !strings.Contains(w, `"A1:B2"`) {
+			t.Errorf("warning should name the range actually written, got %q", warnings[0])
+		}
+	})
+}
+
 // TestCellRange_Sized pins the range handed back by the dimension mismatch
 // prescription and by the anchor expansion: same top-left as what the caller
 // passed, sized to the payload, sheet prefix preserved so it pastes back in.

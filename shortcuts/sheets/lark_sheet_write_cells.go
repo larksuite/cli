@@ -128,7 +128,12 @@ var CellsSet = common.Shortcut{
 // an extent, and the cells covered less of it than they thought.
 func cellsRangeNarrowedWarnings(runtime *common.RuntimeContext, input map[string]interface{}) []string {
 	written, _ := input["range"].(string)
-	stated := expandAnchorRange(strings.TrimSpace(runtime.Str("range")), nil)
+	// The payload has to go in: cellsSetInput expands a bare anchor against
+	// it, so reconstructing the stated range without it leaves "A1" facing an
+	// "A1:B2" write and reports narrowing where the caller only omitted an
+	// extent the CLI filled in for them.
+	cells, _ := input["cells"].([]interface{})
+	stated := expandAnchorRange(strings.TrimSpace(runtime.Str("range")), cells)
 	if written == "" || stated == "" || written == stated {
 		return nil
 	}

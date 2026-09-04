@@ -31,7 +31,7 @@ import (
 var StylesPut = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+styles-put",
-	Description: "Apply one declarative visual spec (styles/merges/row-col sizes/freeze) to existing sheets in one batch request (fail-fast, no rollback).",
+	Description: "Apply one declarative visual spec (styles/merges/row-col sizes/freeze) to existing sheets; sent as one batch request, or several when the spec is large (each atomic on its own, no rollback).",
 	Risk:        "write",
 	Scopes:      []string{"sheets:spreadsheet:write_only"},
 	AuthTypes:   []string{"user", "bot"},
@@ -40,7 +40,8 @@ var StylesPut = common.Shortcut{
 	Tips: []string{
 		`Example: lark-cli sheets +styles-put --url <URL> --styles '{"styles":[{"name":"Sheet1","cell_styles":[{"range":"A1:F1","font_weight":"bold"}],"freeze":{"rows":1}}]}'`,
 		"Same --styles vocabulary as +workbook-create / +table-put; one item per target sheet, name = the real sheet name.",
-		"Style stamps are safe to re-run; the whole spec goes out as one batch request — fail-fast, and applied sub-ops are NOT rolled back.",
+		"A spec of up to 100 operations goes out as ONE atomic batch request; a larger one is split, and each request is atomic only on its own — a later failure leaves the earlier requests applied.",
+		"Style stamps are safe to re-run. Merges are not: re-sending an applied merge_cells can be rejected as an overlap, so after a partial failure read the sheet back (+cells-get --include style) and resend only the merges that did not land.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetToken(runtime)
@@ -91,11 +92,14 @@ var StylesPut = common.Shortcut{
 				}
 				// Say what landed before naming the failure: each request is
 				// atomic on its own, so the sheet now carries the earlier
-				// chunks and re-running the whole spec is safe (style stamps
-				// are idempotent) while re-running "the rest" is not
-				// expressible from here.
+				// chunks. Re-running the WHOLE spec is only safe when it holds
+				// no merges — a style stamp is idempotent, but replaying an
+				// already-applied merge_cells can come back as an overlap
+				// rejection before the failed chunk is even reached, which
+				// would leave the caller stuck on an error about work that
+				// already succeeded.
 				return attachSheetsWarningsToError(err, []string{fmt.Sprintf(
-					"--styles was sent as %d batch requests and request %d failed; requests 1-%d already applied. Re-running the same spec is safe — style stamps and merges are idempotent",
+					"--styles was sent as %d batch requests and request %d failed; requests 1-%d already applied. Style stamps are idempotent, so a spec of styles/sizes/freeze alone is safe to re-run as-is; if it carries cell_merges, read the sheet back first and resend only the merges that did not land — replaying an applied merge is rejected as an overlap",
 					len(chunks), i+1, i)})
 			}
 		}

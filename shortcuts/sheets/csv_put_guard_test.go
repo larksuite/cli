@@ -323,3 +323,30 @@ func TestResolveCSVPathFromFileAlias_UnreadablePaths(t *testing.T) {
 		}
 	})
 }
+
+// TestCsvPutExecuteReportsForgottenAtSubstitution runs the whole +csv-put path
+// rather than csvForgottenAtWarnings on its own: the substitution is only
+// useful if it reaches the success envelope, and the direct unit test above
+// would keep passing if Execute stopped threading it through runtime.Out.
+func TestCsvPutExecuteReportsForgottenAtSubstitution(t *testing.T) {
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+	if err := os.WriteFile("data.csv", []byte("a,b\n1,2\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, err := runShortcutWithStubs(t, CsvPut, []string{
+		"--url", testURL, "--sheet-name", "S1", "--start-cell", "A1", "--csv", "./data.csv",
+	}, toolOutputStub(testToken, "write", `{"success":true}`))
+	if err != nil {
+		t.Fatalf("execute failed: %v\nstdout=%s", err, stdout)
+	}
+	data := decodeEnvelopeData(t, stdout)
+	warnings, _ := data["warnings"].([]interface{})
+	if len(warnings) != 1 {
+		t.Fatalf("expected the substitution note in the payload, got %#v", data)
+	}
+	if warning, _ := warnings[0].(string); !strings.Contains(warning, "@./data.csv") {
+		t.Errorf("warning should name the explicit @ form, got %q", warnings[0])
+	}
+}
