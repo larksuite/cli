@@ -759,24 +759,28 @@ func TestMailRuleCreateValidationErrors(t *testing.T) {
 		wantParam string
 	}{
 		{
-			name: "missing name",
-			args: []string{"+rule-create", "--condition", "subject:contains:Alpha", "--action", "mark_read"},
-			want: "--name is required",
+			name:      "missing name",
+			args:      []string{"+rule-create", "--condition", "subject:contains:Alpha", "--action", "mark_read"},
+			want:      "--name is required",
+			wantParam: "--name",
 		},
 		{
-			name: "missing condition",
-			args: []string{"+rule-create", "--name", "Alpha", "--action", "mark_read"},
-			want: "at least one --condition",
+			name:      "missing condition",
+			args:      []string{"+rule-create", "--name", "Alpha", "--action", "mark_read"},
+			want:      "at least one --condition",
+			wantParam: "--condition",
 		},
 		{
-			name: "missing action",
-			args: []string{"+rule-create", "--name", "Alpha", "--condition", "subject:contains:Alpha"},
-			want: "at least one --action",
+			name:      "missing action",
+			args:      []string{"+rule-create", "--name", "Alpha", "--condition", "subject:contains:Alpha"},
+			want:      "at least one --action",
+			wantParam: "--action",
 		},
 		{
-			name: "invalid match",
-			args: []string{"+rule-create", "--name", "Alpha", "--match", "maybe", "--condition", "subject:contains:Alpha", "--action", "mark_read"},
-			want: "allowed: all, any",
+			name:      "invalid match",
+			args:      []string{"+rule-create", "--name", "Alpha", "--match", "maybe", "--condition", "subject:contains:Alpha", "--action", "mark_read"},
+			want:      "allowed: all, any",
+			wantParam: "--match",
 		},
 		{
 			name: "conflicting enable flags",
@@ -798,6 +802,7 @@ func TestMailRuleCreateValidationErrors(t *testing.T) {
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error = %v, want %q", err, tc.want)
 			}
+			assertMailRuleValidationError(t, err, tc.wantParam)
 		})
 	}
 }
@@ -1599,11 +1604,16 @@ func TestMailRuleReorderCompletesPartialOrderAndSkipsPOSTOnInvalidList(t *testin
 	t.Run("malformed list does not post", func(t *testing.T) {
 		f, stdout, _, reg := mailShortcutTestFactory(t)
 		reg.Register(mailRuleListStub(mailRuleTestRawRule("a", "A"), mailRuleTestRawRule("a", "duplicate")))
+		post := &httpmock.Stub{Method: "POST", URL: "open-apis/mail/v1/user_mailboxes/me/rules/reorder", Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{}}}
+		reg.Register(post)
 		err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--rule-ids", "a", "--format", "json"}, f, stdout)
 		if err == nil || !strings.Contains(err.Error(), "duplicate rule_id") {
 			t.Fatalf("malformed list error = %v", err)
 		}
 		assertMailRuleValidationError(t, err, "")
+		if len(post.CapturedBodies) != 0 {
+			t.Fatalf("POST should not be sent for malformed list, captured %d request(s)", len(post.CapturedBodies))
+		}
 	})
 }
 
