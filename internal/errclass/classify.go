@@ -52,6 +52,14 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 		return nil
 	}
 	msg, _ := resp["msg"].(string)
+	// Error templates are rendered by OpenAPI into error.message while msg
+	// remains the static error-mapping label. Prefer the rendered message when
+	// present so the CLI preserves the server's actionable diagnostic.
+	if errBlock, ok := resp["error"].(map[string]any); ok {
+		if rendered, _ := errBlock["message"].(string); rendered != "" {
+			msg = rendered
+		}
+	}
 	if msg == "" {
 		// Upstream omitted or sent non-string msg. Keep Problem.Message non-empty
 		// so the typed wire envelope still carries a human-readable signal.

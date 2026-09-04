@@ -183,6 +183,111 @@ func TestBuildAPIError_TaskInvalidParamsRoutesToAPIError(t *testing.T) {
 	}
 }
 
+func TestBuildAPIError_PrefersRenderedErrorMessage(t *testing.T) {
+	resp := map[string]any{
+		"code": 3350001,
+		"msg":  "invalid param",
+		"error": map[string]any{
+			"message": "Invalid request parameter: request. Invalid reason: insertion is required.",
+		},
+	}
+	err := errclass.BuildAPIError(resp, errclass.ClassifyContext{})
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatal("ProblemOf returned !ok")
+	}
+	if got, want := p.Message, "Invalid request parameter: request. Invalid reason: insertion is required."; got != want {
+		t.Errorf("Message = %q, want %q", got, want)
+	}
+}
+
+func TestBuildAPIError_FallsBackToTopLevelMessageWhenRenderedMessageEmpty(t *testing.T) {
+	resp := map[string]any{
+		"code": 3350001,
+		"msg":  "invalid param",
+		"error": map[string]any{
+			"message": "",
+		},
+	}
+	err := errclass.BuildAPIError(resp, errclass.ClassifyContext{})
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatal("ProblemOf returned !ok")
+	}
+	if got, want := p.Message, "invalid param"; got != want {
+		t.Errorf("Message = %q, want %q", got, want)
+	}
+}
+
+func TestBuildAPIError_PrefersRenderedErrorMessageAfterJSONDecode(t *testing.T) {
+	var resp map[string]any
+	if err := json.Unmarshal([]byte(`{
+		"code": 3350001,
+		"msg": "invalid param",
+		"error": {"message": "Invalid request parameter: request. Invalid reason: insertion is required."}
+	}`), &resp); err != nil {
+		t.Fatalf("Unmarshal response: %v", err)
+	}
+	err := errclass.BuildAPIError(resp, errclass.ClassifyContext{})
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatal("ProblemOf returned !ok")
+	}
+	if got, want := p.Message, "Invalid request parameter: request. Invalid reason: insertion is required."; got != want {
+		t.Errorf("Message = %q, want %q", got, want)
+	}
+}
+
+func TestBuildAPIError_PermissionMessageOverridesRenderedErrorMessage(t *testing.T) {
+	resp := map[string]any{
+		"code": 99991679,
+		"msg":  "scope missing",
+		"error": map[string]any{
+			"message": "Refer to documentation.",
+			"permission_violations": []any{
+				map[string]any{"subject": "contact:contact"},
+			},
+		},
+	}
+	err := errclass.BuildAPIError(resp, errclass.ClassifyContext{Brand: "feishu", AppID: "cli_xyz", Identity: "user"})
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatal("ProblemOf returned !ok")
+	}
+	if p.Message == "Refer to documentation." {
+		t.Errorf("Message must retain canonical permission guidance, got %q", p.Message)
+	}
+	if !strings.Contains(p.Message, "contact:contact") {
+		t.Errorf("Message = %q, want canonical missing-scope context", p.Message)
+	}
+}
+
+func TestBuildAPIError_FallsBackToTopLevelMessageForMalformedErrorBlock(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		error any
+	}{
+		{name: "nil", error: nil},
+		{name: "array", error: []any{"not an object"}},
+		{name: "non_string_message", error: map[string]any{"message": 123}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := errclass.BuildAPIError(map[string]any{
+				"code": 3350001,
+				"msg":  "invalid param",
+				"error": tc.error,
+			}, errclass.ClassifyContext{})
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatal("ProblemOf returned !ok")
+			}
+			if got, want := p.Message, "invalid param"; got != want {
+				t.Errorf("Message = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
 // TestBuildAPIError_TroubleshooterLiftedOnAPIArm pins that BuildAPIError lifts
 // resp.error.troubleshooter into Problem.Troubleshooter when the response
 // routes to the catch-all CategoryAPI arm. troubleshooter is the only
