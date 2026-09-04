@@ -255,6 +255,7 @@ func saveAsProfile(existing *core.MultiAppConfig, kc keychain.KeychainAccess, pr
 				auth.RemoveStoredToken(multi.Apps[idx].AppId, user.UserOpenId)
 			}
 			multi.Apps[idx].Users = []core.AppUser{}
+			multi.Apps[idx].CurrentUser = ""
 		}
 		multi.Apps[idx].AppId = appId
 		multi.Apps[idx].AppSecret = secret

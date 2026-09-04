@@ -405,8 +405,8 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 		return errs.NewInternalError(errs.SubtypeStorage, "failed to save token: %v", err).WithCause(err)
 	}
 
-	// Step 8: Update config — overwrite Users to single user, clean old tokens
-	if err := syncLoginUserToProfile(config.ProfileName, config.AppID, openId, userName); err != nil {
+	// Step 8: Update config — preserve other users and select this login.
+	if err := syncLoginUserToProfile(config.ProfileName, openId, userName); err != nil {
 		_ = larkauth.RemoveStoredToken(config.AppID, openId)
 		return err
 	}
@@ -488,8 +488,8 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		return errs.NewInternalError(errs.SubtypeSDKError, "failed to save token: %v", err).WithCause(err)
 	}
 
-	// Update config — overwrite Users to single user, clean old tokens
-	if err := syncLoginUserToProfile(config.ProfileName, config.AppID, openId, userName); err != nil {
+	// Update config — preserve other users and select this login.
+	if err := syncLoginUserToProfile(config.ProfileName, openId, userName); err != nil {
 		_ = larkauth.RemoveStoredToken(config.AppID, openId)
 		return errs.NewInternalError(errs.SubtypeSDKError, "failed to update login profile: %v", err).WithCause(err)
 	}
@@ -503,29 +503,36 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 }
 
 // syncLoginUserToProfile persists the logged-in user info into the named profile.
-func syncLoginUserToProfile(profileName, appID, openID, userName string) error {
-	multi, err := core.LoadMultiAppConfig()
-	if err != nil {
-		return errs.NewInternalError(errs.SubtypeStorage, "load config: %v", err).WithCause(err)
-	}
+func syncLoginUserToProfile(profileName, openID, userName string) error {
+	return withAuthConfigLock(func() error {
+		multi, err := core.LoadMultiAppConfig()
+		if err != nil {
+			return errs.NewInternalError(errs.SubtypeStorage, "load config: %v", err).WithCause(err)
+		}
 
-	app := findProfileByName(multi, profileName)
-	if app == nil {
-		return errs.NewConfigError(errs.SubtypeNotConfigured, "profile %q not found in config", profileName)
-	}
+		app := findProfileByName(multi, profileName)
+		if app == nil {
+			return errs.NewConfigError(errs.SubtypeNotConfigured, "profile %q not found in config", profileName)
+		}
 
-	oldUsers := append([]core.AppUser(nil), app.Users...)
-	app.Users = []core.AppUser{{UserOpenId: openID, UserName: userName}}
-	if err := core.SaveMultiAppConfig(multi); err != nil {
-		return errs.NewInternalError(errs.SubtypeStorage, "save config: %v", err).WithCause(err)
-	}
+		upsertLoginUser(app, core.AppUser{UserOpenId: openID, UserName: userName})
+		if err := core.SaveMultiAppConfig(multi); err != nil {
+			return errs.NewInternalError(errs.SubtypeStorage, "save config: %v", err).WithCause(err)
+		}
+		return nil
+	})
+}
 
-	for _, oldUser := range oldUsers {
-		if oldUser.UserOpenId != openID {
-			_ = larkauth.RemoveStoredToken(appID, oldUser.UserOpenId)
+func upsertLoginUser(app *core.AppConfig, user core.AppUser) {
+	for i := range app.Users {
+		if app.Users[i].UserOpenId == user.UserOpenId {
+			app.Users[i] = user
+			app.CurrentUser = user.UserOpenId
+			return
 		}
 	}
-	return nil
+	app.Users = append(app.Users, user)
+	app.CurrentUser = user.UserOpenId
 }
 
 // findProfileByName returns the AppConfig matching profileName, or nil.

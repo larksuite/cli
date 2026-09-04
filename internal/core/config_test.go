@@ -159,6 +159,69 @@ func TestResolveConfigFromMulti_CarriesLang(t *testing.T) {
 	}
 }
 
+func TestResolveConfigFromMulti_UsesCurrentUser(t *testing.T) {
+	raw := &MultiAppConfig{Apps: []AppConfig{{
+		Name:        "default",
+		AppId:       "cli_abc",
+		AppSecret:   PlainSecret("my-secret"),
+		Brand:       BrandFeishu,
+		CurrentUser: "ou_second",
+		Users: []AppUser{
+			{UserOpenId: "ou_first", UserName: "first"},
+			{UserOpenId: "ou_second", UserName: "second"},
+		},
+	}}}
+
+	cfg, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
+	if err != nil {
+		t.Fatalf("ResolveConfigFromMulti() error = %v", err)
+	}
+	if cfg.UserOpenId != "ou_second" || cfg.UserName != "second" {
+		t.Fatalf("resolved user = %s (%s), want second (ou_second)", cfg.UserName, cfg.UserOpenId)
+	}
+}
+
+func TestResolveConfigFromMulti_LegacyConfigFallsBackToFirstUser(t *testing.T) {
+	raw := &MultiAppConfig{Apps: []AppConfig{{
+		Name:      "default",
+		AppId:     "cli_abc",
+		AppSecret: PlainSecret("my-secret"),
+		Brand:     BrandFeishu,
+		Users: []AppUser{
+			{UserOpenId: "ou_first", UserName: "first"},
+			{UserOpenId: "ou_second", UserName: "second"},
+		},
+	}}}
+
+	cfg, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
+	if err != nil {
+		t.Fatalf("ResolveConfigFromMulti() error = %v", err)
+	}
+	if cfg.UserOpenId != "ou_first" {
+		t.Fatalf("resolved open ID = %q, want ou_first", cfg.UserOpenId)
+	}
+}
+
+func TestResolveConfigFromMulti_RejectsDanglingCurrentUser(t *testing.T) {
+	raw := &MultiAppConfig{Apps: []AppConfig{{
+		Name:        "default",
+		AppId:       "cli_abc",
+		AppSecret:   PlainSecret("my-secret"),
+		Brand:       BrandFeishu,
+		CurrentUser: "ou_missing",
+		Users:       []AppUser{{UserOpenId: "ou_first", UserName: "first"}},
+	}}}
+
+	_, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
+	if err == nil {
+		t.Fatal("expected dangling currentUser error")
+	}
+	var cfgErr *errs.ConfigError
+	if !errors.As(err, &cfgErr) || cfgErr.Field != "currentUser" {
+		t.Fatalf("error = %T %#v, want currentUser ConfigError", err, err)
+	}
+}
+
 func TestResolveConfigFromMulti_MatchingKeychainRefPassesValidation(t *testing.T) {
 	// Keychain ref matches appId, so validation passes.
 	// The subsequent ResolveSecretInput will fail (no real keychain),
