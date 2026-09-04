@@ -39,6 +39,10 @@
     "en": { "title": "Event", "description": "Event subscription management" },
     "zh": { "title": "事件订阅", "description": "WebSocket 实时推送" }
   },
+  "hire": {
+    "en": { "title": "Hire", "description": "Recruitment: jobs, talents, applications, offers, interviews & onboarding" },
+    "zh": { "title": "招聘", "description": "职位、人才、投递、Offer、面试与入职管理" }
+  },
   "im": {
     "en": { "title": "Messenger", "description": "Message and group chat management" },
     "zh": { "title": "消息与群组", "description": "消息发送、群聊管理" }

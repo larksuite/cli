@@ -17,6 +17,18 @@ func ensureFreshRegistry(t *testing.T) {
 	Init()
 }
 
+// requireProject skips the test unless the named project is in the merged
+// registry. Tests that assert against a specific service need this rather than
+// the `len(ListFromMetaProjects()) == 0` guard: built-in services are compiled
+// into every binary, so the project list is never empty and a clean checkout
+// without generated metadata would fail instead of skipping.
+func requireProject(t *testing.T, name string) {
+	t.Helper()
+	if _, ok := ServiceTyped(name); !ok {
+		t.Skipf("project %q not in the registry (no generated metadata)", name)
+	}
+}
+
 func TestLoadScopePriorities(t *testing.T) {
 	priorities := LoadScopePriorities()
 	if len(priorities) == 0 {
@@ -373,10 +385,7 @@ func TestCollectAllScopesFromMeta_Caching(t *testing.T) {
 }
 
 func TestCollectScopesWithSources(t *testing.T) {
-	projects := ListFromMetaProjects()
-	if len(projects) == 0 {
-		t.Skip("no from_meta data available")
-	}
+	requireProject(t, "calendar")
 
 	// Use calendar project which is well-known
 	scopes, sources := CollectScopesWithSources([]string{"calendar"}, "user")
@@ -415,10 +424,7 @@ func TestCollectScopesWithSources_EmptyProject(t *testing.T) {
 }
 
 func TestCollectCommandScopes(t *testing.T) {
-	projects := ListFromMetaProjects()
-	if len(projects) == 0 {
-		t.Skip("no from_meta data available")
-	}
+	requireProject(t, "calendar")
 
 	entries := CollectCommandScopes([]string{"calendar"}, "user")
 	if len(entries) == 0 {

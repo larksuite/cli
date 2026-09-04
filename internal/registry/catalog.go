@@ -21,9 +21,13 @@ func RuntimeCatalog() apicatalog.Catalog {
 // SchemaCatalog returns the embedded catalog when metadata is compiled in,
 // otherwise the merged runtime catalog. Binaries built from the bare Go module
 // embed only the empty meta_data_default.json stub, so the embedded view has
-// nothing to resolve; the merged view is the only data such binaries have.
+// nothing to resolve; the merged view is the only data such binaries have. The
+// test is hasEmbeddedMeta rather than the embedded service count because the
+// built-in services ship in every build and would keep the count non-zero.
+// Either branch still resolves them: they are part of the embedded view, and
+// Init overlays them into the merged one.
 func SchemaCatalog() apicatalog.Catalog {
-	if len(EmbeddedServicesTyped()) > 0 {
+	if hasEmbeddedMeta() {
 		return EmbeddedCatalog()
 	}
 	return RuntimeCatalog()
