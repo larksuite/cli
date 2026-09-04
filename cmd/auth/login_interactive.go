@@ -13,6 +13,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
 )
@@ -70,8 +71,13 @@ func buildDomainMeta(name, lang string) domainMeta {
 	return dm
 }
 
-func runInteractiveLogin(ios *cmdutil.IOStreams, lang string, msg *loginMsg, brand core.LarkBrand, resolver domainResolver) (*interactiveResult, error) {
-	allDomains := resolver.metadata(lang, brand)
+// runInteractiveLogin shows an interactive TUI form for domain and permission selection.
+//
+// It takes the locale rather than a registry key so the domain rows cannot be
+// selected by a different rule than the msg bundle wrapping them: bundleKey is
+// the only way in, and passing an ISO base here no longer compiles.
+func runInteractiveLogin(ios *cmdutil.IOStreams, lang i18n.Lang, msg *loginMsg, brand core.LarkBrand, resolver domainResolver) (*interactiveResult, error) {
+	allDomains := resolver.metadata(bundleKey(lang), brand)
 
 	// Build multi-select options
 	options := make([]huh.Option[string], len(allDomains))

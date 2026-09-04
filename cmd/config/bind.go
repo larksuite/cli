@@ -43,7 +43,13 @@ type BindOptions struct {
 	Lang         string // raw --lang (string for cobra); normalized to canonical/"" in validateBindFlags
 	langExplicit bool   // true when --lang was explicitly passed
 
-	UILang i18n.Lang // TUI display language (picker-only); intentionally separate from --lang
+	// UILang is the language everything this run renders in, and the
+	// preference this run persists. --lang wins outright. Otherwise the
+	// workspace's stored preference seeds the picker and the picker's answer
+	// wins — a stored value decides what renders up to that point, it does not
+	// stop the question from being asked. Resolved by resolveBindUILang before
+	// any output, and again by reresolveBindUILang once the workspace is final.
+	UILang i18n.Lang
 
 	// Brand holds the resolved Lark product brand ("feishu" | "lark") for
 	// the account being bound. Populated after resolveAccount; TUI stages
@@ -68,7 +74,7 @@ func newCmdConfigBind(
 	runF func(*BindOptions) error,
 	projector *recovery.Projector,
 ) *cobra.Command {
-	opts := &BindOptions{Factory: f, UILang: i18n.LangZhCN}
+	opts := &BindOptions{Factory: f}
 
 	cmd := &cobra.Command{
 		Use:   "bind",
@@ -115,7 +121,7 @@ Interactive terminal use: run with no flags to enter the TUI form.`,
 	cmd.Flags().StringVar(&opts.AppID, "app-id", "", "App ID to bind (required for OpenClaw multi-account)")
 	cmd.Flags().StringVar(&opts.Identity, "identity", "", "identity preset (bot-only|user-default); defaults to bot-only in flag mode (safer: no impersonation)")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "confirm a risky transition (currently: bot-only → user-default identity change in flag mode)")
-	cmd.Flags().StringVar(&opts.Lang, "lang", "", "language preference (e.g. zh or zh_cn)")
+	cmd.Flags().StringVar(&opts.Lang, "lang", "", "language preference; also selects the interactive display language (e.g. zh or zh_cn)")
 	cmdutil.SetRisk(cmd, "write")
 
 	return cmd
@@ -137,11 +143,28 @@ func configBindRunWithRecovery(opts *BindOptions, projector *recovery.Projector)
 	// opts.IsTUI instead of re-checking IOStreams.IsTerminal.
 	opts.IsTUI = opts.Source == "" && opts.Factory.IOStreams.IsTerminal
 
-	source, err := finalizeSource(opts)
+	source, err := detectSource(opts)
+	if err != nil {
+		return err
+	}
+	// Settle the language before the first prompt renders; when the source is
+	// already known this also picks up the workspace's stored preference.
+	if err := resolveBindUILang(opts, source); err != nil {
+		return err
+	}
+	source, err = finalizeSource(opts, source)
 	if err != nil {
 		return err
 	}
 	core.SetCurrentWorkspace(core.Workspace(source))
+	// The workspace is final only now. When it came from tuiSelectSource, this
+	// is the first chance to read the preference stored for it.
+	//
+	// The language is resolved twice — once before the first prompt, once here.
+	// Anything that renders text belongs after this line: between the two, the
+	// only language available is what --lang or the picker supplied, which is
+	// not yet the preference this run persists.
+	reresolveBindUILang(opts)
 	targetConfigPath := core.GetConfigPath()
 
 	existing, err := reconcileExistingBinding(opts, source, targetConfigPath)
@@ -180,19 +203,10 @@ type existingBinding struct {
 	Cancelled   bool
 }
 
-// finalizeSource returns the validated bind source, reconciling three inputs:
-//   - opts.Source: the value of --source (may be empty)
-//   - env signals: OPENCLAW_* / HERMES_* detected via DetectWorkspaceFromEnv
-//   - TUI mode: can prompt the user if neither flag nor env yields a source
-//
-// Resolution (in order):
-//  1. If --source is a non-empty invalid value → fail with ErrValidation.
-//  2. If both --source and an env signal are present and disagree → fail
-//     loud; the user almost certainly ran the command in the wrong context.
-//  3. TUI mode only: prompt for language first (so later prompts respect it).
-//  4. --source wins if set. Otherwise use the env-detected source. Otherwise
-//     fall back to a TUI prompt (TUI mode) or an error (flag mode).
-func finalizeSource(opts *BindOptions) (string, error) {
+// detectSource resolves the Agent source from --source and environment signals
+// only. It never prompts, so the caller can settle the display language before
+// any TUI stage renders.
+func detectSource(opts *BindOptions) (string, error) {
 	explicit := strings.TrimSpace(strings.ToLower(opts.Source))
 	if explicit != "" && explicit != "openclaw" && explicit != "hermes" && explicit != "lark-channel" {
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --source %q; valid values: openclaw, hermes, lark-channel", explicit).WithParam("--source")
@@ -218,24 +232,86 @@ func finalizeSource(opts *BindOptions) (string, error) {
 			WithParam("--source")
 	}
 
-	// TUI: prompt for language before any downstream prompts. The source
-	// selection itself may still be skipped entirely if --source or the
-	// env already pinned it. Picker offers 2 options (中文 / English) and
-	// drives BOTH opts.Lang (preference) and opts.UILang (TUI rendering).
-	if opts.IsTUI && !opts.langExplicit {
-		lang, err := promptLangSelection()
-		if err != nil {
-			return "", langSelectionError(err)
-		}
-		opts.Lang = string(lang)
-		opts.UILang = lang
-	}
-
 	if explicit != "" {
 		return explicit, nil
 	}
-	if detected != "" {
-		return detected, nil
+	return detected, nil
+}
+
+// readPriorLang returns the language preference stored in the current
+// workspace's config, or "" when there is none. The workspace must already be
+// set — the config path depends on it.
+func readPriorLang() i18n.Lang {
+	data, _ := vfs.ReadFile(core.GetConfigPath())
+	if data == nil {
+		return ""
+	}
+	return priorLang(data)
+}
+
+// shouldPromptBindLang reports whether the language picker should run: only in
+// the TUI, only when --lang did not already answer it (including an explicit
+// empty --lang, which says "do not ask"), and only when the picker can express
+// whatever preference is already in effect. A stored zh_cn/en_us is not a
+// reason to stop asking — it becomes the pre-selected option, so re-binding
+// stays a way to change the language.
+func shouldPromptBindLang(opts *BindOptions) bool {
+	return opts.IsTUI && !opts.langExplicit && pickerCanExpress(opts.UILang)
+}
+
+// resolveBindUILang settles the display language before any prompt renders.
+// It is the preference this run will persist: --lang when given, otherwise the
+// one already stored for the workspace being bound, otherwise the picker's
+// answer.
+//
+// When the source is still unknown here, the workspace it will resolve to is
+// whatever tuiSelectSource asks for next, so there is no config to read yet —
+// the stored preference of that workspace is picked up afterwards by
+// reresolveBindUILang. Only the source-selection screen renders before that,
+// and only in a language derived from --lang or the picker.
+//
+// Not a pure resolver: reading the stored preference requires the workspace to
+// be current, so a known source is applied to the process-global workspace here
+// first. configBindRunWithRecovery sets the same value again later, so the
+// early set is idempotent, not a reordering of which workspace wins.
+func resolveBindUILang(opts *BindOptions, source string) error {
+	var prior i18n.Lang
+	if source != "" {
+		core.SetCurrentWorkspace(core.Workspace(source))
+		prior = readPriorLang()
+	}
+	opts.UILang = preferredLang(i18n.Lang(opts.Lang), prior)
+
+	if !shouldPromptBindLang(opts) {
+		return nil
+	}
+	lang, err := promptLangSelection(opts.UILang)
+	if err != nil {
+		return langSelectionError(err)
+	}
+	opts.Lang = string(lang)
+	opts.UILang = lang
+	return nil
+}
+
+// reresolveBindUILang recomputes the display language once the workspace is
+// final, so everything rendered from here on matches the preference this run
+// persists. It never prompts: the picker question, if it was going to be
+// asked, has already been asked.
+//
+// Idempotent by construction — preferredLang returns the request whenever there
+// is one, and every path that skipped the stored preference earlier left
+// opts.Lang empty. It changes the outcome only when the source came from
+// tuiSelectSource, where resolveBindUILang had no workspace to read.
+func reresolveBindUILang(opts *BindOptions) {
+	opts.UILang = preferredLang(i18n.Lang(opts.Lang), readPriorLang())
+}
+
+// finalizeSource turns a possibly-empty detected source into the one this run
+// binds to, prompting only when the TUI is available.
+func finalizeSource(opts *BindOptions, source string) (string, error) {
+	if source != "" {
+		return source, nil
 	}
 	if opts.IsTUI {
 		return tuiSelectSource(opts)
@@ -438,9 +514,13 @@ func commitBinding(
 	}
 
 	replaced := previousConfigBytes != nil
-	// uiMsg renders human-facing TUI text (stderr success banner). Follows
-	// opts.UILang — zh by default; picker can flip it to en. --lang does
-	// not influence the TUI language.
+	// uiMsg renders human-facing text (the stderr success banner). It follows
+	// opts.UILang, which reresolveBindUILang derived from the same two inputs
+	// as appConfig.Lang below (the --lang request and this workspace's stored
+	// preference) — so in practice the banner and the JSON message agree. They
+	// are computed by different code reading the same file, though, not forced
+	// equal, so treat a mismatch as a bug in one of the two resolvers rather
+	// than an impossibility.
 	uiMsg := getBindMsg(opts.UILang)
 	display := sourceDisplayName(source)
 
@@ -474,7 +554,8 @@ func commitBinding(
 	// JSON "message" follows the effective preference on disk (appConfig.Lang),
 	// not the raw --lang value: when --lang is omitted on re-bind, preferredLang
 	// has already inherited the prior preference into appConfig.Lang, and the
-	// message should respect that inherited choice. stderr above follows UILang.
+	// message should respect that inherited choice. See the uiMsg comment above
+	// for how the stderr banner arrives at the same language.
 	prefMsg := getBindMsg(appConfig.Lang)
 	brand := brandDisplay(string(appConfig.Brand), appConfig.Lang)
 	switch opts.Identity {

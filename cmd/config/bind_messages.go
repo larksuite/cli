@@ -92,8 +92,7 @@ type bindMsg struct {
 	IdentityEscalationHint    string
 
 	// LangPreferenceSet is printed to stderr after a successful bind when the
-	// user explicitly passed --lang. Format: language code. Not printed when
-	// --lang was not explicit (i.e., the cobra default zh stayed in effect).
+	// user explicitly passed --lang. Format: language code.
 	LangPreferenceSet string
 }
 
@@ -169,24 +168,29 @@ var bindMsgEn = &bindMsg{
 	LangPreferenceSet: "Language preference set to: %s",
 }
 
-// getBindMsg picks the zh/en TUI bundle; non-English falls back to zh.
+// getBindMsg picks the zh/en TUI bundle. zh_cn — and values expressing no
+// preference — render Chinese; every other supported locale renders English.
 func getBindMsg(lang i18n.Lang) *bindMsg {
-	if lang.IsEnglish() {
+	if lang.UsesEnglishUI() {
 		return bindMsgEn
 	}
 	return bindMsgZh
 }
 
 // brandDisplay returns the UI-friendly product name for the given brand
-// identifier and display language. "lark" maps to "Lark" in both zh and en.
-// "feishu" (or empty / unknown) maps to "飞书" in zh and "Feishu" in en —
-// this is the safe default when the brand hasn't been resolved yet (for
-// example, on the pre-binding source-selection screen).
+// identifier and display language. "lark" maps to "Lark" in every language.
+// "feishu" (or empty / unknown) maps to "飞书" or "Feishu" — this is the safe
+// default when the brand hasn't been resolved yet (for example, on the
+// pre-binding source-selection screen). The brand name is embedded in the
+// bundle's own sentences, so it must follow the same rule getBindMsg uses to
+// pick that bundle: zh_cn and values expressing no preference render Chinese,
+// every other supported locale renders English. Using a different rule here
+// produces mixed-language output such as "Bound app … The 飞书 app (bot) …".
 func brandDisplay(brand string, lang i18n.Lang) string {
 	if brand == "lark" || brand == "Lark" || brand == "LARK" {
 		return "Lark"
 	}
-	if lang.IsEnglish() {
+	if lang.UsesEnglishUI() {
 		return "Feishu"
 	}
 	return "飞书"

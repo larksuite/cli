@@ -112,6 +112,13 @@ func TestProfileAddRun_Lang(t *testing.T) {
 		if !errors.As(err, &valErr) || output.ExitCodeOf(err) != output.ExitValidation {
 			t.Fatalf("expected typed validation error with ExitValidation, got %T: %v", err, err)
 		}
+		// "ZH" fails only on case, so the message has to say the match is
+		// case-sensitive and list the short codes it does accept.
+		for _, want := range []string{"case-sensitive", "zh_cn (zh)"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error message %q does not contain %q", err.Error(), want)
+			}
+		}
 	})
 }
 

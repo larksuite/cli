@@ -186,9 +186,7 @@ func TestConfigBindRun_InvalidLang(t *testing.T) {
 			if got := output.ExitCodeOf(err); got != output.ExitValidation {
 				t.Errorf("exit code = %d, want %d (validation)", got, output.ExitValidation)
 			}
-			if !strings.Contains(err.Error(), "invalid --lang") {
-				t.Errorf("error message %q does not contain 'invalid --lang'", err.Error())
-			}
+			assertLangErrorGuidance(t, err)
 		})
 	}
 }
@@ -340,7 +338,7 @@ func TestConfigBindRun_EnvelopeMessageFollowsInheritedLang(t *testing.T) {
 		t.Fatalf("first bind (--lang en): %v", err)
 	}
 
-	f2, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	f2, stdout, stderr, _ := cmdutil.TestFactory(t, nil)
 	if err := configBindRun(&BindOptions{Factory: f2, Source: "hermes", Lang: "", langExplicit: false}); err != nil {
 		t.Fatalf("re-bind (no --lang): %v", err)
 	}
@@ -354,6 +352,19 @@ func TestConfigBindRun_EnvelopeMessageFollowsInheritedLang(t *testing.T) {
 	wantMsg := fmt.Sprintf(enMsg.MessageBotOnly, "cli_abc", "Hermes", brandDisplay("feishu", i18n.LangEnUS))
 	if msg != wantMsg {
 		t.Errorf("envelope.message = %q,\nwant %q (must follow inherited appConfig.Lang=en_us, not raw opts.Lang)", msg, wantMsg)
+	}
+
+	// The stderr banner (opts.UILang) and the JSON message (appConfig.Lang) now
+	// resolve from the same two inputs, so one bind can never emit an English
+	// message next to a Chinese banner.
+	banner := stderr.String()
+	wantBanner := fmt.Sprintf(enMsg.BindSuccessHeader, "Hermes")
+	if !strings.Contains(banner, wantBanner) || !strings.Contains(banner, enMsg.BindSuccessNotice) {
+		t.Errorf("stderr = %q,\nwant the English banner %q + notice (must match the envelope language)", banner, wantBanner)
+	}
+	zhMsg := getBindMsg(i18n.LangZhCN)
+	if strings.Contains(banner, fmt.Sprintf(zhMsg.BindSuccessHeader, "Hermes")) {
+		t.Errorf("stderr = %q, want no Chinese banner when the inherited preference is en_us", banner)
 	}
 }
 
@@ -1687,13 +1698,56 @@ func TestGetBindMsg_En(t *testing.T) {
 	}
 }
 
-func TestGetBindMsg_NonEnLang_FallsBackToZh(t *testing.T) {
-	// Only zh and en TUI bundles exist; any non-English language (canonical
-	// locale, short code, or unrecognized value) falls back to zh.
-	for _, lang := range []i18n.Lang{"fr_fr", "ja_jp", "ko", "unknown", ""} {
-		msg := getBindMsg(lang)
-		if want := "你想在哪个 Agent 中使用 lark-cli?"; msg.SelectSource != want {
-			t.Errorf("getBindMsg(%q) SelectSource = %q, want %q (zh fallback)", lang, msg.SelectSource, want)
+func TestGetBindMsg_BundleSelection(t *testing.T) {
+	// zh_cn and no-preference values render Chinese; every other supported
+	// locale renders English.
+	zhWant := "你想在哪个 Agent 中使用 lark-cli?"
+	for _, lang := range []i18n.Lang{i18n.LangZhCN, "zh", "unknown", ""} {
+		if msg := getBindMsg(lang); msg.SelectSource != zhWant {
+			t.Errorf("getBindMsg(%q) SelectSource = %q, want %q (zh)", lang, msg.SelectSource, zhWant)
+		}
+	}
+	enWant := getBindMsg(i18n.LangEnUS).SelectSource
+	for _, lang := range []i18n.Lang{"fr_fr", "ja_jp", "ko", "en"} {
+		if msg := getBindMsg(lang); msg.SelectSource != enWant {
+			t.Errorf("getBindMsg(%q) SelectSource = %q, want %q (en)", lang, msg.SelectSource, enWant)
+		}
+	}
+}
+
+// TestBrandDisplay_FollowsBundleSelection locks the brand name to the same rule
+// that picks the bundle. The brand is substituted into the bundle's own
+// sentences, so a locale with no bundle of its own (ja_jp) must get the English
+// brand alongside the English sentence — otherwise the output reads
+// "Bound app cli_x to Hermes. The 飞书 app (bot) …".
+func TestBrandDisplay_FollowsBundleSelection(t *testing.T) {
+	tests := []struct {
+		lang i18n.Lang
+		want string
+	}{
+		{i18n.LangZhCN, "飞书"},
+		{"zh", "飞书"},
+		{"", "飞书"},
+		{"unknown", "飞书"},
+		{i18n.LangEnUS, "Feishu"},
+		{i18n.LangJaJP, "Feishu"},
+		{"fr_fr", "Feishu"},
+		{"ko_kr", "Feishu"},
+	}
+	for _, tt := range tests {
+		if got := brandDisplay("feishu", tt.lang); got != tt.want {
+			t.Errorf("brandDisplay(feishu, %q) = %q, want %q", tt.lang, got, tt.want)
+		}
+		// The two decisions must stay the same decision, whatever the locale.
+		wantEn := getBindMsg(tt.lang) == bindMsgEn
+		if gotEn := brandDisplay("feishu", tt.lang) == "Feishu"; gotEn != wantEn {
+			t.Errorf("brandDisplay/getBindMsg disagree for %q: brand english = %v, bundle english = %v", tt.lang, gotEn, wantEn)
+		}
+	}
+	// "lark" is language-independent.
+	for _, lang := range []i18n.Lang{i18n.LangZhCN, i18n.LangEnUS, i18n.LangJaJP, ""} {
+		if got := brandDisplay("lark", lang); got != "Lark" {
+			t.Errorf("brandDisplay(lark, %q) = %q, want Lark", lang, got)
 		}
 	}
 }
@@ -1884,9 +1938,260 @@ func TestConfigBindRun_LangExplicit_PrintsConfirmation(t *testing.T) {
 		t.Fatalf("expected success, got error: %v", err)
 	}
 	// The short --lang en is canonicalized to en_us before the confirmation
-	// echoes it back; the TUI language stays zh (flag mode, no picker).
-	want := fmt.Sprintf(getBindMsg(i18n.LangZhCN).LangPreferenceSet, "en_us")
+	// echoes it back, and --lang also decides the display language — so the
+	// confirmation itself is rendered in English, with no picker involved.
+	want := fmt.Sprintf(getBindMsg(i18n.LangEnUS).LangPreferenceSet, "en_us")
 	if got := stderr.String(); !strings.Contains(got, want) {
 		t.Errorf("stderr = %q, want it to contain confirmation %q", got, want)
+	}
+}
+
+func TestShouldPromptBindLang(t *testing.T) {
+	tests := []struct {
+		name string
+		opts BindOptions
+		want bool
+	}{
+		{"TUI, nothing resolved", BindOptions{IsTUI: true}, true},
+		{"flag mode", BindOptions{IsTUI: false}, false},
+		// A stored zh_cn/en_us still asks — the picker pre-selects it, so
+		// re-binding remains a way to change the language.
+		{"stored en_us still asks", BindOptions{IsTUI: true, UILang: i18n.LangEnUS}, true},
+		{"stored zh_cn still asks", BindOptions{IsTUI: true, UILang: i18n.LangZhCN}, true},
+		// The picker has no option for these, so a bare Enter would silently
+		// rewrite the preference. Skip it and keep what --lang set.
+		{"stored ja_jp skips the picker", BindOptions{IsTUI: true, UILang: i18n.LangJaJP}, false},
+		// An unrecognized value renders Chinese because it expresses no usable
+		// preference; the picker must stay reachable so it can be changed.
+		{"unrecognized stored value still asks", BindOptions{IsTUI: true, UILang: "klingon"}, true},
+		{"--lang was explicit", BindOptions{IsTUI: true, langExplicit: true}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldPromptBindLang(&tt.opts); got != tt.want {
+				t.Errorf("shouldPromptBindLang() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveBindUILang_NoPrompt(t *testing.T) {
+	// opts.IsTUI stays false throughout, so the picker never runs and
+	// resolveBindUILang alone decides: --lang wins, otherwise the workspace's
+	// stored preference.
+	saveWorkspace(t)
+	baseDir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", baseDir)
+
+	wsDir := filepath.Join(baseDir, "openclaw")
+	if err := os.MkdirAll(wsDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stored := `{"apps":[{"appId":"cli_x","brand":"feishu","lang":"en_us","users":[]}]}`
+	if err := os.WriteFile(filepath.Join(wsDir, "config.json"), []byte(stored), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name   string
+		lang   string
+		source string
+		want   i18n.Lang
+	}{
+		{"stored preference is used", "", "openclaw", i18n.LangEnUS},
+		{"flag wins over stored", "zh_cn", "openclaw", i18n.LangZhCN},
+		// Nothing to read yet — the workspace is whatever tuiSelectSource
+		// returns next. reresolveBindUILang settles it; see the test below.
+		{"source still unknown, stays unresolved", "", "", ""},
+		{"workspace without config", "", "hermes", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := &BindOptions{Lang: tt.lang}
+			if err := resolveBindUILang(opts, tt.source); err != nil {
+				t.Fatalf("resolveBindUILang: %v", err)
+			}
+			if opts.UILang != tt.want {
+				t.Errorf("UILang = %q, want %q", opts.UILang, tt.want)
+			}
+		})
+	}
+}
+
+func TestReresolveBindUILang(t *testing.T) {
+	// The TUI path picks the source after resolveBindUILang has already run,
+	// so the workspace's stored preference is first readable here. Without
+	// this second pass the success banner renders in a different language than
+	// the preference the same run writes to disk.
+	saveWorkspace(t)
+	baseDir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", baseDir)
+
+	wsDir := filepath.Join(baseDir, "openclaw")
+	if err := os.MkdirAll(wsDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stored := `{"apps":[{"appId":"cli_x","brand":"feishu","lang":"en_us","users":[]}]}`
+	if err := os.WriteFile(filepath.Join(wsDir, "config.json"), []byte(stored), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		opts BindOptions
+		want i18n.Lang
+	}{
+		{
+			// The case this pass exists for: source came from tuiSelectSource,
+			// so resolveBindUILang left UILang empty.
+			name: "picks up the preference of the workspace chosen in the TUI",
+			opts: BindOptions{},
+			want: i18n.LangEnUS,
+		},
+		{
+			// --lang "" is an explicit "do not ask", which suppresses the
+			// picker. Before this pass it also silently suppressed the stored
+			// preference, so stderr rendered Chinese while the JSON message
+			// and the persisted value were en_us.
+			name: "explicit empty --lang still inherits the stored preference",
+			opts: BindOptions{langExplicit: true},
+			want: i18n.LangEnUS,
+		},
+		{
+			// An answered language question is final. This is what makes the
+			// pass idempotent, and it is also why the boundary in
+			// TestBindTUISourceSelection_PickerAnswerOutranksStoredPreference
+			// cannot be closed from here.
+			name: "a resolved language is left alone",
+			opts: BindOptions{Lang: "zh_cn", UILang: i18n.LangZhCN},
+			want: i18n.LangZhCN,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			core.SetCurrentWorkspace(core.WorkspaceOpenClaw)
+			opts := tt.opts
+			reresolveBindUILang(&opts)
+			if opts.UILang != tt.want {
+				t.Errorf("UILang = %q, want %q", opts.UILang, tt.want)
+			}
+			// Running it again must not move: everything downstream assumes
+			// the language stops changing once the workspace is final.
+			reresolveBindUILang(&opts)
+			if opts.UILang != tt.want {
+				t.Errorf("second call moved UILang to %q, want %q", opts.UILang, tt.want)
+			}
+		})
+	}
+}
+
+// TestBindTUISourceSelection_PickerAnswerOutranksStoredPreference pins a known
+// boundary, not a desired behaviour.
+//
+// When no --source is given and no Agent environment is detected, the workspace
+// is whatever tuiSelectSource asks for next — so the language question has to be
+// asked before there is any config to read. The picker is therefore seeded from
+// nothing and lands on Chinese. Its answer is written to opts.Lang, which
+// preferredLang treats exactly like an explicit --lang, so the second pass
+// cannot restore the chosen workspace's stored preference: a bare Enter
+// persists zh_cn over it.
+//
+// Closing this means asking the language question after the source is known,
+// which leaves the source-selection screen with no language to render in — the
+// very failure this change set exists to remove. Removing it for real needs the
+// source-selection screen to stop depending on a language at all (render it
+// bilingually, the way the picker's own "Language / 语言" title already does),
+// and only then move the picker after the source.
+//
+// If this test starts failing, the ordering was changed deliberately: rewrite
+// it to describe the new behaviour rather than restoring the assertion.
+func TestBindTUISourceSelection_PickerAnswerOutranksStoredPreference(t *testing.T) {
+	saveWorkspace(t)
+	baseDir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", baseDir)
+
+	wsDir := filepath.Join(baseDir, "openclaw")
+	if err := os.MkdirAll(wsDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	storedPref := i18n.LangEnUS
+	stored := `{"apps":[{"appId":"cli_x","brand":"feishu","lang":"en_us","users":[]}]}`
+	if err := os.WriteFile(filepath.Join(wsDir, "config.json"), []byte(stored), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Step 1: no --source, no Agent env — the source is not known yet. IsTUI is
+	// left false here only so resolveBindUILang returns instead of opening a
+	// terminal; the gate below is what decides whether the real TUI would ask.
+	opts := &BindOptions{}
+	if err := resolveBindUILang(opts, ""); err != nil {
+		t.Fatalf("resolveBindUILang: %v", err)
+	}
+	if opts.UILang != "" {
+		t.Fatalf("UILang = %q before the source is known, want empty", opts.UILang)
+	}
+	inTUI := *opts
+	inTUI.IsTUI = true
+	if !shouldPromptBindLang(&inTUI) {
+		t.Fatal("the picker must still run here — with nothing resolved it is the only way to ask")
+	}
+
+	// Step 2: the picker runs with that empty seed, so it opens on 中文 and a
+	// bare Enter returns zh_cn. promptLangSelection needs a terminal, so stand
+	// in for it with the exact writes it performs.
+	if seeded := opts.UILang; seeded.UsesEnglishUI() {
+		t.Fatalf("picker seed %q would open on English; this test models the Chinese default", seeded)
+	}
+	opts.Lang = string(i18n.LangZhCN)
+	opts.UILang = i18n.LangZhCN
+
+	// Step 3: the user now picks the workspace that stores en_us.
+	core.SetCurrentWorkspace(core.WorkspaceOpenClaw)
+	reresolveBindUILang(opts)
+
+	if opts.UILang != i18n.LangZhCN {
+		t.Errorf("UILang = %q, want %q — the second pass cannot outrank an answered picker",
+			opts.UILang, i18n.LangZhCN)
+	}
+
+	// Step 4: and that is what lands on disk, replacing the stored preference.
+	appConfig := &core.AppConfig{AppId: "cli_x"}
+	applyPreferences(appConfig, opts, storedPref)
+	if appConfig.Lang != i18n.LangZhCN {
+		t.Errorf("persisted Lang = %q, want %q", appConfig.Lang, i18n.LangZhCN)
+	}
+	if appConfig.Lang == storedPref {
+		t.Fatal("stored preference survived; the boundary is closed and this test should be rewritten")
+	}
+}
+
+func TestDetectSource_NoPrompt(t *testing.T) {
+	// Both the "nothing to detect" and the explicit-source cases assume no Agent
+	// env signal; without this the suite fails when run inside an OpenClaw or
+	// Hermes session.
+	clearAgentEnv(t)
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	tests := []struct {
+		name    string
+		source  string
+		want    string
+		wantErr bool
+	}{
+		{"explicit openclaw", "openclaw", "openclaw", false},
+		{"explicit uppercase is normalized", "OpenClaw", "openclaw", false},
+		{"invalid source", "nope", "", true},
+		{"nothing to detect", "", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := &BindOptions{Factory: f, Source: tt.source}
+			got, err := detectSource(opts)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("detectSource() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("detectSource() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
