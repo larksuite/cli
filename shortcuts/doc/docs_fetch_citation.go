@@ -4,9 +4,6 @@
 package doc
 
 import (
-	"encoding/xml"
-	"strings"
-
 	"github.com/larksuite/cli/internal/citation"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -14,51 +11,28 @@ import (
 // docsFetchCitations builds the fetched document's citation from the final
 // response payload. The URL is server-resolved because it may carry tenant and
 // geo routing that cannot be reconstructed safely from the input token. The
-// fetch extra_param opts into that field only while citation output is enabled.
+// title is supplied by the server for the fetched revision, independently of
+// content format and read scope. The fetch extra_param opts into both fields
+// only while citation output is enabled. Missing titles stay empty; content is
+// not a reliable title source for Markdown or partial reads.
 func docsFetchCitations(_ *common.RuntimeContext, data any) []citation.Citation {
 	out, ok := data.(map[string]interface{})
 	if !ok {
 		return nil
 	}
-	document, ok := out["document"].(map[string]interface{})
+	fields, ok := out["document"].(map[string]interface{})
 	if !ok {
 		return nil
 	}
+	var document struct {
+		URL   string
+		Title string
+	}
+	document.URL, _ = fields["url"].(string)
+	document.Title, _ = fields["title"].(string)
 	return []citation.Citation{{
 		SourceType: citation.SourceDoc,
-		URL:        common.GetString(document, "url"),
-		Title:      docsFetchCitationTitle(common.GetString(document, "content")),
+		URL:        document.URL,
+		Title:      document.Title,
 	}}
-}
-
-func docsFetchCitationTitle(content string) string {
-	decoder := xml.NewDecoder(strings.NewReader(content))
-	for {
-		token, err := decoder.Token()
-		if err != nil {
-			return ""
-		}
-		start, ok := token.(xml.StartElement)
-		if !ok || !strings.EqualFold(start.Name.Local, "title") {
-			continue
-		}
-
-		var title strings.Builder
-		depth := 1
-		for depth > 0 {
-			token, err = decoder.Token()
-			if err != nil {
-				return ""
-			}
-			switch current := token.(type) {
-			case xml.StartElement:
-				depth++
-			case xml.EndElement:
-				depth--
-			case xml.CharData:
-				title.Write(current)
-			}
-		}
-		return strings.Join(strings.Fields(title.String()), " ")
-	}
 }

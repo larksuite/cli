@@ -18,7 +18,7 @@ import (
 const (
 	docsFetchExtraParam                 = `{"enable_user_cite_reference_map":true,"return_html5_block_data":true}`
 	docsFetchCommentsExtraParam         = `{"enable_user_cite_reference_map":true,"include_comments":true,"return_html5_block_data":true}`
-	docsFetchCommentsCitationExtraParam = `{"enable_user_cite_reference_map":true,"include_comments":true,"return_html5_block_data":true,"return_url":true}`
+	docsFetchCommentsCitationExtraParam = `{"enable_user_cite_reference_map":true,"include_comments":true,"return_html5_block_data":true,"return_url":true,"get_title":true}`
 )
 
 // v2FetchFlags returns the flag definitions for the v2 (OpenAPI) fetch path.
