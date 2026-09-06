@@ -412,7 +412,7 @@ func buildFormNotificationsBody(runtime *common.RuntimeContext) (map[string]inte
 			if runtime.Str("timezone") == "" {
 				return nil, baseFlagErrorf("--timezone is required when scheduled notification is enabled")
 			}
-			if err := validateRFC3339Flag("notify-time", runtime.Str("notify-time")); err != nil {
+			if err := validateFutureRFC3339Flag("notify-time", runtime.Str("notify-time")); err != nil {
 				return nil, err
 			}
 			if _, err := time.LoadLocation(runtime.Str("timezone")); err != nil {
@@ -652,6 +652,17 @@ func nonEmptyLotteryString(value interface{}) string {
 func validateRFC3339Flag(name, value string) error {
 	if _, err := time.Parse(time.RFC3339, value); err != nil {
 		return baseFlagErrorf("--%s must be RFC3339: %v", name, err)
+	}
+	return nil
+}
+
+func validateFutureRFC3339Flag(name, value string) error {
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return baseFlagErrorf("--%s must be RFC3339: %v", name, err)
+	}
+	if !parsed.After(time.Now()) {
+		return baseFlagErrorf("--%s must be later than the current time", name)
 	}
 	return nil
 }
