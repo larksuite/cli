@@ -77,7 +77,7 @@ var BaseFormNotificationsUpdate = common.Shortcut{
 	Flags: appendFormConfigFlags(
 		common.Flag{Name: "type", Desc: "notification type", Required: true, Enum: []string{"on-submission", "scheduled"}},
 		common.Flag{Name: "enabled", Type: "bool", Desc: "enable or disable this notification", Required: true},
-		common.Flag{Name: "locale", Desc: "notification locale"},
+		common.Flag{Name: "locale", Desc: "notification locale: zh-CN, en-US, or ja-JP; underscore aliases are accepted"},
 		common.Flag{Name: "receiver-open-id", Type: "string_array", Desc: "receiver open_id; required when enabling notifications or disabling scheduled notifications; repeat for multiple receivers"},
 		common.Flag{Name: "notify-time", Desc: "scheduled notify time in RFC3339 format"},
 		common.Flag{Name: "repeat-type", Desc: "scheduled repeat type", Enum: []string{"no_repeat", "day", "week", "month"}},
@@ -86,6 +86,7 @@ var BaseFormNotificationsUpdate = common.Shortcut{
 	Tips: []string{
 		"Use --type on-submission or --type scheduled; update only one notification group per invocation.",
 		"When enabling either notification type, repeat --receiver-open-id at least once.",
+		"--locale selects the template for this update; it is not stored as a notification setting.",
 		"Disabling scheduled notifications requires --receiver-open-id; do not pass --notify-time, --repeat-type, or --timezone.",
 		"Disabling on-submission notifications only accepts --type and --enabled=false, plus optional --locale.",
 	},
@@ -382,7 +383,11 @@ func buildFormNotificationsBody(runtime *common.RuntimeContext) (map[string]inte
 	enabled := runtime.Bool("enabled")
 	body := map[string]interface{}{}
 	if runtime.Changed("locale") {
-		body["locale"] = runtime.Str("locale")
+		locale, err := normalizeFormNotificationLocale(runtime.Str("locale"))
+		if err != nil {
+			return nil, err
+		}
+		body["locale"] = locale
 	}
 
 	group := map[string]interface{}{"enabled": enabled}
@@ -432,6 +437,20 @@ func buildFormNotificationsBody(runtime *common.RuntimeContext) (map[string]inte
 	}
 	body["on_submission"] = group
 	return body, nil
+}
+
+func normalizeFormNotificationLocale(locale string) (string, error) {
+	// Automation 只识别连字符格式；CLI 兼容常见的下划线写法，避免静默选错模板。
+	switch strings.ToLower(strings.ReplaceAll(strings.TrimSpace(locale), "_", "-")) {
+	case "zh-cn":
+		return "zh-CN", nil
+	case "en-us":
+		return "en-US", nil
+	case "ja-jp":
+		return "ja-JP", nil
+	default:
+		return "", baseFlagErrorf("--locale must be zh-CN, en-US, or ja-JP")
+	}
 }
 
 func buildFormSubmitActionsBody(runtime *common.RuntimeContext) (map[string]interface{}, error) {
