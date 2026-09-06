@@ -285,6 +285,13 @@ func buildFormSubmissionSettingsBody(runtime *common.RuntimeContext) (map[string
 			if _, err := time.LoadLocation(runtime.Str("timezone")); err != nil {
 				return nil, baseFlagErrorf("--timezone must be a valid IANA timezone: %v", err)
 			}
+			location, _ := time.LoadLocation(runtime.Str("timezone"))
+			// 与 Web 端保持一致：只禁止过去日期，当天已经过去的小时和分钟仍允许。
+			now := time.Now().In(location)
+			today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, location)
+			if startAt.In(location).Before(today) {
+				return nil, baseFlagErrorf("--start-at must not be before today in --timezone")
+			}
 			period["start_at"] = runtime.Str("start-at")
 			period["end_at"] = runtime.Str("end-at")
 			period["timezone"] = runtime.Str("timezone")
