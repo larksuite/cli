@@ -183,6 +183,10 @@ func TestShortcutsCatalog(t *testing.T) {
 		"+form-create", "+form-delete", "+form-list", "+form-update", "+form-get", "+form-detail",
 		"+form-questions-create", "+form-questions-delete", "+form-questions-update", "+form-questions-list",
 		"+form-submit", "+form-share-get", "+form-share-update",
+		"+form-submission-settings-get", "+form-submission-settings-update",
+		"+form-notifications-get", "+form-notifications-update",
+		"+form-submit-actions-get", "+form-submit-actions-update",
+		"+form-lottery-get", "+form-lottery-action",
 		"+dashboard-list", "+dashboard-get", "+dashboard-share-get", "+dashboard-share-update", "+dashboard-create", "+dashboard-update", "+dashboard-delete", "+dashboard-arrange",
 		"+dashboard-block-list", "+dashboard-block-get", "+dashboard-block-get-data", "+dashboard-block-create", "+dashboard-block-update", "+dashboard-block-delete",
 		"+workspace-create", "+workspace-entity-list", "+workspace-move-in",
@@ -224,6 +228,46 @@ func TestShareManagementShortcutScopes(t *testing.T) {
 		{
 			name:   "form update requires update scope",
 			scopes: BaseFormShareUpdate.Scopes,
+			want:   []string{"base:form:update"},
+		},
+		{
+			name:   "form submission settings get requires update scope",
+			scopes: BaseFormSubmissionSettingsGet.Scopes,
+			want:   []string{"base:form:update"},
+		},
+		{
+			name:   "form submission settings update requires update scope",
+			scopes: BaseFormSubmissionSettingsUpdate.Scopes,
+			want:   []string{"base:form:update"},
+		},
+		{
+			name:   "form notifications get requires update scope",
+			scopes: BaseFormNotificationsGet.Scopes,
+			want:   []string{"base:form:update"},
+		},
+		{
+			name:   "form notifications update requires update scope",
+			scopes: BaseFormNotificationsUpdate.Scopes,
+			want:   []string{"base:form:update"},
+		},
+		{
+			name:   "form submit actions get requires update scope",
+			scopes: BaseFormSubmitActionsGet.Scopes,
+			want:   []string{"base:form:update"},
+		},
+		{
+			name:   "form submit actions update requires update scope",
+			scopes: BaseFormSubmitActionsUpdate.Scopes,
+			want:   []string{"base:form:update"},
+		},
+		{
+			name:   "form lottery get requires update scope",
+			scopes: BaseFormLotteryGet.Scopes,
+			want:   []string{"base:form:update"},
+		},
+		{
+			name:   "form lottery action requires update scope",
+			scopes: BaseFormLotteryAction.Scopes,
 			want:   []string{"base:form:update"},
 		},
 	}
