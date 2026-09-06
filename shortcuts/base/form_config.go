@@ -148,10 +148,12 @@ var BaseFormLotteryAction = common.Shortcut{
 	Flags: appendFormConfigFlags(
 		common.Flag{Name: "action", Desc: "lottery action", Required: true, Enum: []string{"enable", "disable", "update", "relink-winning-table"}},
 		common.Flag{Name: "config-json", Desc: "lottery config JSON object; icon_token is not supported", Input: []string{common.File, common.Stdin}},
+		common.Flag{Name: "agree-lottery-terms", Type: "bool", Desc: "确认已阅读并同意《飞书问卷抽奖管理规范》；仅开启抽奖时使用"},
 	),
 	Tips: []string{
 		"enable and update require --config-json with full lottery settings; update also requires lottery.version.",
 		"relink-winning-table accepts optional --config-json without awards; do not pass icon_token.",
+		"开启抽奖前请阅读《飞书问卷抽奖管理规范》：https://www.feishu-boe.cn/hc/zh-CN/articles/047445276639-%E9%A3%9E%E4%B9%A6%E9%97%AE%E5%8D%B7%E6%8A%BD%E5%A5%96%E7%AE%A1%E7%90%86%E8%A7%84%E8%8C%83，同意后传入 --agree-lottery-terms。",
 	},
 	Validate: func(_ context.Context, runtime *common.RuntimeContext) error {
 		_, err := buildFormLotteryActionBody(runtime)
@@ -510,6 +512,12 @@ func buildFormSubmitActionsBody(runtime *common.RuntimeContext) (map[string]inte
 
 func buildFormLotteryActionBody(runtime *common.RuntimeContext) (map[string]interface{}, error) {
 	action := runtime.Str("action")
+	if action == "enable" && !runtime.Bool("agree-lottery-terms") {
+		return nil, baseFlagErrorf("开启抽奖前，请阅读并同意《飞书问卷抽奖管理规范》：https://www.feishu-boe.cn/hc/zh-CN/articles/047445276639-%E9%A3%9E%E4%B9%A6%E9%97%AE%E5%8D%B7%E6%8A%BD%E5%A5%96%E7%AE%A1%E7%90%86%E8%A7%84%E8%8C%83；同意后请添加 --agree-lottery-terms")
+	}
+	if action != "enable" && runtime.Changed("agree-lottery-terms") {
+		return nil, baseFlagErrorf("--agree-lottery-terms 仅用于 --action enable")
+	}
 	wireAction := action
 	if action == "relink-winning-table" {
 		wireAction = "relink_winning_table"
