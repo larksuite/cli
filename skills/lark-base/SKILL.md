@@ -111,6 +111,7 @@ Form 依附于 Table，以 Field 作为题目，每次有效提交会创建一�
 
 表单题目和字段的关系：
 
+- 使用 `+form-notifications-update` 配置定时通知时，`--repeat-type` 对应 Web 端六种频率：`no_repeat`、`day`、`week`、`month`、`year`、`workday`；不要因为底层还有其它类型而扩大取值范围。
 - 使用 `+form-submit-actions-update` 设置提交结果页时，主动写入的描述只使用 `text` 和 `url`；不要主动构造人员 `mention`。读取结果页或只修改标题时应保留已有描述，包括其中已有的 `mention`，不要擅自清理。
 - `+form-questions-create` 支持两种形态：新建字段题目需要 `title` + `type`；已有字段题目需要 `use_existing_field:true` + `field_id`。已有字段题目只是把该字段加入表单，不创建新字段，也不改变已有记录数据；不要给该形态携带 `type`、`style`、`options` 等字段定义属性。
 - 创建问题前先 `+form-questions-list`。若目标标题已经存在，除非用户明确要求同名独立问题，否则优先用 `+form-questions-update` 修改题目配置，不要先创建同名问题再删除旧问题。

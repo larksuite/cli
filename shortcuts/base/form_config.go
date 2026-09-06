@@ -80,7 +80,7 @@ var BaseFormNotificationsUpdate = common.Shortcut{
 		common.Flag{Name: "locale", Desc: "notification locale: zh-CN, en-US, or ja-JP; underscore aliases are accepted"},
 		common.Flag{Name: "receiver-open-id", Type: "string_array", Desc: "receiver open_id; required when enabling notifications or disabling scheduled notifications; repeat for multiple receivers"},
 		common.Flag{Name: "notify-time", Desc: "scheduled notify time in RFC3339 format"},
-		common.Flag{Name: "repeat-type", Desc: "scheduled repeat type", Enum: []string{"no_repeat", "day", "week", "month"}},
+		common.Flag{Name: "repeat-type", Desc: "scheduled repeat type", Enum: []string{"no_repeat", "day", "week", "month", "year", "workday"}},
 		common.Flag{Name: "timezone", Desc: "IANA timezone, for example Asia/Shanghai"},
 	),
 	Tips: []string{
