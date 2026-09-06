@@ -14,6 +14,9 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+// 与 Web 端可提交次数输入框保持一致，避免 CLI 构造超出产品范围的配置。
+const formUserSubmitLimitMax = 999
+
 var formConfigCommonFlags = []common.Flag{
 	baseTokenFlag(true),
 	{Name: "table-id", Desc: "table ID", Required: true},
@@ -39,7 +42,7 @@ var BaseFormSubmissionSettingsUpdate = common.Shortcut{
 		common.Flag{Name: "end-at", Desc: "submission end time in RFC3339 format"},
 		common.Flag{Name: "timezone", Desc: "IANA timezone, for example Asia/Shanghai"},
 		common.Flag{Name: "user-submit-limit-enabled", Type: "bool", Desc: "enable or disable per-user submission limit"},
-		common.Flag{Name: "user-submit-limit", Type: "int", Desc: "maximum submissions per user; must be greater than 0"},
+		common.Flag{Name: "user-submit-limit", Type: "int", Desc: "maximum submissions per user; must be between 1 and 999"},
 		common.Flag{Name: "user-submit-cycle", Desc: "per-user limit cycle", Enum: []string{"total", "day", "week", "month"}},
 		common.Flag{Name: "total-submit-limit-enabled", Type: "bool", Desc: "enable or disable total submission limit"},
 		common.Flag{Name: "total-submit-maximum", Type: "int", Desc: "maximum total submissions"},
@@ -306,8 +309,8 @@ func buildFormSubmissionSettingsBody(runtime *common.RuntimeContext) (map[string
 		enabled := runtime.Bool("user-submit-limit-enabled")
 		limit := map[string]interface{}{"enabled": enabled}
 		if enabled {
-			if runtime.Int("user-submit-limit") <= 0 {
-				return nil, baseFlagErrorf("--user-submit-limit must be greater than 0 when --user-submit-limit-enabled=true")
+			if runtime.Int("user-submit-limit") <= 0 || runtime.Int("user-submit-limit") > formUserSubmitLimitMax {
+				return nil, baseFlagErrorf("--user-submit-limit must be between 1 and 999 when --user-submit-limit-enabled=true")
 			}
 			if runtime.Str("user-submit-cycle") == "" {
 				return nil, baseFlagErrorf("--user-submit-cycle is required when --user-submit-limit-enabled=true")
