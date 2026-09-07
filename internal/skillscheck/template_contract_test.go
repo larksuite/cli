@@ -25,6 +25,12 @@ func TestSuiteTemplateMatchesCropContract(t *testing.T) {
 	if strings.Count(template, "<!-- LARK_SUITE_ROUTES -->") != 1 {
 		t.Fatal("suite template must contain exactly one route placeholder")
 	}
+	if !strings.Contains(template, "references/<skill-name>/GUIDE.md") {
+		t.Fatal("suite template must route nested guides through GUIDE.md")
+	}
+	if strings.Contains(template, "references/<skill-name>/SKILL.md") {
+		t.Fatal("suite template must not route nested guides through SKILL.md")
+	}
 }
 
 func TestSuiteKeywordKeysMatchOfficialSkillDirectories(t *testing.T) {
