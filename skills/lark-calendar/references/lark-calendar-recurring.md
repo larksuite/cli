@@ -5,7 +5,9 @@
 - `lark-cli calendar +delete` — 删除日程；重复性日程/例外必须传 `--apply-to`。
 - `lark-cli calendar +update` — 更新日程；重复性日程/例外必须传 `--apply-to`。
 
-> **强制规则：用户未明确操作范围时，必须先向用户确认，禁止 Agent 默认选取任何 `--apply-to`。** 用户表达含糊（如「删掉这个会」「改一下这个日程」）时也必须确认——`--apply-to=single` 只删/改一次，`--apply-to=all` 会影响整个序列及所有例外，代价截然不同。
+> **破坏性操作闸（Destructive Confirmation Gate）：** 用户未明确操作范围时，必须先向用户确认。`+delete`、以及 `+update` 中会通知参会人或不可逆的写操作执行前，**即使目标 event_id 和 `--apply-to` 都已明确，Agent 也必须等待用户确认**。
+>
+> 只有用户在同一轮对话中明说「直接删 / 不用问 / 已确认 / 别再确认 / just do it」等等价意思时才可跳过。跳过时须在最终回复里注明「已按用户显式免确认执行」，方便回溯。
 
 ## `--apply-to` 与日程类型的匹配矩阵
 

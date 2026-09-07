@@ -365,9 +365,9 @@ func TestMinutesWordReplace_OthersAreEditing(t *testing.T) {
 	}
 }
 
-// The gateway maps internal 40013 onto 2091013. The stub uses that wire
-// code as a literal so a constant pointed at a value the gateway never
-// sends fails this test instead of passing vacuously.
+// The gateway maps the internal "words not found" signal onto 2091111. The
+// stub uses that wire code as a literal so a constant pointed at a value the
+// gateway never sends fails this test instead of passing vacuously.
 func TestMinutesWordReplace_WordsNotFound(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
@@ -377,7 +377,7 @@ func TestMinutesWordReplace_WordsNotFound(t *testing.T) {
 		Method: http.MethodPut,
 		URL:    "/open-apis/minutes/v1/minutes/" + minutesWordReplaceTestToken + "/transcript/word",
 		Body: map[string]interface{}{
-			"code": 2091013,
+			"code": 2091111,
 			"msg":  "replace words not found in transcript",
 		},
 	})
@@ -399,8 +399,8 @@ func TestMinutesWordReplace_WordsNotFound(t *testing.T) {
 	if p.Subtype != errs.SubtypeNotFound {
 		t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypeNotFound)
 	}
-	if p.Code != 2091013 {
-		t.Errorf("code = %d, want 2091013", p.Code)
+	if p.Code != 2091111 {
+		t.Errorf("code = %d, want 2091111", p.Code)
 	}
 	if !strings.Contains(p.Message, minutesWordReplaceTestToken) {
 		t.Errorf("message should include minute token, got: %s", p.Message)
