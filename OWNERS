@@ -1,0 +1,17 @@
+patterns:
+  "go.mod":
+    reviewers:
+      - liangshuo.0
+    approvals_required: 1
+  "go.sum":
+    reviewers:
+      - liangshuo.0
+    approvals_required: 1
+  "internal/":
+    reviewers:
+      - liangshuo.0
+    approvals_required: 1
+  "shortcuts/common/":
+    reviewers:
+      - liangshuo.0
+    approvals_required: 1
