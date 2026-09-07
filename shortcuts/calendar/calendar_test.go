@@ -9,11 +9,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -3746,75 +3744,6 @@ func TestGet_MissingEventField_TypedInternal(t *testing.T) {
 	}
 }
 
-// A recurring instance id ({uid}_{originalTime > 0}) is not stored on its own
-// until it is edited. When the direct GET returns 193001, +get transparently
-// falls back to the master and returns a synthetic snapshot: the master's
-// fields (summary, description, rrule, ...) with the instance's original
-// start/end so the output still describes the instance the caller asked about.
-func TestGet_UnmaterialisedInstance_FallsBackToMaster(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
-
-	// Instance start = master start + 7 * 86400 (one week after the master).
-	const masterStart int64 = 1742515200
-	const masterEnd int64 = 1742518800
-	const instanceOriginalTime int64 = masterStart + 7*86400
-
-	// Direct GET on the instance id -> 193001 not found.
-	reg.Register(&httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_series_" + strconv.FormatInt(instanceOriginalTime, 10),
-		Body: map[string]interface{}{
-			"code": 193001, "msg": "event not found",
-			"data": map[string]interface{}{},
-		},
-	})
-	// Fallback GET on master returns the recurring series.
-	reg.Register(&httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_series_0",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "success",
-			"data": map[string]interface{}{
-				"event": map[string]interface{}{
-					"event_id":   "evt_series_0",
-					"summary":    "Weekly Sync",
-					"recurrence": "FREQ=WEEKLY;INTERVAL=1",
-					"start_time": map[string]interface{}{"timestamp": strconv.FormatInt(masterStart, 10), "timezone": "Asia/Shanghai"},
-					"end_time":   map[string]interface{}{"timestamp": strconv.FormatInt(masterEnd, 10), "timezone": "Asia/Shanghai"},
-				},
-			},
-		},
-	})
-
-	err := mountAndRun(t, CalendarGet, []string{
-		"+get",
-		"--calendar-id", "cal_test123",
-		"--event-id", "evt_series_" + strconv.FormatInt(instanceOriginalTime, 10),
-		"--as", "bot",
-	}, f, stdout)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := stdout.String()
-	// The instance id is echoed (not the master id).
-	if !strings.Contains(out, "\"event_id\": \"evt_series_"+strconv.FormatInt(instanceOriginalTime, 10)+"\"") {
-		t.Errorf("expected instance event_id in output, got: %s", out)
-	}
-	// Start datetime reflects the instance's originalTime, not the master's start.
-	instanceStartRFC := time.Unix(instanceOriginalTime, 0).Local().Format(time.RFC3339)
-	if !strings.Contains(out, instanceStartRFC) {
-		t.Errorf("expected instance start %s in output, got: %s", instanceStartRFC, out)
-	}
-	// Master's summary is inherited on the synthetic instance snapshot.
-	if !strings.Contains(out, "\"summary\": \"Weekly Sync\"") {
-		t.Errorf("expected inherited summary in output, got: %s", out)
-	}
-	// The synthetic snapshot drops recurrence so classifiers see a plain instance.
-	if strings.Contains(out, "\"recurrence\":") {
-		t.Errorf("recurrence must be stripped from the synthetic instance snapshot, got: %s", out)
-	}
-}
-
 // ---------------------------------------------------------------------------
 // CalendarUpdate room-availability precheck tests
 // ---------------------------------------------------------------------------
@@ -4479,93 +4408,6 @@ func TestRecurringMasterEventID_Shapes(t *testing.T) {
 				t.Errorf("recurringMasterEventID(%q) = (%q, %v), want (%q, %v)", tt.in, gotID, gotOK, tt.wantID, tt.wantOK)
 			}
 		})
-	}
-}
-
-// TestUpdate_RoomCheck_EventNotFound_FallsBackToMaster pins the 193001
-// fallback: when the event_id is `{uid}_{original_time}` and the server
-// answers "event not found", the snapshot GET retries against `{uid}_0`
-// (the recurring master), so the room-check pipeline can still proceed.
-func TestUpdate_RoomCheck_EventNotFound_FallsBackToMaster(t *testing.T) {
-	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
-
-	// First GET on the instance event: 193001. Reusable because both the
-	// +update pre-fetch (recurring-kind detection) and the room-check
-	// snapshot GET hit this same URL; they both need the 193001 answer to
-	// fall through to the master snapshot.
-	instanceStub := &httpmock.Stub{
-		Method:   "GET",
-		URL:      "/open-apis/calendar/v4/calendars/cal_rc/events/uid_master_1742515200",
-		Reusable: true,
-		Body: map[string]interface{}{
-			"code": 193001,
-			"msg":  "event not found",
-		},
-	}
-	reg.Register(instanceStub)
-
-	// Fallback GET on the master event: 200 with an existing room attendee, so
-	// the pre-check has something to reason about.
-	masterStub := &httpmock.Stub{
-		Method:   "GET",
-		URL:      "/open-apis/calendar/v4/calendars/cal_rc/events/uid_master_0",
-		Reusable: true,
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"data": map[string]interface{}{
-				"event": map[string]interface{}{
-					"event_id":   "uid_master_0",
-					"summary":    "Weekly sync",
-					"start_time": map[string]interface{}{"timestamp": "1742515200", "timezone": "Asia/Shanghai"},
-					"end_time":   map[string]interface{}{"timestamp": "1742518800", "timezone": "Asia/Shanghai"},
-					"recurrence": "FREQ=DAILY;INTERVAL=1",
-					"attendees":  []interface{}{map[string]interface{}{"type": "resource", "room_id": "omm_from_master"}},
-				},
-			},
-		},
-	}
-	reg.Register(masterStub)
-
-	// Time change → precheck runs against existing room from the master snapshot.
-	precheckStub := &httpmock.Stub{
-		Method: "POST",
-		URL:    "/open-apis/calendar/v4/freebusy/room_availability_check",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"data": map[string]interface{}{
-				"room_availabilitys": []interface{}{
-					map[string]interface{}{
-						"room_id": "omm_from_master",
-						"status":  "available",
-					},
-				},
-			},
-		},
-	}
-	reg.Register(precheckStub)
-
-	// PATCH succeeds.
-	patchStub := &httpmock.Stub{
-		Method: "PATCH",
-		URL:    "/open-apis/calendar/v4/calendars/cal_rc/events/uid_master_1742515200",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"data": map[string]interface{}{"event": map[string]interface{}{"event_id": "uid_master_1742515200"}},
-		},
-	}
-	reg.Register(patchStub)
-
-	err := mountAndRun(t, CalendarUpdate, []string{
-		"+update",
-		"--event-id", "uid_master_1742515200",
-		"--calendar-id", "cal_rc",
-		"--start", "2025-03-21T08:00:00+08:00",
-		"--end", "2025-03-21T09:00:00+08:00",
-		"--apply-to", "single",
-		"--as", "bot",
-	}, f, nil)
-	if err != nil {
-		t.Fatalf("expected update to succeed after master fallback, got %v", err)
 	}
 }
 

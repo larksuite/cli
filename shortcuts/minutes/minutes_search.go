@@ -228,9 +228,9 @@ var MinutesSearch = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "query", Desc: "search keyword"},
-		{Name: "owner-ids", Desc: "owner open_id list, comma-separated (use \"me\" for current user)"},
-		{Name: "participant-ids", Desc: "participant open_id list, comma-separated (use \"me\" for current user)"},
+		{Name: "query", Aliases: []string{"keyword"}, Desc: "search keyword"},
+		{Name: "owner-ids", Desc: "owner open_id list, comma-separated (OR: matches minutes owned by any listed user; \"me\" resolves to the current user)"},
+		{Name: "participant-ids", Desc: "participant open_id list, comma-separated (OR: matches minutes any listed user joined, not AND; \"me\" resolves to the current user)"},
 		{Name: "start", Desc: "time lower bound (ISO 8601 or YYYY-MM-DD)"},
 		{Name: "end", Desc: "time upper bound (ISO 8601 or YYYY-MM-DD)"},
 		{Name: "page-token", Desc: "page token for next page"},
