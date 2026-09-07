@@ -5,6 +5,7 @@ package mail
 
 import (
 	"errors"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -135,13 +136,37 @@ func TestNormalizeRepeatedInlineFlagsAllowsDuplicateCIDForCompatibility(t *testi
 	}
 }
 
-func TestParseInlineSpecsNullIsEmptyForCompatibility(t *testing.T) {
-	specs, err := parseInlineSpecs(`null`)
-	if err != nil {
-		t.Fatalf("parseInlineSpecs(null) error = %v", err)
+func TestNormalizeRepeatedInlineFlagsReportsOccurrence(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		raw  string
+	}{
+		{name: "empty", raw: ""},
+		{name: "null", raw: `null`},
+		{name: "scalar", raw: `42`},
+		{name: "empty object", raw: `{}`},
+		{name: "bad json", raw: `{`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := normalizeInlineFlagValues([]string{`[]`, tc.raw})
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			assertInlineValidationError(t, err)
+			if !strings.Contains(err.Error(), "occurrence 2") {
+				t.Fatalf("error = %v, want 1-based occurrence", err)
+			}
+		})
 	}
-	if len(specs) != 0 {
-		t.Fatalf("parseInlineSpecs(null) = %#v, want empty", specs)
+}
+
+func TestNormalizeRepeatedInlineFlagsAllowsEmptyArray(t *testing.T) {
+	raw, err := normalizeInlineFlagValues([]string{`[]`})
+	if err != nil {
+		t.Fatalf("normalizeInlineFlagValues([]) error = %v", err)
+	}
+	if raw != "" {
+		t.Fatalf("normalizeInlineFlagValues([]) = %q, want empty normalized value", raw)
 	}
 }
 
@@ -226,6 +251,73 @@ func TestMailRepeatableFlagTypes(t *testing.T) {
 			}
 			for _, name := range tc.strings {
 				assertFlagType(t, cmd, name, "string")
+			}
+		})
+	}
+}
+
+func TestMailRepeatableInlineInvalidLaterOccurrenceFailsBeforeSideEffects(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		shortcut common.Shortcut
+		args     []string
+	}{
+		{name: "send", shortcut: MailSend, args: []string{"+send", "--to", "a@example.com", "--subject", "subject", "--body", "<p>body</p>"}},
+		{name: "draft-create", shortcut: MailDraftCreate, args: []string{"+draft-create", "--subject", "subject", "--body", "<p>body</p>"}},
+		{name: "reply", shortcut: MailReply, args: []string{"+reply", "--message-id", "m1", "--body", "<p>body</p>"}},
+		{name: "reply-all", shortcut: MailReplyAll, args: []string{"+reply-all", "--message-id", "m1", "--body", "<p>body</p>"}},
+		{name: "forward", shortcut: MailForward, args: []string{"+forward", "--message-id", "m1", "--to", "a@example.com"}},
+		{name: "template-create", shortcut: MailTemplateCreate, args: []string{"+template-create", "--name", "template", "--template-content", `<p>body</p>`}},
+		{name: "template-update", shortcut: MailTemplateUpdate, args: []string{"+template-update", "--template-id", "1"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, stdout, _, _ := mailShortcutTestFactory(t)
+			args := append(append([]string(nil), tc.args...), "--inline", `[]`, "--inline", `null`)
+			err := runMountedMailShortcut(t, tc.shortcut, args, f, stdout)
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			assertInlineValidationError(t, err)
+			if !strings.Contains(err.Error(), "occurrence 2") {
+				t.Fatalf("error = %v, want occurrence 2", err)
+			}
+		})
+	}
+}
+
+func TestMailRepeatableAttachmentInvalidLaterOccurrenceReportsIndex(t *testing.T) {
+	chdirTemp(t)
+	if err := os.WriteFile("ok.txt", []byte("ok"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name     string
+		shortcut common.Shortcut
+		args     []string
+	}{
+		{name: "send", shortcut: MailSend, args: []string{"+send", "--to", "a@example.com", "--subject", "subject", "--body", "body"}},
+		{name: "draft-create", shortcut: MailDraftCreate, args: []string{"+draft-create", "--subject", "subject", "--body", "body"}},
+		{name: "reply", shortcut: MailReply, args: []string{"+reply", "--message-id", "m1", "--body", "body"}},
+		{name: "reply-all", shortcut: MailReplyAll, args: []string{"+reply-all", "--message-id", "m1", "--body", "body"}},
+		{name: "forward", shortcut: MailForward, args: []string{"+forward", "--message-id", "m1", "--to", "a@example.com"}},
+		{name: "template-create", shortcut: MailTemplateCreate, args: []string{"+template-create", "--name", "template"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, stdout, _, _ := mailShortcutTestFactory(t)
+			args := append(append([]string(nil), tc.args...), "--attach", "ok.txt", "--attach", "missing.txt")
+			err := runMountedMailShortcut(t, tc.shortcut, args, f, stdout)
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("error type = %T, want *errs.ValidationError: %v", err, err)
+			}
+			if ve.Param != "--attach" {
+				t.Fatalf("validation param = %q, want --attach", ve.Param)
+			}
+			if !strings.Contains(err.Error(), "occurrence 2") {
+				t.Fatalf("error = %v, want occurrence 2", err)
 			}
 		})
 	}

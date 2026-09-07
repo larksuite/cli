@@ -2307,8 +2307,11 @@ func normalizeCommaFlagValues(values []string) string {
 
 func normalizeInlineFlagValues(values []string) (string, error) {
 	var all []InlineSpec
-	for _, raw := range values {
-		specs, err := parseInlineSpecs(raw)
+	for i, raw := range values {
+		if strings.TrimSpace(raw) == "" {
+			return "", mailValidationParamError("--inline", "--inline occurrence %d: value must not be empty", i+1)
+		}
+		specs, err := parseInlineSpecsOccurrence(raw, i+1)
 		if err != nil {
 			return "", err
 		}
@@ -2341,37 +2344,46 @@ func countInlineSpecsForLog(values []string) int {
 }
 
 // parseInlineSpecs parses one --inline flag value as either a JSON array or a
-// single JSON object. Returns an empty slice when raw is empty.
+// single JSON object. Returns an empty slice when raw is empty because an
+// empty normalized value represents an omitted --inline flag.
 func parseInlineSpecs(raw string) ([]InlineSpec, error) {
+	return parseInlineSpecsOccurrence(raw, 0)
+}
+
+func parseInlineSpecsOccurrence(raw string, occurrence int) ([]InlineSpec, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, nil
 	}
+	prefix := ""
+	if occurrence > 0 {
+		prefix = fmt.Sprintf("--inline occurrence %d: ", occurrence)
+	}
 	if raw == "null" {
-		return nil, nil
+		return nil, mailValidationParamError("--inline", "%s--inline must be a JSON object or array, not null", prefix)
 	}
 	var specs []InlineSpec
 	switch raw[0] {
 	case '{':
 		var spec InlineSpec
 		if err := json.Unmarshal([]byte(raw), &spec); err != nil {
-			return nil, mailValidationParamError("--inline", "--inline must be a JSON object or array, e.g. '{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}' or '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]': %v", err).WithCause(err)
+			return nil, mailValidationParamError("--inline", "%s--inline must be a JSON object or array, e.g. '{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}' or '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]': %v", prefix, err).WithCause(err)
 		}
 		specs = []InlineSpec{spec}
 	case '[':
 		if err := json.Unmarshal([]byte(raw), &specs); err != nil {
-			return nil, mailValidationParamError("--inline", "--inline must be a JSON object or array, e.g. '{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}' or '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]': %v", err).WithCause(err)
+			return nil, mailValidationParamError("--inline", "%s--inline must be a JSON object or array, e.g. '{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}' or '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]': %v", prefix, err).WithCause(err)
 		}
 	default:
-		return nil, mailValidationParamError("--inline", "--inline must be a JSON object or array, e.g. '{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}' or '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]'")
+		return nil, mailValidationParamError("--inline", "%s--inline must be a JSON object or array, e.g. '{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}' or '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]'", prefix)
 	}
 	for i, s := range specs {
 		cid := normalizeInlineCID(s.CID)
 		if cid == "" {
-			return nil, mailValidationParamError("--inline", "--inline entry %d: \"cid\" must not be empty", i)
+			return nil, mailValidationParamError("--inline", "%s--inline entry %d: \"cid\" must not be empty", prefix, i+1)
 		}
 		if strings.TrimSpace(s.FilePath) == "" {
-			return nil, mailValidationParamError("--inline", "--inline entry %d: \"file_path\" must not be empty", i)
+			return nil, mailValidationParamError("--inline", "%s--inline entry %d: \"file_path\" must not be empty", prefix, i+1)
 		}
 		specs[i].CID = cid
 	}
