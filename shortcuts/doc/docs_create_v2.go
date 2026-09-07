@@ -110,15 +110,10 @@ func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 	if docsAPIOperationFailed(data) {
 		return runtime.OutPartialFailure(data, nil)
 	}
-	data, pending, err := waitForDocsCreateAsyncTask(runtime, data, createLogID)
+	data, err = waitForDocsCreateAsyncTask(runtime, data, createLogID)
 	if err != nil {
 		return err
 	}
-	if pending {
-		runtime.OutRaw(data, nil)
-		return nil
-	}
-
 	augmentDocsCreatePermission(runtime, data)
 	fallbackDocsCreateURLV2(runtime, data)
 	if len(resources) > 0 {

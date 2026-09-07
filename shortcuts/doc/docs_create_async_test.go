@@ -1,0 +1,227 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
+package doc
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"os"
+	"regexp"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/shortcuts/common"
+	"github.com/spf13/cobra"
+)
+
+func TestDocsCreateAsyncReadFailureIsNotSuccess(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	registerDocsCreateAPIStub(reg, map[string]interface{}{"task": map[string]interface{}{
+		"task_id": "task_denied", "status": "processing",
+	}})
+	reg.Register(&httpmock.Stub{Method: "GET", URL: "/async_tasks/task_denied", Status: 403,
+		Headers: http.Header{"X-Tt-Logid": {"poll-denied-log"}},
+		Body:    map[string]interface{}{"code": 99991672, "msg": "missing scope"},
+	})
+	parent := &cobra.Command{Use: "docs", SilenceErrors: true, SilenceUsage: true}
+	DocsCreate.Mount(parent, f)
+	parent.SetArgs([]string{"+create", "--content", "<title>Async</title><p>Body</p>", "--as", "user"})
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	err := parent.ExecuteContext(ctx)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Code != 99991672 || problem.LogID != "poll-denied-log" {
+		t.Fatalf("query failure was hidden: err=%v problem=%+v", err, problem)
+	}
+	if !strings.Contains(problem.Hint, "task_denied") || !strings.Contains(problem.Hint, "Do not repeat") {
+		t.Fatalf("accepted task recovery missing: %+v", problem)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("failed command emitted success: %s", stdout)
+	}
+}
+
+func TestDocsCreateAsyncDeadlineCancelsInflightRead(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	cfg := docsCreateTestConfig(t, "")
+	f, _, _, reg := cmdutil.TestFactory(t, cfg)
+	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), &cobra.Command{Use: "+create"}, cfg)
+	runtime.Factory = f
+	reg.Register(&httpmock.Stub{Method: "GET", URL: "/async_tasks/task_slow",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"task": map[string]interface{}{
+			"task_id": "task_slow", "status": "processing",
+		}}},
+		OnMatch: func(req *http.Request) {
+			if _, ok := req.Context().Deadline(); !ok {
+				t.Fatal("poll request has no deadline")
+			}
+			<-req.Context().Done()
+		},
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	result, err := pollDocsCreateAsyncTask(ctx, runtime, &docsCreateAsyncTask{TaskID: "task_slow", Status: "processing"}, "create-log")
+	problem, ok := errs.ProblemOf(err)
+	if result != nil || !errors.Is(err, context.DeadlineExceeded) || !ok || problem.Subtype != errs.SubtypeNetworkTimeout {
+		t.Fatalf("deadline result=%v err=%v problem=%+v", result, err, problem)
+	}
+	if problem.LogID != "create-log" || !strings.Contains(problem.Hint, "task_slow") {
+		t.Fatalf("timeout lost task identity: %+v", problem)
+	}
+}
+
+func TestDocsCreateAsyncCancellationIsTyped(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	result, err := pollDocsCreateAsyncTask(ctx, nil, &docsCreateAsyncTask{TaskID: "task_canceled", Status: "processing"}, "")
+	if result != nil || !errs.IsTyped(err) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancellation result=%v err=%v", result, err)
+	}
+	problem, _ := errs.ProblemOf(err)
+	if !strings.Contains(problem.Hint, "task_canceled") {
+		t.Fatalf("missing accepted task: %+v", problem)
+	}
+}
+
+func TestDocsCreateAsyncRetryClassification(t *testing.T) {
+	for _, tt := range []struct {
+		err  error
+		want bool
+	}{
+		{errs.NewAPIError(errs.SubtypeRateLimit, "rate limited").WithRetryable(), true},
+		{errs.NewNetworkError(errs.SubtypeNetworkServer, "unavailable").WithRetryable(), true},
+		{errs.NewNetworkError(errs.SubtypeNetworkTimeout, "timeout"), true},
+		{errs.NewNetworkError(errs.SubtypeNetworkTransport, "reset"), true},
+		{errs.NewAPIError(errs.SubtypeNotFound, "missing"), false},
+		{errs.NewInternalError(errs.SubtypeInvalidResponse, "bad JSON"), false},
+		{errs.NewNetworkError(errs.SubtypeNetworkTLS, "invalid certificate"), false},
+	} {
+		if got := retryableDocsCreateTaskRead(tt.err); got != tt.want {
+			t.Fatalf("retry %v = %v, want %v", tt.err, got, tt.want)
+		}
+	}
+}
+
+func TestDocsCreateAsyncSuccessStillGrantsPermission(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, "ou_current_user"))
+	registerDocsCreateAPIStub(reg, map[string]interface{}{"task": map[string]interface{}{
+		"task_id": "task_grant", "status": "processing",
+	}})
+	result, _ := json.Marshal(map[string]interface{}{"document": map[string]interface{}{
+		"document_id": "doxcn_async_grant", "revision_id": 1,
+	}})
+	reg.Register(&httpmock.Stub{Method: "GET", URL: "/async_tasks/task_grant",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"task": map[string]interface{}{
+			"task_id": "task_grant", "status": "succeeded", "result": map[string]interface{}{"create_document": string(result)},
+		}}},
+	})
+	reg.Register(&httpmock.Stub{Method: "POST", URL: "/permissions/doxcn_async_grant/members",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"member": map[string]interface{}{
+			"member_id": "ou_current_user", "member_type": "openid", "perm": "full_access",
+		}}},
+	})
+	err := runDocsCreateShortcut(t, f, stdout, []string{"+create", "--content", "<title>Async</title><p>Body</p>", "--as", "bot"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := decodeDocsCreateEnvelope(t, stdout)
+	grant, _ := data["permission_grant"].(map[string]interface{})
+	if grant["status"] != common.PermissionGrantGranted || data["task"] != nil {
+		t.Fatalf("async create did not finish synchronous follow-up: %+v", data)
+	}
+}
+
+func TestDocsCreateAsyncRetriesReadWithoutRepeatingCreate(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	registerDocsCreateAPIStub(reg, map[string]interface{}{"task": map[string]interface{}{
+		"task_id": "task_retry", "status": "processing",
+	}})
+	reg.Register(&httpmock.Stub{Method: "GET", URL: "/async_tasks/task_retry", Status: 503,
+		Body: map[string]interface{}{"code": 233523001, "msg": "unavailable"},
+	})
+	reg.Register(&httpmock.Stub{Method: "GET", URL: "/async_tasks/task_retry",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"task": map[string]interface{}{
+			"task_id": "task_retry", "status": "succeeded", "result": map[string]interface{}{
+				"create_document": `{"document":{"document_id":"doxcn_retried","revision_id":1}}`,
+			},
+		}}},
+	})
+	if err := runDocsCreateShortcut(t, f, stdout, []string{"+create", "--content", "<title>Retry</title><p>Body</p>", "--as", "user"}); err != nil {
+		t.Fatal(err)
+	}
+	data := decodeDocsCreateEnvelope(t, stdout)
+	doc, _ := data["document"].(map[string]interface{})
+	if doc["document_id"] != "doxcn_retried" {
+		t.Fatalf("retry result=%+v", data)
+	}
+}
+
+func TestDocsCreateAsyncSuccessUploadsAndBindsLocalImage(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	cmdutil.TestChdir(t, t.TempDir())
+	if err := os.WriteFile("image.png", []byte(localDocResourcePNG(t, 4, 4)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	taskResult := map[string]interface{}{}
+	reg.Register(&httpmock.Stub{Method: "POST", URL: "/open-apis/docs_ai/v1/documents",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"task": map[string]interface{}{
+			"task_id": "task_image", "status": "processing",
+		}}},
+		BodyFilter: func(raw []byte) bool {
+			var body struct {
+				Content string `json:"content"`
+			}
+			if err := json.Unmarshal(raw, &body); err != nil {
+				t.Fatal(err)
+			}
+			marker := regexp.MustCompile(`@lcli_img_[0-9a-f]{32}`).FindString(body.Content)
+			if marker == "" {
+				t.Fatal("image was not prepared before create")
+			}
+			encoded, err := json.Marshal(map[string]interface{}{"document": map[string]interface{}{
+				"document_id": "doxcn_image", "revision_id": 1,
+				"new_blocks": []interface{}{map[string]interface{}{"block_type": "image", "block_id": "block_image", "block_token": marker}},
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			taskResult["create_document"] = string(encoded)
+			return true
+		},
+	})
+	reg.Register(&httpmock.Stub{Method: "GET", URL: "/async_tasks/task_image",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"task": map[string]interface{}{
+			"task_id": "task_image", "status": "succeeded", "result": taskResult,
+		}}},
+	})
+	upload := &httpmock.Stub{Method: "POST", URL: "/medias/upload_all",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"file_token": "uploaded_image"}},
+	}
+	reg.Register(upload)
+	bind := &httpmock.Stub{Method: "PATCH", URL: "/documents/doxcn_image/blocks/batch_update",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"document_revision_id": 2}},
+	}
+	reg.Register(bind)
+	if err := runDocsCreateShortcut(t, f, stdout, []string{"+create", "--content", `<title>Image</title><img path="@image.png"/>`, "--as", "user"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(upload.CapturedBodies) != 1 || !strings.Contains(string(bind.CapturedBody), "uploaded_image") {
+		t.Fatalf("upload/bind follow-up missing: upload=%d bind=%s", len(upload.CapturedBodies), bind.CapturedBody)
+	}
+	data := decodeDocsCreateEnvelope(t, stdout)
+	doc, _ := data["document"].(map[string]interface{})
+	if doc["revision_id"] != float64(2) || strings.Contains(stdout.String(), "@lcli_img_") {
+		t.Fatalf("output was returned before image finalization: %s", stdout)
+	}
+}
