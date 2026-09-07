@@ -203,9 +203,7 @@ def recommend_chart_size(
         width = max(width, 420 + max_units * 7)
         height = max(height, 190 + category_count * 36)
         height_limited = _round_up(height) > MAX_CHART_HEIGHT
-        size_alone_is_insufficient = height_limited or (
-            category_count > 24 and series_count > 2
-        )
+        size_alone_is_insufficient = category_count > 24
         if height_limited:
             reasons.append("maximum_height_limited")
         if size_alone_is_insufficient:
