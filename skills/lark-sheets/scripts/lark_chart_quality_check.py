@@ -422,6 +422,49 @@ def _read_typed_table(
     return rows, types, truncated
 
 
+def _typed_cell(
+    rows: list[list[Any]],
+    column_types: list[str],
+    row_offset: int,
+    column_offset: int,
+    visible_offsets: set[tuple[int, int]],
+) -> tuple[Any, str]:
+    if (
+        row_offset < 0
+        or row_offset >= len(rows)
+        or not isinstance(rows[row_offset], list)
+        or column_offset < 0
+        or column_offset >= len(rows[row_offset])
+    ):
+        return None, ""
+    value = rows[row_offset][column_offset]
+    if isinstance(value, bool):
+        return value, "bool"
+    if isinstance(value, (int, float)):
+        return value, "number"
+    kind = column_types[column_offset] if column_offset < len(column_types) else ""
+    if kind != "string" or not isinstance(value, str) or not _looks_numeric(value):
+        return value, kind
+
+    # table-get infers one dtype per physical column. A hidden cell or another
+    # row-series can widen that dtype and stringify otherwise numeric cells.
+    # Treat such cells as unknown instead of reporting a false storage issue.
+    for other_row_offset, row in enumerate(rows):
+        if not isinstance(row, list) or column_offset >= len(row):
+            continue
+        other = row[column_offset]
+        if other not in (None, "") and (other_row_offset, column_offset) not in visible_offsets:
+            return value, "unknown"
+        if other in (None, "") or (
+            isinstance(other, (int, float)) and not isinstance(other, bool)
+        ):
+            continue
+        if isinstance(other, str) and _looks_numeric(other):
+            continue
+        return value, "unknown"
+    return value, kind
+
+
 def _chart_snapshot(chart: dict[str, Any]) -> dict[str, Any]:
     details = chart.get("details") if isinstance(chart.get("details"), dict) else chart
     snapshot = details.get("snapshot")
@@ -605,8 +648,19 @@ def _overwide_chart(chart: dict[str, Any]) -> dict[str, Any] | None:
     snapshot = _chart_snapshot(chart)
     chart_type = _chart_type(snapshot)
     size = details.get("size") if isinstance(details.get("size"), dict) else {}
-    width = float(size.get("width") or 0)
-    height = float(size.get("height") or 0)
+    width = size.get("width")
+    height = size.get("height")
+    if (
+        not isinstance(width, (int, float))
+        or isinstance(width, bool)
+        or width <= 0
+        or not isinstance(height, (int, float))
+        or isinstance(height, bool)
+        or height <= 0
+    ):
+        return None
+    width = float(width)
+    height = float(height)
     minimum = minimum_chart_size(chart_type)
     aspect_ratio = width / height if height > 0 else 0
     width_exceeded = width > MAX_CHART_WIDTH
@@ -668,11 +722,7 @@ def _numeric_dimensions(snapshot: dict[str, Any]) -> list[tuple[int, str]]:
     return list(dict.fromkeys(dimensions))
 
 
-def _aggregation_can_change_constant(data: dict[str, Any], dimension_index: int) -> bool:
-    dim1 = data.get("dim1")
-    category_series = dim1.get("serie") if isinstance(dim1, dict) else None
-    if not isinstance(category_series, dict) or category_series.get("aggregate") is False:
-        return False
+def _series_aggregate_type(data: dict[str, Any], dimension_index: int) -> str:
     dim2 = data.get("dim2")
     value_series = dim2.get("series") if isinstance(dim2, dict) else None
     source_series = next(
@@ -685,8 +735,15 @@ def _aggregation_can_change_constant(data: dict[str, Any], dimension_index: int)
         ),
         {},
     )
-    aggregate_type = str(source_series.get("aggregateType") or "sum").lower()
-    return aggregate_type in {"sum", "count", "counta"}
+    return str(source_series.get("aggregateType") or "sum").lower()
+
+
+def _aggregation_can_change_constant(data: dict[str, Any], dimension_index: int) -> bool:
+    dim1 = data.get("dim1")
+    category_series = dim1.get("serie") if isinstance(dim1, dict) else None
+    if not isinstance(category_series, dict) or category_series.get("aggregate") is False:
+        return False
+    return _series_aggregate_type(data, dimension_index) in {"sum", "count", "counta"}
 
 
 def _parse_chart_ref(value: str, default_sheet: str) -> tuple[str, str, CellBounds]:
@@ -857,6 +914,19 @@ def _numeric_source_issues(
         # styles, and hidden/filter semantics; table-get supplies typed values.
         cells_per_dimension = remaining_source_cells // remaining_dimension_spans
         remaining_dimension_spans -= dimension_span
+        point_axis_size = (
+            bounds[1] - bounds[0] + 1
+            if direction == "column"
+            else bounds[3] - bounds[2] + 1
+        )
+        if point_axis_size <= header_points:
+            unverifiable.append(
+                {
+                    "chart_id": chart_id,
+                    "reason": f"source has no data points: {source_sheet}!{source_range}",
+                }
+            )
+            continue
         sample_points = min(MAX_SOURCE_SAMPLE_POINTS, max(0, (cells_per_dimension - header_points) // 2))
         if sample_points == 0:
             unverifiable.append({
@@ -929,10 +999,24 @@ def _numeric_source_issues(
                 "sample_point_count": 0,
                 "numeric_value_count": 0,
                 "unique_numeric_values": set(),
-                "nonempty_value_count": 0,
-                "raw_types": set(),
             }
             for coordinate in selected
+        }
+        visible_offsets = {
+            (row_number - typed_bounds[0], column_index - typed_bounds[2])
+            for row_number, column_index, _ in _iter_cells(cells_data)
+            if selected.get(column_index if direction == "column" else row_number) is not None
+            and (
+                detached
+                or (
+                    direction == "column"
+                    and row_number != bounds[0]
+                )
+                or (
+                    direction != "column"
+                    and column_index != bounds[2]
+                )
+            )
         }
         for row_number, column_index, cell in _iter_cells(cells_data):
             coordinate = column_index if direction == "column" else row_number
@@ -947,48 +1031,48 @@ def _numeric_source_issues(
             states[coordinate]["sample_point_count"] += 1
             row_offset = row_number - typed_bounds[0]
             column_offset = column_index - typed_bounds[2]
-            value = (
-                typed_rows[row_offset][column_offset]
-                if 0 <= row_offset < len(typed_rows)
-                and isinstance(typed_rows[row_offset], list)
-                and 0 <= column_offset < len(typed_rows[row_offset])
-                else None
+            value, raw_type = _typed_cell(
+                typed_rows,
+                typed_columns,
+                row_offset,
+                column_offset,
+                visible_offsets,
             )
-            raw_type = typed_columns[column_offset] if 0 <= column_offset < len(typed_columns) else ""
-            if value not in (None, ""):
-                states[coordinate]["nonempty_value_count"] += 1
-                states[coordinate]["raw_types"].add(raw_type)
             _update_series_state(states[coordinate], value)
             number_format = (
                 cell.get("cell_styles", {}).get("number_format")
                 if isinstance(cell, dict) and isinstance(cell.get("cell_styles"), dict)
                 else None
             )
-            if str(number_format or "").strip() == "@" and _looks_numeric(str(value or "")):
-                states[coordinate]["raw_types"].add("string")
-
-        if truncated:
-            continue
-        zero_candidates = {
-            coordinate for coordinate, state in states.items() if not state["nonzero"]
-        }
-        for coordinate, state in states.items():
-            if (
-                state["nonempty_value_count"] > 0
-                and state["numeric_value_count"] == state["nonempty_value_count"]
-                and "string" in state["raw_types"]
-            ):
-                dimension_index, role = selected[coordinate]
+            reason = ""
+            if _looks_numeric(str(value or "")):
+                if str(number_format or "").strip() == "@":
+                    reason = "numeric_value_uses_text_format"
+                elif raw_type == "string":
+                    reason = "numeric_value_stored_as_text"
+            if reason:
+                dimension_index, role = dimension
                 key = (
                     dimension_index,
                     role,
                     source_sheet,
                     source_range,
                     checked_range,
-                    "numeric_value_stored_as_text",
+                    reason,
                 )
-                issue_counts[key] = 1
-                issue_groups[key] = []
+                issue_counts[key] = issue_counts.get(key, 0) + 1
+                samples = issue_groups.setdefault(key, [])
+                if len(samples) < sample_limit:
+                    samples.append(f"{index_to_column(column_index)}{row_number}")
+
+        if truncated:
+            continue
+        zero_candidates = {
+            coordinate
+            for coordinate, state in states.items()
+            if not state["nonzero"]
+            and _series_aggregate_type(data, selected[coordinate][0]) != "count"
+        }
         data_start = bounds[0] + (0 if detached else 1)
         data_column = bounds[2] + (0 if detached else 1)
         for coordinate, state in states.items():
@@ -1040,8 +1124,12 @@ def _numeric_source_issues(
                 "source_range": source_range,
                 "series_range": series_range,
             }
+            aggregate_type = _series_aggregate_type(data, dimension_index)
+            if aggregate_type == "count":
+                profile["constant_check_unverifiable"] = True
             constant_labeled = (
-                state["numeric_value_count"] >= 2
+                aggregate_type != "count"
+                and state["numeric_value_count"] >= 2
                 and len(state["unique_numeric_values"]) == 1
                 and dimension_index
                 in _labeled_series_indexes(snapshot, [{"dimension_index": dimension_index}])
