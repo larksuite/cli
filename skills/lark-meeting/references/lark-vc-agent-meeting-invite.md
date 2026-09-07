@@ -9,7 +9,7 @@ lark-cli vc +meeting-invite --as bot --meeting-id 7628568141510692381 --type SEL
 # 应用机器人邀请全部合格日程参会人
 lark-cli vc +meeting-invite --as bot --meeting-id 7628568141510692381 --type ALL_SUGGESTED
 
-# Agent Employee 使用 AAT 邀请指定用户
+# 用户身份邀请指定用户
 lark-cli vc +meeting-invite --as user --meeting-id 7628568141510692381 --type SELECTED --open-ids ou_xxx,ou_yyy
 ```
 
@@ -24,7 +24,7 @@ lark-cli vc +meeting-invite --as user --meeting-id 7628568141510692381 --type SE
 该 shortcut 支持 user 和 bot 身份，统一调用 `POST /open-apis/vc/v1/bots/invite`。
 
 - `SELECTED` 显式发送用户 `open_id`；本地会在请求前拒绝超过 200 个 ID 的输入。
-- Agent Employee（AAT）和普通 UAT 必须使用 `--as user`，且只支持 `SELECTED`。
+- `--as user` 仅支持 `SELECTED`。
 - `--as user --type ALL_SUGGESTED` 不支持，CLI 会在请求前拒绝；不要切换身份绕过限制。
 - `ALL_SUGGESTED` 仅支持 `--as bot`。服务端根据 Calendar 状态解析一键邀请候选集，并应用 200 人上限。
 - 请求契约：`SELECTED` 发送 `invite_type=2`、`invitees=[{"id":"ou_xxx","user_type":1}]` 和查询参数 `user_id_type=open_id`；`ALL_SUGGESTED` 发送 `invite_type=1` 且省略 `invitees`。
@@ -34,7 +34,7 @@ lark-cli vc +meeting-invite --as user --meeting-id 7628568141510692381 --type SE
 ## 权限与前置条件
 
 - 应用 Bot 使用 `--as bot` 时必须已在目标 Calendar VC 中。
-- Agent Employee 或普通用户使用 `--as user` 时，调用方必须已在目标会议中。
-- 应用 Bot 的 Agent Invite 依赖会议的 Agent 加入能力。日程未开启 AI/Agent 会议设置时，邀请请求会失败。
+- 用户身份使用 `--as user` 时，调用方必须已在目标会议中。
+- 应用 Bot 的邀请能力依赖会议允许相应的入会与邀请配置。相关设置未开启时，邀请请求会失败。
 - 仅包含一名受邀人的 `SELECTED` 复用普通单点邀请策略，普通会中参会人也可能有权邀请该用户。
 - `ALL_SUGGESTED` 和多用户 `SELECTED` 使用批量/建议列表邀请策略。实际调用时 Bot 应为当前 host 或 co-host；普通参会 Bot 可能没有批量邀请权限。

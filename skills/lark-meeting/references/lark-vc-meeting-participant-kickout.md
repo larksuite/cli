@@ -37,7 +37,7 @@ lark-cli vc +meeting-participant-kickout \
 - 仅支持 `user` 身份，必须显式使用 `--as user`；没有应用身份端点，不要改用应用身份重试。
 - 需要 `vc:meeting` scope。
 - 执行者必须是目标会议的主持人或具备相应权限的联席主持人；权限拒绝时不得静默更换用户身份。
-- 本命令按用户身份（UAT）调用，不走应用身份（TAT）封装。
+- 本命令按用户身份调用，不走应用身份封装。
 
 ## participant tuple 规则
 

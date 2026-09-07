@@ -83,7 +83,7 @@ lark-cli minutes +search --query "预算复盘" --format json
 
 ### 2. 支持 user 和 bot 身份
 
-该接口支持 `--as user` 和 `--as bot`。user 身份需要完成 `lark-cli auth login` 并具备 `minutes:minutes.search:read` 权限；bot 身份使用应用的 tenant access token，需要确认当前应用已开通 `minutes:minutes.search:read` scope，且运行环境能获取有效的 TAT。
+该接口支持 `--as user` 和 `--as bot`。user 身份需要完成 `lark-cli auth login` 并具备 `minutes:minutes.search:read` 权限；bot 身份使用应用的 tenant access token，需要确认当前应用已开通 `minutes:minutes.search:read` scope，且运行环境能获取有效的应用访问凭据。
 
 ### 3. `me` 表示当前用户
 
