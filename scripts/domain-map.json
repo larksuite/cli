@@ -20,7 +20,9 @@
     { "prefix": "shortcuts/event/", "labelDomains": [], "e2eDomains": ["event"] },
 
     { "prefix": "skills/lark-im/", "labelDomains": ["im"], "e2eDomains": ["im"] },
+    { "prefix": "skills/lark-meeting/", "labelDomains": ["vc"], "e2eDomains": ["vc", "minutes", "note"] },
     { "prefix": "skills/lark-vc/", "labelDomains": ["vc"], "e2eDomains": ["vc"] },
+    { "prefix": "skills/lark-vc-agent/", "labelDomains": ["vc"], "e2eDomains": ["vc"] },
     { "prefix": "skills/lark-doc/", "labelDomains": ["ccm"], "e2eDomains": ["docs"] },
     { "prefix": "skills/lark-wiki/", "labelDomains": ["ccm"], "e2eDomains": ["wiki"] },
     { "prefix": "skills/lark-drive/", "labelDomains": ["ccm"], "e2eDomains": ["drive"] },

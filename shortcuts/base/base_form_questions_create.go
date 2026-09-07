@@ -26,11 +26,11 @@ var BaseFormQuestionsCreate = common.Shortcut{
 		{Name: "base-token", Desc: "Base token (base_token)", Required: true},
 		{Name: "table-id", Desc: "table ID", Required: true},
 		{Name: "form-id", Desc: "form ID", Required: true},
-		{Name: "questions", Desc: `questions JSON array, max 10 items. Each item requires "title"(field title) and "type"(text/number/select/datetime/user/attachment/location). Optional fields: "description"(plain text or markdown link like [text](https://example.com)),"required","option_display_mode"(0=dropdown/1=vertical/2=horizontal,select only),"multiple"(bool,select/user),"options"([{"name":"opt","hue":"Blue"}],select only),"style"({"type":"plain/phone/url/email/barcode/rating","precision":2,"format":"yyyy/MM/dd","icon":"star","min":1,"max":5}),"visible_rule"(display condition; same shape as view filter {"logic":"and","conditions":[["前序题目","==","是"]]}, field references another question's title/id, empty/absent = always shown). E.g. '[{"type":"text","title":"Your name","required":true}]'`, Required: true},
+		{Name: "questions", Desc: `questions JSON array, max 10 items. Supports two shapes: create a new field question with "title"(field title) and "type"(text/number/select/datetime/user/attachment/location), or add an existing field as a question with "use_existing_field":true and "field_id"(field ID/name). Optional form fields: "description"(plain text or markdown link like [text](https://example.com)),"required","option_display_mode"(0=dropdown/1=vertical/2=horizontal,select only),"visible_rule"(display condition; same shape as view filter {"logic":"and","conditions":[["前序题目","==","是"]]}, field references another question's title/id, empty/absent = always shown). New field questions also support "multiple","options","style". E.g. '[{"type":"text","title":"Your name","required":true}]' or '[{"use_existing_field":true,"field_id":"fldEmail","title":"Email"}]'`, Required: true},
 	},
 	Tips: []string{
 		"If the form may already contain questions and has not been checked, run +form-questions-list for the same --base-token, --table-id, and --form-id. A verified empty form can create directly.",
-		"Each new question creates a field in the form's table; question IDs are field IDs.",
+		"New field questions create fields in the form's table; question IDs are field IDs. Use use_existing_field=true with field_id to add an existing field without creating another field.",
 		"Unless the user explicitly requests a separate same-title question, update an existing title with +form-questions-update instead of creating a duplicate.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -99,6 +99,13 @@ func parseFormQuestionsCreate(raw string) ([]interface{}, error) {
 		item, ok := question.(map[string]interface{})
 		if !ok {
 			return nil, baseValidationErrorf("--questions item %d must be an object", i+1)
+		}
+		if useExistingField, _ := item["use_existing_field"].(bool); useExistingField {
+			fieldID, ok := item["field_id"].(string)
+			if !ok || strings.TrimSpace(fieldID) == "" {
+				return nil, baseValidationErrorf("--questions item %d with use_existing_field must include a non-empty string \"field_id\"", i+1)
+			}
+			continue
 		}
 		title, ok := item["title"].(string)
 		if !ok || strings.TrimSpace(title) == "" {

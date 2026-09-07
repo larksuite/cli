@@ -115,6 +115,33 @@ func TestDryRunAPI_MarshalJSON(t *testing.T) {
 	}
 }
 
+func TestDryRunAPI_FileIntentIsVisibleInJSONAndPrettyOutput(t *testing.T) {
+	dr := NewDryRunAPI().
+		GET("/open-apis/drive/v1/files/file_1/download").
+		File(DryRunFileIntent{Name: "reports/file.bin", IfExists: "fail", Content: "OpenAPI response body"})
+
+	data, err := json.Marshal(dr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	files, ok := decoded["files"].([]any)
+	if !ok || len(files) != 1 {
+		t.Fatalf("files = %#v", decoded["files"])
+	}
+	file, ok := files[0].(map[string]any)
+	if !ok || file["name"] != "reports/file.bin" || file["if_exists"] != "fail" || file["content"] != "OpenAPI response body" {
+		t.Fatalf("file intent = %#v", files[0])
+	}
+	pretty := dr.Format()
+	if !strings.Contains(pretty, "WRITE reports/file.bin (if exists: fail)") || !strings.Contains(pretty, "content: OpenAPI response body") {
+		t.Fatalf("pretty dry-run = %s", pretty)
+	}
+}
+
 func TestDryRunAPI_MultipleCalls(t *testing.T) {
 	dr := NewDryRunAPI().
 		GET("/open-apis/first").Desc("step 1").

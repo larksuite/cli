@@ -3,8 +3,6 @@
 
 > **前置路由**: [Record 查询与分析 SOP](lark-base-record-query-and-analysis-sop.md) | **认证或授权问题**: [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)
 
-本文档合并常用 fewshot 与完整 DSL 协议。只有 [Record 查询与分析 SOP](lark-base-record-query-and-analysis-sop.md) 的 Cloud 路径选定 `+data-query` 后才读取，并优先定位与当前查询有关的示例、字段或错误协议。
-
 ## 限制
 
 - **权限要求**（按文档类型分流）：
@@ -75,7 +73,7 @@ lark-cli base +data-query \
 | 参数                     | 必填 | 说明 |
 |------------------------|------|------|
 | `--base-token <token>` | 是 | Base Token（base_token） |
-| `--dsl <json>`         | 是 | LiteQuery Protocol JSON DSL 查询语句 |
+| `--dsl <json>`         | 是 | LiteQuery Protocol JSON DSL 查询语句。注意，本工具 schema 与 record/view 查询的 schema 不同，需要充分阅读本文档后，编写正确的 DSL，避免与其他场景的 DSL 混淆。 |
 
 ## 如何从链接中解析参数
 
@@ -435,7 +433,7 @@ CLI 输出标准信封 `{ok, identity, data}`（失败时为 `{ok:false, identit
 5. 若候选记录包含 link 字段，提取关联 `record_id` 后到关联表用 `+record-get` 批量读取展示字段。
 6. 最终回答展示真实业务字段；内部 `record_id` 用于连接或定位。
 
-不要把 `data-query pagination.limit` 理解为分页扫描；它只限制 Base 云端查询服务返回的聚合结果行数，不支持 offset。需要逐条原始记录时按 Cloud SOP 的 `+record-list` / `+record-search` 回查规则处理。
+不要把 `data-query pagination.limit` 理解为分页扫描；它只限制 Base 云端查询服务返回的聚合结果行数，不支持 offset。需要逐条原始记录时按 [Record 查询与分析 SOP](lark-base-record-query-and-analysis-sop.md) 的完整读取或回查路径处理。
 
 ## 坑点
 
@@ -453,6 +451,4 @@ CLI 输出标准信封 `{ok, identity, data}`（失败时为 `{ok:false, identit
 
 - [lark-base](../SKILL.md) — 多维表格全部命令
 - [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数
-- [Cloud SOP](lark-base-record-query-and-analysis-cloud-sop.md) — Cloud 路径的查询范围、下推、分页、`+record-list` / `+record-search` 回查和关系查询
-- [lark-base-cell-value.md](lark-base-cell-value.md) — CellValue 格式规范
 - [Field Schema](lark-base-field-schema.md) — 字段类型与 JSON 结构

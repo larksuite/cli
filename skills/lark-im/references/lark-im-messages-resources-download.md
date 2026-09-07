@@ -34,7 +34,7 @@ lark-cli im +messages-resources-download --message-id om_xxx --file-key img_v3_x
 | `--message-id <id>` | Yes | Message ID (`om_xxx` format) |
 | `--file-key <key>` | Yes | Resource key (`img_xxx` or `file_xxx`) |
 | `--type <type>` | Yes | Resource type: `image` or `file` |
-| `--output <path>` | No | Relative output path; absolute paths and `..` traversal are rejected. When omitted, the command uses the attachment name when available and otherwise falls back to the resource key |
+| `--output <path>` | No | Output path, relative or absolute, that must resolve inside the built-in allowed roots (the working directory, `/tmp`, `~/files`); system and credential directories stay refused. When omitted, the command uses the attachment name when available and otherwise falls back to the resource key |
 | `--as <identity>` | No | Identity type: `user` (default) or `bot` |
 | `--dry-run` | No | Print the request only, do not execute it |
 

@@ -289,8 +289,8 @@ func TestNormalize_DefaultsAndFormatOverride(t *testing.T) {
 	in := &tableSheetIn{
 		Name:    "S",
 		Columns: []string{"id", "amt", "d", "raw"},
-		Dtypes:  map[string]string{"amt": "float64", "d": "datetime64[ns]"}, // id, raw left unspecified
-		Formats: map[string]string{"amt": "#,##0.00"},                       // override float default ("")
+		Dtypes:  labelsByName(map[string]string{"amt": "float64", "d": "datetime64[ns]"}), // id, raw left unspecified
+		Formats: labelsByName(map[string]string{"amt": "#,##0.00"}),                       // override float default ("")
 		Data:    [][]interface{}{},
 	}
 	spec, err := in.normalize(0)
@@ -1946,4 +1946,65 @@ func TestTableGet_CharBudgetSpansTheWholeWorkbook(t *testing.T) {
 	if caps[1] >= caps[0] {
 		t.Errorf("second sheet asked for max_chars=%d, not reduced by what the first consumed (%d) — the budget is per-workbook, not per-sheet", caps[1], caps[0])
 	}
+}
+
+// TestPositionalColumnLabels covers the dtypes / formats array form: the same
+// pandas habit that produces `columns` and `data` also produces a positional
+// `df.dtypes.tolist()`, and rejecting it cost a full retry on payloads that
+// were otherwise correct (08-18..24 eval, the largest --sheets decode failure).
+// Accepting it is only unambiguous when the array lines up 1:1 with columns.
+func TestPositionalColumnLabels(t *testing.T) {
+	t.Parallel()
+
+	t.Run("positional dtypes and formats zip onto columns", func(t *testing.T) {
+		t.Parallel()
+		p, err := parseTablePutPayload(newMapFlagViewForCommand("+table-put", map[string]interface{}{
+			"sheets": `{"sheets":[{"name":"S","columns":["id","amt"],"data":[["001",1.5]],` +
+				`"dtypes":["object","float64"],"formats":[null,"#,##0.00"]}]}`,
+		}))
+		if err != nil {
+			t.Fatalf("positional labels rejected: %v", err)
+		}
+		want := []tableColumnSpec{
+			{Name: "id", Type: "string", Format: "@"},         // object → text, leading zero survives
+			{Name: "amt", Type: "number", Format: "#,##0.00"}, // float64 + its positional format
+		}
+		for i, w := range want {
+			if got := p.Sheets[0].Columns[i]; got != w {
+				t.Errorf("columns[%d] = %+v, want %+v", i, got, w)
+			}
+		}
+	})
+
+	t.Run("a mismatched length is rejected, not guessed", func(t *testing.T) {
+		t.Parallel()
+		_, err := parseTablePutPayload(newMapFlagViewForCommand("+table-put", map[string]interface{}{
+			"sheets": `{"sheets":[{"name":"S","columns":["id","amt"],"data":[["001",1.5]],"dtypes":["object"]}]}`,
+		}))
+		ve := requireValidation(t, err, "positional array of 1 entries but the sheet has 2 columns")
+		if !strings.Contains(ve.Hint, "line up 1:1") {
+			t.Errorf("hint should explain the alignment rule, got %q", ve.Hint)
+		}
+	})
+
+	t.Run("the map form is unchanged", func(t *testing.T) {
+		t.Parallel()
+		p, err := parseTablePutPayload(newMapFlagViewForCommand("+table-put", map[string]interface{}{
+			"sheets": `{"sheets":[{"name":"S","columns":["id","amt"],"data":[["001",1.5]],"dtypes":{"amt":"float64"}}]}`,
+		}))
+		if err != nil {
+			t.Fatalf("map form rejected: %v", err)
+		}
+		if got := p.Sheets[0].Columns[1].Type; got != "number" {
+			t.Errorf("columns[1].Type = %q, want number", got)
+		}
+	})
+
+	t.Run("an unknown key in the map form still errors", func(t *testing.T) {
+		t.Parallel()
+		_, err := parseTablePutPayload(newMapFlagViewForCommand("+table-put", map[string]interface{}{
+			"sheets": `{"sheets":[{"name":"S","columns":["id"],"data":[["001"]],"dtypes":{"nope":"float64"}}]}`,
+		}))
+		requireValidation(t, err, `dtypes references unknown column "nope"`)
+	})
 }

@@ -13,9 +13,8 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// Shared helpers for the whole-page slides commands. They lived in
-// slides_replace_pages.go, which is now deprecated in favour of +update-slide
-// but still registered; +add-slide and +delete-slide still use them.
+// Shared helpers for the whole-page slides commands: used by +add-slide,
+// +delete-slide, +replace-slide, and +replace-pages.
 
 // validateCompleteSlideXML checks that content is exactly one complete <slide>
 // document: a single <slide> root, nothing but whitespace outside it, and every

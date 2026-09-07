@@ -20,6 +20,7 @@ import (
 	"github.com/larksuite/cli/cmd/schema"
 	"github.com/larksuite/cli/errs"
 	internalauth "github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/deprecation"
@@ -609,6 +610,12 @@ func TestApplyNeedAuthorizationHint_ShortcutUsesDeclaredScopesWhenNoUAT(t *testi
 	shortcutCmd := &cobra.Command{Use: "+create"}
 	root.AddCommand(serviceCmd)
 	serviceCmd.AddCommand(shortcutCmd)
+	cmdmeta.SetDeclaredScopes(shortcutCmd, map[string][]string{"user": {
+		"docx:document:create",
+		"docs:document.media:upload",
+		"docx:document:write_only",
+		"docx:document:readonly",
+	}})
 	f.CurrentCommand = shortcutCmd
 
 	authErr := newAuthErrorWithNeedAuthMarker()
@@ -644,6 +651,10 @@ func TestApplyNeedAuthorizationHint_ShortcutIncludesConditionalScopes(t *testing
 	shortcutCmd := &cobra.Command{Use: "+status"}
 	root.AddCommand(serviceCmd)
 	serviceCmd.AddCommand(shortcutCmd)
+	cmdmeta.SetDeclaredScopes(shortcutCmd, map[string][]string{"user": {
+		"drive:drive.metadata:readonly",
+		"drive:file:download",
+	}})
 	f.CurrentCommand = shortcutCmd
 
 	authErr := newAuthErrorWithNeedAuthMarker()
@@ -680,6 +691,12 @@ func TestApplyNeedAuthorizationHint_AppendsExistingHint(t *testing.T) {
 	shortcutCmd := &cobra.Command{Use: "+create"}
 	root.AddCommand(serviceCmd)
 	serviceCmd.AddCommand(shortcutCmd)
+	cmdmeta.SetDeclaredScopes(shortcutCmd, map[string][]string{"user": {
+		"docx:document:create",
+		"docs:document.media:upload",
+		"docx:document:write_only",
+		"docx:document:readonly",
+	}})
 	f.CurrentCommand = shortcutCmd
 
 	authErr := newAuthErrorWithNeedAuthMarker()

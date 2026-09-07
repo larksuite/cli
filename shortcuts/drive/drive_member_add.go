@@ -492,9 +492,6 @@ func buildDriveMemberAddDryRun(spec driveMemberAddSpec) *common.DryRunAPI {
 
 // executeDriveMemberAddSingle calls the single-member create API.
 func executeDriveMemberAddSingle(runtime *common.RuntimeContext, spec driveMemberAddSpec) error {
-	fmt.Fprintf(runtime.IO().ErrOut, "Adding Drive member %s (type=%s, perm=%s) to %s %s...\n",
-		common.MaskToken(spec.MemberIDs[0]), spec.MemberType, spec.Perm, spec.ResourceType, common.MaskToken(spec.Token))
-
 	body := buildMemberBody(spec.MemberIDs[0], spec.MemberType, spec.MemberKind, spec.Perm, spec.PermType)
 	data, err := runtime.CallAPITyped(
 		"POST",
@@ -507,7 +504,6 @@ func executeDriveMemberAddSingle(runtime *common.RuntimeContext, spec driveMembe
 	}
 
 	out := driveMemberAddOutput(spec, spec.MemberIDs[0], common.GetMap(data, "member"))
-	fmt.Fprintf(runtime.IO().ErrOut, "Added Drive member %s\n", common.MaskToken(common.GetString(out, "member_id")))
 	runtime.Out(out, nil)
 	return nil
 }
@@ -517,9 +513,6 @@ func executeDriveMemberAddSingle(runtime *common.RuntimeContext, spec driveMembe
 // member_id, regardless of response array order.
 func executeDriveMemberAddBatch(runtime *common.RuntimeContext, spec driveMemberAddSpec) error {
 	members := buildDriveMemberAddMemberBodies(spec)
-
-	fmt.Fprintf(runtime.IO().ErrOut, "Adding %d Drive members (type=%s, perm=%s) to %s %s...\n",
-		len(spec.MemberIDs), spec.MemberType, spec.Perm, spec.ResourceType, common.MaskToken(spec.Token))
 
 	data, err := runtime.CallAPITyped(
 		"POST",
@@ -536,7 +529,6 @@ func executeDriveMemberAddBatch(runtime *common.RuntimeContext, spec driveMember
 		return runtime.OutPartialFailure(result, nil)
 	}
 
-	fmt.Fprintf(runtime.IO().ErrOut, "Added %d Drive member(s)\n", result["succeeded_count"])
 	runtime.Out(result, nil)
 	return nil
 }

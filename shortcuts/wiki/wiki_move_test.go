@@ -665,8 +665,8 @@ func TestRunWikiDocsToWikiMoveAsyncReady(t *testing.T) {
 	if out["wiki_token"] != "wik_done" || out["title"] != "Roadmap" || out["status_msg"] != "success" {
 		t.Fatalf("async-ready output missing flattened fields: %#v", out)
 	}
-	if !strings.Contains(stderr.String(), "Docs-to-wiki move is async") || !strings.Contains(stderr.String(), "completed successfully") {
-		t.Fatalf("stderr = %q, want async progress logs", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no async progress logs", stderr.String())
 	}
 }
 
@@ -695,8 +695,8 @@ func TestRunWikiDocsToWikiMoveAsyncTimeoutReturnsNextCommand(t *testing.T) {
 	if out["status_msg"] != "processing" {
 		t.Fatalf("status_msg = %#v, want processing", out["status_msg"])
 	}
-	if !strings.Contains(stderr.String(), "Continue with") {
-		t.Fatalf("stderr = %q, want continuation hint", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want continuation in structured output only", stderr.String())
 	}
 }
 
@@ -872,8 +872,8 @@ func TestPollWikiMoveTaskWrapsRepeatedPollFailuresWithHint(t *testing.T) {
 	if !strings.Contains(p.Hint, "retry original") || !strings.Contains(p.Hint, wikiMoveTaskResultCommand("task_123", core.AsUser)) {
 		t.Fatalf("hint = %q, want original hint and resume command", p.Hint)
 	}
-	if !strings.Contains(stderr.String(), "Wiki move status attempt 1/1 failed") {
-		t.Fatalf("stderr = %q, want poll failure log", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want poll failure only in the typed error", stderr.String())
 	}
 }
 

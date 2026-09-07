@@ -78,12 +78,13 @@ var ImMessagesMGet = common.Shortcut{
 		// also pre-resolves every sub-item's sender open_id in one batched
 		// contact API call.
 		mergePrefetch := convertlib.PrefetchMergeForwardSubItems(runtime, rawItems, nameCache)
+		folderPrefetch := convertlib.PrefetchFolderChildren(runtime, rawItems)
 
 		downloadResources := runtime.Bool("download-resources")
 		messages := make([]map[string]interface{}, 0, len(rawItems))
 		for _, item := range rawItems {
 			m, _ := item.(map[string]interface{})
-			messages = append(messages, convertlib.FormatMessageItemWithMergePrefetchOpts(m, runtime, nameCache, mergePrefetch, downloadResources))
+			messages = append(messages, convertlib.FormatMessageItemWithFolderPrefetchOpts(m, runtime, nameCache, mergePrefetch, folderPrefetch, downloadResources))
 		}
 
 		convertlib.ResolveSenderNames(runtime, messages, nameCache)

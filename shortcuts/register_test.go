@@ -5,7 +5,6 @@ package shortcuts
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -17,8 +16,6 @@ import (
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/deprecation"
-	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
 
@@ -424,45 +421,33 @@ func TestGenerateShortcutsJSON(t *testing.T) {
 	t.Logf("wrote %d bytes to %s", len(data), output)
 }
 
-// applySheetsCompatGroups must split the sheets service into a current group
-// (refactored "+"-shortcuts) and a deprecated group (backward-compat aliases),
-// append a "(→ +new)" migration pointer to each alias, and leave non-"+"
-// subcommands (OpenAPI metaapi, help/completion) ungrouped so cobra files them
-// under "Additional Commands".
-func TestApplySheetsCompatGroups(t *testing.T) {
+// applySheetsCommandGroups must tag the "+"-shortcuts into the sheets group and
+// leave non-"+" subcommands (OpenAPI metaapi, help/completion) ungrouped so
+// cobra files them under "Additional Commands".
+func TestApplySheetsCommandGroups(t *testing.T) {
 	svc := &cobra.Command{Use: "sheets"}
 	newCmd := &cobra.Command{Use: "+cells-get", Short: "Read ranges"}
-	aliasCmd := &cobra.Command{Use: "+read", Short: "Read spreadsheet cell values"}
 	metaCmd := &cobra.Command{Use: "spreadsheets", Short: "spreadsheets operations"}
-	svc.AddCommand(newCmd, aliasCmd, metaCmd)
+	svc.AddCommand(newCmd, metaCmd)
 
-	applySheetsCompatGroups(svc)
+	applySheetsCommandGroups(svc)
 
 	if !svc.ContainsGroup(sheetsCurrentGroupID) {
 		t.Errorf("current group %q not registered", sheetsCurrentGroupID)
 	}
-	if !svc.ContainsGroup(sheetsDeprecatedGroupID) {
-		t.Errorf("deprecated group %q not registered", sheetsDeprecatedGroupID)
-	}
 	if newCmd.GroupID != sheetsCurrentGroupID {
 		t.Errorf("+cells-get GroupID = %q, want %q", newCmd.GroupID, sheetsCurrentGroupID)
-	}
-	if aliasCmd.GroupID != sheetsDeprecatedGroupID {
-		t.Errorf("+read GroupID = %q, want %q", aliasCmd.GroupID, sheetsDeprecatedGroupID)
-	}
-	if !strings.Contains(aliasCmd.Short, "(→ +cells-get)") {
-		t.Errorf("+read Short missing migration pointer, got %q", aliasCmd.Short)
 	}
 	if metaCmd.GroupID != "" {
 		t.Errorf("metaapi spreadsheets should stay ungrouped, got GroupID %q", metaCmd.GroupID)
 	}
 }
 
-// End-to-end: `sheets --help` must list refactored shortcuts under Available
-// Commands, but no longer advertise the deprecated pre-refactor aliases or the
-// deprecated group heading (sheetsUsageTemplate skips that group). The aliases
-// stay registered and executable — hidden from the parent listing, not removed.
-func TestRegisterShortcutsSheetsHelpHidesDeprecatedAliases(t *testing.T) {
+// The pre-refactor sheets aliases have been removed outright: `sheets --help`
+// must list the refactored shortcuts and neither advertise nor register any of
+// the old names, so a stale skill gets the ordinary unknown-subcommand error
+// instead of silently reaching a command that no longer exists.
+func TestRegisterShortcutsSheetsDropsRemovedAliases(t *testing.T) {
 	program := &cobra.Command{Use: "root"}
 	RegisterShortcuts(program, newRegisterTestFactory(t))
 
@@ -490,93 +475,16 @@ func TestRegisterShortcutsSheetsHelpHidesDeprecatedAliases(t *testing.T) {
 		"+write",
 	} {
 		if strings.Contains(got, unwanted) {
-			t.Fatalf("sheets help still shows deprecated content %q:\n%s", unwanted, got)
+			t.Fatalf("sheets help still shows removed content %q:\n%s", unwanted, got)
 		}
 	}
 
-	if alias, _, ferr := sheetsCmd.Find([]string{"+read"}); ferr != nil || alias == nil {
-		t.Fatalf("deprecated alias +read should stay registered, got err=%v cmd=%v", ferr, alias)
-	}
-}
-
-// wrapSheetsBackwardDeprecation must decorate each alias's Execute so that
-// invoking it records a process-level deprecation notice (reusing
-// sheetsAliasReplacement for the migration target) while still calling the
-// original Execute. cmd/root.go reads that notice into the JSON "_notice".
-func TestWrapSheetsBackwardDeprecation(t *testing.T) {
-	t.Cleanup(func() { deprecation.SetPending(nil) })
-	deprecation.SetPending(nil)
-
-	called := false
-	in := []common.Shortcut{{
-		Service: "sheets",
-		Command: "+read",
-		Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-			called = true
-			return nil
-		},
-	}}
-
-	out := wrapSheetsBackwardDeprecation(in)
-	if len(out) != 1 {
-		t.Fatalf("wrapped list len = %d, want 1", len(out))
-	}
-	if deprecation.GetPending() != nil {
-		t.Fatal("notice set before wrapped Execute ran")
-	}
-
-	if err := out[0].Execute(context.Background(), nil); err != nil {
-		t.Fatalf("wrapped Execute returned error: %v", err)
-	}
-	if !called {
-		t.Fatal("original Execute was not invoked by the wrapper")
-	}
-
-	dep := deprecation.GetPending()
-	if dep == nil {
-		t.Fatal("expected a pending deprecation notice after Execute")
-	}
-	if dep.Command != "+read" {
-		t.Errorf("notice Command = %q, want +read", dep.Command)
-	}
-	if dep.Replacement != "+cells-get" {
-		t.Errorf("notice Replacement = %q, want +cells-get (from sheetsAliasReplacement)", dep.Replacement)
-	}
-	if dep.Skill != "lark-sheets" {
-		t.Errorf("notice Skill = %q, want lark-sheets", dep.Skill)
-	}
-}
-
-// The wrapper must also decorate Validate, so an out-of-date skill whose
-// pre-refactor argument shape fails validation (before Execute) still gets the
-// deprecation notice in its error envelope.
-func TestWrapSheetsBackwardDeprecationValidateHook(t *testing.T) {
-	t.Cleanup(func() { deprecation.SetPending(nil) })
-	deprecation.SetPending(nil)
-
-	validated := false
-	in := []common.Shortcut{{
-		Service: "sheets",
-		Command: "+write",
-		Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-			validated = true
-			return nil
-		},
-	}}
-
-	out := wrapSheetsBackwardDeprecation(in)
-	if out[0].Validate == nil {
-		t.Fatal("Validate hook was dropped by the wrapper")
-	}
-	if err := out[0].Validate(context.Background(), nil); err != nil {
-		t.Fatalf("wrapped Validate returned error: %v", err)
-	}
-	if !validated {
-		t.Fatal("original Validate was not invoked")
-	}
-	dep := deprecation.GetPending()
-	if dep == nil || dep.Command != "+write" || dep.Replacement != "+cells-set" {
-		t.Fatalf("Validate hook did not record expected notice: %#v", dep)
+	// Find falls back to the parent for an unknown name, so the assertion is
+	// that nothing resolves to a command actually named +read.
+	for _, removed := range []string{"+read", "+write", "+create", "+media-upload"} {
+		if cmd, _, ferr := sheetsCmd.Find([]string{removed}); ferr == nil && cmd != nil && cmd.Name() == removed {
+			t.Errorf("removed alias %q is still registered", removed)
+		}
 	}
 }
 

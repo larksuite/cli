@@ -98,8 +98,6 @@ var WikiNodeGet = common.Shortcut{
 			return err
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Fetching wiki node %s...\n", common.MaskToken(spec.Token))
-
 		data, err := runtime.CallAPITyped("GET", "/open-apis/wiki/v2/spaces/get_node", spec.RequestParams(), nil)
 		if err != nil {
 			return wikiNodeGetProblem(err)

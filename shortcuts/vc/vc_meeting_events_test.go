@@ -292,6 +292,27 @@ func magicShareStartedEvent() map[string]interface{} {
 	}
 }
 
+func magicShareDetectedEvent() map[string]interface{} {
+	event := magicShareStartedEvent()
+	item := common.GetSlice(common.GetMap(event, "payload"), "magic_share_started_items")[0].(map[string]interface{})
+	item["share_id"] = "share-1"
+	item["start_reason"] = "share_detected"
+	return event
+}
+
+func magicShareBatchEvent(startReasons ...string) map[string]interface{} {
+	items := make([]interface{}, 0, len(startReasons))
+	for _, startReason := range startReasons {
+		items = append(items, map[string]interface{}{"start_reason": startReason})
+	}
+	return map[string]interface{}{
+		"event_type": "magic_share_started",
+		"payload": map[string]interface{}{
+			"magic_share_started_items": items,
+		},
+	}
+}
+
 func documentContextChangedEvent(items []interface{}) map[string]interface{} {
 	return map[string]interface{}{
 		"event_id":   "event-document-context",
@@ -300,6 +321,72 @@ func documentContextChangedEvent(items []interface{}) map[string]interface{} {
 		"payload": map[string]interface{}{
 			"activity_event_type":            "document_context_changed",
 			"document_context_changed_items": items,
+		},
+	}
+}
+
+func countdownChangedEvent() map[string]interface{} {
+	return map[string]interface{}{
+		"event_id":   "event-countdown",
+		"event_type": "countdown_changed",
+		"event_time": "2026-08-17T08:38:40Z",
+		"payload": map[string]interface{}{
+			"activity_event_type": "countdown_changed",
+			"meeting": map[string]interface{}{
+				"id":         "7674839513696374289",
+				"topic":      "用户204901的视频会议",
+				"meeting_no": "795201611",
+				"start_time": "2026-08-17T08:25:54Z",
+			},
+			"countdown_items": []interface{}{
+				map[string]interface{}{
+					"action":                 "SET",
+					"countdown_set_time":     "1786955920442",
+					"end_time":               "1786956520442",
+					"event_time":             "1786955920465",
+					"need_play_audio_at_end": false,
+					"seq_id":                 "4",
+					"operator":               map[string]interface{}{"id": "ou_201d63482ba649f81a7c9c67bd523b40", "user_name": "用户204901", "user_role": 2, "user_type": 1},
+				},
+				map[string]interface{}{
+					"action":                 "PROLONG",
+					"countdown_set_time":     "1786955920442",
+					"end_time":               "1786956580442",
+					"event_time":             "1786955923183",
+					"need_play_audio_at_end": false,
+					"seq_id":                 "5",
+					"operator":               map[string]interface{}{"id": "ou_201d63482ba649f81a7c9c67bd523b40", "user_name": "用户204901", "user_role": 2, "user_type": 1},
+				},
+				map[string]interface{}{
+					"action":                 "END_IN_ADVANCE",
+					"end_time":               "0",
+					"event_time":             "1786955924725",
+					"need_play_audio_at_end": false,
+					"seq_id":                 "6",
+					"operator":               map[string]interface{}{"id": "ou_201d63482ba649f81a7c9c67bd523b40", "user_name": "用户204901", "user_role": 2, "user_type": 1},
+				},
+				map[string]interface{}{
+					"action":                 "CLOSE_WINDOW",
+					"end_time":               "0",
+					"event_time":             "1786955926444",
+					"need_play_audio_at_end": false,
+					"seq_id":                 "7",
+					"operator":               map[string]interface{}{"id": "ou_201d63482ba649f81a7c9c67bd523b40", "user_name": "用户204901", "user_role": 2, "user_type": 1},
+				},
+				map[string]interface{}{
+					"action":                 "ENDED",
+					"end_time":               "0",
+					"event_time":             "1786955928000",
+					"need_play_audio_at_end": false,
+					"seq_id":                 "8",
+				},
+				map[string]interface{}{
+					"action":         "REMIND",
+					"event_time":     "1786955929000",
+					"remain_minutes": "5",
+					"seq_id":         "9",
+				},
+			},
 		},
 	}
 }
@@ -993,6 +1080,41 @@ func TestMeetingEvents_ExecuteJSON_PrunesEmptySlices(t *testing.T) {
 	}
 }
 
+func TestMeetingEvents_ExecuteJSON_PreservesShareStartReason(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(meetingEventsStub([]interface{}{magicShareDetectedEvent()}, false, ""))
+	reg.Register(botInfoStub())
+
+	err := mountAndRun(t, VCMeetingEvents, []string{
+		"+meeting-events",
+		"--meeting-id", "7628568141510692381",
+		"--format", "json",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+
+	var envelope map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("unmarshal stdout: %v: %s", err, stdout.String())
+	}
+	events := common.GetSlice(common.GetMap(envelope, "data"), "events")
+	if len(events) != 1 {
+		t.Fatalf("events len = %d, want 1: %s", len(events), stdout.String())
+	}
+	event, _ := events[0].(map[string]interface{})
+	items := common.GetSlice(common.GetMap(event, "payload"), "magic_share_started_items")
+	if len(items) != 1 {
+		t.Fatalf("magic_share_started_items len = %d, want 1: %s", len(items), stdout.String())
+	}
+	item, _ := items[0].(map[string]interface{})
+	if got := common.GetString(item, "start_reason"); got != "share_detected" {
+		t.Fatalf("start_reason = %q, want share_detected: %s", got, stdout.String())
+	}
+}
+
 func TestMeetingEvents_ExecuteJSON_PreservesReactionItems(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(meetingEventsStub([]interface{}{mixedChatAndReactionEvent()}, false, ""))
@@ -1318,6 +1440,89 @@ func TestCompactMeetingEvents_IgnoresNonMapsAndCompactsPayload(t *testing.T) {
 	payload := common.GetMap(event, "payload")
 	if _, ok := payload["empty_items"]; ok {
 		t.Fatalf("compactMeetingEvents() should prune empty payload slices: %#v", payload)
+	}
+}
+
+func TestCountdownChangedTimeline_KnownActions(t *testing.T) {
+	event := countdownChangedEvent()
+	got := meetingEventsEventFromPayload(event, meetingEventsIdentity{})
+	if len(got.Actors) != 4 {
+		t.Fatalf("actors = %#v, want the four operator-bearing countdown items", got.Actors)
+	}
+	if got.Actors[0].ID != "ou_201d63482ba649f81a7c9c67bd523b40" || got.Actors[0].Name != "用户204901" {
+		t.Fatalf("first actor = %#v", got.Actors[0])
+	}
+
+	var sequence int
+	entries := buildTimelineEntriesForEvent(event, &sequence)
+	if len(entries) != 6 {
+		t.Fatalf("timeline entries = %d, want 6: %#v", len(entries), entries)
+	}
+	want := []struct {
+		subject     string
+		description string
+		details     []string
+	}{
+		{
+			subject:     "用户204901(ou_201d63482ba649f81a7c9c67bd523b40)",
+			description: "设置了倒计时",
+			details:     []string{"时长：10分钟", "结束时间：2026-08-17 16:48:40", "seq_id：4"},
+		},
+		{
+			subject:     "用户204901(ou_201d63482ba649f81a7c9c67bd523b40)",
+			description: "延长了倒计时",
+			details:     []string{"时长：11分钟", "结束时间：2026-08-17 16:49:40", "seq_id：5"},
+		},
+		{
+			subject:     "用户204901(ou_201d63482ba649f81a7c9c67bd523b40)",
+			description: "提前结束了倒计时",
+			details:     []string{"seq_id：6"},
+		},
+		{
+			subject:     "用户204901(ou_201d63482ba649f81a7c9c67bd523b40)",
+			description: "关闭了倒计时窗口",
+			details:     []string{"seq_id：7"},
+		},
+		{subject: "", description: "倒计时已结束", details: []string{"seq_id：8"}},
+		{subject: "", description: "倒计时结束前提醒", details: []string{"剩余：5分钟", "seq_id：9"}},
+	}
+	for i := range want {
+		if entries[i].subject != want[i].subject || entries[i].description != want[i].description {
+			t.Fatalf("entry[%d] = %#v, want subject=%q description=%q", i, entries[i], want[i].subject, want[i].description)
+		}
+		if !entries[i].isAction {
+			t.Fatalf("entry[%d] should use action formatting", i)
+		}
+		if !reflect.DeepEqual(entries[i].details, want[i].details) {
+			t.Fatalf("entry[%d] details = %#v, want %#v", i, entries[i].details, want[i].details)
+		}
+		if !entries[i].hasWhen {
+			t.Fatalf("entry[%d] should use item event_time", i)
+		}
+	}
+}
+
+func TestCountdownChangedPrettyDoesNotUseFallbackTopicSummary(t *testing.T) {
+	timeline := buildMeetingEventTimeline([]interface{}{countdownChangedEvent()})
+	out := renderMeetingEventsPretty(timeline)
+	for _, want := range []string{
+		"会议主题：用户204901的视频会议",
+		"用户204901(ou_201d63482ba649f81a7c9c67bd523b40) 设置了倒计时",
+		"时长：10分钟",
+		"结束时间：2026-08-17 16:48:40",
+		"用户204901(ou_201d63482ba649f81a7c9c67bd523b40) 延长了倒计时",
+		"用户204901(ou_201d63482ba649f81a7c9c67bd523b40) 提前结束了倒计时",
+		"用户204901(ou_201d63482ba649f81a7c9c67bd523b40) 关闭了倒计时窗口",
+		"倒计时已结束",
+		"倒计时结束前提醒",
+		"剩余：5分钟",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("pretty output missing %q: %s", want, out)
+		}
+	}
+	if strings.Contains(out, "countdown_changed: 用户204901的视频会议") {
+		t.Fatalf("pretty output should not use fallback topic summary: %s", out)
 	}
 }
 
@@ -1747,7 +1952,7 @@ func TestVCShortcuts_RegistersMeetingAgentCommands(t *testing.T) {
 	for _, shortcut := range got {
 		commands = append(commands, shortcut.Command)
 	}
-	want := []string{"+search", "+notes", "+recording", "+detail", "+meeting-join", "+meeting-leave", "+meeting-list-active", "+meeting-events", "+meeting-message-send"}
+	want := []string{"+search", "+notes", "+recording", "+detail", "+meeting-join", "+meeting-invite", "+meeting-end", "+meeting-leave", "+meeting-list-active", "+meeting-events", "+meeting-message-send", "+meeting-screenshot", "+meeting-countdown"}
 	if !reflect.DeepEqual(commands, want) {
 		t.Fatalf("shortcut commands = %#v, want %#v", commands, want)
 	}
@@ -1864,6 +2069,21 @@ func TestMeetingEventSummary(t *testing.T) {
 		want  string
 	}{
 		{
+			name:  "current share detected",
+			event: magicShareDetectedEvent(),
+			want:  "share share-1 active: 共享文档",
+		},
+		{
+			name:  "multiple current shares detected",
+			event: magicShareBatchEvent("share_detected", "share_detected"),
+			want:  "2 active shares",
+		},
+		{
+			name:  "mixed started and detected shares",
+			event: magicShareBatchEvent("share_started", "share_detected"),
+			want:  "2 share events (1 started, 1 active)",
+		},
+		{
 			name: "participant joined count",
 			event: map[string]interface{}{
 				"event_type": "participant_joined",
@@ -1896,6 +2116,11 @@ func TestMeetingEventSummary(t *testing.T) {
 			},
 			want: "mystery_event",
 		},
+		{
+			name:  "countdown changed",
+			event: countdownChangedEvent(),
+			want:  "6 countdown changes: set, prolonged, ended in advance, window closed, ended, reminder",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1903,6 +2128,23 @@ func TestMeetingEventSummary(t *testing.T) {
 				t.Fatalf("meetingEventSummary() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestMagicShareDetectedEntries(t *testing.T) {
+	payload := common.GetMap(magicShareDetectedEvent(), "payload")
+	sequence := 0
+	entries := magicShareStartedEntries(payload, time.Time{}, false, &sequence)
+	if len(entries) != 1 {
+		t.Fatalf("entries len = %d, want 1", len(entries))
+	}
+	if got, want := entries[0].description, "正在共享「共享文档」"; got != want {
+		t.Fatalf("description = %q, want %q", got, want)
+	}
+
+	got := renderMeetingEventsPretty(meetingTimeline{entries: entries})
+	if want := "Bob(u2) 正在共享「共享文档」"; !strings.Contains(got, want) {
+		t.Fatalf("pretty output missing %q: %s", want, got)
 	}
 }
 

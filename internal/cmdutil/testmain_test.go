@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/larksuite/cli/internal/envvars"
 )
 
 func TestMain(m *testing.M) {
@@ -22,6 +24,9 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	if err := os.Setenv("LARKSUITE_CLI_REMOTE_META", "off"); err != nil {
+		panic(err)
+	}
+	if err := os.Setenv(envvars.CliTenantAccessTokenSource, ""); err != nil {
 		panic(err)
 	}
 	code := m.Run()

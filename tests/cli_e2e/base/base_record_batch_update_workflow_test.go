@@ -49,6 +49,22 @@ func TestBaseRecordBatchUpdatePerRecordWorkflow(t *testing.T) {
 	require.NotEmpty(t, firstRecordID, "stdout:\n%s", createResult.Stdout)
 	require.NotEmpty(t, secondRecordID, "stdout:\n%s", createResult.Stdout)
 
+	shareResult, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"base", "+record-share-link-create",
+			"--base-token", baseToken,
+			"--table-id", tableID,
+			"--record-id", firstRecordID,
+			"--record-ids", secondRecordID,
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	shareResult.AssertExitCode(t, 0)
+	shareResult.AssertStdoutStatus(t, true)
+	require.NotEmpty(t, gjson.Get(shareResult.Stdout, "data.record_share_links."+firstRecordID).String(), shareResult.Stdout)
+	require.NotEmpty(t, gjson.Get(shareResult.Stdout, "data.record_share_links."+secondRecordID).String(), shareResult.Stdout)
+
 	updateBody, err := json.Marshal(map[string]map[string]map[string]any{
 		"update_records": {
 			firstRecordID:  {"Status": []string{"Done"}},

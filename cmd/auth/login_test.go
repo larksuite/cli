@@ -11,13 +11,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/extension/command"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/commandhost"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
@@ -32,6 +36,21 @@ type failWriter struct{}
 
 func (failWriter) Write([]byte) (int, error) {
 	return 0, errors.New("write failed")
+}
+
+// builtinResolver resolves domains from the built-in shortcut set. Tests that
+// are not specifically about external command sets assert against exactly what
+// a distribution built without cmd.WithCommandSets sees.
+func builtinResolver() domainResolver {
+	return newDomainResolver(shortcuts.AllShortcuts())
+}
+
+type businessArgs struct {
+	ChatID string `flag:"chat-id" schema:"required;minLength=1" doc:"chat identifier"`
+}
+
+type businessData struct {
+	ChatID string `json:"chat_id" schema:"required" doc:"chat identifier"`
 }
 
 func TestSuggestDomain_PrefixMatch(t *testing.T) {
@@ -136,23 +155,25 @@ func TestShortcutSupportsIdentity_BotOnly(t *testing.T) {
 }
 
 func TestCompleteDomain(t *testing.T) {
-	projects := registry.ListFromMetaProjects()
-	if len(projects) == 0 {
+	want := builtinResolver().sorted("")
+	if len(want) == 0 {
 		t.Skip("no from_meta data available")
 	}
 
 	// Complete from empty prefix
-	completions := completeDomain("")
+	completions := builtinResolver().complete("", "")
 	if len(completions) == 0 {
 		t.Fatal("expected completions for empty prefix")
 	}
-	// All completions should match from_meta projects
-	if len(completions) != len(projects) {
-		t.Errorf("expected %d completions, got %d", len(projects), len(completions))
+	if !reflect.DeepEqual(completions, want) {
+		t.Errorf("complete() = %v, want %v", completions, want)
+	}
+	if !slices.Contains(builtinResolver().complete("not", ""), "note") {
+		t.Error("complete() omitted shortcut-only note domain")
 	}
 
 	// Complete with partial prefix
-	completions = completeDomain("cal")
+	completions = builtinResolver().complete("cal", "")
 	for _, c := range completions {
 		if c != "calendar" && c[:3] != "cal" {
 			t.Errorf("unexpected completion %q for prefix 'cal'", c)
@@ -167,7 +188,7 @@ func TestCompleteDomain_CommaSeparated(t *testing.T) {
 	}
 
 	// After a comma, should complete the next segment
-	completions := completeDomain("calendar,")
+	completions := builtinResolver().complete("calendar,", "")
 	for _, c := range completions {
 		if c[:9] != "calendar," {
 			t.Errorf("expected 'calendar,' prefix, got %q", c)
@@ -176,7 +197,7 @@ func TestCompleteDomain_CommaSeparated(t *testing.T) {
 }
 
 func TestAllKnownDomains(t *testing.T) {
-	domains := allKnownDomains("")
+	domains := builtinResolver().allKnown("")
 	if len(domains) == 0 {
 		t.Fatal("expected non-empty known domains")
 	}
@@ -190,7 +211,7 @@ func TestAllKnownDomains(t *testing.T) {
 }
 
 func TestSortedKnownDomains(t *testing.T) {
-	sorted := sortedKnownDomains("")
+	sorted := builtinResolver().sorted("")
 	if len(sorted) == 0 {
 		t.Fatal("expected non-empty sorted domains")
 	}
@@ -200,14 +221,20 @@ func TestSortedKnownDomains(t *testing.T) {
 	}
 
 	// Should match allKnownDomains
-	known := allKnownDomains("")
+	known := builtinResolver().allKnown("")
 	if len(sorted) != len(known) {
 		t.Errorf("sorted (%d) and known (%d) length mismatch", len(sorted), len(known))
 	}
 }
 
-func TestGetShortcutOnlyDomainNames_HaveDescriptions(t *testing.T) {
-	for _, name := range getShortcutOnlyDomainNames() {
+func TestShortcutDomainsHaveDescriptions(t *testing.T) {
+	seen := make(map[string]struct{})
+	for _, shortcut := range shortcuts.AllShortcuts() {
+		name := shortcut.Service
+		if _, duplicate := seen[name]; duplicate {
+			continue
+		}
+		seen[name] = struct{}{}
 		zhDesc := registry.GetServiceDescription(name, "zh")
 		enDesc := registry.GetServiceDescription(name, "en")
 		if zhDesc == "" {
@@ -219,10 +246,13 @@ func TestGetShortcutOnlyDomainNames_HaveDescriptions(t *testing.T) {
 	}
 }
 
-func TestGetShortcutOnlyDomainNames_IncludesNote(t *testing.T) {
-	if !slices.Contains(getShortcutOnlyDomainNames(), "note") {
-		t.Fatal("shortcut-only domains must include note so auth login can select vc:note:read")
+func TestGetDomainMetadataIncludesNote(t *testing.T) {
+	for _, domain := range builtinResolver().metadata("zh", "") {
+		if domain.Name == "note" {
+			return
+		}
 	}
+	t.Fatal("domain metadata must include note so auth login can select vc:note:read")
 }
 
 func TestCollectScopesForDomains(t *testing.T) {
@@ -231,7 +261,7 @@ func TestCollectScopesForDomains(t *testing.T) {
 		t.Skip("no from_meta data available")
 	}
 
-	scopes := collectScopesForDomains([]string{"calendar"}, "user", "")
+	scopes := builtinResolver().scopesFor([]string{"calendar"}, "user", "")
 	if len(scopes) == 0 {
 		t.Fatal("expected non-empty scopes for calendar domain")
 	}
@@ -258,14 +288,14 @@ func TestCollectScopesForDomains(t *testing.T) {
 }
 
 func TestCollectScopesForDomains_NonexistentDomain(t *testing.T) {
-	scopes := collectScopesForDomains([]string{"nonexistent_domain_xyz"}, "user", "")
+	scopes := builtinResolver().scopesFor([]string{"nonexistent_domain_xyz"}, "user", "")
 	if len(scopes) != 0 {
 		t.Errorf("expected empty scopes for nonexistent domain, got %d", len(scopes))
 	}
 }
 
 func TestGetDomainMetadata_IncludesFromMeta(t *testing.T) {
-	domains := getDomainMetadata("zh")
+	domains := builtinResolver().metadata("zh", "")
 	nameSet := make(map[string]bool)
 	for _, dm := range domains {
 		nameSet[dm.Name] = true
@@ -279,22 +309,180 @@ func TestGetDomainMetadata_IncludesFromMeta(t *testing.T) {
 	}
 }
 
-func TestGetDomainMetadata_IncludesShortcutOnlyDomains(t *testing.T) {
-	domains := getDomainMetadata("zh")
+func TestGetDomainMetadataIncludesAuthorizableShortcutDomains(t *testing.T) {
+	domains := builtinResolver().metadata("zh", "")
 	nameSet := make(map[string]bool)
 	for _, dm := range domains {
 		nameSet[dm.Name] = true
 	}
 
-	for _, name := range getShortcutOnlyDomainNames() {
-		if !nameSet[name] {
-			t.Errorf("shortcut-only domain %q missing from getDomainMetadata", name)
+	for _, shortcut := range shortcuts.AllShortcuts() {
+		if registry.HasAuthDomain(shortcut.Service) || !shortcutHasDeclaredScopes(shortcut) {
+			continue
+		}
+		if !nameSet[shortcut.Service] {
+			t.Errorf("authorizable shortcut domain %q missing from getDomainMetadata", shortcut.Service)
 		}
 	}
 }
 
+func TestExternalShortcutScopesParticipateInAuthDomainResolution(t *testing.T) {
+	registered := []common.Shortcut{{
+		Service: "im", Command: "+business-auth", AuthTypes: []string{"user"},
+		UserScopes: []string{"im:business.scope:read"},
+	}}
+	domains := newDomainResolver(registered).allKnown("")
+	if !domains["im"] {
+		t.Fatal("external shortcut domain is missing from auth domains")
+	}
+	scopes := newDomainResolver(registered).scopesFor([]string{"im"}, "user", "")
+	if !slices.Contains(scopes, "im:business.scope:read") {
+		t.Fatalf("external shortcut scope is missing: %v", scopes)
+	}
+}
+
+// A distribution's business command must have its declared scopes reach
+// auth login --domain. This walks the chain a real wrapper walks --
+// command.Define, commandhost.CompileSets, shortcuts.AllShortcutsWithExternal --
+// so dropping the snapshot anywhere along it fails here instead of shipping a
+// login that cannot request the distribution's own scopes. The assertion goes
+// through the login command's observable behaviour rather than an internal
+// field, because the snapshot is deliberately not part of LoginOptions.
+func TestCompiledBusinessScopesReachLoginDomainResolution(t *testing.T) {
+	const businessScope = "im:business.compiled:read"
+
+	declaration := command.Define(command.Definition[businessArgs, businessData]{
+		Metadata: command.CommandMetadata{
+			Service: "im", Command: "+business-compiled", Description: "Business command", Risk: command.RiskRead,
+			Authorization: command.AuthorizationDefinition{Identities: map[command.Identity]command.IdentityAuthorization{
+				command.IdentityUser: {RequiredScopes: []string{businessScope}},
+			}},
+		},
+		Hooks: command.Hooks[businessArgs, businessData]{
+			Execute: func(_ context.Context, _ command.CommandContext, args *businessArgs) (command.Result[businessData], error) {
+				return command.Success(businessData{ChatID: args.ChatID}), nil
+			},
+		},
+	})
+	compiled, err := commandhost.CompileSets([]command.Set{{
+		Domain:   command.ExtendDomain(command.DomainIm),
+		Commands: []command.Command{declaration},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registered, err := shortcuts.AllShortcutsWithExternal(compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Guard against a false positive: the scope must be absent from the
+	// built-in set, or this test would pass without the snapshot arriving.
+	if builtin := builtinResolver().scopesFor([]string{"im"}, "user", ""); slices.Contains(builtin, businessScope) {
+		t.Fatalf("%q is a built-in im scope, so it cannot prove the snapshot arrived", businessScope)
+	}
+	if scopes := newDomainResolver(registered).scopesFor([]string{"im"}, "user", ""); !slices.Contains(scopes, businessScope) {
+		t.Fatalf("compiled business scope %q never reached domain resolution: %v", businessScope, scopes)
+	}
+}
+
+// One process can build several command trees, and each tree's login must
+// resolve against the snapshot it was handed. A distribution's business scopes
+// belong to that distribution alone, so a later build without command sets
+// cannot inherit them -- the reason the snapshot is a constructor argument
+// rather than package-level state.
+func TestEachLoginBuildResolvesAgainstItsOwnSnapshot(t *testing.T) {
+	const businessScope = "im:business.isolated:read"
+	withBusiness := append(shortcuts.AllShortcuts(), common.Shortcut{
+		Service: "im", Command: "+business-isolated", AuthTypes: []string{"user"},
+		UserScopes: []string{businessScope},
+	})
+
+	first := newDomainResolver(withBusiness)
+	second := newDomainResolver(shortcuts.AllShortcuts())
+
+	if scopes := first.scopesFor([]string{"im"}, "user", core.BrandFeishu); !slices.Contains(scopes, businessScope) {
+		t.Fatalf("first build lost its own business scope %q: %v", businessScope, scopes)
+	}
+	if scopes := second.scopesFor([]string{"im"}, "user", core.BrandFeishu); slices.Contains(scopes, businessScope) {
+		t.Fatalf("second build inherited the first build's business scope %q", businessScope)
+	}
+}
+
+// The login command must resolve --domain against the snapshot it was
+// constructed with. The help text is the observable projection of that snapshot,
+// so a business command's domain has to survive into it.
+func TestLoginHelpListsDomainsFromTheGivenSnapshot(t *testing.T) {
+	registered := append(shortcuts.AllShortcuts(), common.Shortcut{
+		Service: "im", Command: "+business-help", AuthTypes: []string{"user"},
+		UserScopes: []string{"im:business.help:read"},
+	})
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	usage := newCmdAuthLogin(f, nil, registered).Flag("domain").Usage
+	for _, want := range newDomainResolver(registered).sorted(core.BrandFeishu) {
+		if !strings.Contains(usage, want) {
+			t.Fatalf("--domain usage omits %q resolved from the snapshot:\n%s", want, usage)
+		}
+	}
+}
+
+// The interactive selector shows exactly allKnownDomains minus scope-less
+// shortcut-only domains (e.g. event). --domain and the help list keep
+// accepting those, matching main: selecting a scope-less domain fails later
+// with "no matching scopes found" instead of "unknown domain".
+func TestGetDomainMetadataMatchesAllKnownDomainsMinusScopeless(t *testing.T) {
+	metadata := builtinResolver().metadata("zh", "")
+	known := builtinResolver().allKnown("")
+	scopeless := builtinResolver().scopeless()
+	if len(scopeless) == 0 {
+		t.Fatal("expected at least one scope-less domain (event) to exercise the filter")
+	}
+	if len(metadata) != len(known)-len(scopeless) {
+		t.Fatalf("domain metadata count = %d, want allKnownDomains (%d) minus scopeless (%d)",
+			len(metadata), len(known), len(scopeless))
+	}
+	for _, domain := range metadata {
+		if !known[domain.Name] {
+			t.Errorf("domain metadata contains %q outside allKnownDomains", domain.Name)
+		}
+		if scopeless[domain.Name] {
+			t.Errorf("interactive selector lists scope-less domain %q", domain.Name)
+		}
+	}
+}
+
+// A scope-less domain stays addressable via --domain (main behavior): it
+// passes domain validation and fails later on scope resolution, not with
+// "unknown domain".
+func TestScopelessDomainStaysAddressableViaDomainFlag(t *testing.T) {
+	known := builtinResolver().allKnown("")
+	if !known["event"] {
+		t.Fatal("event must remain in allKnownDomains to match main behavior")
+	}
+	if scopes := builtinResolver().scopesFor([]string{"event"}, "user", ""); len(scopes) != 0 {
+		t.Fatalf("event scopes = %v, want none", scopes)
+	}
+}
+
+func TestAuthLoginHelpMatchesKnownDomains(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	factory, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{})
+	login := NewCmdAuthLogin(factory, nil)
+	domainFlag := login.Flags().Lookup("domain")
+	if domainFlag == nil {
+		t.Fatal("auth login --domain flag is missing")
+	}
+	names := builtinResolver().sorted("")
+	want := "available: " + strings.Join(names, ", ") + ", all"
+	if !strings.Contains(domainFlag.Usage, want) {
+		t.Fatalf("domain help = %q, want %q", domainFlag.Usage, want)
+	}
+}
+
 func TestGetDomainMetadata_Sorted(t *testing.T) {
-	domains := getDomainMetadata("zh")
+	domains := builtinResolver().metadata("zh", "")
 	for i := 1; i < len(domains); i++ {
 		if domains[i].Name < domains[i-1].Name {
 			t.Errorf("not sorted: %q before %q", domains[i-1].Name, domains[i].Name)
@@ -303,7 +491,7 @@ func TestGetDomainMetadata_Sorted(t *testing.T) {
 }
 
 func TestGetDomainMetadata_HasTitleAndDescription(t *testing.T) {
-	domains := getDomainMetadata("zh")
+	domains := builtinResolver().metadata("zh", "")
 	for _, dm := range domains {
 		if dm.Title == "" {
 			t.Errorf("domain %q has empty Title", dm.Name)
@@ -365,7 +553,7 @@ func TestAuthLoginRun_NonTerminal_NoFlags_RejectsWithHint(t *testing.T) {
 	})
 	// TestFactory has IsTerminal=false by default
 	opts := &LoginOptions{Factory: f, Ctx: context.Background()}
-	err := authLoginRun(opts)
+	err := authLoginRun(opts, builtinResolver())
 	if err == nil {
 		t.Fatal("expected error for non-terminal without flags")
 	}
@@ -414,7 +602,7 @@ func TestGenericUserAuthorizationStartCommandPassesLoginValidation(t *testing.T)
 		Recommend: true,
 		NoWait:    true,
 		JSON:      true,
-	})
+	}, builtinResolver())
 	if err != nil {
 		t.Fatalf("generic recovery start command failed before returning a verification URL: %v", err)
 	}
@@ -766,7 +954,7 @@ func TestAuthLoginRun_MissingRequestedScopeAlignsWithLoginSuccess(t *testing.T) 
 		Factory: f,
 		Ctx:     context.Background(),
 		Scope:   "im:message:send",
-	})
+	}, builtinResolver())
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -883,7 +1071,7 @@ func TestAuthLoginRun_DeviceCodeUsesCachedRequestedScopes(t *testing.T) {
 		Ctx:     context.Background(),
 		Scope:   "im:message:send",
 		NoWait:  true,
-	})
+	}, builtinResolver())
 	if err != nil {
 		t.Fatalf("no-wait authLoginRun() error = %v", err)
 	}
@@ -898,7 +1086,7 @@ func TestAuthLoginRun_DeviceCodeUsesCachedRequestedScopes(t *testing.T) {
 		Factory:    f,
 		Ctx:        context.Background(),
 		DeviceCode: "device-code",
-	})
+	}, builtinResolver())
 	if err != nil {
 		t.Fatalf("device-code authLoginRun() error = %v", err)
 	}
@@ -971,7 +1159,7 @@ func TestAuthLoginRun_DeviceCodeTokenNilCleansScopeCache(t *testing.T) {
 		Factory:    f,
 		Ctx:        context.Background(),
 		DeviceCode: "device-code",
-	})
+	}, builtinResolver())
 	if err == nil {
 		t.Fatal("expected error for nil token")
 	}
@@ -1024,7 +1212,7 @@ func TestAuthLoginRun_JSONAbort_StdoutEventOnly_StderrEmpty(t *testing.T) {
 		Ctx:     context.Background(),
 		Scope:   "im:message:send",
 		JSON:    true,
-	})
+	}, builtinResolver())
 	if err == nil {
 		t.Fatal("expected error for aborted authorization")
 	}
@@ -1092,7 +1280,7 @@ func TestAuthLoginRun_JSONWriteFailure_NoWaitReturnsWriterError(t *testing.T) {
 		Scope:   "im:message:send",
 		NoWait:  true,
 		JSON:    true,
-	})
+	}, builtinResolver())
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -1127,7 +1315,7 @@ func TestAuthLoginRun_NoWaitJSONHintIncludesRawURLGuidance(t *testing.T) {
 		Ctx:     context.Background(),
 		Scope:   "im:message:send",
 		NoWait:  true,
-	})
+	}, builtinResolver())
 	if err != nil {
 		t.Fatalf("authLoginRun() error = %v", err)
 	}
@@ -1213,7 +1401,7 @@ func TestAuthLoginRun_NoWaitJSONHintPreservesExplicitProfile(t *testing.T) {
 		Scope:   "im:message:send",
 		NoWait:  true,
 		JSON:    true,
-	}); err != nil {
+	}, builtinResolver()); err != nil {
 		t.Fatalf("authLoginRun() error = %v", err)
 	}
 
@@ -1269,7 +1457,7 @@ func TestAuthLoginRun_JSONWriteFailure_DeviceAuthorizationReturnsWriterError(t *
 		Ctx:     ctx,
 		Scope:   "im:message:send",
 		JSON:    true,
-	})
+	}, builtinResolver())
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -1306,7 +1494,7 @@ func TestAuthLoginRun_JSONDeviceAuthorizationAgentHintIncludesRawURLGuidance(t *
 		Ctx:     ctx,
 		Scope:   "im:message:send",
 		JSON:    true,
-	})
+	}, builtinResolver())
 	if err == nil {
 		t.Fatal("expected error from cancelled context")
 	}
@@ -1342,7 +1530,7 @@ func TestAuthLoginRun_JSONDeviceAuthorizationAgentHintIncludesRawURLGuidance(t *
 }
 
 func TestGetDomainMetadata_ExcludesEvent(t *testing.T) {
-	domains := getDomainMetadata("zh")
+	domains := builtinResolver().metadata("zh", "")
 	for _, dm := range domains {
 		if dm.Name == "event" {
 			t.Error("event should not appear in interactive domain list")
@@ -1351,7 +1539,7 @@ func TestGetDomainMetadata_ExcludesEvent(t *testing.T) {
 }
 
 func TestAllKnownDomains_ExcludesAuthDomainChildren(t *testing.T) {
-	domains := allKnownDomains("")
+	domains := builtinResolver().allKnown("")
 	if domains["whiteboard"] {
 		t.Error("whiteboard should not appear in known auth domains (it has auth_domain=docs)")
 	}
@@ -1361,7 +1549,7 @@ func TestAllKnownDomains_ExcludesAuthDomainChildren(t *testing.T) {
 }
 
 func TestCollectScopesForDomains_ExpandsAuthDomainChildren(t *testing.T) {
-	scopes := collectScopesForDomains([]string{"docs"}, "user", "")
+	scopes := builtinResolver().scopesFor([]string{"docs"}, "user", "")
 	// docs domain should include whiteboard shortcut scopes (board:whiteboard:*)
 	found := false
 	for _, s := range scopes {
@@ -1371,15 +1559,173 @@ func TestCollectScopesForDomains_ExpandsAuthDomainChildren(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("collectScopesForDomains([docs]) should include whiteboard scopes (board:whiteboard:*)")
+		t.Error("builtinResolver().scopesFor([docs]) should include whiteboard scopes (board:whiteboard:*)")
 	}
 }
 
 func TestGetDomainMetadata_ExcludesAuthDomainChildren(t *testing.T) {
-	domains := getDomainMetadata("zh")
+	domains := builtinResolver().metadata("zh", "")
 	for _, dm := range domains {
 		if dm.Name == "whiteboard" {
 			t.Error("whiteboard should not appear in interactive domain list (has auth_domain=docs)")
 		}
+	}
+}
+
+func TestFilterBatchExcludedScopes(t *testing.T) {
+	got := filterBatchExcludedScopes([]string{"im:message", "im:message.send_as_user", "im:message:readonly"})
+	want := []string{"im:message", "im:message:readonly"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+	clean := []string{"im:message", "calendar:calendar:read"}
+	if got := filterBatchExcludedScopes(clean); !slices.Equal(got, clean) {
+		t.Errorf("clean input changed: got %v, want %v", got, clean)
+	}
+	if got := filterBatchExcludedScopes(nil); len(got) != 0 {
+		t.Errorf("nil input: got %v, want empty", got)
+	}
+}
+
+func TestBatchExcludedScopes_ContainsSendAsUser(t *testing.T) {
+	if !batchExcludedScopes["im:message.send_as_user"] {
+		t.Fatal("batchExcludedScopes must contain im:message.send_as_user")
+	}
+}
+
+func TestFilterBatchExcludedScopes_OnImDomainSet(t *testing.T) {
+	raw := builtinResolver().scopesFor([]string{"im"}, "user", "")
+	if !slices.Contains(raw, "im:message.send_as_user") {
+		t.Fatal("precondition: im domain set must contain im:message.send_as_user (on-demand grant source intact)")
+	}
+	filtered := filterBatchExcludedScopes(raw)
+	if slices.Contains(filtered, "im:message.send_as_user") {
+		t.Error("filtered set must not contain im:message.send_as_user")
+	}
+	if !slices.Contains(filtered, "im:message") {
+		t.Error("filtered set should still contain im:message")
+	}
+}
+
+func TestAuthLoginRun_BatchExcludesSendAsUser(t *testing.T) {
+	// Isolate the requested-scope cache: --no-wait persists scopes under the
+	// config dir, so pin it to a temp dir to avoid touching the real one.
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	extractScope := func(body []byte) string {
+		v, _ := url.ParseQuery(string(body))
+		return v.Get("scope")
+	}
+	stubBody := map[string]interface{}{
+		"device_code": "dc", "user_code": "uc",
+		"verification_uri": "https://example.com/v", "verification_uri_complete": "https://example.com/v?c=1",
+		"expires_in": 240, "interval": 5,
+	}
+
+	// (a) --domain im must NOT request send_as_user in the batch set
+	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		ProfileName: "default", AppID: "cli_test", AppSecret: "secret", Brand: core.BrandFeishu,
+	})
+	stub := &httpmock.Stub{Method: "POST", URL: larkauth.PathDeviceAuthorization, Body: stubBody}
+	reg.Register(stub)
+	if err := authLoginRun(&LoginOptions{
+		Factory: f, Ctx: context.Background(),
+		Domains: []string{"im"}, NoWait: true, JSON: true,
+	}, builtinResolver()); err != nil {
+		t.Fatalf("authLoginRun --domain im: %v", err)
+	}
+	scope := extractScope(stub.CapturedBody)
+	if strings.Contains(scope, "im:message.send_as_user") {
+		t.Errorf("--domain im requested send_as_user; scope=%q", scope)
+	}
+	if !strings.Contains(scope, "im:message") {
+		t.Errorf("--domain im missing im:message; scope=%q", scope)
+	}
+
+	// (b) explicit --scope re-adds it
+	f2, _, _, reg2 := cmdutil.TestFactory(t, &core.CliConfig{
+		ProfileName: "default", AppID: "cli_test", AppSecret: "secret", Brand: core.BrandFeishu,
+	})
+	stub2 := &httpmock.Stub{Method: "POST", URL: larkauth.PathDeviceAuthorization, Body: stubBody}
+	reg2.Register(stub2)
+	if err := authLoginRun(&LoginOptions{
+		Factory: f2, Ctx: context.Background(),
+		Domains: []string{"im"}, Scope: "im:message.send_as_user", NoWait: true, JSON: true,
+	}, builtinResolver()); err != nil {
+		t.Fatalf("authLoginRun --domain im --scope send_as_user: %v", err)
+	}
+	if scope2 := extractScope(stub2.CapturedBody); !strings.Contains(scope2, "im:message.send_as_user") {
+		t.Errorf("explicit --scope did not re-add send_as_user; scope=%q", scope2)
+	}
+}
+
+func TestAuthLoginRun_DomainExcludeSendAsUser(t *testing.T) {
+	// Regression (P1): `--domain im --exclude im:message.send_as_user` must keep
+	// succeeding as it did before the batch-exclusion filter existed. The batch
+	// filter drops send_as_user from the effective (wire) set, but --exclude is
+	// validated against the pre-filter selected universe, so naming it stays a
+	// valid no-op instead of an invalid_argument error. Automations relied on
+	// this exact form to dodge the send-as-user approval; do not break them.
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	stubBody := map[string]interface{}{
+		"device_code": "dc", "user_code": "uc",
+		"verification_uri": "https://example.com/v", "verification_uri_complete": "https://example.com/v?c=1",
+		"expires_in": 240, "interval": 5,
+	}
+	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		ProfileName: "default", AppID: "cli_test", AppSecret: "secret", Brand: core.BrandFeishu,
+	})
+	stub := &httpmock.Stub{Method: "POST", URL: larkauth.PathDeviceAuthorization, Body: stubBody}
+	reg.Register(stub)
+	if err := authLoginRun(&LoginOptions{
+		Factory: f, Ctx: context.Background(),
+		Domains: []string{"im"}, Exclude: []string{"im:message.send_as_user"},
+		NoWait: true, JSON: true,
+	}, builtinResolver()); err != nil {
+		t.Fatalf("authLoginRun --domain im --exclude send_as_user: %v", err)
+	}
+	if stub.CapturedBody == nil {
+		t.Fatal("no device authorization request was sent (command errored before the wire call)")
+	}
+	v, _ := url.ParseQuery(string(stub.CapturedBody))
+	scope := v.Get("scope")
+	scopeSet := make(map[string]bool)
+	for _, s := range strings.Fields(scope) {
+		scopeSet[s] = true
+	}
+	if scopeSet["im:message.send_as_user"] {
+		t.Errorf("excluded scope leaked into wire request; scope=%q", scope)
+	}
+	if !scopeSet["im:message"] {
+		t.Errorf("--domain im missing exact im:message; scope=%q", scope)
+	}
+}
+
+func TestApplyExcludeScopes_ValidatesAgainstUniverse(t *testing.T) {
+	// Universe is a superset of the effective (requested) set: it carries a
+	// batch-withheld scope that is not on the wire.
+	universe := map[string]bool{"im:message": true, "im:message.send_as_user": true}
+
+	// (a) excluding a universe member absent from requested is a valid no-op.
+	got, unknown := applyExcludeScopes("im:message", []string{"im:message.send_as_user"}, universe)
+	if len(unknown) != 0 {
+		t.Fatalf("unexpected unknown: %v", unknown)
+	}
+	if got != "im:message" {
+		t.Errorf("requested changed: got %q, want %q", got, "im:message")
+	}
+
+	// (b) a scope outside the universe is still unknown (no typo widening).
+	if _, unknown := applyExcludeScopes("im:message", []string{"im:typo"}, universe); len(unknown) != 1 || unknown[0] != "im:typo" {
+		t.Errorf("expected unknown [im:typo], got %v", unknown)
+	}
+
+	// (c) nil universe validates against requested (pure --scope path unchanged).
+	if _, unknown := applyExcludeScopes("im:message", []string{"im:message.send_as_user"}, nil); len(unknown) != 1 || unknown[0] != "im:message.send_as_user" {
+		t.Errorf("nil universe should validate against requested; got unknown %v", unknown)
+	}
+	if kept, unknown := applyExcludeScopes("im:message calendar:calendar:read", []string{"im:message"}, nil); len(unknown) != 0 || kept != "calendar:calendar:read" {
+		t.Errorf("nil universe removal: kept=%q unknown=%v", kept, unknown)
 	}
 }

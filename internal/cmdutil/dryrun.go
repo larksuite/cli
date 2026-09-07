@@ -40,6 +40,13 @@ type DryRunAPICall struct {
 	Body   interface{}            `json:"body,omitempty"`
 }
 
+// DryRunFileIntent describes one logical file effect without touching storage.
+type DryRunFileIntent struct {
+	Name     string `json:"name"`
+	IfExists string `json:"if_exists,omitempty"`
+	Content  string `json:"content,omitempty"`
+}
+
 // DryRunContext is the execution context shared by every dry-run preview:
 // which app would make the call and, when known, as which user. The identity
 // itself lives at the envelope top level, not here.
@@ -53,6 +60,7 @@ type DryRunContext struct {
 type DryRunAPI struct {
 	desc    string
 	calls   []DryRunAPICall
+	files   []DryRunFileIntent
 	context *DryRunContext
 	extra   map[string]interface{}
 }
@@ -113,6 +121,13 @@ func (d *DryRunAPI) Set(key string, value interface{}) *DryRunAPI {
 	return d
 }
 
+// File appends a logical output intent. It never resolves the destination or
+// writes content; the live command owns those effects.
+func (d *DryRunAPI) File(intent DryRunFileIntent) *DryRunAPI {
+	d.files = append(d.files, intent)
+	return d
+}
+
 // Context records the calling app/user under data.context; empty values are
 // omitted, and a fully empty context is not emitted at all.
 func (d *DryRunAPI) Context(appID, userOpenID string) *DryRunAPI {
@@ -147,7 +162,7 @@ func (d *DryRunAPI) MarshalJSON() ([]byte, error) {
 			Body:   c.Body,
 		}
 	}
-	m := make(map[string]interface{}, len(d.extra)+3)
+	m := make(map[string]interface{}, len(d.extra)+4)
 	for k, v := range d.extra {
 		m[k] = v
 	}
@@ -156,6 +171,9 @@ func (d *DryRunAPI) MarshalJSON() ([]byte, error) {
 		m["description"] = d.desc
 	}
 	m["api"] = resolved
+	if len(d.files) > 0 {
+		m["files"] = append([]DryRunFileIntent(nil), d.files...)
+	}
 	if d.context != nil {
 		m["context"] = d.context
 	}
@@ -200,7 +218,29 @@ func (d *DryRunAPI) Format() string {
 		}
 	}
 
-	if len(d.calls) == 0 && len(d.extra) > 0 {
+	if len(d.files) > 0 {
+		if len(d.calls) > 0 || d.desc != "" {
+			b.WriteByte('\n')
+		}
+		b.WriteString("# File output\n")
+		for _, file := range d.files {
+			b.WriteString("WRITE ")
+			b.WriteString(file.Name)
+			if file.IfExists != "" {
+				b.WriteString(" (if exists: ")
+				b.WriteString(file.IfExists)
+				b.WriteByte(')')
+			}
+			b.WriteByte('\n')
+			if file.Content != "" {
+				b.WriteString("  content: ")
+				b.WriteString(file.Content)
+				b.WriteByte('\n')
+			}
+		}
+	}
+
+	if len(d.calls) == 0 && len(d.files) == 0 && len(d.extra) > 0 {
 		if d.desc != "" {
 			b.WriteByte('\n')
 		}

@@ -36,7 +36,7 @@ type Stub struct {
 	OnMatch func(req *http.Request)
 
 	// Reusable (optional): when true, the stub stays available for further
-	// matches after the first hit. Each match appends to CapturedBodies.
+	// matches after the first hit.
 	Reusable bool
 
 	// Optional (optional): when true, Verify does not require this stub to be
@@ -47,8 +47,11 @@ type Stub struct {
 	// Populated after RoundTrip matches this stub.
 	CapturedHeaders http.Header
 	CapturedBody    []byte
-	// CapturedBodies records every captured request body when Reusable is set.
-	// (CapturedBody continues to record the most recent capture for back-compat.)
+	// CapturedBodies records every captured request body, appended on each
+	// match regardless of Reusable — so a one-shot stub's single hit is
+	// recorded here too, and len(CapturedBodies) is a sound assertion for "this
+	// request was never made". (CapturedBody keeps the most recent capture for
+	// back-compat.)
 	CapturedBodies [][]byte
 }
 

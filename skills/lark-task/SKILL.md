@@ -31,7 +31,7 @@ shortcut 名称只能来自本 Skill 的 Shortcut 表或 `lark-cli task --help`�
 > **用户身份识别**：在用户身份（user identity）场景下，如果用户提到了“我”（例如“分配给我”、“由我创建”），请默认获取当前登录用户的 `open_id` 作为对应的参数值。
 > **术语理解 — 待办 disambiguation（必读）**：
 > - 用户提到「待办 / todo / 任务」时，**先判断归属**，不要默认走本 skill。
-> - **走 [lark-minutes](../lark-minutes/SKILL.md) 的 `minutes +todo`**（禁止本 skill）：上下文含 **妙记 / 会议纪要 / minute_token / 妙记 URL**（`/minutes/`）；或「在某某妙记里新建/修改待办」「妙记 AI 待办」「会议录制里的待办」。
+> - **走 [lark-meeting](../lark-meeting/SKILL.md) 的 `minutes +todo`**（禁止本 skill）：上下文含 **妙记 / 会议纪要 / minute_token / 妙记 URL**（`/minutes/`）；或「在某某妙记里新建/修改待办」「妙记 AI 待办」「会议录制里的待办」。
 > - **走本 skill（lark-task）**：任务清单、分配给我、项目待办、截止日期/提醒、子任务、任务清单成员；或 applink 含 `client/todo/task?guid=`；或明确说「飞书任务」「任务中心」「我的任务清单」。
 > - **禁止**：用户要在妙记里加待办时，**不要**调用 `task tasklists list`、`task +create` 或任何 task 命令去「找清单再放任务」。
 > **友好输出**：在输出任务（或清单）的执行结果给用户时，建议同时提取并输出命令返回结果中的 `url` 字段（任务链接），以便用户可以直接点击跳转查看详情。

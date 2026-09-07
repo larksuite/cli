@@ -5,12 +5,68 @@ package drive
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
 )
+
+func TestDriveAddCommentDryRun_DocxBlockIDWithoutMCP(t *testing.T) {
+	setDriveDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+add-comment",
+			"--doc", "https://example.larksuite.com/docx/docxDryRunComment",
+			"--content", `[{"type":"text","text":"review this paragraph"}]`,
+			"--block-id", "blk_target",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	out := result.Stdout
+	if got := clie2e.DryRunGet(out, "api.#").Int(); got != 1 {
+		t.Fatalf("data.api count=%d, want one direct OpenAPI request\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/drive/v1/files/docxDryRunComment/new_comments" {
+		t.Fatalf("data.api.0.url=%q, want new_comments\nstdout:\n%s", got, out)
+	}
+	if got := clie2e.DryRunGet(out, "api.0.body.anchor.block_id").String(); got != "blk_target" {
+		t.Fatalf("data.api.0.body.anchor.block_id=%q, want blk_target\nstdout:\n%s", got, out)
+	}
+	if strings.Contains(out, "/mcp") || strings.Contains(out, "locate-doc") {
+		t.Fatalf("dry-run must not contain an MCP locator step\nstdout:\n%s", out)
+	}
+}
+
+func TestDriveAddCommentRemovedSelectionFlagRejected(t *testing.T) {
+	setDriveDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+add-comment",
+			"--doc", "https://example.larksuite.com/docx/docxDryRunComment",
+			"--content", `[{"type":"text","text":"review this paragraph"}]`,
+			"--selection-with-ellipsis", "target text",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 2)
+	require.Contains(t, result.Stderr, "unknown flag", result.Stderr)
+}
 
 func TestDriveAddCommentDryRun_File(t *testing.T) {
 	setDriveDryRunConfigEnv(t)

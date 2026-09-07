@@ -196,8 +196,15 @@ func testDocsFetchCommentsWorkflow(t *testing.T, defaultAs string) {
 	folderToken := drive.CreateDriveFolder(t, parentT, ctx, "lark-cli-e2e-fetch-comments-"+suffix, defaultAs, "")
 	docToken := createDocWithRetry(t, parentT, ctx, folderToken, "fetch comments "+suffix, anchorText+"\n\n"+secondaryText, defaultAs)
 
-	localCommentID := addDocComment(t, ctx, defaultAs, docToken, localText, "--selection-with-ellipsis", anchorText)
-	secondaryCommentID := addDocComment(t, ctx, defaultAs, docToken, secondaryLocalText, "--selection-with-ellipsis", secondaryText)
+	initialXML, err := fetchDocsContent(ctx, docToken, "xml", "with-ids", defaultAs)
+	require.NoError(t, err)
+	anchorBlockID, err := docBlockIDByExactText(initialXML, anchorText)
+	require.NoError(t, err)
+	secondaryBlockID, err := docBlockIDByExactText(initialXML, secondaryText)
+	require.NoError(t, err)
+
+	localCommentID := addDocComment(t, ctx, defaultAs, docToken, localText, "--block-id", anchorBlockID)
+	secondaryCommentID := addDocComment(t, ctx, defaultAs, docToken, secondaryLocalText, "--block-id", secondaryBlockID)
 	wholeCommentID := addDocComment(t, ctx, defaultAs, docToken, wholeText, "--full-comment")
 
 	var fetched *clie2e.Result

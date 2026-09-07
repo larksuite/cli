@@ -16,7 +16,7 @@ import (
 
 var driveMemberRemoveIDTypes = []string{
 	"email", "openid", "openchat", "opendepartmentid",
-	"userid", "unionid", "groupid", "wikispaceid",
+	"userid", "unionid", "groupid", "appid", "wikispaceid",
 }
 
 // DriveMemberRemove removes one collaborator/member permission from a Drive resource.
@@ -31,7 +31,7 @@ var DriveMemberRemove = common.Shortcut{
 		{Name: "token", Desc: "target token or document URL; type is auto-inferred from URL path when omitted", Required: true},
 		{Name: "type", Desc: "target resource type; required when --token is a bare token"},
 		{Name: "member-id", Desc: "single collaborator ID to remove; comma-separated values are rejected", Required: true},
-		{Name: "member-type", Desc: "ID type for --member-id; supported: email|openid|openchat|opendepartmentid|userid|unionid|groupid|wikispaceid", Required: true},
+		{Name: "member-type", Desc: "ID type for --member-id; supported: email|openid|openchat|opendepartmentid|userid|unionid|groupid|appid|wikispaceid", Required: true},
 		{Name: "member-kind", Desc: "request body type when --member-type=wikispaceid; one of wiki_space_member|wiki_space_viewer|wiki_space_editor"},
 		{Name: "perm-type", Desc: "wiki permission scope; defaults to container; rejected for non-wiki types and wiki-space members"},
 	},
@@ -271,15 +271,6 @@ func driveMemberRemovePath(spec driveMemberRemoveSpec) string {
 
 // executeDriveMemberRemove issues the typed DELETE request and emits the structured removal result.
 func executeDriveMemberRemove(runtime *common.RuntimeContext, spec driveMemberRemoveSpec) error {
-	fmt.Fprintf(
-		runtime.IO().ErrOut,
-		"Removing Drive member %s (type=%s) from %s %s...\n",
-		common.MaskToken(spec.MemberID),
-		spec.MemberType,
-		spec.ResourceType,
-		common.MaskToken(spec.Token),
-	)
-
 	if _, err := runtime.CallAPITyped(
 		"DELETE",
 		driveMemberRemovePath(spec),
@@ -290,8 +281,6 @@ func executeDriveMemberRemove(runtime *common.RuntimeContext, spec driveMemberRe
 	}
 
 	out := driveMemberRemoveOutput(spec)
-
-	fmt.Fprintf(runtime.IO().ErrOut, "Removed Drive member %s\n", common.MaskToken(spec.MemberID))
 	runtime.Out(out, nil)
 	return nil
 }

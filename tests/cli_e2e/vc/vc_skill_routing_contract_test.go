@@ -15,14 +15,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestVCMeetingReferencesAreSharedByBothSkills(t *testing.T) {
-	vcSkill := readVCContractFile(t, "skills", "lark-vc", "SKILL.md")
-	agentSkill := readVCContractFile(t, "skills", "lark-vc-agent", "SKILL.md")
+func TestLegacyVCSkillsRouteToMeetingSkill(t *testing.T) {
+	for _, skillName := range []string{"lark-vc", "lark-vc-agent"} {
+		t.Run(skillName, func(t *testing.T) {
+			skill := readVCContractFile(t, "skills", skillName, "SKILL.md")
+			require.Contains(t, skill, "本技能只用于兼容旧名称，不直接处理业务。")
+			require.Contains(t, skill, "../lark-meeting/SKILL.md")
+			require.Contains(t, skill, `skills: ["lark-meeting"]`)
+		})
+	}
+}
 
-	require.Contains(t, vcSkill, "查询进行中的会议、会中事件或发送会中消息")
-	require.Contains(t, agentSkill, `"会议现在还开着，谁刚加入了"`)
-	require.Contains(t, agentSkill, `"会议里谁在发言"`)
-	require.Contains(t, agentSkill, `"我/某个用户现在在哪个会里"`)
+func TestMeetingSkillOwnsVCReferences(t *testing.T) {
+	meetingSkill := readVCContractFile(t, "skills", "lark-meeting", "SKILL.md")
 
 	references := []struct {
 		sharedName string
@@ -44,21 +49,30 @@ func TestVCMeetingReferencesAreSharedByBothSkills(t *testing.T) {
 			oldName:    "lark-vc-agent-meeting-message-send.md",
 			command:    "lark-cli vc +meeting-message-send",
 		},
+		{
+			sharedName: "lark-vc-meeting-countdown.md",
+			oldName:    "lark-vc-agent-meeting-countdown.md",
+			command:    "lark-cli vc +meeting-countdown",
+		},
 	}
 
 	for _, reference := range references {
 		t.Run(reference.sharedName, func(t *testing.T) {
-			require.Contains(t, vcSkill, "references/"+reference.sharedName)
-			require.Contains(t, agentSkill, "../lark-vc/references/"+reference.sharedName)
+			require.Contains(t, meetingSkill, "references/"+reference.sharedName)
 
-			content := readVCContractFile(t, "skills", "lark-vc", "references", reference.sharedName)
+			content := readVCContractFile(t, "skills", "lark-meeting", "references", reference.sharedName)
 			require.Contains(t, content, reference.command)
 			require.Contains(t, content, "--as user")
 			require.Contains(t, content, "--as bot")
 
-			oldPath := vcContractPath(t, "skills", "lark-vc-agent", "references", reference.oldName)
-			_, err := vfs.Stat(oldPath)
-			require.True(t, errors.Is(err, fs.ErrNotExist), "legacy reference still exists: %s", oldPath)
+			oldPaths := []string{
+				vcContractPath(t, "skills", "lark-vc", "references", reference.sharedName),
+				vcContractPath(t, "skills", "lark-vc-agent", "references", reference.oldName),
+			}
+			for _, oldPath := range oldPaths {
+				_, err := vfs.Stat(oldPath)
+				require.True(t, errors.Is(err, fs.ErrNotExist), "legacy reference still exists: %s", oldPath)
+			}
 		})
 	}
 }
@@ -69,12 +83,13 @@ func TestVCSharedMeetingReferencesHaveValidMarkdownLinks(t *testing.T) {
 		"lark-vc-meeting-list-active.md",
 		"lark-vc-meeting-events.md",
 		"lark-vc-meeting-message-send.md",
+		"lark-vc-meeting-countdown.md",
 	}
 
 	for _, reference := range references {
 		t.Run(reference, func(t *testing.T) {
-			path := vcContractPath(t, "skills", "lark-vc", "references", reference)
-			content := readVCContractFile(t, "skills", "lark-vc", "references", reference)
+			path := vcContractPath(t, "skills", "lark-meeting", "references", reference)
+			content := readVCContractFile(t, "skills", "lark-meeting", "references", reference)
 			links := linkPattern.FindAllStringSubmatch(content, -1)
 			require.NotEmpty(t, links, "expected local markdown links in %s", path)
 

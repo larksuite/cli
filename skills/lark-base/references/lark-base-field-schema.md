@@ -41,6 +41,7 @@
 | `lookup` | `type` `name` `from` `select` `where` | `aggregate` |
 | `auto_number` | `type` `name` | `style.rules` |
 | `attachment` / `location` / `checkbox` | `type` `name` | 无 |
+| `button` | `type` `name` `button_config.title` | 无 |
 
 所有类型都可额外传 `description`；上表的“常见补充字段”只列类型特有配置。
 
@@ -427,6 +428,14 @@ Location 读取为 `{lng,lat,full_address}`；写入只使用数字 `{lng,lat}`�
 { "type": "checkbox", "name": "完成" }
 ```
 
+### 3.13 button
+
+```json
+{ "type": "button", "name": "按钮", "button_config": { "title": "点击按钮" } }
+```
+
+绑定 Workflow 时，使用 `+button-rule-bind`；读取绑定关系时，使用 `+button-rule-get`；解除绑定用 `+button-rule-unbind`。
+
 ## 4. 创建与更新
 
 - `+field-create`：按目标字段配置直接构造 `--json`。
@@ -434,7 +443,7 @@ Location 读取为 `{lng,lat,full_address}`；写入只使用数字 `{lng,lat}`�
 
 ## 5. 暂不支持字段
 
-Object（对象字段）、Button（按钮字段）、Stage（流程字段）暂时都没有被 CLI 支持。这些字段会展示为 `not_support` 字段并被保护：不允许修改，不允许读取内容。
+Object（对象字段）、Stage（流程字段）暂时没有被 CLI 支持。这些字段会展示为 `not_support` 字段并被保护：不允许修改，不允许读取内容。
 
 ## 6. 易错点
 

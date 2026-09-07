@@ -214,3 +214,80 @@ func TestWorkbookImport_ExecuteCreatesSheet(t *testing.T) {
 		t.Errorf("token = %q, want shtcn_imported", tok)
 	}
 }
+
+// TestWorkbookImport_ExecuteReportsCorrectedExtensionInPayload pins where the
+// extension correction goes now that it no longer prints to stderr: the
+// backend built a .xlsx from a file the caller called .xls, and that
+// difference between the request typed and the request run belongs in the
+// result. It also covers the shared import core's own stage narration, which
+// this change removed.
+func TestWorkbookImport_ExecuteReportsCorrectedExtensionInPayload(t *testing.T) {
+	chdirTemp(t)
+	// OOXML magic bytes under a mislabeled .xls name.
+	if err := os.WriteFile("book.xls", []byte("PK\x03\x04zip-body"), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	stubs := []*httpmock.Stub{
+		{
+			Method: "POST",
+			URL:    "/open-apis/drive/v1/medias/upload_all",
+			Body: map[string]interface{}{
+				"code": 0, "msg": "ok",
+				"data": map[string]interface{}{"file_token": "file_import_media"},
+			},
+		},
+		{
+			Method: "POST",
+			URL:    "/open-apis/drive/v1/import_tasks",
+			Body: map[string]interface{}{
+				"code": 0, "msg": "ok",
+				"data": map[string]interface{}{"ticket": "tk_sheet"},
+			},
+		},
+		{
+			Method: "GET",
+			URL:    "/open-apis/drive/v1/import_tasks/tk_sheet",
+			Body: map[string]interface{}{
+				"code": 0, "msg": "ok",
+				"data": map[string]interface{}{"result": map[string]interface{}{
+					"token":      "shtcn_imported",
+					"type":       "sheet",
+					"job_status": float64(0),
+				}},
+			},
+		},
+	}
+
+	parent, stdout, stderr, reg := newTestRig(t, WorkbookImport)
+	for _, s := range stubs {
+		reg.Register(s)
+	}
+	parent.SetArgs([]string{"+workbook-import", "--file", "./book.xls", "--as", "user"})
+	if err := parent.Execute(); err != nil {
+		t.Fatalf("import execute failed: %v\n%s", err, stdout.String())
+	}
+	if got := stderr.String(); got != "" {
+		t.Errorf("a successful import must leave stderr empty, got: %q", got)
+	}
+
+	out := stdout.String()
+	idx := strings.Index(out, "{")
+	if idx < 0 {
+		t.Fatalf("execute output has no JSON envelope:\n%s", out)
+	}
+	var env struct {
+		Data map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out[idx:]), &env); err != nil {
+		t.Fatalf("decode envelope: %v\nraw=%s", err, out)
+	}
+	corrections, _ := env.Data["input_corrections"].([]interface{})
+	if len(corrections) != 1 {
+		t.Fatalf("expected one input correction, got %#v", env.Data["input_corrections"])
+	}
+	correction, _ := corrections[0].(map[string]interface{})
+	if correction["field"] != "file_extension" || correction["declared"] != "xls" || correction["actual"] != "xlsx" {
+		t.Errorf("correction should name the declared and actual extension, got %#v", correction)
+	}
+}

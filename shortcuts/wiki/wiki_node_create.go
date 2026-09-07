@@ -88,13 +88,11 @@ var WikiNodeCreate = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		spec := readWikiNodeCreateSpec(runtime)
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Creating wiki node...\n")
 		execution, err := runWikiNodeCreate(ctx, wikiNodeCreateAPI{runtime: runtime}, runtime.As(), spec, runtime.IO().ErrOut)
 		if err != nil {
 			return err
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Created wiki node in space %s via %s.\n", execution.ResolvedSpace.SpaceID, execution.ResolvedSpace.ResolvedBy)
 		runtime.Out(augmentWikiNodeCreateOutput(runtime, execution), nil)
 		return nil
 	},
@@ -321,7 +319,7 @@ func needsMyLibraryLookup(spec wikiNodeCreateSpec) bool {
 	return spec.SpaceID == "" || spec.SpaceID == wikiMyLibrarySpaceID
 }
 
-func runWikiNodeCreate(ctx context.Context, client wikiNodeCreateClient, identity core.Identity, spec wikiNodeCreateSpec, errOut io.Writer) (*wikiNodeCreateExecution, error) {
+func runWikiNodeCreate(ctx context.Context, client wikiNodeCreateClient, identity core.Identity, spec wikiNodeCreateSpec, _ io.Writer) (*wikiNodeCreateExecution, error) {
 	resolvedSpace, err := resolveWikiNodeCreateSpace(ctx, client, identity, spec)
 	if err != nil {
 		return nil, err
@@ -334,7 +332,6 @@ func runWikiNodeCreate(ctx context.Context, client wikiNodeCreateClient, identit
 	for attempt := 0; attempt <= wikiNodeCreateMaxRetries; attempt++ {
 		if attempt > 0 {
 			delay := wikiNodeCreateRetryBaseDelay << uint(attempt-1)
-			fmt.Fprintf(errOut, "Wiki node create encountered lock contention, retrying (attempt %d/%d) in %v...\n", attempt, wikiNodeCreateMaxRetries, delay)
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()

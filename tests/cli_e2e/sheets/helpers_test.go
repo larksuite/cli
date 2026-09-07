@@ -20,7 +20,7 @@ func createSpreadsheet(t *testing.T, parentT *testing.T, ctx context.Context, ti
 
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
-			"sheets", "+create",
+			"sheets", "+workbook-create",
 			"--title", title,
 			"--folder-token", folderToken,
 		},
@@ -30,7 +30,7 @@ func createSpreadsheet(t *testing.T, parentT *testing.T, ctx context.Context, ti
 	result.AssertExitCode(t, 0)
 	result.AssertStdoutStatus(t, true)
 
-	spreadsheetToken := gjson.Get(result.Stdout, "data.spreadsheet_token").String()
+	spreadsheetToken := gjson.Get(result.Stdout, "data.spreadsheet.spreadsheet_token").String()
 	require.NotEmpty(t, spreadsheetToken, "stdout:\n%s", result.Stdout)
 
 	parentT.Cleanup(func() {

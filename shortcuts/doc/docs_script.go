@@ -34,6 +34,7 @@ const (
 	docsScriptDraftRandomHexLength  = 8
 	docsScriptDecisionFile          = ".presentation-decision.json"
 	docsScriptDraftTip              = "The workspace directory has been created successfully. draft_path points to a new XML file that does not exist yet. Create and write the file directly without reading it first."
+	docsScriptDecisionShellHint     = "restore the original JSON quotes; if shell quote loss made a string ambiguous, save the original JSON as UTF-8 and pass --presentation-decision \"@./decision.json\""
 	docsScriptListBlockType         = "list"
 	docsScriptAssessmentPassed      = "passed"
 	docsScriptAssessmentFailed      = "failed"
@@ -76,7 +77,7 @@ var DocsScript = common.Shortcut{
 		},
 		{
 			Name:  "presentation-decision",
-			Desc:  "Presentation Decision JSON required by init-draft and saved as the draft profile baseline; genre_contract and adapter accept a short name, \"none\", or null; accepts inline JSON (recommended for init-draft), @relative-file, or - for stdin",
+			Desc:  "Presentation Decision JSON required by init-draft and saved as the draft profile baseline; genre_contract and adapter accept a short name, \"none\", or null; accepts inline JSON (recommended for init-draft), @relative-file, or - for stdin; direct inline input also recovers an intact outer single-quote pair or unambiguous schema fields and scalar values dequoted by Windows PowerShell 5.x",
 			Input: []string{common.File, common.Stdin},
 		},
 	},
@@ -200,7 +201,7 @@ func validateDocsScript(_ context.Context, runtime *common.RuntimeContext) error
 			return errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"--presentation-decision is only supported with --command init-draft or parse").WithParam("--presentation-decision")
 		}
-		if _, err := parseDocsScriptPresentationDecision(presentationDecision); err != nil {
+		if _, _, err := parseDocsScriptPresentationDecisionFlag(runtime); err != nil {
 			return err
 		}
 	}
@@ -463,7 +464,7 @@ func docsScriptRemoteImageReason(message string, occurrence int) string {
 
 func resolveDocsScriptPresentationDecision(runtime *common.RuntimeContext) (docsScriptPresentationDecision, bool, error) {
 	if rawDecision := strings.TrimSpace(runtime.Str("presentation-decision")); rawDecision != "" {
-		decision, err := parseDocsScriptPresentationDecision(rawDecision)
+		decision, _, err := parseDocsScriptPresentationDecisionFlag(runtime)
 		return decision, err == nil, err
 	}
 	contentPath, ok := runtime.Cmd.Annotations[docsContentPathAnnotation]
@@ -486,6 +487,39 @@ func resolveDocsScriptPresentationDecision(runtime *common.RuntimeContext) (docs
 			WithCause(err)
 	}
 	return decision, true, nil
+}
+
+func parseDocsScriptPresentationDecisionFlag(runtime *common.RuntimeContext) (docsScriptPresentationDecision, string, error) {
+	raw := strings.TrimSpace(runtime.Str("presentation-decision"))
+	decision, err := parseDocsScriptPresentationDecision(raw)
+	if err == nil || runtime.InputResolvedFromSource("presentation-decision") {
+		return decision, raw, err
+	}
+
+	// Keep the original strict parse as the primary path. Recovery is limited to
+	// direct input because file and stdin sources preserve the original bytes.
+	if len(raw) >= 2 && raw[0] == '\'' && raw[len(raw)-1] == '\'' {
+		raw = strings.TrimSpace(raw[1 : len(raw)-1])
+		decision, err = parseDocsScriptPresentationDecision(raw)
+		if err == nil {
+			return decision, raw, nil
+		}
+	}
+	if docsScriptPresentationDecisionLooksShellMangled(raw) {
+		normalized, recoveryErr := recoverDocsScriptPresentationDecisionJSON(raw)
+		if recoveryErr == nil {
+			decision, err = parseDocsScriptPresentationDecision(normalized)
+			if err == nil {
+				return decision, normalized, nil
+			}
+			return docsScriptPresentationDecision{}, normalized, err
+		}
+		var validationErr *errs.ValidationError
+		if errors.As(err, &validationErr) {
+			err = validationErr.WithHint(docsScriptDecisionShellHint)
+		}
+	}
+	return docsScriptPresentationDecision{}, raw, err
 }
 
 func parseDocsScriptPresentationDecision(raw string) (docsScriptPresentationDecision, error) {
@@ -657,6 +691,26 @@ func parseDocsScriptPresentationDecision(raw string) (docsScriptPresentationDeci
 	return decision, nil
 }
 
+func docsScriptPresentationDecisionLooksShellMangled(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if len(raw) < 2 || raw[0] != '{' {
+		return false
+	}
+	body := strings.TrimSpace(raw[1:])
+	if body == "" || body[0] == '}' {
+		return false
+	}
+	if body[0] != '"' {
+		return true
+	}
+
+	// PowerShell can preserve object-key quotes while removing quotes from
+	// scalar values. Only classify that shape as recoverable when the schema
+	// parser can rebuild it without guessing.
+	normalized, err := recoverDocsScriptPresentationDecisionJSON(raw)
+	return err == nil && normalized != raw
+}
+
 func normalizeDocsScriptOptionalRoute(field string, value *string) (*string, error) {
 	if value == nil {
 		return nil, nil
@@ -732,11 +786,14 @@ func docsScriptBlockCount(blocks []docxparse.BlockShare, blockType string) int {
 }
 
 func initDocsScriptDraft(runtime *common.RuntimeContext) error {
+	_, rawDecision, err := parseDocsScriptPresentationDecisionFlag(runtime)
+	if err != nil {
+		return err
+	}
 	workspace, err := newDocsScriptWorkspace(runtime)
 	if err != nil {
 		return err
 	}
-	rawDecision := strings.TrimSpace(runtime.Str("presentation-decision"))
 	if err := workspace.savePresentationDecision(rawDecision); err != nil {
 		return workspace.fail(common.WrapSaveErrorTyped(err))
 	}

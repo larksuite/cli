@@ -103,7 +103,6 @@ var DocResourceDownload = common.Shortcut{
 			return errs.NewValidationError(errs.SubtypeFailedPrecondition, "document has no cover (cover is empty): %s", common.MaskToken(documentID)).WithParam("--type")
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Downloading cover: %s\n", common.MaskToken(cover.Token))
 		resp, err := runtime.DoAPIStream(ctx, &larkcore.ApiReq{
 			HttpMethod: http.MethodGet,
 			ApiPath:    fmt.Sprintf("/open-apis/drive/v1/medias/%s/download", validate.EncodePathSegment(cover.Token)),
@@ -209,11 +208,6 @@ var DocResourceUpdate = common.Shortcut{
 			return err
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Uploading cover image: %s (%d bytes)\n", source.FileName, source.FileSize)
-		if source.FileSize > common.MaxDriveMediaUploadSinglePartSize {
-			fmt.Fprintf(runtime.IO().ErrOut, "File exceeds 20MB, using multipart upload\n")
-		}
-
 		uploadCfg := UploadDocMediaFileConfig{
 			FilePath:   source.FilePath,
 			Reader:     source.Reader,
@@ -227,15 +221,17 @@ var DocResourceUpdate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(runtime.IO().ErrOut, "File uploaded: %s\n", common.MaskToken(fileToken))
-
 		coverBody := buildDocCoverUpdateBody(fileToken, runtime)
 		if _, err := runtime.CallAPITyped("PATCH",
 			fmt.Sprintf("/open-apis/docx/v1/documents/%s", validate.EncodePathSegment(documentID)),
 			nil,
 			map[string]interface{}{"update_cover": map[string]interface{}{"cover": coverBody}},
 		); err != nil {
-			return err
+			hint := fmt.Sprintf(
+				"Document cover upload succeeded but update failed: phase=update_cover, document_id=%s, upload_succeeded=true, file_token=%s. Reuse the uploaded file_token for the remaining update instead of uploading the source again.",
+				documentID, fileToken,
+			)
+			return withDocRecoveryHint(err, hint)
 		}
 
 		runtime.Out(map[string]interface{}{
@@ -467,7 +463,6 @@ func getOptionalFloat(m map[string]interface{}, key string) (float64, bool) {
 
 func readDocCoverUpdateSource(ctx context.Context, runtime *common.RuntimeContext) (docCoverUpdateSource, error) {
 	if runtime.Bool("from-clipboard") {
-		fmt.Fprintf(runtime.IO().ErrOut, "Reading image from clipboard...\n")
 		content, err := readClipboardImage()
 		if err != nil {
 			return docCoverUpdateSource{}, err

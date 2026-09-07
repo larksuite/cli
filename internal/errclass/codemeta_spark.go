@@ -41,6 +41,7 @@ var sparkCodeMeta = map[int]CodeMeta{
 
 	400000034: {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},                   // file not found or no access
 	500000034: {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},                   // file not found or no access, pre-4xx renumber
+	400000055: {Category: errs.CategoryAPI, Subtype: errs.SubtypeQuotaExceeded},              // tenant file storage quota exceeded
 	400002467: {Category: errs.CategoryAuthorization, Subtype: errs.SubtypePermissionDenied}, // app administrator or developer required
 	500002761: {Category: errs.CategoryAuthorization, Subtype: errs.SubtypePermissionDenied}, // app administrator or developer required, pre-4xx renumber
 }

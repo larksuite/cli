@@ -215,24 +215,6 @@ func TestBatchOp_BodyMatchesStandalone(t *testing.T) {
 			subInput: `{"sheet-id":"sh1","range":"A2:A4","options":["x","y"],"highlight":false}`,
 		},
 		{
-			shortcut: "+chart-create",
-			sc:       ChartCreate,
-			args:     []string{"--sheet-id", "sh1", "--properties", `{"position":{"row":0,"col":"A"},"size":{"width":400,"height":300}}`},
-			subInput: `{"sheet-id":"sh1","properties":{"position":{"row":0,"col":"A"},"size":{"width":400,"height":300}}}`,
-		},
-		{
-			shortcut: "+chart-update",
-			sc:       ChartUpdate,
-			args:     []string{"--sheet-id", "sh1", "--chart-id", "c1", "--properties", `{"position":{"row":0,"col":"A"},"size":{"width":400,"height":300}}`},
-			subInput: `{"sheet-id":"sh1","chart-id":"c1","properties":{"position":{"row":0,"col":"A"},"size":{"width":400,"height":300}}}`,
-		},
-		{
-			shortcut: "+chart-delete",
-			sc:       ChartDelete,
-			args:     []string{"--sheet-id", "sh1", "--chart-id", "c1"},
-			subInput: `{"sheet-id":"sh1","chart-id":"c1"}`,
-		},
-		{
 			shortcut: "+pivot-create",
 			sc:       PivotCreate,
 			// +pivot-create renamed --sheet-id / --sheet-name → --target-sheet-id /
@@ -283,6 +265,42 @@ func TestBatchOp_BodyMatchesStandalone(t *testing.T) {
 			sc:       SparklineDelete,
 			args:     []string{"--sheet-id", "sh1", "--group-id", "g1"},
 			subInput: `{"sheet-id":"sh1","group-id":"g1"}`,
+		},
+		{
+			shortcut: "+chart-create",
+			sc:       ChartCreate,
+			args:     []string{"--sheet-id", "sh1", "--properties", `{"type":"line","position":{"row":0,"col":"A"},"size":{"width":400,"height":300}}`},
+			subInput: `{"sheet-id":"sh1","properties":{"type":"line","position":{"row":0,"col":"A"},"size":{"width":400,"height":300}}}`,
+		},
+		{
+			shortcut: "+chart-update",
+			sc:       ChartUpdate,
+			args:     []string{"--sheet-id", "sh1", "--chart-id", "chart-1", "--properties", `{"title":{"text":"Revenue"}}`},
+			subInput: `{"sheet-id":"sh1","chart-id":"chart-1","properties":{"title":{"text":"Revenue"}}}`,
+		},
+		{
+			shortcut: "+chart-delete",
+			sc:       ChartDelete,
+			args:     []string{"--sheet-id", "sh1", "--chart-id", "chart-1"},
+			subInput: `{"sheet-id":"sh1","chart-id":"chart-1"}`,
+		},
+		{
+			shortcut: "+chart-create-basic",
+			sc:       ChartCreateBasic,
+			args:     []string{"--sheet-id", "sh1", "--chart-type", "line", "--data-range", "A1:C10", "--title", "Revenue"},
+			subInput: `{"sheet-id":"sh1","chart-type":"line","data-range":"A1:C10","title":"Revenue"}`,
+		},
+		{
+			shortcut: "+chart-config-update",
+			sc:       ChartConfigUpdate,
+			args:     []string{"--sheet-id", "sh1", "--chart-id", "chart-1", "--title", "Revenue"},
+			subInput: `{"sheet-id":"sh1","chart-id":"chart-1","title":"Revenue"}`,
+		},
+		{
+			shortcut: "+chart-data-update",
+			sc:       ChartDataUpdate,
+			args:     []string{"--sheet-id", "sh1", "--chart-id", "chart-1", "--data-range", "A1:C10", "--data-direction", "column"},
+			subInput: `{"sheet-id":"sh1","chart-id":"chart-1","data-range":"A1:C10","data-direction":"column"}`,
 		},
 		{
 			shortcut: "+float-image-create",
@@ -666,12 +684,6 @@ func TestBatchOp_RejectsBadSubOpInput(t *testing.T) {
 			"--title is required",
 		},
 		{
-			"+chart-update missing --chart-id",
-			"+chart-update",
-			`{"sheet-id":"sh1","properties":{"title":"T"}}`,
-			"--chart-id is required",
-		},
-		{
 			"+filter-create missing --range",
 			"+filter-create",
 			`{"sheet-id":"sh1"}`,
@@ -774,14 +786,6 @@ func TestBatchOp_SchemaValidatesSubOps(t *testing.T) {
 			"+pivot-create",
 			`{"target_sheet_id":"sh1","source":"Sheet1!A1:D100","properties":{"values":[{"field":"A","summarize_by":"BOGUS"}]}}`,
 			"summarize_by",
-		},
-		// +chart-create properties.position.row has minimum:0 — P0
-		// addition; validator must catch -1 even in the batch path.
-		{
-			"+chart-create position.row below minimum",
-			"+chart-create",
-			`{"sheet-id":"sh1","properties":{"position":{"row":-1,"col":"A"},"size":{"width":400,"height":300}}}`,
-			"below minimum",
 		},
 		// +cells-set --cells is a 2D array of objects per the
 		// upstream-fixed schema; sub-op passing an object must be

@@ -42,6 +42,7 @@ func TestLookupCodeMetaSparkRoleCodes(t *testing.T) {
 		// the renumbering rolls out per lane.
 		{400000034, errs.CategoryAPI, errs.SubtypeNotFound},
 		{500000034, errs.CategoryAPI, errs.SubtypeNotFound},
+		{400000055, errs.CategoryAPI, errs.SubtypeQuotaExceeded},
 		{400002467, errs.CategoryAuthorization, errs.SubtypePermissionDenied},
 		{500002761, errs.CategoryAuthorization, errs.SubtypePermissionDenied},
 	}
@@ -143,5 +144,37 @@ func TestSparkTableNotFoundLeavesHintToCaller(t *testing.T) {
 	}
 	if got := output.ExitCodeOf(err); got != 1 {
 		t.Errorf("exit = %d, want 1 (unchanged: an ordinary API lookup failure)", got)
+	}
+}
+
+// TestSparkTenantStorageQuotaExceeded 钉住配额超限的完整契约。
+//
+// 登记这个码同时解决两件事：subtype 从 unknown 变成 quota_exceeded，且 classify.go 的
+// APIHint 会补上通用的「腾出配额后再试」文案 —— 未登记时 hint 是空的，调用方拿不到任何
+// 下一步。这里断言 hint 非空，是为了让「框架已有文案」这个依赖被显式记录：若哪天 APIHint
+// 去掉了 quota_exceeded 分支，这条会失败，提示需要改为域内文案。
+func TestSparkTenantStorageQuotaExceeded(t *testing.T) {
+	err := BuildAPIError(map[string]any{
+		"code": 400000055,
+		"msg":  "当前文件存储已达到上限，暂时不支持上传",
+	}, ClassifyContext{Identity: "user"})
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("BuildAPIError = %#v, want typed problem", err)
+	}
+	if p.Category != errs.CategoryAPI || p.Subtype != errs.SubtypeQuotaExceeded {
+		t.Fatalf("category/subtype = %s/%s, want api/quota_exceeded", p.Category, p.Subtype)
+	}
+	if p.Hint == "" {
+		t.Error("Hint is empty: the framework APIHint no longer covers quota_exceeded, so this code needs its own wording")
+	}
+	// 配额不是「改参数就能过」，故留在 CategoryAPI（exit 1）而非 Validation（exit 2）；
+	// quota_exceeded 这个 subtype 本身已经表达了「别重试」。
+	if got := output.ExitCodeOf(err); got != 1 {
+		t.Errorf("exit = %d, want 1", got)
+	}
+	// 服务端原句必须保留：它是唯一说明「租户级」而非单 app 配额的信息。
+	if p.Message != "当前文件存储已达到上限，暂时不支持上传" {
+		t.Errorf("message = %q, want the server wording verbatim", p.Message)
 	}
 }

@@ -10,7 +10,7 @@
 
 用 `+record-list` 展示候选时，可重复传入 `--field-id` 做最小投影。字段名包含空格时，需要给完整值加引号，例如 `--field-id "Project Owner"`。
 
-用户明确指定某个视图的第 N 行时，先用同一 `view_id` 调用 `+record-list`，并将 `--offset` 设为 N-1、`--limit` 设为 1。默认 Markdown 输出从 `_record_id` 列读取唯一记录 ID；显式使用 `--format json` 时从 `.data.record_id_list[0]` 读取。`_record_id` 不是 JSON 顶层字段；视图或排序上下文不明确时仍需先确认。
+用户明确指定某个视图的第 N 行时，先用同一 `view_id` 调用 `+record-list`，并将 `--offset` 设为 N-1、`--limit` 设为 1，再从唯一结果中取得 `record_id`。视图或排序上下文不明确时仍需先确认。
 
 ## 推荐命令
 

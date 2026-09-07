@@ -982,6 +982,33 @@ func resolveMarkdownImageURLs(ctx context.Context, runtime *common.RuntimeContex
 	})
 }
 
+// hasContentFiles reports whether the given content JSON carries a top-level
+// "files" array with at least one entry. Used to enforce the mutual exclusion
+// between attachment flags (--attachment/--set-attachments/--clear-attachments)
+// and a --content that already declares files: both are attachment-zone
+// sources, so combining them is rejected. Invalid JSON is treated as no files
+// (the content-JSON validity check reports it separately).
+func hasContentFiles(content string) bool {
+	if content == "" {
+		return false
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(content), &parsed); err != nil || parsed == nil {
+		return false
+	}
+	files, ok := parsed["files"].([]interface{})
+	return ok && len(files) > 0
+}
+
+// hasAnyContentSource reports whether any non-attachment content flag is set
+// (text/markdown/content or a media flag). send/reply use it to allow
+// attachment-only posts while still enforcing every mutual-exclusion error when
+// another content source is present alongside --attachment.
+func hasAnyContentSource(text, markdown, content, imageKey, fileKey, videoKey, videoCoverKey, audioKey string) bool {
+	return text != "" || markdown != "" || content != "" ||
+		imageKey != "" || fileKey != "" || videoKey != "" || videoCoverKey != "" || audioKey != ""
+}
+
 // validateContentFlags checks mutual exclusion between content flags (text/markdown/content)
 // and media flags (image/file/video/audio). Returns an error string or "".
 func validateContentFlags(text, markdown, content, imageKey, fileKey, videoKey, videoCoverKey, audioKey string) string {
@@ -1030,6 +1057,7 @@ func validateContentFlags(text, markdown, content, imageKey, fileKey, videoKey, 
 	return ""
 }
 
+// validateExplicitMsgType rejects an explicitly-set --msg-type that conflicts with the inferred type from the content flags.
 func validateExplicitMsgType(cmd *cobra.Command, msgType, text, markdown, imageKey, fileKey, videoKey, audioKey string) string {
 	if cmd == nil || !cmd.Flags().Changed("msg-type") {
 		return ""
@@ -1055,6 +1083,172 @@ func validateExplicitMsgType(cmd *cobra.Command, msgType, text, markdown, imageK
 	}
 	return fmt.Sprintf("--msg-type %q conflicts with the inferred message type %q from the selected content flag", msgType, inferred)
 }
+
+// attachmentItem is one parsed --attachment value: a required file/folder key.
+// 服务端不信任客户端 name（OAPI resolveAttachmentFile 禁止透传 name/size/mime/is_folder，
+// 一律以文件服务元信息回填），故 CLI 不接收 display name，只传纯 key。
+type attachmentItem struct {
+	Key string
+}
+
+// parseAttachmentFlag parses a single attachment value: a bare "file_key".
+// flagName is the caller's flag name (e.g. "--attachment" or "--set-attachments")
+// used in error messages. 与 Slack file_ids 等竞品惯例一致（引用附件只传 id，不重复传 name）。
+func parseAttachmentFlag(value, flagName string) (attachmentItem, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return attachmentItem{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s value must not be empty", flagName).WithParam(flagName)
+	}
+	return attachmentItem{Key: value}, nil
+}
+
+// parseAttachments parses every attachment value in order. flagName is the
+// caller's flag name used in error messages.
+func parseAttachments(values []string, flagName string) ([]attachmentItem, error) {
+	items := make([]attachmentItem, 0, len(values))
+	for _, v := range values {
+		it, err := parseAttachmentFlag(v, flagName)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, it)
+	}
+	return items, nil
+}
+
+// mergeAttachmentsIntoPostContent merges attachment items into a post content
+// JSON's top-level "files" array, preserving any files already present in
+// --content and deduplicating by key (send/reply --attachment semantics). Post
+// content JSON shape (OpenAPI):
+// {"zh_cn":{...},"files":[{"key":...}]}. name 等元信息由服务端文件服务回填，CLI 不传。
+func mergeAttachmentsIntoPostContent(content string, items []attachmentItem) (string, error) {
+	parsed := make(map[string]interface{})
+	if content != "" {
+		if err := json.Unmarshal([]byte(content), &parsed); err != nil {
+			return "", err
+		}
+		// JSON "null" unmarshals into a nil map; treat it as empty content.
+		if parsed == nil {
+			parsed = make(map[string]interface{})
+		}
+	}
+	var files []map[string]interface{}
+	seen := make(map[string]bool)
+	if existing, ok := parsed["files"].([]interface{}); ok {
+		for _, e := range existing {
+			if m, ok := e.(map[string]interface{}); ok {
+				if key, _ := m["key"].(string); key != "" {
+					if seen[key] {
+						continue
+					}
+					seen[key] = true
+				}
+				files = append(files, m)
+			}
+		}
+	}
+	for _, it := range items {
+		if seen[it.Key] {
+			continue
+		}
+		seen[it.Key] = true
+		files = append(files, map[string]interface{}{"key": it.Key})
+	}
+	parsed["files"] = files
+	b, err := json.Marshal(parsed)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// replaceAttachmentsIntoPostContent sets the post content's top-level "files"
+// array to EXACTLY the given items, discarding any files already present in
+// --content. This is the "set" (replace) semantic used by +messages-edit
+// --set-attachments: the flag values are the final attachment list, never
+// merged with --content's files.
+func replaceAttachmentsIntoPostContent(content string, items []attachmentItem) (string, error) {
+	parsed := make(map[string]interface{})
+	if content != "" {
+		if err := json.Unmarshal([]byte(content), &parsed); err != nil {
+			return "", err
+		}
+		// JSON "null" unmarshals into a nil map; treat it as empty content.
+		if parsed == nil {
+			parsed = make(map[string]interface{})
+		}
+	}
+	files := make([]map[string]interface{}, 0, len(items))
+	seen := make(map[string]bool)
+	for _, it := range items {
+		if seen[it.Key] {
+			continue
+		}
+		seen[it.Key] = true
+		files = append(files, map[string]interface{}{"key": it.Key})
+	}
+	parsed["files"] = files
+	b, err := json.Marshal(parsed)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// clearAttachmentsInPostContent sets the top-level "files" array of a post
+// content JSON to an empty array ([]), signaling the server to clear the
+// message's attachment zone. If content is empty, it returns a minimal post
+// content with an empty body and empty attachment zone.
+func clearAttachmentsInPostContent(content string) (string, error) {
+	parsed := make(map[string]interface{})
+	if content != "" {
+		if err := json.Unmarshal([]byte(content), &parsed); err != nil {
+			return "", err
+		}
+		// JSON "null" unmarshals into a nil map; treat it as empty content.
+		if parsed == nil {
+			parsed = make(map[string]interface{})
+		}
+	}
+	parsed["files"] = []map[string]interface{}{}
+	b, err := json.Marshal(parsed)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// validateAttachmentFlags parses attachment values and enforces the post-only
+// message-type constraint: attachment files live in a post message's attachment
+// zone, so the effective message type must be post (via --markdown or an
+// explicit --msg-type post with --content). flagName is the caller's flag name
+// (e.g. "--attachment" or "--set-attachments") used in error messages.
+func validateAttachmentFlags(values []string, msgType, markdown, flagName string, msgTypeExplicit bool, text string) ([]attachmentItem, error) {
+	items, err := parseAttachments(values, flagName)
+	if err != nil {
+		return nil, err
+	}
+	for _, it := range items {
+		if !strings.HasPrefix(it.Key, "file_") {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s key must be a file/folder key (file_xxx), got %q", flagName, it.Key).WithParam(flagName)
+		}
+	}
+	// --text is a standalone text message; it cannot carry a post attachment
+	// zone (we do not wrap literal text into a post node).
+	if len(items) > 0 && text != "" {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s attaches files to a post message and cannot be combined with --text; use --markdown (or --msg-type post with --content) for the body", flagName).WithParam(flagName)
+	}
+	// Attachments imply a post message. When the caller did not explicitly set
+	// --msg-type, infer post automatically (same as --markdown); only an
+	// explicit incompatible --msg-type is a conflict. A markdown body already
+	// infers post, so it is always compatible.
+	if len(items) > 0 && markdown == "" && msgTypeExplicit && msgType != "post" {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s attaches files to a post message; --msg-type %q conflicts with the inferred post type", flagName, msgType).WithParam(flagName)
+	}
+	return items, nil
+}
+
+// detectIMFileType infers a file_type from a local file extension, defaulting to "stream".
 
 func detectIMFileType(filePath string) string {
 	ext := strings.ToLower(filepath.Ext(filePath))

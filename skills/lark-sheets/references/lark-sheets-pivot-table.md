@@ -33,6 +33,7 @@
 - **数据源范围必须精确**：透视表的数据源范围必须包含表头行，且精确覆盖全部数据行列。范围过大（包含空行/空列）或过小（遗漏数据列）都会导致透视表结果错误
 - **行列字段选择要匹配用户意图**：用户说"按商品统计金额"→ 行字段=商品，值字段=金额（`summarize_by: "sum"`）。不要把行列字段搞反
 - **聚合类型要匹配**：用户说"统计数量"→ `summarize_by: "count"`；"统计总额"→ `"sum"`；"统计平均"→ `"average"`。完整合法值：`sum` / `count` / `average` / `max` / `min` / `product` / `countNums` / `stdDev` / `stdDevp` / `var` / `varp` / `distinct` / `median`。按用户意图选聚合方式，不要拿 `count` 顶替 `sum`
+- **`--properties` 还原生支持**：计算字段 `calculated_fields[].summarize_by ∈ {sum, custom}`、重复行标签 `repeat_row_labels: true`——别因速查表没列就判"不支持"绕路
 - **参数长度限制**：如果透视表配置 JSON 过长（数据源范围跨越大量行列），可能导致工具调用失败。此时应先确认数据范围的精确边界，避免传入过大的 range
 - **落点不能覆盖任何已有数据（不只是 `--source` 范围）**：透视表创建后会向右下**展开**，展开区域哪怕只盖到一个已有单元格（即便已避开源数据），也会报「目标位置不能与数据源重叠」并产生 `#REF!`。创建前无法精确预知展开尺寸，故**强烈优先默认策略**（不传 `--target-sheet-id/-name` 与 `--target-position`/`--range`，后端自动新建空白子表），零覆盖风险；非要落到已有子表，必须挑一片足够大的纯空白区
 - **创建后必须校验（用 `info` 读取展开后的真实占用区域）**：创建后调用 `+pivot-list` 读 `info.error_state` 与 `info.content_range`/`page_range`——`error_state` 非 `None`（如 `Cover` 盖到其它内容 / `Shrink` 展不开）说明落点冲突，应删除后重建到空白区；`content_range`/`page_range` 是展开后**实际占用区域**，可用 `+csv-get` 抽查其边缘外有没有盖掉原有数据，确认结构正确
@@ -159,7 +160,7 @@ lark-cli sheets +pivot-create --url "..." \
 ### `+pivot-delete`
 
 ```bash
-lark-cli sheets +pivot-delete --url "..." --sheet-id "$SID" --pivot-table-id "$PID" --yes
+lark-cli sheets +pivot-delete --url "..." --sheet-id "$SHEET_ID" --pivot-table-id "$PIVOT_TABLE_ID" --yes
 ```
 
 ### Validate / DryRun / Execute 约束

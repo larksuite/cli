@@ -198,6 +198,27 @@ var stylesPriorCorpus = []struct {
 	{name: "wrap_strategy aliases to word_wrap",
 		fields: map[string]interface{}{"wrap_strategy": "auto-wrap"},
 		check:  wantStyle("word_wrap", "auto-wrap")},
+	// 08-18..24 batch. The border family's remaining spellings come from the
+	// Lark OpenAPI (border_type: FULL_BORDER / OUTER_BORDER) and CSS
+	// (border_width) — real vocabularies, but neither maps onto a per-side
+	// style/weight/color triple, so they stay prescriptions. The nested
+	// {range, style:{…}} envelope is the OpenAPI request shape copied one
+	// level too deep.
+	{name: "border_type prescribed", fields: map[string]interface{}{"border_type": "solid"},
+		wantErr: "there is no border_type / border_width field"},
+	{name: "camelCase borderType prescribed", fields: map[string]interface{}{"borderType": "FULL_BORDER"},
+		wantErr: "borders go in border"},
+	{name: "kebab border-style prescribed", fields: map[string]interface{}{"border-style": "solid"},
+		wantErr: "borders go in border"},
+	{name: "border_width prescribed", fields: map[string]interface{}{"border_width": float64(1)},
+		wantErr: "borders go in border"},
+	{name: "nested style envelope prescribed",
+		fields:  map[string]interface{}{"style": map[string]interface{}{"font_weight": "bold"}},
+		wantErr: "no nested style object"},
+	{name: "bg_color prescribed", fields: map[string]interface{}{"bg_color": "#FFFFFF"},
+		wantErr: "the cell fill is background_color"},
+	{name: "text_color prescribed", fields: map[string]interface{}{"text_color": "#000000"},
+		wantErr: "the text color is font_color"},
 	// prescriptions (ambiguous / unsupported / typo)
 	{name: "fore_color prescribed", fields: map[string]interface{}{"fore_color": "#F00"}, wantErr: "ambiguous"},
 	{name: "indent rejected not ignored", fields: map[string]interface{}{"indent": float64(2)}, wantErr: "not a supported style field"},
@@ -249,8 +270,15 @@ func TestStylesAcceptance_PriorCorpus(t *testing.T) {
 			t.Parallel()
 			proto, err := acceptStyleItem(t, tc.fields)
 			if tc.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-					t.Fatalf("want prescription containing %q, got err=%v", tc.wantErr, err)
+				// A prescription is only usable if it is also typed: an agent
+				// reads Param to know which flag to fix, and the message alone
+				// would keep passing if that attribution regressed.
+				ve := requireValidation(t, err, tc.wantErr)
+				if ve.Param != "--styles" {
+					t.Errorf("Param = %q, want --styles", ve.Param)
+				}
+				if ve.Cause == nil {
+					t.Error("the prescription should keep the underlying error as Cause")
 				}
 				return
 			}

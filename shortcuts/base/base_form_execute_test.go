@@ -5,6 +5,7 @@ package base
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -341,6 +342,37 @@ func TestBaseFormQuestionsExecuteCreate(t *testing.T) {
 			t.Fatalf("visible_rule logic not preserved: %#v", rule)
 		}
 	})
+
+	t.Run("use existing field passthrough", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		stub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1/questions",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"questions": []interface{}{
+						map[string]interface{}{"id": "fldEmail", "title": "你的邮箱"},
+					},
+				},
+			},
+		}
+		reg.Register(stub)
+		args := []string{"+form-questions-create", "--base-token", "app_x", "--table-id", "tbl_x", "--form-id", "vew_form1",
+			"--questions", `[{"use_existing_field":true,"field_id":"fldEmail","title":"你的邮箱","required":true}]`}
+		if err := runShortcut(t, BaseFormQuestionsCreate, args, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		body := decodeCapturedJSONBody(t, stub)
+		questions, _ := body["questions"].([]interface{})
+		if len(questions) != 1 {
+			t.Fatalf("questions=%#v", body["questions"])
+		}
+		question, _ := questions[0].(map[string]interface{})
+		if question["use_existing_field"] != true || question["field_id"] != "fldEmail" {
+			t.Fatalf("existing field question not forwarded: body=%s", string(stub.CapturedBody))
+		}
+	})
 }
 
 func TestBaseFormQuestionsExecuteUpdate(t *testing.T) {
@@ -384,11 +416,12 @@ func TestBaseFormQuestionsExecuteUpdate(t *testing.T) {
 func TestBaseFormQuestionsExecuteDelete(t *testing.T) {
 	t.Run("delete questions", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		reg.Register(&httpmock.Stub{
+		stub := &httpmock.Stub{
 			Method: "DELETE",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1/questions",
 			Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
-		})
+		}
+		reg.Register(stub)
 		args := []string{"+form-questions-delete", "--base-token", "app_x", "--table-id", "tbl_x", "--form-id", "vew_form1",
 			"--question-ids", `["q_001","q_002"]`, "--yes"}
 		if err := runShortcut(t, BaseFormQuestionsDelete, args, factory, stdout); err != nil {
@@ -397,14 +430,59 @@ func TestBaseFormQuestionsExecuteDelete(t *testing.T) {
 		if got := stdout.String(); !strings.Contains(got, `"deleted": true`) || !strings.Contains(got, `"q_001"`) {
 			t.Fatalf("stdout=%s", got)
 		}
-	})
-
-	t.Run("invalid question-ids json", func(t *testing.T) {
-		factory, stdout, _ := newExecuteFactory(t)
-		args := []string{"+form-questions-delete", "--base-token", "app_x", "--table-id", "tbl_x", "--form-id", "vew_form1",
-			"--question-ids", `not-json`}
-		if err := runShortcut(t, BaseFormQuestionsDelete, args, factory, stdout); err == nil {
-			t.Fatalf("expected error for invalid question-ids JSON")
+		body := decodeCapturedJSONBody(t, stub)
+		questionIDs, ok := body["question_ids"].([]interface{})
+		if !ok || len(questionIDs) != 2 || questionIDs[0] != "q_001" || questionIDs[1] != "q_002" {
+			t.Fatalf("question_ids=%#v; body=%s", body["question_ids"], string(stub.CapturedBody))
+		}
+		if _, exists := body["keep_field"]; exists {
+			t.Fatalf("default delete must omit keep_field: body=%s", string(stub.CapturedBody))
 		}
 	})
+
+	t.Run("keep field", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		stub := &httpmock.Stub{
+			Method: "DELETE",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1/questions",
+			Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+		}
+		reg.Register(stub)
+		args := []string{"+form-questions-delete", "--base-token", "app_x", "--table-id", "tbl_x", "--form-id", "vew_form1",
+			"--question-ids", `["fldEmail"]`, "--keep-field", "--yes"}
+		if err := runShortcut(t, BaseFormQuestionsDelete, args, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		body := decodeCapturedJSONBody(t, stub)
+		if body["keep_field"] != true {
+			t.Fatalf("keep_field not forwarded: body=%s", string(stub.CapturedBody))
+		}
+		if got := stdout.String(); !strings.Contains(got, `"keep_field": true`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	tests := []struct {
+		name    string
+		input   string
+		message string
+	}{
+		{name: "invalid json", input: `not-json`, message: "must be a valid JSON array of strings"},
+		{name: "blank item", input: `["q_001","  "]`, message: "must be a non-empty string"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			factory, stdout, _ := newExecuteFactory(t)
+			args := []string{"+form-questions-delete", "--base-token", "app_x", "--table-id", "tbl_x", "--form-id", "vew_form1",
+				"--question-ids", tt.input}
+			err := runShortcut(t, BaseFormQuestionsDelete, args, factory, stdout)
+			assertInvalidArgumentValidation(t, err, "--question-ids", []string{"--question-ids"}, tt.message)
+			if tt.name == "invalid json" {
+				var syntaxErr *json.SyntaxError
+				if !errors.As(err, &syntaxErr) {
+					t.Fatalf("expected JSON syntax cause to be preserved, got %T %v", err, err)
+				}
+			}
+		})
+	}
 }

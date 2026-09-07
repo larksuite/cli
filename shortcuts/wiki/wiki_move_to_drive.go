@@ -201,23 +201,11 @@ func runWikiMoveToDrive(
 	runtime *common.RuntimeContext,
 	spec wikiMoveToDriveSpec,
 ) (map[string]interface{}, error) {
-	folderLabel := "personal-space root"
-	if spec.FolderToken != "" {
-		folderLabel = common.MaskToken(spec.FolderToken)
-	}
-	fmt.Fprintf(
-		runtime.IO().ErrOut,
-		"Moving wiki node %s to Drive folder %s...\n",
-		common.MaskToken(spec.NodeToken),
-		folderLabel,
-	)
-
 	taskID, err := client.MoveWikiToDrive(ctx, spec)
 	if err != nil {
 		return nil, err
 	}
 
-	fmt.Fprintf(runtime.IO().ErrOut, "Wiki move-to-drive is async, polling task %s...\n", taskID)
 	status, ready, err := pollWikiMoveToDriveTask(ctx, client, runtime, taskID)
 	if err != nil {
 		return nil, err
@@ -237,7 +225,6 @@ func runWikiMoveToDrive(
 	}
 	if !ready {
 		nextCommand := wikiMoveToDriveTaskResultCommand(taskID, runtime.As(), wikiMoveToDriveProfileName(runtime))
-		fmt.Fprintf(runtime.IO().ErrOut, "Wiki move-to-drive task is still in progress. Continue with: %s\n", nextCommand)
 		out["timed_out"] = true
 		out["next_command"] = nextCommand
 	}
@@ -276,14 +263,12 @@ func pollWikiMoveToDriveTask(
 				)
 			}
 			lastErr = err
-			fmt.Fprintf(runtime.IO().ErrOut, "Wiki move-to-drive status attempt %d/%d failed: %v\n", attempt, wikiMoveToDrivePollAttempts, err)
 			continue
 		}
 		lastStatus = status
 		hadSuccessfulPoll = true
 
 		if status.Ready() {
-			fmt.Fprintln(runtime.IO().ErrOut, "Wiki move-to-drive task completed successfully.")
 			return status, true, nil
 		}
 		if status.Failed() {
@@ -295,13 +280,6 @@ func pollWikiMoveToDriveTask(
 			)
 		}
 
-		fmt.Fprintf(
-			runtime.IO().ErrOut,
-			"Wiki move-to-drive status %d/%d: %s\n",
-			attempt,
-			wikiMoveToDrivePollAttempts,
-			status.StatusLabel(),
-		)
 	}
 
 	if err := ctx.Err(); err != nil {

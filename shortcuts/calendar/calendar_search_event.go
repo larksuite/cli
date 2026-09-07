@@ -58,7 +58,6 @@ type searchEventItem struct {
 	Start    *searchEventTimeInfo `json:"start,omitempty"`
 	End      *searchEventTimeInfo `json:"end,omitempty"`
 	IsAllDay bool                 `json:"is_all_day,omitempty"`
-	AppLink  string               `json:"app_link,omitempty"`
 }
 
 // searchEventOutput is the structured output for +search-event.
@@ -195,6 +194,10 @@ var CalendarSearchEvent = common.Shortcut{
 		if _, err := common.ValidatePageSizeTyped(runtime, "page-size", defaultSearchEventPageSize, 1, maxSearchEventPageSize); err != nil {
 			return err
 		}
+		warnCalendarTimezoneMismatch(runtime,
+			calendarTimeInputRange{Flag: "start", Value: runtime.Str("start")},
+			calendarTimeInputRange{Flag: "end", Value: runtime.Str("end")},
+		)
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -268,9 +271,6 @@ var CalendarSearchEvent = common.Shortcut{
 				}
 				if v, ok := meta["is_all_day"].(bool); ok {
 					out.IsAllDay = v
-				}
-				if v, ok := meta["app_link"].(string); ok {
-					out.AppLink = v
 				}
 				if start, ok := meta["start"].(map[string]any); ok {
 					out.Start = extractTimeInfo(start)

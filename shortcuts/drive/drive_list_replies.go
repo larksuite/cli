@@ -70,7 +70,6 @@ var DriveListReplies = common.Shortcut{
 			return err
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Listing replies of comment %s in %s...\n", spec.CommentID, common.MaskToken(target.FileToken))
 		path := fmt.Sprintf(
 			"/open-apis/drive/v1/files/%s/comments/%s/replies",
 			validate.EncodePathSegment(target.FileToken),

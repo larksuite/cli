@@ -90,7 +90,6 @@ var DriveBatchQueryComments = common.Shortcut{
 			return err
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Batch querying %d comment(s) in %s...\n", len(spec.CommentIDs), common.MaskToken(target.FileToken))
 		path := fmt.Sprintf("/open-apis/drive/v1/files/%s/comments/batch_query", validate.EncodePathSegment(target.FileToken))
 		data, err := runtime.CallAPITyped(
 			"POST",

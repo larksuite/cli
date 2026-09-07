@@ -224,8 +224,8 @@ func TestDocResourceUpdateCoverUploadsFileAndReturnsFullTokenOnlyOnStdout(t *tes
 		}
 	}
 
-	if strings.Contains(stderr.String(), fileToken) {
-		t.Fatalf("stderr leaked full file_token: %s", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no cover upload progress", stderr.String())
 	}
 	data := decodeDocResourceOutput(t, stdout).Data
 	if data["file_token"] != fileToken {
@@ -234,6 +234,68 @@ func TestDocResourceUpdateCoverUploadsFileAndReturnsFullTokenOnlyOnStdout(t *tes
 	cover := data["cover"].(map[string]interface{})
 	if cover["token"] != fileToken {
 		t.Fatalf("stdout cover.token = %v, want %s", cover["token"], fileToken)
+	}
+}
+
+func TestDocResourceUpdateCoverPatchFailureReportsUploadedState(t *testing.T) {
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-cover-recovery-app"))
+	documentID := "doxcnCoverRecovery1"
+	fileToken := "file_cover_recovery_token"
+
+	tmpDir := t.TempDir()
+	withDocsWorkingDir(t, tmpDir)
+	if err := os.WriteFile("cover.png", []byte("png-data"), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"file_token": fileToken},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "PATCH",
+		URL:    "/open-apis/docx/v1/documents/" + documentID,
+		Body:   map[string]interface{}{"code": 1777002, "msg": "cover update failed"},
+	})
+
+	err := mountAndRunDocs(t, DocResourceUpdate, []string{
+		"+resource-update",
+		"--doc", documentID,
+		"--type", "cover",
+		"--file", "cover.png",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected cover PATCH failure, got nil")
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty on cover PATCH failure", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want recovery in typed error only", stderr.String())
+	}
+
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
+	}
+	if problem.Code != 1777002 {
+		t.Fatalf("code = %d, want preserved cover error code 1777002", problem.Code)
+	}
+	for _, want := range []string{
+		"phase=update_cover",
+		"document_id=" + documentID,
+		"upload_succeeded=true",
+		"file_token=" + fileToken,
+		"Reuse the uploaded file_token",
+	} {
+		if !strings.Contains(problem.Hint, want) {
+			t.Fatalf("hint = %q, want %q", problem.Hint, want)
+		}
 	}
 }
 

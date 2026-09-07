@@ -433,7 +433,7 @@ func TestDetail_Execute_Transcript_OutputDir(t *testing.T) {
 func TestDetail_Validation_OutputDirEscape(t *testing.T) {
 	chdirForDetailTest(t)
 	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
-	err := detailMountAndRun(t, MinutesDetail, []string{"+detail", "--minute-tokens", "tok001", "--output-dir", "../escape", "--as", "user"}, f, nil)
+	err := detailMountAndRun(t, MinutesDetail, []string{"+detail", "--minute-tokens", "tok001", "--output-dir", "../../../../../../../../../../../../escape", "--as", "user"}, f, nil)
 	if err == nil {
 		t.Fatal("expected validation error for escaping output-dir")
 	}

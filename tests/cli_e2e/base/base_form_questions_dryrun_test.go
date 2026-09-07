@@ -67,3 +67,57 @@ func TestBaseFormQuestionsUpdateVisibleRuleDryRun(t *testing.T) {
 	assert.Contains(t, output, `"method": "PATCH"`)
 	assert.Contains(t, output, "visible_rule")
 }
+
+func TestBaseFormQuestionsDeleteKeepFieldDryRun(t *testing.T) {
+	setBaseDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"base", "+form-questions-delete",
+			"--base-token", "bascnXXXX",
+			"--table-id", "tblXXXX",
+			"--form-id", "vewXXXX",
+			"--question-ids", `["fldEmail"]`,
+			"--keep-field",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	output := strings.TrimSpace(result.Stdout)
+	assert.Contains(t, output, "/open-apis/base/v3/bases/bascnXXXX/tables/tblXXXX/forms/vewXXXX/questions")
+	assert.Contains(t, output, `"method": "DELETE"`)
+	assert.Contains(t, output, `"keep_field": true`)
+	assert.Contains(t, output, `"fldEmail"`)
+}
+
+func TestBaseFormQuestionsDeleteDefaultDryRun(t *testing.T) {
+	setBaseDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"base", "+form-questions-delete",
+			"--base-token", "bascnXXXX",
+			"--table-id", "tblXXXX",
+			"--form-id", "vewXXXX",
+			"--question-ids", `["fldEmail"]`,
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	output := strings.TrimSpace(result.Stdout)
+	assert.Equal(t, "DELETE", clie2e.DryRunGet(output, "api.0.method").String())
+	assert.Equal(t, "fldEmail", clie2e.DryRunGet(output, "api.0.body.question_ids.0").String())
+	assert.False(t, clie2e.DryRunGet(output, "api.0.body.keep_field").Exists(), output)
+}

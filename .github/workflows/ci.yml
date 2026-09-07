@@ -45,6 +45,10 @@ jobs:
             echo "::error::Unformatted Go files detected — run 'gofmt -w .' and commit"
             exit 1
           fi
+      - name: Check generated Go files
+        run: |
+          go generate ./shortcuts/sheets/...
+          git diff --exit-code
       - name: Check go.mod tidiness
         run: |
           go mod tidy

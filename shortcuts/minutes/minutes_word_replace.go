@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -16,10 +17,15 @@ import (
 )
 
 const (
-	minutesWordReplaceNoEditPermission = 40005
-	minutesWordReplaceOthersEditing    = 40110
-	minutesWordReplaceInvalidParams    = 40001
+	minutesWordReplaceNoEditPermission  = 2091005
+	minutesWordReplaceOthersEditing     = 2091110
+	minutesWordReplaceWordsNotFound     = 2091013
+	minutesWordReplaceASRQuotaNotEnough = 2091008
 )
+
+const minutesWordReplaceDoNotRetrySucceeded = "Do not reprocess words that already succeeded."
+
+const minutesWordReplaceNotFoundHint = "Report the unmatched source_word values and confirm their exact spelling, case and spacing with the user, then retry only those words"
 
 type transcriptWordReplace struct {
 	SourceWord string `json:"source_word"`
@@ -79,20 +85,14 @@ var MinutesWordReplace = common.Shortcut{
 			"replace_words": replaceWords,
 		}
 
-		_, err = runtime.CallAPITyped(http.MethodPut,
+		data, err := runtime.CallAPITyped(http.MethodPut,
 			fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/transcript/word", validate.EncodePathSegment(minuteToken)),
 			nil, body)
 		if err != nil {
 			return minutesWordReplaceError(err, minuteToken)
 		}
 
-		outData := map[string]interface{}{
-			"minute_token":  minuteToken,
-			"replace_words": replaceWords,
-		}
-
-		runtime.OutFormat(outData, nil, nil)
-		return nil
+		return emitWordReplaceResult(runtime, minuteToken, replaceWords, data)
 	},
 }
 
@@ -129,6 +129,143 @@ func parseReplaceWords(raw string) ([]map[string]string, error) {
 	return replaceWords, nil
 }
 
+func emitWordReplaceResult(runtime *common.RuntimeContext, minuteToken string, replaceWords []map[string]string, data map[string]interface{}) error {
+	counts, hasCounts := parseReplaceWordCounts(data)
+	if !hasCounts {
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+			"Replace request returned success, but the server did not include replace_word_counts, so per-word outcomes cannot be reported.").
+			WithHint("Check the transcript with `minutes +detail --minute-tokens %s --transcript` before retrying. %s",
+				minuteToken, minutesWordReplaceDoNotRetrySucceeded)
+	}
+
+	succeeded, failed := splitWordReplaceResults(replaceWords, counts)
+	if len(succeeded) == 0 {
+		return minutesWordReplaceAllFailed(minuteToken, failed)
+	}
+
+	runtime.OutFormat(map[string]interface{}{
+		"minute_token": minuteToken,
+		"message":      formatWordReplaceMessage(succeeded, failed),
+	}, nil, nil)
+	return nil
+}
+
+func formatWordReplaceMessage(succeeded, failed []string) string {
+	var b strings.Builder
+	b.WriteString("Succeeded: ")
+	if len(succeeded) == 0 {
+		b.WriteString("none")
+	} else {
+		b.WriteString(strings.Join(succeeded, ", "))
+	}
+	b.WriteString("; Failed: ")
+	if len(failed) == 0 {
+		b.WriteString("none")
+	} else {
+		b.WriteString(strings.Join(failed, ", "))
+	}
+	b.WriteString(". ")
+	b.WriteString(minutesWordReplaceDoNotRetrySucceeded)
+	return b.String()
+}
+
+// minutesWordReplaceAllFailed reports an all-zero replace_word_counts response.
+// The call itself succeeded, so there is no upstream code to carry here.
+func minutesWordReplaceAllFailed(minuteToken string, failed []string) error {
+	msg := fmt.Sprintf("None of the source words were found in minute %q transcript; nothing was replaced.", minuteToken)
+	if len(failed) > 0 {
+		msg = fmt.Sprintf("Succeeded: none; Failed: %s. %s", strings.Join(failed, ", "), msg)
+	}
+	return errs.NewAPIError(errs.SubtypeNotFound, "%s", msg).
+		WithHint("%s", minutesWordReplaceNotFoundHint)
+}
+
+func parseReplaceWordCounts(data map[string]interface{}) (map[string]int64, bool) {
+	if data == nil {
+		return nil, false
+	}
+	raw, ok := data["replace_word_counts"]
+	if !ok || raw == nil {
+		return nil, false
+	}
+
+	items, ok := asObjectSlice(raw)
+	if !ok {
+		return nil, false
+	}
+
+	out := make(map[string]int64, len(items))
+	for _, m := range items {
+		source := strings.TrimSpace(asString(m["source_word"]))
+		if source == "" {
+			continue
+		}
+		out[source] = toInt64(m["replace_count"])
+	}
+	return out, true
+}
+
+func asObjectSlice(v interface{}) ([]map[string]interface{}, bool) {
+	switch items := v.(type) {
+	case []interface{}:
+		out := make([]map[string]interface{}, 0, len(items))
+		for _, item := range items {
+			m, ok := item.(map[string]interface{})
+			if !ok {
+				return nil, false
+			}
+			out = append(out, m)
+		}
+		return out, true
+	case []map[string]interface{}:
+		return items, true
+	default:
+		return nil, false
+	}
+}
+
+func asString(v interface{}) string {
+	s, _ := v.(string)
+	return s
+}
+
+func toInt64(v interface{}) int64 {
+	switch n := v.(type) {
+	case int64:
+		return n
+	case int:
+		return int64(n)
+	case float64:
+		return int64(n)
+	case json.Number:
+		i, _ := n.Int64()
+		return i
+	case string:
+		i, err := strconv.ParseInt(strings.TrimSpace(n), 10, 64)
+		if err != nil {
+			return 0
+		}
+		return i
+	default:
+		return 0
+	}
+}
+
+func splitWordReplaceResults(replaceWords []map[string]string, counts map[string]int64) (succeeded, failed []string) {
+	succeeded = make([]string, 0, len(replaceWords))
+	failed = make([]string, 0)
+	for _, item := range replaceWords {
+		source := item["source_word"]
+		count, ok := counts[source]
+		if !ok || count <= 0 {
+			failed = append(failed, source)
+			continue
+		}
+		succeeded = append(succeeded, source)
+	}
+	return succeeded, failed
+}
+
 func minutesWordReplaceError(err error, minuteToken string) error {
 	p, ok := errs.ProblemOf(err)
 	if !ok {
@@ -144,12 +281,14 @@ func minutesWordReplaceError(err error, minuteToken string) error {
 		p.Subtype = errs.SubtypeConflict
 		p.Message = fmt.Sprintf("Minute %q transcript is being edited by someone else.", minuteToken)
 		p.Hint = "Wait until the other editor finishes, then retry"
-	case minutesWordReplaceInvalidParams:
-		if strings.Contains(strings.ToLower(p.Message), "not found in transcript") {
-			p.Subtype = errs.SubtypeNotFound
-			p.Message = fmt.Sprintf("None of the source words were found in minute %q transcript; nothing was replaced.", minuteToken)
-			p.Hint = "Verify each source_word's exact spelling and case against the current transcript (use `minutes +detail --minute-tokens <token> --transcript` to read it), then retry"
-		}
+	case minutesWordReplaceWordsNotFound:
+		p.Subtype = errs.SubtypeNotFound
+		p.Message = fmt.Sprintf("None of the source words were found in minute %q transcript; nothing was replaced.", minuteToken)
+		p.Hint = minutesWordReplaceNotFoundHint
+	case minutesWordReplaceASRQuotaNotEnough:
+		p.Subtype = errs.SubtypeQuotaExceeded
+		p.Message = fmt.Sprintf("ASR/AI quota not enough: cannot replace transcript words on minute %q.", minuteToken)
+		p.Hint = minutesASRQuotaNotEnoughHint
 	}
 
 	return err

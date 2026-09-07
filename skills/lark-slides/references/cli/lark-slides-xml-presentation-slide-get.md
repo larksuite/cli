@@ -98,7 +98,7 @@ lark-cli slides xml_presentation.slide get --as user --params '{
 
    ```bash
    lark-cli slides xml_presentation.slide get --as user \
-     --params "{\"xml_presentation_id\":\"$PID\",\"slide_id\":\"$SID\"}" \
+     --params "{\"xml_presentation_id\":\"$PRES_ID\",\"slide_id\":\"$SID\"}" \
      --jq '.data.slide.content' | grep -oE 'id="[^"]+"' | sed 's/id="//;s/"//'
    ```
 

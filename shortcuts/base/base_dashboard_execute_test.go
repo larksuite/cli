@@ -598,6 +598,22 @@ func TestBaseDashboardBlockDryRun_Create(t *testing.T) {
 	}
 }
 
+func TestBaseDashboardBlockDryRun_CreateRankingDefaults(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--name", "负责人排行", "--type", "ranking",
+		"--data-config", `{"table_name":"订单表","group_by":[{"field_name":"负责人"}],"series":[{"field_name":"金额","rollup":"sum"}]}`,
+		"--dry-run", "--format", "pretty"}
+	if err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	got := stdout.String()
+	for _, want := range []string{`"type":"ranking"`, `"limit_size":10`, `"rollup":"SUM"`, `"sort":{"order":"desc","type":"value"}`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stdout missing %s: %s", want, got)
+		}
+	}
+}
+
 // TestBaseDashboardBlockDryRun_Update tests the +dashboard-block-update --dry-run flag.
 func TestBaseDashboardBlockDryRun_Update(t *testing.T) {
 	factory, stdout, _ := newExecuteFactory(t)
@@ -608,6 +624,24 @@ func TestBaseDashboardBlockDryRun_Update(t *testing.T) {
 	got := stdout.String()
 	if !strings.Contains(got, "PATCH /open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks/blk_a") || !strings.Contains(got, "订单趋势v2") || !strings.Contains(got, "订单表2") {
 		t.Fatalf("stdout=%s", got)
+	}
+}
+
+func TestBaseDashboardBlockDryRun_UpdateRankingKeepsPatch(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--block-id", "blk_ranking",
+		"--data-config", `{"limit_size":20}`, "--dry-run", "--format", "pretty"}
+	if err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, `"data_config":{"limit_size":20}`) {
+		t.Fatalf("stdout=%s", got)
+	}
+	for _, unwanted := range []string{`"group_by"`, `"series"`, `"count_all"`, `"sort"`} {
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("update must preserve the top-level patch, found %s in %s", unwanted, got)
+		}
 	}
 }
 
@@ -675,6 +709,54 @@ func TestBaseDashboardBlockCreate_InvalidRollup(t *testing.T) {
 	}
 	if got := err.Error(); !strings.Contains(got, "rollup") || !strings.Contains(got, "data_config 校验失败") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestBaseDashboardBlockCreate_RankingValidation(t *testing.T) {
+	validPrefix := `{"table_name":"T","group_by":[{"field_name":"负责人"}],`
+	tests := []struct {
+		name       string
+		dataConfig string
+		want       string
+	}{
+		{name: "missing data config", want: "ranking 类型组件必须提供 data-config"},
+		{name: "missing metric", dataConfig: `{"table_name":"T","group_by":[{"field_name":"负责人"}]}`, want: "二选一"},
+		{name: "multiple series", dataConfig: validPrefix + `"series":[{"field_name":"金额","rollup":"SUM"},{"field_name":"数量","rollup":"SUM"}]}`, want: "严格包含 1 个指标"},
+		{name: "multiple groups", dataConfig: `{"table_name":"T","count_all":true,"group_by":[{"field_name":"负责人"},{"field_name":"区域"}]}`, want: "严格包含 1 个分组"},
+		{name: "top level sort", dataConfig: validPrefix + `"count_all":true,"sort":{"type":"value","order":"desc"}}`, want: "不支持顶层 sort"},
+		{name: "invalid limit", dataConfig: validPrefix + `"count_all":true,"limit_size":501}`, want: "1..500"},
+		{name: "unknown top level field", dataConfig: validPrefix + `"count_all":true,"limit_siz":10}`, want: "limit_siz"},
+		{name: "filter must be object", dataConfig: validPrefix + `"count_all":true,"filter":"all"}`, want: "filter"},
+		{name: "invalid group sort", dataConfig: `{"table_name":"T","count_all":true,"group_by":[{"field_name":"负责人","sort":{"type":"group","order":"desc"}}]}`, want: "只能为 value"},
+		{name: "extra series field", dataConfig: validPrefix + `"series":[{"field_name":"金额","rollup":"SUM","formula":"x"}]}`, want: "series[0] 不支持字段 formula"},
+		{name: "extra group field", dataConfig: `{"table_name":"T","count_all":true,"group_by":[{"field_name":"负责人","table_id":"tbl_x"}]}`, want: "group_by[0] 不支持字段 table_id"},
+		{name: "extra sort field", dataConfig: `{"table_name":"T","count_all":true,"group_by":[{"field_name":"负责人","sort":{"type":"value","order":"desc","nulls":"last"}}]}`, want: "sort 不支持字段 nulls"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			factory, stdout, _ := newExecuteFactory(t)
+			args := []string{"+dashboard-block-create", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--name", "Bad", "--type", "ranking"}
+			if tc.dataConfig != "" {
+				args = append(args, "--data-config", tc.dataConfig)
+			}
+			err := runShortcut(t, BaseDashboardBlockCreate, args, factory, stdout)
+			if err == nil {
+				t.Fatalf("expected validation error, got nil (stdout=%s)", stdout.String())
+			}
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("expected *errs.ValidationError, got %T %v", err, err)
+			}
+			if ve.Category != errs.CategoryValidation || ve.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("category=%q subtype=%q, want validation/invalid_argument", ve.Category, ve.Subtype)
+			}
+			if ve.Param != "--data-config" {
+				t.Fatalf("param=%q, want --data-config", ve.Param)
+			}
+			if !strings.Contains(ve.Error(), tc.want) {
+				t.Fatalf("err=%v, want %q", err, tc.want)
+			}
+		})
 	}
 }
 

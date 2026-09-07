@@ -6,6 +6,7 @@ package registry
 import (
 	_ "embed"
 	"encoding/json"
+	"sort"
 )
 
 //go:embed service_descriptions.json
@@ -33,6 +34,19 @@ func loadServiceDescriptions() map[string]serviceDescEntry {
 	serviceDescMap = make(map[string]serviceDescEntry)
 	_ = json.Unmarshal(serviceDescJSON, &serviceDescMap)
 	return serviceDescMap
+}
+
+// AllServiceNames returns every configured service domain, sorted. It covers
+// domains served only by typed or raw API commands, so it is a superset of the
+// domains reachable through shortcuts.
+func AllServiceNames() []string {
+	m := loadServiceDescriptions()
+	names := make([]string, 0, len(m))
+	for name := range m {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func getServiceLocale(name, lang string) *serviceDescLocale {

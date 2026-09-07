@@ -378,8 +378,8 @@ func TestDriveMemberListExecutePreservesRawData(t *testing.T) {
 	if item["server_future"] != "preserved" || item["external_label"] != true {
 		t.Fatalf("item future fields not preserved: %#v", item)
 	}
-	if !strings.Contains(stderr.String(), "Found 1 Drive member") {
-		t.Fatalf("stderr = %q, want count log", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no count log", stderr.String())
 	}
 }
 

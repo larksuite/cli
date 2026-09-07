@@ -158,15 +158,96 @@ type tableColumnSpec struct {
 // df.dtypes.astype(str).to_dict()}`) and lets handwritten payloads stay flat
 // rather than nest a {name, type, format} object per column.
 type tableSheetIn struct {
-	Name           string            `json:"name"`
-	StartCell      string            `json:"start_cell"`
-	Mode           string            `json:"mode"`
-	Header         *bool             `json:"header"`
-	AllowOverwrite *bool             `json:"allow_overwrite"`
-	Columns        []string          `json:"columns"`
-	Data           [][]interface{}   `json:"data"`
-	Dtypes         map[string]string `json:"dtypes"`
-	Formats        map[string]string `json:"formats"`
+	Name           string          `json:"name"`
+	StartCell      string          `json:"start_cell"`
+	Mode           string          `json:"mode"`
+	Header         *bool           `json:"header"`
+	AllowOverwrite *bool           `json:"allow_overwrite"`
+	Columns        []string        `json:"columns"`
+	Data           [][]interface{} `json:"data"`
+	Dtypes         columnLabels    `json:"dtypes"`
+	Formats        columnLabels    `json:"formats"`
+}
+
+// columnLabels holds `dtypes` / `formats` as written on the wire. The
+// documented shape is the column-name-keyed map, but the positional array is
+// the other half of the same pandas habit that produces `columns` and `data`:
+// `df.dtypes.tolist()` / a hand-written `["object","float64",…]` lines up with
+// `columns` by index. 08-18..24 eval: `dtypes` as an array was the single
+// largest --sheets decode failure (113 cases) — the payload was otherwise
+// correct and every retry just rewrote the same information as a map.
+//
+// Accepting it is unambiguous only when the array lines up 1:1 with `columns`,
+// which resolve enforces — a length mismatch means the caller lost track of
+// which label belongs to which column, so guessing an alignment would write
+// the wrong types silently.
+type columnLabels struct {
+	byName     map[string]string
+	positional []string
+}
+
+// labelsByName builds the map form, for call sites (tests, synthesized
+// payloads) that construct a tableSheetIn directly rather than decoding one.
+func labelsByName(m map[string]string) columnLabels { return columnLabels{byName: m} }
+
+// UnmarshalJSON accepts either shape and defers the columns-dependent part of
+// validation to resolve. A null decodes to the empty value (field omitted).
+func (c *columnLabels) UnmarshalJSON(b []byte) error {
+	trimmed := strings.TrimSpace(string(b))
+	switch {
+	case trimmed == "" || trimmed == "null":
+		return nil
+	case strings.HasPrefix(trimmed, "["):
+		// []*string, not []string: a positional array written from a frame with
+		// unlabeled columns carries nulls, and rejecting those would push the
+		// caller back to the map form for a payload we can read exactly.
+		var arr []*string
+		if err := json.Unmarshal(b, &arr); err != nil {
+			return err
+		}
+		c.positional = make([]string, len(arr))
+		for i, v := range arr {
+			if v != nil {
+				c.positional[i] = *v
+			}
+		}
+		return nil
+	default:
+		return json.Unmarshal(b, &c.byName)
+	}
+}
+
+// resolve returns the column-name-keyed form, zipping a positional array
+// against columns. field is "dtypes" / "formats" and the sheet coordinates
+// carry the error's context, matching the rest of normalize's messages.
+func (c columnLabels) resolve(field string, idx int, sheet string, columns []string) (map[string]string, error) {
+	if c.positional == nil {
+		return c.byName, nil
+	}
+	if len(c.positional) != len(columns) {
+		return nil, common.ValidationErrorf(
+			"--sheets[%d] %q: %s is a positional array of %d entries but the sheet has %d columns",
+			idx, sheet, field, len(c.positional), len(columns)).
+			WithHint("a positional %s array must line up 1:1 with `columns`; otherwise key it by column name, e.g. %s:{%q:\"…\"}",
+				field, field, firstColumnName(columns))
+	}
+	out := make(map[string]string, len(c.positional))
+	for i, name := range columns {
+		if strings.TrimSpace(c.positional[i]) == "" {
+			continue // unlabeled column: same as omitting it from the map
+		}
+		out[name] = c.positional[i]
+	}
+	return out, nil
+}
+
+// firstColumnName is the sample column name inlined in the positional-array
+// hint, so the suggested map form is spelled with a name the caller recognizes.
+func firstColumnName(columns []string) string {
+	if len(columns) > 0 && strings.TrimSpace(columns[0]) != "" {
+		return columns[0]
+	}
+	return "colA"
 }
 
 // dtypeToTypeFormat maps a pandas-style dtype string to the internal column
@@ -331,6 +412,14 @@ func (in *tableSheetIn) normalize(idx int) (tableSheetSpec, error) {
 		AllowOverwrite: in.AllowOverwrite,
 		Rows:           in.Data,
 	}
+	dtypes, err := in.Dtypes.resolve("dtypes", idx, in.Name, in.Columns)
+	if err != nil {
+		return tableSheetSpec{}, err
+	}
+	formats, err := in.Formats.resolve("formats", idx, in.Name, in.Columns)
+	if err != nil {
+		return tableSheetSpec{}, err
+	}
 	seenCol := make(map[string]bool, len(in.Columns))
 	spec.Columns = make([]tableColumnSpec, len(in.Columns))
 	for j, name := range in.Columns {
@@ -342,8 +431,8 @@ func (in *tableSheetIn) normalize(idx int) (tableSheetSpec, error) {
 			return tableSheetSpec{}, common.ValidationErrorf("--sheets[%d] %q: duplicate column name %q", idx, in.Name, name)
 		}
 		seenCol[name] = true
-		typ, format := dtypeToTypeFormat(in.Dtypes[name])
-		if f, ok := in.Formats[name]; ok {
+		typ, format := dtypeToTypeFormat(dtypes[name])
+		if f, ok := formats[name]; ok {
 			format = strings.TrimSpace(f)
 		}
 		spec.Columns[j] = tableColumnSpec{Name: name, Type: typ, Format: format}
@@ -353,13 +442,13 @@ func (in *tableSheetIn) normalize(idx int) (tableSheetSpec, error) {
 	// silently ignoring them would let the writer succeed with the wrong
 	// formatting. The check runs after the column list is built so we can
 	// compare against the canonical set.
-	for k := range in.Dtypes {
+	for k := range dtypes {
 		if !seenCol[k] {
 			return tableSheetSpec{}, common.ValidationErrorf("--sheets[%d] %q: dtypes references unknown column %q", idx, in.Name, k).
 				WithHint("%s", columnKeyHint("dtypes", k, in.Columns))
 		}
 	}
-	for k := range in.Formats {
+	for k := range formats {
 		if !seenCol[k] {
 			return tableSheetSpec{}, common.ValidationErrorf("--sheets[%d] %q: formats references unknown column %q", idx, in.Name, k).
 				WithHint("%s", columnKeyHint("formats", k, in.Columns))

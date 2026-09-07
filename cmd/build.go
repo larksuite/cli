@@ -21,11 +21,13 @@ import (
 	"github.com/larksuite/cli/cmd/skill"
 	cmdupdate "github.com/larksuite/cli/cmd/update"
 	"github.com/larksuite/cli/cmd/whoami"
+	"github.com/larksuite/cli/extension/command"
 	"github.com/larksuite/cli/internal/affordance"
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/commandhost"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/hook"
 	"github.com/larksuite/cli/internal/keychain"
@@ -36,6 +38,7 @@ import (
 	"github.com/larksuite/cli/internal/skillref"
 	"github.com/larksuite/cli/internal/surface"
 	"github.com/larksuite/cli/shortcuts"
+	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
 
@@ -55,6 +58,7 @@ type buildConfig struct {
 	startupBrand    core.LarkBrand
 	startupBrandSet bool
 	hideProfileSet  bool
+	commandSets     []command.Set
 }
 
 // buildRuntime owns presentation state for exactly one command tree. Factory
@@ -159,6 +163,16 @@ func WithServiceCatalog(catalog apicatalog.Catalog) BuildOption {
 	}
 }
 
+// WithCommandSets adds build-time business commands to an independently built CLI.
+// The supplied declarations are copied when this option is created and compiled
+// as one atomic contribution during command-tree construction.
+func WithCommandSets(sets ...command.Set) BuildOption {
+	captured := command.CloneSets(sets)
+	return func(c *buildConfig) {
+		c.commandSets = append(c.commandSets, command.CloneSets(captured)...)
+	}
+}
+
 // Build constructs the full command tree. It also installs registered
 // plugins and emits the Startup lifecycle event during assembly --
 // so Plugin.On(Startup) handlers run even if the returned command is
@@ -192,6 +206,18 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 	return buildInternalWithConfig(ctx, inv, cfg)
 }
 
+// resolveShortcutSnapshot compiles this build's business command sets and returns
+// one snapshot carrying built-in and external shortcuts together. The error is
+// returned rather than raised so the caller still mounts a root command able to
+// report it; on failure the snapshot holds whatever the host could resolve.
+func resolveShortcutSnapshot(sets []command.Set) ([]common.Shortcut, error) {
+	external, err := commandhost.CompileSets(sets)
+	if err != nil {
+		return shortcuts.AllShortcuts(), err
+	}
+	return shortcuts.AllShortcutsWithExternal(external)
+}
+
 // buildInternalWithConfig assembles one command tree from an already-applied
 // option snapshot. Execute uses this boundary so stateful BuildOptions are
 // never evaluated once for bootstrap inspection and a second time for Build.
@@ -199,6 +225,7 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 	if cfg == nil {
 		cfg = &buildConfig{}
 	}
+	registeredShortcuts, commandSetErr := resolveShortcutSnapshot(cfg.commandSets)
 	// Default streams when WithIO is not supplied so the root command's
 	// SetIn/Out/Err calls below don't deref nil. NewDefault also normalizes
 	// partial streams internally; keep both in sync so cfg.streams reflects
@@ -271,7 +298,7 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 	}
 
 	rootCmd.AddCommand(cmdconfig.NewCmdConfigWithRecovery(f, runtime.recovery))
-	rootCmd.AddCommand(auth.NewCmdAuthWithRecovery(f, runtime.recovery))
+	rootCmd.AddCommand(auth.NewCmdAuthWithRecoveryAndShortcuts(f, runtime.recovery, registeredShortcuts))
 	rootCmd.AddCommand(profile.NewCmdProfile(f))
 	rootCmd.AddCommand(doctor.NewCmdDoctorWithRecovery(f, runtime.recovery))
 	rootCmd.AddCommand(whoami.NewCmdWhoamiWithRecovery(f, runtime.recovery))
@@ -290,7 +317,11 @@ func buildInternalWithConfig(ctx context.Context, inv cmdutil.InvocationContext,
 			service.RegisterServiceCommandsWithContext(ctx, rootCmd, f)
 		}
 	}
-	shortcuts.RegisterShortcutsWithContext(ctx, rootCmd, f)
+	shortcuts.RegisterShortcutSnapshotWithContext(ctx, rootCmd, f, registeredShortcuts)
+	if commandSetErr != nil {
+		installCommandSetErrorGuard(rootCmd, commandSetErr)
+		return finalizeFailedBuild(runtime, rootCmd)
+	}
 
 	classifyRootCommands(rootCmd)
 

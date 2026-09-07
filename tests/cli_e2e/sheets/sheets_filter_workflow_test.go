@@ -34,14 +34,14 @@ func TestSheets_FilterWorkflow(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"sheets", "+info", "--spreadsheet-token", spreadsheetToken},
+			Args:      []string{"sheets", "+workbook-info", "--spreadsheet-token", spreadsheetToken},
 			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 
-		sheetID = gjson.Get(result.Stdout, "data.sheets.sheets.0.sheet_id").String()
+		sheetID = gjson.Get(result.Stdout, "data.sheets.0.sheet_id").String()
 		require.NotEmpty(t, sheetID, "sheet_id should not be empty, stdout: %s", result.Stdout)
 	})
 
@@ -60,11 +60,11 @@ func TestSheets_FilterWorkflow(t *testing.T) {
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{
-				"sheets", "+write",
+				"sheets", "+cells-set",
 				"--spreadsheet-token", spreadsheetToken,
 				"--sheet-id", sheetID,
 				"--range", "A1:C5",
-				"--values", string(valuesJSON),
+				"--cells", string(valuesJSON),
 			},
 			DefaultAs: "bot",
 		})

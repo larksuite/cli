@@ -140,8 +140,10 @@ func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, s
 		return "", err
 	}
 
+	// TTY-only liveness; see pollDriveImportTask.
+	defer runtime.StartSpinner(fmt.Sprintf("Uploading %s", fileName))()
+
 	if fileSize <= common.MaxDriveMediaUploadSinglePartSize {
-		fmt.Fprintf(runtime.IO().ErrOut, "Uploading media for import: %s (%s)\n", fileName, common.FormatSize(fileSize))
 		// upload_all for import works without parent_node; omitting it preserves
 		// the existing root-level import staging behavior.
 		return common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
@@ -153,7 +155,6 @@ func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, s
 		})
 	}
 
-	fmt.Fprintf(runtime.IO().ErrOut, "Uploading media for import via multipart upload: %s (%s)\n", fileName, common.FormatSize(fileSize))
 	// upload_prepare is stricter than upload_all here and expects parent_node to
 	// be sent explicitly, even when import uses the implicit root staging area.
 	return common.UploadDriveMediaMultipartTyped(runtime, common.DriveMediaMultipartUploadConfig{
@@ -372,8 +373,9 @@ func (s driveImportStatus) StatusLabel() string {
 
 // driveImportTaskResultCommand prints the resume command returned after bounded
 // polling times out locally.
-func driveImportTaskResultCommand(ticket string) string {
-	return fmt.Sprintf("lark-cli drive +task_result --scenario import --ticket %s", ticket)
+func driveImportTaskResultCommand(runtime *common.RuntimeContext, ticket string) string {
+	prefix, identity := driveTaskResultCommandContext(runtime)
+	return fmt.Sprintf("%s drive +task_result --scenario import --ticket %s --as %s", prefix, ticket, identity)
 }
 
 // createDriveImportTask creates the server-side import task after the media
@@ -430,22 +432,58 @@ func parseDriveImportStatus(ticket string, data map[string]interface{}) driveImp
 	}
 }
 
+// driveImportPollSummary reports a poll run that needed retries. Transient
+// status failures are swallowed and retried, so without this a caller cannot
+// tell a clean import from one that limped to the finish line — which is the
+// only decision-relevant part of what the per-attempt stderr lines used to say.
+type driveImportPollSummary struct {
+	Attempts          int
+	TransientFailures int
+	LastError         error
+}
+
+// attach adds the summary to a result payload, but only when retries actually
+// happened, so clean runs keep their existing output shape.
+func (s driveImportPollSummary) attach(out map[string]interface{}) {
+	if s.TransientFailures == 0 {
+		return
+	}
+	summary := map[string]interface{}{
+		"attempts":           s.Attempts,
+		"transient_failures": s.TransientFailures,
+	}
+	if s.LastError != nil {
+		summary["last_error"] = s.LastError.Error()
+	}
+	out["poll"] = summary
+}
+
 // pollDriveImportTask waits for the import to finish within a bounded window
 // and returns the last observed status for resume-on-timeout flows.
-func pollDriveImportTask(runtime *common.RuntimeContext, ticket string) (driveImportStatus, bool, error) {
+func pollDriveImportTask(runtime *common.RuntimeContext, ticket string) (driveImportStatus, bool, driveImportPollSummary, error) {
+	// Interactive liveness only: StartSpinner is gated on StderrIsTerminal and
+	// is a strict no-op for pipes, CI and captured output, so a bounded poll
+	// stops looking like a hang at a human terminal without putting a byte on
+	// a machine caller's stderr.
+	defer runtime.StartSpinner("Importing")()
+
 	lastStatus := driveImportStatus{Ticket: ticket}
 	var lastErr error
 	hadSuccessfulPoll := false
+	summary := driveImportPollSummary{}
 	for attempt := 1; attempt <= driveImportPollAttempts; attempt++ {
 		if attempt > 1 {
 			time.Sleep(driveImportPollInterval)
 		}
 
+		summary.Attempts = attempt
 		status, err := getDriveImportStatus(runtime, ticket)
 		if err != nil {
 			lastErr = err
-			// Log the error but continue polling.
-			fmt.Fprintf(runtime.IO().ErrOut, "Import status attempt %d/%d failed: %v\n", attempt, driveImportPollAttempts, err)
+			// Keep polling through transient failures; the count rides out on
+			// the result instead of on stderr.
+			summary.TransientFailures++
+			summary.LastError = err
 			continue
 		}
 		lastStatus = status
@@ -454,18 +492,17 @@ func pollDriveImportTask(runtime *common.RuntimeContext, ticket string) (driveIm
 		// Stop immediately on terminal states and otherwise return the last known
 		// status so the caller can expose a follow-up command on timeout.
 		if status.Ready() {
-			fmt.Fprintf(runtime.IO().ErrOut, "Import completed successfully.\n")
-			return status, true, nil
+			return status, true, summary, nil
 		}
 		if status.Failed() {
-			return status, false, driveImportFailureError(status)
+			return status, false, summary, driveImportFailureError(status)
 		}
 	}
 	if !hadSuccessfulPoll && lastErr != nil {
-		return lastStatus, false, lastErr
+		return lastStatus, false, summary, lastErr
 	}
 
-	return lastStatus, false, nil
+	return lastStatus, false, summary, nil
 }
 
 func driveImportFailureError(status driveImportStatus) *errs.APIError {

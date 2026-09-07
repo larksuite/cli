@@ -219,7 +219,6 @@ func RunExport(ctx context.Context, runtime *common.RuntimeContext, p ExportPara
 			spec = resolvedSpec
 			wikiResolution = resolution
 		}
-		fmt.Fprintf(runtime.IO().ErrOut, "Exporting docx as markdown: %s\n", common.MaskToken(spec.Token))
 		apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s/fetch", validate.EncodePathSegment(spec.Token))
 		data, err := runtime.CallAPITyped(
 			"POST",
@@ -243,13 +242,17 @@ func RunExport(ctx context.Context, runtime *common.RuntimeContext, p ExportPara
 			return errs.NewInternalError(errs.SubtypeInvalidResponse, "invalid markdown fetch response: missing document.content")
 		}
 
+		var warnings []string
 		fileName := preferredFileName
 		if fileName == "" {
 			// Prefer the remote title for the exported file name, but still fall
 			// back to the token if metadata is empty.
 			title, err := common.FetchDriveMetaTitle(runtime, spec.Token, spec.DocType)
 			if err != nil {
-				fmt.Fprintf(runtime.IO().ErrOut, "Title lookup failed, using token as filename: %v\n", err)
+				// A degraded file name changes what the caller finds on disk, so
+				// it travels with the result instead of on stderr, which must
+				// stay empty on a successful run.
+				warnings = append(warnings, fmt.Sprintf("title lookup failed (%v); used the token as the file name", err))
 				title = spec.Token
 			}
 			fileName = title
@@ -260,14 +263,18 @@ func RunExport(ctx context.Context, runtime *common.RuntimeContext, p ExportPara
 			return err
 		}
 
-		runtime.Out(annotateDriveExportWikiOutput(map[string]interface{}{
+		markdownOut := map[string]interface{}{
 			"token":          spec.Token,
 			"doc_type":       spec.DocType,
 			"file_extension": spec.FileExtension,
 			"file_name":      filepath.Base(savedPath),
 			"saved_path":     savedPath,
 			"size_bytes":     len(content),
-		}, wikiResolution), nil)
+		}
+		if len(warnings) > 0 {
+			markdownOut["warnings"] = warnings
+		}
+		runtime.Out(annotateDriveExportWikiOutput(markdownOut, wikiResolution), nil)
 		return nil
 	}
 
@@ -277,11 +284,24 @@ func RunExport(ctx context.Context, runtime *common.RuntimeContext, p ExportPara
 	}
 	spec = resolvedSpec
 	wikiResolution = resolution
-	fmt.Fprintf(runtime.IO().ErrOut, "Created export task: %s\n", ticket)
+
+	// Interactive liveness only: StartSpinner is gated on StderrIsTerminal and
+	// is a strict no-op for pipes, CI and captured output, so the bounded poll
+	// window stops looking like a hang at a human terminal without putting a
+	// byte on a machine caller's stderr. stop() is idempotent and is called
+	// before every result write below so the cleared line never interleaves.
+	stopSpinner := runtime.StartSpinner("Exporting")
+	defer stopSpinner()
 
 	var lastStatus driveExportStatus
 	var lastPollErr error
 	hasObservedStatus := false
+	// Transient poll failures are swallowed and retried, so without a count in
+	// the result a caller cannot tell a clean export from one that limped to
+	// the finish line. That, not the per-attempt narration this replaces, is
+	// the part worth reporting.
+	pollAttempts := 0
+	pollFailures := 0
 	// Keep the command responsive by polling for a bounded window. If the task
 	// is still running after that, return a resume command instead of blocking.
 	for attempt := 1; attempt <= driveExportPollAttempts; attempt++ {
@@ -296,6 +316,7 @@ func RunExport(ctx context.Context, runtime *common.RuntimeContext, p ExportPara
 			return wrapExportContextErr(runtime.Command(), err)
 		}
 
+		pollAttempts = attempt
 		status, err := getDriveExportStatus(runtime, spec.Token, ticket)
 		if err != nil {
 			if driveExportIsRateLimit(err) {
@@ -304,20 +325,18 @@ func RunExport(ctx context.Context, runtime *common.RuntimeContext, p ExportPara
 			// Treat polling failures as transient so short-lived backend hiccups
 			// do not immediately fail an otherwise healthy export task.
 			lastPollErr = err
-			fmt.Fprintf(runtime.IO().ErrOut, "Export status attempt %d/%d failed: %v\n", attempt, driveExportPollAttempts, err)
+			pollFailures++
 			continue
 		}
 		lastStatus = status
 		hasObservedStatus = true
 
 		if status.Ready() {
-			fmt.Fprintf(runtime.IO().ErrOut, "Export task completed: %s\n", common.MaskToken(status.FileToken))
-
 			// Export-only mode: caller wants the ready file token / metadata but
 			// no local download (e.g. sheets +workbook-export without an output
 			// path). Skip the download and return the status envelope.
 			if strings.TrimSpace(outputDir) == "" {
-				runtime.Out(annotateDriveExportWikiOutput(map[string]interface{}{
+				readyOut := map[string]interface{}{
 					"ticket":         ticket,
 					"token":          spec.Token,
 					"doc_type":       spec.DocType,
@@ -327,10 +346,14 @@ func RunExport(ctx context.Context, runtime *common.RuntimeContext, p ExportPara
 					"file_size":      status.FileSize,
 					"ready":          true,
 					"downloaded":     false,
-				}, wikiResolution), nil)
+				}
+				attachDriveExportPollSummary(readyOut, pollAttempts, pollFailures, lastPollErr)
+				stopSpinner()
+				runtime.Out(annotateDriveExportWikiOutput(readyOut, wikiResolution), nil)
 				return nil
 			}
 
+			stopSpinner()
 			fileName := preferredFileName
 			if fileName == "" {
 				fileName = status.FileName
@@ -350,21 +373,22 @@ func RunExport(ctx context.Context, runtime *common.RuntimeContext, p ExportPara
 			out["ticket"] = ticket
 			out["doc_type"] = spec.DocType
 			out["file_extension"] = spec.FileExtension
+			attachDriveExportPollSummary(out, pollAttempts, pollFailures, lastPollErr)
 			runtime.Out(annotateDriveExportWikiOutput(out, wikiResolution), nil)
 			return nil
 		}
 
 		if status.Failed() {
+			stopSpinner()
 			msg := strings.TrimSpace(status.JobErrorMsg)
 			if msg == "" {
 				msg = status.StatusLabel()
 			}
 			return errs.NewAPIError(errs.SubtypeServerError, "export task failed: %s (ticket=%s)", msg, ticket)
 		}
-
-		fmt.Fprintf(runtime.IO().ErrOut, "Export status %d/%d: %s\n", attempt, driveExportPollAttempts, status.StatusLabel())
 	}
 
+	stopSpinner()
 	nextCommand := driveExportTaskResultCommand(ticket, spec.Token)
 	if !hasObservedStatus && lastPollErr != nil {
 		hint := fmt.Sprintf(
@@ -400,9 +424,27 @@ func RunExport(ctx context.Context, runtime *common.RuntimeContext, p ExportPara
 	if preferredFileName != "" {
 		result["file_name"] = ensureExportFileExtension(sanitizeExportFileName(preferredFileName, spec.Token), spec.FileExtension)
 	}
+	attachDriveExportPollSummary(result, pollAttempts, pollFailures, lastPollErr)
+	// next_command in the payload is the whole resume story; the stderr copy it
+	// used to carry told a caller nothing extra.
 	runtime.Out(annotateDriveExportWikiOutput(result, wikiResolution), nil)
-	fmt.Fprintf(runtime.IO().ErrOut, "Export task is still in progress. Continue with: %s\n", nextCommand)
 	return nil
+}
+
+// attachDriveExportPollSummary records a poll run that needed retries. Clean
+// runs add nothing, so the common payload keeps its existing shape.
+func attachDriveExportPollSummary(out map[string]interface{}, attempts, failures int, lastErr error) {
+	if failures == 0 {
+		return
+	}
+	summary := map[string]interface{}{
+		"attempts":           attempts,
+		"transient_failures": failures,
+	}
+	if lastErr != nil {
+		summary["last_error"] = lastErr.Error()
+	}
+	out["poll"] = summary
 }
 
 func annotateDriveExportWikiOutput(out map[string]interface{}, resolution driveExportWikiResolution) map[string]interface{} {

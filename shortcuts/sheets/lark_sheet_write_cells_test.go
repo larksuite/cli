@@ -554,7 +554,7 @@ func TestCellsSetImage_DryRunRejectsUnsafePath(t *testing.T) {
 		"--url", testURL, "--sheet-id", testSheetID,
 		"--range", "A1", "--image", "/etc/hosts", "--dry-run",
 	})
-	ve := requireValidation(t, err, "must be a relative path")
+	ve := requireValidation(t, err, "denylist")
 	if ve.Param != "--image" {
 		t.Errorf("param = %q, want --image", ve.Param)
 	}

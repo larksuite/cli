@@ -114,17 +114,6 @@ func TestDocMediaInsertValidateContract(t *testing.T) {
 			wantParam: "--doc",
 		},
 		{
-			name:      "blank selection",
-			str:       map[string]string{"doc": testDocxToken, "file": "dummy.png", "selection-with-ellipsis": "   "},
-			wantParam: "--selection-with-ellipsis",
-		},
-		{
-			name:      "before without selection",
-			str:       map[string]string{"doc": testDocxToken, "file": "dummy.png"},
-			bools:     map[string]bool{"before": true},
-			wantParam: "--before",
-		},
-		{
 			name:      "invalid file-view",
 			str:       map[string]string{"doc": testDocxToken, "file": "dummy.png", "file-view": "bogus"},
 			wantParam: "--file-view",

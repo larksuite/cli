@@ -12,6 +12,7 @@ func Shortcuts() []common.Shortcut {
 		SlidesAddSlide,
 		SlidesDeleteSlide,
 		SlidesMediaUpload,
+		SlidesMediaDownload,
 		SlidesReplaceSlide,
 		SlidesReplacePages,
 		SlidesUpdateSlide,

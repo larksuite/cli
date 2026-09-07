@@ -218,7 +218,21 @@ func findErrorSentinel(stmts []map[string]interface{}) (int, map[string]interfac
 	return 0, nil, false
 }
 
-// sqlStatementError 把 ERROR 哨兵升级成 typed errs.APIError（CategoryAPI → exit 1）。
+// dbOnlineDDLForbiddenCode 是「多环境应用的 online 分支禁止 DDL/DCL」的业务码。
+//
+// 服务端专用码，一码一场景：dataloom 的 ErrOnlineEnvForbidDDLDCL（"k_dl_4000001"，
+// 客户端错误 4xxxxxx 段），只由前置校验器 OnlineEnvDDLDCLValidator 抛出，触发条件是
+// env==online && 专家模式 && 多环境库。语法错误 / PG 报错走别的码（实测分别是 2 与
+// 1300002），不会撞这个号。哨兵里带的是剥掉 "k_dl_" 前缀后的数字。
+const dbOnlineDDLForbiddenCode = 4000001
+
+// dbOnlineDDLForbiddenHint 指向正规路径：dev 改完再发布。
+//
+// 不说 "fix the SQL"——SQL 本身没问题，错的是目标环境，改 SQL 只会再撞一次同样的墙。
+const dbOnlineDDLForbiddenHint = "the online branch of a multi-env app forbids DDL/DCL. No statements were applied. " +
+	"Run the DDL against dev, then publish it with `lark-cli apps +db-env-migrate --app-id <app_id>`"
+
+// sqlStatementError 把 ERROR 哨兵升级成 typed 错误。
 //
 // 多语句失败的诊断信息——第几条失败 / 共几条 / 是否整批回滚 / 前序是否落地——都写进
 // message + hint 的人类可读文案（errs.* 信封是扁平字段、不带结构化 detail 容器）。文案对齐
@@ -227,8 +241,27 @@ func findErrorSentinel(stmts []map[string]interface{}) (int, map[string]interfac
 //   - hint 由 inferRolledBack 推断（实测后端把 BEGIN/COMMIT 也作为 statement 返回）：
 //     失败仍在用户显式事务内 → 服务端整批回滚，用 miaoda 原句 "Transaction rolled back; no changes persisted."；
 //     否则前序语句已逐条 commit、未回滚（flat 信封无逐句 breakdown，故 hint 简述前序已落地 + 从失败处续跑）。
+//
+// 【online DDL 禁令单独一支】默认分支对它三处失真，实测确认：
+//   - subtype 会是 server_error，语义是「上游 5xx、可重试」，而这是产品策略禁令，重试永远不变；
+//   - hint 会说 "fix the SQL"，方向错了（该改的是环境）；
+//   - "(at statement N of M)" 是假的：服务端前置校验整批拒绝、只回一条 ERROR 哨兵，所以
+//     发 5 条语句、DDL 在第 4 位时仍渲染成 "1 of 1"。CLI 不解析 SQL、拿不到真实语句数，
+//     无法通用修复，只能对这类「批量前置拒绝」的码去掉位置后缀。
+//
+// 「整批未执行」这一句对本码是服务端行为保证（校验器遍历全部语句、命中即整批拒绝），
+// 不是 inferRolledBack 的推断——实测回查落库行数全为 0。
 func sqlStatementError(stmts []map[string]interface{}, errIdx int, errStmt map[string]interface{}) error {
 	code, msg := parseErrorSentinel(common.GetString(errStmt, "data"))
+
+	if code == dbOnlineDDLForbiddenCode {
+		// Validation → exit 2：告诉调用方「请求本身合法，但目标环境状态不允许，去改环境而非重试」。
+		// 位置后缀刻意省略，见上方注释。
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "%s", msg).
+			WithCode(code).
+			WithHint("%s", dbOnlineDDLForbiddenHint)
+	}
+
 	stmtNo := errIdx + 1 // 1-based 给人看
 	fullMsg := fmt.Sprintf("%s (at statement %d of %d)", msg, stmtNo, len(stmts))
 

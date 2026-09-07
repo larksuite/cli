@@ -385,8 +385,8 @@ func TestAddSlideDryRunPlansUploadsBeforePost(t *testing.T) {
 	}
 	upload := assertDryRunStep(t, steps, 0, "POST", "/open-apis/drive/v1/medias/upload_all")
 	uploadBody, _ := upload["body"].(map[string]interface{})
-	if uploadBody["parent_type"] != slidesMediaParentType {
-		t.Fatalf("upload parent_type = %v, want %q", uploadBody["parent_type"], slidesMediaParentType)
+	if uploadBody["parent_type"] != slideFileParentType {
+		t.Fatalf("upload parent_type = %v, want %q", uploadBody["parent_type"], slideFileParentType)
 	}
 	// parent_node is the presentation itself, not a placeholder: without a wiki
 	// hop the token is already known at plan time.

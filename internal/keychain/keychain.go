@@ -21,9 +21,10 @@ var (
 )
 
 const (
-	// LarkCliService is the unified keychain service name for all secrets
-	// (both AppSecret and UAT). Entries are distinguished by account key format:
+	// LarkCliService is the unified keychain service name for all secrets.
+	// Entries are distinguished by account key format:
 	//   - AppSecret: "appsecret:<appId>"
+	//   - Stored TAT: "tat:v1:<sha256(appId)>"
 	//   - UAT:       "<appId>:<userOpenId>"
 	LarkCliService = "lark-cli"
 )
@@ -55,7 +56,7 @@ func wrapError(op string, err error) error {
 }
 
 // KeychainAccess abstracts keychain Get/Set/Remove for dependency injection.
-// Used by AppSecret operations (ForStorage, ResolveSecretInput, RemoveSecretStore).
+// Used by AppSecret and stored-TAT operations.
 // UAT operations in token_store.go use the package-level Get/Set/Remove directly.
 type KeychainAccess interface {
 	Get(service, account string) (string, error)

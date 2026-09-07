@@ -404,8 +404,8 @@ func TestWikiNodeGetMountedExecuteParsesURLAndFormatsOutput(t *testing.T) {
 	if _, ok := data["url"]; ok {
 		t.Fatalf("did not expect a url field in +node-get output, got %#v", data["url"])
 	}
-	if got := stderr.String(); !strings.Contains(got, "Fetching wiki node") {
-		t.Fatalf("stderr = %q, want fetching message", got)
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no progress output", stderr.String())
 	}
 }
 
@@ -444,7 +444,7 @@ func TestWikiNodeGetMountedClassifiesTerminalBusinessErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-			factory, stdout, _, reg := cmdutil.TestFactory(t, wikiTestConfig())
+			factory, stdout, stderr, reg := cmdutil.TestFactory(t, wikiTestConfig())
 			reg.Register(&httpmock.Stub{
 				Method: "GET",
 				URL:    "/open-apis/wiki/v2/spaces/get_node",
@@ -482,6 +482,9 @@ func TestWikiNodeGetMountedClassifiesTerminalBusinessErrors(t *testing.T) {
 			}
 			if stdout.Len() != 0 {
 				t.Fatalf("stdout = %q, want no success envelope", stdout.String())
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("stderr = %q, want no output before the root error envelope", stderr.String())
 			}
 		})
 	}

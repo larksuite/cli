@@ -10,6 +10,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	internalauth "github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/errclass"
@@ -76,6 +77,7 @@ func TestRootErrorPresenterUsesDeclaredScopesForCanonicalPermissionRecovery(t *t
 	agenda := &cobra.Command{Use: "+agenda"}
 	root.AddCommand(calendar)
 	calendar.AddCommand(agenda)
+	cmdmeta.SetDeclaredScopes(agenda, map[string][]string{"user": {declaredScope}})
 	f.CurrentCommand = agenda
 
 	newSource := func(t *testing.T) (error, *errs.PermissionError) {

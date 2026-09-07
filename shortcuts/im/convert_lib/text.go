@@ -11,6 +11,7 @@ import (
 
 type textConverter struct{}
 
+// textConverter converts a text message raw content into a human-readable line.
 func (textConverter) Convert(ctx *ConvertContext) string {
 	parsed, err := ParseJSONObject(ctx.RawContent)
 	if err != nil {
@@ -25,37 +26,111 @@ func (textConverter) Convert(ctx *ConvertContext) string {
 
 type postConverter struct{}
 
+// postConverter converts a post message raw content (locales, blocks, attachment zone) into human-readable lines.
 func (postConverter) Convert(ctx *ConvertContext) string {
 	parsed, err := ParseJSONObject(ctx.RawContent)
 	if err != nil || parsed == nil {
 		return invalidJSONPlaceholder("rich text")
 	}
 	body := unwrapPostLocale(parsed)
-	if body == nil {
-		return "[Rich text message]"
-	}
 
 	var parts []string
-	if title, _ := body["title"].(string); title != "" {
-		parts = append(parts, title)
-	}
-	// Prefer content_v2 blocks; fallback to content blocks
-	blocks := selectContentBlocks(body)
-	for _, para := range blocks {
-		elems, _ := para.([]interface{})
-		var line strings.Builder
-		for _, el := range elems {
-			elem, _ := el.(map[string]interface{})
-			line.WriteString(renderPostElem(elem))
+	if body != nil {
+		if title, _ := body["title"].(string); title != "" {
+			parts = append(parts, title)
 		}
-		parts = append(parts, line.String())
+		// Prefer content_v2 blocks; fallback to content blocks
+		blocks := selectContentBlocks(body)
+		for _, para := range blocks {
+			elems, _ := para.([]interface{})
+			var line strings.Builder
+			for _, el := range elems {
+				elem, _ := el.(map[string]interface{})
+				line.WriteString(renderPostElem(elem))
+			}
+			parts = append(parts, line.String())
+		}
 	}
 
 	result := strings.TrimSpace(strings.Join(parts, "\n"))
 	if result == "" {
-		return "[Rich text message]"
+		result = "[Rich text message]"
 	}
-	return ResolveMentionKeys(result, ctx.MentionMap)
+	result = ResolveMentionKeys(result, ctx.MentionMap)
+	// Attachment zone (top-level "files" array, sibling of the locale keys) is
+	// rendered as trailing lines so agents can see file/folder keys for download.
+	if attachments := renderPostAttachments(ctx, parsed); attachments != "" {
+		result += "\n" + attachments
+	}
+	return result
+}
+
+// renderPostAttachments renders a post message's attachment zone to
+// human-readable lines, one per attachment. It uses the same <file>/<folder>
+// tag style as standalone file/folder messages, so attachment keys render
+// consistently across the output and stay extractable.
+//
+// The input is the parsed post content JSON as returned by the message API
+// (get/mget/list/search/threads, merge_forward sub-items), e.g.:
+//
+//	"files":[{"file_key":"file_xxx","file_name":"report.pdf"},
+//	         {"file_key":"file_yyy","file_name":"assets","is_folder":true}]
+//
+// renders as:
+//
+//	<file key="file_xxx" name="report.pdf"/>
+//	<folder key="file_yyy" name="assets"/>
+func renderPostAttachments(ctx *ConvertContext, parsed map[string]interface{}) string {
+	rawFiles, ok := parsed["files"].([]interface{})
+	if !ok || len(rawFiles) == 0 {
+		return ""
+	}
+	var lines []string
+	for _, raw := range rawFiles {
+		f, _ := raw.(map[string]interface{})
+		if f == nil {
+			continue
+		}
+		key, _ := f["file_key"].(string)
+		if key == "" {
+			continue
+		}
+		name, _ := f["file_name"].(string)
+		tag := "file"
+		if isFolder, _ := f["is_folder"].(bool); isFolder {
+			tag = "folder"
+			// Expand folder attachments one level (same as folder messages):
+			// 1) prefetch cache hit (message_id + folder key) -> use cached XML;
+			// 2) "" cached value = prefetch already tried & failed -> degrade to
+			//    the single-line tag, no inline retry (page-wide failures must
+			//    not double GETs);
+			// 3) cache miss (or no cache) + Runtime + MessageID -> inline fetch;
+			// 4) otherwise fall back to the single-line tag below.
+			expanded := ""
+			if ctx != nil && ctx.MessageID != "" && ctx.FolderChildren != nil {
+				if xml, ok := ctx.FolderChildren[ctx.MessageID+folderCacheKeySep+key]; ok {
+					if xml != "" {
+						expanded = xml
+					}
+					// "" sentinel: leave expanded empty -> single-line, no retry
+				} else if ctx.Runtime != nil {
+					expanded = fetchFolderChildrenTree(ctx.Runtime, key, name, ctx.MessageID)
+				}
+			} else if ctx != nil && ctx.Runtime != nil && ctx.MessageID != "" {
+				expanded = fetchFolderChildrenTree(ctx.Runtime, key, name, ctx.MessageID)
+			}
+			if expanded != "" {
+				lines = append(lines, expanded)
+				continue
+			}
+		}
+		if name != "" {
+			lines = append(lines, fmt.Sprintf(`<%s key="%s" name="%s"/>`, tag, cardEscapeAttr(key), cardEscapeAttr(name)))
+		} else {
+			lines = append(lines, fmt.Sprintf(`<%s key="%s"/>`, tag, cardEscapeAttr(key)))
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // selectContentBlocks returns content_v2 blocks when present and non-empty;

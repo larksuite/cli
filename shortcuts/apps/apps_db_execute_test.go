@@ -984,3 +984,90 @@ func TestRenderSelectRowsAsTable_Branches(t *testing.T) {
 		})
 	}
 }
+
+// TestSQLStatementError_OnlineDDLForbidden 断言 online DDL 禁令走专属分支：
+// validation/failed_precondition（exit 2）、指向 dev + 发布的 hint、且不带伪造的语句位置。
+//
+// 为什么位置后缀必须去掉：服务端前置校验整批拒绝、只回一条 ERROR 哨兵，所以 CLI 看到的
+// len(stmts) 恒为 1。实测发 5 条语句、DDL 在第 4 位时默认分支会渲染成 "at statement 1 of 1"
+// —— 一个编造的位置。CLI 不解析 SQL，拿不到真实语句数，只能对这类码省略位置。
+func TestSQLStatementError_OnlineDDLForbidden(t *testing.T) {
+	// 两种 wire 形态都覆盖：codeString 会把 "k_dl_4000001" 剥成 4000001，
+	// 所以按数值判断对带前缀的字符串同样成立。
+	for _, wire := range []string{
+		`{"code":4000001,"message":"forbid ddl/dcl operation in online env"}`,
+		`{"code":"k_dl_4000001","message":"forbid ddl/dcl operation in online env"}`,
+	} {
+		stmts := []map[string]interface{}{{"sql_type": "ERROR", "data": wire}}
+		err := sqlStatementError(stmts, 0, stmts[0])
+		p, ok := errs.ProblemOf(err)
+		if !ok {
+			t.Fatalf("wire %s: not a typed error: %T", wire, err)
+		}
+		if p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeFailedPrecondition {
+			t.Errorf("wire %s: category/subtype = %s/%s, want validation/failed_precondition", wire, p.Category, p.Subtype)
+		}
+		if p.Code != dbOnlineDDLForbiddenCode {
+			t.Errorf("wire %s: code = %d, want %d", wire, p.Code, dbOnlineDDLForbiddenCode)
+		}
+		if got := output.ExitCodeOf(err); got != 2 {
+			t.Errorf("wire %s: exit = %d, want 2 (fix the environment, do not retry)", wire, got)
+		}
+		// 位置后缀必须消失，且 message 保留服务端原句。
+		if strings.Contains(p.Message, "at statement") {
+			t.Errorf("wire %s: message keeps a fabricated statement position: %q", wire, p.Message)
+		}
+		if p.Message != "forbid ddl/dcl operation in online env" {
+			t.Errorf("wire %s: message = %q, want the server wording verbatim", wire, p.Message)
+		}
+		if p.Hint != dbOnlineDDLForbiddenHint {
+			t.Errorf("wire %s: hint = %q, want the dev+migrate hint", wire, p.Hint)
+		}
+		if strings.Contains(p.Hint, "fix the SQL") {
+			t.Errorf("wire %s: hint still tells the caller to fix the SQL", wire)
+		}
+	}
+}
+
+// 多语句时也不能出现位置后缀：DDL 在第 4 位、服务端只回一条哨兵，位置无从得知。
+func TestSQLStatementError_OnlineDDLForbidden_NoPositionEvenWhenIndexNonZero(t *testing.T) {
+	stmts := []map[string]interface{}{
+		{"sql_type": "SELECT"},
+		{"sql_type": "INSERT"},
+		{"sql_type": "ERROR", "data": `{"code":4000001,"message":"forbid ddl/dcl operation in online env"}`},
+	}
+	p, _ := errs.ProblemOf(sqlStatementError(stmts, 2, stmts[2]))
+	if strings.Contains(p.Message, "at statement") {
+		t.Errorf("message keeps a statement position: %q", p.Message)
+	}
+	// 也不该沿用 errIdx>0 那支「前序已提交」的 hint —— 本码是整批拒绝，前序并未落地。
+	if strings.Contains(p.Hint, "Earlier statements were committed") {
+		t.Errorf("hint claims earlier statements committed, but this code rejects the whole batch: %q", p.Hint)
+	}
+}
+
+// 其它码保持原行为：分类、位置后缀、回滚推断都不变（本次改动刻意不碰它们）。
+func TestSQLStatementError_OtherCodesUnchanged(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		wire string
+	}{
+		{"语法错误", `{"code":2,"message":"syntax error at or near \"SELCT\""}`},
+		{"PG 报错", `{"code":"k_dl_1300002","message":"duplicate key value violates unique constraint"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stmts := []map[string]interface{}{{"sql_type": "ERROR", "data": tc.wire}}
+			err := sqlStatementError(stmts, 0, stmts[0])
+			p, _ := errs.ProblemOf(err)
+			if p.Category != errs.CategoryAPI || p.Subtype != errs.SubtypeServerError {
+				t.Errorf("category/subtype = %s/%s, want api/server_error (unchanged)", p.Category, p.Subtype)
+			}
+			if got := output.ExitCodeOf(err); got != 1 {
+				t.Errorf("exit = %d, want 1 (unchanged)", got)
+			}
+			if !strings.Contains(p.Message, "at statement 1 of 1") {
+				t.Errorf("message lost its position suffix: %q", p.Message)
+			}
+		})
+	}
+}

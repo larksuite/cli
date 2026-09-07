@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/signal"
 	"sort"
 	"strings"
 
@@ -79,7 +80,8 @@ func executeWithOptions(opts []BuildOption) int {
 	}
 	configureFlagCompletions(os.Args)
 
-	ctx := context.Background()
+	ctx, stopSignals := newExecutionContext(context.Background())
+	defer stopSignals()
 	if deferProfileError {
 		cfg.deferStartup = true
 	}
@@ -121,6 +123,10 @@ func executeWithOptions(opts []BuildOption) int {
 		return handleRootError(f, runErr, runtime.recovery)
 	}
 	return 0
+}
+
+func newExecutionContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(parent, os.Interrupt)
 }
 
 // isDeferredBootstrapProfileError identifies the one bootstrap parse failure

@@ -153,15 +153,17 @@ func CollectAllScopesFromMeta(identity string) []string {
 	return result
 }
 
-// CollectScopesForProjects collects the recommended scope for each API method
-// in the specified from_meta projects. For each method, only the scope with
-// the highest priority score is selected.
+// CollectScopesForProjects collects the effective scopes for each API method in
+// the specified from_meta projects. It uses DeclaredScopesForMethod so a
+// method's full requiredScopes conjunction is honored (e.g. reading a mail
+// message needs the subject/address/body scopes together, not just the umbrella
+// readonly scope), falling back to the single recommended scope when a method
+// declares no requiredScopes.
 func CollectScopesForProjects(projects []string, identity string) []string {
-	priorities := LoadScopePriorities()
 	scopeSet := make(map[string]bool)
 	for _, ref := range methodsForProjects(projects, identity) {
-		if best := bestScope(ref.Method.Scopes, priorities); best != "" {
-			scopeSet[best] = true
+		for _, s := range DeclaredScopesForMethod(ref.Method, identity) {
+			scopeSet[s] = true
 		}
 	}
 

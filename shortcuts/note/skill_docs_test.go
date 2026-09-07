@@ -42,12 +42,12 @@ func TestNoteIdentityDocsMatchAuthTypes(t *testing.T) {
 		t.Fatalf("NoteTranscript.AuthTypes = %v now includes bot; update the bot+unified stop-path guidance below (and this test) instead of leaving it stale", NoteTranscript.AuthTypes)
 	}
 
-	skill := readSkillDoc(t, "skills/lark-note/SKILL.md")
-	if !strings.Contains(skill, "`+detail` 支持 `--as user` / `--as bot`") {
-		t.Error("skills/lark-note/SKILL.md must state that +detail supports both user and bot")
+	scene := readSkillDoc(t, "skills/lark-meeting/scenes/query-note-and-artifacts.md")
+	if !strings.Contains(scene, "`note +detail` 支持 `--as user` / `--as bot`") {
+		t.Error("query-note-and-artifacts.md must state that note +detail supports both user and bot")
 	}
-	if !strings.Contains(skill, "`+transcript` 仅支持 `--as user`") {
-		t.Error("skills/lark-note/SKILL.md must state that +transcript is user-only (matches NoteTranscript.AuthTypes)")
+	if !strings.Contains(scene, "`note +transcript` 仅支持 `--as user`") {
+		t.Error("query-note-and-artifacts.md must state that note +transcript is user-only (matches NoteTranscript.AuthTypes)")
 	}
 }
 
@@ -57,13 +57,45 @@ func TestNoteIdentityDocsMatchAuthTypes(t *testing.T) {
 // letting an agent silently drop --as and switch identity.
 func TestNoteUnifiedBotStopPathIsDocumented(t *testing.T) {
 	for _, path := range []string{
-		"skills/lark-note/SKILL.md",
-		"skills/lark-note/references/lark-note-detail.md",
-		"skills/lark-note/references/lark-note-transcript.md",
+		"skills/lark-meeting/scenes/query-note-and-artifacts.md",
+		"skills/lark-meeting/references/lark-note-detail.md",
+		"skills/lark-meeting/references/lark-note-transcript.md",
 	} {
 		content := readSkillDoc(t, path)
 		if !strings.Contains(content, "bot") || !strings.Contains(content, "user") {
 			t.Errorf("%s must document the bot+unified boundary for note +transcript (mention both user and bot)", path)
 		}
+	}
+}
+
+func TestLegacyNoteSkillRoutesToMeetingSkill(t *testing.T) {
+	skill := readSkillDoc(t, "skills/lark-note/SKILL.md")
+	for _, must := range []string{
+		"本技能只用于兼容旧名称，不直接处理业务。",
+		"../lark-meeting/SKILL.md",
+	} {
+		if !strings.Contains(skill, must) {
+			t.Errorf("skills/lark-note/SKILL.md must preserve compatibility routing %q", must)
+		}
+	}
+}
+
+func TestMeetingNoteCoverHandlingIsReachable(t *testing.T) {
+	noteScene := readSkillDoc(t, "skills/lark-meeting/scenes/query-note-and-artifacts.md")
+	for _, must := range []string{
+		"第一个 `<whiteboard",
+		"docs +media-download",
+		"--type whiteboard",
+		"./notes/<note_id>/cover",
+		"--as <source_identity>",
+	} {
+		if !strings.Contains(noteScene, must) {
+			t.Errorf("query-note-and-artifacts.md must preserve note cover handling %q", must)
+		}
+	}
+
+	meetingScene := readSkillDoc(t, "skills/lark-meeting/scenes/query-meeting-and-artifacts.md")
+	if !strings.Contains(meetingScene, "query-note-and-artifacts.md") {
+		t.Error("query-meeting-and-artifacts.md must route intelligent-note body handling to the owning Note scene")
 	}
 }

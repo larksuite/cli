@@ -79,6 +79,42 @@ func TestPrintFlagSchema_NamedFlagReturnsSchemaSubtree(t *testing.T) {
 	}
 }
 
+// TestPrintFlagSchema_ChartUpdateIsRecursivePartial keeps introspection aligned
+// with update validation: callers may patch a deeply nested field without
+// resending required siblings from the full chart snapshot.
+func TestPrintFlagSchema_ChartUpdateIsRecursivePartial(t *testing.T) {
+	t.Parallel()
+
+	decode := func(t *testing.T, command, path string) map[string]interface{} {
+		t.Helper()
+		out, err := printFlagSchemaFor(command)(path)
+		if err != nil {
+			t.Fatalf("print %s %s: %v", command, path, err)
+		}
+		var schema map[string]interface{}
+		if err := json.Unmarshal(out, &schema); err != nil {
+			t.Fatalf("schema is not JSON: %v\n%s", err, out)
+		}
+		return schema
+	}
+
+	createPlot := decode(t, "+chart-create", "properties.snapshot.plotArea.plot")
+	if required, _ := createPlot["required"].([]interface{}); len(required) == 0 {
+		t.Fatal("chart-create plot schema must retain required fields")
+	}
+
+	updatePlot := decode(t, "+chart-update", "properties.snapshot.plotArea.plot")
+	if _, present := updatePlot["required"]; present {
+		t.Fatalf("chart-update plot schema must be partial; required=%v", updatePlot["required"])
+	}
+
+	updateSeriesItem := decode(t, "+chart-update", "properties.snapshot.data.dim2.series.items")
+	required, _ := updateSeriesItem["required"].([]interface{})
+	if len(required) != 1 || required[0] != "index" {
+		t.Fatalf("chart-update replacement array item schema must retain required index; required=%v", required)
+	}
+}
+
 // TestPrintFlagSchema_UnknownFlagListsAvailable confirms the error
 // message tells the caller which flags exist for the shortcut.
 func TestPrintFlagSchema_UnknownFlagListsAvailable(t *testing.T) {

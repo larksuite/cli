@@ -112,14 +112,28 @@ func TestBatchOp_UnknownInputKeyRejected(t *testing.T) {
 		requireValidation(t, err, `unknown input key "dry_run"`)
 	})
 
-	t.Run("reserved locator in hyphen form still rejected", func(t *testing.T) {
+	t.Run("reserved locators are ignored and top-level token wins", func(t *testing.T) {
 		t.Parallel()
-		_, err := translateBatchOp(subOp("+cells-clear", map[string]interface{}{
+		translated, err := translateBatchOp(subOp("+cells-clear", map[string]interface{}{
 			"sheet_name":        "S1",
 			"range":             "A1:B2",
 			"spreadsheet-token": "shtXXX",
+			"excel_id":          "shtYYY",
+			"url":               "https://example.invalid/sheets/shtZZZ",
 		}), testToken, 0)
-		requireValidation(t, err, "do not pass input.spreadsheet-token")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		input := translated["input"].(map[string]interface{})
+		if input["excel_id"] != testToken {
+			t.Fatalf("excel_id = %v, want top-level token %q", input["excel_id"], testToken)
+		}
+		if _, has := input["spreadsheet_token"]; has {
+			t.Fatalf("spreadsheet_token should be dropped: %#v", input)
+		}
+		if _, has := input["url"]; has {
+			t.Fatalf("url should be dropped: %#v", input)
+		}
 	})
 }
 

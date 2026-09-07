@@ -15,7 +15,10 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-const minutesTodoNoEditPermissionCode = 40005
+const (
+	minutesTodoNoEditPermissionCode = 2091005
+	minutesTodoASRQuotaNotEnough    = 2091008
+)
 
 // minuteTodoOp describes a resolved todo_items entry derived from flags or JSON.
 type minuteTodoOp struct {
@@ -283,11 +286,18 @@ func buildMinuteTodoItem(spec minuteTodoSpec) (map[string]interface{}, error) {
 
 func minutesTodoError(err error, minuteToken string) error {
 	p, ok := errs.ProblemOf(err)
-	if !ok || p.Code != minutesTodoNoEditPermissionCode {
+	if !ok {
 		return err
 	}
-	p.Subtype = errs.SubtypePermissionDenied
-	p.Message = fmt.Sprintf("No edit permission for minute %q: cannot update todos.", minuteToken)
-	p.Hint = fmt.Sprintf("Ask the user before running: minutes +apply-permission --minute-token %s --perm edit", minuteToken)
+	switch p.Code {
+	case minutesTodoNoEditPermissionCode:
+		p.Subtype = errs.SubtypePermissionDenied
+		p.Message = fmt.Sprintf("No edit permission for minute %q: cannot update todos.", minuteToken)
+		p.Hint = fmt.Sprintf("Ask the user before running: minutes +apply-permission --minute-token %s --perm edit", minuteToken)
+	case minutesTodoASRQuotaNotEnough:
+		p.Subtype = errs.SubtypeQuotaExceeded
+		p.Message = fmt.Sprintf("ASR/AI quota not enough: cannot update todos on minute %q.", minuteToken)
+		p.Hint = minutesASRQuotaNotEnoughHint
+	}
 	return err
 }

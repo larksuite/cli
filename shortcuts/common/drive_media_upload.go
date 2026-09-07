@@ -60,6 +60,10 @@ type DriveMediaMultipartUploadConfig struct {
 	Extra      string
 	// Reader mirrors DriveMediaUploadAllConfig.Reader for chunked uploads.
 	Reader io.Reader
+	// Quiet is retained for source compatibility. This helper no longer emits
+	// multipart progress on stderr, so the field has no runtime effect.
+	// Deprecated: multipart uploads are silent by default.
+	Quiet bool
 }
 
 // UploadDriveMediaAllTyped uploads a file in a single request: file-open
@@ -153,8 +157,6 @@ func UploadDriveMediaMultipartTyped(runtime *RuntimeContext, cfg DriveMediaMulti
 	if err != nil {
 		return "", fileevent.ReportUploadError(runtime, err, meta)
 	}
-	fmt.Fprintf(runtime.IO().ErrOut, "Multipart upload initialized: %d chunks x %s\n", session.BlockNum, FormatSize(session.BlockSize))
-
 	meta.APIPath = driveMediaUploadPartPath
 	if err = uploadDriveMediaMultipartPartsTyped(runtime, cfg, session); err != nil {
 		return "", fileevent.ReportUploadError(runtime, err, meta)
@@ -253,7 +255,6 @@ func uploadDriveMediaMultipartPartsTyped(runtime *RuntimeContext, cfg DriveMedia
 		if err := uploadDriveMediaMultipartPartTyped(runtime, session.UploadID, seq, buffer[:n]); err != nil {
 			return err
 		}
-		fmt.Fprintf(runtime.IO().ErrOut, "  Block %d/%d uploaded (%s)\n", seq+1, session.BlockNum, FormatSize(int64(n)))
 		remaining -= int64(n)
 	}
 

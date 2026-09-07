@@ -33,6 +33,73 @@ var chartExampleTemplates = map[string]string{
 	"line":   chartSimpleExample("line"),
 	"area":   chartSimpleExample("area"),
 	"radar":  chartSimpleExample("radar"),
+	"bubble": `{
+  "position": {"row": 1, "col": "G"},
+  "size": {"width": 600, "height": 400},
+  "snapshot": {
+    "title": {"text": "气泡图标题"},
+    "plotArea": {"plot": {
+      "type": "bubble",
+      "extra": {"bubble": {
+        "aggregate": false,
+        "showNegativeSize": false,
+        "opacityGradientStyle": "linear",
+        "idLabel": {"visible": true}
+      }}
+    }},
+    "data": {
+      "refs": [{"value": "'Sheet1'!A1:E20"}],
+      "dim1": {"serie": {"index": 1}},
+      "dim2": {"series": [
+        {"index": 2, "role": "x"},
+        {"index": 3, "role": "y"},
+        {"index": 4, "role": "group"},
+        {"index": 5, "role": "size"}
+      ]}
+    }
+  }
+}`,
+	"waterfall": `{
+  "position": {"row": 1, "col": "F"},
+  "size": {"width": 600, "height": 400},
+  "snapshot": {
+    "title": {"text": "瀑布图标题"},
+    "plotArea": {"plot": {
+      "type": "waterfall",
+      "extra": {"waterfall": {
+        "firstValueAsTotal": true,
+        "lastValueAsSubtotal": true,
+        "connectorLine": {"style": "solid", "width": 1},
+        "totalLabels": {"template": "{{value}}"}
+      }}
+    }},
+    "data": {
+      "refs": [{"value": "'Sheet1'!A1:B10"}],
+      "dim1": {"serie": {"index": 1}},
+      "dim2": {"series": [{"index": 2}]}
+    }
+  }
+}`,
+	"pareto": `{
+  "position": {"row": 1, "col": "F"},
+  "size": {"width": 600, "height": 400},
+  "snapshot": {
+    "title": {"text": "排列图标题"},
+    "plotArea": {"plot": {
+      "type": "pareto",
+      "extra": {"pareto": {"aggregateType": "sum", "categoryNumber": 5}},
+      "series": [
+        {"index": 1, "bars": {"gap": 0.25}, "labels": {"value": true}},
+        {"index": 2, "line": {"width": 2}, "points": {"shape": "circle", "size": 6}, "labels": {"percentage": true, "format": "0%"}}
+      ]
+    }},
+    "data": {
+      "refs": [{"value": "'Sheet1'!A1:B20"}],
+      "dim1": {"serie": {"index": 1, "aggregate": true}},
+      "dim2": {"series": [{"index": 2, "aggregateType": "sum"}]}
+    }
+  }
+}`,
 	"scatter": `{
   "position": {"row": 1, "col": "F"},
   "size": {"width": 600, "height": 400},

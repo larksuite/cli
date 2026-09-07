@@ -38,6 +38,7 @@ var ImMessagesSend = common.Shortcut{
 		{Name: "video", Desc: "video file key (file_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected); must be used together with --video-cover"},
 		{Name: "video-cover", Desc: "video cover image key (img_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected); required when using --video"},
 		{Name: "audio", Desc: audioMessageInputDesc},
+		{Name: "attachment", Type: "string_slice", Desc: "file/folder key (file_xxx), repeatable; attaches to the post message's attachment zone (requires --markdown or --msg-type post)"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		chatFlag := runtime.Str("chat-id")
@@ -59,6 +60,23 @@ var ImMessagesSend = common.Shortcut{
 			content, desc = wrapMarkdownAsPostForDryRun(markdown)
 		} else if mt, c, d := buildMediaContentFromKey(text, imageKey, fileKey, videoKey, videoCoverKey, audioKey); mt != "" {
 			msgType, content, desc = mt, c, d
+		}
+
+		// Attachment zone: merge --attachment files into the post content.
+		if attachments := runtime.StrSlice("attachment"); len(attachments) > 0 {
+			msgType = "post"
+			if items, err := parseAttachments(attachments, "--attachment"); err == nil {
+				if content == "" {
+					content = `{"zh_cn":{"content":[]}}`
+				}
+				if merged, err := mergeAttachmentsIntoPostContent(content, items); err == nil {
+					content = merged
+				}
+			}
+			if desc != "" {
+				desc += "; "
+			}
+			desc += "--attachment adds files to the post attachment zone"
 		}
 
 		receiveIdType := "chat_id"
@@ -133,8 +151,25 @@ var ImMessagesSend = common.Shortcut{
 			}
 		}
 
-		if msg := validateContentFlags(text, markdown, content, imageKey, fileKey, videoKey, videoCoverKey, audioKey); msg != "" {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, msg)
+		attachments, err := validateAttachmentFlags(runtime.StrSlice("attachment"), msgType, markdown, "--attachment", runtime.Cmd != nil && runtime.Cmd.Flags().Changed("msg-type"), text)
+		if err != nil {
+			return err
+		}
+
+		if hasContentFiles(content) && len(attachments) > 0 {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--attachment cannot be used with --content that already contains a files array; either declare files via --content or via --attachment, not both").WithParam("--attachment")
+		}
+		if hasAnyContentSource(text, markdown, content, imageKey, fileKey, videoKey, videoCoverKey, audioKey) {
+			// When another content source is present, every mutual-exclusion and
+			// media-integrity error from validateContentFlags must still fail —
+			// --attachment must not silently swallow a conflicting --text/
+			// --markdown/--image etc. (P1: attachments bypass content validation).
+			if msg := validateContentFlags(text, markdown, content, imageKey, fileKey, videoKey, videoCoverKey, audioKey); msg != "" {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, msg)
+			}
+		} else if len(attachments) == 0 {
+			// No content source at all (and no attachment) — nothing to send.
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --content <json>, --text <plain text>, --markdown <markdown text>, a media flag (--image/--file/--video/--audio), or --attachment <file_key>")
 		}
 		if err := validateIdempotencyKey(idempotencyKey); err != nil {
 			return err
@@ -177,6 +212,20 @@ var ImMessagesSend = common.Shortcut{
 			return err
 		} else if mt != "" {
 			msgType, content = mt, c
+		}
+
+		// Attachment zone: merge --attachment files into the post content.
+		// Validate has already enforced the post-only constraint.
+		if items, err := parseAttachments(runtime.StrSlice("attachment"), "--attachment"); err == nil && len(items) > 0 {
+			msgType = "post"
+			if content == "" {
+				content = `{"zh_cn":{"content":[]}}`
+			}
+			merged, err := mergeAttachmentsIntoPostContent(content, items)
+			if err != nil {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--attachment: %v", err).WithParam("--attachment")
+			}
+			content = merged
 		}
 
 		receiveIdType := "chat_id"

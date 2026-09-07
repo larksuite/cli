@@ -55,9 +55,17 @@ func validateButtonRuleBind(runtime *common.RuntimeContext) error {
 
 func resolveButtonRuleFieldID(runtime *common.RuntimeContext) (string, error) {
 	fieldRef := strings.TrimSpace(runtime.Str("field-id"))
-	data, err := baseV3Call(runtime, "GET", baseV3Path(
-		"bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "fields", fieldRef,
-	), nil, nil)
+	data, err := baseV3Call(
+		runtime,
+		"GET",
+		baseV3Path(
+			"bases", runtime.Str("base-token"),
+			"tables", baseTableID(runtime),
+			"fields", fieldRef,
+		),
+		nil,
+		nil,
+	)
 	if err != nil {
 		return "", err
 	}
@@ -84,7 +92,12 @@ func resolveButtonRuleFieldID(runtime *common.RuntimeContext) (string, error) {
 }
 
 func buttonRulePath(runtime *common.RuntimeContext, fieldID string) string {
-	return baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "fields", fieldID, "button_rule")
+	return baseV3Path(
+		"bases", runtime.Str("base-token"),
+		"tables", baseTableID(runtime),
+		"fields", fieldID,
+		"button_rule",
+	)
 }
 
 func buttonRuleBindBody(runtime *common.RuntimeContext) (map[string]interface{}, error) {
@@ -104,13 +117,17 @@ func buttonRuleDryRun(runtime *common.RuntimeContext, method string, body map[st
 		Desc("Resolve --field-id as a field ID or name")
 	if method == "PUT" {
 		dryRun.PUT("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:resolved_field_id/button_rule").
-			Desc("Use the canonical field ID returned by step 1").Body(body)
+			Desc("Use the canonical field ID returned by step 1").
+			Body(body)
 	} else {
 		dryRun.GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:resolved_field_id/button_rule").
 			Desc("Use the canonical field ID returned by step 1")
 	}
-	return dryRun.Set("base_token", runtime.Str("base-token")).Set("table_id", baseTableID(runtime)).
-		Set("field_ref", strings.TrimSpace(runtime.Str("field-id"))).Set("resolved_field_id", "<resolved_field_id>")
+	return dryRun.
+		Set("base_token", runtime.Str("base-token")).
+		Set("table_id", baseTableID(runtime)).
+		Set("field_ref", strings.TrimSpace(runtime.Str("field-id"))).
+		Set("resolved_field_id", "<resolved_field_id>")
 }
 
 func addButtonRuleVerificationHint(data map[string]interface{}) map[string]interface{} {
@@ -122,19 +139,29 @@ func addButtonRuleVerificationHint(data map[string]interface{}) map[string]inter
 }
 
 var BaseButtonRuleBind = common.Shortcut{
-	Service: "base", Command: "+button-rule-bind", Description: "Set the action target of a button field", Risk: "write",
-	Scopes: []string{"base:field:read", "base:field:update"}, AuthTypes: authTypes(),
+	Service:     "base",
+	Command:     "+button-rule-bind",
+	Description: "Set the action target of a button field",
+	Risk:        "write",
+	Scopes:      []string{"base:field:read", "base:field:update"},
+	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
-		baseTokenFlag(true), tableRefFlag(true), fieldRefFlag(true),
+		baseTokenFlag(true),
+		tableRefFlag(true),
+		fieldRefFlag(true),
 		{Name: "workflow-id", Desc: "legacy workflow target: public workflow ID returned by workflow commands (wkf prefix)"},
 		{Name: "target-json", Desc: "strict ButtonTarget JSON; workflow, open_record, open_link, or open_form", Input: []string{common.File, common.Stdin}},
 	},
 	Tips: []string{
 		"Pass exactly one of --workflow-id and --target-json.",
 		"Button appearance belongs to +field-create/update; actions belong to this command.",
+		"workflow-id must be the public wkf ID returned by workflow commands; never pass an internal numeric workflow ID.",
+		"Binding is independent from workflow enablement. Query with +button-rule-get, then call +workflow-enable only if the user wants it active.",
 		"A successful PUT is request acceptance; use +button-rule-get for persisted readback.",
 	},
-	Validate: func(_ context.Context, runtime *common.RuntimeContext) error { return validateButtonRuleBind(runtime) },
+	Validate: func(_ context.Context, runtime *common.RuntimeContext) error {
+		return validateButtonRuleBind(runtime)
+	},
 	DryRun: func(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		body, _ := buttonRuleBindBody(runtime)
 		return buttonRuleDryRun(runtime, "PUT", body)
@@ -158,11 +185,20 @@ var BaseButtonRuleBind = common.Shortcut{
 }
 
 var BaseButtonRuleGet = common.Shortcut{
-	Service: "base", Command: "+button-rule-get", Description: "Get the action target of a button field", Risk: "read",
-	Scopes: []string{"base:field:read"}, AuthTypes: authTypes(),
-	Flags: []common.Flag{baseTokenFlag(true), tableRefFlag(true), fieldRefFlag(true)},
+	Service:     "base",
+	Command:     "+button-rule-get",
+	Description: "Get the action target of a button field",
+	Risk:        "read",
+	Scopes:      []string{"base:field:read"},
+	AuthTypes:   authTypes(),
+	Flags: []common.Flag{
+		baseTokenFlag(true),
+		tableRefFlag(true),
+		fieldRefFlag(true),
+	},
 	Tips: []string{
 		"Returns bound=false and target=null when no action is configured.",
+		"When target.type is workflow, target.id is a public wkf ID suitable for workflow commands and +button-rule-bind.",
 		"Unknown targets are returned as read-only raw data and cannot be passed to +button-rule-bind.",
 	},
 	Validate: func(_ context.Context, runtime *common.RuntimeContext) error {
@@ -186,9 +222,17 @@ var BaseButtonRuleGet = common.Shortcut{
 }
 
 var BaseButtonRuleUnbind = common.Shortcut{
-	Service: "base", Command: "+button-rule-unbind", Description: "Clear the action target of a button field", Risk: "write",
-	Scopes: []string{"base:field:read", "base:field:update"}, AuthTypes: authTypes(),
-	Flags: []common.Flag{baseTokenFlag(true), tableRefFlag(true), fieldRefFlag(true)},
+	Service:     "base",
+	Command:     "+button-rule-unbind",
+	Description: "Clear the action target of a button field",
+	Risk:        "write",
+	Scopes:      []string{"base:field:read", "base:field:update"},
+	AuthTypes:   authTypes(),
+	Flags: []common.Flag{
+		baseTokenFlag(true),
+		tableRefFlag(true),
+		fieldRefFlag(true),
+	},
 	Tips: []string{
 		"Unbind clears any direct action or workflow target without deleting the field, form, view, or workflow.",
 		"Repeat unbind is safe; use +button-rule-get for persisted readback.",

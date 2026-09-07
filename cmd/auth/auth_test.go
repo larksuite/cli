@@ -301,7 +301,7 @@ func TestDomainFlagCompletion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			comps := completeDomain(tt.toComplete)
+			comps := builtinResolver().complete(tt.toComplete, "")
 			sort.Strings(comps)
 
 			for _, want := range tt.wantContains {

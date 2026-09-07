@@ -183,10 +183,6 @@ var batchOpDispatch = map[string]batchOpMapping{
 	}},
 
 	// ─── 对象族 CRUD (manage_*_object, operation 区分) ─────────────
-	"+chart-create": {"manage_chart_object", objCreateTranslate(chartSpec)},
-	"+chart-update": {"manage_chart_object", objUpdateTranslate(chartSpec)},
-	"+chart-delete": {"manage_chart_object", objDeleteTranslate(chartSpec)},
-
 	"+pivot-create": {"manage_pivot_table_object", objCreateTranslate(pivotSpec)},
 	"+pivot-update": {"manage_pivot_table_object", objUpdateTranslate(pivotSpec)},
 	"+pivot-delete": {"manage_pivot_table_object", objDeleteTranslate(pivotSpec)},
@@ -207,6 +203,13 @@ var batchOpDispatch = map[string]batchOpMapping{
 	"+sparkline-update": {"manage_sparkline_object", objUpdateTranslate(sparklineSpec)},
 	"+sparkline-delete": {"manage_sparkline_object", objDeleteTranslate(sparklineSpec)},
 
+	"+chart-create":        {"manage_chart_object", objCreateTranslate(chartSpec)},
+	"+chart-update":        {"manage_chart_object", objUpdateTranslate(chartSpec)},
+	"+chart-delete":        {"manage_chart_object", objDeleteTranslate(chartSpec)},
+	"+chart-create-basic":  {"manage_chart_object", chartCreateBasicInput},
+	"+chart-config-update": {"manage_chart_object", chartConfigUpdateInput},
+	"+chart-data-update":   {"manage_chart_object", chartDataUpdateInput},
+
 	"+float-image-create": {"manage_float_image_object", func(fv flagView, token, sid, sname string) (map[string]interface{}, error) {
 		if err := rejectLocalImageInBatch(fv); err != nil {
 			return nil, err
@@ -222,11 +225,11 @@ var batchOpDispatch = map[string]batchOpMapping{
 	"+float-image-delete": {"manage_float_image_object", objDeleteTranslate(floatImageDeleteSpec)},
 }
 
-// allowedBatchShortcuts lists every shortcut accepted inside +batch-update,
-// sorted, for the not-allowed error hint.
-func allowedBatchShortcuts() []string {
-	out := make([]string, 0, len(batchOpDispatch))
-	for sc := range batchOpDispatch {
+// allowedShortcuts returns the sorted shortcut keys of a batch dispatch map,
+// used for the not-allowed error hint.
+func allowedShortcuts(dispatch map[string]batchOpMapping) []string {
+	out := make([]string, 0, len(dispatch))
+	for sc := range dispatch {
 		out = append(out, sc)
 	}
 	sort.Strings(out)
@@ -312,9 +315,21 @@ func sheetMoveBatchInput(fv flagView, token, sheetID, sheetName string) (map[str
 	}, nil
 }
 
-// reservedSubOpKeys 是禁止用户在 sub-op input 里手填的 key —— 它们由
-// +batch-update 顶层 --url/--token 统一提供（excel_id / spreadsheet_token / url）。
+// reservedSubOpKeys are redundant inside a sub-op: +batch-update supplies the
+// spreadsheet locator once at the top level. The translator silently drops
+// these keys so an otherwise valid operation is not rejected for harmless
+// repetition.
 var reservedSubOpKeys = []string{"excel_id", "spreadsheet_token", "url"}
+
+func isReservedSubOpKey(userKey string) bool {
+	normalized := strings.ReplaceAll(userKey, "-", "_")
+	for _, key := range reservedSubOpKeys {
+		if normalized == key {
+			return true
+		}
+	}
+	return false
+}
 
 // wrappedSubOpInputKeys are nested MCP-body container keys that must never
 // appear at a sub-op input's top level — their presence means the caller
@@ -518,10 +533,19 @@ func normalizeSubOpInputKeys(sc string, input map[string]interface{}) error {
 //   - shortcut 不在 dispatch 表（拼写错；read 操作；嵌套 fan-out wrapper）
 //   - input 不是 object
 //   - input 里手填了 operation（由 shortcut 名隐含，禁手填以防 mismatch）
-//   - input 里手填了 excel_id / spreadsheet_token / url
 //   - input 顶层出现 cell_styles / cell_merges / styles（误贴 MCP body 包裹结构）
 //   - 子操作的 translator 报错（如缺必填字段）
 func translateBatchOp(raw interface{}, token string, index int) (map[string]interface{}, error) {
+	return translateBatchOpWithDispatch(raw, token, index, batchOpDispatch, "+batch-update")
+}
+
+func translateBatchOpWithDispatch(
+	raw interface{},
+	token string,
+	index int,
+	dispatch map[string]batchOpMapping,
+	command string,
+) (map[string]interface{}, error) {
 	op, ok := raw.(map[string]interface{})
 	if !ok {
 		return nil, sheetsValidationForFlag("operations", "operations[%d] must be a JSON object", index)
@@ -535,17 +559,16 @@ func translateBatchOp(raw interface{}, token string, index int) (map[string]inte
 	if !ok || sc == "" {
 		return nil, sheetsValidationForFlag("operations", "operations[%d]: 'shortcut' must be a non-empty string (got %T)", index, scRaw)
 	}
-	mapping, ok := batchOpDispatch[sc]
+	mapping, ok := dispatch[sc]
 	if !ok {
 		// Inline the full allow-list: an agent that guessed a read op or a
 		// fan-out wrapper can pick the right shortcut immediately instead of
 		// spending a --print-schema round trip on the operations enum.
 		return nil, sheetsValidationForFlag(
 			"operations",
-			"operations[%d]: shortcut %q not allowed in +batch-update "+
-				"(read ops / fan-out wrappers like +batch-update / +styles-put / +cells-batch-set-style / +cells-batch-clear / +dropdown-{update,delete} are excluded)",
-			index, sc,
-		).WithHint("allowed shortcuts: %s", strings.Join(allowedBatchShortcuts(), ", "))
+			"operations[%d]: shortcut %q not allowed in %s",
+			index, sc, command,
+		).WithHint("allowed shortcuts: %s", strings.Join(allowedShortcuts(dispatch), ", "))
 	}
 	inputRaw, hasInput := op["input"]
 	var input map[string]interface{}
@@ -565,18 +588,12 @@ func translateBatchOp(raw interface{}, token string, index int) (map[string]inte
 			index, sc,
 		)
 	}
-	// 禁在 sub-op 重复填 spreadsheet 定位 —— 由 +batch-update 顶层 --url/--token 统一提供。
-	// 连字符 / 下划线两种写法都算命中（spreadsheet-token 与 spreadsheet_token 同罪）。
+	// Ignore repeated spreadsheet locators. The top-level +batch-update
+	// locator is authoritative, so these fields are harmlessly redundant and
+	// must never override it. Hyphen and underscore spellings both match.
 	for userKey := range input {
-		normalized := strings.ReplaceAll(userKey, "-", "_")
-		for _, k := range reservedSubOpKeys {
-			if normalized == k {
-				return nil, sheetsValidationForFlag(
-					"operations",
-					"operations[%d] (%s): do not pass input.%s — it is already set from +batch-update top-level --url / --token",
-					index, sc, userKey,
-				)
-			}
+		if isReservedSubOpKey(userKey) {
+			delete(input, userKey)
 		}
 	}
 	// Reject a "wrapped structure" sub-op input: agents copy a shortcut's nested
@@ -654,16 +671,26 @@ const maxBatchOperations = 100
 // display cap.
 const batchOpErrorDisplayLimit = 5
 
-// translateBatchOperations 翻译整个 ops 数组。逐 op 校验并**收集全部失败**
-// 一次性返回（不再 fail-fast）——agent 一轮就能修完所有坏 op，而不是
-// 修一个、重试、再撞下一个。cell 安全上限仍是全局判定，命中即返回。
-func translateBatchOperations(rawOps []interface{}, token string) ([]interface{}, error) {
+type batchOpTranslationFailure struct {
+	Index    int
+	Shortcut string
+	Err      error
+}
+
+// collectBatchOperationTranslations translates every locally valid operation
+// and preserves its original index. Validation failures are returned alongside
+// the valid operations so +batch-update can either aggregate-and-reject
+// (strict mode) or submit the valid subset (continue-on-error mode).
+func collectBatchOperationTranslations(
+	rawOps []interface{},
+	token string,
+) ([]interface{}, []int, []batchOpTranslationFailure, error) {
 	if len(rawOps) == 0 {
-		return nil, sheetsValidationForFlag("operations", "--operations must be a non-empty JSON array")
+		return nil, nil, nil, sheetsValidationForFlag("operations", "--operations must be a non-empty JSON array")
 	}
 	if len(rawOps) > maxBatchOperations {
 		batches := (len(rawOps) + maxBatchOperations - 1) / maxBatchOperations
-		return nil, sheetsValidationForFlag("operations", "--operations accepts at most %d entries; got %d", maxBatchOperations, len(rawOps)).
+		return nil, nil, nil, sheetsValidationForFlag("operations", "--operations accepts at most %d entries; got %d", maxBatchOperations, len(rawOps)).
 			WithHint("split the operations into %d separate +batch-update calls of at most %d entries each", batches, maxBatchOperations)
 	}
 	// Preflight the cell footprint before any translator can materialize a
@@ -681,35 +708,46 @@ func translateBatchOperations(rawOps []interface{}, token string) ([]interface{}
 		}
 	}
 	if budgetErr != nil {
-		return nil, budgetErr
+		return nil, nil, nil, budgetErr
 	}
 	out := make([]interface{}, 0, len(rawOps))
+	originalIndexes := make([]int, 0, len(rawOps))
 	var totalCells int64
-	var opErrs []error
+	var failures []batchOpTranslationFailure
 	for i, raw := range rawOps {
 		translated, err := translateBatchOp(raw, token, i)
 		if err != nil {
-			opErrs = append(opErrs, err)
+			shortcut := ""
+			if op, ok := raw.(map[string]interface{}); ok {
+				shortcut, _ = op["shortcut"].(string)
+			}
+			failures = append(failures, batchOpTranslationFailure{
+				Index:    i,
+				Shortcut: shortcut,
+				Err:      err,
+			})
 			continue
-		}
-		if len(opErrs) > 0 {
-			continue // already failing — keep scanning for more bad ops, skip cell math.
 		}
 		totalCells += translatedCellCount(translated)
 		if totalCells > maxStampMatrixCells {
-			return nil, sheetsValidationForFlag("operations",
+			return nil, nil, nil, sheetsValidationForFlag("operations",
 				"--operations materialize %d cells total, over the %d-cell safety cap; reduce the number or size of cell operations",
 				totalCells, maxStampMatrixCells)
 		}
 		out = append(out, translated)
+		originalIndexes = append(originalIndexes, i)
 	}
-	switch len(opErrs) {
+	return out, originalIndexes, failures, nil
+}
+
+func batchOperationFailuresError(failures []batchOpTranslationFailure, total int) error {
+	switch len(failures) {
 	case 0:
-		return out, nil
+		return nil
 	case 1:
-		return nil, opErrs[0] // single failure keeps the historical error byte-for-byte.
+		return failures[0].Err // single failure keeps the historical error byte-for-byte.
 	}
-	shown := opErrs
+	shown := failures
 	truncated := false
 	if len(shown) > batchOpErrorDisplayLimit {
 		shown = shown[:batchOpErrorDisplayLimit]
@@ -721,13 +759,26 @@ func translateBatchOperations(rawOps []interface{}, token string) ([]interface{}
 		// keys: …" contract) inline: folding N errors leaves one Hint slot, so
 		// without this the multi-op error would carry LESS guidance than the
 		// single-op one it replaces.
-		parts = append(parts, fmt.Sprintf("%d) %s", i+1, aggregatedIssueText(e)))
+		parts = append(parts, fmt.Sprintf("%d) %s", i+1, aggregatedIssueText(e.Err)))
 	}
-	msg := fmt.Sprintf("%d of %d operations failed validation: %s", len(opErrs), len(rawOps), strings.Join(parts, "; "))
+	msg := fmt.Sprintf("%d of %d operations failed validation: %s", len(failures), total, strings.Join(parts, "; "))
 	if truncated {
-		msg += fmt.Sprintf("; (%d more not shown — fix these first)", len(opErrs)-batchOpErrorDisplayLimit)
+		msg += fmt.Sprintf("; (%d more not shown — fix these first)", len(failures)-batchOpErrorDisplayLimit)
 	}
-	return nil, sheetsValidationForFlag("operations", "%s", msg).WithCause(opErrs[0])
+	return sheetsValidationForFlag("operations", "%s", msg).WithCause(failures[0].Err)
+}
+
+// translateBatchOperations is the strict translation contract used by the
+// default atomic mode and existing translator tests.
+func translateBatchOperations(rawOps []interface{}, token string) ([]interface{}, error) {
+	out, _, failures, err := collectBatchOperationTranslations(rawOps, token)
+	if err != nil {
+		return nil, err
+	}
+	if err := batchOperationFailuresError(failures, len(rawOps)); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // estimatedBatchOpCells returns the cell footprint without invoking a

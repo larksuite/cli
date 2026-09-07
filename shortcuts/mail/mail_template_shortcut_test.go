@@ -27,6 +27,15 @@ func decodeCapturedBody(t *testing.T, stub *httpmock.Stub) map[string]interface{
 	return out
 }
 
+func assertCapturedRawEMLOmitsContentID(t *testing.T, stub *httpmock.Stub, cid string) {
+	t.Helper()
+	raw := decodeCapturedRawEML(t, stub.CapturedBody)
+	contentID := "Content-ID: <" + cid + ">"
+	if strings.Contains(raw, contentID) {
+		t.Fatalf("raw EML should omit inline %s, got:\n%s", contentID, raw)
+	}
+}
+
 // TestMailTemplateCreate_Happy verifies a +template-create call with no local
 // <img> references and no --attach files POSTs the expected body and emits
 // the server's echoed template.
@@ -56,7 +65,7 @@ func TestMailTemplateCreate_Happy(t *testing.T) {
 		"--name", "Quarterly",
 		"--subject", "Q4",
 		"--template-content", "<p>hi</p>",
-		"--to", "alice@example.com",
+		"--to", "测试用户 <alice@example.com>",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("template-create failed: %v", err)
@@ -75,6 +84,17 @@ func TestMailTemplateCreate_Happy(t *testing.T) {
 	}
 	if tplWrap["template_content"] != "<p>hi</p>" {
 		t.Errorf("template_content unexpectedly wrapped: %v", tplWrap["template_content"])
+	}
+	tos, ok := tplWrap["tos"].([]interface{})
+	if !ok || len(tos) != 1 {
+		t.Fatalf("tos = %#v, want one recipient", tplWrap["tos"])
+	}
+	to := tos[0].(map[string]interface{})
+	if to["name"] != "测试用户" {
+		t.Fatalf("template recipient name = %v, want raw unicode display name", to["name"])
+	}
+	if s, _ := to["name"].(string); strings.Contains(s, "=?UTF-8?") {
+		t.Fatalf("template recipient name must not be RFC2047 encoded: %q", s)
 	}
 
 	data := decodeShortcutEnvelopeData(t, stdout)
@@ -555,6 +575,39 @@ func TestMailTemplateCreate_InlineImageRewrite(t *testing.T) {
 	if cid, _ := att["cid"].(string); cid == "" || !strings.Contains(tc, "cid:"+cid) {
 		t.Errorf("cid %q not referenced in body %q", cid, tc)
 	}
+}
+
+func TestMailTemplateCreate_ValidatesInlineCIDs(t *testing.T) {
+	t.Run("missing cid reference", func(t *testing.T) {
+		f, stdout, _, _ := mailShortcutTestFactory(t)
+		err := runMountedMailShortcut(t, MailTemplateCreate, []string{
+			"+template-create",
+			"--name", "Broken",
+			"--template-content", `<p><img src="cid:missing"></p>`,
+		}, f, stdout)
+		if err == nil || !strings.Contains(err.Error(), "missing inline cid") {
+			t.Fatalf("expected missing cid validation error, got %v", err)
+		}
+		assertInlineValidationError(t, err)
+	})
+
+	t.Run("orphaned inline flag", func(t *testing.T) {
+		chdirTemp(t)
+		if err := os.WriteFile("unused.png", []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		f, stdout, _, _ := mailShortcutTestFactory(t)
+		err := runMountedMailShortcut(t, MailTemplateCreate, []string{
+			"+template-create",
+			"--name", "Broken",
+			"--template-content", `<p>No inline image</p>`,
+			"--inline", `{"cid":"orphan","file_path":"unused.png"}`,
+		}, f, stdout)
+		if err == nil || !strings.Contains(err.Error(), "orphan") {
+			t.Fatalf("expected orphaned inline validation error, got %v", err)
+		}
+		assertInlineValidationError(t, err)
+	})
 }
 
 // TestMailTemplateCreate_PrettyOutput covers the OutFormat pretty callback
@@ -1148,6 +1201,409 @@ func TestMailSend_TemplateIDAppliesInlineAndSmall(t *testing.T) {
 	data := decodeShortcutEnvelopeData(t, stdout)
 	if data["draft_id"] != "draft_001" {
 		t.Errorf("draft_id = %v", data["draft_id"])
+	}
+}
+
+func TestMailSend_TemplatePlainTextIgnoresExplicitInline(t *testing.T) {
+	chdirTemp(t)
+	if err := os.WriteFile("logo.png", []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/me@example.com/templates/70",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"template": map[string]interface{}{
+					"template_id":        "70",
+					"subject":            "plain",
+					"template_content":   "plain body",
+					"is_plain_text_mode": true,
+				},
+			},
+		},
+	})
+	draftStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/user_mailboxes/me@example.com/drafts",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"draft_id": "draft_plain_send"},
+		},
+	}
+	reg.Register(draftStub)
+
+	err := runMountedMailShortcut(t, MailSend, []string{
+		"+send",
+		"--from", "me@example.com",
+		"--to", "alice@example.com",
+		"--body", `<p><img src="cid:hero"></p>`,
+		"--inline", `{"cid":"hero","file_path":"logo.png"}`,
+		"--template-id", "70",
+		"--no-signature",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("expected plain-text template to ignore explicit inline, got %v", err)
+	}
+	data := decodeShortcutEnvelopeData(t, stdout)
+	if data["draft_id"] != "draft_plain_send" {
+		t.Fatalf("draft_id = %v", data["draft_id"])
+	}
+	assertCapturedRawEMLOmitsContentID(t, draftStub, "hero")
+}
+
+func TestMailDraftCreate_TemplatePlainTextIgnoresExplicitInline(t *testing.T) {
+	chdirTemp(t)
+	if err := os.WriteFile("logo.png", []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/me@example.com/templates/71",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"template": map[string]interface{}{
+					"template_id":        "71",
+					"subject":            "plain",
+					"template_content":   "plain body",
+					"is_plain_text_mode": true,
+				},
+			},
+		},
+	})
+	draftStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/user_mailboxes/me@example.com/drafts",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"draft_id": "draft_plain_create"},
+		},
+	}
+	reg.Register(draftStub)
+
+	err := runMountedMailShortcut(t, MailDraftCreate, []string{
+		"+draft-create",
+		"--from", "me@example.com",
+		"--body", `<p><img src="cid:hero"></p>`,
+		"--inline", `{"cid":"hero","file_path":"logo.png"}`,
+		"--template-id", "71",
+		"--no-signature",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("expected plain-text template to ignore explicit inline, got %v", err)
+	}
+	data := decodeShortcutEnvelopeData(t, stdout)
+	if data["draft_id"] != "draft_plain_create" {
+		t.Fatalf("draft_id = %v", data["draft_id"])
+	}
+	assertCapturedRawEMLOmitsContentID(t, draftStub, "hero")
+}
+
+func TestMailTemplateUpdate_PatchFileControlsFinalInlinePlainTextCheck(t *testing.T) {
+	t.Run("patch to plain text rejects inline", func(t *testing.T) {
+		chdirTemp(t)
+		if err := os.WriteFile("logo.png", []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile("plain.json", []byte(`{"is_plain_text_mode":true}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		f, stdout, _, reg := mailShortcutTestFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/user_mailboxes/me/templates/72",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"template": map[string]interface{}{
+						"template_id":        "72",
+						"name":               "T",
+						"subject":            "S",
+						"template_content":   `<p><img src="cid:hero"></p>`,
+						"is_plain_text_mode": false,
+					},
+				},
+			},
+		})
+
+		err := runMountedMailShortcut(t, MailTemplateUpdate, []string{
+			"+template-update",
+			"--template-id", "72",
+			"--inline", `{"cid":"hero","file_path":"logo.png"}`,
+			"--patch-file", "plain.json",
+		}, f, stdout)
+		if err == nil || !strings.Contains(err.Error(), "plain-text templates") {
+			t.Fatalf("expected final plain-text inline rejection, got %v", err)
+		}
+	})
+
+	t.Run("patch to html permits inline despite set plain text flag", func(t *testing.T) {
+		chdirTemp(t)
+		if err := os.WriteFile("logo.png", []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile("html.json", []byte(`{"is_plain_text_mode":false}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		f, stdout, _, reg := mailShortcutTestFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/user_mailboxes/me/templates/73",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"template": map[string]interface{}{
+						"template_id":        "73",
+						"name":               "T",
+						"subject":            "S",
+						"template_content":   `<p><img src="cid:hero"></p>`,
+						"is_plain_text_mode": true,
+					},
+				},
+			},
+		})
+		uploadStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/drive/v1/medias/upload_all",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"file_token": "file_logo"},
+			},
+		}
+		reg.Register(uploadStub)
+		putStub := &httpmock.Stub{
+			Method: "PUT",
+			URL:    "/user_mailboxes/me/templates/73",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"template": map[string]interface{}{"template_id": "73"}},
+			},
+		}
+		reg.Register(putStub)
+
+		err := runMountedMailShortcut(t, MailTemplateUpdate, []string{
+			"+template-update",
+			"--template-id", "73",
+			"--set-plain-text",
+			"--inline", `{"cid":"hero","file_path":"logo.png"}`,
+			"--patch-file", "html.json",
+		}, f, stdout)
+		if err != nil {
+			t.Fatalf("expected patch final HTML to permit inline, got %v", err)
+		}
+		body := decodeCapturedBody(t, putStub)
+		tplWrap := body["template"].(map[string]interface{})
+		if tplWrap["is_plain_text_mode"] != false {
+			t.Fatalf("expected final template to be HTML mode, got %#v", tplWrap["is_plain_text_mode"])
+		}
+		if len(uploadStub.CapturedBody) == 0 {
+			t.Fatalf("expected inline image upload request")
+		}
+		if ct := uploadStub.CapturedHeaders.Get("Content-Type"); !strings.Contains(ct, "multipart/form-data") {
+			t.Fatalf("upload content type = %q, want multipart/form-data", ct)
+		}
+		if !strings.Contains(string(uploadStub.CapturedBody), "logo.png") {
+			t.Fatalf("upload body should include inline filename, got %q", uploadStub.CapturedBody)
+		}
+		atts, ok := tplWrap["attachments"].([]interface{})
+		if !ok || len(atts) != 1 {
+			t.Fatalf("expected one inline attachment in PUT body, got %#v", tplWrap["attachments"])
+		}
+		att := atts[0].(map[string]interface{})
+		if att["id"] != "file_logo" {
+			t.Fatalf("inline attachment id = %v, want file_logo", att["id"])
+		}
+		if att["filename"] != "logo.png" {
+			t.Fatalf("inline attachment filename = %v, want logo.png", att["filename"])
+		}
+		if att["cid"] != "hero" {
+			t.Fatalf("inline attachment cid = %v, want hero", att["cid"])
+		}
+		if att["is_inline"] != true {
+			t.Fatalf("inline attachment is_inline = %v, want true", att["is_inline"])
+		}
+	})
+}
+
+func TestMailTemplateUpdate_ValidatesLatestInlineCIDs(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/me/templates/74",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"template": map[string]interface{}{
+					"template_id":        "74",
+					"name":               "T",
+					"subject":            "S",
+					"template_content":   `<p>old body</p>`,
+					"is_plain_text_mode": false,
+				},
+			},
+		},
+	})
+
+	err := runMountedMailShortcut(t, MailTemplateUpdate, []string{
+		"+template-update",
+		"--template-id", "74",
+		"--set-template-content", `<p><img src="cid:missing"></p>`,
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "missing inline cid") {
+		t.Fatalf("expected latest-body missing cid validation error, got %v", err)
+	}
+}
+
+func TestMailTemplateUpdate_RejectsDuplicateInlineCIDsAfterMerge(t *testing.T) {
+	chdirTemp(t)
+	if err := os.WriteFile("logo.png", []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/me/templates/75",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"template": map[string]interface{}{
+					"template_id":        "75",
+					"name":               "T",
+					"subject":            "S",
+					"template_content":   `<p><img src="cid:hero"></p>`,
+					"is_plain_text_mode": false,
+					"attachments": []interface{}{
+						map[string]interface{}{"id": "existing_logo", "filename": "old.png", "is_inline": true, "cid": "hero", "attachment_type": 1},
+					},
+				},
+			},
+		},
+	})
+	err := runMountedMailShortcut(t, MailTemplateUpdate, []string{
+		"+template-update",
+		"--template-id", "75",
+		"--inline", `{"cid":"hero","file_path":"logo.png"}`,
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "duplicated") {
+		t.Fatalf("expected duplicate cid validation error, got %v", err)
+	}
+	assertInlineValidationError(t, err)
+}
+
+func TestMailTemplateUpdate_AllowsUnrelatedUpdateWithHistoricalOrphanInline(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/me/templates/76",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"template": map[string]interface{}{
+					"template_id":        "76",
+					"name":               "T",
+					"subject":            "old",
+					"template_content":   `<p>body without inline refs</p>`,
+					"is_plain_text_mode": false,
+					"attachments": []interface{}{
+						map[string]interface{}{"id": "old_logo", "filename": "old.png", "is_inline": true, "cid": "old_logo", "attachment_type": 1},
+					},
+				},
+			},
+		},
+	})
+	putStub := &httpmock.Stub{
+		Method: "PUT",
+		URL:    "/user_mailboxes/me/templates/76",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"template": map[string]interface{}{"template_id": "76"},
+			},
+		},
+	}
+	reg.Register(putStub)
+
+	err := runMountedMailShortcut(t, MailTemplateUpdate, []string{
+		"+template-update",
+		"--template-id", "76",
+		"--set-subject", "new",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("historical orphan inline should not block unrelated update: %v", err)
+	}
+	body := decodeCapturedBody(t, putStub)
+	tplWrap := body["template"].(map[string]interface{})
+	if tplWrap["subject"] != "new" {
+		t.Fatalf("subject = %v, want new", tplWrap["subject"])
+	}
+}
+
+func TestMailTemplateUpdate_ExplicitInlineIgnoresHistoricalOrphanInline(t *testing.T) {
+	chdirTemp(t)
+	if err := os.WriteFile("logo.png", []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/me/templates/77",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"template": map[string]interface{}{
+					"template_id":        "77",
+					"name":               "T",
+					"subject":            "S",
+					"template_content":   `<p><img src="cid:hero"></p>`,
+					"is_plain_text_mode": false,
+					"attachments": []interface{}{
+						map[string]interface{}{"id": "old_logo", "filename": "old.png", "is_inline": true, "cid": "old_logo", "attachment_type": 1},
+					},
+				},
+			},
+		},
+	})
+	uploadStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"file_token": "file_logo"},
+		},
+	}
+	reg.Register(uploadStub)
+	putStub := &httpmock.Stub{
+		Method: "PUT",
+		URL:    "/user_mailboxes/me/templates/77",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"template": map[string]interface{}{"template_id": "77"},
+			},
+		},
+	}
+	reg.Register(putStub)
+
+	err := runMountedMailShortcut(t, MailTemplateUpdate, []string{
+		"+template-update",
+		"--template-id", "77",
+		"--inline", `{"cid":"hero","file_path":"logo.png"}`,
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("historical orphan inline should not block valid explicit inline: %v", err)
+	}
+	if len(uploadStub.CapturedBody) == 0 {
+		t.Fatalf("expected explicit inline upload")
+	}
+	body := decodeCapturedBody(t, putStub)
+	tplWrap := body["template"].(map[string]interface{})
+	atts, ok := tplWrap["attachments"].([]interface{})
+	if !ok || len(atts) != 2 {
+		t.Fatalf("expected historical orphan plus new inline attachment, got %#v", tplWrap["attachments"])
 	}
 }
 

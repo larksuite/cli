@@ -115,7 +115,6 @@ var DriveReactReply = common.Shortcut{
 			return err
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Reaction %s (%s) on reply %s in %s...\n", spec.Action, spec.ReactionType, spec.ReplyID, common.MaskToken(target.FileToken))
 		path := fmt.Sprintf("/open-apis/drive/v2/files/%s/comments/reaction", validate.EncodePathSegment(target.FileToken))
 		if _, err := runtime.CallAPITyped(
 			"POST",

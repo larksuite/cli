@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -98,6 +99,7 @@ var updateSlideFlags = []common.Flag{
 	{Name: "content", Aliases: contentFlagAliases, Desc: "the page's full target XML, one <slide> root; elements omitted here are removed from the page", Required: true, Input: []string{common.File, common.Stdin}},
 	{Name: "revision-id", Type: "int", Default: "-1", Desc: "revision to apply against; -1 (default) means latest. Pinning an older revision rebuilds the page from that snapshot and discards newer edits to it"},
 	{Name: "tid", Desc: "transaction id for concurrent-edit locking (usually empty)"},
+	noLintFlag(),
 }
 
 func updateSlideValidate(_ context.Context, runtime *common.RuntimeContext) error {
@@ -160,7 +162,7 @@ func updateSlideDryRun(_ context.Context, runtime *common.RuntimeContext) *commo
 	}
 
 	if ref.Kind == "wiki" {
-		presentationID = "<resolved_slides_token>"
+		presentationID = unresolvedSlidesTokenPlaceholder
 		dry.Desc(fmt.Sprintf("%d-step orchestration: resolve wiki → replace slide", total)).
 			GET("/open-apis/wiki/v2/spaces/get_node").
 			Desc(fmt.Sprintf("[%d/%d] Resolve wiki node to slides presentation", step, total)).
@@ -175,7 +177,7 @@ func updateSlideDryRun(_ context.Context, runtime *common.RuntimeContext) *commo
 	// Uploads run against the target presentation, so a wiki ref resolves to a
 	// real id first; the placeholder tokens are unknown until then.
 	for _, path := range placeholders {
-		appendSlidesUploadDryRun(dry, path, presentationID, step)
+		appendSlidesUploadDryRun(dry, path, presentationID, slidesDryRunParentType(ref), step)
 		step++
 	}
 
@@ -186,7 +188,7 @@ func updateSlideDryRun(_ context.Context, runtime *common.RuntimeContext) *commo
 	dry.POST(slideReplaceAPIPath(presentationID)).
 		Desc(fmt.Sprintf("[%d/%d] Replace slide%s", step, total, descSuffix)).
 		Params(updateSlideQuery(runtime, slideID)).
-		Body(map[string]interface{}{"parts": updateSlideParts(slideID, content)})
+		Body(updateSlideBody(slideID, content, runtime))
 	return dry.Set("slide_id", slideID).
 		Set("content_bytes", len(content)).
 		Set("images_to_upload", len(placeholders))
@@ -232,14 +234,17 @@ func updateSlideExecute(_ context.Context, runtime *common.RuntimeContext) error
 
 	data, err := runtime.CallAPITyped("POST", slideReplaceAPIPath(presentationID),
 		updateSlideQuery(runtime, slideID),
-		map[string]interface{}{"parts": updateSlideParts(slideID, content)})
+		updateSlideBody(slideID, content, runtime))
 	if err != nil {
 		if len(placeholders) > 0 {
 			// The images are already in the deck's media store; say so, or a
 			// retry silently uploads a second copy of every file.
 			err = appendSlidesProgressHint(err, fmt.Sprintf("%d image(s) were uploaded before the slide failed; re-running will upload them again", len(placeholders)))
 		}
-		return enrichUpdateSlideError(err)
+		// .../slide/replace is gated, and the subject is the page the write
+		// produces rather than the payload sent, so a page that is invalid only
+		// in combination is caught here too.
+		return enrichUpdateSlideError(enrichSlidesLintError(err))
 	}
 
 	// A single part carries the whole page, so any failed_reason means the page
@@ -261,6 +266,14 @@ func updateSlideExecute(_ context.Context, runtime *common.RuntimeContext) error
 
 	if v, ok := data["revision_id"]; ok {
 		result["revision_id"] = v
+	}
+	// issues is advisory and only ever arrives on a page that was written: a
+	// finding serious enough to refuse the write leaves as an error carrying the
+	// same report, and the failed_reason branch above has already returned. Passed
+	// through untouched, as +add-slide and +create do, so a caller reads one field
+	// however it wrote the page.
+	if issues, ok := data["issues"]; ok {
+		result["issues"] = issues
 	}
 	runtime.Out(result, nil)
 	return nil
@@ -315,6 +328,12 @@ func updateSlideQuery(runtime *common.RuntimeContext, slideID string) map[string
 	return query
 }
 
+// updateSlideBody builds the request body shared by dry-run and execute, so the
+// two cannot disagree about the lint switch.
+func updateSlideBody(slideID, content string, runtime *common.RuntimeContext) map[string]interface{} {
+	return withLintXML(map[string]interface{}{"parts": updateSlideParts(slideID, content)}, runtime)
+}
+
 // updateSlideParts builds the one part the command ever sends. block_id is the
 // page id, which is what makes the backend swap the whole <slide> out.
 func updateSlideParts(slideID, content string) []map[string]interface{} {
@@ -333,8 +352,8 @@ func slideReplaceAPIPath(presentationID string) string {
 }
 
 // updateSlideContent validates --content and returns it with the root id set to
-// slideID. The caller's own bytes are preserved apart from that one attribute:
-// their formatting ends up in the page.
+// slideID, and with a stale <note> id dropped. The caller's bytes are otherwise
+// preserved, so their formatting lands in the page.
 func updateSlideContent(runtime *common.RuntimeContext, slideID string) (string, error) {
 	content := strings.TrimSpace(runtime.Str("content"))
 	if content == "" {
@@ -352,6 +371,12 @@ func updateSlideContent(runtime *common.RuntimeContext, slideID string) (string,
 			"--content root is <slide id=%q> but --slide-id is %q; pass the page you mean to replace, or drop the id",
 			rootID, slideID)
 	}
+	// Drop a carried <note id="..."> so the backend targets the page's own note
+	// block. A stale note id (XML copied from another page, or written over a
+	// re-created page) otherwise makes RewriteSlideBySXSD reject the whole page
+	// with "block is not NoteBlock". Only the note id is touched; visible elements
+	// keep their ids and are updated in place.
+	content = stripSlideNoteID(content)
 	stamped, err := ensureXMLRootID(content, slideID)
 	if err != nil {
 		// checkSlideRoot already proved there is a single <slide> root, so the only
@@ -362,6 +387,69 @@ func updateSlideContent(runtime *common.RuntimeContext, slideID string) (string,
 			" with a default xmlns if you need one").WithCause(err)
 	}
 	return stamped, nil
+}
+
+// noteIDAttrRe matches an id attribute — either quote style, whitespace around
+// '=' — together with its leading whitespace, so deleting the match leaves a
+// well-formed tag. It runs only against a single <note> start tag already
+// located by the XML tokenizer, never against the whole document, so it cannot
+// scan across a tag boundary or into another element.
+var noteIDAttrRe = regexp.MustCompile(`\s+id\s*=\s*(?:"[^"]*"|'[^']*')`)
+
+// stripSlideNoteID drops the id from the page's speaker-note element: the <note>
+// that is a direct child of the root <slide>.
+//
+// A +update-slide carrying a <note id="..."> that is not the page's current note
+// block makes the backend reject the whole page with "block is not NoteBlock" —
+// e.g. XML copied from another page, or written over a page that was re-created
+// (add-slide reassigns ids, so the note block's id no longer matches). With no
+// id the backend targets the page's own note block and the write succeeds.
+//
+// The <note> start tag is found with the XML tokenizer rather than a raw scan,
+// so: note-like text inside comments or CDATA is never touched; only the real
+// slide-level <note> is affected (a nested <note> elsewhere, if one ever
+// existed, is left alone); and attribute values containing '>' are handled
+// correctly. The id is then removed by editing that one tag's bytes — nothing is
+// re-serialized, so quote style, attribute order, whitespace, and every other
+// element (including inline <svg> namespaces) survive untouched. Notes are not
+// rendered and visible elements keep their ids, so the page updates in place
+// with no text reflow.
+func stripSlideNoteID(content string) string {
+	dec := xml.NewDecoder(strings.NewReader(content))
+	var stack []string   // element local-name path to the current token
+	var prev int64       // byte offset where the current token began
+	var spans [][2]int64 // byte ranges of slide-level <note> start tags
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			// EOF, or a malformed document checkSlideRoot already rejects.
+			// Apply whatever was located and leave the rest untouched.
+			break
+		}
+		cur := dec.InputOffset() // end of tok / start of the next token
+		switch t := tok.(type) {
+		case xml.StartElement:
+			if t.Name.Local == "note" && len(stack) > 0 && stack[len(stack)-1] == "slide" {
+				spans = append(spans, [2]int64{prev, cur})
+			}
+			stack = append(stack, t.Name.Local)
+		case xml.EndElement:
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+		}
+		prev = cur
+	}
+	if len(spans) == 0 {
+		return content
+	}
+	// Rewrite from the last span backwards so earlier offsets stay valid.
+	out := content
+	for i := len(spans) - 1; i >= 0; i-- {
+		s, e := spans[i][0], spans[i][1]
+		out = out[:s] + noteIDAttrRe.ReplaceAllString(out[s:e], "") + out[e:]
+	}
+	return out
 }
 
 // checkSlideRoot walks the tokens of content and returns the root element's id

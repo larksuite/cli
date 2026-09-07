@@ -12,16 +12,66 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// slidesMediaParentType is the only parent_type the slides backend accepts for
-// media uploaded against an xml_presentation. Verified empirically:
+// Drive media parent_type values for uploading an image into a presentation.
+//
+// Native (API-created) presentations use "slide_file", verified empirically:
 // `slide_image` returns 1061001 unknown error, `slides_image` / `slides_file`
 // return 1061002 params error, but `slide_file` returns a valid file_token
 // that can be used as <img src="..."> in slide XML.
 //
-// NOTE: `slide_file` is only accepted by the single-part upload_all endpoint.
-// The multipart upload_prepare endpoint rejects it (99992402 field validation
-// failed), so slides image uploads are capped at 20 MB.
-const slidesMediaParentType = "slide_file"
+// Imported "office" presentations must upload as "office_slide_file" instead —
+// the presentation counterpart of the office_sheet_file rule the sheets domain
+// already applies. Recognising one is common.IsLocalOfficeToken's job, not
+// this package's: the token shape is a drive-level property shared by every
+// imported office file, while the parent_type it selects is what differs per
+// domain, so only the mapping below lives here.
+//
+// NOTE: neither value is accepted by the multipart upload_prepare endpoint
+// (99992402 field validation failed), so slides image uploads stay capped at
+// 20 MB regardless of which one applies.
+const (
+	slideFileParentType       = "slide_file"
+	officeSlideFileParentType = "office_slide_file"
+)
+
+// slidesMediaParentType returns the drive media parent_type to use when
+// uploading an image whose parent_node is presentationToken. It is the single
+// place that maps a presentation token to its parent_type so every image-upload
+// entry point (+media-upload, and the @path placeholder pipeline behind
+// +create / +add-slide / +update-slide) and its dry-run preview stay
+// consistent.
+func slidesMediaParentType(presentationToken string) string {
+	if common.IsLocalOfficeToken(presentationToken) {
+		return officeSlideFileParentType
+	}
+	return slideFileParentType
+}
+
+// unresolvedSlidesTokenPlaceholder is what a dry-run shows in place of a
+// presentation token it cannot know: the caller passed a wiki reference, and
+// resolving it needs the get_node call a preview must not make.
+const unresolvedSlidesTokenPlaceholder = "<resolved_slides_token>"
+
+// slidesDryRunParentType returns the parent_type a dry-run should preview for
+// ref, without resolving anything.
+//
+// It exists so the placeholder token never reaches slidesMediaParentType. Doing
+// that happens to yield the right answer — a placeholder matches no office token
+// shape, so it falls through to slideFileParentType — but by accident rather
+// than on purpose, which makes the preview hostage to the placeholder's spelling
+// and to every future rule added to common.IsLocalOfficeToken.
+//
+// A wiki ref is native by construction, not by default: resolvePresentationID
+// rejects any wiki node whose obj_type is not "slides" (helpers.go), and an
+// imported office deck sits in drive as a "file" node, so it never survives that
+// gate to reach an upload. That is why this can assert slideFileParentType for a
+// token it has not seen.
+func slidesDryRunParentType(ref presentationRef) string {
+	if ref.Kind == "wiki" {
+		return slideFileParentType
+	}
+	return slidesMediaParentType(ref.Token)
+}
 
 // SlidesMediaUpload uploads a local image to drive media against a slides
 // presentation and returns the file_token. The token can be used as the value
@@ -58,10 +108,10 @@ var SlidesMediaUpload = common.Shortcut{
 		}
 
 		dry := common.NewDryRunAPI()
-		parentNode := ref.Token
+		uploadNode := ref.Token
 		stepBase := 1
 		if ref.Kind == "wiki" {
-			parentNode = "<resolved_slides_token>"
+			uploadNode = unresolvedSlidesTokenPlaceholder
 			stepBase = 2
 			dry.Desc("2-step orchestration: resolve wiki → upload media").
 				GET("/open-apis/wiki/v2/spaces/get_node").
@@ -70,7 +120,7 @@ var SlidesMediaUpload = common.Shortcut{
 		} else {
 			dry.Desc("Upload local file to slides presentation")
 		}
-		appendSlidesUploadDryRun(dry, filePath, parentNode, stepBase)
+		appendSlidesUploadDryRun(dry, filePath, uploadNode, slidesDryRunParentType(ref), stepBase)
 		return dry.Set("presentation_id", ref.Token)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -98,8 +148,6 @@ var SlidesMediaUpload = common.Shortcut{
 		}
 
 		fileName := filepath.Base(filePath)
-		fmt.Fprintf(runtime.IO().ErrOut, "Uploading: %s (%s) -> presentation %s\n",
-			fileName, common.FormatSize(stat.Size()), common.MaskToken(presentationID))
 
 		fileToken, err := uploadSlidesMedia(runtime, filePath, fileName, stat.Size(), presentationID)
 		if err != nil {
@@ -117,11 +165,12 @@ var SlidesMediaUpload = common.Shortcut{
 }
 
 // uploadSlidesMedia is the shared upload helper used by both +media-upload and
-// the +create placeholder pipeline. Always uses parent_type=slide_file with the
-// presentation_id as parent_node — verified to be the only working combo.
+// the +create placeholder pipeline. The presentation_id is the parent_node and
+// picks the parent_type via slidesMediaParentType, so an imported office deck
+// gets office_slide_file rather than the native slide_file.
 //
 // Callers must ensure fileSize ≤ MaxDriveMediaUploadSinglePartSize (20 MB)
-// because the multipart upload API does not accept parent_type=slide_file.
+// because the multipart upload API accepts neither parent_type.
 func uploadSlidesMedia(runtime *common.RuntimeContext, filePath, fileName string, fileSize int64, presentationID string) (string, error) {
 	if fileSize > common.MaxDriveMediaUploadSinglePartSize {
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "file %s is %s, exceeds 20 MB limit for slides image upload",
@@ -132,18 +181,20 @@ func uploadSlidesMedia(runtime *common.RuntimeContext, filePath, fileName string
 		FilePath:   filePath,
 		FileName:   fileName,
 		FileSize:   fileSize,
-		ParentType: slidesMediaParentType,
+		ParentType: slidesMediaParentType(presentationID),
 		ParentNode: &parent,
 	})
 }
 
-// appendSlidesUploadDryRun renders the upload_all step for a single file.
-func appendSlidesUploadDryRun(d *common.DryRunAPI, filePath, parentNode string, step int) {
+// appendSlidesUploadDryRun renders the upload_all step for a single file. It is
+// pure rendering: parentType is passed in rather than derived from parentNode,
+// because parentNode may be a placeholder and a placeholder cannot be classified.
+func appendSlidesUploadDryRun(d *common.DryRunAPI, filePath, parentNode, parentType string, step int) {
 	d.POST("/open-apis/drive/v1/medias/upload_all").
 		Desc(fmt.Sprintf("[%d] Upload local file (max 20 MB)", step)).
 		Body(map[string]interface{}{
 			"file_name":   filepath.Base(filePath),
-			"parent_type": slidesMediaParentType,
+			"parent_type": parentType,
 			"parent_node": parentNode,
 			"size":        "<file_size>",
 			"file":        "@" + filePath,
