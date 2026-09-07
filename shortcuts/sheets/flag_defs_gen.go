@@ -352,7 +352,7 @@ var flagDefs = map[string]commandDef{
 			{Name: "sheet-id", Kind: "public", Type: "string", Required: "xor", Desc: "Sheet reference_id — required: pass this or `--sheet-name` (exactly one of the two)"},
 			{Name: "sheet-name", Kind: "public", Type: "string", Required: "xor", Desc: "Sheet name — required: pass this or `--sheet-id` (exactly one of the two)"},
 			{Name: "chart-id", Kind: "own", Type: "string", Required: "optional", Desc: "Filter to a single chart reference_id"},
-			{Name: "only-thumbnail", Kind: "own", Type: "bool", Required: "optional", Desc: "Return only the rendered chart thumbnail instead of the snapshot config"},
+			{Name: "only-thumbnail", Kind: "own", Type: "bool", Required: "optional", Desc: "Return only rendered chart thumbnails instead of snapshot configs; image bytes are in details.thumbnail.base64 without a data: prefix"},
 			{Name: "dry-run", Kind: "system", Type: "bool", Required: "optional"},
 		},
 	},

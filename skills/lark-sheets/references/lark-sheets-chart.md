@@ -32,7 +32,7 @@
 
 普通创建、数据源修正和常用配置更新不要构造原始 snapshot。
 
-典型工作流：先确认表头、精确数据范围和图表配置，运行 `python scripts/lark_chart_size_advisor.py` 取得建议尺寸，再将返回的 `data.create_flags.width` / `height` 原样传给 `+chart-create-basic`；创建时尽量在同次调用中带上已知标题/轴/标签内容要求，标签位置只有用户明确指定时才传。创建后用返回的完整 `snapshot` 检查范围、方向与系列，再按需用 `+chart-list` 验证。已有图表的数据范围或方向错误时用 `+chart-data-update`，常用配置修正用 `+chart-config-update`。只有用户要求单个系列、数据点或高级引擎字段时，才读取现有 snapshot 并调 `+chart-update --properties`。不要为了常用配置先输出整份 schema，也不要删除重建已经创建成功的图表。
+典型工作流：先确认表头、精确数据范围和图表配置，运行 `python scripts/lark_chart_size_advisor.py` 取得建议尺寸，再将返回的 `data.create_flags.width` / `height` 原样传给 `+chart-create-basic`；创建时尽量在同次调用中带上已知标题/轴/标签内容要求，标签位置只有用户明确指定时才传。创建后用返回的完整 `snapshot` 检查范围、方向与系列。已有图表的数据范围或方向错误时用 `+chart-data-update`，常用配置修正用 `+chart-config-update`。只有用户要求单个系列、数据点或高级引擎字段时，才读取现有 snapshot 并调 `+chart-update --properties`。全部修改完成后按下方交付门禁运行一次统一质检并读取其输出的缩略图文件；不要为了常用配置先输出整份 schema，也不要删除重建已经创建成功的图表。
 
 **多图表工作流**：先完成所有辅助数据和表头，列出每张目标图的类型、精确数据范围、标题和落点；确认清单后，用一次 `+batch-chart-create` 批量创建。它的每个 operation 直接填写 `+chart-create-basic` flags，CLI 内部固定按 `+chart-create-basic` 执行，不要再套 `shortcut` / `input`。图表之间独立时允许部分成功：按返回的逐项结果定位失败图表，只重试失败项。批量 create 的逐项结果不返回完整 snapshot；批次后每个受影响的 sheet 各调用一次 `+chart-list`。已经成功创建的图表有数据源或配置差异时，用 `+batch-chart-update` 批量执行对应的语义更新，不要删除重建。
 
@@ -162,9 +162,18 @@ python scripts/lark_chart_size_advisor.py "<表格 URL 或 spreadsheet token>" \
 完成本次所有图表创建或更新后，再逐图核对以下项；全部通过才算完成：
 
 1. **数量**：图表数 = 用户明确要求的数量（"每个 / 分别 / 逐一"等数量词已逐项展开为独立图，不用一张多系列图代替）。
-2. **文案与展示项**：回读图表标题、副标题和坐标轴标题，确认语义准确且无乱码、占位符或空括号；图例按用户要求展示或隐藏，普通基础图的数据标签默认展示；密集时按“建议尺寸 → 稀疏标签 → Top-N / 拆图”处理。辅助系列不得用全点重复标签模拟单点或末点。带坐标轴的图表还要回读每条轴的字段语义、类型、单位、最小值 / 最大值、刻度以及主副轴归属；多图对比时再核对边界、跨度和口径是否符合用户的可比性要求。
-3. **图表质量**：图表创建、配置更新、数据更新或位置调整后，每个受影响子表运行一次 `python scripts/lark_chart_quality_check.py "<表格 URL 或 spreadsheet token>" --worksheet-id "<reference_id>"`，无需先用 `ls` 探测脚本。检查器覆盖几何重叠、遮挡内容、越界、最小尺寸、数值源格式、全零/空系列和常量系列重复标签。动态数值源只采样每系列前 50 点，每张图累计最多读取 2000 个源单元格（含表头和系列间空隙）；`numeric_source_samples` 给出实际范围与采样点数，不续读剩余数据。仅采样为全零/常量但未覆盖完整系列时列为不可验证，不能据此修改整个系列。`data.passed=true` 且退出码为 `0` 表示已完成检查范围内无问题，不能视为未采样数据也正常。退出码 `2` 表示检查成功发现问题，按返回的修复建议调整后重跑；退出码 `1`、网络超时或无有效 JSON 时只重试一次，仍失败则明确报告质量检查未完成，禁止用人工估算代替。
-4. **渲染图验收**：图表创建或影响渲染的更新完成后，用 `+chart-list --only-thumbnail` 查看本次受影响图表的最终视觉结果；若一次读取超时或不完整，再按 `chart_id` 分批读取。无法查看缩略图时，明确说明视觉验收未完成。
+2. **数据语义与展示项**：先回读并核对数据、公式、聚合、数据范围、系列映射和坐标轴语义，再核对标题、副标题、图例和标签要求；缩略图只能证明渲染结果，不能证明业务计算正确。密集标签按“建议尺寸 → 稀疏标签 → Top-N / 拆图”处理，辅助系列不得用全点重复标签模拟单点或末点。
+3. **统一质检与渲染验收**：全部创建和更新完成后，对每个受影响子表运行一次 `python scripts/lark_chart_quality_check.py "<表格 URL 或 spreadsheet token>" --worksheet-id "<reference_id>"`。检查器同时执行静态质量检查、获取全部缩略图、验证 base64 / 图片魔数 / 尺寸 / 白图并落盘；直接读取 `data.thumbnail_fetch.sheets[].files[]` 中 `status=valid` 的全部 `path`，一次可读多张，仅图片读取超时时再分批。避免手写图片解析，也禁止从部分图片外推全部图表通过。
+
+检查器明确区分三种状态：`data.acceptance.data_semantics` 需要模型按上一步完成语义核对，`data.acceptance.static_quality` 是脚本静态检查，`data.acceptance.visual_review` 在模型实际读取全部有效图片前保持 `pending_model_review`。用 `thumbnail_fetch.expected_chart_ids`、`valid_chart_ids`、`coverage_rate` 和模型已读取的图片逐一对账；只要缩略图没有全部成功生成并可读，视觉验收就未完成。任何修图后都必须重新运行本步骤，只认最终一轮结果。
+
+模型读取缩略图后按三项标准验收：
+
+1. **数据准确**：图中的类别、系列、数值、数据标签和坐标轴口径与数据 / 公式回读结果一致。
+2. **展示完整**：题面要求的内容全部呈现，不存在重叠、截断、遮挡或关键元素缺失。
+3. **样式合理**：图表类型与布局合理，配色美观且系列间颜色对比明显，关键信息易于辨认。
+
+静态检查仍覆盖几何重叠、遮挡内容、越界、最小尺寸、数值源格式、全零 / 空系列和常量系列重复标签。采样未覆盖完整系列时列为不可验证，不能据此修改整个系列。退出码 `2` 表示发现静态质量问题；退出码 `1` 表示检查未完成或缩略图不可用，最多重试一次后明确报告；退出码 `0` 只表示静态检查和缩略图资产准备完成，仍须完成数据语义与模型视觉判断。
 
 ## Shortcuts
 
@@ -187,7 +196,7 @@ _公共四件套 · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--chart-id` | string | optional | 指定单个图表 reference_id 过滤 |
-| `--only-thumbnail` | bool | optional | 仅返回图表渲染缩略图，不返回 snapshot 配置 |
+| `--only-thumbnail` | bool | optional | 仅返回图表渲染缩略图，不返回 snapshot 配置；图片字节位于 details.thumbnail.base64（不含 data: 前缀） |
 
 ### `+chart-create-basic`
 
@@ -325,7 +334,7 @@ _创建/更新的图表属性_
 
 ### `+chart-list`
 
-输出契约：默认返回按工作表分组的图表列表，每个图表含 `chart_id` / `position` / `details.snapshot` 等；传 `--only-thumbnail` 时不返回 snapshot，而在 `details.thumbnail` 返回渲染缩略图及其 MIME、版本和尺寸信息。
+输出契约：默认返回按工作表分组的图表列表，每个图表含 `chart_id` / `position` / `details.snapshot` 等；传 `--only-thumbnail` 时不返回 snapshot，而在 `details.thumbnail` 返回渲染缩略图，其中图片字节位于 `details.thumbnail.base64`（不含 `data:` 前缀）。交付验收优先使用上方统一质检脚本，不手写 base64 解析。
 
 ### `+chart-create-basic`
 

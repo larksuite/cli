@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Lark Technologies Pte. Ltd.
 # SPDX-License-Identifier: MIT
-"""Check Lark Sheet chart quality, placement, and numeric source-data issues.
+"""Check Lark Sheet chart quality and prepare rendered thumbnails for review.
 
 The single required argument is a spreadsheet URL or spreadsheet token. By
 default every worksheet is checked; pass --worksheet-id to restrict the check
@@ -12,16 +12,22 @@ most 2000 source cells per chart, including headers and gaps between series.
 Sampled zero/constant values do not establish a whole-series issue.
 
 Exit codes:
-  0: check completed and no issue was found
-  1: the check could not be completed (CLI/read/response error)
+  0: static checks passed and every thumbnail asset is valid; model review remains required
+  1: the check could not be completed or a thumbnail asset is unavailable
   2: check completed and at least one chart-quality issue was found
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
+import io
 import json
 import re
+import struct
+import tempfile
+import zlib
+from pathlib import Path
 from typing import Any
 
 from lark_sheet_read_cli import (
@@ -40,6 +46,9 @@ DEFAULT_COLUMN_WIDTH = 105.0
 DEFAULT_ROW_HEIGHT = 27.0
 MAX_CELL_READ_SIZE = 2_000
 MAX_SOURCE_SAMPLE_POINTS = 50
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+JPEG_SIGNATURE = b"\xff\xd8\xff"
+MIN_NON_WHITE_RATIO = 0.001
 
 
 CellBounds = tuple[int, int, int, int]
@@ -207,6 +216,261 @@ def extract_charts(data: dict[str, Any], sheet_id: str, title: str) -> list[dict
                 return [chart for chart in charts if isinstance(chart, dict)] if isinstance(charts, list) else []
     charts = data.get("charts")
     return [chart for chart in charts if isinstance(chart, dict)] if isinstance(charts, list) else []
+
+
+def _paeth(left: int, up: int, upper_left: int) -> int:
+    estimate = left + up - upper_left
+    left_distance = abs(estimate - left)
+    up_distance = abs(estimate - up)
+    upper_left_distance = abs(estimate - upper_left)
+    if left_distance <= up_distance and left_distance <= upper_left_distance:
+        return left
+    return up if up_distance <= upper_left_distance else upper_left
+
+
+def _png_pixel_profile(raw: bytes) -> dict[str, Any]:
+    if not raw.startswith(PNG_SIGNATURE):
+        raise ValueError("invalid PNG signature")
+    offset = len(PNG_SIGNATURE)
+    width = height = bit_depth = color_type = interlace = None
+    palette: list[tuple[int, int, int]] = []
+    transparency = b""
+    compressed = bytearray()
+    while offset + 12 <= len(raw):
+        length = struct.unpack(">I", raw[offset : offset + 4])[0]
+        chunk_type = raw[offset + 4 : offset + 8]
+        payload = raw[offset + 8 : offset + 8 + length]
+        offset += 12 + length
+        if chunk_type == b"IHDR":
+            width, height, bit_depth, color_type, _, _, interlace = struct.unpack(">IIBBBBB", payload)
+        elif chunk_type == b"PLTE":
+            palette = [tuple(payload[index : index + 3]) for index in range(0, len(payload), 3)]
+        elif chunk_type == b"tRNS":
+            transparency = payload
+        elif chunk_type == b"IDAT":
+            compressed.extend(payload)
+        elif chunk_type == b"IEND":
+            break
+    if not width or not height or bit_depth != 8 or interlace != 0:
+        raise ValueError("unsupported PNG encoding")
+    channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}.get(color_type)
+    if channels is None:
+        raise ValueError("unsupported PNG color type")
+    pixels = zlib.decompress(bytes(compressed))
+    stride = width * channels
+    expected = height * (stride + 1)
+    if len(pixels) != expected:
+        raise ValueError("unexpected PNG payload length")
+    rows: list[bytearray] = []
+    cursor = 0
+    for _ in range(height):
+        filter_type = pixels[cursor]
+        source = pixels[cursor + 1 : cursor + 1 + stride]
+        cursor += stride + 1
+        previous = rows[-1] if rows else bytearray(stride)
+        current = bytearray(stride)
+        for index, value in enumerate(source):
+            left = current[index - channels] if index >= channels else 0
+            up = previous[index]
+            upper_left = previous[index - channels] if index >= channels else 0
+            if filter_type == 0:
+                decoded = value
+            elif filter_type == 1:
+                decoded = value + left
+            elif filter_type == 2:
+                decoded = value + up
+            elif filter_type == 3:
+                decoded = value + ((left + up) // 2)
+            elif filter_type == 4:
+                decoded = value + _paeth(left, up, upper_left)
+            else:
+                raise ValueError("unsupported PNG filter")
+            current[index] = decoded & 0xFF
+        rows.append(current)
+
+    total_pixels = width * height
+    sample_step = max(1, total_pixels // 100_000)
+    sampled = non_white = 0
+    for pixel_index in range(0, total_pixels, sample_step):
+        row = rows[pixel_index // width]
+        start = (pixel_index % width) * channels
+        values = row[start : start + channels]
+        if color_type == 0:
+            red = green = blue = values[0]
+            alpha = 255
+        elif color_type == 2:
+            red, green, blue = values
+            alpha = 255
+        elif color_type == 3:
+            palette_index = values[0]
+            if palette_index >= len(palette):
+                raise ValueError("invalid PNG palette index")
+            red, green, blue = palette[palette_index]
+            alpha = transparency[palette_index] if palette_index < len(transparency) else 255
+        elif color_type == 4:
+            red = green = blue = values[0]
+            alpha = values[1]
+        else:
+            red, green, blue, alpha = values
+        composited = [
+            (channel * alpha + 255 * (255 - alpha)) // 255
+            for channel in (red, green, blue)
+        ]
+        sampled += 1
+        if min(composited) < 250:
+            non_white += 1
+    ratio = non_white / sampled if sampled else 0.0
+    return {
+        "width": width,
+        "height": height,
+        "sampled_pixel_count": sampled,
+        "non_white_ratio": round(ratio, 6),
+        "blank": ratio < MIN_NON_WHITE_RATIO,
+        "pixel_check": "png_stdlib",
+    }
+
+
+def inspect_image_bytes(raw: bytes, mime_type: str) -> dict[str, Any]:
+    mime = str(mime_type or "").lower()
+    if raw.startswith(PNG_SIGNATURE):
+        profile = _png_pixel_profile(raw)
+        return {"format": "png", "magic_valid": True, **profile}
+    if raw.startswith(JPEG_SIGNATURE):
+        try:
+            from PIL import Image, ImageStat  # type: ignore
+
+            with Image.open(io.BytesIO(raw)) as image:
+                rgb = image.convert("RGB")
+                extrema = ImageStat.Stat(rgb).extrema
+                blank = all(low >= 250 for low, _ in extrema)
+                return {
+                    "format": "jpeg",
+                    "magic_valid": True,
+                    "width": image.width,
+                    "height": image.height,
+                    "non_white_ratio": 0.0 if blank else None,
+                    "blank": blank,
+                    "pixel_check": "pillow_extrema",
+                }
+        except (ImportError, OSError) as exc:
+            return {
+                "format": "jpeg",
+                "magic_valid": True,
+                "blank": None,
+                "pixel_check": "unavailable",
+                "pixel_check_error": str(exc),
+            }
+    return {
+        "format": mime or "unknown",
+        "magic_valid": False,
+        "blank": None,
+        "pixel_check": "not_run",
+    }
+
+
+def _error_log_ids(value: Any) -> list[str]:
+    return sorted(set(re.findall(r"20\d{12}[A-Fa-f0-9]{12,40}", str(value))))
+
+
+def fetch_thumbnail_assets(
+    locator: dict[str, str],
+    sheet: dict[str, Any],
+    *,
+    expected_chart_ids: list[str],
+    output_dir: Path,
+    timeout: int,
+) -> dict[str, Any]:
+    sheet_id = sheet_identifier(sheet)
+    title = sheet_title(sheet)
+    try:
+        thumbnail_data = envelope_data(
+            run_sheets(
+                "+chart-list",
+                **locator,
+                sheet_id=sheet_id,
+                flags={"only_thumbnail": True},
+                timeout=timeout,
+            )
+        )
+    except LarkCliError as exc:
+        return {
+            "status": "error",
+            "expected_chart_ids": expected_chart_ids,
+            "received_chart_ids": [],
+            "valid_chart_ids": [],
+            "missing_chart_ids": expected_chart_ids,
+            "coverage_rate": 0.0 if expected_chart_ids else None,
+            "files": [],
+            "error": str(exc),
+            "error_log_ids": _error_log_ids(exc),
+        }
+
+    thumbnails = extract_charts(thumbnail_data, sheet_id, title)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    received_ids: list[str] = []
+    valid_ids: list[str] = []
+    files: list[dict[str, Any]] = []
+    for chart in thumbnails:
+        chart_id = str(chart.get("chart_id") or chart.get("id") or "")
+        if not chart_id:
+            continue
+        received_ids.append(chart_id)
+        details = chart.get("details") if isinstance(chart.get("details"), dict) else chart
+        thumbnail = details.get("thumbnail") if isinstance(details.get("thumbnail"), dict) else {}
+        encoded = thumbnail.get("base64")
+        item: dict[str, Any] = {
+            "chart_id": chart_id,
+            "mime_type": str(thumbnail.get("mime_type") or thumbnail.get("mime") or ""),
+            "version": str(thumbnail.get("version") or ""),
+            "reported_width": thumbnail.get("width"),
+            "reported_height": thumbnail.get("height"),
+        }
+        if not isinstance(encoded, str) or not encoded.strip():
+            item.update({"status": "empty", "reason": "thumbnail.base64 is empty"})
+            files.append(item)
+            continue
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+            inspection = inspect_image_bytes(raw, item["mime_type"])
+        except (ValueError, zlib.error, struct.error) as exc:
+            item.update({"status": "invalid", "reason": str(exc)})
+            files.append(item)
+            continue
+        suffix = ".png" if inspection.get("format") == "png" else ".jpg"
+        path = output_dir / f"{sheet_id}_{chart_id}{suffix}"
+        path.write_bytes(raw)
+        status = "blank" if inspection.get("blank") is True else "valid"
+        if inspection.get("blank") is None:
+            status = "unverifiable"
+        item.update({"status": status, "path": str(path), "bytes": len(raw), **inspection})
+        files.append(item)
+        if status == "valid":
+            valid_ids.append(chart_id)
+
+    missing = [chart_id for chart_id in expected_chart_ids if chart_id not in received_ids]
+    expected_set = set(expected_chart_ids)
+    valid_set = set(valid_ids)
+    coverage_rate = (
+        len(expected_set & valid_set) / len(expected_set)
+        if expected_set
+        else None
+    )
+    if not received_ids or all(item.get("status") == "empty" for item in files):
+        status = "empty"
+    elif not missing and expected_set == valid_set:
+        status = "ok"
+    else:
+        status = "partial"
+    return {
+        "status": status,
+        "expected_chart_ids": expected_chart_ids,
+        "received_chart_ids": received_ids,
+        "valid_chart_ids": valid_ids,
+        "missing_chart_ids": missing,
+        "coverage_rate": coverage_rate,
+        "files": files,
+        "error_log_ids": [],
+    }
 
 
 def chart_rectangle(
@@ -1058,6 +1322,7 @@ def check_sheet(
             "sheet_id": sheet_id,
             "sheet_name": title,
             "chart_count": 0,
+            "chart_ids": [],
             "sheet_size_px": None,
             "chart_overlaps": [],
             "cell_content_overlaps": [],
@@ -1215,6 +1480,11 @@ def check_sheet(
         "sheet_id": sheet_id,
         "sheet_name": title,
         "chart_count": len(charts),
+        "chart_ids": [
+            str(chart.get("chart_id") or chart.get("id") or "")
+            for chart in charts
+            if chart.get("chart_id") or chart.get("id")
+        ],
         "sheet_size_px": {"width": round(sheet_width, 2), "height": round(sheet_height, 2)},
         "chart_overlaps": overlaps,
         "cell_content_overlaps": content_overlaps,
@@ -1238,30 +1508,102 @@ def parse_args() -> argparse.Namespace:
         description=(
             "Check chart overlap, covered cell content, worksheet boundary overflow, "
             "minimum size, excessive width, constant labeled series, numeric source-cell "
-            "formats, all-zero/empty numeric series, and unbound combo-chart secondary axes."
+            "formats, all-zero/empty numeric series, and unbound combo-chart secondary axes; "
+            "also decode and validate every rendered chart thumbnail for model review."
         )
     )
     parser.add_argument("sheet_id", help="Spreadsheet URL or spreadsheet token")
     parser.add_argument("--worksheet-id", help="Only check this worksheet reference_id")
     parser.add_argument("--timeout", type=int, default=60)
     parser.add_argument("--sample-limit", type=int, default=10)
+    parser.add_argument(
+        "--thumbnail-output-dir",
+        help="Directory for decoded chart thumbnails; defaults to a temporary directory",
+    )
     return parser.parse_args()
 
 
-def success_envelope(results: list[dict[str, Any]]) -> dict[str, Any]:
+def success_envelope(
+    results: list[dict[str, Any]],
+    thumbnail_results: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     issue_count = sum(result["issue_count"] for result in results)
     unverifiable_count = sum(result["unverifiable_count"] for result in results)
+    static_quality_passed = issue_count == 0 and unverifiable_count == 0
+    thumbnails_checked = thumbnail_results is not None
+    thumbnail_assets_passed = (
+        all(result.get("status") in {"ok", "not_applicable"} for result in thumbnail_results)
+        if thumbnail_results is not None
+        else None
+    )
+    chart_count = sum(result["chart_count"] for result in results)
+    thumbnail_expected_count = sum(
+        len(result.get("expected_chart_ids", []))
+        for result in (thumbnail_results or [])
+    )
+    thumbnail_valid_count = sum(
+        len(result.get("valid_chart_ids", []))
+        for result in (thumbnail_results or [])
+    )
+    if not chart_count:
+        visual_status = "not_applicable"
+        visual_passed = None
+    elif not thumbnails_checked:
+        visual_status = "not_checked"
+        visual_passed = None
+    elif thumbnail_assets_passed:
+        visual_status = "pending_model_review"
+        visual_passed = None
+    else:
+        visual_status = "unavailable"
+        visual_passed = False
     warnings = [
         f"{result['sheet_name'] or result['sheet_id']}: {warning}"
         for result in results
         for warning in result["warnings"]
     ]
+    warnings.extend(
+        f"{result.get('sheet_name') or result.get('sheet_id')}: thumbnail status={result.get('status')}"
+        for result in (thumbnail_results or [])
+        if result.get("status") not in {"ok", "not_applicable"}
+    )
     return {
         "ok": True,
         "engine": "lark",
         "action": ACTION,
         "data": {
-            "passed": issue_count == 0 and unverifiable_count == 0,
+            "passed": static_quality_passed
+            and (thumbnail_assets_passed is not False),
+            "passed_scope": "static_quality_and_thumbnail_assets_only",
+            "acceptance": {
+                "overall": {
+                    "passed": None,
+                    "status": "pending_data_and_visual_review" if chart_count else "not_applicable",
+                },
+                "data_semantics": {
+                    "passed": None,
+                    "status": "manual_review_required" if chart_count else "not_applicable",
+                    "note": "Validate source data, formulas, aggregation, series mapping, and axis semantics separately.",
+                },
+                "static_quality": {
+                    "passed": static_quality_passed,
+                    "status": "passed" if static_quality_passed else "failed",
+                },
+                "visual_review": {
+                    "passed": visual_passed,
+                    "status": visual_status,
+                    "note": (
+                        "Read every file returned in thumbnail_fetch before declaring visual success."
+                        if visual_status == "pending_model_review"
+                        else "Visual acceptance is incomplete."
+                    ),
+                },
+            },
+            "thumbnail_fetch": {
+                "checked": thumbnails_checked,
+                "passed": thumbnail_assets_passed,
+                "sheets": thumbnail_results or [],
+            },
             "scope_note": (
                 "out_of_visible_range checks worksheet drawable bounds, not a device-specific browser viewport; "
                 "numeric source checks sample at most the first 50 data points of each chart value dimension "
@@ -1271,9 +1613,16 @@ def success_envelope(results: list[dict[str, Any]]) -> dict[str, Any]:
             ),
             "summary": {
                 "worksheet_count": len(results),
-                "chart_count": sum(result["chart_count"] for result in results),
+                "chart_count": chart_count,
                 "issue_count": issue_count,
                 "unverifiable_count": unverifiable_count,
+                "thumbnail_expected_count": thumbnail_expected_count,
+                "thumbnail_valid_count": thumbnail_valid_count,
+                "thumbnail_coverage_rate": (
+                    thumbnail_valid_count / thumbnail_expected_count
+                    if thumbnail_expected_count
+                    else None
+                ),
             },
             "sheets": results,
         },
@@ -1312,11 +1661,49 @@ def main() -> None:
             )
             for sheet in sheets
         ]
+        thumbnail_root = (
+            Path(getattr(args, "thumbnail_output_dir", None)).expanduser().resolve()
+            if getattr(args, "thumbnail_output_dir", None)
+            else Path(tempfile.mkdtemp(prefix="lark_chart_thumbnails_"))
+        )
+        thumbnail_results = []
+        for sheet, result in zip(sheets, results):
+            chart_ids = result.get("chart_ids", [])
+            if not chart_ids:
+                thumbnail_results.append(
+                    {
+                        "sheet_id": sheet_identifier(sheet),
+                        "sheet_name": sheet_title(sheet),
+                        "status": "not_applicable",
+                        "expected_chart_ids": [],
+                        "received_chart_ids": [],
+                        "valid_chart_ids": [],
+                        "missing_chart_ids": [],
+                        "coverage_rate": None,
+                        "files": [],
+                        "error_log_ids": [],
+                    }
+                )
+                continue
+            thumbnail_result = fetch_thumbnail_assets(
+                locator,
+                sheet,
+                expected_chart_ids=chart_ids,
+                output_dir=thumbnail_root,
+                timeout=args.timeout,
+            )
+            thumbnail_results.append(
+                {
+                    "sheet_id": sheet_identifier(sheet),
+                    "sheet_name": sheet_title(sheet),
+                    **thumbnail_result,
+                }
+            )
     except (LarkCliError, KeyError, TypeError, ValueError) as exc:
         emit_error(ACTION, str(exc))
         raise SystemExit(1) from exc
 
-    report = success_envelope(results)
+    report = success_envelope(results, thumbnail_results)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     exit_code = report_exit_code(report)
     if exit_code:

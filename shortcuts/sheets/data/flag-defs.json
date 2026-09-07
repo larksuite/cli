@@ -3443,7 +3443,7 @@
         "kind": "own",
         "type": "bool",
         "required": "optional",
-        "desc": "Return only the rendered chart thumbnail instead of the snapshot config"
+        "desc": "Return only rendered chart thumbnails instead of snapshot configs; image bytes are in details.thumbnail.base64 without a data: prefix"
       },
       {
         "name": "dry-run",
