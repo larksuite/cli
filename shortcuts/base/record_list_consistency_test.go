@@ -70,6 +70,77 @@ func TestRecordListNumberVerification(t *testing.T) {
 		}
 	})
 
+	t.Run("repairs a silently missing currency cell", func(t *testing.T) {
+		factory, stdout, registry := newExecuteFactory(t)
+		registry.Register(recordListVerificationListStub(map[string]interface{}{
+			"fields":          []interface{}{"Amount"},
+			"field_id_list":   []interface{}{"fld_amount"},
+			"field_type_list": []interface{}{"currency"},
+			"record_id_list":  []interface{}{"rec_1"},
+			"data":            []interface{}{[]interface{}{nil}},
+			"rev":             42,
+		}))
+		batchStub := recordListVerificationBatchStub(map[string]interface{}{
+			"fields":         []interface{}{"Amount"},
+			"field_id_list":  []interface{}{"fld_amount"},
+			"record_id_list": []interface{}{"rec_1"},
+			"data":           []interface{}{[]interface{}{35}},
+			"rev":            42,
+		})
+		registry.Register(batchStub)
+
+		if err := runShortcut(t, BaseRecordList, recordListVerificationArgs(), factory, stdout); err != nil {
+			t.Fatalf("runShortcut() error = %v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `35`) || strings.Contains(got, `null`) {
+			t.Fatalf("stdout = %s", got)
+		}
+		if body := string(batchStub.CapturedBody); !strings.Contains(body, `"select_fields":["fld_amount"]`) {
+			t.Fatalf("batch_get body = %s", body)
+		}
+	})
+
+	t.Run("rejects a malformed complete list matrix", func(t *testing.T) {
+		factory, stdout, registry := newExecuteFactory(t)
+		registry.Register(recordListVerificationListStub(map[string]interface{}{
+			"fields":          []interface{}{"Cost"},
+			"field_id_list":   []interface{}{"fld_cost"},
+			"field_type_list": []interface{}{"number"},
+			"record_id_list":  []interface{}{"rec_1"},
+			"data":            []interface{}{[]interface{}{}},
+			"rev":             42,
+		}))
+
+		err := runShortcut(t, BaseRecordList, recordListVerificationArgs(), factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "row 1 does not match the field count") {
+			t.Fatalf("error = %v", err)
+		}
+		problem, ok := errs.ProblemOf(err)
+		if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeInvalidResponse {
+			t.Fatalf("problem = %#v", problem)
+		}
+		if stdout.Len() != 0 {
+			t.Fatalf("stdout = %s", stdout.String())
+		}
+	})
+
+	t.Run("preserves a legacy list matrix missing field IDs", func(t *testing.T) {
+		factory, stdout, registry := newExecuteFactory(t)
+		registry.Register(recordListVerificationListStub(map[string]interface{}{
+			"fields":          []interface{}{"Cost"},
+			"field_type_list": []interface{}{"number"},
+			"record_id_list":  []interface{}{"rec_1"},
+			"data":            []interface{}{[]interface{}{nil}},
+		}))
+
+		if err := runShortcut(t, BaseRecordList, recordListVerificationArgs(), factory, stdout); err != nil {
+			t.Fatalf("runShortcut() error = %v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `null`) {
+			t.Fatalf("stdout = %s", got)
+		}
+	})
+
 	for _, test := range []struct {
 		name      string
 		batchData map[string]interface{}

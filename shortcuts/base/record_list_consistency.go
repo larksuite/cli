@@ -36,8 +36,11 @@ func listRecordsVerified(runtime *common.RuntimeContext, params map[string]inter
 }
 
 func verifyNullNumberCells(runtime *common.RuntimeContext, data map[string]interface{}) (map[string]interface{}, error) {
-	matrix, ok := parseListVerificationMatrix(data)
-	if !ok {
+	matrix, complete, err := parseListVerificationMatrix(data)
+	if err != nil {
+		return nil, err
+	}
+	if !complete {
 		// Keep legacy JSON/Markdown behavior for old response shapes. NDJSON has
 		// its own strict matrix parser and will reject malformed responses later.
 		return data, nil
@@ -49,7 +52,7 @@ func verifyNullNumberCells(runtime *common.RuntimeContext, data map[string]inter
 	}
 	numberColumns := make([]numberColumn, 0, len(matrix.fieldTypes))
 	for index, fieldType := range matrix.fieldTypes {
-		if fieldType == "number" {
+		if fieldType == "number" || fieldType == "currency" {
 			numberColumns = append(numberColumns, numberColumn{index: index, fieldID: matrix.fieldIDs[index]})
 		}
 	}
@@ -123,14 +126,17 @@ func verifyNullNumberCells(runtime *common.RuntimeContext, data map[string]inter
 	return data, nil
 }
 
-func parseListVerificationMatrix(data map[string]interface{}) (*recordVerificationMatrix, bool) {
+func parseListVerificationMatrix(data map[string]interface{}) (*recordVerificationMatrix, bool, error) {
 	for _, key := range []string{"fields", "field_id_list", "field_type_list", "record_id_list", "data"} {
 		if _, exists := data[key]; !exists {
-			return nil, false
+			return nil, false, nil
 		}
 	}
 	matrix, err := parseRecordVerificationMatrix(data, true)
-	return matrix, err == nil
+	if err != nil {
+		return nil, true, err
+	}
+	return matrix, true, nil
 }
 
 func parseRecordVerificationMatrix(data map[string]interface{}, requireFieldTypes bool) (*recordVerificationMatrix, error) {
