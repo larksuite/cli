@@ -4,8 +4,6 @@
 package cmdutil
 
 import (
-	"strings"
-
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/i18n"
 )
@@ -20,8 +18,8 @@ func ParseLangFlag(raw string) (i18n.Lang, error) {
 	lang, ok := i18n.Parse(raw)
 	if !ok {
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"invalid --lang %q; valid values: %s",
-			raw, strings.Join(i18n.Codes(), ", ")).
+			"invalid --lang %q; valid values (case-sensitive): %s",
+			raw, i18n.CodesWithShort()).
 			WithParam("--lang")
 	}
 	return lang, nil

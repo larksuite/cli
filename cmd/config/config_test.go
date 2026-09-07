@@ -6,6 +6,7 @@ package config
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -261,10 +262,22 @@ func TestConfigInitCmd_InvalidLang(t *testing.T) {
 			if got := output.ExitCodeOf(err); got != output.ExitValidation {
 				t.Errorf("exit code = %d, want %d (validation)", got, output.ExitValidation)
 			}
-			if !strings.Contains(err.Error(), "invalid --lang") {
-				t.Errorf("error message %q does not contain 'invalid --lang'", err.Error())
-			}
+			assertLangErrorGuidance(t, err)
 		})
+	}
+}
+
+// assertLangErrorGuidance pins what a rejected --lang value must tell the user:
+// which flag was wrong, that short codes are accepted too, and that the match
+// is case-sensitive — the two facts that otherwise send a user who typed "EN"
+// on a detour through "en_US".
+func assertLangErrorGuidance(t *testing.T, err error) {
+	t.Helper()
+	msg := err.Error()
+	for _, want := range []string{"invalid --lang", "zh_cn (zh)", "en_us (en)", "case-sensitive"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error message %q does not contain %q", msg, want)
+		}
 	}
 }
 
@@ -555,24 +568,28 @@ func TestValidateInitLang(t *testing.T) {
 // to stderr only when --lang explicitly set a non-empty preference.
 func TestPrintLangPreferenceConfirmation(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	// UILang matches Lang in every case below: resolveInitUILang derives the
+	// display language from the same --lang value, so a combination like
+	// Lang=en_us with a Chinese UI cannot occur in the real flow and would hide
+	// a regression in that resolution chain.
 	t.Run("explicit non-empty prints confirmation", func(t *testing.T) {
 		f, _, stderr, _ := cmdutil.TestFactory(t, nil)
-		printLangPreferenceConfirmation(&ConfigInitOptions{Factory: f, Lang: "en_us", UILang: i18n.LangZhCN, langExplicit: true})
+		printLangPreferenceConfirmation(&ConfigInitOptions{Factory: f, Lang: "en_us", UILang: i18n.LangEnUS, langExplicit: true})
 		got := stderr.String()
-		if !strings.Contains(got, "语言偏好") || !strings.Contains(got, "en_us") {
+		if !strings.Contains(got, "Language preference set to") || !strings.Contains(got, "en_us") {
 			t.Errorf("stderr = %q, want confirmation mentioning the preference and en_us", got)
 		}
 	})
 	t.Run("implicit prints nothing", func(t *testing.T) {
 		f, _, stderr, _ := cmdutil.TestFactory(t, nil)
-		printLangPreferenceConfirmation(&ConfigInitOptions{Factory: f, Lang: "en_us", UILang: i18n.LangZhCN, langExplicit: false})
+		printLangPreferenceConfirmation(&ConfigInitOptions{Factory: f, Lang: "en_us", UILang: i18n.LangEnUS, langExplicit: false})
 		if got := stderr.String(); got != "" {
 			t.Errorf("stderr = %q, want empty when --lang is implicit", got)
 		}
 	})
 	t.Run("explicit empty prints nothing", func(t *testing.T) {
 		f, _, stderr, _ := cmdutil.TestFactory(t, nil)
-		printLangPreferenceConfirmation(&ConfigInitOptions{Factory: f, Lang: "", UILang: i18n.LangZhCN, langExplicit: true})
+		printLangPreferenceConfirmation(&ConfigInitOptions{Factory: f, Lang: "", UILang: "", langExplicit: true})
 		if got := stderr.String(); got != "" {
 			t.Errorf("stderr = %q, want empty when --lang is empty", got)
 		}
@@ -632,5 +649,181 @@ func TestConfigShowRun_ProfileHintUsesBuildLocalSurface(t *testing.T) {
 	}
 	if !strings.Contains(original.Hint, "lark-cli profile list") {
 		t.Errorf("concealed render mutated source hint: %q", original.Hint)
+	}
+}
+
+func TestPriorInitLang(t *testing.T) {
+	multi := &core.MultiAppConfig{
+		Apps: []core.AppConfig{
+			{AppId: "cli_main", Lang: i18n.LangEnUS},
+			{Name: "work", AppId: "cli_work", Lang: i18n.LangJaJP},
+		},
+	}
+	tests := []struct {
+		name        string
+		existing    *core.MultiAppConfig
+		profileName string
+		want        i18n.Lang
+	}{
+		{"nil config", nil, "", ""},
+		{"current app", multi, "", i18n.LangEnUS},
+		{"named profile", multi, "work", i18n.LangJaJP},
+		{"named profile missing", multi, "absent", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := priorInitLang(tt.existing, tt.profileName); got != tt.want {
+				t.Errorf("priorInitLang() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveInitUILang(t *testing.T) {
+	stored := &core.MultiAppConfig{
+		Apps: []core.AppConfig{{AppId: "cli_x", Lang: i18n.LangEnUS}},
+	}
+	tests := []struct {
+		name     string
+		lang     string
+		existing *core.MultiAppConfig
+		want     i18n.Lang
+	}{
+		{"flag wins over stored", "zh_cn", stored, i18n.LangZhCN},
+		{"flag with no stored", "en_us", nil, i18n.LangEnUS},
+		{"stored used when flag absent", "", stored, i18n.LangEnUS},
+		{"nothing set", "", nil, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := &ConfigInitOptions{Lang: tt.lang}
+			resolveInitUILang(opts, tt.existing)
+			if opts.UILang != tt.want {
+				t.Errorf("UILang = %q, want %q", opts.UILang, tt.want)
+			}
+		})
+	}
+}
+
+// TestInitLangChain_ResolveToBundle walks the three steps config init runs in
+// order — resolve, picker gate, bundle lookup — instead of checking each in
+// isolation. The regression this branch fixes lived in the seam: every step was
+// individually defensible while the chain still ended on the Chinese bundle.
+// isTerminal is true throughout, so a picker that should not run would show up
+// as a gate returning true.
+func TestInitLangChain_ResolveToBundle(t *testing.T) {
+	stored := &core.MultiAppConfig{
+		Apps: []core.AppConfig{{AppId: "cli_x", Lang: i18n.LangEnUS}},
+	}
+	tests := []struct {
+		name       string
+		opts       ConfigInitOptions
+		existing   *core.MultiAppConfig
+		wantPrompt bool
+	}{
+		// --lang answers the question outright, so nothing is asked.
+		{"--lang en_us, nothing stored", ConfigInitOptions{Lang: "en_us", langExplicit: true}, nil, false},
+		// A stored preference decides what renders, but the picker still runs
+		// with it pre-selected — that is the only interactive way to change it.
+		{"no --lang, en_us already stored", ConfigInitOptions{}, stored, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := tt.opts
+			resolveInitUILang(&opts, tt.existing)
+			if opts.UILang != i18n.LangEnUS {
+				t.Fatalf("UILang = %q, want %q", opts.UILang, i18n.LangEnUS)
+			}
+			if got := shouldPromptInitLang(&opts, true); got != tt.wantPrompt {
+				t.Errorf("shouldPromptInitLang() = %v, want %v", got, tt.wantPrompt)
+			}
+			// Whatever the picker does next, the language in effect right now
+			// already selects the English bundle — nothing renders in Chinese
+			// while an English preference is live.
+			if msg := getInitMsg(opts.UILang); msg != initMsgEn {
+				t.Errorf("getInitMsg(%q) returned the non-English bundle", opts.UILang)
+			}
+		})
+	}
+}
+
+func TestShouldPromptInitLang(t *testing.T) {
+	tests := []struct {
+		name       string
+		opts       ConfigInitOptions
+		isTerminal bool
+		want       bool
+	}{
+		{"terminal, nothing resolved", ConfigInitOptions{}, true, true},
+		{"not a terminal", ConfigInitOptions{}, false, false},
+		// A stored zh_cn/en_us still asks — the picker pre-selects it, so
+		// re-running init remains the way to change the language.
+		{"stored en_us still asks", ConfigInitOptions{UILang: i18n.LangEnUS}, true, true},
+		{"stored zh_cn still asks", ConfigInitOptions{UILang: i18n.LangZhCN}, true, true},
+		// The picker has no option for these, so a bare Enter would silently
+		// rewrite the preference. Skip it and keep what --lang set.
+		{"stored ja_jp skips the picker", ConfigInitOptions{UILang: i18n.LangJaJP}, true, false},
+		// An unrecognized value renders Chinese because it expresses no usable
+		// preference; the picker must stay reachable so it can be changed.
+		{"unrecognized stored value still asks", ConfigInitOptions{UILang: "klingon"}, true, true},
+		{"--lang was explicit", ConfigInitOptions{langExplicit: true}, true, false},
+		{"--new pins the flow", ConfigInitOptions{New: true}, true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldPromptInitLang(&tt.opts, tt.isTerminal); got != tt.want {
+				t.Errorf("shouldPromptInitLang() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestConfigInitRun_LangFlagDrivesRenderedOutput drives configInitRun itself
+// rather than replaying the order it calls its own helpers in. It is the only
+// test that fails if the orchestrator stops resolving the display language
+// before it renders, which is exactly the reported regression: --lang was
+// accepted and persisted while every rendered line stayed Chinese.
+//
+// Hermetic despite going through the whole command: the probe's token fetch
+// gets an untyped transport error from the http mock, which runProbe swallows,
+// and the language confirmation is written before the probe runs.
+func TestConfigInitRun_LangFlagDrivesRenderedOutput(t *testing.T) {
+	// GetConfigPath is workspace-scoped, so a stray Agent env var on the host
+	// would send the write somewhere LARKSUITE_CLI_CONFIG_DIR does not cover.
+	clearAgentEnv(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, _, stderr, _ := cmdutil.TestFactory(t, nil)
+	f.IOStreams.In = strings.NewReader("test-secret\n")
+
+	opts := &ConfigInitOptions{
+		Factory:        f,
+		Ctx:            context.Background(),
+		AppID:          "cli_lang_probe",
+		AppSecretStdin: true,
+		Brand:          "feishu",
+		Lang:           "en_us",
+		langExplicit:   true,
+	}
+	if err := configInitRun(opts); err != nil {
+		t.Fatalf("configInitRun: %v", err)
+	}
+
+	got := stderr.String()
+	if want := fmt.Sprintf(initMsgEn.LangPreferenceSet, "en_us"); !strings.Contains(got, want) {
+		t.Errorf("stderr = %q, want it to contain %q", got, want)
+	}
+	if unwanted := fmt.Sprintf(initMsgZh.LangPreferenceSet, "en_us"); strings.Contains(got, unwanted) {
+		t.Errorf("stderr rendered the Chinese bundle despite --lang en_us: %q", got)
+	}
+
+	// The preference reaches disk as well as the screen; the regression left
+	// these two disagreeing.
+	saved, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig: %v", err)
+	}
+	if app := saved.CurrentAppConfig(""); app == nil || app.Lang != i18n.LangEnUS {
+		t.Errorf("persisted Lang = %v, want %q", app, i18n.LangEnUS)
 	}
 }
