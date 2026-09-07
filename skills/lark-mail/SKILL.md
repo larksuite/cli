@@ -124,7 +124,7 @@ metadata:
 - 使用邮件模板：区分个人模板和静态 HTML 模板，发信类 shortcut 用 `--template-id` 套用模板。ref: [lark-mail-template](references/lark-mail-template.md)
 - 撤回已发送邮件：撤回邮件并查询异步撤回状态。ref: [lark-mail-recall](references/lark-mail-recall.md)
 - 修改邮件标签/已读状态/文件夹：优先使用 `+message-modify`。ref: [`+message-modify`](references/lark-mail-message-modify.md)
-- 修改会话标签/文件夹：已有 `thread_id` 时可使用 `+thread-modify`；没有 thread ID 时先通过会话列表、搜索或读取命令获取。ref: [`+thread-modify`](references/lark-mail-thread-modify.md)
+- 修改会话标签/文件夹：使用 `+thread-modify`。ref: [`+thread-modify`](references/lark-mail-thread-modify.md)
 - 软删除邮件：优先使用 `+message-trash`。ref: [`+message-trash`](references/lark-mail-message-trash.md)
 - 软删除会话：已有 `thread_id` 时可使用 `+thread-trash`。ref: [`+thread-trash`](references/lark-mail-thread-trash.md)
 - 收信规则：查看、创建、更新、删除、启停、排序自动处理收到邮件的规则。ref: [lark-mail-rules](references/lark-mail-rules.md)
