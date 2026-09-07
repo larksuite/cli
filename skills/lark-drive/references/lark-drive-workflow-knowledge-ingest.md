@@ -132,7 +132,7 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 | 情况 | 判定 | 处理 |
 |------|------|------|
 | 1. 有库、节点不足以承载资料 | `TARGET_ALIGN` | 进入 `NODE_PROPOSE`：据真实资料提议承载节点，用户确认后新建（写入需确认），回主流程 |
-| 2. 目标库不存在 | `PARSE_SOURCES` | 停下，请用户先自建一个知识库或提供已有库链接再来；**不**自行建知识空间、**不**代跑其他 workflow（建库能力不在本 workflow） |
+| 2. 目标库不存在 | `PARSE_SOURCES` | 停下，请用户先自建一个知识库或提供已有库链接再来；**不**自行建知识空间、**不**代跑其他 workflow（建库能力不在本 workflow）。**先分辨解析失败类型**：飞书返回 `not_found`（如 space code 131005「space not found」）才是「库不存在」，走本情况请用户建库；返回 `invalid_parameters`（如 131002「space_id is not int」、传了 URL 而非 space_id、id 超出范围）是**输入格式错误**，按 Transition Rule 1 请用户重新给出合法 `space_id` / 链接，不要误导用户去建库 |
 | 3. 有库、无维护规范 | `TARGET_ALIGN` | `alignment_mode=degraded`，据资料内容 + 节点标题推断映射与命名；提示可先跑 `knowledge_base_bootstrap`；不强制、不代跑 |
 | 4. 有库、有规范 | `TARGET_ALIGN` | 正常主路径：按规范收录范围与命名做映射 |
 | 5. 有库有规范、但无节点可承载这批资料 | `ANALYZE_TRIAGE` | 退化为情况 1，进入 `NODE_PROPOSE`；或用户选择归入最近节点 |
@@ -206,7 +206,7 @@ python3 "<SKILL_ROOT>/references/scripts/publish_gate.py" --plan "<发布计划 
 ## Transition Rules
 
 1. `PARSE_SOURCES` 无法解析出本地来源路径或唯一目标库时，只问澄清问题并停止。
-2. `PARSE_SOURCES` 检测目标库不存在（情况 2）时，停下请用户先自建知识库或提供已有库链接再来，不自行建知识空间、不代跑其他 workflow；目标不唯一（情况 7）时列候选请用户选定。
+2. `PARSE_SOURCES` 检测目标库不存在（情况 2，飞书返回 `not_found`）时，停下请用户先自建知识库或提供已有库链接再来，不自行建知识空间、不代跑其他 workflow；解析报 `invalid_parameters`（输入格式错误，如传了 URL、id 非法）时按规则 1 请用户重给合法 `space_id` / 链接，不当作库不存在；目标不唯一（情况 7）时列候选请用户选定。
 3. 认证或 API scope 缺失时，按 `lark-shared` 权限处理并停止。
 4. 权限按动作分别判断，一个动作受阻不连累其余：读权限缺失 → 停止（无法盘点结构）；`docs +update` 可用而 `wiki +node-create` 不可用 → 照常写可编辑 docx 节点，`NODE_PROPOSE` / `new_docx` 需新建的列入「待创建节点」并记 `unsupported_checks`；仅可读 → 只输出发布计划不写入；某动作实际返回 `permission_denied` → 只停该动作、记入 `unsupported_checks`，不同参重试、不静默切 bot、不自动申请权限。
 5. 权限硬规则：读取成功不等于具备写权限；写权限只以实际写入返回为准。

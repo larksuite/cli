@@ -58,6 +58,7 @@ lark-cli drive +import --as <runtime identity> --type docx --file "<本地文件
 - 导入结果必须返回 `docx` 类型和在线文档 token，否则转换失败。
 - **异步续跑**：`drive +import` 内置轮询窗口内未完成时会返回 `ready=false` / `timed_out=true` 和 `ticket`，用 `drive +task_result --scenario import --ticket <TICKET>` 续查，拿到最终在线文档 token 后再继续，不把未完成当完成。
 - **迁入目标节点**：一份对应一页且保真结构适用时，用 `wiki +move --obj-type docx --obj-token <导入文档 token> --target-space-id <SPACE_ID> --target-parent-token <目标父节点>` 迁入目标位置。`docs_to_wiki` 迁入可能返回 `task_id` 异步执行；返回 `ready=false` / `timed_out=true` 时，用 `drive +task_result --scenario wiki_move --task-id <TASK_ID>` 续查至完成，不把超时当失败。迁入完成后必须 fresh read 确认目标 Wiki 节点 `obj_type=docx` 且 `docs +fetch` 可读（ready-state 验证），再套 6 行治理表。
+- **套 6 行治理表的具体做法**：导入的 docx 首块是标题（`<title>`），治理表要放在标题之后、正文之前。先 `docs +fetch --detail with-ids` 拿到首块（title）的 `block_id`，再 `docs +update --command block_insert_after --block-id <title_block_id> --content <6 行治理表>` 把治理表插在标题下；不要用 `overwrite`（会丢掉导入正文），也不要插在文档最前面（会顶掉标题、令节点标题变 Untitled）。治理表内容与顺序见 [outputs 文档](lark-drive-workflow-knowledge-ingest-outputs.md)。
 - 多份合并 / 一份拆页 / 需统一重写时，创建目标 docx 节点后 `docs +update` 写整理内容，导入件仅作暂存来源。
 - PDF **不可**用 `drive +import`（不在支持扩展名内），走下节。
 
