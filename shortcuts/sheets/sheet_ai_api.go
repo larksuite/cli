@@ -258,6 +258,23 @@ func isTransientToolFailure(err error) bool {
 	return false
 }
 
+// toolReportedZeroApplied reports whether a failed batch says, in the
+// backend's own words, that none of its operations were applied. Anything
+// else — a partial "N succeeded", a transport failure, a message that never
+// mentions the count — leaves the sheet in a state only a read-back settles,
+// and must not be described as untouched.
+//
+// " 0 succeeded" is the same test flattenToolErrorMsg uses to decide whether
+// to prescribe a partial-failure recovery, kept in one vocabulary so the two
+// cannot disagree about what a failed batch left behind.
+func toolReportedZeroApplied(err error) bool {
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		return false
+	}
+	return strings.Contains(p.Message, "succeeded") && strings.Contains(p.Message, " 0 succeeded")
+}
+
 // flattenToolErrorMsg unwraps the nested-escaped-JSON error payload some
 // sheet-ai tools put in msg — batch_update in particular wraps its result as
 // {"error":"{\"message\":\"batch_update: N succeeded, M failed\",

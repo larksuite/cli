@@ -99,11 +99,19 @@ var StylesPut = common.Shortcut{
 				// would leave the caller stuck on an error about work that
 				// already succeeded.
 				if i == 0 {
-					// Nothing landed: the spec is untouched on the sheet, so
-					// the merge caveat below does not apply and saying
-					// "requests 1-0 already applied" would be nonsense.
+					// A failed FIRST request is not the same as an untouched
+					// sheet: batch_update is fail-fast but not transactional,
+					// so operations before the failing one inside that request
+					// stay applied, and a transport failure leaves the outcome
+					// unknown entirely. Only the backend saying "0 succeeded"
+					// settles it.
+					if toolReportedZeroApplied(err) {
+						return attachSheetsWarningsToError(err, []string{fmt.Sprintf(
+							"--styles was sent as %d batch requests; the first one failed with nothing applied, so the sheet is unchanged — fix the spec and re-run it whole",
+							len(chunks))})
+					}
 					return attachSheetsWarningsToError(err, []string{fmt.Sprintf(
-						"--styles was sent as %d batch requests and the first one failed, so NOTHING was applied; fix the spec and re-run it whole",
+						"--styles was sent as %d batch requests and the first one failed; the request is not transactional, so part of it may already be on the sheet. Read the affected sheets back (+cells-get --include style) before retrying, and resend only what did not land — style stamps are idempotent, but replaying an applied merge is rejected as an overlap",
 						len(chunks))})
 				}
 				return attachSheetsWarningsToError(err, []string{fmt.Sprintf(

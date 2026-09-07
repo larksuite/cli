@@ -958,6 +958,8 @@ func TestCondFormatPropertiesNormalization(t *testing.T) {
 			{"a typo stays put", `{"style":{"font":"blod","italic":true}}`, "blod"},
 			{"bold plus italic still combines", `{"style":{"font":"bold","italic":true}}`, "bold italic"},
 			{"bold repeated stays bold", `{"style":{"font":"bold","font_weight":"bold"}}`, "bold"},
+			{"bold italic absorbs bold", `{"style":{"font":"bold italic","bold":true}}`, "bold italic"},
+			{"bold italic absorbs italic", `{"style":{"font":"bold italic","font_style":"italic"}}`, "bold italic"},
 		} {
 			var props map[string]interface{}
 			if err := json.Unmarshal([]byte(tc.props), &props); err != nil {
@@ -967,6 +969,16 @@ func TestCondFormatPropertiesNormalization(t *testing.T) {
 			style, _ := props["style"].(map[string]interface{})
 			if style["font"] != tc.wantFont {
 				t.Errorf("%s: font = %v, want %q", tc.name, style["font"], tc.wantFont)
+			}
+			// A flat spelling the canonical value already covers must be
+			// dropped, not merely left unfolded: the schema has no such field,
+			// so riding along it costs the round trip the fold exists to save.
+			if tc.wantFont == condFormatFontBoth || tc.wantFont == "bold" {
+				for _, alias := range []string{"bold", "italic", "font_weight", "font_style"} {
+					if _, still := style[alias]; still {
+						t.Errorf("%s: %s survived into %v", tc.name, alias, style)
+					}
+				}
 			}
 		}
 	})

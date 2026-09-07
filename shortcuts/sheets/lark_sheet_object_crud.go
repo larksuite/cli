@@ -1332,9 +1332,13 @@ var condFormatFontWords = map[string]string{
 	"italic":      "italic",
 }
 
-// condFormatFontEnum reports whether a `font` value is one this schema
-// declares. "bold italic" is deliberately excluded: it already carries both
-// effects, so there is nothing left to fold into it.
+// condFormatFontBoth is the schema's spelling for both effects at once.
+const condFormatFontBoth = "bold italic"
+
+// condFormatFontEnum reports whether a `font` value is one of the two single
+// effects. condFormatFontBoth is excluded on purpose: it already carries both,
+// so there is nothing left to fold INTO it — the caller handles it separately,
+// by dropping the redundant flat spelling.
 func condFormatFontEnum(v string) bool {
 	return v == "bold" || v == "italic"
 }
@@ -1386,6 +1390,10 @@ func normalizeCondFormatStyle(style map[string]interface{}) {
 			// The only two recognized values are bold and italic, so a
 			// different recognized one means both were asked for.
 			style["font"] = "bold italic"
+		case existing == condFormatFontBoth:
+			// Already carries both effects, so the flat spelling adds
+			// nothing — but it still has to go, or an unsupported alias
+			// rides along into the request.
 		default:
 			// Anything else under `font` is not a value this fold understands
 			// ("normal", a typo, a CSS weight). Combining it would invent an

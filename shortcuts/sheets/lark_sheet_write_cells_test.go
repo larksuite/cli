@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -676,6 +678,27 @@ func TestCellsSet_BareAnchorRaisesNoNarrowingWarning(t *testing.T) {
 		w, _ := warnings[0].(string)
 		if !strings.Contains(w, "--writes[0]") || !strings.Contains(w, `"A1:B2"`) {
 			t.Errorf("warning should name the item and the range written, got %q", w)
+		}
+	})
+
+	t.Run("a failed write still carries the narrowing note", func(t *testing.T) {
+		t.Parallel()
+		// The write is not transactional and a transport failure leaves the
+		// outcome unknown, so a narrowed write may well be on the sheet. If
+		// the footprint only rides the success envelope, the caller reconciles
+		// against the range they stated rather than the one written.
+		_, _, err := runShortcutCapturingErrWithStubs(t, CellsSet, []string{
+			"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:D10",
+			"--cells", `[[{"value":"a"},{"value":"b"}],[{"value":"c"},{"value":"d"}]]`,
+		}, &httpmock.Stub{
+			Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_write",
+			Body: map[string]interface{}{
+				"code": 900015206, "msg": "set_cell_range: merged region conflict", "data": map[string]interface{}{},
+			},
+		})
+		p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeServerError, "")
+		if !strings.Contains(p.Hint, `"A1:B2"`) {
+			t.Errorf("hint = %q, want the narrowed footprint to travel with the failure", p.Hint)
 		}
 	})
 

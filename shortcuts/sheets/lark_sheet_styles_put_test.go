@@ -579,27 +579,36 @@ func TestStylesPut_ChunksPastTheRequestCap(t *testing.T) {
 		}
 	})
 
-	t.Run("a failing first request reports that nothing applied", func(t *testing.T) {
+	t.Run("a first request the backend says applied nothing", func(t *testing.T) {
 		t.Parallel()
-		parent, _, _, reg := newTestRig(t, StylesPut)
-		reg.Register(&httpmock.Stub{
-			Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_write",
-			Body: map[string]interface{}{
-				"code": 900015206, "msg": "batch_update: 0 succeeded, 100 failed", "data": map[string]interface{}{},
-			}, Reusable: true,
-		})
-		parent.SetArgs([]string{"+styles-put", "--url", testURL, "--styles", spec(152)})
-		p := requireProblem(t, parent.Execute(), errs.CategoryAPI, errs.SubtypeServerError, "batch_update")
+		p := stylesPutFirstChunkFailure(t, "batch_update: 0 succeeded, 100 failed")
 		// "requests 1-0 already applied" is not a sentence, and the merge
-		// caveat does not apply when nothing landed.
+		// caveat does not apply when the backend states nothing landed.
 		if strings.Contains(p.Hint, "1-0") {
 			t.Errorf("hint = %q, want no empty applied range", p.Hint)
 		}
-		if !strings.Contains(p.Hint, "NOTHING was applied") {
-			t.Errorf("hint = %q, want it to say nothing landed", p.Hint)
+		if !strings.Contains(p.Hint, "nothing applied") || !strings.Contains(p.Hint, "re-run it whole") {
+			t.Errorf("hint = %q, want it to say the sheet is unchanged", p.Hint)
 		}
-		if strings.Contains(p.Hint, "cell_merges") {
-			t.Errorf("hint = %q, want no merge recovery advice when nothing applied", p.Hint)
+	})
+
+	t.Run("a first request that failed partway keeps the read-back advice", func(t *testing.T) {
+		t.Parallel()
+		// batch_update is fail-fast but NOT transactional, so operations
+		// before the failing one inside the FIRST request stay applied. Only
+		// "0 succeeded" settles it; anything else has to send the caller to a
+		// read-back rather than a blind whole-spec retry.
+		for _, tc := range []struct{ name, msg string }{
+			{"partial success", "batch_update: 40 succeeded, 60 failed"},
+			{"outcome unknown", "server time out error"},
+		} {
+			p := stylesPutFirstChunkFailure(t, tc.msg)
+			if strings.Contains(p.Hint, "nothing applied") {
+				t.Errorf("%s: hint = %q, must not claim an untouched sheet", tc.name, p.Hint)
+			}
+			if !strings.Contains(p.Hint, "+cells-get") || !strings.Contains(p.Hint, "overlap") {
+				t.Errorf("%s: hint = %q, want the read-back route and the merge caveat", tc.name, p.Hint)
+			}
 		}
 	})
 
@@ -654,6 +663,30 @@ func TestStylesPut_ChunksPastTheRequestCap(t *testing.T) {
 				len(chunks), len(chunks[0]), len(chunks[1]), len(chunks[2]))
 		}
 	})
+}
+
+// stylesPutFirstChunkFailure runs a two-request spec whose FIRST request fails
+// with the given backend message, and returns the typed problem.
+func stylesPutFirstChunkFailure(t *testing.T, msg string) *errs.Problem {
+	t.Helper()
+	entries := make([]string, 0, 152)
+	for i := 1; i <= 152; i++ {
+		fill := "#FFFFFF"
+		if i%2 == 1 {
+			fill = "#FFE6E6"
+		}
+		entries = append(entries, fmt.Sprintf(`{"range":"A%d:F%d","background_color":%q}`, i, i, fill))
+	}
+	parent, _, _, reg := newTestRig(t, StylesPut)
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_write",
+		Body: map[string]interface{}{
+			"code": 900015206, "msg": msg, "data": map[string]interface{}{},
+		}, Reusable: true,
+	})
+	parent.SetArgs([]string{"+styles-put", "--url", testURL,
+		"--styles", `{"styles":[{"name":"S","cell_styles":[` + strings.Join(entries, ",") + `]}]}`})
+	return requireProblem(t, parent.Execute(), errs.CategoryAPI, errs.SubtypeServerError, "")
 }
 
 // plannedChunkRanges reads the ranges of every operation in every planned

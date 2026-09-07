@@ -101,7 +101,12 @@ var CellsSet = common.Shortcut{
 				"operations": ops,
 			})
 			if err != nil {
-				return err
+				// A batch is fail-fast, not transactional, and a transport
+				// failure leaves the outcome unknown either way — so a
+				// narrowed item may well be on the sheet. Its footprint has
+				// to travel with the error, or the caller reconciles against
+				// the range they stated rather than the one that was written.
+				return attachSheetsWarningsToError(err, notes)
 			}
 			runtime.Out(appendSheetsWarnings(out, notes), nil)
 			return nil
@@ -116,7 +121,7 @@ var CellsSet = common.Shortcut{
 		}
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "set_cell_range", input)
 		if err != nil {
-			return err
+			return attachSheetsWarningsToError(err, narrowingNotes(narrowNote))
 		}
 		runtime.Out(appendSheetsWarnings(out, narrowingNotes(narrowNote)), nil)
 		return nil
