@@ -50,6 +50,7 @@ Each message contains:
 | `create_time` | Creation time |
 | `sender` | Sender information (includes `name`) |
 | `content` | Message content |
+| `synced_from_thread_reply` / `synced_to_chat_message` | Present when the message is one side of a thread reply that was also sent to the chat; both sides may appear in the same result set. Rules in [lark-im-message-enrichment.md](lark-im-message-enrichment.md). |
 
 For `folder` messages, `content` carries a folder key; `mget` expands the folder one level (`GET /files/:file_key/folder`), rendering first-level children inside the folder tag:
 

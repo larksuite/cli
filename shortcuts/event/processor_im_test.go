@@ -4,9 +4,112 @@
 package event
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"testing"
 )
+
+func TestImMessageProcessor_CompactProjectsSyncToChatInfo(t *testing.T) {
+	p := &ImMessageProcessor{}
+	raw := makeRawEvent("im.message.receive_v1", `{
+		"message": {
+			"message_id": "om_current",
+			"message_type": "text",
+			"content": "{\"text\":\"hello\"}",
+			"sync_to_chat_info": {
+				"type": 1,
+				"thread_id": "omt_origin",
+				"related_message_id": "om_source",
+				"future_relation": "kept"
+			}
+		}
+	}`)
+
+	result, ok := p.Transform(context.Background(), raw, TransformCompact).(map[string]interface{})
+	if !ok {
+		t.Fatal("compact should return map")
+	}
+	if result["synced_from_thread_reply"] != "om_source" {
+		t.Errorf("synced_from_thread_reply = %#v, want om_source", result["synced_from_thread_reply"])
+	}
+	if result["synced_from_thread"] != "omt_origin" {
+		t.Errorf("synced_from_thread = %#v, want omt_origin", result["synced_from_thread"])
+	}
+	if _, ok := result["synced_to_chat_message"]; ok {
+		t.Errorf("synced_to_chat_message = %#v, want omitted on the chat copy", result["synced_to_chat_message"])
+	}
+	// Neither the nested upstream object nor its unknown fields may leak.
+	if _, ok := result["sync_to_chat_info"]; ok {
+		t.Errorf("sync_to_chat_info = %#v, want flat fields only", result["sync_to_chat_info"])
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal compact output: %v", err)
+	}
+	if bytes.Contains(encoded, []byte("future_relation")) {
+		t.Errorf("unknown upstream field leaked into compact output: %s", encoded)
+	}
+}
+
+func TestImMessageProcessor_CompactProjectsSyncToChatInfoOnThreadReply(t *testing.T) {
+	p := &ImMessageProcessor{}
+	raw := makeRawEvent("im.message.receive_v1", `{
+		"message": {
+			"message_id": "om_reply",
+			"message_type": "text",
+			"content": "{\"text\":\"hello\"}",
+			"sync_to_chat_info": {"type": 2, "related_message_id": "om_copy"}
+		}
+	}`)
+	result, ok := p.Transform(context.Background(), raw, TransformCompact).(map[string]interface{})
+	if !ok {
+		t.Fatal("compact should return map")
+	}
+	if result["synced_to_chat_message"] != "om_copy" {
+		t.Errorf("synced_to_chat_message = %#v, want om_copy", result["synced_to_chat_message"])
+	}
+	for _, key := range []string{"synced_from_thread_reply", "synced_from_thread"} {
+		if _, ok := result[key]; ok {
+			t.Errorf("%s = %#v, want omitted on the thread reply", key, result[key])
+		}
+	}
+}
+
+func TestImMessageProcessor_CompactOmitsUnusableSyncToChatInfo(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		info string
+	}{
+		{name: "empty object", info: `{}`},
+		{name: "wrong known field type", info: `{"type":"1","related_message_id":"om_source"}`},
+		{name: "unsupported type", info: `{"type":3,"related_message_id":"om_source"}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &ImMessageProcessor{}
+			raw := makeRawEvent("im.message.receive_v1", `{
+				"message": {
+					"message_id": "om_current",
+					"message_type": "text",
+					"content": "{\"text\":\"hello\"}",
+					"sync_to_chat_info": `+tt.info+`
+				}
+			}`)
+			result, ok := p.Transform(context.Background(), raw, TransformCompact).(map[string]interface{})
+			if !ok {
+				t.Fatalf("compact output = %T, want map", p.Transform(context.Background(), raw, TransformCompact))
+			}
+			for _, key := range []string{"synced_from_thread_reply", "synced_from_thread", "synced_to_chat_message"} {
+				if _, ok := result[key]; ok {
+					t.Fatalf("%s = %#v, want omitted", key, result[key])
+				}
+			}
+			if result["message_id"] != "om_current" {
+				t.Fatalf("containing event was not preserved: %#v", result)
+			}
+		})
+	}
+}
 
 // --- im.message.message_read_v1 ---
 
@@ -496,6 +599,40 @@ func TestWindowStrategy_IMProcessors(t *testing.T) {
 	for _, p := range processors {
 		if p.WindowStrategy() != (WindowConfig{}) {
 			t.Errorf("%s: WindowStrategy should return zero WindowConfig", p.EventType())
+		}
+	}
+}
+
+// Interactive messages fall through as the raw event before the relation
+// projection runs, so they never carry the flat fields. Pinned so the
+// divergence stays a deliberate contract (see the comment on the early return
+// in processor_im_message.go): nothing is lost because the raw payload keeps
+// the nested sync_to_chat_info.
+func TestImMessageProcessor_CompactInteractiveKeepsRawRelationShape(t *testing.T) {
+	p := &ImMessageProcessor{}
+	raw := makeRawEvent("im.message.receive_v1", `{
+		"message": {
+			"message_id": "om_card",
+			"message_type": "interactive",
+			"content": "{\"elements\":[]}",
+			"sync_to_chat_info": {"type": 1, "thread_id": "omt_root", "related_message_id": "om_reply"}
+		}
+	}`)
+	result := p.Transform(context.Background(), raw, TransformCompact)
+	if m, ok := result.(map[string]interface{}); ok {
+		t.Fatalf("interactive compact returned a compact map %#v, want the raw event", m)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal raw passthrough: %v", err)
+	}
+	// The nested upstream object survives, so no information is dropped.
+	if !bytes.Contains(encoded, []byte("sync_to_chat_info")) {
+		t.Errorf("raw passthrough lost sync_to_chat_info: %s", encoded)
+	}
+	for _, flat := range []string{"synced_from_thread_reply", "synced_from_thread", "synced_to_chat_message"} {
+		if bytes.Contains(encoded, []byte(flat)) {
+			t.Errorf("interactive raw passthrough unexpectedly carries %s: %s", flat, encoded)
 		}
 	}
 }

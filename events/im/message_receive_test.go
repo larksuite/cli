@@ -181,6 +181,95 @@ func TestProcessImMessageReceive_OmitsUnchangedUpdateTime(t *testing.T) {
 	}
 }
 
+// syncToChatEventKeys is every output key the relation can produce; "omitted"
+// assertions must cover all of them.
+var syncToChatEventKeys = []string{"synced_from_thread_reply", "synced_from_thread", "synced_to_chat_message"}
+
+func TestProcessImMessageReceive_SyncToChatInfo(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		info string
+		want map[string]interface{}
+	}{
+		{
+			name: "chat copy",
+			info: `{"type":1,"thread_id":"omt_origin","related_message_id":"om_source","future_relation":"kept"}`,
+			want: map[string]interface{}{"synced_from_thread_reply": "om_source", "synced_from_thread": "omt_origin"},
+		},
+		{
+			name: "chat copy without thread_id",
+			info: `{"type":1,"related_message_id":"om_source"}`,
+			want: map[string]interface{}{"synced_from_thread_reply": "om_source"},
+		},
+		{
+			name: "thread reply",
+			info: `{"type":2,"related_message_id":"om_target"}`,
+			want: map[string]interface{}{"synced_to_chat_message": "om_target"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			payload := `{
+				"schema":"2.0",
+				"header":{"event_id":"ev_relation","event_type":"im.message.receive_v1"},
+				"event":{"message":{"message_id":"om_current","sync_to_chat_info":` + tt.info + `}}
+			}`
+			out := runReceiveMap(t, payload)
+			for _, key := range syncToChatEventKeys {
+				want, expected := tt.want[key]
+				got, present := out[key]
+				if expected != present {
+					t.Fatalf("%s present = %v (%#v), want present = %v", key, present, got, expected)
+				}
+				if expected && got != want {
+					t.Errorf("%s = %#v, want %#v", key, got, want)
+				}
+			}
+			// The nested upstream object must never reach the output.
+			if _, ok := out["sync_to_chat_info"]; ok {
+				t.Errorf("sync_to_chat_info = %#v, want flat fields only", out["sync_to_chat_info"])
+			}
+		})
+	}
+}
+
+func TestProcessImMessageReceive_OmitsUnusableSyncToChatInfo(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		info string
+	}{
+		{name: "empty object", info: `{}`},
+		{name: "wrong known field type", info: `{"type":"1","related_message_id":"om_source"}`},
+		{name: "unsupported type", info: `{"type":3,"related_message_id":"om_source"}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			payload := `{
+				"schema":"2.0",
+				"header":{"event_id":"ev_relation","event_type":"im.message.receive_v1"},
+				"event":{"message":{"message_id":"om_current","sync_to_chat_info":` + tt.info + `}}
+			}`
+			out := runReceiveMap(t, payload)
+			for _, key := range syncToChatEventKeys {
+				if _, ok := out[key]; ok {
+					t.Fatalf("%s = %#v, want omitted", key, out[key])
+				}
+			}
+			if out["message_id"] != "om_current" {
+				t.Fatalf("containing event was not preserved: %#v", out)
+			}
+		})
+	}
+}
+
+func TestProcessImMessageReceive_OmitsMissingSyncToChatInfo(t *testing.T) {
+	payload := `{"schema":"2.0","header":{"event_type":"im.message.receive_v1"},"event":{"message":{"message_id":"om_legacy"}}}`
+	out := runReceiveMap(t, payload)
+	for _, key := range syncToChatEventKeys {
+		if _, ok := out[key]; ok {
+			t.Fatalf("%s = %#v, want omitted", key, out[key])
+		}
+	}
+}
+
 func TestProcessImMessageReceive_Interactive(t *testing.T) {
 	payload := `{
 		"schema": "2.0",

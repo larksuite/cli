@@ -2428,6 +2428,20 @@
             "bot"
           ]
         },
+        "synced_from_thread": {
+          "type": "string",
+          "description": "Thread the original reply lives in; set together with synced_from_thread_reply"
+        },
+        "synced_from_thread_reply": {
+          "type": "string",
+          "description": "Set only on the chat-level copy of a thread reply that the sender also sent to the chat. Value is the original reply's message_id. Both messages carry the same content: handle the reply, skip this copy.",
+          "format": "message_id"
+        },
+        "synced_to_chat_message": {
+          "type": "string",
+          "description": "Set only on a thread reply that the sender also sent to the chat. Value is the chat copy's message_id. Reply to this message with --reply-in-thread to stay in the thread; reply to the copy to answer in the main chat.",
+          "format": "message_id"
+        },
         "thread_id": {
           "type": "string",
           "description": "Thread ID, when present"
