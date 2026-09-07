@@ -573,7 +573,7 @@ func executeRecordList(runtime *common.RuntimeContext) error {
 	}
 	params["offset"] = offset
 	params["limit"] = limit
-	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records"), params, nil)
+	data, err := listRecordsVerified(runtime, params)
 	if err != nil {
 		return err
 	}
