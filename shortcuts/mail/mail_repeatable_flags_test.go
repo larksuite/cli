@@ -56,6 +56,29 @@ func TestNormalizeRecipientFlagsPreservesUnicodeDisplayNameSemantics(t *testing.
 	}
 }
 
+func TestValidateRecipientFlagValuesReportsInvalidOccurrence(t *testing.T) {
+	err := validateRecipientFlagValues("--to", []string{
+		`"Doe, John" <john@example.com>,jane@example.com`,
+		`invalid-address`,
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("error type = %T, want *errs.ValidationError: %v", err, err)
+	}
+	if ve.Category != errs.CategoryValidation || ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("validation problem = %s/%s, want validation/invalid_argument", ve.Category, ve.Subtype)
+	}
+	if ve.Param != "--to" {
+		t.Fatalf("validation param = %q, want --to", ve.Param)
+	}
+	if !strings.Contains(err.Error(), "--to occurrence 2") {
+		t.Fatalf("error = %v, want flag name and 1-based occurrence", err)
+	}
+}
+
 func TestMailboxLongUnicodeDisplayNameSplitsEncodedWords(t *testing.T) {
 	name := strings.Repeat("测试用户", 20)
 	got := (Mailbox{Name: name, Email: "long@example.com"}).String()
@@ -320,6 +343,45 @@ func TestMailRepeatableAttachmentInvalidLaterOccurrenceReportsIndex(t *testing.T
 				t.Fatalf("error = %v, want occurrence 2", err)
 			}
 		})
+	}
+}
+
+func TestMailRepeatableRecipientInvalidLaterOccurrenceFailsBeforeSideEffects(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		shortcut common.Shortcut
+		args     []string
+	}{
+		{name: "send", shortcut: MailSend, args: []string{"+send", "--subject", "subject", "--body", "<p>body</p>"}},
+		{name: "draft-create", shortcut: MailDraftCreate, args: []string{"+draft-create", "--subject", "subject", "--body", "<p>body</p>"}},
+		{name: "reply", shortcut: MailReply, args: []string{"+reply", "--message-id", "m1", "--body", "<p>body</p>"}},
+		{name: "reply-all", shortcut: MailReplyAll, args: []string{"+reply-all", "--message-id", "m1", "--body", "<p>body</p>"}},
+		{name: "forward", shortcut: MailForward, args: []string{"+forward", "--message-id", "m1"}},
+		{name: "template-create", shortcut: MailTemplateCreate, args: []string{"+template-create", "--name", "template", "--template-content", `<p>body</p>`}},
+	} {
+		for _, flagName := range []string{"to", "cc", "bcc"} {
+			t.Run(tc.name+"/"+flagName, func(t *testing.T) {
+				f, stdout, _, _ := mailShortcutTestFactory(t)
+				args := append(append([]string(nil), tc.args...),
+					"--"+flagName, `"Doe, John" <john@example.com>`,
+					"--"+flagName, "invalid-address")
+				err := runMountedMailShortcut(t, tc.shortcut, args, f, stdout)
+				if err == nil {
+					t.Fatal("expected validation error")
+				}
+				var ve *errs.ValidationError
+				if !errors.As(err, &ve) {
+					t.Fatalf("error type = %T, want *errs.ValidationError: %v", err, err)
+				}
+				wantParam := "--" + flagName
+				if ve.Category != errs.CategoryValidation || ve.Subtype != errs.SubtypeInvalidArgument || ve.Param != wantParam {
+					t.Fatalf("validation problem = %s/%s param=%q, want validation/invalid_argument param=%q", ve.Category, ve.Subtype, ve.Param, wantParam)
+				}
+				if !strings.Contains(err.Error(), wantParam+" occurrence 2") {
+					t.Fatalf("error = %v, want flag name and occurrence 2", err)
+				}
+			})
+		}
 	}
 }
 

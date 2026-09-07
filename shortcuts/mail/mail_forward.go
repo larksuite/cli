@@ -73,6 +73,9 @@ var MailForward = common.Shortcut{
 		return api
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := validateRepeatedRecipientFlags(runtime); err != nil {
+			return err
+		}
 		if err := validateRepeatedAttachmentFlagFiles(runtime.FileIO(), runtime.StrArray("attach")); err != nil {
 			return err
 		}

@@ -2293,6 +2293,44 @@ func normalizeRecipientFlagValues(values []string) string {
 	return strings.Join(parts, ", ")
 }
 
+// validateRecipientFlagValues validates every repeated recipient flag
+// occurrence before Execute can perform any remote or upload side effects.
+// The existing normalization remains deliberately separate so dry-run and
+// Execute continue to preserve the original ordering and display names.
+func validateRecipientFlagValues(flagName string, values []string) error {
+	for occurrence, raw := range values {
+		parts := splitAddressList(raw)
+		foundAddress := false
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			foundAddress = true
+			if _, err := netmail.ParseAddress(part); err != nil {
+				return mailValidationParamError(flagName,
+					"%s occurrence %d: invalid recipient address %q: %v",
+					flagName, occurrence+1, part, err).WithCause(err)
+			}
+		}
+		if !foundAddress {
+			return mailValidationParamError(flagName,
+				"%s occurrence %d: recipient address must not be empty",
+				flagName, occurrence+1)
+		}
+	}
+	return nil
+}
+
+func validateRepeatedRecipientFlags(runtime *common.RuntimeContext) error {
+	for _, name := range []string{"to", "cc", "bcc"} {
+		if err := validateRecipientFlagValues("--"+name, runtime.StrArray(name)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func normalizeCommaListFlagValues(values []string) []string {
 	var out []string
 	for _, raw := range values {
