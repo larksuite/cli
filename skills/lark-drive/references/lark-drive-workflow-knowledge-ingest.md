@@ -132,14 +132,27 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 | 情况 | 判定 | 处理 |
 |------|------|------|
 | 1. 有库、节点不足以承载资料 | `TARGET_ALIGN` | 进入 `NODE_PROPOSE`：据真实资料提议承载节点，用户确认后新建（写入需确认），回主流程 |
-| 2. 目标库不存在 | `PARSE_SOURCES` | 停下，请用户先自建一个知识库或提供已有库链接再来；**不**自行建知识空间、**不**代跑其他 workflow（建库能力不在本 workflow）。**先分辨解析失败类型**：飞书返回 `not_found`（如 space code 131005「space not found」）才是「库不存在」，走本情况请用户建库；返回 `invalid_parameters`（如 131002「space_id is not int」、传了 URL 而非 space_id、id 超出范围）是**输入格式错误**，按 Transition Rule 1 请用户重新给出合法 `space_id` / 链接，不要误导用户去建库 |
+| 2. 目标库不存在 | `PARSE_SOURCES` | 停下，请用户先自建一个知识库或提供已有库链接再来；**不**自行建知识空间、**不**代跑其他 workflow（建库能力不在本 workflow）。**先分辨解析失败类型**：飞书返回 `not_found`（如 space code 131005「space not found」，且是按**明确 space_id**查的）才是「库不存在」，走本情况请用户建库；返回 `invalid_parameters`（如 131002「space_id is not int」、传了 URL 而非 space_id、id 超出范围）是**输入格式错误**，按 Transition Rule 1 请用户重新给出合法 `space_id` / 链接，不要误导用户去建库。**按名称解析出 0 个候选不等于「库不存在」**：`wiki +space-list` / `drive +search` 对新建、私有、未索引的空间可能查不到（且 `space-list --page-all` 存在结果不稳定/未抽干分页的情况），此时不得直接判本情况，见 `Target Space Resolution` 的 fail-safe |
 | 3. 有库、无维护规范 | `TARGET_ALIGN` | `alignment_mode=degraded`，据资料内容 + 节点标题推断映射与命名；提示可先跑 `knowledge_base_bootstrap`；不强制、不代跑 |
 | 4. 有库、有规范 | `TARGET_ALIGN` | 正常主路径：按规范收录范围与命名做映射 |
 | 5. 有库有规范、但无节点可承载这批资料 | `ANALYZE_TRIAGE` | 退化为情况 1，进入 `NODE_PROPOSE`；或用户选择归入最近节点 |
 | 6. 部分节点有规范、部分没有 | `TARGET_ALIGN` 逐节点 | `alignment_mode=mixed`：映射到有规范节点走情况 4，映射到无规范节点走情况 3 降级 |
-| 7. 目标不唯一（解析出多个库） | `PARSE_SOURCES` | 停下列候选，请用户选定唯一目标 |
+| 7. 目标不唯一（解析出多个库） | `PARSE_SOURCES` | 停下列候选，请用户选定唯一目标。按名称解析可能查不全同名库（见 `Target Space Resolution`）：不能因为只搜到 1 个就断定唯一，用户提示有多个或来源不确定时须请其给出确切 `space_id` / 链接 |
 | 8. 目标节点非 docx（sheet/bitable/mindnote/shortcut） | `ANALYZE_TRIAGE`（Node Type Triage） | non_docx_entity 默认跳过并记录，用户要才 `new_docx` 另建 docx 承载；shortcut 一律跳过 |
 | 9. 资料全被门禁拦下（全敏感/全冲突/全不可解析） | `PUBLISH_PLAN` | 不静默结束：报告「本批 0 入库」+ 逐份原因 + 补救建议 |
+
+## Target Space Resolution
+
+`PARSE_SOURCES` 把用户所述目标解析为唯一 `space_id`。**按名称解析不可靠**：`wiki +space-list` / `drive +search` 对新建、私有或未索引的空间可能查不到，`wiki +space-list --page-all` 还可能结果不稳定、`has_more=true` 时未抽干分页即返回。因此按名称枚举的结果**只能作为线索，不能作为「库是否存在 / 是否唯一」的判据**。
+
+解析顺序与 fail-safe：
+
+1. 用户直接给了 wiki 链接 / `space_id` → 用 `wiki spaces get`（按 id 直接查）核验存在性，这是最可靠的判据；查得到即定为目标，`not_found` 才判情况 2「库不存在」。
+2. 用户只给了名称 → 用 `wiki +space-list` / `drive +search` 找候选。**搜到 0 个不得直接判情况 2**：新建/私有库常搜不到。停下请用户提供确切 `space_id` / 链接再按第 1 步核验；只有当用户也确认没有该库时才走情况 2。
+3. 名称搜到 ≥2 个候选 → 情况 7，列候选请用户选定。**搜到 1 个也不等于唯一**：同名库可能未被搜全；若用户提示可能有多个或来源不确定，请其给出确切 `space_id` / 链接确认。
+4. 名称解析数与用户所述明显不符（如用户坚称有库但搜到 0、或坚称唯一但搜到多个）→ 以用户提供的确切 `space_id` / 链接为准，不以枚举结果推翻用户事实。
+
+`space_id` 未唯一确定前不进入 `INVENTORY` 之后的任何写入。
 
 ## Node Type Triage
 
@@ -194,7 +207,7 @@ python3 "<SKILL_ROOT>/references/scripts/publish_gate.py" --plan "<发布计划 
 
 | State | Allowed Command Families | Purpose |
 |-------|--------------------------|---------|
-| `PARSE_SOURCES` | `wiki +node-get`、`wiki +space-list`、`wiki +node-list --page-all`、`drive +search`（定位/消歧目标库） | 解析本地路径与目标库，判定 `Situation Routing` |
+| `PARSE_SOURCES` | `wiki +node-get`、`wiki spaces get`（按 space_id 核验存在性，最可靠判据）、`wiki +space-list`、`wiki +node-list --page-all`、`drive +search`（按名称找候选，结果仅作线索） | 解析本地路径与目标库，按 `Target Space Resolution` 判定 `Situation Routing` |
 | `INVENTORY` | `python3 <SKILL_ROOT>/references/scripts/inventory.py`（本地只读盘点） | 盘点本地资料、去重、敏感初筛 |
 | `TARGET_ALIGN` | `wiki +node-list --page-all`（逐层下钻）、`docs +fetch` | 读节点树与各节点维护规范 |
 | `NODE_PROPOSE` | `wiki +node-create --obj-type docx`（仅用户确认后）、`wiki +node-list --page-all` | 新建确认后的承载节点并分页回读（`--page-all`，避免漏掉新建节点） |
@@ -206,7 +219,7 @@ python3 "<SKILL_ROOT>/references/scripts/publish_gate.py" --plan "<发布计划 
 ## Transition Rules
 
 1. `PARSE_SOURCES` 无法解析出本地来源路径或唯一目标库时，只问澄清问题并停止。
-2. `PARSE_SOURCES` 检测目标库不存在（情况 2，飞书返回 `not_found`）时，停下请用户先自建知识库或提供已有库链接再来，不自行建知识空间、不代跑其他 workflow；解析报 `invalid_parameters`（输入格式错误，如传了 URL、id 非法）时按规则 1 请用户重给合法 `space_id` / 链接，不当作库不存在；目标不唯一（情况 7）时列候选请用户选定。
+2. `PARSE_SOURCES` 按 `Target Space Resolution` 解析目标库。检测目标库不存在（情况 2，按**明确 space_id** 查得 `not_found`）时，停下请用户先自建知识库或提供已有库链接，不自行建知识空间、不代跑其他 workflow；解析报 `invalid_parameters`（输入格式错误，如传了 URL、id 非法）时按规则 1 请用户重给合法 `space_id` / 链接，不当作库不存在；**按名称搜到 0 个候选不得直接判库不存在**（新建/私有库常搜不到），须请用户给确切 `space_id` / 链接核验；目标不唯一（情况 7）时列候选请用户选定，搜到 1 个也不臆断唯一。
 3. 认证或 API scope 缺失时，按 `lark-shared` 权限处理并停止。
 4. 权限按动作分别判断，一个动作受阻不连累其余：读权限缺失 → 停止（无法盘点结构）；`docs +update` 可用而 `wiki +node-create` 不可用 → 照常写可编辑 docx 节点，`NODE_PROPOSE` / `new_docx` 需新建的列入「待创建节点」并记 `unsupported_checks`；仅可读 → 只输出发布计划不写入；某动作实际返回 `permission_denied` → 只停该动作、记入 `unsupported_checks`，不同参重试、不静默切 bot、不自动申请权限。
 5. 权限硬规则：读取成功不等于具备写权限；写权限只以实际写入返回为准。

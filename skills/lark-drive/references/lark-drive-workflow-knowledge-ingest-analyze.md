@@ -31,7 +31,17 @@ python3 "<SKILL_ROOT>/references/scripts/inventory.py" \
 - **每页级持久状态**（复核日期 / 负责人 / 版本）写进知识页的 6 行治理表，跟随知识库、换人不丢。
 - **本次运行的增量去重台账**为本地 `inventory.json` + `execution_ledger`，用于跳过与断点续跑。
 
-增量分工：`inventory.py` 每次做**全量盘点**、不读旧台账；**增量对比由 agent 完成**——拿本次 `inventory.json` 与上次的按 `source_id`(SHA-256) 比对，未变资料标记跳过，只对新增 / 变化资料继续后续状态。本地台账缺失时，从目标库现状（`node_inventory`）重建最小基线继续，不直接写入。
+增量分工：`inventory.py` 每次做**全量盘点**、不读旧台账；**增量对比由 agent 完成**。
+
+**比对键：以 `source_location`（文件路径）为资料身份键，`source_id`(SHA-256) 只作内容变更判据**——不要单纯拿 `source_id` 集合做差集。因为文件内容一改，其 `source_id` 就整个变化：若只按 `source_id` 比对，一个被修改的文件会表现为「旧 `source_id` 消失 + 新 `source_id` 出现」，被误判成「删一个 + 新增一个」，从而重复建页而非更新既有页。正确做法：
+
+- 按 `source_location` 对齐本次与上次 `inventory.json` 的资料条目：
+  - 路径存在于两次、且 `source_id` 相同 → **未变，跳过**（skipped）。
+  - 路径存在于两次、但 `source_id` 不同 → **内容已变**，走 `update`：用上次 `execution_ledger` 里该文件 → wiki 子页 token 的映射定位既有知识页，`docs_update` 定向更新（不新建）。
+  - 路径只在本次出现 → **新增**（add）。
+  - 路径只在上次出现 → 源文件已删除，不动已入库页面，仅在报告中说明。
+
+本地台账（`inventory.json` + `execution_ledger`）是恢复「路径 → source_id → wiki 子页」映射的唯一来源。台账缺失时只能从目标库现状（`node_inventory`）重建最小基线，但**节点上只有页面级治理表、没有 file → source_id 映射，无法判定「未变」**，此时增量退化为「全部按新增/更新处理」（有重复入库风险），须在报告中明示该降级并建议用户保留本地台账；不直接静默写入。
 
 用户可见输出：资料盘点概览（文件数、重复组数、可能敏感数、无法解析数；增量时标出跳过数）。样式见 [`lark-drive-workflow-knowledge-ingest-outputs.md`](lark-drive-workflow-knowledge-ingest-outputs.md)。
 

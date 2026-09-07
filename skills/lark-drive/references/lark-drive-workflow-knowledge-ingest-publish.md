@@ -58,7 +58,7 @@ lark-cli drive +import --as <runtime identity> --type docx --file "<本地文件
 - 导入结果必须返回 `docx` 类型和在线文档 token，否则转换失败。
 - **异步续跑**：`drive +import` 内置轮询窗口内未完成时会返回 `ready=false` / `timed_out=true` 和 `ticket`，用 `drive +task_result --scenario import --ticket <TICKET>` 续查，拿到最终在线文档 token 后再继续，不把未完成当完成。
 - **迁入目标节点**：一份对应一页且保真结构适用时，用 `wiki +move --obj-type docx --obj-token <导入文档 token> --target-space-id <SPACE_ID> --target-parent-token <目标父节点>` 迁入目标位置。`docs_to_wiki` 迁入可能返回 `task_id` 异步执行；返回 `ready=false` / `timed_out=true` 时，用 `drive +task_result --scenario wiki_move --task-id <TASK_ID>` 续查至完成，不把超时当失败。迁入完成后必须 fresh read 确认目标 Wiki 节点 `obj_type=docx` 且 `docs +fetch` 可读（ready-state 验证），再套 6 行治理表。
-- **套 6 行治理表的具体做法**：导入的 docx 首块是标题（`<title>`），治理表要放在标题之后、正文之前。先 `docs +fetch --detail with-ids` 拿到首块（title）的 `block_id`，再 `docs +update --command block_insert_after --block-id <title_block_id> --content <6 行治理表>` 把治理表插在标题下；不要用 `overwrite`（会丢掉导入正文），也不要插在文档最前面（会顶掉标题、令节点标题变 Untitled）。治理表内容与顺序见 [outputs 文档](lark-drive-workflow-knowledge-ingest-outputs.md)。
+- **套 6 行治理表的具体做法**：导入的 docx 首块是标题（`<title>`），治理表要放在标题之后、正文之前。先 `docs +fetch --detail with-ids` 拿到首块（title）的**真实 `block_id`**，再 `docs +update --command block_insert_after --block-id <title_block_id> --content <6 行治理表>` 把治理表插在标题下。注意：**`--block-id 0`（文档开头哨兵）会被服务端拒（`block not found`），必须传实际读到的 title block_id**；也不要用 `overwrite`（会丢掉导入正文）或插在文档最前面（会顶掉标题、令节点标题变 Untitled）。**例外——`.txt` 等导入后无正文标题块的件**：这类导入件正文可能只有侧边栏 `<title>`、没有可 `insert_after` 的首块，此时改用整页 `overwrite`，内容开头补 `# 标题`（或 XML `<title>标题</title>`）+ 6 行治理表 + 正文，避免节点标题变 Untitled。治理表内容与顺序见 [outputs 文档](lark-drive-workflow-knowledge-ingest-outputs.md)。
 - 多份合并 / 一份拆页 / 需统一重写时，创建目标 docx 节点后 `docs +update` 写整理内容，导入件仅作暂存来源。
 - PDF **不可**用 `drive +import`（不在支持扩展名内），走下节。
 
@@ -74,7 +74,7 @@ PDF 不假设可直接导入。**新增（`add`）资料先在目标分类节点
 
 **新增（`add`）资料同样先在目标分类节点下建承载子页再写正文，不写入分类节点本体。** 结合上下文判断媒体作用再决定是否入页：只保留能解释规则 / 步骤 / 入口 / 证据的图片，放在其解释的段落附近，加图注（说明 + 来源 + 必要时间），并把图中关键文字转成可检索正文——不让答案只存在于截图里。
 
-图片类 `docs +update` 绑定本地资源时，必须用目标页的 **docx 对象 token（`doxcn_*`，即计划里的 `target_obj_token`）或规范 Wiki URL** 定位，裸 Wiki node token（`wikcn_*`）不触发资源解析。计划须同时保留 `target_token`（Wiki 操作用）和 `target_obj_token`（写正文 / 绑图用）。
+把图中关键文字转成可检索正文用 `docs +update` 写(不让答案只存在于截图);**嵌入本地图片本身则用独立命令 `docs +media-insert --type image --file <CWD 内相对路径>`(支持 caption 作图注),不要在 `docs +update` 的正文里用 `<img path="@...">` 绑本地图——当前 CLI 不接受 `<img>` 的 `path` 属性(报 degrade 5002/5004,要求 href/img_key/src),会导致图片写入失败**。`docs +media-insert` 与 `docs +update` 定位目标页时,都必须用目标页的 **docx 对象 token(`doxcn_*`,即计划里的 `target_obj_token`)或规范 Wiki URL**,裸 Wiki node token(`wikcn_*`)不触发资源解析。计划须同时保留 `target_token`(Wiki 操作用)和 `target_obj_token`(写正文 / 插图用)。
 
 ### 更新既有页（write_via=docs_update，proposed_action=update/merge）
 
