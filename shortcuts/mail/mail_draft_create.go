@@ -184,7 +184,8 @@ var MailDraftCreate = common.Shortcut{
 		}
 		signatureID := runtime.Str("signature-id")
 		noSignature := runtime.Bool("no-signature")
-		senderEmail := resolveComposeSender(runtime).Email
+		sender := resolveComposeSender(runtime)
+		senderEmail := sender.Email
 		// Auto-resolve default signature when neither --no-signature nor --signature-id is set.
 		if noSignature {
 			signatureID = ""
@@ -196,8 +197,8 @@ var MailDraftCreate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		rawEML, lintApplied, lintBlocked, err := buildRawEMLForDraftCreate(ctx, runtime, input, sigResult, priority,
-			templateLargeAttachmentIDs, mailboxID, templateID, templateInlineAttachments, templateSmallAttachments, senderEmail)
+		rawEML, lintApplied, lintBlocked, err := buildRawEMLForDraftCreateWithSender(ctx, runtime, input, sigResult, priority,
+			templateLargeAttachmentIDs, mailboxID, templateID, templateInlineAttachments, templateSmallAttachments, sender)
 		if err != nil {
 			return err
 		}
@@ -255,6 +256,23 @@ func buildRawEMLForDraftCreate(
 	templateSmallAttachments []templateAttachmentRef,
 	senderEmailHint string,
 ) (rawEMLOut string, lintApplied, lintBlocked []lint.Finding, err error) {
+	return buildRawEMLForDraftCreateWithSender(ctx, runtime, input, sigResult, priority,
+		templateLargeAttachmentIDs, mailboxID, templateID, templateInlineAttachments,
+		templateSmallAttachments, composeSenderInfo{Email: senderEmailHint})
+}
+
+func buildRawEMLForDraftCreateWithSender(
+	ctx context.Context,
+	runtime *common.RuntimeContext,
+	input draftCreateInput,
+	sigResult *signatureResult,
+	priority string,
+	templateLargeAttachmentIDs []string,
+	mailboxID, templateID string,
+	templateInlineAttachments []templateInlineRef,
+	templateSmallAttachments []templateAttachmentRef,
+	senderHint composeSenderInfo,
+) (rawEMLOut string, lintApplied, lintBlocked []lint.Finding, err error) {
 	// Initialise lint findings as empty (non-nil) slices so callers can
 	// surface them through the envelope unconditionally even on the
 	// plain-text branch.
@@ -262,10 +280,11 @@ func buildRawEMLForDraftCreate(
 
 	// Use the pre-resolved senderEmail when available (avoids a duplicate
 	// profile API call when Execute already fetched it for auto-resolve).
-	senderEmail := senderEmailHint
-	if senderEmail == "" {
-		senderEmail = resolveComposeSenderEmail(runtime)
+	sender := senderHint
+	if sender.Email == "" {
+		sender = resolveComposeSender(runtime)
 	}
+	senderEmail := sender.Email
 	if senderEmail == "" {
 		return "", lintApplied, lintBlocked, mailValidationParamError("--from", "unable to determine sender email; please specify --from explicitly")
 	}
@@ -281,11 +300,7 @@ func buildRawEMLForDraftCreate(
 		bld = bld.ToAddrs(parseNetAddrs(input.To))
 	}
 	if senderEmail != "" {
-		senderName := ""
-		if runtime.Factory != nil {
-			senderName = resolveSendAsSender(runtime, mailboxID, senderEmail).Name
-		}
-		bld = bld.From(senderName, senderEmail)
+		bld = bld.From(sender.Name, senderEmail)
 	}
 	// senderEmail non-emptiness is already enforced above (L140); the flag-
 	// driven guard here only exists to make the relationship explicit to

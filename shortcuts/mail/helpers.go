@@ -410,7 +410,7 @@ func resolveSendAsSender(runtime *common.RuntimeContext, mailboxID, fromEmail st
 	return pickSendAsAddress(addrs, fromEmail)
 }
 
-// resolveComposeSenderEmail determines the sender email for compose shortcuts.
+// resolveComposeSender determines the sender identity for compose shortcuts.
 // Priority: --from > default send_as > --mailbox > profile("me").
 // The send_as failure and empty-response paths deliberately retain the previous
 // mailbox/profile fallback behavior.
