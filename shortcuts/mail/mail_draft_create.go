@@ -64,7 +64,7 @@ var MailDraftCreate = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		mailboxID := resolveComposeMailboxID(runtime)
 		api := common.NewDryRunAPI().
-			Desc("Create a new empty draft without sending it. The command resolves the sender address (from --from, --mailbox, or mailbox profile), builds a complete EML from `to/subject/body` plus any optional cc/bcc/attachment/inline inputs, and finally calls drafts.create. `--body` content type is auto-detected (HTML or plain text); use `--plain-text` to force plain-text mode. For inline images, CIDs can be any unique strings, e.g. random hex. Use the dedicated reply or forward shortcuts for reply-style drafts instead of adding reply-thread headers here.")
+			Desc("Create a new empty draft without sending it. The command resolves the sender address (from --from, the mailbox's default send-as identity, --mailbox, or mailbox profile), builds a complete EML from `to/subject/body` plus any optional cc/bcc/attachment/inline inputs, and finally calls drafts.create. `--body` content type is auto-detected (HTML or plain text); use `--plain-text` to force plain-text mode. For inline images, CIDs can be any unique strings, e.g. random hex. Use the dedicated reply or forward shortcuts for reply-style drafts instead of adding reply-thread headers here.")
 		if tid := runtime.Str("template-id"); tid != "" {
 			api = api.GET(templateMailboxPath(mailboxID, tid)).
 				Desc("Fetch template to merge with compose flags (subject/body/to/cc/bcc/attachments).")
