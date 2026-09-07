@@ -268,8 +268,8 @@ func TestThreadModify_Validation(t *testing.T) {
 				tc.flag, "read_receipt_request",
 			}, f, stdout)
 			requireMessageManageValidationParam(t, err, tc.flag)
-			if !strings.Contains(err.Error(), "+send-receipt") || !strings.Contains(err.Error(), "+decline-receipt") {
-				t.Fatalf("error = %v, want receipt shortcut guidance", err)
+			if !strings.Contains(err.Error(), "thread 级别不能管理 `READ_RECEIPT_REQUEST`") {
+				t.Fatalf("error = %v, want thread-level receipt label guidance", err)
 			}
 		})
 	}

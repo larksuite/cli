@@ -239,7 +239,7 @@ func normalizeThreadManageLabels(raw []string, flagName string) ([]string, error
 		}
 		upper := strings.ToUpper(id)
 		if upper == readReceiptRequestLabel {
-			return nil, mailValidationParamError(flagName, "%s cannot manage READ_RECEIPT_REQUEST at thread level; read the message and use +send-receipt or +decline-receipt after user confirmation", flagName)
+			return nil, mailValidationParamError(flagName, "thread 级别不能管理 `READ_RECEIPT_REQUEST`")
 		}
 		normalized := id
 		switch upper {
