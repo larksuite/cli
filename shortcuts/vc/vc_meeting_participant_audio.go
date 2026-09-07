@@ -16,8 +16,8 @@ import (
 
 const (
 	meetingParticipantManageScope = "vc:meeting.bot.manage:write"
-	meetingParticipantMutePath    = "/open-apis/v1/bots/mute"
-	meetingParticipantUnmutePath  = "/open-apis/v1/bots/unmute"
+	meetingParticipantMutePath    = "/open-apis/vc/v1/bots/mute"
+	meetingParticipantUnmutePath  = "/open-apis/vc/v1/bots/unmute"
 )
 
 var meetingParticipantAudioFlags = []common.Flag{
@@ -53,7 +53,7 @@ func newMeetingParticipantAudioShortcut(command, description, path, action, stat
 		Description: description,
 		Risk:        "write",
 		Scopes:      []string{meetingParticipantManageScope},
-		AuthTypes:   []string{"bot"},
+		AuthTypes:   []string{"user", "bot"},
 		HasFormat:   true,
 		Flags:       meetingParticipantAudioFlags,
 		Validate:    validateMeetingParticipantAudio,

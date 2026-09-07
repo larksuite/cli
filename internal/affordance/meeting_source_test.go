@@ -86,3 +86,80 @@ func TestVCRecordingControlAffordanceMatchesSkillReference(t *testing.T) {
 		}
 	}
 }
+
+func TestVCParticipantAudioAffordanceMatchesSkillReference(t *testing.T) {
+	previousSource := mdSource
+	t.Cleanup(func() { SetSource(previousSource) })
+	SetSource(os.DirFS("../../affordance"))
+
+	const reference = "lark-meeting/references/lark-vc-meeting-participant-audio.md"
+	for _, command := range []string{"+meeting-participant-mute", "+meeting-participant-unmute"} {
+		raw, ok := For("vc", command)
+		if !ok {
+			t.Fatalf("For(vc, %s) returned no affordance", command)
+		}
+		var affordance meta.Affordance
+		if err := json.Unmarshal(raw, &affordance); err != nil {
+			t.Fatalf("decode %s affordance: %v", command, err)
+		}
+		if len(affordance.Skills) != 2 || affordance.Skills[0] != "lark-meeting" || affordance.Skills[1] != reference {
+			t.Fatalf("%s skills = %v, want [lark-meeting %s]", command, affordance.Skills, reference)
+		}
+	}
+
+	referenceSource, err := os.ReadFile("../../skills/lark-meeting/references/lark-vc-meeting-participant-audio.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"lark-cli vc +meeting-participant-mute",
+		"lark-cli vc +meeting-participant-unmute",
+		"--target-user-id",
+		"--user-id-type",
+		"`--as user` 或 `--as bot`",
+		"vc:meeting.bot.manage:write",
+		"请求已发送",
+		"不表示目标参会人已经开麦",
+		"## 错误码",
+		"`121101`",
+		"`121102`",
+		"`121103`",
+		"`121104`",
+		"`121105`",
+		"`121107`",
+		"`122003`",
+		"`122005`",
+		"operator is not in the meeting",
+		"target participant is not in the meeting or is no longer active",
+	} {
+		if !strings.Contains(string(referenceSource), required) {
+			t.Errorf("participant audio reference must contain %q", required)
+		}
+	}
+	for _, shortCode := range []string{"`1101`", "`1102`", "`1103`", "`1104`", "`1105`", "`1107`", "`2003`", "`2005`"} {
+		if strings.Contains(string(referenceSource), shortCode) {
+			t.Errorf("participant audio reference must not document OGW short code %q as an external code", shortCode)
+		}
+	}
+
+	for path, required := range map[string][]string{
+		"../../skills/lark-meeting/SKILL.md": {
+			"[lark-vc-meeting-participant-audio](references/lark-vc-meeting-participant-audio.md)",
+		},
+		"../../skills/lark-meeting/scenes/live-meeting-interact.md": {
+			"lark-cli vc +meeting-participant-mute",
+			"lark-cli vc +meeting-participant-unmute",
+			"[会中闭麦与请求开麦](../references/lark-vc-meeting-participant-audio.md)",
+		},
+	} {
+		source, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range required {
+			if !strings.Contains(string(source), want) {
+				t.Errorf("%s must contain %q", path, want)
+			}
+		}
+	}
+}

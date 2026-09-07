@@ -8,6 +8,13 @@
 | Dry-run | `vc +meeting-invite` | `vc_agent_meeting_actions_dryrun_test.go::TestVCAgentMeetingActionsDryRun/invite all suggested` | Verifies the Agent invite endpoint and long `meeting_id`. |
 | Dry-run | `vc +meeting-end` | `vc_agent_meeting_actions_dryrun_test.go::TestVCAgentMeetingActionsDryRun/end meeting` | Verifies the bot end endpoint and that `--dry-run` bypasses the real-execution confirmation gate. |
 
+## Participant Audio Controls
+
+| Status | Cmd | Coverage | Notes |
+| --- | --- | --- | --- |
+| Dry-run | `vc +meeting-participant-mute` | `vc_meeting_participant_audio_dryrun_test.go::TestVCMeetingParticipantAudioDryRun/+meeting-participant-mute` | Verifies the shared User/Bot `/open-apis/vc/v1/bots/mute` endpoint, query, and body contract without sending `device_id`. |
+| Dry-run | `vc +meeting-participant-unmute` | `vc_meeting_participant_audio_dryrun_test.go::TestVCMeetingParticipantAudioDryRun/+meeting-participant-unmute` | Verifies the shared User/Bot `/open-apis/vc/v1/bots/unmute` request endpoint, query, and body contract without claiming a completed unmute. |
+
 ## Live E2E Blocker
 
 `vc +meeting-end` terminates a meeting for every participant. The shared E2E tenant does not provide an isolated Calendar fixture that can reliably create an Agent-enabled meeting where the test app bot becomes Host and has a distinct eligible invitee. Running against an existing meeting would be unsafe and is not self-cleaning.

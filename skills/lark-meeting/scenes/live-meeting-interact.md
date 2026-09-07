@@ -20,7 +20,7 @@ lark-cli vc +meeting-list-active --as bot --user-id <open_id> --format json
 - 应用身份返回空不代表目标用户没有在开会，只代表没有找到目标用户与应用机器人同时在会中的会议。
 - 返回多个会议时，展示标题、会议号和 `meeting_id` 让用户选择，不按“最近”擅选。
 - 用户只给 9 位会议号时，在活跃会议结果中按 `meeting_no` 匹配；匹配失败时不要自动入会。
-- `meeting_id` 从哪种身份取得，后续读取事件、截图、发送消息和操作倒计时就沿用哪种身份。结束会议也显式沿用选定的用户身份或应用身份；移出参会人仅支持用户身份，从应用身份流程切入时必须先以用户身份重新确认目标会议。
+- `meeting_id` 从哪种身份取得，后续读取事件、截图、发送消息、操作倒计时、闭麦或请求开麦就沿用哪种身份。结束会议也显式沿用选定的用户身份或应用身份；移出参会人仅支持用户身份，从应用身份流程切入时必须先以用户身份重新确认目标会议。
 
 身份可见范围和会议号匹配见 [`lark-vc-meeting-list-active`](../references/lark-vc-meeting-list-active.md)。
 
@@ -91,6 +91,23 @@ lark-cli vc +meeting-countdown --as <same_identity> --meeting-id <meeting_id> --
 - `set` 和 `prolong` 需要 `--duration`；提前结束或关闭时不要携带时长、提醒点或结束音频参数。
 
 动作、提醒点和权限规则见 [`lark-vc-meeting-countdown`](../references/lark-vc-meeting-countdown.md)。
+
+## 管理参会人麦克风
+
+只有用户明确要求操作指定参会人，且目标会议、目标用户和身份已经确认时执行。先预览请求：
+
+```bash
+lark-cli vc +meeting-participant-mute --as <same_identity> \
+  --meeting-id <meeting_id> --target-user-id <user_id> --dry-run
+
+lark-cli vc +meeting-participant-unmute --as <same_identity> \
+  --meeting-id <meeting_id> --target-user-id <user_id> --dry-run
+```
+
+- 两个命令均支持 `--as user` 和 `--as bot`，并要求 `vc:meeting.bot.manage:write`；沿用会议来源身份，不要为了成功静默切换身份。
+- 默认按 `open_id` 解释目标用户；输入 `union_id` 或 `user_id` 时显式传 `--user-id-type`。只传用户 ID，不传设备 ID；服务端负责处理该用户的设备。
+- 闭麦成功可以报告操作完成。请求开麦成功必须报告“请求已发送”，不表示目标参会人已经开麦；若要确认最终状态，需要后续状态证据。
+- 详细参数、请求路径和输出语义见 [会中闭麦与请求开麦](../references/lark-vc-meeting-participant-audio.md)。
 
 ## 结束整场会议或移出参会人
 

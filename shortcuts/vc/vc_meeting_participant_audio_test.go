@@ -67,8 +67,8 @@ func TestMeetingParticipantAudioShortcutContracts(t *testing.T) {
 			if !reflect.DeepEqual(tt.shortcut.Scopes, []string{"vc:meeting.bot.manage:write"}) {
 				t.Errorf("Scopes = %v, want [vc:meeting.bot.manage:write]", tt.shortcut.Scopes)
 			}
-			if !reflect.DeepEqual(tt.shortcut.AuthTypes, []string{"bot"}) {
-				t.Errorf("AuthTypes = %v, want [bot]", tt.shortcut.AuthTypes)
+			if !reflect.DeepEqual(tt.shortcut.AuthTypes, []string{"user", "bot"}) {
+				t.Errorf("AuthTypes = %v, want [user bot]", tt.shortcut.AuthTypes)
 			}
 			if tt.shortcut.Execute == nil {
 				t.Fatal("Execute must be set so the shortcut is mounted")
@@ -109,8 +109,8 @@ func TestMeetingParticipantAudioDryRunUsesPublishedContract(t *testing.T) {
 		shortcut common.Shortcut
 		path     string
 	}{
-		{command: "+meeting-participant-mute", shortcut: VCMeetingParticipantMute, path: meetingParticipantMutePath},
-		{command: "+meeting-participant-unmute", shortcut: VCMeetingParticipantUnmute, path: meetingParticipantUnmutePath},
+		{command: "+meeting-participant-mute", shortcut: VCMeetingParticipantMute, path: "/open-apis/vc/v1/bots/mute"},
+		{command: "+meeting-participant-unmute", shortcut: VCMeetingParticipantUnmute, path: "/open-apis/vc/v1/bots/unmute"},
 	}
 
 	for _, tt := range tests {
@@ -164,56 +164,58 @@ func TestMeetingParticipantAudioExecuteUsesPublishedContract(t *testing.T) {
 		wantOutput   string
 		forbidOutput string
 	}{
-		{command: "+meeting-participant-mute", shortcut: VCMeetingParticipantMute, path: meetingParticipantMutePath, wantOutput: "Participant muted."},
-		{command: "+meeting-participant-unmute", shortcut: VCMeetingParticipantUnmute, path: meetingParticipantUnmutePath, wantOutput: "Unmute request sent.", forbidOutput: "Participant unmuted."},
+		{command: "+meeting-participant-mute", shortcut: VCMeetingParticipantMute, path: "/open-apis/vc/v1/bots/mute", wantOutput: "Participant muted."},
+		{command: "+meeting-participant-unmute", shortcut: VCMeetingParticipantUnmute, path: "/open-apis/vc/v1/bots/unmute", wantOutput: "Unmute request sent.", forbidOutput: "Participant unmuted."},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.command, func(t *testing.T) {
-			f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
-			var gotUserIDType string
-			stub := &httpmock.Stub{
-				Method: http.MethodPost,
-				URL:    tt.path,
-				OnMatch: func(req *http.Request) {
-					gotUserIDType = req.URL.Query().Get("user_id_type")
-				},
-				Body: map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
-			}
-			reg.Register(stub)
+		for _, identity := range []string{"user", "bot"} {
+			t.Run(tt.command+"/"+identity, func(t *testing.T) {
+				f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+				var gotUserIDType string
+				stub := &httpmock.Stub{
+					Method: http.MethodPost,
+					URL:    tt.path,
+					OnMatch: func(req *http.Request) {
+						gotUserIDType = req.URL.Query().Get("user_id_type")
+					},
+					Body: map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
+				}
+				reg.Register(stub)
 
-			err := mountAndRun(t, tt.shortcut, []string{
-				tt.command,
-				"--meeting-id", "7651377260537433044",
-				"--target-user-id", "ou_target",
-				"--format", "pretty",
-				"--as", "bot",
-			}, f, stdout)
-			if err != nil {
-				t.Fatalf("Execute() error = %v", err)
-			}
-			reg.Verify(t)
-			if gotUserIDType != "open_id" {
-				t.Fatalf("user_id_type = %q, want open_id", gotUserIDType)
-			}
-			var body map[string]interface{}
-			if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
-				t.Fatalf("decode captured body: %v", err)
-			}
-			wantBody := map[string]interface{}{
-				"meeting_id":     "7651377260537433044",
-				"target_user_id": "ou_target",
-			}
-			if !reflect.DeepEqual(body, wantBody) {
-				t.Fatalf("request body = %#v, want %#v", body, wantBody)
-			}
-			if !strings.Contains(stdout.String(), tt.wantOutput) {
-				t.Fatalf("stdout missing %q: %s", tt.wantOutput, stdout.String())
-			}
-			if tt.forbidOutput != "" && strings.Contains(stdout.String(), tt.forbidOutput) {
-				t.Fatalf("stdout must not contain %q: %s", tt.forbidOutput, stdout.String())
-			}
-		})
+				err := mountAndRun(t, tt.shortcut, []string{
+					tt.command,
+					"--meeting-id", "7651377260537433044",
+					"--target-user-id", "ou_target",
+					"--format", "pretty",
+					"--as", identity,
+				}, f, stdout)
+				if err != nil {
+					t.Fatalf("Execute() error = %v", err)
+				}
+				reg.Verify(t)
+				if gotUserIDType != "open_id" {
+					t.Fatalf("user_id_type = %q, want open_id", gotUserIDType)
+				}
+				var body map[string]interface{}
+				if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+					t.Fatalf("decode captured body: %v", err)
+				}
+				wantBody := map[string]interface{}{
+					"meeting_id":     "7651377260537433044",
+					"target_user_id": "ou_target",
+				}
+				if !reflect.DeepEqual(body, wantBody) {
+					t.Fatalf("request body = %#v, want %#v", body, wantBody)
+				}
+				if !strings.Contains(stdout.String(), tt.wantOutput) {
+					t.Fatalf("stdout missing %q: %s", tt.wantOutput, stdout.String())
+				}
+				if tt.forbidOutput != "" && strings.Contains(stdout.String(), tt.forbidOutput) {
+					t.Fatalf("stdout must not contain %q: %s", tt.forbidOutput, stdout.String())
+				}
+			})
+		}
 	}
 }
 

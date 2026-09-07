@@ -101,6 +101,34 @@ lark-cli vc +meeting-participant-kickout --as user --meeting-id <meeting_id> --p
 ### Skills
 - lark-meeting/references/lark-vc-meeting-participant-kickout.md
 
+## +meeting-participant-mute
+Use this only when the user explicitly asks to mute one identified participant in an ongoing meeting. This is a write operation; preview an uncertain meeting, target, or identity with `--dry-run` before executing.
+
+### Avoid when
+- The participant should be asked to turn their microphone on → use [[+meeting-participant-unmute]].
+- The participant should be removed from the meeting → use [[+meeting-participant-kickout]].
+
+### Prerequisites
+- Obtain the exact long `meeting_id` and target user ID from the intended ongoing meeting; do not substitute a 9-digit meeting number or a device ID.
+- Preserve the selected `--as user` or `--as bot` identity instead of switching identities to make the request succeed.
+
+### Skills
+- lark-meeting/references/lark-vc-meeting-participant-audio.md
+
+## +meeting-participant-unmute
+Use this only when the user explicitly asks to request that one identified participant turn their microphone on. A successful API response means the request was sent, not that the participant is already unmuted.
+
+### Avoid when
+- The participant should be muted → use [[+meeting-participant-mute]].
+- The participant should be removed from the meeting → use [[+meeting-participant-kickout]].
+
+### Prerequisites
+- Obtain the exact long `meeting_id` and target user ID from the intended ongoing meeting; do not substitute a 9-digit meeting number or a device ID.
+- Preserve the selected `--as user` or `--as bot` identity instead of switching identities to make the request succeed.
+
+### Skills
+- lark-meeting/references/lark-vc-meeting-participant-audio.md
+
 ## +meeting-join
 
 ### Skills

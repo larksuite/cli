@@ -16,15 +16,18 @@ func TestVCMeetingParticipantAudioDryRun(t *testing.T) {
 	setVCDryRunEnv(t)
 
 	tests := []struct {
-		command string
-		path    string
+		command  string
+		identity string
+		path     string
 	}{
-		{command: "+meeting-participant-mute", path: "/open-apis/v1/bots/mute"},
-		{command: "+meeting-participant-unmute", path: "/open-apis/v1/bots/unmute"},
+		{command: "+meeting-participant-mute", identity: "user", path: "/open-apis/vc/v1/bots/mute"},
+		{command: "+meeting-participant-mute", identity: "bot", path: "/open-apis/vc/v1/bots/mute"},
+		{command: "+meeting-participant-unmute", identity: "user", path: "/open-apis/vc/v1/bots/unmute"},
+		{command: "+meeting-participant-unmute", identity: "bot", path: "/open-apis/vc/v1/bots/unmute"},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.command, func(t *testing.T) {
+		t.Run(tt.command+"/"+tt.identity, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			t.Cleanup(cancel)
 
@@ -36,7 +39,7 @@ func TestVCMeetingParticipantAudioDryRun(t *testing.T) {
 					"--user-id-type", "union_id",
 					"--dry-run",
 				},
-				DefaultAs: "bot",
+				DefaultAs: tt.identity,
 			})
 			require.NoError(t, err)
 			result.AssertExitCode(t, 0)

@@ -155,7 +155,7 @@ func TestVCMeetingManagementDocsMatchAuthTypesAndContracts(t *testing.T) {
 	}
 }
 
-func TestVCAgentEmployeeLifecycleDocsMatchShortcutContracts(t *testing.T) {
+func TestVCUserIdentityLifecycleDocsMatchShortcutContracts(t *testing.T) {
 	skill := readSkillDoc(t, "skills/lark-meeting/SKILL.md")
 	scene := readSkillDoc(t, "skills/lark-meeting/scenes/live-meeting-attend.md")
 	joinReference := readSkillDoc(t, "skills/lark-meeting/references/lark-vc-agent-meeting-join.md")
@@ -168,7 +168,7 @@ func TestVCAgentEmployeeLifecycleDocsMatchShortcutContracts(t *testing.T) {
 		"+meeting-leave":  VCMeetingLeave.AuthTypes,
 	} {
 		if !hasAuthType(authTypes, "user") {
-			t.Fatalf("%s AuthTypes = %v, want user support for AAT/UAT", name, authTypes)
+			t.Fatalf("%s AuthTypes = %v, want user identity support", name, authTypes)
 		}
 	}
 
@@ -179,9 +179,14 @@ func TestVCAgentEmployeeLifecycleDocsMatchShortcutContracts(t *testing.T) {
 		"lark-vc-agent-meeting-invite": inviteReference,
 		"lark-vc-agent-meeting-leave":  leaveReference,
 	} {
-		for _, want := range []string{"Agent Employee", "AAT", "--as user"} {
+		for _, want := range []string{"用户身份", "--as user"} {
 			if !strings.Contains(content, want) {
 				t.Errorf("%s must document %q", name, want)
+			}
+		}
+		for _, internalTerm := range []string{"Agent Employee", "AAT"} {
+			if strings.Contains(content, internalTerm) {
+				t.Errorf("%s must not expose internal identity term %q", name, internalTerm)
 			}
 		}
 	}
@@ -190,8 +195,8 @@ func TestVCAgentEmployeeLifecycleDocsMatchShortcutContracts(t *testing.T) {
 		!strings.Contains(inviteReference, "不支持") {
 		t.Error("invite reference must document user SELECTED support and ALL_SUGGESTED rejection")
 	}
-	if !strings.Contains(skill, "AAT 不支持") || !strings.Contains(skill, "meeting-end") {
-		t.Error("SKILL.md must state that AAT does not support meeting-end")
+	if !strings.Contains(skill, "支持双身份") || !strings.Contains(skill, "meeting-end") {
+		t.Error("SKILL.md must document dual-identity meeting-end support")
 	}
 }
 
