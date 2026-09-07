@@ -10,45 +10,37 @@
 
 ```bash
 # 软删除多个会话
-lark-cli mail +thread-trash --thread-ids <thread_id1>,<thread_id2> --yes
+lark-cli mail +thread-trash --thread-id <thread_id1> --thread-id <thread_id2> --yes
 
 # 指定公共邮箱或共享邮箱
-lark-cli mail +thread-trash --mailbox shared@example.com --thread-ids <thread_id> --yes
+lark-cli mail +thread-trash --mailbox-id shared@example.com --thread-id <thread_id> --yes
 
 # 使用 bot 身份时必须显式指定邮箱
-lark-cli mail +thread-trash --as bot --mailbox user@example.com --thread-ids <thread_id> --yes
+lark-cli mail +thread-trash --as bot --mailbox-id user@example.com --thread-id <thread_id> --yes
 
 # Dry Run：只预览请求，不执行
-lark-cli mail +thread-trash --thread-ids <thread_id1> --thread-ids <thread_id2> --dry-run
+lark-cli mail +thread-trash --thread-id <thread_id1> --thread-id <thread_id2> --dry-run
 ```
 
 ## 参数
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--mailbox <email>` | 否 | 会话所属邮箱，默认 `me`；使用 `--as bot` 时必须显式传邮箱地址 |
-| `--thread-ids <ids>` | 是 | 会话 ID 列表，支持逗号分隔和重复传参；超过 20 个时自动分批提交 |
+| `--mailbox-id <email>` | 否 | 会话所属邮箱，默认 `me`；使用 `--as bot` 时必须显式传邮箱地址 |
+| `--thread-id <id>` | 是 | 会话 ID；可重复传参，CLI 按首次出现顺序去重 |
 | `--yes` | 执行时必填 | 高风险写操作确认。只有用户确认删除预览后才加 |
 
 ## 注意事项
 
 - `thread_id` 必须来自 `+triage`、`+message`、`+thread`、会话列表或搜索等真实查询结果；不要用数字主键或占位符。
 - 软删除属于高风险写操作。先用真实查询结果展示删除预览，包括受影响会话数量和关键邮件摘要；用户确认后再执行并加 `--yes`。
-- 命令在本地解析逗号分隔和重复 flag，按首次出现顺序去重，并按 20 个一批提交。
-- 单个 batch 请求失败时，该批次的所有 `thread_id` 都记录为同一个失败原因；后续批次继续执行。
+- 旧拼写 `--thread-ids` 和 `--mailbox` 仍作为兼容别名接受。
+- 命令在本地按首次出现顺序去重，然后一次调用 `POST /open-apis/mail/v1/user_mailboxes/<mailbox>/threads/batch_trash`；请求体只含 `thread_ids`。
+- dry-run 只显示规范化后的 endpoint 和请求体，绝不会访问 API。
 
 ## 返回值
 
-返回示例：
-
-```json
-{
-  "success_thread_ids": ["thread_id1"],
-  "failed_thread_ids": [
-    {"thread_id": "thread_id2", "reason": "api error"}
-  ]
-}
-```
+成功时原样输出 OpenAPI 返回的 `data`。CLI 不根据提交数量生成 `trashed_count`、逐项成功结果或其他推断字段；空 `data` 保持为空对象。API 报错由统一错误链原样返回。软删除后如需恢复，使用已发布的邮件会话修改/移动能力将对象移出 `TRASH`；不要通过重复 trash 调用猜测状态。
 
 ## 原生 API 适用场景
 
