@@ -54,7 +54,7 @@ lark-cli mail +thread-modify --thread-id <thread_id> --add-label-id custom_label
 
 ## 原生 API 适用场景
 
-只有在需要精确复现后端/API 行为做诊断，或需要 shortcut 未暴露的请求结构时，才直接调用 `mail user_mailbox.threads batch_modify`。普通会话整理优先使用本 shortcut，因为它内置了 ID 校验、分批、批量输出和 dry-run 预览。
+只有在需要精确复现后端/API 行为做诊断，或需要 shortcut 未暴露的请求结构时，才直接调用 `mail user_mailbox.threads batch_modify`。普通会话整理优先使用本 shortcut，因为它内置了 ID 校验、稳定去重、字段安全映射和 dry-run 预览。
 
 ## 相关命令
 
