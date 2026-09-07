@@ -2853,7 +2853,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			t.Fatalf("stdout=%s", got)
 		}
 		body := string(batchStub.CapturedBody)
-		if !strings.Contains(body, `"record_id_list":["rec_1"]`) || !strings.Contains(body, `"select_fields":["Cost"]`) {
+		if !strings.Contains(body, `"record_id_list":["rec_1"]`) || !strings.Contains(body, `"select_fields":["fld_cost"]`) {
 			t.Fatalf("batch_get body=%s", body)
 		}
 	})
