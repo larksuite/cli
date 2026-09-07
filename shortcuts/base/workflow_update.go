@@ -38,16 +38,14 @@ var BaseWorkflowUpdate = common.Shortcut{
 		if strings.TrimSpace(runtime.Str("workflow-id")) == "" {
 			return baseFlagErrorf("--workflow-id must not be blank")
 		}
-		pc := newParseCtx(runtime)
-		if _, err := parseJSONObject(pc, runtime.Str("json"), "json"); err != nil {
+		if _, err := parseWorkflowBodyJSON(runtime); err != nil {
 			return err
 		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		pc := newParseCtx(runtime)
 		var body map[string]interface{}
-		body, _ = parseJSONObject(pc, runtime.Str("json"), "json")
+		body, _ = parseWorkflowBodyJSON(runtime)
 		return common.NewDryRunAPI().
 			PUT("/open-apis/base/v3/bases/:base_token/workflows/:workflow_id").
 			Body(body).
@@ -55,8 +53,7 @@ var BaseWorkflowUpdate = common.Shortcut{
 			Set("workflow_id", runtime.Str("workflow-id"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		pc := newParseCtx(runtime)
-		body, err := parseJSONObject(pc, runtime.Str("json"), "json")
+		body, err := parseWorkflowBodyJSON(runtime)
 		if err != nil {
 			return err
 		}

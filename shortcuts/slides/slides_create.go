@@ -23,6 +23,12 @@ const (
 )
 
 // SlidesCreate creates a new Lark Slides presentation with bot auto-grant.
+//
+// The presentation is created first as an empty shell, then the pages are added
+// one at a time. Each page is linted on its own way in, so a bad page is refused
+// with the findings for that page — and the run stops there, leaving the
+// presentation and the pages added before it. The error says so, so the caller
+// knows what exists and where the run stopped.
 var SlidesCreate = common.Shortcut{
 	Service:     "slides",
 	Command:     "+create",
@@ -44,6 +50,7 @@ var SlidesCreate = common.Shortcut{
 		// by the framework, so it is not spelled out in Desc.
 		{Name: "slides", Desc: "slide content JSON array (each element is a <slide> XML string, max 10; for more pages, create first then add them one at a time with slides +add-slide). <img src=\"@./local.png\"> placeholders are auto-uploaded and replaced with file_token.", Input: []string{common.File, common.Stdin}},
 		{Name: "slide", Type: "string_array", Desc: "one complete <slide> XML document, or @path to read one from a file; repeat once per page (max 10) and the CLI assembles the array for you, so no JSON escaping is needed. <img src=\"@./local.png\"> placeholders are handled as with --slides. Mutually exclusive with --slides."},
+		noLintFlag(),
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		slides, param, err := createSlideContents(runtime)
@@ -66,16 +73,25 @@ var SlidesCreate = common.Shortcut{
 		createBody := map[string]interface{}{
 			"xml_presentation": map[string]interface{}{"content": buildPresentationXML(title)},
 		}
+		placeholders := extractImagePlaceholderPaths(slides)
+
+		// The note belongs to the create step, which is what the grant follows.
+		// Adding it at the end instead would land on whichever step happened to
+		// be last and overwrite that step's own description.
+		botNote := ""
+		if runtime.IsBot() {
+			botNote = " After creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new presentation."
+		}
 
 		dry := common.NewDryRunAPI()
 
 		if len(slides) == 0 {
 			dry.Desc("Create empty presentation").
 				POST("/open-apis/slides_ai/v1/xml_presentations").
+				Desc(strings.TrimSpace(botNote)).
 				Body(createBody)
 		} else {
 			n := len(slides)
-			placeholders := extractImagePlaceholderPaths(slides)
 			total := n + 1 + len(placeholders)
 
 			descSuffix := ""
@@ -84,7 +100,7 @@ var SlidesCreate = common.Shortcut{
 			}
 			dry.Desc(fmt.Sprintf("Create presentation%s + add %d slide(s)", descSuffix, n)).
 				POST("/open-apis/slides_ai/v1/xml_presentations").
-				Desc(fmt.Sprintf("[1/%d] Create presentation", total)).
+				Desc(fmt.Sprintf("[1/%d] Create presentation.%s", total, botNote)).
 				Body(createBody)
 
 			// Upload steps come right after creation so they can use the new
@@ -101,15 +117,11 @@ var SlidesCreate = common.Shortcut{
 			for i, slideXML := range slides {
 				dry.POST("/open-apis/slides_ai/v1/xml_presentations/<xml_presentation_id>/slide").
 					Desc(fmt.Sprintf("[%d/%d] Add slide %d%s", slideStepStart+i, total, i+1, slideDescSuffix)).
-					Body(map[string]interface{}{
-						"slide": map[string]interface{}{"content": slideXML},
-					})
+					Params(createSlideQuery()).
+					Body(createSlideBody(slideXML, runtime))
 			}
 		}
 
-		if runtime.IsBot() {
-			dry.Desc("After creation succeeds in bot mode, the CLI will also try to grant the current CLI user full_access on the new presentation.")
-		}
 		return dry
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -121,8 +133,10 @@ var SlidesCreate = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		placeholders := extractImagePlaceholderPaths(slides)
 
-		// Step 1: Create presentation
+		// Step 1: Create presentation. The shell carries no page, so there is
+		// nothing here for the server to lint and no lint switch to send.
 		data, err := runtime.CallAPITyped(
 			"POST",
 			"/open-apis/slides_ai/v1/xml_presentations",
@@ -158,7 +172,6 @@ var SlidesCreate = common.Shortcut{
 			// Step 1.5: Upload any @path placeholders, then rewrite slide XML
 			// with the resulting file_tokens. Uploads run after creation so
 			// they can use the new presentation_id as parent_node.
-			placeholders := extractImagePlaceholderPaths(slides)
 			if len(placeholders) > 0 {
 				tokens, uploaded, err := uploadSlidesPlaceholders(runtime, presentationID, placeholders, param)
 				if err != nil {
@@ -170,6 +183,9 @@ var SlidesCreate = common.Shortcut{
 				result["images_uploaded"] = uploaded
 			}
 
+			// Each page is linted on its way in, so the first refusal stops the
+			// run with the pages before it already on the server — which is what
+			// the progress hint on the error spells out.
 			slideURL := fmt.Sprintf(
 				"/open-apis/slides_ai/v1/xml_presentations/%s/slide",
 				validate.EncodePathSegment(presentationID),
@@ -181,13 +197,11 @@ var SlidesCreate = common.Shortcut{
 				slideData, err := runtime.CallAPITyped(
 					"POST",
 					slideURL,
-					map[string]interface{}{"revision_id": -1},
-					map[string]interface{}{
-						"slide": map[string]interface{}{"content": slideXML},
-					},
+					createSlideQuery(),
+					createSlideBody(slideXML, runtime),
 				)
 				if err != nil {
-					return appendSlidesProgressHint(err, fmt.Sprintf("adding slide %d/%d failed; presentation %s was created, %d slide(s) added before failure", i+1, len(slides), presentationID, i))
+					return appendSlidesProgressHint(enrichSlidesLintError(err), fmt.Sprintf("adding slide %d/%d failed; presentation %s was created, %d slide(s) added before failure", i+1, len(slides), presentationID, i))
 				}
 				sid := common.GetString(slideData, "slide_id")
 				if sid != "" {
@@ -350,6 +364,26 @@ func effectiveTitle(title string) string {
 		return "Untitled"
 	}
 	return title
+}
+
+// createSlideQuery builds the query for the per-page calls +create makes after
+// the presentation exists. revision_id is pinned to -1 (latest) rather than
+// exposed: the deck was created by this same command a moment ago, so there is
+// no earlier revision a caller could sensibly target.
+func createSlideQuery() map[string]interface{} {
+	return map[string]interface{}{"revision_id": -1}
+}
+
+// createSlideBody builds the per-page body shared by dry-run and execute, so
+// the two cannot drift on the lint switch the way two literals would.
+//
+// The presentation-create call has no body of its own to stamp: it sends the
+// title-only <presentation> shell from buildPresentationXML, and there is no
+// page in it for the server to lint.
+func createSlideBody(slideXML string, runtime *common.RuntimeContext) map[string]interface{} {
+	return withLintXML(map[string]interface{}{
+		"slide": map[string]interface{}{"content": slideXML},
+	}, runtime)
 }
 
 // buildPresentationXML builds the minimal XML for a new empty presentation.

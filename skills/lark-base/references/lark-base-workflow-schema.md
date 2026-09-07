@@ -125,6 +125,7 @@
 | `Delay` | 延迟 |
 | `LarkMessageAction` | 发送飞书消息 |
 | `GenerateAiTextAction` | AI 生成文本 |
+| `AIAnalysisAction` | AI 分析 |
 
 > 所有 Action 节点**请勿设置** `children` ，通过 `next` 串联后继。
 
@@ -134,6 +135,7 @@
 |------|------|
 | `IfElseBranch` | 条件分支，`children.links` 含 `if_true` 和 `if_false` |
 | `SwitchBranch` | 多路分支，`children.links` 含多个 `case` |
+| `AIClassificationBranch` | AI 分类分支，`children.links` 含多个 `case` |
 
 ### System 类型
 
@@ -473,6 +475,26 @@
 |------|------|------|
 | `prompt` | 是 | TextRefItem[] 提示词，支持 `text` / `ref` |
 
+### AIAnalysisAction
+
+```json
+{
+  "analysis_task": [
+    { "value_type": "text", "value": "分析昨日订单趋势、异常原因，并给出行动建议" }
+  ],
+  "analysis_table_names": ["订单表", "退款表"],
+  "identity_type": "maker",
+  "output_instruction": "先给结论，再列证据与行动建议"
+}
+```
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `analysis_task` | 是 | TextRefItem[] 分析任务，支持 `text` / `ref` 混排；至少包含一项有效内容 |
+| `analysis_table_names` | 否 | string[] 分析数据范围；为空数组 `[]` 或省略时表示当前 Base 的全部数据表 |
+| `identity_type` | 是 | 数据访问身份：`maker`（固定流程身份） / `triggerPersonal`（流程触发者） |
+| `output_instruction` | 否 | 仅支持纯文本 |
+
 
 ## Branch data 详细结构
 
@@ -551,6 +573,45 @@
 |------|------|------|
 | `name` | string | 分支名称 |
 | `condition` | OrGroup | 分支条件 |
+
+### AIClassificationBranch
+
+`AIClassificationBranch` 用 AI 对 `content` 内容做分类，再通过 `children.links` 中的 `case` 边进入命中的后续步骤。`steps[].data` 使用公开 Agent Data 协议。
+
+```json
+{
+  "classes": [
+    {
+      "name": "Bug",
+      "desc": "功能报错、异常、不可用或结果错误"
+    },
+    {
+      "name": "功能建议",
+      "desc": "希望新增能力或优化现有功能"
+    }
+  ],
+  "content": [
+    { "value_type": "text", "value": "请根据反馈内容判断类型：" },
+    { "value_type": "ref", "value": "$.step_trigger.fldFeedback" }
+  ],
+  "classification_rule": "信息不足时判定为无法匹配。"
+}
+```
+
+| 字段 | 必填 | 说明                                                                   |
+|------|------|----------------------------------------------------------------------|
+| `classes` | 是 | 分类列表，至少 2 项。每项包含 `name` 和 `desc`                                     |
+| `classes[].name` | 是 | 分类名称，需与对应普通 `children.links[].desc` 保持一致                             |
+| `classes[].desc` | 是 | 分类描述，可为空字符串，但字段必须存在                                                  |
+| `content` | 是 | TextRefItem[]，用于分类的内容，支持 `text` / `ref`                              |
+| `classification_rule` | 否 | 全局分类规则纯文本                                                            |
+| `no_match_action` | 否 | 无匹配策略。`classifyToOther`：进入默认分支；`fail`：当前节点失败。省略时使用 `classifyToOther` |
+
+`children.links` 规则：
+- 每个分类命中后要跳到哪个后续步骤，必须写在 children.links 中。
+- 普通分类边使用 `kind: "case"` 和 `label: "branch_1"`、`branch_2` 等稳定标签；`desc` 与 `classes[i].name` 保持一致；`to` 指向该分类的入口 step。
+- `no_match_action: "classifyToOther"` 时必须额外提供一条默认分支边：`{ "kind": "case", "label": "default", "desc": "默认分支", "to": "step_other_action" }`。
+- `no_match_action: "fail"` 时不要提供默认分支边。
 
 
 ## System data 详细结构
@@ -788,6 +849,12 @@ HTTPClientAction 的输出取决于 `response_type`：
 |--------|------|----------|
 | （整体出参） | AI 生成的文本内容（不支持下钻，只能引用 `$.{stepId}`） | `$.{stepId}` |
 
+##### AIAnalysisAction（AI 分析）
+
+| pathId | 说明 | 引用示例 |
+|--------|------|----------|
+| `analysisResult` | AI 分析结果字符串 | `$.{stepId}.analysisResult` |
+
 ##### 无输出的操作节点
 
 以下节点不产生任何可引用的输出数据：
@@ -887,6 +954,7 @@ $.{stepId}.{fieldId}.fileToken    → 文件 Token 列表（array<string>，仅�
 | SetRecordAction | 动作 | ✅ | 动态（用户配置的字段） |
 | HTTPClientAction | 动作 | ✅ | 动态（取决于用户配置的 HTTP 响应输出） |
 | GenerateAiTextAction | 动作 | ✅ | 静态（单 string） |
+| AIAnalysisAction | 动作 | ✅ | 静态（`analysisResult`） |
 | Delay | 动作 | ❌ | 无输出 |
 | LarkMessageAction | 动作 | ❌ | 无输出 |
 | IfElseBranch | 分支 | ❌ | 无输出 |

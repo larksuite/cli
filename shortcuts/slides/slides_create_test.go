@@ -298,42 +298,7 @@ func TestSlidesCreateWithSlides(t *testing.T) {
 	t.Parallel()
 
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    "/open-apis/slides_ai/v1/xml_presentations",
-		Body: map[string]interface{}{
-			"code": 0,
-			"msg":  "ok",
-			"data": map[string]interface{}{
-				"xml_presentation_id": "pres_with_slides",
-				"revision_id":         1,
-			},
-		},
-	})
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_with_slides/slide",
-		Body: map[string]interface{}{
-			"code": 0,
-			"msg":  "ok",
-			"data": map[string]interface{}{
-				"slide_id":    "slide_001",
-				"revision_id": 2,
-			},
-		},
-	})
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_with_slides/slide",
-		Body: map[string]interface{}{
-			"code": 0,
-			"msg":  "ok",
-			"data": map[string]interface{}{
-				"slide_id":    "slide_002",
-				"revision_id": 3,
-			},
-		},
-	})
+	createStubPresentation(t, reg, "pres_with_slides", 2)
 
 	slidesJSON := `["<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data></data></slide>","<slide xmlns=\"https://www.larkoffice.com/sml/2.0\"><data></data></slide>"]`
 	err := runSlidesCreateShortcut(t, f, stdout, []string{
@@ -354,14 +319,18 @@ func TestSlidesCreateWithSlides(t *testing.T) {
 	if !ok || len(slideIDs) != 2 {
 		t.Fatalf("slide_ids = %v, want 2 elements", data["slide_ids"])
 	}
-	if slideIDs[0] != "slide_001" || slideIDs[1] != "slide_002" {
-		t.Fatalf("slide_ids = %v, want [slide_001, slide_002]", slideIDs)
+	if slideIDs[0] != "s_1" || slideIDs[1] != "s_2" {
+		t.Fatalf("slide_ids = %v, want [s_1, s_2]", slideIDs)
 	}
 	if data["slides_added"] != float64(2) {
 		t.Fatalf("slides_added = %v, want 2", data["slides_added"])
 	}
 }
 
+// TestSlidesCreatePreservesSchemaIssues keeps the advisories from every call
+// that produced them. Each page is judged by its own call, so the per-page
+// findings are collected under slide_issues with the page they belong to, and
+// the presentation-level ones stay separate.
 func TestSlidesCreatePreservesSchemaIssues(t *testing.T) {
 	t.Parallel()
 
@@ -409,6 +378,70 @@ func TestSlidesCreatePreservesSchemaIssues(t *testing.T) {
 	issue, _ := slideIssues[0].(map[string]interface{})
 	if issue["slide_index"] != float64(1) || issue["slide_id"] != "slide_001" || issue["issues"] != "slide schema issue" {
 		t.Fatalf("slide_issues[0] = %#v", issue)
+	}
+}
+
+// TestSlidesCreateRefusedPageSaysWhatLanded is what a lint refusal mid-deck has
+// to tell the caller. The pages go in one at a time, so page 2 is refused with
+// page 1 already on the server and a presentation that exists — the run cannot
+// undo that, so the error has to name the presentation and say how far it got,
+// or the caller retries into a duplicate deck.
+func TestSlidesCreateRefusedPageSaysWhatLanded(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"xml_presentation_id": "pres_refused", "revision_id": 1},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_refused/slide",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"slide_id": "s_1", "revision_id": 2}},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_refused/slide",
+		Body:   map[string]interface{}{"code": 4000153, "msg": lintBlockMessage},
+	})
+
+	page1 := `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data><shape type="text" width="10" height="10"/></data></slide>`
+	page2 := `<slide xmlns="https://www.larkoffice.com/sml/2.0"><data><shape type="text" width="9999" height="10"/></data></slide>`
+	err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "Partial",
+		"--slide", page1,
+		"--slide", page2,
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected the refused page to surface, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected a typed errs.* error, got %v", err)
+	}
+	if p.Category != errs.CategoryAPI {
+		t.Fatalf("category = %q, want %q", p.Category, errs.CategoryAPI)
+	}
+	// The lint report reaches the caller verbatim, so the findings are there to
+	// read and parse the same way `lark-cli api` would deliver them.
+	if p.Message != lintBlockMessage {
+		t.Fatalf("message = %q, want the lint report verbatim", p.Message)
+	}
+	// Both halves of the hint matter: how to fix the page, and what already
+	// exists so the retry adds the rest instead of starting over.
+	if !strings.Contains(p.Hint, lintRemediationHint) {
+		t.Fatalf("hint = %q, want the lint remediation wording", p.Hint)
+	}
+	for _, want := range []string{"pres_refused", "slide 2/2", "1 slide(s) added"} {
+		if !strings.Contains(p.Hint, want) {
+			t.Fatalf("hint lost %q, got: %s", want, p.Hint)
+		}
 	}
 }
 
@@ -481,14 +514,10 @@ func TestSlidesCreateWithSlidesPartialFailure(t *testing.T) {
 	// The presentation was created but a slide add failed; the recovery hint
 	// carries the partial-progress context (which presentation exists, how many
 	// slides landed) so the caller can resume without recreating.
-	if !strings.Contains(p.Hint, "pres_partial") {
-		t.Fatalf("hint should contain presentation ID, got: %s", p.Hint)
-	}
-	if !strings.Contains(p.Hint, "slide 2/2") {
-		t.Fatalf("hint should indicate slide 2/2 failed, got: %s", p.Hint)
-	}
-	if !strings.Contains(p.Hint, "1 slide(s) added") {
-		t.Fatalf("hint should report 1 slide added before failure, got: %s", p.Hint)
+	for _, want := range []string{"pres_partial", "slide 2/2", "1 slide(s) added"} {
+		if !strings.Contains(p.Hint, want) {
+			t.Fatalf("hint lost %q, got: %s", want, p.Hint)
+		}
 	}
 }
 

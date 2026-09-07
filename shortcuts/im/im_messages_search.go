@@ -172,13 +172,14 @@ var ImMessagesSearch = common.Shortcut{
 		// nameCache also pre-resolves every sub-item's sender open_id in one
 		// batched contact API call.
 		mergePrefetch := convertlib.PrefetchMergeForwardSubItems(runtime, msgItems, nameCache)
+		folderPrefetch := convertlib.PrefetchFolderChildren(runtime, msgItems)
 		enriched := make([]map[string]interface{}, 0, len(msgItems))
 		for _, item := range msgItems {
 			m, _ := item.(map[string]interface{})
 			chatId, _ := m["chat_id"].(string)
 
 			// Reuse unified content converter
-			msg := convertlib.FormatMessageItemWithMergePrefetch(m, runtime, nameCache, mergePrefetch)
+			msg := convertlib.FormatMessageItemWithFolderPrefetchOpts(m, runtime, nameCache, mergePrefetch, folderPrefetch, false)
 			if chatId != "" {
 				msg["chat_id"] = chatId
 			}

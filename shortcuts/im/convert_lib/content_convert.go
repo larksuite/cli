@@ -43,6 +43,13 @@ type ConvertContext struct {
 	// per-message inline GET", which keeps non-shortcut callers (events,
 	// ad-hoc tests) working unchanged.
 	MergeForwardSubItems map[string][]map[string]interface{}
+
+	// FolderChildren is an optional pre-fetched cache of folder-expansion XML,
+	// keyed by folder-message message_id. When set, the folder converter uses
+	// the cached entry instead of issuing its own GET; populated by callers
+	// via PrefetchFolderChildren before the FormatMessageItem loop. nil means
+	// "no prefetch — fall back to the per-message inline GET".
+	FolderChildren map[string]string
 }
 
 // converters maps message types to their ContentConverter implementations.
@@ -131,7 +138,7 @@ func FormatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 	if len(senderNames) > 0 {
 		nameCache = senderNames[0]
 	}
-	return formatMessageItem(m, runtime, nameCache, nil, false)
+	return formatMessageItem(m, runtime, nameCache, nil, nil, false)
 }
 
 // FormatMessageItemWithMergePrefetch is like FormatMessageItem but threads a
@@ -140,8 +147,11 @@ func FormatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 // can skip its own per-message GET. Shortcuts that iterate a page of raw
 // items should pre-fetch once and call this variant in the loop to avoid the
 // N × ~1s serial-merge_forward stall in the original code path.
+//
+// Kept as a nil-folder-prefetch compatibility wrapper for external callers;
+// internal list commands have migrated to FormatMessageItemWithFolderPrefetchOpts.
 func FormatMessageItemWithMergePrefetch(m map[string]interface{}, runtime *common.RuntimeContext, nameCache map[string]string, mergePrefetch map[string][]map[string]interface{}) map[string]interface{} {
-	return formatMessageItem(m, runtime, nameCache, mergePrefetch, false)
+	return formatMessageItem(m, runtime, nameCache, mergePrefetch, nil, false)
 }
 
 // FormatMessageItemWithMergePrefetchOpts is FormatMessageItemWithMergePrefetch
@@ -150,11 +160,24 @@ func FormatMessageItemWithMergePrefetch(m map[string]interface{}, runtime *commo
 // without local_path/size_bytes) is attached for the download enrichment stage
 // to fill. The other entry points are thin extractResources=false wrappers, so
 // default output is unchanged.
+//
+// Kept as a nil-folder-prefetch compatibility wrapper for external callers;
+// internal list commands use FormatMessageItemWithFolderPrefetchOpts when a
+// page may contain folder messages.
 func FormatMessageItemWithMergePrefetchOpts(m map[string]interface{}, runtime *common.RuntimeContext, nameCache map[string]string, mergePrefetch map[string][]map[string]interface{}, extractResources bool) map[string]interface{} {
-	return formatMessageItem(m, runtime, nameCache, mergePrefetch, extractResources)
+	return formatMessageItem(m, runtime, nameCache, mergePrefetch, nil, extractResources)
 }
 
-func formatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext, nameCache map[string]string, mergePrefetch map[string][]map[string]interface{}, extractResources bool) map[string]interface{} {
+// FormatMessageItemWithFolderPrefetchOpts is FormatMessageItemWithMergePrefetchOpts
+// with an additional folder-children prefetch cache (built via
+// PrefetchFolderChildren) keyed by folder-message message_id. Callers that
+// render a page that may contain folder messages pass both prefetch maps so
+// the folder converter reuses cached XML instead of N serial GETs.
+func FormatMessageItemWithFolderPrefetchOpts(m map[string]interface{}, runtime *common.RuntimeContext, nameCache map[string]string, mergePrefetch map[string][]map[string]interface{}, folderPrefetch map[string]string, extractResources bool) map[string]interface{} {
+	return formatMessageItem(m, runtime, nameCache, mergePrefetch, folderPrefetch, extractResources)
+}
+
+func formatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext, nameCache map[string]string, mergePrefetch map[string][]map[string]interface{}, folderPrefetch map[string]string, extractResources bool) map[string]interface{} {
 	msgType, _ := m["msg_type"].(string)
 	messageId, _ := m["message_id"].(string)
 	mentions, _ := m["mentions"].([]interface{})
@@ -173,6 +196,7 @@ func formatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 			Runtime:              runtime,
 			SenderNames:          nameCache,
 			MergeForwardSubItems: mergePrefetch,
+			FolderChildren:       folderPrefetch,
 		})
 	}
 

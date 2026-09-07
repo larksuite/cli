@@ -64,7 +64,9 @@ metadata:
 | 不可逆删除 | `*.delete`、`drafts.delete` | ✅ 必须 |
 | 软删除 | `*.trash`、`*.batch_trash` | ✅ 必须 |
 | 取消定时 | `*.cancel_scheduled_send` | ✅ 必须 |
-| 修改收信规则 | `rules.create` / `update` / `delete` | ✅ 必须 |
+| 删除收信规则 | `rules.delete` | ✅ 必须 |
+| 创建 / 更新收信规则 | `rules.create` / `update` | ✅ 必须 |
+| 启停 / 排序收信规则 | `rules.enable` / `disable` / `reorder` | ❌ 普通写操作，免 `--yes` |
 | 标签变更 | `*.add_label`、`*.remove_label` | ❌ 可逆，免确认 |
 | 已读状态 | `*.mark_read` / `mark_unread` | ❌ 可逆，免确认 |
 | 移动文件夹 | `*.move` | ❌ 可逆，免确认 |
@@ -122,7 +124,7 @@ metadata:
 - 撤回已发送邮件：撤回邮件并查询异步撤回状态。ref: [lark-mail-recall](references/lark-mail-recall.md)
 - 修改邮件标签/已读状态/文件夹：优先使用 `+message-modify`。ref: [`+message-modify`](references/lark-mail-message-modify.md)
 - 软删除邮件：优先使用 `+message-trash`。ref: [`+message-trash`](references/lark-mail-message-trash.md)
-- 收信规则：创建、验证、删除自动处理收到邮件的规则。ref: [lark-mail-rules](references/lark-mail-rules.md)
+- 收信规则：查看、创建、更新、删除、启停、排序自动处理收到邮件的规则。ref: [lark-mail-rules](references/lark-mail-rules.md)
 - 分享邮件到 IM：分享邮件或会话到群聊、个人会话。ref: [lark-mail-share-to-chat](references/lark-mail-share-to-chat.md)
 - 发送日程邀请邮件：在邮件中嵌入 `text/calendar` 日程邀请。ref: [lark-mail-calendar-invite](references/lark-mail-calendar-invite.md)
 - 编写复杂 HTML 正文：复杂 HTML、本地图片、安全不确定时读取规范或运行 `+lint-html`；普通正文无需预读。ref: [lark-mail-html](references/lark-mail-html.md)
@@ -244,9 +246,13 @@ lark-cli mail <resource> <method> --params '{...}' [--data '{...}']
 **GET — 只有 `--params`**（`parameters` 中有 path + query，无 `requestBody`）：
 
 ```bash
-# schema 中：user_mailbox_id (path, required), page_size (query, required), folder_id (query, optional)
-lark-cli mail user_mailbox.messages list \
+# schema 中：user_mailbox_id (path, required), page_size (query, required)
+# user_mailbox.threads.list 要求 folder_id / label_id 必须且只能提供一个
+lark-cli mail user_mailbox.threads list \
   --params '{"user_mailbox_id":"me","page_size":20,"folder_id":"INBOX"}'
+
+lark-cli mail user_mailbox.threads list \
+  --params '{"user_mailbox_id":"me","page_size":20,"label_id":"FLAGGED"}'
 ```
 
 **POST — `--params` + `--data`**（`parameters` 中有 path，`requestBody` 有 body 字段）：
