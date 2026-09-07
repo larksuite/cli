@@ -579,6 +579,30 @@ func TestStylesPut_ChunksPastTheRequestCap(t *testing.T) {
 		}
 	})
 
+	t.Run("a failing first request reports that nothing applied", func(t *testing.T) {
+		t.Parallel()
+		parent, _, _, reg := newTestRig(t, StylesPut)
+		reg.Register(&httpmock.Stub{
+			Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_write",
+			Body: map[string]interface{}{
+				"code": 900015206, "msg": "batch_update: 0 succeeded, 100 failed", "data": map[string]interface{}{},
+			}, Reusable: true,
+		})
+		parent.SetArgs([]string{"+styles-put", "--url", testURL, "--styles", spec(152)})
+		p := requireProblem(t, parent.Execute(), errs.CategoryAPI, errs.SubtypeServerError, "batch_update")
+		// "requests 1-0 already applied" is not a sentence, and the merge
+		// caveat does not apply when nothing landed.
+		if strings.Contains(p.Hint, "1-0") {
+			t.Errorf("hint = %q, want no empty applied range", p.Hint)
+		}
+		if !strings.Contains(p.Hint, "NOTHING was applied") {
+			t.Errorf("hint = %q, want it to say nothing landed", p.Hint)
+		}
+		if strings.Contains(p.Hint, "cell_merges") {
+			t.Errorf("hint = %q, want no merge recovery advice when nothing applied", p.Hint)
+		}
+	})
+
 	t.Run("a failing later request reports what already applied", func(t *testing.T) {
 		t.Parallel()
 		parent, _, _, reg := newTestRig(t, StylesPut)

@@ -326,12 +326,15 @@ func chainFlagAliases(cmd *cobra.Command) {
 // manifest, and these rewrites are deliberately silent.
 
 // aliasProvenanceFlags names, per command, the canonical flags whose supplying
-// spelling must be tracked. Only +csv-put's --csv qualifies: it is the one
-// alias in commandFlagAliases whose value semantics differ from its target's.
-// Kept explicit rather than derived, so wrapping a flag's Value stays a
-// deliberate, reviewed act.
+// spelling must be tracked — the aliases in commandFlagAliases whose value
+// semantics differ from their target's. Two today: +csv-put's --csv (--file
+// carries a path, --csv carries text) and +workbook-export's --output-path
+// (--outdir names a directory, --output-path names a file unless the path
+// already exists as one). Kept explicit rather than derived, so wrapping a
+// flag's Value stays a deliberate, reviewed act.
 var aliasProvenanceFlags = map[string][]string{
-	"+csv-put": {"csv"},
+	"+csv-put":         {"csv"},
+	"+workbook-export": {"output-path"},
 }
 
 // aliasTrackingValue wraps a flag's pflag.Value to commit the staged spelling
@@ -398,6 +401,15 @@ func aliasSourceAnnotation(canonical string) string {
 // than CSV text (see resolveCSVPathFromFileAlias). The other two aliases
 // (data / content) carry --csv's own semantics and need no value-side rule.
 var pathValuedCSVAliases = []string{"file", "csv-file"}
+
+// directoryValuedExportAliases are the +workbook-export spellings that name a
+// DIRECTORY to download into. --output-path itself, and the --file / --output
+// spellings, name the file to write; applyWorkbookOutputPath only reads a
+// value as a directory when one already exists at that path, so "--outdir
+// ./exports" with no ./exports would otherwise write a file literally named
+// "exports". These two say directory in their own name and are treated as one
+// whether or not it exists yet.
+var directoryValuedExportAliases = []string{"outdir", "output-dir"}
 
 // aliasSpellingUsed returns the habitual spelling that supplied canonical's
 // value, or fallback when the annotation is missing.

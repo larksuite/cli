@@ -50,11 +50,13 @@ func TestGuardCSVValueIsNotFilePath(t *testing.T) {
 	}
 }
 
-// TestGuardCSVValueReadsForgottenAtPath covers the tier the 08-29..31 reflow
-// added: a path-SHAPED value naming a real file is a forgotten "@" and nothing
-// else, so the file is read and the substitution is reported in the envelope
-// instead of costing a round trip.
-func TestGuardCSVValueReadsForgottenAtPath(t *testing.T) {
+// TestGuardCSVValueIsNotFilePath_PathShapedExistingFile pins that a
+// path-shaped value naming a real file is REJECTED rather than read. Reading
+// it was tried in the 08-29..31 reflow round and reverted on review: --csv is
+// literal CSV text, so silently swapping in a same-named local file makes the
+// flag's meaning depend on the working directory and turns a cell write into a
+// local-file read. File intent stays explicit.
+func TestGuardCSVValueIsNotFilePath_PathShapedExistingFile(t *testing.T) {
 	dir := t.TempDir()
 	cmdutil.TestChdir(t, dir)
 	if err := os.WriteFile("data.csv", []byte("a,b\n1,2\n"), 0644); err != nil {
@@ -62,18 +64,17 @@ func TestGuardCSVValueReadsForgottenAtPath(t *testing.T) {
 	}
 
 	runtime := newCSVGuardRuntime("./data.csv")
-	if err := guardCSVValueIsNotFilePath(runtime); err != nil {
-		t.Fatalf("a path-shaped existing file should be read, got: %v", err)
+	err := guardCSVValueIsNotFilePath(runtime)
+	ve := requireValidation(t, err, "existing file")
+	if !strings.Contains(ve.Message, "--csv @<path>") {
+		t.Errorf("message should prescribe the @ form, got: %q", ve.Message)
 	}
-	if got := runtime.Str("csv"); got != "a,b\n1,2\n" {
-		t.Errorf("--csv = %q, want the file contents", got)
+	// The value must still be the caller's text: no read happened.
+	if got := runtime.Str("csv"); got != "./data.csv" {
+		t.Errorf("--csv = %q, want the value left untouched", got)
 	}
-	if !runtime.InputResolvedFromSource("csv") {
-		t.Error("the value came from a file, so it must be marked resolved")
-	}
-	warnings := csvForgottenAtWarnings(runtime)
-	if len(warnings) != 1 || !strings.Contains(warnings[0], "@./data.csv") {
-		t.Errorf("warnings = %v, want one naming the explicit @ form", warnings)
+	if runtime.InputResolvedFromSource("csv") {
+		t.Error("nothing was read, so the value must not be marked resolved")
 	}
 }
 
@@ -322,31 +323,4 @@ func TestResolveCSVPathFromFileAlias_UnreadablePaths(t *testing.T) {
 			t.Error("the underlying read error should be preserved as Cause")
 		}
 	})
-}
-
-// TestCsvPutExecuteReportsForgottenAtSubstitution runs the whole +csv-put path
-// rather than csvForgottenAtWarnings on its own: the substitution is only
-// useful if it reaches the success envelope, and the direct unit test above
-// would keep passing if Execute stopped threading it through runtime.Out.
-func TestCsvPutExecuteReportsForgottenAtSubstitution(t *testing.T) {
-	dir := t.TempDir()
-	cmdutil.TestChdir(t, dir)
-	if err := os.WriteFile("data.csv", []byte("a,b\n1,2\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	stdout, err := runShortcutWithStubs(t, CsvPut, []string{
-		"--url", testURL, "--sheet-name", "S1", "--start-cell", "A1", "--csv", "./data.csv",
-	}, toolOutputStub(testToken, "write", `{"success":true}`))
-	if err != nil {
-		t.Fatalf("execute failed: %v\nstdout=%s", err, stdout)
-	}
-	data := decodeEnvelopeData(t, stdout)
-	warnings, _ := data["warnings"].([]interface{})
-	if len(warnings) != 1 {
-		t.Fatalf("expected the substitution note in the payload, got %#v", data)
-	}
-	if warning, _ := warnings[0].(string); !strings.Contains(warning, "@./data.csv") {
-		t.Errorf("warning should name the explicit @ form, got %q", warnings[0])
-	}
 }

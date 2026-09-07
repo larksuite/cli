@@ -98,6 +98,14 @@ var StylesPut = common.Shortcut{
 				// rejection before the failed chunk is even reached, which
 				// would leave the caller stuck on an error about work that
 				// already succeeded.
+				if i == 0 {
+					// Nothing landed: the spec is untouched on the sheet, so
+					// the merge caveat below does not apply and saying
+					// "requests 1-0 already applied" would be nonsense.
+					return attachSheetsWarningsToError(err, []string{fmt.Sprintf(
+						"--styles was sent as %d batch requests and the first one failed, so NOTHING was applied; fix the spec and re-run it whole",
+						len(chunks))})
+				}
 				return attachSheetsWarningsToError(err, []string{fmt.Sprintf(
 					"--styles was sent as %d batch requests and request %d failed; requests 1-%d already applied. Style stamps are idempotent, so a spec of styles/sizes/freeze alone is safe to re-run as-is; if it carries cell_merges, read the sheet back first and resend only the merges that did not land — replaying an applied merge is rejected as an overlap",
 					len(chunks), i+1, i)})

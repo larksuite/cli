@@ -656,6 +656,49 @@ func TestCellsSet_BareAnchorRaisesNoNarrowingWarning(t *testing.T) {
 			t.Errorf("warning should name the range actually written, got %q", warnings[0])
 		}
 	})
+
+	t.Run("a narrowed --writes item is reported too", func(t *testing.T) {
+		t.Parallel()
+		// The narrowing happens in the shared input builder, so a nested item
+		// ships A1:B2 exactly as the standalone call does. Reconstructing the
+		// warning from the top-level flags could never see this.
+		stdout, err := runShortcutWithStubs(t, CellsSet, []string{
+			"--url", testURL,
+			"--writes", `[{"sheet_name":"S1","range":"A1:D4","cells":[[{"value":"a"},{"value":"b"}],[{"value":"c"},{"value":"d"}]]}]`,
+		}, toolOutputStub(testToken, "write", `{"success":true}`))
+		if err != nil {
+			t.Fatalf("execute failed: %v\nstdout=%s", err, stdout)
+		}
+		warnings, _ := decodeEnvelopeData(t, stdout)["warnings"].([]interface{})
+		if len(warnings) != 1 {
+			t.Fatalf("the nested narrowing must be reported, got %#v", warnings)
+		}
+		w, _ := warnings[0].(string)
+		if !strings.Contains(w, "--writes[0]") || !strings.Contains(w, `"A1:B2"`) {
+			t.Errorf("warning should name the item and the range written, got %q", w)
+		}
+	})
+
+	t.Run("a narrowed +batch-update sub-op is reported too", func(t *testing.T) {
+		t.Parallel()
+		stdout, err := runShortcutWithStubs(t, BatchUpdate, []string{
+			"--url", testURL, "--yes",
+			"--operations", `[{"shortcut":"+cells-set","input":{"sheet_name":"S1","range":"A1:D4","cells":[[{"value":"a"},{"value":"b"}],[{"value":"c"},{"value":"d"}]]}}]`,
+		}, toolOutputStub(testToken, "write", `{"success":true}`))
+		if err != nil {
+			t.Fatalf("execute failed: %v\nstdout=%s", err, stdout)
+		}
+		warnings, _ := decodeEnvelopeData(t, stdout)["warnings"].([]interface{})
+		var found string
+		for _, raw := range warnings {
+			if w, _ := raw.(string); strings.Contains(w, "operations[0]") {
+				found = w
+			}
+		}
+		if found == "" || !strings.Contains(found, `"A1:B2"`) {
+			t.Errorf("the sub-op narrowing must be reported, got %#v", warnings)
+		}
+	})
 }
 
 // TestCellRange_Sized pins the range handed back by the dimension mismatch

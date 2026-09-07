@@ -261,7 +261,8 @@ func newObjectUpdateShortcut(spec objectCRUDSpec) common.Shortcut {
 			}
 			out, err := callTool(ctx, runtime, token, ToolKindWrite, spec.toolName, input)
 			if err != nil {
-				return annotateStaleObjectID(err, spec)
+				objectID, _ := input[spec.idField].(string)
+				return annotateStaleObjectID(err, spec, objectID)
 			}
 			runtime.Out(out, nil)
 			return nil
@@ -276,13 +277,30 @@ func newObjectUpdateShortcut(spec objectCRUDSpec) common.Shortcut {
 // longer exists". 08-29..31 reflow: 14 rejections across +cond-format-update
 // and +cond-format-delete, the two largest long-tail entries after the flag
 // renames. Any other failure passes through untouched.
-func annotateStaleObjectID(err error, spec objectCRUDSpec) error {
-	if spec.idFlag == "" {
+//
+// objectID gates it. "not found" alone also covers failures about the SHEET
+// selector ("sheet \"s\" not found"), where telling the caller to refresh
+// chart ids points at the one input that was right; the message has to name
+// the id this command addressed before the hint can claim it went stale.
+func annotateStaleObjectID(err error, spec objectCRUDSpec, objectID string) error {
+	objectID = strings.TrimSpace(objectID)
+	if spec.idFlag == "" || objectID == "" {
 		return err
 	}
 	p, ok := errs.ProblemOf(err)
-	if !ok || p.Hint != "" || !strings.Contains(strings.ToLower(p.Message), "not found") {
+	if !ok || p.Hint != "" {
 		return err
+	}
+	msg := strings.ToLower(p.Message)
+	if !strings.Contains(msg, "not found") || !strings.Contains(msg, strings.ToLower(objectID)) {
+		return err
+	}
+	// A sheet or workbook that does not exist is a different missing thing,
+	// even on the rare id that appears in such a message as a substring.
+	for _, scope := range []string{"sheet", "spreadsheet", "workbook"} {
+		if strings.Contains(msg, scope+" not found") || strings.Contains(msg, scope+" \"") {
+			return err
+		}
 	}
 	p.Hint = fmt.Sprintf(
 		"list the live ids with %s-list and retry with one of those — an id from another sheet, or one whose object was replaced, does not exist here",
@@ -366,7 +384,8 @@ func newObjectDeleteShortcut(spec objectCRUDSpec) common.Shortcut {
 			}
 			out, err := callTool(ctx, runtime, token, ToolKindWrite, spec.toolName, input)
 			if err != nil {
-				return annotateStaleObjectID(err, spec)
+				objectID, _ := input[spec.idField].(string)
+				return annotateStaleObjectID(err, spec, objectID)
 			}
 			runtime.Out(out, nil)
 			return nil
@@ -1313,6 +1332,13 @@ var condFormatFontWords = map[string]string{
 	"italic":      "italic",
 }
 
+// condFormatFontEnum reports whether a `font` value is one this schema
+// declares. "bold italic" is deliberately excluded: it already carries both
+// effects, so there is nothing left to fold into it.
+func condFormatFontEnum(v string) bool {
+	return v == "bold" || v == "italic"
+}
+
 // normalizeCondFormatStyle folds the cell-style spellings a caller brings from
 // --styles into the rule style's own vocabulary, in place.
 func normalizeCondFormatStyle(style map[string]interface{}) {
@@ -1354,8 +1380,19 @@ func normalizeCondFormatStyle(style map[string]interface{}) {
 		switch {
 		case existing == "":
 			style["font"] = word
-		case existing != word:
+		case existing == word:
+			// Already says it; the flat spelling is redundant.
+		case condFormatFontEnum(existing):
+			// The only two recognized values are bold and italic, so a
+			// different recognized one means both were asked for.
 			style["font"] = "bold italic"
+		default:
+			// Anything else under `font` is not a value this fold understands
+			// ("normal", a typo, a CSS weight). Combining it would invent an
+			// italic the caller never wrote and turn invalid input into valid
+			// input; leave it for the schema to reject and keep the flat
+			// spelling visible alongside it.
+			continue
 		}
 		delete(style, field)
 	}

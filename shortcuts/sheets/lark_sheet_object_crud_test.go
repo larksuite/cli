@@ -947,6 +947,30 @@ func TestCondFormatPropertiesNormalization(t *testing.T) {
 		}
 	})
 
+	t.Run("an unrecognized font value is not combined", func(t *testing.T) {
+		t.Parallel()
+		// bold and italic are the only values this fold understands. Treating
+		// every other one as "the complementary style" turned
+		// {"font":"normal","font_weight":"bold"} into "bold italic" — invalid
+		// input silently became valid, with a slant nobody asked for.
+		for _, tc := range []struct{ name, props, wantFont string }{
+			{"normal stays put", `{"style":{"font":"normal","font_weight":"bold"}}`, "normal"},
+			{"a typo stays put", `{"style":{"font":"blod","italic":true}}`, "blod"},
+			{"bold plus italic still combines", `{"style":{"font":"bold","italic":true}}`, "bold italic"},
+			{"bold repeated stays bold", `{"style":{"font":"bold","font_weight":"bold"}}`, "bold"},
+		} {
+			var props map[string]interface{}
+			if err := json.Unmarshal([]byte(tc.props), &props); err != nil {
+				t.Fatal(err)
+			}
+			normalizeCondFormatProperties(props)
+			style, _ := props["style"].(map[string]interface{})
+			if style["font"] != tc.wantFont {
+				t.Errorf("%s: font = %v, want %q", tc.name, style["font"], tc.wantFont)
+			}
+		}
+	})
+
 	t.Run("a weight word that asks for nothing is not folded", func(t *testing.T) {
 		t.Parallel()
 		// This schema has no way to say "not bold", so bold:false is dropped
@@ -1064,7 +1088,7 @@ func TestCondFormatStaleRuleIDHint(t *testing.T) {
 		t.Parallel()
 		sentinel := errors.New("underlying transport fault")
 		in := errs.NewAPIError(errs.SubtypeServerError, "conditional format iXGbyDwC not found").WithCause(sentinel)
-		out := annotateStaleObjectID(in, condFormatSpec)
+		out := annotateStaleObjectID(in, condFormatSpec, "iXGbyDwC")
 		p, ok := errs.ProblemOf(out)
 		if !ok {
 			t.Fatalf("out = %v, want a typed problem", out)
@@ -1074,6 +1098,23 @@ func TestCondFormatStaleRuleIDHint(t *testing.T) {
 		}
 		if !errors.Is(out, sentinel) {
 			t.Errorf("out = %v, want the wrapped cause still reachable via errors.Is", out)
+		}
+	})
+
+	t.Run("a not-found about something else keeps its own message", func(t *testing.T) {
+		t.Parallel()
+		// "not found" alone also covers the SHEET selector. Telling the caller
+		// to refresh rule ids there points at the one input that was right.
+		for _, tc := range []struct{ name, msg string }{
+			{"missing sheet", `sheet "s" not found`},
+			{"missing workbook", "spreadsheet not found"},
+			{"another rule's id", "conditional format iOTHER99 not found"},
+		} {
+			in := errs.NewAPIError(errs.SubtypeServerError, "%s", tc.msg)
+			p, _ := errs.ProblemOf(annotateStaleObjectID(in, condFormatSpec, "iXGbyDwC"))
+			if p.Hint != "" {
+				t.Errorf("%s: hint = %q, want none", tc.name, p.Hint)
+			}
 		}
 	})
 }

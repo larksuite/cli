@@ -2269,7 +2269,8 @@ var WorkbookExport = common.Shortcut{
 		if err := errLocalOfficeExportUnsupported(p.Token); err != nil {
 			return err
 		}
-		applyWorkbookOutputPath(&p, runtime.FileIO(), runtime.Str("output-path"))
+		applyWorkbookOutputPath(&p, runtime.FileIO(), runtime.Str("output-path"),
+			flagValueCameFromAlias(runtime.Cmd, "output-path", directoryValuedExportAliases...))
 		return drive.RunExport(ctx, runtime, p)
 	},
 	Tips: []string{
@@ -2346,9 +2347,16 @@ func workbookExportParams(runtime *common.RuntimeContext) (drive.ExportParams, e
 // download (return the ready file token only); an existing directory = download
 // into it under the server-provided name; otherwise treat it as a file path and
 // split into dir + base name.
-func applyWorkbookOutputPath(p *drive.ExportParams, fio fileio.FileIO, outputPath string) {
+func applyWorkbookOutputPath(p *drive.ExportParams, fio fileio.FileIO, outputPath string, asDirectory bool) {
 	outputPath = strings.TrimSpace(outputPath)
 	if outputPath == "" {
+		return
+	}
+	// The caller wrote --outdir / --output-dir, which states the value is a
+	// directory. Honor that regardless of what is on disk: probing would turn
+	// "the directory does not exist yet" into "write a file by that name".
+	if asDirectory {
+		p.OutputDir = outputPath
 		return
 	}
 	if info, err := fio.Stat(outputPath); err == nil && info.IsDir() {
