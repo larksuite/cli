@@ -4,6 +4,7 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -102,7 +103,7 @@ func runInteractiveLogin(ios *cmdutil.IOStreams, lang string, msg *loginMsg, bra
 				Value(&selectedDomains).
 				Validate(func(s []string) error {
 					if len(s) == 0 {
-						return fmt.Errorf(msg.ErrNoDomain)
+						return errors.New(msg.ErrNoDomain) //nolint:forbidigo // huh inline validation text; never reaches the error envelope
 					}
 					return nil
 				}),
@@ -140,7 +141,7 @@ func runInteractiveLogin(ios *cmdutil.IOStreams, lang string, msg *loginMsg, bra
 	if permLevel == "common" {
 		permLabel = msg.PermCommonLabel
 	}
-	fmt.Fprintf(ios.ErrOut, msg.Summary)
+	fmt.Fprint(ios.ErrOut, msg.Summary)
 	fmt.Fprintf(ios.ErrOut, msg.SummaryDomains, strings.Join(selectedDomains, ", "))
 	fmt.Fprintf(ios.ErrOut, msg.SummaryPerm, permLabel)
 	scopePreview := strings.Join(scopes, ", ")

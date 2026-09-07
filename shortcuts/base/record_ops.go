@@ -171,7 +171,7 @@ func normalizeStringList(values interface{}, opts stringListNormalizeOptions) ([
 		if opts.allowNil {
 			return nil, nil
 		}
-		return nil, baseFlagErrorf(opts.typeError)
+		return nil, baseFlagErrorf("%s", opts.typeError)
 	case []interface{}:
 		rawItems = typed
 	case []string:
@@ -180,13 +180,13 @@ func normalizeStringList(values interface{}, opts stringListNormalizeOptions) ([
 			rawItems = append(rawItems, item)
 		}
 	default:
-		return nil, baseFlagErrorf(opts.typeError)
+		return nil, baseFlagErrorf("%s", opts.typeError)
 	}
 	if len(rawItems) == 0 {
 		if opts.allowEmpty {
 			return nil, nil
 		}
-		return nil, baseFlagErrorf(opts.emptyError)
+		return nil, baseFlagErrorf("%s", opts.emptyError)
 	}
 	if opts.max > 0 && len(rawItems) > opts.max {
 		return nil, baseFlagErrorf("%s exceeds maximum limit of %d (got %d)", opts.limitName, opts.max, len(rawItems))

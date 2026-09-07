@@ -60,19 +60,128 @@ func TestPlainTextFromHTML(t *testing.T) {
 
 func TestPlainTextFromHTMLDeepNesting(t *testing.T) {
 	// Build HTML with 10000 levels of nesting — would overflow the stack
-	// with the old recursive implementation.
+	// with the old recursive implementation, and exceeds the 512-node open
+	// element limit that x/net/html's parser enforces, so this exercises the
+	// tokenizer fallback: block boundaries, skipped script content and
+	// entity unescaping must still behave like the parsed path.
 	const depth = 10_000
 	var b strings.Builder
 	for i := 0; i < depth; i++ {
 		b.WriteString("<div>")
 	}
-	b.WriteString("deep")
+	b.WriteString("<p>deep &amp; nested</p><script>alert(1)</script><p>end</p>")
 	for i := 0; i < depth; i++ {
 		b.WriteString("</div>")
 	}
 	got := plainTextFromHTML(b.String())
-	if got != "deep" {
-		t.Errorf("deep nesting: got %q, want %q", got, "deep")
+	if want := "deep & nested\nend"; got != want {
+		t.Errorf("deep nesting: got %q, want %q", got, want)
+	}
+}
+
+func TestPlainTextFromHTMLTokensKeepsBodyWithoutHeadEndTag(t *testing.T) {
+	got := plainTextFromHTMLTokens("<html><head><title>T</title><meta charset=utf-8><body><p>Hello <b>world</b></p><style>p{}</style>bye")
+	if want := "Hello world\nbye"; got != want {
+		t.Errorf("plainTextFromHTMLTokens() = %q, want %q", got, want)
+	}
+}
+
+// TestPlainTextFromHTMLFallbackMatchesParsedPath feeds the same document to
+// the parsed path (shallow) and to the tokenizer fallback (the same document
+// with a 600-level <template> wrapper that trips the parser's 512-node limit)
+// and requires identical output, so the fallback cannot leak content the
+// parser drops — notably anything inside <head>.
+func TestPlainTextFromHTMLFallbackMatchesParsedPath(t *testing.T) {
+	deepWrap := func(inner string) string {
+		return strings.Repeat("<template>", 600) + inner + strings.Repeat("</template>", 600)
+	}
+	for _, test := range []struct {
+		name    string
+		shallow string
+		deep    string
+		want    string
+	}{
+		{
+			name:    "template inside head is dropped",
+			shallow: "<html><head><template>HIDDEN</template></head><body><p>VISIBLE</p></body></html>",
+			deep:    "<html><head>" + deepWrap("HIDDEN") + "</head><body><p>VISIBLE</p></body></html>",
+			want:    "VISIBLE",
+		},
+		{
+			name:    "template inside body is kept",
+			shallow: "<html><body><template>T</template><p>VISIBLE</p></body></html>",
+			deep:    "<html><body>" + deepWrap("T") + "<p>VISIBLE</p></body></html>",
+			want:    "T\nVISIBLE",
+		},
+		{
+			name:    "omitted head end tag still drops head content",
+			shallow: "<html><head><title>T</title><meta charset=utf-8><template>H</template><p>VISIBLE</p>",
+			deep:    "<html><head><title>T</title><meta charset=utf-8>" + deepWrap("H") + "<p>VISIBLE</p>",
+			want:    "VISIBLE",
+		},
+		{
+			name:    "noframes inside head is dropped",
+			shallow: "<html><head><noframes>NF</noframes></head><body>VISIBLE</body></html>",
+			deep:    "<html><head><noframes>NF</noframes>" + deepWrap("") + "</head><body>VISIBLE</body></html>",
+			want:    "VISIBLE",
+		},
+		{
+			name:    "text directly in head implicitly ends head",
+			shallow: "<html><head>STRAY<title>T</title></head><body>VISIBLE</body></html>",
+			deep:    "<html><head>STRAY<title>T</title>" + deepWrap("") + "</head><body>VISIBLE</body></html>",
+			want:    "STRAY VISIBLE",
+		},
+		{
+			name:    "implicit head: template before any head tag is dropped",
+			shallow: "<html><template>HIDDEN</template><body><p>TEXT</p></body></html>",
+			deep:    "<html>" + deepWrap("HIDDEN") + "<body><p>TEXT</p></body></html>",
+			want:    "TEXT",
+		},
+		{
+			name:    "template between head end and body goes back into head",
+			shallow: "<html><head></head><template>HIDDEN</template><body><p>TEXT</p></body></html>",
+			deep:    "<html><head></head>" + deepWrap("HIDDEN") + "<body><p>TEXT</p></body></html>",
+			want:    "TEXT",
+		},
+		{
+			name:    "stray head tag inside body is ignored",
+			shallow: "<html><body><p>A</p><head><template>T</template></head><p>B</p></body></html>",
+			deep:    "<html><body><p>A</p><head><template>T</template></head>" + strings.Repeat("<div>", 600) + strings.Repeat("</div>", 600) + "<p>B</p></body></html>",
+			want:    "A\nT\nB",
+		},
+		{
+			name:    "mismatched script end tag does not end a head template",
+			shallow: "<head><template><div></script>HIDDEN</div></template></head><body>VISIBLE</body>",
+			deep:    "<head><template>" + strings.Repeat("<div>", 600) + "</script>HIDDEN" + strings.Repeat("</div>", 600) + "</template></head><body>VISIBLE</body>",
+			want:    "VISIBLE",
+		},
+		{
+			name:    "mismatched style and title end tags do not end a head template",
+			shallow: "<head><template><div></style></title>HIDDEN</div></template></head><body>VISIBLE</body>",
+			deep:    "<head><template>" + strings.Repeat("<div>", 600) + "</style></title>HIDDEN" + strings.Repeat("</div>", 600) + "</template></head><body>VISIBLE</body>",
+			want:    "VISIBLE",
+		},
+		{
+			name:    "explicit body after head metadata",
+			shallow: "<html><head><title>T</title><link rel=stylesheet href=x><meta charset=utf-8></head><body><p>Hello</p></body></html>",
+			deep:    "<html><head><title>T</title><link rel=stylesheet href=x><meta charset=utf-8>" + deepWrap("") + "</head><body><p>Hello</p></body></html>",
+			want:    "Hello",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := xhtml.Parse(strings.NewReader(test.shallow)); err != nil {
+				t.Fatalf("shallow input unexpectedly rejected by the parser: %v", err)
+			}
+			if _, err := xhtml.Parse(strings.NewReader(test.deep)); err == nil {
+				t.Fatal("deep input was accepted by the parser, so the fallback was not exercised")
+			}
+			if got := plainTextFromHTML(test.shallow); got != test.want {
+				t.Errorf("parsed path = %q, want %q", got, test.want)
+			}
+			if got := plainTextFromHTML(test.deep); got != test.want {
+				t.Errorf("fallback path = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 
