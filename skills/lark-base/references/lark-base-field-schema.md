@@ -434,7 +434,9 @@ Location 读取为 `{lng,lat,full_address}`；写入只使用数字 `{lng,lat}`�
 { "type": "button", "name": "按钮", "button_config": { "title": "点击按钮" } }
 ```
 
-绑定 Workflow 时，使用 `+button-rule-bind`；读取绑定关系时，使用 `+button-rule-get`；解除绑定用 `+button-rule-unbind`。
+按钮字段的 schema 只配置名称和 `button_config.title` 等显示属性，动作不属于 Field JSON。根级或 `button_config` 内都不要传 `action`、`action_type`、`target`，也不要把 `workflow_id` 放进字段定义。
+
+需要绑定 Workflow、打开当前记录、打开表单或打开链接时，先完整读取 [Button actions](lark-base-button-action.md)，再使用 `+button-rule-bind`；读取当前动作使用 `+button-rule-get`，清除任意动作使用 `+button-rule-unbind`。
 
 ## 4. 创建与更新
 
