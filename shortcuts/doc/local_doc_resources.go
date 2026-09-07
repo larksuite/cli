@@ -980,6 +980,10 @@ func validateLocalDocResourceUpdateCommand(command string, resources []localDocR
 }
 
 func finalizeLocalDocResources(runtime *common.RuntimeContext, documentKey string, data map[string]interface{}, resources []localDocResource) error {
+	return finalizeLocalDocResourcesWithTrace(runtime, documentKey, data, resources, nil)
+}
+
+func finalizeLocalDocResourcesWithTrace(runtime *common.RuntimeContext, documentKey string, data map[string]interface{}, resources []localDocResource, trace *docsCreateTrace) error {
 	if len(resources) == 0 {
 		return nil
 	}
@@ -998,10 +1002,28 @@ func finalizeLocalDocResources(runtime *common.RuntimeContext, documentKey strin
 		return runtime.OutPartialFailure(data, nil)
 	}
 
+	trace.event("resource_upload.start", docsCreateDebugDetails{Resources: len(resources)})
+	uploadStart := time.Now()
 	uploadLocalDocResources(runtime, documentKey, outcomes)
+	uploaded := 0
+	for _, outcome := range outcomes {
+		if outcome.Status == "uploaded" {
+			uploaded++
+		}
+	}
+	trace.event("resource_upload.end", docsCreateDebugDetails{DurationMS: milliseconds(time.Since(uploadStart)), Succeeded: uploaded, Failed: len(outcomes) - uploaded})
 	lastRevision := localDocResourceRevisionFromDocsAI(data)
 	revisionKnown := lastRevision != nil
+	trace.event("resource_bind.start", docsCreateDebugDetails{})
+	bindStart := time.Now()
 	bindRevision, bindRevisionKnown := bindLocalDocResources(runtime, documentKey, outcomes)
+	bound := 0
+	for _, outcome := range outcomes {
+		if outcome.Status == "bound" {
+			bound++
+		}
+	}
+	trace.event("resource_bind.end", docsCreateDebugDetails{DurationMS: milliseconds(time.Since(bindStart)), Succeeded: bound, Failed: len(outcomes) - bound})
 	if bindRevision != nil {
 		lastRevision = bindRevision
 		revisionKnown = true
@@ -1009,7 +1031,10 @@ func finalizeLocalDocResources(runtime *common.RuntimeContext, documentKey strin
 		lastRevision = nil
 		revisionKnown = false
 	}
+	trace.event("resource_cleanup.start", docsCreateDebugDetails{})
+	cleanupStart := time.Now()
 	cleanupRevision, cleanupRevisionKnown := cleanupLocalDocResourcePlaceholders(runtime, documentKey, outcomes, lastRevision)
+	trace.event("resource_cleanup.end", docsCreateDebugDetails{DurationMS: milliseconds(time.Since(cleanupStart))})
 	if cleanupRevision != nil {
 		lastRevision = cleanupRevision
 		revisionKnown = true

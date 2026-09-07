@@ -53,20 +53,22 @@ type docsCreateAsyncEnvelope struct {
 // shape before permission and local-resource follow-up work runs. A processing
 // task is never a successful command result: timeout/cancellation/read failures
 // return an error that identifies the accepted task without repeating the write.
-func waitForDocsCreateAsyncTask(runtime *common.RuntimeContext, initial map[string]interface{}, createLogID string) (map[string]interface{}, error) {
+func waitForDocsCreateAsyncTask(runtime *common.RuntimeContext, initial map[string]interface{}, createLogID string, trace *docsCreateTrace) (map[string]interface{}, error) {
 	envelope, err := decodeDocsCreateAsyncEnvelope(initial)
 	if err != nil {
 		return nil, err
 	}
 	if envelope.Task == nil {
+		trace.event("create_mode", docsCreateDebugDetails{Mode: "direct_response"})
 		return initial, nil
 	}
 	waitCtx, cancel := context.WithTimeout(runtime.Ctx(), docsCreateAsyncMaxWait)
 	defer cancel()
-	return pollDocsCreateAsyncTask(waitCtx, runtime, envelope.Task, createLogID)
+	trace.event("create_mode", docsCreateDebugDetails{Mode: "async_task", TaskID: envelope.Task.TaskID})
+	return pollDocsCreateAsyncTask(waitCtx, runtime, envelope.Task, createLogID, trace)
 }
 
-func pollDocsCreateAsyncTask(ctx context.Context, runtime *common.RuntimeContext, task *docsCreateAsyncTask, logID string) (result map[string]interface{}, err error) {
+func pollDocsCreateAsyncTask(ctx context.Context, runtime *common.RuntimeContext, task *docsCreateAsyncTask, logID string, trace *docsCreateTrace) (result map[string]interface{}, err error) {
 	taskID := strings.TrimSpace(task.TaskID)
 	if taskID == "" {
 		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse,
@@ -79,6 +81,8 @@ func pollDocsCreateAsyncTask(ctx context.Context, runtime *common.RuntimeContext
 	}()
 
 	var delay time.Duration
+	polls := 0
+	trace.event("task_observed", docsCreateDebugDetails{TaskID: taskID, Status: task.Status, Stage: task.Stage, LogID: logID})
 	for {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -98,6 +102,7 @@ func pollDocsCreateAsyncTask(ctx context.Context, runtime *common.RuntimeContext
 		}
 
 		if delay > 0 {
+			trace.event("poll_sleep", docsCreateDebugDetails{WaitMS: delay.Milliseconds()})
 			timer := time.NewTimer(delay)
 			select {
 			case <-ctx.Done():
@@ -107,7 +112,11 @@ func pollDocsCreateAsyncTask(ctx context.Context, runtime *common.RuntimeContext
 			}
 		}
 
+		polls++
+		trace.event("poll_request", docsCreateDebugDetails{Poll: polls, TaskID: taskID})
+		pollStart := time.Now()
 		polled, polledLogID, pollErr := getDocsCreateAsyncTask(ctx, runtime, taskID)
+		trace.event("poll_response", docsCreateDebugDetails{Poll: polls, LogID: polledLogID, DurationMS: milliseconds(time.Since(pollStart))})
 		if polledLogID != "" {
 			logID = polledLogID
 		}
@@ -115,6 +124,7 @@ func pollDocsCreateAsyncTask(ctx context.Context, runtime *common.RuntimeContext
 			return nil, ctx.Err()
 		}
 		if pollErr != nil {
+			trace.event("poll_error", docsCreateDebugError(pollErr))
 			if !retryableDocsCreateTaskRead(pollErr) {
 				return nil, pollErr
 			}
@@ -124,6 +134,7 @@ func pollDocsCreateAsyncTask(ctx context.Context, runtime *common.RuntimeContext
 			if retryAfter, ok := errs.RetryAfter(pollErr); ok && retryAfter > delay {
 				delay = retryAfter
 			}
+			trace.event("poll_retry", docsCreateDebugDetails{Poll: polls, WaitMS: delay.Milliseconds()})
 			continue
 		}
 		decoded, decodeErr := decodeDocsCreateAsyncEnvelope(polled)
@@ -139,6 +150,7 @@ func pollDocsCreateAsyncTask(ctx context.Context, runtime *common.RuntimeContext
 				"async-task response returned a mismatched task_id")
 		}
 		task = decoded.Task
+		trace.event("task_observed", docsCreateDebugDetails{Poll: polls, TaskID: taskID, Status: task.Status, Stage: task.Stage, LogID: logID})
 		delay = docsCreateAsyncPollInterval(task.PollAfterMS)
 	}
 }

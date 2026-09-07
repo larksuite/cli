@@ -68,7 +68,7 @@ func TestDocsCreateAsyncDeadlineCancelsInflightRead(t *testing.T) {
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	result, err := pollDocsCreateAsyncTask(ctx, runtime, &docsCreateAsyncTask{TaskID: "task_slow", Status: "processing"}, "create-log")
+	result, err := pollDocsCreateAsyncTask(ctx, runtime, &docsCreateAsyncTask{TaskID: "task_slow", Status: "processing"}, "create-log", nil)
 	problem, ok := errs.ProblemOf(err)
 	if result != nil || !errors.Is(err, context.DeadlineExceeded) || !ok || problem.Subtype != errs.SubtypeNetworkTimeout {
 		t.Fatalf("deadline result=%v err=%v problem=%+v", result, err, problem)
@@ -81,7 +81,7 @@ func TestDocsCreateAsyncDeadlineCancelsInflightRead(t *testing.T) {
 func TestDocsCreateAsyncCancellationIsTyped(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	result, err := pollDocsCreateAsyncTask(ctx, nil, &docsCreateAsyncTask{TaskID: "task_canceled", Status: "processing"}, "")
+	result, err := pollDocsCreateAsyncTask(ctx, nil, &docsCreateAsyncTask{TaskID: "task_canceled", Status: "processing"}, "", nil)
 	if result != nil || !errs.IsTyped(err) || !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation result=%v err=%v", result, err)
 	}
@@ -141,8 +141,9 @@ func TestDocsCreateAsyncSuccessStillGrantsPermission(t *testing.T) {
 }
 
 func TestDocsCreateAsyncRetriesReadWithoutRepeatingCreate(t *testing.T) {
+	t.Setenv(docsCreateDebugEnv, "1")
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
 	registerDocsCreateAPIStub(reg, map[string]interface{}{"task": map[string]interface{}{
 		"task_id": "task_retry", "status": "processing",
 	}})
@@ -164,15 +165,30 @@ func TestDocsCreateAsyncRetriesReadWithoutRepeatingCreate(t *testing.T) {
 	if doc["document_id"] != "doxcn_retried" {
 		t.Fatalf("retry result=%+v", data)
 	}
+	var creates, polls, retries int
+	for _, event := range readCreateDebugEvents(t, stderr.String()) {
+		switch event.Event {
+		case "create_request.start":
+			creates++
+		case "poll_request":
+			polls++
+		case "poll_retry":
+			retries++
+		}
+	}
+	if creates != 1 || polls != 2 || retries != 1 {
+		t.Fatalf("debug counts: creates=%d polls=%d retries=%d", creates, polls, retries)
+	}
 }
 
 func TestDocsCreateAsyncSuccessUploadsAndBindsLocalImage(t *testing.T) {
+	t.Setenv(docsCreateDebugEnv, "1")
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	cmdutil.TestChdir(t, t.TempDir())
 	if err := os.WriteFile("image.png", []byte(localDocResourcePNG(t, 4, 4)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
 	taskResult := map[string]interface{}{}
 	reg.Register(&httpmock.Stub{Method: "POST", URL: "/open-apis/docs_ai/v1/documents",
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"task": map[string]interface{}{
@@ -223,5 +239,14 @@ func TestDocsCreateAsyncSuccessUploadsAndBindsLocalImage(t *testing.T) {
 	doc, _ := data["document"].(map[string]interface{})
 	if doc["revision_id"] != float64(2) || strings.Contains(stdout.String(), "@lcli_img_") {
 		t.Fatalf("output was returned before image finalization: %s", stdout)
+	}
+	var resourceSteps []string
+	for _, event := range readCreateDebugEvents(t, stderr.String()) {
+		if strings.HasPrefix(event.Event, "resource_") {
+			resourceSteps = append(resourceSteps, event.Event)
+		}
+	}
+	if strings.Join(resourceSteps, ",") != "resource_upload.start,resource_upload.end,resource_bind.start,resource_bind.end,resource_cleanup.start,resource_cleanup.end" {
+		t.Fatalf("resource trace=%v", resourceSteps)
 	}
 }

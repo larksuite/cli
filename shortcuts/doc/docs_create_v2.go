@@ -94,34 +94,46 @@ func dryRunCreateV2(_ context.Context, runtime *common.RuntimeContext) *common.D
 	return appendLocalDocResourcesDryRun(dry, "<created_document_id>", resources)
 }
 
-func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
+func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) (err error) {
+	trace := newDocsCreateTrace(runtime)
+	defer func() { trace.finish(err) }()
+	trace.step("prepare_input")
 	body, resources, err := buildCreateBodyWithPreparedInput(runtime)
 	if err != nil {
 		return err
 	}
+	trace.event("input_prepared", docsCreateDebugDetails{Resources: len(resources)})
+	trace.step("validate_remote_sources")
 	if err := validateRemoteDocImageSources(runtime.Ctx(), resources); err != nil {
 		return err
 	}
 
+	trace.step("create_request")
 	data, createLogID, err := doDocAPIWithLogID(runtime, "POST", "/open-apis/docs_ai/v1/documents", body)
+	trace.event("create_response", docsCreateDebugDetails{LogID: createLogID})
 	if err != nil {
 		return err
 	}
 	if docsAPIOperationFailed(data) {
 		return runtime.OutPartialFailure(data, nil)
 	}
-	data, err = waitForDocsCreateAsyncTask(runtime, data, createLogID)
+	trace.step("wait_task")
+	data, err = waitForDocsCreateAsyncTask(runtime, data, createLogID, trace)
 	if err != nil {
 		return err
 	}
+	trace.step("permission")
 	augmentDocsCreatePermission(runtime, data)
+	trace.step("document_url")
 	fallbackDocsCreateURLV2(runtime, data)
+	trace.step("resources")
 	if len(resources) > 0 {
 		doc, _ := data["document"].(map[string]interface{})
-		if err := finalizeLocalDocResources(runtime, strings.TrimSpace(common.GetString(doc, "document_id")), data, resources); err != nil {
+		if err := finalizeLocalDocResourcesWithTrace(runtime, strings.TrimSpace(common.GetString(doc, "document_id")), data, resources, trace); err != nil {
 			return err
 		}
 	}
+	trace.step("output")
 	runtime.OutRaw(data, nil)
 	return nil
 }
