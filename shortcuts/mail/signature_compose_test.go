@@ -339,3 +339,24 @@ func TestResolveSignature_StaleIDUserExplicitFails(t *testing.T) {
 		t.Fatalf("expected validation error, got %T: %v", err, err)
 	}
 }
+
+func TestResolveSignature_UsesPreResolvedSenderForInterpolation(t *testing.T) {
+	rt, reg := newSigTestRuntime(t)
+	stubSigListResponse(reg, "mbx-pre-resolved", []map[string]interface{}{
+		{
+			"id":                 "sig-tenant",
+			"signature_type":     "TENANT",
+			"content":            `<span data-variable-meta-props='{"id":"B-NAME","type":"text"}'>old</span> &lt;<span data-variable-meta-props='{"id":"B-ENTERPRISE-EMAIL","type":"text"}'>old@example.com</span>&gt;`,
+			"template_json_keys": []string{"B-NAME", "B-ENTERPRISE-EMAIL"},
+		},
+	}, nil)
+
+	result, err := resolveSignature(context.Background(), rt, "mbx-pre-resolved", "sig-tenant", "alias@example.com", true, false,
+		composeSenderInfo{Name: "Default Alias", Email: "alias@example.com"})
+	if err != nil {
+		t.Fatalf("resolveSignature() error = %v", err)
+	}
+	if result == nil || !strings.Contains(result.RenderedContent, "Default Alias") || !strings.Contains(result.RenderedContent, "alias@example.com") {
+		t.Fatalf("resolveSignature() rendered content = %q, want pre-resolved sender name and email", result.RenderedContent)
+	}
+}

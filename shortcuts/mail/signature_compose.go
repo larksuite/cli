@@ -93,7 +93,7 @@ type signatureResult struct {
 // includeImages controls whether inline image attachments are downloaded. Pass false for
 // plain-text compose paths to avoid unnecessary network I/O (images are discarded in
 // plain-text mode anyway).
-func resolveSignature(ctx context.Context, runtime *common.RuntimeContext, mailboxID, signatureID, fromEmail string, userExplicit, includeImages bool) (*signatureResult, error) {
+func resolveSignature(ctx context.Context, runtime *common.RuntimeContext, mailboxID, signatureID, fromEmail string, userExplicit, includeImages bool, senderHints ...composeSenderInfo) (*signatureResult, error) {
 	if signatureID == "" {
 		return nil, nil
 	}
@@ -112,7 +112,12 @@ func resolveSignature(ctx context.Context, runtime *common.RuntimeContext, mailb
 
 	// Resolve sender info for template interpolation.
 	lang := resolveLang(runtime)
-	senderName, senderEmail := resolveSenderInfo(runtime, mailboxID, fromEmail)
+	var senderName, senderEmail string
+	if len(senderHints) > 0 {
+		senderName, senderEmail = senderHints[0].Name, senderHints[0].Email
+	} else {
+		senderName, senderEmail = resolveSenderInfo(runtime, mailboxID, fromEmail)
+	}
 	rendered := signature.InterpolateTemplate(sig, lang, senderName, senderEmail)
 
 	// Download signature inline images only when the compose path needs them.

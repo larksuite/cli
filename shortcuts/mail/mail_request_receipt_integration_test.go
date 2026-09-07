@@ -158,7 +158,6 @@ func TestMailSend_SendAsFailureFallsBackToProfile(t *testing.T) {
 
 func TestMailSend_UsesDefaultSendAsForFromAndReceipt(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
-	stubMailboxProfile(reg, "primary@example.com")
 	stubSendAs(reg, []interface{}{
 		map[string]interface{}{"email_address": "primary@example.com", "name": "Primary"},
 		map[string]interface{}{"email_address": "alias@example.com", "name": "Default Alias", "is_default": true},
@@ -171,6 +170,7 @@ func TestMailSend_UsesDefaultSendAsForFromAndReceipt(t *testing.T) {
 		"--subject", "hi",
 		"--body", "please confirm",
 		"--request-receipt",
+		"--confirm-send",
 	}, f, stdout); err != nil {
 		t.Fatalf("send failed: %v", err)
 	}
@@ -186,12 +186,19 @@ func TestMailSend_UsesDefaultSendAsForFromAndReceipt(t *testing.T) {
 
 func TestMailDraftCreate_UsesDefaultSendAs(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
-	stubMailboxProfile(reg, "primary@example.com")
 	stubSendAs(reg, []interface{}{
 		map[string]interface{}{"email_address": "primary@example.com", "name": "Primary"},
 		map[string]interface{}{"email_address": "alias@example.com", "name": "Default Alias", "is_default": true},
 	})
-	createStub := registerDraftCaptureStubs(reg)
+	createStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/user_mailboxes/me/drafts",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"draft_id": "draft_001"},
+		},
+	}
+	reg.Register(createStub)
 
 	if err := runMountedMailShortcut(t, MailDraftCreate, []string{
 		"+draft-create",
@@ -209,7 +216,8 @@ func TestMailDraftCreate_UsesDefaultSendAs(t *testing.T) {
 }
 
 func headerLine(raw, prefix string) string {
-	for _, line := range strings.Split(raw, "\r\n") {
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSuffix(line, "\r")
 		if strings.HasPrefix(line, prefix) {
 			return line
 		}

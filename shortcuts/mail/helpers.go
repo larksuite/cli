@@ -416,14 +416,21 @@ func resolveSendAsSender(runtime *common.RuntimeContext, mailboxID, fromEmail st
 // mailbox/profile fallback behavior.
 func resolveComposeSender(runtime *common.RuntimeContext) composeSenderInfo {
 	from := strings.TrimSpace(runtime.Str("from"))
+	if from != "" {
+		// Preserve the explicitly supplied address verbatim (apart from surrounding
+		// whitespace). The send_as lookup is only used to enrich it with the
+		// matching display name; lookup failures must never change --from.
+		if runtime.Factory != nil {
+			matched := resolveSendAsSender(runtime, resolveComposeMailboxID(runtime), from)
+			return composeSenderInfo{Name: matched.Name, Email: from}
+		}
+		return composeSenderInfo{Email: from}
+	}
 	if runtime.Factory != nil {
 		mailboxID := resolveComposeMailboxID(runtime)
-		if sender := resolveSendAsSender(runtime, mailboxID, from); sender.Email != "" {
+		if sender := resolveSendAsSender(runtime, mailboxID, ""); sender.Email != "" {
 			return sender
 		}
-	}
-	if from != "" {
-		return composeSenderInfo{Email: from}
 	}
 	if mb := runtime.Str("mailbox"); mb != "" && mb != "me" {
 		return composeSenderInfo{Email: mb}

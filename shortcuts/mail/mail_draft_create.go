@@ -193,7 +193,7 @@ var MailDraftCreate = common.Shortcut{
 			signatureID = autoResolveSignatureID(runtime, mailboxID, senderEmail, false)
 		}
 		sigResult, err := resolveSignature(ctx, runtime, mailboxID, signatureID, senderEmail,
-			runtime.Str("signature-id") != "", !input.PlainText)
+			runtime.Str("signature-id") != "", !input.PlainText, sender)
 		if err != nil {
 			return err
 		}
