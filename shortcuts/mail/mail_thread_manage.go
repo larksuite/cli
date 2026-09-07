@@ -29,9 +29,9 @@ var MailThreadModify = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "mailbox-id", Aliases: []string{"mailbox"}, Default: "me", Desc: "Mailbox email address that owns the threads (default: me)."},
-		{Name: "thread-id", Aliases: []string{"thread-ids"}, Type: "string_array", Desc: "Required. Thread ID to modify; repeat the flag for multiple threads."},
-		{Name: "add-label-id", Aliases: []string{"add-label-ids"}, Type: "string_slice", Desc: "Label ID to add; repeat the flag for multiple labels."},
-		{Name: "remove-label-id", Aliases: []string{"remove-label-ids"}, Type: "string_slice", Desc: "Label ID to remove; cannot overlap with --add-label-id."},
+		{Name: "thread-id", Type: "string_array", Desc: "Required. Thread ID to modify; repeat the flag for multiple threads."},
+		{Name: "add-label-id", Type: "string_slice", Desc: "Label ID to add; repeat the flag for multiple labels."},
+		{Name: "remove-label-id", Type: "string_slice", Desc: "Label ID to remove; cannot overlap with --add-label-id."},
 		{Name: "folder-id", Aliases: []string{"add-folder"}, Desc: "Folder ID to move threads to."},
 	},
 	Validate: validateThreadModify,
@@ -52,7 +52,7 @@ var MailThreadTrash = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "mailbox-id", Aliases: []string{"mailbox"}, Default: "me", Desc: "Mailbox email address that owns the threads (default: me)."},
-		{Name: "thread-id", Aliases: []string{"thread-ids"}, Type: "string_array", Desc: "Required. Thread ID to soft-delete; repeat the flag for multiple threads."},
+		{Name: "thread-id", Type: "string_array", Desc: "Required. Thread ID to soft-delete; repeat the flag for multiple threads."},
 	},
 	Validate: validateThreadTrash,
 	DryRun:   dryRunThreadTrash,

@@ -67,8 +67,10 @@ func TestThreadManage_MetadataAndRegistration(t *testing.T) {
 	if flags["thread-id"].Required || flags["thread-id"].Type != "string_array" {
 		t.Errorf("--thread-id = %#v, want validation-owned string_array", flags["thread-id"])
 	}
-	if got := strings.Join(flags["thread-id"].Aliases, ","); got != "thread-ids" {
-		t.Errorf("--thread-id aliases = %q", got)
+	for _, name := range []string{"thread-id", "add-label-id", "remove-label-id"} {
+		if got := flags[name].Aliases; len(got) != 0 {
+			t.Errorf("--%s aliases = %v, want none", name, got)
+		}
 	}
 	if got := strings.Join(flags["folder-id"].Aliases, ","); got != "add-folder" {
 		t.Errorf("--folder-id aliases = %q", got)
@@ -85,21 +87,49 @@ func TestThreadManage_MetadataAndRegistration(t *testing.T) {
 	}
 }
 
-func TestThreadManage_HelpShowsSingularFlags(t *testing.T) {
-	f, stdout, _, _ := mailShortcutTestFactory(t)
-	parent := &cobra.Command{Use: "test"}
-	MailThreadModify.Mount(parent, f)
-	parent.SetOut(stdout)
-	parent.SetErr(stdout)
-	parent.SetArgs([]string{"+thread-modify", "--help"})
-	err := parent.Execute()
-	if err != nil {
-		t.Fatalf("help error: %v", err)
+func TestThreadManage_HelpShowsOnlySingularBatchFlags(t *testing.T) {
+	tests := []struct {
+		shortcut common.Shortcut
+		command  string
+		want     []string
+		forbid   []string
+	}{
+		{
+			shortcut: MailThreadModify,
+			command:  "+thread-modify",
+			want:     []string{"--thread-id", "--add-label-id", "--remove-label-id", "--folder-id", "--mailbox-id"},
+			forbid:   []string{"--thread-ids", "--add-label-ids", "--remove-label-ids"},
+		},
+		{
+			shortcut: MailThreadTrash,
+			command:  "+thread-trash",
+			want:     []string{"--thread-id", "--mailbox-id"},
+			forbid:   []string{"--thread-ids"},
+		},
 	}
-	for _, flag := range []string{"--thread-id", "--add-label-id", "--remove-label-id", "--folder-id", "--mailbox-id"} {
-		if !strings.Contains(stdout.String(), flag) {
-			t.Errorf("help missing %s:\n%s", flag, stdout.String())
-		}
+	for _, test := range tests {
+		t.Run(test.command, func(t *testing.T) {
+			f, stdout, _, _ := mailShortcutTestFactory(t)
+			parent := &cobra.Command{Use: "test"}
+			test.shortcut.Mount(parent, f)
+			parent.SetOut(stdout)
+			parent.SetErr(stdout)
+			parent.SetArgs([]string{test.command, "--help"})
+			if err := parent.Execute(); err != nil {
+				t.Fatalf("help error: %v", err)
+			}
+			help := stdout.String()
+			for _, flag := range test.want {
+				if !strings.Contains(help, flag) {
+					t.Errorf("help missing %s:\n%s", flag, help)
+				}
+			}
+			for _, flag := range test.forbid {
+				if strings.Contains(help, flag) {
+					t.Errorf("help unexpectedly exposes %s:\n%s", flag, help)
+				}
+			}
+		})
 	}
 }
 
@@ -321,18 +351,61 @@ func TestThreadTrash_ConfirmationDryRunAndEmptyResponse(t *testing.T) {
 	}
 }
 
-func TestThreadManage_LegacyAliasesRemainAccepted(t *testing.T) {
+func TestThreadManage_RemainingAliasesStayAccepted(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	post := stubThreadManagePost(reg, "batch_modify", map[string]interface{}{"code": 0, "data": map[string]interface{}{}})
 	err := runMountedMailShortcut(t, MailThreadModify, []string{
-		"+thread-modify", "--mailbox", "me", "--thread-ids", threadManageID("1"),
-		"--add-label-ids", "unread", "--remove-label-ids", "FLAGGED", "--add-folder", "archive",
+		"+thread-modify", "--mailbox", "me", "--thread-id", threadManageID("1"),
+		"--add-label-id", "unread", "--remove-label-id", "FLAGGED", "--add-folder", "archive",
 	}, f, stdout)
 	if err != nil {
-		t.Fatalf("legacy aliases: %v", err)
+		t.Fatalf("remaining aliases: %v", err)
 	}
 	body := decodeThreadManageBody(t, post)
 	if body["add_folder"] != "ARCHIVED" {
 		t.Fatalf("add_folder = %#v, want ARCHIVED", body["add_folder"])
+	}
+}
+
+func TestThreadManage_RejectsPluralAliases(t *testing.T) {
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		args     []string
+		flag     string
+	}{
+		{
+			name:     "modify thread ids",
+			shortcut: MailThreadModify,
+			args:     []string{"+thread-modify", "--thread-ids", threadManageID("1"), "--folder-id", "archive"},
+			flag:     "--thread-ids",
+		},
+		{
+			name:     "modify add label ids",
+			shortcut: MailThreadModify,
+			args:     []string{"+thread-modify", "--thread-id", threadManageID("1"), "--add-label-ids", "unread"},
+			flag:     "--add-label-ids",
+		},
+		{
+			name:     "modify remove label ids",
+			shortcut: MailThreadModify,
+			args:     []string{"+thread-modify", "--thread-id", threadManageID("1"), "--remove-label-ids", "FLAGGED"},
+			flag:     "--remove-label-ids",
+		},
+		{
+			name:     "trash thread ids",
+			shortcut: MailThreadTrash,
+			args:     []string{"+thread-trash", "--thread-ids", threadManageID("1"), "--dry-run"},
+			flag:     "--thread-ids",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			f, stdout, _, _ := mailShortcutTestFactory(t)
+			err := runMountedMailShortcut(t, test.shortcut, test.args, f, stdout)
+			if err == nil || !strings.Contains(err.Error(), "unknown flag: "+test.flag) {
+				t.Fatalf("error = %v, want unknown flag %s", err, test.flag)
+			}
+		})
 	}
 }

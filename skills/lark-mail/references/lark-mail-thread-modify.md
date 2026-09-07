@@ -36,7 +36,7 @@ lark-cli mail +thread-modify --thread-id <thread_id> --add-label-id custom_label
 | `--remove-label-id <id>` | 否 | 要移除的标签 ID；可重复传参，不能与 `--add-label-id` 重复 |
 | `--folder-id <id>` | 否 | 要移动到的文件夹。首尾空白会被移除，并且只映射到请求字段 `add_folder` |
 
-`--add-label-id`、`--remove-label-id`、`--folder-id` 至少传一个。旧拼写 `--thread-ids`、`--add-label-ids`、`--remove-label-ids`、`--add-folder` 和 `--mailbox` 仍作为兼容别名接受。
+`--add-label-id`、`--remove-label-id`、`--folder-id` 至少传一个。`--thread-id`、`--add-label-id`、`--remove-label-id` 只公开单数可重复形式；复数拼写不受支持。`--add-folder` 和 `--mailbox` 仍作为兼容别名接受。
 
 `TRASH` 不允许通过本 shortcut 作为目标文件夹传入。需要软删除会话时，使用 [`mail +thread-trash`](./lark-mail-thread-trash.md)，并在用户确认后加 `--yes` 执行。
 

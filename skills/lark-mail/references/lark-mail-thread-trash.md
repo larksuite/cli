@@ -34,7 +34,7 @@ lark-cli mail +thread-trash --thread-id <thread_id1> --thread-id <thread_id2> --
 
 - `thread_id` 必须来自 `+triage`、`+message`、`+thread`、会话列表或搜索等真实查询结果；不要用数字主键或占位符。
 - 软删除属于高风险写操作。先用真实查询结果展示删除预览，包括受影响会话数量和关键邮件摘要；用户确认后再执行并加 `--yes`。
-- 旧拼写 `--thread-ids` 和 `--mailbox` 仍作为兼容别名接受。
+- `--thread-id` 只公开单数可重复形式；复数拼写 `--thread-ids` 不受支持。`--mailbox` 仍作为兼容别名接受。
 - 命令在本地按首次出现顺序去重，然后一次调用 `POST /open-apis/mail/v1/user_mailboxes/<mailbox>/threads/batch_trash`；请求体只含 `thread_ids`。
 - dry-run 只显示规范化后的 endpoint 和请求体，绝不会访问 API。
 
