@@ -70,7 +70,7 @@
 |---|---:|
 | 柱形图、折线图、面积图及其它默认类型 | `640 × 400` |
 | 条形图、组合图 | `720 × 420` |
-| 饼图、环形图 | `720 × 440` |
+| 饼图 | `720 × 440` |
 
 ```bash
 python scripts/lark_chart_size_advisor.py "<表格 URL 或 spreadsheet token>" \
@@ -214,7 +214,7 @@ _公共四件套 · 系统：`--dry-run`_
 | `--size-index` | int | optional | 仅气泡图：可选气泡大小维度的 1-based 索引 |
 | `--title` | string | optional | 图表标题 |
 | `--subtitle` | string | optional | 图表副标题 |
-| `--legend-position` | string | optional | 图例位置；饼图 / 环形图默认 bottom，hidden 隐藏图例（可选值：`top` / `bottom` / `left` / `right` / `hidden`） |
+| `--legend-position` | string | optional | 图例位置；饼图默认 bottom，hidden 隐藏图例（可选值：`top` / `bottom` / `left` / `right` / `hidden`） |
 | `--x-axis-title` | string | optional | X 轴标题 |
 | `--y-axis-title` | string | optional | 左 Y 轴标题 |
 | `--secondary-y-axis-title` | string | optional | 右 Y 轴标题 |
@@ -228,7 +228,7 @@ _公共四件套 · 系统：`--dry-run`_
 | `--color-palette` | string | optional | 预设整图配色主题；与 --colors 互斥（可选值：`brandColorSeries@v2` / `rainbowColorSeries@v2` / `complementaryColorSeries@v2` / `converseColorSeries@v2` / `primaryColorSeries@v2` / `singleColorSeries-B-@v2` / `singleColorSeries-W-@v2` / `singleColorSeries-G-@v2` / `singleColorSeries-Y-@v2` / `singleColorSeries-O-@v2` / `singleColorSeries-R-@v2` / `singleColorSeries-D-@v2`） |
 | `--colors` | string_slice | optional | 自定义整图系列颜色，逗号分隔且至少 2 个十六进制色值；与 --color-palette 互斥 |
 | `--anchor-cell` | string | optional | 可选图表锚点单元格，如 F2；省略时放到数据范围右侧 |
-| `--width` | int | optional | 可选图表宽度；必须与 --height 同时传；饼图 / 环形图及长类别标签场景应适量加宽以避免截断 |
+| `--width` | int | optional | 可选图表宽度；必须与 --height 同时传；饼图及长类别标签场景应适量加宽以避免截断 |
 | `--height` | int | optional | 可选图表高度；必须与 --width 同时传 |
 
 ### `+chart-config-update`
@@ -344,7 +344,7 @@ lark-cli sheets +chart-create-basic --url "..." --sheet-name "Sheet1" \
   --dim1-index 1 --dim2-indexes 2,3,4 \
   --series-types column,column,line --series-y-axes left,left,right \
   --title "价格与效率" --y-axis-title "价格" --secondary-y-axis-title "效率" \
-  --anchor-cell F2 --width 700 --height 400
+  --anchor-cell F2 --width 720 --height 420
 
 # 辅助线只显示一个标签：C 列为重复目标值，D 列仅目标位置有值、其余单元格为空
 lark-cli sheets +chart-create-basic --url "..." --sheet-name "Sheet1" \
@@ -352,7 +352,7 @@ lark-cli sheets +chart-create-basic --url "..." --sheet-name "Sheet1" \
   --dim1-index 1 --dim2-indexes 2,3,4 \
   --series-types line,line,scatter --series-y-axes left,left,left \
   --aggregate-categories=false \
-  --title "趋势与目标线" --anchor-cell F2 --width 700 --height 400
+  --title "趋势与目标线" --anchor-cell F2 --width 720 --height 420
 
 # 先从创建结果或 +chart-list 取得完整 series 数组，再整段回写；辅助线系列不设置 labels
 lark-cli sheets +chart-update --url "..." --sheet-id "$SID" --chart-id "chrXXX" \

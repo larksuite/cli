@@ -893,6 +893,39 @@ func TestChartAggregateCategoriesFlags(t *testing.T) {
 	}
 }
 
+func TestChartConfigUpdate_RejectsAggregateCategoriesForStaticData(t *testing.T) {
+	t.Parallel()
+	fv := newMapFlagViewForCommand("+chart-config-update", map[string]interface{}{
+		"sheet-id":             testSheetID,
+		"chart-id":             "chart-1",
+		"aggregate-categories": false,
+	})
+	snapshot := map[string]interface{}{
+		"plotArea": map[string]interface{}{"plot": map[string]interface{}{"type": "line"}},
+		"data": map[string]interface{}{
+			"isStaticData": true,
+			"dim1": map[string]interface{}{
+				"field": map[string]interface{}{"text": "A,B"},
+			},
+			"dim2": map[string]interface{}{
+				"fields": []interface{}{map[string]interface{}{"text": "1,2"}},
+			},
+		},
+	}
+
+	_, _, err := chartConfigUpdateInputFromSnapshot(
+		fv,
+		"token",
+		testSheetID,
+		"",
+		snapshot,
+	)
+	validation := requireValidation(t, err, "does not apply to static-data charts")
+	if validation.Param != "--aggregate-categories" {
+		t.Fatalf("param = %q, want --aggregate-categories", validation.Param)
+	}
+}
+
 func TestChartCreateBasic_ConfiguresComboSeriesSemantically(t *testing.T) {
 	t.Parallel()
 	body := parseDryRunBody(t, ChartCreateBasic, []string{

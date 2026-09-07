@@ -17,10 +17,23 @@ MINIMUM_SIZES = {
     "bar": (720, 420),
     "combo": (720, 420),
     "pie": (720, 440),
-    "doughnut": (720, 440),
+}
+SUPPORTED_CHART_TYPES = {
+    "column",
+    "bar",
+    "line",
+    "area",
+    "pie",
+    "scatter",
+    "combo",
+    "radar",
+    "bubble",
+    "waterfall",
+    "pareto",
 }
 DEFAULT_MINIMUM_SIZE = (640, 400)
 MAX_CHART_WIDTH = 1600
+MAX_CHART_HEIGHT = 720
 MAX_ASPECT_RATIO = 2.6
 COMBO_SERIES_TYPES = {"column", "line", "area", "scatter"}
 COMBO_SERIES_Y_AXES = {"left", "right"}
@@ -144,6 +157,8 @@ def recommend_chart_size(
     series_y_axes: list[str] | None = None,
 ) -> dict[str, Any]:
     chart_type = str(chart_type).lower()
+    if chart_type not in SUPPORTED_CHART_TYPES:
+        raise ValueError(f"unsupported chart type: {chart_type}")
     category_text = effective_category_labels(
         categories,
         aggregate_categories=aggregate_categories,
@@ -173,7 +188,7 @@ def recommend_chart_size(
     reasons: list[str] = []
     advice: list[str] = []
 
-    if chart_type in {"pie", "doughnut"}:
+    if chart_type == "pie":
         label_reserve = max(150, min(360, max_units * 7 + 60))
         width = max(width, 420 + 2 * label_reserve)
         if labels_enabled:
@@ -187,7 +202,12 @@ def recommend_chart_size(
     elif chart_type == "bar":
         width = max(width, 420 + max_units * 7)
         height = max(height, 190 + category_count * 36)
-        size_alone_is_insufficient = category_count > 24 and series_count > 2
+        height_limited = _round_up(height) > MAX_CHART_HEIGHT
+        size_alone_is_insufficient = height_limited or (
+            category_count > 24 and series_count > 2
+        )
+        if height_limited:
+            reasons.append("maximum_height_limited")
         if size_alone_is_insufficient:
             advice.extend(["use_top_n", "split_chart"])
     else:
@@ -231,7 +251,7 @@ def recommend_chart_size(
     if width > aspect_width_limit:
         width = aspect_width_limit
         reasons.append("aspect_ratio_limited")
-    legend_items = category_text if chart_type in {"pie", "doughnut"} else series_names
+    legend_items = category_text if chart_type == "pie" else series_names
     legend_rows = 0
     if str(legend_position).lower() != "hidden":
         legend_rows = estimate_legend_rows(legend_items, width)
@@ -242,11 +262,11 @@ def recommend_chart_size(
     if title:
         reasons.append("chart_title")
 
-    height = min(720, _round_up(height))
+    height = min(MAX_CHART_HEIGHT, _round_up(height))
     if size_alone_is_insufficient:
-        if chart_type in {"pie", "doughnut"}:
+        if chart_type == "pie":
             height = max(height, 520)
-        else:
+        elif chart_type != "bar":
             width = max(width, 1200)
             height = max(height, 520)
 

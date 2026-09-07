@@ -10,7 +10,7 @@ import json
 import re
 from typing import Any
 
-from lark_chart_size_rules import recommend_chart_size
+from lark_chart_size_rules import SUPPORTED_CHART_TYPES, recommend_chart_size
 from lark_sheet_read_cli import (
     LarkCliError,
     emit_error,
@@ -320,7 +320,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     worksheet = parser.add_mutually_exclusive_group()
     worksheet.add_argument("--worksheet-id")
     worksheet.add_argument("--worksheet-name")
-    parser.add_argument("--chart-type", required=True)
+    parser.add_argument("--chart-type", choices=sorted(SUPPORTED_CHART_TYPES), required=True)
     parser.add_argument("--data-range", required=True)
     parser.add_argument("--header-range")
     parser.add_argument("--data-direction", choices=("column", "row"), default="column")

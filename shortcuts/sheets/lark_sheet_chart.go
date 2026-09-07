@@ -1692,6 +1692,15 @@ func validateChartSemanticEnums(rt flagView) error {
 }
 
 func validateChartConfigSnapshot(rt flagView, snapshot map[string]interface{}) error {
+	if rt.Changed("aggregate-categories") {
+		data := chartMap(snapshot["data"])
+		if static, _ := data["isStaticData"].(bool); static {
+			return sheetsValidationForFlag(
+				"aggregate-categories",
+				"--aggregate-categories does not apply to static-data charts",
+			)
+		}
+	}
 	if rt.Changed("data-label-position") && !rt.Changed("data-labels") {
 		plotArea := chartMap(snapshot["plotArea"])
 		plot := chartMap(plotArea["plot"])

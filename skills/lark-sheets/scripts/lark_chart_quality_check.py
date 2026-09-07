@@ -1008,18 +1008,8 @@ def _numeric_source_issues(
         visible_offsets = {
             (row_number - typed_bounds[0], column_index - typed_bounds[2])
             for row_number, column_index, _ in _iter_cells(cells_data)
-            if selected.get(column_index if direction == "column" else row_number) is not None
-            and (
-                detached
-                or (
-                    direction == "column"
-                    and row_number != bounds[0]
-                )
-                or (
-                    direction != "column"
-                    and column_index != bounds[2]
-                )
-            )
+            if typed_bounds[0] <= row_number <= typed_bounds[1]
+            and typed_bounds[2] <= column_index <= typed_bounds[3]
         }
         for row_number, column_index, cell in _iter_cells(cells_data):
             coordinate = column_index if direction == "column" else row_number
@@ -1091,6 +1081,8 @@ def _numeric_source_issues(
         }
         data_start = bounds[0] + (0 if detached else 1)
         data_column = bounds[2] + (0 if detached else 1)
+        dim2 = data.get("dim2")
+        value_series = dim2.get("series") if isinstance(dim2, dict) else None
         for coordinate, state in states.items():
             dimension_index, role = selected[coordinate]
             if direction == "column":
@@ -1112,7 +1104,7 @@ def _numeric_source_issues(
             source_series = next(
                 (
                     item
-                    for item in (data.get("dim2", {}).get("series") or [])
+                    for item in (value_series if isinstance(value_series, list) else [])
                     if isinstance(item, dict)
                     and item.get("index") is not None
                     and int(item["index"]) == dimension_index
@@ -1467,9 +1459,8 @@ def success_envelope(results: list[dict[str, Any]]) -> dict[str, Any]:
             "scope_note": (
                 "out_of_visible_range checks worksheet drawable bounds, not a device-specific browser viewport; "
                 "numeric source checks sample at most the first 50 data points of each chart value dimension "
-                "for formats and scan candidate series fully for all-zero/empty and constant-value checks; "
-                "label-density checks are advisory deterministic heuristics, not renderer collision detection, "
-                "and are excluded from issue_count"
+                "for formats, all-zero/empty, and constant-value checks; zero/constant results are conclusive "
+                "only when that sample covers the complete series, otherwise they are marked unverifiable"
             ),
             "summary": {
                 "worksheet_count": len(results),
