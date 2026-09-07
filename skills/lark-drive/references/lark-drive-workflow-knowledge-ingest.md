@@ -106,7 +106,7 @@ Risk / Structure: `R2-R3` / `S3`
 | `NODE_PROPOSE` | `assess` / `plan` / `confirm` | 节点不足以承载资料（情况 1 / 5） | 加载 analyze phase；据已盘点的真实资料内容提议承载节点填充 `outline_proposal`；请用户确认后用 `wiki +node-create --obj-type docx` 新建，回读并入 `node_inventory` | 承载节点提议表 + 新建确认请求；确认后报告新建结果 | `true` | `ANALYZE_TRIAGE` |
 | `ANALYZE_TRIAGE` | `assess` / `plan` | 结构就位（含新建节点） | 加载 analyze phase；逐份读取资料正文，判类、识别版本冲突、映射到目标节点（据 `standard_map`；无规范则降级据内容推断）、按规范或主题生成拟定标题、给 `proposed_action`；对目标节点做 Node Type Triage（非 docx / shortcut 处理）填充 `material_map` | 资料分析表：判类、目标节点、拟定名、冲突/敏感标记、映射置信度 | 除非用户直接进入确认否则 `false` | `PUBLISH_PLAN` |
 | `PUBLISH_PLAN` | `plan` / `confirm` | 分析完成 | 加载 publish phase + outputs；生成逐资料 `publish_plan`（含 `publish_role`、`write_via`、目标节点、`parse_status`、6 行治理字段）；运行 `publish_gate.py` 门禁；产出发布计划 + 冲突/敏感/无法解析三清单。仅 `ready=true` 的资料进入 `CONVERT_WRITE`，被拦记入 `unsupported_checks`，`narrowed` 项按收紧后状态写入 | 发布计划表（含目标节点 + write_via + 门禁结果）+ 逐资料精确处置 + 三清单 + 被拦/收紧/跳过原因 | `true` | `CONVERT_WRITE` or `DONE` |
-| `CONVERT_WRITE` | `execute` | 用户已确认发布计划 | 加载 publish phase；按计划逐份转换写入知识页：Word/.md/.txt/.html 走 `drive +import --type docx`，PDF/图片解析后 `docs +update`，每页套 6 行治理表；`new_docx` 目标先 `wiki +node-create`。**纯附件项**（用户只要原件、无对应知识页）在此直接 `drive +upload` 挂到确认节点；**知识页的伴随附件不在此上传**（留到 VERIFY）。逐项更新 `execution_ledger` | 转换写入进度报告 | 除非被阻断否则 `false` | `VERIFY` |
+| `CONVERT_WRITE` | `execute` | 用户已确认发布计划 | 加载 publish phase；按计划逐份转换写入知识页，**知识页一律落在目标分类节点的承载子页，绝不写入分类节点本体**：新增 Word/.md/.txt/.html 走 `drive +import --type docx` 再 `wiki +move` 迁为目标节点子页，新增 PDF/图片先在目标节点下 `wiki +node-create` 建子页再解析后 `docs +update`；更新既有知识子页走 `docs +update` 定向更新；每页套 6 行治理表。**纯附件项**（用户只要原件、无对应知识页）在此直接 `drive +upload` 挂到确认节点；**知识页的伴随附件不在此上传**（留到 VERIFY）。逐项更新 `execution_ledger` | 转换写入进度报告 | 除非被阻断否则 `false` | `VERIFY` |
 | `VERIFY` | `verify` | 写入完成 | 对每个已写页面 fresh read：确认 `obj_type=docx`、`docs +fetch` 可读、6 行治理表存在、正文非空且不依赖附件；任一不满足记 `failed`。**仅对 `verified` 的知识页、且用户开启伴随附件时，才 `drive +upload` 挂其 `source_attachment`（页面验证失败的不上传，避免孤儿附件）**；纯附件在 `CONVERT_WRITE` 已上传，此处校验其挂载成功。汇总 `unsupported_checks` | 验证表 + 最终汇总 | `false` | `DONE` |
 | `DONE` | `done` | 无更多动作 | 停止 | 最终回复：已入库页数、跳过 / 被拦资料及原因、失败项、台账位置、知识库链接 | `false` | End |
 
@@ -155,14 +155,19 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 
 ## Write Via Selection
 
-对 `writable_docx` 目标，依据 `proposed_action` 与资料类型选择 `write_via`（详见 publish phase）。**先看 `proposed_action`**：`update` / `merge` 面向既有页，一律走 `docs_update`；`add`（新建页）才按资料类型选 import 或 docs_update。
+对 `writable_docx` 目标，依据 `proposed_action` 与资料类型选择 `write_via`（详见 publish phase）。**先看 `proposed_action`**：`update` / `merge` 面向既有知识子页，一律走 `docs_update`；`add`（新增资料）按资料类型选 `import_docx`（Word 系）或 `node_create_docx`（PDF/图片），两者落点都是目标分类节点的承载子页。
+
+**关键：`target_node` 是承载分类的知识库节点，其自身 docx 正文归 `knowledge_base_bootstrap` 写入的维护规范（收录范围 / 命名规范 / 6 行治理表）所有。资料入库默认在该分类节点下新建承载子页，绝不写入分类节点自身正文，以免覆盖其维护规范。** 据此：
+
+- `add`（新增资料）一律产生分类节点的**承载子页**，不落在分类节点本体：Word/.md/.txt/.html 走 `import_docx`（`drive +import` 转文档后 `wiki +move` 迁为目标节点子节点）；PDF/图片走 `node_create_docx`（先在目标节点下 `wiki +node-create` 建子页，再 `docs +update` 写正文）。两条路径的落点都是目标分类节点的子节点。
+- `update` / `merge` 的 `docs_update` 目标是**之前入库建的知识子页**（用其稳定 token 定位），不是分类节点承载维护规范的本体正文。确需更新分类节点本身维护规范时属 `knowledge_base_bootstrap` 职责，本 workflow 不代写；用户若明确要求在本流程更新分类节点本体，须对该节点单独确认后才写。
 
 | proposed_action / 资料类型 | write_via | 说明 |
 |----------------------------|-----------|------|
-| update / merge（既有页，任意来源） | `docs_update` | 定向更新既有页；不用 import_docx（会新增子页面而非更新目标页） |
-| add + Word / .doc / .md / .txt / .html | `import_docx` | `drive +import --type docx` 转飞书文档后整理，`wiki +move` 迁入目标节点 |
-| add + PDF / 图片 / 需重写的内容 | `docs_update` | 解析 / OCR 后 `docs +update` 重建可检索正文 |
-| add + 目标节点缺失、需新建承载页 | `node_create_docx` | 先 `wiki +node-create --obj-type docx` 再写正文 |
+| update / merge（既有知识子页，任意来源） | `docs_update` | 定向更新既有知识子页；不用 import_docx（会新增子页面而非更新目标页）；目标是入库建的子页，非分类节点本体 |
+| add + Word / .doc / .md / .txt / .html | `import_docx` | `drive +import --type docx` 转飞书文档后整理，`wiki +move` 迁为目标分类节点的**子节点**（承载子页），不并入节点本体 |
+| add + PDF / 图片 / 需重写的内容 | `node_create_docx` | 先在目标分类节点下 `wiki +node-create --obj-type docx` 建承载子页，再 `docs +update` 解析 / OCR 后重建可检索正文；不写入分类节点本体 |
+| add + 目标节点缺失、需新建承载节点 | `node_create_docx` | 目标分类节点尚不存在时，经 `NODE_PROPOSE` 确认后先建承载节点，再在其下建承载子页写正文 |
 | 原始文件（仅用户开启附件时） | `drive_upload` | 只作 `source_attachment`，永不算知识页完成 |
 
 ## Publish Gate

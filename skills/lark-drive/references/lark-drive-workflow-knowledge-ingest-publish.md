@@ -61,17 +61,17 @@ lark-cli drive +import --as <runtime identity> --type docx --file "<本地文件
 - 多份合并 / 一份拆页 / 需统一重写时，创建目标 docx 节点后 `docs +update` 写整理内容，导入件仅作暂存来源。
 - PDF **不可**用 `drive +import`（不在支持扩展名内），走下节。
 
-### PDF（write_via=docs_update）
+### PDF（add → write_via=node_create_docx；update/merge → docs_update）
 
-PDF 不假设可直接导入。先解析文本层；扫描件借 agent 多模态能力 OCR，记录解析方式、页码与置信度。随后 `docs +update` 把有效内容重建为 docx 正文；原 PDF 仅在需保留证据时作附件。
+PDF 不假设可直接导入。**新增（`add`）资料先在目标分类节点下 `wiki +node-create --obj-type docx` 建一张承载子页，再对该子页 `docs +update` 写正文——绝不写入分类节点本体正文（那里是维护规范）。** 更新既有知识子页（`update`/`merge`）时对该既有子页 `docs_update`。先解析文本层；扫描件借 agent 多模态能力 OCR，记录解析方式、页码与置信度。随后 `docs +update` 把有效内容重建为 docx 正文；原 PDF 仅在需保留证据时作附件。
 
 - 文字、表格、结论标注原 PDF 页码；
 - OCR 低置信度、表格错位或关键页不可解析时标 `parse_status=partial/unsupported`，不猜测补齐（门禁会拦 unsupported、收紧 partial 的已完成状态）；
 - 不复制封面、页眉、水印和纯装饰图。
 
-### 图片（write_via=docs_update）
+### 图片（add → write_via=node_create_docx；update/merge → docs_update）
 
-结合上下文判断媒体作用再决定是否入页：只保留能解释规则 / 步骤 / 入口 / 证据的图片，放在其解释的段落附近，加图注（说明 + 来源 + 必要时间），并把图中关键文字转成可检索正文——不让答案只存在于截图里。
+**新增（`add`）资料同样先在目标分类节点下建承载子页再写正文，不写入分类节点本体。** 结合上下文判断媒体作用再决定是否入页：只保留能解释规则 / 步骤 / 入口 / 证据的图片，放在其解释的段落附近，加图注（说明 + 来源 + 必要时间），并把图中关键文字转成可检索正文——不让答案只存在于截图里。
 
 图片类 `docs +update` 绑定本地资源时，必须用目标页的 **docx 对象 token（`doxcn_*`，即计划里的 `target_obj_token`）或规范 Wiki URL** 定位，裸 Wiki node token（`wikcn_*`）不触发资源解析。计划须同时保留 `target_token`（Wiki 操作用）和 `target_obj_token`（写正文 / 绑图用）。
 
@@ -80,7 +80,7 @@ PDF 不假设可直接导入。先解析文本层；扫描件借 agent 多模态
 资料映射到一个**既有目标页**（`proposed_action=update` 或 `merge`）时，不论原始资料是不是 Word，都走 `docs_update` 对既有页定向更新，**不走 import_docx**（import 会新增子页面，而非更新目标页）：
 
 - 先用稳定 token（`target_token`）定位既有页并读取现状，不按标题匹配。落笔前 `docs +fetch` 重读并记录 `revision`，携带该 `revision` 再写；若确认后、写入前内容已变（协作者改动），停下重新确认，不用默认 `revision-id=-1` 静默覆盖最新版。
-- 优先定向替换或 block 级编辑受影响部分；仅整页失效且用户确认整页重建时才 overwrite。
+- 优先定向替换或 block 级编辑受影响部分；仅整页失效且用户确认整页重建时才 overwrite。整页 overwrite 时，写入内容开头必须携带标题元素（markdown `# 标题` 或 XML `<title>标题</title>`，文字为该页原标题），否则节点侧边栏标题会变 Untitled；只用 `<h1>` 不设置节点标题。
 - Word/PDF 等来源仍先解析为整理内容，再写入既有页；导入件（如用到）仅作暂存来源，不作为最终页。
 - 更新后保持 6 行治理表结构，刷新版本、生效 / 更新时间、更新原因与复核策略。
 

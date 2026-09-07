@@ -52,7 +52,7 @@ Risk / Structure: `R2` / `S2`
 
 1. 按 `Execution State Machine` 的顺序执行，并维护 `Runtime State` 字段。
 2. 执行某个状态前，先加载 `Progressive Load Map` 中该状态要求的引用文档；不要预加载全部文档。
-3. 在 `WRITE_CONFIRM` 之前，绝不执行文档正文写入（`docs +update`）。唯一例外是 `OUTLINE_PROPOSE`：仅在用户单独确认大纲后，才可执行 `wiki +node-create` 新建大纲节点；除此之外任何状态都不得新建、修改节点。
+3. 在 `WRITE_CONFIRM` 之前，绝不执行文档正文写入（`docs +update`）。新建节点的例外有两处，均须用户单独确认：`PARSE_TARGET` 遇空库时经确认在空间顶层新建 docx 根节点；`OUTLINE_PROPOSE` 经确认新建大纲子节点。除这两处外任何状态都不得新建、修改节点。
 4. 只执行 `Command Map` 允许的 command family；命令语法、scope 要求、参数规则以被引用 skill / reference 为准。
 5. 用户可见说明、字段说明和表格文案使用中文；状态名、字段名、枚举值、命令名保留英文稳定标识。
 6. 内部枚举值在用户可见输出中转为自然语言中文标签。
@@ -84,13 +84,13 @@ Risk / Structure: `R2` / `S2`
 
 | State | Protocol Step | Entry Condition | Agent MUST Do | User-Facing Output | wait_for_user | Next State |
 |-------|---------------|-----------------|---------------|--------------------|---------------|------------|
-| `PARSE_TARGET` | `route` / `scope` | Workflow 触发 | 加载 wiki skill；把目标解析为 `space_id`：给定 wiki 节点 / 文档 URL 时用 `wiki +node-get` 取 `space_id` 且该节点即候选根，给定普通知识空间时用 `wiki +space-list` 取 `space_id` 并用 `wiki +node-list --page-all`（省略 parent）列出顶层节点；**目标是个人知识库（`my_library` 或个人库 URL）时，`wiki +space-list` 不返回个人库，须改用 `wiki spaces get --params '{"space_id":"my_library"}'` 解析出真实 `space_id`，再列顶层节点**；按 `Root Node Resolution` 确定唯一 `root_node`，多个顶层节点无法自动定根时停下请用户选定；确认目标就是该知识库 | 目标知识库与根节点确认，或（多顶层时）请用户选定根节点 | `true` | `READ_STRUCTURE` |
+| `PARSE_TARGET` | `route` / `scope` | Workflow 触发 | 加载 wiki skill；把目标解析为 `space_id`：给定 wiki 节点 / 文档 URL 时用 `wiki +node-get` 取 `space_id` 且该节点即候选根，给定普通知识空间时用 `wiki +space-list` 取 `space_id` 并用 `wiki +node-list --page-all`（省略 parent）列出顶层节点；**目标是个人知识库（`my_library` 或个人库 URL）时，`wiki +space-list` 不返回个人库，须改用 `wiki spaces get --params '{"space_id":"my_library"}'` 解析出真实 `space_id`，再列顶层节点**；按 `Root Node Resolution` 确定唯一 `root_node`：空库（顶层 0 节点）经用户确认后在空间顶层新建 docx 根节点，多个顶层节点无法自动定根时停下请用户选定；确认目标就是该知识库 | 目标知识库与根节点确认；空库时提议新建根节点并请确认；多顶层时请用户选定根节点 | `true` | `READ_STRUCTURE` |
 | `READ_STRUCTURE` | `read` | 目标已确认 | 递归读取整棵节点树填充 `node_inventory`：每次 `wiki +node-list` 必须用 `--page-all`（或按 `page_token` 翻页到 `has_more=false`），并对 `has_child=true` 的节点逐层下钻，不得只取首页；对 docx 节点读取现有内容填充 `draft_map`；判定结构是否过简（无子节点或子节点不足以承载分类）。注意 `--page-all` 仍有默认翻页上限（`--page-limit` 默认 10 页、每页至多 50 节点）：某层超过该上限或子节点读取失败时，置 `partial` 并记原因。**`partial` 时 fail closed：不进入 `OUTLINE_PROPOSE` / `TYPE_TRIAGE` / `WRITE`**，因为截断的树可能被误判为"结构过简"而重复建大纲、或写规范时漏掉未读到的节点；须先读全（提高 `--page-limit` / 续 `page_token` / 缩小目标）或由用户缩小范围后再继续 | 结构概览：节点数、层级、草稿 / 占位分布；不完整时明确标注并停下 | 读取不全时为 `true`（停下待用户），否则为 `false` | `OUTLINE_PROPOSE` or `TYPE_TRIAGE` |
 | `OUTLINE_PROPOSE` | `assess` / `plan` / `confirm` | 结构过简 | 加载 outputs 文档；基于知识库主题、根节点标题和已有草稿提议子节点大纲填充 `outline_proposal`；请用户确认后用 `wiki +node-create --obj-type docx` 新建拟定子节点，并回读并入 `node_inventory` | 大纲提议表 + 新建确认请求；确认后报告新建结果 | `true` | `TYPE_TRIAGE` |
 | `TYPE_TRIAGE` | `assess` / `plan` | 结构已读（含新建节点） | 按 `obj_type` / `node_type` 将每个节点分诊为 `writable_docx` / `non_docx_entity` / `shortcut`，填充 `node_class` | 分诊表：可写正文节点、需特殊处理节点及原因 | 存在 `non_docx_entity` / `shortcut` 时为 `true`，否则为 `false` | `GEN_STANDARD` |
 | `GEN_STANDARD` | `assess` / `plan` | 分诊完成 | 加载 outputs 文档；为可写范围生成 `standard_plan`：根节点通用规范 + 各子节点专属维护要求；子节点收录范围优先从草稿归纳，缺失再据业务常识补全 | 维护规范草案预览 | 除非用户直接进入确认，否则为 `false` | `WRITE_CONFIRM` |
 | `WRITE_CONFIRM` | `confirm` | 规范草案就绪 | 生成逐节点写入计划（含 `node_token`、`obj_type`、`write_mode`、6 行治理字段）；运行 `kb_gate.py` 门禁校验，仅 `ready=true` 的节点可进入 `WRITE`，被拦节点记入 `unsupported_checks`，门禁将 `narrowed` 节点的页面状态收紧为进行中；向用户展示计划、门禁结果、精确正文 / diff 与跳过原因 | 写入计划表（含 node_token + 命令族 + 门禁结果）+ 逐节点精确内容 / diff + 被拦 / 收紧 / 跳过清单及原因 | `true` | `WRITE` or `DONE` |
-| `WRITE` | `execute` | 用户已确认写入范围 | 加载 doc-update reference；按 `write_mode_map` 逐节点写入（根节点与子节点可并行）；**每个 `overwrite` 节点落笔前先 `docs +fetch` 重读并按 `Write Mode Selection` 的基线校验（占位覆盖须仍为 `empty_placeholder`；已确认草稿覆盖须与确认时基线一致），携带读到的 `revision` 再写，与基线不符则停下重新确认**；非 docx 节点仅在用户选择 `new_docx` 时新建 docx 规范页 | 写入进度报告 | 除非被阻断，否则为 `false` | `VERIFY` |
+| `WRITE` | `execute` | 用户已确认写入范围 | 加载 doc-update reference；按 `write_mode_map` 逐节点写入（根节点与子节点可并行）；**每个 `overwrite` 节点落笔前先 `docs +fetch` 重读并按 `Write Mode Selection` 的基线校验（占位覆盖须仍为 `empty_placeholder`；已确认草稿覆盖须与确认时基线一致），携带读到的 `revision` 再写，与基线不符则停下重新确认；`overwrite` 写入内容开头必须携带标题元素（markdown `# 标题` 或 XML `<title>标题</title>`，文字为节点原标题），避免节点侧边栏标题变 Untitled**；非 docx 节点仅在用户选择 `new_docx` 时新建 docx 规范页 | 写入进度报告 | 除非被阻断，否则为 `false` | `VERIFY` |
 | `VERIFY` | `verify` | 写入完成 | 对每个已写节点执行 fresh read 校验内容落地；汇总 `unsupported_checks` | 验证表和最终汇总 | `false` | `DONE` |
 | `DONE` | `done` | 无更多动作 | 停止 | 最终回复：已更新节点数、跳过节点及原因、知识库链接 | `false` | End |
 
@@ -114,11 +114,12 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 通用维护规范只写入**唯一**根节点 `root_node`，不得写入多个顶层节点。按以下顺序确定：
 
 1. 目标是 wiki 节点 / 文档 URL（`wiki +node-get` 可解析出该节点）→ 该节点即 `root_node`，其子树为处理范围。
-2. 目标是知识空间、且顶层只有 1 个节点 → 该顶层节点即 `root_node`。
-3. 目标是知识空间、顶层有多个节点 → 不自动选根，停在 `PARSE_TARGET`，列出候选顶层节点（标题 + token）请用户选定一个作为 `root_node`；用户也可指定“为每个顶层节点分别建规范”，但仍需逐个确认，不默认批量。
-4. 选定的 `root_node` 若不是 docx（`obj_type != docx`）→ 不向其 `docs +update` 写通用规范；按 `Node Type Triage` 处理：经用户确认走 `new_docx` 在其下新建 docx 规范页，或跳过并记入 `unsupported_checks`。
+2. 目标是知识空间、且顶层有 0 个节点（空库）→ 没有可承载通用规范的载体，停在 `PARSE_TARGET`，向用户说明本空间还没有任何节点，提议在空间顶层新建一个 docx 根节点承载通用规范（标题据知识库主题拟定），经用户确认后用 `wiki +node-create --space-id <SPACE_ID> --obj-type docx`（不传 `--parent-node-token`，建在空间顶层）新建，回读并入 `node_inventory`，该新节点即 `root_node`；随后照常进入 `OUTLINE_PROPOSE` 提议子节点大纲。未确认前不擅自建根节点。
+3. 目标是知识空间、且顶层只有 1 个节点 → 该顶层节点即 `root_node`。
+4. 目标是知识空间、顶层有多个节点 → 不自动选根，停在 `PARSE_TARGET`，列出候选顶层节点（标题 + token）请用户选定一个作为 `root_node`；用户也可指定“为每个顶层节点分别建规范”，但仍需逐个确认，不默认批量。
+5. 选定的 `root_node` 若不是 docx（`obj_type != docx`）→ 不向其 `docs +update` 写通用规范；按 `Node Type Triage` 处理：经用户确认走 `new_docx` 在其下新建 docx 规范页，或跳过并记入 `unsupported_checks`。
 
-`root_node` 确定前不生成写入计划，也不进入 `WRITE`。
+`root_node` 确定前不生成写入计划，也不进入 `WRITE`。空库新建根节点属于 `PARSE_TARGET` 阶段经用户确认的定根动作，不受 “`WRITE_CONFIRM` 前不新建节点” 约束的限制（该约束的既有例外是 `OUTLINE_PROPOSE` 新建大纲子节点）。
 
 ## Node Type Triage
 
@@ -153,6 +154,17 @@ Agent 必须在执行某状态前，读取该状态要求的引用文档。
 
 两种情况都携带读到的 `revision` 写入；有疑问时优先 `append`，不静默覆盖。
 
+### overwrite 必须保留节点标题（避免侧边栏变 Untitled）
+
+Wiki 节点在侧边栏显示的标题跟随其 docx 的 `<title>` 元素。`overwrite` 清空全文重写，若写入内容不含 `<title>`，节点标题会变成 “Untitled”。已在 BOE 实证：无首行标题的 overwrite → 节点标题变 Untitled；带标题的 overwrite → 标题恢复为该标题文字。
+
+因此每次 `overwrite`（占位覆盖或已确认草稿覆盖）写入的正文，**开头必须携带标题元素，其文字为该节点应显示的标题**（通常即节点原标题）：
+
+- `--doc-format markdown`：首行放 `# <节点标题>`（markdown 的 `#` H1 会被映射为 docx `<title>`，节点标题随之恢复）。
+- `--doc-format xml`：开头放 `<title><节点标题></title>`（XML 参考 `lark-doc-xml.md`：“完整文档以唯一的 `<title>` 开头”）。**不要只用 `<h1>`**——`<h1>` 只是正文一级标题块，不设置 docx `<title>`，节点标题仍会是 Untitled。
+
+`overwrite` 落笔前先读到当前节点标题，把它作为写入内容的标题文字，除非用户明确要求改标题（本 workflow 非目标不含重命名，默认沿用原标题）。`append` 追加在文末、不动文首 `<title>`，不受此约束。
+
 ## Write Gate
 
 `WRITE_CONFIRM` 生成写入计划后，必须先经 `scripts/kb_gate.py` 门禁校验，再进入 `WRITE`。门禁是确定性代码校验，agent 的判断只能收紧结果、不能绕过门禁。
@@ -179,7 +191,7 @@ python3 "<SKILL_ROOT>/references/scripts/kb_gate.py" --plan "<写入计划 JSON 
 
 | State | Allowed Command Families | Purpose |
 |-------|--------------------------|---------|
-| `PARSE_TARGET` | `wiki +node-get`、`wiki +space-list`、`wiki spaces get`（解析个人库 my_library）、`wiki +node-list --page-all` | 把 URL / 空间解析为 `space_id` 并确认根层节点 |
+| `PARSE_TARGET` | `wiki +node-get`、`wiki +space-list`、`wiki spaces get`（解析个人库 my_library）、`wiki +node-list --page-all`、`wiki +node-create --space-id <SPACE_ID> --obj-type docx`（仅空库经用户确认后在顶层建根节点） | 把 URL / 空间解析为 `space_id` 并确认根层节点；空库时经确认新建根节点 |
 | `READ_STRUCTURE` | `wiki +node-list --page-all`（对 `has_child=true` 逐层下钻）、`docs +fetch` | 完整递归读取节点树和节点草稿内容 |
 | `OUTLINE_PROPOSE` | `wiki +node-create --obj-type docx`（仅用户确认大纲后）、`wiki +node-list --page-all` | 新建确认后的大纲子节点并分页回读（`--page-all`，避免漏掉新建节点） |
 | `TYPE_TRIAGE` | 无写命令 | 仅对已读结构做分类 |
@@ -191,7 +203,7 @@ python3 "<SKILL_ROOT>/references/scripts/kb_gate.py" --plan "<写入计划 JSON 
 ## Transition Rules
 
 1. `PARSE_TARGET` 无法解析出唯一知识库时，只问目标澄清问题并停止。
-2. `PARSE_TARGET` 按 `Root Node Resolution` 确定唯一 `root_node`；知识空间存在多个顶层节点且无法自动定根时，停下列出候选请用户选定，不擅自选一个或默认全建。
+2. `PARSE_TARGET` 按 `Root Node Resolution` 确定唯一 `root_node`；空库（顶层 0 节点）时经用户确认在空间顶层新建 docx 根节点后再继续；知识空间存在多个顶层节点且无法自动定根时，停下列出候选请用户选定，不擅自选一个或默认全建。
 3. 认证或 API scope 缺失时，按 `lark-shared` 权限处理并停止。
 4. 权限按动作分别判断，填充 `permissions_observed`，一个动作受阻不连累其余动作：
    - 读权限缺失 → 停止，无法盘点结构（前提不满足）；
