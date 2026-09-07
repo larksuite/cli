@@ -54,6 +54,13 @@ func TestThreadManage_MetadataMatchesRegistry(t *testing.T) {
 			t.Fatalf("unexpected compatibility bypass --%s", forbidden)
 		}
 	}
+	trashFlags := map[string]common.Flag{}
+	for _, flag := range MailThreadTrash.Flags {
+		trashFlags[flag.Name] = flag
+	}
+	if len(trashFlags) != 2 || trashFlags["thread-id"].Type != "string_slice" || !trashFlags["thread-id"].Required {
+		t.Fatalf("trash flags = %#v, want mailbox plus required string_slice thread-id", trashFlags)
+	}
 }
 
 func TestThreadManage_ShortcutsRegistration(t *testing.T) {
@@ -235,6 +242,27 @@ func TestThreadManageDryRunUsesSameRequestShape(t *testing.T) {
 	}
 }
 
+func TestThreadTrashDryRunContainsOnlyOneAllowlistedRequest(t *testing.T) {
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	err := runMountedMailShortcut(t, MailThreadTrash, []string{
+		"+thread-trash", "--thread-id", " thread-a,thread-b ", "--dry-run",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("dry-run: %v", err)
+	}
+	out := stdout.String()
+	for _, want := range []string{"/user_mailboxes/me/threads/batch_trash", "thread_ids", "thread-a", "thread-b"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("dry-run missing %q: %s", want, out)
+		}
+	}
+	for _, forbidden := range []string{"batch_size", "batches", "add_label_ids", "add_folder"} {
+		if strings.Contains(out, forbidden) {
+			t.Fatalf("dry-run contains forbidden %q: %s", forbidden, out)
+		}
+	}
+}
+
 func TestThreadModifyNetworkFailureIsNotRetried(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	stub := &httpmock.Stub{
@@ -256,7 +284,7 @@ func TestThreadModifyNetworkFailureIsNotRetried(t *testing.T) {
 }
 
 func TestThreadManageRejectsBypassFlags(t *testing.T) {
-	for _, flag := range []string{"--data", "--add-folder"} {
+	for _, flag := range []string{"--data", "--add-folder", "--thread-ids", "--add-label-ids", "--remove-label-ids"} {
 		f, stdout, _, _ := mailShortcutTestFactory(t)
 		err := runMountedMailShortcut(t, MailThreadModify, []string{
 			"+thread-modify", "--thread-id", "thread-a", "--folder-id", "folder-x", flag, "{}",
