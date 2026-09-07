@@ -11,8 +11,6 @@ const (
 	PathOAuthRevoke = "/oauth/v1/revoke"
 	// PathAppRegistration is the endpoint for application registration.
 	PathAppRegistration = "/oauth/v1/app/registration"
-	// PathOAuthTokenV2 is the endpoint for requesting an OAuth token (v2).
-	PathOAuthTokenV2 = "/open-apis/authen/v2/oauth/token"
 	// PathUserInfoV1 is the endpoint for fetching user information.
 	PathUserInfoV1 = "/open-apis/authen/v1/user_info"
 	// PathApplicationInfoV6Prefix is the prefix endpoint for fetching application info.

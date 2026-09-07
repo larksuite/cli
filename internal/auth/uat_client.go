@@ -4,7 +4,6 @@
 package auth
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,7 +11,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptrace"
+	"net/url"
 	"os"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -137,13 +138,6 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions) (*StoredUATok
 }
 
 const refreshMaxAttempts = 2
-
-type refreshRequest struct {
-	GrantType    string `json:"grant_type"`
-	RefreshToken string `json:"refresh_token"`
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
-}
 
 // refreshResponse contains the OAuth token fields consumed by the refresh
 // flow. Pointers distinguish an omitted numeric field from a real zero value.
@@ -275,19 +269,11 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 }
 
 func refreshOnce(httpClient *http.Client, endpoint string, opts UATCallOptions, stored *StoredUAToken) refreshResult {
-	payload, err := json.Marshal(refreshRequest{
-		GrantType:    "refresh_token",
-		RefreshToken: stored.RefreshToken,
-		ClientID:     opts.AppId,
-		ClientSecret: opts.AppSecret,
-	})
-	if err != nil {
-		return refreshResult{
-			action: refreshStopAndPreserve,
-			err: errs.NewInternalError(errs.SubtypeSDKError,
-				"failed to encode token refresh request: %v", err).
-				WithCause(err),
-		}
+	form := url.Values{
+		"grant_type":    {"refresh_token"},
+		"refresh_token": {stored.RefreshToken},
+		"client_id":     {opts.AppId},
+		"client_secret": {opts.AppSecret},
 	}
 
 	var wroteRequest atomic.Bool
@@ -297,7 +283,7 @@ func refreshOnce(httpClient *http.Client, endpoint string, opts UATCallOptions, 
 		},
 	}
 	ctx := httptrace.WithClientTrace(context.Background(), trace)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return refreshResult{
 			action: refreshStopAndPreserve,
@@ -306,7 +292,7 @@ func refreshOnce(httpClient *http.Client, endpoint string, opts UATCallOptions, 
 				WithCause(err),
 		}
 	}
-	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := httpClient.Do(req)
 	if err != nil {

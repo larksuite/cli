@@ -57,7 +57,7 @@ func ResolveOAuthEndpoints(brand core.LarkBrand) OAuthEndpoints {
 	return OAuthEndpoints{
 		DeviceAuthorization: ep.Accounts + PathDeviceAuthorization,
 		Revoke:              ep.Accounts + PathOAuthRevoke,
-		Token:               ep.Open + PathOAuthTokenV2,
+		Token:               ep.Accounts + core.OAuthTokenV3Path,
 	}
 }
 
