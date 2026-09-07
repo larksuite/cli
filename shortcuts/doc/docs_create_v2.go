@@ -103,14 +103,14 @@ func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 		return err
 	}
 
-	data, err := doDocAPI(runtime, "POST", "/open-apis/docs_ai/v1/documents", body)
+	data, createLogID, err := doDocAPIWithLogID(runtime, "POST", "/open-apis/docs_ai/v1/documents", body)
 	if err != nil {
 		return err
 	}
 	if docsAPIOperationFailed(data) {
 		return runtime.OutPartialFailure(data, nil)
 	}
-	data, pending, err := waitForDocsCreateAsyncTask(runtime, data)
+	data, pending, err := waitForDocsCreateAsyncTask(runtime, data, createLogID)
 	if err != nil {
 		return err
 	}

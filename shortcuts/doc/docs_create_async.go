@@ -49,7 +49,7 @@ type docsCreateAsyncEnvelope struct {
 // shape before permission and local-resource follow-up work runs. If the
 // bounded wait expires, the latest processing task remains a successful,
 // resumable result instead of being mistaken for a completed document.
-func waitForDocsCreateAsyncTask(runtime *common.RuntimeContext, initial map[string]interface{}) (map[string]interface{}, bool, error) {
+func waitForDocsCreateAsyncTask(runtime *common.RuntimeContext, initial map[string]interface{}, createLogID string) (map[string]interface{}, bool, error) {
 	envelope, err := decodeDocsCreateAsyncEnvelope(initial)
 	if err != nil {
 		return nil, false, err
@@ -68,6 +68,7 @@ func waitForDocsCreateAsyncTask(runtime *common.RuntimeContext, initial map[stri
 	latest := initial
 	task := envelope.Task
 	polledOnce := false
+	logID := createLogID
 	for {
 		status := strings.ToLower(strings.TrimSpace(task.Status))
 		switch status {
@@ -75,7 +76,7 @@ func waitForDocsCreateAsyncTask(runtime *common.RuntimeContext, initial map[stri
 			result, decodeErr := decodeDocsCreateTaskResult(task)
 			return result, false, decodeErr
 		case "failed", "expired":
-			return nil, false, docsCreateAsyncFailure(task)
+			return nil, false, docsCreateAsyncFailure(task, logID)
 		case "", "processing":
 			// Continue below. An empty status is treated as processing so a
 			// temporarily sparse response does not trigger a duplicate create.
@@ -107,8 +108,11 @@ func waitForDocsCreateAsyncTask(runtime *common.RuntimeContext, initial map[stri
 		}
 
 		polledOnce = true
-		polled, pollErr := doDocAPI(runtime, "GET",
+		polled, polledLogID, pollErr := doDocAPIWithLogID(runtime, "GET",
 			fmt.Sprintf("/open-apis/docs_ai/v1/async_tasks/%s", url.PathEscape(taskID)), nil)
+		if polledLogID != "" {
+			logID = polledLogID
+		}
 		if pollErr != nil {
 			// The create was already accepted. Keep transient status-read failures
 			// inside the bounded polling budget so callers do not retry the write.
@@ -176,7 +180,7 @@ func docsCreateAsyncPollInterval(pollAfterMS int) time.Duration {
 	return interval
 }
 
-func docsCreateAsyncFailure(task *docsCreateAsyncTask) error {
+func docsCreateAsyncFailure(task *docsCreateAsyncTask, logID string) error {
 	taskID := strings.TrimSpace(task.TaskID)
 	status := strings.ToLower(strings.TrimSpace(task.Status))
 	message := status
@@ -193,7 +197,11 @@ func docsCreateAsyncFailure(task *docsCreateAsyncTask) error {
 	if code != "" {
 		message += " (code: " + code + ")"
 	}
-	return errs.NewAPIError(errs.SubtypeServerError,
+	err := errs.NewAPIError(errs.SubtypeServerError,
 		"document creation task %s %s: %s", taskID, status, message).
 		WithHint("query GET /open-apis/docs_ai/v1/async_tasks/%s for the terminal task record", url.PathEscape(taskID))
+	if logID != "" {
+		err = err.WithLogID(logID)
+	}
+	return err
 }

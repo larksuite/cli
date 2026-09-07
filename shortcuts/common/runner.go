@@ -330,15 +330,26 @@ func (ctx *RuntimeContext) Changed(name string) bool {
 // so log_id surfaces on the typed error even when the server returns it only in
 // the header.
 func (ctx *RuntimeContext) CallAPITyped(method, url string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {
+	out, _, err := ctx.CallAPITypedWithLogID(method, url, params, data)
+	return out, err
+}
+
+// CallAPITypedWithLogID is CallAPITyped plus the response's x-tt-logid. Use it
+// when a successful envelope can still describe a server-side failure (an async
+// task that ended in "failed"), where the caller builds its own error and would
+// otherwise lose the log id that support escalations need.
+func (ctx *RuntimeContext) CallAPITypedWithLogID(method, url string, params map[string]interface{}, data interface{}) (map[string]interface{}, string, error) {
 	ac, err := ctx.getAPIClient()
 	if err != nil {
-		return nil, typedOrInternal(err)
+		return nil, "", typedOrInternal(err)
 	}
 	resp, err := ac.DoAPI(ctx.ctx, ctx.buildRequest(method, url, params, data))
 	if err != nil {
-		return nil, typedOrInternal(err)
+		return nil, "", typedOrInternal(err)
 	}
-	return ctx.ClassifyAPIResponse(resp)
+	logID, _ := logIDFromHeader(resp)["log_id"].(string)
+	out, classifyErr := ctx.ClassifyAPIResponse(resp)
+	return out, logID, classifyErr
 }
 
 // ClassifyAPIResponse turns a raw *larkcore.ApiResp into the "data" object or a
