@@ -171,6 +171,52 @@ func TestChartCreateBasic_ConfigAndPlacement(t *testing.T) {
 	}
 }
 
+func TestChartColorPalette_FriendlyAliasTranslation(t *testing.T) {
+	t.Parallel()
+
+	// create path: friendly name and legacy wire value both reach the server as
+	// the wire value.
+	createCases := []struct {
+		input string
+		wire  string
+	}{
+		{input: "brand", wire: "brandColorSeries@v2"},
+		{input: "mono-cyan", wire: "singleColorSeries-W-@v2"},
+		{input: "brandColorSeries@v2", wire: "brandColorSeries@v2"},
+	}
+	for _, tc := range createCases {
+		t.Run("create/"+tc.input, func(t *testing.T) {
+			body := parseDryRunBody(t, ChartCreateBasic, []string{
+				"--url", testURL,
+				"--sheet-id", testSheetID,
+				"--chart-type", "line",
+				"--data-range", "A1:C4",
+				"--color-palette", tc.input,
+			})
+			basic := decodeToolInput(t, body, "manage_chart_object")["basic_chart"].(map[string]interface{})
+			if basic["color_palette"] != tc.wire {
+				t.Fatalf("color_palette = %v, want %q", basic["color_palette"], tc.wire)
+			}
+		})
+	}
+
+	// update path shares the same translation; verify it lands on the wire value
+	// in snapshot.style.colorTheme.
+	t.Run("update/mono-cyan", func(t *testing.T) {
+		body := parseDryRunBody(t, ChartConfigUpdate, []string{
+			"--url", testURL,
+			"--sheet-id", testSheetID,
+			"--chart-id", "chart-1",
+			"--color-palette", "mono-cyan",
+		})
+		snapshot := chartDryRunSnapshot(t, decodeToolInput(t, body, "manage_chart_object"))
+		colors := snapshot["style"].(map[string]interface{})["colorTheme"].([]interface{})
+		if len(colors) != 1 || colors[0] != "singleColorSeries-W-@v2" {
+			t.Fatalf("colorTheme = %#v, want [singleColorSeries-W-@v2]", colors)
+		}
+	})
+}
+
 func TestChartCreateBasic_MultipleAlignedRanges(t *testing.T) {
 	t.Parallel()
 	rangeValue := "'Data, 2026'!A1:A10,'Data, 2026'!K1:L10"
@@ -1224,6 +1270,7 @@ func TestChartSemanticShortcuts_Validation(t *testing.T) {
 		{name: "invalid direction", args: []string{"--url", testURL, "--sheet-id", testSheetID, "--chart-type", "line", "--data-range", "A1:C4", "--data-direction", "horizontal"}},
 		{name: "colors cannot be empty", args: []string{"--url", testURL, "--sheet-id", testSheetID, "--chart-type", "line", "--data-range", "A1:C4", "--colors", ""}},
 		{name: "palette and colors are exclusive", args: []string{"--url", testURL, "--sheet-id", testSheetID, "--chart-type", "line", "--data-range", "A1:C4", "--color-palette", "brandColorSeries@v2", "--colors", "#112233,#445566"}},
+		{name: "invalid palette", args: []string{"--url", testURL, "--sheet-id", testSheetID, "--chart-type", "line", "--data-range", "A1:C4", "--color-palette", "blue"}},
 		{name: "size must be paired", args: []string{"--url", testURL, "--sheet-id", testSheetID, "--chart-type", "line", "--data-range", "A1:C4", "--width", "640"}},
 		{name: "misaligned cross-sheet ranges", args: []string{"--url", testURL, "--sheet-id", testSheetID, "--chart-type", "line", "--data-range", "'A'!A1:A4,'B'!B2:C4"}},
 		{name: "bubble roles on non-bubble chart", args: []string{"--url", testURL, "--sheet-id", testSheetID, "--chart-type", "line", "--data-range", "A1:C4", "--x-index", "2", "--y-index", "3"}},

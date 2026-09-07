@@ -86,7 +86,7 @@ python scripts/lark_chart_size_advisor.py "<表格 URL 或 spreadsheet token>" \
 
 **横向类别行配方**：当日期/月份等类别横向排列在一行、目标数值在另一行时，把“类别行 + 数值行”一起放进 `--data-range` 并传 `--data-direction row`，例如 `--data-range "'Sheet1'!A1:M1,'Sheet1'!A3:M3" --data-direction row`。此时类别行属于数据映射，**不要**传给 `--header-range`。`--header-range` 仅表示与纯数据分离的“维度/系列名称”：column 方向必须是一行，row 方向必须是一列。row 方向却传入多列表头，通常说明把类别行误当成了分离表头。
 
-**整图配色优先走语义参数**：统一主题或系列配色用 `--color-palette` / `--colors`，已有图用 `+chart-config-update`；优先继承原表主题，同一指标跨图保持同色，组合图用同色系柱形、高对比折线和中性辅助线。`--colors` 会循环复用，明确逐系列配色时颜色数须与系列数一致。颜色过多难以区分时优先 Top-N 或拆图；单系列/数据点配色才使用原始 snapshot。
+**整图配色优先走语义参数**：统一主题或系列配色用 `--color-palette` / `--colors`，已有图用 `+chart-config-update`；`--color-palette` 按数据语义选预设（多类别用多彩 brand/rainbow/contrast，正负·涨跌用 diverging，单系列或有序量级用 mono-<色>）。优先继承原表主题，同一指标跨图保持同色，组合图用同色系柱形、高对比折线和中性辅助线。`--colors` 会循环复用，明确逐系列配色时颜色数须与系列数一致。颜色过多难以区分时优先 Top-N 或拆图；单系列/数据点配色才使用原始 snapshot。
 
 ## 需求→图表类型映射（创建前必查）
 
@@ -236,7 +236,7 @@ _公共四件套 · 系统：`--dry-run`_
 | `--stack` | string | optional | 堆叠模式（可选值：`none` / `normal` / `percent`） |
 | `--stacked` | bool | optional | 兼容别名；等价于 --stack normal（隐藏 flag：不在 `--help` 列出，但可正常传入） |
 | `--smooth` | bool | optional | 是否使用平滑曲线；显式关闭使用 --smooth=false |
-| `--color-palette` | string | optional | 预设整图配色主题；与 --colors 互斥（可选值：`brandColorSeries@v2` / `rainbowColorSeries@v2` / `complementaryColorSeries@v2` / `converseColorSeries@v2` / `primaryColorSeries@v2` / `singleColorSeries-B-@v2` / `singleColorSeries-W-@v2` / `singleColorSeries-G-@v2` / `singleColorSeries-Y-@v2` / `singleColorSeries-O-@v2` / `singleColorSeries-R-@v2` / `singleColorSeries-D-@v2`） |
+| `--color-palette` | string | optional | 预设整图配色主题；与 --colors 互斥。多类别用多彩 brand(默认)/rainbow(系列多)/contrast(强对比)；正负·涨跌·盈亏用 diverging；柔和淡色用 muted；单系列或有序量级用 mono-<色>(mono-cyan 为天蓝、mono-gray 为中性灰)（可选值：`brand` / `rainbow` / `contrast` / `diverging` / `muted` / `mono-blue` / `mono-cyan` / `mono-green` / `mono-yellow` / `mono-orange` / `mono-red` / `mono-gray`） |
 | `--colors` | string_slice | optional | 自定义整图系列颜色，逗号分隔且至少 2 个十六进制色值；与 --color-palette 互斥 |
 | `--anchor-cell` | string | optional | 可选图表锚点单元格，如 F2；省略时放到数据范围右侧 |
 | `--width` | int | optional | 可选图表宽度；必须与 --height 同时传；饼图 / 环形图及长类别标签场景应适量加宽以避免截断 |
@@ -267,7 +267,7 @@ _公共四件套 · 系统：`--dry-run`_
 | `--stack` | string | optional | 堆叠模式（可选值：`none` / `normal` / `percent`） |
 | `--stacked` | bool | optional | 兼容别名；等价于 --stack normal（隐藏 flag：不在 `--help` 列出，但可正常传入） |
 | `--smooth` | bool | optional | 是否使用平滑曲线；显式关闭使用 --smooth=false |
-| `--color-palette` | string | optional | 预设整图配色主题；与 --colors 互斥（可选值：`brandColorSeries@v2` / `rainbowColorSeries@v2` / `complementaryColorSeries@v2` / `converseColorSeries@v2` / `primaryColorSeries@v2` / `singleColorSeries-B-@v2` / `singleColorSeries-W-@v2` / `singleColorSeries-G-@v2` / `singleColorSeries-Y-@v2` / `singleColorSeries-O-@v2` / `singleColorSeries-R-@v2` / `singleColorSeries-D-@v2`） |
+| `--color-palette` | string | optional | 预设整图配色主题；与 --colors 互斥。多类别用多彩 brand(默认)/rainbow(系列多)/contrast(强对比)；正负·涨跌·盈亏用 diverging；柔和淡色用 muted；单系列或有序量级用 mono-<色>(mono-cyan 为天蓝、mono-gray 为中性灰)（可选值：`brand` / `rainbow` / `contrast` / `diverging` / `muted` / `mono-blue` / `mono-cyan` / `mono-green` / `mono-yellow` / `mono-orange` / `mono-red` / `mono-gray`） |
 | `--colors` | string_slice | optional | 自定义整图系列颜色，逗号分隔且至少 2 个十六进制色值；与 --color-palette 互斥 |
 
 ### `+chart-data-update`
