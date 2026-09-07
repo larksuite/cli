@@ -1461,6 +1461,37 @@ func TestRequireSenderForRequestReceipt(t *testing.T) {
 	}
 }
 
+func TestPickSendAsAddress(t *testing.T) {
+	addresses := []interface{}{
+		map[string]interface{}{"email_address": "primary@example.com", "name": "Primary"},
+		map[string]interface{}{"email_address": "alias@example.com", "name": "Default Alias", "is_default": true},
+	}
+
+	t.Run("explicit from wins", func(t *testing.T) {
+		got := pickSendAsAddress(addresses, "PRIMARY@example.com")
+		if got.Email != "primary@example.com" || got.Name != "Primary" {
+			t.Fatalf("pickSendAsAddress() = %+v, want explicit primary sender", got)
+		}
+	})
+
+	t.Run("default marker wins", func(t *testing.T) {
+		got := pickSendAsAddress(addresses, "")
+		if got.Email != "alias@example.com" || got.Name != "Default Alias" {
+			t.Fatalf("pickSendAsAddress() = %+v, want default alias", got)
+		}
+	})
+
+	t.Run("old response uses first address", func(t *testing.T) {
+		got := pickSendAsAddress([]interface{}{
+			map[string]interface{}{"email_address": "legacy@example.com", "name": "Legacy"},
+			map[string]interface{}{"email_address": "other@example.com", "name": "Other"},
+		}, "")
+		if got.Email != "legacy@example.com" || got.Name != "Legacy" {
+			t.Fatalf("pickSendAsAddress() = %+v, want first legacy address", got)
+		}
+	})
+}
+
 func TestShellQuoteForHint(t *testing.T) {
 	cases := []struct {
 		name string

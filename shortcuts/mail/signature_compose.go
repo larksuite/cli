@@ -178,38 +178,11 @@ func addSignatureImagesToBuilder(bld emlbuilder.Builder, sig *signatureResult) e
 // resolveSenderInfo fetches send_as addresses and returns the name/email
 // for signature interpolation. If fromEmail is non-empty, it matches
 // that address in the sendable list (for alias/send_as scenarios);
-// otherwise falls back to the first (primary) address.
+// otherwise selects the address marked as default and falls back to the first
+// item for responses from older servers.
 func resolveSenderInfo(runtime *common.RuntimeContext, mailboxID, fromEmail string) (name, email string) {
-	data, err := runtime.CallAPITyped("GET", mailboxPath(mailboxID, "settings", "send_as"), nil, nil)
-	if err != nil {
-		return "", ""
-	}
-	addrs, ok := data["sendable_addresses"].([]interface{})
-	if !ok || len(addrs) == 0 {
-		return "", ""
-	}
-	// If fromEmail is specified, find the matching address.
-	if fromEmail != "" {
-		for _, a := range addrs {
-			m, ok := a.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			e, _ := m["email_address"].(string)
-			if strings.EqualFold(e, fromEmail) {
-				n, _ := m["name"].(string)
-				return n, e
-			}
-		}
-	}
-	// Fall back to the first sendable address (primary).
-	first, ok := addrs[0].(map[string]interface{})
-	if !ok {
-		return "", ""
-	}
-	n, _ := first["name"].(string)
-	e, _ := first["email_address"].(string)
-	return n, e
+	sender := resolveSendAsSender(runtime, mailboxID, fromEmail)
+	return sender.Name, sender.Email
 }
 
 // downloadSignatureImage downloads a signature image by its direct URL.

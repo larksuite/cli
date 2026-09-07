@@ -28,6 +28,19 @@ func stubMailboxProfile(reg *httpmock.Registry, primary string) {
 	})
 }
 
+func stubSendAs(reg *httpmock.Registry, addresses []interface{}) {
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/me/settings/send_as",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"sendable_addresses": addresses,
+			},
+		},
+	})
+}
+
 // stubGetMessageWithFormat registers a messages.get stub returning a minimal
 // message suitable for reply / reply-all / forward. Subject / body / headers
 // are fixed to deterministic values.
@@ -114,10 +127,10 @@ func decodeCapturedRawEML(t *testing.T, capturedBody []byte) string {
 	return string(decoded)
 }
 
-// TestMailSend_RequestReceiptAddsHeader_Integration verifies that running
-// `+send --request-receipt` end-to-end writes a Disposition-Notification-To
-// header addressed to the sender into the outgoing draft's EML.
-func TestMailSend_RequestReceiptAddsHeader_Integration(t *testing.T) {
+// TestMailSend_SendAsFailureFallsBackToProfile verifies that an unavailable
+// settings/send_as endpoint does not block compose and the profile address is
+// used consistently for From and Disposition-Notification-To.
+func TestMailSend_SendAsFailureFallsBackToProfile(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
 	stubMailboxProfile(reg, "me@example.com")
 	createStub := registerDraftCaptureStubs(reg)
@@ -133,11 +146,75 @@ func TestMailSend_RequestReceiptAddsHeader_Integration(t *testing.T) {
 		t.Fatalf("send failed: %v", err)
 	}
 	raw := decodeCapturedRawEML(t, createStub.CapturedBody)
+	if !strings.Contains(raw, "From: <me@example.com>") {
+		t.Errorf("expected profile fallback in From header; got EML:\n%s", raw)
+	}
 	// Pin the full header value so the From: header's me@example.com doesn't
 	// satisfy a substring check even when DNT is broken.
 	if !strings.Contains(raw, "Disposition-Notification-To: <me@example.com>") {
 		t.Errorf("expected DNT header addressed to sender; got EML:\n%s", raw)
 	}
+}
+
+func TestMailSend_UsesDefaultSendAsForFromAndReceipt(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
+	stubMailboxProfile(reg, "primary@example.com")
+	stubSendAs(reg, []interface{}{
+		map[string]interface{}{"email_address": "primary@example.com", "name": "Primary"},
+		map[string]interface{}{"email_address": "alias@example.com", "name": "Default Alias", "is_default": true},
+	})
+	createStub := registerDraftCaptureStubs(reg)
+
+	if err := runMountedMailShortcut(t, MailSend, []string{
+		"+send",
+		"--to", "bob@example.com",
+		"--subject", "hi",
+		"--body", "please confirm",
+		"--request-receipt",
+	}, f, stdout); err != nil {
+		t.Fatalf("send failed: %v", err)
+	}
+	raw := decodeCapturedRawEML(t, createStub.CapturedBody)
+	fromLine := headerLine(raw, "From:")
+	if !strings.Contains(fromLine, "Default Alias") || !strings.Contains(fromLine, "<alias@example.com>") {
+		t.Errorf("expected default send-as in From header; got EML:\n%s", raw)
+	}
+	if !strings.Contains(raw, "Disposition-Notification-To: <alias@example.com>") {
+		t.Errorf("expected default send-as in DNT header; got EML:\n%s", raw)
+	}
+}
+
+func TestMailDraftCreate_UsesDefaultSendAs(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactoryWithSendScope(t)
+	stubMailboxProfile(reg, "primary@example.com")
+	stubSendAs(reg, []interface{}{
+		map[string]interface{}{"email_address": "primary@example.com", "name": "Primary"},
+		map[string]interface{}{"email_address": "alias@example.com", "name": "Default Alias", "is_default": true},
+	})
+	createStub := registerDraftCaptureStubs(reg)
+
+	if err := runMountedMailShortcut(t, MailDraftCreate, []string{
+		"+draft-create",
+		"--to", "bob@example.com",
+		"--subject", "hi",
+		"--body", "draft body",
+	}, f, stdout); err != nil {
+		t.Fatalf("draft-create failed: %v", err)
+	}
+	raw := decodeCapturedRawEML(t, createStub.CapturedBody)
+	fromLine := headerLine(raw, "From:")
+	if !strings.Contains(fromLine, "Default Alias") || !strings.Contains(fromLine, "<alias@example.com>") {
+		t.Errorf("expected default send-as in From header; got EML:\n%s", raw)
+	}
+}
+
+func headerLine(raw, prefix string) string {
+	for _, line := range strings.Split(raw, "\r\n") {
+		if strings.HasPrefix(line, prefix) {
+			return line
+		}
+	}
+	return ""
 }
 
 // TestMailSend_RequestReceiptNoSender_FailsValidation covers the

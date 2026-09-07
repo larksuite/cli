@@ -46,7 +46,7 @@ var MailDraftCreate = common.Shortcut{
 		{Name: "subject", Desc: "Final draft subject. Pass the full subject you want to appear in the draft. Required unless --template-id supplies a non-empty subject."},
 		{Name: "body", Desc: "Full email body. Prefer HTML for rich formatting (bold, lists, links); plain text is also supported. Body type is auto-detected. Use --plain-text to force plain-text mode. Mutually exclusive with --body-file. Required unless --template-id supplies a non-empty body."},
 		bodyFileFlag,
-		{Name: "from", Desc: "Optional. Sender email address for the From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox. If omitted, the mailbox's primary address is used."},
+		{Name: "from", Desc: "Optional. Sender email address for the From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox. If omitted, the mailbox's default send-as address is used."},
 		{Name: "mailbox", Desc: "Optional. Mailbox email address that owns the draft (default: falls back to --from, then me). Use this when the sender (--from) differs from the mailbox, e.g. sending via an alias or send_as address."},
 		{Name: "cc", Desc: "Optional. Full Cc recipient list. Separate multiple addresses with commas. Display-name format is supported."},
 		{Name: "bcc", Desc: "Optional. Full Bcc recipient list. Separate multiple addresses with commas. Display-name format is supported."},
@@ -69,7 +69,8 @@ var MailDraftCreate = common.Shortcut{
 			api = api.GET(templateMailboxPath(mailboxID, tid)).
 				Desc("Fetch template to merge with compose flags (subject/body/to/cc/bcc/attachments).")
 		}
-		api = api.GET(mailboxPath(mailboxID, "profile")).
+		api = api.GET(mailboxPath(mailboxID, "settings", "send_as")).
+			GET(mailboxPath(mailboxID, "profile")).
 			POST(mailboxPath(mailboxID, "drafts")).
 			Body(map[string]interface{}{
 				"raw": "<base64url-EML>",
@@ -183,7 +184,7 @@ var MailDraftCreate = common.Shortcut{
 		}
 		signatureID := runtime.Str("signature-id")
 		noSignature := runtime.Bool("no-signature")
-		senderEmail := resolveComposeSenderEmail(runtime)
+		senderEmail := resolveComposeSender(runtime).Email
 		// Auto-resolve default signature when neither --no-signature nor --signature-id is set.
 		if noSignature {
 			signatureID = ""
@@ -280,7 +281,11 @@ func buildRawEMLForDraftCreate(
 		bld = bld.ToAddrs(parseNetAddrs(input.To))
 	}
 	if senderEmail != "" {
-		bld = bld.From("", senderEmail)
+		senderName := ""
+		if runtime.Factory != nil {
+			senderName = resolveSendAsSender(runtime, mailboxID, senderEmail).Name
+		}
+		bld = bld.From(senderName, senderEmail)
 	}
 	// senderEmail non-emptiness is already enforced above (L140); the flag-
 	// driven guard here only exists to make the relationship explicit to

@@ -353,19 +353,87 @@ func extractPrimaryEmail(data map[string]interface{}) string {
 	return ""
 }
 
+type composeSenderInfo struct {
+	Name  string
+	Email string
+}
+
+// pickSendAsAddress selects a sender from a settings/send_as response.
+// An explicitly requested address always wins. Otherwise, prefer the address
+// marked as default and fall back to the first valid item for older servers
+// that do not return is_default.
+func pickSendAsAddress(addrs []interface{}, fromEmail string) composeSenderInfo {
+	parse := func(value interface{}) (composeSenderInfo, bool, bool) {
+		item, ok := value.(map[string]interface{})
+		if !ok {
+			return composeSenderInfo{}, false, false
+		}
+		email, _ := item["email_address"].(string)
+		email = strings.TrimSpace(email)
+		if email == "" {
+			return composeSenderInfo{}, false, false
+		}
+		name, _ := item["name"].(string)
+		isDefault, _ := item["is_default"].(bool)
+		return composeSenderInfo{Name: name, Email: email}, isDefault, true
+	}
+
+	fromEmail = strings.TrimSpace(fromEmail)
+	var first composeSenderInfo
+	for _, value := range addrs {
+		sender, isDefault, ok := parse(value)
+		if !ok {
+			continue
+		}
+		if first.Email == "" {
+			first = sender
+		}
+		if fromEmail != "" && strings.EqualFold(sender.Email, fromEmail) {
+			return sender
+		}
+		if fromEmail == "" && isDefault {
+			return sender
+		}
+	}
+	if fromEmail != "" {
+		return composeSenderInfo{Email: fromEmail}
+	}
+	return first
+}
+
+func resolveSendAsSender(runtime *common.RuntimeContext, mailboxID, fromEmail string) composeSenderInfo {
+	data, err := runtime.CallAPITyped("GET", mailboxPath(mailboxID, "settings", "send_as"), nil, nil)
+	if err != nil {
+		return composeSenderInfo{Email: strings.TrimSpace(fromEmail)}
+	}
+	addrs, _ := data["sendable_addresses"].([]interface{})
+	return pickSendAsAddress(addrs, fromEmail)
+}
+
 // resolveComposeSenderEmail determines the sender email for compose shortcuts.
-// Priority: --from > --mailbox > profile("me").
-// The profile API only supports "me", so when --mailbox is set to a non-"me"
-// address (e.g. a shared mailbox), its value is used directly as the sender.
-func resolveComposeSenderEmail(runtime *common.RuntimeContext) string {
-	if from := runtime.Str("from"); from != "" {
-		return from
+// Priority: --from > default send_as > --mailbox > profile("me").
+// The send_as failure and empty-response paths deliberately retain the previous
+// mailbox/profile fallback behavior.
+func resolveComposeSender(runtime *common.RuntimeContext) composeSenderInfo {
+	from := strings.TrimSpace(runtime.Str("from"))
+	if runtime.Factory != nil {
+		mailboxID := resolveComposeMailboxID(runtime)
+		if sender := resolveSendAsSender(runtime, mailboxID, from); sender.Email != "" {
+			return sender
+		}
+	}
+	if from != "" {
+		return composeSenderInfo{Email: from}
 	}
 	if mb := runtime.Str("mailbox"); mb != "" && mb != "me" {
-		return mb
+		return composeSenderInfo{Email: mb}
 	}
 	email, _ := fetchMailboxPrimaryEmail(runtime, "me")
-	return email
+	return composeSenderInfo{Email: email}
+}
+
+func resolveComposeSenderEmail(runtime *common.RuntimeContext) string {
+	return resolveComposeSender(runtime).Email
 }
 
 // fetchSelfEmailSet returns a set of addresses to exclude as "self" in
