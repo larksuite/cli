@@ -465,7 +465,7 @@ lark-cli sheets +chart-config-update --url "..." --sheet-id "$SID" --chart-id "c
 ```bash
 # 只调整尺寸；无需携带 snapshot
 lark-cli sheets +chart-update --url "..." --sheet-id "$SID" --chart-id "chrXXX" \
-  --properties '{"size":{"width":640,"height":360}}'
+  --properties '{"size":{"width":640,"height":400}}'
 ```
 
 #### 高级 `properties` 边界
