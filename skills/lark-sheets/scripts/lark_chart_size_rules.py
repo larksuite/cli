@@ -23,6 +23,7 @@ DEFAULT_MINIMUM_SIZE = (640, 400)
 MAX_CHART_WIDTH = 1600
 MAX_ASPECT_RATIO = 2.6
 COMBO_SERIES_TYPES = {"column", "line", "area", "scatter"}
+COMBO_SERIES_Y_AXES = {"left", "right"}
 
 
 def display_units(value: Any) -> int:
@@ -108,6 +109,27 @@ def effective_series_types(
     return normalized
 
 
+def effective_series_y_axes(
+    chart_type: str,
+    series_count: int,
+    series_y_axes: list[str] | None = None,
+) -> list[str]:
+    chart_type = str(chart_type).lower()
+    if chart_type != "combo":
+        if series_y_axes:
+            raise ValueError("series_y_axes is only valid for combo charts")
+        return ["left"] * series_count
+    if series_y_axes is None:
+        return ["left", *(["right"] * max(0, series_count - 1))]
+    normalized = [str(value).strip().lower() for value in series_y_axes]
+    if len(normalized) != series_count:
+        raise ValueError("series_y_axes length must match series_names")
+    invalid = [value for value in normalized if value not in COMBO_SERIES_Y_AXES]
+    if invalid:
+        raise ValueError(f"unsupported combo series Y axis: {invalid[0]}")
+    return normalized
+
+
 def recommend_chart_size(
     *,
     chart_type: str,
@@ -119,6 +141,7 @@ def recommend_chart_size(
     values: list[float] | None = None,
     aggregate_categories: bool = True,
     series_types: list[str] | None = None,
+    series_y_axes: list[str] | None = None,
 ) -> dict[str, Any]:
     chart_type = str(chart_type).lower()
     category_text = effective_category_labels(
@@ -131,6 +154,11 @@ def recommend_chart_size(
         chart_type,
         series_count,
         series_types,
+    )
+    normalized_series_y_axes = effective_series_y_axes(
+        chart_type,
+        series_count,
+        series_y_axes,
     )
     column_series_count = sum(value == "column" for value in normalized_series_types)
     line_like_series_count = series_count - column_series_count
@@ -163,7 +191,11 @@ def recommend_chart_size(
         if size_alone_is_insufficient:
             advice.extend(["use_top_n", "split_chart"])
     else:
-        reserve = 230 if chart_type == "combo" else 170
+        reserve = (
+            230
+            if chart_type == "combo" and "right" in normalized_series_y_axes
+            else 170
+        )
         line_dominant_combo = chart_type == "combo" and column_series_count == 0
         base_slot = 44 if chart_type in {"line", "area"} or line_dominant_combo else 52
         text_slot = 20 + p75_units * 7 * 0.72
@@ -226,6 +258,7 @@ def recommend_chart_size(
             "chart_type": chart_type,
             "series_count": series_count,
             "series_types": normalized_series_types,
+            "series_y_axes": normalized_series_y_axes,
             "column_series_count": column_series_count,
             "max_category_display_units": max_units,
             "p75_category_display_units": p75_units,

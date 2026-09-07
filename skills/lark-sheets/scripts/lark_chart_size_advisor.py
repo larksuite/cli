@@ -304,6 +304,16 @@ def _comma_separated_values(value: str) -> list[str]:
     return values
 
 
+def _series_y_axes_argument(value: str) -> list[str]:
+    values = _comma_separated_values(value)
+    invalid = [item for item in values if item not in {"left", "right"}]
+    if invalid:
+        raise argparse.ArgumentTypeError(
+            f"unsupported series Y axis {invalid[0]!r}; expected left or right"
+        )
+    return values
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Recommend chart width and height before +chart-create-basic")
     parser.add_argument("target", help="Spreadsheet URL or spreadsheet token")
@@ -317,7 +327,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--dim1-index", type=int, default=1)
     parser.add_argument("--dim2-indexes")
     parser.add_argument("--series-types", type=_comma_separated_values)
-    parser.add_argument("--series-y-axes")
+    parser.add_argument("--series-y-axes", type=_series_y_axes_argument)
     parser.add_argument("--data-labels", default="none")
     parser.add_argument("--aggregate-categories", type=_boolean_argument, default=True)
     parser.add_argument("--legend-position", default="bottom")
@@ -382,6 +392,7 @@ def main() -> None:
             values=profile["values"],
             aggregate_categories=args.aggregate_categories,
             series_types=args.series_types,
+            series_y_axes=args.series_y_axes,
         )
         result["data_profile"] = {
             "dim2_indexes": profile["dim2_indexes"],

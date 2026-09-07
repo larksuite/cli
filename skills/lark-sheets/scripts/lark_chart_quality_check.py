@@ -449,6 +449,7 @@ def _typed_cell(
     # table-get infers one dtype per physical column. A hidden cell or another
     # row-series can widen that dtype and stringify otherwise numeric cells.
     # Treat such cells as unknown instead of reporting a false storage issue.
+    numeric_string_count = 0
     for other_row_offset, row in enumerate(rows):
         if not isinstance(row, list) or column_offset >= len(row):
             continue
@@ -460,9 +461,10 @@ def _typed_cell(
         ):
             continue
         if isinstance(other, str) and _looks_numeric(other):
+            numeric_string_count += 1
             continue
         return value, "unknown"
-    return value, kind
+    return value, "string" if numeric_string_count == 1 else "ambiguous_string"
 
 
 def _chart_snapshot(chart: dict[str, Any]) -> dict[str, Any]:
@@ -1002,6 +1004,7 @@ def _numeric_source_issues(
             }
             for coordinate in selected
         }
+        type_unverifiable_dimensions: set[int] = set()
         visible_offsets = {
             (row_number - typed_bounds[0], column_index - typed_bounds[2])
             for row_number, column_index, _ in _iter_cells(cells_data)
@@ -1050,6 +1053,8 @@ def _numeric_source_issues(
                     reason = "numeric_value_uses_text_format"
                 elif raw_type == "string":
                     reason = "numeric_value_stored_as_text"
+                elif raw_type in {"ambiguous_string", "unknown"}:
+                    type_unverifiable_dimensions.add(dimension[0])
             if reason:
                 dimension_index, role = dimension
                 key = (
@@ -1067,6 +1072,17 @@ def _numeric_source_issues(
 
         if truncated:
             continue
+        for dimension_index in sorted(type_unverifiable_dimensions):
+            unverifiable.append(
+                {
+                    "chart_id": chart_id,
+                    "reason": (
+                        "numeric storage type cannot be attributed to individual cells after "
+                        f"typed column coercion for {source_sheet}!{checked_range}, "
+                        f"dimension {dimension_index}"
+                    ),
+                }
+            )
         zero_candidates = {
             coordinate
             for coordinate, state in states.items()
