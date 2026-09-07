@@ -1,6 +1,6 @@
 # task +tasklist-create
 
-> **Prerequisites:** Please read `../lark-shared/SKILL.md` to understand authentication, global parameters, and security rules.
+> **Prerequisites:** Please read `../../lark-shared/SKILL.md` to understand authentication, global parameters, and security rules.
 
 Create a new tasklist, and optionally batch create tasks within it.
 
