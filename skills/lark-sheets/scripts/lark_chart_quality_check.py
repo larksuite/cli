@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import binascii
 import io
 import json
 import re
@@ -32,7 +33,6 @@ from typing import Any
 
 from lark_sheet_read_cli import (
     LarkCliError,
-    emit_error,
     envelope_data,
     resolve_target_sheets,
     run_sheets,
@@ -379,16 +379,20 @@ def fetch_thumbnail_assets(
     expected_chart_ids: list[str],
     output_dir: Path,
     timeout: int,
+    chart_id: str | None = None,
 ) -> dict[str, Any]:
     sheet_id = sheet_identifier(sheet)
     title = sheet_title(sheet)
     try:
+        flags: dict[str, Any] = {"only_thumbnail": True}
+        if chart_id:
+            flags["chart_id"] = chart_id
         thumbnail_data = envelope_data(
             run_sheets(
                 "+chart-list",
                 **locator,
                 sheet_id=sheet_id,
-                flags={"only_thumbnail": True},
+                flags=flags,
                 timeout=timeout,
             )
         )
@@ -399,7 +403,12 @@ def fetch_thumbnail_assets(
             "received_chart_ids": [],
             "valid_chart_ids": [],
             "missing_chart_ids": expected_chart_ids,
-            "coverage_rate": 0.0 if expected_chart_ids else None,
+            "unavailable_chart_ids": expected_chart_ids,
+            "coverage": {
+                "valid": 0,
+                "expected": len(expected_chart_ids),
+                "rate": 0.0 if expected_chart_ids else None,
+            },
             "files": [],
             "error": str(exc),
             "error_log_ids": _error_log_ids(exc),
@@ -432,7 +441,7 @@ def fetch_thumbnail_assets(
         try:
             raw = base64.b64decode(encoded, validate=True)
             inspection = inspect_image_bytes(raw, item["mime_type"])
-        except (ValueError, zlib.error, struct.error) as exc:
+        except (binascii.Error, ValueError, zlib.error, struct.error) as exc:
             item.update({"status": "invalid", "reason": str(exc)})
             files.append(item)
             continue
@@ -450,11 +459,8 @@ def fetch_thumbnail_assets(
     missing = [chart_id for chart_id in expected_chart_ids if chart_id not in received_ids]
     expected_set = set(expected_chart_ids)
     valid_set = set(valid_ids)
-    coverage_rate = (
-        len(expected_set & valid_set) / len(expected_set)
-        if expected_set
-        else None
-    )
+    valid_expected_count = len(expected_set & valid_set)
+    unavailable = [chart_id for chart_id in expected_chart_ids if chart_id not in valid_set]
     if not received_ids or all(item.get("status") == "empty" for item in files):
         status = "empty"
     elif not missing and expected_set == valid_set:
@@ -467,10 +473,100 @@ def fetch_thumbnail_assets(
         "received_chart_ids": received_ids,
         "valid_chart_ids": valid_ids,
         "missing_chart_ids": missing,
-        "coverage_rate": coverage_rate,
+        "unavailable_chart_ids": unavailable,
+        "coverage": {
+            "valid": valid_expected_count,
+            "expected": len(expected_set),
+            "rate": valid_expected_count / len(expected_set) if expected_set else None,
+        },
         "files": files,
         "error_log_ids": [],
     }
+
+
+def fetch_thumbnail_assets_with_fallback(
+    locator: dict[str, str],
+    sheet: dict[str, Any],
+    *,
+    expected_chart_ids: list[str],
+    output_dir: Path,
+    timeout: int,
+    retries: int,
+) -> dict[str, Any]:
+    result = fetch_thumbnail_assets(
+        locator,
+        sheet,
+        expected_chart_ids=expected_chart_ids,
+        output_dir=output_dir,
+        timeout=timeout,
+    )
+    remaining = [
+        chart_id
+        for chart_id in expected_chart_ids
+        if chart_id not in result.get("valid_chart_ids", [])
+    ]
+    attempts: list[dict[str, Any]] = []
+    for attempt in range(1, retries + 1):
+        if not remaining:
+            break
+        for chart_id in remaining:
+            retry = fetch_thumbnail_assets(
+                locator,
+                sheet,
+                expected_chart_ids=[chart_id],
+                output_dir=output_dir,
+                timeout=timeout,
+                chart_id=chart_id,
+            )
+            attempts.append(
+                {
+                    "attempt": attempt,
+                    "chart_id": chart_id,
+                    "status": retry.get("status"),
+                    "error_log_ids": retry.get("error_log_ids", []),
+                }
+            )
+            result.setdefault("received_chart_ids", []).extend(
+                retry.get("received_chart_ids", [])
+            )
+            if retry.get("files"):
+                result["files"] = [
+                    item
+                    for item in result.get("files", [])
+                    if item.get("chart_id") != chart_id
+                ] + retry["files"]
+            if chart_id in retry.get("valid_chart_ids", []):
+                result.setdefault("valid_chart_ids", []).append(chart_id)
+            result.setdefault("error_log_ids", []).extend(retry.get("error_log_ids", []))
+        result["valid_chart_ids"] = list(dict.fromkeys(result.get("valid_chart_ids", [])))
+        result["received_chart_ids"] = list(dict.fromkeys(result.get("received_chart_ids", [])))
+        remaining = [
+            chart_id
+            for chart_id in expected_chart_ids
+            if chart_id not in result["valid_chart_ids"]
+        ]
+    received_set = set(result.get("received_chart_ids", []))
+    valid_set = set(result.get("valid_chart_ids", []))
+    expected_set = set(expected_chart_ids)
+    result["missing_chart_ids"] = [
+        chart_id for chart_id in expected_chart_ids if chart_id not in received_set
+    ]
+    result["unavailable_chart_ids"] = remaining
+    result["coverage"] = {
+        "valid": len(expected_set & valid_set),
+        "expected": len(expected_set),
+        "rate": len(expected_set & valid_set) / len(expected_set) if expected_set else None,
+    }
+    result["error_log_ids"] = sorted(set(result.get("error_log_ids", [])))
+    result["fallback_attempts"] = attempts
+    if not remaining and set(result.get("valid_chart_ids", [])) == set(expected_chart_ids):
+        result["status"] = "ok"
+        result.pop("error", None)
+    elif result.get("valid_chart_ids"):
+        result["status"] = "partial"
+    else:
+        result["status"] = "error"
+    return result
 
 
 def chart_rectangle(
@@ -1520,6 +1616,13 @@ def parse_args() -> argparse.Namespace:
         "--thumbnail-output-dir",
         help="Directory for decoded chart thumbnails; defaults to a temporary directory",
     )
+    parser.add_argument(
+        "--thumbnail-retries",
+        type=int,
+        choices=range(0, 4),
+        default=1,
+        help="Per-chart fallback retries after a batch thumbnail failure (default: 1)",
+    )
     return parser.parse_args()
 
 
@@ -1545,6 +1648,51 @@ def success_envelope(
         len(result.get("valid_chart_ids", []))
         for result in (thumbnail_results or [])
     )
+    missing_chart_ids = list(
+        dict.fromkeys(
+            chart_id
+            for result in (thumbnail_results or [])
+            for chart_id in result.get("missing_chart_ids", [])
+        )
+    )
+    unavailable_chart_ids = list(
+        dict.fromkeys(
+            chart_id
+            for result in (thumbnail_results or [])
+            for chart_id in result.get("unavailable_chart_ids", [])
+        )
+    )
+    read_required_files = [
+        item
+        for result in (thumbnail_results or [])
+        for item in result.get("files", [])
+        if item.get("status") == "valid" and item.get("path")
+    ]
+    read_required = [
+        {"chart_id": str(item.get("chart_id")), "path": str(item["path"])}
+        for item in read_required_files
+    ]
+    valid_chart_ids = list(dict.fromkeys(item["chart_id"] for item in read_required))
+    error_log_ids = sorted(
+        {
+            log_id
+            for result in (thumbnail_results or [])
+            for log_id in result.get("error_log_ids", [])
+        }
+    )
+    if issue_count > 0:
+        result_type = "quality_failed"
+        next_action = "fix_chart_then_rerun"
+    elif thumbnail_assets_passed is False:
+        result_type = "thumbnail_unavailable"
+        next_action = "retry_thumbnail_or_report"
+    elif unverifiable_count > 0:
+        result_type = "execution_error"
+        next_action = "retry_or_report"
+    else:
+        result_type = "ready_for_data_and_visual_review"
+        next_action = "read_images_and_complete_data_visual_review"
+    automated_checks_passed = static_quality_passed and thumbnail_assets_passed is not False
     if not chart_count:
         visual_status = "not_applicable"
         visual_passed = None
@@ -1571,10 +1719,11 @@ def success_envelope(
         "ok": True,
         "engine": "lark",
         "action": ACTION,
+        "result_type": result_type,
+        "next_action": next_action,
         "data": {
-            "passed": static_quality_passed
-            and (thumbnail_assets_passed is not False),
-            "passed_scope": "static_quality_and_thumbnail_assets_only",
+            "automated_checks_passed": automated_checks_passed,
+            "automated_checks_scope": "static_quality_and_thumbnail_assets_only",
             "acceptance": {
                 "overall": {
                     "passed": None,
@@ -1601,8 +1750,36 @@ def success_envelope(
             },
             "thumbnail_fetch": {
                 "checked": thumbnails_checked,
-                "passed": thumbnail_assets_passed,
+                "assets_ready": thumbnail_assets_passed,
+                "result_type": (
+                    "ready_for_visual_review"
+                    if thumbnail_assets_passed is True
+                    else "thumbnail_unavailable"
+                    if thumbnail_assets_passed is False
+                    else "not_checked"
+                ),
                 "sheets": thumbnail_results or [],
+                "expected_chart_ids": list(
+                    dict.fromkeys(
+                        chart_id
+                        for result in (thumbnail_results or [])
+                        for chart_id in result.get("expected_chart_ids", [])
+                    )
+                ),
+                "valid_chart_ids": valid_chart_ids,
+                "missing_chart_ids": missing_chart_ids,
+                "unavailable_chart_ids": unavailable_chart_ids,
+                "coverage": {
+                    "valid": thumbnail_valid_count,
+                    "expected": thumbnail_expected_count,
+                    "rate": (
+                        thumbnail_valid_count / thumbnail_expected_count
+                        if thumbnail_expected_count
+                        else None
+                    ),
+                },
+                "read_required": read_required,
+                "error_log_ids": error_log_ids,
             },
             "scope_note": (
                 "out_of_visible_range checks worksheet drawable bounds, not a device-specific browser viewport; "
@@ -1618,11 +1795,15 @@ def success_envelope(
                 "unverifiable_count": unverifiable_count,
                 "thumbnail_expected_count": thumbnail_expected_count,
                 "thumbnail_valid_count": thumbnail_valid_count,
-                "thumbnail_coverage_rate": (
-                    thumbnail_valid_count / thumbnail_expected_count
-                    if thumbnail_expected_count
-                    else None
-                ),
+                "thumbnail_coverage": {
+                    "valid": thumbnail_valid_count,
+                    "expected": thumbnail_expected_count,
+                    "rate": (
+                        thumbnail_valid_count / thumbnail_expected_count
+                        if thumbnail_expected_count
+                        else None
+                    ),
+                },
             },
             "sheets": results,
         },
@@ -1631,7 +1812,7 @@ def success_envelope(
 
 
 def report_exit_code(report: dict[str, Any]) -> int:
-    if report["data"]["passed"]:
+    if report["data"]["automated_checks_passed"]:
         return 0
     if report["data"]["summary"]["issue_count"] > 0:
         return 2
@@ -1679,18 +1860,20 @@ def main() -> None:
                         "received_chart_ids": [],
                         "valid_chart_ids": [],
                         "missing_chart_ids": [],
-                        "coverage_rate": None,
+                        "unavailable_chart_ids": [],
+                        "coverage": {"valid": 0, "expected": 0, "rate": None},
                         "files": [],
                         "error_log_ids": [],
                     }
                 )
                 continue
-            thumbnail_result = fetch_thumbnail_assets(
+            thumbnail_result = fetch_thumbnail_assets_with_fallback(
                 locator,
                 sheet,
                 expected_chart_ids=chart_ids,
                 output_dir=thumbnail_root,
                 timeout=args.timeout,
+                retries=getattr(args, "thumbnail_retries", 1),
             )
             thumbnail_results.append(
                 {
@@ -1700,10 +1883,29 @@ def main() -> None:
                 }
             )
     except (LarkCliError, KeyError, TypeError, ValueError) as exc:
-        emit_error(ACTION, str(exc))
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "engine": "lark",
+                    "action": ACTION,
+                    "result_type": "execution_error",
+                    "next_action": "retry_or_report",
+                    "error": str(exc),
+                    "data": {"error_log_ids": _error_log_ids(exc)},
+                    "warnings": [],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         raise SystemExit(1) from exc
 
     report = success_envelope(results, thumbnail_results)
+    manifest_path = thumbnail_root / "quality_manifest.json"
+    report["data"]["thumbnail_fetch"]["manifest_path"] = str(manifest_path)
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False, indent=2))
     exit_code = report_exit_code(report)
     if exit_code:

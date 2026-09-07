@@ -157,15 +157,26 @@ python scripts/lark_chart_size_advisor.py "<表格 URL 或 spreadsheet token>" \
 
 **标题与轴文案**：优先沿用用户明确指定的文案；未指定时，只根据已读取的表头生成简洁自然语言。图表标题概括对象、指标及必要的趋势/对比关系；副标题仅补充已确认的时间范围或统计口径，无必要则省略；X 轴写类别或时间维度，Y 轴写指标名，单位明确时可附单位。禁止把单元格引用、公式、内部 ID、占位符、未解析文字、乱码或空括号写入标题，也不得臆造时间、单位和业务口径。
 
-## 交付前验收（任何图表改动后必做）
+## 图表验证与交付验收
 
 完成本次所有图表创建或更新后，再逐图核对以下项；全部通过才算完成：
 
 1. **数量**：图表数 = 用户明确要求的数量（"每个 / 分别 / 逐一"等数量词已逐项展开为独立图，不用一张多系列图代替）。
 2. **数据语义与展示项**：先回读并核对数据、公式、聚合、数据范围、系列映射和坐标轴语义，再核对标题、副标题、图例和标签要求；缩略图只能证明渲染结果，不能证明业务计算正确。密集标签按“建议尺寸 → 稀疏标签 → Top-N / 拆图”处理，辅助系列不得用全点重复标签模拟单点或末点。
-3. **统一质检与渲染验收**：全部创建和更新完成后，对每个受影响子表运行一次 `python scripts/lark_chart_quality_check.py "<表格 URL 或 spreadsheet token>" --worksheet-id "<reference_id>"`。检查器同时执行静态质量检查、获取全部缩略图、验证 base64 / 图片魔数 / 尺寸 / 白图并落盘；直接读取 `data.thumbnail_fetch.sheets[].files[]` 中 `status=valid` 的全部 `path`，一次可读多张，仅图片读取超时时再分批。避免手写图片解析，也禁止从部分图片外推全部图表通过。
+3. **迭代期轻量单点验图**：调整单张图时可直接用 `+chart-list --chart-id ... --only-thumbnail`，但将完整 JSON 通过 stdin 交给配套解码器，不要临时编写 JSON/base64 解析：
 
-检查器明确区分三种状态：`data.acceptance.data_semantics` 需要模型按上一步完成语义核对，`data.acceptance.static_quality` 是脚本静态检查，`data.acceptance.visual_review` 在模型实际读取全部有效图片前保持 `pending_model_review`。用 `thumbnail_fetch.expected_chart_ids`、`valid_chart_ids`、`coverage_rate` 和模型已读取的图片逐一对账；只要缩略图没有全部成功生成并可读，视觉验收就未完成。任何修图后都必须重新运行本步骤，只认最终一轮结果。
+```bash
+lark-cli sheets +chart-list --url "$URL" --sheet-id "$SID" \
+  --chart-id "$CID" --only-thumbnail |
+python3 scripts/lark_chart_thumbnail_decode.py \
+  --output-dir "/tmp/lark-chart-preview-$CID" --expected-chart-id "$CID"
+```
+
+不适合 shell 管道时，可直接运行 `python3 scripts/lark_chart_thumbnail_decode.py --url "$URL" --sheet-id "$SID" --chart-id "$CID" --output-dir "./chart-preview"`。命令成功后读取 `read_required[].path` 中的图片；多图可一次读取，仅超时时再分批。
+
+4. **最终统一质检**：全部创建和更新完成后，对每个受影响子表运行 `python3 scripts/lark_chart_quality_check.py "<表格 URL 或 spreadsheet token>" --worksheet-id "<reference_id>"`。按 `next_action` 处理并读完 `data.thumbnail_fetch.read_required[].path`；`unavailable_chart_ids` 必须为空，仅图片读取超时时再分批。
+
+按 `next_action` 处理非成功结果，不要自行展开 base64 解析。交付时简短分别声明“数据验收 / 静态质检 / 视觉验收”通过或未通过，不要合并成含义不清的“质检通过”。任何修图后必须重新运行最终 QC，只认最终一轮结果。
 
 模型读取缩略图后按三项标准验收：
 
@@ -173,7 +184,7 @@ python scripts/lark_chart_size_advisor.py "<表格 URL 或 spreadsheet token>" \
 2. **展示完整**：题面要求的内容全部呈现，不存在重叠、截断、遮挡或关键元素缺失。
 3. **样式合理**：图表类型与布局合理，配色美观且系列间颜色对比明显，关键信息易于辨认。
 
-静态检查仍覆盖几何重叠、遮挡内容、越界、最小尺寸、数值源格式、全零 / 空系列和常量系列重复标签。采样未覆盖完整系列时列为不可验证，不能据此修改整个系列。退出码 `2` 表示发现静态质量问题；退出码 `1` 表示检查未完成或缩略图不可用，最多重试一次后明确报告；退出码 `0` 只表示静态检查和缩略图资产准备完成，仍须完成数据语义与模型视觉判断。
+静态检查仍覆盖几何重叠、遮挡内容、越界、最小尺寸、数值源格式、全零 / 空系列和常量系列重复标签。采样未覆盖完整系列时列为不可验证，不能据此修改整个系列。退出码 `0` 也不代表数据语义与视觉判断已完成。
 
 ## Shortcuts
 
@@ -334,7 +345,7 @@ _创建/更新的图表属性_
 
 ### `+chart-list`
 
-输出契约：默认返回按工作表分组的图表列表，每个图表含 `chart_id` / `position` / `details.snapshot` 等；传 `--only-thumbnail` 时不返回 snapshot，而在 `details.thumbnail` 返回渲染缩略图，其中图片字节位于 `details.thumbnail.base64`（不含 `data:` 前缀）。交付验收优先使用上方统一质检脚本，不手写 base64 解析。
+输出契约：默认返回按工作表分组的图表列表，每个图表含 `chart_id` / `position` / `details.snapshot` 等；传 `--only-thumbnail` 时返回渲染缩略图。迭代中可按 `chart_id` 直接调用并将响应交给 `scripts/lark_chart_thumbnail_decode.py`，不要临时编写 base64 解析；最终交付仍使用上方统一 QC。
 
 ### `+chart-create-basic`
 
