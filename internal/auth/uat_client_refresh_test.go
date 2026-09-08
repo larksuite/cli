@@ -179,6 +179,9 @@ func TestGetValidAccessTokenPreservesCorruptStoredTokenError(t *testing.T) {
 	if !errors.Is(err, errStoredTokenCorrupt) {
 		t.Fatalf("error = %v, want corruption cause preserved", err)
 	}
+	if !strings.Contains(problem.Hint, "auth login") {
+		t.Fatalf("hint = %q, want re-authorization guidance for a corrupt stored token", problem.Hint)
+	}
 }
 
 func TestRefreshFailureDeterminesStoredTokenDisposition(t *testing.T) {

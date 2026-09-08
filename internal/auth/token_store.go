@@ -11,6 +11,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/recovery"
 )
 
 // StoredUAToken represents a stored user access token.
@@ -53,14 +54,22 @@ func GetStoredToken(appId, userOpenId string) (*StoredUAToken, error) {
 	}
 	var token StoredUAToken
 	if err := json.Unmarshal([]byte(jsonStr), &token); err != nil {
-		return nil, errs.NewInternalError(errs.SubtypeStorage,
+		return nil, withCorruptTokenRecovery(errs.NewInternalError(errs.SubtypeStorage,
 			"failed to decode stored token: %v", err).
-			WithCause(errors.Join(errStoredTokenCorrupt, err))
+			WithCause(errors.Join(errStoredTokenCorrupt, err)))
 	}
 	if err := validateStoredToken(&token, appId, userOpenId); err != nil {
-		return nil, err
+		return nil, withCorruptTokenRecovery(err)
 	}
 	return &token, nil
+}
+
+// withCorruptTokenRecovery attaches re-authorization guidance to a read-side
+// corruption error: a new login overwrites the damaged entry, so it is the
+// recovery step. The write-side validator stays hint-free because a rejected
+// write leaves nothing on disk to re-authorize.
+func withCorruptTokenRecovery(err error) error {
+	return recovery.Attach(err, recovery.UserAuthorization())
 }
 
 // SetStoredToken persists a UAT.

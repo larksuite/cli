@@ -18,6 +18,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/surface"
 	"github.com/zalando/go-keyring"
@@ -522,4 +523,42 @@ func TestDiagnose_External_VerifyUserTokenUnavailable(t *testing.T) {
 		t.Fatalf("verified = %v, want false", got.User.Verified)
 	}
 	assertExternalHint(t, got.User.Hint)
+}
+
+func TestDiagnose_CorruptStoredTokenCarriesReauthorizationRecovery(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
+
+	cfg := &core.CliConfig{
+		AppID:      "test-app-corrupt",
+		AppSecret:  "secret",
+		Brand:      core.BrandFeishu,
+		UserOpenId: "ou_corrupt",
+		UserName:   "tester",
+	}
+	if err := keychain.Set(keychain.LarkCliService, cfg.AppID+":"+cfg.UserOpenId, `{"accessToken":`); err != nil {
+		t.Fatalf("keychain.Set() error = %v", err)
+	}
+	f, _, _, _ := cmdutil.TestFactory(t, cfg)
+
+	got := Diagnose(context.Background(), f, cfg, false).User
+	if got.Status != StatusError || got.Available {
+		t.Fatalf("user = %#v, want error and unavailable", got)
+	}
+	if !strings.Contains(got.Hint, "auth login") || got.Error == nil || got.Error.Hint != got.Hint {
+		t.Fatalf("user hint = %q, error = %#v; want re-authorization guidance on both", got.Hint, got.Error)
+	}
+
+	concealed := surface.NewPlan(map[surface.CommandID]surface.CommandState{
+		surface.CommandAuthLogin: surface.CommandConcealed,
+	})
+	projector := recovery.NewProjector(func() *surface.Plan { return concealed })
+	projected := FilterRecovery(Result{User: got}, projector).User
+	if strings.Contains(projected.Hint, "auth login") || !strings.Contains(projected.Hint, "supported authorization flow") {
+		t.Fatalf("projected hint = %q, want the reduced-distribution fallback instead of a dead auth login pointer", projected.Hint)
+	}
+	if projected.Error == nil || projected.Error.Hint != projected.Hint {
+		t.Fatalf("projected error = %#v, want nested hint to follow the top-level projection %q", projected.Error, projected.Hint)
+	}
 }

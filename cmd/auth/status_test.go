@@ -120,8 +120,11 @@ func TestAuthStatusRun_ReportsCorruptStoredToken(t *testing.T) {
 	if !strings.Contains(problem.Message, "failed to decode stored token") {
 		t.Fatalf("corrupt user error message = %q, want decode failure", problem.Message)
 	}
-	if !strings.Contains(got.Note, "failed to decode stored token") {
-		t.Fatalf("note = %q, want diagnostic storage error", got.Note)
+	if !strings.Contains(got.Identities.User.Hint, "auth login") || problem.Hint != got.Identities.User.Hint {
+		t.Fatalf("corrupt user hint = %q (error.hint = %q), want re-authorization guidance on both", got.Identities.User.Hint, problem.Hint)
+	}
+	if !strings.Contains(got.Note, "failed to decode stored token") || !strings.Contains(got.Note, "auth login") {
+		t.Fatalf("note = %q, want diagnostic storage error followed by re-authorization guidance", got.Note)
 	}
 	if strings.Contains(stdout.String(), secret) || strings.Contains(stderr.String(), secret) {
 		t.Fatalf("auth status leaked credential content\nstdout=%s\nstderr=%s", stdout.String(), stderr.String())
@@ -146,5 +149,6 @@ type statusIdentity struct {
 	Available bool          `json:"available"`
 	Verified  *bool         `json:"verified"`
 	OpenID    string        `json:"openId"`
+	Hint      string        `json:"hint"`
 	Error     *errs.Problem `json:"error"`
 }

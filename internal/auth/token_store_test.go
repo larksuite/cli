@@ -66,6 +66,9 @@ func TestGetStoredTokenDistinguishesMissingFromCorrupt(t *testing.T) {
 	if strings.Contains(err.Error(), secret) {
 		t.Fatalf("corrupt token error leaked credential content: %v", err)
 	}
+	if !strings.Contains(storageErr.Hint, "auth login") {
+		t.Fatalf("corrupt token hint = %q, want re-authorization guidance", storageErr.Hint)
+	}
 }
 
 func TestGetStoredTokenRejectsSemanticallyCorruptJSON(t *testing.T) {
@@ -104,6 +107,9 @@ func TestGetStoredTokenRejectsSemanticallyCorruptJSON(t *testing.T) {
 			if strings.Contains(err.Error(), secret) || strings.Contains(err.Error(), tc.data) {
 				t.Fatalf("GetStoredToken() error leaked stored data: %v", err)
 			}
+			if !strings.Contains(storageErr.Hint, "auth login") {
+				t.Fatalf("GetStoredToken() hint = %q, want re-authorization guidance", storageErr.Hint)
+			}
 		})
 	}
 }
@@ -119,6 +125,9 @@ func TestSetStoredTokenRejectsSemanticCorruption(t *testing.T) {
 	}
 	if !errors.Is(err, errStoredTokenCorrupt) {
 		t.Fatalf("SetStoredToken() error = %v, want corruption sentinel", err)
+	}
+	if storageErr.Hint != "" {
+		t.Fatalf("SetStoredToken() hint = %q, want no re-authorization guidance on the write path", storageErr.Hint)
 	}
 	stored, readErr := keychain.Get(keychain.LarkCliService, accountKey(token.AppId, token.UserOpenId))
 	if readErr != nil || stored != "" {
@@ -196,5 +205,39 @@ func TestStoredTokenGenerationGuard(t *testing.T) {
 	})
 	if current := mustGetStoredToken(t, generation0.AppId, generation0.UserOpenId); current != nil {
 		t.Fatalf("stored token = %#v, want removed", current)
+	}
+}
+
+func TestSetStoredTokenReplacesCorruptEntry(t *testing.T) {
+	setupStoredTokenTest(t)
+
+	const (
+		appID      = "cli_replace"
+		userOpenID = "ou_replace"
+	)
+	account := accountKey(appID, userOpenID)
+	if err := keychain.Set(keychain.LarkCliService, account, `{"accessToken":`); err != nil {
+		t.Fatalf("keychain.Set() error = %v", err)
+	}
+	if _, err := GetStoredToken(appID, userOpenID); !errors.Is(err, errStoredTokenCorrupt) {
+		t.Fatalf("precondition GetStoredToken() error = %v, want corruption", err)
+	}
+
+	now := time.Now()
+	fresh := &StoredUAToken{
+		AppId:            appID,
+		UserOpenId:       userOpenID,
+		AccessToken:      "fresh-access",
+		RefreshToken:     "fresh-refresh",
+		ExpiresAt:        now.Add(time.Hour).UnixMilli(),
+		RefreshExpiresAt: now.Add(24 * time.Hour).UnixMilli(),
+		GrantedAt:        now.UnixMilli(),
+	}
+	if err := SetStoredToken(fresh); err != nil {
+		t.Fatalf("SetStoredToken() over corrupt entry error = %v; the recovery hint promises a new login replaces it", err)
+	}
+	got := mustGetStoredToken(t, appID, userOpenID)
+	if got == nil || got.AccessToken != "fresh-access" {
+		t.Fatalf("stored token after re-login = %#v, want fresh token", got)
 	}
 }

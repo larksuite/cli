@@ -6,6 +6,7 @@ package auth
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -111,6 +112,9 @@ func TestAuthCheckRun_CorruptStoredTokenReturnsTypedStorageError(t *testing.T) {
 	}
 	if got := output.ExitCodeOf(err); got != output.ExitInternal {
 		t.Fatalf("exit code = %d, want ExitInternal (%d)", got, output.ExitInternal)
+	}
+	if !strings.Contains(problem.Hint, "auth login") {
+		t.Fatalf("hint = %q, want re-authorization guidance for a corrupt stored token", problem.Hint)
 	}
 	if stdout.Len() != 0 || stderr.Len() != 0 {
 		t.Fatalf("direct runner output = stdout %q, stderr %q; want error returned to root dispatcher", stdout.String(), stderr.String())

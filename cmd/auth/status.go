@@ -123,7 +123,7 @@ func addStatusNote(result map[string]interface{}, d identitydiag.Result, canAuth
 	case d.User.Status == identitydiag.StatusError:
 		note := d.User.Message
 		if d.User.Hint != "" {
-			note = d.User.Hint
+			note += " " + d.User.Hint
 		}
 		result["note"] = note
 	case !d.User.Available && d.Bot.Available:
