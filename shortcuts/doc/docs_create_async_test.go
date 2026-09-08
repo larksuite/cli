@@ -250,3 +250,35 @@ func TestDocsCreateAsyncSuccessUploadsAndBindsLocalImage(t *testing.T) {
 		t.Fatalf("resource trace=%v", resourceSteps)
 	}
 }
+
+func TestDocsCreatePreservesLogIDWithoutCommonAPIChanges(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		response map[string]interface{}
+		wantCode int
+	}{
+		{name: "API failure", response: map[string]interface{}{"code": 99991672, "msg": "missing scope"}, wantCode: 99991672},
+		{name: "accepted task failure", response: map[string]interface{}{"code": 0, "data": map[string]interface{}{"task": map[string]interface{}{
+			"task_id": "task_failed", "status": "failed", "failure": map[string]interface{}{"code": "execution_interrupted", "message": "worker stopped"},
+		}}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+			reg.Register(&httpmock.Stub{Method: "POST", URL: "/docs_ai/v1/documents", Status: 200,
+				Headers: http.Header{"X-Tt-Logid": {"creation-response-log"}}, Body: tc.response,
+			})
+			err := runDocsCreateShortcut(t, f, stdout, []string{"+create", "--content", "<title>Log ID</title><p>Body</p>", "--as", "user"})
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.LogID != "creation-response-log" || problem.Code != tc.wantCode {
+				t.Fatalf("err=%v problem=%+v", err, problem)
+			}
+			if tc.name == "accepted task failure" && !strings.Contains(problem.Hint, "task_failed") {
+				t.Fatalf("missing task identity: %+v", problem)
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("failure emitted success: %s", stdout)
+			}
+		})
+	}
+}

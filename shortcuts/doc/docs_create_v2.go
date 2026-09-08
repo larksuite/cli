@@ -109,7 +109,7 @@ func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) (err err
 	}
 
 	trace.step("create_request")
-	data, createLogID, err := doDocAPIWithLogID(runtime, "POST", "/open-apis/docs_ai/v1/documents", body)
+	data, createLogID, err := createDocsDocumentWithLogID(runtime, body)
 	trace.event("create_response", docsCreateDebugDetails{LogID: createLogID})
 	if err != nil {
 		return err

@@ -155,18 +155,38 @@ func pollDocsCreateAsyncTask(ctx context.Context, runtime *common.RuntimeContext
 	}
 }
 
+// Keep successful-response log IDs local to document creation: the API may
+// return code=0 with a failed task that the command classifies afterward.
+func createDocsDocumentWithLogID(runtime *common.RuntimeContext, body interface{}) (map[string]interface{}, string, error) {
+	return callDocsCreateAPIWithLogID(runtime.Ctx(), runtime, &larkcore.ApiReq{
+		HttpMethod: http.MethodPost,
+		ApiPath:    "/open-apis/docs_ai/v1/documents",
+		Body:       body,
+	})
+}
+
 func getDocsCreateAsyncTask(ctx context.Context, runtime *common.RuntimeContext, taskID string) (map[string]interface{}, string, error) {
-	resp, err := runtime.DoAPIWithContext(ctx, &larkcore.ApiReq{
+	return callDocsCreateAPIWithLogID(ctx, runtime, &larkcore.ApiReq{
 		HttpMethod: http.MethodGet,
 		ApiPath:    fmt.Sprintf("/open-apis/docs_ai/v1/async_tasks/%s", url.PathEscape(taskID)),
 	})
+}
+
+func callDocsCreateAPIWithLogID(ctx context.Context, runtime *common.RuntimeContext, req *larkcore.ApiReq) (map[string]interface{}, string, error) {
+	resp, err := runtime.DoAPIWithContext(ctx, req)
 	if err != nil {
+		if !errs.IsTyped(err) {
+			err = errs.NewInternalError(errs.SubtypeUnknown, "%v", err).WithCause(err)
+		}
 		return nil, "", err
 	}
 	data, err := runtime.ClassifyAPIResponse(resp)
 	logID := ""
 	if resp != nil {
 		logID = resp.Header.Get("X-Tt-Logid")
+	}
+	if err == nil && data == nil {
+		err = errs.NewInternalError(errs.SubtypeInvalidResponse, "document API returned an empty data object").WithLogID(logID)
 	}
 	return data, logID, err
 }
