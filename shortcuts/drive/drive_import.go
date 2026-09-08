@@ -172,7 +172,7 @@ func RunImport(ctx context.Context, runtime *common.RuntimeContext, p ImportPara
 		// artifact a caller still gets on this path.
 		return appendDriveExportRecoveryHint(err, fmt.Sprintf(
 			"the import task was already created (ticket=%s)\ncheck its result with: %s",
-			ticket, driveImportTaskResultCommand(ticket)))
+			ticket, driveImportTaskResultCommand(runtime, ticket)))
 	}
 
 	// Some intermediate responses omit the final type, so fall back to the
@@ -212,7 +212,7 @@ func RunImport(ctx context.Context, runtime *common.RuntimeContext, p ImportPara
 		// next_command in the payload is the whole resume story; the stderr copy
 		// it used to carry told a caller nothing extra.
 		out["timed_out"] = true
-		out["next_command"] = driveImportTaskResultCommand(ticket)
+		out["next_command"] = driveImportTaskResultCommand(runtime, ticket)
 	}
 	if ready {
 		if grant := common.AutoGrantCurrentUserDrivePermission(runtime, common.GetString(out, "token"), resultType); grant != nil {

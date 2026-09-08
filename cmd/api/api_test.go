@@ -195,6 +195,50 @@ func TestApiCmd_BotMode(t *testing.T) {
 	}
 }
 
+func TestApiCmd_BotPayload_NormalizedInEnvelope(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-nondata", AppSecret: "test-secret-nondata", Brand: core.BrandFeishu,
+	})
+
+	// /bot/v3/info is a legacy endpoint whose payload sits beside code/msg
+	// under "bot" instead of inside "data" (#2428).
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/bot/v3/info",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"bot": map[string]interface{}{"open_id": "ou_123", "app_name": "TestBot"},
+		},
+	})
+
+	cmd := newTestApiCmd(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/bot/v3/info", "--as", "bot"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON output: %v\n%s", err, stdout.String())
+	}
+	if got["ok"] != true || got["identity"] != "bot" {
+		t.Fatalf("unexpected envelope: %#v", got)
+	}
+	data, ok := got["data"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("data = %#v, want object", got["data"])
+	}
+	if _, ok := data["bot"]; ok {
+		t.Fatalf("data = %#v, want legacy bot container normalized away", data)
+	}
+	if data["open_id"] != "ou_123" || data["app_name"] != "TestBot" {
+		t.Fatalf("data = %#v, want normalized bot fields", data)
+	}
+	for _, k := range []string{"code", "msg"} {
+		if _, leaked := data[k]; leaked {
+			t.Fatalf("transport field %q leaked into data: %s", k, stdout.String())
+		}
+	}
+}
+
 func TestApiCmd_MissingArgs(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,

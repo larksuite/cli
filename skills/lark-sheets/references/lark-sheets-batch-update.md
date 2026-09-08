@@ -34,7 +34,7 @@
 - 写时：用 `+batch-update` 一次性完成插行/写公式/复制模板等成套动作。
 - 写后：抽样回读之外，可继续跑 `lark-sheets-formula-verify` 做一次诊断。
 
-**`+dropdown-update` 的选项模式（`--options` / `--source-range` 二选一）+ 配色规则**（`--colors` 长度可短不能长、必须配 `--highlight=true` 才生效、不传按内置 10 色色板循环补色）见 [`lark-sheets-write-cells`](./lark-sheets-write-cells.md) 的「Dropdown 选项 + 配色」节，本文不重复。`+dropdown-delete` 不涉及这些 flag。
+**`+dropdown-update` 的选项模式（`--options` / `--source-range` 二选一）+ 配色规则**（更新会重写完整验证规则；需要保留已有配色时先回读并透传 `--colors`）见 [`lark-sheets-write-cells`](./lark-sheets-write-cells.md) 的「Dropdown 选项 + 配色」节，本文不重复。`+dropdown-delete` 不涉及这些 flag。
 
 ## Shortcuts
 
@@ -84,8 +84,8 @@ _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
 | --- | --- | --- | --- |
 | `--ranges` | string + File + Stdin（简单 JSON） | required | 目标范围 JSON 数组（最多 100 个，如 `["Sheet1!A2:A100","Sheet1!C2:C100"]`，前缀裸写不加引号），每项必须带 sheet 前缀；前缀必须与 sheet 真实显示名完全一致（含大小写），不接受 sheet reference_id |
 | `--options` | string + File + Stdin（复合 JSON） | xor | 下拉选项 JSON 数组，例如 `["opt1","opt2"]`。服务端不限制选项数量，也不限制单个选项长度；含逗号的选项可以接受（写入时会自动转义）。大量选项建议改用 `--source-range`。 |
-| `--colors` | string + File + Stdin（简单 JSON） | optional | 下拉胶囊背景色，RGB hex 数组（如 `["#1FB6C1","#F006C2"]`）。长度可短不可长——超长 Validate 拦截（`--colors length (N) must not exceed dropdown source size (M)`），未指定项按内置 10 色色板循环补色。**单独传即生效**；`--highlight=false` 时被忽略。 |
-| `--multiple` | bool | optional | 启用多选 |
+| `--colors` | string + File + Stdin（简单 JSON） | optional | 下拉胶囊背景色，RGB hex 数组。更新会重写整条验证规则：若用户未要求重置配色，先用 `+dropdown-get` 回读并将现有 `highlight_colors` 作为本 flag 传回；省略会按内置 10 色色板重建。用户明确要求新配色或选项有清晰语义配色时，应选浅色、低饱和度背景以适配黑色文字。长度可短不可长——超长 Validate 拦截（`--colors length (N) must not exceed dropdown source size (M)`），未指定项按内置色板循环补色。单独传即生效；`--highlight=false` 时被忽略。 |
+| `--multiple` | bool | optional | 启用多选。本 flag 只更新验证规则，不会写入选中值；后续用 `+cells-set` 写值时必须传 `multiple_values` 数组，不要传逗号拼接的 `value` |
 | `--highlight` | bool | optional | 下拉胶囊背景色高亮开关。**不传 = 开**（按内置 10 色色板循环上色）；`--highlight=false` 关闭得到纯白下拉。配色用 `--colors` 覆盖。 |
 | `--source-range` | string | xor | listFromRange 模式的下拉源 range，A1 表示法 + sheet 前缀（如 `'Sheet1'!T1:T3`）。映射到 server `data_validation.range`，搭配 server `data_validation.type='listFromRange'` 自动生效。跟 `--options` 二选一：传 `--options` 走 inline 列表（type=list），传本 flag 走 range 引用（type=listFromRange）。`--colors` 长度规则不变（≤ 源 range 单元格数），`--highlight` / `--multiple` 行为相同。当 `--highlight` 开启且 source 覆盖单元格数超过 2000 时，服务端会将该下拉判为 option-error（这是不支持的组合）；CLI 会在返回结果的 `data.warnings` 中给出 warning。如需取消，传 `--highlight=false`。 |
 

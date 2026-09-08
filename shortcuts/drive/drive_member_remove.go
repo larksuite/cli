@@ -271,15 +271,6 @@ func driveMemberRemovePath(spec driveMemberRemoveSpec) string {
 
 // executeDriveMemberRemove issues the typed DELETE request and emits the structured removal result.
 func executeDriveMemberRemove(runtime *common.RuntimeContext, spec driveMemberRemoveSpec) error {
-	fmt.Fprintf(
-		runtime.IO().ErrOut,
-		"Removing Drive member %s (type=%s) from %s %s...\n",
-		common.MaskToken(spec.MemberID),
-		spec.MemberType,
-		spec.ResourceType,
-		common.MaskToken(spec.Token),
-	)
-
 	if _, err := runtime.CallAPITyped(
 		"DELETE",
 		driveMemberRemovePath(spec),
@@ -290,8 +281,6 @@ func executeDriveMemberRemove(runtime *common.RuntimeContext, spec driveMemberRe
 	}
 
 	out := driveMemberRemoveOutput(spec)
-
-	fmt.Fprintf(runtime.IO().ErrOut, "Removed Drive member %s\n", common.MaskToken(spec.MemberID))
 	runtime.Out(out, nil)
 	return nil
 }

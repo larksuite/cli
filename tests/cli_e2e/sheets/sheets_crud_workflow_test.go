@@ -6,7 +6,6 @@ package sheets
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -19,7 +18,8 @@ import (
 )
 
 // TestSheets_CRUDE2EWorkflow tests the full lifecycle of spreadsheet operations
-// using all shortcut methods: +create, +read, +write, +append, +find, +info, +export
+// using all shortcut methods: +workbook-create, +workbook-info, +cells-set,
+// +cells-get, +cells-search, +workbook-export
 func TestSheets_CRUDE2EWorkflow(t *testing.T) {
 	clie2e.SkipWithoutTenantAccessToken(t)
 	parentT := t
@@ -30,26 +30,25 @@ func TestSheets_CRUDE2EWorkflow(t *testing.T) {
 	spreadsheetToken := ""
 	sheetID := ""
 
-	t.Run("create spreadsheet with +create as bot", func(t *testing.T) {
+	t.Run("create spreadsheet with +workbook-create as bot", func(t *testing.T) {
 		spreadsheetToken = createSpreadsheet(t, parentT, ctx, "lark-cli-e2e-sheets-"+suffix, "bot")
 	})
 
-	t.Run("get spreadsheet info with +info as bot", func(t *testing.T) {
+	t.Run("get spreadsheet info with +workbook-info as bot", func(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"sheets", "+info", "--spreadsheet-token", spreadsheetToken},
+			Args:      []string{"sheets", "+workbook-info", "--spreadsheet-token", spreadsheetToken},
 			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 
-		assert.Equal(t, spreadsheetToken, gjson.Get(result.Stdout, "data.spreadsheet.spreadsheet.token").String())
-		sheetID = gjson.Get(result.Stdout, "data.sheets.sheets.0.sheet_id").String()
+		sheetID = gjson.Get(result.Stdout, "data.sheets.0.sheet_id").String()
 		require.NotEmpty(t, sheetID, "sheet_id should not be empty, stdout: %s", result.Stdout)
 	})
 
-	t.Run("write data with +write as bot", func(t *testing.T) {
+	t.Run("write data with +cells-set as bot", func(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
 		require.NotEmpty(t, sheetID, "sheet_id is required")
 
@@ -62,11 +61,11 @@ func TestSheets_CRUDE2EWorkflow(t *testing.T) {
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{
-				"sheets", "+write",
+				"sheets", "+cells-set",
 				"--spreadsheet-token", spreadsheetToken,
 				"--sheet-id", sheetID,
 				"--range", "A1:C3",
-				"--values", string(valuesJSON),
+				"--cells", string(valuesJSON),
 			},
 			DefaultAs: "bot",
 		})
@@ -75,13 +74,13 @@ func TestSheets_CRUDE2EWorkflow(t *testing.T) {
 		result.AssertStdoutStatus(t, true)
 	})
 
-	t.Run("read data with +read as bot", func(t *testing.T) {
+	t.Run("read data with +cells-get as bot", func(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
 		require.NotEmpty(t, sheetID, "sheet_id is required")
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{
-				"sheets", "+read",
+				"sheets", "+cells-get",
 				"--spreadsheet-token", spreadsheetToken,
 				"--sheet-id", sheetID,
 				"--range", "A1:C3",
@@ -92,14 +91,20 @@ func TestSheets_CRUDE2EWorkflow(t *testing.T) {
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
 
-		// Verify the data was written correctly
-		values := gjson.Get(result.Stdout, "data.valueRange.values")
-		require.True(t, values.IsArray(), "values should be an array, stdout: %s", result.Stdout)
-		assert.Equal(t, "Name", values.Array()[0].Array()[0].String())
-		assert.Equal(t, "Alice", values.Array()[1].Array()[0].String())
+		// Collected out of the decoded payload rather than matched against a
+		// fixed path: get_cell_ranges' response nesting is the backend's to
+		// change and is pinned nowhere in this repo, while the values having
+		// survived the round trip is the actual claim.
+		got := scalarsIn(gjson.Get(result.Stdout, "data"))
+		for _, want := range []string{"Name", "Alice", "Beijing"} {
+			require.Contains(t, got, want, "read-back lost %q; stdout:\n%s", want, result.Stdout)
+		}
 	})
 
-	t.Run("append rows with +append as bot", func(t *testing.T) {
+	// The pre-refactor +append is gone; writing past the block already on the
+	// sheet is a plain +cells-set at the next row, which also exercises the
+	// auto-expand path the old command relied on.
+	t.Run("append a row with +cells-set as bot", func(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
 		require.NotEmpty(t, sheetID, "sheet_id is required")
 
@@ -108,40 +113,72 @@ func TestSheets_CRUDE2EWorkflow(t *testing.T) {
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{
-				"sheets", "+append",
+				"sheets", "+cells-set",
 				"--spreadsheet-token", spreadsheetToken,
 				"--sheet-id", sheetID,
 				"--range", "A4:C4",
-				"--values", string(valuesJSON),
+				"--cells", string(valuesJSON),
 			},
 			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
-	})
 
-	t.Run("find cells with +find as bot", func(t *testing.T) {
-		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
-		require.NotEmpty(t, sheetID, "sheet_id is required")
-
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		// Read the row back rather than trusting the ok envelope: an
+		// auto-expanding write that reported success without persisting is
+		// exactly the failure this subtest exists to catch, and the
+		// +cells-search below only looks at row 2.
+		readBack, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{
-				"sheets", "+find",
+				"sheets", "+cells-get",
 				"--spreadsheet-token", spreadsheetToken,
 				"--sheet-id", sheetID,
-				"--find", "Alice",
-				"--range", fmt.Sprintf("%s!A1:C10", sheetID),
+				"--range", "A4:C4",
 			},
 			DefaultAs: "bot",
 		})
 		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		assert.Equal(t, true, gjson.Get(result.Stdout, "ok").Bool(), "stdout:\n%s", result.Stdout)
+		readBack.AssertExitCode(t, 0)
+		readBack.AssertStdoutStatus(t, true)
 
-		matchedCells := gjson.Get(result.Stdout, "data.find_result.matched_cells")
-		require.True(t, matchedCells.IsArray(), "matched_cells should be an array, stdout: %s", result.Stdout)
-		assert.True(t, len(matchedCells.Array()) > 0, "should find at least one cell containing 'Alice'")
+		got := scalarsIn(gjson.Get(readBack.Stdout, "data"))
+		for _, want := range []string{"Charlie", "Guangzhou"} {
+			require.Contains(t, got, want, "appended row lost %q; stdout:\n%s", want, readBack.Stdout)
+		}
+	})
+
+	t.Run("find cells with +cells-search as bot", func(t *testing.T) {
+		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
+		require.NotEmpty(t, sheetID, "sheet_id is required")
+
+		search := func(t *testing.T, term string) string {
+			t.Helper()
+			result, err := clie2e.RunCmd(ctx, clie2e.Request{
+				Args: []string{
+					"sheets", "+cells-search",
+					"--spreadsheet-token", spreadsheetToken,
+					"--sheet-id", sheetID,
+					"--find", term,
+					"--range", "A1:C10",
+				},
+				DefaultAs: "bot",
+			})
+			require.NoError(t, err)
+			result.AssertExitCode(t, 0)
+			result.AssertStdoutStatus(t, true)
+			return result.Stdout
+		}
+
+		// Both halves are asserted: a hit alone would still pass if the search
+		// silently matched everything, which is the failure mode a
+		// non-matching term catches.
+		hit := search(t, "Alice")
+		assert.Equal(t, int64(1), gjson.Get(hit, "data.total_matches").Int(), "stdout:\n%s", hit)
+		assert.Equal(t, "A2", gjson.Get(hit, "data.matches.0.address").String(), "stdout:\n%s", hit)
+
+		miss := search(t, "no-such-value-"+suffix)
+		assert.Equal(t, int64(0), gjson.Get(miss, "data.total_matches").Int(), "stdout:\n%s", miss)
 	})
 
 	t.Run("export spreadsheet with +workbook-export as bot", func(t *testing.T) {

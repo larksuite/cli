@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -96,6 +97,19 @@ func TestConsumeRuntimeCallAPI_NonJSONHTTPErrorTruncatesLongBody(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "…(truncated)") {
 		t.Errorf("long body should be truncated in the message, got: %v", err)
+	}
+}
+
+func TestConsumeRuntimeCallAPI_NonJSONHTTPErrorTruncationPreservesUTF8(t *testing.T) {
+	body := strings.Repeat("x", 255) + "界tail"
+	r := newTestConsumeRuntime(stubRoundTripper{respond: stubResponse(http.StatusBadGateway, "text/html", body)})
+	_, err := r.CallAPI(context.Background(), "GET", "/open-apis/event/v1/connection", nil)
+	requireCallAPIProblem(t, err, errs.CategoryNetwork, errs.SubtypeNetworkServer)
+	if !utf8.ValidString(err.Error()) {
+		t.Fatalf("truncated error is not valid UTF-8: %q", err)
+	}
+	if !strings.Contains(err.Error(), "…(truncated)") {
+		t.Fatalf("truncated error missing suffix: %v", err)
 	}
 }
 

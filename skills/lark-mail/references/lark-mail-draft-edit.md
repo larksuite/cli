@@ -12,7 +12,7 @@
 
 **正文整体替换的快捷方式：** `--body <text>` / `--body-file <path>`（二选一互斥）会自动展开为 `set_body` op。如果只想做整段正文替换且不需要保留引用区，用这两个 flag 即可，无需写 patch-file。要保留引用区或做更精细的 op 组合，仍走 `--patch-file`。两个入口与 `--patch-file` 内的 `set_body` / `set_reply_body` 互斥。
 
-**CRITICAL - 编辑邮件内容前 MUST 先用 Read 工具读取 [references/lark-mail-html.md](references/lark-mail-html.md)，其中包含邮件书写规范**
+**CRITICAL - 编辑邮件内容前 MUST 先用 Read 工具读取 [lark-mail-html.md](lark-mail-html.md)，其中包含邮件书写规范**
 
 ## 正文编辑：快捷 flag 与 typed op 的选择
 

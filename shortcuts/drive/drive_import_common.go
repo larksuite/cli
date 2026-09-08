@@ -373,8 +373,9 @@ func (s driveImportStatus) StatusLabel() string {
 
 // driveImportTaskResultCommand prints the resume command returned after bounded
 // polling times out locally.
-func driveImportTaskResultCommand(ticket string) string {
-	return fmt.Sprintf("lark-cli drive +task_result --scenario import --ticket %s", ticket)
+func driveImportTaskResultCommand(runtime *common.RuntimeContext, ticket string) string {
+	prefix, identity := driveTaskResultCommandContext(runtime)
+	return fmt.Sprintf("%s drive +task_result --scenario import --ticket %s --as %s", prefix, ticket, identity)
 }
 
 // createDriveImportTask creates the server-side import task after the media

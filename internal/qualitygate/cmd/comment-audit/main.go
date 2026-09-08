@@ -5,15 +5,17 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/qualitygate/publiccontent"
 	"github.com/larksuite/cli/internal/qualitygate/report"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
 type eventPayload struct {
@@ -69,13 +71,18 @@ func auditFailureSummary(count int) string {
 }
 
 func commentBody(path string) (commentContent, error) {
-	safePath, err := validate.SafeInputPath(path)
+	f, err := (&localfileio.LocalFileIO{}).Open(path)
 	if err != nil {
-		return commentContent{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --event: %v", err).
-			WithParam("--event").
-			WithCause(err)
+		if errors.Is(err, fileio.ErrPathValidation) {
+			return commentContent{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --event: %v", err).
+				WithParam("--event").
+				WithCause(err)
+		}
+		return commentContent{}, err
 	}
-	data, err := vfs.ReadFile(safePath)
+	defer f.Close()
+
+	data, err := io.ReadAll(f)
 	if err != nil {
 		return commentContent{}, err
 	}

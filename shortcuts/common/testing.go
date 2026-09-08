@@ -43,7 +43,7 @@ func TestNewRuntimeContextWithBotInfo(cmd *cobra.Command, cfg *core.CliConfig, i
 // domain tests can exercise guards that branch on InputResolvedFromSource
 // without wiring the full resolveInputFlags path.
 func TestMarkInputResolved(rctx *RuntimeContext, name string) {
-	rctx.markInputResolved(name)
+	rctx.MarkInputResolved(name)
 }
 
 // TestNewRuntimeContextForAPI creates a RuntimeContext ready for HTTP tests:

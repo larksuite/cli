@@ -90,6 +90,14 @@ func (f *countingLocalFileFS) Open(name string) (*os.File, error) {
 	return f.FS.Open(name)
 }
 
+// OpenFile counts as an open: the hardened local open passes O_NOFOLLOW, so it
+// goes through OpenFile rather than Open, and the assertion is about how many
+// times the file is opened, not which call shape is used.
+func (f *countingLocalFileFS) OpenFile(name string, flag int, perm fs.FileMode) (*os.File, error) {
+	f.openCalls++
+	return f.FS.OpenFile(name, flag, perm)
+}
+
 func (f *countingLocalFileFS) Stat(name string) (fs.FileInfo, error) {
 	f.statCalls++
 	return f.FS.Stat(name)

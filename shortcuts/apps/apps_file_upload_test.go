@@ -288,8 +288,10 @@ func TestAppsFileUpload_RejectsDeviceWithoutReadingIt(t *testing.T) {
 	if !errors.As(err, &validationErr) || validationErr.Param != "--file" {
 		t.Fatalf("error = %T %v, want --file ValidationError", err, err)
 	}
-	if !strings.Contains(validationErr.Error(), "regular file") {
-		t.Fatalf("error = %v, want non-regular-file context", validationErr)
+	// /dev is refused by the built-in denylist before the device is ever
+	// opened or statted — earlier than the old non-regular-file check.
+	if !strings.Contains(validationErr.Error(), "denylist") {
+		t.Fatalf("error = %v, want built-in denylist context", validationErr)
 	}
 }
 

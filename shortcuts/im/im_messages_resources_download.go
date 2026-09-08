@@ -28,7 +28,7 @@ var ImMessagesResourcesDownload = common.Shortcut{
 		{Name: "message-id", Desc: "message ID (om_xxx)", Required: true},
 		{Name: "file-key", Desc: "resource key (img_xxx or file_xxx)", Required: true},
 		{Name: "type", Desc: "resource type (image or file)", Required: true, Enum: []string{"image", "file"}},
-		{Name: "output", Desc: "local save path (relative only, no .. traversal); when omitted, uses the server's Content-Disposition filename if available, otherwise file_key; extension is inferred from Content-Disposition or Content-Type if not provided"},
+		{Name: "output", Desc: "local save path, relative or absolute, within the allowed roots (cwd, /tmp, ~/files); when omitted, uses the server's Content-Disposition filename if available, otherwise file_key; extension is inferred from Content-Disposition or Content-Type if not provided"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		fileKey := runtime.Str("file-key")
@@ -82,6 +82,18 @@ var ImMessagesResourcesDownload = common.Shortcut{
 	},
 }
 
+// normalizeDownloadOutputPath settles what --output names and leaves where it
+// may point to the built-in path policy: both call sites hand the result
+// straight to ResolveSavePath, which applies the allowlist, the denylist and
+// symlink resolution. The shape checks that used to sit here — absolute paths
+// refused outright, a leading ".." refused as escaping the working directory —
+// described the cwd-only rule the policy replaced, and refusing a full path
+// before the policy could judge it is what made an agent's first call fail.
+//
+// The file-key checks stay. A key carrying a path separator is a malformed key
+// rather than a path decision, and it is also what keeps the batch caller
+// (resolveResourceDownloadPath, which embeds the key in the path) from building
+// anything but a name directly under its own directory.
 func normalizeDownloadOutputPath(fileKey, outputPath string) (string, error) {
 	fileKey = strings.TrimSpace(fileKey)
 	if fileKey == "" {
@@ -96,12 +108,6 @@ func normalizeDownloadOutputPath(fileKey, outputPath string) (string, error) {
 	outputPath = filepath.Clean(strings.TrimSpace(outputPath))
 	if outputPath == "." {
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "path cannot be empty").WithParam("--output")
-	}
-	if filepath.IsAbs(outputPath) {
-		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "absolute paths are not allowed").WithParam("--output")
-	}
-	if outputPath == ".." || strings.HasPrefix(outputPath, ".."+string(filepath.Separator)) {
-		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "path cannot escape the current working directory").WithParam("--output")
 	}
 	return outputPath, nil
 }

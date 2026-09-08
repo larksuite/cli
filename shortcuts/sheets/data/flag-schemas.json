@@ -809,11 +809,11 @@
                     "type": "string"
                   },
                   "enable_highlight": {
-                    "description": "是否开启下拉选项的胶囊背景色高亮，仅 type='list'/'listFromRange' 生效。默认 true，自动按内置 10 色色板循环上色。仅当用户明确要求纯色下拉时才传 false。当用户要求按下拉项分别染色时，用本字段 + highlight_colors 一步搞定即可，不要走条件格式（条件格式是染整格背景，语义不符）。",
+                    "description": "是否开启下拉选项的胶囊背景色高亮，仅 type='list'/'listFromRange' 生效。默认 true，省略时自动按内置 10 色色板循环上色；仅当用户明确要求纯白下拉时才传 false。需要自定义胶囊颜色时配合 highlight_colors，不要用条件格式（条件格式是染整格背景，语义不符）。",
                     "type": "boolean"
                   },
                   "highlight_colors": {
-                    "description": "下拉选项的胶囊背景色数组（十六进制，例如 [\"#FFE699\",\"#bff7d9\",\"#ffb3b3\"]）。按顺序对应（type='list' 对应 items；type='listFromRange' 按 range 内单元格行优先顺序，如 A1:A10 对应第 1-10 项；A1:B2 顺序为 A1,B1,A2,B2）。长度可以短于但不能长于；未指定项及不提供该字段时按内置 10 色色板循环补色。当 enable_highlight=false 时本字段被忽略。",
+                    "description": "下拉选项的自定义胶囊背景色数组（十六进制）。默认不要传：省略时使用内置 10 色色板；仅在用户明确要求或选项有清晰语义配色时传。胶囊文字默认黑色，应选择浅色、低饱和度背景。按顺序对应（type='list' 对应 items；type='listFromRange' 按 range 内单元格行优先顺序，如 A1:A10 对应第 1-10 项；A1:B2 顺序为 A1,B1,A2,B2）。长度可以短于但不能长于；未指定项按内置色板补色。修改已有下拉且需要保留当前配色时，应先回读并透传现有 highlight_colors；省略会按内置色板重建。当 enable_highlight=false 时本字段被忽略。",
                     "type": "array",
                     "items": {
                       "type": "string"

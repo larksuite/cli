@@ -228,6 +228,72 @@ type Owner struct {
 	UserID    *string   `json:"user_id,omitempty"`
 }
 
+// CommentTarget identifies the OKR entity a comment is attached to.
+type CommentTarget struct {
+	TargetType string `json:"target_type"`
+	TargetID   string `json:"target_id"`
+}
+
+// CommentSelection identifies the text selection shared by a comment thread.
+type CommentSelection struct {
+	ID           string  `json:"id"`
+	SelectedText *string `json:"selected_text,omitempty"`
+}
+
+// Comment is the v2 OKR comment representation returned by the comments API.
+type Comment struct {
+	ID            string            `json:"id"`
+	Target        CommentTarget     `json:"target"`
+	CommentatorID string            `json:"commentator_id"`
+	Status        string            `json:"status"`
+	CreateTime    string            `json:"create_time"`
+	UpdateTime    string            `json:"update_time"`
+	Content       *ContentBlock     `json:"content,omitempty"`
+	SolverID      *string           `json:"solver_id,omitempty"`
+	SolvedTime    *string           `json:"solved_time,omitempty"`
+	RefCommentID  *string           `json:"ref_comment_id,omitempty"`
+	Selection     *CommentSelection `json:"selection,omitempty"`
+}
+
+// RespComment is the user-facing comment representation. Content is either a
+// SemiPlainContent or a ContentBlock according to the shortcut's --style.
+type RespComment struct {
+	ID            string            `json:"id"`
+	Target        CommentTarget     `json:"target"`
+	CommentatorID string            `json:"commentator_id"`
+	Status        string            `json:"status"`
+	CreateTime    string            `json:"create_time"`
+	UpdateTime    string            `json:"update_time"`
+	Content       any               `json:"content,omitempty"`
+	SolverID      *string           `json:"solver_id,omitempty"`
+	SolvedTime    *string           `json:"solved_time,omitempty"`
+	RefCommentID  *string           `json:"ref_comment_id,omitempty"`
+	Selection     *CommentSelection `json:"selection,omitempty"`
+}
+
+func (c *Comment) ToResp(style string) *RespComment {
+	if c == nil {
+		return nil
+	}
+	r := &RespComment{
+		ID: c.ID, Target: c.Target, CommentatorID: c.CommentatorID, Status: c.Status,
+		CreateTime: formatTimestamp(c.CreateTime), UpdateTime: formatTimestamp(c.UpdateTime),
+		SolverID: c.SolverID, RefCommentID: c.RefCommentID, Selection: c.Selection,
+	}
+	if c.SolvedTime != nil {
+		t := formatTimestamp(*c.SolvedTime)
+		r.SolvedTime = &t
+	}
+	if c.Content != nil {
+		if style == "simple" {
+			r.Content = c.Content.ToSemiPlain()
+		} else {
+			r.Content = c.Content
+		}
+	}
+	return r
+}
+
 // ToString CycleStatus to string
 func (t CycleStatus) ToString() string {
 	switch t {

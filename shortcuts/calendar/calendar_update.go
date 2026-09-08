@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -35,6 +34,11 @@ var CalendarUpdate = common.Shortcut{
 		{Name: "rrule", Desc: "recurrence rule (rfc5545)"},
 		{Name: "add-attendee-ids", Desc: "attendee IDs to add, comma-separated (supports user ou_, chat oc_, room omm_)"},
 		{Name: "remove-attendee-ids", Desc: "attendee IDs to remove, comma-separated (supports user ou_, chat oc_, room omm_)"},
+		{
+			Name: flagApplyTo,
+			Enum: applyToValues,
+			Desc: "recurring scope: single (this occurrence / exception only) | all (whole series and every exception) | this-and-following (truncate the series at this instance and create a new series carrying the requested edits). Required on recurring events; ignored on non-recurring events.",
+		},
 		{Name: "notify", Type: "bool", Default: "true", Desc: "send update notification to attendees"},
 		{Name: flagSkipRoomCheck, Type: "bool", Default: "false", Hidden: true, Desc: "skip meeting-room availability precheck (default checks rooms whenever a new room is added or the time/rrule of a room-attached event changes)"},
 	},
@@ -73,6 +77,10 @@ func validateCalendarUpdate(runtime *common.RuntimeContext) error {
 	if !hasCalendarUpdateOperation(runtime) {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "nothing to update: specify at least one of --summary, --description, --start/--end, --rrule, --add-attendee-ids, or --remove-attendee-ids")
 	}
+	warnCalendarTimezoneMismatch(runtime,
+		calendarTimeInputRange{Flag: "start", Value: runtime.Str("start")},
+		calendarTimeInputRange{Flag: "end", Value: runtime.Str("end")},
+	)
 	return nil
 }
 
@@ -279,6 +287,15 @@ func dryRunCalendarUpdate(runtime *common.RuntimeContext) *common.DryRunAPI {
 	}
 
 	d := common.NewDryRunAPI().Set("calendar_id", displayCalendarID).Set("event_id", eventID)
+	if scope := strings.TrimSpace(runtime.Str(flagApplyTo)); scope != "" {
+		d.Set("apply_to", scope)
+		switch scope {
+		case applyToAll:
+			d.Desc("recurring --apply-to=all: PATCH every exception first (only user-set fields), then the master; if --start/--end changed, exceptions are deleted first instead")
+		case applyToThisAndFollowing:
+			d.Desc("recurring --apply-to=this-and-following: delete exceptions on/after pivot → truncate master rrule with UNTIL → POST a new event carrying the requested edits (inherits master defaults for anything not overridden)")
+		}
+	}
 	opCount := 0
 	if hasEventFields {
 		opCount++
@@ -364,65 +381,53 @@ func executeCalendarUpdate(ctx context.Context, runtime *common.RuntimeContext) 
 		}
 	}
 
-	body, hasEventFields, err := buildCalendarUpdateEventData(runtime)
+	current, err := resolveCalendarEventOrMaster(runtime, calendarID, eventID)
 	if err != nil {
 		return err
 	}
+	kind := classifyRecurringEvent(current)
+	scope, err := validateApplyTo(runtime, kind, eventID)
+	if err != nil {
+		return err
+	}
+	switch scope {
+	case applyToSingle:
+		return executeCalendarUpdateSingle(ctx, runtime, calendarID, eventID)
+	case applyToAll:
+		return executeCalendarUpdateAll(ctx, runtime, calendarID, current, eventID)
+	case applyToThisAndFollowing:
+		return executeCalendarUpdateThisAndFollowing(ctx, runtime, calendarID, current, eventID)
+	}
+	return errs.NewInternalError(errs.SubtypeUnknown, "unhandled apply-to scope %q", scope)
+}
 
+// executeCalendarUpdateSingle mirrors the historical +update behavior when
+// scope resolves to "single" (normal event or one recurring instance /
+// exception). Delegates to applyUpdateToEvent so the master, every exception
+// and single-event paths share the exact same PATCH + attendee-batch logic.
+func executeCalendarUpdateSingle(ctx context.Context, runtime *common.RuntimeContext, calendarID, eventID string) error {
 	if !runtime.Bool(flagSkipRoomCheck) {
+		body, _, err := buildCalendarUpdateEventData(runtime)
+		if err != nil {
+			return err
+		}
 		if err := runRoomAvailabilityPrecheck(ctx, runtime, calendarID, eventID, body); err != nil {
 			return err
 		}
 	}
 
-	completed := []string{}
-	event := map[string]interface{}{}
-	if hasEventFields {
-		data, err := runtime.CallAPITyped("PATCH", calendarUpdateEventPath(calendarID, eventID), map[string]interface{}{"user_id_type": "open_id"}, body)
-		if err != nil {
-			return withStepContext(err, "failed to update event %s after completed steps %v", eventID, completed)
-		}
-		if v, _ := data["event"].(map[string]interface{}); v != nil {
-			event = v
-		}
-		completed = append(completed, "event")
+	event, addedCount, removedCount, err := applyUpdateToEvent(runtime, calendarID, eventID, false)
+	if err != nil {
+		return withStepContext(err, "failed to update event %s", eventID)
 	}
 
-	removedCount := 0
-	if removeStr := runtime.Str("remove-attendee-ids"); strings.TrimSpace(removeStr) != "" {
-		deleteIDs, err := attendeeDeleteIDs(removeStr)
-		if err != nil {
-			return err
-		}
-		_, err = runtime.CallAPITyped("POST", calendarUpdateAttendeesPath(calendarID, eventID)+"/batch_delete",
-			map[string]interface{}{"user_id_type": "open_id"},
-			map[string]interface{}{"delete_ids": deleteIDs, "need_notification": runtime.Bool("notify")})
-		if err != nil {
-			return withStepContext(err, "failed to remove attendees from event %s after completed steps %v", eventID, completed)
-		}
-		removedCount = len(deleteIDs)
-		completed = append(completed, "remove_attendees")
+	result := map[string]interface{}{
+		"calendar_id":   calendarID,
+		"apply_to":      applyToSingle,
+		"updated_event": calendarUpdateResult(eventID, event, addedCount, removedCount),
 	}
-
-	addedCount := 0
-	if addStr := runtime.Str("add-attendee-ids"); strings.TrimSpace(addStr) != "" {
-		attendees, err := parseAttendees(addStr, "")
-		if err != nil {
-			return withParam(err, "--add-attendee-ids")
-		}
-		_, err = runtime.CallAPITyped("POST", calendarUpdateAttendeesPath(calendarID, eventID),
-			map[string]interface{}{"user_id_type": "open_id"},
-			map[string]interface{}{"attendees": attendees, "need_notification": runtime.Bool("notify")})
-		if err != nil {
-			return withStepContext(err, "failed to add attendees to event %s after completed steps %v", eventID, completed)
-		}
-		addedCount = len(attendees)
-	}
-
-	result := calendarUpdateResult(eventID, event, addedCount, removedCount)
 	runtime.OutFormat(result, nil, func(w io.Writer) {
-		output.PrintTable(w, []map[string]interface{}{result})
-		fmt.Fprintln(w, "\nEvent updated successfully")
+		writeUpdatePretty(w, result, eventID, applyToSingle, "updated_event", "Updated event", "Exceptions updated")
 	})
 	return nil
 }
@@ -467,4 +472,24 @@ func formatCalendarEventTime(v interface{}) string {
 		return date
 	}
 	return ""
+}
+
+// eventTimeAsMap projects a typed calendarEventTime back into the loose map
+// shape formatCalendarEventTime expects, so callers with a parsed event can
+// reuse the same rendering path as callers holding a raw response map.
+func eventTimeAsMap(t *calendarEventTime) map[string]interface{} {
+	if t == nil {
+		return nil
+	}
+	m := map[string]interface{}{}
+	if t.Date != "" {
+		m["date"] = t.Date
+	}
+	if t.Timestamp != "" {
+		m["timestamp"] = t.Timestamp
+	}
+	if t.Timezone != "" {
+		m["timezone"] = t.Timezone
+	}
+	return m
 }

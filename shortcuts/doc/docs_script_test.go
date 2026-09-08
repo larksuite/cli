@@ -45,6 +45,41 @@ func TestDocsScriptDoesNotExposeRemovedCommandsOrFlags(t *testing.T) {
 	}
 }
 
+func TestDocsCreateWorkflowRetainsDraftWorkspace(t *testing.T) {
+	workflow, err := os.ReadFile("../../skills/lark-doc/references/lark-doc-create-workflow.md")
+	if err != nil {
+		t.Fatalf("read create workflow: %v", err)
+	}
+	text := string(workflow)
+	if !strings.Contains(text, "保留 Step 4 返回的 `work_dir` 及其中的创作草稿") {
+		t.Fatal("create workflow does not retain the draft workspace")
+	}
+
+	script, err := os.ReadFile("../../skills/lark-doc/references/lark-doc-script.md")
+	if err != nil {
+		t.Fatalf("read script reference: %v", err)
+	}
+	scriptText := string(script)
+	if !strings.Contains(scriptText, "保留 `workspace` 及其中的创作草稿") {
+		t.Fatal("script reference does not retain the draft workspace")
+	}
+
+	documents := []struct {
+		name    string
+		content string
+	}{
+		{name: "create workflow", content: text},
+		{name: "script reference", content: scriptText},
+	}
+	for _, document := range documents {
+		for _, forbidden := range []string{"cleanup-draft", "文件删除能力", "删除整个 `work_dir`", "精确删除 `workspace`"} {
+			if strings.Contains(document.content, forbidden) {
+				t.Fatalf("%s still instructs draft workspace cleanup %q", document.name, forbidden)
+			}
+		}
+	}
+}
+
 func TestDocsScriptPresentationDecisionFlagAcceptsFileAndStdin(t *testing.T) {
 	for _, flag := range DocsScript.Flags {
 		if flag.Name != "presentation-decision" {

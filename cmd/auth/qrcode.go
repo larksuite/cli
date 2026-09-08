@@ -17,6 +17,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
+	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
 // QRCodeOptions holds inputs for auth qrcode command.
@@ -40,7 +41,7 @@ func NewCmdAuthQRCode(f *cmdutil.Factory, runF func(*QRCodeOptions) error) *cobr
 
 This command is designed for AI agents to generate QR codes for OAuth authorization URLs.
 
-For PNG output, the --output flag is required to specify the output file path (must be a relative path within the current directory).
+For PNG output, the --output flag is required to specify the output file path (must be within the allowed roots (cwd, /tmp, ~/files)).
 For ASCII output, the result is printed to stdout with fixed size.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -55,7 +56,7 @@ For ASCII output, the result is printed to stdout with fixed size.`,
 
 	cmd.Flags().IntVar(&opts.Size, "size", 256, "Size of the QR code image in pixels (default: 256, for PNG mode only)")
 	cmd.Flags().BoolVar(&opts.ASCII, "ascii", false, "Output ASCII QR code to stdout")
-	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "Output file path for PNG image (relative path within current directory, required for non-ASCII mode)")
+	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "Output file path for PNG image (within the allowed roots: cwd, /tmp, ~/files; required for non-ASCII mode)")
 
 	return cmd
 }
@@ -114,19 +115,35 @@ func runQRCode(opts *QRCodeOptions) error {
 	return nil
 }
 
-// generateImageQRCode encodes the URL as a PNG QR code and writes it to outputPath.
+// generateImageQRCode encodes the URL as a PNG QR code and writes it to
+// outputPath. The write commits through a temp file and a rename rather than
+// truncating the target in place: a rename replaces the directory entry, so an
+// existing target that happens to be a hard link keeps its other names intact
+// instead of receiving the QR code's bytes.
 func generateImageQRCode(url string, size int, outputPath string) error {
 	png, err := qrcode.Encode(url, qrcode.Medium, size)
 	if err != nil {
 		return errs.NewInternalError(errs.SubtypeSDKError, "failed to encode QR code: %v", err).WithCause(err)
 	}
 
-	err = vfs.WriteFile(outputPath, png, 0644)
-	if err != nil {
+	if err := localfileio.AtomicWrite(outputPath, png, outputFileMode(outputPath)); err != nil {
 		return errs.NewInternalError(errs.SubtypeSDKError, "failed to write QR code to %s: %v", outputPath, err).WithCause(err)
 	}
 
 	return nil
+}
+
+// outputFileMode reports the mode to write outputPath with, keeping the mode a
+// file already has. The rename that commits the write installs the temp file's
+// mode along with its contents, so passing a fixed one would hand a target the
+// caller had restricted back as world-readable — where an in-place write left
+// it alone. Only a path with nothing at it yet takes the default.
+func outputFileMode(outputPath string) os.FileMode {
+	info, err := vfs.Stat(outputPath)
+	if err != nil || !info.Mode().IsRegular() {
+		return 0644
+	}
+	return info.Mode().Perm()
 }
 
 // generateASCIIQRCode encodes the URL as an ASCII QR code and prints it to stdout.

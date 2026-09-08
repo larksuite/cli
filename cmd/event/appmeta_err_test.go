@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 const realisticPermError = `API GET /open-apis/application/v6/applications/cli_XXXXXXXXXXXXXXXX/app_versions?lang=zh_cn&page_size=2 returned 400: {"code":99991672,"msg":"Access denied. One of the following scopes is required: [application:application:self_manage, application:application.app_version:readonly].应用尚未开通所需的应用身份权限：[application:application:self_manage, application:application.app_version:readonly]，点击链接申请并开通任一权限即可：https://open.feishu.cn/app/cli_XXXXXXXXXXXXXXXX/auth?q=application:application:self_manage,application:application.app_version:readonly&op_from=openapi&token_type=tenant","error":{"message":"Refer to the documentation...","log_id":"20260421101203E2A5F141245B6F43B3A6"}}`
@@ -35,6 +36,19 @@ func TestDescribeAppMetaErr_UnknownErrorTruncated(t *testing.T) {
 	got := describeAppMetaErr(errors.New(long))
 	if len(got) > 220 {
 		t.Errorf("unknown error not truncated, len=%d", len(got))
+	}
+}
+
+func TestDescribeAppMetaErr_TruncationPreservesUTF8(t *testing.T) {
+	got := describeAppMetaErr(errors.New(strings.Repeat("x", 199) + "界tail"))
+	if !utf8.ValidString(got) {
+		t.Fatalf("truncated summary is not valid UTF-8: %q", got)
+	}
+	if !strings.HasSuffix(got, "…") {
+		t.Fatalf("truncated summary suffix = %q, want ellipsis", got)
+	}
+	if prefix := strings.TrimSuffix(got, "…"); len(prefix) > 200 {
+		t.Fatalf("truncated prefix is %d bytes, want at most 200", len(prefix))
 	}
 }
 

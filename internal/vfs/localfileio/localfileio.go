@@ -34,13 +34,15 @@ type LocalFileIO struct{}
 
 var _ fileio.WorkspaceFileIO = (*LocalFileIO)(nil)
 
-// Open opens a local file for reading after validating the path.
+// Open opens a local file for reading after validating the path. The open
+// itself is hardened (openValidated): the fd is verified against the
+// validation-stage stat and must be a regular file.
 func (l *LocalFileIO) Open(name string) (fileio.File, error) {
 	safePath, err := SafeInputPath(name)
 	if err != nil {
 		return nil, &fileio.PathValidationError{Err: err}
 	}
-	return vfs.Open(safePath)
+	return openValidated(safePath)
 }
 
 // Stat returns file metadata after validating the path.

@@ -204,8 +204,8 @@ lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "
 
 ```bash
 # 1. 获取当前应用的 open_id
-lark-cli api GET /open-apis/bot/v3/info --as bot
-# 从返回值中取 bot.open_id
+lark-cli api GET /open-apis/bot/v3/info --as bot --jq '.data.open_id'
+# 输出即当前应用的 open_id
 
 # 2. 授权当前应用访问文档
 lark-cli drive permission.members create \

@@ -612,7 +612,7 @@ func TestSlidesScreenshotOutputRejectsInvalidPath(t *testing.T) {
 		wantDirHint     bool
 	}{
 		{name: "unsupported extension", output: "shots/cover.gif"},
-		{name: "path escapes working directory", output: "../cover.jpg"},
+		{name: "path escapes every allowed root", output: "../../../../../../../../../../../../cover.jpg"},
 		{name: "directory suffix", output: "shots/", wantDirHint: true},
 		{name: "existing directory", output: "shots", createDirectory: true, wantDirHint: true},
 		{name: "leading whitespace", output: " shots/cover.png"},

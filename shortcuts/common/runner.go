@@ -1266,7 +1266,13 @@ func (ctx *RuntimeContext) InputResolvedFromSource(name string) bool {
 	return ctx.inputResolved[name]
 }
 
-func (ctx *RuntimeContext) markInputResolved(name string) {
+// MarkInputResolved records that the named flag now holds content read from an
+// external source rather than a value typed inline, setting the bit
+// InputResolvedFromSource reports. resolveInputFlags calls it for @file and
+// stdin; a domain calls it when it resolves a source itself (sheets reads the
+// path a +csv-put caller passed as --file), so the shape guards downstream
+// treat the result as content, exactly as they would for --csv @<path>.
+func (ctx *RuntimeContext) MarkInputResolved(name string) {
 	if ctx.inputResolved == nil {
 		ctx.inputResolved = map[string]bool{}
 	}
@@ -1312,7 +1318,7 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 			// strip a leading UTF-8 BOM so it can't corrupt the first CSV
 			// cell or break JSON parsing downstream.
 			rctx.Cmd.Flags().Set(fl.Name, StripUTF8BOM(string(data)))
-			rctx.markInputResolved(fl.Name)
+			rctx.MarkInputResolved(fl.Name)
 			continue
 		}
 
@@ -1349,7 +1355,7 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 			// strip a leading UTF-8 BOM so it
 			// can't corrupt the first CSV cell or break JSON parsing downstream.
 			rctx.Cmd.Flags().Set(fl.Name, StripUTF8BOM(string(data)))
-			rctx.markInputResolved(fl.Name)
+			rctx.MarkInputResolved(fl.Name)
 			continue
 		}
 	}

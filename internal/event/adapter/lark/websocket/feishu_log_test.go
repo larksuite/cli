@@ -9,6 +9,7 @@ import (
 	"log"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
 
@@ -35,6 +36,25 @@ func TestRawHandlerLogsMalformedJSON(t *testing.T) {
 	}
 	if !strings.Contains(out, "not-json") {
 		t.Errorf("expected log to include body preview, got: %s", out)
+	}
+}
+
+func TestRawHandlerMalformedJSONPreviewPreservesUTF8(t *testing.T) {
+	var buf bytes.Buffer
+	s := &FeishuSource{Logger: log.New(&buf, "", 0)}
+	handler := s.buildRawHandler(func(_ *event.RawEvent) {})
+
+	body := []byte(strings.Repeat("x", 199) + "界tail")
+	if err := handler(context.Background(), &larkevent.EventReq{Body: body}); err != nil {
+		t.Fatalf("handler returned err: %v", err)
+	}
+
+	out := buf.String()
+	if !utf8.ValidString(out) {
+		t.Fatalf("malformed event log is not valid UTF-8: %q", out)
+	}
+	if !strings.Contains(out, "...(truncated)") {
+		t.Fatalf("malformed event log missing truncation suffix: %q", out)
 	}
 }
 

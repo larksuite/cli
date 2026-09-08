@@ -205,13 +205,11 @@ var DrivePush = common.Shortcut{
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "could not resolve cwd: %s", err)
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Walking local: %s\n", localDir)
 		localFiles, localDirs, err := drivePushWalkLocal(safeRoot, cwdCanonical)
 		if err != nil {
 			return err
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Listing Drive folder: %s\n", common.MaskToken(folderToken))
 		entries, err := listRemoteFolderEntries(ctx, runtime, folderToken, "")
 		if err != nil {
 			return err
@@ -270,7 +268,6 @@ var DrivePush = common.Shortcut{
 				uploadFailed = true
 				if terminal {
 					aborted = true
-					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, ensureErr)
 					break
 				}
 				continue
@@ -306,7 +303,6 @@ var DrivePush = common.Shortcut{
 					uploadFailed = true
 					if terminal {
 						aborted = true
-						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, parentErr)
 						break
 					}
 					continue
@@ -338,7 +334,6 @@ var DrivePush = common.Shortcut{
 					uploadFailed = true
 					if terminal {
 						aborted = true
-						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, upErr)
 						break
 					}
 					continue
@@ -357,7 +352,6 @@ var DrivePush = common.Shortcut{
 				uploadFailed = true
 				if terminal {
 					aborted = true
-					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, ensureErr)
 					break
 				}
 				continue
@@ -370,7 +364,6 @@ var DrivePush = common.Shortcut{
 				uploadFailed = true
 				if terminal {
 					aborted = true
-					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, upErr)
 					break
 				}
 				continue
@@ -424,7 +417,6 @@ var DrivePush = common.Shortcut{
 						failed++
 						if terminal {
 							aborted = true
-							fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, err)
 							abortDelete = true
 							break
 						}
@@ -928,10 +920,6 @@ func drivePushUploadMultipart(_ context.Context, runtime *common.RuntimeContext,
 			"upload_prepare returned invalid data: upload_id=%q, block_size=%d, block_num=%d",
 			uploadID, blockSize, blockNum)
 	}
-
-	fmt.Fprintf(runtime.IO().ErrOut, "Multipart upload: %s, block size %s, %d block(s)\n",
-		common.FormatSize(file.Size), common.FormatSize(blockSize), blockNum)
-
 	// Open the local file ONCE for the whole multipart loop. fileio.File
 	// implements io.ReaderAt, so each block is a fresh
 	// io.NewSectionReader over a shared fd — no need to reopen N times
@@ -972,7 +960,6 @@ func drivePushUploadMultipart(_ context.Context, runtime *common.RuntimeContext,
 		if _, err := runtime.ClassifyAPIResponse(apiResp); err != nil {
 			return "", err
 		}
-		fmt.Fprintf(runtime.IO().ErrOut, "  Block %d/%d uploaded (%s)\n", seq+1, blockNum, common.FormatSize(partSize))
 	}
 
 	finishResult, err := runtime.CallAPITyped("POST", "/open-apis/drive/v1/files/upload_finish", nil, map[string]interface{}{

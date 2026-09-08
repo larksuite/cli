@@ -68,7 +68,7 @@ var WikiNodeDelete = common.Shortcut{
 		"--node-token accepts a raw token (wikcnXXX, docxXXX, ...) or a Lark URL like https://feishu.cn/wiki/<token> or https://feishu.cn/docx/<token>; URL paths also imply --obj-type.",
 		"Run +node-get first to confirm space_id / obj_type when in doubt.",
 		"Auto-resolving space_id (when --space-id is omitted) also calls get_node, which needs the wiki:node:retrieve scope; pass --space-id to skip that lookup if your token only carries wiki:node:create.",
-		"Async deletes return a task_id; this command polls for a bounded window and then prints a follow-up drive +task_result command.",
+		"Async deletes return a task_id; this command polls for a bounded window and then returns a follow-up drive +task_result command.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		_, err := readWikiNodeDeleteSpec(runtime)
@@ -310,9 +310,6 @@ func runWikiNodeDelete(ctx context.Context, client wikiNodeDeleteClient, runtime
 		return nil, err
 	}
 
-	fmt.Fprintf(runtime.IO().ErrOut, "Deleting wiki node %s in space %s (obj_type=%s, include_children=%t)...\n",
-		common.MaskToken(spec.NodeToken), common.MaskToken(spaceID), spec.ObjType, spec.IncludeChildren)
-
 	taskID, err := client.DeleteNode(ctx, spaceID, spec)
 	if err != nil {
 		return nil, err
@@ -336,7 +333,6 @@ func runWikiNodeDelete(ctx context.Context, client wikiNodeDeleteClient, runtime
 		return out, nil
 	}
 
-	fmt.Fprintf(runtime.IO().ErrOut, "Wiki node delete is async, polling task %s...\n", taskID)
 	nextCommand := wikiDeleteNodeTaskResultCommand(taskID, runtime.As())
 	status, ready, err := pollWikiAsyncTask(
 		ctx, runtime, taskID, "delete-node",
@@ -357,7 +353,6 @@ func runWikiNodeDelete(ctx context.Context, client wikiNodeDeleteClient, runtime
 	out["status_msg"] = status.StatusLabel()
 
 	if !ready {
-		fmt.Fprintf(runtime.IO().ErrOut, "Wiki delete-node task is still in progress. Continue with: %s\n", nextCommand)
 		out["timed_out"] = true
 		out["next_command"] = nextCommand
 	}
@@ -371,7 +366,6 @@ func resolveWikiNodeDeleteSpaceID(ctx context.Context, client wikiNodeDeleteClie
 	if spec.SpaceID != "" {
 		return spec.SpaceID, nil
 	}
-	fmt.Fprintf(runtime.IO().ErrOut, "Resolving space_id via get_node for token %s...\n", common.MaskToken(spec.NodeToken))
 	node, err := client.ResolveNode(ctx, spec.NodeToken, spec.ObjType)
 	if err != nil {
 		return "", err
@@ -380,7 +374,6 @@ func resolveWikiNodeDeleteSpaceID(ctx context.Context, client wikiNodeDeleteClie
 	if err != nil {
 		return "", err
 	}
-	fmt.Fprintf(runtime.IO().ErrOut, "Resolved to space %s\n", common.MaskToken(spaceID))
 	return spaceID, nil
 }
 

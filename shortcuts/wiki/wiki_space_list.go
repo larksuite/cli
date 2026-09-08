@@ -68,7 +68,6 @@ var WikiSpaceList = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(runtime.IO().ErrOut, "Found %d wiki space(s)\n", len(spaces))
 		outData := map[string]interface{}{
 			"spaces":     spaces,
 			"has_more":   hasMore,

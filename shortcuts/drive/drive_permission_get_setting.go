@@ -254,7 +254,6 @@ var DrivePermissionGetSetting = common.Shortcut{
 			return err
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Getting permission settings for %s %s...\n", spec.Type, common.MaskToken(spec.Token))
 		data, err := runtime.CallAPITyped(
 			"GET",
 			spec.apiPath(),

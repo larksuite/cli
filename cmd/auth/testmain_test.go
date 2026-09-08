@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/registry/registrytest"
 )
 
@@ -40,6 +41,11 @@ func TestMain(m *testing.M) {
 		os.RemoveAll(root)
 		os.Exit(2)
 	}
+	// Never reach the live scopes.json endpoint from tests: default the remote
+	// fetch to "unavailable" so authLoginRun exercises the local fallback
+	// deterministically. A test that needs a specific remote sets fetchRemoteScopes
+	// itself and restores it.
+	fetchRemoteScopes = func(core.LarkBrand) (map[string][]string, bool) { return nil, false }
 	code := m.Run()
 	_ = os.RemoveAll(root)
 	os.Exit(code)

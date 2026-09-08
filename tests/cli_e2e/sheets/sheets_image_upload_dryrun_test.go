@@ -19,9 +19,9 @@ import (
 // image-upload shortcuts emit in --dry-run output for native vs. imported
 // "office" spreadsheets. For native tokens parent_type must be "sheet_image";
 // for tokens carrying the interleaved "OFL0X" marker the backend requires
-// "office_sheet_file". The covered entries — sheets +media-upload (backward),
-// sheets +cells-set-image, and sheets +float-image-create — are every
-// image-upload surface that the office/native split fans out to.
+// "office_sheet_file". The covered entries — sheets +cells-set-image and
+// sheets +float-image-create — are every image-upload surface that the
+// office/native split fans out to.
 //
 // The wiki rows carry an office-shaped node_token on purpose. A preview cannot
 // know what a wiki node resolves to — that needs the get_node call a dry-run
@@ -42,28 +42,6 @@ func TestSheets_ImageUploadDryRunParentType(t *testing.T) {
 		wantParentType string
 	}
 	tests := []tc{
-		{
-			name: "media-upload native",
-			args: []string{
-				"sheets", "+media-upload",
-				"--spreadsheet-token", "shtDryRunNative",
-				"--file", "img.png",
-				"--dry-run",
-			},
-			token:          "shtDryRunNative",
-			wantParentType: "sheet_image",
-		},
-		{
-			name: "media-upload office",
-			args: []string{
-				"sheets", "+media-upload",
-				"--spreadsheet-token", "aaaaOaaaaFaaaaLaaaa0aaaaXaaa",
-				"--file", "img.png",
-				"--dry-run",
-			},
-			token:          "aaaaOaaaaFaaaaLaaaa0aaaaXaaa",
-			wantParentType: "office_sheet_file",
-		},
 		{
 			name: "cells-set-image native",
 			args: []string{

@@ -95,8 +95,9 @@ func (s driveTaskCheckStatus) StatusLabel() string {
 
 // driveTaskCheckResultCommand prints the resume command shown when bounded
 // polling ends before the backend task completes.
-func driveTaskCheckResultCommand(taskID, as string) string {
-	return fmt.Sprintf("lark-cli drive +task_result --scenario task_check --task-id %s --as %s", taskID, as)
+func driveTaskCheckResultCommand(runtime *common.RuntimeContext, taskID string) string {
+	prefix, identity := driveTaskResultCommandContext(runtime)
+	return fmt.Sprintf("%s drive +task_result --scenario task_check --task-id %s --as %s", prefix, taskID, identity)
 }
 
 // driveTaskCheckParams keeps the task_check query parameter shape in one place
@@ -151,7 +152,6 @@ func pollDriveTaskCheck(runtime *common.RuntimeContext, taskID string) (driveTas
 		status, err := getDriveTaskCheckStatus(runtime, taskID)
 		if err != nil {
 			lastErr = err
-			fmt.Fprintf(runtime.IO().ErrOut, "Error polling task %s: %s\n", taskID, err)
 			continue
 		}
 		seenStatus = true
@@ -159,7 +159,6 @@ func pollDriveTaskCheck(runtime *common.RuntimeContext, taskID string) (driveTas
 		// Success and failure are terminal backend states. Any other value is kept
 		// as pending so the caller can decide whether to continue or resume later.
 		if status.Ready() {
-			fmt.Fprintf(runtime.IO().ErrOut, "Drive task completed successfully.\n")
 			return status, true, nil
 		}
 		if status.Failed() {
@@ -168,7 +167,12 @@ func pollDriveTaskCheck(runtime *common.RuntimeContext, taskID string) (driveTas
 	}
 
 	if !seenStatus && lastErr != nil {
-		return driveTaskCheckStatus{}, false, lastErr
+		hint := fmt.Sprintf(
+			"the Drive task was created but every status poll failed (task_id=%s)\nretry status lookup with: %s",
+			taskID,
+			driveTaskCheckResultCommand(runtime, taskID),
+		)
+		return driveTaskCheckStatus{}, false, appendDriveRecoveryHint(lastErr, hint)
 	}
 
 	return lastStatus, false, nil

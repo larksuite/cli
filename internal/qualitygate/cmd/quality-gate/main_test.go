@@ -58,7 +58,7 @@ func TestCheckRejectsUnsafePublicContentMetadataPath(t *testing.T) {
 	code, stderr := runCheckCaptureStderr(t, []string{
 		"--repo", t.TempDir(),
 		"--cli-bin", "./lark-cli",
-		"--public-content-metadata", filepath.Join(t.TempDir(), "pr.json"),
+		"--public-content-metadata", filepath.Join(string(filepath.Separator), "not-an-allowed-root", "pr.json"),
 	})
 	if code != 2 {
 		t.Fatalf("exit code = %d, stderr=%s", code, stderr)

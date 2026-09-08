@@ -31,12 +31,12 @@ func TestSheets_DimShortcutsWorkflow(t *testing.T) {
 	spreadsheetToken := createSpreadsheet(t, parentT, ctx, "lark-cli-e2e-dim-"+suffix, "bot")
 
 	infoRes, err := clie2e.RunCmd(ctx, clie2e.Request{
-		Args:      []string{"sheets", "+info", "--spreadsheet-token", spreadsheetToken},
+		Args:      []string{"sheets", "+workbook-info", "--spreadsheet-token", spreadsheetToken},
 		DefaultAs: "bot",
 	})
 	require.NoError(t, err)
 	infoRes.AssertExitCode(t, 0)
-	sheetID := gjson.Get(infoRes.Stdout, "data.sheets.sheets.0.sheet_id").String()
+	sheetID := gjson.Get(infoRes.Stdout, "data.sheets.0.sheet_id").String()
 	require.NotEmpty(t, sheetID, "sheet_id should not be empty, stdout: %s", infoRes.Stdout)
 
 	values := [][]any{
@@ -48,11 +48,11 @@ func TestSheets_DimShortcutsWorkflow(t *testing.T) {
 	valuesJSON, _ := json.Marshal(values)
 	writeRes, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
-			"sheets", "+write",
+			"sheets", "+cells-set",
 			"--spreadsheet-token", spreadsheetToken,
 			"--sheet-id", sheetID,
 			"--range", "A1:C4",
-			"--values", string(valuesJSON),
+			"--cells", string(valuesJSON),
 		},
 		DefaultAs: "bot",
 	})

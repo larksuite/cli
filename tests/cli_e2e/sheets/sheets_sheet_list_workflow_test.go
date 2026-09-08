@@ -77,7 +77,7 @@ func TestSheets_SheetListWorkflow(t *testing.T) {
 		require.True(t, data.IsArray(), "data must be the sheets array itself, stdout:\n%s", result.Stdout)
 
 		// At least the workbook's default sheet plus the one just created. Not an
-		// exact count: how many sheets +create seeds a new workbook with is that
+		// exact count: how many sheets +workbook-create seeds a new workbook with is that
 		// command's contract, and pinning it here would misattribute its change to
 		// +sheet-list.
 		entries := data.Array()

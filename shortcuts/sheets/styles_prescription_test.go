@@ -366,7 +366,9 @@ func TestStylesFieldTypesValidated(t *testing.T) {
 	}{
 		{"boolean font_weight", `"font_weight":true`, "font_weight must be a string, got boolean"},
 		{"numeric background_color", `"background_color":123`, "background_color must be a string, got number"},
-		{"string font_size", `"font_size":"12"`, "font_size must be a number, got string"},
+		// A quoted number is coerced (see the reflow row in the styles
+		// corpus); a word is not a number in any reading and still fails.
+		{"non-numeric font_size", `"font_size":"large"`, "font_size must be a number, got string"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -574,13 +576,51 @@ func TestAggregatedIssuesKeepPrescriptions(t *testing.T) {
 
 	t.Run("folded --writes issues inline each hint", func(t *testing.T) {
 		t.Parallel()
+		// Two DIFFERENT defects: both must be rendered, and the one whose
+		// prescription lives in Hint must still carry it inline. (Two copies of
+		// the SAME defect collapse instead — pinned below.)
+		_, _, err := runShortcutCapturingErr(t, CellsSet, []string{
+			"--url", testURL,
+			"--writes", `[{"range":"A1","cells":[[{"value":1}]]},{"sheet_name":"S","range":"A1:A1","cells":[[{"value":2},{"value":3}]]}]`,
+		})
+		ve := requireValidation(t, err, "--writes has 2 issues")
+		if !strings.Contains(ve.Message, "+workbook-info") {
+			t.Errorf("the first issue's Hint prescription should be inlined, got %q", ve.Message)
+		}
+		if !strings.Contains(ve.Message, `--range "A1:A1" spans`) {
+			t.Errorf("the second issue should be rendered too, got %q", ve.Message)
+		}
+		if ve.Param != "--writes" {
+			t.Errorf("Param = %q, want %q — the fold re-attributes to the outer flag", ve.Param, "--writes")
+		}
+		if ve.Cause == nil {
+			t.Error("Cause = nil, want the first inner issue preserved through the fold")
+		}
+	})
+
+	t.Run("identical issues collapse to one prescription", func(t *testing.T) {
+		t.Parallel()
+		// One defect repeated per item is the shape that used to bury its own
+		// answer: N copies of the same message, each re-listing the full
+		// vocabulary. It must be stated once, with the other locations named.
 		_, _, err := runShortcutCapturingErr(t, CellsSet, []string{
 			"--url", testURL,
 			"--writes", `[{"range":"A1","cells":[[{"value":1}]]},{"range":"B1","cells":[[{"value":2}]]}]`,
 		})
-		ve := requireValidation(t, err, "--writes has 2 issues")
-		if strings.Count(ve.Message, "+workbook-info") != 2 {
-			t.Errorf("each issue should carry its own prescription inline, got %q", ve.Message)
+		ve := requireValidation(t, err, "--writes has 2 issues (1 distinct)")
+		if strings.Count(ve.Message, "+workbook-info") != 1 {
+			t.Errorf("the repeated prescription should appear once, got %q", ve.Message)
+		}
+		if !strings.Contains(ve.Message, "[same at 1 more: --writes[1]]") {
+			t.Errorf("the collapsed issue must name where else it occurred, got %q", ve.Message)
+		}
+		// Collapsing must not cost the fold's typed attribution: the flag to
+		// fix and the underlying error both still ride along.
+		if ve.Param != "--writes" {
+			t.Errorf("Param = %q, want --writes", ve.Param)
+		}
+		if ve.Cause == nil {
+			t.Error("the collapsed aggregate should keep the first issue as Cause")
 		}
 	})
 }

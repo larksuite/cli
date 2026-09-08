@@ -25,21 +25,31 @@ func TestApplyWorkbookOutputPath(t *testing.T) {
 	fio := &localfileio.LocalFileIO{}
 
 	p := drive.ExportParams{}
-	applyWorkbookOutputPath(&p, fio, "")
+	applyWorkbookOutputPath(&p, fio, "", false)
 	if p.OutputDir != "" || p.FileName != "" {
 		t.Errorf("empty path must mean no download, got dir=%q name=%q", p.OutputDir, p.FileName)
 	}
 
 	p = drive.ExportParams{}
-	applyWorkbookOutputPath(&p, fio, "./out.xlsx")
+	applyWorkbookOutputPath(&p, fio, "./out.xlsx", false)
 	if p.OutputDir != "." || p.FileName != "out.xlsx" {
 		t.Errorf("file path must split into dir+name, got dir=%q name=%q", p.OutputDir, p.FileName)
 	}
 
 	p = drive.ExportParams{}
-	applyWorkbookOutputPath(&p, fio, ".")
+	applyWorkbookOutputPath(&p, fio, ".", false)
 	if p.OutputDir != "." || p.FileName != "" {
 		t.Errorf("existing dir must keep the server-provided name, got dir=%q name=%q", p.OutputDir, p.FileName)
+	}
+
+	// --outdir / --output-dir state that the value IS a directory. Probing
+	// disk would read a not-yet-created one as a file name, so the flag wins:
+	// "--outdir ./exports" downloads into ./exports, never to a file called
+	// "exports".
+	p = drive.ExportParams{}
+	applyWorkbookOutputPath(&p, fio, "./exports", true)
+	if p.OutputDir != "./exports" || p.FileName != "" {
+		t.Errorf("a directory-valued alias must not be split, got dir=%q name=%q", p.OutputDir, p.FileName)
 	}
 }
 

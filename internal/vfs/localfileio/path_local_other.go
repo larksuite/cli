@@ -6,3 +6,5 @@
 package localfileio
 
 func validateLocalInputPlatform(string) error { return nil }
+
+func validatePathPlatform(string) error { return nil }

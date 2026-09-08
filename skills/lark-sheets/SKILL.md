@@ -186,6 +186,7 @@ reference 分两组：先读**通用方法与规范**（横切所有任务的样
 | [Lark Sheet Float Image](references/lark-sheets-float-image.md) | 管理飞书表格中的浮动图片。当用户需要在表格中插入浮动图片、调整图片位置和大小、查看已有浮动图片、删除图片时使用。也适用于"插入图片"、"添加 logo"、"放一张图"等场景。注意：如果用户需要将图片嵌入到某个单元格内部（单元格图片），请阅读 lark-sheets-write-cells。 |
 | [Lark Sheet History](references/lark-sheets-history.md) | 查询飞书表格的历史版本并回滚到指定版本。当用户需要查看一张表的编辑历史版本列表、回滚到某个历史版本、或查询回滚的异步状态（进行中/成功/失败）时使用。回滚为异步操作，发起后通过状态查询轮询结果。仅针对飞书表格。 |
 | [Lark Sheet Changeset](references/lark-sheets-changeset.md) | 读取两个版本（CS revision）之间的 changeset（原始变更操作清单），用于复核某次编辑——尤其是 AI 编辑——是否真实满足用户诉求。传入起始版本（编辑前基线），可选结束版本（省略取最新），版本差上限 20；返回里最外层带当前表格最新版本号。当用户需要"看看这次改了什么"、"核对 AI 改动"、"对比两个版本的变更"时使用。 |
+| [Lark Sheet 旧命令迁移指南](references/lark-sheets-legacy-command-migration.md) | 重构前的 42 个 sheets 旧命令（`+create`、`+read`、`+write`、`+create-sheet`、`+media-upload` 等）已删除，调用会直接报 `unknown subcommand`。当手上的脚本或 skill 早于本次重构、或收到该报错时，用本文查替代命令，以及那些不只是改名的差异：单元格 payload 词汇（`{"type":"formula","text":…}` 已被拒绝）、响应字段路径、`+update-sheet` / `+update-dimension` 拆成多个命令。 |
 
 ## 公共 flag 速查
 

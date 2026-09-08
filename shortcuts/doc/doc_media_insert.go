@@ -215,7 +215,6 @@ var DocMediaInsert = common.Shortcut{
 		// Clipboard path: read image bytes into memory, bypassing FileIO path validation.
 		var clipboardContent []byte
 		if runtime.Bool("from-clipboard") {
-			fmt.Fprintf(runtime.IO().ErrOut, "Reading image from clipboard...\n")
 			var err error
 			clipboardContent, err = readClipboardImage()
 			if err != nil {
@@ -246,11 +245,6 @@ var DocMediaInsert = common.Shortcut{
 			fileName = filepath.Base(filePath)
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Inserting: %s -> document %s\n", fileName, common.MaskToken(documentID))
-		if fileSize > common.MaxDriveMediaUploadSinglePartSize {
-			fmt.Fprintf(runtime.IO().ErrOut, "File exceeds 20MB, using multipart upload\n")
-		}
-
 		// Step 1: Get document root block to find where to insert
 		rootData, err := runtime.CallAPITyped("GET",
 			fmt.Sprintf("/open-apis/docx/v1/documents/%s/blocks/%s", validate.EncodePathSegment(documentID), validate.EncodePathSegment(documentID)),
@@ -263,11 +257,7 @@ var DocMediaInsert = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(runtime.IO().ErrOut, "Root block ready: %s (%d children)\n", parentBlockID, insertIndex)
-
 		// Step 2: Create an empty block at the target position
-		fmt.Fprintf(runtime.IO().ErrOut, "Creating block at index %d\n", insertIndex)
-
 		createData, err := runtime.CallAPITyped("POST",
 			fmt.Sprintf("/open-apis/docx/v1/documents/%s/blocks/%s/children", validate.EncodePathSegment(documentID), validate.EncodePathSegment(parentBlockID)),
 			nil, buildCreateBlockData(mediaType, insertIndex, fileViewType))
@@ -281,15 +271,9 @@ var DocMediaInsert = common.Shortcut{
 			return errs.NewInternalError(errs.SubtypeInvalidResponse, "failed to create block: no block_id returned")
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Block created: %s\n", blockId)
-		if uploadParentNode != blockId || replaceBlockID != blockId {
-			fmt.Fprintf(runtime.IO().ErrOut, "Resolved file block targets: upload=%s replace=%s\n", uploadParentNode, replaceBlockID)
-		}
-
 		// The placeholder block is created before any upload starts, so failures in
 		// later steps should try to remove it instead of leaving an empty artifact.
 		rollback := func() error {
-			fmt.Fprintf(runtime.IO().ErrOut, "Rolling back: deleting block %s\n", blockId)
 			_, err := runtime.CallAPITyped("DELETE",
 				fmt.Sprintf("/open-apis/docx/v1/documents/%s/blocks/%s/children/batch_delete", validate.EncodePathSegment(documentID), validate.EncodePathSegment(parentBlockID)),
 				nil, buildDeleteBlockData(insertIndex))
@@ -303,6 +287,23 @@ var DocMediaInsert = common.Shortcut{
 			warning := fmt.Sprintf("rollback failed for block %s: %v", blockId, rollbackErr)
 			fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warning)
 			return opErr
+		}
+		withBindRollbackRecovery := func(opErr error, fileToken string) error {
+			rollbackErr := rollback()
+			rollbackStatus := "succeeded"
+			if rollbackErr != nil {
+				rollbackStatus = "failed"
+			}
+			hint := fmt.Sprintf(
+				"Document media upload succeeded but binding failed: phase=bind_media, document_id=%s, upload_succeeded=true, file_token=%s, block_id=%s, replace_block_id=%s, rollback=%s.",
+				documentID, fileToken, blockId, replaceBlockID, rollbackStatus,
+			)
+			if rollbackErr != nil {
+				hint += fmt.Sprintf(" rollback_error=%q. Do not blindly retry the upload; inspect or repair the existing block first.", rollbackErr.Error())
+			} else {
+				hint += " The placeholder block was removed; retry the original command if the operation is still needed."
+			}
+			return withDocRecoveryHint(opErr, hint)
 		}
 
 		// Step 3: Upload media file.
@@ -348,7 +349,6 @@ var DocMediaInsert = common.Shortcut{
 				dims := computeMissingDimension(userWidth, userHeight, nativeW, nativeH)
 				finalWidth = dims.width
 				finalHeight = dims.height
-				fmt.Fprintf(runtime.IO().ErrOut, "Image dimensions: %dx%d (native: %dx%d)\n", finalWidth, finalHeight, nativeW, nativeH)
 			}
 		}
 
@@ -368,15 +368,11 @@ var DocMediaInsert = common.Shortcut{
 			return withRollbackWarning(err)
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "File uploaded: %s\n", fileToken)
-
 		// Step 4: Bind file token to block via batch_update
-		fmt.Fprintf(runtime.IO().ErrOut, "Binding uploaded media to block %s\n", replaceBlockID)
-
 		if _, err := runtime.CallAPITyped("PATCH",
 			fmt.Sprintf("/open-apis/docx/v1/documents/%s/blocks/batch_update", validate.EncodePathSegment(documentID)),
 			nil, buildBatchUpdateData(replaceBlockID, mediaType, fileToken, alignStr, caption, finalWidth, finalHeight)); err != nil {
-			return withRollbackWarning(err)
+			return withBindRollbackRecovery(err, fileToken)
 		}
 
 		outData := map[string]interface{}{
@@ -456,7 +452,6 @@ func resolveDocxDocumentID(runtime *common.RuntimeContext, input string) (string
 	case "doc":
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "this document operation only supports docx documents; use a docx token/URL or a wiki URL that resolves to docx").WithParam("--doc")
 	case "wiki":
-		fmt.Fprintf(runtime.IO().ErrOut, "Resolving wiki node: %s\n", common.MaskToken(docRef.Token))
 		data, err := runtime.CallAPITyped(
 			"GET",
 			"/open-apis/wiki/v2/spaces/get_node",
@@ -477,7 +472,6 @@ func resolveDocxDocumentID(runtime *common.RuntimeContext, input string) (string
 			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but this document operation only supports docx documents", objType).WithParam("--doc")
 		}
 
-		fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to docx: %s\n", common.MaskToken(objToken))
 		return objToken, nil
 	default:
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "this document operation only supports docx documents").WithParam("--doc")

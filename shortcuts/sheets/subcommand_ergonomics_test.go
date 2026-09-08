@@ -12,19 +12,13 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/shortcuts/sheets/backward"
 )
 
-// registeredCommands is every name mounted on the sheets group: this package's
-// shortcuts plus the pre-refactor aliases in backward, since registration mounts
-// both onto the same parent.
+// registeredCommands is every name mounted on the sheets group.
 func registeredCommands(t *testing.T) map[string]bool {
 	t.Helper()
 	names := map[string]bool{}
 	for _, s := range Shortcuts() {
-		names[s.Command] = true
-	}
-	for _, s := range backward.Shortcuts() {
 		names[s.Command] = true
 	}
 	if len(names) == 0 {

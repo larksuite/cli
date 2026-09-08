@@ -4255,7 +4255,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			"--base-token", "app_x",
 			"--table-id", "tbl_x",
 			"--record-id", "rec_x",
-			"--output", "../escape",
+			"--output", "../../../../../../../../../../../../escape",
 		}, factory, stdout)
 		if err == nil || !strings.Contains(err.Error(), "unsafe output path") {
 			t.Fatalf("err=%v", err)
