@@ -273,8 +273,8 @@ func TestBuildAPIError_FallsBackToTopLevelMessageForMalformedErrorBlock(t *testi
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := errclass.BuildAPIError(map[string]any{
-				"code": 3350001,
-				"msg":  "invalid param",
+				"code":  3350001,
+				"msg":   "invalid param",
 				"error": tc.error,
 			}, errclass.ClassifyContext{})
 			p, ok := errs.ProblemOf(err)
