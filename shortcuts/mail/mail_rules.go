@@ -1608,6 +1608,15 @@ func validateRuleReorderFlags(rt *common.RuntimeContext) error {
 	if full == move {
 		return mailValidationError("exactly one of --rule-ids or --move-rule-id is required")
 	}
+	if full {
+		seen := make(map[string]struct{}, len(rt.StrSlice("rule-ids")))
+		for _, id := range normalizeRuleIDs(rt.StrSlice("rule-ids")) {
+			if _, ok := seen[id]; ok {
+				return mailValidationParamError("--rule-ids", "--rule-ids must contain each rule id exactly once; duplicate %s", id)
+			}
+			seen[id] = struct{}{}
+		}
+	}
 	targets := 0
 	for _, set := range []bool{
 		strings.TrimSpace(rt.Str("before-rule-id")) != "",

@@ -1522,6 +1522,16 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 			want: "move mode requires exactly one",
 		},
 		{
+			name: "duplicate full order dry-run",
+			args: []string{"+rule-reorder", "--rule-ids", "a,a", "--dry-run"},
+			want: "duplicate a",
+		},
+		{
+			name: "duplicate full order execute",
+			args: []string{"+rule-reorder", "--rule-ids", "a,a"},
+			want: "duplicate a",
+		},
+		{
 			name: "move missing rule",
 			args: []string{"+rule-reorder", "--move-rule-id", "z", "--to-top"},
 			want: "is not in current rule order",
