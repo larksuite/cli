@@ -710,12 +710,16 @@ def _numeric_dimensions(snapshot: dict[str, Any]) -> list[tuple[int, str]]:
     axes = plot_area.get("axes") if isinstance(plot_area, dict) else None
     continuous_x = chart_type == "scatter"
     if isinstance(axes, list):
-        continuous_x = continuous_x or any(
-            isinstance(axis, dict)
-            and str(axis.get("axisPosition") or axis.get("position") or "").lower() in {"bottom", "x"}
-            and str(axis.get("valueType") or "").lower() == "linear"
-            for axis in axes
-        )
+        for axis in axes:
+            if not isinstance(axis, dict) or str(axis.get("type") or "").lower() != "x":
+                continue
+            position = axis.get("position")
+            if (
+                (position is None or str(position).lower() in {"bottom", "x"})
+                and str(axis.get("valueType") or "").lower() == "linear"
+            ):
+                continuous_x = True
+                break
     dim1 = data.get("dim1")
     serie = dim1.get("serie") if isinstance(dim1, dict) else None
     if continuous_x and chart_type != "bubble" and isinstance(serie, dict) and serie.get("index") is not None:
