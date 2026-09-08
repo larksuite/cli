@@ -366,3 +366,26 @@ func TestRuleReorderComputesMoveTarget(t *testing.T) {
 		t.Fatalf("order = %s", got)
 	}
 }
+
+func TestMailRuleReorderRejectsDuplicateIDsBeforeDryRunAndExecute(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "dry-run", args: []string{"+rule-reorder", "--rule-ids", "a,a", "--dry-run", "--format", "json"}},
+		{name: "execute", args: []string{"+rule-reorder", "--rule-ids", "a,a", "--format", "json"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, _ := mailShortcutTestFactory(t)
+			err := runMountedMailShortcut(t, MailRuleReorder, tt.args, f, stdout)
+			if err == nil {
+				t.Fatal("duplicate rule IDs should be rejected")
+			}
+			if !strings.Contains(err.Error(), "duplicate a") {
+				t.Fatalf("error = %q, want duplicate rule ID detail", err)
+			}
+		})
+	}
+}
