@@ -1,0 +1,565 @@
+# Copyright (c) 2026 Lark Technologies Pte. Ltd.
+# SPDX-License-Identifier: MIT
+
+# Internal MR gate. This is the internal counterpart of the public
+# .github/workflows/ci.yml, which cannot run here: GitHub Actions, the
+# GitHub-hosted actions it composes, and github.com itself are all
+# unreachable from the internal network.
+#
+# It covers every job of the public workflow that can run here: the fourteen
+# in .github/workflows/ci.yml, minus license-header (an Apache skywalking-eyes
+# action pulled from GitHub, and the internal repo carries no public licence
+# obligation) and minus the `results` aggregator (this platform's merge check
+# already aggregates every check run), plus skill_format_check, which upstream
+# keeps in a workflow file of its own.
+#
+# Nothing here publishes outward: no release, no npm or bnpm publish, no
+# codecov upload, no pkg.pr.new preview package, no GitHub API call. Every
+# command reads the checkout or fetches Go modules through the internal proxy.
+# The one job that leaves the runner is e2e_live, by design: it drives the CLI
+# against a real Feishu test tenant, creating and deleting real records.
+#
+# Six jobs prepare the API registry. `scripts/fetch_meta.py` writes
+# internal/registry/meta_data.json, which is gitignored — the committed
+# meta_data_default.json stub carries an empty service list. A batch of tests
+# needs the real thing: ./cmd's command-tree completeness check,
+# manifest-export's two cases, and the BuildInputSchema cases. Build, vet,
+# formatting, the generated-file check and both linters were verified to pass
+# without it, so fast_gate and lint stay offline and finish sooner.
+#
+# Commands are spelled out rather than calling `make build` / `make vet` /
+# `make unit-test`, because those targets depend on the fetch_meta target and
+# would pull the fetch into every job.
+name: CI
+
+trigger:
+  change:
+    branches: [ main ]
+    types: [ create, push ]
+
+jobs:
+  fast_gate:
+    name: Fast Gate
+    image: hub.byted.org/codebase/ci_go_1_23:latest
+    steps:
+      - uses: actions/checkout
+      # Records the toolchain and module-proxy settings the image ships with,
+      # so a proxy or sumdb failure is diagnosable from the log alone.
+      - name: Toolchain
+        commands:
+          - go version
+          - go env GOPROXY GOSUMDB GOFLAGS
+      - name: Build
+        commands:
+          - go build ./...
+      - name: Vet
+        commands:
+          - go vet ./...
+      - name: Check formatting
+        commands:
+          - make fmt-check
+      - name: Check generated Go files
+        commands:
+          - go generate ./shortcuts/sheets/...
+          - git diff --exit-code
+      - name: Check go.mod tidiness
+        commands:
+          - go mod tidy
+          - git diff --exit-code go.mod go.sum
+      # Keeps the shipped plugin-SDK examples compilable; the plugin author
+      # guide's `go build ./...` path breaks silently otherwise.
+      - name: Build SDK examples
+        commands:
+          - make examples-build
+
+  unit_test:
+    name: Unit Test
+    image: hub.byted.org/codebase/ci_go_1_23:latest
+    steps:
+      - uses: actions/checkout
+      # python3 --version first: if the image ships without it, the log says
+      # so instead of leaving a bare fetch_meta failure to interpret.
+      - name: Fetch API registry
+        commands:
+          - python3 --version
+          - python3 scripts/fetch_meta.py
+          - 'jq -r ''"registry services=\(.services|length)"'' internal/registry/meta_data.json || true'
+      # The image ships no Node, and several suites need it: `apps init`
+      # preflights a LookPath for npx, script-test needs `node --test`, and
+      # e2e_domains.js resolves the affected domains. The public unit-test and
+      # coverage jobs declare no setup-node because the GitHub runner image
+      # preinstalls Node, so installing it here restores that environment
+      # rather than diverging from it. The internal mirror unpacks in about
+      # three seconds; the distro package is Node 12, too old for `node --test`.
+      # Symlinks rather than a PATH export, because a PATH set in one step is
+      # not guaranteed to survive into the next one.
+      - name: Install Node
+        commands:
+          - curl -fsSL https://mirrors.byted.org/nodejs-release/v22.16.0/node-v22.16.0-linux-x64.tar.xz | tar -xJ -C /opt
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/node /usr/local/bin/node
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/npm /usr/local/bin/npm
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/npx /usr/local/bin/npx
+          - node --version
+          - npx --version
+      # The image runs as root with HOME=/root, and two groups of tests break
+      # under that. One group chmods a directory read-only to force a write
+      # failure, which root ignores, so the expected error never happens
+      # (cmd/config, shortcuts/drive, shortcuts/apps/gitcred). The other reads
+      # HOME as an ordinary user directory, but the CLI's built-in denylist
+      # protects /root (internal/vfs/localfileio). Both are real behaviours
+      # worth covering, so run the suite unprivileged the way the public
+      # runner does, rather than weakening the tests. HOME must be set
+      # explicitly because runuser keeps the caller's environment; GOCACHE
+      # moves with it since the ci user cannot write under /root.
+      - name: Run unit tests as an unprivileged user
+        commands:
+          - useradd -m -s /bin/bash ci
+          - chown -R ci:ci . /go
+          - install -d -o ci -g ci /tmp/gocache
+          - runuser -u ci -- env "PATH=$PATH" HOME=/home/ci GOCACHE=/tmp/gocache go test -race -gcflags="all=-N -l" -count=1 ./cmd/... ./internal/... ./shortcuts/... ./extension/...
+
+  lint:
+    name: Lint
+    image: hub.byted.org/codebase/ci_go_1_23:latest
+    steps:
+      - uses: actions/checkout
+      # golangci-lint and the lint module both report only on what this MR
+      # changed. resolve-changed-from.sh turns the MR's target commit into a
+      # usable baseline and falls back on its own when that commit is missing
+      # from a shallow checkout, so a bad baseline degrades instead of failing.
+      # Checksum-database lookups are switched off here, after both reachable
+      # routes proved unusable: the image's own GOSUMDB (sum.golang.google.cn,
+      # reached directly) resets the connection, and routing through
+      # goproxy.byted.org's sumdb endpoint returns 429 once a dozen jobs fetch
+      # modules at once. What this does NOT switch off is the checksum
+      # verification that matters: every dependency in go.mod is pinned in
+      # go.sum, and Go still verifies those hashes without consulting a
+      # database. The only modules affected are the CI tools fetched as
+      # `go run`/`go install <module>@<version>`, which appear in no go.sum,
+      # ship in no artifact, and come from the internal proxy mirror.
+      - name: Run incremental lint
+        commands:
+          - export GOSUMDB=off
+          - export QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"
+          - CHANGED_FROM="$(bash scripts/resolve-changed-from.sh)"
+          - 'echo "changed-from baseline: $CHANGED_FROM"'
+          - 'if [ "$(git rev-parse "$CHANGED_FROM")" = "$(git rev-parse HEAD)" ]; then echo "the baseline resolved to HEAD, so an incremental linter would report nothing"; exit 1; fi'
+          - go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6 run --new-from-rev="$CHANGED_FROM"
+          - go run -C lint . --changed-from "$CHANGED_FROM" ..
+      - name: Run lint module tests
+        commands:
+          - export GOSUMDB=off
+          - go test -C lint ./... -count=1
+
+  script_test:
+    name: Script Test
+    image: hub.byted.org/codebase/ci_go_1_23:latest
+    steps:
+      - uses: actions/checkout
+      # The image ships no Node, and several suites need it: `apps init`
+      # preflights a LookPath for npx, script-test needs `node --test`, and
+      # e2e_domains.js resolves the affected domains. The public unit-test and
+      # coverage jobs declare no setup-node because the GitHub runner image
+      # preinstalls Node, so installing it here restores that environment
+      # rather than diverging from it. The internal mirror unpacks in about
+      # three seconds; the distro package is Node 12, too old for `node --test`.
+      # Symlinks rather than a PATH export, because a PATH set in one step is
+      # not guaranteed to survive into the next one.
+      - name: Install Node
+        commands:
+          - curl -fsSL https://mirrors.byted.org/nodejs-release/v22.16.0/node-v22.16.0-linux-x64.tar.xz | tar -xJ -C /opt
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/node /usr/local/bin/node
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/npm /usr/local/bin/npm
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/npx /usr/local/bin/npx
+          - node --version
+          - npx --version
+      # The shell and node suites under scripts/. Some of them assert the shape
+      # of .github/workflows/*.yml; those files are mirrored here, so the
+      # assertions hold. They guard the public workflow, not this one.
+      # release-workflow.test.sh parses YAML with ruby, which the image lacks
+      # and the public runner preinstalls. The distro package is enough and
+      # unpacks in a few seconds.
+      # Check-Valid-Until is off because the internal debian-security mirror
+      # lets its Release file go stale between syncs, and a stale one aborts
+      # apt-get update with exit 100 — which would fail this gate for every
+      # MR until someone re-syncs a mirror we do not own. The index is only
+      # ever used to fetch ruby, so an old one costs nothing here.
+      - name: Install Ruby
+        commands:
+          - 'apt-get -o Acquire::Check-Valid-Until=false update -qq'
+          - apt-get install -y -qq ruby
+          - ruby --version
+      - name: Run script tests
+        commands:
+          - make script-test
+
+  skill_format_check:
+    name: Skill Format Check
+    image: hub.byted.org/codebase/ci_go_1_23:latest
+    steps:
+      - uses: actions/checkout
+      - name: Install Node
+        commands:
+          - curl -fsSL https://mirrors.byted.org/nodejs-release/v22.16.0/node-v22.16.0-linux-x64.tar.xz | tar -xJ -C /opt
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/node /usr/local/bin/node
+          - node --version
+      # Upstream runs this from its own workflow, gated on skills/** changing.
+      # Codebase CI scopes triggers per pipeline rather than per job, so it runs
+      # every time — it takes a couple of seconds, which is cheaper than
+      # splitting the pipeline in two.
+      - name: Check skill document format
+        commands:
+          - node scripts/skill-format-check/index.js
+
+  # Upstream keeps plugin-integration and sidecar-integration OUT of the
+  # results gate's failure loop: they run on every PR, but a failure is
+  # observe-only during a soak, graduating to required only after four
+  # consecutive weeks with no false positive. Codebase CI has no observe-only
+  # concept and the platform's merge gate treats every check run as required,
+  # so both block here. That is stricter than upstream on purpose — if either
+  # turns out flaky internally, the honest fix is to drop the job, not to
+  # weaken the rest of the pipeline around it.
+  sidecar_integration:
+    name: Sidecar Integration
+    image: hub.byted.org/codebase/ci_go_1_23:latest
+    steps:
+      - uses: actions/checkout
+      # Compiles and runs the authsidecar* build-tagged code the default test
+      # matrix never sees. Needs neither the registry nor Node, same as the
+      # public sidecar-integration job.
+      - name: Run sidecar tag build and tests
+        commands:
+          - make sidecar-test
+
+  coverage:
+    name: Coverage
+    image: hub.byted.org/codebase/ci_go_1_23:latest
+    steps:
+      - uses: actions/checkout
+      - name: Fetch API registry
+        commands:
+          - python3 scripts/fetch_meta.py
+      # The image ships no Node, and several suites need it: `apps init`
+      # preflights a LookPath for npx, script-test needs `node --test`, and
+      # e2e_domains.js resolves the affected domains. The public unit-test and
+      # coverage jobs declare no setup-node because the GitHub runner image
+      # preinstalls Node, so installing it here restores that environment
+      # rather than diverging from it. The internal mirror unpacks in about
+      # three seconds; the distro package is Node 12, too old for `node --test`.
+      # Symlinks rather than a PATH export, because a PATH set in one step is
+      # not guaranteed to survive into the next one.
+      - name: Install Node
+        commands:
+          - curl -fsSL https://mirrors.byted.org/nodejs-release/v22.16.0/node-v22.16.0-linux-x64.tar.xz | tar -xJ -C /opt
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/node /usr/local/bin/node
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/npm /usr/local/bin/npm
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/npx /usr/local/bin/npx
+          - node --version
+          - npx --version
+      # tests/ holds the L3/L4 suites that have their own jobs; excluding the
+      # subtree keeps them from running twice. The public job also uploads to
+      # Codecov, a public service, so only the threshold check is kept, and awk
+      # does the comparison because the image has no bc. Unprivileged for the
+      # same reason unit_test is.
+      - name: Run tests with coverage
+        commands:
+          - useradd -m -s /bin/bash ci
+          - chown -R ci:ci . /go
+          - install -d -o ci -g ci /tmp/gocache
+          - go list ./... > /tmp/all-packages.txt
+          - packages=$(grep -v "^github.com/larksuite/cli/tests/" /tmp/all-packages.txt)
+          - runuser -u ci -- env "PATH=$PATH" HOME=/home/ci GOCACHE=/tmp/gocache go test -race -coverprofile=coverage.txt -covermode=atomic $packages
+          - total=$(go tool cover -func=coverage.txt | awk '/^total:/{print $3}' | tr -d '%')
+          - 'echo "total coverage: $total percent, threshold 40"'
+          - awk -v t="$total" -v th=40 'BEGIN { if (t < th) exit 1; exit 0 }'
+
+  deadcode:
+    name: Dead Code
+    image: hub.byted.org/codebase/ci_go_1_23:latest
+    steps:
+      - uses: actions/checkout
+      - name: Fetch API registry
+        commands:
+          - python3 scripts/fetch_meta.py
+      # Only newly unreachable functions matter, so compare this revision with
+      # the MR's target. resolve-changed-from.sh yields the baseline and
+      # degrades on its own when that commit is missing from a shallow
+      # checkout. Line:col is stripped so unrelated line shifts do not read as
+      # new findings. A baseline that cannot be analysed downgrades to a
+      # warning instead of failing, matching the public job.
+      # The tool is INSTALLED rather than run through a pipe, and that is the
+      # point: every failure `go` prints starts with "go:", the filter strips
+      # exactly those lines, and with no pipefail the pipeline would still exit
+      # 0 — leaving an empty file that compares as "no dead code". Installing it
+      # makes a fetch failure end the step. Both baseline degradations that used
+      # to live here are gone for the same reason: upstream lets a missing
+      # baseline worktree fail the job, and so should this.
+      - name: Dead code check (incremental)
+        commands:
+          - export GOSUMDB=off
+          - export QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"
+          - BASE="$(bash scripts/resolve-changed-from.sh)"
+          - 'echo "deadcode baseline is $BASE"'
+          - 'if [ "$(git rev-parse "$BASE")" = "$(git rev-parse HEAD)" ]; then echo "the baseline resolved to HEAD, so the incremental comparison would be empty"; exit 1; fi'
+          - go install golang.org/x/tools/cmd/deadcode@v0.31.0
+          - WORK="$(pwd)"
+          - deadcode -test ./... | sed 's/:[0-9][0-9]*:[0-9][0-9]*:/:/' | sort > /tmp/dc-head.txt
+          - rm -rf /tmp/dc-base
+          - git worktree add -q /tmp/dc-base "$BASE"
+          - cd /tmp/dc-base
+          - python3 scripts/fetch_meta.py
+          - deadcode -test ./... | sed 's/:[0-9][0-9]*:[0-9][0-9]*:/:/' | sort > /tmp/dc-base.txt
+          - cd "$WORK"
+          - git worktree remove -f /tmp/dc-base
+          - comm -23 /tmp/dc-head.txt /tmp/dc-base.txt > /tmp/dc-new.txt
+          - 'if [ -s /tmp/dc-new.txt ]; then echo "new dead code found"; cat /tmp/dc-new.txt; exit 1; fi'
+          - echo "no new dead code introduced"
+
+  quality_gate:
+    name: Quality Gate
+    image: hub.byted.org/codebase/ci_go_1_23:latest
+    steps:
+      - uses: actions/checkout
+      # The deterministic CLI gate: command naming, error facts, output shape
+      # and skill references. `make quality-gate` builds the binary first, so
+      # it pulls the registry through the build target. Resolving the baseline
+      # in two steps mirrors the public job — take the MR's target commit,
+      # then let the script normalise it.
+      # KNOWN GAP, not a no-op: with no public-content metadata the Makefile
+      # writes {}, and publiccontent.Collect still scans the patch, the commit
+      # messages and the branch name — only the MR title and description go
+      # unscanned. The platform exposes CI_EVENT_CHANGE_* variables, so this can
+      # be closed later by writing the MR title and body into that file.
+      - name: Run the deterministic gate
+        commands:
+          - export QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"
+          - export QUALITY_GATE_CHANGED_FROM="$(bash scripts/resolve-changed-from.sh)"
+          - 'echo "quality gate baseline is $QUALITY_GATE_CHANGED_FROM"'
+          - 'if [ "$(git rev-parse "$QUALITY_GATE_CHANGED_FROM")" = "$(git rev-parse HEAD)" ]; then echo "the baseline resolved to HEAD, so the incremental rules would see an empty change set"; exit 1; fi'
+          - make quality-gate
+
+  plugin_integration:
+    name: Plugin Integration
+    image: hub.byted.org/codebase/ci_go_1_23:latest
+    steps:
+      - uses: actions/checkout
+      # No registry fetch on purpose: the clean tree must embed only the
+      # committed meta_data_default.json stub, which reproduces the state a
+      # customer fork builds in. Same reasoning as the public job.
+      - name: Run plugin integration tests
+        commands:
+          - go test -count=1 -timeout=15m ./tests/plugin_e2e/...
+
+  security:
+    name: Security
+    image: hub.byted.org/codebase/ci_go_1_23:latest
+    steps:
+      - uses: actions/checkout
+      - name: Fetch API registry
+        commands:
+          - python3 scripts/fetch_meta.py
+      # The public job uses the gitleaks action, which needs a GitHub token and
+      # an enterprise licence; gitleaks is a Go program, so the module proxy
+      # serves it instead. This runs the scan only, matching the action. Not
+      # `make gitleaks` — that is the local pre-push helper, which also runs
+      # scripts/check-doc-tokens.sh, and that already fails on main over five
+      # reference docs holding realistic-looking example ids. Pre-existing, and
+      # not something this gate should start enforcing by accident.
+      # Scoped to this MR's commits. A bare `gitleaks detect` walks the whole
+      # history — 1259 commits — and reports a bot app id committed in April
+      # 2026 whose current file now holds a placeholder. That finding is real
+      # but historical, and a merge gate that fails on it would fail on every
+      # MR forever. The gitleaks action the public job uses scopes itself to
+      # the pull request's commits for the same reason.
+      # Checksum-database lookups are switched off here, after both reachable
+      # routes proved unusable: the image's own GOSUMDB (sum.golang.google.cn,
+      # reached directly) resets the connection, and routing through
+      # goproxy.byted.org's sumdb endpoint returns 429 once a dozen jobs fetch
+      # modules at once. What this does NOT switch off is the checksum
+      # verification that matters: every dependency in go.mod is pinned in
+      # go.sum, and Go still verifies those hashes without consulting a
+      # database. The only modules affected are the CI tools fetched as
+      # `go run`/`go install <module>@<version>`, which appear in no go.sum,
+      # ship in no artifact, and come from the internal proxy mirror.
+      - name: Secret scan
+        commands:
+          - export GOSUMDB=off
+          - export QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"
+          - BASE="$(bash scripts/resolve-changed-from.sh)"
+          - 'echo "gitleaks scans the range $BASE..HEAD"'
+          - 'if [ "$(git rev-parse "$BASE")" = "$(git rev-parse HEAD)" ]; then echo "the baseline resolved to HEAD, so gitleaks would scan zero commits"; exit 1; fi'
+          - go install github.com/zricethezav/gitleaks/v8@v8.18.4
+          - gitleaks version
+          - gitleaks detect --redact -v --exit-code=2 --log-opts="$BASE..HEAD"
+      - name: Dependency licences
+        commands:
+          - export GOSUMDB=off
+          - go run github.com/google/go-licenses/v2@v2.0.1 check ./... --disallowed_types=forbidden,restricted,reciprocal,unknown
+      # Non-blocking like the public job's continue-on-error, but the two
+      # outcomes must not be conflated: govulncheck exits 3 when it FINDS
+      # vulnerabilities and 1 when it cannot run, so a bare `|| echo` would
+      # report a real high-severity finding as "database unreachable" the day
+      # the internal mirror starts working. vuln.go.dev is unreachable from
+      # here today and no internal mirror path is confirmed.
+      - name: Vulnerability scan
+        commands:
+          - export GOSUMDB=off
+          - rc=0
+          - go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./... > /tmp/vuln.txt 2>&1 || rc=$?
+          - cat /tmp/vuln.txt
+          - 'if [ "$rc" = "3" ]; then echo "FINDINGS govulncheck reported vulnerabilities above; not blocking, matching the public job"; elif [ "$rc" != "0" ]; then echo "WARNING govulncheck could not complete (exit $rc), most likely no reachable vulnerability database"; else echo "govulncheck found no vulnerabilities"; fi'
+
+  e2e_dry_run:
+    name: E2E Dry Run
+    image: hub.byted.org/codebase/ci_go_1_23:latest
+    steps:
+      - uses: actions/checkout
+      - name: Fetch API registry
+        commands:
+          - python3 scripts/fetch_meta.py
+      - name: Install Node
+        commands:
+          - curl -fsSL https://mirrors.byted.org/nodejs-release/v22.16.0/node-v22.16.0-linux-x64.tar.xz | tar -xJ -C /opt
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/node /usr/local/bin/node
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/npm /usr/local/bin/npm
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/npx /usr/local/bin/npx
+          - node --version
+      # scripts/e2e_domains.js decides which domains a change can affect. It
+      # reads GITHUB_OUTPUT when present but always prints the same key=value
+      # lines to stdout, and E2E_DOMAIN_CHANGED_FILES lets the file list come
+      # from anywhere — so it needs nothing GitHub-specific. The baseline comes
+      # from resolve-changed-from.sh, which already resolves to a merge base,
+      # making a two-dot diff equivalent to the three-dot one upstream uses.
+      #
+      # Dry-run only: the credentials below are the literal string "dry-run",
+      # exactly as the public job passes them, so no request ever leaves the
+      # runner. Note that .codebase/ is an unclassified path for that script,
+      # so a change touching this file resolves to mode=full and exercises
+      # every domain.
+      - name: Run dry-run E2E for the affected domains
+        commands:
+          - export QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"
+          - BASE="$(bash scripts/resolve-changed-from.sh)"
+          - 'echo "e2e baseline is $BASE"'
+          - git diff --name-only "$BASE" HEAD > /tmp/e2e-changed.txt
+          - cat /tmp/e2e-changed.txt
+          - E2E_DOMAIN_CHANGED_FILES=/tmp/e2e-changed.txt node scripts/e2e_domains.js > /tmp/e2e-domains.txt
+          - cat /tmp/e2e-domains.txt
+          - MODE=$(sed -n 's/^mode=//p' /tmp/e2e-domains.txt)
+          - DRY_ROOT=$(sed -n 's/^dry_root_package=//p' /tmp/e2e-domains.txt)
+          - DRY_PKGS=$(sed -n 's/^dry_packages=//p' /tmp/e2e-domains.txt)
+          # Without these two assertions an unparseable resolver output leaves
+          # every variable empty, both guards below fall through, and the job
+          # goes green having run no tests at all. The public job validates the
+          # same two properties in a dedicated step.
+          - 'case "$MODE" in skip|subset|full) ;; *) echo "e2e_domains.js produced an unusable mode [$MODE]"; exit 1;; esac'
+          - 'if [ "$MODE" = "skip" ]; then echo "no dry-run E2E needed for this change"; exit 0; fi'
+          - 'if [ -z "$DRY_ROOT" ] && [ -z "$DRY_PKGS" ]; then echo "mode $MODE resolved no dry-run packages"; exit 1; fi'
+          - make build
+          - export LARK_CLI_BIN="$PWD/lark-cli"
+          - export LARKSUITE_CLI_APP_ID=dry-run
+          - export LARKSUITE_CLI_APP_SECRET=dry-run
+          - export LARKSUITE_CLI_BRAND=feishu
+          - 'if [ -n "$DRY_ROOT" ]; then go test -v -count=1 -timeout=5m "$DRY_ROOT"; fi'
+          - 'if [ -n "$DRY_PKGS" ]; then go test -v -count=1 -timeout=5m $DRY_PKGS -run "DryRun|Regression"; fi'
+
+  # The one job that talks to a real tenant. It mirrors the public e2e-live
+  # job, including its gate: the cheap checks must pass first, so a broken
+  # branch never gets to create and delete records in a live workspace.
+  #
+  # The public job scopes every credential to the step that needs it. This
+  # platform has no per-step env block, so the bot secret has to sit in the
+  # job envs; what must never sit there is a LARKSUITE_CLI_* name, because
+  # that switches the CLI's env credential provider on for every command in
+  # the job (extension/credential/env/env.go), including the ones whose point
+  # is to run without credentials. Each command below scopes those names
+  # itself instead. LARKSUITE_CLI_BRAND is the exception the public job also
+  # makes: brand alone leaves the provider inactive.
+  #
+  # TEST_USER_ACCESS_TOKEN is deliberately not configured. A user access token
+  # lives two hours (internal/auth/uat_client.go) and a token handed in through
+  # the environment is used verbatim with no refresh, so a stored value would
+  # be stale within the day and turn 50 clean skips into 50 auth failures.
+  # Those user-identity cases therefore skip; the run prints the count.
+  e2e_live:
+    name: E2E Live
+    image: hub.byted.org/codebase/ci_go_1_23:latest
+    timeout: 30
+    depends: [ unit_test, lint, script_test, quality_gate, e2e_dry_run ]
+    if: '${{Jobs.unit_test.Conclusion == "success" && Jobs.lint.Conclusion == "success" && Jobs.script_test.Conclusion == "success" && Jobs.quality_gate.Conclusion == "success" && Jobs.e2e_dry_run.Conclusion == "success"}}'
+    envs:
+      TEST_BOT1_APP_ID: ${{ TEST_BOT1_APP_ID }}
+      TEST_BOT1_APP_SECRET: ${{ TEST_BOT1_APP_SECRET }}
+      LARKSUITE_CLI_BRAND: feishu
+    steps:
+      - uses: actions/checkout
+      - name: Fetch API registry
+        commands:
+          - python3 scripts/fetch_meta.py
+          - jq -e '(.services | length) > 0' internal/registry/meta_data.json > /dev/null
+      - name: Install Node
+        commands:
+          - curl -fsSL https://mirrors.byted.org/nodejs-release/v22.16.0/node-v22.16.0-linux-x64.tar.xz | tar -xJ -C /opt
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/node /usr/local/bin/node
+          - node --version
+      # Fail here rather than three steps later with an opaque token error.
+      - name: Confirm the credentials arrived
+        commands:
+          - 'if [ -z "${TEST_BOT1_APP_ID:-}" ] || [ -z "${TEST_BOT1_APP_SECRET:-}" ]; then echo "the configured credentials did not reach this job"; exit 1; fi'
+          - echo "credentials present"
+      - name: Resolve the affected domains
+        commands:
+          - export QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"
+          - BASE="$(bash scripts/resolve-changed-from.sh)"
+          - 'if [ "$(git rev-parse "$BASE")" = "$(git rev-parse HEAD)" ]; then echo "the baseline resolved to HEAD, so no domain would be selected"; exit 1; fi'
+          - 'echo "e2e baseline is $BASE"'
+          - git diff --name-only "$BASE" HEAD > /tmp/e2e-changed.txt
+          - E2E_DOMAIN_CHANGED_FILES=/tmp/e2e-changed.txt node scripts/e2e_domains.js > /tmp/e2e-domains.txt
+          - cat /tmp/e2e-domains.txt
+      - name: Run live E2E
+        commands:
+          - MODE=$(sed -n 's/^mode=//p' /tmp/e2e-domains.txt)
+          - LIVE_PKGS=$(sed -n 's/^live_packages=//p' /tmp/e2e-domains.txt)
+          - 'case "$MODE" in skip|subset|full) ;; *) echo "e2e_domains.js produced an unusable mode [$MODE]"; exit 1;; esac'
+          - 'if [ "$MODE" = "skip" ]; then echo "no live E2E needed for this change"; exit 0; fi'
+          - 'if [ -z "$LIVE_PKGS" ]; then echo "mode $MODE resolved no live packages"; exit 1; fi'
+          - make build
+          - export LARK_CLI_BIN="$PWD/lark-cli"
+          - export RUNNER_TEMP=/tmp
+          # fetch_e2e_tat.js prints `::add-mask::<token>`, which the GitHub
+          # runner intercepts and never renders. This platform has no such
+          # directive, so the line would put the token in the log verbatim.
+          # Hence the filter, and hence deleting both the log and the token
+          # file as soon as the value is in the shell.
+          - 'if ! LARKSUITE_CLI_APP_ID="$TEST_BOT1_APP_ID" node scripts/fetch_e2e_tat.js > /tmp/tat-log.txt 2>&1; then grep -v -- "::add-mask::" /tmp/tat-log.txt || true; rm -f /tmp/tat-log.txt; echo "could not fetch the tenant access token"; exit 1; fi'
+          - grep -v -- '::add-mask::' /tmp/tat-log.txt || true
+          - rm -f /tmp/tat-log.txt
+          - 'if [ ! -f /tmp/e2e-live-tat ]; then echo "the tenant token file was not produced"; exit 1; fi'
+          - export TEST_TENANT_ACCESS_TOKEN="$(cat /tmp/e2e-live-tat)"
+          - rm -f /tmp/e2e-live-tat
+          # Same preflight as the public job: a bad credential fails once here
+          # instead of arriving as a hundred failing tests. Both CLI names are
+          # scoped to this single command, so the run below still receives its
+          # credentials the way the harness expects - per command, and only for
+          # the ones that ask for bot identity (tests/cli_e2e/core.go).
+          - 'if ! LARKSUITE_CLI_APP_ID="$TEST_BOT1_APP_ID" LARKSUITE_CLI_TENANT_ACCESS_TOKEN="$TEST_TENANT_ACCESS_TOKEN" ./lark-cli whoami --as bot > /tmp/whoami.json; then echo "tenant credential preflight failed"; exit 1; fi'
+          - jq -e '.identity == "bot" and .available == true and .tokenStatus == "ready"' /tmp/whoami.json > /dev/null
+          - echo "tenant credential preflight passed"
+          - 'echo "live E2E mode $MODE, packages $LIVE_PKGS"'
+          # gotestsum re-runs only the cases that failed, exactly as the public
+          # job does. These tests lean on the Feishu backend, so a single
+          # upstream hiccup would otherwise fail the merge gate for everyone:
+          # the first two runs here each lost one unrelated case, the second to
+          # `900015002 Read data from socket timeout` inside the sheets service.
+          # standard-verbose rather than testname, so the raw --- SKIP lines
+          # survive for the count below. GOSUMDB is off for the same reason as
+          # the other tool fetches in this file: sum.golang.org is unreachable,
+          # and go.sum still pins and verifies every dependency of the build.
+          - export GOSUMDB=off
+          - rc=0
+          - 'go run gotest.tools/gotestsum@v1.12.3 --rerun-fails=2 --rerun-fails-max-failures=20 --packages="$LIVE_PKGS" --format standard-verbose -- -count=1 -timeout=20m > /tmp/live-out.txt 2>&1 || rc=$?'
+          - cat /tmp/live-out.txt
+          # Without a user access token every user-identity case skips. Print
+          # the count so a green run is not read as full coverage.
+          - 'echo "skipped cases: $(grep -c -- "--- SKIP" /tmp/live-out.txt || true)"'
+          - 'if [ "$rc" != "0" ]; then exit "$rc"; fi'
