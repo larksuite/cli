@@ -27,6 +27,35 @@
 # formatting, the generated-file check and both linters were verified to pass
 # without it, so fast_gate and lint stay offline and finish sooner.
 #
+# Two triggers, matching the public workflow's `pull_request` and
+# `push: branches: [main]`. The MR run is the merge gate; the trunk run is what
+# catches a regression that only appears once two independently-green MRs sit
+# on main together.
+#
+# Every incremental check needs a baseline, and which commit that is depends on
+# the trigger. The public workflow spells it
+# `pull_request.base.sha || github.event.before || 'origin/main'`. There is no
+# equivalent of `event.before` here, so the six jobs that resolve a baseline
+# decide it from the checkout itself: HEAD equal to origin/main means this is
+# the trunk run and the baseline is HEAD~1 (main lands one squashed commit per
+# MR, so that is the previous trunk tip); otherwise it is the MR's target
+# commit. Getting this wrong fails loudly rather than quietly — every one of
+# those jobs asserts the baseline did not resolve to HEAD.
+#
+# deadcode is the one job the public workflow skips on push, because its
+# baseline is `origin/<base_ref>`, which a push event does not have. It skips
+# on the trunk run here too.
+#
+# Job dependencies mirror the public workflow's `needs`. Eight jobs gate on
+# fast_gate and e2e_dry_run gates on the four that precede it upstream, so a
+# broken build short-circuits the run instead of burning every job. `depends`
+# only waits for completion here, so each gated job also carries the `if` that
+# upstream gets for free from `needs`. security and skill_format_check gate on
+# nothing, matching upstream — the first has no `needs`, the second is a
+# separate workflow there.
+#
+# `manual` is the local equivalent of `workflow_dispatch`.
+#
 # Commands are spelled out rather than calling `make build` / `make vet` /
 # `make unit-test`, because those targets depend on the fetch_meta target and
 # would pull the fetch into every job.
@@ -36,6 +65,9 @@ trigger:
   change:
     branches: [ main ]
     types: [ create, push ]
+  push:
+    branches: [ main ]
+  manual: {}
 
 jobs:
   fast_gate:
@@ -49,6 +81,15 @@ jobs:
         commands:
           - go version
           - go env GOPROXY GOSUMDB GOFLAGS
+          # Names only, never values. What the platform injects is undocumented,
+          # and this is the cheapest place to find out. The one thing we are
+          # still looking for is the MR title and body: the public
+          # deterministic-gate feeds them to `make quality-gate` from the
+          # pull_request payload, and until an equivalent turns up here the gate
+          # runs against the empty metadata the Makefile falls back to.
+          - env | grep -o '^CI_[A-Z0-9_]*' | sort > /tmp/ci-vars.txt || true
+          - 'echo "platform-injected variable names:"'
+          - cat /tmp/ci-vars.txt
       - name: Build
         commands:
           - go build ./...
@@ -75,6 +116,8 @@ jobs:
   unit_test:
     name: Unit Test
     image: hub.byted.org/codebase/ci_go_1_23:latest
+    depends: [ fast_gate ]
+    if: '${{Jobs.fast_gate.Conclusion == "success"}}'
     steps:
       - uses: actions/checkout
       # python3 --version first: if the image ships without it, the log says
@@ -116,11 +159,13 @@ jobs:
           - useradd -m -s /bin/bash ci
           - chown -R ci:ci . /go
           - install -d -o ci -g ci /tmp/gocache
-          - runuser -u ci -- env "PATH=$PATH" HOME=/home/ci GOCACHE=/tmp/gocache go test -race -gcflags="all=-N -l" -count=1 ./cmd/... ./internal/... ./shortcuts/... ./extension/...
+          - runuser -u ci -- env "PATH=$PATH" HOME=/home/ci GOCACHE=/tmp/gocache go test -v -race -count=1 -timeout=5m ./cmd/... ./internal/... ./shortcuts/... ./extension/...
 
   lint:
     name: Lint
     image: hub.byted.org/codebase/ci_go_1_23:latest
+    depends: [ fast_gate ]
+    if: '${{Jobs.fast_gate.Conclusion == "success"}}'
     steps:
       - uses: actions/checkout
       # golangci-lint and the lint module both report only on what this MR
@@ -140,7 +185,8 @@ jobs:
       - name: Run incremental lint
         commands:
           - export GOSUMDB=off
-          - export QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"
+          - 'if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]; then QUALITY_GATE_CHANGED_FROM="$(git rev-parse HEAD~1)"; else QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"; fi'
+          - export QUALITY_GATE_CHANGED_FROM
           - CHANGED_FROM="$(bash scripts/resolve-changed-from.sh)"
           - 'echo "changed-from baseline: $CHANGED_FROM"'
           - 'if [ "$(git rev-parse "$CHANGED_FROM")" = "$(git rev-parse HEAD)" ]; then echo "the baseline resolved to HEAD, so an incremental linter would report nothing"; exit 1; fi'
@@ -154,6 +200,8 @@ jobs:
   script_test:
     name: Script Test
     image: hub.byted.org/codebase/ci_go_1_23:latest
+    depends: [ fast_gate ]
+    if: '${{Jobs.fast_gate.Conclusion == "success"}}'
     steps:
       - uses: actions/checkout
       # The image ships no Node, and several suites need it: `apps init`
@@ -222,6 +270,8 @@ jobs:
   sidecar_integration:
     name: Sidecar Integration
     image: hub.byted.org/codebase/ci_go_1_23:latest
+    depends: [ fast_gate ]
+    if: '${{Jobs.fast_gate.Conclusion == "success"}}'
     steps:
       - uses: actions/checkout
       # Compiles and runs the authsidecar* build-tagged code the default test
@@ -234,6 +284,8 @@ jobs:
   coverage:
     name: Coverage
     image: hub.byted.org/codebase/ci_go_1_23:latest
+    depends: [ fast_gate ]
+    if: '${{Jobs.fast_gate.Conclusion == "success"}}'
     steps:
       - uses: actions/checkout
       - name: Fetch API registry
@@ -276,6 +328,8 @@ jobs:
   deadcode:
     name: Dead Code
     image: hub.byted.org/codebase/ci_go_1_23:latest
+    depends: [ fast_gate ]
+    if: '${{Jobs.fast_gate.Conclusion == "success"}}'
     steps:
       - uses: actions/checkout
       - name: Fetch API registry
@@ -296,6 +350,10 @@ jobs:
       # baseline worktree fail the job, and so should this.
       - name: Dead code check (incremental)
         commands:
+          # The public job is pull-request-only, because its baseline is
+          # `origin/<base_ref>`, which a push event does not have. Mirror that:
+          # the trunk run has nothing this job is meant to compare against.
+          - 'if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]; then echo "the public dead code job is pull-request-only, so the trunk run is a no-op"; exit 0; fi'
           - export GOSUMDB=off
           - export QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"
           - BASE="$(bash scripts/resolve-changed-from.sh)"
@@ -318,6 +376,8 @@ jobs:
   quality_gate:
     name: Quality Gate
     image: hub.byted.org/codebase/ci_go_1_23:latest
+    depends: [ fast_gate ]
+    if: '${{Jobs.fast_gate.Conclusion == "success"}}'
     steps:
       - uses: actions/checkout
       # The deterministic CLI gate: command naming, error facts, output shape
@@ -332,7 +392,8 @@ jobs:
       # be closed later by writing the MR title and body into that file.
       - name: Run the deterministic gate
         commands:
-          - export QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"
+          - 'if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]; then QUALITY_GATE_CHANGED_FROM="$(git rev-parse HEAD~1)"; else QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"; fi'
+          - export QUALITY_GATE_CHANGED_FROM
           - export QUALITY_GATE_CHANGED_FROM="$(bash scripts/resolve-changed-from.sh)"
           - 'echo "quality gate baseline is $QUALITY_GATE_CHANGED_FROM"'
           - 'if [ "$(git rev-parse "$QUALITY_GATE_CHANGED_FROM")" = "$(git rev-parse HEAD)" ]; then echo "the baseline resolved to HEAD, so the incremental rules would see an empty change set"; exit 1; fi'
@@ -341,6 +402,8 @@ jobs:
   plugin_integration:
     name: Plugin Integration
     image: hub.byted.org/codebase/ci_go_1_23:latest
+    depends: [ fast_gate ]
+    if: '${{Jobs.fast_gate.Conclusion == "success"}}'
     steps:
       - uses: actions/checkout
       # No registry fetch on purpose: the clean tree must embed only the
@@ -384,7 +447,8 @@ jobs:
       - name: Secret scan
         commands:
           - export GOSUMDB=off
-          - export QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"
+          - 'if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]; then QUALITY_GATE_CHANGED_FROM="$(git rev-parse HEAD~1)"; else QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"; fi'
+          - export QUALITY_GATE_CHANGED_FROM
           - BASE="$(bash scripts/resolve-changed-from.sh)"
           - 'echo "gitleaks scans the range $BASE..HEAD"'
           - 'if [ "$(git rev-parse "$BASE")" = "$(git rev-parse HEAD)" ]; then echo "the baseline resolved to HEAD, so gitleaks would scan zero commits"; exit 1; fi'
@@ -412,6 +476,9 @@ jobs:
   e2e_dry_run:
     name: E2E Dry Run
     image: hub.byted.org/codebase/ci_go_1_23:latest
+    depends: [ unit_test, lint, script_test, quality_gate ]
+    if: '${{Jobs.unit_test.Conclusion == "success" && Jobs.lint.Conclusion == "success" && Jobs.script_test.Conclusion == "success" && Jobs.quality_gate.Conclusion == "success"}}'
+    timeout: 20
     steps:
       - uses: actions/checkout
       - name: Fetch API registry
@@ -438,7 +505,8 @@ jobs:
       # every domain.
       - name: Run dry-run E2E for the affected domains
         commands:
-          - export QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"
+          - 'if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]; then QUALITY_GATE_CHANGED_FROM="$(git rev-parse HEAD~1)"; else QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"; fi'
+          - export QUALITY_GATE_CHANGED_FROM
           - BASE="$(bash scripts/resolve-changed-from.sh)"
           - 'echo "e2e baseline is $BASE"'
           - git diff --name-only "$BASE" HEAD > /tmp/e2e-changed.txt
@@ -509,7 +577,8 @@ jobs:
           - echo "credentials present"
       - name: Resolve the affected domains
         commands:
-          - export QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"
+          - 'if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]; then QUALITY_GATE_CHANGED_FROM="$(git rev-parse HEAD~1)"; else QUALITY_GATE_CHANGED_FROM="$CI_EVENT_CHANGE_TARGET_SHA"; fi'
+          - export QUALITY_GATE_CHANGED_FROM
           - BASE="$(bash scripts/resolve-changed-from.sh)"
           - 'if [ "$(git rev-parse "$BASE")" = "$(git rev-parse HEAD)" ]; then echo "the baseline resolved to HEAD, so no domain would be selected"; exit 1; fi'
           - 'echo "e2e baseline is $BASE"'
