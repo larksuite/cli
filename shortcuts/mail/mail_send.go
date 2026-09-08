@@ -58,6 +58,10 @@ var MailSend = common.Shortcut{
 			api = api.GET(templateMailboxPath(mailboxID, tid)).
 				Desc("Fetch template to merge with compose flags (subject/body/to/cc/bcc/attachments).")
 		}
+		if from, mailbox := strings.TrimSpace(runtime.Str("from")), strings.TrimSpace(runtime.Str("mailbox")); from != "" && mailbox != "" && !strings.EqualFold(from, mailbox) {
+			api = api.GET(mailboxPath(mailboxID, "settings", "send_as")).
+				Desc("Verify that --from is a sendable address for the target mailbox before creating a draft.")
+		}
 		api = api.GET(mailboxPath(mailboxID, "profile")).
 			POST(mailboxPath(mailboxID, "drafts")).
 			Body(map[string]interface{}{
@@ -165,6 +169,9 @@ var MailSend = common.Shortcut{
 		}
 
 		mailboxID := resolveComposeMailboxID(runtime)
+		if err := validateComposeSenderForMailbox(runtime, mailboxID); err != nil {
+			return err
+		}
 
 		// Auto-resolve default signature when neither --no-signature nor --signature-id is set.
 		noSignature := runtime.Bool("no-signature")

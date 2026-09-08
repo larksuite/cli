@@ -63,6 +63,10 @@ var MailForward = common.Shortcut{
 			api = api.GET(templateMailboxPath(mailboxID, tid)).
 				Desc("Fetch template to merge with forward compose flags.")
 		}
+		if from, mailbox := strings.TrimSpace(runtime.Str("from")), strings.TrimSpace(runtime.Str("mailbox")); from != "" && mailbox != "" && !strings.EqualFold(from, mailbox) {
+			api = api.GET(mailboxPath(mailboxID, "settings", "send_as")).
+				Desc("Verify that --from is a sendable address for the target mailbox before creating a draft.")
+		}
 		api = api.GET(mailboxPath(mailboxID, "messages", messageId)).
 			GET(mailboxPath(mailboxID, "profile")).
 			POST(mailboxPath(mailboxID, "drafts")).
@@ -149,6 +153,9 @@ var MailForward = common.Shortcut{
 		}
 
 		mailboxID := resolveComposeMailboxID(runtime)
+		if err := validateComposeSenderForMailbox(runtime, mailboxID); err != nil {
+			return err
+		}
 		sourceMsg, err := fetchComposeSourceMessage(runtime, mailboxID, messageId)
 		if err != nil {
 			return mailDecorateProblemMessage(err, "failed to fetch original message")

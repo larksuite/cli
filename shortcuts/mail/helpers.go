@@ -368,6 +368,49 @@ func resolveComposeSenderEmail(runtime *common.RuntimeContext) string {
 	return email
 }
 
+// validateComposeSenderForMailbox verifies that an explicitly selected From
+// address is one of the addresses the target mailbox is allowed to send as.
+// The check is intentionally performed before drafts.create: accepting an
+// arbitrary From header and relying on the send endpoint to reject it would
+// still leave an unauthorized draft behind.
+//
+// Commands that omit --from keep their existing mailbox/profile resolution.
+// This preserves the default "me" path and shared-mailbox owner path while
+// still allowing aliases and mail groups returned by settings.send_as.
+func validateComposeSenderForMailbox(runtime *common.RuntimeContext, mailboxID string) error {
+	from := strings.TrimSpace(runtime.Str("from"))
+	if from == "" {
+		return nil
+	}
+	explicitMailbox := strings.TrimSpace(runtime.Str("mailbox"))
+	if explicitMailbox == "" || strings.EqualFold(explicitMailbox, from) {
+		return nil
+	}
+	if mailboxID == "" {
+		mailboxID = "me"
+	}
+
+	data, err := runtime.CallAPITyped("GET", mailboxPath(mailboxID, "settings", "send_as"), nil, nil)
+	if err != nil {
+		return mailDecorateProblemMessage(err, "failed to validate --from for mailbox %s", mailboxID)
+	}
+	addrs, _ := data["sendable_addresses"].([]interface{})
+	for _, raw := range addrs {
+		addr, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		email, _ := addr["email_address"].(string)
+		if strings.EqualFold(strings.TrimSpace(email), from) {
+			return nil
+		}
+	}
+
+	return mailValidationParamError("--from",
+		"--from %q is not a sendable address for mailbox %q; query mail user_mailbox.settings send_as for the allowed addresses",
+		from, mailboxID)
+}
+
 // fetchSelfEmailSet returns a set of addresses to exclude as "self" in
 // reply-all. It always tries profile("me"); when mailboxID or senderEmail
 // differ from "me", those are added to the set as well so that shared-
