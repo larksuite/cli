@@ -116,6 +116,18 @@ func driveSaveError(err error) error {
 	}
 }
 
+// driveAppendError maps a resumable backend failure using the same FileIO
+// contract as Save, while preserving a provider's already-typed errs.* error.
+func driveAppendError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if _, ok := errs.ProblemOf(err); ok {
+		return err
+	}
+	return driveSaveError(err)
+}
+
 // appendDriveExportRecoveryHint attaches a recovery hint to err while preserving
 // its original classification (typed subtype/code), only falling back to a typed
 // internal error when err is unclassified.

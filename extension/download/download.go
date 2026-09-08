@@ -341,6 +341,10 @@ func validateOptions(source Source, opts Options) error {
 	if opts.StartOffset < 0 {
 		return errs.NewInternalError(errs.SubtypeUnknown, "download start offset cannot be negative, got %d", opts.StartOffset)
 	}
+	if source.representation == Mutable && opts.StartOffset > 0 && opts.ExpectedETag == "" {
+		return errs.NewInternalError(errs.SubtypeUnknown,
+			"mutable download start offset requires a strong expected ETag")
+	}
 	if opts.DisableMultipart && opts.StartOffset > 0 {
 		return errs.NewInternalError(errs.SubtypeUnknown, "download start offset requires multipart range requests")
 	}

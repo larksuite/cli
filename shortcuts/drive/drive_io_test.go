@@ -93,6 +93,40 @@ func (f *saveOnlyDriveFileIO) Save(path string, opts fileio.SaveOptions, body io
 	return f.inner.Save(path, opts, body)
 }
 
+type resumeSizeMismatchFileIOProvider struct {
+	inner fileio.Provider
+}
+
+func (p *resumeSizeMismatchFileIOProvider) Name() string { return "resume-size-mismatch" }
+
+func (p *resumeSizeMismatchFileIOProvider) ResolveFileIO(ctx context.Context) fileio.FileIO {
+	resumable, ok := p.inner.ResolveFileIO(ctx).(fileio.ResumableFileIO)
+	if !ok {
+		panic("test provider requires a resumable inner FileIO")
+	}
+	return &resumeSizeMismatchFileIO{ResumableFileIO: resumable}
+}
+
+type resumeSizeMismatchFileIO struct {
+	fileio.ResumableFileIO
+}
+
+func (f *resumeSizeMismatchFileIO) AppendTo(path string, opts fileio.SaveOptions, body io.Reader) (fileio.SaveResult, error) {
+	result, err := f.ResumableFileIO.AppendTo(path, opts, body)
+	if err != nil {
+		return nil, err
+	}
+	partial, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer partial.Close()
+	if _, err := partial.WriteString("race"); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // mountAndRunDrive executes a mounted Drive command with a background context.
 func mountAndRunDrive(t *testing.T, s common.Shortcut, args []string, f *cmdutil.Factory, stdout *bytes.Buffer) error {
 	t.Helper()
@@ -3203,6 +3237,34 @@ func TestDriveDownloadContinueResumesPartial(t *testing.T) {
 	}
 	if !resumed {
 		t.Fatalf("ranges = %v, want a part resuming from byte 30000", ranges)
+	}
+}
+
+func TestDriveDownloadContinueRejectsChangedPartialSize(t *testing.T) {
+	payload := driveDownloadRangePayload()
+	var ranges []string
+	f, _ := driveDownloadRangeFactory(t, "file_resume_size", payload, &ranges)
+	f.FileIOProvider = &resumeSizeMismatchFileIOProvider{inner: f.FileIOProvider}
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.WriteFile("out.bin.partial", payload[:30000], 0600); err != nil {
+		t.Fatalf("WriteFile(partial) error: %v", err)
+	}
+	driveDownloadWriteTestCheckpoint(t, "out.bin.partial.meta", int64(len(payload)), `"v1"`)
+
+	err := mountAndRunDrive(t, DriveDownload, []string{
+		"+download",
+		"--file-token", "file_resume_size",
+		"--output", "out.bin",
+		"--continue",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil || !strings.Contains(err.Error(), "resume partial size changed during append") {
+		t.Fatalf("error = %v, want final partial-size validation error", err)
+	}
+	if _, statErr := os.Stat("out.bin"); !os.IsNotExist(statErr) {
+		t.Fatalf("output should not be committed, statErr=%v", statErr)
 	}
 }
 

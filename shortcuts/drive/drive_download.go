@@ -12,7 +12,6 @@ import (
 	"io/fs"
 	"net/http"
 	"path"
-	"strconv"
 	"strings"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -335,7 +334,7 @@ var DriveDownload = common.Shortcut{
 							return driveDownloadResumeArtifactError("discard unverifiable partial", cleanupErr)
 						}
 					} else {
-						probeTotal, probeETag, probeErr := driveDownloadProbeTotal(ctx, transport, checkpointETag)
+						probe, probeErr := extdownload.ProbeRange(ctx, dlSource, checkpointETag)
 						if probeErr != nil && driveDownloadRangeProbeRejected(probeErr) {
 							if cleanupErr := driveDownloadDiscardResume(resumeIO, partialPath, checkpointPath); cleanupErr != nil {
 								return driveDownloadResumeArtifactError("discard partial after unsupported Range", cleanupErr)
@@ -343,6 +342,7 @@ var DriveDownload = common.Shortcut{
 						} else if probeErr != nil {
 							return withDriveDownloadRecoveryHint(wrapDriveNetworkErr(probeErr, "resume probe failed: %s", probeErr), fileToken)
 						} else {
+							probeTotal, probeETag := probe.TotalSize, probe.ETag
 							checkpointValid := checkpoint.Size == probeTotal && probeETag != "" && probeETag == checkpointETag
 							switch {
 							case !checkpointValid || localSize > probeTotal:
@@ -468,12 +468,26 @@ var DriveDownload = common.Shortcut{
 			ContentLength: appendLength,
 		}, progress)
 		if copyErr != nil {
-			return withDriveDownloadRecoveryHint(wrapDriveNetworkErr(copyErr, "download failed: %s", copyErr), fileToken)
+			return withDriveDownloadRecoveryHint(driveAppendError(copyErr), fileToken)
 		}
 		written := result.Size()
 		if stream.ContentLength > 0 && written != stream.ContentLength-startOffset {
 			return errs.NewNetworkError(errs.SubtypeNetworkProtocol,
 				"download size mismatch: got %d of %d bytes", written+startOffset, stream.ContentLength)
+		}
+		partialInfo, partialStatErr := runtime.FileIO().Stat(partialPath)
+		if partialStatErr != nil {
+			return errs.NewInternalError(errs.SubtypeFileIO, "inspect completed resume partial: %s", partialStatErr).
+				WithCause(partialStatErr)
+		}
+		finalPartialSize := partialInfo.Size()
+		if finalPartialSize != startOffset+written {
+			return errs.NewInternalError(errs.SubtypeFileIO,
+				"resume partial size changed during append: got %d, want %d", finalPartialSize, startOffset+written)
+		}
+		if stream.ContentLength > 0 && finalPartialSize != stream.ContentLength {
+			return errs.NewNetworkError(errs.SubtypeNetworkProtocol,
+				"download size mismatch after append: got %d of %d bytes", finalPartialSize, stream.ContentLength)
 		}
 
 		if err := resumeIO.CommitResumeArtifact(partialPath, outputPath, overwrite); err != nil {
@@ -485,40 +499,11 @@ var DriveDownload = common.Shortcut{
 		savedPath, _ := runtime.ResolveSavePath(outputPath)
 		runtime.Out(annotateDriveFileWikiOutput(map[string]interface{}{
 			"saved_path": savedPath,
-			"size_bytes": written + startOffset,
+			"size_bytes": finalPartialSize,
 			"resumed":    startOffset > 0,
 		}, wikiResolution), nil)
 		return nil
 	},
-}
-
-// driveDownloadProbeTotal issues a one-byte range request and returns the
-// remote total size (or -1 when it cannot be determined) together with the
-// response's strong ETag. It is only used to validate a --continue checkpoint
-// before resuming.
-func driveDownloadProbeTotal(ctx context.Context, transport extdownload.Transport, ifRange string) (int64, string, error) {
-	probe := extdownload.ByteRange{Start: 0, End: 0}
-	resp, err := transport(ctx, extdownload.Request{Range: &probe, IfRange: ifRange})
-	if err != nil {
-		return -1, "", err
-	}
-	if resp == nil || resp.Body == nil {
-		return -1, "", errs.NewNetworkError(errs.SubtypeNetworkProtocol, "resume probe returned an empty response")
-	}
-	defer resp.Body.Close()
-	switch resp.StatusCode {
-	case http.StatusPartialContent:
-		total := driveDownloadParseRangeTotal(resp.Header.Get("Content-Range"))
-		if total < 0 {
-			return -1, "", errs.NewNetworkError(errs.SubtypeNetworkProtocol, "resume probe returned an invalid Content-Range")
-		}
-		return total, driveDownloadStrongETag(resp.Header.Get("ETag")), nil
-	case http.StatusOK:
-		return resp.ContentLength, driveDownloadStrongETag(resp.Header.Get("ETag")), nil
-	default:
-		return -1, "", errs.NewNetworkError(errs.SubtypeNetworkProtocol,
-			"resume probe returned HTTP %d", resp.StatusCode).WithCode(resp.StatusCode)
-	}
 }
 
 // driveDownloadCheckpoint ties a <output>.partial file to the remote
@@ -639,20 +624,6 @@ func driveDownloadShouldRestartResume(err error) bool {
 	}
 	problem, ok := errs.ProblemOf(err)
 	return ok && problem.Subtype == errs.SubtypeNetworkRepresentationChanged
-}
-
-// driveDownloadParseRangeTotal extracts the total size from a
-// "bytes start-end/total" Content-Range header, or -1 when malformed.
-func driveDownloadParseRangeTotal(contentRange string) int64 {
-	idx := strings.LastIndexByte(contentRange, '/')
-	if idx < 0 {
-		return -1
-	}
-	total, err := strconv.ParseInt(contentRange[idx+1:], 10, 64)
-	if err != nil {
-		return -1
-	}
-	return total
 }
 
 // driveDownloadProgressReader wraps a download body reader and prints coarse

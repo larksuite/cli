@@ -40,8 +40,7 @@ func AtomicWriteFromReader(path string, reader io.Reader, perm os.FileMode) (int
 // is not atomic: callers must treat the file as a partial artifact and rename
 // it into place only after the copy completes.
 func AppendFromReader(path string, reader io.Reader, perm os.FileMode) (int64, error) {
-	//nolint:forbidigo // this is the local-file implementation of fileio; the path was already validated by SafeOutputPath in AppendTo
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, perm)
+	f, err := openAppendValidated(path, perm)
 	if err != nil {
 		return 0, err
 	}

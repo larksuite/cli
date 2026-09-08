@@ -30,7 +30,8 @@ func ImmutableSource(transport Transport) Source {
 	return Source{transport: transport, representation: Immutable}
 }
 
-// MutableSource requires a strong ETag before combining responses.
+// MutableSource requires a strong ETag before combining responses or splicing
+// a response onto an existing local prefix.
 func MutableSource(transport Transport) Source {
 	return Source{transport: transport, representation: Mutable}
 }

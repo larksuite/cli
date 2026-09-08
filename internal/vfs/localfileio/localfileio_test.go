@@ -481,6 +481,20 @@ func TestLocalFileIO_ResumableArtifactsAndCommit(t *testing.T) {
 	if string(got) != "replacement" {
 		t.Fatalf("overwritten content = %q, want replacement", got)
 	}
+
+	if err := os.WriteFile("out.bin", []byte("keep"), 0600); err != nil {
+		t.Fatalf("WriteFile(keep) error = %v", err)
+	}
+	if err := fio.CommitResumeArtifact("missing.bin.partial", "out.bin", true); err == nil {
+		t.Fatal("CommitResumeArtifact() unexpectedly succeeded with a missing partial")
+	}
+	got, err = os.ReadFile("out.bin")
+	if err != nil {
+		t.Fatalf("ReadFile(after failed overwrite) error = %v", err)
+	}
+	if string(got) != "keep" {
+		t.Fatalf("target after failed overwrite = %q, want keep", got)
+	}
 }
 
 // prefixErrReader yields prefix bytes first, then reports err.

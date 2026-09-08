@@ -56,6 +56,7 @@ Wiki URL / 裸 Wiki node token 会先解析到底层文档，解析后会在输�
 - 普通下载直接通过当前 FileIO backend 保存到 `--output`；不会读取或清理同名 `.partial` 文件。
 - `--continue` 需要 backend 同时支持 partial 的追加、checkpoint 读写/删除和最终提交；不支持时命令会在发起下载前失败。
 - `--continue` 只接受显式 `--output`。中断时会保留 `<output>.partial` 和 `<output>.partial.meta` checkpoint，下一次会校验远端大小与强 ETag；成功提交后清理 checkpoint。
+- 同一组 `<output>.partial` 和 checkpoint 应由一个 `--continue` 进程顺序使用；不要同时启动多个相同输出路径的继续下载。
 
 ## 排障
 

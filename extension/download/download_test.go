@@ -1202,6 +1202,17 @@ func TestOpenRejectsNegativeStartOffset(t *testing.T) {
 	}
 }
 
+func TestOpenRejectsMutableResumeWithoutExpectedETag(t *testing.T) {
+	_, err := Open(context.Background(), MutableSource(unusedFetch), Options{PartSize: 4, StartOffset: 1})
+	if err == nil {
+		t.Fatal("expected mutable resume without ExpectedETag to be rejected")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeUnknown {
+		t.Fatalf("problem=%+v ok=%v, want internal/unknown validation error", problem, ok)
+	}
+}
+
 func TestOpenRejectsMultipartDisabledResume(t *testing.T) {
 	_, err := Open(context.Background(), immutableSource(func(context.Context, Request) (*http.Response, error) {
 		t.Fatal("transport must not be called when options are invalid")
