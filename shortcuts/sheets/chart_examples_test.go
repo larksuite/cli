@@ -102,7 +102,7 @@ func TestChartExampleTemplates_MeetQualityMinimumSizes(t *testing.T) {
 func TestChartExampleTemplates_SpecialChartContracts(t *testing.T) {
 	t.Parallel()
 	tests := map[string][]string{
-		"bubble":    {`"role": "x"`, `"role": "y"`, `"role": "group"`, `"role": "size"`},
+		"bubble":    {`"role": "x"`, `"role": "y"`, `"role": "group"`, `"role": "size"`, `"idLabel": {"bold": true}`},
 		"waterfall": {`"firstValueAsTotal"`, `"lastValueAsSubtotal"`, `"connectorLine"`},
 		"pareto":    {`"aggregateType": "sum"`, `"index": 1`, `"index": 2`, `"percentage": true`},
 	}
@@ -115,6 +115,9 @@ func TestChartExampleTemplates_SpecialChartContracts(t *testing.T) {
 			if !strings.Contains(tmpl, marker) {
 				t.Errorf("%s template missing %s", typ, marker)
 			}
+		}
+		if typ == "bubble" && strings.Contains(tmpl, `"visible"`) {
+			t.Error("bubble template must not expose unsupported idLabel.visible")
 		}
 	}
 }
