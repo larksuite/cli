@@ -4,6 +4,8 @@
 
 更新一个已有字段。
 
+> **Select 选项更新特别警告：** `+field-get` 返回的 `options` 可能不完整。增加、删除或更新单选/多选选项时，禁止直接基于 `+field-get.options` 构造更新 payload；必须先用分页接口 `+field-search-options` 取得全部选项，再生成最终选项集并执行全量覆盖。
+
 ## 推荐命令
 
 ```bash
@@ -28,6 +30,22 @@ lark-cli base +field-update \
 
 > 这是**高风险写入操作**。`+field-update` 使用 `PUT` 全量字段定义语义；改变字段类型或关键配置可能影响整列已有数据的解释、展示或可用性。CLI 层要求显式传 `--yes`；如果用户已经明确目标和期望更新，可直接执行并带上 `--yes`。
 
+## Select 选项更新强制流程
+
+单选或多选字段的选项操作必须遵守以下完整性约束：
+
+1. **选项查询必须使用 `+field-search-options`。** 该命令是分页接口；从第一页开始，使用 `--limit` / `--offset` 持续读取，直到接口明确没有后续页，才能得到可用于写入的完整选项集。查询某个选项是否存在时也使用该命令，不要只检查 `+field-get.options`。
+2. **`+field-get.options` 不保证完整。** `+field-get` 用于读取字段名称、类型和其他字段配置；其响应中的 `options` 可能只返回前一部分。必须检查 `remaining_options_count`：只要该值大于 `0`，就表示仍有选项未返回，禁止把当前 `options` 当作全集，也禁止用 `len(options)` 声称字段的选项总数。
+3. **先收齐、再变换、最后覆盖。** `+field-update` 是全量 `PUT`。增加、删除或更新选项时，先用 `+field-search-options` 分页收齐全部现有选项；然后在完整集合上执行增加、删除、重命名、颜色调整等目标变换，得到最终选项集；最后把这个最终选项集放入完整字段定义并调用 `+field-update --yes`。
+4. **完整性无法证明就停止写入。** 任一分页读取失败、提前终止或无法确认已经读取全部选项时，不得执行 `+field-update`。应说明当前结果不完整并继续补齐读取；无法补齐时如实报告，不能用部分选项覆盖字段。
+
+```text
+field-get（字段其他配置，并检查 remaining_options_count）
+    + field-search-options（offset=0 开始，分页拉取全部选项）
+    + 在完整选项集上增加 / 删除 / 更新
+    + field-update（提交最终完整字段定义，全量 PUT）
+```
+
 ## API 入参详情
 
 **HTTP 方法和路径：**
@@ -42,7 +60,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 - 更新语义是 override 式的完整覆盖 `PUT`，不是 partial update；先读取当前定义，再提交整个字段需要保留的可写配置，不要只传零散片段。
 - 所有字段类型都支持可选 `description`；支持纯文本，也支持 Markdown 链接。
 - 需要字段默认值时传 `default_value`，直接使用字段对应 CellValue；传 `null` 清空。完整规则见 [Field Schema](lark-base-field-schema.md)。
-- `select` 更新时：`options` 仍按对象数组传，避免混入无效字段。
+- `select` 更新时：`options` 仍按对象数组传，避免混入无效字段；该数组必须来自上方流程收齐并变换后的最终完整选项集，不能直接使用 `+field-get.options`。
 - `link` 更新限制：
   - 不能把非 `link` 字段改成 `link`，也不能把 `link` 改成非 `link`。
   - 现有 `link` 字段的 `bidirectional` 不能改。
@@ -72,7 +90,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 ## 工作流
 
 
-1. 先用 `+field-get` 读取当前定义，只改变目标属性，并把需要保留的其他可写配置完整写回。
+1. 先用 `+field-get` 读取当前字段名称、类型和其他配置，并检查 `remaining_options_count`。若操作 Select 选项，再按“Select 选项更新强制流程”使用 `+field-search-options` 分页读取全部选项；只改变目标属性，并把需要保留的其他可写配置与最终完整选项集一并写回。
 2. `formula/lookup` 类型更新前先阅读对应指南。
 3. 如果这次更新会改变字段 `type`，先按下方“字段类型变更规则”判断能否执行。如果不修改 `type`，大多数场景都相对安全。
 
@@ -140,6 +158,8 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 ## 坑点
 
 - ⚠️ 这是全量字段属性更新语义，不是 patch。
+- ⚠️ Select 选项必须通过 `+field-search-options` 分页读取完整；`+field-get.options` 可能不全，必须检查 `remaining_options_count`。
+- ⚠️ 增加、删除或更新选项必须在完整选项集上生成最终结果后再全量覆盖；分页未完成时禁止调用 `+field-update`。
 - ⚠️ 这是高风险写入操作，执行时必须带 `--yes`。
 - ⚠️ 当 `type` 是 `formula` 或 `lookup` 时，先阅读对应指南再执行。
 

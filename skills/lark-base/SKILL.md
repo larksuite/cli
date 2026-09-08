@@ -1,6 +1,6 @@
 ---
 name: lark-base
-version: 1.2.21
+version: 1.2.22
 description: "飞书多维表格（Base）操作：建表、字段、记录、视图、统计、公式/lookup、表单、仪表盘、应用模式（BaseApp/AppMode 页面与组件）、Workspace 目录、workflow、角色权限、模板中心（多维表格模板分类/列表/搜索）；遇到 Base/多维表格/bitable、BaseApp/AppMode、/base/ 或 /app/ 链接时使用。BaseApp 不走 lark-apps；文件导入/导出转 lark-drive，认证/授权转 lark-shared。"
 metadata:
   requires:
@@ -83,6 +83,8 @@ Table 下的大多数更新通过异步链路生效，接口成功返回后立�
 Field 定义列 schema。`field_id` 是稳定列标识，`name` 是可修改的展示名称；Formula、Lookup、Link、Select 等属于 Field 类型或能力。
 
 **读取 Field：** `+field-list` / `+field-get` / `+field-search-options`。**写入 Field：** 已有 Table 中创建多个字段时，优先向一次 `+field-create --json` 传字段对象数组；单字段更新和删除用 `+field-update` / `+field-delete`。创建和更新分别读取 [field-create](references/lark-base-field-create.md) / [field-update](references/lark-base-field-update.md)，由命令文档继续路由 Field JSON、Formula 和 Lookup 协议。`字段插件` 用于扩展基础字段能力：按同一行其他字段内容触发 LLM 生成，并写回已有目标字段；当前已确认目标字段支持文本、单选、数字，配置或触发前先读 [field-extension](references/lark-base-field-extension.md)。
+
+> **Select 选项完整性是强制约束：** 查询单选或多选字段的选项必须使用 `+field-search-options`；这是分页接口，必须持续翻页直到取得全部选项。`+field-get` 返回的 `options` 可能只是前一部分，必须检查 `remaining_options_count`，不得把 `len(options)` 当作选项总数；只要 `remaining_options_count > 0`，当前 `options` 就不能作为 `+field-update` 的覆盖基线。使用 `+field-update` 增加、删除或更新选项时，必须先通过 `+field-search-options` 分页取得完整选项集，在完整集合上完成变换得到最终选项集，再把最终结果交给全量覆盖的 `+field-update`。禁止用 `+field-get` 返回的不完整 `options` 拼接新选项后直接更新字段。
 
 ### Record
 
