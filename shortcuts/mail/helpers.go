@@ -388,10 +388,10 @@ type composeIdentity struct {
 // a failed or malformed settings response falls back to the old primary-email
 // lookup so the new dependency cannot block existing commands.
 func resolveComposeIdentity(runtime *common.RuntimeContext, mailboxID string, scenario composeScenario, originalTo, originalCC []string) composeIdentity {
-	if from := strings.TrimSpace(runtime.Str("from")); from != "" {
+	if from := runtime.Str("from"); from != "" {
 		return composeIdentity{Email: from}
 	}
-	if mailbox := strings.TrimSpace(runtime.Str("mailbox")); mailbox != "" && mailbox != "me" {
+	if mailbox := runtime.Str("mailbox"); mailbox != "" && mailbox != "me" {
 		return composeIdentity{Email: mailbox}
 	}
 
@@ -439,7 +439,7 @@ func composeFallbackName(runtime *common.RuntimeContext) string {
 	if runtime == nil || runtime.Config == nil {
 		return ""
 	}
-	return strings.TrimSpace(runtime.Config.UserName)
+	return runtime.Config.UserName
 }
 
 func withComposeFallbackName(identity composeIdentity, runtime *common.RuntimeContext) composeIdentity {
@@ -471,8 +471,8 @@ func parseSendAsIdentities(data map[string]interface{}) ([]composeIdentity, bool
 		}
 		isDefault, _ := entry["is_default"].(bool)
 		identities = append(identities, composeIdentity{
-			Email:     strings.TrimSpace(strVal(entry["email_address"])),
-			Name:      strings.TrimSpace(strVal(entry["name"])),
+			Email:     strVal(entry["email_address"]),
+			Name:      strVal(entry["name"]),
 			IsDefault: isDefault,
 		})
 	}
