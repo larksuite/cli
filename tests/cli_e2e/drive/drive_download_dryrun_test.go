@@ -42,8 +42,8 @@ func TestDriveDownloadDryRun_DefaultNamePlansMetadataBeforeDownload(t *testing.T
 	if got := clie2e.DryRunGet(out, "api.0.params.type").String(); got != "file" {
 		t.Fatalf("api.0.params.type=%q, want file\nstdout:\n%s", got, out)
 	}
-	if got := clie2e.DryRunGet(out, "api.0.params.action").String(); got != "export" {
-		t.Fatalf("api.0.params.action=%q, want export\nstdout:\n%s", got, out)
+	if got := clie2e.DryRunGet(out, "api.0.params.action").String(); got != "view" {
+		t.Fatalf("api.0.params.action=%q, want view\nstdout:\n%s", got, out)
 	}
 	if got := clie2e.DryRunGet(out, "api.1.method").String(); got != "POST" {
 		t.Fatalf("api.1.method=%q, want POST\nstdout:\n%s", got, out)

@@ -22,6 +22,9 @@ lark-cli drive +download --url "https://example.feishu.cn/wiki/<WIKI_NODE_TOKEN>
 
 # 只有裸 Wiki node token 时，显式传 --wiki-token，让 CLI 先解析底层文件
 lark-cli drive +download --wiki-token "<WIKI_NODE_TOKEN>" --output ./report.pdf
+
+# 中断后从显式输出路径旁的 partial 文件继续
+lark-cli drive +download --file-token boxbc_xxx --output ./report.pdf --continue
 ```
 
 ## 参数
@@ -33,6 +36,7 @@ lark-cli drive +download --wiki-token "<WIKI_NODE_TOKEN>" --output ./report.pdf
 | `--wiki-token` | 条件必填 | 裸 Wiki node token；CLI 先解析到底层 Drive 文件 |
 | `--output` | 否 | 本地输出路径；不传时默认保存到当前目录 |
 | `--overwrite` | 否 | 覆盖已存在的输出文件；不传时目标已存在会报错 |
+| `--continue` | 否 | 从 `<output>.partial` 继续中断的下载；必须同时指定 `--output` |
 
 ## URL 解析
 
@@ -49,6 +53,9 @@ Wiki URL / 裸 Wiki node token 会先解析到底层文档，解析后会在输�
 ## 关键约束
 
 - Wiki 节点解析后的 `obj_type` 必须是 `file`；不确定 token 类型时，先用 `lark-cli drive +inspect --url <TOKEN> --type wiki` 检查。
+- 普通下载直接通过当前 FileIO backend 保存到 `--output`；不会读取或清理同名 `.partial` 文件。
+- `--continue` 需要 backend 同时支持 partial 的追加、checkpoint 读写/删除和最终提交；不支持时命令会在发起下载前失败。
+- `--continue` 只接受显式 `--output`。中断时会保留 `<output>.partial` 和 `<output>.partial.meta` checkpoint，下一次会校验远端大小与强 ETag；成功提交后清理 checkpoint。
 
 ## 排障
 

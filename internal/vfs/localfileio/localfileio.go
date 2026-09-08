@@ -116,3 +116,88 @@ func (l *LocalFileIO) RemoveWorkspaceEntry(path string) error {
 	}
 	return vfs.Remove(safePath)
 }
+
+var _ fileio.ResumableFileIO = (*LocalFileIO)(nil)
+
+// AppendTo opens path (creating it when missing) and streams body onto the end
+// of the file, returning the number of bytes written. Bytes already on disk are
+// kept on failure so a resumable download can continue from the same offset.
+func (l *LocalFileIO) AppendTo(path string, _ fileio.SaveOptions, body io.Reader) (fileio.SaveResult, error) {
+	safePath, err := SafeOutputPath(path)
+	if err != nil {
+		return nil, &fileio.PathValidationError{Err: err}
+	}
+	if err := vfs.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
+		return nil, &fileio.MkdirError{Err: err}
+	}
+	n, err := AppendFromReader(safePath, body, 0600)
+	if err != nil {
+		return nil, &fileio.WriteError{Err: err}
+	}
+	return &saveResult{size: n}, nil
+}
+
+// ReadResumeArtifact reads one resumable-download artifact after validating
+// it as a local input path.
+func (l *LocalFileIO) ReadResumeArtifact(path string) ([]byte, error) {
+	safePath, err := SafeInputPath(path)
+	if err != nil {
+		return nil, &fileio.PathValidationError{Err: err}
+	}
+	return vfs.ReadFile(safePath)
+}
+
+// WriteResumeArtifact atomically writes one resumable-download artifact after
+// validating it as a local output path.
+func (l *LocalFileIO) WriteResumeArtifact(path string, data []byte) error {
+	safePath, err := SafeOutputPath(path)
+	if err != nil {
+		return &fileio.PathValidationError{Err: err}
+	}
+	if err := vfs.MkdirAll(filepath.Dir(safePath), 0700); err != nil {
+		return &fileio.MkdirError{Err: err}
+	}
+	if err := AtomicWrite(safePath, data, 0600); err != nil {
+		return &fileio.WriteError{Err: err}
+	}
+	return nil
+}
+
+// RemoveResumeArtifact removes one resumable-download artifact after applying
+// the same output-path policy as Save.
+func (l *LocalFileIO) RemoveResumeArtifact(path string) error {
+	safePath, err := SafeOutputPath(path)
+	if err != nil {
+		return &fileio.PathValidationError{Err: err}
+	}
+	return vfs.Remove(safePath)
+}
+
+// CommitResumeArtifact publishes a completed partial file. A no-overwrite
+// commit uses a hard link followed by removal of the partial, so an existing
+// target cannot be replaced by a race. Overwrite commits remove the target
+// first because os.Rename cannot replace an existing file on every supported
+// platform.
+func (l *LocalFileIO) CommitResumeArtifact(partialPath, targetPath string, overwrite bool) error {
+	safePartial, err := SafeOutputPath(partialPath)
+	if err != nil {
+		return &fileio.PathValidationError{Err: err}
+	}
+	safeTarget, err := SafeOutputPath(targetPath)
+	if err != nil {
+		return &fileio.PathValidationError{Err: err}
+	}
+	if !overwrite {
+		if err := vfs.Link(safePartial, safeTarget); err != nil {
+			return err
+		}
+		if err := vfs.Remove(safePartial); err != nil {
+			return err
+		}
+		return nil
+	}
+	if err := vfs.Remove(safeTarget); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return vfs.Rename(safePartial, safeTarget)
+}

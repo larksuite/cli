@@ -34,6 +34,24 @@ func AtomicWriteFromReader(path string, reader io.Reader, perm os.FileMode) (int
 	return copied, nil
 }
 
+// AppendFromReader streams reader contents onto the end of path, creating the
+// file with perm when it does not exist. Bytes already on disk are kept on
+// failure so a resumable download can continue from the same offset. The write
+// is not atomic: callers must treat the file as a partial artifact and rename
+// it into place only after the copy completes.
+func AppendFromReader(path string, reader io.Reader, perm os.FileMode) (int64, error) {
+	//nolint:forbidigo // this is the local-file implementation of fileio; the path was already validated by SafeOutputPath in AppendTo
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, perm)
+	if err != nil {
+		return 0, err
+	}
+	n, err := io.Copy(f, reader)
+	if closeErr := f.Close(); err == nil && closeErr != nil {
+		err = closeErr
+	}
+	return n, err
+}
+
 // ExclusiveWriteFromReader copies reader contents into path only when path does
 // not already exist, and reports an error satisfying errors.Is(err, fs.ErrExist)
 // when it does.

@@ -77,7 +77,7 @@ func driveDownloadPermissionDeniedError() error {
 	const tokenArg = "<FILE_TOKEN>"
 	return errs.NewPermissionError(
 		errs.SubtypePermissionDenied,
-		"current identity does not have export permission for this Drive file",
+		"current identity does not have view permission for this Drive file",
 	).WithHint(
 		"Direct Drive download is unavailable. To view file content through preview artifacts, try `lark-cli drive +preview --file-token %s --type source_file --output <path>`.",
 		tokenArg,
