@@ -5,8 +5,12 @@ package base
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/errs"
 )
 
 func TestParseFieldGroupBodiesAcceptsWrappedAndBare(t *testing.T) {
@@ -42,6 +46,7 @@ func TestParseFieldGroupBodiesRejectsBadShapes(t *testing.T) {
 		want string
 	}{
 		{"not json", `nope`, "--json"},
+		{"malformed json", `[{"name":]`, "--json"},
 		{"empty array", `[]`, "at least one field group"},
 		{"object without field_groups", `{"groups":[]}`, "field_groups"},
 		{"group without name", `[{"children":[{"type":"field","id":"fldA"}]}]`, "non-empty name"},
@@ -53,6 +58,13 @@ func TestParseFieldGroupBodiesRejectsBadShapes(t *testing.T) {
 			_, err := parseFieldGroupBodies(pc, tc.raw)
 			if err == nil {
 				t.Fatalf("expected error for %s", tc.name)
+			}
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed error, got %T %v", err, err)
+			}
+			if p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("category/subtype=%s/%s, want validation/invalid_argument", p.Category, p.Subtype)
 			}
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error %q missing %q", err.Error(), tc.want)
@@ -88,4 +100,37 @@ func TestDryRunFieldGroupCreate(t *testing.T) {
 		"POST /open-apis/bitable/v1/apps/app_x/tables/tbl_1/field_groups",
 		`"name":"Customer Info"`,
 		`"children":[{"id":"fldA","type":"field"}]`)
+}
+
+func TestDryRunFieldGroupCreateFromFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	specPath := filepath.Join(tmpDir, "groups.json")
+	spec := `[{"name":"From File","children":[{"type":"field","id":"fldF"}]}]`
+	if err := os.WriteFile(specPath, []byte(spec), 0o600); err != nil {
+		t.Fatalf("write spec: %v", err)
+	}
+	withBaseWorkingDir(t, tmpDir)
+
+	factory, stdout, _ := newExecuteFactory(t)
+	err := runShortcut(t, BaseFieldGroupCreate, []string{
+		"+field-group-create",
+		"--base-token", "app_x",
+		"--table-id", "tbl_1",
+		"--json", "@./groups.json",
+		"--dry-run",
+	}, factory, stdout)
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		`"method": "POST"`,
+		`"url": "/open-apis/bitable/v1/apps/app_x/tables/tbl_1/field_groups"`,
+		`"name": "From File"`,
+		`"id": "fldF"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("dry-run output missing %q\noutput:\n%s", want, out)
+		}
+	}
 }
