@@ -61,6 +61,7 @@ var MailReplyAll = common.Shortcut{
 				Desc("Fetch template to merge with reply-all-derived recipients / body.")
 		}
 		api = api.GET(mailboxPath(mailboxID, "messages", messageId)).
+			GET(mailboxPath(mailboxID, "settings", "send_as")).
 			GET(mailboxPath(mailboxID, "profile")).
 			POST(mailboxPath(mailboxID, "drafts")).
 			Body(map[string]interface{}{"raw": "<base64url-EML>"})
@@ -140,7 +141,8 @@ var MailReplyAll = common.Shortcut{
 		orig := sourceMsg.Original
 		stripLargeAttachmentCard(&orig)
 
-		resolvedSender := resolveComposeSenderEmail(runtime)
+		sender := resolveComposeIdentity(runtime, mailboxID, composeScenarioReply, orig.toAddresses, orig.ccAddresses)
+		resolvedSender := sender.Email
 		// Check --request-receipt BEFORE the orig.headTo fallback below:
 		// the receipt's Disposition-Notification-To must point to an address
 		// the caller explicitly controls, not to a fallback picked from the
@@ -173,6 +175,9 @@ var MailReplyAll = common.Shortcut{
 			}
 		}
 		selfEmails := fetchSelfEmailSet(runtime, mailboxID)
+		for _, email := range sender.SelfEmails {
+			selfEmails[strings.ToLower(strings.TrimSpace(email))] = true
+		}
 		excluded := buildExcludeSet(selfEmails, removeList)
 		replyToAddr := orig.replyTo
 		if replyToAddr == "" {
@@ -259,7 +264,7 @@ var MailReplyAll = common.Shortcut{
 			Subject(subjectLine).
 			ToAddrs(parseNetAddrs(toList))
 		if senderEmail != "" {
-			bld = bld.From("", senderEmail)
+			bld = bld.From(sender.Name, senderEmail)
 		}
 		// Note: requireSenderForRequestReceipt already ran above against
 		// resolvedSender (pre-fallback). When --request-receipt is set we

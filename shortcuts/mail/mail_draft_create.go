@@ -69,7 +69,8 @@ var MailDraftCreate = common.Shortcut{
 			api = api.GET(templateMailboxPath(mailboxID, tid)).
 				Desc("Fetch template to merge with compose flags (subject/body/to/cc/bcc/attachments).")
 		}
-		api = api.GET(mailboxPath(mailboxID, "profile")).
+		api = api.GET(mailboxPath(mailboxID, "settings", "send_as")).
+			GET(mailboxPath(mailboxID, "profile")).
 			POST(mailboxPath(mailboxID, "drafts")).
 			Body(map[string]interface{}{
 				"raw": "<base64url-EML>",
@@ -183,7 +184,8 @@ var MailDraftCreate = common.Shortcut{
 		}
 		signatureID := runtime.Str("signature-id")
 		noSignature := runtime.Bool("no-signature")
-		senderEmail := resolveComposeSenderEmail(runtime)
+		sender := resolveComposeIdentity(runtime, mailboxID, composeScenarioNew, nil, nil)
+		senderEmail := sender.Email
 		// Auto-resolve default signature when neither --no-signature nor --signature-id is set.
 		if noSignature {
 			signatureID = ""
@@ -196,7 +198,7 @@ var MailDraftCreate = common.Shortcut{
 			return err
 		}
 		rawEML, lintApplied, lintBlocked, err := buildRawEMLForDraftCreate(ctx, runtime, input, sigResult, priority,
-			templateLargeAttachmentIDs, mailboxID, templateID, templateInlineAttachments, templateSmallAttachments, senderEmail)
+			templateLargeAttachmentIDs, mailboxID, templateID, templateInlineAttachments, templateSmallAttachments, senderEmail, sender.Name)
 		if err != nil {
 			return err
 		}
@@ -253,6 +255,7 @@ func buildRawEMLForDraftCreate(
 	templateInlineAttachments []templateInlineRef,
 	templateSmallAttachments []templateAttachmentRef,
 	senderEmailHint string,
+	senderNameHints ...string,
 ) (rawEMLOut string, lintApplied, lintBlocked []lint.Finding, err error) {
 	// Initialise lint findings as empty (non-nil) slices so callers can
 	// surface them through the envelope unconditionally even on the
@@ -262,6 +265,10 @@ func buildRawEMLForDraftCreate(
 	// Use the pre-resolved senderEmail when available (avoids a duplicate
 	// profile API call when Execute already fetched it for auto-resolve).
 	senderEmail := senderEmailHint
+	senderName := ""
+	if len(senderNameHints) > 0 {
+		senderName = senderNameHints[0]
+	}
 	if senderEmail == "" {
 		senderEmail = resolveComposeSenderEmail(runtime)
 	}
@@ -280,7 +287,7 @@ func buildRawEMLForDraftCreate(
 		bld = bld.ToAddrs(parseNetAddrs(input.To))
 	}
 	if senderEmail != "" {
-		bld = bld.From("", senderEmail)
+		bld = bld.From(senderName, senderEmail)
 	}
 	// senderEmail non-emptiness is already enforced above (L140); the flag-
 	// driven guard here only exists to make the relationship explicit to

@@ -64,6 +64,7 @@ var MailForward = common.Shortcut{
 				Desc("Fetch template to merge with forward compose flags.")
 		}
 		api = api.GET(mailboxPath(mailboxID, "messages", messageId)).
+			GET(mailboxPath(mailboxID, "settings", "send_as")).
 			GET(mailboxPath(mailboxID, "profile")).
 			POST(mailboxPath(mailboxID, "drafts")).
 			Body(map[string]interface{}{"raw": "<base64url-EML>", "_to": to})
@@ -138,7 +139,8 @@ var MailForward = common.Shortcut{
 		}
 		orig := sourceMsg.Original
 
-		resolvedSender := resolveComposeSenderEmail(runtime)
+		sender := resolveComposeIdentity(runtime, mailboxID, composeScenarioReply, orig.toAddresses, orig.ccAddresses)
+		resolvedSender := sender.Email
 		// Check --request-receipt BEFORE the orig.headTo fallback below:
 		// the receipt's Disposition-Notification-To must point to an address
 		// the caller explicitly controls, not to a fallback picked from the
@@ -237,7 +239,7 @@ var MailForward = common.Shortcut{
 			Subject(subjectLine).
 			ToAddrs(parseNetAddrs(to))
 		if senderEmail != "" {
-			bld = bld.From("", senderEmail)
+			bld = bld.From(sender.Name, senderEmail)
 		}
 		// Note: requireSenderForRequestReceipt already ran above against
 		// resolvedSender (pre-fallback). When --request-receipt is set we
