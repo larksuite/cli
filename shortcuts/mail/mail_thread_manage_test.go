@@ -341,9 +341,9 @@ func TestThreadManage_DryRunMailboxPaths(t *testing.T) {
 			shortcut: MailThreadModify,
 			args: []string{
 				"+thread-modify", "--thread-id", threadManageID("1"), "--add-label-id", "UNREAD",
-				"--mailbox-id", "shared+team@example.com", "--dry-run",
+				"--mailbox-id", "shared%team@example.com", "--dry-run",
 			},
-			wantPath: "/user_mailboxes/shared+team@example.com/threads/batch_modify",
+			wantPath: "/user_mailboxes/shared%25team@example.com/threads/batch_modify",
 		},
 		{
 			name:     "trash defaults to me",
@@ -356,9 +356,9 @@ func TestThreadManage_DryRunMailboxPaths(t *testing.T) {
 			shortcut: MailThreadTrash,
 			args: []string{
 				"+thread-trash", "--thread-id", threadManageID("1"),
-				"--mailbox-id", "shared+team@example.com", "--dry-run",
+				"--mailbox-id", "shared%team@example.com", "--dry-run",
 			},
-			wantPath: "/user_mailboxes/shared+team@example.com/threads/batch_trash",
+			wantPath: "/user_mailboxes/shared%25team@example.com/threads/batch_trash",
 		},
 	}
 	for _, test := range tests {
