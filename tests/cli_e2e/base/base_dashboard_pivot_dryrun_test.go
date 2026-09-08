@@ -59,7 +59,7 @@ func TestBaseDashboardPivotDryRun_InvalidReferenceIsTyped(t *testing.T) {
 		"--data-config", `{"table_name":"Sales","rows":[{"field_name":"Category"}],"values":[{"field_name":"Amount","rollup":"SUM"}],"sort":[{"sort_type":"FIELD","order":"asc","group_ref":{"area":"rows","index":1}}]}`,
 	)
 	require.True(t, gjson.Valid(result.Stderr), "stderr:\n%s", result.Stderr)
-	require.Equal(t, "validation_error", gjson.Get(result.Stderr, "error.type").String(), result.Stderr)
+	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), result.Stderr)
 	require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), result.Stderr)
 	require.Equal(t, "--data-config", gjson.Get(result.Stderr, "error.param").String(), result.Stderr)
 	require.Contains(t, result.Stderr, "group_ref.index")
