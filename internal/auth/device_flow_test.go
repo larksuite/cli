@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -214,5 +215,62 @@ func TestPollDeviceToken_DefaultsZeroIntervalToFiveSeconds(t *testing.T) {
 	}
 	if got := requests.Load(); got != 0 {
 		t.Fatalf("PollDeviceToken() sent %d requests before context cancellation, want 0", got)
+	}
+}
+
+func TestPollDeviceToken_PreservesStatusMessage(t *testing.T) {
+	t.Parallel()
+
+	const statusMessage = "[不可申请，勿重试] 企业管理员禁止申请的权限：mail:user_mailbox.message:send\n" +
+		"[待审核，通过后用户需重新授权] 以下权限正在等待管理员审核：offline_access"
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body: io.NopCloser(strings.NewReader(`{
+					"code": 0,
+					"access_token": "access-token",
+					"expires_in": 7200,
+					"scope": "approval:task:read",
+					"status_message": "[不可申请，勿重试] 企业管理员禁止申请的权限：mail:user_mailbox.message:send\n[待审核，通过后用户需重新授权] 以下权限正在等待管理员审核：offline_access"
+				}`)),
+			}, nil
+		}),
+	}
+
+	result := PollDeviceToken(context.Background(), client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 1, 3, nil)
+	if result == nil || !result.OK || result.Token == nil {
+		t.Fatalf("PollDeviceToken() = %#v, want successful token result", result)
+	}
+	if result.Token.StatusMessage != statusMessage {
+		t.Fatalf("StatusMessage = %q, want %q", result.Token.StatusMessage, statusMessage)
+	}
+}
+
+func TestPollDeviceToken_MissingStatusMessageIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body: io.NopCloser(strings.NewReader(`{
+					"code": 0,
+					"access_token": "access-token",
+					"expires_in": 7200,
+					"scope": "approval:task:read"
+				}`)),
+			}, nil
+		}),
+	}
+
+	result := PollDeviceToken(context.Background(), client, "cli_a", "secret_b", core.BrandFeishu, "device-code", 1, 3, nil)
+	if result == nil || !result.OK || result.Token == nil {
+		t.Fatalf("PollDeviceToken() = %#v, want successful token result", result)
+	}
+	if result.Token.StatusMessage != "" {
+		t.Fatalf("StatusMessage = %q, want empty string", result.Token.StatusMessage)
 	}
 }
