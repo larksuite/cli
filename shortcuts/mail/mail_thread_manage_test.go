@@ -282,6 +282,98 @@ func TestThreadModify_DryRunDoesNotCallAPI(t *testing.T) {
 	}
 }
 
+func TestThreadManage_RejectsBlankMailboxBeforeDryRun(t *testing.T) {
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		args     []string
+	}{
+		{
+			name:     "modify",
+			shortcut: MailThreadModify,
+			args: []string{
+				"+thread-modify", "--thread-id", threadManageID("1"),
+				"--add-label-id", "UNREAD", "--mailbox-id", "   ", "--dry-run",
+			},
+		},
+		{
+			name:     "trash",
+			shortcut: MailThreadTrash,
+			args: []string{
+				"+thread-trash", "--thread-id", threadManageID("1"),
+				"--mailbox-id", "   ", "--dry-run",
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			f, stdout, _, _ := mailShortcutTestFactory(t)
+			err := runMountedMailShortcut(t, test.shortcut, test.args, f, stdout)
+			var validation *errs.ValidationError
+			if !errors.As(err, &validation) {
+				t.Fatalf("error = %T %v, want ValidationError", err, err)
+			}
+			if validation.Param != "--mailbox-id" {
+				t.Fatalf("param = %q, want --mailbox-id", validation.Param)
+			}
+			if strings.Contains(stdout.String(), "/user_mailboxes/") {
+				t.Fatalf("blank mailbox produced a request: %s", stdout.String())
+			}
+		})
+	}
+}
+
+func TestThreadManage_DryRunMailboxPaths(t *testing.T) {
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		args     []string
+		wantPath string
+	}{
+		{
+			name:     "modify defaults to me",
+			shortcut: MailThreadModify,
+			args:     []string{"+thread-modify", "--thread-id", threadManageID("1"), "--add-label-id", "UNREAD", "--dry-run"},
+			wantPath: "/user_mailboxes/me/threads/batch_modify",
+		},
+		{
+			name:     "modify encodes public mailbox",
+			shortcut: MailThreadModify,
+			args: []string{
+				"+thread-modify", "--thread-id", threadManageID("1"), "--add-label-id", "UNREAD",
+				"--mailbox-id", "shared+team@example.com", "--dry-run",
+			},
+			wantPath: "/user_mailboxes/shared+team@example.com/threads/batch_modify",
+		},
+		{
+			name:     "trash defaults to me",
+			shortcut: MailThreadTrash,
+			args:     []string{"+thread-trash", "--thread-id", threadManageID("1"), "--dry-run"},
+			wantPath: "/user_mailboxes/me/threads/batch_trash",
+		},
+		{
+			name:     "trash encodes public mailbox",
+			shortcut: MailThreadTrash,
+			args: []string{
+				"+thread-trash", "--thread-id", threadManageID("1"),
+				"--mailbox-id", "shared+team@example.com", "--dry-run",
+			},
+			wantPath: "/user_mailboxes/shared+team@example.com/threads/batch_trash",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			f, stdout, _, _ := mailShortcutTestFactory(t)
+			if err := runMountedMailShortcut(t, test.shortcut, test.args, f, stdout); err != nil {
+				t.Fatalf("dry-run: %v", err)
+			}
+			if !strings.Contains(stdout.String(), test.wantPath) {
+				t.Fatalf("dry-run missing %q: %s", test.wantPath, stdout.String())
+			}
+		})
+	}
+}
+
 func TestThreadModify_APIFailurePassesThrough(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	stubThreadManagePost(reg, "batch_modify", map[string]interface{}{"code": 1230001, "msg": "bad request"})

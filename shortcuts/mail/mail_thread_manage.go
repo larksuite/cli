@@ -60,6 +60,9 @@ var MailThreadTrash = common.Shortcut{
 }
 
 func validateThreadModify(ctx context.Context, rt *common.RuntimeContext) error {
+	if err := validateThreadManageMailbox(rt); err != nil {
+		return err
+	}
 	if err := validateBotMailboxNotMe(rt); err != nil {
 		return err
 	}
@@ -91,11 +94,21 @@ func executeThreadModify(ctx context.Context, rt *common.RuntimeContext) error {
 }
 
 func validateThreadTrash(ctx context.Context, rt *common.RuntimeContext) error {
+	if err := validateThreadManageMailbox(rt); err != nil {
+		return err
+	}
 	if err := validateBotMailboxNotMe(rt); err != nil {
 		return err
 	}
 	_, err := normalizeThreadManageIDs(rt.StrArray("thread-id"))
 	return err
+}
+
+func validateThreadManageMailbox(rt *common.RuntimeContext) error {
+	if strings.TrimSpace(resolveMailboxID(rt)) == "" {
+		return mailValidationParamError("--mailbox-id", "--mailbox-id must not be empty")
+	}
+	return nil
 }
 
 func dryRunThreadTrash(ctx context.Context, rt *common.RuntimeContext) *common.DryRunAPI {
