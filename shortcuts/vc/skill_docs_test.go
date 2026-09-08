@@ -71,6 +71,7 @@ func TestVCBotShortcutsIdentityDocsMatchAuthTypes(t *testing.T) {
 		reference string
 	}{
 		{"+detail", VCDetail.AuthTypes, "lark-vc-detail.md"},
+		{"+meeting-chat", VCMeetingChat.AuthTypes, "lark-vc-meeting-chat.md"},
 		{"+recording", VCRecording.AuthTypes, "lark-vc-recording.md"},
 		{"+meeting-countdown", VCMeetingCountdown.AuthTypes, "lark-vc-meeting-countdown.md"},
 	} {

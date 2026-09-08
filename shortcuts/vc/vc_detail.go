@@ -37,6 +37,7 @@ type meetingDetailItem struct {
 	EndTime     string `json:"end_time,omitempty"`
 	NoteID      string `json:"note_id,omitempty"`
 	MinuteToken string `json:"minute_token,omitempty"`
+	ChatID      string `json:"chat_id,omitempty"`
 	Error       string `json:"error,omitempty"`
 	Hint        string `json:"hint,omitempty"`
 }
@@ -61,6 +62,11 @@ func fetchMeetingDetail(ctx context.Context, runtime *common.RuntimeContext, mee
 	if meeting == nil {
 		result.Error = "meeting not found in response"
 		return result
+	}
+	// Project the optional binding without changing the legacy detail fields.
+	binding := meetingChatResponse{ChatID: common.GetString(meeting, "chat_id")}
+	if binding.ChatID != "0" {
+		result.ChatID = binding.ChatID
 	}
 
 	if v, ok := meeting["meeting_no"].(string); ok {
@@ -161,7 +167,7 @@ func meetingInProgress(meeting map[string]any) bool {
 var VCDetail = common.Shortcut{
 	Service:     "vc",
 	Command:     "+detail",
-	Description: "Get meeting details including note_id and minute_token by meeting IDs",
+	Description: "Get meeting details including note_id, minute_token, and optional chat_id by meeting IDs",
 	Risk:        "read",
 	Scopes:      []string{"vc:meeting.meetingevent:read", "vc:record:readonly"},
 	AuthTypes:   []string{"user", "bot"},
@@ -245,6 +251,9 @@ var VCDetail = common.Shortcut{
 				}
 				if r.MinuteToken != "" {
 					row["minute_token"] = r.MinuteToken
+				}
+				if r.ChatID != "" {
+					row["chat_id"] = r.ChatID
 				}
 				row["topic"] = r.Topic
 				if r.Hint != "" {

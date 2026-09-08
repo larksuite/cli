@@ -74,6 +74,8 @@ Calendar 日程 ──meeting_note────────────► Doc（
 
 ### 领域不变量
 
+- 查询会议 Chat 绑定使用 `vc +detail`，缺少 `chat_id` 不自动触发写操作。只有明确要求创建或复用时才用 `vc +meeting-chat`；调用者须已在进行中的会议内。沿用来源身份，不自动入会或跨身份重试。返回 Chat ID 不证明正式入群或消息可访问；正式成员离会不自动退群，临时权限按原规则清理。
+
 - Note 与 Minutes 分别来自 AI 总结和录制两条独立链路。一场会议可能同时有两类产物、只有其中一类，也可能都没有；不能根据 `note_id` 推断必然存在 `minute_token`，反之亦然。
 - Minutes 可以由本地音视频直接生成，因此不一定关联 `meeting_id` 或 Calendar `event_id`。
 - Calendar `meeting_note`、Note `note_id`、Minutes `minute_token` 和各类 Doc token 标识不同对象，不能互换、代入其他域的命令或从一者反推另一者。
@@ -113,11 +115,12 @@ lark-cli vc +meeting-events --as <source_identity> --meeting-id <meeting_id> --p
 | 命令 | 用途 | 参考方式 |
 |---|---|---|
 | `vc +search` | 搜索历史会议 | [lark-vc-search](references/lark-vc-search.md) |
-| `vc +detail` | 查询会议信息及关联的 Note、Minutes 标识 | [lark-vc-detail](references/lark-vc-detail.md) |
+| `vc +detail` | 查询会议信息、可选 Chat 绑定及关联的 Note、Minutes 标识 | [lark-vc-detail](references/lark-vc-detail.md) |
 | `vc meeting get` | 查询会议基础信息和参会人快照 | `lark-cli vc meeting get --help` |
 | `vc +recording` | 从会议定位录制及妙记 | [lark-vc-recording](references/lark-vc-recording.md) |
 | `vc +meeting-list-active` | 发现当前可见的进行中会议 | [lark-vc-meeting-list-active](references/lark-vc-meeting-list-active.md) |
 | `vc +meeting-events` | 读取会中事件和共享内容 | [lark-vc-meeting-events](references/lark-vc-meeting-events.md) |
+| `vc +meeting-chat` | 显式创建或复用会议 Chat | [lark-vc-meeting-chat](references/lark-vc-meeting-chat.md) |
 | `vc +meeting-message-send` | 发送会中文本消息或表情 | [lark-vc-meeting-message-send](references/lark-vc-meeting-message-send.md) |
 | `vc +meeting-screenshot` | 获取视频会议截图 | [lark-vc-meeting-screenshot](references/lark-vc-meeting-screenshot.md) |
 | `vc +meeting-countdown` | 设置、延长、提前结束或关闭会中倒计时 | [lark-vc-meeting-countdown](references/lark-vc-meeting-countdown.md) |

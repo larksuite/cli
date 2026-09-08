@@ -19,6 +19,7 @@ lark-cli vc +detail --meeting-ids <meeting_id1>,<meeting_id2> --as bot
 |------|------|
 | `meeting_id` | 会议 ID |
 | `meeting_no` | 会议 9 位号码 |
+| `chat_id` | 可选的当前 Chat 绑定；未绑定或为 0 时省略，不证明群有效或调用者具有 IM 权限。 |
 | `topic` | 会议主题 |
 | `start_time` | 开始时间 |
 | `end_time` | 结束时间 |
@@ -29,3 +30,5 @@ lark-cli vc +detail --meeting-ids <meeting_id1>,<meeting_id2> --as bot
 
 ## 相关场景
 - [查询会议及其产物](../scenes/query-meeting-and-artifacts.md)
+
+本命令只读。缺少 `chat_id` 时不自动创建、绑定或入群；只有明确需要创建或复用 Chat 时，才沿用来源身份调用 [`vc +meeting-chat`](lark-vc-meeting-chat.md)。

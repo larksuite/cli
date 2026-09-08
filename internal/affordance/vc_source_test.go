@@ -20,6 +20,7 @@ func TestVCAffordanceRoutesAgentActionReferences(t *testing.T) {
 		ref     string
 	}{
 		{command: "+meeting-invite", ref: "lark-meeting/references/lark-vc-agent-meeting-invite.md"},
+		{command: "+meeting-chat", ref: "lark-meeting/references/lark-vc-meeting-chat.md"},
 		{command: "+meeting-end", ref: "lark-meeting/references/lark-vc-agent-meeting-end.md"},
 	}
 	for _, testCase := range tests {
