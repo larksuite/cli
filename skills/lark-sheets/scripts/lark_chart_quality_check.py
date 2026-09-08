@@ -49,6 +49,7 @@ MAX_SOURCE_SAMPLE_POINTS = 50
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 JPEG_SIGNATURE = b"\xff\xd8\xff"
 MIN_NON_WHITE_RATIO = 0.001
+MIN_CONTINUOUS_AXIS_DATA_UTILIZATION = 0.25
 
 
 CellBounds = tuple[int, int, int, int]
@@ -779,6 +780,8 @@ def _static_series_profiles(snapshot: dict[str, Any]) -> list[SeriesProfile]:
                 "point_count": len(field.get("parsedValues") or []),
                 "numeric_value_count": len(values),
                 "unique_numeric_values": list(dict.fromkeys(values))[:2],
+                "numeric_min": min(values) if values else None,
+                "numeric_max": max(values) if values else None,
                 "source_sheet": "",
                 "source_range": "",
                 "series_range": "",
@@ -875,6 +878,74 @@ def _unbound_secondary_axis(chart: dict[str, Any]) -> dict[str, Any] | None:
             if isinstance(item.get("index"), (int, float))
         ],
         "suggested_fix": "bind_the_intended_combo_series_to_the_right_axis",
+    }
+
+
+def _continuous_x_axis_utilization_warning(
+    chart: dict[str, Any], profiles: list[SeriesProfile]
+) -> dict[str, Any] | None:
+    snapshot = _chart_snapshot(chart)
+    chart_type = _chart_type(snapshot)
+    if chart_type not in {"bubble", "scatter"}:
+        return None
+    profile = next(
+        (
+            item
+            for item in profiles
+            if item.get("role") == "x"
+            and item.get("sampled") is not True
+            and int(item.get("numeric_value_count", 0)) >= 2
+        ),
+        None,
+    )
+    if not profile:
+        return None
+    minimum = profile.get("numeric_min")
+    maximum = profile.get("numeric_max")
+    if not isinstance(minimum, (int, float)) or not isinstance(maximum, (int, float)):
+        return None
+    data_span = float(maximum) - float(minimum)
+    if data_span <= 0 or float(minimum) <= 0 <= float(maximum):
+        return None
+
+    plot_area = snapshot.get("plotArea")
+    axes = plot_area.get("axes") if isinstance(plot_area, dict) else None
+    x_axis = next(
+        (
+            axis
+            for axis in (axes if isinstance(axes, list) else [])
+            if isinstance(axis, dict)
+            and (
+                str(axis.get("type") or "").lower() == "x"
+                or str(axis.get("position") or axis.get("axisPosition") or "").lower()
+                == "bottom"
+            )
+        ),
+        {},
+    )
+    if x_axis.get("min") is not None or x_axis.get("max") is not None:
+        return None
+    zero_based_span = abs(float(maximum)) if float(minimum) > 0 else abs(float(minimum))
+    if zero_based_span <= 0:
+        return None
+    utilization = data_span / zero_based_span
+    if utilization >= MIN_CONTINUOUS_AXIS_DATA_UTILIZATION:
+        return None
+    padding = data_span * 0.05
+    return {
+        "chart_id": str(chart.get("chart_id") or chart.get("id") or ""),
+        "axis": "x",
+        "reason": "continuous_x_axis_may_be_underutilized",
+        "data_min": float(minimum),
+        "data_max": float(maximum),
+        "estimated_data_span_ratio": round(utilization, 4),
+        "minimum_recommended_ratio": MIN_CONTINUOUS_AXIS_DATA_UTILIZATION,
+        "suggested_bounds": {
+            "min": round(float(minimum) - padding, 6),
+            "max": round(float(maximum) + padding, 6),
+        },
+        "review_note": "Keep zero when it is a meaningful baseline; otherwise tighten the X-axis bounds and review labels.",
+        "suggested_fix": "review_x_axis_min_and_max",
     }
 
 
@@ -1057,6 +1128,12 @@ def _update_series_state(state: dict[str, Any], value: Any) -> None:
     if numeric is None:
         return
     state["numeric_value_count"] += 1
+    state["numeric_min"] = (
+        numeric if state["numeric_min"] is None else min(state["numeric_min"], numeric)
+    )
+    state["numeric_max"] = (
+        numeric if state["numeric_max"] is None else max(state["numeric_max"], numeric)
+    )
     if len(state["unique_numeric_values"]) < 2:
         state["unique_numeric_values"].add(numeric)
 
@@ -1210,6 +1287,8 @@ def _numeric_source_issues(
                 "sample_point_count": 0,
                 "numeric_value_count": 0,
                 "unique_numeric_values": set(),
+                "numeric_min": None,
+                "numeric_max": None,
             }
             for coordinate in selected
         }
@@ -1298,6 +1377,9 @@ def _numeric_source_issues(
                 ),
                 "numeric_value_count": state["numeric_value_count"],
                 "unique_numeric_values": list(state["unique_numeric_values"]),
+                "numeric_min": state["numeric_min"],
+                "numeric_max": state["numeric_max"],
+                "role": role,
                 "source_sheet": source_sheet,
                 "source_range": source_range,
                 "series_range": series_range,
@@ -1427,6 +1509,7 @@ def check_sheet(
             "degenerate_numeric_series": [],
             "constant_labeled_series": [],
             "unbound_secondary_axes": [],
+            "continuous_axis_utilization_warnings": [],
             "undersized_charts": [],
             "overwide_charts": [],
             "out_of_visible_range": [],
@@ -1530,6 +1613,7 @@ def check_sheet(
     degenerate_numeric_series: list[dict[str, Any]] = []
     constant_series_issues: list[dict[str, Any]] = []
     unbound_secondary_axes: list[dict[str, Any]] = []
+    continuous_axis_utilization_warnings: list[dict[str, Any]] = []
     undersized_charts: list[dict[str, Any]] = []
     overwide_charts: list[dict[str, Any]] = []
     for chart in charts:
@@ -1554,12 +1638,20 @@ def check_sheet(
         unbound_secondary_axis = _unbound_secondary_axis(chart)
         if unbound_secondary_axis:
             unbound_secondary_axes.append(unbound_secondary_axis)
+        axis_utilization_warning = _continuous_x_axis_utilization_warning(chart, profiles)
+        if axis_utilization_warning:
+            continuous_axis_utilization_warnings.append(axis_utilization_warning)
         undersized = _undersized_chart(chart)
         if undersized:
             undersized_charts.append(undersized)
         overwide = _overwide_chart(chart)
         if overwide:
             overwide_charts.append(overwide)
+
+    warnings.extend(
+        f"{item['chart_id']}: continuous X axis may be underutilized; review whether zero is a meaningful baseline"
+        for item in continuous_axis_utilization_warnings
+    )
 
     issue_count = (
         len(overlaps)
@@ -1589,6 +1681,7 @@ def check_sheet(
         "degenerate_numeric_series": degenerate_numeric_series,
         "constant_labeled_series": constant_series_issues,
         "unbound_secondary_axes": unbound_secondary_axes,
+        "continuous_axis_utilization_warnings": continuous_axis_utilization_warnings,
         "undersized_charts": undersized_charts,
         "overwide_charts": overwide_charts,
         "out_of_visible_range": out_of_bounds,
@@ -1622,6 +1715,11 @@ def parse_args() -> argparse.Namespace:
         choices=range(0, 4),
         default=1,
         help="Per-chart fallback retries after a batch thumbnail failure (default: 1)",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print the full report; the default stdout is compact and the full report is always saved",
     )
     return parser.parse_args()
 
@@ -1719,9 +1817,9 @@ def success_envelope(
         "ok": True,
         "engine": "lark",
         "action": ACTION,
-        "result_type": result_type,
-        "next_action": next_action,
         "data": {
+            "result_type": result_type,
+            "next_action": next_action,
             "automated_checks_passed": automated_checks_passed,
             "automated_checks_scope": "static_quality_and_thumbnail_assets_only",
             "acceptance": {
@@ -1757,6 +1855,13 @@ def success_envelope(
                     else "thumbnail_unavailable"
                     if thumbnail_assets_passed is False
                     else "not_checked"
+                ),
+                "next_action": (
+                    "read_images_then_review"
+                    if thumbnail_assets_passed is True
+                    else "retry_thumbnail_or_report"
+                    if thumbnail_assets_passed is False
+                    else "none"
                 ),
                 "sheets": thumbnail_results or [],
                 "expected_chart_ids": list(
@@ -1808,6 +1913,79 @@ def success_envelope(
             "sheets": results,
         },
         "warnings": warnings,
+    }
+
+
+def compact_report(report: dict[str, Any]) -> dict[str, Any]:
+    data = report["data"]
+    thumbnail_fetch = data["thumbnail_fetch"]
+    compact_thumbnail_sheets = [
+        {
+            key: sheet[key]
+            for key in (
+                "sheet_id",
+                "sheet_name",
+                "status",
+                "expected_chart_ids",
+                "received_chart_ids",
+                "valid_chart_ids",
+                "missing_chart_ids",
+                "unavailable_chart_ids",
+                "coverage",
+                "error_log_ids",
+                "fallback_attempts",
+            )
+            if key in sheet
+        }
+        for sheet in thumbnail_fetch.get("sheets", [])
+    ]
+    compact_sheets = [
+        {
+            key: sheet[key]
+            for key in (
+                "sheet_id",
+                "sheet_name",
+                "chart_count",
+                "chart_ids",
+                "chart_overlaps",
+                "cell_content_overlaps",
+                "numeric_source_format_issues",
+                "degenerate_numeric_series",
+                "constant_labeled_series",
+                "unbound_secondary_axes",
+                "continuous_axis_utilization_warnings",
+                "undersized_charts",
+                "overwide_charts",
+                "out_of_visible_range",
+                "unverifiable_charts",
+                "issue_count",
+                "unverifiable_count",
+                "warnings",
+            )
+            if key in sheet
+        }
+        for sheet in data.get("sheets", [])
+    ]
+    return {
+        "ok": report["ok"],
+        "engine": report["engine"],
+        "action": report["action"],
+        "data": {
+            "result_type": data["result_type"],
+            "next_action": data["next_action"],
+            "automated_checks_passed": data["automated_checks_passed"],
+            "automated_checks_scope": data["automated_checks_scope"],
+            "acceptance": data["acceptance"],
+            "thumbnail_fetch": {
+                key: value
+                for key, value in thumbnail_fetch.items()
+                if key != "sheets"
+            }
+            | {"sheets": compact_thumbnail_sheets},
+            "summary": data["summary"],
+            "sheets": compact_sheets,
+        },
+        "warnings": report["warnings"],
     }
 
 
@@ -1889,10 +2067,12 @@ def main() -> None:
                     "ok": False,
                     "engine": "lark",
                     "action": ACTION,
-                    "result_type": "execution_error",
-                    "next_action": "retry_or_report",
                     "error": str(exc),
-                    "data": {"error_log_ids": _error_log_ids(exc)},
+                    "data": {
+                        "result_type": "execution_error",
+                        "next_action": "retry_or_report",
+                        "error_log_ids": _error_log_ids(exc),
+                    },
                     "warnings": [],
                 },
                 ensure_ascii=False,
@@ -1906,7 +2086,8 @@ def main() -> None:
     report["data"]["thumbnail_fetch"]["manifest_path"] = str(manifest_path)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps(report, ensure_ascii=False, indent=2))
+    output = report if getattr(args, "verbose", False) else compact_report(report)
+    print(json.dumps(output, ensure_ascii=False, indent=2))
     exit_code = report_exit_code(report)
     if exit_code:
         raise SystemExit(exit_code)
