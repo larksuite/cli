@@ -282,3 +282,34 @@ func TestDocsCreatePreservesLogIDWithoutCommonAPIChanges(t *testing.T) {
 		})
 	}
 }
+
+func TestDocsCreateWrapsClientInitializationError(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	cfg := docsCreateTestConfig(t, "")
+	f, _, _, _ := cmdutil.TestFactory(t, cfg)
+	cause := errors.New("client initialization failed")
+	f.HttpClient = func() (*http.Client, error) { return nil, cause }
+	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), &cobra.Command{Use: "+create"}, cfg)
+	runtime.Factory = f
+	data, logID, err := createDocsDocumentWithLogID(runtime, map[string]interface{}{"content": "<p>Body</p>"})
+	problem, ok := errs.ProblemOf(err)
+	if data != nil || logID != "" || !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeUnknown || !errors.Is(err, cause) {
+		t.Fatalf("data=%v logID=%q err=%v problem=%+v", data, logID, err, problem)
+	}
+}
+
+func TestDocsCreateEmptyDataPreservesResponseLogID(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{Method: "POST", URL: "/docs_ai/v1/documents", Status: 200,
+		Headers: http.Header{"X-Tt-Logid": {"empty-response-log"}}, Body: map[string]interface{}{"code": 0},
+	})
+	err := runDocsCreateShortcut(t, f, stdout, []string{"+create", "--content", "<title>Empty response</title><p>Body</p>", "--as", "user"})
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeInvalidResponse || problem.LogID != "empty-response-log" {
+		t.Fatalf("err=%v problem=%+v", err, problem)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("empty response emitted success: %s", stdout)
+	}
+}
