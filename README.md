@@ -133,6 +133,19 @@ lark-cli auth login --recommend
 lark-cli auth status
 ```
 
+> **Windows AI hosts:** A global npm install places `lark-cli.cmd` in npm's
+> user-level prefix. Some sandboxed AI hosts do not inherit that directory in
+> `PATH`, even though `lark-cli` works in a regular PowerShell window. If the
+> verification command is not found, invoke the installed shim directly:
+>
+> ```powershell
+> $npmPrefix = npm prefix -g
+> & "$npmPrefix\lark-cli.cmd" auth status
+> ```
+>
+> Restart the AI host after changing its environment. If it still does not
+> inherit the user-level `PATH`, use the resolved shim path for later commands.
+
 ## Agent Skills
 
 | Skill                           | Description                                                                                                    |

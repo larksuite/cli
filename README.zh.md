@@ -133,6 +133,17 @@ lark-cli auth login --recommend
 lark-cli auth status
 ```
 
+> **Windows AI 环境：** npm 全局安装会将 `lark-cli.cmd` 放在 npm 的用户级目录中。
+> 部分沙箱化 AI 环境不会继承该目录的 `PATH`，因此即使 `lark-cli` 能在普通
+> PowerShell 中运行，AI 环境仍可能提示找不到命令。此时可直接调用已安装的命令：
+>
+> ```powershell
+> $npmPrefix = npm prefix -g
+> & "$npmPrefix\lark-cli.cmd" auth status
+> ```
+>
+> 修改环境变量后请重启 AI 应用。如果应用仍不继承用户级 `PATH`，后续命令可继续
+> 使用上面解析出的完整路径。
 
 ## Agent Skills
 
