@@ -43,7 +43,7 @@ lark-cli slides +media-upload --file ./pic.png --presentation $PRES_ID --dry-run
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--file` | 是 | 本地图片路径，**必须是 CWD 内的相对路径**（如 `./pic.png`）。**最大 20 MB**（slides upload API 不支持分片上传）。**仅支持 png / jpeg / gif / bmp / tiff / webp** |
+| `--file` | 是 | 本地图片路径，**必须是 CWD 内的相对路径**（如 `./pic.png`）。**最大 20 MB**（媒体上传不支持分片）。**仅支持 png / jpeg / gif / bmp / tiff / webp** |
 | `--presentation` | 是 | `xml_presentation_id`、`/slides/<token>` URL，或 `/wiki/<token>` URL |
 
 > [!IMPORTANT]
@@ -78,21 +78,16 @@ lark-cli slides +replace-slide --as user \
 1. **`<img>` 坐标避开现有元素** —— 先读现有元素 bbox 挑空白区；空间不够就先用 `block_replace` 挪动/缩小现有元素后再放图
 2. **`<img>` 的 `width:height` 对齐原图比例** —— 比例不一致会被裁剪，参见 [xml-schema-quick-ref.md](../xml/xml-schema-quick-ref.md) `<img>` 说明
 
-## 工作原理
+## 上传约束
 
-`+media-upload` 内部调用 `POST /open-apis/drive/v1/medias/upload_all`（单次上传，最大 20 MB），固定使用：
-
-- `parent_type=slide_file`（slides 后端唯一接受的取值）
-- `parent_node=<xml_presentation_id>`
-
-**不要尝试用 `slides_image`、`slide_image` 等 parent_type**——后端会返回 1061001 / 1061002 错误。这是 slides 的特殊约定。
+`+media-upload` 会处理 Slides 所需的媒体归属参数；调用者只需传入 `--file` 和 `--presentation`。单张图片最大 20 MB。
 
 ## 常见错误
 
 | 错误码 | 含义 | 解决方案 |
 |--------|------|----------|
-| 1061002 | params error / 不支持的 parent_type | 不要用原生 API 自己拼 parent_type；用 `+media-upload` 即可 |
-| 1061004 | forbidden：当前身份对该演示文稿无编辑权限 | 确认当前身份（user 或 bot）对目标 PPT 有编辑权限。bot 模式常见原因：PPT 不是该 bot 创建的——可用 `+create --as bot` 新建，或以 user 身份给 bot 授权 `lark-cli drive permission.members create --as user ...` |
+| 1061002 | params error / 不支持的 parent_type | 使用 `+media-upload`；它会采用 Slides 所需的 `parent_type` |
+| 1061004 | forbidden：当前身份对该演示文稿无编辑权限 | 确认当前身份（user 或 bot）对目标 PPT 有编辑权限。bot 模式常见原因：PPT 不是该 bot 创建的——可用 `+create --as bot` 新建，或以 user 身份执行 `lark-cli drive +member-add --token "$PRES_ID" --type slides --member-id "$BOT_OPEN_ID" --member-type openid --perm full_access --yes` 给 bot 授权 |
 | 1061044 | parent node not exist | `--presentation` 给的 token 不对，或不是 slides 类型 |
 | 403 | 权限不足 | 检查 `docs:document.media:upload` scope；wiki URL 还需要 `wiki:node:read` |
 
