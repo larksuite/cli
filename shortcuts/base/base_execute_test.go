@@ -374,7 +374,7 @@ func TestBaseAppBlockUpdateRejectsListBaseOutsideWorkspace(t *testing.T) {
 	})
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/base/v3/workspaces/ws_x/entities?entity_type=base&page_size=100",
+		URL:    "/open-apis/base/v3/workspaces/ws_x/entities?entity_type=base&page_size=30",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{"items": []interface{}{}, "has_more": false},
@@ -433,7 +433,7 @@ func TestBaseAppBlockCreateUsesWorkspaceIDAsWorkspaceToken(t *testing.T) {
 	})
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/base/v3/workspaces/ws_x/entities?entity_type=base&page_size=100",
+		URL:    "/open-apis/base/v3/workspaces/ws_x/entities?entity_type=base&page_size=30",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{

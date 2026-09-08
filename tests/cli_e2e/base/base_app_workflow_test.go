@@ -49,7 +49,7 @@ func TestBaseAppWorkflow(t *testing.T) {
 		}
 	})
 
-	workspaceList, err := runBaseAppLive(ctx, "base", "+workspace-entity-list", "--workspace-token", workspaceToken, "--page-size", "100")
+	workspaceList, err := runBaseAppLive(ctx, "base", "+workspace-entity-list", "--workspace-token", workspaceToken, "--page-size", "30")
 	require.NoError(t, err)
 	workspaceList.AssertExitCode(t, 0)
 	workspaceList.AssertStdoutStatus(t, true)
