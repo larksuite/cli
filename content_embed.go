@@ -13,14 +13,13 @@ import (
 )
 
 // embeddedContentFS bundles the agent-readable content that must ship in lockstep
-// with the binary: each skill's docs (SKILL.md + references/), whiteboard's routes/
-// and scenes/, lark-apps creative-design's root Markdown + references/, and the
-// per-domain affordance guidance (affordance/*.md). Machine-resource skill dirs
-// (assets/, scripts/, starter-components/, agents/) are excluded. It's a whitelist
-// — a new content type is omitted until added to the embed list. The embed must
-// live in this root package because go:embed cannot reach up out of a package's dir.
+// with the binary: each skill's docs (SKILL.md + references/, plus whiteboard's
+// routes/ and scenes/) and the per-domain affordance guidance (affordance/*.md).
+// Machine-resource skill dirs (assets/, scripts/) are excluded. It's a whitelist —
+// a new content type is omitted until added to the embed list. The embed must live
+// in this root package because go:embed cannot reach up out of a package's dir.
 //
-//go:embed skills/*/SKILL.md skills/*/references skills/*/routes skills/*/scenes skills/lark-apps/creative-design/*.md skills/lark-apps/creative-design/references affordance/*.md
+//go:embed skills/*/SKILL.md skills/*/references skills/*/routes skills/*/scenes affordance/*.md
 var embeddedContentFS embed.FS
 
 // init wires the embedded content into the CLI. It compiles into `go build .` but

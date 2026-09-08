@@ -210,9 +210,9 @@ lark-cli apps +init --app-id <app_id> --dir <任务目录> --as user
 #    遇非 fast-forward：先 git pull --rebase origin sprint/default 解决冲突再推，绝不 force-push
 git add . && git commit -m "feat: ..." && git push origin sprint/default
 
-# 2. 按 release-create reference 生成理由并纳入现有发布确认，再发起部署（记下 release_id）：
-#    PENDING → 立即停止轮询并交给用户审批；非 PENDING 的 publishing → 继续查询同一 ID；finished / failed → 按返回状态报告
-lark-cli apps +release-create --app-id <app_id> --as user --apply-reason "发布创意设计页面更新"
+# 2. 发起部署（记下返回的 release_id），然后轮询状态直到 finished / failed：
+#    publishing → 继续轮询；finished → 输出含可分享的 online_url，直接返回给用户；failed → 按输出中的 error_logs 报告失败原因
+lark-cli apps +release-create --app-id <app_id> --as user
 lark-cli apps +release-get --app-id <app_id> --release-id <release_id> --as user
 ```
 
@@ -221,8 +221,6 @@ lark-cli apps +release-get --app-id <app_id> --release-id <release_id> --as user
 - 所有 git 命令必须在**任务仓库根目录**下执行（每条命令先 `cd <任务目录>`，或用 `git -C <任务目录>`）——`git add .` 作用于当前 cwd，在多任务共用的上级根目录里执行会把其他任务的文件也 stage 进来。
 - 推送和部署的分支必须是 `sprint/default`：推到其他分支，`+release-create` 会失败。
 - `+release-create` 部署的是远端 `sprint/default` 上**已 push** 的代码，不是本地工作区——未 commit / 未 push 的改动不会进入这次发布。
-- 发布前读取 [`lark-apps-release-create.md`](../references/lark-apps-release-create.md)，命令中的 `--apply-reason` 必须使用现有发布确认里逐字相同的理由。
-- `+release-get` 返回 `current_node_info.current_status=PENDING` 时，立即停止本轮轮询并保留同一个 `release_id`，等待用户处理审批；用户明确说已处理后继续查询该 ID。不要自动审批或写回发布节点，也不要创建新 release。只有节点非 PENDING 时，才按普通 `publishing` 节奏继续轮询。
 - 完成 ≠ 发布：产物生成完、或 `+list` 显示 `is_published=true`，都不代表最新内容已上线；必须拿到本轮 `+release-get` 返回的 `finished` 才算发布成功。
 - 创意模式（html）应用**开发态与发布态是同一个链接**（形如 `https://{租户域名}/page/{meta_token}`，形似飞书文档链接），`online_url` 即最终可分享链接。
 - 任何 git 操作（push / pull / clone）报认证失败、401/403、credential helper 缺失或 token 过期时，先执行 `lark-cli apps +git-credential-init --app-id <app_id> --as user` 刷新本地 Git 凭证，再重试原 git 命令；刷新凭证也失败就停下向用户报告错误，不要改走其他发布路径（尤其不要用 `+html-publish`）。

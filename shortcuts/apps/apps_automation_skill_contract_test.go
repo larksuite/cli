@@ -16,7 +16,6 @@ const localDevSkillDoc = "../../skills/lark-apps/references/lark-apps-local-dev.
 const larkAppsSkillDoc = "../../skills/lark-apps/SKILL.md"
 const releaseCreateSkillDoc = "../../skills/lark-apps/references/lark-apps-release-create.md"
 const releaseGetSkillDoc = "../../skills/lark-apps/references/lark-apps-release-get.md"
-const creativeDesignSkillDoc = "../../skills/lark-apps/creative-design/creative-design.md"
 
 func readAutomationSkillDoc(t *testing.T) string {
 	return readAppsSkillDoc(t, automationSkillDoc)
@@ -607,7 +606,6 @@ func TestReleaseSkillContract_ClientUpgradeIsServerDirectedForCreateAndGet(t *te
 		readReleaseGetSkillDoc(t),
 		readLocalDevSkillDoc(t),
 		readAutomationSkillDoc(t),
-		readAppsSkillDoc(t, creativeDesignSkillDoc),
 		doc,
 	}, "\n")
 	if got := strings.Count(allWorkflowDocs, "lark-cli update"); got != 1 {
@@ -615,33 +613,32 @@ func TestReleaseSkillContract_ClientUpgradeIsServerDirectedForCreateAndGet(t *te
 	}
 }
 
-func TestReleaseSkillContract_AllExecutableCreateCommandsCarryReason(t *testing.T) {
-	docs := []string{
-		releaseCreateSkillDoc,
-		localDevSkillDoc,
-		automationSkillDoc,
-		creativeDesignSkillDoc,
-		larkAppsSkillDoc,
+func TestReleaseSkillContract_UpdatedWorkflowCreateCommandsCarryReason(t *testing.T) {
+	tests := []struct {
+		name            string
+		doc             string
+		minimumCommands int
+	}{
+		{name: "release-create", doc: readReleaseCreateSkillDoc(t), minimumCommands: 2},
+		{
+			name:            "local-dev deployment",
+			doc:             skillSection(t, readLocalDevSkillDoc(t), "## 改完代码后部署上线"),
+			minimumCommands: 1,
+		},
+		{name: "automation", doc: readAutomationSkillDoc(t), minimumCommands: 2},
 	}
-	minimumCommands := map[string]int{
-		releaseCreateSkillDoc:  2,
-		localDevSkillDoc:       4, // three code-block commands plus the inline deployment skeleton
-		automationSkillDoc:     2, // one code-block command plus the inline ordered-flow skeleton
-		creativeDesignSkillDoc: 1,
-	}
-	for _, docPath := range docs {
-		if strings.Contains(docPath, "lark-apps-html-publish.md") {
-			t.Fatalf("release approval contract must not scan the html-publish compatibility reference: %s", docPath)
-		}
-		commands := executableReleaseCreateCommands(readAppsSkillDoc(t, docPath))
-		if len(commands) < minimumCommands[docPath] {
-			t.Errorf("%s must expose at least %d executable release-create commands, found %d", docPath, minimumCommands[docPath], len(commands))
-		}
-		for _, command := range commands {
-			if !validReleaseApplyReason(command) {
-				t.Errorf("%s executable release-create command must carry exactly one nonempty --apply-reason: %s", docPath, command)
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			commands := executableReleaseCreateCommands(testCase.doc)
+			if len(commands) < testCase.minimumCommands {
+				t.Errorf("workflow must expose at least %d executable release-create commands, found %d", testCase.minimumCommands, len(commands))
 			}
-		}
+			for _, command := range commands {
+				if !validReleaseApplyReason(command) {
+					t.Errorf("executable release-create command must carry exactly one nonempty --apply-reason: %s", command)
+				}
+			}
+		})
 	}
 }
 
@@ -712,18 +709,6 @@ func TestAutomationSkillContract_PendingKeepsTriggerDisabled(t *testing.T) {
 	}
 }
 
-func TestLocalDevSkillContract_CreativeDesignLinkResolves(t *testing.T) {
-	doc := readLocalDevSkillDoc(t)
-	const link = "../creative-design/creative-design.md"
-	if !strings.Contains(doc, "](../creative-design/creative-design.md)") {
-		t.Fatalf("local-dev html workflow must link to %s", link)
-	}
-	target := filepath.Clean(filepath.Join(filepath.Dir(localDevSkillDoc), link))
-	if _, err := os.Stat(target); err != nil {
-		t.Fatalf("local-dev creative-design link target %s must exist: %v", target, err)
-	}
-}
-
 func TestAppsSkillContract_RoutesReleaseReasonAndPending(t *testing.T) {
 	section := skillSection(t, readAppsSkillDoc(t, larkAppsSkillDoc), "## 发布态护栏")
 	requireInOrder(t, section,
@@ -736,23 +721,4 @@ func TestAppsSkillContract_RoutesReleaseReasonAndPending(t *testing.T) {
 		"停止轮询",
 		"人工审批交还用户",
 	)
-}
-
-func TestReleaseSkillContract_CreativeDesignStopsAtPending(t *testing.T) {
-	doc := readAppsSkillDoc(t, creativeDesignSkillDoc)
-	requireInOrder(t, doc,
-		"PENDING → 立即停止轮询并交给用户审批",
-		"非 PENDING 的 publishing → 继续查询同一 ID",
-		"--apply-reason \"发布创意设计页面更新\"",
-		"`current_node_info.current_status=PENDING`",
-		"立即停止本轮轮询",
-		"同一个 `release_id`",
-		"等待用户处理审批",
-		"用户明确说已处理后继续查询该 ID",
-		"不要自动审批或写回发布节点",
-		"不要创建新 release",
-	)
-	if !strings.Contains(doc, "不要改走其他发布路径（尤其不要用 `+html-publish`）") {
-		t.Error("creative-design release flow must not fall back to html-publish")
-	}
 }

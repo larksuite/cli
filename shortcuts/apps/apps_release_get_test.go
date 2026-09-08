@@ -381,7 +381,7 @@ func TestProjectReleaseDetailAliases(t *testing.T) {
 		}},
 		"currentNodeInfo": map[string]interface{}{
 			"current_node": "deploy", "current_status": "PENDING",
-			"result":       map[string]interface{}{"approval_url": "https://approval.example.com/task/1"},
+			"result":       map[string]interface{}{"approval_url": "https://example.feishu.cn/approval/task/1"},
 			"submitted_by": map[string]interface{}{"username": "张三", "email": "zhangsan@example.com", "openID": "ou_xxx"},
 			"created_at":   json.Number("1788264060"),
 		},
@@ -398,7 +398,7 @@ func TestProjectReleaseDetailAliases(t *testing.T) {
 		}},
 		"currentNodeInfo": map[string]interface{}{
 			"currentNode": "deploy", "currentStatus": "PENDING",
-			"result":      map[string]interface{}{"approvalURL": "https://approval.example.com/task/1"},
+			"result":      map[string]interface{}{"approvalURL": "https://example.feishu.cn/approval/task/1"},
 			"submittedBy": map[string]interface{}{"username": "张三", "email": "zhangsan@example.com", "openID": "ou_xxx"},
 			"createdAt":   json.Number("1788264060"),
 		},
@@ -415,13 +415,13 @@ func TestProjectReleaseDetailAliases(t *testing.T) {
 		}},
 		"current_node_info": map[string]interface{}{
 			"current_node": "deploy", "current_status": "PENDING",
-			"result":       map[string]interface{}{"approval_url": "https://approval.example.com/task/1"},
+			"result":       map[string]interface{}{"approval_url": "https://example.feishu.cn/approval/task/1"},
 			"submitted_by": map[string]interface{}{"username": "张三", "email": "zhangsan@example.com", "open_id": "ou_xxx"},
 			"created_at":   json.Number("1788264060"),
 		},
 	}
 
-	var idlData map[string]interface{}
+	idlData := releaseTestJSONMap(t, projectReleaseDetail(cloneReleaseTestValue(t, idlCurrent)).Data)
 	for _, tc := range []struct {
 		name string
 		data map[string]interface{}
@@ -435,9 +435,7 @@ func TestProjectReleaseDetailAliases(t *testing.T) {
 			projection := projectReleaseDetail(tc.data)
 			got := releaseTestJSONMap(t, projection.Data)
 
-			if tc.name == "current IDL mixed aliases" {
-				idlData = got
-			} else if !reflect.DeepEqual(got, idlData) {
+			if !reflect.DeepEqual(got, idlData) {
 				t.Fatalf("compatibility projection differs from current IDL:\ncompatibility=%#v\nIDL=%#v", got, idlData)
 			}
 			if got["release_id"] != "9001" || got["future_field"] != "preserved" {
@@ -454,7 +452,7 @@ func TestProjectReleaseDetailAliases(t *testing.T) {
 			}
 			if projection.CurrentNode == nil || projection.CurrentNode.CurrentNode != "deploy" ||
 				projection.CurrentNode.CurrentStatus != "PENDING" || projection.CurrentNode.Result == nil ||
-				projection.CurrentNode.Result.ApprovalURL != "https://approval.example.com/task/1" ||
+				projection.CurrentNode.Result.ApprovalURL != "https://example.feishu.cn/approval/task/1" ||
 				projection.CurrentNode.SubmittedBy == nil || projection.CurrentNode.SubmittedBy.OpenID != "ou_xxx" ||
 				projection.CurrentNode.CreatedAt != json.Number("1788264060") {
 				t.Errorf("typed current node = %#v", projection.CurrentNode)
@@ -619,7 +617,7 @@ func TestAppsReleaseGetPrettyPendingApprovalContext(t *testing.T) {
 			},
 			"currentNodeInfo": map[string]interface{}{
 				"currentNode": "deploy", "currentStatus": "PENDING",
-				"result":      map[string]interface{}{"approvalURL": "https://approval.example.com/task/1"},
+				"result":      map[string]interface{}{"approvalURL": "https://example.feishu.cn/approval/task/1"},
 				"submittedBy": map[string]interface{}{"username": "张三", "email": "zhangsan@example.com", "openID": "ou_xxx"},
 				"createdAt":   json.Number("1788264060"),
 			},
@@ -636,7 +634,7 @@ func TestAppsReleaseGetPrettyPendingApprovalContext(t *testing.T) {
 		"commit_id: abc123",
 		"current_node: deploy",
 		"current_status: PENDING",
-		"approval_url: https://approval.example.com/task/1",
+		"approval_url: https://example.feishu.cn/approval/task/1",
 		"submitted_by_username: 张三",
 		"submitted_by_email: zhangsan@example.com",
 		"submitted_by_open_id: ou_xxx",
@@ -680,7 +678,7 @@ func TestAppsReleaseGetExecuteFormatsUseNormalizedData(t *testing.T) {
 					},
 					"currentNodeInfo": map[string]interface{}{
 						"currentNode": "review", "currentStatus": "PENDING",
-						"result": map[string]interface{}{"approvalURL": "https://approval.example.com/task/2"},
+						"result": map[string]interface{}{"approvalURL": "https://example.feishu.cn/approval/task/2"},
 					},
 				}},
 			})
@@ -724,7 +722,7 @@ func TestAppsReleaseGetExecuteFormatsUseNormalizedData(t *testing.T) {
 					keys[record[0]] = record[1]
 				}
 				if keys["release_id"] != "release_formats" || keys["unknown"] != "kept" ||
-					keys["current_node_info.result.approval_url"] != "https://approval.example.com/task/2" {
+					keys["current_node_info.result.approval_url"] != "https://example.feishu.cn/approval/task/2" {
 					t.Errorf("CSV normalized values = %#v", keys)
 				}
 			case "table":

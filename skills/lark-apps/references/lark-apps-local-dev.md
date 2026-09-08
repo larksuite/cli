@@ -66,7 +66,7 @@ lark-cli apps +release-get --as user --app-id app_xxx --release-id <上一步返
 
 #### 首次开发（无 app，无代码）
 
-`+create(html)` → `+init` → 加载 [`creative-design`](../creative-design/creative-design.md) skill 在 repo 根目录产出文件 → `git add .` + `git commit` → `git push origin sprint/default` → `+release-create`（携带已确认的同一 `--apply-reason`）→ `+release-get`。
+`+create(html)` → `+init` → 加载 [`creative-design`](../creative-design/creative-design.md) skill 在 repo 根目录产出文件 → `git add .` + `git commit` → `git push origin sprint/default` → `+release-create` → `+release-get`。
 
 ```bash
 lark-cli apps +create --name "活动页" --app-type html --as user
@@ -80,16 +80,16 @@ cd ./my-page
 git add .
 git commit -m "feat: ..."
 git push origin sprint/default
-lark-cli apps +release-create --app-id app_xxx --apply-reason "发布活动页视觉与交互更新"
+lark-cli apps +release-create --app-id app_xxx
 ```
 
 #### 已有 app，二次开发/迭代
 
-`+init`（拉取远程代码）→ 加载 creative-design skill 在 repo 根目录迭代 → `git add .` + `git commit` → `git push origin sprint/default` → `+release-create`（携带已确认的同一 `--apply-reason`）→ `+release-get`。
+`+init`（拉取远程代码）→ 加载 creative-design skill 在 repo 根目录迭代 → `git add .` + `git commit` → `git push origin sprint/default` → `+release-create` → `+release-get`。
 
 #### creative-design 已提前生成文件，需要 init 后迁入
 
-`+create(html)` → `+init` → 先 `ls` 查看 repo 根目录模板结构（创意模式模板无 `src/` 目录，文件直接放根目录）→ 将已生成的所有产出文件（HTML、JSX 组件、starter components 等）拷贝到 repo 根目录 → `git add .` + `git commit` → `git push origin sprint/default` → `+release-create`（携带已确认的同一 `--apply-reason`）→ `+release-get`。
+`+create(html)` → `+init` → 先 `ls` 查看 repo 根目录模板结构（创意模式模板无 `src/` 目录，文件直接放根目录）→ 将已生成的所有产出文件（HTML、JSX 组件、starter components 等）拷贝到 repo 根目录 → `git add .` + `git commit` → `git push origin sprint/default` → `+release-create` → `+release-get`。
 
 `+init` 是推荐便捷入口；想逐步手动控制时，先 `+git-credential-init` 拿 `repository_url`，再用原生 `git clone` / `git checkout sprint/default`。
 
