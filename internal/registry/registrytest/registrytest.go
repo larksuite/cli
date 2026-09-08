@@ -22,7 +22,7 @@ import (
 )
 
 // fixtureMetaJSON is a trimmed snapshot of the generated meta_data.json
-// holding only the calendar, im and task services that registry-backed tests
+// holding only the calendar, im, mail and task services that registry-backed tests
 // assert against. Its version is pinned to "0.0.1": newer than the empty
 // embedded stub ("0.0.0") so it wins on a clean checkout, older than any real
 // generated catalog ("1.0.0"+) so a `make fetch_meta` build keeps testing the

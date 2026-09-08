@@ -211,6 +211,28 @@ func TestRegisterServiceCommands_GeneratesFlagsNoPanic(t *testing.T) {
 	if create.Flags().Lookup("chat-id") == nil {
 		t.Error("expected generated --chat-id flag on im chat.members create")
 	}
+
+	getAutoReply, _, err := root.Find([]string{"mail", "user_mailbox.settings", "get_auto_reply"})
+	if err != nil {
+		t.Fatalf("mail user_mailbox.settings get_auto_reply not registered: %v", err)
+	}
+	if getAutoReply.Flags().Lookup("user-mailbox-id") == nil {
+		t.Error("expected generated --user-mailbox-id flag on get_auto_reply")
+	}
+	if getAutoReply.Flags().Lookup("data") != nil {
+		t.Error("GET get_auto_reply must not expose --data")
+	}
+
+	updateAutoReply, _, err := root.Find([]string{"mail", "user_mailbox.settings", "update_auto_reply"})
+	if err != nil {
+		t.Fatalf("mail user_mailbox.settings update_auto_reply not registered: %v", err)
+	}
+	if updateAutoReply.Flags().Lookup("user-mailbox-id") == nil {
+		t.Error("expected generated --user-mailbox-id flag on update_auto_reply")
+	}
+	if updateAutoReply.Flags().Lookup("data") == nil {
+		t.Error("PUT update_auto_reply must expose --data")
+	}
 }
 
 // Locks the boolean and array branches of bindParamFlag end to end (string and

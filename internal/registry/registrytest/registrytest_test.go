@@ -64,8 +64,8 @@ func TestFixtureContract(t *testing.T) {
 		gotNames = append(gotNames, service.Name)
 	}
 	sort.Strings(gotNames)
-	if !slices.Equal(gotNames, []string{"calendar", "im", "task"}) {
-		t.Fatalf("fixture services = %v, want [calendar im task]", gotNames)
+	if !slices.Equal(gotNames, []string{"calendar", "im", "mail", "task"}) {
+		t.Fatalf("fixture services = %v, want [calendar im mail task]", gotNames)
 	}
 
 	calendarCreate := fixtureMethod(t, reg, "calendar", "events", "create")
@@ -94,6 +94,29 @@ func TestFixtureContract(t *testing.T) {
 	for _, scope := range []string{"im:chat", "im:chat.members:write_only"} {
 		if !slices.Contains(imCreate.Scopes, scope) {
 			t.Fatalf("im create scopes = %v, want %s", imCreate.Scopes, scope)
+		}
+	}
+
+	getAutoReply := fixtureMethod(t, reg, "mail", "user_mailbox.settings", "get_auto_reply")
+	assertMethodContract(t, getAutoReply, "user_mailboxes/{user_mailbox_id}/settings/auto_reply", http.MethodGet)
+	if !slices.Equal(getAutoReply.RequiredScopes, []string{"mail:user_mailbox:readonly"}) {
+		t.Fatalf("get_auto_reply required scopes = %v, want mail:user_mailbox:readonly", getAutoReply.RequiredScopes)
+	}
+	if getAutoReply.Risk != "read" {
+		t.Fatalf("get_auto_reply risk = %q, want read", getAutoReply.Risk)
+	}
+
+	updateAutoReply := fixtureMethod(t, reg, "mail", "user_mailbox.settings", "update_auto_reply")
+	assertMethodContract(t, updateAutoReply, "user_mailboxes/{user_mailbox_id}/settings/auto_reply", http.MethodPut)
+	if !slices.Equal(updateAutoReply.RequiredScopes, []string{"mail:user_mailbox"}) {
+		t.Fatalf("update_auto_reply required scopes = %v, want mail:user_mailbox", updateAutoReply.RequiredScopes)
+	}
+	if updateAutoReply.Risk != "write" {
+		t.Fatalf("update_auto_reply risk = %q, want write", updateAutoReply.Risk)
+	}
+	for _, field := range []string{"enabled", "content_html", "content_summary", "start_time", "end_time", "time_zone", "only_send_to_tenant"} {
+		if _, ok := updateAutoReply.RequestBody[field]; !ok {
+			t.Errorf("update_auto_reply request body missing %q", field)
 		}
 	}
 }

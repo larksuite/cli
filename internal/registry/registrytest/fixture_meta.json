@@ -67,6 +67,57 @@
       "title": "Task API",
       "servicePath": "/open-apis/task/v2",
       "resources": {}
+    },
+    {
+      "name": "mail",
+      "version": "v1",
+      "title": "Mail API",
+      "servicePath": "/open-apis/mail/v1",
+      "resources": {
+        "user_mailbox.settings": {
+          "methods": {
+            "get_auto_reply": {
+              "path": "user_mailboxes/{user_mailbox_id}/settings/auto_reply",
+              "httpMethod": "GET",
+              "risk": "read",
+              "scopes": ["mail:user_mailbox:readonly"],
+              "requiredScopes": ["mail:user_mailbox:readonly"],
+              "accessTokens": ["user"],
+              "parameters": {
+                "user_mailbox_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true
+                }
+              }
+            },
+            "update_auto_reply": {
+              "path": "user_mailboxes/{user_mailbox_id}/settings/auto_reply",
+              "httpMethod": "PUT",
+              "risk": "write",
+              "scopes": ["mail:user_mailbox"],
+              "requiredScopes": ["mail:user_mailbox"],
+              "accessTokens": ["user"],
+              "parameters": {
+                "user_mailbox_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true
+                }
+              },
+              "requestBody": {
+                "enabled": {"type": "boolean"},
+                "content_html": {"type": "string"},
+                "content_summary": {"type": "string"},
+                "start_time": {"type": "string"},
+                "end_time": {"type": "string"},
+                "time_zone": {"type": "string"},
+                "only_send_to_tenant": {"type": "boolean"}
+              }
+            }
+          }
+        }
+      }
     }
   ]
 }
