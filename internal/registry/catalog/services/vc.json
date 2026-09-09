@@ -31,7 +31,7 @@
               "type": "boolean",
               "location": "query",
               "required": false,
-              "description": "Indicates whether individual statistics is required in the meeting (only for tenant_access_token)",
+              "description": "Whether to include in-meeting capability usage statistics (only for tenant_access_token)",
               "example": false
             },
             "user_id_type": {
@@ -68,11 +68,11 @@
               "options": [
                 {
                   "value": 0,
-                  "description": "only get meeting"
+                  "description": "only get meeting info (default)"
                 },
                 {
                   "value": 1,
-                  "description": "only get related artifacts"
+                  "description": "only get meeting artifacts (minutes, transcript)"
                 }
               ],
               "enumName": "get_meeting_by_id_query_mode",

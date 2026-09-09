@@ -27,7 +27,7 @@
             },
             "permissions": {
               "type": "string",
-              "description": "权限",
+              "description": "日历公开范围。;;默认值：show_only_free_busy",
               "required": false,
               "example": "private",
               "options": [
@@ -2550,7 +2550,7 @@
                   "options": [
                     {
                       "value": "vc",
-                      "description": "Feishu video conferencing. When this type is selected, other fields in vchat are invalid."
+                      "description": "Feishu video conferencing"
                     },
                     {
                       "value": "third_party",
@@ -2585,7 +2585,7 @@
                 },
                 "icon_type": {
                   "type": "string",
-                  "description": "The icon type for third-party video conferencing.; Default value: empty, indicating that the field will not be updated",
+                  "description": "The icon type for third-party video conferencing.; Default value: default",
                   "required": false,
                   "example": "vc",
                   "options": [
@@ -2611,13 +2611,13 @@
                 },
                 "description": {
                   "type": "string",
-                  "description": "Third-party video conferencing copywriting.; Default value: empty, indicating that the field will not be updated",
+                  "description": "Third-party video conferencing text.; Default value: empty, in which case the default text is shown",
                   "required": false,
                   "example": "Initiate a video conference"
                 },
                 "meeting_url": {
                   "type": "string",
-                  "description": "Video conferencing URL.; Default value: empty, indicating that the field will not be updated",
+                  "description": "Video conferencing URL.",
                   "required": false,
                   "example": "https://example.com"
                 },
@@ -2697,13 +2697,13 @@
                     },
                     "auto_record": {
                       "type": "boolean",
-                      "description": "设置自动录制",
+                      "description": "是否开启自动录制。;;可选值有：;- true：开启;- false（默认值）：不开启",
                       "required": false,
                       "example": false
                     },
                     "open_lobby": {
                       "type": "boolean",
-                      "description": "开启等候室",
+                      "description": "是否开启等候室。;;可选值有：;- true（默认值）：开启;- false：不开启",
                       "required": false,
                       "example": true
                     },
@@ -2781,7 +2781,7 @@
             },
             "attendee_ability": {
               "type": "string",
-              "description": "参与人权限",
+              "description": "参与人权限。;;默认值：none",
               "required": false,
               "options": [
                 {
@@ -5372,7 +5372,7 @@
                   "options": [
                     {
                       "value": "vc",
-                      "description": "Feishu video conferencing. When this type is selected, other fields in vchat are invalid."
+                      "description": "Feishu video conferencing"
                     },
                     {
                       "value": "third_party",

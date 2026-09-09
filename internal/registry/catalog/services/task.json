@@ -4694,14 +4694,14 @@
               "type": "string",
               "location": "query",
               "required": false,
-              "description": "Task creation start timestamp (ms), inclusive. Default is the timestamp of the first created task int the tasklist",
+              "description": "Task creation start timestamp (ms), inclusive. Default is the timestamp of the first created task in the tasklist",
               "example": "1675742789470"
             },
             "created_to": {
               "type": "string",
               "location": "query",
               "required": false,
-              "description": "Task end start timestamp (ms), inclusive. Default is the timestamp of the last created task int the tasklist",
+              "description": "Task creation end timestamp (ms), inclusive. Default is the timestamp of the last created task in the tasklist",
               "example": "1675742789470"
             },
             "user_id_type": {

@@ -18,9 +18,9 @@
     {
       "name": "calendar",
       "file": "services/calendar.json",
-      "revision": 15,
-      "size": 291263,
-      "sha256": "c9936854857db82dfa9c5757f64b437f81fd7e1c162288aa80dd817d18e32778"
+      "revision": 16,
+      "size": 291231,
+      "sha256": "4f85a24ce7ba665a9f343f89f08263e91d6d3db1ed8ce9bb54a55486d6ae992a"
     },
     {
       "name": "contact",
@@ -88,23 +88,23 @@
     {
       "name": "task",
       "file": "services/task.json",
-      "revision": 14,
-      "size": 455001,
-      "sha256": "4622fcac9af3573cc44ab236add2bfd8a199d96ae12a9dbd874efc5bfda32728"
+      "revision": 15,
+      "size": 455002,
+      "sha256": "8a67a1c1819e51c9c335ebcf0c8399563b3f1465f96093bb0294e559744ae28e"
     },
     {
       "name": "vc",
       "file": "services/vc.json",
-      "revision": 10,
-      "size": 17475,
-      "sha256": "98f729a49bd01bdef69be6435f73876193cf67118e5c70e427ca03cc0f7c5c27"
+      "revision": 11,
+      "size": 17503,
+      "sha256": "a66869ea4c85f85bf8943299416cead1e4c1a279efe4e15bbfb440b1f619a02b"
     },
     {
       "name": "wiki",
       "file": "services/wiki.json",
-      "revision": 13,
-      "size": 73046,
-      "sha256": "a181f7a1ea6bd2c4f074f77e9ea3e8d34405e60a5dbcb65e6d3b32993d85f6d5"
+      "revision": 14,
+      "size": 72938,
+      "sha256": "539fdaade66ec615a2efd52beb3dfa77c850234a191cb02b12c51dc0651b6b14"
     }
   ]
 }
