@@ -149,9 +149,9 @@ type docsScriptPresentationVisualPlan struct {
 }
 
 type docsScriptPresentationBlockRequirement struct {
-	Type     string `json:"type"`
-	MinCount int    `json:"min_count"`
-	Purpose  string `json:"purpose"`
+	Type     *string `json:"type"`
+	MinCount *int    `json:"min_count"`
+	Purpose  string  `json:"purpose"`
 }
 
 type docsScriptDraftResult struct {
@@ -553,9 +553,9 @@ func parseDocsScriptPresentationDecision(raw string) (docsScriptPresentationDeci
 			WithParam("--presentation-decision").
 			WithCause(err)
 	}
-	if _, ok := rawFields["visual_plan"]; !ok {
+	if rawFields == nil {
 		return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"--presentation-decision visual_plan is required").WithParam("--presentation-decision")
+			"--presentation-decision must be a JSON object; use {} when no constraints are set").WithParam("--presentation-decision")
 	}
 	if rawWordCountValue, hasWordCount := rawFields["word_count"]; hasWordCount {
 		if strings.TrimSpace(string(rawWordCountValue)) == "null" {
@@ -602,42 +602,32 @@ func parseDocsScriptPresentationDecision(raw string) (docsScriptPresentationDeci
 				WithParam("--presentation-decision")
 		}
 	}
-	var rawVisualPlan map[string]json.RawMessage
-	if err := json.Unmarshal(rawFields["visual_plan"], &rawVisualPlan); err != nil {
-		return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"--presentation-decision visual_plan must be an object containing blocks").
-			WithParam("--presentation-decision").
-			WithCause(err)
-	}
-	if _, ok := rawVisualPlan["blocks"]; !ok {
-		return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"--presentation-decision visual_plan.blocks is required").WithParam("--presentation-decision")
-	}
-	if decision.VisualPlan.Blocks == nil {
-		return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"--presentation-decision visual_plan.blocks must be an array; use [] when no presentation blocks are planned").
-			WithParam("--presentation-decision")
-	}
 	seenBlockTypes := make(map[string]struct{}, len(decision.VisualPlan.Blocks))
 	for i := range decision.VisualPlan.Blocks {
 		requirement := &decision.VisualPlan.Blocks[i]
-		requirement.Type = strings.TrimSpace(requirement.Type)
-		if requirement.Type != docsScriptListBlockType && !docxparse.IsPresentationBlockType(requirement.Type) {
-			return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"--presentation-decision visual_plan.blocks[%d].type %q is not a presentation block type", i, requirement.Type).
-				WithParam("--presentation-decision")
+		if requirement.Type != nil {
+			blockType := strings.TrimSpace(*requirement.Type)
+			if blockType != docsScriptListBlockType && !docxparse.IsPresentationBlockType(blockType) {
+				return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
+					"--presentation-decision visual_plan.blocks[%d].type %q is not a presentation block type", i, blockType).
+					WithParam("--presentation-decision")
+			}
+			requirement.Type = &blockType
 		}
-		if _, exists := seenBlockTypes[requirement.Type]; exists {
-			return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"--presentation-decision visual_plan.blocks contains duplicate type %q; combine it into one minimum", requirement.Type).
-				WithParam("--presentation-decision")
-		}
-		seenBlockTypes[requirement.Type] = struct{}{}
-		if requirement.MinCount <= 0 {
+		if requirement.MinCount != nil && *requirement.MinCount <= 0 {
 			return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"--presentation-decision visual_plan.blocks[%d].min_count must be positive", i).
 				WithParam("--presentation-decision")
 		}
+		if requirement.Type == nil || requirement.MinCount == nil {
+			continue
+		}
+		if _, exists := seenBlockTypes[*requirement.Type]; exists {
+			return docsScriptPresentationDecision{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--presentation-decision visual_plan.blocks contains duplicate type %q; combine it into one minimum", *requirement.Type).
+				WithParam("--presentation-decision")
+		}
+		seenBlockTypes[*requirement.Type] = struct{}{}
 	}
 	return decision, nil
 }
@@ -693,8 +683,12 @@ func docsScriptPresentationDiagnostics(profile docsScriptPublicProfile, decision
 		}
 	}
 	for _, required := range decision.VisualPlan.Blocks {
-		actual := docsScriptBlockCount(profile.Blocks, required.Type)
-		if actual < required.MinCount {
+		if required.Type == nil || required.MinCount == nil {
+			continue
+		}
+		blockType, minCount := *required.Type, *required.MinCount
+		actual := docsScriptBlockCount(profile.Blocks, blockType)
+		if actual < minCount {
 			purpose := ""
 			if text := strings.TrimSpace(required.Purpose); text != "" {
 				purpose = " for " + text
@@ -703,12 +697,12 @@ func docsScriptPresentationDiagnostics(profile docsScriptPublicProfile, decision
 				Severity: docsScriptDiagnosticError,
 				Code:     docsScriptCodeRequiredBlock,
 				Expected: &docsScriptDiagnosticExpectation{
-					Type:     required.Type,
-					MinCount: required.MinCount,
+					Type:     blockType,
+					MinCount: minCount,
 				},
 				Actual:    &actual,
-				Msg:       fmt.Sprintf("The draft is missing required %s block(s)%s.", required.Type, purpose),
-				Suggested: fmt.Sprintf("Add at least %d %s block(s)%s.", required.MinCount, required.Type, purpose),
+				Msg:       fmt.Sprintf("The draft is missing required %s block(s)%s.", blockType, purpose),
+				Suggested: fmt.Sprintf("Add at least %d %s block(s)%s.", minCount, blockType, purpose),
 			})
 		}
 	}

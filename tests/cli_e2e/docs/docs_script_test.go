@@ -651,3 +651,38 @@ func docsScriptE2EEnv(t *testing.T) map[string]string {
 		"LARKSUITE_CLI_CONFIG_DIR": t.TempDir(),
 	}
 }
+
+func TestDocsScriptOptionalBlockConstraints(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+	for _, test := range []struct {
+		name       string
+		decision   string
+		wantStatus string
+		wantExit   int
+	}{
+		{name: "empty decision", decision: `{}`, wantStatus: "passed"},
+		{name: "missing blocks", decision: `{"visual_plan":{}}`, wantStatus: "passed"},
+		{name: "incomplete entries", decision: `{"visual_plan":{"blocks":[{}, {"type":"whiteboard"}, {"min_count":1}]}}`, wantStatus: "passed"},
+		{name: "invalid provided value", decision: `{"visual_plan":{"blocks":[{"min_count":0}]}}`, wantExit: 2},
+		{name: "complete requirement", decision: `{"visual_plan":{"blocks":[{"type":"table","min_count":1}]}}`, wantStatus: "failed"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := clie2e.RunCmd(ctx, clie2e.Request{
+				Args:      []string{"docs", "+script", "--command", "parse", "--content", `<p>plain text</p>`, "--presentation-decision", test.decision},
+				DefaultAs: "bot", WorkDir: t.TempDir(), Env: docsScriptE2EEnv(t),
+			})
+			require.NoError(t, err)
+			result.AssertExitCode(t, test.wantExit)
+			if test.wantExit != 0 {
+				require.Equal(t, "--presentation-decision", gjson.Get(result.Stderr, "error.param").String())
+				return
+			}
+			result.AssertStdoutStatus(t, true)
+			require.Equal(t, test.wantStatus, gjson.Get(result.Stdout, "data.assessment.status").String())
+			if test.wantStatus == "failed" {
+				require.Equal(t, "required_block_missing", gjson.Get(result.Stdout, "data.diagnostics.0.code").String())
+			}
+		})
+	}
+}

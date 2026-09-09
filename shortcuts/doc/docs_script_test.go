@@ -687,7 +687,8 @@ func TestDocsScriptPresentationDecisionListCountsULAndOL(t *testing.T) {
 		t.Fatalf("diagnostics = %#v, want ul + ol to satisfy two list blocks", diagnostics)
 	}
 
-	decision.VisualPlan.Blocks[0].MinCount = 3
+	minimum := 3
+	decision.VisualPlan.Blocks[0].MinCount = &minimum
 	diagnostics := docsScriptPresentationDiagnostics(profile, decision)
 	if len(diagnostics) != 1 || diagnostics[0].Code != docsScriptCodeRequiredBlock ||
 		diagnostics[0].Expected == nil || diagnostics[0].Expected.Type != docsScriptListBlockType ||
@@ -764,7 +765,6 @@ func TestDocsScriptRejectsInvalidPresentationDecision(t *testing.T) {
 		{name: "non-positive word count", decision: `{"audience":"reader","reader_task":"understand","genre_contract":"none","adapter":null,"presentation_mode":"normal","word_count":{"min":0,"max":10},"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
 		{name: "reversed word count range", decision: `{"audience":"reader","reader_task":"understand","genre_contract":"none","adapter":null,"presentation_mode":"normal","word_count":{"min":20,"max":10},"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
 		{name: "removed hard_rules field", decision: `{"audience":"reader","reader_task":"understand","genre_contract":"none","adapter":null,"presentation_mode":"normal","hard_rules":[],"visual_plan":{"reason":"plain is enough","blocks":[]}}`},
-		{name: "null block plan", decision: validPrefix + `"visual_plan":{"reason":"visual","blocks":null}}`},
 		{name: "unknown block type", decision: validPrefix + `"visual_plan":{"reason":"visual","blocks":[{"type":"future-widget","min_count":1,"purpose":"show the result"}]}}`},
 		{name: "ordinary text block is not presentation block", decision: validPrefix + `"visual_plan":{"reason":"visual","blocks":[{"type":"p","min_count":2,"purpose":"fill the quota"}]}}`},
 		{name: "non-positive block minimum", decision: validPrefix + `"visual_plan":{"reason":"visual","blocks":[{"type":"img","min_count":0,"purpose":"show the result"}]}}`},
@@ -869,7 +869,7 @@ func TestDocsScriptInitDraftPreservesMinimalDecision(t *testing.T) {
 	workDir := t.TempDir()
 	withDocsWorkingDir(t, workDir)
 	f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-script-minimal-decision"))
-	raw := `{"visual_plan":{"blocks":[]}}`
+	raw := `{}`
 	if err := mountAndRunDocs(t, DocsScript, []string{"+script", "--command", docsScriptInitDraft, "--presentation-decision", raw}, f, stdout); err != nil {
 		t.Fatal(err)
 	}
@@ -882,6 +882,76 @@ func TestDocsScriptInitDraftPreservesMinimalDecision(t *testing.T) {
 	saved, err := os.ReadFile(filepath.Join(result.Data.CWD, result.Data.Workspace, docsScriptDecisionFile))
 	if err != nil || string(saved) != raw {
 		t.Fatalf("saved decision = %q, %v", saved, err)
+	}
+}
+
+func TestDocsScriptOptionalBlockConstraints(t *testing.T) {
+	tests := []struct {
+		name       string
+		decision   string
+		wantStatus string
+		wantCode   string
+	}{
+		{name: "no constraints", decision: `{}`},
+		{name: "no visual plan", decision: `{"audience":"reader"}`},
+		{name: "null visual plan", decision: `{"visual_plan":null}`},
+		{name: "no blocks", decision: `{"visual_plan":{}}`},
+		{name: "reason only", decision: `{"visual_plan":{"reason":"plain text"}}`},
+		{name: "empty blocks", decision: `{"visual_plan":{"blocks":[]}}`},
+		{name: "null blocks", decision: `{"visual_plan":{"blocks":null}}`},
+		{name: "empty entry", decision: `{"visual_plan":{"blocks":[{}]}}`},
+		{name: "no type", decision: `{"visual_plan":{"blocks":[{"min_count":2}]}}`},
+		{name: "no minimum", decision: `{"visual_plan":{"blocks":[{"type":"whiteboard"}]}}`},
+		{name: "null fields", decision: `{"visual_plan":{"blocks":[{"type":null,"min_count":null}]}}`},
+		{name: "word count only", decision: `{"word_count":{"min":1,"max":5}}`},
+		{name: "word count enforced without plan", decision: `{"word_count":{"min":10,"max":null}}`, wantStatus: docsScriptAssessmentFailed, wantCode: docsScriptCodeWordCountRange},
+		{name: "complete constraint enforced", decision: `{"visual_plan":{"blocks":[{"type":"table","min_count":1}]}}`, wantStatus: docsScriptAssessmentFailed, wantCode: docsScriptCodeRequiredBlock},
+		{name: "partial entries do not hide complete constraint", decision: `{"visual_plan":{"blocks":[{}, {"type":"table"}, {"min_count":1}, {"type":"table","min_count":1}]}}`, wantStatus: docsScriptAssessmentFailed, wantCode: docsScriptCodeRequiredBlock},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("optional-block-constraints"))
+			err := mountAndRunDocs(t, DocsScript, []string{
+				"+script", "--command", docsScriptParse, "--content", `<p>plain text</p>`, "--presentation-decision", test.decision,
+			}, f, stdout)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var result struct {
+				Data docsScriptParseResult `json:"data"`
+			}
+			if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			wantStatus := test.wantStatus
+			if wantStatus == "" {
+				wantStatus = docsScriptAssessmentPassed
+			}
+			if result.Data.Assessment.Status != wantStatus {
+				t.Fatalf("assessment = %+v, want %s", result.Data, wantStatus)
+			}
+			if test.wantCode == "" && len(result.Data.Diagnostics) != 0 || test.wantCode != "" && (len(result.Data.Diagnostics) != 1 || result.Data.Diagnostics[0].Code != test.wantCode) {
+				t.Fatalf("diagnostics = %+v, want code %q", result.Data.Diagnostics, test.wantCode)
+			}
+		})
+	}
+}
+
+func TestDocsScriptRejectsInvalidProvidedBlockFields(t *testing.T) {
+	for _, raw := range []string{
+		`null`,
+		`{"visual_plan":"bad"}`,
+		`{"visual_plan":{"blocks":{}}}`,
+		`{"visual_plan":{"blocks":[{"type":""}]}}`,
+		`{"visual_plan":{"blocks":[{"type":"unknown"}]}}`,
+		`{"visual_plan":{"blocks":[{"type":42}]}}`,
+		`{"visual_plan":{"blocks":[{"min_count":0}]}}`,
+		`{"visual_plan":{"blocks":[{"min_count":-1}]}}`,
+		`{"visual_plan":{"blocks":[{"min_count":1.5}]}}`,
+		`{"visual_plan":{"blocks":[{"min_count":"1"}]}}`,
+	} {
+		_, err := parseDocsScriptPresentationDecision(raw)
+		assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--presentation-decision")
 	}
 }
 

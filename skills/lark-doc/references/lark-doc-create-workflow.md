@@ -24,7 +24,7 @@
 
 下表文件均位于当前 Skill 的 `references/genres/` 目录。
 
-- 路由表仅用于选择候选，不代替 contract。高置信命中后必须读取对应 Profile / Adapter，并按其中的路由与消歧规则复核；未读取不得确定该值或进入 Step 3。确认后记录固定短名，最多各读取一个；未命中时，`genre_contract` 和 `adapter` 均可使用 `"none"` 或 `null`。
+- 路由表仅用于选择候选，不代替 contract。高置信命中后必须读取对应 Profile / Adapter，并按其中的路由与消歧规则复核；未读取不得确定该值或进入 Step 3。确认后记录固定短名，最多各读取一个；未命中时可省略 `genre_contract` 和 `adapter`。
 - contract 决定内容任务、证据和体裁边界；adapter 只调整与所选 contract 兼容的平台结构、写作风格和组件约束。
 
    | Content Profile | 独特专业任务 |
@@ -46,7 +46,7 @@
 ### Step 3：收集资料并扫描表达机会。
 
 1. 强制扫描事实、数据、案例、引用和图片等资源缺口；内容需要而现有材料不足时必须检索或生成，判断需要图片且用户未提供素材时必须搜索图片。
-2. 根据用户要求、contract / adapter 限制和内容需要确定 `presentation_mode`，再识别真实信息关系并选择候选表达；不因命中关系就机械使用组件。
+2. 根据用户要求、contract / adapter 限制和内容需要选择表达方式；可用 `presentation_mode` 记录视觉策略，不因字段存在就机械使用组件。
 
    | 信息关系 | 候选表达 |
    |-|-|
@@ -59,7 +59,7 @@
    | 简单并列、步骤或连续论述 | 列表或段落 |
 
 3. 按全篇、章节、block 三个尺度构图：相关内容相邻，同类关系保持相同顺序与对齐；正文可以是主表达，不要求每节都有 presentation block。
-4. 在写正文前确定计划使用的 block 和具体 `purpose`。Presentation Decision 的 `visual_plan.blocks` 只记录确需最低数量约束的 `whiteboard`、`img`、`html5-block`。三类均无硬性数量要求时写 `"blocks": []`。
+4. 只有需要校验最低数量时，才在 `visual_plan.blocks` 中声明相应 block 的 `type` 和 `min_count`；`purpose` 可按需说明用途。普通的图表使用意图无需转换成数量配额。
 
 `presentation_mode` 只表示模型采用的视觉策略；只有用户要求、contract / adapter 限制互相冲突时才询问用户：
 
@@ -67,30 +67,24 @@
 - `normal`：按内容需要使用组件；只有能降低理解、执行或出错成本时才扩展视觉表达。
 - `rich`：主动利用图片、画板、HTML 和其他飞书组件；每个组件须有明确目的，不设全局数量配额。
 
-### Step 4：提交 Presentation Decision，并初始化草稿。
+### Step 4：声明需校验的约束，并初始化草稿。
 
-生成决策 JSON；填写的描述信息应来自 Step 1–3，不得照抄示例。CLI 仅强制检查 `word_count` 和 `visual_plan.blocks` 的硬约束；`audience`、`reader_task`、`genre_contract`、`adapter`、`presentation_mode`、`reason` 和 `purpose` 均可省略、为空字符串或 `null`。`word_count` 仅在用户明确提出字数要求时加入，使用 `min` / `max`；单边无限制写 `null`，“约 N 字”按 ±10%，无要求时省略整个字段：
+按实际要求声明需要机器校验的约束；没有此类约束时使用 `{}`。格式和错误处理详见 [`docs +script`](lark-doc-script.md)。
 
-```json
-{
-  "audience": "项目负责人",
-  "reader_task": "判断偏差并决定下一轮动作",
-  "genre_contract": null,
-  "adapter": null,
-  "presentation_mode": "rich",
-  "visual_plan": {
-    "reason": "需要用因果图解释偏差来源与后续行动依赖",
-    "blocks": [
-      {"type": "whiteboard", "min_count": 1, "purpose": "展示偏差成因与行动依赖"}
-    ]
-  }
-}
-```
+| 本次需要校验什么 | 决策示例 |
+|-|-|
+| 无字数或块数量要求 | `{}` |
+| 仅要求 800–1200 字 | `{"word_count":{"min":800,"max":1200}}` |
+| 至少一张画板 | `{"visual_plan":{"blocks":[{"type":"whiteboard","min_count":1}]}}` |
 
-不预建临时目录、草稿或决策文件。将上述 JSON 原样替换命令中的占位符并实际执行：
+字数和块数量要求可组合；字数单边无限制时写 `null`，“约 N 字”按 ±10%。受众、阅读任务、体裁、视觉策略、reason、purpose 等描述信息有助于后续创作时再填写，均可省略或为空。
+
+缺失字段不启用对应检查。对用户明确提出的数量要求，写出完整条目，才能让 CLI 实际检查。
+
+不预建临时目录、草稿或决策文件。以下命令适用于无可量化约束的情况；有约束时替换其中的 JSON：
 
 ```bash
-lark-cli docs +script --command init-draft --presentation-decision '<上方完整 JSON>' --format json
+lark-cli docs +script --command init-draft --presentation-decision '{}' --format json
 ```
 
 成功后：
@@ -102,14 +96,14 @@ lark-cli docs +script --command init-draft --presentation-decision '<上方完�
 
 读取 [`lark-doc-xml.md`](lark-doc-xml.md)，并结合 Presentation Decision、适用 contract 和 Philosophy 生成完整 XML。使用扩展标签时按需读取 [`拓展标签`](lark-doc-xml-extended-blocks.md)。
 
-1. 公开网络图片使用 `<img href="URL"/>`；已有本地图片使用 `<img path="@./downloads/image.png"/>`；画板使用 `<whiteboard path="@./<work_dir>/diagram.svg"/>` 并遵循[`画板工作流`](lark-doc-whiteboard.md)；HTML 使用 `<html5-block path="@./<work_dir>/widget.html"/>` 并遵循[`拓展标签`](lark-doc-xml-extended-blocks.md)。
+1. 公开网络图片使用 `<img href="URL"/>`；已有本地图片使用 `<img path="@./downloads/image.png"/>`；画板使用 `<whiteboard type="svg" path="@./<work_dir>/diagram.svg"/>` 并遵循[`画板工作流`](lark-doc-whiteboard.md)；HTML 使用 `<html5-block path="@./<work_dir>/widget.html"/>` 并遵循[`拓展标签`](lark-doc-xml-extended-blocks.md)。
 2. 直接在 `<cwd>/<draft_path>` 创建并写入完整 release candidate。新建资源建议放 `<cwd>/<work_dir>`，已有资源可原地复用；CWD 内优先用相对路径，其他位置用允许访问的绝对路径。XML 内相对资源先查 CWD，仅文件不存在时回退到 XML 所在目录。
 3. 首次写入后，发现 XML 语法问题时只修复最小范围，不无故重写正确内容。
 
 ### Step 6：执行 Draft Profile Check。
 
 1. 执行 `lark-cli docs +script --command parse --content "@./<draft_path>" --format json`。顶层 `ok` 仅表示命令执行成功，是否通过看 `data.assessment.status`。失败时按 `data.diagnostics[]` 局部修复；只有草稿为空、截断或结构无效时才全文重建。`parse` 不替代 XML 规则或服务端校验。
-2. Profile Check 通过后，按 [`lark-doc-xml.md`](lark-doc-xml.md) 复查标签、属性和值，并依据 Philosophy 检查事实与来源、用户硬约束、适用 contract / adapter 以及 `visual_plan`。最终 XML 能否写入以 `docs +create` 的服务端结果为准。
+2. `passed` 只覆盖已启用的检查；先对照用户要求确认应声明的约束已完整填写，再按 [`lark-doc-xml.md`](lark-doc-xml.md) 复查标签、属性和值，并依据 Philosophy 检查事实与来源、用户硬约束、适用 contract / adapter 以及 `visual_plan`。最终 XML 能否写入以 `docs +create` 的服务端结果为准。
 
 ### Step 7：创建文档并处理局部失败。
 
