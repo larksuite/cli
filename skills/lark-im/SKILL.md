@@ -58,6 +58,14 @@ The raw `sender_name` is not duplicated in output (its value is in `name`); the 
 
 The four message-pulling shortcuts (`+messages-mget`, `+chat-messages-list`, `+messages-search`, `+threads-messages-list`) automatically attach a `reactions` block and (for edited messages) `update_time` to each returned message — no separate `im.reactions.batch_query` call is needed. Pass `--no-reactions` to opt out. For the full contract (output shape, the `im:message.reactions:read` scope requirement, and the "missing field ≠ fetch failure" data rules), read [`references/lark-im-message-enrichment.md`](references/lark-im-message-enrichment.md).
 
+### Sending Code Snippets
+
+When sending messages that include code via `+messages-send` or `+messages-reply`, prefer `--markdown` instead of `--text`.
+
+- Code snippets should be sent using fenced code blocks, for example triple backticks with an optional language like ```sql.
+- Avoid plain `--text` for code-heavy messages, because the receiving client may show the fence markers as raw text instead of rendering a code block.
+- To avoid shell escaping issues with backticks, prefer writing the markdown body to a local file first and then pass it into the send command, instead of inlining a large markdown string directly in the shell command.
+
 ### Opt-in resource auto-download (`--download-resources`)
 
 `+chat-messages-list`, `+messages-mget`, and `+threads-messages-list` accept `--download-resources` to save eligible attachments into `./lark-im-resources/` and add a `resources` array to each message. It is off by default; stickers are not downloadable. A failed attachment is reported on that resource without aborting the message pull. Use [`+messages-resources-download`](references/lark-im-messages-resources-download.md) for one attachment. See [`references/lark-im-message-enrichment.md`](references/lark-im-message-enrichment.md) for the output contract.
