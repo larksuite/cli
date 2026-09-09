@@ -1613,7 +1613,10 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 		})
 	}
 	ensureJSONShorthand(cmd, s)
-	if cmd.Flags().Lookup("field") == nil {
+	if s.HasFieldSelector {
+		if cmd.Flags().Lookup("field") != nil {
+			panic(fmt.Sprintf("shortcut %s %s: output selector --field conflicts with a business flag", s.Service, s.Command))
+		}
 		cmd.Flags().String("field", "", "select one top-level field from the JSON output envelope")
 		cmd.Flags().Lookup("field").Annotations = map[string][]string{
 			outputFieldSelectorAnnotation: {"true"},

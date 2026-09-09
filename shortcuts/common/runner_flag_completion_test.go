@@ -158,15 +158,16 @@ func TestShortcutMount_JsonFlag_AcceptedWhenHasFormat(t *testing.T) {
 	}
 }
 
-func TestShortcutMount_FieldFlag_AutoRegistered(t *testing.T) {
+func TestShortcutMount_FieldFlag_RequiresOptIn(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	parent := &cobra.Command{Use: "root"}
 	shortcut := Shortcut{
-		Service:     "test",
-		Command:     "+read",
-		Description: "test read",
-		HasFormat:   true,
-		Execute:     func(context.Context, *RuntimeContext) error { return nil },
+		Service:          "test",
+		Command:          "+read",
+		Description:      "test read",
+		HasFormat:        true,
+		HasFieldSelector: true,
+		Execute:          func(context.Context, *RuntimeContext) error { return nil },
 	}
 	shortcut.Mount(parent, f)
 
@@ -175,7 +176,23 @@ func TestShortcutMount_FieldFlag_AutoRegistered(t *testing.T) {
 		t.Fatalf("Find() error = %v", err)
 	}
 	if flag := cmd.Flags().Lookup("field"); flag == nil {
-		t.Fatal("expected --field output selector to be registered")
+		t.Fatal("expected opted-in --field output selector to be registered")
+	}
+
+	withoutField := Shortcut{
+		Service:     "test",
+		Command:     "+plain-read",
+		Description: "test read without field projection",
+		HasFormat:   true,
+		Execute:     func(context.Context, *RuntimeContext) error { return nil },
+	}
+	withoutField.Mount(parent, f)
+	plain, _, err := parent.Find([]string{"+plain-read"})
+	if err != nil {
+		t.Fatalf("Find() plain error = %v", err)
+	}
+	if flag := plain.Flags().Lookup("field"); flag != nil {
+		t.Fatalf("non-opted-in shortcut unexpectedly registered --field: %#v", flag)
 	}
 }
 

@@ -33,13 +33,14 @@ type threadAPIRequest struct {
 // user_mailbox.threads.batch_modify. Callers cannot inject arbitrary request
 // data or the protocol-level add_folder field name.
 var MailThreadModify = common.Shortcut{
-	Service:     "mail",
-	Command:     "+thread-modify",
-	Description: "Modify entire mail threads by adding or removing label IDs, or moving them to a folder.",
-	Risk:        "write",
-	Scopes:      []string{"mail:user_mailbox.message:modify"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	Service:          "mail",
+	Command:          "+thread-modify",
+	Description:      "Modify entire mail threads by adding or removing label IDs, or moving them to a folder.",
+	Risk:             "write",
+	Scopes:           []string{"mail:user_mailbox.message:modify"},
+	AuthTypes:        []string{"user", "bot"},
+	HasFormat:        true,
+	HasFieldSelector: true,
 	Flags: []common.Flag{
 		{Name: "mailbox", Default: "me", Desc: "Mailbox email address that owns the threads (default: me)."},
 		{Name: "thread-id", Type: "string_slice", Required: true, Desc: "Thread ID; comma-separated or repeat the flag."},
@@ -55,13 +56,14 @@ var MailThreadModify = common.Shortcut{
 // MailThreadTrash sends one batch request and therefore neither fans the
 // operation out nor invents per-thread success results.
 var MailThreadTrash = common.Shortcut{
-	Service:     "mail",
-	Command:     "+thread-trash",
-	Description: "Soft-delete entire mail threads in one batch request. Requires --yes.",
-	Risk:        "high-risk-write",
-	Scopes:      []string{"mail:user_mailbox.message:modify"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	Service:          "mail",
+	Command:          "+thread-trash",
+	Description:      "Soft-delete entire mail threads in one batch request. Requires --yes.",
+	Risk:             "high-risk-write",
+	Scopes:           []string{"mail:user_mailbox.message:modify"},
+	AuthTypes:        []string{"user", "bot"},
+	HasFormat:        true,
+	HasFieldSelector: true,
 	Flags: []common.Flag{
 		{Name: "mailbox", Default: "me", Desc: "Mailbox email address that owns the threads (default: me)."},
 		{Name: "thread-id", Type: "string_slice", Required: true, Desc: "Thread ID; comma-separated or repeat the flag."},

@@ -51,8 +51,13 @@ type Shortcut struct {
 	AuthTypes []string // supported identities: "user", "bot" (default: ["user"])
 	Flags     []Flag   // flag definitions; --dry-run is auto-injected
 	HasFormat bool     // Deprecated: --format is now always injected; this field has no effect.
-	Tips      []string // optional tips shown in --help output
-	Hidden    bool     // hide from --help / tab completion (still executable); use when deprecating a command in favor of a replacement
+	// HasFieldSelector opts the shortcut into the framework-owned --field
+	// projection flag. It is intentionally not universal because some shortcuts
+	// already use --field as a business flag or alias (for example
+	// base +record-list).
+	HasFieldSelector bool
+	Tips             []string // optional tips shown in --help output
+	Hidden           bool     // hide from --help / tab completion (still executable); use when deprecating a command in favor of a replacement
 
 	// Business logic hooks.
 	// Normalize is the business-owned compatibility stage inside shortcut

@@ -87,6 +87,35 @@ func TestRegisterShortcutsMountsBaseCommands(t *testing.T) {
 	}
 }
 
+func TestRegisterShortcutsScopesOutputFieldWithoutRecordAliasCollision(t *testing.T) {
+	program := &cobra.Command{Use: "root"}
+	RegisterShortcuts(program, newRegisterTestFactory(t))
+
+	for _, path := range [][]string{{"mail", "+thread-modify"}, {"mail", "+thread-trash"}} {
+		cmd, _, err := program.Find(path)
+		if err != nil {
+			t.Fatalf("find %s: %v", strings.Join(path, " "), err)
+		}
+		if err := cmd.ParseFlags([]string{"--field", "ok"}); err != nil {
+			t.Fatalf("%s rejected --field: %v", strings.Join(path, " "), err)
+		}
+		if got, _ := cmd.Flags().GetString("field"); got != "ok" {
+			t.Fatalf("%s --field = %q, want ok", strings.Join(path, " "), got)
+		}
+	}
+
+	recordList, _, err := program.Find([]string{"base", "+record-list"})
+	if err != nil {
+		t.Fatalf("find base +record-list: %v", err)
+	}
+	if err := recordList.ParseFlags([]string{"--field", "Name"}); err != nil {
+		t.Fatalf("base +record-list rejected its --field alias: %v", err)
+	}
+	if got, _ := recordList.Flags().GetStringArray("field-id"); len(got) != 1 || got[0] != "Name" {
+		t.Fatalf("base +record-list --field alias resolved to %#v, want [Name]", got)
+	}
+}
+
 func TestRegisterShortcutsMountsHiddenAppsGitCredentialHelper(t *testing.T) {
 	program := &cobra.Command{Use: "root"}
 	RegisterShortcuts(program, newRegisterTestFactory(t))
