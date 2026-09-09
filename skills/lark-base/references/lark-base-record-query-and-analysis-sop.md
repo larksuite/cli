@@ -8,10 +8,10 @@
 
 | 任务条件 | 路径 | 完整性要求 |
 | --- | --- | --- |
-| 当前查询最多 2000 行且 `has_more=false` | NDJSON 本地分析 | 直接处理 artifact |
+| 当前查询最多 10000 行且 `has_more=false` | NDJSON 本地分析 | 直接处理 artifact |
 | 用户指定 View | 记录工具添加 `--view-id` 返回视图范围内的记录 | 结论只代表该 View；记录范围写入 `query_context` |
-| 超过 2000 行且必须取得逐条原始记录 | 调整 `--offset` 后继续查询 | 直到 `has_more=false` 代表所有记录已读取 |
-| 超过 2000 行，只需单表基础统计、分组或 Top-K | `+data-query` | 由 Base 云端在完整单表范围计算 |
+| 超过 10000 行且必须取得逐条原始记录 | 调整 `--offset` 后继续查询 | 直到 `has_more=false` 代表所有记录已读取 |
+| 超过 10000 行，只需单表基础统计、分组或 Top-K | `+data-query` | 由 Base 云端在完整单表范围计算 |
 | 多表 JOIN、窗口、递归、严格漏斗、语义分析或任意需要逐条明细的高级计算 | 完整 NDJSON 后由合适的本地分析引擎处理 | 每张参与表都必须完整；不能用 `data-query` 代替原始明细 |
 
 局部预览、固定前 N 条或 `has_more=true` 的 artifact 不能支持全局结论。采样只在用户明确要求抽样时使用，并必须说明抽样范围和方法。
@@ -30,7 +30,7 @@ manifest 的 `query_context` 是本次 artifact 范围的记录，不是完整�
 
 ## 3. 大表完整读取
 
-NDJSON 单次最多返回 2000 条。必须取得超过 2000 条逐行原始记录时：
+NDJSON 单次最多返回 10000 条。必须取得超过 10000 条逐行原始记录时：
 
 1. 固定 `base_token`、`table_id`、`view-id`、filter、sort 和字段投影；首块从 `offset=0` 开始，每块 `limit=2000`，输出到不同 artifact。
 2. 每块读取 manifest 的 `records_count`、`has_more`、`next_offset`、`rev` 和 `query_context`；`has_more=true` 时只使用返回的 `next_offset` 继续。
@@ -42,7 +42,7 @@ NDJSON 单次最多返回 2000 条。必须取得超过 2000 条逐行原始记�
 
 ## 4. `data-query`：大规模单表基础统计逃生路径
 
-`+data-query` 的 datasource 是单个 Base Table，适合在超过 2000 行时由云端完成：
+`+data-query` 的 datasource 是单个 Base Table，适合在超过 10000 行时由云端完成：
 
 - `filters`：聚合前筛选，类似 WHERE；它使用 LiteQuery 特有的 DSL，不是 Record/View 的 tuple filter，注意不要混淆。
 - `dimensions`：分组字段。

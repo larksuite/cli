@@ -145,7 +145,7 @@ with open("records-preview.ndjson", encoding="utf-8") as stream:
 PY
 ```
 
-`--limit` 的缺省值是 2000，最大值是 2000，通常无需手动指定 limit 参数；支持 `--offset` 参数；只有 `has_more=false` 且查询范围符合问题时，才能当作完整结果。大表完整读取、View 范围读取、复杂 JOIN、集合/多值、时序、语义或专业统计分析时，读取 [Record 查询与分析 SOP](references/lark-base-record-query-and-analysis-sop.md)。
+`--limit` 的缺省值是 10000，最大值是 10000，通常无需手动指定 limit 参数；支持 `--offset` 参数；只有 `has_more=false` 且查询范围符合问题时，才能当作完整结果。大表完整读取、View 范围读取、复杂 JOIN、集合/多值、时序、语义或专业统计分析时，读取 [Record 查询与分析 SOP](references/lark-base-record-query-and-analysis-sop.md)。
 
 #### 2. 新增记录或更新记录单元格
 
