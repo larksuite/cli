@@ -7,19 +7,15 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"image"
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
 	"path/filepath"
 
-	_ "golang.org/x/image/bmp"
-	_ "golang.org/x/image/tiff"
-	_ "golang.org/x/image/webp"
-
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/imageconfig"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -502,8 +498,8 @@ func computeMissingDimension(userWidth, userHeight, nativeWidth, nativeHeight in
 	return imageDimensions{width: userWidth, height: userHeight}
 }
 
-func detectImageDimensions(r io.Reader) (width, height int, err error) {
-	cfg, _, err := image.DecodeConfig(r)
+func detectImageDimensions(r io.ReaderAt) (width, height int, err error) {
+	cfg, _, err := imageconfig.Decode(r)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -524,7 +520,7 @@ func detectImageConfigFromPath(fio fileio.FileIO, filePath string) (int, int, st
 		return 0, 0, "", err
 	}
 	defer f.Close()
-	cfg, format, err := image.DecodeConfig(f)
+	cfg, format, err := imageconfig.Decode(f)
 	if err != nil {
 		return 0, 0, "", err
 	}
