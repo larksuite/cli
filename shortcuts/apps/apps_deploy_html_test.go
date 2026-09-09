@@ -4,13 +4,22 @@
 package apps
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/apps/deploy"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -216,5 +225,315 @@ func TestHTMLDeployPlanFields(t *testing.T) {
 	}
 	if len(plan.Waived) != 1 || plan.Waived[0] != ".env" {
 		t.Errorf("waived credential files must stay on the plan for the stderr notice, got %v", plan.Waived)
+	}
+}
+
+// TestHTMLDeployDryRunExposesOutboundPath pins the security-review release
+// condition: the dry-run must echo the absolute path that actually leaves the
+// machine, not just the relative entry name.
+func TestHTMLDeployDryRunExposesOutboundPath(t *testing.T) {
+	dry := common.NewDryRunAPI()
+	fillHTMLDeployDryRun(dry, htmlDeployPlan{
+		AbsEntry:    "/Users/me/work/report.html",
+		EntryRel:    "report.html",
+		AppIDSource: htmlAppIDSourceLookup,
+		FileCount:   2,
+		TotalBytes:  40,
+		ZipPaths:    []string{"output/index.html", "output/a.css"},
+		RouteCount:  1,
+		ContentHash: "abc",
+	})
+	raw, err := json.Marshal(dry)
+	if err != nil {
+		t.Fatalf("marshal dry-run: %v", err)
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("unmarshal dry-run: %v", err)
+	}
+	if out["idempotent_key"] != "/Users/me/work/report.html" {
+		t.Errorf("dry-run must show the absolute path sent as idempotent_key, got %v", out["idempotent_key"])
+	}
+	if out["file_path"] != "/Users/me/work/report.html" {
+		t.Errorf("dry-run must show the absolute path sent as file_path, got %v", out["file_path"])
+	}
+	if out["content_hash"] != "abc" {
+		t.Errorf("content_hash missing from dry-run: %v", out)
+	}
+	if out["app_id_source"] != string(htmlAppIDSourceLookup) {
+		t.Errorf("app_id_source = %v", out["app_id_source"])
+	}
+}
+
+func TestToAppDevEntries(t *testing.T) {
+	got := toAppDevEntries([]deploy.PackEntry{
+		{ZipPath: "output/index.html", AbsPath: "site/index.html", Size: 11},
+		{ZipPath: "output/routes.json", Content: []byte("[]"), Size: 2},
+	})
+	if len(got) != 2 {
+		t.Fatalf("got %d entries, want 2", len(got))
+	}
+	if got[0].ZipPath != "output/index.html" || got[0].AbsPath != "site/index.html" || got[0].Size != 11 {
+		t.Errorf("disk entry = %+v", got[0])
+	}
+	if got[1].AbsPath != "" || string(got[1].Content) != "[]" {
+		t.Errorf("generated entry = %+v", got[1])
+	}
+}
+
+func TestResolveHTMLDeployPlan(t *testing.T) {
+	t.Run("单文件入口改名并生成路由", func(t *testing.T) {
+		root := chdirHTMLPayload(t, map[string]string{"report.html": "<h1>hi</h1>"})
+		plan, err := resolveHTMLDeployPlan(htmlDeployRuntime(t, "report.html", "", "", false))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if want := filepath.Join(resolvedRoot(t, root), "report.html"); plan.AbsEntry != want {
+			t.Errorf("AbsEntry = %q, want %q", plan.AbsEntry, want)
+		}
+		if plan.EntryRel != "report.html" {
+			t.Errorf("EntryRel = %q", plan.EntryRel)
+		}
+		wantPaths := []string{"output/index.html", "output/routes.json"}
+		if !reflect.DeepEqual(plan.ZipPaths, wantPaths) {
+			t.Errorf("ZipPaths = %v, want %v", plan.ZipPaths, wantPaths)
+		}
+		if plan.FileCount != 2 || plan.RouteCount != 1 {
+			t.Errorf("FileCount/RouteCount = %d/%d", plan.FileCount, plan.RouteCount)
+		}
+		if plan.TotalBytes != int64(len("<h1>hi</h1>")) {
+			t.Errorf("TotalBytes = %d (raw payload bytes only, routes.json excluded)", plan.TotalBytes)
+		}
+		// Single-file payload: the fingerprint is the raw file's sha256.
+		sum := sha256.Sum256([]byte("<h1>hi</h1>"))
+		if plan.ContentHash != hex.EncodeToString(sum[:]) {
+			t.Errorf("ContentHash = %q, want the raw sha256", plan.ContentHash)
+		}
+	})
+	t.Run("目录入口改名且其余文件保留路径", func(t *testing.T) {
+		root := chdirHTMLPayload(t, map[string]string{
+			"site/page.html":      "<h1>hi</h1>",
+			"site/assets/app.css": "body{}",
+		})
+		plan, err := resolveHTMLDeployPlan(htmlDeployRuntime(t, "", "site", "page.html", false))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if want := filepath.Join(resolvedRoot(t, root), "site", "page.html"); plan.AbsEntry != want {
+			t.Errorf("AbsEntry = %q, want %q", plan.AbsEntry, want)
+		}
+		got := append([]string(nil), plan.ZipPaths...)
+		sort.Strings(got)
+		want := []string{"output/assets/app.css", "output/index.html", "output/routes.json"}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("ZipPaths = %v, want %v", got, want)
+		}
+		if len(plan.ContentHash) != 64 {
+			t.Errorf("ContentHash = %q, want a 64-char digest", plan.ContentHash)
+		}
+	})
+	t.Run("凭证放行时记录 waived", func(t *testing.T) {
+		chdirHTMLPayload(t, map[string]string{
+			"site/index.html": "<h1>hi</h1>",
+			"site/.env":       "TOKEN=x",
+		})
+		plan, err := resolveHTMLDeployPlan(htmlDeployRuntime(t, "", "site", "", true))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(plan.Waived) != 1 || plan.Waived[0] != ".env" {
+			t.Errorf("Waived = %v", plan.Waived)
+		}
+	})
+}
+
+// resolvedRoot mirrors the symlink resolution the collector applies, so the
+// expected absolute path matches on macOS where /var is a symlink.
+func resolvedRoot(t *testing.T, root string) string {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatalf("eval symlinks: %v", err)
+	}
+	return resolved
+}
+
+func stubHasHTMLAppCreated(reg *httpmock.Registry, data map[string]interface{}) *httpmock.Stub {
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/has_html_app_created",
+		Body:   map[string]interface{}{"code": float64(0), "data": data},
+	}
+	reg.Register(stub)
+	return stub
+}
+
+func TestHTMLDeployExecute_LookupHit(t *testing.T) {
+	root := chdirHTMLPayload(t, map[string]string{
+		"site/index.html": "<h1>hi</h1>",
+		"site/app.css":    "body{}",
+	})
+	var uploaded []byte
+	srv := newTOSTLSServer(t, func(w http.ResponseWriter, r *http.Request) {
+		uploaded, _ = io.ReadAll(r.Body)
+		w.WriteHeader(200)
+	})
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	lookup := stubHasHTMLAppCreated(reg, map[string]interface{}{"exists": true, "app_id": "app_x"})
+	stubPreRelease(reg, "app_x", srv.URL, nil)
+	release := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/releases",
+		Body: map[string]interface{}{"code": float64(0), "data": map[string]interface{}{
+			"release_id": "rel_1", "status": "finished", "online_url": "https://x/app/app_x",
+		}},
+	}
+	reg.Register(release)
+
+	if err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--dir", "site", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+
+	// The idempotency key must be the entry's absolute path.
+	var lookupBody map[string]interface{}
+	if err := json.Unmarshal(lookup.CapturedBody, &lookupBody); err != nil {
+		t.Fatalf("decode lookup body: %v", err)
+	}
+	wantKey := filepath.Join(resolvedRoot(t, root), "site", "index.html")
+	if lookupBody["idempotent_key"] != wantKey {
+		t.Errorf("idempotent_key = %v, want %q", lookupBody["idempotent_key"], wantKey)
+	}
+	if len(uploaded) == 0 {
+		t.Error("zip body not uploaded")
+	}
+	// The release carries the content fingerprint.
+	var releaseBody struct {
+		Extra map[string]interface{} `json:"extra"`
+	}
+	if err := json.Unmarshal(release.CapturedBody, &releaseBody); err != nil {
+		t.Fatalf("decode release body: %v", err)
+	}
+	tag, _ := releaseBody.Extra["hash_tag"].(string)
+	if len(tag) != 64 {
+		t.Errorf("extra.hash_tag = %q, want a 64-char digest", tag)
+	}
+	data := parseEnvelopeData(t, stdout)
+	if data["app_id"] != "app_x" || data["release_id"] != "rel_1" || data["online_url"] != "https://x/app/app_x" {
+		t.Errorf("data = %v", data)
+	}
+	if data["built"] != false {
+		t.Errorf("built = %v, want false on the bare HTML path", data["built"])
+	}
+	if data["file_count"] != float64(3) {
+		t.Errorf("file_count = %v, want 3 (index.html + app.css + routes.json)", data["file_count"])
+	}
+	// The bare HTML path must never create a spark.json in the payload dir.
+	if _, err := os.Stat(filepath.Join(root, sparkJSONRelPath)); !os.IsNotExist(err) {
+		t.Errorf("bare HTML publish must not write %s (stat err = %v)", sparkJSONRelPath, err)
+	}
+}
+
+func TestHTMLDeployExecute_CreateFallback(t *testing.T) {
+	root := chdirHTMLPayload(t, map[string]string{"report.html": "<h1>hi</h1>"})
+	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stubHasHTMLAppCreated(reg, map[string]interface{}{"exists": false})
+	create := &httpmock.Stub{
+		Method:     "POST",
+		URL:        "/open-apis/spark/v1/apps",
+		BodyFilter: func(b []byte) bool { return bytes.Contains(b, []byte(`"app_type"`)) },
+		Body: map[string]interface{}{"code": float64(0), "data": map[string]interface{}{
+			"app": map[string]interface{}{"app_id": "app_new"},
+		}},
+	}
+	reg.Register(create)
+	stubPreRelease(reg, "app_new", srv.URL, nil)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_new/releases",
+		Body: map[string]interface{}{"code": float64(0), "data": map[string]interface{}{
+			"release_id": "rel_2", "status": "publishing",
+		}},
+	})
+
+	if err := runAppsShortcut(t, AppsDeploy, []string{"+deploy", "--file-path", "report.html", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	var body map[string]interface{}
+	if err := json.Unmarshal(create.CapturedBody, &body); err != nil {
+		t.Fatalf("decode create body: %v", err)
+	}
+	if body["app_type"] != "html" {
+		t.Errorf("app_type = %v, want html", body["app_type"])
+	}
+	if body["name"] != "report" {
+		t.Errorf("name = %v, want the entry base name", body["name"])
+	}
+	wantPath := filepath.Join(resolvedRoot(t, root), "report.html")
+	if body["file_path"] != wantPath {
+		t.Errorf("file_path = %v, want %q", body["file_path"], wantPath)
+	}
+	data := parseEnvelopeData(t, stdout)
+	if data["app_id"] != "app_new" || data["release_id"] != "rel_2" {
+		t.Errorf("data = %v", data)
+	}
+	if _, ok := data["poll_hint"]; !ok {
+		t.Errorf("an in-flight release must carry poll_hint: %v", data)
+	}
+}
+
+func TestHTMLDeployExecute_AppIDFlagSkipsLookup(t *testing.T) {
+	chdirHTMLPayload(t, map[string]string{"report.html": "<h1>hi</h1>"})
+	srv := newTOSTLSServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	lookup := &httpmock.Stub{
+		Method:   "POST",
+		URL:      "/open-apis/spark/v1/apps/has_html_app_created",
+		Optional: true,
+		Body:     map[string]interface{}{"code": float64(0), "data": map[string]interface{}{"exists": false}},
+	}
+	reg.Register(lookup)
+	stubPreRelease(reg, "app_flag", srv.URL, nil)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_flag/releases",
+		Body: map[string]interface{}{"code": float64(0), "data": map[string]interface{}{
+			"release_id": "rel_3", "status": "finished", "online_url": "https://x/app/app_flag",
+		}},
+	})
+
+	args := []string{"+deploy", "--file-path", "report.html", "--app-id", "app_flag", "--as", "user"}
+	if err := runAppsShortcut(t, AppsDeploy, args, factory, stdout); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	if len(lookup.CapturedBodies) != 0 {
+		t.Errorf("--app-id must skip the idempotency lookup, got %d call(s)", len(lookup.CapturedBodies))
+	}
+}
+
+func TestHTMLDeployDryRun_NoWrites(t *testing.T) {
+	root := chdirHTMLPayload(t, map[string]string{"report.html": "<h1>hi</h1>"})
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	args := []string{"+deploy", "--file-path", "report.html", "--as", "user", "--dry-run"}
+	if err := runAppsShortcut(t, AppsDeploy, args, factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+	reg.Verify(t) // no stub registered: a dry-run must issue no request at all
+	data, err := decodeDryRunDataMap(stdout.Bytes())
+	if err != nil {
+		t.Fatalf("decode dry-run output: %v (raw=%q)", err, stdout.String())
+	}
+	wantPath := filepath.Join(resolvedRoot(t, root), "report.html")
+	if data["idempotent_key"] != wantPath {
+		t.Errorf("idempotent_key = %v, want %q", data["idempotent_key"], wantPath)
+	}
+	if data["app_id_source"] != string(htmlAppIDSourceLookup) {
+		t.Errorf("app_id_source = %v", data["app_id_source"])
+	}
+	if data["entry_file"] != "report.html" {
+		t.Errorf("entry_file = %v", data["entry_file"])
+	}
+	if _, ok := data["content_hash"].(string); !ok {
+		t.Errorf("content_hash missing: %v", data)
 	}
 }

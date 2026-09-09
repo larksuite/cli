@@ -516,6 +516,9 @@ var AppsDeploy = common.Shortcut{
 		return nil
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
+		if isHTMLDeployMode(rctx.Str("file-path"), rctx.Str("dir")) {
+			return dryRunHTMLDeploy(rctx)
+		}
 		dry := common.NewDryRunAPI().
 			Desc("Resolve app id (spark.json / --app-id) -> GET pre_release (presigned upload URL + MIAODA_* build env) -> run build.command -> validate output layout -> zip -> PUT to TOS -> POST releases; returns online_url when the release finishes synchronously, or release_id + poll hint while it is still publishing")
 		cfg, appID, fromFlag, err := resolveAppDevPublishTarget(rctx)
@@ -563,6 +566,9 @@ var AppsDeploy = common.Shortcut{
 		return dry
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
+		if isHTMLDeployMode(rctx.Str("file-path"), rctx.Str("dir")) {
+			return executeHTMLDeploy(ctx, rctx)
+		}
 		cfg, appID, fromFlag, err := resolveAppDevPublishTarget(rctx)
 		if err != nil {
 			return err
