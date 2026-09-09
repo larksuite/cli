@@ -482,7 +482,7 @@
                 },
                 "node_token": {
                   "type": "string",
-                  "description": "节点token，获取方式",
+                  "description": "知识库节点 token，如果 URL 链接中 token 前为 wiki，该 token 为知识库的节点 token。",
                   "required": false,
                   "example": "wikcnKQ1k3p******8Vabcef",
                   "annotations": [
@@ -1302,7 +1302,7 @@
                 },
                 "node_token": {
                   "type": "string",
-                  "description": "节点token，获取方式",
+                  "description": "节点token",
                   "required": false,
                   "example": "wikcnKQ1k3p******8Vabcef",
                   "annotations": [
@@ -1621,7 +1621,7 @@
                 },
                 "node_token": {
                   "type": "string",
-                  "description": "节点token，获取方式",
+                  "description": "节点token",
                   "required": false,
                   "example": "wikcnKQ1k3p******8Vabcef",
                   "annotations": [
@@ -1874,7 +1874,7 @@
                 },
                 "node_token": {
                   "type": "string",
-                  "description": "节点token，获取方式",
+                  "description": "节点token",
                   "required": false,
                   "example": "wikcnKQ1k3p******8Vabcef",
                   "annotations": [

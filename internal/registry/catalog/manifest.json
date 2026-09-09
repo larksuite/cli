@@ -74,9 +74,9 @@
     {
       "name": "sheets",
       "file": "services/sheets.json",
-      "revision": 9,
-      "size": 23685,
-      "sha256": "028e172c9469adccc1750d22cd61304d012fffb2e6d9029377167b092e9e396e"
+      "revision": 10,
+      "size": 23693,
+      "sha256": "b72a8006ba1aecfaa9411942fb11a9f9d10e2d5faef4afc89314ccb7f33c1e6f"
     },
     {
       "name": "slides",
@@ -88,9 +88,9 @@
     {
       "name": "task",
       "file": "services/task.json",
-      "revision": 12,
-      "size": 453091,
-      "sha256": "8fe15d25ddc25b4268602749f5c478c076edd6c6a3897b65dc5999e8f90ef7a7"
+      "revision": 13,
+      "size": 453099,
+      "sha256": "f59505b716533f7e2acbf4c78b6a0ebb5997a18f4ee68085b3647595e3df442d"
     },
     {
       "name": "vc",
@@ -102,9 +102,9 @@
     {
       "name": "wiki",
       "file": "services/wiki.json",
-      "revision": 11,
-      "size": 71116,
-      "sha256": "e8c61bd3a6c2056aca7c5f1d4fa24c374e9b0e436bc608e168051c6ed4375cb5"
+      "revision": 12,
+      "size": 71150,
+      "sha256": "3da4da78b4d9f2b6673b0aaf0961191f9f9a609a69758b3b89a32a9f65d46370"
     }
   ]
 }

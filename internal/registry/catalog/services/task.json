@@ -7580,7 +7580,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "custom field GUID, which can be created byCreate Custom Field, or queried byList Custom Field",
+              "description": "custom field GUID, which can be created by Create Custom Field, or queried by List Custom Field",
               "example": "0110a4bd-f24b-4a93-8c1a-1732b94f9593"
             }
           },
@@ -8159,7 +8159,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "custom field GUID, which can be created byCreate Custom Field, or queried byList Custom Field",
+              "description": "custom field GUID, which can be created by Create Custom Field, or queried by List Custom Field",
               "example": "5ffbe0ca-6600-41e0-a634-2b38cbcf13b8"
             },
             "user_id_type": {
@@ -8766,7 +8766,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "custom field GUID, which can be created byCreate Custom Field, or queried byList Custom Field",
+              "description": "custom field GUID, which can be created by Create Custom Field, or queried by List Custom Field",
               "example": "5ffbe0ca-6600-41e0-a634-2b38cbcf13b8"
             },
             "user_id_type": {
@@ -9229,7 +9229,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "custom field GUID, which can be created byCreate Custom Field, or queried byList Custom Field",
+              "description": "custom field GUID, which can be created by Create Custom Field, or queried by List Custom Field",
               "example": "0110a4bd-f24b-4a93-8c1a-1732b94f9593"
             }
           },

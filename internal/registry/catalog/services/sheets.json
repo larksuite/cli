@@ -257,7 +257,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Sheet ID,",
+              "description": "Sheet ID",
               "example": "0b\\**12"
             }
           },
@@ -268,7 +268,7 @@
           "requestBody": {
             "range": {
               "type": "string",
-              "description": "Range the filter applies to. Five forms are supported: sheetId (the whole sheet), sheetId!{startRowIndex}:{endRowIndex} (whole rows), sheetId!{startColumnIndex}:{endColumnIndex} (whole columns), sheetId!{startCell}:{endCell} (the selected cell range), sheetId!{startCell}:{endColumnIndex} (from the start cell to the last row of the sheet). For details, see the filter guide",
+              "description": "Range the filter applies to. Five forms are supported: sheetId (the whole sheet), sheetId!{startRowIndex}:{endRowIndex} (whole rows), sheetId!{startColumnIndex}:{endColumnIndex} (whole columns), sheetId!{startCell}:{endCell} (the selected cell range), sheetId!{startCell}:{endColumnIndex} (from the start cell to the last row of the sheet).",
               "required": true,
               "example": "xxxxxx!C1:H14"
             },
@@ -286,7 +286,7 @@
               "properties": {
                 "filter_type": {
                   "type": "string",
-                  "description": "Filter type. Enumeration values: multiValue (multi-value filter), number (number filter), text (text filter), color (color filter). For details, see the filter guide",
+                  "description": "Filter type. Enumeration values: multiValue (multi-value filter), number (number filter), text (text filter), color (color filter).",
                   "required": true,
                   "example": "number"
                 },
@@ -334,7 +334,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Sheet ID,",
+              "description": "Sheet ID",
               "example": "0b\\**12"
             }
           },
@@ -372,7 +372,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Sheet ID,",
+              "description": "Sheet ID",
               "example": "0b\\**12"
             }
           },
@@ -450,7 +450,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Sheet ID,",
+              "description": "Sheet ID",
               "example": "0b\\**12"
             }
           },
@@ -473,19 +473,19 @@
               "properties": {
                 "filter_type": {
                   "type": "string",
-                  "description": "Filter type. Enumeration values: multiValue (multi-value filter), number (number filter), text (text filter), color (color filter), clear (clear the filter condition of a column). For details, see the filter guide",
+                  "description": "Filter type. Enumeration values: multiValue (multi-value filter), number (number filter), text (text filter), color (color filter), clear (clear the filter condition of a column).",
                   "required": true,
                   "example": "number"
                 },
                 "compare_type": {
                   "type": "string",
-                  "description": "Comparison type. The enumeration values differ by filter type, see the filter guide",
+                  "description": "Comparison type. The enumeration values differ by filter type.",
                   "required": false,
                   "example": "less"
                 },
                 "expected": {
                   "type": "array",
-                  "description": "Filter parameter. The restrictions differ by filter type, see the filter guide",
+                  "description": "Filter parameter. The restrictions differ by filter type.",
                   "required": false
                 }
               }
@@ -518,14 +518,14 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Sheet token,)",
+              "description": "Spreadsheet token. It can be obtained in two ways.;- From the spreadsheet URL: https://sample.feishu.cn/sheets/==Iow7sNNEphp3WbtnbCscPqabcef==;- Call List items in folder",
               "example": "shtcnmBA*****yGehy8"
             },
             "sheet_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Sheet ID,",
+              "description": "Sheet ID",
               "example": "0b**12"
             }
           },
