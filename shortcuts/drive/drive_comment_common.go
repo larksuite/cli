@@ -171,7 +171,7 @@ func normalizeDriveCommentType(docType string) string {
 }
 
 // resolveDriveCommentTarget unwraps wiki refs to the underlying document via
-// wiki get_node and validates the resolved type against op.Types.
+// wiki node_by_token and validates the resolved type against op.Types.
 func resolveDriveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, op driveCommentOp, ref driveCommentRef) (driveCommentTarget, error) {
 	if ref.Type != "wiki" {
 		return driveCommentTarget{FileToken: ref.Token, FileType: ref.Type}, nil
@@ -179,11 +179,21 @@ func resolveDriveCommentTarget(ctx context.Context, runtime *common.RuntimeConte
 
 	data, err := runtime.CallAPITyped(
 		"GET",
-		"/open-apis/wiki/v2/spaces/get_node",
+		"/open-apis/wiki/v2/spaces/node_by_token",
 		map[string]interface{}{"token": ref.Token},
 		nil,
 	)
 	if err != nil {
+		if problem, ok := errs.ProblemOf(err); ok {
+			switch problem.Code {
+			case 131012:
+				problem.Subtype, problem.Retryable = errs.SubtypeNotFound, false
+			case 131013, 131016:
+				problem.Subtype, problem.Retryable = errs.SubtypeInvalidParameters, false
+			case 131014:
+				problem.Subtype, problem.Retryable = errs.SubtypeFailedPrecondition, false
+			}
+		}
 		return driveCommentTarget{}, err
 	}
 
@@ -191,7 +201,7 @@ func resolveDriveCommentTarget(ctx context.Context, runtime *common.RuntimeConte
 	objType := normalizeDriveCommentType(common.GetString(node, "obj_type"))
 	objToken := common.GetString(node, "obj_token")
 	if objType == "" || objToken == "" {
-		return driveCommentTarget{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki get_node returned incomplete node data")
+		return driveCommentTarget{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki node_by_token returned incomplete node data")
 	}
 	if objType == "wiki" || !op.supports(objType) {
 		return driveCommentTarget{}, errs.NewValidationError(

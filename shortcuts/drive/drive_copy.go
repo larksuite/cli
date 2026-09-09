@@ -66,7 +66,7 @@ var DriveCopy = common.Shortcut{
 	},
 	Tips: []string{
 		"The source type must match the real file type; the API rejects mismatches.",
-		"A wiki URL or --token with --type wiki is resolved through wiki get_node, then its underlying Drive resource is copied.",
+		"A wiki URL or --token with --type wiki is resolved through wiki node_by_token, then its underlying Drive resource is copied.",
 		"Use `--extra target_type=docx` with a legacy doc source to create the copy as a new-version docx.",
 		"`--folder-token my_space` resolves the caller's My Space root folder automatically; resolution needs the drive:drive.metadata:readonly (or drive:drive) scope.",
 		"In bot mode, the CLI also tries to grant the current CLI user full_access on the new copy; the outcome is reported in the permission_grant output field.",
@@ -253,12 +253,24 @@ func resolveDriveCopyInput(urlInput, tokenInput, explicitType string) (driveCopy
 func resolveDriveCopyWikiResource(ctx context.Context, runtime *common.RuntimeContext, spec driveCopySpec) (driveCopySpec, error) {
 	wikiToken := spec.Ref.Token
 	data, err := driveInspectCallWithRetry(ctx, func() (map[string]interface{}, error) {
-		return runtime.CallAPITyped(
+		data, err := runtime.CallAPITyped(
 			"GET",
-			"/open-apis/wiki/v2/spaces/get_node",
+			"/open-apis/wiki/v2/spaces/node_by_token",
 			map[string]interface{}{"token": wikiToken},
 			nil,
 		)
+		// Classify terminal lookup failures before deciding whether to retry.
+		if problem, ok := errs.ProblemOf(err); ok {
+			switch problem.Code {
+			case 131012:
+				problem.Subtype, problem.Retryable = errs.SubtypeNotFound, false
+			case 131013, 131016:
+				problem.Subtype, problem.Retryable = errs.SubtypeInvalidParameters, false
+			case 131014:
+				problem.Subtype, problem.Retryable = errs.SubtypeFailedPrecondition, false
+			}
+		}
+		return data, err
 	})
 	if err != nil {
 		return driveCopySpec{}, driveInspectAnnotateError("resolve_wiki", err)
@@ -270,7 +282,7 @@ func resolveDriveCopyWikiResource(ctx context.Context, runtime *common.RuntimeCo
 	if objType == "" || objToken == "" {
 		return driveCopySpec{}, errs.NewInternalError(
 			errs.SubtypeInvalidResponse,
-			"wiki get_node returned incomplete node data (obj_type=%q, obj_token=%q)",
+			"wiki node_by_token returned incomplete node data (obj_type=%q, obj_token=%q)",
 			objType,
 			objToken,
 		)
@@ -285,7 +297,7 @@ func resolveDriveCopyWikiResource(ctx context.Context, runtime *common.RuntimeCo
 	if err := validate.ResourceName(objToken, spec.Ref.SourceFlag); err != nil {
 		return driveCopySpec{}, errs.NewInternalError(
 			errs.SubtypeInvalidResponse,
-			"wiki get_node returned an unsafe obj_token: %s",
+			"wiki node_by_token returned an unsafe obj_token: %s",
 			err,
 		).WithCause(err)
 	}
@@ -377,7 +389,7 @@ func buildDriveCopyDryRun(spec driveCopySpec) *common.DryRunAPI {
 	if spec.Ref.Type == "wiki" {
 		dry := common.NewDryRunAPI().
 			Desc("Resolve wiki node, then copy its underlying resource into Drive").
-			GET("/open-apis/wiki/v2/spaces/get_node").
+			GET("/open-apis/wiki/v2/spaces/node_by_token").
 			Desc("[1] Resolve the wiki node to its underlying resource").
 			Params(map[string]interface{}{"token": spec.Ref.Token})
 		folderToken := spec.FolderToken

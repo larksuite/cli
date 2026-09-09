@@ -47,6 +47,17 @@ func assertDriveCommentAPIError(t *testing.T, err error, wantCode int) {
 	}
 }
 
+func assertDriveCommentIncompleteNodeError(t *testing.T, err error) {
+	t.Helper()
+	var internalErr *errs.InternalError
+	if !errors.As(err, &internalErr) || internalErr.Category != errs.CategoryInternal || internalErr.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("expected internal/invalid_response, got %T: %v", err, err)
+	}
+	if cause := errors.Unwrap(err); cause != nil {
+		t.Fatalf("unexpected cause on direct invalid-response error: %v", cause)
+	}
+}
+
 func TestResolveDriveCommentInput(t *testing.T) {
 	t.Parallel()
 
