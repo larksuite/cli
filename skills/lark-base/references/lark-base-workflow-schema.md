@@ -212,7 +212,7 @@
 | `table_name` | 是  | 监控的数据表名 |
 | `record_watch_conjunction` | 否  | 记录筛选组合方式：`and` / `or`，默认 `and` |
 | `record_watch_info` | 否  | 记录级过滤条件（修改前值匹配），为空则监听全部 |
-| `field_watch_info` | 是  | 字段级监控条件列表，至少一个监听字段；多项之间为 OR，其他筛选条件仍须满足 |
+| `field_watch_info` | 是  | 字段级监控条件列表，至少一个，多项之间为 OR |
 | `trigger_control_list` | 否  | 触发控制，可选值：`pasteUpdate` / `automationBatchUpdate` / `syncUpdate` / `appendImport` |
 | `condition_list` | 否  | 过滤条件数组，数组中每个元素为 AndCondition 结构，多个 AndCondition 之间为 OR 关系 |
 
@@ -221,20 +221,8 @@
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `field_name` | string | 监听字段名称 |
-| `operator` | string | 操作符（需限定字段修改后的值时填） |
-| `value` | ValueInfo[] | 条件值，是否需要取决于操作符 |
-
-仅监听字段变化时，只传 `field_name`，省略 `operator` 和 `value`。例如监听“状态”或“备注”任一字段修改：
-
-```json
-{
-  "table_name": "订单表",
-  "field_watch_info": [
-    { "field_name": "状态" },
-    { "field_name": "备注" }
-  ]
-}
-```
+| `operator` | string | 操作符（仅明确要求字段满足条件时填） |
+| `value` | ValueInfo[] | 触发值 |
 
 ### TimerTrigger
 
