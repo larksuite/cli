@@ -19,6 +19,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/apps/deploy"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -536,4 +537,46 @@ func TestHTMLDeployDryRun_NoWrites(t *testing.T) {
 	if _, ok := data["content_hash"].(string); !ok {
 		t.Errorf("content_hash missing: %v", data)
 	}
+}
+
+func TestAdoptOrGenerateRoutesNoDuplicateEntry(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "routes.json"),
+		[]byte(`[{"path":"/","file":"index.html"},{"path":"/about","file":"about.html"}]`), 0o600); err != nil {
+		t.Fatalf("write routes.json: %v", err)
+	}
+	entries := []deploy.PackEntry{
+		{ZipPath: "output/index.html", AbsPath: filepath.Join(root, "index.html")},
+		{ZipPath: "output/routes.json", AbsPath: filepath.Join(root, "routes.json")},
+	}
+	count, err := adoptOrGenerateRoutes(htmlDeployTestFIO{}, &entries, []string{"index.html"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("route count = %d, want 2 (from the payload's own routes.json)", count)
+	}
+	seen := 0
+	for _, e := range entries {
+		if e.ZipPath == "output/routes.json" {
+			seen++
+		}
+	}
+	// 同名条目出现两次时，服务端解压保留哪一份是未定义的。
+	if seen != 1 {
+		t.Errorf("output/routes.json appears %d times in the zip manifest, want exactly 1", seen)
+	}
+}
+
+// htmlDeployTestFIO lets the bare-HTML unit tests read absolute t.TempDir
+// paths; production code goes through LocalFileIO, which is cwd-bounded.
+// Defined here rather than reused from the +html-publish test files so these
+// tests survive that command's planned removal.
+type htmlDeployTestFIO struct{}
+
+func (htmlDeployTestFIO) Open(name string) (fileio.File, error)     { return os.Open(name) }
+func (htmlDeployTestFIO) Stat(name string) (fileio.FileInfo, error) { return os.Stat(name) }
+func (htmlDeployTestFIO) ResolvePath(p string) (string, error)      { return p, nil }
+func (htmlDeployTestFIO) Save(string, fileio.SaveOptions, io.Reader) (fileio.SaveResult, error) {
+	panic("Save not used in bare-HTML deploy unit tests")
 }

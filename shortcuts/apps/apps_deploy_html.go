@@ -6,6 +6,7 @@ package apps
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -160,6 +161,47 @@ func readHTMLHashFiles(fio fileio.FileIO, entries []deploy.PackEntry) ([]deploy.
 	return files, total, nil
 }
 
+// htmlDeployRoutesZipPath is where the hosting protocol expects the route
+// enumeration inside the zip.
+const htmlDeployRoutesZipPath = "output/routes.json"
+
+// adoptOrGenerateRoutes keeps a routes.json that the payload already carries
+// (validating it the same way the project mode does) and only generates one
+// when the payload has none. It returns the number of routes the published
+// payload ends up declaring.
+func adoptOrGenerateRoutes(fio fileio.FileIO, entries *[]deploy.PackEntry, htmlRels []string) (int, error) {
+	for _, e := range *entries {
+		if e.ZipPath != htmlDeployRoutesZipPath {
+			continue
+		}
+		f, err := fio.Open(e.AbsPath)
+		if err != nil {
+			return 0, appsInputPathEntryError(e.AbsPath, err)
+		}
+		raw, err := io.ReadAll(f)
+		f.Close()
+		if err != nil {
+			return 0, appsFileIOError(err, "read %s failed: %v", e.AbsPath, err)
+		}
+		if err := validateAppDevRoutesJSON(raw); err != nil {
+			return 0, err
+		}
+		var provided []appDevRoute
+		if err := json.Unmarshal(raw, &provided); err != nil {
+			return 0, appsFailedPreconditionError("routes.json is not a valid route enumeration array: %v", err)
+		}
+		return len(provided), nil
+	}
+	routes, count, err := generateAppDevRoutes(htmlRels)
+	if err != nil {
+		return 0, err
+	}
+	*entries = append(*entries, deploy.PackEntry{
+		ZipPath: htmlDeployRoutesZipPath, Content: routes, Size: int64(len(routes)),
+	})
+	return count, nil
+}
+
 // resolveHTMLDeployPlan walks the payload and resolves everything that can be
 // known without a write: the entry, the zip manifest (routes.json included),
 // the content fingerprint and the waived credential files. Validate already ran
@@ -213,13 +255,14 @@ func resolveHTMLDeployPlan(rctx *common.RuntimeContext) (htmlDeployPlan, error) 
 	if err != nil {
 		return htmlDeployPlan{}, err
 	}
-	routes, routeCount, err := generateAppDevRoutes(htmlRels)
+	// A payload-provided routes.json always wins, matching the project mode
+	// (validateAppDevOutputs). Appending a generated one unconditionally would
+	// put two output/routes.json entries in the same zip, and which of them the
+	// server keeps after unpacking is undefined.
+	routeCount, err := adoptOrGenerateRoutes(rctx.FileIO(), &entries, htmlRels)
 	if err != nil {
 		return htmlDeployPlan{}, err
 	}
-	entries = append(entries, deploy.PackEntry{
-		ZipPath: "output/routes.json", Content: routes, Size: int64(len(routes)),
-	})
 
 	zipPaths := make([]string, 0, len(entries))
 	for _, e := range entries {
