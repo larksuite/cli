@@ -73,7 +73,7 @@ func TestDocsCreateAsyncDeadlineCancelsInflightRead(t *testing.T) {
 	if result != nil || !errors.Is(err, context.DeadlineExceeded) || !ok || problem.Subtype != errs.SubtypeNetworkTimeout {
 		t.Fatalf("deadline result=%v err=%v problem=%+v", result, err, problem)
 	}
-	if problem.LogID != "create-log" || !strings.Contains(problem.Hint, "--command append") {
+	if problem.LogID != "create-log" || problem.Hint != "split the content into smaller batches: create the document first, then append each batch" {
 		t.Fatalf("timeout recovery missing: %+v", problem)
 	}
 	assertDocsCreateErrorHasNoTaskRecovery(t, err, "task_slow")
@@ -351,7 +351,7 @@ func TestDocsCreateAsyncTerminalFailureGuidance(t *testing.T) {
 				t.Fatalf("result=%v err=%v problem=%+v", result, err, problem)
 			}
 			if tc.batch {
-				if !strings.Contains(problem.Message, "took too long") || !strings.Contains(problem.Hint, "docs +create --title") || !strings.Contains(problem.Hint, "--command append") {
+				if !strings.Contains(problem.Message, "took too long") || problem.Hint != "split the content into smaller batches: create the document first, then append each batch" {
 					t.Fatalf("batch recovery missing: %+v", problem)
 				}
 			} else if !strings.Contains(problem.Message, tc.failure.Message) || strings.Contains(problem.Message, "took too long") {
@@ -379,7 +379,7 @@ func TestDocsCreateAsyncTimeoutEnvelope(t *testing.T) {
 	if envelope.OK || envelope.Identity != "user" || envelope.Error.Category != errs.CategoryNetwork || envelope.Error.Subtype != errs.SubtypeNetworkTimeout || envelope.Error.LogID != "timeout-log" || output.ExitCodeOf(err) != 4 || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("invalid timeout envelope: %s", stderr.String())
 	}
-	if envelope.Error.Message != "document processing took too long" || !strings.Contains(envelope.Error.Hint, "docs +create --title") || !strings.Contains(envelope.Error.Hint, "--command append") {
+	if envelope.Error.Message != "document processing took too long" || envelope.Error.Hint != "split the content into smaller batches: create the document first, then append each batch" {
 		t.Fatalf("incorrect timeout recovery: %s", stderr.String())
 	}
 	assertDocsCreateErrorHasNoTaskRecovery(t, err, "task_timeout")
