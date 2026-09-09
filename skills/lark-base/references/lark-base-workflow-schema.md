@@ -108,11 +108,11 @@
 | 需求描述 | 触发器 |
 |---------|--------|
 | 新增记录时 | `AddRecordTrigger` |
-| 字段变为特定值时（**仅修改**） | `SetRecordTrigger` |
-| **新增或修改**都触发 | `ChangeRecordTrigger` |
-| 拿不准用哪个 | `ChangeRecordTrigger` |
+| 指定字段发生任意修改时（仅修改） | `SetRecordTrigger`，`field_watch_info` 中仅传 `field_name` |
+| 指定字段发生修改，且修改后满足指定条件时（仅修改） | `SetRecordTrigger`，`field_watch_info` 中配置 `operator` 及所需 `value` |
+| 新增或修改记录，且满足配置的筛选条件时 | `ChangeRecordTrigger`，必须配置有效 `condition_list` |
 
-> ⚠️ `SetRecordTrigger` 仅监听修改，`ChangeRecordTrigger` 同时监听新增 + 修改。
+> ⚠️ `SetRecordTrigger` 仅监听修改，且至少配置一个监听字段；`ChangeRecordTrigger` 覆盖新增和修改事件，但必须配置有效筛选条件，不能作为无条件监听所有新增和修改的默认选择。
 
 ### Action 类型
 
@@ -154,8 +154,7 @@
 {
   "table_name": "订单表",
   "watched_field_name": "状态",
-  "trigger_control_list": ["pasteUpdate", "automationBatchUpdate"],
-  "condition_list": [] /* AndCondition 数组 */ 
+  "trigger_control_list": ["pasteUpdate", "automationBatchUpdate"]
 }
 ```
 
@@ -164,15 +163,28 @@
 | `table_name` | 是 | 监控的数据表名 |
 | `watched_field_name` | 是 | 监控的字段名 |
 | `trigger_control_list` | 否 | 触发控制，可选值：`pasteUpdate` / `automationBatchUpdate` / `syncUpdate` / `appendImport` / `openAPIBatchUpdate` |
-| `condition_list` | 否 | 过滤条件数组，数组中每个元素为 AndCondition 结构，多个 AndCondition 之间为 OR 关系 |
+| `condition_list` | 否 | 过滤条件数组，数组中每个元素为 AndCondition 结构，多个 AndCondition 之间为 OR 关系。无额外筛选条件时，示例统一省略该字段。当前本地公共转换实现将省略、`null` 和 `[]` 均按无附加条件处理，不能仅因传入 `[]` 就断言配置非法；实际服务端结果仍取决于具体节点校验及部署版本 |
 
 ### ChangeRecordTrigger
+
+假设“任务表”存在数字字段“预计工时”，实际使用时应替换为业务需要的真实筛选条件。不要为满足必填要求虚构恒真条件。
 
 ```json
 {
   "table_name": "任务表",
   "trigger_control_list": [],
-  "condition": null
+  "condition_list": [
+    {
+      "conjunction": "and",
+      "conditions": [
+        {
+          "field_name": "预计工时",
+          "operator": "isGreater",
+          "value": [{ "value_type": "number", "value": 0 }]
+        }
+      ]
+    }
+  ]
 }
 ```
 
@@ -180,7 +192,7 @@
 |------|------|------|
 | `table_name` | 是 | 监控的数据表名 |
 | `trigger_control_list` | 否 | 触发控制，可选值：`pasteUpdate` / `automationBatchUpdate` / `syncUpdate` / `appendImport` |
-| `condition_list` | 否 | 过滤条件数组，数组中每个元素为 AndCondition 结构，多个 AndCondition 之间为 OR 关系 |
+| `condition_list` | 是 | 必须配置有效筛选条件。值为非空 AndCondition 数组，每个条件组包含非空的有效 `conditions`；组内条件为 AND，多个条件组之间为 OR。不可省略，也不可使用 `null`、空数组或空条件组代替 |
 
 ### SetRecordTrigger
 
@@ -202,7 +214,7 @@
 | `table_name` | 是  | 监控的数据表名 |
 | `record_watch_conjunction` | 否  | 记录筛选组合方式：`and` / `or`，默认 `and` |
 | `record_watch_info` | 否  | 记录级过滤条件（修改前值匹配），为空则监听全部 |
-| `field_watch_info` | 是  | 字段级监控条件列表，至少一个 |
+| `field_watch_info` | 是  | 字段级监控条件列表，至少指定一个真实存在的监听字段。仅监听字段变化时只传 `field_name`；多个监听项之间为 OR，任一项成立即可满足字段监听要求；如果还配置了其他筛选条件，仍须满足相应筛选要求 |
 | `trigger_control_list` | 否  | 触发控制，可选值：`pasteUpdate` / `automationBatchUpdate` / `syncUpdate` / `appendImport` |
 | `condition_list` | 否  | 过滤条件数组，数组中每个元素为 AndCondition 结构，多个 AndCondition 之间为 OR 关系 |
 
@@ -212,7 +224,25 @@
 |------|------|------|
 | `field_name` | string | 监听字段名称 |
 | `operator` | string | 操作符（仅明确要求字段满足条件时填） |
-| `value` | ValueInfo[] | 触发值 |
+| `value` | ValueInfo[] | 条件值，是否需要取决于操作符；仅监听字段变化时省略 |
+
+至少指定一个真实存在的监听字段。仅监听字段变化时，只传 `field_name`，省略 `operator` 和 `value`。配置 `operator` 时，要求该字段发生变化，并且修改后的值满足该条件；`value` 是否需要取决于操作符，不能一概视为必填。
+
+多个 `field_watch_info` 项之间为 OR：任一监听项成立即可满足字段监听要求；如果还配置了其他筛选条件，仍须满足相应筛选要求。
+
+仅监听指定字段任意修改的最小 `data` 示例（假设“订单表”存在“状态”和“备注”字段）：
+
+```json
+{
+  "table_name": "订单表",
+  "field_watch_info": [
+    { "field_name": "状态" },
+    { "field_name": "备注" }
+  ]
+}
+```
+
+“状态”或“备注”任一字段发生修改时满足字段监听要求，无需限定修改后的具体值。此例不包含记录级筛选。
 
 ### TimerTrigger
 
