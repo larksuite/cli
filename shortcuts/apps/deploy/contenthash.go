@@ -12,12 +12,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf16"
+
+	"github.com/larksuite/cli/errs"
 )
 
 // HashFile is one file taking part in the content fingerprint. Path uses the
@@ -71,7 +72,7 @@ type signatureEntry struct {
 func ContentHash(files []HashFile) (string, error) {
 	switch len(files) {
 	case 0:
-		return "", fmt.Errorf("content hash needs at least one file")
+		return "", errs.NewInternalError(errs.SubtypeUnknown, "content hash needs at least one file")
 	case 1:
 		return sha256Hex(files[0].Raw), nil
 	}
@@ -93,7 +94,7 @@ func ContentHash(files []HashFile) (string, error) {
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(entries); err != nil {
-		return "", fmt.Errorf("marshal signature array: %w", err)
+		return "", errs.NewInternalError(errs.SubtypeUnknown, "marshal signature array: %v", err).WithCause(err)
 	}
 	return sha256Hex(bytes.TrimRight(buf.Bytes(), "\n")), nil
 }
