@@ -43,14 +43,18 @@ var sensitiveExactNames = map[string]bool{
 // are caught too — note this also catches a file literally named .env.html,
 // which is why the single-file path runs this scan as well.
 func isSensitiveName(name string) bool {
-	if name == ".env" || strings.HasPrefix(name, ".env.") {
+	// Matching is case-insensitive throughout: macOS and Windows file systems
+	// are case-insensitive, so a file named .ENV or ID_RSA is the same file to
+	// the user and must not slip past the scan.
+	lower := strings.ToLower(name)
+	if lower == ".env" || strings.HasPrefix(lower, ".env.") {
 		return true
 	}
-	if strings.HasSuffix(name, ".pem") || strings.HasSuffix(name, ".p12") ||
-		strings.HasSuffix(name, ".pfx") || strings.HasSuffix(name, ".keystore") {
+	if strings.HasSuffix(lower, ".pem") || strings.HasSuffix(lower, ".p12") ||
+		strings.HasSuffix(lower, ".pfx") || strings.HasSuffix(lower, ".keystore") {
 		return true
 	}
-	return sensitiveExactNames[strings.ToLower(name)]
+	return sensitiveExactNames[lower]
 }
 
 const maxListedInError = 10

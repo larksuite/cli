@@ -14,6 +14,8 @@ func TestSensitiveNameCoverage(t *testing.T) {
 	hit := []string{
 		".env", ".env.local", ".env.production", ".env.html",
 		".npmrc", "id_rsa", ".git-credentials",
+		// 大小写不敏感：macOS/Windows 文件系统同名同文件，不能绕过扫描。
+		".ENV", ".Env.Local", "ID_RSA", "key.PEM", "Credentials",
 	}
 	for _, n := range hit {
 		if !isSensitiveName(n) {
