@@ -18,6 +18,7 @@ require (
 	github.com/spf13/pflag v1.0.9
 	github.com/stretchr/testify v1.11.1
 	github.com/tidwall/gjson v1.18.0
+	github.com/yuin/goldmark v1.7.17
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/image v0.30.0
 	golang.org/x/net v0.33.0

@@ -71,7 +71,7 @@ func Parse(source string, format Format) (ParseResult, error) {
 // ParseCompatibleXML builds a profile after deterministic recovery of common
 // malformed XML emitted while authoring a draft.
 func ParseCompatibleXML(source string) (Profile, error) {
-	if err := validateSource(source); err != nil {
+	if err := validateXMLSource(source); err != nil {
 		return Profile{}, err
 	}
 	trimmed := strings.TrimSpace(strings.TrimPrefix(source, "\uFEFF"))

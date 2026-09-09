@@ -16,7 +16,7 @@ const (
 	MaxNestingDepth = 1024
 )
 
-func validateSource(source string) error {
+func validateMarkdownSource(source string) error {
 	if len(source) > MaxInputBytes {
 		return newParseError("input is too large (%d bytes, limit %d)", len(source), MaxInputBytes)
 	}
@@ -27,6 +27,13 @@ func validateSource(source string) error {
 		if !isXML10Character(r) {
 			return newParseError("input contains an XML 1.0 forbidden character U+%04X at byte %d", r, offset)
 		}
+	}
+	return nil
+}
+
+func validateXMLSource(source string) error {
+	if err := validateMarkdownSource(source); err != nil {
+		return err
 	}
 	if containsForbiddenXMLDeclaration(source) {
 		return newParseError("XML input must not contain DOCTYPE or ENTITY declarations")
@@ -97,7 +104,7 @@ func parseXMLCompatible(source string) ([]*Node, error) {
 }
 
 func parseXMLWithCompatibility(source string, compatible bool) ([]*Node, error) {
-	if err := validateSource(source); err != nil {
+	if err := validateXMLSource(source); err != nil {
 		return nil, err
 	}
 	if compatible {
