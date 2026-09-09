@@ -77,3 +77,51 @@ func validateHTMLDeploy(rctx *common.RuntimeContext) error {
 	}
 	return nil
 }
+
+// hasHTMLAppCreatedPath is the idempotency lookup. Only exists and app_id are
+// consumed; app_url / app_type / ccm_token in the response are ignored.
+const hasHTMLAppCreatedPath = apiBasePath + "/apps/has_html_app_created"
+
+// htmlAppIDSource records how the publish target was resolved, for dry-run and
+// stderr echo.
+type htmlAppIDSource string
+
+const (
+	htmlAppIDSourceFlag   htmlAppIDSource = "--app-id"
+	htmlAppIDSourceLookup htmlAppIDSource = "has_html_app_created"
+	htmlAppIDSourceCreate htmlAppIDSource = "+create"
+)
+
+// htmlAppIDFromFlag is the first level: an explicit --app-id wins and skips the
+// lookup entirely.
+func htmlAppIDFromFlag(flagID string) (htmlAppIDSource, string) {
+	if id := strings.TrimSpace(flagID); id != "" {
+		return htmlAppIDSourceFlag, id
+	}
+	return htmlAppIDSourceLookup, ""
+}
+
+// parseHasHTMLAppCreated reads exists and app_id out of the lookup response.
+func parseHasHTMLAppCreated(data map[string]interface{}) (bool, string) {
+	exists, _ := data["exists"].(bool)
+	if !exists {
+		return false, ""
+	}
+	return true, common.GetString(data, "app_id")
+}
+
+// htmlDeployPlan is everything resolved before any write happens; Execute
+// consumes it so the payload is not walked twice.
+type htmlDeployPlan struct {
+	AbsEntry    string
+	EntryRel    string
+	AppID       string
+	AppIDSource htmlAppIDSource
+	Entries     []deploy.PackEntry
+	FileCount   int
+	TotalBytes  int64
+	ZipPaths    []string
+	RouteCount  int
+	ContentHash string
+	Waived      []string
+}

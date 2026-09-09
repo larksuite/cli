@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/shortcuts/apps/deploy"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -143,4 +144,77 @@ func TestValidateHTMLDeploy(t *testing.T) {
 			t.Fatalf("got %v, want the flag conflict reported before any stat", err)
 		}
 	})
+}
+
+func TestHTMLAppIDFromFlagSkipsLookup(t *testing.T) {
+	src, id := htmlAppIDFromFlag("app_1abc")
+	if src != htmlAppIDSourceFlag || id != "app_1abc" {
+		t.Errorf("got (%v, %q), want (--app-id, app_1abc)", src, id)
+	}
+	src, id = htmlAppIDFromFlag("  ")
+	if src != htmlAppIDSourceLookup || id != "" {
+		t.Errorf("got (%v, %q), want (lookup, \"\")", src, id)
+	}
+}
+
+func TestParseHasHTMLAppCreated(t *testing.T) {
+	exists, id := parseHasHTMLAppCreated(map[string]interface{}{
+		"exists": true, "app_id": "app_x", "app_url": "https://ignored", "ccm_token": "ignored",
+	})
+	if !exists || id != "app_x" {
+		t.Errorf("got (%v, %q), want (true, app_x)", exists, id)
+	}
+	if exists, id := parseHasHTMLAppCreated(map[string]interface{}{"exists": false}); exists || id != "" {
+		t.Errorf("got (%v, %q), want (false, \"\")", exists, id)
+	}
+	if exists, id := parseHasHTMLAppCreated(map[string]interface{}{"exists": true}); !exists || id != "" {
+		t.Errorf("got (%v, %q), want (true, \"\") when app_id is absent", exists, id)
+	}
+}
+
+// TestHTMLAppIDLookupPath pins the idempotency endpoint and the third source,
+// which the create fallback in the Execute step reports.
+func TestHTMLAppIDLookupPath(t *testing.T) {
+	if hasHTMLAppCreatedPath != "/open-apis/spark/v1/apps/has_html_app_created" {
+		t.Errorf("unexpected lookup path %q", hasHTMLAppCreatedPath)
+	}
+	if htmlAppIDSourceCreate != "+create" {
+		t.Errorf("unexpected create source %q", htmlAppIDSourceCreate)
+	}
+}
+
+// TestHTMLDeployPlanFields covers every field Execute reads off the resolved
+// plan, so a missing one shows up here rather than at the call site.
+func TestHTMLDeployPlanFields(t *testing.T) {
+	plan := htmlDeployPlan{
+		AbsEntry:    "/Users/me/site/index.html",
+		EntryRel:    "index.html",
+		AppID:       "app_x",
+		AppIDSource: htmlAppIDSourceLookup,
+		Entries:     []deploy.PackEntry{{ZipPath: "output/index.html", Size: 11}},
+		FileCount:   1,
+		TotalBytes:  11,
+		ZipPaths:    []string{"output/index.html"},
+		RouteCount:  1,
+		ContentHash: "abc",
+		Waived:      []string{".env"},
+	}
+	if plan.AbsEntry == "" || plan.EntryRel == "" || plan.AppID == "" {
+		t.Error("entry and app id must survive into the plan")
+	}
+	if plan.AppIDSource != htmlAppIDSourceLookup {
+		t.Errorf("unexpected app id source %q", plan.AppIDSource)
+	}
+	if len(plan.Entries) != 1 || plan.Entries[0].ZipPath != "output/index.html" {
+		t.Errorf("unexpected entries %+v", plan.Entries)
+	}
+	if plan.FileCount != 1 || plan.TotalBytes != 11 || plan.RouteCount != 1 {
+		t.Errorf("unexpected counters %+v", plan)
+	}
+	if len(plan.ZipPaths) != 1 || plan.ContentHash != "abc" {
+		t.Errorf("unexpected zip paths or hash %+v", plan)
+	}
+	if len(plan.Waived) != 1 || plan.Waived[0] != ".env" {
+		t.Errorf("waived credential files must stay on the plan for the stderr notice, got %v", plan.Waived)
+	}
 }
