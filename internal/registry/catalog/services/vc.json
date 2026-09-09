@@ -202,7 +202,7 @@
                 },
                 "meeting_connect": {
                   "type": "boolean",
-                  "description": "该会议是否支持互通",
+                  "description": "该会议是否支持互通（注：该字段内测中）",
                   "required": false,
                   "example": true
                 },
@@ -372,7 +372,7 @@
                 },
                 "ability": {
                   "type": "object",
-                  "description": "会中使用的能力",
+                  "description": "会中使用的能力;;注意：仅当使用应用身份（tenant_access_token）调用该接口，且查询参数 with_meeting_ability 取值为 true 时，该参数会有返回值。",
                   "required": false,
                   "ref": "meeting_ability",
                   "properties": {
@@ -416,7 +416,7 @@
                 },
                 "note_id": {
                   "type": "string",
-                  "description": "纪要ID",
+                  "description": "会议纪要 ID，可用于调用 note detail API 获取纪要详情（query_mode=0 时返回）",
                   "required": false,
                   "example": "6943848821689040898"
                 }

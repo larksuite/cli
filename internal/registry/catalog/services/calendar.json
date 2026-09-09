@@ -499,7 +499,7 @@
           "responseBody": {
             "has_more": {
               "type": "boolean",
-              "description": "Whether the response body has more parameters",
+              "description": "Whether there are more items",
               "required": false,
               "example": false
             },
@@ -1469,7 +1469,7 @@
               "properties": {
                 "type": {
                   "type": "string",
-                  "description": "参与人类型，仅当新建参与人时可设置类型;type为User时，值为open_id/user_id/union_id;type为Chat时，值为open_chat_id;type为Resource时，值为open_room_id;type为ThirdParty时，值为third_party_email；不支持通过API新建该类型参与人",
+                  "description": "参与人类型。",
                   "required": false,
                   "options": [
                     {
@@ -1619,7 +1619,7 @@
               "properties": {
                 "type": {
                   "type": "string",
-                  "description": "参与人类型，仅当新建参与人时可设置类型;type为User时，值为open_id/user_id/union_id;type为Chat时，值为open_chat_id;type为Resource时，值为open_room_id;type为ThirdParty时，值为third_party_email；不支持通过API新建该类型参与人",
+                  "description": "参与人类型。",
                   "required": false,
                   "options": [
                     {
@@ -1649,7 +1649,7 @@
                 },
                 "is_optional": {
                   "type": "boolean",
-                  "description": "参与人是否为「可选参加」，无法编辑群参与人的此字段",
+                  "description": "参与人是否为可选参加。;;可选值有：;- true：是;- false：否;;注意：无法编辑会议室类型参与人的此字段。",
                   "required": false,
                   "example": false
                 },
@@ -1716,7 +1716,7 @@
                 },
                 "approval_reason": {
                   "type": "string",
-                  "description": "会议室审批原因",
+                  "description": "申请预定审批会议室的原因。参数配置说明：;- 仅使用用户身份（user_access_token）预定审批会议室时，该字段生效。;- 对于申请预定审批会议室的场景，不传该值会直接预约失败。;- 如果使用应用身份（tenant_access_token）预定审批会议室，会直接失败。;;默认值：空",
                   "required": false,
                   "example": "申请审批原因",
                   "annotations": [
@@ -1758,7 +1758,7 @@
               "properties": {
                 "type": {
                   "type": "string",
-                  "description": "参与人类型，仅当新建参与人时可设置类型;type为User时，值为open_id/user_id/union_id;type为Chat时，值为open_chat_id;type为Resource时，值为open_room_id;type为ThirdParty时，值为third_party_email；不支持通过API新建该类型参与人",
+                  "description": "参与人类型。",
                   "required": false,
                   "options": [
                     {
@@ -2126,7 +2126,7 @@
               "properties": {
                 "type": {
                   "type": "string",
-                  "description": "参与人类型，仅当新建参与人时可设置类型;type为User时，值为open_id/user_id/union_id;type为Chat时，值为open_chat_id;type为Resource时，值为open_room_id;type为ThirdParty时，值为third_party_email；不支持通过API新建该类型参与人",
+                  "description": "参与人类型。",
                   "required": false,
                   "options": [
                     {
@@ -2236,7 +2236,7 @@
                 },
                 "chat_members": {
                   "type": "array",
-                  "description": "群中的群成员，当type为Chat时有效；群成员不支持编辑",
+                  "description": "群成员信息。;;注意：该字段已废弃，如需获取群中的群成员，请使用“获取参与人群成员列表”接口。",
                   "required": false,
                   "annotations": [
                     "readOnly"
@@ -2386,7 +2386,7 @@
             },
             "has_more": {
               "type": "boolean",
-              "description": "Whether the response body has more parameters",
+              "description": "Whether there are more items",
               "required": false,
               "example": true
             },
@@ -2477,7 +2477,7 @@
             },
             "need_notification": {
               "type": "boolean",
-              "description": "Whether to send Bot notifications to event invitees when updating the event.; Default value: empty, indicating that the field will not be updated; Optional values are:;- true: send notification;- false: Do not send notifications",
+              "description": "Whether to send Bot notifications to event attendees when updating the event.; Optional values are:;- true: send notifications;- false: do not send notifications;; Default value: true",
               "required": false,
               "example": false,
               "annotations": [
@@ -2709,7 +2709,7 @@
                     },
                     "allow_attendees_start": {
                       "type": "boolean",
-                      "description": "允许日程参与者发起会议",
+                      "description": "是否允许日程参与者发起会议。;;可选值有：;- true（默认值）：允许;- false：不允许;;注意：应用日历上操作日程时，该字段必须为 true，否则没有人能发起会议。",
                       "required": false,
                       "example": true
                     }
@@ -2884,7 +2884,7 @@
             },
             "recurrence": {
               "type": "string",
-              "description": "重复日程的重复性规则",
+              "description": "重复日程的重复性规则，规则设置方式参考 rfc5545。;;默认值：空，表示当前日程不是重复日程。;;注意：;- COUNT 和 UNTIL 不支持同时出现。;- 预定会议室重复日程长度不得超过两年。",
               "required": false,
               "example": "FREQ=DAILY;INTERVAL=1"
             },
@@ -2931,7 +2931,7 @@
                 },
                 "app_link": {
                   "type": "string",
-                  "description": "按钮点击后跳转的链接",
+                  "description": "按钮点击后跳转的链接。;;注意：兼容性参数，只读，因此暂不支持传入该请求参数。",
                   "required": false,
                   "example": "xxxx"
                 }
@@ -2944,7 +2944,7 @@
               "properties": {
                 "file_token": {
                   "type": "string",
-                  "description": "附件token",
+                  "description": "附件 Token。调用“上传素材”接口，获取附件的 file_token。在调用上传素材接口时需要注意：;;- `parent_type` 需传入固定值 `calendar`。;- `parent_node` 需传入与当前接口一致的日历 ID。;;附件校验规则：附件总大小不超过 25 MB。",
                   "required": false,
                   "example": "xAAAAA"
                 }
@@ -3005,7 +3005,7 @@
                 },
                 "check_in_end_time": {
                   "type": "object",
-                  "description": "Event check-in start time.; Note: The check-in start time cannot be greater than or equal to the check-in end time",
+                  "description": "Event check-in end time.; Note: The check-in start time cannot be greater than or equal to the check-in end time",
                   "required": false,
                   "ref": "check_in_time",
                   "properties": {
@@ -3103,7 +3103,7 @@
                 },
                 "start_time": {
                   "type": "object",
-                  "description": "Search filter items, start time of event search interval. ; Notice: If start_time and end_time are not passed, the default search is for events within the past month",
+                  "description": "Event start time.",
                   "required": true,
                   "ref": "time_info",
                   "properties": {
@@ -3129,7 +3129,7 @@
                 },
                 "end_time": {
                   "type": "object",
-                  "description": "Search filter items, end time of event search interval. ; Notice: If start_time and end_time are not passed, the default search is for events within the past month",
+                  "description": "Event end time.",
                   "required": true,
                   "ref": "time_info",
                   "properties": {
@@ -3544,7 +3544,7 @@
                   "properties": {
                     "file_token": {
                       "type": "string",
-                      "description": "附件token",
+                      "description": "附件 Token。调用“上传素材”接口，获取附件的 file_token。在调用上传素材接口时需要注意：;;- `parent_type` 需传入固定值 `calendar`。;- `parent_node` 需传入与当前接口一致的日历 ID。;;附件校验规则：附件总大小不超过 25 MB。",
                       "required": false,
                       "example": "xAAAAA"
                     },
@@ -3597,7 +3597,7 @@
                     },
                     "check_in_end_time": {
                       "type": "object",
-                      "description": "Event check-in start time.; Note: The check-in start time cannot be greater than or equal to the check-in end time",
+                      "description": "Event check-in end time.",
                       "required": false,
                       "ref": "check_in_time"
                     },
@@ -3850,7 +3850,7 @@
                 },
                 "start_time": {
                   "type": "object",
-                  "description": "Search filter items, start time of event search interval. ; Notice: If start_time and end_time are not passed, the default search is for events within the past month",
+                  "description": "Event start time.",
                   "required": true,
                   "ref": "time_info",
                   "properties": {
@@ -3876,7 +3876,7 @@
                 },
                 "end_time": {
                   "type": "object",
-                  "description": "Search filter items, end time of event search interval. ; Notice: If start_time and end_time are not passed, the default search is for events within the past month",
+                  "description": "Event end time.",
                   "required": true,
                   "ref": "time_info",
                   "properties": {
@@ -4294,7 +4294,7 @@
                   "properties": {
                     "type": {
                       "type": "string",
-                      "description": "参与人类型，仅当新建参与人时可设置类型;type为User时，值为open_id/user_id/union_id;type为Chat时，值为open_chat_id;type为Resource时，值为open_room_id;type为ThirdParty时，值为third_party_email；不支持通过API新建该类型参与人",
+                      "description": "参与人类型。",
                       "required": false,
                       "options": [
                         {
@@ -4463,7 +4463,7 @@
                   "properties": {
                     "file_token": {
                       "type": "string",
-                      "description": "附件token",
+                      "description": "附件 Token。调用“上传素材”接口，获取附件的 file_token。在调用上传素材接口时需要注意：;;- `parent_type` 需传入固定值 `calendar`。;- `parent_node` 需传入与当前接口一致的日历 ID。;;附件校验规则：附件总大小不超过 25 MB。",
                       "required": false,
                       "example": "xAAAAA"
                     },
@@ -4507,7 +4507,7 @@
                     },
                     "check_in_end_time": {
                       "type": "object",
-                      "description": "Event check-in start time.; Note: The check-in start time cannot be greater than or equal to the check-in end time",
+                      "description": "Event check-in end time.",
                       "required": false,
                       "ref": "check_in_time"
                     },
@@ -5007,7 +5007,7 @@
                   "properties": {
                     "type": {
                       "type": "string",
-                      "description": "参与人类型，仅当新建参与人时可设置类型;type为User时，值为open_id/user_id/union_id;type为Chat时，值为open_chat_id;type为Resource时，值为open_room_id;type为ThirdParty时，值为third_party_email；不支持通过API新建该类型参与人",
+                      "description": "参与人类型。",
                       "required": false,
                       "options": [
                         {
@@ -5531,7 +5531,7 @@
                     },
                     "allow_attendees_start": {
                       "type": "boolean",
-                      "description": "允许日程参与者发起会议",
+                      "description": "是否允许日程参与者发起会议。;;注意：应用日历上操作日程时，该字段必须为 true，否则没有人能发起会议。;;可选值有：;- true：允许;- false：不允许;;默认值：空，表示不更新该字段",
                       "required": false,
                       "example": true
                     }
@@ -5706,13 +5706,13 @@
             },
             "recurrence": {
               "type": "string",
-              "description": "重复日程的重复性规则",
+              "description": "重复日程的重复性规则，规则设置方式参考 rfc5545。;;注意：;- COUNT 和 UNTIL 不支持同时出现。;- 预定会议室重复日程长度不得超过两年。;;默认值：空，表示不更新该字段",
               "required": false,
               "example": "FREQ=DAILY;INTERVAL=1"
             },
             "schemas": {
               "type": "array",
-              "description": "日程自定义信息",
+              "description": "日程自定义信息，控制日程详情页的 UI 展示。schemas 字段不传值则表示不更新该字段。;;注意：;1. schemas 传值的情况下，每次都是覆盖更新，即用传入的列表去更新原来的列表。;2. 可以使用 [] 空列表来清空 schemas 原来的数据。",
               "required": false,
               "properties": {
                 "ui_name": {
@@ -5753,7 +5753,7 @@
                 },
                 "app_link": {
                   "type": "string",
-                  "description": "按钮点击后跳转的链接",
+                  "description": "按钮点击后跳转的链接。;;注意：兼容性参数，只读，因此暂不支持传入该请求参数。",
                   "required": false,
                   "example": "xxxx"
                 }
@@ -5766,7 +5766,7 @@
               "properties": {
                 "file_token": {
                   "type": "string",
-                  "description": "附件token",
+                  "description": "附件 Token。调用“上传素材”接口，获取附件的 file_token。在调用上传素材接口时需要注意：;;- `parent_type` 需传入固定值 `calendar`。;- `parent_node` 需传入与当前接口一致的日历 ID。;;附件校验规则：附件总大小不超过 25 MB。",
                   "required": false,
                   "example": "xAAAAA"
                 },
@@ -5836,7 +5836,7 @@
                 },
                 "check_in_end_time": {
                   "type": "object",
-                  "description": "Event check-in start time.; Note: The check-in start time cannot be greater than or equal to the check-in end time",
+                  "description": "Event check-in end time.; Note: The check-in start time cannot be greater than or equal to the check-in end time",
                   "required": false,
                   "ref": "check_in_time",
                   "properties": {
@@ -5934,7 +5934,7 @@
                 },
                 "start_time": {
                   "type": "object",
-                  "description": "Search filter items, start time of event search interval. ; Notice: If start_time and end_time are not passed, the default search is for events within the past month",
+                  "description": "Event start time.",
                   "required": true,
                   "ref": "time_info",
                   "properties": {
@@ -5960,7 +5960,7 @@
                 },
                 "end_time": {
                   "type": "object",
-                  "description": "Search filter items, end time of event search interval. ; Notice: If start_time and end_time are not passed, the default search is for events within the past month",
+                  "description": "Event end time.",
                   "required": true,
                   "ref": "time_info",
                   "properties": {
@@ -6375,7 +6375,7 @@
                   "properties": {
                     "file_token": {
                       "type": "string",
-                      "description": "附件token",
+                      "description": "附件 Token。调用“上传素材”接口，获取附件的 file_token。在调用上传素材接口时需要注意：;;- `parent_type` 需传入固定值 `calendar`。;- `parent_node` 需传入与当前接口一致的日历 ID。;;附件校验规则：附件总大小不超过 25 MB。",
                       "required": false,
                       "example": "xAAAAA"
                     },
@@ -6428,7 +6428,7 @@
                     },
                     "check_in_end_time": {
                       "type": "object",
-                      "description": "Event check-in start time.; Note: The check-in start time cannot be greater than or equal to the check-in end time",
+                      "description": "Event check-in end time.",
                       "required": false,
                       "ref": "check_in_time"
                     },

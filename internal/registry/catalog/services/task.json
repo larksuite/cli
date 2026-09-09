@@ -44,7 +44,7 @@
               "properties": {
                 "timestamp": {
                   "type": "string",
-                  "description": "The timestamp of the due time/date in milliseconds from 1970-01-01 00:00:00. If the expiration time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                  "description": "The timestamp of the due time/date in milliseconds since 1970-01-01 00:00:00 UTC. If the due time is a date, convert the date to a timestamp and set is_all_day = true",
                   "required": false,
                   "example": "1675454764000"
                 },
@@ -264,7 +264,7 @@
                     },
                     "tip": {
                       "type": "object",
-                      "description": "The name of the task import source, used for display on the task center details page. Multiple language versions need to be provided",
+                      "description": "Pop-up tip shown for custom completion",
                       "required": false,
                       "ref": "i18n_text"
                     }
@@ -284,7 +284,7 @@
                     },
                     "tip": {
                       "type": "object",
-                      "description": "The name of the task import source, used for display on the task center details page. Multiple language versions need to be provided",
+                      "description": "Pop-up tip shown for custom completion",
                       "required": false,
                       "ref": "i18n_text"
                     }
@@ -304,7 +304,7 @@
                     },
                     "tip": {
                       "type": "object",
-                      "description": "The name of the task import source, used for display on the task center details page. Multiple language versions need to be provided",
+                      "description": "Pop-up tip shown for custom completion",
                       "required": false,
                       "ref": "i18n_text"
                     }
@@ -345,7 +345,7 @@
               "properties": {
                 "timestamp": {
                   "type": "string",
-                  "description": "The timestamp of the start time/date in milliseconds from 1970-01-01 00:00:00. If the start time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                  "description": "The timestamp of the start time/date in milliseconds since 1970-01-01 00:00:00. If the start time is a date, convert the date to a timestamp and set is_all_day = true.;;If both the start time and the due time are set, the start time must be <= the due time, and the is_all_day settings of the start and due times must be the same",
                   "required": false,
                   "example": "1675454764000"
                 },
@@ -386,7 +386,7 @@
             },
             "custom_fields": {
               "type": "array",
-              "description": "Custom field values. One or multiple custom fields values can be set at the same time as the tasks are created. The custom field to set the values must be associated with the tasklists to which the task is added (which is specified be `tasklist`), otherwise it cannot be set.; The value needs to be set to the corresponding field according to the field type.;* When `type` is \"number\", the `number_value` field should be used to represent the value of number custom field; * When \"type\" is \"member\", the `member_value` field should be used to represent the value of member custom field; * When `type` is \"datetime\", `datetime_value` field should be used to represent the value of the datetime custom field.;* When `type` is \"single_select\", the `single_select_value` field should be used to represent the value of single_select custom field.;* When `type` is \"multi_select\", the `multi_select_value` field should be used to represent the value of multi_select custom field",
+              "description": "Custom field values. One or multiple custom field values can be set when the task is created. The custom fields to set must be associated with the tasklists the task is added to (specified by `tasklists`), otherwise they cannot be set.;;Each field's value is set in the field that matches its type:;* When `type` is \"number\", use the `number_value` field for a number custom field;;* When `type` is \"member\", use the `member_value` field for a member custom field;;* When `type` is \"datetime\", use the `datetime_value` field for a datetime custom field;;* When `type` is \"single_select\", use the `single_select_value` field for a single-select custom field;;* When `type` is \"multi_select\", use the `multi_select_value` field for a multi-select custom field;;* When `type` is \"text\", use the `text_value` field for a text custom field",
               "required": false,
               "properties": {
                 "guid": {
@@ -538,7 +538,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the due time/date in milliseconds from 1970-01-01 00:00:00. If the expiration time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the due time/date in milliseconds since 1970-01-01 00:00:00 UTC. If the due time is a date, convert the date to a timestamp and set is_all_day = true",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -870,7 +870,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the start time/date in milliseconds from 1970-01-01 00:00:00. If the start time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the start time/date in milliseconds since 1970-01-01 00:00:00. If the start time is a date, convert the date to a timestamp and set is_all_day = true.;;If both the start time and the due time are set, the start time must be <= the due time, and the is_all_day settings of the start and due times must be the same",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -1000,7 +1000,7 @@
                     },
                     "completed_at": {
                       "type": "string",
-                      "description": "completion timestamp(ms) of assignee in a user-completed task",
+                      "description": "Completion timestamp (ms) of the assignee in a countersign task",
                       "required": false,
                       "example": "1675742789470"
                     }
@@ -1038,7 +1038,7 @@
                 },
                 "agent_task_progress": {
                   "type": "string",
-                  "description": "Agent task execution status",
+                  "description": "Agent task progress",
                   "required": false,
                   "example": "1/4"
                 },
@@ -1110,7 +1110,7 @@
                 },
                 "next_task_guid": {
                   "type": "string",
-                  "description": "GUID of the next task",
+                  "description": "GUID of the next task of a repeating task",
                   "required": false,
                   "example": "83912691-2e43-47fc-94a4-d512e03984fa"
                 }
@@ -1217,7 +1217,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the due time/date in milliseconds from 1970-01-01 00:00:00. If the expiration time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the due time/date in milliseconds since 1970-01-01 00:00:00 UTC. If the due time is a date, convert the date to a timestamp and set is_all_day = true",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -1549,7 +1549,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the start time/date in milliseconds from 1970-01-01 00:00:00. If the start time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the start time/date in milliseconds since 1970-01-01 00:00:00. If the start time is a date, convert the date to a timestamp and set is_all_day = true.;;If both the start time and the due time are set, the start time must be <= the due time, and the is_all_day settings of the start and due times must be the same",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -1679,7 +1679,7 @@
                     },
                     "completed_at": {
                       "type": "string",
-                      "description": "completion timestamp(ms) of assignee in a user-completed task",
+                      "description": "Completion timestamp (ms) of the assignee in a countersign task",
                       "required": false,
                       "example": "1675742789470"
                     }
@@ -1717,7 +1717,7 @@
                 },
                 "agent_task_progress": {
                   "type": "string",
-                  "description": "Agent task execution status",
+                  "description": "Agent task progress",
                   "required": false,
                   "example": "1/4"
                 },
@@ -1789,7 +1789,7 @@
                 },
                 "next_task_guid": {
                   "type": "string",
-                  "description": "GUID of the next task",
+                  "description": "GUID of the next task of a repeating task",
                   "required": false,
                   "example": "83912691-2e43-47fc-94a4-d512e03984fa"
                 }
@@ -1834,7 +1834,7 @@
               "type": "boolean",
               "location": "query",
               "required": false,
-              "description": "Whether or not to filter by task completion. Filling in true means only completed tasks are listed; filling in false means only uncompleted tasks are listed. Fill in means no filtering",
+              "description": "Whether to filter by task completion. true lists only completed tasks, false lists only uncompleted tasks, and omitting it disables the filter",
               "example": true
             },
             "type": {
@@ -1896,7 +1896,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the due time/date in milliseconds from 1970-01-01 00:00:00. If the expiration time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the due time/date in milliseconds since 1970-01-01 00:00:00 UTC. If the due time is a date, convert the date to a timestamp and set is_all_day = true",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -2228,7 +2228,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the start time/date in milliseconds from 1970-01-01 00:00:00. If the start time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the start time/date in milliseconds since 1970-01-01 00:00:00. If the start time is a date, convert the date to a timestamp and set is_all_day = true.;;If both the start time and the due time are set, the start time must be <= the due time, and the is_all_day settings of the start and due times must be the same",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -2358,7 +2358,7 @@
                     },
                     "completed_at": {
                       "type": "string",
-                      "description": "completion timestamp(ms) of assignee in a user-completed task",
+                      "description": "Completion timestamp (ms) of the assignee in a countersign task",
                       "required": false,
                       "example": "1675742789470"
                     }
@@ -2396,7 +2396,7 @@
                 },
                 "agent_task_progress": {
                   "type": "string",
-                  "description": "Agent task execution status",
+                  "description": "Agent task progress",
                   "required": false,
                   "example": "1/4"
                 },
@@ -2468,7 +2468,7 @@
                 },
                 "next_task_guid": {
                   "type": "string",
-                  "description": "GUID of the next task",
+                  "description": "GUID of the next task of a repeating task",
                   "required": false,
                   "example": "83912691-2e43-47fc-94a4-d512e03984fa"
                 }
@@ -2482,7 +2482,7 @@
             },
             "has_more": {
               "type": "boolean",
-              "description": "Whether the response body has more parameters",
+              "description": "Whether there are more items",
               "required": false,
               "example": true
             }
@@ -2551,7 +2551,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the due time/date in milliseconds from 1970-01-01 00:00:00. If the expiration time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the due time/date in milliseconds since 1970-01-01 00:00:00 UTC. If the due time is a date, convert the date to a timestamp and set is_all_day = true",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -2615,7 +2615,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the start time/date in milliseconds from 1970-01-01 00:00:00. If the start time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the start time/date in milliseconds since 1970-01-01 00:00:00. If the start time is a date, convert the date to a timestamp and set is_all_day = true.;;If both the start time and the due time are set, the start time must be <= the due time, and the is_all_day settings of the start and due times must be the same",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -2724,7 +2724,7 @@
             },
             "update_fields": {
               "type": "array",
-              "description": "Set the fields that need to be modified;;Task summary;Task description;Task start time;Task due time;Task completion time;Task attached custom data; Task custom completion config;Task repeat rule",
+              "description": "Fields to modify; supported values:;- summary: task title;- description: task description;- start: task start time;- due: task due time;- completed_at: task completion time;- extra: task attached custom data;- custom_complete: task custom completion rule;- repeat_rule: task repeat rule;- mode: task completion mode;- is_milestone: whether the task is a milestone;- custom_fields: custom field values",
               "required": true
             }
           },
@@ -2762,7 +2762,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the due time/date in milliseconds from 1970-01-01 00:00:00. If the expiration time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the due time/date in milliseconds since 1970-01-01 00:00:00 UTC. If the due time is a date, convert the date to a timestamp and set is_all_day = true",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -3094,7 +3094,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the start time/date in milliseconds from 1970-01-01 00:00:00. If the start time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the start time/date in milliseconds since 1970-01-01 00:00:00. If the start time is a date, convert the date to a timestamp and set is_all_day = true.;;If both the start time and the due time are set, the start time must be <= the due time, and the is_all_day settings of the start and due times must be the same",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -3224,7 +3224,7 @@
                     },
                     "completed_at": {
                       "type": "string",
-                      "description": "completion timestamp(ms) of assignee in a user-completed task",
+                      "description": "Completion timestamp (ms) of the assignee in a countersign task",
                       "required": false,
                       "example": "1675742789470"
                     }
@@ -3262,7 +3262,7 @@
                 },
                 "agent_task_progress": {
                   "type": "string",
-                  "description": "Agent task execution status",
+                  "description": "Agent task progress",
                   "required": false,
                   "example": "1/4"
                 },
@@ -3334,7 +3334,7 @@
                 },
                 "next_task_guid": {
                   "type": "string",
-                  "description": "GUID of the next task",
+                  "description": "GUID of the next task of a repeating task",
                   "required": false,
                   "example": "83912691-2e43-47fc-94a4-d512e03984fa"
                 }
@@ -3361,7 +3361,7 @@
           "id": "tasklists.add_members",
           "path": "tasklists/{tasklist_guid}/add_members",
           "httpMethod": "POST",
-          "description": "Add Task Members",
+          "description": "Add tasklist members",
           "parameters": {
             "tasklist_guid": {
               "type": "string",
@@ -3430,7 +3430,7 @@
                 },
                 "name": {
                   "type": "string",
-                  "description": "List name. To update, cannot be set to null. Maximum 100 characters",
+                  "description": "Tasklist name. When updating, it cannot be set to empty. Maximum 100 characters",
                   "required": false,
                   "example": "Annual meeting work task list"
                 },
@@ -3468,7 +3468,7 @@
                 },
                 "owner": {
                   "type": "object",
-                  "description": "Updated list owner",
+                  "description": "Tasklist owner",
                   "required": false,
                   "ref": "member",
                   "properties": {
@@ -3642,7 +3642,7 @@
                 },
                 "name": {
                   "type": "string",
-                  "description": "List name. To update, cannot be set to null. Maximum 100 characters",
+                  "description": "Tasklist name. When updating, it cannot be set to empty. Maximum 100 characters",
                   "required": false,
                   "example": "Annual meeting work task list"
                 },
@@ -3680,7 +3680,7 @@
                 },
                 "owner": {
                   "type": "object",
-                  "description": "Updated list owner",
+                  "description": "Tasklist owner",
                   "required": false,
                   "ref": "member",
                   "properties": {
@@ -3849,7 +3849,7 @@
                 },
                 "name": {
                   "type": "string",
-                  "description": "List name. To update, cannot be set to null. Maximum 100 characters",
+                  "description": "Tasklist name. When updating, it cannot be set to empty. Maximum 100 characters",
                   "required": false,
                   "example": "Annual meeting work task list"
                 },
@@ -3887,7 +3887,7 @@
                 },
                 "owner": {
                   "type": "object",
-                  "description": "Updated list owner",
+                  "description": "Tasklist owner",
                   "required": false,
                   "ref": "member",
                   "properties": {
@@ -4021,7 +4021,7 @@
           "responseBody": {
             "items": {
               "type": "array",
-              "description": "List of inventory data",
+              "description": "List of tasklists",
               "required": false,
               "properties": {
                 "guid": {
@@ -4032,7 +4032,7 @@
                 },
                 "name": {
                   "type": "string",
-                  "description": "List name. To update, cannot be set to null. Maximum 100 characters",
+                  "description": "Tasklist name. When updating, it cannot be set to empty. Maximum 100 characters",
                   "required": false,
                   "example": "Annual meeting work task list"
                 },
@@ -4070,7 +4070,7 @@
                 },
                 "owner": {
                   "type": "object",
-                  "description": "Updated list owner",
+                  "description": "Tasklist owner",
                   "required": false,
                   "ref": "member",
                   "properties": {
@@ -4165,7 +4165,7 @@
             },
             "has_more": {
               "type": "boolean",
-              "description": "Whether the response body has more parameters",
+              "description": "Whether there are more items",
               "required": false,
               "example": true
             }
@@ -4260,7 +4260,7 @@
             },
             "update_fields": {
               "type": "array",
-              "description": "Field name to update, support;;Tasklist name;Tasklist owner",
+              "description": "Field names to update; supported values:;- name: tasklist name;- owner: tasklist owner",
               "required": true
             },
             "origin_owner_to_role": {
@@ -4304,7 +4304,7 @@
                 },
                 "name": {
                   "type": "string",
-                  "description": "List name. To update, cannot be set to null. Maximum 100 characters",
+                  "description": "Tasklist name. When updating, it cannot be set to empty. Maximum 100 characters",
                   "required": false,
                   "example": "Annual meeting work task list"
                 },
@@ -4342,7 +4342,7 @@
                 },
                 "owner": {
                   "type": "object",
-                  "description": "Updated list owner",
+                  "description": "Tasklist owner",
                   "required": false,
                   "ref": "member",
                   "properties": {
@@ -4515,7 +4515,7 @@
                 },
                 "name": {
                   "type": "string",
-                  "description": "List name. To update, cannot be set to null. Maximum 100 characters",
+                  "description": "Tasklist name. When updating, it cannot be set to empty. Maximum 100 characters",
                   "required": false,
                   "example": "Annual meeting work task list"
                 },
@@ -4553,7 +4553,7 @@
                 },
                 "owner": {
                   "type": "object",
-                  "description": "Updated list owner",
+                  "description": "Tasklist owner",
                   "required": false,
                   "ref": "member",
                   "properties": {
@@ -4748,7 +4748,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the start time/date in milliseconds from 1970-01-01 00:00:00. If the start time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the start time/date in milliseconds since 1970-01-01 00:00:00. If the start time is a date, convert the date to a timestamp and set is_all_day = true.;;If both the start time and the due time are set, the start time must be <= the due time, and the is_all_day settings of the start and due times must be the same",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -4768,7 +4768,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the due time/date in milliseconds from 1970-01-01 00:00:00. If the expiration time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the due time/date in milliseconds since 1970-01-01 00:00:00 UTC. If the due time is a date, convert the date to a timestamp and set is_all_day = true",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -4827,7 +4827,7 @@
             },
             "has_more": {
               "type": "boolean",
-              "description": "Whether the response body has more parameters",
+              "description": "Whether there are more items",
               "required": false,
               "example": true
             }
@@ -4894,7 +4894,7 @@
               "properties": {
                 "timestamp": {
                   "type": "string",
-                  "description": "The timestamp of the due time/date in milliseconds from 1970-01-01 00:00:00. If the expiration time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                  "description": "The timestamp of the due time/date in milliseconds since 1970-01-01 00:00:00 UTC. If the due time is a date, convert the date to a timestamp and set is_all_day = true",
                   "required": false,
                   "example": "1675454764000"
                 },
@@ -5114,7 +5114,7 @@
                     },
                     "tip": {
                       "type": "object",
-                      "description": "The name of the task import source, used for display on the task center details page. Multiple language versions need to be provided",
+                      "description": "Pop-up tip shown for custom completion",
                       "required": false,
                       "ref": "i18n_text"
                     }
@@ -5134,7 +5134,7 @@
                     },
                     "tip": {
                       "type": "object",
-                      "description": "The name of the task import source, used for display on the task center details page. Multiple language versions need to be provided",
+                      "description": "Pop-up tip shown for custom completion",
                       "required": false,
                       "ref": "i18n_text"
                     }
@@ -5154,7 +5154,7 @@
                     },
                     "tip": {
                       "type": "object",
-                      "description": "The name of the task import source, used for display on the task center details page. Multiple language versions need to be provided",
+                      "description": "Pop-up tip shown for custom completion",
                       "required": false,
                       "ref": "i18n_text"
                     }
@@ -5195,7 +5195,7 @@
               "properties": {
                 "timestamp": {
                   "type": "string",
-                  "description": "The timestamp of the start time/date in milliseconds from 1970-01-01 00:00:00. If the start time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                  "description": "The timestamp of the start time/date in milliseconds since 1970-01-01 00:00:00. If the start time is a date, convert the date to a timestamp and set is_all_day = true.;;If both the start time and the due time are set, the start time must be <= the due time, and the is_all_day settings of the start and due times must be the same",
                   "required": false,
                   "example": "1675454764000"
                 },
@@ -5381,7 +5381,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the due time/date in milliseconds from 1970-01-01 00:00:00. If the expiration time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the due time/date in milliseconds since 1970-01-01 00:00:00 UTC. If the due time is a date, convert the date to a timestamp and set is_all_day = true",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -5713,7 +5713,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the start time/date in milliseconds from 1970-01-01 00:00:00. If the start time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the start time/date in milliseconds since 1970-01-01 00:00:00. If the start time is a date, convert the date to a timestamp and set is_all_day = true.;;If both the start time and the due time are set, the start time must be <= the due time, and the is_all_day settings of the start and due times must be the same",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -5843,7 +5843,7 @@
                     },
                     "completed_at": {
                       "type": "string",
-                      "description": "completion timestamp(ms) of assignee in a user-completed task",
+                      "description": "Completion timestamp (ms) of the assignee in a countersign task",
                       "required": false,
                       "example": "1675742789470"
                     }
@@ -5881,7 +5881,7 @@
                 },
                 "agent_task_progress": {
                   "type": "string",
-                  "description": "Agent task execution status",
+                  "description": "Agent task progress",
                   "required": false,
                   "example": "1/4"
                 },
@@ -5953,7 +5953,7 @@
                 },
                 "next_task_guid": {
                   "type": "string",
-                  "description": "GUID of the next task",
+                  "description": "GUID of the next task of a repeating task",
                   "required": false,
                   "example": "83912691-2e43-47fc-94a4-d512e03984fa"
                 }
@@ -6047,7 +6047,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the due time/date in milliseconds from 1970-01-01 00:00:00. If the expiration time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the due time/date in milliseconds since 1970-01-01 00:00:00 UTC. If the due time is a date, convert the date to a timestamp and set is_all_day = true",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -6379,7 +6379,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the start time/date in milliseconds from 1970-01-01 00:00:00. If the start time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the start time/date in milliseconds since 1970-01-01 00:00:00. If the start time is a date, convert the date to a timestamp and set is_all_day = true.;;If both the start time and the due time are set, the start time must be <= the due time, and the is_all_day settings of the start and due times must be the same",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -6509,7 +6509,7 @@
                     },
                     "completed_at": {
                       "type": "string",
-                      "description": "completion timestamp(ms) of assignee in a user-completed task",
+                      "description": "Completion timestamp (ms) of the assignee in a countersign task",
                       "required": false,
                       "example": "1675742789470"
                     }
@@ -6547,7 +6547,7 @@
                 },
                 "agent_task_progress": {
                   "type": "string",
-                  "description": "Agent task execution status",
+                  "description": "Agent task progress",
                   "required": false,
                   "example": "1/4"
                 },
@@ -6619,7 +6619,7 @@
                 },
                 "next_task_guid": {
                   "type": "string",
-                  "description": "GUID of the next task",
+                  "description": "GUID of the next task of a repeating task",
                   "required": false,
                   "example": "83912691-2e43-47fc-94a4-d512e03984fa"
                 }
@@ -7424,7 +7424,7 @@
               "type": "string",
               "location": "query",
               "required": false,
-              "description": "The starting timestamp (ms) filtered by the creation time. Optional, leaving empty means the creation time of the first task",
+              "description": "The end timestamp (ms) for filtering by creation time. Optional, and if omitted the creation time of the last task is used",
               "example": "1675742789470"
             },
             "user_id_type": {
@@ -7471,7 +7471,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the start time/date in milliseconds from 1970-01-01 00:00:00. If the start time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the start time/date in milliseconds since 1970-01-01 00:00:00. If the start time is a date, convert the date to a timestamp and set is_all_day = true.;;If both the start time and the due time are set, the start time must be <= the due time, and the is_all_day settings of the start and due times must be the same",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -7491,7 +7491,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the due time/date in milliseconds from 1970-01-01 00:00:00. If the expiration time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the due time/date in milliseconds since 1970-01-01 00:00:00 UTC. If the due time is a date, convert the date to a timestamp and set is_all_day = true",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -7550,7 +7550,7 @@
             },
             "has_more": {
               "type": "boolean",
-              "description": "Whether the response body has more parameters",
+              "description": "Whether there is more data",
               "required": false,
               "example": true
             }
@@ -7825,7 +7825,7 @@
               "properties": {
                 "format": {
                   "type": "string",
-                  "description": "Date time format, supported;; Year, month and day separated by dashes, e.g. 2023-08-24; Year, month and day separated by slashes, e.g. 2023/08/04;months, days and years separated by slashes, e.g. 08/24/2023;Day, month and year separated by slashes, e.g. 24/08/2023;; Default is \"yyyy-mm-dd\".; Note that this setting only affects the display format of field values, and does not affect the format of field values input/output in openapi",
+                  "description": "Date-time format, supported values:;- yyyy-mm-dd: year, month and day separated by dashes, e.g. 2023-08-24;- yyyy/mm/dd: year, month and day separated by slashes, e.g. 2023/08/04;- mm/dd/yyyy: month, day and year separated by slashes, e.g. 08/24/2023;- dd/mm/yyyy: day, month and year separated by slashes, e.g. 24/08/2023;;Default is \"yyyy-mm-dd\".;;Note that this setting only affects the display format of date-time field values in the app and does not affect the format of field values in OpenAPI input/output",
                   "required": false,
                   "example": "yyyy/mm/dd"
                 }
@@ -8052,7 +8052,7 @@
                   "properties": {
                     "format": {
                       "type": "string",
-                      "description": "Date time format, supported;; Year, month and day separated by dashes, e.g. 2023-08-24; Year, month and day separated by slashes, e.g. 2023/08/04;months, days and years separated by slashes, e.g. 08/24/2023;Day, month and year separated by slashes, e.g. 24/08/2023;; Default is \"yyyy-mm-dd\".; Note that this setting only affects the display format of field values, and does not affect the format of field values input/output in openapi",
+                      "description": "Date-time format, supported values:;- yyyy-mm-dd: year, month and day separated by dashes, e.g. 2023-08-24;- yyyy/mm/dd: year, month and day separated by slashes, e.g. 2023/08/04;- mm/dd/yyyy: month, day and year separated by slashes, e.g. 08/24/2023;- dd/mm/yyyy: day, month and year separated by slashes, e.g. 24/08/2023;;Default is \"yyyy-mm-dd\".;;Note that this setting only affects the display format of date-time field values in the app and does not affect the format of field values in OpenAPI input/output",
                       "required": false,
                       "example": "yyyy/mm/dd"
                     }
@@ -8073,7 +8073,7 @@
                 },
                 "multi_select_setting": {
                   "type": "object",
-                  "description": "Field settings for radio types",
+                  "description": "Field settings for multi-select types",
                   "required": false,
                   "ref": "select_setting",
                   "properties": {
@@ -8337,7 +8337,7 @@
                   "properties": {
                     "format": {
                       "type": "string",
-                      "description": "Date time format, supported;; Year, month and day separated by dashes, e.g. 2023-08-24; Year, month and day separated by slashes, e.g. 2023/08/04;months, days and years separated by slashes, e.g. 08/24/2023;Day, month and year separated by slashes, e.g. 24/08/2023;; Default is \"yyyy-mm-dd\".; Note that this setting only affects the display format of field values, and does not affect the format of field values input/output in openapi",
+                      "description": "Date-time format, supported values:;- yyyy-mm-dd: year, month and day separated by dashes, e.g. 2023-08-24;- yyyy/mm/dd: year, month and day separated by slashes, e.g. 2023/08/04;- mm/dd/yyyy: month, day and year separated by slashes, e.g. 08/24/2023;- dd/mm/yyyy: day, month and year separated by slashes, e.g. 24/08/2023;;Default is \"yyyy-mm-dd\".;;Note that this setting only affects the display format of date-time field values in the app and does not affect the format of field values in OpenAPI input/output",
                       "required": false,
                       "example": "yyyy/mm/dd"
                     }
@@ -8358,7 +8358,7 @@
                 },
                 "multi_select_setting": {
                   "type": "object",
-                  "description": "Field settings for radio types",
+                  "description": "Field settings for multi-select types",
                   "required": false,
                   "ref": "select_setting",
                   "properties": {
@@ -8648,7 +8648,7 @@
                   "properties": {
                     "format": {
                       "type": "string",
-                      "description": "Date time format, supported;; Year, month and day separated by dashes, e.g. 2023-08-24; Year, month and day separated by slashes, e.g. 2023/08/04;months, days and years separated by slashes, e.g. 08/24/2023;Day, month and year separated by slashes, e.g. 24/08/2023;; Default is \"yyyy-mm-dd\".; Note that this setting only affects the display format of field values, and does not affect the format of field values input/output in openapi",
+                      "description": "Date-time format, supported values:;- yyyy-mm-dd: year, month and day separated by dashes, e.g. 2023-08-24;- yyyy/mm/dd: year, month and day separated by slashes, e.g. 2023/08/04;- mm/dd/yyyy: month, day and year separated by slashes, e.g. 08/24/2023;- dd/mm/yyyy: day, month and year separated by slashes, e.g. 24/08/2023;;Default is \"yyyy-mm-dd\".;;Note that this setting only affects the display format of date-time field values in the app and does not affect the format of field values in OpenAPI input/output",
                       "required": false,
                       "example": "yyyy/mm/dd"
                     }
@@ -8669,7 +8669,7 @@
                 },
                 "multi_select_setting": {
                   "type": "object",
-                  "description": "Field settings for radio types",
+                  "description": "Field settings for multi-select types",
                   "required": false,
                   "ref": "select_setting",
                   "properties": {
@@ -8740,7 +8740,7 @@
             },
             "has_more": {
               "type": "boolean",
-              "description": "Whether the response body has more parameters",
+              "description": "Whether there is a next page of data",
               "required": false,
               "example": true
             }
@@ -8932,7 +8932,7 @@
                   "properties": {
                     "format": {
                       "type": "string",
-                      "description": "Date time format, supported;; Year, month and day separated by dashes, e.g. 2023-08-24; Year, month and day separated by slashes, e.g. 2023/08/04;months, days and years separated by slashes, e.g. 08/24/2023;Day, month and year separated by slashes, e.g. 24/08/2023;; Default is \"yyyy-mm-dd\".; Note that this setting only affects the display format of field values, and does not affect the format of field values input/output in openapi",
+                      "description": "Date-time format, supported values:;- yyyy-mm-dd: year, month and day separated by dashes, e.g. 2023-08-24;- yyyy/mm/dd: year, month and day separated by slashes, e.g. 2023/08/04;- mm/dd/yyyy: month, day and year separated by slashes, e.g. 08/24/2023;- dd/mm/yyyy: day, month and year separated by slashes, e.g. 24/08/2023;;Default is \"yyyy-mm-dd\".;;Note that this setting only affects the display format of date-time field values in the app and does not affect the format of field values in OpenAPI input/output",
                       "required": false,
                       "example": "yyyy/mm/dd"
                     }
@@ -9122,7 +9122,7 @@
                   "properties": {
                     "format": {
                       "type": "string",
-                      "description": "Date time format, supported;; Year, month and day separated by dashes, e.g. 2023-08-24; Year, month and day separated by slashes, e.g. 2023/08/04;months, days and years separated by slashes, e.g. 08/24/2023;Day, month and year separated by slashes, e.g. 24/08/2023;; Default is \"yyyy-mm-dd\".; Note that this setting only affects the display format of field values, and does not affect the format of field values input/output in openapi",
+                      "description": "Date-time format, supported values:;- yyyy-mm-dd: year, month and day separated by dashes, e.g. 2023-08-24;- yyyy/mm/dd: year, month and day separated by slashes, e.g. 2023/08/04;- mm/dd/yyyy: month, day and year separated by slashes, e.g. 08/24/2023;- dd/mm/yyyy: day, month and year separated by slashes, e.g. 24/08/2023;;Default is \"yyyy-mm-dd\".;;Note that this setting only affects the display format of date-time field values in the app and does not affect the format of field values in OpenAPI input/output",
                       "required": false,
                       "example": "yyyy/mm/dd"
                     }
@@ -9143,7 +9143,7 @@
                 },
                 "multi_select_setting": {
                   "type": "object",
-                  "description": "Field settings for radio types",
+                  "description": "Field settings for multi-select types",
                   "required": false,
                   "ref": "select_setting",
                   "properties": {
@@ -9588,7 +9588,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the due time/date in milliseconds from 1970-01-01 00:00:00. If the expiration time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the due time/date in milliseconds since 1970-01-01 00:00:00 UTC. If the due time is a date, convert the date to a timestamp and set is_all_day = true",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -9920,7 +9920,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the start time/date in milliseconds from 1970-01-01 00:00:00. If the start time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the start time/date in milliseconds since 1970-01-01 00:00:00. If the start time is a date, convert the date to a timestamp and set is_all_day = true.;;If both the start time and the due time are set, the start time must be <= the due time, and the is_all_day settings of the start and due times must be the same",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -10050,7 +10050,7 @@
                     },
                     "completed_at": {
                       "type": "string",
-                      "description": "completion timestamp(ms) of assignee in a user-completed task",
+                      "description": "Completion timestamp (ms) of the assignee in a countersign task",
                       "required": false,
                       "example": "1675742789470"
                     }
@@ -10088,7 +10088,7 @@
                 },
                 "agent_task_progress": {
                   "type": "string",
-                  "description": "Agent task execution status",
+                  "description": "Agent task progress",
                   "required": false,
                   "example": "1/4"
                 },
@@ -10160,7 +10160,7 @@
                 },
                 "next_task_guid": {
                   "type": "string",
-                  "description": "GUID of the next task",
+                  "description": "GUID of the next task of a repeating task",
                   "required": false,
                   "example": "83912691-2e43-47fc-94a4-d512e03984fa"
                 }
@@ -10271,7 +10271,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the due time/date in milliseconds from 1970-01-01 00:00:00. If the expiration time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the due time/date in milliseconds since 1970-01-01 00:00:00 UTC. If the due time is a date, convert the date to a timestamp and set is_all_day = true",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -10603,7 +10603,7 @@
                   "properties": {
                     "timestamp": {
                       "type": "string",
-                      "description": "The timestamp of the start time/date in milliseconds from 1970-01-01 00:00:00. If the start time is a date, you need to convert the date to timestamp and set is_all_day = true",
+                      "description": "The timestamp of the start time/date in milliseconds since 1970-01-01 00:00:00. If the start time is a date, convert the date to a timestamp and set is_all_day = true.;;If both the start time and the due time are set, the start time must be <= the due time, and the is_all_day settings of the start and due times must be the same",
                       "required": false,
                       "example": "1675454764000"
                     },
@@ -10733,7 +10733,7 @@
                     },
                     "completed_at": {
                       "type": "string",
-                      "description": "completion timestamp(ms) of assignee in a user-completed task",
+                      "description": "Completion timestamp (ms) of the assignee in a countersign task",
                       "required": false,
                       "example": "1675742789470"
                     }
@@ -10771,7 +10771,7 @@
                 },
                 "agent_task_progress": {
                   "type": "string",
-                  "description": "Agent task execution status",
+                  "description": "Agent task progress",
                   "required": false,
                   "example": "1/4"
                 },
@@ -10843,7 +10843,7 @@
                 },
                 "next_task_guid": {
                   "type": "string",
-                  "description": "GUID of the next task",
+                  "description": "GUID of the next task of a repeating task",
                   "required": false,
                   "example": "83912691-2e43-47fc-94a4-d512e03984fa"
                 }

@@ -531,13 +531,13 @@
             },
             "group_message_type": {
               "type": "string",
-              "description": "Group editing permissions; Optional values are:;- `only_owner`: only group owner and administrators;- `all_members`: all members",
+              "description": "Group message type; Optional values are:;- `chat`: conversation messages;- `thread`: topic messages",
               "required": false,
               "example": "chat"
             },
             "chat_mode": {
               "type": "string",
-              "description": "group message type; Optional values are:;- `chat`: chat;- `thread`: thread",
+              "description": "Chat mode; Optional values are:;- `group`: group chat",
               "required": false,
               "example": "group"
             },
@@ -2051,7 +2051,7 @@
           "requestBody": {
             "chat_settings": {
               "type": "array",
-              "description": "待更新的群人设置列表。最多 10 条。单条至少需要传入 is_muted 或 is_mute_at_all 之一；字段缺省即保持原值不变（隐式非空 / 不接受 null）",
+              "description": "待更新的群人设置列表。最多 10 条；自动按 chat_id 去重（重复保留首条）。单条至少需要传入 is_muted 或 is_mute_at_all 之一，否则该条返 invalid_request；字段缺省即保持原值不变（隐式非空 / 不接受 null）。",
               "required": true,
               "properties": {
                 "chat_id": {
@@ -2081,7 +2081,7 @@
           "responseBody": {
             "invalid_ids": {
               "type": "array",
-              "description": "更新失败的 chat 列表，每项含 id（原始 chat_id 值）与 msg（失败原因）",
+              "description": "更新失败的 chat 列表，每项含 id（原始 chat_id 值）与 msg（失败原因）。;未出现在本列表中的 chat_id 视为更新成功（隐式成功，无显式 success 标记）。;msg 取值：;- invalid_format：chat_id 格式不合法;- invalid_request：is_muted 与 is_mute_at_all 都未传入;- not_a_member：用户不是群成员 / 群不存在 / 群已解散（统一中性化，防成员关系探测侧信道）;- internal_failed：服务端写入失败（建议短退避重试，多次失败上报）;注：整批限流（rate_limited）通过顶层 HTTP 429 + code 230429 表达，不在本列表中出现。",
               "required": false,
               "properties": {
                 "id": {
@@ -3071,7 +3071,7 @@
             },
             "update_time": {
               "type": "string",
-              "description": "消息更新的时间戳",
+              "description": "消息更新的时间戳。单位：毫秒",
               "required": false,
               "example": "1609336806",
               "annotations": [
@@ -3460,7 +3460,7 @@
                 },
                 "update_time": {
                   "type": "string",
-                  "description": "消息更新的时间戳",
+                  "description": "消息更新的时间戳。单位：毫秒",
                   "required": false,
                   "example": "1609336806",
                   "annotations": [
@@ -3897,7 +3897,7 @@
             },
             "has_more": {
               "type": "boolean",
-              "description": "Whether the response body has more parameters",
+              "description": "Whether there are more items",
               "required": false,
               "example": true
             },
@@ -4386,13 +4386,13 @@
               "properties": {
                 "operator_id": {
                   "type": "string",
-                  "description": "Operator ID, that is, the user's open_id. Call the Get Single User Information interface to get user information through the user ID",
+                  "description": "Operator ID. The value depends on `operator_type`:;- when `operator_type` is `app`, the bot's app ID (app_id) is returned;- when `operator_type` is `user`, the user's open_id is returned",
                   "required": true,
                   "example": "ou_ff0b7ba35fb********67dfc8b885136"
                 },
                 "operator_type": {
                   "type": "string",
-                  "description": "Operator identity, currently only returns the user",
+                  "description": "Operator identity.",
                   "required": true,
                   "example": "app/user",
                   "options": [
@@ -4490,13 +4490,13 @@
               "properties": {
                 "operator_id": {
                   "type": "string",
-                  "description": "Operator ID, that is, the user's open_id. Call the Get Single User Information interface to get user information through the user ID",
+                  "description": "Operator ID. The value depends on `operator_type`:;- when `operator_type` is `app`, the bot's app ID (app_id) is returned;- when `operator_type` is `user`, the user's open_id is returned",
                   "required": true,
                   "example": "ou_ff0b7ba35fb********67dfc8b885136"
                 },
                 "operator_type": {
                   "type": "string",
-                  "description": "Operator identity, currently only returns the user",
+                  "description": "Operator identity.",
                   "required": true,
                   "example": "app/user",
                   "options": [
@@ -4639,13 +4639,13 @@
                   "properties": {
                     "operator_id": {
                       "type": "string",
-                      "description": "Operator ID, that is, the user's open_id. Call the Get Single User Information interface to get user information through the user ID",
+                      "description": "Operator ID. The value depends on `operator_type`:;- when `operator_type` is `app`, the bot's app ID (app_id) is returned;- when `operator_type` is `user`, the user's ID is returned, with the ID type matching the query parameter `user_id_type`",
                       "required": true,
                       "example": "ou_ff0b7ba35fb********67dfc8b885136"
                     },
                     "operator_type": {
                       "type": "string",
-                      "description": "Operator identity, currently only returns the user",
+                      "description": "Operator identity.",
                       "required": true,
                       "example": "app/user",
                       "options": [
@@ -4848,7 +4848,7 @@
             },
             "update_time": {
               "type": "string",
-              "description": "消息更新的时间戳",
+              "description": "消息更新的时间戳。单位：毫秒",
               "required": false,
               "example": "1609336806",
               "annotations": [

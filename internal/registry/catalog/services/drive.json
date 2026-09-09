@@ -68,7 +68,7 @@
                 },
                 {
                   "value": "doc",
-                  "description": "Cloud document type of docs"
+                  "description": "Legacy doc"
                 },
                 {
                   "value": "sheet",
@@ -373,7 +373,7 @@
           "responseBody": {
             "files": {
               "type": "array",
-              "description": "List of folders",
+              "description": "List of files in the folder",
               "required": false,
               "properties": {
                 "token": {
@@ -595,7 +595,7 @@
               "options": [
                 {
                   "value": "doc",
-                  "description": "Doc"
+                  "description": "Legacy doc, deprecated"
                 },
                 {
                   "value": "docx",
@@ -603,7 +603,7 @@
                 },
                 {
                   "value": "sheet",
-                  "description": "Form"
+                  "description": "Spreadsheet"
                 },
                 {
                   "value": "file",
@@ -1002,7 +1002,7 @@
               "options": [
                 {
                   "value": "doc",
-                  "description": "Doc"
+                  "description": "Legacy doc, deprecated"
                 },
                 {
                   "value": "docx",
@@ -1284,7 +1284,7 @@
               "options": [
                 {
                   "value": "doc",
-                  "description": "Doc"
+                  "description": "Legacy doc, deprecated"
                 },
                 {
                   "value": "docx",
@@ -1715,7 +1715,7 @@
               "options": [
                 {
                   "value": "doc",
-                  "description": "Doc"
+                  "description": "Legacy doc, deprecated"
                 },
                 {
                   "value": "docx",
@@ -1827,7 +1827,7 @@
               "options": [
                 {
                   "value": "doc",
-                  "description": "Documentation"
+                  "description": "Legacy doc, deprecated"
                 },
                 {
                   "value": "docx",
@@ -1835,7 +1835,7 @@
                 },
                 {
                   "value": "sheet",
-                  "description": "Form"
+                  "description": "Spreadsheet"
                 },
                 {
                   "value": "file",
@@ -2060,7 +2060,7 @@
               "options": [
                 {
                   "value": "doc",
-                  "description": "Doc"
+                  "description": "Legacy doc, deprecated"
                 },
                 {
                   "value": "docx",
@@ -2179,7 +2179,7 @@
                     },
                     "person": {
                       "type": "object",
-                      "description": "Text content",
+                      "description": "user_id of the user to add",
                       "required": false,
                       "ref": "person"
                     }
@@ -2239,7 +2239,7 @@
               "options": [
                 {
                   "value": "doc",
-                  "description": "Doc"
+                  "description": "Legacy doc"
                 },
                 {
                   "value": "sheet",
@@ -2394,7 +2394,7 @@
               "options": [
                 {
                   "value": "doc",
-                  "description": "Documentation"
+                  "description": "Legacy doc"
                 },
                 {
                   "value": "sheet",
@@ -2418,7 +2418,7 @@
                 },
                 {
                   "value": "folder",
-                  "description": "Folders (not supported for `tenant_access_token`)"
+                  "description": "Folder. When called with tenant_access_token, the folder owner must be the app, or the app must have manage permission on the folder: add the app to a group as a bot, then grant that group manage permission"
                 },
                 {
                   "value": "mindnote",
@@ -2818,7 +2818,7 @@
               "options": [
                 {
                   "value": "doc",
-                  "description": "Doc"
+                  "description": "Legacy doc"
                 },
                 {
                   "value": "sheet",
@@ -2880,7 +2880,7 @@
               "type": "boolean",
               "location": "query",
               "required": false,
-              "description": "If the value is true, the new owner is not notified. The default value is true",
+              "description": "Whether to notify the new file owner (true = notify the new owner, false = do not notify). Only effective when called with user_access_token",
               "default": true,
               "example": true
             },
@@ -2993,7 +2993,7 @@
               "options": [
                 {
                   "value": "doc",
-                  "description": "Doc"
+                  "description": "Legacy doc"
                 },
                 {
                   "value": "sheet",
@@ -3216,7 +3216,7 @@
               "options": [
                 {
                   "value": "doc",
-                  "description": "Doc"
+                  "description": "Legacy doc"
                 },
                 {
                   "value": "sheet",
@@ -3382,7 +3382,7 @@
             },
             "invite_external": {
               "type": "boolean",
-              "description": "Specifies whether users without full access and non-owners are allowed to invite external participants",
+              "description": "Whether users without manage permission are allowed to share outside the organization. Not supported when the document type is wiki.;;Optional values:;- `true`: allowed;- `false`: not allowed",
               "required": false,
               "example": true
             }
@@ -3961,7 +3961,7 @@
               "options": [
                 {
                   "value": "doc",
-                  "description": "Docs"
+                  "description": "Legacy doc"
                 },
                 {
                   "value": "sheet",
@@ -4120,7 +4120,7 @@
               "options": [
                 {
                   "value": "doc",
-                  "description": "Doc"
+                  "description": "Legacy doc"
                 },
                 {
                   "value": "docx",

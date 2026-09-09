@@ -26,7 +26,7 @@
                 },
                 {
                   "value": "employee_no",
-                  "description": "Employee ID, that is the employee ID in Feishu Admin > Organization > Member and Department > Member Details"
+                  "description": "Employee number, that is the employee number shown in Feishu Admin > Organization > Members and Departments > Member details"
                 }
               ],
               "enumName": "GetUserTaskClockInFlowsEmployeeType",

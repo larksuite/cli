@@ -37,7 +37,7 @@
                 },
                 {
                   "value": "closed",
-                  "description": "Closed"
+                  "description": "Closed, that is, the wiki space is not published to the internet"
                 }
               ],
               "enum": [
@@ -90,7 +90,7 @@
                     },
                     {
                       "value": "my_library",
-                      "description": "My document library"
+                      "description": "My document library, managed by an individual. Each person can own only one, and no other administrators can be added"
                     },
                     {
                       "value": "my_library_resigned",
@@ -136,7 +136,7 @@
                   "type": "string",
                   "description": "Represents Wiki space sharing status",
                   "required": false,
-                  "example": "Open",
+                  "example": "open",
                   "options": [
                     {
                       "value": "open",
@@ -144,7 +144,7 @@
                     },
                     {
                       "value": "closed",
-                      "description": "Closed"
+                      "description": "Closed, that is, the wiki space is not published to the internet"
                     }
                   ],
                   "enum": [
@@ -320,7 +320,7 @@
                     },
                     {
                       "value": "my_library",
-                      "description": "My document library"
+                      "description": "My document library, managed by an individual. Each person can own only one, and no other administrators can be added"
                     },
                     {
                       "value": "my_library_resigned",
@@ -366,7 +366,7 @@
                   "type": "string",
                   "description": "Represents Wiki space sharing status",
                   "required": false,
-                  "example": "Open",
+                  "example": "open",
                   "options": [
                     {
                       "value": "open",
@@ -374,7 +374,7 @@
                     },
                     {
                       "value": "closed",
-                      "description": "Closed"
+                      "description": "Closed, that is, the wiki space is not published to the internet"
                     }
                   ],
                   "enum": [
@@ -420,35 +420,35 @@
               "options": [
                 {
                   "value": "doc",
-                  "description": "doc"
+                  "description": "Legacy doc"
                 },
                 {
                   "value": "docx",
-                  "description": "docx"
+                  "description": "New doc (docx)"
                 },
                 {
                   "value": "sheet",
-                  "description": "sheet"
+                  "description": "Spreadsheet"
                 },
                 {
                   "value": "mindnote",
-                  "description": "mindnote"
+                  "description": "Mindnote"
                 },
                 {
                   "value": "bitable",
-                  "description": "bitable"
+                  "description": "Base (bitable)"
                 },
                 {
                   "value": "file",
-                  "description": "file"
+                  "description": "File"
                 },
                 {
                   "value": "slides",
-                  "description": "slides"
+                  "description": "Slides"
                 },
                 {
                   "value": "wiki",
-                  "description": "wiki"
+                  "description": "Wiki node"
                 }
               ],
               "enumName": "ObjTypeForQuery",
@@ -491,7 +491,7 @@
                 },
                 "obj_token": {
                   "type": "string",
-                  "description": "对应文档类型的token，可根据 obj_type 判断属于哪种文档类型",
+                  "description": "节点的实际云文档的 token，如果 URL 链接中 token 前为 docx、base、sheets 等非 wiki 类型，则说明该 token 是当前云文档的实际 token。如果要获取或编辑节点内容，需要使用此 token 调用对应的接口。可根据 obj_type 判断属于哪种文档类型。",
                   "required": false,
                   "example": "doccnzAaO******8g9Spprd",
                   "annotations": [
@@ -752,7 +752,7 @@
                     },
                     {
                       "value": "my_library",
-                      "description": "My document library"
+                      "description": "My document library, managed by an individual. Each person can own only one, and no other administrators can be added"
                     },
                     {
                       "value": "my_library_resigned",
@@ -798,7 +798,7 @@
                   "type": "string",
                   "description": "Represents Wiki space sharing status",
                   "required": false,
-                  "example": "Open",
+                  "example": "open",
                   "options": [
                     {
                       "value": "open",
@@ -806,7 +806,7 @@
                     },
                     {
                       "value": "closed",
-                      "description": "Closed"
+                      "description": "Closed, that is, the wiki space is not published to the internet"
                     }
                   ],
                   "enum": [
@@ -872,21 +872,21 @@
           "requestBody": {
             "member_type": {
               "type": "string",
-              "description": "知识库协作者 ID 类型",
+              "description": "要添加的成员或管理员的身份类型。可选值：;;- openchat：群组 ID;;- userid：用户 ID;;- email：用户邮箱;;- opendepartmentid：部门 ID;;- openid：用户的 Open ID;;- unionid：用户的 Union ID",
               "required": true,
               "example": "userid"
             },
             "member_id": {
               "type": "string",
-              "description": "知识库协作者 ID",
+              "description": "成员或管理员的 ID，值的类型由 member_type 参数决定。参考 member_type 的描述获取不同类型的 ID。",
               "required": true,
               "example": "1565676577122621"
             },
             "member_role": {
               "type": "string",
-              "description": "知识库协作者角色",
+              "description": "成员的角色类型。可选值:;;- admin：管理员;;- member：成员",
               "required": true,
-              "example": "Admin"
+              "example": "admin"
             },
             "member_perm": {
               "type": "string",
@@ -904,25 +904,25 @@
               "properties": {
                 "member_type": {
                   "type": "string",
-                  "description": "知识库协作者 ID 类型",
+                  "description": "要添加的成员或管理员的身份类型。枚举值：;;- openchat：群组 ID;;- userid：用户 ID;;- email：用户邮箱;;- opendepartmentid：部门 ID;;- openid：用户的 Open ID;;- unionid：用户的 Union ID",
                   "required": true,
                   "example": "userid"
                 },
                 "member_id": {
                   "type": "string",
-                  "description": "知识库协作者 ID",
+                  "description": "成员或管理员的 ID，值的类型由 member_type 参数决定。",
                   "required": true,
                   "example": "1565676577122621"
                 },
                 "member_role": {
                   "type": "string",
-                  "description": "知识库协作者角色",
+                  "description": "成员的角色类型。可选值:;;- admin：管理员;;- member：成员",
                   "required": true,
                   "example": "Admin"
                 },
                 "type": {
                   "type": "string",
-                  "description": "知识库协作者类型",
+                  "description": "知识库协作者类型（未来支持）",
                   "required": false,
                   "example": "user",
                   "options": [
@@ -997,19 +997,19 @@
           "requestBody": {
             "member_type": {
               "type": "string",
-              "description": "知识库协作者 ID 类型",
+              "description": "“openchat” - 群id;;“userid” - 用户id;;“email” - 邮箱;;“opendepartmentid” - 部门id;;“openid” - 应用openid;;“unionid” - unionid",
               "required": true,
               "example": "userid"
             },
             "member_role": {
               "type": "string",
-              "description": "知识库协作者角色",
+              "description": "角色:;;“admin” - 管理员;;“member” - 成员",
               "required": true,
               "example": "Admin"
             },
             "type": {
               "type": "string",
-              "description": "知识库协作者类型",
+              "description": "知识库协作者类型（暂不支持）",
               "required": false,
               "example": "user",
               "options": [
@@ -1051,25 +1051,25 @@
               "properties": {
                 "member_type": {
                   "type": "string",
-                  "description": "知识库协作者 ID 类型",
+                  "description": "“openchat” - 群id;;“userid” - 用户id;;“email” - 邮箱;;“opendepartmentid” - 部门id;;“openid” - 应用openid;;“unionid” - unionid",
                   "required": true,
                   "example": "userid"
                 },
                 "member_id": {
                   "type": "string",
-                  "description": "知识库协作者 ID",
+                  "description": "用户id，值的类型由上面的 member_type 参数决定",
                   "required": true,
                   "example": "1565676577122621"
                 },
                 "member_role": {
                   "type": "string",
-                  "description": "知识库协作者角色",
+                  "description": "角色:;;“admin” - 管理员;;“member” - 成员",
                   "required": true,
                   "example": "Admin"
                 },
                 "type": {
                   "type": "string",
-                  "description": "知识库协作者类型",
+                  "description": "知识库协作者类型（暂不支持）",
                   "required": false,
                   "example": "user",
                   "options": [
@@ -1173,7 +1173,7 @@
                 },
                 "type": {
                   "type": "string",
-                  "description": "知识库协作者类型",
+                  "description": "知识库协作者类型（未来支持）",
                   "required": false,
                   "example": "user",
                   "options": [
@@ -1279,7 +1279,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Copied new title. If blank, the new title is empty. If not, the original node title is used",
+              "description": "New title after copying. If an empty string is passed, the new title is empty. If omitted, the original node title is used",
               "required": false,
               "example": "New title"
             }

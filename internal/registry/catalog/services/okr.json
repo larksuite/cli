@@ -168,7 +168,7 @@
                 },
                 "to_owner": {
                   "type": "object",
-                  "description": "Owner who initiated the alignment",
+                  "description": "Owner being aligned to",
                   "required": true,
                   "ref": "owner",
                   "properties": {
@@ -307,7 +307,7 @@
           "responseBody": {
             "has_more": {
               "type": "boolean",
-              "description": "Whether the response body has more parameters",
+              "description": "Whether there is a next page",
               "required": false,
               "example": true
             },
@@ -509,7 +509,7 @@
           "responseBody": {
             "has_more": {
               "type": "boolean",
-              "description": "Whether the response body has more parameters",
+              "description": "Whether there is a next page",
               "required": false,
               "example": true
             },
@@ -550,7 +550,7 @@
                 },
                 "owner": {
                   "type": "object",
-                  "description": "Owner who initiated the alignment",
+                  "description": "Owner",
                   "required": true,
                   "ref": "owner",
                   "properties": {
@@ -648,13 +648,13 @@
           "id": "cycles.objectives_position",
           "path": "cycles/{cycle_id}/objectives_position",
           "httpMethod": "PUT",
-          "description": "Modify Objective positions in OKR Cycle",
+          "description": "Update the positions of all Objectives in a user's OKR cycle",
           "parameters": {
             "cycle_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "User cycle ID. The ID type must match the user_id_type or department_id_type parameter value. How to get: Call the \"Get user OKR Cycle list\" API",
+              "description": "User OKR cycle ID. How to obtain: call the \"Get user OKR cycle list\" API",
               "example": "7342342398472398473"
             },
             "user_id_type": {
@@ -742,7 +742,7 @@
                 },
                 "owner": {
                   "type": "object",
-                  "description": "Owner who initiated the alignment",
+                  "description": "Owner",
                   "required": true,
                   "ref": "owner",
                   "properties": {
@@ -859,13 +859,13 @@
           "id": "cycles.objectives_weight",
           "path": "cycles/{cycle_id}/objectives_weight",
           "httpMethod": "PUT",
-          "description": "Modify Objective weights in OKR Cycle",
+          "description": "Update the weights of all Objectives in a user's OKR cycle",
           "parameters": {
             "cycle_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "User cycle ID. The ID type must match the value of the user_id_type parameter. How to obtain: Call the \"Get user OKR cycle list\" API",
+              "description": "User OKR cycle ID. How to obtain: call the \"Get user OKR cycle list\" API",
               "example": "7342342398472398473"
             },
             "user_id_type": {
@@ -969,7 +969,7 @@
                 },
                 "owner": {
                   "type": "object",
-                  "description": "Owner who initiated the alignment",
+                  "description": "Owner",
                   "required": true,
                   "ref": "owner",
                   "properties": {
@@ -1096,7 +1096,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "User cycle ID. The ID type must match the user_id_type or department_id_type parameter value. How to get: Call the \"Get user OKR Cycle list\" API",
+              "description": "User OKR cycle ID. How to obtain: call the \"Get user OKR cycle list\" API",
               "example": "7342342398472398473"
             },
             "user_id_type": {
@@ -1304,8 +1304,8 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "User cycle ID. The ID type must match the value of the user_id_type parameter. How to obtain: Call the \"Get user OKR cycle list\" API",
-              "example": "od_3bbe8a09c20e89cce9bff989ed840674"
+              "description": "User OKR cycle ID. How to obtain: call the \"Get user OKR cycle list\" API",
+              "example": "1"
             },
             "page_size": {
               "type": "integer",
@@ -1377,7 +1377,7 @@
           "responseBody": {
             "has_more": {
               "type": "boolean",
-              "description": "Whether the response body has more parameters",
+              "description": "Whether there is a next page",
               "required": false,
               "example": true
             },
@@ -1389,7 +1389,7 @@
             },
             "items": {
               "type": "array",
-              "description": "Error code, non-zero means failure",
+              "description": "Objective list",
               "required": false,
               "properties": {
                 "id": {
@@ -1412,7 +1412,7 @@
                 },
                 "owner": {
                   "type": "object",
-                  "description": "Owner who initiated the alignment",
+                  "description": "Owner",
                   "required": true,
                   "ref": "owner",
                   "properties": {
@@ -1760,7 +1760,7 @@
                 },
                 "owner": {
                   "type": "object",
-                  "description": "Owner who initiated the alignment",
+                  "description": "Owner",
                   "required": true,
                   "ref": "owner",
                   "properties": {
@@ -1923,7 +1923,7 @@
                 },
                 "unit": {
                   "type": "object",
-                  "description": "Indicator unit. Not supported for Objective modification; not supported for Key Result modification with carry-over records",
+                  "description": "Indicator unit",
                   "required": false,
                   "ref": "indicator_unit",
                   "properties": {
@@ -1983,7 +1983,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Key Result ID. The ID type must match the user_id_type or department_id_type parameter value. How to get: Call the \"Get Key Results of an Objective\" API",
+              "description": "Key Result ID. How to get: call the \"Get Key Results of an Objective\" API",
               "example": "7342342398472398473"
             }
           },
@@ -2101,7 +2101,7 @@
                 },
                 "owner": {
                   "type": "object",
-                  "description": "Owner who initiated the alignment",
+                  "description": "Owner",
                   "required": true,
                   "ref": "owner",
                   "properties": {
@@ -2349,7 +2349,7 @@
                 },
                 "owner": {
                   "type": "object",
-                  "description": "Owner who initiated the alignment",
+                  "description": "Owner",
                   "required": true,
                   "ref": "owner",
                   "properties": {
@@ -2539,7 +2539,7 @@
                 },
                 "owner": {
                   "type": "object",
-                  "description": "Owner who initiated the alignment",
+                  "description": "Owner",
                   "required": true,
                   "ref": "owner",
                   "properties": {
@@ -2702,7 +2702,7 @@
                 },
                 "unit": {
                   "type": "object",
-                  "description": "Indicator unit. Not supported for Objective modification; not supported for Key Result modification with carry-over records",
+                  "description": "Indicator unit",
                   "required": false,
                   "ref": "indicator_unit",
                   "properties": {
@@ -2761,7 +2761,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Objective ID. You can get this ID from the \"List Objectives in OKR Cycle\" API. The ID type must match the value of the user_id_type parameter",
+              "description": "Objective ID. You can get this ID from the \"List Objectives in OKR Cycle\" API",
               "example": "7342342398472398473"
             }
           },
@@ -2879,7 +2879,7 @@
                 },
                 "owner": {
                   "type": "object",
-                  "description": "Owner who initiated the alignment",
+                  "description": "Owner",
                   "required": true,
                   "ref": "owner",
                   "properties": {
@@ -2995,13 +2995,13 @@
           "id": "objectives.key_results_position",
           "path": "objectives/{objective_id}/key_results_position",
           "httpMethod": "PUT",
-          "description": "Modify Key Result positions in Objective",
+          "description": "Update the positions of all Key Results of an Objective",
           "parameters": {
             "objective_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Objective ID. You can get this ID from the \"List Objectives in OKR Cycle\" API. The ID type must match the value of the user_id_type parameter",
+              "description": "Objective ID. You can get this ID from the \"List Objectives in OKR Cycle\" API",
               "example": "7342342398472398473"
             },
             "user_id_type": {
@@ -3089,7 +3089,7 @@
                 },
                 "owner": {
                   "type": "object",
-                  "description": "Owner who initiated the alignment",
+                  "description": "Owner",
                   "required": true,
                   "ref": "owner",
                   "properties": {
@@ -3187,13 +3187,13 @@
           "id": "objectives.key_results_weight",
           "path": "objectives/{objective_id}/key_results_weight",
           "httpMethod": "PUT",
-          "description": "Modify Key Result weights in Objective",
+          "description": "Update the weights of all Key Results of an Objective",
           "parameters": {
             "objective_id": {
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Objective ID. The ID type must match the user_id_type or department_id_type parameter value. How to get: Call the \"Get Objectives in OKR Cycle\" API",
+              "description": "Objective ID. How to get: call the \"Get Objectives in OKR Cycle\" API",
               "example": "7342342398472398473"
             },
             "user_id_type": {
@@ -3297,7 +3297,7 @@
                 },
                 "owner": {
                   "type": "object",
-                  "description": "Owner who initiated the alignment",
+                  "description": "Owner",
                   "required": true,
                   "ref": "owner",
                   "properties": {
@@ -3401,7 +3401,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Objective ID. You can get this ID from the \"List Objectives in OKR Cycle\" API. The ID type must match the value of the user_id_type parameter",
+              "description": "Objective ID. You can get this ID from the \"List Objectives in OKR Cycle\" API",
               "example": "7342342398472398473"
             },
             "user_id_type": {
@@ -3599,7 +3599,7 @@
                 },
                 "owner": {
                   "type": "object",
-                  "description": "Owner who initiated the alignment",
+                  "description": "Owner",
                   "required": true,
                   "ref": "owner",
                   "properties": {
@@ -3785,7 +3785,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Objective ID. The ID type must match the user_id_type or department_id_type parameter value. How to get: Call the \"Get Objectives in OKR Cycle\" API",
+              "description": "Objective ID. How to get: call the \"Get Objectives in OKR Cycle\" API",
               "example": "7342342398472398473"
             },
             "page_size": {
@@ -3881,7 +3881,7 @@
           "responseBody": {
             "has_more": {
               "type": "boolean",
-              "description": "Whether the response body has more parameters",
+              "description": "Whether there is a next page",
               "required": false,
               "example": true
             },
@@ -3949,7 +3949,7 @@
                 },
                 "to_owner": {
                   "type": "object",
-                  "description": "Owner who initiated the alignment",
+                  "description": "Owner being aligned to",
                   "required": true,
                   "ref": "owner",
                   "properties": {
@@ -4131,7 +4131,7 @@
                 },
                 "owner": {
                   "type": "object",
-                  "description": "Owner who initiated the alignment",
+                  "description": "Owner",
                   "required": true,
                   "ref": "owner",
                   "properties": {
@@ -4294,7 +4294,7 @@
                 },
                 "unit": {
                   "type": "object",
-                  "description": "Indicator unit. Not supported for Objective modification; not supported for Key Result modification with carry-over records",
+                  "description": "Indicator unit",
                   "required": false,
                   "ref": "indicator_unit",
                   "properties": {
@@ -4353,7 +4353,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Objective ID. The ID type must match the user_id_type or department_id_type parameter value. How to get: Call the \"Get Objectives in OKR Cycle\" API",
+              "description": "Objective ID. How to get: call the \"Get Objectives in OKR Cycle\" API",
               "example": "7342342398472398473"
             },
             "user_id_type": {
@@ -4500,7 +4500,7 @@
               "type": "string",
               "location": "path",
               "required": true,
-              "description": "Objective ID. The ID type must match the value of the user_id_type parameter. How to obtain: Call the \"Get Objectives in user OKR cycle\" API",
+              "description": "Objective ID. How to obtain: call the \"Get Objectives in user OKR cycle\" API",
               "example": "7342342398472398473"
             },
             "page_size": {
@@ -4575,7 +4575,7 @@
           "responseBody": {
             "has_more": {
               "type": "boolean",
-              "description": "Whether the response body has more parameters",
+              "description": "Whether there is a next page",
               "required": false,
               "example": true
             },
@@ -4610,7 +4610,7 @@
                 },
                 "owner": {
                   "type": "object",
-                  "description": "Owner who initiated the alignment",
+                  "description": "Owner",
                   "required": true,
                   "ref": "owner",
                   "properties": {

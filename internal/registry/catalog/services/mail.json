@@ -11,7 +11,7 @@
           "id": "multi_entity.search",
           "path": "multi_entity/search",
           "httpMethod": "POST",
-          "description": "Multi-entity search",
+          "description": "Search contacts for composing email",
           "parameters": {
             "user_id_type": {
               "type": "string",
@@ -320,12 +320,12 @@
                 },
                 "cc": {
                   "type": "array",
-                  "description": "The CC name or email address filter returns only the CC list containing the CC's messages",
+                  "description": "Filter by CC recipient name or email address; returns only emails whose CC list contains that recipient",
                   "required": false
                 },
                 "bcc": {
                   "type": "array",
-                  "description": "The secret sender name or email address filter returns only the secret sender list containing the secret sender's emails",
+                  "description": "Filter by BCC recipient name or email address; returns only emails whose BCC list contains that recipient",
                   "required": false
                 },
                 "subject": {
@@ -393,7 +393,7 @@
                 },
                 "display_info": {
                   "type": "string",
-                  "description": "Cards containing basic information about the email, snippets of text that users search for keywords, and packages labeled with < h > </h > tags",
+                  "description": "Card containing the email's basic information; the text snippets that match the user's search keywords are wrapped in <h></h> tags",
                   "required": false,
                   "example": "{}"
                 },
@@ -1129,7 +1129,7 @@
             },
             "recall_status": {
               "type": "string",
-              "description": "Withdrawn status. Returns unavailable only if withdrawal is not supported",
+              "description": "Returned only when the message can be recalled; the value is then available",
               "required": false,
               "example": "unavailable",
               "options": [
@@ -2666,7 +2666,7 @@
             },
             "has_more": {
               "type": "boolean",
-              "description": "Whether the response body has more parameters",
+              "description": "Whether there are more items",
               "required": false,
               "example": true
             },
@@ -3221,7 +3221,7 @@
                       "type": "string",
                       "description": "risk email level",
                       "required": false,
-                      "example": "warning",
+                      "example": "WARNING",
                       "options": [
                         {
                           "value": "WARNING",
@@ -3830,7 +3830,7 @@
                       "type": "string",
                       "description": "risk email level",
                       "required": false,
-                      "example": "warning",
+                      "example": "WARNING",
                       "options": [
                         {
                           "value": "WARNING",
@@ -4077,7 +4077,7 @@
             },
             "has_more": {
               "type": "boolean",
-              "description": "Whether the response body has more parameters",
+              "description": "Whether there are more items",
               "required": false,
               "example": true
             }
@@ -4401,7 +4401,7 @@
                         },
                         {
                           "value": 10,
-                          "description": "Any recipient"
+                          "description": "Any address"
                         },
                         {
                           "value": 12,
@@ -4997,7 +4997,7 @@
                         },
                         {
                           "value": 10,
-                          "description": "Any recipient"
+                          "description": "Any address"
                         },
                         {
                           "value": 12,
@@ -5367,7 +5367,7 @@
                 },
                 "fail_reason": {
                   "type": "string",
-                  "description": "Withdraw the reason for the failure, only when the status is failed",
+                  "description": "Reason for the recall failure; present only when status is fail",
                   "required": false,
                   "example": "message_has_been_read",
                   "options": [
@@ -5511,7 +5511,7 @@
                 },
                 {
                   "value": "already_recalled",
-                  "description": "The email has been initiated and the pot has been withdrawn."
+                  "description": "A recall has already been initiated for this email"
                 },
                 {
                   "value": "not_delivered",

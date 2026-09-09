@@ -1175,12 +1175,12 @@
             },
             "cc_user_ids": {
               "type": "array",
-              "description": "List of user IDs of the CC sender, cc_user_ids ID type must be consistent with the value of the user_id_type",
+              "description": "List of user IDs of the CC recipients. The ID type of cc_user_ids must be consistent with the value of user_id_type",
               "required": true
             },
             "comment": {
               "type": "string",
-              "description": "CC message, no more than 500 words",
+              "description": "CC message, no more than 500 characters",
               "required": false,
               "example": "approved"
             }
@@ -1684,7 +1684,7 @@
                 },
                 {
                   "value": "2",
-                  "description": "Approved"
+                  "description": "Handled approvals"
                 },
                 {
                   "value": "17",
