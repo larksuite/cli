@@ -1,7 +1,7 @@
 
 # mail +triage
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 查看收件箱邮件摘要（date / from / subject / message_id），用于快速浏览和决定读哪封邮件。
 

@@ -1,6 +1,6 @@
 # markdown +diff
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+> **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 比较 Drive 中原生 Markdown 的两个历史版本，或比较远端 Markdown 与本地 `.md` 草稿。需要历史版本号时，先用 [`drive +version-history`](../../lark-drive/references/lark-drive-version-history.md) 获取 `version`，不要使用 `tag`。
 

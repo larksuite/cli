@@ -1,6 +1,6 @@
 # im +feed-shortcut-list
 
-> **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) for authentication, global parameters, and security rules.
+> **Prerequisite:** Read [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) for authentication, global parameters, and security rules.
 
 This skill maps to shortcut: `lark-cli im +feed-shortcut-list`. Underlying API: `GET /open-apis/im/v2/feed_shortcuts`.
 

@@ -1,6 +1,6 @@
 # BaseApp（应用模式）操作指引
 
-> 先读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)。接口和组件字段以 CLI 当前版本的 API 元数据、[组件配置 reference](lark-base-app-block-data-config.md) 和服务端校验结果为准；不要从组件名称推断额外约束。
+> 先读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)。接口和组件字段以 CLI 当前版本的 API 元数据、[组件配置 reference](lark-base-app-block-data-config.md) 和服务端校验结果为准；不要从组件名称推断额外约束。
 
 ## 不支持能力：先判断并停止
 

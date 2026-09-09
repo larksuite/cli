@@ -1,6 +1,6 @@
 # im +messages-reply
 
-> **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
+> **Prerequisite:** Read [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
 
 Reply to a specific message. Supports both user identity (`--as user`) and bot identity (`--as bot`). Also supports thread replies.
 
