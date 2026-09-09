@@ -35,12 +35,14 @@ func TestSuiteTemplateMatchesCropContract(t *testing.T) {
 
 func TestSuiteKeywordKeysMatchOfficialSkillDirectories(t *testing.T) {
 	repoRoot := filepath.Join("..", "..")
-	raw, err := os.ReadFile(filepath.Join(repoRoot, "skill-template", "lark-suite-business-info.json"))
+	raw, err := os.ReadFile(filepath.Join(repoRoot, "skill-template", "lark-suite-config.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var keywords map[string][]string
-	if err := json.Unmarshal(raw, &keywords); err != nil {
+	var config struct {
+		Keywords map[string][]string `json:"keywords"`
+	}
+	if err := json.Unmarshal(raw, &config); err != nil {
 		t.Fatal(err)
 	}
 
@@ -55,8 +57,8 @@ func TestSuiteKeywordKeysMatchOfficialSkillDirectories(t *testing.T) {
 		}
 	}
 	sort.Strings(directories)
-	keys := make([]string, 0, len(keywords))
-	for name := range keywords {
+	keys := make([]string, 0, len(config.Keywords))
+	for name := range config.Keywords {
 		keys = append(keys, name)
 	}
 	sort.Strings(keys)
