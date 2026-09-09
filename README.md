@@ -111,6 +111,21 @@ lark-cli calendar +agenda
 npx @larksuite/cli@latest install
 ```
 
+> **Windows AI hosts:** A global npm install places `lark-cli.cmd` in npm's
+> user-level prefix. Some sandboxed AI hosts do not inherit that directory in
+> `PATH`, even though `lark-cli` works in a regular PowerShell window. If
+> `lark-cli` is not found in the following steps, invoke the installed shim
+> directly with the same arguments:
+>
+> ```powershell
+> $npmPrefix = npm prefix -g
+> & "$npmPrefix\lark-cli.cmd" config init --new
+> ```
+>
+> Use the same resolved shim path with the arguments shown in Steps 3 and 4.
+> Restart the AI host after changing its environment. If it still does not
+> inherit the user-level `PATH`, continue using the resolved shim path.
+
 **Step 2 — Configure app credentials**
 
 > Run this command in the background. It will output an authorization URL — extract it and send it to the user. The command exits automatically after the user completes the setup in the browser.
@@ -132,19 +147,6 @@ lark-cli auth login --recommend
 ```bash
 lark-cli auth status
 ```
-
-> **Windows AI hosts:** A global npm install places `lark-cli.cmd` in npm's
-> user-level prefix. Some sandboxed AI hosts do not inherit that directory in
-> `PATH`, even though `lark-cli` works in a regular PowerShell window. If the
-> verification command is not found, invoke the installed shim directly:
->
-> ```powershell
-> $npmPrefix = npm prefix -g
-> & "$npmPrefix\lark-cli.cmd" auth status
-> ```
->
-> Restart the AI host after changing its environment. If it still does not
-> inherit the user-level `PATH`, use the resolved shim path for later commands.
 
 ## Agent Skills
 

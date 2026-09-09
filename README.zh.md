@@ -111,6 +111,20 @@ lark-cli calendar +agenda
 npx @larksuite/cli@latest install
 ```
 
+> **Windows AI 环境：** npm 全局安装会将 `lark-cli.cmd` 放在 npm 的用户级目录中。
+> 部分沙箱化 AI 环境不会继承该目录的 `PATH`，因此即使 `lark-cli` 能在普通
+> PowerShell 中运行，AI 环境仍可能提示找不到命令。如果后续步骤找不到
+> `lark-cli`，请使用相同参数直接调用已安装的命令：
+>
+> ```powershell
+> $npmPrefix = npm prefix -g
+> & "$npmPrefix\lark-cli.cmd" config init --new
+> ```
+>
+> 第 3、4 步请继续使用上面解析出的完整路径，并替换为对应步骤所示参数。
+> 修改环境变量后请重启 AI 应用；如果应用仍不继承用户级 `PATH`，后续命令可继续
+> 使用该完整路径。
+
 **第 2 步 — 配置应用凭证**
 
 > 在后台运行此命令，命令会输出一个授权链接，提取该链接并发送给用户，用户在浏览器中完成配置后命令会自动退出。
@@ -132,18 +146,6 @@ lark-cli auth login --recommend
 ```bash
 lark-cli auth status
 ```
-
-> **Windows AI 环境：** npm 全局安装会将 `lark-cli.cmd` 放在 npm 的用户级目录中。
-> 部分沙箱化 AI 环境不会继承该目录的 `PATH`，因此即使 `lark-cli` 能在普通
-> PowerShell 中运行，AI 环境仍可能提示找不到命令。此时可直接调用已安装的命令：
->
-> ```powershell
-> $npmPrefix = npm prefix -g
-> & "$npmPrefix\lark-cli.cmd" auth status
-> ```
->
-> 修改环境变量后请重启 AI 应用。如果应用仍不继承用户级 `PATH`，后续命令可继续
-> 使用上面解析出的完整路径。
 
 ## Agent Skills
 
