@@ -36,7 +36,7 @@ func TestSyncLoginUserToProfile_UpdatesOnlyTargetProfile(t *testing.T) {
 		t.Fatalf("SaveMultiAppConfig() error = %v", err)
 	}
 
-	if err := syncLoginUserToProfile("target", "app-target", "ou_new", "new-user"); err != nil {
+	if err := syncLoginUserToProfile("target", "app-target", "ou_new", "on_new", "new-user"); err != nil {
 		t.Fatalf("syncLoginUserToProfile() error = %v", err)
 	}
 
@@ -44,7 +44,7 @@ func TestSyncLoginUserToProfile_UpdatesOnlyTargetProfile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadMultiAppConfig() error = %v", err)
 	}
-	if got := saved.Apps[0].Users; len(got) != 1 || got[0].UserOpenId != "ou_new" || got[0].UserName != "new-user" {
+	if got := saved.Apps[0].Users; len(got) != 1 || got[0].UserOpenId != "ou_new" || got[0].UserName != "new-user" || got[0].UserUnionId != "on_new" {
 		t.Fatalf("target users = %#v, want replaced login user", got)
 	}
 	if got := saved.Apps[1].Users; len(got) != 1 || got[0].UserOpenId != "ou_other" {
@@ -64,7 +64,7 @@ func TestSyncLoginUserToProfile_ProfileNotFoundReturnsError(t *testing.T) {
 		t.Fatalf("SaveMultiAppConfig() error = %v", err)
 	}
 
-	err := syncLoginUserToProfile("missing", "app-default", "ou_new", "new-user")
+	err := syncLoginUserToProfile("missing", "app-default", "ou_new", "on_new", "new-user")
 	if err == nil {
 		t.Fatal("expected error for missing profile")
 	}

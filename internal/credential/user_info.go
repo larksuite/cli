@@ -13,8 +13,9 @@ import (
 )
 
 type userInfo struct {
-	OpenID string
-	Name   string
+	OpenID  string
+	UnionID string
+	Name    string
 }
 
 // fetchUserInfo calls /open-apis/authen/v1/user_info with a UAT to get the user's identity.
@@ -42,8 +43,9 @@ func fetchUserInfo(ctx context.Context, httpClient *http.Client, brand core.Lark
 		Code int    `json:"code"`
 		Msg  string `json:"msg"`
 		Data struct {
-			OpenID string `json:"open_id"`
-			Name   string `json:"name"`
+			OpenID  string `json:"open_id"`
+			UnionID string `json:"union_id"`
+			Name    string `json:"name"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -52,5 +54,5 @@ func fetchUserInfo(ctx context.Context, httpClient *http.Client, brand core.Lark
 	if result.Code != 0 {
 		return nil, fmt.Errorf("user_info API error: [%d] %s", result.Code, result.Msg)
 	}
-	return &userInfo{OpenID: result.Data.OpenID, Name: result.Data.Name}, nil
+	return &userInfo{OpenID: result.Data.OpenID, UnionID: result.Data.UnionID, Name: result.Data.Name}, nil
 }

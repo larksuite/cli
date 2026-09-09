@@ -48,6 +48,7 @@ type Identity struct {
 	Message          string `json:"message,omitempty"`
 	Hint             string `json:"hint,omitempty"`
 	OpenID           string `json:"openId,omitempty"`
+	UnionID          string `json:"unionId,omitempty"`
 	AppName          string `json:"appName,omitempty"`
 	UserName         string `json:"userName,omitempty"`
 	TokenStatus      string `json:"tokenStatus,omitempty"`
@@ -177,6 +178,7 @@ func diagnoseExternalUser(ctx context.Context, f *cmdutil.Factory, cfg *core.Cli
 		TokenStatus: StatusReady,
 		UserName:    cfg.UserName,
 		OpenID:      cfg.UserOpenId,
+		UnionID:     cfg.UserUnionId,
 		Message:     "User identity: ready (provided by " + provider + ")",
 	}
 	if !verify {
@@ -294,6 +296,7 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	id := Identity{
 		UserName: cfg.UserName,
 		OpenID:   cfg.UserOpenId,
+		UnionID:  cfg.UserUnionId,
 	}
 	stored := larkauth.GetStoredToken(cfg.AppID, cfg.UserOpenId)
 	if stored == nil {

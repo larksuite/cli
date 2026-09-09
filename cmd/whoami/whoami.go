@@ -40,6 +40,7 @@ type whoamiResult struct {
 type delegatedUser struct {
 	UserName string `json:"userName,omitempty"`
 	OpenID   string `json:"openId,omitempty"`
+	UnionID  string `json:"unionId,omitempty"`
 }
 
 // Options holds inputs for the whoami command.
@@ -167,7 +168,7 @@ func buildResult(cfg *core.CliConfig, as core.Identity, source string, diag iden
 		// Set onBehalfOf only when a user is actually resolved; an unresolved
 		// user identity (not signed in) has no one to act on behalf of yet.
 		if diag.User.UserName != "" || diag.User.OpenID != "" {
-			res.OnBehalfOf = &delegatedUser{UserName: diag.User.UserName, OpenID: diag.User.OpenID}
+			res.OnBehalfOf = &delegatedUser{UserName: diag.User.UserName, OpenID: diag.User.OpenID, UnionID: diag.User.UnionID}
 		}
 		if !diag.User.Available {
 			res.Hint = diag.User.Hint

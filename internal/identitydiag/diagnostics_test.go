@@ -80,11 +80,12 @@ func TestDiagnose_VerifyUserIdentity(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_DATA_DIR", t.TempDir())
 
 	cfg := &core.CliConfig{
-		AppID:      "test-app-user",
-		AppSecret:  "secret",
-		Brand:      core.BrandFeishu,
-		UserOpenId: "ou_user",
-		UserName:   "tester",
+		AppID:       "test-app-user",
+		AppSecret:   "secret",
+		Brand:       core.BrandFeishu,
+		UserOpenId:  "ou_user",
+		UserName:    "tester",
+		UserUnionId: "on_user",
 	}
 	now := time.Now()
 	if err := larkauth.SetStoredToken(&larkauth.StoredUAToken{
@@ -129,7 +130,7 @@ func TestDiagnose_VerifyUserIdentity(t *testing.T) {
 	if got.User.Verified == nil || !*got.User.Verified {
 		t.Fatalf("user verified = %v, want true", got.User.Verified)
 	}
-	if got.User.OpenID != "ou_user" || got.User.UserName != "tester" {
+	if got.User.OpenID != "ou_user" || got.User.UserName != "tester" || got.User.UnionID != "on_user" {
 		t.Fatalf("user = %#v, want user identity details", got.User)
 	}
 }
@@ -398,7 +399,7 @@ func assertExternalHint(t *testing.T, hint string) {
 }
 
 func TestDiagnose_External_UserReady(t *testing.T) {
-	cfg := &core.CliConfig{AppID: "cli_x", Brand: core.BrandFeishu, SupportedIdentities: uint8(extcred.SupportsAll), UserOpenId: "ou_x", UserName: "Alice"}
+	cfg := &core.CliConfig{AppID: "cli_x", Brand: core.BrandFeishu, SupportedIdentities: uint8(extcred.SupportsAll), UserOpenId: "ou_x", UserName: "Alice", UserUnionId: "on_x"}
 	f := externalFactory(&fakeExtProvider{name: "corp-sso", account: &extcred.Account{AppID: "cli_x"}}, cfg)
 
 	got := Diagnose(context.Background(), f, cfg, false)
@@ -408,7 +409,7 @@ func TestDiagnose_External_UserReady(t *testing.T) {
 	if !got.User.Available || got.User.Status != StatusReady || got.User.TokenStatus != StatusReady {
 		t.Fatalf("user = %#v, want ready/available", got.User)
 	}
-	if got.User.OpenID != "ou_x" || got.User.UserName != "Alice" {
+	if got.User.OpenID != "ou_x" || got.User.UserName != "Alice" || got.User.UnionID != "on_x" {
 		t.Fatalf("user identity = %#v", got.User)
 	}
 	if got.User.Hint != "" {

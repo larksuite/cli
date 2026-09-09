@@ -393,7 +393,7 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	if err != nil {
 		return errs.NewInternalError(errs.SubtypeSDKError, "failed to get SDK: %v", err).WithCause(err)
 	}
-	openId, userName, err := getUserInfo(opts.Ctx, sdk, result.Token.AccessToken)
+	openId, unionId, userName, err := getUserInfo(opts.Ctx, sdk, result.Token.AccessToken)
 	if err != nil {
 		return errs.NewAuthenticationError(errs.SubtypeUnknown, "failed to get user info: %v", err).WithCause(err)
 	}
@@ -418,7 +418,7 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	}
 
 	// Step 8: Update config — overwrite Users to single user, clean old tokens
-	if err := syncLoginUserToProfile(config.ProfileName, config.AppID, openId, userName); err != nil {
+	if err := syncLoginUserToProfile(config.ProfileName, config.AppID, openId, unionId, userName); err != nil {
 		_ = larkauth.RemoveStoredToken(config.AppID, openId)
 		return err
 	}
@@ -477,7 +477,7 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	if err != nil {
 		return errs.NewInternalError(errs.SubtypeSDKError, "failed to get SDK: %v", err).WithCause(err)
 	}
-	openId, userName, err := getUserInfo(opts.Ctx, sdk, result.Token.AccessToken)
+	openId, unionId, userName, err := getUserInfo(opts.Ctx, sdk, result.Token.AccessToken)
 	if err != nil {
 		return errs.NewAuthenticationError(errs.SubtypeUnknown, "failed to get user info: %v", err).WithCause(err)
 	}
@@ -502,7 +502,7 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	}
 
 	// Update config — overwrite Users to single user, clean old tokens
-	if err := syncLoginUserToProfile(config.ProfileName, config.AppID, openId, userName); err != nil {
+	if err := syncLoginUserToProfile(config.ProfileName, config.AppID, openId, unionId, userName); err != nil {
 		_ = larkauth.RemoveStoredToken(config.AppID, openId)
 		return errs.NewInternalError(errs.SubtypeSDKError, "failed to update login profile: %v", err).WithCause(err)
 	}
@@ -516,7 +516,7 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 }
 
 // syncLoginUserToProfile persists the logged-in user info into the named profile.
-func syncLoginUserToProfile(profileName, appID, openID, userName string) error {
+func syncLoginUserToProfile(profileName, appID, openID, unionID, userName string) error {
 	multi, err := core.LoadMultiAppConfig()
 	if err != nil {
 		return errs.NewInternalError(errs.SubtypeStorage, "load config: %v", err).WithCause(err)
@@ -528,7 +528,7 @@ func syncLoginUserToProfile(profileName, appID, openID, userName string) error {
 	}
 
 	oldUsers := append([]core.AppUser(nil), app.Users...)
-	app.Users = []core.AppUser{{UserOpenId: openID, UserName: userName}}
+	app.Users = []core.AppUser{{UserOpenId: openID, UserName: userName, UserUnionId: unionID}}
 	if err := core.SaveMultiAppConfig(multi); err != nil {
 		return errs.NewInternalError(errs.SubtypeStorage, "save config: %v", err).WithCause(err)
 	}
