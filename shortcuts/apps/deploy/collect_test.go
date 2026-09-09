@@ -64,3 +64,27 @@ func TestCollectDirSkipsGitAndNonRegular(t *testing.T) {
 		t.Error("rootNames must list the directory's top-level file names")
 	}
 }
+
+func TestCanonicalAbsResolvesSymlinks(t *testing.T) {
+	real := t.TempDir()
+	mustWrite(t, filepath.Join(real, "index.html"), "hi")
+
+	linkDir := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, linkDir); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	viaReal, err := canonicalAbs(filepath.Join(real, "index.html"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	viaLink, err := canonicalAbs(filepath.Join(linkDir, "index.html"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// 同一个文件经由符号链接与真实路径进入，必须得到同一个 key，
+	// 否则会为同一份内容建出两个应用。
+	if viaReal != viaLink {
+		t.Errorf("canonicalAbs diverged: %q vs %q", viaReal, viaLink)
+	}
+}

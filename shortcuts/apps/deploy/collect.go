@@ -32,6 +32,25 @@ func isUnsafeRel(rel string) bool {
 		strings.ContainsRune(rel, 0)
 }
 
+// canonicalAbs resolves relPath to an absolute path with symlinks evaluated,
+// matching what SafeInputPath produces internally. Plain filepath.Abs is not
+// enough: on macOS /tmp is a symlink to /private/tmp, so the same file reached
+// through the two spellings would otherwise yield two different idempotency
+// keys and create two apps.
+func canonicalAbs(relPath string) (string, error) {
+	//nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); relPath already passed FileIO.Stat's input validation, and FileIO.ResolvePath validates output paths only.
+	abs, err := filepath.Abs(relPath)
+	if err != nil {
+		return "", errs.NewInternalError(errs.SubtypeFileIO, "resolve %q: %v", relPath, err).WithCause(err)
+	}
+	//nolint:forbidigo // same rationale as filepath.Abs above; the target exists because the caller already stat-ed it.
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", errs.NewInternalError(errs.SubtypeFileIO, "resolve symlinks for %q: %v", relPath, err).WithCause(err)
+	}
+	return resolved, nil
+}
+
 // CollectFile resolves a single-file payload. relPath goes through the caller's
 // FileIO so the cwd sandbox check runs; the resolved absolute path is returned
 // for use as the idempotency key.
@@ -44,10 +63,9 @@ func CollectFile(fio fileio.FileIO, relPath string) ([]Candidate, string, error)
 		return nil, "", errs.NewValidationError(errs.SubtypeFailedPrecondition,
 			"--file-path %q is not a regular file", relPath).WithParam("--file-path")
 	}
-	//nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); relPath already passed FileIO.Stat's input validation, and FileIO.ResolvePath validates output paths only.
-	abs, err := filepath.Abs(relPath)
+	abs, err := canonicalAbs(relPath)
 	if err != nil {
-		return nil, "", errs.NewInternalError(errs.SubtypeFileIO, "resolve %q: %v", relPath, err).WithCause(err)
+		return nil, "", err
 	}
 	name := filepath.Base(relPath)
 	return []Candidate{{RelPath: name, AbsPath: relPath, Size: st.Size()}}, abs, nil
@@ -69,10 +87,9 @@ func CollectDir(fio fileio.FileIO, relDir string) ([]Candidate, []string, string
 	if err != nil {
 		return nil, nil, "", err
 	}
-	//nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); relDir already passed FileIO.Stat's input validation, and FileIO.ResolvePath validates output paths only.
-	abs, err := filepath.Abs(relDir)
+	abs, err := canonicalAbs(relDir)
 	if err != nil {
-		return nil, nil, "", errs.NewInternalError(errs.SubtypeFileIO, "resolve %q: %v", relDir, err).WithCause(err)
+		return nil, nil, "", err
 	}
 	return cands, rootNames, abs, nil
 }
