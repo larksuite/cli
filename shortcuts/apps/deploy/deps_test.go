@@ -41,7 +41,11 @@ func collectRels(t *testing.T, root, entry string) ([]string, []string) {
 		rels = append(rels, c.RelPath)
 	}
 	sort.Strings(rels)
-	return rels, skipped
+	notes := make([]string, 0, len(skipped))
+	for _, sk := range skipped {
+		notes = append(notes, sk.String())
+	}
+	return rels, notes
 }
 
 func TestCollectFileFollowsDependencyClosure(t *testing.T) {
@@ -252,8 +256,11 @@ func TestCollectFileStopsAtFileLimit(t *testing.T) {
 	if len(cands) != maxDepFiles {
 		t.Fatalf("expected the closure capped at %d, got %d", maxDepFiles, len(cands))
 	}
-	if len(skipped) == 0 || !strings.Contains(skipped[0], "--dir") {
-		t.Fatalf("hitting the cap must point at --dir, got %v", skipped)
+	// One line, not one per dropped reference: a page that blows the cap blows
+	// it by dozens, and repeating the same sentence buries everything else.
+	if len(skipped) != 1 || !strings.Contains(skipped[0].Why, "200-file limit") ||
+		skipped[0].Kind != SkipCapped {
+		t.Fatalf("the cap must be reported exactly once, got %v", skipped)
 	}
 }
 
@@ -294,5 +301,27 @@ func TestResolveRefClassification(t *testing.T) {
 			t.Errorf("resolveRef(%q, %q) = (%q, %d), want (%q, %d)",
 				c.from, c.ref, got, status, c.want, c.status)
 		}
+	}
+}
+
+// A dry-run that returns a green light and a real publish that fails is worse
+// than either alone: the caller previews, sees success, and only finds out when
+// the app is already being created. Validate must reject the collision, which
+// means both input forms must run the manifest build.
+func TestCollectFileRecordsWhoPulledEachDependencyIn(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "report.html"), `<iframe src="index.html"></iframe>`)
+	mustWrite(t, filepath.Join(root, "index.html"), `<html></html>`)
+
+	cands, _, _, err := CollectFile(permissiveFIO{}, filepath.Join(root, "report.html"))
+	if err != nil {
+		t.Fatalf("CollectFile: %v", err)
+	}
+	if len(cands) != 2 || cands[0].Via != "" || cands[1].Via != "report.html" {
+		t.Fatalf("Via must name the referrer, got %+v", cands)
+	}
+	_, _, err = BuildManifest(cands, "report.html")
+	if err == nil || !strings.Contains(err.Error(), "report.html references it") {
+		t.Fatalf("the conflict must name who pulled the other index.html in, got %v", err)
 	}
 }
