@@ -4,6 +4,7 @@
 package deploy
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -39,10 +40,17 @@ func BuildManifest(candidates []Candidate, entryRel string) ([]PackEntry, []stri
 		// same zip path, and which one survives unpacking is undefined.
 		if seenPath[rel] {
 			if rel == IndexName && entryRel != IndexName {
+				// Name who dragged the other index.html in: under --file-path
+				// the caller never wrote it down, so "the payload already
+				// contains one" is not something they can act on by itself.
+				origin := "it is in the payload"
+				if c.Via != "" {
+					origin = fmt.Sprintf("%s references it", c.Via)
+				}
 				return nil, nil, errs.NewValidationError(errs.SubtypeFailedPrecondition,
-					"entry conflict: %q is published as %s, but the payload already contains its own %s",
-					entryRel, IndexName, IndexName).
-					WithHint("rename the entry to index.html and publish that, or rename the other file")
+					"entry conflict: %q is published as %s, but the payload has its own %s (%s)",
+					entryRel, IndexName, IndexName, origin).
+					WithHint("rename one of the two files, or publish the directory with --dir and pick the entry with --entry-file")
 			}
 			return nil, nil, errs.NewValidationError(errs.SubtypeFailedPrecondition,
 				"the payload maps two files onto the same published path %q", rel)

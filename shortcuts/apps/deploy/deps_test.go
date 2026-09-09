@@ -14,9 +14,9 @@ import (
 	"github.com/larksuite/cli/extension/fileio"
 )
 
-// permissiveFIO delegates to os without the cwd sandbox check so the scanner
-// can be driven with absolute t.TempDir paths. Production goes through the
-// cwd-bounded LocalFileIO, which these tests deliberately do not exercise.
+// permissiveFIO delegates to os without the cwd sandbox so the scanner can be
+// driven with absolute t.TempDir paths. Production goes through the cwd-bounded
+// LocalFileIO, which these tests deliberately do not exercise.
 type permissiveFIO struct{}
 
 func (permissiveFIO) Open(name string) (fileio.File, error)     { return os.Open(name) }
@@ -26,7 +26,8 @@ func (permissiveFIO) Save(string, fileio.SaveOptions, io.Reader) (fileio.SaveRes
 	panic("Save not used in deploy unit tests")
 }
 
-// collectRels runs CollectFile on root/entry and returns the published paths.
+// collectRels runs CollectFile on root/entry and returns the published paths
+// plus the rendered skip notes.
 func collectRels(t *testing.T, root, entry string) ([]string, []string) {
 	t.Helper()
 	cands, _, skipped, err := CollectFile(permissiveFIO{}, filepath.Join(root, entry))
@@ -46,6 +47,16 @@ func collectRels(t *testing.T, root, entry string) ([]string, []string) {
 		notes = append(notes, sk.String())
 	}
 	return rels, notes
+}
+
+// collectErr runs CollectFile expecting the publish to stop.
+func collectErr(t *testing.T, root, entry string) error {
+	t.Helper()
+	cands, _, _, err := CollectFile(permissiveFIO{}, filepath.Join(root, entry))
+	if err == nil {
+		t.Fatalf("expected the publish to stop, got %d files", len(cands))
+	}
+	return err
 }
 
 func TestCollectFileFollowsDependencyClosure(t *testing.T) {
@@ -87,61 +98,63 @@ func TestCollectFileFollowsDependencyClosure(t *testing.T) {
 	}
 }
 
-// ESM module specifiers are followed when a payload does use them, but no other
-// test depends on module scripts: a bare HTML page normally loads plain
-// scripts, and the closure must be provable without ESM semantics.
-func TestCollectFileFollowsESMSpecifiers(t *testing.T) {
+// A reference the browser resolves against the document rather than against the
+// script -- fetch, Worker, XHR -- must resolve from the payload root even when
+// the script sits in a subdirectory. Getting this backwards puts a file at the
+// wrong path, which is a file set the GUI cannot reproduce.
+func TestCollectFileResolvesRuntimeReferencesAgainstTheDocument(t *testing.T) {
 	root := t.TempDir()
-	mustWrite(t, filepath.Join(root, "page.html"), `<script type="module" src="app.js"></script>`)
-	mustWrite(t, filepath.Join(root, "app.js"), `import {x} from "./lib/util.js";
-import "./side.js";
-const p = import('./lazy.js');
-import react from "react";`)
-	mustWrite(t, filepath.Join(root, "lib", "util.js"), `export const x = 1;`)
-	mustWrite(t, filepath.Join(root, "side.js"), ``)
-	mustWrite(t, filepath.Join(root, "lazy.js"), ``)
+	mustWrite(t, filepath.Join(root, "index.html"), `<script src="js/app.js"></script>`)
+	mustWrite(t, filepath.Join(root, "js", "app.js"), `
+fetch('./data.json');
+window.fetch('./ignored.json');
+new Worker('./worker.js');
+new URL('./sibling.js', import.meta.url);
+`)
+	mustWrite(t, filepath.Join(root, "data.json"), `{}`)
+	mustWrite(t, filepath.Join(root, "worker.js"), ``)
+	mustWrite(t, filepath.Join(root, "js", "sibling.js"), ``)
+	// Same names one directory down: picked up only if the rewrite were skipped.
+	mustWrite(t, filepath.Join(root, "js", "data.json"), `{}`)
+	mustWrite(t, filepath.Join(root, "ignored.json"), `{}`)
 
-	rels, skipped := collectRels(t, root, "page.html")
-	want := []string{"app.js", "lazy.js", "lib/util.js", "page.html", "side.js"}
+	rels, _ := collectRels(t, root, "index.html")
+	want := []string{"data.json", "index.html", "js/app.js", "js/sibling.js", "worker.js"}
 	if strings.Join(rels, ",") != strings.Join(want, ",") {
 		t.Fatalf("got %v, want %v", rels, want)
-	}
-	// "react" is a package name, not a file in the payload: following it would
-	// be wrong rather than merely useless, so it must not even be reported.
-	if len(skipped) != 0 {
-		t.Fatalf("a bare specifier must not be reported as a skip: %v", skipped)
 	}
 }
 
 func TestCollectFileIgnoresExternalAndInertReferences(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, "page.html"), `
-<link href="https://cdn.example.com/a.css">
-<link href="//cdn.example.com/b.css">
+<link rel="stylesheet" href="https://cdn.example.com/a.css">
+<link rel="stylesheet" href="//cdn.example.com/b.css">
 <script src="http://cdn.example.com/c.js"></script>
 <img src="data:image/png;base64,AAAA">
 <a href="other.html">nav</a>
 <a href="#section">anchor</a>
 <img src="#">
-<!-- <link href="ghost.css"> -->
-<form action="submit.php"></form>`)
-	mustWrite(t, filepath.Join(root, "other.html"), "<html></html>")
-	mustWrite(t, filepath.Join(root, "ghost.css"), ".x{}")
-	mustWrite(t, filepath.Join(root, "submit.php"), "<?php")
+<!-- <link rel="stylesheet" href="ghost.css"> -->
+<form action="submit.php"></form>
+<link rel="canonical" href="canonical.html">`)
+	for _, f := range []string{"other.html", "ghost.css", "submit.php", "canonical.html"} {
+		mustWrite(t, filepath.Join(root, f), "x")
+	}
 
 	rels, skipped := collectRels(t, root, "page.html")
 	if strings.Join(rels, ",") != "page.html" {
 		t.Fatalf("only the entry should be published, got %v", rels)
 	}
 	if len(skipped) != 0 {
-		t.Fatalf("external references must not be reported as skips, got %v", skipped)
+		t.Fatalf("external and navigation references must not be reported as skips, got %v", skipped)
 	}
 }
 
 func TestCollectFileStripsQueryAndFragment(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, "page.html"), `
-<link href="style.css?v=2">
+<link rel="stylesheet" href="style.css?v=2">
 <img src="assets/icon%20one.png#frag">
 <script src="app.js#v=1"></script>`)
 	mustWrite(t, filepath.Join(root, "style.css"), ".a{}")
@@ -160,7 +173,7 @@ func TestCollectFileStripsQueryAndFragment(t *testing.T) {
 
 func TestCollectFileReportsMissingDependency(t *testing.T) {
 	root := t.TempDir()
-	mustWrite(t, filepath.Join(root, "page.html"), `<link href="style.css"><img src="gone.png">`)
+	mustWrite(t, filepath.Join(root, "page.html"), `<link rel="stylesheet" href="style.css"><img src="gone.png">`)
 	mustWrite(t, filepath.Join(root, "style.css"), ".a{}")
 
 	rels, skipped := collectRels(t, root, "page.html")
@@ -168,25 +181,39 @@ func TestCollectFileReportsMissingDependency(t *testing.T) {
 		t.Fatalf("a missing dependency must not drop the rest: %v", rels)
 	}
 	if len(skipped) != 1 || !strings.Contains(skipped[0], "gone.png") ||
-		!strings.Contains(skipped[0], "does not exist") ||
-		!strings.Contains(skipped[0], "page.html") {
-		t.Fatalf("skip note should name the file, the referrer and the reason: %v", skipped)
+		!strings.Contains(skipped[0], "does not exist") {
+		t.Fatalf("skip note should name the file and the reason: %v", skipped)
 	}
 }
 
-func TestCollectFileRejectsDependencyAboveEntryDirectory(t *testing.T) {
+// The publish stops rather than shipping a payload the web client would have
+// refused: a reference above the payload root cannot be expressed in the
+// published layout at all.
+func TestCollectFileRejectsReferenceAboveEntryDirectory(t *testing.T) {
 	root := t.TempDir()
 	site := filepath.Join(root, "site")
-	mustWrite(t, filepath.Join(site, "page.html"), `<link href="../shared/theme.css">`)
+	mustWrite(t, filepath.Join(site, "page.html"), `<link rel="stylesheet" href="../shared/theme.css">`)
 	mustWrite(t, filepath.Join(root, "shared", "theme.css"), ".a{}")
 
-	rels, skipped := collectRels(t, site, "page.html")
-	if strings.Join(rels, ",") != "page.html" {
-		t.Fatalf("a dependency above the entry directory must not be published: %v", rels)
+	err := collectErr(t, site, "page.html")
+	if !strings.Contains(err.Error(), "above the entry file") {
+		t.Fatalf("message should say the reference points above the payload: %v", err)
 	}
-	if len(skipped) != 1 || !strings.Contains(skipped[0], "../shared/theme.css") ||
-		!strings.Contains(skipped[0], "outside the entry file's directory") {
-		t.Fatalf("expected one out-of-root note, got %v", skipped)
+}
+
+func TestCollectFileRejectsDangerousReferences(t *testing.T) {
+	for name, ref := range map[string]string{
+		"file scheme":   "file:///etc/hosts",
+		"windows drive": `c:\secrets.css`,
+		"colon decoded": "a%3Ab.css",
+		"bad percent":   "a%ZZ.css",
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			mustWrite(t, filepath.Join(root, "page.html"),
+				`<link rel="stylesheet" href="`+ref+`">`)
+			collectErr(t, root, "page.html")
+		})
 	}
 }
 
@@ -194,7 +221,7 @@ func TestCollectFileRejectsDependencyAboveEntryDirectory(t *testing.T) {
 // single-file publish means the entry's own directory.
 func TestCollectFileResolvesRootAbsoluteAgainstEntryDirectory(t *testing.T) {
 	root := t.TempDir()
-	mustWrite(t, filepath.Join(root, "page.html"), `<link href="/style.css">`)
+	mustWrite(t, filepath.Join(root, "page.html"), `<link rel="stylesheet" href="/style.css">`)
 	mustWrite(t, filepath.Join(root, "style.css"), ".a{}")
 
 	rels, skipped := collectRels(t, root, "page.html")
@@ -206,31 +233,36 @@ func TestCollectFileResolvesRootAbsoluteAgainstEntryDirectory(t *testing.T) {
 	}
 }
 
-// The scan must not become a way to reach content the flag validation would
-// have rejected: a symlink pointing out of the payload root is dropped even
-// though it stats as a regular file.
-func TestCollectFileRejectsSymlinkEscapingRoot(t *testing.T) {
-	root := t.TempDir()
-	site := filepath.Join(root, "site")
-	mustWrite(t, filepath.Join(site, "page.html"), `<link href="secret.css">`)
-	mustWrite(t, filepath.Join(root, "outside.css"), ".a{}")
-	if err := os.Symlink(filepath.Join(root, "outside.css"), filepath.Join(site, "secret.css")); err != nil {
-		t.Skipf("symlink unsupported: %v", err)
-	}
-
-	rels, skipped := collectRels(t, site, "page.html")
-	if strings.Join(rels, ",") != "page.html" {
-		t.Fatalf("symlinked escape must not be published: %v", rels)
-	}
-	if len(skipped) != 1 || !strings.Contains(skipped[0], "outside the entry file's directory") {
-		t.Fatalf("expected an out-of-root note, got %v", skipped)
+// Any symbolic link stops the publish, not only one pointing out of the
+// payload. Following a link publishes a file the caller did not name, and the
+// web client refuses them outright -- a payload accepted here has to be one the
+// GUI can reproduce.
+func TestCollectFileRejectsSymlink(t *testing.T) {
+	for name, target := range map[string]string{
+		"inside the payload":  "real.css",
+		"outside the payload": "../outside.css",
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			site := filepath.Join(root, "site")
+			mustWrite(t, filepath.Join(site, "page.html"), `<link rel="stylesheet" href="linked.css">`)
+			mustWrite(t, filepath.Join(site, "real.css"), ".a{}")
+			mustWrite(t, filepath.Join(root, "outside.css"), ".b{}")
+			if err := os.Symlink(target, filepath.Join(site, "linked.css")); err != nil {
+				t.Skipf("symlink unsupported: %v", err)
+			}
+			err := collectErr(t, site, "page.html")
+			if !strings.Contains(err.Error(), "symbolic link") {
+				t.Fatalf("message should name the symlink: %v", err)
+			}
+		})
 	}
 }
 
 func TestCollectFileTerminatesOnReferenceCycle(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, "page.html"), `<iframe src="b.html"></iframe>`)
-	mustWrite(t, filepath.Join(root, "b.html"), `<iframe src="page.html"></iframe><link href="c.css">`)
+	mustWrite(t, filepath.Join(root, "b.html"), `<iframe src="page.html"></iframe><link rel="stylesheet" href="c.css">`)
 	mustWrite(t, filepath.Join(root, "c.css"), `@import "c.css";`)
 
 	rels, _ := collectRels(t, root, "page.html")
@@ -243,24 +275,16 @@ func TestCollectFileStopsAtFileLimit(t *testing.T) {
 	root := t.TempDir()
 	var refs strings.Builder
 	for i := 0; i < maxDepFiles+10; i++ {
-		name := filepath.Join(root, "a", strings.Repeat("x", 1)+string(rune('a'+i%26))+"-"+itoa(i)+".css")
-		mustWrite(t, name, ".a{}")
-		refs.WriteString(`<link href="a/` + filepath.Base(name) + `">`)
+		name := "a/f" + itoa(i) + ".css"
+		mustWrite(t, filepath.Join(root, filepath.FromSlash(name)), ".a{}")
+		refs.WriteString(`<link rel="stylesheet" href="` + name + `">`)
 	}
 	mustWrite(t, filepath.Join(root, "page.html"), refs.String())
 
-	cands, _, skipped, err := CollectFile(permissiveFIO{}, filepath.Join(root, "page.html"))
-	if err != nil {
-		t.Fatalf("CollectFile: %v", err)
-	}
-	if len(cands) != maxDepFiles {
-		t.Fatalf("expected the closure capped at %d, got %d", maxDepFiles, len(cands))
-	}
-	// One line, not one per dropped reference: a page that blows the cap blows
-	// it by dozens, and repeating the same sentence buries everything else.
-	if len(skipped) != 1 || !strings.Contains(skipped[0].Why, "200-file limit") ||
-		skipped[0].Kind != SkipCapped {
-		t.Fatalf("the cap must be reported exactly once, got %v", skipped)
+	err := collectErr(t, root, "page.html")
+	// The way out (--dir) rides on the hint, which the message does not carry.
+	if !strings.Contains(err.Error(), "more than 200 files") {
+		t.Fatalf("hitting the cap should say so: %v", err)
 	}
 }
 
@@ -276,38 +300,8 @@ func itoa(i int) string {
 	return string(b)
 }
 
-func TestResolveRefClassification(t *testing.T) {
-	cases := []struct {
-		from, ref string
-		want      string
-		status    refStatus
-	}{
-		{"index.html", "style.css", "style.css", refOK},
-		{"a/b.html", "../c.css", "c.css", refOK},
-		{"a/b.html", "c.css", "a/c.css", refOK},
-		{"index.html", "/deep/x.css", "deep/x.css", refOK},
-		{"a/b.html", "../../escape.css", "", refOutside},
-		{"index.html", "https://x/y.css", "", refIgnore},
-		{"index.html", "//x/y.css", "", refIgnore},
-		{"index.html", "data:text/css,a", "", refIgnore},
-		{"index.html", "mailto:a@b.c", "", refIgnore},
-		{"index.html", "#top", "", refIgnore},
-		{"index.html", "assets/", "", refIgnore},
-		{"index.html", "  ", "", refIgnore},
-	}
-	for _, c := range cases {
-		got, status := resolveRef(c.from, c.ref)
-		if got != c.want || status != c.status {
-			t.Errorf("resolveRef(%q, %q) = (%q, %d), want (%q, %d)",
-				c.from, c.ref, got, status, c.want, c.status)
-		}
-	}
-}
-
 // A dry-run that returns a green light and a real publish that fails is worse
-// than either alone: the caller previews, sees success, and only finds out when
-// the app is already being created. Validate must reject the collision, which
-// means both input forms must run the manifest build.
+// than either alone, so the collision has to be detectable before any write.
 func TestCollectFileRecordsWhoPulledEachDependencyIn(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, "report.html"), `<iframe src="index.html"></iframe>`)
@@ -323,5 +317,55 @@ func TestCollectFileRecordsWhoPulledEachDependencyIn(t *testing.T) {
 	_, _, err = BuildManifest(cands, "report.html")
 	if err == nil || !strings.Contains(err.Error(), "report.html references it") {
 		t.Fatalf("the conflict must name who pulled the other index.html in, got %v", err)
+	}
+}
+
+func TestResolveReferenceClassification(t *testing.T) {
+	type want struct {
+		rel  string
+		skip bool
+		err  bool
+	}
+	cases := map[string]struct {
+		from, ref string
+		want      want
+	}{
+		"sibling":        {"index.html", "style.css", want{rel: "style.css"}},
+		"up one":         {"a/b.html", "../c.css", want{rel: "c.css"}},
+		"same dir":       {"a/b.html", "c.css", want{rel: "a/c.css"}},
+		"root absolute":  {"index.html", "/deep/x.css", want{rel: "deep/x.css"}},
+		"bare specifier": {"js/app.js", "lodash", want{rel: "js/lodash"}},
+		"above root":     {"a/b.html", "../../escape.css", want{err: true}},
+		"backslash":      {"index.html", `a\b.css`, want{err: true}},
+		"file scheme":    {"index.html", "file:///x", want{err: true}},
+		"windows drive":  {"index.html", `C:\x`, want{err: true}},
+		"decoded colon":  {"index.html", "a%3Ab.css", want{err: true}},
+		"https":          {"index.html", "https://x/y.css", want{skip: true}},
+		"protocol rel":   {"index.html", "//x/y.css", want{skip: true}},
+		"data uri":       {"index.html", "data:text/css,a", want{skip: true}},
+		"mailto":         {"index.html", "mailto:a@b.c", want{skip: true}},
+		"fragment":       {"index.html", "#top", want{skip: true}},
+		"query only":     {"index.html", "?v=1", want{skip: true}},
+		"blank":          {"index.html", "  ", want{skip: true}},
+		"trailing slash": {"index.html", "assets/", want{rel: "assets"}},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			rel, skip, err := resolveReference(c.from, c.ref)
+			switch {
+			case c.want.err:
+				if err == nil {
+					t.Fatalf("expected an error, got %q", rel)
+				}
+			case c.want.skip:
+				if err != nil || !skip {
+					t.Fatalf("expected a skip, got rel=%q skip=%v err=%v", rel, skip, err)
+				}
+			default:
+				if err != nil || skip || rel != c.want.rel {
+					t.Fatalf("got rel=%q skip=%v err=%v, want %q", rel, skip, err, c.want.rel)
+				}
+			}
+		})
 	}
 }

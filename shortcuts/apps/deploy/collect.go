@@ -18,6 +18,11 @@ type Candidate struct {
 	RelPath string
 	AbsPath string
 	Size    int64
+	// Via names the file that referenced this one, empty for the entry and for
+	// everything a --dir walk picks up. A dependency the caller never wrote
+	// down is hard to reason about when it turns out to be a problem, so the
+	// diagnostics need to be able to say where it came from.
+	Via string
 }
 
 // isUnsafeRel reports whether a forward-slash relative path must never be
@@ -116,16 +121,19 @@ func escapesWorkingDir(path string) bool {
 
 // CollectFile resolves a single-file payload: the entry file plus the local
 // files it references, transitively. Publishing the page alone would ship a
-// document whose stylesheet, scripts and images all 404 — the artifact would be
-// broken, not merely different from what the GUI produces.
+// document whose stylesheet, scripts and images all 404 -- the artifact would
+// be broken, not merely different from what the web client produces.
+//
+// The walk mirrors the web client's collector, because the publish carries a
+// fingerprint of the resulting file set and the GUI compares it against the set
+// it would have built itself. Anything the two disagree about surfaces as a
+// page the GUI reports as permanently out of sync, with no error to explain it.
 //
 // relPath goes through the caller's FileIO so the cwd sandbox check runs. The
-// entry's resolved absolute path is returned for use as the idempotency key,
-// and every dependency is resolved against the entry's directory, which becomes
-// the payload root. The third return value lists references that were found but
-// not published, so the caller can say so instead of silently shipping a page
-// with holes in it.
-func CollectFile(fio fileio.FileIO, relPath string) ([]Candidate, string, []string, error) {
+// entry's resolved absolute path is returned for use as the idempotency key.
+// The third return value lists references that were found but not published,
+// so the caller can say so instead of silently shipping a page with holes.
+func CollectFile(fio fileio.FileIO, relPath string) ([]Candidate, string, []Skip, error) {
 	st, err := fio.Stat(relPath)
 	if err != nil {
 		return nil, "", nil, inputPathError("--file-path", relPath, err)
@@ -147,9 +155,17 @@ func CollectFile(fio fileio.FileIO, relPath string) ([]Candidate, string, []stri
 	if err != nil {
 		return nil, "", nil, err
 	}
-	sc := &depScanner{fio: fio, root: rootDir, rootAbs: rootAbs}
-	sc.walk(filepath.Base(relPath), st.Size())
-	return sc.cands, abs, sc.skipped, nil
+	c := &collector{
+		fio:       fio,
+		root:      rootDir,
+		rootAbs:   rootAbs,
+		entryRel:  filepath.Base(relPath),
+		validated: map[string]bool{},
+	}
+	if err := c.walk(); err != nil {
+		return nil, "", nil, err
+	}
+	return c.cands, abs, c.skipped, nil
 }
 
 // CollectDir resolves a directory payload. It returns the candidates, the file

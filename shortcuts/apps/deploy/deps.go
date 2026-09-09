@@ -4,415 +4,322 @@
 package deploy
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
-	"net/url"
-	"path"
+	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"golang.org/x/net/html"
 )
 
-// Dependency scanning bounds. A page that references a file which references
-// another is a graph, not a list: without these the walk is only bounded by the
-// payload itself, and the zip is assembled in memory.
+// Bounds on the walk. A page that references a file which references another is
+// a graph, not a list, and the zip is assembled in memory. Both values match
+// the web client; exceeding either stops the publish rather than trimming the
+// payload, because a trimmed payload is a different payload and the GUI would
+// have no way to tell.
 const (
-	// maxDepFiles caps the closure, entry file included.
 	maxDepFiles = 200
-	// maxDepDepth caps how far a reference chain is followed.
 	maxDepDepth = 16
-	// maxScanBytes caps the bytes read to look for references inside one file.
-	// A file above it is still published, just not scanned.
-	maxScanBytes = 20 * 1024 * 1024
 	// maxSkipNotes caps the reported skips so a broken page cannot flood stderr.
 	maxSkipNotes = 100
 )
 
-// refStatus is what resolveRef decided about one raw reference.
-type refStatus int
+// SkipKind classifies why a referenced file was not published. Callers group by
+// kind to give one piece of advice per problem rather than repeating it.
+type SkipKind int
 
 const (
-	// refIgnore means the reference does not name a local file at all —
-	// an absolute URL, a bare fragment, a data: URI. Not worth reporting.
-	refIgnore refStatus = iota
-	// refOutside means it names a file above the entry's directory. The
-	// published layout cannot express that, so it is reported and dropped.
-	refOutside
-	// refOK means it resolved to a path inside the payload root.
-	refOK
+	// SkipMissing: the referenced file is not on disk.
+	SkipMissing SkipKind = iota
+	// SkipUnreadable: it exists but cannot be read, or is not a plain file.
+	SkipUnreadable
+	// SkipUnparsed: it was published but could not be read for further
+	// references, so anything it in turn references is absent.
+	SkipUnparsed
+	// SkipDynamic: a reference exists but is computed at run time, so no
+	// implementation can know which file it names.
+	SkipDynamic
 )
 
-// schemeRe matches an absolute URL prefix (http:, data:, mailto:, tel:,
-// javascript:). Anything carrying a scheme is external to the payload.
-var schemeRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+.\-]*:`)
-
-// htmlRefAttrs lists the attributes that carry a subresource the page needs in
-// order to render. Attributes that merely navigate (a[href], form[action]) are
-// deliberately absent: pulling them in would drag the whole site behind one
-// page, which is what --dir is for.
-var htmlRefAttrs = map[string]map[string]bool{
-	"link":   {"href": true},
-	"script": {"src": true},
-	"img":    {"src": true, "srcset": true},
-	"source": {"src": true, "srcset": true},
-	"video":  {"src": true, "poster": true},
-	"audio":  {"src": true},
-	"track":  {"src": true},
-	"iframe": {"src": true},
-	"embed":  {"src": true},
-	"object": {"data": true},
-	"image":  {"href": true, "xlink:href": true},
-	"use":    {"href": true, "xlink:href": true},
+// Skip is one reference that was found but not published, or one file that was
+// published without being searched.
+type Skip struct {
+	Ref  string
+	From string
+	Why  string
+	Kind SkipKind
 }
 
-// scanRefs returns the raw reference strings written inside one payload file.
-// Files whose type carries no references are not read at all.
-func scanRefs(rel string, raw []byte) []string {
-	switch strings.ToLower(path.Ext(rel)) {
-	case ".html", ".htm":
-		return scanHTMLRefs(raw)
-	case ".css":
-		return scanCSSRefs(raw)
-	case ".js", ".mjs":
-		return scanJSRefs(raw)
-	default:
-		return nil
+func (s Skip) String() string {
+	if s.Ref == s.From {
+		return fmt.Sprintf("%s: %s", s.From, s.Why)
 	}
+	return fmt.Sprintf("%s (referenced by %s): %s", s.Ref, s.From, s.Why)
 }
 
-// isScannable reports whether scanRefs would look inside this file.
-func isScannable(rel string) bool {
-	switch strings.ToLower(path.Ext(rel)) {
-	case ".html", ".htm", ".css", ".js", ".mjs":
-		return true
-	default:
-		return false
-	}
+// collector walks the reference graph rooted at one entry file, breadth first.
+type collector struct {
+	fio       fileio.FileIO
+	root      string // directory holding the entry, as passed to FileIO
+	rootAbs   string // same directory, absolute and symlink-resolved
+	entryRel  string
+	visited   map[string]bool
+	validated map[string]bool
+	cands     []Candidate
+	skipped   []Skip
+	via       map[string]string
 }
 
-// scanHTMLRefs walks the markup with a real tokenizer rather than a regex, so
-// a reference sitting inside a comment or an attribute value that contains
-// angle brackets is classified the way a browser would classify it.
-func scanHTMLRefs(raw []byte) []string {
-	var refs []string
-	z := html.NewTokenizer(bytes.NewReader(raw))
-	// rawText names the element whose text content is currently being read,
-	// for the two elements that embed another language inline.
-	rawText := ""
-	for {
-		switch z.Next() {
-		case html.ErrorToken:
-			return refs
-
-		case html.TextToken:
-			switch rawText {
-			case "style":
-				refs = append(refs, scanCSSRefs(z.Text())...)
-			case "script":
-				refs = append(refs, scanJSRefs(z.Text())...)
-			}
-
-		case html.StartTagToken, html.SelfClosingTagToken:
-			name, hasAttr := z.TagName()
-			tag := strings.ToLower(string(name))
-			attrs := make([][2]string, 0, 4)
-			for hasAttr {
-				var k, v []byte
-				k, v, hasAttr = z.TagAttr()
-				attrs = append(attrs, [2]string{strings.ToLower(string(k)), string(v)})
-			}
-			rawText = ""
-			if tag == "style" {
-				rawText = tag
-			}
-			if tag == "script" && !hasAttrNamed(attrs, "src") {
-				// A script with src has no meaningful inline body; one
-				// without src may be a module that imports siblings.
-				rawText = tag
-			}
-			for _, a := range attrs {
-				key, val := a[0], a[1]
-				if key == "style" {
-					refs = append(refs, scanCSSRefs([]byte(val))...)
-					continue
-				}
-				if !htmlRefAttrs[tag][key] {
-					continue
-				}
-				if key == "srcset" {
-					refs = append(refs, splitSrcset(val)...)
-					continue
-				}
-				refs = append(refs, val)
-			}
-
-		case html.EndTagToken:
-			rawText = ""
-		}
-	}
+type queueItem struct {
+	rel   string
+	depth int
 }
 
-func hasAttrNamed(attrs [][2]string, name string) bool {
-	for _, a := range attrs {
-		if a[0] == name {
-			return true
-		}
-	}
-	return false
+func (c *collector) join(rel string) string {
+	return filepath.Join(c.root, filepath.FromSlash(rel))
 }
 
-// splitSrcset pulls the URLs out of a candidate list such as
-// "a.png 1x, b@2x.png 2x". Each candidate is a URL followed by an optional
-// descriptor, separated by commas.
-func splitSrcset(v string) []string {
-	var out []string
-	for _, part := range strings.Split(v, ",") {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		if i := strings.IndexAny(part, " \t\n\r\f"); i >= 0 {
-			part = part[:i]
-		}
-		if part != "" {
-			out = append(out, part)
-		}
-	}
-	return out
-}
-
-var (
-	cssURLRe    = regexp.MustCompile(`(?i)url\(\s*(?:"([^"\n]*)"|'([^'\n]*)'|([^)'"\s]+))\s*\)`)
-	cssImportRe = regexp.MustCompile(`(?i)@import\s+(?:"([^"\n]*)"|'([^'\n]*)')`)
-)
-
-// scanCSSRefs collects url(...) targets and quoted @import targets. An
-// @import written as `@import url("x.css")` is picked up by the url() pattern.
-func scanCSSRefs(raw []byte) []string {
-	var refs []string
-	for _, re := range []*regexp.Regexp{cssURLRe, cssImportRe} {
-		for _, m := range re.FindAllSubmatch(raw, -1) {
-			for _, group := range m[1:] {
-				if len(group) > 0 {
-					refs = append(refs, string(group))
-					break
-				}
-			}
-		}
-	}
-	return refs
-}
-
-var (
-	jsFromRe    = regexp.MustCompile(`(?:^|[^\w$.])from\s*["']([^"'\n]+)["']`)
-	jsDynamicRe = regexp.MustCompile(`(?:^|[^\w$.])import\s*\(\s*["']([^"'\n]+)["']`)
-	jsBareRe    = regexp.MustCompile(`(?:^|[^\w$.])import\s+["']([^"'\n]+)["']`)
-)
-
-// scanJSRefs collects module specifiers from static import/export, dynamic
-// import() and side-effect imports. Only relative and root-absolute specifiers
-// are kept: a bare specifier such as "react" names a package, not a file in the
-// payload, and following it would be wrong rather than merely useless.
-//
-// The patterns are deliberately loose — a "from" inside a string literal can
-// match. That is harmless: a false positive that names no file on disk is
-// dropped by the existence check without a note.
-func scanJSRefs(raw []byte) []string {
-	var refs []string
-	for _, re := range []*regexp.Regexp{jsFromRe, jsDynamicRe, jsBareRe} {
-		for _, m := range re.FindAllSubmatch(raw, -1) {
-			spec := string(m[1])
-			if strings.HasPrefix(spec, "./") || strings.HasPrefix(spec, "../") || strings.HasPrefix(spec, "/") {
-				refs = append(refs, spec)
-			}
-		}
-	}
-	return refs
-}
-
-// resolveRef turns one raw reference written inside fromRel into a payload
-// path. A reference starting with "/" is read as site-root-absolute, which for
-// this payload means the entry file's directory.
-func resolveRef(fromRel, ref string) (string, refStatus) {
-	ref = strings.TrimSpace(ref)
-	if ref == "" || strings.HasPrefix(ref, "#") {
-		return "", refIgnore
-	}
-	// "//cdn.example.com/x.js" inherits the page's scheme — still external.
-	if strings.HasPrefix(ref, "//") || schemeRe.MatchString(ref) {
-		return "", refIgnore
-	}
-	// Whichever of the two comes first ends the path portion.
-	if i := strings.IndexAny(ref, "?#"); i >= 0 {
-		ref = ref[:i]
-	}
-	if ref == "" {
-		return "", refIgnore
-	}
-	// %20 and friends are how a file name with a space is written in markup.
-	if decoded, err := url.PathUnescape(ref); err == nil {
-		ref = decoded
-	}
-	if strings.HasSuffix(ref, "/") {
-		// A directory reference relies on server-side index resolution, which
-		// the published layout does not provide.
-		return "", refIgnore
-	}
-
-	var rel string
-	if strings.HasPrefix(ref, "/") {
-		rel = path.Clean(strings.TrimPrefix(ref, "/"))
-	} else {
-		rel = path.Join(path.Dir(fromRel), ref)
-	}
-	if rel == "" || rel == "." {
-		return "", refIgnore
-	}
-	if rel == ".." || strings.HasPrefix(rel, "../") {
-		return "", refOutside
-	}
-	if isUnsafeRel(rel) {
-		return "", refOutside
-	}
-	return rel, refOK
-}
-
-// depScanner walks the reference graph rooted at one entry file. Every file it
-// accepts must live inside the entry's directory and must still be inside it
-// after symlinks are resolved, so the scan cannot become a way to reach content
-// the flag validation would have rejected.
-type depScanner struct {
-	fio     fileio.FileIO
-	root    string // directory holding the entry, as passed to FileIO
-	rootAbs string // same directory, absolute and symlink-resolved
-	seen    map[string]bool
-	cands   []Candidate
-	skipped []string
-}
-
-func (s *depScanner) join(rel string) string {
-	return filepath.Join(s.root, filepath.FromSlash(rel))
-}
-
-func (s *depScanner) note(ref, from, why string) {
-	if len(s.skipped) >= maxSkipNotes {
+func (c *collector) note(kind SkipKind, ref, from, why string) {
+	if len(c.skipped) >= maxSkipNotes {
 		return
 	}
-	s.skipped = append(s.skipped, fmt.Sprintf("%s (referenced by %s): %s", ref, from, why))
+	c.skipped = append(c.skipped, Skip{Ref: ref, From: from, Why: why, Kind: kind})
 }
 
-// withinRoot reports whether abs names something strictly inside rootAbs.
-// Both sides come from canonicalAbs, so both have symlinks already resolved and
-// a prefix comparison is meaningful.
-func withinRoot(rootAbs, abs string) bool {
-	return strings.HasPrefix(abs, rootAbs+string(filepath.Separator))
+// limitError stops the publish when the payload outgrows what a single-file
+// publish is meant to carry.
+func limitError(what string) error {
+	return errs.NewValidationError(errs.SubtypeFailedPrecondition, "%s", what).
+		WithHint("publish the directory with --dir instead, which does not follow references")
 }
 
-// accept decides whether one resolved dependency joins the payload.
-func (s *depScanner) accept(rel, ref, from string) (int64, bool) {
-	p := s.join(rel)
-	st, err := s.fio.Stat(p)
-	if err != nil {
-		switch {
-		case errors.Is(err, fs.ErrNotExist):
-			s.note(ref, from, "the file does not exist")
-		case errors.Is(err, fs.ErrPermission):
-			s.note(ref, from, "the file cannot be read: permission denied")
-		default:
-			s.note(ref, from, "the path cannot be used")
-		}
-		return 0, false
-	}
-	if st.IsDir() {
-		s.note(ref, from, "the path is a directory")
-		return 0, false
-	}
-	if !st.Mode().IsRegular() {
-		s.note(ref, from, "the path is not a regular file")
-		return 0, false
-	}
-	abs, err := canonicalAbs(p)
-	if err != nil {
-		s.note(ref, from, "the path cannot be resolved")
-		return 0, false
-	}
-	// Catches a symlink at the leaf and a symlinked directory anywhere above
-	// it: after resolution the file must still sit under the entry's directory.
-	if !withinRoot(s.rootAbs, abs) {
-		s.note(ref, from, "it resolves outside the entry file's directory")
-		return 0, false
-	}
-	return st.Size(), true
+// symlinkError stops the publish on a symbolic link anywhere in the payload.
+// Following one would publish a file from outside the directory the caller
+// named, and refusing is also what the web client does, so a payload that
+// publishes here is a payload the GUI can reproduce.
+func symlinkError(rel string) error {
+	return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+		"%s is a symbolic link; symbolic links cannot be published", rel).
+		WithHint("replace the link with the real file, or publish the directory holding the target with --dir")
 }
 
-// refsOf reads one payload file and returns the references written inside it.
-func (s *depScanner) refsOf(rel string, size int64) []string {
-	if !isScannable(rel) {
-		return nil
-	}
-	if size > maxScanBytes {
-		s.note(rel, rel, fmt.Sprintf("it is %s, above the %s scan limit, so its references were not followed",
-			HumanBytes(size), HumanBytes(maxScanBytes)))
-		return nil
-	}
-	f, err := s.fio.Open(s.join(rel))
-	if err != nil {
-		return nil
-	}
-	defer f.Close()
-	raw, err := io.ReadAll(io.LimitReader(f, maxScanBytes))
-	if err != nil {
-		return nil
-	}
-	return scanRefs(rel, raw)
-}
-
-// walk performs the breadth-first closure starting at the entry file.
-func (s *depScanner) walk(entryRel string, entrySize int64) {
-	type item struct {
-		rel   string
-		size  int64
-		depth int
-	}
-	s.seen = map[string]bool{entryRel: true}
-	s.cands = []Candidate{{RelPath: entryRel, AbsPath: s.join(entryRel), Size: entrySize}}
-	queue := []item{{rel: entryRel, size: entrySize}}
-
-	for len(queue) > 0 {
-		cur := queue[0]
-		queue = queue[1:]
-		if cur.depth >= maxDepDepth {
+// ensurePathSafe rejects a symbolic link at any level of rel, the payload root
+// included. Checking the parents matters as much as the leaf: a linked
+// directory would otherwise smuggle in whatever it points at.
+func (c *collector) ensurePathSafe(rel string) error {
+	segments := strings.Split(rel, "/")
+	for i := range segments {
+		partial := strings.Join(segments[:i+1], "/")
+		abs := c.join(partial)
+		if c.validated[abs] {
 			continue
 		}
-		for _, ref := range s.refsOf(cur.rel, cur.size) {
-			rel, status := resolveRef(cur.rel, ref)
-			switch status {
-			case refIgnore:
-				continue
-			case refOutside:
-				s.note(ref, cur.rel, "it resolves outside the entry file's directory")
+		//nolint:forbidigo // fileio exposes no Lstat, and Stat follows links, which is exactly what must be detected here; the path is inside the cwd-checked root.
+		info, err := os.Lstat(abs)
+		if err != nil {
+			// Absence is not a safety problem; the read below reports it.
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return nil
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return symlinkError(partial)
+		}
+		c.validated[abs] = true
+	}
+	return nil
+}
+
+// read returns the bytes of one payload file. required marks the entry, whose
+// absence stops the publish; a missing dependency is only reported.
+func (c *collector) read(rel string, required bool) ([]byte, int64, bool, error) {
+	if err := c.ensurePathSafe(rel); err != nil {
+		return nil, 0, false, err
+	}
+	p := c.join(rel)
+	st, err := c.fio.Stat(p)
+	if err != nil {
+		if required {
+			return nil, 0, false, inputPathError("--file-path", p, err)
+		}
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			c.note(SkipMissing, rel, rel, "the file does not exist")
+		case errors.Is(err, fs.ErrPermission):
+			c.note(SkipUnreadable, rel, rel, "the file cannot be read: permission denied")
+		default:
+			c.note(SkipUnreadable, rel, rel, "the path cannot be read")
+		}
+		return nil, 0, false, nil
+	}
+	if !st.Mode().IsRegular() {
+		if required {
+			return nil, 0, false, errs.NewValidationError(errs.SubtypeFailedPrecondition,
+				"--file-path %q is not a regular file", p).WithParam("--file-path")
+		}
+		c.note(SkipUnreadable, rel, rel, "the path is not a regular file")
+		return nil, 0, false, nil
+	}
+	f, err := c.fio.Open(p)
+	if err != nil {
+		if required {
+			return nil, 0, false, inputPathError("--file-path", p, err)
+		}
+		c.note(SkipUnreadable, rel, rel, "the file cannot be opened")
+		return nil, 0, false, nil
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(f)
+	if err != nil {
+		if required {
+			return nil, 0, false, errs.NewInternalError(errs.SubtypeFileIO, "read %q: %v", p, err).WithCause(err)
+		}
+		c.note(SkipUnreadable, rel, rel, "the file could not be read to the end")
+		return nil, 0, false, nil
+	}
+	return raw, int64(len(raw)), true, nil
+}
+
+// collectReferences returns the references written inside one payload file.
+// A file whose type carries no references is a leaf and is never read.
+func collectReferences(rel string, raw []byte) ([]string, int, error) {
+	switch refExtension(rel) {
+	case "html", "htm":
+		return scanHTML(raw)
+	case "svg":
+		return scanSVG(raw)
+	case "css":
+		return scanCSS(raw)
+	case "js", "mjs":
+		return scanJS(raw)
+	case "json":
+		return scanJSON(raw)
+	default:
+		return nil, 0, nil
+	}
+}
+
+// walk performs the breadth-first closure. It mirrors the web client's batching
+// so that the file-count check fires on the same reference, and so a reference
+// reachable two ways is queued and deduplicated the same way.
+func (c *collector) walk() error {
+	c.visited = map[string]bool{}
+	queue := []queueItem{{rel: c.entryRel}}
+
+	for len(queue) > 0 {
+		pending := queue
+		queue = nil
+
+		batch := make([]queueItem, 0, len(pending))
+		for _, item := range pending {
+			if c.visited[item.rel] {
 				continue
 			}
-			if s.seen[rel] {
-				continue
+			c.visited[item.rel] = true
+			batch = append(batch, item)
+		}
+		if len(c.visited) > maxDepFiles {
+			return limitError(fmt.Sprintf(
+				"the page references more than %d files; a single-file publish cannot carry them", maxDepFiles))
+		}
+		if len(batch) == 0 {
+			continue
+		}
+
+		for _, item := range batch {
+			isEntry := item.rel == c.entryRel
+			raw, size, ok, err := c.read(item.rel, isEntry)
+			if err != nil {
+				return err
 			}
-			s.seen[rel] = true
-			if len(s.cands) >= maxDepFiles {
-				s.note(ref, cur.rel, fmt.Sprintf("the %d-file limit for a single-file publish was reached; publish the directory with --dir instead", maxDepFiles))
-				continue
-			}
-			size, ok := s.accept(rel, ref, cur.rel)
 			if !ok {
 				continue
 			}
-			s.cands = append(s.cands, Candidate{RelPath: rel, AbsPath: s.join(rel), Size: size})
-			queue = append(queue, item{rel: rel, size: size, depth: cur.depth + 1})
+			via := ""
+			if !isEntry {
+				via = c.viaOf(item.rel)
+			}
+			c.cands = append(c.cands, Candidate{
+				RelPath: item.rel, AbsPath: c.join(item.rel), Size: size, Via: via,
+			})
+			if !parseableExts[refExtension(item.rel)] {
+				continue
+			}
+			next, err := c.expand(item, raw)
+			if err != nil {
+				return err
+			}
+			queue = append(queue, next...)
 		}
 	}
+	return nil
 }
+
+// expand reads one file's references and returns the queue items they produce.
+func (c *collector) expand(item queueItem, raw []byte) ([]queueItem, error) {
+	refs, unsupported, err := collectReferences(item.rel, raw)
+	if err != nil {
+		var pe *parseError
+		if errors.As(err, &pe) {
+			// The file still ships; it is only left unexpanded, so anything it
+			// references is absent from the payload. Saying so beats letting
+			// the page arrive with pieces missing and no explanation.
+			c.note(SkipUnparsed, item.rel, item.rel, unparsedReason(pe.code))
+			return nil, nil
+		}
+		return nil, err
+	}
+	if unsupported > 0 {
+		c.note(SkipDynamic, item.rel, item.rel, fmt.Sprintf(
+			"%d reference(s) are computed at run time and cannot be followed", unsupported))
+	}
+
+	var out []queueItem
+	for _, ref := range refs {
+		rel, skip, err := resolveReference(item.rel, ref)
+		if err != nil {
+			return nil, err
+		}
+		if skip || c.visited[rel] {
+			continue
+		}
+		if item.depth >= maxDepDepth {
+			return nil, limitError(fmt.Sprintf(
+				"the page's references nest more than %d levels deep", maxDepDepth))
+		}
+		c.recordVia(rel, item.rel)
+		out = append(out, queueItem{rel: rel, depth: item.depth + 1})
+	}
+	return out, nil
+}
+
+func unparsedReason(code string) string {
+	switch code {
+	case "unsupported_base":
+		return "it declares <base href>, so its own references were not followed"
+	case "invalid_json":
+		return "it is not valid JSON, so its own references were not followed"
+	case "invalid_javascript":
+		return "it could not be parsed as JavaScript, so its own references were not followed"
+	default:
+		return "it could not be parsed, so its own references were not followed"
+	}
+}
+
+// viaOf and recordVia remember which file first pointed at each dependency,
+// used to explain a collision the caller never wrote down.
+func (c *collector) recordVia(rel, from string) {
+	if c.via == nil {
+		c.via = map[string]string{}
+	}
+	if _, seen := c.via[rel]; !seen {
+		c.via[rel] = from
+	}
+}
+
+func (c *collector) viaOf(rel string) string { return c.via[rel] }

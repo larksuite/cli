@@ -1,0 +1,239 @@
+{
+  "a01_js_runtime": {
+    "entry": "index.html",
+    "files": [
+      "data.json",
+      "index.html",
+      "inline.json",
+      "js/app.js",
+      "js/sibling.js",
+      "sw.js",
+      "tpl.json",
+      "worker.js",
+      "xhr.json"
+    ],
+    "contentHash": "8d10cd3afbd100a363e28d57385cfee514fb860ee4d7289060ba96925f0f4692",
+    "fileCount": 9,
+    "parseFailureCount": 0,
+    "skippedFileCount": 0,
+    "unsupportedRuntimeReferenceCount": 1
+  },
+  "a02_svg": {
+    "entry": "index.html",
+    "files": [
+      "bg.png",
+      "icon.svg",
+      "index.html",
+      "sprite.svg"
+    ],
+    "contentHash": "5f7e390785188e6d302b7422c46c37aa769e2e048b01ef76ec1e840402b9ad23",
+    "fileCount": 4,
+    "parseFailureCount": 0,
+    "skippedFileCount": 0,
+    "unsupportedRuntimeReferenceCount": 0
+  },
+  "a03_json": {
+    "entry": "index.html",
+    "files": [
+      "assets/logo.png",
+      "index.html",
+      "manifest.json",
+      "theme.css"
+    ],
+    "contentHash": "c68cb946ad64021aa6acc185ea9324751b1d5a103c65a9f0832a276824997f62",
+    "fileCount": 4,
+    "parseFailureCount": 0,
+    "skippedFileCount": 0,
+    "unsupportedRuntimeReferenceCount": 0
+  },
+  "a04_link_rel": {
+    "entry": "index.html",
+    "files": [
+      "a.css",
+      "favicon.ico",
+      "index.html",
+      "m.mjs",
+      "p.js"
+    ],
+    "contentHash": "256da18ae9b7ebc9edc7337713ac4f5277d5bb7ada9d2a051ff0b4de2e1d07a9",
+    "fileCount": 5,
+    "parseFailureCount": 0,
+    "skippedFileCount": 0,
+    "unsupportedRuntimeReferenceCount": 0
+  },
+  "a05_input_image": {
+    "entry": "index.html",
+    "files": [
+      "btn.png",
+      "index.html"
+    ],
+    "contentHash": "e3b8e9941cf55a1f53ca933610f3df21d73bded8c024af6e6f6e400dc46a65c9",
+    "fileCount": 2,
+    "parseFailureCount": 0,
+    "skippedFileCount": 0,
+    "unsupportedRuntimeReferenceCount": 0
+  },
+  "a06_script_type": {
+    "entry": "index.html",
+    "files": [
+      "index.html",
+      "ok.json",
+      "yes.js"
+    ],
+    "contentHash": "412df7ddbd1ee9a3a07b7369016dc85f070a51851f21905b814b1dd5222537df",
+    "fileCount": 3,
+    "parseFailureCount": 0,
+    "skippedFileCount": 0,
+    "unsupportedRuntimeReferenceCount": 0
+  },
+  "a07_base": {
+    "entry": "index.html",
+    "files": [
+      "index.html"
+    ],
+    "contentHash": "a34536d28b3dc39856ee05d687e9bed67171eaa0dcc805e66d40e02d1f1c1e8b",
+    "fileCount": 1,
+    "parseFailureCount": 1,
+    "skippedFileCount": 0,
+    "unsupportedRuntimeReferenceCount": 0
+  },
+  "a09_srcset_data": {
+    "entry": "index.html",
+    "files": [
+      "index.html",
+      "keep.png",
+      "three.png",
+      "two.png"
+    ],
+    "contentHash": "1a08be62cb8740b516668942ee36cb333d29eb4b6cf4ac9b36c27bb172cc4edd",
+    "fileCount": 4,
+    "parseFailureCount": 0,
+    "skippedFileCount": 0,
+    "unsupportedRuntimeReferenceCount": 0
+  },
+  "a10_bare_specifier": {
+    "entry": "index.html",
+    "files": [
+      "index.html",
+      "js/app.js",
+      "js/lodash",
+      "js/utils.js"
+    ],
+    "contentHash": "617fbe30b2ba01636d8a54f66c50527701e6651d44df5544718aa94bbcd18777",
+    "fileCount": 4,
+    "parseFailureCount": 0,
+    "skippedFileCount": 0,
+    "unsupportedRuntimeReferenceCount": 0
+  },
+  "b01_bad_percent": {
+    "entry": "index.html",
+    "error": "invalid_reference"
+  },
+  "b01_colon_decoded": {
+    "entry": "index.html",
+    "error": "invalid_reference"
+  },
+  "b01_dotdot": {
+    "entry": "index.html",
+    "error": "invalid_reference"
+  },
+  "b01_file_scheme": {
+    "entry": "index.html",
+    "error": "invalid_reference"
+  },
+  "b01_windows_drive": {
+    "entry": "index.html",
+    "error": "invalid_reference"
+  },
+  "b02_depth": {
+    "entry": "index.html",
+    "error": "max_depth_exceeded"
+  },
+  "b03_symlink": {
+    "entry": "index.html",
+    "error": "symbolic_link"
+  },
+  "entry_conflict": {
+    "entry": "report.html",
+    "error": "entry_path_conflict"
+  },
+  "misc_css": {
+    "entry": "index.html",
+    "files": [
+      "css/site.css",
+      "css/tokens.css",
+      "img/grid.png",
+      "img/set.png",
+      "img/var.png",
+      "index.html"
+    ],
+    "contentHash": "38438bf3c551fc720665b153a14591285aefa1180e0d371a129f698598a32ab3",
+    "fileCount": 6,
+    "parseFailureCount": 0,
+    "skippedFileCount": 0,
+    "unsupportedRuntimeReferenceCount": 0
+  },
+  "misc_nav": {
+    "entry": "index.html",
+    "files": [
+      "a.css",
+      "index.html"
+    ],
+    "contentHash": "9093b2f8fc235ccbac315237f5153a09e60fff99097d42a1b55fc91ffdd82c65",
+    "fileCount": 2,
+    "parseFailureCount": 0,
+    "skippedFileCount": 0,
+    "unsupportedRuntimeReferenceCount": 0
+  },
+  "misc_paths": {
+    "entry": "index.html",
+    "files": [
+      "a.css",
+      "b one.png",
+      "index.html",
+      "root.js"
+    ],
+    "contentHash": "31753d5614471bc56dbab62063bef4840d53190c01e9e3d35190b85304058d05",
+    "fileCount": 4,
+    "parseFailureCount": 0,
+    "skippedFileCount": 1,
+    "unsupportedRuntimeReferenceCount": 0
+  },
+  "missing_dep": {
+    "entry": "index.html",
+    "files": [
+      "a.css",
+      "index.html"
+    ],
+    "contentHash": "8f9dc53aad51dfa4a587817a4d45d37165cb98655b641ec059a6e50ff7a7c940",
+    "fileCount": 2,
+    "parseFailureCount": 0,
+    "skippedFileCount": 1,
+    "unsupportedRuntimeReferenceCount": 0
+  },
+  "parse_fail": {
+    "entry": "index.html",
+    "files": [
+      "bad.css",
+      "bad.svg",
+      "index.html"
+    ],
+    "contentHash": "317ae7c1e910e5b4b591bd4e0d646792b926249500ad943734b198335525a699",
+    "fileCount": 3,
+    "parseFailureCount": 1,
+    "skippedFileCount": 0,
+    "unsupportedRuntimeReferenceCount": 0
+  },
+  "renamed_entry": {
+    "entry": "zz-report.html",
+    "files": [
+      "a.css",
+      "index.html"
+    ],
+    "contentHash": "cff60cbd55b4649e818e4ec16a5944b950fa1122b3ea94c5e0bedbed73482170",
+    "fileCount": 2,
+    "parseFailureCount": 0,
+    "skippedFileCount": 0,
+    "unsupportedRuntimeReferenceCount": 0
+  }
+}

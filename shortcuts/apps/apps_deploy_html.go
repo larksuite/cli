@@ -71,25 +71,37 @@ func validateHTMLDeploy(rctx *common.RuntimeContext) error {
 		return err
 	}
 
-	var candidates []deploy.Candidate
+	var (
+		candidates []deploy.Candidate
+		entryRel   string
+	)
 	if filePath != "" {
-		var err error
-		candidates, _, _, err = deploy.CollectFile(rctx.FileIO(), filePath)
+		cands, _, _, err := deploy.CollectFile(rctx.FileIO(), filePath)
 		if err != nil {
 			return err
 		}
+		candidates, entryRel = cands, cands[0].RelPath
 	} else {
 		cands, rootNames, _, err := deploy.CollectDir(rctx.FileIO(), dir)
 		if err != nil {
 			return err
 		}
-		if _, err := deploy.ResolveEntry(entryFile, rootNames); err != nil {
+		rel, err := deploy.ResolveEntry(entryFile, rootNames)
+		if err != nil {
 			return err
 		}
-		candidates = cands
+		candidates, entryRel = cands, rel
 	}
 
 	if _, err := deploy.Guard(candidates, rctx.Bool("allow-sensitive"), deploy.DefaultLimits()); err != nil {
+		return err
+	}
+	// Building the manifest here is what makes --dry-run exit non-zero on an
+	// entry collision. Left to Execute, the two input forms would disagree:
+	// --dir catches it in ResolveEntry during Validate, so a caller who
+	// previews with --dry-run and only reads the exit code would get a green
+	// light from --file-path and a failure from the real publish.
+	if _, _, err := deploy.BuildManifest(candidates, entryRel); err != nil {
 		return err
 	}
 	return nil
@@ -144,7 +156,7 @@ type htmlDeployPlan struct {
 	// SkippedDeps names references found inside the payload that were not
 	// published. Only --file-path can produce them; --dir publishes the whole
 	// directory, so nothing a page references inside it can be missing.
-	SkippedDeps []string
+	SkippedDeps []deploy.Skip
 }
 
 // readHTMLHashFiles reads the payload bytes once for the content fingerprint
@@ -230,7 +242,7 @@ func resolveHTMLDeployPlan(rctx *common.RuntimeContext) (htmlDeployPlan, error) 
 		candidates []deploy.Candidate
 		entryRel   string
 		absEntry   string
-		skipped    []string
+		skipped    []deploy.Skip
 	)
 	if filePath != "" {
 		cands, abs, missing, err := deploy.CollectFile(rctx.FileIO(), filePath)
@@ -321,20 +333,46 @@ func fillHTMLDeployDryRun(dry *common.DryRunAPI, p htmlDeployPlan) {
 		dry.Set("sensitive_waived", p.Waived)
 	}
 	if len(p.SkippedDeps) > 0 {
-		dry.Set("dependencies_skipped", p.SkippedDeps)
+		lines := make([]string, 0, len(p.SkippedDeps))
+		for _, sk := range p.SkippedDeps {
+			lines = append(lines, sk.String())
+		}
+		dry.Set("dependencies_skipped", lines)
 	}
 }
 
-// warnSkippedDeps reports references the scan found but could not publish. The
-// page still ships, so staying quiet would hand back a live URL whose styling
-// or scripts are silently missing.
-func warnSkippedDeps(w io.Writer, skipped []string) {
+// skipAdvice is the way out of each class of skip, printed once per class
+// rather than per file. Repeating it on every line buries it.
+var skipAdvice = map[deploy.SkipKind]string{
+	deploy.SkipMissing:    "create the missing file(s), or remove the references to them",
+	deploy.SkipUnreadable: "check the permissions on those paths",
+	deploy.SkipUnparsed:   "fix the file so its own references can be followed, or publish the directory with --dir",
+	deploy.SkipDynamic:    "a URL built at run time cannot be followed; publish the directory with --dir if the page needs those files",
+}
+
+// warnSkippedDeps reports references the scan found but could not publish.
+// The page still ships, so the warning has to name the consequence rather than
+// just the count: a caller who reads "3 files were not published" and moves on
+// gets a live URL with broken styling and no idea why.
+func warnSkippedDeps(w io.Writer, skipped []deploy.Skip) {
 	if len(skipped) == 0 {
 		return
 	}
-	fmt.Fprintf(w, "warning: %d referenced file(s) were not published:\n", len(skipped))
+	fmt.Fprintf(w, "warning: %d issue(s) collecting what this page references; the published page may be missing files (broken styles, scripts or images):\n",
+		len(skipped))
+	seen := make(map[deploy.SkipKind]bool, len(skipAdvice))
+	var order []deploy.SkipKind
 	for _, s := range skipped {
-		fmt.Fprintf(w, "  %s\n", s)
+		fmt.Fprintf(w, "  %s\n", s.String())
+		if !seen[s.Kind] {
+			seen[s.Kind] = true
+			order = append(order, s.Kind)
+		}
+	}
+	for _, kind := range order {
+		if advice := skipAdvice[kind]; advice != "" {
+			fmt.Fprintf(w, "  hint: %s\n", advice)
+		}
 	}
 }
 
