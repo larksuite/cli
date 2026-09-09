@@ -4,6 +4,7 @@
 package deploy
 
 import (
+	"errors"
 	"io/fs"
 	"path/filepath"
 	"strings"
@@ -63,6 +64,17 @@ func canonicalAbs(relPath string) (string, error) {
 // command does not have — and suggests reading out-of-tree content from stdin,
 // which does not apply to a publish payload. Callers pass their own flag name.
 func inputPathError(param, path string, cause error) error {
+	// A missing path and a path outside the sandbox need different answers:
+	// telling someone who passed ./nope.html that it "must be relative" sends
+	// them to cd, which changes nothing. Stat distinguishes the two, so keep
+	// that distinction instead of flattening every failure into one sentence.
+	if errors.Is(cause, fs.ErrNotExist) {
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+			"%s %q does not exist", param, path).
+			WithParam(param).
+			WithCause(cause).
+			WithHint("check the path; it is resolved relative to the current directory")
+	}
 	// The cause is attached but not interpolated: its text names --file and
 	// offers a stdin fallback, neither of which exists on this command.
 	return errs.NewValidationError(errs.SubtypeFailedPrecondition,

@@ -4,8 +4,11 @@
 package deploy
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -86,5 +89,22 @@ func TestCanonicalAbsResolvesSymlinks(t *testing.T) {
 	// 否则会为同一份内容建出两个应用。
 	if viaReal != viaLink {
 		t.Errorf("canonicalAbs diverged: %q vs %q", viaReal, viaLink)
+	}
+}
+
+func TestInputPathErrorDistinguishesMissingFromOutOfSandbox(t *testing.T) {
+	// 不存在与越界必须给出不同答案：对一个已经传了相对路径的调用方说
+	// 「路径必须是相对路径」，会把它引向无效的 cd 重试。
+	missing := inputPathError("--file-path", "./nope.html", fs.ErrNotExist)
+	if !strings.Contains(missing.Error(), "does not exist") {
+		t.Errorf("missing-path error = %q, want it to say the path does not exist", missing.Error())
+	}
+	if strings.Contains(missing.Error(), "must be a path relative") {
+		t.Errorf("missing-path error must not claim the path is not relative: %q", missing.Error())
+	}
+
+	outside := inputPathError("--dir", "/etc", errors.New("resolves outside the current working directory"))
+	if !strings.Contains(outside.Error(), "relative to the current directory") {
+		t.Errorf("out-of-sandbox error = %q, want the relative-path explanation", outside.Error())
 	}
 }
