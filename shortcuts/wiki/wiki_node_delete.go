@@ -17,9 +17,7 @@ import (
 )
 
 // wikiNodeDeleteObjTypes is the set of obj_type values the delete-node API
-// accepts. Unlike wikiNodeGetObjTypeEnum this includes "wiki" — for
-// delete-node, obj_type="wiki" means the token is a wiki node_token, whereas
-// the get_node API omits obj_type for node_tokens.
+// accepts. For delete-node, obj_type="wiki" means the token is a wiki node_token.
 var wikiNodeDeleteObjTypes = []string{
 	"wiki", "doc", "docx", "sheet", "bitable", "mindnote", "slides", "file",
 }

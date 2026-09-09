@@ -20,8 +20,8 @@ import (
 const wikiNodeGetRateLimitHint = "Do not retry immediately. Wait retry_after_seconds, or use exponential backoff with jitter. Stop after 3 total attempts (1 initial + 2 retries)."
 
 // wikiNodeGetURLObjTypes maps a Lark URL path prefix (slash-bounded) to the
-// obj_type the wiki get_node API expects when the token is an obj_token.
-// /wiki/ is handled separately because node_tokens take no obj_type.
+// obj_type implied by a document URL. /wiki/ is handled separately because
+// a Wiki URL does not imply the underlying document type.
 //
 // INVARIANT: the prefixes must be mutually exclusive (no prefix may be a
 // prefix of another). tokenAndObjTypeFromWikiURL ranges this map, and Go map
@@ -38,16 +38,8 @@ var wikiNodeGetURLObjTypes = map[string]string{
 	"/file/":     "file",
 }
 
-// wikiNodeGetObjTypeEnum is the union of obj_types accepted by the upstream
-// API. It is a superset of the create / move enums so this shortcut can look
-// up legacy `doc` nodes too.
-var wikiNodeGetObjTypeEnum = []string{
-	"doc", "docx", "sheet", "bitable", "mindnote", "slides", "file",
-}
-
-// WikiNodeGet wraps wiki.spaces.get_node so callers can resolve a node by
-// node_token, obj_token, or a Lark URL without hand-rolling a
-// `wiki spaces get_node --params ...` invocation. The shortcut prints a
+// WikiNodeGet resolves node_token, obj_token, or a Lark URL through
+// wiki.spaces.node_by_token. The shortcut prints a
 // formatted view of the node (title / obj_type / obj_token / parent /
 // creator / updated_at) and is intended as the "what am I about to
 // touch?" step before +move / +node-copy / +delete-space.
@@ -67,12 +59,14 @@ var WikiNodeGet = common.Shortcut{
 		// when --token is used.
 		{Name: "node-token", Desc: "wiki node_token, obj_token, or a Lark URL embedding one of them"},
 		{Name: "token", Desc: "DEPRECATED: use --node-token", Hidden: true},
-		{Name: "obj-type", Desc: "obj_type when --node-token is an obj_token; auto-inferred from URL path when omitted", Enum: wikiNodeGetObjTypeEnum},
+		// Accept legacy scripts silently. MarkDeprecated would emit a warning;
+		// an enum would still reject values even though this flag is ignored.
+		{Name: "obj-type", Desc: "ignored compatibility flag; token type is detected by the server", Hidden: true},
 		{Name: "space-id", Desc: "optional: assert the resolved node lives in this space"},
 	},
 	Tips: []string{
 		"--node-token accepts a raw wiki node_token, obj_token, or a Lark URL like https://feishu.cn/wiki/<token> or https://feishu.cn/docx/<token>.",
-		"For raw obj_tokens, pass --obj-type so the API knows how to resolve them; URL inputs infer it from the path.",
+		"Token types are detected by the server; raw Wiki and document tokens can be used directly.",
 		"Pair with +move / +node-copy / +delete-space to confirm space_id, obj_type, and parent before mutating.",
 		"--token is the deprecated original name and still works for backward compatibility; new scripts should use --node-token.",
 	},
@@ -98,7 +92,7 @@ var WikiNodeGet = common.Shortcut{
 			return err
 		}
 
-		data, err := runtime.CallAPITyped("GET", "/open-apis/wiki/v2/spaces/get_node", spec.RequestParams(), nil)
+		data, err := runtime.CallAPITyped("GET", "/open-apis/wiki/v2/spaces/node_by_token", spec.RequestParams(), nil)
 		if err != nil {
 			return wikiNodeGetProblem(err)
 		}
@@ -115,7 +109,7 @@ var WikiNodeGet = common.Shortcut{
 			).WithParam("--space-id")
 		}
 		if spec.SpaceID != "" && node.SpaceID == "" {
-			// The cross-check was requested but get_node returned no space_id,
+			// The cross-check was requested but the API returned no space_id,
 			// so it silently passed. Surface that the assertion was a no-op
 			// rather than letting the caller assume it was verified.
 			fmt.Fprintf(runtime.IO().ErrOut,
@@ -132,7 +126,7 @@ var WikiNodeGet = common.Shortcut{
 }
 
 // wikiNodeGetProblem adds command-specific classification and recovery for
-// get_node errors that need command-specific recovery. Terminal business
+// node_by_token errors that need command-specific recovery. Terminal business
 // errors require a changed token, operation, or permission; rate limiting
 // remains retryable only within the bounded backoff guidance below.
 func wikiNodeGetProblem(err error) error {
@@ -151,10 +145,10 @@ func wikiNodeGetProblem(err error) error {
 		p.Subtype = errs.SubtypeNotFound
 		p.Retryable = false
 		appendWikiProblemHint(err, "The Wiki node has been deleted. Do not retry the same node token; rediscover the node or ask for a current Wiki link.")
-	case 131013:
+	case 131013, 131016:
 		p.Subtype = errs.SubtypeInvalidParameters
 		p.Retryable = false
-		appendWikiProblemHint(err, "The resource token is invalid. Do not retry the same token, switch identity, or reauthorize; check the URL/token and provide a valid wiki node_token or typed document URL.")
+		appendWikiProblemHint(err, "The resource token is invalid. Do not retry the same token, switch identity, or reauthorize; check the URL/token and provide a valid wiki node_token, complete raw obj_token, or typed document URL.")
 	case 131014:
 		p.Subtype = errs.SubtypeFailedPrecondition
 		p.Retryable = false
@@ -167,23 +161,13 @@ func wikiNodeGetProblem(err error) error {
 type wikiNodeGetSpec struct {
 	// Token is the resolved token (after URL extraction) to send to the API.
 	Token string
-	// ObjType is the resolved obj_type. Empty for node_tokens (the API does
-	// not need obj_type for `wik`-prefixed tokens).
-	ObjType string
 	// SpaceID is an optional cross-check; when set, the response space_id must match.
 	SpaceID string
-	// SourceKind records how Token was derived for the dry-run description:
-	// "url-wiki", "url-obj", "raw-node", "raw-obj".
-	SourceKind string
 }
 
-// RequestParams returns the query params for GET /wiki/v2/spaces/get_node.
+// RequestParams returns the query params for GET /wiki/v2/spaces/node_by_token.
 func (spec wikiNodeGetSpec) RequestParams() map[string]interface{} {
-	params := map[string]interface{}{"token": spec.Token}
-	if spec.ObjType != "" {
-		params["obj_type"] = spec.ObjType
-	}
-	return params
+	return map[string]interface{}{"token": spec.Token}
 }
 
 func readWikiNodeGetSpec(runtime *common.RuntimeContext) (wikiNodeGetSpec, error) {
@@ -196,7 +180,6 @@ func readWikiNodeGetSpec(runtime *common.RuntimeContext) (wikiNodeGetSpec, error
 	}
 	return parseWikiNodeGetSpec(
 		rawToken,
-		runtime.Str("obj-type"),
 		runtime.Str("space-id"),
 	)
 }
@@ -220,16 +203,15 @@ func resolveWikiNodeGetRawToken(nodeToken, legacyToken string) (string, error) {
 }
 
 // parseWikiNodeGetSpec normalizes the raw flag values: extracts a token from a
-// URL when needed, picks the obj_type (URL path > explicit flag > none for
-// node_tokens), and validates the token shape.
-func parseWikiNodeGetSpec(rawToken, rawObjType, rawSpaceID string) (wikiNodeGetSpec, error) {
+// URL when needed. Token
+// length and resource-type detection belong to the node_by_token service.
+func parseWikiNodeGetSpec(rawToken, rawSpaceID string) (wikiNodeGetSpec, error) {
 	tokenInput := strings.TrimSpace(rawToken)
 	if tokenInput == "" {
 		return wikiNodeGetSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--node-token is required").WithParam("--node-token")
 	}
 
 	spec := wikiNodeGetSpec{
-		ObjType: strings.ToLower(strings.TrimSpace(rawObjType)),
 		SpaceID: strings.TrimSpace(rawSpaceID),
 	}
 
@@ -238,7 +220,7 @@ func parseWikiNodeGetSpec(rawToken, rawObjType, rawSpaceID string) (wikiNodeGetS
 		if err != nil || u.Path == "" {
 			return wikiNodeGetSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--node-token URL is malformed: %q", tokenInput).WithParam("--node-token")
 		}
-		token, urlObjType, ok := tokenAndObjTypeFromWikiURL(u.Path)
+		token, _, ok := tokenAndObjTypeFromWikiURL(u.Path)
 		if !ok {
 			return wikiNodeGetSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"unsupported --node-token URL path %q: expected /wiki/, /docx/, /doc/, /sheets/, /base/, /mindnote/, /slides/, or /file/ followed by a token",
@@ -246,20 +228,6 @@ func parseWikiNodeGetSpec(rawToken, rawObjType, rawSpaceID string) (wikiNodeGetS
 			).WithParam("--node-token")
 		}
 		spec.Token = token
-		if urlObjType == "" {
-			spec.SourceKind = "url-wiki"
-		} else {
-			spec.SourceKind = "url-obj"
-		}
-		switch {
-		case spec.ObjType == "" && urlObjType != "":
-			spec.ObjType = urlObjType
-		case spec.ObjType != "" && urlObjType != "" && spec.ObjType != urlObjType:
-			return wikiNodeGetSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
-				"--obj-type %q does not match the obj_type %q implied by the URL path; pass only one",
-				spec.ObjType, urlObjType,
-			).WithParam("--obj-type")
-		}
 	} else if strings.ContainsAny(tokenInput, "/?#") {
 		return wikiNodeGetSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"--node-token must be a raw token or a full URL; partial paths are not accepted: %q",
@@ -267,17 +235,9 @@ func parseWikiNodeGetSpec(rawToken, rawObjType, rawSpaceID string) (wikiNodeGetS
 		).WithParam("--node-token")
 	} else {
 		spec.Token = tokenInput
-		if spec.ObjType == "" {
-			spec.SourceKind = "raw-node"
-		} else {
-			spec.SourceKind = "raw-obj"
-		}
 	}
 
 	if err := validateOptionalResourceName(spec.Token, "--node-token"); err != nil {
-		return wikiNodeGetSpec{}, err
-	}
-	if err := validateWikiResourceTokenLength(spec.Token, "--node-token"); err != nil {
 		return wikiNodeGetSpec{}, err
 	}
 	if err := validateOptionalResourceName(spec.SpaceID, "--space-id"); err != nil {
@@ -320,30 +280,18 @@ func wikiPathSegmentAfter(path, prefix string) (string, bool) {
 
 func buildWikiNodeGetDryRun(spec wikiNodeGetSpec) *common.DryRunAPI {
 	dry := common.NewDryRunAPI()
-	switch spec.SourceKind {
-	case "url-wiki":
-		dry.Desc("Resolve wiki node from /wiki/ URL")
-	case "url-obj":
-		dry.Desc("Resolve wiki node from Lark document URL (obj_type inferred from path)")
-	case "raw-node":
-		dry.Desc("Look up wiki node by node_token")
-	case "raw-obj":
-		dry.Desc("Look up wiki node by obj_token")
-	}
-	return dry.GET("/open-apis/wiki/v2/spaces/get_node").Params(spec.RequestParams())
+	dry.Desc("Resolve wiki node from token (token type detected by server)")
+	return dry.GET("/open-apis/wiki/v2/spaces/node_by_token").Params(spec.RequestParams())
 }
 
 // wikiNodeGetOutput shapes the structured output. It carries the formatted
 // values (title/obj_type/obj_token/parent_node_token/creator/updated_at)
 // the user asked for, plus enough raw fields (node_type, has_child, owner,
 // timestamps) that callers can pipe into +move / +node-copy without rerunning
-// get_node.
+// the lookup.
 //
-// No synthesized `url` is emitted: get_node returns none, and a
-// BuildResourceURL fallback (www.feishu.cn/wiki/<node_token>) is a
-// non-canonical link that misleads in a read/confirm command. Sibling read
-// shortcuts (+node-list, +node-copy) likewise omit it; node_token/obj_token
-// are the precise identifiers.
+// Preserve the existing output fields, including omitting url even when the
+// API supplies one. node_token/obj_token remain the precise identifiers.
 func wikiNodeGetOutput(node *wikiNodeRecord, raw map[string]interface{}) map[string]interface{} {
 	out := map[string]interface{}{
 		"space_id":          node.SpaceID,
@@ -374,7 +322,7 @@ func wikiNodeGetOutput(node *wikiNodeRecord, raw map[string]interface{}) map[str
 }
 
 // formatWikiTimestamp turns a Lark unix-seconds string (the format used by
-// wiki.spaces.get_node) into a UTC RFC3339 string. UTC (not the host's local
+// wiki.spaces.node_by_token) into a UTC RFC3339 string. UTC (not the host's local
 // zone) keeps the output stable regardless of where the CLI runs. Returns ""
 // when the input is empty or not numeric so the pretty renderer falls back
 // to "-".
