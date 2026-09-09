@@ -93,30 +93,17 @@
 lark-cli docs +script --command init-draft --presentation-decision '<上方完整 JSON>' --format json
 ```
 
-成功返回示例（以用户身份为例；实际目录和随机段以本次返回值为准）：
+返回的 `data` 示例（省略其他字段，以实际返回值为准）：
 
 ```json
 {
-  "ok": true,
-  "identity": "user",
-  "data": {
-    "cwd": "/tmp/doc-task",
-    "workspace": "draft_a1b2c3d4_folder",
-    "draft_path": "draft_a1b2c3d4_folder/draft.xml",
-    "tip": "Workspace created; draft XML does not exist yet. Write it directly to <cwd>/<draft_path>. Prefer workspace for new assets and reuse existing files. Prefer @relative paths within cwd and @absolute paths elsewhere, subject to file access rules. Relative resource paths try cwd first, then the source XML directory only if missing. Keep CLI calls in cwd."
-  }
+  "cwd": "/tmp/doc-task",
+  "workspace": "draft_a1b2c3d4_folder",
+  "draft_path": "draft_a1b2c3d4_folder/draft.xml"
 }
 ```
 
-`data.draft_path` 已包含工作区目录：上例为 `draft_a1b2c3d4_folder/draft.xml`，不是单独的 `draft.xml`。对应的后续操作为：
-
-| 操作 | 使用上例返回值时 |
-|-|-|
-| 每次 CLI 调用的工作目录 | `/tmp/doc-task` |
-| 写文件工具创建草稿的绝对路径 | `/tmp/doc-task/draft_a1b2c3d4_folder/draft.xml` |
-| CLI 读取这份草稿的参数 | `--content "@./draft_a1b2c3d4_folder/draft.xml"` |
-
-下文将 `data.workspace` 原样记为 `work_dir`、`data.draft_path` 原样记为 `draft_path`。实际执行时用本次返回值替换示例；读取草稿前先完成 Step 5 的文件写入。
+后续 CLI 在 `data.cwd` 下执行；将 `data.workspace` 记为 `work_dir`、`data.draft_path` 记为 `draft_path`（已含工作区前缀）。草稿写入 `<data.cwd>/<draft_path>`，读取用 `--content "@./<draft_path>"`。
 
 - CLI 会创建独占的 `work_dir` 并保存 `.presentation-decision.json` 作为固定基线，**但不会创建 `draft_path` 指向的 XML**。`draft_path` 是当前任务可直接写入的新文件路径；要求、资料或 contract 实质变化时，提交新决策并重新初始化，不得直接改基线。
 

@@ -24,7 +24,7 @@ lark-cli docs +script --command init-draft \
   --format json
 ```
 
-完整返回体示例及其对应的写入位置、CLI 工作目录和读取参数，见 [创建工作流 Step 4](lark-doc-create-workflow.md)。
+路径返回值与用法见 [创建工作流 Step 4](lark-doc-create-workflow.md)。
 
 - 在生成正文前执行；不要自行创建工作目录或决策文件。CLI 固定生成 `draft_<8位十六进制字符>_folder/draft.xml`，以返回的实际路径为准。
 - 决策是单个 JSON 对象；无可量化约束时传 `{}`。`audience`、`reader_task`、`genre_contract`、`adapter`、`presentation_mode`、`visual_plan.reason` 和每个 block 的 `purpose` 是可选描述信息，可省略、为空字符串或 `null`；不参与通过/失败判定。
