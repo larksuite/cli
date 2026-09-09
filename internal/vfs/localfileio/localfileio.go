@@ -174,9 +174,10 @@ func (l *LocalFileIO) RemoveResumeArtifact(path string) error {
 }
 
 // CommitResumeArtifact publishes a completed partial file. A no-overwrite
-// commit uses a hard link followed by removal of the partial, so an existing
-// target cannot be replaced by a race. Overwrite commits use the platform's
-// replace operation so a failed replacement does not delete the old target.
+// commit uses a hard link followed by best-effort removal of the partial, so
+// an existing target cannot be replaced by a race. Overwrite commits use the
+// configured VFS replace operation so a failed replacement does not delete the
+// old target.
 func (l *LocalFileIO) CommitResumeArtifact(partialPath, targetPath string, overwrite bool) error {
 	safePartial, err := SafeOutputPath(partialPath)
 	if err != nil {
@@ -190,10 +191,11 @@ func (l *LocalFileIO) CommitResumeArtifact(partialPath, targetPath string, overw
 		if err := vfs.Link(safePartial, safeTarget); err != nil {
 			return err
 		}
-		if err := vfs.Remove(safePartial); err != nil {
-			return err
-		}
+		// The target is published once Link succeeds. A leftover partial is
+		// harmless and must not turn a successful no-overwrite commit into a
+		// reported failure.
+		_ = vfs.Remove(safePartial)
 		return nil
 	}
-	return replaceResumeArtifact(safePartial, safeTarget)
+	return vfs.Rename(safePartial, safeTarget)
 }

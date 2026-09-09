@@ -497,6 +497,40 @@ func TestLocalFileIO_ResumableArtifactsAndCommit(t *testing.T) {
 	}
 }
 
+type failingRemoveFS struct {
+	vfs.OsFs
+	err error
+}
+
+func (f failingRemoveFS) Remove(string) error { return f.err }
+
+func TestLocalFileIO_CommitPublishesWhenPartialCleanupFails(t *testing.T) {
+	dir := t.TempDir()
+	testChdir(t, dir)
+	if err := os.WriteFile("out.bin.partial", []byte("published"), 0600); err != nil {
+		t.Fatalf("WriteFile(partial) error = %v", err)
+	}
+
+	cleanupErr := errors.New("cleanup unavailable")
+	previous := vfs.DefaultFS
+	vfs.DefaultFS = failingRemoveFS{err: cleanupErr}
+	t.Cleanup(func() { vfs.DefaultFS = previous })
+
+	if err := (&LocalFileIO{}).CommitResumeArtifact("out.bin.partial", "out.bin", false); err != nil {
+		t.Fatalf("CommitResumeArtifact() error = %v, want publication success", err)
+	}
+	got, err := os.ReadFile("out.bin")
+	if err != nil {
+		t.Fatalf("ReadFile(target) error = %v", err)
+	}
+	if string(got) != "published" {
+		t.Fatalf("target content = %q, want published", got)
+	}
+	if _, err := os.Stat("out.bin.partial"); err != nil {
+		t.Fatalf("partial should remain after injected cleanup failure: %v", err)
+	}
+}
+
 // prefixErrReader yields prefix bytes first, then reports err.
 type prefixErrReader struct {
 	prefix io.Reader

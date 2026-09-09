@@ -114,7 +114,9 @@ type Stream struct {
 	Body io.ReadCloser
 	// Header is a copy of the first successful response headers.
 	Header http.Header
-	// ContentLength is the validated total size, or -1 when unknown.
+	// ContentLength is the validated full object size, or -1 when unknown. When
+	// StartOffset is non-zero, Body yields only the remaining bytes; consumers
+	// must account for StartOffset when tracking progress or completeness.
 	ContentLength int64
 
 	_ struct{}

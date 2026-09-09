@@ -3315,6 +3315,7 @@ func TestDriveDownloadContinueStalePartialRestarts(t *testing.T) {
 	if err := os.WriteFile("out.bin.partial", make([]byte, len(payload)+1024), 0600); err != nil {
 		t.Fatalf("WriteFile() error: %v", err)
 	}
+	driveDownloadWriteTestCheckpoint(t, "out.bin.partial.meta", int64(len(payload)), `"v1"`)
 
 	err := mountAndRunDrive(t, DriveDownload, []string{
 		"+download",

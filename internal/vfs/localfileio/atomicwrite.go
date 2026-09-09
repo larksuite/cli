@@ -45,6 +45,9 @@ func AppendFromReader(path string, reader io.Reader, perm os.FileMode) (int64, e
 		return 0, err
 	}
 	n, err := io.Copy(f, reader)
+	if syncErr := f.Sync(); err == nil && syncErr != nil {
+		err = syncErr
+	}
 	if closeErr := f.Close(); err == nil && closeErr != nil {
 		err = closeErr
 	}
