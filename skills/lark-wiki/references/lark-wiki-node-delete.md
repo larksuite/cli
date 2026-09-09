@@ -27,11 +27,15 @@ lark-cli wiki +node-delete --node-token <token> --obj-type wiki --dry-run
 | Flag | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
 | `--node-token` | string | **Yes** | — | `node_token`, cloud-doc `obj_token`, or a Lark URL embedding one; URL paths also imply `--obj-type` |
-| `--obj-type` | enum | Conditional | — | Required for a raw token (URL inputs auto-infer). `wiki` = the token is a `node_token`; otherwise the cloud-doc type |
-| `--space-id` | string | No | — | Auto-resolved via `get_node` when omitted (extra lookup; pass it to skip) |
+| `--obj-type` | enum | Conditional | — | Required for a raw token (URL inputs auto-infer). `wiki` uses the resolved `node_token`; other types use the resolved `obj_token` and must match its document type |
+| `--space-id` | string | No | — | Assert the resolved node belongs to this space; inferred when omitted |
 | `--include-children` | bool | No | `true` | Cascade-delete the subtree (default). `--include-children=false` lifts direct children up to the parent |
 | `--yes` | bool | Yes (real delete) | — | Confirm the high-risk operation. Without it the CLI returns `confirmation_required` |
 | `--as` | enum | No | `auto` | Identity `user`/`bot`; wiki is user-centric → pass `--as user` |
+
+The lookup sends only `token`, including when `--space-id` is provided. Deletion uses the resolved token matching `--obj-type`; a document-type mismatch is rejected before deletion.
+
+For a Wiki shortcut, use `--obj-type wiki` to delete the shortcut itself. Other types are rejected because the shortcut's `obj_token` identifies its origin document.
 
 ## Output
 
@@ -57,6 +61,6 @@ Async/timeout adds `task_id`, `timed_out`, and `next_command`.
   - `131011` → the node has delete-approval enabled; apply via the Wiki UI (CLI cannot bypass approval).
   - `131003` → subtree too large to cascade-delete; use `--include-children=false` or delete sub-trees first.
 
-## Required Scope
+## Required Scopes
 
-`wiki:node:create` (the delete endpoint declares this scope). Auto-resolving `space_id` additionally needs `wiki:node:retrieve`; pass `--space-id` to avoid that lookup.
+Both `wiki:node:create` (deletion) and `wiki:node:retrieve` (target lookup) are required, including when `--space-id` is provided. The server also checks access to the target node.

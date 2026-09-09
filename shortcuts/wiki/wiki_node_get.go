@@ -130,6 +130,7 @@ var WikiNodeGet = common.Shortcut{
 // errors require a changed token, operation, or permission; rate limiting
 // remains retryable only within the bounded backoff guidance below.
 func wikiNodeGetProblem(err error) error {
+	err = wikiNodeLookupProblem(err)
 	p, ok := errs.ProblemOf(err)
 	if !ok {
 		return err
@@ -142,16 +143,10 @@ func wikiNodeGetProblem(err error) error {
 		p.Retryable = false
 		appendWikiProblemHint(err, wikiPermissionDeniedHint())
 	case 131012:
-		p.Subtype = errs.SubtypeNotFound
-		p.Retryable = false
 		appendWikiProblemHint(err, "The Wiki node has been deleted. Do not retry the same node token; rediscover the node or ask for a current Wiki link.")
 	case 131013, 131016:
-		p.Subtype = errs.SubtypeInvalidParameters
-		p.Retryable = false
 		appendWikiProblemHint(err, "The resource token is invalid. Do not retry the same token, switch identity, or reauthorize; check the URL/token and provide a valid wiki node_token, complete raw obj_token, or typed document URL.")
 	case 131014:
-		p.Subtype = errs.SubtypeFailedPrecondition
-		p.Retryable = false
 		appendWikiProblemHint(err, "The document exists but is not mounted in Wiki. Do not retry wiki +node-get with the same document; use the corresponding docs, sheets, base, or drive command, or provide a Wiki URL/node_token.")
 	}
 	return err

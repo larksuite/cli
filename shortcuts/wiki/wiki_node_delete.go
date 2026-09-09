@@ -38,26 +38,24 @@ const (
 // WikiNodeDelete deletes a wiki node (or pulls a cloud doc out of Wiki). The
 // API mirrors +delete-space — synchronous on small deletes, async with a
 // task_id for cascade deletes — so this shortcut shares the async-polling
-// helper. Space ID is optional: when omitted, +node-delete first looks up the
-// node via get_node to resolve the space ID so callers do not have to chain
-// commands.
+// helper. It always resolves the target via node_by_token and infers the space
+// ID when omitted, or validates the supplied space ID.
 var WikiNodeDelete = common.Shortcut{
 	Service:     "wiki",
 	Command:     "+node-delete",
 	Description: "Delete a wiki node, polling the async delete task when needed",
 	Risk:        "high-risk-write",
-	// API spec lists wiki:node:create as the only declared scope for the
-	// delete endpoint. Naming is unfortunate, but the scope-preflight needs
-	// the literal string.
-	Scopes:    []string{"wiki:node:create"},
+	// Deletion requires wiki:node:create; the preceding node_by_token lookup
+	// also requires wiki:node:retrieve, even when --space-id is provided.
+	Scopes:    []string{"wiki:node:create", "wiki:node:retrieve"},
 	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "node-token", Desc: "wiki node_token, cloud-doc obj_token, or a Lark URL embedding one of them", Required: true},
 		// Not Required at the cobra level: URL inputs auto-infer obj_type
 		// from the path, and the parser enforces explicit obj_type for raw
 		// tokens. Forcing Cobra Required here breaks the URL ergonomic.
-		{Name: "obj-type", Desc: "token kind; no default — pass explicitly when --node-token is a raw token (URL inputs auto-infer)", Enum: wikiNodeDeleteObjTypes},
-		{Name: "space-id", Desc: "wiki space ID; auto-resolved via get_node when omitted"},
+		{Name: "obj-type", Desc: "deletion token kind: wiki uses the resolved node_token, other types use obj_token; required for raw input (URL inputs auto-infer)", Enum: wikiNodeDeleteObjTypes},
+		{Name: "space-id", Desc: "wiki space ID; auto-resolved via node_by_token when omitted"},
 		{Name: "include-children", Type: "bool", Default: "true", Desc: "cascade delete the subtree (default); pass --include-children=false to lift direct children up to the parent"},
 	},
 	Tips: []string{
@@ -65,7 +63,7 @@ var WikiNodeDelete = common.Shortcut{
 		"This is a high-risk-write command; pass --yes to confirm the deletion.",
 		"--node-token accepts a raw token (wikcnXXX, docxXXX, ...) or a Lark URL like https://feishu.cn/wiki/<token> or https://feishu.cn/docx/<token>; URL paths also imply --obj-type.",
 		"Run +node-get first to confirm space_id / obj_type when in doubt.",
-		"Auto-resolving space_id (when --space-id is omitted) also calls get_node, which needs the wiki:node:retrieve scope; pass --space-id to skip that lookup if your token only carries wiki:node:create.",
+		"Resolving the node also calls node_by_token and requires Wiki node read permission, including when --space-id is provided.",
 		"Async deletes return a task_id; this command polls for a bounded window and then returns a follow-up drive +task_result command.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -116,7 +114,7 @@ func (spec wikiNodeDeleteSpec) RequestBody() map[string]interface{} {
 // wikiNodeDeleteClient isolates the network operations so business logic can
 // be unit-tested without real HTTP calls. Mirrors wikiDeleteSpaceClient.
 type wikiNodeDeleteClient interface {
-	ResolveNode(ctx context.Context, token, objType string) (*wikiNodeRecord, error)
+	ResolveNode(ctx context.Context, token string) (*wikiNodeRecord, error)
 	DeleteNode(ctx context.Context, spaceID string, spec wikiNodeDeleteSpec) (string, error)
 	GetDeleteNodeTask(ctx context.Context, taskID string) (wikiAsyncTaskStatus, error)
 }
@@ -125,18 +123,8 @@ type wikiNodeDeleteAPI struct {
 	runtime *common.RuntimeContext
 }
 
-func (api wikiNodeDeleteAPI) ResolveNode(ctx context.Context, token, objType string) (*wikiNodeRecord, error) {
-	params := map[string]interface{}{"token": token}
-	// get_node takes obj_type only when the token is an obj_token. For
-	// wiki node_tokens the API rejects an obj_type kwarg, so omit it.
-	if objType != "" && objType != "wiki" {
-		params["obj_type"] = objType
-	}
-	data, err := api.runtime.CallAPITyped("GET", "/open-apis/wiki/v2/spaces/get_node", params, nil)
-	if err != nil {
-		return nil, err
-	}
-	return parseWikiNodeRecord(common.GetMap(data, "node"))
+func (api wikiNodeDeleteAPI) ResolveNode(ctx context.Context, token string) (*wikiNodeRecord, error) {
+	return lookupWikiNode(api.runtime, token)
 }
 
 func (api wikiNodeDeleteAPI) DeleteNode(ctx context.Context, spaceID string, spec wikiNodeDeleteSpec) (string, error) {
@@ -266,33 +254,23 @@ func isValidWikiDeleteObjType(v string) bool {
 
 func buildWikiNodeDeleteDryRun(spec wikiNodeDeleteSpec) *common.DryRunAPI {
 	dry := common.NewDryRunAPI().Desc(
-		"async-aware: delete wiki node -> poll wiki delete-node task when task_id is returned (auto-resolves space_id via get_node when --space-id is omitted)",
+		"async-aware: always resolve the target via node_by_token (requires Wiki node read access, including with --space-id) -> delete wiki node -> poll wiki delete-node task when task_id is returned",
 	)
 
-	if spec.SpaceID == "" {
-		params := map[string]interface{}{"token": spec.NodeToken}
-		if spec.ObjType != "" && spec.ObjType != "wiki" {
-			params["obj_type"] = spec.ObjType
-		}
-		dry.GET("/open-apis/wiki/v2/spaces/get_node").
-			Desc("[1] Resolve space_id via get_node").
-			Params(params)
-		dry.DELETE(fmt.Sprintf(
-			"/open-apis/wiki/v2/spaces/%s/nodes/%s",
-			"<resolved_space_id>",
-			validate.EncodePathSegment(spec.NodeToken),
-		)).
-			Desc("[2] Delete wiki node").
-			Body(spec.RequestBody())
-	} else {
-		dry.DELETE(fmt.Sprintf(
-			"/open-apis/wiki/v2/spaces/%s/nodes/%s",
-			validate.EncodePathSegment(spec.SpaceID),
-			validate.EncodePathSegment(spec.NodeToken),
-		)).
-			Desc("[1] Delete wiki node").
-			Body(spec.RequestBody())
+	dry.GET("/open-apis/wiki/v2/spaces/node_by_token").
+		Desc("[1] Resolve node and space").
+		Params(map[string]interface{}{"token": spec.NodeToken})
+	spaceID := "<resolved_space_id>"
+	if spec.SpaceID != "" {
+		spaceID = validate.EncodePathSegment(spec.SpaceID)
 	}
+	token := "<resolved_node_token>"
+	if spec.ObjType != "wiki" {
+		token = "<resolved_obj_token>"
+	}
+	dry.DELETE(fmt.Sprintf("/open-apis/wiki/v2/spaces/%s/nodes/%s", spaceID, token)).
+		Desc("[2] Delete wiki node").
+		Body(spec.RequestBody())
 
 	dry.GET("/open-apis/wiki/v2/tasks/:task_id").
 		Desc("[N] Poll wiki delete-node task result when async").
@@ -303,7 +281,7 @@ func buildWikiNodeDeleteDryRun(spec wikiNodeDeleteSpec) *common.DryRunAPI {
 }
 
 func runWikiNodeDelete(ctx context.Context, client wikiNodeDeleteClient, runtime *common.RuntimeContext, spec wikiNodeDeleteSpec) (map[string]interface{}, error) {
-	spaceID, err := resolveWikiNodeDeleteSpaceID(ctx, client, runtime, spec)
+	spaceID, err := resolveWikiNodeDeleteSpaceID(ctx, client, &spec)
 	if err != nil {
 		return nil, err
 	}
@@ -357,20 +335,38 @@ func runWikiNodeDelete(ctx context.Context, client wikiNodeDeleteClient, runtime
 	return out, nil
 }
 
-// resolveWikiNodeDeleteSpaceID returns the explicit space_id when the caller
-// supplied one, otherwise resolves it via get_node. The latter saves callers
-// from running +node-get first when they only have a node_token.
-func resolveWikiNodeDeleteSpaceID(ctx context.Context, client wikiNodeDeleteClient, runtime *common.RuntimeContext, spec wikiNodeDeleteSpec) (string, error) {
-	if spec.SpaceID != "" {
-		return spec.SpaceID, nil
-	}
-	node, err := client.ResolveNode(ctx, spec.NodeToken, spec.ObjType)
+// resolveWikiNodeDeleteSpaceID resolves the mutation token and checks any explicit space.
+func resolveWikiNodeDeleteSpaceID(ctx context.Context, client wikiNodeDeleteClient, spec *wikiNodeDeleteSpec) (string, error) {
+	node, err := client.ResolveNode(ctx, spec.NodeToken)
 	if err != nil {
 		return "", err
 	}
 	spaceID, err := requireWikiNodeSpaceID(node)
 	if err != nil {
 		return "", err
+	}
+	if spec.SpaceID != "" && spec.SpaceID != spaceID {
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--space-id does not match the resolved node space").WithParam("--space-id")
+	}
+	if spec.ObjType == "wiki" {
+		if node.NodeToken == "" {
+			return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki node lookup returned no node_token")
+		}
+		spec.NodeToken = node.NodeToken
+	} else {
+		// A shortcut's obj_token belongs to its origin document. Converting it
+		// would change the deletion target from the shortcut to that document.
+		if node.NodeType == wikiNodeTypeShortcut {
+			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "deleting a Wiki shortcut requires --obj-type wiki").
+				WithParam("--obj-type").WithHint("Use --obj-type wiki to delete the shortcut itself.")
+		}
+		if node.ObjToken == "" || node.ObjType == "" {
+			return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki node lookup returned no obj_token or obj_type")
+		}
+		if spec.ObjType != node.ObjType {
+			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--obj-type does not match the resolved document type").WithParam("--obj-type")
+		}
+		spec.NodeToken = node.ObjToken
 	}
 	return spaceID, nil
 }
