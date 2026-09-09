@@ -675,7 +675,10 @@ func TestDocsScriptOptionalBlockConstraints(t *testing.T) {
 			require.NoError(t, err)
 			result.AssertExitCode(t, test.wantExit)
 			if test.wantExit != 0 {
+				require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String())
+				require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String())
 				require.Equal(t, "--presentation-decision", gjson.Get(result.Stderr, "error.param").String())
+				require.Contains(t, gjson.Get(result.Stderr, "error.message").String(), "visual_plan.blocks[0].min_count must be positive")
 				return
 			}
 			result.AssertStdoutStatus(t, true)
