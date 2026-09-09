@@ -465,7 +465,7 @@ var AppsDeploy = common.Shortcut{
 	Risk:        "write",
 	Tips: []string{
 		"Example: lark-cli apps +deploy   (project mode: run from the project root holding spark.json)",
-		"Example: lark-cli apps +deploy --file-path ./report.html   (publish one HTML file)",
+		"Example: lark-cli apps +deploy --file-path ./report.html   (publish the page and the css/js/images it references)",
 		"Example: lark-cli apps +deploy --dir ./site --entry-file home.html   (publish a directory; the entry is served as index.html)",
 		"Paths are relative to the current directory: cd to the payload first, absolute paths are rejected",
 		"Re-publishing: pass the --app-id returned last time; without it the target is looked up, and a new app is created when nothing matches",
@@ -478,7 +478,7 @@ var AppsDeploy = common.Shortcut{
 		{Name: "app-id", Desc: "publish target app ID (app_ prefix); optional when spark.json already records one — in project mode a successful publish saves it back into spark.json and a value conflicting with the recorded one is rejected, while --file-path / --dir never touch spark.json"},
 		{Name: "skip-build", Type: "bool", Desc: "skip the build.command declared in spark.json and publish the existing build.output directory as-is (no effect on buildless projects, which never build)"},
 		{Name: "no-verify", Type: "bool", Desc: "skip the local dev-server verification entirely (the dev.port declaration requirement, the GET localhost:<dev.port>/spark.json availability check, and the app-identity match)"},
-		{Name: "file-path", Desc: "publish a single HTML file (path relative to the current directory); mutually exclusive with --dir"},
+		{Name: "file-path", Desc: "publish a single HTML file plus the local files it references, transitively (path relative to the current directory); references are resolved inside the file's own directory, and anything above it is reported and skipped; mutually exclusive with --dir"},
 		{Name: "dir", Desc: "publish a whole directory (path relative to the current directory); mutually exclusive with --file-path"},
 		{Name: "entry-file", Desc: "entry file name directly under --dir; defaults to index.html and is renamed to index.html inside the published payload"},
 		{Name: "allow-sensitive", Type: "bool", Desc: "skip the credential-file scan (allow .env / .npmrc / private keys / etc. in the publish payload)"},

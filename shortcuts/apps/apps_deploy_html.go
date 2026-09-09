@@ -74,7 +74,7 @@ func validateHTMLDeploy(rctx *common.RuntimeContext) error {
 	var candidates []deploy.Candidate
 	if filePath != "" {
 		var err error
-		candidates, _, err = deploy.CollectFile(rctx.FileIO(), filePath)
+		candidates, _, _, err = deploy.CollectFile(rctx.FileIO(), filePath)
 		if err != nil {
 			return err
 		}
@@ -141,6 +141,10 @@ type htmlDeployPlan struct {
 	RouteCount  int
 	ContentHash string
 	Waived      []string
+	// SkippedDeps names references found inside the payload that were not
+	// published. Only --file-path can produce them; --dir publishes the whole
+	// directory, so nothing a page references inside it can be missing.
+	SkippedDeps []string
 }
 
 // readHTMLHashFiles reads the payload bytes once for the content fingerprint
@@ -226,13 +230,15 @@ func resolveHTMLDeployPlan(rctx *common.RuntimeContext) (htmlDeployPlan, error) 
 		candidates []deploy.Candidate
 		entryRel   string
 		absEntry   string
+		skipped    []string
 	)
 	if filePath != "" {
-		cands, abs, err := deploy.CollectFile(rctx.FileIO(), filePath)
+		cands, abs, missing, err := deploy.CollectFile(rctx.FileIO(), filePath)
 		if err != nil {
 			return htmlDeployPlan{}, err
 		}
-		candidates, absEntry, entryRel = cands, abs, cands[0].RelPath
+		// The scan puts the entry first, so its name is still the entry name.
+		candidates, absEntry, entryRel, skipped = cands, abs, cands[0].RelPath, missing
 	} else {
 		cands, rootNames, absDir, err := deploy.CollectDir(rctx.FileIO(), dir)
 		if err != nil {
@@ -284,6 +290,7 @@ func resolveHTMLDeployPlan(rctx *common.RuntimeContext) (htmlDeployPlan, error) 
 		RouteCount:  routeCount,
 		ContentHash: contentHash,
 		Waived:      waived,
+		SkippedDeps: skipped,
 	}, nil
 }
 
@@ -312,6 +319,22 @@ func fillHTMLDeployDryRun(dry *common.DryRunAPI, p htmlDeployPlan) {
 	dry.Set("content_hash", p.ContentHash)
 	if len(p.Waived) > 0 {
 		dry.Set("sensitive_waived", p.Waived)
+	}
+	if len(p.SkippedDeps) > 0 {
+		dry.Set("dependencies_skipped", p.SkippedDeps)
+	}
+}
+
+// warnSkippedDeps reports references the scan found but could not publish. The
+// page still ships, so staying quiet would hand back a live URL whose styling
+// or scripts are silently missing.
+func warnSkippedDeps(w io.Writer, skipped []string) {
+	if len(skipped) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "warning: %d referenced file(s) were not published:\n", len(skipped))
+	for _, s := range skipped {
+		fmt.Fprintf(w, "  %s\n", s)
 	}
 }
 
@@ -387,6 +410,7 @@ func dryRunHTMLDeploy(rctx *common.RuntimeContext) *common.DryRunAPI {
 			"warning: --allow-sensitive lets %d credential file(s) into the payload: %s\n",
 			len(plan.Waived), strings.Join(plan.Waived, ", "))
 	}
+	warnSkippedDeps(rctx.IO().ErrOut, plan.SkippedDeps)
 
 	segment := "<app id resolved from " + hasHTMLAppCreatedPath + " or +create>"
 	if plan.AppID != "" {
@@ -456,6 +480,7 @@ func executeHTMLDeploy(ctx context.Context, rctx *common.RuntimeContext) error {
 		fmt.Fprintf(rctx.IO().ErrOut, "warning: --allow-sensitive waived the credential scan; publishing %d credential file(s): %s\n",
 			len(plan.Waived), strings.Join(plan.Waived, ", "))
 	}
+	warnSkippedDeps(rctx.IO().ErrOut, plan.SkippedDeps)
 	if err := resolveHTMLDeployAppID(rctx, &plan); err != nil {
 		return err
 	}

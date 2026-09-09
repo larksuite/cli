@@ -114,24 +114,42 @@ func escapesWorkingDir(path string) bool {
 	return cleaned == ".." || strings.HasPrefix(cleaned, "../")
 }
 
-// CollectFile resolves a single-file payload. relPath goes through the caller's
-// FileIO so the cwd sandbox check runs; the resolved absolute path is returned
-// for use as the idempotency key.
-func CollectFile(fio fileio.FileIO, relPath string) ([]Candidate, string, error) {
+// CollectFile resolves a single-file payload: the entry file plus the local
+// files it references, transitively. Publishing the page alone would ship a
+// document whose stylesheet, scripts and images all 404 — the artifact would be
+// broken, not merely different from what the GUI produces.
+//
+// relPath goes through the caller's FileIO so the cwd sandbox check runs. The
+// entry's resolved absolute path is returned for use as the idempotency key,
+// and every dependency is resolved against the entry's directory, which becomes
+// the payload root. The third return value lists references that were found but
+// not published, so the caller can say so instead of silently shipping a page
+// with holes in it.
+func CollectFile(fio fileio.FileIO, relPath string) ([]Candidate, string, []string, error) {
 	st, err := fio.Stat(relPath)
 	if err != nil {
-		return nil, "", inputPathError("--file-path", relPath, err)
+		return nil, "", nil, inputPathError("--file-path", relPath, err)
 	}
 	if !st.Mode().IsRegular() {
-		return nil, "", errs.NewValidationError(errs.SubtypeFailedPrecondition,
+		return nil, "", nil, errs.NewValidationError(errs.SubtypeFailedPrecondition,
 			"--file-path %q is not a regular file", relPath).WithParam("--file-path")
 	}
 	abs, err := canonicalAbs(relPath)
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
-	name := filepath.Base(relPath)
-	return []Candidate{{RelPath: name, AbsPath: relPath, Size: st.Size()}}, abs, nil
+	// The payload root is the entry's directory, resolved on its own rather
+	// than taken from the entry's own resolved path: if the entry is a symlink,
+	// its target lives elsewhere, and dependencies are written relative to
+	// where the page sits, not to where the link points.
+	rootDir := filepath.Dir(relPath)
+	rootAbs, err := canonicalAbs(rootDir)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	sc := &depScanner{fio: fio, root: rootDir, rootAbs: rootAbs}
+	sc.walk(filepath.Base(relPath), st.Size())
+	return sc.cands, abs, sc.skipped, nil
 }
 
 // CollectDir resolves a directory payload. It returns the candidates, the file

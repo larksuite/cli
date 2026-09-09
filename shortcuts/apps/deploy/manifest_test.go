@@ -43,3 +43,19 @@ func TestBuildManifestMissingEntry(t *testing.T) {
 		t.Fatalf("got %v, want a missing-entry error", err)
 	}
 }
+
+// A closure that pulls in a sibling index.html while the entry carries another
+// name would put two files at output/index.html; which one survives unpacking
+// is undefined, so the publish must stop instead.
+func TestBuildManifestRejectsIndexCollision(t *testing.T) {
+	_, _, err := BuildManifest([]Candidate{
+		{RelPath: "page.html"},
+		{RelPath: "index.html"},
+	}, "page.html")
+	if err == nil {
+		t.Fatalf("expected an entry conflict error")
+	}
+	if !strings.Contains(err.Error(), "entry conflict") {
+		t.Fatalf("message should name the conflict, got %q", err.Error())
+	}
+}

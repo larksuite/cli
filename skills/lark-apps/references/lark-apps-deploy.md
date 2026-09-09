@@ -51,16 +51,32 @@ lark-cli apps +deploy --dry-run
 
 ## 裸 HTML 发布（`--file-path` / `--dir`）
 
-不需要 `spark.json`，不构建，不回写任何本地文件：把指定的文件或目录**原样**打包发布成一个 `app_type=html` 的妙搭应用，拿到可分享链接。
+不需要 `spark.json`，不构建，不回写任何本地文件：把磁盘上的文件**原样**（不做任何转换、不改写引用）打包发布成一个 `app_type=html` 的妙搭应用，拿到可分享链接。`--dir` 发整个目录，`--file-path` 发单个页面及其引用到的本地文件。
 
 ### 命令骨架
 
-- 单文件：`lark-cli apps +deploy --file-path ./report.html`。该文件即入口，产物里恒为 `index.html`，路由恒为 `[{"path":"/","file":"index.html"}]`。
+- 单文件：`lark-cli apps +deploy --file-path ./report.html`。该文件即入口，产物里恒为 `index.html`。**该页面引用的本地文件会被一并发布**（见下方「`--file-path` 的依赖扫描」），未被引用的同目录文件不会进包。
 - 目录：`lark-cli apps +deploy --dir ./site`。目录下所有普通文件随包上传（跳过 `.git` 子树，不跟随符号链接），入口默认取目录**根**的 `index.html`。
 - 指定入口：`lark-cli apps +deploy --dir ./site --entry-file page.html`。
 - 非入口的 `.html` 照常发布并自动生成路由（`about.html` → `/about`，`docs/index.html` → `/docs`），不需要自备 routes.json。
 - 路径参数只接受**相对当前目录的相对路径**，传绝对路径会被拒；产物不在 cwd 下时先 `cd` 过去（`cd /path/to/site && lark-cli apps +deploy --dir .`）。
 - 互斥关系：`--file-path` 与 `--dir` 二选一；`--entry-file` 只在 `--dir` 下有意义；`--skip-build` / `--no-verify` 是项目模式专属，传了直接报参数错。
+
+### `--file-path` 的依赖扫描
+
+只发那一个 HTML 文件会得到一个**掉样式、脚本 404 的页面**，所以 `--file-path` 会从入口出发递归收集它引用的本地文件。
+
+- **收集范围**：以**入口文件所在目录**为根。子目录会被带上（`assets/logo.png` 保持相对路径），根目录里没被引用到的文件不会进包。
+- **扫描哪些引用**：
+  - HTML：`link[href]`、`script[src]`、`img[src|srcset]`、`source`、`video[src|poster]`、`audio`、`track`、`iframe`、`embed`、`object[data]`、`use[href]`、`style="...url()..."`、内联 `<style>` 与内联 `<script>`
+  - CSS：`@import`、`url(...)`
+  - JS/MJS：`import` / `export ... from` / `import(...)`，只跟 `./`、`../`、`/` 开头的相对说明符（`import "react"` 是包名，不跟）
+  - **不跟** `<a href>` 和 `<form action>`：那是页面跳转，跟下去等于把整站拖进来——要发整站请用 `--dir`
+- **不进包的引用**：`http(s)://`、`//cdn...`、`data:`、`mailto:`、纯 `#锚点` 一律忽略（外链本来就该留在外面，不报警告）。
+- **被跳过并告警的引用**：文件不存在、读不了、指向目录、或解析后**跑到入口目录之外**（`../shared/x.css`，以及指向外部的符号链接）。这些会在 stderr 逐条列出（`--dry-run` 里是 `dependencies_skipped`），**发布照常继续**——看到这些告警说明线上页面会缺东西，要么把文件挪进入口目录，要么改用 `--dir`。
+- **`/x.css` 这类根绝对路径**按「站点根 = 入口文件所在目录」解析。
+- **上限**：闭包最多 200 个文件、引用链最深 16 层；超了会告警并提示改用 `--dir`。
+- **入口冲突**：入口叫 `page.html`，但闭包里又有一个 `index.html`，两者会撞在同一个产物路径上 → 报 `entry conflict`，改名其中一个。
 
 ### `--dir` 的入口判定
 
@@ -110,6 +126,8 @@ lark-cli apps +deploy --dir ./site --dry-run                       # 只看计�
 | `--entry-file only applies together with --dir` | 单文件模式下不要传 `--entry-file` |
 | `only applies to the spark.json project mode` | `--skip-build` / `--no-verify` 属于项目模式，裸 HTML 发布下去掉 |
 | `must point at an .html file` / `must be an .html file` | `--file-path` 与 `--entry-file` 都只接受 `.html` |
+| `entry conflict` （`--file-path` 下） | 入口不叫 `index.html`，但它引用到的文件里有一个 `index.html`，两者会撞同一个产物路径；改名其中一个 |
+| stderr 里的 `warning: N referenced file(s) were not published` | 页面引用的本地文件没进包（不存在 / 在入口目录之外 / 超上限）；线上会缺样式或脚本，按提示挪文件或改用 `--dir` |
 | `must be a file name directly under --dir, not a path` | `--entry-file` 不接受路径；把 `--dir` 指到入口所在的那一层 |
 | `not found directly under --dir` | 入口文件名拼错，或它其实在子目录里 |
 | `no entry file` / `entry conflict` | 见上方入口判定表，不要靠改本地文件名试错 |

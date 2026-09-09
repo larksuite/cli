@@ -27,12 +27,27 @@ func BuildManifest(candidates []Candidate, entryRel string) ([]PackEntry, []stri
 	entries := make([]PackEntry, 0, len(candidates)+1)
 	htmlRels := make([]string, 0, len(candidates))
 	seenEntry := false
+	seenPath := make(map[string]bool, len(candidates))
 	for _, c := range candidates {
 		rel := c.RelPath
 		if rel == entryRel {
 			rel = IndexName
 			seenEntry = true
 		}
+		// The entry rename can collide: a payload whose entry is page.html but
+		// which also carries its own index.html would produce two files at the
+		// same zip path, and which one survives unpacking is undefined.
+		if seenPath[rel] {
+			if rel == IndexName && entryRel != IndexName {
+				return nil, nil, errs.NewValidationError(errs.SubtypeFailedPrecondition,
+					"entry conflict: %q is published as %s, but the payload already contains its own %s",
+					entryRel, IndexName, IndexName).
+					WithHint("rename the entry to index.html and publish that, or rename the other file")
+			}
+			return nil, nil, errs.NewValidationError(errs.SubtypeFailedPrecondition,
+				"the payload maps two files onto the same published path %q", rel)
+		}
+		seenPath[rel] = true
 		entries = append(entries, PackEntry{
 			ZipPath: "output/" + rel,
 			AbsPath: c.AbsPath,
