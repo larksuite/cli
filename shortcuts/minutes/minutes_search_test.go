@@ -492,6 +492,20 @@ func TestMinutesSearchDryRun(t *testing.T) {
 	}
 }
 
+// TestMinutesSearchKeywordAliasMapsToQuery verifies --keyword is a parse-time
+// synonym of --query; agents that habitually spell it --keyword still reach the
+// same body field.
+func TestMinutesSearchKeywordAliasMapsToQuery(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, MinutesSearch, []string{"+search", "--keyword", "budget", "--dry-run", "--as", "user"}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "\"query\": \"budget\"") {
+		t.Fatalf("--keyword should map to canonical --query in body, got: %s", stdout.String())
+	}
+}
+
 // TestMinutesSearchExecuteRendersRowsAndMoreHint verifies pretty output renders rows and pagination hints.
 func TestMinutesSearchExecuteRendersRowsAndMoreHint(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())

@@ -82,6 +82,19 @@ func runShortcutWithStubs(t *testing.T, sc common.Shortcut, args []string, stubs
 	return stdout.String(), err
 }
 
+// runShortcutCapturingErrWithStubs is runShortcutWithStubs but keeps the
+// error, for tests about what a FAILED call reports.
+func runShortcutCapturingErrWithStubs(t *testing.T, sc common.Shortcut, args []string, stubs ...*httpmock.Stub) (stdoutStr, stderrStr string, err error) {
+	t.Helper()
+	parent, stdout, stderr, reg := newTestRig(t, sc)
+	for _, s := range stubs {
+		reg.Register(s)
+	}
+	parent.SetArgs(append([]string{sc.Command}, args...))
+	err = parent.Execute()
+	return stdout.String(), stderr.String(), err
+}
+
 // requireProblem asserts err carries a typed errs.Problem with the given
 // category and (optional) subtype, and that its message contains msgContains
 // (skip the message check by passing ""). Returns the Problem so callers can

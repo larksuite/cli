@@ -614,6 +614,47 @@ func TestReplaceSlidePassThroughFailureFields(t *testing.T) {
 	}
 }
 
+// TestReplaceSlidePassesThroughIssues covers the field pointing the other way
+// from failed_reason: the parts were applied and committed, and the backend
+// still had something to say about the page they produced. A finding serious
+// enough to refuse the write leaves as an error carrying the same report, so
+// what arrives here always describes a page that is already stored.
+func TestReplaceSlidePassesThroughIssues(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/slide/replace",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"revision_id": 4,
+				"issues":      "[issue=text_overflows_container id=bgD level=warning]",
+			},
+		},
+	})
+
+	parts := `[{"action":"block_replace","block_id":"bxx","replacement":"<shape type=\"rect\"/>"}]`
+	err := runSlidesShortcut(t, f, stdout, SlidesReplaceSlide, []string{
+		"+replace-slide",
+		"--presentation", "pres_abc",
+		"--slide-id", "s",
+		"--parts", parts,
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data := decodeShortcutData(t, stdout)
+	if issues, _ := data["issues"].(string); issues != "[issue=text_overflows_container id=bgD level=warning]" {
+		t.Fatalf("issues = %#v, want the backend report passed through verbatim", data["issues"])
+	}
+	if _, ok := data["failed_reason"]; ok {
+		t.Fatalf("failed_reason should stay absent on a write that succeeded: %#v", data)
+	}
+}
+
 func TestReplaceSlide3350001ErrorEnrichment(t *testing.T) {
 	t.Parallel()
 

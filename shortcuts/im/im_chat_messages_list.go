@@ -156,11 +156,12 @@ var ImChatMessageList = common.Shortcut{
 		// call, so the per-merge_forward render path doesn't fan out N more
 		// serial contact requests during the FormatMessageItem loop.
 		mergePrefetch := convertlib.PrefetchMergeForwardSubItems(runtime, rawItems, nameCache)
+		folderPrefetch := convertlib.PrefetchFolderChildren(runtime, rawItems)
 
 		downloadResources := runtime.Bool("download-resources")
 		messages := make([]map[string]interface{}, 0, len(rawItems))
 		for _, m := range result.items {
-			messages = append(messages, convertlib.FormatMessageItemWithMergePrefetchOpts(m, runtime, nameCache, mergePrefetch, downloadResources))
+			messages = append(messages, convertlib.FormatMessageItemWithFolderPrefetchOpts(m, runtime, nameCache, mergePrefetch, folderPrefetch, downloadResources))
 		}
 
 		// Enrich: resolve sender names for outer messages (reuses cache from merge_forward)

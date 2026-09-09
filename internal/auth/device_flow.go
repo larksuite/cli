@@ -34,6 +34,7 @@ type DeviceFlowTokenData struct {
 	ExpiresIn        int
 	RefreshExpiresIn int
 	Scope            string
+	StatusMessage    string
 }
 
 // DeviceFlowResult is the result of polling the token endpoint.
@@ -222,6 +223,7 @@ func PollDeviceToken(ctx context.Context, httpClient *http.Client, appId, appSec
 					ExpiresIn:        tokenExpiresIn,
 					RefreshExpiresIn: refreshExpiresIn,
 					Scope:            getStr(data, "scope"),
+					StatusMessage:    getStr(data, "status_message"),
 				},
 			}
 		}

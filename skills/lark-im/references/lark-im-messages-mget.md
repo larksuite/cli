@@ -51,13 +51,30 @@ Each message contains:
 | `sender` | Sender information (includes `name`) |
 | `content` | Message content |
 
+For `folder` messages, `content` carries a folder key; `mget` expands the folder one level (`GET /files/:file_key/folder`), rendering first-level children inside the folder tag:
+
+```
+<folder key="file_v3_...g" name="assets" child_count="5">
+  <file key="file_v3_...g" name="a.pdf"/>
+  <folder key="file_v3_...g" name="sub" child_count="2"/>
+</folder>
+```
+
+- `child_count` on the root folder is the total first-level item count reported by the API; when a folder has more first-level children than the render cap (10), the tag carries `has_more="true"`.
+- `child_count` on a nested `<folder>` child is that child's own child count (a depth hint; nested folders are not expanded further).
+- A genuinely empty folder renders as `<folder key="..." name="..." child_count="0"/>`.
+
 For `post` messages, the attachment zone (top-level `files` array) is rendered as trailing lines in `content`, one per attachment:
 
 - `<file key="file_xxx" name="report.pdf"/>` — a file with a display name (same tag style as a standalone `file` message)
 - `<file key="file_xxx"/>` — a file with an empty display name (the server always backfills names, so this branch is rare but valid on the wire)
-- `<folder key="file_xxx" name="assets"/>` — a folder (`is_folder: true`, same tag style as a standalone `folder` message)
+- `<folder key="file_xxx" name="assets"/>` — a folder attachment (`is_folder: true`). Like folder messages, the attachment is expanded one level (children rendered inside the tag) when runtime + message id are available; otherwise it degrades to this single-line tag.
 
-Use `--format json` to see the full content without table truncation — note the content is the rendered text (including the `<file>`/`<folder>` lines above), not the raw post JSON. Attachment file keys rendered in the tags are eligible for [`+messages-resources-download`](lark-im-messages-resources-download.md) via `--download-resources`.
+Use `--format json` to see the full content without table truncation — note the content is the rendered text (including the `<file>`/`<folder>` lines above), not the raw post JSON.
+
+Downloading: [`+messages-resources-download`](lark-im-messages-resources-download.md) takes an explicit `--message-id` + `--file-key` and fetches `GET /messages/:id/resources/:file_key` — this works for standalone `file` message keys, top-level `post` attachment `files[]` entries, **and file keys rendered inside `<folder>...</folder>` (folder children are real files addressed by their own file_key)**. Two caveats:
+- `--download-resources` (the automatic enrichment flag on list/get commands) only auto-collects top-level single-file resources from the raw content — folder children are expanded at render time and are **not** auto-added to that worklist, so to download a folder child you pass its key explicitly to `+messages-resources-download`.
+- `is_folder` entries themselves (a folder, not a file) are not downloadable as a single resource.
 
 ## Usage Scenarios
 

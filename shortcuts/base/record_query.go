@@ -5,6 +5,7 @@ package base
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/url"
@@ -16,9 +17,10 @@ import (
 )
 
 const (
-	recordFilterJSONFlag = "filter-json"
-	recordSortJSONFlag   = "sort-json"
-	recordSortMaxCount   = 10
+	recordFilterJSONFlag     = "filter-json"
+	recordSortJSONFlag       = "sort-json"
+	recordSortMaxCount       = 10
+	recordSearchFlagModeHint = "In flag mode, provide --keyword and at least one --search-field. For filter/sort-only reads, use base +record-list; it accepts --filter-json and --sort-json. Use --json for a full record-search request body."
 )
 
 func recordFilterFlag() common.Flag {
@@ -277,10 +279,14 @@ func validateRecordSearchFlags(runtime *common.RuntimeContext) error {
 		return nil
 	}
 	if strings.TrimSpace(runtime.Str("keyword")) == "" {
-		return baseFlagErrorf("--keyword is required unless --json is used")
+		return withRecordSearchFlagModeHint(withValidationParam(
+			baseFlagErrorf("--keyword is required unless --json is used"), "--keyword",
+		))
 	}
 	if len(runtime.StrArray("search-field")) == 0 {
-		return baseFlagErrorf("--search-field is required unless --json is used")
+		return withRecordSearchFlagModeHint(withValidationParam(
+			baseFlagErrorf("--search-field is required unless --json is used"), "--search-field",
+		))
 	}
 	if err := validateRecordReadLimit(runtime, 10); err != nil {
 		return err
@@ -289,6 +295,14 @@ func validateRecordSearchFlags(runtime *common.RuntimeContext) error {
 		return err
 	}
 	return validateRecordQueryOptions(runtime)
+}
+
+func withRecordSearchFlagModeHint(err error) error {
+	var validationErr *errs.ValidationError
+	if errors.As(err, &validationErr) {
+		validationErr.WithHint(recordSearchFlagModeHint)
+	}
+	return err
 }
 
 func recordSearchPagination(body map[string]any) (int, int, error) {

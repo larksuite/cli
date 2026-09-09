@@ -523,6 +523,7 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 				"Example with filter/sort JSON",
 				"Text equality filter",
 				"Query priority",
+				"For filter/sort-only reads, use +record-list",
 				"Use --json only when you need to pass the full search body directly",
 				"Example for analysis",
 				"prefer --format ndjson --output ./records.ndjson",
@@ -1613,8 +1614,34 @@ func TestBaseRecordValidate(t *testing.T) {
 	)); err == nil || !strings.Contains(err.Error(), "sort supports at most 10 sort conditions") {
 		t.Fatalf("err=%v", err)
 	}
-	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--keyword is required unless --json is used") {
-		t.Fatalf("err=%v", err)
+	wantFlagModeHint := recordSearchFlagModeHint
+	missingKeywordCases := []struct {
+		name  string
+		flags map[string]string
+	}{
+		{name: "plain", flags: map[string]string{"base-token": "b", "table-id": "tbl_1"}},
+		{name: "filter only", flags: map[string]string{"base-token": "b", "table-id": "tbl_1", "filter-json": `{"logic":"and","conditions":[["Status","==","Todo"]]}`}},
+		{name: "sort only", flags: map[string]string{"base-token": "b", "table-id": "tbl_1", "sort-json": `[{"field":"Updated","desc":true}]`}},
+	}
+	for _, tt := range missingKeywordCases {
+		t.Run("record search missing keyword/"+tt.name, func(t *testing.T) {
+			err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(tt.flags, nil, nil))
+			assertInvalidArgumentValidation(t, err, "--keyword", []string{"--keyword"}, "--keyword is required unless --json is used")
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Hint != wantFlagModeHint {
+				t.Fatalf("problem=%#v, want hint %q", problem, wantFlagModeHint)
+			}
+		})
+	}
+	missingSearchFieldErr := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(
+		map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
+		nil,
+		nil,
+	))
+	assertInvalidArgumentValidation(t, missingSearchFieldErr, "--search-field", []string{"--search-field"}, "--search-field is required unless --json is used")
+	missingSearchFieldProblem, ok := errs.ProblemOf(missingSearchFieldErr)
+	if !ok || missingSearchFieldProblem.Hint != wantFlagModeHint {
+		t.Fatalf("problem=%#v, want hint %q", missingSearchFieldProblem, wantFlagModeHint)
 	}
 	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntimeWithArrays(
 		map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},

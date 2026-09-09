@@ -50,7 +50,7 @@ Calendar 日程 ──meeting_note────────────► Doc（
 │
 └── 录制 ──► Minutes 妙记 (minute_token)
                  ├── AI 产物：Summary / Todo / Chapter / Keyword
-                 ├── Transcript（文字记录）
+                 ├── Transcript（文字记录，别名：「转写」「逐字稿」「文字记录」）
                  └── 原始音视频
 
 本地音视频 ─────────────────────────────► Minutes 妙记 (minute_token)
@@ -61,7 +61,7 @@ Calendar 日程 ──meeting_note────────────► Doc（
 | Calendar 日程 | `event_id` | 日历上的日程，包含时间、参与人、会议室和 RSVP，可预约或关联 VC 会议；不是完整的会议记录。日程上的 `meeting_note` 是用户手工绑定的 Doc，与 AI 智能纪要无关。 |
 | Meeting 会议 | `meeting_id` | 实际发生的视频会议，可以来自 Calendar，也可以是没有日程的即时会议。会议主题、时间、参会人快照和会中事件属于会议数据；Note 与 Minutes 是它可能关联的会后产物。 |
 | Note 智能纪要 | `note_id` | 开启 AI 总结后形成的逻辑产物集合。`note_display_type` 决定获取逐字稿中文字记录的不同方式。 |
-| Minutes 妙记 | `minute_token` | 由会议录制或本地音视频上传生成，包含总结、待办、章节、关键词、文字记录和原始音视频；可以关联 VC 会议，也可以独立存在。 |
+| Minutes 妙记 | `minute_token` | 由会议录制或本地音视频上传生成，包含总结、待办、章节、关键词、文字记录(别名：「转写」「逐字稿」「文字记录」)和原始音视频；可以关联 VC 会议，也可以独立存在。 |
 | Doc 文档 | Doc token | 内容载体，不是会议标识。`note_doc_token`、`shared_doc_tokens` 和部分 `verbatim_doc_token` 指向 Doc；Doc token 不能当作 `note_id` 或 `meeting_id`。 |
 
 ### 核心标识

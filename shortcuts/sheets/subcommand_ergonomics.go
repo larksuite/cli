@@ -53,6 +53,29 @@ var unknownSubcommandHints = map[string]prescription{
 		Command: "+dim-freeze",
 		Hint:    `freeze the first N rows with +dim-freeze --rows N (add --cols M to hold columns too — one call states the whole freeze state)`,
 	},
+	// 08-29..31 reflow, long-tail table. Reading styles back and listing
+	// sub-sheets are both spelled as an option on a command that already
+	// exists, so the invented name has no sibling the ranker could reach.
+	"+cells-get-style": {
+		Command: "+cells-get",
+		Hint:    `read styles with +cells-get --include style (add value / formula / comment to the same list to get them in one call)`,
+	},
+	"+dropdown-list": {
+		Command: "+dropdown-get",
+		Hint:    `read the dropdown on a range with +dropdown-get --range A1 — there is no list form; a range covering several cells reports each one`,
+	},
+	"+sheets-list": {
+		Command: "+workbook-info",
+		Hint:    `+workbook-info lists every sub-sheet with its id, title, and grid size — that is the sheet list`,
+	},
+	"+list-sheets": {
+		Command: "+workbook-info",
+		Hint:    `+workbook-info lists every sub-sheet with its id, title, and grid size — that is the sheet list`,
+	},
+	"+meta": {
+		Command: "+workbook-info",
+		Hint:    `workbook metadata (title, sub-sheets, grid sizes, merged regions) comes from +workbook-info`,
+	},
 }
 
 // InstallUnknownSubcommandHints hooks the sheets group's Args validator, which
