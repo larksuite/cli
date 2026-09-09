@@ -15,6 +15,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/apps/deploy"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -331,6 +332,12 @@ func resolveHTMLDeployAppID(rctx *common.RuntimeContext, plan *htmlDeployPlan) e
 			"name":      deploy.DeriveAppName(plan.AbsEntry),
 			"app_type":  "html",
 			"file_path": plan.AbsEntry,
+		}
+		// Carry the same attribution +create sends. This path exists precisely
+		// for agent-driven publishing, so dropping it would lose attribution on
+		// the apps that need it most.
+		if agent := envvars.AgentName(); agent != "" {
+			body["source_agent"] = agent
 		}
 		data, err := rctx.CallAPITyped("POST", apiBasePath+"/apps", nil, body)
 		if err != nil {
