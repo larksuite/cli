@@ -5,16 +5,17 @@ package skillscheck
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 func TestSuiteTemplateMatchesCropContract(t *testing.T) {
 	repoRoot := filepath.Join("..", "..")
-	raw, err := os.ReadFile(filepath.Join(repoRoot, "isolated-skills", "lark-suite", "SKILL.md"))
+	raw, err := vfs.ReadFile(filepath.Join(repoRoot, "isolated-skills", "lark-suite", "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +36,7 @@ func TestSuiteTemplateMatchesCropContract(t *testing.T) {
 
 func TestSuiteKeywordKeysMatchOfficialSkillDirectories(t *testing.T) {
 	repoRoot := filepath.Join("..", "..")
-	raw, err := os.ReadFile(filepath.Join(repoRoot, "skill-template", "lark-suite-config.json"))
+	raw, err := vfs.ReadFile(filepath.Join(repoRoot, "skill-template", "lark-suite-config.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +47,7 @@ func TestSuiteKeywordKeysMatchOfficialSkillDirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	entries, err := os.ReadDir(filepath.Join(repoRoot, "skills"))
+	entries, err := vfs.ReadDir(filepath.Join(repoRoot, "skills"))
 	if err != nil {
 		t.Fatal(err)
 	}
