@@ -38,6 +38,7 @@ var DocsUpdate = common.Shortcut{
 	Scopes:            []string{"docx:document:write_only", "docx:document:readonly"},
 	ConditionalScopes: docsUpdateWikiLocalResourceScopes,
 	AuthTypes:         []string{"user", "bot"},
+	PostMount:         installDocsContentPathCapture,
 	Flags: concatFlags(
 		[]common.Flag{
 			docsAPIVersionCompatFlag(),
