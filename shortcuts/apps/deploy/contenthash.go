@@ -8,10 +8,8 @@
 package deploy
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -59,11 +57,69 @@ func sortPathsUTF16(paths []string) []string {
 	return paths
 }
 
-// signatureEntry keeps path before signature; a struct rather than a map so
-// the key order is fixed.
+// signatureEntry keeps path before signature, the order the web client's
+// object literal produces and therefore the order JSON.stringify emits.
 type signatureEntry struct {
-	Path      string `json:"path"`
-	Signature string `json:"signature"`
+	Path      string
+	Signature string
+}
+
+// hexDigits is lowercase because that is what JSON.stringify emits for the
+// escapes it does produce.
+const hexDigits = "0123456789abcdef"
+
+// appendJSONString writes s the way JavaScript's JSON.stringify writes a
+// string. encoding/json cannot be used even with SetEscapeHTML(false): Go also
+// escapes U+2028 and U+2029, which JSON.stringify leaves literal. A file name
+// carrying either character would produce a different digest and leave the GUI
+// permanently reporting the content as out of sync -- with no error anywhere to
+// explain it. The rest of the rules match, but they are written out here rather
+// than relied upon, since the whole value of this function is being byte-exact.
+func appendJSONString(dst []byte, s string) []byte {
+	dst = append(dst, '"')
+	for _, r := range s {
+		switch r {
+		case '"':
+			dst = append(dst, '\\', '"')
+		case '\\':
+			dst = append(dst, '\\', '\\')
+		case '\b':
+			dst = append(dst, '\\', 'b')
+		case '\f':
+			dst = append(dst, '\\', 'f')
+		case '\n':
+			dst = append(dst, '\\', 'n')
+		case '\r':
+			dst = append(dst, '\\', 'r')
+		case '\t':
+			dst = append(dst, '\\', 't')
+		default:
+			if r < 0x20 {
+				dst = append(dst, '\\', 'u', '0', '0', hexDigits[r>>4], hexDigits[r&0xF])
+				continue
+			}
+			dst = append(dst, string(r)...)
+		}
+	}
+	return append(dst, '"')
+}
+
+// marshalSignatures renders the array exactly as JSON.stringify would: no
+// whitespace, keys in literal order.
+func marshalSignatures(entries []signatureEntry) []byte {
+	out := make([]byte, 0, 64*len(entries))
+	out = append(out, '[')
+	for i, e := range entries {
+		if i > 0 {
+			out = append(out, ',')
+		}
+		out = append(out, `{"path":`...)
+		out = appendJSONString(out, e.Path)
+		out = append(out, `,"signature":`...)
+		out = appendJSONString(out, e.Signature)
+		out = append(out, '}')
+	}
+	return append(out, ']')
 }
 
 // ContentHash returns the fingerprint for the given file set: a single file is
@@ -88,13 +144,5 @@ func ContentHash(files []HashFile) (string, error) {
 	}
 	sort.Slice(entries, func(i, j int) bool { return utf16Less(entries[i].Path, entries[j].Path) })
 
-	// SetEscapeHTML(false) is load-bearing: Go escapes < > & by default while
-	// JSON.stringify does not, and any difference changes the digest.
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(entries); err != nil {
-		return "", errs.NewInternalError(errs.SubtypeUnknown, "marshal signature array: %v", err).WithCause(err)
-	}
-	return sha256Hex(bytes.TrimRight(buf.Bytes(), "\n")), nil
+	return sha256Hex(marshalSignatures(entries)), nil
 }
