@@ -112,10 +112,12 @@ var DocMediaUpload = common.Shortcut{
 	},
 }
 
-const (
-	officeDocxFileParentType = "office_docx_file"
-	localOfficeWordType      = byte('W')
-)
+const officeDocxFileParentType = "office_docx_file"
+
+// localOfficeWordType is the document-type character a local office Word token
+// ends with. It is read from common rather than spelled out here so this
+// domain's rule cannot drift from the token format common also generates.
+var localOfficeWordType = common.LocalOfficeDocx.Suffix()
 
 // Local Word media uploads use a dedicated Drive mount point.
 func docMediaParentType(parentType, parentNode string) string {
