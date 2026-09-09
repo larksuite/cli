@@ -127,31 +127,24 @@ var DriveDownload = common.Shortcut{
 	Description: "Download a file from Drive to local",
 	Risk:        "read",
 	Scopes:      []string{"drive:file:download"},
-	// Metadata is only required when --output is omitted and the CLI needs the
-	// remote title as the pre-download fallback filename. The wiki scope is only
-	// required when the caller passes a wiki node (--wiki-token or a /wiki/ URL)
-	// that must be resolved to the underlying file token. Permission auth scope
-	// failures are non-blocking so they do not prevent the download API call.
+	// Entity lookup uses metadata permission best-effort. Metadata is required
+	// only for default naming; wiki permission is required only if an explicit
+	// wiki input falls back to get_node. Permission auth scope failures are also
+	// non-blocking so they do not prevent the download API call.
 	ConditionalScopes: []string{common.DrivePermissionMemberAuthScope, driveMetadataReadScope, driveWikiNodeRetrieveScope},
 	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "file-token", Desc: "Drive file token"},
+		{Name: "file-token", Desc: "Drive file token (Wiki tokens are resolved to the underlying file when metadata lookup succeeds)"},
 		{Name: "url", Desc: "Drive file URL, or a wiki node URL that wraps an uploaded file (resolved to the underlying file token)"},
 		{Name: "wiki-token", Desc: "wiki node token wrapping an uploaded file (resolved to the underlying file token)"},
 		{Name: "output", Desc: "local save path"},
 		{Name: "overwrite", Type: "bool", Desc: "overwrite existing output file"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		source, err := normalizeDriveFileSource(runtime.Str("file-token"), runtime.Str("url"), runtime.Str("wiki-token"))
+		_, err := normalizeDriveFileSource(runtime.Str("file-token"), runtime.Str("url"), runtime.Str("wiki-token"))
 		if err != nil {
 			return err
 		}
-		if source.NeedsWikiResolution() {
-			if err := runtime.EnsureScopes([]string{driveWikiNodeRetrieveScope}); err != nil {
-				return err
-			}
-		}
-
 		outputPath := runtime.Str("output")
 		if outputPath == "" {
 			return runtime.EnsureScopes([]string{driveMetadataReadScope})
@@ -170,15 +163,23 @@ var DriveDownload = common.Shortcut{
 		outputPath := runtime.Str("output")
 		plan := common.NewDryRunAPI()
 		step := 1
-
-		fileToken := source.FileToken
+		inputToken := source.FileToken
+		if source.NeedsWikiResolution() {
+			inputToken = source.WikiToken
+		}
+		plan.GET(driveQueryByTokenPath).
+			Desc("[1] Best-effort entity lookup; use obj_token when obj_type is file, otherwise use +export; lookup errors fall back to the original resolution").
+			Params(map[string]interface{}{"token": inputToken})
+		step++
+		fileToken := "resolved_file_token"
 		if source.NeedsWikiResolution() {
 			plan.GET("/open-apis/wiki/v2/spaces/get_node").
-				Desc(fmt.Sprintf("[%d] Resolve wiki node to the underlying Drive file token (obj_type must be file)", step)).
+				Desc(fmt.Sprintf("[%d] Only if entity lookup fails: resolve wiki node to the underlying Drive file token (obj_type must be file)", step)).
 				Params(map[string]interface{}{"token": source.WikiToken})
 			plan.Set("wiki_token", source.WikiToken)
-			fileToken = "obj_token_from_wiki_node"
 			step++
+		} else {
+			plan.Set("fallback_file_token", source.FileToken)
 		}
 
 		common.AddDriveFileExportPermissionDryRun(
@@ -217,17 +218,6 @@ var DriveDownload = common.Shortcut{
 			return err
 		}
 
-		fileToken := source.FileToken
-		var wikiResolution driveFileWikiResolution
-		if source.NeedsWikiResolution() {
-			resolvedToken, resolution, resolveErr := resolveDriveFileWikiSource(ctx, runtime, source)
-			if resolveErr != nil {
-				return resolveErr
-			}
-			fileToken = resolvedToken
-			wikiResolution = resolution
-		}
-
 		outputPath := runtime.Str("output")
 		overwrite := runtime.Bool("overwrite")
 
@@ -241,6 +231,10 @@ var DriveDownload = common.Shortcut{
 			}
 		}
 
+		fileToken, wikiResolution, err := resolveDriveDownloadSource(ctx, runtime, source)
+		if err != nil {
+			return err
+		}
 		allowed, err := common.CheckDriveFileExportPermission(runtime, fileToken)
 		if err != nil {
 			if driveDownloadIsPermissionAuthScopeError(err) {
