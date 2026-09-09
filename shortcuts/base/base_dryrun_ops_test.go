@@ -50,7 +50,7 @@ func TestBaseTableAndFieldListDryRunDefaultsToMaximumPageSize(t *testing.T) {
 	}, factory, stdout); err != nil {
 		t.Fatalf("table list dry-run err=%v", err)
 	}
-	if got := stdout.String(); !strings.Contains(got, "limit=500") || !strings.Contains(got, "offset=0") {
+	if got := stdout.String(); !strings.Contains(got, "limit=300") || !strings.Contains(got, "offset=0") {
 		t.Fatalf("table list dry-run=%s", got)
 	}
 
@@ -59,7 +59,7 @@ func TestBaseTableAndFieldListDryRunDefaultsToMaximumPageSize(t *testing.T) {
 	}, factory, stdout); err != nil {
 		t.Fatalf("field list dry-run err=%v", err)
 	}
-	if got := stdout.String(); !strings.Contains(got, "limit=500") || !strings.Contains(got, "offset=0") {
+	if got := stdout.String(); !strings.Contains(got, "limit=300") || !strings.Contains(got, "offset=0") {
 		t.Fatalf("field list dry-run=%s", got)
 	}
 }

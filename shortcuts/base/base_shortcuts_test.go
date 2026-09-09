@@ -664,8 +664,8 @@ func TestBaseTableAndFieldListPaginationFlagsAreHiddenCompatibilityInputs(t *tes
 		shortcut common.Shortcut
 		defaults map[string]string
 	}{
-		{name: "table list", shortcut: BaseTableList, defaults: map[string]string{"offset": "0", "limit": "500"}},
-		{name: "field list", shortcut: BaseFieldList, defaults: map[string]string{"offset": "0", "limit": "500"}},
+		{name: "table list", shortcut: BaseTableList, defaults: map[string]string{"offset": "0", "limit": "300"}},
+		{name: "field list", shortcut: BaseFieldList, defaults: map[string]string{"offset": "0", "limit": "300"}},
 	}
 
 	for _, tt := range tests {
@@ -1763,7 +1763,7 @@ func TestBasePaginationValidationRejectsOutOfRange(t *testing.T) {
 		{
 			name:     "table list",
 			shortcut: BaseTableList,
-			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b"}, nil, map[string]int{"limit": 501}),
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b"}, nil, map[string]int{"limit": 301}),
 			param:    "--limit",
 		},
 		{
@@ -1781,7 +1781,7 @@ func TestBasePaginationValidationRejectsOutOfRange(t *testing.T) {
 		{
 			name:     "field list",
 			shortcut: BaseFieldList,
-			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, map[string]int{"limit": 501}),
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, map[string]int{"limit": 301}),
 			param:    "--limit",
 		},
 		{
