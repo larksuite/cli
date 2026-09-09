@@ -889,9 +889,15 @@
 
 ### 其他常见错误
 
-**1. 按触发器类型处理空筛选条件**
+**1. condition_list 为空数组**
+```json
+// ❌ 错误
+{ "condition_list": [] }
 
-`AddRecordTrigger` 无额外筛选条件时可省略 `condition_list`；`ChangeRecordTrigger` 的 `condition_list` 及每组 `conditions` 必须非空。
+// ✅ 正确
+{ "condition_list": null }
+// 或省略该字段
+```
 
 **2. filter_info 和 ref_info 同时提供**
 ```json
