@@ -42,6 +42,7 @@ type RuntimeContext struct {
 	Cmd            *cobra.Command
 	Format         string
 	JqExpr         string                            // --jq expression; empty = no filter
+	FieldSelector  string                            // --field envelope key; empty = no projection
 	outputErrOnce  sync.Once                         // guards first-error capture in Out()/OutFormat()
 	outputErr      error                             // deferred error from jq filtering; written at most once
 	botOnly        bool                              // set by framework for bot-only shortcuts
@@ -769,10 +770,44 @@ func (ctx *RuntimeContext) handleEmitterError(err error) {
 		return
 	}
 	var cs *errs.ContentSafetyError
-	if ctx.JqExpr != "" && !errors.As(err, &cs) {
+	if ctx.outputJQ() != "" && !errors.As(err, &cs) {
 		fmt.Fprintf(ctx.IO().ErrOut, "error: %v\n", err)
 	}
 	ctx.outputErrOnce.Do(func() { ctx.outputErr = err })
+}
+
+// outputJQ returns the single output projection applied by the emitter.
+// --field is intentionally implemented as a safely quoted jq lookup so it
+// shares the exact scalar and complex-value rendering semantics of --jq.
+func (ctx *RuntimeContext) outputJQ() string {
+	if ctx.JqExpr != "" {
+		return ctx.JqExpr
+	}
+	if ctx.FieldSelector == "" {
+		return ""
+	}
+	field, _ := json.Marshal(ctx.FieldSelector)
+	return ".[" + string(field) + "]"
+}
+
+func validateOutputProjectionFlags(ctx *RuntimeContext) error {
+	if ctx.FieldSelector != "" {
+		if ctx.JqExpr != "" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--field and --jq are mutually exclusive")
+		}
+		if ctx.Format != "" && ctx.Format != "json" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--field and --format %s are mutually exclusive", ctx.Format)
+		}
+	}
+	return output.ValidateJqFlags(ctx.JqExpr, "", ctx.Format)
+}
+
+func isOutputFieldSelectorFlag(flag *pflag.Flag) bool {
+	if flag == nil {
+		return false
+	}
+	values := flag.Annotations[outputFieldSelectorAnnotation]
+	return len(values) > 0 && values[0] == "true"
 }
 
 // OutputError returns the first deferred output failure captured by Out,
@@ -798,7 +833,7 @@ func (ctx *RuntimeContext) Out(data interface{}, meta *output.Meta) {
 	ctx.handleEmitterError(ctx.newEmitter().Success(data, output.EmitOptions{
 		Format: "",
 		Raw:    false,
-		JQ:     ctx.JqExpr,
+		JQ:     ctx.outputJQ(),
 		Meta:   meta,
 	}))
 }
@@ -810,7 +845,7 @@ func (ctx *RuntimeContext) OutRaw(data interface{}, meta *output.Meta) {
 	ctx.handleEmitterError(ctx.newEmitter().Success(data, output.EmitOptions{
 		Format: "",
 		Raw:    true,
-		JQ:     ctx.JqExpr,
+		JQ:     ctx.outputJQ(),
 		Meta:   meta,
 	}))
 }
@@ -829,7 +864,7 @@ func (ctx *RuntimeContext) OutPartialFailure(data interface{}, meta *output.Meta
 	ctx.handleEmitterError(ctx.newEmitter().PartialFailure(data, output.EmitOptions{
 		Format: "",
 		Raw:    false,
-		JQ:     ctx.JqExpr,
+		JQ:     ctx.outputJQ(),
 		Meta:   meta,
 	}))
 	if ctx.outputErr != nil {
@@ -846,7 +881,7 @@ func (ctx *RuntimeContext) OutFormat(data interface{}, meta *output.Meta, pretty
 	ctx.handleEmitterError(ctx.newEmitter().Success(data, output.EmitOptions{
 		Format: ctx.Format,
 		Raw:    false,
-		JQ:     ctx.JqExpr,
+		JQ:     ctx.outputJQ(),
 		Meta:   meta,
 		Pretty: wrapLegacyPrettyRenderer(prettyFn),
 	}))
@@ -858,7 +893,7 @@ func (ctx *RuntimeContext) OutFormatRaw(data interface{}, meta *output.Meta, pre
 	ctx.handleEmitterError(ctx.newEmitter().Success(data, output.EmitOptions{
 		Format: ctx.Format,
 		Raw:    true,
-		JQ:     ctx.JqExpr,
+		JQ:     ctx.outputJQ(),
 		Meta:   meta,
 		Pretty: wrapLegacyPrettyRenderer(prettyFn),
 	}))
@@ -1020,7 +1055,7 @@ func runTypedMountedShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut
 			return err
 		}
 		rctx := newDryRunRuntimeContext(cmd, f, s, config, as, botOnly)
-		if err := output.ValidateJqFlags(rctx.JqExpr, "", rctx.Format); err != nil {
+		if err := validateOutputProjectionFlags(rctx); err != nil {
 			return err
 		}
 		return runTypedShortcut(f, rctx, s)
@@ -1040,7 +1075,7 @@ func runTypedMountedShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut
 	if err != nil {
 		return err
 	}
-	if err := output.ValidateJqFlags(rctx.JqExpr, "", rctx.Format); err != nil {
+	if err := validateOutputProjectionFlags(rctx); err != nil {
 		return err
 	}
 	return runTypedShortcut(f, rctx, s)
@@ -1146,7 +1181,7 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 			return attributeAliasValidationError(rctx, err)
 		}
 	}
-	if err := output.ValidateJqFlags(rctx.JqExpr, "", rctx.Format); err != nil {
+	if err := validateOutputProjectionFlags(rctx); err != nil {
 		return err
 	}
 	if s.Validate != nil {
@@ -1241,6 +1276,9 @@ func newRuntimeContextBase(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, 
 	applyJSONShorthand(cmd, s)
 	rctx.Format = rctx.Str("format")
 	rctx.JqExpr, _ = cmd.Flags().GetString("jq")
+	if field := cmd.Flags().Lookup("field"); isOutputFieldSelectorFlag(field) {
+		rctx.FieldSelector, _ = cmd.Flags().GetString("field")
+	}
 	return rctx
 }
 
@@ -1400,7 +1438,7 @@ func handleShortcutDryRun(f *cmdutil.Factory, rctx *RuntimeContext, s *Shortcut)
 	}
 	return cmdutil.WriteDryRun(dryResult, cmdutil.DryRunOutputOptions{
 		Format:      rctx.Format,
-		JqExpr:      rctx.JqExpr,
+		JqExpr:      rctx.outputJQ(),
 		CommandPath: rctx.Cmd.CommandPath(),
 		Identity:    rctx.As(),
 		Out:         f.IOStreams.Out,
@@ -1425,6 +1463,8 @@ func rejectPositionalArgs() cobra.PositionalArgs {
 func registerShortcutFlags(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) {
 	registerShortcutFlagsWithContext(context.Background(), cmd, f, s)
 }
+
+const outputFieldSelectorAnnotation = "larksuite.com/cli-output-field-selector"
 
 // shortcutDeclaresJSONFlag reports whether the shortcut itself declares a flag
 // named "json" in its Flags list (custom semantics, e.g. event +subscribe's
@@ -1573,6 +1613,12 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 		})
 	}
 	ensureJSONShorthand(cmd, s)
+	if cmd.Flags().Lookup("field") == nil {
+		cmd.Flags().String("field", "", "select one top-level field from the JSON output envelope")
+		cmd.Flags().Lookup("field").Annotations = map[string][]string{
+			outputFieldSelectorAnnotation: {"true"},
+		}
+	}
 	if s.Risk == "high-risk-write" {
 		cmd.Flags().Bool("yes", false, "confirm high-risk operation")
 	}

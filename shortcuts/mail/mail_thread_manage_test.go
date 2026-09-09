@@ -267,6 +267,46 @@ func TestThreadTrashExecuteCallsOnceWithOnlyThreadIDs(t *testing.T) {
 	}
 }
 
+func TestThreadManageFieldProjectsSuccessEnvelope(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		shortcut common.Shortcut
+		endpoint string
+		args     []string
+	}{
+		{
+			name:     "modify",
+			shortcut: MailThreadModify,
+			endpoint: "batch_modify",
+			args:     []string{"+thread-modify", "--thread-id", "thread-a", "--add-label-id", "FLAGGED", "--format", "json", "--field", "ok"},
+		},
+		{
+			name:     "trash",
+			shortcut: MailThreadTrash,
+			endpoint: "batch_trash",
+			args:     []string{"+thread-trash", "--thread-id", "thread-a", "--yes", "--format", "json", "--field", "ok"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, stdout, _, reg := mailShortcutTestFactory(t)
+			post := stubThreadManagePost(reg, tc.endpoint, map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"status": "accepted"},
+			})
+
+			if err := runMountedMailShortcut(t, tc.shortcut, tc.args, f, stdout); err != nil {
+				t.Fatalf("execute: %v", err)
+			}
+			if len(post.CapturedBodies) != 1 {
+				t.Fatalf("requests = %d, want 1", len(post.CapturedBodies))
+			}
+			if got := strings.TrimSpace(stdout.String()); got != "true" {
+				t.Fatalf("--field ok output = %q, want true", got)
+			}
+		})
+	}
+}
+
 func TestThreadManageDryRunUsesSameRequestShape(t *testing.T) {
 	f, stdout, _, _ := mailShortcutTestFactory(t)
 	err := runMountedMailShortcut(t, MailThreadModify, []string{

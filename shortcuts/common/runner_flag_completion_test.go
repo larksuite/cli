@@ -158,6 +158,27 @@ func TestShortcutMount_JsonFlag_AcceptedWhenHasFormat(t *testing.T) {
 	}
 }
 
+func TestShortcutMount_FieldFlag_AutoRegistered(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	parent := &cobra.Command{Use: "root"}
+	shortcut := Shortcut{
+		Service:     "test",
+		Command:     "+read",
+		Description: "test read",
+		HasFormat:   true,
+		Execute:     func(context.Context, *RuntimeContext) error { return nil },
+	}
+	shortcut.Mount(parent, f)
+
+	cmd, _, err := parent.Find([]string{"+read"})
+	if err != nil {
+		t.Fatalf("Find() error = %v", err)
+	}
+	if flag := cmd.Flags().Lookup("field"); flag == nil {
+		t.Fatal("expected --field output selector to be registered")
+	}
+}
+
 func TestShortcutMount_JsonFlag_SkippedWhenConflict(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	parent := &cobra.Command{Use: "root"}
