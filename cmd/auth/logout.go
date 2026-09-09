@@ -101,6 +101,7 @@ func authLogoutRun(opts *LogoutOptions) error {
 	}
 
 	app.Users = []core.AppUser{}
+	app.CurrentUser = ""
 	if err := core.SaveMultiAppConfig(multi); err != nil {
 		return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 	}

@@ -38,14 +38,36 @@ type AppUser struct {
 
 // AppConfig is a per-app configuration entry (stored format — secrets may be unresolved).
 type AppConfig struct {
-	Name       string      `json:"name,omitempty"`
-	AppId      string      `json:"appId"`
-	AppSecret  SecretInput `json:"appSecret"`
-	Brand      LarkBrand   `json:"brand"`
-	Lang       i18n.Lang   `json:"lang,omitempty"`
-	DefaultAs  Identity    `json:"defaultAs,omitempty"` // AsUser | AsBot | AsAuto
-	StrictMode *StrictMode `json:"strictMode,omitempty"`
-	Users      []AppUser   `json:"users"`
+	Name        string      `json:"name,omitempty"`
+	AppId       string      `json:"appId"`
+	AppSecret   SecretInput `json:"appSecret"`
+	Brand       LarkBrand   `json:"brand"`
+	Lang        i18n.Lang   `json:"lang,omitempty"`
+	DefaultAs   Identity    `json:"defaultAs,omitempty"` // AsUser | AsBot | AsAuto
+	StrictMode  *StrictMode `json:"strictMode,omitempty"`
+	Users       []AppUser   `json:"users"`
+	CurrentUser string      `json:"currentUser,omitempty"`
+}
+
+// ActiveUser returns the persisted active user. Configs written before
+// currentUser existed continue to resolve through Users[0]. A dangling
+// currentUser never silently dispatches as a different user.
+func (a *AppConfig) ActiveUser() (*AppUser, error) {
+	if a.CurrentUser != "" {
+		for i := range a.Users {
+			if a.Users[i].UserOpenId == a.CurrentUser {
+				return &a.Users[i], nil
+			}
+		}
+		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+			"active user %q not found in profile %q", a.CurrentUser, a.ProfileName()).
+			WithField("currentUser").
+			WithHint("run `lark-cli auth users list`, then select an available user with `lark-cli auth users use <open_id|user_name>`")
+	}
+	if len(a.Users) > 0 {
+		return &a.Users[0], nil
+	}
+	return nil, nil
 }
 
 // ProfileName returns the display name for this app config.
@@ -301,9 +323,13 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 		Lang:        app.Lang,
 		DefaultAs:   app.DefaultAs,
 	}
-	if len(app.Users) > 0 {
-		cfg.UserOpenId = app.Users[0].UserOpenId
-		cfg.UserName = app.Users[0].UserName
+	user, err := app.ActiveUser()
+	if err != nil {
+		return nil, err
+	}
+	if user != nil {
+		cfg.UserOpenId = user.UserOpenId
+		cfg.UserName = user.UserName
 	}
 	return cfg, nil
 }

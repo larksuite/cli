@@ -426,6 +426,28 @@ func TestSaveAsProfile_RejectsProfileNameCollisionWithExistingAppID(t *testing.T
 	}
 }
 
+func TestSaveAsProfile_AppIDChangeClearsCurrentUser(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	existing := &core.MultiAppConfig{
+		Apps: []core.AppConfig{{
+			Name:        "prod",
+			AppId:       "app-old",
+			AppSecret:   core.PlainSecret("old-secret"),
+			Brand:       core.BrandFeishu,
+			CurrentUser: "ou_old",
+			Users:       []core.AppUser{{UserOpenId: "ou_old", UserName: "old"}},
+		}},
+	}
+
+	if err := saveAsProfile(existing, keychain.KeychainAccess(&noopConfigKeychain{}), "prod", "app-new", core.PlainSecret("new-secret"), core.BrandLark, "en"); err != nil {
+		t.Fatalf("saveAsProfile() error = %v", err)
+	}
+	if len(existing.Apps[0].Users) != 0 || existing.Apps[0].CurrentUser != "" {
+		t.Fatalf("updated app = %#v, want users and currentUser cleared", existing.Apps[0])
+	}
+}
+
 // TestWrapSaveConfigError_PassesTypedValidationThrough pins that a user-input
 // validation error (e.g. the --name conflict) is not reclassified as an
 // internal storage failure on its way up through the save call sites.

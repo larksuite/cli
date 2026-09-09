@@ -354,3 +354,42 @@ func TestAuthLogoutRun_RevokeFailureStillClearsLocalState(t *testing.T) {
 		t.Fatalf("expected users cleared, got %#v", saved.Apps)
 	}
 }
+
+func TestAuthLogoutRun_ClearsCurrentUser(t *testing.T) {
+	keyring.MockInit()
+	setupLoginConfigDir(t)
+	t.Setenv("HOME", t.TempDir())
+
+	multi := &core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []core.AppConfig{{
+			Name:        "default",
+			AppId:       "cli_test",
+			AppSecret:   core.PlainSecret("secret"),
+			Brand:       core.BrandFeishu,
+			CurrentUser: "ou_user",
+			Users:       []core.AppUser{{UserOpenId: "ou_user", UserName: "tester"}},
+		}},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		ProfileName: "default",
+		AppID:       "cli_test",
+		AppSecret:   "secret",
+		Brand:       core.BrandFeishu,
+	})
+	if err := authLogoutRun(&LogoutOptions{Factory: f}); err != nil {
+		t.Fatalf("authLogoutRun() error = %v", err)
+	}
+
+	saved, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig() error = %v", err)
+	}
+	if saved.Apps[0].CurrentUser != "" {
+		t.Fatalf("CurrentUser = %q, want empty", saved.Apps[0].CurrentUser)
+	}
+}
