@@ -67,29 +67,36 @@
 - `normal`：按内容需要使用组件；只有能降低理解、执行或出错成本时才扩展视觉表达。
 - `rich`：主动利用图片、画板、HTML 和其他飞书组件；每个组件须有明确目的，不设全局数量配额。
 
-### Step 4：声明需校验的约束，并初始化草稿。
+### Step 4：提交 Presentation Decision，并初始化草稿。
 
-按实际要求声明需要机器校验的约束；没有此类约束时使用 `{}`。格式和错误处理详见 [`docs +script`](lark-doc-script.md)。
+生成完整 JSON；字段值必须来自 Step 1–3，不得照抄示例。`word_count` 仅在用户明确提出字数要求时加入，使用 `min` / `max`；单边无限制写 `null`，“约 N 字”按 ±10%，无要求时省略整个字段：
 
-| 本次需要校验什么 | 决策示例 |
-|-|-|
-| 无字数或块数量要求 | `{}` |
-| 仅要求 800–1200 字 | `{"word_count":{"min":800,"max":1200}}` |
-| 至少一张画板 | `{"visual_plan":{"blocks":[{"type":"whiteboard","min_count":1}]}}` |
+```json
+{
+  "audience": "项目负责人",
+  "reader_task": "判断偏差并决定下一轮动作",
+  "genre_contract": null,
+  "adapter": null,
+  "presentation_mode": "rich",
+  "visual_plan": {
+    "reason": "需要用因果图解释偏差来源与后续行动依赖",
+    "blocks": [
+      {"type": "whiteboard", "min_count": 1, "purpose": "展示偏差成因与行动依赖"}
+    ]
+  }
+}
+```
 
-字数和块数量要求可组合；字数单边无限制时写 `null`，“约 N 字”按 ±10%。受众、阅读任务、体裁、视觉策略、reason、purpose 等描述信息有助于后续创作时再填写，均可省略或为空。
-
-缺失字段不启用对应检查。对用户明确提出的数量要求，写出完整条目，才能让 CLI 实际检查。
-
-不预建临时目录、草稿或决策文件。以下命令适用于无可量化约束的情况；有约束时替换其中的 JSON：
+不预建临时目录、草稿或决策文件。将上述 JSON 原样替换命令中的占位符并实际执行：
 
 ```bash
-lark-cli docs +script --command init-draft --presentation-decision '{}' --format json
+lark-cli docs +script --command init-draft --presentation-decision '<上方完整 JSON>' --format json
 ```
 
 成功后：
 
-- 将 `data.cwd` 作为后续 CLI 调用的工作目录；将 `data.workspace` 原样记为 `work_dir`、`data.draft_path` 原样记为 `draft_path`。写文件工具需要绝对路径时使用 `<cwd>/<draft_path>`，CLI 使用 `@./<draft_path>`。
+- 后续每次 CLI 调用的工作目录固定为 `data.cwd`。`data.workspace` 和 `data.draft_path` 均相对此目录，分别记为 `work_dir` 和 `draft_path`；其中 `draft_path` 已包含工作区前缀。
+- 写文件工具需要绝对路径时，使用 `<data.cwd>/<data.draft_path>`；CLI 读取草稿时，在 `data.cwd` 下使用 `--content "@./<data.draft_path>"`。
 - CLI 会创建独占的 `work_dir` 并保存 `.presentation-decision.json` 作为固定基线，**但不会创建 `draft_path` 指向的 XML**。`draft_path` 是当前任务可直接写入的新文件路径；要求、资料或 contract 实质变化时，提交新决策并重新初始化，不得直接改基线。
 
 ### Step 5：生成 release candidate。
@@ -97,7 +104,7 @@ lark-cli docs +script --command init-draft --presentation-decision '{}' --format
 读取 [`lark-doc-xml.md`](lark-doc-xml.md)，并结合 Presentation Decision、适用 contract 和 Philosophy 生成完整 XML。使用扩展标签时按需读取 [`拓展标签`](lark-doc-xml-extended-blocks.md)。
 
 1. 公开网络图片使用 `<img href="URL"/>`；已有本地图片使用 `<img path="@./downloads/image.png"/>`；画板使用 `<whiteboard type="svg" path="@./<work_dir>/diagram.svg"/>` 并遵循[`画板工作流`](lark-doc-whiteboard.md)；HTML 使用 `<html5-block path="@./<work_dir>/widget.html"/>` 并遵循[`拓展标签`](lark-doc-xml-extended-blocks.md)。
-2. 直接在 `<cwd>/<draft_path>` 创建并写入完整 release candidate。新建资源建议放 `<cwd>/<work_dir>`，已有资源可原地复用；CWD 内优先用相对路径，其他位置用允许访问的绝对路径。XML 内相对资源先查 CWD，仅文件不存在时回退到 XML 所在目录。
+2. 直接在 `<data.cwd>/<draft_path>` 创建并写入完整 release candidate。新建资源建议放 `<data.cwd>/<work_dir>`，已有资源可原地复用；CWD 内优先用相对路径，其他位置用允许访问的绝对路径。XML 内相对资源先查 CWD，仅文件不存在时回退到 XML 所在目录。
 3. 首次写入后，发现 XML 语法问题时只修复最小范围，不无故重写正确内容。
 
 ### Step 6：执行 Draft Profile Check。
