@@ -153,6 +153,52 @@ func TestBuildThreadModifyRequestValidation(t *testing.T) {
 	requireMessageManageValidationParam(t, err, "--folder-id")
 }
 
+func TestThreadManageRejectsBlankMailboxBeforeRequest(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		shortcut common.Shortcut
+		args     []string
+	}{
+		{
+			name:     "modify",
+			shortcut: MailThreadModify,
+			args:     []string{"+thread-modify", "--mailbox", "   ", "--thread-id", "thread-a", "--add-label-id", "FLAGGED"},
+		},
+		{
+			name:     "trash",
+			shortcut: MailThreadTrash,
+			args:     []string{"+thread-trash", "--mailbox", "   ", "--thread-id", "thread-a", "--yes"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, stdout, _, _ := mailShortcutTestFactory(t)
+			err := runMountedMailShortcut(t, tc.shortcut, tc.args, f, stdout)
+			requireMessageManageValidationParam(t, err, "--mailbox")
+		})
+	}
+}
+
+func TestThreadManageMailboxNormalizationPreservesDefault(t *testing.T) {
+	modify, err := buildThreadModifyRequest(" me ", threadModifyInput{
+		ThreadIDs:   []string{"thread-a"},
+		AddLabelIDs: []string{"FLAGGED"},
+	})
+	if err != nil {
+		t.Fatalf("build modify request: %v", err)
+	}
+	if modify.Path != "/open-apis/mail/v1/user_mailboxes/me/threads/batch_modify" {
+		t.Fatalf("modify path = %q", modify.Path)
+	}
+
+	trash, err := buildThreadTrashRequest(" me ", []string{"thread-a"})
+	if err != nil {
+		t.Fatalf("build trash request: %v", err)
+	}
+	if trash.Path != "/open-apis/mail/v1/user_mailboxes/me/threads/batch_trash" {
+		t.Fatalf("trash path = %q", trash.Path)
+	}
+}
+
 func TestThreadModifyExecuteCallsOnceAndPassesThroughData(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	post := stubThreadManagePost(reg, "batch_modify", map[string]interface{}{

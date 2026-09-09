@@ -146,6 +146,10 @@ func threadTrashAPIRequest(rt *common.RuntimeContext) (threadAPIRequest, error) 
 // buildThreadModifyRequest is the pure source of truth shared by validation,
 // dry-run, and execution. Its body is an explicit allowlist by construction.
 func buildThreadModifyRequest(mailboxID string, raw threadModifyInput) (threadAPIRequest, error) {
+	mailboxID, err := normalizeThreadMailboxID(mailboxID)
+	if err != nil {
+		return threadAPIRequest{}, err
+	}
 	threadIDs, err := normalizeThreadIDs(raw.ThreadIDs, "--thread-id", true)
 	if err != nil {
 		return threadAPIRequest{}, err
@@ -193,6 +197,10 @@ func buildThreadModifyRequest(mailboxID string, raw threadModifyInput) (threadAP
 // buildThreadTrashRequest mirrors user_mailbox.threads.batch_trash exactly:
 // the request has one and only one body field, thread_ids.
 func buildThreadTrashRequest(mailboxID string, rawThreadIDs []string) (threadAPIRequest, error) {
+	mailboxID, err := normalizeThreadMailboxID(mailboxID)
+	if err != nil {
+		return threadAPIRequest{}, err
+	}
 	threadIDs, err := normalizeThreadIDs(rawThreadIDs, "--thread-id", true)
 	if err != nil {
 		return threadAPIRequest{}, err
@@ -202,6 +210,14 @@ func buildThreadTrashRequest(mailboxID string, rawThreadIDs []string) (threadAPI
 		Path:   mailboxPath(mailboxID, "threads", "batch_trash"),
 		Body:   map[string]interface{}{"thread_ids": threadIDs},
 	}, nil
+}
+
+func normalizeThreadMailboxID(mailboxID string) (string, error) {
+	mailboxID = strings.TrimSpace(mailboxID)
+	if mailboxID == "" {
+		return "", mailValidationParamError("--mailbox", "--mailbox must not be empty")
+	}
+	return mailboxID, nil
 }
 
 func normalizeThreadIDs(raw []string, flagName string, required bool) ([]string, error) {
