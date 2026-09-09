@@ -892,13 +892,12 @@ func newLocalDocResource(runtime *common.RuntimeContext, kind localDocResourceKi
 	if isReservedLocalDocResourceMarker(pathValue) {
 		return localDocResource{}, localResourceValidationError(kind, occurrence, "path uses a reserved lark-cli marker")
 	}
-	relPath := strings.TrimSpace(strings.TrimPrefix(pathValue, "@"))
-	clean := filepath.Clean(relPath)
-	if relPath == "" || filepath.IsAbs(clean) || clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return localDocResource{}, localResourceValidationError(kind, occurrence, "path must be a relative file inside the current working directory")
+	filePath := strings.TrimSpace(strings.TrimPrefix(pathValue, "@"))
+	if filePath == "" {
+		return localDocResource{}, localResourceValidationError(kind, occurrence, "path cannot be empty after @")
 	}
 
-	info, err := runtime.FileIO().Stat(clean)
+	resolvedPath, info, err := statDocResource(runtime, filePath)
 	if err != nil {
 		return localDocResource{}, localResourceValidationErrorWithCause(kind, occurrence, "file does not exist or its path is unsafe", err)
 	}
@@ -908,7 +907,7 @@ func newLocalDocResource(runtime *common.RuntimeContext, kind localDocResourceKi
 	if info.Size() <= 0 {
 		return localDocResource{}, localResourceValidationError(kind, occurrence, "file must not be empty")
 	}
-	file, err := runtime.FileIO().Open(clean)
+	file, err := runtime.FileIO().Open(resolvedPath)
 	if err != nil {
 		return localDocResource{}, localResourceValidationErrorWithCause(kind, occurrence, "file is not readable", err)
 	}
@@ -917,7 +916,7 @@ func newLocalDocResource(runtime *common.RuntimeContext, kind localDocResourceKi
 	}
 	var imageWidth, imageHeight int
 	if kind == localDocResourceImage {
-		imageWidth, imageHeight, _, err = detectImageConfigFromPath(runtime.FileIO(), clean)
+		imageWidth, imageHeight, _, err = detectImageConfigFromPath(runtime.FileIO(), resolvedPath)
 		if err != nil || imageWidth <= 0 || imageHeight <= 0 {
 			if err == nil {
 				err = invalidLocalDocImageDimensionsError()
@@ -934,8 +933,8 @@ func newLocalDocResource(runtime *common.RuntimeContext, kind localDocResourceKi
 		Occurrence:  occurrence,
 		Kind:        kind,
 		Marker:      marker,
-		Path:        clean,
-		FileName:    filepath.Base(clean),
+		Path:        resolvedPath,
+		FileName:    filepath.Base(resolvedPath),
 		Size:        info.Size(),
 		ImageWidth:  imageWidth,
 		ImageHeight: imageHeight,

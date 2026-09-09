@@ -69,7 +69,7 @@
 
 ### Step 4：提交 Presentation Decision，并初始化草稿。
 
-生成完整 JSON；字段值必须来自 Step 1–3，不得照抄示例。`word_count` 仅在用户明确提出字数要求时加入，使用 `min` / `max`；单边无限制写 `null`，“约 N 字”按 ±10%，无要求时省略整个字段：
+生成决策 JSON；填写的描述信息应来自 Step 1–3，不得照抄示例。CLI 仅强制检查 `word_count` 和 `visual_plan.blocks` 的硬约束；`audience`、`reader_task`、`genre_contract`、`adapter`、`presentation_mode`、`reason` 和 `purpose` 均可省略、为空字符串或 `null`。`word_count` 仅在用户明确提出字数要求时加入，使用 `min` / `max`；单边无限制写 `null`，“约 N 字”按 ±10%，无要求时省略整个字段：
 
 ```json
 {
@@ -95,15 +95,15 @@ lark-cli docs +script --command init-draft --presentation-decision '<上方完�
 
 成功后：
 
-- 保持当前工作目录不变；将 `data.workspace` 原样记为 `work_dir`，将 `data.draft_path` 原样记为 `draft_path`；遵循 `data.tip`，后续始终使用 `@./<draft_path>`。
+- 将 `data.cwd` 作为后续 CLI 调用的工作目录；将 `data.workspace` 原样记为 `work_dir`、`data.draft_path` 原样记为 `draft_path`。写文件工具需要绝对路径时使用 `<cwd>/<draft_path>`，CLI 使用 `@./<draft_path>`。
 - CLI 会创建独占的 `work_dir` 并保存 `.presentation-decision.json` 作为固定基线，**但不会创建 `draft_path` 指向的 XML**。`draft_path` 是当前任务可直接写入的新文件路径；要求、资料或 contract 实质变化时，提交新决策并重新初始化，不得直接改基线。
 
 ### Step 5：生成 release candidate。
 
 读取 [`lark-doc-xml.md`](lark-doc-xml.md)，并结合 Presentation Decision、适用 contract 和 Philosophy 生成完整 XML。使用扩展标签时按需读取 [`拓展标签`](lark-doc-xml-extended-blocks.md)。
 
-1. 公开网络图片使用 `<img href="URL"/>`；已有本地图片使用 `<img path="@./relative/path"/>`；画板使用 `<whiteboard path="@./relative/path"/>` 并遵循[`画板工作流`](lark-doc-whiteboard.md)；HTML 使用 `<html5-block path="@./file.html"/>` 并遵循[`拓展标签`](lark-doc-xml-extended-blocks.md)。
-2. 直接在 Step 4 返回的 `draft_path` 创建并写入完整 release candidate。
+1. 公开网络图片使用 `<img href="URL"/>`；已有本地图片使用 `<img path="@./downloads/image.png"/>`；画板使用 `<whiteboard path="@./<work_dir>/diagram.svg"/>` 并遵循[`画板工作流`](lark-doc-whiteboard.md)；HTML 使用 `<html5-block path="@./<work_dir>/widget.html"/>` 并遵循[`拓展标签`](lark-doc-xml-extended-blocks.md)。
+2. 直接在 `<cwd>/<draft_path>` 创建并写入完整 release candidate。新建资源建议放 `<cwd>/<work_dir>`，已有资源可原地复用；CWD 内优先用相对路径，其他位置用允许访问的绝对路径。XML 内相对资源先查 CWD，仅文件不存在时回退到 XML 所在目录。
 3. 首次写入后，发现 XML 语法问题时只修复最小范围，不无故重写正确内容。
 
 ### Step 6：执行 Draft Profile Check。
