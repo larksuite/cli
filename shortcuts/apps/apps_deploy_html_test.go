@@ -413,16 +413,21 @@ func TestHTMLDeployExecute_LookupHit(t *testing.T) {
 	if len(uploaded) == 0 {
 		t.Error("zip body not uploaded")
 	}
-	// The release carries the content fingerprint.
+	// The release carries the content fingerprint. extra is a JSON *string* on
+	// the wire: an object form still gets a 200 back, so only an assertion on
+	// the encoding catches a regression here.
 	var releaseBody struct {
-		Extra map[string]interface{} `json:"extra"`
+		Extra string `json:"extra"`
 	}
 	if err := json.Unmarshal(release.CapturedBody, &releaseBody); err != nil {
-		t.Fatalf("decode release body: %v", err)
+		t.Fatalf("decode release body (extra must be a JSON string, not an object): %v", err)
 	}
-	tag, _ := releaseBody.Extra["hash_tag"].(string)
-	if len(tag) != 64 {
-		t.Errorf("extra.hash_tag = %q, want a 64-char digest", tag)
+	var extra map[string]string
+	if err := json.Unmarshal([]byte(releaseBody.Extra), &extra); err != nil {
+		t.Fatalf("extra is not a JSON document: %q (%v)", releaseBody.Extra, err)
+	}
+	if len(extra["hash_tag"]) != 64 {
+		t.Errorf("extra.hash_tag = %q, want a 64-char digest", extra["hash_tag"])
 	}
 	data := parseEnvelopeData(t, stdout)
 	if data["app_id"] != "app_x" || data["release_id"] != "rel_1" || data["online_url"] != "https://x/app/app_x" {
@@ -476,9 +481,14 @@ func TestHTMLDeployExecute_CreateFallback(t *testing.T) {
 	if body["name"] != "report" {
 		t.Errorf("name = %v, want the entry base name", body["name"])
 	}
+	// Creation is what registers the idempotency key, so the field name has to
+	// match what the lookup queries by — file_path would be silently ignored.
 	wantPath := filepath.Join(resolvedRoot(t, root), "report.html")
-	if body["file_path"] != wantPath {
-		t.Errorf("file_path = %v, want %q", body["file_path"], wantPath)
+	if body["idempotent_key"] != wantPath {
+		t.Errorf("idempotent_key = %v, want %q", body["idempotent_key"], wantPath)
+	}
+	if _, stale := body["file_path"]; stale {
+		t.Error("file_path must not be sent: the server registers the key under idempotent_key")
 	}
 	data := parseEnvelopeData(t, stdout)
 	if data["app_id"] != "app_new" || data["release_id"] != "rel_2" {

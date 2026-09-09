@@ -331,9 +331,19 @@ func toAppDevEntries(in []deploy.PackEntry) []appDevPackEntry {
 // project mode keeps its empty body.
 func htmlReleaseBody(contentHash string) map[string]interface{} {
 	body := map[string]interface{}{}
-	if contentHash != "" {
-		body["extra"] = map[string]interface{}{"hash_tag": contentHash}
+	if contentHash == "" {
+		return body
 	}
+	// extra is a JSON *string* on the wire, not a nested object. Sending an
+	// object still returns 200 — the server just cannot read it — so the
+	// fingerprint would be silently dropped rather than rejected.
+	encoded, err := json.Marshal(map[string]string{"hash_tag": contentHash})
+	if err != nil {
+		// map[string]string of one known-good value cannot fail to marshal;
+		// dropping extra is safer than shipping a malformed body.
+		return body
+	}
+	body["extra"] = string(encoded)
 	return body
 }
 
@@ -344,9 +354,12 @@ func htmlReleaseBody(contentHash string) map[string]interface{} {
 // separate so the dry-run preview shows exactly the body the live call sends.
 func htmlCreateBody(absEntry string) map[string]interface{} {
 	body := map[string]interface{}{
-		"name":      deploy.DeriveAppName(absEntry),
-		"app_type":  "html",
-		"file_path": absEntry,
+		"name":     deploy.DeriveAppName(absEntry),
+		"app_type": "html",
+		// Same key the lookup queries by: creation is what registers it, so a
+		// later publish of the same entry finds this app instead of making a
+		// second one. apps has no +delete, so a missed match is not recoverable.
+		"idempotent_key": absEntry,
 	}
 	// Carry the same attribution +create sends. This path exists precisely for
 	// agent-driven publishing, so dropping it would lose attribution on the
