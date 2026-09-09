@@ -49,6 +49,31 @@ func TestDocsCreateAsyncReadFailureIsNotSuccess(t *testing.T) {
 	}
 }
 
+func TestDocsCreateAsyncUnsupportedStatus(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{Method: "POST", URL: "/docs_ai/v1/documents", Status: 200,
+		Headers: http.Header{"X-Tt-Logid": {"create-unsupported-log"}},
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"task": map[string]interface{}{
+			"task_id": "task_unsupported", "status": "unsupported",
+		}}},
+	})
+	parent := &cobra.Command{Use: "docs", SilenceErrors: true, SilenceUsage: true}
+	DocsCreate.Mount(parent, f)
+	parent.SetArgs([]string{"+create", "--content", "<title>Async</title><p>Body</p>", "--as", "user"})
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	err := parent.ExecuteContext(ctx)
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeInvalidResponse || problem.LogID != "create-unsupported-log" {
+		t.Fatalf("unsupported status was not classified: err=%v problem=%+v", err, problem)
+	}
+	assertDocsCreateErrorHasNoTaskRecovery(t, err, "task_unsupported")
+	if stdout.Len() != 0 {
+		t.Fatalf("unsupported status emitted success: %s", stdout)
+	}
+}
+
 func TestDocsCreateAsyncDeadlineCancelsInflightRead(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	cfg := docsCreateTestConfig(t, "")
@@ -398,9 +423,8 @@ func TestDocsCreateBatchHintCommandsDryRun(t *testing.T) {
 	}
 	for i, command := range commands {
 		t.Run([]string{"create", "append"}[i], func(t *testing.T) {
-			// The quoted placeholders in these examples contain no spaces. Fill
-			// them with fixtures and execute the actual published argument list.
-			example := strings.NewReplacer("<title>", "Batch", "<document_id>", "doxcnBatchHint").Replace(command[1])
+			// Supply a content batch for each abbreviated command in the hint.
+			example := strings.ReplaceAll(command[1], "<document_id>", "doxcnBatchHint")
 			args := strings.Fields(example)
 			if len(args) < 3 || args[0] != "lark-cli" || args[1] != "docs" {
 				t.Fatalf("invalid command example: %q", example)
@@ -413,7 +437,7 @@ func TestDocsCreateBatchHintCommandsDryRun(t *testing.T) {
 			parent := &cobra.Command{Use: "docs", SilenceErrors: true, SilenceUsage: true}
 			DocsCreate.Mount(parent, f)
 			DocsUpdate.Mount(parent, f)
-			parent.SetArgs(append(args, "--dry-run", "--as", "user"))
+			parent.SetArgs(append(args, "--doc-format", "xml", "--content", "@./batch.xml", "--dry-run", "--as", "user"))
 			if err := parent.Execute(); err != nil {
 				t.Fatalf("hint command %q is invalid: %v", example, err)
 			}
@@ -439,8 +463,8 @@ func TestDocsCreateBatchHintCommandsDryRun(t *testing.T) {
 			}
 			api := envelope.Data.API[0]
 			if i == 0 {
-				if api.Method != "POST" || api.URL != "/open-apis/docs_ai/v1/documents" || api.Body.Content != "<title>Batch</title>" {
-					t.Fatalf("create example did not create a title-only document: %s", stdout)
+				if api.Method != "POST" || api.URL != "/open-apis/docs_ai/v1/documents" || api.Body.Content != "<p>Batch</p>" {
+					t.Fatalf("create example did not create the first content batch: %s", stdout)
 				}
 			} else if api.Method != "PUT" || api.URL != "/open-apis/docs_ai/v1/documents/doxcnBatchHint" || api.Body.Command != "block_insert_after" || api.Body.BlockID != "-1" || api.Body.Format != "xml" || api.Body.Content != "<p>Batch</p>" {
 				t.Fatalf("append example did not append the XML batch to the returned document: %s", stdout)
