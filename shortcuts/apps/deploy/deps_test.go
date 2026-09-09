@@ -54,18 +54,14 @@ func TestCollectFileFollowsDependencyClosure(t *testing.T) {
 </head><body>
   <img src="assets/logo.png" srcset="assets/logo.png 1x, assets/logo@2x.png 2x">
   <div style="background-image:url(assets/inline.png)"></div>
-  <script type="module" src="app.js"></script>
+  <script src="app.js"></script>
+  <script src="lib/boot.js"></script>
 </body></html>`)
 	mustWrite(t, filepath.Join(root, "style.css"), `@import "theme.css";
 .a { background: url('assets/bg.jpg'); }`)
 	mustWrite(t, filepath.Join(root, "theme.css"), `.b{}`)
-	mustWrite(t, filepath.Join(root, "app.js"), `import {x} from "./lib/util.js";
-import "./side.js";
-const p = import('./lazy.js');
-import react from "react";`)
-	mustWrite(t, filepath.Join(root, "lib", "util.js"), `export const x = 1;`)
-	mustWrite(t, filepath.Join(root, "side.js"), ``)
-	mustWrite(t, filepath.Join(root, "lazy.js"), ``)
+	mustWrite(t, filepath.Join(root, "app.js"), `document.title = "ok";`)
+	mustWrite(t, filepath.Join(root, "lib", "boot.js"), `window.booted = true;`)
 	for _, a := range []string{"favicon.png", "bg.jpg", "logo.png", "logo@2x.png", "inline.png"} {
 		mustWrite(t, filepath.Join(root, "assets", a), "img")
 	}
@@ -76,14 +72,40 @@ import react from "react";`)
 	rels, skipped := collectRels(t, root, "page.html")
 	want := []string{
 		"app.js", "assets/bg.jpg", "assets/favicon.png", "assets/inline.png",
-		"assets/logo.png", "assets/logo@2x.png", "lazy.js", "lib/util.js",
-		"page.html", "side.js", "style.css", "theme.css",
+		"assets/logo.png", "assets/logo@2x.png", "lib/boot.js",
+		"page.html", "style.css", "theme.css",
 	}
 	if strings.Join(rels, ",") != strings.Join(want, ",") {
 		t.Fatalf("closure mismatch:\n got %v\nwant %v", rels, want)
 	}
 	if len(skipped) != 0 {
 		t.Fatalf("expected no skips, got %v", skipped)
+	}
+}
+
+// ESM module specifiers are followed when a payload does use them, but no other
+// test depends on module scripts: a bare HTML page normally loads plain
+// scripts, and the closure must be provable without ESM semantics.
+func TestCollectFileFollowsESMSpecifiers(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "page.html"), `<script type="module" src="app.js"></script>`)
+	mustWrite(t, filepath.Join(root, "app.js"), `import {x} from "./lib/util.js";
+import "./side.js";
+const p = import('./lazy.js');
+import react from "react";`)
+	mustWrite(t, filepath.Join(root, "lib", "util.js"), `export const x = 1;`)
+	mustWrite(t, filepath.Join(root, "side.js"), ``)
+	mustWrite(t, filepath.Join(root, "lazy.js"), ``)
+
+	rels, skipped := collectRels(t, root, "page.html")
+	want := []string{"app.js", "lazy.js", "lib/util.js", "page.html", "side.js"}
+	if strings.Join(rels, ",") != strings.Join(want, ",") {
+		t.Fatalf("got %v, want %v", rels, want)
+	}
+	// "react" is a package name, not a file in the payload: following it would
+	// be wrong rather than merely useless, so it must not even be reported.
+	if len(skipped) != 0 {
+		t.Fatalf("a bare specifier must not be reported as a skip: %v", skipped)
 	}
 }
 
