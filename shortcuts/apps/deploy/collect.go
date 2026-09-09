@@ -58,13 +58,27 @@ func canonicalAbs(relPath string) (string, error) {
 	return resolved, nil
 }
 
+// inputPathError re-frames the sandbox rejection that FileIO.Stat returns.
+// Left unwrapped it surfaces as an internal error naming --file — a flag this
+// command does not have — and suggests reading out-of-tree content from stdin,
+// which does not apply to a publish payload. Callers pass their own flag name.
+func inputPathError(param, path string, cause error) error {
+	// The cause is attached but not interpolated: its text names --file and
+	// offers a stdin fallback, neither of which exists on this command.
+	return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+		"%s %q is not usable: it must be a path relative to the current directory, and must resolve inside it", param, path).
+		WithParam(param).
+		WithCause(cause).
+		WithHint("cd to the directory that holds the payload, then pass a relative path (absolute paths and paths escaping the current directory are rejected)")
+}
+
 // CollectFile resolves a single-file payload. relPath goes through the caller's
 // FileIO so the cwd sandbox check runs; the resolved absolute path is returned
 // for use as the idempotency key.
 func CollectFile(fio fileio.FileIO, relPath string) ([]Candidate, string, error) {
 	st, err := fio.Stat(relPath)
 	if err != nil {
-		return nil, "", err
+		return nil, "", inputPathError("--file-path", relPath, err)
 	}
 	if !st.Mode().IsRegular() {
 		return nil, "", errs.NewValidationError(errs.SubtypeFailedPrecondition,
@@ -84,7 +98,7 @@ func CollectFile(fio fileio.FileIO, relPath string) ([]Candidate, string, error)
 func CollectDir(fio fileio.FileIO, relDir string) ([]Candidate, []string, string, error) {
 	st, err := fio.Stat(relDir)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", inputPathError("--dir", relDir, err)
 	}
 	if !st.IsDir() {
 		return nil, nil, "", errs.NewValidationError(errs.SubtypeFailedPrecondition,

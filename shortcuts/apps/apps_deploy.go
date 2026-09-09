@@ -461,18 +461,21 @@ func resolveAppDevReleaseOutcome(ctx context.Context, rctx *common.RuntimeContex
 var AppsDeploy = common.Shortcut{
 	Service:     appsService,
 	Command:     "+deploy",
-	Description: "Build and publish a local web app project to its Miaoda app (run from the project root containing spark.json)",
+	Description: "Publish to a Miaoda app: a local project from its root (spark.json), or a bare HTML file or directory via --file-path / --dir",
 	Risk:        "write",
 	Tips: []string{
-		"Example: lark-cli apps +deploy   (run from the project root)",
-		"Example: lark-cli apps +deploy --skip-build   (reuse the existing build.output directory)",
-		"Prerequisite: an app id in spark.json or via --app-id (create the app with +create first)",
+		"Example: lark-cli apps +deploy   (project mode: run from the project root holding spark.json)",
+		"Example: lark-cli apps +deploy --file-path ./report.html   (publish one HTML file)",
+		"Example: lark-cli apps +deploy --dir ./site --entry-file home.html   (publish a directory; the entry is served as index.html)",
+		"Paths are relative to the current directory: cd to the payload first, absolute paths are rejected",
+		"Re-publishing: pass the --app-id returned last time; without it the target is looked up, and a new app is created when nothing matches",
+		"--skip-build and --no-verify apply to project mode only",
 	},
 	Scopes:    []string{"spark:app:write", "spark:app:read"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "app-id", Desc: "publish target app ID (app_ prefix); optional when spark.json already records one — on a successful publish it is saved back into spark.json, and a value conflicting with the recorded one is rejected"},
+		{Name: "app-id", Desc: "publish target app ID (app_ prefix); optional when spark.json already records one — in project mode a successful publish saves it back into spark.json and a value conflicting with the recorded one is rejected, while --file-path / --dir never touch spark.json"},
 		{Name: "skip-build", Type: "bool", Desc: "skip the build.command declared in spark.json and publish the existing build.output directory as-is (no effect on buildless projects, which never build)"},
 		{Name: "no-verify", Type: "bool", Desc: "skip the local dev-server verification entirely (the dev.port declaration requirement, the GET localhost:<dev.port>/spark.json availability check, and the app-identity match)"},
 		{Name: "file-path", Desc: "publish a single HTML file (path relative to the current directory); mutually exclusive with --dir"},
@@ -481,7 +484,7 @@ var AppsDeploy = common.Shortcut{
 		{Name: "allow-sensitive", Type: "bool", Desc: "skip the credential-file scan (allow .env / .npmrc / private keys / etc. in the publish payload)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		if isHTMLDeployMode(rctx.Str("file-path"), rctx.Str("dir")) {
+		if isHTMLDeployMode(rctx.Str("file-path"), rctx.Str("dir"), rctx.Str("entry-file")) {
 			return validateHTMLDeploy(rctx)
 		}
 		cfg, targetAppID, _, err := resolveAppDevPublishTarget(rctx)
@@ -516,7 +519,7 @@ var AppsDeploy = common.Shortcut{
 		return nil
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
-		if isHTMLDeployMode(rctx.Str("file-path"), rctx.Str("dir")) {
+		if isHTMLDeployMode(rctx.Str("file-path"), rctx.Str("dir"), rctx.Str("entry-file")) {
 			return dryRunHTMLDeploy(rctx)
 		}
 		dry := common.NewDryRunAPI().
@@ -566,7 +569,7 @@ var AppsDeploy = common.Shortcut{
 		return dry
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		if isHTMLDeployMode(rctx.Str("file-path"), rctx.Str("dir")) {
+		if isHTMLDeployMode(rctx.Str("file-path"), rctx.Str("dir"), rctx.Str("entry-file")) {
 			return executeHTMLDeploy(ctx, rctx)
 		}
 		cfg, appID, fromFlag, err := resolveAppDevPublishTarget(rctx)

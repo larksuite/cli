@@ -26,11 +26,17 @@ import (
 )
 
 func TestIsHTMLDeployMode(t *testing.T) {
-	if !isHTMLDeployMode("a.html", "") || !isHTMLDeployMode("", "./site") {
-		t.Error("either flag should select html deploy mode")
+	if !isHTMLDeployMode("a.html", "", "") || !isHTMLDeployMode("", "./site", "") {
+		t.Error("either payload flag should select html deploy mode")
 	}
-	if isHTMLDeployMode("", "") {
-		t.Error("neither flag should keep the existing project mode")
+	// --entry-file cannot stand alone, but it must still select this mode:
+	// otherwise a lone --entry-file falls through to the project mode and the
+	// user is told to scaffold a project instead of to add --dir.
+	if !isHTMLDeployMode("", "", "page.html") {
+		t.Error("--entry-file alone must select html deploy mode so its own error can surface")
+	}
+	if isHTMLDeployMode("", "", "") {
+		t.Error("no payload flag should keep the existing project mode")
 	}
 }
 
@@ -528,8 +534,16 @@ func TestHTMLDeployDryRun_NoWrites(t *testing.T) {
 	if data["idempotent_key"] != wantPath {
 		t.Errorf("idempotent_key = %v, want %q", data["idempotent_key"], wantPath)
 	}
-	if data["app_id_source"] != string(htmlAppIDSourceLookup) {
-		t.Errorf("app_id_source = %v", data["app_id_source"])
+	// Without --app-id the target is only decided at run time. The preview must
+	// say so, and must name the app that would be created — apps has no
+	// +delete, so an unexpected create cannot be undone.
+	src, _ := data["app_id_source"].(string)
+	if !strings.Contains(src, string(htmlAppIDSourceLookup)) ||
+		!strings.Contains(src, string(htmlAppIDSourceCreate)) {
+		t.Errorf("app_id_source = %v, want both the lookup and the create fallback named", data["app_id_source"])
+	}
+	if data["app_name_if_created"] != "report" {
+		t.Errorf("app_name_if_created = %v, want \"report\"", data["app_name_if_created"])
 	}
 	if data["entry_file"] != "report.html" {
 		t.Errorf("entry_file = %v", data["entry_file"])

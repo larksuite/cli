@@ -24,8 +24,14 @@ import (
 
 // isHTMLDeployMode reports whether +deploy should take the bare-HTML path.
 // With neither flag set the existing spark.json project mode runs unchanged.
-func isHTMLDeployMode(filePath, dir string) bool {
-	return strings.TrimSpace(filePath) != "" || strings.TrimSpace(dir) != ""
+func isHTMLDeployMode(filePath, dir, entryFile string) bool {
+	// --entry-file counts as a mode selector even though it cannot stand on its
+	// own: without it here, a lone --entry-file falls through to the project
+	// mode and the user gets "not a Miaoda app project", which points at
+	// scaffolding a project instead of at the actual mistake.
+	return strings.TrimSpace(filePath) != "" ||
+		strings.TrimSpace(dir) != "" ||
+		strings.TrimSpace(entryFile) != ""
 }
 
 // validateHTMLDeployFlags checks the flag combination for the bare-HTML path.
@@ -292,8 +298,13 @@ func fillHTMLDeployDryRun(dry *common.DryRunAPI, p htmlDeployPlan) {
 		dry.Set("app_id", p.AppID)
 	}
 	dry.Set("entry_file", p.EntryRel)
-	dry.Set("idempotent_key", p.AbsEntry)
-	dry.Set("file_path", p.AbsEntry)
+	// The absolute path only leaves this machine when the target has to be
+	// looked up or created. Echoing it when --app-id already pinned the target
+	// would blunt the signal: this field means "this value is being uploaded".
+	if p.AppIDSource != htmlAppIDSourceFlag {
+		dry.Set("idempotent_key", p.AbsEntry)
+		dry.Set("file_path", p.AbsEntry)
+	}
 	dry.Set("file_count", p.FileCount)
 	dry.Set("total_size_bytes", p.TotalBytes)
 	dry.Set("zip_paths", p.ZipPaths)
@@ -329,6 +340,23 @@ func htmlReleaseBody(contentHash string) map[string]interface{} {
 // dryRunHTMLDeploy is the bare-HTML branch of AppsDeploy.DryRun. It resolves
 // the plan off disk but issues no request, so the app id stays at whatever the
 // flag says — the idempotency lookup itself is a write-shaped POST.
+// htmlCreateBody builds the app-creation request for the bare-HTML path. Kept
+// separate so the dry-run preview shows exactly the body the live call sends.
+func htmlCreateBody(absEntry string) map[string]interface{} {
+	body := map[string]interface{}{
+		"name":      deploy.DeriveAppName(absEntry),
+		"app_type":  "html",
+		"file_path": absEntry,
+	}
+	// Carry the same attribution +create sends. This path exists precisely for
+	// agent-driven publishing, so dropping it would lose attribution on the
+	// apps that need it most.
+	if agent := envvars.AgentName(); agent != "" {
+		body["source_agent"] = agent
+	}
+	return body
+}
+
 func dryRunHTMLDeploy(rctx *common.RuntimeContext) *common.DryRunAPI {
 	dry := common.NewDryRunAPI()
 	plan, err := resolveHTMLDeployPlan(rctx)
@@ -339,13 +367,28 @@ func dryRunHTMLDeploy(rctx *common.RuntimeContext) *common.DryRunAPI {
 	}
 	plan.AppIDSource, plan.AppID = htmlAppIDFromFlag(rctx.Str("app-id"))
 	fillHTMLDeployDryRun(dry, plan)
+	// Mirror the live path's warning: a preview that silently ships credential
+	// files is worse than one that says so.
+	if len(plan.Waived) > 0 {
+		fmt.Fprintf(rctx.IO().ErrOut,
+			"warning: --allow-sensitive lets %d credential file(s) into the payload: %s\n",
+			len(plan.Waived), strings.Join(plan.Waived, ", "))
+	}
 
 	segment := "<app id resolved from " + hasHTMLAppCreatedPath + " or +create>"
 	if plan.AppID != "" {
 		segment = validate.EncodePathSegment(plan.AppID)
 	} else {
+		// Without --app-id the target is only known at run time, so spell out
+		// both branches. The +create branch matters: apps has no +delete, so an
+		// app created here cannot be removed afterwards.
 		dry.POST(hasHTMLAppCreatedPath).
 			Body(map[string]interface{}{"idempotent_key": plan.AbsEntry})
+		dry.POST(apiBasePath + "/apps").
+			Desc("only when the lookup reports exists=false; creates an app that cannot be deleted afterwards").
+			Body(htmlCreateBody(plan.AbsEntry))
+		dry.Set("app_id_source", string(htmlAppIDSourceLookup)+", falling back to "+string(htmlAppIDSourceCreate))
+		dry.Set("app_name_if_created", deploy.DeriveAppName(plan.AbsEntry))
 	}
 	dry.GET(fmt.Sprintf("%s/apps/%s/pre_release", apiBasePath, segment)).
 		PUT("<presigned upload URL from pre_release kvs " + appDevUploadURLKey + "> (https only)").
@@ -371,18 +414,7 @@ func resolveHTMLDeployAppID(rctx *common.RuntimeContext, plan *htmlDeployPlan) e
 	}
 	if appID == "" {
 		source = htmlAppIDSourceCreate
-		body := map[string]interface{}{
-			"name":      deploy.DeriveAppName(plan.AbsEntry),
-			"app_type":  "html",
-			"file_path": plan.AbsEntry,
-		}
-		// Carry the same attribution +create sends. This path exists precisely
-		// for agent-driven publishing, so dropping it would lose attribution on
-		// the apps that need it most.
-		if agent := envvars.AgentName(); agent != "" {
-			body["source_agent"] = agent
-		}
-		data, err := rctx.CallAPITyped("POST", apiBasePath+"/apps", nil, body)
+		data, err := rctx.CallAPITyped("POST", apiBasePath+"/apps", nil, htmlCreateBody(plan.AbsEntry))
 		if err != nil {
 			return withAppsHint(err, createHint)
 		}
