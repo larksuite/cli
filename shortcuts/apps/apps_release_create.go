@@ -76,7 +76,7 @@ var AppsReleaseCreate = common.Shortcut{
 // buildPublishBody builds the create-release request body. app_id is in the
 // path, not the body. branch is included only when non-empty.
 func buildPublishBody(branch, applyReason string) map[string]interface{} {
-	body := map[string]interface{}{"applyReason": applyReason}
+	body := map[string]interface{}{"apply_reason": applyReason}
 	if branch != "" {
 		body["branch"] = branch
 	}

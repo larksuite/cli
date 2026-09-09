@@ -25,11 +25,11 @@ func TestBuildPublishBody(t *testing.T) {
 	if b["branch"] != "feat/devops" {
 		t.Errorf("body = %v", b)
 	}
-	if b["applyReason"] != "ship it" {
-		t.Errorf("applyReason = %v", b["applyReason"])
+	if b["apply_reason"] != "ship it" {
+		t.Errorf("apply_reason = %v", b["apply_reason"])
 	}
-	if _, ok := b["apply_reason"]; ok {
-		t.Errorf("apply_reason must not be in body, got %v", b)
+	if _, ok := b["applyReason"]; ok {
+		t.Errorf("applyReason must not be in body, got %v", b)
 	}
 	if _, ok := b["app_id"]; ok {
 		t.Errorf("app_id must not be in body, got %v", b)
@@ -39,8 +39,8 @@ func TestBuildPublishBody(t *testing.T) {
 	if _, ok := b2["branch"]; ok {
 		t.Errorf("branch should be omitted when empty, got %v", b2)
 	}
-	if b2["applyReason"] != "reason" {
-		t.Errorf("applyReason = %v", b2["applyReason"])
+	if b2["apply_reason"] != "reason" {
+		t.Errorf("apply_reason = %v", b2["apply_reason"])
 	}
 }
 
@@ -224,11 +224,11 @@ func TestAppsReleaseCreateDryRunBody(t *testing.T) {
 		t.Fatalf("dry-run API = %+v", env.Data.API)
 	}
 	body := env.Data.API[0].Body
-	if body["branch"] != "sprint/default" || body["applyReason"] != reason {
+	if body["branch"] != "sprint/default" || body["apply_reason"] != reason {
 		t.Fatalf("dry-run body = %#v", body)
 	}
-	if _, ok := body["apply_reason"]; ok {
-		t.Fatalf("dry-run body contains apply_reason: %#v", body)
+	if _, ok := body["applyReason"]; ok {
+		t.Fatalf("dry-run body contains applyReason: %#v", body)
 	}
 	if _, ok := body["app_id"]; ok {
 		t.Fatalf("dry-run body contains app_id: %#v", body)
@@ -253,7 +253,7 @@ func TestAppsReleaseCreateDryRunBody(t *testing.T) {
 		t.Fatalf("decode dry-run without branch: %v\n%s", err, stdout2.String())
 	}
 	body = env2.Data.API[0].Body
-	if len(body) != 1 || body["applyReason"] != reason {
+	if len(body) != 1 || body["apply_reason"] != reason {
 		t.Fatalf("dry-run body without branch = %#v", body)
 	}
 }
@@ -345,11 +345,11 @@ func TestAppsReleaseCreateExecute_Success(t *testing.T) {
 	if err := json.Unmarshal(stub.CapturedBody, &sent); err != nil {
 		t.Fatalf("decode request body: %v", err)
 	}
-	if sent["applyReason"] != reason || sent["branch"] != "main" {
+	if sent["apply_reason"] != reason || sent["branch"] != "main" {
 		t.Errorf("request body = %v", sent)
 	}
-	if _, ok := sent["apply_reason"]; ok {
-		t.Errorf("request body contains apply_reason: %v", sent)
+	if _, ok := sent["applyReason"]; ok {
+		t.Errorf("request body contains applyReason: %v", sent)
 	}
 	if _, ok := sent["app_id"]; ok {
 		t.Errorf("request body contains app_id: %v", sent)
@@ -374,7 +374,7 @@ func TestAppsReleaseCreateExecute_OmitsEmptyBranch(t *testing.T) {
 	if err := json.Unmarshal(stub.CapturedBody, &sent); err != nil {
 		t.Fatalf("decode request body: %v", err)
 	}
-	if len(sent) != 1 || sent["applyReason"] != "reason" {
+	if len(sent) != 1 || sent["apply_reason"] != "reason" {
 		t.Errorf("request body = %v", sent)
 	}
 }
