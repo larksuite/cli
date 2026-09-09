@@ -208,7 +208,9 @@ func Build(ctx context.Context, inv cmdutil.InvocationContext, opts ...BuildOpti
 		if err != nil {
 			result = failedCatalogBuild(ctx, inv, cfg, err)
 		}
-		result.root.SetArgs(append([]string(nil), cfg.invocationArgs...))
+		// The copy must stay non-nil: Cobra treats nil args as "read os.Args",
+		// which would hand an explicitly empty invocation the host's arguments.
+		result.root.SetArgs(append([]string{}, cfg.invocationArgs...))
 		return result.root
 	}
 	_, rootCmd, _ := buildInternalWithConfig(ctx, inv, cfg)
@@ -668,7 +670,13 @@ func isVersionOnlyInvocation(root *cobra.Command, args []string) bool {
 	if len(flags.Args()) != 0 {
 		return false
 	}
-	return flags.Changed("version") && !flags.Changed("help")
+	// Cobra prints the version only when the flag's value is true; a spelled-out
+	// `--version=false` falls through to the root help, which needs the tree.
+	version, err := flags.GetBool("version")
+	if err != nil {
+		return false
+	}
+	return version && !flags.Changed("help")
 }
 
 // domainSelection is the outcome of routing: which mounted domains to expand.
