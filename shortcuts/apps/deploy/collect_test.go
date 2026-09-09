@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -92,19 +93,47 @@ func TestCanonicalAbsResolvesSymlinks(t *testing.T) {
 	}
 }
 
-func TestInputPathErrorDistinguishesMissingFromOutOfSandbox(t *testing.T) {
-	// 不存在与越界必须给出不同答案：对一个已经传了相对路径的调用方说
-	// 「路径必须是相对路径」，会把它引向无效的 cd 重试。
-	missing := inputPathError("--file-path", "./nope.html", fs.ErrNotExist)
-	if !strings.Contains(missing.Error(), "does not exist") {
-		t.Errorf("missing-path error = %q, want it to say the path does not exist", missing.Error())
-	}
-	if strings.Contains(missing.Error(), "must be a path relative") {
-		t.Errorf("missing-path error must not claim the path is not relative: %q", missing.Error())
-	}
+func TestInputPathErrorOnlyClaimsOutOfBoundsWhenTrue(t *testing.T) {
+	// 核心属性：只有输入本身确实越界时，才可以说「必须相对且在当前目录内」。
+	// 对一个 ./ 开头、就在 cwd 内的路径说这句话，会把调用方引向无效的 cd 重试。
+	const outOfBounds = "outside the current directory"
 
-	outside := inputPathError("--dir", "/etc", errors.New("resolves outside the current working directory"))
-	if !strings.Contains(outside.Error(), "relative to the current directory") {
-		t.Errorf("out-of-sandbox error = %q, want the relative-path explanation", outside.Error())
+	cases := []struct {
+		name           string
+		path           string
+		cause          error
+		wantContains   string
+		mustNotMention bool // 不得出现越界断言
+	}{
+		{"不存在", "./nope.html", fs.ErrNotExist, "does not exist", true},
+		{"无权限", "./locked/page.html", fs.ErrPermission, "permission denied", true},
+		{"路径拼接错(ENOTDIR)", "./page.html/deeper.html", syscall.ENOTDIR, "cannot be used", true},
+		{"软链环(ELOOP)", "./loop.html", syscall.ELOOP, "cannot be used", true},
+		{"绝对路径", "/etc/passwd", errors.New("resolves outside"), outOfBounds, false},
+		{"向上穿透", "../outside.html", errors.New("resolves outside"), outOfBounds, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := inputPathError("--file-path", tc.path, tc.cause).Error()
+			if !strings.Contains(got, tc.wantContains) {
+				t.Errorf("error = %q, want it to contain %q", got, tc.wantContains)
+			}
+			if tc.mustNotMention && strings.Contains(got, outOfBounds) {
+				t.Errorf("a path inside the working directory must not be reported as out of bounds: %q", got)
+			}
+		})
+	}
+}
+
+func TestEscapesWorkingDir(t *testing.T) {
+	for _, p := range []string{"/abs/x.html", "../up.html", "..", "a/../../up.html"} {
+		if !escapesWorkingDir(p) {
+			t.Errorf("escapesWorkingDir(%q) = false, want true", p)
+		}
+	}
+	for _, p := range []string{"./x.html", "a/b.html", "a/../b.html", "."} {
+		if escapesWorkingDir(p) {
+			t.Errorf("escapesWorkingDir(%q) = true, want false", p)
+		}
 	}
 }

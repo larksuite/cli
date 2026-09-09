@@ -4,6 +4,7 @@
 package deploy
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -100,6 +101,19 @@ func joinTruncated(items []string, max int) string {
 	return strings.Join(items[:max], ", ") + ", ..."
 }
 
+// HumanBytes renders a byte count the way the flag help and the docs write
+// limits, so an operator can line the two up without doing arithmetic.
+func HumanBytes(n int64) string {
+	const mib = 1024 * 1024
+	if n >= mib {
+		return fmt.Sprintf("%.1f MiB", float64(n)/float64(mib))
+	}
+	if n >= 1024 {
+		return fmt.Sprintf("%.1f KiB", float64(n)/1024)
+	}
+	return fmt.Sprintf("%d B", n)
+}
+
 // Guard runs the credential scan and the two pre-pack size caps. It returns the
 // waived credential files when allowSensitive is set so callers can surface
 // them. Callers must run this in Validate, not DryRun, so that --dry-run also
@@ -123,18 +137,20 @@ func Guard(candidates []Candidate, allowSensitive bool, lim Limits) ([]string, e
 	for _, c := range candidates {
 		total += c.Size
 		if strings.EqualFold(filepath.Ext(c.RelPath), ".html") && c.Size > lim.SingleHTMLBytes {
-			oversize = append(oversize, c.RelPath)
+			oversize = append(oversize, fmt.Sprintf("%s (%s)", c.RelPath, HumanBytes(c.Size)))
 		}
 	}
 	if len(oversize) > 0 {
 		return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition,
-			"%d HTML file(s) exceed the %d bytes per-file limit: %s",
-			len(oversize), lim.SingleHTMLBytes, joinTruncated(oversize, maxListedInError))
+			"%d HTML file(s) exceed the %s per-file limit: %s",
+			len(oversize), HumanBytes(lim.SingleHTMLBytes), joinTruncated(oversize, maxListedInError)).
+			WithHint("split or trim the oversized page(s); the cap applies to each single .html file")
 	}
 	if total > lim.RawTotalBytes {
 		return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition,
-			"payload total size %d bytes exceeds the %d bytes limit before packing", total, lim.RawTotalBytes).
-			WithHint("narrow the payload to the directory that actually holds the site")
+			"payload total size %s exceeds the %s limit before packing",
+			HumanBytes(total), HumanBytes(lim.RawTotalBytes)).
+			WithHint("narrow --dir to the directory that actually holds the site, or drop large assets from it")
 	}
 	return sensitive, nil
 }

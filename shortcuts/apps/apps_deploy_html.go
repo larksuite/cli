@@ -470,7 +470,7 @@ func executeHTMLDeploy(ctx context.Context, rctx *common.RuntimeContext) error {
 		return err
 	}
 	if limit := deploy.DefaultLimits().ZipBytes; zipball.Size > limit {
-		return appsFailedPreconditionError("packed zip is %d bytes, exceeding the %d bytes limit", zipball.Size, limit).
+		return appsFailedPreconditionError("packed zip is %s, exceeding the %s limit", deploy.HumanBytes(zipball.Size), deploy.HumanBytes(limit)).
 			WithHint("drop files from the payload, or narrow --dir to just the directory you want published")
 	}
 

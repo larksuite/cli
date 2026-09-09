@@ -64,24 +64,54 @@ func canonicalAbs(relPath string) (string, error) {
 // command does not have — and suggests reading out-of-tree content from stdin,
 // which does not apply to a publish payload. Callers pass their own flag name.
 func inputPathError(param, path string, cause error) error {
-	// A missing path and a path outside the sandbox need different answers:
-	// telling someone who passed ./nope.html that it "must be relative" sends
-	// them to cd, which changes nothing. Stat distinguishes the two, so keep
-	// that distinction instead of flattening every failure into one sentence.
-	if errors.Is(cause, fs.ErrNotExist) {
+	// Only claim the path is out of bounds when that is actually what we
+	// determined. Earlier revisions used that sentence as the catch-all, so a
+	// permission error, a "not a directory" from a bad join, or a symlink loop
+	// on a plain ./relative path all told the caller to cd — which changes
+	// nothing and, for an agent assembling paths, invites useless retries.
+	switch {
+	case errors.Is(cause, fs.ErrNotExist):
 		return errs.NewValidationError(errs.SubtypeFailedPrecondition,
 			"%s %q does not exist", param, path).
 			WithParam(param).
 			WithCause(cause).
 			WithHint("check the path; it is resolved relative to the current directory")
+
+	case errors.Is(cause, fs.ErrPermission):
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+			"%s %q cannot be read: permission denied", param, path).
+			WithParam(param).
+			WithCause(cause).
+			WithHint("check the permissions on the path and every directory above it")
+
+	case escapesWorkingDir(path):
+		// The cause is attached but never interpolated: its text names --file
+		// and offers a stdin fallback, neither of which exists here.
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+			"%s %q is outside the current directory: the path must be relative and must resolve inside it", param, path).
+			WithParam(param).
+			WithCause(cause).
+			WithHint("cd to the directory that holds the payload, then pass a relative path")
+
+	default:
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+			"%s %q cannot be used", param, path).
+			WithParam(param).
+			WithCause(cause).
+			WithHint("check that the path points at a readable file or directory inside the current directory")
 	}
-	// The cause is attached but not interpolated: its text names --file and
-	// offers a stdin fallback, neither of which exists on this command.
-	return errs.NewValidationError(errs.SubtypeFailedPrecondition,
-		"%s %q is not usable: it must be a path relative to the current directory, and must resolve inside it", param, path).
-		WithParam(param).
-		WithCause(cause).
-		WithHint("cd to the directory that holds the payload, then pass a relative path (absolute paths and paths escaping the current directory are rejected)")
+}
+
+// escapesWorkingDir reports whether the input itself is out of bounds — an
+// absolute path, or one that climbs above the current directory. Judged from
+// the input rather than from the sandbox error so the message only makes this
+// claim when it is true.
+func escapesWorkingDir(path string) bool {
+	if filepath.IsAbs(path) {
+		return true
+	}
+	cleaned := filepath.ToSlash(filepath.Clean(path))
+	return cleaned == ".." || strings.HasPrefix(cleaned, "../")
 }
 
 // CollectFile resolves a single-file payload. relPath goes through the caller's
