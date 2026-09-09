@@ -475,8 +475,15 @@ var AppsDeploy = common.Shortcut{
 		{Name: "app-id", Desc: "publish target app ID (app_ prefix); optional when spark.json already records one — on a successful publish it is saved back into spark.json, and a value conflicting with the recorded one is rejected"},
 		{Name: "skip-build", Type: "bool", Desc: "skip the build.command declared in spark.json and publish the existing build.output directory as-is (no effect on buildless projects, which never build)"},
 		{Name: "no-verify", Type: "bool", Desc: "skip the local dev-server verification entirely (the dev.port declaration requirement, the GET localhost:<dev.port>/spark.json availability check, and the app-identity match)"},
+		{Name: "file-path", Desc: "publish a single HTML file (path relative to the current directory); mutually exclusive with --dir"},
+		{Name: "dir", Desc: "publish a whole directory (path relative to the current directory); mutually exclusive with --file-path"},
+		{Name: "entry-file", Desc: "entry file name directly under --dir; defaults to index.html and is renamed to index.html inside the published payload"},
+		{Name: "allow-sensitive", Type: "bool", Desc: "skip the credential-file scan (allow .env / .npmrc / private keys / etc. in the publish payload)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
+		if isHTMLDeployMode(rctx.Str("file-path"), rctx.Str("dir")) {
+			return validateHTMLDeploy(rctx)
+		}
 		cfg, targetAppID, _, err := resolveAppDevPublishTarget(rctx)
 		if err != nil {
 			return err
