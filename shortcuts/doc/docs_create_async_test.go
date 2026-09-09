@@ -4,6 +4,7 @@
 package doc
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -17,6 +18,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -41,9 +43,7 @@ func TestDocsCreateAsyncReadFailureIsNotSuccess(t *testing.T) {
 	if !ok || problem.Code != 99991672 || problem.LogID != "poll-denied-log" {
 		t.Fatalf("query failure was hidden: err=%v problem=%+v", err, problem)
 	}
-	if !strings.Contains(problem.Hint, "task_denied") || !strings.Contains(problem.Hint, "Do not repeat") {
-		t.Fatalf("accepted task recovery missing: %+v", problem)
-	}
+	assertDocsCreateErrorHasNoTaskRecovery(t, err, "task_denied")
 	if stdout.Len() != 0 {
 		t.Fatalf("failed command emitted success: %s", stdout)
 	}
@@ -73,9 +73,10 @@ func TestDocsCreateAsyncDeadlineCancelsInflightRead(t *testing.T) {
 	if result != nil || !errors.Is(err, context.DeadlineExceeded) || !ok || problem.Subtype != errs.SubtypeNetworkTimeout {
 		t.Fatalf("deadline result=%v err=%v problem=%+v", result, err, problem)
 	}
-	if problem.LogID != "create-log" || !strings.Contains(problem.Hint, "task_slow") {
-		t.Fatalf("timeout lost task identity: %+v", problem)
+	if problem.LogID != "create-log" || !strings.Contains(problem.Hint, "--command append") {
+		t.Fatalf("timeout recovery missing: %+v", problem)
 	}
+	assertDocsCreateErrorHasNoTaskRecovery(t, err, "task_slow")
 }
 
 func TestDocsCreateAsyncCancellationIsTyped(t *testing.T) {
@@ -86,9 +87,10 @@ func TestDocsCreateAsyncCancellationIsTyped(t *testing.T) {
 		t.Fatalf("cancellation result=%v err=%v", result, err)
 	}
 	problem, _ := errs.ProblemOf(err)
-	if !strings.Contains(problem.Hint, "task_canceled") {
-		t.Fatalf("missing accepted task: %+v", problem)
+	if problem.Category != errs.CategoryNetwork || problem.Subtype != errs.SubtypeNetworkTransport || problem.Retryable {
+		t.Fatalf("incorrect cancellation classification: %+v", problem)
 	}
+	assertDocsCreateErrorHasNoTaskRecovery(t, err, "task_canceled")
 }
 
 func TestDocsCreateAsyncRetryClassification(t *testing.T) {
@@ -273,9 +275,7 @@ func TestDocsCreatePreservesLogIDWithoutCommonAPIChanges(t *testing.T) {
 			if !ok || problem.LogID != "creation-response-log" || problem.Code != tc.wantCode {
 				t.Fatalf("err=%v problem=%+v", err, problem)
 			}
-			if tc.name == "accepted task failure" && !strings.Contains(problem.Hint, "task_failed") {
-				t.Fatalf("missing task identity: %+v", problem)
-			}
+			assertDocsCreateErrorHasNoTaskRecovery(t, err, "task_failed")
 			if stdout.Len() != 0 {
 				t.Fatalf("failure emitted success: %s", stdout)
 			}
@@ -312,4 +312,76 @@ func TestDocsCreateEmptyDataPreservesResponseLogID(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("empty response emitted success: %s", stdout)
 	}
+}
+
+// Assert the actual error envelope consumed by agents, including the absence of
+// internal task recovery instructions on every unsuccessful polling outcome.
+func assertDocsCreateErrorHasNoTaskRecovery(t *testing.T, err error, taskID string) {
+	t.Helper()
+	var stderr bytes.Buffer
+	if !output.WriteTypedErrorEnvelope(&stderr, err, "user") {
+		t.Fatal("error did not render as a typed envelope")
+	}
+	for _, forbidden := range []string{taskID, "async_tasks", "task_id", "Do not repeat"} {
+		if strings.Contains(stderr.String(), forbidden) {
+			t.Fatalf("error exposed task recovery %q: %s", forbidden, stderr.String())
+		}
+	}
+}
+
+func TestDocsCreateAsyncTerminalFailureGuidance(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		status   string
+		failure  *docsCreateAsyncTaskFailure
+		category errs.Category
+		subtype  errs.Subtype
+		batch    bool
+	}{
+		{name: "expired", status: "expired", category: errs.CategoryNetwork, subtype: errs.SubtypeNetworkTimeout, batch: true},
+		{name: "interrupted", status: "failed", failure: &docsCreateAsyncTaskFailure{Code: "execution_interrupted", Message: "worker stopped"}, category: errs.CategoryNetwork, subtype: errs.SubtypeNetworkTimeout, batch: true},
+		{name: "business failure", status: "failed", failure: &docsCreateAsyncTaskFailure{Code: "status_123", Message: "invalid document content"}, category: errs.CategoryAPI, subtype: errs.SubtypeServerError},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := pollDocsCreateAsyncTask(context.Background(), nil, &docsCreateAsyncTask{
+				TaskID: "task_terminal", Status: tc.status, Failure: tc.failure,
+			}, "terminal-log", nil)
+			problem, ok := errs.ProblemOf(err)
+			if result != nil || !ok || problem.Category != tc.category || problem.Subtype != tc.subtype || problem.LogID != "terminal-log" || problem.Retryable {
+				t.Fatalf("result=%v err=%v problem=%+v", result, err, problem)
+			}
+			if tc.batch {
+				if !strings.Contains(problem.Message, "took too long") || !strings.Contains(problem.Hint, "docs +create --title") || !strings.Contains(problem.Hint, "--command append") {
+					t.Fatalf("batch recovery missing: %+v", problem)
+				}
+			} else if !strings.Contains(problem.Message, tc.failure.Message) || strings.Contains(problem.Message, "took too long") {
+				t.Fatalf("business failure was misreported: %+v", problem)
+			}
+			assertDocsCreateErrorHasNoTaskRecovery(t, err, "task_terminal")
+		})
+	}
+}
+
+func TestDocsCreateAsyncTimeoutEnvelope(t *testing.T) {
+	err := docsCreateAsyncWaitError(context.DeadlineExceeded, "timeout-log")
+	var stderr bytes.Buffer
+	if !output.WriteTypedErrorEnvelope(&stderr, err, "user") {
+		t.Fatal("timeout did not render as a typed envelope")
+	}
+	var envelope struct {
+		OK       bool         `json:"ok"`
+		Identity string       `json:"identity"`
+		Error    errs.Problem `json:"error"`
+	}
+	if decodeErr := json.Unmarshal(stderr.Bytes(), &envelope); decodeErr != nil {
+		t.Fatal(decodeErr)
+	}
+	if envelope.OK || envelope.Identity != "user" || envelope.Error.Category != errs.CategoryNetwork || envelope.Error.Subtype != errs.SubtypeNetworkTimeout || envelope.Error.LogID != "timeout-log" || output.ExitCodeOf(err) != 4 || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("invalid timeout envelope: %s", stderr.String())
+	}
+	if envelope.Error.Message != "document processing took too long" || !strings.Contains(envelope.Error.Hint, "docs +create --title") || !strings.Contains(envelope.Error.Hint, "--command append") {
+		t.Fatalf("incorrect timeout recovery: %s", stderr.String())
+	}
+	assertDocsCreateErrorHasNoTaskRecovery(t, err, "task_timeout")
+	t.Log(stderr.String())
 }

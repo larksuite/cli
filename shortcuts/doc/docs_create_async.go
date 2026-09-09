@@ -52,7 +52,7 @@ type docsCreateAsyncEnvelope struct {
 // async success is projected back into the original document/warnings data
 // shape before permission and local-resource follow-up work runs. A processing
 // task is never a successful command result: timeout/cancellation/read failures
-// return an error that identifies the accepted task without repeating the write.
+// return a typed error without repeating the write or exposing task recovery.
 func waitForDocsCreateAsyncTask(runtime *common.RuntimeContext, initial map[string]interface{}, createLogID string, trace *docsCreateTrace) (map[string]interface{}, error) {
 	envelope, err := decodeDocsCreateAsyncEnvelope(initial)
 	if err != nil {
@@ -76,10 +76,12 @@ func pollDocsCreateAsyncTask(ctx context.Context, runtime *common.RuntimeContext
 	}
 	defer func() {
 		if err != nil {
-			err = docsCreateAsyncWaitError(err, taskID, logID)
+			err = docsCreateAsyncWaitError(err, logID)
 		}
 	}()
 
+	// The task endpoint waits on the server, so the first read needs no delay.
+	// poll_after_ms applies when that read still returns processing.
 	var delay time.Duration
 	polls := 0
 	trace.event("task_observed", docsCreateDebugDetails{TaskID: taskID, Status: task.Status, Stage: task.Stage, LogID: logID})
@@ -98,7 +100,7 @@ func pollDocsCreateAsyncTask(ctx context.Context, runtime *common.RuntimeContext
 			// temporarily sparse response does not trigger a duplicate create.
 		default:
 			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse,
-				"document creation task %s returned unsupported status %q", taskID, task.Status)
+				"document creation returned unsupported status %q", task.Status)
 		}
 
 		if delay > 0 {
@@ -143,7 +145,7 @@ func pollDocsCreateAsyncTask(ctx context.Context, runtime *common.RuntimeContext
 		}
 		if decoded.Task == nil {
 			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse,
-				"async-task response for document creation task %s omitted task", taskID)
+				"document creation status response omitted task")
 		}
 		if polledID := strings.TrimSpace(decoded.Task.TaskID); polledID != "" && polledID != taskID {
 			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse,
@@ -209,18 +211,18 @@ func retryableDocsCreateTaskRead(err error) bool {
 	}
 }
 
-func docsCreateAsyncWaitError(err error, taskID, logID string) error {
+const docsCreateBatchHint = "split the content into smaller batches: first use `lark-cli docs +create --title <title>`, then add each batch with `lark-cli docs +update --document-id <document_id> --command append --content <content>`."
+
+func docsCreateAsyncWaitError(err error, logID string) error {
 	if errors.Is(err, context.DeadlineExceeded) {
-		err = errs.NewNetworkError(errs.SubtypeNetworkTimeout, "timed out waiting for document creation task %s", taskID).WithCause(err)
+		err = errs.NewNetworkError(errs.SubtypeNetworkTimeout, "document processing took too long").WithCause(err).WithHint(docsCreateBatchHint)
+	} else if errors.Is(err, context.Canceled) {
+		err = errs.NewNetworkError(errs.SubtypeNetworkTransport, "document creation was canceled").WithCause(err)
 	} else if !errs.IsTyped(err) {
-		err = errs.NewInternalError(errs.SubtypeUnknown, "stopped waiting for document creation task %s: %v", taskID, err).WithCause(err)
+		err = errs.NewInternalError(errs.SubtypeUnknown, "stopped waiting for document creation").WithCause(err)
 	}
-	if problem, ok := errs.ProblemOf(err); ok {
-		if problem.LogID == "" {
-			problem.LogID = logID
-		}
-		hint := fmt.Sprintf("Creation was already accepted as task %s. Do not repeat docs +create; query GET /open-apis/docs_ai/v1/async_tasks/%s to check its outcome. CLI permission and resource-upload follow-up has not run.", taskID, url.PathEscape(taskID))
-		problem.Hint = strings.TrimSpace(problem.Hint + " " + hint)
+	if problem, ok := errs.ProblemOf(err); ok && problem.LogID == "" {
+		problem.LogID = logID
 	}
 	return err
 }
@@ -271,7 +273,6 @@ func docsCreateAsyncPollInterval(pollAfterMS int) time.Duration {
 }
 
 func docsCreateAsyncFailure(task *docsCreateAsyncTask, logID string) error {
-	taskID := strings.TrimSpace(task.TaskID)
 	status := strings.ToLower(strings.TrimSpace(task.Status))
 	message := status
 	code := ""
@@ -281,17 +282,17 @@ func docsCreateAsyncFailure(task *docsCreateAsyncTask, logID string) error {
 			message = failureMessage
 		}
 	}
+	if status == "expired" || code == "execution_interrupted" {
+		return errs.NewNetworkError(errs.SubtypeNetworkTimeout,
+			"document processing took too long").
+			WithHint(docsCreateBatchHint).WithLogID(logID)
+	}
 	if message == "" {
 		message = "unknown failure"
 	}
 	if code != "" {
 		message += " (code: " + code + ")"
 	}
-	err := errs.NewAPIError(errs.SubtypeServerError,
-		"document creation task %s %s: %s", taskID, status, message).
-		WithHint("query GET /open-apis/docs_ai/v1/async_tasks/%s for the terminal task record", url.PathEscape(taskID))
-	if logID != "" {
-		err = err.WithLogID(logID)
-	}
-	return err
+	return errs.NewAPIError(errs.SubtypeServerError,
+		"document creation failed: %s", message).WithLogID(logID)
 }
