@@ -877,7 +877,7 @@
 | # | 错误信息 | 原因 | 解决方案 |
 |---|---------|------|---------|
 | 1 | `path "xxx" does not exist in the output path tree` | ref 引用路径错误或 stepId 不存在 | 检查 stepId 是否在 steps 数组中；使用 fieldId 而非字段名；确保路径以 `$.` 开头 |
-| 2 | `recordInfo.conditions must be non-empty` | 报错指向的记录筛选配置缺少有效 `conditions`；不能仅凭此信息归因于触发器 `condition_list` 为 `[]` | 根据错误路径定位具体节点和筛选对象，并按该节点约束补齐有效条件；不要通用地替换为 `null` |
+| 2 | `recordInfo.conditions must be non-empty` | 记录筛选配置缺少有效 `conditions` | 按错误路径定位节点和筛选对象，按该节点约束补齐条件；空条件处理见下文 |
 | 3 | `At least one of filter info and ref info is required` | SetRecordAction/FindRecordAction 缺少定位条件 | 必须提供 `filter_info` 或 `ref_info` 之一 |
 | 4 | `client token is empty` | 缺少 `client_token` | 每次请求传入唯一值（时间戳或随机字符串） |
 | 5 | `valueType 'text' not allowed for fieldType '3'` | select 类型字段值格式错误 | 改用 `option` 类型 |
@@ -891,7 +891,7 @@
 
 **1. 按触发器类型处理空筛选条件**
 
-`AddRecordTrigger` 无额外筛选条件时可省略 `condition_list`，本文示例统一采用省略写法。当前本地公共转换层也将 `null`、`[]` 视作无附加条件，不能笼统认定 `[]` 必然非法。`ChangeRecordTrigger` 必须配置有效的非空 `condition_list`，不能用省略、`null` 或 `[]` 绕过这一要求。遇到筛选条件错误，应根据具体节点和错误路径检查，而不是统一替换为空值。
+`AddRecordTrigger` 无额外筛选条件时可省略 `condition_list`；本地公共转换层也将 `null`、`[]` 视作无附加条件，不能据此断言 `[]` 非法。`ChangeRecordTrigger` 则要求 `condition_list` 及每组 `conditions` 非空，不能统一替换为空值。
 
 **2. filter_info 和 ref_info 同时提供**
 ```json
