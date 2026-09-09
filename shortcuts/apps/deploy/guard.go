@@ -38,6 +38,41 @@ var sensitiveExactNames = map[string]bool{
 	"credentials": true, "service-account.json": true,
 }
 
+// parentAnchoredCredentials are credential files whose own name is too generic
+// to match on its own — .docker/config.json and .kube/config would otherwise
+// sail through a base-name check as "config.json" and "config". The key is the
+// conventional parent directory, the value the file name inside it.
+var parentAnchoredCredentials = map[string]map[string]bool{
+	".aws":    {"credentials": true, "config": true},
+	".docker": {"config.json": true},
+	".kube":   {"config": true},
+}
+
+// secretOnlyDirs exist solely to hold secrets, so anything directly inside
+// them is treated as a credential regardless of its name.
+var secretOnlyDirs = map[string]bool{".ssh": true, ".gnupg": true}
+
+// isSensitiveRel reports whether a "/"-delimited relative path holds a
+// credential. It checks the leaf name and, because some credential files carry
+// generic names, also the parent directory each segment sits in.
+func isSensitiveRel(rel string) bool {
+	parts := strings.Split(rel, "/")
+	if isSensitiveName(parts[len(parts)-1]) {
+		return true
+	}
+	for i := 1; i < len(parts); i++ {
+		parent := strings.ToLower(parts[i-1])
+		name := strings.ToLower(parts[i])
+		if secretOnlyDirs[parent] {
+			return true
+		}
+		if names, ok := parentAnchoredCredentials[parent]; ok && names[name] {
+			return true
+		}
+	}
+	return false
+}
+
 // isSensitiveName reports whether a base file name looks like a credential
 // file. The .env family is prefix-matched so .env.local and .env.production
 // are caught too — note this also catches a file literally named .env.html,
@@ -73,7 +108,7 @@ func joinTruncated(items []string, max int) string {
 func Guard(candidates []Candidate, allowSensitive bool, lim Limits) ([]string, error) {
 	var sensitive []string
 	for _, c := range candidates {
-		if isSensitiveName(filepath.Base(c.RelPath)) {
+		if isSensitiveRel(c.RelPath) {
 			sensitive = append(sensitive, c.RelPath)
 		}
 	}

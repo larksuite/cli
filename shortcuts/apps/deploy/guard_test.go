@@ -70,3 +70,39 @@ func TestDefaultLimits(t *testing.T) {
 		t.Errorf("RawTotalBytes = %d, want 200 MiB", lim.RawTotalBytes)
 	}
 }
+
+func TestIsSensitiveRelCoversParentAnchoredPairs(t *testing.T) {
+	// 这些文件的 basename 太通用（config.json / config），只看叶子名必然漏过，
+	// 必须按父目录锚定。前两项含 registry auth token 与集群证书。
+	hit := []string{
+		".docker/config.json", ".kube/config", ".aws/credentials", ".aws/config",
+		"nested/.docker/config.json", ".DOCKER/CONFIG.JSON",
+		".ssh/known_hosts", ".ssh/id_rsa", ".gnupg/secring.gpg",
+		"assets/.env",
+	}
+	for _, rel := range hit {
+		if !isSensitiveRel(rel) {
+			t.Errorf("isSensitiveRel(%q) = false, want true", rel)
+		}
+	}
+	miss := []string{
+		"config.json", "config", "assets/config.json",
+		"docker/config.json", "index.html", "docs/kube/config.md",
+	}
+	for _, rel := range miss {
+		if isSensitiveRel(rel) {
+			t.Errorf("isSensitiveRel(%q) = true, want false", rel)
+		}
+	}
+}
+
+func TestGuardBlocksParentAnchoredCredentials(t *testing.T) {
+	cands := []Candidate{
+		{RelPath: "index.html", Size: 10},
+		{RelPath: ".docker/config.json", Size: 5},
+	}
+	if _, err := Guard(cands, false, DefaultLimits()); err == nil ||
+		!strings.Contains(err.Error(), ".docker/config.json") {
+		t.Fatalf("got %v, want the payload rejected naming .docker/config.json", err)
+	}
+}
