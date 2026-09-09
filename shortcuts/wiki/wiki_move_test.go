@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
 	"reflect"
 	"strings"
 	"sync"
@@ -783,6 +784,125 @@ func TestWikiMoveExecuteNodeShortcut(t *testing.T) {
 	}
 }
 
+func TestWikiMoveMountedExplainsResourcePermissionDenied(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	factory, stdout, _, reg := cmdutil.TestFactory(t, wikiTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/wiki/v2/spaces/space_src/nodes/wik_node/move",
+		Body: map[string]interface{}{
+			"code":   131006,
+			"msg":    "permission denied: no destination parent node permission",
+			"log_id": "log-node-move-permission",
+		},
+	})
+
+	err := mountAndRunWiki(t, WikiMove, []string{
+		"+move",
+		"--node-token", "wik_node",
+		"--source-space-id", "space_src",
+		"--target-space-id", "space_dst",
+		"--as", "user",
+	}, factory, stdout)
+	if err == nil {
+		t.Fatal("expected permission error")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryAuthorization || p.Subtype != errs.SubtypePermissionDenied || p.Code != 131006 {
+		t.Fatalf("problem = %#v, want authorization/permission_denied/131006", p)
+	}
+	if p.Retryable {
+		t.Fatalf("problem retryable = true, want false: %#v", p)
+	}
+	if !strings.Contains(p.Hint, "edit permission on the node") || !strings.Contains(p.Hint, "source and destination parent") {
+		t.Fatalf("hint = %q, want node-move permission guidance", p.Hint)
+	}
+	if strings.Contains(p.Hint, "grant read access") || strings.Contains(p.Hint, "source document lacks manage permission") {
+		t.Fatalf("hint = %q, must not use read or docs-to-wiki recovery for node move", p.Hint)
+	}
+}
+
+func TestWikiMoveMountedDocsToWikiExplainsResourcePermissionDenied(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	factory, stdout, _, reg := cmdutil.TestFactory(t, wikiTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/wiki/v2/spaces/space_dst/nodes/move_docs_to_wiki",
+		Body: map[string]interface{}{
+			"code":   131006,
+			"msg":    "permission denied: no move permission for document",
+			"log_id": "log-docs-to-wiki-permission",
+		},
+	})
+
+	err := mountAndRunWiki(t, WikiMove, []string{
+		"+move",
+		"--obj-type", "docx",
+		"--obj-token", "doc_token",
+		"--target-space-id", "space_dst",
+		"--as", "user",
+	}, factory, stdout)
+	if err == nil {
+		t.Fatal("expected permission error")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
+	}
+	if p.Code != 131006 || p.Retryable {
+		t.Fatalf("problem = %#v, want non-retryable 131006", p)
+	}
+	if !strings.Contains(p.Hint, "source document lacks manage permission") || !strings.Contains(p.Hint, "parent folder lacks edit permission") {
+		t.Fatalf("hint = %q, want docs-to-wiki Drive source guidance", p.Hint)
+	}
+	if strings.Contains(p.Hint, "grant read access") || strings.Contains(p.Hint, "edit permission on the node plus") {
+		t.Fatalf("hint = %q, must not use read or node-move recovery for docs-to-wiki", p.Hint)
+	}
+}
+
+func TestWikiMoveResolveGetNodeUsesReadPermissionHint(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	factory, stdout, _, reg := cmdutil.TestFactory(t, wikiTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code":   131006,
+			"msg":    "permission denied: node permission denied, user needs read permission.",
+			"log_id": "log-move-resolve-permission",
+		},
+	})
+
+	err := mountAndRunWiki(t, WikiMove, []string{
+		"+move",
+		"--node-token", "wik_node",
+		"--target-space-id", "space_dst",
+		"--as", "user",
+	}, factory, stdout)
+	if err == nil {
+		t.Fatal("expected permission error")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
+	}
+	if p.Code != 131006 || p.Retryable {
+		t.Fatalf("problem = %#v, want non-retryable 131006", p)
+	}
+	if !strings.Contains(p.Hint, "grant read access") {
+		t.Fatalf("hint = %q, want read-access guidance for get_node resolve", p.Hint)
+	}
+	if strings.Contains(p.Hint, "container edit permission") {
+		t.Fatalf("hint = %q, must not use write-container guidance for get_node resolve", p.Hint)
+	}
+}
+
 func TestWikiMoveExecuteDocsToWikiShortcutAsyncSuccess(t *testing.T) {
 	withSingleWikiMovePoll(t)
 
@@ -844,6 +964,110 @@ func TestWikiMoveExecuteDocsToWikiShortcutAsyncSuccess(t *testing.T) {
 	body := decodeWikiCapturedJSONBody(t, docsStub)
 	if body["obj_type"] != "sheet" || body["obj_token"] != "sheet_token" || body["apply"] != true {
 		t.Fatalf("docs-to-wiki body = %#v", body)
+	}
+}
+
+func TestWikiMoveMountedStopsPollingOnTaskPermissionDenied(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	wikiMovePollMu.Lock()
+	prevAttempts, prevInterval := wikiMovePollAttempts, wikiMovePollInterval
+	wikiMovePollAttempts, wikiMovePollInterval = 30, 0
+	t.Cleanup(func() {
+		wikiMovePollAttempts, wikiMovePollInterval = prevAttempts, prevInterval
+		wikiMovePollMu.Unlock()
+	})
+
+	factory, stdout, stderr, reg := cmdutil.TestFactory(t, wikiTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/wiki/v2/spaces/space_dst/nodes/move_docs_to_wiki",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"task_id": "task_123",
+			},
+		},
+	})
+	taskGets := 0
+	reg.Register(&httpmock.Stub{
+		Method:   "GET",
+		URL:      "/open-apis/wiki/v2/tasks/task_123",
+		Reusable: true,
+		OnMatch: func(*http.Request) {
+			taskGets++
+		},
+		Body: map[string]interface{}{
+			"code":   131006,
+			"msg":    "permission denied: only task creator can query status",
+			"log_id": "log-wiki-task-permission",
+		},
+	})
+
+	err := mountAndRunWiki(t, WikiMove, []string{
+		"+move",
+		"--obj-type", "sheet",
+		"--obj-token", "sheet_token",
+		"--target-space-id", "space_dst",
+		"--apply",
+		"--as", "user",
+	}, factory, stdout)
+	if err == nil {
+		t.Fatal("expected permission error")
+	}
+	if taskGets != 1 {
+		t.Fatalf("GetMoveTask calls = %d, want 1", taskGets)
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Code != 131006 || p.Retryable {
+		t.Fatalf("problem = %#v, want non-retryable 131006", p)
+	}
+	if !strings.Contains(p.Hint, "only the task creator can query status") || strings.Contains(p.Hint, "retry status lookup") {
+		t.Fatalf("hint = %q, want terminal task permission guidance without retry", p.Hint)
+	}
+	if strings.Contains(stderr.String(), "Wiki move status attempt") {
+		t.Fatalf("stderr = %q, want no transient poll logs", stderr.String())
+	}
+}
+
+func TestPollWikiMoveTaskStopsOnPermissionDenied(t *testing.T) {
+	wikiMovePollMu.Lock()
+	prevAttempts, prevInterval := wikiMovePollAttempts, wikiMovePollInterval
+	wikiMovePollAttempts, wikiMovePollInterval = 30, 0
+	t.Cleanup(func() {
+		wikiMovePollAttempts, wikiMovePollInterval = prevAttempts, prevInterval
+		wikiMovePollMu.Unlock()
+	})
+
+	runtime, stderr := newWikiMoveRuntimeWithScopes(t, core.AsUser, "")
+	client := &fakeWikiMoveClient{
+		taskErrs: []error{
+			errs.NewPermissionError(errs.SubtypePermissionDenied, "only task creator can query status").WithCode(131006),
+		},
+	}
+
+	status, ready, err := pollWikiMoveTask(context.Background(), client, runtime, "task_123")
+	if err == nil {
+		t.Fatal("expected pollWikiMoveTask() error, got nil")
+	}
+	if ready {
+		t.Fatal("expected ready=false on permission denied")
+	}
+	if status.TaskID != "task_123" {
+		t.Fatalf("status.TaskID = %q, want %q", status.TaskID, "task_123")
+	}
+	if got := len(client.moveTaskCallArgs); got != 1 {
+		t.Fatalf("GetMoveTask calls = %d, want 1", got)
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Code != 131006 || p.Retryable {
+		t.Fatalf("problem = %#v, want non-retryable 131006", p)
+	}
+	if !strings.Contains(p.Hint, "only the task creator can query status") || strings.Contains(p.Hint, "retry status lookup") {
+		t.Fatalf("hint = %q, want terminal task permission guidance without retry", p.Hint)
+	}
+	if stderr.String() != "" {
+		t.Fatalf("stderr = %q, want no transient poll logs", stderr.String())
 	}
 }
 

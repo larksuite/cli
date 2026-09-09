@@ -110,6 +110,7 @@ lark-cli wiki +move \
 - **继续查询**：看到 `next_command` 后，改用 `lark-cli drive +task_result --scenario wiki_move --task-id <TASK_ID>` 继续查
 - **任务失败直接报错**：如果轮询期间任务进入失败态，shortcut 会直接返回错误，不会再输出 `ready=false` 结果
 - **轮询请求全部失败时也直接报错**：如果任务已创建，但后续每一次状态查询都失败，shortcut 会返回带 hint 的错误，并给出继续查询命令
+- **`131006` 是资源权限失败，不是 scope 缺失**：停止重复调用，并按命令返回的 hint 补齐对应资源权限；不要通过重新授权或切换身份盲目重试
 
 ## 返回结果
 

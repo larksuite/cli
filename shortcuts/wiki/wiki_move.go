@@ -234,7 +234,7 @@ func (api wikiMoveAPI) GetNode(ctx context.Context, token string) (*wikiNodeReco
 		nil,
 	)
 	if err != nil {
-		return nil, err
+		return nil, annotateWikiPermissionDenied(err)
 	}
 	return parseWikiNodeRecord(common.GetMap(data, "node"))
 }
@@ -251,7 +251,7 @@ func (api wikiMoveAPI) MoveNode(ctx context.Context, sourceSpaceID string, spec 
 		spec.NodeMoveBody(),
 	)
 	if err != nil {
-		return nil, err
+		return nil, annotateWikiNodeMovePermissionDenied(err)
 	}
 	return parseWikiNodeRecord(common.GetMap(data, "node"))
 }
@@ -267,7 +267,7 @@ func (api wikiMoveAPI) MoveDocsToWiki(ctx context.Context, targetSpaceID string,
 		spec.DocsToWikiBody(),
 	)
 	if err != nil {
-		return nil, err
+		return nil, annotateWikiDocsToWikiPermissionDenied(err)
 	}
 
 	return &wikiMoveDocsResponse{
@@ -285,7 +285,7 @@ func (api wikiMoveAPI) GetMoveTask(ctx context.Context, taskID string) (wikiMove
 		nil,
 	)
 	if err != nil {
-		return wikiMoveTaskStatus{}, err
+		return wikiMoveTaskStatus{}, annotateWikiTaskPermissionDenied(err)
 	}
 	return parseWikiMoveTaskStatus(taskID, common.GetMap(data, "task"))
 }
@@ -575,9 +575,9 @@ func pollWikiMoveTask(ctx context.Context, client wikiMoveClient, runtime *commo
 	var lastErr error
 	hadSuccessfulPoll := false
 
-	// The move request itself already succeeded. Treat poll failures as transient
-	// until every attempt fails, then return a resume hint instead of discarding
-	// the task identifier.
+	// The move request itself already succeeded. Stop on known terminal permission
+	// failures; treat other poll failures as transient until every attempt fails,
+	// then return a resume hint instead of discarding the task identifier.
 	for attempt := 1; attempt <= wikiMovePollAttempts; attempt++ {
 		if attempt > 1 {
 			select {
@@ -589,6 +589,9 @@ func pollWikiMoveTask(ctx context.Context, client wikiMoveClient, runtime *commo
 
 		status, err := client.GetMoveTask(ctx, taskID)
 		if err != nil {
+			if isWikiPermissionDenied(err) {
+				return lastStatus, false, annotateWikiTaskPermissionDenied(err)
+			}
 			lastErr = err
 			continue
 		}
