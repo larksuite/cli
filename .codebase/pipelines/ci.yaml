@@ -240,6 +240,13 @@ jobs:
       - name: Run script tests
         commands:
           - make script-test
+      # The internal release pipeline and its stage scripts live under
+      # .codebase/release and are not part of the public Makefile target.
+      - name: Run internal release tests
+        commands:
+          - bash .codebase/release/pipeline.test.sh
+          - bash .codebase/release/scripts.test.sh
+          - node --test .codebase/release/build-registry-package.test.js .codebase/release/run.test.js
 
   skill_format_check:
     name: Skill Format Check

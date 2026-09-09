@@ -1,0 +1,178 @@
+# Copyright (c) 2026 Lark Technologies Pte. Ltd.
+# SPDX-License-Identifier: MIT
+
+# Internal release. This is the internal counterpart of the public
+# .github/workflows/release.yml: a `v*` tag on this repository builds the same
+# GoReleaser candidate, verifies it, and publishes it — but to the internal npm
+# registry as the internal package, not to GitHub Releases and npmjs.org.
+# Package name, registry and Go toolchain live in .codebase/release/config.env;
+# the stages are .codebase/release/*.sh so each can be run and tested by
+# hand, and the YAML only orders them.
+#
+# What is kept from the public workflow: the tag must equal the package version
+# and point at a commit already in main (scripts/release-preflight.js, beta
+# included), the candidate is built once and every later stage re-checks that
+# the tag still points at that commit, the installed CLI is exercised before
+# anything is published, and publication follows
+# scripts/release-publish-policy.js — identical bytes are re-published as a
+# dist-tag move at most, different bytes under an existing version are refused,
+# and a channel is never moved backwards.
+#
+# What differs, and why:
+# - No GitHub Release and no draft/publish split: Codebase artifacts are the
+#   hand-off between jobs and expire after a week; the registry is the durable
+#   store. A candidate is therefore published in the same run that built it.
+# - No Environment approval and no manual gate: `manual: true` only applies to
+#   MR-triggered jobs here. The approval boundary is who may push a `v*` tag,
+#   which the repository's protected-tag settings must restrict to release
+#   owners. Configure that before the first tag.
+# - No macOS signing or notarization. The internal build is unsigned like the
+#   previous internal package; an unsigned CLI started from a terminal is not
+#   Gatekeeper-checked, but this is a gap against the public release, not
+#   parity, and no job pretends otherwise.
+# - The binaries travel inside the npm package (bin/) instead of being
+#   downloaded at install time, so installs need no GitHub access and can never
+#   pick up the public build. .codebase/release/run.js is the launcher.
+# - The binaries are the unchanged public build; their self-update path knows
+#   only the public package, so the launcher implements `lark-cli update`
+#   itself against the internal registry (npm installs only) and syncs the
+#   same public skills bundle afterwards.
+# - Nothing outside .codebase/ is touched: the public GoReleaser configuration
+#   and scripts are used as they are.
+#
+# Credentials: BNPM_AUTH_TOKEN must exist under Pipelines -> Variables before a
+# release tag is pushed. A pipeline that references an undefined variable fails
+# to parse, and a re-run never picks up a variable added later — push a new
+# tag instead. Only the publish job receives the token.
+#
+# Recovery: re-run the failed job, not the pipeline. The candidate artifact
+# outlives the run, `publish` recognises a version it already published and
+# only advances the dist-tag, and `preflight` refuses to rebuild a version the
+# registry already holds — a fix ships as a new version.
+name: Release
+
+trigger:
+  push:
+    types: [ tag ]
+    tags: [ "v*" ]
+
+jobs:
+  preflight:
+    name: Preflight
+    image: hub.byted.org/codebase/ci_go_1_23:latest
+    timeout: 15
+    steps:
+      - uses: actions/checkout
+      # Same Node install as ci.yaml: the image ships none and the release
+      # policy scripts run on Node.
+      - name: Install Node
+        commands:
+          - curl -fsSL https://mirrors.byted.org/nodejs-release/v22.16.0/node-v22.16.0-linux-x64.tar.xz | tar -xJ -C /opt
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/node /usr/local/bin/node
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/npm /usr/local/bin/npm
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/npx /usr/local/bin/npx
+          - node --version
+      # Tag equals the package version, checkout is the tagged commit, and the
+      # commit is already in origin/main — for beta tags too.
+      - name: Validate the release source
+        commands:
+          - bash .codebase/release/source.sh "${{Event.Ref.Name}}"
+      # A version the registry already holds is never rebuilt: different bytes
+      # under the same version would be refused at publish time anyway, and a
+      # correct earlier publication needs no second run.
+      - name: Refuse to rebuild a published version
+        commands:
+          - 'set -a; . .codebase/release/config.env; set +a; eval "$(bash .codebase/release/source.sh "${{Event.Ref.Name}}")"; state="$(bash .codebase/release/registry-version.sh "$RELEASE_PACKAGE" "$version" "$RELEASE_REGISTRY")"; echo "${RELEASE_PACKAGE}@${version}: ${state}"; [ "$state" = missing ] || { echo "Already published; ship a fix as a new version instead of re-running this tag." >&2; exit 1; }'
+
+  build:
+    name: Build Release Candidate
+    image: hub.byted.org/codebase/ci_go_1_23:latest
+    depends: [ preflight ]
+    if: '${{Jobs.preflight.Conclusion == "success"}}'
+    timeout: 45
+    envs:
+      # The pinned toolchain download is verified against sum.golang.org, which
+      # this proxy serves; the image's default proxy list and checksum database
+      # are not reliably reachable (see ci.yaml).
+      GOPROXY: https://goproxy.byted.org
+    steps:
+      - uses: actions/checkout
+      - name: Install Node
+        commands:
+          - curl -fsSL https://mirrors.byted.org/nodejs-release/v22.16.0/node-v22.16.0-linux-x64.tar.xz | tar -xJ -C /opt
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/node /usr/local/bin/node
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/npm /usr/local/bin/npm
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/npx /usr/local/bin/npx
+          - node --version
+      # The public GoReleaser build, toolchain verification of every binary,
+      # and packaging into release-candidate/<name>-<version>.tgz plus
+      # manifest.json.
+      - name: Build and package the candidate
+        commands:
+          - bash .codebase/release/build.sh "${{Event.Ref.Name}}"
+      - name: Upload release candidate
+        uses: actions/upload-artifact
+        inputs:
+          name: release-candidate
+          path: release-candidate
+
+  verify_install:
+    name: Verify Install
+    image: hub.byted.org/codebase/ci_go_1_23:latest
+    depends: [ build ]
+    if: '${{Jobs.build.Conclusion == "success"}}'
+    timeout: 15
+    steps:
+      - uses: actions/checkout
+      - name: Install Node
+        commands:
+          - curl -fsSL https://mirrors.byted.org/nodejs-release/v22.16.0/node-v22.16.0-linux-x64.tar.xz | tar -xJ -C /opt
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/node /usr/local/bin/node
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/npm /usr/local/bin/npm
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/npx /usr/local/bin/npx
+          - node --version
+      # The artifact unpacks with its directory, so ./ restores release-candidate/.
+      - name: Download release candidate
+        uses: actions/download-artifact
+        inputs:
+          name: release-candidate
+          path: ./
+      # `npm install -g` of the tarball, postinstall included, into a scratch
+      # prefix; the installed CLI must report the candidate version, keep only
+      # this platform's binary and route `lark-cli update` through the launcher.
+      - name: Install the candidate and run it
+        commands:
+          - bash .codebase/release/verify.sh release-candidate
+
+  publish:
+    name: Publish
+    image: hub.byted.org/codebase/ci_go_1_23:latest
+    depends: [ verify_install ]
+    if: '${{Jobs.verify_install.Conclusion == "success"}}'
+    timeout: 15
+    envs:
+      BNPM_AUTH_TOKEN: ${{ BNPM_AUTH_TOKEN }}
+    steps:
+      - uses: actions/checkout
+      - name: Install Node
+        commands:
+          - curl -fsSL https://mirrors.byted.org/nodejs-release/v22.16.0/node-v22.16.0-linux-x64.tar.xz | tar -xJ -C /opt
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/node /usr/local/bin/node
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/npm /usr/local/bin/npm
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/npx /usr/local/bin/npx
+          - node --version
+      - name: Download release candidate
+        uses: actions/download-artifact
+        inputs:
+          name: release-candidate
+          path: ./
+      # Fail here rather than inside npm with an opaque auth error.
+      - name: Confirm the publish token arrived
+        commands:
+          - 'if [ -z "${BNPM_AUTH_TOKEN:-}" ]; then echo "BNPM_AUTH_TOKEN did not reach this job; configure it under Pipelines -> Variables and push a new tag."; exit 1; fi'
+          - echo "publish token present"
+      # Re-verifies the tag against the candidate's source commit, then applies
+      # the publication policy and publishes the verified tarball as-is.
+      - name: Publish the verified candidate
+        commands:
+          - bash .codebase/release/publish.sh release-candidate
