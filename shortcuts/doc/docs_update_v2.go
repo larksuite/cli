@@ -227,6 +227,10 @@ func executeUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 	}
 	apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s", validate.EncodePathSegment(documentID))
 
+	if err := applyChunkingToBody(body, "content", runtime.Str("doc-format")); err != nil {
+		return err
+	}
+
 	data, err := doDocAPI(runtime, "PUT", apiPath, body)
 	if err != nil {
 		return err
