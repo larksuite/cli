@@ -211,7 +211,7 @@ func retryableDocsCreateTaskRead(err error) bool {
 	}
 }
 
-const docsCreateBatchHint = "split the content into smaller batches: create the document first, then append each batch"
+const docsCreateBatchHint = "split the content into smaller batches: first run `lark-cli docs +create --title \"<title>\"`, then use the returned document_id to append each XML batch with `lark-cli docs +update --doc \"<document_id>\" --command append --doc-format xml --content \"@./batch.xml\"`. For Markdown, use --doc-format markdown and a Markdown batch file."
 
 func docsCreateAsyncWaitError(err error, logID string) error {
 	if errors.Is(err, context.DeadlineExceeded) {

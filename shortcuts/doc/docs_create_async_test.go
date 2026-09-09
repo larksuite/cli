@@ -73,7 +73,7 @@ func TestDocsCreateAsyncDeadlineCancelsInflightRead(t *testing.T) {
 	if result != nil || !errors.Is(err, context.DeadlineExceeded) || !ok || problem.Subtype != errs.SubtypeNetworkTimeout {
 		t.Fatalf("deadline result=%v err=%v problem=%+v", result, err, problem)
 	}
-	if problem.LogID != "create-log" || problem.Hint != "split the content into smaller batches: create the document first, then append each batch" {
+	if problem.LogID != "create-log" || !strings.Contains(problem.Hint, "--command append") {
 		t.Fatalf("timeout recovery missing: %+v", problem)
 	}
 	assertDocsCreateErrorHasNoTaskRecovery(t, err, "task_slow")
@@ -351,7 +351,7 @@ func TestDocsCreateAsyncTerminalFailureGuidance(t *testing.T) {
 				t.Fatalf("result=%v err=%v problem=%+v", result, err, problem)
 			}
 			if tc.batch {
-				if !strings.Contains(problem.Message, "took too long") || problem.Hint != "split the content into smaller batches: create the document first, then append each batch" {
+				if !strings.Contains(problem.Message, "took too long") || !strings.Contains(problem.Hint, "--command append") {
 					t.Fatalf("batch recovery missing: %+v", problem)
 				}
 			} else if !strings.Contains(problem.Message, tc.failure.Message) || strings.Contains(problem.Message, "took too long") {
@@ -379,9 +379,72 @@ func TestDocsCreateAsyncTimeoutEnvelope(t *testing.T) {
 	if envelope.OK || envelope.Identity != "user" || envelope.Error.Category != errs.CategoryNetwork || envelope.Error.Subtype != errs.SubtypeNetworkTimeout || envelope.Error.LogID != "timeout-log" || output.ExitCodeOf(err) != 4 || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("invalid timeout envelope: %s", stderr.String())
 	}
-	if envelope.Error.Message != "document processing took too long" || envelope.Error.Hint != "split the content into smaller batches: create the document first, then append each batch" {
+	if envelope.Error.Message != "document processing took too long" || !strings.Contains(envelope.Error.Hint, "--command append") {
 		t.Fatalf("incorrect timeout recovery: %s", stderr.String())
 	}
 	assertDocsCreateErrorHasNoTaskRecovery(t, err, "task_timeout")
 	t.Log(stderr.String())
+}
+
+func TestDocsCreateBatchHintCommandsDryRun(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	cmdutil.TestChdir(t, t.TempDir())
+	if err := os.WriteFile("batch.xml", []byte("<p>Batch</p>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	commands := regexp.MustCompile("`([^`]+)`").FindAllStringSubmatch(docsCreateBatchHint, -1)
+	if len(commands) != 2 {
+		t.Fatalf("expected create and append commands in hint, got %q", docsCreateBatchHint)
+	}
+	for i, command := range commands {
+		t.Run([]string{"create", "append"}[i], func(t *testing.T) {
+			// The quoted placeholders in these examples contain no spaces. Fill
+			// them with fixtures and execute the actual published argument list.
+			example := strings.NewReplacer("<title>", "Batch", "<document_id>", "doxcnBatchHint").Replace(command[1])
+			args := strings.Fields(example)
+			if len(args) < 3 || args[0] != "lark-cli" || args[1] != "docs" {
+				t.Fatalf("invalid command example: %q", example)
+			}
+			args = args[2:]
+			for j := range args {
+				args[j] = strings.Trim(args[j], "\"")
+			}
+			f, stdout, _, _ := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+			parent := &cobra.Command{Use: "docs", SilenceErrors: true, SilenceUsage: true}
+			DocsCreate.Mount(parent, f)
+			DocsUpdate.Mount(parent, f)
+			parent.SetArgs(append(args, "--dry-run", "--as", "user"))
+			if err := parent.Execute(); err != nil {
+				t.Fatalf("hint command %q is invalid: %v", example, err)
+			}
+			var envelope struct {
+				Data struct {
+					API []struct {
+						Method string `json:"method"`
+						URL    string `json:"url"`
+						Body   struct {
+							Content string `json:"content"`
+							Format  string `json:"format"`
+							Command string `json:"command"`
+							BlockID string `json:"block_id"`
+						} `json:"body"`
+					} `json:"api"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+				t.Fatal(err)
+			}
+			if len(envelope.Data.API) == 0 {
+				t.Fatalf("hint command emitted no API call: %s", stdout)
+			}
+			api := envelope.Data.API[0]
+			if i == 0 {
+				if api.Method != "POST" || api.URL != "/open-apis/docs_ai/v1/documents" || api.Body.Content != "<title>Batch</title>" {
+					t.Fatalf("create example did not create a title-only document: %s", stdout)
+				}
+			} else if api.Method != "PUT" || api.URL != "/open-apis/docs_ai/v1/documents/doxcnBatchHint" || api.Body.Command != "block_insert_after" || api.Body.BlockID != "-1" || api.Body.Format != "xml" || api.Body.Content != "<p>Batch</p>" {
+				t.Fatalf("append example did not append the XML batch to the returned document: %s", stdout)
+			}
+		})
+	}
 }
