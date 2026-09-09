@@ -19,11 +19,11 @@ var BaseFieldList = common.Shortcut{
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
-		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
-		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "100", Desc: "pagination size, range 1-200"},
+		{Name: "offset", Type: "int", Default: "0", Desc: "legacy pagination offset; hidden for compatibility", Hidden: true},
+		{Name: "limit", Aliases: []string{"page-size"}, Type: "int", Default: "500", Desc: "legacy pagination size, range 1-500; hidden for compatibility", Hidden: true},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		_, err := common.ValidatePageSizeTyped(runtime, "limit", 100, 1, 200)
+		_, err := common.ValidatePageSizeTyped(runtime, "limit", 500, 1, 500)
 		return err
 	},
 	DryRun: dryRunFieldList,
