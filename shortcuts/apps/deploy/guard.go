@@ -43,14 +43,13 @@ var sensitiveExactNames = map[string]bool{
 // sail through a base-name check as "config.json" and "config". The key is the
 // conventional parent directory, the value the file name inside it.
 var parentAnchoredCredentials = map[string]map[string]bool{
-	".aws":    {"credentials": true, "config": true},
 	".docker": {"config.json": true},
 	".kube":   {"config": true},
 }
 
 // secretOnlyDirs exist solely to hold secrets, so anything directly inside
 // them is treated as a credential regardless of its name.
-var secretOnlyDirs = map[string]bool{".ssh": true, ".gnupg": true}
+var secretOnlyDirs = map[string]bool{".ssh": true, ".gnupg": true, ".aws": true}
 
 // isSensitiveRel reports whether a "/"-delimited relative path holds a
 // credential. It checks the leaf name and, because some credential files carry

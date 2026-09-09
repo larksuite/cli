@@ -78,6 +78,9 @@ func TestIsSensitiveRelCoversParentAnchoredPairs(t *testing.T) {
 		".docker/config.json", ".kube/config", ".aws/credentials", ".aws/config",
 		"nested/.docker/config.json", ".DOCKER/CONFIG.JSON",
 		".ssh/known_hosts", ".ssh/id_rsa", ".gnupg/secring.gpg",
+		// .aws 整目录纳管：sso 缓存的 token 藏在多层子目录里，
+		// 只锚定 .aws/credentials 会漏掉 .aws/sso/cache/*.json。
+		".aws/sso/cache/abc.json", ".aws/cli/cache/x.json",
 		"assets/.env",
 	}
 	for _, rel := range hit {

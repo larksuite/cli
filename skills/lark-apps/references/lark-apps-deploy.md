@@ -86,7 +86,7 @@ lark-cli apps +deploy --dry-run
 
 - 默认扫描凭证类文件，命中即拒绝发布并列出命中项，大小写不敏感。`--dry-run` 命中同样非零退出，不能用它绕过。两类匹配：
   - **按文件名**：`.env` 及 `.env.*`、`.npmrc`、`.netrc`、`.pypirc`、`.git-credentials`、`id_rsa` 等私钥、`*.pem` / `*.p12` / `*.pfx` / `*.keystore`、`credentials`、`service-account.json`
-  - **按父目录锚定**（这些文件名太通用，只看文件名会漏）：`.aws/credentials`、`.aws/config`、`.docker/config.json`、`.kube/config`，以及 `.ssh/` 与 `.gnupg/` 目录下的任何文件
+  - **按父目录锚定**（这些文件名太通用，只看文件名会漏）：`.docker/config.json`、`.kube/config`，以及 `.aws/`、`.ssh/`、`.gnupg/` 这几个纯密钥目录下的任何文件（含多层子目录，如 `.aws/sso/cache/*.json`）
 - 命中后的默认动作是**把这些文件移出发布范围**（删掉、或把 `--dir` 收窄到只含站点的那一层）。只有确认它们本就是要公开的页面内容时才加 `--allow-sensitive`：它跳过整道扫描并在 stderr 列出被放行的文件，而产物发布后是公网可分享链接，误放行等于把凭证发到公网。
 - 体积上限：单个 `.html` ≤ 20 MiB、打包前原始总量 ≤ 200 MiB、打包后 zip ≤ 50 MiB。超限直接失败并给出当前体积，只能收窄产物范围，没有放开的参数。
 

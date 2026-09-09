@@ -24,7 +24,14 @@ type Candidate struct {
 // NUL byte. Component-aware, so names that merely contain ".." as a substring
 // (archive.tar..bak) stay allowed.
 func isUnsafeRel(rel string) bool {
-	return strings.HasPrefix(rel, "/") ||
+	// A literal backslash never appears in a path this walker produces
+	// (filepath.ToSlash already normalized real separators), so its only
+	// source is a file whose name contains one. Reject it: an unpacker that
+	// applies Windows semantics would read it as a separator, which is a
+	// zip-slip primitive. Defense in depth — the server's unpacker is not
+	// ours to verify.
+	return strings.Contains(rel, `\`) ||
+		strings.HasPrefix(rel, "/") ||
 		rel == ".." ||
 		strings.HasPrefix(rel, "../") ||
 		strings.Contains(rel, "/../") ||

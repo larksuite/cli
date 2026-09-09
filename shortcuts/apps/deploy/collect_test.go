@@ -20,7 +20,7 @@ func mustWrite(t *testing.T, path, content string) {
 }
 
 func TestIsUnsafeRel(t *testing.T) {
-	unsafe := []string{"/abs", "..", "../x", "a/../../b", "a/..", "a\x00b"}
+	unsafe := []string{"/abs", "..", "../x", "a/../../b", "a/..", "a\x00b", `a\\b.html`}
 	for _, in := range unsafe {
 		if !isUnsafeRel(in) {
 			t.Errorf("isUnsafeRel(%q) = false, want true", in)
