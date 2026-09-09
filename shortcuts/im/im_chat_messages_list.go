@@ -41,6 +41,7 @@ var ImChatMessageList = common.Shortcut{
 		{Name: "order", Aliases: []string{"sort-order", "sort"}, Default: "desc", Desc: "sort order: asc | desc", Enum: []string{"asc", "desc"}},
 		{Name: "page-size", Aliases: []string{"limit"}, Default: fmt.Sprintf("%d", chatMessagesListDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", chatMessagesListMaxPageSize)},
 		{Name: "page-token", Desc: "starting pagination cursor"},
+		{Name: "json-shape", Default: messageListJSONShapeLegacy, Desc: "JSON data shape; non-JSON formats are unchanged", Enum: []string{messageListJSONShapeLegacy, messageListJSONShapeNormalized}},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
 		downloadResourcesFlag,
 	}, common.PageAllFlags()...),
@@ -176,14 +177,9 @@ var ImChatMessageList = common.Shortcut{
 		}
 		pagination.Items = len(messages)
 
-		// Emit: pagination completion belongs to framework metadata; the
-		// business payload remains compatible for existing consumers.
-		outData := map[string]interface{}{
-			"messages":   messages,
-			"total":      len(messages),
-			"has_more":   hasMore,
-			"page_token": nextPageToken,
-		}
+		// Emit: preserve the established envelope by default; normalized JSON is
+		// an explicit opt-in. Human and record formats retain legacy projection.
+		outData := messageListOutputData(runtime.Str("json-shape"), runtime.Format, runtime.JqExpr, messages, chatId, "", hasMore, nextPageToken)
 		runtime.OutFormat(outData, &output.Meta{
 			Pagination: pagination,
 		}, func(w io.Writer) {

@@ -30,13 +30,13 @@ func TestIM_ListPageAllDryRun(t *testing.T) {
 	}{
 		{
 			name:   "chat-messages-list",
-			args:   []string{"im", "+chat-messages-list", "--chat-id", "oc_dryrun"},
+			args:   []string{"im", "+chat-messages-list", "--chat-id", "oc_dryrun", "--json-shape", "normalized"},
 			method: http.MethodGet,
 			path:   "/open-apis/im/v1/messages",
 		},
 		{
 			name:   "threads-messages-list",
-			args:   []string{"im", "+threads-messages-list", "--thread", "omt_dryrun"},
+			args:   []string{"im", "+threads-messages-list", "--thread", "omt_dryrun", "--json-shape", "normalized"},
 			method: http.MethodGet,
 			path:   "/open-apis/im/v1/messages",
 		},

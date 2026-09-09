@@ -101,9 +101,31 @@ func TestIM_PageAllLiveWorkflow(t *testing.T) {
 		require.GreaterOrEqual(t, gjson.Get(result.Stdout, "meta.pagination.pages").Int(), int64(3))
 		require.Equal(t, gjson.Get(result.Stdout, "data.messages.#").Int(),
 			gjson.Get(result.Stdout, "meta.pagination.items").Int())
+		require.False(t, gjson.Get(result.Stdout, "data.participants").Exists(),
+			"default JSON must preserve the legacy envelope")
+		require.True(t, gjson.Get(result.Stdout, "data.messages.0.chat_id").Exists(),
+			"default JSON must preserve per-message chat_id")
+		require.True(t, gjson.Get(result.Stdout, "data.messages.0.sender").Exists(),
+			"default JSON must preserve per-message sender")
 		for _, text := range texts {
 			require.Contains(t, result.Stdout, text, "merged result must contain every sent message")
 		}
+	})
+
+	t.Run("chat-messages-list normalizes JSON only when requested", func(t *testing.T) {
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{"im", "+chat-messages-list", "--chat-id", chatID,
+				"--page-size", "3", "--json-shape", "normalized"},
+			DefaultAs: "bot",
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		result.AssertStdoutStatus(t, true)
+		require.Equal(t, chatID, gjson.Get(result.Stdout, "data.chat_id").String())
+		require.NotEmpty(t, gjson.Get(result.Stdout, "data.participants").Map())
+		require.NotEmpty(t, gjson.Get(result.Stdout, "data.messages.0.sender_id").String())
+		require.False(t, gjson.Get(result.Stdout, "data.messages.0.chat_id").Exists())
+		require.False(t, gjson.Get(result.Stdout, "data.messages.0.sender").Exists())
 	})
 
 	t.Run("threads-messages-list walks a real thread", func(t *testing.T) {
@@ -143,6 +165,26 @@ func TestIM_PageAllLiveWorkflow(t *testing.T) {
 		require.GreaterOrEqual(t, gjson.Get(result.Stdout, "meta.pagination.pages").Int(), int64(2))
 		require.Equal(t, gjson.Get(result.Stdout, "data.messages.#").Int(),
 			gjson.Get(result.Stdout, "meta.pagination.items").Int())
+		require.False(t, gjson.Get(result.Stdout, "data.participants").Exists(),
+			"default JSON must preserve the legacy envelope")
+		require.True(t, gjson.Get(result.Stdout, "data.messages.0.thread_id").Exists(),
+			"default JSON must preserve per-message thread_id")
+		require.True(t, gjson.Get(result.Stdout, "data.messages.0.sender").Exists(),
+			"default JSON must preserve per-message sender")
+
+		normalized, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{"im", "+threads-messages-list", "--thread", parentMessageID,
+				"--page-size", "2", "--json-shape", "normalized"},
+			DefaultAs: "bot",
+		})
+		require.NoError(t, err)
+		normalized.AssertExitCode(t, 0)
+		normalized.AssertStdoutStatus(t, true)
+		require.NotEmpty(t, gjson.Get(normalized.Stdout, "data.thread_id").String())
+		require.NotEmpty(t, gjson.Get(normalized.Stdout, "data.participants").Map())
+		require.NotEmpty(t, gjson.Get(normalized.Stdout, "data.messages.0.sender_id").String())
+		require.False(t, gjson.Get(normalized.Stdout, "data.messages.0.thread_id").Exists())
+		require.False(t, gjson.Get(normalized.Stdout, "data.messages.0.sender").Exists())
 	})
 
 	t.Run("chat-list paginates across chats", func(t *testing.T) {
