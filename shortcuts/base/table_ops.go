@@ -5,9 +5,11 @@ package base
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -78,20 +80,79 @@ func validateTableCreate(runtime *common.RuntimeContext) error {
 	return nil
 }
 
+func normalizeTableListTotal(raw interface{}, supplied bool, itemCount int) (int, bool, *errs.InternalError) {
+	if !supplied {
+		return itemCount, itemCount == 0, nil
+	}
+	total, known := toIntStrict(raw)
+	if !known {
+		if value, ok := raw.(string); ok {
+			parsed, err := strconv.Atoi(strings.TrimSpace(value))
+			if err != nil {
+				return 0, false, errs.NewInternalError(
+					errs.SubtypeInvalidResponse,
+					"+table-list response contains an invalid total: %v",
+					err,
+				).WithCause(err)
+			}
+			total, known = parsed, true
+		} else {
+			return 0, false, errs.NewInternalError(
+				errs.SubtypeInvalidResponse,
+				"+table-list response total must be an integer or numeric string, got %T",
+				raw,
+			)
+		}
+	}
+	if total < 0 {
+		return 0, false, errs.NewInternalError(
+			errs.SubtypeInvalidResponse,
+			"+table-list response total must be non-negative, got %d",
+			total,
+		)
+	}
+	if total == 0 {
+		total = itemCount
+		known = itemCount == 0
+	}
+	return total, known, nil
+}
+
 func executeTableList(runtime *common.RuntimeContext) error {
 	offset := runtime.Int("offset")
 	if offset < 0 {
 		offset = 0
 	}
 	limit := runtime.Int("limit")
-	tables, total, err := listAllTables(runtime, runtime.Str("base-token"), offset, limit)
+	tables, total, totalKnown, err := listAllTables(runtime, runtime.Str("base-token"), offset, limit)
 	if err != nil {
 		return err
 	}
 	if total == 0 {
 		total = len(tables)
 	}
-	runtime.Out(map[string]interface{}{"tables": tables, "total": total}, nil)
+	pagination := &output.PaginationMeta{
+		Complete: true,
+		Pages:    1,
+		Items:    len(tables),
+	}
+	nextOffset := offset + len(tables)
+	if totalKnown && len(tables) == 0 && offset < total {
+		return errs.NewInternalError(
+			errs.SubtypeInvalidResponse,
+			"+table-list returned an empty page at offset %d before the reported total %d",
+			offset,
+			total,
+		)
+	}
+	if (totalKnown && nextOffset < total) || (!totalKnown && len(tables) == limit) {
+		pagination.Complete = false
+		pagination.NextToken = strconv.Itoa(nextOffset)
+	}
+	runtime.Out(
+		map[string]interface{}{"tables": tables, "total": total},
+		&output.Meta{Pagination: pagination},
+	)
 	return nil
 }
 

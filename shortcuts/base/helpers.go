@@ -575,13 +575,13 @@ func toStringSlice(v interface{}) []string {
 	return result
 }
 
-func listAllTables(runtime *common.RuntimeContext, baseToken string, offset, limit int) ([]map[string]interface{}, int, error) {
+func listAllTables(runtime *common.RuntimeContext, baseToken string, offset, limit int) ([]map[string]interface{}, int, bool, error) {
 	if limit <= 0 {
-		return nil, 0, errs.NewInternalError(errs.SubtypeSDKError, "limit must be greater than 0")
+		return nil, 0, false, errs.NewInternalError(errs.SubtypeSDKError, "limit must be greater than 0")
 	}
 	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", baseToken, "tables"), map[string]interface{}{"offset": offset, "limit": limit}, nil)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, false, err
 	}
 	rawItems, _ := data["tables"].([]interface{})
 	if len(rawItems) == 0 {
@@ -598,11 +598,12 @@ func listAllTables(runtime *common.RuntimeContext, baseToken string, offset, lim
 			items = append(items, m)
 		}
 	}
-	total := toInt(data["total"])
-	if total == 0 {
-		total = len(items)
+	rawTotal, totalSupplied := data["total"]
+	total, totalKnown, totalErr := normalizeTableListTotal(rawTotal, totalSupplied, len(items))
+	if totalErr != nil {
+		return nil, 0, false, totalErr
 	}
-	return items, total, nil
+	return items, total, totalKnown, nil
 }
 
 func listAllFields(runtime *common.RuntimeContext, baseToken, tableID string, offset, limit int) ([]map[string]interface{}, int, error) {

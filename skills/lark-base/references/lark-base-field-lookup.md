@@ -10,17 +10,21 @@ When using `+field-update`, also pass `--yes`: field update is a high-risk `PUT`
 
 ## Default strategy
 
-**Use Formula fields by default for cross-table references and aggregations.** Only use Lookup fields when the user explicitly requests a Lookup field. Formula is a strict superset of Lookup — anything Lookup can do, Formula can do with a single expression.
+**Use Formula fields by default for cross-table references and aggregations only when the user did not specify a field type.** When the user explicitly requests a Lookup field, `type=lookup` is an invariant unless the user explicitly requests conversion to another type. Technical convertibility to Formula does not authorize a type change. An empty or temporarily uncomputed result, or a configuration error, means diagnose the requested Lookup; it does not authorize fallback to Formula, Link, or another field type.
 
 ## Usage
 
 When creating a lookup field, the Agent should:
 
-1. Get all table names: `lark-cli base +table-list --base-token <base>` — returns `items[].table_name`
-2. Get table structure: `lark-cli base +table-get --base-token <base> --table-id <table>` — returns `fields[]`
-3. If the lookup references other tables, also get those tables' structures
-4. Determine the four elements: from (source table), select (source field), where (filter), aggregate (aggregation)
-5. Construct the Lookup field JSON and submit it to create or update the field
+1. Get all table names: `lark-cli base +table-list --base-token <base>` — returns `tables[].name`. When `meta.pagination.complete` is `false`, pass its decimal `next_token` to `--offset` and repeat until `complete` is `true`.
+2. Get the destination table structure with `+table-get`; also get every referenced source table structure before constructing the Lookup.
+3. Determine the four elements — `from` (source table), `select` (source field), `where` (filter), and `aggregate` (aggregation) — plus dependencies among all requested Lookup fields.
+4. Create or update independent fields before their dependents, in topological order. Use a separate command for each dependency layer; only independent fields in the same layer may be batched. For `+field-update`, first use `+field-get` and read-modify-write the complete full-PUT definition so unrelated properties are preserved.
+5. After each mutation, use `+field-get` to confirm `type`, `from`, `select`, `where`, and `aggregate` before creating or updating any dependent Lookup.
+6. After the final mutation, read every requested field again with `+field-get`, then read representative computed values with `+record-list` when applicable.
+7. `[无效引用]`, `Invalid Reference`, or an equivalent invalid-reference marker blocks completion. Diagnose the original Lookup configuration and dependencies; do not change its type as a fallback.
+
+After a successful mutation response, verification may be eventually consistent. Poll read-only commands only against the same Base, table, and field, using bounded retries with backoff and a hard deadline. Keep the original Base token, table ID, and field ID fixed; use `+field-get` for the requested Lookup definition and `+record-list` on the same destination when a representative computed value is applicable. A stale read must never trigger replay of `+field-create` or `+field-update`. If the deadline expires, verification has failed; report the timeout instead of claiming completion.
 
 **Key constraints**:
 
@@ -82,7 +86,7 @@ What does the user need?
 ├─ "Link"/"associate"/"bind" records between tables → Link
 ├─ "Look up"/"reference"/"aggregate"/"count" from another table → Lookup
 │   ├─ Needs aggregation (sum/count/average)? → Lookup + aggregate
-│   └─ Just reference a value? → Lookup (aggregate = null)
+│   └─ Just reference matching values? → Lookup (aggregate = raw_value)
 ├─ Calculations/text manipulation within current table → Formula
 └─ Access linked record's field → Prefer Lookup (more intuitive), or Formula chain access
 ```
@@ -103,11 +107,21 @@ filter condition:
 
 ### How to find the matching field pair
 
-**With a Link field (most common)**: The match is between the **Link field** and the **target table's primary field**.
+When multiple schema-valid field pairs exist, derive the correlation from the user's relationship and the entity represented by the current row:
+
+1. An explicitly requested alternate relationship or key wins.
+2. For a list or aggregate computed per current entity, prefer a schema-confirmed source identifier or Link to that entity, matched against the current row's identity. Use a Link from the current row to a source entity only when that is the relationship the user requested.
+3. `select` controls the returned value; it is not the join key merely because both tables expose it or sample values happen to coincide.
+4. Names alone are insufficient. Verify semantic meaning, Link targets, and comparison compatibility from both schemas.
+5. If the request, schemas, and dependent Lookups still leave multiple plausible relationships, ask one targeted clarification before writing.
+
+Back-translate the final `where` into the relationship it expresses and confirm that it matches the request. Sample values are secondary evidence, after schema and relationship semantics.
+
+After choosing the relationship, encode it in the source-to-current direction required by `where`:
 
 ```
-Link is in the source table   → source.linkField matches current.primaryField
-Link is in the current table  → source.primaryField matches current.linkField
+Source links to current entity → source.linkField matches current.primaryField
+Current row links to source    → source.primaryField matches current.linkField
 ```
 
 **Without a Link field**: Two tables share a field with the same meaning — match directly.
@@ -220,16 +234,35 @@ When using `{ "type": "field_ref", "field": "..." }`, values from both sides are
 
 | Aggregate | Common user phrasing | Select field should be | Result type |
 |-----------|---------------------|----------------------|-------------|
-| `sum` | "total" / "sum" / "cumulative amount" | `number` field (e.g., amount) | Number |
+| `sum` | "sum" / "add up" / "total amount or quantity" | Explicitly named additive `number` field | Number |
 | `average` | "average" / "mean" | `number` field | Number |
 | `max` | "maximum" / "latest" / "most recent" | `number` / `datetime` field | Same as source |
 | `min` | "minimum" / "earliest" | `number` / `datetime` field | Same as source |
-| `counta` | "count" / "how many" / "total number" | Any field | Number |
-| `unique_counta` | "count distinct" / "how many different" | Field to deduplicate | Number |
-| `unique` | "list distinct" / "which ones" / "show different" | Field to display | List |
-| `raw_value` | "list all" / "show all values" (default) | Field to display | List |
+| `counta` | "count" / "how many" / "total number" | Explicitly counted field, or the counted entity's identifier / primary field | Number |
+| `unique_counta` | "count distinct" / "unique count" | Field to deduplicate | Number |
+| `unique` | "deduplicate" / "distinct values" / "unique values" | Field to display | List |
+| `raw_value` | "list" / "reference" / "bring through" / "show matching values" (default) | Field to display | List |
 
-**Common confusion**: `unique` returns a **deduplicated list**, `unique_counta` returns a **count**. "Which categories are involved" → `unique`; "How many categories" → `unique_counta`.
+### Preserve the counted operand
+
+Resolve the counted noun before choosing `select` and `aggregate`. These two settings form one semantic contract: `select=F` with `aggregate=counta` counts non-empty occurrences of `F`, while `select=N` with `aggregate=sum` adds the numeric values of `N`.
+
+- For “count occurrences of field F”, select `F` and use `counta`.
+- Do not reframe a named field-occurrence request as a record count. The filter field and `select` may be the same source field; using one field to match rows does not make another non-empty field an acceptable counting operand.
+- For “how many entities” or “number of records”, prefer a schema-confirmed stable, non-empty identifier for that entity, especially an explicitly named ID or `auto_number` field, and use `counta`. Only fall back to a primary / display field when no stronger identifier exists and that field actually represents the counted entity. Use `unique_counta` only when the request also requires distinct entities.
+- An identifier fallback is allowed only for an entity or record count with no named counted field.
+- For “total quantity”, “sum of amount”, or another explicitly additive measure, select that numeric measure and use `sum`.
+- Do not replace an entity count with `sum` of a numeric measure, even when the measure sounds related to the entity.
+- A bare “total” or “total number” label does not authorize `sum`; first determine whether the noun denotes entities to count or a numeric measure to add.
+- Do not pick an arbitrary non-empty field for `counta`. `counta` ignores empty selected values, so another field is not semantically interchangeable merely because it is populated in the current rows.
+
+State the mapping as `counted operand -> select -> aggregate` before mutation, then back-translate the final pair into plain language: “count non-empty values of the selected field” or “add the selected numeric values”. Sample totals that happen to match do not establish semantic equivalence. If more than one field plausibly represents the counted entity and the request or schema does not resolve it, clarify the counted operand before mutation.
+
+Apply the same back-translation to the final `+field-get` readback. If the stored `select` / `aggregate` pair expresses a different operation, correct the Lookup definition; representative values that happen to match do not make it acceptable.
+
+Use `raw_value` for list, reference, or bring-through intent unless the user explicitly asks to deduplicate. `unique` is allowed only for explicit deduplicate, distinct, or unique intent. Words such as collection, list, set, or similar nouns in a destination label do not authorize `unique`; select the aggregate from the requested result semantics, not the label. Preserve an explicitly requested `sum`, `average`, `max`, `min`, `counta`, or `unique_counta`.
+
+**Common confusion**: `unique` returns a **deduplicated list**, while `unique_counta` returns a **count**. "Show distinct values" → `unique`; "Count distinct values" → `unique_counta`; a plain request to bring matching values through → `raw_value`.
 
 **Important**:
 - Enum values are **snake_case lowercase**: `sum` not `Sum`, `average` not `Average`
