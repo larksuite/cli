@@ -336,7 +336,6 @@ func TestTablePut_PayloadValidation(t *testing.T) {
 		{"duplicate name", `{"sheets":[{"name":"S","columns":["a"],"data":[]},{"name":"S","columns":["a"],"data":[]}]}`, "duplicate sheet name"},
 		{"no columns with data", `{"sheets":[{"name":"S","columns":[],"data":[["x"]]}]}`, "columns must be non-empty when `data` has rows"},
 		{"dtypes key on a blank column", `{"sheets":[{"name":"S","columns":["a",""],"dtypes":{"":"int64"},"data":[]}]}`, `dtypes references unknown column ""`},
-		{"duplicate column", `{"sheets":[{"name":"S","columns":["a","a"],"data":[]}]}`, "duplicate column name"},
 		{"dtypes refs unknown column", `{"sheets":[{"name":"S","columns":["a"],"data":[],"dtypes":{"b":"int64"}}]}`, "dtypes references unknown column"},
 		{"formats refs unknown column", `{"sheets":[{"name":"S","columns":["a"],"data":[],"formats":{"b":"0.0"}}]}`, "formats references unknown column"},
 		{"row wider than columns", `{"sheets":[{"name":"S","columns":["a"],"data":[["x","y"]]}]}`, "`columns` declares 1"},
@@ -517,11 +516,6 @@ func TestTablePut_Validation(t *testing.T) {
 			name: "url and token are mutually exclusive",
 			args: []string{"--url", testURL, "--spreadsheet-token", testToken, "--sheets", tablePutSheetsJSON},
 			want: "mutually exclusive",
-		},
-		{
-			name: "duplicate column name rejected",
-			args: []string{"--url", testURL, "--sheets", `{"sheets":[{"name":"S","columns":["a","a"],"data":[]}]}`},
-			want: "duplicate column name",
 		},
 		{
 			name: "row wider than columns rejected",
@@ -2086,14 +2080,75 @@ func TestTablePut_ReflowLeniency(t *testing.T) {
 		}
 	})
 
-	t.Run("a genuinely duplicated heading still fails", func(t *testing.T) {
+	t.Run("a repeated heading writes both columns", func(t *testing.T) {
 		t.Parallel()
-		// Blank headings are exempt from the duplicate check (several blanks
-		// are one table shape); two real names that collide are not.
-		_, _, err := runShortcutCapturingErr(t, TablePut, []string{
-			"--url", testURL, "--sheets", `{"sheets":[{"name":"S","columns":["a","a"],"data":[["x","y"]]}]}`, "--dry-run",
+		// A sheet is not a database: two columns can share a heading, and the
+		// source data often did. A dtypes entry for the repeated name applies
+		// to each of its columns, which is the only reading available.
+		stdout, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","columns":["a","a"],"dtypes":{"a":"int64"},"data":[[1,2]]}]}`,
+			"--dry-run",
 		})
-		requireValidation(t, err, "duplicate column name")
+		if err != nil {
+			t.Fatalf("a repeated heading should write, got: %v", err)
+		}
+		if strings.Count(stdout, `\"a\"`) < 2 {
+			t.Errorf("both columns should carry the heading, got %q", stdout)
+		}
+	})
+
+	t.Run("a dtypes key that differs only in spacing folds onto its column", func(t *testing.T) {
+		t.Parallel()
+		for _, key := range []string{"营 收", "营收 ", "营\u3000收"} {
+			if _, _, err := runShortcutCapturingErr(t, TablePut, []string{
+				"--url", testURL,
+				"--sheets", `{"sheets":[{"name":"S","columns":["营收"],"dtypes":{"` + key + `":"float64"},"data":[[1]]}]}`,
+				"--dry-run",
+			}); err != nil {
+				t.Errorf("dtypes key %q should fold onto 营收, got: %v", key, err)
+			}
+		}
+	})
+
+	t.Run("a dtypes key naming nothing still fails", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL,
+			"--sheets", `{"sheets":[{"name":"S","columns":["营收"],"dtypes":{"利润":"float64"},"data":[[1]]}]}`,
+			"--dry-run",
+		})
+		requireValidation(t, err, "dtypes references unknown column")
+	})
+
+	t.Run("+workbook-create names the sub-sheets the caller left unnamed", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+workbook-create")
+		stdout, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--title", "T", "--dry-run",
+			"--sheets", `{"sheets":[{"columns":["a"],"data":[["x"]]},{"name":"Sheet1","columns":["b"],"data":[["y"]]},{"columns":["c"],"data":[["z"]]}]}`,
+		})
+		if err != nil {
+			t.Fatalf("a new workbook may name its own sheets, got: %v", err)
+		}
+		// The caller's own Sheet1 is skipped, so the filled names continue the
+		// series instead of colliding with it.
+		for _, want := range []string{"Sheet2", "Sheet3"} {
+			if !strings.Contains(stdout, want) {
+				t.Errorf("unnamed sub-sheet should become %s, got %q", want, stdout)
+			}
+		}
+	})
+
+	t.Run("+table-put still requires the name that selects the sheet", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, TablePut, []string{
+			"--url", testURL, "--sheets", `{"sheets":[{"columns":["a"],"data":[["x"]]}]}`, "--dry-run",
+		})
+		ve := requireValidation(t, err, "name is required")
+		if !strings.Contains(ve.Hint, "+workbook-info") {
+			t.Errorf("hint should point at the sheet list, got %q", ve.Hint)
+		}
 	})
 
 	t.Run("a non-numeric string in a numeric column still fails", func(t *testing.T) {

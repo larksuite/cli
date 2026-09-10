@@ -288,37 +288,17 @@ func TestCellsSetInput_MatrixPrecheck(t *testing.T) {
 			"+cells-clear",
 		},
 		{
-			// Overflow, not underflow: a payload that FITS inside the stated
-			// range is narrowed to it (fitCellsRange), so what the precheck
-			// still owns is a payload with nowhere to go.
-			"row count overflow",
+			// Neither direction is a rejection any more: fitCellsRange sizes
+			// the write from the payload and the note says what shipped
+			// (TestCellsSet_RangeSizedFromPayload owns that assertion). What
+			// the precheck still owns is a payload with no extent at all.
+			"payload larger than the stated range passes",
 			map[string]interface{}{"sheet_name": "S1", "range": "A1:B1",
 				"cells": []interface{}{
 					[]interface{}{map[string]interface{}{"value": "a"}, map[string]interface{}{"value": "b"}},
 					[]interface{}{map[string]interface{}{"value": "c"}, map[string]interface{}{"value": "d"}},
 				}},
-			"--cells is 2 rows × 2 columns but --range \"A1:B1\" spans 1 rows × 2 columns",
-		},
-		{
-			"column count overflow",
-			map[string]interface{}{"sheet_name": "S1", "range": "A1:A1",
-				"cells": []interface{}{
-					[]interface{}{map[string]interface{}{"value": "a"}, map[string]interface{}{"value": "b"}},
-					[]interface{}{map[string]interface{}{"value": "c"}, map[string]interface{}{"value": "d"}},
-				}},
-			"--cells is 2 rows × 2 columns but --range \"A1:A1\" spans 1 rows × 1 columns",
-		},
-		{
-			// Both axes off used to cost two round trips: rows failed first,
-			// and the fixed payload came straight back on columns.
-			"both axes report together, with the range that fits the payload",
-			map[string]interface{}{"sheet_name": "S1", "range": "B2:C3",
-				"cells": []interface{}{
-					[]interface{}{map[string]interface{}{"value": "a"}, map[string]interface{}{"value": "b"}, map[string]interface{}{"value": "c"}},
-					[]interface{}{map[string]interface{}{"value": "d"}, map[string]interface{}{"value": "e"}, map[string]interface{}{"value": "f"}},
-					[]interface{}{map[string]interface{}{"value": "g"}, map[string]interface{}{"value": "h"}, map[string]interface{}{"value": "i"}},
-				}},
-			"write this payload to --range \"B2:D4\"",
+			"",
 		},
 		{
 			// A row that stops at its last written cell is squared off with
@@ -353,15 +333,14 @@ func TestCellsSetInput_MatrixPrecheck(t *testing.T) {
 			"",
 		},
 		{
-			// A stated extent that disagrees with the payload is still a
-			// mismatch — only a bare anchor infers (see
-			// TestCellsSetInput_AnchorRangeExpands).
-			"explicit 1x1 range still enforces the match",
+			// An explicit "A1:A1" states a 1x1 block, which the payload now
+			// widens like any other stated extent.
+			"explicit 1x1 range is sized from the payload",
 			map[string]interface{}{"sheet_name": "S1", "range": "A1:A1",
 				"cells": []interface{}{
 					[]interface{}{map[string]interface{}{"value": "a"}, map[string]interface{}{"value": "b"}},
 				}},
-			"--cells is 1 rows × 2 columns but --range \"A1:A1\" spans 1 rows × 1 columns",
+			"",
 		},
 		{
 			"single-cell range with a single cell passes",

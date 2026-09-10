@@ -162,9 +162,9 @@ func TestCellsSetWrites(t *testing.T) {
 	t.Run("per-item errors aggregate", func(t *testing.T) {
 		t.Parallel()
 		// Both items pass the --writes schema (range+cells present) but fail
-		// deeper: item 0 a matrix mismatch, item 1 a missing sheet selector.
+		// deeper: item 0 an empty payload, item 1 a missing sheet selector.
 		_, _, err := writes(`[
-			{"sheet_name":"S1","range":"A1:A1","cells":[[{"value":"x"},{"value":"z"}]]},
+			{"sheet_name":"S1","range":"A1:A1","cells":[]},
 			{"range":"C1","cells":[[{"value":"y"}]]}
 		]`)
 		ve := requireValidation(t, err, "--writes has 2 issues")
@@ -271,7 +271,7 @@ func TestCellsSetWrites(t *testing.T) {
 // TestCellsSet_RangeNarrowedToPayload pins the narrowing: a payload that fits
 // inside the stated range is written at the same anchor, sized to itself,
 // and the difference is reported rather than silently applied.
-func TestCellsSet_RangeNarrowedToPayload(t *testing.T) {
+func TestCellsSet_RangeSizedFromPayload(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -281,6 +281,10 @@ func TestCellsSet_RangeNarrowedToPayload(t *testing.T) {
 		{"a title against the range it will occupy once merged", "A1:D1", "A1:A1", `[[{"value":"标题"}]]`},
 		{"a block smaller on both axes", "A1:D4", "A1:B2", `[[{"value":1},{"value":2}],[{"value":3},{"value":4}]]`},
 		{"an exact fit is untouched", "A1:B1", "A1:B1", `[[{"value":1},{"value":2}]]`},
+		// The other direction: the stated extent is an anchor plus a guess at
+		// how far the data reached, and the data is the one that knows.
+		{"a payload wider than the stated range", "A1:A1", "A1:B1", `[[{"value":1},{"value":2}]]`},
+		{"a payload larger on both axes", "B2:C3", "B2:D4", `[[{"value":1},{"value":2},{"value":3}],[{"value":4},{"value":5},{"value":6}],[{"value":7},{"value":8},{"value":9}]]`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -297,13 +301,42 @@ func TestCellsSet_RangeNarrowedToPayload(t *testing.T) {
 		})
 	}
 
-	t.Run("a payload with nowhere to go is still rejected", func(t *testing.T) {
+	t.Run("the note names the shipped range and which way it moved", func(t *testing.T) {
 		t.Parallel()
-		// Growing the range would write over cells nobody named.
+		// Widening writes onto cells the caller did not name, so silence
+		// would be the bug: the note is the only record that the shipped
+		// extent is not the stated one.
+		for _, tc := range []struct{ name, stated, cells, want string }{
+			{"widened", "A1:A1", `[[{"value":1},{"value":2}]]`, "widened to \"A1:B1\""},
+			{"narrowed", "A1:D1", `[[{"value":1}]]`, "narrowed to \"A1:A1\""},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				_, note := fitCellsRange(mustCellsPayload(t, tc.cells), tc.stated)
+				if !strings.Contains(note, tc.want) {
+					t.Errorf("note = %q, want it to contain %q", note, tc.want)
+				}
+			})
+		}
+	})
+
+	t.Run("a range naming another sheet than the selector is rejected", func(t *testing.T) {
+		t.Parallel()
 		_, _, err := runShortcutCapturingErr(t, CellsSet, []string{
-			"--url", testURL, "--sheet-name", "s", "--range", "A1:A1",
+			"--url", testURL, "--sheet-name", "s", "--range", "Other!A1:B2",
 			"--cells", `[[{"value":1},{"value":2}]]`, "--dry-run",
 		})
-		requireValidation(t, err, `--range "A1:A1" spans`)
+		requireValidation(t, err, `names sheet "Other" while the selector names "s"`)
 	})
+}
+
+// mustCellsPayload decodes a --cells literal into the []interface{} the
+// sizing helpers take.
+func mustCellsPayload(t *testing.T, cells string) []interface{} {
+	t.Helper()
+	var out []interface{}
+	if err := json.Unmarshal([]byte(cells), &out); err != nil {
+		t.Fatalf("bad test payload %q: %v", cells, err)
+	}
+	return out
 }

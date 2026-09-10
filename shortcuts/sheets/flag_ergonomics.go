@@ -152,7 +152,13 @@ var commandFlagAliases = map[string]map[string]string{
 	// the silent tier only because normalizeCellsFlagValue lifts bare scalars
 	// into {"value":…}, so a --values matrix ('[["工作内容"]]') is accepted
 	// verbatim as --cells — the name was the only thing wrong.
-	"+cells-set": {"values": "cells"},
+	// start-cell is the anchor spelling +csv-put documents, and --range now
+	// reads as one here too: fitCellsRange sizes the write from the payload,
+	// so the two flags carry the same value with the same meaning. The alias
+	// is the local half of the change; the flag's own definition, and the
+	// sentence in the skill claiming these two commands already agreed, live
+	// in the spec repo and follow separately.
+	"+cells-set": {"values": "cells", "start-cell": "range"},
 	// 08-29..31 reflow, long-tail table. Each of these names an input the
 	// command already has under one other spelling, with identical value
 	// semantics: the import name (16 rejections, all but one on windows),

@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/util"
@@ -514,10 +515,46 @@ func parseTablePutPayload(runtime flagView) (*tablePayload, error) {
 		}
 		p.Sheets = append(p.Sheets, spec)
 	}
+	if runtime.Command() == "+workbook-create" {
+		fillCreatedSheetNames(p)
+	}
 	if err := p.validate(); err != nil {
 		return nil, err
 	}
 	return p, nil
+}
+
+// fillCreatedSheetNames names the sub-sheets of a NEW workbook that arrived
+// without a name, in payload order and skipping any spelling the caller used,
+// so the result is the SheetN series the workbook would have had anyway. The
+// caller who omits the name has one table and one workbook and takes the
+// default; demanding the word "Sheet1" back from them says nothing (09-04..07:
+// 1564 rejections across both entry points).
+//
+// Only on the create path. +table-put matches its payload to sub-sheets BY
+// NAME and creates what is absent, so an invented name there would write into
+// a sheet the caller never picked, or make a new one beside the sheet they
+// meant. That one keeps its rejection.
+func fillCreatedSheetNames(p *tablePayload) {
+	taken := make(map[string]bool, len(p.Sheets))
+	for i := range p.Sheets {
+		taken[strings.TrimSpace(p.Sheets[i].Name)] = true
+	}
+	next := 1
+	for i := range p.Sheets {
+		if strings.TrimSpace(p.Sheets[i].Name) != "" {
+			continue
+		}
+		for {
+			candidate := fmt.Sprintf("Sheet%d", next)
+			next++
+			if !taken[candidate] {
+				p.Sheets[i].Name = candidate
+				taken[candidate] = true
+				break
+			}
+		}
+	}
 }
 
 // normalize collapses the wire-level pandas-shaped tableSheetIn into the
@@ -546,6 +583,8 @@ func (in *tableSheetIn) normalize(idx int) (tableSheetSpec, error) {
 	}
 	dtypes = mergeInlineLabels(dtypes, in.Columns.dtypes)
 	formats = mergeInlineLabels(formats, in.Columns.formats)
+	dtypes = foldColumnLabelKeys(dtypes, columns)
+	formats = foldColumnLabelKeys(formats, columns)
 	seenCol := make(map[string]bool, len(columns))
 	spec.Columns = make([]tableColumnSpec, len(columns))
 	for j, name := range columns {
@@ -559,9 +598,12 @@ func (in *tableSheetIn) normalize(idx int) (tableSheetSpec, error) {
 			spec.Columns[j] = tableColumnSpec{Name: name, Type: "string", Format: "@"}
 			continue
 		}
-		if seenCol[name] {
-			return tableSheetSpec{}, common.ValidationErrorf("--sheets[%d] %q: duplicate column name %q", idx, in.Name, name)
-		}
+		// A repeated heading is a real table shape, not a mistake: a sheet is
+		// not a database, and two columns called "备注" are what the source
+		// data looked like. dtypes / formats are keyed by name, so an entry
+		// for a repeated name applies to each of its columns — the one
+		// reading available, and the same one the caller would get by
+		// spelling it twice. 09-04..07: 1334 rejections.
 		seenCol[name] = true
 		typ, format := dtypeToTypeFormat(dtypes[name])
 		if f, ok := formats[name]; ok {
@@ -570,10 +612,11 @@ func (in *tableSheetIn) normalize(idx int) (tableSheetSpec, error) {
 		spec.Columns[j] = tableColumnSpec{Name: name, Type: typ, Format: format}
 	}
 	// Surface dtypes/formats entries that reference a column the sheet doesn't
-	// have — almost always a typo (`"foramt"`, `"营 收"` with stray spaces) and
-	// silently ignoring them would let the writer succeed with the wrong
-	// formatting. The check runs after the column list is built so we can
-	// compare against the canonical set.
+	// have — silently ignoring them would let the writer succeed with the
+	// wrong formatting. What survives foldColumnLabelKeys is a key no column
+	// answers to under any spacing or casing, so it names nothing at all. The
+	// check runs after the column list is built so we can compare against the
+	// canonical set.
 	for k := range dtypes {
 		if !seenCol[k] {
 			return tableSheetSpec{}, common.ValidationErrorf("--sheets[%d] %q: dtypes references unknown column %q", idx, in.Name, k).
@@ -588,6 +631,65 @@ func (in *tableSheetIn) normalize(idx int) (tableSheetSpec, error) {
 	}
 	padShortRows(&spec)
 	return spec, nil
+}
+
+// foldColumnLabelKeys rewrites a dtypes / formats key onto the column it
+// names when only the spacing or the casing differs ("营 收" for "营收",
+// "Revenue" for "revenue"). Both maps are keyed by column name, and a key
+// written from the same source data that produced the headers picks up stray
+// spaces on the way; rejecting it cost the whole write over a formatting hint
+// (09-04..07: 657 rejections on dtypes alone).
+//
+// Only an unambiguous fold applies: the normalized form must match exactly one
+// distinct column, and a key that already matches a column verbatim is never
+// moved. Anything else is left as written, so a key that truly names nothing
+// still reports as an unknown column rather than being dropped on the floor.
+func foldColumnLabelKeys(labels map[string]string, columns []string) map[string]string {
+	if len(labels) == 0 {
+		return labels
+	}
+	exact := make(map[string]bool, len(columns))
+	byNormalized := make(map[string]map[string]bool, len(columns))
+	for _, c := range columns {
+		exact[c] = true
+		key := normalizeColumnLabelKey(c)
+		if byNormalized[key] == nil {
+			byNormalized[key] = map[string]bool{}
+		}
+		byNormalized[key][c] = true
+	}
+	out := make(map[string]string, len(labels))
+	for k, v := range labels {
+		if exact[k] {
+			out[k] = v
+			continue
+		}
+		candidates := byNormalized[normalizeColumnLabelKey(k)]
+		if len(candidates) != 1 {
+			out[k] = v // nothing to fold onto, or two columns answer to it
+			continue
+		}
+		target := sortedKeys(candidates)[0]
+		if _, taken := labels[target]; taken {
+			out[k] = v // the caller also spelled it exactly; keep both, report the stray
+			continue
+		}
+		out[target] = v
+	}
+	return out
+}
+
+// normalizeColumnLabelKey folds a column name to the form two spellings of the
+// same heading share: no whitespace of any width, lowercased.
+func normalizeColumnLabelKey(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(name) {
+		if unicode.IsSpace(r) {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // padShortRows right-pads every data row to the column count with nils, which
@@ -645,7 +747,11 @@ func (p *tablePayload) validate() error {
 	for i := range p.Sheets {
 		s := &p.Sheets[i]
 		if strings.TrimSpace(s.Name) == "" {
-			return common.ValidationErrorf("--sheets[%d]: name is required", i)
+			// Reached only on the write path: +workbook-create fills its own
+			// (fillCreatedSheetNames). Here the name is the selector, so it
+			// has to come from the caller.
+			return common.ValidationErrorf("--sheets[%d]: name is required", i).
+				WithHint("`name` picks the sub-sheet to write and creates it when absent; list the real names with `lark-cli sheets +workbook-info --url <URL>`, or use +workbook-create when the workbook itself is new")
 		}
 		if seen[s.Name] {
 			return common.ValidationErrorf("--sheets[%d]: duplicate sheet name %q", i, s.Name)
