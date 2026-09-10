@@ -6,9 +6,143 @@ package recordexport
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"reflect"
 	"strings"
 	"testing"
 )
+
+// Cover the Base v3 read field types, including read-only fields and the
+// not_support fallback. UI variants use these wire types, not their UI names.
+func TestReadFieldTypesRoundTripNDJSON(t *testing.T) {
+	for _, tc := range []struct {
+		fieldType string
+		value     any
+	}{
+		{"text", "hello"}, {"number", json.Number("12.5")},
+		{"select", []any{"Todo"}}, {"checkbox", true},
+		{"user", []any{map[string]any{"id": "ou_user"}}},
+		{"group_chat", []any{map[string]any{"id": "oc_chat"}}},
+		{"link", []any{map[string]any{"id": "rec_link"}}},
+		{"attachment", []any{map[string]any{"file_token": "file_x", "name": "sample.txt"}}},
+		{"location", map[string]any{"lng": json.Number("1"), "lat": json.Number("2")}},
+		{"formula", "calculated"}, {"lookup", "looked up"}, {"auto_number", "001"},
+		{"datetime", "2026-08-04T12:30:00+08:00"},
+		{"created_at", "2026-08-04T12:30:00+08:00"},
+		{"updated_at", "2026-08-04T12:30:00+08:00"},
+		{"created_by", []any{map[string]any{"id": "ou_creator"}}},
+		{"updated_by", []any{map[string]any{"id": "ou_updater"}}},
+		{"button", nil}, {"not_support", nil},
+	} {
+		t.Run(tc.fieldType, func(t *testing.T) {
+			page, err := ParseMatrix(matrixFixture("Value", "fld_value", tc.fieldType, "rec_1", tc.value))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var output bytes.Buffer
+			if err := WriteNDJSON(&output, page.Dataset); err != nil {
+				t.Fatal(err)
+			}
+			decoder := json.NewDecoder(&output)
+			decoder.UseNumber()
+			var row map[string]any
+			if err := decoder.Decode(&row); err != nil {
+				t.Fatal(err)
+			}
+			value, exists := row["Value"]
+			if !exists || !reflect.DeepEqual(value, tc.value) || row["record_id"] != "rec_1" {
+				t.Fatalf("exported row = %#v, want value %#v", row, tc.value)
+			}
+		})
+	}
+}
+
+func TestButtonColumnManifestAndEmptyPage(t *testing.T) {
+	fixture := matrixFixture("Button", "fld_button", "button", "rec_1", nil)
+	page, err := ParseMatrix(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := BuildManifest(page.Dataset, ManifestOptions{})
+	column := manifest.Columns["Button"]
+	if column.FieldType != "button" || column.PhysicalType != "null" || column.Stats.NullCount == nil || *column.Stats.NullCount != 1 || column.Stats.MaxLength != nil {
+		t.Fatalf("button manifest = %#v", column)
+	}
+	fixture["record_id_list"], fixture["data"] = []any{}, []any{}
+	empty, err := ParseMatrix(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Dataset.AppendPage(empty); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestParseMatrixRejectsInvalidButton(t *testing.T) {
+	for _, tc := range []struct {
+		fieldType string
+		value     any
+	}{
+		{"button", "Run"}, {"button", false}, {"button", map[string]any{}},
+	} {
+		_, err := ParseMatrix(matrixFixture("Value", "fld_value", tc.fieldType, "rec_1", tc.value))
+		var matrixErr *MatrixError
+		if !errors.As(err, &matrixErr) {
+			t.Fatalf("type %s value %#v: error = %v, want MatrixError", tc.fieldType, tc.value, err)
+		}
+	}
+}
+
+func TestUnknownFieldTypesPreserveRawJSON(t *testing.T) {
+	for _, fieldType := range []string{"future_type", "not_support"} {
+		t.Run(fieldType, func(t *testing.T) {
+			values := []any{nil, false, json.Number("9007199254740993"), "text", []any{}, []any{nil, true, "mixed"}, map[string]any{"nested": []any{json.Number("1.25"), nil}}}
+			fixture := matrixFixture("Future", "fld_future", fieldType, "rec_1", nil)
+			ids, rows := []any{}, []any{}
+			for _, value := range values {
+				ids = append(ids, "rec_1")
+				rows = append(rows, []any{value})
+			}
+			fixture["record_id_list"], fixture["data"] = ids, rows
+			page, err := ParseMatrix(fixture)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if page.Dataset.SourceColumns[0].FieldType != fieldType {
+				t.Fatal("lost wire type")
+			}
+			manifest := BuildManifest(page.Dataset, ManifestOptions{})
+			column := manifest.Columns["Future"]
+			if column.FieldType != "not_support" || column.PhysicalType != "json" || column.Stats.NullCount == nil || *column.Stats.NullCount != 1 || column.Stats.MaxLength != nil {
+				t.Fatalf("fallback manifest = %#v", column)
+			}
+			var output bytes.Buffer
+			if err := WriteNDJSON(&output, page.Dataset); err != nil {
+				t.Fatal(err)
+			}
+			decoder := json.NewDecoder(&output)
+			decoder.UseNumber()
+			for _, want := range values {
+				var row map[string]any
+				if err := decoder.Decode(&row); err != nil {
+					t.Fatal(err)
+				}
+				got, exists := row["Future"]
+				if !exists || !reflect.DeepEqual(got, want) {
+					t.Fatalf("got %#v, want %#v", row, want)
+				}
+			}
+			other, err := ParseMatrix(matrixFixture("Future", "fld_future", "another_future_type", "rec_2", nil))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var schemaErr *SchemaChangedError
+			if err := page.Dataset.AppendPage(other); !errors.As(err, &schemaErr) {
+				t.Fatalf("schema change error = %v", err)
+			}
+		})
+	}
+}
 
 func TestParseMatrixNormalizesTypedRows(t *testing.T) {
 	page, err := ParseMatrix(map[string]any{
