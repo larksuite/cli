@@ -39,7 +39,8 @@ type EmitterConfig struct {
 // summary when supplied; csv and ndjson keep stdout as naked records and put
 // pagination metadata on the diagnostics stream. JQ takes precedence over
 // Format and filters the JSON Envelope. Raw affects only JSON envelope encoding
-// and jq's complex-value encoding.
+// and jq's complex-value encoding. Command-specific output helpers may delegate
+// back to Success without widening the generic format set.
 //
 // JQSafetyWarning preserves the legacy difference between RuntimeContext.emit
 // (false) and WriteSuccessEnvelope (true) until their callers are migrated.
@@ -108,7 +109,6 @@ func (e *Emitter) Success(data interface{}, opts EmitOptions) error {
 	if opts.Format == "pretty" {
 		return e.emitPretty(data, opts)
 	}
-
 	format, known := ParseFormat(opts.Format)
 	if !known {
 		fmt.Fprintf(e.errOut, "warning: unknown format %q, falling back to json\n", opts.Format)
@@ -123,6 +123,20 @@ func (e *Emitter) Success(data interface{}, opts EmitOptions) error {
 		return errs.NewInternalError(errs.SubtypeUnknown,
 			"unsupported output format %q", format)
 	}
+}
+
+// SuccessWithConcise emits the supplied renderer only for the exact lowercase
+// "concise" selector. It is a narrow bridge for built-in IM shortcuts: the
+// generic format enum and EmitOptions contract remain unchanged, while jq,
+// unknown values, and a missing renderer retain Emitter.Success behavior.
+func SuccessWithConcise(e *Emitter, data interface{}, opts EmitOptions, concise PrettyRenderer) error {
+	if opts.JQ != "" || opts.Format != "concise" || concise == nil {
+		return e.Success(data, opts)
+	}
+	if err := e.requireOutput(); err != nil {
+		return err
+	}
+	return e.emitCustom(data, concise)
 }
 
 // PartialFailure emits a multi-status result whose envelope honestly reports
@@ -266,6 +280,21 @@ func (e *Emitter) emitPretty(data interface{}, opts EmitOptions) error {
 	// renderer is supplied. Keep that second scan visible in the leaf contract
 	// until production callers are migrated and the legacy behavior is removed.
 	return e.emitEnvelope(data, true, opts)
+}
+
+func (e *Emitter) emitCustom(data interface{}, renderer PrettyRenderer) error {
+	scanResult := ScanForSafety(e.commandPath, data, e.errOut)
+	if scanResult.Blocked {
+		return scanResult.BlockErr
+	}
+	if scanResult.Alert != nil {
+		if err := WriteAlertWarning(e.errOut, scanResult.Alert); err != nil {
+			return wrapOutputError("write", err)
+		}
+	}
+	return e.emit(func(w io.Writer) error {
+		return renderer(w, false)
+	})
 }
 
 // emitFormatted handles only non-envelope formats. JSON, jq, and unknown-format

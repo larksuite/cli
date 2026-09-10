@@ -252,6 +252,28 @@ func TestPrintDryRun_Pretty(t *testing.T) {
 	}
 }
 
+func TestPrintDryRun_UnknownFormatKeepsJSONFallback(t *testing.T) {
+	var stdout bytes.Buffer
+	err := PrintDryRun(client.RawApiRequest{
+		Method: "GET",
+		URL:    "/open-apis/test",
+	}, &core.CliConfig{}, DryRunOutputOptions{
+		Format: "concise",
+		Out:    &stdout,
+		ErrOut: io.Discard,
+	})
+	if err != nil {
+		t.Fatalf("PrintDryRun failed: %v", err)
+	}
+	var envelope map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("unknown dry-run format changed from JSON fallback: %v\n%s", err, stdout.String())
+	}
+	if envelope["dry_run"] != true {
+		t.Fatalf("dry_run = %#v, want true", envelope["dry_run"])
+	}
+}
+
 func TestPrintDryRun_WithJqUsesEnvelope(t *testing.T) {
 	var buf bytes.Buffer
 	err := PrintDryRun(client.RawApiRequest{
