@@ -13,6 +13,8 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+const docsCreateAsyncExtraParam = `{"open_create_async":true}`
+
 // v2CreateFlags returns the flag definitions for the v2 (OpenAPI) create path.
 func v2CreateFlags() []common.Flag {
 	return []common.Flag{
@@ -86,43 +88,61 @@ func dryRunCreateV2(_ context.Context, runtime *common.RuntimeContext) *common.D
 		POST("/open-apis/docs_ai/v1/documents").
 		Desc(desc).
 		Body(body)
+	dry.GET("/open-apis/docs_ai/v1/async_tasks/<task_id>").
+		Desc("Conditional: poll the generic async-task endpoint when document creation returns a task_id.")
 	dry = appendRemoteDocImageDownloadsDryRun(dry, resources)
 	return appendLocalDocResourcesDryRun(dry, "<created_document_id>", resources)
 }
 
-func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
+func executeCreateV2(_ context.Context, runtime *common.RuntimeContext) (err error) {
+	trace := newDocsCreateTrace(runtime)
+	defer func() { trace.finish(err) }()
+	trace.step("prepare_input")
 	body, resources, err := buildCreateBodyWithPreparedInput(runtime)
 	if err != nil {
 		return err
 	}
+	trace.event("input_prepared", docsCreateDebugDetails{Resources: len(resources)})
+	trace.step("validate_remote_sources")
 	if err := validateRemoteDocImageSources(runtime.Ctx(), resources); err != nil {
 		return err
 	}
 
-	data, err := doDocAPI(runtime, "POST", "/open-apis/docs_ai/v1/documents", body)
+	trace.step("create_request")
+	data, createLogID, err := createDocsDocumentWithLogID(runtime, body)
+	trace.event("create_response", docsCreateDebugDetails{LogID: createLogID})
 	if err != nil {
 		return err
 	}
 	if docsAPIOperationFailed(data) {
 		return runtime.OutPartialFailure(data, nil)
 	}
-
+	trace.step("wait_task")
+	data, err = waitForDocsCreateAsyncTask(runtime, data, createLogID, trace)
+	if err != nil {
+		return err
+	}
+	trace.step("permission")
 	augmentDocsCreatePermission(runtime, data)
+	trace.step("document_url")
 	fallbackDocsCreateURLV2(runtime, data)
+	trace.step("resources")
 	if len(resources) > 0 {
 		doc, _ := data["document"].(map[string]interface{})
-		if err := finalizeLocalDocResources(runtime, strings.TrimSpace(common.GetString(doc, "document_id")), data, resources); err != nil {
+		if err := finalizeLocalDocResourcesWithTrace(runtime, strings.TrimSpace(common.GetString(doc, "document_id")), data, resources, trace); err != nil {
 			return err
 		}
 	}
+	trace.step("output")
 	runtime.OutRaw(data, nil)
 	return nil
 }
 
 func buildCreateBody(runtime *common.RuntimeContext) map[string]interface{} {
 	body := map[string]interface{}{
-		"format":  runtime.Str("doc-format"),
-		"content": buildCreateContent(runtime),
+		"format":      runtime.Str("doc-format"),
+		"content":     buildCreateContent(runtime),
+		"extra_param": docsCreateAsyncExtraParam,
 	}
 	if v := runtime.Str("parent-token"); v != "" {
 		body["parent_token"] = v

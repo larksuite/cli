@@ -39,6 +39,7 @@ var ImThreadsMessagesList = common.Shortcut{
 		{Name: "page-size", Default: fmt.Sprintf("%d", threadsMessagesListDefaultPageSize), Desc: fmt.Sprintf("page size (1-%d)", threadsMessagesListMaxPageSize)},
 		{Name: "page-token", Desc: "starting pagination cursor"},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
+		{Name: "concise", Type: "bool", Desc: "render compact Markdown for message context"},
 		downloadResourcesFlag,
 	}, common.PageAllFlags()...),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -77,6 +78,9 @@ var ImThreadsMessagesList = common.Shortcut{
 		return d
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := validateConciseOutputFlags(runtime); err != nil {
+			return err
+		}
 		threadId := runtime.Str("thread")
 		const threadParam = "--thread"
 		if threadId == "" {
@@ -157,9 +161,19 @@ var ImThreadsMessagesList = common.Shortcut{
 			"has_more":   hasMore,
 			"page_token": nextPageToken,
 		}
-		runtime.OutFormat(outData, &output.Meta{
-			Pagination: pagination,
-		}, func(w io.Writer) {
+		if runtime.Bool("concise") {
+			return outputMessagesConcise(runtime, conciseMessageView{
+				Type:  conciseMessageViewThread,
+				Title: "Thread messages",
+				ChatSections: []conciseChatSection{{
+					ThreadID: threadId,
+					Messages: messages,
+				}},
+				HasMore:   hasMore,
+				NextToken: nextPageToken,
+			})
+		}
+		runtime.OutFormat(outData, &output.Meta{Pagination: pagination}, func(w io.Writer) {
 			if len(messages) == 0 {
 				fmt.Fprintln(w, "No messages in this thread.")
 				return

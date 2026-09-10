@@ -44,6 +44,24 @@ func TestBuildCreateBodyIncludesSceneFromContext(t *testing.T) {
 	}
 }
 
+func TestBuildCreateBodyOptsIntoAsyncPromotion(t *testing.T) {
+	t.Parallel()
+
+	runtime := newCreateBodyTestRuntime(context.Background())
+	body := buildCreateBody(runtime)
+	extraParam, ok := body["extra_param"].(string)
+	if !ok {
+		t.Fatalf("extra_param = %#v, want JSON string", body["extra_param"])
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal([]byte(extraParam), &got); err != nil {
+		t.Fatalf("decode extra_param %q: %v", extraParam, err)
+	}
+	if enabled, ok := got["open_create_async"].(bool); !ok || !enabled || len(got) != 1 {
+		t.Fatalf("extra_param = %#v, want only open_create_async=true", got)
+	}
+}
+
 func TestBuildCreateBodyPrependsTitleToContent(t *testing.T) {
 	t.Parallel()
 

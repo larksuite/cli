@@ -5,10 +5,12 @@ package sheets
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
@@ -151,6 +153,37 @@ func TestWorkbookImport_RejectsUnrecognizedExcel(t *testing.T) {
 
 	_, _, err := runShortcutCapturingErr(t, WorkbookImport, []string{"--file", "./bogus.xls", "--dry-run"})
 	requireValidation(t, err, "neither an OOXML")
+}
+
+func TestWorkbookImport_RejectsWikiFolderBeforeUpload(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	chdirTemp(t)
+	if err := os.WriteFile("data.csv", []byte("a,b\n1,2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	lookup := &httpmock.Stub{
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+			"node": map[string]interface{}{"node_token": "wikiFolder", "node_type": "shortcut", "obj_token": "docxOriginal"},
+		}},
+	}
+	upload := &httpmock.Stub{Method: "POST", URL: "/open-apis/drive/v1/medias/upload_all", Optional: true}
+	_, err := runShortcutWithStubs(t, WorkbookImport, []string{
+		"--file", "./data.csv", "--folder-token", "wikiFolder", "--as", "user",
+	}, lookup, upload)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) || validationErr.Param != "--folder-token" || validationErr.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("expected folder-token validation error, got %v", err)
+	}
+	if validationErr.Category != errs.CategoryValidation {
+		t.Fatalf("category = %q, want %q", validationErr.Category, errs.CategoryValidation)
+	}
+	if cause := errors.Unwrap(err); cause != nil {
+		t.Fatalf("unexpected cause on direct validation error: %v", cause)
+	}
+	if len(lookup.CapturedBodies) != 1 || len(upload.CapturedBodies) != 0 {
+		t.Fatalf("lookup calls = %d, upload calls = %d", len(lookup.CapturedBodies), len(upload.CapturedBodies))
+	}
 }
 
 // TestWorkbookImport_ExecuteCreatesSheet runs the full upload → create → poll

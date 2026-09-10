@@ -41,6 +41,25 @@ func TestDryRunAPI_WithParams(t *testing.T) {
 	}
 }
 
+// TestDryRunAPI_ScalarParamsMatchWireRendering pins scalar params to the
+// rendering client.buildApiReq puts on the wire, so the preview does not
+// disagree with the request: %v would print "1.7e+09" here.
+func TestDryRunAPI_ScalarParamsMatchWireRendering(t *testing.T) {
+	dr := NewDryRunAPI().
+		GET("/open-apis/test").
+		Params(map[string]interface{}{"start_time": float64(1700000000), "page_size": float64(1000000)})
+
+	text := dr.Format()
+	for _, want := range []string{"start_time=1700000000", "page_size=1000000"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("preview missing %q, got: %s", want, text)
+		}
+	}
+	if strings.Contains(text, "e%2B") {
+		t.Errorf("preview used scientific notation, got: %s", text)
+	}
+}
+
 func TestDryRunAPI_WithBody(t *testing.T) {
 	dr := NewDryRunAPI().
 		POST("/open-apis/test").

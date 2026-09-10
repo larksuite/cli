@@ -4,6 +4,7 @@
 package affordance
 
 import (
+	"encoding/json"
 	"regexp"
 	"strings"
 
@@ -24,7 +25,7 @@ import (
 //	### <other>         -> extensions[] (custom section, flows through verbatim)
 //	[[cmd]]             -> a command reference, rendered as `cmd`
 //
-// Parsing is lazy and cached (see For), so the constrained grammar is read at
+// Parsing is lazy and cached per Resolver, so the constrained grammar is read at
 // most once per domain.
 
 var mdLink = regexp.MustCompile(`\[\[(.+?)\]\]`)
@@ -96,9 +97,11 @@ type mdSection struct {
 }
 
 type parsedDomain struct {
+	present      bool // false marks a cached "no guidance file for this service"
 	skill        string
 	domainSkills []string
 	methods      map[string]meta.Affordance
+	raw          map[string]json.RawMessage // methods encoded once, keyed by method id
 }
 
 // parseDomainMD parses one domain's markdown into per-method Affordance values,
@@ -153,7 +156,7 @@ func parseDomainMD(src []byte, resolve func(string) string) parsedDomain {
 		if s := mergeSkills(skill, perCmdSkills); len(s) > 0 {
 			a.Skills = s
 		}
-		out[curKey] = a
+		out[resolve(curKey)] = a
 	}
 
 	reset := func() { useWhen, para, secs, sec, pending, fence, inFence = nil, nil, nil, nil, "", nil, false }
@@ -182,7 +185,7 @@ func parseDomainMD(src []byte, resolve func(string) string) parsedDomain {
 		case strings.HasPrefix(line, "## "):
 			flushPending()
 			assemble()
-			curKey = resolve(line[3:])
+			curKey = strings.TrimSpace(line[3:])
 			reset()
 			inDomainSkills = false
 			continue

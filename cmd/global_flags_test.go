@@ -78,7 +78,7 @@ func TestIsSingleAppMode_MultiApp(t *testing.T) {
 }
 
 func TestBuildInternal_HideProfileOption(t *testing.T) {
-	_, root, _ := buildInternal(context.Background(), cmdutil.InvocationContext{}, testStreams(), HideProfile(true))
+	_, root, _ := buildInternalForTest(t, context.Background(), cmdutil.InvocationContext{}, testStreams(), HideProfile(true))
 
 	flag := root.PersistentFlags().Lookup("profile")
 	if flag == nil {
@@ -90,7 +90,7 @@ func TestBuildInternal_HideProfileOption(t *testing.T) {
 }
 
 func TestBuildInternal_DefaultShowsProfileFlag(t *testing.T) {
-	_, root, _ := buildInternal(context.Background(), cmdutil.InvocationContext{}, testStreams())
+	_, root, _ := buildInternalForTest(t, context.Background(), cmdutil.InvocationContext{}, testStreams())
 
 	flag := root.PersistentFlags().Lookup("profile")
 	if flag == nil {

@@ -65,6 +65,40 @@ func TestChartExampleTemplates_ValidateAgainstSchema(t *testing.T) {
 	}
 }
 
+// TestChartExampleTemplates_MeetQualityMinimumSizes keeps the ready-to-edit
+// templates aligned with the minimums enforced by lark_chart_quality_check.py.
+func TestChartExampleTemplates_MeetQualityMinimumSizes(t *testing.T) {
+	t.Parallel()
+	type size struct {
+		Width  float64 `json:"width"`
+		Height float64 `json:"height"`
+	}
+	overrides := map[string]size{
+		"bar":   {Width: 720, Height: 420},
+		"combo": {Width: 720, Height: 420},
+		"pie":   {Width: 720, Height: 440},
+	}
+	for typ, tmpl := range chartExampleTemplates {
+		t.Run(typ, func(t *testing.T) {
+			t.Parallel()
+			var properties struct {
+				Size size `json:"size"`
+			}
+			if err := json.Unmarshal([]byte(tmpl), &properties); err != nil {
+				t.Fatalf("template is not valid JSON: %v", err)
+			}
+			minimum := size{Width: 640, Height: 400}
+			if override, ok := overrides[typ]; ok {
+				minimum = override
+			}
+			if properties.Size.Width < minimum.Width || properties.Size.Height < minimum.Height {
+				t.Errorf("template size = %.0fx%.0f, minimum = %.0fx%.0f",
+					properties.Size.Width, properties.Size.Height, minimum.Width, minimum.Height)
+			}
+		})
+	}
+}
+
 func TestChartExampleTemplates_SpecialChartContracts(t *testing.T) {
 	t.Parallel()
 	tests := map[string][]string{

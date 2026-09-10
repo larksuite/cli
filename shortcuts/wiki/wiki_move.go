@@ -45,10 +45,10 @@ var WikiMove = common.Shortcut{
 	Scopes:      []string{"wiki:node:move", "wiki:node:read", "wiki:space:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "node-token", Desc: "wiki node token to move inside Wiki"},
+		{Name: "node-token", Desc: "Wiki node_token or document obj_token to resolve and move inside Wiki"},
 		{Name: "source-space-id", Desc: "source wiki space ID for --node-token; if omitted, it is resolved from the node token"},
 		{Name: "target-space-id", Desc: "target wiki space ID; required for docs-to-wiki, optional for node move when --target-parent-token is set"},
-		{Name: "target-parent-token", Desc: "target parent wiki node token; if omitted for docs-to-wiki, the document is moved to the target space root"},
+		{Name: "target-parent-token", Desc: "target parent Wiki node_token (also accepts document obj_token in node move mode); if omitted for docs-to-wiki, use the target space root"},
 		{Name: "obj-type", Desc: "Drive document type for docs-to-wiki mode", Enum: wikiMoveObjectTypes},
 		{Name: "obj-token", Desc: "Drive document token for docs-to-wiki mode"},
 		{Name: "apply", Type: "bool", Desc: "submit a move request when the caller lacks permission to move the document immediately"},
@@ -227,16 +227,7 @@ type wikiMoveAPI struct {
 }
 
 func (api wikiMoveAPI) GetNode(ctx context.Context, token string) (*wikiNodeRecord, error) {
-	data, err := api.runtime.CallAPITyped(
-		"GET",
-		"/open-apis/wiki/v2/spaces/get_node",
-		map[string]interface{}{"token": token},
-		nil,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return parseWikiNodeRecord(common.GetMap(data, "node"))
+	return lookupWikiNode(api.runtime, token)
 }
 
 func (api wikiMoveAPI) MoveNode(ctx context.Context, sourceSpaceID string, spec wikiMoveSpec) (*wikiNodeRecord, error) {
@@ -367,37 +358,29 @@ func buildWikiMoveDryRun(spec wikiMoveSpec) *common.DryRunAPI {
 	switch spec.Mode() {
 	case wikiMoveModeNode:
 		step := 1
-		switch {
-		case spec.SourceSpaceID == "" && spec.TargetParentToken != "":
-			dry.Desc("3-step orchestration: resolve source node -> resolve target parent -> move wiki node")
-		case spec.SourceSpaceID == "":
-			dry.Desc("2-step orchestration: resolve source node -> move wiki node")
-		case spec.TargetParentToken != "":
-			dry.Desc("2-step orchestration: resolve target parent -> move wiki node")
-		default:
-			dry.Desc("1-step request: move wiki node")
-		}
+		dry.Desc("Resolve node tokens and spaces, then move the wiki node")
+		dry.GET("/open-apis/wiki/v2/spaces/node_by_token").
+			Desc("[1] Resolve source node and space").
+			Params(map[string]interface{}{"token": spec.NodeToken})
+		step++
 
-		if spec.SourceSpaceID == "" {
-			dry.GET("/open-apis/wiki/v2/spaces/get_node").
-				Desc(fmt.Sprintf("[%d] Resolve source space from node token", step)).
-				Params(map[string]interface{}{"token": spec.NodeToken})
-			step++
-		}
 		if spec.TargetParentToken != "" {
-			dry.GET("/open-apis/wiki/v2/spaces/get_node").
+			dry.GET("/open-apis/wiki/v2/spaces/node_by_token").
 				Desc(fmt.Sprintf("[%d] Resolve target parent node", step)).
 				Params(map[string]interface{}{"token": spec.TargetParentToken})
 			step++
 		}
 
+		body := spec.NodeMoveBody()
+		if spec.TargetParentToken != "" {
+			body["target_parent_token"] = "<resolved_parent_node_token>"
+		}
 		dry.POST(fmt.Sprintf(
-			"/open-apis/wiki/v2/spaces/%s/nodes/%s/move",
+			"/open-apis/wiki/v2/spaces/%s/nodes/<resolved_node_token>/move",
 			dryRunWikiMoveSourceSpaceID(spec),
-			validate.EncodePathSegment(spec.NodeToken),
 		)).
 			Desc(fmt.Sprintf("[%d] Move wiki node", step)).
-			Body(spec.NodeMoveBody())
+			Body(body)
 	case wikiMoveModeDocsToWiki:
 		dry.Desc("2-step orchestration: move Drive document into Wiki -> poll wiki task result when task_id is returned")
 		dry.POST(fmt.Sprintf(
@@ -442,7 +425,7 @@ func runWikiMove(ctx context.Context, client wikiMoveClient, runtime *common.Run
 }
 
 func runWikiNodeMove(ctx context.Context, client wikiMoveClient, spec wikiMoveSpec) (map[string]interface{}, error) {
-	sourceSpaceID, targetSpaceID, err := resolveWikiNodeMoveSpaces(ctx, client, spec)
+	sourceSpaceID, targetSpaceID, err := resolveWikiNodeMoveSpaces(ctx, client, &spec)
 	if err != nil {
 		return nil, err
 	}
@@ -461,21 +444,25 @@ func runWikiNodeMove(ctx context.Context, client wikiMoveClient, spec wikiMoveSp
 	return out, nil
 }
 
-func resolveWikiNodeMoveSpaces(ctx context.Context, client wikiMoveClient, spec wikiMoveSpec) (string, string, error) {
+func resolveWikiNodeMoveSpaces(ctx context.Context, client wikiMoveClient, spec *wikiMoveSpec) (string, string, error) {
 	// Node move requests may start from just a node token and/or a target parent.
 	// Resolve both ends up front so we can fail on space mismatches before sending
 	// the mutation request.
-	sourceSpaceID := spec.SourceSpaceID
-	if sourceSpaceID == "" {
-		sourceNode, err := client.GetNode(ctx, spec.NodeToken)
-		if err != nil {
-			return "", "", err
-		}
-		sourceSpaceID, err = requireWikiNodeSpaceID(sourceNode)
-		if err != nil {
-			return "", "", err
-		}
+	sourceNode, err := client.GetNode(ctx, spec.NodeToken)
+	if err != nil {
+		return "", "", err
 	}
+	sourceSpaceID, err := requireWikiNodeSpaceID(sourceNode)
+	if err != nil {
+		return "", "", err
+	}
+	if sourceNode.NodeToken == "" {
+		return "", "", errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki source lookup returned no node_token")
+	}
+	if spec.SourceSpaceID != "" && spec.SourceSpaceID != sourceSpaceID {
+		return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--source-space-id does not match the resolved node space").WithParam("--source-space-id")
+	}
+	spec.NodeToken = sourceNode.NodeToken
 
 	targetSpaceID := spec.TargetSpaceID
 	if spec.TargetParentToken != "" {
@@ -487,6 +474,10 @@ func resolveWikiNodeMoveSpaces(ctx context.Context, client wikiMoveClient, spec 
 		if err != nil {
 			return "", "", err
 		}
+		if targetParent.NodeToken == "" {
+			return "", "", errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki target parent lookup returned no node_token")
+		}
+		spec.TargetParentToken = targetParent.NodeToken
 		if targetSpaceID == "" {
 			targetSpaceID = parentSpaceID
 		} else if targetSpaceID != parentSpaceID {

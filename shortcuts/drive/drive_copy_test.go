@@ -900,12 +900,15 @@ func TestDriveCopyExecuteWikiSheet(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "success",
 			"data": map[string]interface{}{
-				"node": map[string]interface{}{"obj_type": "sheet", "obj_token": "sheetFromWiki"},
+				"node": map[string]interface{}{
+					"obj_type": "sheet", "obj_token": "sheetFromWiki",
+					"node_type": "shortcut", "node_token": "wikiCopySource", "origin_node_token": "wikiOriginal",
+				},
 			},
 		},
 	})
@@ -950,7 +953,7 @@ func TestDriveCopyWikiRejectsUnsupportedResolvedType(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "success",

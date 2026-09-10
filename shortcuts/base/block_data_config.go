@@ -706,52 +706,90 @@ func validProtocolFilterValue(value interface{}) bool {
 	}
 }
 
+type blockFilterConditionInput struct {
+	index     int
+	isObject  bool
+	fieldName string
+	fieldID   string
+	operator  string
+	hasValue  bool
+}
+
+type blockFilterValidationInput struct {
+	conjunction       string
+	conditions        []blockFilterConditionInput
+	hasConditionArray bool
+}
+
+// projectBlockFilter narrows the loose JSON map to the fields used by the
+// type-independent filter validator while preserving missing-key semantics.
+func projectBlockFilter(cfg map[string]interface{}, key string) (blockFilterValidationInput, bool) {
+	f, ok := cfg[key].(map[string]interface{})
+	if !ok {
+		return blockFilterValidationInput{}, false
+	}
+	input := blockFilterValidationInput{
+		conjunction: strings.ToLower(strings.TrimSpace(fmt.Sprintf("%v", f["conjunction"]))),
+	}
+	conditions, ok := f["conditions"].([]interface{})
+	if !ok {
+		return input, true
+	}
+	input.hasConditionArray = true
+	input.conditions = make([]blockFilterConditionInput, 0, len(conditions))
+	for i, item := range conditions {
+		condition := blockFilterConditionInput{index: i}
+		if raw, ok := item.(map[string]interface{}); ok {
+			condition.isObject = true
+			condition.fieldName, _ = raw["field_name"].(string)
+			condition.fieldID, _ = raw["field_id"].(string)
+			condition.operator, _ = raw["operator"].(string)
+			_, condition.hasValue = raw["value"]
+		}
+		input.conditions = append(input.conditions, condition)
+	}
+	return input, true
+}
+
 // validateBlockFilter validates the filter object shared by chart and list
 // data_config. key is the config key holding the filter ("filter").
 // allowFieldID lets list blocks reference a field by ID; chart blocks keep the
 // dashboard rule of field_name only.
 func validateBlockFilter(cfg map[string]interface{}, key string, allowFieldID bool) []string {
-	f, ok := cfg[key].(map[string]interface{})
-	if !ok {
+	input, exists := projectBlockFilter(cfg, key)
+	if !exists {
 		return nil
 	}
 	var problems []string
-	conj := strings.ToLower(strings.TrimSpace(fmt.Sprintf("%v", f["conjunction"])))
-	if conj == "" {
-		conj = "and"
+	conjunction := input.conjunction
+	if conjunction == "" {
+		conjunction = "and"
 	}
-	if conj != "and" && conj != "or" {
+	if conjunction != "and" && conjunction != "or" {
 		problems = append(problems, key+".conjunction 仅支持 and|or")
 	}
-	conds, ok := f["conditions"].([]interface{})
-	if !ok {
+	if !input.hasConditionArray {
 		return problems
 	}
 	allowedOps := map[string]bool{"is": true, "isnot": true, "contains": true, "doesnotcontain": true, "isempty": true, "isnotempty": true, "isgreater": true, "isgreaterequal": true, "isless": true, "islessequal": true}
-	for i, it := range conds {
-		m, ok := it.(map[string]interface{})
-		if !ok {
-			problems = append(problems, fmt.Sprintf("%s.conditions[%d] 必须是对象", key, i))
+	for _, condition := range input.conditions {
+		if !condition.isObject {
+			problems = append(problems, fmt.Sprintf("%s.conditions[%d] 必须是对象", key, condition.index))
 			continue
 		}
-		fn, _ := m["field_name"].(string)
-		hasRef := strings.TrimSpace(fn) != ""
+		hasRef := strings.TrimSpace(condition.fieldName) != ""
 		if !hasRef && allowFieldID {
-			fid, _ := m["field_id"].(string)
-			hasRef = strings.TrimSpace(fid) != ""
+			hasRef = strings.TrimSpace(condition.fieldID) != ""
 		}
 		if !hasRef {
-			problems = append(problems, fmt.Sprintf("%s.conditions[%d].field_name 不能为空", key, i))
+			problems = append(problems, fmt.Sprintf("%s.conditions[%d].field_name 不能为空", key, condition.index))
 		}
-		op, _ := m["operator"].(string)
-		opKey := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(op), " ", ""))
+		opKey := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(condition.operator), " ", ""))
 		if !allowedOps[opKey] {
-			problems = append(problems, fmt.Sprintf("%s.conditions[%d].operator 不支持: %s", key, i, op))
+			problems = append(problems, fmt.Sprintf("%s.conditions[%d].operator 不支持: %s", key, condition.index, condition.operator))
 		}
-		if opKey != "isempty" && opKey != "isnotempty" {
-			if _, has := m["value"]; !has {
-				problems = append(problems, fmt.Sprintf("%s.conditions[%d].value 缺失", key, i))
-			}
+		if opKey != "isempty" && opKey != "isnotempty" && !condition.hasValue {
+			problems = append(problems, fmt.Sprintf("%s.conditions[%d].value 缺失", key, condition.index))
 		}
 	}
 	return problems
@@ -761,5 +799,7 @@ func formatDataConfigErrors(problems []string) error {
 	if len(problems) == 0 {
 		return nil
 	}
-	return errs.NewValidationError(errs.SubtypeInvalidArgument, "data_config 校验失败:\n- %s\n参考: skills/lark-base/references/lark-base-dashboard-block-config.md（应用页面组件见 lark-base-app-block-data-config.md）", strings.Join(problems, "\n- ")).WithParam("--data-config")
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "data_config 校验失败:\n- %s", strings.Join(problems, "\n- ")).
+		WithParam("--data-config").
+		WithHint("read skills/lark-base/references/lark-base-dashboard-block-config.md (for app page blocks, read lark-base-app-block-data-config.md)")
 }

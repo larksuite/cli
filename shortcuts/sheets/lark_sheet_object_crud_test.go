@@ -5,11 +5,13 @@ package sheets
 
 import (
 	"encoding/json"
+	"errors"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -856,4 +858,275 @@ func TestObjectDelete_AllHighRisk(t *testing.T) {
 			requireProblem(t, err, errs.CategoryConfirmation, errs.SubtypeConfirmationRequired, "")
 		})
 	}
+}
+
+// TestCondFormatPropertiesNormalization pins the --properties acceptances.
+// attrs is a oneOf over nine shapes, so a near-miss fails with "does not match
+// any of oneOf alternatives" — a message that names no field; 62 of
+// +cond-format-create's 97 rejections in the 08-29..31 reflow were one of
+// these spellings.
+func TestCondFormatPropertiesNormalization(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name  string
+		props string
+		want  map[string]interface{}
+	}{
+		{
+			name:  "operator renamed under a value-shaped entry",
+			props: `{"style":{"back_color":"#C00000"},"attrs":[{"operator":"lessThan","value":"0"}]}`,
+			want:  map[string]interface{}{"compare_type": "lessThan", "value": "0"},
+		},
+		{
+			name:  "symbol comparison canonicalized",
+			props: `{"style":{"back_color":"#C00000"},"attrs":[{"compare_type":">=","value":"60"}]}`,
+			want:  map[string]interface{}{"compare_type": "greaterThanOrEqual", "value": "60"},
+		},
+		{
+			name:  "separator and casing variants canonicalized",
+			props: `{"style":{"back_color":"#C00000"},"attrs":[{"compare_type":"LESS_THAN","value":"60"}]}`,
+			want:  map[string]interface{}{"compare_type": "lessThan", "value": "60"},
+		},
+		{
+			name:  "abbreviation plus a numeric threshold",
+			props: `{"style":{"back_color":"#C00000"},"attrs":[{"operator":"LT","value":0}]}`,
+			want:  map[string]interface{}{"compare_type": "lessThan", "value": "0"},
+		},
+		{
+			name:  "between takes its two thresholds as a list",
+			props: `{"style":{"back_color":"#C00000"},"attrs":[{"compare_type":"between","value":[10,20]}]}`,
+			want:  map[string]interface{}{"compare_type": "between", "value": "10,20"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var props map[string]interface{}
+			if err := json.Unmarshal([]byte(tc.props), &props); err != nil {
+				t.Fatal(err)
+			}
+			normalizeCondFormatProperties(props)
+			attrs, _ := props["attrs"].([]interface{})
+			if len(attrs) != 1 {
+				t.Fatalf("attrs = %v, want one entry", props["attrs"])
+			}
+			entry, _ := attrs[0].(map[string]interface{})
+			for key, want := range tc.want {
+				if entry[key] != want {
+					t.Errorf("attrs[0].%s = %v, want %v", key, entry[key], want)
+				}
+			}
+			if _, leftover := entry["operator"]; leftover {
+				t.Errorf("operator should have been renamed, got %v", entry)
+			}
+		})
+	}
+
+	t.Run("cell-style vocabulary folds into the rule style", func(t *testing.T) {
+		t.Parallel()
+		// A model that learned background_color / font_color from --styles
+		// writes them here too, and the backend answers `unexpected property
+		// "background_color" is not defined` (9 rejections).
+		var props map[string]interface{}
+		if err := json.Unmarshal([]byte(`{"style":{"background_color":"#FFE6E6","font_color":"#C00000","font_weight":"bold","font_line":"line-through"}}`), &props); err != nil {
+			t.Fatal(err)
+		}
+		normalizeCondFormatProperties(props)
+		style, _ := props["style"].(map[string]interface{})
+		for key, want := range map[string]interface{}{
+			"back_color": "#FFE6E6", "fore_color": "#C00000",
+			"font": "bold", "text_decoration": "strikethrough",
+		} {
+			if style[key] != want {
+				t.Errorf("style.%s = %v, want %v", key, style[key], want)
+			}
+		}
+		for _, gone := range []string{"background_color", "font_color", "font_weight", "font_line"} {
+			if _, still := style[gone]; still {
+				t.Errorf("%s should have been folded, got %v", gone, style)
+			}
+		}
+	})
+
+	t.Run("an unrecognized font value is not combined", func(t *testing.T) {
+		t.Parallel()
+		// bold and italic are the only values this fold understands. Treating
+		// every other one as "the complementary style" turned
+		// {"font":"normal","font_weight":"bold"} into "bold italic" — invalid
+		// input silently became valid, with a slant nobody asked for.
+		for _, tc := range []struct{ name, props, wantFont string }{
+			{"normal stays put", `{"style":{"font":"normal","font_weight":"bold"}}`, "normal"},
+			{"a typo stays put", `{"style":{"font":"blod","italic":true}}`, "blod"},
+			{"bold plus italic still combines", `{"style":{"font":"bold","italic":true}}`, "bold italic"},
+			{"bold repeated stays bold", `{"style":{"font":"bold","font_weight":"bold"}}`, "bold"},
+			{"bold italic absorbs bold", `{"style":{"font":"bold italic","bold":true}}`, "bold italic"},
+			{"bold italic absorbs italic", `{"style":{"font":"bold italic","font_style":"italic"}}`, "bold italic"},
+		} {
+			var props map[string]interface{}
+			if err := json.Unmarshal([]byte(tc.props), &props); err != nil {
+				t.Fatal(err)
+			}
+			normalizeCondFormatProperties(props)
+			style, _ := props["style"].(map[string]interface{})
+			if style["font"] != tc.wantFont {
+				t.Errorf("%s: font = %v, want %q", tc.name, style["font"], tc.wantFont)
+			}
+			// A flat spelling the canonical value already covers must be
+			// dropped, not merely left unfolded: the schema has no such field,
+			// so riding along it costs the round trip the fold exists to save.
+			if tc.wantFont == condFormatFontBoth || tc.wantFont == "bold" {
+				for _, alias := range []string{"bold", "italic", "font_weight", "font_style"} {
+					if _, still := style[alias]; still {
+						t.Errorf("%s: %s survived into %v", tc.name, alias, style)
+					}
+				}
+			}
+		}
+	})
+
+	t.Run("a weight word that asks for nothing is not folded", func(t *testing.T) {
+		t.Parallel()
+		// This schema has no way to say "not bold", so bold:false is dropped
+		// rather than turned into font:"bold".
+		var props map[string]interface{}
+		if err := json.Unmarshal([]byte(`{"style":{"back_color":"#FFF","bold":false}}`), &props); err != nil {
+			t.Fatal(err)
+		}
+		normalizeCondFormatProperties(props)
+		style, _ := props["style"].(map[string]interface{})
+		if _, has := style["font"]; has {
+			t.Errorf("style = %v, want no font entry", style)
+		}
+	})
+
+	t.Run("only a two-element list is read as a range", func(t *testing.T) {
+		t.Parallel()
+		// between / notBetween want exactly two thresholds. Joining any other
+		// length would produce a plausible non-empty string that passes the
+		// local shape check and fails at the backend instead.
+		for _, tc := range []struct{ name, props string }{
+			{"one threshold", `{"attrs":[{"compare_type":"between","value":[10]}]}`},
+			{"three thresholds", `{"attrs":[{"compare_type":"between","value":[10,20,30]}]}`},
+			{"one threshold under notBetween", `{"attrs":[{"compare_type":"notBetween","value":[10]}]}`},
+		} {
+			var props map[string]interface{}
+			if err := json.Unmarshal([]byte(tc.props), &props); err != nil {
+				t.Fatal(err)
+			}
+			normalizeCondFormatProperties(props)
+			attrs, _ := props["attrs"].([]interface{})
+			entry, _ := attrs[0].(map[string]interface{})
+			if _, joined := entry["value"].(string); joined {
+				t.Errorf("%s: value = %v, want the list left alone for validation to reject", tc.name, entry["value"])
+			}
+		}
+	})
+
+	t.Run("a bare attrs object becomes the one-entry list", func(t *testing.T) {
+		t.Parallel()
+		var props map[string]interface{}
+		if err := json.Unmarshal([]byte(`{"attrs":{"compare_type":"lessThan","value":"0"}}`), &props); err != nil {
+			t.Fatal(err)
+		}
+		normalizeCondFormatProperties(props)
+		if attrs, _ := props["attrs"].([]interface{}); len(attrs) != 1 {
+			t.Errorf("attrs = %v, want a one-entry list", props["attrs"])
+		}
+	})
+
+	t.Run("rules that spell the comparison operator keep it", func(t *testing.T) {
+		t.Parallel()
+		var props map[string]interface{}
+		// timePeriod's own contract is {operator, time_period}, and dataBar /
+		// colorScale thresholds are numbers — neither may be rewritten.
+		if err := json.Unmarshal([]byte(`{"attrs":[{"operator":"before","time_period":"today"},{"color":"#63BE7B","value_type":"num","value":100}]}`), &props); err != nil {
+			t.Fatal(err)
+		}
+		normalizeCondFormatProperties(props)
+		attrs, _ := props["attrs"].([]interface{})
+		first, _ := attrs[0].(map[string]interface{})
+		if first["operator"] != "before" {
+			t.Errorf("timePeriod operator = %v, want it untouched", first["operator"])
+		}
+		second, _ := attrs[1].(map[string]interface{})
+		if second["value"] != float64(100) {
+			t.Errorf("dataBar value = %v (%T), want the number untouched", second["value"], second["value"])
+		}
+	})
+}
+
+// TestCondFormatStaleRuleIDHint pins the prescription on an id-addressed
+// update or delete: the backend answers with the id alone, which reads like a
+// transport problem rather than a stale reference.
+func TestCondFormatStaleRuleIDHint(t *testing.T) {
+	t.Parallel()
+	for _, command := range []string{"+cond-format-update", "+cond-format-delete"} {
+		t.Run(command, func(t *testing.T) {
+			t.Parallel()
+			sc := shortcutFromRegistry(t, command)
+			parent, _, _, reg := newTestRig(t, sc)
+			reg.Register(&httpmock.Stub{
+				Method: "POST", URL: "/open-apis/sheet_ai/v2/spreadsheets/" + testToken + "/tools/invoke_write",
+				Body: map[string]interface{}{
+					"code": 1310214, "msg": "conditional format iXGbyDwC not found",
+					"data": map[string]interface{}{},
+				},
+			})
+			args := []string{command, "--url", testURL, "--sheet-name", "s", "--rule-id", "iXGbyDwC"}
+			if command == "+cond-format-delete" {
+				args = append(args, "--yes")
+			} else {
+				args = append(args, "--rule-type", "cellIs", "--ranges", `["A1:A9"]`,
+					"--properties", `{"style":{"back_color":"#FFF"},"attrs":[{"compare_type":"lessThan","value":"0"}]}`)
+			}
+			parent.SetArgs(args)
+			err := parent.Execute()
+			if err == nil {
+				t.Fatal("expected the not-found failure to surface")
+			}
+			// The annotation adds a hint to the backend's own problem; it must
+			// not replace it. A hint-only error carrying none of the original
+			// metadata would satisfy a Hint-only assertion.
+			p := requireProblem(t, err, errs.CategoryAPI, errs.SubtypeServerError, "not found")
+			if p.Code != 1310214 {
+				t.Errorf("Code = %d, want 1310214 (the backend code must survive the annotation)", p.Code)
+			}
+			if !strings.Contains(p.Hint, "+cond-format-list") {
+				t.Errorf("hint should point at the list command, got %q", p.Hint)
+			}
+		})
+	}
+
+	t.Run("the annotated error keeps its wrapped cause", func(t *testing.T) {
+		t.Parallel()
+		sentinel := errors.New("underlying transport fault")
+		in := errs.NewAPIError(errs.SubtypeServerError, "conditional format iXGbyDwC not found").WithCause(sentinel)
+		out := annotateStaleObjectID(in, condFormatSpec, "iXGbyDwC")
+		p, ok := errs.ProblemOf(out)
+		if !ok {
+			t.Fatalf("out = %v, want a typed problem", out)
+		}
+		if !strings.Contains(p.Hint, "+cond-format-list") {
+			t.Errorf("hint = %q, want it to name the list command", p.Hint)
+		}
+		if !errors.Is(out, sentinel) {
+			t.Errorf("out = %v, want the wrapped cause still reachable via errors.Is", out)
+		}
+	})
+
+	t.Run("a not-found about something else keeps its own message", func(t *testing.T) {
+		t.Parallel()
+		// "not found" alone also covers the SHEET selector. Telling the caller
+		// to refresh rule ids there points at the one input that was right.
+		for _, tc := range []struct{ name, msg string }{
+			{"missing sheet", `sheet "s" not found`},
+			{"missing workbook", "spreadsheet not found"},
+			{"another rule's id", "conditional format iOTHER99 not found"},
+		} {
+			in := errs.NewAPIError(errs.SubtypeServerError, "%s", tc.msg)
+			p, _ := errs.ProblemOf(annotateStaleObjectID(in, condFormatSpec, "iXGbyDwC"))
+			if p.Hint != "" {
+				t.Errorf("%s: hint = %q, want none", tc.name, p.Hint)
+			}
+		}
+	})
 }

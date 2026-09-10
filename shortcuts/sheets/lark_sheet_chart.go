@@ -380,7 +380,7 @@ func chartCreateBasicInput(rt flagView, token, sheetID, sheetName string) (map[s
 	}
 	var seriesTypes []string
 	if rt.Changed("series-types") {
-		seriesTypes, err = parseChartEnumList(rt.Str("series-types"), "series-types", []string{"column", "line", "area"})
+		seriesTypes, err = parseChartEnumList(rt.Str("series-types"), "series-types", []string{"column", "line", "area", "scatter"})
 		if err != nil {
 			return nil, err
 		}
@@ -549,13 +549,11 @@ func chartConfigUpdateInput(rt flagView, token, sheetID, sheetName string) (map[
 			"snapshot": patch,
 		},
 	}
-	if rt.Changed("last-point-label") {
-		input["properties"].(map[string]interface{})["last_point_label"] = rt.Bool("last-point-label")
-	}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
 	if err := validateInputAgainstSchema(rt, input); err != nil {
 		return nil, err
 	}
+	addChartCompatibilityFields(rt, input)
 	return input, nil
 }
 
@@ -678,13 +676,11 @@ func chartConfigUpdateInputFromSnapshot(
 			"snapshot": patch,
 		},
 	}
-	if rt.Changed("last-point-label") {
-		input["properties"].(map[string]interface{})["last_point_label"] = rt.Bool("last-point-label")
-	}
 	sheetSelectorForToolInput(input, sheetID, sheetName)
 	if err := validateInputAgainstSchema(rt, input); err != nil {
 		return nil, nil, err
 	}
+	addChartCompatibilityFields(rt, input)
 	return input, viewModel, nil
 }
 
@@ -1013,6 +1009,20 @@ func applyChartConfigPatch(
 	next := cloneChartMap(current)
 	patch := map[string]interface{}{}
 	plotChanged := false
+	if value, ok := updates["aggregate_categories"].(bool); ok {
+		data := chartMap(next["data"])
+		dim1 := chartMap(data["dim1"])
+		serie := chartMap(dim1["serie"])
+		serie["aggregate"] = value
+		dim1["serie"] = serie
+		data["dim1"] = dim1
+		next["data"] = data
+		patch["data"] = map[string]interface{}{
+			"dim1": map[string]interface{}{
+				"serie": map[string]interface{}{"aggregate": value},
+			},
+		}
+	}
 
 	if value, ok := updates["title"].(string); ok {
 		title := chartMap(next["title"])
@@ -1042,6 +1052,7 @@ func applyChartConfigPatch(
 	plot := chartMap(plotArea["plot"])
 	plotArea["plot"] = plot
 	next["plotArea"] = plotArea
+	removeGlobalLabels := false
 	for _, item := range []struct {
 		key      string
 		axisType string
@@ -1091,6 +1102,7 @@ func applyChartConfigPatch(
 	if value, ok := updates["data_labels"].(string); ok {
 		if value == "none" {
 			delete(plot, "labels")
+			removeGlobalLabels = true
 		} else {
 			labels := map[string]interface{}{
 				"series":     value == "series",
@@ -1150,7 +1162,13 @@ func applyChartConfigPatch(
 		patch["style"] = map[string]interface{}{"colorTheme": colorTheme}
 	}
 	if plotChanged {
-		patch["plotArea"] = plotArea
+		patchPlotArea := cloneChartMap(plotArea)
+		if removeGlobalLabels {
+			patchPlot := chartMap(patchPlotArea["plot"])
+			patchPlot["labels"] = nil
+			patchPlotArea["plot"] = patchPlot
+		}
+		patch["plotArea"] = patchPlotArea
 	}
 	return patch, chartViewModel(next)
 }
@@ -1192,7 +1210,13 @@ func findChartAxisMap(plotArea map[string]interface{}, axisType, position string
 	axes, _ := plotArea["axes"].([]interface{})
 	for _, raw := range axes {
 		axis, _ := raw.(map[string]interface{})
-		if axis["type"] == axisType && axis["position"] == position {
+		axisPosition, hasPosition := axis["position"]
+		positionMatches := axisPosition == position
+		// Chart readback omits position for the canonical bottom X axis.
+		if !hasPosition && axisType == "x" && position == "bottom" {
+			positionMatches = true
+		}
+		if axis["type"] == axisType && positionMatches {
 			return axis
 		}
 	}
@@ -1597,6 +1621,10 @@ func configureChartSemanticCommand(cmd *cobra.Command) {
 		cmd.Flags().Bool("stacked", false, "compatibility alias for --stack normal")
 		_ = cmd.Flags().MarkHidden("stacked")
 	}
+	if cmd.Name() == "+chart-config-update" && cmd.Flags().Lookup("last-point-label") == nil {
+		cmd.Flags().Bool("last-point-label", false, "deprecated compatibility flag")
+		_ = cmd.Flags().MarkHidden("last-point-label")
+	}
 	originalArgs := cmd.Args
 	cmd.Args = func(cmd *cobra.Command, args []string) error {
 		if len(args) == 1 && cmd.Flags().Changed("smooth") && (args[0] == "true" || args[0] == "false") {
@@ -1611,6 +1639,14 @@ func configureChartSemanticCommand(cmd *cobra.Command) {
 		}
 		return err
 	})
+}
+
+func addChartCompatibilityFields(rt flagView, input map[string]interface{}) {
+	if !rt.Changed("last-point-label") {
+		return
+	}
+	properties, _ := input["properties"].(map[string]interface{})
+	properties["last_point_label"] = rt.Bool("last-point-label")
 }
 
 func addChartSemanticConfig(rt flagView, out map[string]interface{}) {
@@ -1637,6 +1673,9 @@ func addChartSemanticConfig(rt flagView, out map[string]interface{}) {
 	if rt.Changed("smooth") {
 		out["smooth"] = rt.Bool("smooth")
 	}
+	if rt.Changed("aggregate-categories") {
+		out["aggregate_categories"] = rt.Bool("aggregate-categories")
+	}
 	if rt.Changed("colors") {
 		out["colors"] = normalizedChartColors(rt)
 	}
@@ -1653,6 +1692,15 @@ func validateChartSemanticEnums(rt flagView) error {
 }
 
 func validateChartConfigSnapshot(rt flagView, snapshot map[string]interface{}) error {
+	if rt.Changed("aggregate-categories") {
+		data := chartMap(snapshot["data"])
+		if static, _ := data["isStaticData"].(bool); static {
+			return sheetsValidationForFlag(
+				"aggregate-categories",
+				"--aggregate-categories does not apply to static-data charts",
+			)
+		}
+	}
 	if rt.Changed("data-label-position") && !rt.Changed("data-labels") {
 		plotArea := chartMap(snapshot["plotArea"])
 		plot := chartMap(plotArea["plot"])

@@ -297,6 +297,12 @@ func TestBatchOp_BodyMatchesStandalone(t *testing.T) {
 			subInput: `{"sheet-id":"sh1","chart-id":"chart-1","title":"Revenue"}`,
 		},
 		{
+			shortcut: "+chart-config-update",
+			sc:       ChartConfigUpdate,
+			args:     []string{"--sheet-id", "sh1", "--chart-id", "chart-1", "--last-point-label=true"},
+			subInput: `{"sheet-id":"sh1","chart-id":"chart-1","last_point_label":true}`,
+		},
+		{
 			shortcut: "+chart-data-update",
 			sc:       ChartDataUpdate,
 			args:     []string{"--sheet-id", "sh1", "--chart-id", "chart-1", "--data-range", "A1:C10", "--data-direction", "column"},

@@ -237,6 +237,64 @@ func TestDriveExportMarkdownWritesFile(t *testing.T) {
 	}
 }
 
+func TestDriveExportWikiShortcutMarkdown(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
+		OnMatch: func(req *http.Request) {
+			if req.URL.RawQuery != "token=wikiShortcut" {
+				t.Errorf("lookup query = %q", req.URL.RawQuery)
+			}
+		},
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+			"node": map[string]interface{}{
+				"node_type": "shortcut", "node_token": "wikiShortcut", "origin_node_token": "wikiOriginal",
+				"obj_type": "docx", "obj_token": "docxOriginal", "title": "Shortcut title",
+			},
+		}},
+	})
+	fetch := &httpmock.Stub{
+		Method: "POST", URL: "/open-apis/docs_ai/v1/documents/docxOriginal/fetch",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+			"document": map[string]interface{}{"content": "# Original content\n"},
+		}},
+	}
+	reg.Register(fetch)
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+			"metas": []map[string]interface{}{{"title": "Original title"}},
+		}},
+	})
+	dir := t.TempDir()
+	withDriveWorkingDir(t, dir)
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export", "--token", "wikiShortcut", "--doc-type", "wiki", "--file-extension", "markdown", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := decodeCapturedJSONBody(t, fetch); len(body) != 1 || body["format"] != "markdown" {
+		t.Fatalf("fetch body = %#v", body)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "Original title.md"))
+	if err != nil || string(content) != "# Original content\n" {
+		t.Fatalf("saved content = %q, error = %v", content, err)
+	}
+	out := decodeDriveEnvelope(t, stdout)
+	if out["token"] != "docxOriginal" || out["doc_type"] != "docx" || out["wiki_token"] != "wikiShortcut" {
+		t.Fatalf("unexpected export target: %#v", out)
+	}
+	node := mustMapValue(t, out["wiki_node"], "wiki_node")
+	if len(node) != 2 || node["obj_token"] != "docxOriginal" || node["obj_type"] != "docx" {
+		t.Fatalf("unexpected wiki_node: %#v", node)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("unexpected stderr: %s", stderr)
+	}
+}
+
 func TestDriveExportMarkdownUsesProvidedFileName(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	fetchStub := &httpmock.Stub{
@@ -643,7 +701,7 @@ func TestDriveExportWikiURLResolvesBeforeAsyncTask(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -729,7 +787,7 @@ func TestDriveExportBareWikiTypeResolvesBeforeAsyncTask(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -868,7 +926,7 @@ func TestDriveExportWikiResolvedTypeMismatch(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{

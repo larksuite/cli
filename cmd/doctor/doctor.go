@@ -150,7 +150,7 @@ func doctorRun(opts *DoctorOptions, projector *recovery.Projector) error {
 	// ── 3. Identity readiness ──
 	diagnostics := identitydiag.FilterRecovery(
 		identitydiag.Diagnose(opts.Ctx, f, cfg, !opts.Offline),
-		projector.CanReference,
+		projector,
 	)
 	checks = append(checks,
 		identityCheck("bot_identity", diagnostics.Bot),

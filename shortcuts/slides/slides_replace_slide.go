@@ -14,7 +14,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// maxReplaceParts matches the server-side cap declared in meta_data.json
+// maxReplaceParts matches the server-side cap declared in the API catalog.
 // ("最少1条，最多200条"). Enforced client-side so a too-large batch fails fast
 // with a clear message instead of a 400 from the backend.
 const maxReplaceParts = 200

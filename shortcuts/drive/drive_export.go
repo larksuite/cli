@@ -145,7 +145,7 @@ func PlanExportDryRun(runtime *common.RuntimeContext, p ExportParams) *common.Dr
 
 	dry := common.NewDryRunAPI()
 	if source.Type == "wiki" {
-		dry.GET("/open-apis/wiki/v2/spaces/get_node").
+		dry.GET("/open-apis/wiki/v2/spaces/node_by_token").
 			Desc("[0] Resolve wiki node to underlying document token").
 			Params(map[string]interface{}{"token": source.Token})
 		spec.Token = "obj_token_from_step_0"

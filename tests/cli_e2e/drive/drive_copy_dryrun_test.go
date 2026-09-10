@@ -142,7 +142,7 @@ func TestDriveCopyDryRun_WikiURLResolvesResourceThenCopiesToDrive(t *testing.T) 
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
 	out := result.Stdout
-	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/wiki/v2/spaces/get_node" {
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/wiki/v2/spaces/node_by_token" {
 		t.Fatalf("api.0.url=%q, want wiki resolver endpoint\nstdout:\n%s", got, out)
 	}
 	if got := clie2e.DryRunGet(out, "api.0.params.token").String(); got != "wikiDryRunCopy" {

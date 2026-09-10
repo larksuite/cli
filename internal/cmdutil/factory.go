@@ -17,6 +17,8 @@ import (
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/extension/fileio"
 	exttransport "github.com/larksuite/cli/extension/transport"
+	"github.com/larksuite/cli/internal/affordance"
+	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
@@ -39,6 +41,8 @@ type InvocationContext struct {
 // All function fields are lazily initialized and cached after first call.
 // In tests, replace any field to stub out external dependencies.
 type Factory struct {
+	APICatalog apicatalog.Catalog              // Immutable API metadata selected once for this command build.
+	Affordance *affordance.Resolver            // Command guidance mapped against APICatalog; nil means no guidance.
 	Config     func() (*core.CliConfig, error) // lazily loads app config from Credential
 	HttpClient func() (*http.Client, error)    // policy-routed HTTP client for direct requests
 	LarkClient func() (*lark.Client, error)    // Lark SDK client for all Open API calls

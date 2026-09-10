@@ -40,7 +40,6 @@ func TestShortcutExampleCommands(t *testing.T) {
 	// ~/.lark-cli remote cache, which can miss commands) and an empty config
 	// dir so local strict mode / plugins / policy cannot reshape the tree.
 	// t.Setenv auto-restores after the test, so other cmd tests are unaffected.
-	t.Setenv("LARKSUITE_CLI_REMOTE_META", "off")
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
 	cat := buildCmdExampleCatalog()

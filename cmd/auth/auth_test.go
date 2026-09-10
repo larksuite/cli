@@ -19,7 +19,6 @@ import (
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/registry"
 )
 
 func TestAuthLoginCmd_FlagParsing(t *testing.T) {
@@ -257,7 +256,7 @@ func TestAuthStatusCmd_VerifyFlag(t *testing.T) {
 }
 
 func TestDomainFlagCompletion(t *testing.T) {
-	allDomains := registry.ListFromMetaProjects()
+	allDomains := testCatalogServiceNames(t)
 
 	tests := []struct {
 		name         string
@@ -301,7 +300,7 @@ func TestDomainFlagCompletion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			comps := builtinResolver().complete(tt.toComplete, "")
+			comps := builtinResolver(t).complete(tt.toComplete, "")
 			sort.Strings(comps)
 
 			for _, want := range tt.wantContains {

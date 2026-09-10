@@ -33,14 +33,27 @@ func TestBuild_DefaultNoCompletionLeak(t *testing.T) {
 		return float64(m.HeapAlloc) / 1024 / 1024, m.HeapObjects
 	}
 
-	// Warm one-time caches (registry JSON decode, embed reads) so the first
-	// Build's lazy allocations don't skew the per-iteration delta.
-	_ = Build(context.Background(), cmdutil.InvocationContext{})
+	buildFull := func() {
+		t.Helper()
+		if _, err := buildRootForArgs(
+			context.Background(),
+			cmdutil.InvocationContext{},
+			[]string{"--help"},
+			WithoutPlugins(),
+		); err != nil {
+			t.Fatalf("buildRootForArgs: %v", err)
+		}
+	}
+
+	// Warm one-time package initialization so it does not skew retained-growth
+	// measurements. Snapshot service data is still parsed independently by
+	// every target build.
+	buildFull()
 	baseMB, baseObj := snap()
 
 	const N = 20
 	for range N {
-		_ = Build(context.Background(), cmdutil.InvocationContext{})
+		buildFull()
 	}
 	mb, obj := snap()
 

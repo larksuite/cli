@@ -1,0 +1,174 @@
+{
+  "name": "contact",
+  "version": "v2",
+  "title": "通讯录 API",
+  "description": "人员搜索、查询",
+  "servicePath": "/open-apis/profile/v2",
+  "resources": {
+    "user_profiles": {
+      "methods": {
+        "batch_query": {
+          "id": "user_profiles.batch_query",
+          "path": "user_profiles/batch_query",
+          "httpMethod": "POST",
+          "description": "批量获取用户个人资料（个人状态、个性签名）。Identity: `user` only (`user_access_token`)",
+          "parameters": {
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "用户id类型 open_id/user_id/union_id",
+              "default": "open_id",
+              "example": "open_id",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            }
+          },
+          "requestBody": {
+            "query_option": {
+              "type": "object",
+              "description": "控制返回字段",
+              "required": false,
+              "ref": "query_option",
+              "properties": {
+                "include_personal_status": {
+                  "type": "boolean",
+                  "description": "是否返回 personal_status",
+                  "required": false,
+                  "example": false
+                },
+                "include_description": {
+                  "type": "boolean",
+                  "description": "是否返回 description",
+                  "required": false,
+                  "example": false
+                }
+              }
+            },
+            "user_ids": {
+              "type": "array",
+              "description": "用户列表",
+              "required": true,
+              "annotations": [
+                "open:x_user_id"
+              ]
+            }
+          },
+          "responseBody": {
+            "user_profiles": {
+              "type": "array",
+              "description": "个人信息列表",
+              "required": false,
+              "properties": {
+                "user_id": {
+                  "type": "string",
+                  "description": "用户id",
+                  "required": false,
+                  "annotations": [
+                    "open:x_user_id",
+                    "tolerate_idtrans_failure"
+                  ]
+                },
+                "personal_status": {
+                  "type": "object",
+                  "description": "个人状态，当请求参数 include_personal_status=true 时返回",
+                  "required": false,
+                  "ref": "personal_status",
+                  "properties": {
+                    "personal_status_id": {
+                      "type": "string",
+                      "description": "个人状态 ID",
+                      "required": false,
+                      "example": "123456789"
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "个人状态名称，长度 1-40（按 rune 计）",
+                      "required": false,
+                      "example": "会议中"
+                    },
+                    "i18n_title": {
+                      "type": "object",
+                      "description": "国际化名称，长度 1-40（按 rune 计）",
+                      "required": false,
+                      "ref": "i18n_value"
+                    },
+                    "icon_key": {
+                      "type": "string",
+                      "description": "状态图标标识",
+                      "required": false,
+                      "example": "GeneralInMeetingBusy"
+                    },
+                    "effective_interval": {
+                      "type": "object",
+                      "description": "生效区间（当前时间命中该区间表示状态处于生效中）",
+                      "required": false,
+                      "ref": "personal_status_interval"
+                    },
+                    "is_not_disturb_mode": {
+                      "type": "boolean",
+                      "description": "状态生效时是否联动开启勿扰模式",
+                      "required": false
+                    }
+                  }
+                },
+                "description": {
+                  "type": "object",
+                  "description": "个性签名，当请求参数 include_description=true 时返回",
+                  "required": false,
+                  "ref": "description",
+                  "properties": {
+                    "default_value": {
+                      "type": "string",
+                      "description": "默认值；允许为空字符串，表示真实为空",
+                      "required": false,
+                      "example": "张三"
+                    },
+                    "i18n_value": {
+                      "type": "object",
+                      "description": "国际化签名",
+                      "required": false,
+                      "ref": "i18n_value"
+                    },
+                    "default_locale": {
+                      "type": "string",
+                      "description": "默认语种，例如 zh_cn / ja_jp / en_us",
+                      "required": false,
+                      "example": "zh_cn"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "scopes": [
+            "profile:user_profile:read"
+          ],
+          "accessTokens": [
+            "user"
+          ],
+          "danger": true,
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=batch_query&project=profile&resource=user_profile&version=v2"
+        }
+      }
+    }
+  }
+}

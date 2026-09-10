@@ -21,6 +21,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/meta"
+	"github.com/larksuite/cli/internal/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -115,6 +116,25 @@ func TestRegisterService(t *testing.T) {
 	meth, _, err := parent.Find([]string{"base", "tables", "list"})
 	if err != nil || meth.Name() != "list" {
 		t.Fatalf("expected 'list' command, got err=%v", err)
+	}
+}
+
+func TestRegisterServiceCommands_ForNames(t *testing.T) {
+	snapshot, err := registry.OpenSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog := snapshot.Catalog()
+	parent := &cobra.Command{Use: "root"}
+	f := &cmdutil.Factory{APICatalog: catalog}
+
+	RegisterServiceCommandsForNames(context.Background(), parent, f, catalog, []string{"drive", "not-a-service"})
+
+	if cmd, _, err := parent.Find([]string{"drive"}); err != nil || cmd == parent {
+		t.Fatalf("drive command not registered: cmd=%v err=%v", cmd, err)
+	}
+	if cmd, _, err := parent.Find([]string{"calendar"}); err == nil && cmd != parent {
+		t.Fatalf("calendar command unexpectedly registered from drive-only catalog")
 	}
 }
 
@@ -278,6 +298,41 @@ func TestServiceMethod_DryRunWithJq(t *testing.T) {
 	}
 	if got, want := strings.TrimSpace(stdout.String()), "/open-apis/drive/v1/files/boxcn123abc/copy"; got != want {
 		t.Fatalf("jq output = %q, want %q", got, want)
+	}
+}
+
+// TestServiceMethod_DryRunRendersPlainDecimals pins the previewed URL to the
+// same plain-decimal rendering the wire uses, so a previewed request is the
+// request that gets sent. The pretty form is the one that builds a URL out of
+// the params; Go's %v would print "start_time=1.7e+09" in it.
+func TestServiceMethod_DryRunRendersPlainDecimals(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
+	spec := meta.ServiceFromMap(map[string]interface{}{
+		"name": "svc", "servicePath": "/open-apis/svc/v1",
+	})
+	method := meta.FromMap(map[string]interface{}{
+		"path": "items", "httpMethod": "POST",
+	})
+	cmd := NewCmdServiceMethod(f, spec, method, "create", "items", nil)
+	cmd.SetArgs([]string{
+		"--params", `{"start_time":1700000000}`,
+		"--data", `{"size":1185356}`,
+		"--dry-run",
+		"--format", "pretty",
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	for _, want := range []string{"1700000000", "1185356"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("dry-run output missing plain decimal %s:\n%s", want, out)
+		}
+	}
+	for _, bad := range []string{"1.7e+09", "1.185356e+06"} {
+		if strings.Contains(out, bad) {
+			t.Fatalf("dry-run output contains scientific notation %s:\n%s", bad, out)
+		}
 	}
 }
 

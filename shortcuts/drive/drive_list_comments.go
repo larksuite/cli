@@ -245,11 +245,21 @@ func resolveDriveListCommentsTarget(ctx context.Context, runtime *common.Runtime
 
 	data, err := runtime.CallAPITyped(
 		"GET",
-		"/open-apis/wiki/v2/spaces/get_node",
+		"/open-apis/wiki/v2/spaces/node_by_token",
 		map[string]interface{}{"token": ref.Token},
 		nil,
 	)
 	if err != nil {
+		if problem, ok := errs.ProblemOf(err); ok {
+			switch problem.Code {
+			case 131012:
+				problem.Subtype, problem.Retryable = errs.SubtypeNotFound, false
+			case 131013, 131016:
+				problem.Subtype, problem.Retryable = errs.SubtypeInvalidParameters, false
+			case 131014:
+				problem.Subtype, problem.Retryable = errs.SubtypeFailedPrecondition, false
+			}
+		}
 		return driveListCommentsTarget{}, err
 	}
 
@@ -257,7 +267,7 @@ func resolveDriveListCommentsTarget(ctx context.Context, runtime *common.Runtime
 	objType := normalizeDriveListCommentsType(common.GetString(node, "obj_type"))
 	objToken := common.GetString(node, "obj_token")
 	if objType == "" || objToken == "" {
-		return driveListCommentsTarget{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki get_node returned incomplete node data")
+		return driveListCommentsTarget{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki node_by_token returned incomplete node data")
 	}
 	if !driveListCommentsTypeSupported(objType) || objType == "wiki" {
 		return driveListCommentsTarget{}, errs.NewValidationError(
@@ -277,7 +287,7 @@ func buildDriveListCommentsDryRun(spec driveListCommentsSpec) *common.DryRunAPI 
 		}
 		return common.NewDryRunAPI().
 			Desc("2-step orchestration: resolve wiki -> list comments").
-			GET("/open-apis/wiki/v2/spaces/get_node").
+			GET("/open-apis/wiki/v2/spaces/node_by_token").
 			Desc("[1] Resolve wiki node to underlying document").
 			Params(map[string]interface{}{"token": spec.Ref.Token}).
 			GET("/open-apis/drive/v1/files/<obj_token from step 1>/comments").

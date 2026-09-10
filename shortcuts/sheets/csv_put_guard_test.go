@@ -22,30 +22,59 @@ func newCSVGuardRuntime(csvVal string) *common.RuntimeContext {
 	return &common.RuntimeContext{Cmd: cmd}
 }
 
-// TestGuardCSVValueIsNotFilePath covers the existing-file tier: a bare --csv
-// value naming a real file is a forgotten "@". The prescription names the fix
-// with a <path> placeholder — the untrusted value must not be spliced into
+// TestGuardCSVValueIsNotFilePath covers the existing-file tier for a value
+// that is NOT path-shaped: an inline value colliding with a real file name.
+// Reading it would be a guess, so both routes are prescribed — with a <path>
+// placeholder, since the untrusted value must not be spliced into
 // command-shaped text an agent would copy verbatim.
 func TestGuardCSVValueIsNotFilePath(t *testing.T) {
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+	if err := os.WriteFile("README.md", []byte("a,b\n1,2\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := guardCSVValueIsNotFilePath(newCSVGuardRuntime("README.md"))
+	ve := requireValidation(t, err, "existing file")
+	if !strings.Contains(ve.Message, `"README.md"`) {
+		t.Errorf("message should name the offending value as data, got: %q", ve.Message)
+	}
+	if !strings.Contains(ve.Message, "--csv @<path>") {
+		t.Errorf("message should prescribe the @ form via placeholder, got: %q", ve.Message)
+	}
+	if strings.Contains(ve.Message, "@README.md") {
+		t.Errorf("message must not splice the value into a command fragment, got: %q", ve.Message)
+	}
+	if ve.Param != "--csv" {
+		t.Errorf("param = %q, want --csv", ve.Param)
+	}
+}
+
+// TestGuardCSVValueIsNotFilePath_PathShapedExistingFile pins that a
+// path-shaped value naming a real file is REJECTED rather than read. Reading
+// it was tried in the 08-29..31 reflow round and reverted on review: --csv is
+// literal CSV text, so silently swapping in a same-named local file makes the
+// flag's meaning depend on the working directory and turns a cell write into a
+// local-file read. File intent stays explicit.
+func TestGuardCSVValueIsNotFilePath_PathShapedExistingFile(t *testing.T) {
 	dir := t.TempDir()
 	cmdutil.TestChdir(t, dir)
 	if err := os.WriteFile("data.csv", []byte("a,b\n1,2\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	err := guardCSVValueIsNotFilePath(newCSVGuardRuntime("data.csv"))
+	runtime := newCSVGuardRuntime("./data.csv")
+	err := guardCSVValueIsNotFilePath(runtime)
 	ve := requireValidation(t, err, "existing file")
-	if !strings.Contains(ve.Message, `"data.csv"`) {
-		t.Errorf("message should name the offending value as data, got: %q", ve.Message)
-	}
 	if !strings.Contains(ve.Message, "--csv @<path>") {
-		t.Errorf("message should prescribe the @ form via placeholder, got: %q", ve.Message)
+		t.Errorf("message should prescribe the @ form, got: %q", ve.Message)
 	}
-	if strings.Contains(ve.Message, "@data.csv") {
-		t.Errorf("message must not splice the value into a command fragment, got: %q", ve.Message)
+	// The value must still be the caller's text: no read happened.
+	if got := runtime.Str("csv"); got != "./data.csv" {
+		t.Errorf("--csv = %q, want the value left untouched", got)
 	}
-	if ve.Param != "--csv" {
-		t.Errorf("param = %q, want --csv", ve.Param)
+	if runtime.InputResolvedFromSource("csv") {
+		t.Error("nothing was read, so the value must not be marked resolved")
 	}
 }
 

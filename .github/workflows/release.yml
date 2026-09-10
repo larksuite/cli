@@ -105,17 +105,11 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: ${{ env.RELEASE_GO_VERSION }}
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: '3.x'
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22.14.0'
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
-
-      - name: Fetch build metadata
-        run: python3 scripts/fetch_meta.py
 
       - name: Prepare Apple notarization key
         env:

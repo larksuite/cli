@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/hook"
 	"github.com/spf13/cobra"
 )
 
@@ -24,6 +25,20 @@ func TestBuildWithoutPluginsStillBuildsBuiltinCommands(t *testing.T) {
 	if findCommand(root, "docs +fetch") == nil {
 		t.Fatal("builtin docs +fetch shortcut missing")
 	}
+}
+
+func buildInternalForTest(
+	t testing.TB,
+	ctx context.Context,
+	inv cmdutil.InvocationContext,
+	opts ...BuildOption,
+) (*cmdutil.Factory, *cobra.Command, *hook.Registry) {
+	t.Helper()
+	runtime, root, reg, err := assembleInternal(ctx, inv, assemblyRequest{}, resolveBuildConfig(opts))
+	if err != nil {
+		t.Fatalf("assemble full tree: %v", err)
+	}
+	return runtime.Factory, root, reg
 }
 
 func findCommand(root *cobra.Command, path string) *cobra.Command {

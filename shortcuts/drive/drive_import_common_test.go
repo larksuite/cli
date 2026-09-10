@@ -439,7 +439,7 @@ func TestDriveImportRejectsWikiFolderToken(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -497,7 +497,7 @@ func TestDriveImportContinuesWhenFolderTokenDoesNotResolveAsWiki(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 1310001,
 			"msg":  "node not found",
@@ -567,7 +567,7 @@ func TestDriveImportWikiProbePermissionFailureRemainsNonBlocking(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 131006,
 			"msg":  "permission denied: node permission denied, user needs read permission.",
@@ -583,6 +583,32 @@ func TestDriveImportWikiProbePermissionFailureRemainsNonBlocking(t *testing.T) {
 
 	if err := rejectDriveImportWikiFolderToken(runtime, "fldcnImportTarget"); err != nil {
 		t.Fatalf("wiki probe permission failure must not block a valid Drive folder token: %v", err)
+	}
+}
+
+func TestDriveImportWikiProbeErrorsRemainNonBlocking(t *testing.T) {
+	for _, code := range []int{131006, 131012, 131013, 131014, 131016} {
+		t.Run(strconv.Itoa(code), func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+			lookup := &httpmock.Stub{
+				Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token",
+				Body: map[string]interface{}{"code": code, "msg": "not a readable Wiki node"},
+				OnMatch: func(req *http.Request) {
+					if req.URL.RawQuery != "token=folderTarget" {
+						t.Errorf("lookup query = %q", req.URL.RawQuery)
+					}
+				},
+			}
+			reg.Register(lookup)
+			runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "drive +import"}, driveTestConfig(), f, core.AsUser)
+			if err := rejectDriveImportWikiFolderToken(runtime, "folderTarget"); err != nil {
+				t.Fatalf("Wiki probe must remain non-blocking: %v", err)
+			}
+			if len(lookup.CapturedBodies) != 1 {
+				t.Fatalf("lookup calls = %d, want 1", len(lookup.CapturedBodies))
+			}
+		})
 	}
 }
 

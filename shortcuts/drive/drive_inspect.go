@@ -21,6 +21,13 @@ const (
 
 var driveInspectAfter = time.After
 
+type driveInspectWikiNode struct {
+	SpaceID   string `json:"space_id"`
+	NodeToken string `json:"node_token"`
+	ObjToken  string `json:"obj_token"`
+	ObjType   string `json:"obj_type"`
+}
+
 var DriveInspect = common.Shortcut{
 	Service:           "drive",
 	Command:           "+inspect",
@@ -58,7 +65,7 @@ var DriveInspect = common.Shortcut{
 
 		if ref.Type == "wiki" {
 			dry.Desc("2-step: inspect wiki node, then batch query metadata")
-			dry.GET("/open-apis/wiki/v2/spaces/get_node").
+			dry.GET("/open-apis/wiki/v2/spaces/node_by_token").
 				Desc("[1] Inspect wiki node to get underlying document").
 				Params(map[string]interface{}{"token": ref.Token})
 			dry.POST("/open-apis/drive/v1/metas/batch_query").
@@ -91,19 +98,31 @@ var DriveInspect = common.Shortcut{
 		docType := ref.Type
 		docToken := ref.Token
 
-		var wikiNode map[string]interface{}
+		var wikiNode *driveInspectWikiNode
 
-		// Step 2: If type is "wiki", unwrap via get_node API.
+		// Step 2: If type is "wiki", resolve its underlying document.
 		if docType == "wiki" {
 			data, err := driveInspectCallWithRetry(
 				ctx,
 				func() (map[string]interface{}, error) {
-					return runtime.CallAPITyped(
+					data, err := runtime.CallAPITyped(
 						"GET",
-						"/open-apis/wiki/v2/spaces/get_node",
+						"/open-apis/wiki/v2/spaces/node_by_token",
 						map[string]interface{}{"token": docToken},
 						nil,
 					)
+					// Classify terminal lookup failures before deciding whether to retry.
+					if problem, ok := errs.ProblemOf(err); ok {
+						switch problem.Code {
+						case 131012:
+							problem.Subtype, problem.Retryable = errs.SubtypeNotFound, false
+						case 131013, 131016:
+							problem.Subtype, problem.Retryable = errs.SubtypeInvalidParameters, false
+						case 131014:
+							problem.Subtype, problem.Retryable = errs.SubtypeFailedPrecondition, false
+						}
+					}
+					return data, err
 				},
 			)
 			if err != nil {
@@ -111,25 +130,19 @@ var DriveInspect = common.Shortcut{
 			}
 
 			node := common.GetMap(data, "node")
-			objType := common.GetString(node, "obj_type")
-			objToken := common.GetString(node, "obj_token")
-			spaceID := common.GetString(node, "space_id")
-			nodeToken := common.GetString(node, "node_token")
-
-			if objType == "" || objToken == "" {
-				return errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki get_node returned incomplete node data (obj_type=%q, obj_token=%q)", objType, objToken)
+			wikiNode = &driveInspectWikiNode{
+				SpaceID:   common.GetString(node, "space_id"),
+				NodeToken: common.GetString(node, "node_token"),
+				ObjToken:  common.GetString(node, "obj_token"),
+				ObjType:   common.GetString(node, "obj_type"),
 			}
 
-			wikiNode = map[string]interface{}{
-				"space_id":   spaceID,
-				"node_token": nodeToken,
-				"obj_token":  objToken,
-				"obj_type":   objType,
+			if wikiNode.ObjType == "" || wikiNode.ObjToken == "" {
+				return errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki node_by_token returned incomplete node data (obj_type=%q, obj_token=%q)", wikiNode.ObjType, wikiNode.ObjToken)
 			}
 
-			docType = objType
-			docToken = objToken
-
+			docType = wikiNode.ObjType
+			docToken = wikiNode.ObjToken
 		}
 
 		// Step 3: Call batch_query to verify and get title.
@@ -163,7 +176,7 @@ var DriveInspect = common.Shortcut{
 				fmt.Fprintf(w, "URL:   %s\n", resolvedURL)
 			}
 			if wikiNode != nil {
-				fmt.Fprintf(w, "Wiki:  space_id=%s, node_token=%s\n", wikiNode["space_id"], wikiNode["node_token"])
+				fmt.Fprintf(w, "Wiki:  space_id=%s, node_token=%s\n", wikiNode.SpaceID, wikiNode.NodeToken)
 			}
 		})
 		return nil

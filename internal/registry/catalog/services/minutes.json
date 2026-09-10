@@ -1,0 +1,137 @@
+{
+  "name": "minutes",
+  "version": "v1",
+  "title": "妙记 API",
+  "description": "minutes info and content query",
+  "servicePath": "/open-apis/minutes/v1",
+  "resources": {
+    "minutes": {
+      "methods": {
+        "get": {
+          "id": "minute.get",
+          "path": "minutes/{minute_token}",
+          "httpMethod": "GET",
+          "description": "Get minutes meta",
+          "parameters": {
+            "minute_token": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "The unique identifier for Minutes. It can be obtained from the URL link of the Minutes, usually the last string of characters: https://sample.feishu.cn/minutes/==obcnq3b9jl72l83w4f14xxxx==",
+              "example": "obcnq3b9jl72l83w4f14xxxx"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户ID的类型",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "minute_token"
+          ],
+          "responseBody": {
+            "minute": {
+              "type": "object",
+              "description": "Minute basic information",
+              "required": false,
+              "ref": "minute",
+              "properties": {
+                "token": {
+                  "type": "string",
+                  "description": "Minute token",
+                  "required": false,
+                  "example": "obcnq3b9jl72l83w4f14xxxx",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "owner_id": {
+                  "type": "string",
+                  "description": "Owner ID",
+                  "required": false,
+                  "example": "ou_612b787ccd3259fb3c816b3f678dxxxx",
+                  "annotations": [
+                    "open:x_user_id"
+                  ]
+                },
+                "create_time": {
+                  "type": "string",
+                  "description": "Minute creation timestamp (ms level)",
+                  "required": false,
+                  "example": "1669098360477",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "title": {
+                  "type": "string",
+                  "description": "Minute title",
+                  "required": false,
+                  "example": "产品周会的视频会议"
+                },
+                "cover": {
+                  "type": "string",
+                  "description": "Minute cover Link",
+                  "required": false,
+                  "example": "https://sample.feishu.cn/minutes/download/example"
+                },
+                "duration": {
+                  "type": "string",
+                  "description": "Minute video duration (ms level)",
+                  "required": false,
+                  "example": "314000"
+                },
+                "url": {
+                  "type": "string",
+                  "description": "Minute link",
+                  "required": false,
+                  "example": "https://sample.feishu.cn/minutes/obcnExampleMinutes",
+                  "annotations": [
+                    "readOnly"
+                  ]
+                },
+                "note_id": {
+                  "type": "string",
+                  "description": "纪要ID",
+                  "required": false,
+                  "example": "7616590025794260496"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "minutes:minutes",
+            "minutes:minutes:readonly",
+            "minutes:minutes.basic:read"
+          ],
+          "accessTokens": [
+            "tenant",
+            "user"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=minutes&resource=minute&version=v1"
+        }
+      }
+    }
+  }
+}

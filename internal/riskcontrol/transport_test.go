@@ -107,7 +107,7 @@ func TestTransportAuthorizesBeforeCollecting(t *testing.T) {
 	}
 }
 
-func TestTransportRiskControlDisabledSuppressesAllSignals(t *testing.T) {
+func TestTransportRiskControlDisabledSuppressesHostSignalsButSendsCredentialSource(t *testing.T) {
 	var received http.Header
 	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		received = req.Header.Clone()
@@ -117,8 +117,9 @@ func TestTransportRiskControlDisabledSuppressesAllSignals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Restricted values must not survive from either the caller or the trusted
-	// credential provider after the workspace opts out of risk control.
+	// Caller values must never survive. Opting out of risk control suppresses
+	// host signals, but the trusted request-scoped credential source is still
+	// sent.
 	req.Header.Set(HeaderOSType, "caller-value")
 	req.Header.Set(HeaderProductModel, "caller-value")
 	req.Header.Set(HeaderCredentialSource, "caller-value")
@@ -130,10 +131,13 @@ func TestTransportRiskControlDisabledSuppressesAllSignals(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	for _, name := range restrictedHeaders {
+	for _, name := range []string{HeaderOSType, HeaderProductModel} {
 		if got := received.Get(name); got != "" {
-			t.Fatalf("risk-control opt-out sent %s=%q", name, got)
+			t.Fatalf("risk-control opt-out sent host signal %s=%q", name, got)
 		}
+	}
+	if got := received.Get(HeaderCredentialSource); got != "local" {
+		t.Fatalf("%s = %q, want trusted request source local", HeaderCredentialSource, got)
 	}
 }
 
@@ -143,7 +147,9 @@ func TestTransportCredentialSourceIsRequestScoped(t *testing.T) {
 		received = req.Header.Clone()
 		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
 	})
-	transport := NewTransport(base, staticSource{OSType: OSTypeMacOS})
+	// A nil host source models risk-control off. Credential source metadata is
+	// independent of that policy.
+	transport := NewTransport(base, nil)
 
 	for _, test := range []struct {
 		name   string

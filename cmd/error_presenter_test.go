@@ -347,9 +347,14 @@ func TestRootErrorPresenterDoesNotMutateNestedAuthenticationCause(t *testing.T) 
 
 func factoryWithDeclaredServiceScope(t *testing.T) *cmdutil.Factory {
 	t.Helper()
-	f := &cmdutil.Factory{ResolvedIdentity: core.AsUser}
+	snapshot, err := registry.OpenSnapshot()
+	if err != nil {
+		t.Fatalf("open catalog snapshot: %v", err)
+	}
+	catalog := snapshot.Catalog()
+	f := &cmdutil.Factory{APICatalog: catalog, ResolvedIdentity: core.AsUser}
 	var target registry.CommandEntry
-	for _, entry := range registry.CollectCommandScopes([]string{"calendar"}, "user") {
+	for _, entry := range registry.CollectCommandScopes(catalog, []string{"calendar"}, "user") {
 		if len(entry.Scopes) > 0 {
 			target = entry
 			break

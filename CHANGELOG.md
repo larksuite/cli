@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.94] - 2026-09-07
+
+### Features
+
+- 支持会议搜索使用机器人身份 (#2445)
+- **vc**: distinguish detected meeting share starts (#2541)
+- **slides**: lint slide writes server-side, add --no-lint to opt out (#2607)
+- validate generated API parameter constraints (#2514)
+- **base**: support AI classification and AI Analysis Action (#2590)
+- add mail rule shortcuts (#2327)
+- **calendar**: remove app_link from event outputs, emphasize share link (#2618)
+- expand folder children one level in IM message output (#2606)
+- use remote scopes.json for login scope recommendations (#1799)
+
+### Bug Fixes
+
+- **base**: repair field schema template reference (#2575)
+- **base**: improve search recovery and form deletion safety (#2422)
+- honor requiredScopes conjunction in CollectScopesForProjects (#1878)
+- **output**: preserve non-data payloads in the api success envelope (#2601)
+- **suggest**: surface both halves of a welded compound flag name (#2604)
+- optimize calendar and vc (#2616)
+
+### Documentation
+
+- **skills**: fix broken reference links (#2485)
+
+### Misc
+
+- Add mail thread management shortcuts (#2370)
+- **slides**: sync XML schema (2026-09-01) (#2589)
+
 ## [v1.0.93] - 2026-09-01
 
 ### Features
@@ -2084,6 +2116,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.94]: https://github.com/larksuite/cli/releases/tag/v1.0.94
 [v1.0.93]: https://github.com/larksuite/cli/releases/tag/v1.0.93
 [v1.0.92]: https://github.com/larksuite/cli/releases/tag/v1.0.92
 [v1.0.91]: https://github.com/larksuite/cli/releases/tag/v1.0.91

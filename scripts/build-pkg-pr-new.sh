@@ -6,8 +6,6 @@ OUT_DIR="$ROOT_DIR/.pkg-pr-new"
 
 cd "$ROOT_DIR"
 
-python3 scripts/fetch_meta.py
-
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR/bin" "$OUT_DIR/scripts"
 

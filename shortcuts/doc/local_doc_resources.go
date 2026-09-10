@@ -892,13 +892,12 @@ func newLocalDocResource(runtime *common.RuntimeContext, kind localDocResourceKi
 	if isReservedLocalDocResourceMarker(pathValue) {
 		return localDocResource{}, localResourceValidationError(kind, occurrence, "path uses a reserved lark-cli marker")
 	}
-	relPath := strings.TrimSpace(strings.TrimPrefix(pathValue, "@"))
-	clean := filepath.Clean(relPath)
-	if relPath == "" || filepath.IsAbs(clean) || clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return localDocResource{}, localResourceValidationError(kind, occurrence, "path must be a relative file inside the current working directory")
+	filePath := strings.TrimSpace(strings.TrimPrefix(pathValue, "@"))
+	if filePath == "" {
+		return localDocResource{}, localResourceValidationError(kind, occurrence, "path cannot be empty after @")
 	}
 
-	info, err := runtime.FileIO().Stat(clean)
+	resolvedPath, info, err := statDocResource(runtime, filePath)
 	if err != nil {
 		return localDocResource{}, localResourceValidationErrorWithCause(kind, occurrence, "file does not exist or its path is unsafe", err)
 	}
@@ -908,7 +907,7 @@ func newLocalDocResource(runtime *common.RuntimeContext, kind localDocResourceKi
 	if info.Size() <= 0 {
 		return localDocResource{}, localResourceValidationError(kind, occurrence, "file must not be empty")
 	}
-	file, err := runtime.FileIO().Open(clean)
+	file, err := runtime.FileIO().Open(resolvedPath)
 	if err != nil {
 		return localDocResource{}, localResourceValidationErrorWithCause(kind, occurrence, "file is not readable", err)
 	}
@@ -917,7 +916,7 @@ func newLocalDocResource(runtime *common.RuntimeContext, kind localDocResourceKi
 	}
 	var imageWidth, imageHeight int
 	if kind == localDocResourceImage {
-		imageWidth, imageHeight, _, err = detectImageConfigFromPath(runtime.FileIO(), clean)
+		imageWidth, imageHeight, _, err = detectImageConfigFromPath(runtime.FileIO(), resolvedPath)
 		if err != nil || imageWidth <= 0 || imageHeight <= 0 {
 			if err == nil {
 				err = invalidLocalDocImageDimensionsError()
@@ -934,8 +933,8 @@ func newLocalDocResource(runtime *common.RuntimeContext, kind localDocResourceKi
 		Occurrence:  occurrence,
 		Kind:        kind,
 		Marker:      marker,
-		Path:        clean,
-		FileName:    filepath.Base(clean),
+		Path:        resolvedPath,
+		FileName:    filepath.Base(resolvedPath),
 		Size:        info.Size(),
 		ImageWidth:  imageWidth,
 		ImageHeight: imageHeight,
@@ -980,6 +979,10 @@ func validateLocalDocResourceUpdateCommand(command string, resources []localDocR
 }
 
 func finalizeLocalDocResources(runtime *common.RuntimeContext, documentKey string, data map[string]interface{}, resources []localDocResource) error {
+	return finalizeLocalDocResourcesWithTrace(runtime, documentKey, data, resources, nil)
+}
+
+func finalizeLocalDocResourcesWithTrace(runtime *common.RuntimeContext, documentKey string, data map[string]interface{}, resources []localDocResource, trace *docsCreateTrace) error {
 	if len(resources) == 0 {
 		return nil
 	}
@@ -998,10 +1001,28 @@ func finalizeLocalDocResources(runtime *common.RuntimeContext, documentKey strin
 		return runtime.OutPartialFailure(data, nil)
 	}
 
+	trace.event("resource_upload.start", docsCreateDebugDetails{Resources: len(resources)})
+	uploadStart := time.Now()
 	uploadLocalDocResources(runtime, documentKey, outcomes)
+	uploaded := 0
+	for _, outcome := range outcomes {
+		if outcome.Status == "uploaded" {
+			uploaded++
+		}
+	}
+	trace.event("resource_upload.end", docsCreateDebugDetails{DurationMS: milliseconds(time.Since(uploadStart)), Succeeded: uploaded, Failed: len(outcomes) - uploaded})
 	lastRevision := localDocResourceRevisionFromDocsAI(data)
 	revisionKnown := lastRevision != nil
+	trace.event("resource_bind.start", docsCreateDebugDetails{})
+	bindStart := time.Now()
 	bindRevision, bindRevisionKnown := bindLocalDocResources(runtime, documentKey, outcomes)
+	bound := 0
+	for _, outcome := range outcomes {
+		if outcome.Status == "bound" {
+			bound++
+		}
+	}
+	trace.event("resource_bind.end", docsCreateDebugDetails{DurationMS: milliseconds(time.Since(bindStart)), Succeeded: bound, Failed: len(outcomes) - bound})
 	if bindRevision != nil {
 		lastRevision = bindRevision
 		revisionKnown = true
@@ -1009,7 +1030,10 @@ func finalizeLocalDocResources(runtime *common.RuntimeContext, documentKey strin
 		lastRevision = nil
 		revisionKnown = false
 	}
+	trace.event("resource_cleanup.start", docsCreateDebugDetails{})
+	cleanupStart := time.Now()
 	cleanupRevision, cleanupRevisionKnown := cleanupLocalDocResourcePlaceholders(runtime, documentKey, outcomes, lastRevision)
+	trace.event("resource_cleanup.end", docsCreateDebugDetails{DurationMS: milliseconds(time.Since(cleanupStart))})
 	if cleanupRevision != nil {
 		lastRevision = cleanupRevision
 		revisionKnown = true

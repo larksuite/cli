@@ -1052,6 +1052,18 @@ func TestValidateInputAgainstSchema_ChartUpdateRecursivePartial(t *testing.T) {
 	if err := validateInputAgainstSchema(mapFlagView{command: "+chart-update"}, patch); err != nil {
 		t.Fatalf("nested chart update patch rejected: %v", err)
 	}
+	deleteLabels := map[string]interface{}{
+		"properties": map[string]interface{}{
+			"snapshot": map[string]interface{}{
+				"plotArea": map[string]interface{}{
+					"plot": map[string]interface{}{"labels": nil},
+				},
+			},
+		},
+	}
+	if err := validateInputAgainstSchema(mapFlagView{command: "+chart-update"}, deleteLabels); err != nil {
+		t.Fatalf("nullable chart labels deletion rejected: %v", err)
+	}
 	createErr := validateInputAgainstSchema(mapFlagView{command: "+chart-create"}, patch)
 	ve := requireValidation(t, createErr, `required property "type" is missing`)
 	if ve.Param != "--properties" {

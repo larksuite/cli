@@ -66,7 +66,7 @@ lark-cli wiki +move \
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--node-token` | 条件必填 | 要移动的 Wiki 节点 token。传入后命令进入 `node` 模式 |
+| `--node-token` | 条件必填 | 要移动的 Wiki 节点 token 或文档 obj_token。传入后命令进入 `node` 模式 |
 | `--source-space-id` | 否 | 源知识空间 ID，仅 `node` 模式可用；不传时会根据 `--node-token` 自动解析 |
 | `--target-space-id` | 条件必填 | 目标知识空间 ID。`docs_to_wiki` 模式必填；`node` 模式下如果不传，则必须传 `--target-parent-token` |
 | `--target-parent-token` | 否 | 目标父节点 token。`docs_to_wiki` 不传时表示迁入目标知识空间根目录 |
@@ -87,8 +87,9 @@ lark-cli wiki +move \
 
 ### `node` 模式
 
-- **源空间解析**：如果未传 `--source-space-id`，shortcut 会先调用 `GET /open-apis/wiki/v2/spaces/get_node` 查询 `--node-token`，再读取其 `space_id`
+- **源空间解析**：先调用 `GET /open-apis/wiki/v2/spaces/node_by_token` 解析源节点；未传 `--source-space-id` 时使用查询结果，传入时校验两者一致。
 - **目标父节点解析**：如果传了 `--target-parent-token`，shortcut 会先解析该父节点所属的 `space_id`
+- **节点类型**：源节点和目标父节点接受 Wiki `node_token` 或文档 `obj_token`，实际移动使用查询返回的 `node_token`。
 - **一致性校验**：如果同时传了 `--target-space-id` 和 `--target-parent-token`，shortcut 会校验两者是否属于同一个知识空间；不一致时直接返回验证错误
 - **移动到空间根目录**：如果只传 `--target-space-id`，则表示移动到该知识空间根目录
 

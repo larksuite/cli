@@ -867,8 +867,9 @@
                 - bottom: 保留底部, 裁掉顶部多余部分
                 - left: 保留左侧, 裁掉右侧多余部分
                 - right: 保留右侧, 裁掉左侧多余部分
+                - center: 居中保留, 四周均匀裁剪
 
-                居中场景不需要设置 anchor, 不设置 offset 即为默认居中裁剪
+                居中场景可设置 anchor="center", 不设置 anchor 且不设置 offset 时也为默认居中裁剪
             </xs:documentation>
         </xs:annotation>
         <xs:restriction base="xs:string">
@@ -876,6 +877,7 @@
             <xs:enumeration value="bottom"><xs:annotation><xs:documentation>保留底部, 裁掉顶部多余部分</xs:documentation></xs:annotation></xs:enumeration>
             <xs:enumeration value="left"><xs:annotation><xs:documentation>保留左侧, 裁掉右侧多余部分</xs:documentation></xs:annotation></xs:enumeration>
             <xs:enumeration value="right"><xs:annotation><xs:documentation>保留右侧, 裁掉左侧多余部分</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="center"><xs:annotation><xs:documentation>居中保留, 四周均匀裁剪</xs:documentation></xs:annotation></xs:enumeration>
         </xs:restriction>
     </xs:simpleType>
 
@@ -888,13 +890,13 @@
                 可选属性:
                 type: 裁剪形状, 默认 rect
                 path: 自定义裁剪路径, type="custom" 时生效, SVG path 字符串, 坐标系为裁剪框本地坐标系
-                anchor: 裁剪方位 (top/bottom/left/right), 参见 CropAnchorType
+                anchor: 裁剪方位 (top/bottom/left/right/center), 参见 CropAnchorType
                 leftOffset / rightOffset / topOffset / bottomOffset: 四向偏移量 (px), 正值向内裁剪、负值向外扩展留白、0对齐边缘
                 presetHandlers: 控制点配置, 对应 ECMA 预设形状的控制点。单个或多个数字, 多个用逗号分隔。
                 示例: type="rect" 且 presetHandlers="60" 时为圆角矩形, 圆角半径 60px
 
                 【推荐用法】使用 anchor 指定裁剪方位:
-                - 不设置 anchor 时: 默认按图片居中裁剪
+                - 不设置 anchor 或设置 anchor="center" 时: 默认按图片居中裁剪
                 - 设置 anchor 时: 按指定方位裁剪, 例如 anchor="top" 表示保留顶部、裁掉底部多余部分
                 - 使用 anchor 后, 不需要再设置 offset
                 - anchor 模式下原图按等比缩放后裁剪, 不会发生拉伸或压缩
@@ -909,6 +911,7 @@
 
                 典型用法:
                 <crop/>                                      居中裁剪 (默认行为)
+                <crop anchor="center"/>                     居中裁剪 (显式声明)
                 <crop anchor="top"/>                        保留顶部
                 <crop anchor="left"/>                       保留左侧
                 <crop type="rect" presetHandlers="60"/>     圆角矩形裁剪, 默认居中
@@ -932,12 +935,34 @@
                 - alpha: 倒影不透明度, 取值范围 [0,1]
                 - offset: 倒影偏移量, 取值范围 [0,200]（倒影与原始元素的间距, 单位为像素）
                 - size: 倒影大小, 取值范围 [0,1]（相对于原始元素高度的比例）
-                注意:空标签表示默认阴影效果(alpha=1, offset=8, size=0.3)
+                - blur: 倒影模糊半径, 取值范围 [0,+∞)
+                - startPos: 起始位置, 取值范围 [0,1]
+                - endAlpha: 结束不透明度, 取值范围 [0,1]
+                - direction: 倒影方向角度, 取值范围 [0,360)
+                - fadeDirection: 淡出方向角度, 取值范围 [0,360)
+                - hScale: 水平缩放比例, 取值范围 [-2,2]
+                - vScale: 垂直缩放比例, 取值范围 [-2,2]
+                - hSkew: 水平斜切角度, 取值范围 [-90,90]
+                - vSkew: 垂直斜切角度, 取值范围 [-90,90]
+                - align: 倒影相对于元素的对齐方式
+                - rotWithShape: 倒影是否随形状旋转
+                注意:空标签表示默认倒影效果(alpha=1, offset=8, size=0.3, blur=0, startPos=0, endAlpha=0, direction=90, fadeDirection=90, hScale=1, vScale=-1, hSkew=0, vSkew=0, align=bottom-left, rotWithShape=false)
             </xs:documentation>
         </xs:annotation>
         <xs:attribute name="alpha" type="sml:AlphaType" use="optional" default="1" />
         <xs:attribute name="offset" type="sml:Range0To200Type" use="optional" default="8" />
         <xs:attribute name="size" type="sml:RatioType" use="optional" default="0.3"/>
+        <xs:attribute name="blur" type="sml:NonNegativeDouble" use="optional" default="0"/>
+        <xs:attribute name="startPos" type="sml:RatioType" use="optional" default="0"/>
+        <xs:attribute name="endAlpha" type="sml:AlphaType" use="optional" default="0"/>
+        <xs:attribute name="direction" type="sml:RotationType" use="optional" default="90"/>
+        <xs:attribute name="fadeDirection" type="sml:RotationType" use="optional" default="90"/>
+        <xs:attribute name="hScale" type="sml:ScaleType" use="optional" default="1"/>
+        <xs:attribute name="vScale" type="sml:ScaleType" use="optional" default="-1"/>
+        <xs:attribute name="hSkew" type="sml:SkewType" use="optional" default="0"/>
+        <xs:attribute name="vSkew" type="sml:SkewType" use="optional" default="0"/>
+        <xs:attribute name="align" type="sml:AlignType" use="optional" default="bottom-left"/>
+        <xs:attribute name="rotWithShape" type="xs:boolean" use="optional" default="false"/>
     </xs:complexType>
 
     <!-- 柔化边缘效果类型 -->
@@ -952,11 +977,25 @@
         <xs:attribute name="radius" type="sml:NonNegativeDouble" use="optional" default="2"/>
     </xs:complexType>
 
+    <!-- 发光效果类型 -->
+    <xs:complexType name="GlowType">
+        <xs:annotation>
+            <xs:documentation>
+                发光效果配置
+                - color: 发光颜色
+                - radius: 发光半径（像素）, 取值范围 [0, +∞)
+                注意: 空标签表示默认发光效果(color=rgba(0, 111, 171, 0.4), radius=5)
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="color" type="sml:SolidColor" use="optional" default="rgba(0, 111, 171, 0.4)"/>
+        <xs:attribute name="radius" type="sml:NonNegativeDouble" use="optional" default="5"/>
+    </xs:complexType>
+
     <!-- 阴影效果类型 -->
     <xs:complexType name="ShadowType">
         <xs:annotation>
             <xs:documentation>
-                阴影效果配置
+                外阴影效果配置
                 基础属性:
                 - color: 阴影颜色
                 - offset: 阴影偏移距离（像素）, 取值范围 [0, 200]（阴影距离元素的距离, 单位为像素）
@@ -969,7 +1008,10 @@
                 - vSkew: 垂直斜切角度, 取值范围 [-90, 90]（负值向上倾斜, 正值向下倾斜）
                 对齐方式:
                 - shadowAlign: 阴影相对于元素的对齐方式（默认为top-left左上对齐）
-                注意:空标签表示默认阴影效果(color=rgba(0, 0, 0, 0.25), offset=15, blur=35, angle=45)
+                - rotWithShape: 阴影是否随形状旋转
+                注意:
+                - 空标签表示默认阴影效果(color=rgba(0, 0, 0, 0.25), offset=15, blur=35, angle=45)
+                - shadow、innerShadow、presetShadow 三类阴影效果应当三选一使用
             </xs:documentation>
         </xs:annotation>
         <xs:attribute name="color" type="sml:Color" use="optional" default="rgba(0, 0, 0, 0.25)"/>
@@ -980,7 +1022,73 @@
         <xs:attribute name="vScale" type="sml:ScaleType" use="optional" default="1"/>
         <xs:attribute name="hSkew" type="sml:SkewType" use="optional" default="0"/>
         <xs:attribute name="vSkew" type="sml:SkewType" use="optional" default="0"/>
-        <xs:attribute name="align" type="sml:ShadowAlignType" use="optional" default="top-left"/>
+        <xs:attribute name="align" type="sml:AlignType" use="optional" default="top-left"/>
+        <xs:attribute name="rotWithShape" type="xs:boolean" use="optional" default="false"/>
+    </xs:complexType>
+
+    <!-- 内阴影效果类型 -->
+    <xs:complexType name="InnerShadowType">
+        <xs:annotation>
+            <xs:documentation>
+                内阴影效果配置
+                - color: 阴影颜色
+                - offset: 阴影偏移距离（像素）, 取值范围 [0, 200]
+                - angle: 阴影角度, 取值范围 [0, 360)（0度为向右, 90度为向下, 顺时针）
+                - blur: 模糊半径（像素）, 取值范围 [0, 100]
+                注意:
+                - 空标签表示默认内阴影效果(color=rgba(0, 0, 0, 0.25), offset=15, blur=35, angle=45)
+                - shadow、innerShadow、presetShadow 三类阴影效果应当三选一使用
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="color" type="sml:Color" use="optional" default="rgba(0, 0, 0, 0.25)"/>
+        <xs:attribute name="offset" type="sml:Range0To200DotType" use="optional" default="15"/>
+        <xs:attribute name="blur" type="sml:PercentageType" use="optional" default="35"/>
+        <xs:attribute name="angle" type="sml:RotationType" use="optional" default="45"/>
+    </xs:complexType>
+
+    <!-- 预设阴影枚举 -->
+    <xs:simpleType name="PresetShadowPresetType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="shdw1"><xs:annotation><xs:documentation>左上投影</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="shdw2"><xs:annotation><xs:documentation>右上投影</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="shdw3"><xs:annotation><xs:documentation>后左透视阴影</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="shdw4"><xs:annotation><xs:documentation>后右透视阴影</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="shdw5"><xs:annotation><xs:documentation>左下投影</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="shdw6"><xs:annotation><xs:documentation>右下投影</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="shdw7"><xs:annotation><xs:documentation>前左透视阴影</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="shdw8"><xs:annotation><xs:documentation>前右透视阴影</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="shdw9"><xs:annotation><xs:documentation>左上小投影</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="shdw10"><xs:annotation><xs:documentation>左上大投影</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="shdw11"><xs:annotation><xs:documentation>后左长透视阴影</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="shdw12"><xs:annotation><xs:documentation>后右长透视阴影</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="shdw13"><xs:annotation><xs:documentation>左上双重投影</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="shdw14"><xs:annotation><xs:documentation>右下小投影</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="shdw15"><xs:annotation><xs:documentation>前左长透视阴影</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="shdw16"><xs:annotation><xs:documentation>前右长透视阴影</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="shdw17"><xs:annotation><xs:documentation>3D 外框阴影</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="shdw18"><xs:annotation><xs:documentation>3D 内框阴影</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="shdw19"><xs:annotation><xs:documentation>后中透视阴影</xs:documentation></xs:annotation></xs:enumeration>
+            <xs:enumeration value="shdw20"><xs:annotation><xs:documentation>前下阴影</xs:documentation></xs:annotation></xs:enumeration>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- 预设阴影效果类型 -->
+    <xs:complexType name="PresetShadowType">
+        <xs:annotation>
+            <xs:documentation>
+                预设阴影效果配置
+                - preset: OOXML 预设阴影标识, 可选, 默认 shdw1, 取值 shdw1 到 shdw20；缺失或非法值按 shdw1 处理
+                - color: 阴影颜色
+                - offset: 阴影偏移距离（像素）, 取值范围 [0, 200]
+                - angle: 阴影角度, 取值范围 [0, 360)
+                注意:
+                - shadow、innerShadow、presetShadow 三类阴影效果应当三选一使用
+            </xs:documentation>
+        </xs:annotation>
+        <xs:attribute name="preset" type="sml:PresetShadowPresetType" use="optional" default="shdw1"/>
+        <xs:attribute name="color" type="sml:Color" use="optional" default="rgba(0, 0, 0, 0.25)"/>
+        <xs:attribute name="offset" type="sml:Range0To200DotType" use="optional" default="15"/>
+        <xs:attribute name="angle" type="sml:RotationType" use="optional" default="45"/>
     </xs:complexType>
 
     <!-- 文本轮廓类型 -->
@@ -1258,9 +1366,9 @@
         <xs:annotation>
             <xs:documentation>
                 段落容器, 支持富文本内容
-                可包含纯文本和内联格式元素(br/tab/strong/em/u/span/del/a/shadow/outline/formula/field)
+                可包含纯文本和内联格式元素(br/tab/strong/em/u/span/del/a/shadow/reflection/outline/glow/formula/field)
                 内联元素嵌套：所有内联元素均可包含纯文本或其他内联元素，以实现复杂的格式组合
-                元素自嵌套：除a/formula元素外，其余内联元素支持自身嵌套，当shadow和outline自嵌套时，渲染效果遵循就近原则，以内层定义的样式为准
+                元素自嵌套：除a/formula元素外，其余内联元素支持自身嵌套，当shadow、reflection、outline和glow自嵌套时，渲染效果遵循就近原则，以内层定义的样式为准
 
                 空格处理规则：
                 - 文本内的连续空格会被合并为单个空格
@@ -1281,7 +1389,9 @@
                 - del: 删除线
                 - a: 超链接
                 - shadow: 文本阴影
+                - reflection: 文本倒影
                 - outline: 文本轮廓
+                - glow: 文本发光
                 - formula: 科学公式（支持数学、物理等）
                 - field: 动态文本字段，元素内容作为不支持动态字段时的降级文本
                 属性说明:
@@ -1314,7 +1424,11 @@
                 <xs:element ref="sml:del"/>
                 <xs:element ref="sml:a"/>
                 <xs:element ref="sml:shadow"/>
+                <xs:element ref="sml:reflection"/>
+                <xs:element ref="sml:innerShadow"/>
+                <xs:element ref="sml:presetShadow"/>
                 <xs:element ref="sml:outline"/>
+                <xs:element ref="sml:glow"/>
                 <xs:element ref="sml:field"/>
             </xs:choice>
             <xs:attribute name="textAlign" type="sml:TextAlignType" />
@@ -1443,8 +1557,11 @@
                 - type为其他值: 纯色取 S+10%, B-10%；渐变色各颜色停靠点取 S+10%, B-10%；图片/图案无边框
                 - content: 图形内的文本内容, 可选, 富文本
                 - reflection: 倒影效果, 可选, 无reflection标签表示无倒影效果, 空reflection标签表示默认倒影效果
-                - shadow: 阴影效果, 可选, 无shadow标签表示无阴影效果, 空shadow标签表示默认阴影效果
+                - shadow: 外阴影效果, 可选, 无shadow标签表示无外阴影效果, 空shadow标签表示默认外阴影效果
+                - innerShadow: 内阴影效果, 可选, 无innerShadow标签表示无内阴影效果, 空innerShadow标签表示默认内阴影效果
+                - presetShadow: 预设阴影效果, 可选
                 - softEdge: 柔化边缘效果, 可选, 无softEdge标签表示无柔化边缘效果, 空softEdge标签表示默认柔化边缘效果(radius=2)
+                - glow: 发光效果, 可选, 无glow标签表示无发光效果, 空glow标签表示默认发光效果(color=rgba(0, 111, 171, 0.4), radius=5)
             </xs:documentation>
         </xs:annotation>
         <xs:complexType>
@@ -1453,7 +1570,10 @@
                 <xs:element name="border" type="sml:BorderType" minOccurs="0"/>
                 <xs:element name="reflection" type="sml:ReflectionType" minOccurs="0"/>
                 <xs:element name="shadow" type="sml:ShadowType" minOccurs="0"/>
+                <xs:element name="innerShadow" type="sml:InnerShadowType" minOccurs="0"/>
+                <xs:element name="presetShadow" type="sml:PresetShadowType" minOccurs="0"/>
                 <xs:element name="softEdge" type="sml:SoftEdgeType" minOccurs="0"/>
+                <xs:element name="glow" type="sml:GlowType" minOccurs="0"/>
                 <xs:element ref="sml:content" minOccurs="0"/>
             </xs:all>
 
@@ -1495,9 +1615,12 @@
                 - border: 线条样式(颜色/宽度/虚线等), 必需, 线条必须有边框样式, 空border标签表示默认样式(颜色:rgba(43, 47, 54, 1)), 宽度: 2px)
                 - startArrow: 起点箭头, 可选
                 - endArrow: 终点箭头, 可选
-                - shadow: 阴影效果, 可选, 无shadow标签表示无阴影效果, 空shadow标签表示默认阴影效果
+                - shadow: 外阴影效果, 可选, 无shadow标签表示无外阴影效果, 空shadow标签表示默认外阴影效果
+                - innerShadow: 内阴影效果, 可选, 无innerShadow标签表示无内阴影效果, 空innerShadow标签表示默认内阴影效果
+                - presetShadow: 预设阴影效果, 可选
                 - reflection: 倒影效果, 可选, 无reflection标签表示无倒影效果, 空reflection标签表示默认倒影效果
                 - softEdge: 柔化边缘效果, 可选, 无softEdge标签表示无柔化边缘效果, 空softEdge标签表示默认柔化边缘效果(radius=2)
+                - glow: 发光效果, 可选, 无glow标签表示无发光效果, 空glow标签表示默认发光效果(color=rgba(0, 111, 171, 0.4), radius=5)
             </xs:documentation>
         </xs:annotation>
         <xs:complexType>
@@ -1506,8 +1629,11 @@
                 <xs:element name="startArrow" type="sml:StartArrowStyleType" minOccurs="0"/>
                 <xs:element name="endArrow" type="sml:EndArrowStyleType" minOccurs="0"/>
                 <xs:element name="shadow" type="sml:ShadowType" minOccurs="0"/>
+                <xs:element name="innerShadow" type="sml:InnerShadowType" minOccurs="0"/>
+                <xs:element name="presetShadow" type="sml:PresetShadowType" minOccurs="0"/>
                 <xs:element name="reflection" type="sml:ReflectionType" minOccurs="0" />
                 <xs:element name="softEdge" type="sml:SoftEdgeType" minOccurs="0"/>
+                <xs:element name="glow" type="sml:GlowType" minOccurs="0"/>
             </xs:all>
             <xs:attribute name="type" type="sml:LineType" use="optional" default="straight-connector1"/>
             <xs:attribute name="id" type="xs:string" use="optional"/>
@@ -1543,9 +1669,12 @@
                 - border: 线条样式(颜色/宽度/虚线等), 必需, 线条必须有边框样式, 空border标签表示默认样式(颜色:rgba(43, 47, 54, 1)), 宽度: 2px)
                 - startArrow: 起点箭头, 可选
                 - endArrow: 终点箭头, 可选
-                - shadow: 阴影效果, 可选, 无shadow标签表示无阴影效果, 空shadow标签表示默认阴影效果
+                - shadow: 外阴影效果, 可选, 无shadow标签表示无外阴影效果, 空shadow标签表示默认外阴影效果
+                - innerShadow: 内阴影效果, 可选, 无innerShadow标签表示无内阴影效果, 空innerShadow标签表示默认内阴影效果
+                - presetShadow: 预设阴影效果, 可选
                 - reflection: 倒影效果, 可选, 无reflection标签表示无倒影效果, 空reflection标签表示默认倒影效果
                 - softEdge: 柔化边缘效果, 可选, 无softEdge标签表示无柔化边缘效果, 空softEdge标签表示默认柔化边缘效果(radius=2)
+                - glow: 发光效果, 可选, 无glow标签表示无发光效果, 空glow标签表示默认发光效果(color=rgba(0, 111, 171, 0.4), radius=5)
             </xs:documentation>
         </xs:annotation>
         <xs:complexType>
@@ -1554,8 +1683,11 @@
                 <xs:element name="startArrow" type="sml:StartArrowStyleType" minOccurs="0"/>
                 <xs:element name="endArrow" type="sml:EndArrowStyleType" minOccurs="0"/>
                 <xs:element name="shadow" type="sml:ShadowType" minOccurs="0"/>
+                <xs:element name="innerShadow" type="sml:InnerShadowType" minOccurs="0"/>
+                <xs:element name="presetShadow" type="sml:PresetShadowType" minOccurs="0"/>
                 <xs:element name="reflection" type="sml:ReflectionType" minOccurs="0"/>
                 <xs:element name="softEdge" type="sml:SoftEdgeType" minOccurs="0"/>
+                <xs:element name="glow" type="sml:GlowType" minOccurs="0"/>
             </xs:all>
 
             <xs:attribute name="id" type="xs:string" use="optional"/>
@@ -1590,10 +1722,13 @@
                 alpha: 不透明度[0, 1]
 
                 可选子元素:
-                crop: 裁剪。无标签 / 空标签 / 仅设 anchor 时按等比缩放后裁剪到 width×height; anchor 指定保留方位 (top/bottom/left/right), 不设 anchor 即居中裁剪; offset 用于精细控制
+                crop: 裁剪。无标签 / 空标签 / 仅设 anchor 时按等比缩放后裁剪到 width×height; anchor 指定保留方位 (top/bottom/left/right/center), 不设 anchor 即居中裁剪; offset 用于精细控制
                 reflection: 倒影。无标签代表无倒影,空标签代表使用默认样式
-                shadow: 阴影。无标签代表无阴影,空标签代表使用默认样式
+                shadow: 外阴影。无标签代表无外阴影,空标签代表使用默认样式
+                innerShadow: 内阴影。无标签代表无内阴影,空标签代表使用默认样式
+                presetShadow: 预设阴影。无标签代表无预设阴影, 空presetShadow标签表示默认预设阴影
                 softEdge: 柔化边缘。无softEdge标签代表无柔化边缘, 空softEdge标签表示默认柔化边缘(radius=2)
+                glow: 发光。无glow标签代表无发光, 空glow标签表示默认发光(color=rgba(0, 111, 171, 0.4), radius=5)
                 border: 边框。无标签代表无边框,空标签代表使用默认样式(颜色: rgba(43, 47, 54, 1), 宽度: 2)
                 fill: 填充。无标签代表无填充,空标签代表使用默认样式(颜色: rgba(91, 155, 213, 1))
             </xs:documentation>
@@ -1604,7 +1739,10 @@
                 <xs:element name="border" type="sml:BorderType" minOccurs="0"/>
                 <xs:element name="reflection" type="sml:ReflectionType" minOccurs="0"/>
                 <xs:element name="shadow" type="sml:ShadowType" minOccurs="0"/>
+                <xs:element name="innerShadow" type="sml:InnerShadowType" minOccurs="0"/>
+                <xs:element name="presetShadow" type="sml:PresetShadowType" minOccurs="0"/>
                 <xs:element name="softEdge" type="sml:SoftEdgeType" minOccurs="0"/>
+                <xs:element name="glow" type="sml:GlowType" minOccurs="0"/>
                 <xs:element name="fill" type="sml:FillType" minOccurs="0"/>
             </xs:all>
             <xs:attribute name="id" type="xs:string" use="optional"/>
@@ -1643,8 +1781,11 @@
                 - fill: 填充样式, 无fill标签代表不填充, 空fill标签代表使用默认样式(默认颜色填充, 颜色为rgba(208, 211, 214, 1))
                 - border: 边框样式, 无border标签代表无边框, 空border标签代表使用默认样式(默认实线边框, 颜色为rgba(51, 51, 51, 1), 宽度为3)
                 - reflection: 倒影样式, 无reflection标签代表无倒影, 空reflection标签代表使用默认样式
-                - shadow: 阴影样式, 无shadow标签代表无阴影, 空shadow标签代表使用默认样式
+                - shadow: 外阴影样式, 无shadow标签代表无外阴影, 空shadow标签代表使用默认样式
+                - innerShadow: 内阴影样式, 无innerShadow标签代表无内阴影, 空innerShadow标签代表使用默认样式
+                - presetShadow: 预设阴影样式, 无presetShadow标签代表无预设阴影, 空presetShadow标签表示默认预设阴影
                 - softEdge: 柔化边缘样式, 无softEdge标签代表无柔化边缘, 空softEdge标签表示默认柔化边缘(radius=2)
+                - glow: 发光样式, 无glow标签代表无发光, 空glow标签表示默认发光(color=rgba(0, 111, 171, 0.4), radius=5)
             </xs:documentation>
         </xs:annotation>
         <xs:complexType>
@@ -1653,7 +1794,10 @@
                 <xs:element name="border" type="sml:BorderType" minOccurs="0"/>
                 <xs:element name="reflection" type="sml:ReflectionType" minOccurs="0"/>
                 <xs:element name="shadow" type="sml:ShadowType" minOccurs="0"/>
+                <xs:element name="innerShadow" type="sml:InnerShadowType" minOccurs="0"/>
+                <xs:element name="presetShadow" type="sml:PresetShadowType" minOccurs="0"/>
                 <xs:element name="softEdge" type="sml:SoftEdgeType" minOccurs="0"/>
+                <xs:element name="glow" type="sml:GlowType" minOccurs="0"/>
             </xs:all>
 
             <xs:attribute name="id" type="xs:string" use="optional"/>
@@ -1690,8 +1834,11 @@
                 子元素:
                 - svg: 标准 SVG 根元素, 仅描述嵌入内容, 不承载 Slides 布局属性
                 - reflection: 倒影样式, 无reflection标签代表无倒影, 空reflection标签代表使用默认样式
-                - shadow: 阴影样式, 无shadow标签代表无阴影, 空shadow标签代表使用默认样式
+                - shadow: 外阴影样式, 无shadow标签代表无外阴影, 空shadow标签代表使用默认样式
+                - innerShadow: 内阴影样式, 无innerShadow标签代表无内阴影, 空innerShadow标签代表使用默认样式
+                - presetShadow: 预设阴影样式, 无presetShadow标签代表无预设阴影, 空presetShadow标签表示默认预设阴影
                 - softEdge: 柔化边缘样式, 无softEdge标签代表无柔化边缘, 空softEdge标签表示默认柔化边缘(radius=2)
+                - glow: 发光样式, 无glow标签代表无发光, 空glow标签表示默认发光(color=rgba(0, 111, 171, 0.4), radius=5)
             </xs:documentation>
         </xs:annotation>
         <xs:complexType>
@@ -1699,7 +1846,10 @@
                 <xs:any namespace="http://www.w3.org/2000/svg" processContents="lax" minOccurs="1" maxOccurs="1"/>
                 <xs:element name="reflection" type="sml:ReflectionType" minOccurs="0"/>
                 <xs:element name="shadow" type="sml:ShadowType" minOccurs="0"/>
+                <xs:element name="innerShadow" type="sml:InnerShadowType" minOccurs="0"/>
+                <xs:element name="presetShadow" type="sml:PresetShadowType" minOccurs="0"/>
                 <xs:element name="softEdge" type="sml:SoftEdgeType" minOccurs="0"/>
+                <xs:element name="glow" type="sml:GlowType" minOccurs="0"/>
             </xs:sequence>
             <xs:attribute name="id" type="xs:string" use="optional"/>
             <xs:attribute name="topLeftX" type="sml:XType" use="required"/>
@@ -1829,7 +1979,11 @@
                 <xs:element ref="sml:del"/>
                 <xs:element ref="sml:a"/>
                 <xs:element ref="sml:shadow"/>
+                <xs:element ref="sml:reflection"/>
+                <xs:element ref="sml:innerShadow"/>
+                <xs:element ref="sml:presetShadow"/>
                 <xs:element ref="sml:outline"/>
+                <xs:element ref="sml:glow"/>
             </xs:choice>
             <xs:attribute name="type" type="sml:FieldType" use="required"/>
         </xs:complexType>
@@ -1901,6 +2055,7 @@
                 <xs:element ref="sml:a"/>
                 <xs:element ref="sml:shadow"/>
                 <xs:element ref="sml:outline"/>
+                <xs:element ref="sml:glow"/>
                 <xs:element ref="sml:field"/>
             </xs:choice>
         </xs:complexType>
@@ -1928,7 +2083,102 @@
                         <xs:element ref="sml:del"/>
                         <xs:element ref="sml:a"/>
                         <xs:element ref="sml:shadow"/>
+                        <xs:element ref="sml:reflection"/>
+                        <xs:element ref="sml:innerShadow"/>
+                        <xs:element ref="sml:presetShadow"/>
                         <xs:element ref="sml:outline"/>
+                        <xs:element ref="sml:glow"/>
+                    </xs:choice>
+                </xs:extension>
+            </xs:complexContent>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- 倒影内联元素 -->
+    <xs:element name="reflection">
+        <xs:annotation>
+            <xs:documentation>
+                文本倒影效果内联元素
+                可以对文本的特定部分应用倒影效果
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexType mixed="true">
+            <xs:complexContent>
+                <xs:extension base="sml:ReflectionType">
+                    <xs:choice minOccurs="0" maxOccurs="unbounded">
+                        <xs:element ref="sml:br"/>
+                        <xs:element ref="sml:strong"/>
+                        <xs:element ref="sml:em"/>
+                        <xs:element ref="sml:u"/>
+                        <xs:element ref="sml:span"/>
+                        <xs:element ref="sml:del"/>
+                        <xs:element ref="sml:a"/>
+                        <xs:element ref="sml:shadow"/>
+                        <xs:element ref="sml:reflection"/>
+                        <xs:element ref="sml:innerShadow"/>
+                        <xs:element ref="sml:presetShadow"/>
+                        <xs:element ref="sml:outline"/>
+                        <xs:element ref="sml:field"/>
+                    </xs:choice>
+                </xs:extension>
+            </xs:complexContent>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- 文本内阴影内联元素 -->
+    <xs:element name="innerShadow">
+        <xs:annotation>
+            <xs:documentation>
+                文本内阴影效果内联元素, 可以对文本的特定部分应用内阴影效果
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexType mixed="true">
+            <xs:complexContent>
+                <xs:extension base="sml:InnerShadowType">
+                    <xs:choice minOccurs="0" maxOccurs="unbounded">
+                        <xs:element ref="sml:br"/>
+                        <xs:element ref="sml:strong"/>
+                        <xs:element ref="sml:em"/>
+                        <xs:element ref="sml:u"/>
+                        <xs:element ref="sml:span"/>
+                        <xs:element ref="sml:del"/>
+                        <xs:element ref="sml:a"/>
+                        <xs:element ref="sml:shadow"/>
+                        <xs:element ref="sml:reflection"/>
+                        <xs:element ref="sml:innerShadow"/>
+                        <xs:element ref="sml:presetShadow"/>
+                        <xs:element ref="sml:outline"/>
+                        <xs:element ref="sml:glow"/>
+                    </xs:choice>
+                </xs:extension>
+            </xs:complexContent>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- 文本预设阴影内联元素 -->
+    <xs:element name="presetShadow">
+        <xs:annotation>
+            <xs:documentation>
+                文本预设阴影效果内联元素
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexType mixed="true">
+            <xs:complexContent>
+                <xs:extension base="sml:PresetShadowType">
+                    <xs:choice minOccurs="0" maxOccurs="unbounded">
+                        <xs:element ref="sml:br"/>
+                        <xs:element ref="sml:strong"/>
+                        <xs:element ref="sml:em"/>
+                        <xs:element ref="sml:u"/>
+                        <xs:element ref="sml:span"/>
+                        <xs:element ref="sml:del"/>
+                        <xs:element ref="sml:a"/>
+                        <xs:element ref="sml:shadow"/>
+                        <xs:element ref="sml:reflection"/>
+                        <xs:element ref="sml:innerShadow"/>
+                        <xs:element ref="sml:presetShadow"/>
+                        <xs:element ref="sml:outline"/>
+                        <xs:element ref="sml:glow"/>
                         <xs:element ref="sml:field"/>
                     </xs:choice>
                 </xs:extension>
@@ -1958,7 +2208,45 @@
                         <xs:element ref="sml:del"/>
                         <xs:element ref="sml:a"/>
                         <xs:element ref="sml:shadow"/>
+                        <xs:element ref="sml:reflection"/>
+                        <xs:element ref="sml:innerShadow"/>
+                        <xs:element ref="sml:presetShadow"/>
                         <xs:element ref="sml:outline"/>
+                        <xs:element ref="sml:glow"/>
+                        <xs:element ref="sml:field"/>
+                    </xs:choice>
+                </xs:extension>
+            </xs:complexContent>
+        </xs:complexType>
+    </xs:element>
+
+    <!-- 文本发光内联元素 -->
+    <xs:element name="glow">
+        <xs:annotation>
+            <xs:documentation>
+                文本发光效果内联元素
+                可以对文本的特定部分应用发光效果
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexType mixed="true">
+            <xs:complexContent>
+                <xs:extension base="sml:GlowType">
+                    <xs:choice minOccurs="0" maxOccurs="unbounded">
+                        <xs:element ref="sml:br"/>
+                        <xs:element ref="sml:tab"/>
+                        <xs:element ref="sml:formula"/>
+                        <xs:element ref="sml:strong"/>
+                        <xs:element ref="sml:em"/>
+                        <xs:element ref="sml:u"/>
+                        <xs:element ref="sml:span"/>
+                        <xs:element ref="sml:del"/>
+                        <xs:element ref="sml:a"/>
+                        <xs:element ref="sml:shadow"/>
+                        <xs:element ref="sml:reflection"/>
+                        <xs:element ref="sml:innerShadow"/>
+                        <xs:element ref="sml:presetShadow"/>
+                        <xs:element ref="sml:outline"/>
+                        <xs:element ref="sml:glow"/>
                         <xs:element ref="sml:field"/>
                     </xs:choice>
                 </xs:extension>
@@ -1982,7 +2270,11 @@
                 <xs:element ref="sml:del"/>
                 <xs:element ref="sml:a"/>
                 <xs:element ref="sml:shadow"/>
+                <xs:element ref="sml:reflection"/>
+                <xs:element ref="sml:innerShadow"/>
+                <xs:element ref="sml:presetShadow"/>
                 <xs:element ref="sml:outline"/>
+                <xs:element ref="sml:glow"/>
                 <xs:element ref="sml:field"/>
             </xs:choice>
         </xs:complexType>
@@ -2004,7 +2296,11 @@
                 <xs:element ref="sml:del"/>
                 <xs:element ref="sml:a"/>
                 <xs:element ref="sml:shadow"/>
+                <xs:element ref="sml:reflection"/>
+                <xs:element ref="sml:innerShadow"/>
+                <xs:element ref="sml:presetShadow"/>
                 <xs:element ref="sml:outline"/>
+                <xs:element ref="sml:glow"/>
                 <xs:element ref="sml:field"/>
             </xs:choice>
         </xs:complexType>
@@ -2026,7 +2322,11 @@
                 <xs:element ref="sml:del"/>
                 <xs:element ref="sml:a"/>
                 <xs:element ref="sml:shadow"/>
+                <xs:element ref="sml:reflection"/>
+                <xs:element ref="sml:innerShadow"/>
+                <xs:element ref="sml:presetShadow"/>
                 <xs:element ref="sml:outline"/>
+                <xs:element ref="sml:glow"/>
                 <xs:element ref="sml:field"/>
             </xs:choice>
         </xs:complexType>
@@ -2036,7 +2336,7 @@
         <xs:annotation>
             <xs:documentation>
                 内联样式容器
-                属性: color (文本颜色), backgroundColor (背景颜色)
+                属性: color (文本颜色), backgroundColor (背景颜色), letterSpacing (字间距)
             </xs:documentation>
         </xs:annotation>
         <xs:complexType mixed="true">
@@ -2051,13 +2351,18 @@
                 <xs:element ref="sml:del"/>
                 <xs:element ref="sml:a"/>
                 <xs:element ref="sml:shadow"/>
+                <xs:element ref="sml:reflection"/>
+                <xs:element ref="sml:innerShadow"/>
+                <xs:element ref="sml:presetShadow"/>
                 <xs:element ref="sml:outline"/>
+                <xs:element ref="sml:glow"/>
                 <xs:element ref="sml:field"/>
             </xs:choice>
             <xs:attribute name="color" type="sml:Color" use="optional"/>
             <xs:attribute name="backgroundColor" type="sml:Color" use="optional"/>
             <xs:attribute name="fontSize" type="sml:FontSizeType" use="optional"/>
             <xs:attribute name="fontFamily" type="sml:FontFamilyType" use="optional"/>
+            <xs:attribute name="letterSpacing" type="sml:LetterSpacingType" use="optional" />
             <xs:attribute name="bold" type="xs:boolean" use="optional" />
             <xs:attribute name="italic" type="xs:boolean" use="optional" />
             <xs:attribute name="underline" type="xs:boolean" use="optional" />
@@ -2084,7 +2389,11 @@
                 <xs:element ref="sml:span"/>
                 <xs:element ref="sml:del"/>
                 <xs:element ref="sml:shadow"/>
+                <xs:element ref="sml:reflection"/>
+                <xs:element ref="sml:innerShadow"/>
+                <xs:element ref="sml:presetShadow"/>
                 <xs:element ref="sml:outline"/>
+                <xs:element ref="sml:glow"/>
                 <xs:element ref="sml:field"/>
             </xs:choice>
             <xs:attribute name="href" use="required">
@@ -2355,8 +2664,8 @@
         </xs:restriction>
     </xs:simpleType>
 
-    <!-- 阴影对齐方式枚举 -->
-    <xs:simpleType name="ShadowAlignType">
+    <!-- 通用效果对齐方式枚举 -->
+    <xs:simpleType name="AlignType">
         <xs:restriction base="xs:string">
             <xs:enumeration value="top-left"><xs:annotation><xs:documentation>左上对齐</xs:documentation></xs:annotation></xs:enumeration>
             <xs:enumeration value="top"><xs:annotation><xs:documentation>顶部居中对齐</xs:documentation></xs:annotation></xs:enumeration>
@@ -3573,7 +3882,9 @@
                 - chartLegend: 图例配置(可选)
                 - chartTooltip: Tooltip 配置(可选)
                 - reflection: 倒影效果 (可选)
-                - shadow: 阴影效果 (可选)
+                - shadow: 外阴影效果 (可选)
+                - innerShadow: 内阴影效果 (可选)
+                - presetShadow: 预设阴影效果 (可选)
             </xs:documentation>
         </xs:annotation>
         <xs:complexType>
@@ -3587,6 +3898,8 @@
                 <xs:element name="chartData" type="sml:ChartDataType" minOccurs="1"/>
                 <xs:element name="reflection" type="sml:ReflectionType" minOccurs="0"/>
                 <xs:element name="shadow" type="sml:ShadowType" minOccurs="0"/>
+                <xs:element name="innerShadow" type="sml:InnerShadowType" minOccurs="0"/>
+                <xs:element name="presetShadow" type="sml:PresetShadowType" minOccurs="0"/>
             </xs:all>
             <xs:attribute name="id" type="xs:string" use="optional"/>
             <xs:attribute name="topLeftX" type="sml:XType" use="required"/>

@@ -12,6 +12,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/affordance"
+	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -129,7 +130,7 @@ func docsV2OnlyTestRuntimeWithSkills(t *testing.T, legacyMode bool, plan *surfac
 		}
 	}
 	cmdmeta.SetAffordanceRef(cmd, "docs", "+update")
-	affordance.SetSource(fstest.MapFS{
+	guidance := fstest.MapFS{
 		"docs.md": {Data: []byte(`# docs
 > skill: lark-doc
 
@@ -139,8 +140,7 @@ func docsV2OnlyTestRuntimeWithSkills(t *testing.T, legacyMode bool, plan *surfac
 - lark-doc/references/lark-doc-xml.md
 - lark-doc/references/lark-doc-md.md
 `)},
-	})
-	t.Cleanup(func() { affordance.SetSource(nil) })
+	}
 
 	content := fstest.MapFS{
 		runtimeSkill + "/SKILL.md":                      {Data: []byte("skill")},
@@ -165,6 +165,7 @@ func docsV2OnlyTestRuntimeWithSkills(t *testing.T, legacyMode bool, plan *surfac
 		t.Fatalf("skillref.New(): %v", err)
 	}
 	factory := &cmdutil.Factory{
+		Affordance:      affordance.NewResolver(guidance, apicatalog.Catalog{}),
 		SkillContent:    content,
 		SkillReferences: resolver,
 		Recovery: recovery.NewProjector(func() *surface.Plan {

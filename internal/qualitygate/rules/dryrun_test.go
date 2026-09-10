@@ -55,17 +55,6 @@ func TestExtractDryRunJSONSkipsBannerWithBraces(t *testing.T) {
 	}
 }
 
-func TestRunCommandDisablesRemoteMetadata(t *testing.T) {
-	result := runCommand(context.Background(), "env", nil)
-	if result.Err != nil {
-		t.Fatalf("runCommand(env) error = %v, stderr=%s", result.Err, result.Stderr)
-	}
-	stdout := string(result.Stdout)
-	if !strings.Contains(stdout, "LARKSUITE_CLI_REMOTE_META=off") {
-		t.Fatalf("dry-run child env missing remote meta off in %q", stdout)
-	}
-}
-
 func TestRunCommandRemovesTemporaryConfigDir(t *testing.T) {
 	result := runCommand(context.Background(), "sh", []string{"-c", "printf %s \"$LARKSUITE_CLI_CONFIG_DIR\""})
 	if result.Err != nil {

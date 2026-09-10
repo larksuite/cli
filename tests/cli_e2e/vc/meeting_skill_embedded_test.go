@@ -26,7 +26,6 @@ func TestMeetingSkillIsEmbeddedInBuiltCLI(t *testing.T) {
 	}
 
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	t.Setenv("LARKSUITE_CLI_REMOTE_META", "off")
 	t.Setenv("LARKSUITE_CLI_NO_UPDATE_NOTIFIER", "1")
 	t.Setenv("LARKSUITE_CLI_NO_SKILLS_NOTIFIER", "1")
 

@@ -141,6 +141,13 @@ func withObservabilityHint(err error) error {
 // terms and any generic hint would be less actionable. That failure is only
 // produced by db endpoints, so the override is safe to check for every apps
 // command that funnels through here.
+//
+// Second special case: db failures whose numeric code is a shared
+// responsibility bucket and whose real reason is a `k_dl_` subcode on the message
+// (see applyDBSubcode). Checked here, at the chokepoint, because the collapse is a
+// property of the db OpenAPI rather than of any one command — audit, env-create
+// and their neighbours all receive the same code for unrelated reasons. Matching
+// requires an exact known subcode, so commands that never see one are unaffected.
 func withAppsHint(err error, hint string) error {
 	if err == nil {
 		return nil
@@ -150,6 +157,11 @@ func withAppsHint(err error, hint string) error {
 		if isAppNoDatabaseError(p) {
 			p.Message = appNoDatabaseMessage
 			p.Hint = appNoDatabaseHint
+			return err
+		}
+		// Before the generic hint: the subcode identifies one scenario, so its
+		// guidance always beats a per-command fallback written for the whole family.
+		if applyDBSubcode(p) {
 			return err
 		}
 		if strings.TrimSpace(p.Hint) == "" && hintExplainsFailure(p) {

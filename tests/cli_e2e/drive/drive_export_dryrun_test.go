@@ -84,8 +84,8 @@ func TestDriveExportDryRun_WikiURLPlansResolveBeforeExportTask(t *testing.T) {
 	if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "GET" {
 		t.Fatalf("api.0.method=%q, want GET\nstdout:\n%s", got, out)
 	}
-	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/wiki/v2/spaces/get_node" {
-		t.Fatalf("api.0.url=%q, want wiki get_node\nstdout:\n%s", got, out)
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/wiki/v2/spaces/node_by_token" {
+		t.Fatalf("api.0.url=%q, want wiki node_by_token\nstdout:\n%s", got, out)
 	}
 	if got := clie2e.DryRunGet(out, "api.0.params.token").String(); got != "wikiDryRunExport" {
 		t.Fatalf("api.0.params.token=%q, want wiki token\nstdout:\n%s", got, out)
@@ -133,8 +133,8 @@ func TestDriveExportDryRun_WikiTokenTypePlansResolveBeforeExportTask(t *testing.
 	if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "GET" {
 		t.Fatalf("api.0.method=%q, want GET\nstdout:\n%s", got, out)
 	}
-	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/wiki/v2/spaces/get_node" {
-		t.Fatalf("api.0.url=%q, want wiki get_node\nstdout:\n%s", got, out)
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/wiki/v2/spaces/node_by_token" {
+		t.Fatalf("api.0.url=%q, want wiki node_by_token\nstdout:\n%s", got, out)
 	}
 	if got := clie2e.DryRunGet(out, "api.0.params.token").String(); got != "wikiDryRunExport" {
 		t.Fatalf("api.0.params.token=%q, want wiki token\nstdout:\n%s", got, out)
