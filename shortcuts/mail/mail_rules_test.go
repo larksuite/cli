@@ -1526,9 +1526,10 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		name string
-		args []string
-		want string
+		name      string
+		args      []string
+		want      string
+		wantParam string
 	}{
 		{
 			name: "no mode",
@@ -1546,19 +1547,22 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 			want: "move mode requires exactly one",
 		},
 		{
-			name: "move missing rule",
-			args: []string{"+rule-reorder", "--move-rule-id", "z", "--to-top"},
-			want: "is not in current rule order",
+			name:      "move missing rule",
+			args:      []string{"+rule-reorder", "--move-rule-id", "z", "--to-top"},
+			want:      "is not in current rule order",
+			wantParam: "--move-rule-id",
 		},
 		{
-			name: "unknown full order rule",
-			args: []string{"+rule-reorder", "--rule-ids", "a,z"},
-			want: "unknown rule id z",
+			name:      "unknown full order rule",
+			args:      []string{"+rule-reorder", "--rule-ids", "a,z"},
+			want:      "unknown rule id z",
+			wantParam: "--rule-ids",
 		},
 		{
-			name: "duplicate full order rule",
-			args: []string{"+rule-reorder", "--rule-ids", "a,a"},
-			want: "duplicate rule id a",
+			name:      "duplicate full order rule",
+			args:      []string{"+rule-reorder", "--rule-ids", "a,a"},
+			want:      "duplicate rule id a",
+			wantParam: "--rule-ids",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1574,7 +1578,13 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 			if !errors.As(err, &validationErr) {
 				t.Fatalf("error type = %T, want *errs.ValidationError: %v", err, err)
 			}
-			if validationErr.Param == "" && len(validationErr.Params) == 0 {
+			if validationErr.Param != tc.wantParam {
+				t.Fatalf("validation error param = %q, want %q", validationErr.Param, tc.wantParam)
+			}
+			if tc.wantParam == "" && len(validationErr.Params) != 0 {
+				t.Fatalf("validation error params = %#v, want none", validationErr.Params)
+			}
+			if tc.wantParam != "" && validationErr.Param == "" && len(validationErr.Params) == 0 {
 				t.Fatalf("validation error missing parameter contract: %#v", validationErr)
 			}
 			if !strings.Contains(err.Error(), tc.want) {
