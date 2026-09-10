@@ -1518,9 +1518,13 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 	}
 	if _, err := completeRuleOrder([]string{"a", "a"}, []string{"a", "b"}); err == nil {
 		t.Fatal("expected duplicate mismatch error")
+	} else {
+		assertMailRuleValidationError(t, err, "--rule-ids", "duplicate rule id", nil)
 	}
 	if _, err := completeRuleOrder([]string{"a", "z"}, []string{"a", "b"}); err == nil {
 		t.Fatal("expected unknown rule id error")
+	} else {
+		assertMailRuleValidationError(t, err, "--rule-ids", "unknown rule id", nil)
 	}
 	if _, err := insertRelative([]string{"a", "b"}, "c", "", true); err == nil {
 		t.Fatal("expected missing target error")
@@ -1530,9 +1534,10 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		name string
-		args []string
-		want string
+		name  string
+		args  []string
+		want  string
+		param string
 	}{
 		{
 			name: "no mode",
@@ -1550,14 +1555,16 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 			want: "move mode requires exactly one",
 		},
 		{
-			name: "move missing rule",
-			args: []string{"+rule-reorder", "--move-rule-id", "z", "--to-top"},
-			want: "is not in current rule order",
+			name:  "move missing rule",
+			args:  []string{"+rule-reorder", "--move-rule-id", "z", "--to-top"},
+			want:  "is not in current rule order",
+			param: "--move-rule-id",
 		},
 		{
-			name: "full mismatch",
-			args: []string{"+rule-reorder", "--rule-ids", "a,z"},
-			want: "unknown rule id",
+			name:  "full mismatch",
+			args:  []string{"+rule-reorder", "--rule-ids", "a,z"},
+			want:  "unknown rule id",
+			param: "--rule-ids",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1569,10 +1576,38 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected reorder error")
 			}
-			if !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("error = %v, want %q", err, tc.want)
-			}
+			assertMailRuleValidationError(t, err, tc.param, tc.want, nil)
 		})
+	}
+}
+
+func assertMailRuleValidationError(t *testing.T, err error, wantParam, wantMessage string, wantCause error) {
+	t.Helper()
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryValidation {
+		t.Fatalf("category = %q, want %q", p.Category, errs.CategoryValidation)
+	}
+	if p.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype = %q, want %q", p.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if validationErr.Param != wantParam {
+		t.Fatalf("param = %q, want %q", validationErr.Param, wantParam)
+	}
+	if !strings.Contains(validationErr.Message, wantMessage) {
+		t.Fatalf("message = %q, want substring %q", validationErr.Message, wantMessage)
+	}
+	if wantCause != nil && !errors.Is(err, wantCause) {
+		t.Fatalf("cause %v not preserved in %v", wantCause, err)
+	}
+	if wantCause == nil && errors.Unwrap(err) != nil {
+		t.Fatalf("unexpected cause preserved in %v", err)
 	}
 }
 
