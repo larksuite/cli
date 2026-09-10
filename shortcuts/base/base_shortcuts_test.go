@@ -1386,6 +1386,7 @@ func TestBaseViewSetVisibleFieldsHelpIncludesFormInSharedContract(t *testing.T) 
 	setTips := strings.Join(BaseViewSetVisibleFields.Tips, "\n")
 	for _, want := range []string{
 		"form",
+		"For form views, use field IDs.",
 		"JSON object",
 		"controls both visibility and order",
 		"include every field that should remain visible",

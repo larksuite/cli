@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -4689,7 +4690,23 @@ func TestBaseViewExecuteReadCreateDeleteAndFilter(t *testing.T) {
 }
 
 func TestBaseFormVisibleFieldsExecuteContract(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	const formVisibleFieldsPath = "/open-apis/base/v3/bases/app_x/tables/tbl_x/views/vew_form/visible_fields"
+	assertVisibleFields := func(t *testing.T, stdout *bytes.Buffer, want []string) {
+		t.Helper()
+		var envelope struct {
+			OK   bool `json:"ok"`
+			Data struct {
+				VisibleFields []string `json:"visible_fields"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+			t.Fatalf("decode response: %v\nstdout=%s", err, stdout)
+		}
+		if !envelope.OK || !slices.Equal(envelope.Data.VisibleFields, want) {
+			t.Fatalf("stdout=%s, want ok=true and data.visible_fields=%v", stdout, want)
+		}
+	}
 
 	t.Run("get keeps the shared visible_fields output shape", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
@@ -4711,12 +4728,7 @@ func TestBaseFormVisibleFieldsExecuteContract(t *testing.T) {
 		if err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		got := stdout.String()
-		for _, want := range []string{`"visible_fields"`, `"Question A"`, `"Question C"`, `"Question B"`} {
-			if !strings.Contains(got, want) {
-				t.Fatalf("stdout missing %q: %s", want, got)
-			}
-		}
+		assertVisibleFields(t, stdout, []string{"Question A", "Question C", "Question B"})
 	})
 
 	t.Run("set passes a complete twelve-question order through unchanged", func(t *testing.T) {
@@ -4759,9 +4771,7 @@ func TestBaseFormVisibleFieldsExecuteContract(t *testing.T) {
 		if len(body) != 1 {
 			t.Fatalf("request body added client-side fields: %#v", body)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"visible_fields"`) {
-			t.Fatalf("stdout=%s", got)
-		}
+		assertVisibleFields(t, stdout, []string{"Question 01", "Question 03", "Question 02"})
 	})
 
 	t.Run("typed validation failure preserves server recovery evidence", func(t *testing.T) {
