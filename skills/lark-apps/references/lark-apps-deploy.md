@@ -56,7 +56,7 @@ lark-cli apps +deploy --dry-run
 ### 命令骨架
 
 - 单文件：`lark-cli apps +deploy --file-path ./report.html`。该文件即入口，产物里恒为 `index.html`。**该页面引用的本地文件会被一并发布**（见下方「`--file-path` 的依赖扫描」），未被引用的同目录文件不会进包。
-- 目录：`lark-cli apps +deploy --dir ./site`。目录下所有普通文件随包上传（跳过 `.git` 子树，不跟随符号链接），入口默认取目录**根**的 `index.html`。
+- 目录：`lark-cli apps +deploy --dir ./site`。目录下所有普通文件随包上传（跳过 `.git` 子树，不跟随符号链接），入口默认取目录**根**的 `index.html`。**`--dir` 不跟引用**——发什么完全由目录内容决定；但页面引用了目录外或不存在的文件时会**告警**（stderr + `dependencies_skipped`），发布照常继续。
 - 指定入口：`lark-cli apps +deploy --dir ./site --entry-file page.html`。
 - 非入口的 `.html` 照常发布并自动生成路由（`about.html` → `/about`，`docs/index.html` → `/docs`），不需要自备 routes.json。
 - 路径参数只接受**相对当前目录的相对路径**，传绝对路径会被拒；产物不在 cwd 下时先 `cd` 过去（`cd /path/to/site && lark-cli apps +deploy --dir .`）。
@@ -108,7 +108,9 @@ lark-cli apps +deploy --dry-run
 | 依赖链上任何一处是**符号链接**（包括中间目录） | 即使它指向目录内部也一样失败 |
 | 入口叫 `page.html`，但闭包里又有一个 `index.html` | 两者会撞在同一个产物路径上 → `entry conflict` |
 
-前四种大多意味着"这份东西不该按单文件发"——把 `--dir` 指到上层目录通常就是正解。
+**前两种的正解不是改用 `--dir`。** 产物里入口恒被放在根（`output/index.html`），所以**入口必须位于它引用的一切之上**；`pages/report.html` 引用 `../shared/x.css` 这种结构，换成 `--dir` 也发不对（`--entry-file` 只认目录的直接子文件，`--dir ./pages` 又会把 `shared/` 丢在外面）。正解是二选一：把被引用的文件挪进入口所在目录，或者把入口挪到装着它们的那一层再发。
+
+符号链接同理：`--dir` 的打包器**也不跟符号链接，而且不吭声**，所以改用 `--dir` 只会把"明确失败"换成"静默坏页面"。正解是把软链换成真实文件的副本。
 
 ### `--dir` 的入口判定
 

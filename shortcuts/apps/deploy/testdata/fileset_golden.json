@@ -235,5 +235,18 @@
     "parseFailureCount": 0,
     "skippedFileCount": 0,
     "unsupportedRuntimeReferenceCount": 0
+  },
+  "a11_dynamic_import": {
+    "entry": "index.html",
+    "files": [
+      "app.js",
+      "chunk.js",
+      "index.html"
+    ],
+    "contentHash": "0ab72c628e5e8158ea470508cb5195c93fb7d88e4076faf9decc7b32c1bf3450",
+    "fileCount": 3,
+    "parseFailureCount": 0,
+    "skippedFileCount": 0,
+    "unsupportedRuntimeReferenceCount": 2
   }
 }

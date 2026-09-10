@@ -36,7 +36,11 @@ var (
 func invalidReferenceError(ref, from, why string) error {
 	return errs.NewValidationError(errs.SubtypeFailedPrecondition,
 		"invalid reference %q in %s: %s", ref, from, why).
-		WithHint("references must point at files inside the entry file's directory; publish the parent directory with --dir if they live above it")
+		// Deliberately not "use --dir": the entry is published as index.html at
+		// the payload root, so a reference above it cannot be expressed in any
+		// mode. Pointing --dir at the parent does not help either, because the
+		// entry has to sit at that directory's own root.
+		WithHint("the entry has to sit at or above everything it references: move those files under the entry's directory, or move the entry up to the directory that holds them and publish from there")
 }
 
 // resolveReference turns one raw reference written inside importerRel into a

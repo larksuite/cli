@@ -43,6 +43,9 @@ const (
 	// SkipDynamic: a reference exists but is computed at run time, so no
 	// implementation can know which file it names.
 	SkipDynamic
+	// SkipOutsideDir: a --dir payload references something outside the
+	// directory being published.
+	SkipOutsideDir
 )
 
 // Skip is one reference that was found but not published, or one file that was
@@ -94,7 +97,7 @@ func (c *collector) note(kind SkipKind, ref, from, why string) {
 // publish is meant to carry.
 func limitError(what string) error {
 	return errs.NewValidationError(errs.SubtypeFailedPrecondition, "%s", what).
-		WithHint("publish the directory with --dir instead, which does not follow references")
+		WithHint("publish the whole directory with --dir instead: it packs what is there and follows no references, so neither limit applies")
 }
 
 // symlinkError stops the publish on a symbolic link anywhere in the payload.
@@ -104,7 +107,10 @@ func limitError(what string) error {
 func symlinkError(rel string) error {
 	return errs.NewValidationError(errs.SubtypeFailedPrecondition,
 		"%s is a symbolic link; symbolic links cannot be published", rel).
-		WithHint("replace the link with the real file, or publish the directory holding the target with --dir")
+		// Not "use --dir": that walker skips symbolic links too, and skips them
+		// silently, so it turns this refusal into a page that publishes without
+		// the file and says nothing.
+		WithHint("replace the link with a copy of the file it points at")
 }
 
 // ensurePathSafe rejects a symbolic link at any level of rel, the payload root
@@ -225,7 +231,8 @@ func (c *collector) walk() error {
 		}
 		if len(c.visited) > maxDepFiles {
 			return limitError(fmt.Sprintf(
-				"the page references more than %d files; a single-file publish cannot carry them", maxDepFiles))
+				"the page's references reach %d files, past the %d-file limit for a single-file publish",
+				len(c.visited), maxDepFiles))
 		}
 		if len(batch) == 0 {
 			continue
@@ -290,7 +297,8 @@ func (c *collector) expand(item queueItem, raw []byte) ([]queueItem, error) {
 		}
 		if item.depth >= maxDepDepth {
 			return nil, limitError(fmt.Sprintf(
-				"the page's references nest more than %d levels deep", maxDepDepth))
+				"references nest more than %d levels deep: %s (%d levels below the entry) references %q",
+				maxDepDepth, item.rel, item.depth, ref))
 		}
 		c.recordVia(rel, item.rel)
 		out = append(out, queueItem{rel: rel, depth: item.depth + 1})

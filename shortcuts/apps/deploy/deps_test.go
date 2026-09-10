@@ -282,9 +282,10 @@ func TestCollectFileStopsAtFileLimit(t *testing.T) {
 	mustWrite(t, filepath.Join(root, "page.html"), refs.String())
 
 	err := collectErr(t, root, "page.html")
-	// The way out (--dir) rides on the hint, which the message does not carry.
-	if !strings.Contains(err.Error(), "more than 200 files") {
-		t.Fatalf("hitting the cap should say so: %v", err)
+	// The count is named so the caller can see how far past the limit they are;
+	// the way out (--dir) rides on the hint, which the message does not carry.
+	if !strings.Contains(err.Error(), "200-file limit") || !strings.Contains(err.Error(), "reach 211 files") {
+		t.Fatalf("hitting the cap should name the limit and the actual count: %v", err)
 	}
 }
 

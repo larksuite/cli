@@ -50,6 +50,15 @@ func validateHTMLDeployFlags(filePath, dir, entryFile string, skipBuild, noVerif
 	if noVerify {
 		return appsValidationParamError("--no-verify", "--no-verify only applies to the spark.json project mode")
 	}
+	// An absolute path is rejected whatever it points at, so saying so first
+	// spares a round trip: told only about the extension, a caller renames the
+	// file and comes back to learn the path was never usable.
+	for _, p := range []struct{ flag, value string }{{"--file-path", filePath}, {"--dir", dir}} {
+		if p.value != "" && filepath.IsAbs(p.value) {
+			return appsValidationParamError(p.flag,
+				"%s %q must be relative to the current directory; cd to the directory that holds the payload first", p.flag, p.value)
+		}
+	}
 	if filePath != "" && !strings.EqualFold(filepath.Ext(filePath), ".html") {
 		return appsValidationParamError("--file-path", "--file-path %q must point at an .html file", filePath)
 	}
@@ -261,6 +270,11 @@ func resolveHTMLDeployPlan(rctx *common.RuntimeContext) (htmlDeployPlan, error) 
 			return htmlDeployPlan{}, err
 		}
 		candidates, absEntry, entryRel = cands, filepath.Join(absDir, rel), rel
+		// --dir follows no references, so nothing else would notice that a page
+		// points at a stylesheet one directory up. Reporting it does not change
+		// what gets published; it stops the payload from going out looking fine
+		// and rendering broken.
+		skipped = deploy.DiagnoseDir(rctx.FileIO(), dir, candidates)
 	}
 
 	waived, err := deploy.Guard(candidates, rctx.Bool("allow-sensitive"), deploy.DefaultLimits())
@@ -332,11 +346,7 @@ func fillHTMLDeployDryRun(dry *common.DryRunAPI, p htmlDeployPlan) {
 	if len(p.Waived) > 0 {
 		dry.Set("sensitive_waived", p.Waived)
 	}
-	if len(p.SkippedDeps) > 0 {
-		lines := make([]string, 0, len(p.SkippedDeps))
-		for _, sk := range p.SkippedDeps {
-			lines = append(lines, sk.String())
-		}
+	if lines := skippedLines(p.SkippedDeps); len(lines) > 0 {
 		dry.Set("dependencies_skipped", lines)
 	}
 }
@@ -347,7 +357,20 @@ var skipAdvice = map[deploy.SkipKind]string{
 	deploy.SkipMissing:    "create the missing file(s), or remove the references to them",
 	deploy.SkipUnreadable: "check the permissions on those paths",
 	deploy.SkipUnparsed:   "fix the file so its own references can be followed, or publish the directory with --dir",
-	deploy.SkipDynamic:    "a URL built at run time cannot be followed; publish the directory with --dir if the page needs those files",
+	deploy.SkipDynamic:    "a URL built at run time cannot be followed; publish the whole directory with --dir if the page needs those files",
+	deploy.SkipOutsideDir: "the entry has to sit at or above everything it references; move those files into the published directory, or publish from the directory that holds them",
+}
+
+// skippedLines renders the skip list for the JSON envelope.
+func skippedLines(skipped []deploy.Skip) []string {
+	if len(skipped) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(skipped))
+	for _, sk := range skipped {
+		out = append(out, sk.String())
+	}
+	return out
 }
 
 // warnSkippedDeps reports references the scan found but could not publish.
@@ -605,6 +628,12 @@ func executeHTMLDeploy(ctx context.Context, rctx *common.RuntimeContext) error {
 		"built":          false,
 		"file_count":     zipball.FileCount,
 		"zip_size_bytes": zipball.Size,
+	}
+	// The warning also goes to stderr for a person to read, but a caller that
+	// consumes only the JSON envelope would otherwise see an unqualified
+	// success for a page that is missing files.
+	if lines := skippedLines(plan.SkippedDeps); len(lines) > 0 {
+		data["dependencies_skipped"] = lines
 	}
 	pollHint := ""
 	if onlineURL != "" {

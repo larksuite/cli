@@ -93,7 +93,7 @@ func (s *jsScan) visit(n js.INode) {
 
 func (s *jsScan) visitCall(call *js.CallExpr) {
 	if isDynamicImport(call.X) {
-		s.addRaw(argAt(&call.Args, 0))
+		s.addModuleSpecifier(argAt(&call.Args, 0))
 		return
 	}
 	name := calleeName(call.X)
@@ -154,15 +154,20 @@ func (s *jsScan) addDocumentRelative(arg js.IExpr) {
 	}
 }
 
-func (s *jsScan) addRaw(arg js.IExpr) {
+// addModuleSpecifier records the target of a dynamic import(). Only a plain
+// string literal counts: module specifiers are read by a lexer rather than by
+// the expression analysis, and it does not evaluate template literals -- so
+// import(`./x.js`) is an unresolved reference on both sides, and treating it as
+// resolved here would put a file in the payload the web client leaves out.
+func (s *jsScan) addModuleSpecifier(arg js.IExpr) {
 	if arg == nil {
 		return
 	}
-	if str, ok := staticString(arg); ok {
-		s.refs = append(s.refs, str)
-	} else {
-		s.unsupported++
+	if lit, ok := literalOf(arg); ok && lit.TokenType == js.StringToken {
+		s.refs = append(s.refs, unquoteJS(lit.Data))
+		return
 	}
+	s.unsupported++
 }
 
 func (s *jsScan) isXHRReceiver(callee js.IExpr) bool {
@@ -250,9 +255,16 @@ func isImportMetaURL(e js.IExpr) bool {
 	return ok
 }
 
+// isDynamicImport matches the callee of import(...). The parser reports it as
+// a literal holding the keyword rather than as an identifier, so testing for a
+// variable named "import" never matches -- and code splitting, the single most
+// common reason to write a dynamic import, would ship without its chunks.
 func isDynamicImport(callee js.IExpr) bool {
-	v, ok := callee.(*js.Var)
-	return ok && string(v.Data) == "import"
+	if v, ok := callee.(*js.Var); ok {
+		return string(v.Data) == "import"
+	}
+	lit, ok := literalOf(callee)
+	return ok && string(lit.Data) == "import"
 }
 
 // staticString reads a value the parser can resolve at rest: a string literal,
