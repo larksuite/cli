@@ -188,7 +188,7 @@ func readWebP(r io.ReaderAt) (Config, error) {
 		return Config{}, errMetadata
 	}
 	end := int64(binary.LittleEndian.Uint32(header[4:8])) + 8
-	if end < 20 || end > 1<<32-2 || end%2 != 0 {
+	if end < 20 || end > 1<<32-2 {
 		return Config{}, errMetadata
 	}
 	var chunk [8]byte
@@ -198,8 +198,12 @@ func readWebP(r io.ReaderAt) (Config, error) {
 			return Config{}, err
 		}
 		size := int64(binary.LittleEndian.Uint32(chunk[4:]))
-		next := off + 8 + size + (size & 1)
-		if next > end {
+		// The chunk payload must lie inside the container. Its even-padding
+		// byte need not: writers that omit the pad after a final odd-sized
+		// chunk still describe complete dimensions, so padding is only
+		// required where it is actually consumed -- skipping to the next
+		// chunk, below.
+		if off+8+size > end {
 			return Config{}, errMetadata
 		}
 		need := 0
@@ -234,6 +238,10 @@ func readWebP(r io.ReaderAt) (Config, error) {
 				}
 				return dimensions(uint24(data[4:7])+1, uint24(data[7:10])+1)
 			}
+		}
+		next := off + 8 + size + (size & 1)
+		if next > end {
+			return Config{}, errMetadata
 		}
 		off = next
 	}

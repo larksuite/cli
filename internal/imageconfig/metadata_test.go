@@ -239,3 +239,33 @@ func TestMetadataPreservesReadCause(t *testing.T) {
 		}
 	}
 }
+
+// A writer may omit the even-padding byte after a final odd-sized chunk, and
+// may cover trailing bytes in the RIFF size. Neither hides the dimensions.
+func TestWebPAcceptsUnpaddedFinalChunk(t *testing.T) {
+	padded := webpFixture("VP8L")
+	unpadded := append([]byte(nil), padded[:len(padded)-1]...)
+	binary.LittleEndian.PutUint32(unpadded[4:], uint32(len(unpadded)-8))
+
+	oddContainer := append(append([]byte(nil), padded...), 1, 2, 3)
+	binary.LittleEndian.PutUint32(oddContainer[4:], uint32(len(oddContainer)-8))
+
+	for name, b := range map[string][]byte{"unpadded_final_chunk": unpadded, "odd_container_size": oddContainer} {
+		t.Run(name, func(t *testing.T) {
+			cfg, format, err := Decode(bytes.NewReader(b))
+			if err != nil || format != "webp" || cfg.Width != 4 || cfg.Height != 5 {
+				t.Fatalf("config=%+v format=%q err=%v", cfg, format, err)
+			}
+		})
+	}
+}
+
+// Relaxing the padding requirement must not let a chunk payload escape the
+// container it declares.
+func TestWebPRejectsChunkPayloadBeyondContainer(t *testing.T) {
+	b := webpFixture("VP8L")
+	binary.LittleEndian.PutUint32(b[16:], uint32(len(b)))
+	if _, _, err := Decode(bytes.NewReader(b)); !errors.Is(err, errMetadata) {
+		t.Fatalf("accepted chunk reaching past the container: %v", err)
+	}
+}
