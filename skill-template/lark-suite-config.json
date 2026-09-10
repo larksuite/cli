@@ -30,18 +30,17 @@
     "lark-workflow-standup-report": ["站会日报工作流"]
   },
   "guideRewrite": {
+    "pathOverrides": [
+      {
+        "skill": "lark-skill-maker",
+        "match": "../lark-shared/SKILL.md",
+        "replacement": "../lark-suite/references/lark-shared/GUIDE.md"
+      }
+    ],
     "preserve": [
       {
         "skill": "lark-skill-maker",
-        "match": "`SKILL.md`"
-      },
-      {
-        "skill": "lark-skill-maker",
-        "match": "## SKILL.md"
-      },
-      {
-        "skill": "lark-skill-maker",
-        "match": "skills/lark-<name>/SKILL.md"
+        "match": "SKILL.md"
       },
       {
         "skill": "*",
