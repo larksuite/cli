@@ -42,6 +42,28 @@ func TestDryRunTableOps(t *testing.T) {
 	assertDryRunContains(t, dryRunTableDelete(ctx, rt), "DELETE /open-apis/base/v3/bases/app_x/tables/tbl_1")
 }
 
+func TestBaseTableAndFieldListDryRunDefaultsToMaximumPageSize(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+
+	if err := runShortcut(t, BaseTableList, []string{
+		"+table-list", "--base-token", "app_x", "--dry-run", "--format", "pretty",
+	}, factory, stdout); err != nil {
+		t.Fatalf("table list dry-run err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, "limit=300") || !strings.Contains(got, "offset=0") {
+		t.Fatalf("table list dry-run=%s", got)
+	}
+
+	if err := runShortcut(t, BaseFieldList, []string{
+		"+field-list", "--base-token", "app_x", "--table-id", "tbl_x", "--dry-run", "--format", "pretty",
+	}, factory, stdout); err != nil {
+		t.Fatalf("field list dry-run err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, "limit=300") || !strings.Contains(got, "offset=0") {
+		t.Fatalf("field list dry-run=%s", got)
+	}
+}
+
 func TestDryRunTemplateCenterOps(t *testing.T) {
 	ctx := context.Background()
 
