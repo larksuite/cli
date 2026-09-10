@@ -127,6 +127,52 @@ func TestBuildBrandScopesDoc_ContractInvariants(t *testing.T) {
 	}
 }
 
+// TestMarshalBrandScopesDoc_ByteFormatGolden pins the exact serialized bytes for
+// a fixed document. Any drift in indentation, key order, HTML escaping, trailing
+// newline, or empty-list rendering fails here — the byte-for-byte drop-in the
+// downstream publisher depends on. It uses a synthetic doc (not real scopes,
+// whose values drift between releases) so only the FORMAT is golden.
+func TestMarshalBrandScopesDoc_ByteFormatGolden(t *testing.T) {
+	doc := &brandScopesDoc{
+		Version: "1.2.3",
+		Scopes: map[string]domainScopes{
+			"im": {
+				I18nName:     i18nText{ZhCn: "消息", EnUs: "Messaging & chat"},
+				I18nDesc:     i18nText{ZhCn: "收发消息", EnUs: "send & receive"},
+				TenantScopes: []string{},
+				UserScopes:   []string{"im:message"},
+			},
+		},
+	}
+	const want = `{
+  "version": "1.2.3",
+  "scopes": {
+    "im": {
+      "i18n_name": {
+        "zh_cn": "消息",
+        "en_us": "Messaging & chat"
+      },
+      "i18n_desc": {
+        "zh_cn": "收发消息",
+        "en_us": "send & receive"
+      },
+      "tenant_scopes": [],
+      "user_scopes": [
+        "im:message"
+      ]
+    }
+  }
+}
+`
+	out, err := marshalBrandScopesDoc(doc)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if string(out) != want {
+		t.Errorf("byte-format drift (indent / key order / HTML escaping / newline / empty list):\n--- got ---\n%s--- want ---\n%s", out, want)
+	}
+}
+
 // #6 未知域回退:service_descriptions 里不存在的域,i18n_name 回退为域名本身。
 func TestTitleOrDomain_UnknownFallsBackToDomain(t *testing.T) {
 	const unknown = "definitely_not_a_real_service_domain_xyz"
@@ -174,10 +220,12 @@ func TestNewCmdAuthExportScopes_RunE(t *testing.T) {
 	})
 
 	t.Run("output_file", func(t *testing.T) {
-		// validate.SafeOutputPath only allows cwd, /tmp, or ~/files; t.TempDir()
-		// resolves under macOS's /var/folders/... and would be rejected, so use
-		// a throwaway directory under the package's own working directory.
-		tmpDir, err := os.MkdirTemp(".", "export-scopes-test-")
+		// validate.SafeOutputPath allows cwd, /tmp, or ~/files (resolving symlinks
+		// on both sides). t.TempDir() resolves under macOS's /var/folders/... and
+		// would be rejected, so use /tmp — which the allowlist accepts and the OS
+		// reclaims even if this test aborts before Cleanup runs (unlike a dir left
+		// under the package working directory).
+		tmpDir, err := os.MkdirTemp("/tmp", "export-scopes-test-")
 		if err != nil {
 			t.Fatalf("MkdirTemp: %v", err)
 		}

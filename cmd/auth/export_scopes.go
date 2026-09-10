@@ -38,6 +38,16 @@ func newCmdAuthExportScopes(f *cmdutil.Factory) *cobra.Command {
 		Use:    "export-scopes",
 		Short:  "Export brand scopes JSON (build tool, hidden)",
 		Hidden: true,
+		// export-scopes reads only the embedded API catalog and needs no
+		// credentials. It must NOT inherit auth's RequireBuiltinCredentialProvider
+		// guard (see auth.go): cobra runs only the nearest PersistentPreRunE, so
+		// without this override the guard fails the command on any build machine
+		// that has CLI credential env vars set — exactly the environment the
+		// downstream scopes build runs in. SilenceUsage mirrors root/auth.
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			cmd.SilenceUsage = true
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			effectiveVersion := version
 			if effectiveVersion == "" {
@@ -75,7 +85,7 @@ func newCmdAuthExportScopes(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&brand, "brand", "", "target brand: feishu | lark (required)")
-	cmd.Flags().StringVar(&version, "version", "", "version string written to output (default: build.Version)")
+	cmd.Flags().StringVar(&version, "version", "", "version string written to output (default: package.json version, else build.Version)")
 	cmd.Flags().StringVar(&outputPath, "output", "", "write JSON to this file (default: stdout)")
 	// --brand is validated by parseBrandExact (inside buildBrandScopesDoc), which
 	// returns a typed invalid-argument error carrying the --brand parameter for a
@@ -185,17 +195,23 @@ func titleOrDomain(d, lang string) string {
 // checkout's npm manifest — so the exported document carries the same version
 // the released binary ships under, matching the downstream scopes publisher
 // that stamped its version from package.json. It returns "" when the file is
-// absent or unparseable (e.g. `go test` runs from the package directory),
-// leaving the caller to fall back to build.Version.
+// absent, unparseable, or not the CLI's own manifest (name != @larksuite/cli),
+// leaving the caller to fall back to build.Version. The name guard stops an
+// unrelated package.json in the working directory from stamping a foreign
+// version.
 func packageJSONVersion() string {
 	data, err := os.ReadFile("package.json")
 	if err != nil {
 		return ""
 	}
 	var pkg struct {
+		Name    string `json:"name"`
 		Version string `json:"version"`
 	}
 	if err := json.Unmarshal(data, &pkg); err != nil {
+		return ""
+	}
+	if pkg.Name != "@larksuite/cli" {
 		return ""
 	}
 	return pkg.Version

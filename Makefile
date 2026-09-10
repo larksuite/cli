@@ -119,15 +119,19 @@ sidecar-test:
 
 # test-scopeexport compiles and runs the scopeexport build-tagged export-scopes
 # code that the default CI matrix never sees (it carries //go:build scopeexport).
-# The API catalog is embedded, so no meta fetch step is needed. It also invokes
-# the built binary through the real `auth export-scopes --brand <brand>` path
-# (not just the constructor) so a rename of the subcommand or flag breaks here,
-# in this repo's CI, rather than in the downstream scopes build.
+# The API catalog is embedded, so no meta fetch step is needed. It invokes the
+# built binary through the real `auth export-scopes --brand <brand>` path (not
+# just the constructor) so a rename of the subcommand or flag breaks here, in
+# this repo's CI, rather than in the downstream scopes build. One invocation sets
+# a credential env var to prove export-scopes does not inherit auth's
+# external-credential guard (which would otherwise fail it on a build machine
+# carrying CLI credentials in the environment).
 test-scopeexport:
-	go build -tags scopeexport -o /tmp/lark-cli-scopeexport .
-	/tmp/lark-cli-scopeexport auth export-scopes --brand feishu >/dev/null
-	/tmp/lark-cli-scopeexport auth export-scopes --brand lark >/dev/null
-	go test -count=1 -tags scopeexport ./cmd/auth/ -run 'TestBuildBrandScopesDoc|TestTitleOrDomain|TestNewCmdAuthExportScopes'
+	go build -tags scopeexport -o $${TMPDIR:-/tmp}/lark-cli-scopeexport .
+	$${TMPDIR:-/tmp}/lark-cli-scopeexport auth export-scopes --brand feishu >/dev/null
+	LARKSUITE_CLI_TENANT_ACCESS_TOKEN=dummy $${TMPDIR:-/tmp}/lark-cli-scopeexport auth export-scopes --brand lark >/dev/null
+	rm -f $${TMPDIR:-/tmp}/lark-cli-scopeexport
+	go test $(RACE_FLAG) -count=1 -tags scopeexport ./cmd/auth/
 
 # Run secret-leak checks locally before pushing.
 # Step 1: check-doc-tokens catches realistic-looking example tokens in reference
