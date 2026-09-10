@@ -23,7 +23,7 @@ PREFIX   ?= /usr/local
 TEST_GOARCH := $(or $(GOARCH),$(shell go env GOARCH))
 RACE_FLAG := $(if $(filter riscv64,$(TEST_GOARCH)),,-race)
 
-.PHONY: all build vet fmt-check script-test test unit-test live-skills-test integration-test examples-build quality-gate install uninstall clean gitleaks sidecar-test
+.PHONY: all build vet fmt-check script-test test unit-test live-skills-test integration-test examples-build quality-gate install uninstall clean gitleaks sidecar-test test-scopeexport
 
 all: test
 
@@ -116,6 +116,13 @@ sidecar-test:
 	go test $(RACE_FLAG) -count=1 -tags authsidecar ./extension/credential/sidecar/ ./extension/transport/sidecar/ ./internal/cmdutil/
 	go test $(RACE_FLAG) -count=1 -tags authsidecar_demo ./sidecar/server-demo/
 	go test $(RACE_FLAG) -count=1 -tags authsidecar ./tests/sidecar_e2e/
+
+# test-scopeexport compiles and runs the scopeexport build-tagged export-scopes
+# code that the default CI matrix never sees (it carries //go:build scopeexport).
+# The API catalog is embedded, so no meta fetch step is needed.
+test-scopeexport:
+	go build -tags scopeexport -o /dev/null .
+	go test -count=1 -tags scopeexport ./cmd/auth/ -run 'TestBuildBrandScopesDoc|TestTitleOrDomain|TestNewCmdAuthExportScopes'
 
 # Run secret-leak checks locally before pushing.
 # Step 1: check-doc-tokens catches realistic-looking example tokens in reference
