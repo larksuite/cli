@@ -18,19 +18,24 @@ import (
 // marker, tagged with the given top-level data version and brand.
 func seedCache(t *testing.T, dir, name, marker, version, brand string) {
 	t.Helper()
-	cDir := filepath.Join(dir, "cache")
-	if err := os.MkdirAll(cDir, 0700); err != nil {
-		t.Fatal(err)
-	}
 	reg := MergedRegistry{
 		Version:  version,
 		Services: []meta.Service{{Name: name, Version: "cache", Title: marker}},
+	}
+	seedCacheService(t, dir, reg, brand)
+}
+
+func seedCacheService(t *testing.T, dir string, reg MergedRegistry, brand string) {
+	t.Helper()
+	cDir := filepath.Join(dir, "cache")
+	if err := os.MkdirAll(cDir, 0700); err != nil {
+		t.Fatal(err)
 	}
 	data, _ := json.Marshal(reg)
 	if err := os.WriteFile(filepath.Join(cDir, "remote_meta.json"), data, 0644); err != nil {
 		t.Fatal(err)
 	}
-	cm := CacheMeta{LastCheckAt: time.Now().Unix(), Version: version, Brand: brand}
+	cm := CacheMeta{LastCheckAt: time.Now().Unix(), Version: reg.Version, Brand: brand}
 	mData, _ := json.Marshal(cm)
 	if err := os.WriteFile(filepath.Join(cDir, "remote_meta.meta.json"), mData, 0644); err != nil {
 		t.Fatal(err)

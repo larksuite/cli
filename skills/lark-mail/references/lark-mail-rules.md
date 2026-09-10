@@ -104,6 +104,16 @@ lark-cli mail user_mailbox.rules delete --as user \
 
 Quick codes above: condition `type=6` = subject, `operator=1` = contains, action `type=3` = mark as read.
 
+## 调整规则顺序
+
+`reorder` 可只传需要提前或调整相对顺序的部分 `rule_id`。CLI 会先读取当前完整规则列表，并把未输入的规则按当前相对顺序追加到请求末尾；输入可使用唯一的规则 ID 前缀，前缀匹配多个规则或未匹配任何规则时会在本地报错且不会调用 reorder。重复 ID 同样会在本地报错。
+
+```bash
+lark-cli mail user_mailbox.rules reorder --as user \
+  --params '{"user_mailbox_id":"me"}' \
+  --data '{"rule_ids":["<rule_id_to_place_first>","<rule_id_to_place_second>"]}'
+```
+
 ## 原生 API
 
 收信规则走 `user_mailbox.rules` 资源。参数不确定时先运行：

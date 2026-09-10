@@ -30,8 +30,8 @@ func TestBase_RoleWorkflow(t *testing.T) {
 	result.AssertStdoutStatus(t, true)
 
 	roleName := "Reviewer-" + clie2e.GenerateSuffix()
-	createRole(t, ctx, baseToken, `{"role_name":"`+roleName+`","role_type":"custom_role"}`)
-	roleID := ""
+	roleID := createRole(t, ctx, baseToken, `{"role_name":"`+roleName+`","role_type":"custom_role"}`)
+	require.NotEmpty(t, roleID, "created role ID should be returned")
 
 	parentT.Cleanup(func() {
 		if roleID == "" {
@@ -51,35 +51,48 @@ func TestBase_RoleWorkflow(t *testing.T) {
 	})
 
 	t.Run("list as bot", func(t *testing.T) {
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"base", "+role-list", "--base-token", baseToken},
-			DefaultAs: "bot",
+		var lastStdout string
+		pollTimeout := 30 * time.Second
+		pollCtx, pollCancel := context.WithTimeout(ctx, pollTimeout)
+		defer pollCancel()
+
+		err := clie2e.WaitForCondition(pollCtx, clie2e.WaitOptions{
+			Timeout:  pollTimeout,
+			Interval: 3 * time.Second,
+		}, func() (bool, error) {
+			result, err := clie2e.RunCmd(pollCtx, clie2e.Request{
+				Args:      []string{"base", "+role-list", "--base-token", baseToken},
+				DefaultAs: "bot",
+			})
+			if err != nil {
+				return false, err
+			}
+			lastStdout = result.Stdout
+			if result.ExitCode != 0 {
+				return false, result.RunErr
+			}
+			if !gjson.Get(result.Stdout, "ok").Bool() {
+				return false, nil
+			}
+
+			roleListPayload := gjson.Get(result.Stdout, "data.data").String()
+			if roleListPayload == "" || !gjson.Valid(roleListPayload) {
+				return false, nil
+			}
+
+			roleItems := gjson.Get(roleListPayload, "base_roles").Array()
+			for _, item := range roleItems {
+				rolePayload := item.String()
+				if !gjson.Valid(rolePayload) {
+					continue
+				}
+				if gjson.Get(rolePayload, "role_id").String() == roleID && gjson.Get(rolePayload, "role_name").String() == roleName {
+					return true, nil
+				}
+			}
+			return false, nil
 		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, true)
-
-		roleListPayload := gjson.Get(result.Stdout, "data.data").String()
-		require.NotEmpty(t, roleListPayload, "stdout:\n%s", result.Stdout)
-		assert.True(t, gjson.Valid(roleListPayload), "role list payload should be valid JSON: %s", roleListPayload)
-
-		roleItems := gjson.Get(roleListPayload, "base_roles").Array()
-		assert.NotEmpty(t, roleItems, "role list should contain at least one role: %s", roleListPayload)
-
-		found := false
-		for _, item := range roleItems {
-			rolePayload := item.String()
-			if !gjson.Valid(rolePayload) {
-				continue
-			}
-			if gjson.Get(rolePayload, "role_name").String() == roleName {
-				roleID = gjson.Get(rolePayload, "role_id").String()
-				found = true
-				break
-			}
-		}
-		require.True(t, found, "stdout:\n%s", result.Stdout)
-		require.NotEmpty(t, roleID, "stdout:\n%s", result.Stdout)
+		require.NoError(t, err, "role %q should appear in list; last stdout:\n%s", roleName, lastStdout)
 	})
 
 	t.Run("get role as bot", func(t *testing.T) {
