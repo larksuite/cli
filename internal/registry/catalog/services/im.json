@@ -2812,7 +2812,7 @@
                       "type": "string",
                       "description": "应用 ID，仅当 member_type=bot 时返回",
                       "required": false,
-                      "example": "cli_a1b2c3d4e5f6g7h8"
+                      "example": "cli_example"
                     },
                     "name": {
                       "type": "string",
@@ -2847,7 +2847,7 @@
                       "type": "string",
                       "description": "应用 ID，仅当 member_type=bot 时返回",
                       "required": false,
-                      "example": "cli_a1b2c3d4e5f6g7h8"
+                      "example": "cli_example"
                     },
                     "name": {
                       "type": "string",
