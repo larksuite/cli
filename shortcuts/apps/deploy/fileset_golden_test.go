@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 )
 
@@ -24,6 +25,17 @@ func (rootedFIO) Stat(name string) (fileio.FileInfo, error) { return os.Stat(nam
 func (rootedFIO) ResolvePath(p string) (string, error)      { return p, nil }
 func (rootedFIO) Save(string, fileio.SaveOptions, io.Reader) (fileio.SaveResult, error) {
 	panic("Save not used in deploy unit tests")
+}
+
+// goldenErrorMarkers ties each refusal the web client can raise to the wording
+// this implementation uses for the same rule, so a fixture cannot pass by
+// failing for an unrelated reason.
+var goldenErrorMarkers = map[string]string{
+	"invalid_reference":   "invalid reference",
+	"entry_path_conflict": "entry conflict",
+	"symbolic_link":       "symbolic link",
+	"max_depth_exceeded":  "levels deep",
+	"file_count_exceeded": "file limit",
 }
 
 // goldenFileSet is what the web client produced for one fixture directory.
@@ -73,6 +85,16 @@ func TestFileSetMatchesWebClientGolden(t *testing.T) {
 			if want.Error != "" {
 				if err == nil {
 					t.Fatalf("expected the publish to stop (%s), got file set %v", want.Error, relsOf(cands))
+				}
+				// Any error would satisfy "it failed", including one from an
+				// unrelated guard, which would leave the case green while the
+				// rule it exists for stopped working. Tie the failure to the
+				// one the other implementation raised.
+				ve := requireValidation(t, err, errs.SubtypeFailedPrecondition)
+				if marker, ok := goldenErrorMarkers[want.Error]; !ok {
+					t.Fatalf("golden names an error %q with no expected wording; add it", want.Error)
+				} else if !strings.Contains(ve.Message, marker) {
+					t.Errorf("stopped for the wrong reason\n got %q\nwant it to mention %q (%s)", ve.Message, marker, want.Error)
 				}
 				return
 			}

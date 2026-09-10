@@ -6,6 +6,8 @@ package deploy
 import (
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/errs"
 )
 
 func TestResolveEntryCombinations(t *testing.T) {
@@ -26,8 +28,15 @@ func TestResolveEntryCombinations(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := ResolveEntry(tc.entryFlag, tc.rootNames)
 			if tc.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-					t.Fatalf("got err %v, want containing %q", err, tc.wantErr)
+				// The command layer renders these from the typed fields, so a
+				// message that still reads right while the envelope regressed
+				// is a break the caller sees and this test would not.
+				ve := requireValidation(t, err, errs.SubtypeFailedPrecondition)
+				if !strings.Contains(ve.Message, tc.wantErr) {
+					t.Errorf("got message %q, want containing %q", ve.Message, tc.wantErr)
+				}
+				if ve.Param != "--entry-file" {
+					t.Errorf("Param = %q, want --entry-file", ve.Param)
 				}
 				return
 			}
@@ -44,8 +53,9 @@ func TestResolveEntryCombinations(t *testing.T) {
 func TestValidateEntryFileName(t *testing.T) {
 	bad := []string{"sub/page.html", `sub\page.html`, "notes.txt", "", "p\x00.html"}
 	for _, in := range bad {
-		if err := ValidateEntryFileName(in); err == nil {
-			t.Errorf("ValidateEntryFileName(%q) = nil, want error", in)
+		ve := requireValidation(t, ValidateEntryFileName(in), errs.SubtypeInvalidArgument, errs.SubtypeFailedPrecondition)
+		if ve != nil && ve.Param != "--entry-file" {
+			t.Errorf("ValidateEntryFileName(%q): Param = %q, want --entry-file", in, ve.Param)
 		}
 	}
 	if err := ValidateEntryFileName("page.html"); err != nil {

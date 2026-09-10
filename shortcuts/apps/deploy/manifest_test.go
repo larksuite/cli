@@ -6,6 +6,8 @@ package deploy
 import (
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/errs"
 )
 
 func TestBuildManifestRenamesEntry(t *testing.T) {
@@ -52,10 +54,8 @@ func TestBuildManifestRejectsIndexCollision(t *testing.T) {
 		{RelPath: "page.html"},
 		{RelPath: "index.html"},
 	}, "page.html")
-	if err == nil {
-		t.Fatalf("expected an entry conflict error")
-	}
-	if !strings.Contains(err.Error(), "entry conflict") {
-		t.Fatalf("message should name the conflict, got %q", err.Error())
+	ve := requireValidation(t, err, errs.SubtypeFailedPrecondition)
+	if !strings.Contains(ve.Message, "entry conflict") {
+		t.Errorf("message should name the conflict, got %q", ve.Message)
 	}
 }

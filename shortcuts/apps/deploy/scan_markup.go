@@ -244,8 +244,12 @@ type xmlElement struct {
 // files expand.
 func parseXMLElements(raw []byte) ([]xmlElement, error) {
 	dec := xml.NewDecoder(bytes.NewReader(raw))
-	// Prefixes declared by enclosing elements, innermost last.
-	declared := map[string]bool{"xml": true, "xmlns": true}
+	// Namespaces in scope. Only "xml" is bound without being declared;
+	// "xmlns" is reserved for declarations themselves and may never prefix an
+	// element or an ordinary attribute, so predeclaring it would let
+	// <xmlns:image href="..."> through and collect a file the web client's
+	// parser rejects the whole document over.
+	declared := map[string]bool{"xml": true}
 	var els []xmlElement
 	var stack []*xmlElement
 
@@ -263,7 +267,7 @@ func parseXMLElements(raw []byte) ([]xmlElement, error) {
 				// Go reports xmlns declarations with Space "xmlns" (prefixed)
 				// or Local "xmlns" (default namespace); either way the value is
 				// the namespace URI, which is what a resolved name carries.
-				if a.Name.Space == "xmlns" || a.Name.Local == "xmlns" {
+				if isNamespaceDeclaration(a) {
 					declared[a.Value] = true
 				}
 			}
@@ -272,6 +276,10 @@ func parseXMLElements(raw []byte) ([]xmlElement, error) {
 			}
 			el := xmlElement{name: t.Name.Local}
 			for _, a := range t.Attr {
+				// A declaration binds a prefix; it does not use one.
+				if isNamespaceDeclaration(a) {
+					continue
+				}
 				if err := checkPrefix(a.Name.Space, declared); err != nil {
 					return nil, err
 				}
@@ -290,6 +298,10 @@ func parseXMLElements(raw []byte) ([]xmlElement, error) {
 		}
 	}
 	return els, nil
+}
+
+func isNamespaceDeclaration(a xml.Attr) bool {
+	return a.Name.Space == "xmlns" || (a.Name.Space == "" && a.Name.Local == "xmlns")
 }
 
 // checkPrefix rejects a name whose namespace was never declared. A resolved

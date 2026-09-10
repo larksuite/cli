@@ -11,6 +11,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/larksuite/cli/errs"
 )
 
 func mustWrite(t *testing.T, path, content string) {
@@ -114,12 +116,20 @@ func TestInputPathErrorOnlyClaimsOutOfBoundsWhenTrue(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := inputPathError("--file-path", tc.path, tc.cause).Error()
-			if !strings.Contains(got, tc.wantContains) {
-				t.Errorf("error = %q, want it to contain %q", got, tc.wantContains)
+			err := inputPathError("--file-path", tc.path, tc.cause)
+			ve := requireValidation(t, err, errs.SubtypeFailedPrecondition)
+			if ve.Param != "--file-path" {
+				t.Errorf("Param = %q, want --file-path", ve.Param)
 			}
-			if tc.mustNotMention && strings.Contains(got, outOfBounds) {
-				t.Errorf("a path inside the working directory must not be reported as out of bounds: %q", got)
+			// The wrapped failure has to stay reachable: it is what tells a
+			// caller reading the envelope whether this was ENOENT or EACCES,
+			// which the re-framed message deliberately no longer spells out.
+			requireCause(t, err, tc.cause)
+			if !strings.Contains(ve.Message, tc.wantContains) {
+				t.Errorf("error = %q, want it to contain %q", ve.Message, tc.wantContains)
+			}
+			if tc.mustNotMention && strings.Contains(ve.Message, outOfBounds) {
+				t.Errorf("a path inside the working directory must not be reported as out of bounds: %q", ve.Message)
 			}
 		})
 	}

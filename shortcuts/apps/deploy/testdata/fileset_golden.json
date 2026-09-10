@@ -244,5 +244,30 @@
     "parseFailureCount": 0,
     "skippedFileCount": 0,
     "unsupportedRuntimeReferenceCount": 2
+  },
+  "a12_css_escape": {
+    "entry": "index.html",
+    "files": [
+      "a b.png",
+      "index.html",
+      "s.css"
+    ],
+    "contentHash": "dfa398f8cd95e972f84adf97551313e0d76c5e4df2e759444a71f55b43dba7e5",
+    "fileCount": 3,
+    "parseFailureCount": 0,
+    "skippedFileCount": 0,
+    "unsupportedRuntimeReferenceCount": 0
+  },
+  "a13_xmlns_prefix": {
+    "entry": "index.html",
+    "files": [
+      "i.svg",
+      "index.html"
+    ],
+    "contentHash": "72fede9fff86f03fcbb97ba0cc2fc006cba22c4cfe043b0ccdbab63f5f90a8a1",
+    "fileCount": 2,
+    "parseFailureCount": 1,
+    "skippedFileCount": 0,
+    "unsupportedRuntimeReferenceCount": 0
   }
 }

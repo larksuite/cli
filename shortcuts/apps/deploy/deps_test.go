@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 )
 
@@ -195,9 +196,12 @@ func TestCollectFileRejectsReferenceAboveEntryDirectory(t *testing.T) {
 	mustWrite(t, filepath.Join(site, "page.html"), `<link rel="stylesheet" href="../shared/theme.css">`)
 	mustWrite(t, filepath.Join(root, "shared", "theme.css"), ".a{}")
 
-	err := collectErr(t, site, "page.html")
-	if !strings.Contains(err.Error(), "above the entry file") {
-		t.Fatalf("message should say the reference points above the payload: %v", err)
+	ve := requireValidation(t, collectErr(t, site, "page.html"), errs.SubtypeFailedPrecondition)
+	if !strings.Contains(ve.Message, "above the entry file") {
+		t.Errorf("message should say the reference points above the payload: %v", ve.Message)
+	}
+	if ve.Hint != hintReferenceEscapes {
+		t.Errorf("the way out must be the one written for this cause, got %q", ve.Hint)
 	}
 }
 
@@ -212,7 +216,10 @@ func TestCollectFileRejectsDangerousReferences(t *testing.T) {
 			root := t.TempDir()
 			mustWrite(t, filepath.Join(root, "page.html"),
 				`<link rel="stylesheet" href="`+ref+`">`)
-			collectErr(t, root, "page.html")
+			ve := requireValidation(t, collectErr(t, root, "page.html"), errs.SubtypeFailedPrecondition)
+			if ve.Hint != hintFixReferenceText {
+				t.Errorf("a malformed reference must be answered by fixing the text, got %q", ve.Hint)
+			}
 		})
 	}
 }
@@ -251,9 +258,9 @@ func TestCollectFileRejectsSymlink(t *testing.T) {
 			if err := os.Symlink(target, filepath.Join(site, "linked.css")); err != nil {
 				t.Skipf("symlink unsupported: %v", err)
 			}
-			err := collectErr(t, site, "page.html")
-			if !strings.Contains(err.Error(), "symbolic link") {
-				t.Fatalf("message should name the symlink: %v", err)
+			ve := requireValidation(t, collectErr(t, site, "page.html"), errs.SubtypeFailedPrecondition)
+			if !strings.Contains(ve.Message, "symbolic link") {
+				t.Errorf("message should name the symlink: %v", ve.Message)
 			}
 		})
 	}
@@ -281,11 +288,14 @@ func TestCollectFileStopsAtFileLimit(t *testing.T) {
 	}
 	mustWrite(t, filepath.Join(root, "page.html"), refs.String())
 
-	err := collectErr(t, root, "page.html")
+	ve := requireValidation(t, collectErr(t, root, "page.html"), errs.SubtypeFailedPrecondition)
 	// The count is named so the caller can see how far past the limit they are;
 	// the way out (--dir) rides on the hint, which the message does not carry.
-	if !strings.Contains(err.Error(), "200-file limit") || !strings.Contains(err.Error(), "reach 211 files") {
-		t.Fatalf("hitting the cap should name the limit and the actual count: %v", err)
+	if !strings.Contains(ve.Message, "200-file limit") || !strings.Contains(ve.Message, "reach 211 files") {
+		t.Errorf("hitting the cap should name the limit and the actual count: %v", ve.Message)
+	}
+	if !strings.Contains(ve.Hint, "--dir") {
+		t.Errorf("the way out belongs in the hint, got %q", ve.Hint)
 	}
 }
 
@@ -302,12 +312,12 @@ func TestCollectFileStopsAtDepthLimit(t *testing.T) {
 	}
 	mustWrite(t, filepath.Join(root, "c"+itoa(maxDepDepth+2)+".css"), ".end{}")
 
-	err := collectErr(t, root, "page.html")
+	ve := requireValidation(t, collectErr(t, root, "page.html"), errs.SubtypeFailedPrecondition)
 	// The message names the file and the reference that overflowed, so the
 	// caller can cut the chain instead of guessing where it runs deep.
-	if !strings.Contains(err.Error(), "nest more than 16 levels deep") ||
-		!strings.Contains(err.Error(), "references") {
-		t.Fatalf("exceeding the depth limit should name the reference that did it: %v", err)
+	if !strings.Contains(ve.Message, "nest more than 16 levels deep") ||
+		!strings.Contains(ve.Message, "references") {
+		t.Errorf("exceeding the depth limit should name the reference that did it: %v", ve.Message)
 	}
 }
 
@@ -338,8 +348,9 @@ func TestCollectFileRecordsWhoPulledEachDependencyIn(t *testing.T) {
 		t.Fatalf("Via must name the referrer, got %+v", cands)
 	}
 	_, _, err = BuildManifest(cands, "report.html")
-	if err == nil || !strings.Contains(err.Error(), "report.html references it") {
-		t.Fatalf("the conflict must name who pulled the other index.html in, got %v", err)
+	ve := requireValidation(t, err, errs.SubtypeFailedPrecondition)
+	if !strings.Contains(ve.Message, "report.html references it") {
+		t.Errorf("the conflict must name who pulled the other index.html in, got %q", ve.Message)
 	}
 }
 
@@ -377,9 +388,7 @@ func TestResolveReferenceClassification(t *testing.T) {
 			rel, skip, err := resolveReference(c.from, c.ref)
 			switch {
 			case c.want.err:
-				if err == nil {
-					t.Fatalf("expected an error, got %q", rel)
-				}
+				requireValidation(t, err, errs.SubtypeFailedPrecondition)
 			case c.want.skip:
 				if err != nil || !skip {
 					t.Fatalf("expected a skip, got rel=%q skip=%v err=%v", rel, skip, err)
