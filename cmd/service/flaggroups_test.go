@@ -86,6 +86,9 @@ func TestServiceFlagGroups_AgentContract(t *testing.T) {
 	if i := idx("--dry-run"); i < iExec || i > iOut {
 		t.Errorf("--dry-run not under Execution:\n%s", out)
 	}
+	if i := idx("--timeout"); i < iExec || i > iOut {
+		t.Errorf("--timeout not under Execution:\n%s", out)
+	}
 	if idx("--format") < iOut {
 		t.Errorf("--format not under Output:\n%s", out)
 	}

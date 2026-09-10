@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	extcs "github.com/larksuite/cli/extension/contentsafety"
@@ -223,6 +224,58 @@ func TestNewCmdServiceMethod_RunFCallback(t *testing.T) {
 	if captured.SchemaPath != "drive.files.list" {
 		t.Errorf("expected SchemaPath=drive.files.list, got %s", captured.SchemaPath)
 	}
+}
+
+func TestServiceMethod_Timeout(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Run("parses duration", func(t *testing.T) {
+		f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+		var got time.Duration
+		cmd := NewCmdServiceMethod(f, driveSpec(), driveMethod("GET", nil), "get", "files", func(opts *ServiceMethodOptions) error {
+			got = opts.Timeout
+			return nil
+		})
+		cmd.SetArgs([]string{"--timeout", "5s"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+		if got != 5*time.Second {
+			t.Fatalf("timeout = %v, want 5s", got)
+		}
+	})
+
+	t.Run("negative is typed validation error", func(t *testing.T) {
+		f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+		cmd := NewCmdServiceMethod(f, driveSpec(), driveMethod("GET", nil), "get", "files", nil)
+		cmd.SetArgs([]string{"--params", `{"file_token":"boxcn123"}`, "--timeout", "-1s"})
+		err := cmd.Execute()
+		var validationErr *errs.ValidationError
+		if !errors.As(err, &validationErr) || validationErr.Param != "--timeout" || validationErr.Subtype != errs.SubtypeInvalidArgument {
+			t.Fatalf("error = %#v, want timeout ValidationError", err)
+		}
+	})
+
+	t.Run("dry-run projects timeout", func(t *testing.T) {
+		f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
+		cmd := NewCmdServiceMethod(f, driveSpec(), driveMethod("GET", nil), "get", "files", nil)
+		cmd.SetArgs([]string{"--params", `{"file_token":"boxcn123"}`, "--dry-run", "--timeout", "5s"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+		var envelope struct {
+			Data struct {
+				API []struct {
+					Timeout string `json:"timeout"`
+				} `json:"api"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+			t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, stdout.String())
+		}
+		if len(envelope.Data.API) != 1 || envelope.Data.API[0].Timeout != "5s" {
+			t.Fatalf("data.api = %#v, want one call with timeout=5s", envelope.Data.API)
+		}
+	})
 }
 
 // ── dry-run / buildServiceRequest ──

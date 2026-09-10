@@ -68,6 +68,127 @@ func newTestAPIClient(t *testing.T, rt http.RoundTripper) (*APIClient, *bytes.Bu
 	}, errBuf
 }
 
+func TestDoAPI_RequestTimeout(t *testing.T) {
+	t.Run("positive timeout adds deadline", func(t *testing.T) {
+		var remaining time.Duration
+		ac, _ := newTestAPIClient(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			deadline, ok := req.Context().Deadline()
+			if !ok {
+				t.Fatal("request context has no deadline")
+			}
+			remaining = time.Until(deadline)
+			return jsonResponse(map[string]interface{}{"code": 0}), nil
+		}))
+		_, err := ac.DoAPI(context.Background(), RawApiRequest{Method: "GET", URL: "/open-apis/test", As: core.AsBot, Timeout: time.Second})
+		if err != nil {
+			t.Fatalf("DoAPI failed: %v", err)
+		}
+		if remaining <= 0 || remaining > time.Second {
+			t.Fatalf("deadline remaining = %v, want within (0, 1s]", remaining)
+		}
+	})
+
+	t.Run("zero timeout adds no deadline", func(t *testing.T) {
+		ac, _ := newTestAPIClient(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if _, ok := req.Context().Deadline(); ok {
+				t.Fatal("zero timeout unexpectedly added a deadline")
+			}
+			return jsonResponse(map[string]interface{}{"code": 0}), nil
+		}))
+		if _, err := ac.DoAPI(context.Background(), RawApiRequest{Method: "GET", URL: "/open-apis/test", As: core.AsBot}); err != nil {
+			t.Fatalf("DoAPI failed: %v", err)
+		}
+	})
+
+	t.Run("parent deadline is preserved", func(t *testing.T) {
+		parentCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		parentDeadline, _ := parentCtx.Deadline()
+		ac, _ := newTestAPIClient(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			got, ok := req.Context().Deadline()
+			if !ok || !got.Equal(parentDeadline) {
+				t.Fatalf("deadline = %v, want parent deadline %v", got, parentDeadline)
+			}
+			return jsonResponse(map[string]interface{}{"code": 0}), nil
+		}))
+		if _, err := ac.DoAPI(parentCtx, RawApiRequest{Method: "GET", URL: "/open-apis/test", As: core.AsBot, Timeout: time.Minute}); err != nil {
+			t.Fatalf("DoAPI failed: %v", err)
+		}
+	})
+
+	t.Run("later parent deadline is still preserved", func(t *testing.T) {
+		parentCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		parentDeadline, _ := parentCtx.Deadline()
+		ac, _ := newTestAPIClient(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			got, ok := req.Context().Deadline()
+			if !ok || !got.Equal(parentDeadline) {
+				t.Fatalf("deadline = %v, want existing parent deadline %v", got, parentDeadline)
+			}
+			return jsonResponse(map[string]interface{}{"code": 0}), nil
+		}))
+		if _, err := ac.DoAPI(parentCtx, RawApiRequest{Method: "GET", URL: "/open-apis/test", As: core.AsBot, Timeout: 5 * time.Second}); err != nil {
+			t.Fatalf("DoAPI failed: %v", err)
+		}
+	})
+
+	t.Run("expired request is typed network timeout", func(t *testing.T) {
+		ac, _ := newTestAPIClient(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			<-req.Context().Done()
+			return nil, req.Context().Err()
+		}))
+		_, err := ac.DoAPI(context.Background(), RawApiRequest{Method: "GET", URL: "/open-apis/test", As: core.AsBot, Timeout: time.Millisecond})
+		var networkErr *errs.NetworkError
+		if !errors.As(err, &networkErr) {
+			t.Fatalf("error = %T, want *errs.NetworkError", err)
+		}
+		if networkErr.Subtype != errs.SubtypeNetworkTimeout {
+			t.Fatalf("subtype = %q, want %q", networkErr.Subtype, errs.SubtypeNetworkTimeout)
+		}
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("errors.Is(error, context.DeadlineExceeded) = false: %v", err)
+		}
+		joined, ok := networkErr.Unwrap().(interface{ Unwrap() []error })
+		if !ok {
+			t.Fatalf("network cause = %T, want joined original and context causes", networkErr.Unwrap())
+		}
+		causes := joined.Unwrap()
+		if len(causes) != 2 || causes[0] == nil || !errors.Is(causes[1], context.DeadlineExceeded) {
+			t.Fatalf("joined causes = %#v, want original cause plus context deadline", causes)
+		}
+	})
+}
+
+func TestPaginateAll_RequestTimeoutAppliesPerPage(t *testing.T) {
+	page := 0
+	ac, _ := newTestAPIClient(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		page++
+		select {
+		case <-time.After(35 * time.Millisecond):
+		case <-req.Context().Done():
+			return nil, req.Context().Err()
+		}
+		return jsonResponse(map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"items":      []interface{}{page},
+				"has_more":   page < 3,
+				"page_token": "next",
+			},
+		}), nil
+	}))
+
+	_, err := ac.PaginateAll(context.Background(), RawApiRequest{
+		Method: "GET", URL: "/open-apis/test", As: core.AsBot, Timeout: 50 * time.Millisecond,
+	}, PaginationOptions{PageDelay: 1})
+	if err != nil {
+		t.Fatalf("PaginateAll failed: %v", err)
+	}
+	if page != 3 {
+		t.Fatalf("pages = %d, want 3", page)
+	}
+}
+
 func TestIsJSONContentType(t *testing.T) {
 	tests := []struct {
 		ct   string
