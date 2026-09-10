@@ -213,10 +213,6 @@ func requireExactlyOneExportSource(rctx *common.RuntimeContext) error {
 	return nil
 }
 
-// exportLookup returns the path-segment locator: --app-id and --meta-token share
-// one segment and the server tells them apart by the "app_" prefix, matching how
-// +get already accepts either identifier.
-//
 // exportPath is the app-source-export endpoint.
 //
 // It is a top-level action path (POST /apps/export), not /apps/:appID/...: the
@@ -251,9 +247,10 @@ func exportBody(rctx *common.RuntimeContext) map[string]interface{} {
 // JSON envelope and classifies every 4xx as a transport-level NetworkError. That
 // is wrong for the cases below: they are not transport problems and retrying will
 // never help. Re-map them onto the taxonomy an agent can act on, keeping the
-// original error as the cause. 422 is the distinguishing case — the app's code is
-// not stored in git at all (static HTML apps keep artifacts in file storage), so
-// the hint points at the interface that can actually serve it.
+// original error as the cause. 422 is the distinguishing case — the app is an
+// artifact-hosted type (static HTML / web app) that has no successfully published
+// version yet, so there is nothing to archive; the hint tells the caller to
+// publish first rather than to treat it as a wrong app id and retry.
 func classifyExportErr(err error) error {
 	var netErr *errs.NetworkError
 	if !errors.As(err, &netErr) {
@@ -279,8 +276,8 @@ func classifyExportErr(err error) error {
 			WithHint(appIDListHint).
 			WithCause(err)
 	case http.StatusUnprocessableEntity:
-		return errs.NewAPIError(errs.SubtypeUnknown, "export failed: %s", detail).
-			WithHint("this app type keeps its code outside git; use the file storage commands (+file-list / +file-download) to fetch its artifacts").
+		return errs.NewAPIError(errs.SubtypeFailedPrecondition, "export failed: %s", detail).
+			WithHint("not a wrong app id and retrying will not help: %s", exportNotPublishedHint).
 			WithCause(err)
 	case http.StatusRequestEntityTooLarge:
 		return errs.NewAPIError(errs.SubtypeUnknown, "export failed: %s", detail).
@@ -332,7 +329,7 @@ func rejectExportErrorEnvelope(rctx *common.RuntimeContext, resp *http.Response)
 			Header:     resp.Header,
 			RawBody:    body,
 		}); classifyErr != nil {
-			return classifyErr
+			return annotateExportEnvelopeErr(classifyErr)
 		}
 	}
 	// Non-JSON body (or a JSON one that parsed clean but still isn't an archive).
@@ -346,6 +343,44 @@ func rejectExportErrorEnvelope(rctx *common.RuntimeContext, resp *http.Response)
 	}
 	return errs.NewInternalError(errs.SubtypeInvalidResponse,
 		"export returned %q instead of an archive", contentTypeForMessage(contentType))
+}
+
+// exportAppNotPublishedCode is the business code the gateway returns (as an
+// HTTP 200 + JSON envelope, not a 4xx) when export is asked for an artifact-hosted
+// app that has no successfully published build yet. It is not in the shared spark
+// code table, so the classifier leaves it as an untyped API error with no
+// actionable hint; annotateExportEnvelopeErr adds the export-specific one.
+const exportAppNotPublishedCode = 40901
+
+// exportNotPublishedHint is the recovery guidance for an app that has no published
+// build to export yet. Shared by the live 200+JSON path (annotateExportEnvelopeErr)
+// and the defensive HTTP-422 branch (classifyExportErr) so the two cannot drift.
+const exportNotPublishedHint = "export serves the app's latest published build and this app has none yet; publish it first (the publish path depends on the app type), then re-run export"
+
+// annotateExportEnvelopeErr adds export-scoped recovery guidance to the typed
+// error the classifier produced from a 200+JSON error envelope.
+//
+// The gateway reports "app not published" as a business code the shared spark
+// table does not carry, so the classifier can only pass the server's raw message
+// through — leaving the caller with no next step, and typed only as the generic
+// SubtypeUnknown. This is the failure a caller actually hits (verified on a live
+// lane: HTTP 200 + {"code":40901,...}), so both the actionable hint and the
+// precise subtype belong here, not on classifyExportErr's HTTP-422 branch, which
+// the gateway does not currently exercise. Setting the subtype keeps the live
+// path's taxonomy aligned with its 422 sibling so agents routing on subtype get
+// the same signal. Command-scoped rather than added to the shared code table
+// because "app not published" is meaningful for export specifically, and the
+// classifier layer holds classification, not command recovery.
+func annotateExportEnvelopeErr(err error) error {
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		return err
+	}
+	if problem.Code == exportAppNotPublishedCode {
+		problem.Subtype = errs.SubtypeFailedPrecondition
+		problem.Hint = exportNotPublishedHint
+	}
+	return err
 }
 
 // isArchiveContentType reports whether ct is a Content-Type an export archive is

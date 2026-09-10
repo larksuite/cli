@@ -136,8 +136,48 @@ func TestAppsExport_RejectsJSONEnvelopeBody(t *testing.T) {
 	if apiErr.Code != 40400 {
 		t.Errorf("code = %d, want 40400 from the envelope", apiErr.Code)
 	}
+	// annotate must touch only 40901: a different envelope code keeps whatever
+	// the classifier produced and must not pick up the publish-first guidance.
+	if strings.Contains(errHint(err), "publish") {
+		t.Errorf("hint = %q, want no publish guidance on a non-40901 code", errHint(err))
+	}
 	if _, statErr := os.Stat(filepath.Join(dir, "src.zip")); !os.IsNotExist(statErr) {
 		t.Error("src.zip was written; a JSON error envelope must never become a product")
+	}
+}
+
+// TestAppsExport_AnnotatesNotPublishedEnvelope pins the real not-published path
+// (verified on a live lane): the gateway answers HTTP 200 + JSON
+// {"code":40901,"msg":"app not published"} rather than an HTTP 422, so the error
+// flows through the envelope classifier, not classifyExportErr. That code is not
+// in the shared spark table, so without annotation the caller gets the raw server
+// message and no next step. The export layer must add the "publish first" hint.
+func TestAppsExport_AnnotatesNotPublishedEnvelope(t *testing.T) {
+	dir := chdirTemp(t)
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(archiveStub("app_x", 200,
+		[]byte(`{"code":40901,"msg":"app not published"}`), "application/json; charset=utf-8", ""))
+
+	err := runAppsShortcut(t, AppsExport,
+		[]string{"+export", "--app-id", "app_x", "--output", "src.zip", "--as", "user"}, factory, stdout)
+	if err == nil {
+		t.Fatal("execute err = nil, want the not-published envelope surfaced as an error")
+	}
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("err = %T %v, want *errs.APIError carrying the envelope code", err, err)
+	}
+	if apiErr.Code != 40901 {
+		t.Errorf("code = %d, want 40901 from the envelope", apiErr.Code)
+	}
+	if apiErr.Subtype != errs.SubtypeFailedPrecondition {
+		t.Errorf("subtype = %q, want %q so the live path matches its 422 sibling", apiErr.Subtype, errs.SubtypeFailedPrecondition)
+	}
+	if !strings.Contains(errHint(err), "publish") {
+		t.Errorf("hint = %q, want it to tell the caller to publish first", errHint(err))
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "src.zip")); !os.IsNotExist(statErr) {
+		t.Error("src.zip was written; a not-published error must never become a product")
 	}
 }
 
@@ -289,8 +329,9 @@ func errHint(err error) string {
 
 // TestAppsExport_ClassifiesFailures asserts the typed error and, for the two
 // cases an agent cannot otherwise recover from, that the hint says what to do
-// instead. 422 is the static-HTML gate: the code is not in git at all, so the
-// hint must point at file storage rather than suggest a retry.
+// instead. 422 is the not-published gate: an artifact-hosted app has no published
+// build yet, so the hint must tell the caller to publish first rather than to
+// treat it as a wrong app id and retry.
 func TestAppsExport_ClassifiesFailures(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -311,10 +352,10 @@ func TestAppsExport_ClassifiesFailures(t *testing.T) {
 			var t *errs.APIError
 			return errors.As(e, &t)
 		}, ""},
-		{"code not in git", 422, "this app type stores code outside git", func(e error) bool {
+		{"not published", 422, "the app has no published version yet; publish it before exporting", func(e error) bool {
 			var t *errs.APIError
 			return errors.As(e, &t)
-		}, "file storage"},
+		}, "publish"},
 		{"too large", 413, "archive too large", func(e error) bool {
 			var t *errs.APIError
 			return errors.As(e, &t)

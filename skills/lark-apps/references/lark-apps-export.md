@@ -57,7 +57,7 @@ lark-cli apps +export --app-id app_xxx --dry-run
 
 | 情况 | 怎么办 |
 |---|---|
-| 提示代码不在 git（422） | 该应用类型（存量静态 HTML）的产物存在文件存储里，不在 git。改用 `+file-list` / `+file-download`，重试无用 |
+| 应用尚未发布（`code 40901 app not published`） | 该应用是产物托管形态（如静态 HTML 应用），导出的是「最新已发布产物」，而它还没有成功发布过版本，此刻没有可导的东西。**先发布应用再重试**——不是 app_id 写错，重试也没用 |
 | 权限不足（403） | 你需要该应用的下载权限。**持有分享 token 不等于有权限** |
 | 应用不存在（404） | 用 `+list --keyword <name>` 核对 app_id |
 | 归档过大（413） | 超出导出体积上限，改用 `+git-credential-init` + 原生 git clone |
