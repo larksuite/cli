@@ -351,16 +351,6 @@ func fillHTMLDeployDryRun(dry *common.DryRunAPI, p htmlDeployPlan) {
 	}
 }
 
-// skipAdvice is the way out of each class of skip, printed once per class
-// rather than per file. Repeating it on every line buries it.
-var skipAdvice = map[deploy.SkipKind]string{
-	deploy.SkipMissing:    "create the missing file(s), or remove the references to them",
-	deploy.SkipUnreadable: "check the permissions on those paths",
-	deploy.SkipUnparsed:   "fix the file so its own references can be followed, or publish the directory with --dir",
-	deploy.SkipDynamic:    "a URL built at run time cannot be followed; publish the whole directory with --dir if the page needs those files",
-	deploy.SkipOutsideDir: "the entry has to sit at or above everything it references; move those files into the published directory, or publish from the directory that holds them",
-}
-
 // htmlDeployResult builds the JSON envelope of a finished publish.
 //
 // Skipped references belong here and not only on stderr: a caller that reads
@@ -403,19 +393,20 @@ func warnSkippedDeps(w io.Writer, skipped []deploy.Skip) {
 	}
 	fmt.Fprintf(w, "warning: %d reference(s) in the payload could not be published; the published pages will be missing them (broken styles, scripts or images):\n",
 		len(skipped))
-	seen := make(map[deploy.SkipKind]bool, len(skipAdvice))
-	var order []deploy.SkipKind
+	// One hint per distinct piece of advice, in the order it first came up.
+	// Grouping by the advice itself rather than by a category is what keeps a
+	// malformed reference from inheriting the advice written for a missing one.
+	seen := map[string]bool{}
+	var order []string
 	for _, s := range skipped {
 		fmt.Fprintf(w, "  %s\n", s.String())
-		if !seen[s.Kind] {
-			seen[s.Kind] = true
-			order = append(order, s.Kind)
+		if s.Advice != "" && !seen[s.Advice] {
+			seen[s.Advice] = true
+			order = append(order, s.Advice)
 		}
 	}
-	for _, kind := range order {
-		if advice := skipAdvice[kind]; advice != "" {
-			fmt.Fprintf(w, "  hint: %s\n", advice)
-		}
+	for _, advice := range order {
+		fmt.Fprintf(w, "  hint: %s\n", advice)
 	}
 }
 

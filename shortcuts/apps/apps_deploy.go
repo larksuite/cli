@@ -467,7 +467,7 @@ var AppsDeploy = common.Shortcut{
 		"Example: lark-cli apps +deploy   (project mode: run from the project root holding spark.json)",
 		"Example: lark-cli apps +deploy --file-path ./report.html   (publish the page and the css/js/images it references)",
 		"Example: lark-cli apps +deploy --dir ./site --entry-file home.html   (publish a directory; the entry is served as index.html)",
-		"--file-path follows the page's references; --dir packs the directory as-is and follows none. Publish a page whose files live above it by moving the entry up, not by widening --dir",
+		"--file-path follows the page's references; --dir packs the directory as-is and follows none. Either way the entry's own directory is the site root, so keep every file the page needs inside it",
 		"Add --dry-run to any of these to see the exact file list and the request bodies without publishing",
 		"Paths are relative to the current directory: cd to the payload first, absolute paths are rejected",
 		"Re-publishing: pass the --app-id returned last time; without it the target is looked up, and a new app is created when nothing matches",

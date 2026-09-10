@@ -48,3 +48,54 @@ func TestDiagnoseDirReportsReferencesItCannotSatisfy(t *testing.T) {
 		t.Errorf("external and navigation references must not be reported:\n%s", joined)
 	}
 }
+
+// The same bad reference has to be explained the same way whichever flag the
+// caller used. Three acceptance rounds were lost to this drifting: --file-path
+// was corrected each time and --dir kept the wording from the round before,
+// which is how it came to advise moving /etc/passwd into a directory about to
+// be published. Both sides now read their verdict from resolveReference, and
+// this pins that.
+func TestDirAndFilePathExplainTheSameReferenceIdentically(t *testing.T) {
+	refs := map[string]string{
+		"file scheme":   "file:///etc/hosts",
+		"windows drive": `c:\boot.css`,
+		"escapes root":  "../shared/theme.css",
+		"bad percent":   "a%ZZb.css",
+	}
+	for name, ref := range refs {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			site := filepath.Join(root, "site")
+			mustWrite(t, filepath.Join(site, "index.html"),
+				`<link rel="stylesheet" href="`+ref+`">`)
+			mustWrite(t, filepath.Join(root, "shared", "theme.css"), ".a{}")
+
+			// --file-path refuses outright.
+			_, _, _, ferr := CollectFile(permissiveFIO{}, filepath.Join(site, "index.html"))
+			if ferr == nil {
+				t.Fatalf("--file-path should refuse %q", ref)
+			}
+			wantWhy, wantAdvice := referenceProblem(ferr, ref, "index.html")
+
+			// --dir publishes anyway, but has to say the same thing about it.
+			cands, _, _, err := CollectDir(permissiveFIO{}, site)
+			if err != nil {
+				t.Fatalf("CollectDir: %v", err)
+			}
+			skips := DiagnoseDir(permissiveFIO{}, site, cands)
+			if len(skips) != 1 {
+				t.Fatalf("expected one report for %q, got %+v", ref, skips)
+			}
+			if skips[0].Why != wantWhy {
+				t.Errorf("reason differs between modes\n --dir %q\n --file-path %q", skips[0].Why, wantWhy)
+			}
+			if skips[0].Advice != wantAdvice {
+				t.Errorf("advice differs between modes\n --dir %q\n --file-path %q", skips[0].Advice, wantAdvice)
+			}
+			// Never tell anyone to move a system path into what they publish.
+			if strings.Contains(skips[0].Advice, "move the file") && name != "escapes root" {
+				t.Errorf("a malformed reference must not be answered with move-the-file: %q", skips[0].Advice)
+			}
+		})
+	}
+}

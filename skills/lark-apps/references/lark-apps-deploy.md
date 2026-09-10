@@ -11,6 +11,21 @@
 
 ## 项目模式（spark.json）
 
+### 文件怎么摆
+
+**入口所在目录就是站点根。** 页面用到的所有文件必须放在这个目录或它的子目录里——两种模式都一样，妙搭 GUI 也一样。
+
+```
+✅ site/index.html          引用 css/site.css、img/logo.png
+   site/css/site.css
+   site/img/logo.png
+
+❌ site/pages/report.html   引用 ../shared/style.css
+   site/shared/style.css
+```
+
+右边这种「入口在子目录、资源在父目录」的摆法**不受支持**：产物里入口恒被放到根（`output/index.html`），`../` 无论怎么发都在往上爬。`--file-path` 直接报错，`--dir` 会告警并发出一个缺样式的页面。正确做法是把入口放到最上层。
+
 ### 命令骨架
 
 - **必须在项目根目录执行**（项目根须有 `spark.json`，它是唯一的项目声明文件）。同源产物目录取 spark.json 的 `build.output`（缺省 `dist/output`），CDN 产物目录取可选的 `build.output_cdn`（不声明 = 无 CDN 分离），无 `--path` 参数。
@@ -171,9 +186,10 @@ lark-cli apps +deploy --dir ./site --dry-run                       # 只看计�
 | `only applies to the spark.json project mode` | `--skip-build` / `--no-verify` 属于项目模式，裸 HTML 发布下去掉 |
 | `must point at an .html file` / `must be an .html file` | `--file-path` 与 `--entry-file` 都只接受 `.html` |
 | `entry conflict` （`--file-path` 下） | 入口不叫 `index.html`，但它引用到的文件里有一个 `index.html`，两者会撞同一个产物路径；改名其中一个 |
-| stderr 里的 `warning: N issue(s) collecting what this page references` | 页面引用的本地文件没进包（不存在 / 读不了 / 某个文件解析失败）；线上会缺样式或脚本，按提示补文件或改用 `--dir` |
-| `invalid reference ... in <file>` | 引用越出入口目录，或含 `\` / 盘符 / `file:` / 非法转义；**发布不会进行**，把 `--dir` 指到上层目录通常是正解 |
-| `... is a symbolic link` | 依赖链上有符号链接；换成真实文件，或用 `--dir` 发布链接目标所在的目录 |
+| stderr 里的 `warning: N reference(s) in the payload could not be published` | 页面引用的文件没进包；**发布照常完成，但线上会缺样式或脚本**。每条后面跟着按成因给的 `hint:`，照它做 |
+| `invalid reference ... in <file>: it points above ...` | 引用越出入口目录；**发布不会进行**。把文件挪进入口目录**并同步改写引用**（只挪文件无效） |
+| `invalid reference ... in <file>:` 其他原因 | 引用文本本身写坏了（含 `\` / 盘符 / `file:` / 非法转义）；**发布不会进行**，在写引用的地方改正它，挪文件没有用 |
+| `... is a symbolic link` | 依赖链上有符号链接；换成真实文件的副本。**`--dir` 救不了**——它同样不发符号链接，只是改成告警而已 |
 | `must be a file name directly under --dir, not a path` | `--entry-file` 不接受路径；把 `--dir` 指到入口所在的那一层 |
 | `not found directly under --dir` | 入口文件名拼错，或它其实在子目录里 |
 | `no entry file` / `entry conflict` | 见上方入口判定表，不要靠改本地文件名试错 |

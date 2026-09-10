@@ -28,6 +28,15 @@ const (
 	maxSkipNotes = 100
 )
 
+// The advice attached to each kind of skip. Kept next to the reference rules
+// they belong to so that a change to one cannot leave the other behind.
+const (
+	adviceCreateOrDropReference = "create the missing file(s), or remove the references to them"
+	adviceCheckPermissions      = "check the permissions on those paths"
+	adviceFixFileOrUseDir       = "fix the file so its own references can be followed, or publish the directory with --dir"
+	adviceRuntimeURL            = "a URL built at run time cannot be followed; publish the whole directory with --dir if the page needs those files"
+)
+
 // SkipKind classifies why a referenced file was not published. Callers group by
 // kind to give one piece of advice per problem rather than repeating it.
 type SkipKind int
@@ -50,11 +59,17 @@ const (
 
 // Skip is one reference that was found but not published, or one file that was
 // published without being searched.
+//
+// Advice travels with the skip rather than being looked up from Kind by the
+// caller. A lookup table let the two input modes drift: the same bad reference
+// was explained one way under --file-path and another under --dir, and fixing
+// one never touched the other. Three acceptance rounds died on that.
 type Skip struct {
-	Ref  string
-	From string
-	Why  string
-	Kind SkipKind
+	Ref    string
+	From   string
+	Why    string
+	Advice string
+	Kind   SkipKind
 }
 
 func (s Skip) String() string {
@@ -86,11 +101,11 @@ func (c *collector) join(rel string) string {
 	return filepath.Join(c.root, filepath.FromSlash(rel))
 }
 
-func (c *collector) note(kind SkipKind, ref, from, why string) {
+func (c *collector) note(kind SkipKind, ref, from, why, advice string) {
 	if len(c.skipped) >= maxSkipNotes {
 		return
 	}
-	c.skipped = append(c.skipped, Skip{Ref: ref, From: from, Why: why, Kind: kind})
+	c.skipped = append(c.skipped, Skip{Ref: ref, From: from, Why: why, Advice: advice, Kind: kind})
 }
 
 // limitError stops the publish when the payload outgrows what a single-file
@@ -162,11 +177,11 @@ func (c *collector) read(rel string, required bool) ([]byte, int64, bool, error)
 		}
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
-			c.note(SkipMissing, rel, from, "the file does not exist")
+			c.note(SkipMissing, rel, from, "the file does not exist", adviceCreateOrDropReference)
 		case errors.Is(err, fs.ErrPermission):
-			c.note(SkipUnreadable, rel, from, "the file cannot be read: permission denied")
+			c.note(SkipUnreadable, rel, from, "the file cannot be read: permission denied", adviceCheckPermissions)
 		default:
-			c.note(SkipUnreadable, rel, from, "the path cannot be read")
+			c.note(SkipUnreadable, rel, from, "the path cannot be read", adviceCheckPermissions)
 		}
 		return nil, 0, false, nil
 	}
@@ -175,7 +190,7 @@ func (c *collector) read(rel string, required bool) ([]byte, int64, bool, error)
 			return nil, 0, false, errs.NewValidationError(errs.SubtypeFailedPrecondition,
 				"--file-path %q is not a regular file", p).WithParam("--file-path")
 		}
-		c.note(SkipUnreadable, rel, from, "the path is not a regular file")
+		c.note(SkipUnreadable, rel, from, "the path is not a regular file", adviceCheckPermissions)
 		return nil, 0, false, nil
 	}
 	f, err := c.fio.Open(p)
@@ -183,7 +198,7 @@ func (c *collector) read(rel string, required bool) ([]byte, int64, bool, error)
 		if required {
 			return nil, 0, false, inputPathError("--file-path", p, err)
 		}
-		c.note(SkipUnreadable, rel, from, "the file cannot be opened")
+		c.note(SkipUnreadable, rel, from, "the file cannot be opened", adviceCheckPermissions)
 		return nil, 0, false, nil
 	}
 	defer f.Close()
@@ -192,7 +207,7 @@ func (c *collector) read(rel string, required bool) ([]byte, int64, bool, error)
 		if required {
 			return nil, 0, false, errs.NewInternalError(errs.SubtypeFileIO, "read %q: %v", p, err).WithCause(err)
 		}
-		c.note(SkipUnreadable, rel, from, "the file could not be read to the end")
+		c.note(SkipUnreadable, rel, from, "the file could not be read to the end", adviceCheckPermissions)
 		return nil, 0, false, nil
 	}
 	return raw, int64(len(raw)), true, nil
@@ -283,14 +298,15 @@ func (c *collector) expand(item queueItem, raw []byte) ([]queueItem, error) {
 			// The file still ships; it is only left unexpanded, so anything it
 			// references is absent from the payload. Saying so beats letting
 			// the page arrive with pieces missing and no explanation.
-			c.note(SkipUnparsed, item.rel, item.rel, unparsedReason(pe.code))
+			c.note(SkipUnparsed, item.rel, item.rel, unparsedReason(pe.code), adviceFixFileOrUseDir)
 			return nil, nil
 		}
 		return nil, err
 	}
 	if unsupported > 0 {
 		c.note(SkipDynamic, item.rel, item.rel, fmt.Sprintf(
-			"%d reference(s) are computed at run time and cannot be followed", unsupported))
+			"%d reference(s) are computed at run time and cannot be followed", unsupported),
+			adviceRuntimeURL)
 	}
 
 	var out []queueItem
