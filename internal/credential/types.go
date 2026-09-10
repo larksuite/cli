@@ -10,6 +10,7 @@ import (
 
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/i18n"
 )
 
@@ -25,6 +26,8 @@ type Account struct {
 	UserOpenId          string
 	UserName            string
 	Lang                i18n.Lang
+	DPoPMode            core.DPoPMode
+	CredentialSource    core.CredentialSource
 	SupportedIdentities uint8
 }
 
@@ -68,6 +71,8 @@ func AccountFromCliConfig(cfg *core.CliConfig) *Account {
 		UserOpenId:          cfg.UserOpenId,
 		UserName:            cfg.UserName,
 		Lang:                cfg.Lang,
+		DPoPMode:            cfg.DPoPMode,
+		CredentialSource:    cfg.CredentialSource,
 		SupportedIdentities: cfg.SupportedIdentities,
 	}
 }
@@ -87,6 +92,8 @@ func (a *Account) ToCliConfig() *core.CliConfig {
 		UserOpenId:          a.UserOpenId,
 		UserName:            a.UserName,
 		Lang:                a.Lang,
+		DPoPMode:            a.DPoPMode,
+		CredentialSource:    a.CredentialSource,
 		SupportedIdentities: a.SupportedIdentities,
 	}
 }
@@ -131,6 +138,7 @@ type TokenResult struct {
 	Token  string
 	Scopes string                // optional, space-separated; empty = skip scope pre-check
 	Source core.CredentialSource // whewe the token came from
+	DPoP   *dpop.Binding         // nil means a Bearer token
 }
 
 // IdentityHint is credential-layer guidance for resolving the effective identity.
