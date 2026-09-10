@@ -409,7 +409,14 @@ func TestBaseDashboardBlockExecuteUpdate(t *testing.T) {
 				URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks/blk_a",
 				Body: map[string]interface{}{
 					"code": 0,
-					"data": map[string]interface{}{"block_id": "blk_a", "name": "折线图", "type": "line"},
+					"data": map[string]interface{}{
+						"block_id": "blk_a",
+						"name":     "折线图",
+						"type":     "line",
+						"display_config": map[string]interface{}{
+							"switch_row_column": enabled,
+						},
+					},
 				},
 			}
 			reg.Register(stub)
@@ -424,6 +431,25 @@ func TestBaseDashboardBlockExecuteUpdate(t *testing.T) {
 			displayConfig, ok := body["display_config"].(map[string]interface{})
 			if !ok || displayConfig["switch_row_column"] != enabled {
 				t.Fatalf("request body=%s", stub.CapturedBody)
+			}
+			var output map[string]interface{}
+			if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+				t.Fatalf("decode command output: %v", err)
+			}
+			data, ok := output["data"].(map[string]interface{})
+			if !ok {
+				t.Fatalf("data=%#v output=%s", output["data"], stdout.String())
+			}
+			if data["updated"] != true {
+				t.Fatalf("updated=%#v output=%s", data["updated"], stdout.String())
+			}
+			block, ok := data["block"].(map[string]interface{})
+			if !ok {
+				t.Fatalf("block=%#v output=%s", data["block"], stdout.String())
+			}
+			responseDisplayConfig, ok := block["display_config"].(map[string]interface{})
+			if !ok || responseDisplayConfig["switch_row_column"] != enabled {
+				t.Fatalf("block display_config=%#v output=%s", block["display_config"], stdout.String())
 			}
 		})
 	}
