@@ -15,20 +15,21 @@ type CommandID string
 // Canonical framework command IDs. Centralizing these paths keeps recovery,
 // notices, diagnostics, and flag projection on the same exact-path vocabulary.
 const (
-	CommandAuthLogin         CommandID = "auth/login"
-	CommandConfig            CommandID = "config"
-	CommandConfigInit        CommandID = "config/init"
-	CommandConfigBind        CommandID = "config/bind"
-	CommandConfigStrictMode  CommandID = "config/strict-mode"
-	CommandConfigPolicyShow  CommandID = "config/policy/show"
-	CommandConfigPluginsShow CommandID = "config/plugins/show"
-	CommandProfile           CommandID = "profile"
-	CommandProfileAdd        CommandID = "profile/add"
-	CommandProfileList       CommandID = "profile/list"
-	CommandSchema            CommandID = "schema"
-	CommandUpdate            CommandID = "update"
-	CommandSkills            CommandID = "skills"
-	CommandSkillsRead        CommandID = "skills/read"
+	CommandAuthLogin               CommandID = "auth/login"
+	CommandConfig                  CommandID = "config"
+	CommandConfigInit              CommandID = "config/init"
+	CommandConfigBind              CommandID = "config/bind"
+	CommandConfigKeychainDowngrade CommandID = "config/keychain-downgrade"
+	CommandConfigStrictMode        CommandID = "config/strict-mode"
+	CommandConfigPolicyShow        CommandID = "config/policy/show"
+	CommandConfigPluginsShow       CommandID = "config/plugins/show"
+	CommandProfile                 CommandID = "profile"
+	CommandProfileAdd              CommandID = "profile/add"
+	CommandProfileList             CommandID = "profile/list"
+	CommandSchema                  CommandID = "schema"
+	CommandUpdate                  CommandID = "update"
+	CommandSkills                  CommandID = "skills"
+	CommandSkillsRead              CommandID = "skills/read"
 )
 
 // CommandState describes how one command is presented by a distribution.

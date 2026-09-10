@@ -139,8 +139,8 @@ func TestDocsScriptInitializedDraftAutomaticallyValidatesPresentationDecision(t 
 	require.NotEmpty(t, draftPath)
 	require.Equal(t, filepath.Dir(draftPath), workspace)
 	require.False(t, gjson.Get(initialized.Stdout, "data.draft_file_created").Exists())
-	require.Equal(t, "The workspace directory has been created successfully. draft_path points to a new XML file that does not exist yet. Create and write the file directly without reading it first.", gjson.Get(initialized.Stdout, "data.tip").String())
-	require.Len(t, gjson.Get(initialized.Stdout, "data").Map(), 3)
+	require.Contains(t, gjson.Get(initialized.Stdout, "data.tip").String(), "draft XML does not exist yet")
+	require.Len(t, gjson.Get(initialized.Stdout, "data").Map(), 4)
 	_, statErr := os.Stat(filepath.Join(workDir, draftPath))
 	require.True(t, os.IsNotExist(statErr), "reserved draft XML already exists: %v", statErr)
 	require.NoError(t, os.WriteFile(
@@ -198,7 +198,7 @@ func TestDocsScriptInitializedDraftPreflightsBlockedRemoteImage(t *testing.T) {
 	require.NotEmpty(t, draftPath)
 	require.Equal(t, filepath.Dir(draftPath), workspace)
 	require.False(t, gjson.Get(initialized.Stdout, "data.draft_file_created").Exists())
-	require.Equal(t, "The workspace directory has been created successfully. draft_path points to a new XML file that does not exist yet. Create and write the file directly without reading it first.", gjson.Get(initialized.Stdout, "data.tip").String())
+	require.Contains(t, gjson.Get(initialized.Stdout, "data.tip").String(), "draft XML does not exist yet")
 	_, statErr := os.Stat(filepath.Join(workDir, draftPath))
 	require.True(t, os.IsNotExist(statErr), "reserved draft XML already exists: %v", statErr)
 	require.NoError(t, os.WriteFile(
@@ -445,7 +445,10 @@ func TestDocsScriptInitDraftCreatesUniqueWorkspacesWithoutXML(t *testing.T) {
 		randomPart := strings.TrimSuffix(strings.TrimPrefix(directory, "draft_"), "_folder")
 		require.Equal(t, directory, workspace)
 		require.False(t, gjson.Get(outcome.result.Stdout, "data.draft_file_created").Exists())
-		require.Equal(t, "The workspace directory has been created successfully. draft_path points to a new XML file that does not exist yet. Create and write the file directly without reading it first.", gjson.Get(outcome.result.Stdout, "data.tip").String())
+		cwd, err := filepath.EvalSymlinks(workDir)
+		require.NoError(t, err)
+		require.Equal(t, cwd, gjson.Get(outcome.result.Stdout, "data.cwd").String())
+		require.Contains(t, gjson.Get(outcome.result.Stdout, "data.tip").String(), "draft XML does not exist yet")
 		require.Equal(t, "draft.xml", filepath.Base(path))
 		require.Equal(t, filepath.Base(directory), directory)
 		require.True(t, strings.HasPrefix(directory, "draft_"), "path: %q", path)
@@ -646,5 +649,43 @@ func docsScriptE2EEnv(t *testing.T) map[string]string {
 		"LARKSUITE_CLI_APP_SECRET": "secret",
 		"LARKSUITE_CLI_BRAND":      "feishu",
 		"LARKSUITE_CLI_CONFIG_DIR": t.TempDir(),
+	}
+}
+
+func TestDocsScriptOptionalBlockConstraints(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+	for _, test := range []struct {
+		name       string
+		decision   string
+		wantStatus string
+		wantExit   int
+	}{
+		{name: "empty decision", decision: `{}`, wantStatus: "passed"},
+		{name: "missing blocks", decision: `{"visual_plan":{}}`, wantStatus: "passed"},
+		{name: "incomplete entries", decision: `{"visual_plan":{"blocks":[{}, {"type":"whiteboard"}, {"min_count":1}]}}`, wantStatus: "passed"},
+		{name: "invalid provided value", decision: `{"visual_plan":{"blocks":[{"min_count":0}]}}`, wantExit: 2},
+		{name: "complete requirement", decision: `{"visual_plan":{"blocks":[{"type":"table","min_count":1}]}}`, wantStatus: "failed"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := clie2e.RunCmd(ctx, clie2e.Request{
+				Args:      []string{"docs", "+script", "--command", "parse", "--content", `<p>plain text</p>`, "--presentation-decision", test.decision},
+				DefaultAs: "bot", WorkDir: t.TempDir(), Env: docsScriptE2EEnv(t),
+			})
+			require.NoError(t, err)
+			result.AssertExitCode(t, test.wantExit)
+			if test.wantExit != 0 {
+				require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String())
+				require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String())
+				require.Equal(t, "--presentation-decision", gjson.Get(result.Stderr, "error.param").String())
+				require.Contains(t, gjson.Get(result.Stderr, "error.message").String(), "visual_plan.blocks[0].min_count must be positive")
+				return
+			}
+			result.AssertStdoutStatus(t, true)
+			require.Equal(t, test.wantStatus, gjson.Get(result.Stdout, "data.assessment.status").String())
+			if test.wantStatus == "failed" {
+				require.Equal(t, "required_block_missing", gjson.Get(result.Stdout, "data.diagnostics.0.code").String())
+			}
+		})
 	}
 }

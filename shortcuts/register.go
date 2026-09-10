@@ -46,6 +46,13 @@ var serviceAliases = map[string][]string{
 	"slides": {"slide"},
 }
 
+// ServiceAliases returns the alternate spellings mounted on service's root
+// command, so a routing stub created before the domain is expanded answers the
+// same invocations as the expanded command.
+func ServiceAliases(service string) []string {
+	return append([]string(nil), serviceAliases[service]...)
+}
+
 // Empty brand (no config loaded) is treated as no-restriction so bootstrap
 // paths and tests without config still see the full service list.
 var brandRestrictedServices = map[string][]core.LarkBrand{
@@ -104,7 +111,13 @@ func AllShortcuts() []common.Shortcut {
 	return common.CloneHostedShortcuts(allShortcuts, commandbridge.Access{})
 }
 
-// AllShortcutsWithExternal returns one isolated shortcut snapshot after validating external path collisions.
+// ShortcutServiceNames returns the sorted domains that provide shortcuts.
+func ShortcutServiceNames() []string {
+	return ServiceNamesOf(allShortcuts)
+}
+
+// AllShortcutsWithExternal returns one isolated shortcut snapshot after
+// validating external path collisions.
 func AllShortcutsWithExternal(commands []common.Shortcut) ([]common.Shortcut, error) {
 	registered := AllShortcuts()
 	external := common.CloneHostedShortcuts(commands, commandbridge.Access{})
@@ -131,8 +144,47 @@ func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f
 	RegisterShortcutSnapshotWithContext(ctx, program, f, AllShortcuts())
 }
 
+// RegisterShortcutsForDomainsWithContext registers shortcuts from the selected
+// domains. A nil selection mounts every domain; a non-nil empty selection
+// mounts none.
+func RegisterShortcutsForDomainsWithContext(
+	ctx context.Context,
+	program *cobra.Command,
+	f *cmdutil.Factory,
+	domains []string,
+) {
+	RegisterShortcutSnapshotForDomainsWithContext(ctx, program, f, AllShortcuts(), domains)
+}
+
 // RegisterShortcutSnapshotWithContext mounts one build-local shortcut snapshot.
-func RegisterShortcutSnapshotWithContext(ctx context.Context, program *cobra.Command, f *cmdutil.Factory, registered []common.Shortcut) {
+func RegisterShortcutSnapshotWithContext(
+	ctx context.Context,
+	program *cobra.Command,
+	f *cmdutil.Factory,
+	registered []common.Shortcut,
+) {
+	RegisterShortcutSnapshotForDomainsWithContext(ctx, program, f, registered, nil)
+}
+
+// RegisterShortcutSnapshotForDomainsWithContext mounts the selected domains
+// from one build-local shortcut snapshot. A nil selection mounts every domain;
+// a non-nil empty selection mounts none.
+func RegisterShortcutSnapshotForDomainsWithContext(
+	ctx context.Context,
+	program *cobra.Command,
+	f *cmdutil.Factory,
+	registered []common.Shortcut,
+	domains []string,
+) {
+	byService := make(map[string][]common.Shortcut)
+	for _, shortcut := range registered {
+		byService[shortcut.Service] = append(byService[shortcut.Service], shortcut)
+	}
+	selectedServices := selectShortcutServices(byService, domains)
+	if len(selectedServices) == 0 {
+		return
+	}
+
 	// Factory.Config may be nil in tests that pass a zero-value factory.
 	var brand core.LarkBrand
 	if f != nil && f.Config != nil {
@@ -141,13 +193,8 @@ func RegisterShortcutSnapshotWithContext(ctx context.Context, program *cobra.Com
 		}
 	}
 
-	// Group by service
-	byService := make(map[string][]common.Shortcut)
-	for _, s := range registered {
-		byService[s.Service] = append(byService[s.Service], s)
-	}
-
-	for service, shortcuts := range byService {
+	for _, service := range selectedServices {
+		serviceShortcuts := byService[service]
 		// Find existing service command or create one
 		var svc *cobra.Command
 		for _, c := range program.Commands() {
@@ -157,15 +204,17 @@ func RegisterShortcutSnapshotWithContext(ctx context.Context, program *cobra.Com
 			}
 		}
 		if svc == nil {
+			svc = &cobra.Command{Use: service}
+			program.AddCommand(svc)
+		}
+		// A pre-mounted routing stub carries no description yet; a service
+		// command registered by cmd/service keeps its own.
+		if svc.Short == "" {
 			desc := registry.GetServiceDescription(service, "en")
 			if desc == "" {
 				desc = service + " operations"
 			}
-			svc = &cobra.Command{
-				Use:   service,
-				Short: desc,
-			}
-			program.AddCommand(svc)
+			svc.Short = desc
 		}
 		// Tag the service group with its domain so platform.ByDomain
 		// and Rule.Allow path-globs work without each leaf shortcut
@@ -189,7 +238,7 @@ func RegisterShortcutSnapshotWithContext(ctx context.Context, program *cobra.Com
 				svc.Aliases = append(svc.Aliases, alias)
 			}
 		}
-		for _, shortcut := range shortcuts {
+		for _, shortcut := range serviceShortcuts {
 			shortcut.MountWithContext(ctx, svc, f)
 		}
 		if service == "apps" {
@@ -207,6 +256,46 @@ func RegisterShortcutSnapshotWithContext(ctx context.Context, program *cobra.Com
 			installBrandRestrictionGuard(svc, service, brand)
 		}
 	}
+}
+
+func selectShortcutServices(byService map[string][]common.Shortcut, domains []string) []string {
+	if domains == nil {
+		services := make([]string, 0, len(byService))
+		for service := range byService {
+			services = append(services, service)
+		}
+		slices.Sort(services)
+		return services
+	}
+
+	selected := make(map[string]struct{}, len(domains))
+	for _, domain := range domains {
+		if _, ok := byService[domain]; ok {
+			selected[domain] = struct{}{}
+		}
+	}
+
+	services := make([]string, 0, len(selected))
+	for service := range selected {
+		services = append(services, service)
+	}
+	slices.Sort(services)
+	return services
+}
+
+// ServiceNamesOf returns the sorted distinct domains of one shortcut snapshot.
+// The root builder mounts a routing stub for each of them.
+func ServiceNamesOf(registered []common.Shortcut) []string {
+	seen := make(map[string]struct{})
+	for _, shortcut := range registered {
+		seen[shortcut.Service] = struct{}{}
+	}
+	services := make([]string, 0, len(seen))
+	for service := range seen {
+		services = append(services, service)
+	}
+	slices.Sort(services)
+	return services
 }
 
 // Mirrors internal/cmdpolicy/apply.go::installDenyStub: DisableFlagParsing +

@@ -399,6 +399,8 @@ func TestBaseDashboardBlockExecuteCreate(t *testing.T) {
 
 // TestBaseDashboardBlockExecuteUpdate tests the +dashboard-block-update command.
 func TestBaseDashboardBlockExecuteUpdate(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
 	t.Run("update name and data-config", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
@@ -460,6 +462,91 @@ func TestBaseDashboardBlockExecuteUpdate(t *testing.T) {
 			"--data-config", "bad-json"}
 		if err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout); err == nil {
 			t.Fatalf("expected error for invalid data-config JSON")
+		}
+	})
+
+	t.Run("filter operator requiring value rejects missing value before request", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		stub := &httpmock.Stub{
+			Method:   "PATCH",
+			URL:      "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks/blk_a",
+			Body:     map[string]interface{}{"code": 0, "data": map[string]interface{}{"block_id": "blk_a"}},
+			Optional: true,
+		}
+		reg.Register(stub)
+		args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_001", "--block-id", "blk_a",
+			"--data-config", `{"filter":{"conjunction":"and","conditions":[{"field_name":"Segment","operator":"is"}]}}`}
+		err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout)
+		var validationErr *errs.ValidationError
+		if !errors.As(err, &validationErr) {
+			t.Fatalf("err type=%T want *errs.ValidationError: %v", err, err)
+		}
+		if validationErr.Subtype != errs.SubtypeInvalidArgument || validationErr.Param != "--data-config" {
+			t.Fatalf("problem=%#v want invalid_argument param --data-config", validationErr.Problem)
+		}
+		if !strings.Contains(validationErr.Message, "filter.conditions[0].value 缺失") {
+			t.Fatalf("message=%q missing precise filter path", validationErr.Message)
+		}
+		if !strings.Contains(validationErr.Hint, "lark-base-dashboard-block-config.md") {
+			t.Fatalf("hint=%q missing data_config recovery reference", validationErr.Hint)
+		}
+		if len(stub.CapturedBodies) != 0 {
+			t.Fatalf("validation failure must not send PATCH, captured=%d", len(stub.CapturedBodies))
+		}
+	})
+
+	t.Run("empty filter operators do not require value", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		stub := &httpmock.Stub{
+			Method: "PATCH",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks/blk_a",
+			Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"block_id": "blk_a"}},
+		}
+		reg.Register(stub)
+		args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_001", "--block-id", "blk_a",
+			"--data-config", `{"filter":{"conjunction":"and","conditions":[{"field_name":"Segment","operator":"isEmpty"},{"field_name":"Region","operator":"isNotEmpty"}]}}`}
+		if err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout); err != nil {
+			t.Fatalf("empty operators without value must remain valid: %v", err)
+		}
+		if len(stub.CapturedBodies) != 1 {
+			t.Fatalf("valid empty filter must send one PATCH, captured=%d", len(stub.CapturedBodies))
+		}
+	})
+
+	t.Run("filter accepts field_id references", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		stub := &httpmock.Stub{
+			Method: "PATCH",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks/blk_a",
+			Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"block_id": "blk_a"}},
+		}
+		reg.Register(stub)
+		args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_001", "--block-id", "blk_a",
+			"--data-config", `{"filter":{"conjunction":"and","conditions":[{"field_id":"fld_segment","operator":"is","value":["Enterprise"]}]}}`}
+		if err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout); err != nil {
+			t.Fatalf("field_id filters must remain valid on update: %v", err)
+		}
+		if len(stub.CapturedBodies) != 1 {
+			t.Fatalf("valid field_id filter must send one PATCH, captured=%d", len(stub.CapturedBodies))
+		}
+	})
+
+	t.Run("no-validate bypasses filter validation", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		stub := &httpmock.Stub{
+			Method: "PATCH",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks/blk_a",
+			Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"block_id": "blk_a"}},
+		}
+		reg.Register(stub)
+		args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_001", "--block-id", "blk_a",
+			"--data-config", `{"filter":{"conjunction":"and","conditions":[{"field_name":"Segment","operator":"is"}]}}`,
+			"--no-validate"}
+		if err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout); err != nil {
+			t.Fatalf("--no-validate must bypass filter validation: %v", err)
+		}
+		if len(stub.CapturedBodies) != 1 {
+			t.Fatalf("bypassed filter must send one PATCH, captured=%d", len(stub.CapturedBodies))
 		}
 	})
 }
@@ -625,6 +712,72 @@ func TestBaseDashboardBlockDryRun_Update(t *testing.T) {
 	if !strings.Contains(got, "PATCH /open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks/blk_a") || !strings.Contains(got, "订单趋势v2") || !strings.Contains(got, "订单表2") {
 		t.Fatalf("stdout=%s", got)
 	}
+}
+
+func TestBaseDashboardBlockDryRun_UpdateFilterValidation(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	t.Run("rejects missing value", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--block-id", "blk_a",
+			"--data-config", `{"filter":{"conjunction":"and","conditions":[{"field_name":"Segment","operator":"is"}]}}`,
+			"--dry-run"}
+		err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout)
+		var validationErr *errs.ValidationError
+		if !errors.As(err, &validationErr) {
+			t.Fatalf("err type=%T want *errs.ValidationError: %v", err, err)
+		}
+		if validationErr.Subtype != errs.SubtypeInvalidArgument || validationErr.Param != "--data-config" ||
+			!strings.Contains(validationErr.Message, "filter.conditions[0].value 缺失") {
+			t.Fatalf("unexpected validation error: %#v", validationErr.Problem)
+		}
+		if stdout.Len() != 0 {
+			t.Fatalf("rejected dry-run must not print a request preview: %s", stdout.String())
+		}
+	})
+
+	t.Run("previews empty operators without value", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--block-id", "blk_a",
+			"--data-config", `{"filter":{"conjunction":"and","conditions":[{"field_name":"Segment","operator":"isEmpty"},{"field_name":"Region","operator":"isNotEmpty"}]}}`,
+			"--dry-run", "--format", "pretty"}
+		if err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout); err != nil {
+			t.Fatalf("empty operators without value must remain valid: %v", err)
+		}
+		got := stdout.String()
+		for _, want := range []string{"PATCH /open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks/blk_a", `"operator":"isEmpty"`, `"operator":"isNotEmpty"`} {
+			if !strings.Contains(got, want) {
+				t.Fatalf("dry-run missing %s: %s", want, got)
+			}
+		}
+	})
+
+	t.Run("no-validate preserves missing value in preview", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_1", "--block-id", "blk_a",
+			"--data-config", `{"filter":{"conjunction":"and","conditions":[{"field_name":"Segment","operator":"is"}]}}`,
+			"--no-validate", "--dry-run"}
+		if err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout); err != nil {
+			t.Fatalf("--no-validate dry-run must preserve the filter: %v", err)
+		}
+		body, call := dryRunPreviewBody(t, stdout.Bytes())
+		if call.Method != "PATCH" || call.URL != "/open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks/blk_a" {
+			t.Fatalf("unexpected preview call: %#v", call)
+		}
+		dataConfig, _ := body["data_config"].(map[string]interface{})
+		filter, _ := dataConfig["filter"].(map[string]interface{})
+		conditions, _ := filter["conditions"].([]interface{})
+		if len(conditions) != 1 {
+			t.Fatalf("preview lost filter condition: %#v", body)
+		}
+		condition, _ := conditions[0].(map[string]interface{})
+		if condition["field_name"] != "Segment" || condition["operator"] != "is" {
+			t.Fatalf("preview rewrote filter condition: %#v", condition)
+		}
+		if _, hasValue := condition["value"]; hasValue {
+			t.Fatalf("preview injected omitted value: %#v", condition)
+		}
+	})
 }
 
 func TestBaseDashboardBlockDryRun_UpdateRankingKeepsPatch(t *testing.T) {

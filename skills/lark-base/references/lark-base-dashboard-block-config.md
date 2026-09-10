@@ -224,7 +224,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
   - `group_by[].sort.type` 为 `group` 或 `view` 且缺少 `order` 时，自动补 `order:"asc"`；`value` 排序不会自动补方向
 - 本地校验（可通过 `--no-validate` 跳过）
   - `+dashboard-block-create` 默认对 `data_config` 做轻量校验；失败会聚合错误并给出修复建议
-  - `+dashboard-block-update` 不带 `--type`，所以不做按组件类型的强校验，字段由后端验证；但 `number_format` 子字段与 create 一样本地拦截（见下方 number_format 小节）
+  - `+dashboard-block-update` 不带 `--type`，所以不做按组件类型的强校验；但会对可解析的 `filter` 条件做轻量校验，包括 `conjunction`、字段引用、`operator` 和必需的 `value`，并与 create 一样拦截非法 `number_format` 子字段（见下方 number_format 小节）
   - 仅需传入合法 JSON；CLI 不会擅自改写你的业务含义
 
 ## 可复制模板

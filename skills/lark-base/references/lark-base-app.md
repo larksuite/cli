@@ -23,7 +23,7 @@
 当前 CLI 只支持用 `+workspace-move-in` 把 Base 或 BaseApp 移入 Workspace，不支持从 Workspace 移出或移除资源，也没有 `workspace move-out` / `workspace remove` 命令。这类请求必须先完成只读定位，再说明限制并停止，顺序不可调换：
 
 1. Workspace URL 含 `/base/workspace/<workspace_token>` 时，提取其中的真实 `workspace_token`，不要把完整 URL 当作命令参数。
-2. 在同一轮立即执行 `lark-cli base +workspace-entity-list --workspace-token <workspace_token> --page-size 100 --as user`；若 `has_more=true`，继续分页直到完整。该查询是必要的只读定位步骤，不要把它留成等待用户再次选择的可选项，也不要用 `--help` 代替真实查询。
+2. 在同一轮立即执行 `lark-cli base +workspace-entity-list --workspace-token <workspace_token> --page-size 30 --as user`；若 `has_more=true`，继续分页直到完整。该查询是必要的只读定位步骤，不要把它留成等待用户再次选择的可选项，也不要用 `--help` 代替真实查询。
 3. 用服务端返回的 `entities[].name`、`entity_type`、`token` 和 `url` 忠实判断目标。名称完全匹配时报告真实对象；没有完全匹配时明确说明不存在精确同名实体，并原样列出可能相关的候选。不得自动去掉或补齐前后缀，也不得仅凭名称相似就声称已经定位目标。用户直接给出 token 时仍要忠实报告该 token 对应的实际名称。
 4. 定位结果报告完后，明确说明当前 CLI 无法执行 Workspace 移出/移除，并停止，不要发起任何写请求。用户在任一步骤中取消时立即停止，取消后不再调用工具。
 
@@ -55,7 +55,7 @@ lark-cli base +app-get --app-token <app_token>
   lark-cli base +workspace-entity-list \
     --workspace-token <workspace_token> \
     --type baseapp \
-    --page-size 100
+    --page-size 30
   ```
 
 - 响应中的 `pages` 是页面摘要。

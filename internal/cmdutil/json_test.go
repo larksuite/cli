@@ -113,3 +113,28 @@ func TestParseJSONMap(t *testing.T) {
 		})
 	}
 }
+
+// TestParseJSONNumbersUseFloat64 documents the deliberate ceiling: --data and
+// --params decode numbers into float64, so a literal above 2^53 is rounded.
+// Callers that need an exact 19-digit identifier pass it as a JSON string,
+// which is how every such identifier is typed in the API catalog. Decoding
+// into json.Number instead would keep the digits, but an exponent literal
+// would then expand to its full decimal form and a compact "1e1048575" in a
+// --params @file becomes a megabyte on the wire; float64 rejects that literal
+// at parse time instead.
+func TestParseJSONNumbersUseFloat64(t *testing.T) {
+	got, err := ParseJSONMap(`{"page_size":100,"created_at":1700000000}`, "--params", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]float64{"page_size": 100, "created_at": 1700000000} {
+		f, ok := got[name].(float64)
+		if !ok || f != want {
+			t.Fatalf("%s = %v (%T), want float64 %v", name, got[name], got[name], want)
+		}
+	}
+
+	if _, err := ParseJSONMap(`{"n":1e1048575}`, "--params", nil, nil); err == nil {
+		t.Fatal("expected an out-of-range exponent literal to be rejected at parse time")
+	}
+}
