@@ -229,14 +229,26 @@ func TestWebPChunkTraversalLimit(t *testing.T) {
 	}
 }
 
+// Offset 0 is consumed by Decode's magic read, so injecting there never
+// reaches readBMP or readWebP. Use the first offset each format reader
+// requests on its own, and assert the reader was actually entered.
 func TestMetadataPreservesReadCause(t *testing.T) {
-	for _, b := range [][]byte{bmpFixture(40, 24, false), webpFixture("VP8L")} {
-		sentinel := errors.New("source unavailable")
-		r := &offsetReader{Reader: bytes.NewReader(b), offset: 0, err: sentinel}
-		_, _, err := Decode(r)
-		if !errors.Is(err, sentinel) {
-			t.Fatalf("lost source error: %v", err)
-		}
+	for _, tc := range []struct {
+		format string
+		b      []byte
+		offset int64
+	}{
+		{"bmp", bmpFixture(40, 24, false), 18},
+		{"webp", webpFixture("VP8L"), 12},
+	} {
+		t.Run(tc.format, func(t *testing.T) {
+			sentinel := errors.New("source unavailable")
+			r := &offsetReader{Reader: bytes.NewReader(tc.b), offset: tc.offset, err: sentinel}
+			_, format, err := Decode(r)
+			if !errors.Is(err, sentinel) || !r.called || format != tc.format {
+				t.Fatalf("format=%q random read=%v err=%v", format, r.called, err)
+			}
+		})
 	}
 }
 
