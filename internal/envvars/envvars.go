@@ -27,4 +27,6 @@ const (
 	CliProxyEnable  = "LARKSUITE_CLI_PROXY_ENABLE"
 	CliProxyAddress = "LARKSUITE_CLI_PROXY_ADDRESS"
 	CliCAPath       = "LARKSUITE_CLI_CA_PATH"
+
+	// External keyless signer helper for private_key_jwt flows.
 )

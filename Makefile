@@ -34,7 +34,11 @@ build: fetch_meta
 	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY) .
 
 vet: fetch_meta
-	go vet ./...
+	# -unsafeptr=false: the macOS keychain signer dereferences dylib data-symbol
+	# addresses from purego.Dlsym (uintptr->unsafe.Pointer over stable C memory) —
+	# safe FFI, but go vet's unsafeptr can't prove it and has no inline suppress.
+	# golangci-lint still runs full govet (honoring the //nolint:govet) in CI.
+	go vet -unsafeptr=false ./...
 
 # fmt-check fails when any file would be reformatted by gofmt. Keep this
 # in sync with the fast-gate "Check formatting" step in CI.

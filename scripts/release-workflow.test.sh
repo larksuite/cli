@@ -51,7 +51,7 @@ end
 
 expect_equal(workflow.dig("env", "RELEASE_GO_VERSION"), "1.26.5", "release Go version")
 
-expected_jobs = %w[preflight build-sign-notarize create-draft-release verify-macos publish-github publish-npm retry-guidance]
+expected_jobs = %w[preflight signer-test-macos build-sign-notarize create-draft-release verify-macos publish-github publish-npm retry-guidance]
 expect_equal(jobs.keys.sort, expected_jobs.sort, "release jobs")
 
 expect_equal(workflow.fetch("concurrency"), {
@@ -61,7 +61,8 @@ expect_equal(workflow.fetch("concurrency"), {
 
 expected_needs = {
   "preflight" => nil,
-  "build-sign-notarize" => "preflight",
+  "signer-test-macos" => "preflight",
+  "build-sign-notarize" => %w[preflight signer-test-macos],
   "create-draft-release" => %w[preflight build-sign-notarize],
   "verify-macos" => %w[preflight build-sign-notarize create-draft-release],
   "publish-github" => %w[preflight create-draft-release verify-macos],
@@ -74,6 +75,7 @@ end
 
 expected_permissions = {
   "preflight" => { "contents" => "read" },
+  "signer-test-macos" => { "contents" => "read" },
   "build-sign-notarize" => { "contents" => "read" },
   "create-draft-release" => { "contents" => "write" },
   "verify-macos" => { "contents" => "read" },
@@ -149,6 +151,9 @@ fetch_metadata_index = build_steps.index { |step| step["name"] == "Fetch build m
 prepare_key_index = build_steps.index { |step| step["name"] == "Prepare Apple notarization key" }
 contract_error("build metadata must be fetched before Apple credentials are prepared") unless fetch_metadata_index && prepare_key_index && fetch_metadata_index < prepare_key_index
 contract_error("build metadata must be fetched outside GoReleaser hooks") if goreleaser.dig("before", "hooks")&.include?("python3 scripts/fetch_meta.py")
+linux_build = goreleaser.fetch("builds").find { |build| build["id"] == "linux" }
+contract_error("GoReleaser Linux build is missing") unless linux_build
+expect_equal(linux_build.fetch("goarch"), %w[amd64 arm64 riscv64], "Linux release architectures")
 
 goreleaser_index = build_steps.index { |step| step["name"] == "Run GoReleaser" }
 toolchain_verify_index = build_steps.index { |step| step["name"] == "Verify release Go toolchain" }
@@ -211,7 +216,7 @@ notarize = goreleaser.fetch("notarize").fetch("macos")
 expect_equal(notarize.length, 1, "number of macOS notarization configurations")
 macos_notarize = notarize.first
 expect_equal(macos_notarize.fetch("enabled"), '{{ isEnvSet "MACOS_SIGN_P12" }}', "macOS notarization enablement")
-expect_equal(macos_notarize.fetch("ids"), ["lark-cli"], "notarized build IDs")
+expect_equal(macos_notarize.fetch("ids"), ["darwin"], "notarized build IDs")
 expect_equal(macos_notarize.fetch("sign"), {
   "certificate" => "{{ .Env.MACOS_SIGN_P12 }}",
   "password" => "{{ .Env.MACOS_SIGN_PASSWORD }}",

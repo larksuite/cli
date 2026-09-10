@@ -56,13 +56,16 @@ func TestAccountFromCliConfigAndBack_ReturnCopies(t *testing.T) {
 		UserName:            "alice",
 		Lang:                i18n.LangJaJP,
 		SupportedIdentities: 3,
+		AuthMethod:          core.AuthMethodPrivateKeyJWT,
+		KeyLabel:            "openclaw-lark",
+		KeyProvider:         core.KeylessProviderLarkSuite,
 	}
 
 	acct := AccountFromCliConfig(cfg)
 	if acct == nil {
 		t.Fatal("AccountFromCliConfig() = nil")
 	}
-	if acct.AppID != cfg.AppID || acct.ProfileName != cfg.ProfileName || acct.UserName != cfg.UserName {
+	if acct.AppID != cfg.AppID || acct.ProfileName != cfg.ProfileName || acct.UserName != cfg.UserName || acct.KeyProvider != cfg.KeyProvider {
 		t.Fatalf("AccountFromCliConfig() = %#v, want copied fields from %#v", acct, cfg)
 	}
 	if acct.Lang != cfg.Lang {
@@ -73,7 +76,7 @@ func TestAccountFromCliConfigAndBack_ReturnCopies(t *testing.T) {
 	if roundtrip == nil {
 		t.Fatal("ToCliConfig() = nil")
 	}
-	if roundtrip.AppID != cfg.AppID || roundtrip.ProfileName != cfg.ProfileName || roundtrip.UserName != cfg.UserName {
+	if roundtrip.AppID != cfg.AppID || roundtrip.ProfileName != cfg.ProfileName || roundtrip.UserName != cfg.UserName || roundtrip.KeyProvider != cfg.KeyProvider {
 		t.Fatalf("ToCliConfig() = %#v, want copied fields from %#v", roundtrip, cfg)
 	}
 	if roundtrip.Lang != cfg.Lang {
