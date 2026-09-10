@@ -192,7 +192,20 @@ var AppsInitTemplate = common.Shortcut{
 		if _, err := resolveAppDevRegistries(rctx); err != nil {
 			return err
 		}
-		return validateAppDevDir(rctx.Str("dir"))
+		if err := validateAppDevDir(rctx.Str("dir")); err != nil {
+			return err
+		}
+		// The lexical check above cannot see a symbolic link. A relative link
+		// passes it and still redirects every scaffold write outside the
+		// workspace, so the target goes through the runtime's own path
+		// validation, which resolves links before deciding. A target that does
+		// not exist yet is the normal case and stays allowed.
+		if err := rctx.ValidatePath(resolveAppDevDir(rctx.Str("dir"))); err != nil {
+			return appsValidationParamError("--dir",
+				"--dir %q does not resolve inside the current directory", resolveAppDevDir(rctx.Str("dir"))).
+				WithHint("scaffolding writes into this directory; point it at a real path under the current directory, not at a link out of it")
+		}
+		return nil
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		template, _ := resolveAppDevTemplate(rctx) // Validate already rejected invalid input

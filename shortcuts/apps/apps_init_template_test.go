@@ -833,3 +833,30 @@ func TestAppDevHTTPGet_ErrorPaths(t *testing.T) {
 		t.Errorf("size cap: err = %v", err)
 	}
 }
+
+// A symbolic link passes the lexical --dir checks and still sends every
+// scaffold write outside the workspace. The name looks ordinary and relative,
+// so nothing about the invocation hints at where the files actually land.
+func TestAppsInitTemplate_RejectsSymlinkedDirOutsideWorkspace(t *testing.T) {
+	outside := t.TempDir()
+	work := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(work, "project")); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	orig, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(work); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(orig) })
+
+	err = AppsInitTemplate.Validate(context.Background(), testRuntimeAppDevInit(t, "frontend", "project"))
+	if err == nil {
+		t.Fatal("--dir pointing at a link out of the workspace must be rejected")
+	}
+	if !strings.Contains(err.Error(), "--dir") {
+		t.Errorf("the error should name the flag at fault: %v", err)
+	}
+}
