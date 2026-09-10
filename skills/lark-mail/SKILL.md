@@ -14,6 +14,8 @@ metadata:
 
 ## 核心概念
 
+- **用户黑白名单（Sender lists）**：当前登录用户的发件人白名单（allow）与黑名单（block），与客户端设置共享语义；支持邮箱地址和域名，区别于租户级名单。
+
 - **邮件（Message）**：一封具体的邮件，包含发件人、收件人、主题、正文（纯文本/HTML）、附件。每封邮件有唯一 `message_id`。
 - **会话（Thread）**：同一主题的邮件链，包含原始邮件和所有回复/转发。通过 `thread_id` 关联。
 - **草稿（Draft）**：未发送的邮件。所有发送类命令默认保存为草稿，加 `--confirm-send` 才实际发送。
@@ -273,12 +275,37 @@ lark-cli mail user_mailbox.folders create \
 - `user_mailbox_id` 几乎所有邮箱 API 都需要，一般传 `"me"` 代表当前用户
 - 列表接口支持 `--page-all` 自动翻页，无需手动处理 `page_token`
 
+## 用户黑白名单工作流
+
+仅管理当前用户自己的名单，固定 user 身份与邮箱 `me`；不提供用户或租户覆盖参数。读取需要 `mail:user_mailbox.message:readonly`，修改需要 `mail:user_mailbox.message:modify`。
+
+- 列表：[`+sender-list`](references/lark-mail-sender-list.md) 自动遍历所选名单全部页，按 allow、block 顺序返回 `items[{sender,list_type}]`；`--page-size` 仅控制每页大小。
+- 查询：[`+sender-get`](references/lark-mail-sender-get.md) 对两类名单进行全页精确匹配，忽略大小写和首尾空白；只在所有分页成功后返回 `found=false`。双名单命中是冲突，分页或接口失败不等于未命中。
+- 设置：[`+sender-set`](references/lark-mail-sender-set.md) 写入一个目标状态；重复设置可安全重试，切换名单由服务端原子处理。
+- 删除：[`+sender-delete`](references/lark-mail-sender-delete.md) 仅删除指定类型，不存在也成功；不影响另一名单。
+
+先展示用户指定的地址和目标名单，获得本次操作授权后执行设置或删除。设置后通过查询核对；删除后再查询确认未命中（若另一名单仍存在，查询会如实返回该类型）。示例中的地址需要替换为用户指定的真实地址：
+
+```bash
+lark-cli mail +sender-set --sender sender@example.com --type allow --dry-run
+lark-cli mail +sender-set --sender sender@example.com --type allow
+lark-cli mail +sender-get --sender sender@example.com
+lark-cli mail +sender-delete --sender sender@example.com --type allow --yes
+lark-cli mail +sender-get --sender sender@example.com
+```
+
+成功以 `ok=true` 和退出码 0 为准。设置/删除会检查 `failed_items`：即使 HTTP 成功也可能以非零退出码报告业务拒绝。参数错误需修正地址或类型；权限错误需补足对应读取/修改授权；配额或自身地址限制需按错误提示调整；依赖或分页错误需重试查询，不能假报未配置。不要在 CLI 用先删后写模拟名单切换。
+
 ## Shortcuts（推荐优先使用）
 
 Shortcut 是对常用操作的高级封装（`lark-cli mail +<verb> [flags]`）。有 Shortcut 的操作优先使用。
 
 | Shortcut | 说明 |
 |----------|------|
+| [`+sender-list`](references/lark-mail-sender-list.md) | List the current user's allowed and blocked senders, automatically following all pages and labeling each record with its list type. |
+| [`+sender-get`](references/lark-mail-sender-get.md) | Find an exact sender in both of the current user's lists. Returns found=false only after every page succeeds. |
+| [`+sender-set`](references/lark-mail-sender-set.md) | Set one sender in the current user's allow or block list. The server handles duplicate settings and switches lists atomically. |
+| [`+sender-delete`](references/lark-mail-sender-delete.md) | Remove one sender from the specified current-user list. A missing record is already absent; the other list is unchanged. |
 | [`+message`](references/lark-mail-message.md) | Use only when reading full content for one email by one message ID. For multiple message IDs, use `mail +messages`; do not loop `mail +message`. |
 | [`+messages`](references/lark-mail-messages.md) | Use when reading full content for multiple emails by message ID. Accepts comma-separated message IDs; CLI handles more than 20 IDs in batches and merges output. |
 | [`+thread`](references/lark-mail-thread.md) | Use when querying a full mail conversation/thread by thread ID. Returns all messages in chronological order, including replies and drafts, with body content and attachments metadata, including inline images. |
@@ -299,3 +326,28 @@ Shortcut 是对常用操作的高级封装（`lark-cli mail +<verb> [flags]`）�
 | [`+template-create`](references/lark-mail-template-create.md) | Create a personal mail template. Scans HTML <img src> local paths (reusing draft inline-image detection), uploads inline images and non-inline attachments to Drive, rewrites HTML to cid: references, and POSTs a Template payload to mail.user_mailbox.templates.create. |
 | [`+template-update`](references/lark-mail-template-update.md) | Update an existing mail template. Supports --inspect (read-only projection), --print-patch-template (prints a JSON skeleton for --patch-file), and flat flags (--set-subject / --set-name / etc). Internally it GETs the template, applies the patch, rewrites <img> local paths to cid: refs, and PUTs a full-replace update (no optimistic locking: last-write-wins). |
 | [`+lint-html`](references/lark-mail-lint-html.md) | Lint mail HTML body for compatibility / safety / Feishu-native rules. Returns warnings/errors and (default) auto-fixed HTML. Read-only: no draft, no API call. Use this BEFORE creating a draft to preview what the writing-path lint would change, or as a CI gate for static HTML templates. |
+
+## API Resources
+
+### user_mailbox.allow_senders
+
+  - `list` — 列表/搜索指定用户邮箱的「信任发件人」白名单。支持按发件人地址或域名前缀搜索 (keyword)。返回列表按创建时间倒序，使用 page_token + page_size 进行分页。User identity only. Use user_mailbox_id=me to operate on the current UAT user's mailbox. For an exact lookup, omit keyword, follow every page until has_more=false, and compare trimmed sender values case-insensitively in both lists. Only a complete scan with no match is not found; a match in both lists is a conflict. page_token is opaque; missing or repeated continuation tokens are errors. Permission and downstream failures are errors, not an empty result.
+  - `batch_create` — 批量将发件人加入指定用户邮箱的「信任发件人」白名单。支持按邮箱地址 (sender_type=1) 或域名 (sender_type=2) 添加。单次最多 100 项，单用户黑白名单合计最多 2000 项；与黑名单互斥（添加白名单会从黑名单删除对侧记录）。User identity only. A one-item request implements 'set allow'; adding an allow entry removes the matching blocked entry. Repeating the same target state is safe. Inspect failed_items for invalid sender, self address/domain, conflict, or quota errors.
+  - `batch_remove` — 批量从指定用户邮箱的「信任发件人」白名单中删除发件人。senders 中每项可以是邮箱地址或域名（与添加时一致）。批量删除按字面值哈希匹配，可兼容历史大写数据。单次最多 100 项。User identity only. A one-item request implements 'delete allow'. Removing an absent entry converges successfully and is safe to retry; the opposite list is unchanged. Inspect failed_items even when the API returns success; dependency failures remain errors.
+
+### user_mailbox.blocked_senders
+
+  - `list` — 列表/搜索指定用户邮箱的「屏蔽发件人」黑名单。支持按发件人地址或域名前缀搜索 (keyword)。返回列表按创建时间倒序，使用 page_token + page_size 进行分页。User identity only. Use user_mailbox_id=me to operate on the current UAT user's mailbox. For an exact lookup, omit keyword, follow every page until has_more=false, and compare trimmed sender values case-insensitively in both lists. Only a complete scan with no match is not found; a match in both lists is a conflict. page_token is opaque; missing or repeated continuation tokens are errors. Permission and downstream failures are errors, not an empty result.
+  - `batch_create` — 批量将发件人加入指定用户邮箱的「屏蔽发件人」黑名单。支持按邮箱地址 (sender_type=1) 或域名 (sender_type=2) 添加。单次最多 100 项，单用户黑白名单合计最多 2000 项；与白名单互斥（添加黑名单会从白名单删除对侧记录）。User identity only. A one-item request implements 'set block'; adding a blocked entry removes the matching allow entry. Repeating the same target state is safe. Inspect failed_items for invalid sender, self address/domain, conflict, or quota errors.
+  - `batch_remove` — 批量从指定用户邮箱的「屏蔽发件人」黑名单中删除发件人。senders 中每项可以是邮箱地址或域名（与添加时一致）。批量删除按字面值哈希匹配，可兼容历史大写数据。单次最多 100 项。User identity only. A one-item request implements 'delete block'. Removing an absent entry converges successfully and is safe to retry; the opposite list is unchanged. Inspect failed_items even when the API returns success; dependency failures remain errors.
+
+## 权限表
+
+| 方法 | 所需 scope |
+|------|-----------|
+| `user_mailbox.allow_senders.list` | `mail:user_mailbox.message:readonly` |
+| `user_mailbox.allow_senders.batch_create` | `mail:user_mailbox.message:modify` |
+| `user_mailbox.allow_senders.batch_remove` | `mail:user_mailbox.message:modify` |
+| `user_mailbox.blocked_senders.list` | `mail:user_mailbox.message:readonly` |
+| `user_mailbox.blocked_senders.batch_create` | `mail:user_mailbox.message:modify` |
+| `user_mailbox.blocked_senders.batch_remove` | `mail:user_mailbox.message:modify` |

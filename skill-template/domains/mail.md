@@ -1,5 +1,7 @@
 ## 核心概念
 
+- **用户黑白名单（Sender lists）**：当前登录用户的发件人白名单（allow）与黑名单（block），与客户端设置共享语义；支持邮箱地址和域名，区别于租户级名单。
+
 - **邮件（Message）**：一封具体的邮件，包含发件人、收件人、主题、正文（纯文本/HTML）、附件。每封邮件有唯一 `message_id`。
 - **会话（Thread）**：同一主题的邮件链，包含原始邮件和所有回复/转发。通过 `thread_id` 关联。
 - **草稿（Draft）**：未发送的邮件。所有发送类命令默认保存为草稿，加 `--confirm-send` 才实际发送。
@@ -487,3 +489,25 @@ lark-cli mail user_mailbox.folders create \
 
 - `user_mailbox_id` 几乎所有邮箱 API 都需要，一般传 `"me"` 代表当前用户
 - 列表接口支持 `--page-all` 自动翻页，无需手动处理 `page_token`
+
+
+## 用户黑白名单工作流
+
+仅管理当前用户自己的名单，固定 user 身份与邮箱 `me`；不提供用户或租户覆盖参数。读取需要 `mail:user_mailbox.message:readonly`，修改需要 `mail:user_mailbox.message:modify`。
+
+- 列表：[`+sender-list`](references/lark-mail-sender-list.md) 自动遍历所选名单全部页，按 allow、block 顺序返回 `items[{sender,list_type}]`；`--page-size` 仅控制每页大小。
+- 查询：[`+sender-get`](references/lark-mail-sender-get.md) 对两类名单进行全页精确匹配，忽略大小写和首尾空白；只在所有分页成功后返回 `found=false`。双名单命中是冲突，分页或接口失败不等于未命中。
+- 设置：[`+sender-set`](references/lark-mail-sender-set.md) 写入一个目标状态；重复设置可安全重试，切换名单由服务端原子处理。
+- 删除：[`+sender-delete`](references/lark-mail-sender-delete.md) 仅删除指定类型，不存在也成功；不影响另一名单。
+
+先展示用户指定的地址和目标名单，获得本次操作授权后执行设置或删除。设置后通过查询核对；删除后再查询确认未命中（若另一名单仍存在，查询会如实返回该类型）。示例中的地址需要替换为用户指定的真实地址：
+
+```bash
+lark-cli mail +sender-set --sender sender@example.com --type allow --dry-run
+lark-cli mail +sender-set --sender sender@example.com --type allow
+lark-cli mail +sender-get --sender sender@example.com
+lark-cli mail +sender-delete --sender sender@example.com --type allow --yes
+lark-cli mail +sender-get --sender sender@example.com
+```
+
+成功以 `ok=true` 和退出码 0 为准。设置/删除会检查 `failed_items`：即使 HTTP 成功也可能以非零退出码报告业务拒绝。参数错误需修正地址或类型；权限错误需补足对应读取/修改授权；配额或自身地址限制需按错误提示调整；依赖或分页错误需重试查询，不能假报未配置。不要在 CLI 用先删后写模拟名单切换。
