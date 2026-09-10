@@ -4,6 +4,7 @@
 package deptest
 
 import (
+	"bytes"
 	"flag"
 	"os"
 	"os/exec"
@@ -75,9 +76,15 @@ func externalPackages(t *testing.T, root, goos string) []string {
 	cmd := exec.Command("go", "list", "-deps", ".")
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH=amd64")
-	out, err := cmd.CombinedOutput()
+	// Read stdout only. go list reports module downloads ("go: downloading
+	// ...") on stderr, and a cold module cache -- CI, or a platform whose
+	// dependencies this host has never fetched -- would otherwise mix those
+	// lines into the package list.
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("go list -deps . (GOOS=%s) failed: %v\n%s", goos, err, out)
+		t.Fatalf("go list -deps . (GOOS=%s) failed: %v\n%s", goos, err, stderr.String())
 	}
 	var pkgs []string
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
@@ -87,6 +94,10 @@ func externalPackages(t *testing.T, root, goos string) []string {
 			continue
 		case strings.HasPrefix(pkg, "github.com/larksuite/cli"):
 			continue
+		case strings.ContainsAny(pkg, " \t"):
+			// An import path never contains whitespace; anything that does is
+			// diagnostic output, not a package.
+			t.Fatalf("unexpected non-package line from go list (GOOS=%s): %q", goos, pkg)
 		}
 		if first, _, _ := strings.Cut(pkg, "/"); strings.Contains(first, ".") {
 			pkgs = append(pkgs, pkg)
