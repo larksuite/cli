@@ -398,3 +398,79 @@ func TestServicePaginate_StreamBusinessErrorRemainsUnmarked(t *testing.T) {
 		t.Fatalf("stderr bytes = %q, want empty", got)
 	}
 }
+
+func TestServicePaginate_LaterPageTransportErrorEmitsNoStdout(t *testing.T) {
+	ac, out, errOut, reg := newServicePaginateTestHarness(t)
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/test/v1/items",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":      []interface{}{map[string]interface{}{"id": "first"}},
+				"has_more":   true,
+				"page_token": "next-1",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		URL:   "/open-apis/test/v1/items",
+		Error: errors.New("simulated transport failure"),
+	})
+
+	err := servicePaginate(context.Background(), ac, servicePaginateRequest(),
+		output.FormatJSON, "", out, errOut, "lark-cli test items list",
+		client.PaginationOptions{PageDelay: -1}, ac.CheckResponse)
+
+	if err == nil {
+		t.Fatal("servicePaginate() error = nil, want transport error from page 2")
+	}
+	if errs.IsRaw(err) {
+		t.Fatalf("errs.IsRaw(error) = true, want current servicePaginate pass-through behavior")
+	}
+	if got := out.String(); got != "" {
+		t.Fatalf("stdout bytes = %q, want empty on a failed pagination run", got)
+	}
+	if got := errOut.String(); got != "" {
+		t.Fatalf("stderr bytes = %q, want empty", got)
+	}
+}
+
+// The generated service commands share paginateLoop with `api`, so the same
+// gateway 5xx has to fail here too. The api-side cases alone would leave this
+// command layer unverified.
+func TestServicePaginate_LaterPageHTTPErrorEmitsNoStdout(t *testing.T) {
+	ac, out, errOut, reg := newServicePaginateTestHarness(t)
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/test/v1/items",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":      []interface{}{map[string]interface{}{"id": "first"}},
+				"has_more":   true,
+				"page_token": "next-1",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		URL:    "/open-apis/test/v1/items",
+		Status: 502,
+		Body:   map[string]interface{}{"msg": "Bad Gateway"},
+	})
+
+	err := servicePaginate(context.Background(), ac, servicePaginateRequest(),
+		output.FormatJSON, "", out, errOut, "lark-cli test items list",
+		client.PaginationOptions{PageDelay: -1}, ac.CheckResponse)
+
+	if err == nil {
+		t.Fatal("servicePaginate() error = nil, want HTTP 502 from page 2")
+	}
+	// The category, not merely that something failed: a 502 body with no code is
+	// also an unreadable page, so the later-page guard would catch it too. Only
+	// the status branch classifies it as a network failure.
+	if got := errs.CategoryOf(err); got != errs.CategoryNetwork {
+		t.Errorf("errs.CategoryOf(err) = %q, want %q", got, errs.CategoryNetwork)
+	}
+	if got := out.String(); got != "" {
+		t.Fatalf("stdout bytes = %q, want empty on a failed pagination run", got)
+	}
+}
