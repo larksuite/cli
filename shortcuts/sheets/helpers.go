@@ -524,6 +524,17 @@ func parseJSONFlag(runtime flagView, name string) (interface{}, error) {
 	}
 	var out interface{}
 	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		// The conventions of whatever produced the payload — Python's
+		// literals and single quotes, a trailing comma, a string that never
+		// got its quotes — are the same data in another spelling, so they are
+		// rewritten rather than reported (see json_repair.go, which refuses
+		// every shape that would need a guess).
+		if repaired, ok := repairLooseJSON(raw); ok {
+			var fixed interface{}
+			if json.Unmarshal([]byte(repaired), &fixed) == nil {
+				return finishParsedJSONFlag(runtime, name, fixed)
+			}
+		}
 		// Composite payloads that embed formulas / quotes / commas are the
 		// classic source of this error: inlined into the shell, the JSON gets
 		// mangled (e.g. `\$` → "invalid character in string escape"). For any
@@ -536,6 +547,13 @@ func parseJSONFlag(runtime flagView, name string) (interface{}, error) {
 		}
 		return nil, sheetsValidationForFlag(name, "--%s: invalid JSON: %v", name, err).WithCause(err)
 	}
+	return finishParsedJSONFlag(runtime, name, out)
+}
+
+// finishParsedJSONFlag carries a decoded payload the rest of the way, whether
+// it parsed strictly or came back through the loose-JSON repair: the habitual
+// shape rewrites, then schema validation.
+func finishParsedJSONFlag(runtime flagView, name string, out interface{}) (interface{}, error) {
 	// Unambiguous habitual shapes are rewritten onto the wire contract
 	// before validation (see jsonFlagNormalizers). Runs on the parsed value,
 	// so both the standalone cobra path and +batch-update sub-ops (whose

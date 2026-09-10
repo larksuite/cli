@@ -897,6 +897,13 @@ func parseValuesRows(runtime flagView) ([][]interface{}, error) {
 	if raw == "" {
 		return nil, nil
 	}
+	// --values decodes here rather than through parseJSONFlag, so it takes the
+	// same loose-JSON repair; strict input never reaches it.
+	if !json.Valid([]byte(raw)) {
+		if repaired, ok := repairLooseJSON(raw); ok {
+			raw = repaired
+		}
+	}
 	dec := json.NewDecoder(strings.NewReader(raw))
 	dec.UseNumber()
 	var v interface{}

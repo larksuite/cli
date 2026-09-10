@@ -461,6 +461,16 @@ func parseTablePutPayload(runtime flagView) (*tablePayload, error) {
 	if raw == "" {
 		return nil, common.ValidationErrorf("--sheets is required")
 	}
+	// --sheets decodes into its own wire struct rather than through
+	// parseJSONFlag, so the loose-JSON repair is applied here too: the same
+	// payload conventions arrive on this flag (5072 of the 09-04..07 decode
+	// rejections, the largest share of any single flag). Strict input is never
+	// touched — the repair only runs once encoding/json has refused it.
+	if !json.Valid([]byte(raw)) {
+		if repaired, ok := repairLooseJSON(raw); ok {
+			raw = repaired
+		}
+	}
 	dec := json.NewDecoder(strings.NewReader(raw))
 	dec.UseNumber()
 	var wire struct {
