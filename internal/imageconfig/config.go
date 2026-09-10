@@ -233,7 +233,12 @@ func readWebP(r io.ReaderAt) (Config, error) {
 				packed := binary.LittleEndian.Uint32(data[1:5])
 				return dimensions(int64(packed&0x3fff)+1, int64((packed>>14)&0x3fff)+1)
 			case "VP8X":
-				if size != 10 || data[0]&0xc1 != 0 || data[1] != 0 || data[2] != 0 || data[3] != 0 {
+				// The spec fixes the chunk at 10 bytes, but says of every
+				// reserved field -- the two high flag bits, the low flag bit
+				// and the 24-bit block -- "MUST be 0. Readers MUST ignore
+				// this field." Rejecting a non-zero reserved bit would refuse
+				// files that decode fine everywhere else.
+				if size != 10 {
 					return Config{}, errMetadata
 				}
 				return dimensions(uint24(data[4:7])+1, uint24(data[7:10])+1)

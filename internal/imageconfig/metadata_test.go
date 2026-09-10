@@ -134,7 +134,7 @@ func TestRejectMalformedMetadata(t *testing.T) {
 		{"webp_chunk", webpFixture("VP8L"), func(b []byte) { binary.LittleEndian.PutUint32(b[16:], 0xffffffff) }},
 		{"webp_version", webpFixture("VP8L"), func(b []byte) { b[24] |= 0x20 }},
 		{"webp_signature", webpFixture("VP8 "), func(b []byte) { b[23] = 0 }},
-		{"webp_reserved", webpFixture("VP8X"), func(b []byte) { b[21] = 1 }},
+		{"webp_vp8x_size", webpFixture("VP8X"), func(b []byte) { binary.LittleEndian.PutUint32(b[16:], 9) }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -264,6 +264,26 @@ func TestWebPAcceptsUnpaddedFinalChunk(t *testing.T) {
 
 	for name, b := range map[string][]byte{"unpadded_final_chunk": unpadded, "odd_container_size": oddContainer} {
 		t.Run(name, func(t *testing.T) {
+			cfg, format, err := Decode(bytes.NewReader(b))
+			if err != nil || format != "webp" || cfg.Width != 4 || cfg.Height != 5 {
+				t.Fatalf("config=%+v format=%q err=%v", cfg, format, err)
+			}
+		})
+	}
+}
+
+// The container spec says of every VP8X reserved field: "MUST be 0. Readers
+// MUST ignore this field." A writer that sets one still describes a readable
+// canvas, and x/image reads such files -- both its config and a full decode.
+func TestWebPIgnoresVP8XReservedFields(t *testing.T) {
+	for name, mutate := range map[string]func([]byte){
+		"rsv_high_bits":  func(b []byte) { b[20] |= 0xc0 },
+		"r_low_bit":      func(b []byte) { b[20] |= 0x01 },
+		"reserved_block": func(b []byte) { b[21], b[22], b[23] = 1, 2, 3 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			b := webpFixture("VP8X")
+			mutate(b)
 			cfg, format, err := Decode(bytes.NewReader(b))
 			if err != nil || format != "webp" || cfg.Width != 4 || cfg.Height != 5 {
 				t.Fatalf("config=%+v format=%q err=%v", cfg, format, err)
