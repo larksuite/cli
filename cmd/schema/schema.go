@@ -139,15 +139,26 @@ func runSchemaCatalog(
 	// that intentionally conceals every generated method still has metadata;
 	// bare `schema` should render an empty list rather than claim metadata is
 	// unavailable.
-	if len(catalog.Services()) == 0 {
+	//
+	// Built-in services are compiled into every binary, so a non-empty catalog
+	// no longer proves this one ever received the generated metadata. When they
+	// are all it holds, a broad listing would pass a couple of services off as
+	// the whole API surface and every other path is genuinely unresolvable —
+	// both callers need the fetch-once remedy, not a narrow answer. A path that
+	// does resolve is still served: those commands run, so `schema` must be able
+	// to describe them.
+	generated := hasGeneratedServices(catalog)
+	if !generated && len(parts) == 0 {
 		// No embedded metadata and the runtime fallback is empty too: offline
 		// with a cold cache, remote meta off, or an unwritable cache dir.
-		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "No API metadata available").
-			WithHint("this binary has no embedded API metadata; run any command with network access to the open platform once so metadata can be fetched and cached")
+		return errNoMetadata()
 	}
 	catalog = projectSchemaCatalog(catalog, visibility)
 	target, err := catalog.Resolve(parts)
 	if err != nil {
+		if !generated {
+			return errNoMetadata()
+		}
 		return resolveError(err)
 	}
 	refs := catalog.MethodRefs(target, registry.FilterForStrictMode(mode))
@@ -162,6 +173,31 @@ func runSchemaCatalog(
 	}
 	output.PrintJson(out, schema.Envelopes(refs))
 	return nil
+}
+
+// errNoMetadata is the graceful-degrade envelope for a binary that never
+// received the generated metadata: a structured validation error carrying the
+// one remedy that fixes it, rather than a bare resolve failure.
+func errNoMetadata() error {
+	return errs.NewValidationError(errs.SubtypeFailedPrecondition, "No API metadata available").
+		WithHint("this binary has no embedded API metadata; run any command with network access to the open platform once so metadata can be fetched and cached")
+}
+
+// hasGeneratedServices reports whether the catalog holds anything beyond the
+// built-in services that are compiled into every binary. Those ship even in a
+// bare-module build, so a non-empty catalog no longer proves this binary ever
+// received the generated metadata.
+func hasGeneratedServices(catalog apicatalog.Catalog) bool {
+	builtin := make(map[string]bool)
+	for _, name := range registry.BuiltinServiceNames() {
+		builtin[name] = true
+	}
+	for _, service := range catalog.Services() {
+		if !builtin[service.Name] {
+			return true
+		}
+	}
+	return false
 }
 
 // projectSchemaCatalog produces the metadata view corresponding to one final

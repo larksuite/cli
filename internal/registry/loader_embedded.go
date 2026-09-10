@@ -17,4 +17,10 @@ func init() {
 	} else {
 		embeddedMetaJSON = embeddedMetaDataDefaultJSON
 	}
+	// Built-in services (e.g. hire) that the remote api_definition endpoint
+	// does not serve. Always merged into the registry, independent of the
+	// remote-synced meta and the embedded fallback.
+	if data, err := metaFS.ReadFile("meta_data_builtin.json"); err == nil {
+		embeddedBuiltinJSON = data
+	}
 }
