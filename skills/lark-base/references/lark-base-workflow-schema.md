@@ -190,7 +190,7 @@
 |------|------|------|
 | `table_name` | 是 | 监控的数据表名 |
 | `trigger_control_list` | 否 | 触发控制，可选值：`pasteUpdate` / `automationBatchUpdate` / `syncUpdate` / `appendImport` |
-| `condition_list` | 是 | 非空 AndCondition 数组，每组 `conditions` 非空；组内条件为 AND，组间为 OR |
+| `condition_list` | 是 | 过滤条件数组，数组中每个元素为 AndCondition 结构，多个 AndCondition 之间为 OR 关系 |
 
 ### SetRecordTrigger
 
