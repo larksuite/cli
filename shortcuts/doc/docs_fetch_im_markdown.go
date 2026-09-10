@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/larksuite/cli/internal/urlrewrite"
 )
 
 type imMarkdownContext struct {
@@ -117,7 +119,10 @@ func newIMMarkdownContext(docInput string) imMarkdownContext {
 	base := "https://larkoffice.com"
 	raw := strings.TrimSpace(docInput)
 	if extracted, ok := imMarkdownBaseURLFromInput(raw); ok {
+		// The tenant host comes from user input and stays verbatim.
 		base = extracted
+	} else {
+		base = urlrewrite.Rewrite(base)
 	}
 	return imMarkdownContext{baseURL: base}
 }

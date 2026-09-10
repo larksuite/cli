@@ -4,9 +4,11 @@
 package cmd
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/internal/surface"
+	"github.com/larksuite/cli/internal/urlrewrite"
 )
 
 // rootHelpFragment is one framework-owned root-help fragment. A fragment with
@@ -134,10 +136,12 @@ Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
 Use "{{.CommandPath}} [command] --help" for more information about a command.{{end}}`
 
 // skillsSetupFooter is the root-help pointer at the human one-time skills
-// setup. It is emitted only while skills/read remains referenceable.
+// setup. It is emitted only while skills/read remains referenceable. The URL
+// is CLI-owned presentation text, so it passes through the URL rewrite
+// extension each time the template is rendered.
 const skillsSetupFooter = `{{if not .HasParent}}
 
-Skills setup (one-time, humans): npx skills add larksuite/cli -g -y — https://github.com/larksuite/cli#agent-skills{{end}}`
+Skills setup (one-time, humans): npx skills add larksuite/cli -g -y — %s{{end}}`
 
 var rootUsageTemplate = renderRootUsageTemplate(nil)
 
@@ -147,7 +151,7 @@ func renderRootUsageTemplate(plan *surface.Plan) string {
 	b.WriteString(renderRootHelpFragments(rootUsageSynopsis, plan))
 	b.WriteString(rootUsageTemplateSuffix)
 	if plan.CanReference(surface.CommandSkillsRead) {
-		b.WriteString(skillsSetupFooter)
+		fmt.Fprintf(&b, skillsSetupFooter, urlrewrite.Rewrite("https://github.com/larksuite/cli#agent-skills"))
 	}
 	b.WriteByte('\n')
 	return b.String()

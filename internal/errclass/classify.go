@@ -12,6 +12,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/recovery"
+	"github.com/larksuite/cli/internal/urlrewrite"
 )
 
 // ClassifyContext is the contextual data BuildAPIError uses to populate
@@ -568,10 +569,10 @@ func ConsoleURL(brand, appID string, scopes []string) string {
 	// open-platform base URL stays a single source of truth.
 	base := fmt.Sprintf("%s/page/scope-apply?clientID=%s",
 		core.ResolveOpenBaseURL(core.ParseBrand(brand)), url.QueryEscape(appID))
-	if len(scopes) == 0 {
-		return base
+	if len(scopes) > 0 {
+		base += "&scopes=" + url.QueryEscape(strings.Join(scopes, ","))
 	}
-	return base + "&scopes=" + url.QueryEscape(strings.Join(scopes, ","))
+	return urlrewrite.Rewrite(base)
 }
 
 func intFromAny(v any) int {
