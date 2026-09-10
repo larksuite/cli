@@ -143,9 +143,10 @@ func narrowingNotes(note string) []string {
 
 // cellsSetWritesOps parses --writes ([{sheet_name|sheet_id, range, cells}, …])
 // and expands it into set_cell_range operations for ONE atomic batch_update.
-// Single source of truth per item: the sheet selector LIVES IN THE ITEM (same
-// convention as +batch-update sub-ops and +styles-put items — no top-level
-// fallback, no precedence table to remember). Every item runs through the
+// The sheet selector lives in the item (same convention as +batch-update
+// sub-ops and +styles-put items); a top-level --sheet-name / --sheet-id fills
+// in for the items that carry none, so a whole-payload single-sheet write
+// states its sheet once. Every item runs through the
 // exact standalone pipeline (key vocabulary, style acceptance layer, matrix
 // precheck, schema validation) via a per-item flag view, and item errors are
 // aggregated so one retry fixes them all. The payload rewrites land one step
@@ -157,9 +158,16 @@ func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interfac
 			return nil, nil, sheetsValidationForFlag("writes", "--writes and --%s are mutually exclusive: single region → --range + --cells; multiple regions → --writes alone", conflicting)
 		}
 	}
-	if strings.TrimSpace(runtime.Str("sheet-name")) != "" || strings.TrimSpace(runtime.Str("sheet-id")) != "" {
-		return nil, nil, sheetsValidationForFlag("writes", "--writes does not accept a top-level sheet selector — put sheet_name (or sheet_id) inside each writes item, same as +batch-update sub-ops")
-	}
+	// A top-level selector is the DEFAULT for items that name no sheet of
+	// their own, the same way --allow-overwrite fills the items below. It
+	// used to be rejected outright on the reasoning that one selector per
+	// item leaves no precedence table to remember; the precedence that
+	// actually needs remembering is the one the caller wrote, and every
+	// single-sheet --writes call had to repeat it on every item to say
+	// nothing new. 09-04..07: 19059 rejections, the single largest
+	// +cells-set cluster, on payloads that named the sheet exactly once.
+	topSheetID := strings.TrimSpace(runtime.Str("sheet-id"))
+	topSheetName := strings.TrimSpace(runtime.Str("sheet-name"))
 	raw, err := requireJSONArray(runtime, "writes")
 	if err != nil {
 		return nil, nil, err
@@ -195,6 +203,11 @@ func cellsSetWritesOps(runtime *common.RuntimeContext, token string) ([]interfac
 		fv.normalizeRangeSheetPrefix()
 		sheetID := strings.TrimSpace(fv.Str("sheet-id"))
 		sheetName := strings.TrimSpace(fv.Str("sheet-name"))
+		if sheetID == "" && sheetName == "" {
+			// Read after normalizeRangeSheetPrefix, so an item that named its
+			// sheet in the range ("Sheet2!A1:B2") still wins over the default.
+			sheetID, sheetName = topSheetID, topSheetName
+		}
 		input, note, err := cellsSetInputWithNote(fv, token, sheetID, sheetName)
 		if err != nil {
 			// Prefix with the item index WITHOUT flattening: cellsSetInput's

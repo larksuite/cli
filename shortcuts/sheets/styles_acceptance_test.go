@@ -202,20 +202,75 @@ var stylesPriorCorpus = []struct {
 	{name: "wrap_strategy aliases to word_wrap",
 		fields: map[string]interface{}{"wrap_strategy": "auto-wrap"},
 		check:  wantStyle("word_wrap", "auto-wrap")},
-	// 08-18..24 batch. The border family's remaining spellings come from the
-	// Lark OpenAPI (border_type: FULL_BORDER / OUTER_BORDER) and CSS
-	// (border_width) — real vocabularies, but neither maps onto a per-side
-	// style/weight/color triple, so they stay prescriptions. The nested
-	// {range, style:{…}} envelope is the OpenAPI request shape copied one
-	// level too deep.
-	{name: "border_type prescribed", fields: map[string]interface{}{"border_type": "solid"},
-		wantErr: "there is no border_type / border_width field"},
+	// 08-18..24 batch, revisited 09-10. border_type carries two vocabularies
+	// at once — the Lark OpenAPI's side selector and the CSS-ish line word —
+	// and dispatching on the value tells them apart. FULL_BORDER is exactly
+	// border_styles.all: set_cell_range applies each side to EVERY cell of
+	// the range (verified on a live sheet), which is what made the earlier
+	// reading of these values as inexpressible the wrong way round. The
+	// values that address a SUBSET of a range's edges still have no
+	// expression here and keep a prescription that says which subset.
+	{name: "border_type line style", fields: map[string]interface{}{"border_type": "solid"},
+		check: wantBorder("top", "style", "solid")},
+	{name: "border_type thickness word", fields: map[string]interface{}{"border_type": "thin"},
+		check: wantAll(wantBorder("left", "weight", "thin"), wantBorder("left", "style", "solid"))},
+	{name: "border_type FULL_BORDER is all four sides",
+		fields: map[string]interface{}{"border_type": "FULL_BORDER"},
+		check:  wantAll(wantBorder("top", "style", "solid"), wantBorder("bottom", "style", "solid"))},
+	{name: "border_type NO_BORDER clears", fields: map[string]interface{}{"border_type": "NO_BORDER"},
+		check: wantBorder("right", "style", "none")},
+	{name: "border_type single side", fields: map[string]interface{}{"border_type": "LEFT_BORDER"},
+		check: wantBorder("left", "style", "solid")},
+	{name: "border_type keeps an explicit line style",
+		fields: map[string]interface{}{"border_type": "FULL_BORDER", "border_style": "dashed"},
+		check:  wantBorder("top", "style", "dashed")},
+	{name: "border_type OUTER_BORDER prescribed",
+		fields:  map[string]interface{}{"border_type": "OUTER_BORDER"},
+		wantErr: "cannot express"},
+	{name: "border_type INNER_BORDER prescribed",
+		fields:  map[string]interface{}{"border_type": "INNER_BORDER"},
+		wantErr: "cannot express"},
+	{name: "border_type off-vocabulary value reaches the style enum",
+		fields:  map[string]interface{}{"border_type": "xlContinuous"},
+		wantErr: "is invalid"},
 	{name: "camelCase borderType prescribed", fields: map[string]interface{}{"borderType": "FULL_BORDER"},
 		wantErr: "borders go in border"},
 	{name: "kebab border-style prescribed", fields: map[string]interface{}{"border-style": "solid"},
 		wantErr: "borders go in border"},
-	{name: "border_width prescribed", fields: map[string]interface{}{"border_width": float64(1)},
-		wantErr: "borders go in border"},
+	{name: "border_width reads as a weight", fields: map[string]interface{}{"border_width": float64(1)},
+		check: wantBorder("top", "weight", "thin")},
+	// The one-value border shorthand every external vocabulary has.
+	{name: "border as a line style", fields: map[string]interface{}{"border": "solid"},
+		check: wantBorder("bottom", "style", "solid")},
+	{name: "border as a thickness", fields: map[string]interface{}{"border": "thin"},
+		check: wantAll(wantBorder("top", "weight", "thin"), wantBorder("top", "style", "solid"))},
+	{name: "border as a pixel width", fields: map[string]interface{}{"border": float64(3)},
+		check: wantAll(wantBorder("top", "weight", "thick"), wantBorder("top", "style", "solid"))},
+	{name: "border_all scalar", fields: map[string]interface{}{"border_all": "solid"},
+		check: wantBorder("right", "style", "solid")},
+	{name: "border_all object", fields: map[string]interface{}{"border_all": map[string]interface{}{"style": "solid"}},
+		check: wantBorder("left", "style", "solid")},
+	{name: "side-keyed border with a scalar side",
+		fields: map[string]interface{}{"border": map[string]interface{}{"top": "solid"}},
+		check:  wantBorder("top", "style", "solid")},
+	// openpyxl / xlsxwriter font flags: the concept is in the key and the
+	// on/off in the value, so the rename alone would land a boolean under an
+	// enum field.
+	{name: "openpyxl bold flag", fields: map[string]interface{}{"bold": true},
+		check: wantStyle("font_weight", "bold")},
+	{name: "openpyxl bold flag off", fields: map[string]interface{}{"bold": false},
+		check: wantStyle("font_weight", "normal")},
+	{name: "font_bold as xlsxwriter's 1", fields: map[string]interface{}{"font_bold": float64(1)},
+		check: wantStyle("font_weight", "bold")},
+	{name: "openpyxl italic flag", fields: map[string]interface{}{"italic": true},
+		check: wantStyle("font_style", "italic")},
+	{name: "openpyxl underline vocabulary", fields: map[string]interface{}{"underline": "single"},
+		check: wantStyle("font_line", "underline")},
+	{name: "font_name is font_family", fields: map[string]interface{}{"font_name": "Arial"},
+		check: wantStyle("font_family", "Arial")},
+	{name: "an unreadable italic value keeps its prescription",
+		fields:  map[string]interface{}{"italic": "sort of"},
+		wantErr: `font_style:"italic"`},
 	{name: "nested style envelope prescribed",
 		fields:  map[string]interface{}{"style": map[string]interface{}{"font_weight": "bold"}},
 		wantErr: "no nested style object"},

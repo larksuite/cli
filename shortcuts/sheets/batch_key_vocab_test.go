@@ -321,13 +321,27 @@ func TestCellsSetInput_MatrixPrecheck(t *testing.T) {
 			"write this payload to --range \"B2:D4\"",
 		},
 		{
-			"ragged rows are their own bug, not a range mismatch",
+			// A row that stops at its last written cell is squared off with
+			// {} (padRaggedCellRows) — the very fix the old rejection spelled
+			// out — so the matrix matches the range it states.
+			"short rows are padded, not rejected",
 			map[string]interface{}{"sheet_name": "S1", "range": "A1:B2",
 				"cells": []interface{}{
 					[]interface{}{map[string]interface{}{"value": "a"}, map[string]interface{}{"value": "b"}},
 					[]interface{}{map[string]interface{}{"value": "c"}},
 				}},
-			"--cells[1] has 1 columns but --cells[0] has 2",
+			"",
+		},
+		{
+			// Padding needs a 2D shape to measure; a row that is not an array
+			// is a different payload bug, and the schema names it first.
+			"a non-array row is still its own bug",
+			map[string]interface{}{"sheet_name": "S1", "range": "A1:B2",
+				"cells": []interface{}{
+					[]interface{}{map[string]interface{}{"value": "a"}, map[string]interface{}{"value": "b"}},
+					"c",
+				}},
+			`[1]: expected type "array"`,
 		},
 		{
 			"matching matrix passes",

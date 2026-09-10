@@ -194,6 +194,16 @@ func TestCanonicalEnumValue(t *testing.T) {
 		{"middle", []string{"left", "center", "right"}, "center"}, // alias: horizontal middle
 		{"overwite", []string{"append", "overwrite"}, ""},         // typo is NOT canonical
 		{"delete", []string{"append", "overwrite"}, ""},           // nothing close
+		// Axis vocabulary: the plural and the abbreviation both name the
+		// singular the dimension enums carry.
+		{"col", []string{"row", "column"}, "column"},
+		{"cols", []string{"row", "column"}, "column"},
+		{"columns", []string{"row", "column"}, "column"},
+		{"rows", []string{"row", "column"}, "row"},
+		// …but an enum that carries the plural itself keeps it: merge_type's
+		// "columns" is its own value, not a spelling of something else.
+		{"columns", []string{"all", "rows", "columns"}, "columns"},
+		{"rows", []string{"all", "rows", "columns"}, "rows"},
 	}
 	for _, c := range cases {
 		if got := canonicalEnumValue(c.val, c.enum); got != c.want {
@@ -752,6 +762,86 @@ func TestShortcuts_RequiredFlagsMarkedInHelp(t *testing.T) {
 		}
 		if got := usageOf(t, "+csv-put", "csv"); !strings.HasPrefix(got, "(required) ") {
 			t.Errorf("--csv usage = %q, want the required marker", got)
+		}
+	})
+}
+
+// TestShortcuts_RequiredFlagErrorCarriesTheFix pins the two halves of the
+// missing-required-flag answer: cobra's own opening words, which the error
+// classifier and several domain tests match on, plus what the flag takes and
+// one runnable example. 09-04..07 attributed 20447 rejections to the bare
+// form, whose only next step is a --help round trip.
+func TestShortcuts_RequiredFlagErrorCarriesTheFix(t *testing.T) {
+	t.Parallel()
+
+	t.Run("the message keeps cobra's wording and gains the fix", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+cells-set-style")
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL, "--sheet-name", "Sheet1", "--font-weight", "bold",
+		})
+		ve := requireValidation(t, err, `required flag(s) "range" not set`)
+		if !strings.Contains(ve.Hint, "--range takes") {
+			t.Errorf("hint should say what --range takes, got %q", ve.Hint)
+		}
+		if !strings.Contains(ve.Hint, "Example: lark-cli sheets +cells-set-style") {
+			t.Errorf("hint should carry the command's example, got %q", ve.Hint)
+		}
+		// The description is cut to its opening clause, and an abbreviation's
+		// period is not a sentence end.
+		if strings.Contains(ve.Hint, "e.g\";") || strings.HasSuffix(ve.Hint, "e.g") {
+			t.Errorf("hint should not stop inside an abbreviation, got %q", ve.Hint)
+		}
+		if ve.Param != "--range" {
+			t.Errorf("Param = %q, want --range", ve.Param)
+		}
+	})
+
+	t.Run("several missing flags are named together", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+chart-create-basic")
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL, "--sheet-name", "Sheet1",
+		})
+		ve := requireValidation(t, err, `required flag(s) "chart-type", "data-range" not set`)
+		for _, want := range []string{"--chart-type takes", "--data-range takes"} {
+			if !strings.Contains(ve.Hint, want) {
+				t.Errorf("hint should contain %q, got %q", want, ve.Hint)
+			}
+		}
+	})
+
+	t.Run("a payload-borne flag is satisfied by the payload", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+cond-format-create")
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL, "--sheet-name", "Sheet1", "--dry-run",
+			"--properties", `{"ranges":["Sheet1!A1:B2"],"rule_type":"containsBlanks","style":{"fore_color":"#FF0000"}}`,
+		})
+		if err != nil {
+			t.Fatalf("a rule written entirely in --properties must run, got: %v", err)
+		}
+	})
+
+	t.Run("neither carrier set names both ways in", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+cond-format-create")
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL, "--sheet-name", "Sheet1",
+		})
+		ve := requireValidation(t, err, `"ranges"`)
+		if !strings.Contains(ve.Hint, "or carry ranges inside --properties") {
+			t.Errorf("hint should offer the payload carrier, got %q", ve.Hint)
+		}
+	})
+
+	t.Run("--print-schema still runs without the required flags", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+cells-set")
+		if _, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--print-schema", "--flag-name", "cells",
+		}); err != nil {
+			t.Fatalf("--print-schema must not require the run-path flags, got: %v", err)
 		}
 	})
 }

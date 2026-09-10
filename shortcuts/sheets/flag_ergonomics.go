@@ -9,9 +9,11 @@ import (
 	goruntime "runtime"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/flagalias"
 	"github.com/larksuite/cli/internal/suggest"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -45,6 +47,8 @@ func withFlagErgonomics(prev func(cmd *cobra.Command)) func(cmd *cobra.Command) 
 		chainMultiAreaRange(cmd)
 		chainPositionalArgsCause(cmd)
 		chainRequiredFlagHelp(cmd)
+		relaxPayloadBorneRequired(cmd)
+		chainRequiredFlagCheck(cmd)
 	}
 }
 
@@ -717,6 +721,15 @@ var enumAliases = map[string]string{
 	"line_through":  "line-through",
 	"linethrough":   "line-through",
 	"underlined":    "underline",
+	// Axis vocabulary: the dimension enums spell one axis in the singular
+	// while callers arrive with the plural or the abbreviation (pandas
+	// axis="columns", Excel's "cols"). Only reached when the plural is not
+	// itself in the enum, so merge_type's own rows / columns still match
+	// exactly. 09-04..07: 2898 rejections on --dimension.
+	"col":     "column",
+	"cols":    "column",
+	"columns": "column",
+	"rows":    "row",
 	// Combined chart data-label vocabulary emitted by models. The tool enum
 	// spells the same intent as one value.
 	"percentage,value": "value_percentage",
@@ -871,4 +884,175 @@ func chainEnumNormalization(cmd *cobra.Command) {
 		}
 		return nil
 	}
+}
+
+// payloadBorneRequiredFlags lists, per command, the required flags whose value
+// the command also reads out of a payload flag. +cond-format-create and its
+// update sibling hoist rule_type and ranges out of --properties for
+// convenience, and --properties' own schema requires both at its root — so a
+// caller who wrote the whole rule in one JSON object has supplied them, and
+// cobra's flag-level check is the only thing that disagrees. 09-04..07:
+// +cond-format-create is the third-largest source of "required flag(s) not
+// set", behind two commands where the flag really is the only carrier.
+//
+// Nothing is read from the payload here: when the field is missing from it
+// too, the --properties schema names it at the exact path, which beats naming
+// the flag the caller deliberately did not use.
+var payloadBorneRequiredFlags = map[string]map[string]string{
+	"+cond-format-create": {"ranges": "properties", "rule-type": "properties"},
+	"+cond-format-update": {"ranges": "properties", "rule-type": "properties"},
+}
+
+// relaxPayloadBorneRequired drops cobra's flag-level requirement for the
+// flags payloadBorneRequiredFlags says a payload also carries, the same way
+// +csv-put relaxes --start-cell for its one-required pair. The requirement
+// itself does not go away — chainRequiredFlagCheck re-imposes it as "this
+// flag or that payload", which cobra's per-flag annotation cannot express —
+// and --help keeps its "(required)" marker, which reads from flag-defs.
+func relaxPayloadBorneRequired(cmd *cobra.Command) {
+	for name := range payloadBorneRequiredFlags[cmd.Name()] {
+		if fl := cmd.Flags().Lookup(name); fl != nil {
+			delete(fl.Annotations, cobra.BashCompOneRequiredFlag)
+		}
+	}
+}
+
+// chainRequiredFlagCheck answers a missing required flag before cobra does,
+// with the flag's own description and the command's example attached. Cobra
+// runs ValidateRequiredFlags after PreRunE, so this stage simply gets there
+// first; its message keeps cobra's exact opening words, which the error
+// classifier and several domain tests match on.
+//
+// The bare form names the flag and stops there. 09-04..07: 20447 rejections,
+// on commands whose flag is spelled nothing like the concept the caller was
+// reaching for (+cells-clear wants --range, +chart-create-basic wants
+// --data-range), so the retry is a --help round trip that the description and
+// one worked example remove.
+func chainRequiredFlagCheck(cmd *cobra.Command) {
+	prev := cmd.PreRunE
+	cmd.PreRunE = func(c *cobra.Command, args []string) error {
+		if prev != nil {
+			if err := prev(c, args); err != nil {
+				return err
+			}
+		}
+		// --print-schema prints a flag's schema without running the command;
+		// the runner relaxes required flags for it and so must this.
+		if want, err := c.Flags().GetBool("print-schema"); err == nil && want {
+			return nil
+		}
+		missing := missingRequiredFlags(c)
+		if len(missing) == 0 {
+			return nil
+		}
+		names := make([]string, 0, len(missing))
+		for _, f := range missing {
+			names = append(names, strconv.Quote(f.Name))
+		}
+		msg := fmt.Sprintf("required flag(s) %s not set", strings.Join(names, ", "))
+		verr := common.ValidationErrorf("%s", msg)
+		for _, f := range missing {
+			verr = verr.WithParam("--" + f.Name)
+		}
+		if hint := requiredFlagHint(c, missing); hint != "" {
+			verr = verr.WithHint("%s", hint)
+		}
+		return verr
+	}
+}
+
+// missingRequiredFlags mirrors cobra's own ValidateRequiredFlags — the
+// annotation it sets in MarkFlagRequired, minus anything already given —
+// then drops the flags a payload flag on this command carries instead.
+func missingRequiredFlags(c *cobra.Command) []*pflag.Flag {
+	var missing []*pflag.Flag
+	c.Flags().VisitAll(func(f *pflag.Flag) {
+		req, marked := f.Annotations[cobra.BashCompOneRequiredFlag]
+		if !marked || len(req) == 0 || req[0] != "true" || f.Changed {
+			return
+		}
+		missing = append(missing, f)
+	})
+	// The payload-borne flags carry no annotation to walk (relaxPayloadBorne-
+	// Required removed it), so they are checked against both carriers here.
+	for _, name := range sortedKeys(payloadBorneRequiredFlags[c.Name()]) {
+		fl := c.Flags().Lookup(name)
+		if fl == nil || fl.Changed || c.Flags().Changed(payloadBorneRequiredFlags[c.Name()][name]) {
+			continue
+		}
+		missing = append(missing, fl)
+	}
+	sort.Slice(missing, func(i, j int) bool { return missing[i].Name < missing[j].Name })
+	return missing
+}
+
+// requiredFlagHint spells what each missing flag takes, then one whole
+// invocation of the command. The description is trimmed to its first sentence:
+// this domain's payload flags carry paragraph-long usage text, and the part
+// that answers "what do I pass" is always the opening clause.
+func requiredFlagHint(c *cobra.Command, missing []*pflag.Flag) string {
+	parts := make([]string, 0, len(missing)+1)
+	borne := payloadBorneRequiredFlags[c.Name()]
+	for _, f := range missing {
+		desc := firstUsageClause(f.Usage)
+		if desc == "" {
+			continue
+		}
+		if payload, viaPayload := borne[f.Name]; viaPayload {
+			parts = append(parts, fmt.Sprintf("--%s takes %s, or carry %s inside --%s",
+				f.Name, desc, strings.ReplaceAll(f.Name, "-", "_"), payload))
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("--%s takes %s", f.Name, desc))
+	}
+	if example := commandExampleTip(c); example != "" {
+		parts = append(parts, example)
+	}
+	return strings.Join(parts, "; ")
+}
+
+// firstUsageClause cuts a flag description down to its first sentence, without
+// the "(required)" marker chainRequiredFlagHelp prepends (the message it
+// decorates is about that very requirement) and without a trailing input-mode
+// parenthetical, which repeats on every payload flag.
+func firstUsageClause(usage string) string {
+	usage = strings.TrimPrefix(strings.TrimSpace(usage), requiredFlagHelpPrefix)
+	if i := strings.Index(usage, " (supports @file"); i > 0 {
+		usage = usage[:i]
+	}
+	// "e.g." and "i.e." are sentence-shaped and land mid-clause on nearly
+	// every flag here; mask them to the same byte length so the cut below
+	// keeps its offsets and does not stop at an abbreviation's period.
+	masked := strings.NewReplacer("e.g.", "e\x00g\x00", "i.e.", "i\x00e\x00").Replace(usage)
+	cut := len(masked)
+	for _, stop := range []string{". ", "; ", " — ", " -- "} {
+		if i := strings.Index(masked, stop); i > 0 {
+			cut = min(cut, i)
+		}
+	}
+	usage = usage[:cut]
+	// A cut inside a parenthetical leaves an open bracket; drop it with the
+	// half-sentence it opened rather than printing "(A1 notation, e.g".
+	if strings.Count(usage, "(") > strings.Count(usage, ")") {
+		if i := strings.LastIndex(usage, "("); i > 0 {
+			usage = usage[:i]
+		}
+	}
+	usage = strings.TrimRight(strings.TrimSpace(usage), ".,;")
+	if len(usage) > 140 {
+		usage = strings.TrimSpace(usage[:140]) + "…"
+	}
+	return usage
+}
+
+// commandExampleTip returns the command's first "Example:" tip, the one --help
+// prints, so the hint carries a line the caller can run rather than a
+// description of one.
+func commandExampleTip(c *cobra.Command) string {
+	for _, tip := range cmdutil.GetTips(c) {
+		if strings.HasPrefix(tip, "Example:") {
+			return tip
+		}
+	}
+	return ""
 }

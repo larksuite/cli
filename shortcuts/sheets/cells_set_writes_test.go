@@ -116,11 +116,40 @@ func TestCellsSetWrites(t *testing.T) {
 		requireValidation(t, err, "conflicting values")
 	})
 
-	t.Run("top-level sheet selector rejected with prescription", func(t *testing.T) {
+	t.Run("top-level sheet selector fills items that name no sheet", func(t *testing.T) {
 		t.Parallel()
-		_, _, err := writes(`[{"sheet_name":"S1","range":"A1","cells":[[{"value":"x"}]]}]`,
-			"--sheet-name", "S1")
-		requireValidation(t, err, "put sheet_name (or sheet_id) inside each writes item")
+		stdout, _, err := writes(`[{"range":"A1","cells":[[{"value":"x"}]]}]`,
+			"--sheet-name", "Top")
+		if err != nil {
+			t.Fatalf("a top-level selector must fill an item that carries none, got: %v", err)
+		}
+		if got := firstWriteOpInput(t, stdout)["sheet_name"]; got != "Top" {
+			t.Errorf("sheet_name = %v, want Top", got)
+		}
+	})
+
+	t.Run("item selector wins over the top-level one", func(t *testing.T) {
+		t.Parallel()
+		stdout, _, err := writes(`[{"sheet_name":"Item","range":"A1","cells":[[{"value":"x"}]]}]`,
+			"--sheet-name", "Top")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := firstWriteOpInput(t, stdout)["sheet_name"]; got != "Item" {
+			t.Errorf("sheet_name = %v, want Item (the item is the closer source)", got)
+		}
+	})
+
+	t.Run("a sheet-prefixed range still wins over the top-level selector", func(t *testing.T) {
+		t.Parallel()
+		stdout, _, err := writes(`[{"range":"Prefixed!A1","cells":[[{"value":"x"}]]}]`,
+			"--sheet-name", "Top")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := firstWriteOpInput(t, stdout)["sheet_name"]; got != "Prefixed" {
+			t.Errorf("sheet_name = %v, want Prefixed", got)
+		}
 	})
 
 	t.Run("writes and range are mutually exclusive", func(t *testing.T) {

@@ -105,11 +105,17 @@ func buildCellStyleFromFlags(runtime flagView) map[string]interface{} {
 
 // cellStyleAliases maps shorthand cell_styles field names that models commonly
 // hallucinate (Excel / openpyxl / CSS conventions) onto the canonical field
-// names the backend expects. Only the unambiguous alignment shorthands are
-// aliased — they are the high-frequency miss; ambiguous guesses (e.g. "color",
-// "bg_color", "text_align") are intentionally left out so a wrong guess still
-// surfaces as an error rather than being silently reinterpreted.
+// names the backend expects. Entries here are pure renames; a word whose
+// VALUE also has to be read (bold, italic) belongs in cellStyleValueAliases.
+// Ambiguous guesses (e.g. "color", "bg_color", "text_align") are intentionally
+// left out either way, so a wrong guess still surfaces as an error rather than
+// being silently reinterpreted.
 var cellStyleAliases = []struct{ alias, canonical string }{
+	// openpyxl's Font(name=…) and xlsxwriter's {'font_name': …} name this
+	// CLI's font_family and nothing else — a real external vocabulary with
+	// one reading, which is what the admission bar asks for. 09-04..07: 511
+	// rejections.
+	{"font_name", "font_family"},
 	{"horizontal_align", "horizontal_alignment"},
 	{"halign", "horizontal_alignment"},
 	{"vertical_align", "vertical_alignment"},
@@ -122,14 +128,81 @@ var cellStyleAliases = []struct{ alias, canonical string }{
 	{"wrap_strategy", "word_wrap"},
 }
 
+// cellStyleValueAliases carries the style words that name a field this
+// contract does have while spelling its VALUE as a flag rather than an enum:
+// openpyxl's Font(bold=True, italic=True, underline="single") and
+// xlsxwriter's {'bold': 1} are the two vocabularies every model has read, and
+// both put the concept in the key and the on/off in the value. The rename
+// alone would land a boolean under font_weight, so each entry carries its own
+// value reading and only fires when that reading succeeds — italic:true is
+// font_style:"italic", while italic:"sort of" keeps the prescription below.
+// 09-04..07: italic 1546 rejections, font_bold 135, on payloads whose intent
+// the error text already spelled out.
+var cellStyleValueAliases = []struct {
+	alias, canonical string
+	value            func(interface{}) (string, bool)
+}{
+	{"bold", "font_weight", styleOnOffWord("bold", "normal")},
+	{"font_bold", "font_weight", styleOnOffWord("bold", "normal")},
+	{"italic", "font_style", styleOnOffWord("italic", "normal")},
+	{"font_italic", "font_style", styleOnOffWord("italic", "normal")},
+	{"underline", "font_line", styleUnderlineWord},
+	{"font_underline", "font_line", styleUnderlineWord},
+}
+
+// styleOnOffWord reads the flag-shaped value of a two-state style field: the
+// booleans and 0/1 both vocabularies use, and the enum word itself for a
+// caller who wrote the right value under the wrong key. Anything else returns
+// false and leaves the field to its prescription.
+func styleOnOffWord(on, off string) func(interface{}) (string, bool) {
+	return func(raw interface{}) (string, bool) {
+		switch v := raw.(type) {
+		case bool:
+			if v {
+				return on, true
+			}
+			return off, true
+		case float64:
+			switch v {
+			case 1:
+				return on, true
+			case 0:
+				return off, true
+			}
+		case string:
+			switch strings.ToLower(strings.TrimSpace(v)) {
+			case "true", "1", "yes", on:
+				return on, true
+			case "false", "0", "no", "none", off:
+				return off, true
+			}
+		}
+		return "", false
+	}
+}
+
+// styleUnderlineWord reads openpyxl's underline vocabulary, where the value is
+// which underline rather than whether: single / double / the accounting
+// variants all draw one, and this contract carries the one line style.
+func styleUnderlineWord(raw interface{}) (string, bool) {
+	if s, isStr := raw.(string); isStr {
+		switch strings.ToLower(strings.TrimSpace(s)) {
+		case "single", "double", "singleaccounting", "doubleaccounting":
+			return "underline", true
+		}
+	}
+	return styleOnOffWord("underline", "none")(raw)
+}
+
 // styleFieldPrescriptions carries the exact fix for high-frequency
 // unsupported cell_styles field names where the edit-distance suggester is
 // actively misleading (07-28 root-cause report: font_bold drew "did you mean
 // font_color?" and nested font drew "font_line" — an agent that follows
 // either burns a second failed round trip). Keyed by lowercased field name;
 // the text replaces the did-you-mean on the unsupported-field error. These
-// stay prescriptions, not silent aliases: bold/text_align are on the
-// deliberate no-alias list above.
+// stay prescriptions, not silent aliases: text_align is on the deliberate
+// no-alias list above, and the bold / italic / underline rows now answer only
+// the values cellStyleValueAliases could not read.
 var styleFieldPrescriptions = map[string]string{
 	"bold":       `bold text is font_weight:"bold"`,
 	"font_bold":  `bold text is font_weight:"bold"`,
@@ -175,17 +248,14 @@ var styleItemKeyPrescriptions = map[string]string{
 }
 
 // borderFieldPrescription answers any unsupported border-family spelling that
-// survived foldBorderFamilyAliases (which already absorbs border / borders /
-// border_<side> / border_<attr> and their word-order twins). What is left is
-// vocabulary with no equivalent here at all: the Lark OpenAPI's own
-// border_type (FULL_BORDER / OUTER_BORDER / …) and CSS's border_width. Both
-// are real external vocabularies, so they recur; neither maps unambiguously
-// onto a per-side style/weight/color triple — FULL_BORDER vs OUTER_BORDER
-// differ on the interior edges this payload cannot address. 08-18..24 eval:
-// border_type was the top single field in the --styles error group, and the
-// did-you-mean it drew ("border_styles") sent the retry back with the same
-// unusable value.
-const borderFieldPrescription = `borders go in border ({"border":{"style":"solid","weight":"thin","color":"#000000"}} — all four sides) or border_styles for per-side control ({"border_styles":{"bottom":{"style":"solid"}}}); style is solid/dashed/dotted/double/none, weight is thin/medium/thick — there is no border_type / border_width field`
+// survived foldBorderFamilyAliases, which absorbs border / borders /
+// border_<side> / border_<attr> / border_type / border_width and their
+// word-order twins, in both the attribute-object and one-value forms. What
+// reaches this text is a name none of those cover, so it gets the two
+// canonical shapes rather than a did-you-mean: the distance ranker's answer
+// for a border name is another border name, and the retry comes back with the
+// same unusable value (08-18..24 eval).
+const borderFieldPrescription = `borders go in border ({"border":{"style":"solid","weight":"thin","color":"#000000"}} — all four sides, or just {"border":"solid"}) or border_styles for per-side control ({"border_styles":{"bottom":{"style":"solid"}}}); style is solid/dashed/dotted/double/none, weight is thin/medium/thick`
 
 // styleFieldPrescriptionsSquashed keys the curated table by letters alone, so
 // every separator spelling of one mistake (border_type / borderType /
@@ -332,6 +402,23 @@ func normalizeCellStyleAliases(style map[string]interface{}, path string) error 
 			return common.ValidationErrorf("%s.%s conflicts with %s; pass only %s", path, a.alias, a.canonical, a.canonical)
 		}
 		style[a.canonical] = v
+		delete(style, a.alias)
+	}
+	for _, a := range cellStyleValueAliases {
+		raw, ok := style[a.alias]
+		if !ok {
+			continue
+		}
+		word, readable := a.value(raw)
+		if !readable {
+			// An unreadable value is a guess about the vocabulary, not a
+			// spelling of it: leave the key for the prescription.
+			continue
+		}
+		if _, exists := style[a.canonical]; exists {
+			return common.ValidationErrorf("%s.%s conflicts with %s; pass only %s", path, a.alias, a.canonical, a.canonical)
+		}
+		style[a.canonical] = word
 		delete(style, a.alias)
 	}
 	// fore_color is deliberately NOT aliased: in openpyxl vocabulary fgColor
@@ -664,7 +751,41 @@ func normalizeCellsFlagValue(v interface{}) interface{} {
 			}
 		}
 	}
+	padRaggedCellRows(rows)
 	return v
+}
+
+// padRaggedCellRows squares off a payload whose rows stop at their last
+// meaningful cell, padding the short ones with {} — the empty cell object
+// that writes nothing and leaves what is there alone. The rewrite is the one
+// the rejection already prescribed word for word ("pad short rows with {} to
+// keep those cells unchanged"), so performing it changes no outcome except
+// the round trip: a payload the caller has to retype byte for byte is a
+// rejection that carries its own answer. 09-04..07: 3063 rejections on
+// +cells-set alone. Same reading as the short-row fill --sheets takes.
+//
+// A payload whose rows are uniformly short is already a rectangle and stays
+// untouched; the range it does or does not fill is fitCellsRange's question,
+// not this one.
+func padRaggedCellRows(rows []interface{}) {
+	width := 0
+	for _, rowRaw := range rows {
+		row, isArray := rowRaw.([]interface{})
+		if !isArray {
+			return // not the 2D shape at all — leave the validator its error
+		}
+		width = max(width, len(row))
+	}
+	if width == 0 {
+		return
+	}
+	for i, rowRaw := range rows {
+		row, _ := rowRaw.([]interface{})
+		for len(row) < width {
+			row = append(row, map[string]interface{}{})
+		}
+		rows[i] = row
+	}
 }
 
 // cellCarrierFields are the keys a cell object may hold on the wire: one
@@ -938,6 +1059,45 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 		}
 		return nil
 	}
+	// setSideScalar reads a border written as ONE value rather than an
+	// attribute object — border:"solid", border_all:"thin", border:2. Every
+	// external border vocabulary has this form (xlsxwriter's {'border': 1},
+	// CSS's shorthand, openpyxl's Side(border_style="thin")) and it has one
+	// reading: the value names the line, the rest of the spec defaults.
+	// A thickness word or a pixel count fills weight and leaves style solid,
+	// exactly as the flattened border_style path does; anything else is a
+	// line style and reaches the style enum, which names the allowed set when
+	// the word came from a vocabulary this contract does not carry.
+	// 09-04..07: 5903 rejections read "border must be an object", all of them
+	// a caller who wrote the value the shorthand takes everywhere else.
+	setSideScalar := func(side string, v interface{}, from string) error {
+		if s, ok := v.(string); ok {
+			if canon := borderWeightWord(s); canon != "" {
+				if err := setSideAttr(side, "weight", canon, from); err != nil {
+					return err
+				}
+				return setSideAttr(side, "style", "solid", from)
+			}
+			return setSideAttr(side, "style", v, from)
+		}
+		if _, isWidth := borderLineWidth(v); isWidth {
+			// normalizeBorderSideVocab turns the number into a weight word
+			// once the side object exists; setting it here keeps that one
+			// conversion table in one place.
+			if err := setSideAttr(side, "weight", v, from); err != nil {
+				return err
+			}
+			return setSideAttr(side, "style", "solid", from)
+		}
+		return common.ValidationErrorf("%s.%s must be an object like {\"style\":\"solid\",\"color\":\"#000000\"}, a line style (\"solid\"), or a thickness (\"thin\", 2)", path, from)
+	}
+	// setSideLoose takes whichever of the two forms the caller used.
+	setSideLoose := func(side string, v interface{}, from string) error {
+		if _, isObj := v.(map[string]interface{}); isObj {
+			return setSide(side, v, from)
+		}
+		return setSideScalar(side, v, from)
+	}
 	// A flattened border_style holding a thickness word fills both attributes
 	// — same helper as the nested form (borderWeightWord), but split out here
 	// so a contradicting border_styles still reports the conflict rather than
@@ -963,7 +1123,12 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 		}
 		obj, ok := v.(map[string]interface{})
 		if !ok {
-			return common.ValidationErrorf("%s.%s must be an object — either side-keyed ({\"top\":{…},\"bottom\":{…}} / {\"all\":{…}}) or attribute-keyed ({\"style\":\"solid\",\"color\":\"#000\"} = all four sides)", path, key)
+			// The one-value shorthand, not a malformed object.
+			if err := setSideScalar("all", v, key); err != nil {
+				return err
+			}
+			delete(in, key)
+			continue
 		}
 		sideKeyed := false
 		for k := range obj {
@@ -977,7 +1142,7 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 				if !sides[side] {
 					return common.ValidationErrorf("%s.%s.%s is not a valid side (want top/bottom/left/right/all)", path, key, side)
 				}
-				if err := setSide(side, obj[side], key); err != nil {
+				if err := setSideLoose(side, obj[side], key); err != nil {
 					return err
 				}
 			}
@@ -986,12 +1151,15 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 		}
 		delete(in, key)
 	}
-	for _, side := range []string{"top", "bottom", "left", "right"} {
+	// "all" rides in the same loop as the four sides: border_all is the same
+	// flattened habit one key wider, and the side vocabulary already carries
+	// it (09-04..07: 242 rejections).
+	for _, side := range []string{"top", "bottom", "left", "right", "all"} {
 		// Both word orders appear in the wild: border_bottom (07-20 eval) and
 		// bottom_border (07-21), same for the flattened attribute triples.
 		for _, key := range []string{"border_" + side, side + "_border"} {
 			if v, has := in[key]; has {
-				if err := setSide(side, v, key); err != nil {
+				if err := setSideLoose(side, v, key); err != nil {
 					return err
 				}
 				delete(in, key)
@@ -999,6 +1167,16 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 		}
 		for _, attr := range attrNames {
 			for _, key := range []string{"border_" + side + "_" + attr, side + "_border_" + attr} {
+				if v, has := in[key]; has {
+					if err := setSideAttr(side, attr, v, key); err != nil {
+						return err
+					}
+					delete(in, key)
+				}
+			}
+		}
+		for spelling, attr := range borderAttrAliases {
+			for _, key := range []string{"border_" + side + "_" + spelling, side + "_border_" + spelling} {
 				if v, has := in[key]; has {
 					if err := setSideAttr(side, attr, v, key); err != nil {
 						return err
@@ -1017,5 +1195,108 @@ func foldBorderFamilyAliases(in map[string]interface{}, path string) error {
 			delete(in, key)
 		}
 	}
+	for _, spelling := range sortedKeys(borderAttrAliases) {
+		key := "border_" + spelling
+		if v, has := in[key]; has {
+			if err := setAllScalar(borderAttrAliases[spelling], v, key); err != nil {
+				return err
+			}
+			delete(in, key)
+		}
+	}
+	// border_type runs last so an explicitly spelled attribute wins: the
+	// values that only pick SIDES say nothing about the line, and a caller
+	// who wrote border_type:"FULL_BORDER" alongside border_style:"dashed"
+	// means a dashed box, not a conflict.
+	if v, has := in["border_type"]; has {
+		if err := foldBorderTypeValue(v, path, setSideAttr, setSideLoose, func(side, attr string, val interface{}) {
+			bs, ok := in["border_styles"].(map[string]interface{})
+			if !ok {
+				bs = map[string]interface{}{}
+				in["border_styles"] = bs
+			}
+			sideObj, ok := bs[side].(map[string]interface{})
+			if !ok {
+				if _, exists := bs[side]; exists {
+					return
+				}
+				sideObj = map[string]interface{}{}
+				bs[side] = sideObj
+			}
+			if _, exists := sideObj[attr]; !exists {
+				sideObj[attr] = val
+			}
+		}); err != nil {
+			return err
+		}
+		delete(in, "border_type")
+	}
 	return nil
+}
+
+// borderAttrAliases carries the border attribute names other vocabularies use
+// for a slot this contract spells differently. width is the Google Sheets API
+// and CSS name for weight; normalizeBorderSideVocab already folds it inside a
+// per-side object, and these entries close the flattened spellings
+// (border_width, border_top_width) that never reach a side object at all.
+// 09-04..07: 919 rejections on border.width and border_width.
+var borderAttrAliases = map[string]string{"width": "weight"}
+
+// borderTypeSideValues maps the Lark OpenAPI's own borderType vocabulary onto
+// the sides a per-cell style spec addresses. set_cell_range applies each side
+// to EVERY cell of the range (verified 09-10: border_styles.top over A1:C3
+// leaves a top border on all nine cells, not on row 1 only), so FULL_BORDER
+// and the single-side words are exact — "all" is precisely FULL_BORDER, and
+// the earlier reading of these values as inexpressible was the mapping being
+// read the wrong way round.
+var borderTypeSideValues = map[string]string{
+	"FULL_BORDER": "all", "ALL_BORDER": "all", "ALL_BORDERS": "all", "ALL": "all", "GRID": "all",
+	"TOP_BORDER": "top", "BOTTOM_BORDER": "bottom", "LEFT_BORDER": "left", "RIGHT_BORDER": "right",
+}
+
+// borderTypeInteriorValues are the borderType words that address a subset of
+// a range's edges — the interior lines, or the outline alone. A per-cell spec
+// styles every cell the same way, so neither has an expression here and a
+// silent nearest-fit would draw lines the caller did not ask for.
+var borderTypeInteriorValues = map[string]string{
+	"OUTER_BORDER":      `border_type:"OUTER_BORDER" outlines the range while leaving the cells inside it bare, which a per-cell style spec cannot express: style the four edge ranges instead ({"border_styles":{"top":{"style":"solid"}}} on the first row, "bottom" on the last, "left" on the first column, "right" on the last)`,
+	"INNER_BORDER":      `border_type:"INNER_BORDER" draws only the lines between cells, which a per-cell style spec cannot express; border every cell with border_type:"FULL_BORDER"`,
+	"HORIZONTAL_BORDER": `border_type:"HORIZONTAL_BORDER" draws only the lines between rows, which a per-cell style spec cannot express; border every cell with border_type:"FULL_BORDER", or style one row's range with {"border_styles":{"bottom":{"style":"solid"}}}`,
+	"VERTICAL_BORDER":   `border_type:"VERTICAL_BORDER" draws only the lines between columns, which a per-cell style spec cannot express; border every cell with border_type:"FULL_BORDER", or style one column's range with {"border_styles":{"right":{"style":"solid"}}}`,
+}
+
+// foldBorderTypeValue folds border_type onto the border_styles it names,
+// dispatching on the VALUE because the field carries two vocabularies at
+// once: the Lark OpenAPI's side selector (FULL_BORDER / TOP_BORDER / …) and
+// the CSS-ish line word every model reaches for (solid, dashed, thin, 2).
+// Each value belongs to exactly one of them, so the pair is decidable even
+// though the field name alone is not — which is what kept border_type
+// rejected until now, at 46035 rejections over 09-04..07, the single largest
+// style-field cluster.
+//
+// soft fills a side attribute only when nothing has claimed it, for the
+// side-selector branch: those values state that a border exists, not what it
+// looks like.
+func foldBorderTypeValue(v interface{}, path string,
+	setSideAttr func(side, attr string, v interface{}, from string) error,
+	setSideLoose func(side string, v interface{}, from string) error,
+	soft func(side, attr string, val interface{}),
+) error {
+	word, isStr := v.(string)
+	if !isStr {
+		return setSideLoose("all", v, "border_type")
+	}
+	key := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(word), "-", "_"))
+	key = strings.ReplaceAll(key, " ", "_")
+	if side, ok := borderTypeSideValues[key]; ok {
+		soft(side, "style", "solid")
+		return nil
+	}
+	if key == "NO_BORDER" || key == "NONE" {
+		return setSideAttr("all", "style", "none", "border_type")
+	}
+	if rx, ok := borderTypeInteriorValues[key]; ok {
+		return common.ValidationErrorf("%s.border_type: %s", path, rx)
+	}
+	return setSideLoose("all", v, "border_type")
 }
