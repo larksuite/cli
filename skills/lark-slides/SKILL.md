@@ -85,7 +85,7 @@ metadata:
 | 一页改动很多（批量字体/配色）、要改页面背景、要删掉若干元素 | 整页覆盖，`slide_id` 和页序不变；带原 `id` 写回的元素保留 id，不带 `id` 的会作为新元素插入并拿到新 id；**代价是没写进 `--content` 的元素会被删除，所以改个别元素不要用它** | `slides +update-slide`、`lark-slides-update-slide.md` |
 | 给已有 PPT 追加或插入页面 | 一次一页，`--slide` 支持 `@file` 绕开 shell 转义 | `slides +add-slide`、`cli/lark-slides-add-slide.md` |
 | 删除页面 | 按 `slide_id` 单页删除，删前先回读确认 | `slides +delete-slide`、`cli/lark-slides-delete-slide.md` |
-| 读取或分析已有 PPT | 解析 slides/wiki token，用 shortcut 回读全文 XML 或读取单页 XML，保存 `xml_presentation_id`、`slide_id`、`revision_id` | `slides +xml-get`、`xml_presentation.slide.get`、`cli/lark-slides-xml-presentations-get.md` |
+| 读取或分析已有 PPT | 解析 slides/wiki token，用 shortcut 回读全文或单页 XML，保存 `xml_presentation_id`、`slide_id`、`revision_id` | `slides +xml-get`（单页传 `--slide-id` 或 `--slide-number`）、`cli/lark-slides-xml-presentations-get.md` |
 | 查看或回滚历史版本 | 先用 `+history-list` 找 `history_version_id`，再 `+history-revert`，必要时 `+history-revert-status` 轮询 | [`cli/lark-slides-history.md`](references/cli/lark-slides-history.md) |
 | 获取幻灯片页面截图 | 按页码用 `--slide-number`，按 ID 用 `--slide-id`；单张用 `--output`，批量或全量用 `--output-dir`，每批最多 10 页串行执行；截图目录复用同一任务的 deck/task 标识，后续读取返回的实际路径 | `slides +screenshot`、`cli/lark-slides-screenshot.md` |
 | 下载图片 | `--output` 选填；传入时指定单个文件路径，未传时自动保存到默认目录 `.lark-slides/media`，并按响应文件名/类型生成路径；调用后读取返回的 `path`，不要猜测文件名；直连被拒时自动回退到源文件预览 | `slides +media-download --file-token <file_token>` |
@@ -250,11 +250,11 @@ N. 结尾页：[结尾文案]
 | `/slides/` | `https://example.larkoffice.com/slides/xxxxxxxxxxxxx` | `xml_presentation_id` | URL 路径中的 token 直接作为 `xml_presentation_id` 使用 |
 | `/wiki/` | `https://xxx.feishu.cn/wiki/wikcn_EXAMPLE_NODE_TOKEN_123456` | `wiki_token` | ⚠️ **不能直接使用**，需要先查询获取真实的 `obj_token` |
 
-> 带 `--presentation` 的 slides shortcut 都会自动解析以上两种 URL；直接调用原生 API 时仍需手动解析 wiki 链接。
+> 带 `--presentation` 的 slides shortcut 会自动解析以上两种 URL。
 
 ### Wiki 链接特殊处理（关键！）
 
-知识库链接（`/wiki/TOKEN`）不能直接当 `xml_presentation_id`。直接调用原生 API 前，先用 Wiki shortcut 查询节点，确认 `data.obj_type == "slides"`，再用 `data.obj_token` 作为真实 presentation ID。
+知识库链接（`/wiki/TOKEN`）不能直接当 `xml_presentation_id`。使用 Slides shortcut 时直接传入链接，CLI 会查询节点、校验 `data.obj_type == "slides"` 并使用 `data.obj_token`。
 
 ```bash
 lark-cli wiki +node-get --node-token 'https://xxx.feishu.cn/wiki/wikcn_EXAMPLE_NODE_TOKEN_123456' --as user --format json
@@ -262,7 +262,7 @@ lark-cli wiki +node-get --node-token 'https://xxx.feishu.cn/wiki/wikcn_EXAMPLE_N
 
 节点解析必须与后续 Slides 操作使用相同身份；下游明确使用 `--as bot` 时，这里也改为 `--as bot`。
 
-带 `--presentation` 的 slides shortcut 都会自动解析 `/wiki/` URL 并校验 `obj_type`；手动调用 `xml_presentations.*` / `xml_presentation.slide.*` 时才需要自己做这一步。
+带 `--presentation` 的 slides shortcut 都会自动解析 `/wiki/` URL 并校验 `obj_type`。
 
 ### 资源关系
 
@@ -278,30 +278,23 @@ Slides (演示文稿)
     └── slide_id (页面唯一标识)
 ```
 
-## Shortcuts 与 API
+## Shortcuts
 
-Shortcut 是对常用操作的高级封装（`lark-cli slides +<verb> [flags]`）。有 Shortcut 的操作优先使用。
+Slides 相关操作使用 shortcut（`lark-cli slides +<verb> [flags]`）。
 
 | Shortcut | 说明 |
 |----------|------|
 | [`+create`](references/cli/lark-slides-create.md) | 创建 PPT，可选一步添加页面 |
 | [`+add-slide`](references/cli/lark-slides-add-slide.md) | 向已有演示文稿追加或插入**一页**（`--before-slide-id` 控制位置），XML 支持 `@file` / stdin，`<img src="@./path">` 占位符自动上传 |
 | [`+delete-slide`](references/cli/lark-slides-delete-slide.md) | 按 `slide_id` 删除**一页** |
-| [`+xml-get`](references/cli/lark-slides-xml-presentations-get.md) | 读取全文 XML，用 `--presentation` 指定演示文稿的 `xml_presentation_id`，用 `--output` 把 XML 存到本地文件（必须是 CWD 内的相对路径，如 `.lark-slides/plan/<deck>/readback.xml`） |
+| [`+xml-get`](references/cli/lark-slides-xml-presentations-get.md) | 读取全文或单页 XML；用 `--presentation` 指定演示文稿，单页传 `--slide-id` 或 `--slide-number`；用 `--output` 把 XML 存到本地文件（必须是 CWD 内的相对路径，如 `.lark-slides/plan/<deck>/readback.xml`） |
 | [`+screenshot`](references/cli/lark-slides-screenshot.md) | 把幻灯片页面截图保存为本地图片；用 `--slide-number` 指定页码（从 1 开始，多页重复传入）或用 `--slide-id` 指定页面；单张用 `--output .lark-slides/screenshots/<deck-or-task-id>/page-01`，批量用 `--output-dir .lark-slides/screenshots/<deck-or-task-id>`（一次最多 10 页）；后续必须读取返回的 `output` / `screenshots[].path` |
 | [`+media-upload`](references/cli/lark-slides-media-upload.md) | 上传本地图片到指定演示文稿，返回 `file_token`（用作 `<img src="...">`），最大 20 MB |
 | `+media-download` | 根据 Slides 图片 `file_token` 下载本地图片；`--output` 选填，未传时使用 `--output-dir` 默认值 `.lark-slides/media` 并自动生成文件名；调用后使用返回的 `path`，不要猜测实际路径；直连下载无权限时自动回退到源文件预览 |
 | [`+replace-slide`](references/cli/lark-slides-replace-slide.md) | 对已有幻灯片页面进行块级替换/插入（`block_replace` / `block_insert`），自动注入 id 和 `<content/>`，不改变页序 |
 | [`+update-slide`](references/cli/lark-slides-update-slide.md) | 把一整页 XML 交给已有页面，页面变成 `--content` 描述的样子；能一次改样式/插入/删除/备注/背景，`slide_id` 和页序不变。**没写进 `--content` 的元素会被删除** |
 
-没有 Shortcut 覆盖时使用原生 API。高频资源：`slides +xml-get` 读取全文；`xml_presentation.slide.create/delete/get/replace` 管理单页。
-
-```bash
-lark-cli schema slides.<resource>.<method>   # 调用 API 前必须先查看参数结构
-lark-cli slides <resource> <method> [flags] # 调用 API
-```
-
-> **重要**：使用原生 API 时，必须先运行 `schema` 查看 `--data` / `--params` 参数结构，不要猜测字段格式。
+本 skill 已覆盖的 Slides 操作必须使用上表 shortcut；执行前读取对应 reference，按其中参数和约束执行。
 
 ## 核心规则
 
@@ -311,7 +304,7 @@ lark-cli slides <resource> <method> [flags] # 调用 API
 4. **文本通过 `<content>` 表达**：必须用 `<content><p>...</p></content>`，不能把文字直接写在 shape 内；不要混淆 XML 元素 `<content>` 和 `--parts` 的 JSON 字段：编写 `--parts` 时，`block_replace` 装载 XML 使用标准字段 `replacement`，`block_insert` 使用 `insertion`
 5. **保存关键 ID**：后续操作需要 `xml_presentation_id`、`slide_id`、`revision_id`
 6. **删除谨慎**：删除不可逆，删前先回读确认 `slide_id`
-7. **编辑已有页面优先原链接更新**：修改单个 shape/img 用 `+replace-slide`（`block_replace` / `block_insert`），不要整页重建；一页改动很多或要改背景用 `+update-slide` 整页覆盖（保 `slide_id` 和页序），多页整页重建就对每页各跑一次 `+update-slide`，不要用 `slides +create` 新建整份 PPT；追加/插入单页用 `+add-slide`、删除单页用 `+delete-slide`，只有这些 shortcut 未覆盖的参数才手动调 `slide.create` / `slide.delete`
-8. **`<img src>` 只能用上传到飞书 drive 的 `file_token`，禁止使用 http(s) 外链 URL**：飞书 slides 渲染端不会代理外链图片，外链 src 在 PPT 里通常不显示或显示破图。流程必须是「先把图存到本地 → 用 `slides +media-upload` 上传，或在 `+create --slides` 的 XML 里写 `<img src="@./path">` 占位符自动上传 → 拿 `file_token` 写进 `<img src>`」。如果用户给了网图链接，先 `curl`/下载到 CWD 内再走上传流程，不要直接把外链 URL 塞进 `src`。**图片最大 20 MB**（slides upload API 不支持分片上传）。
+7. **编辑已有页面优先原链接更新**：修改单个 shape/img 用 `+replace-slide`（`block_replace` / `block_insert`），不要整页重建；一页改动很多或要改背景用 `+update-slide` 整页覆盖（保 `slide_id` 和页序），多页整页重建就对每一页各跑一次 `+update-slide`，不要用 `slides +create` 新建整份 PPT；追加/插入单页用 `+add-slide`、删除单页用 `+delete-slide`
+8. **`<img src>` 只能用上传到飞书 drive 的 `file_token`，禁止使用 http(s) 外链 URL**：飞书 slides 渲染端不会代理外链图片，外链 src 在 PPT 里通常不显示或显示破图。流程必须是「先把图存到本地 → 用 `slides +media-upload` 上传，或在 `+create --slides` 的 XML 里写 `<img src="@./path">` 占位符自动上传 → 拿 `file_token` 写进 `<img src>`」。如果用户给了网图链接，先 `curl`/下载到 CWD 内再走上传流程，不要直接把外链 URL 塞进 `src`。**图片最大 20 MB**（媒体上传不支持分片）。
 
-> **注意**：如果 md 内容与 `xml/slides_xml_schema_definition.xml` 或 `lark-cli schema slides.<resource>.<method>` 输出不一致，以后两者为准。
+> **注意**：如果 md 内容与 `xml/slides_xml_schema_definition.xml` 不一致，以后者为准。

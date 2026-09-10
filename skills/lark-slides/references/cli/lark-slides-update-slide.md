@@ -36,7 +36,7 @@ lark-cli slides +update-slide --as user \
 | `--tid` | 否 | 调用方提供的任务/事务标识，CLI 原样透传；用于关联同一编辑任务或重试，不等同于版本前置条件，不能单独保证并发冲突时拒绝写入。一般留空 |
 
 `@file` 和 `+xml-get --output` 一样**只接受当前目录下的相对路径**，绝对路径会被拒。
-命令别名：`slides +update`（隐藏）；服务别名：`lark-cli slide …` 等价于 `lark-cli slides …`。
+命令别名：`slides +update`（隐藏）。
 
 如果要求“从读取之后页面一旦变化就不再写入”，不能只传 `--revision-id` 或 `--tid`。写入前必须再次用 `+xml-get` 回读最新版，比较读取期间是否发生变化；有变化时先基于最新版重新合并本次修改，再执行整页写回。当前 shortcut 不提供严格的 compare-and-swap 保证。
 
@@ -106,7 +106,7 @@ lark-cli slides +update-slide --as user \
 
 - **只改一个元素** → 用 [`+replace-slide`](lark-slides-replace-slide.md)，一条 `block_replace` part 更省，也不用带上整页
 - **要改多个页面** → 对每一页各跑一次本命令
-- **要新建页面** → `slides +create` 或 `xml_presentation.slide create`
+- **要新建页面** → `slides +create` 或 `slides +add-slide`
 
 ## 提交前与写入后验证
 

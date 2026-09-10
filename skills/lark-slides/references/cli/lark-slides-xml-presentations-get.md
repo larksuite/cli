@@ -1,157 +1,40 @@
-# lark-slides xml_presentations get
+# slides +xml-get（读取演示文稿 XML）
 
-## 用途
+读取全文或单页 XML。全文验证优先将结果保存到本地文件；局部编辑可读取单页 XML，从顶层块的 `id` 属性取得 `+replace-slide` 所需的 `block_id`。
 
-读取飞书幻灯片（PPT）的完整演示文稿 XML，或通过 `--slide-id` / `--slide-number` 读取指定单页 XML。
+## 参数
 
-## Shortcut
-
-使用 `slides +xml-get` shortcut，可以把 XML 保存到本地文件，避免终端输出被截断。
-
-```bash
-lark-cli slides +xml-get --as user \
-  --presentation "slides_example_presentation_id" \
-  --output .lark-slides/plan/slides_example_presentation_id/readback.xml \
-  --json
-```
-
-### 参数说明
-
-| 参数 | 类型 | 必需 | 说明 |
-|------|------|------|------|
-| `--presentation` | string | 是 | 演示文稿的唯一标识符 |
-| `--revision-id` | integer | 否 | 版本号，`-1` 表示最新版本 |
-| `--output` | string | 否 | XML 保存路径，必须使用相对路径；省略时 XML 在 stdout 的 JSON envelope 中返回 |
-| `--raw` | flag | 否 | 直接把 XML 输出到 stdout，不包 JSON envelope；不能与 `--output`、`--jq` 或非 JSON `--format` 同时使用 |
-| `--slide-id` | string | 否 | 只读取指定 `slide_id` 的单页 XML；不能与 `--slide-number` 或 `--remove-attr-id` 同时使用 |
-| `--slide-number` | integer | 否 | 只读取指定的 1-based 页码；不能与 `--slide-id` 或 `--remove-attr-id` 同时使用 |
-| `--remove-attr-id` | flag | 否 | 仅全文读取可用；移除 XML id 属性后读取，不适合后续精确块编辑 |
-| `--json` | flag | 否 | `--format json` 的简写，json 为默认输出格式 |
-
-
-### 基础示例
-
-```bash
-lark-cli slides +xml-get --as user \
-  --presentation "slides_example_presentation_id" \
-  --output .lark-slides/plan/slides_example_presentation_id/readback.xml \
-  --json
-```
-
-### 读取单页并保存
-
-按页面 ID 和按页码二选一：
-
-```bash
-lark-cli slides +xml-get --as user \
-  --presentation "slides_example_presentation_id" \
-  --slide-id "slide_example_id" \
-  --output .lark-slides/plan/slides_example_presentation_id/slide.xml \
-  --json
-```
-
-### 直接输出 XML 到管道
-
-```bash
-lark-cli slides +xml-get --as user \
-  --presentation "slides_example_presentation_id" \
-  --slide-number 1 \
-  --raw
-```
-
-### 指定版本读取
-
-```bash
-lark-cli slides +xml-get --as user \
-  --presentation "slides_example_presentation_id" \
-  --revision-id 10 \
-  --output .lark-slides/plan/slides_example_presentation_id/readback-r10.xml \
-  --json
-```
-
-### 移除 XML id 属性后读取
-
-```bash
-lark-cli slides +xml-get --as user \
-  --presentation "slides_example_presentation_id" \
-  --remove-attr-id \
-  --output .lark-slides/plan/slides_example_presentation_id/readback-no-id.xml \
-  --json
-```
-
-
-## 底层原生命令形态
-
-```bash
-lark-cli slides xml_presentations get --as user --params '<json_params>'
-```
-
-### 参数说明
-
-| 参数 | 类型 | 必需 | 说明 |
-|------|------|------|------|
-| `--params` | JSON string | 是 | 路径参数与查询参数，结构以 schema 为准 |
-
-### params JSON 结构
-
-```json
-{
-  "xml_presentation_id": "slides_example_presentation_id",
-  "revision_id": -1
-}
-```
-
-| 字段 | 类型 | 必需 | 说明 |
-|------|------|------|------|
-| `xml_presentation_id` | string | 是 | 演示文稿的唯一标识符 |
-| `revision_id` | integer | 否 | 版本号，`-1` 表示最新版本 |
-
-
-### 返回值
-
-成功时返回演示文稿的完整信息：
-
-```json
-{
-  "ok": true,
-  "identity": "user",
-  "data": {
-    "xml_presentation": {
-      "presentation_id": "slides_example_presentation_id",
-      "revision_id": 1,
-      "content": "<presentation xmlns=\"https://www.larkoffice.com/sml/2.0\" height=\"540\" width=\"960\">...</presentation>"
-    }
-  }
-}
-```
-
-### 返回字段说明
-
-| 字段 | 类型 | 说明 |
+| 参数 | 必填 | 说明 |
 |------|------|------|
-| `data.xml_presentation.presentation_id` | string | 演示文稿唯一标识 |
-| `data.xml_presentation.revision_id` | integer | 版本号 |
-| `data.xml_presentation.content` | string | XML 格式的完整内容 |
+| `--presentation` | 是 | `xml_presentation_id`、Slides URL，或可解析为 Slides 的 wiki URL |
+| `--revision-id` | 否 | 版本号；`-1` 表示最新版本 |
+| `--output` | 否 | XML 保存路径，必须使用 CWD 内相对路径；省略时返回 JSON |
+| `--raw` | 否 | 将 XML 直接输出到 stdout；不能与 `--output` 或 `--jq` 一起使用 |
+| `--slide-id` | 否 | 只读取指定页面；不能与 `--slide-number` 或 `--remove-attr-id` 一起使用 |
+| `--slide-number` | 否 | 只读取指定的 1-based 页码；不能与 `--slide-id` 或 `--remove-attr-id` 一起使用 |
+| `--remove-attr-id` | 否 | 仅全文读取可用；移除 XML `id` 属性，不适合后续精确块编辑 |
 
-### 常见错误
+## 示例
 
-| 错误码 | 含义 | 解决方案 |
-|--------|------|----------|
-| 404 | 演示文稿不存在 | 检查 `xml_presentation_id` 是否正确 |
-| 403 | 权限不足 | 检查是否拥有 `slides:presentation:read` scope，或是否有访问权限 |
-| 400 | 参数格式错误 | 确保 `--params` 是合法的 JSON 字符串 |
+```bash
+# 读取全文并保存，用于创建后验证
+lark-cli slides +xml-get --as user \
+  --presentation "$PRES_ID" \
+  --output .lark-slides/plan/<deck>/readback.xml
 
+# 读取单页以获取 block_id
+lark-cli slides +xml-get --as user \
+  --presentation "$PRES_ID" --slide-id "$SID" --raw
 
-### 注意事项
+# 读取单页，同时记录 revision_id 用于后续乐观锁
+REV=$(lark-cli slides +xml-get --as user \
+  --presentation "$PRES_ID" --slide-id "$SID" \
+  --jq '.data.revision_id')
+```
 
-1. lark-slides 工作流默认使用 `slides +xml-get`；只有必须直接调底层 API 时，才使用
-2. 直接调用底层 API 前，使用 `lark-cli schema slides.xml_presentations.get` 查看最新的参数结构
-3. 返回的 XML 在 `data.xml_presentation.content` 字段中
-4. 如果只需要部分信息，可以使用 `jq` 等工具过滤返回结果
-5. 不要在普通工作流中把完整 XML 打到终端；用 `slides +xml-get --output` 保存文件
+JSON 输出中，全文 XML 位于 `.data.xml_presentation.content`，单页 XML 位于 `.data.slide.content`；二者的 `.data.revision_id` 都可用于后续写操作。
 
-## 相关命令
+相关命令：
 
-- [slides +create](lark-slides-create.md) - 创建空白 PPT
-- [slides +add-slide](lark-slides-add-slide.md) - 添加幻灯片页面
-- [slides +delete-slide](lark-slides-delete-slide.md) - 删除幻灯片页面
+- [slides +replace-slide](lark-slides-replace-slide.md) — 块级替换 / 插入
+- [slides +update-slide](lark-slides-update-slide.md) — 整页覆盖

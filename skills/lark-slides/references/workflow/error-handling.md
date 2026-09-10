@@ -35,7 +35,7 @@
 | 图表没有显示 | 检查 `chartPlotArea` 和 `chartData` 是否都包含，`dim1` / `dim2` 数据数量是否匹配 |
 | 图片被裁掉一部分 | `<img>` 的 `width` / `height` 是裁剪后尺寸；要整图显示就让 `width:height` 对齐原图比例 |
 | 图片不显示 / `<img src>` 仍是 `@path` | `@` 占位符由 `+create` 和 `+add-slide` 替换 |
-| 新插入的 `<img>` 挡住原有元素 | `slide.get` 读原页，对照已有块坐标挑空白位置；空间不够就在同一批 `--parts` 里先移动/缩小现有块再插图 |
+| 新插入的 `<img>` 挡住原有元素 | 用 `+xml-get --slide-id` 读原页，对照已有块坐标挑空白位置；空间不够就在同一批 `--parts` 里先移动/缩小现有块再插图 |
 | 渐变背景变成白色 | 渐变必须用 `rgba()` 格式 + 百分比停靠点，如 `linear-gradient(135deg,rgba(30,60,114,1) 0%,rgba(59,130,246,1) 100%)` |
 | 整体风格不统一 | 封面页和结尾页用同一背景，内容页保持一致的配色和字号体系 |
 
@@ -44,12 +44,12 @@
 | 错误码 / 信号 | 含义 | 解决方案 |
 |--------------|------|----------|
 | 400 XML 格式错误 | XML 语法错误 | 检查标签闭合、属性引号、特殊字符转义 |
-| 400 请求包装错误 | `--data` 未按 schema 包装 | 检查是否传入 `xml_presentation.content` 或 `slide.content` |
+| 400 XML 输入错误 | XML 未按所用 shortcut 的参数传入 | 按 `+create` / `+add-slide` / `+update-slide` reference 检查 `--slides`、`--slide` 或 `--content` 的值 |
 | 创建成功但页面空白 / 内容缺失 / 布局错乱 | 常见于 `--slides '[...]'` 字面量的 shell 转义或长参数传递问题 | 改用 `--slide @file`（每页一个文件）或 `--slides @deck.json`，并在创建后立即读取 XML 验证 |
 | 403 权限不足 | scope 或文档权限不匹配 | 确认 scope 和文档权限；无权限时根据错误响应引导用户解决 |
 | 404 演示文稿不存在 | `xml_presentation_id` 不正确或无权限 | 检查 token；wiki URL 需先解析真实 `obj_token` |
 | 404 幻灯片不存在 | `slide_id` 不正确 | 重新读取 presentation 或 slide，确认最新 ID |
-| 1061002 媒体上传 params error | slides 媒体上传参数不符合约定 | 用 `slides +media-upload`，不要手拼原生 `medias/upload_all`；slides 唯一可用 `parent_type` 是 `slide_file` |
+| 1061002 媒体上传 params error | slides 媒体上传参数不符合约定 | 用 `slides +media-upload`，由 shortcut 处理 Slides 所需的媒体参数 |
 | 1061004 forbidden | 当前用户对演示文稿无编辑权限 | 确认当前用户对目标 PPT 有编辑权限 |
 | 3350001 | XML 非 well-formed、XML 结构不符合服务端要求，或 replace 片段问题 | 优先检查未转义字符；replace 场景再看 `block_id` 和 `<content/>` |
 | 3350002 | `revision_id` 大于当前版本 | 用 `-1` 取当前版本，或重新用 `slides +xml-get` 取最新 `revision_id` |
