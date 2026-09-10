@@ -8,6 +8,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/vfs"
 )
@@ -24,7 +25,7 @@ func TestTaskDownloadAttachmentAffordanceTracesToSkill(t *testing.T) {
 	if got, ok := DomainSkill("task"); !ok || got != "lark-task" {
 		t.Fatalf("DomainSkill(task) = (%q, %v), want (lark-task, true)", got, ok)
 	}
-	raw, ok := For("task", "+download-attachment")
+	raw, ok := For(apicatalog.Catalog{}, "task", "+download-attachment")
 	if !ok {
 		t.Fatal("For(task, +download-attachment) ok=false")
 	}
