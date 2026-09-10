@@ -71,8 +71,11 @@ func TestBaseFormVisibleFieldsWorkflow(t *testing.T) {
 			},
 			DefaultAs: "bot",
 		})
-		if runErr != nil || listed.ExitCode != 0 {
-			return false, nil
+		if runErr != nil {
+			return false, runErr
+		}
+		if listed.ExitCode != 0 {
+			return false, fmt.Errorf("list Form questions failed: stdout=%s stderr=%s", listed.Stdout, listed.Stderr)
 		}
 		questions := gjson.Get(listed.Stdout, "data.questions").Array()
 		if len(questions) != 3 {
@@ -147,7 +150,7 @@ func TestBaseFormVisibleFieldsWorkflow(t *testing.T) {
 			var readErr error
 			actual, readErr = readVisibleFields()
 			if readErr != nil {
-				return false, nil
+				return false, readErr
 			}
 			return slices.Equal(actual, expected), nil
 		})
