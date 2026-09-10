@@ -290,7 +290,7 @@ func TestHandleRootError_DeprecatedAliasMissingFlagStructured(t *testing.T) {
 	})
 	// The bare error shape cobra's ValidateRequiredFlags produces: not a typed
 	// errs.* error, so it reaches the deprecation fallback.
-	exit := handleRootError(f, fmt.Errorf(`required flag(s) %q not set`, "values"), nil)
+	exit := handleRootError(f, normalizeRootError(fmt.Errorf(`required flag(s) %q not set`, "values")), nil)
 
 	out := errOut.String()
 	if strings.HasPrefix(strings.TrimSpace(out), "Error:") {
@@ -397,7 +397,7 @@ func TestHandleRootError_NoDeprecationTypesUsageError(t *testing.T) {
 	errOut := &bytes.Buffer{}
 	f.IOStreams.ErrOut = errOut
 
-	exit := handleRootError(f, fmt.Errorf(`required flag(s) %q not set`, "values"), nil)
+	exit := handleRootError(f, normalizeRootError(fmt.Errorf(`required flag(s) %q not set`, "values")), nil)
 
 	out := errOut.String()
 	if strings.HasPrefix(strings.TrimSpace(out), "Error:") {
@@ -428,7 +428,7 @@ func TestHandleRootError_LeakedUntypedErrorBecomesInternal(t *testing.T) {
 	errOut := &bytes.Buffer{}
 	f.IOStreams.ErrOut = errOut
 
-	exit := handleRootError(f, fmt.Errorf("upstream helper exploded: %w", io.ErrUnexpectedEOF), nil)
+	exit := handleRootError(f, typedCommandError(fmt.Errorf("upstream helper exploded: %w", io.ErrUnexpectedEOF)), nil)
 
 	errObj := decodeErrorEnvelope(t, errOut.Bytes())
 	if got := errObj["type"]; got != "internal" {
@@ -728,4 +728,56 @@ func TestApplyNeedAuthorizationHint_AppendsExistingHint(t *testing.T) {
 	if authErr.Hint != "existing hint" {
 		t.Errorf("presenter mutated producer hint: %q", authErr.Hint)
 	}
+}
+
+// TestNormalizeRootError pins the classification executeWithOptions applies
+// (via normalizeRootError) immediately after rootCmd.Execute(), before the
+// Shutdown lifecycle hook fires: a residual cobra usage error becomes a
+// typed validation error, while already-typed errors and the two exit-code-only
+// signals pass through unchanged. Application errors are typed earlier at
+// their callback boundary. Without this, a plugin's
+// Shutdown handler would observe an untyped cobra error that disagrees with
+// the Category/Subtype the stderr envelope ultimately carries.
+func TestNormalizeRootError(t *testing.T) {
+	t.Run("nil", func(t *testing.T) {
+		if got := normalizeRootError(nil); got != nil {
+			t.Errorf("normalizeRootError(nil) = %v, want nil", got)
+		}
+	})
+
+	t.Run("already typed passes through unchanged", func(t *testing.T) {
+		typed := errs.NewPermissionError(errs.SubtypePermissionDenied, "denied")
+		if got := normalizeRootError(typed); got != error(typed) {
+			t.Errorf("normalizeRootError(typed) = %v, want the same typed error unchanged", got)
+		}
+	})
+
+	t.Run("PartialFailureError passes through unchanged", func(t *testing.T) {
+		pfErr := &output.PartialFailureError{Code: 1}
+		if got := normalizeRootError(pfErr); got != error(pfErr) {
+			t.Errorf("normalizeRootError(PartialFailureError) = %v, want the same signal unchanged", got)
+		}
+	})
+
+	t.Run("BareError passes through unchanged", func(t *testing.T) {
+		bareErr := output.ErrBare(output.ExitAuth)
+		if got := normalizeRootError(bareErr); got != error(bareErr) {
+			t.Errorf("normalizeRootError(BareError) = %v, want the same signal unchanged", got)
+		}
+	})
+
+	t.Run("cobra usage error becomes typed validation", func(t *testing.T) {
+		original := fmt.Errorf(`required flag(s) %q not set`, "csv")
+		got := normalizeRootError(original)
+		var ve *errs.ValidationError
+		if !errors.As(got, &ve) {
+			t.Fatalf("normalizeRootError(cobra usage error) = %v, want *errs.ValidationError", got)
+		}
+		if ve.Subtype != errs.SubtypeInvalidArgument {
+			t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+		}
+		if !errors.Is(got, original) {
+			t.Error("normalizeRootError(cobra usage error) lost the original cause")
+		}
+	})
 }

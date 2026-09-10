@@ -53,6 +53,10 @@ func buildIntegrationRootCmd(t *testing.T, f *cmdutil.Factory) *cobra.Command {
 	rootCmd.AddCommand(api.NewCmdApi(f, nil))
 	service.RegisterServiceCommands(rootCmd, f)
 	shortcuts.RegisterShortcuts(rootCmd, f)
+	// Production types the boundaries once, at the end of the build, on the
+	// finished tree; do it here rather than per execution so a tree reused
+	// across several runs behaves the way a built one does.
+	instrumentErrorBoundaries(rootCmd)
 	return rootCmd
 }
 
@@ -62,7 +66,7 @@ func executeRootIntegration(t *testing.T, f *cmdutil.Factory, rootCmd *cobra.Com
 	t.Helper()
 	rootCmd.SetArgs(args)
 	if err := rootCmd.Execute(); err != nil {
-		return handleRootError(f, err, nil)
+		return handleRootError(f, normalizeRootError(err), nil)
 	}
 	return 0
 }
@@ -137,6 +141,7 @@ func buildStrictModeIntegrationRootCmdWithCatalog(t *testing.T, f *cmdutil.Facto
 	if mode := f.ResolveStrictMode(context.Background()); mode.IsActive() {
 		pruneForStrictMode(rootCmd, mode)
 	}
+	instrumentErrorBoundaries(rootCmd)
 	return rootCmd
 }
 

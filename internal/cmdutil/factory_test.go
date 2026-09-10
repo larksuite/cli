@@ -514,6 +514,33 @@ func TestRequireBuiltinCredentialProvider_NilCredential(t *testing.T) {
 	}
 }
 
+// A provider that already classified its own failure must keep that
+// classification. Rewrapping it would replace, for example, a retryable
+// network timeout with an internal fault and change the exit code with it.
+func TestRequireBuiltinCredentialProvider_KeepsProviderClassification(t *testing.T) {
+	typed := errs.NewNetworkError(errs.SubtypeNetworkTimeout, "provider lookup timed out")
+	stub := &stubExtProvider{name: "env", err: typed}
+	cred := credential.NewCredentialProvider([]extcred.Provider{stub}, nil, nil, nil)
+
+	f, _, _, _ := TestFactory(t, nil)
+	f.Credential = cred
+
+	err := f.RequireBuiltinCredentialProvider(context.Background(), "auth")
+
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error %T carries no Problem", err)
+	}
+	if problem.Category != errs.CategoryNetwork || problem.Subtype != errs.SubtypeNetworkTimeout {
+		t.Errorf("classified as %s/%s, want %s/%s (the provider's own classification)",
+			problem.Category, problem.Subtype, errs.CategoryNetwork, errs.SubtypeNetworkTimeout)
+	}
+	var netErr *errs.NetworkError
+	if !errors.As(err, &netErr) {
+		t.Errorf("error = %T, want the provider's *errs.NetworkError preserved", err)
+	}
+}
+
 func TestRequireBuiltinCredentialProvider_PropagatesProviderError(t *testing.T) {
 	sentinel := errors.New("provider unavailable")
 	stub := &stubExtProvider{name: "env", err: sentinel}
@@ -525,5 +552,40 @@ func TestRequireBuiltinCredentialProvider_PropagatesProviderError(t *testing.T) 
 	err := f.RequireBuiltinCredentialProvider(context.Background(), "auth")
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v, want sentinel", err)
+	}
+}
+
+// A provider failure that carries no classification of its own is a fault in
+// the tool, not in what the user typed. This runs in PersistentPreRunE, ahead
+// of the command body, where an unclassified error is read as a bad command
+// line — so the classification has to be applied here, and the exit code the
+// user sees has to say internal fault rather than invalid input.
+func TestRequireBuiltinCredentialProvider_UnclassifiedProviderErrorBecomesInternal(t *testing.T) {
+	sentinel := errors.New("provider unavailable")
+	stub := &stubExtProvider{name: "env", err: sentinel}
+	cred := credential.NewCredentialProvider([]extcred.Provider{stub}, nil, nil, nil)
+
+	f, _, _, _ := TestFactory(t, nil)
+	f.Credential = cred
+
+	err := f.RequireBuiltinCredentialProvider(context.Background(), "auth")
+
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error %T carries no Problem; an unclassified failure would be blamed on the user", err)
+	}
+	if problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeUnknown {
+		t.Errorf("classified as %s/%s, want %s/%s",
+			problem.Category, problem.Subtype, errs.CategoryInternal, errs.SubtypeUnknown)
+	}
+	var internalErr *errs.InternalError
+	if !errors.As(err, &internalErr) {
+		t.Errorf("error = %T, want *errs.InternalError", err)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitInternal {
+		t.Errorf("exit code = %d, want %d", got, output.ExitInternal)
+	}
+	if !errors.Is(err, sentinel) {
+		t.Error("classification dropped the provider's own error")
 	}
 }

@@ -37,9 +37,31 @@ const (
 	Shutdown
 )
 
-// LifecycleContext is passed to LifecycleHandler. Err is the error from
-// the preceding command (when Event == Shutdown after a failed RunE);
-// otherwise nil.
+// LifecycleContext is passed to LifecycleHandler. When Event == Shutdown, Err
+// is the failure the invocation ended with — from the command itself, or from
+// the framework rejecting the command line before any command ran; otherwise
+// nil.
+//
+// Err is the error the command returned, with its wrapping intact, so
+// errors.Is and errors.As reach whatever the producer put in the chain. It
+// carries the same Category and Subtype the CLI wrote to its stderr envelope.
+//
+// What the user receives is settled before this event fires, so writing to Err
+// cannot change it. Where the SDK can copy the error it hands each handler its
+// own value, so one handler cannot change what the next one observes; where it
+// cannot — a wrapped chain, or a type defined outside the SDK — the value is
+// shared. Treat Err as read-only and that distinction stops mattering.
+//
+// Read it with errs.ProblemOf and check the boolean — two exit-code-only
+// signals carry no Problem and write no envelope, because their result is
+// already on stdout: a partial failure, and a bare predicate exit.
+//
+// Some failures end the process before this event can be emitted, so a handler
+// must not be relied on as an exhaustive audit trail. Bootstrap rejections, a
+// plugin whose own installation or Startup handler failed, and shell-completion
+// invocations all exit without a Shutdown event. So does a failure to render
+// help or usage text from cobra's own help command, which ends the process on
+// the spot rather than returning.
 type LifecycleContext struct {
 	Event LifecycleEvent
 	Err   error

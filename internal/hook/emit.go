@@ -8,7 +8,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/platform"
+	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/recovery"
 )
 
 // shutdownDeadline is the hard upper bound on how long Shutdown
@@ -68,24 +71,84 @@ func Emit(ctx context.Context, reg *Registry, event platform.LifecycleEvent, las
 	if len(handlers) == 0 {
 		return nil
 	}
-	lc := &platform.LifecycleContext{Event: event, Err: lastErr}
-
 	if event == platform.Shutdown {
-		return emitShutdown(ctx, handlers, lc)
+		return emitShutdown(ctx, handlers, event, lastErr)
 	}
 	for _, h := range handlers {
-		if err := callLifecycleSafe(ctx, h, lc); err != nil {
+		if err := callLifecycleSafe(ctx, h, newLifecycleContext(event, lastErr)); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+// newLifecycleContext builds one handler's own context. Typed error fields are
+// exported, so handing every handler the same value would let the first one
+// observing a failure change what the rest of them see. Each handler therefore
+// gets its own context, and its own copy of the error wherever the value can be
+// copied.
+func newLifecycleContext(event platform.LifecycleEvent, lastErr error) *platform.LifecycleContext {
+	return &platform.LifecycleContext{Event: event, Err: copyLifecycleErr(lastErr)}
+}
+
+// copyLifecycleErr returns an independent value when err is itself one of the
+// error shapes this module owns.
+//
+// Everything else is shared as-is, and a chain that merely wraps an owned shape
+// counts as everything else: the value inside is not the error the command
+// returned, so substituting it would drop the wrapper's message and any
+// sentinel errors.Is could reach through it. A type defined outside these
+// shapes cannot be copied at all without reflecting over fields we do not know.
+// LifecycleContext documents both limits and asks handlers to treat Err as
+// read-only.
+func copyLifecycleErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	if !ownsErrorValue(err) {
+		return err
+	}
+	if clone, ok := recovery.CloneTyped(err); ok {
+		return clone
+	}
+	// A typed nil pointer held in a non-nil interface has nothing to copy;
+	// recovery.CloneTyped reports the same for the typed errors it owns.
+	switch signal := err.(type) { //nolint:errorlint // deliberate: see ownsErrorValue
+	case *output.BareError:
+		if signal == nil {
+			return err
+		}
+		clone := *signal
+		return &clone
+	case *output.PartialFailureError:
+		if signal == nil {
+			return err
+		}
+		clone := *signal
+		return &clone
+	}
+	return err
+}
+
+// ownsErrorValue reports whether err is itself one of the owned shapes rather
+// than a chain wrapping one. The copy helpers locate their target with
+// errors.As and recovery.CloneTyped, both of which search the whole chain, so
+// they are only safe to apply once err has been shown to be that target.
+//
+//nolint:errorlint // asserting on err is the point: what err is, not what it wraps.
+func ownsErrorValue(err error) bool {
+	switch err.(type) {
+	case *output.BareError, *output.PartialFailureError, errs.TypedError:
+		return true
+	}
+	return false
+}
+
 // emitShutdown enforces the 2-second total deadline. Handlers receive
 // a derived context with the remaining budget; once the budget is
 // exhausted, the remaining handlers are skipped (with a stderr
 // warning) and Emit returns.
-func emitShutdown(parent context.Context, handlers []LifecycleEntry, lc *platform.LifecycleContext) error {
+func emitShutdown(parent context.Context, handlers []LifecycleEntry, event platform.LifecycleEvent, lastErr error) error {
 	ctx, cancel := context.WithTimeout(parent, shutdownDeadline)
 	defer cancel()
 	deadline := time.Now().Add(shutdownDeadline)
@@ -95,7 +158,7 @@ func emitShutdown(parent context.Context, handlers []LifecycleEntry, lc *platfor
 			fmt.Fprintf(stderr(), "warning: shutdown deadline exceeded; skipping hook %q\n", h.Name)
 			continue
 		}
-		if err := callLifecycleSafe(ctx, h, lc); err != nil {
+		if err := callLifecycleSafe(ctx, h, newLifecycleContext(event, lastErr)); err != nil {
 			// Shutdown errors are logged, not propagated -- exit is
 			// non-recoverable anyway.
 			fmt.Fprintf(stderr(), "warning: shutdown hook %q: %v\n", h.Name, err)
