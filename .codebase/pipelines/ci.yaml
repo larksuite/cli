@@ -463,7 +463,17 @@ jobs:
           - BASE="$(bash scripts/resolve-changed-from.sh)"
           - 'echo "gitleaks scans the range $BASE..HEAD"'
           - 'if [ "$(git rev-parse "$BASE")" = "$(git rev-parse HEAD)" ]; then echo "the baseline resolved to HEAD, so gitleaks would scan zero commits"; exit 1; fi'
-          - go install github.com/zricethezav/gitleaks/v8@v8.18.4
+          # Not older than 8.21.0: .gitleaks.toml is written in the
+          # `[[rules.allowlists]]` syntax that release introduced, and earlier
+          # versions ignore those tables without a word, so every allowlist in
+          # the shared config would be dead here while the public job, whose
+          # action installs the latest release, honours it.
+          # Not newer than the image's Go can build, either: this image ships
+          # go1.23.0, and 8.28.0 onwards asks for 1.23.8 or later. `go install`
+          # then tries to download a newer toolchain, which needs the checksum
+          # database that is switched off below, and the step dies there.
+          # 8.27.2 is the last release whose go.mod is satisfied by 1.23.0.
+          - go install github.com/zricethezav/gitleaks/v8@v8.27.2
           - gitleaks version
           - gitleaks detect --redact -v --exit-code=2 --log-opts="$BASE..HEAD"
       - name: Dependency licences
