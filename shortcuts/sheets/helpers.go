@@ -374,7 +374,13 @@ func sheetsWikiNodeLookupProblem(err error) error {
 // Returned tuple: (sheetID, sheetName). Exactly one is non-empty — callers
 // pass both through to the tool input; the server picks whichever fits.
 func resolveSheetSelector(runtime *common.RuntimeContext) (sheetID, sheetName string, err error) {
-	if err := common.ExactlyOneTyped(runtime, "sheet-id", "sheet-name"); err != nil {
+	// Only the mutual exclusion is settled here. Whether a selector is
+	// REQUIRED is the execute path's question, because that is the only place
+	// that can answer the one the caller actually has — which sheet — by
+	// asking the workbook (resolveSheetSelectorExec). Validate and DryRun run
+	// offline, so enforcing it here turned "I did not name a sheet" into a
+	// failure before anything could look one up.
+	if err := common.MutuallyExclusiveTyped(runtime, "sheet-id", "sheet-name"); err != nil {
 		return "", "", err
 	}
 	if id := strings.TrimSpace(runtime.Str("sheet-id")); id != "" {
@@ -408,8 +414,49 @@ func validateViaInput(
 		sheetID := strings.TrimSpace(runtime.Str("sheet-id"))
 		sheetName := strings.TrimSpace(runtime.Str("sheet-name"))
 		_, err = build(runtime, token, sheetID, sheetName)
+		if err != nil && sheetID == "" && sheetName == "" && isMissingSheetSelector(err) && !runtime.Bool("dry-run") {
+			// Pre-flight runs offline, and a missing selector is the one
+			// complaint the execute path can settle by asking the workbook
+			// (resolveSheetSelectorExec). Raising it here would fail the call
+			// before anything could look the sheet up; if the lookup cannot
+			// settle it either, the same error arrives from there.
+			//
+			// --dry-run keeps the rejection: it sends nothing, so it cannot
+			// resolve the sheet either, and previewing a request with the
+			// selector missing would show one the CLI would never send.
+			return nil
+		}
 		return err
 	}
+}
+
+// validateSheetSelectorPreflight is what a hand-written Validate calls in
+// place of resolveSheetSelector when it wants the selector checked. It settles
+// the mutual exclusion always, and demands that a selector be present only on
+// --dry-run: a real run resolves a missing one against the workbook
+// (resolveSheetSelectorExec), while a preview sends nothing and so has no way
+// to, and must not print a request whose sheet the CLI would have filled in.
+func validateSheetSelectorPreflight(runtime *common.RuntimeContext) error {
+	sheetID, sheetName, err := resolveSheetSelector(runtime)
+	if err != nil {
+		return err
+	}
+	if runtime.Bool("dry-run") {
+		return requireSheetSelector(sheetID, sheetName)
+	}
+	return nil
+}
+
+// missingSheetSelectorMessage is the one wording for "no sheet was named",
+// written once so the predicate below and the execute-path resolver cannot
+// drift from what requireSheetSelector raises.
+const missingSheetSelectorMessage = "specify at least one of --sheet-id or --sheet-name"
+
+// isMissingSheetSelector reports whether an error is that complaint and not
+// another the same builder raises.
+func isMissingSheetSelector(err error) bool {
+	p, ok := errs.ProblemOf(err)
+	return ok && strings.HasPrefix(p.Message, missingSheetSelectorMessage)
 }
 
 // requireSheetSelector is the flagView-agnostic counterpart of
@@ -430,7 +477,7 @@ func requireSheetSelector(sheetID, sheetName string) error {
 		// the gap is knowing WHICH name to pass, not that one is needed: a
 		// just-created workbook has a single sheet named Sheet1, and any
 		// other workbook needs one +workbook-info lookup.
-		return common.ValidationErrorf("specify at least one of --sheet-id or --sheet-name").
+		return common.ValidationErrorf("%s", missingSheetSelectorMessage).
 			WithHint("a freshly created workbook has one sheet named Sheet1 (`--sheet-name Sheet1`); otherwise list the real sheets with `lark-cli sheets +workbook-info --url <URL>`").
 			WithParams(
 				sheetsInvalidParam("sheet-id", "required; specify at least one"),
@@ -911,4 +958,82 @@ func requireJSONArray(runtime flagView, name string) ([]interface{}, error) {
 		return nil, sheetsValidationForFlag(name, "--%s must be a JSON array", name)
 	}
 	return a, nil
+}
+
+// resolveSheetSelectorExec is resolveSheetSelector for the execute path, where
+// a workbook can be asked which sheets it has. A caller who named none gets
+// the only sheet there is; a caller who named none of several gets those
+// several by name, which is the lookup they would otherwise have to run
+// themselves (09-04..07: 11115 rejections, every one of them recoverable on
+// the next call — the gap was never that a selector is needed, it was WHICH
+// name to pass).
+//
+// The lookup costs one request and only on the path that was going to fail
+// anyway. Validate and DryRun keep the offline resolver: dry-run prints the
+// request it would send without sending anything, and reaching the network to
+// fill in a flag would break that.
+func resolveSheetSelectorExec(ctx context.Context, runtime *common.RuntimeContext, token string) (sheetID, sheetName string, err error) {
+	sheetID, sheetName, err = resolveSheetSelector(runtime)
+	if err != nil || sheetID != "" || sheetName != "" || strings.TrimSpace(token) == "" {
+		return sheetID, sheetName, err
+	}
+	names, listErr := workbookSheetNames(ctx, runtime, token)
+	if listErr != nil || len(names) == 0 {
+		// The workbook could not be read; the selector error is still the
+		// caller's next step, and the read failure is not theirs to act on.
+		return "", "", requireSheetSelector("", "")
+	}
+	if len(names) == 1 {
+		return "", names[0], nil
+	}
+	return "", "", common.ValidationErrorf("%s", missingSheetSelectorMessage).
+		WithHint("this workbook has %d sheets: %s", len(names), strings.Join(names, ", ")).
+		WithParams(
+			sheetsInvalidParam("sheet-id", "required; specify at least one"),
+			sheetsInvalidParam("sheet-name", "required; specify at least one"),
+		)
+}
+
+// workbookSheetNames lists the workbook's sub-sheet names in tab order,
+// hidden ones included: a hidden sheet is still a sheet the caller may mean,
+// and naming it beats reporting a workbook with fewer sheets than it has.
+func workbookSheetNames(ctx context.Context, runtime *common.RuntimeContext, token string) ([]string, error) {
+	out, err := callTool(ctx, runtime, token, ToolKindRead, "get_workbook_structure", map[string]interface{}{
+		"excel_id": token,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, entry := range sheetEntriesFromStructure(out) {
+		if name, _ := entry["sheet_name"].(string); strings.TrimSpace(name) != "" {
+			names = append(names, name)
+		}
+	}
+	return names, nil
+}
+
+// sheetEntriesFromStructure digs the sub-sheet list out of the structure
+// response, which arrives either as the bare list or wrapped in a "sheets"
+// key depending on the tool's envelope.
+func sheetEntriesFromStructure(out interface{}) []map[string]interface{} {
+	switch shaped := out.(type) {
+	case []interface{}:
+		return mapEntries(shaped)
+	case map[string]interface{}:
+		if nested, ok := shaped["sheets"].([]interface{}); ok {
+			return mapEntries(nested)
+		}
+	}
+	return nil
+}
+
+func mapEntries(raw []interface{}) []map[string]interface{} {
+	out := make([]map[string]interface{}, 0, len(raw))
+	for _, item := range raw {
+		if entry, ok := item.(map[string]interface{}); ok {
+			out = append(out, entry)
+		}
+	}
+	return out
 }
