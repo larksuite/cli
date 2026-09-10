@@ -64,19 +64,51 @@ lark-cli apps +deploy --dry-run
 
 ### `--file-path` 的依赖扫描
 
-只发那一个 HTML 文件会得到一个**掉样式、脚本 404 的页面**，所以 `--file-path` 会从入口出发递归收集它引用的本地文件。
+只发那一个 HTML 文件会得到一个**掉样式、脚本 404 的页面**，所以 `--file-path` 会从入口出发递归收集它引用的本地文件。收集规则与妙搭 GUI 的实现逐条对齐——**指纹要能对上，两边收的文件必须完全一样**。
 
-- **收集范围**：以**入口文件所在目录**为根。子目录会被带上（`assets/logo.png` 保持相对路径），根目录里没被引用到的文件不会进包。
-- **扫描哪些引用**：
-  - HTML：`link[href]`、`script[src]`、`img[src|srcset]`、`source`、`video[src|poster]`、`audio`、`track`、`iframe`、`embed`、`object[data]`、`use[href]`、`style="...url()..."`、内联 `<style>` 与内联 `<script>`
-  - CSS：`@import`、`url(...)`
-  - JS/MJS：`import` / `export ... from` / `import(...)`，只跟 `./`、`../`、`/` 开头的相对说明符（`import "react"` 是包名，不跟）
-  - **不跟** `<a href>` 和 `<form action>`：那是页面跳转，跟下去等于把整站拖进来——要发整站请用 `--dir`
-- **不进包的引用**：`http(s)://`、`//cdn...`、`data:`、`mailto:`、纯 `#锚点` 一律忽略（外链本来就该留在外面，不报警告）。
-- **被跳过并告警的引用**：文件不存在、读不了、指向目录、或解析后**跑到入口目录之外**（`../shared/x.css`，以及指向外部的符号链接）。这些会在 stderr 逐条列出（`--dry-run` 里是 `dependencies_skipped`），**发布照常继续**——看到这些告警说明线上页面会缺东西，要么把文件挪进入口目录，要么改用 `--dir`。
-- **`/x.css` 这类根绝对路径**按「站点根 = 入口文件所在目录」解析。
-- **上限**：闭包最多 200 个文件、引用链最深 16 层；超了会告警并提示改用 `--dir`。
-- **入口冲突**：入口叫 `page.html`，但闭包里又有一个 `index.html`，两者会撞在同一个产物路径上 → 报 `entry conflict`，改名其中一个。
+**收集范围**：以**入口文件所在目录**为根。子目录会被带上（`assets/logo.png` 保持相对路径），根目录里没被引用到的文件不会进包。可展开的扩展名：`css htm html js json mjs svg`，其余（图片、字体、媒体）是叶子。
+
+**扫描哪些引用**
+
+| 载体 | 引用点 |
+|---|---|
+| HTML / SVG | `audio[src]`、`embed[src]`、`iframe[src]`、`img[src\|srcset]`、`image[href\|xlink:href]`、`input[type="image"][src]`、`object[data]`、`script[src]`、`source[src\|srcset]`、`track[src]`、`use[href\|xlink:href]`、`video[src\|poster]`、`style="...url()..."`、内联 `<style>`、内联 `<script>` |
+| CSS | `@import`、`url(...)` |
+| JS / MJS | `import` / `export ... from` / `import(...)`；以及 `fetch()`、`new Worker()`、`new URL(x, import.meta.url)`、`loadJSON()`、`xhr.open()`、`serviceWorker.register()` |
+| JSON | 所有**值**里长得像路径的字符串（`.png` `.css` `.js` 等扩展名），键不看 |
+
+三条容易踩的过滤规则：
+
+- `<link>` **只在 `rel` 是 `icon` / `manifest` / `modulepreload` / `preload` / `stylesheet` 时才收 href**。`rel="canonical"` 指向的页面不会被发布。
+- 没有 `src` 的 `<script>`，`type` 非空且不是 `module` / `text/javascript` / `application/javascript` 时整个跳过（`importmap`、JSON、模板脚本不当代码解析）。
+- 页面里有 `<base href>` 时，**该文件不再展开**——入口自带 `<base>` 的话，产物里就只有入口一个文件。
+
+**不跟导航类引用**（`<a href>`、`<form action>`）：那是页面跳转，跟下去等于把整站拖进来——要发整站请用 `--dir`。
+
+**解析基准分两种**，写错会把文件放到错路径上：
+
+| 引用来源 | 相对谁解析 |
+|---|---|
+| HTML / CSS / SVG 的引用、JS 的 `import`、`new URL(x, import.meta.url)` | **写它的那个文件** |
+| `fetch` / `Worker` / `XHR` / `serviceWorker` / `loadJSON`、以及 JSON 里的所有路径 | **站点根**（= 入口文件所在目录） |
+
+所以 `js/app.js` 里写 `fetch('./data.json')`，收的是根目录的 `data.json`，**不是** `js/data.json`。
+
+**外链不进包也不告警**：`http(s)://`、`//cdn...`、`data:`、`mailto:`、纯 `#锚点`。`srcset` 里只要出现 `data:`，**整条 srcset 作废**（旁边的候选也不收）。
+
+**告警但继续发布**：引用的文件不存在、读不了、不是普通文件；或某个文件解析失败（坏 CSS / 坏 JSON / 坏 SVG / 带 `<base href>`）导致它自己的引用没被跟进去。这些在 stderr 逐条列出（`--dry-run` 里是 `dependencies_skipped`），**页面照发，但线上会缺东西**——按提示补文件或改用 `--dir`。
+
+**直接失败、不发布**（这几条 GUI 侧也一样拒收，CLI 放行只会得到一个 GUI 认不出来的产物）：
+
+| 情况 | 例子 |
+|---|---|
+| 引用跑到入口目录**之外** | `../shared/x.css` |
+| 引用含 `\`、Windows 盘符、`file:`、解码后含 `:`、坏的 percent 转义 | `file:///etc/hosts`、`c:\x.css`、`a%3Ab.png`、`a%ZZ.png` |
+| 闭包超过 **200 个文件**，或引用链超过 **16 层** | |
+| 依赖链上任何一处是**符号链接**（包括中间目录） | 即使它指向目录内部也一样失败 |
+| 入口叫 `page.html`，但闭包里又有一个 `index.html` | 两者会撞在同一个产物路径上 → `entry conflict` |
+
+前四种大多意味着"这份东西不该按单文件发"——把 `--dir` 指到上层目录通常就是正解。
 
 ### `--dir` 的入口判定
 
@@ -127,7 +159,9 @@ lark-cli apps +deploy --dir ./site --dry-run                       # 只看计�
 | `only applies to the spark.json project mode` | `--skip-build` / `--no-verify` 属于项目模式，裸 HTML 发布下去掉 |
 | `must point at an .html file` / `must be an .html file` | `--file-path` 与 `--entry-file` 都只接受 `.html` |
 | `entry conflict` （`--file-path` 下） | 入口不叫 `index.html`，但它引用到的文件里有一个 `index.html`，两者会撞同一个产物路径；改名其中一个 |
-| stderr 里的 `warning: N referenced file(s) were not published` | 页面引用的本地文件没进包（不存在 / 在入口目录之外 / 超上限）；线上会缺样式或脚本，按提示挪文件或改用 `--dir` |
+| stderr 里的 `warning: N issue(s) collecting what this page references` | 页面引用的本地文件没进包（不存在 / 读不了 / 某个文件解析失败）；线上会缺样式或脚本，按提示补文件或改用 `--dir` |
+| `invalid reference ... in <file>` | 引用越出入口目录，或含 `\` / 盘符 / `file:` / 非法转义；**发布不会进行**，把 `--dir` 指到上层目录通常是正解 |
+| `... is a symbolic link` | 依赖链上有符号链接；换成真实文件，或用 `--dir` 发布链接目标所在的目录 |
 | `must be a file name directly under --dir, not a path` | `--entry-file` 不接受路径；把 `--dir` 指到入口所在的那一层 |
 | `not found directly under --dir` | 入口文件名拼错，或它其实在子目录里 |
 | `no entry file` / `entry conflict` | 见上方入口判定表，不要靠改本地文件名试错 |
