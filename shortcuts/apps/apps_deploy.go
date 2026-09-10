@@ -383,12 +383,22 @@ var appDevNewTransferClient = newAppDevTransferClient
 // newAppDevTransferClient hardens the shared file-transfer client for the
 // app-dev chain: redirects may hop hosts (registry tarballs commonly live on
 // a CDN) but must stay on https — following a downgrade to http would leak
-// the request over cleartext.
+// the request over cleartext — and must not change the method.
+//
+// The method rule protects the artifact upload. On a 301, 302 or 303 net/http
+// turns a PUT into a bodyless GET; if that GET answers 2xx the upload looks
+// like it succeeded and the release is created against an artifact that was
+// never stored. Nothing downstream can tell, because the only evidence of the
+// upload is that status code. A redirect that keeps the method (307, 308)
+// replays the body and stays allowed.
 func newAppDevTransferClient() *http.Client { //nolint:forbidigo // presigned TOS upload and npm registry download bypass the Lark gateway; RuntimeContext.DoAPI does not apply.
 	c := newFileTransferClient()
-	c.CheckRedirect = func(req *http.Request, _ []*http.Request) error { //nolint:forbidigo // see above.
+	c.CheckRedirect = func(req *http.Request, via []*http.Request) error { //nolint:forbidigo // see above.
 		if req.URL.Scheme != "https" {
 			return fmt.Errorf("refusing to follow a non-https redirect to %s", req.URL) //nolint:forbidigo // redirect-policy signal consumed by net/http; the caller wraps the resulting error as typed.
+		}
+		if len(via) > 0 && via[0].Method != req.Method {
+			return fmt.Errorf("refusing to follow a redirect that turns %s into %s (the request body would be dropped)", via[0].Method, req.Method) //nolint:forbidigo // see above.
 		}
 		return nil
 	}
