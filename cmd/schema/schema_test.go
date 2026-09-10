@@ -15,11 +15,24 @@ import (
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/meta"
+	"github.com/larksuite/cli/internal/registry"
 )
 
+func schemaTestFactory(t *testing.T, config *core.CliConfig) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer, *httpmock.Registry) {
+	t.Helper()
+	f, out, errOut, in := cmdutil.TestFactory(t, config)
+	snapshot, err := registry.OpenSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.APICatalog = snapshot.Catalog()
+	return f, out, errOut, in
+}
+
 func TestSchemaCmd_FlagParsing(t *testing.T) {
-	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	f, _, _, _ := schemaTestFactory(t, nil)
 
 	var gotOpts *SchemaOptions
 	cmd := NewCmdSchema(f, func(opts *SchemaOptions) error {
@@ -33,6 +46,31 @@ func TestSchemaCmd_FlagParsing(t *testing.T) {
 	}
 	if len(gotOpts.Args) != 1 || gotOpts.Args[0] != "calendar.events.list" {
 		t.Errorf("expected args [calendar.events.list], got %v", gotOpts.Args)
+	}
+}
+
+func TestSchemaCmd_APICatalogCompletionAndRun(t *testing.T) {
+	snapshot, err := registry.OpenSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog := apicatalog.Filter(snapshot.Catalog(), func(svc meta.Service) (meta.Service, bool) {
+		return svc, svc.Name == "drive"
+	})
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	f.APICatalog = catalog
+	cmd := NewCmdSchema(f, nil)
+
+	completions, _ := cmd.ValidArgsFunction(cmd, nil, "")
+	if len(completions) != 1 || completions[0] != "drive." {
+		t.Fatalf("completion = %v, want only drive.", completions)
+	}
+	cmd.SetArgs([]string{"drive"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), `"name": "drive `) {
+		t.Fatalf("drive schema output missing drive methods: %s", stdout.String())
 	}
 }
 
@@ -53,7 +91,7 @@ func TestSchemaCmd_OutputFlagsAcceptedForCompat(t *testing.T) {
 		{"--as", "user", "--json"},
 	}
 	for _, extra := range argSets {
-		f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+		f, stdout, _, _ := schemaTestFactory(t, nil)
 		cmd := NewCmdSchema(f, nil)
 		cmd.SetArgs(append([]string{"im.images.create"}, extra...))
 		if err := cmd.Execute(); err != nil {
@@ -70,7 +108,7 @@ func TestSchemaCmd_OutputFlagsAcceptedForCompat(t *testing.T) {
 }
 
 func TestSchemaCmd_NoArgs_JSON_IsArray(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	f, stdout, _, _ := schemaTestFactory(t, nil)
 
 	cmd := NewCmdSchema(f, nil)
 	cmd.SetArgs([]string{})
@@ -95,7 +133,7 @@ func TestSchemaCmd_NoArgs_JSON_IsArray(t *testing.T) {
 }
 
 func TestSchemaCmd_JSONIsEnvelope(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	f, stdout, _, _ := schemaTestFactory(t, nil)
 
 	cmd := NewCmdSchema(f, nil)
 	cmd.SetArgs([]string{"im.images.create"})
@@ -120,15 +158,69 @@ func TestSchemaCmd_JSONIsEnvelope(t *testing.T) {
 	}
 }
 
+func TestSchemaCmd_LargeIntegerBoundStaysExact(t *testing.T) {
+	f, stdout, _, _ := schemaTestFactory(t, nil)
+
+	cmd := NewCmdSchema(f, nil)
+	cmd.SetArgs([]string{"slides.xml_presentations.create", "--format", "json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"maximum": 9223372036854775807`) {
+		t.Fatalf("schema output does not preserve MaxInt64 bound:\n%s", out)
+	}
+	if strings.Contains(out, "9223372036854776000") {
+		t.Fatalf("schema output contains float64-rounded bound:\n%s", out)
+	}
+}
+
+func TestSchemaCmd_LargeIntegerExampleStaysExact(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	f.APICatalog = apicatalog.New(apicatalog.SourceEmbedded, []meta.Service{{
+		Name: "fixture",
+		Resources: map[string]meta.Resource{
+			"items": {
+				Methods: map[string]meta.Method{
+					"get": {
+						ID:         "items.get",
+						HTTPMethod: "GET",
+						Parameters: map[string]meta.Field{
+							"cursor": {
+								Type:     "integer",
+								Location: "query",
+								Example:  json.Number("7342342398472398471"),
+							},
+						},
+					},
+				},
+			},
+		},
+	}})
+
+	cmd := NewCmdSchema(f, nil)
+	cmd.SetArgs([]string{"fixture.items.get", "--format", "json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"example": 7342342398472398471`) {
+		t.Fatalf("schema output does not preserve exact large integer example:\n%s", out)
+	}
+	if strings.Contains(out, "7342342398472398848") {
+		t.Fatalf("schema output contains float64-rounded large integer example:\n%s", out)
+	}
+}
+
 func TestSchemaCmd_SpaceSeparatedPath_EqualsDotted(t *testing.T) {
-	f1, out1, _, _ := cmdutil.TestFactory(t, nil)
+	f1, out1, _, _ := schemaTestFactory(t, nil)
 	cmd1 := NewCmdSchema(f1, nil)
 	cmd1.SetArgs([]string{"im", "images", "create"})
 	if err := cmd1.Execute(); err != nil {
 		t.Fatalf("space form failed: %v", err)
 	}
 
-	f2, out2, _, _ := cmdutil.TestFactory(t, nil)
+	f2, out2, _, _ := schemaTestFactory(t, nil)
 	cmd2 := NewCmdSchema(f2, nil)
 	cmd2.SetArgs([]string{"im.images.create"})
 	if err := cmd2.Execute(); err != nil {
@@ -141,7 +233,7 @@ func TestSchemaCmd_SpaceSeparatedPath_EqualsDotted(t *testing.T) {
 }
 
 func TestSchemaCmd_ServiceListIsArray(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	f, stdout, _, _ := schemaTestFactory(t, nil)
 
 	cmd := NewCmdSchema(f, nil)
 	cmd.SetArgs([]string{"im"})
@@ -164,7 +256,7 @@ func TestSchemaCmd_ServiceListIsArray(t *testing.T) {
 }
 
 func TestSchemaCmd_HighRiskYesInjection(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	f, stdout, _, _ := schemaTestFactory(t, nil)
 
 	cmd := NewCmdSchema(f, nil)
 	cmd.SetArgs([]string{"im.messages.delete"})
@@ -183,7 +275,7 @@ func TestSchemaCmd_HighRiskYesInjection(t *testing.T) {
 }
 
 func TestSchemaCmd_NoYesForReadRisk(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	f, stdout, _, _ := schemaTestFactory(t, nil)
 
 	cmd := NewCmdSchema(f, nil)
 	cmd.SetArgs([]string{"im.reactions.list"})
@@ -202,7 +294,7 @@ func TestSchemaCmd_NoYesForReadRisk(t *testing.T) {
 }
 
 func TestSchemaCmd_UnknownService(t *testing.T) {
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+	f, _, _, _ := schemaTestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
@@ -231,7 +323,7 @@ func TestSchemaCmd_UnknownService(t *testing.T) {
 // JSON-mode unknown-method path: *errs.ValidationError with
 // subtype invalid_argument and a hint listing the available methods.
 func TestSchemaCmd_UnknownMethod_TypedValidation(t *testing.T) {
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+	f, _, _, _ := schemaTestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
@@ -267,7 +359,7 @@ func TestSchemaSurfaceProjectionFiltersExecutionListingAndCompletion(t *testing.
 	}
 
 	var out bytes.Buffer
-	if err := runSchemaCatalog(&out, nil, core.StrictModeOff, catalog, visible); err != nil {
+	if err := runSchemaCatalog(&out, nil, core.StrictModeOff, catalog, nil, visible); err != nil {
 		t.Fatalf("broad schema failed: %v", err)
 	}
 	var envelopes []map[string]interface{}
@@ -294,6 +386,7 @@ func TestSchemaSurfaceProjectionFiltersExecutionListingAndCompletion(t *testing.
 		[]string{"mail", "user_mailbox", "messages", "list"},
 		core.StrictModeOff,
 		catalog,
+		nil,
 		visible,
 	)
 	if err == nil {
@@ -362,10 +455,10 @@ func TestSchemaSurfaceProjectionPreservesDefaultAndDeniedVisibleCatalog(t *testi
 	allVisible := func([]string) bool { return true }
 
 	var defaultOut, projectedOut bytes.Buffer
-	if err := runSchemaCatalog(&defaultOut, nil, core.StrictModeOff, catalog, nil); err != nil {
+	if err := runSchemaCatalog(&defaultOut, nil, core.StrictModeOff, catalog, nil, nil); err != nil {
 		t.Fatalf("default schema failed: %v", err)
 	}
-	if err := runSchemaCatalog(&projectedOut, nil, core.StrictModeOff, catalog, allVisible); err != nil {
+	if err := runSchemaCatalog(&projectedOut, nil, core.StrictModeOff, catalog, nil, allVisible); err != nil {
 		t.Fatalf("all-visible schema failed: %v", err)
 	}
 	if defaultOut.String() != projectedOut.String() {

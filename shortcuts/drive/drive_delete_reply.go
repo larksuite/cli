@@ -113,7 +113,7 @@ func buildDriveDeleteReplyDryRun(spec driveDeleteReplySpec) *common.DryRunAPI {
 	if spec.Ref.Type == "wiki" {
 		return common.NewDryRunAPI().
 			Desc("2-step orchestration: resolve wiki -> delete reply").
-			GET("/open-apis/wiki/v2/spaces/get_node").
+			GET("/open-apis/wiki/v2/spaces/node_by_token").
 			Desc("[1] Resolve wiki node to underlying document").
 			Params(map[string]interface{}{"token": spec.Ref.Token}).
 			DELETE("/open-apis/drive/v1/files/<obj_token from step 1>/comments/:comment_id/replies/:reply_id").

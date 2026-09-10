@@ -7,6 +7,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/meta"
 )
 
@@ -24,7 +25,7 @@ func TestVCAffordanceRoutesAgentActionReferences(t *testing.T) {
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.command, func(t *testing.T) {
-			raw, ok := For("vc", testCase.command)
+			raw, ok := For(apicatalog.Catalog{}, "vc", testCase.command)
 			if !ok {
 				t.Fatalf("For(vc, %s) ok=false", testCase.command)
 			}

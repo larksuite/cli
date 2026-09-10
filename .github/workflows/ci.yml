@@ -31,8 +31,6 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: '3.x'
-      - name: Fetch meta data
-        run: python3 scripts/fetch_meta.py
       - name: Build
         run: go build ./...
       - name: Vet
@@ -68,8 +66,6 @@ jobs:
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: go.mod
-      # No fetch_meta: the git-archive clean tree must embed only the
-      # committed meta_data stub (reproduces the bare-module customer state).
       - name: Run plugin-integration L4 tests
         run: go test -count=1 -timeout=15m ./tests/plugin_e2e/...
 
@@ -98,8 +94,6 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: '3.x'
-      - name: Fetch meta data
-        run: python3 scripts/fetch_meta.py
       - name: Run tests
         run: go test -v -race -count=1 -timeout=5m ./cmd/... ./internal/... ./shortcuts/... ./extension/...
 
@@ -117,8 +111,6 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: '3.x'
-      - name: Fetch meta data
-        run: python3 scripts/fetch_meta.py
       - name: Resolve changed-from baseline
         env:
           QUALITY_GATE_CHANGED_FROM: ${{ github.event.pull_request.base.sha || github.event.before || 'origin/main' }}
@@ -163,8 +155,6 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: '3.x'
-      - name: Fetch meta data
-        run: python3 scripts/fetch_meta.py
       - name: Resolve changed-from baseline
         env:
           QUALITY_GATE_CHANGED_FROM: ${{ github.event.pull_request.base.sha || github.event.before || 'origin/main' }}
@@ -211,8 +201,6 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: '3.x'
-      - name: Fetch meta data
-        run: python3 scripts/fetch_meta.py
       - name: Run tests with coverage
         run: |
           # tests/ holds only L3/L4 suites (cli_e2e, plugin_e2e, sidecar_e2e) that
@@ -269,8 +257,6 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: '3.x'
-      - name: Fetch meta data
-        run: python3 scripts/fetch_meta.py
       - name: Dead code check (incremental)
         run: |
           # Analyze current HEAD (strip line:col for stable diff across line shifts)
@@ -281,7 +267,7 @@ jobs:
 
           # Analyze base branch via worktree
           git worktree add -q /tmp/dc-base "origin/${{ github.base_ref }}"
-          (cd /tmp/dc-base && python3 scripts/fetch_meta.py && \
+          (cd /tmp/dc-base && \
            go run golang.org/x/tools/cmd/deadcode@v0.31.0 -test ./... 2>&1 | \
             grep -v '^go: ' | \
             sed 's/:[0-9][0-9]*:[0-9][0-9]*:/:/' | sort > /tmp/dc-base.txt) || {
@@ -493,8 +479,6 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: '3.x'
-      - name: Fetch meta data
-        run: python3 scripts/fetch_meta.py
       - name: Gitleaks
         if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9

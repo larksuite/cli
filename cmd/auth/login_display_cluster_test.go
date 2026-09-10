@@ -432,7 +432,7 @@ func TestAuthLoginRun_MissingRequestedScopeAlignsWithLoginSuccess(t *testing.T) 
 		Factory: f,
 		Ctx:     context.Background(),
 		Scope:   "im:message:send",
-	}, builtinResolver())
+	}, builtinResolver(t))
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -513,7 +513,7 @@ func TestAuthLoginRun_DeviceCodeTokenNilCleansScopeCache(t *testing.T) {
 		Factory:    f,
 		Ctx:        context.Background(),
 		DeviceCode: "device-code",
-	}, builtinResolver())
+	}, builtinResolver(t))
 	if err == nil {
 		t.Fatal("expected error for nil token")
 	}

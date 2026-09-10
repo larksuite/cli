@@ -114,6 +114,7 @@ func FromChangedFiles(files []string) Scope {
 		}
 		if strings.HasPrefix(file, "cmd/") ||
 			strings.HasPrefix(file, "shortcuts/") ||
+			strings.HasPrefix(file, "internal/registry/catalog/") ||
 			strings.HasPrefix(file, "internal/output/") ||
 			strings.HasPrefix(file, "internal/errclass/") ||
 			strings.HasPrefix(file, "errs/") {

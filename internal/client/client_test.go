@@ -383,6 +383,26 @@ func TestBuildApiReq_QueryParams(t *testing.T) {
 			params: map[string]interface{}{"with_bot": true},
 			want:   larkcore.QueryParams{"with_bot": []string{"true"}},
 		},
+		{
+			// --params numbers arrive as float64; the query string carries plain
+			// decimals, exactly as the multipart form path renders them. Go's
+			// %v would emit "1e+06" and "1.7e+09" here.
+			name: "numeric literals render as plain decimals",
+			params: map[string]interface{}{
+				"exponent":  float64(1e3),
+				"fraction":  float64(1.0),
+				"threshold": float64(1000000),
+				"timestamp": float64(1700000000),
+				"ids":       []interface{}{float64(1e2), float64(2.50)},
+			},
+			want: larkcore.QueryParams{
+				"exponent":  []string{"1000"},
+				"fraction":  []string{"1"},
+				"threshold": []string{"1000000"},
+				"timestamp": []string{"1700000000"},
+				"ids":       []string{"100", "2.5"},
+			},
+		},
 	}
 
 	for _, tt := range tests {

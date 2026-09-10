@@ -28,7 +28,7 @@ func TestResolveScopesForDomains_RemoteSendAsUserStillBatchExcluded(t *testing.T
 	remote := map[string][]string{
 		"im": {"im:message", "im:message.send_as_user"},
 	}
-	resolved := resolveScopesForDomains([]string{"im"}, remote, true, builtinResolver(), core.BrandFeishu)
+	resolved := resolveScopesForDomains([]string{"im"}, remote, true, builtinResolver(t), core.BrandFeishu)
 	if !slices.Contains(resolved, "im:message.send_as_user") {
 		t.Fatalf("precondition: remote resolution should surface send_as_user, got %v", resolved)
 	}
@@ -46,7 +46,7 @@ func TestResolveScopesForDomains_RemoteUsed(t *testing.T) {
 		"im":   {"im:message:send", "im:chat:read"},
 		"docs": {"docs:doc:read"},
 	}
-	got := resolveScopesForDomains([]string{"im"}, remote, true, builtinResolver(), core.BrandFeishu)
+	got := resolveScopesForDomains([]string{"im"}, remote, true, builtinResolver(t), core.BrandFeishu)
 	want := []string{"im:chat:read", "im:message:send"} // deduped, ascending by sort.Strings
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
@@ -58,7 +58,7 @@ func TestResolveScopesForDomains_UnionAcrossDomains(t *testing.T) {
 		"im":   {"im:message:send"},
 		"docs": {"docs:doc:read"},
 	}
-	got := resolveScopesForDomains([]string{"im", "docs"}, remote, true, builtinResolver(), core.BrandFeishu)
+	got := resolveScopesForDomains([]string{"im", "docs"}, remote, true, builtinResolver(t), core.BrandFeishu)
 	want := []string{"docs:doc:read", "im:message:send"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
@@ -67,7 +67,7 @@ func TestResolveScopesForDomains_UnionAcrossDomains(t *testing.T) {
 
 func TestResolveScopesForDomains_FallbackToLocal(t *testing.T) {
 	// remoteOK=false -> falls back to local resolver.scopesFor; im must yield non-empty local scopes
-	got := resolveScopesForDomains([]string{"im"}, nil, false, builtinResolver(), core.BrandFeishu)
+	got := resolveScopesForDomains([]string{"im"}, nil, false, builtinResolver(t), core.BrandFeishu)
 	if len(got) == 0 {
 		t.Fatal("fallback should return non-empty local scopes for im")
 	}
@@ -80,7 +80,7 @@ func TestLegalDomainsFor_RemoteUsed(t *testing.T) {
 		"docs":   {"docs:doc:read"},
 		"newbiz": {"newbiz:thing:read"},
 	}
-	set, sorted := legalDomainsFor(remote, true, builtinResolver(), core.BrandFeishu)
+	set, sorted := legalDomainsFor(remote, true, builtinResolver(t), core.BrandFeishu)
 	wantSorted := []string{"docs", "im", "newbiz"} // remote keys, ascending by sort.Strings
 	if !reflect.DeepEqual(sorted, wantSorted) {
 		t.Fatalf("sorted = %v, want %v", sorted, wantSorted)
@@ -100,7 +100,7 @@ func TestLegalDomainsFor_RemoteUsed(t *testing.T) {
 
 func TestLegalDomainsFor_FallbackToLocal(t *testing.T) {
 	// remoteOK=false -> falls back to local resolver.allKnown/resolver.sorted
-	set, sorted := legalDomainsFor(nil, false, builtinResolver(), core.BrandFeishu)
+	set, sorted := legalDomainsFor(nil, false, builtinResolver(t), core.BrandFeishu)
 	if len(sorted) == 0 {
 		t.Fatal("fallback should return non-empty local domain slice")
 	}
@@ -114,7 +114,7 @@ func TestLegalDomainsFor_FallbackToLocal(t *testing.T) {
 		}
 	}
 	// fallback adopts the local sort order directly, which must equal resolver.sorted
-	if want := builtinResolver().sorted(core.BrandFeishu); !reflect.DeepEqual(sorted, want) {
+	if want := builtinResolver(t).sorted(core.BrandFeishu); !reflect.DeepEqual(sorted, want) {
 		t.Fatalf("sorted = %v, want resolver.sorted %v", sorted, want)
 	}
 }
@@ -150,7 +150,7 @@ func TestAuthLoginRun_NonTerminal_NoFlags_ProceedsAndSurfacesAgentHint(t *testin
 	cancel()
 	// TestFactory has IsTerminal=false by default and no scope/domain/recommend
 	// flags are set, so this is the bare non-terminal path.
-	err := authLoginRun(&LoginOptions{Factory: f, Ctx: ctx}, builtinResolver())
+	err := authLoginRun(&LoginOptions{Factory: f, Ctx: ctx}, builtinResolver(t))
 	if err == nil {
 		t.Fatal("expected error from cancelled poll after device authorization")
 	}
