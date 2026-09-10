@@ -334,11 +334,9 @@ func TestTablePut_PayloadValidation(t *testing.T) {
 		{"empty sheets", `{"sheets":[]}`, "at least one sheet"},
 		{"missing name", `{"sheets":[{"columns":["a"],"data":[]}]}`, "name is required"},
 		{"duplicate name", `{"sheets":[{"name":"S","columns":["a"],"data":[]},{"name":"S","columns":["a"],"data":[]}]}`, "duplicate sheet name"},
-		{"no columns with data", `{"sheets":[{"name":"S","columns":[],"data":[["x"]]}]}`, "columns must be non-empty when `data` has rows"},
 		{"dtypes key on a blank column", `{"sheets":[{"name":"S","columns":["a",""],"dtypes":{"":"int64"},"data":[]}]}`, `dtypes references unknown column ""`},
 		{"dtypes refs unknown column", `{"sheets":[{"name":"S","columns":["a"],"data":[],"dtypes":{"b":"int64"}}]}`, "dtypes references unknown column"},
 		{"formats refs unknown column", `{"sheets":[{"name":"S","columns":["a"],"data":[],"formats":{"b":"0.0"}}]}`, "formats references unknown column"},
-		{"row wider than columns", `{"sheets":[{"name":"S","columns":["a"],"data":[["x","y"]]}]}`, "`columns` declares 1"},
 		{"bad start_cell", `{"sheets":[{"name":"S","start_cell":"A","columns":["a"],"data":[]}]}`, "start_cell"},
 		{"bad date value", `{"sheets":[{"name":"S","columns":["d"],"dtypes":{"d":"datetime64[ns]"},"data":[["2025/03/31"]]}]}`, "must be ISO"},
 		{"number expects numeric", `{"sheets":[{"name":"S","columns":["n"],"dtypes":{"n":"int64"},"data":[["abc"]]}]}`, "number expects"},
@@ -516,11 +514,6 @@ func TestTablePut_Validation(t *testing.T) {
 			name: "url and token are mutually exclusive",
 			args: []string{"--url", testURL, "--spreadsheet-token", testToken, "--sheets", tablePutSheetsJSON},
 			want: "mutually exclusive",
-		},
-		{
-			name: "row wider than columns rejected",
-			args: []string{"--url", testURL, "--sheets", `{"sheets":[{"name":"S","columns":["a"],"data":[["one","two"]]}]}`},
-			want: "`columns` declares 1",
 		},
 		{
 			name: "trailing JSON data after --sheets value rejected",

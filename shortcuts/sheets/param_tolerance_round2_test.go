@@ -233,3 +233,80 @@ func TestCellsSet_FlatPayloadLifted(t *testing.T) {
 		requireValidation(t, err, `expected type "array"`)
 	})
 }
+
+// TestTable_ColumnsFitToRows pins the two width folds and the one thing that
+// still fails. 09-04..07: 2779 rejections on a row wider than its columns and
+// 2299 on a sheet that declared none, both on payloads whose data was fine.
+func TestTable_ColumnsFitToRows(t *testing.T) {
+	t.Parallel()
+	sc := shortcutFromRegistry(t, "+workbook-create")
+	write := func(t *testing.T, sheet string) (string, error) {
+		t.Helper()
+		stdout, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--title", "T", "--dry-run", "--sheets", `{"sheets":[` + sheet + `]}`,
+		})
+		return strings.ReplaceAll(stdout, `\"`, `"`), err
+	}
+
+	t.Run("a row padded past its columns loses the padding", func(t *testing.T) {
+		t.Parallel()
+		out, err := write(t, `{"name":"S","columns":["a"],"data":[["x",null,""]]}`)
+		if err != nil {
+			t.Fatalf("trailing empties write nothing, so they are not a width error: %v", err)
+		}
+		if !strings.Contains(out, `"range":"A1:A2"`) {
+			t.Errorf("the write should stay one column wide, got %q", out)
+		}
+	})
+
+	t.Run("a row with real values past its columns gets blank headings", func(t *testing.T) {
+		t.Parallel()
+		out, err := write(t, `{"name":"S","columns":["a"],"data":[["x","y"]]}`)
+		if err != nil {
+			t.Fatalf("the extra value is data, not an error: %v", err)
+		}
+		if !strings.Contains(out, `"range":"A1:B2"`) {
+			t.Errorf("the write should widen to the data, got %q", out)
+		}
+	})
+
+	t.Run("a sheet with no columns writes the block it carries", func(t *testing.T) {
+		t.Parallel()
+		out, err := write(t, `{"name":"S","columns":[],"data":[["a","b"],["c","d"]]}`)
+		if err != nil {
+			t.Fatalf("this is the --values shape on --sheets: %v", err)
+		}
+		// Two data rows and no header row invented above them.
+		if !strings.Contains(out, `"range":"A1:B2"`) {
+			t.Errorf("only the data should be written, got %q", out)
+		}
+	})
+
+	t.Run("an explicit header row over columns nobody named still fails", func(t *testing.T) {
+		t.Parallel()
+		_, err := write(t, `{"name":"S","header":true,"data":[["a","b"]]}`)
+		requireValidation(t, err, "columns must be non-empty")
+	})
+}
+
+// TestPayloadFlags_SyntaxErrorNamesThePlace pins the position on the shapes the
+// repair refuses. Go carries the offset on the error and leaves it out of the
+// text, which in an 8 KB payload is the whole question.
+func TestPayloadFlags_SyntaxErrorNamesThePlace(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, cells string }{
+		{"a bracket that does not match", `[["a","b"]}`},
+		{"a payload cut short", `[["a","b"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+cells-set"), []string{
+				"--url", testURL, "--sheet-name", "s", "--range", "A1", "--cells", tc.cells, "--dry-run",
+			})
+			ve := requireValidation(t, err, "invalid JSON")
+			if !strings.Contains(ve.Hint, "breaks at byte") {
+				t.Errorf("hint should name the offset, got %q", ve.Hint)
+			}
+		})
+	}
+}

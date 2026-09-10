@@ -538,6 +538,9 @@ func parseTablePutPayload(runtime flagView) (*tablePayload, error) {
 				"expected shape: %s (columns is a flat string array; dtypes/formats are column-name-keyed maps; data is row-major)",
 				tablePutSheetsSkeleton)
 		}
+		if where := jsonSyntaxContext(raw, err); where != "" {
+			return nil, verr.WithHint("%s; %s", where, mangledPayloadHint("sheets"))
+		}
 		return nil, verr.WithHint("%s", mangledPayloadHint("sheets"))
 	}
 	// Reject trailing non-whitespace after the first JSON value: json.Decoder
@@ -731,6 +734,70 @@ func normalizeColumnLabelKey(name string) string {
 	return b.String()
 }
 
+// fitColumnsToRows squares the declared columns against the rows that arrived,
+// in the two directions that carry no guess.
+//
+// A row longer than `columns` first has its trailing EMPTY cells dropped: a
+// nil or a blank string past the last column writes nothing, so the row was
+// already the width it declared and the padding came from whatever generated
+// it. What is still longer gets the columns it needs, with BLANK headings —
+// the shape a table with unnamed trailing columns has, which this payload
+// already accepts on the way in. Naming them would put a word in the caller's
+// header row that they never wrote.
+//
+// A sheet that declares no columns at all but carries rows is the --values
+// shape spelled on --sheets, so it takes the --values treatment: positional
+// type-less columns and no header row, which writes exactly the block that
+// arrived. A caller who asked for a header row explicitly is left alone —
+// there is no telling what they wanted it to say.
+//
+// 09-04..07: 2779 rejections on the width, 2299 on the missing columns.
+func fitColumnsToRows(s *tableSheetSpec) {
+	widest := 0
+	for r := range s.Rows {
+		s.Rows[r] = trimTrailingEmptyCells(s.Rows[r], len(s.Columns))
+		widest = max(widest, len(s.Rows[r]))
+	}
+	if widest == 0 {
+		return
+	}
+	if len(s.Columns) == 0 {
+		if s.Header != nil && *s.Header {
+			return // an explicit header row over columns nobody named
+		}
+		noHeader := false
+		s.Header = &noHeader
+		s.Columns = make([]tableColumnSpec, widest)
+		for i := range s.Columns {
+			s.Columns[i] = tableColumnSpec{Name: fmt.Sprintf("col%d", i+1)}
+		}
+		return
+	}
+	for len(s.Columns) < widest {
+		s.Columns = append(s.Columns, tableColumnSpec{})
+	}
+}
+
+// trimTrailingEmptyCells drops the empty cells a row carries past the declared
+// column count. Only past it, and only empties: a row shorter than the columns
+// is padShortRows's business, and a real value out there is what the width
+// error is for.
+func trimTrailingEmptyCells(row []interface{}, columns int) []interface{} {
+	for len(row) > columns {
+		last := row[len(row)-1]
+		if last == nil {
+			row = row[:len(row)-1]
+			continue
+		}
+		if text, isStr := last.(string); isStr && strings.TrimSpace(text) == "" {
+			row = row[:len(row)-1]
+			continue
+		}
+		break
+	}
+	return row
+}
+
 // padShortRows right-pads every data row to the column count with nils, which
 // buildTypedCell writes as empty cells. It mirrors what the untyped --values
 // path already does (parseValuesPayload pads to a rectangle) and is the reason
@@ -796,6 +863,7 @@ func (p *tablePayload) validate() error {
 			return common.ValidationErrorf("--sheets[%d]: duplicate sheet name %q", i, s.Name)
 		}
 		seen[s.Name] = true
+		fitColumnsToRows(s)
 		if len(s.Columns) == 0 {
 			// A header-less, data-less sheet is a legitimate request — "give
 			// me the tab, I will fill it later" — and rejecting it made the

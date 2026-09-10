@@ -5,6 +5,8 @@ package sheets
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"unicode"
@@ -225,4 +227,36 @@ func trimTrailingComma(b *strings.Builder) bool {
 	b.Reset()
 	b.WriteString(rebuilt)
 	return true
+}
+
+// jsonSyntaxContext quotes the payload around the byte a syntax error names,
+// for the shapes the repair above refuses: a bracket that does not match and a
+// payload cut short can only be fixed by the caller, and "invalid character
+// '}' after array element" does not say WHERE in an 8 KB body. Go carries the
+// offset on the error and then drops it from the text; this puts it back, with
+// the run either side of it.
+//
+// Empty when the error is not a syntax error (a type mismatch names its own
+// path already) or the offset is outside the payload.
+func jsonSyntaxContext(raw string, err error) string {
+	var se *json.SyntaxError
+	if !errors.As(err, &se) {
+		return ""
+	}
+	offset := int(se.Offset)
+	if offset < 0 || offset > len(raw) {
+		return ""
+	}
+	const window = 40
+	start := max(0, offset-window)
+	end := min(len(raw), offset+window)
+	lead, trail := "", ""
+	if start > 0 {
+		lead = "…"
+	}
+	if end < len(raw) {
+		trail = "…"
+	}
+	return fmt.Sprintf("the payload breaks at byte %d of %d: %s%s%s",
+		offset, len(raw), lead, strings.ReplaceAll(raw[start:end], "\n", " "), trail)
 }

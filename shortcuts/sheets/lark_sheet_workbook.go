@@ -908,7 +908,11 @@ func parseValuesRows(runtime flagView) ([][]interface{}, error) {
 	dec.UseNumber()
 	var v interface{}
 	if err := dec.Decode(&v); err != nil {
-		return nil, common.ValidationErrorf("--values: invalid JSON: %v", err)
+		verr := common.ValidationErrorf("--values: invalid JSON: %v", err).WithCause(err)
+		if where := jsonSyntaxContext(raw, err); where != "" {
+			verr = verr.WithHint("%s", where)
+		}
+		return nil, verr
 	}
 	// Reject trailing non-whitespace after the first JSON value: see
 	// decoderExpectEOF in lark_sheet_table_io.go for the rationale.

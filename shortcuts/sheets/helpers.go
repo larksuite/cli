@@ -587,12 +587,19 @@ func parseJSONFlag(runtime flagView, name string) (interface{}, error) {
 		// mangled (e.g. `\$` → "invalid character in string escape"). For any
 		// flag that accepts stdin, steer the caller off the command line
 		// entirely, in the spelling their own shell has (mangledPayloadHint).
+		verr := sheetsValidationForFlag(name, "--%s: invalid JSON: %v", name, err).WithCause(err)
+		hint := jsonSyntaxContext(raw, err)
 		if flagAcceptsStdin(runtime.Command(), name) {
-			return nil, sheetsValidationForFlag(name, "--%s: invalid JSON: %v", name, err).
-				WithCause(err).
-				WithHint("%s", mangledPayloadHint(name))
+			if hint == "" {
+				hint = mangledPayloadHint(name)
+			} else {
+				hint += "; " + mangledPayloadHint(name)
+			}
 		}
-		return nil, sheetsValidationForFlag(name, "--%s: invalid JSON: %v", name, err).WithCause(err)
+		if hint != "" {
+			verr = verr.WithHint("%s", hint)
+		}
+		return nil, verr
 	}
 	return finishParsedJSONFlag(runtime, name, out)
 }
