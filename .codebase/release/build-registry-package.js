@@ -83,6 +83,42 @@ function selectBinaries(artifacts) {
   return binaries.sort((a, b) => a.target.localeCompare(b.target));
 }
 
+// Lays out a package directory: one binary per platform under bin/, the
+// launcher and its postinstall under scripts/, the shipped root files, any
+// whole directory the package carries, and the package.json. The preview
+// package in .codebase/preview builds on the same layout, so this stays
+// independent of where the binaries came from.
+function stageTree({ repoRoot, stageDir, binaries, packageJson, launcherDir = __dirname, extraDirs = [] }) {
+  for (const binary of binaries) {
+    if (!fs.existsSync(binary.source)) {
+      throw new Error(`binary for ${binary.target} is missing at ${binary.source}`);
+    }
+  }
+
+  fs.rmSync(stageDir, { recursive: true, force: true });
+  fs.mkdirSync(path.join(stageDir, "bin"), { recursive: true });
+  fs.mkdirSync(path.join(stageDir, "scripts"), { recursive: true });
+  for (const binary of binaries) {
+    const dest = path.join(stageDir, "bin", binary.target);
+    fs.copyFileSync(binary.source, dest);
+    fs.chmodSync(dest, 0o755);
+  }
+  for (const file of ["run.js", "postinstall.js"]) {
+    fs.copyFileSync(path.join(launcherDir, file), path.join(stageDir, "scripts", file));
+  }
+  for (const file of SHIPPED_ROOT_FILES) {
+    fs.copyFileSync(path.join(repoRoot, file), path.join(stageDir, file));
+  }
+  for (const dir of extraDirs) {
+    const source = path.join(repoRoot, dir);
+    if (!fs.existsSync(source)) throw new Error(`package directory ${dir} is missing`);
+    fs.cpSync(source, path.join(stageDir, dir), { recursive: true });
+  }
+  fs.writeFileSync(path.join(stageDir, "package.json"), JSON.stringify(packageJson, null, 2) + "\n");
+
+  return { packageJson, binaries: binaries.map((b) => b.target) };
+}
+
 function stagePackage({ repoRoot, distDir, stageDir, name, registry, launcherDir = __dirname }) {
   const artifactsPath = path.join(distDir, "artifacts.json");
   if (!fs.existsSync(artifactsPath)) {
@@ -99,23 +135,7 @@ function stagePackage({ repoRoot, distDir, stageDir, name, registry, launcherDir
   const base = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
   const packageJson = derivePackageJson(base, { name, registry });
 
-  fs.rmSync(stageDir, { recursive: true, force: true });
-  fs.mkdirSync(path.join(stageDir, "bin"), { recursive: true });
-  fs.mkdirSync(path.join(stageDir, "scripts"), { recursive: true });
-  for (const binary of binaries) {
-    const dest = path.join(stageDir, "bin", binary.target);
-    fs.copyFileSync(binary.source, dest);
-    fs.chmodSync(dest, 0o755);
-  }
-  for (const file of ["run.js", "postinstall.js"]) {
-    fs.copyFileSync(path.join(launcherDir, file), path.join(stageDir, "scripts", file));
-  }
-  for (const file of SHIPPED_ROOT_FILES) {
-    fs.copyFileSync(path.join(repoRoot, file), path.join(stageDir, file));
-  }
-  fs.writeFileSync(path.join(stageDir, "package.json"), JSON.stringify(packageJson, null, 2) + "\n");
-
-  return { packageJson, binaries: binaries.map((b) => b.target) };
+  return stageTree({ repoRoot, stageDir, binaries, packageJson, launcherDir });
 }
 
 function parseArgs(argv) {
@@ -174,7 +194,7 @@ function main() {
   process.stdout.write(JSON.stringify(manifest, null, 2) + "\n");
 }
 
-module.exports = { derivePackageJson, selectBinaries, stagePackage };
+module.exports = { derivePackageJson, selectBinaries, stagePackage, stageTree };
 
 if (require.main === module) {
   try {

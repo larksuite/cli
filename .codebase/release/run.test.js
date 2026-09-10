@@ -9,7 +9,7 @@ const os = require("os");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
 
-const { binaryName, compareVersions, isPnpmInstall, parseUpdateArgs } = require("./run.js");
+const { binaryName, compareVersions, isPnpmInstall, leavePreviewHint, parseUpdateArgs } = require("./run.js");
 const { prune } = require("./postinstall.js");
 
 const POSIX = process.platform !== "win32";
@@ -18,12 +18,12 @@ const NAME = "@example/larksuite-cli";
 // A package tree as npm would lay it out, with this platform's binary replaced
 // by a shell script that reports what it received, plus fake npm / npx /
 // lark-cli commands on PATH that record their calls.
-function makePackage({ version = "1.0.93", registry = "https://registry.example", root = fs.mkdtempSync(path.join(os.tmpdir(), "launcher-")) } = {}) {
+function makePackage({ version = "1.0.93", registry = "https://registry.example", root = fs.mkdtempSync(path.join(os.tmpdir(), "launcher-")), packageJson } = {}) {
   const pkgDir = path.join(root, "node_modules", ...NAME.split("/"));
   fs.mkdirSync(path.join(pkgDir, "scripts"), { recursive: true });
   fs.mkdirSync(path.join(pkgDir, "bin"));
   for (const f of ["run.js", "postinstall.js"]) fs.copyFileSync(path.join(__dirname, f), path.join(pkgDir, "scripts", f));
-  fs.writeFileSync(path.join(pkgDir, "package.json"), JSON.stringify({ name: NAME, version, publishConfig: { registry } }));
+  fs.writeFileSync(path.join(pkgDir, "package.json"), JSON.stringify(packageJson || { name: NAME, version, publishConfig: { registry } }));
   fs.writeFileSync(path.join(pkgDir, "bin", binaryName()), '#!/bin/sh\necho "args:$*"\necho "notifier:$LARKSUITE_CLI_NO_UPDATE_NOTIFIER"\nexit 3\n', { mode: 0o755 });
   fs.writeFileSync(path.join(pkgDir, "bin", "lark-cli-windows-arm64.exe"), "other platform");
 
@@ -223,6 +223,64 @@ describe("run.js update", { skip: !POSIX && "shell-script stand-ins need a POSIX
     const result = launch(makePackage(), ["update", "--force"]);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /unknown flag --force/);
+  });
+});
+
+describe("leavePreviewHint", () => {
+  it("names the exact reinstall command when the package carries a release identity", () => {
+    assert.equal(
+      leavePreviewHint({ releasePackage: "@example/cli", releaseRegistry: "https://registry.example" }),
+      "To leave this preview build:\n  npm install -g @example/cli@latest --registry https://registry.example"
+    );
+  });
+
+  it("stays generic rather than guessing when the package names no release", () => {
+    for (const preview of [undefined, {}, { releasePackage: "@example/cli" }]) {
+      assert.match(leavePreviewHint(preview), /^Reinstall the released package/);
+    }
+  });
+});
+
+// A preview package is packed by .codebase/preview and installed from its
+// tarball. It has no publishConfig, and the launcher must read that as "there
+// is no channel to move along" rather than resolving `latest` of some other
+// build — every preview is a different merge request, not a newer version.
+describe("run.js update on a preview build", { skip: !POSIX && "shell-script stand-ins need a POSIX shell" }, () => {
+  const previewPackageJson = {
+    name: "@example/larksuite-cli-preview",
+    version: "1.0.93-mr7.gabc1234",
+    private: true,
+    larkPreview: { label: "mr7", commit: "abc1234", releasePackage: NAME, releaseRegistry: "https://registry.example" },
+  };
+
+  it("refuses to update and says how to get back to a release", async () => {
+    const pkg = makePackage({ packageJson: previewPackageJson });
+    const result = await launchAsync(pkg, ["update", "--json"]);
+    assert.equal(result.status, 1);
+    assert.deepEqual(json(result), {
+      ok: false,
+      action: "preview_build",
+      package: "@example/larksuite-cli-preview",
+      current_version: "1.0.93-mr7.gabc1234",
+      message:
+        "@example/larksuite-cli-preview@1.0.93-mr7.gabc1234 is a preview build and does not update itself.\n" +
+        `To leave this preview build:\n  npm install -g ${NAME}@latest --registry https://registry.example`,
+    });
+    assert.deepEqual(pkg.calls(), [], "no npm or npx call is made");
+  });
+
+  it("refuses --check too, instead of reporting some other build as available", async () => {
+    const pkg = makePackage({ packageJson: previewPackageJson });
+    const result = await launchAsync(pkg, ["update", "--check", "--json"]);
+    assert.equal(result.status, 1);
+    assert.equal(json(result).action, "preview_build");
+  });
+
+  it("still dispatches every other command to the binary", () => {
+    const pkg = makePackage({ packageJson: previewPackageJson });
+    const result = launch(pkg, ["whoami", "--as", "bot"]);
+    assert.equal(result.status, 3);
+    assert.match(result.stdout, /args:whoami --as bot/);
   });
 });
 

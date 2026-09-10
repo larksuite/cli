@@ -115,13 +115,39 @@ function runCommand(command, args, timeout) {
   return spawnSync(command, args, { encoding: "utf8", timeout, shell: process.platform === "win32" });
 }
 
+/**
+ * Reinstall instructions for a preview build, from the release identity its
+ * package.json carries. Generic text when the package names none.
+ */
+function leavePreviewHint(preview) {
+  const name = preview && preview.releasePackage;
+  const registry = preview && preview.releaseRegistry;
+  if (!name || !registry) return "Reinstall the released package to leave this preview build.";
+  return `To leave this preview build:\n  npm install -g ${name}@latest --registry ${registry}`;
+}
+
 async function update(args, pkg, packageDir) {
   const opts = parseUpdateArgs(args);
-  const registry = pkg.publishConfig.registry;
+  const registry = pkg.publishConfig && pkg.publishConfig.registry;
   const emit = (out) => {
     if (opts.json) process.stdout.write(JSON.stringify(out, null, 2) + "\n");
     else if (out.message) process.stderr.write(out.message + "\n");
   };
+
+  // A preview build has no publish target. It was packed for one merge
+  // request and installed from a tarball, so there is no channel to move
+  // along: `latest` of any package is a different build, not a newer one.
+  if (!registry) {
+    emit({
+      ok: false,
+      action: "preview_build",
+      package: pkg.name,
+      current_version: pkg.version,
+      message: `${pkg.name}@${pkg.version} is a preview build and does not update itself.\n${leavePreviewHint(pkg.larkPreview)}`,
+    });
+    return 1;
+  }
+
   const manual = `npm install -g ${pkg.name}@latest --registry ${registry}`;
 
   if (isPnpmInstall(packageDir)) {
@@ -203,6 +229,6 @@ function main() {
   process.exit(result.status === null ? 1 : result.status);
 }
 
-module.exports = { binaryName, compareVersions, isPnpmInstall, parseUpdateArgs };
+module.exports = { binaryName, compareVersions, isPnpmInstall, leavePreviewHint, parseUpdateArgs, update };
 
 if (require.main === module) main();

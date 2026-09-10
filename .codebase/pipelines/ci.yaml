@@ -251,6 +251,13 @@ jobs:
           - bash .codebase/release/pipeline.test.sh
           - bash .codebase/release/scripts.test.sh
           - node --test .codebase/release/build-registry-package.test.js .codebase/release/run.test.js
+      # The preview package's own scripts and job contract. The preview_package
+      # job below builds a package; only these tests check how.
+      - name: Run preview package tests
+        commands:
+          - bash .codebase/preview/pipeline.test.sh
+          - bash .codebase/preview/scripts.test.sh
+          - node --test .codebase/preview/build-preview-package.test.js
 
   skill_format_check:
     name: Skill Format Check
@@ -653,3 +660,77 @@ jobs:
           # the count so a green run is not read as full coverage.
           - 'echo "skipped cases: $(grep -c -- "--- SKIP" /tmp/live-out.txt || true)"'
           - 'if [ "$rc" != "0" ]; then exit "$rc"; fi'
+
+  # The tarball a reviewer or QA installs to run this merge request's CLI
+  # without building it. Built on every run, like the public preview package,
+  # so nobody has to know it exists to receive one: measured at 34s and a
+  # 29.8 MB artifact for the two darwin platforms, against a pipeline whose
+  # e2e_live alone is allowed thirty minutes.
+  #
+  # Automatic means required — this platform has no observe-only check, so a
+  # failure here blocks the merge. That is why it gates on fast_gate: a branch
+  # that does not compile fails there, and this job never runs to report the
+  # same thing a second time. What it adds beyond fast_gate is the packaging,
+  # which is `go build` per platform and `npm pack`.
+  #
+  # It also builds on the trunk run. A package of main costs the same and is
+  # occasionally what someone wants — what is on main right now, before a
+  # release names it.
+  #
+  # The public counterpart is .github/workflows/pkg-pr-new.yml plus
+  # pkg-pr-new-comment.yml: the first uploads to pkg.pr.new, the second waits
+  # on workflow_run and comments the install command. Neither is reachable
+  # here — the service is public and this platform has no workflow_run — so
+  # the tarball is this job's artifact and the install command is printed in
+  # the log. Hosting it behind a URL, and posting it to the merge request, are
+  # the next two steps; nothing in this job has to change for either.
+  #
+  # This job holds no credentials and .codebase/preview/pipeline.test.sh keeps
+  # it that way. It runs branch code on every merge request, so a registry
+  # token here would let any author publish under the release name. The
+  # package it builds is `private`, which is the second lock: libnpmpublish
+  # refuses it even if a token did arrive.
+  preview_package:
+    name: Preview Package
+    image: hub.byted.org/codebase/ci_go_1_23:latest
+    depends: [ fast_gate ]
+    if: '${{Jobs.fast_gate.Conclusion == "success"}}'
+    timeout: 30
+    steps:
+      - uses: actions/checkout
+      - name: Install Node
+        commands:
+          - curl -fsSL https://mirrors.byted.org/nodejs-release/v22.16.0/node-v22.16.0-linux-x64.tar.xz | tar -xJ -C /opt
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/node /usr/local/bin/node
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/npm /usr/local/bin/npm
+          - ln -sf /opt/node-v22.16.0-linux-x64/bin/npx /usr/local/bin/npx
+          - node --version
+          - npm --version
+      # No PREVIEW_LABEL: build.sh defaults it to the branch, which names the
+      # merge request well enough. Set it from the platform's merge request
+      # number once that variable is confirmed — fast_gate already prints the
+      # injected CI_* names.
+      - name: Build the preview package
+        commands:
+          - bash .codebase/preview/build.sh preview-package
+      - name: Upload preview package
+        uses: actions/upload-artifact
+        inputs:
+          name: preview-package
+          path: preview-package
+      - name: Print the install command
+        commands:
+          - name=$(jq -r .name preview-package/manifest.json)
+          - version=$(jq -r .version preview-package/manifest.json)
+          - file=$(jq -r .filename preview-package/manifest.json)
+          - size=$(jq -r .size preview-package/manifest.json)
+          - binaries=$(jq -r '.binaries | join(", ")' preview-package/manifest.json)
+          - 'echo "preview package: $name@$version ($size bytes, $binaries)"'
+          - echo "Download the preview-package artifact from this job, then run:"
+          - release=$(jq -r '.releasePackage // empty' preview-package/manifest.json)
+          - 'echo "  npm uninstall -g @larksuite/cli $release"'
+          - 'echo "  npm install -g ./$file"'
+          - 'echo "  lark-cli --version   # expect $version"'
+          - echo "Skills for an agent, from the installed package:"
+          - 'echo "  npx skills add \"\$(npm root -g)/$name/skills/lark-<domain>\" -y -g"'
+          - echo "This build cannot update itself; reinstall the released package to leave it."
