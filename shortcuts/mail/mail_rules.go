@@ -1631,10 +1631,11 @@ func validateRuleReorderFlags(rt *common.RuntimeContext) error {
 func buildRuleTargetOrder(rt *common.RuntimeContext, current []mailRuleEnvelope) ([]string, error) {
 	currentIDs := envelopeRuleIDs(current)
 	if ids := normalizeRuleIDs(rt.StrSlice("rule-ids")); len(ids) > 0 {
-		if err := validateFullRuleOrder(ids, currentIDs); err != nil {
+		target, err := completeRuleTargetOrder(ids, currentIDs)
+		if err != nil {
 			return nil, err
 		}
-		return ids, nil
+		return target, nil
 	}
 	moveID := strings.TrimSpace(rt.Str("move-rule-id"))
 	order := removeString(currentIDs, moveID)
@@ -1651,6 +1652,37 @@ func buildRuleTargetOrder(rt *common.RuntimeContext, current []mailRuleEnvelope)
 	default:
 		return insertRelative(order, moveID, strings.TrimSpace(rt.Str("after-rule-id")), true)
 	}
+}
+
+func completeRuleTargetOrder(explicit, current []string) ([]string, error) {
+	if len(current) == 0 {
+		return nil, mailValidationParamError("--rule-ids", "current rule order is empty; run +rule-list first")
+	}
+	currentSet := make(map[string]struct{}, len(current))
+	for _, id := range current {
+		currentSet[id] = struct{}{}
+	}
+	seen := make(map[string]struct{}, len(explicit))
+	target := make([]string, 0, len(current))
+	for _, id := range explicit {
+		if _, ok := seen[id]; ok {
+			return nil, mailValidationParamError("--rule-ids", "--rule-ids contains duplicate rule id %s", id)
+		}
+		if _, ok := currentSet[id]; !ok {
+			return nil, mailValidationParamError("--rule-ids", "--rule-ids contains unknown rule id %s; run +rule-list first", id)
+		}
+		seen[id] = struct{}{}
+		target = append(target, id)
+	}
+	for _, id := range current {
+		if _, ok := seen[id]; !ok {
+			target = append(target, id)
+		}
+	}
+	if len(target) != len(current) {
+		return nil, mailValidationParamError("--rule-ids", "failed to build complete rule order (got %d, want %d)", len(target), len(current))
+	}
+	return target, nil
 }
 
 func validateFullRuleOrder(target, current []string) error {
