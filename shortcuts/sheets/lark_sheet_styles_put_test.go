@@ -31,7 +31,7 @@ func TestStylesPutOperations_ExpansionOrder(t *testing.T) {
 			"col_sizes":   []interface{}{map[string]interface{}{"range": "A:B", "type": "pixel", "size": float64(120)}},
 			"freeze":      map[string]interface{}{"rows": float64(1), "cols": float64(2)},
 		}},
-	}), testToken)
+	}), testToken, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestStylesPutOperations_Validation(t *testing.T) {
 				map[string]interface{}{"cell_styles": []interface{}{map[string]interface{}{"range": "A1", "font_weight": "bold"}}},
 				map[string]interface{}{"name": "S2"},
 			},
-		}), testToken)
+		}), testToken, nil)
 		ve := requireValidation(t, err, "name is required")
 		if !strings.Contains(ve.Message, "at least one of cell_styles/row_sizes/col_sizes/cell_merges/freeze") {
 			t.Fatalf("message %q missing empty-item issue", ve.Message)
@@ -92,7 +92,7 @@ func TestStylesPutOperations_Validation(t *testing.T) {
 		item2 := map[string]interface{}{"name": "S1", "freeze": map[string]interface{}{"rows": float64(2)}}
 		_, err := stylesPutOperations(stylesPutView(map[string]interface{}{
 			"styles": []interface{}{item, item2},
-		}), testToken)
+		}), testToken, nil)
 		requireValidation(t, err, "appears twice")
 	})
 
@@ -100,7 +100,7 @@ func TestStylesPutOperations_Validation(t *testing.T) {
 		t.Parallel()
 		ops, err := stylesPutOperations(stylesPutView(map[string]interface{}{
 			"styles": []interface{}{map[string]interface{}{"name": "S1", "freeze": map[string]interface{}{"rows": float64(1)}}},
-		}), testToken)
+		}), testToken, nil)
 		if err != nil || len(ops) != 1 {
 			t.Fatalf("ops=%d err=%v", len(ops), err)
 		}
@@ -113,7 +113,7 @@ func TestStylesPutOperations_Validation(t *testing.T) {
 		t.Parallel()
 		ops, err := stylesPutOperations(stylesPutView(map[string]interface{}{
 			"styles": []interface{}{map[string]interface{}{"name": "S1", "freeze": map[string]interface{}{"rows": float64(0)}}},
-		}), testToken)
+		}), testToken, nil)
 		if err != nil || len(ops) != 1 {
 			t.Fatalf("ops=%d err=%v, want one unfreeze op", len(ops), err)
 		}
@@ -127,7 +127,7 @@ func TestStylesPutOperations_Validation(t *testing.T) {
 		t.Parallel()
 		_, err := stylesPutOperations(stylesPutView(map[string]interface{}{
 			"styles": []interface{}{map[string]interface{}{"name": "S1", "freeze": map[string]interface{}{}}},
-		}), testToken)
+		}), testToken, nil)
 		requireValidation(t, err, "must specify rows or cols")
 	})
 
@@ -139,7 +139,7 @@ func TestStylesPutOperations_Validation(t *testing.T) {
 				"name":        "Summary",
 				"cell_styles": []interface{}{map[string]interface{}{"range": "Detail!A1:D1", "font_weight": "bold"}},
 			}},
-		}), testToken)
+		}), testToken, nil)
 		ve := requireValidation(t, err, `names sheet "Detail" but the item targets "Summary"`)
 		if !strings.Contains(ve.Message, "cell_styles") {
 			t.Fatalf("message %q should locate the offending section", ve.Message)
@@ -156,7 +156,7 @@ func TestStylesPutOperations_Validation(t *testing.T) {
 				"row_sizes":   []interface{}{map[string]interface{}{"range": "Summary!2:3", "type": "pixel", "size": float64(32)}},
 				"col_sizes":   []interface{}{map[string]interface{}{"range": "'Summary'!A:C", "type": "pixel", "size": float64(120)}},
 			}},
-		}), testToken)
+		}), testToken, nil)
 		if err != nil {
 			t.Fatalf("matching prefix must stay accepted: %v", err)
 		}
@@ -186,7 +186,7 @@ func TestStylesPutOperations_Validation(t *testing.T) {
 				"cell_styles": []interface{}{map[string]interface{}{"range": "A1", "font_weight": "bold"}},
 				"freezee":     map[string]interface{}{"rows": float64(1)},
 			}},
-		}), testToken)
+		}), testToken, nil)
 		requireValidation(t, err, `unknown key "freezee" — did you mean "freeze"`)
 	})
 }
@@ -208,7 +208,7 @@ func TestStylesPayloadVocabularyForgiveness(t *testing.T) {
 				"name":        "S1",
 				"cell_styles": []interface{}{item},
 			}},
-		}), testToken)
+		}), testToken, nil)
 	}
 	cellProto := func(t *testing.T, ops []interface{}) map[string]interface{} {
 		t.Helper()
@@ -305,7 +305,7 @@ func TestStylesPayloadVocabularyForgiveness(t *testing.T) {
 				"name":        "S1",
 				"cell_merges": []interface{}{"A5:B6"},
 			}},
-		}), testToken)
+		}), testToken, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -329,7 +329,7 @@ func TestStylesResizeSizeAliases(t *testing.T) {
 				"name":      "S1",
 				"row_sizes": []interface{}{map[string]interface{}{"range": "1:1", "type": "pixel", "height": float64(36)}},
 			}},
-		}), testToken)
+		}), testToken, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -347,7 +347,7 @@ func TestStylesResizeSizeAliases(t *testing.T) {
 				"name":      "S1",
 				"col_sizes": []interface{}{map[string]interface{}{"range": "A:C", "type": "pixel", "width": float64(120)}},
 			}},
-		}), testToken)
+		}), testToken, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -372,7 +372,7 @@ func TestStylesResizeSizeAliases(t *testing.T) {
 						"range": tc.rng, "type": "custom", tc.alias: float64(36),
 					}},
 				}},
-			}), testToken)
+			}), testToken, nil)
 			if err != nil {
 				t.Fatalf("%s: unexpected error: %v", tc.name, err)
 			}
@@ -395,7 +395,7 @@ func TestStylesResizeSizeAliases(t *testing.T) {
 				"name":      "S1",
 				"row_sizes": []interface{}{map[string]interface{}{"range": "1:1", "type": "pixel", "width": float64(36)}},
 			}},
-		}), testToken)
+		}), testToken, nil)
 		requireValidation(t, err, "does not apply to this array")
 	})
 
@@ -406,7 +406,7 @@ func TestStylesResizeSizeAliases(t *testing.T) {
 				"name":      "S1",
 				"row_sizes": []interface{}{map[string]interface{}{"range": "1:1", "type": "pixel", "size": float64(36), "height": float64(40)}},
 			}},
-		}), testToken)
+		}), testToken, nil)
 		requireValidation(t, err, "either size or height")
 	})
 }

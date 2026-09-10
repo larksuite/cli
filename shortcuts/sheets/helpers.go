@@ -1001,6 +1001,46 @@ func resolveSheetSelectorExec(ctx context.Context, runtime *common.RuntimeContex
 		)
 }
 
+// sheetGrid is a sub-sheet's own extent, which is what an unbounded range
+// ("A:C") means by "the whole column".
+type sheetGrid struct{ rows, cols int }
+
+// workbookSheetGrids reads every sub-sheet's grid in one structure call, keyed
+// by sheet name.
+func workbookSheetGrids(ctx context.Context, runtime *common.RuntimeContext, token string) (map[string]sheetGrid, error) {
+	out, err := callTool(ctx, runtime, token, ToolKindRead, "get_workbook_structure", map[string]interface{}{
+		"excel_id": token,
+	})
+	if err != nil {
+		return nil, err
+	}
+	grids := map[string]sheetGrid{}
+	for _, entry := range sheetEntriesFromStructure(out) {
+		name, _ := entry["sheet_name"].(string)
+		if strings.TrimSpace(name) == "" {
+			continue
+		}
+		grids[name] = sheetGrid{rows: jsonInt(entry["row_count"]), cols: jsonInt(entry["column_count"])}
+	}
+	return grids, nil
+}
+
+// jsonInt reads a count out of a decoded JSON number, whichever numeric shape
+// the decoder produced.
+func jsonInt(raw interface{}) int {
+	switch n := raw.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case json.Number:
+		if v, err := n.Int64(); err == nil {
+			return int(v)
+		}
+	}
+	return 0
+}
+
 // workbookSheetNames lists the workbook's sub-sheet names in tab order,
 // hidden ones included: a hidden sheet is still a sheet the caller may mean,
 // and naming it beats reporting a workbook with fewer sheets than it has.

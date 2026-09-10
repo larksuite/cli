@@ -37,7 +37,7 @@ func acceptStyleItem(t *testing.T, fields map[string]interface{}) (map[string]in
 			"name":        "S1",
 			"cell_styles": []interface{}{item},
 		}},
-	}), testToken)
+	}), testToken, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -431,7 +431,7 @@ func TestStylesPut_CoalescesSameStyleRanges(t *testing.T) {
 		}
 		ops, err := stylesPutOperations(stylesPutView(map[string]interface{}{
 			"styles": []interface{}{map[string]interface{}{"name": "S1", "cell_styles": entries}},
-		}), testToken)
+		}), testToken, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -451,7 +451,7 @@ func TestStylesPut_CoalescesSameStyleRanges(t *testing.T) {
 				map[string]interface{}{"range": "A1:F1", "font_weight": "bold"},
 				map[string]interface{}{"range": "A2:F2", "background_color": "#EEEEEE"},
 			}}},
-		}), testToken)
+		}), testToken, nil)
 		if err != nil || len(ops) != 2 {
 			t.Fatalf("ops=%d err=%v, want 2", len(ops), err)
 		}
@@ -464,7 +464,7 @@ func TestStylesPut_CoalescesSameStyleRanges(t *testing.T) {
 				map[string]interface{}{"range": "A1:C5", "font_weight": "bold"},
 				map[string]interface{}{"range": "D1:F5", "font_weight": "bold"},
 			}}},
-		}), testToken)
+		}), testToken, nil)
 		if err != nil || len(ops) != 1 {
 			t.Fatalf("ops=%d err=%v, want 1", len(ops), err)
 		}
@@ -486,7 +486,7 @@ func TestStylesPut_CoalescesSameStyleRanges(t *testing.T) {
 				map[string]interface{}{"range": "A1:C1", "font_weight": "bold"},
 				map[string]interface{}{"range": "A3:C3", "font_weight": "bold"},
 			}}},
-		}), testToken)
+		}), testToken, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -502,7 +502,7 @@ func TestStylesPut_CoalescesSameStyleRanges(t *testing.T) {
 				map[string]interface{}{"range": "A1:B5", "font_weight": "bold"},
 				map[string]interface{}{"range": "D1:E5", "font_weight": "bold"},
 			}}},
-		}), testToken)
+		}), testToken, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -530,7 +530,7 @@ func TestStylesPut_CoalescesSameStyleRanges(t *testing.T) {
 		}
 		ops, err := stylesPutOperations(stylesPutView(map[string]interface{}{
 			"styles": []interface{}{map[string]interface{}{"name": "S1", "cell_styles": entries}},
-		}), testToken)
+		}), testToken, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -621,7 +621,7 @@ func TestStylesAcceptance_ResizeAndMergeCorpus(t *testing.T) {
 				"name":  "S1",
 				section: []interface{}{entry},
 			}},
-		}), testToken)
+		}), testToken, nil)
 	}
 	pixelValue := func(t *testing.T, ops []interface{}, key string) interface{} {
 		t.Helper()

@@ -310,3 +310,55 @@ func TestPayloadFlags_SyntaxErrorNamesThePlace(t *testing.T) {
 		})
 	}
 }
+
+// TestStyles_UnboundedRangeBounded pins the whole-column / whole-row forms.
+// Their extent lives on the sheet, not in the string, so the execute path
+// reads the grid and closes them; pre-flight stands in a rectangle that keeps
+// the axis the caller did state, and --dry-run keeps the rejection because it
+// sends nothing. 09-04..07: 1208 rejections under --styles.
+func TestStyles_UnboundedRangeBounded(t *testing.T) {
+	t.Parallel()
+
+	t.Run("the grid closes the range", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct{ in, want string }{
+			{"A:C", "A1:C200"},
+			{"a:c", "A1:C200"},
+			{"3:5", "A3:T5"},
+		} {
+			got, ok := boundRangeToGrid(tc.in, sheetGrid{rows: 200, cols: 20})
+			if !ok || got != tc.want {
+				t.Errorf("boundRangeToGrid(%q) = %q,%v, want %q", tc.in, got, ok, tc.want)
+			}
+		}
+	})
+
+	t.Run("a rectangle is left alone", func(t *testing.T) {
+		t.Parallel()
+		if got, ok := boundRangeToGrid("A1:C3", sheetGrid{rows: 200, cols: 20}); ok {
+			t.Errorf("boundRangeToGrid(A1:C3) = %q, want no rewrite", got)
+		}
+	})
+
+	t.Run("pre-flight keeps the stated axis", func(t *testing.T) {
+		t.Parallel()
+		bound := preflightRangeBounder(stylesPutView(map[string]interface{}{}))
+		if bound == nil {
+			t.Fatal("a real run must get a stand-in bounder")
+		}
+		for _, tc := range []struct{ in, want string }{{"A:C", "A1:C1"}, {"3:5", "A3:A5"}} {
+			if got, ok := bound("S", tc.in); !ok || got != tc.want {
+				t.Errorf("preflight(%q) = %q,%v, want %q", tc.in, got, ok, tc.want)
+			}
+		}
+	})
+
+	t.Run("--dry-run keeps the rejection", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, shortcutFromRegistry(t, "+styles-put"), []string{
+			"--url", testURL, "--dry-run",
+			"--styles", `{"styles":[{"name":"Sheet1","cell_styles":[{"range":"A:C","font_weight":"bold"}]}]}`,
+		})
+		requireValidation(t, err, "unsupported range form")
+	})
+}

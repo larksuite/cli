@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -48,12 +49,15 @@ var StylesPut = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		_, err = stylesPutOperations(runtime, token)
+		// Pre-flight runs offline, so it cannot know how far a whole-column
+		// range reaches; the execute path asks the workbook. Everything else
+		// about the item is still checked, against a stand-in rectangle.
+		_, err = stylesPutOperations(runtime, token, preflightRangeBounder(runtime))
 		return err
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
-		ops, _ := stylesPutOperations(runtime, token)
+		ops, _ := stylesPutOperations(runtime, token, nil)
 		chunks := chunkOperations(ops, maxBatchOperations)
 		dry := invokeToolDryRun(token, ToolKindWrite, "batch_update", map[string]interface{}{
 			"excel_id":   token,
@@ -75,7 +79,7 @@ var StylesPut = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		ops, err := stylesPutOperations(runtime, token)
+		ops, err := stylesPutOperations(runtime, token, newSheetGridBounder(ctx, runtime, token))
 		if err != nil {
 			return err
 		}
@@ -136,7 +140,7 @@ var StylesPut = common.Shortcut{
 // normalization (border "all" shorthand, style vocabulary) and the
 // aggregate-all-issues error shape are identical across the three --styles
 // carriers.
-func stylesPutOperations(runtime flagView, token string) ([]interface{}, error) {
+func stylesPutOperations(runtime flagView, token string, bound sheetRangeBounder) ([]interface{}, error) {
 	if strings.TrimSpace(runtime.Str("styles")) == "" {
 		return nil, sheetsValidationForFlag("styles", "--styles is required")
 	}
@@ -148,6 +152,10 @@ func stylesPutOperations(runtime flagView, token string) ([]interface{}, error) 
 	if err != nil {
 		return nil, err
 	}
+	// A whole-column or whole-row range needs the grid it spans, which only
+	// the execute path can ask for; Validate and DryRun pass no bounder and
+	// keep the parse-time rejection.
+	boundStyleItemRanges(items, bound)
 	if len(items) == 0 {
 		return nil, sheetsValidationForFlag("styles", "--styles.styles must be a non-empty array (one item per target sheet)")
 	}
@@ -373,4 +381,118 @@ func stripSheetPrefix(rangeStr string) string {
 		return strings.TrimSpace(rangeStr[idx+1:])
 	}
 	return strings.TrimSpace(rangeStr)
+}
+
+// ─── unbounded style ranges ───────────────────────────────────────────
+
+// sheetRangeBounder turns a range that names whole columns ("A:C") or whole
+// rows ("3:5") into the rectangle it covers on a given sheet, or reports that
+// it could not. Nil on the paths that run offline.
+type sheetRangeBounder func(sheetName, rangeStr string) (string, bool)
+
+// boundStyleItemRanges rewrites the cell_styles ranges of every item, in
+// place, before the item parser rejects the unbounded forms. Only cell_styles
+// is touched: row_sizes and col_sizes take a dimension range BY DESIGN ("2:10",
+// "A:C"), and bounding those would turn their own vocabulary into an error.
+// 09-04..07: 1208 rejections read "unsupported range form" under --styles.
+func boundStyleItemRanges(items []map[string]interface{}, bound sheetRangeBounder) {
+	if bound == nil {
+		return
+	}
+	for _, item := range items {
+		name, _ := item["name"].(string)
+		entries, isList := item["cell_styles"].([]interface{})
+		if !isList {
+			continue
+		}
+		for _, raw := range entries {
+			entry, isMap := raw.(map[string]interface{})
+			if !isMap {
+				continue
+			}
+			rng, isStr := entry["range"].(string)
+			if !isStr {
+				continue
+			}
+			if fitted, ok := bound(strings.TrimSpace(name), rng); ok {
+				entry["range"] = fitted
+			}
+		}
+	}
+}
+
+// preflightRangeBounder keeps an unbounded range from failing a check that
+// cannot answer it. It stands in a rectangle that keeps whichever axis the
+// caller did state — "A:C" becomes A1:C1, "3:5" becomes A3:A5 — so the rest of
+// the item is validated as usual, and the extent is settled for real on the
+// execute path, where the grid is readable. Nil under --dry-run: a preview
+// sends nothing, so it cannot resolve the range either and says so.
+func preflightRangeBounder(runtime flagView) sheetRangeBounder {
+	if runtime.Bool("dry-run") {
+		return nil
+	}
+	return func(_, rangeStr string) (string, bool) {
+		trimmed := strings.TrimSpace(rangeStr)
+		if m := wholeColumnRange.FindStringSubmatch(trimmed); m != nil {
+			return fmt.Sprintf("%s1:%s1", strings.ToUpper(m[1]), strings.ToUpper(m[2])), true
+		}
+		if m := wholeRowRange.FindStringSubmatch(trimmed); m != nil {
+			return fmt.Sprintf("A%s:A%s", m[1], m[2]), true
+		}
+		return "", false
+	}
+}
+
+// newSheetGridBounder returns a bounder backed by one workbook-structure read,
+// taken lazily and at most once per invocation: a payload whose ranges are all
+// rectangular never pays for it.
+func newSheetGridBounder(ctx context.Context, runtime *common.RuntimeContext, token string) sheetRangeBounder {
+	var grids map[string]sheetGrid
+	var loaded bool
+	return func(sheetName, rangeStr string) (string, bool) {
+		if !isUnboundedRange(rangeStr) {
+			return "", false
+		}
+		if !loaded {
+			loaded = true
+			grids, _ = workbookSheetGrids(ctx, runtime, token)
+		}
+		grid, ok := grids[sheetName]
+		if !ok {
+			return "", false
+		}
+		return boundRangeToGrid(rangeStr, grid)
+	}
+}
+
+// isUnboundedRange reports whether a range names whole columns or whole rows,
+// the two forms parseCellRange refuses because their extent lives on the sheet
+// rather than in the string.
+func isUnboundedRange(rangeStr string) bool {
+	return wholeColumnRange.MatchString(strings.TrimSpace(rangeStr)) ||
+		wholeRowRange.MatchString(strings.TrimSpace(rangeStr))
+}
+
+var (
+	wholeColumnRange = regexp.MustCompile(`^([A-Za-z]+):([A-Za-z]+)$`)
+	wholeRowRange    = regexp.MustCompile(`^([0-9]+):([0-9]+)$`)
+)
+
+// boundRangeToGrid closes an unbounded range against the sheet's own extent:
+// "A:C" on a 200-row sheet is A1:C200, "3:5" on a 20-column one is A3:T5. The
+// result is exact rather than a guess — the grid is what the caller meant by
+// "the whole column" — and an oversized one then meets the same stamp budget
+// any explicit range of that size would.
+func boundRangeToGrid(rangeStr string, grid sheetGrid) (string, bool) {
+	trimmed := strings.TrimSpace(rangeStr)
+	if grid.rows <= 0 || grid.cols <= 0 {
+		return "", false
+	}
+	if m := wholeColumnRange.FindStringSubmatch(trimmed); m != nil {
+		return fmt.Sprintf("%s1:%s%d", strings.ToUpper(m[1]), strings.ToUpper(m[2]), grid.rows), true
+	}
+	if m := wholeRowRange.FindStringSubmatch(trimmed); m != nil {
+		return fmt.Sprintf("A%s:%s%s", m[1], columnIndexToLetter(grid.cols-1), m[2]), true
+	}
+	return "", false
 }
