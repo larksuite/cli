@@ -1511,10 +1511,14 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 	if got, err := completeRuleOrder([]string{"a"}, []string{"a", "b"}); err != nil || !reflect.DeepEqual(got, []string{"a", "b"}) {
 		t.Fatalf("complete partial order = %v, %v", got, err)
 	}
-	if _, err := completeRuleOrder([]string{"a", "a"}, []string{"a", "b"}); err == nil {
+	if _, err := completeRuleOrder([]string{"a", "a"}, []string{"a", "b"}); err != nil {
+		assertMailRuleValidationParam(t, err, "--rule-ids")
+	} else {
 		t.Fatal("expected duplicate rule id error")
 	}
-	if _, err := completeRuleOrder([]string{"a", "z"}, []string{"a", "b"}); err == nil {
+	if _, err := completeRuleOrder([]string{"a", "z"}, []string{"a", "b"}); err != nil {
+		assertMailRuleValidationParam(t, err, "--rule-ids")
+	} else {
 		t.Fatal("expected unknown rule id error")
 	}
 	if _, err := insertRelative([]string{"a", "b"}, "c", "", true); err == nil {
@@ -1573,6 +1577,17 @@ func TestMailRuleOrderValidationErrors(t *testing.T) {
 				t.Fatalf("error = %v, want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func assertMailRuleValidationParam(t *testing.T, err error, wantParam string) {
+	t.Helper()
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error type = %T, want *errs.ValidationError: %v", err, err)
+	}
+	if validationErr.Param != wantParam {
+		t.Fatalf("validation param = %q, want %q", validationErr.Param, wantParam)
 	}
 }
 
