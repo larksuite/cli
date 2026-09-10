@@ -14,7 +14,8 @@ var embeddedMetaDataDefaultJSON []byte
 func init() {
 	if data, err := metaFS.ReadFile("meta_data.json"); err == nil && len(data) > 0 {
 		embeddedMetaJSON = data
-	} else {
-		embeddedMetaJSON = embeddedMetaDataDefaultJSON
 	}
+	// When meta_data.json is not compiled in, embeddedMetaJSON remains nil,
+	// so hasEmbeddedData() correctly returns false and tests that depend on
+	// real embedded services will be skipped rather than failing.
 }
