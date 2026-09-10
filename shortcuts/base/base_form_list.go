@@ -40,7 +40,7 @@ var BaseFormsList = common.Shortcut{
 		baseToken := runtime.Str("base-token")
 		tableId := runtime.Str("table-id")
 
-		var allForms []interface{}
+		var allForms []baseFormResponse
 		pageToken := ""
 		for {
 			params := map[string]interface{}{
@@ -56,23 +56,24 @@ var BaseFormsList = common.Shortcut{
 				return err
 			}
 
-			forms, _ := data["forms"].([]interface{})
-			allForms = append(allForms, forms...)
+			page, err := decodeBaseFormsPageResponse(data)
+			if err != nil {
+				return err
+			}
+			allForms = append(allForms, page.Forms...)
 
-			hasMore, _ := data["has_more"].(bool)
-			if !hasMore {
+			if !page.HasMore {
 				break
 			}
-			nextToken, _ := data["page_token"].(string)
-			if nextToken == "" {
+			if page.PageToken == "" {
 				break
 			}
-			pageToken = nextToken
+			pageToken = page.PageToken
 		}
 
-		outData := map[string]interface{}{
-			"forms": allForms,
-			"total": len(allForms),
+		outData := baseFormsListOutput{
+			Forms: allForms,
+			Total: len(allForms),
 		}
 		runtime.OutFormat(outData, nil, func(w io.Writer) {
 			if len(allForms) == 0 {
@@ -80,13 +81,8 @@ var BaseFormsList = common.Shortcut{
 				return
 			}
 			var rows []map[string]interface{}
-			for _, item := range allForms {
-				m, _ := item.(map[string]interface{})
-				rows = append(rows, map[string]interface{}{
-					"id":          m["id"],
-					"name":        m["name"],
-					"description": m["description"],
-				})
+			for _, form := range allForms {
+				rows = append(rows, baseFormTableRow(form))
 			}
 			output.PrintTable(w, rows)
 			fmt.Fprintf(w, "\n%d form(s) total\n", len(allForms))

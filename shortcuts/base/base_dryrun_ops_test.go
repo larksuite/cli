@@ -60,6 +60,42 @@ func TestDryRunTemplateCenterOps(t *testing.T) {
 	assertDryRunContains(t, dryRunTemplateSearch(ctx, searchRT), "GET /open-apis/base/v3/bases/templates/search", "keyword=AI", "limit=10", "offset=cursor_2")
 }
 
+func TestDryRunFormUpdateDisplayMode(t *testing.T) {
+	ctx := context.Background()
+
+	onRT := newBaseTestRuntime(
+		map[string]string{"base-token": "app_x", "table-id": "tbl_x", "form-id": "frm_x", "display-mode": "step"},
+		nil,
+		nil,
+	)
+	assertDryRunContains(
+		t,
+		BaseFormUpdate.DryRun(ctx, onRT),
+		"PATCH /open-apis/base/v3/bases/app_x/tables/tbl_x/forms/frm_x",
+		`"display_mode":2`,
+	)
+
+	offRT := newBaseTestRuntime(
+		map[string]string{"base-token": "app_x", "table-id": "tbl_x", "form-id": "frm_x", "display-mode": "list"},
+		nil,
+		nil,
+	)
+	assertDryRunContains(t, BaseFormUpdate.DryRun(ctx, offRT), `"display_mode":1`)
+
+	nameOnlyRT := newBaseTestRuntime(
+		map[string]string{"base-token": "app_x", "table-id": "tbl_x", "form-id": "frm_x", "name": "Renamed"},
+		nil,
+		nil,
+	)
+	request := buildFormUpdateBody(nameOnlyRT)
+	if request.DisplayMode != nil {
+		t.Fatalf("display_mode must remain nil when --display-mode is omitted: %#v", request)
+	}
+	if out := BaseFormUpdate.DryRun(ctx, nameOnlyRT).Format(); strings.Contains(out, "display_mode") {
+		t.Fatalf("omitted --display-mode must not emit display_mode:\n%s", out)
+	}
+}
+
 func TestDryRunFieldExtensionOps(t *testing.T) {
 	ctx := context.Background()
 

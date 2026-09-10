@@ -6,10 +6,13 @@ package base
 import (
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 func TestBaseFormExecuteList(t *testing.T) {
@@ -24,8 +27,8 @@ func TestBaseFormExecuteList(t *testing.T) {
 					"has_more": false,
 					"total":    2,
 					"forms": []interface{}{
-						map[string]interface{}{"id": "vew_form1", "name": "用户调研问卷", "description": "2024年调研"},
-						map[string]interface{}{"id": "vew_form2", "name": "产品反馈表", "description": ""},
+						map[string]interface{}{"id": "vew_form1", "name": "用户调研问卷", "description": "2024年调研", "display_mode": 1},
+						map[string]interface{}{"id": "vew_form2", "name": "产品反馈表", "description": "", "display_mode": 2, "future_field": "preserved"},
 					},
 				},
 			},
@@ -33,7 +36,7 @@ func TestBaseFormExecuteList(t *testing.T) {
 		if err := runShortcut(t, BaseFormsList, []string{"+form-list", "--base-token", "app_x", "--table-id", "tbl_x"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"vew_form1"`) || !strings.Contains(got, `"total": 2`) {
+		if got := stdout.String(); !strings.Contains(got, `"vew_form1"`) || !strings.Contains(got, `"display_mode": 2`) || !strings.Contains(got, `"future_field": "preserved"`) || !strings.Contains(got, `"description": ""`) || !strings.Contains(got, `"total": 2`) {
 			t.Fatalf("stdout=%s", got)
 		}
 	})
@@ -92,17 +95,80 @@ func TestBaseFormExecuteGet(t *testing.T) {
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
-				"id":          "vew_form1",
-				"name":        "用户调研问卷",
-				"description": "2024年度用户满意度调研",
+				"id":           "vew_form1",
+				"name":         "用户调研问卷",
+				"description":  "2024年度用户满意度调研",
+				"display_mode": 2,
 			},
 		},
 	})
 	if err := runShortcut(t, BaseFormGet, []string{"+form-get", "--base-token", "app_x", "--table-id", "tbl_x", "--form-id", "vew_form1"}, factory, stdout); err != nil {
 		t.Fatalf("err=%v", err)
 	}
-	if got := stdout.String(); !strings.Contains(got, `"vew_form1"`) || !strings.Contains(got, `"用户调研问卷"`) {
+	if got := stdout.String(); !strings.Contains(got, `"vew_form1"`) || !strings.Contains(got, `"用户调研问卷"`) || !strings.Contains(got, `"display_mode": 2`) {
 		t.Fatalf("stdout=%s", got)
+	}
+}
+
+func TestBaseFormResponsesRejectInvalidDisplayModeType(t *testing.T) {
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		method   string
+		url      string
+		args     []string
+		data     map[string]interface{}
+	}{
+		{
+			name:     "get",
+			shortcut: BaseFormGet,
+			method:   "GET",
+			url:      "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1",
+			args:     []string{"+form-get", "--base-token", "app_x", "--table-id", "tbl_x", "--form-id", "vew_form1"},
+			data:     map[string]interface{}{"id": "vew_form1", "display_mode": "step"},
+		},
+		{
+			name:     "list",
+			shortcut: BaseFormsList,
+			method:   "GET",
+			url:      "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms",
+			args:     []string{"+form-list", "--base-token", "app_x", "--table-id", "tbl_x"},
+			data: map[string]interface{}{
+				"has_more": false,
+				"forms":    []interface{}{map[string]interface{}{"id": "vew_form1", "display_mode": "step"}},
+			},
+		},
+		{
+			name:     "update",
+			shortcut: BaseFormUpdate,
+			method:   "PATCH",
+			url:      "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1",
+			args:     []string{"+form-update", "--base-token", "app_x", "--table-id", "tbl_x", "--form-id", "vew_form1", "--display-mode", "step"},
+			data:     map[string]interface{}{"id": "vew_form1", "display_mode": "step"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			factory, stdout, reg := newExecuteFactory(t)
+			reg.Register(&httpmock.Stub{
+				Method: tt.method,
+				URL:    tt.url,
+				Body:   map[string]interface{}{"code": 0, "data": tt.data},
+			})
+
+			err := runShortcut(t, tt.shortcut, tt.args, factory, stdout)
+			if err == nil {
+				t.Fatalf("expected invalid display_mode response to fail, stdout=%s", stdout.String())
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeInvalidResponse {
+				t.Fatalf("error = %T %v, problem=%#v", err, err, problem)
+			}
+			if errors.Unwrap(err) == nil {
+				t.Fatalf("invalid response error must preserve its JSON decoding cause: %v", err)
+			}
+		})
 	}
 }
 
@@ -179,6 +245,44 @@ func TestBaseFormExecuteCreate(t *testing.T) {
 }
 
 func TestBaseFormExecuteUpdate(t *testing.T) {
+	t.Run("update name description and display mode together", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		stub := &httpmock.Stub{
+			Method: "PATCH",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"id":           "vew_form1",
+					"name":         "Updated Form",
+					"description":  "Updated description",
+					"display_mode": 2,
+				},
+			},
+		}
+		reg.Register(stub)
+		args := []string{
+			"+form-update", "--base-token", "app_x", "--table-id", "tbl_x", "--form-id", "vew_form1",
+			"--name", "Updated Form", "--description", "Updated description", "--display-mode", "step",
+		}
+		if err := runShortcut(t, BaseFormUpdate, args, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+
+		var body map[string]interface{}
+		if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+			t.Fatalf("captured body json err=%v body=%s", err, string(stub.CapturedBody))
+		}
+		want := map[string]interface{}{
+			"name":         "Updated Form",
+			"description":  "Updated description",
+			"display_mode": float64(2),
+		}
+		if !reflect.DeepEqual(body, want) {
+			t.Fatalf("body=%#v want=%#v", body, want)
+		}
+	})
+
 	t.Run("update name", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
@@ -187,9 +291,10 @@ func TestBaseFormExecuteUpdate(t *testing.T) {
 			Body: map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{
-					"id":          "vew_form1",
-					"name":        "更新后的表单",
-					"description": "",
+					"id":           "vew_form1",
+					"name":         "更新后的表单",
+					"description":  "",
+					"display_mode": 1,
 				},
 			},
 		})
@@ -209,9 +314,10 @@ func TestBaseFormExecuteUpdate(t *testing.T) {
 			Body: map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{
-					"id":          "vew_form1",
-					"name":        "Form",
-					"description": "更新的描述内容",
+					"id":           "vew_form1",
+					"name":         "Form",
+					"description":  "更新的描述内容",
+					"display_mode": 1,
 				},
 			},
 		})
@@ -222,6 +328,72 @@ func TestBaseFormExecuteUpdate(t *testing.T) {
 		}
 		if got := stdout.String(); !strings.Contains(got, `"vew_form1"`) {
 			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("update display mode on", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		stub := &httpmock.Stub{
+			Method: "PATCH",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"id":           "vew_form1",
+					"name":         "Form",
+					"description":  "",
+					"display_mode": 2,
+				},
+			},
+		}
+		reg.Register(stub)
+		args := []string{"+form-update", "--base-token", "app_x", "--table-id", "tbl_x", "--form-id", "vew_form1",
+			"--display-mode", "step"}
+		if err := runShortcut(t, BaseFormUpdate, args, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"display_mode": 2`) {
+			t.Fatalf("stdout=%s", got)
+		}
+		var body map[string]interface{}
+		if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+			t.Fatalf("captured body json err=%v body=%s", err, string(stub.CapturedBody))
+		}
+		if body["display_mode"] != float64(2) {
+			t.Fatalf("display_mode=%#v; body=%s", body["display_mode"], string(stub.CapturedBody))
+		}
+	})
+
+	t.Run("update display mode off", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		stub := &httpmock.Stub{
+			Method: "PATCH",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"id":           "vew_form1",
+					"name":         "Form",
+					"description":  "",
+					"display_mode": 1,
+				},
+			},
+		}
+		reg.Register(stub)
+		args := []string{"+form-update", "--base-token", "app_x", "--table-id", "tbl_x", "--form-id", "vew_form1",
+			"--display-mode", "list"}
+		if err := runShortcut(t, BaseFormUpdate, args, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"display_mode": 1`) {
+			t.Fatalf("stdout=%s", got)
+		}
+		var body map[string]interface{}
+		if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+			t.Fatalf("captured body json err=%v body=%s", err, string(stub.CapturedBody))
+		}
+		if body["display_mode"] != float64(1) {
+			t.Fatalf("display_mode=%#v; body=%s", body["display_mode"], string(stub.CapturedBody))
 		}
 	})
 }
