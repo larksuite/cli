@@ -888,7 +888,6 @@ func runCommand(ctx context.Context, cliBin string, argv []string) commandResult
 		"LARKSUITE_CLI_APP_ID=dry-run",
 		"LARKSUITE_CLI_APP_SECRET=dry-run",
 		"LARKSUITE_CLI_BRAND=feishu",
-		"LARKSUITE_CLI_REMOTE_META=off",
 		"LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1",
 		"LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1",
 	)

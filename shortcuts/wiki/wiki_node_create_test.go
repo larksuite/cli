@@ -449,7 +449,7 @@ func TestWikiNodeCreateDryRunUsesParentNodeWithoutMyLibraryLookup(t *testing.T) 
 	if len(got) != 2 {
 		t.Fatalf("len(dryRun.api) = %d, want 2", len(got))
 	}
-	if got[0].URL != "/open-apis/wiki/v2/spaces/get_node" {
+	if got[0].URL != "/open-apis/wiki/v2/spaces/node_by_token" {
 		t.Fatalf("first dry-run URL = %q, want parent node lookup", got[0].URL)
 	}
 	if got[1].URL != "/open-apis/wiki/v2/spaces/<resolved_space_id>/nodes" {
@@ -475,7 +475,7 @@ func TestWikiNodeCreateDryRunKeepsExplicitSpaceIDWhenParentProvided(t *testing.T
 	if len(got) != 2 {
 		t.Fatalf("len(dryRun.api) = %d, want 2", len(got))
 	}
-	if got[0].URL != "/open-apis/wiki/v2/spaces/get_node" {
+	if got[0].URL != "/open-apis/wiki/v2/spaces/node_by_token" {
 		t.Fatalf("first dry-run URL = %q, want parent node lookup", got[0].URL)
 	}
 	if got[1].URL != "/open-apis/wiki/v2/spaces/space_123/nodes" {
@@ -504,7 +504,7 @@ func TestWikiNodeCreateDryRunShowsMyLibraryLookupWhenExplicitAndParentProvided(t
 	if got[0].URL != "/open-apis/wiki/v2/spaces/my_library" {
 		t.Fatalf("first dry-run URL = %q, want my_library lookup", got[0].URL)
 	}
-	if got[1].URL != "/open-apis/wiki/v2/spaces/get_node" {
+	if got[1].URL != "/open-apis/wiki/v2/spaces/node_by_token" {
 		t.Fatalf("second dry-run URL = %q, want parent node lookup", got[1].URL)
 	}
 	if got[2].URL != "/open-apis/wiki/v2/spaces/<resolved_space_id>/nodes" {

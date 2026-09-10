@@ -439,12 +439,24 @@ func resolveDriveExportWikiSource(ctx context.Context, runtime *common.RuntimeCo
 	}
 
 	data, err := driveInspectCallWithRetry(ctx, func() (map[string]interface{}, error) {
-		return runtime.CallAPITyped(
+		data, err := runtime.CallAPITyped(
 			"GET",
-			"/open-apis/wiki/v2/spaces/get_node",
+			"/open-apis/wiki/v2/spaces/node_by_token",
 			map[string]interface{}{"token": wikiToken},
 			nil,
 		)
+		// Classify terminal lookup failures before deciding whether to retry.
+		if problem, ok := errs.ProblemOf(err); ok {
+			switch problem.Code {
+			case 131012:
+				problem.Subtype, problem.Retryable = errs.SubtypeNotFound, false
+			case 131013, 131016:
+				problem.Subtype, problem.Retryable = errs.SubtypeInvalidParameters, false
+			case 131014:
+				problem.Subtype, problem.Retryable = errs.SubtypeFailedPrecondition, false
+			}
+		}
+		return data, err
 	})
 	if err != nil {
 		return spec, driveExportWikiResolution{}, err
@@ -454,7 +466,7 @@ func resolveDriveExportWikiSource(ctx context.Context, runtime *common.RuntimeCo
 	objType := normalizeDriveExportDocType(common.GetString(node, "obj_type"))
 	objToken := common.GetString(node, "obj_token")
 	if objType == "" || objToken == "" {
-		return spec, driveExportWikiResolution{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki get_node returned incomplete node data (obj_type=%q, obj_token=%q)", objType, objToken)
+		return spec, driveExportWikiResolution{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki node_by_token returned incomplete node data (obj_type=%q, obj_token=%q)", objType, objToken)
 	}
 	if !isDriveExportDocType(objType) {
 		return spec, driveExportWikiResolution{}, errs.NewValidationError(

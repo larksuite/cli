@@ -489,11 +489,21 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 
 	data, err := runtime.CallAPITyped(
 		"GET",
-		"/open-apis/wiki/v2/spaces/get_node",
+		"/open-apis/wiki/v2/spaces/node_by_token",
 		map[string]interface{}{"token": docRef.Token},
 		nil,
 	)
 	if err != nil {
+		if problem, ok := errs.ProblemOf(err); ok {
+			switch problem.Code {
+			case 131012:
+				problem.Subtype, problem.Retryable = errs.SubtypeNotFound, false
+			case 131013, 131016:
+				problem.Subtype, problem.Retryable = errs.SubtypeInvalidParameters, false
+			case 131014:
+				problem.Subtype, problem.Retryable = errs.SubtypeFailedPrecondition, false
+			}
+		}
 		return resolvedCommentTarget{}, err
 	}
 
@@ -501,7 +511,7 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 	objType := common.GetString(node, "obj_type")
 	objToken := common.GetString(node, "obj_token")
 	if objType == "" || objToken == "" {
-		return resolvedCommentTarget{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki get_node returned incomplete node data")
+		return resolvedCommentTarget{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki node_by_token returned incomplete node data")
 	}
 	if objType == "slides" && mode == commentModeFull {
 		return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but slide comments require --block-id <slide-block-type>!<xml-id>; --full-comment is not applicable", objType)

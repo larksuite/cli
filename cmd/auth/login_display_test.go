@@ -81,7 +81,7 @@ func TestAuthLoginRun_DeviceCodeUsesCachedRequestedScopes(t *testing.T) {
 		Ctx:     context.Background(),
 		Scope:   "im:message:send",
 		NoWait:  true,
-	}, builtinResolver())
+	}, builtinResolver(t))
 	if err != nil {
 		t.Fatalf("no-wait authLoginRun() error = %v", err)
 	}
@@ -96,7 +96,7 @@ func TestAuthLoginRun_DeviceCodeUsesCachedRequestedScopes(t *testing.T) {
 		Factory:    f,
 		Ctx:        context.Background(),
 		DeviceCode: "device-code",
-	}, builtinResolver())
+	}, builtinResolver(t))
 	if err != nil {
 		t.Fatalf("device-code authLoginRun() error = %v", err)
 	}

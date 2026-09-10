@@ -1,0 +1,593 @@
+{
+  "name": "mindnotes",
+  "version": "v1",
+  "title": "思维笔记",
+  "description": "思维笔记节点列表查看、节点创建/更新",
+  "servicePath": "/open-apis/mindnote/v1",
+  "resources": {
+    "nodes": {
+      "methods": {
+        "create": {
+          "id": "mindnote.node.create",
+          "path": "mindnotes/{mindnote_id}/nodes",
+          "httpMethod": "POST",
+          "description": "创建/更新思维笔记节点",
+          "parameters": {
+            "mindnote_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Mindnote唯一标识",
+              "example": "D05hbLa3dm08GbnerjwbvNmUcgf"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户ID的类型",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "mindnote_id"
+          ],
+          "requestBody": {
+            "client_token": {
+              "type": "string",
+              "description": "操作的唯一标识，更新请求中使用此值表示幂等的进行此次更新",
+              "required": false,
+              "example": "fe599b60-450f-46ff-b2ef-9f6675625b97"
+            },
+            "nodes": {
+              "type": "array",
+              "description": "Mindnote节点信息",
+              "required": false,
+              "properties": {
+                "node_id": {
+                  "type": "string",
+                  "description": "节点ID",
+                  "required": false,
+                  "example": "node_abc123"
+                },
+                "parent_id": {
+                  "type": "string",
+                  "description": "父节点ID",
+                  "required": false,
+                  "example": "node_parent123"
+                },
+                "texts": {
+                  "type": "array",
+                  "description": "文本内容列表",
+                  "required": false,
+                  "properties": {
+                    "element_type": {
+                      "type": "string",
+                      "description": "元素类型",
+                      "required": true,
+                      "options": [
+                        {
+                          "value": "text",
+                          "description": "文本"
+                        },
+                        {
+                          "value": "link",
+                          "description": "超链接"
+                        },
+                        {
+                          "value": "user",
+                          "description": "@用户"
+                        },
+                        {
+                          "value": "doc",
+                          "description": "文档链接"
+                        }
+                      ],
+                      "enum": [
+                        "text",
+                        "link",
+                        "user",
+                        "doc"
+                      ],
+                      "enumName": "element_type"
+                    },
+                    "style": {
+                      "type": "object",
+                      "description": "文本样式",
+                      "required": false,
+                      "ref": "text_style",
+                      "example": "xxx"
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "纯文本",
+                      "required": false,
+                      "ref": "plain_text",
+                      "example": "xxx"
+                    },
+                    "link": {
+                      "type": "object",
+                      "description": "链接",
+                      "required": false,
+                      "ref": "link",
+                      "example": "xxx"
+                    },
+                    "mention_user": {
+                      "type": "object",
+                      "description": "@用户",
+                      "required": false,
+                      "ref": "mention_user",
+                      "example": "xxx"
+                    },
+                    "mention_doc": {
+                      "type": "object",
+                      "description": "@文档",
+                      "required": false,
+                      "ref": "mention_doc",
+                      "example": "xxx"
+                    }
+                  }
+                },
+                "notes": {
+                  "type": "array",
+                  "description": "备注内容列表",
+                  "required": false,
+                  "properties": {
+                    "element_type": {
+                      "type": "string",
+                      "description": "元素类型",
+                      "required": true,
+                      "options": [
+                        {
+                          "value": "text",
+                          "description": "文本"
+                        },
+                        {
+                          "value": "link",
+                          "description": "超链接"
+                        },
+                        {
+                          "value": "user",
+                          "description": "@用户"
+                        },
+                        {
+                          "value": "doc",
+                          "description": "文档链接"
+                        }
+                      ],
+                      "enum": [
+                        "text",
+                        "link",
+                        "user",
+                        "doc"
+                      ],
+                      "enumName": "element_type"
+                    },
+                    "style": {
+                      "type": "object",
+                      "description": "文本样式",
+                      "required": false,
+                      "ref": "text_style",
+                      "example": "xxx"
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "纯文本",
+                      "required": false,
+                      "ref": "plain_text",
+                      "example": "xxx"
+                    },
+                    "link": {
+                      "type": "object",
+                      "description": "链接",
+                      "required": false,
+                      "ref": "link",
+                      "example": "xxx"
+                    },
+                    "mention_user": {
+                      "type": "object",
+                      "description": "@用户",
+                      "required": false,
+                      "ref": "mention_user",
+                      "example": "xxx"
+                    },
+                    "mention_doc": {
+                      "type": "object",
+                      "description": "@文档",
+                      "required": false,
+                      "ref": "mention_doc",
+                      "example": "xxx"
+                    }
+                  }
+                },
+                "images": {
+                  "type": "array",
+                  "description": "图片列表",
+                  "required": false,
+                  "properties": {
+                    "token": {
+                      "type": "string",
+                      "description": "图片token",
+                      "required": true,
+                      "example": "img_abc123"
+                    }
+                  }
+                },
+                "finish": {
+                  "type": "boolean",
+                  "description": "节点是否完成",
+                  "required": false
+                },
+                "highlight": {
+                  "type": "string",
+                  "description": "节点高亮颜色",
+                  "required": false,
+                  "options": [
+                    {
+                      "value": "red",
+                      "description": "红色"
+                    },
+                    {
+                      "value": "yellow",
+                      "description": "黄色"
+                    },
+                    {
+                      "value": "pink",
+                      "description": "粉色"
+                    },
+                    {
+                      "value": "blue",
+                      "description": "蓝色"
+                    },
+                    {
+                      "value": "cyan",
+                      "description": "青色"
+                    },
+                    {
+                      "value": "olive",
+                      "description": "橄榄绿"
+                    },
+                    {
+                      "value": "grey",
+                      "description": "灰色"
+                    }
+                  ],
+                  "enum": [
+                    "red",
+                    "yellow",
+                    "pink",
+                    "blue",
+                    "cyan",
+                    "olive",
+                    "grey"
+                  ],
+                  "enumName": "highlight_type"
+                }
+              }
+            }
+          },
+          "responseBody": {
+            "client_token": {
+              "type": "string",
+              "description": "操作的唯一标识，更新请求中使用此值表示幂等的进行此次更新",
+              "required": false,
+              "example": "fe599b60-450f-46ff-b2ef-9f6675625b97"
+            },
+            "ids": {
+              "type": "array",
+              "description": "创建的节点列表",
+              "required": false
+            }
+          },
+          "scopes": [
+            "mindnote:node:create"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "danger": true,
+          "risk": "write",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=create&project=mindnote&resource=mindnote.node&version=v1"
+        },
+        "list": {
+          "id": "mindnote.node.list",
+          "path": "mindnotes/{mindnote_id}/nodes",
+          "httpMethod": "GET",
+          "description": "获取思维笔记节点列表",
+          "parameters": {
+            "mindnote_id": {
+              "type": "string",
+              "location": "path",
+              "required": true,
+              "description": "Mindnote唯一标识",
+              "example": "D05hbLa3dm08GbnerjwbvNmUcgf"
+            },
+            "user_id_type": {
+              "type": "string",
+              "location": "query",
+              "required": false,
+              "description": "此次调用中使用的用户ID的类型",
+              "options": [
+                {
+                  "value": "user_id",
+                  "description": "以user_id来识别用户"
+                },
+                {
+                  "value": "union_id",
+                  "description": "以union_id来识别用户"
+                },
+                {
+                  "value": "open_id",
+                  "description": "以open_id来识别用户"
+                }
+              ],
+              "enum": [
+                "user_id",
+                "union_id",
+                "open_id"
+              ]
+            }
+          },
+          "parameterOrder": [
+            "mindnote_id"
+          ],
+          "responseBody": {
+            "nodes": {
+              "type": "array",
+              "description": "节点信息",
+              "required": false,
+              "properties": {
+                "node_id": {
+                  "type": "string",
+                  "description": "节点ID",
+                  "required": false,
+                  "example": "node_abc123"
+                },
+                "parent_id": {
+                  "type": "string",
+                  "description": "父节点ID",
+                  "required": false,
+                  "example": "node_parent123"
+                },
+                "texts": {
+                  "type": "array",
+                  "description": "文本内容列表",
+                  "required": false,
+                  "properties": {
+                    "element_type": {
+                      "type": "string",
+                      "description": "元素类型",
+                      "required": true,
+                      "options": [
+                        {
+                          "value": "text",
+                          "description": "文本"
+                        },
+                        {
+                          "value": "link",
+                          "description": "超链接"
+                        },
+                        {
+                          "value": "user",
+                          "description": "@用户"
+                        },
+                        {
+                          "value": "doc",
+                          "description": "文档链接"
+                        }
+                      ],
+                      "enum": [
+                        "text",
+                        "link",
+                        "user",
+                        "doc"
+                      ],
+                      "enumName": "element_type"
+                    },
+                    "style": {
+                      "type": "object",
+                      "description": "文本样式",
+                      "required": false,
+                      "ref": "text_style",
+                      "example": "xxx"
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "纯文本",
+                      "required": false,
+                      "ref": "plain_text",
+                      "example": "xxx"
+                    },
+                    "link": {
+                      "type": "object",
+                      "description": "链接",
+                      "required": false,
+                      "ref": "link",
+                      "example": "xxx"
+                    },
+                    "mention_user": {
+                      "type": "object",
+                      "description": "@用户",
+                      "required": false,
+                      "ref": "mention_user",
+                      "example": "xxx"
+                    },
+                    "mention_doc": {
+                      "type": "object",
+                      "description": "@文档",
+                      "required": false,
+                      "ref": "mention_doc",
+                      "example": "xxx"
+                    }
+                  }
+                },
+                "notes": {
+                  "type": "array",
+                  "description": "备注内容列表",
+                  "required": false,
+                  "properties": {
+                    "element_type": {
+                      "type": "string",
+                      "description": "元素类型",
+                      "required": true,
+                      "options": [
+                        {
+                          "value": "text",
+                          "description": "文本"
+                        },
+                        {
+                          "value": "link",
+                          "description": "超链接"
+                        },
+                        {
+                          "value": "user",
+                          "description": "@用户"
+                        },
+                        {
+                          "value": "doc",
+                          "description": "文档链接"
+                        }
+                      ],
+                      "enum": [
+                        "text",
+                        "link",
+                        "user",
+                        "doc"
+                      ],
+                      "enumName": "element_type"
+                    },
+                    "style": {
+                      "type": "object",
+                      "description": "文本样式",
+                      "required": false,
+                      "ref": "text_style",
+                      "example": "xxx"
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "纯文本",
+                      "required": false,
+                      "ref": "plain_text",
+                      "example": "xxx"
+                    },
+                    "link": {
+                      "type": "object",
+                      "description": "链接",
+                      "required": false,
+                      "ref": "link",
+                      "example": "xxx"
+                    },
+                    "mention_user": {
+                      "type": "object",
+                      "description": "@用户",
+                      "required": false,
+                      "ref": "mention_user",
+                      "example": "xxx"
+                    },
+                    "mention_doc": {
+                      "type": "object",
+                      "description": "@文档",
+                      "required": false,
+                      "ref": "mention_doc",
+                      "example": "xxx"
+                    }
+                  }
+                },
+                "images": {
+                  "type": "array",
+                  "description": "图片列表",
+                  "required": false,
+                  "properties": {
+                    "token": {
+                      "type": "string",
+                      "description": "图片token",
+                      "required": true,
+                      "example": "img_abc123"
+                    }
+                  }
+                },
+                "finish": {
+                  "type": "boolean",
+                  "description": "节点是否完成",
+                  "required": false
+                },
+                "highlight": {
+                  "type": "string",
+                  "description": "节点高亮颜色",
+                  "required": false,
+                  "options": [
+                    {
+                      "value": "red",
+                      "description": "红色"
+                    },
+                    {
+                      "value": "yellow",
+                      "description": "黄色"
+                    },
+                    {
+                      "value": "pink",
+                      "description": "粉色"
+                    },
+                    {
+                      "value": "blue",
+                      "description": "蓝色"
+                    },
+                    {
+                      "value": "cyan",
+                      "description": "青色"
+                    },
+                    {
+                      "value": "olive",
+                      "description": "橄榄绿"
+                    },
+                    {
+                      "value": "grey",
+                      "description": "灰色"
+                    }
+                  ],
+                  "enum": [
+                    "red",
+                    "yellow",
+                    "pink",
+                    "blue",
+                    "cyan",
+                    "olive",
+                    "grey"
+                  ],
+                  "enumName": "highlight_type"
+                }
+              }
+            }
+          },
+          "scopes": [
+            "mindnote:node:read"
+          ],
+          "accessTokens": [
+            "user",
+            "tenant"
+          ],
+          "risk": "read",
+          "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=mindnote&resource=mindnote.node&version=v1"
+        }
+      }
+    }
+  }
+}

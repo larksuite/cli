@@ -46,25 +46,18 @@ at the decision point.
 ## Build
 
 Run `make build` for the canonical local build; it writes `./lark-cli` with
-version metadata and the embedded service catalog. It, `make vet`,
-`make unit-test`, `make live-skills-test`, and dependent targets first run
-`python3 scripts/fetch_meta.py`, so Python 3 is required. On a clean checkout,
-the ignored `internal/registry/meta_data.json` is absent and the first run needs
-access to `open.feishu.cn`; a valid existing file is reused.
-`LARKSUITE_CLI_REMOTE_META=off` does not disable this build-time fetch.
-`make live-skills-test` requires working `npx` and network access.
-
-If the fetch fails before Go starts, report the missing Python or network
-prerequisite instead of changing product code or generated metadata. `go build .`
-may compile against the tracked empty fallback metadata, but that is only a
-degraded compile check without the full service catalog.
+version metadata and the committed Catalog Snapshot embedded from
+`internal/registry/catalog/manifest.json` plus
+`internal/registry/catalog/services/*.json`. Build and test targets consume this
+tracked snapshot without a metadata fetch or Python prerequisite.
+`make live-skills-test` additionally requires working `npx` and network access.
 
 ## Choose the Correct Surface
 
 | Need | Implement in | Rule |
 |------|--------------|------|
 | Agent/human-friendly workflow, composition, or smart defaults | `shortcuts/<domain>/` via `common.Shortcut` | Must add UX or workflow value beyond exposing one endpoint. |
-| One-to-one supported OpenAPI method | Upstream service metadata + generic `cmd/service/` machinery | Verify it with `schema` after the canonical metadata fetch. `internal/registry/meta_data.json` is generated and ignored; never hand-edit it or add a shortcut merely to expose a missing catalog method. |
+| One-to-one supported OpenAPI method | Committed Catalog Snapshot under `internal/registry/catalog/manifest.json` plus `services/*.json`, and generic `cmd/service/` machinery | Verify it with `schema`. Update the manifest and matching service snapshot together; do not add a shortcut merely to expose a missing catalog method. |
 | Arbitrary OpenAPI endpoint | Generic `cmd/api/` machinery | Keep it endpoint-agnostic. |
 | Auth, config, profile, update, or CLI lifecycle | `cmd/<area>/` plus the owning shared/internal package | Keep new Cobra code as wiring when a lower owner exists. |
 | EventKey, payload shape, or domain projection | `events/<domain>/` | Shared event mechanics stay in `internal/event/`; CLI assembly stays in `cmd/event/`. |
@@ -75,6 +68,25 @@ degraded compile check without the full service catalog.
 
 Do not duplicate one command surface inside another. Register new shortcuts in
 the domain's `Shortcuts()`; declare risk, identities/scopes, flags, and dry-run.
+
+## Source Layout
+
+| Path | What it does |
+|------|-------------|
+| `cmd/root.go` | Entry point, command registration, strict mode pruning |
+| `cmd/profile/` | Multi-profile management (add/list/use/rename/remove) |
+| `cmd/config/` | Config init, show, strict-mode |
+| `cmd/service/` | Auto-registers API commands from `internal/registry/catalog/manifest.json` and `internal/registry/catalog/services/*.json` |
+| `shortcuts/common/runner.go` | Shortcut execution pipeline, Flag.Input (@file/stdin) resolution |
+| `shortcuts/` | Domain-specific shortcut implementations |
+| `internal/cmdutil/factory.go` | Factory pattern — identity resolution, credential, config |
+| `internal/cmdutil/factory_default.go` | Production factory wiring |
+| `internal/credential/` | Credential provider chain (extension → default) |
+| `extension/credential/` | Plugin-facing credential interfaces and env provider |
+| `internal/client/client.go` | APIClient: DoSDKRequest, DoStream |
+| `internal/core/config.go` | Multi-profile config loading/saving |
+| `internal/vfs/` | Filesystem abstraction (use `vfs.*` instead of `os.*`) |
+| `internal/validate/path.go` | Path safety validation |
 
 ## Hard Contracts
 

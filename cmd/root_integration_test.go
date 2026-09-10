@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -14,6 +16,7 @@ import (
 	"github.com/larksuite/cli/cmd/api"
 	"github.com/larksuite/cli/cmd/auth"
 	"github.com/larksuite/cli/cmd/service"
+	extcs "github.com/larksuite/cli/extension/contentsafety"
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -78,6 +81,11 @@ type typedErrorEnvelope struct {
 		Message string `json:"message"`
 		Hint    string `json:"hint"`
 		Param   string `json:"param,omitempty"`
+		Params  []struct {
+			Name   string `json:"name"`
+			Reason string `json:"reason"`
+		} `json:"params,omitempty"`
+		Rules []string `json:"rules,omitempty"`
 	} `json:"error"`
 }
 
@@ -470,6 +478,184 @@ func TestIntegration_StrictModeBot_ProfileOverride_APIExplicitUserReturnsEnvelop
 }
 
 // --- shortcut command ---
+
+type conciseViewSafetyProvider struct {
+	wantTitle string
+}
+
+func (p *conciseViewSafetyProvider) Name() string { return "concise-fixture" }
+
+func (p *conciseViewSafetyProvider) Scan(_ context.Context, req extcs.ScanRequest) (*extcs.Alert, error) {
+	encoded, err := json.Marshal(req.Data)
+	if err != nil {
+		return nil, err
+	}
+	// Match fields owned by conciseMessageView rather than the legacy output
+	// map, so this fixture fails if the command scans data other than the view
+	// that is passed to the Markdown renderer.
+	if !bytes.Contains(encoded, []byte(`"Title":`+fmt.Sprintf("%q", p.wantTitle))) ||
+		!bytes.Contains(encoded, []byte(`"ChatSections"`)) {
+		return nil, nil
+	}
+	return &extcs.Alert{Provider: p.Name(), MatchedRules: []string{"fixture-rule"}}, nil
+}
+
+type conciseIntegrationCommand struct {
+	name  string
+	title string
+	args  []string
+}
+
+func conciseIntegrationCommands() []conciseIntegrationCommand {
+	return []conciseIntegrationCommand{
+		{name: "chat-messages-list", title: "Chat messages", args: []string{"im", "+chat-messages-list", "--chat-id", "oc_test"}},
+		{name: "threads-messages-list", title: "Thread messages", args: []string{"im", "+threads-messages-list", "--thread", "omt_test"}},
+	}
+}
+
+func registerConciseMessageListStub(reg *httpmock.Registry) {
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/im/v1/messages",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"items": []interface{}{map[string]interface{}{
+					"message_id":  "om_fixture",
+					"msg_type":    "text",
+					"body":        map[string]interface{}{"content": `{"text":"fixture message"}`},
+					"create_time": "0",
+				}},
+				"has_more":   false,
+				"page_token": "",
+			},
+		},
+	})
+}
+
+func TestIntegration_IMConciseContentSafety(t *testing.T) {
+	for _, command := range conciseIntegrationCommands() {
+		for _, mode := range []string{"warn", "block"} {
+			t.Run(command.name+"/"+mode, func(t *testing.T) {
+				t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", mode)
+				previousProvider := extcs.GetProvider()
+				extcs.Register(&conciseViewSafetyProvider{wantTitle: command.title})
+				t.Cleanup(func() { extcs.Register(previousProvider) })
+
+				f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
+					AppID: "concise-safety", AppSecret: "secret", Brand: core.BrandFeishu,
+				})
+				registerConciseMessageListStub(reg)
+				rootCmd := buildIntegrationRootCmd(t, f)
+				args := append(append([]string{}, command.args...), "--as", "bot", "--concise", "--no-reactions")
+				code := executeRootIntegration(t, f, rootCmd, args)
+
+				if mode == "warn" {
+					if code != 0 {
+						t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr.String())
+					}
+					if !strings.Contains(stdout.String(), "# "+command.title) || !strings.Contains(stdout.String(), "fixture message") {
+						t.Fatalf("concise stdout = %q", stdout.String())
+					}
+					if !strings.Contains(stderr.String(), "warning: content safety alert from concise-fixture (rules: fixture-rule)") {
+						t.Fatalf("warn stderr = %q", stderr.String())
+					}
+					return
+				}
+
+				if code != output.ExitContentSafety {
+					t.Fatalf("exit code = %d, want %d", code, output.ExitContentSafety)
+				}
+				if stdout.Len() != 0 {
+					t.Fatalf("block stdout = %q, want empty", stdout.String())
+				}
+				env := parseTypedEnvelope(t, stderr)
+				if env.Error.Type != "policy" || env.Error.Subtype != "content_safety" || len(env.Error.Rules) != 1 || env.Error.Rules[0] != "fixture-rule" {
+					t.Fatalf("block envelope = %#v", env)
+				}
+			})
+		}
+	}
+}
+
+func TestIntegration_IMConciseOutputFlagConflicts(t *testing.T) {
+	conflicts := []struct {
+		name string
+		args []string
+		flag string
+	}{
+		{name: "format", args: []string{"--format", "pretty"}, flag: "--format"},
+		{name: "json", args: []string{"--json"}, flag: "--json"},
+		{name: "jq", args: []string{"--jq", ".data"}, flag: "--jq"},
+	}
+	for _, command := range conciseIntegrationCommands() {
+		for _, conflict := range conflicts {
+			t.Run(command.name+"/"+conflict.name, func(t *testing.T) {
+				f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
+					AppID: "concise-conflict", AppSecret: "secret", Brand: core.BrandFeishu,
+				})
+				requestCount := 0
+				reg.Register(&httpmock.Stub{
+					URL: "/open-apis/", Optional: true, Reusable: true,
+					OnMatch: func(*http.Request) { requestCount++ },
+				})
+				rootCmd := buildIntegrationRootCmd(t, f)
+				args := append(append([]string{}, command.args...), "--as", "bot", "--concise")
+				args = append(args, conflict.args...)
+				code := executeRootIntegration(t, f, rootCmd, args)
+
+				if code != output.ExitValidation {
+					t.Fatalf("exit code = %d, want %d", code, output.ExitValidation)
+				}
+				if stdout.Len() != 0 || requestCount != 0 {
+					t.Fatalf("stdout = %q, requests = %d; want empty stdout and no request", stdout.String(), requestCount)
+				}
+				env := parseTypedEnvelope(t, stderr)
+				if env.Error.Type != "validation" || env.Error.Param != "--concise" || !strings.Contains(env.Error.Message, conflict.flag) {
+					t.Fatalf("conflict envelope = %#v", env)
+				}
+				if len(env.Error.Params) != 2 || env.Error.Params[0].Name != "--concise" || env.Error.Params[1].Name != conflict.flag {
+					t.Fatalf("conflict params = %#v", env.Error.Params)
+				}
+			})
+		}
+	}
+}
+
+func TestIntegration_IMConciseDisabledOutputFlagsAreAllowed(t *testing.T) {
+	disabledFlags := []struct {
+		name string
+		arg  string
+	}{
+		{name: "json-false", arg: "--json=false"},
+		{name: "jq-empty", arg: "--jq="},
+	}
+	for _, command := range conciseIntegrationCommands() {
+		for _, disabled := range disabledFlags {
+			t.Run(command.name+"/"+disabled.name, func(t *testing.T) {
+				f, stdout, stderr, _ := cmdutil.TestFactory(t, &core.CliConfig{
+					AppID: "concise-disabled", AppSecret: "secret", Brand: core.BrandFeishu,
+				})
+				rootCmd := buildIntegrationRootCmd(t, f)
+				args := append(append([]string{}, command.args...), "--as", "bot", "--dry-run", "--concise", "--no-reactions", disabled.arg)
+				code := executeRootIntegration(t, f, rootCmd, args)
+				if code != 0 {
+					t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr.String())
+				}
+				if stderr.Len() != 0 {
+					t.Fatalf("stderr = %q, want empty", stderr.String())
+				}
+				var envelope map[string]interface{}
+				if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+					t.Fatalf("dry-run stdout is not JSON: %v\n%s", err, stdout.String())
+				}
+				if envelope["ok"] != true || envelope["dry_run"] != true {
+					t.Fatalf("dry-run envelope = %#v", envelope)
+				}
+			})
+		}
+	}
+}
 
 func TestIntegration_Shortcut_BusinessError_OutputsEnvelope(t *testing.T) {
 	f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{

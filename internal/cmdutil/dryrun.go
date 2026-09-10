@@ -279,7 +279,11 @@ func dryRunFormatValue(v interface{}) string {
 func encodeParams(params map[string]interface{}) string {
 	vals := url.Values{}
 	for k, v := range params {
-		vals.Set(k, fmt.Sprintf("%v", v))
+		// Scalars use the renderer the client uses to build the real query
+		// string, so switching the wire to plain decimals does not leave the
+		// preview showing "1.7e+09" for a request that sends "1700000000".
+		// A list still previews as %v renders it, exactly as before.
+		vals.Set(k, client.FormatScalar(v))
 	}
 	return vals.Encode()
 }

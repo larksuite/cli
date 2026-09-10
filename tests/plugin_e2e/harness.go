@@ -10,8 +10,8 @@
 // the blank-import -> init -> Register -> InstallAll assembly chain.
 //
 // Mechanism (the "customer build", mirrors xcaddy's build mode):
-//  1. `git archive HEAD` a clean tree containing only committed files (so the
-//     fork embeds the tracked meta_data stub, reproducing the bare-module state).
+//  1. `git archive HEAD` a clean tree containing only committed files, including
+//     the Catalog Snapshot.
 //  2. Generate a customer module: go.mod (cli's requires + `replace` to the
 //     archived tree) + go.sum copy + main.go (blank-imports the plugin package
 //     and wires its own embedded skill base) + plugin package (its init() calls
@@ -57,8 +57,8 @@ func repoRoot() (string, error) {
 
 // gitArchive extracts HEAD's committed tree into dst by streaming `git archive`
 // into `tar -x`. Only tracked files are included — gitignored build artifacts
-// (e.g. the fetched meta_data.json) are absent, exactly as a module consumer
-// would see them. It wires the two processes with an explicit pipe rather than a
+// are absent, exactly as a module consumer would see them. It wires the two
+// processes with an explicit pipe rather than a
 // shell, so dst never reaches a shell command line.
 func gitArchive(root, dst string) error {
 	archive := exec.Command("git", "archive", "HEAD")
@@ -342,14 +342,8 @@ type result struct {
 }
 
 // run executes the fork binary with args in an isolated, offline environment and
-// captures stdout/stderr/exit. Each call gets a fresh empty
-// LARKSUITE_CLI_CONFIG_DIR and LARKSUITE_CLI_REMOTE_META=off, so the fork never
-// inherits the host's ~/.lark-cli cache or makes a startup metadata fetch to the
-// open platform. That reproduces the bare-module customer state (no embedded
-// metadata, cold cache) deterministically on any machine, including CI: without
-// it, whether a command's assertion is reached depends on whether a live network
-// fetch happened to succeed. Tests that need runtime metadata seed it explicitly
-// via runWithSeededCatalog.
+// captures stdout/stderr/exit. Each call gets a fresh LARKSUITE_CLI_CONFIG_DIR;
+// API discovery remains offline because the Catalog Snapshot is embedded.
 func run(t *testing.T, bin string, args ...string) result {
 	t.Helper()
 	return runWithEnv(t, bin, isolatedEnv(t), args...)
@@ -374,15 +368,13 @@ func baseEnv() []string {
 	return kept
 }
 
-// isolatedEnv is the bare-module, offline environment shared by run() and (as a
-// base) by runWithSeededCatalog.
+// isolatedEnv is the bare-module, offline environment shared by fork runs.
 func isolatedEnv(t *testing.T) []string {
 	t.Helper()
 	return append(baseEnv(),
 		"LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1",
 		"LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1",
 		"LARKSUITE_CLI_CONFIG_DIR="+t.TempDir(),
-		"LARKSUITE_CLI_REMOTE_META=off",
 	)
 }
 

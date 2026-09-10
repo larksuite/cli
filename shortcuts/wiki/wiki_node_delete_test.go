@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -18,10 +19,68 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+func TestWikiNodeDeleteDeclaredScopes(t *testing.T) {
+	t.Parallel()
+	want := []string{"wiki:node:create", "wiki:node:retrieve"}
+	if !slices.Equal(WikiNodeDelete.Scopes, want) {
+		t.Fatalf("WikiNodeDelete.Scopes = %v, want %v", WikiNodeDelete.Scopes, want)
+	}
+}
+
+func TestWikiNodeDeleteScopePreflight(t *testing.T) {
+	for _, identity := range []string{"user", "bot"} {
+		for _, tt := range []struct {
+			name, granted, missing string
+		}{
+			{"delete only", "wiki:node:create", "wiki:node:retrieve"},
+			{"lookup only", "wiki:node:retrieve", "wiki:node:create"},
+			{"both", "wiki:node:create wiki:node:retrieve", ""},
+		} {
+			t.Run(identity+"/"+tt.name, func(t *testing.T) {
+				t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+				cfg := wikiTestConfig()
+				factory, stdout, _, reg := cmdutil.TestFactory(t, cfg)
+				factory.Credential = credential.NewCredentialProvider(nil, &wikiMoveAccountResolver{cfg: cfg}, &mockWikiMoveTokenResolver{scopes: tt.granted}, nil)
+				if tt.missing == "" {
+					reg.Register(&httpmock.Stub{Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token?token=wik_source", Body: map[string]any{
+						"code": 0, "data": map[string]any{"node": map[string]any{"node_token": "wik_source", "space_id": "space_src"}},
+					}})
+					reg.Register(&httpmock.Stub{Method: "DELETE", URL: "/open-apis/wiki/v2/spaces/space_src/nodes/wik_source", Body: map[string]any{"code": 0, "data": map[string]any{}}})
+				}
+				err := mountAndRunWiki(t, WikiNodeDelete, []string{
+					"+node-delete", "--node-token", "wik_source", "--obj-type", "wiki", "--space-id", "space_src", "--yes", "--as", identity,
+				}, factory, stdout)
+				if tt.missing == "" {
+					if err != nil {
+						t.Fatalf("both scopes should allow lookup and deletion: %v", err)
+					}
+					return
+				}
+				// No API stubs are registered: missing scopes must stop before
+				// either lookup or deletion, even with an explicit space ID.
+				var permission *errs.PermissionError
+				if !errors.As(err, &permission) {
+					t.Fatalf("error = %T %v, want PermissionError", err, err)
+				}
+				if permission.Category != errs.CategoryAuthorization || permission.Subtype != errs.SubtypeMissingScope || permission.Identity != identity {
+					t.Fatalf("unexpected permission metadata: %+v", permission)
+				}
+				if !slices.Equal(permission.MissingScopes, []string{tt.missing}) {
+					t.Fatalf("missing scopes = %v, want %s", permission.MissingScopes, tt.missing)
+				}
+				if stdout.Len() != 0 {
+					t.Fatalf("unexpected success output: %s", stdout.String())
+				}
+			})
+		}
+	}
+}
 
 // ── parseWikiNodeDeleteSpec ─────────────────────────────────────────────────
 
@@ -123,15 +182,15 @@ func TestBuildWikiNodeDeleteDryRunWithoutSpaceIDShowsResolve(t *testing.T) {
 	dry := buildWikiNodeDeleteDryRun(spec)
 	got := decodeDryRunAPIs(t, dry)
 	if len(got) != 3 {
-		t.Fatalf("len(dry.api) = %d, want 3 (get_node, delete, task poll)", len(got))
+		t.Fatalf("len(dry.api) = %d, want 3 (node_by_token, delete, task poll)", len(got))
 	}
-	if got[0].URL != "/open-apis/wiki/v2/spaces/get_node" {
-		t.Fatalf("step[0].URL = %q, want get_node", got[0].URL)
+	if got[0].URL != "/open-apis/wiki/v2/spaces/node_by_token" {
+		t.Fatalf("step[0].URL = %q, want node_by_token", got[0].URL)
 	}
-	if got[0].Params["obj_type"] != "docx" || got[0].Params["token"] != "docxXYZ" {
+	if len(got[0].Params) != 1 || got[0].Params["token"] != "docxXYZ" {
 		t.Fatalf("step[0].params = %#v", got[0].Params)
 	}
-	if got[1].URL != "/open-apis/wiki/v2/spaces/<resolved_space_id>/nodes/docxXYZ" {
+	if got[1].URL != "/open-apis/wiki/v2/spaces/<resolved_space_id>/nodes/<resolved_obj_token>" {
 		t.Fatalf("step[1].URL = %q, want delete with placeholder", got[1].URL)
 	}
 	if got[1].Body["obj_type"] != "docx" || got[1].Body["include_children"] != true {
@@ -142,7 +201,7 @@ func TestBuildWikiNodeDeleteDryRunWithoutSpaceIDShowsResolve(t *testing.T) {
 	}
 }
 
-func TestBuildWikiNodeDeleteDryRunWithSpaceIDOmitsResolve(t *testing.T) {
+func TestBuildWikiNodeDeleteDryRunWithSpaceIDResolvesToken(t *testing.T) {
 	t.Parallel()
 
 	spec, err := parseWikiNodeDeleteSpec("wikcnABC", "wiki", "7629741305993170448", false)
@@ -152,14 +211,14 @@ func TestBuildWikiNodeDeleteDryRunWithSpaceIDOmitsResolve(t *testing.T) {
 
 	dry := buildWikiNodeDeleteDryRun(spec)
 	got := decodeDryRunAPIs(t, dry)
-	if len(got) != 2 {
-		t.Fatalf("len(dry.api) = %d, want 2 (delete + task poll) when --space-id supplied", len(got))
+	if len(got) != 3 {
+		t.Fatalf("len(dry.api) = %d, want 3 (lookup + delete + task poll) when --space-id supplied", len(got))
 	}
-	if got[0].Method != "DELETE" || got[0].URL != "/open-apis/wiki/v2/spaces/7629741305993170448/nodes/wikcnABC" {
-		t.Fatalf("step[0] = %+v", got[0])
+	if got[1].Method != "DELETE" || got[1].URL != "/open-apis/wiki/v2/spaces/7629741305993170448/nodes/<resolved_node_token>" {
+		t.Fatalf("step[0] = %+v", got[1])
 	}
-	if got[0].Body["include_children"] != false {
-		t.Fatalf("body include_children = %#v", got[0].Body["include_children"])
+	if got[1].Body["include_children"] != false {
+		t.Fatalf("body include_children = %#v", got[1].Body["include_children"])
 	}
 }
 
@@ -182,7 +241,7 @@ type fakeWikiNodeDeleteClient struct {
 	taskCallArgs []string
 }
 
-func (fake *fakeWikiNodeDeleteClient) ResolveNode(ctx context.Context, token, objType string) (*wikiNodeRecord, error) {
+func (fake *fakeWikiNodeDeleteClient) ResolveNode(ctx context.Context, token string) (*wikiNodeRecord, error) {
 	fake.resolveCalls = append(fake.resolveCalls, token)
 	if fake.resolveErr != nil {
 		return nil, fake.resolveErr
@@ -246,7 +305,7 @@ func TestRunWikiNodeDeleteResolvesSpaceWhenMissing(t *testing.T) {
 
 	runtime, _ := newWikiNodeDeleteRuntime(t, core.AsUser)
 	client := &fakeWikiNodeDeleteClient{
-		resolveNode: &wikiNodeRecord{SpaceID: "space_resolved"},
+		resolveNode: &wikiNodeRecord{SpaceID: "space_resolved", NodeToken: "wikcnABC"},
 	}
 
 	out, err := runWikiNodeDelete(context.Background(), client, runtime, wikiNodeDeleteSpec{
@@ -268,11 +327,11 @@ func TestRunWikiNodeDeleteResolvesSpaceWhenMissing(t *testing.T) {
 	}
 }
 
-func TestRunWikiNodeDeleteSkipsResolveWhenSpaceProvided(t *testing.T) {
+func TestRunWikiNodeDeleteResolvesTokenWhenSpaceProvided(t *testing.T) {
 	t.Parallel()
 
 	runtime, _ := newWikiNodeDeleteRuntime(t, core.AsUser)
-	client := &fakeWikiNodeDeleteClient{}
+	client := &fakeWikiNodeDeleteClient{resolveNode: &wikiNodeRecord{SpaceID: "space_explicit", NodeToken: "wikcnABC"}}
 
 	_, err := runWikiNodeDelete(context.Background(), client, runtime, wikiNodeDeleteSpec{
 		NodeToken: "wikcnABC", ObjType: "wiki", SpaceID: "space_explicit",
@@ -280,8 +339,8 @@ func TestRunWikiNodeDeleteSkipsResolveWhenSpaceProvided(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runWikiNodeDelete() error = %v", err)
 	}
-	if len(client.resolveCalls) != 0 {
-		t.Fatalf("resolveCalls should be empty when --space-id supplied, got %v", client.resolveCalls)
+	if len(client.resolveCalls) != 1 {
+		t.Fatalf("expected token lookup when --space-id supplied, got %v", client.resolveCalls)
 	}
 	if client.deleteCalls[0].SpaceID != "space_explicit" {
 		t.Fatalf("delete used wrong space: %+v", client.deleteCalls)
@@ -293,6 +352,7 @@ func TestRunWikiNodeDeleteAsyncReadyShape(t *testing.T) {
 
 	runtime, stderr := newWikiNodeDeleteRuntime(t, core.AsUser)
 	client := &fakeWikiNodeDeleteClient{
+		resolveNode:  &wikiNodeRecord{SpaceID: "space_123", NodeToken: "wikcnABC"},
 		deleteTaskID: "task_async_node",
 		taskStatuses: []wikiAsyncTaskStatus{{Status: "success"}},
 	}
@@ -316,6 +376,7 @@ func TestRunWikiNodeDeleteAsyncTimeoutReturnsNextCommand(t *testing.T) {
 
 	runtime, _ := newWikiNodeDeleteRuntime(t, core.AsUser)
 	client := &fakeWikiNodeDeleteClient{
+		resolveNode:  &wikiNodeRecord{SpaceID: "space_123", NodeToken: "wikcnABC"},
 		deleteTaskID: "task_async_node",
 		taskStatuses: []wikiAsyncTaskStatus{{Status: "processing"}},
 	}
@@ -340,6 +401,7 @@ func TestRunWikiNodeDeleteAsyncFailureSurfacesReason(t *testing.T) {
 
 	runtime, _ := newWikiNodeDeleteRuntime(t, core.AsUser)
 	client := &fakeWikiNodeDeleteClient{
+		resolveNode:  &wikiNodeRecord{SpaceID: "space_123", NodeToken: "wikcnABC"},
 		deleteTaskID: "task_async_node",
 		taskStatuses: []wikiAsyncTaskStatus{{Status: "failure", StatusMsg: "permission denied"}},
 	}
@@ -441,6 +503,9 @@ func TestWikiNodeDeleteExecuteRequiresYesConfirmation(t *testing.T) {
 func TestWikiNodeDeleteExecuteSync(t *testing.T) {
 	factory, stdout, _, reg := cmdutil.TestFactory(t, wikiTestConfig())
 
+	reg.Register(&httpmock.Stub{Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token", Body: map[string]interface{}{
+		"code": 0, "data": map[string]interface{}{"node": map[string]interface{}{"space_id": "space_123", "node_token": "wikcnABC"}},
+	}})
 	deleteStub := &httpmock.Stub{
 		Method: "DELETE",
 		URL:    "/open-apis/wiki/v2/spaces/space_123/nodes/wikcnABC",
@@ -486,7 +551,7 @@ func TestWikiNodeDeleteExecuteResolvesSpaceIDFromURL(t *testing.T) {
 
 	resolveStub := &httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -522,8 +587,8 @@ func TestWikiNodeDeleteExecuteResolvesSpaceIDFromURL(t *testing.T) {
 		t.Fatalf("mountAndRunWiki() error = %v", err)
 	}
 
-	if !strings.Contains(resolveQuery, "token=docxXYZ") || !strings.Contains(resolveQuery, "obj_type=docx") {
-		t.Fatalf("resolve query = %q, want token+obj_type", resolveQuery)
+	if resolveQuery != "token=docxXYZ" {
+		t.Fatalf("resolve query = %q, want token only", resolveQuery)
 	}
 	data := decodeWikiEnvelope(t, stdout)
 	if data["space_id"] != "space_resolved" || data["obj_type"] != "docx" {
@@ -535,6 +600,9 @@ func TestWikiNodeDeleteExecuteAsyncSuccess(t *testing.T) {
 	withSingleWikiDeleteNodePoll(t)
 
 	factory, stdout, _, reg := cmdutil.TestFactory(t, wikiTestConfig())
+	reg.Register(&httpmock.Stub{Method: "GET", URL: "/open-apis/wiki/v2/spaces/node_by_token", Body: map[string]interface{}{
+		"code": 0, "data": map[string]interface{}{"node": map[string]interface{}{"space_id": "space_123", "node_token": "wikcnABC"}},
+	}})
 	reg.Register(&httpmock.Stub{
 		Method: "DELETE",
 		URL:    "/open-apis/wiki/v2/spaces/space_123/nodes/wikcnABC",
