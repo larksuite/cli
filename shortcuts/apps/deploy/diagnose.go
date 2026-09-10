@@ -5,6 +5,8 @@ package deploy
 
 import (
 	"io"
+	"os"
+	"path/filepath"
 
 	"github.com/larksuite/cli/extension/fileio"
 )
@@ -62,11 +64,28 @@ func DiagnoseDir(fio fileio.FileIO, root string, candidates []Candidate) []Skip 
 			case rerr != nil:
 				note(SkipOutsideDir, ref, c.RelPath, "it does not point at a file inside the published directory")
 			case !published[rel]:
-				note(SkipMissing, ref, c.RelPath, "the published directory has no "+rel)
+				note(SkipMissing, ref, c.RelPath, whyNotPublished(root, rel))
 			}
 		}
 	}
 	return out
+}
+
+// whyNotPublished separates "there is no such file" from "the file is there
+// but the walker did not take it". Telling someone a file is missing when they
+// can see it in the directory reads as a bug in the tool.
+func whyNotPublished(root, rel string) string {
+	//nolint:forbidigo // fileio exposes no Lstat, and the distinction being drawn here is exactly the one Stat erases by following the link.
+	if info, err := os.Lstat(filepath.Join(root, filepath.FromSlash(rel))); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return rel + " is a symbolic link, which is never published; replace it with a copy of the file it points at"
+		}
+		if !info.Mode().IsRegular() {
+			return rel + " is not a regular file, so it is not published"
+		}
+		return rel + " was not published; check that it is inside the directory being published"
+	}
+	return "the published directory has no " + rel
 }
 
 func readAll(fio fileio.FileIO, path string) ([]byte, bool) {

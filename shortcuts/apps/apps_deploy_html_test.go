@@ -604,3 +604,30 @@ func (htmlDeployTestFIO) ResolvePath(p string) (string, error)      { return p, 
 func (htmlDeployTestFIO) Save(string, fileio.SaveOptions, io.Reader) (fileio.SaveResult, error) {
 	panic("Save not used in bare-HTML deploy unit tests")
 }
+
+// A publish that could not collect everything the pages reference still
+// succeeds, so the only signal a machine caller gets is what the envelope says.
+// Leaving it on stderr alone hands an agent an unqualified success for a page
+// that renders broken -- the exact failure this path exists to prevent.
+func TestHTMLDeployResultCarriesSkippedReferences(t *testing.T) {
+	plan := htmlDeployPlan{
+		AppID: "app_1",
+		SkippedDeps: []deploy.Skip{
+			{Ref: "assets/logo.png", From: "index.html", Why: "the file does not exist", Kind: deploy.SkipMissing},
+		},
+	}
+	data := htmlDeployResult(plan, 3, 1024, "rel_1", "finished")
+
+	lines, ok := data["dependencies_skipped"].([]string)
+	if !ok || len(lines) != 1 {
+		t.Fatalf("envelope must carry the skipped references, got %#v", data["dependencies_skipped"])
+	}
+	if !strings.Contains(lines[0], "assets/logo.png") || !strings.Contains(lines[0], "index.html") {
+		t.Errorf("the line should name the file and the page referencing it: %q", lines[0])
+	}
+
+	clean := htmlDeployResult(htmlDeployPlan{AppID: "app_1"}, 3, 1024, "rel_1", "finished")
+	if _, present := clean["dependencies_skipped"]; present {
+		t.Errorf("a publish with nothing skipped must not carry an empty field: %#v", clean)
+	}
+}

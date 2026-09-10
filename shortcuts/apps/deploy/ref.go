@@ -31,16 +31,28 @@ var (
 	fileSchemeRe   = regexp.MustCompile(`(?i)^file:`)
 )
 
+// Two ways out, and they are not interchangeable. A reference that is simply
+// malformed is fixed by editing it; one that climbs out of the payload needs
+// the file moved *and* the reference rewritten, because "../" keeps climbing
+// wherever the file ends up.
+//
+// Neither suggests --dir. The entry is published as index.html at the payload
+// root, so a reference above it cannot be expressed in any mode: pointing --dir
+// at the parent is rejected because the entry must sit at that directory's own
+// root, and pointing it at the page's own directory publishes without the file
+// and says so only as a warning.
+const (
+	hintFixReferenceText = "correct the reference where it is written: a published page reaches its files by a relative path inside the entry file's directory"
+	hintReferenceEscapes = "the entry file's directory becomes the site root, so no reference may climb above it — move the file into that directory and rewrite the reference to match (../shared/app.css -> shared/app.css); moving the file alone changes nothing, because ../ still climbs"
+)
+
 // invalidReferenceError is the publish-stopping error for a reference the
-// payload must not contain.
-func invalidReferenceError(ref, from, why string) error {
+// payload must not contain. hint says how to get out of this particular
+// failure; a hint that does not fit its cause sends the caller round a loop.
+func invalidReferenceError(ref, from, why, hint string) error {
 	return errs.NewValidationError(errs.SubtypeFailedPrecondition,
 		"invalid reference %q in %s: %s", ref, from, why).
-		// Deliberately not "use --dir": the entry is published as index.html at
-		// the payload root, so a reference above it cannot be expressed in any
-		// mode. Pointing --dir at the parent does not help either, because the
-		// entry has to sit at that directory's own root.
-		WithHint("the entry has to sit at or above everything it references: move those files under the entry's directory, or move the entry up to the directory that holds them and publish from there")
+		WithHint(hint)
 }
 
 // resolveReference turns one raw reference written inside importerRel into a
@@ -65,13 +77,13 @@ func resolveReference(importerRel, ref string) (rel string, skip bool, err error
 	}
 	switch {
 	case strings.Contains(trimmed, `\`):
-		return "", false, invalidReferenceError(ref, importerRel, "it contains a backslash")
+		return "", false, invalidReferenceError(ref, importerRel, "it contains a backslash", hintFixReferenceText)
 	case strings.ContainsRune(trimmed, 0):
-		return "", false, invalidReferenceError(ref, importerRel, "it contains a NUL byte")
+		return "", false, invalidReferenceError(ref, importerRel, "it contains a NUL byte", hintFixReferenceText)
 	case windowsDriveRe.MatchString(trimmed):
-		return "", false, invalidReferenceError(ref, importerRel, "it names an absolute Windows path")
+		return "", false, invalidReferenceError(ref, importerRel, "it names an absolute Windows path", hintFixReferenceText)
 	case fileSchemeRe.MatchString(trimmed):
-		return "", false, invalidReferenceError(ref, importerRel, "it uses the file: scheme")
+		return "", false, invalidReferenceError(ref, importerRel, "it uses the file: scheme", hintFixReferenceText)
 	}
 	if externalReferenceRe.MatchString(trimmed) {
 		return "", true, nil
@@ -86,16 +98,16 @@ func resolveReference(importerRel, ref string) (rel string, skip bool, err error
 	// not decode to valid UTF-8; PathUnescape only catches the first, so the
 	// second is checked here to keep the two implementations in step.
 	if derr != nil || !utf8.ValidString(decoded) {
-		return "", false, invalidReferenceError(ref, importerRel, "it is not a valid percent-encoded path")
+		return "", false, invalidReferenceError(ref, importerRel, "it is not a valid percent-encoded path", hintFixReferenceText)
 	}
 	pathOnly = decoded
 	switch {
 	case strings.Contains(pathOnly, `\`):
-		return "", false, invalidReferenceError(ref, importerRel, "it decodes to a path containing a backslash")
+		return "", false, invalidReferenceError(ref, importerRel, "it decodes to a path containing a backslash", hintFixReferenceText)
 	case strings.ContainsRune(pathOnly, 0):
-		return "", false, invalidReferenceError(ref, importerRel, "it decodes to a path containing a NUL byte")
+		return "", false, invalidReferenceError(ref, importerRel, "it decodes to a path containing a NUL byte", hintFixReferenceText)
 	case strings.Contains(pathOnly, ":"):
-		return "", false, invalidReferenceError(ref, importerRel, "it decodes to a path containing a colon")
+		return "", false, invalidReferenceError(ref, importerRel, "it decodes to a path containing a colon", hintFixReferenceText)
 	}
 
 	var segments []string
@@ -115,7 +127,7 @@ func resolveReference(importerRel, ref string) (rel string, skip bool, err error
 			continue
 		case "..":
 			if len(normalized) == 0 {
-				return "", false, invalidReferenceError(ref, importerRel, "it points above the entry file's directory")
+				return "", false, invalidReferenceError(ref, importerRel, "it points above the entry file's directory", hintReferenceEscapes)
 			}
 			normalized = normalized[:len(normalized)-1]
 		default:
@@ -123,7 +135,7 @@ func resolveReference(importerRel, ref string) (rel string, skip bool, err error
 		}
 	}
 	if len(normalized) == 0 {
-		return "", false, invalidReferenceError(ref, importerRel, "it does not name a file")
+		return "", false, invalidReferenceError(ref, importerRel, "it does not name a file", hintFixReferenceText)
 	}
 	return strings.Join(normalized, "/"), false, nil
 }

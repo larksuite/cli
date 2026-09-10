@@ -148,6 +148,13 @@ func (c *collector) read(rel string, required bool) ([]byte, int64, bool, error)
 		return nil, 0, false, err
 	}
 	p := c.join(rel)
+	// Name the file that asked for this one. The caller wrote a reference, not
+	// a file list, so "assets/logo.png is missing" is only actionable once they
+	// know which page to look in.
+	from := c.viaOf(rel)
+	if from == "" {
+		from = rel
+	}
 	st, err := c.fio.Stat(p)
 	if err != nil {
 		if required {
@@ -155,11 +162,11 @@ func (c *collector) read(rel string, required bool) ([]byte, int64, bool, error)
 		}
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
-			c.note(SkipMissing, rel, rel, "the file does not exist")
+			c.note(SkipMissing, rel, from, "the file does not exist")
 		case errors.Is(err, fs.ErrPermission):
-			c.note(SkipUnreadable, rel, rel, "the file cannot be read: permission denied")
+			c.note(SkipUnreadable, rel, from, "the file cannot be read: permission denied")
 		default:
-			c.note(SkipUnreadable, rel, rel, "the path cannot be read")
+			c.note(SkipUnreadable, rel, from, "the path cannot be read")
 		}
 		return nil, 0, false, nil
 	}
@@ -168,7 +175,7 @@ func (c *collector) read(rel string, required bool) ([]byte, int64, bool, error)
 			return nil, 0, false, errs.NewValidationError(errs.SubtypeFailedPrecondition,
 				"--file-path %q is not a regular file", p).WithParam("--file-path")
 		}
-		c.note(SkipUnreadable, rel, rel, "the path is not a regular file")
+		c.note(SkipUnreadable, rel, from, "the path is not a regular file")
 		return nil, 0, false, nil
 	}
 	f, err := c.fio.Open(p)
@@ -176,7 +183,7 @@ func (c *collector) read(rel string, required bool) ([]byte, int64, bool, error)
 		if required {
 			return nil, 0, false, inputPathError("--file-path", p, err)
 		}
-		c.note(SkipUnreadable, rel, rel, "the file cannot be opened")
+		c.note(SkipUnreadable, rel, from, "the file cannot be opened")
 		return nil, 0, false, nil
 	}
 	defer f.Close()
@@ -185,7 +192,7 @@ func (c *collector) read(rel string, required bool) ([]byte, int64, bool, error)
 		if required {
 			return nil, 0, false, errs.NewInternalError(errs.SubtypeFileIO, "read %q: %v", p, err).WithCause(err)
 		}
-		c.note(SkipUnreadable, rel, rel, "the file could not be read to the end")
+		c.note(SkipUnreadable, rel, from, "the file could not be read to the end")
 		return nil, 0, false, nil
 	}
 	return raw, int64(len(raw)), true, nil

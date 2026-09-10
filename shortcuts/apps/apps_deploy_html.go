@@ -361,6 +361,26 @@ var skipAdvice = map[deploy.SkipKind]string{
 	deploy.SkipOutsideDir: "the entry has to sit at or above everything it references; move those files into the published directory, or publish from the directory that holds them",
 }
 
+// htmlDeployResult builds the JSON envelope of a finished publish.
+//
+// Skipped references belong here and not only on stderr: a caller that reads
+// stdout would otherwise see an unqualified success for a page that is missing
+// files, which is the failure this whole path exists to prevent.
+func htmlDeployResult(plan htmlDeployPlan, fileCount int, zipSize int64, releaseID, status string) map[string]interface{} {
+	data := map[string]interface{}{
+		"app_id":         plan.AppID,
+		"release_id":     releaseID,
+		"status":         status,
+		"built":          false,
+		"file_count":     fileCount,
+		"zip_size_bytes": zipSize,
+	}
+	if lines := skippedLines(plan.SkippedDeps); len(lines) > 0 {
+		data["dependencies_skipped"] = lines
+	}
+	return data
+}
+
 // skippedLines renders the skip list for the JSON envelope.
 func skippedLines(skipped []deploy.Skip) []string {
 	if len(skipped) == 0 {
@@ -381,7 +401,7 @@ func warnSkippedDeps(w io.Writer, skipped []deploy.Skip) {
 	if len(skipped) == 0 {
 		return
 	}
-	fmt.Fprintf(w, "warning: %d issue(s) collecting what this page references; the published page may be missing files (broken styles, scripts or images):\n",
+	fmt.Fprintf(w, "warning: %d reference(s) in the payload could not be published; the published pages will be missing them (broken styles, scripts or images):\n",
 		len(skipped))
 	seen := make(map[deploy.SkipKind]bool, len(skipAdvice))
 	var order []deploy.SkipKind
@@ -621,20 +641,7 @@ func executeHTMLDeploy(ctx context.Context, rctx *common.RuntimeContext) error {
 	}
 	// built is always false here: the bare-HTML path publishes the files as
 	// they are on disk and never runs a build command.
-	data := map[string]interface{}{
-		"app_id":         plan.AppID,
-		"release_id":     releaseID,
-		"status":         status,
-		"built":          false,
-		"file_count":     zipball.FileCount,
-		"zip_size_bytes": zipball.Size,
-	}
-	// The warning also goes to stderr for a person to read, but a caller that
-	// consumes only the JSON envelope would otherwise see an unqualified
-	// success for a page that is missing files.
-	if lines := skippedLines(plan.SkippedDeps); len(lines) > 0 {
-		data["dependencies_skipped"] = lines
-	}
+	data := htmlDeployResult(plan, zipball.FileCount, zipball.Size, releaseID, status)
 	pollHint := ""
 	if onlineURL != "" {
 		data["online_url"] = onlineURL
