@@ -904,7 +904,7 @@ func TestCondFormatPropertiesNormalization(t *testing.T) {
 			if err := json.Unmarshal([]byte(tc.props), &props); err != nil {
 				t.Fatal(err)
 			}
-			normalizeCondFormatProperties(props)
+			normalizeCondFormatProperties(nil, props)
 			attrs, _ := props["attrs"].([]interface{})
 			if len(attrs) != 1 {
 				t.Fatalf("attrs = %v, want one entry", props["attrs"])
@@ -930,7 +930,7 @@ func TestCondFormatPropertiesNormalization(t *testing.T) {
 		if err := json.Unmarshal([]byte(`{"style":{"background_color":"#FFE6E6","font_color":"#C00000","font_weight":"bold","font_line":"line-through"}}`), &props); err != nil {
 			t.Fatal(err)
 		}
-		normalizeCondFormatProperties(props)
+		normalizeCondFormatProperties(nil, props)
 		style, _ := props["style"].(map[string]interface{})
 		for key, want := range map[string]interface{}{
 			"back_color": "#FFE6E6", "fore_color": "#C00000",
@@ -965,7 +965,7 @@ func TestCondFormatPropertiesNormalization(t *testing.T) {
 			if err := json.Unmarshal([]byte(tc.props), &props); err != nil {
 				t.Fatal(err)
 			}
-			normalizeCondFormatProperties(props)
+			normalizeCondFormatProperties(nil, props)
 			style, _ := props["style"].(map[string]interface{})
 			if style["font"] != tc.wantFont {
 				t.Errorf("%s: font = %v, want %q", tc.name, style["font"], tc.wantFont)
@@ -991,7 +991,7 @@ func TestCondFormatPropertiesNormalization(t *testing.T) {
 		if err := json.Unmarshal([]byte(`{"style":{"back_color":"#FFF","bold":false}}`), &props); err != nil {
 			t.Fatal(err)
 		}
-		normalizeCondFormatProperties(props)
+		normalizeCondFormatProperties(nil, props)
 		style, _ := props["style"].(map[string]interface{})
 		if _, has := style["font"]; has {
 			t.Errorf("style = %v, want no font entry", style)
@@ -1012,7 +1012,7 @@ func TestCondFormatPropertiesNormalization(t *testing.T) {
 			if err := json.Unmarshal([]byte(tc.props), &props); err != nil {
 				t.Fatal(err)
 			}
-			normalizeCondFormatProperties(props)
+			normalizeCondFormatProperties(nil, props)
 			attrs, _ := props["attrs"].([]interface{})
 			entry, _ := attrs[0].(map[string]interface{})
 			if _, joined := entry["value"].(string); joined {
@@ -1027,7 +1027,7 @@ func TestCondFormatPropertiesNormalization(t *testing.T) {
 		if err := json.Unmarshal([]byte(`{"attrs":{"compare_type":"lessThan","value":"0"}}`), &props); err != nil {
 			t.Fatal(err)
 		}
-		normalizeCondFormatProperties(props)
+		normalizeCondFormatProperties(nil, props)
 		if attrs, _ := props["attrs"].([]interface{}); len(attrs) != 1 {
 			t.Errorf("attrs = %v, want a one-entry list", props["attrs"])
 		}
@@ -1041,7 +1041,7 @@ func TestCondFormatPropertiesNormalization(t *testing.T) {
 		if err := json.Unmarshal([]byte(`{"attrs":[{"operator":"before","time_period":"today"},{"color":"#63BE7B","value_type":"num","value":100}]}`), &props); err != nil {
 			t.Fatal(err)
 		}
-		normalizeCondFormatProperties(props)
+		normalizeCondFormatProperties(nil, props)
 		attrs, _ := props["attrs"].([]interface{})
 		first, _ := attrs[0].(map[string]interface{})
 		if first["operator"] != "before" {

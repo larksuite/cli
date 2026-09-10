@@ -1018,6 +1018,45 @@ func dropdownHighlightWarnings(runtime flagView) []string {
 
 // ─── range parsing helpers ────────────────────────────────────────────
 
+// liftFlatCellsRow gives a one-dimensional payload its second dimension. Every
+// spreadsheet library these callers arrive from reads a flat list as one ROW
+// (openpyxl's append, the Sheets API's default majorDimension), so that is the
+// reading taken — except where the caller's own range says otherwise: a range
+// one column wide and several rows tall can only be asking for a column, and
+// writing a row there would put the data somewhere they did not name.
+//
+// A payload that already has rows is left alone, and so is a mixed one, where
+// no single reading covers both halves. 09-04..07: 396 rejections read
+// "[0]: expected type array".
+func liftFlatCellsRow(cells []interface{}, rangeStr string) []interface{} {
+	if len(cells) == 0 {
+		return cells
+	}
+	lifted := make([]interface{}, 0, len(cells))
+	for _, item := range cells {
+		if _, isRow := item.([]interface{}); isRow {
+			return cells // already 2D
+		}
+		cell, isObj := item.(map[string]interface{})
+		if !isObj {
+			if scalar := scalarCellValue(item); scalar != nil {
+				cell = scalar
+			} else {
+				return cells // not a cell either; the schema names it
+			}
+		}
+		lifted = append(lifted, cell)
+	}
+	if target, err := parseCellRange(rangeStr); err == nil && target.cols == 1 && target.rows > 1 {
+		column := make([]interface{}, 0, len(lifted))
+		for _, cell := range lifted {
+			column = append(column, []interface{}{cell})
+		}
+		return column
+	}
+	return []interface{}{lifted}
+}
+
 // checkCellsPayloadShape rejects, before any network call, a --cells payload
 // that has no extent to write at all: empty, or rows of differing widths that
 // padRaggedCellRows could not square off (a row that is not an array).

@@ -606,7 +606,7 @@ func finishParsedJSONFlag(runtime flagView, name string, out interface{}) (inter
 	// so both the standalone cobra path and +batch-update sub-ops (whose
 	// mapFlagView.Str re-encodes composites through here) get the rewrite.
 	if norm := jsonFlagNormalizers[runtime.Command()][name]; norm != nil {
-		out = norm(out)
+		out = norm(runtime, out)
 	}
 	// Schema-driven flag validation at the user-input boundary. Skips
 	// --properties (validated at the input-builder tail after enhance
@@ -623,7 +623,7 @@ func finishParsedJSONFlag(runtime flagView, name string, out interface{}) (inter
 // contract as enum normalization: only a shape whose meaning is beyond
 // doubt may be rewritten; anything ambiguous must fail with a prescription
 // instead. Applied to the parsed JSON value inside parseJSONFlag.
-var jsonFlagNormalizers = map[string]map[string]func(interface{}) interface{}{
+var jsonFlagNormalizers = map[string]map[string]func(flagView, interface{}) interface{}{
 	"+cells-set":             {"cells": normalizeCellsFlagValue, "writes": normalizeWritesFlagValue},
 	"+cells-set-style":       {"border-styles": normalizeBorderStylesFlagValue},
 	"+cells-batch-set-style": {"border-styles": normalizeBorderStylesFlagValue},
@@ -638,7 +638,7 @@ var jsonFlagNormalizers = map[string]map[string]func(interface{}) interface{}{
 // Excel-habit form the chart backend rejects with "expected rgba() or
 // #RRGGBB/#RRGGBBAA"). In-place, recursive; anything not unambiguously a
 // bare hex color is untouched.
-func normalizeChartHexColors(v interface{}) interface{} {
+func normalizeChartHexColors(_ flagView, v interface{}) interface{} {
 	switch t := v.(type) {
 	case map[string]interface{}:
 		for k, val := range t {
@@ -654,11 +654,11 @@ func normalizeChartHexColors(v interface{}) interface{} {
 				normalizeChartHexColorList(arr)
 				continue
 			}
-			normalizeChartHexColors(val)
+			normalizeChartHexColors(nil, val)
 		}
 	case []interface{}:
 		for _, e := range t {
-			normalizeChartHexColors(e)
+			normalizeChartHexColors(nil, e)
 		}
 	}
 	return v
@@ -678,7 +678,7 @@ func normalizeChartHexColorList(arr []interface{}) {
 			normalizeChartHexColorList(nested)
 			continue
 		}
-		normalizeChartHexColors(e)
+		normalizeChartHexColors(nil, e)
 	}
 }
 

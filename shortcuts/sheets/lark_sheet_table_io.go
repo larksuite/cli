@@ -196,6 +196,27 @@ func headingNames(names ...string) columnHeadings { return columnHeadings{names:
 // columnNames returns the flat name list the rest of the parser works against.
 func (c columnHeadings) columnNames() []string { return c.names }
 
+// columnEntryHeadingKeys are the keys a column object carries its heading
+// under when it is not spelled `name`. Each names the same thing in a
+// vocabulary these payloads come from: a table's `title` or `header`, a
+// dataframe's `label`, a schema's `field` or `key`. The value has to be a
+// non-empty string, which is what keeps a `field` holding a nested spec from
+// being read as a heading. 09-04..07: 2559 rejections said a column object had
+// no name, on entries that named it under one of these.
+var columnEntryHeadingKeys = []string{"title", "header", "label", "column", "field", "key"}
+
+// columnEntryHeading reads the heading out of a column object that did not
+// spell it `name`, returning the heading and the key it came from, or "" for
+// both when none of the alternatives carries one.
+func columnEntryHeading(obj map[string]interface{}) (heading, spelling string) {
+	for _, key := range columnEntryHeadingKeys {
+		if text, isStr := obj[key].(string); isStr && strings.TrimSpace(text) != "" {
+			return text, key
+		}
+	}
+	return "", ""
+}
+
 // UnmarshalJSON accepts the flat string array and the object-per-column array.
 func (c *columnHeadings) UnmarshalJSON(b []byte) error {
 	var raw []json.RawMessage
@@ -218,6 +239,14 @@ func (c *columnHeadings) UnmarshalJSON(b []byte) error {
 			return err
 		}
 		name, _ := obj["name"].(string)
+		if strings.TrimSpace(name) == "" {
+			var spelling string
+			if name, spelling = columnEntryHeading(obj); spelling != "" {
+				// Consumed as the heading, so the key-vocabulary check below
+				// does not then report it as one this entry has no room for.
+				delete(obj, spelling)
+			}
+		}
 		if strings.TrimSpace(name) == "" {
 			return fmt.Errorf(`columns[%d] is an object without a "name" string; a column entry is either the name itself ("Revenue") or an object carrying it ({"name":"Revenue","dtype":"float64"})`, i) //nolint:forbidigo // decode-time error; parseTablePutPayload wraps it into the typed --sheets validation error
 		}

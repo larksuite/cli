@@ -710,7 +710,7 @@ func borderLineWidth(v interface{}) (float64, bool) {
 // expandBorderAllShorthand exists to absorb — the acceptance layer was
 // unreachable on this path (07-28 root-cause report #2, 173 occurrences).
 // Non-object shapes pass through for the validator to prescribe.
-func normalizeBorderStylesFlagValue(v interface{}) interface{} {
+func normalizeBorderStylesFlagValue(_ flagView, v interface{}) interface{} {
 	if m, ok := v.(map[string]interface{}); ok {
 		expandBorderAllShorthand(m)
 	}
@@ -726,12 +726,21 @@ func normalizeBorderStylesFlagValue(v interface{}) interface{} {
 // root-cause report #10, 58 occurrences). Each helper documents why its own
 // rewrite is unambiguous. Structure is checked leniently: anything that isn't
 // the expected shape is left for the validator.
-func normalizeCellsFlagValue(v interface{}) interface{} {
+func normalizeCellsFlagValue(runtime flagView, v interface{}) interface{} {
 	v = wrapLoneCellObject(unwrapCellsEnvelope(v))
+	// A lone scalar is the one cell it names. The 2D shape is what the flag
+	// documents, but "write this here" with a single value and a single
+	// anchor has no second reading (09-04..07: 400 rejections whose payload
+	// was a bare string or number).
+	if lifted := scalarCellValue(v); lifted != nil {
+		return []interface{}{[]interface{}{lifted}}
+	}
 	rows, ok := v.([]interface{})
 	if !ok {
 		return v
 	}
+	rows = liftFlatCellsRow(rows, strings.TrimSpace(runtime.Str("range")))
+	v = rows
 	for _, rowRaw := range rows {
 		row, ok := rowRaw.([]interface{})
 		if !ok {
@@ -923,7 +932,7 @@ func unwrapWritesEnvelope(v interface{}) interface{} {
 // values → cells only when "cells" is absent: two spellings carrying
 // different payloads is a conflict for normalizeSubOpInputKeys to report, not
 // one to silently resolve here.
-func normalizeWritesFlagValue(v interface{}) interface{} {
+func normalizeWritesFlagValue(runtime flagView, v interface{}) interface{} {
 	v = unwrapWritesEnvelope(v)
 	items, ok := v.([]interface{})
 	if !ok {
@@ -941,7 +950,7 @@ func normalizeWritesFlagValue(v interface{}) interface{} {
 			}
 		}
 		if cells, ok := item["cells"]; ok {
-			item["cells"] = normalizeCellsFlagValue(cells)
+			item["cells"] = normalizeCellsFlagValue(newMapFlagViewForCommand("+cells-set", item), cells)
 		}
 	}
 	return v

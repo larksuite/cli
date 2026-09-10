@@ -522,7 +522,10 @@ func TestWorkbookCreate_DataValidation(t *testing.T) {
 		{"styles missing array", []string{"--title", "X", "--styles", `{"value":"x"}`}, "--styles.styles is required"},
 		{"styles item missing groups", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1"}]}`}, "must include at least one of cell_styles/row_sizes/col_sizes/cell_merges"},
 		{"styles item unknown key gets did-you-mean", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","freezee":{"rows":1}}]}`}, `unknown key "freezee" — did you mean "freeze"`},
-		{"cell styles must be array", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","cell_styles":{"range":"A1","font_weight":"bold"}}]}`}, "cell_styles must be an array"},
+		// A section written as one object is lifted into its one-entry list
+		// (foldStyleItemKeys); what still has to be an array is a section
+		// holding something that is neither.
+		{"cell styles must be array", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","cell_styles":"A1"}]}`}, "cell_styles must be an array"},
 		{"cell style needs range", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","cell_styles":[{"font_weight":"bold"}]}]}`}, "range is required"},
 		{"nested cell_styles rejected", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","cell_styles":[{"range":"A1","cell_styles":{"font_weight":"bold"}}]}]}`}, "put style fields directly"},
 		{"row size needs row range", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","row_sizes":[{"range":"A1","type":"pixel","size":20}]}]}`}, "must use row numbers"},

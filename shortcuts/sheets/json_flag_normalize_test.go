@@ -532,7 +532,7 @@ func TestNormalizeChartHexColors(t *testing.T) {
 			},
 		},
 	}
-	normalizeChartHexColors(props)
+	normalizeChartHexColors(nil, props)
 	series := props["plotArea"].(map[string]interface{})["plot"].(map[string]interface{})["series"].([]interface{})
 	if got := series[0].(map[string]interface{})["bars"].(map[string]interface{})["color"]; got != "#4472C4" {
 		t.Errorf("bare hex should gain #, got %v", got)
