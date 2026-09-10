@@ -97,11 +97,12 @@ func TestFormatMessageItem(t *testing.T) {
 
 func TestFormatMessageItemDeletedUnavailableContent(t *testing.T) {
 	tests := []struct {
-		name       string
-		rawContent string
+		name string
+		body interface{}
 	}{
-		{name: "invalid json", rawContent: `{invalid`},
-		{name: "null json", rawContent: `null`},
+		{name: "invalid json", body: map[string]interface{}{"content": `{invalid`}},
+		{name: "null json", body: map[string]interface{}{"content": `null`}},
+		{name: "null body", body: nil},
 	}
 
 	for _, tt := range tests {
@@ -111,7 +112,7 @@ func TestFormatMessageItemDeletedUnavailableContent(t *testing.T) {
 				"message_id":  "om_deleted",
 				"deleted":     true,
 				"create_time": "1710500000",
-				"body":        map[string]interface{}{"content": tt.rawContent},
+				"body":        tt.body,
 			}
 
 			got := FormatMessageItem(raw, nil)
