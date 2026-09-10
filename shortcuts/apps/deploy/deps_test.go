@@ -289,6 +289,28 @@ func TestCollectFileStopsAtFileLimit(t *testing.T) {
 	}
 }
 
+// The depth limit is checked the way the file limit is: the chain is built at
+// run time rather than committed, because none of its files carries an
+// assertion of its own -- seventeen stylesheets exist only to be seventeen
+// levels. Both implementations read the limit from the same written contract,
+// so pinning it against a fixture would cost twenty files to confirm a constant.
+func TestCollectFileStopsAtDepthLimit(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "page.html"), `<link rel="stylesheet" href="c0.css">`)
+	for i := 0; i <= maxDepDepth+1; i++ {
+		mustWrite(t, filepath.Join(root, "c"+itoa(i)+".css"), `@import "c`+itoa(i+1)+`.css";`)
+	}
+	mustWrite(t, filepath.Join(root, "c"+itoa(maxDepDepth+2)+".css"), ".end{}")
+
+	err := collectErr(t, root, "page.html")
+	// The message names the file and the reference that overflowed, so the
+	// caller can cut the chain instead of guessing where it runs deep.
+	if !strings.Contains(err.Error(), "nest more than 16 levels deep") ||
+		!strings.Contains(err.Error(), "references") {
+		t.Fatalf("exceeding the depth limit should name the reference that did it: %v", err)
+	}
+}
+
 func itoa(i int) string {
 	if i == 0 {
 		return "0"

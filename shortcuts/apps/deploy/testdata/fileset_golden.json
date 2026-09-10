@@ -145,10 +145,6 @@
     "entry": "index.html",
     "error": "invalid_reference"
   },
-  "b02_depth": {
-    "entry": "index.html",
-    "error": "max_depth_exceeded"
-  },
   "b03_symlink": {
     "entry": "index.html",
     "error": "symbolic_link"
