@@ -19,13 +19,17 @@
 # The one job that leaves the runner is e2e_live, by design: it drives the CLI
 # against a real Feishu test tenant, creating and deleting real records.
 #
-# Six jobs prepare the API registry. `scripts/fetch_meta.py` writes
-# internal/registry/meta_data.json, which is gitignored — the committed
-# meta_data_default.json stub carries an empty service list. A batch of tests
-# needs the real thing: ./cmd's command-tree completeness check,
-# manifest-export's two cases, and the BuildInputSchema cases. Build, vet,
-# formatting, the generated-file check and both linters were verified to pass
-# without it, so fast_gate and lint stay offline and finish sooner.
+# Six jobs prepare the API registry. Until upstream #2232 (lazy API catalog
+# routing) `scripts/fetch_meta.py` writes internal/registry/meta_data.json,
+# which is gitignored — the committed meta_data_default.json stub carries an
+# empty service list, and a batch of tests needs the real thing: ./cmd's
+# command-tree completeness check, manifest-export's two cases, and the
+# BuildInputSchema cases. From #2232 on the catalog is committed under
+# internal/registry/catalog/ and the script no longer exists, so the fetch step
+# runs only while the script is present. Drop the step once the sync that
+# brings #2232 has landed on main. Build, vet, formatting, the generated-file
+# check and both linters were verified to pass without the fetch, so fast_gate
+# and lint stay offline and finish sooner.
 #
 # Two triggers, matching the public workflow's `pull_request` and
 # `push: branches: [main]`. The MR run is the merge gate; the trunk run is what
@@ -57,8 +61,8 @@
 # `manual` is the local equivalent of `workflow_dispatch`.
 #
 # Commands are spelled out rather than calling `make build` / `make vet` /
-# `make unit-test`, because those targets depend on the fetch_meta target and
-# would pull the fetch into every job.
+# `make unit-test`, because before #2232 those targets depend on the fetch_meta
+# target and would pull the fetch into every job.
 name: CI
 
 trigger:
@@ -125,8 +129,8 @@ jobs:
       - name: Fetch API registry
         commands:
           - python3 --version
-          - python3 scripts/fetch_meta.py
-          - 'jq -r ''"registry services=\(.services|length)"'' internal/registry/meta_data.json || true'
+          - 'if [ -f scripts/fetch_meta.py ]; then python3 scripts/fetch_meta.py; else echo "no scripts/fetch_meta.py: the committed API catalog serves the registry"; fi'
+          - '[ ! -f internal/registry/meta_data.json ] || jq -r ''"registry services=\(.services|length)"'' internal/registry/meta_data.json || true'
       # The image ships no Node, and several suites need it: `apps init`
       # preflights a LookPath for npx, script-test needs `node --test`, and
       # e2e_domains.js resolves the affected domains. The public unit-test and
@@ -297,7 +301,7 @@ jobs:
       - uses: actions/checkout
       - name: Fetch API registry
         commands:
-          - python3 scripts/fetch_meta.py
+          - 'if [ -f scripts/fetch_meta.py ]; then python3 scripts/fetch_meta.py; else echo "no scripts/fetch_meta.py: the committed API catalog serves the registry"; fi'
       # The image ships no Node, and several suites need it: `apps init`
       # preflights a LookPath for npx, script-test needs `node --test`, and
       # e2e_domains.js resolves the affected domains. The public unit-test and
@@ -341,7 +345,7 @@ jobs:
       - uses: actions/checkout
       - name: Fetch API registry
         commands:
-          - python3 scripts/fetch_meta.py
+          - 'if [ -f scripts/fetch_meta.py ]; then python3 scripts/fetch_meta.py; else echo "no scripts/fetch_meta.py: the committed API catalog serves the registry"; fi'
       # Only newly unreachable functions matter, so compare this revision with
       # the MR's target. resolve-changed-from.sh yields the baseline and
       # degrades on its own when that commit is missing from a shallow
@@ -372,7 +376,7 @@ jobs:
           - rm -rf /tmp/dc-base
           - git worktree add -q /tmp/dc-base "$BASE"
           - cd /tmp/dc-base
-          - python3 scripts/fetch_meta.py
+          - 'if [ -f scripts/fetch_meta.py ]; then python3 scripts/fetch_meta.py; else echo "no scripts/fetch_meta.py: the committed API catalog serves the registry"; fi'
           - deadcode -test ./... | sed 's/:[0-9][0-9]*:[0-9][0-9]*:/:/' | sort > /tmp/dc-base.txt
           - cd "$WORK"
           - git worktree remove -f /tmp/dc-base
@@ -427,7 +431,7 @@ jobs:
       - uses: actions/checkout
       - name: Fetch API registry
         commands:
-          - python3 scripts/fetch_meta.py
+          - 'if [ -f scripts/fetch_meta.py ]; then python3 scripts/fetch_meta.py; else echo "no scripts/fetch_meta.py: the committed API catalog serves the registry"; fi'
       # The public job uses the gitleaks action, which needs a GitHub token and
       # an enterprise licence; gitleaks is a Go program, so the module proxy
       # serves it instead. This runs the scan only, matching the action. Not
@@ -490,7 +494,7 @@ jobs:
       - uses: actions/checkout
       - name: Fetch API registry
         commands:
-          - python3 scripts/fetch_meta.py
+          - 'if [ -f scripts/fetch_meta.py ]; then python3 scripts/fetch_meta.py; else echo "no scripts/fetch_meta.py: the committed API catalog serves the registry"; fi'
       - name: Install Node
         commands:
           - curl -fsSL https://mirrors.byted.org/nodejs-release/v22.16.0/node-v22.16.0-linux-x64.tar.xz | tar -xJ -C /opt
@@ -570,8 +574,8 @@ jobs:
       - uses: actions/checkout
       - name: Fetch API registry
         commands:
-          - python3 scripts/fetch_meta.py
-          - jq -e '(.services | length) > 0' internal/registry/meta_data.json > /dev/null
+          - 'if [ -f scripts/fetch_meta.py ]; then python3 scripts/fetch_meta.py; else echo "no scripts/fetch_meta.py: the committed API catalog serves the registry"; fi'
+          - '[ ! -f internal/registry/meta_data.json ] || jq -e ''(.services | length) > 0'' internal/registry/meta_data.json > /dev/null'
       - name: Install Node
         commands:
           - curl -fsSL https://mirrors.byted.org/nodejs-release/v22.16.0/node-v22.16.0-linux-x64.tar.xz | tar -xJ -C /opt

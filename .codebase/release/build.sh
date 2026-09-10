@@ -44,7 +44,12 @@ if [[ "$(git rev-parse --is-shallow-repository)" == true ]]; then
   git fetch --quiet --unshallow origin
 fi
 
-python3 scripts/fetch_meta.py
+# Upstream #2232 removed scripts/fetch_meta.py: the API catalog is committed
+# under internal/registry/catalog/ and needs no fetch. Keep the fetch for
+# tags cut before that landed.
+if [[ -f scripts/fetch_meta.py ]]; then
+  python3 scripts/fetch_meta.py
+fi
 
 if [[ -z "${GORELEASER:-}" ]]; then
   GOBIN="$PWD/.tmp/release-bin" go install "github.com/goreleaser/goreleaser/v2@${GORELEASER_VERSION}"
