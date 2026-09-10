@@ -211,7 +211,36 @@ Form 依附于 Table，以 Field 作为题目，每次有效提交会创建一�
 2. **创建或修改 Table 中的表单配置：** 使用 `+form-create` / `+form-update` / `+form-delete` 管理表单；题目由 Table Field 承载，question ID 对应 `field_id`，创建和更新分别读取 [questions create](references/lark-base-form-questions-create.md) / [questions update](references/lark-base-form-questions-update.md)，删除使用 `+form-questions-delete`。
 3. **调整表单题目显隐和顺序：** Form 在 `visible_fields` 接口中作为 View，`form_id` 传给 `--view-id`。用 `+view-get-visible-fields` 读取当前可见题目，再用 `+view-set-visible-fields` 提交最终需要展示的完整有序题目 ID 列表；省略当前可见题目会隐藏它，加入已有隐藏 Form 成员会重新展示，空列表会隐藏全部题目。目标只能包含已有 Form 成员；仍显示题目的 `visible_rule` 只能引用位于它之前的可见题目。
 4. **管理表单分享：** 使用 `+form-share-get` / `+form-share-update` 管理启停、访问范围和匿名/登录要求；更新前先读取现状，每次只修改一个字段，布尔值显式传 `true` 或 `false`。
-5. **填写分享表单并提交：** 对表单分享链接使用 `+url-resolve` 取得 `share_token`，按 [Form detail](references/lark-base-form-detail.md) 执行 `+form-detail` 读取真实题目、必填项和显示条件，再按 [Form submit](references/lark-base-form-submit.md) 构造字段与附件并执行 `+form-submit`。
+5. **管理表单核心配置：** 不要把核心配置写入 `+form-share-update`。按业务对象选择以下唯一资源，并始终先 GET 再 UPDATE；UPDATE 每次只传一个逻辑配置：
+   - 填写有效期、每用户次数、提交总数、允许修改提交或 AI 语音录入：`+form-submission-settings-get` / `+form-submission-settings-update`
+   - 有人提交后通知、定时填写通知或两者共享语言：`+form-notification-settings-get` / `+form-notification-settings-update`
+   - 提交结果页或提交后跳转：`+form-post-submit-settings-get` / `+form-post-submit-settings-update`
+   - 抽奖启用、关闭、更新或重新关联中奖记录表：`+form-lottery-settings-get` / `+form-lottery-settings-update`
+6. **填写分享表单并提交：** 对表单分享链接使用 `+url-resolve` 取得 `share_token`，按 [Form detail](references/lark-base-form-detail.md) 执行 `+form-detail` 读取真实题目、必填项和显示条件，再按 [Form submit](references/lark-base-form-submit.md) 构造字段与附件并执行 `+form-submit`。
+
+核心配置示例（将 `<base_token>`、`<table_id>`、`<form_id>` 和响应中的并发值替换为真实值）：
+
+```bash
+# 提交设置：读取后开启填写有效期
+lark-cli base +form-submission-settings-get --base-token <base_token> --table-id <table_id> --form-id <form_id>
+lark-cli base +form-submission-settings-update --base-token <base_token> --table-id <table_id> --form-id <form_id> \
+  --submit-period '{"enabled":true,"start_at":"2026-09-10T09:00:00+08:00","end_at":"2026-09-30T18:00:00+08:00","timezone":"Asia/Shanghai"}'
+
+# 通知：读取后开启有人提交通知；receiver 仅接受当前 App 可解析的用户 open_id
+lark-cli base +form-notification-settings-get --base-token <base_token> --table-id <table_id> --form-id <form_id>
+lark-cli base +form-notification-settings-update --base-token <base_token> --table-id <table_id> --form-id <form_id> \
+  --submit-notification '{"enabled":true,"receivers":[{"open_id":"ou_xxx"}]}'
+
+# 提交后动作：读取 revision 后更新结果页
+lark-cli base +form-post-submit-settings-get --base-token <base_token> --table-id <table_id> --form-id <form_id>
+lark-cli base +form-post-submit-settings-update --base-token <base_token> --table-id <table_id> --form-id <form_id> \
+  --revision <revision> --submit-result-page '{"enabled":true,"title":"提交成功","description":[{"type":"text","text":"感谢填写"}]}'
+
+# 抽奖：读取 version 后更新已有且已启用的抽奖配置
+lark-cli base +form-lottery-settings-get --base-token <base_token> --table-id <table_id> --form-id <form_id>
+lark-cli base +form-lottery-settings-update --base-token <base_token> --table-id <table_id> --form-id <form_id> \
+  --action update --version <version> --probability 1000
+```
 
 表单题目和字段的关系：
 
