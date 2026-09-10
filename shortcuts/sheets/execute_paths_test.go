@@ -6,6 +6,7 @@ package sheets
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -112,14 +113,14 @@ func TestExecute_ToolError_KnownSubtypePassthrough(t *testing.T) {
 }
 
 // TestExecute_WikiURLResolvesToSheet covers the two-step wiki path: a /wiki/
-// URL is resolved via get_node to its spreadsheet obj_token, which then feeds
+// URL is resolved via node_by_token to its spreadsheet obj_token, which then feeds
 // the tool invoke. The tool stub is keyed on the resolved obj_token, so the
 // test would fail if the node_token were used unresolved.
 func TestExecute_WikiURLResolvesToSheet(t *testing.T) {
 	t.Parallel()
 	getNode := &httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "success",
@@ -143,6 +144,50 @@ func TestExecute_WikiURLResolvesToSheet(t *testing.T) {
 	}
 }
 
+func TestExecute_WikiURLClassifiesNodeByTokenErrors(t *testing.T) {
+	const wikiToken = "wikTestNODE"
+	for _, tt := range []struct {
+		code    int
+		subtype errs.Subtype
+	}{
+		{code: 131012, subtype: errs.SubtypeNotFound},
+		{code: 131013, subtype: errs.SubtypeInvalidParameters},
+		{code: 131014, subtype: errs.SubtypeFailedPrecondition},
+		{code: 131016, subtype: errs.SubtypeInvalidParameters},
+	} {
+		t.Run(fmt.Sprint(tt.code), func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+			lookup := &httpmock.Stub{
+				Method:  "GET",
+				URL:     "/open-apis/wiki/v2/spaces/node_by_token",
+				Headers: http.Header{"X-Tt-Logid": []string{"sheets-wiki-lookup-log"}},
+				Body:    map[string]interface{}{"code": tt.code, "msg": "lookup rejected"},
+				OnMatch: func(req *http.Request) {
+					if got := req.URL.Query().Get("token"); got != wikiToken {
+						t.Errorf("lookup token = %q, want %q", got, wikiToken)
+					}
+				},
+			}
+			parent, stdout, _, reg := newTestRig(t, WorkbookInfo)
+			reg.Register(lookup)
+			parent.SetArgs([]string{"+workbook-info", "--url", "https://example.feishu.cn/wiki/" + wikiToken})
+
+			err := parent.Execute()
+			problem := requireProblem(t, err, errs.CategoryAPI, tt.subtype, "lookup rejected")
+			if problem.Code != tt.code || problem.Retryable {
+				t.Fatalf("problem = %#v, want terminal code %d", problem, tt.code)
+			}
+			if problem.LogID != "sheets-wiki-lookup-log" {
+				t.Fatalf("log_id = %q, want sheets-wiki-lookup-log", problem.LogID)
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("unexpected success output: %s", stdout)
+			}
+		})
+	}
+}
+
 // TestExecute_RevisionGet_WikiURL guards RevisionGet's custom Execute hook:
 // the wiki node token must be resolved before get_workbook_structure runs.
 // TestExecute_CondFormatResultGet_WikiURL guards the condition-format result
@@ -152,7 +197,7 @@ func TestExecute_CondFormatResultGet_WikiURL(t *testing.T) {
 	t.Parallel()
 	getNode := &httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "success",
@@ -211,7 +256,7 @@ func TestExecute_RevisionGet_WikiURL(t *testing.T) {
 	t.Parallel()
 	getNode := &httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "success",
@@ -241,7 +286,7 @@ func TestExecute_WikiURLWrongObjType(t *testing.T) {
 	t.Parallel()
 	getNode := &httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "success",
@@ -258,14 +303,14 @@ func TestExecute_WikiURLWrongObjType(t *testing.T) {
 	requireValidation(t, err, "obj_type")
 }
 
-// TestExecute_WikiURLIncompleteNode treats an incomplete get_node response
+// TestExecute_WikiURLIncompleteNode treats an incomplete node_by_token response
 // (missing obj_type/obj_token) as an internal/server error, not a user --url
 // validation error.
 func TestExecute_WikiURLIncompleteNode(t *testing.T) {
 	t.Parallel()
 	getNode := &httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "success",
@@ -277,7 +322,7 @@ func TestExecute_WikiURLIncompleteNode(t *testing.T) {
 	_, err := runShortcutWithStubs(t, WorkbookInfo,
 		[]string{"--url", "https://example.feishu.cn/wiki/wikTestNODE"}, getNode)
 	if err == nil {
-		t.Fatal("want error for incomplete get_node node data")
+		t.Fatal("want error for incomplete node_by_token node data")
 	}
 	var ve *errs.ValidationError
 	if errors.As(err, &ve) {
@@ -294,7 +339,7 @@ func TestExecute_RangeMove_WikiURL(t *testing.T) {
 	t.Parallel()
 	getNode := &httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		URL:    "/open-apis/wiki/v2/spaces/node_by_token",
 		Body: map[string]interface{}{
 			"code": 0,
 			"msg":  "success",

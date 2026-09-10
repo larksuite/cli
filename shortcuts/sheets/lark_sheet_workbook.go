@@ -2260,7 +2260,7 @@ var WorkbookExport = common.Shortcut{
 			return err
 		}
 		// workbookExportParams resolves --url network-free (DryRun shares it); a
-		// /wiki/ URL carries a node_token that needs the get_node step only
+		// /wiki/ URL carries a node_token that needs the node_by_token step only
 		// Execute may take, so re-resolve the token here.
 		if p.Token, err = resolveSpreadsheetTokenExec(runtime); err != nil {
 			return err

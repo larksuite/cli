@@ -138,7 +138,7 @@ func TestSlidesDeleteSlideWikiDryRunE2E(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	require.Equal(t, "GET", gjson.Get(result.Stdout, "data.api.0.method").String(), result.Stdout)
-	require.Equal(t, "/open-apis/wiki/v2/spaces/get_node", gjson.Get(result.Stdout, "data.api.0.url").String(), result.Stdout)
+	require.Equal(t, "/open-apis/wiki/v2/spaces/node_by_token", gjson.Get(result.Stdout, "data.api.0.url").String(), result.Stdout)
 	require.Equal(t, "wikcnE2ETOKEN", gjson.Get(result.Stdout, "data.api.0.params.token").String(), result.Stdout)
 	require.Equal(t, "DELETE", gjson.Get(result.Stdout, "data.api.1.method").String(), result.Stdout)
 }
