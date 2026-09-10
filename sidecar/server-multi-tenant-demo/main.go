@@ -139,7 +139,7 @@ func run(ctx context.Context, listen, keyFile, keysDir, logFile, profile string)
 	)
 	allowedIDs := buildAllowedIdentities(cfg)
 
-	ab := newAuthBridge([]byte(keyHex), cfg.AppID, cfg.AppSecret, cfg.Brand, factory.Credential, auditLogger)
+	ab := newAuthBridge([]byte(keyHex), cfg.AppID, cfg.AppSecret, cfg.Brand, cfg.DPoPMode, factory.Credential, auditLogger)
 
 	handler := &proxyHandler{
 		key:          []byte(keyHex),

@@ -190,6 +190,10 @@ lark-cli auth login --domain calendar --no-wait
 # Resume polling later
 lark-cli auth login --device-code <DEVICE_CODE>
 
+# Require proof-of-possession tokens for new local credentials, then re-authorize
+lark-cli config dpop required
+lark-cli auth login
+
 # Identity switching: execute commands as user or bot
 lark-cli calendar +agenda --as user
 lark-cli im +messages-send --as bot --chat-id "oc_xxx" --text "Hello"

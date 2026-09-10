@@ -11,11 +11,16 @@ import (
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
+
+	"github.com/larksuite/cli/internal/dpop"
 )
 
 // VerifyUserToken calls /authen/v1/user_info to confirm the token is accepted server-side.
 // Returns nil on success or an error describing why the server rejected the token.
-func VerifyUserToken(ctx context.Context, sdk *lark.Client, accessToken string) error {
+func VerifyUserToken(ctx context.Context, sdk *lark.Client, accessToken string, binding *dpop.Binding) error {
+	if binding != nil {
+		ctx = dpop.WithBinding(ctx, binding)
+	}
 	apiResp, err := sdk.Do(ctx, &larkcore.ApiReq{
 		HttpMethod:                http.MethodGet,
 		ApiPath:                   PathUserInfoV1,

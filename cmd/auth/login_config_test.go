@@ -4,6 +4,7 @@
 package auth
 
 import (
+	"io"
 	"strings"
 	"testing"
 
@@ -36,7 +37,7 @@ func TestSyncLoginUserToProfile_UpdatesOnlyTargetProfile(t *testing.T) {
 		t.Fatalf("SaveMultiAppConfig() error = %v", err)
 	}
 
-	if err := syncLoginUserToProfile("target", "app-target", "ou_new", "new-user"); err != nil {
+	if err := syncLoginUserToProfile("target", "app-target", "ou_new", "new-user", io.Discard); err != nil {
 		t.Fatalf("syncLoginUserToProfile() error = %v", err)
 	}
 
@@ -64,7 +65,7 @@ func TestSyncLoginUserToProfile_ProfileNotFoundReturnsError(t *testing.T) {
 		t.Fatalf("SaveMultiAppConfig() error = %v", err)
 	}
 
-	err := syncLoginUserToProfile("missing", "app-default", "ou_new", "new-user")
+	err := syncLoginUserToProfile("missing", "app-default", "ou_new", "new-user", io.Discard)
 	if err == nil {
 		t.Fatal("expected error for missing profile")
 	}

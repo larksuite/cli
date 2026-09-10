@@ -19,14 +19,20 @@ const (
 
 // CategoryAuthentication subtypes
 const (
-	SubtypeTokenMissing        Subtype = "token_missing"         // no token in request (Authorization header absent / no local token cache)
-	SubtypeTokenInvalid        Subtype = "token_invalid"         // token present but content/format wrong
-	SubtypeTokenExpired        Subtype = "token_expired"         // token explicitly expired
-	SubtypeRefreshTokenInvalid Subtype = "refresh_token_invalid" // refresh_token is v1 legacy format, unusable
-	SubtypeRefreshTokenExpired Subtype = "refresh_token_expired" // refresh_token expired
-	SubtypeRefreshTokenRevoked Subtype = "refresh_token_revoked" // refresh_token revoked (user logout / admin action)
-	SubtypeRefreshTokenReused  Subtype = "refresh_token_reused"  // refresh_token already used (single-use rotation triggered)
-	SubtypeRefreshServerError  Subtype = "refresh_server_error"  // refresh endpoint transient error (retryable)
+	SubtypeTokenMissing        Subtype = "token_missing"          // no token in request (Authorization header absent / no local token cache)
+	SubtypeTokenInvalid        Subtype = "token_invalid"          // token present but content/format wrong
+	SubtypeTokenExpired        Subtype = "token_expired"          // token explicitly expired
+	SubtypeRefreshTokenInvalid Subtype = "refresh_token_invalid"  // refresh_token is v1 legacy format, unusable
+	SubtypeRefreshTokenExpired Subtype = "refresh_token_expired"  // refresh_token expired
+	SubtypeRefreshTokenRevoked Subtype = "refresh_token_revoked"  // refresh_token revoked (user logout / admin action)
+	SubtypeRefreshTokenReused  Subtype = "refresh_token_reused"   // refresh_token already used (single-use rotation triggered)
+	SubtypeRefreshServerError  Subtype = "refresh_server_error"   // refresh endpoint transient error (retryable)
+	SubtypeDPoPKeyMissing      Subtype = "dpop_key_missing"       // DPoP-bound token has no accessible matching private key
+	SubtypeDPoPProofFailed     Subtype = "dpop_proof_failed"      // client could not construct a valid per-request proof
+	SubtypeDPoPTokenRejected   Subtype = "dpop_token_rejected"    // Token Endpoint rejected the supplied DPoP proof
+	SubtypeDPoPRequired        Subtype = "dpop_required"          // local policy/proof request requires DPoP but the credential is Bearer
+	SubtypeDPoPClockSyncFailed Subtype = "dpop_clock_sync_failed" // server requested iat recovery but clock synchronization failed
+	SubtypeDPoPBindingMismatch Subtype = "dpop_binding_mismatch"  // access token and local key binding are inconsistent
 )
 
 // CategoryAuthorization subtypes

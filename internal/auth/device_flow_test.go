@@ -6,18 +6,23 @@ package auth
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/keysigner"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -35,7 +40,7 @@ func TestResolveOAuthEndpoints_Feishu(t *testing.T) {
 	if ep.Revoke != "https://accounts.feishu.cn/oauth/v1/revoke" {
 		t.Errorf("Revoke = %q", ep.Revoke)
 	}
-	if ep.Token != "https://open.feishu.cn/open-apis/authen/v2/oauth/token" {
+	if ep.Token != "https://accounts.feishu.cn/oauth/v3/token" {
 		t.Errorf("Token = %q", ep.Token)
 	}
 }
@@ -49,7 +54,7 @@ func TestResolveOAuthEndpoints_Lark(t *testing.T) {
 	if ep.Revoke != "https://accounts.larksuite.com/oauth/v1/revoke" {
 		t.Errorf("Revoke = %q", ep.Revoke)
 	}
-	if ep.Token != "https://open.larksuite.com/open-apis/authen/v2/oauth/token" {
+	if ep.Token != "https://accounts.larksuite.com/oauth/v3/token" {
 		t.Errorf("Token = %q", ep.Token)
 	}
 }
@@ -84,7 +89,7 @@ func TestRequestDeviceAuthorization_LogsResponse(t *testing.T) {
 	})
 	t.Cleanup(restore)
 
-	_, err := RequestDeviceAuthorization(httpmock.NewClient(reg), "cli_a", "secret_b", core.BrandFeishu, "", nil)
+	_, err := RequestDeviceAuthorization(context.Background(), httpmock.NewClient(reg), "cli_a", "secret_b", core.BrandFeishu, "", nil)
 	if err != nil {
 		t.Fatalf("RequestDeviceAuthorization() error: %v", err)
 	}
@@ -272,5 +277,153 @@ func TestPollDeviceToken_MissingStatusMessageIsEmpty(t *testing.T) {
 	}
 	if result.Token.StatusMessage != "" {
 		t.Fatalf("StatusMessage = %q, want empty string", result.Token.StatusMessage)
+	}
+}
+
+func TestPollDeviceTokenPolicyWithoutSigner(t *testing.T) {
+	for _, mode := range []core.DPoPMode{"", core.DPoPModeDisabled, core.DPoPModePreferred, core.DPoPModeRequired} {
+		t.Run(string(mode), func(t *testing.T) {
+			t.Parallel()
+			requests := 0
+			client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				requests++
+				if req.URL.Path != core.OAuthTokenV3Path || req.Header.Get(dpop.ProofHeader) != "" {
+					t.Fatal("expected a Bearer token request without a proof")
+				}
+				return refreshHTTPResponse(req, `{"access_token":"synthetic-token","token_type":"Bearer"}`), nil
+			})}
+			result := pollDeviceTokenWithKeyStore(context.Background(), client, "cli_test", "synthetic-secret",
+				core.BrandFeishu, "device-code", 1, 5, nil, mode, nil)
+			if mode == core.DPoPModeRequired {
+				problem, ok := errs.ProblemOf(result.Err)
+				if result.OK || !ok || problem.Subtype != errs.SubtypeDPoPKeyMissing ||
+					!errors.Is(result.Err, keysigner.ErrUnavailable) || requests != 0 {
+					t.Fatalf("required = %#v, requests = %d; want key-unavailable failure before HTTP", result, requests)
+				}
+			} else if !result.OK || result.Token == nil || result.Token.DPoP != nil || requests != 1 {
+				t.Fatalf("result = %#v, requests = %d; want one successful Bearer exchange", result, requests)
+			}
+		})
+	}
+}
+
+type deviceFlowMetadata map[string]string
+
+func (s deviceFlowMetadata) Get(_, account string) (string, error) { return s[account], nil }
+func (s deviceFlowMetadata) Set(_, account, value string) error {
+	s[account] = value
+	return nil
+}
+func (s deviceFlowMetadata) Remove(_, account string) error { delete(s, account); return nil }
+
+func TestPollDeviceTokenPolicyAndKeyLifetime(t *testing.T) {
+	heartbeat := fmt.Sprintf(`{"data":{"now":"%d"}}`, time.Now().Unix())
+	const bearer = `{"access_token":"synthetic-token","token_type":"Bearer"}`
+	const bound = `{"access_token":"synthetic-token","token_type":"DPoP"}`
+	type step struct {
+		path, body string
+		proof      bool
+		cancel     bool
+	}
+	for _, tc := range []struct {
+		name    string
+		mode    core.DPoPMode
+		steps   []step
+		subtype errs.Subtype
+	}{
+		{"preferred_clock_failure_before_request", core.DPoPModePreferred, []step{
+			{path: dpop.HeartbeatPath, body: `{}`},
+			{path: core.OAuthTokenV3Path, body: bearer},
+		}, ""},
+		{"required_clock_failure", core.DPoPModeRequired, []step{
+			{path: dpop.HeartbeatPath, body: `{}`},
+		}, errs.SubtypeDPoPClockSyncFailed},
+		{"preferred_clock_failure_after_request", core.DPoPModePreferred, []step{
+			{path: dpop.HeartbeatPath, body: heartbeat},
+			{path: core.OAuthTokenV3Path, body: `{"error":"authorization_pending"}`, proof: true},
+			{path: dpop.HeartbeatPath, body: `{}`},
+		}, errs.SubtypeDPoPClockSyncFailed},
+		{"preferred_rejects_bearer_response", core.DPoPModePreferred, []step{
+			{path: dpop.HeartbeatPath, body: heartbeat},
+			{path: core.OAuthTokenV3Path, body: bearer, proof: true},
+		}, errs.SubtypeDPoPRequired},
+		{"preferred_cancellation", core.DPoPModePreferred, []step{
+			{path: dpop.HeartbeatPath, cancel: true},
+		}, errs.SubtypeDPoPClockSyncFailed},
+		{"required_pending_then_success", core.DPoPModeRequired, []step{
+			{path: dpop.HeartbeatPath, body: heartbeat},
+			{path: core.OAuthTokenV3Path, body: `{"error":"authorization_pending"}`, proof: true},
+			{path: dpop.HeartbeatPath, body: heartbeat},
+			{path: core.OAuthTokenV3Path, body: bound, proof: true},
+		}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			directory := t.TempDir()
+			signer, err := keysigner.NewSoftwareSigner(directory, func(context.Context) ([]byte, error) {
+				return []byte("synthetic-unlock-secret"), nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			store := dpop.NewKeyStoreWithSigner(deviceFlowMetadata{}, signer)
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			requests := 0
+			var proofs []string
+			client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if requests >= len(tc.steps) {
+					t.Fatalf("unexpected request to %s", req.URL.Path)
+				}
+				step := tc.steps[requests]
+				requests++
+				proof := req.Header.Get(dpop.ProofHeader)
+				if req.URL.Path != step.path || (proof != "") != step.proof {
+					t.Fatalf("request %d: path = %s, proof present = %v", requests, req.URL.Path, proof != "")
+				}
+				if proof != "" {
+					proofs = append(proofs, proof)
+				}
+				if step.cancel {
+					cancel()
+					return nil, ctx.Err()
+				}
+				return refreshHTTPResponse(req, step.body), nil
+			})}
+			result := pollDeviceTokenWithKeyStore(ctx, client, "cli_test", "synthetic-secret",
+				core.BrandFeishu, "device-code", 1, 10, nil, tc.mode, store)
+			if requests != len(tc.steps) {
+				t.Fatalf("requests = %d, want %d", requests, len(tc.steps))
+			}
+			if tc.subtype != "" {
+				problem, ok := errs.ProblemOf(result.Err)
+				if result.OK || !ok || problem.Category != errs.CategoryAuthentication || problem.Subtype != tc.subtype {
+					t.Fatalf("result = %#v, want authentication/%s", result, tc.subtype)
+				}
+				if ctx.Err() != nil && !errors.Is(result.Err, ctx.Err()) {
+					t.Fatalf("cancellation cause lost: %v", result.Err)
+				}
+			} else if !result.OK || result.Token == nil {
+				t.Fatalf("expected successful exchange: %#v", result)
+			}
+			wantKeys := 0
+			if result.Token != nil && result.Token.DPoP != nil {
+				wantKeys = 1
+				defer func() {
+					if err := store.DeleteKeyContext(context.Background(), result.Token.DPoP.Key()); err != nil {
+						t.Error(err)
+					}
+				}()
+				if len(proofs) != 2 || proofs[0] == proofs[1] || strings.Split(proofs[0], ".")[0] != strings.Split(proofs[1], ".")[0] {
+					t.Fatal("polls must use fresh proofs with the same public key")
+				}
+			} else if tc.subtype == "" && len(proofs) != 0 {
+				t.Fatal("DPoP exchange succeeded without a key binding")
+			}
+			files, err := filepath.Glob(filepath.Join(directory, "*.json"))
+			if err != nil || len(files) != wantKeys {
+				t.Fatalf("key files = %v, err = %v; want %d retained keys", files, err, wantKeys)
+			}
+		})
 	}
 }

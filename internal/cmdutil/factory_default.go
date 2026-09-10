@@ -22,6 +22,7 @@ import (
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/riskcontrol"
 	_ "github.com/larksuite/cli/internal/security/contentsafety" // register content safety provider
@@ -142,6 +143,10 @@ func safeRedirectPolicy(req *http.Request, via []*http.Request) error {
 	// two consecutive redirect targets share an origin.
 	if !sameRedirectOrigin(original.URL, req.URL) {
 		req.Header.Del("Authorization")
+		req.Header.Del(dpop.ProofHeader)
+		ctx := dpop.WithBinding(req.Context(), nil)
+		ctx = dpop.WithTokenEndpointKey(ctx, nil)
+		*req = *req.WithContext(ctx)
 		req.Header.Del("X-Lark-MCP-UAT")
 		req.Header.Del("X-Lark-MCP-TAT")
 	}
@@ -200,7 +205,8 @@ func cachedHttpClientFunc(f *Factory, workspaceConfig workspaceConfigSource) fun
 }
 
 func buildDirectHTTPTransport(base http.RoundTripper, platform bool) http.RoundTripper {
-	var builtIn http.RoundTripper = &RetryTransport{Base: base}
+	var builtIn http.RoundTripper = &dpop.Transport{Base: base}
+	builtIn = &RetryTransport{Base: builtIn}
 	builtIn = &SecurityHeaderTransport{Base: builtIn}
 	if platform {
 		builtIn = &auth.SecurityPolicyTransport{Base: builtIn}
@@ -260,7 +266,8 @@ func buildSDKTransportWithBase(
 }
 
 func buildSDKHTTPTransport(base http.RoundTripper, platform bool) http.RoundTripper {
-	var builtIn http.RoundTripper = &RetryTransport{Base: base}
+	var builtIn http.RoundTripper = &dpop.Transport{Base: base}
+	builtIn = &RetryTransport{Base: builtIn}
 	builtIn = &UserAgentTransport{Base: builtIn}
 	builtIn = &BuildHeaderTransport{Base: builtIn}
 	builtIn = &SecurityHeaderTransport{Base: builtIn}

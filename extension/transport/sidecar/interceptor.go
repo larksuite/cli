@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/extension/transport"
+	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/sidecar"
 )
@@ -105,6 +106,10 @@ func (i *Interceptor) PreRoundTrip(req *http.Request) func(resp *http.Response, 
 
 	// 4. Strip placeholder auth header(s)
 	req.Header.Del("Authorization")
+	req.Header.Del(dpop.ProofHeader)
+	ctx := dpop.WithBinding(req.Context(), nil)
+	ctx = dpop.WithTokenEndpointKey(ctx, nil)
+	*req = *req.WithContext(ctx)
 	req.Header.Del(sidecar.HeaderMCPUAT)
 	req.Header.Del(sidecar.HeaderMCPTAT)
 

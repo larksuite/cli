@@ -21,9 +21,11 @@ import (
 const (
 	tokenStorageLockTimeout    = 60 * time.Second
 	tokenStorageLockRetryDelay = 500 * time.Millisecond
+	tatIssuanceLockTimeout     = 60 * time.Second
 )
 
 var tokenStorageProcessLocks sync.Map
+var tatIssuanceProcessLocks sync.Map
 
 var safeIDChars = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
 
@@ -41,10 +43,37 @@ func tokenStorageLockPath(appID, userOpenID string) string {
 		sanitizeID(appID), sanitizeID(userOpenID)))
 }
 
-func tokenStorageProcessLock(appID, userOpenID string) *sync.Mutex {
+func tokenStorageProcessLock(appID, userOpenID string) chan struct{} {
 	key := accountKey(appID, userOpenID)
-	lock, _ := tokenStorageProcessLocks.LoadOrStore(key, &sync.Mutex{})
-	return lock.(*sync.Mutex)
+	candidate := make(chan struct{}, 1)
+	candidate <- struct{}{}
+	lock, _ := tokenStorageProcessLocks.LoadOrStore(key, candidate)
+	return lock.(chan struct{})
+}
+
+// WithTATIssuanceLock runs fn while holding the process-local TAT issuance lock
+// for one app.
+func WithTATIssuanceLock(ctx context.Context, appID string, fn func() error) error {
+	lockContext := ctx
+	cancel := func() {}
+	if lockContext == nil {
+		lockContext, cancel = context.WithTimeout(context.Background(), tatIssuanceLockTimeout)
+	} else if _, hasDeadline := lockContext.Deadline(); !hasDeadline {
+		lockContext, cancel = context.WithTimeout(lockContext, tatIssuanceLockTimeout)
+	}
+	defer cancel()
+
+	candidate := make(chan struct{}, 1)
+	candidate <- struct{}{}
+	value, _ := tatIssuanceProcessLocks.LoadOrStore(appID, candidate)
+	processLock := value.(chan struct{})
+	select {
+	case <-lockContext.Done():
+		return lockContext.Err()
+	case <-processLock:
+	}
+	defer func() { processLock <- struct{}{} }()
+	return fn()
 }
 
 // withTokenStorageLock runs fn while holding both the process-local and
@@ -55,9 +84,26 @@ func tokenStorageProcessLock(appID, userOpenID string) *sync.Mutex {
 // caller to hold the lock, such as writeStoredToken, deleteStoredToken,
 // compareAndSwapStoredToken, or compareAndDeleteStoredToken.
 func withTokenStorageLock(appID, userOpenID string, fn func() error) (err error) {
+	return withTokenStorageLockContext(context.Background(), appID, userOpenID, fn)
+}
+
+func withTokenStorageLockContext(ctx context.Context, appID, userOpenID string, fn func() error) (err error) {
+	lockContext := ctx
+	cancel := func() {}
+	if lockContext == nil {
+		lockContext, cancel = context.WithTimeout(context.Background(), tokenStorageLockTimeout)
+	} else if _, hasDeadline := lockContext.Deadline(); !hasDeadline {
+		lockContext, cancel = context.WithTimeout(lockContext, tokenStorageLockTimeout)
+	}
+	defer cancel()
+
 	processLock := tokenStorageProcessLock(appID, userOpenID)
-	processLock.Lock()
-	defer processLock.Unlock()
+	select {
+	case <-lockContext.Done():
+		return lockContext.Err()
+	case <-processLock:
+	}
+	defer func() { processLock <- struct{}{} }()
 
 	lockDir := tokenStorageLockDir()
 	if err := vfs.MkdirAll(lockDir, 0700); err != nil {
@@ -67,11 +113,8 @@ func withTokenStorageLock(appID, userOpenID string, fn func() error) (err error)
 			WithHint("Check whether local CLI storage is accessible, then retry.")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), tokenStorageLockTimeout)
-	defer cancel()
-
 	fileLock := flock.New(tokenStorageLockPath(appID, userOpenID))
-	locked, err := fileLock.TryLockContext(ctx, tokenStorageLockRetryDelay)
+	locked, err := fileLock.TryLockContext(lockContext, tokenStorageLockRetryDelay)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return errs.NewInternalError(errs.SubtypeStorage,

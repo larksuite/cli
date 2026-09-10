@@ -53,12 +53,12 @@ func TestFetchTAT_Success(t *testing.T) {
 	}
 	hc := &http.Client{Transport: rt}
 
-	token, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	token, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if token != "t-abc" {
-		t.Errorf("token = %q, want t-abc", token)
+	if token.AccessToken != "t-abc" {
+		t.Errorf("token = %q, want t-abc", token.AccessToken)
 	}
 	if rt.gotReq.URL.String() != "https://accounts.feishu.cn/oauth/v3/token" {
 		t.Errorf("url = %s", rt.gotReq.URL.String())
@@ -84,12 +84,12 @@ func TestFetchTAT_InvalidClient_ConfigInvalidClient(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 400, respBody: `{"error":"invalid_client","error_description":"The client secret is invalid.","code":20002}`}
 	hc := &http.Client{Transport: rt}
 
-	token, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	token, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 	if err == nil {
 		t.Fatal("expected error for invalid_client")
 	}
-	if token != "" {
-		t.Errorf("token = %q, want empty", token)
+	if token != nil {
+		t.Errorf("token = %+v, want nil", token)
 	}
 	var cfgErr *errs.ConfigError
 	if !errors.As(err, &cfgErr) {
@@ -111,7 +111,7 @@ func TestFetchTAT_OtherClientError_Typed(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 400, respBody: `{"code":20068,"error":"invalid_scope","error_description":"unauthorized scope"}`}
 	hc := &http.Client{Transport: rt}
 
-	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 	if err == nil {
 		t.Fatal("expected error for invalid_scope")
 	}
@@ -125,19 +125,19 @@ func TestFetchTAT_OtherClientError_Typed(t *testing.T) {
 }
 
 // A deterministic OAuth error that arrives WITHOUT a numeric code (code defaults to
-// 0) must still surface as a non-nil typed error — never the ("", nil) success pair.
+// 0) must still surface as a non-nil typed error — never the (nil, nil) success pair.
 // Guards the code-0 backstop in classifyTATResponseCode: BuildAPIError returns nil
 // for code 0, which would otherwise swallow this rejection into an empty-token success.
 func TestFetchTAT_OtherClientError_CodeZero_Typed(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 400, respBody: `{"error":"invalid_scope","error_description":"the requested scope is not granted"}`}
 	hc := &http.Client{Transport: rt}
 
-	tok, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	tok, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 	if err == nil {
 		t.Fatal("expected non-nil error for code-0 invalid_scope (must not return empty token + nil error)")
 	}
-	if tok != "" {
-		t.Errorf("token = %q, want empty", tok)
+	if tok != nil {
+		t.Errorf("token = %+v, want nil", tok)
 	}
 	if !errs.IsTyped(err) {
 		t.Fatalf("expected a typed errs.* error, got %T %v", err, err)
@@ -151,7 +151,7 @@ func TestFetchTAT_LarkStyleMsg_FallsBackOnTypedError(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 400, respBody: `{"code":99999,"msg":"app ticket invalid"}`}
 	hc := &http.Client{Transport: rt}
 
-	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 	if err == nil {
 		t.Fatal("expected error for {code, msg} response")
 	}
@@ -170,7 +170,7 @@ func TestFetchTAT_ServerError_Untyped(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 500, respBody: `{"code":20050,"error":"server_error","error_description":"please retry"}`}
 	hc := &http.Client{Transport: rt}
 
-	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 	if err == nil {
 		t.Fatal("expected error for server_error")
 	}
@@ -220,7 +220,7 @@ func TestFetchTAT_HTTP429_TypedRateLimit(t *testing.T) {
 			}
 			hc := &http.Client{Transport: rt}
 
-			_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+			_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 			var apiErr *errs.APIError
 			if !errors.As(err, &apiErr) {
 				t.Fatalf("HTTP 429 error = %T %v, want *errs.APIError", err, err)
@@ -247,7 +247,7 @@ func TestFetchTAT_OAuthSlowDown_Untyped(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 200, respBody: `{"error":"slow_down","error_description":"polling too fast"}`}
 	hc := &http.Client{Transport: rt}
 
-	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 	if err == nil {
 		t.Fatal("expected error for slow_down")
 	}
@@ -263,7 +263,7 @@ func TestFetchTAT_HTTPNon200_Untyped(t *testing.T) {
 	for _, code := range []int{401, 403, 500, 503} {
 		rt := &stubRoundTripper{respCode: code, respBody: `whatever`}
 		hc := &http.Client{Transport: rt}
-		_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+		_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 		if err == nil {
 			t.Fatalf("HTTP %d: expected error", code)
 		}
@@ -278,7 +278,7 @@ func TestFetchTAT_TransportError_Untyped(t *testing.T) {
 	rt := &stubRoundTripper{err: sentinel}
 	hc := &http.Client{Transport: rt}
 
-	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -294,7 +294,7 @@ func TestFetchTAT_ParseError_Untyped(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 200, respBody: `not json`}
 	hc := &http.Client{Transport: rt}
 
-	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", core.DPoPModeDisabled)
 	if err == nil {
 		t.Fatal("expected parse error")
 	}
@@ -313,9 +313,9 @@ func TestFetchTAT_BrandRouting(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(string(tc.brand), func(t *testing.T) {
-			rt := &stubRoundTripper{respCode: 200, respBody: `{"code":0,"access_token":"t","token_type":"Bearer"}`}
+			rt := &stubRoundTripper{respCode: 200, respBody: `{"code":0,"access_token":"t","token_type":"Bearer","expires_in":7200}`}
 			hc := &http.Client{Transport: rt}
-			if _, err := FetchTAT(context.Background(), hc, tc.brand, "a", "b"); err != nil {
+			if _, err := FetchTAT(context.Background(), hc, tc.brand, "a", "b", core.DPoPModeDisabled); err != nil {
 				t.Fatal(err)
 			}
 			if got := rt.gotReq.URL.String(); got != tc.wantURL {
@@ -337,7 +337,7 @@ func TestFetchTAT_ContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // pre-canceled
 
-	_, err := FetchTAT(ctx, hc, core.BrandFeishu, "a", "b")
+	_, err := FetchTAT(ctx, hc, core.BrandFeishu, "a", "b", core.DPoPModeDisabled)
 	if err == nil {
 		t.Fatal("expected error for canceled context")
 	}
