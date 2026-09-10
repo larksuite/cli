@@ -188,16 +188,25 @@ func formatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 	rawContent := ""
 	if body, ok := m["body"].(map[string]interface{}); ok {
 		rawContent, _ = body["content"].(string)
-		content = ConvertBodyContent(msgType, &ConvertContext{
-			RawContent:           rawContent,
-			MentionMap:           BuildMentionKeyMap(mentions),
-			Mentions:             mentions,
-			MessageID:            messageId,
-			Runtime:              runtime,
-			SenderNames:          nameCache,
-			MergeForwardSubItems: mergePrefetch,
-			FolderChildren:       folderPrefetch,
-		})
+		deletedContentUnavailable := false
+		if deleted {
+			parsedContent, parseErr := ParseJSONObject(rawContent)
+			deletedContentUnavailable = parseErr != nil || parsedContent == nil
+		}
+		if deletedContentUnavailable {
+			content = "[deleted]"
+		} else {
+			content = ConvertBodyContent(msgType, &ConvertContext{
+				RawContent:           rawContent,
+				MentionMap:           BuildMentionKeyMap(mentions),
+				Mentions:             mentions,
+				MessageID:            messageId,
+				Runtime:              runtime,
+				SenderNames:          nameCache,
+				MergeForwardSubItems: mergePrefetch,
+				FolderChildren:       folderPrefetch,
+			})
+		}
 	}
 
 	msg := map[string]interface{}{
