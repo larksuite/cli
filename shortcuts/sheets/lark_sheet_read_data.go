@@ -54,7 +54,7 @@ var CellsGet = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
-		return invokeToolDryRun(token, ToolKindRead, "get_cell_ranges", cellsGetInput(runtime, token, sheetID, sheetName))
+		return invokeToolDryRun(runtime, token, ToolKindRead, "get_cell_ranges", cellsGetInput(runtime, token, sheetID, sheetName))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -154,7 +154,7 @@ var CsvGet = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
-		return invokeToolDryRun(token, ToolKindRead, "get_range_as_csv", csvGetInput(runtime, token, sheetID, sheetName))
+		return invokeToolDryRun(runtime, token, ToolKindRead, "get_range_as_csv", csvGetInput(runtime, token, sheetID, sheetName))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -282,7 +282,7 @@ var DropdownGet = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
-		return invokeToolDryRun(token, ToolKindRead, "get_cell_ranges", dropdownGetInput(runtime, token, sheetID, sheetName))
+		return invokeToolDryRun(runtime, token, ToolKindRead, "get_cell_ranges", dropdownGetInput(runtime, token, sheetID, sheetName))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -340,7 +340,7 @@ var CondFormatResultGet = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
-		return invokeToolDryRun(token, ToolKindRead, "get_cell_ranges",
+		return invokeToolDryRun(runtime, token, ToolKindRead, "get_cell_ranges",
 			condFormatResultGetInput(runtime, token, sheetID, sheetName))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

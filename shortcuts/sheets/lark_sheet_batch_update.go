@@ -72,7 +72,7 @@ var BatchUpdate = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		plan, _ := buildBatchUpdatePlan(runtime, token)
-		dr := invokeToolDryRun(token, ToolKindWrite, "batch_update", plan.input)
+		dr := invokeToolDryRun(runtime, token, ToolKindWrite, "batch_update", plan.input)
 		if batchContainsSemanticChartUpdate(runtime) {
 			dr.Set("preflight", "execution reads each target chart snapshot before building its partial properties patch")
 		}
@@ -155,7 +155,7 @@ var BatchChartCreate = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		plan, _ := buildChartBatchPlan(runtime, token, chartCreateBatchDispatch, "+batch-chart-create")
-		dryRun := invokeToolDryRun(token, ToolKindWrite, "batch_update", plan.input)
+		dryRun := invokeToolDryRun(runtime, token, ToolKindWrite, "batch_update", plan.input)
 		if len(plan.localFailures) > 0 {
 			dryRun.Set("local_validation_failures", plan.localFailures)
 		}
@@ -207,7 +207,7 @@ var BatchChartUpdate = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		plan, _ := buildChartBatchPlan(runtime, token, chartUpdateBatchDispatch, "+batch-chart-update")
-		dryRun := invokeToolDryRun(token, ToolKindWrite, "batch_update", plan.input)
+		dryRun := invokeToolDryRun(runtime, token, ToolKindWrite, "batch_update", plan.input)
 		dryRun.Set("preflight", "execution reads each target chart snapshot before building its partial properties patch")
 		if len(plan.localFailures) > 0 {
 			dryRun.Set("local_validation_failures", plan.localFailures)
@@ -1047,7 +1047,7 @@ var CellsBatchSetStyle = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		input, _ := cellsBatchSetStyleInput(runtime, token)
-		return invokeToolDryRun(token, ToolKindWrite, "batch_update", input)
+		return invokeToolDryRun(runtime, token, ToolKindWrite, "batch_update", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -1156,7 +1156,7 @@ var CellsBatchClear = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		input, _ := cellsBatchClearInput(runtime, token)
-		return invokeToolDryRun(token, ToolKindWrite, "batch_update", input)
+		return invokeToolDryRun(runtime, token, ToolKindWrite, "batch_update", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -1235,7 +1235,7 @@ var DropdownUpdate = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		input, _ := dropdownBatchInput(runtime, token, false)
-		dry := invokeToolDryRun(token, ToolKindWrite, "batch_update", input)
+		dry := invokeToolDryRun(runtime, token, ToolKindWrite, "batch_update", input)
 		if warning := dropdownSourceRangeHighlightWarning(runtime); warning != "" {
 			dry.Set("warning_message", warning)
 		}
@@ -1282,7 +1282,7 @@ var DropdownDelete = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		input, _ := dropdownBatchInput(runtime, token, true)
-		return invokeToolDryRun(token, ToolKindWrite, "batch_update", input)
+		return invokeToolDryRun(runtime, token, ToolKindWrite, "batch_update", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)

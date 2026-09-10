@@ -107,6 +107,15 @@ func TestFlagsFor_EveryRegisteredCommandHasDefs(t *testing.T) {
 		got := map[string]bool{}
 		for _, f := range s.Flags {
 			got[f.Name] = true
+			// --local-path is decorated onto the generated set by
+			// withLocalPathLocator, not declared in flag-defs.json, because
+			// that file is generated from sheet-skill-spec and its rows land
+			// in a follow-up. TestLocalPathLocatorPendingSpecRows owns the
+			// exception and fails once those rows arrive, which is when this
+			// skip has to go. Every other drift still fails here.
+			if f.Name == localPathFlag {
+				continue
+			}
 			df, ok := want[f.Name]
 			if !ok {
 				t.Errorf("%s --%s present in Go but not in JSON (non-system)", s.Command, f.Name)

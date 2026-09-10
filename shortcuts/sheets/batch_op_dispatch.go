@@ -319,7 +319,7 @@ func sheetMoveBatchInput(fv flagView, token, sheetID, sheetName string) (map[str
 // spreadsheet locator once at the top level. The translator silently drops
 // these keys so an otherwise valid operation is not rejected for harmless
 // repetition.
-var reservedSubOpKeys = []string{"excel_id", "spreadsheet_token", "url"}
+var reservedSubOpKeys = []string{"excel_id", "local_path", "spreadsheet_token", "url"}
 
 func isReservedSubOpKey(userKey string) bool {
 	normalized := strings.ReplaceAll(userKey, "-", "_")

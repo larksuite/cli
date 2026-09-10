@@ -42,15 +42,35 @@ func toolInvokePath(token string, kind ToolKind) string {
 // buildToolBody constructs the One-OpenAPI request body for a tool invocation.
 // `input` is serialized to a JSON string per the API contract; callers pass
 // a typed Go map and never need to handle JSON encoding themselves.
-func buildToolBody(toolName string, input map[string]interface{}) (map[string]interface{}, error) {
+//
+// localPath is the file a --local-path caller named, or "" for every other
+// locator. It rides here because the token is the only thing that reaches the
+// receiver otherwise, and a token cannot be reversed into a path: without this
+// field nothing on the wire says which file on disk the request is about.
+//
+// It sits beside tool_name rather than inside input on purpose. The input is
+// the tool's own schema-checked argument object, and each tool declares its own
+// properties, so an undeclared key there is the receiving side's business to
+// reject. The envelope is where facts about the invocation rather than the tool
+// call belong. The field is omitted entirely when empty, so no request that
+// could be sent before changes shape.
+//
+// Every sheet_ai body is built here, previews included, so the parameter is
+// what keeps a dry-run from advertising a request the execute path would not
+// send.
+func buildToolBody(localPath, toolName string, input map[string]interface{}) (map[string]interface{}, error) {
 	inputJSON, err := json.Marshal(input)
 	if err != nil {
 		return nil, errs.NewInternalError(errs.SubtypeSDKError, "encode tool input: %v", err).WithCause(err)
 	}
-	return map[string]interface{}{
+	body := map[string]interface{}{
 		"tool_name": toolName,
 		"input":     string(inputJSON),
-	}, nil
+	}
+	if localPath != "" {
+		body["local_path"] = localPath
+	}
+	return body, nil
 }
 
 // callTool invokes a sheet-ai tool via the One-OpenAPI endpoint and decodes
@@ -68,7 +88,7 @@ func callTool(
 	toolName string,
 	input map[string]interface{},
 ) (interface{}, error) {
-	body, err := buildToolBody(toolName, input)
+	body, err := buildToolBody(localPathForBody(runtime), toolName, input)
 	if err != nil {
 		return nil, err
 	}
@@ -366,12 +386,13 @@ func callerAuthoredOperations(command string) bool { return command == "+batch-u
 // for fidelity, and a decoded tool_input map is surfaced alongside so humans
 // don't have to mentally unmarshal the string field.
 func invokeToolDryRun(
+	runtime *common.RuntimeContext,
 	token string,
 	kind ToolKind,
 	toolName string,
 	input map[string]interface{},
 ) *common.DryRunAPI {
-	wireBody, _ := buildToolBody(toolName, input)
+	wireBody, _ := buildToolBody(localPathForBody(runtime), toolName, input)
 	return common.NewDryRunAPI().
 		POST(toolInvokePath(token, kind)).
 		Body(wireBody).

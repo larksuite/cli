@@ -104,7 +104,7 @@ var HistoryRevert = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		versionID := strings.TrimSpace(runtime.Str("history-version-id"))
-		return invokeToolDryRun(token, ToolKindWrite, "history_revert", historyRevertInput(token, versionID))
+		return invokeToolDryRun(runtime, token, ToolKindWrite, "history_revert", historyRevertInput(token, versionID))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -150,7 +150,7 @@ var HistoryRevertStatus = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		txnID := strings.TrimSpace(runtime.Str("transaction-id"))
-		return invokeToolDryRun(token, ToolKindRead, "history_revert_status", historyRevertStatusInput(token, txnID))
+		return invokeToolDryRun(runtime, token, ToolKindRead, "history_revert_status", historyRevertStatusInput(token, txnID))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)

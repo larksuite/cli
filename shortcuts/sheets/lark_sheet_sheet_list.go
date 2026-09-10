@@ -42,7 +42,7 @@ var SheetList = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
-		return invokeToolDryRun(token, ToolKindRead, "get_workbook_structure", map[string]interface{}{
+		return invokeToolDryRun(runtime, token, ToolKindRead, "get_workbook_structure", map[string]interface{}{
 			"excel_id": token,
 		})
 	},

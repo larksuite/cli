@@ -77,14 +77,14 @@ var CellsSet = common.Shortcut{
 		token, _ := resolveSpreadsheetToken(runtime)
 		if runtime.Changed("writes") {
 			ops, _, _ := cellsSetWritesOps(runtime, token)
-			return invokeToolDryRun(token, ToolKindWrite, "batch_update", map[string]interface{}{
+			return invokeToolDryRun(runtime, token, ToolKindWrite, "batch_update", map[string]interface{}{
 				"excel_id":   token,
 				"operations": ops,
 			})
 		}
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := cellsSetInput(runtime, token, sheetID, sheetName)
-		return invokeToolDryRun(token, ToolKindWrite, "set_cell_range", input)
+		return invokeToolDryRun(runtime, token, ToolKindWrite, "set_cell_range", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -338,7 +338,7 @@ var CellsSetStyle = common.Shortcut{
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := cellsSetStyleInput(runtime, token, sheetID, sheetName)
-		return invokeToolDryRun(token, ToolKindWrite, "set_cell_range", input)
+		return invokeToolDryRun(runtime, token, ToolKindWrite, "set_cell_range", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -451,7 +451,7 @@ var CsvPut = common.Shortcut{
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := csvPutInput(runtime, token, sheetID, sheetName)
-		dr := invokeToolDryRun(token, ToolKindWrite, "set_range_from_csv", input)
+		dr := invokeToolDryRun(runtime, token, ToolKindWrite, "set_range_from_csv", input)
 		if rng, ok := csvPutWriteRangeFromInput(input); ok {
 			dr = dr.Set("writes_range", rng)
 		}
@@ -780,7 +780,7 @@ var DropdownSet = common.Shortcut{
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := dropdownSetInput(runtime, token, sheetID, sheetName)
-		dry := invokeToolDryRun(token, ToolKindWrite, "set_cell_range", input)
+		dry := invokeToolDryRun(runtime, token, ToolKindWrite, "set_cell_range", input)
 		if warning := dropdownSourceRangeHighlightWarning(runtime); warning != "" {
 			dry.Set("warning_message", warning)
 		}
@@ -1401,7 +1401,7 @@ var CellsSetImage = common.Shortcut{
 		if fileName == "" {
 			fileName = filepath.Base(imgPath)
 		}
-		setCellBody, _ := buildToolBody("set_cell_range", map[string]interface{}{
+		setCellBody, _ := buildToolBody(localPathForBody(runtime), "set_cell_range", map[string]interface{}{
 			"excel_id": token,
 			"range":    strings.TrimSpace(runtime.Str("range")),
 			"sheet_id": sheetSelectorPlaceholder(sheetID, sheetName),

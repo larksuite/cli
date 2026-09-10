@@ -59,7 +59,7 @@ var HistoryList = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
-		return invokeToolDryRun(token, ToolKindRead, "history_list", historyListInput(runtime, token))
+		return invokeToolDryRun(runtime, token, ToolKindRead, "history_list", historyListInput(runtime, token))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)

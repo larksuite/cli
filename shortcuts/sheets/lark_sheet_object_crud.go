@@ -149,7 +149,7 @@ func newObjectCreateShortcut(spec objectCRUDSpec) common.Shortcut {
 			sheetID := strings.TrimSpace(runtime.Str(spec.sheetIDFlagOnCreate()))
 			sheetName := strings.TrimSpace(runtime.Str(spec.sheetNameFlagOnCreate()))
 			input, _ := objectCreateInput(runtime, token, sheetID, sheetName, spec)
-			dr := invokeToolDryRun(token, ToolKindWrite, spec.toolName, input)
+			dr := invokeToolDryRun(runtime, token, ToolKindWrite, spec.toolName, input)
 			if spec.createWarn != nil {
 				if w := spec.createWarn(runtime); w != "" {
 					dr = dr.Set("placement_warning", w)
@@ -244,7 +244,7 @@ func newObjectUpdateShortcut(spec objectCRUDSpec) common.Shortcut {
 			token, _ := resolveSpreadsheetToken(runtime)
 			sheetID, sheetName, _ := resolveSheetSelector(runtime)
 			input, _ := objectUpdateInput(runtime, token, sheetID, sheetName, spec)
-			return invokeToolDryRun(token, ToolKindWrite, spec.toolName, input)
+			return invokeToolDryRun(runtime, token, ToolKindWrite, spec.toolName, input)
 		},
 		Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 			token, err := resolveSpreadsheetTokenExec(runtime)
@@ -367,7 +367,7 @@ func newObjectDeleteShortcut(spec objectCRUDSpec) common.Shortcut {
 			token, _ := resolveSpreadsheetToken(runtime)
 			sheetID, sheetName, _ := resolveSheetSelector(runtime)
 			input, _ := objectDeleteInput(runtime, token, sheetID, sheetName, spec)
-			return invokeToolDryRun(token, ToolKindWrite, spec.toolName, input)
+			return invokeToolDryRun(runtime, token, ToolKindWrite, spec.toolName, input)
 		},
 		Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 			token, err := resolveSpreadsheetTokenExec(runtime)
@@ -902,7 +902,7 @@ func newFloatImageWriteShortcut(command, description, op string, withIDFlag, isH
 			// With a local --image, Execute first uploads the file; surface that
 			// extra step in the preview (mirrors +cells-set-image's dry-run).
 			if img := strings.TrimSpace(runtime.Str("image")); img != "" {
-				manageBody, _ := buildToolBody("manage_float_image_object", input)
+				manageBody, _ := buildToolBody(localPathForBody(runtime), "manage_float_image_object", input)
 				d := common.NewDryRunAPI()
 				appendSheetImageUploadDryRun(d, runtime, ref, img, floatImageName(runtime))
 				return d.
@@ -910,7 +910,7 @@ func newFloatImageWriteShortcut(command, description, op string, withIDFlag, isH
 					Desc("create float image referencing the uploaded file_token").
 					Body(manageBody)
 			}
-			return invokeToolDryRun(token, ToolKindWrite, "manage_float_image_object", input)
+			return invokeToolDryRun(runtime, token, ToolKindWrite, "manage_float_image_object", input)
 		},
 		Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 			token, err := resolveSpreadsheetTokenExec(runtime)
@@ -1054,7 +1054,7 @@ var FilterCreate = common.Shortcut{
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := filterCreateInput(runtime, token, sheetID, sheetName)
-		return invokeToolDryRun(token, ToolKindWrite, "manage_filter_object", input)
+		return invokeToolDryRun(runtime, token, ToolKindWrite, "manage_filter_object", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -1138,7 +1138,7 @@ var FilterUpdate = common.Shortcut{
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := filterUpdateInput(runtime, token, sheetID, sheetName)
-		return invokeToolDryRun(token, ToolKindWrite, "manage_filter_object", input)
+		return invokeToolDryRun(runtime, token, ToolKindWrite, "manage_filter_object", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -1206,7 +1206,7 @@ var FilterDelete = common.Shortcut{
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := filterDeleteInput(runtime, token, sheetID, sheetName)
-		return invokeToolDryRun(token, ToolKindWrite, "manage_filter_object", input)
+		return invokeToolDryRun(runtime, token, ToolKindWrite, "manage_filter_object", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)

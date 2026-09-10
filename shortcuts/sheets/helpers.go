@@ -12,7 +12,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	neturl "net/url"
+	"path/filepath"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -198,13 +200,28 @@ func appendSheetImageUploadDryRun(d *common.DryRunAPI, runtime *common.RuntimeCo
 		})
 }
 
-// spreadsheetRef classification: a --url / --spreadsheet-token input names a
-// spreadsheet either directly (a /sheets/ URL or raw token) or indirectly via a
-// wiki node that must be resolved to its backing spreadsheet at Execute time.
+// spreadsheetRef classification: a locator input names a spreadsheet either
+// directly (a /sheets/ URL, a raw token, or a local office file whose token is
+// derived from its path) or indirectly via a wiki node that must be resolved to
+// its backing spreadsheet at Execute time.
 const (
 	spreadsheetRefSheet = "sheet"
 	spreadsheetRefWiki  = "wiki"
 )
+
+// localPathFlag names the third locator: an office file on this host, opened
+// locally rather than stored in Drive. It is mounted next to
+// --spreadsheet-token by withLocalPathLocator (shortcuts.go) rather than
+// declared in data/flag-defs.json, because flag-defs is generated from
+// sheet-skill-spec and the spec rows land in a follow-up. Adding them there is
+// what makes the flag visible to --help metadata, `schema`, the sub-op key
+// vocabulary, and the skill references; until then this domain owns it alone.
+const localPathFlag = "local-path"
+
+// localPathAnySize disables the size ceiling ValidateLocalFileFlag enforces.
+// The file behind --local-path is never read here — only its path is hashed
+// into a token — so there is no payload for a limit to bound.
+const localPathAnySize = math.MaxInt64
 
 // spreadsheetRef is a parsed --url / --spreadsheet-token input. A wiki ref holds
 // the still-unresolved wiki node_token; resolveSpreadsheetTokenExec turns it
@@ -214,8 +231,9 @@ type spreadsheetRef struct {
 	Token string
 }
 
-// parseSpreadsheetRef applies the public --url / --spreadsheet-token XOR pair and
-// classifies the input. Network-free, safe to call from Validate and DryRun.
+// parseSpreadsheetRef applies the public --url / --spreadsheet-token /
+// --local-path XOR group and classifies the input. Network-free, safe to call
+// from Validate and DryRun.
 //
 // Recognized --url shapes:
 //   - https://.../sheets/<token>        → {sheet, token}
@@ -224,9 +242,22 @@ type spreadsheetRef struct {
 //
 // A raw --spreadsheet-token is always treated as a spreadsheet token; wiki nodes
 // only ever arrive as a /wiki/ URL.
+//
+// --local-path yields a {sheet, token} ref like a raw token does: the token is
+// derived from the path here and needs no Execute-time resolution. Every
+// downstream reader therefore keeps working unchanged, including the
+// parent_type rule for image uploads -- a derived token carries the local
+// office marker, so sheetMediaParentType selects office_sheet_file on its own.
 func parseSpreadsheetRef(runtime *common.RuntimeContext) (spreadsheetRef, error) {
-	if err := common.ExactlyOneTyped(runtime, "url", "spreadsheet-token"); err != nil {
+	if err := common.ExactlyOneTyped(runtime, "url", "spreadsheet-token", localPathFlag); err != nil {
 		return spreadsheetRef{}, err
+	}
+	if strings.TrimSpace(runtime.Str(localPathFlag)) != "" {
+		token, err := localSpreadsheetToken(runtime)
+		if err != nil {
+			return spreadsheetRef{}, err
+		}
+		return spreadsheetRef{Kind: spreadsheetRefSheet, Token: token}, nil
 	}
 	if token := strings.TrimSpace(runtime.Str("spreadsheet-token")); token != "" {
 		if err := validate.RejectControlChars(token, "spreadsheet-token"); err != nil {
@@ -244,6 +275,43 @@ func parseSpreadsheetRef(runtime *common.RuntimeContext) (spreadsheetRef, error)
 		return spreadsheetRef{}, sheetsValidationCauseForFlag("url", err)
 	}
 	return spreadsheetRef{Kind: kind, Token: token}, nil
+}
+
+// localSpreadsheetToken turns a --local-path value into the spreadsheet token
+// the local office document is addressed by.
+//
+// The file has to exist. A token is derivable from any string at all, so
+// without this check a mistyped path would produce a well-formed token for a
+// document that has never existed, and the caller would meet that mistake as a
+// "not found" from the backend rather than as the typo it is.
+//
+// The seed is the cleaned path as the caller spelled it. Two spellings of one
+// file -- "./report.xlsx" from its own directory and an absolute path to the
+// same bytes -- therefore name two documents. That ceiling is deliberate: this
+// layer cannot resolve a path to its canonical absolute form, because doing so
+// means asking the host for its working directory, and shortcuts run against a
+// FileIO provider that need not be a local host at all. Expanding it needs a
+// canonical-input-path operation on FileIO, and the flag description tells
+// callers to pass one consistent spelling until then.
+func localSpreadsheetToken(runtime *common.RuntimeContext) (string, error) {
+	if err := runtime.ValidateLocalFileFlag(localPathFlag, localPathAnySize); err != nil {
+		return "", err
+	}
+	return common.CreateLocalOfficeToken(localPathForBody(runtime), common.LocalOfficeSheets)
+}
+
+// localPathForBody returns the path every request of this invocation reports as
+// local_path, or "" when the caller located the spreadsheet some other way.
+//
+// It is also the string localSpreadsheetToken hashes, and deliberately the same
+// call: the field only earns its place if the receiver can re-derive the token
+// from it, which a differently-normalized spelling would break.
+func localPathForBody(runtime *common.RuntimeContext) string {
+	path := strings.TrimSpace(runtime.Str(localPathFlag))
+	if path == "" {
+		return ""
+	}
+	return filepath.Clean(path)
 }
 
 // spreadsheetURLToken extracts the token and its kind from a Lark URL, matching

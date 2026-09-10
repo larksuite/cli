@@ -1534,7 +1534,7 @@ func tablePutDryRun(runtime *common.RuntimeContext) *common.DryRunAPI {
 			// data rows and no styles to expand): Execute skips the
 			// set_cell_range entirely, so the plan must not show one. Visual
 			// ops still run.
-			appendWorkbookCreateVisualOpsDryRun(dry, token, "", s.Name, sheetStyles.styleFor(i))
+			appendWorkbookCreateVisualOpsDryRun(dry, localPathForBody(runtime), token, "", s.Name, sheetStyles.styleFor(i))
 			continue
 		}
 		writeCols := len(matrix[0])
@@ -1549,9 +1549,9 @@ func tablePutDryRun(runtime *common.RuntimeContext) *common.DryRunAPI {
 		if s.AllowOverwrite != nil && !*s.AllowOverwrite {
 			input["allow_overwrite"] = false
 		}
-		wireBody, _ := buildToolBody("set_cell_range", input)
+		wireBody, _ := buildToolBody(localPathForBody(runtime), "set_cell_range", input)
 		dry.POST(toolInvokePath(token, ToolKindWrite)).Desc(desc).Body(wireBody)
-		appendWorkbookCreateVisualOpsDryRun(dry, token, "", s.Name, sheetStyles.styleFor(i))
+		appendWorkbookCreateVisualOpsDryRun(dry, localPathForBody(runtime), token, "", s.Name, sheetStyles.styleFor(i))
 	}
 	return dry
 }
@@ -1592,7 +1592,7 @@ var TableGet = common.Shortcut{
 		if rng != "" && (strings.TrimSpace(runtime.Str("sheet-id")) != "" || strings.TrimSpace(runtime.Str("sheet-name")) != "") {
 			// no structure call
 		} else {
-			body, _ := buildToolBody("get_workbook_structure", map[string]interface{}{"excel_id": token})
+			body, _ := buildToolBody(localPathForBody(runtime), "get_workbook_structure", map[string]interface{}{"excel_id": token})
 			dry.POST(toolInvokePath(token, ToolKindRead)).Desc("read sub-sheets + grid dimensions via get_workbook_structure").Body(body)
 		}
 		if rng == "" {
@@ -1616,7 +1616,7 @@ var TableGet = common.Shortcut{
 			strings.TrimSpace(runtime.Str("sheet-id")),
 			strings.TrimSpace(runtime.Str("sheet-name")),
 		)
-		body, _ := buildToolBody("get_cell_ranges", input)
+		body, _ := buildToolBody(localPathForBody(runtime), "get_cell_ranges", input)
 		dry.POST(toolInvokePath(token, ToolKindRead)).
 			Desc(fmt.Sprintf("read cells (%s) + styles via get_cell_ranges, then infer column types", rng)).
 			Body(body)

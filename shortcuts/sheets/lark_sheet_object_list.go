@@ -54,7 +54,7 @@ func newObjectListShortcut(spec objectListSpec) common.Shortcut {
 		DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 			token, _ := resolveSpreadsheetToken(runtime)
 			sheetID, sheetName, _ := resolveSheetSelector(runtime)
-			return invokeToolDryRun(token, ToolKindRead, spec.toolName, objectListInput(runtime, token, sheetID, sheetName, spec))
+			return invokeToolDryRun(runtime, token, ToolKindRead, spec.toolName, objectListInput(runtime, token, sheetID, sheetName, spec))
 		},
 		Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 			token, err := resolveSpreadsheetTokenExec(runtime)

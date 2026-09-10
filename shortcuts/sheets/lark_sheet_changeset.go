@@ -44,7 +44,7 @@ var ChangesetGet = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		input, _ := changesetInput(runtime, token)
-		return invokeToolDryRun(token, ToolKindRead, "get_changeset", input)
+		return invokeToolDryRun(runtime, token, ToolKindRead, "get_changeset", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)

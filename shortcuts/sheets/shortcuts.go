@@ -24,11 +24,12 @@ func Shortcuts() []common.Shortcut {
 		if _, ok := commandsWithSchema[all[i].Command]; ok {
 			all[i].PrintFlagSchema = printFlagSchemaFor(all[i].Command)
 		}
-		// Accept the highest-frequency locator misspelling through the common
-		// declarative alias contract. Copy the flag slice before decorating it:
-		// shortcut values are package globals and Shortcuts may be called more
-		// than once in tests or embedders.
-		all[i].Flags = withSpreadsheetTokenAlias(all[i].Flags)
+		// Two locator decorations: the highest-frequency misspelling of
+		// --spreadsheet-token, through the common declarative alias contract,
+		// and --local-path for a file opened on this host. Each copies the flag
+		// slice before touching it -- shortcut values are package globals and
+		// Shortcuts may be called more than once in tests or embedders.
+		all[i].Flags = withLocalPathLocator(withSpreadsheetTokenAlias(all[i].Flags))
 		// +chart-create grows --print-example (minimal per-type --properties
 		// templates) — the biggest --print-schema consumer in eval traces.
 		if all[i].Command == "+chart-create" {
@@ -40,6 +41,44 @@ func Shortcuts() []common.Shortcut {
 		all[i].PostMount = withFlagErgonomics(all[i].PostMount)
 	}
 	return all
+}
+
+// withLocalPathLocator mounts --local-path beside --spreadsheet-token, so an
+// office file opened from this host can be addressed by its path instead of by
+// a token the caller would otherwise have to derive itself.
+//
+// It keys off the presence of --spreadsheet-token rather than a command list:
+// the two shortcuts without that flag (+workbook-create, +workbook-import) both
+// CREATE a spreadsheet, so neither takes a locator at all, and +workbook-import
+// already spells its own local file --file.
+//
+// The flag is decorated on here rather than declared in data/flag-defs.json for
+// the reason localPathFlag records: flag-defs is generated from
+// sheet-skill-spec, and the spec rows land in a follow-up.
+func withLocalPathLocator(flags []common.Flag) []common.Flag {
+	hasFlag := func(name string) bool {
+		for i := range flags {
+			if flags[i].Name == name {
+				return true
+			}
+		}
+		return false
+	}
+	if !hasFlag("spreadsheet-token") || hasFlag(localPathFlag) {
+		return flags
+	}
+	// Copy before appending: shortcut values are package globals, and appending
+	// in place could write into an array another caller still shares.
+	decorated := append([]common.Flag(nil), flags...)
+	return append(decorated, common.Flag{
+		Name: localPathFlag,
+		Type: "string",
+		// No backquotes in the description: cobra reads a backquoted word as the
+		// flag's value placeholder, which is why --url renders its own type as
+		// "--spreadsheet-token". Matching that would make the locator group
+		// consistently confusing rather than one flag less so.
+		Desc: "Path to a local office spreadsheet file on this host, addressed by a token derived from that path (XOR with --url / --spreadsheet-token). Spell the path the same way every time: a relative and an absolute path to one file resolve to two different documents",
+	})
 }
 
 func withSpreadsheetTokenAlias(flags []common.Flag) []common.Flag {

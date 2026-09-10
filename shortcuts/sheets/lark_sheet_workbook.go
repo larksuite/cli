@@ -53,7 +53,7 @@ var WorkbookInfo = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
-		return invokeToolDryRun(token, ToolKindRead, "get_workbook_structure", map[string]interface{}{
+		return invokeToolDryRun(runtime, token, ToolKindRead, "get_workbook_structure", map[string]interface{}{
 			"excel_id": token,
 		})
 	},
@@ -100,7 +100,7 @@ var SheetCreate = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		input, _ := sheetCreateInput(runtime, token)
-		return invokeToolDryRun(token, ToolKindWrite, "modify_workbook_structure", input)
+		return invokeToolDryRun(runtime, token, ToolKindWrite, "modify_workbook_structure", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -229,7 +229,7 @@ var SheetDelete = common.Shortcut{
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := sheetDeleteInput(runtime, token, sheetID, sheetName)
-		return invokeToolDryRun(token, ToolKindWrite, "modify_workbook_structure", input)
+		return invokeToolDryRun(runtime, token, ToolKindWrite, "modify_workbook_structure", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -271,7 +271,7 @@ var SheetRename = common.Shortcut{
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := sheetRenameInput(runtime, token, sheetID, sheetName)
-		return invokeToolDryRun(token, ToolKindWrite, "modify_workbook_structure", input)
+		return invokeToolDryRun(runtime, token, ToolKindWrite, "modify_workbook_structure", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -341,7 +341,7 @@ var SheetMove = common.Shortcut{
 			"target_index": runtime.Int("index"),
 			"source_index": sourceIndexOrPlaceholder(runtime),
 		}
-		return invokeToolDryRun(token, ToolKindWrite, "modify_workbook_structure", input)
+		return invokeToolDryRun(runtime, token, ToolKindWrite, "modify_workbook_structure", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -417,7 +417,7 @@ var SheetCopy = common.Shortcut{
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := sheetCopyInput(runtime, token, sheetID, sheetName)
-		return invokeToolDryRun(token, ToolKindWrite, "modify_workbook_structure", input)
+		return invokeToolDryRun(runtime, token, ToolKindWrite, "modify_workbook_structure", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -490,7 +490,7 @@ func newSheetVisibilityShortcut(command, desc, op string) common.Shortcut {
 			token, _ := resolveSpreadsheetToken(runtime)
 			sheetID, sheetName, _ := resolveSheetSelector(runtime)
 			input, _ := sheetVisibilityInput(runtime, token, sheetID, sheetName, op)
-			return invokeToolDryRun(token, ToolKindWrite, "modify_workbook_structure", input)
+			return invokeToolDryRun(runtime, token, ToolKindWrite, "modify_workbook_structure", input)
 		},
 		Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 			token, err := resolveSpreadsheetTokenExec(runtime)
@@ -530,7 +530,7 @@ var SheetSetTabColor = common.Shortcut{
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := sheetSetTabColorInput(runtime, token, sheetID, sheetName)
-		return invokeToolDryRun(token, ToolKindWrite, "modify_workbook_structure", input)
+		return invokeToolDryRun(runtime, token, ToolKindWrite, "modify_workbook_structure", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -648,7 +648,7 @@ var WorkbookCreate = common.Shortcut{
 			// visual ops (merges / row+col sizes) still run in Execute, so
 			// they should show up in the dry-run plan too.
 			if styles := sheetStyles.styleFor(0); styles != nil {
-				appendWorkbookCreateVisualOpsDryRun(dry, "<new-token>", "", valuesSheetName, styles)
+				appendWorkbookCreateVisualOpsDryRun(dry, localPathForBody(runtime), "<new-token>", "", valuesSheetName, styles)
 			}
 			return dry
 		}
@@ -661,7 +661,7 @@ var WorkbookCreate = common.Shortcut{
 				// Nothing to write (a column-less sheet, or header:false with
 				// no data rows): Execute skips the set_cell_range entirely, so
 				// the plan must not show one. Visual ops still run.
-				appendWorkbookCreateVisualOpsDryRun(dry, "<new-token>", "", s.Name, sheetStyles.styleFor(i))
+				appendWorkbookCreateVisualOpsDryRun(dry, localPathForBody(runtime), "<new-token>", "", s.Name, sheetStyles.styleFor(i))
 				continue
 			}
 			// Padding can widen / lengthen the matrix past the data, so build the
@@ -676,11 +676,11 @@ var WorkbookCreate = common.Shortcut{
 				"range":      rng,
 				"cells":      matrix,
 			}
-			wireBody, _ := buildToolBody("set_cell_range", input)
+			wireBody, _ := buildToolBody(localPathForBody(runtime), "set_cell_range", input)
 			dry.POST("/open-apis/sheet_ai/v2/spreadsheets/<new-token>/tools/invoke_write").
 				Desc(fmt.Sprintf("write sheet %q (%d data rows × %d cols) via set_cell_range", s.Name, len(s.Rows), writeCols)).
 				Body(wireBody)
-			appendWorkbookCreateVisualOpsDryRun(dry, "<new-token>", "", s.Name, sheetStyles.styleFor(i))
+			appendWorkbookCreateVisualOpsDryRun(dry, localPathForBody(runtime), "<new-token>", "", s.Name, sheetStyles.styleFor(i))
 		}
 		return dry
 	},
@@ -1969,7 +1969,10 @@ func applyWorkbookCreateStylesToMatrix(rows [][]interface{}, styles *workbookCre
 	return rows, nil
 }
 
-func appendWorkbookCreateVisualOpsDryRun(dry *common.DryRunAPI, token, sheetID, sheetName string, styles *workbookCreateStylePayload) {
+// localPath is threaded in rather than read from a runtime this helper does not
+// have: it previews +table-put as well as +workbook-create, and only the former
+// can carry a --local-path.
+func appendWorkbookCreateVisualOpsDryRun(dry *common.DryRunAPI, localPath, token, sheetID, sheetName string, styles *workbookCreateStylePayload) {
 	if dry == nil || styles == nil {
 		return
 	}
@@ -1978,7 +1981,7 @@ func appendWorkbookCreateVisualOpsDryRun(dry *common.DryRunAPI, token, sheetID, 
 		if toolName == "" {
 			continue
 		}
-		wireBody, _ := buildToolBody(toolName, input)
+		wireBody, _ := buildToolBody(localPath, toolName, input)
 		dry.POST(toolInvokePath(token, ToolKindWrite)).
 			Desc(fmt.Sprintf("apply %s", op.describe())).
 			Body(wireBody)

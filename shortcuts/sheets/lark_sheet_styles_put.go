@@ -55,12 +55,12 @@ var StylesPut = common.Shortcut{
 		token, _ := resolveSpreadsheetToken(runtime)
 		ops, _ := stylesPutOperations(runtime, token)
 		chunks := chunkOperations(ops, maxBatchOperations)
-		dry := invokeToolDryRun(token, ToolKindWrite, "batch_update", map[string]interface{}{
+		dry := invokeToolDryRun(runtime, token, ToolKindWrite, "batch_update", map[string]interface{}{
 			"excel_id":   token,
 			"operations": chunks[0],
 		})
 		for _, chunk := range chunks[1:] {
-			body, _ := buildToolBody("batch_update", map[string]interface{}{
+			body, _ := buildToolBody(localPathForBody(runtime), "batch_update", map[string]interface{}{
 				"excel_id":   token,
 				"operations": chunk,
 			})

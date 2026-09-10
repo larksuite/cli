@@ -44,7 +44,7 @@ var CellsClear = common.Shortcut{
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := cellsClearInput(runtime, token, sheetID, sheetName)
-		return invokeToolDryRun(token, ToolKindWrite, "clear_cell_range", input)
+		return invokeToolDryRun(runtime, token, ToolKindWrite, "clear_cell_range", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -162,7 +162,7 @@ func newMergeShortcut(command, desc, op string, withMergeType bool) common.Short
 			token, _ := resolveSpreadsheetToken(runtime)
 			sheetID, sheetName, _ := resolveSheetSelector(runtime)
 			input, _ := mergeInput(runtime, token, sheetID, sheetName, op, withMergeType)
-			return invokeToolDryRun(token, ToolKindWrite, "merge_cells", input)
+			return invokeToolDryRun(runtime, token, ToolKindWrite, "merge_cells", input)
 		},
 		Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 			token, err := resolveSpreadsheetTokenExec(runtime)
@@ -283,7 +283,7 @@ func resizeDryRun(dimension string) func(ctx context.Context, runtime *common.Ru
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		toolName, input, _ := resizeToolCall(runtime, token, sheetID, sheetName, dimension)
-		return invokeToolDryRun(token, ToolKindWrite, toolName, input)
+		return invokeToolDryRun(runtime, token, ToolKindWrite, toolName, input)
 	}
 }
 
@@ -680,7 +680,7 @@ var RangeFill = common.Shortcut{
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := rangeFillInput(runtime, token, sheetID, sheetName)
-		return invokeToolDryRun(token, ToolKindWrite, "transform_range", input)
+		return invokeToolDryRun(runtime, token, ToolKindWrite, "transform_range", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -719,7 +719,7 @@ var RangeSort = common.Shortcut{
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := rangeSortInput(runtime, token, sheetID, sheetName)
-		return invokeToolDryRun(token, ToolKindWrite, "transform_range", input)
+		return invokeToolDryRun(runtime, token, ToolKindWrite, "transform_range", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -766,7 +766,7 @@ func transformDryRunFn(op string, withPasteType, _ bool) func(context.Context, *
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := transformMoveCopyInput(runtime, token, sheetID, sheetName, op, withPasteType)
-		return invokeToolDryRun(token, ToolKindWrite, "transform_range", input)
+		return invokeToolDryRun(runtime, token, ToolKindWrite, "transform_range", input)
 	}
 }
 

@@ -43,7 +43,7 @@ var CellsSearch = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
-		return invokeToolDryRun(token, ToolKindRead, "search_data", searchInput(runtime, token, sheetID, sheetName))
+		return invokeToolDryRun(runtime, token, ToolKindRead, "search_data", searchInput(runtime, token, sheetID, sheetName))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -119,7 +119,7 @@ var CellsReplace = common.Shortcut{
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := replaceInput(runtime, token, sheetID, sheetName)
-		return invokeToolDryRun(token, ToolKindWrite, "replace_data", input)
+		return invokeToolDryRun(runtime, token, ToolKindWrite, "replace_data", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)

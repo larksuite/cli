@@ -44,7 +44,7 @@ var FormulaVerify = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
-		return invokeToolDryRun(token, ToolKindRead, "verify_formula", formulaVerifyInput(runtime, token))
+		return invokeToolDryRun(runtime, token, ToolKindRead, "verify_formula", formulaVerifyInput(runtime, token))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)

@@ -49,7 +49,7 @@ var SheetInfo = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
-		return invokeToolDryRun(token, ToolKindRead, "get_sheet_structure", sheetInfoInput(runtime, token, sheetID, sheetName))
+		return invokeToolDryRun(runtime, token, ToolKindRead, "get_sheet_structure", sheetInfoInput(runtime, token, sheetID, sheetName))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -138,7 +138,7 @@ var DimInsert = common.Shortcut{
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := dimInsertInput(runtime, token, sheetID, sheetName)
-		dr := invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
+		dr := invokeToolDryRun(runtime, token, ToolKindWrite, "modify_sheet_structure", input)
 		switch {
 		case dimInsertNeedsBeforeStyleWarning(runtime):
 			dr.Set("warning_message", dimInsertBeforeStyleWarning)
@@ -310,13 +310,13 @@ var DimDelete = common.Shortcut{
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		if runtime.Changed("ranges") {
 			ops, _ := dimDeleteRangesOps(runtime, token, sheetID, sheetName)
-			return invokeToolDryRun(token, ToolKindWrite, "batch_update", map[string]interface{}{
+			return invokeToolDryRun(runtime, token, ToolKindWrite, "batch_update", map[string]interface{}{
 				"excel_id":   token,
 				"operations": ops,
 			})
 		}
 		input, _ := dimRangeOpInput(runtime, token, sheetID, sheetName, "delete")
-		return invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
+		return invokeToolDryRun(runtime, token, ToolKindWrite, "modify_sheet_structure", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, err := resolveSpreadsheetTokenExec(runtime)
@@ -494,7 +494,7 @@ var DimFreeze = common.Shortcut{
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
 		input, _ := dimFreezeInput(runtime, token, sheetID, sheetName)
-		dr := invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
+		dr := invokeToolDryRun(runtime, token, ToolKindWrite, "modify_sheet_structure", input)
 		// Surface the deprecation steer during the preview too: agents dry-run
 		// before executing, so a note only on the execute path arrives after the
 		// spelling is already committed to.
@@ -724,7 +724,7 @@ func newDimRangeOpShortcut(command, desc, op, risk string) common.Shortcut {
 			token, _ := resolveSpreadsheetToken(runtime)
 			sheetID, sheetName, _ := resolveSheetSelector(runtime)
 			input, _ := dimRangeOpInput(runtime, token, sheetID, sheetName, op)
-			return invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
+			return invokeToolDryRun(runtime, token, ToolKindWrite, "modify_sheet_structure", input)
 		},
 		Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 			token, err := resolveSpreadsheetTokenExec(runtime)
@@ -768,7 +768,7 @@ func newDimGroupShortcut(command, desc, op string) common.Shortcut {
 			token, _ := resolveSpreadsheetToken(runtime)
 			sheetID, sheetName, _ := resolveSheetSelector(runtime)
 			input, _ := dimGroupInput(runtime, token, sheetID, sheetName, op)
-			return invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
+			return invokeToolDryRun(runtime, token, ToolKindWrite, "modify_sheet_structure", input)
 		},
 		Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 			token, err := resolveSpreadsheetTokenExec(runtime)
