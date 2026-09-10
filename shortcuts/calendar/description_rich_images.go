@@ -5,12 +5,6 @@ package calendar
 
 import (
 	"fmt"
-
-	// Register the common image decoders so DecodeConfig can read intrinsic
-	// dimensions for PNG/JPEG/GIF sources.
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
 	"net/url"
 	"path/filepath"
 	"regexp"

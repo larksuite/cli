@@ -7,9 +7,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
 	"io"
 	"path/filepath"
 

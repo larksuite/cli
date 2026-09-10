@@ -10,6 +10,15 @@ import (
 	"image"
 	"io"
 	"math"
+
+	// PNG, JPEG and GIF are read through the standard library's format
+	// registry. Registering them here keeps Decode self-contained: a caller
+	// that imports only this package still gets every supported format, and
+	// tidying an apparently unused blank import elsewhere cannot silently
+	// disable dimension detection.
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 )
 
 // Config describes dimensions only, not a color model or validated pixel data.
