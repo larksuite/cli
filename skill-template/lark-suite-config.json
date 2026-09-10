@@ -33,7 +33,15 @@
     "preserve": [
       {
         "skill": "lark-skill-maker",
-        "match": "SKILL.md"
+        "match": "`SKILL.md`"
+      },
+      {
+        "skill": "lark-skill-maker",
+        "match": "## SKILL.md"
+      },
+      {
+        "skill": "lark-skill-maker",
+        "match": "skills/lark-<name>/SKILL.md"
       },
       {
         "skill": "*",
