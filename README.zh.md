@@ -191,6 +191,10 @@ lark-cli auth login --domain calendar --no-wait
 # 稍后恢复轮询
 lark-cli auth login --device-code <DEVICE_CODE>
 
+# 要求新签发的本地凭证使用 DPoP，然后重新登录授权
+lark-cli config dpop required
+lark-cli auth login
+
 # 身份切换：以用户或机器人身份执行命令
 lark-cli calendar +agenda --as user
 lark-cli im +messages-send --as bot --chat-id "oc_xxx" --text "Hello"

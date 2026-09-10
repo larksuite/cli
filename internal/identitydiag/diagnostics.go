@@ -19,6 +19,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/internal/recovery"
 )
 
@@ -58,8 +59,14 @@ type Identity struct {
 	ExpiresAt        string        `json:"expiresAt,omitempty"`
 	RefreshExpiresAt string        `json:"refreshExpiresAt,omitempty"`
 	GrantedAt        string        `json:"grantedAt,omitempty"`
-	recoveryTarget   recovery.Target
-	recoveryError    error
+	// Local token metadata is projected by auth status without loading the key
+	// a second time and potentially disagreeing with this readiness result.
+	TokenType            string `json:"-"`
+	DPoPKeyStatus        string `json:"-"`
+	DPoPKeyProvider      string `json:"-"`
+	DPoPKeySecurityLevel string `json:"-"`
+	recoveryTarget       recovery.Target
+	recoveryError        error
 }
 
 // withCommandRecovery binds user-facing recovery text to the command it
@@ -323,6 +330,20 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	}
 
 	fillTokenFields(&id, stored)
+	id.TokenType = stored.TokenType
+	binding, bindingErr := larkauth.ResolveDPoPBindingContext(ctx, stored, nil)
+	if bindingErr != nil {
+		id.Status = StatusMissing
+		id.DPoPKeyStatus = "missing"
+		id.Message = "User identity: missing (DPoP key unavailable or inconsistent)"
+		problem, _ := errs.ProblemOf(bindingErr)
+		return withCommandRecovery(id, recovery.TargetAuthLogin, problem.Hint)
+	}
+	if binding != nil {
+		id.DPoPKeyStatus = "available"
+		id.DPoPKeyProvider = binding.Key().Provider()
+		id.DPoPKeySecurityLevel = string(binding.KeyStoreSecureLevel)
+	}
 	switch larkauth.TokenStatus(stored) {
 	case "valid":
 		id.Status = StatusReady
@@ -357,7 +378,7 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	if err != nil {
 		return markVerifyFailed("create HTTP client: "+err.Error(), "", "")
 	}
-	token, err := larkauth.GetValidAccessToken(httpClient, larkauth.NewUATCallOptions(cfg, f.IOStreams.ErrOut))
+	token, err := larkauth.GetValidAccessToken(ctx, httpClient, larkauth.NewUATCallOptions(cfg, f.IOStreams.ErrOut))
 	if err != nil {
 		return markVerifyFailed("token unusable: "+err.Error(), "run: lark-cli auth login --help", recovery.TargetAuthLogin)
 	}
@@ -368,7 +389,7 @@ func diagnoseUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 	verifyCtx, cancel := context.WithTimeout(ctx, verifyTimeout)
 	defer cancel()
 	verifyCtx = core.WithCredentialSource(verifyCtx, core.CredentialSourceLocal)
-	if err := larkauth.VerifyUserToken(verifyCtx, sdk, token); err != nil {
+	if err := larkauth.VerifyUserToken(verifyCtx, sdk, token.AccessToken, token.DPoP); err != nil {
 		return markVerifyFailed("server rejected token: "+err.Error(), "run: lark-cli auth login --help", recovery.TargetAuthLogin)
 	}
 
@@ -392,6 +413,11 @@ func resolveBotToken(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfi
 	if result == nil || result.Token == "" {
 		return nil, &credential.TokenUnavailableError{Type: credential.TokenTypeTAT}
 	}
+	if cfg != nil && cfg.DPoPMode.Required() &&
+		result.Source == core.CredentialSourceLocal && result.DPoP == nil {
+		return nil, errs.NewAuthenticationError(errs.SubtypeDPoPRequired,
+			"this profile requires DPoP but the local bot credential is Bearer")
+	}
 	return result, nil
 }
 
@@ -406,6 +432,9 @@ func fetchBotInfo(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, 
 		return nil, fmt.Errorf("create HTTP client: %w", err)
 	}
 	ctx = core.WithCredentialSource(ctx, token.Source)
+	if token.DPoP != nil {
+		ctx = dpop.WithBinding(ctx, token.DPoP)
+	}
 	ctx, cancel := context.WithTimeout(ctx, verifyTimeout)
 	defer cancel()
 	url := strings.TrimRight(core.ResolveEndpoints(cfg.Brand).Open, "/") + "/open-apis/bot/v3/info"
