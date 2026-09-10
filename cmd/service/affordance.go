@@ -200,6 +200,10 @@ func prepareMethodHelp(
 		fmt.Fprintf(&b, "\n\nFull parameter schema:\n  lark-cli schema %s", schemaPath)
 	}
 	b.WriteString(ann[paramsOnlyAnnotation])
+	if contract := ann[methodParamContractAnnotation]; contract != "" {
+		b.WriteString("\n\nParameter constraints:\n  ")
+		b.WriteString(contract)
+	}
 
 	writeRelatedSkills(&b, skills, skillFS, references)
 

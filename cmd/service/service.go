@@ -322,6 +322,7 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 	paramsOnly := opts.binder.paramsOnlyHelp()
 	cmd.Long = methodLong(m.Description, spec.schemaPath, paramsOnly)
 	setMethodHelpData(cmd, spec.serviceName, m.ID, spec.schemaPath, paramsOnly)
+	applyMethodParamContractHelp(cmd, m)
 
 	// Group flags for the grouped --help renderer (typed param flags are grouped
 	// as API Parameters by the binder). tagFlagGroup is a no-op for flags not
@@ -364,6 +365,11 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 }
 
 func serviceMethodRun(opts *ServiceMethodOptions) error {
+	params, err := parseServiceParams(opts)
+	if err != nil {
+		return err
+	}
+
 	f := opts.Factory
 	opts.As = f.ResolveAs(opts.Ctx, opts.Cmd, opts.As)
 
@@ -397,7 +403,7 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 		}
 	}
 
-	request, fileMeta, err := buildServiceRequest(opts)
+	request, fileMeta, err := buildServiceRequestWithParams(opts, params)
 	if err != nil {
 		return err
 	}
@@ -554,6 +560,17 @@ func missingRequiredParamError(opts *ServiceMethodOptions, f meta.Field, locatio
 // When dryRun is true and a file is provided, file reading is skipped and
 // FileUploadMeta is returned instead so the caller can render dry-run output.
 func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmdutil.FileUploadMeta, error) {
+	params, err := parseServiceParams(opts)
+	if err != nil {
+		return client.RawApiRequest{}, nil, err
+	}
+	return buildServiceRequestWithParams(opts, params)
+}
+
+// parseServiceParams resolves raw and typed parameter inputs exactly once and
+// applies method-specific cross-field validation before authentication or
+// client construction begins.
+func parseServiceParams(opts *ServiceMethodOptions) (map[string]interface{}, error) {
 	method := opts.Method
 	httpMethod := method.HTTPMethod
 
@@ -564,16 +581,27 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 
 	// Validate --file mutual exclusions.
 	if err := cmdutil.ValidateFileFlag(opts.File, opts.Params, opts.Data, opts.Output, opts.PageAll, httpMethod); err != nil {
-		return client.RawApiRequest{}, nil, err
+		return nil, err
 	}
 	if opts.Params == "-" && opts.Data == "-" {
-		return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--params and --data cannot both read from stdin (-)").WithParam("--params")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--params and --data cannot both read from stdin (-)").WithParam("--params")
 	}
 	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin, fileIO)
 	if err != nil {
-		return client.RawApiRequest{}, nil, err
+		return nil, err
 	}
 	opts.binder.overlay(opts.Cmd, params)
+	if err := validateMethodParamContracts(method, params); err != nil {
+		return nil, err
+	}
+	return params, nil
+}
+
+func buildServiceRequestWithParams(opts *ServiceMethodOptions, params map[string]interface{}) (client.RawApiRequest, *cmdutil.FileUploadMeta, error) {
+	method := opts.Method
+	httpMethod := method.HTTPMethod
+	stdin := opts.Factory.IOStreams.In
+	fileIO := opts.Factory.ResolveFileIO(opts.Ctx)
 
 	url := opts.ServicePath + "/" + method.Path
 
@@ -636,6 +664,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		// Parse --data as form fields.
 		var dataFields any
 		if opts.Data != "" {
+			var err error
 			dataFields, err = cmdutil.ParseOptionalBody(httpMethod, opts.Data, stdin, fileIO)
 			if err != nil {
 				return client.RawApiRequest{}, nil, err
