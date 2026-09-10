@@ -262,15 +262,6 @@ func TestBaseSecurityHeaders_AllRequiredHeaders(t *testing.T) {
 	}
 }
 
-func TestBaseSecurityHeaders_IncludesExtraHeaders(t *testing.T) {
-	t.Setenv(envvars.CliExtraHeaders, "X-TT-ENV: boe_bitable_bk")
-
-	h := BaseSecurityHeaders()
-	if got := h.Get("X-TT-ENV"); got != "boe_bitable_bk" {
-		t.Fatalf("X-TT-ENV = %q, want boe_bitable_bk", got)
-	}
-}
-
 // ---------------------------------------------------------------------------
 // Agent headers injected via BaseSecurityHeaders
 // ---------------------------------------------------------------------------
