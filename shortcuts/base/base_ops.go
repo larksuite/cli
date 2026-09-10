@@ -231,7 +231,7 @@ func findCreatedBaseDefaultTableID(runtime *common.RuntimeContext, baseToken str
 	if tableIDValue := tableIDFromCreateBaseResponse(base); tableIDValue != "" {
 		return tableIDValue, nil
 	}
-	tables, _, err := listAllTables(runtime, baseToken, 0, 100)
+	tables, _, _, err := listAllTables(runtime, baseToken, 0, 100)
 	if err != nil {
 		return "", err
 	}

@@ -311,6 +311,8 @@ func TestBaseFieldCreateTipsGuideTypeSelectionByStoredValue(t *testing.T) {
 		"formula, lookup, link, workflow, or automation",
 		"If unsupported, do not probe code/web/OpenAPI, create a storage placeholder, or claim completion",
 		"report the boundary and alternatives",
+		"Formula and lookup creates require reading the corresponding guide before passing --i-have-read-guide",
+		"the flag acknowledges the guide and does not replace it",
 		"for multiple fields in one table, prefer one array",
 		"array items are created sequentially",
 		"prefer --json @file or an argv-safe subprocess call",
@@ -658,6 +660,20 @@ func TestBasePaginationHelpShowsDefaults(t *testing.T) {
 				t.Fatalf("flag help default %s count=%d, want 1:\n%s", tt.defaultVal, got, help)
 			}
 		})
+	}
+}
+
+func TestBaseTableListTipsExposeResumeContract(t *testing.T) {
+	tips := strings.Join(BaseTableList.Tips, "\n")
+	for _, want := range []string{
+		"meta.pagination.complete is false",
+		"decimal next_token value",
+		"--offset",
+		"until complete is true",
+	} {
+		if !strings.Contains(tips, want) {
+			t.Fatalf("table-list tips missing %q:\n%s", want, tips)
+		}
 	}
 }
 
@@ -1339,7 +1355,8 @@ func TestBaseFieldUpdateHelpGuidesAgents(t *testing.T) {
 		"Read the current field first with +field-get",
 		"Type conversion is allowlist-based",
 		"web UI",
-		"Formula and lookup updates require reading the corresponding guide first.",
+		"Formula and lookup updates require reading the corresponding guide before passing --i-have-read-guide",
+		"the flag acknowledges the guide and does not replace it",
 		"lark-base skill's field-update guide",
 	}
 	for _, want := range wantTips {

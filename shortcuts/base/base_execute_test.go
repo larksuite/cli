@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -2618,7 +2619,7 @@ func TestBaseTableExecuteReadAndDelete(t *testing.T) {
 		if err := runShortcut(t, BaseTableList, []string{"+table-list", "--base-token", "app_x", "--limit", "1"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
-		if got := stdout.String(); !strings.Contains(got, `"total": 2`) || !strings.Contains(got, `"tables"`) || !strings.Contains(got, `"name": "Alpha"`) || strings.Contains(got, `"items"`) || strings.Contains(got, `"offset"`) || strings.Contains(got, `"limit"`) || strings.Contains(got, `"count"`) || strings.Contains(got, `"table_name": "Alpha"`) {
+		if got := stdout.String(); !strings.Contains(got, `"total": 2`) || !strings.Contains(got, `"tables"`) || !strings.Contains(got, `"name": "Alpha"`) || strings.Contains(got, `"offset"`) || strings.Contains(got, `"limit"`) || strings.Contains(got, `"count"`) || strings.Contains(got, `"table_name": "Alpha"`) {
 			t.Fatalf("stdout=%s", got)
 		}
 	})
@@ -2688,6 +2689,155 @@ func TestBaseTableExecuteReadAndDelete(t *testing.T) {
 			t.Fatalf("stdout=%s", got)
 		}
 	})
+}
+
+func TestBaseTableExecuteListPaginationMetadata(t *testing.T) {
+	tables := func(count int) []interface{} {
+		items := make([]interface{}, 0, count)
+		for i := 0; i < count; i++ {
+			items = append(items, map[string]interface{}{"id": fmt.Sprintf("tbl_%d", i)})
+		}
+		return items
+	}
+
+	for _, tt := range []struct {
+		name         string
+		args         []string
+		url          string
+		data         map[string]interface{}
+		wantItems    int
+		wantTotal    int
+		wantComplete bool
+		wantNext     string
+		wantInvalid  bool
+	}{
+		{
+			name:         "first page exposes the next offset",
+			args:         []string{"+table-list", "--base-token", "app_x"},
+			url:          "limit=50&offset=0",
+			data:         map[string]interface{}{"tables": tables(50), "total": 82},
+			wantItems:    50,
+			wantTotal:    82,
+			wantComplete: false,
+			wantNext:     "50",
+		},
+		{
+			name:         "numeric string total preserves the next offset",
+			args:         []string{"+table-list", "--base-token", "app_x"},
+			url:          "limit=50&offset=0",
+			data:         map[string]interface{}{"tables": tables(50), "total": "82"},
+			wantItems:    50,
+			wantTotal:    82,
+			wantComplete: false,
+			wantNext:     "50",
+		},
+		{
+			name:         "last page is complete",
+			args:         []string{"+table-list", "--base-token", "app_x", "--offset", "50"},
+			url:          "limit=50&offset=50",
+			data:         map[string]interface{}{"tables": tables(32), "total": 82},
+			wantItems:    32,
+			wantTotal:    82,
+			wantComplete: true,
+		},
+		{
+			name:         "missing total keeps the existing item-count fallback",
+			args:         []string{"+table-list", "--base-token", "app_x"},
+			url:          "limit=50&offset=0",
+			data:         map[string]interface{}{"tables": tables(1)},
+			wantItems:    1,
+			wantTotal:    1,
+			wantComplete: true,
+		},
+		{
+			name:         "missing total full page exposes the next offset",
+			args:         []string{"+table-list", "--base-token", "app_x"},
+			url:          "limit=50&offset=0",
+			data:         map[string]interface{}{"tables": tables(50)},
+			wantItems:    50,
+			wantTotal:    50,
+			wantComplete: false,
+			wantNext:     "50",
+		},
+		{
+			name:         "zero total full page exposes the next offset",
+			args:         []string{"+table-list", "--base-token", "app_x"},
+			url:          "limit=50&offset=0",
+			data:         map[string]interface{}{"tables": tables(50), "total": 0},
+			wantItems:    50,
+			wantTotal:    50,
+			wantComplete: false,
+			wantNext:     "50",
+		},
+		{
+			name:        "empty page before known total is invalid",
+			args:        []string{"+table-list", "--base-token", "app_x", "--offset", "50"},
+			url:         "limit=50&offset=50",
+			data:        map[string]interface{}{"tables": []interface{}{}, "total": 82},
+			wantInvalid: true,
+		},
+		{
+			name:         "empty page at known total is complete",
+			args:         []string{"+table-list", "--base-token", "app_x", "--offset", "82"},
+			url:          "limit=50&offset=82",
+			data:         map[string]interface{}{"tables": []interface{}{}, "total": 82},
+			wantItems:    0,
+			wantTotal:    82,
+			wantComplete: true,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			factory, stdout, reg := newExecuteFactory(t)
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    tt.url,
+				Body:   map[string]interface{}{"code": 0, "data": tt.data},
+			})
+			err := runShortcut(t, BaseTableList, tt.args, factory, stdout)
+			if tt.wantInvalid {
+				problem, ok := errs.ProblemOf(err)
+				if !ok || problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeInvalidResponse {
+					t.Fatalf("err=%v problem=%#v, want internal/invalid_response", err, problem)
+				}
+				if stdout.Len() != 0 {
+					t.Fatalf("stdout=%s, want no success envelope", stdout.String())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("err=%v", err)
+			}
+
+			var envelope struct {
+				Data map[string]json.RawMessage `json:"data"`
+				Meta *output.Meta               `json:"meta"`
+			}
+			if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+				t.Fatalf("decode stdout: %v\n%s", err, stdout.String())
+			}
+			if len(envelope.Data) != 2 || envelope.Data["tables"] == nil || envelope.Data["total"] == nil {
+				t.Fatalf("data keys=%v, want only tables and total", envelope.Data)
+			}
+			var gotTables []map[string]interface{}
+			if err := json.Unmarshal(envelope.Data["tables"], &gotTables); err != nil {
+				t.Fatalf("decode tables: %v", err)
+			}
+			var gotTotal int
+			if err := json.Unmarshal(envelope.Data["total"], &gotTotal); err != nil {
+				t.Fatalf("decode total: %v", err)
+			}
+			if len(gotTables) != tt.wantItems || gotTotal != tt.wantTotal {
+				t.Fatalf("data tables=%d total=%d, want %d/%d", len(gotTables), gotTotal, tt.wantItems, tt.wantTotal)
+			}
+			if envelope.Meta == nil || envelope.Meta.Pagination == nil {
+				t.Fatalf("meta=%#v, want pagination", envelope.Meta)
+			}
+			got := envelope.Meta.Pagination
+			if got.Complete != tt.wantComplete || got.Pages != 1 || got.Items != tt.wantItems || got.NextToken != tt.wantNext {
+				t.Fatalf("pagination=%#v, want complete=%t pages=1 items=%d next_token=%q", got, tt.wantComplete, tt.wantItems, tt.wantNext)
+			}
+		})
+	}
 }
 
 func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
