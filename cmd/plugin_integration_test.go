@@ -330,7 +330,7 @@ func TestBuildInternal_returnsRegistryForShutdownEmit(t *testing.T) {
 	}
 	platform.Register(plugin)
 
-	_, _, reg := buildInternal(context.Background(), buildInvocationForTest(t))
+	_, _, reg := buildInternalForTest(t, context.Background(), buildInvocationForTest(t))
 	if reg == nil {
 		t.Fatalf("buildInternal returned nil registry; plugin's Shutdown handler is unreachable")
 	}
@@ -361,7 +361,7 @@ func TestBuildInternal_failClosedYieldsNilRegistry(t *testing.T) {
 	}
 	platform.Register(plugin)
 
-	_, _, reg := buildInternal(context.Background(), buildInvocationForTest(t))
+	_, _, reg := buildInternalForTest(t, context.Background(), buildInvocationForTest(t))
 	if reg != nil {
 		t.Errorf("buildInternal returned non-nil registry on FailClosed install error")
 	}
@@ -404,7 +404,7 @@ func TestPluginConflictGuard_MultipleRestrictAbortsCLI(t *testing.T) {
 		rule: rule,
 	})
 
-	_, root, reg := buildInternal(context.Background(), buildInvocationForTest(t))
+	_, root, reg := buildInternalForTest(t, context.Background(), buildInvocationForTest(t))
 	if reg != nil {
 		t.Errorf("conflict guard path should yield nil registry")
 	}
@@ -449,7 +449,7 @@ func TestPluginConflictGuard_InvalidRuleAbortsCLI(t *testing.T) {
 		rule: &platform.Rule{Name: "bad", MaxRisk: "nukem"},
 	})
 
-	_, root, reg := buildInternal(context.Background(), buildInvocationForTest(t))
+	_, root, reg := buildInternalForTest(t, context.Background(), buildInvocationForTest(t))
 	if reg != nil {
 		t.Errorf("conflict guard path should yield nil registry")
 	}
@@ -493,7 +493,7 @@ func TestPluginLifecycleGuard_StartupErrorAbortsCLI(t *testing.T) {
 		failErr: errors.New("backend unreachable"),
 	})
 
-	_, root, reg := buildInternal(context.Background(), buildInvocationForTest(t))
+	_, root, reg := buildInternalForTest(t, context.Background(), buildInvocationForTest(t))
 	if reg != nil {
 		t.Errorf("lifecycle guard path should yield nil registry")
 	}
@@ -535,7 +535,7 @@ func TestPluginLifecycleGuard_StartupPanicAbortsCLI(t *testing.T) {
 		panicMsg: "kaboom",
 	})
 
-	_, root, reg := buildInternal(context.Background(), buildInvocationForTest(t))
+	_, root, reg := buildInternalForTest(t, context.Background(), buildInvocationForTest(t))
 	if reg != nil {
 		t.Errorf("lifecycle guard path should yield nil registry")
 	}

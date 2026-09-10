@@ -5,10 +5,12 @@ package shortcuts
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -56,6 +58,185 @@ func TestAllShortcutsReturnsCopyAndIncludesBase(t *testing.T) {
 	if AllShortcuts()[0].Service == "mutated" {
 		t.Fatal("AllShortcuts should return a copy")
 	}
+}
+
+func TestShortcutServiceNames(t *testing.T) {
+	want := []string{
+		"application",
+		"apps",
+		"base",
+		"calendar",
+		"contact",
+		"docs",
+		"drive",
+		"event",
+		"im",
+		"mail",
+		"markdown",
+		"minutes",
+		"note",
+		"okr",
+		"sheets",
+		"slides",
+		"task",
+		"vc",
+		"whiteboard",
+		"wiki",
+	}
+
+	got := ShortcutServiceNames()
+	if !slices.Equal(got, want) {
+		t.Fatalf("ShortcutServiceNames() = %v, want %v", got, want)
+	}
+	if !slices.IsSorted(got) {
+		t.Fatalf("ShortcutServiceNames() is not sorted: %v", got)
+	}
+
+	got[0] = "mutated"
+	if second := ShortcutServiceNames(); !slices.Equal(second, want) {
+		t.Fatalf("ShortcutServiceNames() must return a stable copy, got %v", second)
+	}
+}
+
+func TestRegisterShortcutsForDomainsWithContextSelectsBuckets(t *testing.T) {
+	tests := []struct {
+		name    string
+		domains []string
+		want    []string
+	}{
+		{name: "nil mounts all", domains: nil, want: ShortcutServiceNames()},
+		{name: "empty mounts none", domains: []string{}, want: []string{}},
+		{name: "docs only", domains: []string{"docs"}, want: []string{"docs"}},
+		{name: "drive only", domains: []string{"drive"}, want: []string{"drive"}},
+		{name: "deduplicates and sorts", domains: []string{"drive", "docs", "drive"}, want: []string{"docs", "drive"}},
+		{name: "unknown mounts none", domains: []string{"unknown"}, want: []string{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			program := &cobra.Command{Use: "root"}
+			RegisterShortcutsForDomainsWithContext(
+				context.Background(),
+				program,
+				newRegisterTestFactory(t),
+				tt.domains,
+			)
+
+			var got []string
+			for _, command := range program.Commands() {
+				got = append(got, command.Name())
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Fatalf("mounted services = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRegisterShortcutsForDomainsPreservesSelectedDomainBehavior(t *testing.T) {
+	t.Run("docs help and annotation", func(t *testing.T) {
+		program := &cobra.Command{Use: "root"}
+		RegisterShortcutsForDomainsWithContext(
+			context.Background(),
+			program,
+			newRegisterTestFactory(t),
+			[]string{"docs"},
+		)
+
+		docsCmd := findChild(program, "docs")
+		if docsCmd == nil {
+			t.Fatal("docs service command not mounted")
+		}
+		if got := cmdmeta.Domain(docsCmd); got != "docs" {
+			t.Fatalf("docs domain = %q, want docs", got)
+		}
+		if findChild(docsCmd, "+fetch") == nil {
+			t.Fatal("docs +fetch shortcut not mounted")
+		}
+		if findChild(program, "drive") != nil {
+			t.Fatal("unselected drive service should not be mounted")
+		}
+	})
+
+	t.Run("drive shortcut metadata", func(t *testing.T) {
+		program := &cobra.Command{Use: "root"}
+		RegisterShortcutsForDomainsWithContext(
+			context.Background(),
+			program,
+			newRegisterTestFactory(t),
+			[]string{"drive"},
+		)
+
+		driveCmd := findChild(program, "drive")
+		if driveCmd == nil {
+			t.Fatal("drive service command not mounted")
+		}
+		search := findChild(driveCmd, "+search")
+		if search == nil {
+			t.Fatal("drive +search shortcut not mounted")
+		}
+		if got := cmdmeta.Domain(search); got != "drive" {
+			t.Fatalf("drive +search domain = %q, want drive", got)
+		}
+		if got, ok := cmdutil.GetRisk(search); !ok || got == "" {
+			t.Fatal("drive +search risk annotation must be preserved")
+		}
+	})
+}
+
+func TestRegisterShortcutsForDomainsRunsHooksOnlyForSelectedBuckets(t *testing.T) {
+	t.Run("unselected hooks do not mutate existing parents", func(t *testing.T) {
+		program := &cobra.Command{Use: "root"}
+		appsCmd := &cobra.Command{Use: "apps"}
+		mailCmd := &cobra.Command{Use: "mail"}
+		sheetsCmd := &cobra.Command{Use: "sheets"}
+		program.AddCommand(appsCmd, mailCmd, sheetsCmd)
+
+		RegisterShortcutsForDomainsWithContext(
+			context.Background(),
+			program,
+			newRegisterTestFactory(t),
+			[]string{"docs"},
+		)
+
+		if findChild(appsCmd, "git-credential-helper") != nil {
+			t.Fatal("apps hook ran for an unselected domain")
+		}
+		in := errors.New("unknown flag: --bogus")
+		if got := mailCmd.FlagErrorFunc()(mailCmd, in); got != in {
+			t.Fatalf("mail hook ran for an unselected domain: got %T (%v)", got, got)
+		}
+		if sheetsCmd.ContainsGroup(sheetsCurrentGroupID) {
+			t.Fatal("sheets hook ran for an unselected domain")
+		}
+	})
+
+	t.Run("selected hooks run", func(t *testing.T) {
+		program := &cobra.Command{Use: "root"}
+		RegisterShortcutsForDomainsWithContext(
+			context.Background(),
+			program,
+			newRegisterTestFactory(t),
+			[]string{"sheets", "apps", "mail"},
+		)
+
+		appsCmd := findChild(program, "apps")
+		if appsCmd == nil || findChild(appsCmd, "git-credential-helper") == nil {
+			t.Fatal("selected apps hook did not run")
+		}
+		mailCmd := findChild(program, "mail")
+		if mailCmd == nil {
+			t.Fatal("selected mail service not mounted")
+		}
+		got := mailCmd.FlagErrorFunc()(mailCmd, errors.New("unknown flag: --bogus"))
+		if !errs.IsTyped(got) {
+			t.Fatalf("selected mail hook did not install typed flag handling: %T (%v)", got, got)
+		}
+		sheetsCmd := findChild(program, "sheets")
+		if sheetsCmd == nil || !sheetsCmd.ContainsGroup(sheetsCurrentGroupID) {
+			t.Fatal("selected sheets hook did not apply command groups")
+		}
+	})
 }
 
 func TestRegisterShortcutsMountsBaseCommands(t *testing.T) {

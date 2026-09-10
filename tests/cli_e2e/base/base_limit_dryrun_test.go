@@ -23,7 +23,7 @@ func TestBaseListDryRunRejectsOutOfRangeLimit(t *testing.T) {
 		Args: []string{
 			"base", "+table-list",
 			"--base-token", "app_x",
-			"--limit", "101",
+			"--limit", "301",
 			"--dry-run",
 		},
 		DefaultAs: "bot",
@@ -34,7 +34,7 @@ func TestBaseListDryRunRejectsOutOfRangeLimit(t *testing.T) {
 	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), result.Stderr)
 	require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), result.Stderr)
 	require.Equal(t, "--limit", gjson.Get(result.Stderr, "error.param").String(), result.Stderr)
-	require.Contains(t, gjson.Get(result.Stderr, "error.message").String(), "must be between 1 and 100")
+	require.Contains(t, gjson.Get(result.Stderr, "error.message").String(), "must be between 1 and 300")
 	require.Empty(t, result.Stdout)
 }
 
@@ -92,11 +92,11 @@ func TestBaseListDryRunAttributesValidationToPageSizeAlias(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
-		Args:      []string{"base", "+table-list", "--base-token", "app_x", "--page-size", "101", "--dry-run"},
+		Args:      []string{"base", "+table-list", "--base-token", "app_x", "--page-size", "301", "--dry-run"},
 		DefaultAs: "bot",
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 2)
 	require.Equal(t, "--page-size", gjson.Get(result.Stderr, "error.param").String(), result.Stderr)
-	require.Contains(t, gjson.Get(result.Stderr, "error.message").String(), "must be between 1 and 100")
+	require.Contains(t, gjson.Get(result.Stderr, "error.message").String(), "must be between 1 and 300")
 }

@@ -23,17 +23,14 @@ PREFIX   ?= /usr/local
 TEST_GOARCH := $(or $(GOARCH),$(shell go env GOARCH))
 RACE_FLAG := $(if $(filter riscv64,$(TEST_GOARCH)),,-race)
 
-.PHONY: all build vet fmt-check script-test test unit-test live-skills-test integration-test examples-build quality-gate install uninstall clean fetch_meta gitleaks sidecar-test
+.PHONY: all build vet fmt-check script-test test unit-test live-skills-test integration-test examples-build quality-gate install uninstall clean gitleaks sidecar-test
 
 all: test
 
-fetch_meta:
-	python3 scripts/fetch_meta.py
-
-build: fetch_meta
+build:
 	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY) .
 
-vet: fetch_meta
+vet:
 	go vet ./...
 
 # fmt-check fails when any file would be reformatted by gofmt. Keep this
@@ -55,11 +52,11 @@ script-test:
 	$(NODE) --test scripts/e2e_domains.test.js scripts/fetch_e2e_tat.test.js scripts/install.test.js scripts/release-preflight.test.js scripts/release-publish-policy.test.js scripts/semantic-review-verify-artifact.test.js scripts/pr-quality-summary.test.js scripts/semantic-review-publish.test.js scripts/ci-quality-summary-publish.test.js
 
 # ./extension/... keeps the public plugin SDK in the default test matrix.
-unit-test: fetch_meta
+unit-test:
 	go test $(RACE_FLAG) -gcflags="all=-N -l" -count=1 \
 		./cmd/... ./internal/... ./shortcuts/... ./extension/...
 
-live-skills-test: fetch_meta
+live-skills-test:
 	LARKSUITE_CLI_RUN_LIVE_SKILLS_TESTS=1 \
 	go test -v -count=1 ./cmd/update \
 		-run '^TestUpdateCommand_(RealSkillsSyncRewritesState|SkillsSyncColdStart)$$'
@@ -81,7 +78,6 @@ test: vet fmt-check script-test unit-test examples-build integration-test
 quality-gate: build
 	mkdir -p $(QUALITY_GATE_DIR) $(dir $(QUALITY_GATE_FACTS_OUT)) $(dir $(PUBLIC_CONTENT_METADATA))
 	test -f $(PUBLIC_CONTENT_METADATA) || printf '{}\n' > $(PUBLIC_CONTENT_METADATA)
-	LARKSUITE_CLI_REMOTE_META=off \
 	LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1 \
 	LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1 \
 	go run ./internal/qualitygate/cmd/manifest-export \
@@ -91,7 +87,6 @@ quality-gate: build
 	LARKSUITE_CLI_APP_SECRET=dry-run \
 	LARKSUITE_CLI_BRAND=feishu \
 	LARKSUITE_CLI_CONFIG_DIR=$${TMPDIR:-/tmp}/quality-gate-cli-config \
-	LARKSUITE_CLI_REMOTE_META=off \
 	LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1 \
 	LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1 \
 	go run ./internal/qualitygate/cmd/quality-gate check \

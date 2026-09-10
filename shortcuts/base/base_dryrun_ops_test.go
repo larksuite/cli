@@ -42,6 +42,28 @@ func TestDryRunTableOps(t *testing.T) {
 	assertDryRunContains(t, dryRunTableDelete(ctx, rt), "DELETE /open-apis/base/v3/bases/app_x/tables/tbl_1")
 }
 
+func TestBaseTableAndFieldListDryRunDefaultsToMaximumPageSize(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+
+	if err := runShortcut(t, BaseTableList, []string{
+		"+table-list", "--base-token", "app_x", "--dry-run", "--format", "pretty",
+	}, factory, stdout); err != nil {
+		t.Fatalf("table list dry-run err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, "limit=300") || !strings.Contains(got, "offset=0") {
+		t.Fatalf("table list dry-run=%s", got)
+	}
+
+	if err := runShortcut(t, BaseFieldList, []string{
+		"+field-list", "--base-token", "app_x", "--table-id", "tbl_x", "--dry-run", "--format", "pretty",
+	}, factory, stdout); err != nil {
+		t.Fatalf("field list dry-run err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, "limit=300") || !strings.Contains(got, "offset=0") {
+		t.Fatalf("field list dry-run=%s", got)
+	}
+}
+
 func TestDryRunTemplateCenterOps(t *testing.T) {
 	ctx := context.Background()
 
@@ -628,4 +650,30 @@ func TestDryRunViewOps(t *testing.T) {
 	assertDryRunContains(t, dryRunViewGetCard(ctx, listRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/views/viw_1/card")
 
 	assertDryRunContains(t, dryRunViewGetProperty(listRT, "a/b"), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/views/viw_1/a%2Fb")
+}
+
+func TestDryRunFormVisibleFieldsPreservesCompleteTargetState(t *testing.T) {
+	ctx := context.Background()
+	formRT := newBaseTestRuntime(
+		map[string]string{
+			"base-token": "app_x",
+			"table-id":   "tbl_1",
+			"view-id":    "vew_form",
+			"json":       `{"visible_fields":["fld_c","fld_a"]}`,
+		},
+		nil,
+		nil,
+	)
+
+	assertDryRunContains(
+		t,
+		dryRunViewGetVisibleFields(ctx, formRT),
+		"GET /open-apis/base/v3/bases/app_x/tables/tbl_1/views/vew_form/visible_fields",
+	)
+	assertDryRunContains(
+		t,
+		dryRunViewSetVisibleFields(ctx, formRT),
+		"PUT /open-apis/base/v3/bases/app_x/tables/tbl_1/views/vew_form/visible_fields",
+		`"visible_fields":["fld_c","fld_a"]`,
+	)
 }

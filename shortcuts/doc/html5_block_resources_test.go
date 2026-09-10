@@ -461,7 +461,11 @@ func TestDocsCreateV2HTML5BlockPathReadFailure(t *testing.T) {
 		"--content", `<html5-block path="@missing.html"></html5-block>`,
 		"--as", "user",
 	})
-	if err == nil || !strings.Contains(err.Error(), `html5-block path "missing.html" cannot be read from the current working directory`) {
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "path")
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected preserved file-not-found cause, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), `html5-block path "missing.html" cannot be read`) {
 		t.Fatalf("expected path read error, got: %v", err)
 	}
 }

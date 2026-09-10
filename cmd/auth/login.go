@@ -15,6 +15,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 
+	"github.com/larksuite/cli/internal/apicatalog"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -52,7 +53,7 @@ func NewCmdAuthLogin(f *cmdutil.Factory, runF func(*LoginOptions) error) *cobra.
 // end positional literals for every caller outside this module.
 func newCmdAuthLogin(f *cmdutil.Factory, runF func(*LoginOptions) error, registered []common.Shortcut) *cobra.Command {
 	opts := &LoginOptions{Factory: f}
-	resolver := newDomainResolver(registered)
+	resolver := newDomainResolver(f.APICatalog, registered)
 
 	cmd := &cobra.Command{
 		Use:   "login",
@@ -249,6 +250,12 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	// for example, request all `docs` scopes plus a few specific `drive`
 	// scopes in a single command.
 	if len(selectedDomains) > 0 {
+		// A corrupt Catalog shard fails the login typed, exactly as it fails a
+		// command build, instead of silently dropping that domain's API scopes
+		// from the authorization request that is about to be persisted.
+		if err := resolver.catalog.Preload(selectedDomains...); err != nil {
+			return err
+		}
 		candidateScopes := resolveScopesForDomains(selectedDomains, remote, remoteOK, resolver, config.Brand)
 
 		// Record the selected universe (after recommend/common filtering, before
@@ -580,6 +587,7 @@ func filterBatchExcludedScopes(scopes []string) []string {
 // every method here reads the snapshot it was constructed with instead of the
 // built-in set.
 type domainResolver struct {
+	catalog    apicatalog.Catalog
 	registered []common.Shortcut
 	// hasExternal is true when this build carries business commands injected via
 	// WithCommandSets beyond the built-in set. Such a build's domain/scope
@@ -588,8 +596,9 @@ type domainResolver struct {
 	hasExternal bool
 }
 
-func newDomainResolver(registered []common.Shortcut) domainResolver {
+func newDomainResolver(catalog apicatalog.Catalog, registered []common.Shortcut) domainResolver {
 	return domainResolver{
+		catalog:     catalog,
 		registered:  registered,
 		hasExternal: hasExternalCommands(registered),
 	}
@@ -632,7 +641,7 @@ func (r domainResolver) scopesFor(domains []string, identity string, brand core.
 	scopeSet := make(map[string]bool)
 
 	// 1. API scopes from from_meta projects
-	for _, s := range registry.CollectScopesForProjects(domains, identity) {
+	for _, s := range registry.CollectScopesForProjects(r.catalog, domains, identity) {
 		scopeSet[s] = true
 	}
 
@@ -695,7 +704,10 @@ func resolveScopesForDomains(domains []string, remote map[string][]string, remot
 // folded into their parent domain).
 func (r domainResolver) allKnown(brand core.LarkBrand) map[string]bool {
 	domains := make(map[string]bool)
-	for _, p := range registry.ListFromMetaProjects() {
+	// The manifest name list is the --domain vocabulary: it is cheap (no shard
+	// is parsed) and a corrupt shard stays addressable so that selecting it
+	// fails typed in Preload instead of being reported as an unknown domain.
+	for _, p := range r.catalog.Names() {
 		if !registry.HasAuthDomain(p) {
 			domains[p] = true
 		}
