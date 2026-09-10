@@ -173,6 +173,19 @@ var commandFlagAliases = map[string]map[string]string{
 	// +sheet-rename for the same reason.
 }
 
+// squashFlagName reduces a flag name to its letters and digits, lowercased —
+// the form every separator and casing spelling of one name shares.
+func squashFlagName(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(name) {
+		if r == '-' || r == '_' || r == '.' || r == ' ' {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
 // intuitiveFlagHints carries the prescription for habitual names whose fix
 // is not a 1:1 rename — the value belongs to a different flag or to a field
 // inside a JSON payload. The hint spells the exact correct form so the
@@ -295,12 +308,47 @@ func chainFlagAliases(cmd *cobra.Command) {
 	}
 	trackers := installAliasProvenance(cmd)
 	flags := cmd.Flags()
+	// squashed indexes every name this command answers to — its own flags and
+	// the aliases above — by letters and digits alone, so a spelling that
+	// differs only in separators or casing resolves without an entry of its
+	// own. Built before the normalizer is installed: pflag runs it on Lookup
+	// too, and looking a flag up from inside it would recurse.
+	squashed := map[string]string{}
+	registered := map[string]bool{}
+	flags.VisitAll(func(f *pflag.Flag) {
+		registered[f.Name] = true
+		key := squashFlagName(f.Name)
+		if prior, taken := squashed[key]; taken && prior != f.Name {
+			squashed[key] = "" // two real flags collide; neither is the answer
+			return
+		}
+		squashed[key] = f.Name
+	})
+	for alias, target := range usable {
+		key := squashFlagName(alias)
+		if _, taken := squashed[key]; !taken {
+			squashed[key] = target
+		}
+	}
 	flagalias.InstallNormalizer(cmd, func(name string) string {
+		if registered[name] {
+			return name // already the canonical spelling
+		}
 		if strings.Contains(name, "_") {
 			name = strings.ReplaceAll(name, "_", "-")
 		}
 		target, ok := usable[name]
 		if !ok {
+			// The separator-and-casing fold: --sheetName, --sheet_Name and
+			// --sheet.name are one spelling of --sheet-name, and the wire
+			// vocabulary (camelCase JSON keys) is where every one of them
+			// comes from. Only a fold onto a name this command actually
+			// carries applies, so a flag that does not exist still reaches
+			// the unknown-flag error with its did-you-mean rather than being
+			// renamed into something the caller never asked for.
+			if folded := squashed[squashFlagName(name)]; folded != "" && folded != name {
+				return folded
+			}
 			return name
 		}
 		// Stage only while the parser is walking argv. pflag normalizes on
@@ -481,6 +529,23 @@ func sheetsFlagErrorFunc(c *cobra.Command, ferr error) error {
 				strings.Join(suggestions, ", "), list)
 		}
 	}
+	// A flag this command does not carry but a SIBLING does is a fact, not a
+	// guess, and it beats an edit-distance neighbour whenever the neighbour is
+	// not a near-typo: the caller reached for a real capability and knocked on
+	// the wrong door (--font-color belongs to +cells-set-style, --csv to
+	// +csv-put). Kept behind the near-typo test so --range on a command
+	// spelling it --ranges still gets the rename it needs rather than a tour
+	// of the sheets surface.
+	if !nearTypo(name, suggestions) {
+		if owners := commandsCarryingFlag(c, name); len(owners) > 0 {
+			hint = fmt.Sprintf("--%s is a flag of %s, not of %s", name,
+				strings.Join(owners, " / "), c.Name())
+			if list := inlineFlagList(valid); list != "" {
+				hint += "; valid flags here: " + list
+			}
+			suggestions = nil
+		}
+	}
 	// A curated prescription beats both: it spells the exact correct form
 	// for a habitual name whose fix is not a rename (see intuitiveFlagHints).
 	// Edit-distance candidates are dropped with it — they can contradict the
@@ -531,6 +596,47 @@ func visibleFlagNames(c *cobra.Command) []string {
 	})
 	sort.Strings(names)
 	return names
+}
+
+// nearTypo reports whether the best local candidate is close enough to read as
+// a misspelling of it rather than a different flag altogether. Two edits is the
+// same budget the unsupported-style-field path uses, and the second test keeps
+// that budget honest on short names: --csv to --as is two edits over a
+// three-letter word, which is not a typo, it is a different flag.
+func nearTypo(name string, suggestions []string) bool {
+	if len(suggestions) == 0 {
+		return false
+	}
+	dist := suggest.Levenshtein(name, strings.TrimPrefix(suggestions[0], "--"))
+	return dist <= 2 && dist*2 <= len(name)
+}
+
+// commandsCarryingFlag names the sibling shortcuts that do carry the flag,
+// up to three, in the order they are mounted. Only +-prefixed siblings are
+// consulted: the raw API resources under the same parent spell their inputs
+// differently and pointing at one would send the caller off the shortcut path
+// entirely.
+func commandsCarryingFlag(c *cobra.Command, name string) []string {
+	parent := c.Parent()
+	if parent == nil {
+		return nil
+	}
+	wanted := strings.ReplaceAll(name, "_", "-")
+	var owners []string
+	for _, sib := range parent.Commands() {
+		if sib == c || sib.Hidden || !strings.HasPrefix(sib.Name(), "+") {
+			continue
+		}
+		fl := sib.Flags().Lookup(wanted)
+		if fl == nil || fl.Hidden {
+			continue
+		}
+		owners = append(owners, sib.Name())
+		if len(owners) == 3 {
+			break
+		}
+	}
+	return owners
 }
 
 // inlineFlagListLimit caps how many flag names ride inline on an

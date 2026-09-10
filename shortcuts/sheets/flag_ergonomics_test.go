@@ -766,6 +766,124 @@ func TestShortcuts_RequiredFlagsMarkedInHelp(t *testing.T) {
 	})
 }
 
+// TestShortcuts_FlagSpellingFolds pins the separator-and-casing fold: one rule
+// covering every spelling of a name this command does carry, with no per-name
+// entry, and no reach beyond the flags that exist. The wire vocabulary is
+// camelCase, so --sheetName is what a caller reading the JSON side writes.
+func TestShortcuts_FlagSpellingFolds(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a spelling that differs only in separators or case resolves", func(t *testing.T) {
+		t.Parallel()
+		for _, spelling := range []string{"--sheetName", "--sheet_name", "--sheet_Name", "--sheet.name", "--SHEET-NAME"} {
+			t.Run(spelling, func(t *testing.T) {
+				t.Parallel()
+				sc := shortcutFromRegistry(t, "+cells-get")
+				if _, _, err := runShortcutCapturingErr(t, sc, []string{
+					"--url", testURL, spelling, "Sheet1", "--range", "A1", "--dry-run",
+				}); err != nil {
+					t.Errorf("%s should resolve to --sheet-name, got: %v", spelling, err)
+				}
+			})
+		}
+	})
+
+	t.Run("an alias folds under the same rule", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+cells-set")
+		if _, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL, "--sheet-name", "s", "--startCell", "A1",
+			"--cells", `[[{"value":"x"}]]`, "--dry-run",
+		}); err != nil {
+			t.Errorf("--startCell should reach the --start-cell alias, got: %v", err)
+		}
+	})
+
+	t.Run("a flag that does not exist is not folded into one that does", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+cells-get")
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL, "--sheet-name", "s", "--ranges", "A1", "--dry-run",
+		})
+		ve := requireValidation(t, err, `unknown flag "--ranges"`)
+		if !strings.Contains(ve.Hint, "did you mean --range?") {
+			t.Errorf("the near-typo should still be suggested, not applied; hint = %q", ve.Hint)
+		}
+	})
+}
+
+// TestShortcuts_UnknownFlagNamesItsOwner pins the cross-command locator: a flag
+// this command does not carry but a sibling does is a fact about the surface,
+// and it beats an edit-distance neighbour that is not a near-typo. --csv to
+// --as is two edits over a three-letter name, which is how the neighbour used
+// to win.
+func TestShortcuts_UnknownFlagNamesItsOwner(t *testing.T) {
+	t.Parallel()
+
+	t.Run("the sibling that carries the flag is named", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct{ flag, owner string }{
+			{"--csv", "+csv-put"},
+			{"--sheets", "+table-put"},
+		} {
+			t.Run(tc.flag, func(t *testing.T) {
+				t.Parallel()
+				// The locator reads the sibling set off the shared parent, so
+				// the rig has to mount more than the command under test.
+				err := runMounted(t, []string{"+cells-set", tc.owner}, "+cells-set", []string{
+					"--url", testURL, "--sheet-name", "s", "--range", "A1",
+					"--cells", `[[{"value":"x"}]]`, tc.flag, "x", "--dry-run",
+				})
+				ve := requireValidation(t, err, "unknown flag")
+				if !strings.Contains(ve.Hint, tc.owner) {
+					t.Errorf("hint should name %s, got %q", tc.owner, ve.Hint)
+				}
+			})
+		}
+	})
+
+	t.Run("a near-typo keeps its rename", func(t *testing.T) {
+		t.Parallel()
+		// --range exists on plenty of siblings, but here the caller wants this
+		// command's own --ranges.
+		sc := shortcutFromRegistry(t, "+cond-format-create")
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL, "--sheet-name", "s", "--range", "A1", "--dry-run",
+		})
+		ve := requireValidation(t, err, "unknown flag")
+		if !strings.Contains(ve.Hint, "did you mean --ranges?") {
+			t.Errorf("hint should rename to --ranges, got %q", ve.Hint)
+		}
+	})
+
+	t.Run("a curated prescription still wins", func(t *testing.T) {
+		t.Parallel()
+		sc := shortcutFromRegistry(t, "+cells-set-style")
+		_, _, err := runShortcutCapturingErr(t, sc, []string{
+			"--url", testURL, "--sheet-name", "s", "--range", "A1", "--bold", "--dry-run",
+		})
+		ve := requireValidation(t, err, "unknown flag")
+		if !strings.Contains(ve.Hint, "--font-weight bold") {
+			t.Errorf("the prescription should survive, got %q", ve.Hint)
+		}
+	})
+}
+
+// runMounted executes one command with the given siblings mounted beside it,
+// for the checks that read the sheets surface rather than a single command.
+func runMounted(t *testing.T, mount []string, command string, args []string) error {
+	t.Helper()
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig(t))
+	parent := &cobra.Command{Use: "sheets"}
+	for _, name := range mount {
+		shortcutFromRegistry(t, name).Mount(parent, f)
+	}
+	parent.SilenceErrors = true
+	parent.SilenceUsage = true
+	parent.SetArgs(append([]string{command}, args...))
+	return parent.Execute()
+}
+
 // TestShortcuts_RequiredFlagErrorCarriesTheFix pins the two halves of the
 // missing-required-flag answer: cobra's own opening words, which the error
 // classifier and several domain tests match on, plus what the flag takes and
