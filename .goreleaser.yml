@@ -41,6 +41,7 @@ archives:
       - README.md
       - LICENSE
       - CHANGELOG.md
+      - THIRD_PARTY_NOTICES.md
 
 checksum:
   name_template: checksums.txt

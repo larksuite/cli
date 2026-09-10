@@ -96,12 +96,14 @@ cat > "$OUT_DIR/package.json" <<EOF_JSON
     "bin",
     "scripts/run.js",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
   ]
 }
 EOF_JSON
 
 cp CHANGELOG.md "$OUT_DIR/CHANGELOG.md"
 cp LICENSE "$OUT_DIR/LICENSE"
+cp THIRD_PARTY_NOTICES.md "$OUT_DIR/THIRD_PARTY_NOTICES.md"
 
 echo "Prepared pkg.pr.new package at $OUT_DIR"

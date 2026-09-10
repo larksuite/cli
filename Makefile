@@ -23,7 +23,7 @@ PREFIX   ?= /usr/local
 TEST_GOARCH := $(or $(GOARCH),$(shell go env GOARCH))
 RACE_FLAG := $(if $(filter riscv64,$(TEST_GOARCH)),,-race)
 
-.PHONY: all build vet fmt-check script-test test unit-test live-skills-test integration-test examples-build quality-gate install uninstall clean fetch_meta gitleaks sidecar-test
+.PHONY: all build vet fmt-check script-test test unit-test live-skills-test integration-test examples-build quality-gate install uninstall clean fetch_meta gitleaks sidecar-test third-party-notices check-third-party-notices install-git-hooks
 
 all: test
 
@@ -48,11 +48,23 @@ fmt-check:
 	fi
 
 script-test:
+	python3 scripts/third_party_notices.test.py
 	bash scripts/resolve-changed-from.test.sh
 	bash scripts/ci-workflow.test.sh
 	bash scripts/release-workflow.test.sh
 	bash scripts/semantic-review-workflow.test.sh
+	bash scripts/third_party_notices_hook.test.sh
 	$(NODE) --test scripts/e2e_domains.test.js scripts/fetch_e2e_tat.test.js scripts/install.test.js scripts/release-preflight.test.js scripts/release-publish-policy.test.js scripts/semantic-review-verify-artifact.test.js scripts/pr-quality-summary.test.js scripts/semantic-review-publish.test.js scripts/ci-quality-summary-publish.test.js
+
+third-party-notices:
+	python3 scripts/third_party_notices.py generate --output THIRD_PARTY_NOTICES.md
+
+check-third-party-notices:
+	python3 scripts/third_party_notices.py check --output THIRD_PARTY_NOTICES.md
+
+install-git-hooks:
+	git config core.hooksPath .githooks
+	@echo "Installed repository Git hooks."
 
 # ./extension/... keeps the public plugin SDK in the default test matrix.
 unit-test: fetch_meta
