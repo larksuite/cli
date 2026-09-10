@@ -1,6 +1,6 @@
 ---
 name: lark-base
-version: 1.2.21
+version: 1.2.24
 description: "飞书多维表格（Base）操作：建表、字段、记录、视图、统计、公式/lookup、表单、仪表盘、应用模式（BaseApp/AppMode 页面与组件）、Workspace 目录、workflow、角色权限、模板中心（多维表格模板分类/列表/搜索）；遇到 Base/多维表格/bitable、BaseApp/AppMode、/base/ 或 /app/ 链接时使用。BaseApp 不走 lark-apps；文件导入/导出转 lark-drive，认证/授权转 lark-shared。"
 metadata:
   requires:
@@ -16,6 +16,29 @@ metadata:
 
 操作 Base 优先使用 `--as user`；用户明确要求应用身份时使用 `--as bot`。权限失败按 `lark-shared` 以原身份修复 scope 或资源 ACL；只有用户明确同意更换操作者时才切换身份。
 
+## 写任务完成协议
+
+任何创建、修改、删除、启停、提交或权限配置任务，写入前先把用户原话拆成原子验收项，并为每项记录目标对象、预期状态、回读命令和通过条件。多对象、多步骤任务逐项维护 `pending -> written -> verified`：写命令成功只能进入 `written`，只有服务端回读满足通过条件才能进入 `verified`；存在 `pending` / `written` 时不得宣称全部完成。
+
+- 只回读本轮创建、修改、删除、启停或明确复用的对象，以及本轮写入可能影响的直接依赖；已有可信 ID 时直接读取，不为验收扫描无关资源。
+- 连续修改按依赖顺序执行。每一步写后通过该时点的后置条件再进入下一步；异步更新允许有界重试，但同一失败原因只做一次定向修复和一次复验。仍不一致时把该项标记为 `blocked`，如实说明缺失证据。
+- 完整替换操作必须先保存可信当前配置，执行 read-modify-write；delta 操作只提交目标变更。写入返回中的 `updated:true`、资源名称或任务 ID 都不能替代最终状态验证。
+- 筛选、条件、权限或自动化有排除范围时，同时验证代表性命中项和应排除项；如果目标集合按定义没有排除项，则记录该事实，不为凑负样本伪造条件。
+- 将自然语言目标转成筛选、聚合或状态集合前，完整读取相关字段的候选值域，并逐项标记 `Include / Exclude / Unknown`。只有字段证据能证明不满足目标的值才可 Exclude；Unknown 必须保留并单独展示，或先请用户澄清，不能按名称直觉静默排除。
+- 时间范围必须进入聚合或自动化的源头。出现“本月、今年、年度、近/超过 N 天或月、即将到期”等动态语义时，检查本轮 Formula、View、Dashboard 和 Workflow 的保存配置；除非用户明确要求固定历史区间，不得把运行当天固化成 `ExactDate` 或固定年月边界。所有相关对象必须采用同一动态口径，不能全历史聚合后只把名称改成“本月/年度”。
+- 权限任务只有在主体、资源范围和能力均可解析，或用户明确要求高级权限/角色时才启动。写入前记录“主体 × 资源 × 能力 × 排除主体”约束；敏感、保密、隐私或排他约束写后必须读取所有可能访问该资源的系统/自定义角色，验证这些角色的资源能力没有越界。`+role-list` / `+role-get` 只返回角色权限配置，不能证明某个用户或部门没有加入允许访问的角色；没有成员映射能力或经授权的排除主体实测时，将“排除主体不可访问”标记为 `unverified` / `blocked`，不得宣称权限任务全部完成。
+
+| 交付物 | 必须回读 | 通过条件 |
+|---|---|---|
+| Base / Table / Record | `+base-get` / `+table-list` / `+field-list`，必要时 `+record-list` | 目标对象、schema、关联和明确要求的记录数量正确 |
+| Formula / Lookup | `+field-get` + 有界代表性 `+record-list` | 保存表达式正确，各相关计算分支结果正确 |
+| View | 对应 `+view-get-*` + `+record-list --view-id` | 名称承诺、保存配置和实际记录范围一致 |
+| Form | `+form-get` / `+form-questions-list`，分享任务加 `+form-share-get` | 题目完整配置、必填/显隐符合要求；要求可填写链接时必须 `enabled=true` 且 `share_url` 非空 |
+| Dashboard | `+dashboard-block-get` + 非文本组件 `+dashboard-block-get-data` | 数据源、维度、指标、范围和计算结果正确 |
+| Workflow | `+workflow-get`，必要时 `+workflow-list --status ...` | 定义、条件、接收人、动作、引用和最终运行态全部正确 |
+| Role / AdvPerm | `+base-get` / `+role-list` / 必要的逐角色 `+role-get`；主体排除另需成员映射或经授权的主体实测 | 角色配置中的授权与拒绝范围成立且未扩大能力；无法核验角色成员关系时，主体排除保持 `unverified` / `blocked` |
+| Analysis | 确定性查询结果 + 相关物化产物回读 | 查询、持久产物与最终回答使用同一口径且数值一致 |
+
 ## 进入前必做：解析目标实体
 
 开始操作前先确定 `base_token` 和目标实体类型；上下文已提供 `<bitable>` / `<base_refer>` 标签及资源 ID 时直接使用。其余情况按意图选择入口：
@@ -30,7 +53,7 @@ metadata:
 
 **读取 Base：** Base 信息用 `+base-get`，资源目录按下方 Base Block 资源模型读取。
 
-**写入 Base：** 创建新 Base 使用一次 `+base-create --name <base-name> --table-name <table-name> --fields '<field-array>'` 同时创建 Base、首表和 fields；`+base-copy` 复制整个 Base；Base 内资源统一按下方 Block 生命周期管理。
+**写入 Base：** 创建新 Base 使用一次 `+base-create --name <base-name> --table-name <table-name> --fields '<field-array>'` 同时创建 Base、首表和 fields；`--fields` 数组的第一项会成为该表的主字段，不可删除，按业务主键排在首位。`+base-copy` 复制整个 Base。两者都支持 `--folder-token <token>` 指定目标文件夹；用户点名了云空间位置时必须带上，否则新 Base 落在默认位置。Base 内资源统一按下方 Block 生命周期管理。
 
 ## Base 模板中心
 
@@ -74,15 +97,17 @@ Block 的 `id` 按类型直接作为对应模块坐标：
 
 Table 本身是 Base Block，也是 Base 的核心数据存储层；Field、Record、View 和 Form 是 Table 内部对象，不是 Base Block。业务数据查询、写入、关联、统计和分析都从 Table 开始。先用 `+table-list` 定位 Table；字段名和目标已知的普通读取可直接进入 Record 命令，只有写入、筛选或关联等依赖字段类型/schema 的任务才补 `+field-list`。多表的 `+field-list` 可以并发执行。基础的 Record / CellValue 读写直接按下方路径；reference 只承载高级分析、完整协议和边界细节。
 
-**读取 Table：** `+table-list` 定位表，`+table-get` 读取详情。Table 专属复制使用 `+table-copy`，异步状态用 `+table-copy-status`；schema 和 records 由下方内部对象操作。
+**读取 Table：** `+table-list` 定位表，`+table-get` 读取详情。**写入 Table：** `+table-create` 建表，`+table-update --name <new-name>` 改名，`+table-delete` 删表（高风险，会带走该表全部记录，执行前确认目标并按确认门禁传 `--yes`）。
 
-Table 下的大多数更新通过异步链路生效，接口成功返回后立即读取可能暂时看不到最新状态。优先以写入成功响应作为操作结果；任务必须确认最终状态时，先完成本轮相关变更，再统一读取验收，避免逐项写后立即读回。
+Table 专属复制使用 `+table-copy`，异步状态用 `+table-copy-status`。`--range` 默认是 `schema`，**只复制表结构、不复制任何记录**；用户说“复制这张表 / 复制一份 / 备份”时通常期望连数据一起复制，必须显式传 `--range all`，并配 `--wait` 或用返回的 `next_command` 等异步任务完成后回读记录数。schema 和 records 由下方内部对象操作。
+
+Table 下的大多数更新通过异步链路生效，接口成功返回后立即读取可能暂时看不到最新状态。按上方完成协议做有界回读；同一批无依赖写入可先完成再统一验收，有依赖步骤则必须在进入下一步前确认当前后置条件。
 
 ### Field
 
 Field 定义列 schema。`field_id` 是稳定列标识，`name` 是可修改的展示名称；Formula、Lookup、Link、Select 等属于 Field 类型或能力。
 
-**读取 Field：** `+field-list` / `+field-get` / `+field-search-options`。**写入 Field：** 已有 Table 中创建多个字段时，优先向一次 `+field-create --json` 传字段对象数组；单字段更新和删除用 `+field-update` / `+field-delete`。创建和更新分别读取 [field-create](references/lark-base-field-create.md) / [field-update](references/lark-base-field-update.md)，由命令文档继续路由 Field JSON、Formula 和 Lookup 协议。`字段插件` 用于扩展基础字段能力：按同一行其他字段内容触发 LLM 生成，并写回已有目标字段；当前已确认目标字段支持文本、单选、数字，配置或触发前先读 [field-extension](references/lark-base-field-extension.md)。
+**读取 Field：** `+field-list` / `+field-get` / `+field-search-options`。**写入 Field：** 已有 Table 中创建多个字段时，优先向一次 `+field-create --json` 传字段对象数组；单字段更新和删除用 `+field-update` / `+field-delete`。创建和更新分别读取 [field-create](references/lark-base-field-create.md) / [field-update](references/lark-base-field-update.md)，由命令文档继续路由 Field JSON、Formula 和 Lookup 协议。`字段插件` 用于扩展基础字段能力：按同一行其他字段内容触发 LLM 生成，并写回已有目标字段；目标字段只允许文本、单选、多选、数字或日期。当前 CLI 不会在写配置或触发生成前自动校验目标类型，必须先用 `+field-get` 人工核验；完整协议读 [field-extension](references/lark-base-field-extension.md)。
 
 ### Record
 
@@ -190,6 +215,8 @@ lark-cli base +record-batch-update \
 
 大 payload 可用脚本生成 json 后用 `--json @file.json`。单批最多 200 条，超过后分批，同一 Table 串行写入；并行可能触发 `1254291` 并发冲突错误。
 
+单条写入也可用 `+record-upsert --json '<字段映射>'`：不带 `--record-id` 是新建，带 `--record-id` 是更新该条记录；它**不会**按业务主键自动 upsert，需要按业务键定位时先用 `+record-search` / `+record-list --filter-json` 查到真实 `record_id`。批量写入仍优先 `+record-batch-create` / `+record-batch-update`。
+
 #### 3. 其他 Record 操作
 
 - `+record-delete --base-token <base_token> --table-id <table_id> --record-id <id1> --record-id <id2>` 删除若干个记录
@@ -209,18 +236,19 @@ Form 依附于 Table，以 Field 作为题目，每次有效提交会创建一�
 
 1. **读取 Table 中的表单配置：** 使用 `+form-list` / `+form-get` 读取表单，使用 `+form-questions-list` 读取题目配置；这些命令使用表单所属的 `base_token + table_id`。
 2. **创建或修改 Table 中的表单配置：** 使用 `+form-create` / `+form-update` / `+form-delete` 管理表单；题目由 Table Field 承载，question ID 对应 `field_id`，创建和更新分别读取 [questions create](references/lark-base-form-questions-create.md) / [questions update](references/lark-base-form-questions-update.md)，删除使用 `+form-questions-delete`。
-3. **管理表单分享：** 使用 `+form-share-get` / `+form-share-update` 管理启停、访问范围和匿名/登录要求；更新前先读取现状，每次只修改一个字段，布尔值显式传 `true` 或 `false`。
+3. **管理表单分享：** 使用 `+form-share-get` / `+form-share-update` 管理启停、访问范围和匿名/登录要求；更新前先读取现状，每次只修改一个字段，布尔值显式传 `true` 或 `false`。用户要求填写入口、可分享链接或让他人提交时，只有回读 `enabled=true` 且 `share_url` 非空才能标记 verified。
 4. **填写分享表单并提交：** 对表单分享链接使用 `+url-resolve` 取得 `share_token`，按 [Form detail](references/lark-base-form-detail.md) 执行 `+form-detail` 读取真实题目、必填项和显示条件，再按 [Form submit](references/lark-base-form-submit.md) 构造字段与附件并执行 `+form-submit`。
 
 表单题目和字段的关系：
 
 - `+form-questions-create` 支持两种形态：新建字段题目需要 `title` + `type`；已有字段题目需要 `use_existing_field:true` + `field_id`。已有字段题目只是把该字段加入表单，不创建新字段，也不改变已有记录数据；不要给该形态携带 `type`、`style`、`options` 等字段定义属性。
 - 创建问题前先 `+form-questions-list`。若目标标题已经存在，除非用户明确要求同名独立问题，否则优先用 `+form-questions-update` 修改题目配置，不要先创建同名问题再删除旧问题。
-- `+form-questions-delete` 是高风险写操作。默认会删除承载问题的底层 Field 及该字段所有记录数据；只想把题目移出表单并保留字段/数据时必须传 `--keep-field`。保留字段后可用 `+form-questions-create --questions '[{"use_existing_field":true,"field_id":"<field_id>"}]'` 加回表单。
+- 用户枚举收集项时，将每一项与写后 `+form-questions-list` 逐项配对；缺项必须创建或把已有字段以 `use_existing_field:true` 加入表单，不能把“表里有字段”当成“表单里有题目”。
+- `+form-questions-delete` 是高风险写操作。默认会删除承载问题的底层 Field 及该字段所有记录数据；自然语言中的“删除题目”默认按 `--keep-field` 处理，只把题目移出表单并保留字段和数据，只有用户明确要求删除底层字段和整列数据时才省略该参数。完整的删除语义决策表和写后验证步骤见 [questions create](references/lark-base-form-questions-create.md)。保留字段后可用 `+form-questions-create --questions '[{"use_existing_field":true,"field_id":"<field_id>"}]'` 加回表单。
 
 ## Dashboard Block
 
-Dashboard Block 是 Base Block 树中的仪表盘容器，负责承载页面主题、布局和内部组件集合，本身不表示某一项图表数据。使用 `+dashboard-list` 定位容器，`+dashboard-get` 读取容器信息，`+dashboard-update` 修改主题，`+dashboard-arrange` 统一编排内部组件布局。
+Dashboard Block 是 Base Block 树中的仪表盘容器，负责承载页面主题、布局和内部组件集合，本身不表示某一项图表数据。使用 `+dashboard-list` 定位容器，`+dashboard-get` 读取容器信息，`+dashboard-create` 新建仪表盘，`+dashboard-update` 修改主题，`+dashboard-delete` 删除整个仪表盘（高风险，会带走其中全部组件），`+dashboard-arrange` 统一编排内部组件布局。
 
 **管理 Dashboard 分享：** 使用 `+dashboard-share-get` / `+dashboard-share-update` 管理启停、访问范围和返回源 Base 入口；更新前先读取现状，每次只修改一个字段，显式 `false` 会被保留。
 
@@ -238,7 +266,7 @@ Workspace 是组织 Base 和 BaseApp 的空间容器；BaseApp 创建时必须�
 
 1. **Workspace：** 使用 `+workspace-create`、`+workspace-entity-list` 和 `+workspace-move-in` 创建目录、列出其中的 Base/BaseApp 或移入资源。
 2. **应用：** 使用 `+app-create` / `+app-get`；应用查询和创建依赖真实 `app_token` / `workspace_token`。
-3. **页面：** 使用 `+app-page-list/get/create/rename/delete` 管理 Page。
+3. **页面：** 使用 `+app-page-list/get/create/update/delete` 管理 Page；重命名走 `+app-page-update`。
 4. **组件：** 使用 `+app-block-list/get/create/update` 读写组件配置，使用 `+app-block-get-data` 读取组件计算结果。
 
 BaseApp、Workspace、Page 或组件任务开始前完整读取 [应用模式与 Workspace](references/lark-base-app.md)；构造组件 `data_config` 时继续读取 [应用组件配置](references/lark-base-app-block-data-config.md)。BaseApp 不走 `lark-apps`。当前不支持 BaseApp 复制、Page 完整复制、页面图标以及从 Workspace 移出资源；遇到这些目标按 reference 的能力边界处理，不以新建空对象或 Drive 移动冒充。
@@ -254,6 +282,9 @@ Workflow 本身是 Base Block，其内部是一张由 `next` / `children` 连接
 1. **读取配置：** `+workflow-list` 定位流程，`+workflow-get` 读取 `title`、`status` 和完整 `steps` 执行图。
 2. **写入配置：** `+workflow-create` 创建完整定义，`+workflow-update` 更新完整定义；构造或修改配置前读取 [Workflow](references/lark-base-workflow.md)，由该入口继续路由 step 类型和 schema。
 3. **运行状态控制：** `+workflow-enable` / `+workflow-disable` 启用或停用已有 Workflow，不修改 steps 执行图。
+
+- 只有用户明确要求自动化，或明确要求修改现有 Workflow 时，才创建、更新或启用 Workflow；字段、公式、视图或 Dashboard 需求本身不构成启用自动化的授权。
+- “一按 / 一键 / 点一下就知道”默认是**查看**诉求，不是自动化授权：先用公式字段承载判断结果，再配筛选视图或 Dashboard 组件呈现，让结论可持续一眼查看。只有用户确实要求“点击后写回 / 触发动作”时，才建 button 字段（见 [Field Schema](references/lark-base-field-schema.md)）并用 `+button-rule-bind` 绑定 `ButtonTrigger` Workflow。无论走哪条，都不要只用静态说明或手动筛选交付。
 
 ## Advanced Permission（AdvPerm）
 
@@ -273,8 +304,8 @@ Folder Block 只承担 Base 目录分组和层级组织。用 `+base-block-list 
 
 ## 通用执行契约
 
-- Update 先确认命令是完整替换还是 delta：完整替换使用可信当前配置做 read-modify-write，delta 只提交目标变更。
-- 优先用写入返回确认结果；返回不足以确认或任务明确要求核验时再读回目标。
+- Update 先确认命令是完整替换还是 delta，并按上方写任务完成协议执行 read-modify-write 与回读。
+- 写入返回只证明请求被接受；是否完成以对应验收矩阵的后置条件为准。
 - 命令具有 confirmation gate 时，确认目标和影响后使用 `--yes`。
 
 ## 不在本 Skill 范围

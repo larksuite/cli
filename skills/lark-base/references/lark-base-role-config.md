@@ -71,6 +71,7 @@
 - `+role-get` 返回完整权限配置。更新前先用它确认当前 `role_name`、`role_type` 和已有权限结构。
 - `+role-update` 是 delta merge，只提交需要变更的字段；但 `role_name` 和 `role_type` 仍要带当前值，避免误改角色身份信息。
 - `+role-delete` 仅适用于自定义角色；系统角色可以在权限上限内调整配置，但不可删除。
+- 这些角色命令不提供用户/部门到角色的成员映射。逐角色回读可以验证角色能力没有越界，但不能单独证明某个排除主体未加入允许访问的角色；没有成员映射 API 或经授权的排除主体实测时，必须把主体排除标记为 `unverified` / `blocked`。
 
 ---
 
@@ -155,11 +156,11 @@
     "订单表": {
       "perm": "edit",
       "view_rule": {
-        "allow_edit": true,
+        "allow_edit": false,
         "visibility": { "all_visible": true }
       },
       "record_rule": {
-        "record_operations": ["add", "delete"],
+        "record_operations": [],
         "other_record_all_read": true
       },
       "field_rule": {
@@ -229,7 +230,7 @@
 
 | 字段 | 类型 | 说明                         |
 |------|------|----------------------------|
-| `allow_edit` | bool | 可新增、删除、修改视图；表权限为 `edit` 时默认为 `true`，表权限为 `read_only` 或用户明确限制时为 `false` |
+| `allow_edit` | bool | 可新增、删除、修改视图；与表级 `edit` 独立，默认 `false`，只有用户明确授权管理视图时为 `true` |
 | `visibility` | object | 可见的视图配置                    |
 | `visibility.all_visible` | bool | 是否全部可见                     |
 | `visibility.visible_views` | []string | 可见视图名称 列表                  |
@@ -239,10 +240,10 @@
 输出 `view_rule` 时，**必须**使用以下完整结构，根据场景选择对应模板：
 
 ```json
-// 情况 A：表权限为 edit 且用户未明确限制 → allow_edit 默认为 true，全部可见
+// 情况 A：表权限为 edit，但用户未授权管理视图 → 不可编辑视图、全部可见
 {
   "view_rule": {
-    "allow_edit": true,
+    "allow_edit": false,
     "visibility": {
       "all_visible": true
     }
@@ -259,7 +260,7 @@
   }
 }
 
-// 情况 C：用户提及了具体视图 → 仅指定视图可见（allow_edit 仍按 A/B 规则判断）
+// 情况 C：用户明确授权管理指定视图 → 仅指定视图可见且允许编辑视图
 {
   "view_rule": {
     "allow_edit": true,
@@ -451,14 +452,15 @@
 | `base_rule_map.copy` | `false` | 用户明确要求"允许复制" |
 | `base_rule_map.download` | `false` | 用户明确要求"允许下载/打印/副本" |
 
-### 默认开启项（条件性）
+### 独立授权项
 
-以下能力在特定条件下**默认开启**，用户明确限制时才排除：
+表级 `edit` 只授权修改已有记录，不自动授权记录生命周期或视图管理。以下能力均独立于 `perm = edit`，用户未明确提及时保持关闭：
 
-| 能力 | 默认值 | 排除条件 |
+| 能力 | 默认值 | 开启条件 |
 |------|--------|----------|
-| `record_operations` 中的 `delete` | **包含**（`perm = edit` 时） | 用户明确限制时才排除 |
-| `view_rule.allow_edit` | **`true`**（`perm = edit` 时） | 用户明确限制"不可编辑视图"或 `perm = read_only` 时设为 `false` |
+| `record_operations` 中的 `add` | **不包含** | 只有用户明确授权新增时才加入 `add` |
+| `record_operations` 中的 `delete` | **不包含** | 只有用户明确授权删除时才加入 `delete` |
+| `view_rule.allow_edit` | **`false`** | 只有明确授权管理视图，或新增/修改/删除视图时才设为 `true` |
 
 ---
 
@@ -479,7 +481,8 @@
 ### 记录操作默认策略
 
 **注意**:
-- 用户未提及时，表权限为 `edit` 时默认同时包含 `add` 和 `delete`，默认不包含 `delete` 的情况仅适用于用户明确限制操作的场景
+- 表权限为 `edit` 时，`record_operations` 默认是空数组；编辑已有记录不等于新增或删除记录
+- 只有用户明确授权新增时才加入 `add`，只有用户明确授权删除时才加入 `delete`；“可编辑”“可修改”“维护数据”均不能推导这两个操作
 - 阅读范围默认对齐编辑范围：用户仅描述可编辑范围、未说明阅读范围时，可阅读范围与可编辑范围保持一致，不主动扩大
 - 当可读范围与可编辑范围一致时，**不得**生成 `read_filter_rule_group`；应设置 `other_record_all_read = false` 且 `read_filter_rule_group = null`
 
@@ -489,15 +492,55 @@
 
 ---
 
+### 新增记录 + 部分字段可持续编辑
+
+角色允许新增记录，但提交后只有部分字段可继续修改时，必须同时配置记录操作和逐字段权限：
+
+```json
+{
+  "perm": "edit",
+  "view_rule": {
+    "allow_edit": false,
+    "visibility": { "all_visible": true }
+  },
+  "record_rule": {
+    "record_operations": ["add"],
+    "other_record_all_read": true
+  },
+  "field_rule": {
+    "field_perm_mode": "specify",
+    "field_perms": {
+      "业务名称": "create",
+      "业务类型": "create",
+      "业务时间": "create",
+      "数量": "edit",
+      "备注": "edit",
+      "自动编号": "read"
+    },
+    "allow_edit_and_modify_option_fields": [],
+    "allow_edit_and_download_file_fields": []
+  }
+}
+```
+
+- `create` 表示只在新增记录时可写，提交后不可继续修改。
+- `edit` 只用于用户点名可持续修改的字段。
+- `formula`、`lookup`、`auto_number` 和系统字段保持 `read` 或 `no_perm`。
+- 未明确授权删除时，`record_operations` 不得包含 `delete`。
+- 该组合必须使用 `specify`；字段名无法可靠映射时先澄清，不能退化为 `all_edit`。
+- 上例是可用于 `+role-create` 的完整表级结构，因此同时包含 `view_rule`、`record_rule` 和 `field_rule`；若只用 `+role-update` 做局部变更，可按 delta merge 规则只提交目标字段。
+
+---
+
 ### field_perms 构造 SOP
 
 在生成 `field_perms` 时，**严禁**依赖模糊的"继承"概念，必须按以下步骤执行：
 
 | 步骤 | 操作 | 说明 |
 |------|------|------|
-| 1. 基准设定 | `perm = edit` → 全部字段预设 `"edit"`；`perm = read_only` → 全部预设 `"read"` | 基于 `base_table_info` 中的全量字段 |
+| 1. 基准设定 | 通常 `perm = edit` → 全部字段预设 `"edit"`，`perm = read_only` → 全部预设 `"read"`；“新增记录 + 部分字段可持续编辑”按上一节改用可写业务字段 `"create"` 基线 | 基于 `base_table_info` 中的全量字段 |
 | 2. 物理降级 | `formula` / `lookup` / `auto_number` 及系统字段 → 强制降级为 `"read"` | 不可变字段严禁设为 `edit` |
-| 3. 用户覆盖 | 仅对用户**显式指定**了特定权限的字段应用 `no_perm` / `read` / `create` | 未显式指定的保持基准值 |
+| 3. 用户覆盖 | 仅对用户**显式指定**了特定权限的字段应用 `no_perm` / `read` / `create` / `edit` | 未显式指定的保持基准值 |
 | 4. 反筛选误判 | 用于 `filter_rules` 的字段，若基准为 `"edit"` 且用户未要求降级 → **保持 `"edit"`** | 筛选条件不影响字段可编辑性 |
 | 5. 筛选依赖兜底 | 出现在 `filter_rules` 中的字段**不允许**遗漏，权限至少为 `"read"` | 最终校验步骤 |
 
@@ -518,7 +561,7 @@
 1. **先判断用户是否提及了具体视图名称**（如"看板视图可见""甘特图不可编辑"等）
   - **是** → `all_visible = false`，`visible_views` 仅包含用户明确提及为"可见"的视图名称（非 viewID）；未提及的视图视为不可见
   - **否**（用户完全未提及任何视图）→ `all_visible = true`
-2. `allow_edit` 在表权限为 `edit` 时**默认为 `true`**；仅当用户明确限制"不可编辑视图"时才设为 `false`。设为 `true` 时仍**必须**包含 `visibility` 字段（参考视图权限 情况 A）
+2. `allow_edit` 默认 `false`，表权限为 `edit` 也不自动开放视图管理；只有用户明确授权新增、修改、删除或管理视图时才设为 `true`。设为 `true` 时仍**必须**包含 `visibility` 字段（参考视图权限情况 C）
 3. `all_visible` 为 `false` 时，`visible_views` **不可为空**，必须至少包含一个视图
 
 **❌ 常见错误 — 缺少 `visibility` 字段：**
@@ -541,7 +584,8 @@
 **`user` / `created_by` 类型字段：**
 - 仅允许使用 `contains` 算子
 - 不允许使用 `is`、`isNot` 等精确匹配算子
-- 这是当前成员匹配模式，筛选条件中无需填写具体成员值；不要在 `filter_values` 中写入姓名或用户 ID
+- 这是当前成员匹配模式，筛选条件中无需填写具体成员值；请求中省略 `filter_values`，服务端回读可能规范化为 `filter_values: null`
+- 只有字段类型正确、服务端回读 `is_invalid=false`，且没有 `other_record_all_read=true` 或其他全表读取规则覆盖时，该条件才能证明当前成员隔离；不要在 `filter_values` 中写入姓名或用户 ID
 
 **`select` (`multiple=false`) 类型字段：**
 - `is` 与 `isNot` 算子仅允许用于匹配**单一选项**，不得用于多个值

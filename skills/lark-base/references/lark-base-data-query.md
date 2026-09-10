@@ -149,6 +149,7 @@ POST /open-apis/base/v3/bases/:base_token/data/query
 | `distinct_count` | 全字段适用 |
 
 > `number` 包含 `style.type` 为 `progress` / `currency` / `rating` 等所有子类型。
+> 若命令返回 `ok=true`，但某个 `sum` / `avg` / `min` / `max` measure 的 `value` 为 `null`，先按“聚合成功但 measure 为 null”处理；不要立刻切到全量记录导出或打开 help 试错。
 
 **FilterGroup：**
 
@@ -315,6 +316,16 @@ value 使用预定义关键字机制，第一个元素为字符串常量名称�
 > - **范围型关键字**（`CurrentWeek`、`LastWeek`、`CurrentMonth`、`LastMonth`、`TheLastWeek`、`TheNextWeek`、`TheLastMonth`、`TheNextMonth`）仅支持 `is` 运算符。
 > - **关键字大小写敏感**：`ExactDate`、`Today`、`CurrentWeek` 等首字母大写，写错大小写会导致校验失败。
 
+日期粒度的连续区间（按月、季度、年度等）必须使用同一文档时区下不重叠、不遗漏的边界。这里的 `isGreater` / `isLess` 都是严格开区间，而本 DSL 没有 `isGreaterEqual`；因此把 `start_date` 本地零点直接传给 `isGreater` **不能**表达 `[start_date, next_start_date)`，会漏掉恰好位于左边界的值。
+
+按以下顺序选路：
+
+1. 业务范围与 `CurrentWeek`、`CurrentMonth` 等受支持的范围关键字完全一致时，使用该关键字的 `is`，不要自行拼边界。
+2. 已验证整列只存“日期粒度本地零点”时，可用“前一天本地零点的 `isGreater` + `next_start_date` 本地零点的 `isLess`”表达含起始日的范围；验证中一旦发现非零点时刻就不能使用此等价写法。
+3. 字段可能包含任意时刻，或无法证明第 2 条时，`+data-query` 不能精确表达含左边界的半开区间。改用 `+record-list` 的 tuple filter（可用精确到毫秒的前一瞬间作严格下界）读取完整记录后逐记录重建并聚合，或在用户允许修改 schema 时创建动态 Formula 布尔字段再筛选。不要用近似边界生成正式统计。
+
+连续切分时，相邻区间必须共用同一个分界时刻。完成后，用同一非日期筛选范围下的各段计数之和对比未分段总计数，并单独检查每个共享边界上的记录；不一致时先修正选路或边界，不要基于该聚合结果作答。不要把 UTC 零点毫秒值当作文档时区本地日期边界。
+
 *`attachment`*
 
 | 运算符 | value 格式 | 元素个数 | 示例 |
@@ -408,6 +419,18 @@ CLI 输出标准信封 `{ok, identity, data}`（失败时为 `{ok:false, identit
   ]
 }
 ```
+
+### 聚合成功但 measure 为 null
+
+`ok=true` 表示 DSL 已执行，不代表每个 measure 都可计算。若某个聚合列返回 `{"value": null}`，常见原因是该字段的真实类型或 formula / lookup 结果类型不适用于当前聚合函数，例如对文本化百分比、lookup 文本、附件或关联字段做 `avg` / `sum`。
+
+恢复顺序：
+
+1. 不要先跑 `+record-list --help` 或重复猜字段；用 `+field-list` 重新确认该 measure 字段的 `type`、`style.type`、formula 表达式、lookup 来源和聚合配置。
+2. 对照上方“聚合函数适用字段类型”表：`sum` / `avg` 只直接用于 number；`min` / `max` 只用于 number 或 datetime；计数类可继续用 `count` / `count_all` / `distinct_count`。
+3. 若该字段是 formula / lookup / 文本化百分比，先确定原指标的**逐记录语义**。读取完整记录集及公式依赖、lookup 来源或必要分子/分母，对每条记录先重建原字段值，再对这些逐记录结果应用原请求的 `sum` / `avg` / `min` / `max` / 计数；不能直接对底层列换一种聚合后冒充原指标。
+4. `sum(numerator) / sum(denominator)` 是加权重算，通常不等于 `avg(numerator / denominator)`。只有用户明确要加权口径时才使用，并在字段名和答复中标记为不同指标；不得把它作为原公式平均值的无提示替代。
+5. 只有确认 Base 云端查询服务无法对所需字段类型直接聚合时，才回到 `+record-list --format json --limit 200 --offset <n>`；一次性投影后续计算需要的业务 key、分组字段、连接字段和底层数值字段，分页读到 `has_more=false` 后再重建和聚合，避免读全表后再补查字段或重复扫描。
 
 ## 工作流
 

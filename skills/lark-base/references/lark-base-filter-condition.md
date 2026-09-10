@@ -105,6 +105,8 @@ location 筛选只按 `full_address` 字符串匹配，不能直接按经纬度�
 ["位置", "intersects", "深圳"]
 ```
 
+不推荐写 `["位置", "==", "深圳"]` 这类精确匹配，除非确保筛选值与完整 `full_address` 完全一致。
+
 ### `number` / `auto_number`
 
 用数字：
@@ -173,10 +175,12 @@ location 筛选只按 `full_address` 字符串匹配，不能直接按经纬度�
 ["截止时间", "==", "Today"]
 ```
 
-可用关键字：
+当前 tuple filter 已确认的关键字只有：
 - `Today`
 - `Yesterday`
 - `Tomorrow`
+
+`CurrentWeek`、`CurrentMonth`、`TheLastWeek` 等是 `+data-query` 对象 DSL 的关键字，不要直接移植到本 tuple DSL。需要持久化本周、本月、近 N 天/月、年度等范围时，先用当前 CLI / 服务端实测确认该 payload；未确认或被拒绝时，改用 `TODAY()` / `YEAR(TODAY())` 等动态 Formula 再筛选，不能把运行当天展开成固定日期冒充长期动态条件。
 
 ### `formula` / `lookup`
 
@@ -187,7 +191,7 @@ value schema 随计算结果类型变化；拿不准时先读取字段定义，�
 - 不要再写旧对象风格：`{"field_name":...,"operator":...}`。
 - `user` / `group_chat` / `link` 不要写成单个标量。
 - `empty` / `non_empty` 统一表示格子为空 / 非空，不要传 value；标量空格子和多值字段没有任何元素都属于空。
-- 日期条件稳定写法用 `ExactDate(...)` 或 `Today` / `Yesterday` / `Tomorrow`。
+- 日期条件稳定写法用 `ExactDate(...)` 或上方已确认的 `Today` / `Yesterday` / `Tomorrow`；其他相对范围按 fallback 规则处理。
 - `formula` / `lookup` 的 value schema 是动态的；拿不准 value 类型时先读字段定义，或根据错误提示修正类型。
 
 ## 6. 参考

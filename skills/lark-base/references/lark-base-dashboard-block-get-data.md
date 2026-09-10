@@ -73,7 +73,7 @@ lark-cli base +dashboard-block-get-data \
   --block-id chtxxxxxxxx
 ```
 
-如果用户要读取多个组件，先通过 `+dashboard-block-list --page-size 100` 取得真实 ID；若返回 `has_more=true`，继续把本页返回的 `page_token` 传给 `--page-token`，直到 `has_more=false`。收齐目标组件并跳过没有计算结果的文本组件后，再在**一个 shell 工具调用**内串行执行。每条命令会依次输出一个完整 JSON envelope；不要把每个 block 拆成独立模型轮次。
+如果已有本次 create/update/get 返回的全部可信目标 ID，直接跳过 list；仅在缺少 ID、需要定位目标，或用户要求完整读取时，才通过 `+dashboard-block-list --page-size 100` 分页获取。每页保留响应的 `has_more` 与 `page_token`；`has_more=true` 时把该 `page_token` 原样传给下一次 `--page-token`，直到 `has_more=false` 后才算收齐。收齐目标组件并跳过没有计算结果的文本组件后，在**一个 shell 工具调用**内串行执行。每条命令会依次输出一个完整 JSON envelope；不要把每个 block 拆成独立模型轮次。
 
 ```bash
 set -euo pipefail
@@ -86,7 +86,7 @@ for block_id in "${block_ids[@]}"; do
 done
 ```
 
-数组中的 ID 必须逐字来自 `+dashboard-block-list` 返回，不要把名称或未经验证的用户文本作为 shell 代码执行。循环仍然是串行 API 调用，只减少模型往返，不裁剪任何组件结果。
+数组中的 ID 必须逐字来自本次 create/update/get 响应或 `+dashboard-block-list` 返回，不要把名称或未经验证的用户文本作为 shell 代码执行。循环仍然是串行 API 调用，只减少模型往返，不裁剪任何组件结果。
 
 如果你需要先确认组件类型、名称或 `data_config`，请先执行：
 
@@ -645,12 +645,20 @@ lark-cli base +dashboard-block-get-data \
 ### 场景 3：用户要找“仪表盘里哪个图的结果异常”
 
 ```bash
-# 先列组件
+# 先列组件；必须遍历完整分页，不能只分析默认的前 20 项
 lark-cli base +dashboard-block-list \
   --base-token xxx \
-  --dashboard-id blk_xxx
+  --dashboard-id blk_xxx \
+  --page-size 100
 
-# 再针对可疑 block 逐个取结果
+# 如果返回 has_more=true，带上返回的 page_token 继续请求；重复直到 `has_more=false`
+lark-cli base +dashboard-block-list \
+  --base-token xxx \
+  --dashboard-id blk_xxx \
+  --page-size 100 \
+  --page-token <page_token>
+
+# 汇总所有页面后，再针对可疑的非文本 block 逐个取结果
 lark-cli base +dashboard-block-get-data \
   --base-token xxx \
   --block-id chtxxxxxxxx

@@ -5,6 +5,87 @@
 > **配套文档**:
 > - Workflow 的数据结构参考：[lark-base-workflow-schema.md](lark-base-workflow-schema.md)
 > - 创建/更新时重点构造 `title`、`status` 和 `steps`；复杂度集中在 `steps[].type/data/next`
+> - 新建 Workflow 默认 `disabled`；运行态只通过 `+workflow-enable` / `+workflow-disable` 切换
+> - `+workflow-update` 是定义的完整替换：先从 `+workflow-get` 保存 `title`、`status`、`steps`，只修改获授权部分；请求体中的 `status` 不负责切换运行态
+
+---
+
+## 交付红线
+
+### 能力边界与意图识别
+
+- “一按 / 一键 / 点一下就知道”默认是查看诉求：先用公式字段加视图或 Dashboard 承载判断结果，不需要 Workflow。只有用户确实要求“点击后写回 / 触发动作”时才用 `ButtonTrigger`，此时先建 button 字段（见 [Field Schema](lark-base-field-schema.md)），再用 `+button-rule-bind` 把它绑定到本 Workflow，最后用 `+button-rule-get` 回读绑定关系；未完成绑定的 `ButtonTrigger` Workflow 不能算交付完成。走 `ButtonTrigger` 时，判断结果仍要写回表字段、日志表或消息，而不是只交付一段说明。
+- 记录新增 / 修改触发和定时扫描都可能实现提醒；选择前先判断用户要实时提醒还是周期巡检。用定时扫描替代实时提醒时，必须在交付里说明触发频率。
+- 只有用户明确要求自动化，或明确要求修改现有 Workflow 时，才创建、更新或启用 Workflow。字段、公式、视图或 Dashboard 需求本身不构成启用自动化的授权。
+
+### 先确定目标运行态
+
+为本轮每个目标 Workflow 记录 `workflow_id`（新建时先记待返回）、用户意图和 `target_status`。同一目标有多次运行态指令时，以最后一次无歧义指令为准；没有明确指令时按下表从上到下匹配：
+
+| 用户最终意图 | `target_status` | 允许的状态动作 |
+|---|---|---|
+| 只读取、检查、审计或解释 | `none` | 不创建、不更新、不启停 |
+| 既有 Workflow 只改名称或描述，未改变消息标题/正文、触发时间/条件、接收人、动作类型或动作目标 | `preserve` | 保留首次 get 的运行态，不调用 enable/disable |
+| 明确交付草稿、预览、暂不启用或停用 | `disabled` | 确保最终停用 |
+| 新增/配置提醒、通知、自动发送、定时执行或触发动作，或改变其触发时间/条件、接收人、动作类型/目标 | `enabled` | 定义验收后确保启用 |
+
+只有本轮明确指定或要求创建的 Workflow 才能进入该表；发现其他 disabled Workflow 不构成启用授权。静态文本、Formula、View 或 Dashboard 不能替代用户明确要求的主动通知。
+
+### 不可跳过的完成谓词
+
+Workflow 子任务必须同时满足：
+
+1. **定义后置条件：** 同一目标 ID 中本轮涉及的名称、描述、消息、触发器、时间配置、条件、接收人、动作、引用及目标均与用户要求一致。
+2. **状态后置条件：** `enabled` / `disabled` 必须由未裁剪 `status` 的 `+workflow-get` 证明；`preserve` 必须等于首次 get 状态；`none` 要求没有发生任何写或启停操作。
+
+`+workflow-create` 返回 disabled 只是中间态；`target_status=enabled` 时必须继续 enable 并对同一 ID get。定义已经吻合或无需 update 也不能消除独立的运行态差异。
+
+### 接收人来源门禁
+
+消息接收人只能来自用户明确点名且可唯一解析的人员/群、明确指定的人员/群字段，或本轮已经确认的真实对象；“通知我/本人”属于对当前用户的明确授权。泛化职责称谓或模糊群组无法唯一映射时，不得用当前用户、Base 创建人、记录创建人或示例 ID 兜底。
+
+接收人不明确时先澄清；已有草稿保持 disabled。回读时逐项核对 `receiver` 的来源和 `send_to_everyone`，防止扩大外发范围。
+
+### 条件类型与 fail-closed 验收
+
+含条件的 Workflow 写入前先用 `+field-list` 确认左值真实类型，再按 [Workflow schema](lark-base-workflow-schema.md) 选择 operator、`value_type` 和右值。需要右值的 operator 禁止 `null`、空数组和空字符串；数值必须是有限 number，日期必须是受支持的 date，选项必须来自真实字段配置。
+
+**阈值丢失是静默失败**：右值写成空数组或空字符串后，Workflow 仍会按时触发、状态仍是 `enabled`，只是永远匹配不到记录，不会有任何报错。同一需求的 View 筛选常常是对的，不要因为视图配对了就认为 Workflow 也对，两者各自独立构造。用户需求里有几个边界，保存后的 conditions 里就该有几个非空右值。
+
+创建或更新含行为变化的定义时，必须在写入前进入安全的 disabled 状态：先 `+workflow-get` 保存原运行态；若当前为 enabled，先 `+workflow-disable` 并回读 `status=disabled`，再执行完整 update。新建对象天然为 disabled。写后继续保持 disabled，用 `+workflow-get` 对照完整条件的 `field_name / operator / value / value_type`。回读比较使用**归一化语义**，不是原始 JSON 字节相等：
+
+- option 的 `{name}` 与服务端补全的 `{id,name}` 在名称一致、且返回 ID 对应该字段真实选项时视为同一语义；若两边都有 ID 则 ID 必须一致。
+- user/group/link 以真实 ID 为主，服务端补全或规范化展示名不构成差异。
+- 数字、日期、布尔和文本按类型化值比较，不能把字符串 `"100"` 与 number `100` 当成相同。
+- 数组型值在协议有序时保序比较；协议定义为集合时按去重后的成员语义比较，不因服务端附加展示字段误判。
+
+任一必需右值为空、类型错误、边界缺失或语义不一致时保持或恢复 disabled。只做一次定向修复和复验；仍失败时可改用能稳定回读的文本/布尔 Formula 表达同一谓词。再失败则该 Workflow 标记 blocked，继续交付不依赖它的对象，但不得启用或宣称自动化已生效。
+
+### 生命周期：创建不等于生效
+
+```bash
+# 新建：创建后默认 disabled
+lark-cli base +workflow-create --base-token <base_token> --json @workflow.json
+
+# 既有 Workflow 的行为变化：先记录原状态；若 enabled，必须先停用并确认
+lark-cli base +workflow-get --base-token <base_token> --workflow-id <workflow_id>
+lark-cli base +workflow-disable --base-token <base_token> --workflow-id <workflow_id>
+lark-cli base +workflow-get --base-token <base_token> --workflow-id <workflow_id>
+lark-cli base +workflow-update --base-token <base_token> --workflow-id <workflow_id> --json @workflow.json
+
+# 在 disabled 状态读回并验证完整定义
+lark-cli base +workflow-get --base-token <base_token> --workflow-id <workflow_id>
+
+# 定义预检通过后按 target_status 控制运行态
+lark-cli base +workflow-enable --base-token <base_token> --workflow-id <workflow_id>
+# 或：lark-cli base +workflow-disable ...
+
+# 对同一 ID 验证最终定义和运行态
+lark-cli base +workflow-get --base-token <base_token> --workflow-id <workflow_id>
+lark-cli base +workflow-list --base-token <base_token> --status enabled
+```
+
+行为变化包括消息标题/正文、触发时间/条件、接收人、动作类型或动作目标；这类更新不能在 enabled 状态直接写，否则未验证的新定义可能先触发或外发。只改名称或描述且 `target_status=preserve` 时可不做临时停用。行为变化的 `preserve` 表示验证后恢复首次 get 的状态，不表示跳过安全停用。启用后若发现定义不符，先立即 disable 并回查 disabled，再 update、重新预检，最后按目标运行态处理；`+workflow-update` 本身不会改变运行态。
 
 ---
 
@@ -54,13 +135,13 @@
 
 | 场景 | 步骤组合 | 示例 |
 |------|---------|------|
-| 新增触发+通知 | AddRecordTrigger → LarkMessageAction | [下方](#示例1-新增记录触发--发送消息) |
+| 新增触发+通知 | AddRecordTrigger → LarkMessageAction | [下方](#示例-1-新增记录触发--发送消息) |
 | 按钮点击+调用外部接口+写入日志 | ButtonTrigger → HTTPClientAction → AddRecordAction | [下方](#示例-6-按钮触发--调用外部接口--写入同步日志) |
-| 定时+循环 | TimerTrigger → FindRecordAction → Loop → LarkMessageAction | [下方](#示例2-定时触发--查找记录--循环遍历--发送消息) |
-| 条件判断 | ... → IfElseBranch → 分支处理 | [下方](#示例3-条件分支ifelsebranch) |
-| 多路分类 | ... → SwitchBranch → 多分支处理 | [下方](#示例4-多路分支switchbranch) |
-| 复杂组合 | 定时+查找+循环+分支+消息 | [下方](#示例5-组合场景定时查找循环分支消息) |
-| AI 分类 | ... → AIClassificationBranch → 分类后处理 | [下方](#示例7-ai-分类用户反馈自动分流) |
+| 定时+循环 | TimerTrigger → FindRecordAction → Loop → LarkMessageAction | [下方](#示例-2-定时触发--查找记录--循环遍历--发送消息) |
+| 条件判断 | ... → IfElseBranch → 分支处理 | [下方](#示例-3-条件分支ifelsebranch) |
+| 多路分类 | ... → SwitchBranch → 多分支处理 | [下方](#示例-4-多路分支switchbranch) |
+| 复杂组合 | 定时+查找+循环+分支+消息 | [下方](#示例-5-组合场景定时查找循环分支消息) |
+| AI 分类 | ... → AIClassificationBranch → 分类后处理 | [下方](#示例-7-ai-分类用户反馈自动分流) |
 
 ---
 
@@ -898,6 +979,8 @@
 { "condition_list": null }
 // 或省略该字段
 ```
+
+无条件 `ChangeRecordTrigger` 必须保持上述 `null` / 省略表示。即使服务端返回 `recordInfo.conditions must be non-empty`，也只能检查字段名并按上述合法表示重试；不得添加“任务名称不为空”、状态、负责人等替代筛选条件，更不得把替代条件描述成与无条件触发等价。
 
 **2. filter_info 和 ref_info 同时提供**
 ```json

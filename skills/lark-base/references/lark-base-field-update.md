@@ -67,7 +67,9 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 ## 返回重点
 
 - 返回 `field` 和 `updated: true`。
-- 按返回的 `next_step` 和 `verification_hint` 继续；类型转换涉及已有值时抽样读取记录。
+- `updated:true` 只表示更新请求成功，不表示字段结构、已有记录值或下游能力已经验证。按返回的 `next_step` 和 `verification_hint` 执行 `+field-get`；类型转换还要抽样读取代表性记录。
+- 如果响应中的 `field.type` 与提交的 `type` 不一致，必须视为待核验的类型不匹配；不能返回完成态，也不能只根据其中任一类型推断更新成功。
+- API 报告 no-op 只说明本次没有产生变更，不替代 `+field-get` 对当前完整状态的验证。
 
 ## 工作流
 
@@ -75,6 +77,18 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 1. 先用 `+field-get` 读取当前定义，只改变目标属性，并把需要保留的其他可写配置完整写回。
 2. `formula/lookup` 类型更新前先阅读对应指南。
 3. 如果这次更新会改变字段 `type`，先按下方“字段类型变更规则”判断能否执行。如果不修改 `type`，大多数场景都相对安全。
+
+### Select 选项改名或替换
+
+已有记录引用 select 选项时，先迁移记录，再收敛字段定义：
+
+1. 用 `+field-get` 保存完整旧 `options`，为每个旧选项明确映射到目标选项；没有明确映射的旧值不得静默丢弃。
+2. 用 `+record-list` 分页读取该字段的旧值分布，保留 `record_id` 与该字段，直到 `has_more=false`。
+3. 第一次 `+field-update` 添加目标新选项，同时保留仍被记录引用的全部旧选项。
+4. 用 `+record-batch-update` 按映射迁移记录；单选仍用数组提交，例如 `{"状态":["Done"]}`。
+5. 再次完整读取并确认每个旧值计数都为 0，才执行第二次 `+field-update` 移除旧选项或调整最终顺序；随后读回字段和代表性记录。
+
+不要直接用只含新选项的定义覆盖存量 select 字段；仍被引用的旧选项可能导致记录值丢失或变空。
 
 ## 字段类型变更规则
 
@@ -136,6 +150,13 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
   - 可能只保留字符串表示，丢失原类型语义和结构化能力
   - 可能影响视图 / 筛选 / 排序 / 公式 / lookup / 写入引用
 - 如果用户不接受风险：不要执行转换。
+
+### 完成态验证
+
+- `FieldReadback`：`+field-get` 确认 `type`、`multiple`、`style`、`options` 及本轮目标配置。
+- `ValueReadback`：涉及转换、选项迁移、默认值或自动编号时，读取代表性单元格；需要全量归零的旧值必须完整分页计数。
+- `DownstreamReadback`：涉及 View、Dashboard、分组、排序、Formula 或 Lookup 时，继续验证直接受影响的下游结果。
+- `CompletionRule`：结构、值和本轮相关下游能力都正确，才能回复“已完成”。
 
 ## 坑点
 

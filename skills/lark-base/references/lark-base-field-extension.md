@@ -1,6 +1,6 @@
 # base field-extension
 
-字段插件用于扩展基础字段能力，当同行其他单元格更新时，触发 LLM 推理生成新单元格。当前公开支持的插件 ID 只有 `builtin_llm_completion`，已确认可用于文本、单选、数字字段，让目标字段基于 prompt 和字段引用生成内容，并可手动触发该字段的单元格异步更新任务。
+字段插件用于扩展基础字段能力，当同行其他单元格更新时，触发 LLM 推理生成新单元格。当前公开支持的插件 ID 只有 `builtin_llm_completion`，已确认可用于文本、单选、多选、数字、日期字段，让目标字段基于 prompt 和字段引用生成内容，并可手动触发该字段的单元格异步更新任务。
 
 三个命令：
 
@@ -10,7 +10,7 @@
 
 ## 何时使用字段插件
 
-用户明确要让某个已有字段根据其他字段自动生成内容、总结、分类、翻译、提取信息，且目标能力可以用 prompt 表达时，使用字段插件。当前已确认的目标字段类型是文本、单选、数字。
+用户明确要让某个已有字段根据其他字段自动生成内容、总结、分类、翻译、提取信息，且目标能力可以用 prompt 表达时，使用字段插件。当前已确认的目标字段类型是文本、单选、多选、数字、日期。
 
 字段插件只能建立在已有字段上，不能创建列 schema。新建字段仍使用 `+field-create`；修改字段类型、选项、名称等 schema 属性仍使用 `+field-update`。
 
@@ -66,7 +66,7 @@ lark-cli base +field-extension-update-cells \
 
 ## 工作流
 
-1. 定位 Base、Table 和目标 Field。目标 Field 是承载插件输出的已有字段，不是 prompt 中被引用的输入字段。
+1. 定位 Base、Table 和目标 Field。目标 Field 是承载插件输出的已有字段，不是 prompt 中被引用的输入字段。当前 CLI 尚未提供本地字段类型门禁，安装配置或触发生成前必须先用 `+field-get` 读取真实字段并确认它是文本、单选、多选、数字或日期。
 2. 用 `+field-extension-get` 读取当前配置。返回 `current_extension=null` 表示未配置、无法识别或存量配置无法转换。
 3. 构造 `+field-extension-update --json`。安装或更新时传 `extension_id=builtin_llm_completion` 和 `inputs.prompt`；清空时传 `{}`。
 4. 配置成功后，只有用户明确要立即生成或刷新已有单元格时，才调用 `+field-extension-update-cells` 发起异步生成任务。
@@ -157,13 +157,13 @@ lark-cli base +field-extension-update-cells \
 ## 权限和风险
 
 - `+field-extension-get` 是只读命令，权限 `base:field:read`。
-- `+field-extension-update` 是高风险写命令，权限 `base:field:update`，会改变目标字段的自动生成配置，执行时必须带 `--yes`。
-- `+field-extension-update-cells` 是高风险写命令，权限 `base:record:update`，会触发目标字段单元格异步写回，执行时必须带 `--yes`。
+- `+field-extension-update` 是高风险写命令，权限 `base:field:update`，会改变目标字段的自动生成配置，执行时必须带 `--yes`。安装或更新前的人工 `+field-get` 预检另需 `base:field:read`；传 `{}` 清空存量配置时不要求执行该预检。
+- `+field-extension-update-cells` 是高风险写命令，权限 `base:record:update`，会触发目标字段单元格异步写回，执行时必须带 `--yes`。触发前仍应先用 `+field-get` 核验目标类型。
 - 用户需要具备管理目标表或目标字段插件的权限才能触发更新任务；如果接口返回权限不足，先按 Base 权限或高级权限角色确认用户权限。
 
 ## 注意事项
 
-- 目标字段必须是当前字段插件已支持的字段类型；当前已确认支持文本、单选、数字字段。不要把字段插件当成任意字段类型都可用的通用能力。
+- 目标字段必须是当前字段插件支持的字段类型：文本、单选、多选、数字或日期。当前 CLI 不会在写配置或触发任务前自动读取字段类型，因此必须执行 `+field-get` 人工门禁；传 `{}` 清空存量配置不要求目标类型仍受支持。
 - 写入插件配置后，自动更新会强制开启；当前不提供关闭自动更新的参数。
 - 读取接口中的 `field_ref.field` 通常返回字段名称；字段名称不可用时可能返回字段 ID。
 - `+field-extension-update` 不返回 `input_schemas`。

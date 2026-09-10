@@ -172,7 +172,7 @@
 {
   "table_name": "任务表",
   "trigger_control_list": [],
-  "condition": null
+  "condition_list": null
 }
 ```
 
@@ -181,6 +181,8 @@
 | `table_name` | 是 | 监控的数据表名 |
 | `trigger_control_list` | 否 | 触发控制，可选值：`pasteUpdate` / `automationBatchUpdate` / `syncUpdate` / `appendImport` |
 | `condition_list` | 否 | 过滤条件数组，数组中每个元素为 AndCondition 结构，多个 AndCondition 之间为 OR 关系 |
+
+用户要求任意记录新增或修改均触发、不设筛选条件时，`condition_list` 必须为 `null` 或直接省略。不得传 `[]`，也不得添加“任务名称不为空”、状态、负责人等替代筛选条件；后者会改变用户要求的触发范围。
 
 ### SetRecordTrigger
 
@@ -991,6 +993,20 @@ $.{stepId}.{fieldId}.fileToken    → 文件 Token 列表（array<string>，仅�
   ]
 }
 ```
+
+### 条件值类型与非空约束
+
+构造 `FieldWatchItem`、`AndCondition`、`RecordFilterInfo` 或分支条件前，先用 `+field-list` 确认左值字段的真实类型。右值必须与字段类型一致：
+
+| 左值字段类型 | 右值 `value_type` | 约束 |
+|---|---|---|
+| `number` 或数值型 `formula` / `lookup` | `number` | 值必须是非空有限数字，不得使用 `""`、`null` 或空数组 |
+| `datetime` / `created_at` / `updated_at` | `date` | 使用合法日期或受支持的相对时间值，并选择日期可用 operator |
+| `select` | `option` | 选项名称或 ID 必须来自真实字段配置 |
+| `user` / `group_chat` | `user` / `group` 或类型匹配的 `ref` | 不得使用未解析的姓名、角色描述或示例 ID |
+| `text` | `text` | 需要右值的 operator 不得传空字符串 |
+
+`isEmpty` / `isNotEmpty` 不携带业务右值；其他 operator 需要非空右值。创建或更新接口返回成功后，仍须用 `+workflow-get` 检查服务端保存的完整条件；字段类型、operator、`value_type` 或值任一不匹配都表示未通过，不能继续启用或宣称完成。
 
 ### OrGroup（Branch 分支条件）
 
