@@ -311,7 +311,7 @@ func TestDiagnose_VerifyUserIdentity_ServerRejects(t *testing.T) {
 	f, _, _, reg = cmdutil.TestFactory(t, cfg)
 	reg.Register(&httpmock.Stub{
 		Method: http.MethodPost,
-		URL:    larkauth.PathOAuthTokenV2,
+		URL:    core.OAuthTokenV3Path,
 		Error:  errs.NewSecurityPolicyError(errs.SubtypeAccessDenied, "%s", refreshMessage).WithCode(21001),
 	})
 	got = Diagnose(context.Background(), f, cfg, true)

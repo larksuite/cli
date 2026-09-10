@@ -16,6 +16,7 @@ import (
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/dpop"
 	"github.com/larksuite/cli/sidecar"
 )
 
@@ -203,6 +204,10 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// otherwise smuggle an extra Authorization/MCP token alongside the one
 	// the sidecar injects below.
 	forwardReq.Header.Del("Authorization")
+	forwardReq.Header.Del(dpop.ProofHeader)
+	ctx := dpop.WithBinding(forwardReq.Context(), nil)
+	ctx = dpop.WithTokenEndpointKey(ctx, nil)
+	*forwardReq = *forwardReq.WithContext(ctx)
 	forwardReq.Header.Del(sidecar.HeaderMCPUAT)
 	forwardReq.Header.Del(sidecar.HeaderMCPTAT)
 
@@ -212,7 +217,14 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if authHeader == "Authorization" {
 		forwardReq.Header.Set("Authorization", "Bearer "+tokenResult.Token)
 	} else {
+		if tokenResult.DPoP != nil {
+			http.Error(w, "DPoP tokens are not supported by the MCP custom-token-header protocol", http.StatusBadGateway)
+			return
+		}
 		forwardReq.Header.Set(authHeader, tokenResult.Token)
+	}
+	if tokenResult.DPoP != nil {
+		forwardReq = forwardReq.WithContext(dpop.WithBinding(forwardReq.Context(), tokenResult.DPoP))
 	}
 
 	// 9. Forward request

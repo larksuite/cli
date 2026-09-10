@@ -182,10 +182,13 @@ github.com/skip2/go-qrcode/reedsolomon
 github.com/spf13/cobra
 github.com/spf13/pflag
 github.com/xo/terminfo
+golang.org/x/crypto/argon2
+golang.org/x/crypto/blake2b
 golang.org/x/net/html
 golang.org/x/net/html/atom
 golang.org/x/net/html/charset
 golang.org/x/sync/errgroup
+golang.org/x/sys/cpu
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
 golang.org/x/term

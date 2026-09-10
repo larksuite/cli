@@ -29,6 +29,8 @@ github.com/gofrs/flock
 github.com/gogo/protobuf/gogoproto
 github.com/gogo/protobuf/proto
 github.com/gogo/protobuf/protoc-gen-gogo/descriptor
+github.com/google/go-tpm/legacy/tpm2
+github.com/google/go-tpm/tpmutil
 github.com/google/uuid
 github.com/gorilla/websocket
 github.com/itchyny/gojq
@@ -174,10 +176,13 @@ github.com/skip2/go-qrcode/reedsolomon
 github.com/spf13/cobra
 github.com/spf13/pflag
 github.com/xo/terminfo
+golang.org/x/crypto/argon2
+golang.org/x/crypto/blake2b
 golang.org/x/net/html
 golang.org/x/net/html/atom
 golang.org/x/net/html/charset
 golang.org/x/sync/errgroup
+golang.org/x/sys/cpu
 golang.org/x/sys/unix
 golang.org/x/term
 golang.org/x/text/encoding

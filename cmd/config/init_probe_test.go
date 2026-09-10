@@ -34,7 +34,7 @@ func (f *fakeRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	case strings.HasSuffix(req.URL.Path, "/oauth/v3/token"):
 		f.tatCalls++
 		if f.tatHandler == nil {
-			return jsonResp(200, `{"code":0,"access_token":"t-ok","token_type":"Bearer"}`), nil
+			return jsonResp(200, `{"code":0,"access_token":"t-ok","token_type":"Bearer","expires_in":7200}`), nil
 		}
 		return f.tatHandler(req)
 	case strings.HasSuffix(req.URL.Path, "/application/v6/larksuite_cli_app/probe"):
@@ -243,7 +243,7 @@ func TestRunProbe_TATSuccess_ProbeOK_Silent(t *testing.T) {
 func TestRunProbe_ProbeRequestShape(t *testing.T) {
 	const statusMessage = "Some scopes were silently trimmed"
 	rt := &fakeRT{tatHandler: func(req *http.Request) (*http.Response, error) {
-		return jsonResp(http.StatusOK, `{"code":0,"access_token":"t-ok","status_message":"Some scopes were silently trimmed"}`), nil
+		return jsonResp(http.StatusOK, `{"code":0,"access_token":"t-ok","token_type":"Bearer","expires_in":7200,"status_message":"Some scopes were silently trimmed"}`), nil
 	}}
 	f, errBuf := fakeFactory(t, rt)
 	if err := runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu); err != nil {
