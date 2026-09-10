@@ -111,6 +111,18 @@ func TestBuildBrandScopesDoc_ContractInvariants(t *testing.T) {
 					t.Errorf("output contains HTML-escaped sequence %s; a JSON.stringify publisher does not escape these", esc)
 				}
 			}
+
+			// #9 schema 键名固定:下游按这些 JSON 键解析,重命名任一键(改
+			// struct tag)会静默破坏它们,而按 Go 字段断言的 #1-#6 抓不到。锁
+			// 键名、不锁 scope 值(线上"不发版得新 scope"使值本就漂移)。
+			for _, key := range []string{
+				`"version"`, `"scopes"`, `"i18n_name"`, `"i18n_desc"`,
+				`"tenant_scopes"`, `"user_scopes"`, `"zh_cn"`, `"en_us"`,
+			} {
+				if !strings.Contains(string(out), key) {
+					t.Errorf("output missing expected JSON key %s (schema drift?)", key)
+				}
+			}
 		})
 	}
 }
